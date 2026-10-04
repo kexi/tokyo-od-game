@@ -24,9 +24,11 @@ import { warn } from "../log";
  * and angles follow knowledge/cockpit-blender.md.
  */
 const DEG = Math.PI / 180;
-const SPEED_ZERO = -120 * DEG; // the needle at 0 km/h, from 12 o'clock (clockwise positive)
+// The needles are modelled pointing at their zero marks (clock angle −120°, the small gauges
+// −45°), so rotation.z is only the swing from zero, clockwise as the driver sees it.
 const SPEED_RATE = (4 / 3) * DEG; // per km/h
 const TACHO_RATE = 0.03 * DEG; // per rpm
+const SMALL_SWEEP = 90 * DEG; // fuel E→F, temperature C→H
 const STEERING_RATIO = 15;
 const WIPER_SWEEP = { R: 82 * DEG, L: 84 * DEG };
 const WIPER_LO = 40 / 60; // cycles per second
@@ -197,14 +199,19 @@ export class Cockpit {
   }): void {
     if (!this.active || !this.root) return;
     const kmh = Math.min(180, Math.abs(opts.kmh));
-    if (this.needleSpeed) this.needleSpeed.rotation.z = SPEED_ZERO + kmh * SPEED_RATE;
+    if (this.needleSpeed) this.needleSpeed.rotation.z = kmh * SPEED_RATE;
     // A plausible engine speed: idle, then each gear's band (automatic, shifting near 2,500 rpm).
     const gearKmh = [0, 20, 40, 60, 85, 120];
     const gear = gearKmh.findIndex((g) => kmh < g) - 1;
     const lo = gearKmh[Math.max(0, gear)] ?? 85;
     const hi = gearKmh[Math.max(1, gear + 1)] ?? 180;
     const rpm = 750 + ((kmh - lo) / Math.max(1, hi - lo)) * 1800 + opts.throttle * 600;
-    if (this.needleTacho) this.needleTacho.rotation.z = SPEED_ZERO + rpm * TACHO_RATE;
+    if (this.needleTacho) this.needleTacho.rotation.z = rpm * TACHO_RATE;
+    // A tank about three-quarters full; the coolant sits mid-scale once the engine is warm.
+    const fuel = this.root.getObjectByName("Needle_Fuel");
+    if (fuel) fuel.rotation.z = 0.72 * SMALL_SWEEP;
+    const temp = this.root.getObjectByName("Needle_Temp");
+    if (temp) temp.rotation.z = 0.5 * SMALL_SWEEP;
     if (this.wheel) this.wheel.rotation.z = -opts.steerAngle * STEERING_RATIO;
     const blink = Math.floor(opts.now / 380) % 2 === 0;
     this.lamp("Lamp_TurnL", opts.left && blink);
