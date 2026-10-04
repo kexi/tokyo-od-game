@@ -44,7 +44,7 @@ sources:
     title: 移行前の実装（GLSL のシェーダーと WebGLRenderer の組み立て）
   - id: phase-c-wgsl
     resource: three 0.186.1 の WGSLNodeBuilder を Node（vitest、scratchpad/wgsl の別設定）で動かし、偽のキャンバスで作った未初期化の WebGPURenderer（hasFeature・hasCompatibility を差し替え）、影付きの DirectionalLight、CubeUV の環境マップで、外壁 3 種・地形・路面 5 種 × 雨の路面 3 種の 38 本の WGSL を生成し、naga（nixpkgs wgpu-utils 29.0.1）で検証（2026-10-05 05:33〜05:40 JST）
-    title: 段階 C の node material の WGSL 生成と検証
+    title: 段階 C の node material の WGSL 生成と検証（WebGL 2 の GLSL は glslang 16.4.0 で、05:46 JST）
     author: claude-opus-5-5/1m
   - id: three-lighting-model
     resource: node_modules/three/src/nodes/functions/PhysicalLightingModel.js・nodes/lighting/LightsNode.js・LightingContextNode.js・materials/nodes/NodeMaterial.js・renderers/common/RenderObject.js（three 0.186.1）
@@ -182,7 +182,8 @@ present と同じタスクで `canvas.toBlob` / `drawImage`。WebGPU のキャ�
 - 作り方: `new WebGPURenderer({ canvas: 偽のオブジェクト })`（init しない）の `backend.createNodeBuilder(mesh, renderer)` に scene・camera・material・`lighting.getNode(scene)`（`setLights([sun])`）・`environmentNode` を入れて `build()`。`hasFeature`・`hasCompatibility` は init 前だと例外になるので差し替え、`shadowMap.enabled = true` で影の取得も入れる。`builder.vertexShader` / `fragmentShader` をファイルに書いて `naga <file>`。naga は nixpkgs の `wgpu-utils` に入っている（`nix build nixpkgs#wgpu-utils`、プロファイルには入れない）。
 - 結果: 外壁 flat / lit / rooms、地形、アスファルト（ワールド XZ のマップ）・区画線・標示（map と alphaTest）・歩道・縁石 × 雨の路面 3 種の 38 本がすべて検証を通った。フラグメントの行数は外壁 1,153 / 1,833 / 2,006、アスファルト 1,101 / 1,121 / 1,342（なし / 濡れ / 水たまり）。
 - テクスチャのフィルターが Nearest だと three は `textureLoad` を出す（`isUnfilterable`）。暗黙の LOD の取得を検証するには線形・ミップ付きのテクスチャで作ること。
-- これで分かるのは「WGSL として正しく、微分とテクスチャ取得が一様な制御フローにある」まで。見た目とフレーム時間は実機の Chrome で見る。
+- 描画方式 WebGL 2 の経路も同じように確かめた: `forceWebGL: true` の WebGPURenderer の `backend.createNodeBuilder` は GLSLNodeBuilder を返す。同じ 38 本の GLSL ES 3.0 を glslang（nixpkgs `glslang` 16.4.0 の glslangValidator、`-S vert|frag`）に通し、すべてエラーなし（わざと型を間違えた版ではエラーになることも確かめた）。[^phase-c-wgsl]
+- これで分かるのは「WGSL / GLSL として正しく、微分とテクスチャ取得が一様な制御フローにある」まで。見た目とフレーム時間は実機の Chrome で見る。
 
 # 残り（段階 B・C）と守る接点
 
