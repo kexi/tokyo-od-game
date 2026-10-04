@@ -1,0 +1,71 @@
+---
+type: Reference
+title: Blender CLI での車のモデリング
+description: bpy スクリプトで車を手続き生成して glb にする手順と、Cycles・join・UV・フォントで踏んだ落とし穴。テクスチャは agy に委譲した。
+tags: [rendering, licensing]
+status: stable
+stale_after: 2027-04-01T00:00:00Z
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T09:00:00Z }
+verified:
+  - { by: claude-opus-5-5/1m, at: 2026-10-04T08:55:00Z }
+sources:
+  - id: blender
+    resource: nixpkgs（flake.lock の c59305ba）の blender 5.2.2 を `nix develop .#blender` で取得（aarch64-darwin はバイナリキャッシュあり、593MB）
+    title: Blender 5.2.2
+  - id: build-run
+    resource: scripts/blender/car.py を M2 Max で実行（書き出しのみ約 20 秒、Cycles CPU のプレビュー 7 枚込みで約 85 秒）
+    title: 生成の実測
+  - id: game-run
+    resource: ヘッドレス Chrome で丸の内の 1 フレームを、車（自車 1・走行 22・路上駐車 16）を表示した状態と隠した状態で比較
+    title: 描画負荷の実測
+  - id: agy-job
+    resource: Antigravity（agy）への委譲ジョブ agy-7b811c と、その後の Claude Code による修正
+    title: テクスチャ制作の委譲
+    author: claude-opus-5-5/1m
+  - id: noto
+    resource: https://github.com/google/fonts/blob/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf
+    title: Noto Sans JP（SIL OFL 1.1、SHA-256 c2f3b4d4…0fc68f）
+---
+
+# 構成
+
+- `just car-model` → `nix develop .#blender -c blender --background --factory-startup --python scripts/blender/car.py -- public/models/car.glb`。Blender は 1.6GB あるので既定の devShell には入れず、別シェルにした。[^blender]
+- ゲーム座標（+Y 上、+Z 前、+X が車の左）のままモデリングし、`export_yup=False` で書き出す。軸変換を一切挟まないので、物理（車輪 x ±0.82・z ±1.35、ハブ y −0.50）と寸法を直接合わせられる。
+- 車体はロフト（断面 31 か所 × 片側 17 区間）→ Catmull-Clark 2 段 → 車軸ごとの円柱でブーリアン差分（切断面がそのままホイールハウスの黒い内張りになる）。窓・ピラーは断面の区間と前後位置でマテリアルを割り当てる。
+- 灯火・グリル・ナンバー周り・継ぎ目は、格子の各頂点から車体へレイを飛ばして表面に沿わせる（シュリンクラップ修飾子は使っていない）。
+- 書き出し前に、常に表示する部品をマテリアル単位で 1 メッシュへ結合する。タクシー用（行灯・空車表示・緑ナンバー）と自家用ナンバーは別ノードのままにし、ゲーム側で表示を切り替える。
+- 出力: glb 412KB（Draco、テクスチャ 9 枚 246KB を含む）。自車 4.9 万三角形＋車輪 4,168×4、AI 車 3,180 三角形。[^build-run]
+
+# 描画負荷
+
+丸の内で車 39 台（自車 1・走行 22・路上駐車 16）を出すと、車の分は描画呼び出し 187 回・約 18 万三角形（影の描画を含む）。部品を結合する前は、AI 車 1 台あたり約 16 回の呼び出しがあり、画面全体で 713 回だった（結合後 532 回）。[^game-run]
+
+# 落とし穴
+
+1. **`to_track_quat("-Z", "Y")` はワールドの +Z を上として扱う**。Y を上にしたシーンでプレビュー用のカメラが 90° 傾いた。前・右・上の 3 軸から回転行列を自分で組んだ。
+2. **同じ位置に重ねた面は Cycles で互いの影になり、真っ黒に写る**。自家用とタクシー用のナンバーを重ねて置いていたためで、モデルの不具合ではなかった。ゲームではどちらか一方しか表示しないので、プレビューの描画時だけ片方を隠すことにした。シーンのレイキャストで手前の物体を順に列挙して切り分けた。
+3. **`object.join()` は、結合先に UV マップが無いと UV を捨てる**。結合したら灯火とグリルのテクスチャが消えた。結合前にすべてのメッシュへ同名の UV マップを作る。
+4. **`uv_layers.new()` で作った UV は 0〜1 の面ごと展開で初期化される**。そのまま書き出すと全頂点が面ごとに分かれ、glb が 412KB から 820KB に増えた。作った直後に 0 で埋める。
+5. 長さ 0.5m 未満の帯を捨てる処理に、停止線が引っかかっていた（[交通規制と信号機](traffic-regulations.md) の 3 と同じ種類の誤り）。細い部品の生成では、最小寸法の閾値を部品の実寸と突き合わせる。
+6. 旧来の three.js 製モデルはウインカーの左右が逆だった（+X が車の左なのに、左ウインカーを −X 側に付けていた）。Blender 版では正しい側に付けている。
+
+# テクスチャを agy に委譲した結果
+
+テクスチャ 9 枚（ナンバー 2 種・行灯・空車表示・タイヤ 2 種・ヘッド／テールランプ・グリル）と生成スクリプトは agy が作った。実在のロゴを使わない、番号は架空、シード固定という指示は守られていた。一方、受け取った後の確認で次の問題が見つかり、Claude Code が直した。[^agy-job]
+
+- 「TAXI」とタイヤ側面の英字を **Helvetica**（macOS のシステムフォント）で描いていた。README には Noto Sans と書いてあった。再配布の条件が明確でないため、Noto Sans JP で描き直した。
+- フォントの取得に失敗すると、ヒラギノなどのシステムフォントへ黙って切り替える作りだった。取得元を google/fonts のコミットに固定し、SHA-256 を照合して、合わなければ止めるようにした。[^noto]
+- 確認用シートの出力先が、委譲元セッションの一時ディレクトリ（絶対パス）に固定されていた。引数で指定する形にした。
+- 太さの軸を指定するようにしたら、16 ドット高の「空車」LED 表示が太字で潰れた。この表示だけ通常の太さに戻した。
+
+委譲した成果物は、ライセンスに関わる部分（フォント・外部素材・ネットワーク取得）を中心に必ず読んで確認する。
+
+[^blender]: Blender 5.2.2
+
+[^build-run]: 生成の実測
+
+[^game-run]: 描画負荷の実測
+
+[^agy-job]: テクスチャ制作の委譲
+
+[^noto]: Noto Sans JP

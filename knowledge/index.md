@@ -13,4 +13,5 @@ okf_version: "0.2"
 - [道路交通法の点数・反則金](road-traffic-law.md) - 一次情報で確認した値と 2026-09-01 の法定速度改正
 - [データ・ソフトウェアの利用条件](licensing-decisions.md) - 提供元ごとの規約と、それを受けて変えた設計
 - [端末内 AI（Gemma 4・sanoTTS-jp）](on-device-ai.md) - LiteRT-LM と WASM TTS の実測と落とし穴
+- [Blender CLI での車のモデリング](car-model-blender.md) - bpy で車を手続き生成して glb にする手順、Cycles・join・UV・フォントの落とし穴、agy 委譲の確認結果
 - [ヘッドレス Chrome での検証](headless-browser-testing.md) - CDP 直叩きの手順と、背景タブ・HMR で検証が壊れる罠
