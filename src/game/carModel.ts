@@ -22,7 +22,13 @@ export type CarModel = {
   }): void;
 };
 
-export type CarStyle = { color?: number; taxi?: boolean };
+export type CarStyle = {
+  color?: number;
+  taxi?: boolean;
+  /** Half the body's width and length (m) for the physics, when it is not a car (a 白バイ). */
+  halfWidth?: number;
+  halfLength?: number;
+};
 
 export const WHEEL_RADIUS = 0.36;
 // Same order and layout as WHEEL_POSITIONS in physics/vehicle.ts; −X is the driver's (right) side.

@@ -66,7 +66,7 @@ export class Vehicle {
     );
     // Lower the centre of mass so the car is hard to roll in tight Tokyo corners.
     this.chassis = world.createCollider(
-      RAPIER.ColliderDesc.cuboid(HALF.x, HALF.y, HALF.z)
+      RAPIER.ColliderDesc.cuboid(style.halfWidth ?? HALF.x, HALF.y, style.halfLength ?? HALF.z)
         .setMassProperties(
           MASS,
           { x: 0, y: -0.35, z: 0.1 },

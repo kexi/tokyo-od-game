@@ -111,7 +111,7 @@ import { renderReview } from "./game/violationReview";
 import { loadViolations, saveViolations, ViolationSync } from "./game/violationStore";
 import { ClipPose, CLIP_AFTER_MS, CLIP_BEFORE_MS, cutClip, type ActorDesc } from "./game/replayClip";
 import { renderTicket } from "./game/ticketForm";
-import { PolicePatrol } from "./game/policePatrol";
+import { PATROL_LABEL, PolicePatrol, type PatrolKind } from "./game/policePatrol";
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
 import { CarNavi } from "./game/carNavi";
@@ -579,6 +579,12 @@ async function main(): Promise<void> {
     autopilot?.driver.transform(offset, Math.atan2(f.x, f.z));
     pavements.rebuild(pavementPolys, frame);
     buildRoadNetwork();
+    // Units on patrol are not carried over (another comes by): those engaged keep their record.
+    for (const unit of patrols.filter((u) => u.state === "cruising" || u.state === "leaving")) {
+      unit.dispose();
+      patrols.splice(patrols.indexOf(unit), 1);
+      if (police === unit) police = null;
+    }
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
 
@@ -1457,7 +1463,7 @@ async function main(): Promise<void> {
     while (accumulator >= world.timestep && steps < 4) {
       if (!frozen && isInCar) vehicle.update(world.timestep, drive);
       taxi?.step(world.timestep);
-      police?.step(world.timestep);
+      for (const unit of patrols) unit.step(world.timestep);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
       accumulator -= world.timestep;
@@ -2147,9 +2153,14 @@ async function main(): Promise<void> {
       law.cite(booked, "accident");
       notify("caught", formatViolation(booked));
       stamps.stamp("違反", shortLabel(booked.label));
-    } else if (police?.sees(carPos)) {
-      if (police.witness(booked) === "pursuit") startPursuit();
-      notify("caught", `パトカーに見られた: ${booked.label}`);
+    } else if (patrols.some((u) => u.sees(carPos))) {
+      // The unit already on the car takes it; otherwise the first that saw it.
+      const unit = police?.sees(carPos) ? police : (patrols.find((u) => u.sees(carPos)) ?? null);
+      if (unit) {
+        police = unit;
+        if (unit.witness(booked) === "pursuit") startPursuit();
+        notify("caught", `${PATROL_LABEL[unit.kind]}に見られた: ${booked.label}`);
+      }
     } else {
       notify("violation", `${booked.label}（未検挙）`);
     }
@@ -2275,8 +2286,18 @@ async function main(): Promise<void> {
   };
 
   // ---------- 巡回中のパトカー ----------
+  /**
+   * Units on patrol around the player (up to three): 白黒のパトカー, 白バイ and 覆面パトカー.
+   * `police` is the one dealing with the player now (pursuing or ticketing), else the nearest.
+   */
+  const patrols: PolicePatrol[] = [];
+  const MAX_PATROLS = 3;
   let police: PolicePatrol | null = null;
-  let policeDueAt = performance.now() + 40000;
+  let policeDueAt = performance.now() + 15000;
+  const patrolKind = (): PatrolKind => {
+    const r = Math.random();
+    return r < 0.5 ? "patrol" : r < 0.8 ? "shirobai" : "unmarked";
+  };
   const policeSay = (text: string) => {
     if (audio.muted || !("speechSynthesis" in window)) return;
     const u = new SpeechSynthesisUtterance(text);
@@ -2321,21 +2342,34 @@ async function main(): Promise<void> {
     const tw = taxiWorld();
     if (!tw || !roadGraph) return;
     const focus = focusPos();
-    if (!police && now > policeDueAt) {
-      const p = new PolicePatrol(scene, world, (x, z) => groundY(x, z));
-      if (p.spawn(roadGraph, tw, focus)) police = p;
-      else p.dispose();
-      policeDueAt = now + 30000;
+    if (patrols.length < MAX_PATROLS && now > policeDueAt) {
+      const unit = new PolicePatrol(scene, world, (x, z) => groundY(x, z), patrolKind());
+      if (unit.spawn(roadGraph, tw, focus)) patrols.push(unit);
+      else unit.dispose();
+      policeDueAt = now + 12000;
     }
-    const p = police;
-    if (!p) return;
     // Out of the area: it goes off duty here and another comes by later.
-    if (p.state !== "pursuing" && p.position.distanceTo(focus) > 1100) {
-      p.dispose();
-      police = null;
-      policeDueAt = now + 60000;
-      return;
+    const isOffDuty = (u: PolicePatrol) =>
+      u.state !== "pursuing" && u.state !== "ticketing" && u.position.distanceTo(focus) > 1100;
+    for (const unit of patrols.filter(isOffDuty)) {
+      unit.dispose();
+      patrols.splice(patrols.indexOf(unit), 1);
+      if (police === unit) police = null;
     }
+    for (const unit of patrols) updatePatrol(unit, tw, dt, now);
+    // The one the player deals with: pursuing or ticketing, else the nearest.
+    const engaged = patrols.find((u) => u.state === "pursuing" || u.state === "ticketing");
+    police =
+      engaged ??
+      patrols.toSorted((a, b) => a.position.distanceTo(focus) - b.position.distanceTo(focus))[0] ??
+      null;
+  };
+  const updatePatrol = (
+    p: PolicePatrol,
+    tw: NonNullable<ReturnType<typeof taxiWorld>>,
+    dt: number,
+    now: number,
+  ) => {
     tw.obstacles = tw.obstacles.filter((o) => o.distanceTo(p.position) > 1);
     const geo = frame.toGeodetic(p.position);
     const ground = { hasCollider: terrain.hasColliderAt(geo.lat, geo.lon), night: env.nightFactor > 0.25 };
@@ -2346,7 +2380,13 @@ async function main(): Promise<void> {
       { position: vehicle.position(), speed: vehicle.forwardSpeed() },
       now,
     );
-    if (event === "callout") policeSay("前の車、左に寄って止まってください。");
+    // Whoever is on the car now is the one the ticket, the callouts and the escape are about.
+    const isEngaged = p.state === "pursuing" || p.state === "ticketing" || event === "lost";
+    if (isEngaged) police = p;
+    if (event === "pursuit") {
+      police = p;
+      startPursuit();
+    } else if (event === "callout") policeSay("前の車、左に寄って止まってください。");
     else if (event === "ticket") openTicket();
     else if (event === "lost") {
       // The plate was read: a notice to appear comes by post. Fleeing a stop made because the
@@ -2363,7 +2403,10 @@ async function main(): Promise<void> {
       for (const r of p.seen) law.notice(r, "patrol");
       p.seen.length = 0;
       $("#pursuit-chip").hidden = true;
-      notify("police", "パトカーを振り切った…が、ナンバーは控えられた。後日、出頭の通知が届く");
+      notify(
+        "police",
+        `${PATROL_LABEL[p.kind]}を振り切った…が、ナンバーは控えられた。後日、出頭の通知が届く`,
+      );
       log("police", { event: "lost" });
     }
   };
@@ -3258,6 +3301,7 @@ async function main(): Promise<void> {
         pavements,
         getTaxi: () => taxi,
         getPolice: () => police,
+        getPatrols: () => patrols,
         getMission: () => missions.current,
         furniture,
         groundY,

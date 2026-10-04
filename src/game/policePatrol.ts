@@ -17,6 +17,19 @@ import type { ViolationRecord } from "./traffic";
  * on at red signals after slowing (緊急自動車, 第39条第2項).
  */
 export type PatrolState = "cruising" | "pursuing" | "ticketing" | "leaving";
+/** 白黒のパトカー, 覆面パトカー or 白バイ (the models from scripts/blender/police_*.py). */
+export type PatrolKind = "patrol" | "unmarked" | "shirobai";
+export const PATROL_LABEL: Record<PatrolKind, string> = {
+  patrol: "パトカー",
+  unmarked: "覆面パトカー",
+  shirobai: "白バイ",
+};
+/**
+ * 覆面パトカー follow quietly first: an unmarked car tails a speeding car to measure it (追尾測定)
+ * and only then raises its beacon and calls it over. 緊急自動車 must show the red light when acting
+ * as one (道路交通法施行令 第14条), but may leave the siren off while catching speeding (同ただし書).
+ */
+const UNMARKED_TAIL_MS = 6000;
 export type PatrolEvent = "pursuit" | "callout" | "ticket" | "lost" | null;
 
 const SIGHT = 70; // m: how far an officer in the car notices a violation ahead
@@ -41,18 +54,26 @@ export class PolicePatrol {
   private lastCallout = -Infinity;
   private cruiseTarget: Vector3 | null = null;
   private leaveUntil = 0;
+  /** When the red lights go on in a pursuit (later for an unmarked car tailing first). */
+  private lightsAt = 0;
 
   constructor(
     private readonly scene: Scene,
     world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
+    readonly kind: PatrolKind = "patrol",
   ) {
-    // The physics car drives; the 白黒パトカー model (scripts/blender/police_car.py) is what is
-    // seen. Its origin is on the ground, the physics body's at chassis height.
-    this.car = new Vehicle(world, { color: 0xf4f4f2 });
+    // The physics car drives; the police model (scripts/blender/police_*.py) is what is seen. Its
+    // origin is on the ground, the physics body's at chassis height. A 白バイ gets a bike-sized body.
+    const isBike = kind === "shirobai";
+    this.car = new Vehicle(world, {
+      color: 0xf4f4f2,
+      halfWidth: isBike ? 0.42 : undefined,
+      halfLength: isBike ? 1.1 : undefined,
+    });
     this.barMaterial = new MeshStandardMaterial({ color: 0x550000, emissive: 0x000000 });
     this.bar = new Mesh(new BoxGeometry(1.1, 0.14, 0.32), this.barMaterial);
-    this.model = createVehicle("patrol");
+    this.model = createVehicle(kind);
     if (this.model) {
       for (const child of this.car.object.children) child.visible = false;
       this.model.object.position.y = -RIDE_HEIGHT;
@@ -102,13 +123,20 @@ export class PolicePatrol {
     return (dx * Math.sin(yaw) + dz * Math.cos(yaw)) / d > FIELD;
   }
 
-  /** A violation it saw: chase the car. */
+  /** A violation it saw: chase the car (an unmarked car tails it quietly first). */
   witness(record: ViolationRecord): PatrolEvent {
     this.seen.push(record);
     if (this.state === "pursuing") return null;
     this.state = "pursuing";
     this.stoppedFor = 0;
-    return "pursuit";
+    this.lightsAt = performance.now() + (this.kind === "unmarked" ? UNMARKED_TAIL_MS : 0);
+    return this.kind === "unmarked" ? null : "pursuit";
+  }
+
+  /** Red lights on (pursuing past the quiet tail, or ticketing). */
+  get lightsOn(): boolean {
+    const isPursuing = this.state === "pursuing" || this.state === "ticketing";
+    return isPursuing && performance.now() >= this.lightsAt;
   }
 
   /** The ticket was handed over: drive on, siren off. */
@@ -144,9 +172,12 @@ export class PolicePatrol {
       if (!this.driver.route || this.driver.remaining < 15 || now % 2000 < dt * 1000) {
         this.driver.plan({ ...world, isEmergency: true }, player.position);
       }
-      if (now - this.lastCallout > CALLOUT_EVERY) {
+      // The unmarked car's beacon comes up when its tail is done: that is when the pursuit shows.
+      const isLightsUp = now >= this.lightsAt;
+      if (this.kind === "unmarked" && isLightsUp && this.lastCallout < this.lightsAt) event = "pursuit";
+      if (isLightsUp && now - this.lastCallout > CALLOUT_EVERY) {
         this.lastCallout = now;
-        event = "callout";
+        event ??= "callout";
       }
       const isPulledOver = gap < 22 && Math.abs(player.speed) < 1;
       this.stoppedFor = isPulledOver ? this.stoppedFor + dt : 0;
@@ -180,10 +211,11 @@ export class PolicePatrol {
     };
     this.car.updateLights(ground.night);
     // 赤色の警光灯: flashing while pursuing and while issuing the ticket.
-    const isFlashOn = isPursuing && Math.floor(now / 180) % 2 === 0;
+    const isLit = isPursuing && now >= this.lightsAt;
+    const isFlashOn = isLit && Math.floor(now / 180) % 2 === 0;
     this.barMaterial.emissive.setHex(isFlashOn ? 0xff1a1a : 0x000000);
     if (this.model) {
-      setBeacons(this.model, isPursuing, now);
+      setBeacons(this.model, isLit, now);
       for (const w of this.model.wheels) w.rotation.x += (this.car.forwardSpeed() * dt) / 0.334;
     }
     return event;
