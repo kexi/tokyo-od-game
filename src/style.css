@@ -348,10 +348,15 @@ button:disabled {
   right: 12px;
   bottom: 26px;
   display: grid;
-  grid-template-columns: repeat(2, auto);
+  grid-template-columns: repeat(2, var(--tool-w));
   gap: 6px;
 }
+:root {
+  /* One toolbar button's width: the phone's holder is placed from it. */
+  --tool-w: 120px;
+}
 
+/* All the same size: one line each, the label cut short rather than wrapping. */
 #hud-toolbar button {
   background: var(--panel);
   font-size: 13px;
@@ -359,6 +364,15 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  width: var(--tool-w);
+  height: 34px;
+  padding: 0 8px;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+#hud-toolbar button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The key for each button, as on a keycap */
@@ -383,7 +397,7 @@ button:disabled {
 }
 @media (min-width: 1400px) and (min-height: 760px) {
   #hud-toolbar {
-    grid-template-columns: repeat(3, 112px);
+    grid-template-columns: repeat(3, var(--tool-w));
   }
   #hud-toolbar .wide-only {
     display: inline-flex;
@@ -457,6 +471,12 @@ button:disabled {
     top: 140px;
     bottom: auto;
     grid-template-columns: 1fr;
+  }
+  /* A single narrow column on phones: the same size, just smaller. */
+  #hud-toolbar button {
+    width: 92px;
+    height: 30px;
+    font-size: 12px;
   }
   #hud-mission {
     bottom: 22px;
@@ -816,7 +836,7 @@ pre.notice {
 
 #phone {
   /* Left of the toolbar, so its buttons stay usable while the phone sits in its holder. */
-  right: 190px;
+  right: calc(12px + 2 * var(--tool-w) + 6px + 16px);
   bottom: 26px;
   width: 300px;
   height: min(560px, calc(100vh - 60px));
@@ -2725,6 +2745,6 @@ pre.notice {
 /* Wide screens: the phone's holder moves left of the three-column toolbar (after the base #phone rule). */
 @media (min-width: 1400px) and (min-height: 760px) {
   #phone:not(.zoomed) {
-    right: calc(12px + 3 * 112px + 2 * 6px + 16px);
+    right: calc(12px + 3 * var(--tool-w) + 2 * 6px + 16px);
   }
 }

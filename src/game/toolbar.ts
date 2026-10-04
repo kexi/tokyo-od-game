@@ -21,7 +21,7 @@ const ITEMS: Item[] = [
   { action: "credits", label: "出典" },
   { action: "title", label: "タイトル", title: "タイトル画面に戻る" },
   { action: "door", label: "乗降", wide: true },
-  { action: "talk", label: "話す・エンジン", wide: true },
+  { action: "talk", label: "話す・始動", title: "話しかける・エンジン始動", wide: true },
   { action: "phone", label: "スマホ", wide: true },
   { action: "phoneZoom", label: "スマホ拡大", wide: true },
   { action: "indicatorLeft", label: "◀ 合図", wide: true },
@@ -63,7 +63,8 @@ export function labelToolbar(root: HTMLElement, layout: KeyLayout): void {
     if (!b) continue;
     const key = keyFor(layout, item.action);
     const kbd = b.querySelector("kbd");
-    if (kbd) kbd.textContent = key;
+    // Shift as its keycap symbol, so every badge fits the same button.
+    if (kbd) kbd.textContent = key.replace("Shift+", "⇧");
     b.title = key ? `${item.title ?? item.label} (${key})` : (item.title ?? item.label);
   }
 }
