@@ -90,7 +90,7 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   <ul>${opendata || "<li>（データ未生成）</li>"}</ul>
 
   <h3>3D 都市モデル</h3>
-  <p>出典：国土交通省 ${link("https://www.mlit.go.jp/plateau/", "PLATEAUウェブサイト")}「3D都市モデル（Project PLATEAU）東京都」（建築物 LOD1）を加工して作成（外観の窓・色はゲーム側で描画）。
+  <p>出典：国土交通省 ${link("https://www.mlit.go.jp/plateau/", "PLATEAUウェブサイト")}「3D都市モデル（Project PLATEAU）東京都」（建築物 LOD1、道路 LOD2 の歩道部・島）を加工して作成（外観の窓・色、歩道の舗装と縁石の高さはゲーム側で描画）。
   著作権者：東京都ほか各地方公共団体。利用条件：${link("https://www.mlit.go.jp/plateau/site-policy/", "PLATEAU サイトポリシー")}（公共データ利用規約 第1.0版／CC BY 4.0 互換）。
   データ取得：${link("https://docs.plateauview.mlit.go.jp/", "PLATEAU 配信サービス（試験運用）")}。地面の「PLATEAU オルソ画像 2023」も同サービスから取得しています。</p>
 

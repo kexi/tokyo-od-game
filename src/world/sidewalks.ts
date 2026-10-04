@@ -49,7 +49,12 @@ export class SidewalkNetwork {
     private readonly crossings: Crossing[],
     private readonly mayCross: CrossingSignal,
     private readonly isOpen: (x: number, z: number) => boolean,
+    private readonly isPavement: (x: number, z: number) => boolean = () => false,
   ) {}
+
+  forgetLaterals(): void {
+    this.lateralCache.clear();
+  }
 
   /** Joins the nearest street within 25 m, on the side of it the person stands on. */
   attach(pos: Vector3, id: number): Walk | null {
@@ -84,28 +89,34 @@ export class SidewalkNetwork {
     return { target: this.point(w.seg, w.s, w.side, w.lateral), waiting: false, face: null, crossing: false };
   }
 
-  /** Pavement offset from the centreline: beside the carriageway where that is open ground. */
+  /**
+   * Walking line offset from the centreline: the PLATEAU 歩道 strip when there is one, else just
+   * beyond the carriageway where that is open ground, else the carriageway's edge.
+   */
   private lateralFor(seg: Segment, side: 1 | -1, id: number): number {
     const half = seg.line.width / 2;
     if (seg.line.width < NARROW) return Math.max(0.4, half - 0.5);
     const key = `${seg.id}:${side}`;
     let base = this.lateralCache.get(key);
     if (base === undefined) {
-      base = half - 0.6; // no room beside the carriageway: keep to its edge
-      for (const o of [1.6, 1.0, 0.6]) {
-        const isClear = [0.25, 0.5, 0.75].every((t) => {
-          const p = this.point(seg, seg.length * t, side, half + o);
-          return this.isOpen(p.x, p.z);
-        });
-        if (isClear) {
-          base = half + o;
-          break;
-        }
-      }
+      base = this.pavementLateral(seg, side) ?? this.besideCarriageway(seg, side);
       this.lateralCache.set(key, base);
     }
+    const isEdge = base === half - 0.6;
     // People spread a little across the pavement.
-    return base > half ? base + (hash(id, 7) - 0.5) * 0.6 : base;
+    return isEdge ? base : base + (hash(id, 7) - 0.5) * 0.6;
+  }
+
+  private besideCarriageway(seg: Segment, side: 1 | -1): number {
+    const half = seg.line.width / 2;
+    for (const o of [1.6, 1.0, 0.6]) {
+      const isClear = [0.25, 0.5, 0.75].every((t) => {
+        const p = this.point(seg, seg.length * t, side, half + o);
+        return this.isOpen(p.x, p.z);
+      });
+      if (isClear) return half + o;
+    }
+    return half - 0.6;
   }
 
   private endInset(w: Walk): number {
@@ -168,6 +179,24 @@ export class SidewalkNetwork {
     }
     // Cross the street they came along and walk back down its other side.
     this.onto(w, a, other, id, this.mouth(a, side));
+  }
+
+  /**
+   * The middle of a PLATEAU 歩道 strip beside this side of the street, scanning outwards from
+   * the centreline (GSI 幅員 sometimes includes the pavement, sometimes not), or null if none.
+   */
+  private pavementLateral(seg: Segment, side: 1 | -1): number | null {
+    const at = [0.25, 0.5, 0.75].map((t) => seg.length * t);
+    let start: number | null = null;
+    for (let l = 1; l <= seg.line.width / 2 + 8; l += 0.5) {
+      const hits = at.filter((s) => {
+        const p = this.point(seg, s, side, l);
+        return this.isPavement(p.x, p.z);
+      }).length;
+      if (hits >= 2 && start === null) start = l;
+      if (start !== null && (hits < 2 || l - start >= 3)) return start + Math.min(1.2, (l - start) / 2);
+    }
+    return null;
   }
 
   /** Where a street's pavement ends at a junction: the kerb line of the crossing roads. */

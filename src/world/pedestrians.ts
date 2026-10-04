@@ -152,6 +152,11 @@ export class Pedestrians {
     for (const p of this.list) p.walk = null;
   }
 
+  /** Pavement polygons arrived: walking lines are chosen again from the next street on. */
+  pavementsChanged(): void {
+    this.network?.forgetLaterals();
+  }
+
   /** `focus` is where the player is (car or on foot); `car` is used for dodging. */
   update(dt: number, focus: Vector3, car: Vector3, carSpeed: number, carForward: Vector3): void {
     this.car.pos.copy(car);

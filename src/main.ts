@@ -45,6 +45,7 @@ import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { SidewalkNetwork } from "./world/sidewalks";
+import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
 import { Input } from "./game/input";
@@ -219,10 +220,17 @@ async function main(): Promise<void> {
   let mode: "car" | "foot" = "car";
   const focusPos = (target = new Vector3()) =>
     mode === "foot" ? walker.position(target) : vehicle.position(target);
+  const pavementTiles = new PavementTiles();
+  const pavements = new Pavements(scene, world, (x, z) => groundY(x, z));
+  let pavementPolys: PavementPolygon[] = [];
+  // People on a PLATEAU pavement stand on the paving, a kerb above the road.
   const pedestrians = new Pedestrians(
     scene,
     world,
-    (x, z) => groundY(x, z),
+    (x, z) => {
+      const g = groundY(x, z);
+      return g === null ? null : g + (pavements.contains(x, z) ? KERB : 0);
+    },
     (x, z, g) => isOpenGround(x, z, g),
   );
   const roadTiles = new RoadTiles();
@@ -289,6 +297,7 @@ async function main(): Promise<void> {
           const g = groundY(x, z);
           return g !== null && isOpenGround(x, z, g);
         },
+        (x, z) => pavements.contains(x, z),
       ),
     );
     log("road_network", {
@@ -312,6 +321,14 @@ async function main(): Promise<void> {
         buildRoadNetwork();
       })
       .finally(() => (roadsLoading = false));
+    // PLATEAU pavements come separately (larger tiles, only some wards): never hold up the roads.
+    const wards = areas?.wardsIn(lon - 0.012, lat - 0.01, lon + 0.012, lat + 0.01) ?? [];
+    void pavementTiles.around(lat, lon, wards).then((polys) => {
+      pavementPolys = polys;
+      pavements.rebuild(polys, frame);
+      pedestrians.pavementsChanged();
+      log("pavements", { wards, polygons: polys.length });
+    });
   };
   const brain = new NpcBrain();
   const voice = new Voice(() => audio.context);
@@ -402,6 +419,7 @@ async function main(): Promise<void> {
     traffic.transform(offset, Math.atan2(f.x, f.z));
     emergency.transform(offset);
     patrol.transform(offset);
+    pavements.rebuild(pavementPolys, frame);
     buildRoadNetwork();
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
@@ -1311,6 +1329,7 @@ async function main(): Promise<void> {
         phone,
         law,
         walker,
+        pavements,
         nav,
         patrol,
         stamps,

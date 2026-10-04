@@ -55,6 +55,17 @@ export class AreaIndex {
     });
   }
 
+  /** Wards whose bounding box overlaps the given lon/lat box. */
+  wardsIn(minLon: number, minLat: number, maxLon: number, maxLat: number): string[] {
+    const box = [minLon * Q, minLat * Q, maxLon * Q, maxLat * Q];
+    const hit = new Set<string>();
+    for (const t of this.towns) {
+      const [x0, y0, x1, y1] = t.bbox;
+      if (x1 >= box[0] && x0 <= box[2] && y1 >= box[1] && y0 <= box[3]) hit.add(t.ward);
+    }
+    return [...hit];
+  }
+
   lookup(lat: number, lon: number): AreaHit | null {
     const x = Math.round(lon * Q);
     const y = Math.round(lat * Q);

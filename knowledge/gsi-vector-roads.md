@@ -1,13 +1,14 @@
 ---
 type: Reference
 title: 地理院ベクトルタイルの道路
-description: experimental_bvmap の road レイヤの属性、交差点での分割、規制データが無いことと制限速度の推定（規制は後に JARTIC で補った）。
+description: experimental_bvmap の road レイヤの属性、交差点での分割、規制データが無いことと制限速度の推定（規制は後に JARTIC で補った）。ftCode 2221 を道路構成線としていた誤りを訂正済み。
 resource: https://cyberjapandata.gsi.go.jp/xyz/experimental_bvmap/{z}/{x}/{y}.pbf
 tags: [roads, licensing]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T05:40:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T12:00:00Z }
 verified:
+  - { by: claude-opus-5-5/1m, at: 2026-10-04T12:00:00Z }
   - { by: process:vitest, at: 2026-10-04T04:40:00Z }
 sources:
   - id: attr-spec
@@ -16,6 +17,9 @@ sources:
   - id: experiment
     resource: https://github.com/gsi-cyberjapan/gsimaps-vector-experiment
     title: 国土地理院ベクトルタイル提供実験
+  - id: ftcodes
+    resource: https://maps.gsi.go.jp/help/pdf/vector/optbv_featurecodes.pdf
+    title: 地理院 最適化ベクトルタイル 地物コード表
   - id: probe-z16
     resource: 丸の内 z16/58211/25806 を @mapbox/vector-tile でデコード（2026-10-04）
     title: z16 タイルの実測
@@ -32,14 +36,14 @@ sources:
 
 # `road` レイヤ
 
-| 属性       | 意味                                                                                                                |
-| ---------- | ------------------------------------------------------------------------------------------------------------------- |
-| `ftCode`   | 27xx が道路中心線（2701 通常部、2703 橋・高架、2704 トンネル、2711・2713 庭園路）。2201 は道路縁、2221 は道路構成線 |
-| `rdCtg`    | 0 国道、1 都道府県道、2 市区町村道、3 高速自動車国道等                                                              |
-| `rnkWidth` | 0: 3m 未満、1: 3〜5.5m、2: 5.5〜13m、3: 13〜19.5m、4: 19.5m 以上                                                    |
-| `Width`    | 実幅員（m）。`rnkWidth`=4 のときだけ入る                                                                            |
-| `lvOrder`  | 0 が地上。1 以上は高架で、ゲームでは除外                                                                            |
-| `motorway` | 0 一般、1 高速、9 不明                                                                                              |
+| 属性       | 意味                                                                                                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ftCode`   | 27xx が道路中心線（2701 通常部、2703 橋・高架、2704 トンネル、2711・2713 庭園路）。2201 は道路縁（通常部）、2221 は道路縁（庭園路）、2411 は道路構成線（分離帯）。歩道の線は無い（2026-10-04 訂正: 初版は 2221 を道路構成線としていた）[^ftcodes] |
+| `rdCtg`    | 0 国道、1 都道府県道、2 市区町村道、3 高速自動車国道等                                                                                                                                                                                            |
+| `rnkWidth` | 0: 3m 未満、1: 3〜5.5m、2: 5.5〜13m、3: 13〜19.5m、4: 19.5m 以上                                                                                                                                                                                  |
+| `Width`    | 実幅員（m）。`rnkWidth`=4 のときだけ入る                                                                                                                                                                                                          |
+| `lvOrder`  | 0 が地上。1 以上は高架で、ゲームでは除外                                                                                                                                                                                                          |
+| `motorway` | 0 一般、1 高速、9 不明                                                                                                                                                                                                                            |
 
 一方通行・信号・横断歩道・車線数・規制速度は入っていない。[^attr-spec]
 
@@ -66,3 +70,5 @@ sources:
 [^probe-z16]: z16 タイルの実測
 
 [^roads-agent]: 道路ソース比較
+
+[^ftcodes]: 地理院 最適化ベクトルタイル 地物コード表
