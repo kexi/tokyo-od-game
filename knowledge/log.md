@@ -2,6 +2,11 @@
 
 ## 2026-10-04
 
+- **Creation**: [警察車両のモデリング](police-vehicles-blender.md) を追加。
+- **Creation**: [大型車・二輪のモデリング](large-vehicles-blender.md) を追加。
+- **Creation**: [Blender CLI での路上キャラクター](street-characters-blender.md) を追加。
+- **Creation**: [Blender CLI での車内（運転席）モデリング](cockpit-blender.md) を追加。
+- **Creation**: [ランドマークのモデリングとライトアップ](landmarks-blender.md) を追加。
 - **Update**: [道路交通法の点数・反則金](road-traffic-law.md) に検挙のモデル（現認・オービス・事故、行政処分は後日の出頭、停止命令違反と第119条第1項第13号、ながら運転）を追記。
 - **Update**: [交通規制と信号機](traffic-regulations.md) の通行禁止の読み方を訂正（コード 1 は歩行者用道路、通行止めはコード 4、首都高の自動車専用は捨てる）。
 - **Update**: [交通規制と信号機](traffic-regulations.md) に進行方向別通行区分を追記（JARTIC 58 には車線ごとの方向が無い、OSM turn:lanes の件数、仮定のパターン）。

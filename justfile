@@ -58,13 +58,68 @@ qa-drive minutes="3" every="6" time="day":
 assets:
     pnpm exec vite --open /tokyo-od-game/assets.html
 
-# 道路標識・歩行者・建物外壁・信号機・救急車のテクスチャを手続き生成し直す
+# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両のテクスチャを手続き生成し直す
 textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
     uv run scripts/textures/building_textures.py
     uv run scripts/textures/signal_textures.py
     uv run scripts/textures/ambulance_textures.py
+    uv run scripts/textures/bus_textures.py
+    uv run scripts/textures/truck_textures.py
+    uv run scripts/textures/motorbike_textures.py
+    uv run scripts/textures/police_textures.py
+    uv run scripts/textures/stroller_textures.py
+    uv run scripts/textures/bicycle_textures.py
+    uv run scripts/textures/cockpit_textures.py
+    uv run scripts/textures/landmark_textures.py
+    uv run scripts/textures/asphalt_textures.py
+    uv run scripts/textures/police_vehicle_textures.py
+
+# 大型路線バス（ノンステップ）を Blender CLI でモデリングし public/models/bus.glb を書き出す
+bus-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/bus.py -- public/models/bus.glb
+
+# 10t 級 3 軸ウイング車と 8t 増トン平ボディ車を Blender CLI でモデリングし public/models/truck10t.glb・truck8t.glb を書き出す
+truck-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/truck.py -- 10t public/models/truck10t.glb
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/truck.py -- 8t public/models/truck8t.glb
+
+# 250cc バイク（軽二輪）とライダーを Blender CLI でモデリングし public/models/motorbike.glb を書き出す
+motorbike-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/motorbike.py -- public/models/motorbike.glb
+
+# 制服警察官（活動服・夏服・交通整理の装備）を Blender CLI でモデリングし public/models/police.glb を書き出す
+police-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police.py -- public/models/police.glb
+
+# ベビーカー（A 形）を Blender CLI でモデリングし public/models/stroller.glb を書き出す
+stroller-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/stroller.py -- public/models/stroller.glb
+
+# 自転車（ママチャリ・クロスバイク）を Blender CLI でモデリングし public/models/bicycle.glb を書き出す
+bicycle-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/bicycle.py -- public/models/bicycle.glb
+
+# 白黒パトカーと覆面パトカーを Blender CLI でモデリングし public/models/police_{patrol,unmarked}.glb を書き出す
+police-car-models:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_car.py -- patrol public/models/police_patrol.glb
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_car.py -- unmarked public/models/police_unmarked.glb
+
+# 白バイ（隊員乗車）と立ち姿の白バイ隊員を Blender CLI でモデリングし public/models/police_{shirobai,rider}.glb を書き出す
+police-bike-models:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_bike.py -- shirobai public/models/police_shirobai.glb
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_bike.py -- rider public/models/police_rider.glb
+
+# 車内視点用のコックピット（右ハンドル）を Blender CLI でモデリングし public/models/cockpit.glb を書き出す（先に car-model）
+cockpit-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/cockpit.py -- public/models/cockpit.glb
+
+# ランドマーク 3 体をライトアップ用の発光マテリアル付きで Blender CLI でモデリングし public/models と landmarks.json を書き出す
+landmark-models:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_tower.glb
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_skytree.glb
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_station.glb
 
 # SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
 og:
