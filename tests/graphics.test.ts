@@ -35,6 +35,34 @@ describe("画質", () => {
     expect(parseGraphics(null, true)).toEqual(defaultGraphics(true));
   });
 
+  describe("レンズフレア", () => {
+    it("is a row of its own, on or off, right after the bloom", () => {
+      const keys = GRAPHICS_ITEMS.map((i) => i.key);
+      const row = GRAPHICS_ITEMS.find((i) => i.key === "lensFlare");
+      expect(row?.label).toBe("レンズフレア");
+      expect(row?.options.map((o) => o.value)).toEqual(["on", "off"]);
+      expect(row?.onReload).toBeUndefined();
+      expect(keys.indexOf("lensFlare")).toBe(keys.indexOf("bloom") + 1);
+    });
+
+    it("is on in 最高 and 高, off in 中 and 低 (and so on a phone)", () => {
+      expect(PRESETS.ultra.lensFlare).toBe("on");
+      expect(PRESETS.high.lensFlare).toBe("on");
+      expect(PRESETS.medium.lensFlare).toBe("off");
+      expect(PRESETS.low.lensFlare).toBe("off");
+      expect(defaultGraphics(false).lensFlare).toBe("on");
+      expect(defaultGraphics(true).lensFlare).toBe("off");
+    });
+
+    it("turns 高 into カスタム when switched off, and settings stored before it existed keep 高", () => {
+      expect(withItem(withPreset("high"), "lensFlare", "off").preset).toBe("custom");
+      const { lensFlare: _, ...before } = withPreset("high");
+      const parsed = parseGraphics(before, false);
+      expect(parsed.lensFlare).toBe("on");
+      expect(parsed.preset).toBe("high");
+    });
+  });
+
   describe("描画方式", () => {
     it("starts on 自動 (WebGPU where the browser has it), on a phone too", () => {
       expect(defaultGraphics(false).backend).toBe("auto");

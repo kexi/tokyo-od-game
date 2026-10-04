@@ -127,6 +127,7 @@ import type { TvInfo } from "./game/tvRules";
 import { buildToolbar, labelToolbar } from "./game/toolbar";
 import { MotionBlur } from "./world/motionBlur";
 import { Bloom, bloomSettings } from "./world/bloom";
+import { LensFlare } from "./world/lensFlare";
 import { createRenderer } from "./render/renderer";
 import { drawShadowsOf, FrameComposer } from "./render/frame";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
@@ -291,9 +292,22 @@ async function main(): Promise<void> {
   const blur = new MotionBlur();
   // 光のにじみ: thresholds and strength by the light (bloom.ts), 画質 for the resolution.
   const bloom = new Bloom(renderer, () => bloomSettings(env.nightFactor, env.overcast));
+  // レンズフレア: the sun's ghosts when the frame shows the sun (its probe reads the finished frame).
+  const lensFlare = new LensFlare(renderer, scene, bloom);
   // The street passes, in order, on the street only (the interior and the wipers stay sharp): the
-  // lights spill, then the street smears.
-  composer.streetPasses.push(bloom, blur);
+  // lights spill, the lens flares, then the street smears.
+  composer.streetPasses.push(bloom, lensFlare, blur);
+  composer.frameReaders.push(lensFlare);
+  const sunDir = new Vector3();
+  /** The sun for the lens flare, this frame (call before the frame is drawn). */
+  const placeFlare = () =>
+    lensFlare.update(camera, {
+      direction: sunDir.copy(env.sun.position).sub(env.sun.target.position).normalize(),
+      elevation: env.sunElevation,
+      overcast: env.overcast,
+      color: env.sun.color,
+      night: env.nightFactor,
+    });
   const viewDir = new Vector3();
   let lastViewYaw = 0;
   cockpit.showOnDisplay(carNavi.canvas);
@@ -1696,6 +1710,7 @@ async function main(): Promise<void> {
   /** The world from the main camera (no cockpit), with the street passes, to the canvas. */
   const drawPlain = () => {
     blur.stop();
+    placeFlare();
     composer.begin();
     composer.drawWorld(scene, camera);
     composer.street();
@@ -1762,6 +1777,7 @@ async function main(): Promise<void> {
     if (paused) {
       // Through the cockpit as in play: a plain render would leave the interior (its own layer) out.
       blur.stop();
+      placeFlare();
       cockpit.render(composer, renderer, scene, camera);
       composer.present();
       return;
@@ -2510,6 +2526,7 @@ async function main(): Promise<void> {
       size.x,
       size.y,
     );
+    placeFlare();
     // The world and the street; from the driver's seat, the wipers, the interior and the glass too.
     cockpit.render(composer, renderer, scene, camera);
     composer.present();
@@ -3783,6 +3800,8 @@ async function main(): Promise<void> {
         renderer,
         renderInfo,
         composer,
+        bloom,
+        lensFlare,
         world,
         terrain,
         water,

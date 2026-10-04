@@ -16,6 +16,8 @@ export type GraphicsSettings = {
   motionBlur: "off" | "light" | "strong";
   /** Glow around bright lights (lamps, lit windows, signals, the low sun). */
   bloom: "off" | "low" | "high";
+  /** The sun's ghosts, halo and starburst when it is seen (and the lamps' ghosts at night). */
+  lensFlare: "off" | "on";
   /** The sky in reflections (car paint, glass, wet roads): off = a fixed studio light. */
   reflections: "off" | "low" | "high";
   /** Night windows: one flat colour, lit with variety, or rooms behind them (interior mapping). */
@@ -89,6 +91,14 @@ export const GRAPHICS_ITEMS: GraphicsItem[] = [
     options: [
       { value: "high", label: "高" },
       { value: "low", label: "低" },
+      { value: "off", label: "なし" },
+    ],
+  },
+  {
+    key: "lensFlare",
+    label: "レンズフレア",
+    options: [
+      { value: "on", label: "あり" },
       { value: "off", label: "なし" },
     ],
   },
@@ -198,6 +208,7 @@ export const PRESETS: Record<GraphicsPreset, Pick<GraphicsSettings, PresetKey>> 
     shadows: "4096",
     motionBlur: "light",
     bloom: "high",
+    lensFlare: "on",
     reflections: "high",
     windows: "rooms",
     wetRoads: "full",
@@ -212,6 +223,7 @@ export const PRESETS: Record<GraphicsPreset, Pick<GraphicsSettings, PresetKey>> 
     shadows: "2048",
     motionBlur: "light",
     bloom: "high",
+    lensFlare: "on",
     reflections: "high",
     windows: "rooms",
     wetRoads: "full",
@@ -226,6 +238,7 @@ export const PRESETS: Record<GraphicsPreset, Pick<GraphicsSettings, PresetKey>> 
     shadows: "1024",
     motionBlur: "light",
     bloom: "low",
+    lensFlare: "off",
     reflections: "low",
     windows: "lit",
     wetRoads: "simple",
@@ -240,6 +253,7 @@ export const PRESETS: Record<GraphicsPreset, Pick<GraphicsSettings, PresetKey>> 
     shadows: "off",
     motionBlur: "off",
     bloom: "off",
+    lensFlare: "off",
     reflections: "off",
     windows: "flat",
     wetRoads: "simple",
