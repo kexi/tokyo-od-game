@@ -332,18 +332,26 @@ assets:
 
   - id: tokyo-station
     name: 東京駅丸の内駅舎
-    purpose: 丸の内広場に面した実寸の丸の内駅舎（南北のドームと夜のライトアップ）。
+    purpose: >-
+      丸の内広場に面した実寸の丸の内駅舎（2012 年の復原後の姿）。柱間・窓・付柱・白い花崗岩の帯・南北ドームと
+      時計・塔屋・御車寄せ・屋根窓まで作った近景（約 7 万三角形）と、遠景のシルエット。夜はライトアップと客室の明かり。
     kind: model
     files: [public/models/tokyo_station.glb, public/models/tokyo_station_far.glb]
-    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    generator:
+      script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py]
+      recipe: landmark-models
     made_by: blender-cli
     source: >-
-      自作（bpy で手続きモデリング）。量感は PLATEAU LOD2 の実測、平面は OpenStreetMap、
-      長さ・高さは JR 東日本の発表資料と Wikipedia の数値から取った。
+      自作（bpy で手続きモデリング）。平面と量感は PLATEAU LOD2 の実測と OpenStreetMap、高さは JR 東日本の
+      2007-05-08 発表資料（最高 46.1 m・フィニアル除き 34.8 m・軒高 16.7 m）と復原後の立面図、細部と色は
+      Wikimedia Commons の写真で測った。写真の画素はモデルにもテクスチャにも使っていない。
     license: [repo, PDL-1.0, ODbL-1.0]
     used_by: [src/world/landmarks.ts]
     inputs: [landmark-textures]
-    docs: [knowledge/landmarks-blender.md]
+    docs: [knowledge/landmarks-blender.md, knowledge/tokyo-station-blender.md]
+    notes: >-
+      近景の材質（TS_BrickRed ほか）は agy のテクスチャができるまで単色の仮の色。UV はタイル単位のワールド座標で、
+      材質ごとのテクスチャの大きさ・タイル寸法は knowledge/tokyo-station-blender.md の「テクスチャの依頼書」にある。
 
   - id: orbis
     name: オービス（速度違反自動取締装置）と予告看板
@@ -574,9 +582,9 @@ assets:
 
   - id: landmark-textures
     name: ランドマークのテクスチャ
-    purpose: 東京タワー・スカイツリー・東京駅のトラスのマスク、外壁、夜間照明の発光マップ、遠景用の絵。
+    purpose: 東京タワー・スカイツリーのトラスのマスク・外壁・夜間照明の発光マップ・遠景用の絵と、東京駅の遠景の外壁。
     kind: texture
-    files: [assets/landmarks/textures/*.png, assets/landmarks/textures/*.jpg]
+    files: [assets/landmarks/textures/*.png]
     generator: { script: scripts/textures/landmark_textures.py, recipe: textures }
     made_by: procedural
     source: 自作（手続き生成、シード固定。写真・フォント・ロゴ・文字なし）
@@ -677,7 +685,9 @@ assets:
     purpose: 3 つのランドマークの位置・向き・地盤高・遠景に替える距離・置き換える PLATEAU 建物・ライトアップの予定表。
     kind: data
     files: [public/data/landmarks.json]
-    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    generator:
+      script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py]
+      recipe: landmark-models
     made_by: blender-cli
     source: >-
       足元の形は OpenStreetMap（Overpass、2026-10-04）、置き換える建物は PLATEAU の gml_id、

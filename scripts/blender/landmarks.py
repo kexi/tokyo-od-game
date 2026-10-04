@@ -78,12 +78,16 @@ def material(
     strength=1.0,
     emit_tex=None,
     two_sided=None,
+    normal_tex=None,
+    rough_tex=None,
 ):
     """Principled material that the glTF exporter maps 1:1.
 
     color: sRGB hex (baseColorFactor, multiplied with tex when given). clip: tex alpha -> alphaMode
     MASK. emission: linear RGB tuple (emissiveFactor, multiplied with emit_tex when given);
-    strength > 1 is written as KHR_materials_emissive_strength.
+    strength > 1 is written as KHR_materials_emissive_strength. normal_tex: tangent-space normal map
+    (OpenGL, +Y up; normalTexture). rough_tex: glTF metallicRoughness packing (G = roughness,
+    B = metallic, linear); the factors `roughness` / `metallic` then scale it.
     """
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -110,6 +114,21 @@ def material(
         b.inputs["Base Color"].default_value = base
     b.inputs["Metallic"].default_value = metallic
     b.inputs["Roughness"].default_value = roughness
+    if normal_tex:
+        tn = nt.nodes.new("ShaderNodeTexImage")
+        tn.image = image(normal_tex)
+        tn.image.colorspace_settings.name = "Non-Color"
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
+    if rough_tex:
+        tr = nt.nodes.new("ShaderNodeTexImage")
+        tr.image = image(rough_tex)
+        tr.image.colorspace_settings.name = "Non-Color"
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(tr.outputs["Color"], sep.inputs["Color"])
+        nt.links.new(sep.outputs["Green"], b.inputs["Roughness"])
+        nt.links.new(sep.outputs["Blue"], b.inputs["Metallic"])
     if emission is not None:
         if emit_tex:
             t2 = nt.nodes.new("ShaderNodeTexImage")
@@ -1192,429 +1211,26 @@ def build_tokyo_skytree():
 
 
 # ============================================================================================== 東京駅丸の内駅舎
-# Plan coordinates: a = metres along the building toward its north end (bearing 17.05°), c = metres
-# across toward the tracks (east), from the centre of symmetry (the central entrance); model x = -a,
-# z = -c, so +Z faces the Marunouchi plaza. Massing from PLATEAU LOD2 (bldg_6af58cef…: eaves 18 m,
-# roofs 23 m, central roof 28.5 m, domes 34.5 m with the lantern to 38.4 m, dome centres ±99.1 m,
-# wing depth 21.3 m); 335 m frontage, 3 storeys, 鉄骨煉瓦造 and the restored domes from JR East /
-# Wikipedia ja「東京駅」. Details (bands, pilasters, pediments, balustrade, porte-cochère) from
-# Wikimedia Commons photos.
-TS_DOMES = (-99.1, 99.1)
-TS_WEST, TS_EAST = -10.8, 10.5
-TS_EAVE = 18.0
-
-
-def orient(outline):
-    """Wind an (x, z) outline so a face through it points +Y (see regular())."""
-    area = sum(z0 * x1 - x0 * z1 for (x0, z0), (x1, z1) in zip(outline, outline[1:] + outline[:1], strict=True))
-    return outline if area > 0 else list(reversed(outline))
-
-
-def face_toward(builder, pts, direction, part, uvs=None, smooth=False):
-    """Add a planar face, flipped if needed so its normal points along `direction`."""
-    p = [Vector(q) for q in pts]
-    n = (p[1] - p[0]).cross(p[2] - p[0])
-    if n.dot(Vector(direction)) < 0:
-        pts = list(reversed(pts))
-        uvs = list(reversed(uvs)) if uvs else None
-    return builder.face(pts, part, uvs if uvs else planar_uvs(pts, 2.0), smooth)
-
-
+# Modelled from photographs and JR East's published drawings in scripts/blender/tokyo_station.py (bays,
+# pilasters, granite bands, domes, vault and clock, pavilions, porte-cochère, dormers); this module only
+# hands it the shared helpers and exports it like the other landmarks.
 def build_tokyo_station():
-    modes = ["floodlight", "lightsOut"]
-    pal = Palette(modes)
+    from types import SimpleNamespace
 
-    def night(tex, k, windows):
-        return {
-            "floodlight": {"emission": (1, 1, 1, 1), "strength": k, "emit_tex": tex},
-            "lightsOut": {"emission": (1, 1, 1, 1), "strength": 1.0, "emit_tex": windows},
-        }
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import tokyo_station
 
-    warm = (1.0, 0.72, 0.45, 1.0)
-    pal.add(
-        "TS_Wing",
-        night("ts_wing_night.jpg", 1.0, "ts_wing_windows.jpg"),
-        color=0xFFFFFF,
-        tex="ts_wing.jpg",
-        roughness=0.8,
+    helpers = SimpleNamespace(
+        bpy=bpy,
+        SCENE=SCENE,
+        TEX=TEX,
+        Builder=Builder,
+        Palette=Palette,
+        material=material,
+        OSM_FOOTPRINT=OSM_FOOTPRINT,
+        SOURCES=SOURCES,
     )
-    pal.add(
-        "TS_Pavilion",
-        night("ts_pavilion_night.jpg", 1.0, "ts_pavilion_windows.jpg"),
-        color=0xFFFFFF,
-        tex="ts_pavilion.jpg",
-        roughness=0.8,
-    )
-    pal.add(
-        "TS_Drum",
-        night("ts_drum_night.jpg", 0.6, "ts_drum_windows.jpg"),
-        color=0xFFFFFF,
-        tex="ts_drum.jpg",
-        roughness=0.8,
-    )
-    pal.add("TS_Roof", color=0xFFFFFF, tex="ts_slate.jpg", roughness=0.7)
-    pal.add(
-        "TS_Copper",
-        {"floodlight": {"emission": scale_rgb(warm, 0.10), "strength": 1.0}},
-        color=0xFFFFFF,
-        tex="ts_copper.jpg",
-        metallic=0.5,
-        roughness=0.5,
-    )
-    pal.add(
-        "TS_Stone", {"floodlight": {"emission": scale_rgb(warm, 0.35), "strength": 1.0}}, color=0xE2DCCE, roughness=0.7
-    )
-    pal.add("TS_Trim", color=0x58392C, roughness=0.6)
-    bal_lit = {"floodlight": {"emission": scale_rgb(warm, 0.25), "strength": 1.0, "emit_tex": "ts_balustrade.png"}}
-    pal.add("TS_Balustrade", bal_lit, color=0xFFFFFF, tex="ts_balustrade.png", clip=True)
-    room = {"emission": (1.0, 0.80, 0.55, 1.0), "strength": 1.3}
-    pal.add("TS_Glass", {"floodlight": room, "lightsOut": room}, color=0x2E3842, metallic=0.4, roughness=0.15)
-
-    b = Builder("TokyoStation_Near")
-
-    def X(a, c):
-        return (-a, -c)
-
-    def V(a, y, c):
-        return (-a, y, -c)
-
-    def walls(plan, y0, y1, part, tile, vh, cap=None, builder=None):
-        (builder or b).prism(orient([X(a, c) for a, c in plan]), y0, y1, part, uv_side=(tile, 0.0, vh), cap_top=cap)
-
-    def up_face(pts, part, builder=None):
-        face_toward(builder or b, pts, (0, 1, 0), part)
-
-    def pyramid(a, c, half_a, half_c, y0, y1, part="TS_Roof", n=4, builder=None):
-        if n == 4:
-            base = [(-a + dx * half_a, -c + dz * half_c) for dx, dz in SQUARE]
-        else:
-            base = [(-a + x, -c + z) for x, z in regular(n, half_a, math.pi / n)]
-        apex = (-a, y1, -c)
-        for k in range(len(base)):
-            p0, p1 = base[k], base[(k + 1) % len(base)]
-            out = ((p0[0] + p1[0]) / 2 + a, 0.3, (p0[1] + p1[1]) / 2 + c)
-            face_toward(builder or b, [(p0[0], y0, p0[1]), (p1[0], y0, p1[1]), apex], out, part)
-
-    def finial(a, c, y0, y1, r=0.18):
-        b.prism([(x - a, z - c) for x, z in regular(6, r)], y0, y1, "TS_Trim", cap_top="TS_Trim")
-        b.box(V(a, y0 + 0.25, c), (0.5, 0.5, 0.5), "TS_Trim")
-
-    def lathe(cx, cz, profile, sides, part, phase=0.0, smooth=True, builder=None):
-        for (r0, y0), (r1, y1) in zip(profile, profile[1:], strict=False):
-            o0 = [(x + cx, z + cz) for x, z in regular(sides, r0, phase)]
-            o1 = [(x + cx, z + cz) for x, z in regular(sides, r1, phase)]
-            for k in range(sides):
-                j = (k + 1) % sides
-                pts = [
-                    (o0[k][0], y0, o0[k][1]),
-                    (o0[j][0], y0, o0[j][1]),
-                    (o1[j][0], y1, o1[j][1]),
-                    (o1[k][0], y1, o1[k][1]),
-                ]
-                if (o1[k][0] - o0[k][0]) ** 2 + (o1[k][1] - o0[k][1]) ** 2 < 1e-9 and r1 == 0:
-                    pts = pts[:3]
-                (builder or b).face(pts, part, planar_uvs(pts, 2.0), smooth)
-
-    # ---- long wing: walls, mansard roof, cornice, balustrade, dormers
-    A0, A1 = -133.0, 136.5
-    walls([(A0, TS_WEST), (A1, TS_WEST), (A1, TS_EAST), (A0, TS_EAST)], 0.0, TS_EAVE, "TS_Wing", 4.0, TS_EAVE)
-    prof = [
-        (TS_WEST, TS_EAVE),
-        (TS_WEST + 1.6, 21.8),
-        (-0.15, 23.2),
-        (0.15, 23.2),
-        (TS_EAST - 1.6, 21.8),
-        (TS_EAST, TS_EAVE),
-    ]
-    for (c0, y0), (c1, y1) in zip(prof, prof[1:], strict=False):
-        up_face([V(A0, y0, c0), V(A0, y1, c1), V(A1, y1, c1), V(A1, y0, c0)], "TS_Roof")
-    for a in (A0, A1):  # gable ends of the roof
-        face_toward(b, [V(a, y, c) for c, y in prof], (-math.copysign(1, a), 0, 0), "TS_Roof")
-    for c, side in ((TS_WEST, -1), (TS_EAST, 1)):
-        b.box(V((A0 + A1) / 2, 17.65, c + side * 0.25), (A1 - A0, 0.7, 0.9), "TS_Trim")  # cornice
-    length = A1 - A0
-    b.face(
-        [
-            V(A0, 18.0, TS_WEST - 0.1),
-            V(A1, 18.0, TS_WEST - 0.1),
-            V(A1, 19.1, TS_WEST - 0.1),
-            V(A0, 19.1, TS_WEST - 0.1),
-        ],
-        "TS_Balustrade",
-        [(0, 0), (length / 2.0, 0), (length / 2.0, 1), (0, 1)],
-    )
-
-    def dormer(a, side):
-        c = (TS_WEST + 0.9) if side < 0 else (TS_EAST - 0.9)
-        b.box(V(a, 20.0, c), (1.5, 2.2, 1.6), "TS_Trim")
-        fc = c + side * 0.81
-        face_toward(
-            b,
-            [V(a - 0.5, 19.2, fc), V(a + 0.5, 19.2, fc), V(a + 0.5, 20.7, fc), V(a - 0.5, 20.7, fc)],
-            (0, 0, -side),
-            "TS_Glass",
-        )
-        pyramid(a, c, 0.9, 0.95, 21.1, 22.0, "TS_Copper")
-
-    skip = [(-25.0, 25.0), (-58.0, -38.0), (38.0, 58.0), (-124.0, -74.0), (74.0, 124.0)]
-    for k in range(int((A1 - A0 - 10.0) // 8.0)):
-        a = A0 + 6.0 + 8.0 * k
-        if any(lo < a < hi for lo, hi in skip):
-            continue
-        dormer(a, -1)
-        dormer(a, 1)
-
-    # ---- north and south dome halls: walls, hipped roof, drum, octagonal dome, lantern
-    hall = [(-19.0, TS_WEST), (-16.5, -13.0), (-10.5, -24.0), (10.5, -24.0), (16.5, -13.0), (19.0, TS_WEST)]
-    hall += [(16.0, TS_EAST), (15.0, 12.0), (10.5, 19.0), (-10.5, 19.0), (-15.0, 12.0), (-16.0, TS_EAST)]
-    drum_r = 11.0 / math.cos(math.pi / 8)
-    face_w = 2 * 11.0 * math.tan(math.pi / 8)
-    dome = [(11.0, 30.0), (10.4, 31.3), (9.0, 32.6), (6.9, 33.7), (4.4, 34.4), (1.9, 34.75)]
-    for a0 in TS_DOMES:
-        plan = [(a0 + da, c) for da, c in hall]
-        walls(plan, 0.0, 20.0, "TS_Pavilion", 6.0, 21.0)
-        b.box(V(a0, 19.6, -24.25), (21.2, 0.8, 0.6), "TS_Trim")
-        ring0 = orient([X(a, c) for a, c in plan])
-        ring1 = orient([X(a0 + da * 0.58, c * 0.58) for da, c in hall])
-        for k in range(len(ring0)):
-            j = (k + 1) % len(ring0)
-            pts = [
-                (ring0[k][0], 20.0, ring0[k][1]),
-                (ring0[j][0], 20.0, ring0[j][1]),
-                (ring1[j][0], 24.6, ring1[j][1]),
-                (ring1[k][0], 24.6, ring1[k][1]),
-            ]
-            b.face(pts, "TS_Roof", planar_uvs(pts, 2.0))
-        b.face([(x, 24.6, z) for x, z in ring1], "TS_Roof")
-        octo = [(x - a0, z) for x, z in regular(8, drum_r, math.pi / 8)]
-        b.prism(octo, 24.5, 29.5, "TS_Drum", uv_side=(face_w, 24.5, 5.0))
-        b.prism([(x * 1.03 + a0 * 0.03, z * 1.03) for x, z in octo], 29.4, 30.0, "TS_Stone", cap_bottom="TS_Stone")
-        lathe(-a0, 0.0, [(r / math.cos(math.pi / 8), y) for r, y in dome], 8, "TS_Copper", math.pi / 8, smooth=False)
-        for k in range(8):  # round dormers (oculi) on the dome faces
-            t = 2 * math.pi * k / 8
-            cx, cz = -a0 + 9.9 * math.cos(-t), 9.9 * math.sin(-t)
-            b.box((cx, 31.6, cz), (1.3, 1.4, 1.3), "TS_Trim")
-            b.box((cx + 0.25 * math.cos(-t), 31.6, cz + 0.25 * math.sin(-t)), (1.0, 1.0, 1.0), "TS_Glass")
-        b.prism([(x - a0, z) for x, z in regular(8, 2.0, math.pi / 8)], 34.6, 36.3, "TS_Copper", cap_top="TS_Copper")
-        b.prism([(x - a0, z) for x, z in regular(8, 1.2, math.pi / 8)], 36.3, 37.2, "TS_Copper", cap_top="TS_Copper")
-        finial(a0, 0.0, 37.2, 38.4, 0.15)
-        for sa in (-1, 1):  # corner turrets on the hall roof, gables on its long faces
-            for cc in (-12.6, 12.0):
-                b.box(V(a0 + sa * 12.0, 21.6, cc), (1.6, 3.2, 1.6), "TS_Stone")
-                pyramid(a0 + sa * 12.0, cc, 1.0, 1.0, 23.2, 24.6, "TS_Copper")
-        for cc, depth in ((-22.6, 1.4), (17.6, 1.2)):
-            b.box(V(a0, 21.3, cc), (4.2, 2.6, depth), "TS_Pavilion")
-            pyramid(a0, cc, 2.2, depth * 0.6, 22.6, 24.2, "TS_Roof")
-
-    # ---- central pavilion: walls, hipped roof, pylons, arched gable with oculus, porte-cochère
-    walls([(-12.5, -11.4), (12.5, -11.4), (12.5, TS_EAST), (-12.5, TS_EAST)], 0.0, 19.2, "TS_Pavilion", 6.0, 21.0)
-    e = [V(-12.5, 19.0, -11.4), V(12.5, 19.0, -11.4), V(12.5, 19.0, TS_EAST), V(-12.5, 19.0, TS_EAST)]
-    r0, r1 = V(-4.0, 28.5, -0.5), V(4.0, 28.5, -0.5)
-    for pts in ([e[0], e[1], r1, r0], [e[2], e[3], r0, r1], [e[1], e[2], r1], [e[3], e[0], r0]):
-        up_face(pts, "TS_Roof")
-    b.box(V(0.0, 28.7, -0.5), (8.4, 0.5, 0.6), "TS_Trim")  # cresting on the ridge
-    for sa in (-1, 1):
-        walls(
-            [(sa * 7.0 - 1.6, -13.0), (sa * 7.0 + 1.6, -13.0), (sa * 7.0 + 1.6, -11.0), (sa * 7.0 - 1.6, -11.0)],
-            0.0,
-            21.6,
-            "TS_Pavilion",
-            6.0,
-            21.0,
-            cap="TS_Stone",
-        )
-        b.box(V(sa * 7.0, 21.9, -12.0), (3.6, 0.6, 2.4), "TS_Trim")
-    arch = (
-        [(4.6, 16.0)]
-        + [(4.6 * math.cos(math.pi * k / 12), 21.6 + 4.6 * math.sin(math.pi * k / 12)) for k in range(13)]
-        + [(-4.6, 16.0)]
-    )
-    for cc, direction in ((-11.9, (0, 0, 1)), (-10.9, (0, 0, -1))):
-        pts = [V(a, y, cc) for a, y in arch]
-        face_toward(b, pts, direction, "TS_Drum", [((p[0] + 4.6) / face_w, (p[1] - 16.0) / 5.0 * 0.5) for p in pts])
-    for k in range(1, 13):  # soffit of the arched gable (both sides: thin)
-        (a0_, y0_), (a1_, y1_) = arch[k], arch[k + 1]
-        q = [V(a0_, y0_, -11.9), V(a1_, y1_, -11.9), V(a1_, y1_, -10.9), V(a0_, y0_, -10.9)]
-        b.face(q, "TS_Trim")
-        b.face(list(reversed(q)), "TS_Trim")
-    ring = [
-        (1.05 * math.cos(2 * math.pi * k / 16), 23.0 + 1.05 * math.sin(2 * math.pi * k / 16), 11.95) for k in range(16)
-    ]
-    face_toward(b, ring, (0, 0, 1), "TS_Glass")
-    b.box(V(0.0, 0.3, -14.5), (13.0, 0.6, 7.0), "TS_Stone")  # porte-cochère (御車寄せ)
-    b.box(V(0.0, 6.6, -14.6), (13.4, 1.2, 7.4), "TS_Stone")
-    for a in (-5.6, -2.0, 2.0, 5.6):
-        b.prism([(x - a, z + 17.4) for x, z in regular(10, 0.45)], 0.6, 6.0, "TS_Stone", smooth=True)
-    face_toward(b, [V(-3.6, 7.2, -18.35), V(3.6, 7.2, -18.35), V(0.0, 8.8, -18.35)], (0, 0, 1), "TS_Stone")
-    for sa in (-1, 1):
-        b.prism([(x - sa * 5.6, z + 17.4) for x, z in regular(10, 0.9)], 7.2, 8.0, "TS_Stone", cap_top="TS_Stone")
-        lathe(-sa * 5.6, 17.4, [(0.9, 8.0), (0.75, 8.5), (0.45, 8.85), (0.0, 9.0)], 10, "TS_Stone")
-
-    # ---- towers along the facade
-    for a in (-16.5, 16.5):  # flanking the centre, with copper cupolas
-        walls(
-            [(a - 3.0, -13.3), (a + 3.0, -13.3), (a + 3.0, -7.0), (a - 3.0, -7.0)],
-            0.0,
-            22.0,
-            "TS_Pavilion",
-            6.0,
-            21.0,
-            cap="TS_Stone",
-        )
-        b.box(V(a, 21.7, -10.15), (6.6, 0.6, 6.9), "TS_Trim")
-        b.prism([(x - a, z + 10.15) for x, z in regular(10, 2.2)], 22.0, 23.0, "TS_Stone")
-        lathe(-a, 10.15, [(2.3, 23.0), (2.1, 24.0), (1.6, 24.8), (0.8, 25.3), (0.0, 25.45)], 10, "TS_Copper")
-        finial(a, -10.15, 25.4, 26.6)
-    for a in (-47.5, 47.5):  # towers with tall slate pyramids
-        walls(
-            [(a - 4.5, -13.6), (a + 4.5, -13.6), (a + 4.5, -6.0), (a - 4.5, -6.0)], 0.0, 21.0, "TS_Pavilion", 6.0, 21.0
-        )
-        b.box(V(a, 20.7, -9.8), (9.6, 0.6, 8.2), "TS_Trim")
-        pyramid(a, -9.8, 4.8, 4.1, 21.0, 26.3)
-        finial(a, -9.8, 26.2, 27.6)
-    for a, c in ((133.5, TS_WEST), (133.5, TS_EAST), (-136.5, TS_WEST + 1.3)):  # corner turrets
-        b.prism(
-            [(x - a, z - c) for x, z in regular(8, 3.2, math.pi / 8)],
-            0.0,
-            20.0,
-            "TS_Pavilion",
-            uv_side=(6.0, 0.0, 21.0),
-        )
-        pyramid(a, c, 3.4, 3.4, 20.0, 24.6, "TS_Roof", n=8)
-        finial(a, c, 24.5, 25.6)
-
-    # ---- south wing bending toward the tracks (as surveyed by PLATEAU / OSM)
-    p0, p1 = Vector((-131.0, 0.5)), Vector((-167.0, 30.0))
-    d = (p1 - p0).normalized()
-    nrm = Vector((-d.y, d.x))
-    hw = 7.0
-    bent = [p0 + nrm * hw, p1 + nrm * hw]
-    bent += [p1 + (nrm * math.cos(math.pi * k / 8) + d * math.sin(math.pi * k / 8)) * hw for k in range(1, 8)]
-    bent += [p1 - nrm * hw, p0 - nrm * hw]
-
-    def bent_wing(builder, wall_part, tile, roof_part):
-        walls(
-            [(p.x, p.y) for p in bent], 0.0, TS_EAVE, wall_part, tile, TS_EAVE if tile == 4.0 else 20.0, builder=builder
-        )
-        for e0, e1, q0, q1 in ((bent[0], bent[1], p0, p1), (bent[9], bent[10], p1, p0)):
-            up_face(
-                [V(e0.x, TS_EAVE, e0.y), V(e1.x, TS_EAVE, e1.y), V(q1.x, 21.5, q1.y), V(q0.x, 21.5, q0.y)],
-                roof_part,
-                builder,
-            )
-        for k in range(1, 9):
-            q0, q1 = bent[k], bent[k + 1]
-            up_face([V(q0.x, TS_EAVE, q0.y), V(q1.x, TS_EAVE, q1.y), V(p1.x, 21.5, p1.y)], roof_part, builder)
-
-    bent_wing(b, "TS_Wing", 4.0, "TS_Roof")
-
-    root = bpy.data.objects.new("TokyoStation", None)
-    SCENE.collection.objects.link(root)
-    near_ob = b.finish(pal, root)
-
-    # ---------------------------------------------------------------- far LOD
-    far_lit = {
-        "floodlight": {"emission": (1, 1, 1, 1), "strength": 0.9, "emit_tex": "ts_far_night.png"},
-        "lightsOut": {"emission": (1, 1, 1, 1), "strength": 0.35, "emit_tex": "ts_far_night.png"},
-    }
-    pal.add("TS_FarWall", far_lit, color=0xFFFFFF, tex="ts_far.png", roughness=0.8)
-    pal.add("TS_FarRoof", color=0x50545A, roughness=0.7)
-    pal.add(
-        "TS_FarDome",
-        {"floodlight": {"emission": scale_rgb(warm, 0.08), "strength": 1.0}},
-        color=0x5C4434,
-        roughness=0.6,
-    )
-    f = Builder("TokyoStation_Far")
-    walls(
-        [(A0, TS_WEST), (A1, TS_WEST), (A1, TS_EAST), (A0, TS_EAST)], 0.0, TS_EAVE, "TS_FarWall", 16.0, 20.0, builder=f
-    )
-    for (c0, y0), (c1, y1) in zip(prof, prof[1:], strict=False):
-        up_face([V(A0, y0, c0), V(A0, y1, c1), V(A1, y1, c1), V(A1, y0, c0)], "TS_FarRoof", f)
-    for a0 in TS_DOMES:
-        walls([(a0 + da, c) for da, c in hall], 0.0, 20.0, "TS_FarWall", 16.0, 20.0, builder=f)
-        ring0 = orient([X(a0 + da, c) for da, c in hall])
-        ring1 = orient([X(a0 + da * 0.58, c * 0.58) for da, c in hall])
-        for k in range(len(ring0)):
-            j = (k + 1) % len(ring0)
-            f.face(
-                [
-                    (ring0[k][0], 20.0, ring0[k][1]),
-                    (ring0[j][0], 20.0, ring0[j][1]),
-                    (ring1[j][0], 24.6, ring1[j][1]),
-                    (ring1[k][0], 24.6, ring1[k][1]),
-                ],
-                "TS_FarRoof",
-            )
-        f.prism(
-            [(x - a0, z) for x, z in regular(8, drum_r, math.pi / 8)],
-            24.5,
-            29.5,
-            "TS_FarWall",
-            uv_side=(16.0, 10.0, 20.0),
-        )
-        lathe(
-            -a0,
-            0.0,
-            [(drum_r, 29.5), (drum_r * 0.75, 33.0), (0.0, 35.5)],
-            8,
-            "TS_FarDome",
-            math.pi / 8,
-            smooth=False,
-            builder=f,
-        )
-    walls(
-        [(-12.5, -13.0), (12.5, -13.0), (12.5, TS_EAST), (-12.5, TS_EAST)],
-        0.0,
-        19.0,
-        "TS_FarWall",
-        16.0,
-        20.0,
-        builder=f,
-    )
-    e = [V(-12.5, 19.0, -13.0), V(12.5, 19.0, -13.0), V(12.5, 19.0, TS_EAST), V(-12.5, 19.0, TS_EAST)]
-    for pts in ([e[0], e[1], r1, r0], [e[2], e[3], r0, r1], [e[1], e[2], r1], [e[3], e[0], r0]):
-        up_face(pts, "TS_FarRoof", f)
-    for a in (-47.5, 47.5):
-        walls(
-            [(a - 4.5, -13.6), (a + 4.5, -13.6), (a + 4.5, -6.0), (a - 4.5, -6.0)],
-            0.0,
-            21.0,
-            "TS_FarWall",
-            16.0,
-            20.0,
-            builder=f,
-        )
-        pyramid(a, -9.8, 4.8, 4.1, 21.0, 26.3, "TS_FarRoof", builder=f)
-    bent_wing(f, "TS_FarWall", 16.0, "TS_FarRoof")
-    far_ob = f.finish(pal, root)
-
-    origin = (139.7660621, 35.6813763)  # centre of symmetry (midpoint of the two domes, PLATEAU LOD2)
-    heading = 287.05  # +Z: the Marunouchi facade, facing the Imperial Palace along 行幸通り
-    meta = {
-        "id": "tokyo_station",
-        "name": "東京駅丸の内駅舎",
-        "lon": origin[0],
-        "lat": origin[1],
-        "heading": heading,
-        "baseHeight": 3.4,
-        "height": 38.4,
-        "farDistance": 1000,
-        "footprint": OSM_FOOTPRINT["tokyo_station"],
-        "sources": [SOURCES["osm"], SOURCES["plateau"]],
-        "plateau": [{"gmlId": "bldg_6af58cef-669e-4aca-bc01-355e870d1ad5", "hide": True}],
-        "lightModes": [
-            {"id": "floodlight", "name": "ライトアップ（外壁の投光と客室の明かり）"},
-            {"id": "lightsOut", "name": "ライトアップ終了後（客室・屋根窓の明かりのみ）"},
-        ],
-        "lightSchedule": {
-            "source": "二次情報（旅行情報サイト: 通常は日没〜21時頃）。JR 東日本の一次情報は未確認",
-            "on": "sunset",
-            "off": "21:00",
-            "after": "lightsOut",
-        },
-    }
-    return root, near_ob, far_ob, pal, meta
+    return tokyo_station.build(helpers)
 
 
 # ---------------------------------------------------------------------------------------------- export
@@ -1742,6 +1358,7 @@ def previews(objects, pal, views, ground=4000.0):
         SCENE.view_settings.view_transform = "Standard"
     near_ob, far_ob = objects
     only = os.environ.get("LANDMARK_PREVIEW_MODES")  # e.g. "day,iki" while iterating
+    only_views = os.environ.get("LANDMARK_PREVIEW_VIEWS")  # e.g. "front,dome"
     for mode in ["day"] + [m for m in pal.modes]:
         if only and mode not in only.split(","):
             continue
@@ -1750,7 +1367,10 @@ def previews(objects, pal, views, ground=4000.0):
         bg.inputs["Color"].default_value = (0.55, 0.66, 0.82, 1) if is_day else (0.004, 0.006, 0.014, 1)
         bg.inputs["Strength"].default_value = 0.8 if is_day else 1.0
         sun.data.energy = 4.0 if is_day else 0.02
-        for view, (eye, target, lens, res) in views.items():
+        for view, (eye, target, lens, res, *shift) in views.items():
+            if only_views and view not in only_views.split(","):
+                continue
+            cam.data.shift_y = shift[0] if shift else 0.0  # vertical lens shift (keeps verticals upright)
             is_far = view.startswith("far") and not view.endswith("detail")
             near_ob.hide_render = is_far  # the runtime shows one LOD at a time
             far_ob.hide_render = not is_far
@@ -1765,10 +1385,15 @@ def previews(objects, pal, views, ground=4000.0):
 
 PREVIEW_VIEWS = {
     "tokyo_station": {
-        "near": ((-70.0, 1.7, 150.0), (-30.0, 14.0, 0.0), 24, (1600, 900)),
-        "centre": ((0.0, 1.7, 75.0), (0.0, 16.0, 0.0), 28, (1600, 900)),
-        "dome": ((60.0, 1.7, 70.0), (99.0, 22.0, 5.0), 26, (1280, 900)),
-        "aerial": ((-150.0, 120.0, 260.0), (-10.0, 10.0, 0.0), 30, (1600, 900)),
+        # Cameras matched to reference photos (knowledge/landmarks-blender.md): "front" =
+        # Tokyo-STA_Marunouchi-Entrance_2023.jpg (EXIF 25 mm equiv., 108 m from the façade on the 行幸通り
+        # axis, level with a lens shift), "dome" = Tokyo_Station_Marunouchi_North_2012_09.jpg and "aerial" =
+        # the 2016 view from the Marunouchi Building, both solved from known points (rms 14–20 px).
+        "front": ((0.0, 1.6, 118.6), (0.0, 1.6, 0.0), 25, (1600, 1067), 0.143),
+        "centre": ((0.0, 1.6, 62.0), (0.0, 15.5, 0.0), 30, (1600, 1000)),
+        "dome": ((85.8, 1.4, 112.1), (-0.6, 12.1, 63.1), 122, (1600, 1067)),
+        "aerial": ((59.0, 22.4, 159.0), (23.6, -1.7, 68.6), 20.8, (1600, 1067)),
+        "south": ((150.0, 1.7, 110.0), (110.0, 14.0, 10.0), 28, (1600, 900)),
         "far": ((-500.0, 40.0, 900.0), (0.0, 15.0, 0.0), 60, (1600, 700)),
         "far-detail": ((-500.0, 40.0, 900.0), (0.0, 15.0, 0.0), 60, (1600, 700)),
     },
@@ -1803,7 +1428,11 @@ def main():
         **{k: v for k, v in meta.items() if k not in ("id", "name")},
         "nodes": {"near": near_ob.name, "far": far_ob.name},
     }
-    write_json(meta)
+    is_published = not rel.startswith("..")
+    if is_published:
+        write_json(meta)
+    else:  # a trial build elsewhere must not point the game's landmarks.json at it
+        log("json_skipped", reason="output outside public/", file=OUT)
     log(
         "exported",
         file=OUT,
