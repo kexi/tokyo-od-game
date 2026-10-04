@@ -1691,3 +1691,484 @@ pre.notice {
     opacity: 0;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* 交通反則告知書・違反切符（青切符・赤切符）様式再現スタイル                 */
+/* -------------------------------------------------------------------------- */
+
+#ticket-dialog {
+  max-width: min(840px, calc(100vw - 24px));
+  max-height: 92vh;
+  padding: 16px 18px;
+  background: #111a28;
+  color: #1e2530;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
+}
+
+#ticket-dialog #ticket-title {
+  color: #f0f4fc;
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+#ticket-dialog #ticket-intro {
+  color: #9ab0d3;
+  font-size: 13px;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+#ticket-form-container {
+  margin: 12px 0;
+}
+
+#ticket-dialog #ticket-note {
+  color: #cad6ec;
+  font-size: 12px;
+  margin: 12px 0 16px;
+  line-height: 1.5;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+#ticket-accept {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+#ticket-accept:hover {
+  background: #1d4ed8;
+}
+
+/* 切符用紙のカーボン複写風質感 */
+.ticket-document {
+  border-radius: 4px;
+  padding: 14px 16px;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.35),
+    inset 0 0 40px rgba(0, 0, 0, 0.03);
+  font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 青切符: 淡い青色の感圧複写紙 */
+.ticket-blue {
+  background: #e1edf7;
+  border: 2px solid #5a7d9a;
+  color: #1a2c3d;
+}
+
+/* 赤切符: 赤みがかったピンクの用紙 */
+.ticket-red {
+  background: #fce4e4;
+  border: 2px solid #b35959;
+  color: #3b1818;
+}
+
+/* 筆記具・カーボン複写の手書き風フォント */
+.ticket-document .handwritten {
+  /* Entries are written in ballpoint on the spot; Yomogi is a hand-lettered face (OFL). */
+  font-family: "Yomogi", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  font-weight: 400;
+  color: #0b1e42;
+  letter-spacing: 0.04em;
+}
+
+.ticket-red .handwritten {
+  color: #4a0e17;
+}
+
+/* ヘッダー */
+.t-head {
+  border-bottom: 2px solid currentColor;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+
+.t-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.t-code-box {
+  letter-spacing: 0.05em;
+}
+
+.t-form-name {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.t-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 800;
+  font-size: 11px;
+}
+
+.badge-blue {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.badge-red {
+  background: #dc2626;
+  color: #fff;
+}
+
+.t-main-title {
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+  margin: 4px 0 0;
+  letter-spacing: 0.15em;
+}
+
+/* 書式グリッド */
+.t-grid-container {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.t-row {
+  display: flex;
+  border-bottom: 1px solid currentColor;
+  min-height: 28px;
+  align-items: stretch;
+}
+
+.t-cell {
+  display: flex;
+  align-items: center;
+  padding: 3px 6px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.t-cell.lbl {
+  background: rgba(0, 0, 0, 0.05);
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: center;
+  text-align: center;
+  border-right: 1px solid currentColor;
+}
+
+.t-cell.val {
+  border-right: 1px solid currentColor;
+}
+
+.t-cell.val:last-child {
+  border-right: none;
+}
+
+.col-1 {
+  width: 14%;
+  flex-shrink: 0;
+}
+
+.col-3 {
+  width: 36%;
+  flex-shrink: 0;
+}
+
+.col-5 {
+  width: 62%;
+  flex-shrink: 0;
+}
+
+.col-7 {
+  width: 86%;
+  flex-shrink: 0;
+}
+
+.v-text {
+  writing-mode: horizontal-tb;
+  letter-spacing: 0.05em;
+}
+
+/* セクション見出し */
+.t-section-hdr {
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-bottom: 1px solid currentColor;
+  letter-spacing: 0.05em;
+}
+
+/* チェックボックスグリッド */
+.t-chk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 2px 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  border-bottom: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.chk-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.7;
+}
+
+.chk-item.item-checked {
+  opacity: 1;
+  font-weight: 800;
+  color: #991b1b;
+}
+
+.ticket-blue .chk-item.item-checked {
+  color: #1e3a8a;
+}
+
+.chk-box {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.chk-art {
+  font-size: 9px;
+  opacity: 0.8;
+}
+
+.highlight-text {
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+/* 違反詳細テーブル */
+.t-detail-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  border-bottom: 1px solid currentColor;
+}
+
+.t-detail-tbl th,
+.t-detail-tbl td {
+  border: 1px solid currentColor;
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.t-detail-tbl th {
+  background: rgba(0, 0, 0, 0.06);
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.t-detail-tbl .v-pts,
+.t-detail-tbl .v-fine {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.t-foot-total {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 700;
+}
+
+.t-foot-total .total-lbl {
+  text-align: right;
+}
+
+/* フッター・告知者・印鑑 */
+.t-row-bottom {
+  display: flex;
+  border-bottom: none;
+  min-height: 56px;
+}
+
+.t-col-left {
+  padding: 6px 8px;
+  border-right: 1px solid currentColor;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+}
+
+.sub-cell {
+  display: flex;
+  gap: 6px;
+}
+
+.sub-lbl {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.officer-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  position: relative;
+}
+
+.officer-meta {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* 警察官の角印風スタンプ */
+.officer-seal {
+  width: 44px;
+  height: 44px;
+  border: 2px solid #c53030;
+  border-radius: 4px;
+  color: #c53030;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-5deg);
+  box-shadow: 0 0 1px #c53030;
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
+.seal-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  font-family: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+}
+
+/* 納付書・出頭票欄 */
+.ticket-slip-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 2px dashed currentColor;
+}
+
+.slip-cut-line {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-bottom: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.slip-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.slip-tag {
+  background: #1e3a8a;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.ticket-red .slip-tag {
+  background: #991b1b;
+}
+
+.slip-title {
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.slip-body {
+  font-size: 11px;
+}
+
+.slip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid currentColor;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+
+.slip-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.slip-cell.full {
+  grid-column: 1 / -1;
+  border-top: 1px dotted currentColor;
+  padding-top: 4px;
+}
+
+.slip-cell .c-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.slip-cell .slip-amount {
+  font-size: 15px;
+  color: #1e3a8a;
+}
+
+.ticket-red .slip-cell .slip-amount {
+  color: #991b1b;
+}
+
+.slip-warn {
+  color: #b91c1c;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+
+.slip-desc,
+.slip-note {
+  font-size: 9.5px;
+  opacity: 0.85;
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  .t-row {
+    flex-wrap: wrap;
+  }
+  .col-1,
+  .col-3,
+  .col-5,
+  .col-7 {
+    width: 50%;
+  }
+  .t-chk-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .officer-box {
+    flex-direction: column;
+    gap: 4px;
+  }
+}

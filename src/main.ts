@@ -107,6 +107,7 @@ import {
   type ViolationRecord,
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
+import { renderTicket } from "./game/ticketForm";
 import { PolicePatrol } from "./game/policePatrol";
 import { CarControls } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
@@ -1945,13 +1946,7 @@ async function main(): Promise<void> {
     const isRed = seen.some((r) => r.fine === null);
     $("#ticket-intro").textContent =
       "警察官が窓の横に来ました。「こんにちは、警察です。いま違反がありましたので、免許証を見せてください。」";
-    $("#ticket-list").replaceChildren(
-      ...seen.map((r) => {
-        const li = document.createElement("li");
-        li.textContent = `${formatViolation(r)}${r.context?.detail ? `（${r.context.detail}）` : ""}`;
-        return li;
-      }),
-    );
+    $("#ticket-form-container").replaceChildren(renderTicket({ violations: seen }));
     $("#ticket-note").textContent = isRed
       ? "反則金の対象にならない違反（赤切符）は刑事手続になり、後日、検察庁や裁判所から呼び出しがあります。違反点数は付き、累積すると後日、行政処分の通知が届きます。"
       : "交通反則告知書（青切符）と納付書を受け取りました。反則金は告知の翌日から 7 日以内に金融機関で納めます。違反点数は累積し、一定の点数に達すると後日、行政処分の通知が届きます。今日はこのまま運転して帰れます。";

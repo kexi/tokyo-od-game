@@ -40,6 +40,9 @@
       content="夕方の道路を走る青い車と「止まれ」の標識。法令厳守 TOKYO OPEN DRIVE の題字。"
     />
     <link rel="stylesheet" href="./src/style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yomogi&display=swap" />
   </head>
   <body>
     <canvas id="scene"></canvas>
@@ -360,7 +363,7 @@
     <dialog id="ticket-dialog" aria-labelledby="ticket-title">
       <h2 id="ticket-title">交通違反の取り締まり</h2>
       <p id="ticket-intro"></p>
-      <ul id="ticket-list"></ul>
+      <div id="ticket-form-container"></div>
       <p id="ticket-note" class="sub"></p>
       <button id="ticket-accept" type="button">切符を受け取る</button>
     </dialog>
