@@ -104,6 +104,9 @@ def material(
 # Paint and lamp materials are cloned per car at runtime (colour, lamp state).
 material("Paint", 0x1F5FBF, metallic=0.55, roughness=0.32, coat=1.0)
 material("Trim", 0x16181B, roughness=0.62)  # unpainted black plastic, wheel-well liners
+# The parked wipers look like Trim but have their own material: the cockpit (cockpit.glb) has
+# moving wipers of its own and hides these from the driver's seat, as it hides Interior and Seat.
+material("Wiper", 0x16181B, roughness=0.62)
 material("Blackout", 0x0B0C0E, roughness=0.12, coat=1.0)  # gloss-black B-pillar
 material("Glass", 0x10161C, roughness=0.04, alpha=0.42)
 material("GlassLow", 0x1C242C, metallic=0.4, roughness=0.12)  # opaque for the LOD
@@ -284,9 +287,9 @@ SHOULDER = [
     (2.12, -0.04),
     (2.05, 0.015),
     (1.92, 0.055),
-    (1.6, 0.10),
-    (1.2, 0.14),
-    (0.93, 0.162),
+    (1.6, 0.092),
+    (1.2, 0.122),
+    (0.93, 0.130),  # 2026-10-05: was 0.162, lowered with the cowl (see TOP)
     (0.5, 0.178),
     (0.0, 0.192),
     (-0.5, 0.206),
@@ -303,11 +306,14 @@ TOP = [
     (2.12, 0.0),
     (2.05, 0.055),
     (1.92, 0.10),
-    (1.6, 0.145),
-    (1.2, 0.175),
-    (0.93, 0.198),
-    (0.80, 0.27),
-    (0.65, 0.345),
+    (1.6, 0.132),
+    (1.2, 0.153),
+    # Windscreen base (cowl), 2026-10-05: was 0.198, 3.8 cm lower so the glass reaches 5° below the
+    # V2 eye point of UN R125 for the driver's seat (knowledge/cockpit-blender.md); the bonnet's rear
+    # and the screen's lower part follow it.
+    (0.93, 0.160),
+    (0.80, 0.250),
+    (0.65, 0.338),
     (0.50, 0.415),
     (0.35, 0.485),
     (0.20, 0.548),
@@ -904,7 +910,7 @@ for side in (1, -1):
         surf,
         [((side * (0.05 + 0.055 * i), 1.5, 0.90 - 0.004 * i), (0, -1, 0)) for i in range(11)],
         0.016,
-        "Trim",
+        "Wiper",
         car,
         offset=0.012,
     )
@@ -928,14 +934,18 @@ stroke(
 
 # Mirrors, handles, spoiler, antenna, exhaust.
 mbm = bmesh.new()
-MIRROR_Z = 0.78
+# On the door at the window's front corner, just above the belt. Until 2026-10-05 they were 12 cm
+# further forward and 3 cm higher (z 0.78, y 0.27), on the A-pillar's root, where the pillar hid
+# most of the left one (36%) from the driver's seat; here both are seen whole from DriverEye.
+MIRROR_Z = 0.66
+MIRROR_Y = 0.24
 mirror_x = {}
 for side in (1, -1):
-    h = surf.hit((side * 1.5, 0.23, MIRROR_Z), (-side, 0, 0))
+    h = surf.hit((side * 1.5, MIRROR_Y - 0.04, MIRROR_Z), (-side, 0, 0))
     root_x = abs(h[0].x) if h else 0.88
     mirror_x[side] = root_x
-    box(mbm, (side * (root_x + 0.12), 0.27, MIRROR_Z), (0.20, 0.11, 0.08), mat=0)
-    box(mbm, (side * (root_x + 0.01), 0.24, MIRROR_Z + 0.01), (0.07, 0.035, 0.055), mat=1)  # stalk
+    box(mbm, (side * (root_x + 0.12), MIRROR_Y, MIRROR_Z), (0.20, 0.11, 0.08), mat=0)
+    box(mbm, (side * (root_x + 0.01), MIRROR_Y - 0.03, MIRROR_Z + 0.01), (0.07, 0.035, 0.055), mat=1)  # stalk
 mirrors = new_object("Mirrors", mbm, ["Paint", "Trim"], car)
 sub = mirrors.modifiers.new("soften", "SUBSURF")
 sub.levels = 2
@@ -943,12 +953,12 @@ apply_modifiers(mirrors)
 for side in (1, -1):
     tag = "L" if side > 0 else "R"
     gbm = bmesh.new()
-    box(gbm, (side * (mirror_x[side] + 0.125), 0.27, MIRROR_Z - 0.043), (0.17, 0.085, 0.004))
+    box(gbm, (side * (mirror_x[side] + 0.125), MIRROR_Y, MIRROR_Z - 0.043), (0.17, 0.085, 0.004))
     new_object(f"MirrorGlass{tag}", gbm, ["Mirror"], car, smooth=False)
     decal(
         f"MirrorRepeater{tag}",
         Surface(mirrors),
-        (side * (mirror_x[side] + 0.16), 0.25, MIRROR_Z + 0.04),
+        (side * (mirror_x[side] + 0.16), MIRROR_Y - 0.02, MIRROR_Z + 0.04),
         side * 0.9,
         -0.3,
         0.07,

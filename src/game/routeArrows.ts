@@ -10,7 +10,6 @@ import {
   Vector3,
   type Scene,
 } from "three";
-import { laneOffset, leftOf } from "../world/roads";
 import { pointAt } from "./junctionView";
 import type { Route, Turn } from "./navigation";
 
@@ -181,8 +180,8 @@ export class RouteArrows {
     const next = route.maneuvers.find((mv) => mv.at > at + 9);
     if (next && next.at - at < TURN_SHOW) {
       const arrow = this.turnArrows.get(next.turn);
-      const before = pointAt(route, Math.max(0, next.at - 6));
-      const dir = pointAt(route, next.at).sub(before).setY(0);
+      // The way the street arrives (the path is already curving through the junction there).
+      const dir = next.dir.clone().setY(0);
       if (arrow && dir.lengthSq() > 1e-6) {
         dir.normalize();
         const p = next.pos.clone().addScaledVector(dir, 3);
@@ -209,18 +208,14 @@ export class RouteArrows {
     this.group.visible = false;
   }
 
-  /** Point in the car's lane (keep-left offset) and the route direction at distance `d`. */
+  /** Point on the driven path (already in the lane, round the corners) and its direction at `d`. */
   private laneAt(route: Route, d: number): { pos: Vector3; dir: Vector3 } | null {
-    const p = pointAt(route, d);
+    const pos = pointAt(route, d);
     const dir = pointAt(route, Math.min(route.length, d + 1))
-      .sub(p)
+      .sub(pos)
       .setY(0);
     if (dir.lengthSq() < 1e-8) return null;
     dir.normalize();
-    let i = 1;
-    while (i < route.cum.length - 1 && route.cum[i] < d) i++;
-    const seg = route.steps[route.stepOf[i]]?.seg;
-    const pos = p.add(leftOf(dir, seg ? laneOffset(seg) : 0));
     pos.y = this.groundAt(pos.x, pos.z) ?? pos.y;
     return { pos, dir };
   }

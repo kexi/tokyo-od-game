@@ -1,14 +1,16 @@
 ---
 type: Reference
 title: WebGPU への移行（WebGPURenderer・フレームの組み立て・残りの移植）
-description: three.js r186 の WebGPURenderer へ移した段階 A の記録。描画方式（WebGPU / WebGL 2）の設定、逆転 float 深度を選んだ理由、1 枚の HDR ターゲットに街・ブラー・ワイパー・雨のガラス・車内を重ねて最後に 1 回だけトーンマップするフレームの組み立て、TSL に移したブラーと雨のガラス、非同期になった通行人の写真、仮の node material で走らせているモジュールと後続（段階 B・C）が守るべき接点、three の WebGPU で踏んだ落とし穴。
+description: three.js r186 の WebGPURenderer へ移した段階 A の記録。描画方式（WebGPU / WebGL 2）の設定、逆転 float 深度を選んだ理由、1 枚の HDR ターゲットに街・ブラー・ワイパー・雨のガラス・車内を重ねて最後に 1 回だけトーンマップするフレームの組み立て、TSL に移したブラーと雨のガラス、非同期になった通行人の写真、仮の node material で走らせているモジュールと後続（段階 B・C）が守るべき接点（main の空・光・ブルームを取り込んだ後の一覧）、three の WebGPU で踏んだ落とし穴。
 tags: [rendering]
 status: draft
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T20:05:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T20:40:00Z }
 verified:
   - { by: process:vitest, at: 2026-10-04T20:01:00Z }
   - { by: process:tsc, at: 2026-10-04T20:01:00Z }
+  - { by: process:vitest, at: 2026-10-04T20:38:00Z }
+  - { by: process:tsc, at: 2026-10-04T20:38:00Z }
 sources:
   - id: three-renderer
     resource: node_modules/three/src/renderers/common/Renderer.js（three 0.186.1）
@@ -37,6 +39,10 @@ sources:
   - id: webgl-version
     resource: git show e9969cf（main から分けた時点の WebGL 版）
     title: 移行前の実装（GLSL のシェーダーと WebGLRenderer の組み立て）
+  - id: merge-checks
+    resource: main（0b230f6）を webgpu へ統合した後の tsc --noEmit・oxlint・vitest run（38 ファイル 391 件）・vite build（2026-10-05 05:40 JST）
+    title: 統合後の機械的な検査
+    author: claude-opus-5-5/1m
 ---
 
 # 段階 A でしたこと
@@ -138,20 +144,33 @@ present と同じタスクで `canvas.toBlob` / `drawImage`。WebGPU のキャ�
 
 # 残り（段階 B・C）と守る接点
 
-段階の分け方は提案（B = 空気・空・水・光の後処理、C = 路面と建物の表面）。
+main の 7 コミット（案内標識・車と運転席の寸法・空と光とブルーム・ミラーの飾り・交差点の曲がり方・東京駅）を取り込んだ後（2026-10-05）の一覧。段階の分け方は提案（B = 空・空気・水・光の後処理、C = 路面と建物の表面）。空・光・ブルームの WebGL 版の設計は [空・光・ブルーム](sky-light-and-bloom.md)。
 
-| モジュール                       | 今（WebGPU）                                                                                                                                  | 移すもの                                                                                      | 守る接点                                                                                                                                                                          |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| atmosphere.ts（B）               | three の線形 Fog だけ。チャンクの差し替えは WebGLRenderer（アバター・アセット画面）にしか効かない                                             | `scene.fogNode` として τ の積分・高さで薄まる霞・太陽まわりの散乱                             | `ATMOSPHERE.fogAtmo / fogSun / fogSunColor`（Environment.update が毎フレーム書く）、`extinctionFor`                                                                               |
-| environment.ts（B）              | `SkyMesh`（three の Sky の TSL 版、同じ Preetham と雲）、`PMREMGenerator` は `three/webgpu` の方                                              | main の空のエージェントが書いている skyShader / skyEnvMap / skyLight                          | `sun`・`nightFactor`・`sunElevation`・`wetness`、`toneMappingExposure` を環境が決める、空は renderOrder −1000（下の落とし穴）                                                     |
-| bloom（B）                       | 無し                                                                                                                                          | 街のパス（`composer.streetPasses` のブラーの前）                                              | 画質 `bloom`（high/low/off）、`StreetPass`                                                                                                                                        |
-| water.ts / waterMaterial.ts（B） | 仮の MeshBasicNodeMaterial: 空の 2 色のフレネル・本体色・太陽のきらめき・潮位での上下。平面反射は止めている（`IS_REFLECTION_PORTED = false`） | 波紋・平面反射（斜めの近平面は WebGL のクリップ空間 z −1…1 用。WebGPU は 0…1 で逆転深度）・霧 | `material.uniforms` の名前と値の型（uTime, uTide, uSun*, uSky*, uAmbient, uRough, uReflection*, uPlaneY）、`renderReflection()`、メッシュごとの `onBeforeRender` で uReflectionOn |
-| facade.ts（C）                   | 元の MeshStandardMaterial（窓・部屋・ガラス・接地・濡れ無し）                                                                                 | 外壁シェーダー全体                                                                            | `facade` 属性、`facadeUniforms`（uNight, uTime, uWet, uLitShare, uOrigin, uFacadeTex）、`Buildings.setNightFactor`・`setFacadeClock`、画質 `windows`                              |
-| terrain.ts（C）                  | 水面の下の地面の切り抜き無し                                                                                                                  | `groundWater` マスクでの discard                                                              | `setWater`・`groundWater` テクスチャ                                                                                                                                              |
-| roadSurface.ts（C）              | アスファルトだけ仮: 3 枚のマップをワールド XZ で引く colorNode / normalNode / roughnessNode（道路に uv 属性が無い）                           | 濡れた路面（streetShading）                                                                   | `aStreet` 属性、`streetShading(material, kind, hasStreet)`                                                                                                                        |
-| streetLights.ts（C）             | 濡れ・水たまり・灯りの溜まり・筋無し（灯具は光る）                                                                                            | 濡れ色・艶・水たまり・波紋・異方性 GGX の筋・光だまり                                         | `UNIFORMS`（StreetLights.update）、`env.wetness`、画質 `wetRoads`・`streetLights`                                                                                                 |
+## 統合で取ったもの・移したもの・残したもの
 
-- 古典マテリアルの `onBeforeCompile`・`defines`・`customProgramCacheKey` は node material では無視され、エラーにもならない。ShaderMaterial / RawShaderMaterial は使えない。
+- **そのまま動く（CPU だけ）**: skyLight.ts の光の釣り合い（太陽・天空光・霧の色・露出・環境の強さ）、天気の移り変わり（`overcast` を 25 s で）、`wetness`、おまかせの天気、霞の減衰の追従。Environment.update は main のまま。
+- **three/webgpu へ移した**: skyEnvMap.ts（空から作る環境マップ）。`PMREMGenerator`・`CubeRenderTarget` を three/webgpu の方に、空を SkyMesh にした。描き直しの間隔（`isEnvStale`、画質 空の映り込み 高 256 / 低 64 / なし = スタジオ）とターゲットの使い回し（`fromCubemap(…, target)` で `scene.environment` の同一性を保つ）は main のまま。
+- **段階 B へ回した（GLSL のまま、WebGPU では動かない）**: skyShader.ts の空への追加、bloom.ts のブルーム、atmosphere.ts の霧の色のトーンマップ（WebGPU では不要。下の表）。
+- **雨のガラス**: TSL 版のまま、main の新しいガラスの寸法（1.4719 × 0.837 m、傾き 26.9°、`SIN_RAKE`・`COS_RAKE`）・ガラスの原点（0.7359, 0.1618, 0.9465）・ワイパーの軸と停止角を使う。
+- **一時停止中の描画**: main は一時停止中も運転席を通して描くようになった（ミラーの飾りが揺れ止むまで）。合成でもブラーを止めて同じように描く。
+- 案内標識（guideSigns.ts）・ミラーの飾り（mirrorCharm.ts、MeshPhysicalMaterial の sheen）・交差点の曲がり方（drivePath.ts）・東京駅のモデルは WebGL 専用の API を使っていない。
+
+## モジュールごとの今と残り
+
+| モジュール                       | 今（WebGPU）                                                                                                                                  | 移すもの                                                                                                                                                      | 守る接点                                                                                                                                                                                                                                         |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| skyShader.ts（B）                | 使われていない。空は SkyMesh（three の Sky の TSL 版、同じ Preetham と雲）で、夜は Preetham の黒、雨の雲の層・星・光害・地平の霞は無い        | 追加分を TSL で SkyMesh の色に（または自前の空に）                                                                                                            | `SkyLook`（uSkyGain, uOzone, uGlow, uStars, uTwilight, uDeck, uGround, uHaze）。Environment.update が skyLight.ts の値を書き、`syncEnvSky` が環境マップの空へ写す。今は `Environment.look` と `SkyEnvMap.look` が null                           |
+| skyEnvMap.ts（B）                | three/webgpu で動く。空の下に地面と街並みが無い（skyShader の uGround）                                                                       | 地面と街並み（skyShader の移植で入る）                                                                                                                        | `SkyEnvMap(renderer, size)`・`update(state, nowMs, sync, step, gapMs)`・`texture`・`isEnvStale`（tests/sky.test.ts）                                                                                                                             |
+| environment.ts（B）              | main の版に SkyMesh、three/webgpu の PMREMGenerator、renderOrder −1000                                                                        | 空の追加の値を SkyMesh へ                                                                                                                                     | `sun`・`nightFactor`・`sunElevation`・`wetness`・`overcast`・`envMap`、`toneMappingExposure` を環境が決める、画質 `reflections`                                                                                                                  |
+| atmosphere.ts（B）               | three の線形 Fog だけ（色は skyLight の放射輝度）。チャンクの差し替えは WebGLRenderer（アバター・アセット画面）にしか効かない                 | `scene.fogNode` として τ の積分・高さで薄まる霞・太陽まわりの散乱                                                                                             | `ATMOSPHERE.fogAtmo / fogSun / fogSunColor`（Environment.update が毎フレーム書く）、`extinctionFor`。霧の色のトーンマップ（main が GLSL に足した）は WebGPU では要らない: node material は線形のまま霧を混ぜ、出力パスでまとめてトーンマップする |
+| bloom.ts（B）                    | 動かしていない（ブルームなし）                                                                                                                | 街のパス（`composer.streetPasses` のブラーの前、main.ts に印）。フレームが線形 HDR なので、表示値を擬似 HDR に戻す前処理は要らない。three の BloomNode も候補 | `bloomSettings(env.nightFactor, env.overcast)`（tests/sky.test.ts）、画質 `bloom`（high/low/off）、`StreetPass`                                                                                                                                  |
+| water.ts / waterMaterial.ts（B） | 仮の MeshBasicNodeMaterial: 空の 2 色のフレネル・本体色・太陽のきらめき・潮位での上下。平面反射は止めている（`IS_REFLECTION_PORTED = false`） | 波紋・平面反射（斜めの近平面は WebGL のクリップ空間 z −1…1 用。WebGPU は 0…1 で逆転深度）・霧                                                                 | `material.uniforms` の名前と値の型（uTime, uTide, uSun*, uSky*, uAmbient, uRough, uReflection*, uPlaneY）、`renderReflection()`、メッシュごとの `onBeforeRender` で uReflectionOn。uSkyHorizon は霧の色（放射輝度）を受ける                      |
+| facade.ts（C）                   | 元の MeshStandardMaterial（窓・部屋・ガラス・接地・濡れ無し）                                                                                 | 外壁シェーダー全体                                                                                                                                            | `facade` 属性、`facadeUniforms`（uNight, uTime, uWet, uLitShare, uOrigin, uFacadeTex）、`Buildings.setNightFactor`・`setFacadeClock`、画質 `windows`                                                                                             |
+| terrain.ts（C）                  | 水面の下の地面の切り抜き無し                                                                                                                  | `groundWater` マスクでの discard                                                                                                                              | `setWater`・`groundWater` テクスチャ                                                                                                                                                                                                             |
+| roadSurface.ts（C）              | アスファルトだけ仮: 3 枚のマップをワールド XZ で引く colorNode / normalNode / roughnessNode（道路に uv 属性が無い）                           | 濡れた路面（streetShading）                                                                                                                                   | `aStreet` 属性、`streetShading(material, kind, hasStreet)`                                                                                                                                                                                       |
+| streetLights.ts（C）             | 濡れ・水たまり・灯りの溜まり・筋無し（灯具は光る）                                                                                            | 濡れ色・艶・水たまり・波紋・異方性 GGX の筋・光だまり                                                                                                         | `UNIFORMS`（StreetLights.update）、`env.wetness`、画質 `wetRoads`・`streetLights`                                                                                                                                                                |
+
+- 古典マテリアルの `onBeforeCompile`・`defines`・`customProgramCacheKey` は node material では無視され、エラーにもならない。ShaderMaterial / RawShaderMaterial は使えない（bloom.ts は ShaderMaterial のまま残っているが、WebGPU では呼んでいない）。
 - 古典マテリアルに `colorNode` などを足すと効く: `NodeLibrary.fromMaterial` は古典マテリアルの列挙できるプロパティをすべて node material に写す。[^three-node-material] 段階 C は MeshStandardNodeMaterial に置き換える方が型も素直。
 
 # 読み込み（compileAsync）
@@ -179,7 +198,7 @@ present と同じタスクで `canvas.toBlob` / `drawImage`。WebGPU のキャ�
 
 # 検証
 
-- 機械的な検査: tsc・oxlint（新しい警告なし）・vitest 33 ファイル 311 件・vite build。[^phase-a-checks]
+- 機械的な検査: tsc・oxlint（新しい警告なし）・vitest 33 ファイル 311 件・vite build。[^phase-a-checks] main を取り込んだ後も同じ検査が通った（38 ファイル 391 件）。[^merge-checks]
 - 実機の Chrome での確認はまだ（ヘッドレスは使わない）。見る項目: 運転席の昼・夕方・夜・雨とワイパー、追従視点、Y の写真、再生、設定 › 画質 の切り替え、描画方式 WebGL 2、コンソールの WGSL / 検証エラー、F12 のスクリーンショット。
 
 [^three-renderer]: node_modules/three/src/renderers/common/Renderer.js（three 0.186.1）
@@ -193,3 +212,5 @@ present と同じタスクで `canvas.toBlob` / `drawImage`。WebGPU のキャ�
 [^three-node-material]: node_modules/three/src/materials/nodes/NodeMaterial.js と renderers/common/nodes/NodeLibrary.js
 
 [^phase-a-checks]: tsc --noEmit・oxlint・vitest run・vite build（webgpu ブランチ）
+
+[^merge-checks]: main（0b230f6）統合後の tsc --noEmit・oxlint・vitest run・vite build

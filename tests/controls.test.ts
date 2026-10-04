@@ -18,12 +18,13 @@ describe("簡単操作: the car works its own switches", () => {
     expect(DEFAULT_PREFS).toEqual({
       layout: "wasd",
       assist: "easy",
-      seatUp: 0.05,
+      seatUp: 0,
       seatBack: 0,
       volume: 0.8,
       minimap: true,
       nav: true,
       minimapNorthUp: false,
+      charm: "plush",
     });
     expect(new CarControls().assist).toBe("easy");
     // Without storage (here, or a private window) the defaults apply.
@@ -133,5 +134,40 @@ describe("key layouts", () => {
     const ccd = keyRows({ layout: "ccd", assist: "real" });
     expect(ccd[0][0]).toBe("↑ / ↓");
     expect(ccd.some(([, what]) => what.includes("簡単操作"))).toBe(false);
+  });
+});
+
+describe("座席の保存値", () => {
+  const withStorage = (stored: unknown, run: () => void) => {
+    const store = new Map([["tod.controls", JSON.stringify(stored)]]);
+    const storage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+    };
+    const had = "localStorage" in globalThis;
+    const previous = (globalThis as { localStorage?: unknown }).localStorage;
+    Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+    try {
+      run();
+    } finally {
+      if (had) Object.defineProperty(globalThis, "localStorage", { value: previous, configurable: true });
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  };
+
+  it("starts the seat over when it was saved for the old cockpit, keeping the other settings", () => {
+    withStorage({ layout: "ccd", seatUp: 0.05, seatBack: 0.02 }, () => {
+      const prefs = loadPrefs();
+      expect(prefs.seatUp).toBe(0);
+      expect(prefs.seatBack).toBe(0);
+      expect(prefs.layout).toBe("ccd");
+    });
+  });
+
+  it("keeps a seat saved for the current cockpit", () => {
+    withStorage({ seatUp: 0.03, seatBack: -0.02, seatModel: 2 }, () => {
+      expect(loadPrefs().seatUp).toBe(0.03);
+      expect(loadPrefs().seatBack).toBe(-0.02);
+    });
   });
 });

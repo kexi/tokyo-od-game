@@ -71,7 +71,7 @@ export function track(m: Motion, p: Vec3, dt: number, tau = 0.12, maxSpeed = 90)
 /**
  * The cabin of the player's car in its own frame (origin at chassis height, +Z forward): from
  * the floor to the roof (outer skin 0.60 m up) and from the windscreen's foot back to the
- * parcel shelf. DriverEye is at (−0.37, 0.32, −0.22) (knowledge/cockpit-blender.md).
+ * parcel shelf. DriverEye is at (−0.37, 0.351, −0.073) (knowledge/cockpit-blender.md).
  */
 export const CABIN = { halfWidth: 0.78, bottom: -0.45, top: 0.6, front: 0.95, rear: -1.35 };
 

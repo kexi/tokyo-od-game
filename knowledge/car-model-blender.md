@@ -1,14 +1,51 @@
 ---
 type: Reference
 title: Blender CLI でのモデリング（車・道路標識・歩行者）
-description: bpy スクリプトで車・道路標識・歩行者を手続き生成して glb にする手順と、Cycles・join・UV・フォント・角丸めで踏んだ落とし穴。テクスチャは agy に委譲した。
-tags: [rendering, licensing]
+description: bpy スクリプトで車・道路標識・歩行者を手続き生成して glb にする手順と、Cycles・join・UV・フォント・角丸めで踏んだ落とし穴。テクスチャは agy に委譲した。2026-10-05 に自車の寸法を実車の諸元と比べ、カウルとドアミラーを直した（旧値は残してある）。
+tags: [rendering, licensing, assets]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T11:40:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T19:50:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T08:55:00Z }
+  - { by: claude-opus-5-5/1m, at: 2026-10-04T19:30:00Z }
 sources:
+  - id: spec-corolla-sport
+    resource: https://toyota.jp/pages/contents/corollasport/001_p_001/pdf/corollasport_spec_202607.pdf
+    title: トヨタ カローラ スポーツ 主要諸元表（2026-07。最低地上高・室内寸法は社内測定値）
+    author: トヨタ自動車
+  - id: spec-corolla
+    resource: https://toyota.jp/pages/contents/corolla/002_p_001/pdf/corolla_spec_202605.pdf
+    title: トヨタ カローラ 主要諸元表（2026-05）
+    author: トヨタ自動車
+  - id: spec-jpntaxi
+    resource: https://toyota.jp/pages/contents/jpntaxi/001_b_001/pdf/jpntaxi_spec_202605.pdf
+    title: トヨタ JPN TAXI 主要諸元表（2026-05）
+    author: トヨタ自動車
+  - id: spec-crown
+    resource: https://toyota.jp/pages/contents/crown/013_p_001/pdf/crown_spec_202609.pdf
+    title: トヨタ クラウン（セダン）主要諸元表（2026-09）
+    author: トヨタ自動車
+  - id: spec-mazda3
+    resource: https://www.mazda.co.jp/content/dam/mazda/official/mazda-co-jp/cars/mazda3/common/pdf/mazda3_specification_202607.pdf
+    title: MAZDA3 主要諸元（2026-07。最低地上高・室内寸法は社内測定値）
+    author: マツダ
+  - id: spec-golf
+    resource: https://www.volkswagen.co.jp/ja/models/golf.html
+    title: フォルクスワーゲン ゴルフ（日本仕様の掲載値。トレッド・最低地上高・室内寸法は無い）
+    author: フォルクスワーゲン ジャパン
+  - id: us-corolla-hatch
+    resource: https://www.toyota.com/corollahatchback/features/dimensions/2026/1873
+    title: Toyota 2026 Corolla Hatchback dimensions（Head room 38.4/37.6 in）
+    author: Toyota Motor North America
+  - id: us-mazda3-hatch
+    resource: https://www.mazdausa.com/vehicles/mazda3-hatchback
+    title: Mazda3 Hatchback specifications（Headroom front/rear 38.0 / 37.2 in）
+    author: Mazda North American Operations
+  - id: size-check
+    resource: car.glb の Body を Blender に読み込み、材質ごとの範囲・断面・ガラス下端をレイで測った（2026-10-04 版と 2026-10-05 版）
+    title: 自車の寸法の実測
+    author: claude-opus-5-5/1m
   - id: blender
     resource: nixpkgs（flake.lock の c59305ba）の blender 5.2.2 を `nix develop .#blender` で取得（aarch64-darwin はバイナリキャッシュあり、593MB）
     title: Blender 5.2.2
@@ -72,6 +109,44 @@ sources:
 
 委譲した成果物は、ライセンスに関わる部分（フォント・外部素材・ネットワーク取得）を中心に必ず読んで確認する。報告の「確認済み」は、自分で一度実行するまで信じない。
 
+# 自車の寸法と実車の比較（2026-10-05）
+
+自車（car.py）は「コンパクトな 5 ドアハッチバック」だが、寸法は物理（src/physics/vehicle.ts: 半幅 0.92 m・半長 2.15 m、ホイールベース 2.70 m、車輪 x ±0.82）に合わせて決めていた。実車の主要諸元と比べた。[^size-check]
+
+| 項目（mm）               | 自車                              | カローラ スポーツ[^spec-corolla-sport] | MAZDA3 FB[^spec-mazda3] | ゴルフ（日本）[^spec-golf] | カローラ セダン[^spec-corolla] | JPN TAXI[^spec-jpntaxi] | クラウン セダン[^spec-crown] |
+| :----------------------- | :-------------------------------- | :------------------------------------- | :---------------------- | :------------------------- | :----------------------------- | :---------------------- | :--------------------------- |
+| 全長                     | 4,347（排気管の先まで 4,420）     | 4,375                                  | 4,460                   | 4,295                      | 4,495                          | 4,400                   | 5,030                        |
+| 全幅（ミラーを除く）     | 1,859                             | 1,790                                  | 1,795                   | 1,790                      | 1,745                          | 1,695                   | 1,890                        |
+| 全高                     | 1,463（アンテナまで 1,512）       | 1,460                                  | 1,440                   | 1,475                      | 1,435                          | 1,750                   | 1,475                        |
+| ホイールベース           | 2,700                             | 2,640                                  | 2,725                   | 2,620                      | 2,640                          | 2,750                   | 3,000                        |
+| トレッド 前/後           | 1,640 / 1,640                     | 1,530 / 1,530                          | 1,570 / 1,580           | —                          | 1,510〜1,530 / 1,520〜1,540    | 1,485 / 1,470           | 1,620 / 1,615                |
+| 最低地上高               | 185                               | 135                                    | 140                     | —                          | 130                            | 145                     | 130〜135                     |
+| タイヤ外径               | 712                               | —                                      | —                       | —                          | —                              | —                       | —                            |
+| 室内高（床〜天井の最高） | 1,138                             | 1,155                                  | 1,155                   | —                          | 1,160                          | 1,370                   | 1,135                        |
+| 室内幅                   | 1,764（肩の高さでドアトリムの間） | 1,510                                  | 1,554                   | —                          | 1,510                          | 1,395                   | 1,595                        |
+
+- 全長・全高・ホイールベースはこの級の実車の範囲に入る。
+- 全幅は約 7 cm、トレッドは 7〜11 cm 広い（クラウンより広い）。最低地上高は 4〜5 cm 高い。タイヤ外径 0.712 m は SUV 級の大きさで、そのぶん車体の下半分（ボンネット・ベルトライン・カウル）が持ち上がり、全高の割に窓が低い。物理と道路の車線幅に関わるので、幅と車輪は変えていない。
+- 室内幅は、内張りが外板の 4 cm 内側にしかないため 20 cm 以上広い（cockpit-blender.md の「car.glb 由来の制約」）。室内寸法の測り方は各社の社内測定で、定義を一次資料で確かめていない。
+- US 仕様の SAE 寸法では、カローラ ハッチバックの前席ヘッドルームは 38.4 in（975 mm）、MAZDA3 ハッチバックは 38.0 in（965 mm）。[^us-corolla-hatch] [^us-mazda3-hatch]自車は H ポイントから後ろへ 8° 傾けた線で天井まで + 102 mm として 976 mm で、同じ程度。
+
+## 前回りの修正（2026-10-05）
+
+運転席の検証（[cockpit-blender.md](cockpit-blender.md) の「運転姿勢と視点」）で、ガラスの下端（カウル）が席の高さに対して約 3 cm 高く、UN R125 の V2 から 5° 下の基準点がガラスに入らないと分かった。外形を次のように直した。
+
+| 値（car.py）                       | 旧（2026-10-04）      | 新                        | 理由                                                                                           |
+| :--------------------------------- | :-------------------- | :------------------------ | :--------------------------------------------------------------------------------------------- |
+| `TOP` z 0.93（ガラス下端・中心線） | 0.198                 | 0.160                     | 運転席の正面でガラス下端が y 0.200 → 0.170（地上 1.060 → 1.030 m）。R125 の 5° が 3.4° → 5.28° |
+| `TOP` z 0.80 / 0.65                | 0.27 / 0.345          | 0.25 / 0.338              | ガラスの下部を立てて上部の線につなぐ（平均の傾き 24.9° → 26.9°）                               |
+| `TOP` z 1.2 / 1.6                  | 0.175 / 0.145         | 0.153 / 0.132             | ボンネットの後半をカウルに合わせて下げる                                                       |
+| `SHOULDER` z 0.93 / 1.2 / 1.6      | 0.162 / 0.14 / 0.10   | 0.130 / 0.122 / 0.092     | ボンネットの膨らみ（TOP − SHOULDER）を 3 cm 前後に保つ。前ドアの窓の前端も 2 cm 下がる         |
+| `MIRROR_Z` / ミラーの高さ          | 0.78 / 0.27           | 0.66 / 0.24（`MIRROR_Y`） | A ピラーの根元から前ドアの窓の角へ。運転席から左右とも 100% 見える（旧 87% / 36%）             |
+| 駐車中のワイパーの材質             | `Trim`（Body に結合） | `Wiper`                   | 車内視点で隠すため（cockpit の WiperArm_* が代わりに動く）                                     |
+
+- ミラーを車体の太い位置へ移したので、ミラーを含む全幅は 2,025 → 2,137 mm になった（片側でボディから約 14 cm 出る）。
+- 出力: glb 413,712 バイト、自車 49,418 三角形、Body の材質 17（`Wiper` が増えた）。外から見た形は car-front34 / car-side のプレビューで確かめた。
+- **car.glb を作り直したら cockpit.glb も作り直し、src/game/rainGlass.ts のガラスの寸法・傾き・ワイパーのピボットを cockpit.py のログ（`hooks`）に合わせる。** 今回は GLASS_W 1.4706 → 1.4719、GLASS_H 0.8245 → 0.837、傾き 24.9° → 26.9° になった。
+
 [^blender]: Blender 5.2.2
 
 [^build-run]: 生成の実測
@@ -81,3 +156,21 @@ sources:
 [^agy-job]: テクスチャ制作の委譲
 
 [^noto]: Noto Sans JP
+
+[^size-check]: 自車の寸法の実測
+
+[^spec-corolla-sport]: トヨタ カローラ スポーツ 主要諸元表
+
+[^spec-corolla]: トヨタ カローラ 主要諸元表
+
+[^spec-jpntaxi]: トヨタ JPN TAXI 主要諸元表
+
+[^spec-crown]: トヨタ クラウン 主要諸元表
+
+[^spec-mazda3]: MAZDA3 主要諸元
+
+[^spec-golf]: フォルクスワーゲン ゴルフ
+
+[^us-corolla-hatch]: Toyota 2026 Corolla Hatchback dimensions
+
+[^us-mazda3-hatch]: Mazda3 Hatchback specifications

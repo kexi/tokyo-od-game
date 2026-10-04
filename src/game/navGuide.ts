@@ -5,7 +5,6 @@ import type { LaneUse, TurnRule } from "../world/regulations";
 import type { GameClock } from "../world/ruleTime";
 import type { RoadGraph, Segment } from "../world/roads";
 import {
-  laneHints,
   laneIndex,
   planRoute,
   progressOn,
@@ -156,8 +155,9 @@ export class NavGuide {
       return;
     }
     const dir: 1 | -1 = hit.dir.dot(forward) >= 0 ? 1 : -1;
-    this.route = planRoute(graph, { seg: hit.seg, s: hit.s, dir }, target, clock, turnRules, this.mode);
-    this.hints = this.route && this.mode === "car" ? laneHints(this.route, this.laneUse) : [];
+    const from = { seg: hit.seg, s: hit.s, dir };
+    this.route = planRoute(graph, from, target, clock, turnRules, this.mode, this.laneUse);
+    this.hints = this.route?.hints ?? [];
     this.version++;
   }
 

@@ -88,11 +88,12 @@ import type { FrameComposer } from "../render/frame";
 const DEG = Math.PI / 180;
 
 /** Glass size in metres (u × v of the Windshield UV). */
-export const GLASS_W = 1.4706;
-export const GLASS_H = 0.8245;
-// The v axis rises 0.4204 per unit: the glass lies 24.9° from horizontal.
-const SIN_RAKE = 0.4204;
-const COS_RAKE = 0.9073;
+export const GLASS_W = 1.4719;
+export const GLASS_H = 0.837;
+// The v axis rises 0.4525 per unit: the glass lies 26.9° from horizontal (24.9° until the cowl was
+// lowered on 2026-10-05; the lower part of the screen is now steeper).
+const SIN_RAKE = 0.4525;
+const COS_RAKE = 0.8917;
 const G = 9.81;
 const RHO = 1000; // water, kg/m³
 const RHO_AIR = 1.2;
@@ -166,16 +167,16 @@ const COVER_LUT = Uint8Array.from({ length: 257 }, (_, k) => 255 * (1 - Math.exp
 export const WIPER_BLADES = [
   {
     name: "WiperArm_R",
-    pivot: [0.9522 * GLASS_W, -0.0338 * GLASS_H],
-    park: 3.6 * DEG,
+    pivot: [0.9518 * GLASS_W, -0.0336 * GLASS_H],
+    park: 3.53 * DEG,
     sweep: 82 * DEG,
     rIn: 0.145,
     rOut: 0.795,
   },
   {
     name: "WiperArm_L",
-    pivot: [0.5068 * GLASS_W, -0.0273 * GLASS_H],
-    park: 3.94 * DEG,
+    pivot: [0.5068 * GLASS_W, -0.0287 * GLASS_H],
+    park: 4.06 * DEG,
     sweep: 84 * DEG,
     rIn: 0.19,
     rOut: 0.59,
@@ -997,10 +998,10 @@ export class RainGlass {
     // Glass frame in the car (knowledge/cockpit-blender.md): UV (0, 0) corner, u and v axes, and
     // the outward normal.
     const m = car.matrixWorld;
-    u.origin.value.set(0.7353, 0.188, 0.9454).applyMatrix4(m);
+    u.origin.value.set(0.7359, 0.1618, 0.9465).applyMatrix4(m);
     u.axisU.value.set(-1, 0, 0).transformDirection(m);
-    u.axisV.value.set(0, 0.4204, -0.9073).transformDirection(m);
-    u.normal.value.set(0, 0.9073, 0.4204).transformDirection(m);
+    u.axisV.value.set(0, SIN_RAKE, -COS_RAKE).transformDirection(m);
+    u.normal.value.set(0, COS_RAKE, SIN_RAKE).transformDirection(m);
     for (const p of this.panes) p.proxy.matrixWorld.copy(p.source.matrixWorld);
     const layers = nearCamera.layers.mask;
     nearCamera.layers.enableAll();

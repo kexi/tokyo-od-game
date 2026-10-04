@@ -4,7 +4,10 @@ import type { LaneUse, TurnRule } from "../world/regulations";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
 import type { GameClock } from "../world/ruleTime";
 import type { TrafficControl } from "../world/trafficControl";
-import { laneHints, planRoute, progressOn, type LaneHint, type Route } from "./navigation";
+import { laneCentre } from "./drivePath";
+import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
+
+export { laneCentre } from "./drivePath";
 
 /**
  * Self-driving that keeps every rule (the robotaxi and the player's 自動運転モード): it drives the
@@ -12,7 +15,8 @@ import { laneHints, planRoute, progressOn, type LaneHint, type Route } from "./n
  * at or under the limit, slows for turns, stops at the stop line for red and for yellow when it
  * can (施行令 第2条), stops fully at 一時停止 (第43条), and waits for cars and people ahead.
  * Like a driver it only works the wheel and the pedals (DriveInput) of a car that the physics
- * moves: steering by pure pursuit of a point ahead in its lane, speed by feed-forward plus a
+ * moves: steering by pure pursuit of a point ahead on the route's driven path (in the lane and
+ * round each corner as 第34条 has it, the curve the navigation shows), speed by feed-forward plus a
  * proportional term.
  */
 export type DriveWorld = {
@@ -46,22 +50,8 @@ const HOLD: DriveInput = { throttle: 0, brake: 1, steer: 0, handbrake: false, br
 export type CarPose = { position: Vector3; yaw: number; speed: number };
 
 const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
-const LANE_PREPARE = 120; // m before a turn to be in the lane for it (第34条: あらかじめその前から)
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
-
-/**
- * Centre of lane `i` (0 = leftmost) left of the centreline, for traffic on this street. Lanes
- * split the carriageway half (two-way) or the whole carriageway (one-way); kept at least 1.6 m
- * inside the edge, since GSI 幅員 can include the pavement.
- */
-export function laneCentre(seg: Segment, i: number, count = seg.lanes): number {
-  const lanes = Math.max(1, count);
-  const half = seg.line.width / 2;
-  const span = seg.oneway === 0 ? half : seg.line.width;
-  const width = span / lanes;
-  const offset = half - (Math.min(i, lanes - 1) + 0.5) * width;
-  return seg.oneway === 0 ? Math.max(0.8, Math.min(offset, half - 1.6)) : Math.min(offset, half - 1.6);
-}
+const LATERAL_ACCEL = 2.5; // m/s² round the bends of a street
 
 const KERB_CLEARANCE = 1.4; // car centre from the kerb: half the width plus a margin
 
@@ -91,9 +81,9 @@ export function keepLeftOffset(
   dir: Vector3,
   isPavement?: (x: number, z: number) => boolean,
   lanes = seg.lanes,
-): number {
   // Without 車両通行帯 the rule is 左側寄り (第18条第1項), one-way or not.
-  const wanted = lanes > 1 ? laneCentre(seg, lane, lanes) : laneOffset(seg);
+  wanted = lanes > 1 ? laneCentre(seg, lane, lanes) : laneOffset(seg),
+): number {
   const kerb = kerbLeft(p, dir, seg.line.width / 2 + 1, isPavement);
   const isTwoWay = seg.oneway === 0;
   // Two-way: stay left of the centreline even on a narrow carriageway.
@@ -113,7 +103,6 @@ export class AutoDriver {
   /** Current lane (0 = leftmost) and lateral offset from the centreline (left = +). */
   lane = 0;
   private lateral: number | null = null;
-  private hints: LaneHint[] = [];
   private creep = false;
   private at = 0;
   private hint = 0;
@@ -146,14 +135,13 @@ export class AutoDriver {
       if (!hit) return false;
       start = { seg: hit.seg, s: hit.s, dir: hit.dir.dot(this.heading()) >= 0 ? 1 : -1 };
     }
-    const route = planRoute(world.graph, start, target, world.clock, world.turnRules);
+    const route = planRoute(world.graph, start, target, world.clock, world.turnRules, "car", world.laneUse);
     if (!route) return false;
     this.route = route;
     this.at = 0;
     this.hint = 0;
     this.served = -1;
     this.lateral = null;
-    this.hints = laneHints(route, world.laneUse ?? []);
     return true;
   }
 
@@ -222,8 +210,19 @@ export class AutoDriver {
     const k = this.stepIndex(route);
     const seg = route.steps[k].seg;
     let v = Math.max(5, speedLimit(seg) / 3.6 - 1.5);
+    // At turn speed (徐行, 第34条) where each turn's curve starts, and through it; along a bend of
+    // the street no faster than its radius allows.
+    for (const c of route.corners) {
+      if (c.to <= this.at) continue;
+      if (c.from - this.at > 150) break;
+      const isTurn = c.kind === "left" || c.kind === "right" || c.kind === "uturn";
+      const vCorner = isTurn ? TURN_SPEED : Math.max(TURN_SPEED, Math.sqrt(LATERAL_ACCEL * c.radius));
+      v = Math.min(v, Math.sqrt(vCorner * vCorner + 2 * 2.5 * Math.max(0, c.from - this.at)));
+    }
+    // Turns without a curve of their own (a corner too cramped to round).
     const next = route.maneuvers.find((m) => m.at > this.at - 2);
-    if (next) {
+    const isRounded = next !== undefined && route.corners.some((c) => c.from <= next.at && next.at <= c.to);
+    if (next && !isRounded) {
       const d = Math.max(0, next.at - this.at - 6);
       const vTurn = next.turn === "slightLeft" || next.turn === "slightRight" ? 7 : TURN_SPEED;
       v = Math.min(v, Math.sqrt(vTurn * vTurn + 2 * 2.5 * d));
@@ -273,62 +272,49 @@ export class AutoDriver {
   }
 
   /**
-   * Which lane to be in, and of how many: on a 進行方向別通行区分 approach one that goes the
-   * route's way (第35条第1項; the rightmost of them to turn right, else the leftmost); otherwise
-   * the leftmost (第20条第1項), or the rightmost before a right turn (第34条); never across a
-   * yellow line.
-   */
-  private wantedLane(route: Route, seg: Segment): { lane: number; count: number } {
-    const count = Math.max(1, seg.lanes);
-    if (seg.noLaneChange) return { lane: Math.min(this.lane, count - 1), count };
-    const hint = this.hints.find((h) => h.seg === seg && h.at > this.at && h.at - this.at < LANE_PREPARE);
-    if (hint) {
-      const ok = hint.ok.flatMap((v, i) => (v ? [i] : []));
-      const isRight = hint.take === "right" || hint.take === "slightRight" || hint.take === "uturn";
-      return { lane: isRight ? ok[ok.length - 1] : ok[0], count: hint.lanes.length };
-    }
-    const next = route.maneuvers.find((m) => m.at > this.at);
-    if (next && next.at - this.at < LANE_PREPARE) {
-      if (next.turn === "right" || next.turn === "slightRight" || next.turn === "uturn") {
-        return { lane: count - 1, count };
-      }
-    }
-    return { lane: 0, count };
-  }
-
-  /**
-   * The wheel: lane choice (eased across over a few seconds), 合図, then pure pursuit — steer
-   * along the arc through a point a speed-dependent distance ahead in the lane.
+   * The wheel: the lane the route plans (eased across over a few seconds; one off PLATEAU paving,
+   * clear of the kerb, never across a yellow line), 合図, then pure pursuit — steer along the arc
+   * through a point a speed-dependent distance ahead on the path, shifted by how far the car's lane
+   * differs from the planned one. Through a corner it follows the curve itself.
    */
   private steerFor(route: Route, dt: number, world: DriveWorld): number {
     const k = this.stepIndex(route);
     const seg = route.steps[k].seg;
-    const centre = this.centreAt(route, this.at);
-    const dir = this.centreAt(route, Math.min(route.length, this.at + 4))
-      .sub(centre)
-      .setY(0);
+    const plan = laneAt(route, this.at, this.hint);
+    // The street's own centreline, for the paving and kerb checks (the path is in the lane).
+    const { pos: centre, dir } = axisAt(route, this.at);
     if (dir.lengthSq() < 1e-6) dir.copy(this.heading());
-    dir.normalize();
-    // Lane choice, skipping lanes that would run on PLATEAU paving.
-    const wanted = this.wantedLane(route, seg);
-    let lane = wanted.lane;
-    const lanes = wanted.count;
+    const lanes = plan.count;
+    let lane = seg.noLaneChange ? Math.min(this.lane, lanes - 1) : plan.lane;
     const onPavement = (i: number) => {
       const p = centre.clone().add(leftOf(dir, laneCentre(seg, i, lanes)));
       return world.isPavement?.(p.x, p.z) ?? false;
     };
     while (lane < lanes - 1 && onPavement(lane)) lane++;
     this.lane = lane;
-    const target = keepLeftOffset(seg, lane, centre, dir, world.isPavement, lanes);
+    const wanted = lane === plan.lane ? plan.offset : laneCentre(seg, lane, lanes);
+    const target = plan.corner
+      ? plan.offset
+      : keepLeftOffset(seg, lane, centre, dir, world.isPavement, lanes, wanted);
     this.lateral ??= target;
-    const rate = Math.max(0.8, Math.abs(this.speed) * 0.09) * dt;
-    const gap = target - this.lateral;
-    this.lateral += Math.max(-rate, Math.min(rate, gap));
-    // 合図: while moving across lanes, and from 30 m before a turn.
+    // Fast enough to keep up with the plan's own easing (1 m per 10 m travelled); on a curve the
+    // planned offset is only interpolated between two streets, so the car simply follows the curve.
+    const rate = Math.max(0.8, Math.abs(this.speed) * 0.12) * dt;
+    const gap = plan.corner ? 0 : target - this.lateral;
+    this.lateral = plan.corner ? target : this.lateral + Math.max(-rate, Math.min(rate, gap));
+    // 合図: through a turn's curve, while moving across lanes, and from 30 m before a turn.
     const next = route.maneuvers.find((m) => m.at > this.at);
     const isTurning = next && next.at - this.at < SIGNAL_BEFORE && next.turn !== "straight";
+    const corner = route.corners.find((c) => c.from <= this.at && this.at < c.to);
+    const cornerSide =
+      corner?.kind === "left"
+        ? "left"
+        : corner?.kind === "right" || corner?.kind === "uturn"
+          ? "right"
+          : null;
     this.signal =
-      Math.abs(gap) > 0.3
+      cornerSide ??
+      (Math.abs(gap) > 0.3
         ? gap > 0
           ? "left"
           : "right"
@@ -336,16 +322,16 @@ export class AutoDriver {
           ? next.turn === "left" || next.turn === "slightLeft"
             ? "left"
             : "right"
-          : null;
+          : null);
     // Pure pursuit: curvature 2·y / d² to the look-ahead point (y = its offset to the left).
     const lookahead = Math.min(18, Math.max(5, 4.5 + 0.55 * Math.abs(this.speed)));
     const along = Math.min(route.length, this.at + lookahead);
-    const aim = this.centreAt(route, along);
-    const aimDir = this.centreAt(route, Math.min(route.length, along + 2))
+    const aim = this.pathAt(route, along);
+    const aimDir = this.pathAt(route, Math.min(route.length, along + 2))
       .sub(aim)
       .setY(0);
     if (aimDir.lengthSq() < 1e-6) aimDir.copy(dir);
-    aim.add(leftOf(aimDir.normalize(), this.lateral));
+    aim.add(leftOf(aimDir.normalize(), this.lateral - plan.offset));
     const f = this.heading();
     const dx = aim.x - this.position.x;
     const dz = aim.z - this.position.z;
@@ -355,8 +341,8 @@ export class AutoDriver {
     return Math.max(-1, Math.min(1, angle / steerLimit(this.speed)));
   }
 
-  /** Route centreline point at distance `d`. */
-  private centreAt(route: Route, d: number): Vector3 {
+  /** Point on the route's driven path at route distance `d`. */
+  private pathAt(route: Route, d: number): Vector3 {
     let i = 1;
     while (i < route.cum.length - 1 && route.cum[i] < d) i++;
     const a = route.points[i - 1];

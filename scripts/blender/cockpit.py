@@ -21,7 +21,10 @@
 #                                        onto them unflipped.
 #   Windshield                           inner glass with planar 0–1 UVs (u → driver's right,
 #                                        v → up the glass) for the rain shader.
-#   DriverEye                            empty whose −Z looks forward (a three.js camera child).
+#   DriverEye                            empty whose −Z looks forward (a three.js camera child): the
+#                                        50th-percentile Japanese man's eye; extras carry the
+#                                        package (H-point, BOF, R point, V1/V2).
+#   ClockAnchor                          empty under Cluster where the dash clock goes.
 # Textures come from assets/cockpit/textures (scripts/textures/cockpit_textures.py).
 import json
 import math
@@ -43,16 +46,62 @@ CAR_GLB = os.path.abspath(ARGS[2]) if len(ARGS) > 2 else os.path.join(ROOT, "pub
 
 GROUND_Y = -0.86
 DRIVER_X = -0.37  # right-hand drive: the driver sits on −X
-# Seated driver: H-point 0.54 m above the ground, eye 0.64 m above and 0.17 m behind it, which
-# puts the eye at 1.18 m (道路構造令 uses 1.2 m as the driver's eye height for sight distance).
-H_POINT = Vector((DRIVER_X, -0.32, -0.05))
-EYE = H_POINT + Vector((0.0, 0.64, -0.17))
-WHEEL_CENTER = Vector((DRIVER_X, 0.06, 0.34))
+# ---------------------------------------------------------------------------- driver package
+# Laid out from the feet up, as SAE J1100 packages are (knowledge/cockpit-blender.md has the
+# sources and the checks). Until 2026-10-05 the eye was put 0.64 m above and 0.17 m behind a seat
+# set 0.75 m from the pedal with the wheel only 0.36 m from it: a 150 cm woman's seat with a 171 cm
+# man's eye behind it, whose thighs met the rim.
+FLOOR_Y = -0.575  # accelerator heel point (AHP): the carpet under the heel
+H30 = 0.255  # seat height: H-point above the AHP
+# Ball of foot on the undepressed accelerator (BOF): 0.105 m above the floor, in line with the
+# driver's right hip.
+BOF = Vector((DRIVER_X - 0.08, FLOOR_Y + 0.105, 0.84))
+WHEEL_CENTER = Vector((DRIVER_X, 0.065, 0.30))  # 0.54 m behind the BOF (UMTRI's cars: 0.45–0.65)
+SEAT_CUSHION_DEG = 12.0
+# The design driver: AIST 1991-92 young men, 50th percentile (stature, sitting height and sitting
+# eye height, m).
+DESIGN_MAN = (1.713, 0.926, 0.800)
+
+
+def leg_stature(stature, sitting_height):
+    """Stature of a USAF-proportioned driver (sitting height 52.0% of stature, from the USAF column
+    of the same AIST tables) with these legs: SAM was fitted to US drivers, seat position follows
+    the legs, and young Japanese men sit 54.0% of their stature."""
+    return (stature - sitting_height) / (1 - 0.520)
+
+
+def sam_seat(stature, w=None):
+    """H-point, m aft of the BOF, that drivers of this (leg) stature choose: SAE Seating
+    Accommodation Model, Flannagan et al. 1998, Eq. 8, automatic transmission."""
+    w = BOF.z - WHEEL_CENTER.z if w is None else w
+    mm = 16.83 + 0.433 * stature * 1000 - 0.24 * H30 * 1000 - 2.19 * SEAT_CUSHION_DEG + 0.41 * w * 1000
+    return mm / 1000
+
+
+# The seat is where the 50th-percentile man puts it (SAM, in leg stature). His eye is the mean US eye of Manary et al.
+# (1998, Table 4: 641 mm above the seat height, ~50 mm behind SAM's mean H-point) scaled by his
+# sitting eye height against the US 50/50 mix: (800 − 90) / (768 − 90) mm.
+H_POINT = Vector((DRIVER_X, FLOOR_Y + H30, BOF.z - sam_seat(leg_stature(*DESIGN_MAN[:2]))))
+EYE_SCALE = (DESIGN_MAN[2] - 0.09) / (0.768 - 0.09)
+EYE = H_POINT + Vector((0.0, 0.641 * EYE_SCALE, -0.050 * EYE_SCALE))
+# UN R125 R point: SAM's 95th-percentile seat for a 50/50 Japanese population, which is the men's
+# 90th percentile (Eq. 12): AIST men 1,714 ± 62.6 mm with a 926 mm sitting height, in leg stature.
+_men = leg_stature(1.714, 0.926)
+_sd = 0.0626 * _men / 1.714
+R_POINT = Vector(
+    (DRIVER_X, H_POINT.y, BOF.z - sam_seat(_men) - 1.2816 * math.sqrt(0.187 * (_sd * 1000) ** 2 + 885) / 1000)
+)
+# V1/V2 are 68 mm behind it and 665 / 589 mm above (Table I).
+V1 = R_POINT + Vector((0.005, 0.665, -0.068))
+V2 = R_POINT + Vector((0.005, 0.589, -0.068))
 COLUMN_DEG = 24.0  # column axis above horizontal = wheel plane leaning 24° from vertical
 WHEEL_R = 0.185  # 370 mm wheel
 RIM_R = 0.0165
 STEER_RATIO = 15.0
-CLUSTER_CENTER = Vector((DRIVER_X, 0.112, 0.62))
+# The meters are read through the wheel's upper opening: from EYE the rim's inner top edge passes
+# just above the cluster's top edge (2026-10-05: was y 0.112, for an eye 3 cm lower and 15 cm back).
+CLUSTER_CENTER = Vector((DRIVER_X, 0.075, 0.62))
+HOOD_TOP = 0.19  # cluster visor top at its rear lip (was 0.217): well under R125's 4° plane from V2
 SHELL_INSET = 0.04  # trim surfaces sit this far inside the body skin
 SPEED_MAX, TACHO_MAX = 180.0, 8000.0
 DIAL_START, DIAL_SWEEP = -120.0, 240.0  # clock angle of zero, total sweep (cockpit_textures.py)
@@ -535,7 +584,10 @@ def tri_count(ob):
 
 ROOT_NODE = empty("Cockpit")
 ROOT_NODE["frame"] = "car.glb chassis: +Y up, +Z forward, +X = car's left, metres"
-ROOT_NODE["hide_in_car_glb"] = "Body primitives with materials Interior and Seat (crude cabin)"
+ROOT_NODE["hide_in_car_glb"] = (
+    "Body primitives with materials Interior and Seat (crude cabin) and Wiper (the parked wipers; "
+    "WiperArm_* replace them)"
+)
 
 
 # ---------------------------------------------------------------------------- windshield
@@ -725,7 +777,7 @@ def dash_profile(x, driver_zone):
         (0.66, t - 0.005),
     ]
     if driver_zone:  # opening for the cluster under the hood
-        pts += [(0.645, t - 0.007), (0.645, 0.15), (0.645, 0.09), (0.645, 0.052), (0.55, 0.05)]
+        pts += [(0.645, t - 0.007), (0.645, 0.10), (0.645, 0.05), (0.645, 0.0), (0.55, -0.002)]
     else:
         pts += [(0.565, t - 0.012), (0.53, t - 0.02), (0.505, t - 0.04), (0.495, t - 0.075), (0.495, 0.05)]
     pts += [
@@ -827,7 +879,7 @@ def build_hood():
             x = HOOD_X[1] + (HOOD_X[0] - HOOD_X[1]) * t
             base = dash_top(x, z) - 0.008
             s = math.sin(math.pi * t) ** 0.5  # flat top, rounded shoulders
-            top = 0.217 - 0.004 * (z - 0.505) / 0.235
+            top = HOOD_TOP - 0.004 * (z - 0.505) / 0.235
             y = base + (top - base) * s - lip
             o.append(Vector((x, y, z)))
             i.append(Vector((x, y - 0.012 * s - 0.0005, z)))
@@ -856,7 +908,8 @@ for vx in (0.715, -0.715):
     if zf is not None:
         vent(facing(zf + nf * 0.002, nf), 0.105, 0.055, 4)
 for vx in (0.055, -0.095):
-    zf, nf = dash_hit(vx, 0.095, 0.3)
+    # Below the centre display, which stands in front of the dash face here (was y 0.095).
+    zf, nf = dash_hit(vx, 0.075, 0.3)
     if zf is not None:
         vent(facing(zf + nf * 0.002, nf), 0.085, 0.045, 3)
 # Satin accent strip across the passenger side of the upper dash face.
@@ -874,13 +927,24 @@ for gx in (-0.42, 0.0, 0.42):
     y = dash_top(gx, z)
     dash.box(Matrix.Translation((gx, y + 0.0005, z)), (0.30, 0.004, 0.025), "Vent", bevel=0.0015)
 
-# Centre display on the dash top (Display_Center is a separate node with 0–1 UVs).
-DISPLAY_C = Vector((-0.02, 0.238, 0.585))
+# Centre display on the dash top (Display_Center is a separate node with 0–1 UVs). Its top edge
+# stays 6 mm under the plane through V2 declined 1° (R125 5.1.3.4 tolerates what lies between the
+# 1° and 4° planes if it covers ≤ 20% of area S; display_visibility logs the share). Until
+# 2026-10-05 its top was at y 0.30, above V2 itself, and stood in the view ahead-left. It stands
+# on the dash's rear edge (z 0.495, where the upper dash face ends): lowered at z 0.585 it sank
+# behind the dash top and the lowest ~15% of the screen was hidden from DriverEye.
+DISPLAY_C = Vector((-0.02, 0.18, 0.495))
+for _ in range(3):
+    _n = (EYE + Vector((0.18, 0.0, 0.0)) - DISPLAY_C).normalized()
+    _up = (Vector((0, 1, 0)) - _n * _n.y).normalized()
+    _top = DISPLAY_C + _up * 0.07
+    DISPLAY_C.y += V2.y - math.tan(math.radians(1.0)) * (_top.z - V2.z) - 0.006 - _top.y
 DISPLAY_N = (EYE + Vector((0.18, 0.0, 0.0)) - DISPLAY_C).normalized()
 DISPLAY_M = facing(DISPLAY_C, DISPLAY_N)
 dash.box(DISPLAY_M, (0.228, 0.14, 0.022), "Gloss", bevel=0.006, center=(0, 0, -0.012))
+_stand_z = DISPLAY_C.z + 0.06  # the foot behind the screen, on the dash top
 dash.box(
-    Matrix.Translation((DISPLAY_C.x, dash_top(DISPLAY_C.x, 0.62) + 0.012, 0.625)),
+    Matrix.Translation((DISPLAY_C.x, dash_top(DISPLAY_C.x, _stand_z) + 0.012, _stand_z)),
     (0.09, 0.03, 0.07),
     "Gloss",
     bevel=0.01,
@@ -929,10 +993,33 @@ COLUMN_M = rot_x(COLUMN_DEG, WHEEL_CENTER)  # +Z forward along the column, +Y wh
 dash.box(COLUMN_M, (0.13, 0.11, 0.26), "DashTrim", bevel=0.025, segs=3, center=(0, -0.012, 0.21))
 dash.cyl(COLUMN_M, 0.032, 0.055, 0.09, 20, "SeatTrim")
 
-# Pedals (driver's footwell): brake left of the accelerator (the driver's right is −X).
-dash.box(rot_x(-58, (DRIVER_X + 0.07, -0.40, 0.63)), (0.075, 0.065, 0.012), "Satin", bevel=0.004)
-dash.box(rot_x(-20, (DRIVER_X + 0.07, -0.30, 0.68)), (0.02, 0.22, 0.015), "SeatTrim")
-dash.box(rot_x(-48, (DRIVER_X - 0.08, -0.47, 0.70)), (0.055, 0.17, 0.012), "Gloss", bevel=0.004)
+# Pedals (driver's footwell): brake left of the accelerator (the driver's right is −X). The
+# accelerator is an organ pedal hinged on the floor, its pad along the sole of a foot with the heel
+# on the floor and the ball on BOF (34° for the 50th-percentile man); the brake hangs from the
+# dash, 5.5 cm higher and 4 cm nearer. Until 2026-10-05 both pads leaned the wrong way (top toward
+# the driver, so a sole met them edge-on) and sat 14 cm further back.
+FOOT_DEG = 34.0
+_u = Vector((0.0, math.sin(math.radians(FOOT_DEG)), math.cos(math.radians(FOOT_DEG))))  # heel → toe
+_n = Vector((0.0, _u.z, -_u.y))  # pad face normal, toward the sole
+acc_c = BOF - _u * 0.03 - _n * 0.006
+dash.box(rot_x(90.0 - FOOT_DEG, acc_c), (0.055, 0.17, 0.012), "Gloss", bevel=0.004)
+_hinge = acc_c - _u * 0.085
+dash.box(
+    Matrix.Translation((_hinge.x, (_hinge.y + FLOOR_Y) / 2, _hinge.z)),
+    (0.045, _hinge.y - FLOOR_Y + 0.01, 0.03),
+    "SeatTrim",
+    bevel=0.004,
+)
+brake_c = Vector((DRIVER_X + 0.07, BOF.y + 0.055, BOF.z - 0.04))
+dash.box(rot_x(40.0, brake_c), (0.075, 0.065, 0.012), "Satin", bevel=0.004)
+_arm0 = brake_c + Vector((0.0, math.cos(math.radians(40.0)), math.sin(math.radians(40.0)))) * 0.03
+_arm1 = Vector((brake_c.x, -0.22, 0.95))  # pivot inside the dash
+_d = _arm1 - _arm0
+dash.box(
+    rot_x(math.degrees(math.atan2(_d.z, _d.y)), (_arm0 + _arm1) / 2),
+    (0.02, _d.length, 0.015),
+    "SeatTrim",
+)
 
 dashboard = dash.finish("Dashboard", ROOT_NODE)
 dashboard["note"] = "static; contains the column shroud, pedals, HVAC panel and vents"
@@ -1419,14 +1506,13 @@ for side in (1, -1):
 # ---------------------------------------------------------------------------- floor, seats, console
 
 floor = Part()
-FLOOR_Y = -0.575
 
 
 def floor_x(y, z):
     return min(0.9, outer_x(y, z, 1) - 0.01, outer_x(y, z, -1) - 0.01)
 
 
-fz = [0.66, 0.40, 0.10, -0.25, -0.62]
+fz = [0.80, 0.40, 0.10, -0.25, -0.62]
 rows = []
 for z in fz:
     xw = floor_x(FLOOR_Y + 0.01, z)
@@ -1434,12 +1520,12 @@ for z in fz:
 floor.grid(rows, "Carpet", flip=False)
 # Toe board up to the firewall under the dash.
 toe = []
-for y, z in ((FLOOR_Y, 0.66), (-0.42, 0.79), (-0.30, 0.88)):
+for y, z in ((FLOOR_Y, 0.80), (-0.42, 0.93), (-0.30, 1.02)):  # 14 cm forward with the pedals
     xw = floor_x(y, z)
     toe.append([Vector((xw, y, z)), Vector((-xw, y, z))])
 floor.grid(toe, "Carpet", flip=True)
 floor.box(
-    Matrix.Identity(4), (0.26, 0.17, 1.40), "Carpet", bevel=0.05, segs=3, center=(0, FLOOR_Y + 0.07, 0.0)
+    Matrix.Identity(4), (0.26, 0.17, 1.50), "Carpet", bevel=0.05, segs=3, center=(0, FLOOR_Y + 0.07, 0.05)
 )  # tunnel
 # Rear footwell and kick-up under the bench.
 kick = []
@@ -1562,6 +1648,23 @@ roof_ob = SHELL_PARTS["Headliner"].finish("RoofLining", ROOT_NODE)
 eye = empty("DriverEye", ROOT_NODE, Matrix.Translation(EYE) @ Matrix.Rotation(math.pi, 4, "Y"))
 eye["usage"] = "camera child looks forward (empty's −Z = car +Z)"
 eye["height_above_ground_m"] = round(EYE.y - GROUND_Y, 3)
+# The package the eye comes from (SAE J1100 names, car frame), for tools that seat other drivers.
+eye["h_point"] = r3(H_POINT)
+eye["ahp_y"] = FLOOR_Y
+eye["bof"] = r3(BOF)
+eye["h30_m"] = H30
+eye["wheel_to_bof_m"] = round(BOF.z - WHEEL_CENTER.z, 3)
+eye["design_driver_m"] = {
+    "stature": DESIGN_MAN[0],
+    "sitting_height": DESIGN_MAN[1],
+    "sitting_eye_height": DESIGN_MAN[2],
+}
+eye["r125_r_point"] = r3(R_POINT)
+eye["r125_v1"] = r3(V1)
+eye["r125_v2"] = r3(V2)
+# Where game/cockpit.ts draws the dash clock: the cluster's top centre, just proud of its face.
+clock = empty("ClockAnchor", cluster, Matrix.Translation((-0.002, 0.053, -0.002)))
+clock["usage"] = "top centre of the meter cluster, on its face (local axes = Cluster's)"
 
 # ---------------------------------------------------------------------------- face orientation check
 
@@ -1633,6 +1736,54 @@ def mirror_visibility():
 
 
 log("mirror_visibility", share_seen_from_eye=mirror_visibility())
+
+
+def display_visibility():
+    """Share of the centre display's screen (and of its lowest row) seen from DriverEye past the
+    dash, the wheel and everything else in the cockpit; and its width in UN R125's area S (1,500 mm
+    forward of V2, between the planes declined 1° and 4°, edges at ±45° where the 4° planes meet)."""
+    bpy.context.view_layer.update()
+    bm = bmesh.new()
+    owners = []
+    for o in SCENE.objects:
+        if o.type != "MESH" or o.name in ("Display_Center", "Windshield"):
+            continue
+        M = o.matrix_world
+        vs = [bm.verts.new(M @ v.co) for v in o.data.vertices]
+        for p in o.data.polygons:
+            try:
+                bm.faces.new([vs[i] for i in p.vertices])
+            except ValueError:
+                continue
+            owners.append(o.name)
+    tree = BVHTree.FromBMesh(bm)
+    bm.free()
+    M = bpy.data.objects["Display_Center"].matrix_world
+    rows = []
+    blockers = {}
+    for j in range(7):
+        row = 0
+        for i in range(11):
+            p = M @ Vector(((i / 10 - 0.5) * dw * 0.98, (j / 6 - 0.5) * dh * 0.98, 0.0))
+            d = p - EYE
+            hit = tree.ray_cast(EYE, d.normalized(), d.length - 0.003)
+            row += hit[0] is None
+            if hit[0] is not None:
+                blockers[owners[hit[2]]] = blockers.get(owners[hit[2]], 0) + 1
+        rows.append(row / 11)
+    corners = [M @ Vector((sx * dw / 2, dh / 2, 0)) for sx in (-1, 1)]
+    yaws = [math.atan2(c.x - V2.x, c.z - V2.z) for c in corners]
+    s_width = 1.5 * abs(math.tan(yaws[0]) - math.tan(yaws[1]))
+    return {
+        "screen_seen": round(sum(rows) / len(rows), 3),
+        "bottom_row_seen": round(rows[0], 3),
+        "top_deg_below_V2": round(math.degrees(math.atan2(V2.y - max(c.y for c in corners), corners[0].z - V2.z)), 2),
+        "area_S_width_share": round(s_width / 3.0, 3),
+        "blocked_by": blockers,
+    }
+
+
+log("display_visibility", **display_visibility())
 VIEWPOINTS = [EYE, EYE + Vector((0.1, 0.05, 0.1)), Vector((-DRIVER_X, 0.32, -0.22)), Vector((0.0, 0.35, -0.9))]
 log("orientation", wrong_of_visible=orientation_report(VIEWPOINTS))
 
@@ -1667,6 +1818,11 @@ log(
     "hooks",
     eye=r3(EYE),
     eye_height=round(EYE.y - GROUND_Y, 3),
+    h_point=r3(H_POINT),
+    bof=r3(BOF),
+    r_point=r3(R_POINT),
+    v2=r3(V2),
+    clock=r3(clock.matrix_world.to_translation()),
     wheel_center=r3(WHEEL_CENTER),
     column_deg=COLUMN_DEG,
     cluster_center=r3(CLUSTER_CENTER),

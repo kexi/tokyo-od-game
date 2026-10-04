@@ -66,7 +66,7 @@ assets:
 assets-check:
     pnpm exec vitest run tests/assetManifest.test.ts
 
-# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両のテクスチャを手続き生成し直す
+# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両・東京駅丸の内駅舎のテクスチャを手続き生成し直す
 textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
@@ -83,6 +83,7 @@ textures:
     uv run scripts/textures/landmark_textures.py
     uv run scripts/textures/asphalt_textures.py
     uv run scripts/textures/police_vehicle_textures.py
+    uv run scripts/textures/tokyo_station_textures.py
 
 # 道路標識の図柄と catalog.json を作り直し、群ごとのコンタクトシートを書き出す
 sign-textures sheet="${TMPDIR:-/tmp}/signs":
@@ -145,6 +146,23 @@ landmark-models:
 orbis-model:
     uv run scripts/textures/orbis_textures.py
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/orbis.py -- public/models/orbis.glb
+
+# ミラーの飾り（クマのぬいぐるみ・交通安全のお守り）を Blender CLI でモデリングし public/models/mirror_charms.glb を書き出す（錦と毛並みのテクスチャ assets/charms/textures も作り直す）
+charm-models:
+    uv run scripts/textures/charm_textures.py
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/mirror_charms.py -- public/models/mirror_charms.glb
+
+# 案内標識（108 系）の国道・都道番号・通称名・OSM の行き先と表示地名を public/data/routes・guide-places.json に書き出す（OSM は just regs のキャッシュを使う）
+guide-data:
+    node scripts/guide-signs.ts
+
+# 案内標識の板の文字に使う Noto Sans JP・Overpass のサブセット（woff2）を assets/signs/guide に書き出す
+guide-fonts:
+    uv run scripts/textures/guide_fonts.py
+
+# 案内標識の支柱（片持式 F 形・路側式）・腕・標示板を Blender CLI でモデリングし public/models/guide_signs.glb を書き出す
+guide-sign-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/guide_signs.py -- public/models/guide_signs.glb
 
 # SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
 og:

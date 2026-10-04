@@ -91,7 +91,8 @@ describe("car navigation over the road graph", () => {
     const graph = new RoadGraph(grid(), frame);
     const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), clockAt(600), []);
     if (!route) throw new Error("no route");
-    const p = progressOn(route, at(3, 60));
+    // The car's path keeps to the left lane, 2 m west of this 8 m street's centreline.
+    const p = progressOn(route, at(1, 60));
     expect(p.at).toBeCloseTo(50, 0);
     expect(p.off).toBeCloseTo(3, 0);
   });
