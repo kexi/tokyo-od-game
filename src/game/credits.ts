@@ -1,4 +1,5 @@
 import type { Source } from "../data/schema";
+import type { RegulationMeta } from "../world/regulations";
 
 export const REPO_URL = "https://github.com/kexi/tokyo-od-game";
 const CC_BY_DEED = "https://creativecommons.org/licenses/by/4.0/deed.ja";
@@ -55,7 +56,13 @@ sanoTTS-jp — https://github.com/ayutaz/sanoTTS-jp
       ライセンス: https://www.apache.org/licenses/LICENSE-2.0
   上記 3 素材は現状のまま (AS IS) 提供され、明示・黙示を問わず保証はありません。`;
 
-export function renderCredits(sources: Source[]): string {
+/** 「2026-10-04T05:16:30Z」 → 「2026年10月4日」 (JST), the 利用日 JARTIC's terms ask for. */
+function jstDate(iso: string): string {
+  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
+  return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
+}
+
+export function renderCredits(sources: Source[], regs: RegulationMeta | null = null): string {
   const opendata = sources
     .filter((s) => !s.id.startsWith("odpt"))
     .map(
@@ -70,9 +77,13 @@ export function renderCredits(sources: Source[]): string {
     .map((s) => `「${link(s.url, s.title)}」`)
     .join("");
   const licensesUrl = new URL(`${import.meta.env.BASE_URL}THIRD_PARTY_LICENSES.txt`, location.href).href;
+  const odblUrl = new URL(`${import.meta.env.BASE_URL}data/signals/LICENSE.txt`, location.href).href;
+  const jarticUrl = regs?.url ?? "https://www.jartic.or.jp/service/opendata/";
+  const jarticUse = regs ? `（${jstDate(regs.fetchedAt)}に利用）` : "";
+  const jarticEdition = regs ? `${regs.targetMonth}時点のデータ（${regs.releaseDay}公開）` : "";
 
   return `
-  <p>本ゲームは以下のオープンデータ等を利用して開発者が個人で作成した非公式の作品です。東京都・各区・国土交通省・国土地理院・気象庁・公共交通事業者が作成・公認したものではありません。</p>
+  <p>本ゲームは以下のオープンデータ等を利用して開発者が個人で作成した非公式の作品です。東京都・各区・国土交通省・国土地理院・気象庁・日本道路交通情報センター・警察・公共交通事業者が作成・公認したものではありません。</p>
 
   <h3>スポット・施設情報（東京都オープンデータ）</h3>
   <p>このゲームは、以下の著作物を改変（緯度経度・名称の抽出および形式変換）して利用しています。</p>
@@ -88,6 +99,19 @@ export function renderCredits(sources: Source[]): string {
   地理院タイル（標高タイル（基盤地図情報数値標高モデル））を加工して地形を作成。
   道路の中心線・幅員：出典 ${link("https://github.com/gsi-cyberjapan/gsimaps-vector-experiment", "国土地理院ベクトルタイル提供実験")}（道路の路面・白線・横断歩道の描画、AI 車両の走行、交通違反の判定に加工して使用）。
   タイルはプレイ中にリアルタイムで読み込んでおり、本ゲームに同梱・再配布していません。</p>
+
+  <h3>交通規制（一方通行・規制速度・横断歩道・停止線・一時停止）</h3>
+  <p>出典：「交通規制情報」（公益財団法人日本道路交通情報センター）（${link(jarticUrl, jarticUrl)}）${esc(jarticUse)}を加工して作成。
+  ${esc(jarticEdition)}の東京都（警視庁）分から 23 区周辺の一方通行・最高速度（区間・区域）・横断歩道・停止線・一時停止を抽出し、国土地理院の道路中心線に対応付けています。
+  期間・曜日指定の規制、首都高速道路（自動車道）の規制、可変速度規制は省略しています。対応付けはゲーム側の推定を含み、実際の規制と異なる場合があります。
+  <strong>実際の運転では現地の標識・標示に従ってください。</strong>
+  利用条件：${link("https://www.jartic.or.jp/d/opendata/riyou_kiyaku.pdf", "交通規制情報 利用規約")}（CC BY 4.0 互換）。</p>
+
+  <h3>信号機の位置</h3>
+  <p>© ${link("https://www.openstreetmap.org/copyright", "OpenStreetMap contributors")}。
+  OpenStreetMap の <code>highway=traffic_signals</code> を ${link("https://download.bbbike.org/osm/bbbike/Tokyo/", "BBBike の東京抽出")} から取り出し、交差点に対応付けて表示しています。
+  抽出したデータベースは ${link("https://opendatacommons.org/licenses/odbl/1-0/", "Open Database License (ODbL) 1.0")} で提供します（${link(odblUrl, "LICENSE.txt")}）。
+  信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。</p>
 
   <h3>町丁・区の境界と人口</h3>
   <p>出典：${link("https://www.e-stat.go.jp/", "政府統計の総合窓口（e-Stat）")}「国勢調査 令和2年 小地域（町丁・字等別）境界データ 東京都」を加工して作成（${link("https://www.e-stat.go.jp/terms-of-use", "利用規約")}：政府標準利用規約 第2.0版準拠）。現在地の区・町丁名の表示、スポットの座標検証、歩行者の人数（人口密度）に使用。</p>
@@ -109,7 +133,7 @@ export function renderCredits(sources: Source[]): string {
   本ゲームの天候表現は気象庁の予報・警報ではありません。</p>
 
   <h3>交通ルール</h3>
-  <p>違反点数・反則金は道路交通法・同施行令と警視庁の公表資料（普通車、2026-10-04 確認）に基づくゲーム内の参考値です。制限速度は標識データが無いため、施行令第11条（2026-09-01 改正：中央線等のある道路 60km/h、それ以外 30km/h）を道路幅員から推定しています。救急・警察への通報はゲーム内のシミュレーションで、実際の 119・110 にはつながりません。</p>
+  <p>違反点数・反則金は道路交通法・同施行令と警視庁の公表資料（普通車、2026-10-04 確認）に基づくゲーム内の参考値です。制限速度は JARTIC の規制速度（区間・区域）が対応付いた道路ではその値を、それ以外の道路では施行令第11条（2026-09-01 改正：中央線等のある道路 60km/h、それ以外 30km/h）を道路幅員から推定した値を使います。救急・警察への通報はゲーム内のシミュレーションで、実際の 119・110 にはつながりません。</p>
 
   <h3>音声合成（sanoTTS-jp）</h3>
   <p>歩行者の声は ${link("https://github.com/ayutaz/sanoTTS-jp", "sanoTTS-jp")}（コード: MIT、モデル: LicenseRef-sanoTTS-jp-Model-1.0）をブラウザ内で動かして合成しています。

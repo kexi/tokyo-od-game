@@ -22,6 +22,10 @@ preview: build
 data:
     node scripts/fetch-data.ts
 
+# JARTIC 交通規制情報と OSM の信号機を取得し public/data/regs・signals を再生成する
+regs:
+    node scripts/regulations.ts
+
 # 型チェックを行う
 typecheck:
     pnpm exec tsc --noEmit

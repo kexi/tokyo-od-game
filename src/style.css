@@ -579,6 +579,32 @@ pre.notice {
   flex: none;
 }
 
+#reg-ahead {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#reg-ahead[data-state="red"],
+#reg-ahead[data-state="stop"] {
+  background: #c62828;
+  color: #fff;
+}
+
+#reg-ahead[data-state="yellow"] {
+  background: #f9a825;
+  color: #1b1b1b;
+}
+
+#reg-ahead[data-state="green"] {
+  background: #00897b;
+  color: #fff;
+}
+
 #suspended {
   position: fixed;
   inset: 0;

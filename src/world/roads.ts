@@ -17,7 +17,19 @@ export type Segment = {
   length: number;
   from: number; // node ids
   to: number;
+  /** One-way in force now (see RoadGraph.setClock): 1 along coords, −1 against, 0 both. */
+  oneway: 0 | 1 | -1;
+  /** JARTIC 一方通行 matched onto this segment, valid from `start` to `end` (minutes of day). */
+  onewayRule: { dir: 1 | -1; start: number; end: number } | null;
+  /** 規制速度 from JARTIC (km/h), or null when only the statutory limit applies. */
+  limit: number | null;
+  limitKind: "sign" | "zone" | "statutory";
 };
+
+/** Speed limit in force on a segment: posted (JARTIC) when known, statutory otherwise. */
+export function speedLimit(seg: Segment): number {
+  return seg.limit ?? estimatedLimit(seg.line);
+}
 
 /**
  * Speed limit without 規制速度 data: the statutory limit (施行令 第11条, amended 2026-09-01) is
@@ -54,7 +66,19 @@ export class RoadGraph {
       const id = this.segments.length;
       const from = this.node(line.coords[0], line.coords[1]);
       const to = this.node(line.coords[line.coords.length - 2], line.coords[line.coords.length - 1]);
-      this.segments.push({ id, line, pts, cum, length, from, to });
+      this.segments.push({
+        id,
+        line,
+        pts,
+        cum,
+        length,
+        from,
+        to,
+        oneway: line.oneway,
+        onewayRule: null,
+        limit: null,
+        limitKind: "statutory",
+      });
       this.link(from, id);
       this.link(to, id);
     }
@@ -105,6 +129,36 @@ export class RoadGraph {
     return best;
   }
 
+  /** Apply time-windowed one-way rules for a time of day (minutes since midnight). */
+  setClock(minutes: number): void {
+    for (const seg of this.segments) {
+      const r = seg.onewayRule;
+      const isActive =
+        r !== null &&
+        (r.start <= r.end ? minutes >= r.start && minutes < r.end : minutes >= r.start || minutes < r.end);
+      seg.oneway = isActive && r ? r.dir : seg.line.oneway;
+    }
+  }
+
+  /** Projection of a point onto one segment: along-distance and signed lateral (left = +). */
+  nearestOn(seg: Segment, p: Vector3): { s: number; lateral: number; dist: number } {
+    let best = { s: 0, lateral: 0, dist: Infinity };
+    for (let i = 1; i < seg.pts.length; i++) {
+      const a = seg.pts[i - 1];
+      const ex = seg.pts[i].x - a.x;
+      const ez = seg.pts[i].z - a.z;
+      const len = Math.hypot(ex, ez);
+      if (len < 1e-6) continue;
+      const dx = ex / len;
+      const dz = ez / len;
+      const t = Math.min(len, Math.max(0, (p.x - a.x) * dx + (p.z - a.z) * dz));
+      const dist = Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z);
+      if (dist < best.dist)
+        best = { s: seg.cum[i - 1] + t, lateral: (p.x - a.x) * dz - (p.z - a.z) * dx, dist };
+    }
+    return best;
+  }
+
   /** Segments leaving a node, excluding the one we came from (unless it is a dead end). */
   exits(node: number, cameFrom: number): Segment[] {
     const ids = (this.nodes.get(node) ?? []).filter((id) => id !== cameFrom);
@@ -112,7 +166,7 @@ export class RoadGraph {
     // Respect one-way roads: only enter in the allowed direction.
     return list.filter((seg) => {
       const forward = seg.from === node;
-      return seg.line.oneway === 0 || (seg.line.oneway === 1) === forward;
+      return seg.oneway === 0 || (seg.oneway === 1) === forward;
     });
   }
 

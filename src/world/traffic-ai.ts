@@ -2,7 +2,8 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3, type Group, type Scene } from "three";
 import { QUALITY } from "../device";
 import { createLowCar } from "../game/carModel";
-import { estimatedLimit, leftOf, type RoadGraph, type Segment } from "./roads";
+import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
+import type { TrafficControl } from "./trafficControl";
 
 type AiCar = {
   object: Group;
@@ -15,6 +16,8 @@ type AiCar = {
   ground: number;
   groundCheck: number;
   serial: number;
+  served: number; // id of the stop-sign approach already stopped at
+  waited: number; // seconds standing at the current stop line
 };
 
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
@@ -23,6 +26,10 @@ const SPAWN_RADIUS = 350;
 const DESPAWN_RADIUS = 450;
 const BODY_RADIUS = 120;
 const LANE_FRACTION = 0.25; // centre of the left half of a two-way carriageway
+// gapAhead targets a 7 m standstill gap to the next car's centre; a stop line is a "car" this far
+// beyond the line so the front bumper (2.15 m ahead of the centre) halts just short of it.
+const STOP_LINE_GAP = 4.5;
+const COMFORT_DECEL = 5; // m/s², for deciding whether a yellow/red can still be stopped for
 
 /**
  * Taxis and private cars driving on the left (道路交通法 第17条) along the road graph, keeping
@@ -44,6 +51,7 @@ export class TrafficAI {
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
+    private readonly control: TrafficControl | null = null,
   ) {}
 
   /**
@@ -137,9 +145,12 @@ export class TrafficAI {
         this.cars.splice(i, 1);
         continue;
       }
-      const limit = estimatedLimit(c.seg.line) / 3.6;
+      const limit = speedLimit(c.seg) / 3.6;
       const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
-      const gap = this.gapAhead(c, pos, dir, player, playerForward, playerSpeed);
+      const gap = Math.min(
+        this.gapAhead(c, pos, dir, player, playerForward, playerSpeed),
+        this.stopGap(c, dt),
+      );
       const target = gap < 7 ? 0 : gap < 25 ? Math.min(cruise, (gap - 7) * 0.8) : cruise;
       c.speed += Math.max(-6 * dt, Math.min(2.2 * dt, target - c.speed));
       c.s += c.speed * dt;
@@ -173,9 +184,33 @@ export class TrafficAI {
     const along = c.dir === 1 ? c.s : c.seg.length - c.s;
     const { pos, dir } = graph.sample(c.seg, along, this.tmpPos, this.tmpDir);
     if (c.dir === -1) dir.negate();
-    const lane = c.seg.line.oneway === 0 ? c.seg.line.width * LANE_FRACTION : 0;
+    const lane = c.seg.oneway === 0 ? c.seg.line.width * LANE_FRACTION : 0;
     pos.add(leftOf(dir, lane));
     return { pos: pos.clone(), dir: dir.clone() };
+  }
+
+  /**
+   * Virtual obstacle at the next stop line: red/yellow signals (unless too close to stop, as
+   * 施行令 第2条 allows on yellow) and 一時停止, released after a full stop.
+   */
+  private stopGap(c: AiCar, dt: number): number {
+    const next = this.control?.nextStop(c.seg, c.dir, c.s);
+    if (!next || !this.control) return Infinity;
+    const { approach, dist } = next;
+    if (approach.kind === "signal") {
+      const state = this.control.state(approach);
+      const canStop = dist > (c.speed * c.speed) / (2 * COMFORT_DECEL);
+      return state !== "green" && canStop ? dist + STOP_LINE_GAP : Infinity;
+    }
+    if (c.served === approach.id) return Infinity;
+    const isStanding = dist < 3 && c.speed < 0.2;
+    c.waited = isStanding ? c.waited + dt : 0;
+    if (c.waited > 1.2) {
+      c.served = approach.id;
+      c.waited = 0;
+      return Infinity;
+    }
+    return dist + STOP_LINE_GAP;
   }
 
   /** Distance to the nearest obstacle ahead in this lane (other cars, the player). */
@@ -225,7 +260,7 @@ export class TrafficAI {
       const { pos } = graph.sample(seg, s);
       const d = pos.distanceTo(focus);
       if (d > SPAWN_RADIUS || d < 60) continue;
-      const dir: 1 | -1 = seg.line.oneway === -1 ? -1 : seg.line.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
+      const dir: 1 | -1 = seg.oneway === -1 ? -1 : seg.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
       const taxi = this.serial % 5 < 2;
       const object = createLowCar({ color: taxi ? 0x1d2a4a : COLORS[this.serial % COLORS.length], taxi });
       this.scene.add(object);
@@ -240,6 +275,8 @@ export class TrafficAI {
         ground: this.groundAt(pos.x, pos.z) ?? 0,
         groundCheck: 0,
         serial: this.serial,
+        served: -1,
+        waited: 0,
       });
     }
   }

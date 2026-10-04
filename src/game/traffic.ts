@@ -6,6 +6,8 @@
  */
 export type ViolationKind =
   | "signal" // 信号無視（赤色等）
+  | "stopSign" // 指定場所一時不停止等
+  | "noEntry" // 通行禁止違反（一方通行の逆走）
   | "keepLeft" // 通行区分違反（右側通行）
   | "speed" // 速度超過
   | "pedestrianCrossing" // 横断歩行者等妨害等
@@ -62,6 +64,22 @@ export function speedViolation(overKmh: number): Violation | null {
 
 export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
   signal: { kind: "signal", label: "信号無視（赤色等）", article: "道路交通法 第7条", points: 2, fine: 9000 },
+  // 「止まれ」の標識（JARTIC 一時停止）がある停止線の直前で停止しなかった。
+  stopSign: {
+    kind: "stopSign",
+    label: "指定場所一時不停止等",
+    article: "道路交通法 第43条",
+    points: 2,
+    fine: 7000,
+  },
+  // 一方通行（JARTIC）を指定方向と逆に通行した。一方通行は逆方向の通行禁止として扱われる。
+  noEntry: {
+    kind: "noEntry",
+    label: "通行禁止違反（一方通行）",
+    article: "道路交通法 第8条第1項",
+    points: 2,
+    fine: 7000,
+  },
   keepLeft: {
     kind: "keepLeft",
     label: "通行区分違反（右側通行）",

@@ -66,11 +66,12 @@
       <canvas id="minimap" width="180" height="180"></canvas>
 
       <div id="hud-license" class="panel" title="道路交通法に基づく違反点数（普通車）">
-        <div class="limit-sign" title="最高速度（幅員からの推定値）"><span id="limit">–</span></div>
+        <div class="limit-sign" title="最高速度"><span id="limit">–</span></div>
         <div>
           <div id="license-points">違反点数 0 / 6</div>
           <div id="license-fines" class="sub">反則金 0円</div>
-          <div class="sub">制限速度は幅員からの推定</div>
+          <div id="limit-kind" class="sub">–</div>
+          <div id="reg-ahead" hidden></div>
         </div>
       </div>
 
@@ -172,8 +173,14 @@
           >地理院タイル</a
         >
         ｜<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">PLATEAU（国土交通省）</a>
-        ｜国土地理院ベクトルタイル提供実験｜e-Stat｜東京都オープンデータ｜公共交通オープンデータセンター｜気象庁
-        ｜<button type="button" data-action="credits">出典の詳細</button>
+        ｜国土地理院ベクトルタイル提供実験｜JARTIC 交通規制情報（加工）｜©
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+        contributors｜e-Stat｜東京都オープンデータ｜公共交通オープンデータセンター｜気象庁 ｜<button
+          type="button"
+          data-action="credits"
+        >
+          出典の詳細
+        </button>
       </div>
 
       <div id="touch">

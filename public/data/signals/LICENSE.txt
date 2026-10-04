@@ -1,0 +1,5 @@
+Traffic signal positions in this folder are extracted from OpenStreetMap.
+© OpenStreetMap contributors — https://www.openstreetmap.org/copyright
+This database is made available under the Open Database License (ODbL) 1.0:
+https://opendatacommons.org/licenses/odbl/1-0/
+Source extract: https://download.bbbike.org/osm/bbbike/Tokyo/Tokyo.osm.pbf (BBBike). Filter: node["highway"="traffic_signals"] within the 23 wards.

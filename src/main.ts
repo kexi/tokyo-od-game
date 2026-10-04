@@ -55,9 +55,11 @@ import {
 } from "./world/environment";
 import { Terrain } from "./world/terrain";
 import { Pedestrians } from "./world/pedestrians";
-import { RoadGraph, estimatedLimit, leftOf, type RoadLine } from "./world/roads";
+import { RegulationTiles, applyRegulations, type RegulationData } from "./world/regulations";
+import { RoadGraph, leftOf, speedLimit, type RoadLine } from "./world/roads";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
+import { TrafficControl } from "./world/trafficControl";
 import { TrafficAI } from "./world/traffic-ai";
 import {
   formatViolation,
@@ -72,6 +74,15 @@ import { EmergencyResponse } from "./game/emergency";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
+
+const LIGHT_LABEL = { green: "青", yellow: "黄", red: "赤" } as const;
+
+/** Horizontal unit vector the car's nose points along (local yaw 0 faces +Z). */
+function headingVector(q: Quaternion): Vector3 {
+  const f = new Vector3(0, 0, 1).applyQuaternion(q);
+  f.y = 0;
+  return f.normalize();
+}
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
   const el = document.querySelector<T>(sel);
@@ -191,11 +202,13 @@ async function main(): Promise<void> {
     // Travel along the road in the direction closest to the stop-to-stop heading.
     const fwd = new Vector3(Math.sin(heading), 0, Math.cos(heading));
     const dir = hit.dir.clone().multiplyScalar(fwd.dot(hit.dir) >= 0 ? 1 : -1);
-    const lane = hit.seg.line.oneway === 0 ? hit.seg.line.width / 4 : 0;
+    const lane = hit.seg.oneway === 0 ? hit.seg.line.width / 4 : 0;
     const centre = p.clone().add(new Vector3(-hit.dir.z * hit.lateral, 0, hit.dir.x * hit.lateral));
     return { pos: centre.add(leftOf(dir, lane)), heading: Math.atan2(dir.x, dir.z) };
   };
-  const traffic = new TrafficAI(scene, world, (x, z) => groundY(x, z));
+  const control = new TrafficControl(scene, (x, z) => groundY(x, z));
+  const traffic = new TrafficAI(scene, world, (x, z) => groundY(x, z), control);
+  const regulationTiles = new RegulationTiles();
   const law = new TrafficLaw();
   // Roads follow the rendered terrain (collider = render mesh), falling back to the DEM.
   const roadSurface = new RoadSurface(scene, (x, z) => {
@@ -206,20 +219,39 @@ async function main(): Promise<void> {
     return hit !== null && Math.abs(hit - g) < 0.6 ? hit : g;
   });
   let roadLines: RoadLine[] = [];
+  let roadRegs: RegulationData | null = null;
   let roadGraph: RoadGraph | null = null;
   let roadCenter = { lat: 0, lon: 0 };
   let roadsLoading = false;
+  // Game clock in minutes, for time-windowed one-way rules (登校時間帯の一方通行 etc.).
+  const clockMinutes = () => env.displayHour(lastGeo.lat, lastGeo.lon) * 60;
+  /** Graph + JARTIC/OSM regulations + signals + markings for the current frame. */
+  const buildRoadNetwork = () => {
+    const graph = new RoadGraph(roadLines, frame);
+    const applied = roadRegs ? applyRegulations(graph, roadRegs, frame) : null;
+    graph.setClock(clockMinutes());
+    roadGraph = graph;
+    traffic.setGraph(graph);
+    control.rebuild(graph, applied);
+    roadSurface.rebuild(graph, applied, control.approaches);
+    log("road_network", {
+      segments: graph.segments.length,
+      oneway: graph.segments.filter((s) => s.onewayRule).length,
+      posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
+      signals: control.signalCount(),
+      stops: control.approaches.filter((a) => a.kind === "stop").length,
+      crosswalks: applied?.crosswalks.length ?? 0,
+    });
+  };
   const refreshRoads = (lat: number, lon: number) => {
     if (roadsLoading) return;
     roadsLoading = true;
     roadCenter = { lat, lon };
-    void roadTiles
-      .around(lat, lon)
-      .then((lines) => {
+    void Promise.all([roadTiles.around(lat, lon), regulationTiles.around(lat, lon)])
+      .then(([lines, regs]) => {
         roadLines = lines;
-        roadGraph = new RoadGraph(lines, frame);
-        traffic.setGraph(roadGraph);
-        roadSurface.rebuild(roadGraph);
+        roadRegs = regs;
+        buildRoadNetwork();
       })
       .finally(() => (roadsLoading = false));
   };
@@ -310,9 +342,7 @@ async function main(): Promise<void> {
     if (walker.active) walker.transform(offset, Math.atan2(f.x, f.z));
     traffic.transform(offset, Math.atan2(f.x, f.z));
     emergency.transform(offset);
-    roadGraph = new RoadGraph(roadLines, next);
-    traffic.setGraph(roadGraph);
-    roadSurface.rebuild(roadGraph);
+    buildRoadNetwork();
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
 
@@ -345,8 +375,10 @@ async function main(): Promise<void> {
   input.on("reset", respawnHere);
   input.on("help", () => $<HTMLDialogElement>("#help").showModal());
   input.on("credits", () => {
-    $("#credits-body").innerHTML = renderCredits(poiFile?.sources ?? []);
-    $<HTMLDialogElement>("#credits").showModal();
+    void regulationTiles.meta().then((regs) => {
+      $("#credits-body").innerHTML = renderCredits(poiFile?.sources ?? [], regs);
+      $<HTMLDialogElement>("#credits").showModal();
+    });
   });
   input.on("mission", () => {
     const g = frame.toGeodetic(vehicle.position());
@@ -496,7 +528,14 @@ async function main(): Promise<void> {
   let lastLawCheck = 0;
   let overSince: number | null = null;
   let rightSince: number | null = null;
+  let wrongWaySince: number | null = null;
+  let lawPrevPos: Vector3 | null = null;
+  // Where and when the car last stood still, for 一時停止 (stop before the line, then go).
+  let lastStop: { pos: Vector3; at: number } | null = null;
+  let lastClockSync = 0;
   let currentLimit: number | null = null;
+  let currentLimitKind: "sign" | "zone" | "statutory" | null = null;
+  let currentOneway = false;
   let stoppedSince: number | null = null;
   let abandonedSince: number | null = null;
   // 確認標章: the yellow notice police stick on an illegally parked car.
@@ -669,6 +708,11 @@ async function main(): Promise<void> {
     pedestrians.update(dt, focus, carPos, isOnFoot ? 0 : speed / 3.6, carForward);
     if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
       refreshRoads(geo.lat, geo.lon);
+    control.update(now / 1000);
+    if (roadGraph && now - lastClockSync > 5000) {
+      lastClockSync = now;
+      roadGraph.setClock(clockMinutes());
+    }
     traffic.update(dt, focus, carPos, carForward, isOnFoot ? 0 : speed / 3.6);
 
     // 道路交通法 checks while driving: speed vs (estimated) limit, keep-left on two-way roads.
@@ -677,22 +721,46 @@ async function main(): Promise<void> {
       lastLawCheck = now;
       const hit = roadGraph.nearest(carPos, 30);
       const onRoad = hit && Math.abs(hit.lateral) < hit.seg.line.width / 2 + 1.5 ? hit : null;
-      currentLimit = onRoad ? estimatedLimit(onRoad.seg.line) : null;
+      currentLimit = onRoad ? speedLimit(onRoad.seg) : null;
+      currentLimitKind = onRoad ? onRoad.seg.limitKind : null;
+      currentOneway = onRoad !== null && onRoad.seg.oneway !== 0;
       const isOver = currentLimit !== null && speed > currentLimit + 1;
       overSince = isOver ? (overSince ?? now) : null;
       if (overSince !== null && currentLimit !== null && now - overSince > 3000) {
         const v = speedViolation(speed - currentLimit);
         if (v) book(v, now, 20000);
       }
-      const isTwoWay = onRoad !== null && onRoad.seg.line.oneway === 0 && onRoad.seg.line.width >= 5.5;
+      const isTwoWay = onRoad !== null && onRoad.seg.oneway === 0 && onRoad.seg.line.width >= 5.5;
       const align = onRoad ? carForward.dot(onRoad.dir) : 0;
       // Positive lateral = left of the travel direction; well right of the centre line is 右側通行.
       const isRightSide =
         isTwoWay && speed > 10 && Math.abs(align) > 0.8 && onRoad.lateral * Math.sign(align) < -0.8;
       rightSince = isRightSide ? (rightSince ?? now) : null;
       if (rightSince !== null && now - rightSince > 2000) book(VIOLATIONS.keepLeft, now, 15000);
+
+      // 一方通行 (JARTIC): driving against the permitted direction is 通行禁止違反.
+      const isWrongWay =
+        onRoad !== null && onRoad.seg.oneway !== 0 && speed > 5 && align * onRoad.seg.oneway < -0.7;
+      wrongWaySince = isWrongWay ? (wrongWaySince ?? now) : null;
+      if (wrongWaySince !== null && now - wrongWaySince > 1500) book(VIOLATIONS.noEntry, now, 20000);
+
+      // Signals and 一時停止: judged when the car crosses a stop line heading into the junction.
+      if (Math.abs(speed) < 3) lastStop = { pos: carPos.clone(), at: now };
+      if (lawPrevPos && lawPrevPos.distanceTo(carPos) < 30) {
+        for (const ap of control.crossed(lawPrevPos, carPos)) {
+          if (ap.kind === "signal" && control.state(ap) === "red") book(VIOLATIONS.signal, now, 10000);
+          const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
+          const hasStopped =
+            lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
+          if (ap.kind === "stop" && !hasStopped) book(VIOLATIONS.stopSign, now, 10000);
+        }
+      }
+      lawPrevPos = carPos.clone();
     } else if (!isDriving) {
       currentLimit = null;
+      currentLimitKind = null;
+      currentOneway = false;
+      lawPrevPos = null;
     }
 
     // 放置駐車: on foot, away from a car left on the carriageway for a minute.
@@ -934,6 +1002,28 @@ async function main(): Promise<void> {
 
     $("#score").textContent = score.toLocaleString();
     $("#limit").textContent = currentLimit === null ? "–" : String(currentLimit);
+    $("#limit-kind").textContent =
+      currentLimitKind === "sign"
+        ? "規制速度（JARTIC）"
+        : currentLimitKind === "zone"
+          ? "区域規制（JARTIC）"
+          : currentLimitKind === "statutory"
+            ? "法定速度（幅員から推定）"
+            : "–";
+    const ahead =
+      mode === "foot" ? null : control.ahead(vehicle.position(), headingVector(vehicle.quaternion()));
+    const aheadText = ahead
+      ? ahead.approach.kind === "signal"
+        ? `🚦 ${LIGHT_LABEL[control.state(ahead.approach)]}・${Math.round(ahead.dist)}m`
+        : `🛑 止まれ・${Math.round(ahead.dist)}m`
+      : currentOneway
+        ? "⬆ 一方通行"
+        : "";
+    const regAhead = $("#reg-ahead");
+    regAhead.hidden = aheadText === "";
+    regAhead.textContent = aheadText;
+    regAhead.dataset.state =
+      ahead?.approach.kind === "signal" ? control.state(ahead.approach) : (ahead?.approach.kind ?? "");
     $("#license-points").textContent = `違反点数 ${law.state.points} / 6`;
     $("#license-fines").textContent = `反則金 ${law.state.fines.toLocaleString()}円`;
     const inWard = pois.filter((p) => p.ward === wardName);
@@ -1006,6 +1096,8 @@ async function main(): Promise<void> {
         start: () => startButton.click(),
         pedestrians,
         traffic,
+        control,
+        getRoadGraph: () => roadGraph,
         emergency,
         phone,
         law,

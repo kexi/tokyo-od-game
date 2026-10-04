@@ -13,7 +13,8 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "test": "vitest run",
-    "data": "node scripts/fetch-data.ts"
+    "data": "node scripts/fetch-data.ts",
+    "regs": "node scripts/regulations.ts"
   },
   "dependencies": {
     "3d-tiles-renderer": "^0.5.3",
