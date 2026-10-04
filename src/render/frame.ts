@@ -109,7 +109,8 @@ export class FrameComposer {
   private readonly streetQuads = new Map<StreetPass, { quad: QuadMesh; input: TextureNode }>();
   private readonly output: { quad: QuadMesh; input: TextureNode };
   private readonly develop: { quad: QuadMesh; input: TextureNode };
-  private developTarget: RenderTarget | null = null;
+  // By size: a bystander's probes and photo alternate sizes, and resizing would reallocate each time.
+  private readonly developTargets = new Map<string, RenderTarget>();
 
   constructor(private readonly renderer: WebGPURenderer) {
     this.target = sceneTarget(renderer, 1, 1);
@@ -203,14 +204,14 @@ export class FrameComposer {
    */
   toDisplay(source: Texture, width: number, height: number): RenderTarget {
     const r = this.renderer;
-    let t = this.developTarget;
+    const key = `${width}x${height}`;
+    let t = this.developTargets.get(key);
     if (!t) {
       t = new RenderTarget(width, height, { type: UnsignedByteType, depthBuffer: false });
       // Encoded by the output node: an -srgb format would encode a second time.
       t.texture.colorSpace = NoColorSpace;
-      this.developTarget = t;
+      this.developTargets.set(key, t);
     }
-    if (t.width !== width || t.height !== height) t.setSize(width, height);
     this.develop.input.value = source;
     r.setRenderTarget(t);
     this.drawOutput(this.develop.quad);
