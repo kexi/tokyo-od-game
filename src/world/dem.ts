@@ -91,6 +91,10 @@ export class DemStore {
   }
 
   private async fetchTile(x: number, y: number): Promise<Float32Array> {
+    return smoothGround(await this.fetchRaw(x, y));
+  }
+
+  private async fetchRaw(x: number, y: number): Promise<Float32Array> {
     const z = TERRAIN_ZOOM;
     const fine = await fetchPixels(GSI.dem5a(z, x, y)).catch(() => null);
     const data = fine ? decodeTile(fine) : new Float32Array(SIZE * SIZE).fill(Number.NaN);
@@ -122,4 +126,47 @@ export class DemStore {
     }
     return p;
   }
+}
+
+/**
+ * DEM5A in the city is laser ground points with buildings removed; where few ground points
+ * survive (beside buildings, under elevated roads) the interpolation leaves 1–1.5 m lumps and
+ * pits that read as a bumpy pavement in the game. A 5×5 median (~20 m at z15) removes those
+ * while keeping real steps such as moat walls and embankments sharp; a 3×3 binomial pass then
+ * softens the median's terraces. Why not a plain Gaussian: it would smear the lumps into wider
+ * swells and round off the steps.
+ */
+export function smoothGround(src: Float32Array): Float32Array {
+  const median = new Float32Array(SIZE * SIZE);
+  const window = new Float32Array(25);
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      let n = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        const yy = Math.min(SIZE - 1, Math.max(0, y + dy));
+        for (let dx = -2; dx <= 2; dx++) {
+          const xx = Math.min(SIZE - 1, Math.max(0, x + dx));
+          window[n++] = src[yy * SIZE + xx];
+        }
+      }
+      window.sort();
+      median[y * SIZE + x] = window[12];
+    }
+  }
+  const out = new Float32Array(SIZE * SIZE);
+  const kernel = [1, 2, 1];
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = Math.min(SIZE - 1, Math.max(0, y + dy));
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = Math.min(SIZE - 1, Math.max(0, x + dx));
+          sum += median[yy * SIZE + xx] * kernel[dx + 1] * kernel[dy + 1];
+        }
+      }
+      out[y * SIZE + x] = sum / 16;
+    }
+  }
+  return out;
 }

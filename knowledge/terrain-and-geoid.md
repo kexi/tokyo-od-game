@@ -1,12 +1,14 @@
 ---
 type: Reference
 title: 地形・ジオイド・浮動原点
-description: 地理院 DEM と PLATEAU の高さを合わせる方法、ジオイドを EGM2008 に替えた理由、23 区の曲率に対する浮動原点。
+description: 地理院 DEM と PLATEAU の高さを合わせる方法、ジオイドを EGM2008 に替えた理由、23 区の曲率に対する浮動原点、DEM5A の凸凹をメディアンで均した経緯。
 tags: [terrain, licensing, rendering]
 status: stable
 stale_after: 2027-10-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T05:00:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T11:00:00Z }
 verified:
+  - { by: claude-opus-5-5/1m, at: 2026-10-04T11:00:00Z }
+  - { by: process:vitest, at: 2026-10-04T11:00:00Z }
   - { by: process:vitest, at: 2026-10-04T04:30:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-10-04T03:41:00Z }
 sources:
@@ -19,6 +21,10 @@ sources:
   - id: proj-egm
     resource: https://raw.githubusercontent.com/OSGeo/PROJ-data/master/us_nga/us_nga_README.txt
     title: "PROJ-data us_nga（EGM2008 2.5′ grid, License: Public Domain）"
+  - id: dem-roughness
+    resource: 丸の内（スポーン地点）中心の 600m 四方を 4m 間隔で 150×150 点サンプルし、各点の高さから 44m 四方の平均を引いた偏差の分位点（ヘッドレス Chrome、z15 の dem5a_png）
+    title: DEM の凸凹の計測
+    author: claude-opus-5-5/1m
   - id: base-measure
     resource: ヘッドレス Chrome・丸の内・LOD1 表示タイルの 6m セルごとの最低頂点と地形高の差（1,711 セル）
     title: 建物底面と地形の高さ差の実測
@@ -47,6 +53,12 @@ PLATEAU の 3D Tiles は WGS84 の楕円体高、地理院の DEM は標高（�
 
 「車を降りたら自分の車がなくなった」という報告があった。降車中も車は動的剛体のままで、AI の車・都営バス・救急車（いずれもキネマティック剛体）に押されると吹き飛ばされる。地形の当たり判定はプレイヤーの周囲 3×3 チャンク（約 1km 四方）にしかないので、そこから外れると落下もする。降車中は車をキネマティックにして、乗車時に動的へ戻すようにした。100m 歩いて離れても車が元の位置に残ることを確認した。
 
+# DEM5A の凸凹をメディアンで均す（2026-10-04 追記）
+
+平らな丸の内の広場や歩道が、ゆるく波打って見えた。DEM5A の高さから 44m 四方の平均を引いた偏差は、中央の 80% が ±0.2m 以内だった。しかし 1% 点で −1.57m、99% 点で +1.24m あり、1〜1.5m の盛り上がりとくぼみが点在していた。[^dem-roughness] 建物を除いた航空レーザの地表点が建物際や高架下で少なくなり、その補間の跡と見ている（原因は確かめていない）。
+
+タイルを読んだ直後に 5×5 のメディアン（z15 で約 20m）をかけ、3×3 の二項フィルタで段差を丸めた。偏差は 1% 点 −0.99m、99% 点 +0.90m、10〜90% 点は −0.12〜+0.17m になった。[^dem-roughness] メディアンにしたのは、ガウシアンでは盛り上がりが広がるだけで、堀の石垣や盛土の段差まで丸まるため。孤立した 1.5m の突起が消え、5m の段差が 1 画素以内に保たれることを単体テストで確かめている。
+
 # 浮動原点
 
 23 区は端から端まで約 30km ある。1 枚の接平面に置くと、15km 先で 10m 以上沈む（テストで確認）。
@@ -63,3 +75,5 @@ PLATEAU の 3D Tiles は WGS84 の楕円体高、地理院の DEM は標高（�
 [^proj-egm]: PROJ-data us_nga
 
 [^base-measure]: 建物底面と地形の高さ差の実測
+
+[^dem-roughness]: DEM の凸凹の計測

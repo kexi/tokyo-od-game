@@ -94,6 +94,25 @@ export class RoadSurface {
       list.push([c.s - 2.6, c.s + 2.6]);
       gaps.set(c.seg, list);
     }
+    // …and where the street runs through another road's carriageway: big junctions are several
+    // GSI nodes joined by short links, so the node-based cuts above miss most of the box.
+    for (const seg of graph.segments) {
+      if (seg.line.kind === "highway") continue;
+      const list = gaps.get(seg) ?? [];
+      let start: number | null = null;
+      for (let s = 0; s <= seg.length + 1.5; s += 1.5) {
+        const at = Math.min(s, seg.length);
+        const { pos, dir } = graph.sample(seg, at);
+        const isCrossing =
+          s <= seg.length && graph.carriagewaysAt(pos, 0.5, seg).some((o) => Math.abs(o.dir.dot(dir)) < 0.85);
+        if (isCrossing && start === null) start = at;
+        if (!isCrossing && start !== null) {
+          list.push([start - 1.5, at + 1]);
+          start = null;
+        }
+      }
+      if (list.length) gaps.set(seg, list);
+    }
 
     for (const seg of graph.segments) {
       if (seg.line.kind === "highway") continue;

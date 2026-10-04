@@ -10,8 +10,10 @@ import {
   type Material,
   type Scene,
 } from "three";
+import RAPIER from "@dimforge/rapier3d-compat";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { PROP_GROUPS } from "../physics/groups";
 import { SIGN, type AppliedRegulations } from "./regulations";
 import { leftOf, type RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
@@ -126,7 +128,15 @@ function faceMaterial(file: string): MeshStandardMaterial {
   return m;
 }
 
-type Post = { pos: Vector3; travel: Vector3; plates: Design[] };
+type Post = {
+  pos: Vector3;
+  travel: Vector3;
+  plates: Design[];
+  /** Instances drawing this post, to hide it if it turns out to stand inside a building. */
+  refs: Array<[InstancedMesh, number]>;
+  collider: RAPIER.Collider | null;
+  hidden: boolean;
+};
 type Item = { post: Post; level: number; flip: boolean };
 
 /**
@@ -137,9 +147,15 @@ type Item = { post: Post; level: number; flip: boolean };
 export class TrafficSigns {
   private meshes: InstancedMesh[] = [];
 
+  private posts: Post[] = [];
+  private body: RAPIER.RigidBody | null = null;
+  private lastCheck = 0;
+
   constructor(
     private readonly scene: Scene,
     private readonly groundAt: (x: number, z: number) => number | null,
+    private readonly world: RAPIER.World,
+    private readonly isOpen: (x: number, z: number, groundY: number) => boolean,
   ) {}
 
   rebuild(graph: RoadGraph | null, regs: AppliedRegulations | null, approaches: Approach[]): void {
@@ -148,9 +164,11 @@ export class TrafficSigns {
     const posts: Post[] = [];
     const add = (pos: Vector3, travel: Vector3, d: Design | null) => {
       if (!d) return;
+      // Never in another road's carriageway (junctions, the far side of a narrow crossing).
+      if (graph.carriagewaysAt(pos, 0.3).length > 0) return;
       // Several plates for the same traffic at (nearly) the same spot share one post.
       const post = posts.find((p) => p.pos.distanceTo(pos) < 2 && p.travel.dot(travel) > 0.7);
-      if (!post) posts.push({ pos, travel, plates: [d] });
+      if (!post) posts.push({ pos, travel, plates: [d], refs: [], collider: null, hidden: false });
       else if (!post.plates.some((x) => x.file === d.file) && post.plates.length < 3) post.plates.push(d);
     };
     // 一時停止 first so it is the top plate where it shares a post.
@@ -185,6 +203,34 @@ export class TrafficSigns {
   clear(): void {
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
+    if (this.body) this.world.removeRigidBody(this.body);
+    this.body = null;
+    this.posts = [];
+  }
+
+  /**
+   * Building tiles stream in after the signs are placed, so posts near the player are re-tested
+   * now and then; one that stands inside a building (the road is narrower than its GSI 幅員) is
+   * hidden and loses its collider.
+   */
+  update(focus: Vector3, now: number): void {
+    if (now - this.lastCheck < 2000) return;
+    this.lastCheck = now;
+    const hide = new Object3D();
+    hide.scale.setScalar(0);
+    hide.updateMatrix();
+    for (const post of this.posts) {
+      if (post.hidden || post.pos.distanceTo(focus) > 200) continue;
+      const ground = this.groundAt(post.pos.x, post.pos.z);
+      if (ground === null || this.isOpen(post.pos.x, post.pos.z, ground)) continue;
+      post.hidden = true;
+      for (const [mesh, i] of post.refs) {
+        mesh.setMatrixAt(i, hide.matrix);
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+      if (post.collider) this.world.removeCollider(post.collider, false);
+      post.collider = null;
+    }
   }
 
   private build(posts: Post[], k: Kit): void {
@@ -212,15 +258,27 @@ export class TrafficSigns {
     this.instanced(k.bracket.geometry, k.bracket.material as Material, [...byShape.values()].flat(), false);
     const o = new Object3D();
     const pole = new InstancedMesh(k.post.geometry, k.post.material as Material, posts.length);
+    // Posts are solid: one fixed body carries a thin cylinder per post (60.5 mm steel pipe).
+    this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const height = POST_TOP + 0.45;
     posts.forEach((post, i) => {
-      o.position.set(post.pos.x, this.groundAt(post.pos.x, post.pos.z) ?? 0, post.pos.z);
+      const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
+      o.position.set(post.pos.x, ground, post.pos.z);
       // The modelled post is 3.2 m; stretch it to just above the top plate.
-      o.scale.set(1, (POST_TOP + 0.45) / 3.2, 1);
+      o.scale.set(1, height / 3.2, 1);
       o.updateMatrix();
       pole.setMatrixAt(i, o.matrix);
+      post.refs.push([pole, i]);
+      post.collider = this.world.createCollider(
+        RAPIER.ColliderDesc.cylinder(height / 2, 0.05)
+          .setTranslation(post.pos.x, ground + height / 2, post.pos.z)
+          .setCollisionGroups(PROP_GROUPS),
+        this.body ?? undefined,
+      );
     });
     pole.castShadow = true;
     this.add(pole);
+    this.posts = posts;
   }
 
   /** One instance per plate; the face looks at oncoming traffic (−travel), just in front of the post. */
@@ -241,6 +299,7 @@ export class TrafficSigns {
       o.scale.setScalar(SCALE);
       o.updateMatrix();
       mesh.setMatrixAt(i, o.matrix);
+      post.refs.push([mesh, i]);
     });
     mesh.castShadow = castShadow;
     this.add(mesh);

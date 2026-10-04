@@ -434,7 +434,7 @@ export function applyRegulations(
     if (!isAcross || isDuplicate || s < 2 || s > seg.length - 2) continue;
     crossings.push({ seg, s, pos: graph.sample(seg, s).pos.clone() });
   }
-  const signs = placeSigns(graph, data, frame, segs);
+  const signs = placeSigns(graph, data, frame, segs, crossings);
   return {
     crossings,
     signs,
@@ -568,12 +568,31 @@ function placeSigns(
   data: RegulationData,
   frame: LocalFrame,
   segs: LineGrid<Segment>,
+  crossings: Crossing[],
 ): PlacedSign[] {
   const placed: PlacedSign[] = [];
-  const put = (type: number, value: number, seg: Segment, s: number, dir: 1 | -1) => {
-    const { pos, dir: d } = graph.sample(seg, s);
+  // A post never stands in another road (a junction the section starts at) or on a crosswalk.
+  const isClear = (seg: Segment, s: number, foot: Vector3) =>
+    graph.carriagewaysAt(foot, 0.5, seg).length === 0 &&
+    !crossings.some((c) => c.seg === seg && Math.abs(c.s - s) < 3.5);
+  const put = (type: number, value: number, seg: Segment, s0: number, dir: 1 | -1) => {
+    // Slide along the travel direction, past the junction, until the kerb is clear.
+    let s = s0;
+    let pos = new Vector3();
+    let d = new Vector3();
+    let foot: Vector3 | null = null;
+    for (let k = 0; k < 15; k++, s += dir * 3) {
+      if (s < 1 || s > seg.length - 1) break;
+      ({ pos, dir: d } = graph.sample(seg, s));
+      const travelHere = d.clone().multiplyScalar(dir);
+      const candidate = pos.clone().add(leftOf(travelHere, seg.line.width / 2 + 0.7));
+      if (isClear(seg, s, candidate)) {
+        foot = candidate;
+        break;
+      }
+    }
+    if (!foot) return;
     const travel = d.clone().multiplyScalar(dir);
-    const foot = pos.clone().add(leftOf(travel, seg.line.width / 2 + 0.7));
     const isDuplicate = placed.some(
       (o) =>
         o.type === type && o.value === value && o.pos.distanceTo(foot) < 15 && o.travel.dot(travel) > 0.7,

@@ -41,6 +41,7 @@ import { ChaseCamera } from "./game/camera";
 import { loadCarModels } from "./game/carModel";
 import { Speedometer } from "./game/speedometer";
 import { ParkingPatrol } from "./game/parkingPatrol";
+import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
@@ -236,7 +237,12 @@ async function main(): Promise<void> {
   const control = new TrafficControl(scene, (x, z) => groundY(x, z));
   const traffic = new TrafficAI(scene, world, (x, z) => groundY(x, z), control);
   const regulationTiles = new RegulationTiles();
-  const signs = new TrafficSigns(scene, (x, z) => groundY(x, z));
+  const signs = new TrafficSigns(
+    scene,
+    (x, z) => groundY(x, z),
+    world,
+    (x, z, g) => isOpenGround(x, z, g),
+  );
   const speedometer = new Speedometer($("#hud-speed"));
   const stamps = new Stamps($("#stamps"), () => audio.context, $("#scene"));
   const patrol = new ParkingPatrol(scene, (x, z) => groundY(x, z));
@@ -312,6 +318,7 @@ async function main(): Promise<void> {
       800,
       true,
       FIXED_ONLY,
+      GROUND_QUERY_GROUPS,
     );
     return hit ? fromY - hit.timeOfImpact : null;
   };
@@ -747,6 +754,7 @@ async function main(): Promise<void> {
     if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
       refreshRoads(geo.lat, geo.lon);
     control.update(now / 1000);
+    signs.update(focus, now);
     if (roadGraph && now - lastClockSync > 5000) {
       lastClockSync = now;
       roadGraph.setClock(clockMinutes());

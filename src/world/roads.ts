@@ -55,10 +55,15 @@ export function estimatedLimit(line: RoadLine): number {
  * Road network around the player, rebuilt per area. Nodes join segment ends that share a point
  * (rounded to ~10 cm), giving intersections for AI routing and the traffic-law checks.
  */
+const CELL = 32;
+const cellKey = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
+
 export class RoadGraph {
   readonly segments: Segment[] = [];
   readonly nodes = new Map<number, number[]>(); // node id → segment ids
   private readonly nodeIds = new Map<string, number>();
+  /** Polyline pieces [segment id, point index] by 32 m cell, for carriageway tests. */
+  private pieces: Map<string, Array<[number, number]>> | null = null;
 
   constructor(lines: RoadLine[], frame: LocalFrame) {
     for (const line of splitAtJunctions(lines)) {
@@ -96,6 +101,69 @@ export class RoadGraph {
       this.link(from, id);
       this.link(to, id);
     }
+  }
+
+  /**
+   * Surface streets whose carriageway (half width + `margin`) covers p, except `except`, with the
+   * street direction there. Used to keep signs and lane markings out of other roads and junctions.
+   */
+  carriagewaysAt(p: Vector3, margin = 0, except?: Segment): Array<{ seg: Segment; dir: Vector3 }> {
+    const cells = this.pieceIndex();
+    const best = new Map<number, { d: number; i: number }>();
+    for (const [segId, i] of cells.get(cellKey(p.x, p.z)) ?? []) {
+      const seg = this.segments[segId];
+      if (seg === except) continue;
+      const a = seg.pts[i - 1];
+      const b = seg.pts[i];
+      const abx = b.x - a.x;
+      const abz = b.z - a.z;
+      const len2 = abx * abx + abz * abz;
+      const t = len2 < 1e-9 ? 0 : Math.min(1, Math.max(0, ((p.x - a.x) * abx + (p.z - a.z) * abz) / len2));
+      const d = Math.hypot(a.x + abx * t - p.x, a.z + abz * t - p.z);
+      const prev = best.get(segId);
+      if (!prev || d < prev.d) best.set(segId, { d, i });
+    }
+    const out: Array<{ seg: Segment; dir: Vector3 }> = [];
+    for (const [segId, { d, i }] of best) {
+      const seg = this.segments[segId];
+      if (d >= seg.line.width / 2 + margin) continue;
+      out.push({
+        seg,
+        dir: seg.pts[i]
+          .clone()
+          .sub(seg.pts[i - 1])
+          .setY(0)
+          .normalize(),
+      });
+    }
+    return out;
+  }
+
+  private pieceIndex(): Map<string, Array<[number, number]>> {
+    if (this.pieces) return this.pieces;
+    const cells = new Map<string, Array<[number, number]>>();
+    for (const seg of this.segments) {
+      if (seg.line.kind === "highway") continue;
+      const reach = seg.line.width / 2 + 3; // widest margin a caller asks for
+      for (let i = 1; i < seg.pts.length; i++) {
+        const a = seg.pts[i - 1];
+        const b = seg.pts[i];
+        const x0 = Math.floor((Math.min(a.x, b.x) - reach) / CELL);
+        const x1 = Math.floor((Math.max(a.x, b.x) + reach) / CELL);
+        const z0 = Math.floor((Math.min(a.z, b.z) - reach) / CELL);
+        const z1 = Math.floor((Math.max(a.z, b.z) + reach) / CELL);
+        for (let cx = x0; cx <= x1; cx++) {
+          for (let cz = z0; cz <= z1; cz++) {
+            const key = `${cx},${cz}`;
+            const list = cells.get(key) ?? [];
+            list.push([seg.id, i]);
+            cells.set(key, list);
+          }
+        }
+      }
+    }
+    this.pieces = cells;
+    return cells;
   }
 
   /** Point and unit direction at distance s along a segment (local frame, y = 0). */
