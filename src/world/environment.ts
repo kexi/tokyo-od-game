@@ -12,6 +12,7 @@ import {
   type Scene,
   type WebGLRenderer,
 } from "three";
+import { ATMOSPHERE, extinctionFor, installAtmosphere } from "./atmosphere";
 import { Sky } from "three/addons/objects/Sky.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { PMREMGenerator } from "three";
@@ -36,6 +37,9 @@ export const WEATHER_LABEL: Record<WeatherMode, string> = {
 };
 
 export type Observation = {
+  /** Meteorological visibility (m) around Tokyo; 20000 = 20 km or more. */
+  visibility: number | null;
+  humidity: number | null;
   temp: number | null;
   precip10m: number | null;
   wind: number | null;
@@ -83,6 +87,7 @@ export class Environment {
     this.sky.scale.setScalar(40000);
     this.sky.frustumCulled = false;
     scene.add(this.sky);
+    installAtmosphere();
     scene.fog = this.fog;
 
     this.sun.castShadow = true;
@@ -153,6 +158,17 @@ export class Environment {
     return this.observation;
   }
 
+  /**
+   * Meteorological visibility (m): observed in リアル weather when the neighbours report it,
+   * otherwise typical values (a clear Tokyo day ~25 km; steady rain ~4 km).
+   */
+  visibility(raining = this.isRaining()): number {
+    const observed = this.weatherMode === "real" ? this.observation?.visibility : null;
+    // 20000 is the instrument's ceiling ("20 km or more"): read it as a clear day.
+    if (observed != null) return observed >= 20000 ? 25000 : observed;
+    return raining ? 4000 : 25000;
+  }
+
   isRaining(): boolean {
     if (this.weatherMode === "rain") return true;
     if (this.weatherMode === "clear") return false;
@@ -212,8 +228,22 @@ export class Environment {
       .lerp(new Color(0xf0a070), golden * 0.7)
       .lerp(new Color(0x0c1528), this.nightFactor);
     this.fog.color.copy(fogColor);
-    this.fog.near = raining ? 120 : 500;
-    this.fog.far = raining ? 1300 : MathUtils.lerp(2600, 4200, day);
+    // The linear ramp now only hides the end of the streamed world; the haze is atmosphere.ts.
+    this.fog.near = raining ? 1100 : 2400;
+    this.fog.far = raining ? 2200 : 4200;
+    const visibility = this.visibility(raining);
+    ATMOSPHERE.fogAtmo.x = extinctionFor(visibility);
+    // Rain fills the whole column; dry haze sits in the lowest ~1 km of the boundary layer.
+    ATMOSPHERE.fogAtmo.y = raining ? 2500 : 1100;
+    ATMOSPHERE.fogSun.x = lightDir.x;
+    ATMOSPHERE.fogSun.y = lightDir.y;
+    ATMOSPHERE.fogSun.z = lightDir.z;
+    // The glow is the sun's (warm and strongest when low); the moon's is faint.
+    ATMOSPHERE.fogSun.w =
+      elevation > -4 ? (raining ? 0.15 : 0.55) * (0.4 + golden) * (0.3 + 0.7 * day) : 0.04;
+    ATMOSPHERE.fogSunColor.x = sunColor.r;
+    ATMOSPHERE.fogSunColor.y = sunColor.g * 0.9;
+    ATMOSPHERE.fogSunColor.z = sunColor.b * 0.75;
     this.renderer.toneMappingExposure = MathUtils.lerp(0.75, raining ? 0.95 : 1.0, day) + golden * 0.1;
 
     this.scene.environmentIntensity = MathUtils.lerp(0.06, raining ? 0.35 : 0.5, day) + golden * 0.1;

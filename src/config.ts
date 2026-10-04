@@ -33,6 +33,8 @@ export const JMA = {
   latestTime: "https://www.jma.go.jp/bosai/amedas/data/latest_time.txt",
   map: (stamp: string) => `https://www.jma.go.jp/bosai/amedas/data/map/${stamp}.json`,
   tokyoStation: "44132",
+  // Tokyo (Kitanomaru) does not measure visibility; Yokohama and Chiba, ~30 km either side, do.
+  visibilityStations: ["46106", "45212"],
 } as const;
 
 /**
