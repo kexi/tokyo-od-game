@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: WebGPU への移行（WebGPURenderer・フレームの組み立て・残りの移植）
-description: three.js r186 の WebGPURenderer へ移した段階 A の記録。描画方式（WebGPU / WebGL 2）の設定、逆転 float 深度を選んだ理由、1 枚の HDR ターゲットに街・ブラー・ワイパー・雨のガラス・車内を重ねて最後に 1 回だけトーンマップするフレームの組み立て、TSL に移したブラーと雨のガラス、非同期になった通行人の写真、仮の node material で走らせているモジュールと後続（段階 B・C）が守るべき接点（main の空・光・ブルームを取り込んだ後の一覧）、three の WebGPU で踏んだ落とし穴。段階 B（空・霧・ブルーム・レンズフレア・水面を TSL に。太陽が見えているかをフレームのアルファで測る方法、閾値を放射輝度にしたブルーム、逆転深度での水面の鏡）と段階 C（外壁・地形の切り抜き・濡れた路面・街灯の光を TSL の node material に）、ブラウザなしで WGSL を生成して naga で検証する方法。
+description: three.js r186 の WebGPURenderer へ移した段階 A の記録。描画方式（WebGPU / WebGL 2）の設定、逆転 float 深度を選んだ理由、1 枚の HDR ターゲットに街・ブラー・ワイパー・雨のガラス・車内を重ねて最後に 1 回だけトーンマップするフレームの組み立て、TSL に移したブラーと雨のガラス、非同期になった通行人の写真、仮の node material で走らせているモジュールと後続（段階 B・C）が守るべき接点（main の空・光・ブルームを取り込んだ後の一覧）、three の WebGPU で踏んだ落とし穴。段階 B（空・霧・ブルーム・レンズフレア・水面を TSL に。太陽が見えているかをフレームのアルファで測る方法、閾値を放射輝度にしたブルーム、逆転深度での水面の鏡）と段階 C（外壁・地形の切り抜き・濡れた路面・街灯の光を TSL の node material に）、ブラウザなしで WGSL を生成して naga で検証する方法。WebGPURenderer では toneMapped を false にしても効かない信号のレンズとオービスを、ACES を逆にたどった放射輝度で WebGL 版の色に見せる方法（色域外の緑と黄、ブルームとの関係）。
 tags: [rendering]
 status: draft
 stale_after: 2027-04-01T00:00:00Z
@@ -18,6 +18,10 @@ verified:
   - { by: process:tsc, at: 2026-10-04T20:50:00Z }
   - { by: process:naga, at: 2026-10-04T20:50:00Z }
   - { by: process:glslang, at: 2026-10-04T20:50:00Z }
+  - { by: process:vitest, at: 2026-10-04T21:16:00Z }
+  - { by: process:tsc, at: 2026-10-04T21:16:00Z }
+  - { by: process:naga, at: 2026-10-04T21:12:00Z }
+  - { by: process:glslang, at: 2026-10-04T21:12:00Z }
 sources:
   - id: three-renderer
     resource: node_modules/three/src/renderers/common/Renderer.js（three 0.186.1）
@@ -73,6 +77,14 @@ sources:
   - id: merge-checks
     resource: main（0b230f6）を webgpu へ統合した後の tsc --noEmit・oxlint・vitest run（38 ファイル 391 件）・vite build（2026-10-05 05:40 JST）
     title: 統合後の機械的な検査
+    author: claude-opus-5-5/1m
+  - id: three-tonemapping
+    resource: node_modules/three/src/nodes/display/ToneMappingFunctions.js・ToneMappingNode.js・RenderOutputNode.js、nodes/tsl/TSLCore.js（ConvertType）と nodes/core/NodeUtils.js（getValueFromType）、math/Matrix3.js、renderers/shaders/ShaderChunk/tonemapping_pars_fragment.glsl.js（three 0.186.1）
+    title: TSL の acesFilmicToneMapping（mat3 の 9 個の数は Matrix3.set で行の順、RRTAndODTFit の分母が GLSL チャンクと違う）、toneMappingExposure、WebGPURenderer が material.toneMapped を読まないこと
+    author: team:threejs
+  - id: untonemapped-checks
+    resource: tests/untonemapped.test.ts（three の TSL の ACES の写しとの往復、5,000 色の掃引、色域外、黒、露出、有限、ブルームの閾値）、Node 上の WGSLNodeBuilder / GLSLNodeBuilder で信号のレンズ・オービスのレンズ・オービスの光の頂点とフラグメント 6 本を作り naga（wgpu-utils 29.0.1）と glslangValidator（glslang 16.4.0）で検証、tsc・oxlint（警告 84 件は変更前と同数）・vitest（41 ファイル 422 件）・vite build（出力先を scratchpad に）（webgpu ブランチ、2026-10-05 06:10〜06:16 JST）
+    title: 色をそのまま見せるマテリアルの検査
     author: claude-opus-5-5/1m
 ---
 
@@ -199,7 +211,7 @@ present と同じタスクで `canvas.toBlob` / `drawImage`。WebGPU のキャ�
 
 - 街のパス。`prepare()` で半分（低: 1/4）から 1/32 までの dual filter（Kawase）を描き、全画面のパスで街に足す。Karis 平均・4×4 の箱の前処理・段の数は main のまま。
 - フレームが線形の半精度になったので、閾値は「露出を掛けた放射輝度」: 昼 9・夜 0.55、薄明は等比（絞りの段）で移す。膝は閾値の 0.35 倍、1 画素が持ち込める明るさは 40 まで（太陽の円盤 6·10⁴ が連鎖を塗りつぶさないように）。強さは昼 0.04・夜 0.30（雨の夜は 1.35 倍）。テストは tests/sky.test.ts。
-- 根拠（露出後の値）: 昼の地平の空の最大チャンネル ~5.4（main の実測の表示値 252 を ACES と露出 1 で逆算）、日なたの白い壁 ~1.5、夜の光害 ~0.1、信号のレンズ ~0.8（MeshBasic、色 × 画像）、ロービーム 1.8 × 0.8、街灯の灯具 ×10 で ~8。main の表示値の閾値（昼 0.975・夜 0.79）を同じく逆算すると露出後で昼 ~3.6・夜 ~0.55。昼は空の青を拾うので 9 に上げ、夜は同じにした。強さは見た目で決める値（下の「確かめていないこと」）。
+- 根拠（露出後の値）: 昼の地平の空の最大チャンネル ~5.4（main の実測の表示値 252 を ACES と露出 1 で逆算）、日なたの白い壁 ~1.5、夜の光害 ~0.1、信号のレンズの LED ~1.0〜1.8（色をそのまま見せる逆算の後。**訂正**: 段階 B の時点では ~0.8 と書いたが、そのときのレンズは色 × 画像 × 露出で LED が 0.63〜0.8、下の「色をそのまま見せるマテリアル」）、ロービーム 1.8 × 0.8、街灯の灯具 ×10 で ~8。main の表示値の閾値（昼 0.975・夜 0.79）を同じく逆算すると露出後で昼 ~3.6・夜 ~0.55。昼は空の青を拾うので 9 に上げ、夜は同じにした。強さは見た目で決める値（下の「確かめていないこと」）。
 - three の BloomNode を使わなかった理由: 5 段の分離ガウス（11 パス・最大 22 タップ）で、Karis 平均が無く、updateBefore がノードフレームで走る。main と同じ dual filter の方が軽い。
 - 画質 レンズフレア あり で、夜（nightFactor 0.3〜0.9 で入る）だけ街灯・ヘッドライトのゴーストを足す（ブルームの 1/8 の段を画面の中心で折り返し、中心へ向かって 4 つ。John Chapman の擬似レンズフレア）。昼の太陽のゴーストはレンズフレアのパスが描く。
 
@@ -262,6 +274,66 @@ present と同じタスクで `canvas.toBlob` / `drawImage`。WebGPU のキャ�
 - 描画方式 WebGL 2 の経路も同じように確かめた: `forceWebGL: true` の WebGPURenderer の `backend.createNodeBuilder` は GLSLNodeBuilder を返す。同じ 38 本の GLSL ES 3.0 を glslang（nixpkgs `glslang` 16.4.0 の glslangValidator、`-S vert|frag`）に通し、すべてエラーなし（わざと型を間違えた版ではエラーになることも確かめた）。[^phase-c-wgsl]
 - これで分かるのは「WGSL / GLSL として正しく、微分とテクスチャ取得が一様な制御フローにある」まで。見た目とフレーム時間は実機の Chrome で見る。
 
+# 色をそのまま見せるマテリアル（信号のレンズ・オービス）
+
+WebGL 版は信号のレンズ（signalModels.ts）とオービスのレンズ・光（orbis.ts）を `toneMapped: false` で描き、画面には材質の色がそのまま（sRGB で）出ていた。WebGPURenderer は `material.toneMapped` を読まない（three の renderers/common・nodes・materials/nodes に参照が無い）。1 枚の HDR フレームを最後に 1 回 ACES + sRGB するので、レンズは暗く、薄くなっていた。[^three-tonemapping]
+
+## 方法: ACES を逆にたどる（render/untonemapped.ts）
+
+見せたい色 d（線形 sRGB、0〜1 に切る。8 bit のキャンバスと同じ）から、three r186 の TSL の `acesFilmicToneMapping`（露出 / 0.6 → ACESInputMat → RRTAndODTFit → ACESOutputMat → 0〜1 に切る）を逆にたどり、出力パスの ACES がちょうど d に戻す放射輝度を描く。
+
+1. z = OUT⁻¹·d（RRTAndODTFit が返すべき値）。OUT⁻¹ は成分が正で行の和が 1 なので、0 ≤ z ≤ 1。
+2. チャンネルごとに fit(v) = z を解く: (1 − b₂z)v² + (a₁ − b₁z)v − (a₀ + b₀z) = 0 の 0 以上の根を、共役形 v = 2(a₀ + b₀z) / (√判別式 + a₁ − b₁z) で（白で 0.016 まで小さくなる 1 − b₂z で割らず、小さい z で桁落ちしない）。
+3. 露出後の放射輝度 = 0.6·IN⁻¹·v。負は 0、`toneMappingExposure`（出力パスと同じノード。render グループの uniform で、時刻で変わる露出に追従）で割り、60000 で頭打ち（半精度 65504 の内側、空の円盤と同じ）。
+4. 黒から半段（線形 1.5·10⁻⁴）以内は放射輝度を 0 へ寄せる。ACES は露出後 ~0.002 までを黒にするので、黒のそのままの逆はその「足元」になり、加算のスプライトなら四角全体に足される。
+
+- 露出後の値で、白は 15.16、点灯した赤のレンズの LED の点は 1.10（描く放射輝度は露出 1 なら 1.10、夜の 0.8 なら 1.37）。
+- **TSL と GLSL の ACES は少し違う**: TSL の RRTAndODTFit の分母は v·((v + 0.432951)·0.983729) + 0.238081、GLSL のチャンクは v·(0.983729·v + 0.432951) + 0.238081。WebGPURenderer は WebGL 2 バックエンドでも TSL の方を使う。差は 1 段に満たないことが多いので、テストは往復を 1/100 段で見る（1 段の許容だと GLSL の係数でも通ってしまった）。
+- **mat3 の 9 個の数は行の順**: TSL の `mat3(9 個)` は `new Matrix3(…)`（`set`、行の順）になり、列優先の `mat3x3<f32>` に書き出される。GLSL のチャンクの「transposed from source」と同じ行列。生成した WGSL の定数で確かめた。[^three-tonemapping]
+- 逆を後から描く方式（トーンマップの後にレンズだけ描く）にしなかった理由: ブルーム・ブラー・ワイパー・車内・ガラスはトーンマップ前の HDR で重ねる。出来上がった絵の上に描くと、レンズが車内やガラスの手前に出る。
+
+## 色域の外（緑と黄）
+
+ACES は明るい色の彩度を落とし、一部の色はどんな負でない放射輝度からも出せない（IN⁻¹·v のチャンネルが負になる）。
+
+| 色                                                                | 出せる範囲（明るさ） | 画像の白（LED の点）で出る色                 |
+| ----------------------------------------------------------------- | -------------------- | -------------------------------------------- |
+| 青信号・歩行者の青 0x19e6b4                                       | 57 % まで            | (25, 230, 180) → (149, 228, 181)（赤が浮く） |
+| 黄 0xffc21a                                                       | 59 % まで            | (255, 194, 26) → (255, 194, 73)（青が浮く）  |
+| 赤 0xff2a1a・歩行者の赤 0xff3a24・オービスの赤 0xff3020・白・消灯 | 全域                 | そのまま                                     |
+
+- 負のチャンネルを 0 にする（明度を保ち、彩度を少し失う）。OKLab の ΔE で緑 0.072・黄 0.023。色域の縁まで暗くする方式（色相と彩度を保つ）は 0.145・0.139 で、どの放射輝度でも最良は 0.049・0.020。暗くすると緑の LED が露出後 0.37 になり、夜のブルームの閾値 0.55 を下回る。
+- 画像（lens_led.png）の拡散板（0.155）と、遠くのレンズ（ミップの平均 0.392）は色域の内側で、そのまま出る。白い LED の点（画像の 36 %）が近くで見えるときだけ、緑の点が少し白っぽい。
+- 掃引（テストは 5,000 色。試しに 2 万色 × 露出 0.8・1.4 でも）: 色域内は約 76 % で、1/100 段以内（倍精度で 10⁻¹² 段）。色域外は最も明るいチャンネルのずれが 6 段以内で、どのチャンネルも 6 段より暗くならない（薄くなるだけ。テストは 6.5 段で見る）。
+
+## 使った所
+
+- 信号・歩行者用灯器のレンズ（signalModels.ts）とオービスのレンズ（orbis.ts）: `UntonemappedBasicMaterial`（MeshBasicNodeMaterial を継ぎ、`setupLighting` の結果 = 色 × 画像 × インスタンスの色を逆算の放射輝度に置き換える。霧はその後に放射輝度で混ざる）。点灯・消灯の色（instanceColor）と alphaTest は WebGL 版のまま。`customProgramCacheKey` に印を足した（setupLighting はノードのプロパティではない）。
+- オービスの光（加算のスプライト）: WebGL 版は 8 bit のキャンバスに「符号化した色 × アルファ」を足していた。黒の上でそう見える色 EOTF(OETF(色 × 画像)·アルファ) を逆算し、CustomBlending の One + One で足す（AdditiveBlending は、非乗算ならアルファがもう一度掛かり、乗算済みならシェーダーで掛かる）。アルファは AdditiveBlending と同じく足す。明るい背景の上では放射輝度で足されるので、キャンバスほどは明るくならない。霧なし（加算の層を霞へ混ぜると霞の色が足される）。three の型の Sprite は SpriteMaterial しか取らないのでキャストした。
+- 3 か所の `toneMapped: false` は消した（WebGPURenderer では何もしない）。描画方式 WebGL 2 も同じノード（出力パスも同じ）。
+
+## ブルーム（閾値は露出後の放射輝度）
+
+逆算の放射輝度は露出で割ってあるので、露出後の値は露出に依らない。
+
+| レンズ                           | 露出後の最大チャンネル                     | 夜（閾値 0.55・膝 0.36 から） | 昼（閾値 9） |
+| -------------------------------- | ------------------------------------------ | ----------------------------- | ------------ |
+| 点灯・LED の点（画像の白）       | 赤 1.10・黄 1.83・緑 1.01・歩行者の赤 1.11 | にじむ                        | にじまない   |
+| 同じ、この変更の前               | 0.63〜0.80（夜の露出 0.8）                 | わずか                        | にじまない   |
+| 点灯・遠く（ミップの平均 0.392） | 0.25〜0.33（前は 0.25〜0.31）              | にじまない（膝の下）          | にじまない   |
+| 消灯・オービスの休止の赤         | 0.04〜0.05                                 | にじまない                    | にじまない   |
+| オービスの白い閃光               | 15.2                                       | にじむ                        | にじむ       |
+
+- LED の点が画素に残るのは、レンズ（0.39 m、画像 256 px）が画面で 32〜64 px 以上のとき。縦 1080 px・視野 62° でおよそ 6〜12 m、2160 px で 12〜24 m（見積もり、確かめていない）。それより遠い信号は夜もにじまない。段階 B の時点でも、main の WebGL 版の擬似 HDR（表示 0.66 → 1.8、夜の閾値 3.6）でも同じ。
+- 遠くの信号もにじませるなら（未対応）: 夜の閾値を ~0.35 に下げる（窓や照らされた路面もにじみ始める）、レンズの画像の拡散板を明るくする（遠くのレンズが WebGL 版より明るく見える）、灯火だけのブルームの入力を作る。
+- tests/sky.test.ts の「点灯した信号のレンズ」の値（4 × 0.8 = 3.2）は実際より大きかったので、緑の LED の 1.0 に直した。
+
+## 検証
+
+- tests/untonemapped.test.ts: three の TSL の ACES を写した JS（行列は `new Matrix3(…)`、fit は TSL の形）との往復。白・灰・黒・点灯と消灯の色・色域内の緑と黄（画像の平均・拡散板・0.5）を露出 0.8・1・1.4 で 1/100 段以内、5,000 色の掃引、色域外の緑と黄（出せる範囲 57 %・59 %、明度を保って薄くなる）、黒は放射輝度 0 で半段以内、露出に反比例、1 を超える色・負の色・露出 0 で有限。ブルーム: 点灯した LED は夜ににじみ昼ににじまない、消灯はにじまない、閃光は昼もにじむ。fit の係数を GLSL のものにする・入力の行列を転置すると落ちることも確かめた。[^untonemapped-checks]
+- WGSL（naga）と WebGL 2 の GLSL（glslang）: 信号のレンズ（画像・alphaTest・instanceColor・霧・ライト）・オービスのレンズ・オービスの光の頂点とフラグメント 6 本が通った。インスタンスの行列は uniform の大きさをデバイスの制限から決めるので、未初期化のレンダラーでは `builder.getUniformBufferLimit` を差し替える（65536）。生成した WGSL で、色 × 画像 × インスタンスの色 → 逆算 → 霧の順と、行列の定数を確かめた。[^untonemapped-checks]
+- 分かるのは「計算が three の ACES の逆になっていること」「シェーダーとして正しいこと」まで。シェーダーの数値そのもの（f32）は動かして確かめていない。
+
 # 残り（段階 B・C）と守る接点
 
 main の 7 コミット（案内標識・車と運転席の寸法・空と光とブルーム・ミラーの飾り・交差点の曲がり方・東京駅）を取り込んだ後（2026-10-05）の一覧。段階の分け方は提案（B = 空・空気・水・光の後処理、C = 路面と建物の表面）。空・光・ブルームの WebGL 版の設計は [空・光・ブルーム](sky-light-and-bloom.md)。
@@ -323,6 +395,8 @@ main の 7 コミット（案内標識・車と運転席の寸法・空と光と
 - **MSAA の深度はシェーダーで読めない**: `sceneTarget` の depth32float はサンプル数のまま作られる（解決されない）。太陽が隠れているかはアルファで測った（レンズフレア）。[^three-msaa-depth]
 - **自分で投影を作るカメラ**: Renderer は描くときに、カメラの座標系か逆転深度のフラグがレンダラーと違えば `updateProjectionMatrix()` を呼ぶ。投影を手で変える前に両方を合わせておく（水面の鏡）。[^three-msaa-depth]
 - **フレームの半精度の上限**: 65504 を超えた値は Inf になり、ブルームの縮小で NaN が広がる。空の円盤は 60000 で、ブルームへの持ち込みは露出後 40 で抑えた。
+- **`toneMapped: false` は効かない**: WebGPURenderer は material.toneMapped を読まず、トーンマップはフレームの出力パスで 1 回。色をそのまま見せるには、その ACES が戻す放射輝度を描く（render/untonemapped.ts）。[^three-tonemapping]
+- **TSL の ACES は GLSL のチャンクと係数が違う**: RRTAndODTFit の分母の 1 次の係数が 0.432951 × 0.983729（TSL）と 0.432951（GLSL）。WebGPURenderer の計算を写すときは TSL の方から。
 - **lefthook の pnpm exec**: このワークツリーは node_modules が本体へのシンボリックリンクで、`pnpm exec` が依存の確認から `pnpm install` を走らせようとして止まる（モジュールのディレクトリを消すのを拒否した）。typecheck・oxlint・oxfmt を node_modules/.bin で直接走らせ、`LEFTHOOK_EXCLUDE=typecheck,oxlint,oxfmt` でコミットした。
 
 # 検証
@@ -330,8 +404,10 @@ main の 7 コミット（案内標識・車と運転席の寸法・空と光と
 - 機械的な検査: tsc・oxlint（新しい警告なし）・vitest 33 ファイル 311 件・vite build。[^phase-a-checks] main を取り込んだ後も同じ検査が通った（38 ファイル 391 件）。[^merge-checks]
 - 段階 C: tsc・oxlint（新しい警告なし）・vitest 38 ファイル 400 件・vite build、node material 38 本の WGSL を naga で検証。[^phase-c-wgsl]
 - 段階 B: tsc・oxlint・vitest 40 ファイル 413 件・vite build、11 マテリアル 22 本の WGSL を naga、GLSL を glslang で検証。[^phase-b-checks] [^phase-b-wgsl]
+- 色をそのまま見せるマテリアル: tsc・oxlint（新しい警告なし）・vitest 41 ファイル 422 件・vite build、3 マテリアル 6 本の WGSL を naga、GLSL を glslang で検証。[^untonemapped-checks]
 - 実機の Chrome での確認はまだ（ヘッドレスは使わない）。見る項目: 運転席の昼・夕方・夜・雨とワイパー、追従視点、Y の写真、再生、設定 › 画質 の切り替え、描画方式 WebGL 2、コンソールの WGSL / 検証エラー、F12 のスクリーンショット。
 - 段階 B で見る項目: 夜空の灰橙の光害と雲底、晴れた夜の星（15° より上）、ブルーアワーの青、雨の雲のまだら、地平の霞と遠くの街が同じ色になるか、環境マップの映り込みの地面と街並み（車の塗装・ガラスの建物）。ブルーム: 夜の街灯・窓・信号・ヘッドライトがにじむか、昼は太陽と照り返しだけか（白い壁や空がにじまないか）、光のにじみ 高 / 低 / なし。レンズフレア: 太陽を見て、建物の陰に入ると消えるか、雲・雨で消えるか、運転席で屋根やピラーに隠れると消えるか、車内の上に描かれないか、レンズフレア あり / なし、夜のヘッドライトのゴースト。水面（両国 `?start=35.6935,139.7862`）: 波紋・照り返し・街の映り込み（上下が合っているか、水面下が映らないか）、空の映り込み なし で空だけ。すべてでコンソールに WGSL・検証のエラーが無いか、フレーム時間。
+- 色をそのまま見せるマテリアルで見る項目: 昼・夕方・夜で信号の赤・黄・青と歩行者用灯器の色が変わらないか（main の WebGL 版と並べる。露出が変わってもレンズの色が同じか）、近くで見た青信号の LED の点が少し白っぽい程度か、消灯したレンズの暗い灰色、夜に近くの点灯したレンズがにじむか（遠くはにじまない見込み）、霧の中で遠くの信号が霞に溶けるか、オービスの閃光（白 → 赤、`?start=` でオービスの近くから速度超過）の光の大きさと、光の四角の縁が見えないか、描画方式 WebGL 2 でも同じか。
 
 [^three-renderer]: node_modules/three/src/renderers/common/Renderer.js（three 0.186.1）
 
@@ -358,3 +434,7 @@ main の 7 コミット（案内標識・車と運転席の寸法・空と光と
 [^phase-c-wgsl]: 段階 C の node material の WGSL 生成と検証
 
 [^three-lighting-model]: three の照明モデルとマテリアルのキャッシュキー（three 0.186.1）
+
+[^three-tonemapping]: three の TSL の ACES・ToneMappingNode・RenderOutputNode・mat3 の組み立て（three 0.186.1）
+
+[^untonemapped-checks]: 色をそのまま見せるマテリアルの検査（tests/untonemapped.test.ts、naga・glslang、tsc・oxlint・vitest・vite build）

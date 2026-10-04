@@ -2,6 +2,7 @@
 
 ## 2026-10-05
 
+- **Update**: [WebGPU への移行](webgpu-migration.md) に「色をそのまま見せるマテリアル（信号のレンズ・オービス）」を追加（ACES の逆算の手順、TSL と GLSL の ACES の係数の違い、ACES が出せない緑と黄の扱い、オービスの加算の光、ブルームでの値、検証）。落とし穴 2 件を追加。段階 B のブルームの根拠の「信号のレンズ ~0.8」を訂正し、[空・光・ブルーム・レンズフレア](sky-light-and-bloom.md) の同じ記述も訂正（実際は LED の点で 0.63〜0.8、遠くの平均で 0.25〜0.31。逆算の後は LED の点で ~1.0〜1.8）。
 - **Update**: [WebGPU への移行](webgpu-migration.md) に段階 B（空・霧・ブルーム・レンズフレア・水面を TSL に、街のパスの `prepare` とフレームの読み取り、ブラウザなしの WGSL / GLSL の検証、落とし穴 4 件）を追加。[空・光・ブルーム](sky-light-and-bloom.md) を「空・光・ブルーム・レンズフレア」にし、HDR のブルームの閾値の決め方とレンズフレアの設計を追加。[川・運河・海の水面](rivers-and-water.md) に webgpu ブランチの反射を追加し、スマホでノイズも 2 オクターブにするという記述を訂正（コードはうねりだけ 2 本、ノイズは 4 オクターブのまま）。[深度フォグ](atmosphere-and-replay-data.md) に `scene.fogNode` 版を追記。
 - **Update**: [WebGPU への移行](webgpu-migration.md) に段階 C（外壁・地形の水面の切り抜き・濡れた路面と街灯の光を TSL の node material に）と、ブラウザなしで WGSL を作って naga で検証する方法、TSL の落とし穴（`select` は if 文、分岐の中で初めて組まれた共有の値）を追加。[建物外壁のシェーダー](building-facade-shader.md) と [道路照明と濡れた路面](street-lighting-and-wet-roads.md) に webgpu ブランチでの入れ先・画質の切り替え・検証を追記。
 - **Update**: [WebGPU への移行](webgpu-migration.md) を main（案内標識・ミラーの飾り・交差点の曲がり方・空と光とブルーム・東京駅）との統合に合わせて更新（空の環境マップを three/webgpu へ移植、光の釣り合い・天気の移り変わり・濡れは main のまま、空のシェーダーの追加・ブルーム・霧のトーンマップは段階 B へ、モジュールごとの仮の実装の一覧）。
