@@ -44,7 +44,8 @@ import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
-import { gameClock, tokyoDate, type GameClock } from "./world/ruleTime";
+import { CLOSURE_WORDS } from "./world/closures";
+import { gameClock, inForce as isInForceTime, timeNote, tokyoDate, type GameClock } from "./world/ruleTime";
 import { classifyTurn, laneAllows, laneIndex, planRoute, TURN_WORDS } from "./game/navigation";
 import { RouteArrows } from "./game/routeArrows";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
@@ -965,7 +966,12 @@ async function main(): Promise<void> {
 
       // 通行禁止 (車両通行止め, 歩行者用道路) in force: entering the street at all is the offence.
       closedSince = onRoad?.seg.closed && speed > 5 ? (closedSince ?? now) : null;
-      if (closedSince !== null && now - closedSince > 1500) book(VIOLATIONS.closedRoad, now, 20000);
+      if (closedSince !== null && now - closedSince > 1500 && onRoad) {
+        const active = onRoad.seg.closures.find((c) => isInForceTime(c.time, clock));
+        const what = active ? CLOSURE_WORDS[active.kind] : "通行禁止";
+        const note = active ? timeNote(active.time) : null;
+        book(VIOLATIONS.closedRoad, now, 20000, `${what}の道路に進入${note ? `（${note}）` : ""}`);
+      }
 
       // JARTIC section rules in force now (時間帯指定を含む).
       const clock = gameClockNow();
@@ -1679,6 +1685,9 @@ async function main(): Promise<void> {
 
   const onAccident = (kind: "pedestrian" | "vehicle", kmh: number, who: string) => {
     book(VIOLATIONS.safeDriving, performance.now(), 3000);
+    // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
+    if (phone.open && mode === "car")
+      book(VIOLATIONS.phoneDanger, performance.now(), 30000, "スマホを操作しながら事故を起こした");
     if (kind === "pedestrian") book(injuryViolation(kmh), performance.now(), 3000);
     const penalty = kind === "pedestrian" ? 300 : 100;
     score = Math.max(0, score - penalty);

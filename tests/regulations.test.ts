@@ -19,6 +19,7 @@ const T = (start: number, end: number) => [1, start, end, 0, 0];
 /** A Thursday (no 曜日 conditions apply) at `minutes`. */
 const at = (minutes: number) => gameClock(2026, 10, 1, minutes);
 import { CYCLE, lightState, segmentsIntersect } from "../src/world/trafficControl";
+import { CLOSURE } from "../src/world/closures";
 
 const frame = new LocalFrame(35.68, 139.76, 40);
 const M_LAT = 1 / 110_950; // degrees per metre of latitude near Tokyo
@@ -260,9 +261,25 @@ describe("signs and lane rules on the road graph", () => {
     const graph = new RoadGraph([street()], frame);
     const data = empty();
     // 歩行者用道路 7:00–8:30, 土曜・日曜・休日を除く.
-    data.closures.push([2, 1, 420, 510, 0, 1, 0, 1440, 2, 139.76, 35.68, 139.762, 35.68]);
+    data.closures.push([
+      2,
+      CLOSURE.pedestrianRoad,
+      1,
+      420,
+      510,
+      0,
+      1,
+      0,
+      1440,
+      2,
+      139.76,
+      35.68,
+      139.762,
+      35.68,
+    ]);
     applyRegulations(graph, data, frame);
     const seg = graph.segments[0];
+    expect(seg.closures.map((c) => c.kind)).toEqual([CLOSURE.pedestrianRoad]);
     graph.setClock(gameClock(2026, 10, 1, 8 * 60)); // Thursday
     expect(seg.closed).toBe(true);
     graph.setClock(gameClock(2026, 10, 4, 8 * 60)); // Sunday

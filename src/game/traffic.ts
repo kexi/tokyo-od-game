@@ -15,6 +15,7 @@ export type ViolationKind =
   | "laneChange" // 進路変更禁止違反
   | "laneUse" // 通行帯違反
   | "laneDirection" // 指定通行区分違反
+  | "phoneDanger" // 携帯電話使用等（交通の危険）
   | "keepLeft" // 通行区分違反（右側通行）
   | "speed" // 速度超過
   | "pedestrianCrossing" // 横断歩行者等妨害等
@@ -98,7 +99,7 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
   // 通行止めの時間帯（通学路・歩行者用道路など）に、その道路へ入った。
   closedRoad: {
     kind: "closedRoad",
-    label: "通行禁止違反（車両通行止め）",
+    label: "通行禁止違反",
     article: "道路交通法 第8条第1項",
     points: 2,
     fine: 7000,
@@ -142,6 +143,14 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     article: "道路交通法 第35条第1項",
     points: 1,
     fine: 6000,
+  },
+  // スマホを使いながらの運転で事故など交通の危険を生じさせた（反則金の対象外、刑事手続）。
+  phoneDanger: {
+    kind: "phoneDanger",
+    label: "携帯電話使用等（交通の危険）",
+    article: "道路交通法 第71条第5号の5・第117条の4",
+    points: 6,
+    fine: null,
   },
   keepLeft: {
     kind: "keepLeft",

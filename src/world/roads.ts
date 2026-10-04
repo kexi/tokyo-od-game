@@ -1,5 +1,6 @@
 import { Vector3 } from "three";
 import type { LocalFrame } from "../geo/frame";
+import type { ClosureKind } from "./closures";
 import { inForce, type GameClock, type RuleTime } from "./ruleTime";
 
 /** A road centreline from a vector source, in lon/lat. */
@@ -34,7 +35,7 @@ export type Segment = {
   /** JARTIC sections on this segment: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行. */
   rules: Array<{ code: number; time: RuleTime }>;
   /** JARTIC 通行禁止 (車両通行止め, 歩行者用道路 …) on this segment, and whether one applies now. */
-  closures: RuleTime[];
+  closures: Array<{ kind: ClosureKind; time: RuleTime }>;
   closed: boolean;
 };
 
@@ -236,7 +237,7 @@ export class RoadGraph {
     for (const seg of this.segments) {
       const r = seg.onewayRule;
       seg.oneway = r && inForce(r.time, clock) ? r.dir : seg.line.oneway;
-      seg.closed = seg.closures.some((t) => inForce(t, clock));
+      seg.closed = seg.closures.some((c) => inForce(c.time, clock));
     }
   }
 

@@ -4,6 +4,7 @@ import { latToTileY, lonToTileX } from "../geo/tiles";
 import { warn } from "../log";
 import { anchors, M_LAT, M_LON, reversed } from "./anchors";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { CLOSURE, type ClosureKind } from "./closures";
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
 
 /**
@@ -20,7 +21,7 @@ export type RegulationData = {
   stopSign: number[][]; // [lon, lat]
   sections: number[][]; // [code, bothWays, TIME…, …coords]: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行
   turns: number[][]; // 指定方向外進行禁止: [centreLon, centreLat, entryLon, entryLat, mask, TIME…]
-  closures: number[][]; // 通行禁止: [shape (2 line, 3 area), TIME…, …coords]
+  closures: number[][]; // 通行禁止: [shape (2 line, 3 area), kind (CLOSURE), TIME…, …coords]
   noOvertake: number[][]; // はみ出し禁止 sections: coords
   lanes: number[][]; // 車両通行帯: [lanes or 0, …coords]
   noLaneChange: number[][]; // 進路変更禁止 sections: coords
@@ -71,6 +72,9 @@ export const SIGN = {
   crosswalk: 9, // 横断歩道 (407-A), placed at runtime at crossings without signals
   stop: 10, // 一時停止 (330-A), placed at runtime at 一時停止 approaches
   closed: 11, // 車両通行止め (302), at the entrances of streets under 通行禁止
+  pedestrianRoad: 12, // 歩行者専用 (歩行者用道路), mostly with school-run hours
+  roadClosed: 13, // 通行止め (301)
+  motorClosed: 14, // 自動車 (incl. 二輪) 通行止め
 } as const;
 
 const REG_ZOOM = 14;
@@ -349,12 +353,14 @@ export function applyRegulations(
     const { time, next } = readTime(r, 0);
     oneways.add(time, toLocal(frame, r, next));
   }
-  const closureLines = new LineGrid<RuleTime>();
-  const closureAreas: Array<{ time: RuleTime; ring: Vector3[] }> = [];
+  type Closure = { kind: ClosureKind; time: RuleTime };
+  const closureLines = new LineGrid<Closure>();
+  const closureAreas: Array<{ closure: Closure; ring: Vector3[] }> = [];
   for (const r of data.closures) {
-    const { time, next } = readTime(r, 1);
-    if (r[0] === 3) closureAreas.push({ time, ring: toLocal(frame, r, next) });
-    else closureLines.add(time, toLocal(frame, r, next));
+    const { time, next } = readTime(r, 2);
+    const closure = { kind: r[1] as ClosureKind, time };
+    if (r[0] === 3) closureAreas.push({ closure, ring: toLocal(frame, r, next) });
+    else closureLines.add(closure, toLocal(frame, r, next));
   }
   const limits = new LineGrid<number>();
   for (const r of data.speed) limits.add(r[0], toLocal(frame, r, 1));
@@ -394,7 +400,7 @@ export function applyRegulations(
     let laneVotes = 0;
     let laneCount = 0;
     const ruleVotes = new Map<number, { n: number; time: RuleTime }>();
-    const closureVotes = new Map<RuleTime, number>();
+    const closureVotes = new Map<Closure, number>();
     for (const f of fractions) {
       graph.sample(seg, seg.length * f, pos, dir);
       const isParallel = (dx: number, dz: number) => Math.abs(dx * dir.x + dz * dir.z) > PARALLEL;
@@ -416,11 +422,14 @@ export function applyRegulations(
         v.n++;
         ruleVotes.set(code, v);
       }
-      const closed = closureLines.nearest(pos.x, pos.z, wide, isParallel);
+      // A closure shuts the whole street, so its line lies on the centreline: matching within
+      // half the width (as for lane-level sections) closed 内堀通り because of the closed paths
+      // of 皇居外苑 running beside it.
+      const closed = closureLines.nearest(pos.x, pos.z, MATCH_DIST, isParallel);
       if (closed) closureVotes.set(closed.owner, (closureVotes.get(closed.owner) ?? 0) + 1);
       for (const area of closureAreas) {
         if (insidePolygon(pos.x, pos.z, area.ring))
-          closureVotes.set(area.time, (closureVotes.get(area.time) ?? 0) + 1);
+          closureVotes.set(area.closure, (closureVotes.get(area.closure) ?? 0) + 1);
       }
       const lane = laneLines.nearest(pos.x, pos.z, wide, isParallel);
       if (lane) {
@@ -430,7 +439,7 @@ export function applyRegulations(
     }
     const majority = Math.ceil(fractions.length / 2);
     if (rule && Math.abs(votes) >= majority) seg.onewayRule = { dir: votes > 0 ? 1 : -1, time: rule };
-    for (const [time, n] of closureVotes) if (n >= majority) seg.closures.push(time);
+    for (const [closure, n] of closureVotes) if (n >= majority) seg.closures.push(closure);
     seg.noOvertake = overtakeVotes >= majority;
     seg.noLaneChange = laneChangeVotes >= majority;
     if (laneVotes >= majority) seg.lanes = lanesPerDirection(seg, laneCount);
@@ -809,17 +818,25 @@ function placeSigns(
     if (!fits) continue;
     put(type, value, seg, s, dir);
   }
-  // 車両通行止め at each end of a closed street that joins an open one, facing traffic about to
-  // turn in, with its hours and days on a 補助標識 when it is not closed round the clock.
+  // The closure's sign (歩行者専用, 通行止め, 車両通行止め …) at each end of a closed street that
+  // joins an open one, facing traffic about to turn in, with its hours and days on a 補助標識
+  // when it is not closed round the clock.
+  const closureSign: Record<ClosureKind, number> = {
+    [CLOSURE.pedestrianRoad]: SIGN.pedestrianRoad,
+    [CLOSURE.all]: SIGN.roadClosed,
+    [CLOSURE.vehicles]: SIGN.closed,
+    [CLOSURE.motor]: SIGN.motorClosed,
+  };
   for (const seg of graph.segments) {
-    const time = seg.closures[0];
-    if (!time || seg.length < 8) continue;
+    const closure = seg.closures[0];
+    if (!closure || seg.length < 8) continue;
+    const time = closure.time;
     for (const [node, dir, s] of [
       [seg.from, 1, 3],
       [seg.to, -1, seg.length - 3],
     ] as const) {
       const isEntrance = (graph.nodes.get(node) ?? []).some((id) => graph.segments[id].closures.length === 0);
-      if (isEntrance) put(SIGN.closed, 0, seg, s, dir, timeNote(time) ?? undefined);
+      if (isEntrance) put(closureSign[closure.kind], 0, seg, s, dir, timeNote(time) ?? undefined);
     }
   }
   // Zone entrances: a zone street whose end joins a street outside the zone.
