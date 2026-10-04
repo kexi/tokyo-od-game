@@ -106,6 +106,9 @@ const BY_ID: Partial<Record<number, string>> = {
   [SIGN.bikeLane]: "327の4の2",
   [SIGN.busPriority]: "327の5",
   [SIGN.vehicleClass]: "327",
+  [SIGN.hydrant]: "x-hydrant",
+  [SIGN.school]: "208",
+  [SIGN.schoolRoute]: "x-school-route",
 };
 
 function design(type: number, value: number, lanes?: readonly LaneDirection[][]): Design | null {

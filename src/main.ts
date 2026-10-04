@@ -50,6 +50,7 @@ import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { CLOSURE_WORDS } from "./world/closures";
+import { StreetFurniture, type Places } from "./world/streetFurniture";
 import { jstDateAt } from "./geo/sun";
 import { gameClock, inForce as isInForceTime, timeNote, tokyoDate, type GameClock } from "./world/ruleTime";
 import { classifyTurn, laneAllows, laneIndex, planRoute, TURN_WORDS } from "./game/navigation";
@@ -335,6 +336,15 @@ async function main(): Promise<void> {
     return gameClock(y, m, d, minutes);
   };
   /** Graph + JARTIC/OSM regulations + signals + markings for the current frame. */
+  const furniture = new StreetFurniture(scene, (x, z) => groundY(x, z));
+  let places: Places | null = null;
+  void fetch(`${import.meta.env.BASE_URL}data/places.json`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d: Places | null) => {
+      places = d;
+      if (roadGraph) buildRoadNetwork();
+    })
+    .catch(() => undefined);
   const buildRoadNetwork = () => {
     const graph = new RoadGraph(roadLines, frame);
     const applied = roadRegs ? applyRegulations(graph, roadRegs, frame) : null;
@@ -344,6 +354,9 @@ async function main(): Promise<void> {
     traffic.setGraph(graph);
     control.rebuild(graph, applied);
     roadSurface.rebuild(graph, applied, control.approaches);
+    // 消火栓 and schools add their own signs to the posts.
+    const furnitureSigns = furniture.rebuild(graph, places, frame);
+    if (applied) applied.signs.push(...furnitureSigns);
     signs.rebuild(graph, applied, control.approaches);
     pedestrians.setNetwork(
       new SidewalkNetwork(
@@ -1700,6 +1713,7 @@ async function main(): Promise<void> {
           env.nightFactor > 0.35,
         );
       }
+      furniture.update(now, (x, z) => pavements.contains(x, z));
       if (now % 1000 < 160) updateSocial();
       const yaw = isOnFoot
         ? Math.atan2(walker.forward().x, walker.forward().z)
@@ -2028,7 +2042,9 @@ async function main(): Promise<void> {
       (c) => c.seg === hit.seg && Math.abs(c.s - hit.s) < 2 + 5,
     );
     if (nearJunction || nearCrossing || inForce(65)) return "noStopping";
-    return inForce(115) ? "noParking" : null;
+    // 消火栓 within 5 m (第45条第1項第5号).
+    const isNearHydrant = furniture.nearHydrant(vehicle.position());
+    return inForce(115) || isNearHydrant ? "noParking" : null;
   };
   const parkingDialog = $<HTMLDialogElement>("#parking-dialog");
   // The choice cannot be skipped with Esc: the sticker stays until one is made.
@@ -2834,6 +2850,10 @@ async function main(): Promise<void> {
         getTaxi: () => taxi,
         getPolice: () => police,
         getMission: () => missions.current,
+        furniture,
+        groundY,
+        // Staging for the teaser and tests: the screens behind events that take long to set up.
+        debug: { openTicket, endDay, flashScreen, startPursuit, gameNow: () => env.now().getTime() },
         social,
         getHome: () => home,
         getMode: () => mode,

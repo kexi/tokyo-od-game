@@ -88,6 +88,9 @@ export const SIGN = {
   busPriority: 25, // 路線バス等優先通行帯 (327の5)
   vehicleClass: 26, // 車両通行区分 (327)
   laneArrows: 27, // 進行方向別通行区分 (327の7), the lanes in PlacedSign.lanes
+  hydrant: 28, // 消火栓 (法定外: the red disc at hydrants)
+  school: 29, // 学校、幼稚園、保育所等あり (208)
+  schoolRoute: 30, // 通学路 (法定外 plate, under 歩行者専用 in school hours)
 } as const;
 
 const REG_ZOOM = 14;
@@ -886,6 +889,9 @@ function placeSigns(
     ] as const) {
       const isEntrance = (graph.nodes.get(node) ?? []).some((id) => graph.segments[id].closures.length === 0);
       if (isEntrance) put(closureSign[closure.kind], 0, seg, s, dir, timeNote(time) ?? undefined);
+      // 歩行者用道路 for the school run: the ward's 通学路 plate on the same post.
+      const isSchoolRun = closure.kind === CLOSURE.pedestrianRoad && timeNote(time) !== null;
+      if (isEntrance && isSchoolRun) put(SIGN.schoolRoute, 0, seg, s, dir);
     }
   }
   // Zone entrances: a zone street whose end joins a street outside the zone.

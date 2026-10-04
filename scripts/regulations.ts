@@ -404,6 +404,7 @@ type OsmTiles = {
   turnlanes: Map<string, TurnLaneTile>;
 };
 
+let places: { hydrants: number[][]; schools: Array<[number, number, number, string]> } | null = null;
 let police: {
   stations: Array<[number, number, string]>;
   centres: Array<[number, number, string]>;
@@ -512,6 +513,29 @@ async function buildOsm(): Promise<OsmTiles> {
         ],
     );
   police = { stations, centres, orbis };
+  // 消火栓 (駐車禁止 within 5 m, 第45条第1項第5号) and schools / kindergartens / nurseries (the 208
+  // warning sign and school zones): nodes, and the centres of mapped school grounds.
+  const hydrantType: Record<string, number> = { underground: 0, pillar: 1, wall: 2 };
+  const hydrants = readTaggedNodes(file, (t) => t.emergency === "fire_hydrant")
+    .filter((n) => inBbox(n.lon, n.lat))
+    .map((n) => [round(n.lon), round(n.lat), hydrantType[n.tags["fire_hydrant:type"] ?? "underground"] ?? 0]);
+  const isSchool = (t: Record<string, string>) =>
+    ["school", "kindergarten", "childcare"].includes(t.amenity ?? "");
+  const schoolKind = (t: Record<string, string>) =>
+    ({ school: 0, kindergarten: 1, childcare: 2 })[t.amenity ?? ""] ?? 0;
+  const schools: Array<[number, number, number, string]> = readTaggedNodes(file, isSchool)
+    .filter((n) => inBbox(n.lon, n.lat))
+    .map((n) => [round(n.lon), round(n.lat), schoolKind(n.tags), n.tags.name ?? ""]);
+  const schoolWays = readWays(file, isSchool);
+  const schoolCoords = readNodeCoords(file, new Set(schoolWays.flatMap((w) => w.refs)));
+  for (const w of schoolWays) {
+    const pts = w.refs.map((r) => schoolCoords.get(r)).filter((c): c is [number, number] => !!c);
+    if (pts.length < 3) continue;
+    const lon = pts.reduce((a, c) => a + c[0], 0) / pts.length;
+    const lat = pts.reduce((a, c) => a + c[1], 0) / pts.length;
+    if (inBbox(lon, lat)) schools.push([round(lon), round(lat), schoolKind(w.tags), w.tags.name ?? ""]);
+  }
+  places = { hydrants, schools };
   log("osm_parsed", {
     police: stations.length,
     orbis: orbis.length,
@@ -573,4 +597,5 @@ if (!only || only === "signals") {
   }
   // From OpenStreetMap too (ODbL; the credit line in the game covers it).
   if (police) await writeFile(join(ROOT, "police.json"), JSON.stringify(police));
+  if (places) await writeFile(join(ROOT, "places.json"), JSON.stringify(places));
 }
