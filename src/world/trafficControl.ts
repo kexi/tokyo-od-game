@@ -54,6 +54,8 @@ export function lightState(seconds: number, offset: number, axis: 0 | 1): LightS
 
 const SIGNAL_SNAP = 25; // OSM signal node → GSI junction node (m)
 const CLUSTER = 30; // junction nodes this close share one controller (dual carriageways)
+const BOX_LINK = 35; // links this short between junction nodes are inside one crossing
+const BOX_RADIUS = 50; // …as long as the node is this close to the signalled one
 const SIGNAL_HEIGHT = 5.2;
 
 const LAMP_ON: Record<LightState, Color> = {
@@ -290,6 +292,29 @@ export class TrafficControl {
       c.nodes.push(j.node);
       c.offset = Math.min(c.offset, nodeHash(j.node) % CYCLE);
       controllers.set(r, c);
+    }
+
+    // A big crossing is several GSI nodes joined by short links, and OSM often tags a signal at
+    // only some of them. Every junction node of the same box belongs to the controller, so each
+    // approach into the crossing faces a signal (and is checked for red).
+    const claimed = new Set(list.map((j) => j.node));
+    for (const c of controllers.values()) {
+      const origin = this.nodePos(graph, c.nodes[0]);
+      const queue = [...c.nodes];
+      while (queue.length) {
+        const node = queue.pop() as number;
+        for (const id of graph.nodes.get(node) ?? []) {
+          const seg = graph.segments[id];
+          if (seg.length > BOX_LINK || seg.line.kind === "highway") continue;
+          const other = seg.from === node ? seg.to : seg.from;
+          if (claimed.has(other) || (graph.nodes.get(other)?.length ?? 0) < 3) continue;
+          const at = this.nodePos(graph, other);
+          if (!at || !origin || at.distanceTo(origin) > BOX_RADIUS) continue;
+          claimed.add(other);
+          c.nodes.push(other);
+          queue.push(other);
+        }
+      }
     }
 
     const taken = new Set<string>();
