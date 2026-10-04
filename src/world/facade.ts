@@ -643,6 +643,11 @@ GRAPHICS.onChange((settings) => {
   for (const material of materials) material.needsUpdate = true;
 });
 
+// WEBGPU-TODO(phase C): the façade in TSL (node materials ignore onBeforeCompile and the WebGL
+// program cache key below): night windows by hour and use, interior mapping, glass, ground contact,
+// wet walls, from the same `facade` attribute and facadeUniforms (uNight via Buildings.
+// setNightFactor, uTime/uWet via setFacadeClock, uLitShare, uOrigin, uFacadeTex) and 画質 夜の窓.
+// Until then the walls are the plain material: their colour, no windows lit at night.
 export function applyFacade(material: MeshStandardMaterial): void {
   materials.add(material);
   material.addEventListener("dispose", () => materials.delete(material));

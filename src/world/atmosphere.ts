@@ -102,6 +102,10 @@ const FRAGMENT = /* glsl */ `
 
 let isInstalled = false;
 
+// WEBGPU-TODO(phase B): this fog as scene.fogNode in TSL (the same τ integral, the haze by height and
+// the sun's glow, from ATMOSPHERE). The chunk patch below reaches only WebGLRenderer's programs
+// (the avatar studio, the asset page); the game's node materials get three's linear Fog meanwhile.
+
 /** Swap in the atmospheric fog. Call once before the first render (programs compile then). */
 export function installAtmosphere(): void {
   if (isInstalled) return;

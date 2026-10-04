@@ -652,6 +652,10 @@ GRAPHICS.onChange(() => {
  * `aStreet` (lateral offset from the centreline, half width, lane width, lane origin), which puts
  * puddles in the gutter and the wheel ruts. Chains any onBeforeCompile already set.
  */
+// WEBGPU-TODO(phase C): the wet street and the lamp pools in TSL (node materials ignore
+// onBeforeCompile, defines and customProgramCacheKey): wetness from env.wetness, the puddles from
+// `aStreet`, the streaks and the pools from UNIFORMS (StreetLights.update), 画質 雨の路面 / 街灯の光.
+// Until then roads, pavements and walls are dry and unlit by the lamps (the lamp heads still glow).
 export function streetShading(material: MeshStandardMaterial, kind: SurfaceKind, hasStreet = false): void {
   const previous = material.onBeforeCompile;
   const previousKey = material.customProgramCacheKey();
