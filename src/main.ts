@@ -105,6 +105,9 @@ import {
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
 import { PolicePatrol } from "./game/policePatrol";
+import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
+import { formatCount, SocialFeed, type SocialPost } from "./game/social";
+import { renderFeed, renderPost } from "./game/socialView";
 import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
@@ -214,6 +217,16 @@ async function main(): Promise<void> {
   world.timestep = 1 / 60;
   const terrain = new Terrain(scene, world, dem, renderer, frame);
   const buildings = new Buildings(scene, world, camera, renderer, frame);
+  // Landmarks (東京タワー, スカイツリー, 東京駅) replace their PLATEAU copies: tell the buildings
+  // before the first tiles arrive.
+  const landmarkEntries = await fetchLandmarks();
+  buildings.hideFootprints(replacedFootprints(landmarkEntries));
+  const landmarks = new Landmarks(
+    scene,
+    frame,
+    (lat, lon, h) => dem.ellipsoidal(lat, lon, h),
+    landmarkEntries,
+  );
   const env = new Environment(scene, renderer);
   const vehicle = new Vehicle(world);
   scene.add(vehicle.object);
@@ -496,6 +509,7 @@ async function main(): Promise<void> {
     frame = next;
     terrain.setFrame(next);
     buildings.setFrame(next);
+    landmarks.setFrame(next);
     field.setFrame(next);
     transit.setFrame(next);
     const f = new Vector3(0, 0, 1).applyQuaternion(q);
@@ -1294,6 +1308,17 @@ async function main(): Promise<void> {
     if (now - lastHud > 150) {
       lastHud = now;
       checkDeadlines();
+      {
+        const c = gameClockNow();
+        const d = tokyoDate(env.now());
+        landmarks.update(
+          geo.lat,
+          geo.lon,
+          { ...d, weekday: c.weekday, minutes: c.minutes },
+          env.nightFactor > 0.35,
+        );
+      }
+      if (now % 1000 < 160) updateSocial();
       const yaw = isOnFoot
         ? Math.atan2(walker.forward().x, walker.forward().z)
         : isInTaxi && taxi
@@ -1383,6 +1408,19 @@ async function main(): Promise<void> {
     } else {
       toast(`⚠ ${booked.label}（未検挙）`, "#ffb347");
     }
+    // Bystanders and dashcams nearby: someone may film it and post it.
+    // The people the game draws are a sample of the street: busier areas (e-Stat density sets the
+    // crowd size) have more eyes and dashcams than those modelled one by one.
+    const witnesses =
+      pedestrians.list.filter((q) => q.object.position.distanceTo(carPos) < 80).length +
+      traffic.positions().filter((q) => q.distanceTo(carPos) < 80).length +
+      Math.floor(pedestrians.crowd / 12);
+    const post = social.maybePost(booked, witnesses, env.now().getTime());
+    if (post) {
+      toast(`📱 誰かがあなたの運転を「つぶやき」に投稿しました（${booked.label}）`, "#ffb347");
+      socialUnread++;
+      log("social", { event: "post", kind: booked.kind, witnesses, reach: post.reach });
+    }
     const c = booked.context;
     log("violation", {
       kind: booked.kind,
@@ -1396,6 +1434,60 @@ async function main(): Promise<void> {
       limit: c?.limit,
       detail: c?.detail,
     });
+  };
+
+  // ---------- つぶやき（SNS） ----------
+  const social = new SocialFeed();
+  let socialUnread = 0;
+  const viralShown = new Map<SocialPost, number>();
+  let openPost: SocialPost | null = null;
+  const showSocial = (shown: boolean) => {
+    $("#phone-home").hidden = shown;
+    $("#phone-social").hidden = !shown;
+    if (!shown) return;
+    socialUnread = 0;
+    openPost = null;
+    refreshSocial();
+  };
+  const refreshSocial = () => {
+    $("#social-badge").hidden = socialUnread === 0;
+    $("#social-badge").textContent = String(socialUnread);
+    if ($("#phone-social").hidden) return;
+    $("#social-feed").hidden = openPost !== null;
+    $("#social-post").hidden = openPost === null;
+    if (openPost) renderPost($("#social-post"), openPost);
+    else
+      renderFeed($("#social-feed"), social, (p) => {
+        openPost = p;
+        refreshSocial();
+      });
+  };
+  $("#social-open").addEventListener("click", () => showSocial(true));
+  $("#social-back").addEventListener("click", () => {
+    if (openPost) {
+      openPost = null;
+      refreshSocial();
+    } else showSocial(false);
+  });
+  /** Posts spread with game time; the police trace the car from clips that spread wide. */
+  const updateSocial = () => {
+    for (const p of social.update(env.now().getTime())) {
+      if (p.record.status !== "uncaught") continue;
+      law.notice(p.record, "sns");
+      toast("拡散された動画から警察が車を特定しました。後日、出頭の通知が届きます", "#ff6b6b");
+      log("social", { event: "reported", kind: p.record.kind, reposts: p.reposts });
+    }
+    for (const p of social.posts) {
+      const step = p.reposts >= 10000 ? 10000 : p.reposts >= 1000 ? 1000 : 0;
+      if (step > (viralShown.get(p) ?? 0)) {
+        viralShown.set(p, step);
+        toast(
+          `🔥 あなたの運転の動画が拡散中: リポスト ${formatCount(p.reposts)}・いいね ${formatCount(p.likes)}`,
+          "#ff6b6b",
+        );
+      }
+    }
+    refreshSocial();
   };
 
   // ---------- 巡回中のパトカー ----------
@@ -1797,7 +1889,7 @@ async function main(): Promise<void> {
     // 📮 the post: orbis and plate notices, and the 行政処分 notice when the points reach it.
     const mail: string[] = delivered.map(
       (r) =>
-        `出頭通知書（${r.by === "orbis" ? "速度違反自動取締装置で撮影" : "ナンバーから特定"}）: ${r.label}／違反点数 ${r.points} 点`,
+        `出頭通知書（${r.by === "orbis" ? "速度違反自動取締装置で撮影" : r.by === "sns" ? "投稿された動画から特定" : "ナンバーから特定"}）: ${r.label}／違反点数 ${r.points} 点`,
     );
     if (pendingSanction.kind !== "none")
       mail.push("運転免許本部から「行政処分出頭通知書」の封筒が届いています…");
@@ -2318,6 +2410,7 @@ async function main(): Promise<void> {
         getTaxi: () => taxi,
         getPolice: () => police,
         getMission: () => missions.current,
+        social,
         getHome: () => home,
         getMode: () => mode,
         nav,

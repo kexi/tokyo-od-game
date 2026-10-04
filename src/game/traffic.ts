@@ -258,7 +258,7 @@ export type ViolationContext = {
  * (現認, ticket on the spot), an orbis photo (the notice comes by post), or the police called to
  * an accident. Until then it is only the player's own record (未検挙).
  */
-export type Detector = "patrol" | "officer" | "orbis" | "accident" | "parking";
+export type Detector = "patrol" | "officer" | "orbis" | "accident" | "parking" | "sns";
 export type ViolationStatus = "uncaught" | "caught" | "notice";
 export type ViolationRecord = Violation & {
   at: number;

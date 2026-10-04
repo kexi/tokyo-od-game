@@ -181,6 +181,9 @@
             </button>
           </div>
           <button type="button" id="taxi-open" class="phone-app">🚕 自動運転タクシー</button>
+          <button type="button" id="social-open" class="phone-app">
+            💬 つぶやき <span id="social-badge" hidden></span>
+          </button>
           <p class="sub phone-note">
             緊急でない相談は #7119（救急相談センター）・#9110（警察相談専用電話）へ。
           </p>
@@ -190,6 +193,12 @@
             第1条第16号）。
           </p>
           <button type="button" id="phone-close" class="phone-close">閉じる</button>
+        </section>
+        <section id="phone-social" hidden>
+          <div class="call-head"><span>💬 つぶやき（あなたの運転についての投稿）</span></div>
+          <div id="social-feed"></div>
+          <div id="social-post" hidden></div>
+          <button type="button" id="social-back" class="phone-close">戻る</button>
         </section>
         <section id="phone-taxi" hidden>
           <div class="call-head"><span>🚕 自動運転タクシー</span></div>
