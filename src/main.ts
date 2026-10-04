@@ -64,7 +64,7 @@ import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
-import { Input, keyFor, LOOK_KEYS } from "./game/input";
+import { Input, LOOK_KEYS } from "./game/input";
 import { Minimap } from "./game/minimap";
 import { Missions } from "./game/missions";
 import { PoiField, storageKeyFor } from "./game/pois";
@@ -117,6 +117,7 @@ import { PATROL_LABEL, PolicePatrol, type PatrolKind } from "./game/policePatrol
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
 import { CarNavi } from "./game/carNavi";
+import { buildToolbar, labelToolbar } from "./game/toolbar";
 import { MotionBlur } from "./world/motionBlur";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
@@ -742,9 +743,17 @@ async function main(): Promise<void> {
     setTime(next);
     toast(`時間帯: ${TIME_LABEL[next]}`);
   });
+  const weatherButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-weather]")];
+  const setWeather = (mode: WeatherMode) => {
+    env.weather = mode;
+    for (const b of weatherButtons) b.setAttribute("aria-pressed", String(b.dataset.weather === mode));
+  };
+  setWeather(env.weather);
+  for (const b of weatherButtons)
+    b.addEventListener("click", () => setWeather(b.dataset.weather as WeatherMode));
   input.on("weather", () => {
     const order: WeatherMode[] = ["real", "clear", "rain"];
-    env.weather = order[(order.indexOf(env.weather) + 1) % order.length];
+    setWeather(order[(order.indexOf(env.weather) + 1) % order.length]);
     toast(`天気: ${WEATHER_LABEL[env.weather]}`);
   });
   input.on("ground", () => {
@@ -781,6 +790,7 @@ async function main(): Promise<void> {
     if (m) toast(`目的地: ${m.target.name}（${Math.round(m.startDistance)} m）`, "#ffe14d");
     else toast("近くに目的地候補がありません");
   });
+  buildToolbar($("#hud-toolbar"));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-action]")) {
     b.addEventListener("click", () => {
       input.trigger(b.dataset.action as Parameters<Input["trigger"]>[0]);
@@ -1121,12 +1131,8 @@ async function main(): Promise<void> {
     $<HTMLSelectElement>("#opt-layout").value = prefs.layout;
     $<HTMLSelectElement>("#opt-assist").value = prefs.assist;
     renderKeyList($("#help-keys"), prefs);
-    // Each toolbar button's tooltip names its key in this layout (the hard-coded ones went stale).
-    for (const b of document.querySelectorAll<HTMLButtonElement>("#hud-toolbar [data-action]")) {
-      const action = b.dataset.action as Parameters<typeof keyFor>[1];
-      const key = keyFor(prefs.layout, action);
-      b.title = key ? `${b.textContent?.trim()} (${key})` : (b.textContent?.trim() ?? "");
-    }
+    // Each toolbar button shows its key in this layout.
+    labelToolbar($("#hud-toolbar"), prefs.layout);
   };
   applyPrefs(loadPrefs());
   for (const id of ["#opt-layout", "#opt-assist", "#opt-blur", "#opt-seat-up", "#opt-seat-back"])
@@ -1418,7 +1424,7 @@ async function main(): Promise<void> {
     const roll = Math.random();
     const time: TimeMode = roll < 0.2 ? "morning" : roll < 0.6 ? "day" : roll < 0.8 ? "evening" : "night";
     setTime(time);
-    env.weather = Math.random() < 0.3 ? "rain" : "clear";
+    setWeather(Math.random() < 0.3 ? "rain" : "clear");
     toast(`今日は「${TIME_LABEL[time]}・${WEATHER_LABEL[env.weather]}」から走り出します`, "#4dd2ff");
     // The phone starts in its holder, on screens wide enough to keep the road in view beside it.
     const isWideScreen = window.innerWidth >= 900;
@@ -2160,15 +2166,15 @@ async function main(): Promise<void> {
       Math.abs(speed) / 3.6,
       liveObjects(),
     );
-    // Plain renderer.render outside the driver's seat; from it, the rain on the glass too.
-    cockpit.render(renderer, scene, camera);
-    // ブラー: the car's speed (toward the vanishing point ahead) and the view's turn, over the frame.
+    // ブラー: the car's speed (toward the vanishing point ahead) and the view's turn, smeared over the
+    // street only — in the driver's seat it runs before the interior is drawn.
     camera.getWorldDirection(viewDir);
     const viewYaw = Math.atan2(viewDir.x, viewDir.z);
     const yawRate =
       Math.atan2(Math.sin(viewYaw - lastViewYaw), Math.cos(viewYaw - lastViewYaw)) / Math.max(dt, 1e-3);
     lastViewYaw = viewYaw;
-    if (isInCar && !QUALITY.isMobile) {
+    const applyBlur = () => {
+      if (!isInCar || QUALITY.isMobile) return;
       const ahead = carPos
         .clone()
         .add(new Vector3(Math.sin(vehicle.yaw()) * 300, 1, Math.cos(vehicle.yaw()) * 300))
@@ -2178,10 +2184,13 @@ async function main(): Promise<void> {
         kmh: speed,
         focus: isAheadInView ? new Vector2((ahead.x + 1) / 2, (ahead.y + 1) / 2) : null,
         yawRate,
-        isInside: chase.mode === "cockpit",
+        // The interior is drawn after it, so the street can take the full effect.
+        isInside: false,
         dt,
       });
-    }
+    };
+    // Plain renderer.render outside the driver's seat; from it, the rain on the glass too.
+    cockpit.render(renderer, scene, camera, applyBlur);
     takeShots();
     if (pendingScreenshot) {
       pendingScreenshot = false;

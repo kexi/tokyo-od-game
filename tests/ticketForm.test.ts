@@ -64,8 +64,8 @@ describe("ticketForm", () => {
     expect(html).toContain("ticket-red");
     expect(html).not.toContain("ticket-blue");
     expect(html).toContain("赤切符");
-    expect(html).toContain("交通事件原票・告知票（兼 免許証保管証）");
-    expect(html).toContain("刑事手続・出頭通告書（非反則行為）");
+    expect(html).toContain("告知票（兼 免許証保管証）");
+    expect(html).toContain("出頭通知票・手続案内書（非反則行為）");
     expect(html).not.toContain("反則金仮納付書");
     expect(html).toContain("千代田区霞が関一丁目");
     expect(html).toContain("85 km/h");

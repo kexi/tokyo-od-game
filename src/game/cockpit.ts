@@ -284,9 +284,19 @@ export class Cockpit {
    * Draw the frame. From the driver's seat the windscreen's water refracts the frame itself, so
    * the scene goes first and the glass over it (see RainGlass.render).
    */
-  render(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera): void {
+  /**
+   * `afterWorld` runs on the frame once the world is drawn and before the interior is (the motion
+   * blur: the street smears at speed, the dashboard moving with the eye does not).
+   */
+  render(
+    renderer: WebGLRenderer,
+    scene: Scene,
+    camera: PerspectiveCamera,
+    afterWorld: () => void = () => {},
+  ): void {
     if (!this.active || !this.root) {
       renderer.render(scene, camera);
+      afterWorld();
       return;
     }
     // Two passes, as games draw what is held close to the eye: the world with the camera's own
@@ -312,7 +322,7 @@ export class Cockpit {
       renderer.autoClear = autoClear;
       renderer.shadowMap.autoUpdate = shadows;
     };
-    this.rain.render(renderer, scene, camera, this.root, drawInterior, near);
+    this.rain.render(renderer, scene, camera, this.root, drawInterior, near, afterWorld);
   }
 
   /** The interior pass's camera: the eye's pose, a near plane of 2 cm, the interior layer only. */

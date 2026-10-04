@@ -1055,15 +1055,18 @@ export class RainGlass {
     car: Object3D,
     drawInterior: () => void,
     nearCamera: PerspectiveCamera,
+    afterWorld: () => void = () => {},
   ): void {
     const isDry = this.sim.isDry() || this.panes.length === 0;
     if (isDry) {
       renderer.render(scene, camera);
+      afterWorld();
       drawInterior();
       return;
     }
     this.drawDrops(renderer);
     renderer.render(scene, camera);
+    afterWorld();
     // The street as the drops refract it (the interior is not behind the glass).
     const frame = this.copyFrame(renderer);
     drawInterior();

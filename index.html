@@ -102,12 +102,20 @@
         <div class="nav-lanes" hidden aria-label="レーン案内"></div>
       </div>
 
-      <div id="hud-time" class="panel segmented" role="group" aria-label="時間帯">
-        <button type="button" data-time="real">リアル</button>
-        <button type="button" data-time="morning">朝</button>
-        <button type="button" data-time="day">昼</button>
-        <button type="button" data-time="evening">夕方</button>
-        <button type="button" data-time="night">夜</button>
+      <div id="hud-time" class="panel segmented">
+        <span role="group" aria-label="時間帯">
+          <button type="button" data-time="real">リアル</button>
+          <button type="button" data-time="morning">朝</button>
+          <button type="button" data-time="day">昼</button>
+          <button type="button" data-time="evening">夕方</button>
+          <button type="button" data-time="night">夜</button>
+        </span>
+        <span class="segmented-sep" aria-hidden="true"></span>
+        <span role="group" aria-label="天気">
+          <button type="button" data-weather="real" title="気象庁アメダスの実況">実況</button>
+          <button type="button" data-weather="clear">晴れ</button>
+          <button type="button" data-weather="rain">雨</button>
+        </span>
       </div>
 
       <div id="hud-score" class="panel">
@@ -134,20 +142,8 @@
         <div id="mission-meta" class="sub"></div>
       </div>
 
-      <div id="hud-toolbar">
-        <button type="button" data-action="mission" title="新しい目的地 (N)">目的地</button>
-        <button type="button" data-action="autopilot" title="自動運転 (O)">自動運転</button>
-        <button type="button" data-action="home" title="家に帰って今日の運転を終える (Home)">帰宅</button>
-        <button type="button" data-action="warp" title="好きな場所へ移動 (X)">移動</button>
-        <button type="button" data-action="replay" title="リプレイ (F5)">リプレイ</button>
-        <button type="button" data-action="weather" title="天気 (Y)">天気</button>
-        <button type="button" data-action="ground" title="地面: 地理院写真 / PLATEAU オルソ (M)">地面</button>
-        <button type="button" data-action="camera" title="カメラ (C)">視点</button>
-        <button type="button" data-action="mute" title="音 (V)">音</button>
-        <button type="button" data-action="help" title="操作 (H)">操作</button>
-        <button type="button" data-action="credits" title="出典 (I)">出典</button>
-        <button type="button" data-action="title" title="タイトル画面に戻る">タイトル</button>
-      </div>
+      <!-- Built by toolbar.ts: every action with its key; the extra ones only on wide screens. -->
+      <div id="hud-toolbar"></div>
 
       <div id="toasts"></div>
       <section id="notice-log" class="panel" aria-label="通知" hidden>

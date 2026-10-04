@@ -99,7 +99,9 @@ export function keyFor(layout: KeyLayout, action: Action): string {
   if (shifted) return `Shift+${shifted.replace(/^Key/, "")}`;
   const table = layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS;
   const code = Object.keys(table).find((c) => table[c] === action) ?? "";
-  return code.replace(/^Key/, "").replace(/^Digit/, "");
+  // As printed on the keycap.
+  const printed: Record<string, string> = { Comma: ",", Period: ".", Escape: "Esc", Enter: "Enter" };
+  return printed[code] ?? code.replace(/^Key/, "").replace(/^Digit/, "");
 }
 
 /** Keys that move the player: never an action, in the car or on foot (in either layout). */
