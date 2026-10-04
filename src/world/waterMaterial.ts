@@ -115,7 +115,8 @@ const TURN = Math.atan2(0.6, 0.8);
 const rotate = (v: V2, a: number): V2 => {
   const c = Math.cos(a);
   const s = Math.sin(a);
-  return vec2(v.x.mul(c).sub(v.y.mul(s)), v.x.mul(s).add(v.y.mul(c)));
+  const w = v.toVar();
+  return vec2(w.x.mul(c).sub(w.y.mul(s)), w.x.mul(s).add(w.y.mul(c)));
 };
 
 /**
@@ -142,7 +143,7 @@ function ripples(p: V2, t: F, swells: number): V2 {
   for (let o = 0; o < 4; o++) {
     const angle = o * TURN;
     const drift = rotate(drift0, angle).mul(driftScale);
-    const n = noised(rotate(p, angle).mul(freq).add(drift));
+    const n = noised(rotate(p, angle).mul(freq).add(drift)).toVar();
     slope = slope.add(rotate(n.yz, -angle).mul(amp * freq));
     freq *= 2.17;
     driftScale *= 1.35;
