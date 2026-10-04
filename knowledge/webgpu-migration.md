@@ -67,7 +67,7 @@ sources:
     title: 深度テクスチャは MSAA のサンプル数のまま作られること、描画時のカメラの座標系と逆転深度の付け替え、深度の範囲の約束
     author: team:threejs
   - id: phase-b-checks
-    resource: tsc --noEmit・oxlint（新しい警告なし）・vitest run（40 ファイル 411 件）・vite build（出力先を scratchpad に分けて）（webgpu ブランチ、2026-10-05 05:50 JST）
+    resource: tsc --noEmit・oxlint（新しい警告なし）・vitest run（40 ファイル 413 件）・vite build（出力先を scratchpad に分けて）（webgpu ブランチ、2026-10-05 05:50 JST）
     title: 段階 B の機械的な検査
     author: claude-opus-5-5/1m
   - id: merge-checks
@@ -227,7 +227,7 @@ present と同じタスクで `canvas.toBlob` / `drawImage`。WebGPU のキャ�
 ## ブラウザなしの検証
 
 - 段階 C と同じ方法で、空・霧（標準マテリアル + scene.fogNode）・ブルーム 4 パス・レンズフレア 3 パス（探り・読み取り・フレア）・水面 2 種（うねり 2 本・4 本）の 11 マテリアルの頂点とフラグメント 22 本を、WGSL は naga、WebGL 2 の GLSL は glslang に通し、すべて通った。フラグメントの行数（WGSL）は空 470、水面 269、ブルームの前処理 129、フレア 100、霧の入った標準マテリアル 136。[^phase-b-wgsl]
-- 機械的な検査: tsc・oxlint（新しい警告なし）・vitest 40 ファイル 411 件・vite build。[^phase-b-checks]
+- 機械的な検査: tsc・oxlint（新しい警告なし）・vitest 40 ファイル 413 件・vite build。[^phase-b-checks]
 - 分かるのは「シェーダーとして正しく、一様性の規則を守っている」まで。見た目・閾値と強さの釣り合い・フレーム時間は実機の Chrome で見る（[検証](#検証)）。
 
 # 段階 C でしたこと
@@ -329,7 +329,7 @@ main の 7 コミット（案内標識・車と運転席の寸法・空と光と
 
 - 機械的な検査: tsc・oxlint（新しい警告なし）・vitest 33 ファイル 311 件・vite build。[^phase-a-checks] main を取り込んだ後も同じ検査が通った（38 ファイル 391 件）。[^merge-checks]
 - 段階 C: tsc・oxlint（新しい警告なし）・vitest 38 ファイル 400 件・vite build、node material 38 本の WGSL を naga で検証。[^phase-c-wgsl]
-- 段階 B: tsc・oxlint・vitest 40 ファイル 411 件・vite build、11 マテリアル 22 本の WGSL を naga、GLSL を glslang で検証。[^phase-b-checks] [^phase-b-wgsl]
+- 段階 B: tsc・oxlint・vitest 40 ファイル 413 件・vite build、11 マテリアル 22 本の WGSL を naga、GLSL を glslang で検証。[^phase-b-checks] [^phase-b-wgsl]
 - 実機の Chrome での確認はまだ（ヘッドレスは使わない）。見る項目: 運転席の昼・夕方・夜・雨とワイパー、追従視点、Y の写真、再生、設定 › 画質 の切り替え、描画方式 WebGL 2、コンソールの WGSL / 検証エラー、F12 のスクリーンショット。
 - 段階 B で見る項目: 夜空の灰橙の光害と雲底、晴れた夜の星（15° より上）、ブルーアワーの青、雨の雲のまだら、地平の霞と遠くの街が同じ色になるか、環境マップの映り込みの地面と街並み（車の塗装・ガラスの建物）。ブルーム: 夜の街灯・窓・信号・ヘッドライトがにじむか、昼は太陽と照り返しだけか（白い壁や空がにじまないか）、光のにじみ 高 / 低 / なし。レンズフレア: 太陽を見て、建物の陰に入ると消えるか、雲・雨で消えるか、運転席で屋根やピラーに隠れると消えるか、車内の上に描かれないか、レンズフレア あり / なし、夜のヘッドライトのゴースト。水面（両国 `?start=35.6935,139.7862`）: 波紋・照り返し・街の映り込み（上下が合っているか、水面下が映らないか）、空の映り込み なし で空だけ。すべてでコンソールに WGSL・検証のエラーが無いか、フレーム時間。
 
