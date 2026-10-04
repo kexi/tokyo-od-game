@@ -244,16 +244,17 @@ export class Vehicle {
   }
 
   /** Brake/reverse/indicator lamps follow the driver's input; headlights follow the time of day. */
-  updateLights(night: boolean): void {
+  updateLights(night: boolean, switches?: { left: boolean; right: boolean; highBeam: boolean }): void {
     const speed = this.controller.currentVehicleSpeed();
     const input = this.lastInput;
     const o = this.lightOverride;
     this.model.setLights({
       brake: o ? o.brake : input.brake > 0 && speed > 0.5,
       reverse: o ? false : input.brake > 0 && speed <= 0.5,
-      left: o ? o.left : input.steer > 0.45,
-      right: o ? o.right : input.steer < -0.45,
+      left: o ? o.left : (switches?.left ?? input.steer > 0.45),
+      right: o ? o.right : (switches?.right ?? input.steer < -0.45),
       night,
+      highBeam: switches?.highBeam,
     });
   }
 

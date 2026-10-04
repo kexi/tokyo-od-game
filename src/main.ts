@@ -105,6 +105,7 @@ import {
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
 import { PolicePatrol } from "./game/policePatrol";
+import { CarControls } from "./game/carControls";
 import { loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
 import { formatCount, SocialFeed, type SocialPost } from "./game/social";
@@ -649,7 +650,86 @@ async function main(): Promise<void> {
   );
   input.on("phone", () => phone.toggle());
   const conversation = new ConversationController(brain, voice, surroundings, (p) => pedestrians.endTalk(p));
+  // ---------- 運転席のスイッチ（City Car Driving の配置） ----------
+  const controls = new CarControls();
+  let paused = false;
+  const inCarOnly = (fn: () => void) => () => {
+    if (mode === "car" && state === "playing") fn();
+  };
+  input.on(
+    "indicatorLeft",
+    inCarOnly(() => controls.toggleIndicator("left")),
+  );
+  input.on(
+    "indicatorRight",
+    inCarOnly(() => controls.toggleIndicator("right")),
+  );
+  input.on(
+    "hazard",
+    inCarOnly(() => {
+      controls.hazard = !controls.hazard;
+      toast(controls.hazard ? "ハザードランプ ON" : "ハザードランプ OFF");
+    }),
+  );
+  input.on(
+    "lights",
+    inCarOnly(() => {
+      const label = { auto: "AUTO", on: "点灯", off: "消灯" }[controls.cycleLights()];
+      toast(`ライト: ${label}`);
+    }),
+  );
+  input.on(
+    "highBeam",
+    inCarOnly(() => {
+      controls.highBeam = !controls.highBeam;
+      toast(controls.highBeam ? "ハイビーム（走行用前照灯）" : "ロービーム（すれ違い用前照灯）");
+    }),
+  );
+  input.on(
+    "wipers",
+    inCarOnly(() => {
+      controls.wipers = (controls.wipers + 1) % 4;
+      toast(`ワイパー: ${["OFF", "間欠", "LO", "HI"][controls.wipers]}`);
+    }),
+  );
+  input.on(
+    "belt",
+    inCarOnly(() => {
+      controls.belt = !controls.belt;
+      toast(
+        controls.belt ? "シートベルトを締めました" : "シートベルトを外しました",
+        controls.belt ? "#7dff9a" : "#ffb347",
+      );
+    }),
+  );
+  input.on("pause", () => {
+    if (state !== "playing") return;
+    paused = !paused;
+    $("#paused").hidden = !paused;
+  });
+  input.on("nav", () => {
+    navHidden = !navHidden;
+    toast(navHidden ? "ナビの表示を消しました（M で戻す）" : "ナビを表示します");
+  });
+  input.on("minimap", () => {
+    const el = $("#minimap");
+    el.hidden = !el.hidden;
+  });
+  input.on("cameraPrev", () => {
+    chase.cycle();
+    toast(`視点: ${chase.cycle()}`);
+  });
+  input.on("screenshot", () => {
+    // The next drawn frame, saved as a PNG.
+    pendingScreenshot = true;
+  });
   input.on("talk", () => {
+    // E: the engine in the car (City Car Driving), talking to someone on foot.
+    if (mode === "car" && state === "playing") {
+      controls.engineOn = !controls.engineOn;
+      toast(controls.engineOn ? "エンジンを始動しました" : "エンジンを止めました");
+      return;
+    }
     if (conversation.active || state !== "playing") return;
     const isStopped = mode === "foot" || Math.abs(vehicle.speedKmh()) < 4;
     const p = isStopped ? pedestrians.nearest(focusPos(), mode === "foot" ? 3.5 : 10) : null;
@@ -662,7 +742,8 @@ async function main(): Promise<void> {
   });
   input.on("enter", () => (phone.inCall ? phone.focusInput() : conversation.focusInput()));
   input.on("autopilot", () => {
-    if (state !== "playing") return;
+    // A is also the walking key (strafe) on foot: only the driver's seat has an autopilot.
+    if (state !== "playing" || mode !== "car") return;
     if (autopilot) stopAutopilot("自動運転を解除しました");
     else startAutopilot();
   });
@@ -743,6 +824,13 @@ async function main(): Promise<void> {
   let closedSince: number | null = null;
   let rightLaneSince: number | null = null;
   let laneAtJunction: { use: LaneUse; lane: number; tIn: Vector3; node: Vector3 } | null = null;
+  // 合図: when each indicator last blinked, the junction being turned at, the lane last held.
+  const indicatorSeen = { left: -Infinity, right: -Infinity };
+  let turnAt: { tIn: Vector3; node: Vector3 } | null = null;
+  let laneHeld: { seg: Segment; lane: number } | null = null;
+  let hornFor = 0;
+  let navHidden = false;
+  let pendingScreenshot = false;
   let lastHeading: { seg: Segment; sgn: number; at: number } | null = null;
   let laneTrack: { seg: Segment; lane: number } | null = null;
   let lastStreet: { seg: Segment; dir: 1 | -1 } | null = null;
@@ -862,6 +950,10 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (paused) {
+      renderer.render(scene, camera);
+      return;
+    }
     const isOnFoot = mode === "foot";
     const isInCar = mode === "car";
     const isInTaxi = mode === "taxi" && taxi !== null;
@@ -880,6 +972,7 @@ async function main(): Promise<void> {
       if (trip) {
         const km = (trip.startDistance / 1000).toFixed(1);
         toast(`最初の目的地: ${trip.target.name}（約 ${km} km）。法令を守って向かいましょう`, "#ffe14d");
+        toast("出発前に B でシートベルトを締めましょう（座席ベルト装着義務、第71条の3）", "#4dd2ff");
         log("trip", { target: trip.target.name, metres: Math.round(trip.startDistance) });
       }
     }
@@ -887,7 +980,18 @@ async function main(): Promise<void> {
     // Any steering, accelerator or brake input takes the car back, as with a real driver-assist system.
     const isOverride = Math.abs(manual.throttle) > 0.2 || manual.brake > 0.2 || Math.abs(manual.steer) > 0.3;
     if (autopilot && isOverride) stopAutopilot("運転操作で自動運転を解除しました");
-    const drive = autopilot ? autopilot.input : manual;
+    // With the engine off the accelerator does nothing (E starts it again).
+    const pedals = autopilot ? autopilot.input : manual;
+    const drive = controls.engineOn || autopilot ? pedals : { ...pedals, throttle: 0 };
+    if (isInCar) controls.update(vehicle.yaw(), manual.steer);
+    // Look aside / behind while held (左右 Ctrl, Z), as in City Car Driving.
+    chase.look = input.held("ControlLeft")
+      ? Math.PI / 2
+      : input.held("ControlRight")
+        ? -Math.PI / 2
+        : input.held("KeyZ")
+          ? Math.PI
+          : 0;
     const walk = input.readWalk();
     accumulator += dt;
     let steps = 0;
@@ -973,7 +1077,8 @@ async function main(): Promise<void> {
       junctionNames: roadApplied?.junctionNames,
       laneUse: roadApplied?.laneUse,
     });
-    ribbon.update(isInCar ? nav.route : null, nav.lastAt, now);
+    ribbon.update(isInCar && !navHidden ? nav.route : null, nav.lastAt, now);
+    if (navHidden) $("#nav").hidden = true;
     if (nav.route && navGeo.version !== nav.version) {
       navGeo = {
         version: nav.version,
@@ -1093,6 +1198,66 @@ async function main(): Promise<void> {
           laneAtJunction = { use, lane, tIn: onRoad.dir.clone().multiplyScalar(dir), node };
         }
       }
+      // 合図 (第53条): a turn at a junction, judged 25 m past it, needs the indicator for that
+      // side to have been on in the last seconds (it cancels itself as the wheel comes back).
+      if (onRoad && Math.abs(align) > 0.7 && roadGraph) {
+        const dir = align > 0 ? 1 : -1;
+        const node = dir === 1 ? onRoad.seg.to : onRoad.seg.from;
+        const toNode = dir === 1 ? onRoad.seg.length - onRoad.s : onRoad.s;
+        const isJunction = (roadGraph.nodes.get(node)?.length ?? 0) >= 3;
+        if (isJunction && toNode < 20 && !turnAt)
+          turnAt = {
+            tIn: onRoad.dir.clone().multiplyScalar(dir),
+            node: roadGraph.sample(onRoad.seg, dir === 1 ? onRoad.seg.length : 0).pos,
+          };
+      }
+      if (turnAt && Math.hypot(carPos.x - turnAt.node.x, carPos.z - turnAt.node.z) > 25) {
+        const turn = classifyTurn(turnAt.tIn, carForward.clone().setY(0).normalize());
+        turnAt = null;
+        const side =
+          turn === "left" || turn === "slightLeft"
+            ? "left"
+            : turn === "right" || turn === "uturn"
+              ? "right"
+              : null;
+        if (side && now - indicatorSeen[side] > 6000)
+          book(
+            VIOLATIONS.signalOmission,
+            now,
+            15000,
+            `${side === "left" ? "左折" : "右折"}の合図を出さずに曲がった`,
+          );
+      }
+      // 合図 for changing lanes on a multi-lane road.
+      if (onRoad && onRoad.seg.lanes >= 2 && Math.abs(align) > 0.85 && speed > 15) {
+        const s = onRoad.seg;
+        const span = s.oneway === 0 ? s.line.width / 2 : s.line.width;
+        const lane = Math.floor((s.line.width / 2 - onRoad.lateral * Math.sign(align)) / (span / s.lanes));
+        const isSameRoad = laneHeld !== null && laneHeld.seg === s;
+        if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
+          const side = lane < laneHeld.lane ? "left" : "right";
+          if (now - indicatorSeen[side] > 6000)
+            book(VIOLATIONS.signalOmission, now, 15000, "合図を出さずに車線を変更した");
+        }
+        laneHeld = { seg: s, lane };
+      } else laneHeld = null;
+      // 無灯火 (第52条): at night with the headlights switched off.
+      if (env.nightFactor > 0.5 && speed > 5 && !autopilot && !controls.headlightsOn(true))
+        book(VIOLATIONS.noLights, now, 5 * 60_000, "夜間に前照灯を消して走行");
+      // 座席ベルト (第71条の3).
+      if (speed > 10 && !controls.belt)
+        book(VIOLATIONS.seatBelt, now, 10 * 60_000, "シートベルトを着けずに運転");
+      // 警音器 (第54条第2項): only to prevent danger; nobody close ahead means it was not needed.
+      if (hornFor > 0.4) {
+        const fwd = carForward;
+        const isDanger =
+          pedestrians.list.some((q) => {
+            const d = q.object.position.clone().sub(carPos);
+            return d.length() < 20 && d.dot(fwd) > 0;
+          }) || traffic.positions().some((q) => q.distanceTo(carPos) < 12);
+        if (!isDanger) book(VIOLATIONS.hornMisuse, now, 30000, "危険がないのに警音器を鳴らした");
+      }
+
       // …against the way the car leaves, judged 25 m past the junction (clear of its box).
       if (laneAtJunction && onRoad && laneAtJunction.use.seg !== onRoad.seg) {
         const j = laneAtJunction;
@@ -1299,7 +1464,20 @@ async function main(): Promise<void> {
       appliedNight = env.nightFactor;
       buildings.setNightFactor(appliedNight);
     }
-    vehicle.updateLights(env.nightFactor > 0.25 || env.isRaining());
+    const isDark = env.nightFactor > 0.25 || env.isRaining();
+    const lamps = controls.lamps();
+    vehicle.updateLights(controls.headlightsOn(isDark), { ...lamps, highBeam: controls.highBeam });
+    // The indicator relay clicks, and the law checks remember when each side last blinked.
+    const blink = Math.floor(performance.now() / 380) % 2 === 0;
+    const signalLeft = autopilot ? autopilot.driver.signal === "left" : lamps.left;
+    const signalRight = autopilot ? autopilot.driver.signal === "right" : lamps.right;
+    if (isInCar) audio.tick((signalLeft || signalRight) && blink);
+    if (signalLeft) indicatorSeen.left = now;
+    if (signalRight) indicatorSeen.right = now;
+    // 警音器 while H is held.
+    const isHorn = isInCar && input.held("KeyH");
+    audio.horn(isHorn);
+    hornFor = isHorn ? hornFor + dt : 0;
     audio.update(isEngineOff ? 0 : speed, isEngineOff ? 0 : drive.throttle, isEngineOff);
 
     if (now - lastLocate > 500) {
@@ -1310,6 +1488,13 @@ async function main(): Promise<void> {
     if (now - lastHud > 150) {
       lastHud = now;
       checkDeadlines();
+      $("#car-status").hidden = !isInCar;
+      $("#ind-left").classList.toggle("on", signalLeft && blink);
+      $("#ind-right").classList.toggle("on", signalRight && blink);
+      $("#light-status").textContent =
+        `💡${{ auto: "AUTO", on: "ON", off: "OFF" }[controls.lights]}${controls.highBeam ? "・ハイ" : ""}`;
+      $("#belt-status").textContent = controls.belt ? "ベルト ✓" : "ベルト未着用（B）";
+      $("#belt-status").classList.toggle("warn", !controls.belt);
       {
         const c = gameClockNow();
         const d = tokyoDate(env.now());
@@ -1347,6 +1532,17 @@ async function main(): Promise<void> {
     }
     renderer.render(scene, camera);
     takeShots();
+    if (pendingScreenshot) {
+      pendingScreenshot = false;
+      renderer.domElement.toBlob((blob) => {
+        if (!blob) return;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `tokyo-open-drive-${Date.now()}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      });
+    }
   };
 
   /** Where, when and how fast, for the review screen (違反の記録) and the logs. */

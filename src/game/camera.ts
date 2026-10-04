@@ -11,6 +11,8 @@ const OFFSETS: Record<CameraMode, Vector3> = {
 /** Spring-damped chase camera that follows the car's yaw but ignores its roll/pitch jitter. */
 export class ChaseCamera {
   mode: CameraMode = "chase";
+  /** Looking aside while a key is held (左右 Ctrl: ±90°, Z: behind), added to the car's yaw. */
+  look = 0;
   private readonly position = new Vector3();
   private yaw = 0;
   private initialized = false;
@@ -35,7 +37,7 @@ export class ChaseCamera {
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     this.yaw += diff * Math.min(1, dt * (this.mode === "hood" ? 20 : 4));
 
-    const yawQ = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.yaw);
+    const yawQ = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.yaw + this.look);
     const offset = OFFSETS[this.mode].clone();
     if (this.mode === "chase") offset.z -= MathUtils.clamp(Math.abs(speed) / 40, 0, 2.5);
     const desired = offset.applyQuaternion(yawQ).add(carPos);

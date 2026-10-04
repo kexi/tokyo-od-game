@@ -1599,3 +1599,39 @@ pre.notice {
   color: #fff;
   font-size: 11px;
 }
+
+/* 一時停止と車の状態（方向指示器・ライト・シートベルト） */
+#paused {
+  left: 50%;
+  top: 45%;
+  transform: translate(-50%, -50%);
+  padding: 14px 24px;
+  font-size: 20px;
+  font-weight: 800;
+}
+#car-status {
+  left: 196px;
+  bottom: 22px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+#car-status .ind {
+  color: #3a4a3a;
+  font-size: 18px;
+}
+#car-status .ind.on {
+  color: #3cd17a;
+}
+#belt-status.warn {
+  color: #ff8a8a;
+  font-weight: 700;
+}
+@media (max-width: 720px) {
+  #car-status {
+    left: 140px;
+    bottom: 12px;
+  }
+}

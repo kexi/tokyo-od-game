@@ -4,6 +4,7 @@ import type { WalkInput } from "./walker";
 type Action =
   | "reset"
   | "camera"
+  | "cameraPrev"
   | "ground"
   | "time"
   | "weather"
@@ -17,24 +18,55 @@ type Action =
   | "enter"
   | "phone"
   | "autopilot"
-  | "home";
+  | "home"
+  | "indicatorLeft"
+  | "indicatorRight"
+  | "hazard"
+  | "lights"
+  | "highBeam"
+  | "wipers"
+  | "belt"
+  | "pause"
+  | "nav"
+  | "minimap"
+  | "screenshot";
 
+/**
+ * City Car Driving's default keyboard layout (its manual, 1.5.9), so its players feel at home:
+ * ↑↓←→ to drive, Space the parking brake, E the engine (and talking on foot), `,` `.` the
+ * indicators, G hazards, L lights, K high beam, Tab wipers, H horn, B seat belt, C/V cameras,
+ * Ctrl look left/right, Z look back, F the phone, M the navigation, O the small map, P pause,
+ * R reset, F12 screenshot. The game's own actions sit on keys City Car Driving leaves free:
+ * A 自動運転, Q 乗降, N 目的地, T 時間帯, Y 天気, I 出典, Home 帰宅, F1 操作, F2 地面, F8 音.
+ */
 const KEY_ACTIONS: Record<string, Action> = {
   KeyR: "reset",
   KeyC: "camera",
-  KeyM: "ground",
+  KeyV: "cameraPrev",
+  F2: "ground",
   KeyT: "time",
   KeyY: "weather",
   KeyN: "mission",
-  KeyH: "help",
+  F1: "help",
   KeyI: "credits",
-  KeyV: "mute",
+  F8: "mute",
   KeyE: "talk",
-  KeyF: "door",
+  KeyQ: "door",
   Enter: "enter",
-  KeyP: "phone",
-  KeyO: "autopilot",
-  KeyG: "home",
+  KeyF: "phone",
+  KeyA: "autopilot",
+  Home: "home",
+  Comma: "indicatorLeft",
+  Period: "indicatorRight",
+  KeyG: "hazard",
+  KeyL: "lights",
+  KeyK: "highBeam",
+  Tab: "wipers",
+  KeyB: "belt",
+  KeyP: "pause",
+  KeyM: "nav",
+  KeyO: "minimap",
+  F12: "screenshot",
   Escape: "close",
 };
 
@@ -55,11 +87,17 @@ export class Input {
         if (action) this.listeners.get(action)?.();
       }
       this.keys.add(e.code);
-      const isDrivingKey = e.code.startsWith("Arrow") || e.code === "Space";
-      if (isDrivingKey) e.preventDefault();
+      const isGameKey =
+        e.code.startsWith("Arrow") || ["Space", "Tab", "F1", "F2", "F8", "F12"].includes(e.code);
+      if (isGameKey) e.preventDefault();
     });
     window.addEventListener("keyup", (e) => this.keys.delete(e.code));
     window.addEventListener("blur", () => this.keys.clear());
+  }
+
+  /** Whether a key is held down now (horn H, look Ctrl / Z). */
+  held(code: string): boolean {
+    return this.keys.has(code);
   }
 
   on(action: Action, fn: () => void): void {
@@ -134,10 +172,10 @@ export class Input {
 
   read(dt: number): DriveInput {
     const k = (...codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
-    let throttle = Math.max(k("KeyW", "ArrowUp"), this.touch.throttle);
-    let brake = Math.max(k("KeyS", "ArrowDown"), this.touch.brake);
+    let throttle = Math.max(k("ArrowUp"), this.touch.throttle);
+    let brake = Math.max(k("ArrowDown"), this.touch.brake);
     // Steering sign: +1 turns left (positive yaw around +Y when facing +Z).
-    let steerTarget = k("KeyA", "ArrowLeft") - k("KeyD", "ArrowRight") || this.touch.steer;
+    let steerTarget = k("ArrowLeft") - k("ArrowRight") || this.touch.steer;
     let handbrake = this.keys.has("Space");
 
     const pad = navigator.getGamepads?.().find((g) => g?.connected);

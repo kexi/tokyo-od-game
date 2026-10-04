@@ -12,7 +12,14 @@ export type CarModel = {
   root: Group;
   wheels: Group[]; // FL, FR, RL, RR — matches the physics wheel order
   headlights: SpotLight[];
-  setLights(state: { brake: boolean; reverse: boolean; left: boolean; right: boolean; night: boolean }): void;
+  setLights(state: {
+    brake: boolean;
+    reverse: boolean;
+    left: boolean;
+    right: boolean;
+    night: boolean;
+    highBeam?: boolean;
+  }): void;
 };
 
 export type CarStyle = { color?: number; taxi?: boolean };
@@ -148,16 +155,21 @@ export function createCarModel(style: CarStyle | number = {}): CarModel {
     root,
     wheels,
     headlights,
-    setLights({ brake, reverse, left, right, night }) {
+    setLights({ brake, reverse, left, right, night, highBeam }) {
       glow("TailLamp", brake ? 2.4 : night ? 0.9 : 0.12);
       glow("Reverse", reverse ? 2.0 : 0);
       const blink = Math.floor(performance.now() / 380) % 2 === 0;
       glow("IndicatorL", left && blink ? 2.5 : 0); // +X = the car's left
       glow("IndicatorR", right && blink ? 2.5 : 0);
-      glow("HeadLamp", night ? 1.8 : 0.35);
+      glow("HeadLamp", night ? (highBeam ? 2.8 : 1.8) : 0.35);
       glow("TaxiSign", night ? 1.2 : 0.3);
       glow("Vacancy", 1.4);
-      for (const l of headlights) l.intensity = night ? 70 : 0;
+      for (const l of headlights) {
+        l.intensity = night ? (highBeam ? 160 : 70) : 0;
+        // 走行用前照灯 (high beam) reaches about 100 m, すれ違い用 about 40 m (保安基準 第32条).
+        l.distance = highBeam ? 220 : 110;
+        l.target.position.y = highBeam ? -0.4 : -1.6;
+      }
     },
   };
 }

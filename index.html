@@ -143,6 +143,15 @@
 
       <div id="talk-hint" class="panel" hidden>E で話しかける</div>
 
+      <div id="paused" class="panel" hidden role="status">一時停止中（P で再開）</div>
+
+      <div id="car-status" class="panel" aria-label="車の状態">
+        <span id="ind-left" class="ind">◀</span>
+        <span id="light-status"></span>
+        <span id="belt-status"></span>
+        <span id="ind-right" class="ind">▶</span>
+      </div>
+
       <div id="pursuit-chip" class="panel" hidden role="status">
         🚨 パトカーが追ってきています。左に寄って止まりましょう
       </div>
@@ -346,38 +355,52 @@
     </dialog>
 
     <dialog id="help">
-      <h2>操作</h2>
+      <h2>操作（City Car Driving と同じキー配置）</h2>
       <dl>
-        <dt>W / ↑</dt>
-        <dd>アクセル</dd>
-        <dt>S / ↓</dt>
-        <dd>ブレーキ・停止中はバック</dd>
-        <dt>A D / ← →</dt>
+        <dt>↑ / ↓</dt>
+        <dd>アクセル / ブレーキ（停止中はバック）</dd>
+        <dt>← →</dt>
         <dd>ハンドル</dd>
         <dt>Space</dt>
-        <dd>サイドブレーキ（ドリフト）</dd>
+        <dd>サイドブレーキ</dd>
+        <dt>E</dt>
+        <dd>エンジン始動・停止（徒歩では近くの人に話しかける）</dd>
+        <dt>, / .</dt>
+        <dd>左 / 右の方向指示器（曲がり終えると自動で戻る）</dd>
+        <dt>G</dt>
+        <dd>ハザードランプ</dd>
+        <dt>L / K</dt>
+        <dd>ライト（AUTO → 点灯 → 消灯）/ ハイビーム</dd>
+        <dt>Tab</dt>
+        <dd>ワイパー</dd>
+        <dt>H</dt>
+        <dd>クラクション（危険を防ぐとき以外は違反）</dd>
+        <dt>B</dt>
+        <dd>シートベルト</dd>
+        <dt>C / V</dt>
+        <dd>視点の切り替え</dd>
+        <dt>左 Ctrl / 右 Ctrl / Z</dt>
+        <dd>左 / 右 / 後ろを見る（押している間）</dd>
+        <dt>F</dt>
+        <dd>スマホ（119・110・タクシー・つぶやき）</dd>
+        <dt>M / O</dt>
+        <dd>ナビ / 小さな地図の表示</dd>
+        <dt>P</dt>
+        <dd>一時停止</dd>
         <dt>R</dt>
         <dd>車を起こす・その場に復帰</dd>
-        <dt>N</dt>
-        <dd>新しい目的地（ミッション）</dd>
-        <dt>T</dt>
-        <dd>時間帯：リアル → 朝 → 昼 → 夕方 → 夜</dd>
-        <dt>Y</dt>
-        <dd>天気：リアル（気象庁アメダス）→ 晴れ → 雨</dd>
-        <dt>M</dt>
-        <dd>地面：地理院 全国最新写真 ⇔ PLATEAU オルソ画像</dd>
-        <dt>C</dt>
-        <dd>視点切替</dd>
-        <dt>V</dt>
-        <dd>音のオン/オフ</dd>
-        <dt>I</dt>
-        <dd>データ出典</dd>
-        <dt>F</dt>
-        <dd>車を降りる／乗る（徒歩: WASD・Shift で走る・Space でジャンプ・← → で視点）</dd>
-        <dt>E</dt>
-        <dd>近くの歩行者に話しかける（車は停車中に）</dd>
-        <dt>P</dt>
-        <dd>スマホ（119 番・110 番に通報）</dd>
+        <dt>F12</dt>
+        <dd>スクリーンショット</dd>
+        <dt>A</dt>
+        <dd>自動運転</dd>
+        <dt>Q</dt>
+        <dd>車を降りる / 乗る（徒歩: WASD・Shift で走る・Space でジャンプ・← → で視点）</dd>
+        <dt>N / Home</dt>
+        <dd>新しい目的地 / 家に帰る（着くと一日が終わる）</dd>
+        <dt>T / Y</dt>
+        <dd>時間帯 / 天気</dd>
+        <dt>F1 / F2 / F8 / I</dt>
+        <dd>この画面 / 地面の写真 / 音 / データ出典</dd>
         <dt>Enter</dt>
         <dd>会話・通話の入力欄へ（Esc で運転に戻る）</dd>
       </dl>

@@ -16,6 +16,10 @@ export type ViolationKind =
   | "laneUse" // 通行帯違反
   | "laneDirection" // 指定通行区分違反
   | "phoneDanger" // 携帯電話使用等（交通の危険）
+  | "signalOmission" // 合図不履行
+  | "noLights" // 無灯火
+  | "hornMisuse" // 警音器使用制限違反
+  | "seatBelt" // 座席ベルト装着義務違反
   | "keepLeft" // 通行区分違反（右側通行）
   | "speed" // 速度超過
   | "pedestrianCrossing" // 横断歩行者等妨害等
@@ -153,6 +157,38 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     article: "道路交通法 第71条第5号の5・第117条の4",
     points: 6,
     fine: null,
+  },
+  // 右左折・進路変更の前に方向指示器を出さなかった（右左折は 30m 手前から、施行令 第21条）。
+  signalOmission: {
+    kind: "signalOmission",
+    label: "合図不履行",
+    article: "道路交通法 第53条第1項",
+    points: 1,
+    fine: 6000,
+  },
+  // 夜間（日没から日の出まで）に前照灯をつけずに走った。
+  noLights: {
+    kind: "noLights",
+    label: "無灯火",
+    article: "道路交通法 第52条第1項",
+    points: 1,
+    fine: 6000,
+  },
+  // 危険を防止するためやむを得ない場合以外に警音器を鳴らした（点数なし）。
+  hornMisuse: {
+    kind: "hornMisuse",
+    label: "警音器使用制限違反",
+    article: "道路交通法 第54条第2項",
+    points: 0,
+    fine: 3000,
+  },
+  // 運転者が座席ベルトを着けずに運転した（反則金なし・点数のみ）。
+  seatBelt: {
+    kind: "seatBelt",
+    label: "座席ベルト装着義務違反",
+    article: "道路交通法 第71条の3第1項",
+    points: 1,
+    fine: 0,
   },
   keepLeft: {
     kind: "keepLeft",
@@ -390,6 +426,11 @@ export function injuryViolation(impactKmh: number): Violation {
 }
 
 export function formatViolation(v: Violation): string {
-  const fine = v.fine === null ? "罰金（刑事手続）" : `反則金 ${v.fine.toLocaleString()}円`;
+  const fine =
+    v.fine === null
+      ? "罰金（刑事手続）"
+      : v.fine === 0
+        ? "反則金なし（違反点数のみ）"
+        : `反則金 ${v.fine.toLocaleString()}円`;
   return `${v.label}／${v.article}／違反点数 ${v.points}点・${fine}`;
 }
