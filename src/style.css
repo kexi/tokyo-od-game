@@ -1257,6 +1257,24 @@ pre.notice {
   min-width: 200px;
 }
 
+/* Within 300 m of a turn the panel grows into the 交差点拡大図 with the text below it. */
+#nav.close {
+  flex-wrap: wrap;
+  width: 252px;
+}
+
+#nav .nav-junction {
+  width: 240px;
+  height: 240px;
+  border-radius: 10px;
+  flex: none;
+}
+
+#nav.close .nav-arrow {
+  width: 40px;
+  height: 40px;
+}
+
 #nav .nav-arrow {
   width: 48px;
   height: 48px;
@@ -1295,6 +1313,13 @@ pre.notice {
   #nav .nav-arrow {
     width: 36px;
     height: 36px;
+  }
+  #nav.close {
+    width: 172px;
+  }
+  #nav .nav-junction {
+    width: 160px;
+    height: 160px;
   }
   #nav .nav-dist {
     font-size: 18px;

@@ -10,7 +10,8 @@ import {
   type Scene,
 } from "three";
 import type { TurnRule } from "../world/regulations";
-import { leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
+import type { GameClock } from "../world/ruleTime";
+import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
 import type { TrafficControl } from "../world/trafficControl";
 import { createCarModel, type CarModel } from "./carModel";
 import { planRoute, progressOn, type Route } from "./navigation";
@@ -46,7 +47,7 @@ export type TaxiWorld = {
   graph: RoadGraph;
   control: TrafficControl;
   turnRules: TurnRule[];
-  minutes: number;
+  clock: GameClock;
   /** Things to keep clear of: traffic cars, the player's car, pedestrians in the road. */
   obstacles: Vector3[];
 };
@@ -183,7 +184,7 @@ export class RoboTaxi {
       if (!hit) return false;
       start = { seg: hit.seg, s: hit.s, dir: hit.dir.dot(this.heading()) >= 0 ? 1 : -1 };
     }
-    const route = planRoute(world.graph, start, target, world.minutes, world.turnRules);
+    const route = planRoute(world.graph, start, target, world.clock, world.turnRules);
     if (!route) return false;
     this.route = route;
     this.at = 0;
@@ -297,7 +298,7 @@ export class RoboTaxi {
     const t = (d - route.cum[i - 1]) / Math.max(1e-6, route.cum[i] - route.cum[i - 1]);
     const p = a.clone().lerp(b, Math.min(1, Math.max(0, t)));
     const seg = route.steps[route.stepOf[i]]?.seg;
-    const lane = seg && seg.oneway === 0 ? seg.line.width * 0.25 : 0;
+    const lane = laneOffset(seg);
     const dir = b.clone().sub(a).setY(0);
     if (dir.lengthSq() > 1e-6) p.add(leftOf(dir.normalize(), lane));
     return p;

@@ -1,4 +1,6 @@
 import {
+  BoxGeometry,
+  CanvasTexture,
   InstancedMesh,
   Mesh,
   MeshStandardMaterial,
@@ -45,6 +47,8 @@ function design(type: number, value: number): Design | null {
         : null;
     case SIGN.noEntry:
       return { file: "no_entry", shape: "PlateCircle" };
+    case SIGN.closed:
+      return { file: "vehicles_closed", shape: "PlateCircle" };
     case SIGN.noParking:
       return { file: "no_parking", shape: "PlateCircle" };
     case SIGN.noStopping:
@@ -134,6 +138,8 @@ type Post = {
   plates: Design[];
   /** Instances drawing this post, to hide it if it turns out to stand inside a building. */
   refs: Array<[InstancedMesh, number]>;
+  /** 補助標識 texts hung under the plates. */
+  notes: string[];
   collider: RAPIER.Collider | null;
   hidden: boolean;
 };
@@ -148,6 +154,7 @@ export class TrafficSigns {
   private meshes: InstancedMesh[] = [];
 
   private posts: Post[] = [];
+  private notes: Mesh[] = [];
   private body: RAPIER.RigidBody | null = null;
   private lastCheck = 0;
 
@@ -162,14 +169,26 @@ export class TrafficSigns {
     this.clear();
     if (!graph || !regs || !kit) return;
     const posts: Post[] = [];
-    const add = (pos: Vector3, travel: Vector3, d: Design | null) => {
+    const add = (pos: Vector3, travel: Vector3, d: Design | null, note?: string) => {
       if (!d) return;
       // Never in another road's carriageway (junctions, the far side of a narrow crossing).
       if (graph.carriagewaysAt(pos, 0.3).length > 0) return;
       // Several plates for the same traffic at (nearly) the same spot share one post.
       const post = posts.find((p) => p.pos.distanceTo(pos) < 2 && p.travel.dot(travel) > 0.7);
-      if (!post) posts.push({ pos, travel, plates: [d], refs: [], collider: null, hidden: false });
-      else if (!post.plates.some((x) => x.file === d.file) && post.plates.length < 3) post.plates.push(d);
+      if (!post)
+        posts.push({
+          pos,
+          travel,
+          plates: [d],
+          refs: [],
+          collider: null,
+          hidden: false,
+          notes: note ? [note] : [],
+        });
+      else if (!post.plates.some((x) => x.file === d.file) && post.plates.length < 3) {
+        post.plates.push(d);
+        if (note) post.notes.push(note);
+      }
     };
     // 一時停止 first so it is the top plate where it shares a post.
     for (const ap of approaches) {
@@ -177,7 +196,7 @@ export class TrafficSigns {
       const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
       add(mid.add(leftOf(ap.travel, ap.seg.line.width / 2 + 0.7)), ap.travel, design(SIGN.stop, 0));
     }
-    for (const s of regs.signs) add(s.pos, s.travel, design(s.type, s.value));
+    for (const s of regs.signs) add(s.pos, s.travel, design(s.type, s.value), s.note);
     const signalStops = approaches.filter((a) => a.kind === "signal");
     for (const c of regs.crossings) {
       const isSignalled = signalStops.some(
@@ -203,6 +222,12 @@ export class TrafficSigns {
   clear(): void {
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
+    for (const n of this.notes) {
+      this.scene.remove(n);
+      n.geometry.dispose();
+      for (const m of n.material as Material[]) if (m !== noteBack) m.dispose();
+    }
+    this.notes = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
     this.posts = [];
@@ -279,6 +304,21 @@ export class TrafficSigns {
     pole.castShadow = true;
     this.add(pole);
     this.posts = posts;
+    // 補助標識 under the lowest plate (one mesh each: their texts differ).
+    for (const post of posts) {
+      if (post.notes.length === 0) continue;
+      const plate = notePlate(post.notes[0]);
+      const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
+      const h = (plate.geometry as BoxGeometry).parameters.height;
+      const lowest = ground + POST_TOP - (post.plates.length - 1) * STACK;
+      const facing = post.travel.clone().negate();
+      plate.position
+        .set(post.pos.x, lowest - 0.3 * SCALE - 0.06 - h / 2, post.pos.z)
+        .addScaledVector(facing, PLATE_OFFSET);
+      plate.rotation.y = Math.atan2(facing.x, facing.z);
+      this.scene.add(plate);
+      this.notes.push(plate);
+    }
   }
 
   /** One instance per plate; the face looks at oncoming traffic (−travel), just in front of the post. */
@@ -311,4 +351,51 @@ export class TrafficSigns {
     this.scene.add(mesh);
     this.meshes.push(mesh);
   }
+}
+
+const noteBack = new MeshStandardMaterial({ color: 0x9aa1a8, metalness: 0.6, roughness: 0.45 });
+const noteTextures = new Map<string, { texture: CanvasTexture; lines: number }>();
+
+/** 補助標識: black text on a white plate with a black border, 60 cm wide. */
+function notePlate(text: string): Mesh {
+  let entry = noteTextures.get(text);
+  if (!entry) {
+    const lines = text.split("\n");
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 24 + lines.length * 70;
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#111111";
+    ctx.lineWidth = 8;
+    ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+    ctx.fillStyle = "#111111";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    lines.forEach((line, i) => {
+      let size = 54;
+      ctx.font = `bold ${size}px "Noto Sans JP", "Hiragino Sans", sans-serif`;
+      while (ctx.measureText(line).width > canvas.width - 40 && size > 22) {
+        size -= 2;
+        ctx.font = `bold ${size}px "Noto Sans JP", "Hiragino Sans", sans-serif`;
+      }
+      ctx.fillText(line, canvas.width / 2, 12 + 35 + i * 70);
+    });
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    entry = { texture, lines: lines.length };
+    noteTextures.set(text, entry);
+  }
+  const width = 0.6 * SCALE;
+  const height = width * ((24 + entry.lines * 70) / 320);
+  const face = new MeshStandardMaterial({ map: entry.texture, roughness: 0.45 });
+  return new Mesh(new BoxGeometry(width, height, 0.01), [
+    noteBack,
+    noteBack,
+    noteBack,
+    noteBack,
+    face,
+    noteBack,
+  ]);
 }

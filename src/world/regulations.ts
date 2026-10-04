@@ -4,6 +4,7 @@ import { latToTileY, lonToTileX } from "../geo/tiles";
 import { warn } from "../log";
 import { anchors, M_LAT, M_LON, reversed } from "./anchors";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
 
 /**
  * Traffic regulations for the area around the player, as tiled by scripts/regulations.ts:
@@ -13,12 +14,13 @@ import { leftOf, type RoadGraph, type Segment } from "./roads";
 export type RegulationData = {
   speed: number[][]; // [limit, lon0, lat0, …]
   speedZone: number[][]; // [limit, ring…]
-  oneway: number[][]; // [startMin, endMin, …coords in permitted travel order]
+  oneway: number[][]; // [TIME…, …coords in permitted travel order] (TIME: ruleTime.ts)
   crosswalk: number[][]; // [lon1, lat1, lon2, lat2] kerb to kerb
   stopLine: number[][]; // [lon, lat]
   stopSign: number[][]; // [lon, lat]
-  sections: number[][]; // [code, bothWays, startMin, endMin, …coords]: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行
-  turns: number[][]; // 指定方向外進行禁止: [centreLon, centreLat, entryLon, entryLat, mask, startMin, endMin]
+  sections: number[][]; // [code, bothWays, TIME…, …coords]: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行
+  turns: number[][]; // 指定方向外進行禁止: [centreLon, centreLat, entryLon, entryLat, mask, TIME…]
+  closures: number[][]; // 通行禁止: [shape (2 line, 3 area), TIME…, …coords]
   noOvertake: number[][]; // はみ出し禁止 sections: coords
   lanes: number[][]; // 車両通行帯: [lanes or 0, …coords]
   noLaneChange: number[][]; // 進路変更禁止 sections: coords
@@ -41,6 +43,7 @@ export const SIGN = {
   turn: 8,
   crosswalk: 9, // 横断歩道 (407-A), placed at runtime at crossings without signals
   stop: 10, // 一時停止 (330-A), placed at runtime at 一時停止 approaches
+  closed: 11, // 車両通行止め (302), at the entrances of streets under 通行禁止
 } as const;
 
 const REG_ZOOM = 14;
@@ -55,6 +58,7 @@ const empty = (): RegulationData => ({
   stopSign: [],
   sections: [],
   turns: [],
+  closures: [],
   noOvertake: [],
   lanes: [],
   noLaneChange: [],
@@ -234,6 +238,8 @@ export type PlacedSign = {
   seg: Segment;
   s: number; // along-distance on seg (coordinate order)
   dir: 1 | -1; // travel direction relative to seg coordinates
+  /** 補助標識 text under the plate, e.g. "7-8:30\n土・日・休日を除く". */
+  note?: string;
 };
 /** A crosswalk snapped onto a street: centred at `s`, spanning the carriageway. */
 export type Crossing = { seg: Segment; s: number; pos: Vector3 };
@@ -243,8 +249,7 @@ export type TurnRule = {
   approach: Segment;
   dir: 1 | -1;
   mask: number;
-  start: number;
-  end: number;
+  time: RuleTime;
 };
 export type AppliedRegulations = {
   crossings: Crossing[];
@@ -308,8 +313,18 @@ export function applyRegulations(
   data: RegulationData,
   frame: LocalFrame,
 ): AppliedRegulations {
-  const oneways = new LineGrid<{ start: number; end: number }>();
-  for (const r of data.oneway) oneways.add({ start: r[0], end: r[1] }, toLocal(frame, r, 2));
+  const oneways = new LineGrid<RuleTime>();
+  for (const r of data.oneway) {
+    const { time, next } = readTime(r, 0);
+    oneways.add(time, toLocal(frame, r, next));
+  }
+  const closureLines = new LineGrid<RuleTime>();
+  const closureAreas: Array<{ time: RuleTime; ring: Vector3[] }> = [];
+  for (const r of data.closures) {
+    const { time, next } = readTime(r, 1);
+    if (r[0] === 3) closureAreas.push({ time, ring: toLocal(frame, r, next) });
+    else closureLines.add(time, toLocal(frame, r, next));
+  }
   const limits = new LineGrid<number>();
   for (const r of data.speed) limits.add(r[0], toLocal(frame, r, 1));
   const zones = data.speedZone.map((r) => ({ limit: r[0], ring: toLocal(frame, r, 1) }));
@@ -319,11 +334,12 @@ export function applyRegulations(
   for (const r of data.noLaneChange) noLaneChange.add(true, toLocal(frame, r));
   const laneLines = new LineGrid<number>();
   for (const r of data.lanes) laneLines.add(r[0], toLocal(frame, r, 1));
-  const sectionGrids = new Map<number, LineGrid<{ start: number; end: number }>>();
-  for (const [code, , start, end, ...coords] of data.sections) {
-    const grid = sectionGrids.get(code) ?? new LineGrid<{ start: number; end: number }>();
-    grid.add({ start, end }, toLocal(frame, coords));
-    sectionGrids.set(code, grid);
+  const sectionGrids = new Map<number, LineGrid<RuleTime>>();
+  for (const r of data.sections) {
+    const { time, next } = readTime(r, 2);
+    const grid = sectionGrids.get(r[0]) ?? new LineGrid<RuleTime>();
+    grid.add(time, toLocal(frame, r, next));
+    sectionGrids.set(r[0], grid);
   }
 
   const pos = new Vector3();
@@ -336,16 +352,18 @@ export function applyRegulations(
     seg.noLaneChange = false;
     seg.lanes = 1;
     seg.rules = [];
+    seg.closures = [];
     if (seg.line.kind === "highway") continue;
     const fractions = seg.length < 20 ? [0.5] : [0.2, 0.5, 0.8];
     let votes = 0;
-    let rule: { start: number; end: number } | null = null;
+    let rule: RuleTime | null = null;
     const limitVotes = new Map<number, number>();
     let overtakeVotes = 0;
     let laneChangeVotes = 0;
     let laneVotes = 0;
     let laneCount = 0;
-    const ruleVotes = new Map<number, { n: number; start: number; end: number }>();
+    const ruleVotes = new Map<number, { n: number; time: RuleTime }>();
+    const closureVotes = new Map<RuleTime, number>();
     for (const f of fractions) {
       graph.sample(seg, seg.length * f, pos, dir);
       const isParallel = (dx: number, dz: number) => Math.abs(dx * dir.x + dz * dir.z) > PARALLEL;
@@ -363,9 +381,15 @@ export function applyRegulations(
       for (const [code, grid] of sectionGrids) {
         const hit = grid.nearest(pos.x, pos.z, wide, isParallel);
         if (!hit) continue;
-        const v = ruleVotes.get(code) ?? { n: 0, ...hit.owner };
+        const v = ruleVotes.get(code) ?? { n: 0, time: hit.owner };
         v.n++;
         ruleVotes.set(code, v);
+      }
+      const closed = closureLines.nearest(pos.x, pos.z, wide, isParallel);
+      if (closed) closureVotes.set(closed.owner, (closureVotes.get(closed.owner) ?? 0) + 1);
+      for (const area of closureAreas) {
+        if (insidePolygon(pos.x, pos.z, area.ring))
+          closureVotes.set(area.time, (closureVotes.get(area.time) ?? 0) + 1);
       }
       const lane = laneLines.nearest(pos.x, pos.z, wide, isParallel);
       if (lane) {
@@ -374,12 +398,12 @@ export function applyRegulations(
       }
     }
     const majority = Math.ceil(fractions.length / 2);
-    if (rule && Math.abs(votes) >= majority) seg.onewayRule = { dir: votes > 0 ? 1 : -1, ...rule };
+    if (rule && Math.abs(votes) >= majority) seg.onewayRule = { dir: votes > 0 ? 1 : -1, time: rule };
+    for (const [time, n] of closureVotes) if (n >= majority) seg.closures.push(time);
     seg.noOvertake = overtakeVotes >= majority;
     seg.noLaneChange = laneChangeVotes >= majority;
     if (laneVotes >= majority) seg.lanes = lanesPerDirection(seg, laneCount);
-    for (const [code, v] of ruleVotes)
-      if (v.n >= majority) seg.rules.push({ code, start: v.start, end: v.end });
+    for (const [code, v] of ruleVotes) if (v.n >= majority) seg.rules.push({ code, time: v.time });
     const posted = [...limitVotes].filter(([, n]) => n >= majority).toSorted((a, b) => b[1] - a[1])[0];
     if (posted) {
       seg.limit = posted[0];
@@ -502,7 +526,7 @@ export function signAnchors(data: RegulationData): number[][] {
   };
   for (const [limit, ...coords] of data.speed) along(SIGN.speed, limit, coords, 300, true);
   for (const r of data.oneway) {
-    const travel = r.slice(2);
+    const travel = r.slice(readTime(r, 0).next);
     along(SIGN.oneway, 0, travel, 150, false);
     const [exit] = anchors(reversed(travel), 1e9);
     if (exit) out.push([SIGN.noEntry, 0, ...exit]);
@@ -513,9 +537,9 @@ export function signAnchors(data: RegulationData): number[][] {
     51: [SIGN.noUturn, 300],
     61: [SIGN.slow, 200],
   };
-  for (const [code, bothWays, , , ...coords] of data.sections) {
-    const kind = bySection[code];
-    if (kind) along(kind[0], 0, coords, kind[1], bothWays === 1);
+  for (const r of data.sections) {
+    const kind = bySection[r[0]];
+    if (kind) along(kind[0], 0, r.slice(readTime(r, 2).next), kind[1], r[1] === 1);
   }
   for (const [cx, cy, ex, ey, mask] of data.turns) {
     // On the approach, ~12 m before the junction centre.
@@ -539,7 +563,9 @@ function resolveTurns(graph: RoadGraph, data: RegulationData, frame: LocalFrame)
     const seg = graph.segments[ids[0]];
     ends.push({ node, pos: seg.from === node ? seg.pts[0] : seg.pts[seg.pts.length - 1] });
   }
-  for (const [cx, cy, ex, ey, mask, start, end] of data.turns) {
+  for (const t of data.turns) {
+    const [cx, cy, ex, ey, mask] = t;
+    const { time } = readTime(t, 5);
     const [centre, entry] = toLocal(frame, [cx, cy, ex, ey]);
     let best: { node: number; pos: Vector3 } | null = null;
     let bestD = 20;
@@ -571,16 +597,14 @@ function resolveTurns(graph: RoadGraph, data: RegulationData, frame: LocalFrame)
       }
     }
     if (!approach) continue;
-    rules.push({ node: best.node, approach, dir: approach.to === best.node ? 1 : -1, mask, start, end });
+    rules.push({ node: best.node, approach, dir: approach.to === best.node ? 1 : -1, mask, time });
   }
   return rules;
 }
 
-/** Whether a time-windowed rule [start, end) (minutes of the day) is in force at `minutes`. */
-export function isInForce(rule: { start: number; end: number }, minutes: number): boolean {
-  return rule.start <= rule.end
-    ? minutes >= rule.start && minutes < rule.end
-    : minutes >= rule.start || minutes < rule.end;
+/** Whether a regulation with its 規制時間・曜日 and 除外 conditions is in force at `clock`. */
+export function isInForce(rule: { time: RuleTime }, clock: GameClock): boolean {
+  return inForce(rule.time, clock);
 }
 
 /** Heading (0 = north, clockwise) → unit vector in the local frame (x east, z south). */
@@ -605,7 +629,7 @@ function placeSigns(
   const isClear = (seg: Segment, s: number, foot: Vector3) =>
     graph.carriagewaysAt(foot, 0.5, seg).length === 0 &&
     !crossings.some((c) => c.seg === seg && Math.abs(c.s - s) < 3.5);
-  const put = (type: number, value: number, seg: Segment, s0: number, dir: 1 | -1) => {
+  const put = (type: number, value: number, seg: Segment, s0: number, dir: 1 | -1, note?: string) => {
     // Slide along the travel direction, past the junction, until the kerb is clear.
     let s = s0;
     let pos = new Vector3();
@@ -627,7 +651,7 @@ function placeSigns(
       (o) =>
         o.type === type && o.value === value && o.pos.distanceTo(foot) < 15 && o.travel.dot(travel) > 0.7,
     );
-    if (!isDuplicate) placed.push({ type, value, pos: foot, travel, seg, s, dir });
+    if (!isDuplicate) placed.push({ type, value, pos: foot, travel, seg, s, dir, note });
   };
   for (const [type, value, lon, lat, heading] of signAnchors(data)) {
     const p = toLocal(frame, [lon, lat])[0];
@@ -644,6 +668,19 @@ function placeSigns(
     const fits = type === SIGN.noEntry ? isAgainstFlow : !isAgainstFlow;
     if (!fits) continue;
     put(type, value, seg, s, dir);
+  }
+  // 車両通行止め at each end of a closed street that joins an open one, facing traffic about to
+  // turn in, with its hours and days on a 補助標識 when it is not closed round the clock.
+  for (const seg of graph.segments) {
+    const time = seg.closures[0];
+    if (!time || seg.length < 8) continue;
+    for (const [node, dir, s] of [
+      [seg.from, 1, 3],
+      [seg.to, -1, seg.length - 3],
+    ] as const) {
+      const isEntrance = (graph.nodes.get(node) ?? []).some((id) => graph.segments[id].closures.length === 0);
+      if (isEntrance) put(SIGN.closed, 0, seg, s, dir, timeNote(time) ?? undefined);
+    }
   }
   // Zone entrances: a zone street whose end joins a street outside the zone.
   for (const seg of graph.segments) {

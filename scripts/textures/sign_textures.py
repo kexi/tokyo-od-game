@@ -219,6 +219,22 @@ def draw_no_entry(scale: int = 4) -> Image.Image:
     return img.resize((target_size, target_size), Image.Resampling.LANCZOS)
 
 
+def draw_vehicles_closed(scale: int = 4) -> Image.Image:
+    """車両通行止め (302): a red ring on a white ground with a white rim (命令 別表第二)."""
+    target_size = 512
+    dim = target_size * scale
+    img = Image.new("RGBA", (dim, dim), COLOR_TRANSPARENT)
+    draw = ImageDraw.Draw(img)
+    center = dim / 2.0
+    outer_r = dim / 2.0
+    ring_r = outer_r - 24 * (scale / 4)
+    inner_r = ring_r - 0.11 * dim  # ring about a tenth of the diameter
+    draw.ellipse([center - outer_r, center - outer_r, center + outer_r, center + outer_r], fill=COLOR_WHITE)
+    draw.ellipse([center - ring_r, center - ring_r, center + ring_r, center + ring_r], fill=COLOR_RED)
+    draw.ellipse([center - inner_r, center - inner_r, center + inner_r, center + inner_r], fill=COLOR_WHITE)
+    return img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+
+
 # ----------------------------------------------------------------------
 # 3. 駐車禁止 (316) & 駐停車禁止 (315) No Parking / No Stopping
 # ----------------------------------------------------------------------
@@ -892,6 +908,7 @@ SIGN_GENERATORS: Dict[str, Callable[[], Image.Image]] = {
     "speed_70.png": lambda: draw_speed_limit(70),
     "speed_80.png": lambda: draw_speed_limit(80),
     "no_entry.png": draw_no_entry,
+    "vehicles_closed.png": draw_vehicles_closed,
     "no_parking.png": lambda: draw_no_parking(no_stopping=False),
     "no_stopping.png": lambda: draw_no_parking(no_stopping=True),
     "no_uturn.png": draw_no_uturn,

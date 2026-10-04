@@ -1,5 +1,6 @@
 import { Vector3 } from "three";
 import type { LocalFrame } from "../geo/frame";
+import { inForce, type GameClock, type RuleTime } from "./ruleTime";
 
 /** A road centreline from a vector source, in lon/lat. */
 export type RoadLine = {
@@ -19,8 +20,8 @@ export type Segment = {
   to: number;
   /** One-way in force now (see RoadGraph.setClock): 1 along coords, −1 against, 0 both. */
   oneway: 0 | 1 | -1;
-  /** JARTIC 一方通行 matched onto this segment, valid from `start` to `end` (minutes of day). */
-  onewayRule: { dir: 1 | -1; start: number; end: number } | null;
+  /** JARTIC 一方通行 matched onto this segment, with when it applies. */
+  onewayRule: { dir: 1 | -1; time: RuleTime } | null;
   /** 規制速度 from JARTIC (km/h), or null when only the statutory limit applies. */
   limit: number | null;
   limitKind: "sign" | "zone" | "statutory";
@@ -31,10 +32,22 @@ export type Segment = {
   /** Lanes per direction: 1 unless JARTIC lists a 車両通行帯 for the section. */
   lanes: number;
   /** JARTIC sections on this segment: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行. */
-  rules: Array<{ code: number; start: number; end: number }>;
+  rules: Array<{ code: number; time: RuleTime }>;
+  /** JARTIC 通行禁止 (車両通行止め, 歩行者用道路 …) on this segment, and whether one applies now. */
+  closures: RuleTime[];
+  closed: boolean;
 };
 
 /** Speed limit in force on a segment: posted (JARTIC) when known, statutory otherwise. */
+/**
+ * Centre of the left-hand lane from the centreline. GSI 幅員 sometimes includes the pavement, so
+ * a quarter of the width can land on the kerb; stay at least 2 m inside the edge.
+ */
+export function laneOffset(seg: Segment | undefined): number {
+  if (!seg || seg.oneway !== 0) return 0;
+  return Math.max(0, Math.min(seg.line.width * 0.25, seg.line.width / 2 - 2));
+}
+
 export function speedLimit(seg: Segment): number {
   return seg.limit ?? estimatedLimit(seg.line);
 }
@@ -97,6 +110,8 @@ export class RoadGraph {
         noLaneChange: false,
         lanes: 1,
         rules: [],
+        closures: [],
+        closed: false,
       });
       this.link(from, id);
       this.link(to, id);
@@ -216,14 +231,12 @@ export class RoadGraph {
     return best;
   }
 
-  /** Apply time-windowed one-way rules for a time of day (minutes since midnight). */
-  setClock(minutes: number): void {
+  /** Apply one-way rules and closures for a moment (time of day, day of week, 祝日). */
+  setClock(clock: GameClock): void {
     for (const seg of this.segments) {
       const r = seg.onewayRule;
-      const isActive =
-        r !== null &&
-        (r.start <= r.end ? minutes >= r.start && minutes < r.end : minutes >= r.start || minutes < r.end);
-      seg.oneway = isActive && r ? r.dir : seg.line.oneway;
+      seg.oneway = r && inForce(r.time, clock) ? r.dir : seg.line.oneway;
+      seg.closed = seg.closures.some((t) => inForce(t, clock));
     }
   }
 

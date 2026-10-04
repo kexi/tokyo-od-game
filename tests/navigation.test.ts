@@ -4,6 +4,9 @@ import { LocalFrame } from "../src/geo/frame";
 import { classifyTurn, planRoute, progressOn } from "../src/game/navigation";
 import type { TurnRule } from "../src/world/regulations";
 import { RoadGraph, type RoadLine } from "../src/world/roads";
+import { gameClock } from "../src/world/ruleTime";
+
+const clockAt = (minutes: number) => gameClock(2026, 10, 1, minutes);
 
 const frame = new LocalFrame(35.68, 139.76, 40);
 const LAT = 1 / 110_950; // degrees per metre
@@ -46,7 +49,7 @@ describe("car navigation over the road graph", () => {
 
   it("announces the right turn at the junction 100 m ahead", () => {
     const graph = new RoadGraph(grid(), frame);
-    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), 600, []);
+    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), clockAt(600), []);
     expect(route?.reachesTarget).toBe(true);
     expect(route?.maneuvers.map((m) => m.turn)).toEqual(["right"]);
     expect(route?.maneuvers[0].at).toBeCloseTo(90, 0);
@@ -57,7 +60,7 @@ describe("car navigation over the road graph", () => {
     const lines = grid();
     lines[2] = road(100, 100, 0, 100, 1); // east arm: one way, westbound only
     const graph = new RoadGraph(lines, frame);
-    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), 600, []);
+    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), clockAt(600), []);
     // North to the top junction and right along the ring (the corner after it is a bend, not a
     // junction, so it is not announced); never along the one-way street against its flow.
     expect(route?.maneuvers.map((m) => [m.turn, Math.round(m.at)])).toEqual([["right", 190]]);
@@ -70,17 +73,23 @@ describe("car navigation over the road graph", () => {
     if (!south) throw new Error("no south arm");
     const node = south.to;
     // From the south arm, only straight on and left are allowed (右折禁止), 7:00–19:00.
-    const rule: TurnRule = { node, approach: south, dir: 1, mask: 3, start: 420, end: 1140 };
+    const rule: TurnRule = {
+      node,
+      approach: south,
+      dir: 1,
+      mask: 3,
+      time: { on: [[420, 1140, 0]], off: [] },
+    };
     // Daytime: straight on through the banned junction, right at the next one.
-    const daytime = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), 600, [rule]);
+    const daytime = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), clockAt(600), [rule]);
     expect(daytime?.maneuvers.map((m) => [m.turn, Math.round(m.at)])).toEqual([["right", 190]]);
-    const night = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), 1300, [rule]);
+    const night = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), clockAt(1300), [rule]);
     expect(night?.maneuvers.map((m) => [m.turn, Math.round(m.at)])).toEqual([["right", 90]]);
   });
 
   it("tracks progress along the route and how far the car strays from it", () => {
     const graph = new RoadGraph(grid(), frame);
-    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), 600, []);
+    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(80, 100), clockAt(600), []);
     if (!route) throw new Error("no route");
     const p = progressOn(route, at(3, 60));
     expect(p.at).toBeCloseTo(50, 0);

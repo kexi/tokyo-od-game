@@ -1,5 +1,7 @@
 import type { Vector3 } from "three";
+import { drawJunction } from "./junctionView";
 import type { TurnRule } from "../world/regulations";
+import type { GameClock } from "../world/ruleTime";
 import type { RoadGraph, Segment } from "../world/roads";
 import { planRoute, progressOn, TURN_WORDS, type Maneuver, type Route, type Turn } from "./navigation";
 
@@ -37,8 +39,12 @@ export class NavGuide {
   private offSince: number | null = null;
   private readonly called = new Set<string>();
   private arrived = false;
+  private names: Array<{ pos: Vector3; name: string }> = [];
+  private lastDraw = 0;
   /** Said before the next turn call: "ルート案内を開始します。" or the replanning notice. */
   private intro: string | null = null;
+  /** The car's distance along the route at the last update (for the band on the road). */
+  lastAt = 0;
   /** Bumped whenever a new route is planned (the minimap caches its geodetic copy). */
   version = 0;
 
@@ -54,9 +60,11 @@ export class NavGuide {
     car: Vector3;
     forward: Vector3;
     target: Vector3 | null;
-    minutes: number;
+    clock: GameClock;
     driving: boolean;
+    junctionNames?: Array<{ pos: Vector3; name: string }>;
   }): void {
+    this.names = opts.junctionNames ?? [];
     const { now, graph, car, target } = opts;
     if (!graph || !target || !opts.driving) {
       if (!target) this.stop();
@@ -74,7 +82,7 @@ export class NavGuide {
     }
     if (!this.route) reason ??= "new";
     if (reason && now - this.lastPlan > PLAN_EVERY) {
-      this.plan(graph, opts.turnRules, car, opts.forward, target, opts.minutes, now);
+      this.plan(graph, opts.turnRules, car, opts.forward, target, opts.clock, now);
       if (isNewTarget) {
         this.called.clear();
         this.arrived = false;
@@ -99,7 +107,7 @@ export class NavGuide {
     car: Vector3,
     forward: Vector3,
     target: Vector3,
-    minutes: number,
+    clock: GameClock,
     now: number,
   ): void {
     this.lastPlan = now;
@@ -114,7 +122,7 @@ export class NavGuide {
       return;
     }
     const dir: 1 | -1 = hit.dir.dot(forward) >= 0 ? 1 : -1;
-    this.route = planRoute(graph, { seg: hit.seg, s: hit.s, dir }, target, minutes, turnRules);
+    this.route = planRoute(graph, { seg: hit.seg, s: hit.s, dir }, target, clock, turnRules);
     this.version++;
   }
 
@@ -126,6 +134,7 @@ export class NavGuide {
     }
     const p = progressOn(route, car, this.hint);
     this.hint = p.index;
+    this.lastAt = p.at;
     const next: Maneuver | undefined = route.maneuvers.find((m) => m.at > p.at + 2);
     const toEnd = route.length - p.at;
     this.panel.hidden = false;
@@ -138,13 +147,23 @@ export class NavGuide {
       ? `目的地まで ${formatDistance(toEnd)}`
       : "目的地方面へ（地図の外）";
 
+    const view = this.panel.querySelector<HTMLCanvasElement>(".nav-junction");
     if (next) {
       const d = next.at - p.at;
+      const name = this.junctionName(next.pos);
       arrow.setAttribute("d", ARROWS[next.turn]);
       dist.textContent = formatDistance(d);
-      word.textContent = TURN_WORDS[next.turn];
+      word.textContent = name ? `${name}を${TURN_WORDS[next.turn]}` : TURN_WORDS[next.turn];
+      // 交差点拡大図 for the last 300 m, redrawn a few times a second.
+      const isClose = d < 300 && this.graph !== null;
+      this.panel.classList.toggle("close", isClose);
+      if (view) view.hidden = !isClose;
+      if (isClose && view && this.graph && performance.now() - this.lastDraw > 120) {
+        this.lastDraw = performance.now();
+        drawJunction(view, this.graph, route, next, p.at, name);
+      }
       const key = `${Math.round(next.pos.x)},${Math.round(next.pos.z)}`;
-      const words = TURN_WORDS[next.turn];
+      const words = name ? `${name}を${TURN_WORDS[next.turn]}` : TURN_WORDS[next.turn];
       // After (re)planning, call the next turn at once from wherever the car is.
       const call = this.intro
         ? CALLS.find((c) => d <= c)
@@ -161,6 +180,8 @@ export class NavGuide {
       this.intro = null;
       return;
     }
+    this.panel.classList.remove("close");
+    if (view) view.hidden = true;
     arrow.setAttribute("d", ARROWS.straight);
     dist.textContent = formatDistance(toEnd);
     word.textContent = route.reachesTarget ? "道なり・目的地" : "道なり";
@@ -169,6 +190,20 @@ export class NavGuide {
       this.say("目的地周辺です。音声案内を終了します。");
     } else if (this.intro) this.say(`${this.intro}しばらく道なりです。`);
     this.intro = null;
+  }
+
+  /** 交差点名 within 40 m of a turn, if OSM has one. */
+  private junctionName(pos: Vector3): string | null {
+    let best: string | null = null;
+    let bestD = 40;
+    for (const n of this.names) {
+      const d = Math.hypot(n.pos.x - pos.x, n.pos.z - pos.z);
+      if (d < bestD) {
+        bestD = d;
+        best = n.name;
+      }
+    }
+    return best;
   }
 
   private lastSaid = { text: "", at: -Infinity };

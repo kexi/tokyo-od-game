@@ -12,6 +12,12 @@ import {
   type RegulationData,
 } from "../src/world/regulations";
 import { RoadGraph, speedLimit, type RoadLine } from "../src/world/roads";
+import { gameClock, type Window } from "../src/world/ruleTime";
+
+/** TIME block for one daily window, every day, no exclusions. */
+const T = (start: number, end: number) => [1, start, end, 0, 0];
+/** A Thursday (no 曜日 conditions apply) at `minutes`. */
+const at = (minutes: number) => gameClock(2026, 10, 1, minutes);
 import { CYCLE, lightState, segmentsIntersect } from "../src/world/trafficControl";
 
 const frame = new LocalFrame(35.68, 139.76, 40);
@@ -29,6 +35,7 @@ const empty = (): RegulationData => ({
   lanes: [],
   noLaneChange: [],
   signals: [],
+  closures: [],
   junctions: [],
   footbridges: [],
 });
@@ -69,21 +76,21 @@ describe("matching regulations onto the road graph", () => {
     const graph = new RoadGraph([street()], frame);
     const data = empty();
     // Westbound only (travel order east → west), 07:00–09:00, digitised 2 m north of the centreline.
-    data.oneway.push([420, 540, 139.7622, 35.68 + 2 * M_LAT, 139.7598, 35.68 + 2 * M_LAT]);
+    data.oneway.push([...T(420, 540), 139.7622, 35.68 + 2 * M_LAT, 139.7598, 35.68 + 2 * M_LAT]);
     applyRegulations(graph, data, frame);
     const seg = graph.segments[0];
-    expect(seg.onewayRule).toEqual({ dir: -1, start: 420, end: 540 });
-    graph.setClock(8 * 60);
+    expect(seg.onewayRule).toEqual({ dir: -1, time: { on: [[420, 540, 0]], off: [] } });
+    graph.setClock(at(8 * 60));
     expect(seg.oneway).toBe(-1);
     expect(graph.exits(seg.from, -1)).toEqual([]); // cannot enter eastbound at the west end
-    graph.setClock(12 * 60);
+    graph.setClock(at(12 * 60));
     expect(seg.oneway).toBe(0);
   });
 
   it("ignores one-way lines that cross the street instead of running along it", () => {
     const graph = new RoadGraph([street()], frame);
     const data = empty();
-    data.oneway.push([0, 1440, 139.761, 35.6801, 139.761, 35.6799]);
+    data.oneway.push([...T(0, 1440), 139.761, 35.6801, 139.761, 35.6799]);
     applyRegulations(graph, data, frame);
     expect(graph.segments[0].onewayRule).toBeNull();
   });
@@ -216,7 +223,7 @@ describe("signs and lane rules on the road graph", () => {
   it("faces 車両進入禁止 only at wrong-way traffic, at a one-way street's exit", () => {
     const graph = new RoadGraph([street()], frame);
     const data = empty();
-    data.oneway.push([0, 1440, 139.762, 35.68, 139.76, 35.68]); // westbound only (travel order)
+    data.oneway.push([...T(0, 1440), 139.762, 35.68, 139.76, 35.68]); // westbound only (travel order)
     data.speed.push([30, 139.76, 35.68, 139.762, 35.68]); // posted both ways in the data
     const signs = applyRegulations(graph, data, frame).signs;
     const kinds = signs.map((s) => [s.type, Math.sign(s.travel.x)]);
@@ -228,8 +235,8 @@ describe("signs and lane rules on the road graph", () => {
 
   it("derives section signs and the 指定方向外進行禁止 sign on the approach", () => {
     const data = empty();
-    data.sections.push([115, 0, 0, 1440, 139.76, 35.68, 139.762, 35.68]); // 片側: coordinate order only
-    data.turns.push([139.761, 35.68, 139.761, 35.68 - 100 / LAT_M, 3, 0, 1440]); // from the south
+    data.sections.push([115, 0, ...T(0, 1440), 139.76, 35.68, 139.762, 35.68]); // 片側: coordinate order only
+    data.turns.push([139.761, 35.68, 139.761, 35.68 - 100 / LAT_M, 3, ...T(0, 1440)]); // from the south
     const anchorsOut = signAnchors(data);
     expect(anchorsOut.filter((a) => a[0] === SIGN.noParking).every((a) => Math.round(a[4]) === 90)).toBe(
       true,
@@ -241,16 +248,30 @@ describe("signs and lane rules on the road graph", () => {
   });
 
   it("evaluates time-windowed rules, including windows past midnight", () => {
-    expect(isInForce({ start: 480, end: 1200 }, 600)).toBe(true);
-    expect(isInForce({ start: 480, end: 1200 }, 1300)).toBe(false);
-    expect(isInForce({ start: 1320, end: 360 }, 60)).toBe(true);
+    const rule = (start: number, end: number) => ({ time: { on: [[start, end, 0]] as Window[], off: [] } });
+    expect(isInForce(rule(480, 1200), at(600))).toBe(true);
+    expect(isInForce(rule(480, 1200), at(1300))).toBe(false);
+    expect(isInForce(rule(1320, 360), at(60))).toBe(true);
+  });
+
+  it("closes a street to traffic only while its 通行禁止 is in force", () => {
+    const graph = new RoadGraph([street()], frame);
+    const data = empty();
+    // 歩行者用道路 7:00–8:30, 土曜・日曜・休日を除く.
+    data.closures.push([2, 1, 420, 510, 0, 1, 0, 1440, 2, 139.76, 35.68, 139.762, 35.68]);
+    applyRegulations(graph, data, frame);
+    const seg = graph.segments[0];
+    graph.setClock(gameClock(2026, 10, 1, 8 * 60)); // Thursday
+    expect(seg.closed).toBe(true);
+    graph.setClock(gameClock(2026, 10, 4, 8 * 60)); // Sunday
+    expect(seg.closed).toBe(false);
   });
 
   it("marks JARTIC restriction sections on the segments they cover", () => {
     const graph = new RoadGraph([street()], frame);
     const data = empty();
-    data.sections.push([115, 1, 480, 1200, 139.76, 35.68, 139.762, 35.68]);
-    data.sections.push([51, 1, 0, 1440, 139.76, 35.68, 139.762, 35.68]);
+    data.sections.push([115, 1, ...T(480, 1200), 139.76, 35.68, 139.762, 35.68]);
+    data.sections.push([51, 1, ...T(0, 1440), 139.76, 35.68, 139.762, 35.68]);
     applyRegulations(graph, data, frame);
     expect(graph.segments[0].rules.map((r) => r.code).toSorted()).toEqual([115, 51]);
   });

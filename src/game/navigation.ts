@@ -1,17 +1,18 @@
 import { Vector3 } from "three";
 import { isInForce, type TurnRule } from "../world/regulations";
+import type { GameClock } from "../world/ruleTime";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 
 /**
  * カーナビ: a legal route over the road graph around the player and turn-by-turn guidance
- * ("およそ 300 メートル先、右方向です"). Routes obey one-way streets (with their time windows, via
- * RoadGraph.setClock) and 指定方向外進行禁止 in force, so following the guidance never books a
- * violation. The graph only covers the area around the player; a farther target is routed to
+ * ("およそ 300 メートル先、右方向です"). Routes obey one-way streets and 通行禁止 (with their time
+ * windows, days and exclusions, via RoadGraph.setClock) and 指定方向外進行禁止 in force, so
+ * following the guidance never books a violation. The graph only covers the area around the player; a farther target is routed to
  * the reachable road closest to it, and the route is planned again as the graph moves along.
  */
 export type Turn = "straight" | "slightLeft" | "left" | "slightRight" | "right" | "uturn";
 export type Step = { seg: Segment; dir: 1 | -1 };
-export type Maneuver = { at: number; turn: Turn; pos: Vector3 };
+export type Maneuver = { at: number; turn: Turn; pos: Vector3; node: number };
 export type Route = {
   steps: Step[];
   maneuvers: Maneuver[];
@@ -76,14 +77,14 @@ export function planRoute(
   graph: RoadGraph,
   start: { seg: Segment; s: number; dir: 1 | -1 },
   target: Vector3,
-  minutes: number,
+  clock: GameClock,
   turnRules: TurnRule[],
 ): Route | null {
   // Where the target meets each street; the goal is the closest street (and any within 30 m of it).
   const proj = new Map<number, { s: number; dist: number }>();
   let nearest = Infinity;
   for (const seg of graph.segments) {
-    if (!isDrivable(seg)) continue;
+    if (!isDrivable(seg) || seg.closed) continue;
     const p = graph.nearestOn(seg, target);
     proj.set(seg.id, { s: p.s, dist: p.dist });
     nearest = Math.min(nearest, p.dist);
@@ -101,7 +102,7 @@ export function planRoute(
   const key = (st: Step) => st.seg.id * 2 + (st.dir === 1 ? 1 : 0);
   const rulesAt = new Map<string, TurnRule[]>();
   for (const r of turnRules) {
-    if (!isInForce(r, minutes)) continue;
+    if (!isInForce(r, clock)) continue;
     const k = `${r.node}:${r.approach.id}:${r.dir}`;
     rulesAt.set(k, [...(rulesAt.get(k) ?? []), r]);
   }
@@ -146,6 +147,7 @@ export function planRoute(
       const dir: 1 | -1 = seg.from === node ? 1 : -1;
       if (seg === step.seg && ids.length > 1) continue; // U-turn only at a dead end
       if (seg.oneway !== 0 && seg.oneway !== dir) continue;
+      if (seg.closed) continue; // 通行禁止 in force (車両通行止め, 歩行者用道路 …)
       const next: Step = { seg, dir };
       const tOut = tangent(graph, next, false);
       if (bans.some((r) => !(r.mask & turnBit(tIn, tOut)))) continue;
@@ -226,7 +228,7 @@ function buildRoute(
     const atNode = steps[i].dir === 1 ? steps[i].seg.pts[0] : steps[i].seg.pts[steps[i].seg.pts.length - 1];
     const isJunction = (graph.nodes.get(node)?.length ?? 0) >= 3;
     if (turn !== "straight" && (isJunction || turn === "uturn")) {
-      maneuvers.push({ at: travelled, turn, pos: atNode.clone() });
+      maneuvers.push({ at: travelled, turn, pos: atNode.clone(), node });
     }
     travelled += steps[i].seg.length;
   }

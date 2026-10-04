@@ -9,6 +9,7 @@ export type ViolationKind =
   | "stopSign" // 指定場所一時不停止等
   | "noEntry" // 通行禁止違反（一方通行の逆走）
   | "turnBan" // 通行禁止違反（指定方向外進行禁止）
+  | "closedRoad" // 通行禁止違反（車両通行止め・歩行者用道路）
   | "uturn" // 指定横断等禁止違反（転回禁止）
   | "slow" // 徐行場所違反
   | "laneChange" // 進路変更禁止違反
@@ -88,6 +89,14 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
   turnBan: {
     kind: "turnBan",
     label: "通行禁止違反（指定方向外進行禁止）",
+    article: "道路交通法 第8条第1項",
+    points: 2,
+    fine: 7000,
+  },
+  // 通行止めの時間帯（通学路・歩行者用道路など）に、その道路へ入った。
+  closedRoad: {
+    kind: "closedRoad",
+    label: "通行禁止違反（車両通行止め）",
     article: "道路交通法 第8条第1項",
     points: 2,
     fine: 7000,

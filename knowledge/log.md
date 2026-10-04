@@ -2,6 +2,7 @@
 
 ## 2026-10-04
 
+- **Update**: [交通規制と信号機](traffic-regulations.md) に、規制の時間・曜日・除外と通行禁止の取り込み漏れの訂正を追記。
 - **Creation**: [歩道と歩道橋のデータ](sidewalks-and-footbridges.md) を追加。
 - **Update**: [地理院ベクトルタイルの道路](gsi-vector-roads.md) の ftCode 2221 の誤り（道路縁 庭園路を道路構成線としていた）を訂正。
 - **Update**: [区画線・道路標示・道路標識](road-markings-and-signs.md) に交差点内の標識・車線の落とし穴、[地形・ジオイド・浮動原点](terrain-and-geoid.md) に DEM の凸凹の計測とメディアン処理を追記。

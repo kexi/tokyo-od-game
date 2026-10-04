@@ -44,6 +44,9 @@ import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
+import { gameClock, tokyoDate, type GameClock } from "./world/ruleTime";
+import { planRoute } from "./game/navigation";
+import { RouteRibbon } from "./game/routeRibbon";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
@@ -265,6 +268,7 @@ async function main(): Promise<void> {
   );
   const speedometer = new Speedometer($("#hud-speed"));
   const nav = new NavGuide($("#nav"), () => audio.muted);
+  const ribbon = new RouteRibbon(scene, (x, z) => groundY(x, z));
   let navGeo: { version: number; points: Array<{ lat: number; lon: number }> } = { version: -1, points: [] };
   const stamps = new Stamps($("#stamps"), () => audio.context, $("#scene"));
   const patrol = new ParkingPatrol(scene, (x, z) => groundY(x, z));
@@ -287,12 +291,17 @@ async function main(): Promise<void> {
   let roadsLoading = false;
   // Game clock in minutes, for time-windowed one-way rules (登校時間帯の一方通行 etc.).
   const clockMinutes = () => env.displayHour(lastGeo.lat, lastGeo.lon) * 60;
+  /** The moment regulations are judged at: game time of day on today's date in Japan (曜日・祝日). */
+  const gameClockNow = (): GameClock => {
+    const { y, m, d } = tokyoDate();
+    return gameClock(y, m, d, clockMinutes());
+  };
   /** Graph + JARTIC/OSM regulations + signals + markings for the current frame. */
   const buildRoadNetwork = () => {
     const graph = new RoadGraph(roadLines, frame);
     const applied = roadRegs ? applyRegulations(graph, roadRegs, frame) : null;
     roadApplied = applied;
-    graph.setClock(clockMinutes());
+    graph.setClock(gameClockNow());
     roadGraph = graph;
     traffic.setGraph(graph);
     control.rebuild(graph, applied);
@@ -630,6 +639,7 @@ async function main(): Promise<void> {
   let rightSince: number | null = null;
   let wrongWaySince: number | null = null;
   let slowSince: number | null = null;
+  let closedSince: number | null = null;
   let lastHeading: { seg: Segment; sgn: number; at: number } | null = null;
   let laneTrack: { seg: Segment; lane: number } | null = null;
   let lastStreet: { seg: Segment; dir: 1 | -1 } | null = null;
@@ -819,9 +829,11 @@ async function main(): Promise<void> {
       car: carPos,
       forward: carForward,
       target: navTarget,
-      minutes: clockMinutes(),
+      clock: gameClockNow(),
       driving: isInCar,
+      junctionNames: roadApplied?.junctionNames,
     });
+    ribbon.update(isInCar ? nav.route : null, nav.lastAt, now);
     if (nav.route && navGeo.version !== nav.version) {
       navGeo = {
         version: nav.version,
@@ -832,7 +844,7 @@ async function main(): Promise<void> {
     }
     if (roadGraph && now - lastClockSync > 5000) {
       lastClockSync = now;
-      roadGraph.setClock(clockMinutes());
+      roadGraph.setClock(gameClockNow());
     }
     traffic.extraObstacles = taxi ? [taxi.position] : [];
     traffic.update(dt, focus, carPos, carForward, isInCar ? speed / 3.6 : 0);
@@ -869,10 +881,14 @@ async function main(): Promise<void> {
       wrongWaySince = isWrongWay ? (wrongWaySince ?? now) : null;
       if (wrongWaySince !== null && now - wrongWaySince > 1500) book(VIOLATIONS.noEntry, now, 20000);
 
+      // 通行禁止 (車両通行止め, 歩行者用道路) in force: entering the street at all is the offence.
+      closedSince = onRoad?.seg.closed && speed > 5 ? (closedSince ?? now) : null;
+      if (closedSince !== null && now - closedSince > 1500) book(VIOLATIONS.closedRoad, now, 20000);
+
       // JARTIC section rules in force now (時間帯指定を含む).
-      const minutes = clockMinutes();
+      const clock = gameClockNow();
       const inForce = (code: number) =>
-        onRoad !== null && onRoad.seg.rules.some((r) => r.code === code && isInForce(r, minutes));
+        onRoad !== null && onRoad.seg.rules.some((r) => r.code === code && isInForce(r, clock));
       // 徐行: a speed at which the car can stop at once (about 10 km/h).
       slowSince = inForce(61) && speed > 10 ? (slowSince ?? now) : null;
       if (slowSince !== null && now - slowSince > 1500) book(VIOLATIONS.slow, now, 20000);
@@ -895,7 +911,7 @@ async function main(): Promise<void> {
           const rule = isNext
             ? roadApplied?.turnRules.find(
                 (r) =>
-                  r.node === node && r.approach === prev.seg && r.dir === prev.dir && isInForce(r, minutes),
+                  r.node === node && r.approach === prev.seg && r.dir === prev.dir && isInForce(r, clock),
               )
             : undefined;
           if (rule) {
@@ -1122,8 +1138,8 @@ async function main(): Promise<void> {
    * or null where parking on the street is not prohibited.
    */
   const parkingPlace = (hit: { seg: Segment; s: number }): "noStopping" | "noParking" | null => {
-    const minutes = clockMinutes();
-    const inForce = (code: number) => hit.seg.rules.some((r) => r.code === code && isInForce(r, minutes));
+    const clock = gameClockNow();
+    const inForce = (code: number) => hit.seg.rules.some((r) => r.code === code && isInForce(r, clock));
     const nearJunction = [hit.seg.from, hit.seg.to].some((node) => {
       const ids = roadGraph?.nodes.get(node) ?? [];
       if (ids.length < 3) return false;
@@ -1182,7 +1198,7 @@ async function main(): Promise<void> {
           graph: roadGraph,
           control,
           turnRules: roadApplied?.turnRules ?? [],
-          minutes: clockMinutes(),
+          clock: gameClockNow(),
           obstacles: [
             ...traffic.positions(),
             vehicle.position(),
@@ -1509,6 +1525,7 @@ async function main(): Promise<void> {
         phone,
         law,
         walker,
+        ribbon,
         pavements,
         getTaxi: () => taxi,
         getMode: () => mode,
@@ -1516,6 +1533,9 @@ async function main(): Promise<void> {
         patrol,
         stamps,
         getApplied: () => roadApplied,
+        getRegs: () => roadRegs,
+        planRoute,
+        isInForce,
         parkingPlace,
         getFrame: () => frame,
         getState: () => state,

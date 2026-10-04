@@ -8,6 +8,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { M_LAT, M_LON, parseCoords, streamCsv, turnMask } from "./jartic.ts";
 import { readNodeCoords, readTaggedNodes, readWays } from "./osm-pbf.ts";
+import { isAllDay as alwaysOn, writeTime, type RuleTime, type Window } from "../src/world/ruleTime.ts";
 import { unzip } from "./shapefile.ts";
 
 const ROOT = join(import.meta.dirname, "..", "public", "data");
@@ -17,7 +18,8 @@ const JARTIC_BASE = "https://www.jartic.or.jp/d/opendata";
 // northern and southern edges (~10% of the signals).
 const OSM_EXTRACT = "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf";
 const OSM_CACHE = join(import.meta.dirname, "..", ".cache", "osm", "kanto-latest.osm.pbf");
-const OSM_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+const JARTIC_CACHE = join(import.meta.dirname, "..", ".cache", "jartic", "typeD_tokyo.zip");
+const CACHE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const USER_AGENT = "tokyo-od-game-databuild/0.1 (+https://github.com/kexi/tokyo-od-game)";
 // 23 wards with a little margin (same box as the POI pipeline).
 const BBOX = { minLat: 35.48, maxLat: 35.84, minLon: 139.55, maxLon: 139.93 };
@@ -29,18 +31,20 @@ const log = (event: string, fields: Record<string, unknown> = {}) =>
 type Tile = {
   speed: Array<[number, ...number[]]>; // [limit, lon0, lat0, lon1, lat1, …]
   speedZone: Array<[number, ...number[]]>; // [limit, polygon ring…]
-  oneway: number[][]; // [startMin, endMin, …coords in the PERMITTED travel order]
+  oneway: number[][]; // [TIME…, …coords in the PERMITTED travel order] (TIME: src/world/ruleTime.ts)
   crosswalk: number[][]; // [lon1, lat1, lon2, lat2] across the road
   stopLine: number[][]; // [lon, lat]
   stopSign: number[][]; // [lon, lat]
   noOvertake: number[][]; // 追越しのための右側部分はみ出し通行禁止 (yellow centre line): coords
   lanes: number[][]; // 車両通行帯: [lanes (0 = unknown), …coords]
   noLaneChange: number[][]; // 進路変更禁止 (yellow lane lines): coords
-  // Restricted sections: [code, bothWays (1/0), startMin, endMin, …coords] with code 115 駐車禁止,
+  // Restricted sections: [code, bothWays (1/0), TIME…, …coords] with code 115 駐車禁止,
   // 65 駐停車禁止, 51 転回禁止, 61 徐行. Signs and law checks are derived from them in the game.
   sections: number[][];
-  // 指定方向外進行禁止: [centreLon, centreLat, entryLon, entryLat, allowed mask, startMin, endMin].
+  // 指定方向外進行禁止: [centreLon, centreLat, entryLon, entryLat, allowed mask, TIME…].
   turns: number[][];
+  // 通行禁止 (code 1: 車両通行止め, 歩行者用道路 …): [shape 2 line / 3 area, TIME…, …coords].
+  closures: number[][];
 };
 type SignalTile = number[][]; // [lon, lat]
 type JunctionTile = Array<[number, number, string, string]>; // [lon, lat, 交差点名, English name or ""]
@@ -85,6 +89,41 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(await (await fetchRetry(url)).arrayBuffer());
 }
 
+// 対象コード 1 (車両) and 10 (自動車) both bind ordinary cars; other classes do not.
+const bindsCars = (a: string) => a === "" || a === "1" || a === "10";
+// 曜日コード: 1–6 as in the spec; 99 (その他, spelled out in free text) is taken as every day.
+const dayCode = (v: string) => (v === "" || v === "99" ? 0 : Number(v));
+
+/**
+ * When a rule applies to an ordinary car, from its 対象 1–5 and 除外 1–5 conditions; null when no
+ * condition binds cars or a condition is limited to dates (対象期間, seasonal — not modelled).
+ */
+function ruleTime(cell: (h: string) => string): RuleTime | null {
+  const on: Window[] = [];
+  const off: Window[] = [];
+  for (let k = 1; k <= 5; k++) {
+    const start = cell(`規制時間${k}_開始`);
+    const end = cell(`規制時間${k}_終了`);
+    const day = cell(`規制曜日コード${k}`);
+    const vehicle = cell(`対象車両コード${k}_A`);
+    const isEmpty = !start && !day && !vehicle && !cell(`対象期間${k}_開始`);
+    if (isEmpty && k > 1) continue;
+    if (cell(`対象期間${k}_開始`)) return null;
+    if (!bindsCars(vehicle)) continue;
+    on.push([start ? toMin(start) : 0, start ? toMin(end) : 1440, dayCode(day)]);
+  }
+  for (let k = 1; k <= 5; k++) {
+    const start = cell(`除外時間${k}_開始`);
+    const day = cell(`除外曜日コード${k}`);
+    const vehicle = cell(`除外車両コード${k}_A`);
+    if (!start && !day && !cell(`除外期間${k}_開始`)) continue;
+    // Exclusions for other vehicles (許可車両, 路線バス …) do not free an ordinary car.
+    if (cell(`除外期間${k}_開始`) || (vehicle !== "" && !bindsCars(vehicle))) continue;
+    off.push([start ? toMin(start) : 0, start ? toMin(cell(`除外時間${k}_終了`)) : 1440, dayCode(day)]);
+  }
+  return on.length ? { on, off } : null;
+}
+
 async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string; release: string }> {
   type Entry = {
     type: string;
@@ -97,7 +136,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
   const tokyo = typeD?.targetList.find((t) => t.id === "R13");
   if (!typeD || !tokyo) throw new Error("JARTIC typeD Tokyo entry not found");
   log("jartic_download", { month: typeD.targetMonth, link: tokyo.link });
-  const files = unzip(Buffer.from(await fetchBytes(`${JARTIC_BASE}${tokyo.link}`)));
+  const files = unzip(Buffer.from(await cachedDownload(`${JARTIC_BASE}${tokyo.link}`, JARTIC_CACHE)));
   const csvName = [...files.keys()].find((k) => k.endsWith(".csv"));
   if (!csvName) throw new Error("no CSV in JARTIC archive");
 
@@ -117,6 +156,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
         noLaneChange: [],
         sections: [],
         turns: [],
+        closures: [],
       };
       tiles.set(key, t);
     }
@@ -126,7 +166,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
   const addRegulation = (
     code: string,
     coords: number[],
-    window: [number, number],
+    time: RuleTime,
     limit: number,
     name: string,
     shape: string,
@@ -138,7 +178,14 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       // permitted direction, so reverse them into travel order.
       const travel: number[] = [];
       for (let i = coords.length - 2; i >= 0; i -= 2) travel.push(coords[i], coords[i + 1]);
-      for (const key of tilesOf(travel)) tile(key).oneway.push([...window, ...coarse(travel)]);
+      for (const key of tilesOf(travel)) tile(key).oneway.push([...writeTime(time), ...coarse(travel)]);
+      return true;
+    }
+    if (code === "1") {
+      // 通行禁止 lines and areas (points are entrances to closed zones, skipped).
+      if (shape !== "2" && shape !== "3") return false;
+      for (const key of tilesOf(coords))
+        tile(key).closures.push([Number(shape), ...writeTime(time), ...coarse(coords)]);
       return true;
     }
     if (code === "112" || code === "114") {
@@ -152,24 +199,11 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       return true;
     }
     const bothWays = extra.side !== "2";
-    const isAllDay = window[0] === 0 && window[1] === 1440;
-    if (code === "115") {
+    const isAllDay = alwaysOn(time);
+    if (code === "115" || code === "65" || code === "51" || code === "61") {
+      const sides = code === "61" || bothWays ? 1 : 0;
       for (const key of tilesOf(coords))
-        tile(key).sections.push([115, bothWays ? 1 : 0, ...window, ...coarse(coords)]);
-      return true;
-    }
-    if (code === "65") {
-      for (const key of tilesOf(coords))
-        tile(key).sections.push([65, bothWays ? 1 : 0, ...window, ...coarse(coords)]);
-      return true;
-    }
-    if (code === "51") {
-      for (const key of tilesOf(coords))
-        tile(key).sections.push([51, bothWays ? 1 : 0, ...window, ...coarse(coords)]);
-      return true;
-    }
-    if (code === "61") {
-      for (const key of tilesOf(coords)) tile(key).sections.push([61, 1, ...window, ...coarse(coords)]);
+        tile(key).sections.push([Number(code), sides, ...writeTime(time), ...coarse(coords)]);
       return true;
     }
     if (code === "17") {
@@ -198,7 +232,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       if (!mask || mask === 7 || extra.entry.length < 2) return false;
       const approach = Math.hypot((coords[0] - extra.entry[0]) * M_LON, (coords[1] - extra.entry[1]) * M_LAT);
       if (approach < 1) return false;
-      at(0).turns.push([coords[0], coords[1], extra.entry[0], extra.entry[1], mask, ...window]);
+      at(0).turns.push([coords[0], coords[1], extra.entry[0], extra.entry[1], mask, ...writeTime(time)]);
       return true;
     }
     if (code === "85") {
@@ -214,6 +248,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
   let header: string[] | null = null;
   let col: Record<string, number> = {};
   const counts: Record<string, number> = {};
+  const skipped: Record<string, number> = {};
   streamCsv(files.get(csvName) as Buffer, (row) => {
     if (!header) {
       header = row;
@@ -223,6 +258,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     const code = row[col["共通規制種別コード"]];
     // 113 (可変速度) is skipped: its value depends on live variable-message signs.
     const isWanted = [
+      "1",
       "11",
       "112",
       "114",
@@ -242,23 +278,18 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     if (!isWanted) return;
     const cell = (h: string) => (col[h] === undefined ? "" : (row[col[h]] ?? "").trim());
     const isAbolished = cell("意思決定廃止日") !== "";
-    // Seasonal / weekday-only rules are skipped. Daily time windows are kept: 12,444 of the
-    // timed one-ways are "0–2400" (all day) and the rest are evaluated against the game clock.
-    const isSeasonal =
-      cell("対象期間1_開始") !== "" || cell("規制曜日コード1") !== "" || cell("規制時間2_開始") !== "";
-    // 対象コード 1 (車両) and 10 (自動車) both bind ordinary cars; other classes do not.
-    const vehicle = cell("対象車両コード1_A");
-    const isForCars = vehicle === "" || vehicle === "1" || vehicle === "10";
-    if (isAbolished || isSeasonal || !isForCars) return;
-    const window: [number, number] = cell("規制時間1_開始")
-      ? [toMin(cell("規制時間1_開始")), toMin(cell("規制時間1_終了"))]
-      : [0, 1440];
+    if (isAbolished) return;
+    const time = ruleTime(cell);
+    if (!time) {
+      skipped[code] = (skipped[code] ?? 0) + 1;
+      return;
+    }
     const coords = parseCoords(row[col["規制場所の経度緯度"]] ?? "");
     if (coords.length < 2 || !inBbox(coords[0], coords[1])) return;
     const kept = addRegulation(
       code,
       coords,
-      window,
+      time,
       Number(cell("速度")),
       cell("県別規制種別名称"),
       cell("点・線・面コード"),
@@ -271,26 +302,28 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     );
     if (kept) counts[code] = (counts[code] ?? 0) + 1;
   });
-  log("jartic_parsed", { counts, tiles: tiles.size });
+  log("jartic_parsed", { counts, skipped, tiles: tiles.size });
   return { tiles, month: typeD.targetMonth, release: typeD.releaseDay };
 }
 
-/** The OSM extract, from the local cache when it is less than a week old. */
-async function osmExtract(): Promise<Uint8Array> {
-  const age = await stat(OSM_CACHE).then(
+/** A download, from the local cache when that is less than a week old. */
+async function cachedDownload(url: string, file: string): Promise<Uint8Array> {
+  const age = await stat(file).then(
     (st) => Date.now() - st.mtimeMs,
     () => Infinity,
   );
-  if (age < OSM_MAX_AGE_MS) {
-    log("osm_cached", { file: OSM_CACHE, ageHours: Math.round(age / 3600_000) });
-    return new Uint8Array(await readFile(OSM_CACHE));
+  if (age < CACHE_MAX_AGE_MS) {
+    log("cache_hit", { file, ageHours: Math.round(age / 3600_000) });
+    return new Uint8Array(await readFile(file));
   }
-  log("osm_download", { url: OSM_EXTRACT });
-  const bytes = await fetchBytes(OSM_EXTRACT);
-  await mkdir(join(OSM_CACHE, ".."), { recursive: true });
-  await writeFile(OSM_CACHE, bytes);
+  log("download", { url });
+  const bytes = await fetchBytes(url);
+  await mkdir(join(file, ".."), { recursive: true });
+  await writeFile(file, bytes);
   return bytes;
 }
+
+const osmExtract = () => cachedDownload(OSM_EXTRACT, OSM_CACHE);
 
 const tileOf = (lon: number, lat: number) => `${tx(lon)}-${ty(lat)}`;
 function push<T>(tiles: Map<string, T[]>, key: string, item: T): void {
