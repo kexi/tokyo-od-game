@@ -80,19 +80,21 @@ describe("the probe and the ghosts", () => {
   });
 });
 
+/** A clear afternoon sun in a direction. */
+const sun = (direction: Vector3) => ({
+  direction,
+  elevation: 30,
+  overcast: 0,
+  color: new Color(1, 1, 1),
+  night: 0,
+});
+
 describe("the flare's passes from frame to frame", () => {
   // Only what update() reads of the renderer.
   const renderer = {
     toneMappingExposure: 1,
     getDrawingBufferSize: (v: Vector2) => v.set(1600, 900),
   } as unknown as WebGPURenderer;
-  const sun = (direction: Vector3) => ({
-    direction,
-    elevation: 30,
-    overcast: 0,
-    color: new Color(1, 1, 1),
-    night: 0,
-  });
 
   it("draws and reads the probe while the sun is in view, before any reading has lit the flare", () => {
     GRAPHICS.settings = { ...GRAPHICS.settings, lensFlare: "on" };

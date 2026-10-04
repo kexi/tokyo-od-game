@@ -60,6 +60,9 @@ describe("when the environment map is drawn again", () => {
   });
 });
 
+/** The bloom threshold on a clear evening, by the night factor. */
+const thresholdAt = (night: number) => bloomSettings(night, 0).threshold;
+
 describe("bloom by the light (thresholds in exposed radiance: the HDR frame times the exposure)", () => {
   // Exposed radiances measured or set in the game: the noon sky by the horizon (its brightest
   // channel), a white wall in the sun, the city's glow on a clear night's horizon, a lit signal lens,
@@ -89,13 +92,12 @@ describe("bloom by the light (thresholds in exposed radiance: the HDR frame time
   });
 
   it("moves the threshold in stops through dusk, never below the night's or above the day's", () => {
-    const at = (night: number) => bloomSettings(night, 0).threshold;
-    const half = at(0.425);
-    expect(half).toBeCloseTo(Math.sqrt(at(0) * at(1)), 6);
+    const half = thresholdAt(0.425);
+    expect(half).toBeCloseTo(Math.sqrt(thresholdAt(0) * thresholdAt(1)), 6);
     for (let n = 0; n <= 1; n += 0.05) {
-      expect(at(n)).toBeLessThanOrEqual(at(0));
-      expect(at(n)).toBeGreaterThanOrEqual(at(1));
-      expect(at(n + 0.05)).toBeLessThanOrEqual(at(n) + 1e-9);
+      expect(thresholdAt(n)).toBeLessThanOrEqual(thresholdAt(0));
+      expect(thresholdAt(n)).toBeGreaterThanOrEqual(thresholdAt(1));
+      expect(thresholdAt(n + 0.05)).toBeLessThanOrEqual(thresholdAt(n) + 1e-9);
     }
   });
 
