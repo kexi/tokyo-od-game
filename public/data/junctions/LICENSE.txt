@@ -7,3 +7,5 @@ Source extract: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf (G
 - junctions/: the same nodes' "name" and "name:en" (intersection names)
 - footbridges/: way[highway~"footway|path|pedestrian|cycleway"][bridge!="no"] (layer >= 1) and
   the way["highway"="steps"] that share a node with them
+- turnlanes/: way[highway~"trunk|primary|secondary|tertiary|unclassified|residential"] with
+  turn:lanes, turn:lanes:forward or turn:lanes:backward, at the end of the way they apply to

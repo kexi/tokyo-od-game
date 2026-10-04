@@ -8,7 +8,7 @@ import {
   Vector3,
   type Scene,
 } from "three";
-import { SIGN, type AppliedRegulations } from "./regulations";
+import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import type { Approach } from "./trafficControl";
 
@@ -54,6 +54,78 @@ function digitsMaterial(limit: number): MeshStandardMaterial {
   return m;
 }
 
+const arrowMaterials = new Map<string, MeshStandardMaterial>();
+
+/**
+ * 規制標示「進行方向別通行区分」(111 / 命令 別表第六): white arrows in each lane, 5 m long, stem from
+ * the near end and a head for each direction the lane allows. The canvas is drawn as seen by the
+ * approaching driver: up = farther along the lane.
+ */
+function arrowMaterial(set: readonly LaneDirection[]): MeshStandardMaterial {
+  const key = [...set].sort().join(",");
+  let m = arrowMaterials.get(key);
+  if (m) return m;
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 1024;
+  const g = canvas.getContext("2d");
+  if (g) {
+    g.fillStyle = "#f2f2ee";
+    g.strokeStyle = "#f2f2ee";
+    g.lineWidth = 34;
+    g.lineCap = "butt";
+    g.lineJoin = "miter";
+    const head = (x: number, y: number, angle: number) => {
+      g.save();
+      g.translate(x, y);
+      g.rotate(angle);
+      g.beginPath();
+      g.moveTo(0, -150);
+      g.lineTo(62, 0);
+      g.lineTo(-62, 0);
+      g.closePath();
+      g.fill();
+      g.restore();
+    };
+    const cx = 128;
+    const has = (d: LaneDirection) => set.includes(d);
+    // Stem from the near end.
+    const top = has("through") ? 190 : 520;
+    g.beginPath();
+    g.moveTo(cx, 1010);
+    g.lineTo(cx, top);
+    g.stroke();
+    if (has("through")) head(cx, 190, 0);
+    for (const [d, side, slant] of [
+      ["left", -1, false],
+      ["right", 1, false],
+      ["slight_left", -1, true],
+      ["slight_right", 1, true],
+    ] as const) {
+      if (!has(d)) continue;
+      // A branch bending off the stem toward its side, the head pointing that way.
+      const y = slant ? 470 : 560;
+      const x = cx + side * (slant ? 70 : 80);
+      g.beginPath();
+      g.moveTo(cx, y + 120);
+      g.quadraticCurveTo(cx, y, x, y - (slant ? 60 : 0));
+      g.stroke();
+      head(x, y - (slant ? 60 : 0), side * (slant ? Math.PI / 4 : Math.PI / 2));
+    }
+    if (has("reverse")) {
+      g.beginPath();
+      g.arc(cx - 50, 520, 50, 0, Math.PI, true);
+      g.stroke();
+      head(cx - 100, 560, Math.PI);
+    }
+  }
+  const map = new CanvasTexture(canvas);
+  map.colorSpace = SRGBColorSpace;
+  m = new MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.7, emissive: 0x222222 });
+  arrowMaterials.set(key, m);
+  return m;
+}
+
 /**
  * Streets from GSI road centrelines with markings that follow 道路標識、区画線及び道路標示に関する
  * 命令 and JARTIC data: 車道外側線; 中央線 on two-way carriageways ≥5.5 m (yellow where JARTIC has
@@ -83,6 +155,7 @@ export class RoadSurface {
     const whites: Builder = { pos: [], idx: [] };
     const yellows: Builder = { pos: [], idx: [] };
     const digits = new Map<number, Builder>();
+    const arrows = new Map<string, { set: LaneDirection[]; b: Builder }>();
     const junction = (node: number) => (graph.nodes.get(node)?.length ?? 0) >= 3;
     // Distance from a junction node to the kerb line of the widest crossing road.
     const clearance = (node: number) =>
@@ -152,12 +225,14 @@ export class RoadSurface {
       if (junction(seg.to)) this.crossing(whites, graph, seg, seg.length - clearance(seg.to) - 2, -1);
     }
     if (regs && isSurveyed) this.surveyed(whites, digits, graph, regs, approaches);
+    if (regs) this.laneArrows(arrows, graph, regs, approaches);
     const parts: Array<[Builder, MeshStandardMaterial, number]> = [
       [road, asphalt, 1],
       [whites, white, 2],
       [yellows, yellow, 2],
     ];
     for (const [limit, b] of digits) parts.push([b, digitsMaterial(limit), 2]);
+    for (const { set, b } of arrows.values()) parts.push([b, arrowMaterial(set), 2]);
     for (const [b, mat, order] of parts) {
       if (b.idx.length === 0) continue;
       const g = new BufferGeometry();
@@ -323,6 +398,49 @@ export class RoadSurface {
         // u runs from the driver's left to right; v from near to far along the travel direction.
         const u: [number, number] = sign.dir === 1 ? [0, 1] : [1, 0];
         this.ribbon(builder, graph, seg, a, z, offset, width, PAINT, { u, flip: sign.dir === -1 });
+      }
+    }
+  }
+
+  /**
+   * 進行方向別通行区分 arrows in each lane of the designated approaches: ending 8 m before the stop
+   * line and repeated 30 m further back, as typically painted.
+   */
+  private laneArrows(
+    arrows: Map<string, { set: LaneDirection[]; b: Builder }>,
+    graph: RoadGraph,
+    regs: AppliedRegulations,
+    approaches: Approach[],
+  ): void {
+    for (const use of regs.laneUse) {
+      const seg = use.seg;
+      const n = use.lanes.length;
+      const isTwoWay = seg.oneway === 0;
+      const span = isTwoWay ? seg.line.width / 2 : seg.line.width;
+      const laneWidth = span / n;
+      if (laneWidth < 2.2) continue;
+      const stop = approaches.find((a) => a.seg === seg && a.dir === use.dir);
+      // Travel distance of the stop line along the approach; without one, near the junction.
+      const stopAt = stop ? stop.at : seg.length - 6;
+      for (const back of [8, 38]) {
+        const far = stopAt - back;
+        const near = far - 5;
+        if (near < 2) continue;
+        // Segment coordinates (s grows from → to); travel −1 runs the other way.
+        const [a, z] = use.dir === 1 ? [near, far] : [seg.length - far, seg.length - near];
+        for (let k = 0; k < n; k++) {
+          const set = use.lanes[k];
+          const key = [...set].sort().join(",");
+          const entry = arrows.get(key) ?? { set, b: { pos: [], idx: [], uv: [] } };
+          arrows.set(key, entry);
+          const fromKerb = isTwoWay
+            ? span - (k + 0.5) * laneWidth
+            : seg.line.width / 2 - (k + 0.5) * laneWidth;
+          const offset = use.dir * fromKerb;
+          const width = Math.min(laneWidth - 0.8, 1.4);
+          const u: [number, number] = use.dir === 1 ? [0, 1] : [1, 0];
+          this.ribbon(entry.b, graph, seg, a, z, offset, width, PAINT, { u, flip: use.dir === -1 });
+        }
       }
     }
   }

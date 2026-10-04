@@ -23,6 +23,8 @@ import { CYCLE, lightState, segmentsIntersect } from "../src/world/trafficContro
 const frame = new LocalFrame(35.68, 139.76, 40);
 const M_LAT = 1 / 110_950; // degrees per metre of latitude near Tokyo
 const empty = (): RegulationData => ({
+  laneArrows: [],
+  turnlanes: [],
   speed: [],
   speedZone: [],
   oneway: [],

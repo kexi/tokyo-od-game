@@ -24,11 +24,38 @@ export type RegulationData = {
   noOvertake: number[][]; // はみ出し禁止 sections: coords
   lanes: number[][]; // 車両通行帯: [lanes or 0, …coords]
   noLaneChange: number[][]; // 進路変更禁止 sections: coords
+  laneArrows: number[][]; // 進行方向別通行区分 approaches: [lanes or 0, …coords]
   signals: number[][]; // [lon, lat]
   /** OSM: 交差点名 on signal nodes, [lon, lat, name, English name or ""]. */
   junctions: Array<[number, number, string, string]>;
   /** OSM: pedestrian bridge decks, [width or 0, deck coords, [stair coords from the deck down]…]. */
   footbridges: Array<[number, number[], number[][]]>;
+  /** OSM: turn:lanes at junction approaches, [lon, lat, bearing°, "left;through|through|right"]. */
+  turnlanes: Array<[number, number, number, string]>;
+};
+
+/** A direction a lane may take at the junction (OSM turn:lanes vocabulary). */
+export type LaneDirection = "left" | "slight_left" | "through" | "slight_right" | "right" | "reverse";
+const LANE_DIRECTIONS = new Set<string>([
+  "left",
+  "slight_left",
+  "through",
+  "slight_right",
+  "right",
+  "reverse",
+]);
+
+/**
+ * 進行方向別通行区分 (道路交通法 第35条第1項) at a junction approach: the directions allowed from
+ * each lane, left lane first. From OSM turn:lanes where mapped; otherwise, where JARTIC lists the
+ * regulation, the usual Tokyo pattern for the lane count (左折・直進 | 直進 … | 右折).
+ */
+export type LaneUse = {
+  seg: Segment;
+  dir: 1 | -1;
+  node: number;
+  lanes: LaneDirection[][];
+  source: "osm" | "assumed";
 };
 
 /** Sign types (the game maps them to 道路標識 artwork). */
@@ -62,9 +89,11 @@ const empty = (): RegulationData => ({
   noOvertake: [],
   lanes: [],
   noLaneChange: [],
+  laneArrows: [],
   signals: [],
   junctions: [],
   footbridges: [],
+  turnlanes: [],
 });
 
 export type RegulationMeta = { targetMonth: string; releaseDay: string; fetchedAt: string; url: string };
@@ -83,7 +112,7 @@ export class RegulationTiles {
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         keys.add(`${Math.floor((cx + dx) / shift)}-${Math.floor((cy + dy) / shift)}`);
-    const osmDirs = ["signals", "junctions", "footbridges"] as const;
+    const osmDirs = ["signals", "junctions", "footbridges", "turnlanes"] as const;
     const [regIndex, ...osmIndex] = await Promise.all([
       this.tileIndex("regs"),
       ...osmDirs.map((d) => this.tileIndex(d)),
@@ -106,7 +135,7 @@ export class RegulationTiles {
         if (regIndex.has(key)) {
           const t = (await this.json(`regs/${key}.json`)) as Omit<
             RegulationData,
-            "signals" | "junctions" | "footbridges"
+            "signals" | "junctions" | "footbridges" | "turnlanes"
           > | null;
           if (t) for (const k of Object.keys(t) as (keyof typeof t)[]) add(out[k], t[k]);
         }
@@ -262,6 +291,8 @@ export type AppliedRegulations = {
   junctionNames: Array<{ pos: Vector3; name: string; en: string }>;
   /** Footbridge decks and their stairs in the local frame (OSM). */
   footbridges: Array<{ width: number; deck: Vector3[]; stairs: Vector3[][] }>;
+  /** 進行方向別通行区分 at junction approaches. */
+  laneUse: LaneUse[];
   hasMarkings: boolean;
 };
 
@@ -479,7 +510,9 @@ export function applyRegulations(
     crossings.push({ seg, s, pos: graph.sample(seg, s).pos.clone() });
   }
   const signs = placeSigns(graph, data, frame, segs, crossings);
+  const laneUse = resolveLaneUse(graph, data, frame, segs);
   return {
+    laneUse,
     crossings,
     signs,
     turnRules: resolveTurns(graph, data, frame),
@@ -498,6 +531,113 @@ export function applyRegulations(
     })),
     hasMarkings: data.crosswalk.length + data.stopLine.length > 0,
   };
+}
+
+/** Travel direction at the `dir` end of a segment (toward the node it arrives at). */
+function arrivingDir(seg: Segment, dir: 1 | -1): Vector3 {
+  const n = seg.pts.length;
+  const [a, b] = dir === 1 ? [seg.pts[n - 2], seg.pts[n - 1]] : [seg.pts[1], seg.pts[0]];
+  return b.clone().sub(a).setY(0).normalize();
+}
+
+/** Directions one can leave a node in, coming along `seg` in `dir` (one-way streets respected). */
+function exitDirections(graph: RoadGraph, seg: Segment, dir: 1 | -1): Set<LaneDirection> {
+  const node = dir === 1 ? seg.to : seg.from;
+  const inbound = arrivingDir(seg, dir);
+  const out = new Set<LaneDirection>();
+  for (const next of graph.exits(node, seg.id)) {
+    if (next.line.kind === "highway") continue;
+    const forward = next.from === node;
+    const n = next.pts.length;
+    const [a, b] = forward ? [next.pts[0], next.pts[1]] : [next.pts[n - 1], next.pts[n - 2]];
+    const d = b.clone().sub(a).setY(0).normalize();
+    const cross = inbound.x * d.z - inbound.z * d.x; // > 0: to the right (−Z north, +X east)
+    const dot = inbound.dot(d);
+    if (dot > 0.7) out.add("through");
+    else if (dot < -0.7) continue;
+    else out.add(cross > 0 ? "right" : "left");
+  }
+  return out;
+}
+
+/** The usual Tokyo pattern for `n` lanes: 左折・直進 | 直進 … | 右折 (2 lanes: 直進・右折). */
+export function assumedLanes(n: number, exits: Set<LaneDirection>): LaneDirection[][] {
+  const lanes: LaneDirection[][] = [];
+  for (let i = 0; i < n; i++) {
+    const isLeft = i === 0;
+    const isRight = i === n - 1;
+    const set: LaneDirection[] = [];
+    if (isLeft && exits.has("left")) set.push("left");
+    const isThrough = !isRight || n === 2 || !exits.has("right");
+    if (exits.has("through") && isThrough) set.push("through");
+    if (isRight && exits.has("right")) set.push("right");
+    lanes.push(set.length ? set : ["through"]);
+  }
+  return lanes;
+}
+
+function resolveLaneUse(
+  graph: RoadGraph,
+  data: RegulationData,
+  frame: LocalFrame,
+  segs: LineGrid<Segment>,
+): LaneUse[] {
+  const out = new Map<string, LaneUse>();
+  const key = (seg: Segment, dir: number) => `${seg.id}:${dir}`;
+  // OSM: the approach ending within 30 m of the way end, arriving within 40° of its bearing.
+  for (const [lon, lat, bearing, value] of data.turnlanes) {
+    const p = toLocal(frame, [lon, lat])[0];
+    const rad = (bearing * Math.PI) / 180;
+    const heading = new Vector3(Math.sin(rad), 0, -Math.cos(rad));
+    let best: { seg: Segment; dir: 1 | -1; d: number } | null = null;
+    for (const seg of graph.segments) {
+      if (seg.line.kind === "highway") continue;
+      for (const dir of [1, -1] as const) {
+        const end = dir === 1 ? seg.pts[seg.pts.length - 1] : seg.pts[0];
+        const d = end.distanceTo(p);
+        if (d > 30 || (best && d >= best.d)) continue;
+        if (arrivingDir(seg, dir).dot(heading) < Math.cos((40 * Math.PI) / 180)) continue;
+        best = { seg, dir, d };
+      }
+    }
+    if (!best) continue;
+    const lanes = value.split("|").map((lane) => {
+      const set = lane.split(";").filter((t) => LANE_DIRECTIONS.has(t)) as LaneDirection[];
+      return set.length ? set : (["through"] as LaneDirection[]); // none / merge_to_*: no arrow
+    });
+    if (lanes.length < 2) continue;
+    const node = best.dir === 1 ? best.seg.to : best.seg.from;
+    out.set(key(best.seg, best.dir), { seg: best.seg, dir: best.dir, node, lanes, source: "osm" });
+  }
+  // JARTIC: the regulated approach, its direction by the side of the street it lies on.
+  for (const r of data.laneArrows) {
+    const pts = toLocal(frame, r, 1);
+    if (pts.length < 2) continue;
+    const mid = pts[0].clone().lerp(pts[pts.length - 1], 0.5);
+    const hit = segs.nearest(mid.x, mid.z, 14);
+    if (!hit) continue;
+    const seg = hit.owner;
+    const near = graph.nearestOn(seg, mid);
+    const oneway = seg.onewayRule?.dir ?? seg.line.oneway;
+    const dir: 1 | -1 =
+      oneway !== 0
+        ? oneway
+        : Math.abs(near.lateral) >= 0.6
+          ? near.lateral > 0
+            ? 1
+            : -1
+          : near.s > seg.length / 2
+            ? 1
+            : -1;
+    if (out.has(key(seg, dir))) continue;
+    const n = r[0] > 0 ? Math.min(r[0], 5) : seg.lanes;
+    if (n < 2) continue;
+    const exits = exitDirections(graph, seg, dir);
+    if (exits.size < 2) continue;
+    const node = dir === 1 ? seg.to : seg.from;
+    out.set(key(seg, dir), { seg, dir, node, lanes: assumedLanes(n, exits), source: "assumed" });
+  }
+  return [...out.values()];
 }
 
 /**

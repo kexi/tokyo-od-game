@@ -92,6 +92,7 @@
           <div><span class="nav-dist">—</span> <span class="nav-turn"></span></div>
           <div class="nav-sub sub"></div>
         </div>
+        <div class="nav-lanes" hidden aria-label="レーン案内"></div>
       </div>
 
       <div id="hud-time" class="panel segmented" role="group" aria-label="時間帯">
@@ -114,6 +115,7 @@
           <div id="license-points">違反点数 0 / 6</div>
           <div id="license-fines" class="sub">反則金 0円</div>
           <div id="reg-ahead" hidden></div>
+          <button id="review-open" type="button" class="link-button">違反の記録を見る</button>
         </div>
       </div>
 
@@ -279,10 +281,18 @@
         <h1>免許停止</h1>
         <p class="tagline">違反点数が 6 点に達しました（前歴なしの場合の免許停止基準）。</p>
         <ul id="suspended-log"></ul>
+        <button id="review-from-suspension" type="button">違反を振り返る</button>
         <p class="sub">点数・反則金は道路交通法と警察庁の基準（普通車）に基づくゲーム内の参考値です。</p>
         <button id="retrain" type="button">講習を受けて運転を再開</button>
       </div>
     </section>
+
+    <dialog id="violations" aria-labelledby="violations-title">
+      <h2 id="violations-title">違反の記録</h2>
+      <p id="violations-summary" class="sub"></p>
+      <div id="violations-list"></div>
+      <form method="dialog"><button>閉じる</button></form>
+    </dialog>
 
     <dialog id="help">
       <h2>操作</h2>

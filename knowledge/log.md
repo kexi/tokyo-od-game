@@ -2,6 +2,7 @@
 
 ## 2026-10-04
 
+- **Update**: [交通規制と信号機](traffic-regulations.md) に進行方向別通行区分を追記（JARTIC 58 には車線ごとの方向が無い、OSM turn:lanes の件数、仮定のパターン）。
 - **Update**: [交通規制と信号機](traffic-regulations.md) に、規制の時間・曜日・除外と通行禁止の取り込み漏れの訂正を追記。
 - **Creation**: [歩道と歩道橋のデータ](sidewalks-and-footbridges.md) を追加。
 - **Update**: [地理院ベクトルタイルの道路](gsi-vector-roads.md) の ftCode 2221 の誤り（道路縁 庭園路を道路構成線としていた）を訂正。

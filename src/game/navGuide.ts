@@ -1,12 +1,16 @@
 import type { Vector3 } from "three";
 import { drawJunction } from "./junctionView";
-import type { TurnRule } from "../world/regulations";
+import { laneAdvice, renderLanes } from "./laneView";
+import type { LaneUse, TurnRule } from "../world/regulations";
 import type { GameClock } from "../world/ruleTime";
 import type { RoadGraph, Segment } from "../world/roads";
 import {
+  laneHints,
+  laneIndex,
   planRoute,
   progressOn,
   TURN_WORDS,
+  type LaneHint,
   type Maneuver,
   type Route,
   type TravelMode,
@@ -56,6 +60,9 @@ export class NavGuide {
   lastAt = 0;
   /** Bumped whenever a new route is planned (the minimap caches its geodetic copy). */
   version = 0;
+  /** レーン案内 along the current route. */
+  hints: LaneHint[] = [];
+  private laneUse: readonly LaneUse[] = [];
 
   constructor(
     private readonly panel: HTMLElement,
@@ -73,8 +80,11 @@ export class NavGuide {
     /** null while the player can't use guidance (riding a taxi). */
     mode: TravelMode | null;
     junctionNames?: Array<{ pos: Vector3; name: string }>;
+    /** 進行方向別通行区分 at junction approaches, for レーン案内. */
+    laneUse?: readonly LaneUse[];
   }): void {
     this.names = opts.junctionNames ?? [];
+    this.laneUse = opts.laneUse ?? [];
     const { now, graph, car, target } = opts;
     if (!graph || !target || !opts.mode) {
       if (!target) this.stop();
@@ -142,6 +152,7 @@ export class NavGuide {
     }
     const dir: 1 | -1 = hit.dir.dot(forward) >= 0 ? 1 : -1;
     this.route = planRoute(graph, { seg: hit.seg, s: hit.s, dir }, target, clock, turnRules, this.mode);
+    this.hints = this.route && this.mode === "car" ? laneHints(this.route, this.laneUse) : [];
     this.version++;
   }
 
@@ -172,6 +183,17 @@ export class NavGuide {
     this.panel.classList.toggle("walk", this.mode === "walk");
 
     const view = this.panel.querySelector<HTMLCanvasElement>(".nav-junction");
+    // レーン案内 for the next designated junction within 300 m.
+    const lanesEl = this.panel.querySelector<HTMLElement>(".nav-lanes");
+    const lane = this.hints.find((h) => h.at > p.at - 3 && h.at - p.at < 300) ?? null;
+    const step = route.steps[route.stepOf[Math.min(p.index, route.stepOf.length - 1)] ?? 0];
+    const isOnApproach = lane !== null && step?.seg === lane.seg && step.dir === lane.dir && this.graph;
+    const current =
+      isOnApproach && this.graph ? laneIndex(this.graph, lane.seg, lane.dir, lane.lanes.length, car) : null;
+    if (lanesEl) renderLanes(lanesEl, lane?.lanes ?? null, lane?.ok ?? [], current);
+    const advice = lane ? laneAdvice(lane.ok) : null;
+    const isWrongLane = lane !== null && current !== null && !lane.ok[current];
+    const laneKey = lane ? `lane:${lane.node}:${Math.round(lane.at)}` : "";
     if (next) {
       const d = next.at - p.at;
       const name = this.junctionName(next.pos);
@@ -187,7 +209,11 @@ export class NavGuide {
         drawJunction(view, this.graph, route, next, p.at, name);
       }
       const key = `${Math.round(next.pos.x)},${Math.round(next.pos.z)}`;
-      const words = name ? `${name}を${TURN_WORDS[next.turn]}` : TURN_WORDS[next.turn];
+      // The lanes for this turn go with its call ("…右方向です。右側の車線を走行してください。").
+      const isLaneOfTurn = lane !== null && Math.abs(lane.at - next.at) < 30 && advice !== null;
+      const laneWords = isLaneOfTurn ? `${advice}を走行してください。` : "";
+      if (isLaneOfTurn) this.called.add(laneKey);
+      const words = `${name ? `${name}を${TURN_WORDS[next.turn]}` : TURN_WORDS[next.turn]}`;
       // After (re)planning, call the next turn at once from wherever the car is.
       const call = this.intro
         ? CALLS.find((c) => d <= c)
@@ -195,12 +221,17 @@ export class NavGuide {
       if (d < SOON + 15 && !this.called.has(`${key}:soon`)) {
         this.called.add(`${key}:soon`);
         for (const c of CALLS) this.called.add(`${key}:${c}`);
-        this.say(`${this.intro ?? ""}まもなく、${words}です。`);
+        this.say(`${this.intro ?? ""}まもなく、${words}です。${laneWords}`);
       } else if (call !== undefined) {
         for (const c of CALLS) if (c >= call) this.called.add(`${key}:${c}`);
         const spoken = d < call - 20 ? d : call;
-        this.say(`${this.intro ?? ""}およそ${spokenDistance(spoken)}先、${words}です。`);
+        this.say(`${this.intro ?? ""}およそ${spokenDistance(spoken)}先、${words}です。${laneWords}`);
       } else if (this.intro) this.say(this.intro);
+      else if (isWrongLane && advice && !this.called.has(laneKey)) {
+        // Going straight on (no turn to call) in a lane that must turn: say which lanes to take.
+        this.called.add(laneKey);
+        this.say(`この先、${advice}を走行してください。`);
+      }
       this.intro = null;
       return;
     }
@@ -216,10 +247,13 @@ export class NavGuide {
     this.intro = null;
   }
 
-  /** 交差点名 within 40 m of a turn, if OSM has one. */
+  /**
+   * 交差点名 near a turn, if OSM has one ("日比谷" → "日比谷交差点", as car navigation reads it).
+   * 60 m: big junctions are boxes of several GSI nodes, and the name sits on its signal node.
+   */
   private junctionName(pos: Vector3): string | null {
     let best: string | null = null;
-    let bestD = 40;
+    let bestD = 60;
     for (const n of this.names) {
       const d = Math.hypot(n.pos.x - pos.x, n.pos.z - pos.z);
       if (d < bestD) {
@@ -227,7 +261,8 @@ export class NavGuide {
         best = n.name;
       }
     }
-    return best;
+    if (!best) return null;
+    return best.endsWith("交差点") ? best : `${best}交差点`;
   }
 
   private lastSaid = { text: "", at: -Infinity };

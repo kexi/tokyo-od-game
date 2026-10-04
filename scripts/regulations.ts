@@ -38,6 +38,11 @@ type Tile = {
   noOvertake: number[][]; // 追越しのための右側部分はみ出し通行禁止 (yellow centre line): coords
   lanes: number[][]; // 車両通行帯: [lanes (0 = unknown), …coords]
   noLaneChange: number[][]; // 進路変更禁止 (yellow lane lines): coords
+  // 進行方向別通行区分 (58, and the 118/119 combinations): [lanes (0 = unknown), …coords], the
+  // approach to a junction whose lanes are designated by direction. JARTIC gives no per-lane
+  // directions (項目 145 is empty in Tokyo), so the game takes them from OSM turn:lanes or
+  // assumes the usual pattern.
+  laneArrows: number[][];
   // Restricted sections: [code, bothWays (1/0), TIME…, …coords] with code 115 駐車禁止,
   // 65 駐停車禁止, 51 転回禁止, 61 徐行. Signs and law checks are derived from them in the game.
   sections: number[][];
@@ -50,6 +55,9 @@ type SignalTile = number[][]; // [lon, lat]
 type JunctionTile = Array<[number, number, string, string]>; // [lon, lat, 交差点名, English name or ""]
 // 横断歩道橋 candidates: [width m (0 = unknown), deck coords, [stair coords from the deck down]…].
 type FootbridgeTile = Array<[number, number[], number[][]]>;
+// Lanes by direction at a junction approach: [lon, lat of the approach end, travel bearing (deg,
+// clockwise from north), turn:lanes value from the left lane, e.g. "left;through|through|right"].
+type TurnLaneTile = Array<[number, number, number, string]>;
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6;
 // Line regulations are matched to centrelines within 6 m, so ~1 m precision is plenty and keeps
@@ -154,6 +162,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
         noOvertake: [],
         lanes: [],
         noLaneChange: [],
+        laneArrows: [],
         sections: [],
         turns: [],
         closures: [],
@@ -214,10 +223,14 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       for (const key of tilesOf(coords)) tile(key).lanes.push([extra.lanes, ...coarse(coords)]);
       return true;
     }
+    if (code === "58" || code === "118" || code === "119") {
+      for (const key of tilesOf(coords)) tile(key).laneArrows.push([extra.lanes, ...coarse(coords)]);
+    }
     if (code === "52" || code === "119") {
       for (const key of tilesOf(coords)) tile(key).noLaneChange.push(coarse(coords));
       return true;
     }
+    if (code === "58" || code === "118") return true;
     if (code === "12") {
       // Spec K 2.1: the point is the junction centre, 進入方向 the approach, 指定する方向 the exits.
       const isRightBan = name === "右折禁止";
@@ -272,6 +285,8 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       "17",
       "20",
       "52",
+      "58",
+      "118",
       "119",
       "12",
     ].includes(code);
@@ -336,6 +351,7 @@ type OsmTiles = {
   signals: Map<string, SignalTile>;
   junctions: Map<string, JunctionTile>;
   footbridges: Map<string, FootbridgeTile>;
+  turnlanes: Map<string, TurnLaneTile>;
 };
 
 async function buildOsm(): Promise<OsmTiles> {
@@ -385,13 +401,44 @@ async function buildOsm(): Promise<OsmTiles> {
     push(footbridges, tileOf(d[0], d[1]), [width, d, steps]);
     kept++;
   }
+  // turn:lanes applies where the way ends in its direction of travel: the end for oneway and
+  // :forward, the start for :backward.
+  const isRoad = (t: Record<string, string>) =>
+    /^(trunk|primary|secondary|tertiary|unclassified|residential)(_link)?$/.test(t.highway ?? "") &&
+    Object.keys(t).some((k) => k.startsWith("turn:lanes"));
+  const laneWays = readWays(file, isRoad);
+  const ends = new Set(laneWays.flatMap((w) => [w.refs[0], w.refs[1], w.refs.at(-2), w.refs.at(-1)]));
+  const endCoords = readNodeCoords(file, new Set([...ends].filter((r): r is number => r !== undefined)));
+  const bearing = (a: [number, number], b: [number, number]) => {
+    const dx = (b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180);
+    const dy = b[1] - a[1];
+    return Math.round(((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360);
+  };
+  const turnlanes = new Map<string, TurnLaneTile>();
+  let laneCount = 0;
+  for (const w of laneWays) {
+    const isOneway = w.tags.oneway === "yes" || w.tags.oneway === "1";
+    const forward = w.tags["turn:lanes:forward"] ?? (isOneway ? w.tags["turn:lanes"] : undefined);
+    const backward = w.tags["turn:lanes:backward"];
+    const at = (refs: number[], value: string | undefined) => {
+      if (!value || refs.length < 2) return;
+      const end = endCoords.get(refs[refs.length - 1]);
+      const before = endCoords.get(refs[refs.length - 2]);
+      if (!end || !before || !inBbox(end[0], end[1])) return;
+      push(turnlanes, tileOf(end[0], end[1]), [round(end[0]), round(end[1]), bearing(before, end), value]);
+      laneCount++;
+    };
+    at(w.refs, forward);
+    at([...w.refs].reverse(), backward);
+  }
   log("osm_parsed", {
     signals: [...signals.values()].reduce((a, t) => a + t.length, 0),
     named: [...junctions.values()].reduce((a, t) => a + t.length, 0),
     footbridges: kept,
     stairs: stairs.length,
+    turnlanes: laneCount,
   });
-  return { signals, junctions, footbridges };
+  return { signals, junctions, footbridges, turnlanes };
 }
 
 const ODBL_NOTICE = `Traffic signal positions in this folder are extracted from OpenStreetMap.
@@ -403,6 +450,8 @@ Source extract: ${OSM_EXTRACT} (Geofabrik). Filters within the 23 wards:
 - junctions/: the same nodes' "name" and "name:en" (intersection names)
 - footbridges/: way[highway~"footway|path|pedestrian|cycleway"][bridge!="no"] (layer >= 1) and
   the way["highway"="steps"] that share a node with them
+- turnlanes/: way[highway~"trunk|primary|secondary|tertiary|unclassified|residential"] with
+  turn:lanes, turn:lanes:forward or turn:lanes:backward, at the end of the way they apply to
 `;
 
 const only = process.argv[2];

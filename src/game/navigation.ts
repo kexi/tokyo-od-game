@@ -1,5 +1,5 @@
 import { Vector3 } from "three";
-import { isInForce, type TurnRule } from "../world/regulations";
+import { isInForce, type LaneDirection, type LaneUse, type TurnRule } from "../world/regulations";
 import type { GameClock } from "../world/ruleTime";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 
@@ -44,6 +44,77 @@ export function classifyTurn(tIn: Vector3, tOut: Vector3): Turn {
   if (angle < -50) return "right";
   if (angle < -22) return "slightRight";
   return "straight";
+}
+
+/**
+ * レーン案内 at a junction on the route: the lanes of a 進行方向別通行区分 approach (left first),
+ * which of them lead the route's way, and the way it goes there.
+ */
+export type LaneHint = {
+  at: number;
+  node: number;
+  /** The approach (the step that arrives at the junction). */
+  seg: Segment;
+  dir: 1 | -1;
+  lanes: LaneDirection[][];
+  ok: boolean[];
+  take: Turn;
+};
+
+/** Lane (0 = leftmost) a point is in on a designated approach of `n` lanes. */
+export function laneIndex(graph: RoadGraph, seg: Segment, dir: 1 | -1, n: number, p: Vector3): number {
+  const leftOfTravel = graph.nearestOn(seg, p).lateral * dir;
+  const span = seg.oneway === 0 ? seg.line.width / 2 : seg.line.width;
+  const lane = Math.floor((seg.line.width / 2 - leftOfTravel) / (span / n));
+  return Math.max(0, Math.min(n - 1, lane));
+}
+
+const ACCEPTS: Record<Turn, LaneDirection[]> = {
+  straight: ["through"],
+  slightLeft: ["slight_left", "left", "through"],
+  left: ["left", "slight_left"],
+  slightRight: ["slight_right", "right", "through"],
+  right: ["right", "slight_right"],
+  uturn: ["reverse", "right"],
+};
+
+/** Whether a lane allowing `set` may be used to go `turn` (第35条第1項). */
+export function laneAllows(set: LaneDirection[], turn: Turn): boolean {
+  return set.some((d) => ACCEPTS[turn].includes(d));
+}
+
+function routePoint(route: Route, d: number): Vector3 {
+  let i = 1;
+  while (i < route.cum.length - 1 && route.cum[i] < d) i++;
+  const a = route.points[i - 1];
+  const b = route.points[i];
+  const t = (d - route.cum[i - 1]) / Math.max(1e-6, route.cum[i] - route.cum[i - 1]);
+  return a.clone().lerp(b, Math.min(1, Math.max(0, t)));
+}
+
+/** Lane hints along a route, for every designated approach it passes through. */
+export function laneHints(route: Route, laneUse: readonly LaneUse[]): LaneHint[] {
+  const byApproach = new Map(laneUse.map((u) => [`${u.seg.id}:${u.dir}`, u]));
+  const hints: LaneHint[] = [];
+  for (let k = 0; k < route.steps.length - 1; k++) {
+    const step = route.steps[k];
+    const use = byApproach.get(`${step.seg.id}:${step.dir}`);
+    if (!use) continue;
+    const at = route.stepStart[k + 1];
+    // Directions well before and after the junction box (its short inner segments mislead).
+    const arrive = routePoint(route, at)
+      .sub(routePoint(route, Math.max(0, at - 15)))
+      .setY(0);
+    const leave = routePoint(route, Math.min(route.length, at + 25))
+      .sub(routePoint(route, at))
+      .setY(0);
+    if (arrive.lengthSq() < 1e-6 || leave.lengthSq() < 1e-6) continue;
+    const take = classifyTurn(arrive.normalize(), leave.normalize());
+    const ok = use.lanes.map((set) => laneAllows(set, take));
+    if (!ok.some(Boolean)) continue;
+    hints.push({ at, node: use.node, seg: step.seg, dir: step.dir, lanes: use.lanes, ok, take });
+  }
+  return hints;
 }
 
 export const TURN_WORDS: Record<Turn, string> = {

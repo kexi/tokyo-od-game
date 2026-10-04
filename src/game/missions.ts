@@ -6,8 +6,10 @@ import type { PoiField } from "./pois";
 export type Mission = {
   target: Poi;
   startedAt: number;
-  timeLimit: number; // seconds
+  timeLimit: number; // seconds (Infinity: no clock)
   startDistance: number;
+  /** The opening drive to a well-known place a few km away, by the rules and without a clock. */
+  isTrip?: boolean;
 };
 
 export type MissionResult = { target: Poi; reward: number; seconds: number };
@@ -15,6 +17,8 @@ export type MissionResult = { target: Poi; reward: number; seconds: number };
 const ARRIVE_RADIUS = 22;
 const MIN_DISTANCE = 450;
 const MAX_DISTANCE = 1800;
+const TRIP_MIN = 4000;
+const TRIP_MAX = 6000;
 
 /** "目的地へ向かえ" missions: pick a real POI nearby and race to it against the clock. */
 export class Missions {
@@ -52,6 +56,28 @@ export class Missions {
     return this.current;
   }
 
+  /**
+   * The game opens with a drive: a station 4–6 km away (the ones people know by name, so the
+   * guidance reads like a real trip), no clock — the point is to get there by the rules.
+   */
+  startTrip(lat: number, lon: number, now: number): Mission | null {
+    const candidates = this.field
+      .near(lat, lon, TRIP_MAX)
+      .filter((p) => p.category === "station")
+      .filter((p) => haversineMeters(lat, lon, p.lat, p.lon) >= TRIP_MIN);
+    if (candidates.length === 0) return null;
+    this.serial = (this.serial * 1103515245 + 12345 + Math.floor(now)) >>> 0;
+    const target = candidates[this.serial % candidates.length];
+    this.current = {
+      target,
+      startedAt: now,
+      timeLimit: Infinity,
+      startDistance: haversineMeters(lat, lon, target.lat, target.lon),
+      isTrip: true,
+    };
+    return this.current;
+  }
+
   remaining(now: number): number {
     if (!this.current) return 0;
     return this.current.timeLimit - (now - this.current.startedAt) / 1000;
@@ -63,7 +89,7 @@ export class Missions {
     if (!mission) return null;
     const distance = haversineMeters(lat, lon, mission.target.lat, mission.target.lon);
     if (distance <= ARRIVE_RADIUS) {
-      const left = Math.max(0, this.remaining(now));
+      const left = Number.isFinite(mission.timeLimit) ? Math.max(0, this.remaining(now)) : 0;
       this.current = null;
       return {
         target: mission.target,

@@ -45,7 +45,7 @@ import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { gameClock, tokyoDate, type GameClock } from "./world/ruleTime";
-import { planRoute } from "./game/navigation";
+import { classifyTurn, laneAllows, laneIndex, planRoute, TURN_WORDS } from "./game/navigation";
 import { RouteArrows } from "./game/routeArrows";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
 import { AutoDriver, keepLeftOffset } from "./game/autoDriver";
@@ -77,6 +77,7 @@ import {
   applyRegulations,
   isInForce,
   type AppliedRegulations,
+  type LaneUse,
   type RegulationData,
 } from "./world/regulations";
 import { RoadGraph, leftOf, speedLimit, type RoadLine, type Segment } from "./world/roads";
@@ -95,7 +96,10 @@ import {
   TrafficLaw,
   VIOLATIONS,
   type Violation,
+  type ViolationContext,
+  type ViolationRecord,
 } from "./game/traffic";
+import { renderReview } from "./game/violationReview";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
@@ -443,6 +447,8 @@ async function main(): Promise<void> {
     return true;
   };
   let needsStreetSpawn = false;
+  // The opening drive is set once the car stands on its street.
+  let needsTrip = false;
   let streetSpawnSince = 0;
 
   const respawnHere = () => {
@@ -686,6 +692,7 @@ async function main(): Promise<void> {
   let slowSince: number | null = null;
   let closedSince: number | null = null;
   let rightLaneSince: number | null = null;
+  let laneAtJunction: { use: LaneUse; lane: number; tIn: Vector3; node: Vector3 } | null = null;
   let lastHeading: { seg: Segment; sgn: number; at: number } | null = null;
   let laneTrack: { seg: Segment; lane: number } | null = null;
   let lastStreet: { seg: Segment; dir: 1 | -1 } | null = null;
@@ -765,6 +772,7 @@ async function main(): Promise<void> {
     chase.snap();
     needsStreetSpawn = true;
     streetSpawnSince = performance.now();
+    needsTrip = true;
     state = "playing";
     log("game_started", {});
     toast("光の柱＝東京都オープンデータの実在スポット。N キーで目的地ミッション！", "#4dd2ff");
@@ -813,6 +821,16 @@ async function main(): Promise<void> {
     if (needsStreetSpawn && roadGraph && hasKerbs && isInCar) {
       const isUntouched = Math.abs(vehicle.speedKmh()) < 2;
       needsStreetSpawn = isUntouched && !placeOnStreet();
+    }
+    if (needsTrip && !needsStreetSpawn && !missions.current) {
+      needsTrip = false;
+      const g = frame.toGeodetic(vehicle.position());
+      const trip = missions.startTrip(g.lat, g.lon, now);
+      if (trip) {
+        const km = (trip.startDistance / 1000).toFixed(1);
+        toast(`最初の目的地: ${trip.target.name}（約 ${km} km）。法令を守って向かいましょう`, "#ffe14d");
+        log("trip", { target: trip.target.name, metres: Math.round(trip.startDistance) });
+      }
     }
     const manual = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
     // Any steering, accelerator or brake input takes the car back, as with a real driver-assist system.
@@ -892,6 +910,7 @@ async function main(): Promise<void> {
       clock: gameClockNow(),
       mode: isInCar ? "car" : isOnFoot ? "walk" : null,
       junctionNames: roadApplied?.junctionNames,
+      laneUse: roadApplied?.laneUse,
     });
     ribbon.update(isInCar ? nav.route : null, nav.lastAt, now);
     if (nav.route && navGeo.version !== nav.version) {
@@ -926,7 +945,9 @@ async function main(): Promise<void> {
       overSince = isOver ? (overSince ?? now) : null;
       if (overSince !== null && currentLimit !== null && now - overSince > 3000) {
         const v = speedViolation(speed - currentLimit);
-        if (v) book(v, now, 20000);
+        const label = currentLimitKind === "sign" ? "規制速度" : "法定速度";
+        const detail = `${label} ${currentLimit} km/h のところ ${Math.round(speed)} km/h（${Math.round(speed - currentLimit)} km/h 超過）`;
+        if (v) book(v, now, 20000, detail);
       }
       const isTwoWay = onRoad !== null && onRoad.seg.oneway === 0 && onRoad.seg.line.width >= 5.5;
       const align = onRoad ? carForward.dot(onRoad.dir) : 0;
@@ -992,6 +1013,47 @@ async function main(): Promise<void> {
           }
         }
         lastStreet = { seg: onRoad.seg, dir };
+        // 指定通行区分 (第35条第1項): the lane held over the last 40 m of a designated approach…
+        const use = roadApplied?.laneUse.find((u) => u.seg === onRoad.seg && u.dir === dir);
+        const toNode = dir === 1 ? onRoad.seg.length - onRoad.s : onRoad.s;
+        if (use && toNode < 40 && roadGraph) {
+          const lane = laneIndex(roadGraph, use.seg, use.dir, use.lanes.length, carPos);
+          const node = roadGraph.sample(use.seg, dir === 1 ? use.seg.length : 0).pos;
+          laneAtJunction = { use, lane, tIn: onRoad.dir.clone().multiplyScalar(dir), node };
+        }
+      }
+      // …against the way the car leaves, judged 25 m past the junction (clear of its box).
+      if (laneAtJunction && onRoad && laneAtJunction.use.seg !== onRoad.seg) {
+        const j = laneAtJunction;
+        if (Math.hypot(carPos.x - j.node.x, carPos.z - j.node.z) > 25) {
+          laneAtJunction = null;
+          const tOut = carForward.clone().setY(0).normalize();
+          const turn = classifyTurn(j.tIn, tOut);
+          if (!laneAllows(j.use.lanes[j.lane], turn)) {
+            log("lane_direction", {
+              lanes: j.use.lanes.map((l) => l.join("+")),
+              lane: j.lane,
+              turn,
+              source: j.use.source,
+            });
+            const words = (d: string) =>
+              ({
+                left: "左折",
+                slight_left: "斜め左",
+                through: "直進",
+                slight_right: "斜め右",
+                right: "右折",
+                reverse: "転回",
+              })[d] ?? d;
+            const allowed = j.use.lanes[j.lane].map(words).join("・");
+            book(
+              VIOLATIONS.laneDirection,
+              now,
+              15000,
+              `${allowed}の車線（左から ${j.lane + 1} 番目）から${TURN_WORDS[turn]}`,
+            );
+          }
+        }
       }
       // 通行帯違反 (第20条第1項): the rightmost lane of a multi-lane road is for overtaking and
       // getting ready to turn right, not for driving along.
@@ -1200,15 +1262,65 @@ async function main(): Promise<void> {
             : "会話AI: 利用できません（定型応答）";
     }
     renderer.render(scene, camera);
+    takeShots();
   };
 
-  const book = (v: Violation, now: number, cooldownMs?: number) => {
-    const booked = law.book(v, now, cooldownMs);
+  /** Where, when and how fast, for the review screen (違反の記録) and the logs. */
+  const violationContext = (detail?: string): ViolationContext => {
+    const p = vehicle.position();
+    let junction = "";
+    let best = 60;
+    for (const j of roadApplied?.junctionNames ?? []) {
+      const d = Math.hypot(j.pos.x - p.x, j.pos.z - p.z);
+      if (d < best) {
+        best = d;
+        junction = j.name.endsWith("交差点") ? j.name : `${j.name}交差点`;
+      }
+    }
+    return {
+      clock: clockLabel(gameClockNow(), tokyoDate(env.now())),
+      place: [wardName, townName, junction && `（${junction}付近）`].filter(Boolean).join(" "),
+      lat: lastGeo.lat,
+      lon: lastGeo.lon,
+      kmh: Math.abs(mode === "foot" ? 0 : vehicle.speedKmh()),
+      limit: currentLimit,
+      limitKind: currentLimitKind,
+      detail,
+    };
+  };
+  // Records whose screen is grabbed right after the next frame is drawn.
+  const pendingShots: ViolationRecord[] = [];
+  const shotCanvas = document.createElement("canvas");
+  shotCanvas.width = 480;
+  shotCanvas.height = 270;
+  const takeShots = () => {
+    if (pendingShots.length === 0) return;
+    const ctx = shotCanvas.getContext("2d");
+    if (!ctx) return;
+    // Same task as renderer.render, so the WebGL drawing buffer still holds the frame.
+    ctx.drawImage(renderer.domElement, 0, 0, shotCanvas.width, shotCanvas.height);
+    const url = shotCanvas.toDataURL("image/jpeg", 0.7);
+    for (const r of pendingShots.splice(0)) if (r.context) r.context.snapshot = url;
+  };
+  const book = (v: Violation, now: number, cooldownMs?: number, detail?: string) => {
+    const booked = law.book(v, now, cooldownMs, violationContext(detail));
     if (!booked) return;
+    pendingShots.push(booked);
     score = Math.max(0, score - booked.points * 50);
     toast(`🚓 ${formatViolation(booked)}`, "#ff6b6b");
     stamps.stamp("違反", shortLabel(booked.label));
-    log("violation", { kind: booked.kind, points: booked.points, total: law.state.points });
+    const c = booked.context;
+    log("violation", {
+      kind: booked.kind,
+      points: booked.points,
+      total: law.state.points,
+      place: c?.place,
+      lat: c?.lat,
+      lon: c?.lon,
+      kmh: c ? Math.round(c.kmh) : null,
+      limit: c?.limit,
+      detail: c?.detail,
+    });
     // Let the driver finish the rescue / reporting first; show the screen once it is over.
     if (law.state.suspended && !emergency.active) showSuspension();
   };
@@ -1346,6 +1458,7 @@ async function main(): Promise<void> {
             ...pedestrians.list.filter((p) => p.state !== "talk").map((p) => p.object.position),
           ],
           isPavement: (x: number, z: number) => pavements.contains(x, z),
+          laneUse: roadApplied?.laneUse ?? [],
         }
       : null;
   const fillTaxiDestinations = () => {
@@ -1509,6 +1622,15 @@ async function main(): Promise<void> {
     $("#retrain").textContent = "講習を受けて運転を再開";
     $("#suspended").hidden = false;
   };
+  const openReview = () => {
+    renderReview($("#violations-list"), law.state.log);
+    const s = law.state;
+    $("#violations-summary").textContent =
+      `違反 ${s.log.length} 件・違反点数 ${s.points} 点・反則金など ${s.fines.toLocaleString()} 円（普通車の基準によるゲーム内の参考値）`;
+    $<HTMLDialogElement>("#violations").showModal();
+  };
+  $("#review-open").addEventListener("click", openReview);
+  $("#review-from-suspension").addEventListener("click", openReview);
   const showArrest = (later: boolean) => {
     vehicle.setFrozen(true);
     stamps.stamp("逮捕", "救護義務違反（ひき逃げ）", true);
@@ -1574,6 +1696,11 @@ async function main(): Promise<void> {
    * In-game clock: date, weekday and time, as the regulations see them (Saturday blue, Sunday and
    * 祝日 red as on a Japanese calendar).
    */
+  const clockLabel = (clock: GameClock, date: { m: number; d: number }) => {
+    const hh = String(Math.floor(clock.minutes / 60)).padStart(2, "0");
+    const mm = String(Math.floor(clock.minutes % 60)).padStart(2, "0");
+    return `${date.m}/${date.d}(${WEEKDAYS[clock.weekday]}${clock.holiday ? "・祝" : ""}) ${hh}:${mm}`;
+  };
   const renderClock = (el: HTMLElement, clock: GameClock, date: { m: number; d: number }) => {
     const hh = String(Math.floor(clock.minutes / 60)).padStart(2, "0");
     const mm = String(Math.floor(clock.minutes % 60)).padStart(2, "0");
@@ -1631,8 +1758,11 @@ async function main(): Promise<void> {
       const d = haversineMeters(lat, lon, mission.target.lat, mission.target.lon);
       const cat = field.category(mission.target.category);
       $("#mission-name").textContent = mission.target.name;
-      $("#mission-meta").textContent =
-        `${cat?.label ?? ""}・${mission.target.ward}・残り ${Math.round(d)} m・${Math.max(0, Math.ceil(missions.remaining(now)))} 秒`;
+      const left = d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+      const clock = mission.isTrip
+        ? "法令を守って向かおう"
+        : `${Math.max(0, Math.ceil(missions.remaining(now)))} 秒`;
+      $("#mission-meta").textContent = `${cat?.label ?? ""}・${mission.target.ward}・残り ${left}・${clock}`;
     } else {
       $("#mission-name").textContent = QUALITY.isMobile
         ? "🎯 でミッション開始"

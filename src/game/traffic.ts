@@ -14,6 +14,7 @@ export type ViolationKind =
   | "slow" // 徐行場所違反
   | "laneChange" // 進路変更禁止違反
   | "laneUse" // 通行帯違反
+  | "laneDirection" // 指定通行区分違反
   | "keepLeft" // 通行区分違反（右側通行）
   | "speed" // 速度超過
   | "pedestrianCrossing" // 横断歩行者等妨害等
@@ -134,6 +135,14 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     points: 1,
     fine: 6000,
   },
+  // 進行方向別通行区分のある交差点で、その車線に指定されていない方向へ進んだ。
+  laneDirection: {
+    kind: "laneDirection",
+    label: "指定通行区分違反",
+    article: "道路交通法 第35条第1項",
+    points: 1,
+    fine: 6000,
+  },
   keepLeft: {
     kind: "keepLeft",
     label: "通行区分違反（右側通行）",
@@ -198,10 +207,30 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
 /** 違反点数 at which the licence is revoked (前歴なし, 15 点以上で取消). */
 export const REVOCATION_POINTS = 15;
 
+/** What was happening when a violation was booked, for the review screen and the QA logs. */
+export type ViolationContext = {
+  /** Game date and time as the HUD shows it ("10/4(日) 11:30"). */
+  clock: string;
+  /** 区・町名, and the junction name when near one. */
+  place: string;
+  lat: number;
+  lon: number;
+  kmh: number;
+  /** Limit in force (km/h) and whether posted (標識) or statutory (法定). */
+  limit: number | null;
+  limitKind: string | null;
+  /** What exactly went wrong ("右折専用の車線から直進" …), when the check knows. */
+  detail?: string;
+  /** JPEG data URL of the screen at that moment (filled in after the next frame is drawn). */
+  snapshot?: string;
+};
+
+export type ViolationRecord = Violation & { at: number; context?: ViolationContext };
+
 export type LicenseState = {
   points: number;
   fines: number;
-  log: Array<Violation & { at: number }>;
+  log: ViolationRecord[];
   suspended: boolean;
 };
 
@@ -212,7 +241,7 @@ export class TrafficLaw {
   ownerOrders = 0;
 
   /** Records a violation unless the same kind was booked within `cooldownMs` (one stop per offence). */
-  book(v: Violation, now: number, cooldownMs = 8000): Violation | null {
+  book(v: Violation, now: number, cooldownMs = 8000, context?: ViolationContext): ViolationRecord | null {
     const until = this.cooldown.get(v.kind) ?? 0;
     // Keep booking while suspended: an offence committed before the screen appears (e.g. fleeing
     // after the crash that crossed 6 points) still counts.
@@ -220,9 +249,10 @@ export class TrafficLaw {
     this.cooldown.set(v.kind, now + cooldownMs);
     this.state.points += v.points;
     this.state.fines += v.fine ?? 0;
-    this.state.log.push({ ...v, at: now });
+    const record: ViolationRecord = { ...v, at: now, context };
+    this.state.log.push(record);
     if (this.state.points >= SUSPENSION_POINTS) this.state.suspended = true;
-    return v;
+    return record;
   }
 
   /**

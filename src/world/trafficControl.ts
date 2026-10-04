@@ -78,6 +78,11 @@ const UP = new Vector3(0, 1, 0);
  * Traffic signals (OSM positions, snapped to junctions) and 一時停止 (JARTIC) for the current
  * road graph: per-approach state for the law checks and the AI, plus their 3D models.
  */
+/** First spot clear of every carriageway (poles stand on the pavement), or null. */
+function clearSpot(graph: RoadGraph, candidates: Vector3[]): Vector3 | null {
+  return candidates.find((p) => graph.carriagewaysAt(p, 0.3).length === 0) ?? null;
+}
+
 export class TrafficControl {
   approaches: Approach[] = [];
   private bySegment = new Map<number, Approach[]>();
@@ -430,10 +435,24 @@ export class TrafficControl {
       const nodePos = this.nodePos(graph, node) ?? ap.a;
       const far = this.clearance(graph, node, ap.seg) + 1;
       const half = ap.seg.line.width / 2;
-      const base = nodePos
+      const corner = nodePos
         .clone()
         .addScaledVector(ap.travel, far)
         .add(leftOf(ap.travel, half + 1.2));
+      // The pole stands on the pavement: in a big junction box the corner by GSI widths can fall
+      // in a crossing street's carriageway, so step further on and further out until it is clear.
+      const base =
+        clearSpot(graph, [
+          corner,
+          ...[2, 4, 6].map((k) => corner.clone().addScaledVector(ap.travel, k)),
+          ...[1, 2, 3].map((k) => corner.clone().add(leftOf(ap.travel, k))),
+          ...[1, 2, 3].map((k) =>
+            corner
+              .clone()
+              .addScaledVector(ap.travel, k * 2)
+              .add(leftOf(ap.travel, k)),
+          ),
+        ]) ?? corner;
       const head = nodePos
         .clone()
         .addScaledVector(ap.travel, far)
@@ -474,12 +493,23 @@ export class TrafficControl {
       if (this.pedLight(c.seg, c.pos) === null) continue;
       const { dir } = graph.sample(c.seg, c.s);
       for (const side of [1, -1] as const) {
-        // Beside the crosswalk (not in it), just behind the kerb.
+        // Beside the crosswalk (not in it), just behind the kerb — and never in a carriageway:
+        // near a junction box the kerb by GSI width can be inside the crossing road.
         const across = leftOf(dir, -side); // from this kerb toward the far one
-        const at = c.pos
-          .clone()
-          .add(leftOf(dir, side * (c.seg.line.width / 2 + 0.9)))
-          .addScaledVector(dir, 3.2 * side);
+        const kerb = c.pos.clone().add(leftOf(dir, side * (c.seg.line.width / 2 + 0.9)));
+        const at = clearSpot(graph, [
+          kerb.clone().addScaledVector(dir, 3.2 * side),
+          kerb.clone().addScaledVector(dir, -3.2 * side),
+          kerb
+            .clone()
+            .add(leftOf(dir, side * 1.5))
+            .addScaledVector(dir, 3.2 * side),
+          kerb
+            .clone()
+            .add(leftOf(dir, side * 1.5))
+            .addScaledVector(dir, -3.2 * side),
+        ]);
+        if (!at) continue;
         const g = ground(at);
         poles.push({ pos: at.clone().setY(g), height: PED_HEIGHT + 0.55 });
         // Face the people waiting on the far kerb; the head sits 0.3 m out from its pole.
