@@ -115,7 +115,9 @@ export class TrafficAI {
       const ground = this.groundAt(pos.x, pos.z);
       if (ground === null) continue;
       const yaw = Math.atan2(dir.x, dir.z) + (side < 0 ? Math.PI : 0);
-      const object = createLowCar({ color: COLORS[(h >>> 13) % COLORS.length] });
+      const color = COLORS[(h >>> 13) % COLORS.length];
+      const object = createLowCar({ color });
+      object.userData.replay = { type: "lowCar", color };
       object.position.set(pos.x, ground + 0.86, pos.z);
       object.rotation.y = yaw;
       this.scene.add(object);
@@ -318,9 +320,10 @@ export class TrafficAI {
                 : null;
       const vehicle = kind && hasVehicleModel(kind) ? createVehicle(kind) : null;
       const taxi = !vehicle && this.serial % 5 < 2;
-      const object =
-        vehicle?.object ??
-        createLowCar({ color: taxi ? 0x1d2a4a : COLORS[this.serial % COLORS.length], taxi });
+      const color = taxi ? 0x1d2a4a : COLORS[this.serial % COLORS.length];
+      const object = vehicle?.object ?? createLowCar({ color, taxi });
+      // How to build it again for a saved violation's replay (replayClip.ts).
+      object.userData.replay = vehicle && kind ? { type: "vehicle", kind } : { type: "lowCar", color, taxi };
       this.scene.add(object);
       this.cars.push({
         object,

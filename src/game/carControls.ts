@@ -6,6 +6,23 @@
  */
 export type Indicator = "off" | "left" | "right";
 export type LightSwitch = "auto" | "on" | "off";
+/** 簡単操作 (the default): the car works its switches; リアル: the driver does everything. */
+export type Assist = "easy" | "real";
+
+/** What 簡単操作 needs to know to work the switches. */
+export type AutoContext = {
+  raining: boolean;
+  /** Rain in the last 10 minutes (mm), when observed. */
+  rain10m: number | null;
+  /** The next turn on the navigation's route and how far ahead it is (m). */
+  nextTurn: { side: "left" | "right" | null; metres: number } | null;
+  kmh: number;
+  throttle: number;
+};
+
+// 合図 is given 30 m before the point of turning (道路交通法施行令 第21条); a few metres more so
+// the lamp is already blinking at 30 m.
+const SIGNAL_AHEAD_M = 34;
 
 export class CarControls {
   indicator: Indicator = "off";
@@ -17,7 +34,11 @@ export class CarControls {
   belt = false;
   /** 0 off, 1 intermittent, 2 low, 3 high. */
   wipers = 0;
+  assist: Assist = "easy";
+  /** 簡単操作's brake hold (like an electronic parking brake's auto hold) while stopped. */
+  autoHold = false;
   private turnStartYaw: number | null = null;
+  private stoppedFor = 0;
 
   toggleIndicator(side: "left" | "right"): void {
     this.indicator = this.indicator === side ? "off" : side;
@@ -46,6 +67,34 @@ export class CarControls {
       this.indicator = "off";
       this.turnStartYaw = null;
     }
+  }
+
+  /**
+   * 簡単操作: engine, seat belt, lights (AUTO, dipped), rain-sensing wipers, the indicator from the
+   * route 30 m before each turn, and a brake hold once stopped. The law checks still read the
+   * switches, so the car keeps the rules a careful driver would.
+   */
+  autoOperate(c: AutoContext, dt: number): void {
+    if (this.assist !== "easy") {
+      this.autoHold = false;
+      return;
+    }
+    this.engineOn = true;
+    this.belt = true;
+    this.lights = "auto";
+    this.highBeam = false;
+    // Rain sensor: 間欠 in a drizzle, LO in steady rain, HI in a downpour (mm per 10 min).
+    const rate = c.rain10m ?? 0.5;
+    this.wipers = !c.raining ? 0 : rate >= 3 ? 3 : rate >= 0.5 ? 2 : 1;
+    const turn = c.nextTurn;
+    const isSignalling = turn !== null && turn.side !== null && turn.metres <= SIGNAL_AHEAD_M;
+    if (isSignalling && turn.side && this.indicator !== turn.side && !this.hazard) {
+      this.indicator = turn.side;
+      this.turnStartYaw = null;
+    }
+    const isStopped = c.kmh < 0.5 && c.throttle === 0;
+    this.stoppedFor = isStopped ? this.stoppedFor + dt : 0;
+    this.autoHold = this.stoppedFor > 0.6;
   }
 
   /** Lamps for the model: hazard flashes both. */

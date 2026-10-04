@@ -1,0 +1,100 @@
+import { describe, expect, it } from "vitest";
+import { CarControls, type AutoContext } from "../src/game/carControls";
+import { DEFAULT_PREFS, keyRows, loadPrefs } from "../src/game/controlsHelp";
+import { keyFor } from "../src/game/input";
+
+const context = (over: Partial<AutoContext> = {}): AutoContext => ({
+  raining: false,
+  rain10m: null,
+  nextTurn: null,
+  kmh: 30,
+  throttle: 0.3,
+  ...over,
+});
+
+describe("簡単操作: the car works its own switches", () => {
+  it("is the default, with WASD", () => {
+    expect(DEFAULT_PREFS).toEqual({ layout: "wasd", assist: "easy" });
+    expect(new CarControls().assist).toBe("easy");
+    // Without storage (here, or a private window) the defaults apply.
+    expect(loadPrefs()).toEqual(DEFAULT_PREFS);
+  });
+
+  it("fastens the belt, keeps the engine running and the lights on AUTO", () => {
+    const c = new CarControls();
+    c.engineOn = false;
+    c.lights = "off";
+    c.highBeam = true;
+    c.autoOperate(context(), 0.016);
+    expect(c.belt).toBe(true);
+    expect(c.engineOn).toBe(true);
+    expect(c.lights).toBe("auto");
+    expect(c.highBeam).toBe(false);
+  });
+
+  it("sets the wipers by how hard it rains, and stops them when it is dry", () => {
+    const c = new CarControls();
+    c.autoOperate(context({ raining: true, rain10m: 0.2 }), 0.016);
+    expect(c.wipers).toBe(1);
+    c.autoOperate(context({ raining: true, rain10m: 1 }), 0.016);
+    expect(c.wipers).toBe(2);
+    c.autoOperate(context({ raining: true, rain10m: 4 }), 0.016);
+    expect(c.wipers).toBe(3);
+    c.autoOperate(context({ raining: false }), 0.016);
+    expect(c.wipers).toBe(0);
+  });
+
+  it("signals the route's next turn from 30 m before it, not earlier", () => {
+    const c = new CarControls();
+    c.autoOperate(context({ nextTurn: { side: "left", metres: 60 } }), 0.016);
+    expect(c.indicator).toBe("off");
+    c.autoOperate(context({ nextTurn: { side: "left", metres: 30 } }), 0.016);
+    expect(c.indicator).toBe("left");
+    c.indicator = "off";
+    c.autoOperate(context({ nextTurn: { side: "right", metres: 12 } }), 0.016);
+    expect(c.indicator).toBe("right");
+    c.indicator = "off";
+    c.autoOperate(context({ nextTurn: { side: null, metres: 10 } }), 0.016);
+    expect(c.indicator).toBe("off");
+  });
+
+  it("holds the brake once stopped and lets go when the accelerator is pressed", () => {
+    const c = new CarControls();
+    const stopped = context({ kmh: 0, throttle: 0 });
+    c.autoOperate(stopped, 0.3);
+    expect(c.autoHold).toBe(false);
+    c.autoOperate(stopped, 0.4);
+    expect(c.autoHold).toBe(true);
+    c.autoOperate(context({ kmh: 0, throttle: 0.5 }), 0.016);
+    expect(c.autoHold).toBe(false);
+  });
+
+  it("leaves everything to the driver in リアル", () => {
+    const c = new CarControls();
+    c.assist = "real";
+    c.autoOperate(
+      context({ raining: true, rain10m: 4, nextTurn: { side: "left", metres: 10 }, kmh: 0, throttle: 0 }),
+      2,
+    );
+    expect(c.belt).toBe(false);
+    expect(c.wipers).toBe(0);
+    expect(c.indicator).toBe("off");
+    expect(c.autoHold).toBe(false);
+  });
+});
+
+describe("key layouts", () => {
+  it("moves 自動運転 off A in WASD, where A steers", () => {
+    expect(keyFor("wasd", "autopilot")).toBe("J");
+    expect(keyFor("ccd", "autopilot")).toBe("A");
+  });
+
+  it("lists the layout's own keys and marks what 簡単操作 does itself", () => {
+    const wasd = keyRows({ layout: "wasd", assist: "easy" });
+    expect(wasd[0]).toEqual(["W / S", "アクセル / ブレーキ（停止中はバック）"]);
+    expect(wasd.find(([, what]) => what.startsWith("ワイパー"))?.[1]).toContain("簡単操作では自動");
+    const ccd = keyRows({ layout: "ccd", assist: "real" });
+    expect(ccd[0][0]).toBe("↑ / ↓");
+    expect(ccd.some(([, what]) => what.includes("簡単操作"))).toBe(false);
+  });
+});

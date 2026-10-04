@@ -18,7 +18,7 @@ import {
 } from "./navigation";
 
 /** Arrow glyph per turn: a path in a 48×48 box pointing up = straight on. */
-const ARROWS: Record<Turn, string> = {
+export const TURN_ARROWS: Record<Turn, string> = {
   straight: "M24 42V10M14 20l10-10 10 10",
   slightLeft: "M30 42V26L16 12M16 24V12h12",
   left: "M32 42V22H12M20 14l-8 8 8 8",
@@ -197,7 +197,7 @@ export class NavGuide {
     if (next) {
       const d = next.at - p.at;
       const name = this.junctionName(next.pos);
-      arrow.setAttribute("d", ARROWS[next.turn]);
+      arrow.setAttribute("d", TURN_ARROWS[next.turn]);
       dist.textContent = formatDistance(d);
       word.textContent = name ? `${name}を${TURN_WORDS[next.turn]}` : TURN_WORDS[next.turn];
       // 交差点拡大図 for the last 300 m, redrawn a few times a second.
@@ -237,7 +237,7 @@ export class NavGuide {
     }
     this.panel.classList.remove("close");
     if (view) view.hidden = true;
-    arrow.setAttribute("d", ARROWS.straight);
+    arrow.setAttribute("d", TURN_ARROWS.straight);
     dist.textContent = formatDistance(toEnd);
     word.textContent = route.reachesTarget ? "道なり・目的地" : "道なり";
     if (route.reachesTarget && toEnd < 40 && !this.arrived) {

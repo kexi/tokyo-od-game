@@ -1,3 +1,4 @@
+import type { ReplayClip } from "./replayClip";
 /**
  * Road Traffic Act (道路交通法) scoring for the player's car: 違反点数 and 反則金 for 普通車.
  * Values follow the National Police Agency tables (see LAW_SOURCES); penalties above the
@@ -297,11 +298,23 @@ export type ViolationContext = {
 export type Detector = "patrol" | "officer" | "orbis" | "accident" | "parking" | "sns";
 export type ViolationStatus = "uncaught" | "caught" | "notice";
 export type ViolationRecord = Violation & {
+  /** Game-loop time (ms since the page loaded): replays and cool-downs use it. */
   at: number;
+  /** Stable key in the saved history ("<wall-clock ms>-<n>", zero-padded so it sorts by time). */
+  id?: string;
+  /** Wall-clock time it happened, and the page session, so saved records outlive a reload. */
+  savedAt?: number;
+  session?: string;
+  /** 5 s either side, to play it again after a reload (cut once the after part is recorded). */
+  replay?: ReplayClip;
   context?: ViolationContext;
   status: ViolationStatus;
   by?: Detector;
 };
+
+/** This page load: records from earlier sessions cannot be replayed (the buffer is gone). */
+export const SESSION = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+let recordCount = 0;
 
 export type LicenseState = {
   /** Points of caught violations (orbis notices count once the day ends and the post comes). */
@@ -326,7 +339,17 @@ export class TrafficLaw {
     const until = this.cooldown.get(v.kind) ?? 0;
     if (now < until) return null;
     this.cooldown.set(v.kind, now + cooldownMs);
-    const record: ViolationRecord = { ...v, at: now, context, status: "uncaught" };
+    const savedAt = Date.now();
+    const id = `${String(savedAt).padStart(15, "0")}-${String(++recordCount).padStart(4, "0")}`;
+    const record: ViolationRecord = {
+      ...v,
+      at: now,
+      id,
+      savedAt,
+      session: SESSION,
+      context,
+      status: "uncaught",
+    };
     this.state.log.push(record);
     return record;
   }

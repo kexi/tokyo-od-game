@@ -18,8 +18,8 @@ export const CAMERA_LABEL: Record<ReplayCamera, string> = {
   cockpit: "車内",
 };
 
-type Pose = { x: number; y: number; z: number; yaw: number };
-type Frame = {
+export type Pose = { x: number; y: number; z: number; yaw: number };
+export type Frame = {
   t: number; // game-loop ms
   car: { x: number; y: number; z: number; qx: number; qy: number; qz: number; qw: number; speed: number };
   others: Map<Object3D, Pose>;

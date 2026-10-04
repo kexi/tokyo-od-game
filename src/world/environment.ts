@@ -134,6 +134,16 @@ export class Environment {
     return new Date(this.gameMs);
   }
 
+  /**
+   * A saved replay shows its own moment: the sun, sky and rain of when it happened, while the game
+   * clock runs on underneath. null goes back to the game's own time and weather.
+   */
+  showMoment(moment: { ms: number; raining: boolean } | null): void {
+    this.moment = moment;
+  }
+
+  private moment: { ms: number; raining: boolean } | null = null;
+
   /** The next morning at `hour` (JST), the clock running on from there (after the day ends). */
   startNextDay(hour = 8): void {
     if (this.mode === "real") this.mode = "morning";
@@ -170,6 +180,7 @@ export class Environment {
   }
 
   isRaining(): boolean {
+    if (this.moment) return this.moment.raining;
     if (this.weatherMode === "rain") return true;
     if (this.weatherMode === "clear") return false;
     return (this.observation?.precip10m ?? 0) > 0;
@@ -191,7 +202,7 @@ export class Environment {
   update(dt: number, player: Vector3, camera: Vector3, lat: number, lon: number): void {
     this.resolvePreset(lat, lon);
     this.gameMs = this.mode === "real" ? Date.now() : this.gameMs + dt * 1000;
-    const date = this.now();
+    const date = this.moment ? new Date(this.moment.ms) : this.now();
     const { elevation, azimuth } = sunPosition(date, lat, lon);
     this.sunElevation = elevation;
     const el = MathUtils.degToRad(elevation);

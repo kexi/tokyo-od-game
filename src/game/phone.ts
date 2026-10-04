@@ -29,6 +29,12 @@ export class Phone {
   private callStart = 0;
   private dispatched = false;
   private busy = false;
+  /**
+   * When the player last worked the phone (a tap or a key on it). The law forbids holding it to talk
+   * or watching its screen while the car moves (第71条第5号の5), not a phone sitting in its holder,
+   * so only working it counts.
+   */
+  private touchedAt = -Infinity;
 
   constructor(
     private readonly brain: NpcBrain,
@@ -39,6 +45,9 @@ export class Phone {
     for (const b of document.querySelectorAll<HTMLButtonElement>("[data-dial]")) {
       b.addEventListener("click", () => this.dial(b.dataset.dial as Line));
     }
+    const touch = () => (this.touchedAt = performance.now());
+    $("#phone").addEventListener("pointerdown", touch, true);
+    $("#phone").addEventListener("keydown", touch, true);
     $("#phone-close").addEventListener("click", () => this.close());
     $("#call-hangup").addEventListener("click", () => this.hangUp());
     $("#phone-button").addEventListener("click", () => this.toggle());
@@ -62,13 +71,20 @@ export class Phone {
     return this.line !== null;
   }
 
+  /** Being worked now: touched in the last 2 s (about the time of a glance that becomes 注視). */
+  isInUse(now: number): boolean {
+    return this.open && now - this.touchedAt < 2000;
+  }
+
   toggle(): void {
     if (this.open) this.close();
     else this.show();
   }
 
-  show(): void {
+  /** Taking it out by hand counts as working it; the game putting it in the holder does not. */
+  show(byHand = true): void {
     $("#phone").hidden = false;
+    if (byHand) this.touchedAt = performance.now();
     this.refresh();
   }
 

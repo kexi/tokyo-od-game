@@ -1,7 +1,7 @@
 import type { DriveInput } from "../physics/vehicle";
 import type { WalkInput } from "./walker";
 
-type Action =
+export type Action =
   | "reset"
   | "camera"
   | "cameraPrev"
@@ -30,7 +30,11 @@ type Action =
   | "nav"
   | "minimap"
   | "screenshot"
-  | "replay";
+  | "replay"
+  | "warp"
+  | "title";
+
+export type KeyLayout = "wasd" | "ccd";
 
 /**
  * City Car Driving's default keyboard layout (its manual, 1.5.9), so its players feel at home:
@@ -40,7 +44,7 @@ type Action =
  * R reset, F12 screenshot. The game's own actions sit on keys City Car Driving leaves free:
  * A 自動運転, Q 乗降, N 目的地, T 時間帯, Y 天気, I 出典, Home 帰宅, F1 操作, F2 地面, F8 音.
  */
-const KEY_ACTIONS: Record<string, Action> = {
+const CCD_ACTIONS: Record<string, Action> = {
   KeyR: "reset",
   KeyC: "camera",
   KeyV: "cameraPrev",
@@ -69,8 +73,29 @@ const KEY_ACTIONS: Record<string, Action> = {
   KeyO: "minimap",
   F12: "screenshot",
   F5: "replay",
+  KeyX: "warp",
   Escape: "close",
 };
+
+/**
+ * WASD (the default): FPS-style, W/S accelerate and brake, A/D steer (the arrows still work), the
+ * mouse looks around once the view is clicked (pointer lock; Esc releases it). 自動運転 moves off
+ * A to J; everything else stays where City Car Driving has it.
+ */
+const WASD_ACTIONS: Record<string, Action> = Object.fromEntries([
+  ...Object.entries(CCD_ACTIONS).filter(([code]) => code !== "KeyA"),
+  ["KeyJ", "autopilot"],
+]);
+
+/** The key that triggers an action in a layout (for hints and the help). */
+export function keyFor(layout: KeyLayout, action: Action): string {
+  const table = layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS;
+  const code = Object.keys(table).find((c) => table[c] === action) ?? "";
+  return code.replace(/^Key/, "").replace(/^Digit/, "");
+}
+
+const LOOK_LIMIT = 2.6; // rad either way: over the shoulder, short of straight back
+const LOOK_RECENTRE_S = 1.2; // the view drifts back ahead after the mouse rests this long
 
 /** Keyboard + gamepad + on-screen touch controls merged into one analog DriveInput. */
 export class Input {
@@ -79,13 +104,16 @@ export class Input {
   private readonly listeners = new Map<Action, () => void>();
   private steerSmoothed = 0;
   private dragTurn = 0;
+  layout: KeyLayout = "wasd";
+  private lookYaw = 0;
+  private lookIdle = 0;
 
   constructor() {
     window.addEventListener("keydown", (e) => {
       const isTyping = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
       if (isTyping) return;
       if (!e.repeat) {
-        const action = KEY_ACTIONS[e.code];
+        const action = (this.layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS)[e.code];
         if (action) this.listeners.get(action)?.();
       }
       this.keys.add(e.code);
@@ -120,6 +148,38 @@ export class Input {
       this.dragTurn -= (e.clientX - lastX) * 0.006;
       lastX = e.clientX;
     });
+  }
+
+  /**
+   * FPS-style mouse look: in the WASD layout a click on the view locks the pointer, and the mouse
+   * then turns the walker or looks around from the driver's seat.
+   */
+  bindMouseLook(canvas: HTMLElement): void {
+    canvas.addEventListener("click", () => {
+      const isLockable = this.layout === "wasd" && document.pointerLockElement !== canvas;
+      if (isLockable) canvas.requestPointerLock?.();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (document.pointerLockElement !== canvas) return;
+      this.dragTurn -= e.movementX * 0.0045;
+      this.lookYaw = Math.max(-LOOK_LIMIT, Math.min(LOOK_LIMIT, this.lookYaw - e.movementX * 0.0035));
+      this.lookIdle = 0;
+    });
+    document.addEventListener("pointerlockchange", () => {
+      if (document.pointerLockElement !== canvas) this.lookYaw = 0;
+    });
+  }
+
+  /**
+   * Where the driver looks (yaw offset, rad) from the mouse; it drifts back ahead when the mouse
+   * rests and the car is moving, as driving games do. Turning the walker is not done in the car.
+   */
+  look(dt: number, isMoving: boolean): number {
+    this.dragTurn = 0;
+    this.lookIdle += dt;
+    const isRecentring = isMoving && this.lookIdle > LOOK_RECENTRE_S;
+    if (isRecentring) this.lookYaw *= Math.max(0, 1 - dt * 3);
+    return this.lookYaw;
   }
 
   /** On-foot controls: WASD/↑↓ move relative to the camera, ←/→ or drag turn the camera. */
@@ -174,10 +234,15 @@ export class Input {
 
   read(dt: number): DriveInput {
     const k = (...codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
-    let throttle = Math.max(k("ArrowUp"), this.touch.throttle);
-    let brake = Math.max(k("ArrowDown"), this.touch.brake);
+    const isWasd = this.layout === "wasd";
+    const up = isWasd ? k("ArrowUp", "KeyW") : k("ArrowUp");
+    const down = isWasd ? k("ArrowDown", "KeyS") : k("ArrowDown");
+    const left = isWasd ? k("ArrowLeft", "KeyA") : k("ArrowLeft");
+    const right = isWasd ? k("ArrowRight", "KeyD") : k("ArrowRight");
+    let throttle = Math.max(up, this.touch.throttle);
+    let brake = Math.max(down, this.touch.brake);
     // Steering sign: +1 turns left (positive yaw around +Y when facing +Z).
-    let steerTarget = k("ArrowLeft") - k("ArrowRight") || this.touch.steer;
+    let steerTarget = left - right || this.touch.steer;
     let handbrake = this.keys.has("Space");
 
     const pad = navigator.getGamepads?.().find((g) => g?.connected);
