@@ -412,3 +412,115 @@ dialog dd {
   text-decoration: underline;
   color: var(--sub);
 }
+
+#talk-hint {
+  left: 50%;
+  bottom: 140px;
+  transform: translateX(-50%);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+#chat {
+  right: 12px;
+  top: 210px;
+  width: min(380px, calc(100vw - 24px));
+  max-height: calc(100vh - 300px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 8;
+}
+
+#chat header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+}
+
+#chat-name {
+  font-weight: 700;
+}
+
+#chat-log {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 80px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.bubble {
+  padding: 6px 10px;
+  border-radius: 10px;
+  max-width: 85%;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.bubble.npc {
+  background: rgba(255, 255, 255, 0.1);
+  align-self: flex-start;
+}
+
+.bubble.me {
+  background: rgba(77, 210, 255, 0.25);
+  align-self: flex-end;
+}
+
+#chat-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#chat-quick button {
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+#chat-form {
+  display: flex;
+  gap: 6px;
+}
+
+#chat-form input {
+  flex: 1;
+  font: inherit;
+  color: var(--fg);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  user-select: text;
+}
+
+#chat-ai {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+#chat-ai button {
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+dialog .row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+pre.notice {
+  white-space: pre-wrap;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px;
+  border-radius: 8px;
+  user-select: text;
+  -webkit-user-select: text;
+}

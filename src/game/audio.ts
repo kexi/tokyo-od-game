@@ -6,6 +6,10 @@ export class GameAudio {
   private filter: BiquadFilterNode | null = null;
   muted = false;
 
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
   /** Must be called from a user gesture (autoplay policy). */
   start(): void {
     if (this.ctx) return;

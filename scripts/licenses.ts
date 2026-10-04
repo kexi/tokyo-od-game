@@ -15,6 +15,7 @@ const BUNDLED = [
   "pbf",
   "pmtiles",
   "fflate",
+  "@litert-lm/core",
 ];
 
 function packageDir(root: string, name: string): string | null {

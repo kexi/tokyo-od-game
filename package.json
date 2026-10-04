@@ -18,12 +18,14 @@
   "dependencies": {
     "3d-tiles-renderer": "^0.5.3",
     "@dimforge/rapier3d-compat": "^0.21.0",
+    "@litert-lm/core": "0.17.1",
     "three": "^0.186.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",
     "@types/three": "^0.186.0",
+    "@webgpu/types": "^0.1.74",
     "geotiff": "^3.0.5",
     "oxfmt": "^0.68.0",
     "oxlint": "^1.86.0",

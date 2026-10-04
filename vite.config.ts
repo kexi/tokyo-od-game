@@ -46,6 +46,8 @@ export default defineConfig({
   // GitHub Pages project site: https://<user>.github.io/tokyo-od-game/
   base: process.env.BASE_PATH ?? "/tokyo-od-game/",
   plugins: [dracoDecoder()],
+  // Module workers so the TTS worker can dynamic-import the Emscripten ES module from public/tts.
+  worker: { format: "es" },
   build: {
     target: "es2022",
     chunkSizeWarningLimit: 4000,

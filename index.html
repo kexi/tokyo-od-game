@@ -68,6 +68,29 @@
 
       <div id="toasts"></div>
 
+      <div id="talk-hint" class="panel" hidden>E で話しかける</div>
+
+      <aside id="chat" class="panel" hidden aria-label="歩行者との会話">
+        <header>
+          <div>
+            <div id="chat-name"></div>
+            <div id="chat-sub" class="sub"></div>
+          </div>
+          <button type="button" id="chat-close" aria-label="会話を閉じる">×</button>
+        </header>
+        <div id="chat-log" aria-live="polite"></div>
+        <div id="chat-quick"></div>
+        <form id="chat-form" autocomplete="off">
+          <input id="chat-input" maxlength="80" placeholder="話しかける…（Enter で送信）" />
+          <button type="submit">送信</button>
+        </form>
+        <div id="chat-ai" class="sub">
+          <span id="ai-status">会話: 定型応答（オープンデータから回答）</span>
+          <button type="button" id="ai-enable">会話 AI（Gemma 4）を使う</button>
+          <label><input type="checkbox" id="voice-toggle" /> 音声で話す</label>
+        </div>
+      </aside>
+
       <!-- GSI asks for the source to stay visible while its tiles are on screen. -->
       <div id="attribution">
         <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener"
@@ -126,6 +149,28 @@
         光の柱は東京都オープンデータの実在スポットです。車で触れると「発見」できます。進捗はこのブラウザに保存されます。
       </p>
       <form method="dialog"><button>閉じる</button></form>
+    </dialog>
+
+    <dialog id="ai-consent">
+      <h2>会話 AI（Gemma 4）を有効にしますか？</h2>
+      <p>
+        Google の <strong>Gemma 4 E2B</strong>（Apache License
+        2.0）を、このブラウザの中だけで動かします。会話の内容は外部に送信されません。
+      </p>
+      <ul>
+        <li>
+          初回のみ Hugging Face から <strong>約 2.0 GB</strong> をダウンロードします（Wi-Fi
+          推奨）。以後はブラウザに保存されます。
+        </li>
+        <li>WebGPU を使います。GPU メモリを約 1.8 GB 使い、描画が重くなることがあります。</li>
+        <li>AI の発言は不正確なことがあります。</li>
+      </ul>
+      <p id="ai-consent-note" class="sub"></p>
+      <form method="dialog" class="row">
+        <button value="cancel">やめる（定型応答で遊ぶ）</button>
+        <button value="ok" id="ai-consent-ok">ダウンロードして有効化</button>
+        <button value="clear" id="ai-clear" type="submit">保存済みモデルを削除</button>
+      </form>
     </dialog>
 
     <dialog id="credits">

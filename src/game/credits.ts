@@ -28,6 +28,33 @@ function holder(publisher: string): string {
  * 地理院タイル利用規約, 気象庁ホームページ利用規約 + 留意事項. Kept in code next to the endpoints
  * so that adding a data source without credit is visible in review.
  */
+const ttsUrl = (file: string) => new URL(`${import.meta.env.BASE_URL}tts/${file}`, location.href).href;
+
+/**
+ * sanoTTS-jp model licence §3.1 (A), reproduced verbatim. The JSUT lines are omitted because
+ * the bundled weights are v4 (`saanotts-jp-v4-int8.bin`), which the licence says do not use JSUT.
+ */
+const TTS_ATTRIBUTION = `This model was distilled from a piper-plus teacher model.
+sanoTTS-jp — https://github.com/ayutaz/sanoTTS-jp
+
+つくよみちゃんコーパス
+  本ソフトウェアの音声合成には、フリー素材キャラクター「つくよみちゃん」
+  （© 夢前黎）が無料公開している音声データを使用しています。
+  https://tyc.rei-yumesaki.net/material/corpus/
+
+教師 base の学習に使用した音声コーパス
+（⚠️ 改変あり: いずれも音声合成モデルの学習に使用しています）:
+  - LibriTTS-R (en) — Koizumi et al., 2023 — CC BY 4.0
+      素材:       https://www.openslr.org/141/
+      ライセンス: https://creativecommons.org/licenses/by/4.0/
+  - CML-TTS (es / fr / pt) — freds0 et al. — CC BY 4.0
+      素材:       https://github.com/freds0/CML-TTS-Dataset
+      ライセンス: https://creativecommons.org/licenses/by/4.0/
+  - AISHELL-3 (zh) — Shi et al., 2020 — Apache-2.0
+      素材:       https://www.aishelltech.com/aishell_3
+      ライセンス: https://www.apache.org/licenses/LICENSE-2.0
+  上記 3 素材は現状のまま (AS IS) 提供され、明示・黙示を問わず保証はありません。`;
+
 export function renderCredits(sources: Source[]): string {
   const opendata = sources
     .filter((s) => !s.id.startsWith("odpt"))
@@ -78,9 +105,27 @@ export function renderCredits(sources: Source[]): string {
   <p>出典：${link("https://www.jma.go.jp/bosai/amedas/", "気象庁ホームページ")}のアメダス観測データ（東京）を加工して作成。編集・加工の責任は本ゲーム作者にあります。
   本ゲームの天候表現は気象庁の予報・警報ではありません。</p>
 
+  <h3>音声合成（sanoTTS-jp）</h3>
+  <p>歩行者の声は ${link("https://github.com/ayutaz/sanoTTS-jp", "sanoTTS-jp")}（コード: MIT、モデル: LicenseRef-sanoTTS-jp-Model-1.0）をブラウザ内で動かして合成しています。
+  ${link(ttsUrl("LICENSE-MODEL.md"), "モデルライセンス")}・${link(ttsUrl("NOTICE.txt"), "NOTICE")}・${link(ttsUrl("NOTICE-dictionary.txt"), "辞書 NOTICE")}・${link(ttsUrl("NOTICE-openjtalk.txt"), "Open JTalk NOTICE")}・${link(ttsUrl("LICENSE-APACHE-2.0.txt"), "Apache License 2.0 全文")}</p>
+  <pre class="notice">${esc(TTS_ATTRIBUTION)}</pre>
+
+  <h3>会話 AI（任意）</h3>
+  <p>有効にした場合のみ、Google ${link("https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm", "Gemma 4 E2B")}（Apache License 2.0）を各端末が Hugging Face から直接ダウンロードし、${link("https://github.com/google-ai-edge/LiteRT-LM", "LiteRT-LM")}（Apache License 2.0）で端末内実行します。会話内容は外部に送信されません。AI の発言は不正確な場合があります。</p>
+
+  <h3>利用規約（合成音声の禁止事項）</h3>
+  <p>本ゲームが合成した音声を、次の目的で使用することを禁止します（つくよみちゃんコーパスの条件に基づく。${link("https://tyc.rei-yumesaki.net/material/corpus/", "一次ソース")}）。本ゲームには音声を保存・書き出しする機能はありません。</p>
+  <ul>
+    <li>人を批判・攻撃すること。（「批判・攻撃」の定義は、つくよみちゃんキャラクターライセンスに準じます）</li>
+    <li>特定の政治的立場・宗教・思想への賛同または反対を呼びかけること。</li>
+    <li>刺激の強い表現をゾーニングなしで公開すること。</li>
+    <li>他者に対して二次利用（素材としての利用）を許可する形で公開すること。</li>
+  </ul>
+
   <h3>ソフトウェア</h3>
   <p>three.js (MIT) / 3DTilesRendererJS (Apache License 2.0, Copyright 2020 California Institute of Technology) /
-  Rapier (Apache License 2.0, Copyright 2020 Dimforge EURL) / Zod (MIT) / Draco (Apache License 2.0, Google) ほか。
+  Rapier (Apache License 2.0, Copyright 2020 Dimforge EURL) / Zod (MIT) / Draco (Apache License 2.0, Google) /
+  LiteRT-LM (Apache License 2.0, Google) / sanoTTS-jp (MIT) ほか。
   全文は ${link(licensesUrl, "THIRD_PARTY_LICENSES.txt")} を参照。</p>
 
   <h3>通信について</h3>

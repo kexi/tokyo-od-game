@@ -1,0 +1,334 @@
+import RAPIER from "@dimforge/rapier3d-compat";
+import { Vector3, type Group, type Scene } from "three";
+import { animateHuman, createHuman, disposeHuman, type HumanModel } from "./human";
+
+export type PedestrianProfile = {
+  id: number;
+  name: string;
+  age: string;
+  role: string;
+  mood: string;
+};
+
+export type Pedestrian = {
+  profile: PedestrianProfile;
+  object: Group;
+  model: HumanModel;
+  heading: number;
+  speed: number;
+  phase: number;
+  state: "walk" | "talk" | "fallen" | "dodge";
+  stateTime: number;
+  body: RAPIER.RigidBody | null;
+  groundCheck: number;
+};
+
+const FAMILY = [
+  "佐藤",
+  "鈴木",
+  "高橋",
+  "田中",
+  "伊藤",
+  "渡辺",
+  "山本",
+  "中村",
+  "小林",
+  "加藤",
+  "吉田",
+  "山田",
+  "松本",
+  "井上",
+  "木村",
+  "林",
+  "清水",
+  "斎藤",
+];
+const GIVEN = [
+  "さくら",
+  "健太",
+  "美咲",
+  "翔",
+  "陽菜",
+  "大輝",
+  "結衣",
+  "蓮",
+  "葵",
+  "悠斗",
+  "花子",
+  "誠",
+  "真由美",
+  "亮",
+  "千尋",
+  "勇気",
+  "あおい",
+  "修",
+];
+const AGES = ["10代", "20代", "30代", "40代", "50代", "60代", "70代"];
+const ROLES = [
+  "会社員",
+  "大学生",
+  "観光で来た人",
+  "近所に住む人",
+  "カフェの店員",
+  "ジョギング中の人",
+  "散歩中の人",
+  "配達の途中の人",
+  "お店の店主",
+  "高校生",
+  "仕事帰りの人",
+  "旅行で来た外国出身の人",
+];
+const MOODS = [
+  "明るくて話好き",
+  "落ち着いていて丁寧",
+  "ちょっと急いでいる",
+  "のんびり屋",
+  "物知りで少し自慢げ",
+  "人見知りだけど親切",
+];
+
+const CROWD = 36;
+const SPAWN_MIN = 30;
+const SPAWN_MAX = 180;
+const DESPAWN = 230;
+const BODY_RADIUS = 70;
+
+/** Deterministic profile from an id so the same NPC always has the same name and personality. */
+export function profileFor(id: number): PedestrianProfile {
+  const h = (n: number) => Math.abs(Math.imul(id + 1, 2654435761 + n * 97) >>> 0);
+  return {
+    id,
+    name: `${FAMILY[h(1) % FAMILY.length]} ${GIVEN[h(2) % GIVEN.length]}`,
+    age: AGES[h(3) % AGES.length],
+    role: ROLES[h(4) % ROLES.length],
+    mood: MOODS[h(5) % MOODS.length],
+  };
+}
+
+const SHIRTS = [
+  0xd94f45, 0x3d6fd9, 0xf2c14e, 0x4caf7a, 0xeeeeee, 0x333842, 0x9c5fd1, 0xf08bb0, 0x5aa9c9, 0xc98a4b,
+];
+const PANTS = [0x2b3445, 0x1e1e22, 0x5b4b3a, 0x7a8696, 0x3f5e3a];
+const HAIR = [0x1a1410, 0x3b2a1f, 0x6b4a2f, 0x888888, 0xb08a5a];
+const SKIN = [0xf1c9a5, 0xe0ac86, 0xc68b62];
+
+/**
+ * Street crowd around the player. Walks on open ground (ray-tested against building colliders),
+ * dodges fast cars, can be bumped (kinematic capsules near the car) and talked to.
+ */
+export class Pedestrians {
+  readonly list: Pedestrian[] = [];
+  private nextId = 1;
+  private spawnSeed = 7;
+  raining = false;
+
+  constructor(
+    private readonly scene: Scene,
+    private readonly world: RAPIER.World,
+    private readonly groundAt: (x: number, z: number) => number | null,
+    private readonly isOpen: (x: number, z: number, groundY: number) => boolean,
+  ) {}
+
+  /** Re-anchoring moved the world: shift everyone by the same rigid transform. */
+  transform(offset: (p: Vector3) => Vector3, yawDelta: number): void {
+    for (const p of this.list) {
+      offset(p.object.position);
+      p.heading += yawDelta;
+      this.dropBody(p);
+    }
+  }
+
+  /** `focus` is where the player is (car or on foot); `car` is used for dodging. */
+  update(dt: number, focus: Vector3, car: Vector3, carSpeed: number, carForward: Vector3): void {
+    this.fill(focus);
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const p = this.list[i];
+      const pos = p.object.position;
+      const dist = Math.hypot(pos.x - focus.x, pos.z - focus.z);
+      if (dist > DESPAWN) {
+        this.remove(i);
+        continue;
+      }
+      this.step(p, dt, car, carSpeed, carForward, dist);
+      const wantsBody = dist < BODY_RADIUS && p.state !== "fallen";
+      if (wantsBody && !p.body) this.createBody(p);
+      else if (!wantsBody) this.dropBody(p);
+      p.body?.setNextKinematicTranslation({ x: pos.x, y: pos.y + 0.9, z: pos.z });
+    }
+  }
+
+  /** Closest pedestrian within range of a point, for the talk prompt. */
+  nearest(point: Vector3, range: number): Pedestrian | null {
+    let best: Pedestrian | null = null;
+    let bestD = range;
+    for (const p of this.list) {
+      if (p.state === "fallen") continue;
+      const d = p.object.position.distanceTo(point);
+      if (d < bestD) {
+        bestD = d;
+        best = p;
+      }
+    }
+    return best;
+  }
+
+  /** Was this collider one of ours? Used to turn contacts into accident events. */
+  byCollider(handle: number): Pedestrian | null {
+    return this.list.find((p) => p.body && p.body.collider(0)?.handle === handle) ?? null;
+  }
+
+  knockDown(p: Pedestrian): void {
+    if (p.state === "fallen") return;
+    p.state = "fallen";
+    p.stateTime = 0;
+    this.dropBody(p);
+  }
+
+  startTalk(p: Pedestrian, face: Vector3): void {
+    p.state = "talk";
+    p.heading = Math.atan2(face.x - p.object.position.x, face.z - p.object.position.z);
+  }
+
+  endTalk(p: Pedestrian): void {
+    if (p.state === "talk") p.state = "walk";
+  }
+
+  private step(
+    p: Pedestrian,
+    dt: number,
+    car: Vector3,
+    carSpeed: number,
+    carForward: Vector3,
+    dist: number,
+  ): void {
+    p.stateTime += dt;
+    const pos = p.object.position;
+    if (p.state === "fallen") {
+      // Tip over, lie for a moment, then get back up.
+      const t = p.stateTime;
+      p.object.rotation.x =
+        t < 0.4 ? (t / 0.4) * (Math.PI / 2) : t < 3 ? Math.PI / 2 : Math.max(0, Math.PI / 2 - (t - 3) * 2);
+      if (t > 3.8) {
+        p.state = "walk";
+        p.object.rotation.x = 0;
+      }
+      return;
+    }
+
+    // A car coming at speed straight at them: hop aside (most of the time).
+    const toPed = new Vector3(pos.x - car.x, 0, pos.z - car.z);
+    const ahead = toPed.dot(carForward);
+    const lateral = Math.abs(toPed.x * carForward.z - toPed.z * carForward.x);
+    const isThreatened = carSpeed > 4 && ahead > 0 && ahead < carSpeed * 1.2 && lateral < 2.2;
+    if (isThreatened && p.state !== "dodge" && p.profile.id % 5 !== 0) {
+      p.state = "dodge";
+      p.stateTime = 0;
+      const side = toPed.x * carForward.z - toPed.z * carForward.x > 0 ? 1 : -1;
+      p.heading = Math.atan2(carForward.z * side, -carForward.x * side);
+    }
+    if (p.state === "dodge" && p.stateTime > 0.9) p.state = "walk";
+
+    const speed = p.state === "talk" ? 0 : p.state === "dodge" ? 4.5 : p.speed;
+    if (speed > 0) {
+      const dx = Math.sin(p.heading) * speed * dt;
+      const dz = Math.cos(p.heading) * speed * dt;
+      const nx = pos.x + dx * 6; // look ~1 step ahead
+      const nz = pos.z + dz * 6;
+      const g = this.groundAt(nx, nz);
+      const isBlocked = g === null || !this.isOpen(nx, nz, g);
+      if (isBlocked) {
+        p.heading += Math.PI * (0.5 + ((p.profile.id * 7 + Math.floor(p.stateTime * 10)) % 10) / 10);
+      } else {
+        pos.x += dx;
+        pos.z += dz;
+      }
+      if (
+        p.state === "walk" &&
+        Math.floor(p.stateTime * 0.2 + p.profile.id) % 7 === 0 &&
+        p.stateTime % 5 < dt
+      ) {
+        p.heading += (((p.profile.id * 13) % 7) - 3) * 0.25;
+      }
+    }
+    p.groundCheck -= dt;
+    if (p.groundCheck <= 0) {
+      p.groundCheck = 0.25;
+      const g = this.groundAt(pos.x, pos.z);
+      if (g !== null) pos.y = g;
+    }
+
+    p.object.rotation.set(0, p.heading, 0);
+    p.phase += dt * speed * 4.2;
+    animateHuman(p.model, p.phase, speed, this.raining);
+    if (dist > 120) p.object.visible = dist < DESPAWN - 10;
+  }
+
+  private fill(car: Vector3): void {
+    let attempts = 0;
+    while (this.list.length < CROWD && attempts < 6) {
+      attempts++;
+      this.spawnSeed = (this.spawnSeed * 1103515245 + 12345) >>> 0;
+      const a = ((this.spawnSeed % 3600) / 3600) * Math.PI * 2;
+      const r = SPAWN_MIN + (((this.spawnSeed >>> 12) % 1000) / 1000) * (SPAWN_MAX - SPAWN_MIN);
+      const x = car.x + Math.cos(a) * r;
+      const z = car.z + Math.sin(a) * r;
+      const g = this.groundAt(x, z);
+      if (g === null || !this.isOpen(x, z, g)) continue;
+      this.spawn(new Vector3(x, g, z), a * 3.1);
+    }
+  }
+
+  private spawn(at: Vector3, heading: number): void {
+    const profile = profileFor(this.nextId++);
+    const pick = <T>(arr: T[], salt: number) => arr[Math.abs(Math.imul(profile.id, 31 + salt)) % arr.length];
+    const model = createHuman(
+      {
+        shirt: pick(SHIRTS, 1),
+        pants: pick(PANTS, 2),
+        skin: pick(SKIN, 3),
+        hair: pick(HAIR, 4),
+        umbrella: pick([0x223355, 0xaa2233, 0x226644, 0xeeeeee], 5),
+      },
+      0.92 + (profile.id % 7) * 0.025,
+    );
+    model.root.position.copy(at);
+    this.scene.add(model.root);
+    this.list.push({
+      profile,
+      object: model.root,
+      model,
+      heading,
+      speed: 1.1 + (profile.id % 5) * 0.12,
+      phase: profile.id,
+      state: "walk",
+      stateTime: 0,
+      body: null,
+      groundCheck: 0,
+    });
+  }
+
+  private createBody(p: Pedestrian): void {
+    const pos = p.object.position;
+    p.body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, pos.y + 0.9, pos.z),
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.capsule(0.55, 0.28).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+      p.body,
+    );
+  }
+
+  private dropBody(p: Pedestrian): void {
+    if (!p.body) return;
+    this.world.removeRigidBody(p.body);
+    p.body = null;
+  }
+
+  private remove(i: number): void {
+    const p = this.list[i];
+    this.dropBody(p);
+    this.scene.remove(p.object);
+    disposeHuman(p.model);
+    this.list.splice(i, 1);
+  }
+}

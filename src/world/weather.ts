@@ -17,6 +17,7 @@ export async function fetchTokyoObservation(): Promise<Observation | null> {
       temp: value(s.temp),
       precip10m: value(s.precipitation10m),
       wind: value(s.wind),
+      sun1h: value(s.sun1h),
       time: latest.slice(11, 16),
     };
   } catch (error) {

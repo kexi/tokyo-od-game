@@ -25,6 +25,7 @@ const WHEEL_POSITIONS: Array<[number, number, number]> = [
  */
 export class Vehicle {
   readonly body: RAPIER.RigidBody;
+  readonly chassis: RAPIER.Collider;
   readonly controller: RAPIER.DynamicRayCastVehicleController;
   readonly object: Group;
   readonly headlights: SpotLight[];
@@ -37,7 +38,7 @@ export class Vehicle {
       RAPIER.RigidBodyDesc.dynamic().setLinearDamping(0.12).setAngularDamping(0.8).setCcdEnabled(true),
     );
     // Lower the centre of mass so the car is hard to roll in tight Tokyo corners.
-    world.createCollider(
+    this.chassis = world.createCollider(
       RAPIER.ColliderDesc.cuboid(HALF.x, HALF.y, HALF.z)
         .setMassProperties(
           1250,
@@ -46,7 +47,9 @@ export class Vehicle {
           { x: 0, y: 0, z: 0, w: 1 },
         )
         .setFriction(0.4)
-        .setRestitution(0.1),
+        .setRestitution(0.1)
+        // Contacts with pedestrians/buses/traffic become accident events.
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
       this.body,
     );
 
@@ -111,7 +114,11 @@ export class Vehicle {
       this.controller.setWheelBrake(i, brake + handbrake);
       this.controller.setWheelSideFrictionStiffness(i, !isFront && input.handbrake ? 0.45 : 1.1);
     }
-    this.controller.updateVehicle(dt);
+    // Wheels ride on terrain/buildings only, never on pedestrians or buses (kinematic bodies).
+    this.controller.updateVehicle(
+      dt,
+      RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+    );
   }
 
   syncVisuals(): void {

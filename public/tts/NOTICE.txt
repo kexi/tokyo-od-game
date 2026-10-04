@@ -1,0 +1,47 @@
+This model was distilled from a piper-plus teacher model.
+sanoTTS-jp — https://github.com/ayutaz/sanoTTS-jp
+
+つくよみちゃんコーパス
+  本ソフトウェアの音声合成には、フリー素材キャラクター「つくよみちゃん」
+  （© 夢前黎）が無料公開している音声データを使用しています。
+  https://tyc.rei-yumesaki.net/material/corpus/
+
+教師 base の学習に使用した音声コーパス
+（⚠️ 改変あり: いずれも音声合成モデルの学習に使用しています）:
+  - LibriTTS-R (en) — Koizumi et al., 2023 — CC BY 4.0
+      素材:       https://www.openslr.org/141/
+      ライセンス: https://creativecommons.org/licenses/by/4.0/
+  - CML-TTS (es / fr / pt) — freds0 et al. — CC BY 4.0
+      素材:       https://github.com/freds0/CML-TTS-Dataset
+      ライセンス: https://creativecommons.org/licenses/by/4.0/
+  - AISHELL-3 (zh) — Shi et al., 2020 — Apache-2.0
+      素材:       https://www.aishelltech.com/aishell_3
+      ライセンス: https://www.apache.org/licenses/LICENSE-2.0
+  上記 3 素材は現状のまま (AS IS) 提供され、明示・黙示を問わず保証はありません。
+
+MOE-Speech (litagin) — https://huggingface.co/spaces/litagin/moe-speech-license
+  教師 base の日本語。著作権法 30 条の 4（情報解析のための利用）に基づき学習に使用。
+  ⚠️ このライセンスは「クレジット表記は必要ありません」と明記しています。
+
+蒸留に使用した CC0 / パブリックドメインのテキスト:
+  - Common Voice ja (Mozilla) — CC0-1.0
+      https://github.com/common-voice/common-voice
+  - ROHAN4600 (森勢将雅) — CC0-1.0（パブリックドメイン）
+      https://github.com/mmorise/rohan4600
+  - ITA コーパス (小口純矢ほか) — パブリックドメイン
+      https://github.com/mmorise/ita-corpus
+
+教師実装: piper-plus (MIT) — https://github.com/ayutaz/piper-plus
+
+--------------------------------------------------------------------------
+⚠️ AISHELL-3 は Apache-2.0 です。同ライセンス §4(a) はライセンス全文の同梱を
+   求めるため、この配布物には LICENSE-APACHE-2.0.txt を同梱しています
+   （sha256 cfc7749b96f63bd3…）。**再配布するときも一緒に運んでください。**
+
+⚠️ この音声の**用途には制限があります**（人の批判・攻撃 / 政治的・宗教的・
+   思想的な賛同または反対の呼びかけ / 刺激の強い表現をゾーニングなしで公開 /
+   他者に二次利用を許可する形での公開）。全文は LICENSE-MODEL.md §3.2。
+   ⚠️ 製品に組み込む場合、この 4 項目を**自社の利用規約として課す義務**があります。
+
+⚠️ v4 は蒸留テキストが CC0 / パブリックドメインのみなので JSUT の行がありません。
+   v3 系の重み（saanotts-jp-v3-*）を配る場合は JSUT の行が**必須**です。

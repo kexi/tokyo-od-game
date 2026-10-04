@@ -1,6 +1,19 @@
 import type { DriveInput } from "../physics/vehicle";
+import type { WalkInput } from "./walker";
 
-type Action = "reset" | "camera" | "ground" | "time" | "weather" | "mission" | "help" | "credits" | "mute";
+type Action =
+  | "reset"
+  | "camera"
+  | "ground"
+  | "time"
+  | "weather"
+  | "mission"
+  | "help"
+  | "credits"
+  | "mute"
+  | "talk"
+  | "close"
+  | "door";
 
 const KEY_ACTIONS: Record<string, Action> = {
   KeyR: "reset",
@@ -12,6 +25,9 @@ const KEY_ACTIONS: Record<string, Action> = {
   KeyH: "help",
   KeyI: "credits",
   KeyV: "mute",
+  KeyE: "talk",
+  KeyF: "door",
+  Escape: "close",
 };
 
 /** Keyboard + gamepad + on-screen touch controls merged into one analog DriveInput. */
@@ -20,6 +36,7 @@ export class Input {
   private readonly touch = { throttle: 0, brake: 0, steer: 0 };
   private readonly listeners = new Map<Action, () => void>();
   private steerSmoothed = 0;
+  private dragTurn = 0;
 
   constructor() {
     window.addEventListener("keydown", (e) => {
@@ -43,6 +60,45 @@ export class Input {
 
   trigger(action: Action): void {
     this.listeners.get(action)?.();
+  }
+
+  /** Drag on the 3D view to swing the on-foot camera. */
+  bindDrag(canvas: HTMLElement): void {
+    let lastX: number | null = null;
+    canvas.addEventListener("pointerdown", (e) => (lastX = e.clientX));
+    window.addEventListener("pointerup", () => (lastX = null));
+    window.addEventListener("pointermove", (e) => {
+      if (lastX === null) return;
+      this.dragTurn -= (e.clientX - lastX) * 0.006;
+      lastX = e.clientX;
+    });
+  }
+
+  /** On-foot controls: WASD/↑↓ move relative to the camera, ←/→ or drag turn the camera. */
+  readWalk(): WalkInput {
+    const k = (...codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
+    let forward =
+      Math.max(k("KeyW", "ArrowUp"), this.touch.throttle) -
+      Math.max(k("KeyS", "ArrowDown"), this.touch.brake);
+    let right = k("KeyD") - k("KeyA");
+    let turn = k("ArrowLeft") - k("ArrowRight") + this.touch.steer;
+    const pad = navigator.getGamepads?.().find((g) => g?.connected);
+    if (pad) {
+      const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : v);
+      forward = forward || -dz(pad.axes[1] ?? 0);
+      right = right || dz(pad.axes[0] ?? 0);
+      turn = turn || -dz(pad.axes[2] ?? 0);
+    }
+    // Drag is a per-frame delta expressed as a turn rate (consumed once).
+    const drag = this.dragTurn * 30;
+    this.dragTurn = 0;
+    return {
+      forward,
+      right,
+      run: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || Boolean(pad?.buttons[5]?.pressed),
+      jump: this.keys.has("Space") || Boolean(pad?.buttons[0]?.pressed),
+      turn: turn + drag,
+    };
   }
 
   bindTouch(root: HTMLElement): void {

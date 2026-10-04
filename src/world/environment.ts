@@ -38,6 +38,7 @@ export type Observation = {
   temp: number | null;
   precip10m: number | null;
   wind: number | null;
+  sun1h: number | null;
   time: string;
 };
 

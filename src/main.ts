@@ -23,7 +23,12 @@ import { haversineMeters } from "./geo/ellipsoid";
 import { LocalFrame } from "./geo/frame";
 import { Geoid } from "./geo/geoid";
 import { latToTileY, lonToTileX } from "./geo/tiles";
+import { NpcBrain } from "./ai/llm";
+import { Voice } from "./ai/tts";
+import type { Surroundings } from "./ai/dialogue";
 import { GameAudio } from "./game/audio";
+import { ConversationController } from "./game/conversation";
+import { Walker } from "./game/walker";
 import { ChaseCamera } from "./game/camera";
 import { renderCredits } from "./game/credits";
 import { Input } from "./game/input";
@@ -43,6 +48,7 @@ import {
   type WeatherMode,
 } from "./world/environment";
 import { Terrain } from "./world/terrain";
+import { Pedestrians } from "./world/pedestrians";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
 
@@ -168,6 +174,19 @@ async function main(): Promise<void> {
   input.bindTouch($("#touch"));
   const audio = new GameAudio();
   const minimap = new Minimap($<HTMLCanvasElement>("#minimap"), categories);
+  const walker = new Walker(scene, world);
+  input.bindDrag($("#scene"));
+  let mode: "car" | "foot" = "car";
+  const focusPos = (target = new Vector3()) =>
+    mode === "foot" ? walker.position(target) : vehicle.position(target);
+  const pedestrians = new Pedestrians(
+    scene,
+    world,
+    (x, z) => groundY(x, z),
+    (x, z, g) => isOpenGround(x, z, g),
+  );
+  const brain = new NpcBrain();
+  const voice = new Voice(() => audio.context);
   const wardTotals = new Map<string, number>();
   for (const p of pois) wardTotals.set(p.ward, (wardTotals.get(p.ward) ?? 0) + 1);
 
@@ -178,17 +197,20 @@ async function main(): Promise<void> {
     return h === null ? null : frame.toLocal(g.lat, g.lon, h).y;
   };
 
+  // Fixed colliders only (terrain + buildings): cars, buses and pedestrians are not "ground".
+  const FIXED_ONLY = RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC;
   const rayDown = (x: number, z: number, fromY: number): number | null => {
     const hit = world.castRay(
       new RAPIER.Ray({ x, y: fromY, z }, { x: 0, y: -1, z: 0 }),
       800,
       true,
-      undefined,
-      undefined,
-      undefined,
-      vehicle.body,
+      FIXED_ONLY,
     );
     return hit ? fromY - hit.timeOfImpact : null;
+  };
+  const isOpenGround = (x: number, z: number, g: number): boolean => {
+    const hitY = rayDown(x, z, g + 60);
+    return hitY !== null && Math.abs(hitY - g) < 1.2;
   };
 
   /** Spiral outwards until a car-sized patch of open ground (no building above) is found. */
@@ -231,7 +253,7 @@ async function main(): Promise<void> {
   };
 
   const recenter = () => {
-    const pos = vehicle.position();
+    const pos = focusPos();
     const g = frame.toGeodetic(pos);
     const next = new LocalFrame(g.lat, g.lon, dem.heightAt(g.lat, g.lon) ?? g.h);
     const m = next.transformFrom(frame);
@@ -245,6 +267,9 @@ async function main(): Promise<void> {
     buildings.setFrame(next);
     field.setFrame(next);
     transit.setFrame(next);
+    const f = new Vector3(0, 0, 1).applyQuaternion(q);
+    pedestrians.transform(offset, Math.atan2(f.x, f.z));
+    if (walker.active) walker.transform(offset, Math.atan2(f.x, f.z));
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
 
@@ -323,6 +348,70 @@ async function main(): Promise<void> {
     }
   };
 
+  let lastGeo = { lat: SPAWN.lat, lon: SPAWN.lon };
+  const surroundings = (): Surroundings => {
+    const hour = env.displayHour(lastGeo.lat, lastGeo.lon);
+    const obs = env.getObservation();
+    const sky = env.isRaining() ? "雨" : (obs?.sun1h ?? 0) >= 0.3 ? "晴れ" : "くもり";
+    const weather =
+      env.weather === "real" && obs
+        ? `${sky}で、気温は${Math.round(obs.temp ?? 20)}度くらい`
+        : env.weather === "rain"
+          ? "雨"
+          : "晴れ";
+    const bus = transit.nearest(lastGeo.lat, lastGeo.lon);
+    return {
+      ward: wardName === "—" ? "東京" : wardName,
+      town: townName,
+      timeLabel: TIME_LABEL[env.timeMode] === "リアル時刻" ? "いま" : TIME_LABEL[env.timeMode],
+      clock: `${Math.floor(hour)}時${String(Math.floor((hour % 1) * 60)).padStart(2, "0")}分`,
+      weather,
+      nearbyPois: field.near(lastGeo.lat, lastGeo.lon, 900),
+      categories,
+      lat: lastGeo.lat,
+      lon: lastGeo.lon,
+      busLine: bus && bus.distance < 400 ? (bus.bus.note.split(" ")[0] ?? null) : null,
+    };
+  };
+  const conversation = new ConversationController(brain, voice, surroundings, (p) => pedestrians.endTalk(p));
+  input.on("talk", () => {
+    if (conversation.active || state !== "playing") return;
+    const isStopped = mode === "foot" || Math.abs(vehicle.speedKmh()) < 4;
+    const p = isStopped ? pedestrians.nearest(focusPos(), mode === "foot" ? 3.5 : 10) : null;
+    if (!p) {
+      toast(isStopped ? "近くに歩行者がいません" : "停車してから話しかけましょう");
+      return;
+    }
+    pedestrians.startTalk(p, focusPos());
+    conversation.open(p);
+  });
+  input.on("door", () => {
+    if (state !== "playing" || conversation.active) return;
+    if (mode === "car") {
+      if (Math.abs(vehicle.speedKmh()) > 5) {
+        toast("停車してから降りましょう");
+        return;
+      }
+      // Right-hand drive: the driver's door is on the car's right (chassis −X when facing +Z).
+      const q = vehicle.quaternion();
+      const at = vehicle.position().add(new Vector3(-1.6, 0, 0.3).applyQuaternion(q));
+      at.y = groundY(at.x, at.z) ?? at.y - 0.8;
+      walker.enter(at, carYaw(q));
+      mode = "foot";
+      toast("車を降りました（F で乗車・Shift で走る・Space でジャンプ・←→ やドラッグで視点）", "#4dd2ff");
+      return;
+    }
+    if (walker.position().distanceTo(vehicle.position()) > 4.5) {
+      toast("車のそばで F を押すと乗車します");
+      return;
+    }
+    walker.leave();
+    mode = "car";
+    chase.snap();
+    toast("乗車しました");
+  });
+  input.on("close", () => conversation.close());
+
   // Dev-only hook so automated checks can frame the car from arbitrary angles.
   let debugCamera: ((cam: PerspectiveCamera, car: Vector3) => void) | null = null;
 
@@ -335,6 +424,8 @@ async function main(): Promise<void> {
   let lastHud = 0;
   let frozen = true;
   let appliedNight = -1;
+  const events = new RAPIER.EventQueue(true);
+  const contactCooldown = new Map<number, number>();
   const loadStart = performance.now();
   const startButton = $<HTMLButtonElement>("#start");
   camera.position.set(-60, 90, 140);
@@ -389,21 +480,51 @@ async function main(): Promise<void> {
       return;
     }
 
-    const drive = input.read(dt);
+    const isOnFoot = mode === "foot";
+    const drive = isOnFoot ? { throttle: 0, brake: 0, steer: 0, handbrake: false } : input.read(dt);
+    const walk = input.readWalk();
     accumulator += dt;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
-      if (!frozen) vehicle.update(world.timestep, drive);
-      world.step();
+      const isParked = conversation.active !== null || isOnFoot;
+      if (!frozen)
+        vehicle.update(
+          world.timestep,
+          isParked ? { throttle: 0, brake: 1, steer: 0, handbrake: true } : drive,
+        );
+      if (isOnFoot && !frozen)
+        walker.update(
+          world.timestep,
+          conversation.active ? { forward: 0, right: 0, run: false, jump: false, turn: 0 } : walk,
+          env.isRaining(),
+        );
+      world.step(events);
       accumulator -= world.timestep;
       steps++;
     }
     vehicle.syncVisuals();
+    events.drainCollisionEvents((h1, h2, started) => {
+      if (!started) return;
+      const other = h1 === vehicle.chassis.handle ? h2 : h2 === vehicle.chassis.handle ? h1 : null;
+      if (other === null) return;
+      const isCoolingDown = (contactCooldown.get(other) ?? 0) > performance.now();
+      if (isCoolingDown) return;
+      contactCooldown.set(other, performance.now() + 3000);
+      const kmh = Math.abs(vehicle.speedKmh());
+      const ped = pedestrians.byCollider(other);
+      if (ped && kmh > 3) {
+        pedestrians.knockDown(ped);
+        onAccident("pedestrian", kmh, ped.profile.name);
+      } else if (!ped && kmh > 5) {
+        onAccident("vehicle", kmh, "");
+      }
+    });
 
     const carPos = vehicle.position();
     const carRot = vehicle.quaternion();
-    const geo = frame.toGeodetic(carPos);
-    const speed = vehicle.speedKmh();
+    const focus = focusPos();
+    const geo = frame.toGeodetic(focus);
+    const speed = isOnFoot ? walker.speed * 3.6 : vehicle.speedKmh();
 
     // Never simulate the car over ground whose collider has not been built yet.
     const hasGround = terrain.hasColliderAt(geo.lat, geo.lon);
@@ -413,17 +534,38 @@ async function main(): Promise<void> {
     }
     const gy = groundY(carPos.x, carPos.z);
     if (gy !== null && carPos.y < gy - 6) respawnHere();
-    if (Math.hypot(carPos.x, carPos.z) > RECENTER_DISTANCE) recenter();
+    const footGround = isOnFoot ? groundY(focus.x, focus.z) : null;
+    if (footGround !== null && focus.y < footGround - 4) walker.enter(focus.setY(footGround + 0.5), 0);
+    if (Math.hypot(focus.x, focus.z) > RECENTER_DISTANCE) recenter();
 
     terrain.update(geo.lat, geo.lon);
-    buildings.update(carPos, now);
-    transit.update(now, geo.lat, geo.lon, carPos);
+    buildings.update(focus, now);
+    transit.update(now, geo.lat, geo.lon, focus);
+    lastGeo = { lat: geo.lat, lon: geo.lon };
+    pedestrians.raining = env.isRaining();
+    const carForward = new Vector3(0, 0, 1).applyQuaternion(carRot);
+    carForward.y = 0;
+    carForward.normalize();
+    pedestrians.update(dt, focus, carPos, isOnFoot ? 0 : speed / 3.6, carForward);
+    const partner = conversation.active;
+    if (partner && partner.object.position.distanceTo(focus) > 18) conversation.close();
+    const talkRange = isOnFoot ? 3.5 : 10;
+    const talkable =
+      !partner && Math.abs(speed) < (isOnFoot ? 99 : 4) ? pedestrians.nearest(focus, talkRange) : null;
+    const nearCar = isOnFoot && walker.position().distanceTo(carPos) < 4.5;
+    const hint = $("#talk-hint");
+    const hints = [
+      talkable ? `E で話しかける（${talkable.profile.name}さん）` : "",
+      nearCar ? "F で乗車" : "",
+    ].filter(Boolean);
+    hint.hidden = hints.length === 0 || partner !== null;
+    hint.textContent = hints.join("　");
 
     if (now - lastPoiRefresh > 300) {
       lastPoiRefresh = now;
       field.refresh(geo.lat, geo.lon);
     }
-    for (const p of field.collect(carPos)) {
+    for (const p of field.collect(focus)) {
       const cat = field.category(p.category);
       score += cat?.points ?? 10;
       audio.chime();
@@ -440,17 +582,21 @@ async function main(): Promise<void> {
       toast(`ミッション達成！ ${result.target.name} +${result.reward}`, "#7dff9a");
     }
     const target = missions.current?.target ?? null;
-    missions.updateArrow(vehicle.object, target ? field.localPosition(target) : null);
+    missions.updateArrow(
+      isOnFoot ? walker.model.root : vehicle.object,
+      target ? field.localPosition(target) : null,
+    );
 
-    if (debugCamera) debugCamera(camera, carPos);
+    if (debugCamera) debugCamera(camera, focus);
+    else if (isOnFoot) walker.updateCamera(camera, dt);
     else chase.update(dt, carPos, carRot, speed / 3.6);
-    env.update(dt, carPos, camera.position, geo.lat, geo.lon);
+    env.update(dt, focus, camera.position, geo.lat, geo.lon);
     if (Math.abs(env.nightFactor - appliedNight) > 0.02) {
       appliedNight = env.nightFactor;
       buildings.setNightFactor(appliedNight);
     }
     vehicle.updateLights(env.nightFactor > 0.25 || env.isRaining());
-    audio.update(speed, drive.throttle);
+    audio.update(isOnFoot ? 0 : speed, drive.throttle);
 
     const moved = haversineMeters(geo.lat, geo.lon, lastGeocode.lat, lastGeocode.lon);
     // GSI's reverse geocoder is meant mainly for GSI Maps; call it sparingly (≥200 m, ≥10 s).
@@ -461,9 +607,24 @@ async function main(): Promise<void> {
 
     if (now - lastHud > 150) {
       lastHud = now;
-      updateHud(geo.lat, geo.lon, carYaw(carRot), speed, now);
+      const yaw = isOnFoot ? Math.atan2(walker.forward().x, walker.forward().z) : carYaw(carRot);
+      updateHud(geo.lat, geo.lon, yaw, speed, now);
+      conversation.refreshStatus();
     }
     renderer.render(scene, camera);
+  };
+
+  // Accident handling; traffic-law scoring is layered on top in game/traffic.ts.
+  const onAccident = (kind: "pedestrian" | "vehicle", kmh: number, who: string) => {
+    const penalty = kind === "pedestrian" ? 300 : 100;
+    score = Math.max(0, score - penalty);
+    toast(
+      kind === "pedestrian"
+        ? `⚠ 歩行者（${who}さん）と接触しました（${Math.round(kmh)} km/h） −${penalty}`
+        : `⚠ 車両と接触しました（${Math.round(kmh)} km/h） −${penalty}`,
+      "#ff6b6b",
+    );
+    log("accident", { kind, kmh: Math.round(kmh) });
   };
 
   const updateHud = (lat: number, lon: number, yaw: number, speed: number, now: number) => {
