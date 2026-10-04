@@ -72,14 +72,7 @@ try {
   await b.evaluate(
     `[...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '${label}')?.click()`,
   );
-  // Onto the nearest proper street (the default spawn is the station plaza), then autopilot.
-  await b.evaluate(`(() => { const G = window.__game; const g = G.getRoadGraph(); const car = G.vehicle.position();
-    const seg = g.segments.filter((s) => s.line.kind !== 'highway' && s.line.width >= 7 && s.length > 50 && !s.closed)
-      .sort((a, c) => g.sample(a, a.length / 2).pos.distanceTo(car) - g.sample(c, c.length / 2).pos.distanceTo(car))[0];
-    if (!seg) return;
-    const dir = seg.oneway === 0 ? 1 : seg.oneway; const { pos, dir: d } = g.sample(seg, seg.length / 2); const t = d.clone().multiplyScalar(dir);
-    const p = pos.clone().add({ x: t.z * 2.5, y: 0, z: -t.x * 2.5 }); p.y = (G.pedestrians.groundAt(p.x, p.z) ?? 0) + 0.9;
-    G.vehicle.teleport(p, Math.atan2(t.x, t.z)); })()`);
+  // The game puts the car on the nearest street once the roads have loaded; then autopilot.
   await b.evaluate("window.__game.advance(1.5)");
   await b.evaluate(
     "window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyO' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyO' }))",

@@ -46,9 +46,9 @@ import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { gameClock, tokyoDate, type GameClock } from "./world/ruleTime";
 import { planRoute } from "./game/navigation";
-import { RouteRibbon } from "./game/routeRibbon";
+import { RouteArrows } from "./game/routeArrows";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
-import { AutoDriver } from "./game/autoDriver";
+import { AutoDriver, keepLeftOffset } from "./game/autoDriver";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
@@ -271,7 +271,7 @@ async function main(): Promise<void> {
   );
   const speedometer = new Speedometer($("#hud-speed"));
   const nav = new NavGuide($("#nav"), () => audio.muted);
-  const ribbon = new RouteRibbon(scene, (x, z) => groundY(x, z));
+  const ribbon = new RouteArrows(scene, (x, z) => groundY(x, z));
   let navGeo: { version: number; points: Array<{ lat: number; lon: number }> } = { version: -1, points: [] };
   const stamps = new Stamps($("#stamps"), () => audio.context, $("#scene"));
   const patrol = new ParkingPatrol(scene, (x, z) => groundY(x, z));
@@ -411,6 +411,39 @@ async function main(): Promise<void> {
     const f = new Vector3(0, 0, 1).applyQuaternion(q);
     return Math.atan2(f.x, f.z);
   };
+
+  /**
+   * Put the car in the left lane of the nearest proper street, facing a legal way (one-way
+   * streets their way, otherwise the way it already faced): spawn points are stations and
+   * plazas, which are not roads.
+   */
+  const placeOnStreet = (): boolean => {
+    const graph = roadGraph;
+    if (!graph) return false;
+    const car = vehicle.position();
+    const isStreet = (seg: Segment) =>
+      seg.line.kind !== "highway" && seg.line.width >= 5.5 && seg.length > 30 && !seg.closed;
+    const hit = graph.nearest(car, 150, isStreet);
+    if (!hit) return false;
+    const seg = hit.seg;
+    const s = Math.min(seg.length - 12, Math.max(12, hit.s));
+    const { pos, dir } = graph.sample(seg, s);
+    const faced = hit.dir.dot(
+      new Vector3(Math.sin(carYaw(vehicle.quaternion())), 0, Math.cos(carYaw(vehicle.quaternion()))),
+    );
+    const sign = seg.oneway !== 0 ? seg.oneway : faced >= 0 ? 1 : -1;
+    const travel = dir.multiplyScalar(sign);
+    const offset = keepLeftOffset(seg, 0, pos, travel, (x, z) => pavements.contains(x, z));
+    const at = pos.add(leftOf(travel, offset));
+    const g = groundY(at.x, at.z);
+    if (g === null) return false;
+    at.y = g + 0.9;
+    vehicle.teleport(at, Math.atan2(travel.x, travel.z));
+    chase.snap();
+    return true;
+  };
+  let needsStreetSpawn = false;
+  let streetSpawnSince = 0;
 
   const respawnHere = () => {
     const p = vehicle.position();
@@ -730,6 +763,8 @@ async function main(): Promise<void> {
     vehicle.setFrozen(false);
     frozen = false;
     chase.snap();
+    needsStreetSpawn = true;
+    streetSpawnSince = performance.now();
     state = "playing";
     log("game_started", {});
     toast("光の柱＝東京都オープンデータの実在スポット。N キーで目的地ミッション！", "#4dd2ff");
@@ -772,6 +807,13 @@ async function main(): Promise<void> {
     const isOnFoot = mode === "foot";
     const isInCar = mode === "car";
     const isInTaxi = mode === "taxi" && taxi !== null;
+    // Once the streets are known, move the waiting car onto one (not after the player drove off).
+    // The kerb comes from PLATEAU paving, so wait for it (wards without it: give up after 10 s).
+    const hasKerbs = pavements.count > 0 || now - streetSpawnSince > 10000;
+    if (needsStreetSpawn && roadGraph && hasKerbs && isInCar) {
+      const isUntouched = Math.abs(vehicle.speedKmh()) < 2;
+      needsStreetSpawn = isUntouched && !placeOnStreet();
+    }
     const manual = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
     // Any steering, accelerator or brake input takes the car back, as with a real driver-assist system.
     const isOverride = Math.abs(manual.throttle) > 0.2 || manual.brake > 0.2 || Math.abs(manual.steer) > 0.3;
@@ -1107,9 +1149,11 @@ async function main(): Promise<void> {
       toast(`ミッション達成！ ${result.target.name} +${result.reward}`, "#7dff9a");
     }
     const target = missions.current?.target ?? null;
+    // In the car the green route arrows show the way; the direction cone would only compete.
+    const isGuided = isInCar && nav.route !== null;
     missions.updateArrow(
       isOnFoot ? walker.model.root : isInTaxi && taxi ? taxi.model.root : vehicle.object,
-      target ? field.localPosition(target) : null,
+      target && !isGuided ? field.localPosition(target) : null,
     );
 
     if (debugCamera) debugCamera(camera, focus);

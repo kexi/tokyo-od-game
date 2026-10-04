@@ -56,6 +56,42 @@ export function laneCentre(seg: Segment, i: number): number {
   return seg.oneway === 0 ? Math.max(0.8, Math.min(offset, half - 1.6)) : Math.min(offset, half - 1.6);
 }
 
+const KERB_CLEARANCE = 1.4; // car centre from the kerb: half the width plus a margin
+
+/**
+ * Distance left of `p` to the kerb: where PLATEAU paving starts, scanning out from the centreline
+ * in 25 cm steps (GSI 幅員 includes the pavements, so the road width alone puts cars on them).
+ * Infinity without paving data or paving within `max`.
+ */
+export function kerbLeft(
+  p: Vector3,
+  dir: Vector3,
+  max: number,
+  isPavement: ((x: number, z: number) => boolean) | undefined,
+): number {
+  if (!isPavement) return Infinity;
+  for (let d = 0.5; d <= max; d += 0.25) {
+    if (isPavement(p.x + dir.z * d, p.z - dir.x * d)) return d;
+  }
+  return Infinity;
+}
+
+/** Lateral offset (left of the centreline) to drive at, kept clear of the kerb. */
+export function keepLeftOffset(
+  seg: Segment,
+  lane: number,
+  p: Vector3,
+  dir: Vector3,
+  isPavement?: (x: number, z: number) => boolean,
+): number {
+  // Without 車両通行帯 the rule is 左側寄り (第18条第1項), one-way or not.
+  const wanted = seg.lanes > 1 ? laneCentre(seg, lane) : laneOffset(seg);
+  const kerb = kerbLeft(p, dir, seg.line.width / 2 + 1, isPavement);
+  const isTwoWay = seg.oneway === 0;
+  // Two-way: stay left of the centreline even on a narrow carriageway.
+  return Math.min(wanted, Math.max(isTwoWay ? 1 : -Infinity, kerb - KERB_CLEARANCE));
+}
+
 export class AutoDriver {
   route: Route | null = null;
   speed = 0;
@@ -257,8 +293,7 @@ export class AutoDriver {
     };
     while (lane < lanes - 1 && onPavement(lane)) lane++;
     this.lane = lane;
-    // Without 車両通行帯 the rule is 左側寄り (第18条第1項), one-way or not.
-    const target = lanes > 1 ? laneCentre(seg, lane) : laneOffset(seg);
+    const target = keepLeftOffset(seg, lane, centre, dir, world.isPavement);
     this.lateral ??= target;
     const rate = Math.max(0.8, Math.abs(this.speed) * 0.09) * dt;
     const gap = target - this.lateral;
