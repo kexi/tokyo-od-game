@@ -26,9 +26,9 @@ export function drawJunction(
   const h = canvas.height;
   const scale = (Math.min(w, h) * 0.46) / VIEW_M;
   const centre = next.pos;
-  // Incoming direction (a few metres before the junction) points up on the panel.
-  const before = pointAt(route, Math.max(0, next.at - 12));
-  const inDir = centre.clone().sub(before).setY(0);
+  // The street's direction arriving at the junction points up on the panel (the path itself is
+  // in the lane and already curving there).
+  const inDir = next.dir.clone().setY(0);
   if (inDir.lengthSq() < 1e-6) inDir.set(0, 0, -1);
   inDir.normalize();
   // Screen: up = inDir, right = inDir turned clockwise seen from above (x east, z south).
@@ -137,7 +137,7 @@ export function drawJunction(
   ctx.fillRect(w - 16, barTop + barH * (1 - left / BAR_M), 8, barH * (left / BAR_M));
 }
 
-/** Point on the route polyline at distance d. */
+/** Point on the route's path (by car: in the lane, round the corners) at route distance d. */
 export function pointAt(route: Route, d: number): Vector3 {
   let i = 1;
   while (i < route.cum.length - 1 && route.cum[i] < d) i++;
