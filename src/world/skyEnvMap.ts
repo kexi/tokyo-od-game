@@ -1,7 +1,6 @@
 import { CubeCamera, HalfFloatType, type RenderTarget, Scene, type Texture } from "three";
 import { CubeRenderTarget, PMREMGenerator, type WebGPURenderer } from "three/webgpu";
-import { SkyMesh } from "three/addons/objects/SkyMesh.js";
-import type { SkyLook } from "./skyShader";
+import { type SkyLook, TokyoSky } from "./skyShader";
 
 /** What the environment map was drawn for; a new one is drawn when this has moved enough. */
 export type EnvState = {
@@ -40,17 +39,16 @@ export function isEnvStale(drawn: EnvState | null, now: EnvState, step = 1): boo
  * Why not RoomEnvironment (as before): a studio, so car paint and glass towers reflected softboxes
  * at any time of day. Why not PMREMGenerator.fromScene: it allocates a new target per call.
  *
- * On WebGPU: three/webgpu's PMREMGenerator and CubeRenderTarget, and SkyMesh (TSL) for the sky.
- * WEBGPU-TODO(phase B): skyShader.ts's additions are GLSL, so this sky has no ground and skyline
- * under it yet (`look` is null): below the horizon the map shows what Preetham's model gives there.
+ * On WebGPU: three/webgpu's PMREMGenerator and CubeRenderTarget; the sky is the game's TSL sky
+ * (skyShader.ts) with its ground and skyline on (uGround.w, set by Environment's syncEnvSky).
  */
 export class SkyEnvMap {
   private readonly pmrem: PMREMGenerator;
   private readonly cube: CubeRenderTarget;
   private readonly cubeCamera: CubeCamera;
   private readonly scene = new Scene();
-  private readonly sky = new SkyMesh();
-  readonly look: SkyLook | null = null;
+  private readonly sky = new TokyoSky();
+  readonly look: SkyLook = this.sky.look;
   private target: RenderTarget | null = null;
   private drawn: EnvState | null = null;
   private drawnAt = -Infinity;
@@ -83,7 +81,7 @@ export class SkyEnvMap {
    * Draw again when the sky has moved (isEnvStale with `step`) and at most every `minGapMs`. `sync`
    * copies the game sky's uniforms (sun, clouds, glow) into this sky just before drawing.
    */
-  update(now: EnvState, nowMs: number, sync: (sky: SkyMesh) => void, step = 1, minGapMs = 400): boolean {
+  update(now: EnvState, nowMs: number, sync: (sky: TokyoSky) => void, step = 1, minGapMs = 400): boolean {
     const isDue = isEnvStale(this.drawn, now, step) && nowMs - this.drawnAt >= minGapMs;
     if (!isDue) return false;
     const t0 = performance.now();
@@ -101,7 +99,6 @@ export class SkyEnvMap {
     this.pmrem.dispose();
     this.cube.dispose();
     this.target?.dispose();
-    this.sky.geometry.dispose();
-    this.sky.material.dispose();
+    this.sky.dispose();
   }
 }

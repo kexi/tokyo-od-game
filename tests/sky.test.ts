@@ -1,34 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { Sky } from "three/addons/objects/Sky.js";
+import { BackSide } from "three";
 import { bloomSettings } from "../src/world/bloom";
 import { isEnvStale } from "../src/world/skyEnvMap";
-import { patchSkyFragment } from "../src/world/skyShader";
+import { TokyoSky } from "../src/world/skyShader";
 
-describe("Tokyo's additions to the Preetham sky shader", () => {
-  it("apply to the installed three's Sky.js (each anchor found once)", () => {
-    const patched = patchSkyFragment(new Sky().material.fragmentShader);
-    const uniforms = {
-      uSkyGain: "float",
-      uOzone: "float",
-      uGlow: "vec3",
-      uStars: "float",
-      uTwilight: "float",
-      uDeck: "vec4",
-      uGround: "vec4",
-      uHaze: "vec4",
-    };
-    for (const [name, type] of Object.entries(uniforms))
-      expect(patched).toContain(`uniform ${type} ${name};`);
-    // Behind the clouds (they composite over the glow and the stars), the deck over them, the haze
-    // after the output encoding.
-    const at = (s: string) => patched.indexOf(s);
-    expect(at("texColor += uGlow")).toBeLessThan(at("// Clouds"));
-    expect(at("if ( uDeck.w > 0.0 )")).toBeGreaterThan(at("// Clouds"));
-    expect(at("if ( uHaze.w > 0.0 )")).toBeGreaterThan(at("#include <colorspace_fragment>"));
+describe("Tokyo's sky (TSL)", () => {
+  it("drives like three's SkyMesh: the same uniforms, which the environment map's sky copies", () => {
+    const sky = new TokyoSky();
+    for (const name of ["turbidity", "rayleigh", "mieCoefficient", "cloudCoverage", "sunPosition"] as const)
+      expect(sky[name].isUniformNode).toBe(true);
+    // A box drawn from inside at the far plane, behind everything, without fog of its own.
+    expect(sky.material.side).toBe(BackSide);
+    expect(sky.material.depthWrite).toBe(false);
+    expect(sky.material.fog).toBe(false);
+    expect(sky.material.colorNode).not.toBeNull();
+    expect(sky.material.vertexNode).not.toBeNull();
   });
 
-  it("refuse a shader whose anchors moved (a three update), so the plain sky is kept", () => {
-    expect(() => patchSkyFragment("void main() {}")).toThrow(/anchor/);
+  it("starts with the additions off (no glow, stars, deck, ground or haze until Environment sets them)", () => {
+    const look = new TokyoSky().look;
+    expect(look.uSkyGain.value).toBe(1);
+    expect(look.uStars.value).toBe(0);
+    expect(look.uDeck.value.w).toBe(0);
+    expect(look.uGround.value.w).toBe(0);
+    expect(look.uHaze.value.w).toBe(0);
+    expect(look.uGlow.value.getHex()).toBe(0);
+  });
+
+  it("gives each sky its own uniforms (the environment map's sky has the ground, the screen's the haze)", () => {
+    const a = new TokyoSky();
+    const b = new TokyoSky();
+    a.look.uGround.value.w = 1;
+    expect(b.look.uGround.value.w).toBe(0);
+    expect(a.turbidity).not.toBe(b.turbidity);
   });
 });
 

@@ -11,15 +11,14 @@ import {
   type Scene,
   type Texture,
 } from "three";
-import { PMREMGenerator, type WebGPURenderer } from "three/webgpu";
-import { ATMOSPHERE, extinctionFor, installAtmosphere } from "./atmosphere";
-import { SkyMesh } from "three/addons/objects/SkyMesh.js";
+import { type Node, PMREMGenerator, type WebGPURenderer } from "three/webgpu";
+import { ATMOSPHERE, atmosphereFog, extinctionFor } from "./atmosphere";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GRAPHICS, QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
 import { spellMinutes } from "./weatherSpells";
 import { SkyEnvMap, type EnvState } from "./skyEnvMap";
-import type { SkyLook } from "./skyShader";
+import { type SkyLook, TokyoSky } from "./skyShader";
 import { lightBalance, nightFactorAt, type LightBalance } from "./skyLight";
 
 export type TimeMode = "real" | "morning" | "day" | "evening" | "night";
@@ -84,14 +83,10 @@ const REFLECTIONS = {
 export class Environment {
   readonly sun = new DirectionalLight(0xffffff, 2.5);
   private readonly hemi = new HemisphereLight(0xbfd9ff, 0x4a4036, 0.9);
-  // WEBGPU-TODO(phase B): the sky in TSL with skyShader.ts's additions (the city's night glow, stars,
-  // blue hour, rain deck, horizon haze; for the environment map the ground and skyline), driven by
-  // the SkyLook values update() sets from skyLight.ts. SkyMesh is three's TSL port of the Sky the
-  // patch extends (same Preetham model, clouds included), standing in without the additions: `look`
-  // stays null until then, and the night sky is Preetham's black.
-  private readonly sky = new SkyMesh();
+  /** Preetham's sky with clouds, in TSL with Tokyo's additions (skyShader.ts). */
+  private readonly sky = new TokyoSky();
   /** The night glow, stars, blue hour, rain deck and horizon haze added to the sky (skyShader.ts). */
-  private readonly look: SkyLook | null = null;
+  private readonly look: SkyLook = this.sky.look;
   /** scene.environment drawn from this sky (skyEnvMap.ts), or the studio for 空の映り込み なし. */
   envMap: SkyEnvMap | null = null;
   private studio: Texture | null = null;
@@ -142,13 +137,11 @@ export class Environment {
     // camera, so the distance sort cannot be trusted to put it first).
     this.sky.renderOrder = -1000;
     scene.add(this.sky);
-    // WEBGPU-TODO(phase B): the atmospheric fog (atmosphere.ts patches the WebGL shader chunks,
-    // which node materials do not use) as scene.fogNode; until then node materials get three's
-    // linear Fog below, without the haze by height and the glow towards the sun. Its colour is a
-    // radiance (skyLight.ts), which is right as it is here: node materials mix the fog in before the
-    // output pass tone-maps, which is what atmosphere.ts's tone-mapping of the fog does in WebGL.
-    installAtmosphere();
+    // The atmospheric fog (atmosphere.ts) for every node material with fog on. The three Fog stays
+    // as the holder of its colour (a radiance, skyLight.ts) and of the linear floor's near and far,
+    // which the fog node reads, and for the water, which reflects its colour as the horizon.
     scene.fog = this.fog;
+    (scene as Scene & { fogNode: Node | null }).fogNode = atmosphereFog(this.fog);
 
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(QUALITY.shadowMapSize, QUALITY.shadowMapSize);
@@ -321,7 +314,7 @@ export class Environment {
     this.hemi.groundColor.setRGB(light.hemiGround.r, light.hemiGround.g, light.hemiGround.b);
     this.hemi.intensity = light.hemiIntensity;
 
-    // A radiance (atmosphere.ts tone-maps it); the water reflects it as its horizon.
+    // A radiance, tone-mapped with the frame; the water reflects it as its horizon.
     const fog = light.fog;
     this.fog.color.setRGB(fog.r, fog.g, fog.b);
     // The linear ramp now only hides the end of the streamed world; the haze is atmosphere.ts.
@@ -348,16 +341,14 @@ export class Environment {
     this.renderer.toneMappingExposure = light.exposure;
 
     const look = this.look;
-    if (look) {
-      look.uSkyGain.value = light.skyGain;
-      look.uOzone.value = light.ozone;
-      look.uGlow.value.setRGB(light.glow.r, light.glow.g, light.glow.b);
-      look.uStars.value = light.stars;
-      look.uTwilight.value = light.twilight;
-      look.uDeck.value.set(light.deck.r, light.deck.g, light.deck.b, cloud);
-      // The haze over the sky: less of it in rain, where the deck itself is the grey.
-      look.uHaze.value.set(fog.r, fog.g, fog.b, MathUtils.lerp(0.35, 0.12, cloud));
-    }
+    look.uSkyGain.value = light.skyGain;
+    look.uOzone.value = light.ozone;
+    look.uGlow.value.setRGB(light.glow.r, light.glow.g, light.glow.b);
+    look.uStars.value = light.stars;
+    look.uTwilight.value = light.twilight;
+    look.uDeck.value.set(light.deck.r, light.deck.g, light.deck.b, cloud);
+    // The haze over the sky: less of it in rain, where the deck itself is the grey.
+    look.uHaze.value.set(fog.r, fog.g, fog.b, MathUtils.lerp(0.35, 0.12, cloud));
     // After the sky's uniforms: the environment map copies this frame's.
     const isStudio = this.updateReflections({ elevation, azimuth, overcast: cloud }, light);
     // The studio is a bright room whatever the hour (the old balance); the sky's map dims by itself.
@@ -399,12 +390,11 @@ export class Environment {
    * The environment map's sky is a second Sky (its own uniforms): it takes this one's sun, clouds
    * and night, without the disc, the stars or the screen's haze, and with a ground under it.
    */
-  private syncEnvSky(sky: SkyMesh, light: LightBalance): void {
+  private syncEnvSky(sky: TokyoSky, light: LightBalance): void {
     sky.sunPosition.value.copy(this.sky.sunPosition.value);
     for (const name of SKY_COPIED) sky[name].value = this.sky[name].value;
     const look = this.look;
-    const envLook = this.envMap?.look;
-    if (!look || !envLook) return;
+    const envLook = sky.look;
     envLook.uSkyGain.value = look.uSkyGain.value;
     envLook.uOzone.value = look.uOzone.value;
     envLook.uGlow.value.copy(look.uGlow.value);
