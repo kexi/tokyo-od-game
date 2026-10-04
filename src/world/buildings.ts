@@ -38,6 +38,9 @@ type Model = {
 const LOAD_RADIUS = QUALITY.buildingLoadRadius;
 // Full detail in every direction around the car so colliders exist behind/beside it too.
 const DETAIL_RADIUS = 250;
+/** Colliders go only this far beyond their radius, so one is not rebuilt at the edge every tick. */
+const COLLIDER_HYSTERESIS = 60;
+const COLLIDER_BUDGET_MS = 4;
 
 /**
  * PLATEAU building tiles streamed straight from the public CORS-enabled catalogue, plus Rapier
@@ -68,11 +71,36 @@ export class Buildings {
     this.createTiles();
   }
 
-  /** Leave out PLATEAU buildings inside these lon/lat rings (a landmark model stands there). */
+  /**
+   * Leave out PLATEAU buildings inside these lon/lat rings (a landmark model stands there). Their
+   * triangles are also what the colliders are made of, so the footprints get walls of their own:
+   * without them the car drove straight through 東京駅.
+   */
   hideFootprints(rings: Array<Array<[number, number]>>): void {
     this.hiddenRings = rings;
     this.hidden = rings.map((r) => r.map(([lon, lat]) => this.frame.toLocal(lat, lon, this.frame.origin.h)));
+    if (this.footprintCollider) this.world.removeCollider(this.footprintCollider, false);
+    this.footprintCollider = null;
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    // Each edge a wall from well below to well above street level (Tokyo's ground is −5 to 40 m
+    // from the frame's origin height); walls only — nothing drives on a landmark's roof.
+    for (const ring of this.hidden)
+      ring.forEach((a, i) => {
+        const b = ring[(i + 1) % ring.length];
+        const base = vertices.length / 3;
+        vertices.push(a.x, -60, a.z, b.x, -60, b.z, b.x, 120, b.z, a.x, 120, a.z);
+        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      });
+    if (indices.length === 0) return;
+    const desc = RAPIER.ColliderDesc.trimesh(
+      new Float32Array(vertices),
+      new Uint32Array(indices),
+    ).setFriction(0.6);
+    this.footprintCollider = this.world.createCollider(desc);
   }
+
+  private footprintCollider: RAPIER.Collider | null = null;
 
   /**
    * Collapse the triangles whose centre lies inside a hidden footprint (degenerate triangles draw
@@ -175,17 +203,25 @@ export class Buildings {
     if (!isColliderTick) return;
     this.lastColliderTick = now;
 
-    let built = false;
+    // A tile gets its collider once it has been shown near the player and keeps it until it is far
+    // or unloaded. Why not follow visibility: tiles leave the frustum when the driver looks aside
+    // and a parent hides while its children take over, and either dropped the walls for a moment
+    // (one rebuild per tick) — long enough to drive through. Overlapping parent/child walls are fine.
+    const wanted: Array<{ model: Model; distance: number }> = [];
     for (const model of this.models.values()) {
       model.sphere ??= this.computeSphere(model.scene);
       const distance = model.sphere.center.distanceTo(player) - model.sphere.radius;
-      const isNear = model.visible && distance < BUILDING_COLLIDER_RADIUS;
-      if (isNear && !model.collider && !built) {
-        this.createCollider(model);
-        built = true;
-      } else if (!isNear && model.collider) {
-        this.removeCollider(model);
-      }
+      const isFar = distance > BUILDING_COLLIDER_RADIUS + COLLIDER_HYSTERESIS;
+      if (isFar && model.collider) this.removeCollider(model);
+      const isWanted = !model.collider && model.visible && distance < BUILDING_COLLIDER_RADIUS;
+      if (isWanted) wanted.push({ model, distance });
+    }
+    // Closest first, within a few milliseconds a tick so building them never stalls a frame.
+    wanted.sort((a, b) => a.distance - b.distance);
+    const start = performance.now();
+    for (const { model } of wanted) {
+      this.createCollider(model);
+      if (performance.now() - start > COLLIDER_BUDGET_MS) break;
     }
   }
 
