@@ -42,7 +42,7 @@ random.seed(SEED)
 np.random.seed(SEED)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-OUTPUT_DIR = PROJECT_ROOT / "assets" / "police" / "textures"
+OUTPUT_DIR = PROJECT_ROOT / "assets" / "police_vehicles" / "textures"
 
 # Color constants
 ROYAL_BLUE = (31, 79, 160)
