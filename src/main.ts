@@ -15,6 +15,7 @@ import {
   Scene,
   Sphere,
   SRGBColorSpace,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from "three";
@@ -115,9 +116,10 @@ import { PATROL_LABEL, PolicePatrol, type PatrolKind } from "./game/policePatrol
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
 import { CarNavi } from "./game/carNavi";
+import { MotionBlur } from "./world/motionBlur";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
-import { loadPrefs, renderKeyList, savePrefs, type ControlPrefs } from "./game/controlsHelp";
+import { blurLevelOf, loadPrefs, renderKeyList, savePrefs, type ControlPrefs } from "./game/controlsHelp";
 import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type Pose, type ReplayCamera } from "./game/replay";
 import { createVehicle, loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
@@ -253,6 +255,9 @@ async function main(): Promise<void> {
   const vehicle = new Vehicle(world);
   cockpit.attach(vehicle.object);
   const carNavi = new CarNavi();
+  const blur = new MotionBlur();
+  const viewDir = new Vector3();
+  let lastViewYaw = 0;
   cockpit.showOnDisplay(carNavi.canvas);
   scene.add(vehicle.object);
   vehicle.setFrozen(true);
@@ -1061,6 +1066,8 @@ async function main(): Promise<void> {
   const applyPrefs = (prefs: ControlPrefs) => {
     input.layout = prefs.layout;
     controls.assist = prefs.assist;
+    blur.level = prefs.blur;
+    $<HTMLSelectElement>("#opt-blur").value = prefs.blur;
     $<HTMLSelectElement>("#opt-layout").value = prefs.layout;
     $<HTMLSelectElement>("#opt-assist").value = prefs.assist;
     renderKeyList($("#help-keys"), prefs);
@@ -1072,11 +1079,12 @@ async function main(): Promise<void> {
     }
   };
   applyPrefs(loadPrefs());
-  for (const id of ["#opt-layout", "#opt-assist"])
+  for (const id of ["#opt-layout", "#opt-assist", "#opt-blur"])
     $(id).addEventListener("change", () => {
       const prefs: ControlPrefs = {
         layout: $<HTMLSelectElement>("#opt-layout").value === "ccd" ? "ccd" : "wasd",
         assist: $<HTMLSelectElement>("#opt-assist").value === "real" ? "real" : "easy",
+        blur: blurLevelOf($<HTMLSelectElement>("#opt-blur").value),
       };
       savePrefs(prefs);
       applyPrefs(prefs);
@@ -2077,6 +2085,26 @@ async function main(): Promise<void> {
     );
     // Plain renderer.render outside the driver's seat; from it, the rain on the glass too.
     cockpit.render(renderer, scene, camera);
+    // ブラー: the car's speed (toward the vanishing point ahead) and the view's turn, over the frame.
+    camera.getWorldDirection(viewDir);
+    const viewYaw = Math.atan2(viewDir.x, viewDir.z);
+    const yawRate =
+      Math.atan2(Math.sin(viewYaw - lastViewYaw), Math.cos(viewYaw - lastViewYaw)) / Math.max(dt, 1e-3);
+    lastViewYaw = viewYaw;
+    if (isInCar && !QUALITY.isMobile) {
+      const ahead = carPos
+        .clone()
+        .add(new Vector3(Math.sin(vehicle.yaw()) * 300, 1, Math.cos(vehicle.yaw()) * 300))
+        .project(camera);
+      const isAheadInView = ahead.z < 1 && Math.abs(ahead.x) < 1.2 && Math.abs(ahead.y) < 1.2;
+      blur.apply(renderer, {
+        kmh: speed,
+        focus: isAheadInView ? new Vector2((ahead.x + 1) / 2, (ahead.y + 1) / 2) : null,
+        yawRate,
+        isInside: chase.mode === "cockpit",
+        dt,
+      });
+    }
     takeShots();
     if (pendingScreenshot) {
       pendingScreenshot = false;

@@ -1,3 +1,4 @@
+import type { BlurLevel } from "../world/motionBlur";
 import type { Assist } from "./carControls";
 import { keyFor, type KeyLayout } from "./input";
 import { SOCIAL_APP_NAME } from "./socialTheme";
@@ -7,17 +8,21 @@ import { SOCIAL_APP_NAME } from "./socialTheme";
  * control mode (簡単操作 by default: the car works its own switches; or リアル), remembered in this
  * browser, and the key list in the help that follows them.
  */
-export type ControlPrefs = { layout: KeyLayout; assist: Assist };
+export type ControlPrefs = { layout: KeyLayout; assist: Assist; blur: BlurLevel };
 
 const STORE_KEY = "tod.controls";
-export const DEFAULT_PREFS: ControlPrefs = { layout: "wasd", assist: "easy" };
+export const DEFAULT_PREFS: ControlPrefs = { layout: "wasd", assist: "easy", blur: "light" };
+
+/** A stored or chosen ブラー level; anything else is the default. */
+export const blurLevelOf = (value: unknown): BlurLevel =>
+  value === "strong" || value === "off" ? value : DEFAULT_PREFS.blur;
 
 export function loadPrefs(): ControlPrefs {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? "null") as Partial<ControlPrefs> | null;
     const layout = saved?.layout === "ccd" ? "ccd" : DEFAULT_PREFS.layout;
     const assist = saved?.assist === "real" ? "real" : DEFAULT_PREFS.assist;
-    return { layout, assist };
+    return { layout, assist, blur: blurLevelOf(saved?.blur) };
   } catch {
     // Storage blocked (private window, previews): the defaults.
     return { ...DEFAULT_PREFS };
@@ -33,7 +38,7 @@ export function savePrefs(prefs: ControlPrefs): void {
 }
 
 /** The help's key list for a layout; switches the car works itself in 簡単操作 say so. */
-export function keyRows(prefs: ControlPrefs): Array<[string, string]> {
+export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[string, string]> {
   const { layout, assist } = prefs;
   const auto = (text: string) => (assist === "easy" ? `${text}（簡単操作では自動）` : text);
   const isWasd = layout === "wasd";
