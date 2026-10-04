@@ -85,6 +85,8 @@ try {
     "window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyO' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyO' }))",
   );
   await b.evaluate("window.__game.advance(0.5)");
+  const toasts = await b.evaluate("[...document.querySelectorAll('.toast')].map((t) => t.textContent)");
+  log("autopilot", { on: await b.evaluate("!!window.__game.getAutopilot()"), toasts });
   const frames = [];
   const total = Math.round((minutes * 60) / every);
   for (let k = 0; k < total; k++) {

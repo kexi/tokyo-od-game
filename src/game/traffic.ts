@@ -13,6 +13,7 @@ export type ViolationKind =
   | "uturn" // 指定横断等禁止違反（転回禁止）
   | "slow" // 徐行場所違反
   | "laneChange" // 進路変更禁止違反
+  | "laneUse" // 通行帯違反
   | "keepLeft" // 通行区分違反（右側通行）
   | "speed" // 速度超過
   | "pedestrianCrossing" // 横断歩行者等妨害等
@@ -122,6 +123,14 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     kind: "laneChange",
     label: "進路変更禁止違反",
     article: "道路交通法 第26条の2第3項",
+    points: 1,
+    fine: 6000,
+  },
+  // 車両通行帯のある道路で、右端の通行帯を走り続けた（追越し・右折の準備を除く）。
+  laneUse: {
+    kind: "laneUse",
+    label: "通行帯違反",
+    article: "道路交通法 第20条第1項",
     points: 1,
     fine: 6000,
   },

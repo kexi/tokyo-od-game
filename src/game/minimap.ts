@@ -27,6 +27,8 @@ export class Minimap {
     buses: Array<{ lat: number; lon: number }>;
     /** カーナビ route, drawn under the markers. */
     route?: Array<{ lat: number; lon: number }>;
+    /** 配車中のタクシー: where it is, its heading (as `heading`) and the way it is coming. */
+    taxi?: { lat: number; lon: number; heading: number; route: Array<{ lat: number; lon: number }> } | null;
   }): void {
     const { ctx, canvas } = this;
     const size = canvas.width;
@@ -68,6 +70,20 @@ export class Minimap {
       ctx.stroke();
       ctx.lineWidth = 1;
     }
+    if (opts.taxi && opts.taxi.route.length > 1) {
+      ctx.strokeStyle = "rgba(255,210,60,0.85)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      opts.taxi.route.forEach((p, i) => {
+        const [x, y] = project(p.lat, p.lon);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 1;
+    }
     for (const p of opts.pois) {
       const [x, y] = project(p.lat, p.lon);
       ctx.fillStyle = this.colors.get(p.category) ?? "#fff";
@@ -92,6 +108,31 @@ export class Minimap {
       ctx.beginPath();
       ctx.arc(x, y, 6, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (opts.taxi) {
+      // Clamped to the rim like the target, so a taxi further out still shows its direction.
+      let [x, y] = project(opts.taxi.lat, opts.taxi.lon);
+      const dx = x - half;
+      const dy = y - half;
+      const d = Math.hypot(dx, dy);
+      const edge = half - 10;
+      if (d > edge) {
+        x = half + (dx / d) * edge;
+        y = half + (dy / d) * edge;
+      }
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(opts.taxi.heading - opts.heading);
+      ctx.fillStyle = "#ffd23c";
+      ctx.strokeStyle = "#1d2a4a";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-5, -8, 10, 16, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#1d2a4a";
+      ctx.fillRect(-3, -6, 6, 3); // windscreen: the front
+      ctx.restore();
     }
     // North marker rotates with heading.
     const [nx, ny] = project(opts.lat + (opts.radius * 0.85) / METERS_PER_DEG_LAT, opts.lon);

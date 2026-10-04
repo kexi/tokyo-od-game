@@ -59,7 +59,7 @@ import { Minimap } from "./game/minimap";
 import { Missions } from "./game/missions";
 import { PoiField, storageKeyFor } from "./game/pois";
 import { log, warn } from "./log";
-import { Vehicle } from "./physics/vehicle";
+import { Vehicle, type DriveInput } from "./physics/vehicle";
 import { Buildings } from "./world/buildings";
 import { DemStore } from "./world/dem";
 import {
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
   /** The 自動運転タクシー called from the phone, while one is about. */
   let taxi: RoboTaxi | null = null;
   /** 自動運転モード of the player's own car (with the mission target, or cruising about). */
-  let autopilot: { driver: AutoDriver; cruising: boolean; rideHeight: number } | null = null;
+  let autopilot: { driver: AutoDriver; cruising: boolean; input: DriveInput } | null = null;
   const focusPos = (target = new Vector3()) =>
     mode === "foot"
       ? walker.position(target)
@@ -653,6 +653,7 @@ async function main(): Promise<void> {
   let wrongWaySince: number | null = null;
   let slowSince: number | null = null;
   let closedSince: number | null = null;
+  let rightLaneSince: number | null = null;
   let lastHeading: { seg: Segment; sgn: number; at: number } | null = null;
   let laneTrack: { seg: Segment; lane: number } | null = null;
   let lastStreet: { seg: Segment; dir: 1 | -1 } | null = null;
@@ -776,12 +777,13 @@ async function main(): Promise<void> {
     // Any steering, accelerator or brake input takes the car back, as with a real driver-assist system.
     const isOverride = Math.abs(manual.throttle) > 0.2 || manual.brake > 0.2 || Math.abs(manual.steer) > 0.3;
     if (autopilot && isOverride) stopAutopilot("運転操作で自動運転を解除しました");
-    const drive = autopilot ? { throttle: 0, brake: 0, steer: 0, handbrake: false } : manual;
+    const drive = autopilot ? autopilot.input : manual;
     const walk = input.readWalk();
     accumulator += dt;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
-      if (!frozen && isInCar && !autopilot) vehicle.update(world.timestep, drive);
+      if (!frozen && isInCar) vehicle.update(world.timestep, drive);
+      taxi?.step(world.timestep);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
       accumulator -= world.timestep;
@@ -810,13 +812,7 @@ async function main(): Promise<void> {
     const carRot = vehicle.quaternion();
     const focus = focusPos();
     const geo = frame.toGeodetic(focus);
-    const speed = isOnFoot
-      ? walker.speed * 3.6
-      : isInTaxi && taxi
-        ? taxi.speed * 3.6
-        : autopilot
-          ? autopilot.driver.speed * 3.6
-          : vehicle.speedKmh();
+    const speed = isOnFoot ? walker.speed * 3.6 : isInTaxi && taxi ? taxi.speed * 3.6 : vehicle.speedKmh();
 
     // Never simulate the car over ground whose collider has not been built yet.
     const hasGround = terrain.hasColliderAt(geo.lat, geo.lon);
@@ -956,6 +952,21 @@ async function main(): Promise<void> {
         }
         lastStreet = { seg: onRoad.seg, dir };
       }
+      // 通行帯違反 (第20条第1項): the rightmost lane of a multi-lane road is for overtaking and
+      // getting ready to turn right, not for driving along.
+      if (onRoad && onRoad.seg.lanes >= 2 && onRoad.seg.oneway === 0 && speed > 10 && Math.abs(align) > 0.8) {
+        const s = onRoad.seg;
+        const leftOfTravel = onRoad.lateral * Math.sign(align);
+        const laneWidth = s.line.width / 2 / s.lanes;
+        const lane = Math.floor((s.line.width / 2 - leftOfTravel) / laneWidth);
+        const turnAhead = nav.route?.maneuvers.find((m) => m.at > nav.lastAt);
+        const isPreparingRight =
+          turnAhead !== undefined && turnAhead.at - nav.lastAt < 150 && /right|uturn/i.test(turnAhead.turn);
+        const isRightLane = lane === s.lanes - 1 && !isPreparingRight;
+        rightLaneSince = isRightLane ? (rightLaneSince ?? now) : null;
+        if (rightLaneSince !== null && now - rightLaneSince > 20000) book(VIOLATIONS.laneUse, now, 60000);
+      } else rightLaneSince = null;
+
       // 進路変更禁止: crossing a yellow lane line (lanes counted from the left kerb).
       const seg = onRoad?.seg;
       if (onRoad && seg && seg.noLaneChange && seg.lanes >= 2 && speed > 5 && Math.abs(align) > 0.8) {
@@ -1234,13 +1245,10 @@ async function main(): Promise<void> {
     const mission = missions.current ? field.localPosition(missions.current.target) : null;
     const target = mission ?? cruiseTarget();
     if (!target) return toast("行き先が見つかりません");
-    const driver = new AutoDriver((x, z) => groundY(x, z));
-    const pos = vehicle.position();
-    const ground = groundY(pos.x, pos.z) ?? pos.y - 0.86;
-    driver.place(pos, carYaw(vehicle.quaternion()));
+    const driver = new AutoDriver();
+    driver.place(vehicle.position(), vehicle.yaw());
     if (!driver.plan(tw, target)) return toast("ルートが見つかりません（道路の上で使ってください）");
-    vehicle.setParked(true);
-    autopilot = { driver, cruising: !mission, rideHeight: pos.y - ground };
+    autopilot = { driver, cruising: !mission, input: { throttle: 0, brake: 0, steer: 0, handbrake: false } };
     $("#autopilot-chip").hidden = false;
     toast(mission ? "自動運転を開始しました（目的地へ）" : "自動運転を開始しました（周辺を巡回）", "#3cd17a");
     log("autopilot", { on: true, cruising: !mission, metres: Math.round(driver.route?.length ?? 0) });
@@ -1248,7 +1256,7 @@ async function main(): Promise<void> {
   const stopAutopilot = (message: string) => {
     if (!autopilot) return;
     autopilot = null;
-    vehicle.setParked(false);
+    vehicle.lightOverride = null;
     $("#autopilot-chip").hidden = true;
     toast(message, "#3cd17a");
     log("autopilot", { on: false });
@@ -1260,9 +1268,14 @@ async function main(): Promise<void> {
     if (!tw) return;
     // Its own car is not an obstacle to itself.
     tw.obstacles = tw.obstacles.filter((o) => o.distanceTo(vehicle.position()) > 1);
-    const { done } = ap.driver.update(dt, tw);
-    const p = ap.driver.position;
-    vehicle.teleport(new Vector3(p.x, p.y + ap.rideHeight, p.z), ap.driver.yaw);
+    const pose = { position: vehicle.position(), yaw: vehicle.yaw(), speed: vehicle.forwardSpeed() };
+    const { input, done } = ap.driver.update(dt, tw, pose);
+    ap.input = input;
+    vehicle.lightOverride = {
+      brake: ap.driver.braking,
+      left: ap.driver.signal === "left",
+      right: ap.driver.signal === "right",
+    };
     if (!done) return;
     if (ap.cruising) {
       const next = cruiseTarget();
@@ -1275,6 +1288,7 @@ async function main(): Promise<void> {
   type TaxiDest = { name: string; lat: number; lon: number };
   let taxiDests: TaxiDest[] = [];
   let taxiArrivedAt = 0;
+  let taxiStatusAt = 0;
   const taxiStatus = (text: string) => ($("#taxi-status").textContent = text);
   const taxiWorld = (): TaxiWorld | null =>
     roadGraph
@@ -1288,6 +1302,7 @@ async function main(): Promise<void> {
             vehicle.position(),
             ...pedestrians.list.filter((p) => p.state !== "talk").map((p) => p.object.position),
           ],
+          isPavement: (x: number, z: number) => pavements.contains(x, z),
         }
       : null;
   const fillTaxiDestinations = () => {
@@ -1395,7 +1410,19 @@ async function main(): Promise<void> {
     if (!t) return;
     const tw = taxiWorld();
     if (!tw) return;
-    const done = t.update(dt, tw);
+    const geo = frame.toGeodetic(t.position);
+    const ground = {
+      hasCollider: terrain.hasColliderAt(geo.lat, geo.lon),
+      night: env.nightFactor > 0.25 || env.isRaining(),
+    };
+    const done = t.update(dt, tw, ground);
+    if (t.state === "coming" && !done && now - taxiStatusAt > 1000) {
+      taxiStatusAt = now;
+      const minutes = Math.max(1, Math.round(t.remaining / 6 / 60));
+      taxiStatus(
+        `迎車中: あと ${Math.round(t.remaining / 10) * 10} m（約 ${minutes} 分）。地図の黄色い車が配車中のタクシーです。`,
+      );
+    }
     if (t.state === "coming" && done) {
       t.state = "waiting";
       toast("🚕 自動運転タクシーが到着しました。そばで F を押すと乗車します", "#ffd23c");
@@ -1563,6 +1590,14 @@ async function main(): Promise<void> {
       target: mission?.target ?? null,
       buses: transit.positionsNear(lat, lon, 700),
       route: nav.route ? navGeo.points : undefined,
+      taxi:
+        taxi && (taxi.state === "coming" || taxi.state === "waiting")
+          ? {
+              ...frame.toGeodetic(taxi.position),
+              heading: Math.PI - taxi.car.yaw(),
+              route: taxi.state === "coming" ? taxi.routeAhead().map((p) => frame.toGeodetic(p)) : [],
+            }
+          : null,
     });
   };
 

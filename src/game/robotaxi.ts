@@ -1,17 +1,20 @@
-import RAPIER from "@dimforge/rapier3d-compat";
+import type RAPIER from "@dimforge/rapier3d-compat";
 import {
   CanvasTexture,
   Mesh,
   type MeshStandardMaterial,
   Quaternion,
   SRGBColorSpace,
+  Sprite,
+  SpriteMaterial,
   Vector3,
-  type Group,
   type Scene,
 } from "three";
+import { Vehicle, type DriveInput } from "../physics/vehicle";
 import type { RoadGraph, Segment } from "../world/roads";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
-import { createCarModel, type CarModel } from "./carModel";
+import { progressOn } from "./navigation";
+import type { CarModel } from "./carModel";
 
 /**
  * 自動運転タクシー (robotaxi) called from the phone. Level-4 driverless operation (特定自動運行,
@@ -35,6 +38,7 @@ export function fareFor(metres: number, slowSeconds: number): number {
 }
 
 const RIDE_HEIGHT = 0.86;
+const IDLE: DriveInput = { throttle: 0, brake: 1, steer: 0, handbrake: false, brakeOnly: true };
 
 /** The world the taxi drives in (see AutoDriver). */
 export type TaxiWorld = DriveWorld;
@@ -42,8 +46,12 @@ export type TaxiWorld = DriveWorld;
 export class RoboTaxi {
   state: TaxiState = "coming";
   readonly model: CarModel;
-  private readonly driver: AutoDriver;
-  private body: RAPIER.RigidBody;
+  /** A real car on the same physics as the player's: the program only turns the wheel and pedals. */
+  readonly car: Vehicle;
+  private readonly driver = new AutoDriver();
+  private input: DriveInput = IDLE;
+  /** A map pin over the car while it comes and waits, so the caller can spot it down the street. */
+  private readonly pin: Sprite;
   private vacancy: MeshStandardMaterial | null = null;
   // Meter
   metres = 0;
@@ -52,21 +60,19 @@ export class RoboTaxi {
 
   constructor(
     private readonly scene: Scene,
-    private readonly world: RAPIER.World,
-    groundAt: (x: number, z: number) => number | null,
+    world: RAPIER.World,
+    private readonly groundAt: (x: number, z: number) => number | null,
   ) {
-    this.driver = new AutoDriver(groundAt);
-    this.model = createCarModel({ taxi: true });
-    // The player's car hangs its wheels on the physics body; here they ride on the model.
-    for (const w of this.model.wheels) this.model.root.add(w);
-    scene.add(this.model.root);
+    this.car = new Vehicle(world, { taxi: true });
+    this.model = this.car.model;
+    scene.add(this.car.object);
+    this.pin = makePin();
+    this.car.object.add(this.pin);
     this.model.root.traverse((o) => {
       if (!(o instanceof Mesh)) return;
       const m = o.material as MeshStandardMaterial;
       if (m.name === "Vacancy") this.vacancy = m;
     });
-    this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
-    world.createCollider(RAPIER.ColliderDesc.cuboid(0.85, 0.6, 2.2), this.body);
     this.setDisplay("迎車");
   }
 
@@ -82,6 +88,20 @@ export class RoboTaxi {
     return this.driver.speed;
   }
 
+  /** Metres of route still to drive. */
+  get remaining(): number {
+    return this.driver.remaining;
+  }
+
+  /** The route ahead of the car (for the map), every few points. */
+  routeAhead(): Vector3[] {
+    const route = this.driver.route;
+    if (!route) return [];
+    const from = progressOn(route, this.car.position()).index;
+    const pts = route.points.slice(Math.max(0, from - 1));
+    return pts.filter((_, i) => i % 3 === 0 || i === pts.length - 1);
+  }
+
   get fare(): number {
     return fareFor(this.metres, this.slowSeconds);
   }
@@ -94,9 +114,14 @@ export class RoboTaxi {
     this.setDisplay("迎車");
     const { pos, dir } = graph.sample(start.seg, start.s);
     const travel = dir.multiplyScalar(start.dir);
-    this.driver.place(pos, Math.atan2(travel.x, travel.z));
-    this.sync();
-    this.body.setTranslation(this.model.root.position, true);
+    const yaw = Math.atan2(travel.x, travel.z);
+    const left = new Vector3(travel.z, 0, -travel.x).multiplyScalar(start.seg.line.width * 0.25);
+    const at = pos.clone().add(left);
+    at.y = (this.groundAt(at.x, at.z) ?? pos.y) + RIDE_HEIGHT;
+    this.car.setCoasting(true);
+    this.car.teleport(at, yaw);
+    this.car.syncVisuals();
+    this.driver.place(at, yaw);
     return this.driver.plan(world, pickup, { seg: start.seg, s: start.s, dir: start.dir });
   }
 
@@ -120,42 +145,43 @@ export class RoboTaxi {
   /** Re-anchoring: shift the car and its route rigidly. */
   transform(offset: (p: Vector3) => Vector3, yawDelta: number): void {
     this.driver.transform(offset, yawDelta);
-    this.sync();
+    this.car.transform(offset, new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yawDelta));
   }
 
   dispose(): void {
-    this.scene.remove(this.model.root);
-    this.world.removeRigidBody(this.body);
+    this.scene.remove(this.car.object);
+    this.car.dispose();
   }
 
-  /** Advance the car; returns true when it has reached the end of its route. */
-  update(dt: number, world: TaxiWorld): boolean {
-    const { moved, done } = this.driver.update(dt, world);
+  /** One physics step with the wheel and pedals the program last chose (before world.step). */
+  step(timestep: number): void {
+    if (!this.car.isCoasting) this.car.update(timestep, this.input);
+  }
+
+  /**
+   * Look at the road and set the wheel and pedals; returns true when the car has stopped at the end
+   * of its route. Without a ground collider under it (far from the player) the car runs on the
+   * kinematic model instead of the physics.
+   */
+  update(dt: number, world: TaxiWorld, ground: { hasCollider: boolean; night: boolean }): boolean {
+    this.car.setCoasting(!ground.hasCollider);
+    const pose = { position: this.car.position(), yaw: this.car.yaw(), speed: this.car.forwardSpeed() };
+    const { input, moved, done } = this.driver.update(dt, world, pose);
+    this.input = input;
+    if (!ground.hasCollider) this.car.coast(dt, input, this.groundAt);
     if (this.state === "riding") {
       this.metres += moved;
       if (this.driver.speed < 10 / 3.6) this.slowSeconds += dt;
     }
-    this.sync();
-    for (const w of this.model.wheels) (w.children[0] as Group).rotation.x += moved / 0.33;
-    this.model.setLights({
+    this.car.syncVisuals();
+    this.pin.visible = this.state === "coming" || this.state === "waiting";
+    this.car.lightOverride = {
       brake: this.driver.braking,
-      reverse: false,
-      left: false,
-      right: false,
-      night: false,
-    });
+      left: this.driver.signal === "left",
+      right: this.driver.signal === "right",
+    };
+    this.car.updateLights(ground.night);
     return done;
-  }
-
-  /** The model and the body follow the driver's pose. */
-  private sync(): void {
-    const p = this.driver.position;
-    this.model.root.position.set(p.x, p.y + RIDE_HEIGHT, p.z);
-    this.model.root.rotation.set(0, this.driver.yaw, 0);
-    this.body.setNextKinematicTranslation(this.model.root.position);
-    this.body.setNextKinematicRotation(
-      new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.driver.yaw),
-    );
   }
 
   /** A street 250–500 m from `near`, so the ride in takes a minute or so. */
@@ -225,4 +251,35 @@ function displayTexture(text: string): CanvasTexture {
   t.flipY = false; // glTF UVs, like the texture it replaces
   displays.set(text, t);
   return t;
+}
+
+/** Yellow map pin drawn at a fixed screen size, above the roof. */
+function makePin(): Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#ffd23c";
+    ctx.strokeStyle = "#1d2a4a";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(32, 32, 26, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.lineTo(32, 92);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#1d2a4a";
+    ctx.beginPath();
+    ctx.arc(32, 32, 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  const sprite = new Sprite(new SpriteMaterial({ map: texture, depthTest: false, sizeAttenuation: false }));
+  sprite.scale.set(0.035, 0.0525, 1);
+  sprite.center.set(0.5, 0);
+  sprite.position.set(0, 1.6, 0);
+  sprite.renderOrder = 10;
+  return sprite;
 }
