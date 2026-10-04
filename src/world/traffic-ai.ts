@@ -2,6 +2,12 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3, type Group, type Scene } from "three";
 import { QUALITY } from "../device";
 import { createLowCar } from "../game/carModel";
+import {
+  createVehicle,
+  hasVehicleModel,
+  type VehicleInstance,
+  type VehicleKind,
+} from "../game/vehicleModels";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { TrafficControl } from "./trafficControl";
 
@@ -12,6 +18,10 @@ type AiCar = {
   s: number; // distance travelled along the segment in travel direction
   speed: number; // m/s
   taxi: boolean;
+  /** A bus, truck or motorbike model (null: an ordinary car, origin at chassis height). */
+  vehicle: VehicleInstance | null;
+  /** Half the length, for the gap kept to the car ahead and the collider. */
+  half: number;
   body: RAPIER.RigidBody | null;
   ground: number;
   groundCheck: number;
@@ -164,7 +174,10 @@ export class TrafficAI {
         this.gapAhead(c, pos, dir, player, playerForward, playerSpeed),
         this.stopGap(c, dt),
       );
-      const target = gap < 7 ? 0 : gap < 25 ? Math.min(cruise, (gap - 7) * 0.8) : cruise;
+      // 7 m centre to centre for cars; longer vehicles keep their own length clear.
+      const standstill = 4.75 + c.half;
+      const target =
+        gap < standstill ? 0 : gap < standstill + 18 ? Math.min(cruise, (gap - standstill) * 0.8) : cruise;
       c.speed += Math.max(-6 * dt, Math.min(2.2 * dt, target - c.speed));
       c.s += c.speed * dt;
       if (c.s >= c.seg.length) this.advance(graph, c);
@@ -175,14 +188,23 @@ export class TrafficAI {
         c.ground = this.groundAt(pos.x, pos.z) ?? c.ground;
       }
       const yaw = Math.atan2(dir.x, dir.z);
-      c.object.position.set(pos.x, c.ground + 0.86, pos.z);
+      c.object.position.set(pos.x, c.ground + (c.vehicle ? 0 : 0.86), pos.z);
+      for (const w of c.vehicle?.wheels ?? []) w.rotation.x += (c.speed * dt) / 0.45;
       c.object.rotation.set(0, yaw, 0);
       const isNear = pos.distanceTo(player) < BODY_RADIUS;
       if (isNear && !c.body) {
         c.body = this.world.createRigidBody(
           RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, c.ground + 0.86, pos.z),
         );
-        this.world.createCollider(RAPIER.ColliderDesc.cuboid(0.92, 0.6, 2.15), c.body);
+        const v = c.vehicle;
+        const box = v
+          ? RAPIER.ColliderDesc.cuboid(v.width / 2, v.height / 2, v.length / 2).setTranslation(
+              0,
+              v.height / 2 - 0.86,
+              0,
+            )
+          : RAPIER.ColliderDesc.cuboid(0.92, 0.6, 2.15);
+        this.world.createCollider(box, c.body);
       } else if (!isNear && c.body) {
         this.world.removeRigidBody(c.body);
         c.body = null;
@@ -276,8 +298,24 @@ export class TrafficAI {
       // Appear only where the camera is not looking (open-world spawning), so cars never pop in.
       if (d > SPAWN_RADIUS || d < 60 || this.isSeen(pos)) continue;
       const dir: 1 | -1 = seg.oneway === -1 ? -1 : seg.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
-      const taxi = this.serial % 5 < 2;
-      const object = createLowCar({ color: taxi ? 0x1d2a4a : COLORS[this.serial % COLORS.length], taxi });
+      // Tokyo's mix: route buses and trucks on the wider roads, motorbikes anywhere.
+      const roll = (this.serial >>> 4) % 100;
+      const isWide = seg.line.width >= 9;
+      const kind: VehicleKind | null =
+        isWide && roll < 6
+          ? "bus"
+          : isWide && roll < 10
+            ? "truck10t"
+            : isWide && roll < 14
+              ? "truck8t"
+              : roll < 22
+                ? "motorbike"
+                : null;
+      const vehicle = kind && hasVehicleModel(kind) ? createVehicle(kind) : null;
+      const taxi = !vehicle && this.serial % 5 < 2;
+      const object =
+        vehicle?.object ??
+        createLowCar({ color: taxi ? 0x1d2a4a : COLORS[this.serial % COLORS.length], taxi });
       this.scene.add(object);
       this.cars.push({
         object,
@@ -286,6 +324,8 @@ export class TrafficAI {
         s: dir === 1 ? s : seg.length - s,
         speed: 5,
         taxi,
+        vehicle,
+        half: vehicle ? vehicle.length / 2 : 2.25,
         body: null,
         ground: this.groundAt(pos.x, pos.z) ?? 0,
         groundCheck: 0,

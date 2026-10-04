@@ -105,6 +105,7 @@ import {
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
 import { PolicePatrol } from "./game/policePatrol";
+import { loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
 import { formatCount, SocialFeed, type SocialPost } from "./game/social";
 import { renderFeed, renderPost } from "./game/socialView";
@@ -205,6 +206,7 @@ async function main(): Promise<void> {
       Math.floor(latToTileY(spawn.lat, TERRAIN_ZOOM)),
     ),
     loadCarModels(),
+    loadVehicleModels(),
     loadSignModels(),
     loadSignalModels(),
     loadAmbulanceModel(),

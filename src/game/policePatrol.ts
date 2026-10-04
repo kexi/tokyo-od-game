@@ -1,6 +1,7 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { BoxGeometry, Mesh, MeshStandardMaterial, Vector3, type Scene } from "three";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
+import { createVehicle, setBeacons, type VehicleInstance } from "./vehicleModels";
 import type { RoadGraph, Segment } from "../world/roads";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
 import type { ViolationRecord } from "./traffic";
@@ -34,6 +35,7 @@ export class PolicePatrol {
   private readonly driver = new AutoDriver();
   private input: DriveInput = { throttle: 0, brake: 1, steer: 0, handbrake: false, brakeOnly: true };
   private readonly bar: Mesh;
+  private readonly model: VehicleInstance | null;
   private readonly barMaterial: MeshStandardMaterial;
   private stoppedFor = 0;
   private lastCallout = -Infinity;
@@ -45,12 +47,20 @@ export class PolicePatrol {
     world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
   ) {
-    // White-and-black patrol car stand-in until the Blender model is wired in.
+    // The physics car drives; the 白黒パトカー model (scripts/blender/police_car.py) is what is
+    // seen. Its origin is on the ground, the physics body's at chassis height.
     this.car = new Vehicle(world, { color: 0xf4f4f2 });
     this.barMaterial = new MeshStandardMaterial({ color: 0x550000, emissive: 0x000000 });
     this.bar = new Mesh(new BoxGeometry(1.1, 0.14, 0.32), this.barMaterial);
-    this.bar.position.set(0, 0.86, -0.15);
-    this.car.object.add(this.bar);
+    this.model = createVehicle("patrol");
+    if (this.model) {
+      for (const child of this.car.object.children) child.visible = false;
+      this.model.object.position.y = -RIDE_HEIGHT;
+      this.car.object.add(this.model.object);
+    } else {
+      this.bar.position.set(0, 0.86, -0.15);
+      this.car.object.add(this.bar);
+    }
     scene.add(this.car.object);
   }
 
@@ -172,6 +182,10 @@ export class PolicePatrol {
     // 赤色の警光灯: flashing while pursuing and while issuing the ticket.
     const isFlashOn = isPursuing && Math.floor(now / 180) % 2 === 0;
     this.barMaterial.emissive.setHex(isFlashOn ? 0xff1a1a : 0x000000);
+    if (this.model) {
+      setBeacons(this.model, isPursuing, now);
+      for (const w of this.model.wheels) w.rotation.x += (this.car.forwardSpeed() * dt) / 0.334;
+    }
     return event;
   }
 
