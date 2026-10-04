@@ -130,7 +130,8 @@
       <div id="hud-toolbar">
         <button type="button" data-action="mission" title="新しい目的地 (N)">目的地</button>
         <button type="button" data-action="autopilot" title="自動運転 (O)">自動運転</button>
-        <button type="button" data-action="home" title="家に帰って今日の運転を終える (G)">帰宅</button>
+        <button type="button" data-action="home" title="家に帰って今日の運転を終える (Home)">帰宅</button>
+        <button type="button" data-action="replay" title="リプレイ (F5)">リプレイ</button>
         <button type="button" data-action="weather" title="天気 (Y)">天気</button>
         <button type="button" data-action="ground" title="地面: 地理院写真 / PLATEAU オルソ (M)">地面</button>
         <button type="button" data-action="camera" title="カメラ (C)">視点</button>
@@ -144,6 +145,23 @@
       <div id="talk-hint" class="panel" hidden>E で話しかける</div>
 
       <div id="paused" class="panel" hidden role="status">一時停止中（P で再開）</div>
+
+      <div id="replay-bar" class="panel" hidden aria-label="リプレイ">
+        <button id="replay-play" type="button" aria-label="再生・一時停止">❚❚</button>
+        <div class="replay-track">
+          <input id="replay-seek" type="range" min="0" max="1000" value="0" aria-label="再生位置" />
+          <div id="replay-marks"></div>
+        </div>
+        <span id="replay-time">0:00</span>
+        <select id="replay-speed" aria-label="再生速度">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+        <select id="replay-camera" aria-label="カメラ"></select>
+        <button id="replay-exit" type="button">終了</button>
+      </div>
 
       <div id="car-status" class="panel" aria-label="車の状態">
         <span id="ind-left" class="ind">◀</span>

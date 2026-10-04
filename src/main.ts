@@ -4,6 +4,8 @@ import {
   DoubleSide,
   Frustum,
   Matrix4,
+  MathUtils,
+  type Object3D,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
@@ -107,6 +109,7 @@ import { renderReview } from "./game/violationReview";
 import { PolicePatrol } from "./game/policePatrol";
 import { CarControls } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
+import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type ReplayCamera } from "./game/replay";
 import { loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
 import { formatCount, SocialFeed, type SocialPost } from "./game/social";
@@ -656,6 +659,136 @@ async function main(): Promise<void> {
   );
   input.on("phone", () => phone.toggle());
   const conversation = new ConversationController(brain, voice, surroundings, (p) => pedestrians.endTalk(p));
+  // ---------- リプレイ ----------
+  const recorder = new ReplayRecorder();
+  const director = new ReplayDirector();
+  type Replay = {
+    t: number;
+    playing: boolean;
+    speed: number;
+    camera: ReplayCamera;
+    clones: Map<Object3D, Object3D>;
+  };
+  let replay: Replay | null = null;
+  const replayCamera = $<HTMLSelectElement>("#replay-camera");
+  replayCamera.replaceChildren(
+    ...(Object.keys(CAMERA_LABEL) as ReplayCamera[]).map((k) => {
+      const o = document.createElement("option");
+      o.value = k;
+      o.textContent = `カメラ: ${CAMERA_LABEL[k]}`;
+      return o;
+    }),
+  );
+  const liveObjects = () => [...traffic.objects(), ...pedestrians.list.map((p) => p.object)];
+  const formatT = (ms: number) =>
+    `${Math.floor(ms / 60000)}:${String(Math.floor((ms / 1000) % 60)).padStart(2, "0")}`;
+  /** Open the replay at a moment (default: 20 s before the end of the recording). */
+  const startReplay = (at?: number) => {
+    if (recorder.frames.length < 10 || state !== "playing") return toast("まだ記録がありません");
+    for (const o of liveObjects()) o.visible = false;
+    replay = {
+      t: at ?? Math.max(recorder.start, recorder.end - 20000),
+      playing: true,
+      speed: 1,
+      camera: "auto",
+      clones: new Map(),
+    };
+    $("#replay-bar").hidden = false;
+    $("#hud").classList.add("replaying");
+    replayCamera.value = "auto";
+    // Violations as red ticks on the timeline.
+    const span = Math.max(1, recorder.end - recorder.start);
+    $("#replay-marks").replaceChildren(
+      ...law.state.log
+        .filter((r) => r.at >= recorder.start && r.at <= recorder.end)
+        .map((r) => {
+          const m = document.createElement("span");
+          m.style.left = `${((r.at - recorder.start) / span) * 100}%`;
+          m.title = r.label;
+          return m;
+        }),
+    );
+  };
+  const stopReplay = () => {
+    const r = replay;
+    if (!r) return;
+    for (const c of r.clones.values()) scene.remove(c);
+    for (const o of liveObjects()) o.visible = true;
+    replay = null;
+    $("#replay-bar").hidden = true;
+    $("#hud").classList.remove("replaying");
+    vehicle.syncVisuals();
+  };
+  const playReplay = (dt: number) => {
+    const r = replay;
+    if (!r) return;
+    if (r.playing) r.t = Math.min(recorder.end, r.t + dt * 1000 * r.speed);
+    if (r.t >= recorder.end) r.playing = false;
+    const s = recorder.at(r.t);
+    if (!s) return;
+    const { a, b, k } = s;
+    const pos = new Vector3(a.car.x, a.car.y, a.car.z).lerp(new Vector3(b.car.x, b.car.y, b.car.z), k);
+    const quat = new Quaternion(a.car.qx, a.car.qy, a.car.qz, a.car.qw).slerp(
+      new Quaternion(b.car.qx, b.car.qy, b.car.qz, b.car.qw),
+      k,
+    );
+    vehicle.object.position.copy(pos);
+    vehicle.object.quaternion.copy(quat);
+    // Traffic and people as they were: copies posed from the recording.
+    for (const c of r.clones.values()) c.visible = false;
+    for (const [o, pa] of a.others) {
+      let c = r.clones.get(o);
+      if (!c) {
+        c = o.clone(true);
+        c.visible = true;
+        scene.add(c);
+        r.clones.set(o, c);
+      }
+      const pb = b.others.get(o) ?? pa;
+      c.visible = true;
+      c.position.set(
+        MathUtils.lerp(pa.x, pb.x, k),
+        MathUtils.lerp(pa.y, pb.y, k),
+        MathUtils.lerp(pa.z, pb.z, k),
+      );
+      c.rotation.set(0, pa.yaw + Math.atan2(Math.sin(pb.yaw - pa.yaw), Math.cos(pb.yaw - pa.yaw)) * k, 0);
+    }
+    control.update(r.t / 1000);
+    const marks = law.state.log.map((v) => v.at);
+    director.place(
+      camera,
+      r.camera,
+      r.t,
+      { pos, quat, speed: MathUtils.lerp(a.car.speed, b.car.speed, k) },
+      marks,
+      (x, z) => groundY(x, z),
+    );
+    $<HTMLInputElement>("#replay-seek").value = String(
+      Math.round(((r.t - recorder.start) / Math.max(1, recorder.end - recorder.start)) * 1000),
+    );
+    $("#replay-time").textContent =
+      `${formatT(r.t - recorder.start)} / ${formatT(recorder.end - recorder.start)}`;
+    $("#replay-play").textContent = r.playing ? "❚❚" : "▶";
+  };
+  input.on("replay", () => (replay ? stopReplay() : startReplay()));
+  $("#replay-exit").addEventListener("click", stopReplay);
+  $("#replay-play").addEventListener("click", () => {
+    if (!replay) return;
+    if (replay.t >= recorder.end) replay.t = recorder.start;
+    replay.playing = !replay.playing;
+  });
+  $<HTMLInputElement>("#replay-seek").addEventListener("input", (e) => {
+    if (!replay) return;
+    const v = Number((e.target as HTMLInputElement).value) / 1000;
+    replay.t = recorder.start + v * (recorder.end - recorder.start);
+  });
+  $<HTMLSelectElement>("#replay-speed").addEventListener("change", (e) => {
+    if (replay) replay.speed = Number((e.target as HTMLSelectElement).value);
+  });
+  replayCamera.addEventListener("change", () => {
+    if (replay) replay.camera = replayCamera.value as ReplayCamera;
+  });
+
   // ---------- 運転席のスイッチ（City Car Driving の配置） ----------
   const controls = new CarControls();
   let paused = false;
@@ -957,6 +1090,11 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (replay) {
+      playReplay(dt);
+      renderer.render(scene, camera);
+      return;
+    }
     if (paused) {
       renderer.render(scene, camera);
       return;
@@ -1554,6 +1692,13 @@ async function main(): Promise<void> {
             ? "会話AI 準備中…"
             : "会話AI: 利用できません（定型応答）";
     }
+    // Record the moment for replays.
+    recorder.capture(
+      now,
+      isOnFoot ? walker.model.root : vehicle.object,
+      Math.abs(speed) / 3.6,
+      liveObjects(),
+    );
     renderer.render(scene, camera);
     takeShots();
     if (pendingScreenshot) {
@@ -2402,7 +2547,12 @@ async function main(): Promise<void> {
       );
   });
   const openReview = () => {
-    renderReview($("#violations-list"), law.state.log);
+    renderReview($("#violations-list"), law.state.log, (r) => {
+      if (r.at < recorder.start || r.at > recorder.end) return false;
+      $<HTMLDialogElement>("#violations").close();
+      startReplay(Math.max(recorder.start, r.at - 6000));
+      return true;
+    });
     const s = law.state;
     $("#violations-summary").textContent =
       `違反 ${s.log.length} 件・違反点数 ${s.points} 点・反則金など ${s.fines.toLocaleString()} 円（普通車の基準によるゲーム内の参考値）`;

@@ -5,7 +5,11 @@ import type { ViolationRecord } from "./traffic";
  * happened, the speed against the limit, what went wrong, and the article, points and fine — so
  * the player can see what the law asked of them, not just the total.
  */
-export function renderReview(list: HTMLElement, log: readonly ViolationRecord[]): void {
+export function renderReview(
+  list: HTMLElement,
+  log: readonly ViolationRecord[],
+  onReplay?: (r: ViolationRecord) => boolean,
+): void {
   if (log.length === 0) {
     const empty = document.createElement("p");
     empty.className = "sub";
@@ -56,6 +60,24 @@ export function renderReview(list: HTMLElement, log: readonly ViolationRecord[])
         facts.append(dt, dd);
       }
       body.append(title, article, facts);
+      const status = document.createElement("p");
+      status.className = "sub";
+      status.textContent =
+        v.status === "caught"
+          ? `検挙（${{ patrol: "パトカー", officer: "警察官", orbis: "オービス", accident: "事故の処理", parking: "駐車監視員", sns: "投稿された動画" }[v.by ?? "accident"] ?? ""}）`
+          : v.status === "notice"
+            ? "後日、出頭の通知が届きます"
+            : "未検挙（誰にも見られていない）";
+      body.append(status);
+      if (onReplay) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = "リプレイで見る";
+        b.addEventListener("click", () => {
+          if (!onReplay(v)) b.textContent = "記録が残っていません（直近 5 分のみ）";
+        });
+        body.append(b);
+      }
       item.append(shot, body);
       return item;
     }),

@@ -29,7 +29,8 @@ type Action =
   | "pause"
   | "nav"
   | "minimap"
-  | "screenshot";
+  | "screenshot"
+  | "replay";
 
 /**
  * City Car Driving's default keyboard layout (its manual, 1.5.9), so its players feel at home:
@@ -67,6 +68,7 @@ const KEY_ACTIONS: Record<string, Action> = {
   KeyM: "nav",
   KeyO: "minimap",
   F12: "screenshot",
+  F5: "replay",
   Escape: "close",
 };
 

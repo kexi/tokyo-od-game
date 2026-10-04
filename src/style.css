@@ -1635,3 +1635,41 @@ pre.notice {
     bottom: 12px;
   }
 }
+
+/* リプレイ */
+#replay-bar {
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: min(900px, calc(100vw - 32px));
+  box-sizing: border-box;
+  z-index: 20;
+}
+#replay-bar .replay-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+#replay-seek {
+  width: 100%;
+}
+#replay-marks span {
+  position: absolute;
+  top: -6px;
+  width: 3px;
+  height: 8px;
+  background: #ff4d4d;
+  pointer-events: none;
+}
+#replay-time {
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5em;
+}
+
+/* While replaying, only the replay bar and messages stay on screen. */
+#hud.replaying > *:not(#replay-bar):not(#toasts) {
+  visibility: hidden;
+}

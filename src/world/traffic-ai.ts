@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier3d-compat";
-import { Quaternion, Vector3, type Group, type Scene } from "three";
+import { type Object3D, Quaternion, Vector3, type Group, type Scene } from "three";
 import { QUALITY } from "../device";
 import { createLowCar } from "../game/carModel";
 import {
@@ -142,6 +142,11 @@ export class TrafficAI {
   }
 
   /** Where the traffic cars are, for vehicles outside the AI (the robotaxi) to keep clear of. */
+  /** The cars' scene objects (for the replay recorder). */
+  objects(): Object3D[] {
+    return this.cars.map((c) => c.object);
+  }
+
   positions(): Vector3[] {
     return this.cars.map((c) => c.object.position);
   }
