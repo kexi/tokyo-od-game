@@ -44,6 +44,7 @@ import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
+import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
@@ -220,9 +221,15 @@ async function main(): Promise<void> {
   const minimap = new Minimap($<HTMLCanvasElement>("#minimap"), categories);
   const walker = new Walker(scene, world);
   input.bindDrag($("#scene"));
-  let mode: "car" | "foot" = "car";
+  let mode: "car" | "foot" | "taxi" = "car";
+  /** The 自動運転タクシー called from the phone, while one is about. */
+  let taxi: RoboTaxi | null = null;
   const focusPos = (target = new Vector3()) =>
-    mode === "foot" ? walker.position(target) : vehicle.position(target);
+    mode === "foot"
+      ? walker.position(target)
+      : mode === "taxi" && taxi
+        ? target.copy(taxi.position)
+        : vehicle.position(target);
   const pavementTiles = new PavementTiles();
   const pavements = new Pavements(scene, world, (x, z) => groundY(x, z));
   let pavementPolys: PavementPolygon[] = [];
@@ -422,6 +429,7 @@ async function main(): Promise<void> {
     traffic.transform(offset, Math.atan2(f.x, f.z));
     emergency.transform(offset);
     patrol.transform(offset);
+    taxi?.transform(offset, Math.atan2(f.x, f.z));
     pavements.rebuild(pavementPolys, frame);
     buildRoadNetwork();
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
@@ -563,6 +571,15 @@ async function main(): Promise<void> {
   input.on("enter", () => (phone.inCall ? phone.focusInput() : conversation.focusInput()));
   input.on("door", () => {
     if (state !== "playing") return;
+    if (mode === "taxi") {
+      if (taxi && taxi.speed < 0.5) leaveTaxi();
+      else toast("タクシーが止まるまでお待ちください");
+      return;
+    }
+    if (mode === "foot" && taxi?.state === "waiting" && walker.position().distanceTo(taxi.position) < 5) {
+      boardTaxi();
+      return;
+    }
     if (mode === "car") {
       if (Math.abs(vehicle.speedKmh()) > 5) {
         toast("停車してから降りましょう");
@@ -730,12 +747,14 @@ async function main(): Promise<void> {
     }
 
     const isOnFoot = mode === "foot";
-    const drive = isOnFoot ? { throttle: 0, brake: 0, steer: 0, handbrake: false } : input.read(dt);
+    const isInCar = mode === "car";
+    const isInTaxi = mode === "taxi" && taxi !== null;
+    const drive = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
     const walk = input.readWalk();
     accumulator += dt;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
-      if (!frozen && !isOnFoot) vehicle.update(world.timestep, drive);
+      if (!frozen && isInCar) vehicle.update(world.timestep, drive);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
       accumulator -= world.timestep;
@@ -764,7 +783,7 @@ async function main(): Promise<void> {
     const carRot = vehicle.quaternion();
     const focus = focusPos();
     const geo = frame.toGeodetic(focus);
-    const speed = isOnFoot ? walker.speed * 3.6 : vehicle.speedKmh();
+    const speed = isOnFoot ? walker.speed * 3.6 : isInTaxi && taxi ? taxi.speed * 3.6 : vehicle.speedKmh();
 
     // Never simulate the car over ground whose collider has not been built yet.
     const hasGround = terrain.hasColliderAt(geo.lat, geo.lon);
@@ -786,7 +805,7 @@ async function main(): Promise<void> {
     const carForward = new Vector3(0, 0, 1).applyQuaternion(carRot);
     carForward.y = 0;
     carForward.normalize();
-    pedestrians.update(dt, focus, carPos, isOnFoot ? 0 : speed / 3.6, carForward);
+    pedestrians.update(dt, focus, carPos, isInCar ? speed / 3.6 : 0, carForward);
     if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
       refreshRoads(geo.lat, geo.lon);
     control.update(now / 1000);
@@ -801,7 +820,7 @@ async function main(): Promise<void> {
       forward: carForward,
       target: navTarget,
       minutes: clockMinutes(),
-      driving: !isOnFoot,
+      driving: isInCar,
     });
     if (nav.route && navGeo.version !== nav.version) {
       navGeo = {
@@ -815,11 +834,13 @@ async function main(): Promise<void> {
       lastClockSync = now;
       roadGraph.setClock(clockMinutes());
     }
-    traffic.update(dt, focus, carPos, carForward, isOnFoot ? 0 : speed / 3.6);
+    traffic.extraObstacles = taxi ? [taxi.position] : [];
+    traffic.update(dt, focus, carPos, carForward, isInCar ? speed / 3.6 : 0);
+    updateTaxi(dt, now);
     speedometer.update(speed, currentLimit, currentLimitKind);
 
     // 道路交通法 checks while driving: speed vs (estimated) limit, keep-left on two-way roads.
-    const isDriving = !isOnFoot && !frozen && !law.state.suspended;
+    const isDriving = isInCar && !frozen && !law.state.suspended;
     if (isDriving && roadGraph && now - lastLawCheck > 200) {
       lastLawCheck = now;
       // The car drives at ground level: elevated 首都高 overhead is not the road it is on.
@@ -933,12 +954,9 @@ async function main(): Promise<void> {
     const carHit = roadGraph ? roadGraph.nearest(carPos, 15, isSurfaceStreet) : null;
     const isOnCarriageway = carHit !== null && Math.abs(carHit.lateral) < carHit.seg.line.width / 2;
     const place = isOnCarriageway && carHit ? parkingPlace(carHit) : null;
+    // Riding a taxi away from the car leaves it just as abandoned as walking off.
     const isAbandoned =
-      isOnFoot &&
-      place !== null &&
-      walker.position().distanceTo(carPos) > 5 &&
-      !emergency.active &&
-      !ticket.visible;
+      !isInCar && place !== null && focus.distanceTo(carPos) > 5 && !emergency.active && !ticket.visible;
     let kerb: Vector3 | null = null;
     let along: Vector3 | null = null;
     if (carHit && roadGraph) {
@@ -960,14 +978,14 @@ async function main(): Promise<void> {
     }
 
     // Holding the phone while the car moves; emergency calls to rescue the injured are exempt.
-    if (!isOnFoot && phone.open && Math.abs(speed) > 5 && !emergency.active) {
+    if (isInCar && phone.open && Math.abs(speed) > 5 && !emergency.active) {
       book(VIOLATIONS.phone, now, 30000);
     }
     // Tokyo's environmental ordinance: switch the engine off when stopped for a while.
-    const isStoppedInCar = !isOnFoot && Math.abs(speed) < 1 && drive.throttle === 0;
+    const isStoppedInCar = isInCar && Math.abs(speed) < 1 && drive.throttle === 0;
     stoppedSince = isStoppedInCar ? (stoppedSince ?? now) : null;
-    const isEngineOff = isOnFoot || (stoppedSince !== null && now - stoppedSince > 20000);
-    if (isEngineOff && !isOnFoot) announceIdlingStop();
+    const isEngineOff = !isInCar || (stoppedSince !== null && now - stoppedSince > 20000);
+    if (isEngineOff && isInCar) announceIdlingStop();
     if (!isEngineOff) idlingAnnounced = false;
 
     const incidentEvent = emergency.update(dt, now, focus, Math.abs(speed) / 3.6, (p) =>
@@ -1000,12 +1018,17 @@ async function main(): Promise<void> {
     if (partner && partner.object.position.distanceTo(focus) > 18) conversation.close();
     const talkRange = isOnFoot ? 3.5 : 10;
     const talkable =
-      !partner && Math.abs(speed) < (isOnFoot ? 99 : 4) ? pedestrians.nearest(focus, talkRange) : null;
+      !partner && !isInTaxi && Math.abs(speed) < (isOnFoot ? 99 : 4)
+        ? pedestrians.nearest(focus, talkRange)
+        : null;
     const nearCar = isOnFoot && walker.position().distanceTo(carPos) < 4.5;
+    const nearTaxi = isOnFoot && taxi?.state === "waiting" && walker.position().distanceTo(taxi.position) < 5;
     const hint = $("#talk-hint");
     const hints = [
       talkable ? `E で話しかける（${talkable.profile.name}さん）` : "",
       nearCar ? "F で乗車" : "",
+      nearTaxi ? "F でタクシーに乗る" : "",
+      isInTaxi && taxi && taxi.speed < 0.5 ? "F でタクシーを降りる" : "",
     ].filter(Boolean);
     hint.hidden = hints.length === 0 || partner !== null;
     hint.textContent = hints.join("　");
@@ -1032,12 +1055,13 @@ async function main(): Promise<void> {
     }
     const target = missions.current?.target ?? null;
     missions.updateArrow(
-      isOnFoot ? walker.model.root : vehicle.object,
+      isOnFoot ? walker.model.root : isInTaxi && taxi ? taxi.model.root : vehicle.object,
       target ? field.localPosition(target) : null,
     );
 
     if (debugCamera) debugCamera(camera, focus);
     else if (isOnFoot) walker.updateCamera(camera, dt);
+    else if (isInTaxi && taxi) chase.update(dt, taxi.position, taxi.model.root.quaternion, taxi.speed);
     else chase.update(dt, carPos, carRot, speed / 3.6);
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
     if (Math.abs(env.nightFactor - appliedNight) > 0.02) {
@@ -1054,7 +1078,11 @@ async function main(): Promise<void> {
 
     if (now - lastHud > 150) {
       lastHud = now;
-      const yaw = isOnFoot ? Math.atan2(walker.forward().x, walker.forward().z) : carYaw(carRot);
+      const yaw = isOnFoot
+        ? Math.atan2(walker.forward().x, walker.forward().z)
+        : isInTaxi && taxi
+          ? taxi.model.root.rotation.y
+          : carYaw(carRot);
       updateHud(geo.lat, geo.lon, yaw, now);
       conversation.refreshStatus();
       phone.refresh();
@@ -1143,6 +1171,155 @@ async function main(): Promise<void> {
     pendingParking = null;
     parkingDialog.close();
   });
+  // ---------- 自動運転タクシー ----------
+  type TaxiDest = { name: string; lat: number; lon: number };
+  let taxiDests: TaxiDest[] = [];
+  let taxiArrivedAt = 0;
+  const taxiStatus = (text: string) => ($("#taxi-status").textContent = text);
+  const taxiWorld = (): TaxiWorld | null =>
+    roadGraph
+      ? {
+          graph: roadGraph,
+          control,
+          turnRules: roadApplied?.turnRules ?? [],
+          minutes: clockMinutes(),
+          obstacles: [
+            ...traffic.positions(),
+            vehicle.position(),
+            ...pedestrians.list.filter((p) => p.state !== "talk").map((p) => p.object.position),
+          ],
+        }
+      : null;
+  const fillTaxiDestinations = () => {
+    const here = frame.toGeodetic(focusPos());
+    const dist = (d: { lat: number; lon: number }) => haversineMeters(here.lat, here.lon, d.lat, d.lon);
+    const dests: TaxiDest[] = [];
+    const mission = missions.current?.target;
+    if (mission) dests.push({ name: `ミッション: ${mission.name}`, lat: mission.lat, lon: mission.lon });
+    const car = frame.toGeodetic(vehicle.position());
+    if (dist(car) > 150) dests.push({ name: "自分の車", lat: car.lat, lon: car.lon });
+    const near = stations.filter((st) => dist(st) > 300).sort((a, b) => dist(a) - dist(b));
+    for (const st of near.slice(0, 5))
+      dests.push({ name: `${st.name}（${Math.round(dist(st) / 100) / 10}km）`, lat: st.lat, lon: st.lon });
+    const spots = field
+      .visibleList()
+      .filter((p) => p.category !== "station" && dist(p) > 300 && dist(p) < 2500)
+      .sort((a, b) => dist(a) - dist(b));
+    for (const p of spots.slice(0, 4))
+      dests.push({ name: `${p.name}（${Math.round(dist(p) / 100) / 10}km）`, lat: p.lat, lon: p.lon });
+    taxiDests = dests;
+    const select = $<HTMLSelectElement>("#taxi-dest");
+    select.replaceChildren(
+      ...dests.map((d, i) => {
+        const o = document.createElement("option");
+        o.value = String(i);
+        o.textContent = d.name;
+        return o;
+      }),
+    );
+  };
+  const showTaxiApp = (shown: boolean) => {
+    $("#phone-home").hidden = shown;
+    $("#phone-taxi").hidden = !shown;
+    if (shown) fillTaxiDestinations();
+  };
+  $("#taxi-open").addEventListener("click", () => showTaxiApp(true));
+  $("#taxi-back").addEventListener("click", () => showTaxiApp(false));
+  $("#taxi-call").addEventListener("click", () => {
+    const tw = taxiWorld();
+    if (taxi) return taxiStatus("すでに配車中です。");
+    if (mode !== "foot") return taxiStatus("車を降りてから呼んでください（F で降車）。");
+    if (!tw) return taxiStatus("道路データを読み込み中です。少し待ってからもう一度。");
+    const t = new RoboTaxi(scene, world, (x, z) => groundY(x, z));
+    if (!t.dispatch(tw.graph, tw, walker.position(), walker.position())) {
+      t.dispose();
+      return taxiStatus("近くに配車できる車がありません。広い道路の近くで呼んでください。");
+    }
+    taxi = t;
+    const eta = Math.max(1, Math.round((t.route?.length ?? 400) / 8 / 60));
+    taxiStatus(`配車しました（迎車）。到着まで約 ${eta} 分。道路沿いでお待ちください。`);
+    $("#taxi-cancel").hidden = false;
+    toast(`🚕 自動運転タクシーが向かっています（約 ${eta} 分）`, "#ffd23c");
+  });
+  $("#taxi-cancel").addEventListener("click", () => {
+    if (!taxi || mode === "taxi") return;
+    const tw = taxiWorld();
+    if (tw) taxi.leave(tw);
+    else {
+      taxi.dispose();
+      taxi = null;
+    }
+    $("#taxi-cancel").hidden = true;
+    taxiStatus("キャンセルしました。");
+  });
+  const boardTaxi = () => {
+    const tw = taxiWorld();
+    if (!taxi || !tw) return;
+    const dest = taxiDests[Number($<HTMLSelectElement>("#taxi-dest").value)] ?? taxiDests[0];
+    if (!dest) {
+      toast("スマホのタクシーアプリで行き先を選んでください", "#ffd23c");
+      return;
+    }
+    const at = frame.toLocal(dest.lat, dest.lon, frame.origin.h).setY(0);
+    walker.leave();
+    mode = "taxi";
+    taxi.board(tw, at, dest.name);
+    chase.snap();
+    $("#taxi-cancel").hidden = true;
+    // 道路交通法 第71条の3第2項: every passenger wears a seat belt.
+    toast(
+      `ご乗車ありがとうございます。${dest.name.replace(/（.*）$/, "")}へ向かいます（シートベルトをお締めください）`,
+      "#ffd23c",
+    );
+  };
+  const leaveTaxi = () => {
+    if (!taxi) return;
+    const tw = taxiWorld();
+    const fare = taxi.fare;
+    // Out on the kerb side (the car's left, +X when facing +Z).
+    const side = new Vector3(1.8, 0, 0).applyQuaternion(taxi.model.root.quaternion);
+    const at = taxi.position.clone().add(side);
+    at.y = groundY(at.x, at.z) ?? at.y - 0.8;
+    walker.enter(at, taxi.model.root.rotation.y);
+    mode = "foot";
+    toast(
+      `🚕 運賃 ${fare.toLocaleString()} 円（${(taxi.metres / 1000).toFixed(1)}km、アプリで精算済み）。ありがとうございました`,
+      "#ffd23c",
+    );
+    log("taxi_ride", { fare, metres: Math.round(taxi.metres), slowSeconds: Math.round(taxi.slowSeconds) });
+    if (tw) taxi.leave(tw);
+    $("#taxi-meter").hidden = true;
+  };
+  const updateTaxi = (dt: number, now: number) => {
+    const t = taxi;
+    if (!t) return;
+    const tw = taxiWorld();
+    if (!tw) return;
+    const done = t.update(dt, tw);
+    if (t.state === "coming" && done) {
+      t.state = "waiting";
+      toast("🚕 自動運転タクシーが到着しました。そばで F を押すと乗車します", "#ffd23c");
+      taxiStatus("到着しました。そばで F を押してご乗車ください。");
+    } else if (t.state === "riding") {
+      $("#taxi-meter").hidden = false;
+      $("#taxi-flag").textContent = done ? "支払" : "賃走";
+      $("#taxi-fare").textContent = t.fare.toLocaleString();
+      $("#taxi-trip").textContent =
+        `${(t.metres / 1000).toFixed(2)}km・${t.destinationName.replace(/（.*）$/, "")}`;
+      if (done) {
+        t.state = "arrived";
+        taxiArrivedAt = now;
+        toast("🚕 目的地に到着しました", "#ffd23c");
+      }
+    } else if (t.state === "arrived" && now - taxiArrivedAt > 1800) {
+      leaveTaxi();
+    } else if (t.state === "leaving" && (done || t.position.distanceTo(focusPos()) > 220)) {
+      t.dispose();
+      taxi = null;
+      $("#taxi-cancel").hidden = true;
+    }
+  };
+
   const showSuspension = () => {
     vehicle.setFrozen(true);
     const isRevoked = law.state.points >= REVOCATION_POINTS;
@@ -1333,6 +1510,8 @@ async function main(): Promise<void> {
         law,
         walker,
         pavements,
+        getTaxi: () => taxi,
+        getMode: () => mode,
         nav,
         patrol,
         stamps,

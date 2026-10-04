@@ -1300,3 +1300,61 @@ pre.notice {
     font-size: 18px;
   }
 }
+
+/* 自動運転タクシー: the phone app and the meter while riding. */
+.phone-app {
+  width: 100%;
+  margin: 10px 0 4px;
+  padding: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 12px;
+  background: #ffd23c;
+  color: #1a1a1a;
+}
+
+#phone-taxi .taxi-dest {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+#phone-taxi select {
+  width: 100%;
+  padding: 6px;
+  font-size: 13px;
+}
+
+#taxi-meter {
+  top: 150px;
+  left: 12px;
+  min-width: 170px;
+}
+
+#taxi-meter .taxi-meter-head {
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+#taxi-flag {
+  font-size: 13px;
+  color: #3cff6a;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
+
+@media (max-width: 720px) {
+  #taxi-meter {
+    top: auto;
+    bottom: 250px;
+    left: 6px;
+    min-width: 0;
+  }
+  #taxi-meter .taxi-meter-head {
+    font-size: 20px;
+  }
+}

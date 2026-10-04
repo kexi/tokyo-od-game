@@ -18,6 +18,11 @@ export type Route = {
   /** Polyline from the start position to the end, with cumulative distances. */
   points: Vector3[];
   cum: number[];
+  /** Index into `steps` for each point (a junction point belongs to the step it leads into). */
+  stepOf: number[];
+  /** Route distance where each step starts, and the travel distance along its segment there. */
+  stepStart: number[];
+  stepEntry: number[];
   length: number;
   /** False when the target lies outside the graph and the route ends at the nearest road. */
   reachesTarget: boolean;
@@ -181,6 +186,8 @@ function buildRoute(
   reachesTarget: boolean,
 ): Route {
   const points: Vector3[] = [];
+  const stepOf: number[] = [];
+  const stepEntry: number[] = [];
   const maneuvers: Maneuver[] = [];
   const along = (st: Step, from: number, to: number) => {
     const out: Vector3[] = [];
@@ -197,10 +204,20 @@ function buildRoute(
     const to = isLast ? endS : exit;
     const pts = along(st, from, to);
     if (points.length) pts.shift();
-    points.push(...pts);
+    stepEntry.push(st.dir === 1 ? from : st.seg.length - from);
+    for (const p of pts) {
+      points.push(p);
+      stepOf.push(i);
+    }
   });
   const cum = [0];
   for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + points[i].distanceTo(points[i - 1]));
+  // A step starts at the junction point shared with the previous step (or at the very start).
+  const stepStart = steps.map((_, i) => {
+    if (i === 0) return 0;
+    const k = stepOf.indexOf(i);
+    return k > 0 ? cum[k - 1] : 0;
+  });
   // Turns at each node between steps; distances measured along the polyline.
   let travelled = steps[0].dir === 1 ? steps[0].seg.length - startS : startS;
   for (let i = 1; i < steps.length; i++) {
@@ -213,7 +230,17 @@ function buildRoute(
     }
     travelled += steps[i].seg.length;
   }
-  return { steps, maneuvers, points, cum, length: cum[cum.length - 1], reachesTarget };
+  return {
+    steps,
+    maneuvers,
+    points,
+    cum,
+    stepOf,
+    stepStart,
+    stepEntry,
+    length: cum[cum.length - 1],
+    reachesTarget,
+  };
 }
 
 /** Distance along the route of the point nearest to p, searching around the last known index. */

@@ -41,6 +41,8 @@ const PARKED_MAX = 16;
 
 export class TrafficAI {
   private cars: AiCar[] = [];
+  /** Other vehicles the AI must not drive into (the robotaxi), set every frame. */
+  extraObstacles: Vector3[] = [];
   private parked: ParkedCar[] = [];
   private graph: RoadGraph | null = null;
   private serial = 1;
@@ -123,6 +125,11 @@ export class TrafficAI {
         c.body = null;
       }
     }
+  }
+
+  /** Where the traffic cars are, for vehicles outside the AI (the robotaxi) to keep clear of. */
+  positions(): Vector3[] {
+    return this.cars.map((c) => c.object.position);
   }
 
   count(): number {
@@ -226,6 +233,7 @@ export class TrafficAI {
     for (const o of this.cars) if (o !== c) consider(o.object.position);
     // Kerbside parked cars only block when they actually sit in this lane.
     for (const p of this.parked) consider(p.object.position, 0.9);
+    for (const p of this.extraObstacles) consider(p);
     // Yield to the player unless they are clearly driving away ahead of us.
     const isPlayerFleeing = ps > c.speed + 2 && pf.dot(dir) > 0.8;
     if (!isPlayerFleeing) consider(player);

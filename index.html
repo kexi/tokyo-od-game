@@ -138,6 +138,13 @@
 
       <div id="talk-hint" class="panel" hidden>E で話しかける</div>
 
+      <div id="taxi-meter" class="panel" hidden aria-live="polite">
+        <div class="taxi-meter-head">
+          <span id="taxi-flag">賃走</span> <span id="taxi-fare">500</span><small>円</small>
+        </div>
+        <div id="taxi-trip" class="sub"></div>
+      </div>
+
       <div id="incident" class="panel" hidden role="alert">
         <div class="incident-title">⚠ 人身事故が発生しました</div>
         <div id="incident-text" class="sub">
@@ -160,6 +167,7 @@
               110<small>警察</small>
             </button>
           </div>
+          <button type="button" id="taxi-open" class="phone-app">🚕 自動運転タクシー</button>
           <p class="sub phone-note">
             緊急でない相談は #7119（救急相談センター）・#9110（警察相談専用電話）へ。
           </p>
@@ -169,6 +177,23 @@
             第1条第16号）。
           </p>
           <button type="button" id="phone-close" class="phone-close">閉じる</button>
+        </section>
+        <section id="phone-taxi" hidden>
+          <div class="call-head"><span>🚕 自動運転タクシー</span></div>
+          <p id="taxi-status" class="sub">レベル 4 の自動運転車が近くから迎えに来ます。</p>
+          <label class="taxi-dest"
+            >行き先
+            <select id="taxi-dest"></select
+          ></label>
+          <div class="row">
+            <button type="button" id="taxi-call">呼ぶ</button>
+            <button type="button" id="taxi-cancel" hidden>キャンセル</button>
+          </div>
+          <p class="sub phone-note">
+            運賃は東京都特別区・武三地区の普通車（2026 年 4 月 20 日から）：初乗り 1.0km 500 円、以降 232m
+            ごとに 100 円。時速 10km 以下の間は 1 分 25 秒ごとに 100 円。アプリで自動精算します。
+          </p>
+          <button type="button" id="taxi-back" class="phone-close">戻る</button>
         </section>
         <section id="phone-call" hidden>
           <div class="call-head">
