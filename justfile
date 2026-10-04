@@ -50,6 +50,10 @@ signal-model:
 ambulance-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/ambulance.py -- public/models/ambulance.glb
 
+# ゲームのティザー動画 out/teaser.mp4 を撮影・編集する（開発サーバーか開発ビルドが必要）
+teaser base="http://localhost:5173/tokyo-od-game/":
+    node scripts/teaser/teaser.mjs --base {{ base }} --out out/teaser.mp4
+
 # 自動運転で走らせて画面と状態を .qa/runs/ に記録する（road-qa スキルの判定用、開発サーバーが必要）
 qa-drive minutes="3" every="6" time="day":
     node scripts/qa/drive.mjs --minutes {{ minutes }} --every {{ every }} --time {{ time }}

@@ -61,6 +61,9 @@ export async function launch(url, { port = 9334, width = 1280, height = 800 } = 
     });
   await send("Runtime.enable");
   await send("Page.enable");
+  // The exact viewport (the headless window's own chrome would take some height): even sizes
+  // also keep the teaser's frames encodable.
+  await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   await send("Page.navigate", { url });
   const evaluate = async (expression) => {
     const res = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
