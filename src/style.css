@@ -2241,3 +2241,20 @@ pre.notice {
 .dialog-actions form {
   margin: 0;
 }
+
+/* タイトル画面の 出典・ライセンス: a quiet link under スタート */
+.title-links {
+  margin: 10px 0 0;
+  text-align: center;
+}
+.title-links button {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.8;
+  text-decoration: underline;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+}

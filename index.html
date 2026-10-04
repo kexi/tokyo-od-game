@@ -75,6 +75,9 @@
           </label>
         </fieldset>
         <button id="start" type="button" disabled>スタート</button>
+        <p class="title-links">
+          <button type="button" data-action="credits">出典・ライセンス</button>
+        </p>
         <p class="keys">W/↑ アクセル・S/↓ ブレーキ/バック・A D/← → ハンドル・Space サイド・R 復帰</p>
       </div>
     </section>
@@ -308,20 +311,16 @@
         </div>
       </aside>
 
-      <!-- GSI asks for the source to stay visible while its tiles are on screen. -->
+      <!-- On the play screen only what must stay in view: GSI asks for the source while its tiles are
+           shown, and OpenStreetMap's attribution goes with the map. Everything else (PLATEAU, JARTIC,
+           Tokyo's open data, ODPT, JMA, e-Stat, the voice) is in 出典・ライセンス, also on the title. -->
       <div id="attribution">
         <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener"
           >地理院タイル</a
         >
-        ｜<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">PLATEAU（国土交通省）</a>
-        ｜国土地理院ベクトルタイル提供実験｜JARTIC 交通規制情報（加工）｜©
+        ｜©
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
-        contributors｜e-Stat｜東京都オープンデータ｜公共交通オープンデータセンター｜気象庁 ｜<button
-          type="button"
-          data-action="credits"
-        >
-          出典の詳細
-        </button>
+        contributors ｜<button type="button" data-action="credits">出典・ライセンス</button>
       </div>
 
       <div id="touch">

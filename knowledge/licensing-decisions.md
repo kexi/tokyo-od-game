@@ -5,7 +5,7 @@ description: 提供元ごとの規約と、それを受けて変えた設計（�
 tags: [licensing]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T05:40:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T16:40:00Z }
 sources:
   - id: legal-review
     resource: 法務観点エージェントによる規約原文の確認（2026-10-04、取得物は scratchpad/raw と txt）
@@ -55,6 +55,8 @@ sources:
 | sanoTTS-jp    | コードは MIT。重みは独自ライセンスで、(A) 表示と Apache-2.0 全文の同梱が義務。合成音声の禁止用途 4 項目を利用規約で課す義務がある                                                                                      | (A) を原文のまま掲載し、禁止事項を出典画面と README に記載。音声の保存機能は持たない[^sanotts-license] [^tyc-corpus]  |
 | Gemma 4       | Apache 2.0、ゲートなし                                                                                                                                                                                                 | 各端末が Hugging Face から直接取得するので、再配布はしていない[^gemma-license]                                        |
 | npm 依存      | MIT / Apache-2.0 / BSD                                                                                                                                                                                                 | ビルドで `THIRD_PARTY_LICENSES.txt` を生成（Draco も含む）                                                            |
+
+**遊ぶ画面に常時出すのは 2 つだけ（2026-10-05）。** 地理院タイルは表示中に出典を画面に出すのが原則で、OpenStreetMap の帰属表示は地図とともに見える場所に置く慣行がある。そこで遊ぶ画面の下には「地理院タイル ｜ © OpenStreetMap contributors ｜ 出典・ライセンス」だけを出す。PLATEAU・国土地理院ベクトルタイル提供実験・JARTIC・東京都と各区・ODPT・気象庁・e-Stat・sanoTTS-jp の表示は、出典画面（タイトル画面と遊ぶ画面の「出典・ライセンス」から開く）にまとめた。これらの規約は表示の場所を作品に合わせて選べる（CC BY 4.0 は媒体に応じた合理的な方法、PDL1.0 は出典の記載）。画面下に全部を並べると運転の妨げになる、という利用者の指摘を受けて変えた。
 
 # 規約を受けて変えた設計
 
