@@ -152,6 +152,17 @@ function getDefaultAppearancePlace(isRed: boolean): string {
 }
 
 /**
+ * Entries come from map data (OpenStreetMap junction and town names) and the records; the form is
+ * set as innerHTML, so every one is escaped. Why not building it with DOM nodes: the ruled layout
+ * is far easier to read and keep as one template.
+ */
+const esc = (text: string) =>
+  text.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c,
+  );
+
+/**
  * 違反切符（青切符・赤切符）の HTML 文字列を生成する。
  */
 export function renderTicketHtml(data: TicketData): string {
@@ -162,8 +173,8 @@ export function renderTicketHtml(data: TicketData): string {
   const totalFine = isRed ? null : violations.reduce((sum, v) => sum + (v.fine ?? 0), 0);
 
   const firstV = violations[0];
-  const violationPlace = firstV?.context?.place ?? "東京都内一般道路";
-  const violationClock = firstV?.context?.clock ?? "令和8年10月4日 11:30";
+  const violationPlace = esc(firstV?.context?.place ?? "東京都内一般道路");
+  const violationClock = esc(firstV?.context?.clock ?? "令和8年10月4日 11:30");
 
   // 速度超過の具体的な測定値（km/h）
   const speedV = violations.find((v) => v.kind === "speed");
@@ -171,29 +182,29 @@ export function renderTicketHtml(data: TicketData): string {
   const speedDetail =
     hasSpeedMeasurement && speedV?.context
       ? `${Math.round(speedV.context.kmh)} km/h（${speedV.context.limit ? `${speedV.context.limit}km/h制限` : "法定"}：${Math.round(speedV.context.kmh - (speedV.context.limit ?? 60))}km/h超過）`
-      : (speedV?.label.replace("速度超過（", "").replace("）", "") ?? "");
+      : esc(speedV?.label.replace("速度超過（", "").replace("）", "") ?? "");
 
-  const ticketNo = data.ticketNumber ?? generateTicketCode(isRed);
-  const driverName = data.driverName ?? "運転者（本ゲームプレイヤー）";
-  const driverBirth = data.driverBirth ?? "平成10年5月15日生";
-  const driverAddress = data.driverAddress ?? "（免許証の記載による）";
-  const licenseNumber = data.licenseNumber ?? "第 302612345678 号";
-  const licenseType = data.licenseType ?? "普通（一種）";
-  const vehicleType = data.vehicleType ?? "普通乗用自動車";
-  const plateNumber = data.plateNumber ?? "品川 330 さ 12-34";
-  const officerStation = data.officerStation ?? "交通機動隊";
-  const officerRank = data.officerRank ?? "警部補";
-  const officerName = data.officerName ?? "本田";
-  const appearanceDate = data.appearanceDate ?? "告知の日の翌日から起算して7日以内";
-  const appearancePlace = data.appearancePlace ?? getDefaultAppearancePlace(isRed);
-  const paymentDeadline = data.paymentDeadline ?? "告知の日の翌日から起算して7日以内（金融機関窓口）";
+  const ticketNo = esc(data.ticketNumber ?? generateTicketCode(isRed));
+  const driverName = esc(data.driverName ?? "運転者（本ゲームプレイヤー）");
+  const driverBirth = esc(data.driverBirth ?? "平成10年5月15日生");
+  const driverAddress = esc(data.driverAddress ?? "（免許証の記載による）");
+  const licenseNumber = esc(data.licenseNumber ?? "第 302612345678 号");
+  const licenseType = esc(data.licenseType ?? "普通（一種）");
+  const vehicleType = esc(data.vehicleType ?? "普通乗用自動車");
+  const plateNumber = esc(data.plateNumber ?? "品川 330 さ 12-34");
+  const officerStation = esc(data.officerStation ?? "交通機動隊");
+  const officerRank = esc(data.officerRank ?? "警部補");
+  const officerName = esc(data.officerName ?? "本田");
+  const appearanceDate = esc(data.appearanceDate ?? "告知の日の翌日から起算して7日以内");
+  const appearancePlace = esc(data.appearancePlace ?? getDefaultAppearancePlace(isRed));
+  const paymentDeadline = esc(data.paymentDeadline ?? "告知の日の翌日から起算して7日以内（金融機関窓口）");
 
   // 書式タイトル
   const headerTitle = isRed ? "交通事件原票・告知票（兼 免許証保管証）" : "交通反則告知書（兼 免許証保管証）";
   const subtitle = isRed ? "刑事手続（交通切符）による告知" : "道路交通法第126条の規定による告知";
 
   // 該当する違反条文まとめ
-  const articlesList = violations.map((v) => v.article).join("、");
+  const articlesList = violations.map((v) => esc(v.article)).join("、");
 
   // チェックボックス欄の生成
   const checklistHtml = COMMON_VIOLATION_ENTRIES.map((entry) => {
@@ -218,11 +229,11 @@ export function renderTicketHtml(data: TicketData): string {
   const violationRowsHtml = violations
     .map((v) => {
       const hasDetail = Boolean(v.context?.detail);
-      const detailText = hasDetail ? `（${v.context?.detail}）` : "";
+      const detailText = hasDetail ? `（${esc(v.context?.detail ?? "")}）` : "";
       return `
       <tr class="v-row">
-        <td class="v-name handwritten">${v.label}${detailText}</td>
-        <td class="v-art">${v.article}</td>
+        <td class="v-name handwritten">${esc(v.label)}${detailText}</td>
+        <td class="v-art">${esc(v.article)}</td>
         <td class="v-pts">${v.points} 点</td>
         <td class="v-fine">${v.fine !== null ? `¥${v.fine.toLocaleString()}` : "非反則（裁判・罰金）"}</td>
       </tr>

@@ -70,4 +70,32 @@ describe("ticketForm", () => {
     expect(html).toContain("千代田区霞が関一丁目");
     expect(html).toContain("85 km/h");
   });
+
+  it("writes names from map data as text, never as markup", () => {
+    const hostile = '<img src=x onerror="alert(1)">';
+    const violations: ViolationRecord[] = [
+      {
+        kind: "signal",
+        label: `信号無視${hostile}`,
+        article: `道路交通法 第7条${hostile}`,
+        points: 2,
+        fine: 9000,
+        at: 1000,
+        status: "caught",
+        context: {
+          clock: `10/4(日) 14:20${hostile}`,
+          place: `${hostile}交差点`,
+          lat: 35.666,
+          lon: 139.758,
+          kmh: 40,
+          limit: 40,
+          limitKind: "標識",
+          detail: hostile,
+        },
+      },
+    ];
+    const html = renderTicketHtml({ violations, driverAddress: hostile });
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;交差点");
+  });
 });
