@@ -28,7 +28,7 @@
 # lamps, on the unmarked car the grille lamps (前方集中式警光灯) and the halves of the hidden dome.
 # Lamp materials keep car.glb's names (HeadLamp, TailLamp, IndicatorL/R, Reverse).
 # No real emblem or wordmark: generic gold shield, "PATROL", made-up numbers (textures by agy,
-# scripts/textures/police_vehicle_textures.py → assets/police/textures).
+# scripts/textures/police_vehicle_textures.py → assets/police_vehicles/textures).
 import math
 import os
 import sys

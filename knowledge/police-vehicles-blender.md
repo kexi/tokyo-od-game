@@ -51,7 +51,7 @@ sources:
 | 白バイ＋乗車した隊員 | `police_bike.py -- shirobai` → `police_shirobai.glb`          | 2.15 × 0.93 × 1.55 m（回転灯の頂部、長いアンテナ先端 1.90 m）             |                               6,379（隊員 2,325） | 388 KB |
 | 立っている白バイ隊員 | `police_bike.py -- rider` → `police_rider.glb`                | 身長 1.84 m（ヘルメット頂部）                                             |                                             2,325 | 282 KB |
 
-外形は glb を Blender に読み戻して測った値。[^build-run] 比較の目安は car.glb の自車 4.9 万三角形、救急車 2,880 三角形。共通の補助関数は `scripts/blender/police_common.py`（Mesh、レイキャストのデカール、書き出し、プレビュー）。テクスチャは `scripts/textures/police_vehicle_textures.py`（`uv run`）→ `assets/police/textures/` の 19 枚（`sedan_*` `patrol_*` `unmarked_*` `red_lens` `shirobai_*` `rider_*`）。同じディレクトリの `kit/trousers/uniform/vest.png` と `police.py` / `police_textures.py`（徒歩の警察官）は別担当のもので、名前が重ならないよう接頭辞を付けた。
+外形は glb を Blender に読み戻して測った値。[^build-run] 比較の目安は car.glb の自車 4.9 万三角形、救急車 2,880 三角形。共通の補助関数は `scripts/blender/police_common.py`（Mesh、レイキャストのデカール、書き出し、プレビュー）。テクスチャは `scripts/textures/police_vehicle_textures.py`（`uv run`）→ `assets/police_vehicles/textures/` の 19 枚（`sedan_*` `patrol_*` `unmarked_*` `red_lens` `shirobai_*` `rider_*`）。徒歩の警察官（`police.py` / `police_textures.py` → `police.glb`、`assets/police/textures/`）は別のモデルで、ファイルもディレクトリも分けた。
 
 # 規約（ゲーム側が引く名前）
 
@@ -83,7 +83,7 @@ sources:
 19 枚の仕様（サイズ、UV の向き、文字、禁止事項）を書いて agy に 1 回で依頼し、283 秒で返ってきた（companion の `task --write`、sandbox はリポジトリ内のみ書き込み可）。[^agy-job]
 
 - フォントは car_textures.py のコミット固定・SHA-256 照合の Noto Sans JP だけ（`get_noto_font` と `draw_license_plate` を import）。システムフォントやフォント以外のネットワーク取得は無かった。`ImageFont` は型注釈にだけ出てくる。
-- 自分で `uv run` し直して、19 枚の MD5 が agy の出力と一致した（シード固定で再現できる）。ruff check / format も通った。別担当の 4 枚と `police_textures.py` は更新時刻が変わっていなかった。
+- 自分で `uv run` し直して、19 枚の MD5 が agy の出力と一致した（シード固定で再現できる）。ruff check / format も通った。徒歩の警察官の 4 枚と `police_textures.py` は更新時刻が変わっていなかった。
 - 確認用シートを目視した。白バイのホイール（`shirobai_wheel.png`）のスポークは細い線で、キャストホイールというより針金のスポークに見えるが、ゲームの距離では目立たないのでそのままにした。
 
 # 落とし穴

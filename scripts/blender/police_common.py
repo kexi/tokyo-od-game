@@ -15,7 +15,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TEX = os.path.join(ROOT, "assets", "police", "textures")
+TEX = os.path.join(ROOT, "assets", "police_vehicles", "textures")
 HUMAN_TEX = os.path.join(ROOT, "assets", "human", "textures")
 
 
