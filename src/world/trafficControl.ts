@@ -1,10 +1,15 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
+  BoxGeometry,
+  CanvasTexture,
   Color,
   InstancedMesh,
   type BufferGeometry,
   type Material,
+  Mesh,
+  MeshStandardMaterial,
   Object3D,
+  SRGBColorSpace,
   Vector3,
   type Scene,
 } from "three";
@@ -79,6 +84,7 @@ export class TrafficControl {
   private lampOwners: { approach: Approach; colour: LightState }[] = [];
   private pedLamps: { stop: InstancedMesh; go: InstancedMesh } | null = null;
   private pedOwners: { seg: Segment; near: Vector3 }[] = [];
+  private plates: Mesh[] = [];
   private body: RAPIER.RigidBody | null = null;
   private time = 0;
 
@@ -99,6 +105,7 @@ export class TrafficControl {
       this.bySegment.set(ap.seg.id, list);
     }
     this.buildModels(graph, regs.crossings);
+    this.buildNamePlates(graph, regs.junctionNames);
     this.update(this.time);
   }
 
@@ -212,6 +219,12 @@ export class TrafficControl {
     this.lampOwners = [];
     this.pedLamps = null;
     this.pedOwners = [];
+    for (const p of this.plates) {
+      this.scene.remove(p);
+      p.geometry.dispose();
+      for (const m of p.material as Material[]) if (m !== plateBack) m.dispose();
+    }
+    this.plates = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
     this.approaches = [];
@@ -500,6 +513,57 @@ export class TrafficControl {
     this.pedLamps = { stop, go };
   }
 
+  /**
+   * 交差点名 plates: blue with white lettering (and the English name under it when OSM has one),
+   * hung on each signal arm beside the head, facing the approaching driver.
+   */
+  private buildNamePlates(graph: RoadGraph, names: AppliedRegulations["junctionNames"]): void {
+    if (names.length === 0) return;
+    for (const ap of this.approaches) {
+      if (ap.kind !== "signal") continue;
+      const node = ap.dir === 1 ? ap.seg.to : ap.seg.from;
+      const nodePos = this.nodePos(graph, node);
+      if (!nodePos) continue;
+      let best: (typeof names)[number] | null = null;
+      let bestD = 40;
+      for (const n of names) {
+        const d = Math.hypot(n.pos.x - nodePos.x, n.pos.z - nodePos.z);
+        if (d < bestD) {
+          bestD = d;
+          best = n;
+        }
+      }
+      if (!best) continue;
+      const far = this.clearance(graph, node, ap.seg) + 1;
+      const half = ap.seg.line.width / 2;
+      const base = nodePos
+        .clone()
+        .addScaledVector(ap.travel, far)
+        .add(leftOf(ap.travel, half + 1.2));
+      const head = nodePos
+        .clone()
+        .addScaledVector(ap.travel, far)
+        .add(leftOf(ap.travel, half * 0.35));
+      const toHead = head.clone().sub(base).setY(0);
+      const armLen = toHead.length();
+      const plate = namePlate(best.name, best.en);
+      const width = (plate.geometry as BoxGeometry).parameters.width;
+      // Between the pole and the head when the arm is long enough, else above the head.
+      const room = armLen - (0.58 * HEAD_SCALE + 0.3);
+      const g = this.groundAt(base.x, base.z) ?? 0;
+      const yaw = Math.atan2(-ap.travel.x, -ap.travel.z);
+      if (room > width + 0.4) {
+        const at = base.clone().addScaledVector(toHead.normalize(), room - width / 2);
+        plate.position.set(at.x, g + SIGNAL_HEIGHT + 0.05, at.z);
+      } else {
+        plate.position.set(head.x, g + SIGNAL_HEIGHT + 0.95, head.z);
+      }
+      plate.rotation.y = yaw;
+      this.scene.add(plate);
+      this.plates.push(plate);
+    }
+  }
+
   private instancedPart(part: Part, matrices: Object3D["matrix"][], castShadow: boolean): void {
     for (const { geometry, material } of part) this.instanced(geometry, material, matrices, castShadow);
   }
@@ -531,4 +595,58 @@ export function segmentsIntersect(p: Vector3, q: Vector3, a: Vector3, b: Vector3
   const d3 = cross(p.x, p.z, q.x, q.z, a.x, a.z);
   const d4 = cross(p.x, p.z, q.x, q.z, b.x, b.z);
   return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+// One texture per junction name, kept across rebuilds (names repeat as the player drives about).
+const plateTextures = new Map<string, { texture: CanvasTexture; aspect: number }>();
+const plateBack = new MeshStandardMaterial({ color: 0x8c9196, roughness: 0.6, metalness: 0.4 });
+
+function namePlate(name: string, en: string): Mesh {
+  const key = `${name}\n${en}`;
+  let entry = plateTextures.get(key);
+  if (!entry) {
+    const h = 160;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+    const jp = `bold 84px "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif`;
+    const latin = `600 34px "Noto Sans", "Helvetica Neue", Arial, sans-serif`;
+    ctx.font = jp;
+    const wJp = ctx.measureText(name).width;
+    ctx.font = latin;
+    const wEn = en ? ctx.measureText(en).width : 0;
+    canvas.width = Math.max(260, Math.ceil(Math.max(wJp, wEn) + 70));
+    canvas.height = h;
+    ctx.fillStyle = "#1d4f9c"; // 案内標識 blue
+    ctx.fillRect(0, 0, canvas.width, h);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(9, 9, canvas.width - 18, h - 18);
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = jp;
+    ctx.fillText(name, canvas.width / 2, en ? 66 : h / 2 + 2);
+    if (en) {
+      ctx.font = latin;
+      ctx.fillText(en, canvas.width / 2, 126);
+    }
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.anisotropy = 4;
+    entry = { texture, aspect: canvas.width / h };
+    plateTextures.set(key, entry);
+  }
+  const height = 0.55;
+  const face = new MeshStandardMaterial({ map: entry.texture, roughness: 0.5 });
+  // BoxGeometry face order: +x, −x, +y, −y, +z (the face toward the driver), −z.
+  const mesh = new Mesh(new BoxGeometry(height * entry.aspect, height, 0.04), [
+    plateBack,
+    plateBack,
+    plateBack,
+    plateBack,
+    face,
+    plateBack,
+  ]);
+  mesh.castShadow = true;
+  return mesh;
 }

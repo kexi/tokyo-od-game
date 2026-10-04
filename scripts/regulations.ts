@@ -1,17 +1,23 @@
 // Build-time traffic regulations: JARTIC 交通規制情報 (police regulations: one-way, speed limits,
-// crosswalks, stop lines, stop signs) and OpenStreetMap traffic signals, cut into z14 tiles under
-// public/data so the game loads only the area around the player.
-// Run: node scripts/regulations.ts   (downloads ~40 MB JARTIC + ~91 MB OSM extract)
-import { mkdir, rm, writeFile } from "node:fs/promises";
+// crosswalks, stop lines, stop signs) and, from OpenStreetMap, traffic signals with their
+// intersection names and footbridges (横断歩道橋), cut into z14 tiles under public/data so the
+// game loads only the area around the player.
+// Run: node scripts/regulations.ts [jartic|signals]   (downloads ~40 MB JARTIC; the ~520 MB
+// Geofabrik Kanto extract is cached under .cache/osm for a week)
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { M_LAT, M_LON, parseCoords, streamCsv, turnMask } from "./jartic.ts";
-import { readTaggedNodes } from "./osm-pbf.ts";
+import { readNodeCoords, readTaggedNodes, readWays } from "./osm-pbf.ts";
 import { unzip } from "./shapefile.ts";
 
 const ROOT = join(import.meta.dirname, "..", "public", "data");
 const JARTIC_INDEX = "https://www.jartic.or.jp/d/opendata/opendata.json";
 const JARTIC_BASE = "https://www.jartic.or.jp/d/opendata";
-const OSM_EXTRACT = "https://download.bbbike.org/osm/bbbike/Tokyo/Tokyo.osm.pbf";
+// Geofabrik's Kanto extract covers all 23 wards; BBBike's Tokyo box cut off their western,
+// northern and southern edges (~10% of the signals).
+const OSM_EXTRACT = "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf";
+const OSM_CACHE = join(import.meta.dirname, "..", ".cache", "osm", "kanto-latest.osm.pbf");
+const OSM_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const USER_AGENT = "tokyo-od-game-databuild/0.1 (+https://github.com/kexi/tokyo-od-game)";
 // 23 wards with a little margin (same box as the POI pipeline).
 const BBOX = { minLat: 35.48, maxLat: 35.84, minLon: 139.55, maxLon: 139.93 };
@@ -37,6 +43,9 @@ type Tile = {
   turns: number[][];
 };
 type SignalTile = number[][]; // [lon, lat]
+type JunctionTile = Array<[number, number, string, string]>; // [lon, lat, 交差点名, English name or ""]
+// 横断歩道橋 candidates: [width m (0 = unknown), deck coords, [stair coords from the deck down]…].
+type FootbridgeTile = Array<[number, number[], number[][]]>;
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6;
 // Line regulations are matched to centrelines within 6 m, so ~1 m precision is plenty and keeps
@@ -266,28 +275,101 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
   return { tiles, month: typeD.targetMonth, release: typeD.releaseDay };
 }
 
-async function buildSignals(): Promise<Map<string, SignalTile>> {
-  const nodes = readTaggedNodes(await fetchBytes(OSM_EXTRACT), (t) => t.highway === "traffic_signals");
-  const tiles = new Map<string, SignalTile>();
-  for (const n of nodes) {
-    if (!inBbox(n.lon, n.lat)) continue;
-    const key = `${tx(n.lon)}-${ty(n.lat)}`;
-    const list = tiles.get(key) ?? [];
-    list.push([round(n.lon), round(n.lat)]);
-    tiles.set(key, list);
+/** The OSM extract, from the local cache when it is less than a week old. */
+async function osmExtract(): Promise<Uint8Array> {
+  const age = await stat(OSM_CACHE).then(
+    (st) => Date.now() - st.mtimeMs,
+    () => Infinity,
+  );
+  if (age < OSM_MAX_AGE_MS) {
+    log("osm_cached", { file: OSM_CACHE, ageHours: Math.round(age / 3600_000) });
+    return new Uint8Array(await readFile(OSM_CACHE));
   }
-  log("signals_parsed", {
-    signals: [...tiles.values()].reduce((a, t) => a + t.length, 0),
-    tiles: tiles.size,
+  log("osm_download", { url: OSM_EXTRACT });
+  const bytes = await fetchBytes(OSM_EXTRACT);
+  await mkdir(join(OSM_CACHE, ".."), { recursive: true });
+  await writeFile(OSM_CACHE, bytes);
+  return bytes;
+}
+
+const tileOf = (lon: number, lat: number) => `${tx(lon)}-${ty(lat)}`;
+function push<T>(tiles: Map<string, T[]>, key: string, item: T): void {
+  const list = tiles.get(key) ?? [];
+  list.push(item);
+  tiles.set(key, list);
+}
+
+type OsmTiles = {
+  signals: Map<string, SignalTile>;
+  junctions: Map<string, JunctionTile>;
+  footbridges: Map<string, FootbridgeTile>;
+};
+
+async function buildOsm(): Promise<OsmTiles> {
+  const file = await osmExtract();
+  const signals = new Map<string, SignalTile>();
+  const junctions = new Map<string, JunctionTile>();
+  for (const n of readTaggedNodes(file, (t) => t.highway === "traffic_signals")) {
+    if (!inBbox(n.lon, n.lat)) continue;
+    push(signals, tileOf(n.lon, n.lat), [round(n.lon), round(n.lat)]);
+    // 交差点名: OSM puts the name of a signalled junction on its signal node.
+    const name = n.tags.name;
+    if (name)
+      push(junctions, tileOf(n.lon, n.lat), [round(n.lon), round(n.lat), name, n.tags["name:en"] ?? ""]);
+  }
+
+  // Footbridges: pedestrian ways on a bridge (the deck) and the stairs that join them.
+  const isFoot = (t: Record<string, string>) =>
+    ["footway", "path", "pedestrian", "cycleway"].includes(t.highway ?? "") &&
+    !!t.bridge &&
+    t.bridge !== "no";
+  const decks = readWays(file, isFoot).filter((w) => Number(w.tags.layer ?? 1) >= 1);
+  const deckNodes = new Set(decks.flatMap((w) => w.refs));
+  const stairs = readWays(file, (t) => t.highway === "steps").filter((w) =>
+    w.refs.some((r) => deckNodes.has(r)),
+  );
+  const coords = readNodeCoords(file, new Set([...deckNodes, ...stairs.flatMap((w) => w.refs)]));
+  const line = (refs: number[]) =>
+    refs.flatMap((r) => {
+      const c = coords.get(r);
+      return c ? [round(c[0]), round(c[1])] : [];
+    });
+  const footbridges = new Map<string, FootbridgeTile>();
+  let kept = 0;
+  for (const deck of decks) {
+    const d = line(deck.refs);
+    if (d.length < 4 || !inBbox(d[0], d[1])) continue;
+    const onDeck = new Set(deck.refs);
+    const steps = stairs
+      .filter((w) => w.refs.some((r) => onDeck.has(r)))
+      .map((w) => {
+        // From the deck end down to the ground.
+        const refs = onDeck.has(w.refs[0]) ? w.refs : [...w.refs].reverse();
+        return line(refs);
+      })
+      .filter((c) => c.length >= 4);
+    const width = Number.parseFloat(deck.tags.width ?? "") || 0;
+    push(footbridges, tileOf(d[0], d[1]), [width, d, steps]);
+    kept++;
+  }
+  log("osm_parsed", {
+    signals: [...signals.values()].reduce((a, t) => a + t.length, 0),
+    named: [...junctions.values()].reduce((a, t) => a + t.length, 0),
+    footbridges: kept,
+    stairs: stairs.length,
   });
-  return tiles;
+  return { signals, junctions, footbridges };
 }
 
 const ODBL_NOTICE = `Traffic signal positions in this folder are extracted from OpenStreetMap.
 © OpenStreetMap contributors — https://www.openstreetmap.org/copyright
 This database is made available under the Open Database License (ODbL) 1.0:
 https://opendatacommons.org/licenses/odbl/1-0/
-Source extract: ${OSM_EXTRACT} (BBBike). Filter: node["highway"="traffic_signals"] within the 23 wards.
+Source extract: ${OSM_EXTRACT} (Geofabrik). Filters within the 23 wards:
+- signals/: node["highway"="traffic_signals"]
+- junctions/: the same nodes' "name" and "name:en" (intersection names)
+- footbridges/: way[highway~"footway|path|pedestrian|cycleway"][bridge!="no"] (layer >= 1) and
+  the way["highway"="steps"] that share a node with them
 `;
 
 const only = process.argv[2];
@@ -311,14 +393,16 @@ if (!only || only === "jartic") {
   );
 }
 if (!only || only === "signals") {
-  const tiles = await buildSignals();
-  const dir = join(ROOT, "signals");
-  await rm(dir, { recursive: true, force: true });
-  await mkdir(dir, { recursive: true });
-  for (const [key, list] of tiles) await writeFile(join(dir, `${key}.json`), JSON.stringify(list));
-  await writeFile(join(dir, "LICENSE.txt"), ODBL_NOTICE);
-  await writeFile(
-    join(dir, "meta.json"),
-    JSON.stringify({ zoom: Z, tiles: [...tiles.keys()], fetchedAt: new Date().toISOString() }),
-  );
+  const osm = await buildOsm();
+  for (const [name, tiles] of Object.entries(osm) as Array<[string, Map<string, unknown[]>]>) {
+    const dir = join(ROOT, name);
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+    for (const [key, list] of tiles) await writeFile(join(dir, `${key}.json`), JSON.stringify(list));
+    await writeFile(join(dir, "LICENSE.txt"), ODBL_NOTICE);
+    await writeFile(
+      join(dir, "meta.json"),
+      JSON.stringify({ zoom: Z, tiles: [...tiles.keys()], fetchedAt: new Date().toISOString() }),
+    );
+  }
 }

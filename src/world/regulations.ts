@@ -23,6 +23,10 @@ export type RegulationData = {
   lanes: number[][]; // 車両通行帯: [lanes or 0, …coords]
   noLaneChange: number[][]; // 進路変更禁止 sections: coords
   signals: number[][]; // [lon, lat]
+  /** OSM: 交差点名 on signal nodes, [lon, lat, name, English name or ""]. */
+  junctions: Array<[number, number, string, string]>;
+  /** OSM: pedestrian bridge decks, [width or 0, deck coords, [stair coords from the deck down]…]. */
+  footbridges: Array<[number, number[], number[][]]>;
 };
 
 /** Sign types (the game maps them to 道路標識 artwork). */
@@ -55,6 +59,8 @@ const empty = (): RegulationData => ({
   lanes: [],
   noLaneChange: [],
   signals: [],
+  junctions: [],
+  footbridges: [],
 });
 
 export type RegulationMeta = { targetMonth: string; releaseDay: string; fetchedAt: string; url: string };
@@ -73,15 +79,19 @@ export class RegulationTiles {
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         keys.add(`${Math.floor((cx + dx) / shift)}-${Math.floor((cy + dy) / shift)}`);
-    const [regIndex, signalIndex] = await Promise.all([this.tileIndex("regs"), this.tileIndex("signals")]);
+    const osmDirs = ["signals", "junctions", "footbridges"] as const;
+    const [regIndex, ...osmIndex] = await Promise.all([
+      this.tileIndex("regs"),
+      ...osmDirs.map((d) => this.tileIndex(d)),
+    ]);
     const out = empty();
-    const seen = new Map<number[][], Set<string>>();
-    const add = (list: number[][], items: number[][]) => {
+    const seen = new Map<unknown[], Set<string>>();
+    const add = (list: unknown[], items: unknown[]) => {
       const listed = seen.get(list) ?? new Set<string>();
       seen.set(list, listed);
       for (const item of items) {
         // Lines crossing a tile edge are stored in every tile they touch.
-        const key = item.join(",");
+        const key = JSON.stringify(item);
         if (listed.has(key)) continue;
         listed.add(key);
         list.push(item);
@@ -90,13 +100,19 @@ export class RegulationTiles {
     await Promise.all(
       [...keys].map(async (key) => {
         if (regIndex.has(key)) {
-          const t = (await this.json(`regs/${key}.json`)) as Omit<RegulationData, "signals"> | null;
+          const t = (await this.json(`regs/${key}.json`)) as Omit<
+            RegulationData,
+            "signals" | "junctions" | "footbridges"
+          > | null;
           if (t) for (const k of Object.keys(t) as (keyof typeof t)[]) add(out[k], t[k]);
         }
-        if (signalIndex.has(key)) {
-          const s = (await this.json(`signals/${key}.json`)) as number[][] | null;
-          if (s) add(out.signals, s);
-        }
+        await Promise.all(
+          osmDirs.map(async (dir, i) => {
+            if (!osmIndex[i].has(key)) return;
+            const items = (await this.json(`${dir}/${key}.json`)) as unknown[] | null;
+            if (items) add(out[dir], items);
+          }),
+        );
       }),
     );
     return out;
@@ -237,6 +253,10 @@ export type AppliedRegulations = {
   stopLines: StopLine[];
   stopSigns: StopSign[];
   signals: Vector3[];
+  /** 交差点名 at signalled junctions (OSM), for the name plates on the signal arms. */
+  junctionNames: Array<{ pos: Vector3; name: string; en: string }>;
+  /** Footbridge decks and their stairs in the local frame (OSM). */
+  footbridges: Array<{ width: number; deck: Vector3[]; stairs: Vector3[][] }>;
   hasMarkings: boolean;
 };
 
@@ -442,6 +462,16 @@ export function applyRegulations(
     stopLines,
     stopSigns,
     signals: data.signals.map(([lon, lat]) => toLocal(frame, [lon, lat])[0]),
+    junctionNames: data.junctions.map(([lon, lat, name, en]) => ({
+      pos: toLocal(frame, [lon, lat])[0],
+      name,
+      en,
+    })),
+    footbridges: data.footbridges.map(([width, deck, stairs]) => ({
+      width,
+      deck: toLocal(frame, deck),
+      stairs: stairs.map((c) => toLocal(frame, c)),
+    })),
     hasMarkings: data.crosswalk.length + data.stopLine.length > 0,
   };
 }

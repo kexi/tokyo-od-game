@@ -29,6 +29,8 @@ const empty = (): RegulationData => ({
   lanes: [],
   noLaneChange: [],
   signals: [],
+  junctions: [],
+  footbridges: [],
 });
 // East–west street along lat 35.68; coordinates run west → east.
 const street = (lat = 35.68, width = 9): RoadLine => ({
