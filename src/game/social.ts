@@ -136,8 +136,20 @@ const fill = (t: string, r: ViolationRecord) =>
     .replace("{place}", r.context?.place?.split(" ").slice(0, 2).join("") || "都内")
     .replace("{kmh}", String(Math.round(r.context?.kmh ?? 0)));
 
+/**
+ * Words from the on-device LLM, when it is on: the post and its first replies are rewritten in a
+ * bystander's own voice. Null (or no writer) keeps the template text, so the feed works without it.
+ */
+export type SocialWriter = (
+  role: "post" | "reply" | "quote",
+  post: SocialPost,
+  seed: number,
+) => Promise<string | null>;
+const LLM_REPLIES = 6;
+
 export class SocialFeed {
   readonly posts: SocialPost[] = [];
+  writer: SocialWriter | null = null;
   private seed = 12345;
   private nextId = 1;
 
@@ -182,6 +194,9 @@ export class SocialFeed {
       isReported: false,
     };
     this.posts.unshift(post);
+    void this.writer?.("post", post, 0).then((text) => {
+      if (text) post.text = text;
+    });
     return post;
   }
 
@@ -198,9 +213,23 @@ export class SocialFeed {
       p.likes = Math.round(p.reposts * (3 + p.severity * 2));
       p.views = Math.round(p.likes * 38 + p.reposts * 15);
       const wantReplies = Math.min(14, Math.floor(Math.log2(1 + p.reposts) * 1.6));
-      while (p.replies.length < wantReplies) p.replies.push(this.reply(REPLIES, p, minutes));
+      while (p.replies.length < wantReplies) {
+        const r = this.reply(REPLIES, p, minutes);
+        p.replies.push(r);
+        if (p.replies.length <= LLM_REPLIES)
+          void this.writer?.("reply", p, p.replies.length).then((text) => {
+            if (text) r.text = text;
+          });
+      }
       const wantQuotes = Math.min(5, Math.floor(Math.log10(1 + p.quotes) * 2));
-      while (p.quotePosts.length < wantQuotes) p.quotePosts.push(this.reply(QUOTES, p, minutes));
+      while (p.quotePosts.length < wantQuotes) {
+        const q = this.reply(QUOTES, p, minutes);
+        p.quotePosts.push(q);
+        if (p.quotePosts.length <= 2)
+          void this.writer?.("quote", p, 100 + p.quotePosts.length).then((text) => {
+            if (text) q.text = text;
+          });
+      }
       // Widely shared clips get to the police, who trace the car from the video.
       const isWide = p.reposts > 2000 || (p.severity >= 0.9 && p.reposts > 50);
       if (isWide && !p.isReported) {

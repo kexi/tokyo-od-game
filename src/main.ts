@@ -1805,6 +1805,24 @@ async function main(): Promise<void> {
 
   // ---------- つぶやき（SNS） ----------
   const social = new SocialFeed();
+  // つぶやき in people's own words when the on-device AI is on (templates otherwise).
+  const SOCIAL_VOICE = {
+    post: "あなたは東京で暮らす一般の人で、SNS に投稿します。いま目の前で見た危ない運転について、日本語の口語で 1〜2 文だけ書いてください。ナンバーや個人を特定できる情報、ハッシュタグは書かないこと。",
+    reply:
+      "あなたは SNS の返信欄に書き込む一般の利用者です。元の投稿への反応を日本語で 30 字以内、1 文だけ書いてください。批判はよいが、差別・脅迫・個人攻撃・誹謗中傷は書かないこと。",
+    quote:
+      "あなたは SNS で投稿を引用して一言添える一般の利用者です。日本語で 30 字以内、1 文だけ。差別・脅迫・個人攻撃は書かないこと。",
+  } as const;
+  social.writer = async (role, post, seed) => {
+    if (brain.status !== "ready") return null;
+    const c = post.record.context;
+    const facts =
+      role === "post"
+        ? `見た場所: ${c?.place ?? "都内"}。見たこと: ${post.record.label}${c?.detail ? `（${c.detail}）` : ""}。`
+        : `元の投稿: ${post.text}`;
+    const text = await brain.reply(-3000 - post.id * 20 - seed, SOCIAL_VOICE[role], facts, () => undefined);
+    return text?.trim() || null;
+  };
   let socialUnread = 0;
   const viralShown = new Map<SocialPost, number>();
   let openPost: SocialPost | null = null;
