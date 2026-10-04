@@ -93,8 +93,24 @@ const SHIFT_ACTIONS: Record<string, Action> = {
   KeyF: "phoneZoom",
 };
 
+/**
+ * Number keys that do what the F-keys and Home do, in both layouts: a Mac keyboard's F1–F12
+ * change brightness and volume unless fn is held, and its laptops have no Home key. The digit is
+ * the F-key's number (F1 → 1, F5 → 5); 9 is 帰宅 and 0 the screenshot (F12).
+ */
+const DIGIT_ACTIONS: Record<string, Action> = {
+  Digit1: "help",
+  Digit2: "ground",
+  Digit5: "replay",
+  Digit8: "mute",
+  Digit9: "home",
+  Digit0: "screenshot",
+};
+
 /** The key that triggers an action in a layout (for hints and the help). */
-export function keyFor(layout: KeyLayout, action: Action): string {
+export function keyFor(layout: KeyLayout, action: Action, mac = IS_MAC): string {
+  const digit = Object.keys(DIGIT_ACTIONS).find((c) => DIGIT_ACTIONS[c] === action);
+  if (mac && digit) return digit.replace("Digit", "");
   const shifted = Object.keys(SHIFT_ACTIONS).find((c) => SHIFT_ACTIONS[c] === action);
   if (shifted) return `Shift+${shifted.replace(/^Key/, "")}`;
   const table = layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS;
@@ -140,6 +156,13 @@ export const MOVE_KEYS: Record<KeyLayout, { drive: string[]; walk: string[] }> =
   },
 };
 
+/** A Mac (or iPad) keyboard: its labels show the number keys and ⌥ for Option. */
+export const IS_MAC = (() => {
+  const nav = globalThis.navigator as (Navigator & { userAgentData?: { platform?: string } }) | undefined;
+  const platform = nav?.userAgentData?.platform ?? nav?.platform ?? "";
+  return /Mac|iPhone|iPad/i.test(platform);
+})();
+
 /**
  * Keys held to look aside / behind. City Car Driving's Ctrl stays in its layout, but not with WASD:
  * Ctrl+W closes the browser tab (and Ctrl+S, Ctrl+D… open the browser's own dialogs), which no page
@@ -147,7 +170,11 @@ export const MOVE_KEYS: Record<KeyLayout, { drive: string[]; walk: string[] }> =
  */
 export const LOOK_KEYS: Record<KeyLayout, { left: string | null; right: string | null; back: string }> = {
   wasd: { left: null, right: null, back: "KeyZ" },
-  ccd: { left: "ControlLeft", right: "ControlRight", back: "KeyZ" },
+  // On a Mac ⌃+← / ⌃+→ switch desktops and ⌃+↑ opens Mission Control, before the page sees them,
+  // and the arrows drive in this layout: Option (⌥) looks there instead.
+  ccd: IS_MAC
+    ? { left: "AltLeft", right: "AltRight", back: "KeyZ" }
+    : { left: "ControlLeft", right: "ControlRight", back: "KeyZ" },
 };
 
 /** Keys whose browser default (help, reload, focus, scrolling) the game takes over. */
@@ -168,7 +195,7 @@ export function actionFor(
   if (shifted) return shifted;
   const moves = onFoot ? MOVE_KEYS[layout].walk : MOVE_KEYS[layout].drive;
   if (moves.includes(code)) return undefined;
-  return (layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS)[code];
+  return (layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS)[code] ?? DIGIT_ACTIONS[code];
 }
 
 /** Every code bound to an action in a layout (for the collision test). */

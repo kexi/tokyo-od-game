@@ -1,6 +1,6 @@
 import type { BlurLevel } from "../world/motionBlur";
 import type { Assist } from "./carControls";
-import { keyFor, type KeyLayout } from "./input";
+import { IS_MAC, keyFor, type KeyLayout } from "./input";
 import { SOCIAL_APP_NAME } from "./socialTheme";
 
 /**
@@ -98,7 +98,7 @@ export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[
     [`${key("camera")} / ${key("cameraPrev")}`, "視点の切り替え"],
     isWasd
       ? ["Z", "後ろを見る（押している間。左右はマウスで）"]
-      : ["左 Ctrl / 右 Ctrl / Z", "左 / 右 / 後ろを見る（押している間）"],
+      : [IS_MAC ? "左 ⌥ / 右 ⌥ / Z" : "左 Ctrl / 右 Ctrl / Z", "左 / 右 / 後ろを見る（押している間）"],
     [key("phone"), `スマホ（119・110・タクシー・${SOCIAL_APP_NAME}）`],
     [key("phoneZoom"), "スマホの拡大表示 / 元に戻す（操作になるので運転中は使わない）"],
     [`${key("nav")} / ${key("minimap")}`, "ナビ / 小さな地図の表示"],
@@ -112,7 +112,15 @@ export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[
     ],
     [`${key("mission")} / ${key("home")}`, "新しい目的地 / 家に帰る（着くと一日が終わる）"],
     [`${key("time")} / ${key("weather")}`, "時間帯 / 天気"],
-    ["F1 / F2 / F8 / I", "この画面 / 地面の写真 / 音 / データ出典"],
+    [
+      `${key("help")} / ${key("ground")} / ${key("mute")} / ${key("credits")}`,
+      "この画面 / 地面の写真 / 音 / データ出典",
+    ],
+    ...(IS_MAC
+      ? []
+      : ([
+          ["1 2 5 8 9 0", "F1・F2・F5・F8・Home・F12 と同じ（F キー・Home キーの無いキーボード向け）"],
+        ] as Array<[string, string]>)),
     ["Enter", "会話・通話の入力欄へ（Esc で運転に戻る）"],
   ];
 }

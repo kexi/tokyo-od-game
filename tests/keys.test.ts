@@ -42,4 +42,17 @@ describe("操作のキーがかぶらない", () => {
     expect(actionFor("wasd", "KeyF", false, false)).toBe("phone");
     expect(keyFor("wasd", "phoneZoom")).toBe("Shift+F");
   });
+
+  it("gives the F-keys and Home number keys too, shown on a Mac where F-keys are media keys", () => {
+    for (const layout of LAYOUTS) {
+      expect(actionFor(layout, "Digit1", false, false)).toBe("help");
+      expect(actionFor(layout, "Digit5", false, false)).toBe("replay");
+      expect(actionFor(layout, "Digit9", false, false)).toBe("home");
+      expect(actionFor(layout, "F5", false, false)).toBe("replay");
+    }
+    expect(keyFor("wasd", "replay", true)).toBe("5");
+    expect(keyFor("wasd", "replay", false)).toBe("F5");
+    expect(keyFor("wasd", "home", true)).toBe("9");
+    expect(keyFor("wasd", "home", false)).toBe("Home");
+  });
 });
