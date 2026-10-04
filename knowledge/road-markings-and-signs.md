@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: 区画線・道路標示・道路標識（法令と JARTIC）
-description: 命令（e-Gov 現行版）で確かめた色と設置条件、JARTIC の該当コードの読み方、ゲームでの描き方と、線が埋もれた・標識が上下逆になった落とし穴。
+description: 命令（e-Gov 現行版）と道路標識設置基準で確かめた色・設置条件・取付角度（一方通行は平行に付ける、と訂正済み）、JARTIC の該当コードの読み方、ゲームでの描き方と、線が埋もれた・標識が上下逆になった落とし穴。
 resource: https://laws.e-gov.go.jp/law/335M50004002003
 tags: [roads, traffic-law, opendata, rendering]
 status: stable
@@ -22,6 +22,10 @@ sources:
   - id: mlit-lines
     resource: https://www.mlit.go.jp/road/sign/kijyun/pdf/19741226kukakusenn.pdf
     title: 国土交通省 区画線の標準（長さ・間隔・幅）
+  - id: setti
+    resource: https://www.mlit.go.jp/road/sign/kijyun/pdf/19861101hyoushikisetti.pdf
+    title: 道路標識設置基準 3-1-4 標示板の取付角度
+    author: 国土交通省
   - id: centre-solid
     resource: https://car-me.jp/articles/8055
     title: 中央線の白の実線・破線の使い分け（片側 6m 以上は実線）の解説記事
@@ -51,7 +55,7 @@ sources:
 | 一時停止の標識                                         | 文字と縁線は白、縁と地は赤                                                                        | 「止まれ」と「STOP」                                        |
 | 駐車禁止・駐停車禁止の標識                             | 斜帯と枠は赤、縁は白、地は青                                                                      | 駐停車禁止は斜帯 2 本で ×                                   |
 
-区画線の寸法は国土交通省の標準による。中央線の破線は都市部で長さ 5m・間隔 5m、線幅は 0.10〜0.20m。[^mlit-lines] 標識の形は道路標識一覧で確かめた。一方通行は、通りを走る車から見るので矢印が上を向く縦型（326-B）を使う。[^mlit-signs]
+区画線の寸法は国土交通省の標準による。中央線の破線は都市部で長さ 5m・間隔 5m、線幅は 0.10〜0.20m。[^mlit-lines] 標識の形は道路標識一覧で確かめた。~~一方通行は、通りを走る車から見るので矢印が上を向く縦型（326-B）を使う。~~ **訂正（2026-10-04）**: 道路標識設置基準 3-1-4 では、路側式の規制標識は車の進行方向に対して直角または斜め（45〜90°）に取り付ける。ただし一方通行（326-A）だけは平行または斜め（0〜45°）とされている。[^setti] 横型の 326-A（60 × 35cm）を道路と平行に付け、両面に表示する。車道側の面は右向きの矢印、裏面は左向きで、どちらから見ても許された向きを指す。縦型にしたのは、他の標識と同じく正面から見せるものと思い込んだため。[^mlit-signs]
 
 # JARTIC のコードの読み方
 
@@ -88,3 +92,5 @@ sources:
 [^jartic-spec]: 交通規制情報（拡張版 K 2.1）仕様書
 
 [^game-run]: ゲーム内での確認
+
+[^setti]: 道路標識設置基準 3-1-4 標示板の取付角度

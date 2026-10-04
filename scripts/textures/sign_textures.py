@@ -647,6 +647,44 @@ def draw_one_way(scale: int = 4) -> Image.Image:
     return img.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
 
+def draw_one_way_wide(pointing_right: bool, scale: int = 4) -> Image.Image:
+    """一方通行 (326-A): 60 × 35 cm, blue ground, white arrow with 一方通行 in blue on its shaft.
+
+    Mounted parallel to the street (道路標識設置基準 3-1-4), so each face's arrow points the way
+    traffic may go as seen from that side: the game puts the right-pointing face toward the
+    carriageway and the left-pointing one on the back.
+    """
+    target_w, target_h = 512, 300
+    w, h = target_w * scale, target_h * scale
+    img = Image.new("RGBA", (w, h), COLOR_BLUE)
+    draw = ImageDraw.Draw(img)
+    margin = 18 * scale
+    draw.rounded_rectangle(
+        [margin, margin, w - margin, h - margin], radius=22 * scale, outline=COLOR_WHITE, width=7 * scale
+    )
+    cy = h / 2.0
+    shaft_h = 104 * scale
+    head_len = 132 * scale
+    head_hw = 112 * scale
+    tail_x = 58 * scale
+    tip_x = w - 50 * scale
+    draw.rectangle([tail_x, cy - shaft_h / 2.0, tip_x - head_len * 0.8, cy + shaft_h / 2.0], fill=COLOR_WHITE)
+    draw_arrow_head(draw, (tip_x, cy), 0.0, head_len, head_hw, COLOR_WHITE, barb_depth=0.0)
+    font = get_noto_font(int(74 * scale), bold=True)
+    text_x = (tail_x + tip_x - head_len * 0.8) / 2.0
+    draw.text((text_x, cy + 2 * scale), "一方通行", font=font, fill=COLOR_BLUE, anchor="mm")
+    if not pointing_right:
+        # The back face: the arrow turns round, the lettering stays readable.
+        img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        draw = ImageDraw.Draw(img)
+        draw.rectangle(
+            [w - (tip_x - head_len * 0.8), cy - shaft_h / 2.0 + 6 * scale, w - tail_x, cy + shaft_h / 2.0 - 6 * scale],
+            fill=COLOR_WHITE,
+        )
+        draw.text((w - text_x, cy + 2 * scale), "一方通行", font=font, fill=COLOR_BLUE, anchor="mm")
+    return img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+
 # ----------------------------------------------------------------------
 # 7. 徐行 (329) Slow
 # ----------------------------------------------------------------------
@@ -919,6 +957,8 @@ SIGN_GENERATORS: Dict[str, Callable[[], Image.Image]] = {
     "turn_5.png": lambda: draw_turn_sign(5),
     "turn_6.png": lambda: draw_turn_sign(6),
     "one_way.png": draw_one_way,
+    "one_way_right.png": lambda: draw_one_way_wide(True),
+    "one_way_left.png": lambda: draw_one_way_wide(False),
     "slow.png": draw_slow,
     "stop.png": draw_stop,
     "crosswalk.png": draw_crosswalk,

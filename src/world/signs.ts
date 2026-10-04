@@ -36,8 +36,12 @@ const POST_TOP = 2.6; // ground to the centre of the top plate
 const STACK = 0.8 * SCALE; // vertical spacing of plates sharing a post
 const PLATE_OFFSET = 0.05; // plate face in front of the post axis (bracket depth)
 
-type Shape = "PlateCircle" | "PlateRect" | "PlateTriangle" | "PlateSquare";
-type Design = { file: string; shape: Shape; bothFaces?: boolean };
+type Shape = "PlateCircle" | "PlateRect" | "PlateTriangle" | "PlateSquare" | "PlateWide";
+/**
+ * `bothFaces`: back-to-back copies of the same face. `parallel`: mounted along the street with
+ * `back` as the other face (一方通行 326-A, 道路標識設置基準 3-1-4: 平行又は斜め 0°〜45°).
+ */
+type Design = { file: string; shape: Shape; bothFaces?: boolean; parallel?: boolean; back?: string };
 
 function design(type: number, value: number): Design | null {
   switch (type) {
@@ -58,7 +62,9 @@ function design(type: number, value: number): Design | null {
     case SIGN.turn:
       return value >= 1 && value <= 6 ? { file: `turn_${value}`, shape: "PlateCircle" } : null;
     case SIGN.oneway:
-      return { file: "one_way", shape: "PlateRect" };
+      // Seen from the carriageway the arrow points right, the way the traffic beside it goes;
+      // the face on the back points left for the far side.
+      return { file: "one_way_right", back: "one_way_left", shape: "PlateWide", parallel: true };
     case SIGN.slow:
       return { file: "slow", shape: "PlateTriangle" };
     case SIGN.stop:
@@ -102,6 +108,7 @@ export async function loadSignModels(): Promise<void> {
     plates: {
       PlateCircle: part("PlateCircle"),
       PlateRect: part("PlateRect"),
+      PlateWide: part("PlateWide"),
       PlateTriangle: part("PlateTriangle"),
       PlateSquare: part("PlateSquare"),
     },
@@ -143,7 +150,7 @@ type Post = {
   collider: RAPIER.Collider | null;
   hidden: boolean;
 };
-type Item = { post: Post; level: number; flip: boolean };
+type Item = { post: Post; level: number; flip: boolean; facing?: Vector3 };
 
 /**
  * 道路標識 posts where JARTIC puts them (sections' starts and repeats, junction approaches,
@@ -265,6 +272,15 @@ export class TrafficSigns {
       post.plates.forEach((d, level) => {
         const entry = byFile.get(d.file) ?? { d, items: [] };
         byFile.set(d.file, entry);
+        if (d.parallel && d.back) {
+          // Face the carriageway (right of travel) and, back to back, the pavement.
+          const right = leftOf(post.travel, -1);
+          entry.items.push({ post, level, flip: false, facing: right });
+          const back = byFile.get(d.back) ?? { d: { ...d, file: d.back }, items: [] };
+          byFile.set(d.back, back);
+          back.items.push({ post, level, flip: false, facing: right.clone().negate() });
+          return;
+        }
         entry.items.push({ post, level, flip: false });
         if (d.bothFaces) {
           entry.items.push({ post, level, flip: true });
@@ -330,8 +346,8 @@ export class TrafficSigns {
   ): InstancedMesh {
     const o = new Object3D();
     const mesh = new InstancedMesh(geometry, material, items.length);
-    items.forEach(({ post, level, flip }, i) => {
-      const facing = flip ? post.travel : post.travel.clone().negate();
+    items.forEach(({ post, level, flip, facing: given }, i) => {
+      const facing = given ?? (flip ? post.travel : post.travel.clone().negate());
       const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
       o.position.set(post.pos.x, ground + POST_TOP - level * STACK, post.pos.z);
       o.position.addScaledVector(facing, PLATE_OFFSET);

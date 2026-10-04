@@ -8,7 +8,7 @@
 # material "SignFace" with UVs covering the artwork square (0–1), so the game can swap in any
 # texture from assets/signs/textures. Real sizes (命令 別表第二 備考二 standard dimensions): circular
 # 規制標識 60 cm, 一時停止・徐行 inverted triangle 80 cm per side, 指示標識 60 cm square, 一方通行
-# (326-B) 30 × 60 cm; posts are 60.5 mm galvanised steel pipe.
+# 326-A 60 × 35 cm (and 326-B 30 × 60 cm); posts are 60.5 mm galvanised steel pipe.
 import json
 import math
 import os
@@ -157,6 +157,12 @@ plate(
     "PlateSquare",
     rounded([(-0.30, -0.30), (0.30, -0.30), (0.30, 0.30), (-0.30, 0.30)], 0.025),
     ((-0.30, -0.30), (0.30, 0.30)),
+)
+# 一方通行 326-A: 60 × 35 cm, mounted parallel to the street.
+plate(
+    "PlateWide",
+    rounded([(-0.30, -0.175), (0.30, -0.175), (0.30, 0.175), (-0.30, 0.175)], 0.02),
+    ((-0.30, -0.175), (0.30, 0.175)),
 )
 plate(
     "PlateRect",
