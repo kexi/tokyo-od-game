@@ -1,4 +1,4 @@
-# TOKYO OPEN DRIVE 法令厳守
+# 法令厳守 TOKYO OPEN DRIVE
 
 東京都オープンデータ × PLATEAU 3D 都市モデルで、東京 23 区を車で走り回る three.js 製の 3D ドライブ探索ゲームです。
 

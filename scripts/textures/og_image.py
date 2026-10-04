@@ -45,25 +45,25 @@ def main() -> None:
     card = Image.composite(Image.new("RGB", (W, H), (8, 14, 28)), card, shade)
 
     draw = ImageDraw.Draw(card)
-    title = get_noto_font(84, bold=True)
-    x, y = 64, 58
 
     def shadowed(pos, text, font, fill):
         draw.text((pos[0] + 3, pos[1] + 4), text, font=font, fill=(0, 0, 0))
         draw.text(pos, text, font=font, fill=fill)
 
+    # 法令厳守 plate leads the title.
+    badge = get_noto_font(46, bold=True)
+    text = "法 令 厳 守"
+    tw = draw.textlength(text, font=badge)
+    bx, by = 64, 52
+    draw.rounded_rectangle([bx, by, bx + tw + 64, by + 78], radius=16, fill=(255, 255, 255), outline=RED, width=8)
+    draw.text((bx + 32, by + 10), text, font=badge, fill=BLUE)
+
+    title = get_noto_font(84, bold=True)
+    x, y = 64, 150
     for word, colour in (("TOKYO ", (255, 255, 255)), ("OPEN ", YELLOW)):
         shadowed((x, y), word, title, colour)
         x += draw.textlength(word, font=title)
     shadowed((64, y + 96), "DRIVE", title, (255, 255, 255))
-
-    # 法令厳守 plate.
-    badge = get_noto_font(46, bold=True)
-    text = "法 令 厳 守"
-    tw = draw.textlength(text, font=badge)
-    bx, by = 64, 270
-    draw.rounded_rectangle([bx, by, bx + tw + 64, by + 78], radius=16, fill=(255, 255, 255), outline=RED, width=8)
-    draw.text((bx + 32, by + 10), text, font=badge, fill=BLUE)
 
     sub = get_noto_font(26, bold=True)
     shadowed((64, 384), "道路交通法と東京都の条例を守って", sub, (235, 240, 248))

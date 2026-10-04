@@ -76,11 +76,11 @@ body {
   color: var(--accent);
 }
 
-/* Second line of the title, styled after a 規制標識: white plate, red border, blue lettering. */
+/* Lead of the title, styled after a 規制標識: white plate, red border, blue lettering. */
 .loading-card h1 .compliance {
   display: block;
   width: fit-content;
-  margin: 10px auto 0;
+  margin: 0 auto 12px;
   padding: 4px 18px;
   font-style: normal;
   font-size: 0.42em;
@@ -1114,7 +1114,7 @@ pre.notice {
     margin-bottom: 4px;
   }
   .loading-card h1 .compliance {
-    margin-top: 4px;
+    margin-bottom: 4px;
     border-width: 3px;
   }
   .tagline,
