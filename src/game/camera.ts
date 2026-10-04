@@ -12,7 +12,8 @@ const OFFSETS: Record<CameraMode, Vector3> = {
 
 /** Spring-damped chase camera that follows the car's yaw but ignores its roll/pitch jitter. */
 export class ChaseCamera {
-  mode: CameraMode = "chase";
+  /** The driver's seat by default: the game is about driving as a driver does. */
+  mode: CameraMode = "cockpit";
   /** Looking aside while a key is held (左右 Ctrl: ±90°, Z: behind), added to the car's yaw. */
   look = 0;
   private readonly position = new Vector3();

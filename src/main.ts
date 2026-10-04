@@ -1414,6 +1414,12 @@ async function main(): Promise<void> {
     streetSpawnSince = performance.now();
     needsTrip = true;
     state = "playing";
+    // Each drive starts at a random time of day and weather (the buttons still change them).
+    const roll = Math.random();
+    const time: TimeMode = roll < 0.2 ? "morning" : roll < 0.6 ? "day" : roll < 0.8 ? "evening" : "night";
+    setTime(time);
+    env.weather = Math.random() < 0.3 ? "rain" : "clear";
+    toast(`今日は「${TIME_LABEL[time]}・${WEATHER_LABEL[env.weather]}」から走り出します`, "#4dd2ff");
     // The phone starts in its holder, on screens wide enough to keep the road in view beside it.
     const isWideScreen = window.innerWidth >= 900;
     if (isWideScreen) {

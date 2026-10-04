@@ -37,6 +37,12 @@ async function session(start, time, extra = async () => {}) {
     if ((await b.evaluate("window.__game?.getState()").catch(() => null)) === "ready") break;
   }
   await b.evaluate("window.__game.start()");
+  // The game starts in the driver's seat with a random weather: the teaser wants the chase view
+  // (V, the camera before the driver's seat) and a clear day unless a shot asks for rain.
+  await b.evaluate(
+    "window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyV' }))",
+  );
+  await b.evaluate("window.__game.env.weather = 'clear'");
   const label = { day: "昼", night: "夜", evening: "夕方", morning: "朝" }[time];
   await b.evaluate(
     `[...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '${label}')?.click()`,
@@ -195,14 +201,13 @@ if (hasBig) {
 }
 await key(b, "KeyM");
 // Rain in the driver's seat: the cockpit camera (C), wipers on HI.
-await key(b, "KeyY");
-await key(b, "KeyY");
+await b.evaluate("window.__game.env.weather = 'rain'");
 await key(b, "KeyC");
 for (const _ of [1, 2, 3]) await key(b, "Tab");
 await b.evaluate("window.__game.setDebugCamera(null); window.__game.advance(4)");
 await telop(b, "運転席から。雨の日はワイパーで", "速度計・回転計・ミラー・方向指示器");
 await shot(b, "cockpit-rain", 3.5, "", { hud: true });
-await key(b, "KeyY");
+await b.evaluate("window.__game.env.weather = 'clear'");
 for (const _ of [1, 2, 3]) await key(b, "KeyC"); // back to the chase view
 await key(b, "KeyJ"); // autopilot off: the player drives (badly)
 await b.close();
