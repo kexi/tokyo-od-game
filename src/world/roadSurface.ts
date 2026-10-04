@@ -11,6 +11,16 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import {
+  cameraViewMatrix,
+  cross,
+  normalize,
+  normalWorld,
+  positionWorld,
+  texture,
+  vec3,
+  vec4,
+} from "three/tsl";
 import asphaltAlbedoUrl from "../../assets/road/textures/asphalt_albedo.jpg?url";
 import asphaltNormalUrl from "../../assets/road/textures/asphalt_normal.jpg?url";
 import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.png?url";
@@ -63,6 +73,27 @@ asphalt.onBeforeCompile = (shader) => {
     vRoughnessMapUv = worldUv;`,
   );
 };
+// WEBGPU-TODO(phase C): this material in TSL with the wet shading of streetShading (streetLights.ts);
+// node materials ignore onBeforeCompile, so the world UVs above do nothing on WebGPU. Standing in:
+// the same three maps laid in world XZ as node inputs (WebGPURenderer copies a classic material's
+// properties, these included, onto the node material it draws it with). The road geometry has no
+// uv attribute, so without this the maps would sample one texel; nor can three build the normal
+// map's tangent frame from UVs, so it is built here: u runs along world +x, v along +z.
+{
+  const worldUv = positionWorld.xz.div(ASPHALT_TILE);
+  const { map, normalMap: bumps, roughnessMap } = asphalt;
+  const n = normalWorld;
+  const t = normalize(vec3(1, 0, 0).sub(n.mul(n.x)));
+  const b = cross(t, n);
+  const bump = bumps ? texture(bumps, worldUv).xyz.mul(2).sub(1) : vec3(0, 0, 1);
+  const bumped = t.mul(bump.x).add(b.mul(bump.y)).add(n.mul(bump.z));
+  if (map && roughnessMap)
+    Object.assign(asphalt, {
+      colorNode: texture(map, worldUv),
+      normalNode: normalize(cameraViewMatrix.mul(vec4(bumped, 0)).xyz),
+      roughnessNode: texture(roughnessMap, worldUv).g,
+    });
+}
 streetShading(asphalt, "asphalt", true);
 const white = new MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7, emissive: 0x222222 });
 // 規制標示 (はみ出し禁止, 進路変更禁止, 最高速度) are yellow (命令 別表第六).
