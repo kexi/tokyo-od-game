@@ -1619,6 +1619,7 @@ async function main(): Promise<void> {
         stamps,
         getApplied: () => roadApplied,
         getRegs: () => roadRegs,
+        speedLimit,
         planRoute,
         isInForce,
         parkingPlace,

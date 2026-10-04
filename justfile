@@ -50,6 +50,10 @@ signal-model:
 ambulance-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/ambulance.py -- public/models/ambulance.glb
 
+# 自動運転で走らせて画面と状態を .qa/runs/ に記録する（road-qa スキルの判定用、開発サーバーが必要）
+qa-drive minutes="3" every="6" time="day":
+    node scripts/qa/drive.mjs --minutes {{ minutes }} --every {{ every }} --time {{ time }}
+
 # アセット管理画面（3D モデルとテクスチャのプレビューとレビュー）を開発サーバーで開く
 assets:
     pnpm exec vite --open /tokyo-od-game/assets.html
