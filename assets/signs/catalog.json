@@ -1,0 +1,5087 @@
+{
+  "schema": {
+    "id": "別表第一の番号（例 327の7-A）。法定外は x- で始まる",
+    "name": "別表第一の種類",
+    "group": "案内|警戒|規制|指示|補助|法定外",
+    "texture": "assets/signs/textures のファイル名。描いていないものは null で reason を付ける",
+    "plate": "circle|triangle_down|diamond|square|rect|pentagon（標示板の形）",
+    "plate_node": "public/models/signs.glb の板のノード名",
+    "size_mm": "[横, 縦] 別表第二の標準の大きさ（菱形は一辺）。テクスチャは板の外接矩形を UV 0–1 で覆う",
+    "variable": "lanes（車線リストから描く）| text（数値・文言を引数で描く）| null",
+    "source": "根拠の URL。figure は別表第二の図の e-Gov 添付ファイル",
+    "variants": "同じ番号の別の図柄（左右・例示の値・車線パターン）"
+  },
+  "law": {
+    "url": "https://laws.e-gov.go.jp/law/335M50004002003",
+    "figures": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/…"
+  },
+  "coverage": {
+    "案内": {
+      "drawn": 0,
+      "total": 89
+    },
+    "警戒": {
+      "drawn": 27,
+      "total": 27
+    },
+    "規制": {
+      "drawn": 74,
+      "total": 74
+    },
+    "指示": {
+      "drawn": 16,
+      "total": 16
+    },
+    "補助": {
+      "drawn": 31,
+      "total": 31
+    },
+    "法定外": {
+      "drawn": 7,
+      "total": 7
+    }
+  },
+  "lanes": {
+    "generator": "scripts/textures/signs/lanes.py lane_sign()",
+    "input": "車線ごと（左から）に OSM turn:lanes の語を + か ; で結ぶ（例 left+through）。全体は | 区切りも可。専用・優先は {dirs, use: bus|bus_priority|bicycle}",
+    "file": "327-7_<車線ごとの略号を - で連結>.png（u=reverse, l=left, hl=slight_left, t=through, hr=slight_right, r=right, ~bus/~busp/~cyc=専用・優先）",
+    "rendered": [
+      {
+        "lanes": "lt-t-r",
+        "texture": "327-7_lt-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt",
+        "texture": "327-7_lt.png",
+        "plate_node": "PlateSquare90",
+        "size_mm": [900.0, 900.0]
+      },
+      {
+        "lanes": "l",
+        "texture": "327-7_l.png",
+        "plate_node": "PlateSquare90",
+        "size_mm": [900.0, 900.0]
+      },
+      {
+        "lanes": "t",
+        "texture": "327-7_t.png",
+        "plate_node": "PlateSquare90",
+        "size_mm": [900.0, 900.0]
+      },
+      {
+        "lanes": "r",
+        "texture": "327-7_r.png",
+        "plate_node": "PlateSquare90",
+        "size_mm": [900.0, 900.0]
+      },
+      {
+        "lanes": "lr",
+        "texture": "327-7_lr.png",
+        "plate_node": "PlateSquare90",
+        "size_mm": [900.0, 900.0]
+      },
+      {
+        "lanes": "t-t",
+        "texture": "327-7_t-t.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-t",
+        "texture": "327-7_lt-t.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "t-tr",
+        "texture": "327-7_t-tr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-tr",
+        "texture": "327-7_lt-tr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-r",
+        "texture": "327-7_l-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-t",
+        "texture": "327-7_l-t.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "t-r",
+        "texture": "327-7_t-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t",
+        "texture": "327-7_t-t-t.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t",
+        "texture": "327-7_lt-t-t.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "t-t-r",
+        "texture": "327-7_t-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-t-r",
+        "texture": "327-7_l-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t",
+        "texture": "327-7_l-t-t.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t-t",
+        "texture": "327-7_t-t-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-t",
+        "texture": "327-7_lt-t-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t-r",
+        "texture": "327-7_t-t-t-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-r",
+        "texture": "327-7_lt-t-t-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-r",
+        "texture": "327-7_l-t-t-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-t",
+        "texture": "327-7_l-t-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t-t-t",
+        "texture": "327-7_t-t-t-t-t.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-t-t",
+        "texture": "327-7_lt-t-t-t-t.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t-t-r",
+        "texture": "327-7_t-t-t-t-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-t-r",
+        "texture": "327-7_lt-t-t-t-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-t-r",
+        "texture": "327-7_l-t-t-t-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-t-t",
+        "texture": "327-7_l-t-t-t-t.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t-t-t-t",
+        "texture": "327-7_t-t-t-t-t-t.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-t-t-t",
+        "texture": "327-7_lt-t-t-t-t-t.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t-t-t-r",
+        "texture": "327-7_t-t-t-t-t-r.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-t-t-r",
+        "texture": "327-7_lt-t-t-t-t-r.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-t-t-r",
+        "texture": "327-7_l-t-t-t-t-r.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-t-t-t",
+        "texture": "327-7_l-t-t-t-t-t.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "lhl-r",
+        "texture": "327-7_lhl-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-tr",
+        "texture": "327-7_l-tr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-r",
+        "texture": "327-7_lt-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-tr-r",
+        "texture": "327-7_l-tr-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-tr",
+        "texture": "327-7_lt-t-tr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-r-r",
+        "texture": "327-7_lt-t-r-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "hlt-t",
+        "texture": "327-7_hlt-t.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-r-r",
+        "texture": "327-7_l-r-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "t-r-r",
+        "texture": "327-7_t-r-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-l-t-t",
+        "texture": "327-7_l-l-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-l",
+        "texture": "327-7_t-l.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "hl-hr-hr",
+        "texture": "327-7_hl-hr-hr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-l-tr",
+        "texture": "327-7_l-l-tr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "t-hr",
+        "texture": "327-7_t-hr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-r-r",
+        "texture": "327-7_l-t-t-r-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-t-r-r",
+        "texture": "327-7_l-t-r-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "hl-t",
+        "texture": "327-7_hl-t.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "hl-t-t",
+        "texture": "327-7_hl-t-t.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "hl-hl-hl-hr-r",
+        "texture": "327-7_hl-hl-hl-hr-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "lt-thr-r",
+        "texture": "327-7_lt-thr-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lr-r",
+        "texture": "327-7_lr-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-hr",
+        "texture": "327-7_lt-t-t-hr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-l-r",
+        "texture": "327-7_l-l-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "r-r",
+        "texture": "327-7_r-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-r-r",
+        "texture": "327-7_lt-r-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "hl-hl-hr",
+        "texture": "327-7_hl-hl-hr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-hr",
+        "texture": "327-7_lt-hr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "hr-r",
+        "texture": "327-7_hr-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-lr",
+        "texture": "327-7_l-lr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "hl-r",
+        "texture": "327-7_hl-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-hr",
+        "texture": "327-7_l-t-t-hr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "lt-tr-t",
+        "texture": "327-7_lt-tr-t.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-hr-r",
+        "texture": "327-7_l-t-t-hr-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-hrr",
+        "texture": "327-7_l-t-t-hrr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "r-t",
+        "texture": "327-7_r-t.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lhl-hl-hl-hr-r",
+        "texture": "327-7_lhl-hl-hl-hr-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-hr-hr",
+        "texture": "327-7_lt-t-t-hr-hr.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "lhlt-t-r-r",
+        "texture": "327-7_lhlt-t-r-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "hl",
+        "texture": "327-7_hl.png",
+        "plate_node": "PlateSquare90",
+        "size_mm": [900.0, 900.0]
+      },
+      {
+        "lanes": "t-t-tr",
+        "texture": "327-7_t-t-tr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-thr",
+        "texture": "327-7_lt-thr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-r-t",
+        "texture": "327-7_lt-t-r-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-hr-r",
+        "texture": "327-7_lt-t-hr-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-t-r-r",
+        "texture": "327-7_t-t-r-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-t-tr",
+        "texture": "327-7_l-t-tr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "ltr-r",
+        "texture": "327-7_ltr-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lhl-hr-hr",
+        "texture": "327-7_lhl-hr-hr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-hr-hrr-r",
+        "texture": "327-7_lt-t-t-hr-hrr-r.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "hlhr-hrr",
+        "texture": "327-7_hlhr-hrr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "t-lt-t-t",
+        "texture": "327-7_t-lt-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-u",
+        "texture": "327-7_lt-t-u.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-l-hl-hl-hr-r",
+        "texture": "327-7_l-l-hl-hl-hr-r.png",
+        "plate_node": "PlateRect240x90",
+        "size_mm": [2400.0, 900.0]
+      },
+      {
+        "lanes": "lhlt-r",
+        "texture": "327-7_lhlt-r.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-hl-hlhrr",
+        "texture": "327-7_l-hl-hlhrr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-hr-hrr",
+        "texture": "327-7_lt-hr-hrr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-hr-hr",
+        "texture": "327-7_lt-hr-hr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "hr-hr",
+        "texture": "327-7_hr-hr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lhlt-r-r",
+        "texture": "327-7_lhlt-r-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "t-hrr",
+        "texture": "327-7_t-hrr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-hrr",
+        "texture": "327-7_lt-hrr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "l-hl-hrr",
+        "texture": "327-7_l-hl-hrr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-hl-hr-r",
+        "texture": "327-7_l-hl-hr-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-hr-r",
+        "texture": "327-7_t-hr-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "hr-uhr",
+        "texture": "327-7_hr-uhr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lhl-t-t",
+        "texture": "327-7_lhl-t-t.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "hl-hl-hr-hr",
+        "texture": "327-7_hl-hl-hr-hr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-l-t",
+        "texture": "327-7_l-l-t.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-hr-hr",
+        "texture": "327-7_lt-t-hr-hr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-t-t-r-r",
+        "texture": "327-7_t-t-t-r-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-t-t-tr",
+        "texture": "327-7_l-t-t-tr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "hl-hr",
+        "texture": "327-7_hl-hr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "hl-t-t-t",
+        "texture": "327-7_hl-t-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "hl-hl-t-t",
+        "texture": "327-7_hl-hl-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-thr-hr",
+        "texture": "327-7_t-thr-hr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-t-thr",
+        "texture": "327-7_lt-t-t-t-thr.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "t-thr",
+        "texture": "327-7_t-thr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "hl-t-r",
+        "texture": "327-7_hl-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-lt-r",
+        "texture": "327-7_l-lt-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "hl-t-hr-hr",
+        "texture": "327-7_hl-t-hr-hr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t-l-t-tr",
+        "texture": "327-7_t-l-t-tr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-l-t-r",
+        "texture": "327-7_l-l-t-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-lt-t-t",
+        "texture": "327-7_l-lt-t-t.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-r-r-r",
+        "texture": "327-7_l-r-r-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "hl-hl-hlr",
+        "texture": "327-7_hl-hl-hlr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-l-t-r-r",
+        "texture": "327-7_l-l-t-r-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "hl-t-t-hr",
+        "texture": "327-7_hl-t-t-hr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-l",
+        "texture": "327-7_l-l.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "t-lt-tr",
+        "texture": "327-7_t-lt-tr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "l-l-t-t-t-r-r",
+        "texture": "327-7_l-l-t-t-t-r-r.png",
+        "plate_node": "PlateRect280x90",
+        "size_mm": [2800.0, 900.0]
+      },
+      {
+        "lanes": "r-lr",
+        "texture": "327-7_r-lr.png",
+        "plate_node": "PlateRect80x90",
+        "size_mm": [800.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-hr",
+        "texture": "327-7_lt-t-hr.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "tr",
+        "texture": "327-7_tr.png",
+        "plate_node": "PlateSquare90",
+        "size_mm": [900.0, 900.0]
+      },
+      {
+        "lanes": "hl-hl-hr-hr-r",
+        "texture": "327-7_hl-hl-hr-hr-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-lt-t-tr",
+        "texture": "327-7_l-lt-t-tr.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "l-lt-t-t-t",
+        "texture": "327-7_l-lt-t-t-t.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-lt-t-tr-r",
+        "texture": "327-7_l-lt-t-tr-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-lt-t-r",
+        "texture": "327-7_l-lt-t-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "lt-t-t-r-r",
+        "texture": "327-7_lt-t-t-r-r.png",
+        "plate_node": "PlateRect200x90",
+        "size_mm": [2000.0, 900.0]
+      },
+      {
+        "lanes": "l-l-r-r",
+        "texture": "327-7_l-l-r-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "hlt-t-r",
+        "texture": "327-7_hlt-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt~bus-t-r",
+        "texture": "327-7_lt~bus-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt~busp-t-r",
+        "texture": "327-7_lt~busp-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      },
+      {
+        "lanes": "lt~bus-t-t-r",
+        "texture": "327-7_lt~bus-t-t-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "lt~busp-t-t-r",
+        "texture": "327-7_lt~busp-t-t-r.png",
+        "plate_node": "PlateRect160x90",
+        "size_mm": [1600.0, 900.0]
+      },
+      {
+        "lanes": "t~cyc-t-r",
+        "texture": "327-7_t~cyc-t-r.png",
+        "plate_node": "PlateRect120x90",
+        "size_mm": [1200.0, 900.0]
+      }
+    ]
+  },
+  "signs": [
+    {
+      "id": "101",
+      "name": "市町村",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-002.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "102-A",
+      "name": "都府県",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-003.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "102-B",
+      "name": "都府県",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-004.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "103-A",
+      "name": "入口の方向",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-005.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "103-B",
+      "name": "入口の方向",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-006.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "104",
+      "name": "入口の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-007.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "105-A",
+      "name": "方面、方向及び距離",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-008.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "105-B",
+      "name": "方面、方向及び距離",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-009.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "105-C",
+      "name": "方面、方向及び距離",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-010.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "106-A",
+      "name": "方面及び距離",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-011.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "106-B",
+      "name": "方面及び距離",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-012.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "106-C",
+      "name": "方面及び距離",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-013.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "107-A",
+      "name": "方面及び車線",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-014.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "107-B",
+      "name": "方面及び車線",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-015.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108-A",
+      "name": "方面及び方向の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-016.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108-B",
+      "name": "方面及び方向の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-017.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108の2-A",
+      "name": "方面及び方向",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-018.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108の2-B",
+      "name": "方面及び方向",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-019.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108の2-C",
+      "name": "方面及び方向",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-020.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108の2-D",
+      "name": "方面及び方向",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-021.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108の2-E",
+      "name": "方面及び方向",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-022.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108の3",
+      "name": "方面、方向及び道路の通称名の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-023.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "108の4",
+      "name": "方面、方向及び道路の通称名",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-024.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "109",
+      "name": "出口の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-025.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "110-A",
+      "name": "方面及び出口の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-026.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "110-B",
+      "name": "方面及び出口の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-027.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "111-A",
+      "name": "方面、車線及び出口の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-028.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "111-B",
+      "name": "方面、車線及び出口の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-029.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "112-A",
+      "name": "方面及び出口",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-030.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "112-B",
+      "name": "方面及び出口",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-031.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "113-A",
+      "name": "出口",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-032.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "113-B",
+      "name": "出口",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-033.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "114-A",
+      "name": "著名地点",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-034.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "114-B",
+      "name": "著名地点",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-035.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "114-C",
+      "name": "著名地点",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-036.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "114の2-A",
+      "name": "主要地点",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-037.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "114の2-B",
+      "name": "主要地点",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-038.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "115",
+      "name": "料金徴収所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-039.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116",
+      "name": "サービス・エリア、道の駅及び距離",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-040.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の2-A",
+      "name": "サービス・エリア、道の駅の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-041.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の2-B",
+      "name": "サービス・エリア、道の駅の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-042.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の2-C",
+      "name": "サービス・エリア、道の駅の予告",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-043.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の3-A",
+      "name": "サービス・エリア",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-044.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の3-B",
+      "name": "サービス・エリア",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-045.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の4",
+      "name": "非常電話",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-046.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の5",
+      "name": "待避所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-047.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "116の6",
+      "name": "非常駐車帯",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-048.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "117-A",
+      "name": "駐車場",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-049.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "117-B",
+      "name": "駐車場",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-050.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "117の2",
+      "name": "サービス・エリア又は駐車場から本線への入口",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-051.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "117の3-A",
+      "name": "登坂車線",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-053.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "117の3-B",
+      "name": "登坂車線",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-054.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118-A",
+      "name": "国道番号",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-055.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118-B",
+      "name": "国道番号",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-056.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118-C",
+      "name": "国道番号",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-057.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の2-A",
+      "name": "都道府県道番号",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-058.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の2-B",
+      "name": "都道府県道番号",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-059.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の2-C",
+      "name": "都道府県道番号",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-060.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の3",
+      "name": "高速道路番号",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-061.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の4-A",
+      "name": "総重量限度緩和指定道路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-062.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の4-B",
+      "name": "総重量限度緩和指定道路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-063.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の5-A",
+      "name": "高さ限度緩和指定道路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-064.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の5-B",
+      "name": "高さ限度緩和指定道路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-065.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の5-C",
+      "name": "高さ限度緩和指定道路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-066.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "118の5-D",
+      "name": "高さ限度緩和指定道路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-067.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "119-A",
+      "name": "道路の通称名",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-068.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "119-B",
+      "name": "道路の通称名",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-069.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "119-C",
+      "name": "道路の通称名",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-070.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "119-D",
+      "name": "道路の通称名",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-071.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "120-A",
+      "name": "まわり道",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-072.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "120-B",
+      "name": "まわり道",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-073.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "121-A",
+      "name": "エレベーター",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-074.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "121-B",
+      "name": "エレベーター",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-075.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "121-C",
+      "name": "エレベーター",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-076.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "122-A",
+      "name": "エスカレーター",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-077.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "122-B",
+      "name": "エスカレーター",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-078.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "122-C",
+      "name": "エスカレーター",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-079.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "123-A",
+      "name": "傾斜路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-080.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "123-B",
+      "name": "傾斜路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-081.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "123-C",
+      "name": "傾斜路",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-082.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "124-A",
+      "name": "乗合自動車停留所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-083.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "124-B",
+      "name": "乗合自動車停留所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-084.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "124-C",
+      "name": "乗合自動車停留所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-085.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "125-A",
+      "name": "路面電車停留場",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-086.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "125-B",
+      "name": "路面電車停留場",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": null,
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "125-C",
+      "name": "路面電車停留場",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-088.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "126-A",
+      "name": "便所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-089.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "126-B",
+      "name": "便所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-090.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "126-C",
+      "name": "便所",
+      "group": "案内",
+      "texture": null,
+      "plate": null,
+      "plate_node": null,
+      "size_mm": null,
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-091.jpg",
+      "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
+    },
+    {
+      "id": "201-A",
+      "name": "┼形道路交差点あり",
+      "group": "警戒",
+      "texture": "201a.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-093.jpg"
+    },
+    {
+      "id": "201-B",
+      "name": "├形（又は┤形）道路交差点あり",
+      "group": "警戒",
+      "texture": "201b_right.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-094.jpg",
+      "variants": [
+        {
+          "key": "left",
+          "texture": "201b_left.png"
+        }
+      ]
+    },
+    {
+      "id": "201-C",
+      "name": "Ｔ形道路交差点あり",
+      "group": "警戒",
+      "texture": "201c.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-095.jpg"
+    },
+    {
+      "id": "201-D",
+      "name": "Ｙ形道路交差点あり",
+      "group": "警戒",
+      "texture": "201d.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-096.jpg"
+    },
+    {
+      "id": "201の2",
+      "name": "ロータリーあり",
+      "group": "警戒",
+      "texture": "201-2.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-097.jpg"
+    },
+    {
+      "id": "202",
+      "name": "右（又は左）方屈曲あり",
+      "group": "警戒",
+      "texture": "202_right.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-098.jpg",
+      "variants": [
+        {
+          "key": "left",
+          "texture": "202_left.png"
+        }
+      ]
+    },
+    {
+      "id": "203",
+      "name": "右（又は左）方屈折あり",
+      "group": "警戒",
+      "texture": "203_right.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-099.jpg",
+      "variants": [
+        {
+          "key": "left",
+          "texture": "203_left.png"
+        }
+      ]
+    },
+    {
+      "id": "204",
+      "name": "右（又は左）背向屈曲あり",
+      "group": "警戒",
+      "texture": "204_right.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-100.jpg",
+      "variants": [
+        {
+          "key": "left",
+          "texture": "204_left.png"
+        }
+      ]
+    },
+    {
+      "id": "205",
+      "name": "右（又は左）背向屈折あり",
+      "group": "警戒",
+      "texture": "205_right.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-101.jpg",
+      "variants": [
+        {
+          "key": "left",
+          "texture": "205_left.png"
+        }
+      ]
+    },
+    {
+      "id": "206",
+      "name": "右（又は左）つづら折りあり",
+      "group": "警戒",
+      "texture": "206_right.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-102.jpg",
+      "variants": [
+        {
+          "key": "left",
+          "texture": "206_left.png"
+        }
+      ]
+    },
+    {
+      "id": "207-A",
+      "name": "踏切あり",
+      "group": "警戒",
+      "texture": "207a.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-103.jpg"
+    },
+    {
+      "id": "207-B",
+      "name": "踏切あり",
+      "group": "警戒",
+      "texture": "207b.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-104.jpg"
+    },
+    {
+      "id": "208",
+      "name": "学校、幼稚園、保育所等あり",
+      "group": "警戒",
+      "texture": "208.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-105.jpg"
+    },
+    {
+      "id": "208の2",
+      "name": "信号機あり",
+      "group": "警戒",
+      "texture": "208-2.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-106.jpg",
+      "variants": [
+        {
+          "key": "vertical",
+          "texture": "208-2_vertical.png"
+        }
+      ]
+    },
+    {
+      "id": "209",
+      "name": "すべりやすい",
+      "group": "警戒",
+      "texture": "209.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-107.jpg"
+    },
+    {
+      "id": "209の2",
+      "name": "落石のおそれあり",
+      "group": "警戒",
+      "texture": "209-2.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-108.jpg",
+      "variants": [
+        {
+          "key": "mirror",
+          "texture": "209-2_mirror.png"
+        }
+      ]
+    },
+    {
+      "id": "209の3",
+      "name": "路面凹凸あり",
+      "group": "警戒",
+      "texture": "209-3.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-109.jpg"
+    },
+    {
+      "id": "210",
+      "name": "合流交通あり",
+      "group": "警戒",
+      "texture": "210.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-110.jpg",
+      "variants": [
+        {
+          "key": "mirror",
+          "texture": "210_mirror.png"
+        }
+      ]
+    },
+    {
+      "id": "211",
+      "name": "車線数減少",
+      "group": "警戒",
+      "texture": "211.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-111.jpg",
+      "variants": [
+        {
+          "key": "mirror",
+          "texture": "211_mirror.png"
+        }
+      ]
+    },
+    {
+      "id": "212",
+      "name": "幅員減少",
+      "group": "警戒",
+      "texture": "212.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-112.jpg"
+    },
+    {
+      "id": "212の2",
+      "name": "二方向交通",
+      "group": "警戒",
+      "texture": "212-2.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-113.jpg"
+    },
+    {
+      "id": "212の3",
+      "name": "上り急勾配あり",
+      "group": "警戒",
+      "texture": "212-3_10.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-114.jpg"
+    },
+    {
+      "id": "212の4",
+      "name": "下り急勾配あり",
+      "group": "警戒",
+      "texture": "212-4_10.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-115.jpg"
+    },
+    {
+      "id": "213",
+      "name": "道路工事中",
+      "group": "警戒",
+      "texture": "213.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-116.jpg"
+    },
+    {
+      "id": "214",
+      "name": "横風注意",
+      "group": "警戒",
+      "texture": "214.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-117.jpg"
+    },
+    {
+      "id": "214の2",
+      "name": "動物が飛び出すおそれあり",
+      "group": "警戒",
+      "texture": "214-2.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-118.jpg",
+      "variants": [
+        {
+          "key": "mirror",
+          "texture": "214-2_mirror.png"
+        }
+      ]
+    },
+    {
+      "id": "215",
+      "name": "その他の危険",
+      "group": "警戒",
+      "texture": "215.png",
+      "plate": "diamond",
+      "plate_node": "PlateDiamond",
+      "size_mm": [450.0, 450.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-119.jpg"
+    },
+    {
+      "id": "301",
+      "name": "通行止め",
+      "group": "規制",
+      "texture": "301.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-121.jpg"
+    },
+    {
+      "id": "302",
+      "name": "車両通行止め",
+      "group": "規制",
+      "texture": "vehicles_closed.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-122.jpg",
+      "note": "図 122 は赤の環と斜めの帯（2026-10-04 に帯の無い旧テクスチャを訂正）"
+    },
+    {
+      "id": "303",
+      "name": "車両進入禁止",
+      "group": "規制",
+      "texture": "no_entry.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-123.jpg"
+    },
+    {
+      "id": "304",
+      "name": "二輪の自動車以外の自動車通行止め",
+      "group": "規制",
+      "texture": "304.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-124.jpg"
+    },
+    {
+      "id": "305",
+      "name": "大型貨物自動車等通行止め",
+      "group": "規制",
+      "texture": "305.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-125.jpg"
+    },
+    {
+      "id": "305の2",
+      "name": "特定の最大積載量以上の貨物自動車等通行止め",
+      "group": "規制",
+      "texture": "305.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-125.jpg",
+      "note": "305 と同じ標示板に補助標識 503-C を附置する（備考一(一)34）"
+    },
+    {
+      "id": "306",
+      "name": "大型乗用自動車等通行止め",
+      "group": "規制",
+      "texture": "306.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-126.jpg"
+    },
+    {
+      "id": "307",
+      "name": "二輪の自動車・一般原動機付自転車通行止め",
+      "group": "規制",
+      "texture": "307.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215355.jpg"
+    },
+    {
+      "id": "308",
+      "name": "自転車以外の軽車両通行止め",
+      "group": "規制",
+      "texture": "308.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-128.jpg"
+    },
+    {
+      "id": "309",
+      "name": "特定小型原動機付自転車・自転車通行止め",
+      "group": "規制",
+      "texture": "309.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215357.jpg"
+    },
+    {
+      "id": "310",
+      "name": "車両（組合せ）通行止め",
+      "group": "規制",
+      "texture": "310.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-130.jpg",
+      "variants": [
+        {
+          "key": "truck-bus",
+          "texture": "310_truck-bus.png"
+        },
+        {
+          "key": "car-bicycle",
+          "texture": "310_car-bicycle.png"
+        }
+      ]
+    },
+    {
+      "id": "310の2",
+      "name": "大型自動二輪車及び普通自動二輪車二人乗り通行禁止",
+      "group": "規制",
+      "texture": "310-2.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-131.jpg"
+    },
+    {
+      "id": "310の3",
+      "name": "タイヤチェーンを取り付けていない車両通行止め",
+      "group": "規制",
+      "texture": "310-3.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-132.jpg"
+    },
+    {
+      "id": "311-A",
+      "name": "指定方向外進行禁止",
+      "group": "規制",
+      "texture": "turn_3.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-133.jpg",
+      "variants": [
+        {
+          "key": "right",
+          "texture": "turn_6.png"
+        }
+      ]
+    },
+    {
+      "id": "311-B",
+      "name": "指定方向外進行禁止",
+      "group": "規制",
+      "texture": "turn_1.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-134.jpg",
+      "variants": [
+        {
+          "key": "right",
+          "texture": "turn_4.png"
+        }
+      ]
+    },
+    {
+      "id": "311-C",
+      "name": "指定方向外進行禁止",
+      "group": "規制",
+      "texture": "turn_2.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-135.jpg"
+    },
+    {
+      "id": "311-D",
+      "name": "指定方向外進行禁止",
+      "group": "規制",
+      "texture": "turn_5.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-136.jpg"
+    },
+    {
+      "id": "311-E",
+      "name": "指定方向外進行禁止",
+      "group": "規制",
+      "texture": "turn_7.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-137.jpg"
+    },
+    {
+      "id": "311-F",
+      "name": "指定方向外進行禁止",
+      "group": "規制",
+      "texture": "311f.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-138.jpg",
+      "variants": [
+        {
+          "key": "right",
+          "texture": "311f_right.png"
+        }
+      ]
+    },
+    {
+      "id": "312",
+      "name": "車両横断禁止",
+      "group": "規制",
+      "texture": "312.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-139.jpg"
+    },
+    {
+      "id": "313",
+      "name": "転回禁止",
+      "group": "規制",
+      "texture": "no_uturn.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-140.jpg"
+    },
+    {
+      "id": "314",
+      "name": "追越しのための右側部分はみ出し通行禁止",
+      "group": "規制",
+      "texture": "314.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-141.jpg"
+    },
+    {
+      "id": "314の2",
+      "name": "追越し禁止",
+      "group": "規制",
+      "texture": "314.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-141.jpg",
+      "note": "314 と同じ標示板に補助標識 508の2 を附置する（備考一(一)34）"
+    },
+    {
+      "id": "315",
+      "name": "駐停車禁止",
+      "group": "規制",
+      "texture": "no_stopping.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-142.jpg",
+      "variants": [
+        {
+          "key": "8-20",
+          "texture": "315_8-20.png"
+        }
+      ]
+    },
+    {
+      "id": "316",
+      "name": "駐車禁止",
+      "group": "規制",
+      "texture": "no_parking.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-143.jpg",
+      "variants": [
+        {
+          "key": "8-20",
+          "texture": "316_8-20.png"
+        }
+      ]
+    },
+    {
+      "id": "317",
+      "name": "駐車余地",
+      "group": "規制",
+      "texture": "no_parking.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-143.jpg",
+      "note": "316 と同じ標示板に補助標識 504 を附置する（備考一(一)34）",
+      "variants": [
+        {
+          "key": "8-20",
+          "texture": "316_8-20.png"
+        }
+      ]
+    },
+    {
+      "id": "318",
+      "name": "時間制限駐車区間",
+      "group": "規制",
+      "texture": "318.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-144.jpg",
+      "variants": [
+        {
+          "key": "60",
+          "texture": "318_60.png"
+        }
+      ]
+    },
+    {
+      "id": "319",
+      "name": "危険物積載車両通行止め",
+      "group": "規制",
+      "texture": "319.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-145.jpg"
+    },
+    {
+      "id": "320",
+      "name": "重量制限",
+      "group": "規制",
+      "texture": "320_5.5.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-146.jpg",
+      "variants": [
+        {
+          "key": "20",
+          "texture": "320_20.png"
+        }
+      ]
+    },
+    {
+      "id": "321",
+      "name": "高さ制限",
+      "group": "規制",
+      "texture": "321_3.3.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-147.jpg",
+      "variants": [
+        {
+          "key": "3.8",
+          "texture": "321_3.8.png"
+        }
+      ]
+    },
+    {
+      "id": "322",
+      "name": "最大幅",
+      "group": "規制",
+      "texture": "322_2.2.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-148.jpg"
+    },
+    {
+      "id": "323",
+      "name": "最高速度",
+      "group": "規制",
+      "texture": "speed_20.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-149.jpg",
+      "variants": [
+        {
+          "key": "30",
+          "texture": "speed_30.png"
+        },
+        {
+          "key": "40",
+          "texture": "speed_40.png"
+        },
+        {
+          "key": "50",
+          "texture": "speed_50.png"
+        },
+        {
+          "key": "60",
+          "texture": "speed_60.png"
+        },
+        {
+          "key": "70",
+          "texture": "speed_70.png"
+        },
+        {
+          "key": "80",
+          "texture": "speed_80.png"
+        },
+        {
+          "key": "10",
+          "texture": "speed_10.png"
+        },
+        {
+          "key": "100",
+          "texture": "speed_100.png"
+        },
+        {
+          "key": "110",
+          "texture": "speed_110.png"
+        },
+        {
+          "key": "120",
+          "texture": "speed_120.png"
+        }
+      ]
+    },
+    {
+      "id": "323の2",
+      "name": "特定の種類の車両の最高速度",
+      "group": "規制",
+      "texture": "speed_20.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-149.jpg",
+      "note": "323 と同じ標示板に補助標識 503-A を附置する（備考一(一)34）",
+      "variants": [
+        {
+          "key": "30",
+          "texture": "speed_30.png"
+        },
+        {
+          "key": "40",
+          "texture": "speed_40.png"
+        },
+        {
+          "key": "50",
+          "texture": "speed_50.png"
+        },
+        {
+          "key": "60",
+          "texture": "speed_60.png"
+        },
+        {
+          "key": "70",
+          "texture": "speed_70.png"
+        },
+        {
+          "key": "80",
+          "texture": "speed_80.png"
+        },
+        {
+          "key": "10",
+          "texture": "speed_10.png"
+        },
+        {
+          "key": "100",
+          "texture": "speed_100.png"
+        },
+        {
+          "key": "110",
+          "texture": "speed_110.png"
+        },
+        {
+          "key": "120",
+          "texture": "speed_120.png"
+        }
+      ]
+    },
+    {
+      "id": "324",
+      "name": "最低速度",
+      "group": "規制",
+      "texture": "324_30.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-150.jpg",
+      "variants": [
+        {
+          "key": "50",
+          "texture": "324_50.png"
+        }
+      ]
+    },
+    {
+      "id": "325",
+      "name": "自動車専用",
+      "group": "規制",
+      "texture": "325.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-151.jpg"
+    },
+    {
+      "id": "325の2",
+      "name": "特定小型原動機付自転車・自転車専用",
+      "group": "規制",
+      "texture": "325-2.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215380.jpg"
+    },
+    {
+      "id": "325の3",
+      "name": "普通自転車等及び歩行者等専用",
+      "group": "規制",
+      "texture": "325-3.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215381.jpg",
+      "variants": [
+        {
+          "key": "mirror",
+          "texture": "325-3_mirror.png"
+        }
+      ]
+    },
+    {
+      "id": "325の4",
+      "name": "歩行者等専用",
+      "group": "規制",
+      "texture": "325-4.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-154.jpg"
+    },
+    {
+      "id": "325の5-A",
+      "name": "許可車両専用",
+      "group": "規制",
+      "texture": "325-5a.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000267345.jpg"
+    },
+    {
+      "id": "325の5-B",
+      "name": "許可車両専用",
+      "group": "規制",
+      "texture": "325-5b.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000267346.jpg"
+    },
+    {
+      "id": "325の5-C",
+      "name": "許可車両専用",
+      "group": "規制",
+      "texture": "325-5c.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000267347.jpg"
+    },
+    {
+      "id": "325の6",
+      "name": "許可車両（組合せ）専用",
+      "group": "規制",
+      "texture": "325-6.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000267348.jpg"
+    },
+    {
+      "id": "325の7",
+      "name": "広域災害応急対策車両専用",
+      "group": "規制",
+      "texture": "325-7.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215387.jpg"
+    },
+    {
+      "id": "326-A",
+      "name": "一方通行",
+      "group": "規制",
+      "texture": "one_way_right.png",
+      "plate": "rect",
+      "plate_node": "PlateWide",
+      "size_mm": [600.0, 350.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-155.jpg",
+      "note": "図 155 は矢印のみ。既存テクスチャは矢印の軸に「一方通行」を青字で入れた実務上の表示（図示は例示）",
+      "variants": [
+        {
+          "key": "left",
+          "texture": "one_way_left.png"
+        }
+      ]
+    },
+    {
+      "id": "326-B",
+      "name": "一方通行",
+      "group": "規制",
+      "texture": "one_way.png",
+      "plate": "rect",
+      "plate_node": "PlateRect",
+      "size_mm": [350.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-156.jpg"
+    },
+    {
+      "id": "326の2-A",
+      "name": "特定小型原動機付自転車・自転車一方通行",
+      "group": "規制",
+      "texture": "326-2a_left.png",
+      "plate": "rect",
+      "plate_node": "PlateWide",
+      "size_mm": [600.0, 350.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215390.jpg",
+      "variants": [
+        {
+          "key": "right",
+          "texture": "326-2a_right.png"
+        }
+      ]
+    },
+    {
+      "id": "326の2-B",
+      "name": "特定小型原動機付自転車・自転車一方通行",
+      "group": "規制",
+      "texture": "326-2b.png",
+      "plate": "rect",
+      "plate_node": "PlateRect",
+      "size_mm": [350.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215391.jpg"
+    },
+    {
+      "id": "327",
+      "name": "車両通行区分",
+      "group": "規制",
+      "texture": "327.png",
+      "plate": "rect",
+      "plate_node": "PlateRect120x90",
+      "size_mm": [1200.0, 900.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-159.jpg"
+    },
+    {
+      "id": "327の2",
+      "name": "特定の種類の車両の通行区分",
+      "group": "規制",
+      "texture": "327-2.png",
+      "plate": "rect",
+      "plate_node": "PlateRect120x90",
+      "size_mm": [1200.0, 900.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-160.jpg"
+    },
+    {
+      "id": "327の3",
+      "name": "牽引自動車の高速自動車国道通行区分",
+      "group": "規制",
+      "texture": "327-3.png",
+      "plate": "square",
+      "plate_node": "PlateSquare90",
+      "size_mm": [900.0, 900.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-161.jpg"
+    },
+    {
+      "id": "327の4",
+      "name": "専用通行帯",
+      "group": "規制",
+      "texture": "327-4.png",
+      "plate": "square",
+      "plate_node": "PlateSquare90",
+      "size_mm": [900.0, 900.0],
+      "variable": "lanes",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-162.jpg",
+      "variants": [
+        {
+          "key": "text",
+          "texture": "327-4_text.png"
+        },
+        {
+          "key": "lanes:lt~bus-t-r",
+          "texture": "327-7_lt~bus-t-r.png",
+          "plate_node": "PlateRect120x90",
+          "size_mm": [1200.0, 900.0]
+        },
+        {
+          "key": "lanes:lt~bus-t-t-r",
+          "texture": "327-7_lt~bus-t-t-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t~cyc-t-r",
+          "texture": "327-7_t~cyc-t-r.png",
+          "plate_node": "PlateRect120x90",
+          "size_mm": [1200.0, 900.0]
+        }
+      ]
+    },
+    {
+      "id": "327の4の2",
+      "name": "普通自転車専用通行帯",
+      "group": "規制",
+      "texture": "327-4-2.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-163.jpg"
+    },
+    {
+      "id": "327の5",
+      "name": "路線バス等優先通行帯",
+      "group": "規制",
+      "texture": "327-5.png",
+      "plate": "square",
+      "plate_node": "PlateSquare90",
+      "size_mm": [900.0, 900.0],
+      "variable": "lanes",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-164.jpg",
+      "note": "図示の記号は例示の対象（備考一(一)1）に含まれない。車線ごとの版は 327の4・327の7 の例示に倣った実務上の表示",
+      "variants": [
+        {
+          "key": "lanes:lt~busp-t-r",
+          "texture": "327-7_lt~busp-t-r.png",
+          "plate_node": "PlateRect120x90",
+          "size_mm": [1200.0, 900.0]
+        },
+        {
+          "key": "lanes:lt~busp-t-t-r",
+          "texture": "327-7_lt~busp-t-t-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        }
+      ]
+    },
+    {
+      "id": "327の6",
+      "name": "牽引自動車の自動車専用道路第一通行帯通行指定区間",
+      "group": "規制",
+      "texture": "327-6.png",
+      "plate": "square",
+      "plate_node": "PlateSquare90",
+      "size_mm": [900.0, 900.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-165.jpg"
+    },
+    {
+      "id": "327の7-A",
+      "name": "進行方向別通行区分",
+      "group": "規制",
+      "texture": "327-7_lt-t-r.png",
+      "plate": "rect",
+      "plate_node": "PlateRect120x90",
+      "size_mm": [1200.0, 900.0],
+      "variable": "lanes",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-166.jpg",
+      "variants": [
+        {
+          "key": "lanes:t-t",
+          "texture": "327-7_t-t.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t",
+          "texture": "327-7_lt-t.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:t-tr",
+          "texture": "327-7_t-tr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-tr",
+          "texture": "327-7_lt-tr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-r",
+          "texture": "327-7_l-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t",
+          "texture": "327-7_l-t.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:t-r",
+          "texture": "327-7_t-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-t",
+          "texture": "327-7_t-t-t.png"
+        },
+        {
+          "key": "lanes:lt-t-t",
+          "texture": "327-7_lt-t-t.png"
+        },
+        {
+          "key": "lanes:t-t-r",
+          "texture": "327-7_t-t-r.png"
+        },
+        {
+          "key": "lanes:l-t-r",
+          "texture": "327-7_l-t-r.png"
+        },
+        {
+          "key": "lanes:l-t-t",
+          "texture": "327-7_l-t-t.png"
+        },
+        {
+          "key": "lanes:t-t-t-t",
+          "texture": "327-7_t-t-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-t",
+          "texture": "327-7_lt-t-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-t-r",
+          "texture": "327-7_t-t-t-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-r",
+          "texture": "327-7_lt-t-t-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-r",
+          "texture": "327-7_l-t-t-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-t",
+          "texture": "327-7_l-t-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-t-t-t",
+          "texture": "327-7_t-t-t-t-t.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-t-t",
+          "texture": "327-7_lt-t-t-t-t.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-t-t-r",
+          "texture": "327-7_t-t-t-t-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-t-r",
+          "texture": "327-7_lt-t-t-t-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-t-r",
+          "texture": "327-7_l-t-t-t-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-t-t",
+          "texture": "327-7_l-t-t-t-t.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-t-t-t-t",
+          "texture": "327-7_t-t-t-t-t-t.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-t-t-t",
+          "texture": "327-7_lt-t-t-t-t-t.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-t-t-t-r",
+          "texture": "327-7_t-t-t-t-t-r.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-t-t-r",
+          "texture": "327-7_lt-t-t-t-t-r.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-t-t-r",
+          "texture": "327-7_l-t-t-t-t-r.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-t-t-t",
+          "texture": "327-7_l-t-t-t-t-t.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:lhl-r",
+          "texture": "327-7_lhl-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-tr",
+          "texture": "327-7_l-tr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-r",
+          "texture": "327-7_lt-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-tr-r",
+          "texture": "327-7_l-tr-r.png"
+        },
+        {
+          "key": "lanes:lt-t-tr",
+          "texture": "327-7_lt-t-tr.png"
+        },
+        {
+          "key": "lanes:lt-t-r-r",
+          "texture": "327-7_lt-t-r-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:hlt-t",
+          "texture": "327-7_hlt-t.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-r-r",
+          "texture": "327-7_l-r-r.png"
+        },
+        {
+          "key": "lanes:t-r-r",
+          "texture": "327-7_t-r-r.png"
+        },
+        {
+          "key": "lanes:l-l-t-t",
+          "texture": "327-7_l-l-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-l",
+          "texture": "327-7_t-l.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-hr-hr",
+          "texture": "327-7_hl-hr-hr.png"
+        },
+        {
+          "key": "lanes:l-l-tr",
+          "texture": "327-7_l-l-tr.png"
+        },
+        {
+          "key": "lanes:t-hr",
+          "texture": "327-7_t-hr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-r-r",
+          "texture": "327-7_l-t-t-r-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-r-r",
+          "texture": "327-7_l-t-r-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-t",
+          "texture": "327-7_hl-t.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-t-t",
+          "texture": "327-7_hl-t-t.png"
+        },
+        {
+          "key": "lanes:hl-hl-hl-hr-r",
+          "texture": "327-7_hl-hl-hl-hr-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-thr-r",
+          "texture": "327-7_lt-thr-r.png"
+        },
+        {
+          "key": "lanes:lr-r",
+          "texture": "327-7_lr-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-hr",
+          "texture": "327-7_lt-t-t-hr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-l-r",
+          "texture": "327-7_l-l-r.png"
+        },
+        {
+          "key": "lanes:r-r",
+          "texture": "327-7_r-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-r-r",
+          "texture": "327-7_lt-r-r.png"
+        },
+        {
+          "key": "lanes:hl-hl-hr",
+          "texture": "327-7_hl-hl-hr.png"
+        },
+        {
+          "key": "lanes:lt-hr",
+          "texture": "327-7_lt-hr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:hr-r",
+          "texture": "327-7_hr-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-lr",
+          "texture": "327-7_l-lr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-r",
+          "texture": "327-7_hl-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-hr",
+          "texture": "327-7_l-t-t-hr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-tr-t",
+          "texture": "327-7_lt-tr-t.png"
+        },
+        {
+          "key": "lanes:l-t-t-hr-r",
+          "texture": "327-7_l-t-t-hr-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-hrr",
+          "texture": "327-7_l-t-t-hrr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:r-t",
+          "texture": "327-7_r-t.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lhl-hl-hl-hr-r",
+          "texture": "327-7_lhl-hl-hl-hr-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-hr-hr",
+          "texture": "327-7_lt-t-t-hr-hr.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:lhlt-t-r-r",
+          "texture": "327-7_lhlt-t-r-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-tr",
+          "texture": "327-7_t-t-tr.png"
+        },
+        {
+          "key": "lanes:lt-thr",
+          "texture": "327-7_lt-thr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-r-t",
+          "texture": "327-7_lt-t-r-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-hr-r",
+          "texture": "327-7_lt-t-hr-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-r-r",
+          "texture": "327-7_t-t-r-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-tr",
+          "texture": "327-7_l-t-tr.png"
+        },
+        {
+          "key": "lanes:ltr-r",
+          "texture": "327-7_ltr-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lhl-hr-hr",
+          "texture": "327-7_lhl-hr-hr.png"
+        },
+        {
+          "key": "lanes:lt-t-t-hr-hrr-r",
+          "texture": "327-7_lt-t-t-hr-hrr-r.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:hlhr-hrr",
+          "texture": "327-7_hlhr-hrr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:t-lt-t-t",
+          "texture": "327-7_t-lt-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-u",
+          "texture": "327-7_lt-t-u.png"
+        },
+        {
+          "key": "lanes:l-l-hl-hl-hr-r",
+          "texture": "327-7_l-l-hl-hl-hr-r.png",
+          "plate_node": "PlateRect240x90",
+          "size_mm": [2400.0, 900.0]
+        },
+        {
+          "key": "lanes:lhlt-r",
+          "texture": "327-7_lhlt-r.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-hl-hlhrr",
+          "texture": "327-7_l-hl-hlhrr.png"
+        },
+        {
+          "key": "lanes:lt-hr-hrr",
+          "texture": "327-7_lt-hr-hrr.png"
+        },
+        {
+          "key": "lanes:lt-hr-hr",
+          "texture": "327-7_lt-hr-hr.png"
+        },
+        {
+          "key": "lanes:hr-hr",
+          "texture": "327-7_hr-hr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lhlt-r-r",
+          "texture": "327-7_lhlt-r-r.png"
+        },
+        {
+          "key": "lanes:t-hrr",
+          "texture": "327-7_t-hrr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-hrr",
+          "texture": "327-7_lt-hrr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:l-hl-hrr",
+          "texture": "327-7_l-hl-hrr.png"
+        },
+        {
+          "key": "lanes:l-hl-hr-r",
+          "texture": "327-7_l-hl-hr-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-hr-r",
+          "texture": "327-7_t-hr-r.png"
+        },
+        {
+          "key": "lanes:hr-uhr",
+          "texture": "327-7_hr-uhr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lhl-t-t",
+          "texture": "327-7_lhl-t-t.png"
+        },
+        {
+          "key": "lanes:hl-hl-hr-hr",
+          "texture": "327-7_hl-hl-hr-hr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-l-t",
+          "texture": "327-7_l-l-t.png"
+        },
+        {
+          "key": "lanes:lt-t-hr-hr",
+          "texture": "327-7_lt-t-hr-hr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-t-t-r-r",
+          "texture": "327-7_t-t-t-r-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-t-t-tr",
+          "texture": "327-7_l-t-t-tr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-hr",
+          "texture": "327-7_hl-hr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-t-t-t",
+          "texture": "327-7_hl-t-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-hl-t-t",
+          "texture": "327-7_hl-hl-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-thr-hr",
+          "texture": "327-7_t-thr-hr.png"
+        },
+        {
+          "key": "lanes:lt-t-t-t-thr",
+          "texture": "327-7_lt-t-t-t-thr.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:t-thr",
+          "texture": "327-7_t-thr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-t-r",
+          "texture": "327-7_hl-t-r.png"
+        },
+        {
+          "key": "lanes:l-lt-r",
+          "texture": "327-7_l-lt-r.png"
+        },
+        {
+          "key": "lanes:hl-t-hr-hr",
+          "texture": "327-7_hl-t-hr-hr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:t-l-t-tr",
+          "texture": "327-7_t-l-t-tr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-l-t-r",
+          "texture": "327-7_l-l-t-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-lt-t-t",
+          "texture": "327-7_l-lt-t-t.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-r-r-r",
+          "texture": "327-7_l-r-r-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-hl-hlr",
+          "texture": "327-7_hl-hl-hlr.png"
+        },
+        {
+          "key": "lanes:l-l-t-r-r",
+          "texture": "327-7_l-l-t-r-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:hl-t-t-hr",
+          "texture": "327-7_hl-t-t-hr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-l",
+          "texture": "327-7_l-l.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:t-lt-tr",
+          "texture": "327-7_t-lt-tr.png"
+        },
+        {
+          "key": "lanes:l-l-t-t-t-r-r",
+          "texture": "327-7_l-l-t-t-t-r-r.png",
+          "plate_node": "PlateRect280x90",
+          "size_mm": [2800.0, 900.0]
+        },
+        {
+          "key": "lanes:r-lr",
+          "texture": "327-7_r-lr.png",
+          "plate_node": "PlateRect80x90",
+          "size_mm": [800.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-hr",
+          "texture": "327-7_lt-t-hr.png"
+        },
+        {
+          "key": "lanes:hl-hl-hr-hr-r",
+          "texture": "327-7_hl-hl-hr-hr-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-lt-t-tr",
+          "texture": "327-7_l-lt-t-tr.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:l-lt-t-t-t",
+          "texture": "327-7_l-lt-t-t-t.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-lt-t-tr-r",
+          "texture": "327-7_l-lt-t-tr-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-lt-t-r",
+          "texture": "327-7_l-lt-t-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:lt-t-t-r-r",
+          "texture": "327-7_lt-t-t-r-r.png",
+          "plate_node": "PlateRect200x90",
+          "size_mm": [2000.0, 900.0]
+        },
+        {
+          "key": "lanes:l-l-r-r",
+          "texture": "327-7_l-l-r-r.png",
+          "plate_node": "PlateRect160x90",
+          "size_mm": [1600.0, 900.0]
+        },
+        {
+          "key": "lanes:hlt-t-r",
+          "texture": "327-7_hlt-t-r.png"
+        }
+      ]
+    },
+    {
+      "id": "327の7-B",
+      "name": "進行方向別通行区分",
+      "group": "規制",
+      "texture": "327-7_lt.png",
+      "plate": "square",
+      "plate_node": "PlateSquare90",
+      "size_mm": [900.0, 900.0],
+      "variable": "lanes",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-167.jpg",
+      "variants": [
+        {
+          "key": "lanes:r",
+          "texture": "327-7_r.png"
+        },
+        {
+          "key": "lanes:lr",
+          "texture": "327-7_lr.png"
+        },
+        {
+          "key": "lanes:hl",
+          "texture": "327-7_hl.png"
+        },
+        {
+          "key": "lanes:tr",
+          "texture": "327-7_tr.png"
+        }
+      ]
+    },
+    {
+      "id": "327の7-C",
+      "name": "進行方向別通行区分",
+      "group": "規制",
+      "texture": "327-7_l.png",
+      "plate": "square",
+      "plate_node": "PlateSquare90",
+      "size_mm": [900.0, 900.0],
+      "variable": "lanes",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-168.jpg"
+    },
+    {
+      "id": "327の7-D",
+      "name": "進行方向別通行区分",
+      "group": "規制",
+      "texture": "327-7_t.png",
+      "plate": "square",
+      "plate_node": "PlateSquare90",
+      "size_mm": [900.0, 900.0],
+      "variable": "lanes",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-169.jpg"
+    },
+    {
+      "id": "327の8",
+      "name": "一般原動機付自転車の右折方法（二段階）",
+      "group": "規制",
+      "texture": "327-8.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215403.jpg"
+    },
+    {
+      "id": "327の9",
+      "name": "一般原動機付自転車の右折方法（小回り）",
+      "group": "規制",
+      "texture": "327-9.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000215404.jpg"
+    },
+    {
+      "id": "327の10",
+      "name": "環状の交差点における右回り通行",
+      "group": "規制",
+      "texture": "327-10.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-172.jpg"
+    },
+    {
+      "id": "327の11",
+      "name": "平行駐車",
+      "group": "規制",
+      "texture": "327-11.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-173.jpg"
+    },
+    {
+      "id": "327の12",
+      "name": "直角駐車",
+      "group": "規制",
+      "texture": "327-12.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-174.jpg"
+    },
+    {
+      "id": "327の13",
+      "name": "斜め駐車",
+      "group": "規制",
+      "texture": "327-13.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-175.jpg"
+    },
+    {
+      "id": "328",
+      "name": "警笛鳴らせ",
+      "group": "規制",
+      "texture": "328.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-176.jpg"
+    },
+    {
+      "id": "328の2",
+      "name": "警笛区間",
+      "group": "規制",
+      "texture": "328.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-176.jpg",
+      "note": "328 と同じ標示板に補助標識 505-A・B、506 又は 507-B・C を附置する（備考一(一)34）"
+    },
+    {
+      "id": "329-A",
+      "name": "徐行",
+      "group": "規制",
+      "texture": "slow.png",
+      "plate": "triangle_down",
+      "plate_node": "PlateTriangle",
+      "size_mm": [800.0, 692.8],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-177.jpg"
+    },
+    {
+      "id": "329-B",
+      "name": "徐行",
+      "group": "規制",
+      "texture": "329b.png",
+      "plate": "triangle_down",
+      "plate_node": "PlateTriangle",
+      "size_mm": [800.0, 692.8],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-178.jpg"
+    },
+    {
+      "id": "329の2-A",
+      "name": "前方優先道路",
+      "group": "規制",
+      "texture": "slow.png",
+      "plate": "triangle_down",
+      "plate_node": "PlateTriangle",
+      "size_mm": [800.0, 692.8],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-177.jpg",
+      "note": "329-A と同じ標示板に補助標識 509 を附置する（備考一(一)34）"
+    },
+    {
+      "id": "329の2-B",
+      "name": "前方優先道路",
+      "group": "規制",
+      "texture": "329b.png",
+      "plate": "triangle_down",
+      "plate_node": "PlateTriangle",
+      "size_mm": [800.0, 692.8],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-178.jpg",
+      "note": "329-B と同じ標示板に補助標識 509 を附置する（備考一(一)34）"
+    },
+    {
+      "id": "330-A",
+      "name": "一時停止",
+      "group": "規制",
+      "texture": "stop.png",
+      "plate": "triangle_down",
+      "plate_node": "PlateTriangle",
+      "size_mm": [800.0, 692.8],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-179.jpg"
+    },
+    {
+      "id": "330-B",
+      "name": "一時停止",
+      "group": "規制",
+      "texture": "330b.png",
+      "plate": "triangle_down",
+      "plate_node": "PlateTriangle",
+      "size_mm": [800.0, 692.8],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-180.jpg"
+    },
+    {
+      "id": "331",
+      "name": "歩行者等通行止め",
+      "group": "規制",
+      "texture": "331.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-181.jpg",
+      "note": "図に外形寸法の記載がないため規制標識の標準 60 cm の正方形とした"
+    },
+    {
+      "id": "332",
+      "name": "歩行者等横断禁止",
+      "group": "規制",
+      "texture": "332.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-182.jpg",
+      "note": "図に外形寸法の記載がないため規制標識の標準 60 cm の正方形とした。「わたるな」の表示も可（備考一(一)40）",
+      "variants": [
+        {
+          "key": "watarun",
+          "texture": "332_watarun.png"
+        }
+      ]
+    },
+    {
+      "id": "401",
+      "name": "並進可",
+      "group": "指示",
+      "texture": "401.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-184.jpg"
+    },
+    {
+      "id": "402",
+      "name": "軌道敷内通行可",
+      "group": "指示",
+      "texture": "402.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-185.jpg"
+    },
+    {
+      "id": "402の2",
+      "name": "高齢運転者等標章自動車駐車可",
+      "group": "指示",
+      "texture": "403.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-186.jpg",
+      "note": "403 と同じ標示板に補助標識 503-D を附置する（備考一(一)34）"
+    },
+    {
+      "id": "403",
+      "name": "駐車可",
+      "group": "指示",
+      "texture": "403.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-186.jpg"
+    },
+    {
+      "id": "403の2",
+      "name": "高齢運転者等標章自動車停車可",
+      "group": "指示",
+      "texture": "404.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-187.jpg",
+      "note": "404 と同じ標示板に補助標識 503-D を附置する（備考一(一)34）"
+    },
+    {
+      "id": "404",
+      "name": "停車可",
+      "group": "指示",
+      "texture": "404.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-187.jpg"
+    },
+    {
+      "id": "405",
+      "name": "優先道路",
+      "group": "指示",
+      "texture": "405.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-188.jpg"
+    },
+    {
+      "id": "406",
+      "name": "中央線",
+      "group": "指示",
+      "texture": "406.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-189.jpg"
+    },
+    {
+      "id": "406の2",
+      "name": "停止線",
+      "group": "指示",
+      "texture": "406-2.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-190.jpg"
+    },
+    {
+      "id": "407-A",
+      "name": "横断歩道",
+      "group": "指示",
+      "texture": "407a.png",
+      "plate": "pentagon",
+      "plate_node": "PlatePentagon",
+      "size_mm": [600.0, 719.6],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-191.jpg",
+      "note": "現行の様式は青の五角形に白の記号（図 191）。旧 crosswalk.png（青の正方形に白の三角）は様式外として variants に残す",
+      "variants": [
+        {
+          "key": "legacy",
+          "texture": "crosswalk.png",
+          "plate_node": "PlateSquare",
+          "size_mm": [600.0, 600.0]
+        }
+      ]
+    },
+    {
+      "id": "407-B",
+      "name": "横断歩道",
+      "group": "指示",
+      "texture": "407b.png",
+      "plate": "pentagon",
+      "plate_node": "PlatePentagon",
+      "size_mm": [600.0, 719.6],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-192.jpg"
+    },
+    {
+      "id": "407の2",
+      "name": "自転車横断帯",
+      "group": "指示",
+      "texture": "407-2.png",
+      "plate": "pentagon",
+      "plate_node": "PlatePentagon",
+      "size_mm": [600.0, 719.6],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-193.jpg"
+    },
+    {
+      "id": "407の3",
+      "name": "横断歩道・自転車横断帯",
+      "group": "指示",
+      "texture": "407-3.png",
+      "plate": "pentagon",
+      "plate_node": "PlatePentagon",
+      "size_mm": [600.0, 719.6],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-194.jpg"
+    },
+    {
+      "id": "408",
+      "name": "安全地帯",
+      "group": "指示",
+      "texture": "408.png",
+      "plate": "square",
+      "plate_node": "PlateSquare",
+      "size_mm": [600.0, 600.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-195.jpg"
+    },
+    {
+      "id": "409-A",
+      "name": "規制予告",
+      "group": "指示",
+      "texture": "409a.png",
+      "plate": "rect",
+      "plate_node": "PlateRect60x90",
+      "size_mm": [600.0, 900.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-196.jpg"
+    },
+    {
+      "id": "409-B",
+      "name": "規制予告",
+      "group": "指示",
+      "texture": "409b.png",
+      "plate": "rect",
+      "plate_node": "PlateRect90x60",
+      "size_mm": [900.0, 600.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-197.jpg"
+    },
+    {
+      "id": "501",
+      "name": "距離・区域",
+      "group": "補助",
+      "texture": "501.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-199.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "k50",
+          "texture": "501_k50.png"
+        },
+        {
+          "key": "zen",
+          "texture": "501_zen.png"
+        },
+        {
+          "key": "s50",
+          "texture": "501_s50.png"
+        },
+        {
+          "key": "s200",
+          "texture": "501_s200.png"
+        },
+        {
+          "key": "k100",
+          "texture": "501_k100.png"
+        }
+      ]
+    },
+    {
+      "id": "502",
+      "name": "日・時間",
+      "group": "補助",
+      "texture": "502.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-200.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "kyujitsu",
+          "texture": "502_kyujitsu.png"
+        },
+        {
+          "key": "7-9",
+          "texture": "502_7-9.png"
+        },
+        {
+          "key": "7-19",
+          "texture": "502_7-19.png"
+        },
+        {
+          "key": "kyujitsu-8-20",
+          "texture": "502_kyujitsu-8-20.png",
+          "plate_node": "PlateAux60x32",
+          "size_mm": [600.0, 320.0]
+        }
+      ]
+    },
+    {
+      "id": "503-A",
+      "name": "車両の種類",
+      "group": "補助",
+      "texture": "503a.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-201.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "gentsuki",
+          "texture": "503a_gentsuki.png"
+        },
+        {
+          "key": "jitensha",
+          "texture": "503a_jitensha.png"
+        },
+        {
+          "key": "ogata",
+          "texture": "503a_ogata.png"
+        },
+        {
+          "key": "nirin",
+          "texture": "503a_nirin.png"
+        },
+        {
+          "key": "taxi",
+          "texture": "503a_taxi.png"
+        }
+      ]
+    },
+    {
+      "id": "503-B",
+      "name": "車両の種類",
+      "group": "補助",
+      "texture": "503b_truck.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x25",
+      "size_mm": [600.0, 250.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-202.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "bus",
+          "texture": "503b_bus.png"
+        }
+      ]
+    },
+    {
+      "id": "503-C",
+      "name": "車両の種類",
+      "group": "補助",
+      "texture": "503c.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x38",
+      "size_mm": [600.0, 380.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-203.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "note": "図に寸法の記載がなく、交通規制基準にも例が無いため図の縦横比から 60 × 38 cm とした"
+    },
+    {
+      "id": "503-D",
+      "name": "車両の種類",
+      "group": "補助",
+      "texture": "503d.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-204.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "503の2",
+      "name": "遠隔操作型小型車",
+      "group": "補助",
+      "texture": "503-2.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/2JH00000228539.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "jogai",
+          "texture": "503-2_jogai.png"
+        }
+      ]
+    },
+    {
+      "id": "504",
+      "name": "駐車余地",
+      "group": "補助",
+      "texture": "504.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-205.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "504の2",
+      "name": "駐車時間制限",
+      "group": "補助",
+      "texture": "504-2.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x32",
+      "size_mm": [600.0, 320.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-206.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "ticket",
+          "texture": "504-2_ticket.png"
+        }
+      ]
+    },
+    {
+      "id": "505-A",
+      "name": "始まり",
+      "group": "補助",
+      "texture": "505a.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x18",
+      "size_mm": [600.0, 180.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-207.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "505-B",
+      "name": "始まり",
+      "group": "補助",
+      "texture": "505b.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-208.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "505-C",
+      "name": "始まり",
+      "group": "補助",
+      "texture": "505c.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x32",
+      "size_mm": [600.0, 320.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-209.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "506",
+      "name": "区間内",
+      "group": "補助",
+      "texture": "506.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x18",
+      "size_mm": [600.0, 180.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-210.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "506の2",
+      "name": "区域内",
+      "group": "補助",
+      "texture": "506-2.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-211.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "507-A",
+      "name": "終わり",
+      "group": "補助",
+      "texture": "507a.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x18",
+      "size_mm": [600.0, 180.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-212.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "507-B",
+      "name": "終わり",
+      "group": "補助",
+      "texture": "507b.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-213.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "507-C",
+      "name": "終わり",
+      "group": "補助",
+      "texture": "507c.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle40",
+      "size_mm": [400.0, 400.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-214.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "507-D",
+      "name": "終わり",
+      "group": "補助",
+      "texture": "507d.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x32",
+      "size_mm": [600.0, 320.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-215.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "508",
+      "name": "通学路",
+      "group": "補助",
+      "texture": "508.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-216.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "508の2",
+      "name": "追越し禁止",
+      "group": "補助",
+      "texture": "508-2.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-217.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "509",
+      "name": "前方優先道路",
+      "group": "補助",
+      "texture": "509.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-218.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "509の2",
+      "name": "踏切注意",
+      "group": "補助",
+      "texture": "509-2.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-219.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "509の3",
+      "name": "横風注意",
+      "group": "補助",
+      "texture": "509-3.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-220.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "509の4",
+      "name": "動物注意",
+      "group": "補助",
+      "texture": "509-4.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-221.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "509の5",
+      "name": "注意",
+      "group": "補助",
+      "texture": "509-5.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-222.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "510",
+      "name": "注意事項",
+      "group": "補助",
+      "texture": "510.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-223.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "anzen-30",
+          "texture": "510_anzen-30.png",
+          "plate_node": "PlateAux30x30",
+          "size_mm": [300.0, 300.0]
+        }
+      ]
+    },
+    {
+      "id": "510の2",
+      "name": "規制理由",
+      "group": "補助",
+      "texture": "510-2.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-224.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "hokosha",
+          "texture": "510-2_hokosha.png"
+        },
+        {
+          "key": "taikosha",
+          "texture": "510-2_taikosha.png"
+        }
+      ]
+    },
+    {
+      "id": "511",
+      "name": "方向",
+      "group": "補助",
+      "texture": "511_up_right.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x44",
+      "size_mm": [600.0, 440.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-225.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
+      "variants": [
+        {
+          "key": "up_left",
+          "texture": "511_up_left.png"
+        },
+        {
+          "key": "right",
+          "texture": "511_right.png"
+        },
+        {
+          "key": "left",
+          "texture": "511_left.png"
+        },
+        {
+          "key": "up",
+          "texture": "511_up.png"
+        }
+      ]
+    },
+    {
+      "id": "512",
+      "name": "地名",
+      "group": "補助",
+      "texture": "512.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x32",
+      "size_mm": [600.0, 320.0],
+      "variable": "text",
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-226.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "513",
+      "name": "始点",
+      "group": "補助",
+      "texture": "513.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-227.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "514",
+      "name": "終点",
+      "group": "補助",
+      "texture": "514.png",
+      "plate": "rect",
+      "plate_node": "PlateAux60x22",
+      "size_mm": [600.0, 220.0],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/335M50004002003",
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-228.jpg",
+      "size_source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36"
+    },
+    {
+      "id": "x-zone30-entry",
+      "name": "ゾーン30 区域の入口（背板付き区域規制標識）",
+      "group": "法定外",
+      "texture": "x-zone30-entry.png",
+      "plate": "rect",
+      "plate_node": "PlateBacker40x60",
+      "size_mm": [400, 600],
+      "variable": null,
+      "source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=185",
+      "note": "命令 別表第二 備考四(一)5 の白の背板に 323（φ30）と 505-C を交通規制基準 図例(3) の寸法で配置。背板に文字・記号は入れない"
+    },
+    {
+      "id": "x-zone30-exit",
+      "name": "ゾーン30 区域の出口（背板付き区域規制標識）",
+      "group": "法定外",
+      "texture": "x-zone30-exit.png",
+      "plate": "rect",
+      "plate_node": "PlateBacker40x60",
+      "size_mm": [400, 600],
+      "variable": null,
+      "source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=185",
+      "note": "入口と同じ背板に 323（φ30）と 507-D"
+    },
+    {
+      "id": "x-zone30plus",
+      "name": "ゾーン30プラス 看板（縮小タイプ）",
+      "group": "法定外",
+      "texture": "x-zone30plus.png",
+      "plate": "rect",
+      "plate_node": "PlateRect40x15",
+      "size_mm": [400, 150],
+      "variable": null,
+      "source": "https://www.mlit.go.jp/road/road/traffic/sesaku/pdf/zone_plus30_06.pdf",
+      "note": "白縁 15 mm、緑 370 × 120 mm（R25/R35）、白文字。緑は図面 PDF の塗り #009066。シンボルマーク入りの標準タイプは描かない"
+    },
+    {
+      "id": "x-fire-water",
+      "name": "消防水利（指定消防水利の標識）",
+      "group": "法定外",
+      "texture": "x-fire-water.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600, 600],
+      "variable": null,
+      "source": "https://laws.e-gov.go.jp/law/336M50000008006",
+      "note": "消防法施行規則 別表第一の四: 文字及び縁を白、枠を赤（8 cm）、地を青。道路標識の命令の外の様式"
+    },
+    {
+      "id": "x-hydrant",
+      "name": "消火栓 標識（都内で一般的な赤い円板）",
+      "group": "法定外",
+      "texture": "x-hydrant.png",
+      "plate": "circle",
+      "plate_node": "PlateCircle",
+      "size_mm": [600, 600],
+      "variable": null,
+      "source": "https://commons.wikimedia.org/wiki/File:Fire_hydrant_sign,_Ogikubo_202406.jpg",
+      "note": "公的な寸法・色の規格は見つからず、写真（CC BY-SA 4.0）から意匠を起こした。直径 60 cm は推定。下に吊る広告枠と製造年月シールは描かない"
+    },
+    {
+      "id": "x-school-route",
+      "name": "通学路 板（区の法定外表示）",
+      "group": "法定外",
+      "texture": "x-school-route.png",
+      "plate": "rect",
+      "plate_node": "PlateRect30x50",
+      "size_mm": [300, 500],
+      "variable": null,
+      "source": "https://commons.wikimedia.org/wiki/File:Honmachi_school_zone_shibuya.jpg",
+      "note": "渋谷区（CC0）・北区（CC BY-SA 4.0）の写真の共通の型: 緑地に白の「通学路」と「文」。区の要綱・寸法は見つからず 30 × 50 cm は推定。左下の区名は入れない"
+    },
+    {
+      "id": "x-school-zone",
+      "name": "スクールゾーン 板（区の法定外表示）",
+      "group": "法定外",
+      "texture": "x-school-zone.png",
+      "plate": "rect",
+      "plate_node": "PlateRect30x50",
+      "size_mm": [300, 500],
+      "variable": null,
+      "source": "https://commons.wikimedia.org/wiki/File:Honmachi_school_zone_shibuya.jpg",
+      "note": "同じ写真の緑の路面表示「文 スクールゾーン 7:30−8:30」の文言を通学路板の型で表示したもの。板としての公的な様式は未確認"
+    }
+  ]
+}

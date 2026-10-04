@@ -6,9 +6,12 @@
 # Game coordinates (+Y up, +Z = the side the sign face looks at), exported with export_yup=False.
 # Plates are centred on their own origin with the face toward +Z; the face primitive uses the
 # material "SignFace" with UVs covering the artwork square (0–1), so the game can swap in any
-# texture from assets/signs/textures. Real sizes (命令 別表第二 備考二 standard dimensions): circular
+# texture from assets/signs/textures. Real sizes (命令 別表第二 standard dimensions): circular
 # 規制標識 60 cm, 一時停止・徐行 inverted triangle 80 cm per side, 指示標識 60 cm square, 一方通行
-# 326-A 60 × 35 cm (and 326-B 30 × 60 cm); posts are 60.5 mm galvanised steel pipe.
+# 326-A 60 × 35 cm and 326-B 35 × 60 cm, 警戒標識 a 45 cm square on its corner, 横断歩道 (407) a
+# pentagon 60 cm wide, 327 series 90 × 90 cm or 40 cm per lane × 90 cm, 補助標識 60 cm wide
+# (警察庁「交通規制基準」: 18/22/32/44 cm high). assets/signs/catalog.json names the plate of each
+# sign; posts are 60.5 mm galvanised steel pipe.
 import json
 import math
 import os
@@ -164,11 +167,57 @@ plate(
     rounded([(-0.30, -0.175), (0.30, -0.175), (0.30, 0.175), (-0.30, 0.175)], 0.02),
     ((-0.30, -0.175), (0.30, 0.175)),
 )
+# 一方通行 326-B: 35 × 60 cm (図 156; the first version was 30 × 60).
 plate(
     "PlateRect",
-    rounded([(-0.15, -0.30), (0.15, -0.30), (0.15, 0.30), (-0.15, 0.30)], 0.02),
-    ((-0.15, -0.30), (0.15, 0.30)),
+    rounded([(-0.175, -0.30), (0.175, -0.30), (0.175, 0.30), (-0.175, 0.30)], 0.02),
+    ((-0.175, -0.30), (0.175, 0.30)),
 )
+
+
+def rect_plate(name, w, h, r):
+    """A w × h m rounded rectangle whose texture covers it exactly."""
+    plate(
+        name,
+        rounded([(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)], r),
+        ((-w / 2, -h / 2), (w / 2, h / 2)),
+    )
+
+
+# 警戒標識: a 45 cm square on its corner; the texture covers its 63.6 cm bounding square.
+half_diag = 0.45 * math.sqrt(2) / 2
+plate(
+    "PlateDiamond",
+    rounded([(0.0, -half_diag), (half_diag, 0.0), (0.0, half_diag), (-half_diag, 0.0)], 0.02),
+    ((-half_diag, -half_diag), (half_diag, half_diag)),
+)
+# 横断歩道・自転車横断帯 (407 series): a 60 cm equilateral triangle on a 60 × 20 cm base, R 3.5 cm.
+penta_h = 0.60 * math.sqrt(3) / 2 + 0.20
+penta = [
+    (-0.30, -penta_h / 2),
+    (0.30, -penta_h / 2),
+    (0.30, -penta_h / 2 + 0.20),
+    (0.0, penta_h / 2),
+    (-0.30, -penta_h / 2 + 0.20),
+]
+plate("PlatePentagon", rounded(penta, 0.035), ((-0.30, -penta_h / 2), (0.30, penta_h / 2)))
+# 327 series: 90 × 90 cm, and 40 cm per lane × 90 cm for 進行方向別通行区分 (327の7-A).
+rect_plate("PlateSquare90", 0.90, 0.90, 0.04)
+for lanes in range(2, 8):
+    rect_plate(f"PlateRect{lanes * 40}x90", lanes * 0.40, 0.90, 0.04)
+# 規制予告 409-A (60 × 90 cm) and 409-B (90 × 60 cm).
+rect_plate("PlateRect60x90", 0.60, 0.90, 0.03)
+rect_plate("PlateRect90x60", 0.90, 0.60, 0.025)
+# 補助標識: 60 cm wide, 18 (arrows), 22 (one line), 25 (503-B), 32 (two lines), 38 (503-C) and
+# 44 cm (three lines, 511) high; the 30 × 30 cm 510 example; 終わり 507-C is a 40 cm disc.
+for h in (18, 22, 25, 32, 38, 44):
+    rect_plate(f"PlateAux60x{h}", 0.60, h / 100, 0.03)
+rect_plate("PlateAux30x30", 0.30, 0.30, 0.03)
+plate("PlateCircle40", circle(0.20), ((-0.20, -0.20), (0.20, 0.20)))
+# 法定外: ゾーン30 backing plate 40 × 60 cm, ゾーン30プラス plate 40 × 15 cm, ward 通学路 plate 30 × 50 cm.
+rect_plate("PlateBacker40x60", 0.40, 0.60, 0.03)
+rect_plate("PlateRect40x15", 0.40, 0.15, 0.035)
+rect_plate("PlateRect30x50", 0.30, 0.50, 0.028)
 
 
 def post(name):
@@ -249,24 +298,26 @@ log("exported", file=OUT, bytes=os.path.getsize(OUT), objects=[o.name for o in S
 if PREVIEW:
     os.makedirs(PREVIEW, exist_ok=True)
     # A post with a stack of plates, as the game assembles them.
-    shapes = ["PlateCircle", "PlateRect", "PlateTriangle", "PlateSquare"]
+    shapes = ["PlateCircle", "PlateRect", "PlateTriangle", "PlateSquare", "PlateDiamond", "PlatePentagon"]
     for i, name in enumerate(shapes):
         src = bpy.data.objects[name]
         for x in (0.0,):
             p = src.copy()
             SCENE.collection.objects.link(p)
-            p.location = (x + i * 1.2 - 1.8, 1.5, 0.05)
+            p.location = (x + i * 1.1 - 2.75, 1.5, 0.05)
             pp = bpy.data.objects["Post"].copy()
             SCENE.collection.objects.link(pp)
-            pp.location = (x + i * 1.2 - 1.8, 0.0, 0.0)
+            pp.location = (x + i * 1.1 - 2.75, 0.0, 0.0)
             b = bpy.data.objects["Bracket"].copy()
             SCENE.collection.objects.link(b)
-            b.location = (x + i * 1.2 - 1.8, 1.5, 0.05)
+            b.location = (x + i * 1.1 - 2.75, 1.5, 0.05)
     artwork = {
         "PlateCircle": "speed_40.png",
         "PlateRect": "one_way.png",
         "PlateTriangle": "stop.png",
         "PlateSquare": "crosswalk.png",
+        "PlateDiamond": "201a.png",
+        "PlatePentagon": "407a.png",
     }
     for ob in list(SCENE.objects):
         base = ob.name.split(".")[0]
@@ -276,8 +327,10 @@ if PREVIEW:
         face.node_tree.nodes["Image Texture"].image = bpy.data.images.load(os.path.join(TEX, artwork[base]))
         ob.data = ob.data.copy()
         ob.data.materials[0] = face
-    for name in shapes + ["Post", "Bracket"]:
-        bpy.data.objects[name].hide_render = True
+    for ob in list(SCENE.objects):
+        is_original = "." not in ob.name  # copies are named PlateCircle.001 …
+        if is_original and (ob.name.startswith("Plate") or ob.name in ("Post", "Bracket")):
+            ob.hide_render = True
     world = bpy.data.worlds.new("World")
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.62, 0.70, 0.80, 1)
@@ -296,7 +349,7 @@ if PREVIEW:
     SCENE.render.resolution_y = 720
     from mathutils import Matrix
 
-    views = {"front": ((0.0, 1.6, 6.5), (0.0, 1.3, 0.0)), "back": ((-1.5, 1.9, -3.2), (0.0, 1.4, 0.0))}
+    views = {"front": ((0.0, 1.6, 9.0), (0.0, 1.3, 0.0)), "back": ((-1.5, 1.9, -4.0), (0.0, 1.4, 0.0))}
     for view, (eye, target) in views.items():
         cam.location = eye
         fwd = (Vector(target) - Vector(eye)).normalized()

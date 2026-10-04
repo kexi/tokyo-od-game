@@ -10,21 +10,33 @@
 # ///
 """Procedural texture generator for Tokyo Open Drive traffic signs.
 
-Generates 21 Japanese traffic sign textures following the official specifications
-("道路標識、区画線及び道路標示に関する命令" 別表第二).
+Draws the 道路標識 of 道路標識、区画線及び道路標示に関する命令 別表第一 / 別表第二 (e-Gov, 2026-09-01
+施行版) and writes assets/signs/textures/*.png plus assets/signs/catalog.json (every 別表第一
+number, drawn or not). The first 24 designs live in this file; the rest are in signs/ (one module
+per group, shared canvas and pictograms). Noto Sans JP is the only font, pinned by hash.
+
+    uv run scripts/textures/sign_textures.py                      # all textures + catalog.json
+    uv run scripts/textures/sign_textures.py --sheet DIR          # … and contact sheets in DIR
+    uv run scripts/textures/sign_textures.py render 327の7-A --lanes "left+through,through,right" -o a.png
+    uv run scripts/textures/sign_textures.py render 501 --text "この先200m" -o b.png
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import math
-import os
 import random
 import sys
 from pathlib import Path
 from typing import Callable, Dict, Tuple
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from signs.base import FONT_SHA256, FONT_URL, get_noto_font  # noqa: E402
 
 # Set deterministic seed for reproducibility
 SEED = 42
@@ -33,6 +45,7 @@ np.random.seed(SEED)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 TEXTURES_DIR = PROJECT_ROOT / "assets" / "signs" / "textures"
+CATALOG_PATH = PROJECT_ROOT / "assets" / "signs" / "catalog.json"
 
 # Color constants (spec目安: 赤 #D7262E, 青 #0B4EA2, 白 #FFFFFF, 黒 #1A1A1A)
 COLOR_RED = (215, 38, 46, 255)
@@ -41,42 +54,7 @@ COLOR_WHITE = (255, 255, 255, 255)
 COLOR_BLACK = (26, 26, 26, 255)
 COLOR_TRANSPARENT = (0, 0, 0, 0)
 
-# Noto Sans JP (SIL OFL 1.1) pinned to a google/fonts commit and verified by SHA-256 hash.
-FONT_URL = (
-    "https://raw.githubusercontent.com/google/fonts/295d98a7a0c17c68f1341eaeea354e7960ea70d3/"
-    "ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
-)
-FONT_SHA256 = "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f"
-FONT_CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "tokyo-od-game" / "fonts"
-
-
-def _font_file() -> Path:
-    import hashlib
-
-    font_path = FONT_CACHE_DIR / "NotoSansJP-VariableFont_wght.ttf"
-    if not font_path.exists():
-        import requests
-
-        FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        headers = {"User-Agent": "tokyo-od-game-asset-gen/1.0 (+https://github.com/kexi/tokyo-od-game)"}
-        resp = requests.get(FONT_URL, headers=headers, timeout=60)
-        resp.raise_for_status()
-        font_path.write_bytes(resp.content)
-    digest = hashlib.sha256(font_path.read_bytes()).hexdigest()
-    if digest != FONT_SHA256:
-        raise RuntimeError(f"unexpected font hash {digest} for {font_path}")
-    return font_path
-
-
-def get_noto_font(size: int, bold: bool = False, weight: int | None = None) -> ImageFont.FreeTypeFont:
-    """Noto Sans JP font with specified weight."""
-    font = ImageFont.truetype(str(_font_file()), size)
-    w = weight if weight is not None else (700 if bold else 400)
-    try:
-        font.set_variation_by_axes([w])
-    except (OSError, ValueError):
-        pass
-    return font
+__all__ = ["FONT_SHA256", "FONT_URL", "get_noto_font"]
 
 
 # ----------------------------------------------------------------------
@@ -180,7 +158,8 @@ def draw_speed_limit(speed: int, scale: int = 4) -> Image.Image:
 
     # Scale vertically to reproduce Japanese traffic sign tall numerals
     target_th = int(720 * (scale / 4))
-    target_tw = int(tw * (target_th / th) * 0.88)
+    # Three digits (100, 110, 120) are condensed further to stay inside the red ring.
+    target_tw = min(int(tw * (target_th / th) * 0.88), int(1300 * (scale / 4)))
     scaled_text = cropped_text.resize((target_tw, target_th), Image.Resampling.LANCZOS)
 
     px = int(center - target_tw / 2.0)
@@ -220,19 +199,14 @@ def draw_no_entry(scale: int = 4) -> Image.Image:
 
 
 def draw_vehicles_closed(scale: int = 4) -> Image.Image:
-    """車両通行止め (302): a red ring on a white ground with a white rim (命令 別表第二)."""
-    target_size = 512
-    dim = target_size * scale
-    img = Image.new("RGBA", (dim, dim), COLOR_TRANSPARENT)
-    draw = ImageDraw.Draw(img)
-    center = dim / 2.0
-    outer_r = dim / 2.0
-    ring_r = outer_r - 24 * (scale / 4)
-    inner_r = ring_r - 0.11 * dim  # ring about a tenth of the diameter
-    draw.ellipse([center - outer_r, center - outer_r, center + outer_r, center + outer_r], fill=COLOR_WHITE)
-    draw.ellipse([center - ring_r, center - ring_r, center + ring_r, center + ring_r], fill=COLOR_RED)
-    draw.ellipse([center - inner_r, center - inner_r, center + inner_r, center + inner_r], fill=COLOR_WHITE)
-    return img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+    """車両通行止め (302): red ring and red slash on white (別表第二 図 S35F03102010003-122).
+
+    The first version left the slash out; the figure and 国土交通省「道路標識一覧」 both show it.
+    """
+    from signs import regulatory
+
+    del scale
+    return regulatory.vehicles_closed()
 
 
 # ----------------------------------------------------------------------
@@ -609,42 +583,11 @@ def draw_turn_sign(pattern: int, scale: int = 4) -> Image.Image:
 # 6. 一方通行 (326-B) One Way
 # ----------------------------------------------------------------------
 def draw_one_way(scale: int = 4) -> Image.Image:
-    """Generate one way sign (256x512)."""
-    target_w = 256
-    target_h = 512
-    w = target_w * scale
-    h = target_h * scale
-    img = Image.new("RGBA", (w, h), COLOR_BLUE)
-    draw = ImageDraw.Draw(img)
+    """一方通行 (326-B): 35 × 60 cm (別表第二 図 156; the first version was drawn at 30 × 60)."""
+    from signs import regulatory
 
-    # Outer white border line
-    margin = 48 * (scale / 4)
-    line_w = 24 * (scale / 4)
-    radius = 48 * (scale / 4)
-    draw.rounded_rectangle(
-        [margin, margin, w - margin, h - margin], radius=radius, outline=COLOR_WHITE, width=int(line_w)
-    )
-
-    # Center upward arrow
-    cx = w / 2.0
-    shaft_w = 180 * (scale / 4)
-    head_len = 480 * (scale / 4)
-    head_hw = 280 * (scale / 4)
-    tip_y = 380 * (scale / 4)
-    stem_bottom_y = 1680 * (scale / 4)
-
-    draw.polygon(
-        [
-            (cx - shaft_w / 2.0, stem_bottom_y),
-            (cx + shaft_w / 2.0, stem_bottom_y),
-            (cx + shaft_w / 2.0, tip_y + head_len * 0.75),
-            (cx - shaft_w / 2.0, tip_y + head_len * 0.75),
-        ],
-        fill=COLOR_WHITE,
-    )
-    draw_arrow_head(draw, (cx, tip_y), -math.pi / 2.0, head_len, head_hw, COLOR_WHITE, barb_depth=0.22)
-
-    return img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    del scale
+    return regulatory.one_way_tall()
 
 
 def draw_one_way_wide(pointing_right: bool, scale: int = 4) -> Image.Image:
@@ -682,7 +625,8 @@ def draw_one_way_wide(pointing_right: bool, scale: int = 4) -> Image.Image:
             fill=COLOR_WHITE,
         )
         draw.text((w - text_x, cy + 2 * scale), "一方通行", font=font, fill=COLOR_BLUE, anchor="mm")
-    return img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    # Drawn at the plate's 60 : 35 proportions, stored power-of-two (the plate's UV spans 0–1).
+    return img.resize((512, 256), Image.Resampling.LANCZOS)
 
 
 # ----------------------------------------------------------------------
@@ -945,6 +889,10 @@ SIGN_GENERATORS: Dict[str, Callable[[], Image.Image]] = {
     "speed_60.png": lambda: draw_speed_limit(60),
     "speed_70.png": lambda: draw_speed_limit(70),
     "speed_80.png": lambda: draw_speed_limit(80),
+    "speed_10.png": lambda: draw_speed_limit(10),
+    "speed_100.png": lambda: draw_speed_limit(100),
+    "speed_110.png": lambda: draw_speed_limit(110),
+    "speed_120.png": lambda: draw_speed_limit(120),
     "no_entry.png": draw_no_entry,
     "vehicles_closed.png": draw_vehicles_closed,
     "no_parking.png": lambda: draw_no_parking(no_stopping=False),
@@ -965,6 +913,36 @@ SIGN_GENERATORS: Dict[str, Callable[[], Image.Image]] = {
 }
 
 
+def all_textures() -> list:
+    """Every texture of the catalogue, with the function drawing it (the designs above, or signs/)."""
+    from signs import catalog
+
+    out = []
+    for tex in catalog.textures():
+        draw = tex.draw or SIGN_GENERATORS.get(tex.file)
+        if draw is None:
+            raise RuntimeError(f"no generator for {tex.file}")
+        out.append((tex, draw))
+    return out
+
+
+def _true_size(tex, img: Image.Image) -> Tuple[float, float]:
+    """The plate box in mm a texture covers, to show it at its real proportions."""
+    from signs import catalog
+
+    if tex.size_mm:
+        return tex.size_mm
+    for sign_id, _name, group, _fig in catalog.SIGNS:
+        if sign_id == tex.sign:
+            meta = catalog.meta_for(sign_id, group)
+            if meta:
+                w, h = meta.size_mm
+                if meta.plate == "diamond":
+                    return (w * math.sqrt(2), h * math.sqrt(2))
+                return (w, h)
+    return (float(img.width), float(img.height))
+
+
 def build_contact_sheet(images: Dict[str, Image.Image], cols: int = 6, thumb_size: int = 160) -> Image.Image:
     """Build a review contact sheet grid of all generated textures with dark checkerboard background."""
     keys = list(images.keys())
@@ -976,7 +954,7 @@ def build_contact_sheet(images: Dict[str, Image.Image], cols: int = 6, thumb_siz
 
     sheet = Image.new("RGBA", (sheet_w, sheet_h), (32, 34, 38, 255))
     sdraw = ImageDraw.Draw(sheet)
-    label_font = get_noto_font(18, bold=True)
+    label_font = get_noto_font(15, bold=True)
 
     for idx, name in enumerate(keys):
         img = images[name]
@@ -1010,41 +988,158 @@ def build_contact_sheet(images: Dict[str, Image.Image], cols: int = 6, thumb_siz
         sheet.paste(thumb_bg, (x0 + 16, y0 + 8))
 
         # Label text
-        bbox = sdraw.textbbox((0, 0), name, font=label_font)
+        label = name if len(name) <= 26 else name[:25] + "…"
+        bbox = sdraw.textbbox((0, 0), label, font=label_font)
         lw = bbox[2] - bbox[0]
         sdraw.text(
-            (x0 + 16 + (thumb_size - lw) / 2.0, y0 + thumb_size + 14), name, font=label_font, fill=(220, 224, 230, 255)
+            (x0 + 16 + (thumb_size - lw) / 2.0, y0 + thumb_size + 14), label, font=label_font, fill=(220, 224, 230, 255)
         )
 
     return sheet
 
 
-def main() -> None:
-    print("Generating Japanese traffic sign textures for Tokyo Open Drive...")
+def write_sheets(out_dir: Path, done: list) -> list[Path]:
+    """Contact sheets per group, each texture shown at its plate's real proportions."""
+    from signs import catalog
+
+    group_of = {sid: g for sid, _n, g, _f in catalog.SIGNS}
+    groups: Dict[str, Dict[str, Image.Image]] = {}
+    for tex, img in done:
+        g = group_of.get(tex.sign, "法定外")
+        w_mm, h_mm = _true_size(tex, img)
+        k = 512 / max(w_mm, h_mm)
+        shown = img.resize((max(1, round(w_mm * k)), max(1, round(h_mm * k))), Image.Resampling.LANCZOS)
+        label = tex.sign + (f" {tex.variant.removeprefix('lanes:')}" if tex.variant else "")
+        bucket = groups.setdefault(g, {})
+        bucket[label if label not in bucket else f"{label} ({tex.file})"] = shown
+    out_dir.mkdir(parents=True, exist_ok=True)
+    names = {
+        "警戒": "warning",
+        "規制": "regulatory",
+        "指示": "instruction",
+        "補助": "auxiliary",
+        "法定外": "nonstatutory",
+    }
+    paths = []
+    for g, imgs in groups.items():
+        items = list(imgs.items())
+        per = 48
+        for page in range(math.ceil(len(items) / per)):
+            chunk = dict(items[page * per : (page + 1) * per])
+            sheet = build_contact_sheet(chunk, cols=8, thumb_size=200)
+            p = out_dir / f"sheet_{names.get(g, g)}_{page + 1}.png"
+            sheet.save(p, "PNG")
+            paths.append(p)
+    return paths
+
+
+def generate(sheet_dir: Path | None = None) -> None:
+    from signs import catalog
+
+    print(json.dumps({"event": "start", "dir": str(TEXTURES_DIR)}, ensure_ascii=False))
     TEXTURES_DIR.mkdir(parents=True, exist_ok=True)
-
-    generated_images: Dict[str, Image.Image] = {}
-
-    for filename, generator_fn in SIGN_GENERATORS.items():
-        print(f"Generating {filename}...")
-        img = generator_fn()
-        out_path = TEXTURES_DIR / filename
+    written: Dict[str, Tuple[int, int]] = {}
+    done = []
+    # The designs of this file first: some signs/ textures are drawn over them (315 with hours).
+    order = sorted(all_textures(), key=lambda td: 0 if td[0].draw is None else 1)
+    for tex, draw in order:
+        if tex.file in written:
+            continue
+        img = draw()
+        w, h = img.size
+        is_pow2 = (w & (w - 1)) == 0 and (h & (h - 1)) == 0
+        if not is_pow2:
+            raise RuntimeError(f"{tex.file}: {w}x{h} is not a power of two")
+        out_path = TEXTURES_DIR / tex.file
         img.save(out_path, "PNG", optimize=True)
-        size_kb = out_path.stat().st_size / 1024
-        print(f"  -> Saved {filename} ({img.size[0]}x{img.size[1]}, {img.mode}, {size_kb:.1f} KB)")
-        generated_images[filename] = img
+        written[tex.file] = (w, h)
+        done.append((tex, img))
+        print(
+            json.dumps(
+                {
+                    "event": "texture",
+                    "file": tex.file,
+                    "sign": tex.sign,
+                    "w": w,
+                    "h": h,
+                    "kb": round(out_path.stat().st_size / 1024, 1),
+                },
+                ensure_ascii=False,
+            )
+        )
+    data = catalog.build(written)
+    CATALOG_PATH.write_text(catalog.dumps(data))
+    print(
+        json.dumps(
+            {"event": "catalog", "file": str(CATALOG_PATH), "signs": len(data["signs"]), "coverage": data["coverage"]},
+            ensure_ascii=False,
+        )
+    )
+    if sheet_dir is not None:
+        for p in write_sheets(sheet_dir, done):
+            print(json.dumps({"event": "sheet", "file": str(p)}, ensure_ascii=False))
 
-    # Check for contact sheet argument
-    if len(sys.argv) > 1:
-        contact_sheet_path = Path(sys.argv[1])
-        print(f"Building contact sheet -> {contact_sheet_path}...")
-        sheet = build_contact_sheet(generated_images)
-        contact_sheet_path.parent.mkdir(parents=True, exist_ok=True)
-        sheet.save(contact_sheet_path, "PNG")
-        sheet_kb = contact_sheet_path.stat().st_size / 1024
-        print(f"  -> Contact sheet saved ({sheet.size[0]}x{sheet.size[1]}, {sheet_kb:.1f} KB)")
 
-    print("\nAll traffic sign textures generated successfully!")
+def render(args: argparse.Namespace) -> None:
+    """Draw one variable sign on demand (any lane list or text) without touching the assets."""
+    from signs import auxiliary, lanes, regulatory, warning
+
+    sid = args.sign
+    if args.lanes is not None:
+        spec = [s.strip() for s in args.lanes.split(",")] if "|" not in args.lanes else args.lanes
+        if args.use:
+            uses = args.use.split(",")
+            spec = [{"dirs": d, "use": (u or None)} for d, u in zip(spec, uses + [""] * len(spec), strict=False)]
+        img = lanes.lane_sign(spec)
+    elif sid.startswith("5") and sid not in ("505-A", "506", "507-A", "507-C", "511"):
+        img = auxiliary.text_plate(args.text.split("/"))
+    elif sid == "323":
+        img = draw_speed_limit(int(args.text))
+    elif sid == "324":
+        img = regulatory.speed_sign(int(args.text), True)
+    elif sid == "320":
+        img = regulatory.weight_limit(args.text)
+    elif sid == "321":
+        img = regulatory.height_limit(args.text)
+    elif sid == "322":
+        img = regulatory.width_limit(args.text)
+    elif sid in ("315", "316"):
+        base = draw_no_parking(no_stopping=sid == "315")
+        img = regulatory.overlay_ring_text(base, args.text)
+    elif sid == "318":
+        minutes, _, hours = args.text.partition(" ")
+        img = regulatory.time_limited_parking(minutes, hours or None)
+    elif sid in ("212の3", "212の4"):
+        img = warning.gradient(sid == "212の3", args.text)
+    else:
+        raise SystemExit(f"render: {sid} has no variable form (see catalog.json 'variable')")
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out, "PNG", optimize=True)
+    print(
+        json.dumps(
+            {"event": "rendered", "sign": sid, "file": str(out), "w": img.width, "h": img.height}, ensure_ascii=False
+        )
+    )
+
+
+def main() -> None:
+    argv = sys.argv[1:]
+    if argv and argv[0] == "render":
+        p = argparse.ArgumentParser(prog="sign_textures.py render")
+        p.add_argument("sign", help="別表第一の番号 (327の7-A, 501, 323 …)")
+        p.add_argument("--lanes", help='lanes left to right: "left+through,through,right" or an OSM turn:lanes value')
+        p.add_argument("--use", help='per-lane use, comma separated: "bus,," / "bus_priority" / "bicycle"')
+        p.add_argument("--text", help='value or lines separated by "/" ("この先/100m", "8-20", "60 8-20")')
+        p.add_argument("-o", "--out", required=True)
+        render(p.parse_args(argv[1:]))
+        return
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("sheet", nargs="?", help="(legacy) write one contact sheet PNG here")
+    p.add_argument("--sheet", dest="sheet_dir", help="write contact sheets per group into this directory")
+    a = p.parse_args(argv)
+    sheet_dir = Path(a.sheet_dir) if a.sheet_dir else (Path(a.sheet).parent if a.sheet else None)
+    generate(sheet_dir)
 
 
 if __name__ == "__main__":

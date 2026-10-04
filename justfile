@@ -76,6 +76,14 @@ textures:
     uv run scripts/textures/asphalt_textures.py
     uv run scripts/textures/police_vehicle_textures.py
 
+# 道路標識の図柄と catalog.json を作り直し、群ごとのコンタクトシートを書き出す
+sign-textures sheet="${TMPDIR:-/tmp}/signs":
+    uv run scripts/textures/sign_textures.py --sheet {{ sheet }}
+
+# 文字や車線が変わる道路標識を 1 枚描く（例: just sign-render 327の7-A --lanes "left+through,through,right" -o out.png）
+sign-render *args:
+    uv run scripts/textures/sign_textures.py render {{ args }}
+
 # 大型路線バス（ノンステップ）を Blender CLI でモデリングし public/models/bus.glb を書き出す
 bus-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/bus.py -- public/models/bus.glb
