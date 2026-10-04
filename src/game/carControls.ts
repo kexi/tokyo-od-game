@@ -16,6 +16,8 @@ export type AutoContext = {
   rain10m: number | null;
   /** The next turn on the navigation's route and how far ahead it is (m). */
   nextTurn: { side: "left" | "right" | null; metres: number } | null;
+  /** The car has left the navigation's route. */
+  offRoute: boolean;
   kmh: number;
   throttle: number;
 };
@@ -39,10 +41,15 @@ export class CarControls {
   autoHold = false;
   private turnStartYaw: number | null = null;
   private stoppedFor = 0;
+  /** The side 簡単操作 switched the indicator on for (null: off, or the driver's own). */
+  private autoSignal: "left" | "right" | null = null;
+  /** How far the car has turned since the indicator went on (rad). */
+  private turned = 0;
 
   toggleIndicator(side: "left" | "right"): void {
     this.indicator = this.indicator === side ? "off" : side;
     this.turnStartYaw = null;
+    this.autoSignal = null;
   }
 
   cycleLights(): LightSwitch {
@@ -63,9 +70,11 @@ export class CarControls {
     if (this.indicator === "off") return;
     this.turnStartYaw ??= yaw;
     const turned = Math.abs(Math.atan2(Math.sin(yaw - this.turnStartYaw), Math.cos(yaw - this.turnStartYaw)));
+    this.turned = turned;
     if (turned > 1.0 && Math.abs(steer) < 0.15) {
       this.indicator = "off";
       this.turnStartYaw = null;
+      this.autoSignal = null;
     }
   }
 
@@ -91,6 +100,19 @@ export class CarControls {
     if (isSignalling && turn.side && this.indicator !== turn.side && !this.hazard) {
       this.indicator = turn.side;
       this.turnStartYaw = null;
+      this.autoSignal = turn.side;
+      this.turned = 0;
+    }
+    // The signal it gave is no longer true: the car left the route, or the turn it was for is gone
+    // (passed, or far again after a replan) before the car began turning. Signalling a turn the car
+    // will not make misleads everyone around it.
+    const isOwnSignal = this.autoSignal !== null && this.indicator === this.autoSignal;
+    const isMidTurn = this.turned > 0.35;
+    const isStale = !isSignalling || turn?.side !== this.autoSignal;
+    if (isOwnSignal && (c.offRoute || (isStale && !isMidTurn))) {
+      this.indicator = "off";
+      this.turnStartYaw = null;
+      this.autoSignal = null;
     }
     const isStopped = c.kmh < 0.5 && c.throttle === 0;
     this.stoppedFor = isStopped ? this.stoppedFor + dt : 0;

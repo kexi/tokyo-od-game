@@ -1,5 +1,6 @@
 import {
   CanvasTexture,
+  type Light,
   type Material,
   Mesh,
   MeshBasicMaterial,
@@ -26,6 +27,8 @@ import { RainGlass, WIPER_BLADES } from "./rainGlass";
  * Node names, pivots and angles follow knowledge/cockpit-blender.md.
  */
 const DEG = Math.PI / 180;
+/** The render layer of the interior (drawn in a second pass with a near plane of a few cm). */
+export const INTERIOR_LAYER = 1;
 // The needles are modelled pointing at their zero marks (clock angle −120°, the small gauges
 // −45°), so rotation.z is only the swing from zero, clockwise as the driver sees it.
 const SPEED_RATE = (4 / 3) * DEG; // per km/h
@@ -121,6 +124,8 @@ export class Cockpit {
   attach(car: Object3D): void {
     if (!this.root) return;
     car.add(this.root);
+    // The interior is drawn in its own pass (see render), so it lives on its own layer.
+    this.root.traverse((o) => o.layers.set(INTERIOR_LAYER));
     this.hiddenExterior = [];
     car.traverse((o) => {
       if (!(o instanceof Mesh) || o === this.root) return;
@@ -225,7 +230,48 @@ export class Cockpit {
       renderer.render(scene, camera);
       return;
     }
-    this.rain.render(renderer, scene, camera, this.root);
+    // Two passes, as games draw what is held close to the eye: the world with the camera's own
+    // near plane (0.5 m), then, over a cleared depth buffer, the interior with one of 2 cm. Why not
+    // a smaller near plane for everything: depth precision 4 km away would fall apart (road paint
+    // and kerbs flicker); with 0.5 m the roof lining, the upper windscreen, the pillars and the door
+    // trims (30–60 cm from the eye) were cut away, showing the sky and the car's own tyres.
+    this.lightInterior(scene);
+    const near = this.nearCamera;
+    near.position.copy(camera.position);
+    near.quaternion.copy(camera.quaternion);
+    near.fov = camera.fov;
+    near.aspect = camera.aspect;
+    near.updateProjectionMatrix();
+    near.updateMatrixWorld();
+    const drawInterior = () => {
+      const autoClear = renderer.autoClear;
+      const shadows = renderer.shadowMap.autoUpdate;
+      renderer.autoClear = false;
+      renderer.shadowMap.autoUpdate = false;
+      renderer.clearDepth();
+      renderer.render(scene, near);
+      renderer.autoClear = autoClear;
+      renderer.shadowMap.autoUpdate = shadows;
+    };
+    this.rain.render(renderer, scene, camera, this.root, drawInterior, near);
+  }
+
+  /** The interior pass's camera: the eye's pose, a near plane of 2 cm, the interior layer only. */
+  private readonly nearCamera = (() => {
+    const c = new PerspectiveCamera(62, 1, 0.02, 30);
+    c.layers.set(INTERIOR_LAYER);
+    return c;
+  })();
+  private lightsCheckedAt = 0;
+
+  /** Lights reach the interior layer too (checked now and then: lamps come and go). */
+  private lightInterior(scene: Scene): void {
+    const now = performance.now();
+    if (now - this.lightsCheckedAt < 1000) return;
+    this.lightsCheckedAt = now;
+    scene.traverse((o) => {
+      if ((o as Light).isLight) o.layers.enable(INTERIOR_LAYER);
+    });
   }
 
   /** One mirror per frame, in turn: a camera at the mirror looking along the reflected view. */

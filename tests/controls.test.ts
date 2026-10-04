@@ -7,6 +7,7 @@ const context = (over: Partial<AutoContext> = {}): AutoContext => ({
   raining: false,
   rain10m: null,
   nextTurn: null,
+  offRoute: false,
   kmh: 30,
   throttle: 0.3,
   ...over,
@@ -56,6 +57,25 @@ describe("簡単操作: the car works its own switches", () => {
     c.indicator = "off";
     c.autoOperate(context({ nextTurn: { side: null, metres: 10 } }), 0.016);
     expect(c.indicator).toBe("off");
+  });
+
+  it("switches its signal off when the car leaves the route, or the turn is no longer ahead", () => {
+    const c = new CarControls();
+    c.autoOperate(context({ nextTurn: { side: "left", metres: 20 } }), 0.016);
+    expect(c.indicator).toBe("left");
+    c.autoOperate(context({ nextTurn: { side: "left", metres: 18 }, offRoute: true }), 0.016);
+    expect(c.indicator).toBe("off");
+    c.autoOperate(context({ nextTurn: { side: "right", metres: 25 } }), 0.016);
+    expect(c.indicator).toBe("right");
+    c.autoOperate(context({ nextTurn: { side: "left", metres: 300 } }), 0.016);
+    expect(c.indicator).toBe("off");
+  });
+
+  it("leaves the driver's own signal alone", () => {
+    const c = new CarControls();
+    c.toggleIndicator("right");
+    c.autoOperate(context({ offRoute: true }), 0.016);
+    expect(c.indicator).toBe("right");
   });
 
   it("holds the brake once stopped and lets go when the accelerator is pressed", () => {

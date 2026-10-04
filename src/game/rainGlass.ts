@@ -1048,15 +1048,25 @@ export class RainGlass {
    * Render the frame from the driver's seat. Dry glass costs nothing beyond the scene itself;
    * wet glass adds the drop texture, a copy of the frame and the glass pass.
    */
-  render(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera, car: Object3D): void {
+  render(
+    renderer: WebGLRenderer,
+    scene: Scene,
+    camera: PerspectiveCamera,
+    car: Object3D,
+    drawInterior: () => void,
+    nearCamera: PerspectiveCamera,
+  ): void {
     const isDry = this.sim.isDry() || this.panes.length === 0;
     if (isDry) {
       renderer.render(scene, camera);
+      drawInterior();
       return;
     }
     this.drawDrops(renderer);
     renderer.render(scene, camera);
+    // The street as the drops refract it (the interior is not behind the glass).
     const frame = this.copyFrame(renderer);
+    drawInterior();
     this.syncField();
     const u = this.material.uniforms;
     u.uFrame.value = frame;
@@ -1072,9 +1082,13 @@ export class RainGlass {
     u.uAxisV.value.set(0, 0.4204, -0.9073).transformDirection(m);
     u.uNormal.value.set(0, 0.9073, 0.4204).transformDirection(m);
     for (const p of this.panes) p.proxy.matrixWorld.copy(p.source.matrixWorld);
+    // The panes with the interior's camera, so the glass close to the eye is not clipped either.
     const autoClear = renderer.autoClear;
+    const layers = nearCamera.layers.mask;
     renderer.autoClear = false;
-    renderer.render(this.paneScene, camera);
+    nearCamera.layers.enableAll();
+    renderer.render(this.paneScene, nearCamera);
+    nearCamera.layers.mask = layers;
     renderer.autoClear = autoClear;
   }
 

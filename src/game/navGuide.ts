@@ -49,6 +49,11 @@ export class NavGuide {
   private lastPlan = -Infinity;
   private hint = 0;
   private offSince: number | null = null;
+
+  /** The car has left the route (it will be planned again in a moment). */
+  get isOffRoute(): boolean {
+    return this.offSince !== null;
+  }
   private readonly called = new Set<string>();
   private arrived = false;
   mode: TravelMode = "car";

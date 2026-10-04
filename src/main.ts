@@ -2148,6 +2148,7 @@ async function main(): Promise<void> {
       // The observed amount only when it is really raining (the 雨 preset has no amount).
       rain10m: (env.getObservation()?.precip10m ?? 0) > 0 ? (env.getObservation()?.precip10m ?? null) : null,
       nextTurn: next ? { side: side(next.turn), metres: next.at - nav.lastAt } : null,
+      offRoute: nav.isOffRoute,
       kmh: vehicle.speedKmh(),
       throttle,
     };
