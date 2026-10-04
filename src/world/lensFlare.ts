@@ -164,8 +164,17 @@ export type FlareSun = {
   night: number;
 };
 
-export class LensFlare implements StreetPass, FrameReader {
+export class LensFlare implements StreetPass {
   readonly name = "lens-flare";
+  /**
+   * The sun probe's reader (composer.frameReaders). Its own isActive: it must run whenever the probe
+   * was drawn, also while the flare itself is off for want of a reading (the pass's isActive).
+   */
+  readonly reader: FrameReader = {
+    name: "sun-probe",
+    isActive: () => this.probe.visible,
+    read: (frame) => this.read(frame),
+  };
   private readonly probe: Mesh<PlaneGeometry, NodeMaterial>;
   private readonly readTarget = (() => {
     const t = new RenderTarget(1, 1, { type: UnsignedByteType, depthBuffer: false });
@@ -238,7 +247,9 @@ export class LensFlare implements StreetPass, FrameReader {
     const isUp = sun.elevation > -1;
     const { isInView } = sunOnScreen(sun.direction, camera, this.sun);
     this.isInView = isOn && isUp && isInView;
-    const target = this.isInView ? this.measured : 0;
+    // Out of view nothing is read; coming back in, the old reading is not to be trusted.
+    if (!this.isInView) this.measured = 0;
+    const target = this.measured;
     this.visibility += (target - this.visibility) * Math.min(1, dt / SETTLE_S);
     this.strength = flareStrength(this.visibility, sun.elevation, sun.overcast);
     this.probe.visible = this.isInView;
@@ -308,15 +319,11 @@ export class LensFlare implements StreetPass, FrameReader {
     })();
   }
 
-  // ---- FrameReader ----
+  // ---- the probe's reader ----
 
-  /** The probe is read whenever it was drawn (the sun in view). */
-  read(frame: Texture): void {
+  /** After the frame: the probe is hidden again and, unless a reading is in flight, read. */
+  private read(frame: Texture): void {
     this.probe.visible = false;
-    if (!this.isInView) {
-      this.measured = 0;
-      return;
-    }
     if (this.isReading) return;
     const r = this.renderer;
     this.frame.value = frame;

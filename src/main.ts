@@ -297,7 +297,7 @@ async function main(): Promise<void> {
   // The street passes, in order, on the street only (the interior and the wipers stay sharp): the
   // lights spill, the lens flares, then the street smears.
   composer.streetPasses.push(bloom, lensFlare, blur);
-  composer.frameReaders.push(lensFlare);
+  composer.frameReaders.push(lensFlare.reader);
   const sunDir = new Vector3();
   /** The sun for the lens flare, this frame (call before the frame is drawn). */
   const placeFlare = () =>

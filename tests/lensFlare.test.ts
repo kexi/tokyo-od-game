@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { PerspectiveCamera, Vector3 } from "three";
-import { flareStrength, GHOSTS, PROBE_RADIUS, sunOnScreen, TAP_RING } from "../src/world/lensFlare";
+import { Color, PerspectiveCamera, Scene, type Vector2, Vector3 } from "three";
+import type { WebGPURenderer } from "three/webgpu";
+import { GRAPHICS } from "../src/device";
+import {
+  flareStrength,
+  GHOSTS,
+  LensFlare,
+  PROBE_RADIUS,
+  sunOnScreen,
+  TAP_RING,
+} from "../src/world/lensFlare";
 
 const camera = () => {
   const c = new PerspectiveCamera(60, 16 / 9, 0.5, 40000);
@@ -68,5 +77,44 @@ describe("the probe and the ghosts", () => {
       expect(g.radius).toBeGreaterThan(0);
       expect(g.radius).toBeLessThan(0.3);
     }
+  });
+});
+
+describe("the flare's passes from frame to frame", () => {
+  // Only what update() reads of the renderer.
+  const renderer = {
+    toneMappingExposure: 1,
+    getDrawingBufferSize: (v: Vector2) => v.set(1600, 900),
+  } as unknown as WebGPURenderer;
+  const sun = (direction: Vector3) => ({
+    direction,
+    elevation: 30,
+    overcast: 0,
+    color: new Color(1, 1, 1),
+    night: 0,
+  });
+
+  it("draws and reads the probe while the sun is in view, before any reading has lit the flare", () => {
+    GRAPHICS.settings = { ...GRAPHICS.settings, lensFlare: "on" };
+    const scene = new Scene();
+    const flare = new LensFlare(renderer, scene, null);
+    flare.update(camera(), sun(new Vector3(0, 0.3, -1).normalize()));
+    // No reading yet, so no flare; but the probe must be drawn and read, or it never would be.
+    expect(flare.isActive()).toBe(false);
+    expect(flare.reader.isActive()).toBe(true);
+    expect(scene.getObjectByName("sun-probe")?.visible).toBe(true);
+  });
+
+  it("neither draws nor reads anything for a sun behind the eye, or with レンズフレア なし", () => {
+    const scene = new Scene();
+    const flare = new LensFlare(renderer, scene, null);
+    GRAPHICS.settings = { ...GRAPHICS.settings, lensFlare: "on" };
+    flare.update(camera(), sun(new Vector3(0, 0.3, 1).normalize()));
+    expect(flare.reader.isActive()).toBe(false);
+    GRAPHICS.settings = { ...GRAPHICS.settings, lensFlare: "off" };
+    flare.update(camera(), sun(new Vector3(0, 0.3, -1).normalize()));
+    expect(flare.reader.isActive()).toBe(false);
+    expect(flare.isActive()).toBe(false);
+    GRAPHICS.settings = { ...GRAPHICS.settings, lensFlare: "on" };
   });
 });
