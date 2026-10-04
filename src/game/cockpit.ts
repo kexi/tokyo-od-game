@@ -29,6 +29,9 @@ const SPEED_RATE = (4 / 3) * DEG; // per km/h
 const TACHO_RATE = 0.03 * DEG; // per rpm
 const STEERING_RATIO = 15;
 const WIPER_SWEEP = { R: 82 * DEG, L: 84 * DEG };
+const WIPER_LO = 40 / 60; // cycles per second
+const WIPER_HI = 60 / 60;
+const WIPER_REST = 4; // s between 間欠 sweeps
 // Windscreen UV of the wiper pivots, the blade reach (UV units: the glass is 1.4706 × 0.8245 m).
 const WIPERS = [
   {
@@ -242,12 +245,15 @@ export class Cockpit {
         ctx.fillRect(x - r * 0.3, y - r * 0.4, 1, 1);
       }
     }
-    const speed = [0, 0.45, 0.9, 1.6][mode] ?? 0; // sweeps per second
+    // Cycles per second: 間欠 is one LO sweep then a rest; LO 40 and HI 60 a minute, as cars have
+    // (FMVSS 104 asks HI ≥ 45, LO 20–55 and 15 apart). Faster looked frantic in the driver's seat.
+    const intCycle = 1 / WIPER_LO + WIPER_REST;
+    const speed = [0, 1 / intCycle, WIPER_LO, WIPER_HI][mode] ?? 0;
     const wasPhase = this.wiperPhase;
     if (mode > 0) this.wiperPhase = (this.wiperPhase + dt * speed) % 1;
     else this.wiperPhase = this.wiperPhase > 0 ? Math.min(1, this.wiperPhase + dt) % 1 : 0;
     // 間欠: rest at the bottom for a while between sweeps.
-    const t = mode === 1 ? Math.min(1, this.wiperPhase * 2) : this.wiperPhase;
+    const t = mode === 1 ? Math.min(1, this.wiperPhase * intCycle * WIPER_LO) : this.wiperPhase;
     const swing = Math.sin(t * Math.PI); // 0 → 1 → 0 over a sweep
     for (const w of this.wipers) {
       w.node.rotation.z = swing * w.sweep;
