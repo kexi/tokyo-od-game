@@ -176,7 +176,9 @@ export class RouteArrows {
     this.chevrons.instanceMatrix.needsUpdate = true;
     // The next turn: a big arrow standing over the junction, facing the way the car comes.
     for (const arrow of this.turnArrows.values()) arrow.visible = false;
-    const next = route.maneuvers.find((mv) => mv.at > at - 4);
+    // Gone once the car is almost at the junction: it stood 3 m past the turning point and ended
+    // up inside the car (over the dashboard in the driver's seat).
+    const next = route.maneuvers.find((mv) => mv.at > at + 9);
     if (next && next.at - at < TURN_SHOW) {
       const arrow = this.turnArrows.get(next.turn);
       const before = pointAt(route, Math.max(0, next.at - 6));
