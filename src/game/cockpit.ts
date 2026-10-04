@@ -33,6 +33,13 @@ const DEG = Math.PI / 180;
 const COLUMN_RAISE = 0.035;
 /** The render layer of the interior (drawn in a second pass with a near plane of a few cm). */
 export const INTERIOR_LAYER = 1;
+/**
+ * The wiper arms: close to the eye like the interior (drawn with its near camera), but outside the
+ * glass — so drawn before the street is copied for the water on the windscreen, which then lies
+ * over them. Why not on the interior layer: the glass, drawn last from that copy, painted over them
+ * in the rain, the one time they are needed.
+ */
+export const OUTSIDE_LAYER = 2;
 // The needles are modelled pointing at their zero marks (clock angle −120°, the small gauges
 // −45°), so rotation.z is only the swing from zero, clockwise as the driver sees it.
 const SPEED_RATE = (4 / 3) * DEG; // per km/h
@@ -172,6 +179,7 @@ export class Cockpit {
     car.add(this.root);
     // The interior is drawn in its own pass (see render), so it lives on its own layer.
     this.root.traverse((o) => o.layers.set(INTERIOR_LAYER));
+    for (const w of this.wipers) w.node.traverse((o) => o.layers.set(OUTSIDE_LAYER));
     this.hiddenExterior = [];
     car.traverse((o) => {
       if (!(o instanceof Mesh) || o === this.root) return;
@@ -322,7 +330,21 @@ export class Cockpit {
       renderer.autoClear = autoClear;
       renderer.shadowMap.autoUpdate = shadows;
     };
-    this.rain.render(renderer, scene, camera, this.root, drawInterior, near, afterWorld);
+    // The wiper arms over the street (after its blur: they are close and sharp), under the glass.
+    const drawOutside = () => {
+      afterWorld();
+      const autoClear = renderer.autoClear;
+      const shadows = renderer.shadowMap.autoUpdate;
+      renderer.autoClear = false;
+      renderer.shadowMap.autoUpdate = false;
+      renderer.clearDepth();
+      near.layers.set(OUTSIDE_LAYER);
+      renderer.render(scene, near);
+      near.layers.set(INTERIOR_LAYER);
+      renderer.autoClear = autoClear;
+      renderer.shadowMap.autoUpdate = shadows;
+    };
+    this.rain.render(renderer, scene, camera, this.root, drawInterior, near, drawOutside);
   }
 
   /** The interior pass's camera: the eye's pose, a near plane of 2 cm, the interior layer only. */
@@ -339,7 +361,9 @@ export class Cockpit {
     if (now - this.lightsCheckedAt < 1000) return;
     this.lightsCheckedAt = now;
     scene.traverse((o) => {
-      if ((o as Light).isLight) o.layers.enable(INTERIOR_LAYER);
+      if (!(o as Light).isLight) return;
+      o.layers.enable(INTERIOR_LAYER);
+      o.layers.enable(OUTSIDE_LAYER);
     });
   }
 
