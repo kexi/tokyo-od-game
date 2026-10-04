@@ -7,6 +7,7 @@ status: stable
 generated: { by: claude-opus-5-5/1m, at: 2026-10-04T16:10:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T16:10:00Z }
+  - { by: process:naga, at: 2026-10-04T20:50:00Z }
 sources:
   - id: amedas-map
     resource: https://www.jma.go.jp/bosai/amedas/data/map/20261005001000.json
@@ -37,6 +38,8 @@ sources:
 - 線形の霧（near → far）は、読み込んだ世界の端を隠す下限として残した（晴れ 2,400〜4,200 m、雨 1,100〜2,200 m）。
 
 パラメータは ShaderLib の各シェーダーの uniforms に**素のオブジェクト**（{x, y, z, w}）として入れる。three.js は Vector や Color の uniform 値はマテリアルごとに複製するが、素のオブジェクトは参照のまま渡すので、一度書き換えれば全マテリアルに届く。uniform を持たない独自 ShaderMaterial は 0 を受け取り、線形の霧に戻る。
+
+webgpu ブランチ（WebGPURenderer）では、同じ式を TSL で `scene.fogNode` にした（`atmosphereFog()`）。node material は霧を線形のまま混ぜ、フレームの最後に 1 回だけトーンマップするので、霧の色のトーンマップ（main の放射輝度化）は要らない。パラメータは Vector4 / Vector3 で、uniform（render ごとに 1 回転送）が参照で読む。three の Fog は色・near・far の入れ物として残している。
 
 ## 視程の出どころ
 
