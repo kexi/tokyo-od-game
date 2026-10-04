@@ -515,6 +515,7 @@ async function main(): Promise<void> {
       const at = vehicle.position().add(new Vector3(-1.6, 0, 0.3).applyQuaternion(q));
       at.y = groundY(at.x, at.z) ?? at.y - 0.8;
       walker.enter(at, carYaw(q));
+      vehicle.setParked(true);
       mode = "foot";
       announceIdlingStop();
       toast("車を降りました（F で乗車・Shift で走る・Space でジャンプ・←→ やドラッグで視点）", "#4dd2ff");
@@ -525,6 +526,7 @@ async function main(): Promise<void> {
       return;
     }
     walker.leave();
+    vehicle.setParked(false);
     mode = "car";
     if (ticket.visible) {
       ticket.visible = false;
@@ -672,12 +674,7 @@ async function main(): Promise<void> {
     accumulator += dt;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
-      const isParked = isOnFoot;
-      if (!frozen)
-        vehicle.update(
-          world.timestep,
-          isParked ? { throttle: 0, brake: 1, steer: 0, handbrake: true } : drive,
-        );
+      if (!frozen && !isOnFoot) vehicle.update(world.timestep, drive);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
       accumulator -= world.timestep;

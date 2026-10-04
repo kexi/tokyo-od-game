@@ -31,6 +31,7 @@ export class Vehicle {
   readonly headlights: SpotLight[];
   private readonly model: CarModel;
   private steer = 0;
+  private parked = false;
   private lastInput: DriveInput = { throttle: 0, brake: 0, steer: 0, handbrake: false };
 
   constructor(private readonly world: RAPIER.World) {
@@ -86,7 +87,23 @@ export class Vehicle {
 
   /** Speed along the chassis forward axis in km/h (negative when reversing). */
   speedKmh(): number {
-    return this.controller.currentVehicleSpeed() * 3.6;
+    return this.parked ? 0 : this.controller.currentVehicleSpeed() * 3.6;
+  }
+
+  /**
+   * A parked car (driver on foot) becomes a kinematic body: it still blocks pedestrians and
+   * traffic, but no longer simulates. Terrain colliders only exist around the player, so a
+   * dynamic car left behind would fall through the ground once the player walked away.
+   */
+  setParked(parked: boolean): void {
+    if (parked === this.parked) return;
+    this.parked = parked;
+    this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.body.setBodyType(
+      parked ? RAPIER.RigidBodyType.KinematicPositionBased : RAPIER.RigidBodyType.Dynamic,
+      true,
+    );
   }
 
   update(dt: number, input: DriveInput): void {
