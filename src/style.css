@@ -1245,3 +1245,58 @@ pre.notice {
     animation: none;
   }
 }
+
+/* カーナビ: next turn under the location panel. */
+#nav {
+  top: 150px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  min-width: 200px;
+}
+
+#nav .nav-arrow {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  background: #1f6feb;
+  border-radius: 10px;
+}
+
+#nav .nav-arrow path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#nav .nav-dist {
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+#nav .nav-turn {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  #nav {
+    top: auto;
+    bottom: 250px;
+    left: 6px;
+    min-width: 0;
+    padding: 6px 10px 6px 6px;
+  }
+  #nav .nav-arrow {
+    width: 36px;
+    height: 36px;
+  }
+  #nav .nav-dist {
+    font-size: 18px;
+  }
+}

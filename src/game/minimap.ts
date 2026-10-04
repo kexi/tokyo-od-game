@@ -25,6 +25,8 @@ export class Minimap {
     pois: readonly Poi[];
     target: Poi | null;
     buses: Array<{ lat: number; lon: number }>;
+    /** カーナビ route, drawn under the markers. */
+    route?: Array<{ lat: number; lon: number }>;
   }): void {
     const { ctx, canvas } = this;
     const size = canvas.width;
@@ -51,6 +53,20 @@ export class Minimap {
       ctx.beginPath();
       ctx.arc(half, half, half * r, 0, Math.PI * 2);
       ctx.stroke();
+    }
+    if (opts.route && opts.route.length > 1) {
+      ctx.strokeStyle = "#3d8bff";
+      ctx.lineWidth = 4;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      opts.route.forEach((p, i) => {
+        const [x, y] = project(p.lat, p.lon);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.lineWidth = 1;
     }
     for (const p of opts.pois) {
       const [x, y] = project(p.lat, p.lon);

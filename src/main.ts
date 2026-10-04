@@ -43,6 +43,7 @@ import { Speedometer } from "./game/speedometer";
 import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
+import { NavGuide } from "./game/navGuide";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
 import { Input } from "./game/input";
@@ -244,6 +245,8 @@ async function main(): Promise<void> {
     (x, z, g) => isOpenGround(x, z, g),
   );
   const speedometer = new Speedometer($("#hud-speed"));
+  const nav = new NavGuide($("#nav"), () => audio.muted);
+  let navGeo: { version: number; points: Array<{ lat: number; lon: number }> } = { version: -1, points: [] };
   const stamps = new Stamps($("#stamps"), () => audio.context, $("#scene"));
   const patrol = new ParkingPatrol(scene, (x, z) => groundY(x, z));
   /** A 確認標章 waiting for the driver's choice when they get back in. */
@@ -755,6 +758,26 @@ async function main(): Promise<void> {
       refreshRoads(geo.lat, geo.lon);
     control.update(now / 1000);
     signs.update(focus, now);
+    // カーナビ to the mission target, along legal streets.
+    const navTarget = missions.current ? field.localPosition(missions.current.target) : null;
+    nav.update({
+      now,
+      graph: roadGraph,
+      turnRules: roadApplied?.turnRules ?? [],
+      car: carPos,
+      forward: carForward,
+      target: navTarget,
+      minutes: clockMinutes(),
+      driving: !isOnFoot,
+    });
+    if (nav.route && navGeo.version !== nav.version) {
+      navGeo = {
+        version: nav.version,
+        points: nav.route.points
+          .filter((_, i, a) => i % 3 === 0 || i === a.length - 1)
+          .map((p) => frame.toGeodetic(p)),
+      };
+    }
     if (roadGraph && now - lastClockSync > 5000) {
       lastClockSync = now;
       roadGraph.setClock(clockMinutes());
@@ -1229,6 +1252,7 @@ async function main(): Promise<void> {
       pois: field.visibleList(),
       target: mission?.target ?? null,
       buses: transit.positionsNear(lat, lon, 700),
+      route: nav.route ? navGeo.points : undefined,
     });
   };
 
@@ -1275,6 +1299,7 @@ async function main(): Promise<void> {
         phone,
         law,
         walker,
+        nav,
         patrol,
         stamps,
         getApplied: () => roadApplied,
