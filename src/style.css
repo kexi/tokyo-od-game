@@ -2283,8 +2283,9 @@ pre.notice {
 #notice-log {
   left: 12px;
   top: 486px;
-  width: 252px;
-  max-height: 210px;
+  /* Wider on wide screens (the text is cut at one line), down to the speedometer on tall ones. */
+  width: clamp(252px, 24vw, 480px);
+  max-height: clamp(150px, calc(100vh - 486px - 210px), 560px);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
