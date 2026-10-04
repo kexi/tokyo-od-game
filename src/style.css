@@ -782,7 +782,8 @@ pre.notice {
 }
 
 #phone {
-  right: 70px;
+  /* Left of the toolbar, so its buttons stay usable while the phone sits in its holder. */
+  right: 190px;
   bottom: 26px;
   width: 300px;
   height: min(560px, calc(100vh - 60px));
@@ -1538,59 +1539,7 @@ pre.notice {
   }
 }
 
-/* つぶやき (in-game social app) */
-#phone-social {
-  display: grid;
-  gap: 8px;
-  overflow-y: auto;
-  max-height: 100%;
-}
-.social-post {
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  cursor: pointer;
-}
-.social-post.open {
-  cursor: default;
-}
-.social-post img {
-  width: 100%;
-  border-radius: 8px;
-  margin-top: 6px;
-}
-.social-who {
-  font-size: 11px;
-  color: #9fb0c8;
-}
-.social-line p {
-  margin: 2px 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.social-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 6px;
-  font-size: 11px;
-  color: #c9d4e3;
-  font-variant-numeric: tabular-nums;
-}
-.social-reported {
-  margin: 6px 0 0;
-  font-size: 11px;
-  color: #ff8a8a;
-}
-.social-replies {
-  display: grid;
-  gap: 6px;
-}
-.social-replies h4 {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: #9fb0c8;
-}
+/* つぶやき (in-game social app): the app's own styles are in social.css. */
 #social-badge {
   margin-left: 4px;
   padding: 0 6px;
@@ -2171,4 +2120,79 @@ pre.notice {
     flex-direction: column;
     gap: 4px;
   }
+}
+
+/* 操作設定: key layout and control mode at the top of the help */
+.control-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: 0 0 14px;
+}
+.control-options label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+.control-options select {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  max-width: 100%;
+}
+
+/* 移動: home, search box and results */
+.warp-home {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0 12px;
+}
+#warp-query {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+}
+#warp-results {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+}
+#warp-results button {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  margin: 2px 0;
+}
+#warp-results .kind {
+  opacity: 0.7;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* A dialog's choices side by side (タイトルへ / 運転を続ける) */
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.dialog-actions form {
+  margin: 0;
 }

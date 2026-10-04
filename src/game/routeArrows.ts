@@ -146,6 +146,11 @@ export class RouteArrows {
     scene.add(this.group);
   }
 
+  /** The arrows' root, for views that must not show them (a bystander's photo). */
+  get object(): Group {
+    return this.group;
+  }
+
   /** `at` is the car's distance along the route; null hides the arrows. */
   update(route: Route | null, at: number, now: number): void {
     this.group.visible = route !== null;

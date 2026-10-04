@@ -1,5 +1,10 @@
 # Directory Update Log
 
+## 2026-10-05
+
+- **Creation**: [深度フォグ（大気の減衰）と違反の再現データ](atmosphere-and-replay-data.md) を追加。
+- **Creation**: [違反を撮影する通行人とスマートフォン](witness-phones.md) を追加。
+
 ## 2026-10-04
 
 - **Creation**: [警察車両のモデリング](police-vehicles-blender.md) を追加。

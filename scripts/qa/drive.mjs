@@ -75,7 +75,7 @@ try {
   // The game puts the car on the nearest street once the roads have loaded; then autopilot.
   await b.evaluate("window.__game.advance(1.5)");
   await b.evaluate(
-    "window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA' }))",
+    "window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyJ' }))",
   );
   await b.evaluate("window.__game.advance(0.5)");
   const toasts = await b.evaluate("[...document.querySelectorAll('.toast')].map((t) => t.textContent)");

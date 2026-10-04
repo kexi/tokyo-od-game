@@ -43,7 +43,7 @@ import { GameAudio } from "./game/audio";
 import { ConversationController } from "./game/conversation";
 import { Walker } from "./game/walker";
 import { ChaseCamera } from "./game/camera";
-import { loadCarModels } from "./game/carModel";
+import { createLowCar, loadCarModels } from "./game/carModel";
 import { Speedometer } from "./game/speedometer";
 import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
@@ -62,7 +62,7 @@ import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
-import { Input } from "./game/input";
+import { Input, keyFor } from "./game/input";
 import { Minimap } from "./game/minimap";
 import { Missions } from "./game/missions";
 import { PoiField, storageKeyFor } from "./game/pois";
@@ -93,12 +93,13 @@ import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
 import { TrafficSigns, loadSignModels } from "./world/signs";
-import { loadHumanModels } from "./world/human";
+import { createHuman, loadHumanModels } from "./world/human";
 import { loadFacadeTextures } from "./world/facade";
 import { TrafficAI } from "./world/traffic-ai";
 import {
   formatViolation,
   injuryViolation,
+  SESSION,
   speedViolation,
   TrafficLaw,
   VIOLATIONS,
@@ -107,15 +108,22 @@ import {
   type ViolationRecord,
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
+import { loadViolations, saveViolations, ViolationSync } from "./game/violationStore";
+import { ClipPose, CLIP_AFTER_MS, cutClip, type ActorDesc } from "./game/replayClip";
 import { renderTicket } from "./game/ticketForm";
 import { PolicePatrol } from "./game/policePatrol";
-import { CarControls } from "./game/carControls";
+import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
-import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type ReplayCamera } from "./game/replay";
-import { loadVehicleModels } from "./game/vehicleModels";
+import { CarNavi } from "./game/carNavi";
+import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
+import { loadPrefs, renderKeyList, savePrefs, type ControlPrefs } from "./game/controlsHelp";
+import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type Pose, type ReplayCamera } from "./game/replay";
+import { createVehicle, loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
 import { formatCount, SocialFeed, type SocialPost } from "./game/social";
-import { renderFeed, renderPost } from "./game/socialView";
+import { WitnessPhones } from "./game/witnessPhones";
+import { SocialApp } from "./game/socialView";
+import { WitnessShot } from "./game/witnessShot";
 import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
@@ -242,7 +250,8 @@ async function main(): Promise<void> {
   const env = new Environment(scene, renderer);
   const vehicle = new Vehicle(world);
   cockpit.attach(vehicle.object);
-  cockpit.showOnDisplay($<HTMLCanvasElement>("#minimap"));
+  const carNavi = new CarNavi();
+  cockpit.showOnDisplay(carNavi.canvas);
   scene.add(vehicle.object);
   vehicle.setFrozen(true);
   const field = new PoiField(
@@ -263,17 +272,22 @@ async function main(): Promise<void> {
   const minimap = new Minimap($<HTMLCanvasElement>("#minimap"), categories);
   const walker = new Walker(scene, world);
   input.bindDrag($("#scene"));
+  input.bindMouseLook($("#scene"));
   let mode: "car" | "foot" | "taxi" = "car";
   /** The 自動運転タクシー called from the phone, while one is about. */
   let taxi: RoboTaxi | null = null;
   /** 自動運転モード of the player's own car (with the mission target, or cruising about). */
   let autopilot: { driver: AutoDriver; cruising: boolean; input: DriveInput } | null = null;
+  /** While a saved violation plays, the world streams around it (it may be far from the car). */
+  let replayFocus: Vector3 | null = null;
   const focusPos = (target = new Vector3()) =>
-    mode === "foot"
-      ? walker.position(target)
-      : mode === "taxi" && taxi
-        ? target.copy(taxi.position)
-        : vehicle.position(target);
+    replayFocus
+      ? target.copy(replayFocus)
+      : mode === "foot"
+        ? walker.position(target)
+        : mode === "taxi" && taxi
+          ? target.copy(taxi.position)
+          : vehicle.position(target);
   const pavementTiles = new PavementTiles();
   const pavements = new Pavements(scene, world, (x, z) => groundY(x, z));
   let pavementPolys: PavementPolygon[] = [];
@@ -287,6 +301,8 @@ async function main(): Promise<void> {
     },
     (x, z, g) => isOpenGround(x, z, g),
   );
+  // Bystanders who film the player's violations with their phones (つぶやき on the screen).
+  const witnessPhones = new WitnessPhones(pedestrians);
   const roadTiles = new RoadTiles();
   transit.snap = (p, heading) => {
     const hit = roadGraph?.nearest(p, 40);
@@ -504,7 +520,7 @@ async function main(): Promise<void> {
   // The opening drive is set once the car stands on its street.
   let needsTrip = false;
   // Where the day starts and ends (the street the game put the car on).
-  let home: { lat: number; lon: number } | null = null;
+  let home: Home | null = loadHome();
   // Today's driving, for the end-of-day record.
   let todayMetres = 0;
   let todayFrom = 0; // index into law.state.log where today began
@@ -551,6 +567,118 @@ async function main(): Promise<void> {
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
 
+  // ---------- 移動（どこへでも） ----------
+  /** While the destination loads the car waits there, frozen; then it starts on the nearest street. */
+  let warping: { label: string; since: number; yaw: number } | null = null;
+  const warpTo = (place: WarpPlace) => {
+    const isBusy =
+      police?.state === "pursuing" ||
+      police?.state === "ticketing" ||
+      $<HTMLDialogElement>("#ticket-dialog").open ||
+      !$("#suspended").hidden;
+    if (isBusy) return toast("いまは移動できません（取り締まり中）", "#ff6b6b");
+    if (mode === "taxi") return toast("タクシーに乗っている間は移動できません");
+    if (replay) stopReplay();
+    if (autopilot) stopAutopilot("移動のため自動運転を解除しました");
+    if (mode === "foot") {
+      walker.leave();
+      vehicle.setParked(false);
+      mode = "car";
+    }
+    const yaw = carYaw(vehicle.quaternion());
+    const at = frame.toLocal(place.lat, place.lon, frame.origin.h);
+    vehicle.teleport(at, yaw);
+    frozen = true;
+    vehicle.setFrozen(true);
+    warping = { label: place.name, since: performance.now(), yaw };
+    // The local frame follows the car there, so the far town is near the origin again.
+    recenter();
+    toast(`${place.name} へ移動しています…`, "#4dd2ff");
+  };
+  const finishWarp = (now: number) => {
+    if (!warping) return;
+    const g = frame.toGeodetic(new Vector3());
+    const isGroundReady = terrain.hasColliderAt(g.lat, g.lon);
+    const isTownReady = buildings.loadProgress() > 0.95 || now - warping.since > 12000;
+    if (!isGroundReady || !isTownReady) return;
+    buildings.buildCollidersNear(new Vector3());
+    vehicle.teleport(findOpenGround(0, 0), warping.yaw);
+    chase.snap();
+    needsStreetSpawn = true;
+    streetSpawnSince = now;
+    toast(`${warping.label} に着きました`, "#7dff9a");
+    log("warp", { to: warping.label, ms: Math.round(now - warping.since) });
+    warping = null;
+  };
+  /** Everything with a name and a place: landmarks, police, the licence centres, spots, wards. */
+  const warpPlaces = (): WarpPlace[] => {
+    const label = new Map(categories.map((c) => [c.id, c.label]));
+    const wards = new Map<string, { lat: number; lon: number; n: number }>();
+    for (const p of pois) {
+      const w = wards.get(p.ward) ?? { lat: 0, lon: 0, n: 0 };
+      wards.set(p.ward, { lat: w.lat + p.lat, lon: w.lon + p.lon, n: w.n + 1 });
+    }
+    return [
+      ...landmarkEntries.map((l) => ({ name: l.name, kind: "ランドマーク", lat: l.lat, lon: l.lon })),
+      ...[...wards].map(([ward, w]) => ({
+        name: ward,
+        kind: "区（スポットの中心）",
+        lat: w.lat / w.n,
+        lon: w.lon / w.n,
+      })),
+      ...(policeData?.centres ?? []).map(([lon, lat, name]) => ({ name, kind: "運転免許試験場", lat, lon })),
+      ...(policeData?.stations ?? []).map(([lon, lat, name]) => ({ name, kind: "警察署", lat, lon })),
+      ...pois.map((p) => ({
+        name: p.name,
+        kind: label.get(p.category) ?? p.category,
+        lat: p.lat,
+        lon: p.lon,
+        ward: p.ward,
+      })),
+    ];
+  };
+  const showWarpResults = () => {
+    const query = $<HTMLInputElement>("#warp-query").value;
+    const places = warpPlaces();
+    // Before typing: the landmarks and the wards to choose from.
+    const shown = query.trim()
+      ? searchPlaces(places, query)
+      : places.filter((p) => p.kind === "ランドマーク" || p.kind.startsWith("区"));
+    $("#warp-results").replaceChildren(
+      ...shown.map((p) => {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.type = "button";
+        const name = document.createElement("span");
+        name.textContent = p.name;
+        const kind = document.createElement("span");
+        kind.className = "kind";
+        kind.textContent = [p.kind, p.ward].filter(Boolean).join("・");
+        b.append(name, kind);
+        b.addEventListener("click", () => {
+          $<HTMLDialogElement>("#warp").close();
+          warpTo(p);
+        });
+        li.append(b);
+        return li;
+      }),
+    );
+    $("#warp-home-label").textContent = home ? `自宅: ${home.label ?? "設定済み"}` : "自宅はまだありません";
+  };
+  $("#warp-query").addEventListener("input", showWarpResults);
+  $("#warp-home").addEventListener("click", () => {
+    if (!home) return toast("自宅がまだありません。「いまの場所を自宅にする」で決められます");
+    $<HTMLDialogElement>("#warp").close();
+    warpTo({ name: "自宅", kind: "自宅", lat: home.lat, lon: home.lon });
+  });
+  $("#warp-set-home").addEventListener("click", () => {
+    const g = frame.toGeodetic(focusPos());
+    home = { lat: g.lat, lon: g.lon, label: [wardName, townName].filter(Boolean).join(" ") || undefined };
+    saveHome(home);
+    showWarpResults();
+    toast("いまの場所を自宅にしました", "#7dff9a");
+  });
+
   // ---------- UI wiring ----------
   const timeButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-time]")];
   const setTime = (mode: TimeMode) => {
@@ -579,6 +707,18 @@ async function main(): Promise<void> {
   input.on("mute", () => toast(audio.toggleMute() ? "サウンド オフ" : "サウンド オン"));
   input.on("reset", respawnHere);
   input.on("help", () => $<HTMLDialogElement>("#help").showModal());
+  // タイトルへ: the title screen is the page's own start screen, so going back is a fresh load (what
+  // the browser keeps — records, spots, home, settings — survives it).
+  input.on("title", () => $<HTMLDialogElement>("#title-dialog").showModal());
+  $("#title-confirm").addEventListener("click", () => {
+    log("title", {});
+    location.reload();
+  });
+  input.on("warp", () => {
+    showWarpResults();
+    $<HTMLDialogElement>("#warp").showModal();
+    $<HTMLInputElement>("#warp-query").focus();
+  });
   input.on("credits", () => {
     void regulationTiles.meta().then((regs) => {
       $("#credits-body").innerHTML = renderCredits(poiFile?.sources ?? [], regs);
@@ -682,6 +822,16 @@ async function main(): Promise<void> {
     speed: number;
     camera: ReplayCamera;
     clones: Map<Object3D, Object3D>;
+    /** The live recording, or one rebuilt from a saved violation's clip. */
+    rec: ReplayRecorder;
+    marks: Array<{ at: number; label: string }>;
+    isClip: boolean;
+  };
+  /** Saved clips play through the same director: their samples become a recording again. */
+  type ReplaySource = {
+    rec: ReplayRecorder;
+    marks: Replay["marks"];
+    moment: { ms: number; raining: boolean };
   };
   let replay: Replay | null = null;
   const replayCamera = $<HTMLSelectElement>("#replay-camera");
@@ -697,30 +847,45 @@ async function main(): Promise<void> {
   const formatT = (ms: number) =>
     `${Math.floor(ms / 60000)}:${String(Math.floor((ms / 1000) % 60)).padStart(2, "0")}`;
   /** Open the replay at a moment (default: 20 s before the end of the recording). */
-  const startReplay = (at?: number) => {
-    if (recorder.frames.length < 10 || state !== "playing") return toast("まだ記録がありません");
+  const startReplay = (at?: number, source?: ReplaySource) => {
+    const rec = source?.rec ?? recorder;
+    if (rec.frames.length < (source ? 2 : 10) || state !== "playing") return toast("まだ記録がありません");
     for (const o of liveObjects()) o.visible = false;
     replay = {
-      t: at ?? Math.max(recorder.start, recorder.end - 20000),
+      t: at ?? Math.max(rec.start, rec.end - 20000),
       playing: true,
       speed: 1,
       camera: "auto",
       clones: new Map(),
+      rec,
+      marks:
+        source?.marks ??
+        law.state.log
+          .filter((r) => r.at >= rec.start && r.at <= rec.end)
+          .map((r) => ({ at: r.at, label: r.label })),
+      isClip: source !== undefined,
     };
+    if (source) {
+      env.showMoment(source.moment);
+      replayFocus = rec.frames[0]
+        ? new Vector3(rec.frames[0].car.x, rec.frames[0].car.y, rec.frames[0].car.z)
+        : null;
+    }
+    const r0 = replay;
     $("#replay-bar").hidden = false;
     $("#hud").classList.add("replaying");
     replayCamera.value = "auto";
+    // Today's route arrows are not part of what happened.
+    ribbon.clear();
     // Violations as red ticks on the timeline.
-    const span = Math.max(1, recorder.end - recorder.start);
+    const span = Math.max(1, rec.end - rec.start);
     $("#replay-marks").replaceChildren(
-      ...law.state.log
-        .filter((r) => r.at >= recorder.start && r.at <= recorder.end)
-        .map((r) => {
-          const m = document.createElement("span");
-          m.style.left = `${((r.at - recorder.start) / span) * 100}%`;
-          m.title = r.label;
-          return m;
-        }),
+      ...r0.marks.map((r) => {
+        const m = document.createElement("span");
+        m.style.left = `${((r.at - rec.start) / span) * 100}%`;
+        m.title = r.label;
+        return m;
+      }),
     );
   };
   const stopReplay = () => {
@@ -729,6 +894,8 @@ async function main(): Promise<void> {
     for (const c of r.clones.values()) scene.remove(c);
     for (const o of liveObjects()) o.visible = true;
     replay = null;
+    env.showMoment(null);
+    replayFocus = null;
     $("#replay-bar").hidden = true;
     $("#hud").classList.remove("replaying");
     vehicle.syncVisuals();
@@ -736,9 +903,10 @@ async function main(): Promise<void> {
   const playReplay = (dt: number) => {
     const r = replay;
     if (!r) return;
-    if (r.playing) r.t = Math.min(recorder.end, r.t + dt * 1000 * r.speed);
-    if (r.t >= recorder.end) r.playing = false;
-    const s = recorder.at(r.t);
+    const rec = r.rec;
+    if (r.playing) r.t = Math.min(rec.end, r.t + dt * 1000 * r.speed);
+    if (r.t >= rec.end) r.playing = false;
+    const s = rec.at(r.t);
     if (!s) return;
     const { a, b, k } = s;
     const pos = new Vector3(a.car.x, a.car.y, a.car.z).lerp(new Vector3(b.car.x, b.car.y, b.car.z), k);
@@ -768,7 +936,8 @@ async function main(): Promise<void> {
       c.rotation.set(0, pa.yaw + Math.atan2(Math.sin(pb.yaw - pa.yaw), Math.cos(pb.yaw - pa.yaw)) * k, 0);
     }
     control.update(r.t / 1000);
-    const marks = law.state.log.map((v) => v.at);
+    const marks = r.marks.map((v) => v.at);
+    if (r.isClip) replayFocus = pos.clone();
     director.place(
       camera,
       r.camera,
@@ -778,23 +947,22 @@ async function main(): Promise<void> {
       (x, z) => groundY(x, z),
     );
     $<HTMLInputElement>("#replay-seek").value = String(
-      Math.round(((r.t - recorder.start) / Math.max(1, recorder.end - recorder.start)) * 1000),
+      Math.round(((r.t - rec.start) / Math.max(1, rec.end - rec.start)) * 1000),
     );
-    $("#replay-time").textContent =
-      `${formatT(r.t - recorder.start)} / ${formatT(recorder.end - recorder.start)}`;
+    $("#replay-time").textContent = `${formatT(r.t - rec.start)} / ${formatT(rec.end - rec.start)}`;
     $("#replay-play").textContent = r.playing ? "❚❚" : "▶";
   };
   input.on("replay", () => (replay ? stopReplay() : startReplay()));
   $("#replay-exit").addEventListener("click", stopReplay);
   $("#replay-play").addEventListener("click", () => {
     if (!replay) return;
-    if (replay.t >= recorder.end) replay.t = recorder.start;
+    if (replay.t >= replay.rec.end) replay.t = replay.rec.start;
     replay.playing = !replay.playing;
   });
   $<HTMLInputElement>("#replay-seek").addEventListener("input", (e) => {
     if (!replay) return;
     const v = Number((e.target as HTMLInputElement).value) / 1000;
-    replay.t = recorder.start + v * (recorder.end - recorder.start);
+    replay.t = replay.rec.start + v * (replay.rec.end - replay.rec.start);
   });
   $<HTMLSelectElement>("#replay-speed").addEventListener("change", (e) => {
     if (replay) replay.speed = Number((e.target as HTMLSelectElement).value);
@@ -805,6 +973,26 @@ async function main(): Promise<void> {
 
   // ---------- 運転席のスイッチ（City Car Driving の配置） ----------
   const controls = new CarControls();
+  // 操作設定: WASD and 簡単操作 unless this browser chose otherwise.
+  const applyPrefs = (prefs: ControlPrefs) => {
+    input.layout = prefs.layout;
+    controls.assist = prefs.assist;
+    $<HTMLSelectElement>("#opt-layout").value = prefs.layout;
+    $<HTMLSelectElement>("#opt-assist").value = prefs.assist;
+    renderKeyList($("#help-keys"), prefs);
+    $("[data-action=autopilot]").title = `自動運転 (${keyFor(prefs.layout, "autopilot")})`;
+  };
+  applyPrefs(loadPrefs());
+  for (const id of ["#opt-layout", "#opt-assist"])
+    $(id).addEventListener("change", () => {
+      const prefs: ControlPrefs = {
+        layout: $<HTMLSelectElement>("#opt-layout").value === "ccd" ? "ccd" : "wasd",
+        assist: $<HTMLSelectElement>("#opt-assist").value === "real" ? "real" : "easy",
+      };
+      savePrefs(prefs);
+      applyPrefs(prefs);
+      log("controls", prefs);
+    });
   let paused = false;
   const inCarOnly = (fn: () => void) => () => {
     if (mode === "car" && state === "playing") fn();
@@ -1074,6 +1262,9 @@ async function main(): Promise<void> {
     streetSpawnSince = performance.now();
     needsTrip = true;
     state = "playing";
+    // The phone starts in its holder, on screens wide enough to keep the road in view beside it.
+    const isWideScreen = window.innerWidth >= 900;
+    if (isWideScreen) phone.show(false);
     log("game_started", {});
     toast("光の柱＝東京都オープンデータの実在スポット。N キーで目的地ミッション！", "#4dd2ff");
   });
@@ -1114,6 +1305,18 @@ async function main(): Promise<void> {
 
     if (replay) {
       playReplay(dt);
+      // The sky of the replay's moment; a saved violation may be elsewhere in Tokyo, so the
+      // ground, buildings, streets and signs stream in around it.
+      const focus = focusPos();
+      const geo = frame.toGeodetic(focus);
+      if (replay?.isClip) {
+        terrain.update(geo.lat, geo.lon);
+        buildings.update(focus, now);
+        if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
+          refreshRoads(geo.lat, geo.lon);
+        signs.update(focus, now);
+      }
+      env.update(dt, focus, camera.position, geo.lat, geo.lon);
       renderer.render(scene, camera);
       return;
     }
@@ -1134,12 +1337,16 @@ async function main(): Promise<void> {
     if (needsTrip && !needsStreetSpawn && !missions.current) {
       needsTrip = false;
       const g = frame.toGeodetic(vehicle.position());
-      home ??= { lat: g.lat, lon: g.lon };
+      if (!home) {
+        home = { lat: g.lat, lon: g.lon };
+        saveHome(home);
+      }
       const trip = missions.startTrip(g.lat, g.lon, now);
       if (trip) {
         const km = (trip.startDistance / 1000).toFixed(1);
         toast(`最初の目的地: ${trip.target.name}（約 ${km} km）。法令を守って向かいましょう`, "#ffe14d");
-        toast("出発前に B でシートベルトを締めましょう（座席ベルト装着義務、第71条の3）", "#4dd2ff");
+        if (controls.assist === "real")
+          toast("出発前に B でシートベルトを締めましょう（座席ベルト装着義務、第71条の3）", "#4dd2ff");
         log("trip", { target: trip.target.name, metres: Math.round(trip.startDistance) });
       }
     }
@@ -1149,7 +1356,10 @@ async function main(): Promise<void> {
     if (autopilot && isOverride) stopAutopilot("運転操作で自動運転を解除しました");
     // With the engine off the accelerator does nothing (E starts it again).
     const pedals = autopilot ? autopilot.input : manual;
-    const drive = controls.engineOn || autopilot ? pedals : { ...pedals, throttle: 0 };
+    if (isInCar) controls.autoOperate(autoContext(manual.throttle), dt);
+    const isHeld = controls.autoHold && !autopilot;
+    const powered = controls.engineOn || autopilot ? pedals : { ...pedals, throttle: 0 };
+    const drive = isHeld ? { ...powered, handbrake: true } : powered;
     if (isInCar) controls.update(vehicle.yaw(), manual.steer);
     // Look aside / behind while held (左右 Ctrl, Z), as in City Car Driving.
     chase.look = input.held("ControlLeft")
@@ -1158,7 +1368,7 @@ async function main(): Promise<void> {
         ? -Math.PI / 2
         : input.held("KeyZ")
           ? Math.PI
-          : 0;
+          : input.look(dt, vehicle.speedKmh() > 5);
     const walk = input.readWalk();
     accumulator += dt;
     let steps = 0;
@@ -1206,7 +1416,7 @@ async function main(): Promise<void> {
     const speed = isOnFoot ? walker.speed * 3.6 : isInTaxi && taxi ? taxi.speed * 3.6 : vehicle.speedKmh();
 
     // Never simulate the car over ground whose collider has not been built yet.
-    const hasGround = terrain.hasColliderAt(geo.lat, geo.lon);
+    const hasGround = terrain.hasColliderAt(geo.lat, geo.lon) && !warping;
     if (hasGround === frozen) {
       frozen = !hasGround;
       vehicle.setFrozen(frozen);
@@ -1219,6 +1429,7 @@ async function main(): Promise<void> {
 
     terrain.update(geo.lat, geo.lon);
     buildings.update(focus, now);
+    finishWarp(now);
     transit.update(now, geo.lat, geo.lon, focus);
     lastGeo = { lat: geo.lat, lon: geo.lon };
     pedestrians.raining = env.isRaining();
@@ -1226,6 +1437,7 @@ async function main(): Promise<void> {
     carForward.y = 0;
     carForward.normalize();
     pedestrians.update(dt, focus, carPos, isInCar ? speed / 3.6 : 0, carForward);
+    witnessPhones.update(dt, env.nightFactor);
     if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
       refreshRoads(geo.lat, geo.lon);
     control.update(now / 1000);
@@ -1562,8 +1774,9 @@ async function main(): Promise<void> {
       toast("運転者が戻ったため、駐車監視員は確認を取りやめました", "#7dff9a");
     }
 
-    // Holding the phone while the car moves; emergency calls to rescue the injured are exempt.
-    if (isInCar && phone.open && Math.abs(speed) > 5 && !emergency.active) {
+    // Working the phone while the car moves (in its holder it is fine); emergency calls to rescue
+    // the injured are exempt.
+    if (isInCar && phone.isInUse(now) && Math.abs(speed) > 5 && !emergency.active) {
       book(VIOLATIONS.phone, now, 30000);
     }
     // Tokyo's environmental ordinance: switch the engine off when stopped for a while.
@@ -1672,6 +1885,21 @@ async function main(): Promise<void> {
     const isHorn = isInCar && input.held("KeyH");
     audio.horn(isHorn);
     hornFor = isHorn ? hornFor + dt : 0;
+    const isCockpitView = isInCar && chase.mode === "cockpit";
+    if (isCockpitView)
+      carNavi.draw({
+        now,
+        graph: roadGraph,
+        route: nav.route,
+        at: nav.lastAt,
+        pos: vehicle.position(),
+        yaw: vehicle.yaw(),
+        night: env.nightFactor > 0.35,
+        kmh: vehicle.speedKmh(),
+        limit: currentLimit,
+        place: [wardName, townName].filter(Boolean).join(" "),
+        clock: clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "",
+      });
     cockpit.update({
       dt,
       now,
@@ -1683,7 +1911,11 @@ async function main(): Promise<void> {
       highBeam: controls.highBeam && controls.headlightsOn(isDark),
       parkingBrake: drive.handbrake,
       wipers: controls.wipers,
-      raining: env.isRaining(),
+      // AMeDAS reports 10-minute totals; 「雨」 fixed is a steady 8 mm/h (本降り).
+      rainMmH: env.isRaining()
+        ? Math.max(env.weather === "rain" ? 8 : 0, (env.getObservation()?.precip10m ?? 0) * 6)
+        : 0,
+      night: env.nightFactor,
       renderer,
       scene,
     });
@@ -1747,7 +1979,8 @@ async function main(): Promise<void> {
       Math.abs(speed) / 3.6,
       liveObjects(),
     );
-    renderer.render(scene, camera);
+    // Plain renderer.render outside the driver's seat; from it, the rain on the glass too.
+    cockpit.render(renderer, scene, camera);
     takeShots();
     if (pendingScreenshot) {
       pendingScreenshot = false;
@@ -1763,6 +1996,21 @@ async function main(): Promise<void> {
   };
 
   /** Where, when and how fast, for the review screen (違反の記録) and the logs. */
+  /** What 簡単操作 reads: the weather and the next turn on the route. */
+  const autoContext = (throttle: number): AutoContext => {
+    const route = nav.route;
+    const next = route?.maneuvers.find((m) => m.at > nav.lastAt + 2);
+    const side = (turn: string): "left" | "right" | null =>
+      turn === "left" || turn === "slightLeft" ? "left" : turn === "straight" ? null : "right";
+    return {
+      raining: env.isRaining(),
+      // The observed amount only when it is really raining (the 雨 preset has no amount).
+      rain10m: (env.getObservation()?.precip10m ?? 0) > 0 ? (env.getObservation()?.precip10m ?? null) : null,
+      nextTurn: next ? { side: side(next.turn), metres: next.at - nav.lastAt } : null,
+      kmh: vehicle.speedKmh(),
+      throttle,
+    };
+  };
   const violationContext = (detail?: string): ViolationContext => {
     const p = vehicle.position();
     let junction = "";
@@ -1831,6 +2079,9 @@ async function main(): Promise<void> {
       traffic.positions().filter((q) => q.distanceTo(carPos) < 80).length +
       Math.floor(pedestrians.crowd / 12);
     const post = social.maybePost(booked, witnesses, env.now().getTime());
+    // Those of them who can see the car get their phones out (the poster among them).
+    const filmers = witnessPhones.react(booked, post, carPos);
+    if (filmers > 0) log("social", { event: "filmed", kind: booked.kind, filmers, witnesses });
     if (post) {
       toast(`📱 誰かがあなたの運転を「つぶやき」に投稿しました（${booked.label}）`, "#ffb347");
       socialUnread++;
@@ -1853,6 +2104,24 @@ async function main(): Promise<void> {
 
   // ---------- つぶやき（SNS） ----------
   const social = new SocialFeed();
+  // Each poster's photo is their own shot from where they stood, not the driver's screen.
+  const witnessShot = new WitnessShot(renderer, scene, {
+    ground: (x, z) => groundY(x, z),
+    subject: () => ({ position: vehicle.position(), yaw: vehicle.yaw(), kmh: Math.abs(vehicle.speedKmh()) }),
+    witnesses: (at) => pedestrians.witnessesOf(at, 60).map((p) => p.object.position),
+    hidden: () => [ribbon.object, missions.arrow],
+    isOpen: (x, z) => {
+      const g = groundY(x, z);
+      return g === null || isOpenGround(x, z, g);
+    },
+    stage: (shoot) => {
+      const wasCockpit = cockpit.active;
+      cockpit.setActive(false);
+      shoot();
+      cockpit.setActive(wasCockpit);
+    },
+  });
+  social.camera = (post) => witnessShot.shoot(post);
   // つぶやき in people's own words when the on-device AI is on (templates otherwise).
   const SOCIAL_VOICE = {
     post: "あなたは東京で暮らす一般の人で、SNS に投稿します。いま目の前で見た危ない運転について、日本語の口語で 1〜2 文だけ書いてください。ナンバーや個人を特定できる情報、ハッシュタグは書かないこと。",
@@ -1873,35 +2142,24 @@ async function main(): Promise<void> {
   };
   let socialUnread = 0;
   const viralShown = new Map<SocialPost, number>();
-  let openPost: SocialPost | null = null;
+  const socialApp = new SocialApp($("#social-app"), social, () => env.now().getTime());
   const showSocial = (shown: boolean) => {
     $("#phone-home").hidden = shown;
     $("#phone-social").hidden = !shown;
     if (!shown) return;
     socialUnread = 0;
-    openPost = null;
+    socialApp.open();
     refreshSocial();
   };
   const refreshSocial = () => {
     $("#social-badge").hidden = socialUnread === 0;
     $("#social-badge").textContent = String(socialUnread);
     if ($("#phone-social").hidden) return;
-    $("#social-feed").hidden = openPost !== null;
-    $("#social-post").hidden = openPost === null;
-    if (openPost) renderPost($("#social-post"), openPost);
-    else
-      renderFeed($("#social-feed"), social, (p) => {
-        openPost = p;
-        refreshSocial();
-      });
+    socialApp.refresh();
   };
   $("#social-open").addEventListener("click", () => showSocial(true));
-  $("#social-back").addEventListener("click", () => {
-    if (openPost) {
-      openPost = null;
-      refreshSocial();
-    } else showSocial(false);
-  });
+  // The home indicator: back to the phone's home screen (each screen of the app has its own ←).
+  $("#social-back").addEventListener("click", () => showSocial(false));
   /** Posts spread with game time; the police trace the car from clips that spread wide. */
   const updateSocial = () => {
     for (const p of social.update(env.now().getTime())) {
@@ -2609,16 +2867,79 @@ async function main(): Promise<void> {
         "#ffe14d",
       );
   });
+  // 違反の記録 is kept in this browser: every violation, saved as it happens and as it changes.
+  let history: ViolationRecord[] = [];
+  void loadViolations().then((saved) => (history = saved));
+  const violationSync = new ViolationSync();
+  setInterval(() => {
+    const changed = violationSync.changed(law.state.log);
+    if (changed.length === 0) return;
+    const known = new Set([...history.map((r) => r.id), ...law.state.log.map((r) => r.id)]);
+    void saveViolations(changed, known.size);
+  }, 2000);
+  /** Play a saved violation: rebuild its traffic and people and run it through the replay. */
+  const playClip = (r: ViolationRecord) => {
+    const clip = r.replay;
+    if (!clip) return;
+    const pose = new ClipPose(clip, frame);
+    const rec = new ReplayRecorder();
+    const actors = clip.actors.map((a) => buildActor(a.desc));
+    for (let i = 0; i < clip.count; i++) {
+      const t = i * clip.step;
+      const pos = new Vector3();
+      const quat = new Quaternion();
+      const speed = pose.car(t, pos, quat);
+      const others = new Map<Object3D, Pose>();
+      actors.forEach((o, k) => {
+        const p = o && pose.actor(k, t);
+        if (o && p) others.set(o, p);
+      });
+      rec.frames.push({
+        t: clip.t0 + t,
+        car: { x: pos.x, y: pos.y, z: pos.z, qx: quat.x, qy: quat.y, qz: quat.z, qw: quat.w, speed },
+        others,
+      });
+    }
+    startReplay(clip.t0, { rec, marks: [{ at: clip.at, label: r.label }], moment: clip.moment });
+  };
+  /** A model like the one recorded (vehicle kind, car colour, person's looks). */
+  const buildActor = (d: ActorDesc): Object3D | null => {
+    if (d.type === "vehicle") return createVehicle(d.kind)?.object ?? null;
+    if (d.type === "lowCar") return createLowCar({ color: d.color, taxi: d.taxi });
+    return createHuman(d.colors, d.height, d.variant).root;
+  };
+  // Each violation keeps 5 s either side of it, cut from the recording once the after part is in.
+  setInterval(() => {
+    const now = performance.now();
+    for (const r of law.state.log) {
+      const isReady = !r.replay && r.session === SESSION && now >= r.at + CLIP_AFTER_MS;
+      if (!isReady) continue;
+      const moment = { ms: env.now().getTime() - (now - r.at), raining: env.isRaining() };
+      r.replay = cutClip(recorder.frames, r.at, frame, { onFoot: false, moment }) ?? undefined;
+    }
+  }, 1000);
   const openReview = () => {
-    renderReview($("#violations-list"), law.state.log, (r) => {
-      if (r.at < recorder.start || r.at > recorder.end) return false;
+    // Earlier sessions' records first (from this browser's history), then today's.
+    const current = new Set(law.state.log.map((r) => r.id));
+    const all = [...history.filter((r) => !current.has(r.id)), ...law.state.log];
+    renderReview($("#violations-list"), all, (r) => {
+      const isThisSession = r.session === undefined || r.session === SESSION;
+      const isInBuffer = isThisSession && r.at >= recorder.start && r.at <= recorder.end;
+      if (!isInBuffer) {
+        // Older than the last 5 minutes, or from an earlier session: its saved clip.
+        if (!r.replay) return false;
+        $<HTMLDialogElement>("#violations").close();
+        playClip(r);
+        return true;
+      }
       $<HTMLDialogElement>("#violations").close();
       startReplay(Math.max(recorder.start, r.at - 6000));
       return true;
     });
     const s = law.state;
+    const earlier = all.length - s.log.length;
     $("#violations-summary").textContent =
-      `違反 ${s.log.length} 件・違反点数 ${s.points} 点・反則金など ${s.fines.toLocaleString()} 円（普通車の基準によるゲーム内の参考値）`;
+      `今回 ${s.log.length} 件${earlier > 0 ? `（これまでの記録 ${earlier} 件も表示）` : ""}・違反点数 ${s.points} 点・反則金など ${s.fines.toLocaleString()} 円（普通車の基準によるゲーム内の参考値）`;
     $<HTMLDialogElement>("#violations").showModal();
   };
   $("#review-open").addEventListener("click", openReview);
@@ -2681,7 +3002,7 @@ async function main(): Promise<void> {
   const onAccident = (kind: "pedestrian" | "vehicle", kmh: number, who: string) => {
     book(VIOLATIONS.safeDriving, performance.now(), 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
-    if (phone.open && mode === "car")
+    if (phone.isInUse(performance.now()) && mode === "car")
       book(VIOLATIONS.phoneDanger, performance.now(), 30000, "スマホを操作しながら事故を起こした");
     if (kind === "pedestrian") book(injuryViolation(kmh), performance.now(), 3000);
     const penalty = kind === "pedestrian" ? 300 : 100;
@@ -2850,6 +3171,7 @@ async function main(): Promise<void> {
         // Staging for the teaser and tests: the screens behind events that take long to set up.
         debug: { openTicket, endDay, flashScreen, startPursuit, gameNow: () => env.now().getTime() },
         social,
+        witnessPhones,
         getHome: () => home,
         getMode: () => mode,
         nav,

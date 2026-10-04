@@ -57,7 +57,24 @@ const key = (b, code) =>
  * Film one shot: `camera` is page-side JS (a function body) that places `cam` for shot time `t`
  * (seconds) with `G` = window.__game, `car` = the car position, `yaw` = its heading.
  */
-async function shot(b, name, seconds, camera, { hud = false } = {}) {
+/**
+ * Push in on a piece of UI (the ticket, the phone): the element moves to the middle of the frame
+ * and grows until `focus` (a part of it, or the whole) fills ~80% of the frame, eased over the shot.
+ * The individual `translate`/`scale` properties are used so the element's own transform is kept.
+ */
+const zoomScript = (selector, focus, max) => `(() => {
+  const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return;
+  const f = (${JSON.stringify(focus)} && el.querySelector(${JSON.stringify(focus)})) || el;
+  if (!window.__zoom) { const r = f.getBoundingClientRect(); const e = el.getBoundingClientRect();
+    const to = Math.min(${max}, (innerWidth * 0.8) / r.width, (innerHeight * 0.8) / r.height);
+    window.__zoom = { to, dx: innerWidth / 2 - (r.left + r.width / 2), dy: innerHeight / 2 - (r.top + r.height / 2),
+      ox: r.left + r.width / 2 - e.left, oy: r.top + r.height / 2 - e.top }; }
+  const z = window.__zoom; const k = Math.min(1, window.__shotT / window.__shotLen); const e = k * k * (3 - 2 * k);
+  el.style.transformOrigin = z.ox + 'px ' + z.oy + 'px';
+  el.style.translate = (z.dx * e) + 'px ' + (z.dy * e) + 'px'; el.style.scale = String(1 + (z.to - 1) * e);
+})()`;
+
+async function shot(b, name, seconds, camera, { hud = false, zoom = null } = {}) {
   await b.evaluate(`document.getElementById('cine').disabled = ${hud}`);
   await b.evaluate(`window.__shotT = 0; window.__game.setDebugCamera((cam) => {
     const G = window.__game; const t = window.__shotT; const car = G.vehicle.object.position; const yaw = G.vehicle.yaw();
@@ -68,10 +85,16 @@ async function shot(b, name, seconds, camera, { hud = false } = {}) {
   // No camera script: the game's own camera (the player's view).
   if (!camera.trim()) await b.evaluate("window.__game.setDebugCamera(null)");
   const frames = Math.round(seconds * FPS);
+  // The push-in lands at 70% of the shot and holds there, so the detail can be read.
+  await b.evaluate(`window.__zoom = null; window.__shotLen = ${seconds * 0.7}`);
   for (let i = 0; i < frames; i++) {
     await b.evaluate(`window.__shotT = ${i / FPS}; window.__game.advance(${1 / FPS})`);
+    if (zoom) await b.evaluate(zoomScript(zoom.selector, zoom.focus ?? null, zoom.max ?? 2.6));
     await b.screenshot(join(WORK, `f${String(frameNo++).padStart(5, "0")}.jpg`), 92);
   }
+  if (zoom)
+    await b.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(zoom.selector)});
+      if (el) { el.style.translate = ''; el.style.scale = ''; el.style.transformOrigin = ''; } })()`);
   log("shot", { name, frames });
 }
 
@@ -104,7 +127,7 @@ const orbit = (lat, lon, radius, height, lookHeight, speed, rise = 0) => `
 // ---- Marunouchi by day: the city, guidance, the driver's seat ----
 let b = await session(null, "day", async (g) => {
   await key(g, "KeyB");
-  await key(g, "KeyA"); // 自動運転
+  await key(g, "KeyJ"); // 自動運転 (WASD layout)
   await key(g, "KeyM"); // route arrows off for the cinematic shots
   await g.evaluate("window.__game.advance(4)");
 });
@@ -181,7 +204,7 @@ await telop(b, "運転席から。雨の日はワイパーで", "速度計・回
 await shot(b, "cockpit-rain", 3.5, "", { hud: true });
 await key(b, "KeyY");
 for (const _ of [1, 2, 3]) await key(b, "KeyC"); // back to the chase view
-await key(b, "KeyA"); // autopilot off: the player drives (badly)
+await key(b, "KeyJ"); // autopilot off: the player drives (badly)
 await b.close();
 
 // ---- Violations: 未検挙, the patrol car, the ticket, the orbis, the internet, the post ----
@@ -218,7 +241,7 @@ await b.evaluate(`(() => { const G = window.__game; const p = G.getPolice(); if 
   const r = G.law.state.log.find((x) => x.status === 'uncaught') ?? G.law.commit({ kind: 'speed', label: '速度超過（25km/h超過）', article: '道路交通法 第22条', points: 3, fine: 18000 }, 0, 0);
   if (r && !p.seen.includes(r)) p.seen.push(r); G.debug.openTicket(); })()`);
 await telop(b, "その場で青切符", "反則金と違反点数。今日はそのまま運転して帰れる");
-await shot(b, "ticket", 2.6, "", { hud: true });
+await shot(b, "ticket", 4, "", { hud: true, zoom: { selector: "#ticket-dialog", max: 2.2 } });
 await b.evaluate("document.querySelector('#ticket-accept')?.click()");
 // The orbis.
 await telop(b, "オービスは、後日郵便で", "赤い閃光。出頭通知書は帰宅後のポストへ");
@@ -241,7 +264,7 @@ await b.evaluate(`(() => { const G = window.__game; const now = G.debug.gameNow(
   document.querySelector('#phone-button').click(); document.querySelector('#social-open').click();
   document.querySelector('#social-feed .social-post')?.click(); })()`);
 await telop(b, "ドラレコ動画が拡散。", "「こいつやべー」リポスト・引用・いいね。警察も動画から特定");
-await shot(b, "sns", 3.6, "", { hud: true });
+await shot(b, "sns", 4.4, "", { hud: true, zoom: { selector: "#phone", max: 2.4 } });
 await b.evaluate(
   "document.querySelector('#social-back')?.click(); document.querySelector('#social-back')?.click()",
 );
@@ -250,7 +273,7 @@ await telop(
   "スマホから 119・110、自動運転タクシー",
   "通報は AI のオペレーターが応答（ゲーム内のシミュレーション）",
 );
-await shot(b, "phone", 2.2, "", { hud: true });
+await shot(b, "phone", 2.6, "", { hud: true, zoom: { selector: "#phone", max: 2.4 } });
 await b.evaluate("document.querySelector('#taxi-open')?.click()");
 await shot(b, "taxi-app", 1.6, "", { hud: true });
 await b.evaluate(
@@ -259,7 +282,7 @@ await b.evaluate(
 // The record of violations, with the moment's screen.
 await b.evaluate("document.querySelector('#review-open')?.click()");
 await telop(b, "違反を振り返る", "その瞬間の画面・場所・速度・条文・点数・反則金");
-await shot(b, "review", 2.4, "", { hud: true });
+await shot(b, "review", 3, "", { hud: true, zoom: { selector: "#violations", max: 1.8 } });
 await b.evaluate("document.querySelector('#violations')?.close()");
 // Replays with the automatic director.
 await b.evaluate(
@@ -279,7 +302,7 @@ await b.close();
 // ---- Night: the city ----
 b = await session(null, "night", async (g) => {
   await key(g, "KeyB");
-  await key(g, "KeyA");
+  await key(g, "KeyJ");
   await key(g, "KeyM");
   await g.evaluate("window.__game.advance(3)");
 });

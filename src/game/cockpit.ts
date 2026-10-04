@@ -14,14 +14,16 @@ import {
 } from "three";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { QUALITY } from "../device";
 import { warn } from "../log";
+import { RainGlass, WIPER_BLADES } from "./rainGlass";
 
 /**
  * 車内視点: the right-hand-drive cockpit (scripts/blender/cockpit.py) inside the player's car.
  * The gauges read the car (speedometer 0–180 km/h, tachometer, tell-tales), the wheel turns with
  * the steering (about 15:1), the mirrors show what is behind (one of them re-rendered per frame),
- * and in rain drops gather on the windscreen until the wipers sweep them off. Node names, pivots
- * and angles follow knowledge/cockpit-blender.md.
+ * and in rain drops gather on the windscreen until the wipers sweep them off (game/rainGlass.ts).
+ * Node names, pivots and angles follow knowledge/cockpit-blender.md.
  */
 const DEG = Math.PI / 180;
 // The needles are modelled pointing at their zero marks (clock angle −120°, the small gauges
@@ -30,23 +32,10 @@ const SPEED_RATE = (4 / 3) * DEG; // per km/h
 const TACHO_RATE = 0.03 * DEG; // per rpm
 const SMALL_SWEEP = 90 * DEG; // fuel E→F, temperature C→H
 const STEERING_RATIO = 15;
-const WIPER_SWEEP = { R: 82 * DEG, L: 84 * DEG };
 const WIPER_LO = 40 / 60; // cycles per second
 const WIPER_HI = 60 / 60;
 const WIPER_REST = 4; // s between 間欠 sweeps
-// Windscreen UV of the wiper pivots, the blade reach (UV units: the glass is 1.4706 × 0.8245 m).
-const WIPERS = [
-  {
-    name: "WiperArm_R",
-    pivot: [0.9522, -0.0338],
-    reach: [0.65 / 1.4706, 0.65 / 0.8245],
-    sweep: WIPER_SWEEP.R,
-  },
-  { name: "WiperArm_L", pivot: [0.5068, -0.0273], reach: [0.4 / 1.4706, 0.4 / 0.8245], sweep: WIPER_SWEEP.L },
-] as const;
 const MIRRORS = ["Rear", "SideR", "SideL"] as const;
-const DROPS_W = 256;
-const DROPS_H = 144;
 
 type Mirror = { surface: Mesh; centre: Object3D; target: WebGLRenderTarget; camera: PerspectiveCamera };
 
@@ -56,33 +45,17 @@ export class Cockpit {
   private needleSpeed: Object3D | null = null;
   private needleTacho: Object3D | null = null;
   private wheel: Object3D | null = null;
-  private wipers: Array<{
-    node: Object3D;
-    sweep: number;
-    pivot: readonly number[];
-    reach: readonly number[];
-  }> = [];
+  private wipers: Array<{ node: Object3D; sweep: number }> = [];
   private readonly lamps = new Map<string, MeshStandardMaterial>();
   private readonly mirrors: Mirror[] = [];
   private mirrorTurn = 0;
   private wiperPhase = 0;
-  private readonly drops: HTMLCanvasElement;
-  private readonly dropsCtx: CanvasRenderingContext2D | null;
-  private readonly dropsTexture: CanvasTexture;
+  private readonly rain = new RainGlass({ isMobile: QUALITY.isMobile });
   /** Parts of the exterior model hidden from inside (its simple dashboard and seats). */
   private hiddenExterior: Object3D[] = [];
   private glass: Array<{ m: Material & { opacity: number }; opacity: number }> = [];
   active = false;
   private displayTexture: CanvasTexture | null = null;
-
-  constructor() {
-    this.drops = document.createElement("canvas");
-    this.drops.width = DROPS_W;
-    this.drops.height = DROPS_H;
-    this.dropsCtx = this.drops.getContext("2d");
-    this.dropsTexture = new CanvasTexture(this.drops);
-    this.dropsTexture.colorSpace = SRGBColorSpace;
-  }
 
   async load(): Promise<void> {
     try {
@@ -96,9 +69,9 @@ export class Cockpit {
       this.needleSpeed = this.root.getObjectByName("Needle_Speed") ?? null;
       this.needleTacho = this.root.getObjectByName("Needle_Tacho") ?? null;
       this.wheel = this.root.getObjectByName("SteeringWheel") ?? null;
-      for (const w of WIPERS) {
+      for (const w of WIPER_BLADES) {
         const node = this.root.getObjectByName(w.name);
-        if (node) this.wipers.push({ node, sweep: w.sweep, pivot: w.pivot, reach: w.reach });
+        if (node) this.wipers.push({ node, sweep: w.sweep });
       }
       this.root.traverse((o) => {
         if (!(o instanceof Mesh)) return;
@@ -107,15 +80,8 @@ export class Cockpit {
           m.emissiveIntensity = 0;
           this.lamps.set(m.name, m);
         }
-        if (o.name === "Windshield" || (o.parent?.name === "Windshield" && o instanceof Mesh)) {
-          // Rain on the glass: drops drawn into a canvas, over a nearly clear pane.
-          o.material = new MeshBasicMaterial({
-            map: this.dropsTexture,
-            transparent: true,
-            depthWrite: false,
-          });
-          o.renderOrder = 5;
-        }
+        // Rain on the glass: the pane is drawn by the rain shader, after the scene.
+        if (o.name === "Windshield" || o.parent?.name === "Windshield") this.rain.addPane(o);
       });
       for (const name of MIRRORS) {
         const centre = this.root.getObjectByName(`Mirror_${name}`);
@@ -143,6 +109,8 @@ export class Cockpit {
     if (!display) return;
     const texture = new CanvasTexture(canvas);
     texture.colorSpace = SRGBColorSpace;
+    // The display's UVs come from glTF (origin top left), like the textures GLTFLoader loads.
+    texture.flipY = false;
     this.displayTexture = texture;
     display.traverse((o) => {
       if (o instanceof Mesh) o.material = new MeshBasicMaterial({ map: texture });
@@ -193,7 +161,10 @@ export class Cockpit {
     highBeam: boolean;
     parkingBrake: boolean;
     wipers: number;
-    raining: boolean;
+    /** Rainfall, mm/h (0 when dry). */
+    rainMmH: number;
+    /** 0 by day, 1 at night: how much the drops catch nearby lights. */
+    night: number;
     renderer: WebGLRenderer;
     scene: Scene;
   }): void {
@@ -218,7 +189,8 @@ export class Cockpit {
     this.lamp("Lamp_TurnR", opts.right && blink);
     this.lamp("Lamp_HighBeam", opts.highBeam);
     this.lamp("Lamp_Parking", opts.parkingBrake);
-    this.updateWipers(opts.dt, opts.wipers, opts.raining);
+    this.updateWipers(opts.dt, opts.wipers, opts.rainMmH, opts.kmh / 3.6);
+    this.rain.glow = opts.night;
     if (this.displayTexture) this.displayTexture.needsUpdate = true;
     this.updateMirror(opts.renderer, opts.scene);
   }
@@ -228,58 +200,32 @@ export class Cockpit {
     if (m) m.emissiveIntensity = isOn ? 2 : 0;
   }
 
-  /** Wipers sweep (間欠 / LO / HI) and clear the drops under the blades. */
-  private updateWipers(dt: number, mode: number, raining: boolean): void {
-    const ctx = this.dropsCtx;
-    if (!ctx) return;
-    // New drops while it rains, drawn as small lenses.
-    // Drops dry and run off slowly, so the glass settles instead of clogging up.
-    ctx.save();
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.fillStyle = `rgba(0,0,0,${Math.min(1, dt * 0.35)})`;
-    ctx.fillRect(0, 0, DROPS_W, DROPS_H);
-    ctx.restore();
-    if (raining) {
-      for (let i = 0; i < 2; i++) {
-        const x = Math.random() * DROPS_W;
-        const y = Math.random() * DROPS_H;
-        const r = 0.5 + Math.random() * 1.2;
-        ctx.fillStyle = "rgba(225,235,245,0.28)";
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillRect(x - r * 0.3, y - r * 0.4, 1, 1);
-      }
-    }
+  /** Wipers sweep (間欠 / LO / HI); the rain simulation runs with the blades where they are. */
+  private updateWipers(dt: number, mode: number, rainMmH: number, speed: number): void {
     // Cycles per second: 間欠 is one LO sweep then a rest; LO 40 and HI 60 a minute, as cars have
     // (FMVSS 104 asks HI ≥ 45, LO 20–55 and 15 apart). Faster looked frantic in the driver's seat.
     const intCycle = 1 / WIPER_LO + WIPER_REST;
-    const speed = [0, 1 / intCycle, WIPER_LO, WIPER_HI][mode] ?? 0;
-    const wasPhase = this.wiperPhase;
-    if (mode > 0) this.wiperPhase = (this.wiperPhase + dt * speed) % 1;
+    const cycles = [0, 1 / intCycle, WIPER_LO, WIPER_HI][mode] ?? 0;
+    if (mode > 0) this.wiperPhase = (this.wiperPhase + dt * cycles) % 1;
     else this.wiperPhase = this.wiperPhase > 0 ? Math.min(1, this.wiperPhase + dt) % 1 : 0;
     // 間欠: rest at the bottom for a while between sweeps.
     const t = mode === 1 ? Math.min(1, this.wiperPhase * intCycle * WIPER_LO) : this.wiperPhase;
     const swing = Math.sin(t * Math.PI); // 0 → 1 → 0 over a sweep
-    for (const w of this.wipers) {
-      w.node.rotation.z = swing * w.sweep;
-      if (mode === 0 && wasPhase === 0) continue;
-      // Clear the band under the blade: a wedge from the pivot at the current angle.
-      const a = Math.PI / 2 + (w.pivot[0] > 0.7 ? 1 : 1) * swing * w.sweep;
-      const px = w.pivot[0] * DROPS_W;
-      const py = (1 - w.pivot[1]) * DROPS_H;
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.lineWidth = 7;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      ctx.lineTo(px + Math.cos(a) * w.reach[0] * DROPS_W, py - Math.sin(a) * w.reach[1] * DROPS_H);
-      ctx.stroke();
-      ctx.restore();
+    for (const w of this.wipers) w.node.rotation.z = swing * w.sweep;
+    const blades = WIPER_BLADES.map((b) => b.park + swing * b.sweep);
+    this.rain.sim.step(dt, { rainMmH, speed, blades });
+  }
+
+  /**
+   * Draw the frame. From the driver's seat the windscreen's water refracts the frame itself, so
+   * the scene goes first and the glass over it (see RainGlass.render).
+   */
+  render(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera): void {
+    if (!this.active || !this.root) {
+      renderer.render(scene, camera);
+      return;
     }
-    this.dropsTexture.needsUpdate = true;
+    this.rain.render(renderer, scene, camera, this.root);
   }
 
   /** One mirror per frame, in turn: a camera at the mirror looking along the reflected view. */

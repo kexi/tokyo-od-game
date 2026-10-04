@@ -1,6 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
-import { Vector3, type Group, type Scene } from "three";
-import { animateHuman, createHuman, disposeHuman, type HumanModel } from "./human";
+import { Vector3, type Group, type Object3D, type Scene } from "three";
+import { animateHuman, createHuman, disposeHuman, FILM_GRIP, poseFilming, type HumanModel } from "./human";
 import type { SidewalkNetwork, Walk } from "./sidewalks";
 
 export type PedestrianProfile = {
@@ -18,8 +18,12 @@ export type Pedestrian = {
   heading: number;
   speed: number;
   phase: number;
-  state: "walk" | "talk" | "fallen" | "dodge" | "injured";
+  state: "walk" | "talk" | "fallen" | "dodge" | "injured" | "film";
   stateTime: number;
+  /** While filming: stateTime at which the phone is back down (then they walk on). */
+  filmFor: number;
+  /** The phone held up while filming (a child of the body), or null. */
+  phone: Object3D | null;
   body: RAPIER.RigidBody | null;
   groundCheck: number;
   /** On the pavement network; null for people wandering a plaza or park. */
@@ -91,6 +95,14 @@ const MOODS = [
   "物知りで少し自慢げ",
   "人見知りだけど親切",
 ];
+
+// Filming the player's car with a phone (state "film").
+const FILM_RAISE = 0.6; // seconds to get the phone out and up
+const FILM_LOWER = 0.5; // seconds to put it away
+const FILM_TRACK = 2.6; // rad/s: turning on the spot to keep the car in frame
+const FILM_LOST = 120; // m: the car is gone, so they stop
+// Sight lines: one ray per this many metres; two closed samples in a row are a building.
+const SIGHT_STEP = 2.5;
 
 const SPAWN_MIN = 30;
 const SPAWN_MAX = 180;
@@ -200,6 +212,76 @@ export class Pedestrians {
     return best;
   }
 
+  /**
+   * People who can see `point` from where they stand: within `range`, on their feet and not busy
+   * (talking, dodging, hurt), with no building in between. Nearest first. Those already filming
+   * count (they film on).
+   */
+  witnessesOf(point: Vector3, range: number): Pedestrian[] {
+    const isFree = (p: Pedestrian) => p.state === "walk" || p.state === "film";
+    return this.list
+      .filter((p) => isFree(p) && p.object.position.distanceTo(point) <= range)
+      .filter((p) => this.hasSightLine(p.object.position, point))
+      .toSorted((a, b) => a.object.position.distanceTo(point) - b.object.position.distanceTo(point));
+  }
+
+  /**
+   * Stop, turn to the car and film it for `seconds` (raising and lowering the phone included),
+   * then walk on. Someone already filming just keeps at it for longer; `makePhone` is only called
+   * for a new filmer. Returns whether this person started filming now.
+   */
+  startFilming(p: Pedestrian, seconds: number, makePhone: () => Object3D): boolean {
+    if (p.state === "film") {
+      p.filmFor = Math.max(p.filmFor, p.stateTime + seconds);
+      return false;
+    }
+    const canFilm = p.state === "walk";
+    if (!canFilm) return false;
+    p.state = "film";
+    p.stateTime = 0;
+    p.filmFor = Math.max(FILM_RAISE + FILM_LOWER, seconds);
+    p.phone = makePhone();
+    return true;
+  }
+
+  /** Puts the phone away at once (dodging, being talked to, done). */
+  stopFilming(p: Pedestrian): void {
+    p.phone?.removeFromParent();
+    p.phone = null;
+    if (p.state !== "film") return;
+    p.state = "walk";
+    p.stateTime = 0;
+  }
+
+  /** How many are filming now. */
+  filming(): number {
+    return this.list.reduce((n, p) => n + (p.state === "film" ? 1 : 0), 0);
+  }
+
+  /**
+   * Whether nothing big stands between a person (eye height) and a point. Samples the ground
+   * every SIGHT_STEP metres with the same open-ground test the crowd walks by; one closed sample
+   * is a parked car, a bus stop or a tree, two in a row (5 m and more) are a building.
+   * Why not a ray between the two points: the colliders only know buildings as roofed volumes
+   * hit from above, and isOpen already answers that for the pavements.
+   */
+  private hasSightLine(from: Vector3, to: Vector3): boolean {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const dist = Math.hypot(dx, dz);
+    // Skip the person's own spot and the last metres round the subject (the car itself).
+    let closed = 0;
+    for (let s = 1; s < dist - 3; s += SIGHT_STEP) {
+      const x = from.x + (dx / dist) * s;
+      const z = from.z + (dz / dist) * s;
+      const g = this.groundAt(x, z);
+      const isClosed = g !== null && !this.isOpen(x, z, g);
+      closed = isClosed ? closed + 1 : 0;
+      if (closed >= 2) return false;
+    }
+    return true;
+  }
+
   /** Was this collider one of ours? Used to turn contacts into accident events. */
   byCollider(handle: number): Pedestrian | null {
     return this.list.find((p) => p.body && p.body.collider(0)?.handle === handle) ?? null;
@@ -220,6 +302,7 @@ export class Pedestrians {
   }
 
   startTalk(p: Pedestrian, face: Vector3): void {
+    this.stopFilming(p);
     p.state = "talk";
     p.heading = Math.atan2(face.x - p.object.position.x, face.z - p.object.position.z);
   }
@@ -254,12 +337,17 @@ export class Pedestrians {
     const lateral = Math.abs(toPed.x * carForward.z - toPed.z * carForward.x);
     const isThreatened = carSpeed > 4 && ahead > 0 && ahead < carSpeed * 1.2 && lateral < 2.2;
     if (isThreatened && p.state !== "dodge" && p.profile.id % 5 !== 0) {
+      this.stopFilming(p);
       p.state = "dodge";
       p.stateTime = 0;
       const side = toPed.x * carForward.z - toPed.z * carForward.x > 0 ? 1 : -1;
       p.heading = Math.atan2(carForward.z * side, -carForward.x * side);
     }
     if (p.state === "dodge" && p.stateTime > 0.9) p.state = "walk";
+    if (p.state === "film") {
+      this.stepFilming(p, dt);
+      return;
+    }
 
     let speed = p.state === "talk" ? 0 : p.state === "dodge" ? 4.5 : p.speed;
     const network = this.network;
@@ -327,6 +415,34 @@ export class Pedestrians {
     animateHuman(p.model, p.phase, speed, this.raining);
   }
 
+  /**
+   * Standing, turned to the car and following it with the phone: raised over FILM_RAISE, held,
+   * lowered over the last FILM_LOWER seconds, then walking on. A car that is gone (FILM_LOST)
+   * ends it early.
+   */
+  private stepFilming(p: Pedestrian, dt: number): void {
+    const pos = p.object.position;
+    const car = this.car.pos;
+    const dx = car.x - pos.x;
+    const dz = car.z - pos.z;
+    const dist = Math.hypot(dx, dz);
+    const isLost = dist > FILM_LOST && p.filmFor > p.stateTime + FILM_LOWER;
+    if (isLost) p.filmFor = p.stateTime + FILM_LOWER;
+    const isDone = p.stateTime >= p.filmFor || !p.phone;
+    if (isDone) {
+      this.stopFilming(p);
+      return;
+    }
+    if (dist > 0.5) p.heading = turnToward(p.heading, Math.atan2(dx, dz), dt * FILM_TRACK);
+    p.object.rotation.set(0, p.heading, 0);
+    // Standing (no umbrella: both hands are on the phone), then the arms go up to the phone.
+    animateHuman(p.model, p.phase, 0, false);
+    const raise = Math.min(p.stateTime / FILM_RAISE, (p.filmFor - p.stateTime) / FILM_LOWER, 1);
+    const eye = pos.y + FILM_GRIP.y * p.object.scale.y;
+    const pitch = Math.atan2(eye - car.y, Math.max(dist, 1));
+    poseFilming(p.model, p.phone as Object3D, raise * raise * (3 - 2 * raise), Math.min(0.6, pitch));
+  }
+
   private fill(car: Vector3): void {
     let attempts = 0;
     while (this.list.length < this.crowd && attempts < 6) {
@@ -355,17 +471,17 @@ export class Pedestrians {
   private spawn(at: Vector3, heading: number): Pedestrian {
     const profile = profileFor(this.nextId++);
     const pick = <T>(arr: T[], salt: number) => arr[Math.abs(Math.imul(profile.id, 31 + salt)) % arr.length];
-    const model = createHuman(
-      {
-        shirt: pick(SHIRTS, 1),
-        pants: pick(PANTS, 2),
-        skin: pick(SKIN, 3),
-        hair: pick(HAIR, 4),
-        umbrella: pick([0x223355, 0xaa2233, 0x226644, 0xeeeeee], 5),
-      },
-      0.92 + (profile.id % 7) * 0.025,
-      profile.id,
-    );
+    const colors = {
+      shirt: pick(SHIRTS, 1),
+      pants: pick(PANTS, 2),
+      skin: pick(SKIN, 3),
+      hair: pick(HAIR, 4),
+      umbrella: pick([0x223355, 0xaa2233, 0x226644, 0xeeeeee], 5),
+    };
+    const height = 0.92 + (profile.id % 7) * 0.025;
+    const model = createHuman(colors, height, profile.id);
+    // How to build them again for a saved violation's replay (replayClip.ts).
+    model.root.userData.replay = { type: "human", colors, height, variant: profile.id };
     model.root.position.copy(at);
     this.scene.add(model.root);
     this.list.push({
@@ -377,6 +493,8 @@ export class Pedestrians {
       phase: profile.id,
       state: "walk",
       stateTime: 0,
+      filmFor: 0,
+      phone: null,
       body: null,
       groundCheck: 0,
       walk: null,
