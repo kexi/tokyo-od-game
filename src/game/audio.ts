@@ -31,13 +31,13 @@ export class GameAudio {
     return this.muted;
   }
 
-  update(speedKmh: number, throttle: number): void {
+  update(speedKmh: number, throttle: number, engineOff = false): void {
     if (!this.ctx || !this.engine || !this.engineGain || !this.filter) return;
     const t = this.ctx.currentTime;
     const rpm = 0.25 + (Math.abs(speedKmh) % 45) / 45 + Math.min(Math.abs(speedKmh), 160) / 220;
     this.engine.frequency.setTargetAtTime(38 + rpm * 70, t, 0.08);
     this.filter.frequency.setTargetAtTime(300 + throttle * 700, t, 0.1);
-    this.engineGain.gain.setTargetAtTime(this.muted ? 0 : 0.035 + throttle * 0.03, t, 0.1);
+    this.engineGain.gain.setTargetAtTime(this.muted || engineOff ? 0 : 0.035 + throttle * 0.03, t, 0.1);
   }
 
   chime(high = false): void {

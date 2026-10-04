@@ -42,14 +42,19 @@ export class ConversationController {
       else this.voice.disable();
     });
     $("#ai-enable").addEventListener("click", () => void this.askConsent());
-    // Escape inside the text box should still close the chat (global key handler skips inputs).
+    // Esc inside the text box hands the keyboard back to driving (a second Esc closes the chat).
     $<HTMLInputElement>("#chat-input").addEventListener("keydown", (e) => {
-      if (e.key === "Escape") this.close();
+      if (e.key === "Escape") (e.target as HTMLInputElement).blur();
     });
   }
 
   get active(): Pedestrian | null {
     return this.partner;
+  }
+
+  /** Enter while chatting: start typing. */
+  focusInput(): void {
+    if (this.partner) $<HTMLInputElement>("#chat-input").focus();
   }
 
   open(p: Pedestrian): void {
@@ -59,14 +64,17 @@ export class ConversationController {
     $("#chat-sub").textContent = `${p.profile.age}・${p.profile.role}（${s.ward}${s.town}）`;
     $("#chat-log").replaceChildren();
     $("#chat").hidden = false;
+    document.body.classList.add("chatting");
     this.say("npc", templateReply(p.profile, s, "こんにちは"));
-    $<HTMLInputElement>("#chat-input").focus();
+    // Do not steal the keyboard: driving / F (get out) keep working until the player presses
+    // Enter or clicks the box to type.
   }
 
   close(): void {
     const p = this.partner;
     this.partner = null;
     $("#chat").hidden = true;
+    document.body.classList.remove("chatting");
     $<HTMLInputElement>("#chat-input").blur();
     this.voice.stop();
     if (!p) return;

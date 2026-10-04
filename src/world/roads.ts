@@ -1,0 +1,174 @@
+import { Vector3 } from "three";
+import type { LocalFrame } from "../geo/frame";
+
+/** A road centreline from a vector source, in lon/lat. */
+export type RoadLine = {
+  coords: number[]; // [lon0, lat0, lon1, lat1, …]
+  width: number; // carriageway width estimate (m)
+  oneway: 0 | 1 | -1; // 1: along coords, -1: against, 0: both ways
+  kind: "highway" | "national" | "prefectural" | "local" | "narrow";
+};
+
+export type Segment = {
+  id: number;
+  line: RoadLine;
+  pts: Vector3[]; // local frame, y = 0 (heights come from the terrain)
+  cum: number[]; // cumulative length at each point
+  length: number;
+  from: number; // node ids
+  to: number;
+};
+
+/**
+ * Speed limit without 規制速度 data: the statutory limit (施行令 第11条, amended 2026-09-01) is
+ * 60 km/h only on roads with a centre line / lanes / divided carriageway and 30 km/h on other
+ * ordinary roads. GSI data has no centre-line flag, so ≥5.5 m carriageways stand in for it.
+ */
+export function estimatedLimit(line: RoadLine): number {
+  if (line.kind === "highway") return 80;
+  return line.width >= 5.5 ? 60 : 30;
+}
+
+/**
+ * Road network around the player, rebuilt per area. Nodes join segment ends that share a point
+ * (rounded to ~10 cm), giving intersections for AI routing and the traffic-law checks.
+ */
+export class RoadGraph {
+  readonly segments: Segment[] = [];
+  readonly nodes = new Map<number, number[]>(); // node id → segment ids
+  private readonly nodeIds = new Map<string, number>();
+
+  constructor(lines: RoadLine[], frame: LocalFrame) {
+    for (const line of splitAtJunctions(lines)) {
+      const pts: Vector3[] = [];
+      for (let i = 0; i < line.coords.length; i += 2) {
+        const v = frame.toLocal(line.coords[i + 1], line.coords[i], frame.origin.h);
+        v.y = 0;
+        pts.push(v);
+      }
+      if (pts.length < 2) continue;
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + pts[i].distanceTo(pts[i - 1]));
+      const length = cum[cum.length - 1];
+      if (length < 1) continue;
+      const id = this.segments.length;
+      const from = this.node(line.coords[0], line.coords[1]);
+      const to = this.node(line.coords[line.coords.length - 2], line.coords[line.coords.length - 1]);
+      this.segments.push({ id, line, pts, cum, length, from, to });
+      this.link(from, id);
+      this.link(to, id);
+    }
+  }
+
+  /** Point and unit direction at distance s along a segment (local frame, y = 0). */
+  sample(seg: Segment, s: number, pos = new Vector3(), dir = new Vector3()): { pos: Vector3; dir: Vector3 } {
+    const d = Math.min(Math.max(s, 0), seg.length);
+    let i = 1;
+    while (i < seg.cum.length - 1 && seg.cum[i] < d) i++;
+    const a = seg.pts[i - 1];
+    const b = seg.pts[i];
+    const t = (d - seg.cum[i - 1]) / Math.max(1e-6, seg.cum[i] - seg.cum[i - 1]);
+    pos.copy(a).lerp(b, t);
+    dir.copy(b).sub(a).normalize();
+    return { pos, dir };
+  }
+
+  /**
+   * Nearest road to a point: returns the segment, the along-distance, and the signed lateral
+   * offset (positive = left of the segment's coordinate direction).
+   */
+  nearest(p: Vector3, maxDist: number): { seg: Segment; s: number; lateral: number; dir: Vector3 } | null {
+    let best: { seg: Segment; s: number; lateral: number; dir: Vector3 } | null = null;
+    let bestD = maxDist;
+    const ab = new Vector3();
+    const ap = new Vector3();
+    for (const seg of this.segments) {
+      for (let i = 1; i < seg.pts.length; i++) {
+        const a = seg.pts[i - 1];
+        ab.copy(seg.pts[i]).sub(a);
+        const len2 = ab.x * ab.x + ab.z * ab.z;
+        if (len2 < 1e-6) continue;
+        ap.set(p.x - a.x, 0, p.z - a.z);
+        const t = Math.min(1, Math.max(0, (ap.x * ab.x + ap.z * ab.z) / len2));
+        const cx = a.x + ab.x * t - p.x;
+        const cz = a.z + ab.z * t - p.z;
+        const d = Math.hypot(cx, cz);
+        if (d >= bestD) continue;
+        bestD = d;
+        const len = Math.sqrt(len2);
+        const dir = new Vector3(ab.x / len, 0, ab.z / len);
+        // Left of travel direction d=(dx,dz) is (dz, -dx) in this frame (x east, z south).
+        const lateral = (ap.x * dir.z - ap.z * dir.x) * 1;
+        best = { seg, s: seg.cum[i - 1] + len * t, lateral, dir };
+      }
+    }
+    return best;
+  }
+
+  /** Segments leaving a node, excluding the one we came from (unless it is a dead end). */
+  exits(node: number, cameFrom: number): Segment[] {
+    const ids = (this.nodes.get(node) ?? []).filter((id) => id !== cameFrom);
+    const list = (ids.length ? ids : (this.nodes.get(node) ?? [])).map((id) => this.segments[id]);
+    // Respect one-way roads: only enter in the allowed direction.
+    return list.filter((seg) => {
+      const forward = seg.from === node;
+      return seg.line.oneway === 0 || (seg.line.oneway === 1) === forward;
+    });
+  }
+
+  private node(lon: number, lat: number): number {
+    const key = vertexKey(lon, lat);
+    let id = this.nodeIds.get(key);
+    if (id === undefined) {
+      id = this.nodeIds.size;
+      this.nodeIds.set(key, id);
+    }
+    return id;
+  }
+
+  private link(node: number, seg: number): void {
+    const list = this.nodes.get(node);
+    if (list) list.push(seg);
+    else this.nodes.set(node, [seg]);
+  }
+}
+
+// ~1 m: joins lines clipped at vector-tile edges whose quantised end points differ slightly.
+function vertexKey(lon: number, lat: number): string {
+  return `${Math.round(lon * 1e5)}/${Math.round(lat * 1e5)}`;
+}
+
+/**
+ * Vector roads are not split where a street meets the middle of another, so a T-junction would
+ * look like a dead end. Split every line at interior vertices shared with any other line.
+ */
+export function splitAtJunctions(lines: RoadLine[]): RoadLine[] {
+  const uses = new Map<string, number>();
+  for (const line of lines) {
+    const seen = new Set<string>();
+    for (let i = 0; i < line.coords.length; i += 2) {
+      const key = vertexKey(line.coords[i], line.coords[i + 1]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      uses.set(key, (uses.get(key) ?? 0) + 1);
+    }
+  }
+  const out: RoadLine[] = [];
+  for (const line of lines) {
+    let start = 0;
+    const n = line.coords.length / 2;
+    for (let i = 1; i < n - 1; i++) {
+      const isJunction = (uses.get(vertexKey(line.coords[i * 2], line.coords[i * 2 + 1])) ?? 0) > 1;
+      if (!isJunction) continue;
+      out.push({ ...line, coords: line.coords.slice(start * 2, i * 2 + 2) });
+      start = i;
+    }
+    out.push({ ...line, coords: line.coords.slice(start * 2) });
+  }
+  return out;
+}
+
+/** Offset to the left (Japan drives on the left) of a direction, in metres. */
+export function leftOf(dir: Vector3, metres: number, target = new Vector3()): Vector3 {
+  return target.set(dir.z * metres, 0, -dir.x * metres);
+}

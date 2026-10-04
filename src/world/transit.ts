@@ -80,6 +80,12 @@ export class Transit {
     return best;
   }
 
+  /**
+   * Optional road snapping: ODPT only says "between stop A and stop B", so the straight-line
+   * position is moved onto the nearest road's left lane (Japan drives on the left).
+   */
+  snap: ((p: Vector3, heading: number) => { pos: Vector3; heading: number } | null) | null = null;
+
   update(now: number, lat: number, lon: number, player: Vector3): void {
     if (now - this.lastPoll > POLL_MS) {
       this.lastPoll = now;
@@ -97,8 +103,14 @@ export class Transit {
         continue;
       }
       const ground = this.dem.heightAt(blat, blon) ?? this.frame.origin.h;
-      const p = this.frame.toLocal(blat, blon, ground + 1.55);
-      const q = new Quaternion().setFromAxisAngle(up, heading);
+      let p = this.frame.toLocal(blat, blon, ground + 1.55);
+      let yaw = heading;
+      const snapped = this.snap?.(p, heading);
+      if (snapped) {
+        p = snapped.pos.setY(p.y);
+        yaw = snapped.heading;
+      }
+      const q = new Quaternion().setFromAxisAngle(up, yaw);
       bus.object.position.copy(p);
       bus.object.quaternion.copy(q);
       const isNear = p.distanceTo(player) < BODY_RADIUS;

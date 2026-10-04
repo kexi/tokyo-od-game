@@ -17,6 +17,12 @@ importers:
       '@litert-lm/core':
         specifier: 0.17.1
         version: 0.17.1
+      '@mapbox/vector-tile':
+        specifier: 2.0.5
+        version: 2.0.5
+      pbf:
+        specifier: 4.0.2
+        version: 4.0.2
       three:
         specifier: ^0.186.1
         version: 0.186.1

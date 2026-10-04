@@ -279,31 +279,7 @@ button:disabled {
   display: none;
 }
 
-@media (pointer: coarse) {
-  #touch {
-    display: flex;
-    inset: auto 0 96px 0;
-    justify-content: space-between;
-    padding: 0 16px;
-    pointer-events: none;
-  }
-  #touch div {
-    display: flex;
-    gap: 12px;
-  }
-  #touch button {
-    pointer-events: auto;
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    font-size: 22px;
-    background: rgba(12, 20, 34, 0.55);
-    touch-action: none;
-  }
-  #hud-speed {
-    font-size: 28px;
-  }
-}
+/* Phones held sideways (e.g. Pixel ~915×412): compact HUD so the road stays visible. */
 
 @media (max-width: 720px) {
   #minimap {
@@ -422,14 +398,39 @@ dialog dd {
 }
 
 #chat {
-  right: 12px;
-  top: 210px;
+  /* Docked left, clear of the right-hand toolbar and minimap. */
+  left: 12px;
+  top: 150px;
+  bottom: 110px;
   width: min(380px, calc(100vw - 24px));
-  max-height: calc(100vh - 300px);
   display: flex;
   flex-direction: column;
   gap: 8px;
   z-index: 8;
+}
+
+/* Driving stays possible while chatting; only the talk prompt is redundant. */
+body.chatting #talk-hint {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  /* Phones: chat as a top sheet so the touch pedals at the bottom stay usable. */
+  #chat {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    bottom: auto;
+    width: auto;
+    max-height: 46vh;
+  }
+  body.chatting #hud-location,
+  body.chatting #minimap,
+  body.chatting #hud-score,
+  body.chatting #hud-license,
+  body.chatting #hud-toolbar {
+    display: none !important;
+  }
 }
 
 #chat header {
@@ -443,6 +444,7 @@ dialog dd {
 }
 
 #chat-log {
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -523,4 +525,470 @@ pre.notice {
   border-radius: 8px;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.options {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 0 auto 18px;
+  max-width: 480px;
+  text-align: left;
+}
+
+.opt {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.opt input {
+  margin-top: 3px;
+}
+
+.options .sub {
+  margin: 2px 0 10px 24px;
+}
+
+#ai-chip {
+  color: var(--accent-2);
+}
+
+#hud-license {
+  top: 200px;
+  right: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.limit-sign {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fff;
+  border: 5px solid #d7262e;
+  display: grid;
+  place-items: center;
+  color: #1b3f95;
+  font-weight: 800;
+  font-size: 17px;
+  flex: none;
+}
+
+#suspended {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(40, 0, 0, 0.78);
+  z-index: 30;
+  padding: 16px;
+}
+
+#suspended h1 {
+  color: #ff6b6b;
+}
+
+#suspended ul {
+  text-align: left;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  #hud-license {
+    top: 140px;
+    right: auto;
+    left: 12px;
+    font-size: 11px;
+  }
+  #hud-license .sub:last-child {
+    display: none;
+  }
+}
+
+#incident {
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 24px));
+  border: 2px solid #ff6b6b;
+  background: rgba(60, 8, 8, 0.85);
+  z-index: 9;
+}
+
+.incident-title {
+  font-weight: 800;
+  color: #ff8a8a;
+}
+
+#incident-status {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+#phone-button {
+  right: 12px;
+  top: 300px;
+  font-size: 22px;
+  padding: 6px 10px;
+}
+
+#phone {
+  right: 70px;
+  bottom: 26px;
+  width: 300px;
+  height: min(560px, calc(100vh - 60px));
+  background: #0b0f16;
+  border: 3px solid #2b3240;
+  border-radius: 34px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  padding: 26px 14px 16px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+}
+
+.phone-notch {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90px;
+  height: 18px;
+  border-radius: 10px;
+  background: #000;
+}
+
+#phone section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.phone-clock {
+  font-size: 44px;
+  font-weight: 200;
+  text-align: center;
+}
+
+.phone-loc {
+  text-align: center;
+  font-size: 13px;
+  color: var(--accent-2);
+}
+
+.dial-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dial {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  font-size: 26px;
+  font-weight: 800;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #c62828;
+  border: none;
+}
+
+.dial.police {
+  background: #1b3f95;
+}
+
+.dial small {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.phone-note {
+  text-align: center;
+}
+
+.phone-close,
+.hangup {
+  margin-top: auto;
+}
+
+.hangup {
+  background: #c62828;
+  border: none;
+  border-radius: 999px;
+  padding: 10px;
+  font-weight: 700;
+}
+
+.call-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+#call-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#call-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#call-quick button {
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+#call-form input {
+  width: 100%;
+  font: inherit;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+@media (max-width: 720px) {
+  #phone {
+    right: 8px;
+    left: 8px;
+    width: auto;
+    top: 8px;
+    bottom: auto;
+    height: 70vh;
+  }
+  #phone-button {
+    top: auto;
+    bottom: 200px;
+  }
+}
+
+#rotate-hint {
+  display: none;
+}
+
+#loading {
+  overflow-y: auto;
+}
+
+/* Mobile (Android) overrides — keep last so they win the cascade. */
+@media (pointer: coarse) {
+  /* Android: steering bottom-left, pedals bottom-right, actions stacked above the pedals. */
+  #touch {
+    display: block;
+    inset: 0;
+    pointer-events: none;
+  }
+  #touch button {
+    pointer-events: auto;
+    touch-action: none;
+    background: rgba(12, 20, 34, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #touch .left,
+  #touch .right {
+    position: absolute;
+    bottom: 22px;
+    display: flex;
+    gap: 14px;
+  }
+  #touch .left {
+    left: 18px;
+  }
+  #touch .right {
+    right: 18px;
+  }
+  #touch .left button,
+  #touch .right button {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    font-size: 24px;
+  }
+  #touch .right [data-touch="gas"] {
+    width: 88px;
+    height: 88px;
+    background: rgba(40, 140, 80, 0.55);
+  }
+  #touch .actions {
+    position: absolute;
+    right: 18px;
+    bottom: 128px;
+    display: grid;
+    grid-template-columns: repeat(2, 56px);
+    gap: 8px;
+  }
+  #touch .actions button {
+    height: 52px;
+    border-radius: 14px;
+    font-size: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+  }
+  #touch .actions small {
+    font-size: 9px;
+  }
+  #hud-speed {
+    font-size: 26px;
+    bottom: 112px;
+    left: 18px;
+  }
+  #hud-toolbar {
+    top: 58px;
+    bottom: auto;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    grid-template-columns: repeat(7, auto);
+  }
+  #hud-toolbar button {
+    font-size: 11px;
+    padding: 3px 7px;
+  }
+  #hud-toolbar [data-action="mission"] {
+    display: none; /* on the touch pad */
+  }
+  #hud-mission {
+    bottom: 6px;
+  }
+}
+
+@media (pointer: coarse) and (max-height: 520px) {
+  .panel {
+    padding: 4px 8px;
+  }
+  #hud-location {
+    top: 6px;
+    left: 6px;
+    min-width: 0;
+    max-width: 30vw;
+  }
+  #ward {
+    font-size: 14px;
+  }
+  #weather,
+  #transit {
+    display: none;
+  }
+  #hud-time {
+    top: 6px;
+    padding: 2px;
+  }
+  .segmented button {
+    padding: 3px 8px;
+    font-size: 12px;
+  }
+  #hud-score {
+    display: none;
+  }
+  #minimap {
+    top: 6px;
+    right: 6px;
+    width: 100px;
+    height: 100px;
+  }
+  #hud-license {
+    top: 86px;
+    left: 6px;
+    right: auto;
+    font-size: 11px;
+  }
+  #hud-license > div:last-child .sub {
+    display: none;
+  }
+  .limit-sign {
+    width: 34px;
+    height: 34px;
+    border-width: 4px;
+    font-size: 13px;
+  }
+  #phone-button {
+    top: 112px;
+    right: 6px;
+    bottom: auto;
+    font-size: 18px;
+  }
+  #hud-mission {
+    min-width: 0;
+    width: 34vw;
+    font-size: 12px;
+    bottom: 22px;
+  }
+  #attribution {
+    font-size: 8px;
+  }
+  #mission-name {
+    font-size: 13px;
+  }
+  #toasts {
+    top: 88px;
+  }
+  .toast {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  #incident {
+    top: 88px;
+    font-size: 12px;
+  }
+  #chat {
+    top: 52px;
+    bottom: 6px;
+    left: 6px;
+    width: min(340px, 42vw);
+  }
+  #phone {
+    top: 6px;
+    bottom: 6px;
+    height: auto;
+    right: 160px;
+    width: 260px;
+  }
+  #talk-hint {
+    bottom: 120px;
+  }
+  .loading-card h1 {
+    font-size: 28px;
+  }
+  .tagline,
+  .keys {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) {
+  #rotate-hint {
+    display: grid;
+    place-items: center;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(7, 12, 22, 0.94);
+    font-size: 20px;
+    padding: 24px;
+    text-align: center;
+  }
 }

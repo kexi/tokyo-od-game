@@ -1,6 +1,10 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
   ACESFilmicToneMapping,
+  DoubleSide,
+  Mesh,
+  MeshBasicMaterial,
+  PlaneGeometry,
   PCFShadowMap,
   PerspectiveCamera,
   Quaternion,
@@ -11,6 +15,7 @@ import {
 } from "three";
 import type { z } from "zod";
 import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
+import { QUALITY } from "./device";
 import {
   BusStopFileSchema,
   expandPois,
@@ -50,6 +55,21 @@ import {
 } from "./world/environment";
 import { Terrain } from "./world/terrain";
 import { Pedestrians } from "./world/pedestrians";
+import { RoadGraph, estimatedLimit, leftOf, type RoadLine } from "./world/roads";
+import { RoadSurface } from "./world/roadSurface";
+import { RoadTiles } from "./world/roadTiles";
+import { TrafficAI } from "./world/traffic-ai";
+import {
+  formatViolation,
+  injuryViolation,
+  REVOCATION_POINTS,
+  speedViolation,
+  TrafficLaw,
+  VIOLATIONS,
+  type Violation,
+} from "./game/traffic";
+import { EmergencyResponse } from "./game/emergency";
+import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
 
@@ -108,11 +128,11 @@ async function main(): Promise<void> {
 
   const renderer = new WebGLRenderer({
     canvas: $<HTMLCanvasElement>("#scene"),
-    antialias: true,
+    antialias: QUALITY.antialias,
     logarithmicDepthBuffer: true,
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(QUALITY.pixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.outputColorSpace = SRGBColorSpace;
@@ -164,6 +184,45 @@ async function main(): Promise<void> {
     (x, z) => groundY(x, z),
     (x, z, g) => isOpenGround(x, z, g),
   );
+  const roadTiles = new RoadTiles();
+  transit.snap = (p, heading) => {
+    const hit = roadGraph?.nearest(p, 40);
+    if (!hit) return null;
+    // Travel along the road in the direction closest to the stop-to-stop heading.
+    const fwd = new Vector3(Math.sin(heading), 0, Math.cos(heading));
+    const dir = hit.dir.clone().multiplyScalar(fwd.dot(hit.dir) >= 0 ? 1 : -1);
+    const lane = hit.seg.line.oneway === 0 ? hit.seg.line.width / 4 : 0;
+    const centre = p.clone().add(new Vector3(-hit.dir.z * hit.lateral, 0, hit.dir.x * hit.lateral));
+    return { pos: centre.add(leftOf(dir, lane)), heading: Math.atan2(dir.x, dir.z) };
+  };
+  const traffic = new TrafficAI(scene, world, (x, z) => groundY(x, z));
+  const law = new TrafficLaw();
+  // Roads follow the rendered terrain (collider = render mesh), falling back to the DEM.
+  const roadSurface = new RoadSurface(scene, (x, z) => {
+    const g = groundY(x, z);
+    if (g === null) return null;
+    const hit = rayDown(x, z, g + 3);
+    // Only accept hits near the DEM height: anything higher is a parked car or a building.
+    return hit !== null && Math.abs(hit - g) < 0.6 ? hit : g;
+  });
+  let roadLines: RoadLine[] = [];
+  let roadGraph: RoadGraph | null = null;
+  let roadCenter = { lat: 0, lon: 0 };
+  let roadsLoading = false;
+  const refreshRoads = (lat: number, lon: number) => {
+    if (roadsLoading) return;
+    roadsLoading = true;
+    roadCenter = { lat, lon };
+    void roadTiles
+      .around(lat, lon)
+      .then((lines) => {
+        roadLines = lines;
+        roadGraph = new RoadGraph(lines, frame);
+        traffic.setGraph(roadGraph);
+        roadSurface.rebuild(roadGraph);
+      })
+      .finally(() => (roadsLoading = false));
+  };
   const brain = new NpcBrain();
   const voice = new Voice(() => audio.context);
   const wardTotals = new Map<string, number>();
@@ -249,6 +308,11 @@ async function main(): Promise<void> {
     const f = new Vector3(0, 0, 1).applyQuaternion(q);
     pedestrians.transform(offset, Math.atan2(f.x, f.z));
     if (walker.active) walker.transform(offset, Math.atan2(f.x, f.z));
+    traffic.transform(offset, Math.atan2(f.x, f.z));
+    emergency.transform(offset);
+    roadGraph = new RoadGraph(roadLines, next);
+    traffic.setGraph(roadGraph);
+    roadSurface.rebuild(roadGraph);
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
 
@@ -321,7 +385,7 @@ async function main(): Promise<void> {
     if (hit) {
       wardName = hit.ward;
       townName = hit.town;
-      pedestrians.crowd = Math.round(18 + Math.min(26, hit.density / 600));
+      pedestrians.crowd = Math.round((18 + Math.min(26, hit.density / 600)) * QUALITY.crowdScale);
     } else {
       townName = "";
     }
@@ -352,6 +416,25 @@ async function main(): Promise<void> {
       busLine: bus && bus.distance < 400 ? (bus.bus.note.split(" ")[0] ?? null) : null,
     };
   };
+  const emergency = new EmergencyResponse(
+    scene,
+    () => audio.context,
+    (x, z) => groundY(x, z),
+  );
+  const phone = new Phone(
+    brain,
+    voice,
+    () => {
+      const d = new Date(Date.now() + 9 * 3600_000);
+      return {
+        location: `${wardName === "—" ? "" : wardName}${townName}` || "不明",
+        clock: `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`,
+        hasIncident: emergency.active,
+      };
+    },
+    (line) => emergency.dispatch(line === "119" ? "ambulance" : "police", roadGraph),
+  );
+  input.on("phone", () => phone.toggle());
   const conversation = new ConversationController(brain, voice, surroundings, (p) => pedestrians.endTalk(p));
   input.on("talk", () => {
     if (conversation.active || state !== "playing") return;
@@ -364,8 +447,9 @@ async function main(): Promise<void> {
     pedestrians.startTalk(p, focusPos());
     conversation.open(p);
   });
+  input.on("enter", () => (phone.inCall ? phone.focusInput() : conversation.focusInput()));
   input.on("door", () => {
-    if (state !== "playing" || conversation.active) return;
+    if (state !== "playing") return;
     if (mode === "car") {
       if (Math.abs(vehicle.speedKmh()) > 5) {
         toast("停車してから降りましょう");
@@ -377,6 +461,7 @@ async function main(): Promise<void> {
       at.y = groundY(at.x, at.z) ?? at.y - 0.8;
       walker.enter(at, carYaw(q));
       mode = "foot";
+      announceIdlingStop();
       toast("車を降りました（F で乗車・Shift で走る・Space でジャンプ・←→ やドラッグで視点）", "#4dd2ff");
       return;
     }
@@ -386,10 +471,14 @@ async function main(): Promise<void> {
     }
     walker.leave();
     mode = "car";
+    if (ticket.visible) {
+      ticket.visible = false;
+      toast("確認標章を外しました（放置違反金の納付が必要です）", "#ffd400");
+    }
     chase.snap();
     toast("乗車しました");
   });
-  input.on("close", () => conversation.close());
+  input.on("close", () => (phone.open ? phone.close() : conversation.close()));
 
   // Dev-only hook so automated checks can frame the car from arbitrary angles.
   let debugCamera: ((cam: PerspectiveCamera, car: Vector3) => void) | null = null;
@@ -404,15 +493,71 @@ async function main(): Promise<void> {
   let frozen = true;
   let appliedNight = -1;
   const events = new RAPIER.EventQueue(true);
+  let lastLawCheck = 0;
+  let overSince: number | null = null;
+  let rightSince: number | null = null;
+  let currentLimit: number | null = null;
+  let stoppedSince: number | null = null;
+  let abandonedSince: number | null = null;
+  // 確認標章: the yellow notice police stick on an illegally parked car.
+  const ticket = new Mesh(
+    new PlaneGeometry(0.34, 0.22),
+    new MeshBasicMaterial({ color: 0xffd400, side: DoubleSide }),
+  );
+  ticket.position.set(0.3, 0.32, 0.72);
+  ticket.rotation.x = -0.95;
+  ticket.visible = false;
+  vehicle.object.add(ticket);
+  let idlingAnnounced = false;
+  const announceIdlingStop = () => {
+    if (idlingAnnounced) return;
+    idlingAnnounced = true;
+    toast("エンジンを停止しました（東京都環境確保条例 第52条：アイドリング・ストップ）", "#7dff9a");
+  };
   const contactCooldown = new Map<number, number>();
   const loadStart = performance.now();
+  let lastBrainStatus = brain.status;
   const startButton = $<HTMLButtonElement>("#start");
   camera.position.set(-60, 90, 140);
   camera.lookAt(0, 30, 0);
 
+  // Start-screen options: Gemma downloads in the background while playing (templates until ready).
+  const optAi = $<HTMLInputElement>("#opt-ai");
+  const optVoice = $<HTMLInputElement>("#opt-voice");
+  const optAiNote = $("#opt-ai-note");
+  void (async () => {
+    const [support, cached] = await Promise.all([NpcBrain.support(), NpcBrain.isCached()]);
+    if (!support.ok) {
+      optAi.disabled = true;
+      optAi.checked = false;
+      optAiNote.textContent = `この端末では会話 AI を使えません（${support.reason}）。定型応答で話せます。`;
+      return;
+    }
+    optAi.checked = NpcBrain.hasConsent();
+    if (cached)
+      optAiNote.textContent =
+        "ダウンロード済みのモデルを使います（再ダウンロード不要）。端末内で動き、会話は外部に送信されません。";
+  })();
+
   startButton.addEventListener("click", () => {
     if (state !== "ready") return;
     audio.start();
+    if (QUALITY.isMobile) {
+      // Android: play full-screen in landscape (both need the user gesture of this click).
+      void document.documentElement
+        .requestFullscreen?.({ navigationUI: "hide" })
+        .then(() =>
+          (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.(
+            "landscape",
+          ),
+        )
+        .catch(() => undefined);
+    }
+    if (optAi.checked && !optAi.disabled) void brain.enable();
+    if (optVoice.checked) {
+      $<HTMLInputElement>("#voice-toggle").checked = true;
+      void voice.enable();
+    }
     $("#loading").hidden = true;
     $("#hud").hidden = false;
     buildings.buildCollidersNear(new Vector3());
@@ -465,18 +610,13 @@ async function main(): Promise<void> {
     accumulator += dt;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
-      const isParked = conversation.active !== null || isOnFoot;
+      const isParked = isOnFoot;
       if (!frozen)
         vehicle.update(
           world.timestep,
           isParked ? { throttle: 0, brake: 1, steer: 0, handbrake: true } : drive,
         );
-      if (isOnFoot && !frozen)
-        walker.update(
-          world.timestep,
-          conversation.active ? { forward: 0, right: 0, run: false, jump: false, turn: 0 } : walk,
-          env.isRaining(),
-        );
+      if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
       accumulator -= world.timestep;
       steps++;
@@ -493,6 +633,7 @@ async function main(): Promise<void> {
       const ped = pedestrians.byCollider(other);
       if (ped && kmh > 3) {
         pedestrians.knockDown(ped);
+        emergency.start(ped, performance.now());
         onAccident("pedestrian", kmh, ped.profile.name);
       } else if (!ped && kmh > 5) {
         onAccident("vehicle", kmh, "");
@@ -526,6 +667,87 @@ async function main(): Promise<void> {
     carForward.y = 0;
     carForward.normalize();
     pedestrians.update(dt, focus, carPos, isOnFoot ? 0 : speed / 3.6, carForward);
+    if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
+      refreshRoads(geo.lat, geo.lon);
+    traffic.update(dt, focus, carPos, carForward, isOnFoot ? 0 : speed / 3.6);
+
+    // 道路交通法 checks while driving: speed vs (estimated) limit, keep-left on two-way roads.
+    const isDriving = !isOnFoot && !frozen && !law.state.suspended;
+    if (isDriving && roadGraph && now - lastLawCheck > 200) {
+      lastLawCheck = now;
+      const hit = roadGraph.nearest(carPos, 30);
+      const onRoad = hit && Math.abs(hit.lateral) < hit.seg.line.width / 2 + 1.5 ? hit : null;
+      currentLimit = onRoad ? estimatedLimit(onRoad.seg.line) : null;
+      const isOver = currentLimit !== null && speed > currentLimit + 1;
+      overSince = isOver ? (overSince ?? now) : null;
+      if (overSince !== null && currentLimit !== null && now - overSince > 3000) {
+        const v = speedViolation(speed - currentLimit);
+        if (v) book(v, now, 20000);
+      }
+      const isTwoWay = onRoad !== null && onRoad.seg.line.oneway === 0 && onRoad.seg.line.width >= 5.5;
+      const align = onRoad ? carForward.dot(onRoad.dir) : 0;
+      // Positive lateral = left of the travel direction; well right of the centre line is 右側通行.
+      const isRightSide =
+        isTwoWay && speed > 10 && Math.abs(align) > 0.8 && onRoad.lateral * Math.sign(align) < -0.8;
+      rightSince = isRightSide ? (rightSince ?? now) : null;
+      if (rightSince !== null && now - rightSince > 2000) book(VIOLATIONS.keepLeft, now, 15000);
+    } else if (!isDriving) {
+      currentLimit = null;
+    }
+
+    // 放置駐車: on foot, away from a car left on the carriageway for a minute.
+    const carHit = isOnFoot && roadGraph ? roadGraph.nearest(carPos, 15) : null;
+    const isOnCarriageway = carHit !== null && Math.abs(carHit.lateral) < carHit.seg.line.width / 2;
+    const isAbandoned = isOnCarriageway && walker.position().distanceTo(carPos) > 10 && !emergency.active;
+    abandonedSince = isAbandoned ? (abandonedSince ?? now) : null;
+    if (abandonedSince !== null && now - abandonedSince > 60_000 && !ticket.visible && carHit) {
+      const near = [carHit.seg.from, carHit.seg.to].some((node) => {
+        const isJunction = (roadGraph?.nodes.get(node)?.length ?? 0) >= 3;
+        const end = node === carHit.seg.from ? 0 : carHit.seg.length;
+        return isJunction && Math.abs(carHit.s - end) < 6;
+      });
+      book(near ? VIOLATIONS.parkingNoStop : VIOLATIONS.parking, now, 120_000);
+      ticket.visible = true;
+      toast("車に確認標章が取り付けられました。車道に車を放置しないでください", "#ffd400");
+    }
+
+    // Holding the phone while the car moves; emergency calls to rescue the injured are exempt.
+    if (!isOnFoot && phone.open && Math.abs(speed) > 5 && !emergency.active) {
+      book(VIOLATIONS.phone, now, 30000);
+    }
+    // Tokyo's environmental ordinance: switch the engine off when stopped for a while.
+    const isStoppedInCar = !isOnFoot && Math.abs(speed) < 1 && drive.throttle === 0;
+    stoppedSince = isStoppedInCar ? (stoppedSince ?? now) : null;
+    const isEngineOff = isOnFoot || (stoppedSince !== null && now - stoppedSince > 20000);
+    if (isEngineOff && !isOnFoot) announceIdlingStop();
+    if (!isEngineOff) idlingAnnounced = false;
+
+    const incidentEvent = emergency.update(dt, now, focus, Math.abs(speed) / 3.6, (p) =>
+      pedestrians.rescue(p),
+    );
+    if (incidentEvent?.type === "hitAndRun") {
+      toast(
+        "負傷者を救護せず現場を離れました。目撃者が 119 番・110 番に通報し、パトカーが追跡しています",
+        "#ff6b6b",
+      );
+    } else if (incidentEvent?.type === "arrested") {
+      law.book(VIOLATIONS.hitAndRun, now, 0);
+      showArrest(incidentEvent.later);
+    } else if (incidentEvent?.type === "arrived") {
+      toast(
+        incidentEvent.kind === "ambulance" ? "🚑 救急車が到着しました" : "🚓 パトカーが到着しました",
+        "#4dd2ff",
+      );
+    } else if (incidentEvent?.type === "rescued") {
+      toast("負傷者は病院へ搬送されました", "#4dd2ff");
+    } else if (incidentEvent?.type === "notReported") {
+      toast("警察に事故を報告しませんでした（道路交通法 第72条第1項後段：報告義務）", "#ff6b6b");
+    } else if (incidentEvent?.type === "closed") {
+      toast("警察の事故処理が終わりました。安全運転を心がけましょう", "#7dff9a");
+    }
+    const isIncidentOver = incidentEvent?.type === "closed" || incidentEvent?.type === "notReported";
+    if (isIncidentOver && law.state.suspended) showSuspension();
+    updateIncidentPanel(now);
     const partner = conversation.active;
     if (partner && partner.object.position.distanceTo(focus) > 18) conversation.close();
     const talkRange = isOnFoot ? 3.5 : 10;
@@ -575,7 +797,7 @@ async function main(): Promise<void> {
       buildings.setNightFactor(appliedNight);
     }
     vehicle.updateLights(env.nightFactor > 0.25 || env.isRaining());
-    audio.update(isOnFoot ? 0 : speed, drive.throttle);
+    audio.update(isEngineOff ? 0 : speed, isEngineOff ? 0 : drive.throttle, isEngineOff);
 
     if (now - lastLocate > 500) {
       lastLocate = now;
@@ -587,12 +809,101 @@ async function main(): Promise<void> {
       const yaw = isOnFoot ? Math.atan2(walker.forward().x, walker.forward().z) : carYaw(carRot);
       updateHud(geo.lat, geo.lon, yaw, speed, now);
       conversation.refreshStatus();
+      phone.refresh();
+      if (brain.status !== lastBrainStatus) {
+        if (brain.status === "ready")
+          toast("会話 AI（Gemma 4）の準備ができました。歩行者に話しかけてみましょう", "#4dd2ff");
+        if (brain.status === "error") toast(brain.detail, "#ff6b6b");
+        lastBrainStatus = brain.status;
+      }
+      const chip = $("#ai-chip");
+      const isBusy = brain.status === "downloading" || brain.status === "loading";
+      chip.hidden = !isBusy && brain.status !== "error";
+      chip.textContent =
+        brain.status === "downloading"
+          ? `会話AI ダウンロード中 ${Math.round(brain.progress * 100)}%`
+          : brain.status === "loading"
+            ? "会話AI 準備中…"
+            : "会話AI: 利用できません（定型応答）";
     }
     renderer.render(scene, camera);
   };
 
-  // Accident handling; traffic-law scoring is layered on top in game/traffic.ts.
+  const book = (v: Violation, now: number, cooldownMs?: number) => {
+    const booked = law.book(v, now, cooldownMs);
+    if (!booked) return;
+    score = Math.max(0, score - booked.points * 50);
+    toast(`🚓 ${formatViolation(booked)}`, "#ff6b6b");
+    log("violation", { kind: booked.kind, points: booked.points, total: law.state.points });
+    // Let the driver finish the rescue / reporting first; show the screen once it is over.
+    if (law.state.suspended && !emergency.active) showSuspension();
+  };
+  const showSuspension = () => {
+    vehicle.setFrozen(true);
+    const isRevoked = law.state.points >= REVOCATION_POINTS;
+    $("#suspended h1").textContent = isRevoked ? "免許取消" : "免許停止";
+    $("#suspended .tagline").textContent = isRevoked
+      ? `違反点数が ${law.state.points} 点になりました（前歴なしの場合 15 点以上で免許取消）。`
+      : `違反点数が ${law.state.points} 点になりました（前歴なしの場合 6 点以上で免許停止）。`;
+    const list = $("#suspended-log");
+    list.replaceChildren(
+      ...law.state.log.map((v) => {
+        const li = document.createElement("li");
+        li.textContent = formatViolation(v);
+        return li;
+      }),
+    );
+    $("#retrain").textContent = "講習を受けて運転を再開";
+    $("#suspended").hidden = false;
+  };
+  const showArrest = (later: boolean) => {
+    vehicle.setFrozen(true);
+    $("#suspended h1").textContent = "ひき逃げで逮捕";
+    $("#suspended .tagline").textContent = later
+      ? "現場から逃げ切ったものの、後日、防犯カメラの映像と目撃情報から特定され逮捕されました。"
+      : "パトカーに追いつかれ、その場で逮捕されました。";
+    const lines = [
+      "救護義務違反（ひき逃げ）：交通事故を起こした運転者は、直ちに運転を停止し、負傷者を救護し、警察官に報告しなければなりません（道路交通法 第72条第1項）。",
+      "罰則：人の死傷が運転に起因する場合、10年以下の拘禁刑又は100万円以下の罰金（同法 第117条第2項）。",
+      `違反点数：基礎点数35点を加算し、合計 ${law.state.points} 点 → 免許取消（前歴なしで15点以上）。`,
+      "事故を起こしたら、逃げずに停車し、119番・110番に通報してください。",
+    ];
+    $("#suspended-log").replaceChildren(
+      ...lines.map((t) => {
+        const li = document.createElement("li");
+        li.textContent = t;
+        return li;
+      }),
+    );
+    $("#retrain").textContent = "最初からやり直す";
+    $("#suspended").hidden = false;
+  };
+  $("#retrain").addEventListener("click", () => {
+    law.reset();
+    $("#suspended").hidden = true;
+    vehicle.setFrozen(false);
+    respawnHere();
+    toast("講習を修了しました。安全運転で！", "#7dff9a");
+  });
+
+  // Accident handling: penalty points via the traffic-law model plus a score deduction.
+  const updateIncidentPanel = (now: number) => {
+    const panel = $("#incident");
+    panel.hidden = !emergency.active;
+    if (!emergency.active) return;
+    const part = (kind: "ambulance" | "police", label: string, number: string) => {
+      if (!emergency.isCalled(kind)) return `${label}: 未通報（スマホで ${number}）`;
+      const eta = emergency.eta(kind);
+      return `${label}: ${eta === null ? "到着" : `到着まで約${eta}秒`}`;
+    };
+    const left = emergency.isCalled("ambulance") ? "" : `・残り${emergency.secondsLeft(now)}秒`;
+    $("#incident-status").textContent =
+      `${part("ambulance", "🚑 救急", "119")}${left}　${part("police", "🚓 警察", "110")}`;
+  };
+
   const onAccident = (kind: "pedestrian" | "vehicle", kmh: number, who: string) => {
+    book(VIOLATIONS.safeDriving, performance.now(), 3000);
+    if (kind === "pedestrian") book(injuryViolation(kmh), performance.now(), 3000);
     const penalty = kind === "pedestrian" ? 300 : 100;
     score = Math.max(0, score - penalty);
     toast(
@@ -622,6 +933,9 @@ async function main(): Promise<void> {
       nearestBus && nearestBus.distance < 120 ? `🚌 ${nearestBus.bus.note.split(" ")[0]}` : transit.status;
 
     $("#score").textContent = score.toLocaleString();
+    $("#limit").textContent = currentLimit === null ? "–" : String(currentLimit);
+    $("#license-points").textContent = `違反点数 ${law.state.points} / 6`;
+    $("#license-fines").textContent = `反則金 ${law.state.fines.toLocaleString()}円`;
     const inWard = pois.filter((p) => p.ward === wardName);
     const wardDone = inWard.filter((p) => field.collected.has(p.id)).length;
     $("#collected").textContent =
@@ -636,7 +950,9 @@ async function main(): Promise<void> {
       $("#mission-meta").textContent =
         `${cat?.label ?? ""}・${mission.target.ward}・残り ${Math.round(d)} m・${Math.max(0, Math.ceil(missions.remaining(now)))} 秒`;
     } else {
-      $("#mission-name").textContent = "N キー / 目的地ボタンでミッション開始";
+      $("#mission-name").textContent = QUALITY.isMobile
+        ? "🎯 でミッション開始"
+        : "N キー / 目的地ボタンでミッション開始";
       $("#mission-meta").textContent = `近くのスポット ${field.visibleList().length} 件`;
     }
 
@@ -688,6 +1004,11 @@ async function main(): Promise<void> {
         transit,
         advance,
         start: () => startButton.click(),
+        pedestrians,
+        traffic,
+        emergency,
+        phone,
+        law,
         getFrame: () => frame,
         getState: () => state,
         setDebugCamera: (fn: typeof debugCamera) => (debugCamera = fn),

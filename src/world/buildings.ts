@@ -21,6 +21,7 @@ import {
 } from "three";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { BUILDING_COLLIDER_RADIUS, PLATEAU_TILESET } from "../config";
+import { QUALITY } from "../device";
 import type { LocalFrame } from "../geo/frame";
 import { applyFacade, facadeUniforms, setFacadeOrigin } from "./facade";
 
@@ -33,7 +34,7 @@ type Model = {
 
 // Beyond the fog nothing is visible, so do not spend cache on it (Tokyo-wide tileset would
 // otherwise fill the 0.4 GB LRU with coarse tiles of distant wards and starve nearby detail).
-const LOAD_RADIUS = 2800;
+const LOAD_RADIUS = QUALITY.buildingLoadRadius;
 // Full detail in every direction around the car so colliders exist behind/beside it too.
 const DETAIL_RADIUS = 250;
 
@@ -135,10 +136,10 @@ export class Buildings {
     regions.addRegion(this.maskRegion);
     regions.addRegion(this.detailRegion);
     tiles.registerPlugin(regions);
-    tiles.errorTarget = 16;
+    tiles.errorTarget = QUALITY.isMobile ? 26 : 16;
     this.detailRegion.errorTarget = tiles.errorTarget;
-    tiles.lruCache.minBytesSize = 0.5 * 1024 ** 3;
-    tiles.lruCache.maxBytesSize = 0.8 * 1024 ** 3;
+    tiles.lruCache.minBytesSize = QUALITY.buildingCacheBytes * 0.6;
+    tiles.lruCache.maxBytesSize = QUALITY.buildingCacheBytes;
     tiles.setCamera(this.camera);
     tiles.setResolutionFromRenderer(this.camera, this.renderer);
 
@@ -146,7 +147,8 @@ export class Buildings {
       this.loadedCount++;
       scene.traverse((o) => {
         if (!(o instanceof Mesh)) return;
-        o.castShadow = true;
+        // Building shadows double the draw calls; phones skip them (the car still casts one).
+        o.castShadow = !QUALITY.isMobile;
         o.receiveShadow = true;
         o.material = this.adaptMaterial(o.material as Material);
       });

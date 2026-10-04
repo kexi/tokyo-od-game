@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1320" />
     <meta
       name="description"
       content="東京都のオープンデータと PLATEAU 3D 都市モデルで 23 区を走る 3D ドライブ探索ゲーム"
@@ -13,12 +14,27 @@
   <body>
     <canvas id="scene"></canvas>
 
+    <div id="rotate-hint" aria-live="polite">📱↻ 端末を横向きにしてください</div>
+
     <section id="loading" aria-live="polite">
       <div class="loading-card">
         <h1>TOKYO <span>OPEN</span> DRIVE</h1>
         <p class="tagline">東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る</p>
         <p id="loading-status">データを読み込み中…</p>
         <div class="bar"><div id="loading-bar"></div></div>
+        <fieldset class="options">
+          <label class="opt">
+            <input type="checkbox" id="opt-ai" />
+            <span>会話 AI（Google Gemma 4 E2B・約 2.0GB）をプレイしながらダウンロード</span>
+          </label>
+          <p class="sub" id="opt-ai-note">
+            端末内（WebGPU）で動き、会話は外部に送信されません。完了までは定型応答で話せます。Wi-Fi 推奨。
+          </p>
+          <label class="opt">
+            <input type="checkbox" id="opt-voice" checked />
+            <span>歩行者の声（音声合成 sanoTTS-jp・約 6MB）</span>
+          </label>
+        </fieldset>
         <button id="start" type="button" disabled>スタート</button>
         <p class="keys">W/↑ アクセル・S/↓ ブレーキ/バック・A D/← → ハンドル・Space サイド・R 復帰</p>
       </div>
@@ -31,6 +47,7 @@
         <div id="clock" class="sub">—</div>
         <div id="weather" class="sub">—</div>
         <div id="transit" class="sub">—</div>
+        <div id="ai-chip" class="sub" hidden></div>
       </div>
 
       <div id="hud-time" class="panel segmented" role="group" aria-label="時間帯">
@@ -47,6 +64,15 @@
       </div>
 
       <canvas id="minimap" width="180" height="180"></canvas>
+
+      <div id="hud-license" class="panel" title="道路交通法に基づく違反点数（普通車）">
+        <div class="limit-sign" title="最高速度（幅員からの推定値）"><span id="limit">–</span></div>
+        <div>
+          <div id="license-points">違反点数 0 / 6</div>
+          <div id="license-fines" class="sub">反則金 0円</div>
+          <div class="sub">制限速度は幅員からの推定</div>
+        </div>
+      </div>
 
       <div id="hud-speed" class="panel"><span id="speed">0</span><small>km/h</small></div>
 
@@ -70,6 +96,51 @@
 
       <div id="talk-hint" class="panel" hidden>E で話しかける</div>
 
+      <div id="incident" class="panel" hidden role="alert">
+        <div class="incident-title">⚠ 人身事故が発生しました</div>
+        <div id="incident-text" class="sub">
+          直ちに停車し、負傷者を救護してください。スマホ（P）で 119 番（救急）と 110
+          番（警察）に通報してください（道路交通法 第72条）。
+        </div>
+        <div id="incident-status"></div>
+      </div>
+
+      <button type="button" id="phone-button" class="panel" title="スマホ (P)">📱</button>
+
+      <aside id="phone" hidden aria-label="スマートフォン">
+        <div class="phone-notch"></div>
+        <section id="phone-home">
+          <div class="phone-clock" id="phone-clock">--:--</div>
+          <div class="phone-loc" id="phone-loc">現在地: —</div>
+          <div class="dial-grid">
+            <button type="button" class="dial emergency" data-dial="119">119<small>火事・救急</small></button>
+            <button type="button" class="dial emergency police" data-dial="110">
+              110<small>警察</small>
+            </button>
+          </div>
+          <p class="sub phone-note">
+            緊急でない相談は #7119（救急相談センター）・#9110（警察相談専用電話）へ。
+          </p>
+          <p class="sub phone-note">
+            これはゲーム内の通報シミュレーションで、実際の 119・110
+            にはつながりません。本当の緊急時はお手持ちの電話から通報してください。いたずら通報は犯罪です（軽犯罪法
+            第1条第16号）。
+          </p>
+          <button type="button" id="phone-close" class="phone-close">閉じる</button>
+        </section>
+        <section id="phone-call" hidden>
+          <div class="call-head">
+            <span id="call-number">119</span><span id="call-timer" class="sub">00:00</span>
+          </div>
+          <div id="call-log" aria-live="polite"></div>
+          <div id="call-quick"></div>
+          <form id="call-form" autocomplete="off">
+            <input id="call-input" maxlength="80" placeholder="話す内容を入力して Enter" />
+          </form>
+          <button type="button" id="call-hangup" class="hangup">終話</button>
+        </section>
+      </aside>
+
       <aside id="chat" class="panel" hidden aria-label="歩行者との会話">
         <header>
           <div>
@@ -81,7 +152,11 @@
         <div id="chat-log" aria-live="polite"></div>
         <div id="chat-quick"></div>
         <form id="chat-form" autocomplete="off">
-          <input id="chat-input" maxlength="80" placeholder="話しかける…（Enter で送信）" />
+          <input
+            id="chat-input"
+            maxlength="80"
+            placeholder="Enter で入力 → Enter で送信（Esc で運転に戻る）"
+          />
           <button type="submit">送信</button>
         </form>
         <div id="chat-ai" class="sub">
@@ -97,25 +172,37 @@
           >地理院タイル</a
         >
         ｜<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">PLATEAU（国土交通省）</a>
-        ｜東京都オープンデータ｜公共交通オープンデータセンター｜気象庁 ｜<button
-          type="button"
-          data-action="credits"
-        >
-          出典の詳細
-        </button>
+        ｜国土地理院ベクトルタイル提供実験｜e-Stat｜東京都オープンデータ｜公共交通オープンデータセンター｜気象庁
+        ｜<button type="button" data-action="credits">出典の詳細</button>
       </div>
 
-      <div id="touch" aria-hidden="true">
+      <div id="touch">
         <div class="left">
-          <button type="button" data-touch="left">◀</button>
-          <button type="button" data-touch="right">▶</button>
+          <button type="button" data-touch="left" aria-label="左">◀</button>
+          <button type="button" data-touch="right" aria-label="右">▶</button>
+        </div>
+        <div class="actions">
+          <button type="button" data-action="door">🚪<small>乗降</small></button>
+          <button type="button" data-action="talk">💬<small>話す</small></button>
+          <button type="button" data-action="mission">🎯<small>目的地</small></button>
+          <button type="button" data-action="reset">↺<small>復帰</small></button>
         </div>
         <div class="right">
-          <button type="button" data-touch="brake">B</button>
-          <button type="button" data-touch="gas">A</button>
+          <button type="button" data-touch="brake" aria-label="ブレーキ／後退">B</button>
+          <button type="button" data-touch="gas" aria-label="アクセル／前進">A</button>
         </div>
       </div>
     </div>
+
+    <section id="suspended" hidden aria-live="assertive">
+      <div class="loading-card">
+        <h1>免許停止</h1>
+        <p class="tagline">違反点数が 6 点に達しました（前歴なしの場合の免許停止基準）。</p>
+        <ul id="suspended-log"></ul>
+        <p class="sub">点数・反則金は道路交通法と警察庁の基準（普通車）に基づくゲーム内の参考値です。</p>
+        <button id="retrain" type="button">講習を受けて運転を再開</button>
+      </div>
+    </section>
 
     <dialog id="help">
       <h2>操作</h2>
@@ -144,6 +231,14 @@
         <dd>音のオン/オフ</dd>
         <dt>I</dt>
         <dd>データ出典</dd>
+        <dt>F</dt>
+        <dd>車を降りる／乗る（徒歩: WASD・Shift で走る・Space でジャンプ・← → で視点）</dd>
+        <dt>E</dt>
+        <dd>近くの歩行者に話しかける（車は停車中に）</dd>
+        <dt>P</dt>
+        <dd>スマホ（119 番・110 番に通報）</dd>
+        <dt>Enter</dt>
+        <dd>会話・通話の入力欄へ（Esc で運転に戻る）</dd>
       </dl>
       <p>
         光の柱は東京都オープンデータの実在スポットです。車で触れると「発見」できます。進捗はこのブラウザに保存されます。

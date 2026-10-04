@@ -15,11 +15,11 @@ import {
   GSI,
   PLATEAU_ORTHO,
   TERRAIN_COLLIDER_RADIUS,
-  TERRAIN_RENDER_RADIUS,
   TERRAIN_SEGMENTS,
   TERRAIN_ZOOM,
   type GroundStyle,
 } from "../config";
+import { QUALITY } from "../device";
 import { geodeticToEcef } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
@@ -38,6 +38,13 @@ type Chunk = {
 
 const S = TERRAIN_SEGMENTS;
 const MAX_CONCURRENT_BUILDS = 3;
+const RENDER_RADIUS = QUALITY.terrainRadius;
+/** Imagery zoom by ring: sharpest under the player, capped on phones (2048² canvases are heavy). */
+const imageryZoom = (ring: number) =>
+  Math.min(
+    QUALITY.maxImageryZoom,
+    ring === 0 ? TERRAIN_ZOOM + 3 : ring === 1 ? TERRAIN_ZOOM + 2 : TERRAIN_ZOOM + 1,
+  );
 
 /**
  * Ground built from GSI DEM tiles, one chunk per z15 tile, draped with GSI imagery.
@@ -92,8 +99,8 @@ export class Terrain {
     const cy = Math.floor(latToTileY(lat, TERRAIN_ZOOM));
 
     const wanted: Array<{ x: number; y: number; ring: number }> = [];
-    for (let dy = -TERRAIN_RENDER_RADIUS; dy <= TERRAIN_RENDER_RADIUS; dy++) {
-      for (let dx = -TERRAIN_RENDER_RADIUS; dx <= TERRAIN_RENDER_RADIUS; dx++) {
+    for (let dy = -RENDER_RADIUS; dy <= RENDER_RADIUS; dy++) {
+      for (let dx = -RENDER_RADIUS; dx <= RENDER_RADIUS; dx++) {
         wanted.push({ x: cx + dx, y: cy + dy, ring: Math.max(Math.abs(dx), Math.abs(dy)) });
       }
     }
@@ -110,7 +117,7 @@ export class Terrain {
     let createdCollider = false;
     for (const [key, chunk] of this.chunks) {
       const ring = Math.max(Math.abs(chunk.x - cx), Math.abs(chunk.y - cy));
-      if (ring > TERRAIN_RENDER_RADIUS + 1) {
+      if (ring > RENDER_RADIUS + 1) {
         this.disposeChunk(chunk);
         this.chunks.delete(key);
         continue;
@@ -124,7 +131,7 @@ export class Terrain {
         this.removeCollider(chunk);
       }
       // z18 (~0.5 m/px) under the car, z17 next ring, z16 at the fog edge.
-      const zoom = ring === 0 ? TERRAIN_ZOOM + 3 : ring === 1 ? TERRAIN_ZOOM + 2 : TERRAIN_ZOOM + 1;
+      const zoom = imageryZoom(ring);
       // Upgrade when approaching; downgrade only when two levels too sharp (bounded GPU memory
       // without thrashing at ring boundaries).
       const needsImagery =
@@ -207,10 +214,7 @@ export class Terrain {
     this.placeMesh(chunk);
     this.scene.add(mesh);
     this.chunks.set(`${x}/${y}`, chunk);
-    void this.loadImagery(
-      chunk,
-      ring === 0 ? TERRAIN_ZOOM + 3 : ring === 1 ? TERRAIN_ZOOM + 2 : TERRAIN_ZOOM + 1,
-    );
+    void this.loadImagery(chunk, imageryZoom(ring));
   }
 
   private placeMesh(chunk: Chunk): void {

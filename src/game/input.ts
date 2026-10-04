@@ -13,7 +13,9 @@ type Action =
   | "mute"
   | "talk"
   | "close"
-  | "door";
+  | "door"
+  | "enter"
+  | "phone";
 
 const KEY_ACTIONS: Record<string, Action> = {
   KeyR: "reset",
@@ -27,6 +29,8 @@ const KEY_ACTIONS: Record<string, Action> = {
   KeyV: "mute",
   KeyE: "talk",
   KeyF: "door",
+  Enter: "enter",
+  KeyP: "phone",
   Escape: "close",
 };
 
@@ -107,7 +111,11 @@ export class Input {
       if (!el) return;
       el.addEventListener("pointerdown", (e) => {
         e.preventDefault();
-        el.setPointerCapture(e.pointerId);
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          // Synthetic or already-released pointers cannot be captured; the press still counts.
+        }
         apply(true);
       });
       const release = () => apply(false);

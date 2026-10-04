@@ -1,0 +1,261 @@
+import RAPIER from "@dimforge/rapier3d-compat";
+import { Quaternion, Vector3, type Group, type Scene } from "three";
+import { QUALITY } from "../device";
+import { createLowCar } from "../game/carModel";
+import { estimatedLimit, leftOf, type RoadGraph, type Segment } from "./roads";
+
+type AiCar = {
+  object: Group;
+  seg: Segment;
+  dir: 1 | -1; // along / against the segment's coordinate order
+  s: number; // distance travelled along the segment in travel direction
+  speed: number; // m/s
+  taxi: boolean;
+  body: RAPIER.RigidBody | null;
+  ground: number;
+  groundCheck: number;
+  serial: number;
+};
+
+const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
+const MAX_CARS = QUALITY.maxAiCars;
+const SPAWN_RADIUS = 350;
+const DESPAWN_RADIUS = 450;
+const BODY_RADIUS = 120;
+const LANE_FRACTION = 0.25; // centre of the left half of a two-way carriageway
+
+/**
+ * Taxis and private cars driving on the left (道路交通法 第17条) along the road graph, keeping
+ * gaps to the car ahead and to the player. Kinematic bodies near the player make them solid.
+ */
+type ParkedCar = { object: Group; body: RAPIER.RigidBody };
+
+const PARKED_MAX = 16;
+
+export class TrafficAI {
+  private cars: AiCar[] = [];
+  private parked: ParkedCar[] = [];
+  private graph: RoadGraph | null = null;
+  private serial = 1;
+  private readonly tmpPos = new Vector3();
+  private readonly tmpDir = new Vector3();
+
+  constructor(
+    private readonly scene: Scene,
+    private readonly world: RAPIER.World,
+    private readonly groundAt: (x: number, z: number) => number | null,
+  ) {}
+
+  /**
+   * Swap in a rebuilt graph (player moved / frame re-anchored). Cars are re-attached to the
+   * matching segment of the new graph so traffic does not visibly pop; strays are removed.
+   */
+  setGraph(graph: RoadGraph | null): void {
+    const kept: AiCar[] = [];
+    for (const c of this.cars) {
+      const hit = graph?.nearest(c.object.position, 4);
+      if (!graph || !hit) {
+        this.remove(c);
+        continue;
+      }
+      const forward = new Vector3(Math.sin(c.object.rotation.y), 0, Math.cos(c.object.rotation.y));
+      c.dir = forward.dot(hit.dir) >= 0 ? 1 : -1;
+      c.seg = hit.seg;
+      c.s = c.dir === 1 ? hit.s : hit.seg.length - hit.s;
+      kept.push(c);
+    }
+    this.cars = kept;
+    this.graph = graph;
+    this.placeParked(graph);
+  }
+
+  /**
+   * 路上駐車: cars left at the kerb of narrower streets. Chosen by a hash of each segment's
+   * geometry, so re-anchoring rebuilds them at exactly the same spots.
+   */
+  private placeParked(graph: RoadGraph | null): void {
+    for (const p of this.parked) {
+      this.scene.remove(p.object);
+      this.world.removeRigidBody(p.body);
+    }
+    this.parked = [];
+    if (!graph) return;
+    for (const seg of graph.segments) {
+      if (this.parked.length >= PARKED_MAX) break;
+      const isSideStreet = seg.line.width >= 4 && seg.line.width < 13 && seg.length > 25;
+      const h = hashCoords(seg.line.coords);
+      if (!isSideStreet || h % 6 !== 0) continue;
+      const { pos, dir } = graph.sample(seg, seg.length * (0.3 + ((h >>> 4) % 40) / 100));
+      const side = (h >>> 9) % 2 ? 1 : -1;
+      pos.add(leftOf(dir, side * (seg.line.width / 2 - 1.1)));
+      const ground = this.groundAt(pos.x, pos.z);
+      if (ground === null) continue;
+      const yaw = Math.atan2(dir.x, dir.z) + (side < 0 ? Math.PI : 0);
+      const object = createLowCar({ color: COLORS[(h >>> 13) % COLORS.length] });
+      object.position.set(pos.x, ground + 0.86, pos.z);
+      object.rotation.y = yaw;
+      this.scene.add(object);
+      const body = this.world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed()
+          .setTranslation(pos.x, ground + 0.86, pos.z)
+          .setRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw)),
+      );
+      this.world.createCollider(RAPIER.ColliderDesc.cuboid(0.92, 0.6, 2.15), body);
+      this.parked.push({ object, body });
+    }
+  }
+
+  /** Re-anchoring: shift cars rigidly; their graph is replaced right after. */
+  transform(offset: (p: Vector3) => Vector3, yawDelta: number): void {
+    for (const c of this.cars) {
+      offset(c.object.position);
+      c.object.rotation.y += yawDelta;
+      if (c.body) {
+        this.world.removeRigidBody(c.body);
+        c.body = null;
+      }
+    }
+  }
+
+  count(): number {
+    return this.cars.length;
+  }
+
+  isAiCollider(handle: number): boolean {
+    return this.cars.some((c) => c.body?.collider(0)?.handle === handle);
+  }
+
+  update(dt: number, focus: Vector3, player: Vector3, playerForward: Vector3, playerSpeed: number): void {
+    const graph = this.graph;
+    if (!graph || graph.segments.length === 0) return;
+    this.spawn(graph, focus);
+    for (let i = this.cars.length - 1; i >= 0; i--) {
+      const c = this.cars[i];
+      const { pos, dir } = this.pose(graph, c);
+      if (pos.distanceTo(focus) > DESPAWN_RADIUS) {
+        this.remove(c);
+        this.cars.splice(i, 1);
+        continue;
+      }
+      const limit = estimatedLimit(c.seg.line) / 3.6;
+      const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
+      const gap = this.gapAhead(c, pos, dir, player, playerForward, playerSpeed);
+      const target = gap < 7 ? 0 : gap < 25 ? Math.min(cruise, (gap - 7) * 0.8) : cruise;
+      c.speed += Math.max(-6 * dt, Math.min(2.2 * dt, target - c.speed));
+      c.s += c.speed * dt;
+      if (c.s >= c.seg.length) this.advance(graph, c);
+
+      c.groundCheck -= dt;
+      if (c.groundCheck <= 0) {
+        c.groundCheck = 0.3;
+        c.ground = this.groundAt(pos.x, pos.z) ?? c.ground;
+      }
+      const yaw = Math.atan2(dir.x, dir.z);
+      c.object.position.set(pos.x, c.ground + 0.86, pos.z);
+      c.object.rotation.set(0, yaw, 0);
+      const isNear = pos.distanceTo(player) < BODY_RADIUS;
+      if (isNear && !c.body) {
+        c.body = this.world.createRigidBody(
+          RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, c.ground + 0.86, pos.z),
+        );
+        this.world.createCollider(RAPIER.ColliderDesc.cuboid(0.92, 0.6, 2.15), c.body);
+      } else if (!isNear && c.body) {
+        this.world.removeRigidBody(c.body);
+        c.body = null;
+      }
+      c.body?.setNextKinematicTranslation(c.object.position);
+      c.body?.setNextKinematicRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw));
+    }
+  }
+
+  /** World pose of a car: lane centre to the left of its travel direction. */
+  private pose(graph: RoadGraph, c: AiCar): { pos: Vector3; dir: Vector3 } {
+    const along = c.dir === 1 ? c.s : c.seg.length - c.s;
+    const { pos, dir } = graph.sample(c.seg, along, this.tmpPos, this.tmpDir);
+    if (c.dir === -1) dir.negate();
+    const lane = c.seg.line.oneway === 0 ? c.seg.line.width * LANE_FRACTION : 0;
+    pos.add(leftOf(dir, lane));
+    return { pos: pos.clone(), dir: dir.clone() };
+  }
+
+  /** Distance to the nearest obstacle ahead in this lane (other cars, the player). */
+  private gapAhead(c: AiCar, pos: Vector3, dir: Vector3, player: Vector3, pf: Vector3, ps: number): number {
+    let gap = Infinity;
+    const consider = (p: Vector3, width = 2.2) => {
+      const dx = p.x - pos.x;
+      const dz = p.z - pos.z;
+      const ahead = dx * dir.x + dz * dir.z;
+      const lateral = Math.abs(dx * dir.z - dz * dir.x);
+      if (ahead > 0 && lateral < width) gap = Math.min(gap, ahead);
+    };
+    for (const o of this.cars) if (o !== c) consider(o.object.position);
+    // Kerbside parked cars only block when they actually sit in this lane.
+    for (const p of this.parked) consider(p.object.position, 0.9);
+    // Yield to the player unless they are clearly driving away ahead of us.
+    const isPlayerFleeing = ps > c.speed + 2 && pf.dot(dir) > 0.8;
+    if (!isPlayerFleeing) consider(player);
+    return gap;
+  }
+
+  private advance(graph: RoadGraph, c: AiCar): void {
+    const endNode = c.dir === 1 ? c.seg.to : c.seg.from;
+    const options = graph.exits(endNode, c.seg.id);
+    if (options.length === 0) {
+      // Dead end or one-way trap: turn around.
+      c.dir = c.dir === 1 ? -1 : 1;
+      c.s = 0;
+      return;
+    }
+    c.serial = (c.serial * 1103515245 + 12345) >>> 0;
+    const next = options[c.serial % options.length];
+    c.dir = next.from === endNode ? 1 : -1;
+    c.s = c.s - c.seg.length;
+    c.seg = next;
+  }
+
+  private spawn(graph: RoadGraph, focus: Vector3): void {
+    let tries = 0;
+    while (this.cars.length < MAX_CARS && tries < 4) {
+      tries++;
+      this.serial = (this.serial * 1664525 + 1013904223) >>> 0;
+      const seg = graph.segments[this.serial % graph.segments.length];
+      const isCarRoad = seg.line.width >= 4 && seg.line.kind !== "highway";
+      if (!isCarRoad) continue;
+      const s = (((this.serial >>> 8) % 1000) / 1000) * seg.length;
+      const { pos } = graph.sample(seg, s);
+      const d = pos.distanceTo(focus);
+      if (d > SPAWN_RADIUS || d < 60) continue;
+      const dir: 1 | -1 = seg.line.oneway === -1 ? -1 : seg.line.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
+      const taxi = this.serial % 5 < 2;
+      const object = createLowCar({ color: taxi ? 0x1d2a4a : COLORS[this.serial % COLORS.length], taxi });
+      this.scene.add(object);
+      this.cars.push({
+        object,
+        seg,
+        dir,
+        s: dir === 1 ? s : seg.length - s,
+        speed: 5,
+        taxi,
+        body: null,
+        ground: this.groundAt(pos.x, pos.z) ?? 0,
+        groundCheck: 0,
+        serial: this.serial,
+      });
+    }
+  }
+
+  private remove(c: AiCar): void {
+    this.scene.remove(c.object);
+    if (c.body) this.world.removeRigidBody(c.body);
+    c.body = null;
+  }
+}
+
+function hashCoords(coords: number[]): number {
+  let h = 2166136261;
+  for (let i = 0; i < Math.min(coords.length, 8); i++) {
+    h ^= Math.round(coords[i] * 1e5);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
+}

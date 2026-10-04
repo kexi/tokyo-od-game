@@ -86,6 +86,7 @@ export function renderCredits(sources: Source[]): string {
   <h3>地図・空中写真・標高（国土地理院）</h3>
   <p>出典：${link("https://maps.gsi.go.jp/development/ichiran.html", "国土地理院「地理院タイル」")}（全国最新写真（シームレス）、標高タイル）。
   地理院タイル（標高タイル（基盤地図情報数値標高モデル））を加工して地形を作成。
+  道路の中心線・幅員：出典 ${link("https://github.com/gsi-cyberjapan/gsimaps-vector-experiment", "国土地理院ベクトルタイル提供実験")}（道路の路面・白線・横断歩道の描画、AI 車両の走行、交通違反の判定に加工して使用）。
   タイルはプレイ中にリアルタイムで読み込んでおり、本ゲームに同梱・再配布していません。</p>
 
   <h3>町丁・区の境界と人口</h3>
@@ -106,6 +107,9 @@ export function renderCredits(sources: Source[]): string {
   <h3>気象</h3>
   <p>出典：${link("https://www.jma.go.jp/bosai/amedas/", "気象庁ホームページ")}のアメダス観測データ（東京）を加工して作成。編集・加工の責任は本ゲーム作者にあります。
   本ゲームの天候表現は気象庁の予報・警報ではありません。</p>
+
+  <h3>交通ルール</h3>
+  <p>違反点数・反則金は道路交通法・同施行令と警視庁の公表資料（普通車、2026-10-04 確認）に基づくゲーム内の参考値です。制限速度は標識データが無いため、施行令第11条（2026-09-01 改正：中央線等のある道路 60km/h、それ以外 30km/h）を道路幅員から推定しています。救急・警察への通報はゲーム内のシミュレーションで、実際の 119・110 にはつながりません。</p>
 
   <h3>音声合成（sanoTTS-jp）</h3>
   <p>歩行者の声は ${link("https://github.com/ayutaz/sanoTTS-jp", "sanoTTS-jp")}（コード: MIT、モデル: LicenseRef-sanoTTS-jp-Model-1.0）をブラウザ内で動かして合成しています。

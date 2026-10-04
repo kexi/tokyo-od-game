@@ -103,18 +103,20 @@ function extrude(shape: Shape, width: number, bevel: number, round = bevel): Buf
   return g;
 }
 
-function plateTexture(): CanvasTexture {
+/** Japanese plates: private cars white/green, commercial (taxi, bus) green/white. */
+function plateTexture(commercial = false): CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 330;
   c.height = 165;
   const ctx = c.getContext("2d");
   if (ctx) {
-    ctx.fillStyle = "#f7f7f2";
+    const ink = commercial ? "#f7f7f2" : "#1e6b3a";
+    ctx.fillStyle = commercial ? "#1e6b3a" : "#f7f7f2";
     ctx.fillRect(0, 0, c.width, c.height);
-    ctx.strokeStyle = "#1e6b3a";
+    ctx.strokeStyle = ink;
     ctx.lineWidth = 6;
     ctx.strokeRect(6, 6, c.width - 12, c.height - 12);
-    ctx.fillStyle = "#1e6b3a";
+    ctx.fillStyle = ink;
     ctx.textAlign = "center";
     ctx.font = "bold 40px 'Hiragino Sans', sans-serif";
     ctx.fillText("東京 23", c.width / 2, 58);
@@ -161,7 +163,30 @@ function wheel(materials: { tire: Material; rim: Material; caliper: Material; di
   return g;
 }
 
-export function createCarModel(color = 0x1f5fbf): CarModel {
+export type CarStyle = { color?: number; taxi?: boolean; plate?: "private" | "commercial" };
+
+function taxiSignTexture(): CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 96;
+  const ctx = c.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#fff6d8";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = "#c8102e";
+    ctx.font = "bold 52px 'Hiragino Sans', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("TAXI", c.width / 2, c.height / 2 + 2);
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+export function createCarModel(style: CarStyle | number = {}): CarModel {
+  const opts = typeof style === "number" ? { color: style } : style;
+  const color = opts.color ?? (opts.taxi ? 0x1d2a4a : 0x1f5fbf); // taxis: JPN TAXI-like 濃藍
   const paint = new MeshPhysicalMaterial({
     color,
     metalness: 0.55,
@@ -200,7 +225,10 @@ export function createCarModel(color = 0x1f5fbf): CarModel {
   const reverseMat = new MeshStandardMaterial({ color: 0xdddddd, emissive: 0xffffff, emissiveIntensity: 0 });
   const amberL = new MeshStandardMaterial({ color: 0x6b3a00, emissive: 0xff9a1a, emissiveIntensity: 0 });
   const amberR = amberL.clone();
-  const plateMat = new MeshStandardMaterial({ map: plateTexture(), roughness: 0.5 });
+  const plateMat = new MeshStandardMaterial({
+    map: plateTexture(opts.taxi || opts.plate === "commercial"),
+    roughness: 0.5,
+  });
 
   const root = new Group();
   root.name = "car";
@@ -362,6 +390,33 @@ export function createCarModel(color = 0x1f5fbf): CarModel {
     wheels.push(holder);
   }
 
+  if (opts.taxi) {
+    // 行灯 (roof sign) and the red 空車 indicator behind the windscreen.
+    const sign = new Mesh(
+      new BoxGeometry(0.42, 0.16, 0.14),
+      new MeshStandardMaterial({
+        color: 0xfff6d8,
+        map: taxiSignTexture(),
+        emissive: 0xfff0c0,
+        emissiveIntensity: 0.6,
+        emissiveMap: taxiSignTexture(),
+      }),
+    );
+    sign.position.set(0, 0.72, -0.15);
+    const vacant = new Mesh(
+      new BoxGeometry(0.22, 0.06, 0.02),
+      new MeshStandardMaterial({ color: 0x550000, emissive: 0xff2020, emissiveIntensity: 2 }),
+    );
+    vacant.position.set(-0.45, 0.26, 0.86);
+    vacant.rotation.x = -0.9;
+    const stripe = new Mesh(
+      new BoxGeometry(WIDTH + 0.01, 0.05, 3.4),
+      new MeshStandardMaterial({ color: 0xd4af37, metalness: 0.6, roughness: 0.3 }),
+    );
+    stripe.position.set(0, 0.0, -0.1);
+    root.add(sign, vacant, stripe);
+  }
+
   root.traverse((o) => {
     if (o instanceof Mesh) {
       o.castShadow = true;
@@ -384,4 +439,67 @@ export function createCarModel(color = 0x1f5fbf): CarModel {
       for (const l of headlights) l.intensity = night ? 70 : 0;
     },
   };
+}
+
+/**
+ * Cheap AI-traffic car (~10 meshes instead of ~70): same silhouette, no interior details.
+ * Dozens of these share materials so traffic does not flood the draw-call budget.
+ */
+const lowCache = new Map<string, { body: BufferGeometry; cabin: BufferGeometry }>();
+const lowMaterials = new Map<number, MeshPhysicalMaterial>();
+const LOW_GLASS = new MeshStandardMaterial({ color: 0x0d141c, metalness: 0.4, roughness: 0.15 });
+const LOW_TIRE = new MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
+const LOW_HEAD = new MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4dc, emissiveIntensity: 1.2 });
+const LOW_TAIL = new MeshStandardMaterial({ color: 0x550000, emissive: 0xff1a1a, emissiveIntensity: 0.8 });
+let lowSign: MeshStandardMaterial | null = null;
+
+export function createLowCar(opts: { color: number; taxi?: boolean }): Group {
+  let geo = lowCache.get("car");
+  if (!geo) {
+    geo = {
+      body: extrude(sideProfile(), WIDTH, BEVEL, 0.09),
+      cabin: extrude(greenhouseProfile(), WIDTH - 0.3, 0.06),
+    };
+    lowCache.set("car", geo);
+  }
+  let paint = lowMaterials.get(opts.color);
+  if (!paint) {
+    paint = new MeshPhysicalMaterial({ color: opts.color, metalness: 0.5, roughness: 0.35, clearcoat: 1 });
+    lowMaterials.set(opts.color, paint);
+  }
+  const g = new Group();
+  g.add(new Mesh(geo.body, paint), new Mesh(geo.cabin, LOW_GLASS));
+  const wheelGeo = new CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, 0.25, 14).rotateZ(Math.PI / 2);
+  for (const [x, z] of [
+    [-0.82, 1.35],
+    [0.82, 1.35],
+    [-0.82, -1.35],
+    [0.82, -1.35],
+  ]) {
+    const w = new Mesh(wheelGeo, LOW_TIRE);
+    w.position.set(x, -0.5, z);
+    g.add(w);
+  }
+  for (const side of [-1, 1]) {
+    const head = new Mesh(new BoxGeometry(0.4, 0.1, 0.04), LOW_HEAD);
+    head.position.set(side * 0.6, -0.06, 2.18);
+    const tail = new Mesh(new BoxGeometry(0.44, 0.1, 0.04), LOW_TAIL);
+    tail.position.set(side * 0.62, 0.08, -2.18);
+    g.add(head, tail);
+  }
+  if (opts.taxi) {
+    lowSign ??= new MeshStandardMaterial({
+      color: 0xfff6d8,
+      map: taxiSignTexture(),
+      emissive: 0xfff0c0,
+      emissiveIntensity: 0.6,
+    });
+    const sign = new Mesh(new BoxGeometry(0.42, 0.16, 0.14), lowSign);
+    sign.position.set(0, 0.72, -0.15);
+    g.add(sign);
+  }
+  g.traverse((o) => {
+    if (o instanceof Mesh) o.castShadow = true;
+  });
+  return g;
 }

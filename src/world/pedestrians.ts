@@ -17,7 +17,7 @@ export type Pedestrian = {
   heading: number;
   speed: number;
   phase: number;
-  state: "walk" | "talk" | "fallen" | "dodge";
+  state: "walk" | "talk" | "fallen" | "dodge" | "injured";
   stateTime: number;
   body: RAPIER.RigidBody | null;
   groundCheck: number;
@@ -146,12 +146,12 @@ export class Pedestrians {
       const p = this.list[i];
       const pos = p.object.position;
       const dist = Math.hypot(pos.x - focus.x, pos.z - focus.z);
-      if (dist > DESPAWN) {
+      if (dist > DESPAWN && p.state !== "injured") {
         this.remove(i);
         continue;
       }
       this.step(p, dt, car, carSpeed, carForward, dist);
-      const wantsBody = dist < BODY_RADIUS && p.state !== "fallen";
+      const wantsBody = dist < BODY_RADIUS && p.state !== "fallen" && p.state !== "injured";
       if (wantsBody && !p.body) this.createBody(p);
       else if (!wantsBody) this.dropBody(p);
       p.body?.setNextKinematicTranslation({ x: pos.x, y: pos.y + 0.9, z: pos.z });
@@ -163,7 +163,7 @@ export class Pedestrians {
     let best: Pedestrian | null = null;
     let bestD = range;
     for (const p of this.list) {
-      if (p.state === "fallen") continue;
+      if (p.state === "fallen" || p.state === "injured") continue;
       const d = p.object.position.distanceTo(point);
       if (d < bestD) {
         bestD = d;
@@ -178,11 +178,18 @@ export class Pedestrians {
     return this.list.find((p) => p.body && p.body.collider(0)?.handle === handle) ?? null;
   }
 
+  /** Hit by a car: falls and stays down until the ambulance takes them (道路交通法 第72条). */
   knockDown(p: Pedestrian): void {
-    if (p.state === "fallen") return;
-    p.state = "fallen";
+    if (p.state === "injured") return;
+    p.state = "injured";
     p.stateTime = 0;
     this.dropBody(p);
+  }
+
+  /** Carried away by the ambulance. */
+  rescue(p: Pedestrian): void {
+    const i = this.list.indexOf(p);
+    if (i >= 0) this.remove(i);
   }
 
   startTalk(p: Pedestrian, face: Vector3): void {
@@ -204,6 +211,11 @@ export class Pedestrians {
   ): void {
     p.stateTime += dt;
     const pos = p.object.position;
+    if (p.state === "injured") {
+      const t = Math.min(1, p.stateTime / 0.4);
+      p.object.rotation.set(t * (Math.PI / 2), p.heading, 0);
+      return;
+    }
     if (p.state === "fallen") {
       // Tip over, lie for a moment, then get back up.
       const t = p.stateTime;

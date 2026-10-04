@@ -15,6 +15,7 @@ import {
 import { Sky } from "three/addons/objects/Sky.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { PMREMGenerator } from "three";
+import { QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
 
 export type TimeMode = "real" | "morning" | "day" | "evening" | "night";
@@ -79,7 +80,7 @@ export class Environment {
     scene.fog = this.fog;
 
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(QUALITY.shadowMapSize, QUALITY.shadowMapSize);
     const cam = this.sun.shadow.camera;
     cam.left = cam.bottom = -140;
     cam.right = cam.top = 140;
