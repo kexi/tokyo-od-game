@@ -28,6 +28,18 @@ type AiCar = {
   serial: number;
   served: number; // id of the stop-sign approach already stopped at
   waited: number; // seconds standing at the current stop line
+  /** Where it drives as a vehicle with wheels: rear axle, heading, front-wheel angle, bike lean. */
+  rear: Vector3;
+  yaw: number;
+  steer: number;
+  lean: number;
+  wheelbase: number;
+  /** Front wheel nodes that turn with the steering (the low car has none). */
+  front: Object3D[];
+  /** The roads after this one, chosen ahead so a turn can be driven before the junction. */
+  route: Array<{ seg: Segment; dir: 1 | -1 }>;
+  /** Seconds standing at a dead end (no way on): it leaves once out of view. */
+  deadEnd: number;
 };
 
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
@@ -38,6 +50,12 @@ const DESPAWN_RADIUS = 450;
 const FAR = 600;
 const BODY_RADIUS = 120;
 const LANE_FRACTION = 0.25; // centre of the left half of a two-way carriageway
+const GRAVITY = 9.81;
+// Steering locks: about 35° for cars, buses and trucks, 25° for a bike at street speeds.
+const MAX_STEER = 0.6;
+const MAX_STEER_BIKE = 0.45;
+const MAX_LEAN = 0.6; // rad, a bike leaned well over in a tight turn
+const FRONT_WHEEL = /^Wheel(F[LR]?|Front)$/;
 // gapAhead targets a 7 m standstill gap to the next car's centre; a stop line is a "car" this far
 // beyond the line so the front bumper (2.15 m ahead of the centre) halts just short of it.
 const STOP_LINE_GAP = 4.5;
@@ -135,6 +153,8 @@ export class TrafficAI {
   transform(offset: (p: Vector3) => Vector3, yawDelta: number): void {
     for (const c of this.cars) {
       offset(c.object.position);
+      offset(c.rear);
+      c.yaw += yawDelta;
       c.object.rotation.y += yawDelta;
       if (c.body) {
         this.world.removeRigidBody(c.body);
@@ -153,6 +173,11 @@ export class TrafficAI {
     return this.cars.map((c) => c.object.position);
   }
 
+  /** Visit each car for the traffic hum: its object (identity and pose), speed (m/s), model kind. */
+  forEachCar(visit: (object: Object3D, speed: number, kind: VehicleKind | null) => void): void {
+    for (const c of this.cars) visit(c.object, c.speed, c.vehicle?.kind ?? null);
+  }
+
   count(): number {
     return this.cars.length;
   }
@@ -168,9 +193,10 @@ export class TrafficAI {
     for (let i = this.cars.length - 1; i >= 0; i--) {
       const c = this.cars[i];
       const { pos, dir } = this.pose(graph, c);
-      // Never vanish in front of the camera: only out of view, or very far.
+      // Never vanish in front of the camera: only out of view, or very far (or stuck at a dead end).
       const away = pos.distanceTo(focus);
-      if (away > FAR || (away > DESPAWN_RADIUS && !this.isSeen(pos))) {
+      const isGoneUnseen = (away > DESPAWN_RADIUS || c.deadEnd > 0) && !this.isSeen(pos);
+      if (away > FAR || isGoneUnseen) {
         this.remove(c);
         this.cars.splice(i, 1);
         continue;
@@ -184,9 +210,17 @@ export class TrafficAI {
       // 7 m centre to centre for cars; longer vehicles keep their own length clear.
       const standstill = 4.75 + c.half;
       const target =
-        gap < standstill ? 0 : gap < standstill + 18 ? Math.min(cruise, (gap - standstill) * 0.8) : cruise;
-      c.speed += Math.max(-6 * dt, Math.min(2.2 * dt, target - c.speed));
-      c.s += c.speed * dt;
+        c.deadEnd > 0
+          ? 0
+          : gap < standstill
+            ? 0
+            : gap < standstill + 18
+              ? Math.min(cruise, (gap - standstill) * 0.8)
+              : cruise;
+      const turnSafe = this.cornerSpeed(graph, c);
+      c.speed += Math.max(-6 * dt, Math.min(2.2 * dt, Math.min(target, turnSafe) - c.speed));
+      const isPlaced = Number.isFinite(c.rear.x);
+      if (!isPlaced) c.s += c.speed * dt;
       if (c.s >= c.seg.length) this.advance(graph, c);
 
       c.groundCheck -= dt;
@@ -194,10 +228,25 @@ export class TrafficAI {
         c.groundCheck = 0.3;
         c.ground = this.groundAt(pos.x, pos.z) ?? c.ground;
       }
-      const yaw = Math.atan2(dir.x, dir.z);
-      c.object.position.set(pos.x, c.ground + (c.vehicle ? 0 : 0.86), pos.z);
+      const centre = this.drive(graph, c, pos, dir, dt);
+      // Where along its lane the car really is: its centre projected onto the road. Why not count the
+      // distance driven: a car rounding a corner cuts it, and the count ran ahead of the car until it
+      // aimed behind itself.
+      if (isPlaced) {
+        const along = graph.nearestOn(c.seg, centre).s;
+        const projected = c.dir === 1 ? along : c.seg.length - along;
+        c.s = Math.max(c.s - 2, Math.min(c.s + c.speed * dt * 2 + 0.05, projected));
+        if (c.s >= c.seg.length - 0.05) {
+          c.s = c.seg.length + 0.05;
+          this.advance(graph, c);
+        }
+      }
+      const yaw = c.yaw;
+      c.object.position.set(centre.x, c.ground + (c.vehicle ? 0 : 0.86), centre.z);
       for (const w of c.vehicle?.wheels ?? []) w.rotation.x += (c.speed * dt) / 0.45;
-      c.object.rotation.set(0, yaw, 0);
+      for (const w of c.front) w.rotation.y = c.steer;
+      // Bikes lean into the turn about their ground contact (their origin is on the ground).
+      c.object.rotation.set(0, yaw, -c.lean);
       const isNear = pos.distanceTo(player) < BODY_RADIUS;
       if (isNear && !c.body) {
         c.body = this.world.createRigidBody(
@@ -223,12 +272,135 @@ export class TrafficAI {
 
   /** World pose of a car: lane centre to the left of its travel direction. */
   private pose(graph: RoadGraph, c: AiCar): { pos: Vector3; dir: Vector3 } {
-    const along = c.dir === 1 ? c.s : c.seg.length - c.s;
-    const { pos, dir } = graph.sample(c.seg, along, this.tmpPos, this.tmpDir);
-    if (c.dir === -1) dir.negate();
-    const lane = c.seg.oneway === 0 ? c.seg.line.width * LANE_FRACTION : 0;
-    pos.add(leftOf(dir, lane));
-    return { pos: pos.clone(), dir: dir.clone() };
+    return this.lanePoint(graph, c.seg, c.dir, c.s);
+  }
+
+  /** The lane centre `s` metres along a segment in a travel direction. */
+  private lanePoint(graph: RoadGraph, seg: Segment, dir: 1 | -1, s: number): { pos: Vector3; dir: Vector3 } {
+    const along = dir === 1 ? s : seg.length - s;
+    const sample = graph.sample(seg, Math.max(0, Math.min(seg.length, along)), this.tmpPos, this.tmpDir);
+    if (dir === -1) sample.dir.negate();
+    const lane = seg.oneway === 0 ? seg.line.width * LANE_FRACTION : 0;
+    sample.pos.add(leftOf(sample.dir, lane));
+    return { pos: sample.pos.clone(), dir: sample.dir.clone() };
+  }
+
+  /**
+   * Drive it as a vehicle with wheels, not a point on a line: pure pursuit steers the front wheels
+   * toward a point a little ahead on the lane (into the next road near a junction), and the kinematic
+   * bicycle model moves the rear axle and turns the body from that steering. Corners come out round,
+   * the rear cuts in as it does on a real car, and the front wheels show the angle. Returns the centre.
+   * Why not snap to the lane and its tangent (as before): the polylines meet at sharp corners, so a car
+   * pivoted on the spot at every junction.
+   */
+  private drive(graph: RoadGraph, c: AiCar, lane: Vector3, laneDir: Vector3, dt: number): Vector3 {
+    const fwd = new Vector3(Math.sin(c.yaw), 0, Math.cos(c.yaw));
+    const centre = c.rear.clone().addScaledVector(fwd, c.wheelbase / 2);
+    // Far off its lane (just spawned, re-anchored, turned round): put it back on the lane.
+    // A frame without time (paused, a second call in the same frame) leaves it where it is.
+    if (dt <= 0 && Number.isFinite(centre.x)) return centre;
+    // Put back only where nobody sees it jump (or when hopelessly lost); in view it drives on and
+    // pure pursuit brings it round to its lane — a hairpin of short road pieces is tighter than
+    // a car can turn.
+    const offLane = Math.hypot(centre.x - lane.x, centre.z - lane.z);
+    const isAdrift = !(offLane <= 8) && (!this.isSeen(centre) || !(offLane <= 25));
+    if (isAdrift) {
+      c.yaw = Math.atan2(laneDir.x, laneDir.z);
+      c.rear.copy(lane).addScaledVector(laneDir, -c.wheelbase / 2);
+      c.steer = 0;
+      c.lean = 0;
+      return lane.clone();
+    }
+    const lookahead = Math.max(3.5, Math.min(12, 3 + c.speed * 0.55));
+    const target = this.ahead(graph, c, c.wheelbase / 2 + lookahead);
+    const dx = target.x - c.rear.x;
+    const dz = target.z - c.rear.z;
+    const along = dx * fwd.x + dz * fwd.z;
+    const leftward = dx * fwd.z - dz * fwd.x;
+    const reach = Math.max(1, Math.hypot(dx, dz));
+    const alpha = Math.atan2(leftward, along);
+    const isBike = c.vehicle?.kind === "motorbike";
+    const lock = isBike ? MAX_STEER_BIKE : MAX_STEER;
+    const wanted = Math.max(-lock, Math.min(lock, Math.atan((2 * Math.sin(alpha) * c.wheelbase) / reach)));
+    // A steering wheel turns at a finite rate.
+    c.steer += Math.max(-2.5 * dt, Math.min(2.5 * dt, wanted - c.steer));
+    const curvature = Math.tan(c.steer) / c.wheelbase;
+    c.yaw += c.speed * curvature * dt;
+    c.rear.addScaledVector(new Vector3(Math.sin(c.yaw), 0, Math.cos(c.yaw)), c.speed * dt);
+    if (isBike) {
+      const lean = Math.atan((c.speed * c.speed * curvature) / GRAVITY);
+      const target = Math.max(-MAX_LEAN, Math.min(MAX_LEAN, lean));
+      c.lean += (target - c.lean) * Math.min(1, dt * 6);
+    }
+    return c.rear.clone().addScaledVector(new Vector3(Math.sin(c.yaw), 0, Math.cos(c.yaw)), c.wheelbase / 2);
+  }
+
+  /**
+   * The speed to be at now so the turn at the end of this road can be driven: a sharp turn wants
+   * about 15–20 km/h at the junction (lateral grip ~2.5 m/s², radius from the turn's angle), braked
+   * for comfortably (2.5 m/s²) from wherever the car is. Straight on: no limit.
+   */
+  private cornerSpeed(graph: RoadGraph, c: AiCar): number {
+    const left = c.seg.length - c.s;
+    if (left > 60) return Number.POSITIVE_INFINITY;
+    const next = this.peekNext(graph, c);
+    if (!next) return Math.sqrt(2 * 2.5 * Math.max(0, left - 2));
+    // The whole turn: the way in, and the way out 12 m past the junction (short pieces included).
+    const end = this.lanePoint(graph, c.seg, c.dir, c.seg.length).dir;
+    const out = this.aheadPose(graph, c, left + 12).dir;
+    const angle = Math.acos(Math.max(-1, Math.min(1, end.dot(out))));
+    if (angle < 0.3) return Number.POSITIVE_INFINITY;
+    const radius = Math.max(5, 12 / angle);
+    const atTurn = Math.max(3.5, Math.sqrt(2.5 * radius));
+    return Math.sqrt(atTurn * atTurn + 2 * 2.5 * Math.max(0, left - 3));
+  }
+
+  /** The lane centre `metres` ahead of where the car is along its route (into the next road). */
+  private ahead(graph: RoadGraph, c: AiCar, metres: number): Vector3 {
+    return this.aheadPose(graph, c, metres).pos;
+  }
+
+  /** Lane point and direction `metres` ahead along the route, through as many roads as it takes. */
+  private aheadPose(graph: RoadGraph, c: AiCar, metres: number): { pos: Vector3; dir: Vector3 } {
+    let s = c.s + metres;
+    let seg = c.seg;
+    let dir = c.dir;
+    for (let k = 0; s > seg.length && k < 8; k++) {
+      const next = this.upcoming(graph, c, k);
+      if (!next) {
+        s = seg.length;
+        break;
+      }
+      s -= seg.length;
+      seg = next.seg;
+      dir = next.dir;
+    }
+    return this.lanePoint(graph, seg, dir, Math.min(s, seg.length));
+  }
+
+  /** The road it will take at the end of this one (chosen once, kept until it gets there). */
+  private peekNext(graph: RoadGraph, c: AiCar): { seg: Segment; dir: 1 | -1 } | null {
+    return this.upcoming(graph, c, 0);
+  }
+
+  /** The road `k` steps after this one (0: the next), chosen ahead and kept until reached. */
+  private upcoming(graph: RoadGraph, c: AiCar, k: number): { seg: Segment; dir: 1 | -1 } | null {
+    while (c.route.length <= k) {
+      const last = c.route.at(-1) ?? { seg: c.seg, dir: c.dir };
+      const endNode = last.dir === 1 ? last.seg.to : last.seg.from;
+      const arriving = this.lanePoint(graph, last.seg, last.dir, last.seg.length).dir;
+      // Not back the way it came: on a dual carriageway the other one-way line can be the only exit,
+      // a hairpin no car drives at a junction (more than 120°: a dead end for it instead).
+      const options = graph.exits(endNode, last.seg.id).filter((seg) => {
+        const dir: 1 | -1 = seg.from === endNode ? 1 : -1;
+        return this.lanePoint(graph, seg, dir, 0).dir.dot(arriving) > -0.5;
+      });
+      if (options.length === 0) return null;
+      c.serial = (c.serial * 1103515245 + 12345) >>> 0;
+      const seg = options[c.serial % options.length];
+      c.route.push({ seg, dir: seg.from === endNode ? 1 : -1 });
+    }
+    return c.route[k];
   }
 
   /**
@@ -276,19 +448,24 @@ export class TrafficAI {
   }
 
   private advance(graph: RoadGraph, c: AiCar): void {
-    const endNode = c.dir === 1 ? c.seg.to : c.seg.from;
-    const options = graph.exits(endNode, c.seg.id);
-    if (options.length === 0) {
-      // Dead end or one-way trap: turn around.
+    const next = this.peekNext(graph, c);
+    if (next) c.route.shift();
+    if (!next) {
+      // Dead end or one-way trap: stop at the end and leave once nobody is looking. Why not turn
+      // round on the spot (as before): a car does not spin 180° in place. Only one kept in view
+      // for long turns round (a three-point turn is not modelled).
+      c.s = c.seg.length;
+      c.deadEnd += 1 / 60;
+      if (c.deadEnd < 25) return;
+      c.deadEnd = 0;
       c.dir = c.dir === 1 ? -1 : 1;
       c.s = 0;
       return;
     }
-    c.serial = (c.serial * 1103515245 + 12345) >>> 0;
-    const next = options[c.serial % options.length];
-    c.dir = next.from === endNode ? 1 : -1;
+    c.deadEnd = 0;
+    c.dir = next.dir;
     c.s = c.s - c.seg.length;
-    c.seg = next;
+    c.seg = next.seg;
   }
 
   private spawn(graph: RoadGraph, focus: Vector3): void {
@@ -340,7 +517,17 @@ export class TrafficAI {
         serial: this.serial,
         served: -1,
         waited: 0,
+        // Placed on its lane by drive() on the first update (isAdrift).
+        rear: new Vector3(Number.POSITIVE_INFINITY, 0, 0),
+        yaw: 0,
+        steer: 0,
+        lean: 0,
+        wheelbase: kind === "motorbike" ? 1.45 : Math.max(2.4, (vehicle ? vehicle.length : 4.4) * 0.58),
+        front: (vehicle?.wheels ?? []).filter((w) => FRONT_WHEEL.test(w.name)),
+        route: [],
+        deadEnd: 0,
       });
+      for (const w of this.cars.at(-1)?.front ?? []) w.rotation.order = "YXZ";
     }
   }
 

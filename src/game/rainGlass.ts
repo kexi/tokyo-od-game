@@ -30,22 +30,25 @@ import {
  *
  * Physics (RainSim) works in metres on the glass plane: x along the windscreen UV's u (to the
  * driver's right), y along v (up the glass). Raindrops land at the Marshall–Palmer rate for the
- * rainfall, more when driving into the rain. Drops of 1.6 mm and up become simulated drops; the
- * smaller ones (nearly all of the count, about two thirds of the water) feed a per-cell layer of
- * fine droplets that the glass shader draws statistically. A drop holds while contact-angle
- * hysteresis (Furmidge, 2γ·a·Δcosθ) beats gravity along the raked glass plus the airflow's drag,
- * and past that it slides at the speed contact-line friction allows: about 2.6 mm of contact
- * radius slides down a standing car, and above roughly 65 km/h the airflow carries millimetre drops
- * up and out towards the pillars. Touching drops merge (volume conserved), sliding ones sweep up
- * the fine droplets in their path and leave a trail of tiny ones, and the blades push the water to
- * the ends of their stroke, leaving a thin film that beads up and fades.
+ * rainfall, more when driving into the rain (fast impacts splash into pieces). Drops of 1.6 mm and
+ * up become simulated drops, at most `maxDrops` of them (a fresh impact takes the place of a
+ * smaller drop); the smaller ones (nearly all of the count, about two thirds of the water) feed a
+ * per-cell layer of fine droplets that the glass shader draws statistically, and that coalesce
+ * into drops where they crowd. A drop holds while contact-angle hysteresis (Furmidge,
+ * 2γ·a·Δcosθ) beats gravity along the raked glass plus the airflow's drag, and past that it
+ * slides at the speed contact-line friction allows: about 2.6 mm of contact radius slides down a
+ * standing car, and above roughly 65 km/h the airflow carries millimetre drops up and out towards
+ * the pillars. Touching drops merge (volume conserved); running ones wander on the glass's dirt,
+ * sweep up the fine droplets in their path and leave a trail of tiny ones. The blades push the
+ * water to the ends of their stroke and leave a thin, streaky film that beads up and fades.
  *
- * Optics (RainGlass): each drop is drawn into a normal/thickness texture as a spherical cap. The
- * windscreen shader refracts the view ray through it (flat glass into the water, out through the
- * curved surface) and looks up what the eye would see along the refracted ray in a copy of the
- * frame just rendered, so each drop is a plano-convex lens that shows the street minified and
- * upside down, dark where the ray is totally reflected inside the drop, slightly out of focus.
- * Glass geometry, wiper pivots and angles are from knowledge/cockpit-blender.md.
+ * Optics (RainGlass): each drop is drawn into a glass-space texture as the position inside its
+ * spherical cap. The windscreen shader traces the view ray through the cap (into the water
+ * through the flat glass, out through the curved surface, reflecting inside past the critical
+ * angle) and looks up what the eye would see along the ray that leaves, in a copy of the frame
+ * just rendered: each drop is a plano-convex lens showing the street minified and upside down,
+ * with a dark rim where the light ends up back in the cabin, a little out of focus because the
+ * eye is on the road. Glass geometry, wiper pivots and angles: knowledge/cockpit-blender.md.
  */
 const DEG = Math.PI / 180;
 
@@ -91,6 +94,7 @@ const TRAIL_EVERY = 2.4; // contact radii run per trail droplet
 const A_SPLIT = 5e-3; // m: a running drop bigger than this breaks in two
 const EVAPORATION = 1e-9; // m²/s (a² shrinks at 2× this once the rain stops: ~8 min for 1 mm)
 const STEP = 1 / 120; // s, the fixed physics step
+const FIELD_STEP = 1 / 30; // s, the fine-droplet field's update interval
 const GRID = 12e-3; // m: merge-grid cells, twice the largest drop that merges reliably
 const GRID_W = Math.ceil(GLASS_W / GRID);
 const GRID_H = Math.ceil(GLASS_H / GRID);
@@ -112,9 +116,12 @@ const MICRO_DRY_TAU = 240; // s, fine droplets evaporating once the rain stops
 const FILM_TAU = 0.7; // s, the wiper's film thinning out
 const FILM_DEPTH = 3e-6; // m of water a fresh film holds; it beads up into fine droplets
 const RESIDUAL = 0.04; // share of fine droplets a blade leaves behind
-const DEPOSIT_KEEP = 0.35; // share of the pushed water left at the top of the stroke
-const DEPOSIT_BEADS = 24; // beads along the blade there, of about DEPOSIT_A contact radius
-const DEPOSIT_A = 2.2e-3;
+const DEPOSIT_KEEP = 0.2; // share of the pushed water left at the top of the stroke
+const DEPOSIT_BEADS = 16; // beads along the blade there, of about DEPOSIT_A contact radius
+const DEPOSIT_A = 1.3e-3;
+
+/** Fine-droplet coverage 1 − e^(−w / MICRO_SCALE) as a byte, by w / MICRO_SCALE in 1/32 steps. */
+const COVER_LUT = Uint8Array.from({ length: 257 }, (_, k) => 255 * (1 - Math.exp(-k / 32)));
 
 /**
  * The wiper blades on the glass (knowledge/cockpit-blender.md): pivot in glass metres, the arm's
@@ -165,6 +172,22 @@ function hash2(ix: number, iy: number): number {
   let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function isOnGlass(x: number, y: number): boolean {
+  return x > 0 && x < GLASS_W && y > 0 && y < GLASS_H;
+}
+
+/** First index of the sorted array whose value is at least x. */
+function lowerBound(sorted: Float32Array, x: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** Smooth value noise in [0, 1), fixed in space (the glass's dirt does not move). */
@@ -221,6 +244,8 @@ export class RainSim {
   readonly water = new Float32Array(FIELD_W * FIELD_H);
   /** Wiper film per field cell, 1 just after a blade passes. */
   readonly film = new Float32Array(FIELD_W * FIELD_H);
+  /** The field as the glass texture wants it: fine-droplet coverage and film, two bytes a cell. */
+  readonly fieldBytes = new Uint8Array(FIELD_W * FIELD_H * 2);
   /** Bumped whenever the field changes, so the view uploads it only then. */
   fieldVersion = 0;
   private isWet = false;
@@ -228,10 +253,12 @@ export class RainSim {
   private spawnDebt = 0;
   private coarsenDebt = 0;
   private clock = 0;
+  private fieldClock = 0;
   private readonly prevBlade: number[] = [];
   private readonly bladeDir: number[] = [];
   private readonly bladeLoad: number[] = [];
-  private readonly cellPolar: Array<{ r: Float32Array; phi: Float32Array }>;
+  /** Per blade, the cells within its span sorted by arm angle, so a wipe visits only its band. */
+  private readonly bladeCells: Array<{ cells: Int32Array; phi: Float32Array }>;
   // Per-cell spread of the coalescence threshold, so cells do not all coarsen in the same frame.
   private readonly cellThreshold = new Float32Array(FIELD_W * FIELD_H);
   private readonly head = new Int32Array(GRID_W * GRID_H);
@@ -247,19 +274,18 @@ export class RainSim {
     this.trail = new Float64Array(maxDrops);
     this.link = new Int32Array(maxDrops);
     this.rng = mulberry32(seed);
-    // Each cell's polar position from each blade's pivot, for the wipe test.
-    this.cellPolar = WIPER_BLADES.map((b) => {
-      const r = new Float32Array(FIELD_W * FIELD_H);
-      const phi = new Float32Array(FIELD_W * FIELD_H);
+    this.bladeCells = WIPER_BLADES.map((b) => {
+      const inSpan: Array<{ c: number; phi: number }> = [];
       for (let j = 0; j < FIELD_H; j++) {
         for (let i = 0; i < FIELD_W; i++) {
           const px = (i + 0.5) * CELL_W - b.pivot[0];
           const py = (j + 0.5) * CELL_H - b.pivot[1];
-          r[j * FIELD_W + i] = Math.hypot(px, py);
-          phi[j * FIELD_W + i] = Math.atan2(py, -px);
+          const r = Math.hypot(px, py);
+          if (r >= b.rIn && r <= b.rOut) inSpan.push({ c: j * FIELD_W + i, phi: Math.atan2(py, -px) });
         }
       }
-      return { r, phi };
+      inSpan.sort((p, q) => p.phi - q.phi);
+      return { cells: Int32Array.from(inSpan, (e) => e.c), phi: Float32Array.from(inSpan, (e) => e.phi) };
     });
     for (let c = 0; c < this.cellThreshold.length; c++) this.cellThreshold[c] = 0.7 + 0.6 * this.rng();
     for (let b = 0; b < WIPER_BLADES.length; b++) {
@@ -315,7 +341,11 @@ export class RainSim {
       this.merge();
     }
     this.wipe(env.blades);
-    this.updateField(dt, flux.microRate);
+    // The field changes slowly (and a frame's lag behind the blade does not show): 30 Hz.
+    this.fieldClock += dt;
+    if (this.fieldClock < FIELD_STEP) return;
+    this.updateField(this.fieldClock, flux.microRate);
+    this.fieldClock = 0;
   }
 
   /** Retire the smallest of a few random drops if it is smaller than `a`. */
@@ -435,7 +465,7 @@ export class RainSim {
       if (dist < 1e-7) continue;
       this.sweep(i, dist);
       this.leaveTrail(i, dist);
-      const isOversized = this.a[i] > A_SPLIT && this.count < this.maxDrops;
+      const isOversized = this.a[i] > A_SPLIT;
       if (isOversized) this.split(i);
     }
   }
@@ -580,10 +610,9 @@ export class RainSim {
         load += KAPPA * a ** 3;
         this.a[i] = 0;
       }
-      const { r, phi } = this.cellPolar[b];
-      for (let c = 0; c < this.water.length; c++) {
-        const isSwept = r[c] >= blade.rIn && r[c] <= blade.rOut && phi[c] >= lo && phi[c] <= hi;
-        if (!isSwept) continue;
+      const { cells, phi } = this.bladeCells[b];
+      for (let k = lowerBound(phi, lo); k < phi.length && phi[k] <= hi; k++) {
+        const c = cells[k];
         load += this.water[c] * (1 - RESIDUAL) * CELL_AREA;
         this.water[c] *= RESIDUAL;
         this.film[c] = 1;
@@ -615,7 +644,6 @@ export class RainSim {
       const r = blade.rIn + (blade.rOut - blade.rIn) * t;
       return [blade.pivot[0] - Math.cos(phi) * r, blade.pivot[1] + Math.sin(phi) * r];
     };
-    const isOnGlass = (x: number, y: number) => x > 0 && x < GLASS_W && y > 0 && y < GLASS_H;
     for (let k = 0; k < DEPOSIT_BEADS && volume > 0; k++) {
       const a = DEPOSIT_A * (0.6 + 0.6 * this.rng());
       const v = Math.min(volume, KAPPA * a ** 3);
@@ -624,7 +652,8 @@ export class RainSim {
       this.add(x, y, Math.cbrt(v / KAPPA));
       volume -= v;
     }
-    for (let k = 0; k < 16 && volume > 0; k++) {
+    if (volume <= 0) return;
+    for (let k = 0; k < 16; k++) {
       const [x, y] = at(this.rng());
       if (isOnGlass(x, y)) this.addWater(x, y, volume / 16);
     }
@@ -663,8 +692,14 @@ export class RainSim {
         );
         w -= excess;
       }
-      this.water[c] = w < 1e-9 ? 0 : w;
-      isWet ||= w > 1e-9 || this.film[c] > 0;
+      // Once the rain stops, droplets too sparse to show count as gone (else the glass would
+      // stay "wet", and drawn, for most of an hour of exponential drying).
+      const isTrace = w < (isRaining ? 1e-9 : MICRO_SCALE / 64);
+      if (isTrace) w = 0;
+      this.water[c] = w;
+      isWet ||= w > 0 || this.film[c] > 0;
+      this.fieldBytes[c * 2] = COVER_LUT[Math.min(COVER_LUT.length - 1, ((w / MICRO_SCALE) * 32) | 0)];
+      this.fieldBytes[c * 2 + 1] = 255 * Math.min(1, this.film[c]);
     }
     this.isWet = isWet;
     this.fieldVersion++;
@@ -676,12 +711,14 @@ export class RainSim {
 const SHADER_DEFINES = {
   SIN_C: SIN_C.toFixed(6),
   COT_C: (COS_C / SIN_C).toFixed(6),
-  INV_SIN: (1 / SIN_C).toFixed(6),
   INV_SIN2: (1 / SIN_C ** 2).toFixed(6),
   N_WATER: N_WATER.toFixed(4),
 };
 
-/** One instanced quad per drop, drawn into the glass-space normal/thickness texture. */
+/**
+ * One instanced quad per drop, drawn into a glass-space texture: RG = where in its cap each point
+ * lies (contact radii, premultiplied), A = coverage.
+ */
 const DROP_VERTEX = /* glsl */ `
 attribute vec4 aDrop; // centre (m), drawn radius (m), tail stretch (≥ 1)
 attribute vec2 aDir;  // direction of motion, zero at rest
@@ -868,29 +905,35 @@ void main() {
   // The blade's film: streaky arcs that tilt the view a little while it thins out.
   float film = field.g;
   vec2 tilt = film > 0.003
-    ? (filmTilt(pm, uPivots.xy, uSpans.xy, 0.0) + filmTilt(pm, uPivots.zw, uSpans.zw, 41.0)) * film * 5e-6
+    ? (filmTilt(pm, uPivots.xy, uSpans.xy, 0.0) + filmTilt(pm, uPivots.zw, uSpans.zw, 41.0)) * film * 2.5e-5
     : vec2(0.0);
   vec3 outT = mix(vt, cap.xyz, step(1e-3, wet));
   outT.xy += tilt * (N_WATER - 1.0);
   vec3 dir = normalize(outT.x * uAxisU + outT.y * uAxisV + outT.z * uNormal);
   vec2 uvR = isCabin && wet > 1e-3 ? screen : throughWindow(dir);
 
-  // A drop shows a wide view squeezed into a few pixels: let the mip level do the averaging.
+  // A drop shows a wide view squeezed into a few pixels: the mip level does the averaging, but
+  // two levels short of the full footprint (three at night) so that lights stay points in it.
+  // They twinkle as the car moves, as in real drops; the full average turned every drop grey.
   vec2 px = uvR * uFrameSize;
   float footprint = max(length(dFdx(px)), length(dFdy(px)));
-  float lod = clamp(log2(max(footprint, 1.0)) + 0.7 * wet, 0.0, 7.0);
+  float lod = clamp(log2(max(footprint, 1.0)) - (2.0 + uGlow) * wet + 1.5 * film, 0.0, 6.0);
 
   vec3 base = textureLod(uFrame, screen, 0.0).rgb;
   vec3 seen = textureLod(uFrame, uvR, lod).rgb;
   vec3 cabin = textureLod(uFrame, vec2(0.5, 0.1), 7.0).rgb * 0.6;
   vec3 sky = textureLod(uFrame, toScreen(uOrigin + uAxisU * (0.5 * uGlass.x) + uAxisV * (0.92 * uGlass.y)), 5.0).rgb;
+  // The frame is tone-mapped, so a light reads as about 1; the real one is far brighter and the
+  // drop's tiny image of it still saturates. At night push the bright part back up (by day that
+  // would turn every drop showing the overcast sky white).
+  seen += max(seen - 0.55, 0.0) * 2.5 * uGlow;
   vec3 water = isCabin ? cabin : mix(cabin, seen, cap.w);
-  // Bright lights nearby: a drop gathers light from about ±30° into a small bright spot.
-  vec3 halo = textureLod(uFrame, screen, 5.0).rgb;
-  water += max(halo - 0.3, 0.0) * uGlow * wet;
+  // At night the lights around also light the whole drop a little (a soft glow).
+  vec3 halo = textureLod(uFrame, screen, 6.0).rgb;
+  water += max(halo - 0.1, 0.0) * 1.2 * uGlow * wet;
   // The film also scatters a little light: a faint haze over the smear.
   float smear = film * 0.9;
-  vec3 smeared = mix(seen, sky, 0.05);
+  vec3 smeared = mix(seen, sky, 0.08);
   float total = max(wet, smear);
   if (total < 0.002) discard;
   vec3 col = mix(base, smeared, smear * (1.0 - wet));
@@ -920,14 +963,7 @@ export class RainGlass {
   private readonly dropGeometry = new InstancedBufferGeometry();
   private readonly dropAttr: InstancedBufferAttribute;
   private readonly dirAttr: InstancedBufferAttribute;
-  private readonly fieldData = new Uint8Array(FIELD_W * FIELD_H * 2);
-  private readonly fieldTexture = new DataTexture(
-    this.fieldData,
-    FIELD_W,
-    FIELD_H,
-    RGFormat,
-    UnsignedByteType,
-  );
+  private readonly fieldTexture: DataTexture;
   private fieldUploaded = -1;
   private dropsTarget: WebGLRenderTarget | null = null;
   private frame: FramebufferTexture | null = null;
@@ -942,6 +978,7 @@ export class RainGlass {
     this.sim = new RainSim({ maxDrops, seed: 20261005 });
     // Glass texels about 1 mm (0.7 mm on desktop): finer than the drops, near the screen's density.
     this.dropsSize = isMobile ? [1024, 576] : [2048, 1152];
+    this.fieldTexture = new DataTexture(this.sim.fieldBytes, FIELD_W, FIELD_H, RGFormat, UnsignedByteType);
     this.fieldTexture.magFilter = LinearFilter;
     this.fieldTexture.minFilter = LinearFilter;
     const quad = new PlaneGeometry(2, 2);
@@ -1059,7 +1096,7 @@ export class RainGlass {
       d[i * 4 + 1] = sim.y[i];
       d[i * 4 + 2] = Math.max(MIN_DRAWN, sim.a[i] * DRAW_SCALE);
       // A running drop: round front, tail drawn out behind it (more the faster it runs).
-      d[i * 4 + 3] = isRunning ? 1 + Math.min(2.2, speed / 0.08) : 1;
+      d[i * 4 + 3] = isRunning ? 1 + Math.min(1.6, speed / 0.15) : 1;
       dir[i * 2] = isRunning ? sim.vx[i] / speed : 0;
       dir[i * 2 + 1] = isRunning ? sim.vy[i] / speed : 0;
     }
@@ -1104,14 +1141,8 @@ export class RainGlass {
 
   /** Upload the fine-droplet coverage and the film when they changed. */
   private syncField(): void {
-    const sim = this.sim;
-    if (this.fieldUploaded === sim.fieldVersion) return;
-    this.fieldUploaded = sim.fieldVersion;
-    const out = this.fieldData;
-    for (let c = 0; c < sim.water.length; c++) {
-      out[c * 2] = 255 * (1 - Math.exp(-sim.water[c] / MICRO_SCALE));
-      out[c * 2 + 1] = 255 * Math.min(1, sim.film[c]);
-    }
+    if (this.fieldUploaded === this.sim.fieldVersion) return;
+    this.fieldUploaded = this.sim.fieldVersion;
     this.fieldTexture.needsUpdate = true;
   }
 }

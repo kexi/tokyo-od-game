@@ -14,6 +14,13 @@ const still = (speed = 0): RainEnv => ({ rainMmH: 0, speed, blades: PARKED });
 const run = (sim: RainSim, seconds: number, env: RainEnv, dt = 1 / 60) => {
   for (let t = 0; t < seconds - 1e-9; t += dt) sim.step(dt, env);
 };
+/** Where a 4 mm drop has slid to after a second of frames dt apart. */
+const slidAfterOneSecond = (dt: number) => {
+  const sim = new RainSim({ seed: 6 });
+  sim.add(0.7, 0.7, 4.0e-3);
+  run(sim, 1, still(), dt);
+  return sim.y[0];
+};
 /** A point on the glass at radius r from blade b's pivot, arm angle phi. */
 const onBlade = (b: number, r: number, phi: number): [number, number] => {
   const [ox, oy] = WIPER_BLADES[b].pivot;
@@ -60,13 +67,7 @@ describe("rain on the windscreen: drop physics", () => {
   });
 
   it("does not depend on the frame rate", () => {
-    const at = (dt: number) => {
-      const sim = new RainSim({ seed: 6 });
-      sim.add(0.7, 0.7, 4.0e-3);
-      run(sim, 1, still(), dt);
-      return sim.y[0];
-    };
-    expect(at(1 / 30)).toBeCloseTo(at(1 / 144), 3);
+    expect(slidAfterOneSecond(1 / 30)).toBeCloseTo(slidAfterOneSecond(1 / 144), 6);
   });
 
   it("leaves a trail of tiny droplets behind a sliding drop", () => {
@@ -94,11 +95,16 @@ describe("rain on the windscreen: drop physics", () => {
     expect(remaining.some(([x, y]) => Math.hypot(x - beyond[0], y - beyond[1]) < 1e-3)).toBe(true);
   });
 
-  it("never holds more simulated drops than its cap, even in a downpour at speed", () => {
+  it("never holds more simulated drops than its cap, even in a downpour", () => {
     const sim = new RainSim({ maxDrops: 300, seed: 9 });
-    run(sim, 20, { rainMmH: 50, speed: 30, blades: PARKED });
-    expect(sim.count).toBeLessThanOrEqual(300);
-    expect(sim.count).toBeGreaterThan(200);
+    let most = 0;
+    for (const speed of [0, 30]) {
+      for (let t = 0; t < 10; t += 1 / 60) {
+        sim.step(1 / 60, { rainMmH: 50, speed, blades: PARKED });
+        most = Math.max(most, sim.count);
+      }
+    }
+    expect(most).toBe(300);
   });
 
   it("gets more rain on the glass when driving into it", () => {
