@@ -11,9 +11,10 @@ import {
 /**
  * 設定 › 画質: the preset (最高 / 高 / 中 / 低, カスタム once an item is changed by hand) and one
  * select per feature, built from GRAPHICS_ITEMS so a new feature only needs its row there. The
- * items that size what is loaded say so and offer a reload.
+ * items that size what is loaded say so and offer a reload. `running` names the backend the
+ * renderer is on now (描画方式 自動 may have fallen back to WebGL 2).
  */
-export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void {
+export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics, running?: string): void {
   const loaded = { ...graphics.settings };
   const preset = document.createElement("select");
   preset.id = "opt-graphics-preset";
@@ -45,7 +46,7 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
   }
   preset.addEventListener("change", () => {
     const isPreset = preset.value !== "custom";
-    if (isPreset) graphics.set(withPreset(preset.value as GraphicsPreset));
+    if (isPreset) graphics.set(withPreset(preset.value as GraphicsPreset, graphics.settings));
   });
 
   const reload = document.createElement("p");
@@ -55,8 +56,13 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
   button.type = "button";
   button.textContent = "再読み込み";
   button.addEventListener("click", () => location.reload());
-  reload.append("描画距離・車と歩行者の数・アンチエイリアスは再読み込みで変わります。 ", button);
-  root.after(reload);
+  const reloadItems = GRAPHICS_ITEMS.filter((i) => i.onReload).map((i) => i.label);
+  reload.append(`${reloadItems.join("・")}は再読み込みで変わります。 `, button);
+  const backend = document.createElement("p");
+  backend.className = "graphics-backend";
+  backend.textContent = `いまの描画方式: ${running}`;
+  backend.hidden = running === undefined;
+  root.after(backend, reload);
 
   const show = () => {
     const s = graphics.settings;

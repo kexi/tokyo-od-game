@@ -3,6 +3,7 @@ import {
   defaultGraphics,
   GRAPHICS_ITEMS,
   parseGraphics,
+  PRESET_ITEMS,
   PRESETS,
   withItem,
   withPreset,
@@ -14,9 +15,9 @@ describe("画質", () => {
     expect(defaultGraphics(true).preset).toBe("low");
   });
 
-  it("gives every preset a valid option for every item", () => {
+  it("gives every preset a valid option for every item it sets", () => {
     for (const preset of Object.values(PRESETS))
-      for (const item of GRAPHICS_ITEMS) expect(item.options.map((o) => o.value)).toContain(preset[item.key]);
+      for (const item of PRESET_ITEMS) expect(item.options.map((o) => o.value)).toContain(preset[item.key]);
   });
 
   it("turns カスタム when an item is changed by hand, and back when it matches a preset again", () => {
@@ -32,5 +33,34 @@ describe("画質", () => {
     expect(parsed.shadows).toBe(defaultGraphics(false).shadows);
     expect(parsed.bloom).toBe("low");
     expect(parseGraphics(null, true)).toEqual(defaultGraphics(true));
+  });
+
+  describe("描画方式", () => {
+    it("starts on 自動 (WebGPU where the browser has it), on a phone too", () => {
+      expect(defaultGraphics(false).backend).toBe("auto");
+      expect(defaultGraphics(true).backend).toBe("auto");
+    });
+
+    it("is a row of its own that takes effect on reload", () => {
+      const row = GRAPHICS_ITEMS.find((i) => i.key === "backend");
+      expect(row?.label).toBe("描画方式");
+      expect(row?.onReload).toBe(true);
+      expect(row?.options.map((o) => o.value)).toEqual(["auto", "webgl"]);
+    });
+
+    it("is not a quality level: WebGL 2 keeps the preset, and a preset keeps WebGL 2", () => {
+      const webgl = withItem(withPreset("high"), "backend", "webgl");
+      expect(webgl.backend).toBe("webgl");
+      expect(webgl.preset).toBe("high");
+      const low = withPreset("low", webgl);
+      expect(low.backend).toBe("webgl");
+      expect(low.shadows).toBe("off");
+    });
+
+    it("is remembered, and an unknown stored value falls back to 自動", () => {
+      expect(parseGraphics({ backend: "webgl" }, false).backend).toBe("webgl");
+      expect(parseGraphics({ backend: "vulkan" }, false).backend).toBe("auto");
+      expect(parseGraphics({ backend: "webgl", bloom: "low" }, false).preset).toBe("custom");
+    });
   });
 });

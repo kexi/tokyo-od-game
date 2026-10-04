@@ -2,7 +2,8 @@
  * 画質: each graphics feature on its own setting, and the 最高 / 高 / 中 / 低 presets that set them
  * all. Remembered in this browser; phones start on 低, computers on 高. Most settings take effect
  * at once (the renderer, the shaders and the passes read them every frame or on change); the
- * ones that size what is loaded (view distance, traffic, anti-aliasing) on the next load.
+ * ones that size what is loaded (view distance, traffic, anti-aliasing) and the 描画方式 (the
+ * renderer's backend) on the next load.
  */
 export type GraphicsPreset = "ultra" | "high" | "medium" | "low";
 
@@ -30,12 +31,26 @@ export type GraphicsSettings = {
   /** Cars on the roads and people on the pavements. */
   traffic: "few" | "normal" | "many";
   antialias: "off" | "on";
+  /**
+   * 描画方式: auto = WebGPU where the browser has it, else WebGL 2 (three's WebGPURenderer picks);
+   * webgl = WebGL 2 always (forceWebGL), for a GPU or driver that misbehaves under WebGPU.
+   */
+  backend: "auto" | "webgl";
 };
 
 export type GraphicsKey = Exclude<keyof GraphicsSettings, "preset">;
+/** The items the presets set (描画方式 is not a quality level: the presets leave it alone). */
+export type PresetKey = Exclude<GraphicsKey, "backend">;
 
 type Option = { value: string; label: string };
-export type GraphicsItem = { key: GraphicsKey; label: string; options: Option[]; onReload?: boolean };
+export type GraphicsItem = {
+  key: GraphicsKey;
+  label: string;
+  options: Option[];
+  onReload?: boolean;
+  /** false: not part of the presets (choosing a preset keeps it, changing it keeps the preset). */
+  inPreset?: false;
+};
 
 /** The 設定 screen's rows, in order. */
 export const GRAPHICS_ITEMS: GraphicsItem[] = [
@@ -151,7 +166,22 @@ export const GRAPHICS_ITEMS: GraphicsItem[] = [
       { value: "off", label: "なし" },
     ],
   },
+  {
+    key: "backend",
+    label: "描画方式",
+    onReload: true,
+    inPreset: false,
+    options: [
+      { value: "auto", label: "自動（WebGPU 優先）" },
+      { value: "webgl", label: "WebGL 2" },
+    ],
+  },
 ];
+
+/** The rows the presets set. */
+export const PRESET_ITEMS = GRAPHICS_ITEMS.filter(
+  (i): i is GraphicsItem & { key: PresetKey } => i.inPreset !== false,
+);
 
 export const PRESET_LABEL: Record<GraphicsPreset | "custom", string> = {
   ultra: "最高",
@@ -162,7 +192,7 @@ export const PRESET_LABEL: Record<GraphicsPreset | "custom", string> = {
 };
 
 /** 高 is the computer's default: what the game drew before the presets, plus the new effects. */
-export const PRESETS: Record<GraphicsPreset, Omit<GraphicsSettings, "preset">> = {
+export const PRESETS: Record<GraphicsPreset, Pick<GraphicsSettings, PresetKey>> = {
   ultra: {
     resolution: "2",
     shadows: "4096",
@@ -223,14 +253,18 @@ export const PRESETS: Record<GraphicsPreset, Omit<GraphicsSettings, "preset">> =
 
 const STORE_KEY = "tod.graphics";
 
+/** What the presets leave alone, as a fresh browser has it. */
+const NON_PRESET: Omit<GraphicsSettings, PresetKey | "preset"> = { backend: "auto" };
+
 export function defaultGraphics(isMobile: boolean): GraphicsSettings {
   const preset: GraphicsPreset = isMobile ? "low" : "high";
-  return { preset, ...PRESETS[preset] };
+  return { preset, ...NON_PRESET, ...PRESETS[preset] };
 }
 
-/** The settings with a preset applied. */
-export function withPreset(preset: GraphicsPreset): GraphicsSettings {
-  return { preset, ...PRESETS[preset] };
+/** The settings with a preset applied; the items outside the presets stay as they were in `from`. */
+export function withPreset(preset: GraphicsPreset, from?: GraphicsSettings): GraphicsSettings {
+  const kept = from ? { backend: from.backend } : NON_PRESET;
+  return { preset, ...kept, ...PRESETS[preset] };
 }
 
 /** One item changed: the preset becomes the one it now matches, or カスタム. */
@@ -244,7 +278,7 @@ export function withItem(s: GraphicsSettings, key: GraphicsKey, value: string): 
 
 function matchingPreset(s: GraphicsSettings): GraphicsPreset | "custom" {
   const names = Object.keys(PRESETS) as GraphicsPreset[];
-  const match = names.find((p) => GRAPHICS_ITEMS.every((i) => PRESETS[p][i.key] === s[i.key]));
+  const match = names.find((p) => PRESET_ITEMS.every((i) => PRESETS[p][i.key] === s[i.key]));
   return match ?? "custom";
 }
 
