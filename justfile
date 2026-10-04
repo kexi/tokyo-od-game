@@ -46,12 +46,17 @@ human-model:
 signal-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signals.py -- public/models/signals.glb
 
-# 道路標識・歩行者・建物外壁のテクスチャを手続き生成し直す
+# 高規格救急車を Blender CLI でモデリングし public/models/ambulance.glb を書き出す
+ambulance-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/ambulance.py -- public/models/ambulance.glb
+
+# 道路標識・歩行者・建物外壁・信号機・救急車のテクスチャを手続き生成し直す
 textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
     uv run scripts/textures/building_textures.py
     uv run scripts/textures/signal_textures.py
+    uv run scripts/textures/ambulance_textures.py
 
 # SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
 og:

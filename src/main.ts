@@ -91,7 +91,7 @@ import {
   VIOLATIONS,
   type Violation,
 } from "./game/traffic";
-import { EmergencyResponse } from "./game/emergency";
+import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
@@ -188,6 +188,7 @@ async function main(): Promise<void> {
     loadCarModels(),
     loadSignModels(),
     loadSignalModels(),
+    loadAmbulanceModel(),
     loadHumanModels(),
     loadFacadeTextures(),
   ]);

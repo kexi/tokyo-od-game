@@ -10,6 +10,8 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Pedestrian } from "../world/pedestrians";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 
@@ -84,6 +86,19 @@ function wheels(root: Group, xs: number, zf: number, zr: number, r: number): voi
   }
 }
 
+/**
+ * 高規格救急車 modelled in Blender (scripts/blender/ambulance.py → public/models/ambulance.glb)
+ * with agy's decals; its BeaconL / BeaconR materials are the two halves of the light bar.
+ */
+let ambulanceModel: Group | null = null;
+export async function loadAmbulanceModel(): Promise<void> {
+  const loader = new GLTFLoader().setDRACOLoader(
+    new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
+  );
+  const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/ambulance.glb`);
+  ambulanceModel = gltf.scene;
+}
+
 /** High-roof ambulance or a black-and-white patrol car, both facing +Z, with red beacons. */
 function createResponder(kind: ResponderKind): Omit<Responder, "path" | "progress" | "arrivedAt" | "siren"> {
   const root = new Group();
@@ -91,7 +106,23 @@ function createResponder(kind: ResponderKind): Omit<Responder, "path" | "progres
   const beacons = [0, 1].map(
     () => new MeshStandardMaterial({ color: 0x550000, emissive: 0xff1010, emissiveIntensity: 0 }),
   );
-  if (kind === "ambulance") {
+  if (kind === "ambulance" && ambulanceModel) {
+    const model = ambulanceModel.clone(true);
+    const halves: Record<string, MeshStandardMaterial> = {};
+    model.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      const list = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of list)
+        if (m.name === "BeaconL" || m.name === "BeaconR") halves[m.name] = m as MeshStandardMaterial;
+    });
+    for (const [i, name] of ["BeaconL", "BeaconR"].entries()) {
+      const m = halves[name];
+      if (!m) continue;
+      m.emissive.setHex(0xff1010);
+      beacons[i] = m;
+    }
+    root.add(model);
+  } else if (kind === "ambulance") {
     const white = new MeshStandardMaterial({ color: 0xf6f6f2, roughness: 0.4, metalness: 0.2 });
     const side = new MeshStandardMaterial({
       map: sideTexture("救急", "#d7262e", "#ffffff", "#d7262e"),
@@ -136,7 +167,11 @@ function createResponder(kind: ResponderKind): Omit<Responder, "path" | "progres
     wheels(root, 0.82, 1.4, -1.4, 0.36);
   }
   const light = new PointLight(0xff2020, 0, 30, 1.5);
-  light.position.set(0, 2.2, 0.5);
+  light.position.set(
+    0,
+    kind === "ambulance" && ambulanceModel ? 2.75 : 2.2,
+    kind === "ambulance" ? 1.1 : 0.5,
+  );
   root.add(light);
   root.traverse((o) => {
     if (o instanceof Mesh) o.castShadow = true;
@@ -265,7 +300,9 @@ export class EmergencyResponse {
       r.progress += SPEED[r.kind] * dt;
       const { pos, dir } = pointAlong(r.path, r.progress);
       const g = this.groundAt(pos.x, pos.z) ?? pos.y;
-      r.root.position.set(pos.x, g + (r.kind === "ambulance" ? 1.0 : 0.86), pos.z);
+      // The modelled ambulance stands on its wheels at y = 0; the box models are centred.
+      const lift = r.kind === "ambulance" ? (ambulanceModel ? 0 : 1.0) : 0.86;
+      r.root.position.set(pos.x, g + lift, pos.z);
       r.root.rotation.set(0, Math.atan2(dir.x, dir.z), 0);
       this.updateSiren(r, player);
       if (r.progress >= pathLength(r.path)) {
