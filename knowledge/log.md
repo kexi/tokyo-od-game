@@ -2,6 +2,7 @@
 
 ## 2026-10-05
 
+- **Creation**: [川・運河・海の水面](rivers-and-water.md) を追加。tag `water` を tags.yml に追加。[データ・ソフトウェアの利用条件](licensing-decisions.md) に東京都水防災総合情報システム・気象庁潮位表と水文水質データベースを使わなかった理由、[地形・ジオイド・浮動原点](terrain-and-geoid.md) に水面での地形の扱い、[地理院ベクトルタイルの道路](gsi-vector-roads.md) に橋の判定とタイルの共有を追記。
 - **Creation**: [交通切符の様式と実物デザイン再現](ticket-forms.md) を追加。
 - **Creation**: [オービス（速度違反自動取締装置）と予告看板](orbis.md) を追加。
 - **Creation**: [空間音響（音源の位置・車内の遮音・ドップラー効果）](spatial-audio.md) を追加。tag `audio` を tags.yml に追加。

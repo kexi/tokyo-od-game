@@ -84,6 +84,8 @@ import {
   type WeatherMode,
 } from "./world/environment";
 import { Terrain } from "./world/terrain";
+import { TokyoTide } from "./world/tide";
+import { WaterLayer } from "./world/water";
 import { Pedestrians } from "./world/pedestrians";
 import {
   RegulationTiles,
@@ -254,6 +256,9 @@ async function main(): Promise<void> {
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = 1 / 60;
   const terrain = new Terrain(scene, world, dem, renderer, frame);
+  // Rivers, canals and the bay: their surface replaces the ground there, bridges get decks.
+  const water = new WaterLayer(scene, world, dem, new TokyoTide(), frame);
+  terrain.setWater(water);
   const buildings = new Buildings(scene, world, camera, renderer, frame);
   // Landmarks (東京タワー, スカイツリー, 東京駅) replace their PLATEAU copies: tell the buildings
   // before the first tiles arrive.
@@ -394,6 +399,8 @@ async function main(): Promise<void> {
     roadGraph = graph;
     traffic.setGraph(graph);
     control.rebuild(graph, applied);
+    // Bridge decks first: the road surface (through groundY) is laid on them.
+    water.setRoads(graph);
     roadSurface.rebuild(graph, applied, control.approaches);
     // 消火栓 and schools add their own signs to the posts.
     const furnitureSigns = furniture.rebuild(graph, places, frame);
@@ -426,7 +433,8 @@ async function main(): Promise<void> {
     if (roadsLoading) return;
     roadsLoading = true;
     roadCenter = { lat, lon };
-    void Promise.all([roadTiles.around(lat, lon), regulationTiles.around(lat, lon)])
+    // The water of the same tiles too: the decks of the bridges are built with the streets.
+    void Promise.all([roadTiles.around(lat, lon), regulationTiles.around(lat, lon), water.around(lat, lon)])
       .then(([lines, regs]) => {
         roadLines = lines;
         roadRegs = regs;
@@ -449,6 +457,9 @@ async function main(): Promise<void> {
 
   // ---------- helpers bound to the current frame ----------
   const groundY = (x: number, z: number): number | null => {
+    // On a bridge the ground is its deck: the DEM there is the riverbed.
+    const deck = water.deckAt(x, z);
+    if (deck !== null) return deck;
     const g = frame.toGeodetic(new Vector3(x, 0, z));
     const h = dem.heightAt(g.lat, g.lon);
     return h === null ? null : frame.toLocal(g.lat, g.lon, h).y;
@@ -467,6 +478,10 @@ async function main(): Promise<void> {
     return hit ? fromY - hit.timeOfImpact : null;
   };
   const isOpenGround = (x: number, z: number, g: number): boolean => {
+    // Open water is not ground (a bridge deck is): nobody stands or is put there, nor where the
+    // water is not known yet (people spawned in the first second stood on the river).
+    const isOnWater = !water.isKnownLocal(x, z) || (water.deckAt(x, z) === null && water.isWaterLocal(x, z));
+    if (isOnWater) return false;
     const hitY = rayDown(x, z, g + 60);
     return hitY !== null && Math.abs(hitY - g) < 1.2;
   };
@@ -567,6 +582,7 @@ async function main(): Promise<void> {
   let suspendedDays = 0;
   let unlicensedWarnedAt = -Infinity;
   let streetSpawnSince = 0;
+  let adriftSince: number | null = null;
 
   const respawnHere = () => {
     const p = vehicle.position();
@@ -587,6 +603,7 @@ async function main(): Promise<void> {
     camera.position.applyMatrix4(m);
     frame = next;
     terrain.setFrame(next);
+    water.setFrame(next);
     buildings.setFrame(next);
     landmarks.setFrame(next);
     field.setFrame(next);
@@ -1567,12 +1584,13 @@ async function main(): Promise<void> {
         signs.update(focus, now);
       }
       env.update(dt, focus, camera.position, geo.lat, geo.lon);
+      water.update(dt, env);
+      water.renderReflection(renderer, scene, camera, now);
       renderer.render(scene, camera);
       return;
     }
     if (paused) {
       // Through the cockpit as in play: a plain render would leave the interior (its own layer) out.
-      cockpit.render(renderer, scene, camera);
       return;
     }
     const isOnFoot = mode === "foot";
@@ -1681,8 +1699,26 @@ async function main(): Promise<void> {
     }
     const gy = groundY(carPos.x, carPos.z);
     if (gy !== null && carPos.y < gy - 6) respawnHere();
+    // In the water, off the streets and bridges (a channel too narrow to lose its ground collider
+    // holds the car up over the drawn water): back on the bank after a moment.
+    const isAdrift =
+      isInCar && !frozen && water.isAdrift(carPos) && !roadGraph?.carriagewaysAt(carPos, 1).length;
+    adriftSince = isAdrift ? (adriftSince ?? now) : null;
+    if (adriftSince !== null && now - adriftSince > 1500) {
+      adriftSince = null;
+      respawnHere();
+      toast("川に落ちました。岸に戻します", "#4dd2ff");
+    }
     const footGround = isOnFoot ? groundY(focus.x, focus.z) : null;
-    if (footGround !== null && focus.y < footGround - 4) walker.enter(focus.setY(footGround + 0.5), 0);
+    // Fallen in the water (the riverbed is not ground): back up on the nearest bank.
+    const isFallen = footGround !== null && focus.y < footGround - 4;
+    if (isFallen)
+      walker.enter(
+        water.isWaterLocal(focus.x, focus.z)
+          ? findOpenGround(focus.x, focus.z)
+          : focus.setY(footGround + 0.5),
+        0,
+      );
     if (Math.hypot(focus.x, focus.z) > RECENTER_DISTANCE) recenter();
 
     terrain.update(geo.lat, geo.lon);
@@ -2133,6 +2169,7 @@ async function main(): Promise<void> {
         : 0,
     });
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
+    water.update(dt, env);
     if (Math.abs(env.nightFactor - appliedNight) > 0.02) {
       appliedNight = env.nightFactor;
       buildings.setNightFactor(appliedNight);
@@ -2249,6 +2286,9 @@ async function main(): Promise<void> {
       Math.abs(speed) / 3.6,
       liveObjects(),
     );
+    // The water's reflection (only with water in view), then the frame. Plain renderer.render
+    // outside the driver's seat; from it, the rain on the glass too.
+    water.renderReflection(renderer, scene, camera, now);
     // ブラー: the car's speed (toward the vanishing point ahead) and the view's turn, smeared over the
     // street only — in the driver's seat it runs before the interior is drawn.
     camera.getWorldDirection(viewDir);
@@ -3543,6 +3583,7 @@ async function main(): Promise<void> {
         renderer,
         world,
         terrain,
+        water,
         buildings,
         vehicle,
         audio,

@@ -1,16 +1,14 @@
-import { VectorTile } from "@mapbox/vector-tile";
-import Pbf from "pbf";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { warn } from "../log";
+import { gsiVectorTile } from "./gsiVectorTiles";
 import type { RoadLine } from "./roads";
 
 /**
  * Road centrelines from GSI's optimised vector tiles (地理院ベクトルタイル, real-time use with
  * attribution like the other 地理院タイル). Layer `road`, ftCode 27xx = 道路中心線, with
  * 道路種別 rdCtg, 幅員区分 rnkWidth, 幅員 Width (m, when known) and 階層 lvOrder (0 = ground).
+ * The tiles come through the shared cache, which the water layer reads too.
  */
-const URL = (z: number, x: number, y: number) =>
-  `https://cyberjapandata.gsi.go.jp/xyz/experimental_bvmap/${z}/${x}/${y}.pbf`;
 const ZOOM = 16;
 
 // rnkWidth classes: 0 <3 m, 1 3–5.5 m, 2 5.5–13 m, 3 13–19.5 m, 4 ≥19.5 m (class midpoints).
@@ -50,11 +48,8 @@ export class RoadTiles {
   }
 
   private async fetchTile(x: number, y: number): Promise<RoadLine[]> {
-    const res = await fetch(URL(ZOOM, x, y));
-    if (res.status === 404) return [];
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const tile = new VectorTile(new Pbf(new Uint8Array(await res.arrayBuffer())));
-    const layer = tile.layers.road;
+    const tile = await gsiVectorTile(ZOOM, x, y);
+    const layer = tile?.layers.road;
     if (!layer) return [];
     const lines: RoadLine[] = [];
     for (let i = 0; i < layer.length; i++) {
@@ -70,7 +65,14 @@ export class RoadTiles {
         for (const pt of ring) {
           coords.push(tileXToLon(x + pt.x / layer.extent, ZOOM), tileYToLat(y + pt.y / layer.extent, ZOOM));
         }
-        if (coords.length >= 4) lines.push({ coords, width, oneway: 0, kind: kindOf(p.rdCtg, p.motorway) });
+        if (coords.length >= 4)
+          lines.push({
+            coords,
+            width,
+            oneway: 0,
+            kind: kindOf(p.rdCtg, p.motorway),
+            bridge: p.ftCode === 2703,
+          });
       }
     }
     return lines;

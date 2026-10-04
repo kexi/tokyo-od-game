@@ -9,6 +9,8 @@ export type RoadLine = {
   width: number; // carriageway width estimate (m)
   oneway: 0 | 1 | -1; // 1: along coords, -1: against, 0: both ways
   kind: "highway" | "national" | "prefectural" | "local" | "narrow";
+  /** 橋 (GSI ftCode 2703 at ground level): where the street crosses water it is on a deck. */
+  bridge?: boolean;
 };
 
 export type Segment = {

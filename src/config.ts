@@ -12,6 +12,8 @@ export const PLATEAU_TILESET =
 export const GSI = {
   dem5a: (z: number, x: number, y: number) =>
     `https://cyberjapandata.gsi.go.jp/xyz/dem5a_png/${z}/${x}/${y}.png`,
+  dem5aText: (z: number, x: number, y: number) =>
+    `https://cyberjapandata.gsi.go.jp/xyz/dem5a/${z}/${x}/${y}.txt`,
   dem10: (z: number, x: number, y: number) =>
     `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${z}/${x}/${y}.png`,
   photo: (z: number, x: number, y: number) =>

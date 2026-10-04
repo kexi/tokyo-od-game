@@ -1,0 +1,638 @@
+{
+ "generatedAt": "2026-10-04T17:53:19.476Z",
+ "days": [
+  "20260915",
+  "20260815",
+  "20260715",
+  "20260615",
+  "20260515",
+  "20260415",
+  "20260315",
+  "20260215",
+  "20260115",
+  "20251215",
+  "20251115",
+  "20260901",
+  "20260908",
+  "20260922"
+ ],
+ "bay": {
+  "mean": 0.076,
+  "range": 1.457
+ },
+ "sources": [
+  {
+   "id": "tokyo-suibo",
+   "title": "東京都水防災総合情報システム 水位観測所（10分値）",
+   "url": "https://www.kasen-suibo.metro.tokyo.lg.jp/",
+   "note": "観測所ページの水位と A.P. から零点高を求め、上記の日の 10 分値の中央値を典型水位とした"
+  },
+  {
+   "id": "jma-tide",
+   "title": "気象庁 潮位表（東京）",
+   "url": "https://www.data.jma.go.jp/kaiyou/db/tide/suisan/"
+  }
+ ],
+ "gauges": [
+  {
+   "name": "内匠橋",
+   "river": "綾瀬川",
+   "lat": 35.79206,
+   "lon": 139.82811,
+   "level": 0.286,
+   "range": 0.588,
+   "tidal": true,
+   "surveyed": null
+  },
+  {
+   "name": "渋谷橋",
+   "river": "渋谷川",
+   "lat": 35.64807,
+   "lon": 139.71236,
+   "level": 4.036,
+   "range": 0.196,
+   "tidal": false,
+   "surveyed": 7.62
+  },
+  {
+   "name": "滝ノ橋",
+   "river": "丸子川",
+   "lat": 35.60029,
+   "lon": 139.645,
+   "level": 8.056,
+   "range": 0.069,
+   "tidal": false,
+   "surveyed": 7.5
+  },
+  {
+   "name": "緑橋",
+   "river": "神田川",
+   "lat": 35.68854,
+   "lon": 139.59416,
+   "level": 40.596,
+   "range": 0.108,
+   "tidal": false,
+   "surveyed": 41.25
+  },
+  {
+   "name": "原寺分橋",
+   "river": "善福寺川",
+   "lat": 35.70813,
+   "lon": 139.59884,
+   "level": 40.796,
+   "range": 0.222,
+   "tidal": false,
+   "surveyed": 41.28
+  },
+  {
+   "name": "笹目橋",
+   "river": "新河岸川",
+   "lat": 35.79621,
+   "lon": 139.64596,
+   "level": 0.296,
+   "range": 1.507,
+   "tidal": true,
+   "surveyed": 1.58
+  },
+  {
+   "name": "水戸橋",
+   "river": "綾瀬川",
+   "lat": 35.75519,
+   "lon": 139.82018,
+   "level": 0.136,
+   "range": 1.404,
+   "tidal": true,
+   "surveyed": 0.48
+  },
+  {
+   "name": "小台",
+   "river": "隅田川",
+   "lat": 35.75472,
+   "lon": 139.78163,
+   "level": 0.216,
+   "range": 1.593,
+   "tidal": true,
+   "surveyed": -0.55
+  },
+  {
+   "name": "毛長橋",
+   "river": "毛長川",
+   "lat": 35.80761,
+   "lon": 139.78017,
+   "level": 0.086,
+   "range": 0.353,
+   "tidal": false,
+   "surveyed": 1.36
+  },
+  {
+   "name": "青葉台",
+   "river": "目黒川",
+   "lat": 35.64903,
+   "lon": 139.69351,
+   "level": 6.396,
+   "range": 0.202,
+   "tidal": false,
+   "surveyed": 6.02
+  },
+  {
+   "name": "松殿橋",
+   "river": "白子川",
+   "lat": 35.74773,
+   "lon": 139.57852,
+   "level": 41.296,
+   "range": 0.028,
+   "tidal": false,
+   "surveyed": 42.28
+  },
+  {
+   "name": "鷲宮橋",
+   "river": "毛長川",
+   "lat": 35.80956,
+   "lon": 139.82115,
+   "level": 0.366,
+   "range": 1.045,
+   "tidal": true,
+   "surveyed": 0.6
+  },
+  {
+   "name": "宮の橋",
+   "river": "白子川",
+   "lat": 35.75365,
+   "lon": 139.58299,
+   "level": 38.706,
+   "range": 0.149,
+   "tidal": false,
+   "surveyed": 39.45
+  },
+  {
+   "name": "四ノ橋",
+   "river": "古川",
+   "lat": 35.64724,
+   "lon": 139.73181,
+   "level": 0.236,
+   "range": 0.431,
+   "tidal": false,
+   "surveyed": 0.42
+  },
+  {
+   "name": "立会川",
+   "river": "立会川",
+   "lat": 35.59897,
+   "lon": 139.73641,
+   "level": -0.014,
+   "range": 0.784,
+   "tidal": true,
+   "surveyed": 0.58
+  },
+  {
+   "name": "工大橋",
+   "river": "呑川",
+   "lat": 35.60478,
+   "lon": 139.68059,
+   "level": 13.136,
+   "range": 0.039,
+   "tidal": false,
+   "surveyed": 13.18
+  },
+  {
+   "name": "久我山橋",
+   "river": "神田川",
+   "lat": 35.68629,
+   "lon": 139.60149,
+   "level": 38.996,
+   "range": 0.109,
+   "tidal": false,
+   "surveyed": 40.01
+  },
+  {
+   "name": "松見橋",
+   "river": "善福寺川",
+   "lat": 35.69776,
+   "lon": 139.62106,
+   "level": 37.326,
+   "range": 0.298,
+   "tidal": false,
+   "surveyed": 37.54
+  },
+  {
+   "name": "池上",
+   "river": "呑川",
+   "lat": 35.57637,
+   "lon": 139.70306,
+   "level": 0.766,
+   "range": 0.124,
+   "tidal": false,
+   "surveyed": 0.83
+  },
+  {
+   "name": "田楽橋",
+   "river": "目黒川",
+   "lat": 35.6404,
+   "lon": 139.70351,
+   "level": 0.276,
+   "range": 0.68,
+   "tidal": true,
+   "surveyed": -0.7
+  },
+  {
+   "name": "矢川橋",
+   "river": "谷沢川",
+   "lat": 35.60256,
+   "lon": 139.64577,
+   "level": 10.316,
+   "range": 0.102,
+   "tidal": false,
+   "surveyed": 8.92
+  },
+  {
+   "name": "佃橋",
+   "river": "神田川",
+   "lat": 35.68299,
+   "lon": 139.61607,
+   "level": 37.066,
+   "range": 0.125,
+   "tidal": false,
+   "surveyed": 38.03
+  },
+  {
+   "name": "鷺盛橋",
+   "river": "妙正寺川",
+   "lat": 35.71635,
+   "lon": 139.64206,
+   "level": 31.696,
+   "range": 0.479,
+   "tidal": false,
+   "surveyed": 32.6
+  },
+  {
+   "name": "西田端橋",
+   "river": "善福寺川",
+   "lat": 35.69442,
+   "lon": 139.62422,
+   "level": 35.916,
+   "range": 0.3,
+   "tidal": false,
+   "surveyed": 37.15
+  },
+  {
+   "name": "三ツ橋",
+   "river": "白子川",
+   "lat": 35.7565,
+   "lon": 139.59697,
+   "level": 32.996,
+   "range": 0.169,
+   "tidal": false,
+   "surveyed": 33.45
+  },
+  {
+   "name": "西蒲田",
+   "river": "呑川",
+   "lat": 35.56594,
+   "lon": 139.71729,
+   "level": -1.734,
+   "range": 0.156,
+   "tidal": false,
+   "surveyed": -0.84
+  },
+  {
+   "name": "旭橋",
+   "river": "呑川",
+   "lat": 35.5611,
+   "lon": 139.74715,
+   "level": -0.134,
+   "range": 1.491,
+   "tidal": true,
+   "surveyed": -0.94
+  },
+  {
+   "name": "玉川樋管",
+   "river": "谷沢川",
+   "lat": 35.59899,
+   "lon": 139.6453,
+   "level": 4.726,
+   "range": 0.22,
+   "tidal": false,
+   "surveyed": 5.17
+  },
+  {
+   "name": "池袋橋",
+   "river": "神田川",
+   "lat": 35.68206,
+   "lon": 139.62006,
+   "level": 36.306,
+   "range": 0.126,
+   "tidal": false,
+   "surveyed": 36.51
+  },
+  {
+   "name": "新橋戸橋",
+   "river": "白子川",
+   "lat": 35.75849,
+   "lon": 139.59949,
+   "level": 32.226,
+   "range": 0.121,
+   "tidal": false,
+   "surveyed": 31.99
+  },
+  {
+   "name": "溜渕橋",
+   "river": "石神井川",
+   "lat": 35.7247,
+   "lon": 139.56565,
+   "level": 44.816,
+   "range": 0.266,
+   "tidal": false,
+   "surveyed": 45.67
+  },
+  {
+   "name": "鎌田橋仙川",
+   "river": "仙川",
+   "lat": 35.62188,
+   "lon": 139.61301,
+   "level": 13.366,
+   "range": 0.13,
+   "tidal": false,
+   "surveyed": 13.58
+  },
+  {
+   "name": "番屋橋",
+   "river": "神田川",
+   "lat": 35.67838,
+   "lon": 139.65012,
+   "level": 30.146,
+   "range": 0.149,
+   "tidal": false,
+   "surveyed": 30.52
+  },
+  {
+   "name": "相生橋（善）",
+   "river": "善福寺川",
+   "lat": 35.6925,
+   "lon": 139.63364,
+   "level": 34.296,
+   "range": 0.259,
+   "tidal": false,
+   "surveyed": 35.5
+  },
+  {
+   "name": "稲荷橋",
+   "river": "石神井川",
+   "lat": 35.72881,
+   "lon": 139.57873,
+   "level": 42.746,
+   "range": 0.256,
+   "tidal": false,
+   "surveyed": 43.17
+  },
+  {
+   "name": "越後山橋",
+   "river": "白子川",
+   "lat": 35.77022,
+   "lon": 139.61209,
+   "level": 22.636,
+   "range": 0.167,
+   "tidal": false,
+   "surveyed": 22.84
+  },
+  {
+   "name": "新河岸橋",
+   "river": "新河岸川",
+   "lat": 35.78637,
+   "lon": 139.69027,
+   "level": 0.346,
+   "range": 1.641,
+   "tidal": true,
+   "surveyed": null
+  },
+  {
+   "name": "市場橋",
+   "river": "目黒川",
+   "lat": 35.6278,
+   "lon": 139.71605,
+   "level": 0.236,
+   "range": 1.605,
+   "tidal": true,
+   "surveyed": -0.69
+  },
+  {
+   "name": "千歳橋",
+   "river": "妙正寺川",
+   "lat": 35.71629,
+   "lon": 139.65955,
+   "level": 28.316,
+   "range": 0.161,
+   "tidal": false,
+   "surveyed": 28.88
+  },
+  {
+   "name": "白山前橋",
+   "river": "善福寺川",
+   "lat": 35.68609,
+   "lon": 139.63473,
+   "level": 33.476,
+   "range": 0.228,
+   "tidal": false,
+   "surveyed": 33.93
+  },
+  {
+   "name": "愛宕橋",
+   "river": "石神井川",
+   "lat": 35.73327,
+   "lon": 139.5914,
+   "level": 37.486,
+   "range": 0.131,
+   "tidal": false,
+   "surveyed": 39.53
+  },
+  {
+   "name": "浮間橋",
+   "river": "新河岸川",
+   "lat": 35.78787,
+   "lon": 139.70809,
+   "level": -0.274,
+   "range": 0.726,
+   "tidal": true,
+   "surveyed": 1.1
+  },
+  {
+   "name": "鎌田橋野川",
+   "river": "野川",
+   "lat": 35.62061,
+   "lon": 139.61207,
+   "level": 9.346,
+   "range": 0.254,
+   "tidal": false,
+   "surveyed": 9.39
+  },
+  {
+   "name": "すずしろ橋",
+   "river": "石神井川",
+   "lat": 35.74389,
+   "lon": 139.61974,
+   "level": 31.046,
+   "range": 0.222,
+   "tidal": false,
+   "surveyed": 31
+  },
+  {
+   "name": "志茂橋",
+   "river": "新河岸川",
+   "lat": 35.78462,
+   "lon": 139.73051,
+   "level": 0.236,
+   "range": 1.633,
+   "tidal": true,
+   "surveyed": 1
+  },
+  {
+   "name": "子安橋",
+   "river": "白子川",
+   "lat": 35.77505,
+   "lon": 139.62431,
+   "level": 12.906,
+   "range": 0.239,
+   "tidal": false,
+   "surveyed": 13.39
+  },
+  {
+   "name": "大崎橋",
+   "river": "目黒川",
+   "lat": 35.62506,
+   "lon": 139.72254,
+   "level": 0.156,
+   "range": 1.502,
+   "tidal": true,
+   "surveyed": -0.69
+  },
+  {
+   "name": "谷山橋",
+   "river": "目黒川",
+   "lat": 35.62671,
+   "lon": 139.71849,
+   "level": -0.104,
+   "range": 1.548,
+   "tidal": true,
+   "surveyed": -0.69
+  },
+  {
+   "name": "妙正寺二上",
+   "river": "妙正寺川",
+   "lat": 35.72156,
+   "lon": 139.67389,
+   "level": 22.396,
+   "range": 0.261,
+   "tidal": false,
+   "surveyed": 23.5
+  },
+  {
+   "name": "神路橋",
+   "river": "石神井川",
+   "lat": 35.74521,
+   "lon": 139.63442,
+   "level": 28.066,
+   "range": 0.238,
+   "tidal": false,
+   "surveyed": 28.14
+  },
+  {
+   "name": "昭和橋",
+   "river": "目黒川",
+   "lat": 35.61762,
+   "lon": 139.74792,
+   "level": 0.126,
+   "range": 1.491,
+   "tidal": true,
+   "surveyed": -0.29
+  },
+  {
+   "name": "和田見橋",
+   "river": "神田川",
+   "lat": 35.68929,
+   "lon": 139.66442,
+   "level": 25.726,
+   "range": 0.274,
+   "tidal": false,
+   "surveyed": 25.94
+  },
+  {
+   "name": "上高田上",
+   "river": "妙正寺川",
+   "lat": 35.71761,
+   "lon": 139.67865,
+   "level": 20.336,
+   "range": 0.291,
+   "tidal": false,
+   "surveyed": 20.76
+  },
+  {
+   "name": "宮宿橋",
+   "river": "石神井川",
+   "lat": 35.74942,
+   "lon": 139.66856,
+   "level": 20.696,
+   "range": 0.168,
+   "tidal": false,
+   "surveyed": 20.83
+  },
+  {
+   "name": "落合上",
+   "river": "妙正寺川",
+   "lat": 35.71529,
+   "lon": 139.6791,
+   "level": 18.786,
+   "range": 0.205,
+   "tidal": false,
+   "surveyed": 18.96
+  },
+  {
+   "name": "加賀橋",
+   "river": "石神井川",
+   "lat": 35.75408,
+   "lon": 139.71808,
+   "level": 7.906,
+   "range": 0.315,
+   "tidal": false,
+   "surveyed": 8
+  },
+  {
+   "name": "南小滝橋",
+   "river": "神田川",
+   "lat": 35.7078,
+   "lon": 139.6896,
+   "level": 13.226,
+   "range": 0.319,
+   "tidal": false,
+   "surveyed": 13.78
+  },
+  {
+   "name": "溝田橋",
+   "river": "石神井川",
+   "lat": 35.75405,
+   "lon": 139.74238,
+   "level": 0.416,
+   "range": 1.634,
+   "tidal": true,
+   "surveyed": 0.21
+  },
+  {
+   "name": "田島橋",
+   "river": "神田川",
+   "lat": 35.71494,
+   "lon": 139.70126,
+   "level": 8.506,
+   "range": 0.246,
+   "tidal": false,
+   "surveyed": 8.66
+  },
+  {
+   "name": "飯田橋",
+   "river": "神田川",
+   "lat": 35.70289,
+   "lon": 139.74989,
+   "level": 0.706,
+   "range": 1.561,
+   "tidal": true,
+   "surveyed": 0.17
+  }
+ ]
+}

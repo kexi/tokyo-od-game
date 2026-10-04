@@ -35,6 +35,9 @@ function decodeTile(rgba: Uint8ClampedArray): Float32Array {
 export class DemStore {
   private readonly pending = new Map<string, Promise<Float32Array>>();
   private readonly loaded = new Map<string, Float32Array>();
+  /** DEM5A's text edition (NaN where it has no value), for reading surveyed water surfaces. */
+  private readonly surveyed = new Map<string, Promise<Float32Array | null>>();
+  private readonly surveyedReady = new Map<string, Float32Array | null>();
   private readonly coarse = new Map<string, Promise<Float32Array | null>>();
 
   constructor(private readonly geoid: Geoid) {}
@@ -76,6 +79,41 @@ export class DemStore {
     const isReady = this.isLoaded(Math.floor(gx / SIZE), Math.floor(gy / SIZE));
     if (!isReady) return null;
     return this.sampleGlobal(gx, gy) + this.geoid.undulation(lat, lon);
+  }
+
+  /**
+   * Load DEM5A's text edition of a z15 tile (CORS *, ~75 KB gzipped). Why not the PNG the ground is
+   * built from: its 2026 edition leaves water blank (日本橋川, 神田川 at 御茶ノ水), while the text
+   * edition (2025) still carries the water surface the laser survey measured.
+   */
+  loadSurveyed(x: number, y: number): Promise<Float32Array | null> {
+    const key = `${x}/${y}`;
+    let p = this.surveyed.get(key);
+    if (!p) {
+      p = fetch(GSI.dem5aText(TERRAIN_ZOOM, x, y))
+        .then((r) => (r.ok ? r.text() : null))
+        .then((text) => (text === null ? null : parseDemText(text)))
+        .catch(() => null)
+        .then((tile) => {
+          this.surveyedReady.set(key, tile);
+          return tile;
+        });
+      this.surveyed.set(key, p);
+    }
+    return p;
+  }
+
+  /**
+   * DEM5A as surveyed at global z15 pixel coordinates (nearest pixel, T.P. m): NaN where it has no
+   * value or the tile is not loaded (loadSurveyed). Unlike sampleGlobal it is neither filled nor
+   * smoothed, so channels narrower than the median window keep their surveyed water surface.
+   */
+  surveyedAt(gx: number, gy: number): number {
+    const x = Math.floor(gx);
+    const y = Math.floor(gy);
+    const tile = this.surveyedReady.get(`${Math.floor(x / SIZE)}/${Math.floor(y / SIZE)}`);
+    if (!tile) return Number.NaN;
+    return tile[(((y % SIZE) + SIZE) % SIZE) * SIZE + (((x % SIZE) + SIZE) % SIZE)];
   }
 
   ellipsoidal(lat: number, lon: number, orthometric: number): number {
@@ -126,6 +164,20 @@ export class DemStore {
     }
     return p;
   }
+}
+
+/** GSI elevation text tile: 256 rows of 256 comma-separated metres, "e" where there is no value. */
+export function parseDemText(text: string): Float32Array {
+  const out = new Float32Array(SIZE * SIZE).fill(Number.NaN);
+  const rows = text.trim().split("\n");
+  for (let j = 0; j < Math.min(SIZE, rows.length); j++) {
+    const cells = rows[j].split(",");
+    for (let i = 0; i < Math.min(SIZE, cells.length); i++) {
+      const v = cells[i].trim();
+      if (v !== "e") out[j * SIZE + i] = Number(v);
+    }
+  }
+  return out;
 }
 
 /**
