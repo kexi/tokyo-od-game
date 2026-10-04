@@ -1129,6 +1129,7 @@ async function main(): Promise<void> {
     $("#opt-volume-value").textContent = `${Math.round(prefs.volume * 100)}%`;
     $("#minimap").hidden = !prefs.minimap;
     $<HTMLInputElement>("#opt-minimap").checked = prefs.minimap;
+    $<HTMLSelectElement>("#opt-minimap-north").value = prefs.minimapNorthUp ? "north" : "heading";
     navHidden = !prefs.nav;
     $<HTMLInputElement>("#opt-nav").checked = prefs.nav;
     controls.assist = prefs.assist;
@@ -1159,6 +1160,7 @@ async function main(): Promise<void> {
     "#opt-seat-back",
     "#opt-volume",
     "#opt-minimap",
+    "#opt-minimap-north",
     "#opt-nav",
   ];
   // "input" too: the seat and the volume follow the slider while it is dragged.
@@ -1177,6 +1179,7 @@ async function main(): Promise<void> {
           ),
           volume: volumeOf($<HTMLInputElement>("#opt-volume").value),
           minimap: $<HTMLInputElement>("#opt-minimap").checked,
+          minimapNorthUp: $<HTMLSelectElement>("#opt-minimap-north").value === "north",
           nav: $<HTMLInputElement>("#opt-nav").checked,
         };
         savePrefsAndApply(prefs);
@@ -1243,6 +1246,11 @@ async function main(): Promise<void> {
     toast(navHidden ? "ナビの表示を消しました（M で戻す）" : "ナビを表示します");
   });
   input.on("minimap", () => savePrefsAndApply({ ...prefsNow, minimap: !prefsNow.minimap }));
+  // A click on the small map turns it between 進行方向が上 and 北が上.
+  $("#minimap").addEventListener("click", () => {
+    savePrefsAndApply({ ...prefsNow, minimapNorthUp: !prefsNow.minimapNorthUp });
+    toast(prefsNow.minimapNorthUp ? "小さな地図: 北が上" : "小さな地図: 進行方向が上");
+  });
 
   // 設定: everything stops while it is open (as the P pause), and goes on as it was when closed.
   const settingsDialog = $<HTMLDialogElement>("#settings");
@@ -3469,6 +3477,7 @@ async function main(): Promise<void> {
       lat,
       lon,
       heading,
+      northUp: prefsNow.minimapNorthUp,
       radius: 600,
       pois: field.visibleList(),
       target: mission?.target ?? null,

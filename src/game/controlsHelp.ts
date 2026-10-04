@@ -20,6 +20,8 @@ export type ControlPrefs = {
   /** The small map and the junction guide (ナビ) on screen. */
   minimap: boolean;
   nav: boolean;
+  /** The small map with north up (else the way ahead is up, as a car navi's default). */
+  minimapNorthUp: boolean;
 };
 
 const STORE_KEY = "tod.controls";
@@ -37,6 +39,7 @@ export const DEFAULT_PREFS: ControlPrefs = {
   volume: 0.8,
   minimap: true,
   nav: true,
+  minimapNorthUp: false,
 };
 const SEAT_UP = [-0.08, 0.16] as const;
 const SEAT_BACK = [-0.1, 0.12] as const;
@@ -68,6 +71,7 @@ export function loadPrefs(): ControlPrefs {
       volume: volumeOf(saved?.volume),
       minimap: saved?.minimap !== false,
       nav: saved?.nav !== false,
+      minimapNorthUp: saved?.minimapNorthUp === true,
     };
   } catch {
     // Storage blocked (private window, previews): the defaults.

@@ -29,17 +29,21 @@ export class Minimap {
     route?: Array<{ lat: number; lon: number }>;
     /** 配車中のタクシー: where it is, its heading (as `heading`) and the way it is coming. */
     taxi?: { lat: number; lon: number; heading: number; route: Array<{ lat: number; lon: number }> } | null;
+    /** 北が上: the map fixed with north up and the car turning on it (else the way ahead is up). */
+    northUp?: boolean;
   }): void {
     const { ctx, canvas } = this;
     const size = canvas.width;
     const half = size / 2;
     const scale = half / opts.radius;
     const cosLat = Math.cos((opts.lat * Math.PI) / 180);
+    // The bearing at the top of the map: the car's heading, or north.
+    const view = opts.northUp ? 0 : opts.heading;
     const project = (lat: number, lon: number): [number, number] => {
       const east = (lon - opts.lon) * METERS_PER_DEG_LAT * cosLat;
       const north = (lat - opts.lat) * METERS_PER_DEG_LAT;
-      const c = Math.cos(opts.heading);
-      const s = Math.sin(opts.heading);
+      const c = Math.cos(view);
+      const s = Math.sin(view);
       return [half + (east * c - north * s) * scale, half - (east * s + north * c) * scale];
     };
 
@@ -122,7 +126,7 @@ export class Minimap {
       }
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(opts.taxi.heading - opts.heading);
+      ctx.rotate(opts.taxi.heading - view);
       ctx.fillStyle = "#ffd23c";
       ctx.strokeStyle = "#1d2a4a";
       ctx.lineWidth = 2;
@@ -134,22 +138,84 @@ export class Minimap {
       ctx.fillRect(-3, -6, 6, 3); // windscreen: the front
       ctx.restore();
     }
-    // North marker rotates with heading.
-    const [nx, ny] = project(opts.lat + (opts.radius * 0.85) / METERS_PER_DEG_LAT, opts.lon);
-    ctx.fillStyle = "#ff6b6b";
-    ctx.font = "bold 12px system-ui";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("N", nx, ny);
+    this.drawCompass(half, view, opts.heading);
     ctx.restore();
 
+    // The car, pointing where it heads.
+    ctx.save();
+    ctx.translate(half, half);
+    ctx.rotate(opts.heading - view);
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.moveTo(half, half - 8);
-    ctx.lineTo(half + 6, half + 6);
-    ctx.lineTo(half, half + 3);
-    ctx.lineTo(half - 6, half + 6);
+    ctx.moveTo(0, -8);
+    ctx.lineTo(6, 6);
+    ctx.lineTo(0, 3);
+    ctx.lineTo(-6, 6);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
   }
+
+  /**
+   * The compass on the rim: ticks every 30°, 東 南 西 in white and 北 on a red disc (the map turns,
+   * so north has to stand out wherever it is), and the way the car heads in words under it.
+   */
+  private drawCompass(half: number, view: number, heading: number): void {
+    const { ctx } = this;
+    const at = (bearing: number, r: number): [number, number] => [
+      half + Math.sin(bearing - view) * r,
+      half - Math.cos(bearing - view) * r,
+    ];
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = 1.5;
+    for (let deg = 0; deg < 360; deg += 30) {
+      const b = (deg * Math.PI) / 180;
+      const isCardinal = deg % 90 === 0;
+      const [x0, y0] = at(b, half - 3);
+      const [x1, y1] = at(b, half - (isCardinal ? 10 : 7));
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const [label, deg] of [
+      ["東", 90],
+      ["南", 180],
+      ["西", 270],
+    ] as const) {
+      const [x, y] = at((deg * Math.PI) / 180, half - 19);
+      ctx.font = "bold 12px system-ui";
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillText(label, x, y);
+    }
+    const [nx, ny] = at(0, half - 20);
+    ctx.fillStyle = "#e53935";
+    ctx.beginPath();
+    ctx.arc(nx, ny, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 13px system-ui";
+    ctx.fillText("北", nx, ny + 0.5);
+    // The heading in words, on a pill under the car (the rim's bottom letter stays readable).
+    const text = `${compassLabel(heading)}へ`;
+    ctx.font = "bold 12px system-ui";
+    const w = ctx.measureText(text).width + 14;
+    const y = half + 26;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.beginPath();
+    ctx.roundRect(half - w / 2, y - 9, w, 18, 9);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.fillText(text, half, y);
+  }
+}
+
+const COMPASS_8 = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
+
+/** The eight-point compass name of a heading (radians, 0 = north, clockwise). */
+export function compassLabel(heading: number): string {
+  const turn = (((heading / (Math.PI * 2)) % 1) + 1) % 1;
+  return COMPASS_8[Math.round(turn * 8) % 8];
 }

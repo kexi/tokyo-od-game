@@ -208,6 +208,9 @@ button:disabled {
   width: 180px;
   height: 180px;
   border-radius: 50%;
+  /* A click turns it between 進行方向が上 and 北が上. */
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 #hud-speed {
