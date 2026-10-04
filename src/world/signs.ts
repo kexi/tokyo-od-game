@@ -16,7 +16,8 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PROP_GROUPS } from "../physics/groups";
-import { SIGN, type AppliedRegulations } from "./regulations";
+import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
+import catalog from "../../assets/signs/catalog.json";
 import { leftOf, type RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
 
@@ -36,14 +37,80 @@ const POST_TOP = 2.6; // ground to the centre of the top plate
 const STACK = 0.8 * SCALE; // vertical spacing of plates sharing a post
 const PLATE_OFFSET = 0.05; // plate face in front of the post axis (bracket depth)
 
-type Shape = "PlateCircle" | "PlateRect" | "PlateTriangle" | "PlateSquare" | "PlateWide";
+/**
+ * Plate meshes are named in signs.glb (PlateCircle, PlateDiamond, PlateRect120x90 …); the
+ * catalogue (assets/signs/catalog.json, scripts/textures/sign_textures.py) says which plate and
+ * artwork each sign of 別表第一 uses.
+ */
+type Shape = string;
 /**
  * `bothFaces`: back-to-back copies of the same face. `parallel`: mounted along the street with
  * `back` as the other face (一方通行 326-A, 道路標識設置基準 3-1-4: 平行又は斜め 0°〜45°).
  */
 type Design = { file: string; shape: Shape; bothFaces?: boolean; parallel?: boolean; back?: string };
 
-function design(type: number, value: number): Design | null {
+type CatalogSign = { id: string; texture: string | null; plate_node?: string };
+const CATALOG = new Map((catalog.signs as CatalogSign[]).map((c) => [c.id, c]));
+const LANE_SIGNS = new Map(
+  (catalog.lanes.rendered as Array<{ lanes: string; texture: string; plate_node: string }>).map((r) => [
+    r.lanes,
+    r,
+  ]),
+);
+
+/** The catalogue's design for a sign number (null when not drawn). */
+function catalogued(id: string, extra: Partial<Design> = {}): Design | null {
+  const c = CATALOG.get(id);
+  if (!c?.texture || !c.plate_node) return null;
+  return { file: c.texture.replace(/\.png$/, ""), shape: c.plate_node, ...extra };
+}
+
+// Lane letters in the lane-sign file names (scripts/textures/signs/lanes.py), in their order.
+const LANE_LETTERS: Array<[LaneDirection, string]> = [
+  ["reverse", "u"],
+  ["left", "l"],
+  ["slight_left", "hl"],
+  ["through", "t"],
+  ["slight_right", "hr"],
+  ["right", "r"],
+];
+
+/** 327の7 進行方向別通行区分 for these lanes, if that pattern was drawn. */
+function laneDesign(lanes: readonly LaneDirection[][]): Design | null {
+  const key = lanes
+    .map((set) =>
+      LANE_LETTERS.filter(([d]) => set.includes(d))
+        .map(([, l]) => l)
+        .join(""),
+    )
+    .join("-");
+  const r = LANE_SIGNS.get(key);
+  return r ? { file: r.texture.replace(/\.png$/, ""), shape: r.plate_node } : null;
+}
+
+// Game sign types drawn straight from the catalogue.
+const BY_ID: Partial<Record<number, string>> = {
+  [SIGN.closed]: "302",
+  [SIGN.pedestrianRoad]: "325の4",
+  [SIGN.roadClosed]: "301",
+  [SIGN.motorClosed]: "310",
+  [SIGN.noPedestrianCrossing]: "332",
+  [SIGN.noOvertakeRight]: "314",
+  [SIGN.noOvertake]: "314の2",
+  [SIGN.noVehicleCrossing]: "312",
+  [SIGN.horn]: "328",
+  [SIGN.bikeOnPavement]: "325の3",
+  [SIGN.parkingAllowed]: "403",
+  [SIGN.timedParking]: "318",
+  [SIGN.busLane]: "327の4",
+  [SIGN.bikeLane]: "327の4の2",
+  [SIGN.busPriority]: "327の5",
+  [SIGN.vehicleClass]: "327",
+};
+
+function design(type: number, value: number, lanes?: readonly LaneDirection[][]): Design | null {
+  const id = BY_ID[type];
+  if (id) return catalogued(id);
   switch (type) {
     case SIGN.speed:
       return [20, 30, 40, 50, 60, 70, 80].includes(value)
@@ -51,8 +118,6 @@ function design(type: number, value: number): Design | null {
         : null;
     case SIGN.noEntry:
       return { file: "no_entry", shape: "PlateCircle" };
-    case SIGN.closed:
-      return { file: "vehicles_closed", shape: "PlateCircle" };
     case SIGN.noParking:
       return { file: "no_parking", shape: "PlateCircle" };
     case SIGN.noStopping:
@@ -70,15 +135,23 @@ function design(type: number, value: number): Design | null {
     case SIGN.stop:
       return { file: "stop", shape: "PlateTriangle" };
     case SIGN.crosswalk:
-      // 横断歩道 signs at crossings are mounted back to back, one face per direction.
-      return { file: "crosswalk", shape: "PlateSquare", bothFaces: true };
+      // 横断歩道 (407-A, the current blue pentagon), back to back: one face per direction.
+      return (
+        catalogued("407-A", { bothFaces: true }) ?? {
+          file: "crosswalk",
+          shape: "PlateSquare",
+          bothFaces: true,
+        }
+      );
+    case SIGN.laneArrows:
+      return lanes ? laneDesign(lanes) : null;
     default:
       return null;
   }
 }
 
 type Part = { face: BufferGeometry; back: BufferGeometry; backMaterial: Material };
-type Kit = { plates: Record<Shape, Part>; post: Mesh; bracket: Mesh };
+type Kit = { plate: (shape: Shape) => Part | null; post: Mesh; bracket: Mesh };
 let kit: Kit | null = null;
 
 /** Loads signs.glb (plates, post, bracket) once; TrafficSigns needs it to have resolved. */
@@ -104,13 +177,18 @@ export async function loadSignModels(): Promise<void> {
       backMaterial: back.material as Material,
     };
   };
+  const plates = new Map<Shape, Part | null>();
   kit = {
-    plates: {
-      PlateCircle: part("PlateCircle"),
-      PlateRect: part("PlateRect"),
-      PlateWide: part("PlateWide"),
-      PlateTriangle: part("PlateTriangle"),
-      PlateSquare: part("PlateSquare"),
+    // Any plate node in signs.glb, loaded on first use (a missing one draws nothing).
+    plate: (shape) => {
+      if (!plates.has(shape)) {
+        try {
+          plates.set(shape, part(shape));
+        } catch {
+          plates.set(shape, null);
+        }
+      }
+      return plates.get(shape) ?? null;
     },
     post: meshOf("Post"),
     bracket: meshOf("Bracket"),
@@ -203,7 +281,7 @@ export class TrafficSigns {
       const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
       add(mid.add(leftOf(ap.travel, ap.seg.line.width / 2 + 0.7)), ap.travel, design(SIGN.stop, 0));
     }
-    for (const s of regs.signs) add(s.pos, s.travel, design(s.type, s.value), s.note);
+    for (const s of regs.signs) add(s.pos, s.travel, design(s.type, s.value, s.lanes), s.note);
     const signalStops = approaches.filter((a) => a.kind === "signal");
     for (const c of regs.crossings) {
       const isSignalled = signalStops.some(
@@ -291,10 +369,12 @@ export class TrafficSigns {
         byShape.set(d.shape, backs);
       });
     for (const { d, items } of byFile.values()) {
-      this.instanced(k.plates[d.shape].face, faceMaterial(d.file), items).userData.key = d.file;
+      const plate = k.plate(d.shape);
+      if (plate) this.instanced(plate.face, faceMaterial(d.file), items).userData.key = d.file;
     }
     for (const [shape, items] of byShape) {
-      this.instanced(k.plates[shape].back, k.plates[shape].backMaterial, items);
+      const plate = k.plate(shape);
+      if (plate) this.instanced(plate.back, plate.backMaterial, items);
     }
     this.instanced(k.bracket.geometry, k.bracket.material as Material, [...byShape.values()].flat(), false);
     const o = new Object3D();

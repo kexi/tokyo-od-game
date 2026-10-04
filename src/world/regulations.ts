@@ -72,9 +72,22 @@ export const SIGN = {
   crosswalk: 9, // 横断歩道 (407-A), placed at runtime at crossings without signals
   stop: 10, // 一時停止 (330-A), placed at runtime at 一時停止 approaches
   closed: 11, // 車両通行止め (302), at the entrances of streets under 通行禁止
-  pedestrianRoad: 12, // 歩行者専用 (歩行者用道路), mostly with school-run hours
+  pedestrianRoad: 12, // 歩行者等専用 (325の4: 歩行者用道路), mostly with school-run hours
   roadClosed: 13, // 通行止め (301)
-  motorClosed: 14, // 自動車 (incl. 二輪) 通行止め
+  motorClosed: 14, // 自動車 (incl. 二輪) 通行止め (310 with 補助)
+  noPedestrianCrossing: 15, // 歩行者等横断禁止 (332)
+  noOvertakeRight: 16, // 追越しのための右側部分はみ出し通行禁止 (314)
+  noOvertake: 17, // 追越し禁止 (314の2)
+  noVehicleCrossing: 18, // 車両横断禁止 (312)
+  horn: 19, // 警笛鳴らせ (328)
+  bikeOnPavement: 20, // 普通自転車等及び歩行者等専用 (325の3: 普通自転車歩道通行可)
+  parkingAllowed: 21, // 駐車可 (403)
+  timedParking: 22, // 時間制限駐車区間 (318)
+  busLane: 23, // 専用通行帯 (327の4)
+  bikeLane: 24, // 普通自転車専用通行帯 (327の4の2)
+  busPriority: 25, // 路線バス等優先通行帯 (327の5)
+  vehicleClass: 26, // 車両通行区分 (327)
+  laneArrows: 27, // 進行方向別通行区分 (327の7), the lanes in PlacedSign.lanes
 } as const;
 
 const REG_ZOOM = 14;
@@ -273,6 +286,8 @@ export type PlacedSign = {
   dir: 1 | -1; // travel direction relative to seg coordinates
   /** 補助標識 text under the plate, e.g. "7-8:30\n土・日・休日を除く". */
   note?: string;
+  /** 進行方向別通行区分: lanes from the left, e.g. [["left","through"],["right"]]. */
+  lanes?: LaneDirection[][];
 };
 /** A crosswalk snapped onto a street: centred at `s`, spanning the carriageway. */
 export type Crossing = { seg: Segment; s: number; pos: Vector3 };
@@ -520,6 +535,24 @@ export function applyRegulations(
   }
   const signs = placeSigns(graph, data, frame, segs, crossings);
   const laneUse = resolveLaneUse(graph, data, frame, segs);
+  // 進行方向別通行区分 (327の7) on the approach, some 35 m before the junction, at the kerb.
+  for (const use of laneUse) {
+    const seg = use.seg;
+    const back = Math.min(35, seg.length * 0.6);
+    const s = use.dir === 1 ? seg.length - back : back;
+    const { pos, dir } = graph.sample(seg, s);
+    const travel = dir.clone().multiplyScalar(use.dir);
+    signs.push({
+      type: SIGN.laneArrows,
+      value: 0,
+      pos: pos.clone().add(leftOf(travel, seg.line.width / 2 + 0.7)),
+      travel,
+      seg,
+      s,
+      dir: use.dir,
+      lanes: use.lanes,
+    });
+  }
   return {
     laneUse,
     crossings,
@@ -680,12 +713,28 @@ export function signAnchors(data: RegulationData): number[][] {
     const [exit] = anchors(reversed(travel), 1e9);
     if (exit) out.push([SIGN.noEntry, 0, ...exit]);
   }
+  // [sign, spacing (m)]: the sign at a section's start and repeated along it.
   const bySection: Record<number, [number, number]> = {
     115: [SIGN.noParking, 200],
     65: [SIGN.noStopping, 200],
     51: [SIGN.noUturn, 300],
     61: [SIGN.slow, 200],
+    14: [SIGN.noPedestrianCrossing, 150],
+    21: [SIGN.vehicleClass, 300],
+    24: [SIGN.busPriority, 200],
+    50: [SIGN.noVehicleCrossing, 200],
+    53: [SIGN.noOvertake, 300],
+    70: [SIGN.parkingAllowed, 150],
+    71: [SIGN.parkingAllowed, 150],
+    116: [SIGN.parkingAllowed, 150],
+    72: [SIGN.timedParking, 100],
+    77: [SIGN.horn, 200],
+    81: [SIGN.bikeOnPavement, 150],
+    1111: [SIGN.bikeLane, 150],
+    1112: [SIGN.busLane, 200],
   };
+  // はみ出し禁止 (yellow centre line): 314 at the start, repeated every 400 m, both ways.
+  for (const coords of data.noOvertake) along(SIGN.noOvertakeRight, 0, coords, 400, true);
   for (const r of data.sections) {
     const kind = bySection[r[0]];
     if (kind) along(kind[0], 0, r.slice(readTime(r, 2).next), kind[1], r[1] === 1);

@@ -226,10 +226,15 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     }
     const bothWays = extra.side !== "2";
     const isAllDay = alwaysOn(time);
-    if (code === "115" || code === "65" || code === "51" || code === "61") {
+    // Section rules with a sign of their own (and law checks for some). 111 専用通行帯 is split by
+    // its name into 1111 普通自転車専用通行帯 and 1112 路線バス等専用通行帯 (different signs).
+    // The four original ones also come as areas (駐車禁止の区域); the new ones only as lines.
+    const isLine = shape === "2" || ["115", "65", "51", "61"].includes(code);
+    if (SECTION_CODES.has(code) && isLine) {
       const sides = code === "61" || bothWays ? 1 : 0;
+      const stored = code === "111" ? (name.includes("自転車") ? 1111 : 1112) : Number(code);
       for (const key of tilesOf(coords))
-        tile(key).sections.push([Number(code), sides, ...writeTime(time), ...coarse(coords)]);
+        tile(key).sections.push([stored, sides, ...writeTime(time), ...coarse(coords)]);
       return true;
     }
     if (code === "17") {
@@ -288,6 +293,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     const code = row[col["共通規制種別コード"]];
     // 113 (可変速度) is skipped: its value depends on live variable-message signs.
     const isWanted = [
+      ...SECTION_CODES,
       "1",
       "4",
       "11",
@@ -361,6 +367,30 @@ async function cachedDownload(url: string, file: string): Promise<Uint8Array> {
 const osmExtract = () => cachedDownload(OSM_EXTRACT, OSM_CACHE);
 
 const tileOf = (lon: number, lat: number) => `${tx(lon)}-${ty(lat)}`;
+/**
+ * Section regulations kept as [code, bothWays, TIME…, coords]: 115 駐車禁止, 65 駐停車禁止,
+ * 51 転回禁止, 61 徐行, 14 歩行者横断禁止, 21 車両通行区分, 24 路線バス等優先通行帯, 50 車両横断禁止,
+ * 53 追越し禁止, 70・71・116 駐車可・停車可, 72 時間制限駐車区間, 77 警笛鳴らせ, 81 普通自転車歩道通行可,
+ * 111 専用通行帯. Each has its sign in the game; JARTIC point records of these are not used.
+ */
+const SECTION_CODES = new Set([
+  "115",
+  "65",
+  "51",
+  "61",
+  "14",
+  "21",
+  "24",
+  "50",
+  "53",
+  "70",
+  "71",
+  "72",
+  "77",
+  "81",
+  "111",
+  "116",
+]);
 function push<T>(tiles: Map<string, T[]>, key: string, item: T): void {
   const list = tiles.get(key) ?? [];
   list.push(item);
