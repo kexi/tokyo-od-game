@@ -1,12 +1,12 @@
 ---
 type: Reference
 title: PLATEAU 建物の配信と LOD 選定
-description: 3D Tiles を直接ストリーミングする構成と、LOD2 を捨てて LOD1 にした理由（キャッシュ枯渇・浮いた壁・網羅率）。AABB で向きを誤診した訂正を含む。
+description: 3D Tiles を直接ストリーミングする構成と、LOD2 を捨てて LOD1 にした理由（キャッシュ枯渇・浮いた壁・網羅率）、建物 ID を使った外壁テクスチャ。AABB で向きを誤診した訂正を含む。
 resource: https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/13-bldg-lod1-latest/tileset.json
 tags: [plateau, rendering]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T05:00:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T10:10:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T03:45:00Z }
 sources:
@@ -55,6 +55,13 @@ sources:
 > **訂正**: 「メッシュのワールド座標の範囲が ±1.8km に広がっているので、Y-up→Z-up の変換が誤り、建物が倒れている」と考えたが、間違いだった。傾いた面の**軸平行の外接箱（AABB）を変換した 8 頂点の範囲**を測っていたため、範囲が水増しされていた。法線（屋根で ECEF の上方向を向く）を確かめて、向きは正しいと分かった。
 >
 > 本当の原因は LOD2 の中間階層（深さ 2〜4、geometricError 約 415）に入っている簡略化メッシュで、キャッシュ枯渇で最下層まで詳細化できず、それが表示され続けていた。
+
+# 外壁テクスチャ（2026-10-04 追加）
+
+- LOD1 のタイルのメッシュは複数の建物をまとめたもので、建物 ID の頂点属性を持つ。丸の内では 68 メッシュ中 63 が `_batchid`、5 が `_feature_id_0`（EXT_mesh_features 形式）だった。
+- `load-model` の時点ではタイルはまだグループに入っておらず、`updateMatrixWorld` すると頂点が ECEF で得られる。タイル中心の放射方向を「上」として建物ごとの高さを求め、高さで外壁の種類を選ぶ。12m 以下はアパート・雑居ビル・倉庫・レンガ、30m 以下はマンション・雑居ビル・タイル張り、60m 以下はコンクリート・タイルのオフィスとマンション、それより高いとガラスかコンクリートのオフィス。階は建物ごとの基部から数える（頂点属性 `facade`）。
+- 外壁 8 種類（agy が手続き生成、1 枚 = 幅 12.8m × 高さ 14m）を、色を RGB・窓マスクを A にまとめて 1 枚のテクスチャ配列にした。スマホは半分の解像度（2.3MB）。
+- 浮動原点の付け替えで模様がずれないよう、水平方向の周期 PERIOD を 12.8m の倍数（576m）にした。
 
 # 注意
 
