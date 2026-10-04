@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.direnv/
+*.local
+.DS_Store

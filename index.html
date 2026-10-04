@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="東京都のオープンデータと PLATEAU 3D 都市モデルで 23 区を走る 3D ドライブ探索ゲーム"
+    />
+    <title>TOKYO OPEN DRIVE</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <section id="loading" aria-live="polite">
+      <div class="loading-card">
+        <h1>TOKYO <span>OPEN</span> DRIVE</h1>
+        <p class="tagline">東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る</p>
+        <p id="loading-status">データを読み込み中…</p>
+        <div class="bar"><div id="loading-bar"></div></div>
+        <button id="start" type="button" disabled>スタート</button>
+        <p class="keys">W/↑ アクセル・S/↓ ブレーキ/バック・A D/← → ハンドル・Space サイド・R 復帰</p>
+      </div>
+    </section>
+
+    <div id="hud" hidden>
+      <div id="hud-location" class="panel">
+        <div id="ward">—</div>
+        <div id="town" class="sub">—</div>
+        <div id="clock" class="sub">—</div>
+        <div id="weather" class="sub">—</div>
+        <div id="transit" class="sub">—</div>
+      </div>
+
+      <div id="hud-time" class="panel segmented" role="group" aria-label="時間帯">
+        <button type="button" data-time="real">リアル</button>
+        <button type="button" data-time="morning">朝</button>
+        <button type="button" data-time="day">昼</button>
+        <button type="button" data-time="evening">夕方</button>
+        <button type="button" data-time="night">夜</button>
+      </div>
+
+      <div id="hud-score" class="panel">
+        <div class="score"><span id="score">0</span><small>pt</small></div>
+        <div id="collected" class="sub">発見 0</div>
+      </div>
+
+      <canvas id="minimap" width="180" height="180"></canvas>
+
+      <div id="hud-speed" class="panel"><span id="speed">0</span><small>km/h</small></div>
+
+      <div id="hud-mission" class="panel">
+        <div class="label">ミッション</div>
+        <div id="mission-name">N キーで目的地を設定</div>
+        <div id="mission-meta" class="sub"></div>
+      </div>
+
+      <div id="hud-toolbar">
+        <button type="button" data-action="mission" title="新しい目的地 (N)">目的地</button>
+        <button type="button" data-action="weather" title="天気 (Y)">天気</button>
+        <button type="button" data-action="ground" title="地面: 地理院写真 / PLATEAU オルソ (M)">地面</button>
+        <button type="button" data-action="camera" title="カメラ (C)">視点</button>
+        <button type="button" data-action="mute" title="音 (V)">音</button>
+        <button type="button" data-action="help" title="操作 (H)">操作</button>
+        <button type="button" data-action="credits" title="出典 (I)">出典</button>
+      </div>
+
+      <div id="toasts"></div>
+
+      <!-- GSI asks for the source to stay visible while its tiles are on screen. -->
+      <div id="attribution">
+        <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener"
+          >地理院タイル</a
+        >
+        ｜<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">PLATEAU（国土交通省）</a>
+        ｜東京都オープンデータ｜公共交通オープンデータセンター｜気象庁 ｜<button
+          type="button"
+          data-action="credits"
+        >
+          出典の詳細
+        </button>
+      </div>
+
+      <div id="touch" aria-hidden="true">
+        <div class="left">
+          <button type="button" data-touch="left">◀</button>
+          <button type="button" data-touch="right">▶</button>
+        </div>
+        <div class="right">
+          <button type="button" data-touch="brake">B</button>
+          <button type="button" data-touch="gas">A</button>
+        </div>
+      </div>
+    </div>
+
+    <dialog id="help">
+      <h2>操作</h2>
+      <dl>
+        <dt>W / ↑</dt>
+        <dd>アクセル</dd>
+        <dt>S / ↓</dt>
+        <dd>ブレーキ・停止中はバック</dd>
+        <dt>A D / ← →</dt>
+        <dd>ハンドル</dd>
+        <dt>Space</dt>
+        <dd>サイドブレーキ（ドリフト）</dd>
+        <dt>R</dt>
+        <dd>車を起こす・その場に復帰</dd>
+        <dt>N</dt>
+        <dd>新しい目的地（ミッション）</dd>
+        <dt>T</dt>
+        <dd>時間帯：リアル → 朝 → 昼 → 夕方 → 夜</dd>
+        <dt>Y</dt>
+        <dd>天気：リアル（気象庁アメダス）→ 晴れ → 雨</dd>
+        <dt>M</dt>
+        <dd>地面：地理院 全国最新写真 ⇔ PLATEAU オルソ画像</dd>
+        <dt>C</dt>
+        <dd>視点切替</dd>
+        <dt>V</dt>
+        <dd>音のオン/オフ</dd>
+        <dt>I</dt>
+        <dd>データ出典</dd>
+      </dl>
+      <p>
+        光の柱は東京都オープンデータの実在スポットです。車で触れると「発見」できます。進捗はこのブラウザに保存されます。
+      </p>
+      <form method="dialog"><button>閉じる</button></form>
+    </dialog>
+
+    <dialog id="credits">
+      <h2>データ出典・クレジット</h2>
+      <div id="credits-body"></div>
+      <form method="dialog"><button>閉じる</button></form>
+    </dialog>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

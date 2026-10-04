@@ -1,0 +1,25 @@
+# git hook（設置は `lefthook install`。nix develop 入室時に自動実行）。
+# CI（.github/workflows/ci.yml）と同じ検査を commit 前に走らせる。
+pre-commit:
+  parallel: true
+  jobs:
+    - name: gitleaks
+      run: gitleaks git --pre-commit --staged --no-banner --redact
+    - name: typecheck
+      glob: "*.{ts,tsx}"
+      run: pnpm exec tsc --noEmit
+    - name: oxlint
+      glob: "*.{ts,tsx,js,mjs}"
+      run: pnpm exec oxlint {staged_files}
+    - name: oxfmt
+      glob: "*.{ts,tsx,js,mjs,json,css,html,md,yml,yaml}"
+      run: pnpm exec oxfmt --check {staged_files}
+    - name: justfile
+      glob: "justfile"
+      run: bash bin/lint-justfile.sh
+    - name: pinact
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: pinact run --check
+    - name: actionlint
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: actionlint
