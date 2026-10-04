@@ -23,15 +23,18 @@ export type ControlPrefs = {
 };
 
 const STORE_KEY = "tod.controls";
+/** The cockpit model the stored seat was set for (2: the 2026-10-05 driving position). */
+const SEAT_MODEL = 2;
 /**
- * The model's DriverEye sits 4.5° above the windscreen's lower edge, a low seat for this dashboard
- * (cars give 7–10°, enough to see the road ahead of the bonnet): 5 cm up by default, with the
- * steering column tilted up 3.5 cm to keep the meters in view through the wheel (cockpit.ts).
+ * The seat as modelled: cockpit.glb's DriverEye is the eye of a 50th-percentile Japanese man in a
+ * seat set where such drivers set it, and sees the road 7.6° below the horizon past the bonnet
+ * (knowledge/cockpit-blender.md). The sliders are for other statures (a 5th-percentile woman sits
+ * ~7.5 cm lower and ~9.6 cm further forward, a 95th-percentile man ~5 cm higher and ~5 cm back).
  */
 export const DEFAULT_PREFS: ControlPrefs = {
   layout: "wasd",
   assist: "easy",
-  seatUp: 0.05,
+  seatUp: 0,
   seatBack: 0,
   volume: 0.8,
   minimap: true,
@@ -55,11 +58,14 @@ export function loadPrefs(): ControlPrefs {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? "null") as Partial<ControlPrefs> | null;
     const layout = saved?.layout === "ccd" ? "ccd" : DEFAULT_PREFS.layout;
     const assist = saved?.assist === "real" ? "real" : DEFAULT_PREFS.assist;
+    // A seat saved for the old cockpit (its eye 5 cm low, so +5 cm was the default) starts over.
+    const isSeatOfOldModel = (saved as { seatModel?: number } | null)?.seatModel !== SEAT_MODEL;
+    const seat = isSeatOfOldModel ? {} : (saved ?? {});
     return {
       layout,
       assist,
-      seatUp: seatOf(saved?.seatUp, SEAT_UP, DEFAULT_PREFS.seatUp),
-      seatBack: seatOf(saved?.seatBack, SEAT_BACK, DEFAULT_PREFS.seatBack),
+      seatUp: seatOf(seat.seatUp, SEAT_UP, DEFAULT_PREFS.seatUp),
+      seatBack: seatOf(seat.seatBack, SEAT_BACK, DEFAULT_PREFS.seatBack),
       volume: volumeOf(saved?.volume),
       minimap: saved?.minimap !== false,
       nav: saved?.nav !== false,
@@ -73,7 +79,7 @@ export function loadPrefs(): ControlPrefs {
 
 export function savePrefs(prefs: ControlPrefs): void {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
+    localStorage.setItem(STORE_KEY, JSON.stringify({ ...prefs, seatModel: SEAT_MODEL }));
   } catch {
     // Not remembered when storage is blocked; the choice still applies now.
   }

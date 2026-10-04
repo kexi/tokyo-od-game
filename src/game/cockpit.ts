@@ -29,8 +29,14 @@ import { RainGlass, WIPER_BLADES } from "./rainGlass";
  * Node names, pivots and angles follow knowledge/cockpit-blender.md.
  */
 const DEG = Math.PI / 180;
-/** How far the steering column is tilted up from the model (m). */
-const COLUMN_RAISE = 0.035;
+/**
+ * How far the steering column is tilted up from the model (m). 0: cockpit.glb places the wheel for
+ * its DriverEye (the meters show through the wheel's upper opening), and raising it would put the
+ * rim's top above UN R125's V2 eye point (knowledge/cockpit-blender.md).
+ */
+const COLUMN_RAISE = 0;
+/** Where the dash clock goes if cockpit.glb has no ClockAnchor (the cluster's top centre). */
+const CLOCK_FALLBACK = new Vector3(-0.372, 0.125, 0.638);
 /** The render layer of the interior (drawn in a second pass with a near plane of a few cm). */
 export const INTERIOR_LAYER = 1;
 /**
@@ -65,7 +71,7 @@ export class Cockpit {
   private mirrorTurn = 0;
   private wiperPhase = 0;
   private readonly rain = new RainGlass({ isMobile: QUALITY.isMobile });
-  /** Parts of the exterior model hidden from inside (its simple dashboard and seats). */
+  /** Parts of the exterior model hidden from inside (its simple dashboard, seats and parked wipers). */
   private hiddenExterior: Object3D[] = [];
   private glass: Array<{ m: Material & { opacity: number }; opacity: number }> = [];
   active = false;
@@ -85,9 +91,7 @@ export class Cockpit {
       this.needleSpeed = this.root.getObjectByName("Needle_Speed") ?? null;
       this.needleTacho = this.root.getObjectByName("Needle_Tacho") ?? null;
       this.wheel = this.root.getObjectByName("SteeringWheel") ?? null;
-      // The column tilted up 3.5 cm (as a driver sets it for the raised seat, see controlsHelp's
-      // DEFAULT_PREFS): the meters are read through the wheel's upper opening, which a higher eye
-      // looks through lower. The stalks go with it.
+      // A column tilt, if any, takes the stalks with it.
       for (const name of ["SteeringWheel", "Stalk_Indicator", "Stalk_Wiper"]) {
         const part = this.root.getObjectByName(name);
         if (part) part.position.y += COLUMN_RAISE;
@@ -143,12 +147,14 @@ export class Cockpit {
         new PlaneGeometry(0.06, 0.02),
         new MeshBasicMaterial({ map: texture, side: DoubleSide }),
       );
-      // Top centre of the meter cluster, between the tachometer (x −0.270) and the speedometer
-      // (−0.4735), above their centres (y 0.112), just proud of the cluster face, facing the eye.
-      mesh.position.set(-0.372, 0.165, 0.606);
+      // Top centre of the meter cluster, between the tachometer and the speedometer, on the
+      // cluster face (cockpit.glb's ClockAnchor), facing the eye.
+      this.root.updateWorldMatrix(true, true);
+      const anchor = this.root.getObjectByName("ClockAnchor");
+      if (anchor) mesh.position.copy(this.root.worldToLocal(anchor.getWorldPosition(new Vector3())));
+      else mesh.position.copy(CLOCK_FALLBACK);
       mesh.layers.set(INTERIOR_LAYER);
       this.root.add(mesh);
-      this.root.updateWorldMatrix(true, true);
       if (this.eye) mesh.lookAt(new Vector3().setFromMatrixPosition(this.eye.matrixWorld));
       this.clock = { canvas, texture };
     }
@@ -181,10 +187,14 @@ export class Cockpit {
     this.root.traverse((o) => o.layers.set(INTERIOR_LAYER));
     for (const w of this.wipers) w.node.traverse((o) => o.layers.set(OUTSIDE_LAYER));
     this.hiddenExterior = [];
+    const own = new Set<Object3D>();
+    this.root.traverse((o) => own.add(o));
     car.traverse((o) => {
-      if (!(o instanceof Mesh) || o === this.root) return;
+      // The cockpit's own seats are made of a material called Seat too.
+      if (!(o instanceof Mesh) || own.has(o)) return;
       const name = (o.material as Material).name;
-      if (name === "Interior" || name === "Seat") this.hiddenExterior.push(o);
+      // Wiper: car.glb's parked wipers, which WiperArm_* replace.
+      if (name === "Interior" || name === "Seat" || name === "Wiper") this.hiddenExterior.push(o);
       // The exterior glass is tinted for the outside view; from inside it should be clear.
       const m = o.material as Material & { opacity: number };
       if (name === "Glass" && !this.glass.some((g) => g.m === m)) this.glass.push({ m, opacity: m.opacity });
