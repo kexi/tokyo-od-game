@@ -6,7 +6,7 @@
     <title>アセット管理</title>
     <meta
       name="description"
-      content="法令厳守 TOKYO OPEN DRIVE の 3D モデルとテクスチャの一覧・プレビュー・レビュー"
+      content="法令厳守 TOKYO OPEN DRIVE のアセット台帳（assets/manifest.yml）の一覧・プレビュー・レビュー"
     />
     <style>
       :root {
@@ -95,6 +95,65 @@
         margin: 14px 6px 4px;
         letter-spacing: 0.05em;
       }
+      nav input[type="search"] {
+        width: 100%;
+        font: inherit;
+        color: inherit;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 10px;
+        margin: 4px 0 2px;
+      }
+      nav .empty {
+        color: var(--sub);
+        font-size: 12px;
+        margin: 12px 6px;
+      }
+      nav details.entry > summary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 6px;
+        border-radius: 8px;
+        cursor: pointer;
+        list-style: none;
+      }
+      nav details.entry > summary::-webkit-details-marker {
+        display: none;
+      }
+      nav details.entry > summary::before {
+        content: "▸";
+        color: var(--sub);
+        width: 10px;
+        transition: transform 0.15s;
+      }
+      nav details.entry[open] > summary::before {
+        transform: rotate(90deg);
+      }
+      nav details.entry > summary:hover {
+        background: var(--panel);
+      }
+      nav summary .title {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+      nav summary .count {
+        color: var(--sub);
+        font-size: 11px;
+        min-width: 2ch;
+        text-align: right;
+      }
+      nav details.entry .item {
+        padding-left: 18px;
+      }
+      nav .item.overview .name {
+        color: var(--sub);
+        font-size: 12px;
+      }
       nav .item {
         display: flex;
         align-items: center;
@@ -139,6 +198,10 @@
       .badge.ng {
         background: var(--ng);
         color: #300;
+      }
+      .badge.unused {
+        border: 1px solid var(--sub);
+        color: var(--sub);
       }
       .badge.done {
         background: var(--sub);
@@ -186,6 +249,60 @@
         pointer-events: none;
         box-shadow: 0 0 0 2px #fff;
       }
+      #stage .overview {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+        padding: 20px 24px;
+      }
+      #stage .overview h2 {
+        margin: 0 0 4px;
+        font-size: 20px;
+      }
+      #stage .overview .remote {
+        font-size: 12px;
+        color: var(--sub);
+        word-break: break-all;
+      }
+      #stage .overview .tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+      #stage .overview .tile {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+        text-align: left;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      #stage .overview button.tile:hover {
+        border-color: var(--accent);
+      }
+      #stage .overview .tile img,
+      #stage .overview .tile .glyph {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+        border-radius: 6px;
+        background: repeating-conic-gradient(#8884 0 25%, #0000 0 50%) 0 0 / 12px 12px;
+      }
+      #stage .overview .tile .glyph {
+        display: grid;
+        place-items: center;
+        font-size: 34px;
+        color: var(--sub);
+        background: none;
+      }
+      #stage .overview .tile .name {
+        font-size: 11px;
+        color: var(--sub);
+        word-break: break-all;
+      }
       #stage .toolbar {
         position: absolute;
         left: 12px;
@@ -213,6 +330,54 @@
         margin: 0 0 6px;
         font-size: 15px;
         word-break: break-all;
+      }
+      aside h3.file {
+        font-size: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      aside .entry-card {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 6px;
+        margin-bottom: 12px;
+      }
+      .kicker {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--sub);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        margin-bottom: 2px;
+      }
+      .purpose {
+        margin: 0 0 10px;
+        font-size: 13px;
+      }
+      aside a,
+      .overview a,
+      .linklike {
+        color: var(--accent);
+        word-break: break-all;
+      }
+      .linklike {
+        border: 0;
+        padding: 0;
+        border-radius: 0;
+        text-align: left;
+        text-decoration: underline;
+      }
+      aside .lines > div + div {
+        margin-top: 2px;
+      }
+      aside code {
+        font-size: 11px;
+        background: var(--panel);
+        border-radius: 4px;
+        padding: 0 4px;
+      }
+      aside .note {
+        color: var(--sub);
+        font-size: 12px;
       }
       aside dl {
         display: grid;
@@ -295,6 +460,16 @@
         border-radius: 4px;
       }
       @media (max-width: 900px) {
+        header {
+          flex-wrap: wrap;
+        }
+        header h1 {
+          white-space: nowrap;
+        }
+        header #summary {
+          order: 5;
+          flex-basis: 100%;
+        }
         main {
           grid-template-columns: 1fr;
           height: auto;
@@ -317,7 +492,15 @@
       <button type="button" class="primary" id="submit" disabled>レビューを Claude に送る</button>
     </header>
     <main>
-      <nav id="list"></nav>
+      <nav>
+        <input
+          id="filter"
+          type="search"
+          placeholder="名前・用途・ファイルで絞り込む"
+          aria-label="アセットを絞り込む"
+        />
+        <div id="list"></div>
+      </nav>
       <section id="stage"></section>
       <aside id="detail"></aside>
     </main>

@@ -72,7 +72,9 @@ just build      # dist/ に本番ビルド
 
 ### アセット管理とレビュー
 
-`just assets` で開くアセット管理画面（`assets.html`）に、Blender で作ったモデルと手続き生成したテクスチャがすべて並びます。モデルは回して見られ、部品の表示切替と三角形数、ワイヤーフレームがあります。テクスチャは透過を市松模様の上で見られます。
+アセットは台帳 `assets/manifest.yml` で、1 件ごとに名前・用途・生成スクリプトと just のレシピ・出典・ライセンスを管理しています。`assets/` と `public/`（`public/data` を除く）に台帳に無いファイルがあると `just assets-check`（`just test` にも含まれる）が落ちるので、アセットを足したら台帳にも足してください。
+
+`just assets` で開くアセット管理画面（`assets.html`）に、台帳のアセットが種類ごとにすべて並びます。モデルは回して見られ、部品の表示切替と三角形数、ワイヤーフレームがあります。テクスチャは透過を市松模様の上で見られます。
 
 各アセットに OK／要修正を付け、指示を書き、ピン（テクスチャはクリック、モデルは Shift+クリックで部品に）を置いて「レビューを Claude に送る」を押すと、開発サーバーが `.review/pending/` に書き出します。Claude Code のフック（`.claude/hooks/asset-review-watch.sh`、`asyncRewake`）がセッションを起こし、`asset-review` スキル（`.agents/skills/asset-review/`）の手順で生成スクリプトを直して作り直します。対応結果は画面に表示されます。
 

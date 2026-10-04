@@ -1,0 +1,673 @@
+# アセット台帳: ゲームが使う 3D モデル・テクスチャ・画像・データ・フォント・音声を 1 件ずつ、
+# 名前・用途・生成方法・出典・ライセンスとともに管理する。
+#
+# - スキーマは src/data/assetManifest.ts、検査は tests/assetManifest.test.ts（`just assets-check`）。
+#   assets/ と public/（public/data のオープンデータを除く）の全ファイルが、どれか 1 件の files か docs に
+#   載っていないとテストが落ちる。新しいアセットを足したら、ここにも足す。
+# - アセット管理画面（`just assets` → assets.html）はこの台帳を種類ごとに並べる。
+# - files はリポジトリ相対のパスか glob（Node の fs.globSync の書式）。1 つのファイルは 1 件だけが持つ。
+# - made_by: blender-cli = Blender CLI の bpy スクリプト、procedural = Claude Code が書いた手続き生成、
+#   agy = Antigravity（agy）が書いた手続き生成（受け取り後に確認・修正済み）、external = 外部の配布物、
+#   unknown = 作成者の記録が無い。
+# - license は下の licenses のキー。used_by は実行時に読み込むソース、inputs は材料にした台帳の id。
+# - status: unused は、生成・コミットしてあるがゲームがまだ読み込んでいないもの。
+
+version: 1
+
+licenses:
+  repo:
+    name: このリポジトリの LICENSE（MIT License）
+    url: LICENSE
+    notes: >-
+      リポジトリ内のスクリプトで作った生成物は、リポジトリの LICENSE に従う扱いにしている。
+      README の「ライセンス」節はソースコード（MIT）とデータ（各提供元）だけを書いており、
+      生成アセットのライセンスは明文化されていない。
+  MIT:
+    name: MIT License
+    url: https://opensource.org/license/mit
+  OFL-1.1:
+    name: SIL Open Font License 1.1
+    url: https://openfontlicense.org/
+  ODbL-1.0:
+    name: Open Database License 1.0（OpenStreetMap）
+    url: https://opendatacommons.org/licenses/odbl/1-0/
+    notes: © OpenStreetMap contributors の帰属表示が要る。抽出したデータベースを公開するなら ODbL で提供する。
+  PDL-1.0:
+    name: 公共データ利用規約 第1.0版（PLATEAU）
+    url: https://www.mlit.go.jp/plateau/site-policy/
+    notes: 「国土交通省 PLATEAU … を加工して作成」と加工した旨を書く。
+  Apache-2.0:
+    name: Apache License 2.0
+    url: public/tts/LICENSE-APACHE-2.0.txt
+  LicenseRef-sanoTTS-jp-Model-1.0:
+    name: sanoTTS-jp Model License 1.0
+    url: public/tts/LICENSE-MODEL.md
+    notes: 重みに適用。(A) の表示と Apache-2.0 全文の同梱、合成音声の禁止用途 4 項目を利用規約で課すことが義務。
+  BSD-3-Clause:
+    name: BSD 3-Clause License
+    url: https://opensource.org/license/bsd-3-clause
+    notes: Open JTalk（名古屋工業大学）と NAIST-JDIC（奈良先端科学技術大学院大学）。全文は public/tts/NOTICE-*.txt。
+
+assets:
+  # ---------------------------------------------------------------- 3D モデル
+  - id: car
+    name: 自車・AI 車・タクシー
+    purpose: 自車の詳細モデル（約 5 万三角形）と AI 車の低ポリゴン版、それぞれのタクシー仕様として道路を走らせる。
+    kind: model
+    files: [public/models/car.glb]
+    generator: { script: scripts/blender/car.py, recipe: car-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。寸法は src/physics/vehicle.ts に合わせた。外部の 3D 素材は使っていない）
+    license: repo
+    used_by: [src/game/carModel.ts]
+    inputs: [car-textures]
+    docs: [knowledge/car-model-blender.md]
+
+  - id: cockpit
+    name: 車内（運転席）
+    purpose: 運転席視点で見る右ハンドルの車内（メーターの針・ハンドル・ミラー・ワイパーをゲームが動かす）。
+    kind: model
+    files: [public/models/cockpit.glb]
+    generator: { script: scripts/blender/cockpit.py, recipe: cockpit-model }
+    made_by: blender-cli
+    source: 自作（car.glb のガラスと塗装面から窓の開口を求めて手続きモデリング。写真は配置の参考のみ）
+    license: repo
+    used_by: [src/game/cockpit.ts]
+    inputs: [cockpit-textures, car, car-textures]
+    docs: [knowledge/cockpit-blender.md]
+    notes: car.glb を読んで車内を合わせるので、先に car-model を作る。
+
+  - id: sign-plates
+    name: 道路標識の板と支柱
+    purpose: 実寸の標識板（円・逆三角・正方形・一方通行など）と支柱・取付金具。図柄は実行時に sign-textures を貼る。
+    kind: model
+    files: [public/models/signs.glb]
+    generator: { script: scripts/blender/signs.py, recipe: sign-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。板の寸法は道路標識、区画線及び道路標示に関する命令 別表第二による）
+    license: repo
+    used_by: [src/world/signs.ts]
+    docs: [knowledge/car-model-blender.md, knowledge/road-markings-and-signs.md]
+
+  - id: human
+    name: 歩行者
+    purpose: 歩道を歩く人・違反を撮影する通行人の体。肩・肘・股・膝で曲がり、服と肌の色は人ごとに材質で変える。
+    kind: model
+    files: [public/models/human.glb]
+    generator: { script: scripts/blender/human.py, recipe: human-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。外部の 3D 素材は使っていない）
+    license: repo
+    used_by: [src/world/human.ts]
+    inputs: [human-textures]
+    docs: [knowledge/car-model-blender.md]
+
+  - id: signals
+    name: 信号機
+    purpose: 交差点の車両用 LED 3 灯横型・歩行者用 2 灯縦型の灯器と、信号柱・アーム。点灯はゲームがレンズの色で切り替える。
+    kind: model
+    files: [public/models/signals.glb]
+    generator: { script: scripts/blender/signals.py, recipe: signal-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。外部の 3D 素材は使っていない）
+    license: repo
+    used_by: [src/world/signalModels.ts]
+    inputs: [signal-textures]
+    docs: [knowledge/car-model-blender.md]
+
+  - id: ambulance
+    name: 救急車
+    purpose: 緊急走行で近づき、道を譲る場面を作る高規格救急車（赤色灯は左右交互に光らせる）。
+    kind: model
+    files: [public/models/ambulance.glb]
+    generator: { script: scripts/blender/ambulance.py, recipe: ambulance-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。赤十字などの標章・組織名は入れていない）
+    license: repo
+    used_by: [src/game/emergency.ts]
+    inputs: [ambulance-textures]
+    docs: [knowledge/car-model-blender.md]
+
+  - id: bus
+    name: 大型路線バス
+    purpose: 交通に混ざって走る都市型ノンステップの路線バス（扉と車輪はノードで動かせる）。
+    kind: model
+    files: [public/models/bus.glb]
+    generator: { script: scripts/blender/bus.py, recipe: bus-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。寸法は国内の 10.5 m 級ノンステップバスの公表値の範囲）
+    license: repo
+    used_by: [src/game/vehicleModels.ts]
+    inputs: [bus-textures]
+    docs: [knowledge/large-vehicles-blender.md]
+
+  - id: truck-10t
+    name: 大型トラック（10t 級 3 軸ウイング車）
+    purpose: 交通に混ざって走る 10t 級のアルミウイング車。
+    kind: model
+    files: [public/models/truck10t.glb]
+    generator: { script: scripts/blender/truck.py, recipe: truck-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。メーカーのロゴ・事業者名は入れていない）
+    license: repo
+    used_by: [src/game/vehicleModels.ts]
+    inputs: [truck-textures]
+    docs: [knowledge/large-vehicles-blender.md]
+
+  - id: truck-8t
+    name: 中型トラック（8t 増トン平ボディ）
+    purpose: 交通に混ざって走る 8t 増トンの平ボディ車（車両総重量 11t 超で大型免許の区分）。
+    kind: model
+    files: [public/models/truck8t.glb]
+    generator: { script: scripts/blender/truck.py, recipe: truck-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。メーカーのロゴ・事業者名は入れていない）
+    license: repo
+    used_by: [src/game/vehicleModels.ts]
+    inputs: [truck-textures]
+    docs: [knowledge/large-vehicles-blender.md]
+
+  - id: motorbike
+    name: バイク（250cc 軽二輪とライダー）
+    purpose: 交通に混ざって走る 250cc のバイク。ライダーは歩行者と同じ関節で姿勢を変えられる。
+    kind: model
+    files: [public/models/motorbike.glb]
+    generator: { script: scripts/blender/motorbike.py, recipe: motorbike-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。メーカーのロゴは描いていない）
+    license: repo
+    used_by: [src/game/vehicleModels.ts]
+    inputs: [motorbike-textures]
+    docs: [knowledge/large-vehicles-blender.md]
+
+  - id: police-officer
+    name: 制服警察官
+    purpose: 交通整理・取締りに立つ制服警察官（活動服・夏服・夜光チョッキ・帽子覆いをノードで切り替える）。
+    kind: model
+    files: [public/models/police.glb]
+    generator: { script: scripts/blender/police.py, recipe: police-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。服制は警察官の服制に関する規則 別表による。旭日章・組織名は入れていない）
+    license: repo
+    used_by: []
+    inputs: [police-officer-textures, human-textures, human]
+    docs: [knowledge/street-characters-blender.md]
+    status: unused
+    notes: human.glb と同じ骨格（書き出し前に human.glb の関節位置と照合する）。2026-10-05 時点でゲームはまだ読み込んでいない。
+
+  - id: stroller
+    name: ベビーカー（A 形）
+    purpose: 歩道や横断歩道でベビーカーを押す歩行者の小道具。
+    kind: model
+    files: [public/models/stroller.glb]
+    generator: { script: scripts/blender/stroller.py, recipe: stroller-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。ブランドのロゴは入れていない）
+    license: repo
+    used_by: []
+    inputs: [stroller-textures]
+    docs: [knowledge/street-characters-blender.md]
+    status: unused
+    notes: 2026-10-05 時点でゲームはまだ読み込んでいない。
+
+  - id: bicycle
+    name: 自転車（ママチャリ・クロスバイク）
+    purpose: 車道や歩道を走る自転車。ハンドル・車輪・クランクはノードで動かし、乗る人は human.glb の関節で姿勢を作る。
+    kind: model
+    files: [public/models/bicycle.glb]
+    generator: { script: scripts/blender/bicycle.py, recipe: bicycle-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。大きさは普通自転車の範囲、ブランドのロゴは入れていない）
+    license: repo
+    used_by: []
+    inputs: [bicycle-textures]
+    docs: [knowledge/street-characters-blender.md]
+    status: unused
+    notes: 2026-10-05 時点でゲームはまだ読み込んでいない。
+
+  - id: smartphone
+    name: スマートフォン（撮影する通行人）
+    purpose: 違反を目撃した通行人が横向きに構えて撮るスマホ。画面はゲームが CanvasTexture で描く。
+    kind: model
+    files: [public/models/smartphone.glb]
+    generator: { script: scripts/blender/smartphone.py, recipe: smartphone-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。特定機種の形・ロゴは使っていない）
+    license: repo
+    used_by: [src/game/witnessPhones.ts]
+    docs: [knowledge/witness-phones.md]
+
+  - id: police-patrol
+    name: パトカー（白黒の無線警ら車）
+    purpose: 違反を見つけて追跡する白黒パトカー（昇降式の赤色警光灯とスピーカー付き）。
+    kind: model
+    files: [public/models/police_patrol.glb]
+    generator:
+      script: [scripts/blender/police_car.py, scripts/blender/police_common.py]
+      recipe: police-car-models
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。実在の標章・文字は使わず、汎用の盾と PATROL、架空の番号にした）
+    license: repo
+    used_by: [src/game/vehicleModels.ts]
+    inputs: [police-vehicle-textures, car-textures]
+    docs: [knowledge/police-vehicles-blender.md]
+
+  - id: police-unmarked
+    name: 覆面パトカー
+    purpose: 速度違反を取り締まる交通取締用の覆面車（反転式の警光灯が屋根から出る）。
+    kind: model
+    files: [public/models/police_unmarked.glb]
+    generator:
+      script: [scripts/blender/police_car.py, scripts/blender/police_common.py]
+      recipe: police-car-models
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。架空の番号）
+    license: repo
+    used_by: [src/game/vehicleModels.ts]
+    inputs: [police-vehicle-textures, car-textures]
+    docs: [knowledge/police-vehicles-blender.md]
+
+  - id: police-shirobai
+    name: 白バイ（隊員乗車）
+    purpose: 違反車を追って停止を求める白バイと、乗車した交通機動隊員。
+    kind: model
+    files: [public/models/police_shirobai.glb]
+    generator:
+      script: [scripts/blender/police_bike.py, scripts/blender/police_common.py]
+      recipe: police-bike-models
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。実在の標章・文字は使っていない）
+    license: repo
+    used_by: [src/game/vehicleModels.ts]
+    inputs: [police-vehicle-textures, human-textures, human]
+    docs: [knowledge/police-vehicles-blender.md]
+
+  - id: police-rider
+    name: 白バイ隊員（立ち姿）
+    purpose: 白バイを降りて徒歩で停止を求める交通機動隊員（human.glb と同じ骨格）。
+    kind: model
+    files: [public/models/police_rider.glb]
+    generator:
+      script: [scripts/blender/police_bike.py, scripts/blender/police_common.py]
+      recipe: police-bike-models
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。実在の標章・文字は使っていない）
+    license: repo
+    used_by: []
+    inputs: [police-vehicle-textures, human-textures, human]
+    docs: [knowledge/police-vehicles-blender.md]
+    status: unused
+    notes: 2026-10-05 時点でゲームはまだ読み込んでいない（vehicleModels.ts が読むのは白バイの乗車姿だけ）。
+
+  - id: tokyo-tower
+    name: 東京タワー
+    purpose: 芝公園に実寸（333 m）で立つ東京タワー。夜はランドマークライト・ダイヤモンドヴェールで照らし、遠くでは軽いシルエットに替える。
+    kind: model
+    files: [public/models/tokyo_tower.glb, public/models/tokyo_tower_far.glb]
+    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。寸法・形は PLATEAU LOD2 の実測と OpenStreetMap の脚の位置、
+      Wikipedia の数値から取った。写真は見た目の参考のみで取り込んでいない。
+    license: [repo, PDL-1.0, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [landmark-textures]
+    docs: [knowledge/landmarks-blender.md]
+    notes: 配置と点灯時刻は landmark-placements（public/data/landmarks.json）。_far.glb は遠景だけの別ファイル。
+
+  - id: tokyo-skytree
+    name: 東京スカイツリー
+    purpose: 押上に実寸（634 m）で立つ東京スカイツリー。夜は粋・雅・幟のライティングを公式の予定どおりに切り替える。
+    kind: model
+    files: [public/models/tokyo_skytree.glb, public/models/tokyo_skytree_far.glb]
+    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。断面は PLATEAU LOD2 の実測、足元は OpenStreetMap の building:part、
+      高さは Wikipedia・公式の数値から取った。
+    license: [repo, PDL-1.0, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [landmark-textures]
+    docs: [knowledge/landmarks-blender.md]
+
+  - id: tokyo-station
+    name: 東京駅丸の内駅舎
+    purpose: 丸の内広場に面した実寸の丸の内駅舎（南北のドームと夜のライトアップ）。
+    kind: model
+    files: [public/models/tokyo_station.glb, public/models/tokyo_station_far.glb]
+    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。量感は PLATEAU LOD2 の実測、平面は OpenStreetMap、
+      長さ・高さは JR 東日本の発表資料と Wikipedia の数値から取った。
+    license: [repo, PDL-1.0, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [landmark-textures]
+    docs: [knowledge/landmarks-blender.md]
+
+  # ---------------------------------------------------------------- テクスチャ
+  - id: car-textures
+    name: 車のテクスチャ
+    purpose: 自車・タクシーのナンバー（自家用・事業用）、行灯、空車表示、灯火、グリル、タイヤの図柄。car.glb などに埋め込む。
+    kind: texture
+    files: [assets/car/textures/*.png]
+    generator: { script: scripts/textures/car_textures.py, recipe: car-textures }
+    made_by: agy
+    source: 自作（手続き生成、シード固定。文字はコミット固定の Noto Sans JP、番号は架空、実在のロゴなし）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [assets/car/textures/README.md, knowledge/car-model-blender.md]
+    notes: agy への委譲ジョブ agy-7b811c で作り、システムフォントの使用とフォールバックを Claude Code が直した。grille.png は cockpit とパトカーも使う。
+
+  - id: sign-textures
+    name: 道路標識の図柄
+    purpose: 別表第一の番号ごとの道路標識の図柄 345 枚。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-catalog）。
+    kind: texture
+    files: [assets/signs/textures/*.png]
+    generator: { script: scripts/textures/sign_textures.py, recipe: sign-textures }
+    made_by: [agy, procedural]
+    source: 自作（手続き生成）。様式・色・寸法は道路標識、区画線及び道路標示に関する命令 別表第二（e-Gov、2026-09-01 施行版）による。
+    license: repo
+    used_by: [src/world/signs.ts]
+    inputs: [noto-sans-jp]
+    docs: [assets/signs/textures/README.md, knowledge/road-markings-and-signs.md]
+    notes: 最初の 24 種は agy への 2 回目の委譲で作り、残りは Claude Code が scripts/textures/signs/ に群ごとに足した。
+
+  - id: human-textures
+    name: 歩行者のテクスチャ
+    purpose: 歩行者の顔・シャツ・ズボン・髪・靴。白基調のグレースケールで、色はゲームが材質で乗算して人ごとに変える。
+    kind: texture
+    files: [assets/human/textures/*.png]
+    generator: { script: scripts/textures/human_textures.py, recipe: textures }
+    made_by: agy
+    source: 自作（手続き生成、シード固定。外部の画像・フォントは使っていない）
+    license: repo
+    used_by: []
+    docs: [assets/human/textures/README.md, knowledge/car-model-blender.md]
+    notes: 顔と髪は警察官・白バイ隊員のモデルも使う。
+
+  - id: building-textures
+    name: 建物の外壁
+    purpose: PLATEAU LOD1 の建物に貼る外壁 8 種（色と窓のマスク、1 枚 = 幅 12.8 m × 高さ 14 m で繰り返す）。
+    kind: texture
+    files: [assets/buildings/textures/*.png]
+    generator: { script: scripts/textures/building_textures.py, recipe: textures }
+    made_by: agy
+    source: 自作（手続き生成、シード固定。外部の画像は使っていない）
+    license: repo
+    used_by: [src/world/facade.ts]
+    docs: [assets/buildings/textures/README.md, knowledge/plateau-buildings.md]
+
+  - id: signal-textures
+    name: 信号のレンズ
+    purpose: 車両用灯器の LED の粒と、歩行者用の「止まれ」「進め」の人形のマスク。ゲームが色を掛けて点灯・消灯する。
+    kind: texture
+    files: [assets/signals/textures/*.png]
+    generator: { script: scripts/textures/signal_textures.py, recipe: textures }
+    made_by: agy
+    source: 自作（手続き生成、シード固定）
+    license: repo
+    used_by: [src/world/signalModels.ts]
+    docs: [assets/signals/textures/README.md, knowledge/car-model-blender.md]
+
+  - id: ambulance-textures
+    name: 救急車のテクスチャ
+    purpose: 救急車の側面・後面の赤帯と「救急」「AMBULANCE」、ボンネットの鏡文字、赤色灯のレンズ。
+    kind: texture
+    files: [assets/ambulance/textures/*.png]
+    generator: { script: scripts/textures/ambulance_textures.py, recipe: textures }
+    made_by: agy
+    source: 自作（手続き生成、シード固定。文字はコミット固定の Noto Sans JP、標章なし）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [assets/ambulance/textures/README.md, knowledge/car-model-blender.md]
+
+  - id: bus-textures
+    name: 路線バスのテクスチャ
+    purpose: 路線バスの LED 行先表示、架空の塗装帯とステッカー、緑ナンバー、ホイール。
+    kind: texture
+    files: [assets/bus/textures/*.png]
+    generator: { script: scripts/textures/bus_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成。実在の事業者の塗装・社名・系統記号は使っていない。番号は架空）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [assets/bus/textures/README.md, knowledge/large-vehicles-blender.md]
+
+  - id: truck-textures
+    name: トラックのテクスチャ
+    purpose: ウイング荷台の側板、「最大積載量」の表示、大型後部反射器、グリル、緑ナンバー、ホイール。
+    kind: texture
+    files: [assets/truck/textures/*.png]
+    generator: { script: scripts/textures/truck_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成。メーカー・事業者のロゴなし、番号は架空）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [assets/truck/textures/README.md, knowledge/large-vehicles-blender.md]
+
+  - id: motorbike-textures
+    name: バイクのテクスチャ
+    purpose: 軽二輪の後部ナンバー（第14号様式）と、キャストホイール・ブレーキディスク。
+    kind: texture
+    files: [assets/motorbike/textures/*.png]
+    generator: { script: scripts/textures/motorbike_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成。番号は架空）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [assets/motorbike/textures/README.md, knowledge/large-vehicles-blender.md]
+
+  - id: police-officer-textures
+    name: 警察官の制服
+    purpose: 制服警察官の活動服・ズボン（白基調で色は材質）、装備のアトラス、夜光チョッキの網。
+    kind: texture
+    files: [assets/police/textures/*.png]
+    generator: { script: scripts/textures/police_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成、シード固定。旭日章・組織名・文字なし）
+    license: repo
+    used_by: []
+    docs: [knowledge/street-characters-blender.md]
+    status: unused
+    notes: 材料にしている police-officer モデルがまだゲームで使われていない。
+
+  - id: police-vehicle-textures
+    name: 警察車両のテクスチャ
+    purpose: パトカー・覆面・白バイの塗装デカール、警光灯のレンズ、ナンバー、白バイ隊員の制服。
+    kind: texture
+    files: [assets/police_vehicles/textures/*.png]
+    generator: { script: scripts/textures/police_vehicle_textures.py, recipe: textures }
+    made_by: agy
+    source: 自作（手続き生成、シード固定。実在の標章なし、文字はコミット固定の Noto Sans JP、番号は架空）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [knowledge/police-vehicles-blender.md]
+    notes: agy への委譲ジョブ agy-1f84c7 で作った。再実行で 19 枚の MD5 が一致することを確かめてある。
+
+  - id: stroller-textures
+    name: ベビーカーのテクスチャ
+    purpose: ベビーカーの座面・幌の布（白基調で色は材質）とタイヤ。
+    kind: texture
+    files: [assets/stroller/textures/*.png]
+    generator: { script: scripts/textures/stroller_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成、シード固定。フォント・外部画像・ブランドなし）
+    license: repo
+    used_by: []
+    docs: [knowledge/street-characters-blender.md]
+    status: unused
+    notes: 材料にしている stroller モデルがまだゲームで使われていない。
+
+  - id: bicycle-textures
+    name: 自転車のテクスチャ
+    purpose: ママチャリの前かごの網（隙間は透過、色は材質で付ける）。
+    kind: texture
+    files: [assets/bicycle/textures/*.png]
+    generator: { script: scripts/textures/bicycle_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成）
+    license: repo
+    used_by: []
+    docs: [knowledge/street-characters-blender.md]
+    status: unused
+    notes: 材料にしている bicycle モデルがまだゲームで使われていない。
+
+  - id: cockpit-textures
+    name: 車内のテクスチャ
+    purpose: 速度計・回転計・燃料計の盤面、警告灯、空調パネル、シフトゲート、シートと天井の布、樹脂のシボ、スピーカーの網。
+    kind: texture
+    files: [assets/cockpit/textures/*.png]
+    generator: { script: scripts/textures/cockpit_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成。文字はコミット固定の Noto Sans JP、ロゴ・車名なし）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [assets/cockpit/textures/README.md, knowledge/cockpit-blender.md]
+
+  - id: landmark-textures
+    name: ランドマークのテクスチャ
+    purpose: 東京タワー・スカイツリー・東京駅のトラスのマスク、外壁、夜間照明の発光マップ、遠景用の絵。
+    kind: texture
+    files: [assets/landmarks/textures/*.png, assets/landmarks/textures/*.jpg]
+    generator: { script: scripts/textures/landmark_textures.py, recipe: textures }
+    made_by: procedural
+    source: 自作（手続き生成、シード固定。写真・フォント・ロゴ・文字なし）
+    license: repo
+    used_by: []
+    docs: [knowledge/landmarks-blender.md]
+
+  - id: asphalt-textures
+    name: 車道のアスファルト
+    purpose: 車道の密粒度アスファルト（色・法線・粗さ、4 m で 1 タイル）。ワールド座標で敷くので継ぎ目が出ない。
+    kind: texture
+    files:
+      - assets/road/textures/asphalt_albedo.jpg
+      - assets/road/textures/asphalt_normal.jpg
+      - assets/road/textures/asphalt_roughness.png
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: textures }
+    made_by: unknown
+    source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
+    license: repo
+    used_by: [src/world/roadSurface.ts]
+    notes: >-
+      作成者の記録が無い（knowledge にも README にも無い）。スクリプトには委譲時のタスク記述から
+      取ったとみられる scratchpad の絶対パスが確認用シートの既定の出力先として残っている。
+
+  - id: asphalt-texture-extras
+    name: アスファルトの未使用バリエーション
+    purpose: 生成スクリプトが一緒に書き出す PNG 原版と、轍・補修跡・排水性舗装のバリエーション。ゲームは読み込んでいない。
+    kind: texture
+    files:
+      - assets/road/textures/asphalt_albedo.png
+      - assets/road/textures/asphalt_normal.png
+      - assets/road/textures/asphalt_worn_albedo.*
+      - assets/road/textures/asphalt_patch_albedo.*
+      - assets/road/textures/asphalt_porous_albedo.*
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: textures }
+    made_by: unknown
+    source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
+    license: repo
+    used_by: []
+    status: unused
+
+  # ---------------------------------------------------------------- 画像
+  - id: og-image
+    name: SNS 共有カード
+    purpose: SNS でゲームの URL を共有したときに出る OGP 画像（1200 × 630）。自作の車と標識だけを描き、題字を重ねる。
+    kind: image
+    files: [public/og.jpg]
+    generator:
+      script: [scripts/blender/og.py, scripts/textures/og_image.py]
+      recipe: og
+    made_by: [blender-cli, procedural]
+    source: 自作（car.glb・signs.glb と標識の図柄を Blender で描画し、Noto Sans JP で題字を描いた。地図・3D 都市モデルは写していない）
+    license: repo
+    used_by: [index.html]
+    inputs: [car, sign-plates, sign-textures, noto-sans-jp]
+
+  # ---------------------------------------------------------------- データ
+  - id: sign-catalog
+    name: 道路標識カタログ
+    purpose: 別表第一の全番号と法定外 7 種について、図柄のファイル・板の形・寸法・根拠（描いていない番号は理由）を引く表。
+    kind: data
+    files: [assets/signs/catalog.json]
+    generator: { script: scripts/textures/sign_textures.py, recipe: sign-textures }
+    made_by: procedural
+    source: 道路標識、区画線及び道路標示に関する命令（e-Gov 法令 API、2026-09-01 施行版）の別表第一・第二を読んで作った表
+    license: repo
+    used_by: [src/world/signs.ts, src/world/coverage.ts]
+    docs: [knowledge/road-markings-and-signs.md]
+
+  - id: landmark-placements
+    name: ランドマークの配置と点灯予定
+    purpose: 3 つのランドマークの位置・向き・地盤高・遠景に替える距離・置き換える PLATEAU 建物・ライトアップの予定表。
+    kind: data
+    files: [public/data/landmarks.json]
+    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    made_by: blender-cli
+    source: >-
+      足元の形は OpenStreetMap（Overpass、2026-10-04）、置き換える建物は PLATEAU の gml_id、
+      点灯の予定は各施設の公式サイトの記述から作った。
+    license: [ODbL-1.0, PDL-1.0]
+    used_by: [src/world/landmarks.ts]
+    docs: [knowledge/landmarks-blender.md]
+    notes: >-
+      public/data は普段オープンデータの置き場だが、これは landmarks.py が書く台帳なのでここで管理する。
+      OSM の足元の多角形を含むので、公開時は ODbL の帰属表示（各エントリの sources に記載）が要る。
+
+  # ---------------------------------------------------------------- フォント
+  - id: noto-sans-jp
+    name: Noto Sans JP
+    purpose: ナンバー・標識・表示器・メーターなどテクスチャの文字と、OGP 画像の題字を描く（生成時だけ使い、ゲームには同梱しない）。
+    kind: font
+    files: []
+    remote:
+      url: https://raw.githubusercontent.com/google/fonts/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf
+      sha256: c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f
+    made_by: external
+    source: Google Fonts（google/fonts のコミット 295d98a で固定。取得物は ~/.cache/tokyo-od-game/fonts に置き、SHA-256 を照合する）
+    license: OFL-1.1
+    used_by:
+      - scripts/textures/car_textures.py
+      - scripts/textures/sign_textures.py
+      - scripts/textures/og_image.py
+    docs: [knowledge/car-model-blender.md]
+    notes: 取得と照合は car_textures.py の get_noto_font。他の生成スクリプトはそれを import する。システムフォントへのフォールバックはしない。
+
+  - id: yomogi
+    name: Yomogi
+    purpose: 反則切符（青切符・赤切符）の手書き欄を、その場でボールペンで書いたように見せる手書き風の書体。
+    kind: font
+    files: []
+    remote:
+      url: https://fonts.googleapis.com/css2?family=Yomogi&display=swap
+    made_by: external
+    source: Google Fonts（Satsuyako、https://github.com/satsuyako/YomogiFont）。遊ぶ画面が実行時に Google Fonts から読み込む。
+    license: OFL-1.1
+    used_by: [index.html, src/style.css]
+    notes: ライセンスは google/fonts の ofl/yomogi/METADATA.pb（license "OFL"）で確認した。
+
+  # ---------------------------------------------------------------- 音声
+  - id: sanotts-jp
+    name: 音声合成 sanoTTS-jp
+    purpose: NPC のセリフを端末内で読み上げる日本語の音声合成（WASM のエンジン・モデルの重み・辞書と、同梱が義務のライセンス文書）。
+    kind: audio
+    files: [public/tts/*]
+    generator: { script: scripts/build-tts.sh }
+    made_by: external
+    source: sanoTTS-jp v1.2.0（https://github.com/ayutaz/sanoTTS-jp、コミットは public/tts/VERSION）。エンジンは Emscripten で WASM 化し、重みと辞書はリリースの SHA256SUMS で照合した。
+    license: [MIT, LicenseRef-sanoTTS-jp-Model-1.0, Apache-2.0, BSD-3-Clause]
+    used_by: [src/ai/tts.ts, src/ai/tts.worker.ts, src/game/credits.ts]
+    docs: [knowledge/on-device-ai.md, knowledge/licensing-decisions.md]
+    notes: >-
+      エンジン（saan_web_w8a32.mjs / .wasm）は MIT、重み（student_i8.bin）は sanoTTS-jp Model License 1.0、
+      辞書（k1_dict.bin.gz）は NAIST-JDIC の BSD 3-Clause、Apache-2.0 全文は学習素材 AISHELL-3 のための同梱。
+      just のレシピは無く、作り直すときは bash scripts/build-tts.sh を直接実行する。

@@ -22,21 +22,28 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import manifestJson from "../assets/manifest.yml";
+import type { AssetKind, Maker, ResolvedAssetEntry, ResolvedAssetManifest } from "./data/assetManifest";
+import { REPO_URL } from "./game/credits";
 
 /**
- * アセット管理: every Blender model and generated texture with a preview, and a review in the
- * style of crit — mark each asset OK or 要修正, pin notes on the image or the model, and send the
- * review to Claude. The dev server writes it to .review/pending/ and the asset-review skill
+ * アセット管理: every asset in the register (assets/manifest.yml), grouped by kind, with its name,
+ * purpose, generator, origin and licence. Models and textures also get a preview and a review in
+ * the style of crit — mark each file OK or 要修正, pin notes on the image or the model, and send
+ * the review to Claude. The dev server writes it to .review/pending/ and the asset-review skill
  * applies the changes through each asset's generator script.
  */
-type Kind = "model" | "texture";
-type Asset = {
+type View = "model" | "image";
+type FileItem = {
+  /** Review id, the form the dev server checks: models/<f>.glb, assets/<set>/textures/<f>, … */
   id: string;
-  kind: Kind;
-  category: string;
+  path: string;
   name: string;
-  url: string;
+  url: string | null;
+  view: View | null;
+  entry: ResolvedAssetEntry;
   generators: string[];
+  isReviewable: boolean;
 };
 type Pin = {
   n: number;
@@ -49,7 +56,27 @@ type Pin = {
 type Review = { verdict: "ok" | "changes" | null; comment: string; pins: Pin[]; snapshot?: string };
 type Response = { asset: string; at: string; summary: string };
 
-const TEXTURES = import.meta.glob<string>("../assets/*/textures/*.png", {
+// The plugin parsed and schema-checked it at build time, so the page only needs the type.
+const manifest = manifestJson as ResolvedAssetManifest;
+
+const KIND_LABEL: Record<AssetKind, string> = {
+  model: "3D モデル",
+  texture: "テクスチャ",
+  image: "画像",
+  data: "データ",
+  font: "フォント",
+  audio: "音声",
+};
+const KINDS = Object.keys(KIND_LABEL) as AssetKind[];
+const MAKER_LABEL: Record<Maker, string> = {
+  "blender-cli": "Blender CLI（bpy）",
+  procedural: "手続き生成（Claude Code）",
+  agy: "手続き生成（agy）",
+  external: "外部の配布物",
+  unknown: "記録なし",
+};
+
+const TEXTURES = import.meta.glob<string>("../assets/*/textures/*.{png,jpg}", {
   eager: true,
   query: "?url",
   import: "default",
@@ -60,74 +87,58 @@ const READMES = import.meta.glob<string>("../assets/*/textures/README.md", {
   import: "default",
 });
 
-// Which scripts make each family of assets (the review hands them to Claude).
-const FAMILIES: Record<string, { label: string; model?: string; blender?: string; textures?: string }> = {
-  car: {
-    label: "自車・タクシー",
-    model: "car.glb",
-    blender: "scripts/blender/car.py",
-    textures: "scripts/textures/car_textures.py",
-  },
-  signs: {
-    label: "道路標識",
-    model: "signs.glb",
-    blender: "scripts/blender/signs.py",
-    textures: "scripts/textures/sign_textures.py",
-  },
-  human: {
-    label: "歩行者",
-    model: "human.glb",
-    blender: "scripts/blender/human.py",
-    textures: "scripts/textures/human_textures.py",
-  },
-  signals: {
-    label: "信号機",
-    model: "signals.glb",
-    blender: "scripts/blender/signals.py",
-    textures: "scripts/textures/signal_textures.py",
-  },
-  ambulance: {
-    label: "救急車",
-    model: "ambulance.glb",
-    blender: "scripts/blender/ambulance.py",
-    textures: "scripts/textures/ambulance_textures.py",
-  },
-  // The screen is drawn by the game (witnessPhones.ts), so the model shows a dark display here.
-  smartphone: {
-    label: "スマートフォン（撮影する通行人）",
-    model: "smartphone.glb",
-    blender: "scripts/blender/smartphone.py",
-  },
-  buildings: { label: "建物の外壁", textures: "scripts/textures/building_textures.py" },
-};
-
 const base = import.meta.env.BASE_URL;
-const assets: Asset[] = [];
-for (const [key, fam] of Object.entries(FAMILIES)) {
-  if (fam.model) {
-    assets.push({
-      id: `models/${fam.model}`,
-      kind: "model",
-      category: key,
-      name: fam.model,
-      url: `${base}models/${fam.model}`,
-      generators: [fam.blender, fam.textures].filter(Boolean) as string[],
-    });
-  }
+// What the dev server's review endpoint accepts (vite.config.ts assetReview).
+const REVIEWABLE = /^(models\/[^/]+\.glb|assets\/[^/]+\/textures\/[^/]+\.(png|jpg))$/;
+const REVIEW_SCRIPT = /^scripts\/(blender|textures)\/[^/]+\.py$/;
+
+const entries = manifest.assets;
+const entryById = new Map(entries.map((e) => [e.id, e]));
+
+/** Where the page fetches a file: the served copy for public/, Vite's URL for assets/. */
+function urlOf(path: string): string | null {
+  if (path.startsWith("public/")) return `${base}${path.slice("public/".length)}`;
+  return TEXTURES[`../${path}`] ?? null;
 }
-for (const [path, url] of Object.entries(TEXTURES).sort()) {
-  const [, category, , file] = path.replace("../assets/", "").match(/^([^/]+)\/(textures)\/(.+)$/) ?? [];
-  if (!category) continue;
-  const fam = FAMILIES[category];
-  assets.push({
-    id: `assets/${category}/textures/${file}`,
-    kind: "texture",
-    category,
-    name: file,
-    url,
-    generators: fam?.textures ? [fam.textures] : [],
+
+function viewOf(path: string, url: string | null): View | null {
+  if (!url) return null;
+  if (path.endsWith(".glb")) return "model";
+  return /\.(png|jpe?g|webp)$/.test(path) ? "image" : null;
+}
+
+/** Scripts a review hands to Claude: the entry's own and those of the texture sets it is built from. */
+function generatorsOf(entry: ResolvedAssetEntry): string[] {
+  const own = entry.generator?.scripts ?? [];
+  const fromTextures = (entry.inputs ?? [])
+    .map((id) => entryById.get(id))
+    .filter((e) => e?.kind === "texture")
+    .flatMap((e) => e?.generator?.scripts ?? []);
+  return [...new Set([...own, ...fromTextures])].filter((s) => REVIEW_SCRIPT.test(s));
+}
+
+const files: FileItem[] = entries.flatMap((entry) => {
+  const generators = generatorsOf(entry);
+  return entry.paths.map((path) => {
+    const url = urlOf(path);
+    // public/ files are served from the site root, so their ids drop the folder (models/car.glb).
+    const id = path.startsWith("public/") ? path.slice("public/".length) : path;
+    return {
+      id,
+      path,
+      name: path.split("/").pop() ?? path,
+      url,
+      view: viewOf(path, url),
+      entry,
+      generators,
+      isReviewable: url !== null && REVIEWABLE.test(id),
+    };
   });
-}
+});
+const fileById = new Map(files.map((f) => [f.id, f]));
+const filesOf = (entry: ResolvedAssetEntry) => files.filter((f) => f.entry === entry);
+/** Entries built from this one (the models a texture set goes into). */
+const builtInto = (entry: ResolvedAssetEntry) => entries.filter((e) => e.inputs?.includes(entry.id));
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const DRAFT_KEY = "tokyo-od-game:asset-review";
@@ -160,54 +171,145 @@ const reviewToken = document.querySelector<HTMLMetaElement>('meta[name="asset-re
 const reviewHeaders = { "X-Asset-Review-Token": reviewToken };
 let responses: Response[] = [];
 
+// ---------------------------------------------------------------- small DOM helpers
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className = "",
+  text = "",
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+/** A repo path opens on GitHub, a URL as is. */
+function link(target: string, label = target): HTMLAnchorElement {
+  const a = el("a", "", label);
+  a.href = /^https?:\/\//.test(target) ? target : `${REPO_URL}/blob/main/${target}`;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
+function lines(nodes: Array<Node | string>): HTMLElement {
+  const box = el("div", "lines");
+  for (const n of nodes) {
+    const row = el("div");
+    row.append(n);
+    box.append(row);
+  }
+  return box;
+}
+
+function entryButton(id: string): HTMLElement {
+  const e = entryById.get(id);
+  const b = el("button", "linklike", e?.name ?? id);
+  b.type = "button";
+  b.addEventListener("click", () => selectEntry(id));
+  return b;
+}
+
 // ---------------------------------------------------------------- list
 
-function renderList(activeId: string | null): void {
-  const nav = $("#list");
-  nav.replaceChildren();
-  for (const [key, fam] of Object.entries(FAMILIES)) {
-    const items = assets.filter((a) => a.category === key);
-    if (!items.length) continue;
-    const h = document.createElement("h2");
-    h.textContent = fam.label;
-    nav.append(h);
-    for (const a of items) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = `item${a.id === activeId ? " active" : ""}`;
-      if (a.kind === "texture") {
-        const img = document.createElement("img");
-        img.src = a.url;
-        img.loading = "lazy";
-        img.alt = "";
-        b.append(img);
-      } else {
-        const g = document.createElement("span");
-        g.className = "glyph";
-        g.textContent = "▣";
-        b.append(g);
-      }
-      const name = document.createElement("span");
-      name.className = "name";
-      name.textContent = a.name;
-      b.append(name);
-      const r = reviews.get(a.id);
-      const answered = responses.some((x) => x.asset === a.id);
-      if (r?.verdict || answered) {
-        const badge = document.createElement("span");
-        badge.className = `badge ${answered && !r?.verdict ? "done" : r?.verdict === "ok" ? "ok" : "ng"}`;
-        badge.textContent = answered && !r?.verdict ? "対応済" : r?.verdict === "ok" ? "OK" : "要修正";
-        b.append(badge);
-      }
-      b.addEventListener("click", () => select(a.id));
-      nav.append(b);
-    }
+let filter = "";
+// Small entries (a model and its far LOD) start open; texture sets open on demand.
+const openEntries = new Set(entries.filter((e) => e.paths.length <= 3).map((e) => e.id));
+let current: FileItem | null = null;
+let currentEntry: ResolvedAssetEntry | null = null;
+
+/** Files of an entry the filter keeps (all when the entry itself matches), or null to hide it. */
+function visibleFiles(entry: ResolvedAssetEntry): FileItem[] | null {
+  const previewable = filesOf(entry).filter((f) => f.view);
+  if (!filter) return previewable;
+  const text = [entry.id, entry.name, entry.purpose, entry.notes ?? "", entry.source].join(" ");
+  const isEntryMatch = text.toLowerCase().includes(filter);
+  if (isEntryMatch) return previewable;
+  const hits = filesOf(entry).filter((f) => f.path.toLowerCase().includes(filter));
+  return hits.length ? hits.filter((f) => f.view) : null;
+}
+
+function renderList(): void {
+  const list = $("#list");
+  list.replaceChildren();
+  const isFiltering = filter !== "";
+  for (const kind of KINDS) {
+    const group = entries.filter((e) => e.kind === kind);
+    const shown = group
+      .map((entry) => ({ entry, items: visibleFiles(entry) }))
+      .filter((x): x is { entry: ResolvedAssetEntry; items: FileItem[] } => x.items !== null);
+    if (!shown.length) continue;
+    list.append(el("h2", "", `${KIND_LABEL[kind]}（${group.length}）`));
+    for (const { entry, items } of shown) list.append(entryNode(entry, items, isFiltering));
   }
+  if (!list.childElementCount) list.append(el("p", "empty", "一致するアセットはありません"));
+}
+
+function entryNode(entry: ResolvedAssetEntry, items: FileItem[], isFiltering: boolean): HTMLElement {
+  const d = el("details", "entry");
+  d.open = isFiltering || openEntries.has(entry.id);
+  d.addEventListener("toggle", () => {
+    if (isFiltering) return;
+    if (d.open) openEntries.add(entry.id);
+    else openEntries.delete(entry.id);
+  });
+  const s = el("summary");
+  s.title = entry.purpose;
+  s.append(el("span", "title", entry.name));
+  if (entry.status === "unused") s.append(el("span", "badge unused", "未使用"));
+  const flagged = filesOf(entry).filter((f) => reviews.get(f.id)?.verdict === "changes").length;
+  if (flagged) s.append(el("span", "badge ng", `要修正 ${flagged}`));
+  s.append(el("span", "count", String(entry.paths.length)));
+  d.append(s);
+
+  // A single previewable file shows the entry card itself, so it needs no overview row.
+  const hasOwnOverview = filesOf(entry).filter((f) => f.view).length !== 1;
+  if (hasOwnOverview) {
+    const overview = el("button", `item overview${currentEntry === entry ? " active" : ""}`);
+    overview.type = "button";
+    overview.append(el("span", "glyph", "≡"), el("span", "name", "概要・出典・ライセンス"));
+    overview.addEventListener("click", () => selectEntry(entry.id));
+    d.append(overview);
+  }
+  for (const f of items) d.append(fileButton(f));
+  return d;
+}
+
+function fileButton(f: FileItem): HTMLElement {
+  const b = el("button", `item${f.id === current?.id ? " active" : ""}`);
+  b.type = "button";
+  b.dataset.id = f.id;
+  if (f.view === "image" && f.url) {
+    const img = el("img");
+    img.src = f.url;
+    img.loading = "lazy";
+    img.alt = "";
+    b.append(img);
+  } else {
+    b.append(el("span", "glyph", "▣"));
+  }
+  b.append(el("span", "name", f.name));
+  const r = reviews.get(f.id);
+  const answered = responses.some((x) => x.asset === f.id);
+  if (r?.verdict || answered) {
+    const isDone = answered && !r?.verdict;
+    const cls = isDone ? "done" : r?.verdict === "ok" ? "ok" : "ng";
+    b.append(el("span", `badge ${cls}`, isDone ? "対応済" : r?.verdict === "ok" ? "OK" : "要修正"));
+  }
+  b.addEventListener("click", () => void select(f.id));
+  return b;
+}
+
+function scrollActiveIntoView(): void {
+  $("#list").querySelector(".item.active")?.scrollIntoView({ block: "nearest" });
 }
 
 function refreshSummary(): void {
-  const models = assets.filter((a) => a.kind === "model").length;
-  $("#summary").textContent = `モデル ${models}・テクスチャ ${assets.length - models}`;
+  const counts = KINDS.map((k) => `${KIND_LABEL[k]} ${entries.filter((e) => e.kind === k).length}`);
+  const unused = entries.filter((e) => e.status === "unused").length;
+  $("#summary").textContent =
+    `台帳 ${entries.length} 件（${counts.join("・")}）・ファイル ${files.length}・未使用 ${unused}`;
   const marked = [...reviews.values()].filter((r) => r.verdict || r.comment || r.pins.length).length;
   const changes = [...reviews.values()].filter((r) => r.verdict === "changes").length;
   $("#review-state").textContent = isDev
@@ -352,40 +454,174 @@ class ModelView {
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
+
 let viewer: ModelView | null = null;
-let current: Asset | null = null;
+
+// ---------------------------------------------------------------- entry card (the register)
+
+/** Name, purpose and register fields of an entry, at the top of the detail column. */
+function entryCard(entry: ResolvedAssetEntry): HTMLElement {
+  const card = el("section", "entry-card");
+  const kicker = el("div", "kicker", `${KIND_LABEL[entry.kind]} · ${entry.id}`);
+  if (entry.status === "unused") kicker.append(el("span", "badge unused", "未使用"));
+  card.append(kicker, el("h3", "", entry.name), el("p", "purpose", entry.purpose));
+
+  const rows: Array<[string, Node | string]> = [
+    ["作成", entry.made_by.map((m) => MAKER_LABEL[m]).join("・")],
+  ];
+  const gen = entry.generator;
+  if (gen) {
+    const recipe = gen.recipe ? [el("code", "", `just ${gen.recipe}`)] : [];
+    rows.push(["生成", lines([...recipe, ...gen.scripts.map((s) => link(s))])]);
+  }
+  rows.push(["出典", entry.source]);
+  rows.push([
+    "ライセンス",
+    lines(
+      entry.license.map((key) => {
+        const lic = manifest.licenses[key];
+        return lic ? link(lic.url, lic.name) : key;
+      }),
+    ),
+  ]);
+  const unloaded =
+    entry.status === "unused" ? "—（ゲームはまだ読み込んでいない）" : "—（ほかのアセットに組み込む）";
+  rows.push(["読み込み", entry.used_by.length ? lines(entry.used_by.map((u) => link(u))) : unloaded]);
+  if (entry.inputs?.length) rows.push(["材料", lines(entry.inputs.map(entryButton))]);
+  const into = builtInto(entry);
+  if (into.length) rows.push(["組み込み先", lines(into.map((e) => entryButton(e.id)))]);
+  if (entry.remote) {
+    const hash = entry.remote.sha256 ? [el("code", "", `sha256 ${entry.remote.sha256.slice(0, 16)}…`)] : [];
+    rows.push(["取得元", lines([link(entry.remote.url, new URL(entry.remote.url).host), ...hash])]);
+  }
+  if (entry.docs?.length) rows.push(["資料", lines(entry.docs.map((d) => link(d, docLabel(d))))]);
+  if (entry.notes) rows.push(["備考", entry.notes]);
+  card.append(infoList(rows));
+  return card;
+}
+
+/** knowledge/x.md → x.md; a texture README keeps its set (car/textures/README.md). */
+function docLabel(path: string): string {
+  const isReadme = path.endsWith("/README.md");
+  return isReadme ? path.replace(/^assets\//, "") : (path.split("/").pop() ?? path);
+}
+
+function infoList(rows: Array<[string, Node | string]>): HTMLElement {
+  const dl = el("dl");
+  for (const [k, v] of rows) {
+    const dd = el("dd");
+    dd.append(v);
+    dl.append(el("dt", "", k), dd);
+  }
+  return dl;
+}
+
+/** Texture READMEs listed in the entry's docs, inline. */
+function appendReadmes(aside: HTMLElement, entry: ResolvedAssetEntry): void {
+  for (const doc of entry.docs ?? []) {
+    const readme = READMES[`../${doc}`];
+    if (!readme) continue;
+    const d = el("details");
+    const pre = el("pre");
+    pre.textContent = readme;
+    d.append(el("summary", "", `${doc.split("/").slice(-3, -1).join("/")} の README`), pre);
+    aside.append(d);
+  }
+}
+
+// ---------------------------------------------------------------- entry overview
+
+function selectEntry(id: string): void {
+  const entry = entryById.get(id);
+  if (!entry) return;
+  current = null;
+  currentEntry = entry;
+  openEntries.add(entry.id);
+  location.hash = `entry:${encodeURIComponent(id)}`;
+  renderList();
+  scrollActiveIntoView();
+
+  const wrap = el("div", "overview");
+  wrap.append(
+    el("div", "kicker", `${KIND_LABEL[entry.kind]} · ${entry.paths.length} ファイル`),
+    el("h2", "", entry.name),
+    el("p", "purpose", entry.purpose),
+  );
+  if (entry.remote) {
+    const p = el("p", "remote", "リポジトリには置かず、次から取得する: ");
+    p.append(link(entry.remote.url));
+    wrap.append(p);
+  }
+  const tiles = el("div", "tiles");
+  for (const f of filesOf(entry)) tiles.append(tile(f));
+  wrap.append(tiles);
+  $("#stage").replaceChildren(wrap);
+
+  const aside = $("#detail");
+  aside.replaceChildren(entryCard(entry));
+  appendReadmes(aside, entry);
+}
+
+function tile(f: FileItem): HTMLElement {
+  const t = el(f.view ? "button" : "div", "tile");
+  if (t instanceof HTMLButtonElement) {
+    t.type = "button";
+    t.addEventListener("click", () => void select(f.id));
+  }
+  if (f.view === "image" && f.url) {
+    const img = el("img");
+    img.src = f.url;
+    img.loading = "lazy";
+    img.alt = "";
+    t.append(img);
+  } else {
+    t.append(el("span", "glyph", f.view === "model" ? "▣" : "◇"));
+  }
+  t.title = f.path;
+  t.append(el("span", "name", f.name));
+  return t;
+}
 
 // ---------------------------------------------------------------- stage and detail
 
 async function select(id: string): Promise<void> {
-  const a = assets.find((x) => x.id === id);
+  const a = fileById.get(id);
   if (!a) return;
+  if (!a.view) return selectEntry(a.entry.id);
   current = a;
+  currentEntry = null;
+  openEntries.add(a.entry.id);
   location.hash = encodeURIComponent(id);
-  renderList(id);
+  renderList();
+  scrollActiveIntoView();
   const stage = $("#stage");
   stage.replaceChildren();
   const review = reviewOf(a.id);
-  const info: Array<[string, string]> = [
-    ["種類", a.kind === "model" ? "3D モデル（glb）" : "テクスチャ（PNG）"],
-    ["パス", a.kind === "model" ? `public/${a.id}` : a.id],
-    ["生成", a.generators.join("\n") || "—"],
+  const ext = a.path.split(".").pop()?.toUpperCase() ?? "";
+  const info: Array<[string, Node | string]> = [
+    ["種類", a.view === "model" ? "3D モデル（glb）" : `画像（${ext}）`],
+    ["パス", a.path],
   ];
-  const size = await fetch(a.url)
+  if (a.isReviewable) info.push(["レビューで渡す", a.generators.length ? lines(a.generators) : "—"]);
+  const size = await fetch(a.url ?? "")
     .then((r) => r.blob())
     .then((b) => b.size)
     .catch(() => 0);
   info.push(["サイズ", `${(size / 1024).toFixed(1)} KB`]);
+  // Another file was picked while this one was loading.
+  const isStale = () => current !== a;
+  if (isStale()) return;
 
-  if (a.kind === "model") {
+  if (a.view === "model") {
     viewer ??= new ModelView();
     stage.append(viewer.canvas);
     const bar = toolbar([
       ["ワイヤーフレーム", () => viewer?.setWire(!viewer.isWire)],
-      ["視点を戻す", () => void viewer?.load(a.url)],
+      ["視点を戻す", () => void viewer?.load(a.url ?? "")],
     ]);
     stage.append(bar, hint("ドラッグで回転・ホイールで拡大。Shift+クリックで部品に指摘ピンを置く"));
-    await viewer.load(a.url);
+    await viewer.load(a.url ?? "");
+    if (isStale()) return;
     viewer.showPins(review.pins);
     viewer.canvas.onclick = (e) => {
       if (!e.shiftKey || !viewer) return;
@@ -401,69 +637,60 @@ async function select(id: string): Promise<void> {
     const parts = viewer.parts();
     info.push(["三角形", parts.reduce((n, p) => n + p.tris, 0).toLocaleString()]);
   } else {
-    const wrap = document.createElement("div");
-    wrap.className = "image";
-    const frame = document.createElement("div");
-    frame.className = "frame";
-    const img = document.createElement("img");
-    img.src = a.url;
+    const wrap = el("div", "image");
+    const frame = el("div", "frame");
+    const img = el("img");
+    img.src = a.url ?? "";
     img.alt = a.name;
     frame.append(img);
     wrap.append(frame);
-    stage.append(wrap, hint("クリックで画像に指摘ピンを置く"));
+    stage.append(
+      wrap,
+      hint(a.isReviewable ? "クリックで画像に指摘ピンを置く" : "この画像はレビューの対象外"),
+    );
     await img.decode().catch(() => undefined);
+    if (isStale()) return;
     info.push(["寸法", `${img.naturalWidth} × ${img.naturalHeight}`]);
     const drawPins = () => {
       for (const p of frame.querySelectorAll(".pin")) p.remove();
       for (const pin of review.pins) {
         if (pin.u === undefined || pin.v === undefined) continue;
-        const dot = document.createElement("div");
-        dot.className = "pin";
-        dot.textContent = String(pin.n);
+        const dot = el("div", "pin", String(pin.n));
         dot.style.left = `${pin.u * 100}%`;
         dot.style.top = `${pin.v * 100}%`;
         frame.append(dot);
       }
     };
     drawPins();
-    img.onclick = (e) => {
-      const r = img.getBoundingClientRect();
-      review.pins.push({
-        n: review.pins.length + 1,
-        note: "",
-        u: round((e.clientX - r.left) / r.width),
-        v: round((e.clientY - r.top) / r.height),
-      });
-      review.verdict ??= "changes";
-      saveDraft();
-      drawPins();
-      renderDetail(a, info);
-    };
+    if (a.isReviewable) {
+      img.onclick = (e) => {
+        const r = img.getBoundingClientRect();
+        review.pins.push({
+          n: review.pins.length + 1,
+          note: "",
+          u: round((e.clientX - r.left) / r.width),
+          v: round((e.clientY - r.top) / r.height),
+        });
+        review.verdict ??= "changes";
+        saveDraft();
+        drawPins();
+        renderDetail(a, info);
+      };
+    }
   }
   renderDetail(a, info);
 }
 
-function renderDetail(a: Asset, info: Array<[string, string]>): void {
+function renderDetail(a: FileItem, info: Array<[string, Node | string]>): void {
   const aside = $("#detail");
-  aside.replaceChildren();
-  const h = document.createElement("h3");
-  h.textContent = a.name;
-  const dl = document.createElement("dl");
-  for (const [k, v] of info) {
-    const dt = document.createElement("dt");
-    dt.textContent = k;
-    const dd = document.createElement("dd");
-    dd.textContent = v;
-    dl.append(dt, dd);
-  }
-  aside.append(h, dl);
+  aside.replaceChildren(entryCard(a.entry));
+  aside.append(el("h3", "file", a.name), infoList(info));
 
-  if (a.kind === "model" && viewer) {
-    const parts = document.createElement("div");
-    parts.className = "parts";
+  if (a.view === "model" && viewer) {
+    const parts = el("div", "parts");
     for (const { object, tris } of viewer.parts()) {
-      const label = document.createElement("label");
-      const cb = document.createElement("input");
+      const label = el("label");
+      const cb = el("input");
       cb.type = "checkbox";
       cb.checked = object.visible;
       cb.onchange = () => (object.visible = cb.checked);
@@ -473,26 +700,31 @@ function renderDetail(a: Asset, info: Array<[string, string]>): void {
     aside.append(parts);
   }
 
+  if (!a.isReviewable) {
+    aside.append(
+      el("p", "note", "このファイルはレビューの対象外（asset-review が直せるのはモデルとテクスチャだけ）。"),
+    );
+    appendReadmes(aside, a.entry);
+    return;
+  }
+
   const review = reviewOf(a.id);
-  const verdict = document.createElement("div");
-  verdict.className = "verdict";
+  const verdict = el("div", "verdict");
   for (const [value, text, cls] of [
     ["ok", "OK", "ok"],
     ["changes", "要修正", "ng"],
   ] as const) {
-    const b = document.createElement("button");
+    const b = el("button", `${cls}${review.verdict === value ? " on" : ""}`, text);
     b.type = "button";
-    b.textContent = text;
-    b.className = `${cls}${review.verdict === value ? " on" : ""}`;
     b.onclick = () => {
       review.verdict = review.verdict === value ? null : value;
       saveDraft();
-      renderList(a.id);
+      renderList();
       renderDetail(a, info);
     };
     verdict.append(b);
   }
-  const comment = document.createElement("textarea");
+  const comment = el("textarea");
   comment.placeholder = "修正の指示（例：救急車の赤帯をもう少し太く、窓の位置を下げる）";
   comment.value = review.comment;
   comment.oninput = () => {
@@ -503,11 +735,10 @@ function renderDetail(a: Asset, info: Array<[string, string]>): void {
   aside.append(verdict, comment);
 
   if (review.pins.length) {
-    const ol = document.createElement("ol");
-    ol.className = "pins";
+    const ol = el("ol", "pins");
     for (const pin of review.pins) {
-      const li = document.createElement("li");
-      const input = document.createElement("input");
+      const li = el("li");
+      const input = el("input");
       input.value = pin.note;
       input.placeholder = pin.object ? `${pin.object} への指摘` : "この位置への指摘";
       input.oninput = () => {
@@ -517,9 +748,8 @@ function renderDetail(a: Asset, info: Array<[string, string]>): void {
       li.append(input);
       ol.append(li);
     }
-    const clear = document.createElement("button");
+    const clear = el("button", "", "ピンを消す");
     clear.type = "button";
-    clear.textContent = "ピンを消す";
     clear.onclick = () => {
       review.pins = [];
       review.snapshot = undefined;
@@ -530,31 +760,16 @@ function renderDetail(a: Asset, info: Array<[string, string]>): void {
   }
 
   for (const r of responses.filter((x) => x.asset === a.id).slice(-3)) {
-    const div = document.createElement("div");
-    div.className = "response";
-    div.textContent = `Claude（${r.at.slice(0, 16).replace("T", " ")}）: ${r.summary}`;
-    aside.append(div);
+    aside.append(el("div", "response", `Claude（${r.at.slice(0, 16).replace("T", " ")}）: ${r.summary}`));
   }
-
-  const readme = READMES[`../assets/${a.category}/textures/README.md`];
-  if (readme) {
-    const d = document.createElement("details");
-    const s = document.createElement("summary");
-    s.textContent = "テクスチャの README";
-    const pre = document.createElement("pre");
-    pre.textContent = readme;
-    d.append(s, pre);
-    aside.append(d);
-  }
+  appendReadmes(aside, a.entry);
 }
 
 function toolbar(buttons: Array<[string, () => void]>): HTMLElement {
-  const bar = document.createElement("div");
-  bar.className = "toolbar";
+  const bar = el("div", "toolbar");
   for (const [label, fn] of buttons) {
-    const b = document.createElement("button");
+    const b = el("button", "", label);
     b.type = "button";
-    b.textContent = label;
     b.onclick = fn;
     bar.append(b);
   }
@@ -562,22 +777,20 @@ function toolbar(buttons: Array<[string, () => void]>): HTMLElement {
 }
 
 function hint(text: string): HTMLElement {
-  const p = document.createElement("div");
-  p.className = "hint";
-  p.textContent = text;
-  return p;
+  return el("div", "hint", text);
 }
 
 // ---------------------------------------------------------------- submit
 
 $("#submit").addEventListener("click", async () => {
-  const items = assets
-    .map((a) => ({ a, r: reviews.get(a.id) }))
+  const items = files
+    .filter((f) => f.isReviewable)
+    .map((f) => ({ f, r: reviews.get(f.id) }))
     .filter(({ r }) => r && (r.verdict || r.comment || r.pins.length))
-    .map(({ a, r }) => ({
-      asset: a.id,
-      kind: a.kind,
-      generators: a.generators,
+    .map(({ f, r }) => ({
+      asset: f.id,
+      kind: f.entry.kind,
+      generators: f.generators,
       verdict: r?.verdict ?? "changes",
       comment: r?.comment ?? "",
       pins: r?.pins ?? [],
@@ -600,7 +813,7 @@ $("#submit").addEventListener("click", async () => {
   reviews.clear();
   saveDraft();
   $("#review-state").textContent = `送信しました: ${file}（Claude が対応します）`;
-  renderList(current?.id ?? null);
+  renderList();
 });
 
 async function loadResponses(): Promise<void> {
@@ -610,13 +823,19 @@ async function loadResponses(): Promise<void> {
     .catch(() => []);
 }
 
+$("#filter").addEventListener("input", (e) => {
+  filter = (e.target as HTMLInputElement).value.trim().toLowerCase();
+  renderList();
+});
+
 await loadResponses();
 refreshSummary();
-const first = decodeURIComponent(location.hash.slice(1)) || assets[0]?.id;
-renderList(first ?? null);
-if (first) void select(first);
+const hash = decodeURIComponent(location.hash.slice(1));
+const isEntryHash = hash.startsWith("entry:");
+const firstFile = files.find((f) => f.view)?.id;
+if (isEntryHash) selectEntry(hash.slice("entry:".length));
+else void select(fileById.has(hash) ? hash : (firstFile ?? ""));
+if (!current && !currentEntry) renderList();
 setInterval(() => {
-  void loadResponses().then(() => {
-    renderList(current?.id ?? null);
-  });
+  void loadResponses().then(renderList);
 }, 15_000);

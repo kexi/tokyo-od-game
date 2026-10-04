@@ -62,6 +62,10 @@ qa-drive minutes="3" every="6" time="day":
 assets:
     pnpm exec vite --open /tokyo-od-game/assets.html
 
+# アセット台帳（assets/manifest.yml）が全ファイル・生成スクリプト・レシピ・ライセンスと食い違っていないか検査する
+assets-check:
+    pnpm exec vitest run tests/assetManifest.test.ts
+
 # 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両のテクスチャを手続き生成し直す
 textures:
     uv run scripts/textures/sign_textures.py

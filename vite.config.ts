@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import { collectLicenses } from "./scripts/licenses.ts";
+import { MANIFEST_PATH, resolveManifest } from "./scripts/assetManifest.ts";
 
 const require = createRequire(import.meta.url);
 // three does not export ./package.json, so walk up from its CJS entry (build/three.cjs).
@@ -45,6 +46,28 @@ function dracoDecoder(): Plugin {
 }
 
 /**
+ * The asset register (assets/manifest.yml) as a JSON module for the asset page: parsed and
+ * schema-checked here, with each entry's globs expanded to the files they match, so a malformed
+ * register fails the build instead of the page.
+ *
+ * Why not ship a YAML parser, or hand-parse a `?raw` import in the page: the first adds a parser
+ * to the bundle for one file read once, the second is a YAML subset that could silently misread
+ * what the test (eemeli/yaml) accepts. Parsing at build time with the test's own loader means the
+ * page and tests/assetManifest.test.ts always see the same data.
+ */
+function assetManifest(): Plugin {
+  const file = join(import.meta.dirname, MANIFEST_PATH);
+  return {
+    name: "asset-manifest",
+    load(id) {
+      const isManifest = id.split("?")[0] === file;
+      if (!isManifest) return null;
+      return `export default ${JSON.stringify(resolveManifest(import.meta.dirname))};`;
+    },
+  };
+}
+
+/**
  * アセット管理 (assets.html) review hand-off, dev server only: POST /__asset-review writes the
  * review to .review/pending/<time>.json (+ a Markdown summary and the model snapshots) for the
  * asset-review skill; GET /__asset-review/responses returns what Claude reported back from
@@ -66,7 +89,9 @@ function assetReview(): Plugin {
   const allowed = () => {
     const assets = new Set(list("public/models", ".glb").map((f) => `models/${f}`));
     for (const cat of list("assets", "")) {
-      for (const f of list(`assets/${cat}/textures`, ".png")) assets.add(`assets/${cat}/textures/${f}`);
+      for (const ext of [".png", ".jpg"]) {
+        for (const f of list(`assets/${cat}/textures`, ext)) assets.add(`assets/${cat}/textures/${f}`);
+      }
     }
     const scripts = new Set([
       ...list("scripts/blender", ".py").map((f) => `scripts/blender/${f}`),
@@ -243,7 +268,7 @@ function assetReview(): Plugin {
 export default defineConfig({
   // GitHub Pages project site: https://<user>.github.io/tokyo-od-game/
   base: process.env.BASE_PATH ?? "/tokyo-od-game/",
-  plugins: [dracoDecoder(), assetReview()],
+  plugins: [dracoDecoder(), assetManifest(), assetReview()],
   // The project's own tests only: direnv unpacks flake inputs (with their own tests) into .direnv.
   test: { include: ["tests/**/*.test.ts"] },
   // Module workers so the TTS worker can dynamic-import the Emscripten ES module from public/tts.
