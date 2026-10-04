@@ -62,7 +62,7 @@ import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
-import { Input, keyFor } from "./game/input";
+import { Input, keyFor, LOOK_KEYS } from "./game/input";
 import { Minimap } from "./game/minimap";
 import { Missions } from "./game/missions";
 import { PoiField, storageKeyFor } from "./game/pois";
@@ -1064,7 +1064,12 @@ async function main(): Promise<void> {
     $<HTMLSelectElement>("#opt-layout").value = prefs.layout;
     $<HTMLSelectElement>("#opt-assist").value = prefs.assist;
     renderKeyList($("#help-keys"), prefs);
-    $("[data-action=autopilot]").title = `自動運転 (${keyFor(prefs.layout, "autopilot")})`;
+    // Each toolbar button's tooltip names its key in this layout (the hard-coded ones went stale).
+    for (const b of document.querySelectorAll<HTMLButtonElement>("#hud-toolbar [data-action]")) {
+      const action = b.dataset.action as Parameters<typeof keyFor>[1];
+      const key = keyFor(prefs.layout, action);
+      b.title = key ? `${b.textContent?.trim()} (${key})` : (b.textContent?.trim() ?? "");
+    }
   };
   applyPrefs(loadPrefs());
   for (const id of ["#opt-layout", "#opt-assist"])
@@ -1450,13 +1455,16 @@ async function main(): Promise<void> {
     const drive = isHeld ? { ...powered, handbrake: true } : powered;
     if (isInCar) controls.update(vehicle.yaw(), manual.steer);
     // Look aside / behind while held (左右 Ctrl, Z), as in City Car Driving.
-    chase.look = input.held("ControlLeft")
-      ? Math.PI / 2
-      : input.held("ControlRight")
-        ? -Math.PI / 2
-        : input.held("KeyZ")
-          ? Math.PI
-          : input.look(dt, vehicle.speedKmh() > 5);
+    const lookKeys = LOOK_KEYS[input.layout];
+    chase.look =
+      lookKeys.left && input.held(lookKeys.left)
+        ? Math.PI / 2
+        : lookKeys.right && input.held(lookKeys.right)
+          ? -Math.PI / 2
+          : input.held(lookKeys.back)
+            ? Math.PI
+            : input.look(dt, vehicle.speedKmh() > 5);
+    input.onFoot = isOnFoot;
     const walk = input.readWalk();
     accumulator += dt;
     let steps = 0;

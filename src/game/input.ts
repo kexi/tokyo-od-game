@@ -102,6 +102,78 @@ export function keyFor(layout: KeyLayout, action: Action): string {
   return code.replace(/^Key/, "").replace(/^Digit/, "");
 }
 
+/** Keys that move the player: never an action, in the car or on foot (in either layout). */
+export const MOVE_KEYS: Record<KeyLayout, { drive: string[]; walk: string[] }> = {
+  wasd: {
+    drive: ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"],
+    walk: [
+      "KeyW",
+      "KeyA",
+      "KeyS",
+      "KeyD",
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+      "Space",
+      "ShiftLeft",
+      "ShiftRight",
+    ],
+  },
+  ccd: {
+    drive: ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"],
+    walk: [
+      "KeyW",
+      "KeyA",
+      "KeyS",
+      "KeyD",
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+      "Space",
+      "ShiftLeft",
+      "ShiftRight",
+    ],
+  },
+};
+
+/**
+ * Keys held to look aside / behind. City Car Driving's Ctrl stays in its layout, but not with WASD:
+ * Ctrl+W closes the browser tab (and Ctrl+S, Ctrl+D… open the browser's own dialogs), which no page
+ * can stop — so the WASD layout looks with the mouse, and Z behind.
+ */
+export const LOOK_KEYS: Record<KeyLayout, { left: string | null; right: string | null; back: string }> = {
+  wasd: { left: null, right: null, back: "KeyZ" },
+  ccd: { left: "ControlLeft", right: "ControlRight", back: "KeyZ" },
+};
+
+/** Keys whose browser default (help, reload, focus, scrolling) the game takes over. */
+const BROWSER_KEYS = ["Space", "Tab", "F1", "F2", "F5", "F8", "F12"];
+
+/**
+ * The action a key press means: Shift combinations first, nothing for the keys that move the player
+ * (A steers or steps left in WASD; on foot, W/A/S/D walk in either layout — in City Car Driving's
+ * layout A would otherwise also switch the autopilot).
+ */
+export function actionFor(
+  layout: KeyLayout,
+  code: string,
+  shift: boolean,
+  onFoot: boolean,
+): Action | undefined {
+  const shifted = shift ? SHIFT_ACTIONS[code] : undefined;
+  if (shifted) return shifted;
+  const moves = onFoot ? MOVE_KEYS[layout].walk : MOVE_KEYS[layout].drive;
+  if (moves.includes(code)) return undefined;
+  return (layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS)[code];
+}
+
+/** Every code bound to an action in a layout (for the collision test). */
+export function boundKeys(layout: KeyLayout): string[] {
+  return Object.keys(layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS);
+}
+
 const LOOK_LIMIT = 2.6; // rad either way: over the shoulder, short of straight back
 const LOOK_RECENTRE_S = 1.2; // the view drifts back ahead after the mouse rests this long
 
@@ -113,21 +185,27 @@ export class Input {
   private steerSmoothed = 0;
   private dragTurn = 0;
   layout: KeyLayout = "wasd";
+  /** On foot, W/A/S/D walk (and are no action); set by the game each frame. */
+  onFoot = false;
   private lookYaw = 0;
   private lookIdle = 0;
+  /** When the pointer lock was last released (Esc does that, and must not also close things). */
+  private unlockedAt = -Infinity;
 
   constructor() {
     window.addEventListener("keydown", (e) => {
       const isTyping = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
       if (isTyping) return;
-      if (!e.repeat) {
-        const shifted = e.shiftKey ? SHIFT_ACTIONS[e.code] : undefined;
-        const action = shifted ?? (this.layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS)[e.code];
+      // Esc that released the mouse look only released it.
+      const isUnlockEscape =
+        e.code === "Escape" &&
+        (document.pointerLockElement !== null || performance.now() - this.unlockedAt < 250);
+      if (!e.repeat && !isUnlockEscape) {
+        const action = actionFor(this.layout, e.code, e.shiftKey, this.onFoot);
         if (action) this.listeners.get(action)?.();
       }
       this.keys.add(e.code);
-      const isGameKey =
-        e.code.startsWith("Arrow") || ["Space", "Tab", "F1", "F2", "F8", "F12"].includes(e.code);
+      const isGameKey = e.code.startsWith("Arrow") || BROWSER_KEYS.includes(e.code);
       if (isGameKey) e.preventDefault();
     });
     window.addEventListener("keyup", (e) => this.keys.delete(e.code));
@@ -175,7 +253,9 @@ export class Input {
       this.lookIdle = 0;
     });
     document.addEventListener("pointerlockchange", () => {
-      if (document.pointerLockElement !== canvas) this.lookYaw = 0;
+      if (document.pointerLockElement === canvas) return;
+      this.lookYaw = 0;
+      this.unlockedAt = performance.now();
     });
   }
 

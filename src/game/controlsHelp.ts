@@ -59,7 +59,9 @@ export function keyRows(prefs: ControlPrefs): Array<[string, string]> {
     ["H", "クラクション（危険を防ぐとき以外は違反）"],
     [key("belt"), auto("シートベルト")],
     [`${key("camera")} / ${key("cameraPrev")}`, "視点の切り替え"],
-    ["左 Ctrl / 右 Ctrl / Z", "左 / 右 / 後ろを見る（押している間）"],
+    isWasd
+      ? ["Z", "後ろを見る（押している間。左右はマウスで）"]
+      : ["左 Ctrl / 右 Ctrl / Z", "左 / 右 / 後ろを見る（押している間）"],
     [key("phone"), `スマホ（119・110・タクシー・${SOCIAL_APP_NAME}）`],
     [key("phoneZoom"), "スマホの拡大表示 / 元に戻す（操作になるので運転中は使わない）"],
     [`${key("nav")} / ${key("minimap")}`, "ナビ / 小さな地図の表示"],
