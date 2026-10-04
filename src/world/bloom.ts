@@ -296,7 +296,7 @@ function lampGhosts(source: TextureNode): V3 {
   tints.forEach((tint, i) => {
     const at = flipped.add(toCentre.mul(0.3 * i));
     // Faint towards the edges (where a real ghost leaves the lens's field).
-    const fade = pow(max(float(1).sub(distance(at, vec2(0.5)).div(0.7071)), 0), 6);
+    const fade = pow(max(float(1).sub(distance(at, vec2(0.5)).div(Math.SQRT1_2)), 0), 6);
     sum = sum.add(source.sample(at).rgb.mul(tint).mul(fade));
   });
   return sum;
