@@ -1673,3 +1673,21 @@ pre.notice {
 #hud.replaying > *:not(#replay-bar):not(#toasts) {
   visibility: hidden;
 }
+
+/* オービスの閃光 */
+.orbis-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 30%, #fff 0%, #ffb3b3 45%, rgba(255, 60, 60, 0) 80%);
+  animation: orbis-flash 0.35s ease-out forwards;
+}
+@keyframes orbis-flash {
+  from {
+    opacity: 0.95;
+  }
+  to {
+    opacity: 0;
+  }
+}

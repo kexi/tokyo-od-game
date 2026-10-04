@@ -4,10 +4,16 @@ import {
   CanvasTexture,
   Mesh,
   MeshStandardMaterial,
+  RepeatWrapping,
   SRGBColorSpace,
+  type Texture,
+  TextureLoader,
   Vector3,
   type Scene,
 } from "three";
+import asphaltAlbedoUrl from "../../assets/road/textures/asphalt_albedo.jpg?url";
+import asphaltNormalUrl from "../../assets/road/textures/asphalt_normal.jpg?url";
+import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.png?url";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import type { Approach } from "./trafficControl";
@@ -24,7 +30,34 @@ const DASH = 5; // dashed 中央線 / 車線境界線 in urban areas: 5 m painte
 
 type Builder = { pos: number[]; idx: number[]; uv?: number[] };
 
-const asphalt = new MeshStandardMaterial({ color: 0x3b3e44, roughness: 0.95, metalness: 0 });
+// 密粒度アスファルト textures (scripts/textures/asphalt_textures.py; 1 tile = 4 m), laid in world
+// XZ so every street shares one seamless surface without per-road UVs.
+const ASPHALT_TILE = 4;
+const asphaltMap = (url: string, isColour: boolean): Texture => {
+  const t = new TextureLoader().load(url);
+  t.wrapS = t.wrapT = RepeatWrapping;
+  t.anisotropy = 8;
+  if (isColour) t.colorSpace = SRGBColorSpace;
+  return t;
+};
+const asphalt = new MeshStandardMaterial({
+  color: 0xffffff,
+  map: asphaltMap(asphaltAlbedoUrl, true),
+  normalMap: asphaltMap(asphaltNormalUrl, false),
+  roughnessMap: asphaltMap(asphaltRoughnessUrl, false),
+  roughness: 1,
+  metalness: 0,
+});
+asphalt.onBeforeCompile = (shader) => {
+  shader.vertexShader = shader.vertexShader.replace(
+    "#include <uv_vertex>",
+    `#include <uv_vertex>
+    vec2 worldUv = (modelMatrix * vec4(position, 1.0)).xz / ${ASPHALT_TILE.toFixed(1)};
+    vMapUv = worldUv;
+    vNormalMapUv = worldUv;
+    vRoughnessMapUv = worldUv;`,
+  );
+};
 const white = new MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7, emissive: 0x222222 });
 // 規制標示 (はみ出し禁止, 進路変更禁止, 最高速度) are yellow (命令 別表第六).
 const YELLOW = 0xf2b705;

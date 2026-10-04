@@ -971,6 +971,14 @@ async function main(): Promise<void> {
   let hornFor = 0;
   let navHidden = false;
   let pendingScreenshot = false;
+  const orbisFired = new Map<string, number>();
+  /** The orbis flash: a red-white burst over the screen. */
+  const flashScreen = () => {
+    const el = document.createElement("div");
+    el.className = "orbis-flash";
+    document.body.append(el);
+    setTimeout(() => el.remove(), 400);
+  };
   let lastHeading: { seg: Segment; sgn: number; at: number } | null = null;
   let laneTrack: { seg: Segment; lane: number } | null = null;
   let lastStreet: { seg: Segment; dir: 1 | -1 } | null = null;
@@ -1386,6 +1394,31 @@ async function main(): Promise<void> {
         }
         laneHeld = { seg: s, lane };
       } else laneHeld = null;
+      // オービス (速度違反自動取締装置): passing one 30 km/h or more over the limit (the 赤切符 range
+      // they are set for) fires the camera; the notice comes by post after the day ends.
+      for (const [olon, olat] of policeData?.orbis ?? []) {
+        const d = haversineMeters(geo.lat, geo.lon, olat, olon);
+        if (d > 14) continue;
+        const key = `${olon},${olat}`;
+        const isOver = currentLimit !== null && speed - currentLimit >= 30;
+        if (!isOver || now - (orbisFired.get(key) ?? -Infinity) < 15000) continue;
+        orbisFired.set(key, now);
+        const record = law.commit(
+          speedViolation(speed - (currentLimit ?? 0)) ?? VIOLATIONS.signal,
+          now,
+          0,
+          violationContext(
+            `速度違反自動取締装置（オービス）で撮影: ${Math.round(speed)} km/h（制限 ${currentLimit} km/h）`,
+          ),
+        );
+        if (record) {
+          pendingShots.push(record);
+          law.notice(record, "orbis");
+        }
+        flashScreen();
+        log("orbis", { kmh: Math.round(speed), limit: currentLimit });
+      }
+
       // 無灯火 (第52条): at night with the headlights switched off.
       if (env.nightFactor > 0.5 && speed > 5 && !autopilot && !controls.headlightsOn(true))
         book(VIOLATIONS.noLights, now, 5 * 60_000, "夜間に前照灯を消して走行");
@@ -2388,6 +2421,7 @@ async function main(): Promise<void> {
   let policeData: {
     stations: Array<[number, number, string]>;
     centres: Array<[number, number, string]>;
+    orbis?: Array<[number, number, number]>;
   } | null = null;
   void fetch(`${import.meta.env.BASE_URL}data/police.json`)
     .then((r) => (r.ok ? r.json() : null))

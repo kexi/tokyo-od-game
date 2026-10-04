@@ -404,8 +404,11 @@ type OsmTiles = {
   turnlanes: Map<string, TurnLaneTile>;
 };
 
-let police: { stations: Array<[number, number, string]>; centres: Array<[number, number, string]> } | null =
-  null;
+let police: {
+  stations: Array<[number, number, string]>;
+  centres: Array<[number, number, string]>;
+  orbis: Array<[number, number, number]>;
+} | null = null;
 
 async function buildOsm(): Promise<OsmTiles> {
   const file = await osmExtract();
@@ -497,9 +500,21 @@ async function buildOsm(): Promise<OsmTiles> {
     const lat = pts.reduce((a, c) => a + c[1], 0) / pts.length;
     return [round(lon), round(lat), w.tags.name ?? ""] as [number, number, string];
   });
-  police = { stations, centres };
+  // 速度違反自動取締装置 (オービス): OSM speed cameras, with their direction when mapped.
+  const orbis = readTaggedNodes(file, (t) => t.highway === "speed_camera")
+    .filter((n) => inBbox(n.lon, n.lat))
+    .map(
+      (n) =>
+        [round(n.lon), round(n.lat), Number.parseFloat(n.tags.direction ?? "") || -1] as [
+          number,
+          number,
+          number,
+        ],
+    );
+  police = { stations, centres, orbis };
   log("osm_parsed", {
     police: stations.length,
+    orbis: orbis.length,
     centres: centres.map((c) => c[2]),
     signals: [...signals.values()].reduce((a, t) => a + t.length, 0),
     named: [...junctions.values()].reduce((a, t) => a + t.length, 0),
