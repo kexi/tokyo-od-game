@@ -48,6 +48,7 @@ import { gameClock, tokyoDate, type GameClock } from "./world/ruleTime";
 import { planRoute } from "./game/navigation";
 import { RouteRibbon } from "./game/routeRibbon";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
+import { AutoDriver } from "./game/autoDriver";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
@@ -227,6 +228,8 @@ async function main(): Promise<void> {
   let mode: "car" | "foot" | "taxi" = "car";
   /** The 自動運転タクシー called from the phone, while one is about. */
   let taxi: RoboTaxi | null = null;
+  /** 自動運転モード of the player's own car (with the mission target, or cruising about). */
+  let autopilot: { driver: AutoDriver; cruising: boolean; rideHeight: number } | null = null;
   const focusPos = (target = new Vector3()) =>
     mode === "foot"
       ? walker.position(target)
@@ -439,6 +442,7 @@ async function main(): Promise<void> {
     emergency.transform(offset);
     patrol.transform(offset);
     taxi?.transform(offset, Math.atan2(f.x, f.z));
+    autopilot?.driver.transform(offset, Math.atan2(f.x, f.z));
     pavements.rebuild(pavementPolys, frame);
     buildRoadNetwork();
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
@@ -578,8 +582,17 @@ async function main(): Promise<void> {
     conversation.open(p);
   });
   input.on("enter", () => (phone.inCall ? phone.focusInput() : conversation.focusInput()));
+  input.on("autopilot", () => {
+    if (state !== "playing") return;
+    if (autopilot) stopAutopilot("自動運転を解除しました");
+    else startAutopilot();
+  });
   input.on("door", () => {
     if (state !== "playing") return;
+    if (autopilot) {
+      if (autopilot.driver.speed > 0.5) return toast("停車してから降りましょう");
+      stopAutopilot("自動運転を解除しました");
+    }
     if (mode === "taxi") {
       if (taxi && taxi.speed < 0.5) leaveTaxi();
       else toast("タクシーが止まるまでお待ちください");
@@ -759,12 +772,16 @@ async function main(): Promise<void> {
     const isOnFoot = mode === "foot";
     const isInCar = mode === "car";
     const isInTaxi = mode === "taxi" && taxi !== null;
-    const drive = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
+    const manual = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
+    // Any steering, accelerator or brake input takes the car back, as with a real driver-assist system.
+    const isOverride = Math.abs(manual.throttle) > 0.2 || manual.brake > 0.2 || Math.abs(manual.steer) > 0.3;
+    if (autopilot && isOverride) stopAutopilot("運転操作で自動運転を解除しました");
+    const drive = autopilot ? { throttle: 0, brake: 0, steer: 0, handbrake: false } : manual;
     const walk = input.readWalk();
     accumulator += dt;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
-      if (!frozen && isInCar) vehicle.update(world.timestep, drive);
+      if (!frozen && isInCar && !autopilot) vehicle.update(world.timestep, drive);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
       accumulator -= world.timestep;
@@ -793,7 +810,13 @@ async function main(): Promise<void> {
     const carRot = vehicle.quaternion();
     const focus = focusPos();
     const geo = frame.toGeodetic(focus);
-    const speed = isOnFoot ? walker.speed * 3.6 : isInTaxi && taxi ? taxi.speed * 3.6 : vehicle.speedKmh();
+    const speed = isOnFoot
+      ? walker.speed * 3.6
+      : isInTaxi && taxi
+        ? taxi.speed * 3.6
+        : autopilot
+          ? autopilot.driver.speed * 3.6
+          : vehicle.speedKmh();
 
     // Never simulate the car over ground whose collider has not been built yet.
     const hasGround = terrain.hasColliderAt(geo.lat, geo.lon);
@@ -849,6 +872,7 @@ async function main(): Promise<void> {
     traffic.extraObstacles = taxi ? [taxi.position] : [];
     traffic.update(dt, focus, carPos, carForward, isInCar ? speed / 3.6 : 0);
     updateTaxi(dt, now);
+    updateAutopilot(dt);
     speedometer.update(speed, currentLimit, currentLimitKind);
 
     // 道路交通法 checks while driving: speed vs (estimated) limit, keep-left on two-way roads.
@@ -892,6 +916,9 @@ async function main(): Promise<void> {
       // 徐行: a speed at which the car can stop at once (about 10 km/h).
       slowSince = inForce(61) && speed > 10 ? (slowSince ?? now) : null;
       if (slowSince !== null && now - slowSince > 1500) book(VIOLATIONS.slow, now, 20000);
+      // A U-turn is a flip of heading without leaving the street: going round the block and back
+      // along it the other way is not one, so the record resets on any other street.
+      if (lastHeading && onRoad && onRoad.seg !== lastHeading.seg) lastHeading = null;
       if (onRoad && Math.abs(align) > 0.7 && speed > 4) {
         // 転回禁止: the heading along the same street flips.
         const sgn = Math.sign(align);
@@ -1187,6 +1214,63 @@ async function main(): Promise<void> {
     pendingParking = null;
     parkingDialog.close();
   });
+  // ---------- 自動運転モード（自車） ----------
+  /** A street 600–1,200 m away to cruise to when there is no mission. */
+  const cruiseTarget = (): Vector3 | null => {
+    if (!roadGraph) return null;
+    const here = vehicle.position();
+    const far = roadGraph.segments.filter((seg) => {
+      if (seg.line.kind === "highway" || seg.line.width < 5.5 || seg.closed) return false;
+      const d = roadGraph?.sample(seg, seg.length / 2).pos.distanceTo(here) ?? 0;
+      return d > 600 && d < 1200;
+    });
+    const seg = far[Math.floor(Math.random() * far.length)];
+    return seg && roadGraph ? roadGraph.sample(seg, seg.length / 2).pos.clone() : null;
+  };
+  const startAutopilot = () => {
+    if (mode !== "car") return toast("車に乗っているときだけ使えます");
+    const tw = taxiWorld();
+    if (!tw) return toast("道路データを読み込み中です");
+    const mission = missions.current ? field.localPosition(missions.current.target) : null;
+    const target = mission ?? cruiseTarget();
+    if (!target) return toast("行き先が見つかりません");
+    const driver = new AutoDriver((x, z) => groundY(x, z));
+    const pos = vehicle.position();
+    const ground = groundY(pos.x, pos.z) ?? pos.y - 0.86;
+    driver.place(pos, carYaw(vehicle.quaternion()));
+    if (!driver.plan(tw, target)) return toast("ルートが見つかりません（道路の上で使ってください）");
+    vehicle.setParked(true);
+    autopilot = { driver, cruising: !mission, rideHeight: pos.y - ground };
+    $("#autopilot-chip").hidden = false;
+    toast(mission ? "自動運転を開始しました（目的地へ）" : "自動運転を開始しました（周辺を巡回）", "#3cd17a");
+    log("autopilot", { on: true, cruising: !mission, metres: Math.round(driver.route?.length ?? 0) });
+  };
+  const stopAutopilot = (message: string) => {
+    if (!autopilot) return;
+    autopilot = null;
+    vehicle.setParked(false);
+    $("#autopilot-chip").hidden = true;
+    toast(message, "#3cd17a");
+    log("autopilot", { on: false });
+  };
+  const updateAutopilot = (dt: number) => {
+    const ap = autopilot;
+    if (!ap || mode !== "car") return;
+    const tw = taxiWorld();
+    if (!tw) return;
+    // Its own car is not an obstacle to itself.
+    tw.obstacles = tw.obstacles.filter((o) => o.distanceTo(vehicle.position()) > 1);
+    const { done } = ap.driver.update(dt, tw);
+    const p = ap.driver.position;
+    vehicle.teleport(new Vector3(p.x, p.y + ap.rideHeight, p.z), ap.driver.yaw);
+    if (!done) return;
+    if (ap.cruising) {
+      const next = cruiseTarget();
+      if (next && ap.driver.plan(tw, next)) return;
+    }
+    stopAutopilot("目的地に着きました。自動運転を終了します");
+  };
+
   // ---------- 自動運転タクシー ----------
   type TaxiDest = { name: string; lat: number; lon: number };
   let taxiDests: TaxiDest[] = [];
@@ -1526,6 +1610,7 @@ async function main(): Promise<void> {
         law,
         walker,
         ribbon,
+        getAutopilot: () => autopilot,
         pavements,
         getTaxi: () => taxi,
         getMode: () => mode,

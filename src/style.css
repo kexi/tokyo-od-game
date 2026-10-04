@@ -1383,3 +1383,19 @@ pre.notice {
     font-size: 20px;
   }
 }
+
+/* 自動運転モード indicator, just above the speedometer. */
+#autopilot-chip {
+  left: 12px;
+  bottom: 200px;
+  padding: 6px 12px;
+  font-weight: 700;
+  border: 1px solid #3cd17a;
+}
+
+@media (max-width: 720px) {
+  #autopilot-chip {
+    bottom: 160px;
+    left: 6px;
+  }
+}

@@ -15,7 +15,8 @@ type Action =
   | "close"
   | "door"
   | "enter"
-  | "phone";
+  | "phone"
+  | "autopilot";
 
 const KEY_ACTIONS: Record<string, Action> = {
   KeyR: "reset",
@@ -31,6 +32,7 @@ const KEY_ACTIONS: Record<string, Action> = {
   KeyF: "door",
   Enter: "enter",
   KeyP: "phone",
+  KeyO: "autopilot",
   Escape: "close",
 };
 

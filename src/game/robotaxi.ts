@@ -9,12 +9,9 @@ import {
   type Group,
   type Scene,
 } from "three";
-import type { TurnRule } from "../world/regulations";
-import type { GameClock } from "../world/ruleTime";
-import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
-import type { TrafficControl } from "../world/trafficControl";
+import type { RoadGraph, Segment } from "../world/roads";
+import { AutoDriver, type DriveWorld } from "./autoDriver";
 import { createCarModel, type CarModel } from "./carModel";
-import { planRoute, progressOn, type Route } from "./navigation";
 
 /**
  * 自動運転タクシー (robotaxi) called from the phone. Level-4 driverless operation (特定自動運行,
@@ -37,33 +34,16 @@ export function fareFor(metres: number, slowSeconds: number): number {
   return FARE.first + FARE.step * Math.ceil((units - FARE.firstMetres) / FARE.stepMetres);
 }
 
-const ACCEL = 1.8; // m/s², gentle for passengers
-const BRAKE = 4.5;
-const TURN_SPEED = 4.2; // m/s (15 km/h) through left/right turns
-const STOP_GAP = 3.2; // front bumper this far before a stop line / obstacle
 const RIDE_HEIGHT = 0.86;
 
-export type TaxiWorld = {
-  graph: RoadGraph;
-  control: TrafficControl;
-  turnRules: TurnRule[];
-  clock: GameClock;
-  /** Things to keep clear of: traffic cars, the player's car, pedestrians in the road. */
-  obstacles: Vector3[];
-};
+/** The world the taxi drives in (see AutoDriver). */
+export type TaxiWorld = DriveWorld;
 
 export class RoboTaxi {
   state: TaxiState = "coming";
   readonly model: CarModel;
-  route: Route | null = null;
-  private at = 0;
-  private hint = 0;
-  speed = 0;
+  private readonly driver: AutoDriver;
   private body: RAPIER.RigidBody;
-  private served = -1; // 一時停止 approach already stopped at
-  private waited = 0;
-  private target = new Vector3();
-  private graph: RoadGraph | null = null;
   private vacancy: MeshStandardMaterial | null = null;
   // Meter
   metres = 0;
@@ -73,8 +53,9 @@ export class RoboTaxi {
   constructor(
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
-    private readonly groundAt: (x: number, z: number) => number | null,
+    groundAt: (x: number, z: number) => number | null,
   ) {
+    this.driver = new AutoDriver(groundAt);
     this.model = createCarModel({ taxi: true });
     // The player's car hangs its wheels on the physics body; here they ride on the model.
     for (const w of this.model.wheels) this.model.root.add(w);
@@ -93,6 +74,14 @@ export class RoboTaxi {
     return this.model.root.position;
   }
 
+  get route() {
+    return this.driver.route;
+  }
+
+  get speed(): number {
+    return this.driver.speed;
+  }
+
   get fare(): number {
     return fareFor(this.metres, this.slowSeconds);
   }
@@ -101,12 +90,14 @@ export class RoboTaxi {
   dispatch(graph: RoadGraph, world: TaxiWorld, near: Vector3, pickup: Vector3): boolean {
     const start = this.spawnPoint(graph, near);
     if (!start) return false;
-    this.graph = graph;
     this.state = "coming";
     this.setDisplay("迎車");
     const { pos, dir } = graph.sample(start.seg, start.s);
-    this.place(pos, dir.multiplyScalar(start.dir));
-    return this.plan(world, pickup, { seg: start.seg, s: start.s, dir: start.dir });
+    const travel = dir.multiplyScalar(start.dir);
+    this.driver.place(pos, Math.atan2(travel.x, travel.z));
+    this.sync();
+    this.body.setTranslation(this.model.root.position, true);
+    return this.driver.plan(world, pickup, { seg: start.seg, s: start.s, dir: start.dir });
   }
 
   /** The passenger is in: drive to the destination with the meter running. */
@@ -116,23 +107,20 @@ export class RoboTaxi {
     this.slowSeconds = 0;
     this.destinationName = name;
     this.setDisplay("賃走");
-    return this.plan(world, destination);
+    return this.driver.plan(world, destination);
   }
 
   /** After the passenger leaves: drive off a little way, then the game removes the car. */
   leave(world: TaxiWorld): void {
     this.state = "leaving";
     this.setDisplay("回送");
-    const ahead = this.position.clone().add(this.heading().multiplyScalar(250));
-    this.plan(world, ahead);
+    this.driver.plan(world, this.position.clone().add(this.driver.heading().multiplyScalar(250)));
   }
 
   /** Re-anchoring: shift the car and its route rigidly. */
   transform(offset: (p: Vector3) => Vector3, yawDelta: number): void {
-    offset(this.model.root.position);
-    this.model.root.rotation.y += yawDelta;
-    offset(this.target);
-    if (this.route) for (const p of this.route.points) offset(p);
+    this.driver.transform(offset, yawDelta);
+    this.sync();
   }
 
   dispose(): void {
@@ -142,61 +130,38 @@ export class RoboTaxi {
 
   /** Advance the car; returns true when it has reached the end of its route. */
   update(dt: number, world: TaxiWorld): boolean {
-    // A new road graph (area change, re-anchoring): plan again from where the car is.
-    if (world.graph !== this.graph && this.route) this.plan(world, this.target);
-    const route = this.route;
-    if (!route) return false;
-    const remaining = route.length - this.at;
-    const isAtEnd = remaining < 0.5;
-    let want = isAtEnd ? 0 : this.cruise(route, world);
-    // Ease to a stop at the kerb at the end of the route.
-    want = Math.min(want, Math.sqrt(2 * BRAKE * 0.6 * Math.max(0, remaining - 0.3)));
-    const block = this.blockAhead(route, world, dt);
-    if (block < Infinity) want = Math.min(want, Math.sqrt(2 * BRAKE * 0.7 * Math.max(0, block - STOP_GAP)));
-    this.speed += Math.max(-BRAKE * dt, Math.min(ACCEL * dt, want - this.speed));
-    if (this.speed < 0.05 && want < 0.05) this.speed = 0;
-    const step = this.speed * dt;
-    this.at = Math.min(route.length, this.at + step);
+    const { moved, done } = this.driver.update(dt, world);
     if (this.state === "riding") {
-      this.metres += step;
-      if (this.speed < 10 / 3.6) this.slowSeconds += dt;
+      this.metres += moved;
+      if (this.driver.speed < 10 / 3.6) this.slowSeconds += dt;
     }
-    this.pose(route);
+    this.sync();
+    for (const w of this.model.wheels) (w.children[0] as Group).rotation.x += moved / 0.33;
     this.model.setLights({
-      brake: want < this.speed - 0.2 || this.speed < 0.1,
+      brake: this.driver.braking,
       reverse: false,
       left: false,
       right: false,
       night: false,
     });
-    // The road map only covers ~1 km round the car: at its edge, wait for the next one.
-    return isAtEnd && this.speed === 0 && route.reachesTarget;
+    return done;
   }
 
-  // ---------------------------------------------------------------- planning
-
-  private plan(world: TaxiWorld, target: Vector3, from?: { seg: Segment; s: number; dir: 1 | -1 }): boolean {
-    this.graph = world.graph;
-    this.target.copy(target);
-    let start = from;
-    if (!start) {
-      const hit = world.graph.nearest(this.position, 25, isDrivable);
-      if (!hit) return false;
-      start = { seg: hit.seg, s: hit.s, dir: hit.dir.dot(this.heading()) >= 0 ? 1 : -1 };
-    }
-    const route = planRoute(world.graph, start, target, world.clock, world.turnRules);
-    if (!route) return false;
-    this.route = route;
-    this.at = 0;
-    this.hint = 0;
-    this.served = -1;
-    return true;
+  /** The model and the body follow the driver's pose. */
+  private sync(): void {
+    const p = this.driver.position;
+    this.model.root.position.set(p.x, p.y + RIDE_HEIGHT, p.z);
+    this.model.root.rotation.set(0, this.driver.yaw, 0);
+    this.body.setNextKinematicTranslation(this.model.root.position);
+    this.body.setNextKinematicRotation(
+      new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.driver.yaw),
+    );
   }
 
   /** A street 250–500 m from `near`, so the ride in takes a minute or so. */
   private spawnPoint(graph: RoadGraph, near: Vector3): { seg: Segment; s: number; dir: 1 | -1 } | null {
     const candidates = graph.segments.filter((seg) => {
-      if (!isDrivable(seg) || seg.line.width < 5.5 || seg.length < 30) return false;
+      if (!isDrivable(seg) || seg.line.width < 5.5 || seg.length < 30 || seg.closed) return false;
       const d = graph.sample(seg, seg.length / 2).pos.distanceTo(near);
       return d > 250 && d < 500;
     });
@@ -204,116 +169,6 @@ export class RoboTaxi {
     if (!seg) return null;
     const dir: 1 | -1 = seg.oneway !== 0 ? (seg.oneway as 1 | -1) : Math.random() < 0.5 ? 1 : -1;
     return { seg, s: seg.length / 2, dir };
-  }
-
-  // ---------------------------------------------------------------- driving
-
-  /** Speed to aim for on this stretch: the limit, less for the next turn. */
-  private cruise(route: Route, world: TaxiWorld): number {
-    const k = this.stepIndex(route);
-    const seg = route.steps[k].seg;
-    let v = Math.max(5, speedLimit(seg) / 3.6 - 1.5);
-    const next = route.maneuvers.find((m) => m.at > this.at - 2);
-    if (next) {
-      const d = Math.max(0, next.at - this.at - 6);
-      const vTurn = next.turn === "slightLeft" || next.turn === "slightRight" ? 7 : TURN_SPEED;
-      v = Math.min(v, Math.sqrt(vTurn * vTurn + 2 * 2.5 * d));
-    }
-    void world;
-    return v;
-  }
-
-  /** Distance to the nearest reason to stop ahead: a stop line, a car, a person. */
-  private blockAhead(route: Route, world: TaxiWorld, dt: number): number {
-    let block = Infinity;
-    const k = this.stepIndex(route);
-    const st = route.steps[k];
-    const travel = route.stepEntry[k] + (this.at - route.stepStart[k]);
-    const next = world.control.nextStop(st.seg, st.dir, travel);
-    if (next) {
-      const { approach, dist } = next;
-      if (approach.kind === "signal") {
-        const state = world.control.state(approach);
-        // 施行令 第2条: on yellow, stop unless too close to stop safely.
-        const canStop = dist > (this.speed * this.speed) / (2 * BRAKE);
-        if (state === "red" || (state === "yellow" && canStop)) block = dist;
-      } else if (this.served !== approach.id) {
-        // 一時停止: a full stop at the line, then on.
-        const isStanding = dist < STOP_GAP + 0.6 && this.speed < 0.1;
-        this.waited = isStanding ? this.waited + dt : 0;
-        if (this.waited > 1.5) {
-          this.served = approach.id;
-          this.waited = 0;
-        } else block = dist;
-      }
-    }
-    const pos = this.position;
-    const dir = this.heading();
-    for (const o of world.obstacles) {
-      const dx = o.x - pos.x;
-      const dz = o.z - pos.z;
-      const ahead = dx * dir.x + dz * dir.z;
-      const lateral = Math.abs(dx * dir.z - dz * dir.x);
-      if (ahead > 0 && ahead < 40 && lateral < 1.7) block = Math.min(block, ahead - 2.4);
-    }
-    return block;
-  }
-
-  private stepIndex(route: Route): number {
-    const p = progressOn(route, this.position, this.hint);
-    this.hint = p.index;
-    // The point just ahead decides which street the car is on.
-    let i = this.hint;
-    while (i < route.cum.length - 1 && route.cum[i] < this.at) i++;
-    return route.stepOf[Math.min(i, route.stepOf.length - 1)] ?? 0;
-  }
-
-  /** Lane position at the current distance, heading toward a point a few metres on. */
-  private pose(route: Route): void {
-    const here = this.pointAt(route, this.at);
-    const look = this.pointAt(route, Math.min(route.length, this.at + 4));
-    const dir = look.clone().sub(here).setY(0);
-    if (dir.lengthSq() > 1e-4) {
-      dir.normalize();
-      const yaw = Math.atan2(dir.x, dir.z);
-      const r = this.model.root.rotation;
-      const d = Math.atan2(Math.sin(yaw - r.y), Math.cos(yaw - r.y));
-      r.y += d * 0.35;
-    }
-    const g = this.groundAt(here.x, here.z) ?? this.model.root.position.y - RIDE_HEIGHT;
-    this.model.root.position.set(here.x, g + RIDE_HEIGHT, here.z);
-    this.body.setNextKinematicTranslation(this.model.root.position);
-    this.body.setNextKinematicRotation(
-      new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.model.root.rotation.y),
-    );
-    for (const w of this.model.wheels) (w.children[0] as Group).rotation.x += (this.speed / 0.33) * 0.016;
-  }
-
-  /** Route point at distance `d`, moved into the left lane of the street it is on. */
-  private pointAt(route: Route, d: number): Vector3 {
-    let i = 1;
-    while (i < route.cum.length - 1 && route.cum[i] < d) i++;
-    const a = route.points[i - 1];
-    const b = route.points[i];
-    const t = (d - route.cum[i - 1]) / Math.max(1e-6, route.cum[i] - route.cum[i - 1]);
-    const p = a.clone().lerp(b, Math.min(1, Math.max(0, t)));
-    const seg = route.steps[route.stepOf[i]]?.seg;
-    const lane = laneOffset(seg);
-    const dir = b.clone().sub(a).setY(0);
-    if (dir.lengthSq() > 1e-6) p.add(leftOf(dir.normalize(), lane));
-    return p;
-  }
-
-  private place(pos: Vector3, dir: Vector3): void {
-    const g = this.groundAt(pos.x, pos.z) ?? pos.y;
-    this.model.root.position.set(pos.x, g + RIDE_HEIGHT, pos.z);
-    this.model.root.rotation.set(0, Math.atan2(dir.x, dir.z), 0);
-    this.body.setTranslation(this.model.root.position, true);
-  }
-
-  private heading(): Vector3 {
-    const y = this.model.root.rotation.y;
-    return new Vector3(Math.sin(y), 0, Math.cos(y));
   }
 
   /** The roof-side LED display: 迎車 / 賃走 / 支払 / 回送. */

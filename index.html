@@ -127,6 +127,7 @@
 
       <div id="hud-toolbar">
         <button type="button" data-action="mission" title="新しい目的地 (N)">目的地</button>
+        <button type="button" data-action="autopilot" title="自動運転 (O)">自動運転</button>
         <button type="button" data-action="weather" title="天気 (Y)">天気</button>
         <button type="button" data-action="ground" title="地面: 地理院写真 / PLATEAU オルソ (M)">地面</button>
         <button type="button" data-action="camera" title="カメラ (C)">視点</button>
@@ -138,6 +139,10 @@
       <div id="toasts"></div>
 
       <div id="talk-hint" class="panel" hidden>E で話しかける</div>
+
+      <div id="autopilot-chip" class="panel" hidden>
+        🚘 自動運転中 <span class="sub">（O・運転操作で解除）</span>
+      </div>
 
       <div id="taxi-meter" class="panel" hidden aria-live="polite">
         <div class="taxi-meter-head">
