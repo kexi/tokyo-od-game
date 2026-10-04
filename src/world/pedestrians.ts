@@ -24,6 +24,8 @@ export type Pedestrian = {
   groundCheck: number;
   /** On the pavement network; null for people wandering a plaza or park. */
   walk: Walk | null;
+  /** Seconds spent held at a kerb they were not meant to step off. */
+  blocked: number;
 };
 
 const FAMILY = [
@@ -273,9 +275,21 @@ export class Pedestrians {
       // Chase the walking line a little faster than the walk, so a dodge or a corner is made up.
       const pace = (step.crossing ? 1.25 : 1) * speed;
       const move = Math.min(gap, pace * 1.5 * dt);
-      if (gap > 0.02) {
-        pos.x += (dx / gap) * move;
-        pos.z += (dz / gap) * move;
+      const nx = pos.x + (gap > 0.02 ? (dx / gap) * move : 0);
+      const nz = pos.z + (gap > 0.02 ? (dz / gap) * move : 0);
+      // Only a crossing leg may step onto the carriageway; anyone else stops at the kerb (and, if
+      // that goes on, picks a walking line on their own side again).
+      const isStepOff = !step.crossing && network.isRoadway(nx, nz) && !network.isRoadway(pos.x, pos.z);
+      if (isStepOff) {
+        p.blocked += dt;
+        if (p.blocked > 1.5) {
+          p.walk = null;
+          p.blocked = 0;
+        }
+      } else if (gap > 0.02) {
+        p.blocked = 0;
+        pos.x = nx;
+        pos.z = nz;
         p.heading = turnToward(p.heading, Math.atan2(dx, dz), dt * 6);
       }
       if (step.waiting && step.face) {
@@ -288,7 +302,8 @@ export class Pedestrians {
       const nx = pos.x + dx * 6; // look ~1 step ahead
       const nz = pos.z + dz * 6;
       const g = this.groundAt(nx, nz);
-      const isBlocked = g === null || !this.isOpen(nx, nz, g);
+      // Wanderers keep off buildings and off the carriageway.
+      const isBlocked = g === null || !this.isOpen(nx, nz, g) || (network?.isRoadway(nx, nz) ?? false);
       if (isBlocked) {
         p.heading += Math.PI * (0.5 + ((p.profile.id * 7 + Math.floor(p.stateTime * 10)) % 10) / 10);
       } else {
@@ -333,7 +348,7 @@ export class Pedestrians {
         z = at.z;
       }
       const g = this.groundAt(x, z);
-      if (g === null || !this.isOpen(x, z, g)) continue;
+      if (g === null || !this.isOpen(x, z, g) || this.network?.isRoadway(x, z)) continue;
       const p = this.spawn(new Vector3(x, g, z), a * 3.1);
       p.walk = walk;
     }
@@ -367,6 +382,7 @@ export class Pedestrians {
       body: null,
       groundCheck: 0,
       walk: null,
+      blocked: 0,
     });
     return this.list[this.list.length - 1];
   }

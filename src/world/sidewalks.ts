@@ -56,6 +56,16 @@ export class SidewalkNetwork {
     this.lateralCache.clear();
   }
 
+  /**
+   * Is (x, z) carriageway a pedestrian may only enter at a crossing? Streets of 5.5 m and more,
+   * except where PLATEAU maps pavement and on streets closed to traffic (歩行者用道路).
+   */
+  isRoadway(x: number, z: number): boolean {
+    if (this.isPavement(x, z)) return false;
+    const p = new Vector3(x, 0, z);
+    return this.graph.carriagewaysAt(p, -0.4).some((c) => c.seg.line.width >= NARROW && !c.seg.closed);
+  }
+
   /** Joins the nearest street within 25 m, on the side of it the person stands on. */
   attach(pos: Vector3, id: number): Walk | null {
     const hit = this.graph.nearest(pos, 25, isWalkable);
@@ -102,7 +112,7 @@ export class SidewalkNetwork {
       base = this.pavementLateral(seg, side) ?? this.besideCarriageway(seg, side);
       this.lateralCache.set(key, base);
     }
-    const isEdge = base === half - 0.6;
+    const isEdge = base === half - 0.2;
     // People spread a little across the pavement.
     return isEdge ? base : base + (hash(id, 7) - 0.5) * 0.6;
   }
@@ -116,7 +126,8 @@ export class SidewalkNetwork {
       });
       if (isClear) return half + o;
     }
-    return half - 0.6;
+    // No room beside the carriageway: its very edge (still outside the roadway test).
+    return half - 0.2;
   }
 
   private endInset(w: Walk): number {
@@ -273,9 +284,22 @@ export class SidewalkNetwork {
     const s = arm.leaves ? inset : seg.length - inset;
     const next = { seg, dir: (arm.leaves ? 1 : -1) as 1 | -1, side: segSide, s, lateral };
     const start = this.point(seg, s, segSide, lateral);
-    w.leg = crossing
-      ? { points: [...crossing.points, start], i: 0, crossTo: 1, crossSeg: crossing.seg, next }
-      : { points: [start], i: 0, crossTo: -1, crossSeg: null, next };
+    if (crossing) {
+      w.leg = { points: [...crossing.points, start], i: 0, crossTo: 1, crossSeg: crossing.seg, next };
+      return;
+    }
+    // Round the corner on the pavement: via a point pushed out from the junction, not a chord
+    // that could clip the carriageway.
+    const centre = arm.leaves ? seg.pts[0] : seg.pts[seg.pts.length - 1];
+    const here = this.point(w.seg, w.s, w.side, w.lateral);
+    const a = here.clone().sub(centre).setY(0);
+    const b = start.clone().sub(centre).setY(0);
+    const out = a.clone().normalize().add(b.clone().normalize());
+    const points = [start];
+    if (out.lengthSq() > 0.05) {
+      points.unshift(centre.clone().add(out.normalize().multiplyScalar(Math.max(a.length(), b.length()))));
+    }
+    w.leg = { points, i: 0, crossTo: -1, crossSeg: null, next };
   }
 
   private followLeg(w: Walk, current: Vector3, car: Car): Step {
