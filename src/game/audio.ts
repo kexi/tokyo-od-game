@@ -8,7 +8,12 @@ import { SpatialAudio } from "./spatialAudio";
 export class GameAudio {
   private ctx: AudioContext | null = null;
   muted = false;
-  readonly spatial = new SpatialAudio(() => this.muted);
+  /** 音量 (設定), 0–1, over everything; muted (F8) silences it all the same. */
+  volume = 1;
+  readonly spatial = new SpatialAudio(
+    () => this.muted,
+    () => this.volume,
+  );
 
   get context(): AudioContext | null {
     return this.ctx;
@@ -42,13 +47,13 @@ export class GameAudio {
   tick(isLit: boolean): void {
     if (isLit === this.lastTick) return;
     this.lastTick = isLit;
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || this.muted || this.volume <= 0) return;
     const ctx = this.ctx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "square";
     osc.frequency.value = isLit ? 1800 : 1400;
-    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+    gain.gain.setValueAtTime(0.05 * this.volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.03);
     osc.connect(gain).connect(ctx.destination);
     osc.start();
@@ -56,7 +61,7 @@ export class GameAudio {
   }
 
   chime(high = false): void {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || this.muted || this.volume <= 0) return;
     const ctx = this.ctx;
     const notes = high ? [784, 988, 1319, 1568] : [880, 1319];
     notes.forEach((freq, i) => {
@@ -66,7 +71,7 @@ export class GameAudio {
       osc.frequency.value = freq;
       const start = ctx.currentTime + i * 0.08;
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.18 * this.volume, start + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
       osc.connect(gain).connect(ctx.destination);
       osc.start(start);

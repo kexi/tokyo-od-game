@@ -21,6 +21,9 @@ describe("簡単操作: the car works its own switches", () => {
       blur: "light",
       seatUp: 0.05,
       seatBack: 0,
+      volume: 0.8,
+      minimap: true,
+      nav: true,
     });
     expect(new CarControls().assist).toBe("easy");
     // Without storage (here, or a private window) the defaults apply.

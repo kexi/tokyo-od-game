@@ -313,9 +313,26 @@ export class SpatialAudio {
   private clock = 0;
   private lastAssign = -Infinity;
   private muted = false;
+  private level = 1;
   private boundCar: Object3D | null = null;
 
-  constructor(private readonly isMuted: () => boolean = () => false) {}
+  constructor(
+    private readonly isMuted: () => boolean = () => false,
+    private readonly volumeOf: () => number = () => 1,
+  ) {}
+
+  /** The master level now (mute and 音量), also while the game is paused and update() is not run. */
+  applyLevel(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const isMuted = this.isMuted();
+    const level = isMuted ? 0 : this.volumeOf();
+    const isChanged = isMuted !== this.muted || level !== this.level;
+    if (!isChanged) return;
+    this.muted = isMuted;
+    this.level = level;
+    this.master.gain.setTargetAtTime(level, ctx.currentTime, 0.03);
+  }
 
   get ready(): boolean {
     return this.ctx !== null;
@@ -437,11 +454,7 @@ export class SpatialAudio {
     this.up.set(0, 1, 0).applyQuaternion(cam.quaternion);
     this.placeListener(ctx.listener, cam.position);
 
-    const isMuted = this.isMuted();
-    if (isMuted !== this.muted) {
-      this.muted = isMuted;
-      this.master.gain.setTargetAtTime(isMuted ? 0 : 1, now, 0.03);
-    }
+    this.applyLevel();
     this.updateRain(o.rainMmH, now);
 
     for (const [key, s] of this.sirens) {

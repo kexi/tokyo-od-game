@@ -127,6 +127,7 @@ import {
   loadPrefs,
   renderKeyList,
   savePrefs,
+  volumeOf,
   SEAT_RANGE,
   seatOf,
   type ControlPrefs,
@@ -1116,9 +1117,20 @@ async function main(): Promise<void> {
 
   // ---------- 運転席のスイッチ（City Car Driving の配置） ----------
   const controls = new CarControls();
-  // 操作設定: WASD and 簡単操作 unless this browser chose otherwise.
+  // 設定: WASD and 簡単操作 unless this browser chose otherwise; the seat, the screen, the sound.
+  let navHidden = false;
+  let prefsNow = loadPrefs();
   const applyPrefs = (prefs: ControlPrefs) => {
+    prefsNow = prefs;
     input.layout = prefs.layout;
+    audio.volume = prefs.volume;
+    audio.spatial.applyLevel();
+    $<HTMLInputElement>("#opt-volume").value = String(prefs.volume);
+    $("#opt-volume-value").textContent = `${Math.round(prefs.volume * 100)}%`;
+    $("#minimap").hidden = !prefs.minimap;
+    $<HTMLInputElement>("#opt-minimap").checked = prefs.minimap;
+    navHidden = !prefs.nav;
+    $<HTMLInputElement>("#opt-nav").checked = prefs.nav;
     controls.assist = prefs.assist;
     blur.level = prefs.blur;
     $<HTMLSelectElement>("#opt-blur").value = prefs.blur;
@@ -1134,24 +1146,42 @@ async function main(): Promise<void> {
     // Each toolbar button shows its key in this layout.
     labelToolbar($("#hud-toolbar"), prefs.layout);
   };
-  applyPrefs(loadPrefs());
-  for (const id of ["#opt-layout", "#opt-assist", "#opt-blur", "#opt-seat-up", "#opt-seat-back"])
-    $(id).addEventListener("change", () => {
-      const prefs: ControlPrefs = {
-        layout: $<HTMLSelectElement>("#opt-layout").value === "ccd" ? "ccd" : "wasd",
-        assist: $<HTMLSelectElement>("#opt-assist").value === "real" ? "real" : "easy",
-        blur: blurLevelOf($<HTMLSelectElement>("#opt-blur").value),
-        seatUp: seatOf($<HTMLInputElement>("#opt-seat-up").value, SEAT_RANGE.up, DEFAULT_PREFS.seatUp),
-        seatBack: seatOf(
-          $<HTMLInputElement>("#opt-seat-back").value,
-          SEAT_RANGE.back,
-          DEFAULT_PREFS.seatBack,
-        ),
-      };
-      savePrefs(prefs);
-      applyPrefs(prefs);
-      log("controls", prefs);
-    });
+  applyPrefs(prefsNow);
+  const savePrefsAndApply = (prefs: ControlPrefs) => {
+    savePrefs(prefs);
+    applyPrefs(prefs);
+  };
+  const SETTING_INPUTS = [
+    "#opt-layout",
+    "#opt-assist",
+    "#opt-blur",
+    "#opt-seat-up",
+    "#opt-seat-back",
+    "#opt-volume",
+    "#opt-minimap",
+    "#opt-nav",
+  ];
+  // "input" too: the seat and the volume follow the slider while it is dragged.
+  for (const id of SETTING_INPUTS)
+    for (const type of ["input", "change"])
+      $(id).addEventListener(type, () => {
+        const prefs: ControlPrefs = {
+          layout: $<HTMLSelectElement>("#opt-layout").value === "ccd" ? "ccd" : "wasd",
+          assist: $<HTMLSelectElement>("#opt-assist").value === "real" ? "real" : "easy",
+          blur: blurLevelOf($<HTMLSelectElement>("#opt-blur").value),
+          seatUp: seatOf($<HTMLInputElement>("#opt-seat-up").value, SEAT_RANGE.up, DEFAULT_PREFS.seatUp),
+          seatBack: seatOf(
+            $<HTMLInputElement>("#opt-seat-back").value,
+            SEAT_RANGE.back,
+            DEFAULT_PREFS.seatBack,
+          ),
+          volume: volumeOf($<HTMLInputElement>("#opt-volume").value),
+          minimap: $<HTMLInputElement>("#opt-minimap").checked,
+          nav: $<HTMLInputElement>("#opt-nav").checked,
+        };
+        savePrefsAndApply(prefs);
+        if (type === "change") log("controls", prefs);
+      });
   let paused = false;
   const inCarOnly = (fn: () => void) => () => {
     if (mode === "car" && state === "playing") fn();
@@ -1207,13 +1237,26 @@ async function main(): Promise<void> {
     paused = !paused;
     $("#paused").hidden = !paused;
   });
+  // The keys flip the same settings the 設定 screen shows, and they are remembered alike.
   input.on("nav", () => {
-    navHidden = !navHidden;
+    savePrefsAndApply({ ...prefsNow, nav: !prefsNow.nav });
     toast(navHidden ? "ナビの表示を消しました（M で戻す）" : "ナビを表示します");
   });
-  input.on("minimap", () => {
-    const el = $("#minimap");
-    el.hidden = !el.hidden;
+  input.on("minimap", () => savePrefsAndApply({ ...prefsNow, minimap: !prefsNow.minimap }));
+
+  // 設定: everything stops while it is open (as the P pause), and goes on as it was when closed.
+  const settingsDialog = $<HTMLDialogElement>("#settings");
+  let pausedBeforeSettings = false;
+  input.on("settings", () => {
+    if (settingsDialog.open) return;
+    $<HTMLDialogElement>("#help").close();
+    pausedBeforeSettings = paused;
+    paused = true;
+    document.exitPointerLock();
+    settingsDialog.showModal();
+  });
+  settingsDialog.addEventListener("close", () => {
+    paused = pausedBeforeSettings;
   });
   input.on("cameraPrev", () => {
     chase.cycle();
@@ -1302,7 +1345,15 @@ async function main(): Promise<void> {
     chase.snap();
     toast("乗車しました");
   });
-  input.on("close", () => (phone.open ? phone.close() : conversation.close()));
+  // Esc: the conversation, the phone held large or in a call — or else 設定. The phone in its holder
+  // stays (F puts it away): it is out all the time, so Esc would never reach 設定.
+  input.on("close", () => {
+    const isTalking = !$("#chat").hidden;
+    if (isTalking) return conversation.close();
+    if (phone.open && phone.zoomed) return phone.setZoom(false);
+    if (phone.inCall) return phone.close();
+    input.trigger("settings");
+  });
 
   // Dev-only hook so automated checks can frame the car from arbitrary angles.
   let debugCamera: ((cam: PerspectiveCamera, car: Vector3) => void) | null = null;
@@ -1330,7 +1381,6 @@ async function main(): Promise<void> {
   let turnAt: { tIn: Vector3; node: Vector3 } | null = null;
   let laneHeld: { seg: Segment; lane: number } | null = null;
   let hornFor = 0;
-  let navHidden = false;
   let pendingScreenshot = false;
   /** The orbis flash: a red-white burst over the screen. */
   const flashScreen = () => {
@@ -1489,7 +1539,8 @@ async function main(): Promise<void> {
       return;
     }
     if (paused) {
-      renderer.render(scene, camera);
+      // Through the cockpit as in play: a plain render would leave the interior (its own layer) out.
+      cockpit.render(renderer, scene, camera);
       return;
     }
     const isOnFoot = mode === "foot";
@@ -2716,6 +2767,15 @@ async function main(): Promise<void> {
     if (shown) fillTaxiDestinations();
   };
   $("#taxi-open").addEventListener("click", () => showTaxiApp(true));
+  // U / タクシー: the phone out on the taxi app, and a car called at once (the app says why not, in
+  // the car); the destination can still be chosen there until boarding.
+  input.on("taxi", () => {
+    if (!phone.open) phone.show();
+    showSocial(false);
+    showTaxiApp(true);
+    const isCalled = taxi !== null;
+    if (!isCalled) $<HTMLButtonElement>("#taxi-call").click();
+  });
   $("#taxi-back").addEventListener("click", () => showTaxiApp(false));
   $("#taxi-call").addEventListener("click", () => {
     const tw = taxiWorld();

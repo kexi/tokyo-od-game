@@ -429,43 +429,77 @@
 
     <dialog id="help">
       <h2>操作</h2>
-      <div class="control-options">
-        <label
-          >キー配置
-          <select id="opt-layout">
-            <option value="wasd">WASD（FPS 風・クリックでマウス視点）</option>
-            <option value="ccd">City Car Driving（矢印キー）</option>
-          </select>
-        </label>
-        <label
-          >操作モード
-          <select id="opt-assist">
-            <option value="easy">簡単（ライト・ワイパー・ウインカー・ベルト・停止保持を自動）</option>
-            <option value="real">リアル（すべて自分で操作）</option>
-          </select>
-        </label>
-        <label
-          >運転席の目の高さ <output id="opt-seat-up-value"></output>
-          <input id="opt-seat-up" type="range" min="-0.08" max="0.16" step="0.01" />
-        </label>
-        <label
-          >運転席の前後 <output id="opt-seat-back-value"></output>
-          <input id="opt-seat-back" type="range" min="-0.1" max="0.12" step="0.01" />
-        </label>
-        <label
-          >ブラー（速度と旋回の効果）
-          <select id="opt-blur">
-            <option value="light">弱</option>
-            <option value="strong">強</option>
-            <option value="off">なし</option>
-          </select>
-        </label>
-      </div>
+      <p class="help-settings">
+        キー配置・簡単操作・座席・ブラー・音量は
+        <button type="button" data-action="settings">設定</button> で変えられます。
+      </p>
       <dl id="help-keys"></dl>
       <p>
         光の柱は東京都オープンデータの実在スポットです。車で触れると「発見」できます。進捗はこのブラウザに保存されます。
       </p>
       <form method="dialog"><button>閉じる</button></form>
+    </dialog>
+
+    <dialog id="settings" aria-labelledby="settings-title">
+      <h2 id="settings-title">設定 <span class="sub">一時停止中</span></h2>
+      <section class="settings-group">
+        <h3>操作</h3>
+        <div class="control-options">
+          <label
+            >キー配置
+            <select id="opt-layout">
+              <option value="wasd">WASD（FPS 風・クリックでマウス視点）</option>
+              <option value="ccd">City Car Driving（矢印キー）</option>
+            </select>
+          </label>
+          <label
+            >操作モード
+            <select id="opt-assist">
+              <option value="easy">簡単（ライト・ワイパー・ウインカー・ベルト・停止保持を自動）</option>
+              <option value="real">リアル（すべて自分で操作）</option>
+            </select>
+          </label>
+        </div>
+      </section>
+      <section class="settings-group">
+        <h3>運転席</h3>
+        <div class="control-options">
+          <label
+            >目の高さ <output id="opt-seat-up-value"></output>
+            <input id="opt-seat-up" type="range" min="-0.08" max="0.16" step="0.01" />
+          </label>
+          <label
+            >前後 <output id="opt-seat-back-value"></output>
+            <input id="opt-seat-back" type="range" min="-0.1" max="0.12" step="0.01" />
+          </label>
+        </div>
+      </section>
+      <section class="settings-group">
+        <h3>画面</h3>
+        <div class="control-options">
+          <label
+            >ブラー（速度と旋回の効果）
+            <select id="opt-blur">
+              <option value="light">弱</option>
+              <option value="strong">強</option>
+              <option value="off">なし</option>
+            </select>
+          </label>
+          <label class="check"><input id="opt-minimap" type="checkbox" /> 小さな地図</label>
+          <label class="check"><input id="opt-nav" type="checkbox" /> 交差点の案内（ナビ）</label>
+        </div>
+      </section>
+      <section class="settings-group">
+        <h3>音</h3>
+        <div class="control-options">
+          <label
+            >音量 <output id="opt-volume-value"></output>
+            <input id="opt-volume" type="range" min="0" max="1" step="0.05" />
+          </label>
+        </div>
+      </section>
+      <p class="sub">設定はこのブラウザに保存されます。</p>
+      <form method="dialog"><button>閉じて再開</button></form>
     </dialog>
 
     <dialog id="parking-dialog" aria-labelledby="parking-title">

@@ -33,7 +33,9 @@ export type Action =
   | "screenshot"
   | "replay"
   | "warp"
-  | "title";
+  | "title"
+  | "taxi"
+  | "settings";
 
 export type KeyLayout = "wasd" | "ccd";
 
@@ -43,7 +45,8 @@ export type KeyLayout = "wasd" | "ccd";
  * indicators, G hazards, L lights, K high beam, Tab wipers, H horn, B seat belt, C/V cameras,
  * Ctrl look left/right, Z look back, F the phone, M the navigation, O the small map, P pause,
  * R reset, F12 screenshot. The game's own actions sit on keys City Car Driving leaves free:
- * A 自動運転, Q 乗降, N 目的地, T 時間帯, Y 天気, I 出典, Home 帰宅, F1 操作, F2 地面, F8 音.
+ * A 自動運転, Q 乗降, N 目的地, T 時間帯, Y 天気, I 出典, Home 帰宅, F1 操作, F2 地面, F8 音,
+ * U タクシー; Esc closes what is open, or opens 設定.
  */
 const CCD_ACTIONS: Record<string, Action> = {
   KeyR: "reset",
@@ -75,6 +78,7 @@ const CCD_ACTIONS: Record<string, Action> = {
   F12: "screenshot",
   F5: "replay",
   KeyX: "warp",
+  KeyU: "taxi",
   Escape: "close",
 };
 
@@ -109,6 +113,8 @@ const DIGIT_ACTIONS: Record<string, Action> = {
 
 /** The key that triggers an action in a layout (for hints and the help). */
 export function keyFor(layout: KeyLayout, action: Action, mac = IS_MAC): string {
+  // 設定 is what Esc does when nothing is open to close.
+  if (action === "settings") return keyFor(layout, "close", mac);
   const digit = Object.keys(DIGIT_ACTIONS).find((c) => DIGIT_ACTIONS[c] === action);
   if (mac && digit) return digit.replace("Digit", "");
   const shifted = Object.keys(SHIFT_ACTIONS).find((c) => SHIFT_ACTIONS[c] === action);
@@ -224,7 +230,16 @@ export class Input {
   constructor() {
     window.addEventListener("keydown", (e) => {
       const isTyping = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+      // A dialog over the game (設定, the ticket, 移動…) takes the keys: nothing drives or switches
+      // under it, and its own Esc closes it rather than opening 設定.
+      const isDialogOpen = document.querySelector("dialog:modal") !== null;
       if (isTyping) return;
+      if (isDialogOpen) {
+        // Still not the browser's help or reload; Tab and Space keep moving through the dialog.
+        const isFunctionKey = /^F\d+$/.test(e.code) && BROWSER_KEYS.includes(e.code);
+        if (isFunctionKey) e.preventDefault();
+        return;
+      }
       // Esc that released the mouse look only released it.
       const isUnlockEscape =
         e.code === "Escape" &&

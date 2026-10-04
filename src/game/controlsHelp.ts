@@ -4,9 +4,9 @@ import { IS_MAC, keyFor, type KeyLayout } from "./input";
 import { SOCIAL_APP_NAME } from "./socialTheme";
 
 /**
- * 操作設定: the key layout (WASD, FPS-style, by default; or City Car Driving's arrows) and the
- * control mode (簡単操作 by default: the car works its own switches; or リアル), remembered in this
- * browser, and the key list in the help that follows them.
+ * 設定: the key layout (WASD, FPS-style, by default; or City Car Driving's arrows), the control
+ * mode (簡単操作 by default: the car works its own switches; or リアル), the seat, the screen and
+ * the sound, remembered in this browser, and the key list in the help that follows them.
  */
 export type ControlPrefs = {
   layout: KeyLayout;
@@ -15,6 +15,11 @@ export type ControlPrefs = {
   /** 座席: the driver's eye above (+) the model's and behind (+) it, in metres. */
   seatUp: number;
   seatBack: number;
+  /** 音量 of everything the game plays, 0–1. */
+  volume: number;
+  /** The small map and the junction guide (ナビ) on screen. */
+  minimap: boolean;
+  nav: boolean;
 };
 
 const STORE_KEY = "tod.controls";
@@ -29,6 +34,9 @@ export const DEFAULT_PREFS: ControlPrefs = {
   blur: "light",
   seatUp: 0.05,
   seatBack: 0,
+  volume: 0.8,
+  minimap: true,
+  nav: true,
 };
 const SEAT_UP = [-0.08, 0.16] as const;
 const SEAT_BACK = [-0.1, 0.12] as const;
@@ -38,6 +46,9 @@ export const seatOf = (value: unknown, range: readonly [number, number], fallbac
   return Number.isFinite(n) ? Math.max(range[0], Math.min(range[1], n)) : fallback;
 };
 export const SEAT_RANGE = { up: SEAT_UP, back: SEAT_BACK };
+
+/** A stored or chosen 音量, 0–1. */
+export const volumeOf = (value: unknown): number => seatOf(value, [0, 1], DEFAULT_PREFS.volume);
 
 /** A stored or chosen ブラー level; anything else is the default. */
 export const blurLevelOf = (value: unknown): BlurLevel =>
@@ -54,6 +65,9 @@ export function loadPrefs(): ControlPrefs {
       blur: blurLevelOf(saved?.blur),
       seatUp: seatOf(saved?.seatUp, SEAT_UP, DEFAULT_PREFS.seatUp),
       seatBack: seatOf(saved?.seatBack, SEAT_BACK, DEFAULT_PREFS.seatBack),
+      volume: volumeOf(saved?.volume),
+      minimap: saved?.minimap !== false,
+      nav: saved?.nav !== false,
     };
   } catch {
     // Storage blocked (private window, previews): the defaults.
@@ -100,6 +114,7 @@ export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[
       ? ["Z", "後ろを見る（押している間。左右はマウスで）"]
       : [IS_MAC ? "左 ⌥ / 右 ⌥ / Z" : "左 Ctrl / 右 Ctrl / Z", "左 / 右 / 後ろを見る（押している間）"],
     [key("phone"), `スマホ（119・110・タクシー・${SOCIAL_APP_NAME}）`],
+    [key("taxi"), "自動運転タクシーを呼ぶ（スマホのタクシーアプリ）"],
     [key("phoneZoom"), "スマホの拡大表示 / 元に戻す（操作になるので運転中は使わない）"],
     [`${key("nav")} / ${key("minimap")}`, "ナビ / 小さな地図の表示"],
     [key("pause"), "一時停止"],
@@ -122,6 +137,7 @@ export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[
           ["1 2 5 8 9 0", "F1・F2・F5・F8・Home・F12 と同じ（F キー・Home キーの無いキーボード向け）"],
         ] as Array<[string, string]>)),
     ["Enter", "会話・通話の入力欄へ（Esc で運転に戻る）"],
+    [key("settings"), "設定（開いている間は一時停止。スマホや会話が開いていればそれを閉じる）"],
   ];
 }
 
