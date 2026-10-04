@@ -168,8 +168,8 @@ export class ParkingPatrol {
       );
       brim.position.set(0, 1.72, 0.06);
       const terminal = new Mesh(new CylinderGeometry(0.035, 0.035, 0.16, 6), terminalMaterial);
-      terminal.position.set(0, -0.5, 0.06);
-      model.arms[0].add(terminal);
+      terminal.position.set(0, -0.26, 0.05);
+      model.forearms[0].add(terminal);
       model.root.add(cap, brim);
       model.root.position.copy(start).addScaledVector(along, -side * k * 1.2);
       this.scene.add(model.root);

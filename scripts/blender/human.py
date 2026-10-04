@@ -4,8 +4,9 @@
 #     --python scripts/blender/human.py -- public/models/human.glb [preview-dir]
 #
 # Game coordinates (+Y up, facing +Z, feet at y = 0, the person's right = −X), exported with
-# export_yup=False. Parts are separate objects so the game can swing limbs: ArmL/ArmR have their
-# origin at the shoulder and LegL/LegR at the hip (rotation about X walks them). Textures come from
+# export_yup=False. Parts are separate objects so the game can pose them: UpperArmL/R pivot at the
+# shoulder, ForearmL/R at the elbow, ThighL/R at the hip and ShinL/R at the knee (rotation about X
+# bends each joint). Textures come from
 # assets/human/textures (white-based greyscale: the game tints Skin/Shirt/Pants/Hair per person).
 import json
 import math
@@ -259,65 +260,82 @@ hair("HairLong", front_back(0.30 * math.pi, 0.68 * math.pi, 0.86 * math.pi), swe
 hair("HairBun", front_back(0.28 * math.pi, 0.48 * math.pi, 0.58 * math.pi), bun=True)
 
 # ---------------------------------------------------------------- arms (sleeve + hand)
+# Each limb is two parts so the game can bend elbows and knees: the upper part's origin is the
+# shoulder / hip, the lower part's origin is the elbow / knee. Both overlap a little at the joint
+# and the lower part carries a rounded cap there, so a bent joint shows no gap.
+ELBOW_DROP = 0.27  # shoulder → elbow
+KNEE_DROP = 0.42  # hip → knee
 
 
-def arm(name, side):
-    bm = bmesh.new()
-    uvl = bm.loops.layers.uv.new("UVMap")
+def arm(side):
+    suffix = "L" if side > 0 else "R"
     x0, y0 = side * SHOULDER[0], SHOULDER[1]
-    rings = [(y0 + 0.02, 0.052, 0.050, x0, 0.0), (y0 - 0.25, 0.045, 0.044, x0, 0.0), (y0 - 0.52, 0.038, 0.037, x0, 0.0)]
+    ye = y0 - ELBOW_DROP
+    top, wrist = y0 + 0.02, y0 - 0.52
 
-    def sleeve_uv(theta, row):
+    def sleeve_uv_at(y):
         # shirt.png's bottom band: plain fabric with the cuff at v = 0 (wrist); stop short of the
         # shirt hem stitched at v = 1/8 so it does not reappear at the shoulder.
-        return (theta / (2 * math.pi), 0.09 * (rings[row][0] - rings[-1][0]) / (rings[0][0] - rings[-1][0]))
+        return 0.09 * (y - wrist) / (top - wrist)
 
-    loft(bm, uvl, rings, 8, 0, sleeve_uv, cap_bottom=True, cap_top=True)
+    def ring_uv(rings):
+        return lambda theta, row: (theta / (2 * math.pi), sleeve_uv_at(rings[row][0]))
 
-    def hand_uv(local, mid):
-        return SKIN_UV
-
-    ellipsoid(bm, uvl, (x0, y0 - 0.585, 0.0), (0.028, 0.06, 0.042), 8, 5, 1, hand_uv)
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("UVMap")
+    upper = [(top, 0.052, 0.050, x0, 0.0), (ye + 0.02, 0.046, 0.045, x0, 0.0), (ye - 0.02, 0.043, 0.042, x0, 0.0)]
+    loft(bm, uvl, upper, 8, 0, ring_uv(upper), cap_bottom=True, cap_top=True)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return new_object(name, bm, ["Shirt", "Skin"], origin=(x0, y0, 0.0))
+    new_object(f"UpperArm{suffix}", bm, ["Shirt"], origin=(x0, y0, 0.0))
+
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("UVMap")
+    fore = [(ye + 0.01, 0.044, 0.043, x0, 0.0), (wrist, 0.038, 0.037, x0, 0.0)]
+    loft(bm, uvl, fore, 8, 0, ring_uv(fore), cap_bottom=True, cap_top=False)
+    ellipsoid(bm, uvl, (x0, ye, 0.0), (0.045, 0.045, 0.044), 8, 4, 0, lambda local, mid: (0.5, sleeve_uv_at(ye)))
+    ellipsoid(bm, uvl, (x0, y0 - 0.585, 0.0), (0.028, 0.06, 0.042), 8, 5, 1, lambda local, mid: SKIN_UV)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    new_object(f"Forearm{suffix}", bm, ["Shirt", "Skin"], origin=(x0, ye, 0.0))
 
 
-arm("ArmL", 1)  # the person's left is +X
-arm("ArmR", -1)
+arm(1)  # the person's left is +X
+arm(-1)
 
 # ---------------------------------------------------------------- legs (trousers + shoe)
 
 
-def leg(name, side):
+def leg(side):
+    suffix = "L" if side > 0 else "R"
+    x0, y0 = side * HIP[0], HIP[1]
+    yk = y0 - KNEE_DROP
+    top, hem = y0 + 0.02, y0 - 0.78
+
+    def pants_uv(rings):
+        # pants.png wraps once round the leg; v = 0 hem → 1 waistband, continuous across the knee.
+        return lambda theta, row: (theta / (2 * math.pi), (rings[row][0] - hem) / (top - hem))
+
     bm = bmesh.new()
     uvl = bm.loops.layers.uv.new("UVMap")
-    x0, y0 = side * HIP[0], HIP[1]
-    rings = [
-        (y0 + 0.02, 0.080, 0.085, x0, 0.0),
-        (y0 - 0.30, 0.066, 0.068, x0, 0.005),
-        (y0 - 0.42, 0.056, 0.058, x0, 0.012),
-        (y0 - 0.70, 0.050, 0.052, x0, 0.0),
-        (y0 - 0.78, 0.052, 0.054, x0, 0.0),
-    ]
+    thigh = [(top, 0.080, 0.085, x0, 0.0), (y0 - 0.30, 0.066, 0.068, x0, 0.005), (yk - 0.02, 0.056, 0.058, x0, 0.012)]
+    loft(bm, uvl, thigh, 10, 0, pants_uv(thigh), cap_bottom=True, cap_top=True)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    new_object(f"Thigh{suffix}", bm, ["Pants"], origin=(x0, y0, 0.0))
 
-    def pants_uv(theta, row):
-        # pants.png wraps once round the leg; v = 0 hem → 1 waistband.
-        return (theta / (2 * math.pi), (rings[row][0] - rings[-1][0]) / (rings[0][0] - rings[-1][0]))
-
-    loft(bm, uvl, rings, 10, 0, pants_uv, cap_bottom=False, cap_top=True)
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("UVMap")
+    shin = [(yk + 0.01, 0.057, 0.059, x0, 0.012), (y0 - 0.70, 0.050, 0.052, x0, 0.0), (hem, 0.052, 0.054, x0, 0.0)]
+    loft(bm, uvl, shin, 10, 0, pants_uv(shin), cap_bottom=False, cap_top=False)
+    v_knee = (yk - hem) / (top - hem)
+    ellipsoid(bm, uvl, (x0, yk, 0.012), (0.058, 0.058, 0.06), 10, 4, 0, lambda local, mid: (0.5, v_knee))
     # Shoe: a rounded block under the trouser hem, longer toward the toes (+Z).
     shoe = [(0.0, 0.050, 0.060, x0, 0.02), (0.035, 0.052, 0.110, x0, 0.04), (0.075, 0.046, 0.090, x0, 0.02)]
-
-    def shoe_uv(theta, row):
-        return (theta / (2 * math.pi), row / (len(shoe) - 1))
-
-    loft(bm, uvl, shoe, 10, 1, shoe_uv)
+    loft(bm, uvl, shoe, 10, 1, lambda theta, row: (theta / (2 * math.pi), row / (len(shoe) - 1)))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return new_object(name, bm, ["Pants", "Shoes"], origin=(x0, y0, 0.0))
+    new_object(f"Shin{suffix}", bm, ["Pants", "Shoes"], origin=(x0, yk, 0.012))
 
 
-leg("LegL", 1)
-leg("LegR", -1)
+leg(1)
+leg(-1)
 
 for ob in list(SCENE.objects):
     ob.select_set(False)
@@ -357,19 +375,36 @@ if PREVIEW:
         if ob.name in ("HairLong", "HairBun"):
             ob.hide_render = True
     # A second figure with long hair, mid-stride.
-    for src in ["Torso", "Head", "HairLong", "ArmL", "ArmR", "LegL", "LegR"]:
+    pose = {
+        "ThighL": 0.40,
+        "ShinL": 0.15,
+        "ThighR": -0.45,
+        "ShinR": 0.9,
+        "UpperArmL": -0.35,
+        "ForearmL": -0.5,
+        "UpperArmR": 0.35,
+        "ForearmR": -0.2,
+    }
+    copies = {}
+    for src in ["Torso", "Head", "HairLong", *pose]:
         c = bpy.data.objects[src].copy()
         SCENE.collection.objects.link(c)
         c.hide_render = False
         c.location.x += 0.8
-        if src == "LegL":
-            c.rotation_euler.x = 0.45
-        if src == "LegR":
-            c.rotation_euler.x = -0.45
-        if src == "ArmL":
-            c.rotation_euler.x = -0.35
-        if src == "ArmR":
-            c.rotation_euler.x = 0.35
+        copies[src] = c
+    bpy.context.view_layer.update()
+    for lower, upper in (
+        ("ShinL", "ThighL"),
+        ("ShinR", "ThighR"),
+        ("ForearmL", "UpperArmL"),
+        ("ForearmR", "UpperArmR"),
+    ):
+        copies[lower].parent = copies[upper]
+        copies[lower].matrix_parent_inverse = copies[upper].matrix_world.inverted()
+    # The scene is built in game axes (Y up, facing +Z), so rotation about X bends a joint the
+    # same way it does in the game.
+    for name, angle in pose.items():
+        copies[name].rotation_euler.x = angle
     gbm = bmesh.new()
     for p in [(-5, 0, -5), (5, 0, -5), (5, 0, 5), (-5, 0, 5)]:
         gbm.verts.new(p)
