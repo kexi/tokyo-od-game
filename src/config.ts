@@ -16,8 +16,6 @@ export const GSI = {
     `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${z}/${x}/${y}.png`,
   photo: (z: number, x: number, y: number) =>
     `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${z}/${x}/${y}.jpg`,
-  reverseGeocode: (lat: number, lon: number) =>
-    `https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lon}`,
 } as const;
 /** PLATEAU orthophoto (2023, ~30 cm). Optional ground style; same PDL1.0 terms as the 3D model. */
 export const PLATEAU_ORTHO = (z: number, x: number, y: number) =>

@@ -10,7 +10,7 @@ import {
   WebGLRenderer,
 } from "three";
 import type { z } from "zod";
-import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM, GSI } from "./config";
+import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
 import {
   BusStopFileSchema,
   expandPois,
@@ -20,6 +20,7 @@ import {
   type Poi,
 } from "./data/schema";
 import { haversineMeters } from "./geo/ellipsoid";
+import { AreaIndex, type AreaFile } from "./geo/areas";
 import { LocalFrame } from "./geo/frame";
 import { Geoid } from "./geo/geoid";
 import { latToTileY, lonToTileX } from "./geo/tiles";
@@ -51,32 +52,6 @@ import { Terrain } from "./world/terrain";
 import { Pedestrians } from "./world/pedestrians";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
-
-const WARDS: Record<string, string> = {
-  "13101": "千代田区",
-  "13102": "中央区",
-  "13103": "港区",
-  "13104": "新宿区",
-  "13105": "文京区",
-  "13106": "台東区",
-  "13107": "墨田区",
-  "13108": "江東区",
-  "13109": "品川区",
-  "13110": "目黒区",
-  "13111": "大田区",
-  "13112": "世田谷区",
-  "13113": "渋谷区",
-  "13114": "中野区",
-  "13115": "杉並区",
-  "13116": "豊島区",
-  "13117": "北区",
-  "13118": "荒川区",
-  "13119": "板橋区",
-  "13120": "練馬区",
-  "13121": "足立区",
-  "13122": "葛飾区",
-  "13123": "江戸川区",
-};
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
   const el = document.querySelector<T>(sel);
@@ -114,11 +89,15 @@ async function main(): Promise<void> {
   await RAPIER.init();
 
   setLoading("東京都オープンデータを読み込み中…", 0.1);
-  const [poiFile, geoidGrid, stopFile] = await Promise.all([
+  const [poiFile, geoidGrid, stopFile, areaFile] = await Promise.all([
     loadJson("pois.json", PoiFileSchema),
     loadJson("geoid.json", GeoidGridSchema),
     loadJson("busstops.json", BusStopFileSchema),
+    fetch(`${import.meta.env.BASE_URL}data/areas.json`)
+      .then((r) => (r.ok ? (r.json() as Promise<AreaFile>) : null))
+      .catch(() => null),
   ]);
+  const areas = areaFile ? new AreaIndex(areaFile) : null;
   const pois: Poi[] = poiFile ? expandPois(poiFile) : [];
   const categories: Category[] = poiFile?.categories ?? [];
   log("data_loaded", {
@@ -335,16 +314,16 @@ async function main(): Promise<void> {
 
   let wardName = "—";
   let townName = "";
-  let lastGeocode = { at: -Infinity, lat: 0, lon: 0 };
-  const geocode = async (lat: number, lon: number) => {
-    try {
-      const res = await fetch(GSI.reverseGeocode(lat, lon));
-      const json = (await res.json()) as { results?: { muniCd?: string; lv01Nm?: string } };
-      const cd = json.results?.muniCd ?? "";
-      wardName = WARDS[cd] ?? (cd.startsWith("13") ? "東京都（23区外）" : "東京都外");
-      townName = json.results?.lv01Nm && json.results.lv01Nm !== "－" ? json.results.lv01Nm : "";
-    } catch (error) {
-      warn("reverse_geocode_failed", { error: String(error) });
+  let lastLocate = -Infinity;
+  // Ward/town from bundled e-Stat 町丁 polygons (no per-player calls to GSI's reverse geocoder).
+  const locate = (lat: number, lon: number) => {
+    const hit = areas?.lookup(lat, lon) ?? null;
+    if (hit) {
+      wardName = hit.ward;
+      townName = hit.town;
+      pedestrians.crowd = Math.round(18 + Math.min(26, hit.density / 600));
+    } else {
+      townName = "";
     }
   };
 
@@ -598,11 +577,9 @@ async function main(): Promise<void> {
     vehicle.updateLights(env.nightFactor > 0.25 || env.isRaining());
     audio.update(isOnFoot ? 0 : speed, drive.throttle);
 
-    const moved = haversineMeters(geo.lat, geo.lon, lastGeocode.lat, lastGeocode.lon);
-    // GSI's reverse geocoder is meant mainly for GSI Maps; call it sparingly (≥200 m, ≥10 s).
-    if (now - lastGeocode.at > 10_000 && moved > 200) {
-      lastGeocode = { at: now, lat: geo.lat, lon: geo.lon };
-      void geocode(geo.lat, geo.lon);
+    if (now - lastLocate > 500) {
+      lastLocate = now;
+      locate(geo.lat, geo.lon);
     }
 
     if (now - lastHud > 150) {

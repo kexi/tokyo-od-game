@@ -86,8 +86,10 @@ export function renderCredits(sources: Source[]): string {
   <h3>地図・空中写真・標高（国土地理院）</h3>
   <p>出典：${link("https://maps.gsi.go.jp/development/ichiran.html", "国土地理院「地理院タイル」")}（全国最新写真（シームレス）、標高タイル）。
   地理院タイル（標高タイル（基盤地図情報数値標高モデル））を加工して地形を作成。
-  タイルはプレイ中にリアルタイムで読み込んでおり、本ゲームに同梱・再配布していません。<br>
-  現在地の区・町丁名：国土地理院 ${link("https://maps.gsi.go.jp/", "地理院地図")} の逆ジオコーディング機能を利用（移動 200 m・10 秒ごとに 1 回まで）。</p>
+  タイルはプレイ中にリアルタイムで読み込んでおり、本ゲームに同梱・再配布していません。</p>
+
+  <h3>町丁・区の境界と人口</h3>
+  <p>出典：${link("https://www.e-stat.go.jp/", "政府統計の総合窓口（e-Stat）")}「国勢調査 令和2年 小地域（町丁・字等別）境界データ 東京都」を加工して作成（${link("https://www.e-stat.go.jp/terms-of-use", "利用規約")}：政府標準利用規約 第2.0版準拠）。現在地の区・町丁名の表示、スポットの座標検証、歩行者の人数（人口密度）に使用。</p>
 
   <h3>ジオイド高</h3>
   <p>EGM2008（U.S. National Geospatial-Intelligence Agency、パブリックドメイン）。${link("https://github.com/OSGeo/PROJ-data", "PROJ-data")} の us_nga_egm08_25.tif から東京付近を抽出し、標高→楕円体高の変換に使用。</p>

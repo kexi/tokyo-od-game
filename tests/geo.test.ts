@@ -114,3 +114,23 @@ describe("sun position", () => {
     expect(jstHour(jstDateAt(17.5))).toBeCloseTo(17.5, 6);
   });
 });
+
+describe("e-Stat 町丁 lookup (public/data/areas.json)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { AreaIndex } = await import("../src/geo/areas");
+  const index = new AreaIndex(
+    JSON.parse(readFileSync(join(import.meta.dirname, "..", "public", "data", "areas.json"), "utf8")),
+  );
+
+  it("resolves landmarks to the right ward and town", () => {
+    expect(index.lookup(35.6896, 139.6917)).toMatchObject({ ward: "新宿区", town: "西新宿二丁目" });
+    expect(index.lookup(35.6812, 139.7671)).toMatchObject({ ward: "千代田区", town: "丸の内一丁目" });
+    expect(index.lookup(35.658, 139.7016)?.ward).toBe("渋谷区");
+  });
+
+  it("returns null outside the 23 wards (Tama, sea)", () => {
+    expect(index.lookup(35.6553, 139.3389)).toBeNull(); // 八王子
+    expect(index.lookup(35.55, 139.9)).toBeNull(); // Tokyo Bay
+  });
+});

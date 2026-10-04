@@ -87,7 +87,6 @@ const MOODS = [
   "人見知りだけど親切",
 ];
 
-const CROWD = 36;
 const SPAWN_MIN = 30;
 const SPAWN_MAX = 180;
 const DESPAWN = 230;
@@ -121,6 +120,8 @@ export class Pedestrians {
   private nextId = 1;
   private spawnSeed = 7;
   raining = false;
+  /** Target crowd size; set from the 町丁 population density. */
+  crowd = 30;
 
   constructor(
     private readonly scene: Scene,
@@ -265,7 +266,7 @@ export class Pedestrians {
 
   private fill(car: Vector3): void {
     let attempts = 0;
-    while (this.list.length < CROWD && attempts < 6) {
+    while (this.list.length < this.crowd && attempts < 6) {
       attempts++;
       this.spawnSeed = (this.spawnSeed * 1103515245 + 12345) >>> 0;
       const a = ((this.spawnSeed % 3600) / 3600) * Math.PI * 2;
