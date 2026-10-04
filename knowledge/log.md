@@ -2,6 +2,7 @@
 
 ## 2026-10-05
 
+- **Creation**: [ミラーの飾り（ぬいぐるみ・お守り）の物理と法令](mirror-charms.md) を追加。tag `physics` を tags.yml に追加。
 - **Creation**: [空・光・ブルーム](sky-light-and-bloom.md) を追加。[深度フォグ](atmosphere-and-replay-data.md) の霧の色を放射輝度として扱うように変えた点もここに記録。
 - **Update**: [区画線・道路標示・道路標識](road-markings-and-signs.md) に案内標識（方面及び方向 108 系）を追加し、「案内標識は描いていない」を訂正。OSM・PLATEAU frn の網羅状況、表示地名（国土交通省一覧）、英語表記の告示、文字の大きさと設置位置、交差点名が `junction=yes` にある落とし穴を記録。
 - **Creation**: [道路照明と濡れた路面](street-lighting-and-wet-roads.md) を追加（街灯の配置規則と配置数、配光と照度の計算値、濡れ・水たまり・波紋・乾き方、雨の夜の筋、画質「雨の路面」「街灯の光」との対応、計測できなかったフレーム時間、未確認の数値）。

@@ -123,6 +123,7 @@ import { renderTicket } from "./game/ticketForm";
 import { PATROL_LABEL, PolicePatrol, type PatrolKind } from "./game/policePatrol";
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
+import { CHARM_TIP, firstCharmTip, MirrorCharms } from "./game/mirrorCharm";
 import { CarNavi } from "./game/carNavi";
 import { displayOffset, NaviTv } from "./game/naviTv";
 import type { TvInfo } from "./game/tvRules";
@@ -132,6 +133,7 @@ import { Bloom, bloomSettings } from "./world/bloom";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import {
+  charmOf,
   DEFAULT_PREFS,
   loadPrefs,
   renderKeyList,
@@ -242,6 +244,8 @@ async function main(): Promise<void> {
   setLoading(`地形と 3D モデルを読み込み中…（スタート: ${spawn.label}）`, 0.18);
   // 車内視点 (loaded with the other models, attached to the player's car once it exists).
   const cockpit = new Cockpit();
+  // ミラーの飾り: hung in the car once both it and the cockpit (whose mirror they hang from) exist.
+  const mirrorCharms = new MirrorCharms();
   await Promise.all([
     dem.load(
       Math.floor(lonToTileX(spawn.lon, TERRAIN_ZOOM)),
@@ -250,6 +254,7 @@ async function main(): Promise<void> {
     loadCarModels(),
     loadVehicleModels(),
     cockpit.load(),
+    mirrorCharms.load(),
     loadSignModels(),
     loadSignalModels(),
     loadAmbulanceModel(),
@@ -278,6 +283,7 @@ async function main(): Promise<void> {
   const env = new Environment(scene, renderer);
   const vehicle = new Vehicle(world);
   cockpit.attach(vehicle.object);
+  mirrorCharms.attach(vehicle.object, cockpit.root);
   const carNavi = new CarNavi();
   const blur = new MotionBlur();
   const bloom = new Bloom();
@@ -1205,6 +1211,8 @@ async function main(): Promise<void> {
     $<HTMLInputElement>("#opt-nav").checked = prefs.nav;
     controls.assist = prefs.assist;
     cockpit.setSeat(prefs.seatUp, prefs.seatBack);
+    mirrorCharms.setChoice(prefs.charm);
+    $<HTMLSelectElement>("#opt-charm").value = prefs.charm;
     $<HTMLInputElement>("#opt-seat-up").value = String(prefs.seatUp);
     $<HTMLInputElement>("#opt-seat-back").value = String(prefs.seatBack);
     const cm = (m: number) => `${m > 0 ? "+" : ""}${Math.round(m * 100)} cm`;
@@ -1230,6 +1238,7 @@ async function main(): Promise<void> {
     "#opt-minimap",
     "#opt-minimap-north",
     "#opt-nav",
+    "#opt-charm",
   ];
   // "input" too: the seat and the volume follow the slider while it is dragged.
   for (const id of SETTING_INPUTS)
@@ -1248,6 +1257,7 @@ async function main(): Promise<void> {
           minimap: $<HTMLInputElement>("#opt-minimap").checked,
           minimapNorthUp: $<HTMLSelectElement>("#opt-minimap-north").value === "north",
           nav: $<HTMLInputElement>("#opt-nav").checked,
+          charm: charmOf($<HTMLSelectElement>("#opt-charm").value),
         };
         savePrefsAndApply(prefs);
         if (type === "change") log("controls", prefs);
@@ -1607,6 +1617,8 @@ async function main(): Promise<void> {
       showSocial(true);
     }
     log("game_started", {});
+    // Once per browser, after the opening toasts: hang it small (knowledge/mirror-charms.md).
+    if (prefsNow.charm !== "none" && firstCharmTip()) setTimeout(() => toast(CHARM_TIP, "#ffe14d"), 7000);
     toast("光の柱＝東京都オープンデータの実在スポット。N キーで目的地ミッション！", "#4dd2ff");
   });
 
@@ -1731,6 +1743,8 @@ async function main(): Promise<void> {
       steps++;
     }
     vehicle.syncVisuals();
+    // The charms feel the chassis' motion over the steps just taken (none: they stay as they are).
+    mirrorCharms.update(vehicle.body, steps * world.timestep, cockpit.active);
     events.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       const other = h1 === vehicle.chassis.handle ? h2 : h2 === vehicle.chassis.handle ? h1 : null;
@@ -3730,6 +3744,7 @@ async function main(): Promise<void> {
         getFrame: () => frame,
         getState: () => state,
         naviTv,
+        mirrorCharms,
         setDebugCamera: (fn: typeof debugCamera) => (debugCamera = fn),
       },
     });

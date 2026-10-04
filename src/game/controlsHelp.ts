@@ -20,7 +20,12 @@ export type ControlPrefs = {
   nav: boolean;
   /** The small map with north up (else the way ahead is up, as a car navi's default). */
   minimapNorthUp: boolean;
+  /** ミラーの飾り: what hangs from the rear-view mirror (game/mirrorCharm.ts). */
+  charm: CharmChoice;
 };
+
+/** ミラーの飾り: nothing, the plush bear, the お守り, or both on the one stay. */
+export type CharmChoice = "none" | "plush" | "omamori" | "both";
 
 const STORE_KEY = "tod.controls";
 /** The cockpit model the stored seat was set for (2: the 2026-10-05 driving position). */
@@ -40,6 +45,9 @@ export const DEFAULT_PREFS: ControlPrefs = {
   minimap: true,
   nav: true,
   minimapNorthUp: false,
+  // The bear: what the 飾り are for, and small (3.6 × 5.8 cm), hanging just under the mirror near
+  // the left A-pillar as the driver sees it; なし is one choice away.
+  charm: "plush",
 };
 const SEAT_UP = [-0.08, 0.16] as const;
 const SEAT_BACK = [-0.1, 0.12] as const;
@@ -52,6 +60,12 @@ export const SEAT_RANGE = { up: SEAT_UP, back: SEAT_BACK };
 
 /** A stored or chosen 音量, 0–1. */
 export const volumeOf = (value: unknown): number => seatOf(value, [0, 1], DEFAULT_PREFS.volume);
+
+/** A stored or chosen ミラーの飾り; anything else is the default. */
+export const charmOf = (value: unknown): CharmChoice =>
+  value === "none" || value === "plush" || value === "omamori" || value === "both"
+    ? value
+    : DEFAULT_PREFS.charm;
 
 export function loadPrefs(): ControlPrefs {
   try {
@@ -70,6 +84,7 @@ export function loadPrefs(): ControlPrefs {
       minimap: saved?.minimap !== false,
       nav: saved?.nav !== false,
       minimapNorthUp: saved?.minimapNorthUp === true,
+      charm: charmOf(saved?.charm),
     };
   } catch {
     // Storage blocked (private window, previews): the defaults.

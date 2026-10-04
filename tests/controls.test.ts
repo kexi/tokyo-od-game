@@ -24,6 +24,7 @@ describe("簡単操作: the car works its own switches", () => {
       minimap: true,
       nav: true,
       minimapNorthUp: false,
+      charm: "plush",
     });
     expect(new CarControls().assist).toBe("easy");
     // Without storage (here, or a private window) the defaults apply.

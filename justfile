@@ -146,6 +146,11 @@ orbis-model:
     uv run scripts/textures/orbis_textures.py
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/orbis.py -- public/models/orbis.glb
 
+# ミラーの飾り（クマのぬいぐるみ・交通安全のお守り）を Blender CLI でモデリングし public/models/mirror_charms.glb を書き出す（錦と毛並みのテクスチャ assets/charms/textures も作り直す）
+charm-models:
+    uv run scripts/textures/charm_textures.py
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/mirror_charms.py -- public/models/mirror_charms.glb
+
 # 案内標識（108 系）の国道・都道番号・通称名・OSM の行き先と表示地名を public/data/routes・guide-places.json に書き出す（OSM は just regs のキャッシュを使う）
 guide-data:
     node scripts/guide-signs.ts

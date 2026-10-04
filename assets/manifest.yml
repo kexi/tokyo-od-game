@@ -372,6 +372,19 @@ assets:
     docs: [knowledge/road-markings-and-signs.md]
     notes: 板の面（GuideFace）は実行時に src/world/guideArt.ts が標識ごとに描く。腕（GuideArm）と板は長さ 1 で、ゲームが伸ばす。
 
+  - id: mirror-charms
+    name: ミラーの飾り（ぬいぐるみ・お守り）
+    purpose: 自車のルームミラーのステーから紐で吊るす飾り。丸いクマのぬいぐるみ（約 5.8 cm）と交通安全のお守り（4.4 × 6.6 cm）。Rapier の紐と揺れは src/physics/charmRig.ts。
+    kind: model
+    files: [public/models/mirror_charms.glb]
+    generator: { script: scripts/blender/mirror_charms.py, recipe: charm-models }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。クマは独自のデザインで実在のキャラクターに似せていない。お守りの文字は「交通安全」だけで、寺社名・紋・商標は入れない）
+    license: repo
+    used_by: [src/game/mirrorCharm.ts]
+    inputs: [charm-textures]
+    docs: [knowledge/mirror-charms.md]
+
   # ---------------------------------------------------------------- テクスチャ
   - id: car-textures
     name: 車のテクスチャ
@@ -617,6 +630,19 @@ assets:
     used_by: []
     inputs: [noto-sans-jp]
     docs: [knowledge/orbis.md]
+
+  - id: charm-textures
+    name: ミラーの飾りのテクスチャ
+    purpose: お守りの錦（紫地に金の七宝、表は「交通安全」の金糸の刺繍）とクマの毛並みの法線マップ。mirror_charms.glb に JPEG で埋め込む。
+    kind: texture
+    files: [assets/charms/textures/*.png]
+    generator: { script: scripts/textures/charm_textures.py, recipe: charm-models }
+    made_by: procedural
+    source: 自作（手続き生成。七宝は古くからある一般的な文様。文字はコミット固定の Noto Sans JP。寺社名・紋は入れない）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [knowledge/mirror-charms.md]
 
   # ---------------------------------------------------------------- 画像
   - id: og-image
