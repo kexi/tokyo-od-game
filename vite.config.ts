@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -243,6 +244,8 @@ export default defineConfig({
   // GitHub Pages project site: https://<user>.github.io/tokyo-od-game/
   base: process.env.BASE_PATH ?? "/tokyo-od-game/",
   plugins: [dracoDecoder(), assetReview()],
+  // The project's own tests only: direnv unpacks flake inputs (with their own tests) into .direnv.
+  test: { include: ["tests/**/*.test.ts"] },
   // Module workers so the TTS worker can dynamic-import the Emscripten ES module from public/tts.
   worker: { format: "es" },
   build: {
