@@ -126,6 +126,7 @@ import { displayOffset, NaviTv } from "./game/naviTv";
 import type { TvInfo } from "./game/tvRules";
 import { buildToolbar, labelToolbar } from "./game/toolbar";
 import { MotionBlur } from "./world/motionBlur";
+import { Bloom, bloomSettings } from "./world/bloom";
 import { createRenderer } from "./render/renderer";
 import { drawShadowsOf, FrameComposer } from "./render/frame";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
@@ -288,11 +289,11 @@ async function main(): Promise<void> {
   mirrorCharms.attach(vehicle.object, cockpit.root);
   const carNavi = new CarNavi();
   const blur = new MotionBlur();
-  // The street passes, in order. WEBGPU-TODO(phase B): bloom (画質 光のにじみ, bloomSettings from
-  // world/bloom.ts: env.nightFactor and env.overcast) and the lens flare go here, before the motion
-  // blur — on the street only, so the interior and the wipers stay sharp. Until then: no bloom
-  // (bloom.ts is a GLSL pass over the canvas).
-  composer.streetPasses.push(blur);
+  // 光のにじみ: thresholds and strength by the light (bloom.ts), 画質 for the resolution.
+  const bloom = new Bloom(renderer, () => bloomSettings(env.nightFactor, env.overcast));
+  // The street passes, in order, on the street only (the interior and the wipers stay sharp): the
+  // lights spill, then the street smears.
+  composer.streetPasses.push(bloom, blur);
   const viewDir = new Vector3();
   let lastViewYaw = 0;
   cockpit.showOnDisplay(carNavi.canvas);

@@ -30,6 +30,21 @@ export type StreetPass = {
   isActive(): boolean;
   /** The street after this pass, from the street before it (a texture), built once. */
   build(street: TextureNode): Node<"vec4">;
+  /**
+   * Work of its own before its full-screen pass, reading the street before it (bloom: the bright
+   * parts filtered down and up a chain of smaller targets). It may bind other targets.
+   */
+  prepare?(street: Texture): void;
+};
+
+/**
+ * Reads the finished frame (street, wipers, interior, glass), in linear HDR, just before it is
+ * tone-mapped: a measurement on the GPU for later frames (the lens flare's sun probe).
+ */
+export type FrameReader = {
+  readonly name: string;
+  isActive(): boolean;
+  read(frame: Texture): void;
 };
 
 /**
@@ -78,10 +93,11 @@ export function holdShadows<T>(fn: () => T): T {
  * The frame, drawn into one linear HDR target and tone-mapped to the canvas once at the end:
  *
  *   world (main camera, near 0.5 m)
- *   → street passes, on the street only: [bloom, lens flare — to come] → motion blur
+ *   → street passes, on the street only: bloom → lens flare → motion blur
  *   → drawn over it with the near camera (2 cm): the wiper arms
  *   → a copy for the windscreen water (street + wipers)
  *   → the interior (near camera, depth cleared), then the glass refracting the copy
+ *   → frame readers (the lens flare's sun probe reads the finished frame)
  *   → present: tone mapping (ACES, the exposure the environment sets) and sRGB, to the canvas.
  *
  * Why one target and one output pass, not renderer.render() to the canvas for each step: with
@@ -97,6 +113,8 @@ export class FrameComposer {
   readonly target: RenderTarget;
   /** Effects on the street, in order. Bloom and the lens flare go before the motion blur. */
   readonly streetPasses: StreetPass[] = [];
+  /** Run on the finished frame before present() tone-maps it. */
+  readonly frameReaders: FrameReader[] = [];
   private readonly size = new Vector2();
   // A stand-in until the first copy: a street pass must never be built sampling the target it
   // draws into.
@@ -175,6 +193,7 @@ export class FrameComposer {
       const isLast = i === active.length - 1;
       const into = isLast ? this.target : this.between[i % 2];
       const { quad, input } = this.streetQuad(pass);
+      pass.prepare?.(source);
       input.value = source;
       r.setRenderTarget(into);
       quad.render(r);
@@ -190,9 +209,10 @@ export class FrameComposer {
     return this.glassCopy;
   }
 
-  /** Tone-map the frame to the canvas. */
+  /** Tone-map the frame to the canvas (after the frame readers). */
   present(): void {
     const r = this.renderer;
+    for (const reader of this.frameReaders) if (reader.isActive()) reader.read(this.target.texture);
     r.setRenderTarget(null);
     this.output.input.value = this.target.texture;
     this.drawOutput(this.output.quad);
