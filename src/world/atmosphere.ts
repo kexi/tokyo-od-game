@@ -9,6 +9,8 @@ import { ShaderChunk, ShaderLib, UniformsLib } from "three";
  * - σ₀ comes from the meteorological visibility V (Koschmieder: V = 3.912 / σ₀, the distance at which
  *   a black object's contrast falls to 2%).
  * - Looking towards the sun the haze glows (forward Mie scattering): a warm lobe around the sun.
+ * - The fog colour is a radiance like the lit surfaces (the same value the water reflects as its
+ *   horizon), tone-mapped and encoded here; three's own chunk mixed it in raw after the encoding.
  * The old linear ramp (fogNear → fogFar) stays as a floor at the edge of the streamed world, so the
  * end of the loaded tiles never shows.
  *
@@ -96,6 +98,12 @@ const FRAGMENT = /* glsl */ `
     float fogMu = max( dot( fogRay / max( fogDist, 1e-3 ), fogSun.xyz ), 0.0 );
     fogTint += fogSunColor * fogSun.w * ( 0.75 * pow( fogMu, 24.0 ) + 0.35 * pow( fogMu, 4.0 ) );
   }
+  // The haze is a radiance, as the surface was: tone-mapped and encoded the same way, since this
+  // chunk runs after both (linear in render targets, which have neither).
+  #ifdef TONE_MAPPING
+    fogTint = toneMapping( fogTint );
+  #endif
+  fogTint = linearToOutputTexel( vec4( fogTint, 1.0 ) ).rgb;
   gl_FragColor.rgb = mix( gl_FragColor.rgb, fogTint, fogFactor );
 #endif
 `;

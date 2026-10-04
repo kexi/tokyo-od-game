@@ -1,24 +1,27 @@
 import {
   BufferAttribute,
   BufferGeometry,
-  Color,
   DirectionalLight,
   Fog,
   HemisphereLight,
   LineBasicMaterial,
   LineSegments,
   MathUtils,
+  PMREMGenerator,
   Vector3,
   type Scene,
+  type Texture,
   type WebGLRenderer,
 } from "three";
 import { ATMOSPHERE, extinctionFor, installAtmosphere } from "./atmosphere";
 import { Sky } from "three/addons/objects/Sky.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { PMREMGenerator } from "three";
-import { QUALITY } from "../device";
+import { GRAPHICS, QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
 import { spellMinutes } from "./weatherSpells";
+import { SkyEnvMap, type EnvState } from "./skyEnvMap";
+import { upgradeSky } from "./skyShader";
+import { lightBalance, nightFactorAt, type LightBalance } from "./skyLight";
 
 export type TimeMode = "real" | "morning" | "day" | "evening" | "night";
 export const TIME_MODES: TimeMode[] = ["real", "morning", "day", "evening", "night"];
@@ -57,6 +60,21 @@ export type Observation = {
 
 const RAIN_DROPS = 5000;
 const RAIN_BOX = 90;
+/** Seconds for the sky and the light to turn from fair to rain or back. */
+const WEATHER_TURN_S = 25;
+/** Where the moonlight comes from (high in the south-east; its phase is not modelled). */
+const MOON_DIR = new Vector3(0.3, 0.8, 0.4).normalize();
+/** The game sky's numeric uniforms that the environment map's sky takes over. */
+const SKY_COPIED = ["turbidity", "rayleigh", "mieCoefficient", "mieDirectionalG", "cloudCoverage", "time"];
+/**
+ * 画質 › 空の映り込み: the sky's environment map size (per cube face) and how far the sky moves
+ * before it is drawn again (degrees of sun, see isEnvStale) and how often at most. 高 is 256, the
+ * size of the studio map 「なし」 keeps, so switching between them compiles no material again.
+ */
+const REFLECTIONS = {
+  low: { size: 64, step: 3, gapMs: 3000 },
+  high: { size: 256, step: 1, gapMs: 400 },
+} as const;
 
 /**
  * Sky, sun, fog and rain. Time presets are derived from today's real solar geometry over Tokyo
@@ -67,6 +85,11 @@ export class Environment {
   readonly sun = new DirectionalLight(0xffffff, 2.5);
   private readonly hemi = new HemisphereLight(0xbfd9ff, 0x4a4036, 0.9);
   private readonly sky = new Sky();
+  /** The night glow, stars, blue hour, rain deck and horizon haze added to the sky (skyShader.ts). */
+  private readonly look = upgradeSky(this.sky);
+  /** scene.environment drawn from this sky (skyEnvMap.ts), or the studio for 空の映り込み なし. */
+  envMap: SkyEnvMap | null = null;
+  private studio: Texture | null = null;
   private readonly fog = new Fog(0xbfd2e4, 400, 3200);
   private readonly rain: LineSegments;
   private readonly sunDir = new Vector3();
@@ -91,16 +114,22 @@ export class Environment {
    */
   wetness = 0;
   private isWetnessSet = false;
+  /**
+   * How overcast the sky is, 0 (fair) – 1 (raining): follows the weather over WEATHER_TURN_S, so
+   * the sky, the light and the haze turn smoothly when おまかせ (or the player) changes it.
+   */
+  overcast = 0;
+  /** The haze's extinction (1/m), eased towards the visibility's over ~10 s. */
+  private extinction = 0;
 
   constructor(
     private readonly scene: Scene,
     private readonly renderer: WebGLRenderer,
   ) {
-    // Image-based lighting gives the clear-coated car and PLATEAU façades something to reflect;
-    // a procedural room avoids shipping an HDR asset.
-    const pmrem = new PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    pmrem.dispose();
+    // Image-based lighting, set once now (a noon sun) so that materials compile with an
+    // environment map from the start; update() redraws it as the sky changes.
+    this.sky.material.uniforms.sunPosition.value.set(0, 1, 0.6);
+    this.updateReflections({ elevation: 59, azimuth: 180, overcast: 0 }, lightBalance(59, 0));
     this.sky.scale.setScalar(40000);
     this.sky.frustumCulled = false;
     scene.add(this.sky);
@@ -243,57 +272,133 @@ export class Environment {
     this.isWetnessSet = true;
     if (isFirstOrReplay) this.wetness = raining ? 1 : 0;
     else this.wetness = MathUtils.clamp(this.wetness + (raining ? dt / 20 : -dt / 300), 0, 1);
+    // The sky turns with the weather over WEATHER_TURN_S (eased), at once when a game or replay starts.
+    const cloudTarget = raining ? 1 : 0;
+    const cloudStep = (Math.sign(cloudTarget - this.overcast) * dt) / WEATHER_TURN_S;
+    this.overcast = isFirstOrReplay ? cloudTarget : MathUtils.clamp(this.overcast + cloudStep, 0, 1);
+    const cloud = MathUtils.smoothstep(this.overcast, 0, 1);
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(this.sunDir);
-    u.turbidity.value = raining ? 12 : 4;
-    u.rayleigh.value = elevation < 12 ? 2.4 : 1.4;
-    u.mieCoefficient.value = raining ? 0.02 : 0.005;
-    u.cloudCoverage.value = raining ? 0.85 : 0.35;
+    u.turbidity.value = MathUtils.lerp(4, 12, cloud);
+    // More Rayleigh while the sun is low (the old step at 12°, smoothed over 8–16°).
+    u.rayleigh.value = MathUtils.lerp(1.4, 2.4, MathUtils.smoothstep(-elevation, -16, -8));
+    u.mieCoefficient.value = MathUtils.lerp(0.005, 0.02, cloud);
+    u.cloudCoverage.value = MathUtils.lerp(0.35, 0.85, cloud);
     u.time.value += dt;
     this.sky.position.copy(camera);
 
     // 1 at deep night, 0 in full daylight, smooth through civil twilight.
-    this.nightFactor = MathUtils.smoothstep(-elevation, -2, 8);
+    this.nightFactor = nightFactorAt(elevation);
     const day = 1 - this.nightFactor;
     const golden = MathUtils.smoothstep(elevation, -2, 4) * (1 - MathUtils.smoothstep(elevation, 8, 22));
-
-    const sunColor = new Color(0xffffff).lerp(new Color(0xff9a52), golden);
-    const lightDir = elevation > -4 ? this.sunDir : new Vector3(0.3, 0.8, 0.4).normalize(); // moon
-    this.sun.color.copy(elevation > -4 ? sunColor : new Color(0x8fa6d8));
-    this.sun.intensity = elevation > -4 ? MathUtils.lerp(0.25, raining ? 1.2 : 2.8, day) : 0.35;
+    // Sun, skylight, haze and exposure by the sun's elevation and the cloud (skyLight.ts).
+    const light = lightBalance(elevation, cloud);
+    const isSunUp = elevation > -4;
+    const lightDir = isSunUp ? this.sunDir : MOON_DIR;
+    const sunColor = light.sunColor;
+    if (isSunUp) this.sun.color.setRGB(sunColor.r, sunColor.g, sunColor.b);
+    else this.sun.color.set(0x8fa6d8);
+    // Both are 0 at −4°, where the light swaps from the sun's direction to the moon's.
+    this.sun.intensity = isSunUp ? light.sunIntensity : light.moonIntensity;
     this.sun.position.copy(player).addScaledVector(lightDir, 600);
     this.sun.target.position.copy(player);
 
-    this.hemi.intensity = MathUtils.lerp(0.45, raining ? 1.6 : 1.5, day);
-    this.hemi.color.set(0xbfd9ff).lerp(new Color(0x324a7a), this.nightFactor);
+    this.hemi.color.setRGB(light.hemiSky.r, light.hemiSky.g, light.hemiSky.b);
+    this.hemi.groundColor.setRGB(light.hemiGround.r, light.hemiGround.g, light.hemiGround.b);
+    this.hemi.intensity = light.hemiIntensity;
 
-    const dayFog = new Color(raining ? 0x9aa3ab : 0xbfd2e4);
-    const fogColor = dayFog
-      .lerp(new Color(0xf0a070), golden * 0.7)
-      .lerp(new Color(0x0c1528), this.nightFactor);
-    this.fog.color.copy(fogColor);
+    // A radiance (atmosphere.ts tone-maps it); the water reflects it as its horizon.
+    const fog = light.fog;
+    this.fog.color.setRGB(fog.r, fog.g, fog.b);
     // The linear ramp now only hides the end of the streamed world; the haze is atmosphere.ts.
-    this.fog.near = raining ? 1100 : 2400;
-    this.fog.far = raining ? 2200 : 4200;
-    const visibility = this.visibility(raining);
-    ATMOSPHERE.fogAtmo.x = extinctionFor(visibility);
+    this.fog.near = MathUtils.lerp(2400, 1100, cloud);
+    this.fog.far = MathUtils.lerp(4200, 2200, cloud);
+    const extinction = extinctionFor(this.visibility(raining));
+    const isExtinctionSet = this.extinction > 0 && !isFirstOrReplay;
+    this.extinction = isExtinctionSet
+      ? this.extinction * Math.pow(extinction / this.extinction, Math.min(1, dt / 10))
+      : extinction;
+    ATMOSPHERE.fogAtmo.x = this.extinction;
     // Rain fills the whole column; dry haze sits in the lowest ~1 km of the boundary layer.
-    ATMOSPHERE.fogAtmo.y = raining ? 2500 : 1100;
+    ATMOSPHERE.fogAtmo.y = MathUtils.lerp(1100, 2500, cloud);
     ATMOSPHERE.fogSun.x = lightDir.x;
     ATMOSPHERE.fogSun.y = lightDir.y;
     ATMOSPHERE.fogSun.z = lightDir.z;
     // The glow is the sun's (warm and strongest when low); the moon's is faint.
-    ATMOSPHERE.fogSun.w =
-      elevation > -4 ? (raining ? 0.15 : 0.55) * (0.4 + golden) * (0.3 + 0.7 * day) : 0.04;
+    ATMOSPHERE.fogSun.w = isSunUp
+      ? MathUtils.lerp(0.55, 0.15, cloud) * (0.4 + golden) * (0.3 + 0.7 * day)
+      : 0.04;
     ATMOSPHERE.fogSunColor.x = sunColor.r;
     ATMOSPHERE.fogSunColor.y = sunColor.g * 0.9;
     ATMOSPHERE.fogSunColor.z = sunColor.b * 0.75;
-    this.renderer.toneMappingExposure = MathUtils.lerp(0.75, raining ? 0.95 : 1.0, day) + golden * 0.1;
+    this.renderer.toneMappingExposure = light.exposure;
 
-    this.scene.environmentIntensity = MathUtils.lerp(0.06, raining ? 0.35 : 0.5, day) + golden * 0.1;
+    const look = this.look;
+    if (look) {
+      look.uSkyGain.value = light.skyGain;
+      look.uOzone.value = light.ozone;
+      look.uGlow.value.setRGB(light.glow.r, light.glow.g, light.glow.b);
+      look.uStars.value = light.stars;
+      look.uTwilight.value = light.twilight;
+      look.uDeck.value.set(light.deck.r, light.deck.g, light.deck.b, cloud);
+      // The haze over the sky: less of it in rain, where the deck itself is the grey.
+      look.uHaze.value.set(fog.r, fog.g, fog.b, MathUtils.lerp(0.35, 0.12, cloud));
+    }
+    // After the sky's uniforms: the environment map copies this frame's.
+    const isStudio = this.updateReflections({ elevation, azimuth, overcast: cloud }, light);
+    // The studio is a bright room whatever the hour (the old balance); the sky's map dims by itself.
+    this.scene.environmentIntensity = isStudio
+      ? MathUtils.lerp(0.06, MathUtils.lerp(0.5, 0.35, cloud), day) + golden * 0.1
+      : light.envIntensity;
 
     this.rain.visible = raining;
     if (raining) this.animateRain(dt, camera);
+  }
+
+  /**
+   * The environment map for 画質 › 空の映り込み: the sky's, drawn again as it moves (高: every 1°,
+   * 低: a small map every 3°), or the old studio (なし: drawn once, never again). True for the studio.
+   */
+  private updateReflections(state: EnvState, light: LightBalance): boolean {
+    const mode = GRAPHICS.settings.reflections;
+    if (mode === "off") {
+      this.envMap?.dispose();
+      this.envMap = null;
+      this.studio ??= studioEnvironment(this.renderer);
+      this.scene.environment = this.studio;
+      return true;
+    }
+    const { size, step, gapMs } = REFLECTIONS[mode];
+    const isResized = this.envMap?.size !== size;
+    if (isResized) {
+      this.envMap?.dispose();
+      this.envMap = new SkyEnvMap(this.renderer, size);
+    }
+    const envMap = this.envMap;
+    if (!envMap) return false;
+    envMap.update(state, performance.now(), (sky) => this.syncEnvSky(sky, light), step, gapMs);
+    this.scene.environment = envMap.texture;
+    return false;
+  }
+
+  /**
+   * The environment map's sky is a second Sky (its own uniforms): it takes this one's sun, clouds
+   * and night, without the disc, the stars or the screen's haze, and with a ground under it.
+   */
+  private syncEnvSky(sky: Sky, light: LightBalance): void {
+    const from = this.sky.material.uniforms;
+    const to = sky.material.uniforms;
+    to.sunPosition.value.copy(from.sunPosition.value);
+    for (const name of SKY_COPIED) to[name].value = from[name].value;
+    const look = this.look;
+    const envLook = this.envMap?.look;
+    if (!look || !envLook) return;
+    envLook.uSkyGain.value = look.uSkyGain.value;
+    envLook.uOzone.value = look.uOzone.value;
+    envLook.uGlow.value.copy(look.uGlow.value);
+    envLook.uTwilight.value = look.uTwilight.value;
+    envLook.uDeck.value.copy(look.uDeck.value);
+    envLook.uGround.value.set(light.ground.r, light.ground.g, light.ground.b, 1);
   }
 
   private animateRain(dt: number, camera: Vector3): void {
@@ -313,6 +418,16 @@ export class Environment {
     pos.needsUpdate = true;
     this.rain.position.set(camera.x, camera.y - RAIN_BOX * 0.25, camera.z);
   }
+}
+
+/** The old image-based light: a procedural studio room (RoomEnvironment), drawn once. */
+function studioEnvironment(renderer: WebGLRenderer): Texture {
+  const pmrem = new PMREMGenerator(renderer);
+  const room = new RoomEnvironment();
+  const texture = pmrem.fromScene(room, 0.04).texture;
+  pmrem.dispose();
+  room.dispose();
+  return texture;
 }
 
 function computePresetHour(mode: TimeMode, lat: number, lon: number): number {

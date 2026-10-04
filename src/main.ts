@@ -128,6 +128,7 @@ import { displayOffset, NaviTv } from "./game/naviTv";
 import type { TvInfo } from "./game/tvRules";
 import { buildToolbar, labelToolbar } from "./game/toolbar";
 import { MotionBlur } from "./world/motionBlur";
+import { Bloom, bloomSettings } from "./world/bloom";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import {
@@ -279,6 +280,8 @@ async function main(): Promise<void> {
   cockpit.attach(vehicle.object);
   const carNavi = new CarNavi();
   const blur = new MotionBlur();
+  const bloom = new Bloom();
+  const applyBloom = () => bloom.apply(renderer, bloomSettings(env.nightFactor, env.overcast));
   const viewDir = new Vector3();
   let lastViewYaw = 0;
   cockpit.showOnDisplay(carNavi.canvas);
@@ -1659,10 +1662,12 @@ async function main(): Promise<void> {
       water.update(dt, env);
       water.renderReflection(renderer, scene, camera, now);
       renderer.render(scene, camera);
+      applyBloom();
       return;
     }
     if (paused) {
       // Through the cockpit as in play: a plain render would leave the interior (its own layer) out.
+      cockpit.render(renderer, scene, camera, applyBloom);
       return;
     }
     const isOnFoot = mode === "foot";
@@ -2388,6 +2393,8 @@ async function main(): Promise<void> {
       Math.atan2(Math.sin(viewYaw - lastViewYaw), Math.cos(viewYaw - lastViewYaw)) / Math.max(dt, 1e-3);
     lastViewYaw = viewYaw;
     const applyBlur = () => {
+      // Bloom first (the lights spill on the street, then the street smears), on foot too.
+      applyBloom();
       if (!isInCar || QUALITY.isMobile) return;
       const ahead = carPos
         .clone()
