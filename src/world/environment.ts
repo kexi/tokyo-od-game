@@ -61,7 +61,13 @@ export class Environment {
   private mode: TimeMode = "real";
   private weatherMode: WeatherMode = "real";
   private observation: Observation | null = null;
-  private presetHours = new Map<TimeMode, number>();
+  /**
+   * The game moment (epoch ms). In リアル時刻 it is the wall clock; a preset jumps to that time
+   * of day on the game's date and the clock runs on from there, so timed rules (通学路の通行止め,
+   * 時間帯の一方通行) come into and out of force while playing.
+   */
+  private gameMs = Date.now();
+  private isPresetPending = false;
   nightFactor = 0;
   sunElevation = 0;
 
@@ -114,6 +120,13 @@ export class Environment {
 
   set timeMode(mode: TimeMode) {
     this.mode = mode;
+    this.isPresetPending = mode !== "real";
+    if (mode === "real") this.gameMs = Date.now();
+  }
+
+  /** Game time now. */
+  now(): Date {
+    return new Date(this.gameMs);
   }
 
   get weather(): WeatherMode {
@@ -140,12 +153,21 @@ export class Environment {
 
   /** Clock hour (JST) currently being rendered. */
   displayHour(lat: number, lon: number): number {
-    if (this.mode === "real") return jstHour(new Date());
-    return this.presetHour(this.mode, lat, lon);
+    this.resolvePreset(lat, lon);
+    return jstHour(this.now());
+  }
+
+  /** The preset's hour depends on where the sun is (夕方 = sunset here), so it is set on first use. */
+  private resolvePreset(lat: number, lon: number): void {
+    if (!this.isPresetPending) return;
+    this.isPresetPending = false;
+    this.gameMs = jstDateAt(computePresetHour(this.mode, lat, lon), this.now()).getTime();
   }
 
   update(dt: number, player: Vector3, camera: Vector3, lat: number, lon: number): void {
-    const date = this.mode === "real" ? new Date() : jstDateAt(this.presetHour(this.mode, lat, lon));
+    this.resolvePreset(lat, lon);
+    this.gameMs = this.mode === "real" ? Date.now() : this.gameMs + dt * 1000;
+    const date = this.now();
     const { elevation, azimuth } = sunPosition(date, lat, lon);
     this.sunElevation = elevation;
     const el = MathUtils.degToRad(elevation);
@@ -208,14 +230,6 @@ export class Environment {
     }
     pos.needsUpdate = true;
     this.rain.position.set(camera.x, camera.y - RAIN_BOX * 0.25, camera.z);
-  }
-
-  private presetHour(mode: TimeMode, lat: number, lon: number): number {
-    const cached = this.presetHours.get(mode);
-    if (cached !== undefined) return cached;
-    const hour = computePresetHour(mode, lat, lon);
-    this.presetHours.set(mode, hour);
-    return hour;
   }
 }
 

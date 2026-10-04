@@ -1399,3 +1399,15 @@ pre.notice {
     left: 6px;
   }
 }
+
+#clock .clock-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--fg, #fff);
+}
+#clock .clock-day.sat {
+  color: #8cc8ff;
+}
+#clock .clock-day.sun {
+  color: #ff9a9a;
+}

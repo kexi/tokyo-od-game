@@ -292,12 +292,11 @@ async function main(): Promise<void> {
   let roadGraph: RoadGraph | null = null;
   let roadCenter = { lat: 0, lon: 0 };
   let roadsLoading = false;
-  // Game clock in minutes, for time-windowed one-way rules (登校時間帯の一方通行 etc.).
-  const clockMinutes = () => env.displayHour(lastGeo.lat, lastGeo.lon) * 60;
-  /** The moment regulations are judged at: game time of day on today's date in Japan (曜日・祝日). */
+  /** The moment regulations are judged at: the game's date and time in Japan (曜日・祝日). */
   const gameClockNow = (): GameClock => {
-    const { y, m, d } = tokyoDate();
-    return gameClock(y, m, d, clockMinutes());
+    const minutes = env.displayHour(lastGeo.lat, lastGeo.lon) * 60;
+    const { y, m, d } = tokyoDate(env.now());
+    return gameClock(y, m, d, minutes);
   };
   /** Graph + JARTIC/OSM regulations + signals + markings for the current frame. */
   const buildRoadNetwork = () => {
@@ -1526,13 +1525,31 @@ async function main(): Promise<void> {
     log("accident", { kind, kmh: Math.round(kmh) });
   };
 
+  const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+  /**
+   * In-game clock: date, weekday and time, as the regulations see them (Saturday blue, Sunday and
+   * 祝日 red as on a Japanese calendar).
+   */
+  const renderClock = (el: HTMLElement, clock: GameClock, date: { m: number; d: number }) => {
+    const hh = String(Math.floor(clock.minutes / 60)).padStart(2, "0");
+    const mm = String(Math.floor(clock.minutes % 60)).padStart(2, "0");
+    const dayClass = clock.holiday || clock.weekday === 0 ? "sun" : clock.weekday === 6 ? "sat" : "";
+    const label = `${date.m}/${date.d}(${WEEKDAYS[clock.weekday]}${clock.holiday ? "・祝" : ""})`;
+    if (el.textContent === `${label} ${hh}:${mm}`) return;
+    el.textContent = "";
+    const day = document.createElement("span");
+    day.className = `clock-day ${dayClass}`;
+    day.textContent = label;
+    const time = document.createElement("span");
+    time.className = "clock-time";
+    time.textContent = ` ${hh}:${mm}`;
+    el.append(day, time);
+  };
+
   const updateHud = (lat: number, lon: number, yaw: number, now: number) => {
     $("#ward").textContent = wardName;
     $("#town").textContent = townName || " ";
-    const hour = env.displayHour(lat, lon);
-    const hh = String(Math.floor(hour)).padStart(2, "0");
-    const mm = String(Math.floor((hour % 1) * 60)).padStart(2, "0");
-    $("#clock").textContent = `${TIME_LABEL[env.timeMode]} ${hh}:${mm}`;
+    renderClock($("#clock"), gameClockNow(), tokyoDate(env.now()));
     const obs = env.getObservation();
     const obsText = obs
       ? `東京 ${obs.temp ?? "-"}℃ 風 ${obs.wind ?? "-"}m/s 降水 ${obs.precip10m ?? "-"}mm (${obs.time})`
