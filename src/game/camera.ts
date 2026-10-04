@@ -1,11 +1,13 @@
 import { MathUtils, Quaternion, Vector3, type PerspectiveCamera } from "three";
 
-export type CameraMode = "chase" | "far" | "hood";
-const MODES: CameraMode[] = ["chase", "far", "hood"];
+export type CameraMode = "chase" | "far" | "hood" | "cockpit";
+const MODES: CameraMode[] = ["chase", "cockpit", "hood", "far"];
+// The cockpit view places the camera at the driver's eye itself (game/cockpit.ts).
 const OFFSETS: Record<CameraMode, Vector3> = {
   chase: new Vector3(0, 3.4, -8.5),
   far: new Vector3(0, 22, -34),
   hood: new Vector3(0, 1.1, 0.6),
+  cockpit: new Vector3(0, 1.1, 0.6),
 };
 
 /** Spring-damped chase camera that follows the car's yaw but ignores its roll/pitch jitter. */

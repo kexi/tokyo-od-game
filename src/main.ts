@@ -106,6 +106,7 @@ import {
 import { renderReview } from "./game/violationReview";
 import { PolicePatrol } from "./game/policePatrol";
 import { CarControls } from "./game/carControls";
+import { Cockpit } from "./game/cockpit";
 import { loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
 import { formatCount, SocialFeed, type SocialPost } from "./game/social";
@@ -201,6 +202,8 @@ async function main(): Promise<void> {
 
   const dem = new DemStore(new Geoid(geoidGrid));
   setLoading(`地形と 3D モデルを読み込み中…（スタート: ${spawn.label}）`, 0.18);
+  // 車内視点 (loaded with the other models, attached to the player's car once it exists).
+  const cockpit = new Cockpit();
   await Promise.all([
     dem.load(
       Math.floor(lonToTileX(spawn.lon, TERRAIN_ZOOM)),
@@ -208,6 +211,7 @@ async function main(): Promise<void> {
     ),
     loadCarModels(),
     loadVehicleModels(),
+    cockpit.load(),
     loadSignModels(),
     loadSignalModels(),
     loadAmbulanceModel(),
@@ -232,6 +236,8 @@ async function main(): Promise<void> {
   );
   const env = new Environment(scene, renderer);
   const vehicle = new Vehicle(world);
+  cockpit.attach(vehicle.object);
+  cockpit.showOnDisplay($<HTMLCanvasElement>("#minimap"));
   scene.add(vehicle.object);
   vehicle.setFrozen(true);
   const field = new PoiField(
@@ -551,7 +557,7 @@ async function main(): Promise<void> {
     toast(`地面: ${terrain.getStyle() === "photo" ? "地理院 全国最新写真" : "PLATEAU オルソ画像 2023"}`);
   });
   input.on("camera", () =>
-    toast(`視点: ${{ chase: "追従", far: "俯瞰", hood: "ボンネット" }[chase.cycle()]}`),
+    toast(`視点: ${{ chase: "追従", far: "俯瞰", hood: "ボンネット", cockpit: "運転席" }[chase.cycle()]}`),
   );
   input.on("mute", () => toast(audio.toggleMute() ? "サウンド オフ" : "サウンド オン"));
   input.on("reset", respawnHere);
@@ -717,7 +723,8 @@ async function main(): Promise<void> {
   });
   input.on("cameraPrev", () => {
     chase.cycle();
-    toast(`視点: ${chase.cycle()}`);
+    chase.cycle();
+    toast(`視点: ${{ chase: "追従", far: "俯瞰", hood: "ボンネット", cockpit: "運転席" }[chase.cycle()]}`);
   });
   input.on("screenshot", () => {
     // The next drawn frame, saved as a PNG.
@@ -1458,7 +1465,9 @@ async function main(): Promise<void> {
     if (debugCamera) debugCamera(camera, focus);
     else if (isOnFoot) walker.updateCamera(camera, dt);
     else if (isInTaxi && taxi) chase.update(dt, taxi.position, taxi.model.root.quaternion, taxi.speed);
+    else if (isInCar && chase.mode === "cockpit" && cockpit.root) cockpit.placeCamera(camera, chase.look);
     else chase.update(dt, carPos, carRot, speed / 3.6);
+    cockpit.setActive(isInCar && chase.mode === "cockpit");
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
     if (Math.abs(env.nightFactor - appliedNight) > 0.02) {
       appliedNight = env.nightFactor;
@@ -1478,6 +1487,21 @@ async function main(): Promise<void> {
     const isHorn = isInCar && input.held("KeyH");
     audio.horn(isHorn);
     hornFor = isHorn ? hornFor + dt : 0;
+    cockpit.update({
+      dt,
+      now,
+      kmh: vehicle.speedKmh(),
+      throttle: drive.throttle,
+      steerAngle: vehicle.steerAngle,
+      left: signalLeft,
+      right: signalRight,
+      highBeam: controls.highBeam && controls.headlightsOn(isDark),
+      parkingBrake: drive.handbrake,
+      wipers: controls.wipers,
+      raining: env.isRaining(),
+      renderer,
+      scene,
+    });
     audio.update(isEngineOff ? 0 : speed, isEngineOff ? 0 : drive.throttle, isEngineOff);
 
     if (now - lastLocate > 500) {

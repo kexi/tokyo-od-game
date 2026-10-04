@@ -128,6 +128,11 @@ export class Vehicle {
     return v.x * f.x + v.y * f.y + v.z * f.z;
   }
 
+  /** Front-wheel steering angle (radians, + to the left). */
+  get steerAngle(): number {
+    return this.steer;
+  }
+
   get isCoasting(): boolean {
     return this.coasting;
   }
