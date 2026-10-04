@@ -55,6 +55,7 @@ import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { CLOSURE_WORDS } from "./world/closures";
 import { StreetFurniture, type Places } from "./world/streetFurniture";
+import { StreetLights } from "./world/streetLights";
 import { OrbisDevices } from "./world/orbis";
 import { jstDateAt } from "./geo/sun";
 import { gameClock, inForce as isInForceTime, timeNote, tokyoDate, type GameClock } from "./world/ruleTime";
@@ -381,6 +382,18 @@ async function main(): Promise<void> {
   };
   /** Graph + JARTIC/OSM regulations + signals + markings for the current frame. */
   const furniture = new StreetFurniture(scene, (x, z) => groundY(x, z));
+  // 道路照明 along the road graph (rebuilt with it), and the wet street shading.
+  const streetLights = new StreetLights(scene, world, {
+    graph: () => roadGraph,
+    groundAt: (x, z) => {
+      const g = groundY(x, z);
+      return g === null ? null : g + (pavements.contains(x, z) ? KERB : 0);
+    },
+    isOpen: (x, z, g) => isOpenGround(x, z, g),
+    control,
+    traffic,
+    player: vehicle,
+  });
   // オービス and their 予告看板 (loads its own model and police.json).
   const orbis = new OrbisDevices(scene, (x, z) => groundY(x, z), world);
   let places: Places | null = null;
@@ -2170,6 +2183,7 @@ async function main(): Promise<void> {
     });
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
     water.update(dt, env);
+    streetLights.update(dt, camera, env, now);
     if (Math.abs(env.nightFactor - appliedNight) > 0.02) {
       appliedNight = env.nightFactor;
       buildings.setNightFactor(appliedNight);
@@ -3611,6 +3625,7 @@ async function main(): Promise<void> {
         getPatrols: () => patrols,
         getMission: () => missions.current,
         furniture,
+        streetLights,
         orbis,
         groundY,
         // Staging for the teaser and tests: the screens behind events that take long to set up.

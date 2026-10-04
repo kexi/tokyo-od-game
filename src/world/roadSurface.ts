@@ -16,6 +16,7 @@ import asphaltNormalUrl from "../../assets/road/textures/asphalt_normal.jpg?url"
 import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.png?url";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { streetShading } from "./streetLights";
 import type { Approach } from "./trafficControl";
 
 const STEP = 2.5; // metres between cross-sections; dense enough to hug the terrain mesh
@@ -28,7 +29,11 @@ const PAINT = 0.025; // markings above the asphalt
 const LINE = 0.15; // 区画線 width (MLIT 区画線の設置基準: 0.10–0.20 m)
 const DASH = 5; // dashed 中央線 / 車線境界線 in urban areas: 5 m painted, 5 m gap (same standard)
 
-type Builder = { pos: number[]; idx: number[]; uv?: number[] };
+/**
+ * `st`: per vertex the street cross-section for the wet shading (streetLights.ts): lateral offset
+ * from the centreline (left +), half width, lane width, and where lanes are counted from.
+ */
+type Builder = { pos: number[]; idx: number[]; uv?: number[]; st: number[] };
 
 // 密粒度アスファルト textures (scripts/textures/asphalt_textures.py; 1 tile = 4 m), laid in world
 // XZ so every street shares one seamless surface without per-road UVs.
@@ -58,10 +63,14 @@ asphalt.onBeforeCompile = (shader) => {
     vRoughnessMapUv = worldUv;`,
   );
 };
+streetShading(asphalt, "asphalt", true);
 const white = new MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7, emissive: 0x222222 });
 // 規制標示 (はみ出し禁止, 進路変更禁止, 最高速度) are yellow (命令 別表第六).
 const YELLOW = 0xf2b705;
 const yellow = new MeshStandardMaterial({ color: YELLOW, roughness: 0.7, emissive: 0x221800 });
+// Paint gets wet and lies in the same puddles as the asphalt under it.
+streetShading(white, "paint", true);
+streetShading(yellow, "paint", true);
 const digitMaterials = new Map<number, MeshStandardMaterial>();
 
 /** 規制標示「最高速度」(105): yellow numerals stretched along the lane so drivers can read them. */
@@ -83,6 +92,7 @@ function digitsMaterial(limit: number): MeshStandardMaterial {
   const map = new CanvasTexture(canvas);
   map.colorSpace = SRGBColorSpace;
   m = new MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.7, emissive: 0x221800 });
+  streetShading(m, "paint", true);
   digitMaterials.set(limit, m);
   return m;
 }
@@ -155,6 +165,7 @@ function arrowMaterial(set: readonly LaneDirection[]): MeshStandardMaterial {
   const map = new CanvasTexture(canvas);
   map.colorSpace = SRGBColorSpace;
   m = new MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.7, emissive: 0x222222 });
+  streetShading(m, "paint", true);
   arrowMaterials.set(key, m);
   return m;
 }
@@ -184,9 +195,9 @@ export class RoadSurface {
     this.clear();
     if (!graph) return;
     const isSurveyed = regs?.hasMarkings ?? false;
-    const road: Builder = { pos: [], idx: [] };
-    const whites: Builder = { pos: [], idx: [] };
-    const yellows: Builder = { pos: [], idx: [] };
+    const road: Builder = { pos: [], idx: [], st: [] };
+    const whites: Builder = { pos: [], idx: [], st: [] };
+    const yellows: Builder = { pos: [], idx: [], st: [] };
     const digits = new Map<number, Builder>();
     const arrows = new Map<string, { set: LaneDirection[]; b: Builder }>();
     const junction = (node: number) => (graph.nodes.get(node)?.length ?? 0) >= 3;
@@ -271,6 +282,7 @@ export class RoadSurface {
       const g = new BufferGeometry();
       g.setAttribute("position", new BufferAttribute(new Float32Array(b.pos), 3));
       if (b.uv) g.setAttribute("uv", new BufferAttribute(new Float32Array(b.uv), 2));
+      g.setAttribute("aStreet", new BufferAttribute(new Float32Array(b.st), 4));
       g.setIndex(b.idx);
       g.computeVertexNormals();
       const mesh = new Mesh(g, mat);
@@ -351,6 +363,13 @@ export class RoadSurface {
         }
       }
     }
+    // Lanes of a two-way street are counted out from the centreline, of a one-way from its edge.
+    const isTwoWay = seg.oneway === 0;
+    const laneWidth = (isTwoWay ? seg.line.width / 2 : seg.line.width) / seg.lanes;
+    const laneOrigin = isTwoWay ? 0 : -seg.line.width / 2;
+    for (let i = 0; i <= n; i++)
+      for (let k = 0; k <= cols; k++)
+        b.st.push(offset + width / 2 - (width * k) / cols, seg.line.width / 2, laneWidth, laneOrigin);
     const row = cols + 1;
     for (let i = 0; i < n; i++) {
       for (let k = 0; k < cols; k++) {
@@ -421,7 +440,7 @@ export class RoadSurface {
       const s1 = s0 + sign.dir * 5;
       const [a, z] = s0 < s1 ? [s0, s1] : [s1, s0];
       if (a < 1 || z > seg.length - 1) continue;
-      const builder = digits.get(sign.value) ?? { pos: [], idx: [], uv: [] };
+      const builder = digits.get(sign.value) ?? { pos: [], idx: [], uv: [], st: [] };
       digits.set(sign.value, builder);
       for (let k = 0; k < lanes; k++) {
         // Lane centres measured left of the travel direction from the kerb side inwards.
@@ -464,7 +483,7 @@ export class RoadSurface {
         for (let k = 0; k < n; k++) {
           const set = use.lanes[k];
           const key = [...set].sort().join(",");
-          const entry = arrows.get(key) ?? { set, b: { pos: [], idx: [], uv: [] } };
+          const entry = arrows.get(key) ?? { set, b: { pos: [], idx: [], uv: [], st: [] } };
           arrows.set(key, entry);
           const fromKerb = isTwoWay
             ? span - (k + 0.5) * laneWidth
@@ -500,6 +519,7 @@ export class RoadSurface {
         const x = c.x + side.x * sgn;
         const z = c.z + side.z * sgn;
         b.pos.push(x, (this.surfaceAt(x, z) ?? 0) + LIFT + PAINT, z);
+        b.st.push(0, 0, 1, 0); // no cross-section: the shading uses its noise alone
       }
     }
     b.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);

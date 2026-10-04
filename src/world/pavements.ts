@@ -16,6 +16,7 @@ import {
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { warn } from "../log";
+import { streetShading } from "./streetLights";
 
 /**
  * 歩道 from PLATEAU 道路モデル LOD2 (2025, PDL1.0): TrafficArea polygons whose tran:function is
@@ -229,6 +230,10 @@ export class Pavements {
       // 島 are mostly medians and channelising islands: weathered concrete, darker than paving.
       island: new MeshStandardMaterial({ color: 0x7d7b76, roughness: 0.95 }),
     };
+    // Wet like the road but less: Tokyo's interlocking paving is mostly permeable (透水性舗装).
+    streetShading(this.materials.sidewalk, "paving");
+    streetShading(this.materials.island, "concrete");
+    streetShading(this.kerbMaterial, "concrete");
   }
 
   get count(): number {
