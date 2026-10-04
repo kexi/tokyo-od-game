@@ -1,14 +1,7 @@
-import {
-  type BufferGeometry,
-  type Material,
-  Mesh,
-  MeshBasicMaterial,
-  SRGBColorSpace,
-  TextureLoader,
-  type Texture,
-} from "three";
+import { type BufferGeometry, type Material, Mesh, SRGBColorSpace, TextureLoader, type Texture } from "three";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { UntonemappedBasicMaterial } from "../render/untonemapped";
 
 /**
  * 信号機 parts modelled in Blender (scripts/blender/signals.py → public/models/signals.glb) and
@@ -36,9 +29,9 @@ export type SignalKit = {
   lamp: BufferGeometry;
   pedLamp: BufferGeometry;
   /** Lens materials; per-instance colours light them (white artwork × colour). */
-  lens: MeshBasicMaterial;
-  pedStop: MeshBasicMaterial;
-  pedGo: MeshBasicMaterial;
+  lens: UntonemappedBasicMaterial;
+  pedStop: UntonemappedBasicMaterial;
+  pedGo: UntonemappedBasicMaterial;
 };
 
 let kit: SignalKit | null = null;
@@ -69,9 +62,11 @@ export async function loadSignalModels(): Promise<void> {
     return t;
   };
   const [lensMap, stopMap, goMap] = await Promise.all([art("lens_led"), art("ped_stop"), art("ped_go")]);
-  // Lit lamps must stay bright at night and in fog: unlit, untonemapped.
+  // Lit lamps must stay bright and pure at night and in fog: unlit, and shown as their colour
+  // whatever the exposure. Not `toneMapped: false`: WebGPURenderer ignores it (the frame is
+  // tone-mapped once at the end, render/untonemapped.ts draws the radiance that shows the colour).
   const lensMaterial = (map: Texture | null) =>
-    new MeshBasicMaterial({ map, toneMapped: false, alphaTest: 0.5, transparent: false });
+    new UntonemappedBasicMaterial({ map, alphaTest: 0.5, transparent: false });
   kit = {
     head: part("SignalHead"),
     pedHead: part("PedHead"),

@@ -65,12 +65,14 @@ const thresholdAt = (night: number) => bloomSettings(night, 0).threshold;
 
 describe("bloom by the light (thresholds in exposed radiance: the HDR frame times the exposure)", () => {
   // Exposed radiances measured or set in the game: the noon sky by the horizon (its brightest
-  // channel), a white wall in the sun, the city's glow on a clear night's horizon, a lit signal lens,
-  // a low-beam headlamp, a street lamp's lens (night exposure 0.8).
+  // channel), a white wall in the sun, the city's glow on a clear night's horizon, a lit signal
+  // lens's LEDs (the green, the dimmest lit colour: render/untonemapped.ts draws ~1.0–1.8 exposed,
+  // whatever the exposure; tests/untonemapped.test.ts has every colour), a low-beam headlamp, a
+  // street lamp's lens (night exposure 0.8).
   const NOON_HORIZON = 5.4;
   const SUNLIT_WALL = 1.5;
   const NIGHT_SKY = 0.1;
-  const SIGNAL = 4 * 0.8;
+  const SIGNAL = 1.0;
   const HEADLAMP = 1.8 * 0.8;
   const LAMP = 1 * 0.8;
 

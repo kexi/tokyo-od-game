@@ -66,7 +66,10 @@ export const KNEE = 0.35;
 export const CAP = 40;
 /** The day's threshold: above the brightest sky (the horizon at noon, ~5.4) with its knee. */
 const DAY_THRESHOLD = 9;
-/** The night's: below a lit signal lens (~3) and a headlamp (~1.4–2.2), above the sky's glow. */
+/**
+ * The night's: below a lit signal lens's LEDs (~1.0–1.8, render/untonemapped.ts) and a headlamp
+ * (~1.4–2.2), above the sky's glow.
+ */
 const NIGHT_THRESHOLD = 0.55;
 
 /**
