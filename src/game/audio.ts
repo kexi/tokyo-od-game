@@ -1,10 +1,14 @@
-/** Tiny procedural sound: an engine drone whose pitch follows speed, plus pickup chimes. */
+import { SpatialAudio } from "./spatialAudio";
+
+/**
+ * Procedural sound. The player's engine, road noise and horn, and everything heard from a place
+ * in the world, go through the spatial layer (game/spatialAudio.ts); the indicator relay and
+ * the pickup chimes stay plain (a relay inside the dashboard, a game cue).
+ */
 export class GameAudio {
   private ctx: AudioContext | null = null;
-  private engine: OscillatorNode | null = null;
-  private engineGain: GainNode | null = null;
-  private filter: BiquadFilterNode | null = null;
   muted = false;
+  readonly spatial = new SpatialAudio(() => this.muted);
 
   get context(): AudioContext | null {
     return this.ctx;
@@ -15,15 +19,7 @@ export class GameAudio {
     if (this.ctx) return;
     const ctx = new AudioContext();
     this.ctx = ctx;
-    this.engine = ctx.createOscillator();
-    this.engine.type = "sawtooth";
-    this.filter = ctx.createBiquadFilter();
-    this.filter.type = "lowpass";
-    this.filter.frequency.value = 420;
-    this.engineGain = ctx.createGain();
-    this.engineGain.gain.value = 0;
-    this.engine.connect(this.filter).connect(this.engineGain).connect(ctx.destination);
-    this.engine.start();
+    this.spatial.init(ctx);
   }
 
   toggleMute(): boolean {
@@ -32,39 +28,14 @@ export class GameAudio {
   }
 
   update(speedKmh: number, throttle: number, engineOff = false): void {
-    if (!this.ctx || !this.engine || !this.engineGain || !this.filter) return;
-    const t = this.ctx.currentTime;
-    const rpm = 0.25 + (Math.abs(speedKmh) % 45) / 45 + Math.min(Math.abs(speedKmh), 160) / 220;
-    this.engine.frequency.setTargetAtTime(38 + rpm * 70, t, 0.08);
-    this.filter.frequency.setTargetAtTime(300 + throttle * 700, t, 0.1);
-    this.engineGain.gain.setTargetAtTime(this.muted || engineOff ? 0 : 0.035 + throttle * 0.03, t, 0.1);
+    this.spatial.playerCar(speedKmh, throttle, engineOff);
   }
 
-  private hornNodes: { osc: OscillatorNode[]; gain: GainNode } | null = null;
   private lastTick = false;
 
-  /** 警音器: the two-tone car horn while held. */
+  /** 警音器: the two-tone car horn while held, from the front of the car. */
   horn(isOn: boolean): void {
-    if (!this.ctx || this.muted) isOn = false;
-    if (isOn && !this.hornNodes && this.ctx) {
-      const ctx = this.ctx;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.08;
-      const osc = [415, 494].map((f) => {
-        const o = ctx.createOscillator();
-        o.type = "square";
-        o.frequency.value = f;
-        o.connect(gain);
-        o.start();
-        return o;
-      });
-      gain.connect(ctx.destination);
-      this.hornNodes = { osc, gain };
-    } else if (!isOn && this.hornNodes) {
-      for (const o of this.hornNodes.osc) o.stop();
-      this.hornNodes.gain.disconnect();
-      this.hornNodes = null;
-    }
+    this.spatial.horn(isOn && !this.muted);
   }
 
   /** The indicator relay: a click on each change of the flasher. */

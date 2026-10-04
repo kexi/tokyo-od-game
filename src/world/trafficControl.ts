@@ -72,6 +72,11 @@ const POLE_RADIUS = 0.13;
 
 /** Walk phase for people crossing a street: go, flashing go (no new starters), or stop. */
 export type PedLight = "go" | "flash" | "stop";
+/**
+ * A 歩行者用灯器 and the accessible signal's speaker on it: where it hangs, the walking direction
+ * across the road from its kerb, which end of the crosswalk it is, and the crossing it serves.
+ */
+export type PedHead = { seg: Segment; near: Vector3; at: Vector3; across: Vector3; side: 1 | -1 };
 const UP = new Vector3(0, 1, 0);
 
 /**
@@ -90,7 +95,7 @@ export class TrafficControl {
   private lamps: InstancedMesh | null = null;
   private lampOwners: { approach: Approach; colour: LightState }[] = [];
   private pedLamps: { stop: InstancedMesh; go: InstancedMesh } | null = null;
-  private pedOwners: { seg: Segment; near: Vector3 }[] = [];
+  private pedOwners: PedHead[] = [];
   private plates: Mesh[] = [];
   private body: RAPIER.RigidBody | null = null;
   private time = 0;
@@ -163,6 +168,14 @@ export class TrafficControl {
     const local = t - (other === 0 ? 0 : GREEN[0] + YELLOW + ALL_RED);
     if (local < 0 || local >= GREEN[other]) return "stop";
     return local < GREEN[other] - 5 ? "go" : "flash";
+  }
+
+  /**
+   * The pedestrian heads whose walk light is green now (視覚障害者用付加装置 sound only then), for
+   * the crosswalk calls in game/spatialAudio.ts.
+   */
+  forEachWalking(visit: (head: PedHead) => void): void {
+    for (const h of this.pedOwners) if (this.pedLight(h.seg, h.near) === "go") visit(h);
   }
 
   /** Whether a pedestrian may start across `seg` at `near` now (null: no signal there). */
@@ -530,7 +543,13 @@ export class TrafficControl {
           o.updateMatrix();
           list.push(o.matrix.clone());
         }
-        this.pedOwners.push({ seg: c.seg, near: c.pos });
+        this.pedOwners.push({
+          seg: c.seg,
+          near: c.pos,
+          at: headAt.clone().setY(g + PED_HEIGHT),
+          across,
+          side,
+        });
       }
     }
 

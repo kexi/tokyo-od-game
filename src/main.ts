@@ -830,11 +830,7 @@ async function main(): Promise<void> {
       busLine: bus && bus.distance < 400 ? (bus.bus.note.split(" ")[0] ?? null) : null,
     };
   };
-  const emergency = new EmergencyResponse(
-    scene,
-    () => audio.context,
-    (x, z) => groundY(x, z),
-  );
+  const emergency = new EmergencyResponse(scene, audio.spatial, (x, z) => groundY(x, z));
   const phone = new Phone(
     brain,
     voice,
@@ -855,6 +851,16 @@ async function main(): Promise<void> {
     phone.toggleZoom();
   });
   const conversation = new ConversationController(brain, voice, surroundings, (p) => pedestrians.endTalk(p));
+  // 音源の位置 (game/spatialAudio.ts): the player's car, the nearest traffic, the crosswalk calls
+  // (音響式信号機: walk light green, 8:00–19:00 as most are run) and people from where they stand.
+  audio.spatial.car = vehicle.object;
+  audio.spatial.traffic = (visit) => traffic.forEachCar(visit);
+  audio.spatial.crosswalks = (visit) => {
+    const hour = env.displayHour(lastGeo.lat, lastGeo.lon);
+    const isOperating = hour >= 8 && hour < 19;
+    if (isOperating) control.forEachWalking(visit);
+  };
+  conversation.voiceFrom = (p) => audio.spatial.voiceFrom(p.object, "voice");
   // ---------- リプレイ ----------
   const recorder = new ReplayRecorder();
   const director = new ReplayDirector();
@@ -1970,6 +1976,17 @@ async function main(): Promise<void> {
     else if (isInCar && chase.mode === "cockpit" && cockpit.root) cockpit.placeCamera(camera, chase.look);
     else chase.update(dt, carPos, carRot, speed / 3.6);
     cockpit.setActive(isInCar && chase.mode === "cockpit");
+    // The listener rides the camera; from inside the car the world is heard through the cabin.
+    audio.spatial.update({
+      dt,
+      camera,
+      inCar: isInCar,
+      cockpit: cockpit.active,
+      windowOpen: isInCar && conversation.active !== null,
+      rainMmH: env.isRaining()
+        ? Math.max(env.weather === "rain" ? 8 : 0, (env.getObservation()?.precip10m ?? 0) * 6)
+        : 0,
+    });
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
     if (Math.abs(env.nightFactor - appliedNight) > 0.02) {
       appliedNight = env.nightFactor;
@@ -2334,12 +2351,20 @@ async function main(): Promise<void> {
     const r = Math.random();
     return r < 0.5 ? "patrol" : r < 0.8 ? "shirobai" : "unmarked";
   };
+  /** The loudspeaker on the patrol car: from the car with the on-device voice, else only its level. */
   const policeSay = (text: string) => {
+    const from = police?.car.object;
+    if (voice.enabled && from) {
+      voice.speak(text, audio.spatial.voiceFrom(from, "loudspeaker"));
+      return;
+    }
     if (audio.muted || !("speechSynthesis" in window)) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "ja-JP";
     u.rate = 0.95;
     u.pitch = 0.8;
+    // speechSynthesis cannot be routed through WebAudio: only its volume follows the distance.
+    u.volume = from ? audio.spatial.loudnessAt(from.position, "loudspeaker") : 1;
     speechSynthesis.speak(u);
   };
   const startPursuit = () => {
@@ -2416,6 +2441,8 @@ async function main(): Promise<void> {
       { position: vehicle.position(), speed: vehicle.forwardSpeed() },
       now,
     );
+    // サイレン while chasing with the red lights on (not while writing the ticket).
+    audio.spatial.siren(p, p.state === "pursuing" && p.lightsOn, p.car.object, "police");
     // Whoever is on the car now is the one the ticket, the callouts and the escape are about.
     const isEngaged = p.state === "pursuing" || p.state === "ticketing" || event === "lost";
     if (isEngaged) police = p;
@@ -3317,6 +3344,7 @@ async function main(): Promise<void> {
         terrain,
         buildings,
         vehicle,
+        audio,
         dem,
         field,
         env,

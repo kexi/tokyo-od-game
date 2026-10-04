@@ -1,6 +1,6 @@
 import { personaPrompt, QUICK_QUESTIONS, templateReply, type Surroundings } from "../ai/dialogue";
 import { NpcBrain } from "../ai/llm";
-import type { Voice } from "../ai/tts";
+import type { Voice, VoiceFrom } from "../ai/tts";
 import type { Pedestrian } from "../world/pedestrians";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
@@ -13,6 +13,8 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
 export class ConversationController {
   private partner: Pedestrian | null = null;
   private busy = false;
+  /** Where the partner's voice comes from (their mouth, on the spatial layer); unset: plain. */
+  voiceFrom: ((p: Pedestrian) => VoiceFrom) | null = null;
 
   constructor(
     private readonly brain: NpcBrain,
@@ -146,7 +148,7 @@ export class ConversationController {
     reply = reply?.trim() || templateReply(p.profile, s, text);
     bubble.textContent = reply;
     this.scroll();
-    this.voice.speak(reply);
+    this.voice.speak(reply, this.voiceFrom?.(p));
     this.busy = false;
   }
 
@@ -156,7 +158,8 @@ export class ConversationController {
     el.textContent = text;
     $("#chat-log").append(el);
     this.scroll();
-    if (who === "npc" && text !== "…") this.voice.speak(text);
+    const p = this.partner;
+    if (who === "npc" && text !== "…") this.voice.speak(text, p ? this.voiceFrom?.(p) : undefined);
     return el;
   }
 

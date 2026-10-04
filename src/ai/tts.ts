@@ -7,6 +7,18 @@ import { warn } from "../log";
  */
 type Pcm = { pcm: Float32Array; sampleRate: number };
 
+/**
+ * Where a line is heard from (game/spatialAudio.ts): `attach` gets the playing source (its
+ * detune follows the Doppler shift) and returns the node to connect to; `release` frees it
+ * when the line ends. Without one, lines go straight to the speakers (the phone).
+ */
+export type VoiceOutput = {
+  attach(src: AudioBufferSourceNode): AudioNode;
+  release(): void;
+};
+/** Asked when the line starts playing (it may wait in the queue), so the speaker is free then. */
+export type VoiceFrom = () => VoiceOutput | null;
+
 export class Voice {
   private worker: Worker | null = null;
   private ready: Promise<boolean> | null = null;
@@ -65,15 +77,15 @@ export class Voice {
     this.queue = Promise.resolve();
   }
 
-  /** Speak a line (queued after anything already speaking). */
-  speak(text: string): void {
+  /** Speak a line (queued after anything already speaking), from `from` when given. */
+  speak(text: string, from?: VoiceFrom): void {
     if (!this.enabled) return;
     const sentences = splitForTts(normalizeForTts(text));
     for (const s of sentences) {
       const synth = this.synth(s);
       this.queue = this.queue.then(async () => {
         const pcm = await synth;
-        if (pcm && this.enabled) await this.play(pcm);
+        if (pcm && this.enabled) await this.play(pcm, from);
       });
     }
   }
@@ -87,7 +99,7 @@ export class Voice {
     });
   }
 
-  private play({ pcm, sampleRate }: Pcm): Promise<void> {
+  private play({ pcm, sampleRate }: Pcm, from?: VoiceFrom): Promise<void> {
     const ctx = this.getContext();
     if (!ctx) return Promise.resolve();
     const buffer = ctx.createBuffer(1, pcm.length, sampleRate);
@@ -96,10 +108,14 @@ export class Voice {
     src.buffer = buffer;
     const gain = ctx.createGain();
     gain.gain.value = 0.9;
-    src.connect(gain).connect(ctx.destination);
+    const out = from?.() ?? null;
+    src.connect(gain).connect(out?.attach(src) ?? ctx.destination);
     this.current = src;
     return new Promise((resolve) => {
-      src.addEventListener("ended", () => resolve());
+      src.addEventListener("ended", () => {
+        out?.release();
+        resolve();
+      });
       src.start();
     });
   }

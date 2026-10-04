@@ -13,6 +13,7 @@ import {
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Pedestrian } from "../world/pedestrians";
+import type { SpatialAudio } from "./spatialAudio";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 
 export type ResponderKind = "ambulance" | "police";
@@ -33,7 +34,8 @@ type Responder = {
   path: Vector3[];
   progress: number;
   arrivedAt: number | null;
-  siren: { osc: OscillatorNode; gain: GainNode } | null;
+  /** Sounding (game/spatialAudio.ts places it on the vehicle and shifts it by Doppler). */
+  siren: boolean;
 };
 
 type Incident = {
@@ -193,7 +195,7 @@ export class EmergencyResponse {
 
   constructor(
     scene: Scene,
-    private readonly getAudio: () => AudioContext | null,
+    private readonly audio: Pick<SpatialAudio, "siren">,
     private readonly groundAt: (x: number, z: number) => number | null,
   ) {
     const make = (kind: ResponderKind): Responder => ({
@@ -201,7 +203,7 @@ export class EmergencyResponse {
       path: [],
       progress: 0,
       arrivedAt: null,
-      siren: null,
+      siren: false,
     });
     this.responders = { ambulance: make("ambulance"), police: make("police") };
     for (const r of Object.values(this.responders)) scene.add(r.root);
@@ -304,7 +306,7 @@ export class EmergencyResponse {
       const lift = r.kind === "ambulance" ? (ambulanceModel ? 0 : 1.0) : 0.86;
       r.root.position.set(pos.x, g + lift, pos.z);
       r.root.rotation.set(0, Math.atan2(dir.x, dir.z), 0);
-      this.updateSiren(r, player);
+      this.updateSiren(r);
       if (r.progress >= pathLength(r.path)) {
         r.arrivedAt = now;
         this.stopSiren(r);
@@ -360,7 +362,7 @@ export class EmergencyResponse {
     }
     const g = this.groundAt(pol.root.position.x, pol.root.position.z);
     if (g !== null) pol.root.position.y = g + 0.86;
-    this.updateSiren(pol, player);
+    this.updateSiren(pol);
     chase.closeFor = dist < 8 ? chase.closeFor + dt : 0;
     const isCaught = chase.closeFor > 1.5;
     const isIdentifiedLater = now - chase.startedAt > 90_000;
@@ -379,42 +381,19 @@ export class EmergencyResponse {
   }
 
   private startSiren(r: Responder): void {
-    const ctx = this.getAudio();
-    if (!ctx || r.siren) return;
-    const osc = ctx.createOscillator();
-    osc.type = "square";
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
-    const filter = ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = 2200;
-    osc.connect(filter).connect(gain).connect(ctx.destination);
-    const t0 = ctx.currentTime;
-    if (r.kind === "ambulance") {
-      // Ambulance two-tone "ピーポー": ~960 Hz / ~770 Hz, about 0.65 s each.
-      for (let i = 0; i < 160; i++) osc.frequency.setValueAtTime(i % 2 ? 770 : 960, t0 + i * 0.65);
-    } else {
-      // Patrol car wail "ウー": slow sweeps between ~450 and ~1,200 Hz.
-      for (let i = 0; i < 40; i++) {
-        osc.frequency.setValueAtTime(450, t0 + i * 2.6);
-        osc.frequency.linearRampToValueAtTime(1200, t0 + i * 2.6 + 1.5);
-        osc.frequency.linearRampToValueAtTime(450, t0 + i * 2.6 + 2.6);
-      }
-    }
-    osc.start();
-    r.siren = { osc, gain };
+    r.siren = true;
+    this.updateSiren(r);
   }
 
-  private updateSiren(r: Responder, player: Vector3): void {
-    const ctx = this.getAudio();
-    if (!ctx || !r.siren) return;
-    const d = r.root.position.distanceTo(player);
-    r.siren.gain.gain.setTargetAtTime(Math.min(0.1, 6 / Math.max(10, d)), ctx.currentTime, 0.1);
+  /** Asked every frame it moves: the siren rides the vehicle (救急車 ピーポー, パトカー ウー). */
+  private updateSiren(r: Responder): void {
+    if (!r.siren) return;
+    this.audio.siren(r, true, r.root, r.kind);
   }
 
   private stopSiren(r: Responder): void {
-    r.siren?.osc.stop();
-    r.siren = null;
+    r.siren = false;
+    this.audio.siren(r, false, r.root, r.kind);
   }
 }
 
