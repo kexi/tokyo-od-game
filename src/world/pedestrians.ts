@@ -265,7 +265,15 @@ export class Pedestrians {
    * Why not a ray between the two points: the colliders only know buildings as roofed volumes
    * hit from above, and isOpen already answers that for the pavements.
    */
+  /**
+   * An exact eye-to-point test through the solid world, set by the game (a ray through the building
+   * and landmark colliders). Why preferred: the open-ground sampling below sees through walls that
+   * have no roof, such as the landmarks' footprints.
+   */
+  lineOfSight: ((from: Vector3, to: Vector3) => boolean) | null = null;
+
   private hasSightLine(from: Vector3, to: Vector3): boolean {
+    if (this.lineOfSight) return this.lineOfSight(from, to);
     const dx = to.x - from.x;
     const dz = to.z - from.z;
     const dist = Math.hypot(dx, dz);

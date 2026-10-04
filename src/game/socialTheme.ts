@@ -7,7 +7,11 @@
  * Why not a real app's logo, name or verification mark: they are trademarks. The layout and the
  * colours are a common idiom; the name and the logo below are the game's own.
  */
-export const SOCIAL_APP_NAME = "つぶやき";
+/**
+ * 「Y」(ワイ): the letter after X — a name that makes the parody plain. Why not 「X」: it is X Corp's
+ * trademark, and a public game that shows the service exposing drivers could read as theirs.
+ */
+export const SOCIAL_APP_NAME = "Y";
 
 export const SOCIAL_THEME = {
   background: "#000000",
@@ -39,8 +43,7 @@ export const SOCIAL_BADGE_PATHS = {
 } as const;
 
 /**
- * The app's logo: a speech bubble with three dots, drawn in a 24×24 box (SVG path data), so it can be
+ * The app's logo: a bold geometric Y, drawn in a 24×24 box (SVG path data), so it can be
  * used in the DOM (inline SVG) and on canvases (Path2D).
  */
-export const SOCIAL_LOGO_PATH =
-  "M12 3C6.48 3 2 6.94 2 11.8c0 2.6 1.29 4.94 3.35 6.55L4.5 21.5l3.9-1.86c1.12.32 2.33.5 3.6.5 5.52 0 10-3.94 10-8.84S17.52 3 12 3Zm-4.5 10.2a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Zm4.5 0a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Zm4.5 0a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Z";
+export const SOCIAL_LOGO_PATH = "M3 3h4.2L12 10.1 16.8 3H21l-7.1 10.2V21h-3.8v-7.8Z";

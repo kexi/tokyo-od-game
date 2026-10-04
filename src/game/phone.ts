@@ -17,6 +17,16 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
 };
 
 // Conversation ids for the operators so their Gemma sessions do not mix with pedestrians'.
+const ZOOM_KEY = "tokyo-od:phone-zoom";
+/** The zoom chosen earlier in this session (sessionStorage: forgotten when the tab closes). */
+function readZoom(): boolean {
+  try {
+    return sessionStorage.getItem(ZOOM_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 const OPERATOR_ID: Record<Line, number> = { "119": -119, "110": -110 };
 
 /**
@@ -51,6 +61,11 @@ export class Phone {
     $("#phone-close").addEventListener("click", () => this.close());
     $("#call-hangup").addEventListener("click", () => this.hangUp());
     $("#phone-button").addEventListener("click", () => this.toggle());
+    $("#phone-zoom").addEventListener("click", () => this.toggleZoom());
+    // Clicking the dimmed screen round the large phone puts it back.
+    $("#phone-backdrop").addEventListener("click", () => this.setZoom(false));
+    window.addEventListener("resize", () => this.fitZoom());
+    this.applyZoom(readZoom());
     $<HTMLFormElement>("#call-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const input = $<HTMLInputElement>("#call-input");
@@ -84,13 +99,59 @@ export class Phone {
   /** Taking it out by hand counts as working it; the game putting it in the holder does not. */
   show(byHand = true): void {
     $("#phone").hidden = false;
+    $("#phone-backdrop").hidden = !this.zoomed;
     if (byHand) this.touchedAt = performance.now();
+    this.fitZoom();
     this.refresh();
   }
 
   close(): void {
     if (this.inCall) this.hangUp();
     $("#phone").hidden = true;
+    $("#phone-backdrop").hidden = true;
+  }
+
+  /** 拡大表示: the phone large in the middle of the screen (remembered for this session). */
+  get zoomed(): boolean {
+    return $("#phone").classList.contains("zoomed");
+  }
+
+  toggleZoom(): void {
+    this.setZoom(!this.zoomed);
+  }
+
+  /** Zooming in or out is working the phone (a look at its screen while driving is booked). */
+  setZoom(on: boolean): void {
+    this.touchedAt = performance.now();
+    this.applyZoom(on);
+    try {
+      sessionStorage.setItem(ZOOM_KEY, on ? "1" : "0");
+    } catch {
+      // Storage blocked (private mode, sandbox): the choice just lasts until the page is left.
+    }
+  }
+
+  private applyZoom(on: boolean): void {
+    $("#phone").classList.toggle("zoomed", on);
+    $("#phone-backdrop").hidden = !(on && this.open);
+    const button = $("#phone-zoom");
+    button.setAttribute("aria-pressed", String(on));
+    const label = on ? "スマホを元の大きさに戻す" : "スマホを拡大表示";
+    button.setAttribute("aria-label", label);
+    button.title = `${label} (Shift+F)`;
+    this.fitZoom();
+  }
+
+  /** Scale for the large view: about 1.6×, less when the window is too small for that. */
+  private fitZoom(): void {
+    const el = $("#phone");
+    const isMeasurable = el.offsetHeight > 0 && el.offsetWidth > 0;
+    if (!isMeasurable) return;
+    const fit = Math.min(
+      (window.innerHeight - 32) / el.offsetHeight,
+      (window.innerWidth - 32) / el.offsetWidth,
+    );
+    el.style.setProperty("--phone-zoom", String(Math.max(1, Math.min(1.6, fit))));
   }
 
   focusInput(): void {

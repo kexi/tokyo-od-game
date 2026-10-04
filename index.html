@@ -202,8 +202,24 @@
 
       <button type="button" id="phone-button" class="panel" title="スマホ (P)">📱</button>
 
+      <div id="phone-backdrop" hidden></div>
       <aside id="phone" hidden aria-label="スマートフォン">
         <div class="phone-notch"></div>
+        <button
+          type="button"
+          id="phone-zoom"
+          class="phone-zoom"
+          title="スマホを拡大表示 (Shift+F)"
+          aria-label="スマホを拡大表示"
+          aria-pressed="false"
+        >
+          <svg class="zoom-in" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9.5V4h5.5M20 9.5V4h-5.5M4 14.5V20h5.5M20 14.5V20h-5.5" />
+          </svg>
+          <svg class="zoom-out" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.5 4v5.5H4M14.5 4v5.5H20M9.5 20v-5.5H4M14.5 20v-5.5H20" />
+          </svg>
+        </button>
         <section id="phone-home">
           <div class="phone-clock" id="phone-clock">--:--</div>
           <div class="phone-loc" id="phone-loc">現在地: —</div>
@@ -214,8 +230,8 @@
             </button>
           </div>
           <button type="button" id="taxi-open" class="phone-app">🚕 自動運転タクシー</button>
-          <button type="button" id="social-open" class="phone-app">
-            💬 つぶやき <span id="social-badge" hidden></span>
+          <button type="button" id="social-open" class="sns-app-tile" aria-label="Y">
+            Y <span id="social-badge" hidden></span>
           </button>
           <p class="sub phone-note">
             緊急でない相談は #7119（救急相談センター）・#9110（警察相談専用電話）へ。
@@ -227,7 +243,7 @@
           </p>
           <button type="button" id="phone-close" class="phone-close">閉じる</button>
         </section>
-        <section id="phone-social" hidden aria-label="つぶやき">
+        <section id="phone-social" hidden aria-label="Y">
           <div id="social-app"></div>
           <button
             type="button"

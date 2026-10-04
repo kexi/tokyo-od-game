@@ -797,6 +797,51 @@ pre.notice {
   flex-direction: column;
 }
 
+/* 拡大表示: the phone large in the middle over a dimmed screen (phone.ts sets --phone-zoom to fit). */
+#phone.zoomed {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%) scale(var(--phone-zoom, 1.5));
+  z-index: 26;
+}
+#phone-backdrop {
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.6);
+}
+.phone-zoom {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  z-index: 9;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #0b0f16;
+  background: #2b3240;
+  display: grid;
+  place-items: center;
+}
+.phone-zoom svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.phone-zoom .zoom-out,
+#phone.zoomed .phone-zoom .zoom-in {
+  display: none;
+}
+#phone.zoomed .phone-zoom .zoom-out {
+  display: block;
+}
+
 .phone-notch {
   position: absolute;
   top: 8px;
@@ -1539,7 +1584,7 @@ pre.notice {
   }
 }
 
-/* つぶやき (in-game social app): the app's own styles are in social.css. */
+/* Y (the in-game social app): the app's own styles are in social.css. */
 #social-badge {
   margin-left: 4px;
   padding: 0 6px;

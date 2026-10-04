@@ -22,7 +22,7 @@ import { icon, pathIcon, type IconName } from "./socialIcons";
 import { SOCIAL_APP_NAME, SOCIAL_BADGE_PATHS, SOCIAL_LOGO_PATH, SOCIAL_THEME } from "./socialTheme";
 
 /**
- * つぶやき on the phone, laid out the way people know microblogging apps: a dark timeline
+ * Y on the phone, laid out the way people know microblogging apps: a dark timeline
  * (おすすめ / フォロー中) of rows — avatar on the left, name, @handle · time, text, the clip or
  * photo, a quoted post in a card, and the reply / repost / like / views / bookmark / share row —
  * a floating post button, a tab bar (home, search, notifications, messages), opened posts with
@@ -37,7 +37,14 @@ const T = SOCIAL_THEME;
 const HOUR = 3_600_000;
 const READ_ONLY = "このゲームでは読むだけです（投稿はできません）";
 
-type Stats = { replies: number; reposts: number; likes: number; views: number; bookmarks: number };
+type Stats = {
+  replies: number;
+  reposts: number;
+  quotes: number;
+  likes: number;
+  views: number;
+  bookmarks: number;
+};
 type Media =
   | { kind: "clip"; src: () => string | undefined; aspect: () => number; seconds: number }
   | { kind: "picture"; key: string; motif: PictureMotif; hue: number };
@@ -125,7 +132,9 @@ function postCard(p: SocialPost): Card {
     tags: p.tags,
     media: {
       kind: "clip",
-      src: () => p.photo ?? p.image,
+      // Only the poster's own shot (a passer-by's eye), never the driver's screen; an empty
+      // frame until it is developed.
+      src: () => p.photo,
       aspect: () => (p.photo ? (p.photoAspect ?? 16 / 9) : 16 / 9),
       seconds: p.clipSeconds,
     },
@@ -135,6 +144,7 @@ function postCard(p: SocialPost): Card {
       likes: p.likes,
       views: p.views,
       bookmarks: Math.round(p.likes * 0.04),
+      quotes: p.quotes,
     }),
     target: { kind: "post", post: p },
   };
@@ -154,6 +164,7 @@ function quoteCard(p: SocialPost, q: SocialReply): Card {
       likes: q.likes,
       views: q.likes * 36 + 40,
       bookmarks: Math.round(q.likes * 0.02),
+      quotes: Math.round(q.likes * 0.01),
     }),
     target: { kind: "quote", post: p, quote: q },
   };
@@ -174,6 +185,7 @@ function replyCard(p: SocialPost, r: SocialReply): Card {
       likes: r.likes,
       views: r.likes * 30 + 25 + ((r.id * 37) % 200),
       bookmarks: 0,
+      quotes: 0,
     }),
     target: { kind: "reply", post: p, reply: r },
   };
@@ -195,6 +207,7 @@ function chatterCard(c: SocialChatter): Card {
       likes: c.likes,
       views: c.views,
       bookmarks: Math.round(c.likes * 0.03),
+      quotes: Math.round(c.likes * 0.01),
     }),
     target: { kind: "chatter", chatter: c },
   };
@@ -658,7 +671,7 @@ export class SocialApp {
     }
     const follow = isMe ? null : this.followButton(a);
     if (follow) actions.append(follow.el);
-    const face = avatarElement(a, 72);
+    const face = avatarElement(a, 80);
     face.classList.add("big");
     const nameLine = h("div", "sns-profile-name", a.name);
     if (a.isVouched) nameLine.append(this.badge());
@@ -947,7 +960,10 @@ export class SocialApp {
     };
   }
 
-  /** An opened post: bigger text, the full time and views, counts beside the actions. */
+  /**
+   * An opened post: bigger text, the full time and views (午後11:30 · 2026年10月5日 · 12.3万 件の
+   * 表示), the counts in their own row (リポスト, 引用, いいね, ブックマーク), then the actions.
+   */
   private detailRow(card: Card, threadUp: boolean): Row {
     const wrap = h("article", "sns-detail");
     if (threadUp) wrap.classList.add("thread-up");
@@ -974,6 +990,29 @@ export class SocialApp {
     if (quote) wrap.append(quote.el);
     const views = h("b");
     wrap.append(h("div", "sns-detail-meta", postTimestamp(card.at), " · ", views, " 件の表示"));
+    const stats = h("div", "sns-detail-stats");
+    const t0 = card.target;
+    const engage =
+      t0.kind === "post"
+        ? (tab: "quotes" | "reposts") => this.go({ page: "engagements", post: t0.post, tab, scroll: 0 })
+        : null;
+    const stat = (label: string, tab?: "quotes" | "reposts") => {
+      const n = h("b");
+      const el = h("span", "", n, ` 件の${label}`);
+      if (tab && engage) {
+        el.classList.add("link");
+        el.addEventListener("click", () => engage(tab));
+      }
+      return { el, n };
+    };
+    const statRows = {
+      reposts: stat("リポスト", "reposts"),
+      quotes: stat("引用", "quotes"),
+      likes: stat("いいね"),
+      bookmarks: stat("ブックマーク"),
+    };
+    stats.append(...Object.values(statRows).map((x) => x.el));
+    wrap.append(stats);
     const actions = this.actionBar(card, "detail");
     wrap.append(actions.el);
     let shownText: string | null = null;
@@ -985,7 +1024,21 @@ export class SocialApp {
           shownText = t;
           richText(text, t, card.tags);
         }
-        setText(views, formatCount(card.stats().views));
+        const s = card.stats();
+        setText(views, formatCount(s.views));
+        const own = {
+          reposts: s.reposts + (this.reposted.has(card.key) ? 1 : 0),
+          quotes: s.quotes,
+          likes: s.likes + (this.liked.has(card.key) ? 1 : 0),
+          bookmarks: s.bookmarks + (this.bookmarked.has(card.key) ? 1 : 0),
+        };
+        // Like the app, a count of nothing is left out (and the row with it).
+        for (const [k, row] of Object.entries(statRows)) {
+          const n = own[k as keyof typeof own];
+          row.el.hidden = n === 0;
+          setText(row.n, formatCount(n));
+        }
+        stats.hidden = Object.values(own).every((n) => n === 0);
         media?.update(now);
         quote?.update(now);
         follow?.update();
@@ -1109,16 +1162,17 @@ export class SocialApp {
     };
     let likedShown: boolean | null = null;
     let markedShown: boolean | null = null;
+    // An opened post shows its counts in the stats row above, not beside the icons.
+    const shows = (n: number) => (variant === "detail" ? "" : countText(n));
     const update = () => {
       const s = card.stats();
       const isLiked = this.liked.has(card.key);
       const isReposted = this.reposted.has(card.key);
       const isMarked = this.bookmarked.has(card.key);
-      setText(reply.n, countText(s.replies));
-      setText(repost.n, countText(s.reposts + (isReposted ? 1 : 0)));
-      setText(like.n, countText(s.likes + (isLiked ? 1 : 0)));
-      if (views) setText(views.n, countText(s.views));
-      if (variant === "detail") setText(mark.n, countText(s.bookmarks + (isMarked ? 1 : 0)));
+      setText(reply.n, shows(s.replies));
+      setText(repost.n, shows(s.reposts + (isReposted ? 1 : 0)));
+      setText(like.n, shows(s.likes + (isLiked ? 1 : 0)));
+      if (views) setText(views.n, shows(s.views));
       repost.b.classList.toggle("on", isReposted);
       like.b.classList.toggle("on", isLiked);
       mark.b.classList.toggle("on", isMarked);
@@ -1487,4 +1541,17 @@ export class SocialApp {
     v.addEventListener("click", (e) => e.stopPropagation());
     this.stage.append(v);
   }
+}
+
+/**
+ * The app's tile on the phone's home screen: the logo on black, the name under it. Keeps the
+ * button's other children (the unread badge).
+ */
+export function appTile(button: HTMLElement): void {
+  const badge = button.querySelector("#social-badge");
+  const tile = h("span", "sns-app-icon", pathIcon(SOCIAL_LOGO_PATH, "sns-app-logo"));
+  if (badge) tile.append(badge);
+  button.classList.add("sns-app-tile");
+  button.setAttribute("aria-label", SOCIAL_APP_NAME);
+  button.replaceChildren(tile, h("span", "sns-app-name", SOCIAL_APP_NAME));
 }

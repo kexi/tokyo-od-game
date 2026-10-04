@@ -122,7 +122,8 @@ import { createVehicle, loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
 import { formatCount, SocialFeed, type SocialPost } from "./game/social";
 import { WitnessPhones } from "./game/witnessPhones";
-import { SocialApp } from "./game/socialView";
+import { appTile, SocialApp } from "./game/socialView";
+import { SOCIAL_APP_NAME } from "./game/socialTheme";
 import { WitnessShot } from "./game/witnessShot";
 import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
@@ -301,7 +302,7 @@ async function main(): Promise<void> {
     },
     (x, z, g) => isOpenGround(x, z, g),
   );
-  // Bystanders who film the player's violations with their phones (つぶやき on the screen).
+  // Bystanders who film the player's violations with their phones (Y on the screen).
   const witnessPhones = new WitnessPhones(pedestrians);
   const roadTiles = new RoadTiles();
   transit.snap = (p, heading) => {
@@ -517,6 +518,18 @@ async function main(): Promise<void> {
     p.distanceTo(camera.position) < 400 && viewFrustum.intersectsSphere(viewSphere.set(p, 3));
   traffic.isSeen = isSeen;
   pedestrians.isSeen = isSeen;
+  // Who can really see the car: a ray from the eye through the fixed colliders (terrain, buildings,
+  // the landmarks' walls) to the car's middle, stopping short of the car itself.
+  const EYE_HEIGHT = 1.5;
+  const lineOfSight = (from: Vector3, to: Vector3): boolean => {
+    const o = { x: from.x, y: from.y + EYE_HEIGHT, z: from.z };
+    const d = { x: to.x - o.x, y: to.y + 0.6 - o.y, z: to.z - o.z };
+    const length = Math.hypot(d.x, d.y, d.z);
+    if (length < 3) return true;
+    const ray = new RAPIER.Ray(o, { x: d.x / length, y: d.y / length, z: d.z / length });
+    return world.castRay(ray, length - 2.5, true, FIXED_ONLY, GROUND_QUERY_GROUPS) === null;
+  };
+  pedestrians.lineOfSight = lineOfSight;
   // The opening drive is set once the car stands on its street.
   let needsTrip = false;
   // Where the day starts and ends (the street the game put the car on).
@@ -812,6 +825,11 @@ async function main(): Promise<void> {
     (line) => emergency.dispatch(line === "119" ? "ambulance" : "police", roadGraph),
   );
   input.on("phone", () => phone.toggle());
+  // 拡大表示 (Shift+F): takes the phone out first if it is put away; either way it is working it.
+  input.on("phoneZoom", () => {
+    if (!phone.open) phone.show();
+    phone.toggleZoom();
+  });
   const conversation = new ConversationController(brain, voice, surroundings, (p) => pedestrians.endTalk(p));
   // ---------- リプレイ ----------
   const recorder = new ReplayRecorder();
@@ -2083,7 +2101,7 @@ async function main(): Promise<void> {
     const filmers = witnessPhones.react(booked, post, carPos);
     if (filmers > 0) log("social", { event: "filmed", kind: booked.kind, filmers, witnesses });
     if (post) {
-      toast(`📱 誰かがあなたの運転を「つぶやき」に投稿しました（${booked.label}）`, "#ffb347");
+      toast(`📱 誰かがあなたの運転を「${SOCIAL_APP_NAME}」にポストしました（${booked.label}）`, "#ffb347");
       socialUnread++;
       log("social", { event: "post", kind: booked.kind, witnesses, reach: post.reach });
     }
@@ -2102,7 +2120,7 @@ async function main(): Promise<void> {
     });
   };
 
-  // ---------- つぶやき（SNS） ----------
+  // ---------- Y（SNS） ----------
   const social = new SocialFeed();
   // Each poster's photo is their own shot from where they stood, not the driver's screen.
   const witnessShot = new WitnessShot(renderer, scene, {
@@ -2114,6 +2132,8 @@ async function main(): Promise<void> {
       const g = groundY(x, z);
       return g === null || isOpenGround(x, z, g);
     },
+    // The shot's eye is already at eye height; the test adds it again, so lower the start.
+    sight: (from, to) => lineOfSight(new Vector3(from.x, from.y - EYE_HEIGHT, from.z), to),
     stage: (shoot) => {
       const wasCockpit = cockpit.active;
       cockpit.setActive(false);
@@ -2122,7 +2142,7 @@ async function main(): Promise<void> {
     },
   });
   social.camera = (post) => witnessShot.shoot(post);
-  // つぶやき in people's own words when the on-device AI is on (templates otherwise).
+  // Posts in people's own words when the on-device AI is on (templates otherwise).
   const SOCIAL_VOICE = {
     post: "あなたは東京で暮らす一般の人で、SNS に投稿します。いま目の前で見た危ない運転について、日本語の口語で 1〜2 文だけ書いてください。ナンバーや個人を特定できる情報、ハッシュタグは書かないこと。",
     reply:
@@ -2143,6 +2163,7 @@ async function main(): Promise<void> {
   let socialUnread = 0;
   const viralShown = new Map<SocialPost, number>();
   const socialApp = new SocialApp($("#social-app"), social, () => env.now().getTime());
+  appTile($("#social-open"));
   const showSocial = (shown: boolean) => {
     $("#phone-home").hidden = shown;
     $("#phone-social").hidden = !shown;

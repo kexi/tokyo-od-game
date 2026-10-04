@@ -1,7 +1,7 @@
 ---
 type: Reference
-title: 違反を撮影する通行人とスマートフォン（Blender CLI・つぶやきの画面・撮影の姿勢）
-description: 違反を目撃した通行人がスマホを横向きに構えて車を撮る演出の作り方。bpy で作った汎用スマホ（147×71×8mm・406 三角形）、ゲーム内 SNS「つぶやき」の画面を CanvasTexture で描く向きの決め方、歩行者の腕を 2 関節 IK で電話に合わせる方法、誰が何秒撮るかの決め方と、その検証で踏んだ落とし穴。
+title: 違反を撮影する通行人とスマートフォン（Blender CLI・ゲーム内 SNS「Y」の画面・撮影の姿勢）
+description: 違反を目撃した通行人がスマホを横向きに構えて車を撮る演出の作り方。bpy で作った汎用スマホ（147×71×8mm・406 三角形）、ゲーム内 SNS「Y」（旧称「つぶやき」）の画面を CanvasTexture で描く向きの決め方、歩行者の腕を 2 関節 IK で電話に合わせる方法、誰が何秒撮るかの決め方と、その検証で踏んだ落とし穴。
 tags: [rendering, testing, licensing]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
@@ -32,9 +32,9 @@ sources:
   - `Smartphone`: 材質 PhoneCase / PhoneGlass / PhoneLens / PhoneMetal / PhoneFlash の 5 プリミティブ。GLTFLoader では子 Mesh を持つ Group になる。
   - `SmartphoneScreen`（`Smartphone` の子）: 材質 PhoneScreen。UV は縦持ちで左下 (0,0)・右上 (1,1)。
 - ケースの色は PhoneCase の baseColorFactor で、ゲームが `scene.extras.smartphone.caseColors`（6 色）から人ごとに選んで差し替える。PhoneFlash を別の材質にしたのは、夜に半数の人がビデオライトを点けるため。
-- 実在の製品に寄せない。外形は多くの機種に共通する板状で、刻印・ロゴは無い。画面の SNS もゲーム内の「つぶやき」で、ロゴ・名前・配色は `src/game/socialTheme.ts` の自前のものを使う。
+- 実在の製品に寄せない。外形は多くの機種に共通する板状で、刻印・ロゴは無い。画面の SNS もゲーム内の「Y」（`SOCIAL_APP_NAME`）で、ロゴ・名前・配色は `src/game/socialTheme.ts` の自前のものを使う。
 
-# 画面（つぶやきの撮影・投稿画面）
+# 画面（Y の撮影・ポスト画面）
 
 - `src/game/witnessPhones.ts` が 320 × 680 の canvas に横持ちの画面を描く。左がカメラのファインダー（投稿者がその場から撮った写真 `post.photo`（witnessShot.ts）、無ければ運転者の画面の静止画を、手ぶれ風にゆっくり動かす。● REC と経過時間、フォーカス枠）、右が投稿欄（投稿者・ハンドル、毎秒 7 文字で打ち込まれる本文とハッシュタグ、残り文字数）、上にアプリのロゴと名前と「投稿する」ボタン。
 - テクスチャは全員で 1 枚を共有し、誰かが撮っている間だけ 0.2 秒ごとに描き直す。材質は黒の地に emissiveMap なので、夜でも読める。

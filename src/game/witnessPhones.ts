@@ -54,7 +54,7 @@ export function planFilming<T>(
   });
 }
 
-// The phone screen: the つぶやき app in landscape, its camera recording with the post being typed.
+// The phone screen: the Y app (SOCIAL_APP_NAME) in landscape, its camera recording with the post being typed.
 const CANVAS_W = 320; // the display's short side (portrait width); 67.4 × 143.4 mm in smartphone.glb
 const CANVAS_H = 680;
 const REDRAW = 0.2; // s: the clock and the typing are all that change
@@ -66,7 +66,7 @@ type Clip = { record: ViolationRecord; post: SocialPost | null; time: number };
 
 /**
  * Bystanders who film the player's violations with their phones (smartphone.glb from
- * scripts/blender/smartphone.py), the game's own SNS 「つぶやき」 open on the screen. All phones show
+ * scripts/blender/smartphone.py), the game's own SNS (SOCIAL_APP_NAME) open on the screen. All phones show
  * one shared CanvasTexture of the latest clip — the viewfinder with ● REC and its clock, and the
  * post being typed — redrawn a few times a second while anyone films. The screen is emissive, so
  * it reads at night, when every other phone also lights its video light.
@@ -252,10 +252,11 @@ export class WitnessPhones {
 
   /**
    * The viewfinder's picture once decoded: the poster's own shot from where they stood
-   * (witnessShot.ts), else the driver's view grabbed for the post.
+   * (witnessShot.ts). Why not the driver's screen meanwhile: a passer-by's phone cannot show what
+   * the driver sees.
    */
   private still(clip: Clip): HTMLImageElement | null {
-    const url = clip.post?.photo ?? clip.post?.image ?? clip.record.context?.snapshot;
+    const url = clip.post?.photo;
     if (!url) return null;
     let img = this.stills.get(url);
     if (!img) {
@@ -322,7 +323,7 @@ function drawScreen(canvas: HTMLCanvasElement, clip: Clip, still: HTMLImageEleme
   ctx.fillStyle = "#ffffff";
   ctx.font = font(17, 700);
   ctx.textAlign = "center";
-  ctx.fillText("投稿する", 614, 25);
+  ctx.fillText("ポストする", 614, 25);
   ctx.textAlign = "left";
   ctx.fillStyle = T.hairline;
   ctx.fillRect(0, 48, W, 1.5);

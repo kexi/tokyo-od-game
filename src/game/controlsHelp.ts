@@ -1,5 +1,6 @@
 import type { Assist } from "./carControls";
 import { keyFor, type KeyLayout } from "./input";
+import { SOCIAL_APP_NAME } from "./socialTheme";
 
 /**
  * 操作設定: the key layout (WASD, FPS-style, by default; or City Car Driving's arrows) and the
@@ -59,7 +60,8 @@ export function keyRows(prefs: ControlPrefs): Array<[string, string]> {
     [key("belt"), auto("シートベルト")],
     [`${key("camera")} / ${key("cameraPrev")}`, "視点の切り替え"],
     ["左 Ctrl / 右 Ctrl / Z", "左 / 右 / 後ろを見る（押している間）"],
-    [key("phone"), "スマホ（119・110・タクシー・つぶやき）"],
+    [key("phone"), `スマホ（119・110・タクシー・${SOCIAL_APP_NAME}）`],
+    [key("phoneZoom"), "スマホの拡大表示 / 元に戻す（操作になるので運転中は使わない）"],
     [`${key("nav")} / ${key("minimap")}`, "ナビ / 小さな地図の表示"],
     [key("pause"), "一時停止"],
     [key("reset"), "車を起こす・その場に復帰"],

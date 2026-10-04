@@ -15,7 +15,7 @@ import {
 import type { ViolationRecord } from "./traffic";
 
 /**
- * つぶやき (a fictional social app on the in-game phone): what happens when bystanders or a
+ * Y (SOCIAL_APP_NAME, a fictional social app on the in-game phone): what happens when bystanders or a
  * dashcam film a violation. A post appears with the poster's own shot, hashtags and the place; over
  * game time it gathers reposts, quotes, likes and replies (やべー, こいつやべー, 通報しました …),
  * and once it spreads far enough the police trace the driver from the video, so a notice to
@@ -374,7 +374,6 @@ export class SocialFeed {
       handle: account.handle,
       text,
       tags,
-      image: record.context?.snapshot,
       clipSeconds: 6 + (hashString(`${account.id}/${id}`) % 28),
       record,
       severity,
@@ -401,7 +400,6 @@ export class SocialFeed {
   update(gameNow: number): SocialPost[] {
     const noticed: SocialPost[] = [];
     for (const p of this.posts) {
-      p.image ??= p.record.context?.snapshot;
       const minutes = Math.max(0, (gameNow - p.postedAt) / MINUTE);
       // Shares spread over the first minutes, then level off (compressed from hours for play).
       const spread = 1 - Math.exp(-minutes / spreadMinutes(p));

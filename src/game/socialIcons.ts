@@ -1,5 +1,5 @@
 /**
- * Line icons for つぶやき, drawn for this game on a 24×24 grid: `stroke` paths are outlined,
+ * Line icons for Y (SOCIAL_APP_NAME), drawn for this game on a 24×24 grid: `stroke` paths are outlined,
  * `fill` paths are solid, and `solid` replaces the outline when the icon is active (the tab you are
  * on, a post you liked). Why drawn here: an icon font or a copied set would bring someone else's
  * marks (and a real app's look-alike glyphs) into the game.

@@ -38,6 +38,8 @@ export type ShotWorld = {
   stage: (shoot: () => void) => void;
   /** Open ground (no building) at a point; points off the map count as open. */
   isOpen: (x: number, z: number) => boolean;
+  /** An exact eye-to-car test through the solid world, when the game has one (preferred). */
+  sight?: (from: Vector3, to: Vector3) => boolean;
 };
 
 type Frame = { car: Vector3; fwd: Vector3; witnesses: Vector3[] };
@@ -292,6 +294,7 @@ export class WitnessShot {
    * closed samples in a row (5 m and more) being a building (the way the crowd judges it).
    */
   private canSee(from: Vector3, to: Vector3, skip: number): boolean {
+    if (this.world.sight) return this.world.sight(from, to);
     const dx = to.x - from.x;
     const dz = to.z - from.z;
     const dist = Math.hypot(dx, dz);

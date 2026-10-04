@@ -5,7 +5,7 @@ import { frameSize, verticalFov, viewpointFor } from "../src/game/witnessShot";
 const NOW = Date.UTC(2026, 9, 5, 3);
 const ids = Array.from({ length: 6000 }, (_, i) => `u${i}`);
 
-describe("つぶやき accounts: who they are and how they look", () => {
+describe("Y accounts: who they are and how they look", () => {
   it("gives an account the same picture every time", () => {
     for (const id of ["u1", "u42", "p17", "u3999"]) expect(avatarFor(id)).toEqual(avatarFor(id));
     expect(accountFor(123, NOW)).toEqual(accountFor(123, NOW));

@@ -88,6 +88,7 @@ const PIN_SCALE = 4e-3; // m, size of the patches of dirt that pin drops harder 
 const WANDER = 0.6; // rad, how far surface flaws turn a running drop
 const TRAIL_MIN = 1.4e-3; // drops smaller than this slide without leaving a trail
 const TRAIL_EVERY = 2.4; // contact radii run per trail droplet
+const A_SPLIT = 5e-3; // m: a running drop bigger than this breaks in two
 const EVAPORATION = 1e-9; // m²/s (a² shrinks at 2× this once the rain stops: ~8 min for 1 mm)
 const STEP = 1 / 120; // s, the fixed physics step
 const GRID = 12e-3; // m: merge-grid cells, twice the largest drop that merges reliably
@@ -111,7 +112,9 @@ const MICRO_DRY_TAU = 240; // s, fine droplets evaporating once the rain stops
 const FILM_TAU = 0.7; // s, the wiper's film thinning out
 const FILM_DEPTH = 3e-6; // m of water a fresh film holds; it beads up into fine droplets
 const RESIDUAL = 0.04; // share of fine droplets a blade leaves behind
-const DEPOSIT_KEEP = 0.5; // share of the pushed water left at the top of the stroke
+const DEPOSIT_KEEP = 0.35; // share of the pushed water left at the top of the stroke
+const DEPOSIT_BEADS = 24; // beads along the blade there, of about DEPOSIT_A contact radius
+const DEPOSIT_A = 2.2e-3;
 
 /**
  * The wiper blades on the glass (knowledge/cockpit-blender.md): pivot in glass metres, the arm's
@@ -432,6 +435,8 @@ export class RainSim {
       if (dist < 1e-7) continue;
       this.sweep(i, dist);
       this.leaveTrail(i, dist);
+      const isOversized = this.a[i] > A_SPLIT && this.count < this.maxDrops;
+      if (isOversized) this.split(i);
     }
   }
 
@@ -461,6 +466,23 @@ export class RainSim {
     const ty = this.y[i] - (this.vy[i] / v) * back;
     this.a[i] = Math.cbrt(a ** 3 - t ** 3);
     this.add(tx, ty, t);
+  }
+
+  /**
+   * A drop running this big would become a rivulet; it breaks into two side by side instead (a
+   * cap model cannot draw a rivulet, and one huge lens looked wrong).
+   */
+  private split(i: number): void {
+    const a = this.a[i] / Math.cbrt(2);
+    const v = Math.hypot(this.vx[i], this.vy[i]) || 1;
+    const sx = (-this.vy[i] / v) * a * 1.05;
+    const sy = (this.vx[i] / v) * a * 1.05;
+    this.a[i] = a;
+    const x = this.x[i];
+    const y = this.y[i];
+    this.x[i] = x + sx;
+    this.y[i] = y + sy;
+    this.add(x - sx, y - sy, a, this.vx[i], this.vy[i]);
   }
 
   /** Touching drops coalesce into one of the summed volume, at the volume-weighted centre. */
@@ -580,21 +602,31 @@ export class RainSim {
     this.compact();
   }
 
-  /** The water a blade pushed up, left as a line of drops just past the end of its stroke. */
+  /**
+   * The water a blade pushed up, left just past the end of its stroke: a row of beads, the rest
+   * as fine droplets along the line (the rest of the load runs off the blade's end).
+   */
   private deposit(b: number, angle: number): void {
     const blade = WIPER_BLADES[b];
-    const volume = this.bladeLoad[b] * DEPOSIT_KEEP;
+    let volume = this.bladeLoad[b] * DEPOSIT_KEEP;
     this.bladeLoad[b] = 0;
-    if (volume <= 0) return;
-    const n = Math.max(1, Math.min(10, Math.round(volume / (KAPPA * 1.8e-3 ** 3))));
-    const a = Math.cbrt(volume / n / KAPPA);
     const phi = angle + 2 * DEG;
-    for (let k = 0; k < n; k++) {
-      const r = blade.rIn + ((blade.rOut - blade.rIn) * (k + 0.2 + 0.6 * this.rng())) / n;
-      const x = blade.pivot[0] - Math.cos(phi) * r;
-      const y = blade.pivot[1] + Math.sin(phi) * r;
-      const isOnGlass = x > 0 && x < GLASS_W && y > 0 && y < GLASS_H;
-      if (isOnGlass) this.add(x, y, a);
+    const at = (t: number): [number, number] => {
+      const r = blade.rIn + (blade.rOut - blade.rIn) * t;
+      return [blade.pivot[0] - Math.cos(phi) * r, blade.pivot[1] + Math.sin(phi) * r];
+    };
+    const isOnGlass = (x: number, y: number) => x > 0 && x < GLASS_W && y > 0 && y < GLASS_H;
+    for (let k = 0; k < DEPOSIT_BEADS && volume > 0; k++) {
+      const a = DEPOSIT_A * (0.6 + 0.6 * this.rng());
+      const v = Math.min(volume, KAPPA * a ** 3);
+      const [x, y] = at((k + this.rng()) / DEPOSIT_BEADS);
+      if (!isOnGlass(x, y)) continue;
+      this.add(x, y, Math.cbrt(v / KAPPA));
+      volume -= v;
+    }
+    for (let k = 0; k < 16 && volume > 0; k++) {
+      const [x, y] = at(this.rng());
+      if (isOnGlass(x, y)) this.addWater(x, y, volume / 16);
     }
   }
 

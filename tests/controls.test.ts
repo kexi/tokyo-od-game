@@ -89,6 +89,14 @@ describe("key layouts", () => {
     expect(keyFor("ccd", "autopilot")).toBe("A");
   });
 
+  it("zooms the phone with Shift+F in both layouts, F alone still taking it out", () => {
+    for (const layout of ["wasd", "ccd"] as const) {
+      expect(keyFor(layout, "phoneZoom")).toBe("Shift+F");
+      expect(keyFor(layout, "phone")).toBe("F");
+      expect(keyRows({ layout, assist: "easy" }).some(([k]) => k === "Shift+F")).toBe(true);
+    }
+  });
+
   it("lists the layout's own keys and marks what 簡単操作 does itself", () => {
     const wasd = keyRows({ layout: "wasd", assist: "easy" });
     expect(wasd[0]).toEqual(["W / S", "アクセル / ブレーキ（停止中はバック）"]);

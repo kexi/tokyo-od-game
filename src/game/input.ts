@@ -17,6 +17,7 @@ export type Action =
   | "door"
   | "enter"
   | "phone"
+  | "phoneZoom"
   | "autopilot"
   | "home"
   | "indicatorLeft"
@@ -87,8 +88,15 @@ const WASD_ACTIONS: Record<string, Action> = Object.fromEntries([
   ["KeyJ", "autopilot"],
 ]);
 
+/** Shift + a key, in both layouts (Shift alone still runs on foot). */
+const SHIFT_ACTIONS: Record<string, Action> = {
+  KeyF: "phoneZoom",
+};
+
 /** The key that triggers an action in a layout (for hints and the help). */
 export function keyFor(layout: KeyLayout, action: Action): string {
+  const shifted = Object.keys(SHIFT_ACTIONS).find((c) => SHIFT_ACTIONS[c] === action);
+  if (shifted) return `Shift+${shifted.replace(/^Key/, "")}`;
   const table = layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS;
   const code = Object.keys(table).find((c) => table[c] === action) ?? "";
   return code.replace(/^Key/, "").replace(/^Digit/, "");
@@ -113,7 +121,8 @@ export class Input {
       const isTyping = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
       if (isTyping) return;
       if (!e.repeat) {
-        const action = (this.layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS)[e.code];
+        const shifted = e.shiftKey ? SHIFT_ACTIONS[e.code] : undefined;
+        const action = shifted ?? (this.layout === "wasd" ? WASD_ACTIONS : CCD_ACTIONS)[e.code];
         if (action) this.listeners.get(action)?.();
       }
       this.keys.add(e.code);

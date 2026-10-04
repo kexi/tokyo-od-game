@@ -2,7 +2,7 @@ import type { HumanColors } from "../world/human";
 import { SOCIAL_APP_NAME } from "./socialTheme";
 
 /**
- * The people on つぶやき: accounts (display name, @handle, bio, join date, follow counts) and the
+ * The people on Y (SOCIAL_APP_NAME): accounts (display name, @handle, bio, join date, follow counts) and the
  * look of their profile image and banner, all derived from a seed, so the same person looks the
  * same every time they turn up. Pure data — socialAvatars.ts paints the pictures and witnessShot.ts
  * shoots their photos with the device described by cameraFor.
@@ -189,7 +189,7 @@ const PEOPLE: readonly Person[] = [
   person("通勤チャリダー", "bike_commute", "自転車で片道12km通勤", "江東区"),
   person("パパ3年目", "papa_3rd_year", "娘ラブ。子連れのおでかけ記録", "杉並区"),
   person("ドラレコ班長", "dorareko_boss", "ドラレコ映像で安全運転を考える", "", true),
-  person("夜勤明けの看護師", "night_nurse_k", "看護師。夜勤明けのつぶやき多め", "東京"),
+  person("夜勤明けの看護師", "night_nurse_k", "看護師。夜勤明けのポスト多め", "東京"),
   person("とうふ", "tofu_tofu", "ゆるく生きてます"),
   person("あおい☁️", "aoi_sora", "空の写真を撮るのが好き", "港区"),
   person("ひでお", "hideo1962", "定年後のんびり。散歩が日課", "葛飾区"),
@@ -206,7 +206,7 @@ const PEOPLE: readonly Person[] = [
   person("おかか", "okaka_onigiri", "おにぎりはおかか派"),
   person("そら", "sora_blue", ""),
   person("ちひろ📷", "chihiro_photo", "写真を撮って歩く人", "墨田区"),
-  person("トラック運転手のケン", "ken_trucker", "長距離トラック乗り。道路事情つぶやき", "全国", true),
+  person("トラック運転手のケン", "ken_trucker", "長距離トラック乗り。道路事情をポストします", "全国", true),
   person("下町の電気屋", "denkiya_shita", "創業50年の町の電気屋です", "荒川区"),
   person("大学生(3年)", "univ_3rd", "経済学部"),
   person("むぎ", "mugi_wheat", ""),
@@ -450,7 +450,7 @@ export const PLAYER_ACCOUNT: SocialAccount = fixed(
   },
 );
 
-/** 「2019年4月からつぶやきを利用しています」 */
+/** 「2019年4月からYを利用しています」 */
 export const joinedLabel = (a: SocialAccount) =>
   `${a.joined.year}年${a.joined.month}月から${SOCIAL_APP_NAME}を利用しています`;
 

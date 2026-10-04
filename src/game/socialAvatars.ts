@@ -12,7 +12,7 @@ import { animateHuman, createHuman, disposeHuman } from "../world/human";
 import { hashString, type AvatarSpec, type PictureMotif, type SocialAccount } from "./socialAccounts";
 
 /**
- * The pictures of つぶやき: profile images, banners and the photos in everyday posts, painted once
+ * The pictures of Y (SOCIAL_APP_NAME): profile images, banners and the photos in everyday posts, painted once
  * and cached as JPEG data URLs. Portraits are the game's own pedestrian model in a small off-screen
  * three.js render (head and shoulders on a backdrop), made lazily a couple per tick and capped;
  * everything else is drawn on a 2D canvas.

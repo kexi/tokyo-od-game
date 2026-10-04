@@ -18,7 +18,7 @@ const record = (kind: keyof typeof VIOLATIONS): ViolationRecord => ({
   },
 });
 
-describe("つぶやき: posts about the player's driving", () => {
+describe("Y (the in-game SNS): posts about the player's driving", () => {
   it("is never posted when nobody saw it", () => {
     const feed = new SocialFeed();
     for (let i = 0; i < 20; i++) expect(feed.maybePost(record("hitAndRun"), 0, 0)).toBeNull();
@@ -70,7 +70,7 @@ const firstPost = (feed: SocialFeed, kind: keyof typeof VIOLATIONS, at = 0) => {
   return post;
 };
 
-describe("つぶやき: what the app shows", () => {
+describe("Y: what the app shows", () => {
   it("formats counts the way the app does (cut, not rounded)", () => {
     expect(formatCount(0)).toBe("0");
     expect(formatCount(999)).toBe("999");
