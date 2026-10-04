@@ -1,4 +1,3 @@
-import type { BlurLevel } from "../world/motionBlur";
 import type { Assist } from "./carControls";
 import { IS_MAC, keyFor, type KeyLayout } from "./input";
 import { SOCIAL_APP_NAME } from "./socialTheme";
@@ -11,7 +10,6 @@ import { SOCIAL_APP_NAME } from "./socialTheme";
 export type ControlPrefs = {
   layout: KeyLayout;
   assist: Assist;
-  blur: BlurLevel;
   /** 座席: the driver's eye above (+) the model's and behind (+) it, in metres. */
   seatUp: number;
   seatBack: number;
@@ -33,7 +31,6 @@ const STORE_KEY = "tod.controls";
 export const DEFAULT_PREFS: ControlPrefs = {
   layout: "wasd",
   assist: "easy",
-  blur: "light",
   seatUp: 0.05,
   seatBack: 0,
   volume: 0.8,
@@ -53,10 +50,6 @@ export const SEAT_RANGE = { up: SEAT_UP, back: SEAT_BACK };
 /** A stored or chosen 音量, 0–1. */
 export const volumeOf = (value: unknown): number => seatOf(value, [0, 1], DEFAULT_PREFS.volume);
 
-/** A stored or chosen ブラー level; anything else is the default. */
-export const blurLevelOf = (value: unknown): BlurLevel =>
-  value === "strong" || value === "off" ? value : DEFAULT_PREFS.blur;
-
 export function loadPrefs(): ControlPrefs {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? "null") as Partial<ControlPrefs> | null;
@@ -65,7 +58,6 @@ export function loadPrefs(): ControlPrefs {
     return {
       layout,
       assist,
-      blur: blurLevelOf(saved?.blur),
       seatUp: seatOf(saved?.seatUp, SEAT_UP, DEFAULT_PREFS.seatUp),
       seatBack: seatOf(saved?.seatBack, SEAT_BACK, DEFAULT_PREFS.seatBack),
       volume: volumeOf(saved?.volume),

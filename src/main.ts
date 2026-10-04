@@ -5,6 +5,7 @@ import {
   Frustum,
   Matrix4,
   MathUtils,
+  type Material,
   type Object3D,
   Mesh,
   MeshBasicMaterial,
@@ -23,7 +24,9 @@ import type { z } from "zod";
 import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
 
 const SPAWN_DEFAULT = { ...SPAWN, label: "東京駅 丸の内" };
-import { QUALITY } from "./device";
+import { GRAPHICS, pixelRatioFor, QUALITY } from "./device";
+import { buildGraphicsPanel } from "./game/graphicsPanel";
+import type { GraphicsSettings } from "./graphics";
 import {
   BusStopFileSchema,
   expandPois,
@@ -122,7 +125,6 @@ import { MotionBlur } from "./world/motionBlur";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import {
-  blurLevelOf,
   DEFAULT_PREFS,
   loadPrefs,
   renderKeyList,
@@ -224,7 +226,7 @@ async function main(): Promise<void> {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.outputColorSpace = SRGBColorSpace;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = QUALITY.shadows;
   renderer.shadowMap.type = PCFShadowMap;
   const scene = new Scene();
   const camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 40000);
@@ -805,6 +807,31 @@ async function main(): Promise<void> {
     buildings.onResize();
   });
 
+  // 画質 (graphics.ts): the panel in 設定, and what the renderer and the passes take from it at
+  // once; the shaders read GRAPHICS.settings themselves.
+  buildGraphicsPanel($("#graphics-options"), GRAPHICS);
+  const applyGraphics = (g: GraphicsSettings) => {
+    renderer.setPixelRatio(pixelRatioFor(g.resolution));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    buildings.onResize();
+    blur.level = g.motionBlur;
+    const hasShadows = g.shadows !== "off";
+    const size = hasShadows ? Number(g.shadows) : env.sun.shadow.mapSize.x;
+    const isShadowChanged = hasShadows !== renderer.shadowMap.enabled || env.sun.shadow.mapSize.x !== size;
+    if (!isShadowChanged) return;
+    renderer.shadowMap.enabled = hasShadows;
+    env.sun.shadow.mapSize.set(size, size);
+    env.sun.shadow.map?.dispose();
+    env.sun.shadow.map = null;
+    // Materials compile the shadow lookups in or out: have them rebuilt.
+    scene.traverse((o) => {
+      const m = (o as Mesh).material as Material | Material[] | undefined;
+      for (const x of Array.isArray(m) ? m : m ? [m] : []) x.needsUpdate = true;
+    });
+  };
+  applyGraphics(GRAPHICS.settings);
+  GRAPHICS.onChange(applyGraphics);
+
   // ---------- live data ----------
   const refreshWeather = async () => {
     const obs = await fetchTokyoObservation();
@@ -1133,8 +1160,6 @@ async function main(): Promise<void> {
     navHidden = !prefs.nav;
     $<HTMLInputElement>("#opt-nav").checked = prefs.nav;
     controls.assist = prefs.assist;
-    blur.level = prefs.blur;
-    $<HTMLSelectElement>("#opt-blur").value = prefs.blur;
     cockpit.setSeat(prefs.seatUp, prefs.seatBack);
     $<HTMLInputElement>("#opt-seat-up").value = String(prefs.seatUp);
     $<HTMLInputElement>("#opt-seat-back").value = String(prefs.seatBack);
@@ -1155,7 +1180,6 @@ async function main(): Promise<void> {
   const SETTING_INPUTS = [
     "#opt-layout",
     "#opt-assist",
-    "#opt-blur",
     "#opt-seat-up",
     "#opt-seat-back",
     "#opt-volume",
@@ -1170,7 +1194,6 @@ async function main(): Promise<void> {
         const prefs: ControlPrefs = {
           layout: $<HTMLSelectElement>("#opt-layout").value === "ccd" ? "ccd" : "wasd",
           assist: $<HTMLSelectElement>("#opt-assist").value === "real" ? "real" : "easy",
-          blur: blurLevelOf($<HTMLSelectElement>("#opt-blur").value),
           seatUp: seatOf($<HTMLInputElement>("#opt-seat-up").value, SEAT_RANGE.up, DEFAULT_PREFS.seatUp),
           seatBack: seatOf(
             $<HTMLInputElement>("#opt-seat-back").value,

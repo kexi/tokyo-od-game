@@ -18,7 +18,6 @@ describe("簡単操作: the car works its own switches", () => {
     expect(DEFAULT_PREFS).toEqual({
       layout: "wasd",
       assist: "easy",
-      blur: "light",
       seatUp: 0.05,
       seatBack: 0,
       volume: 0.8,

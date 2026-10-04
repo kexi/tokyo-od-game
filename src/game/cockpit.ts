@@ -17,7 +17,7 @@ import {
 } from "three";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { QUALITY } from "../device";
+import { GRAPHICS, QUALITY } from "../device";
 import { warn } from "../log";
 import { RainGlass, WIPER_BLADES } from "./rainGlass";
 
@@ -285,6 +285,7 @@ export class Cockpit {
     const swing = Math.sin(t * Math.PI); // 0 → 1 → 0 over a sweep
     for (const w of this.wipers) w.node.rotation.z = swing * w.sweep;
     const blades = WIPER_BLADES.map((b) => b.park + swing * b.sweep);
+    if (GRAPHICS.settings.rainGlass === "off") return;
     this.rain.sim.step(dt, { rainMmH, speed, blades });
   }
 
@@ -344,6 +345,14 @@ export class Cockpit {
       renderer.autoClear = autoClear;
       renderer.shadowMap.autoUpdate = shadows;
     };
+    // 画質 フロントガラスの雨粒 なし: the glass stays clear (and its simulation is not run).
+    const isGlassDry = GRAPHICS.settings.rainGlass === "off";
+    if (isGlassDry) {
+      renderer.render(scene, camera);
+      drawOutside();
+      drawInterior();
+      return;
+    }
     this.rain.render(renderer, scene, camera, this.root, drawInterior, near, drawOutside);
   }
 
