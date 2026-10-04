@@ -48,6 +48,11 @@ textures:
     uv run scripts/textures/human_textures.py
     uv run scripts/textures/building_textures.py
 
+# SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
+og:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/og.py -- "${TMPDIR:-/tmp}/tokyo-od-og-scene.png"
+    uv run scripts/textures/og_image.py "${TMPDIR:-/tmp}/tokyo-od-og-scene.png" public/og.jpg
+
 # 型チェックを行う
 typecheck:
     pnpm exec tsc --noEmit

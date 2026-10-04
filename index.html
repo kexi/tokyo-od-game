@@ -6,9 +6,39 @@
     <meta name="theme-color" content="#0b1320" />
     <meta
       name="description"
-      content="東京都のオープンデータと PLATEAU 3D 都市モデルで 23 区を走る 3D ドライブ探索ゲーム"
+      content="東京都のオープンデータと PLATEAU 3D 都市モデルで 23 区を、道路交通法と東京都の条例を守って走る 3D ドライブ探索ゲーム"
     />
-    <title>TOKYO OPEN DRIVE</title>
+    <title>TOKYO OPEN DRIVE 法令厳守</title>
+    <link rel="canonical" href="https://kexi.github.io/tokyo-od-game/" />
+    <!-- Open Graph / X (Twitter) card. Absolute URLs: crawlers do not resolve relative ones. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TOKYO OPEN DRIVE 法令厳守" />
+    <meta property="og:title" content="TOKYO OPEN DRIVE 法令厳守" />
+    <meta
+      property="og:description"
+      content="東京都のオープンデータと PLATEAU 3D 都市モデルで 23 区を、道路交通法と東京都の条例を守って走る 3D ドライブ探索ゲーム。標識・信号・規制速度は JARTIC 交通規制情報に基づきます。"
+    />
+    <meta property="og:url" content="https://kexi.github.io/tokyo-od-game/" />
+    <meta property="og:image" content="https://kexi.github.io/tokyo-od-game/og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="夕方の道路を走る青い車と「止まれ」の標識。TOKYO OPEN DRIVE 法令厳守 の題字。"
+    />
+    <meta property="og:locale" content="ja_JP" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TOKYO OPEN DRIVE 法令厳守" />
+    <meta
+      name="twitter:description"
+      content="東京都のオープンデータと PLATEAU 3D 都市モデルで 23 区を、道路交通法と東京都の条例を守って走る 3D ドライブ探索ゲーム。標識・信号・規制速度は JARTIC 交通規制情報に基づきます。"
+    />
+    <meta name="twitter:image" content="https://kexi.github.io/tokyo-od-game/og.jpg" />
+    <meta
+      name="twitter:image:alt"
+      content="夕方の道路を走る青い車と「止まれ」の標識。TOKYO OPEN DRIVE 法令厳守 の題字。"
+    />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
@@ -18,7 +48,7 @@
 
     <section id="loading" aria-live="polite">
       <div class="loading-card">
-        <h1>TOKYO <span>OPEN</span> DRIVE</h1>
+        <h1>TOKYO <span>OPEN</span> DRIVE <em class="compliance">法令厳守</em></h1>
         <p class="tagline">東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る</p>
         <p id="loading-status">データを読み込み中…</p>
         <div class="bar"><div id="loading-bar"></div></div>
