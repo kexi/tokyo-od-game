@@ -10,7 +10,6 @@ import {
   type BufferGeometry,
   Box3,
   Mesh,
-  MeshStandardMaterial,
   Sphere,
   Vector2,
   Vector3,
@@ -26,7 +25,7 @@ import { QUALITY } from "../device";
 import type { LocalFrame } from "../geo/frame";
 import {
   addFacadeAttribute,
-  applyFacade,
+  facadeMaterial,
   facadeUniforms,
   setFacadeOrigin,
   updateFacadeClock,
@@ -328,9 +327,7 @@ export class Buildings {
     // LOD1 ships plain grey materials; replace them with the procedural façade so windows,
     // block colours and night lighting appear without any texture download.
     material.dispose();
-    const facade = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0.05 });
-    applyFacade(facade);
-    return facade;
+    return facadeMaterial();
   }
 
   private computeSphere(scene: Object3D): Sphere {

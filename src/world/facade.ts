@@ -6,13 +6,60 @@ import {
   SRGBColorSpace,
   Vector3,
   type BufferGeometry,
-  type MeshStandardMaterial,
 } from "three";
+import {
+  abs,
+  attribute,
+  cameraPosition,
+  cameraViewMatrix,
+  clamp,
+  dot,
+  exp,
+  float,
+  floor,
+  Fn,
+  fract,
+  fwidth,
+  If,
+  int,
+  length,
+  materialMetalness,
+  materialRoughness,
+  max,
+  min,
+  mix,
+  mod,
+  normalize,
+  normalView,
+  normalWorldGeometry,
+  positionViewDirection,
+  positionWorld,
+  pow,
+  property,
+  renderGroup,
+  select,
+  smoothstep,
+  step,
+  texture,
+  uniform,
+  uniformArray,
+  vec2,
+  vec3,
+  vec4,
+} from "three/tsl";
+import {
+  MeshStandardNodeMaterial,
+  PhysicalLightingModel,
+  type Node,
+  type NodeBuilder,
+  type TextureNode,
+} from "three/webgpu";
 import { GRAPHICS, QUALITY } from "../device";
 import { geodeticToEcef } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
 import { jstHour } from "../geo/sun";
 import type { GraphicsSettings } from "../graphics";
+import { byIndex, hash12 } from "../render/shaderMath";
 import { gameClock, tokyoDate } from "./ruleTime";
 
 /**
@@ -22,10 +69,11 @@ import { gameClock, tokyoDate } from "./ruleTime";
  * Each building gets a style chosen from its height and floors counted from its own base
  * (vertex attribute `facade`, computed when a tile loads).
  *
- * All in the one façade shader (no extra draw calls or geometry): windows lit by the hour and
- * the building's use, each with its own lamp colour, blind or curtain; a fake room behind each
- * lit window near the camera (interior mapping, not on phones); glass that reflects the sky;
- * walls darker where they meet the street; and wet walls with rain streaks.
+ * All in the one façade material (a MeshStandardNodeMaterial built in TSL; no extra draw calls or
+ * geometry): windows lit by the hour and the building's use, each with its own lamp colour, blind
+ * or curtain; a fake room behind each lit window near the camera (interior mapping, not on
+ * phones); glass that reflects the sky; walls darker where they meet the street; and wet walls
+ * with rain streaks.
  *
  * The horizontal pattern is computed from world position, which changes whenever the floating
  * origin is re-anchored. Adding the origin's offset modulo PERIOD keeps it glued to the city;
@@ -192,15 +240,19 @@ const IMAGES = import.meta.glob<string>("../../assets/buildings/textures/facade_
   import: "default",
 });
 
+/**
+ * What the façade shader reads, set from the CPU (`value`). The scalars are TSL uniforms in the
+ * shared render group: one upload per render reaches every façade material.
+ */
 export const facadeUniforms = {
-  uNight: { value: 0 },
-  uOrigin: { value: new Vector3() },
+  uNight: uniform(0).setGroup(renderGroup),
+  uOrigin: uniform(new Vector3()).setGroup(renderGroup),
   uFacadeTex: { value: null as DataArrayTexture | null },
   /** Lit share per style (STYLES order), then for street-level shops. */
-  uLitShare: { value: new Float32Array(STYLES.length + 1) },
-  uWet: { value: 0 },
+  uLitShare: { value: Array.from({ length: STYLES.length + 1 }, () => 0) },
+  uWet: uniform(0).setGroup(renderGroup),
   /** Seconds, for the television flicker. */
-  uTime: { value: 0 },
+  uTime: uniform(0).setGroup(renderGroup),
 };
 
 const JST_MS = 9 * 3600_000;
@@ -280,6 +332,7 @@ export async function loadFacadeTextures(): Promise<void> {
   tex.anisotropy = QUALITY.isMobile ? 2 : 8;
   tex.needsUpdate = true;
   facadeUniforms.uFacadeTex.value = tex;
+  if (facadeTexNode) facadeTexNode.value = tex;
 }
 
 const hash = (a: number, b: number) => {
@@ -324,7 +377,7 @@ export function addFacadeAttribute(
   const style = new Map<number, number>();
   for (const [id, lo] of low) {
     const tall = (high.get(id) ?? lo) - lo;
-    const choices = (BY_HEIGHT.find(([max]) => tall <= max) ?? BY_HEIGHT[BY_HEIGHT.length - 1])[1];
+    const choices = (BY_HEIGHT.find(([limit]) => tall <= limit) ?? BY_HEIGHT[BY_HEIGHT.length - 1])[1];
     const total = choices.reduce((n, [, w]) => n + w, 0);
     let r = hash(seed, id) * total;
     let pick = choices[0][0];
@@ -357,327 +410,471 @@ export function setFacadeOrigin(frame: LocalFrame): void {
   facadeUniforms.uOrigin.value.set(wrap(east), wrap(up), wrap(south));
 }
 
-const glslFloats = (values: number[]) => values.map((v) => v.toFixed(3)).join(", ");
+// ---------- the façade in TSL ----------
 
 /**
  * 画質 › 夜の窓: flat = the original single colour on a fixed 40 % of windows, lit = per-window
- * hours, colours and blinds, rooms = lit plus interior mapping near the camera.
+ * hours, colours and blinds, rooms = lit plus interior mapping near the camera. Each is its own node
+ * graph (nothing of what is off is compiled, e.g. on phones), shared by every façade material.
  */
-const WINDOW_DEFINES: Record<GraphicsSettings["windows"], string> = {
-  flat: "",
-  lit: "#define FACADE_WINDOWS_LIT",
-  rooms: "#define FACADE_WINDOWS_LIT\n#define FACADE_INTERIOR",
-};
+type WindowsMode = GraphicsSettings["windows"];
 
-// Declarations, the hash, lamp colours and the interior (after <common>).
-const PARS = /* glsl */ `
-varying vec2 vFacade;
-varying vec3 vFacadePos;
-varying vec3 vFacadeNormal;
-uniform float uNight;
-uniform vec3 uOrigin;
-uniform highp sampler2DArray uFacadeTex;
-uniform float uLitShare[${STYLES.length + 1}];
-uniform float uWet;
-uniform float uTime;
+const aFacade = attribute<"vec2">("facade", "vec2");
+const litShareNode = uniformArray<"float">(facadeUniforms.uLitShare.value, "float").setGroup(renderGroup);
+let facadeTexNode: TextureNode | null = null;
+
+/** The texture array node, made on first use (after loadFacadeTextures, which main.ts awaits). */
+function facadeTexture(): TextureNode {
+  facadeTexNode ??= texture(facadeUniforms.uFacadeTex.value ?? placeholderTexture());
+  return facadeTexNode;
+}
+
+/** One texel per layer, with the real array's sampler, for a façade drawn before the textures load. */
+function placeholderTexture(): DataArrayTexture {
+  const tex = new DataArrayTexture(new Uint8Array(4 * STYLES.length).fill(160), 1, 1, STYLES.length);
+  tex.colorSpace = SRGBColorSpace;
+  tex.wrapS = tex.wrapT = RepeatWrapping;
+  tex.minFilter = LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// What the colour stage works out about this fragment and the later stages (roughness, normal,
+// emissive, ambient occlusion) read: shader-wide variables, assigned once per fragment.
+const fWall = property("float", "facadeWall");
+const fWindow = property("float", "facadeWindow");
+const fLit = property("float", "facadeLit"); // 0/1 near, the building's lit share where windows are sub-pixel
+const fClear = property("float", "facadeClear"); // 1 = clear glass, 0 = blind or curtain behind it
+const fCurtain = property("float", "facadeCurtainWall");
+const fStreak = property("float", "facadeStreak");
+const fAO = property("float", "facadeAO");
+const fFar = property("float", "facadeFar");
+const fRoomX = property("float", "facadeRoomX");
+const fRoomCells = property("float", "facadeRoomCells");
+const fRoomDepth = property("float", "facadeRoomDepth");
+const fRoomKind = property("float", "facadeRoomKind"); // 1 = office or shop (ceiling panels, desks), 0 = home
+const fCellUv = property("vec2", "facadeCellUv");
+const fPane = property("vec2", "facadePane");
+const fTangent = property("vec3", "facadeTangent");
+const fLamp = property("vec3", "facadeLamp");
+const fBlindGlow = property("vec3", "facadeBlindGlow");
+const fGlow = property("vec3", "facadeGlow");
+const fRoomSeed = property("vec4", "facadeRoomSeed");
+
 // Use behind each style (office 0, home 1, mixed 2, shop 3, works 4) and how much its windows go by floor.
-const int FACADE_USE[${STYLES.length}] = int[${STYLES.length}](${USE_OF_STYLE.map((u) => USES.indexOf(u)).join(", ")});
-const float FACADE_CORR[${USES.length}] = float[${USES.length}](${glslFloats(USES.map((u) => FLOOR_CORRELATION[u]))});
-float facadeHash(vec2 p) {
-  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.x + p3.y) * p3.z);
+const USE_INDEX = USE_OF_STYLE.map((u) => USES.indexOf(u));
+const CORRELATION = USES.map((u) => FLOOR_CORRELATION[u]);
+const SHOP = USES.indexOf("shop");
+
+/**
+ * Lamp colour by colour temperature, k: 0 = 2700 K, .25 = 3500 K, .5 = 4000 K, .75 = 5000 K,
+ * 1 = 6500 K. Blackbody in linear sRGB, white-balanced a third of the way to 4000 K (as the eye
+ * or a camera at night sees it, so 電球色 reads amber, not orange).
+ */
+function lampColour(k: Node<"float">): Node<"vec3"> {
+  const s = k.mul(4);
+  let c = mix(vec3(1.0, 0.49, 0.14), vec3(1.0, 0.668, 0.365), clamp(s, 0, 1));
+  c = mix(c, vec3(1.0, 0.763, 0.532), clamp(s.sub(1), 0, 1));
+  c = mix(c, vec3(1.0, 0.92, 0.885), clamp(s.sub(2), 0, 1));
+  return mix(c, vec3(0.72, 0.78, 1.0), clamp(s.sub(3), 0, 1));
 }
-// Lamp colour by colour temperature, k: 0 = 2700 K, .25 = 3500 K, .5 = 4000 K, .75 = 5000 K,
-// 1 = 6500 K. Blackbody in linear sRGB, white-balanced a third of the way to 4000 K (as the eye
-// or a camera at night sees it, so 電球色 reads amber, not orange).
-vec3 facadeLampColor(float k) {
-  float s = k * 4.0;
-  vec3 c = mix(vec3(1.0, 0.49, 0.14), vec3(1.0, 0.668, 0.365), clamp(s, 0.0, 1.0));
-  c = mix(c, vec3(1.0, 0.763, 0.532), clamp(s - 1.0, 0.0, 1.0));
-  c = mix(c, vec3(1.0, 0.92, 0.885), clamp(s - 2.0, 0.0, 1.0));
-  return mix(c, vec3(0.72, 0.78, 1.0), clamp(s - 3.0, 0.0, 1.0));
-}
-float facadeWall = 0.0;
-float facadeWindow = 0.0;
-float facadeLit = 0.0;       // 0/1 near, the building's lit share where windows are sub-pixel
-float facadeClear = 1.0;     // 1 = clear glass, 0 = blind or curtain behind it
-float facadeCurtainWall = 0.0;
-float facadeStreak = 0.0;
-float facadeAO = 1.0;
-float facadeFar = 0.0;
-float facadeRoomX = 0.0;
-float facadeRoomCells = 1.0;
-float facadeRoomDepth = 5.0;
-float facadeRoomKind = 0.0;  // 1 = office or shop (ceiling panels, desks), 0 = home
-vec2 facadeCellUv = vec2(0.0);
-vec2 facadePane = vec2(0.0);
-vec3 facadeTangent = vec3(1.0, 0.0, 0.0);
-vec3 facadeLamp = vec3(0.0);
-vec3 facadeBlindGlow = vec3(0.0);
-vec3 facadeGlow = vec3(0.0);
-vec4 facadeRoomSeed = vec4(0.0);
-#ifdef FACADE_INTERIOR
-// Interior mapping (van Dongen 2008): the eye ray carries on behind the glass into a box room
-// (room width × 3.5 m × depth) and takes the colour of the back wall, side wall, ceiling or floor
-// it reaches first, unless a furniture card standing part-way in is in front. p: entry point
-// (0..1 across and up), d: ray direction in room units (z into the room), size: width and depth
-// in metres. Returns radiance relative to the lamp.
-vec3 facadeInterior(vec2 p, vec3 d, vec4 seed, float isOffice, vec2 size) {
-  d.xy = mix(vec2(-1e-4), vec2(1e-4), step(0.0, d.xy)) + d.xy;
-  vec3 o = vec3(p, 0.0);
-  vec3 t3 = (step(0.0, d) - o) / d;
-  float t = min(min(t3.x, t3.y), t3.z);
-  vec3 h = o + d * t;
-  vec3 wallColor = mix(vec3(0.55, 0.52, 0.47), vec3(0.82, 0.81, 0.78), seed.x);
+
+/**
+ * Interior mapping (van Dongen 2008): the eye ray carries on behind the glass into a box room
+ * (room width × 3.5 m × depth) and takes the colour of the back wall, side wall, ceiling or floor
+ * it reaches first, unless a furniture card standing part-way in is in front. p: entry point
+ * (0..1 across and up), d: ray direction in room units (z into the room), size: width and depth
+ * in metres. Returns radiance relative to the lamp.
+ * How: every face is shaded and the hit one selected (no branches: the caller already skips
+ * windows without a room, and WGSL keeps it straight-line code).
+ */
+function interior(
+  p: Node<"vec2">,
+  ray: Node<"vec3">,
+  seed: Node<"vec4">,
+  isOffice: Node<"float">,
+  size: Node<"vec2">,
+): Node<"vec3"> {
+  const nudge = mix(vec2(-1e-4, -1e-4), vec2(1e-4, 1e-4), step(vec2(0, 0), ray.xy));
+  const d = vec3(ray.xy.add(nudge), ray.z);
+  const o = vec3(p, 0);
+  const t3 = step(vec3(0, 0, 0), d)
+    .sub(o)
+    .div(d);
+  const t = min(min(t3.x, t3.y), t3.z);
+  const h = o.add(d.mul(t));
+  const wallColour = mix(vec3(0.55, 0.52, 0.47), vec3(0.82, 0.81, 0.78), seed.x);
+  const isOfficeRoom = isOffice.greaterThan(0.5);
   // Lit from the ceiling: the back wall brightest at the top, the side walls in shade, the floor
   // dim, the ceiling dark between its lamps (they shine down).
-  vec3 c;
-  if (t == t3.z) {
-    c = wallColor * (0.22 + 0.6 * h.y * h.y);
-  } else if (t == t3.x) {
-    c = wallColor * (0.1 + 0.32 * h.y) * (1.0 - 0.5 * h.z);
-  } else if (d.y > 0.0) {
-    // Rows of light panels in offices, one round light in a home, each with a soft halo.
-    vec2 m = h.xz * size;
-    vec2 cellM = isOffice > 0.5 ? abs(fract(m / vec2(1.8, 2.4)) - 0.5) * vec2(1.8, 2.4) : abs(m - size * vec2(0.5, 0.45));
-    vec2 lampHalf = isOffice > 0.5 ? vec2(0.3, 0.55) : vec2(0.28);
-    float r = isOffice > 0.5 ? max(cellM.x - lampHalf.x, cellM.y - lampHalf.y) : length(cellM) - lampHalf.x;
-    float panel = 1.0 - step(0.0, r);
-    c = vec3(0.1) + vec3(0.35) * exp(-max(r, 0.0) * 3.0) + vec3(3.2) * panel;
-  } else {
-    // Floor: wood in homes, grey carpet in offices, a pool of light under the lamp.
-    vec3 floorColor = isOffice > 0.5 ? vec3(0.3, 0.31, 0.33) : mix(vec3(0.42, 0.28, 0.16), vec3(0.55, 0.5, 0.42), seed.y);
-    c = floorColor * (0.45 - 0.35 * length(h.xz - vec2(0.5, 0.45)));
-  }
+  const back = wallColour.mul(h.y.mul(h.y).mul(0.6).add(0.22));
+  const side = wallColour.mul(h.y.mul(0.32).add(0.1)).mul(h.z.mul(0.5).oneMinus());
+  // Rows of light panels in offices, one round light in a home, each with a soft halo.
+  const m = h.xz.mul(size);
+  const officeCell = abs(fract(m.div(vec2(1.8, 2.4))).sub(0.5)).mul(vec2(1.8, 2.4));
+  const cellM = select(isOfficeRoom, officeCell, abs(m.sub(size.mul(vec2(0.5, 0.45)))));
+  const r = select(isOfficeRoom, max(cellM.x.sub(0.3), cellM.y.sub(0.55)), length(cellM).sub(0.28));
+  const panel = step(0, r).oneMinus();
+  const ceiling = vec3(0.1, 0.1, 0.1)
+    .add(vec3(0.35, 0.35, 0.35).mul(exp(max(r, 0).mul(-3))))
+    .add(vec3(3.2, 3.2, 3.2).mul(panel));
+  // Floor: wood in homes, grey carpet in offices, a pool of light under the lamp.
+  const wood = mix(vec3(0.42, 0.28, 0.16), vec3(0.55, 0.5, 0.42), seed.y);
+  const floorColour = select(isOfficeRoom, vec3(0.3, 0.31, 0.33), wood);
+  const floorLit = floorColour.mul(float(0.45).sub(length(h.xz.sub(vec2(0.5, 0.45))).mul(0.35)));
+  const room = select(
+    t.equal(t3.z),
+    back,
+    select(t.equal(t3.x), side, select(d.y.greaterThan(0), ceiling, floorLit)),
+  );
   // Furniture: desks with monitors in an office, a sofa back in a home, seen against the room.
-  float tc = (0.3 + 0.35 * seed.z) / d.z;
-  if (tc < t) {
-    vec2 q = p + d.xy * tc;
-    float top = isOffice > 0.5 ? 0.215 : 0.24 + 0.08 * seed.w;
-    float x0 = isOffice > 0.5 ? 0.04 : 0.1 + 0.3 * seed.w;
-    float x1 = isOffice > 0.5 ? 0.96 : x0 + 0.3 + 0.3 * seed.y;
-    float isAcross = step(x0, q.x) * step(q.x, x1);
-    float isMonitor = isOffice * step(abs(fract(q.x * size.x / 1.6) - 0.5), 0.15) * step(q.y, top + 0.13);
-    float isBody = isAcross * max(step(q.y, top), isMonitor);
-    if (isBody > 0.5) c = vec3(0.05, 0.048, 0.045) + 0.35 * wallColor * smoothstep(top - 0.03, top, q.y) * (1.0 - isMonitor * step(top, q.y));
-  }
-  return c * (1.0 - 0.55 * h.z);
+  const tc = seed.z.mul(0.35).add(0.3).div(d.z);
+  const q = p.add(d.xy.mul(tc));
+  const top = select(isOfficeRoom, float(0.215), seed.w.mul(0.08).add(0.24));
+  const x0 = select(isOfficeRoom, float(0.04), seed.w.mul(0.3).add(0.1));
+  const x1 = select(isOfficeRoom, float(0.96), x0.add(0.3).add(seed.y.mul(0.3)));
+  const isAcross = step(x0, q.x).mul(step(q.x, x1));
+  const isMonitor = isOffice
+    .mul(step(abs(fract(q.x.mul(size.x).div(1.6)).sub(0.5)), 0.15))
+    .mul(step(q.y, top.add(0.13)));
+  const isBody = isAcross.mul(max(step(q.y, top), isMonitor));
+  const body = vec3(0.05, 0.048, 0.045).add(
+    wallColour
+      .mul(0.35)
+      .mul(smoothstep(top.sub(0.03), top, q.y))
+      .mul(isMonitor.mul(step(top, q.y)).oneMinus()),
+  );
+  const seen = select(tc.lessThan(t).and(isBody.greaterThan(0.5)), body, room);
+  return seen.mul(h.z.mul(0.55).oneMinus());
 }
-#endif
-`;
 
-// Wall colour, which window this is and how it is lit, ground contact and rain (after <color_fragment>).
-const COLOR = /* glsl */ `
-{
-  vec3 fp = vFacadePos + uOrigin;
-  vec3 fn = normalize(vFacadeNormal);
-  facadeWall = 1.0 - step(0.6, abs(fn.y));
-  float layer = floor(vFacade.x);
-  float tint = fract(vFacade.x);
-  int style = int(layer + 0.5);
-  bool isAlongZ = abs(fn.x) > abs(fn.z);
-  // Along the wall: world x or z (whichever the wall runs along); up: height above the base.
-  float along = isAlongZ ? fp.z : fp.x;
-  facadeTangent = isAlongZ ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-  vec2 uv = vec2(along / ${TILE_W.toFixed(1)}, vFacade.y / ${TILE_H.toFixed(1)});
-  vec4 tex = texture(uFacadeTex, vec3(uv, layer));
-  facadeWindow = facadeWall * smoothstep(0.4, 0.6, tex.a);
-  facadeCurtainWall = style == 0 ? 1.0 : 0.0;
-  // One window per bay and storey: 4 × 4 per tile. Ids wrap with PERIOD (see the top of the file).
-  vec2 cellF = uv * 4.0;
-  vec2 cell = floor(cellF);
-  facadeCellUv = cellF - cell;
-  facadePane = floor(cellF * vec2(4.0, 1.0));
-  float face = isAlongZ ? (fn.x > 0.0 ? 1.0 : 2.0) : (fn.z > 0.0 ? 3.0 : 4.0);
-  // Blinds and curtains drawn in the texture (light-coloured; not on curtain walls, whose light
-  // panes are reflections): glass by day, a flat glow at night.
-  float luma = dot(tex.rgb, vec3(0.2126, 0.7152, 0.0722));
-  float baked = facadeCurtainWall > 0.5 ? 0.0 : smoothstep(0.16, 0.34, luma);
-  facadeClear = 1.0 - baked;
-#ifdef FACADE_WINDOWS_LIT
-  vec2 wid = vec2(mod(cell.x, ${BAYS_PER_PERIOD.toFixed(1)}) + face * 211.0, cell.y + tint * 977.0 + layer * 17.0);
-  float building = facadeHash(vec2(tint * 531.0, layer + 7.0));
-  // Street-level shops under offices and 雑居ビル, and under some blocks of flats (下駄履き).
-  bool isShop = cell.y < 0.5 && (style <= 2 || style == 5 || (style == 3 && building < 0.4));
-  int kind = isShop ? 3 : FACADE_USE[style];
-  // Busier and quieter buildings around the hour's share; a tenant lights a whole floor at once.
-  float share = clamp(uLitShare[isShop ? ${STYLES.length} : style] * (0.45 + building), 0.0, 0.97);
-  bool isFloorWide = facadeHash(wid + vec2(41.7, 5.3)) < FACADE_CORR[kind];
-  float pick = isFloorWide ? facadeHash(vec2(cell.y + 0.5, tint * 313.0 + face)) : facadeHash(wid);
-  // Where a window is under a pixel, its average instead (no sparkling of distant towers).
-  vec2 fw = fwidth(cellF);
-  facadeFar = smoothstep(0.25, 0.8, max(fw.x, fw.y));
-  facadeLit = mix(step(pick, share), share, facadeFar);
+/**
+ * Wall colour, which window this is and how it is lit, ground contact and rain: the colour stage,
+ * which also fills the façade variables for the later stages.
+ */
+function surface(isLit: boolean): Node<"vec4"> {
+  return Fn(() => {
+    const fp = positionWorld.add(facadeUniforms.uOrigin).toVar();
+    const fn = normalWorldGeometry;
+    fWall.assign(step(0.6, abs(fn.y)).oneMinus());
+    const layer = floor(aFacade.x).toVar();
+    const tint = fract(aFacade.x).toVar();
+    const isAlongZ = abs(fn.x).greaterThan(abs(fn.z));
+    // Along the wall: world x or z (whichever the wall runs along); up: height above the base.
+    const along = select(isAlongZ, fp.z, fp.x).toVar();
+    fTangent.assign(select(isAlongZ, vec3(0, 0, 1), vec3(1, 0, 0)));
+    const uv = vec2(along.div(TILE_W), aFacade.y.div(TILE_H));
+    const tex = facadeTexture().sample(uv).depth(layer).toVar();
+    fWindow.assign(fWall.mul(smoothstep(0.4, 0.6, tex.a)));
+    fCurtain.assign(select(layer.lessThan(0.5), float(1), float(0)));
+    // One window per bay and storey: 4 × 4 per tile. Ids wrap with PERIOD (see the top of the file).
+    const cellF = uv.mul(4).toVar();
+    const cell = floor(cellF).toVar();
+    fCellUv.assign(cellF.sub(cell));
+    fPane.assign(floor(cellF.mul(vec2(4, 1))));
+    const face = select(
+      isAlongZ,
+      select(fn.x.greaterThan(0), float(1), float(2)),
+      select(fn.z.greaterThan(0), float(3), float(4)),
+    ).toVar();
+    // Blinds and curtains drawn in the texture (light-coloured; not on curtain walls, whose light
+    // panes are reflections): glass by day, a flat glow at night.
+    const luma = dot(tex.rgb, vec3(0.2126, 0.7152, 0.0722)).toVar();
+    const baked = select(fCurtain.greaterThan(0.5), float(0), smoothstep(0.16, 0.34, luma)).toVar();
+    fClear.assign(baked.oneMinus());
+    if (isLit) {
+      // Where a window is under a pixel, its average instead (no sparkling of distant towers).
+      // How: the derivative is taken here, in uniform control flow (WGSL requires it).
+      const fw = fwidth(cellF).toVar();
+      const wid = vec2(
+        mod(cell.x, BAYS_PER_PERIOD).add(face.mul(211)),
+        cell.y.add(tint.mul(977)).add(layer.mul(17)),
+      );
+      const building = hash12(vec2(tint.mul(531), layer.add(7))).toVar();
+      // Street-level shops under offices and 雑居ビル, and under some blocks of flats (下駄履き).
+      const isShop = cell.y.lessThan(0.5).and(
+        layer
+          .lessThan(2.5)
+          .or(layer.equal(S.mixed_use))
+          .or(layer.equal(S.apartment_balcony).and(building.lessThan(0.4))),
+      );
+      const kind = select(isShop, float(SHOP), byIndex(layer, USE_INDEX)).toVar();
+      const isKind = (use: WindowUse) => kind.equal(USES.indexOf(use));
+      // Busier and quieter buildings around the hour's share; a tenant lights a whole floor at once.
+      const shareIndex = select(isShop, float(STYLES.length), layer);
+      const share = clamp(litShareNode.element(int(shareIndex)).mul(building.add(0.45)), 0, 0.97);
+      const isFloorWide = hash12(wid.add(vec2(41.7, 5.3))).lessThan(byIndex(kind, CORRELATION));
+      const pick = select(isFloorWide, hash12(vec2(cell.y.add(0.5), tint.mul(313).add(face))), hash12(wid));
+      fFar.assign(smoothstep(0.25, 0.8, max(fw.x, fw.y)));
+      fLit.assign(mix(step(pick, share), share, fFar));
 
-  // The room behind: open-plan offices span the tile, shops two bays, homes one.
-  facadeRoomKind = kind == 0 || kind == 3 ? 1.0 : 0.0;
-  facadeRoomCells = kind == 0 ? 4.0 : kind == 3 ? 2.0 : 1.0;
-  facadeRoomDepth = kind == 0 ? 9.0 + 4.0 * building : kind == 3 ? 8.0 : 4.5 + 2.0 * building;
-  float roomF = cellF.x / facadeRoomCells;
-  facadeRoomX = fract(roomF);
-  vec2 rid = vec2(mod(floor(roomF), ${BAYS_PER_PERIOD.toFixed(1)}) + face * 211.0, wid.y);
-  facadeRoomSeed = vec4(facadeHash(rid + vec2(13.1, 3.7)), facadeHash(rid + vec2(27.3, 9.1)), facadeHash(wid + vec2(7.9, 21.5)), facadeHash(rid + vec2(3.3, 17.7)));
-  float hk = facadeRoomSeed.x;
-  float hb = facadeRoomSeed.y;
-  float hc = facadeRoomSeed.z;
-  // Colour temperature: offices 4500–6500 K; homes mix 電球色 (2700 K) with 昼白色/昼光色 ceiling
-  // lights; shops bright white; 雑居ビル anything. Far away, the use's average.
-  float k = kind == 0 ? 0.62 + 0.38 * hk
-          : kind == 1 ? (hk < 0.45 ? 0.1 * hk : hk < 0.75 ? 0.45 + 0.3 * hk : 0.85 + 0.15 * hk)
-          : kind == 3 ? 0.65 + 0.35 * hk
-          : kind == 4 ? 0.8 + 0.2 * hk
-          : 0.15 + 0.8 * hk;
-  float kMean = kind == 0 ? 0.81 : kind == 1 ? 0.45 : kind == 3 ? 0.82 : kind == 4 ? 0.9 : 0.55;
-  // Linear radiance before exposure: above 1 so the bloom picks up lit windows, shops brightest.
-  float power = kind == 0 ? 2.4 : kind == 1 ? 1.7 : kind == 3 ? 3.6 : 2.0;
-  facadeLamp = facadeLampColor(mix(k, kMean, facadeFar)) * power * mix(0.6 + 0.8 * hb, 1.0, facadeFar);
-  // A few homes are lit only by a television: blue, cutting between shots a few times a second.
-  bool isTv = kind == 1 && hc < 0.07 && facadeFar < 0.5;
-  if (isTv) facadeLamp = vec3(0.42, 0.58, 1.0) * (0.35 + 0.55 * facadeHash(vec2(floor(uTime * 2.7 + hb * 50.0), hc * 113.0)));
+      // The room behind: open-plan offices span the tile, shops two bays, homes one.
+      fRoomKind.assign(byIndex(kind, [1, 0, 0, 1, 0]));
+      fRoomCells.assign(byIndex(kind, [4, 1, 1, 2, 1]));
+      fRoomDepth.assign(
+        select(
+          isKind("office"),
+          building.mul(4).add(9),
+          select(isKind("shop"), float(8), building.mul(2).add(4.5)),
+        ),
+      );
+      const roomF = cellF.x.div(fRoomCells).toVar();
+      fRoomX.assign(fract(roomF));
+      const rid = vec2(mod(floor(roomF), BAYS_PER_PERIOD).add(face.mul(211)), wid.y);
+      fRoomSeed.assign(
+        vec4(
+          hash12(rid.add(vec2(13.1, 3.7))),
+          hash12(rid.add(vec2(27.3, 9.1))),
+          hash12(wid.add(vec2(7.9, 21.5))),
+          hash12(rid.add(vec2(3.3, 17.7))),
+        ),
+      );
+      const hk = fRoomSeed.x;
+      const hb = fRoomSeed.y;
+      const hc = fRoomSeed.z;
+      // Colour temperature: offices 4500–6500 K; homes mix 電球色 (2700 K) with 昼白色/昼光色 ceiling
+      // lights; shops bright white; 雑居ビル anything. Far away, the use's average.
+      const homeK = select(
+        hk.lessThan(0.45),
+        hk.mul(0.1),
+        select(hk.lessThan(0.75), hk.mul(0.3).add(0.45), hk.mul(0.15).add(0.85)),
+      );
+      const k = select(
+        isKind("office"),
+        hk.mul(0.38).add(0.62),
+        select(
+          isKind("home"),
+          homeK,
+          select(
+            isKind("shop"),
+            hk.mul(0.35).add(0.65),
+            select(isKind("works"), hk.mul(0.2).add(0.8), hk.mul(0.8).add(0.15)),
+          ),
+        ),
+      );
+      const kMean = byIndex(kind, [0.81, 0.45, 0.55, 0.82, 0.9]);
+      // Linear radiance before exposure: above 1 so the bloom picks up lit windows, shops brightest.
+      const power = byIndex(kind, [2.4, 1.7, 2.0, 3.6, 2.0]);
+      const lamp = lampColour(mix(k, kMean, fFar))
+        .mul(power)
+        .mul(mix(hb.mul(0.8).add(0.6), 1, fFar));
+      // A few homes are lit only by a television: blue, cutting between shots a few times a second.
+      const isTv = isKind("home").and(hc.lessThan(0.07)).and(fFar.lessThan(0.5));
+      const tvCut = hash12(vec2(floor(facadeUniforms.uTime.mul(2.7).add(hb.mul(50))), hc.mul(113)));
+      fLamp.assign(select(isTv, vec3(0.42, 0.58, 1.0).mul(tvCut.mul(0.55).add(0.35)), lamp));
 
-  // Blinds and curtains lowered on some windows: they glow flat, without the room behind.
-  float blindLine = 2.0;
-  if (kind == 0 && hc > 0.7) blindLine = 0.45 + 0.5 * fract(hc * 7.0);
-  if (kind == 1) blindLine = hc > 0.62 ? 0.0 : hc > 0.4 ? 0.35 + 0.5 * fract(hc * 11.0) : 2.0;
-  if (kind == 2 && hc > 0.75) blindLine = 0.0;
-  facadeClear *= 1.0 - step(blindLine, facadeCellUv.y);
-  vec3 cloth = kind == 1 ? mix(vec3(1.0, 0.8, 0.58), vec3(0.95), step(0.85, hc)) : vec3(0.9);
-  // Venetian slats 10 cm apart, smoothed out once they are smaller than a pixel.
-  float slats = kind == 0 ? mix(0.75 + 0.25 * step(0.5, fract(cellF.y * 35.0)), 0.87, smoothstep(0.2, 0.6, fw.y * 35.0)) : 1.0;
-  // Brighter towards the lamps at the top; drawn blinds keep their slats from the texture.
-  float drawnSlats = mix(1.0, 0.55 + 0.6 * smoothstep(0.16, 0.5, luma), baked);
-  facadeBlindGlow = facadeLamp * 0.5 * cloth * slats * drawnSlats * (0.65 + 0.5 * facadeCellUv.y);
-  facadeGlow = mix(facadeBlindGlow, facadeLamp * 0.4, facadeClear);
-#else
-  facadeLit = step(0.6, facadeHash(cell + vec2(layer * 17.0, tint * 97.0)));
-#endif
+      // Blinds and curtains lowered on some windows: they glow flat, without the room behind.
+      const officeBlind = select(hc.greaterThan(0.7), fract(hc.mul(7)).mul(0.5).add(0.45), float(2));
+      const homeBlind = select(
+        hc.greaterThan(0.62),
+        float(0),
+        select(hc.greaterThan(0.4), fract(hc.mul(11)).mul(0.5).add(0.35), float(2)),
+      );
+      const mixedBlind = select(hc.greaterThan(0.75), float(0), float(2));
+      const blindLine = select(
+        isKind("office"),
+        officeBlind,
+        select(isKind("home"), homeBlind, select(isKind("mixed"), mixedBlind, float(2))),
+      );
+      fClear.mulAssign(step(blindLine, fCellUv.y).oneMinus());
+      const cloth = select(
+        isKind("home"),
+        mix(vec3(1.0, 0.8, 0.58), vec3(0.95, 0.95, 0.95), step(0.85, hc)),
+        vec3(0.9, 0.9, 0.9),
+      );
+      // Venetian slats 10 cm apart, smoothed out once they are smaller than a pixel.
+      const slatLines = step(0.5, fract(cellF.y.mul(35)))
+        .mul(0.25)
+        .add(0.75);
+      const slats = select(
+        isKind("office"),
+        mix(slatLines, 0.87, smoothstep(0.2, 0.6, fw.y.mul(35))),
+        float(1),
+      );
+      // Brighter towards the lamps at the top; drawn blinds keep their slats from the texture.
+      const drawnSlats = mix(float(1), smoothstep(0.16, 0.5, luma).mul(0.6).add(0.55), baked);
+      fBlindGlow.assign(
+        fLamp.mul(0.5).mul(cloth).mul(slats).mul(drawnSlats).mul(fCellUv.y.mul(0.5).add(0.65)),
+      );
+      fGlow.assign(mix(fBlindGlow, fLamp.mul(0.4), fClear));
+    } else {
+      fLit.assign(step(0.6, hash12(cell.add(vec2(layer.mul(17), tint.mul(97))))));
+    }
 
-  vec3 roof = mix(vec3(0.46, 0.47, 0.48), vec3(0.58, 0.57, 0.55), tint);
-  diffuseColor.rgb = facadeWall > 0.5 ? tex.rgb * (0.88 + 0.24 * tint) : roof;
-  // Clear glass is dark by day (the room behind); its brightness comes from the reflection.
-  diffuseColor.rgb *= 1.0 - 0.45 * facadeWindow * facadeClear;
+    const roof = mix(vec3(0.46, 0.47, 0.48), vec3(0.58, 0.57, 0.55), tint);
+    const isWall = fWall.greaterThan(0.5);
+    const colour = select(isWall, tex.rgb.mul(tint.mul(0.24).add(0.88)), roof).toVar();
+    // Clear glass is dark by day (the room behind); its brightness comes from the reflection.
+    colour.mulAssign(fWindow.mul(fClear).mul(0.45).oneMinus());
 
-  // Ground contact: less sky and bounce light near the street (≈2.5 m) and down the street
-  // canyon, plus splash grime. Why not SSAO: it needs a depth pre-pass over the whole scene.
-  float h = vFacade.y;
-  facadeAO = facadeWall > 0.5 ? mix(0.35, 1.0, smoothstep(0.0, 2.6, h)) * mix(0.8, 1.0, smoothstep(0.0, 30.0, h)) : 1.0;
-  diffuseColor.rgb *= facadeWall > 0.5 ? mix(0.82, 1.0, smoothstep(0.0, 1.0, h)) : 1.0;
+    // Ground contact: less sky and bounce light near the street (≈2.5 m) and down the street
+    // canyon, plus splash grime. Why not SSAO: it needs a depth pre-pass over the whole scene.
+    const h = aFacade.y;
+    const contact = mix(0.35, 1, smoothstep(0, 2.6, h)).mul(mix(0.8, 1, smoothstep(0, 30, h)));
+    fAO.assign(select(isWall, contact, float(1)));
+    colour.mulAssign(select(isWall, mix(0.82, 1, smoothstep(0, 1, h)), float(1)));
 
-  // Rain streaks: water runs off each sill in 25 cm columns for 0.5–2 m; faint stains when dry.
-  float sillsUp = cellF.y - 0.19;
-  float below = 1.0 - fract(sillsUp);
-  float colF = along * 4.0;
-  float hs = facadeHash(vec2(mod(floor(colF), ${(BAYS_PER_PERIOD * 4).toFixed(1)}), floor(sillsUp) + face * 13.0 + tint * 41.0));
-  float streakLen = 0.15 + 0.45 * fract(hs * 7.31);
-  float lane = smoothstep(0.15, 0.6, 1.0 - abs(fract(colF) * 2.0 - 1.0));
-  facadeStreak = facadeWall * (1.0 - facadeWindow) * step(0.55, hs) * lane * clamp(1.0 - below / streakLen, 0.0, 1.0);
-  // Wet: concrete, tile and brick darken (water fills the pores); metal panels much less.
-  float porous = style == 6 ? 0.4 : 1.0;
-  float wet = uWet * (1.0 - facadeWindow) * porous;
-  diffuseColor.rgb *= 1.0 - wet * (0.32 + 0.25 * facadeStreak) - 0.08 * facadeStreak;
+    // Rain streaks: water runs off each sill in 25 cm columns for 0.5–2 m; faint stains when dry.
+    const sillsUp = cellF.y.sub(0.19);
+    const below = fract(sillsUp).oneMinus();
+    const colF = along.mul(4);
+    const hs = hash12(
+      vec2(mod(floor(colF), BAYS_PER_PERIOD * 4), floor(sillsUp).add(face.mul(13)).add(tint.mul(41))),
+    ).toVar();
+    const streakLen = fract(hs.mul(7.31)).mul(0.45).add(0.15);
+    const lane = smoothstep(0.15, 0.6, abs(fract(colF).mul(2).sub(1)).oneMinus());
+    fStreak.assign(
+      fWall
+        .mul(fWindow.oneMinus())
+        .mul(step(0.55, hs))
+        .mul(lane)
+        .mul(clamp(below.div(streakLen).oneMinus(), 0, 1)),
+    );
+    // Wet: concrete, tile and brick darken (water fills the pores); metal panels much less.
+    const porous = select(layer.equal(S.metal_panel), float(0.4), float(1));
+    const wet = facadeUniforms.uWet.mul(fWindow.oneMinus()).mul(porous);
+    colour.mulAssign(
+      float(1)
+        .sub(wet.mul(fStreak.mul(0.25).add(0.32)))
+        .sub(fStreak.mul(0.08)),
+    );
+    return vec4(colour, 1);
+  })();
 }
-`;
 
 // Wet walls are glossier; glass is smooth; curtain walls are coated (mirror-like, tinted).
-const ROUGHNESS = /* glsl */ `
-roughnessFactor = mix(roughnessFactor, 0.32, uWet * facadeWall * (0.55 + 0.45 * facadeStreak));
-roughnessFactor = mix(roughnessFactor, facadeCurtainWall > 0.5 ? 0.04 : 0.07, facadeWindow);
-`;
-const METALNESS = /* glsl */ `
-metalnessFactor = mix(metalnessFactor, 0.65, facadeWindow * facadeCurtainWall);
-`;
-// Curtain-wall panes are each tilted a little (as real ones are), which breaks the reflection up.
-const NORMAL = /* glsl */ `
-if (facadeWindow * facadeCurtainWall > 0.5) {
-  vec2 tilt = vec2(facadeHash(facadePane + 0.37), facadeHash(facadePane + vec2(5.1, 2.9))) - 0.5;
-  vec3 across = normalize((viewMatrix * vec4(facadeTangent, 0.0)).xyz);
-  vec3 up = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-  normal = normalize(normal + 0.035 * (tilt.x * across + tilt.y * up));
-}
-`;
-// Lit windows: the room behind near the camera, the flat glow further away, less what the glass
-// reflects (Fresnel). Lights are on by day too, but only nearby rooms show against daylight.
-const EMISSIVE = /* glsl */ `
-{
-#ifdef FACADE_WINDOWS_LIT
-  float nv = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
-  float f0 = facadeCurtainWall > 0.5 ? 0.2 : 0.04;
-  float fresnel = f0 + (1.0 - f0) * pow(1.0 - nv, 5.0);
-  vec3 glow = facadeGlow;
-  float near = 0.0;
-#ifdef FACADE_INTERIOR
-  vec3 eye = vFacadePos - cameraPosition;
-  float dist = length(eye);
-  near = (1.0 - smoothstep(70.0, 140.0, dist)) * (1.0 - facadeFar);
-  bool isRoom = near > 0.0 && facadeLit > 0.0 && facadeWindow > 0.0 && facadeClear > 0.0;
-  if (isRoom) {
-    vec3 e = eye / dist;
-    vec3 fn = normalize(vFacadeNormal);
-    vec2 size = vec2(${(TILE_W / 4).toFixed(1)} * facadeRoomCells, facadeRoomDepth);
-    vec3 d = vec3(dot(e, facadeTangent) / size.x, e.y / ${(TILE_H / 4).toFixed(1)}, max(-dot(e, fn), 0.05) / size.y);
-    vec3 room = facadeInterior(vec2(facadeRoomX, facadeCellUv.y), d, facadeRoomSeed, facadeRoomKind, size) * facadeLamp;
-    glow = mix(glow, mix(facadeBlindGlow, room, facadeClear), near);
-  }
-#endif
-  float shown = uNight + (1.0 - uNight) * 0.08 * near;
-  totalEmissiveRadiance += glow * facadeWindow * facadeLit * shown * (1.0 - fresnel);
-#else
-  totalEmissiveRadiance += vec3(1.0, 0.78, 0.45) * facadeWindow * facadeLit * uNight * 1.2;
-#endif
-}
-`;
-// Ground contact darkens the sky and bounce light (not the sun).
-const AO = /* glsl */ `
-reflectedLight.indirectDiffuse *= facadeAO;
-reflectedLight.indirectSpecular *= mix(1.0, facadeAO, 0.6);
-`;
+const facadeRoughness = mix(
+  mix(materialRoughness, 0.32, facadeUniforms.uWet.mul(fWall).mul(fStreak.mul(0.45).add(0.55))),
+  select(fCurtain.greaterThan(0.5), float(0.04), float(0.07)),
+  fWindow,
+);
+const facadeMetalness = mix(materialMetalness, 0.65, fWindow.mul(fCurtain));
 
-/** Live façade materials, recompiled when 夜の窓 changes (one shared program per setting). */
-const materials = new Set<MeshStandardMaterial>();
-let windowsSetting = GRAPHICS.settings.windows;
+/**
+ * Curtain-wall panes are each tilted a little (as real ones are), which breaks the reflection up.
+ * Read in the normal stage, where normalView is the geometry's normal (in view space).
+ */
+const facadeNormal = Fn(() => {
+  const isPane = fWindow.mul(fCurtain).greaterThan(0.5);
+  const tilt = vec2(hash12(fPane.add(0.37)), hash12(fPane.add(vec2(5.1, 2.9)))).sub(0.5);
+  const across = normalize(cameraViewMatrix.mul(vec4(fTangent, 0)).xyz);
+  const up = normalize(cameraViewMatrix.mul(vec4(0, 1, 0, 0)).xyz);
+  const tilted = normalize(normalView.add(across.mul(tilt.x).add(up.mul(tilt.y)).mul(0.035)));
+  return select(isPane, tilted, normalView);
+})();
+
+/**
+ * Lit windows: the room behind near the camera, the flat glow further away, less what the glass
+ * reflects (Fresnel). Lights are on by day too, but only nearby rooms show against daylight.
+ */
+function emission(mode: WindowsMode): Node<"vec3"> {
+  const night = facadeUniforms.uNight;
+  if (mode === "flat") return vec3(1.0, 0.78, 0.45).mul(fWindow).mul(fLit).mul(night).mul(1.2);
+  return Fn(() => {
+    const nv = clamp(dot(normalView, positionViewDirection), 0, 1);
+    const f0 = select(fCurtain.greaterThan(0.5), float(0.2), float(0.04));
+    const fresnel = f0.add(f0.oneMinus().mul(pow(nv.oneMinus(), 5)));
+    const glow = fGlow.toVar();
+    let near: Node<"float"> = float(0);
+    if (mode === "rooms") {
+      const eye = positionWorld.sub(cameraPosition).toVar();
+      const dist = length(eye).toVar();
+      const nearby = smoothstep(70, 140, dist).oneMinus().mul(fFar.oneMinus()).toVar();
+      near = nearby;
+      const isRoom = nearby
+        .greaterThan(0)
+        .and(fLit.greaterThan(0))
+        .and(fWindow.greaterThan(0))
+        .and(fClear.greaterThan(0));
+      // How: a real branch, so windows without a room skip the box; nothing in it takes derivatives.
+      If(isRoom, () => {
+        const e = eye.div(dist);
+        const size = vec2(fRoomCells.mul(TILE_W / 4), fRoomDepth);
+        const ray = vec3(
+          dot(e, fTangent).div(size.x),
+          e.y.div(TILE_H / 4),
+          max(dot(e, normalWorldGeometry).negate(), 0.05).div(size.y),
+        );
+        const room = interior(vec2(fRoomX, fCellUv.y), ray, fRoomSeed, fRoomKind, size).mul(fLamp);
+        glow.assign(mix(glow, mix(fBlindGlow, room, fClear), nearby));
+      });
+    }
+    const shown = night.add(night.oneMinus().mul(0.08).mul(near));
+    return glow.mul(fWindow).mul(fLit).mul(shown).mul(fresnel.oneMinus());
+  })();
+}
+
+type FacadeNodes = Pick<
+  MeshStandardNodeMaterial,
+  "colorNode" | "roughnessNode" | "metalnessNode" | "normalNode" | "emissiveNode"
+>;
+const graphs = new Map<WindowsMode, FacadeNodes>();
+
+/** The node graph for a 夜の窓 setting, built once and shared by every façade material. */
+function facadeNodes(mode: WindowsMode): FacadeNodes {
+  let nodes = graphs.get(mode);
+  if (nodes) return nodes;
+  nodes = {
+    colorNode: surface(mode !== "flat"),
+    roughnessNode: facadeRoughness,
+    metalnessNode: facadeMetalness,
+    normalNode: facadeNormal,
+    emissiveNode: emission(mode),
+  };
+  graphs.set(mode, nodes);
+  return nodes;
+}
+
+/** Ground contact darkens the sky and bounce light (not the sun). */
+class FacadeLightingModel extends PhysicalLightingModel {
+  override ambientOcclusion(builder: NodeBuilder): void {
+    super.ambientOcclusion(builder);
+    const light = (builder.context as { reflectedLight: ReflectedLight }).reflectedLight;
+    light.indirectDiffuse.mulAssign(fAO);
+    light.indirectSpecular.mulAssign(mix(1, fAO, 0.6));
+  }
+}
+type ReflectedLight = Record<"indirectDiffuse" | "indirectSpecular", Node<"vec3">>;
+
+/** A PLATEAU wall: the façade nodes for the current 夜の窓 and the ground-contact lighting. */
+class FacadeMaterial extends MeshStandardNodeMaterial {
+  windows: WindowsMode;
+
+  constructor(windows: WindowsMode) {
+    super({ color: 0xffffff, roughness: 0.85, metalness: 0.05 });
+    this.windows = windows;
+    Object.assign(this, facadeNodes(windows));
+  }
+
+  /** Switches the node graph (rebuilt on the next draw; one shared pipeline per setting). */
+  setWindows(windows: WindowsMode): void {
+    const isSame = windows === this.windows;
+    if (isSame) return;
+    this.windows = windows;
+    Object.assign(this, facadeNodes(windows));
+    this.needsUpdate = true;
+  }
+
+  override setupLightingModel(): PhysicalLightingModel {
+    return new FacadeLightingModel();
+  }
+
+  override customProgramCacheKey(): string {
+    return `${super.customProgramCacheKey()}:plateau-facade-${this.windows}`;
+  }
+}
+
+/** Live façade materials, switched when 夜の窓 changes. */
+const materials = new Set<FacadeMaterial>();
 GRAPHICS.onChange((settings) => {
-  const isSame = settings.windows === windowsSetting;
-  if (isSame) return;
-  windowsSetting = settings.windows;
-  for (const material of materials) material.needsUpdate = true;
+  for (const material of materials) material.setWindows(settings.windows);
 });
 
-// WEBGPU-TODO(phase C): the façade in TSL (node materials ignore onBeforeCompile and the WebGL
-// program cache key below): night windows by hour and use, interior mapping, glass, ground contact,
-// wet walls, from the same `facade` attribute and facadeUniforms (uNight via Buildings.
-// setNightFactor, uTime/uWet via setFacadeClock, uLitShare, uOrigin, uFacadeTex) and 画質 夜の窓.
-// Until then the walls are the plain material: their colour, no windows lit at night.
-export function applyFacade(material: MeshStandardMaterial): void {
+/** A new façade material for a PLATEAU tile mesh (one per mesh; they share their pipelines). */
+export function facadeMaterial(): MeshStandardNodeMaterial {
+  const material = new FacadeMaterial(GRAPHICS.settings.windows);
   materials.add(material);
   material.addEventListener("dispose", () => materials.delete(material));
-  // How: the setting is a define (no cost for what is off, e.g. on phones); the cache key keeps
-  // one program per setting, so switching back is instant.
-  material.customProgramCacheKey = () => `plateau-facade-${windowsSetting}`;
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uNight = facadeUniforms.uNight;
-    shader.uniforms.uOrigin = facadeUniforms.uOrigin;
-    shader.uniforms.uFacadeTex = facadeUniforms.uFacadeTex;
-    shader.uniforms.uLitShare = facadeUniforms.uLitShare;
-    shader.uniforms.uWet = facadeUniforms.uWet;
-    shader.uniforms.uTime = facadeUniforms.uTime;
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        "#include <common>",
-        "#include <common>\nattribute vec2 facade;\nvarying vec2 vFacade;\nvarying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;",
-      )
-      .replace(
-        "#include <begin_vertex>",
-        "#include <begin_vertex>\nvFacade = facade;\nvFacadePos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvFacadeNormal = normalize(mat3(modelMatrix) * objectNormal);",
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${WINDOW_DEFINES[windowsSetting]}\n${PARS}`)
-      .replace("#include <color_fragment>", `#include <color_fragment>\n${COLOR}`)
-      .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${ROUGHNESS}`)
-      .replace("#include <metalnessmap_fragment>", `#include <metalnessmap_fragment>\n${METALNESS}`)
-      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${NORMAL}`)
-      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${EMISSIVE}`)
-      .replace("#include <aomap_fragment>", `#include <aomap_fragment>\n${AO}`);
-  };
-  material.needsUpdate = true;
+  return material;
 }
