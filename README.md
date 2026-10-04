@@ -60,25 +60,35 @@ just car-textures  # 車のテクスチャを再生成（uv）
 just car-model     # Blender CLI で車のモデルを再生成（nix develop .#blender、初回は約 600MB を取得）
 just sign-model    # 道路標識の板・支柱を再生成
 just human-model   # 歩行者を再生成
-just textures      # 標識・歩行者・建物外壁のテクスチャを再生成（uv）
+just signal-model  # 信号機（灯器・信号柱）を再生成
+just ambulance-model  # 救急車を再生成
+just textures      # 標識・歩行者・建物外壁・信号機・救急車のテクスチャを再生成（uv）
+just assets        # アセット管理画面（モデルとテクスチャのプレビューとレビュー）を開く
 just build      # dist/ に本番ビルド
 ```
 
 `main` に push すると GitHub Actions が GitHub Pages にデプロイします。
 
+### アセット管理とレビュー
+
+`just assets` で開くアセット管理画面（`assets.html`）に、Blender で作ったモデルと手続き生成したテクスチャがすべて並びます。モデルは回して見られ、部品の表示切替と三角形数、ワイヤーフレームがあります。テクスチャは透過を市松模様の上で見られます。
+
+各アセットに OK／要修正を付け、指示を書き、ピン（テクスチャはクリック、モデルは Shift+クリックで部品に）を置いて「レビューを Claude に送る」を押すと、開発サーバーが `.review/pending/` に書き出します。Claude Code のフック（`.claude/hooks/asset-review-watch.sh`、`asyncRewake`）がセッションを起こし、`asset-review` スキル（`.agents/skills/asset-review/`）の手順で生成スクリプトを直して作り直します。対応結果は画面に表示されます。
+
 ### 構成
 
-| パス                                   | 役割                                                                                                                        |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `src/geo/`                             | WGS84・ECEF・ENU の変換、浮動原点（LocalFrame）、タイル座標、太陽位置                                                       |
-| `src/world/`                           | 地形（DEM→メッシュ＋trimesh コライダ）、PLATEAU 建物（3d-tiles-renderer＋コライダ＋窓のシェーダ）、空・天気、都営バス       |
-| `src/physics/`                         | Rapier のレイキャスト車両                                                                                                   |
-| `src/game/`                            | 車のモデル、カメラ、入力、POI、ミッション、ミニマップ、音、出典表示                                                         |
-| `scripts/fetch-data.ts`                | ビルド時のデータ生成。東京都カタログの CKAN API でライセンスを照会し、CC BY 4.0 以外なら停止します                          |
-| `scripts/blender/car.py`               | Blender CLI（bpy）で車体をロフト＋細分化＋ブーリアンで作り、灯火やナンバーをレイキャストで車体に沿わせて glb に書き出します |
-| `scripts/blender/signs.py`, `human.py` | 道路標識の板（円・逆三角・正方形・長方形）・支柱・取付金具と、歩行者（部品ごとに関節を原点にして書き出し）                  |
-| `scripts/textures/*.py`                | 車・標識・歩行者・建物外壁のテクスチャの手続き生成（Pillow、シード固定。agy に委譲して作成）                                |
-| `scripts/regulations.ts`               | JARTIC 交通規制情報（Shift_JIS・約 400MB の CSV）と OSM の信号機を z14 タイルに分けて `public/data/` に書き出します         |
+| パス                                         | 役割                                                                                                                        |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `src/geo/`                                   | WGS84・ECEF・ENU の変換、浮動原点（LocalFrame）、タイル座標、太陽位置                                                       |
+| `src/world/`                                 | 地形（DEM→メッシュ＋trimesh コライダ）、PLATEAU 建物（3d-tiles-renderer＋コライダ＋窓のシェーダ）、空・天気、都営バス       |
+| `src/physics/`                               | Rapier のレイキャスト車両                                                                                                   |
+| `src/game/`                                  | 車のモデル、カメラ、入力、POI、ミッション、ミニマップ、音、出典表示                                                         |
+| `scripts/fetch-data.ts`                      | ビルド時のデータ生成。東京都カタログの CKAN API でライセンスを照会し、CC BY 4.0 以外なら停止します                          |
+| `scripts/blender/car.py`                     | Blender CLI（bpy）で車体をロフト＋細分化＋ブーリアンで作り、灯火やナンバーをレイキャストで車体に沿わせて glb に書き出します |
+| `scripts/blender/signs.py`, `human.py`       | 道路標識の板（円・逆三角・正方形・長方形）・支柱・取付金具と、歩行者（部品ごとに関節を原点にして書き出し）                  |
+| `scripts/blender/signals.py`, `ambulance.py` | 信号機（車両用・歩行者用灯器、信号柱）と高規格救急車                                                                        |
+| `scripts/textures/*.py`                      | 車・標識・歩行者・建物外壁のテクスチャの手続き生成（Pillow、シード固定。agy に委譲して作成）                                |
+| `scripts/regulations.ts`                     | JARTIC 交通規制情報（Shift_JIS・約 400MB の CSV）と OSM の信号機を z14 タイルに分けて `public/data/` に書き出します         |
 
 23 区の端から端まではおよそ 30km あり、地球の曲率で端では約 18m 沈みます。そのため車の付近を原点とするローカル座標を使い、1.5km 離れるたびに ECEF 経由で原点を付け替えています。
 

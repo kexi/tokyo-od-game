@@ -50,6 +50,10 @@ signal-model:
 ambulance-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/ambulance.py -- public/models/ambulance.glb
 
+# アセット管理画面（3D モデルとテクスチャのプレビューとレビュー）を開発サーバーで開く
+assets:
+    pnpm exec vite --open /tokyo-od-game/assets.html
+
 # 道路標識・歩行者・建物外壁・信号機・救急車のテクスチャを手続き生成し直す
 textures:
     uv run scripts/textures/sign_textures.py

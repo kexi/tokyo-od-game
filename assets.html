@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>アセット管理</title>
+    <meta
+      name="description"
+      content="法令厳守 TOKYO OPEN DRIVE の 3D モデルとテクスチャの一覧・プレビュー・レビュー"
+    />
+    <style>
+      :root {
+        --bg: #0e1520;
+        --panel: #162132;
+        --line: rgba(255, 255, 255, 0.12);
+        --fg: #e8eef6;
+        --sub: #9fb0c6;
+        --accent: #ffd23c;
+        --ok: #3cd17a;
+        --ng: #ff6b5a;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme="dark"]) {
+          --bg: #f3f5f8;
+          --panel: #ffffff;
+          --line: rgba(0, 0, 0, 0.12);
+          --fg: #1a2230;
+          --sub: #5a6778;
+          --accent: #b98600;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.5 "Noto Sans JP",
+          "Hiragino Sans",
+          system-ui,
+          sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      header h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      header .sub {
+        color: var(--sub);
+        font-size: 12px;
+      }
+      header .spacer {
+        flex: 1;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #1a1a1a;
+        border-color: transparent;
+        font-weight: 700;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 300px 1fr 340px;
+        height: calc(100vh - 53px);
+      }
+      nav {
+        overflow: auto;
+        border-right: 1px solid var(--line);
+        padding: 8px;
+      }
+      nav h2 {
+        font-size: 12px;
+        color: var(--sub);
+        margin: 14px 6px 4px;
+        letter-spacing: 0.05em;
+      }
+      nav .item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        border-radius: 8px;
+        padding: 5px 6px;
+      }
+      nav .item:hover,
+      nav .item.active {
+        background: var(--panel);
+      }
+      nav .item img {
+        width: 36px;
+        height: 36px;
+        object-fit: contain;
+        border-radius: 4px;
+        background: repeating-conic-gradient(#8884 0 25%, #0000 0 50%) 0 0 / 10px 10px;
+      }
+      nav .item .glyph {
+        width: 36px;
+        text-align: center;
+        font-size: 20px;
+      }
+      nav .item .name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      nav .badge {
+        font-size: 11px;
+        border-radius: 999px;
+        padding: 0 7px;
+      }
+      .badge.ok {
+        background: var(--ok);
+        color: #052;
+      }
+      .badge.ng {
+        background: var(--ng);
+        color: #300;
+      }
+      .badge.done {
+        background: var(--sub);
+        color: var(--bg);
+      }
+      #stage {
+        position: relative;
+        overflow: hidden;
+      }
+      #stage canvas.view {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      #stage .image {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        overflow: auto;
+        background: repeating-conic-gradient(#8883 0 25%, #0000 0 50%) 0 0 / 24px 24px;
+      }
+      #stage .image .frame {
+        position: relative;
+        max-width: 92%;
+      }
+      #stage .image img {
+        display: block;
+        max-width: 100%;
+        max-height: calc(100vh - 120px);
+        image-rendering: auto;
+      }
+      .pin {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        margin: -11px 0 0 -11px;
+        border-radius: 50%;
+        background: var(--ng);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+        box-shadow: 0 0 0 2px #fff;
+      }
+      #stage .toolbar {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      #stage .toolbar button {
+        background: var(--panel);
+      }
+      #stage .hint {
+        position: absolute;
+        left: 12px;
+        bottom: 10px;
+        color: var(--sub);
+        font-size: 12px;
+      }
+      aside {
+        border-left: 1px solid var(--line);
+        overflow: auto;
+        padding: 12px;
+      }
+      aside h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        word-break: break-all;
+      }
+      aside dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 10px;
+        font-size: 12px;
+        margin: 0 0 10px;
+      }
+      aside dt {
+        color: var(--sub);
+      }
+      aside dd {
+        margin: 0;
+        word-break: break-all;
+      }
+      aside .parts {
+        font-size: 12px;
+        max-height: 180px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px;
+        margin-bottom: 10px;
+      }
+      aside .parts label {
+        display: flex;
+        gap: 6px;
+      }
+      aside textarea {
+        width: 100%;
+        min-height: 90px;
+        font: inherit;
+        color: inherit;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+      }
+      aside .verdict {
+        display: flex;
+        gap: 6px;
+        margin: 8px 0;
+      }
+      aside .verdict button.on.ok {
+        background: var(--ok);
+        color: #052;
+      }
+      aside .verdict button.on.ng {
+        background: var(--ng);
+        color: #300;
+      }
+      aside ol.pins {
+        padding-left: 20px;
+        font-size: 13px;
+      }
+      aside ol.pins input {
+        width: 100%;
+        font: inherit;
+        color: inherit;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 3px 6px;
+      }
+      aside details {
+        font-size: 12px;
+        color: var(--sub);
+        margin-top: 10px;
+      }
+      aside pre {
+        white-space: pre-wrap;
+        font-size: 11px;
+      }
+      .response {
+        border-left: 3px solid var(--ok);
+        padding: 4px 8px;
+        font-size: 12px;
+        margin: 8px 0;
+        background: var(--panel);
+        border-radius: 4px;
+      }
+      @media (max-width: 900px) {
+        main {
+          grid-template-columns: 1fr;
+          height: auto;
+        }
+        nav {
+          max-height: 40vh;
+        }
+        #stage {
+          height: 60vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>アセット管理</h1>
+      <span class="sub" id="summary"></span>
+      <span class="spacer"></span>
+      <span class="sub" id="review-state"></span>
+      <button type="button" class="primary" id="submit" disabled>レビューを Claude に送る</button>
+    </header>
+    <main>
+      <nav id="list"></nav>
+      <section id="stage"></section>
+      <aside id="detail"></aside>
+    </main>
+    <script type="module" src="/src/assetsPage.ts"></script>
+  </body>
+</html>
