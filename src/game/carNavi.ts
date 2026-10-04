@@ -72,6 +72,8 @@ export type CarNaviState = {
   limit: number | null;
   place: string;
   clock: string;
+  /** The TV playing behind the map (「♪ 10ch」, game/naviTv.ts), or nothing. */
+  tv?: string | null;
 };
 
 export class CarNavi {
@@ -245,6 +247,15 @@ export class CarNavi {
       const left = Math.max(0, s.route.length - s.at);
       ctx.font = `400 16px ${font}`;
       ctx.fillText(`目的地まで ${(left / 1000).toFixed(1)}km`, W - 24, 66);
+    }
+    // The TV's sound playing behind the map, under the clock.
+    if (s.tv) {
+      ctx.fillStyle = pal.panel;
+      roundRect(ctx, W - 112, 84, 100, 32, 10);
+      ctx.fill();
+      ctx.fillStyle = "#7dff9a";
+      ctx.font = `700 18px ${font}`;
+      ctx.fillText(s.tv, W - 24, 107);
     }
     // Where the car is, along the bottom, with the limit in force.
     ctx.fillStyle = pal.panel;

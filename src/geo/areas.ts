@@ -66,6 +66,11 @@ export class AreaIndex {
     return [...hit];
   }
 
+  /** Every town's rings with its ward (x = lon, y = lat, in 1e-5°), to draw a map of the wards. */
+  forEachRing(fn: (ward: string, ring: Int32Array) => void): void {
+    for (const t of this.towns) for (const r of t.rings) fn(t.ward, r);
+  }
+
   lookup(lat: number, lon: number): AreaHit | null {
     const x = Math.round(lon * Q);
     const y = Math.round(lat * Q);

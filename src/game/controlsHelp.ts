@@ -113,6 +113,12 @@ export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[
     [key("taxi"), "自動運転タクシーを呼ぶ（スマホのタクシーアプリ）"],
     [key("phoneZoom"), "スマホの拡大表示 / 元に戻す（操作になるので運転中は使わない）"],
     [`${key("nav")} / ${key("minimap")}`, "ナビ / 小さな地図の表示"],
+    [
+      `${key("tv")} / ${key("tvChannel")}`,
+      assist === "easy"
+        ? "ナビのテレビ / チャンネル（映像は停車中だけ、走行中は音声のみ。簡単操作では案内中に走り出すと地図に戻る）"
+        : "ナビのテレビ / チャンネル（映像は停車してサイドブレーキ（Space）かエンジン停止のときだけ、走行中は音声のみ）",
+    ],
     [key("pause"), "一時停止"],
     [key("reset"), "車を起こす・その場に復帰"],
     [key("screenshot"), "スクリーンショット"],

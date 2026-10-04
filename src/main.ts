@@ -123,6 +123,8 @@ import { PATROL_LABEL, PolicePatrol, type PatrolKind } from "./game/policePatrol
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
 import { CarNavi } from "./game/carNavi";
+import { displayOffset, NaviTv } from "./game/naviTv";
+import type { TvInfo } from "./game/tvRules";
 import { buildToolbar, labelToolbar } from "./game/toolbar";
 import { MotionBlur } from "./world/motionBlur";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
@@ -1288,6 +1290,53 @@ async function main(): Promise<void> {
       );
     }),
   );
+  // ナビのテレビ (game/naviTv.ts): the picture only stopped with the parking brake on, the sound always.
+  const tvInfo = (): TvInfo => {
+    // The numbers are observed whatever the sky is set to; the sky only in 実況.
+    const obs = env.getObservation();
+    const ward = wardName === "—" ? "" : wardName;
+    return {
+      hour: env.displayHour(lastGeo.lat, lastGeo.lon),
+      place: [ward, townName].filter(Boolean).join(" "),
+      ward,
+      lat: lastGeo.lat,
+      lon: lastGeo.lon,
+      weather: {
+        raining: env.isRaining(),
+        fixedSky: env.weather !== "real" || obs === null,
+        sun1h: obs?.sun1h ?? null,
+        night: env.nightFactor > 0.5,
+        temp: obs?.temp ?? null,
+        humidity: obs?.humidity ?? null,
+        precip10m: obs?.precip10m ?? null,
+        wind: obs?.wind ?? null,
+      },
+      violations: law.state.log
+        .slice(todayFrom)
+        .map((r) => ({ label: r.label, caught: r.status !== "uncaught" })),
+    };
+  };
+  const naviTv = new NaviTv({
+    audio,
+    voice,
+    areas,
+    info: tvInfo,
+    speakerAt: () => displayOffset(cockpit.root, vehicle.object),
+    // The people (a conversation, a call, the patrol car's loudspeaker) come first.
+    canSpeak: () =>
+      conversation.active === null &&
+      !phone.inCall &&
+      police?.state !== "pursuing" &&
+      police?.state !== "ticketing",
+  });
+  input.on(
+    "tv",
+    inCarOnly(() => toast(naviTv.press(), "#4dd2ff")),
+  );
+  input.on(
+    "tvChannel",
+    inCarOnly(() => toast(naviTv.channelUp(), "#4dd2ff")),
+  );
   input.on("pause", () => {
     if (state !== "playing") return;
     paused = !paused;
@@ -2208,7 +2257,22 @@ async function main(): Promise<void> {
     $("#hud").classList.toggle("in-cockpit", isCockpitView);
     if (isCockpitView)
       cockpit.setClock(clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "");
-    if (isCockpitView)
+    // ナビのテレビ: what its picture lock reads (the speed pulse, the parking brake, the engine).
+    const tvNote = naviTv.update({
+      now,
+      drive: {
+        kmh: vehicle.speedKmh(),
+        parkingBrake: drive.handbrake,
+        engineOff: isEngineOff || !controls.engineOn,
+      },
+      assist: controls.assist,
+      routeActive: nav.route !== null,
+      inCar: isInCar,
+      inCabin: cockpit.active,
+    });
+    if (tvNote) toast(tvNote, "#4dd2ff");
+    const isTvOnScreen = isCockpitView && naviTv.draw(carNavi.canvas, now);
+    if (isCockpitView && !isTvOnScreen)
       carNavi.draw({
         now,
         graph: roadGraph,
@@ -2221,6 +2285,7 @@ async function main(): Promise<void> {
         limit: currentLimit,
         place: [wardName, townName].filter(Boolean).join(" "),
         clock: clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "",
+        tv: naviTv.badge,
       });
     cockpit.update({
       dt,
@@ -3645,6 +3710,7 @@ async function main(): Promise<void> {
         parkingPlace,
         getFrame: () => frame,
         getState: () => state,
+        naviTv,
         setDebugCamera: (fn: typeof debugCamera) => (debugCamera = fn),
       },
     });

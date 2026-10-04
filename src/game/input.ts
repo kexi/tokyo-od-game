@@ -35,6 +35,8 @@ export type Action =
   | "warp"
   | "title"
   | "taxi"
+  | "tv"
+  | "tvChannel"
   | "settings";
 
 export type KeyLayout = "wasd" | "ccd";
@@ -46,7 +48,7 @@ export type KeyLayout = "wasd" | "ccd";
  * Ctrl look left/right, Z look back, F the phone, M the navigation, O the small map, P pause,
  * R reset, F12 screenshot. The game's own actions sit on keys City Car Driving leaves free:
  * A 自動運転, Q 乗降, N 目的地, T 時間帯, Y 天気, I 出典, Home 帰宅, F1 操作, F2 地面, F8 音,
- * U タクシー; Esc closes what is open, or opens 設定.
+ * U タクシー, 3 / 4 ナビのテレビ・チャンネル; Esc closes what is open, or opens 設定.
  */
 const CCD_ACTIONS: Record<string, Action> = {
   KeyR: "reset",
@@ -79,6 +81,9 @@ const CCD_ACTIONS: Record<string, Action> = {
   F5: "replay",
   KeyX: "warp",
   KeyU: "taxi",
+  // Number keys no F-key copy uses: on every keyboard, in both layouts.
+  Digit3: "tv",
+  Digit4: "tvChannel",
   Escape: "close",
 };
 

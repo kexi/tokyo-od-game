@@ -77,6 +77,8 @@ const PLACE = {
   loudspeaker: { ref: 8, rolloff: 0.8, range: 350 },
   crosswalk: { ref: 3, rolloff: 1, range: 70 },
   hum: { ref: 4, rolloff: 1.2, range: 150 },
+  // A speaker in the dashboard, 60 cm from the driver's ear.
+  cabin: { ref: 0.6, rolloff: 1, range: 4 },
 } satisfies Record<string, Placement>;
 
 const HUM_PLACE: Record<HumClass, Placement> = {
@@ -298,6 +300,8 @@ export class SpatialAudio {
   private own: OwnCar | null = null;
   private hornEmitter: Emitter | null = null;
   private hornOn = false;
+  private speaker: Emitter | null = null;
+  private readonly speakerAt = new Vector3();
   private readonly sirens = new Map<object, Siren>();
   private readonly voices: VoiceSlot[] = [];
   private readonly hums: Hum[] = [];
@@ -443,6 +447,7 @@ export class SpatialAudio {
       // The horn behind the front bumper, the exhaust (and the tyres) at the back.
       this.hornEmitter?.follow(car, 0, -0.3, 2.1);
       this.own?.exhaust.follow(car, 0, -0.5, -1.6);
+      this.speaker?.follow(car, this.speakerAt.x, this.speakerAt.y, this.speakerAt.z);
     }
     const cameraInCabin = car !== null && isInCabin(cam.position, car.position, car.quaternion);
     const inside = hearsFromCabin({ inCar: o.inCar, cockpit: o.cockpit, cameraInCabin });
@@ -469,6 +474,7 @@ export class SpatialAudio {
     for (const v of this.voices) if (v.busy) v.emitter.update(o.dt, this.listener, now);
     this.hornEmitter?.update(o.dt, this.listener, now);
     this.own?.exhaust.update(o.dt, this.listener, now);
+    this.speaker?.update(o.dt, this.listener, now);
 
     if (this.clock - this.lastAssign >= ASSIGN_EVERY) {
       this.lastAssign = this.clock;
@@ -546,6 +552,25 @@ export class SpatialAudio {
     c.tyreEx.gain.setTargetAtTime(0.5 * tyres, t, 0.2);
   }
 
+  /**
+   * A speaker in the player's car (the navi's TV) at `at` in the car's frame, into the interior bus:
+   * heard from inside with the cabin's own reflections, not muffled as the street is, and not from
+   * outside. Equal-power panning (why not HRTF: at 60 cm straight ahead it adds little, and it would
+   * take one of the 12 positional voices). One speaker; asking again moves it.
+   */
+  cabinSpeaker(at: Vector3): AudioNode | null {
+    const ctx = this.ctx;
+    const interior = this.interior;
+    if (!ctx || !interior) return null;
+    if (!this.speaker) {
+      this.speaker = new Emitter(ctx, interior, false);
+      this.speaker.place(PLACE.cabin, 1);
+    }
+    this.speakerAt.copy(at);
+    this.speaker.follow(this.car, at.x, at.y, at.z);
+    return this.speaker.input;
+  }
+
   /** A line spoken from `anchor` (a person's mouth, the patrol car's loudspeaker). */
   voiceFrom(anchor: Object3D, style: VoiceStyle): VoiceFrom {
     return () => this.openVoice(anchor, style);
@@ -585,6 +610,7 @@ export class SpatialAudio {
       voices: this.voices.filter((v) => v.busy).map((v) => describeEmitter(v.emitter)),
       horn: this.hornOn && this.hornEmitter ? describeEmitter(this.hornEmitter) : null,
       exhaust: this.own ? describeEmitter(this.own.exhaust) : null,
+      cabinSpeaker: this.speaker ? describeEmitter(this.speaker) : null,
       ownCar: this.own && {
         engineInside: this.own.inEngine.gain.value,
         engineOutside: this.own.exEngine.gain.value,

@@ -34,6 +34,13 @@ const ITEMS: Item[] = [
   { action: "wipers", label: "ワイパー", wide: true },
   { action: "belt", label: "ベルト", wide: true },
   { action: "nav", label: "ナビ", wide: true },
+  {
+    action: "tv",
+    label: "テレビ",
+    title: "ナビのテレビ（映像は停車してサイドブレーキをかけたときだけ）",
+    wide: true,
+  },
+  { action: "tvChannel", label: "チャンネル", title: "テレビのチャンネル", wide: true },
   { action: "minimap", label: "地図", wide: true },
   { action: "time", label: "時間帯", wide: true },
   { action: "pause", label: "一時停止", wide: true },
