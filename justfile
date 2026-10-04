@@ -113,6 +113,10 @@ stroller-model:
 bicycle-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/bicycle.py -- public/models/bicycle.glb
 
+# 違反を撮影する通行人のスマートフォン（ケース色違い・画面は別ノード）を Blender CLI でモデリングし public/models/smartphone.glb を書き出す
+smartphone-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/smartphone.py -- public/models/smartphone.glb
+
 # 白黒パトカーと覆面パトカーを Blender CLI でモデリングし public/models/police_{patrol,unmarked}.glb を書き出す
 police-car-models:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_car.py -- patrol public/models/police_patrol.glb

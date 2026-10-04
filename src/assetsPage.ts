@@ -92,6 +92,12 @@ const FAMILIES: Record<string, { label: string; model?: string; blender?: string
     blender: "scripts/blender/ambulance.py",
     textures: "scripts/textures/ambulance_textures.py",
   },
+  // The screen is drawn by the game (witnessPhones.ts), so the model shows a dark display here.
+  smartphone: {
+    label: "スマートフォン（撮影する通行人）",
+    model: "smartphone.glb",
+    blender: "scripts/blender/smartphone.py",
+  },
   buildings: { label: "建物の外壁", textures: "scripts/textures/building_textures.py" },
 };
 
