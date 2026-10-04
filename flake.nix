@@ -27,6 +27,7 @@
           programs.oxfmt.enable = true;
           programs.just.enable = true;
           programs.shellcheck.enable = true;
+          programs.ruff-format.enable = true;
           settings.global.excludes = [
             "public/data/**"
             "pnpm-lock.yaml"
@@ -40,22 +41,32 @@
       checks = forAll (pkgs: {
         formatting = treefmt.${pkgs.system}.config.build.check ./.;
       });
-      devShells = forAll (pkgs: {
-        default = pkgs.mkShell {
-          packages = with pkgs; [
-            nodejs_24
-            pnpm
-            just
-            lefthook
-            gitleaks
-            pinact
-            actionlint
-            shellcheck
-          ];
-          shellHook = ''
-            lefthook install >/dev/null 2>&1 || true
-          '';
-        };
-      });
+      devShells = forAll (
+        pkgs:
+        {
+          default = pkgs.mkShell {
+            packages = with pkgs; [
+              nodejs_24
+              pnpm
+              just
+              lefthook
+              gitleaks
+              pinact
+              actionlint
+              shellcheck
+              ruff
+            ];
+            shellHook = ''
+              lefthook install >/dev/null 2>&1 || true
+            '';
+          };
+        }
+        # Blender (~1.6 GB) only regenerates public/models/*.glb (`just car-model`), so it lives in its
+        # own shell instead of the default one that CI and every contributor enter. nixpkgs no longer
+        # evaluates x86_64-darwin packages, hence the guard.
+        // pkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.system != "x86_64-darwin") {
+          blender = pkgs.mkShell { packages = [ pkgs.blender ]; };
+        }
+      );
     };
 }

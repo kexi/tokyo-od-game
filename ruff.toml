@@ -1,0 +1,6 @@
+# Python is only used for asset generators (scripts/blender, scripts/textures).
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "B", "I"]

@@ -14,6 +14,7 @@
 - 人をはねたら、スマホで 119 番・110 番に通報します。指令員は Gemma が演じ、場所と状況を伝えると救急車とパトカーが到着します。逃げるとパトカーに追跡され、ひき逃げ（救護義務違反、35 点）で逮捕されます。
 - 東京都環境確保条例のアイドリング・ストップ（駐停車時のエンジン停止）に対応しています。
 - Android（Chrome）でも横画面・全画面のタッチ操作で遊べます。iOS では会話 AI が使えず、定型応答になります。
+- 車は Blender CLI で手続き的にモデリングしています（`scripts/blender/car.py` → `public/models/car.glb`）。自車用の詳細モデル（約 5 万三角形、内装・ドアの継ぎ目・ミラー・ブレーキキャリパー付き）と、AI 車用の低ポリゴン版（約 3 千三角形）、それぞれのタクシー仕様があります。テクスチャも手続き生成です（`assets/car/textures/`）。
 - 車を降りて歩けます。歩行者に話しかけると、近くの実在スポットの方角と距離を教えてくれます。会話 AI（Gemma 4、端末内で実行）と音声（sanoTTS-jp）は任意で有効にできます。
 
 ## 操作
@@ -47,6 +48,8 @@ just dev        # 開発サーバ
 just check      # 型・lint・整形・テスト・justfile・Actions の検査
 just data       # オープンデータを取得して public/data を再生成（ライセンスゲート付き）
 just regs       # JARTIC 交通規制情報と OSM の信号機から public/data/regs・signals を再生成
+just car-textures  # 車のテクスチャを再生成（uv）
+just car-model     # Blender CLI で車のモデルを再生成（nix develop .#blender、初回は約 600MB を取得）
 just build      # dist/ に本番ビルド
 ```
 
@@ -54,14 +57,16 @@ just build      # dist/ に本番ビルド
 
 ### 構成
 
-| パス                     | 役割                                                                                                                  |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `src/geo/`               | WGS84・ECEF・ENU の変換、浮動原点（LocalFrame）、タイル座標、太陽位置                                                 |
-| `src/world/`             | 地形（DEM→メッシュ＋trimesh コライダ）、PLATEAU 建物（3d-tiles-renderer＋コライダ＋窓のシェーダ）、空・天気、都営バス |
-| `src/physics/`           | Rapier のレイキャスト車両                                                                                             |
-| `src/game/`              | 車のモデル、カメラ、入力、POI、ミッション、ミニマップ、音、出典表示                                                   |
-| `scripts/fetch-data.ts`  | ビルド時のデータ生成。東京都カタログの CKAN API でライセンスを照会し、CC BY 4.0 以外なら停止します                    |
-| `scripts/regulations.ts` | JARTIC 交通規制情報（Shift_JIS・約 400MB の CSV）と OSM の信号機を z14 タイルに分けて `public/data/` に書き出します   |
+| パス                               | 役割                                                                                                                        |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `src/geo/`                         | WGS84・ECEF・ENU の変換、浮動原点（LocalFrame）、タイル座標、太陽位置                                                       |
+| `src/world/`                       | 地形（DEM→メッシュ＋trimesh コライダ）、PLATEAU 建物（3d-tiles-renderer＋コライダ＋窓のシェーダ）、空・天気、都営バス       |
+| `src/physics/`                     | Rapier のレイキャスト車両                                                                                                   |
+| `src/game/`                        | 車のモデル、カメラ、入力、POI、ミッション、ミニマップ、音、出典表示                                                         |
+| `scripts/fetch-data.ts`            | ビルド時のデータ生成。東京都カタログの CKAN API でライセンスを照会し、CC BY 4.0 以外なら停止します                          |
+| `scripts/blender/car.py`           | Blender CLI（bpy）で車体をロフト＋細分化＋ブーリアンで作り、灯火やナンバーをレイキャストで車体に沿わせて glb に書き出します |
+| `scripts/textures/car_textures.py` | 車のテクスチャの手続き生成（Pillow、シード固定）                                                                            |
+| `scripts/regulations.ts`           | JARTIC 交通規制情報（Shift_JIS・約 400MB の CSV）と OSM の信号機を z14 タイルに分けて `public/data/` に書き出します         |
 
 23 区の端から端まではおよそ 30km あり、地球の曲率で端では約 18m 沈みます。そのため車の付近を原点とするローカル座標を使い、1.5km 離れるたびに ECEF 経由で原点を付け替えています。
 

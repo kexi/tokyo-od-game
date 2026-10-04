@@ -36,6 +36,7 @@ import { GameAudio } from "./game/audio";
 import { ConversationController } from "./game/conversation";
 import { Walker } from "./game/walker";
 import { ChaseCamera } from "./game/camera";
+import { loadCarModels } from "./game/carModel";
 import { renderCredits } from "./game/credits";
 import { Input } from "./game/input";
 import { Minimap } from "./game/minimap";
@@ -153,11 +154,14 @@ async function main(): Promise<void> {
   const camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 40000);
 
   const dem = new DemStore(new Geoid(geoidGrid));
-  setLoading("地形（国土地理院 DEM）を読み込み中…", 0.18);
-  await dem.load(
-    Math.floor(lonToTileX(SPAWN.lon, TERRAIN_ZOOM)),
-    Math.floor(latToTileY(SPAWN.lat, TERRAIN_ZOOM)),
-  );
+  setLoading("地形（国土地理院 DEM）と車のモデルを読み込み中…", 0.18);
+  await Promise.all([
+    dem.load(
+      Math.floor(lonToTileX(SPAWN.lon, TERRAIN_ZOOM)),
+      Math.floor(latToTileY(SPAWN.lat, TERRAIN_ZOOM)),
+    ),
+    loadCarModels(),
+  ]);
   let frame = new LocalFrame(SPAWN.lat, SPAWN.lon, dem.heightAt(SPAWN.lat, SPAWN.lon) ?? 40);
 
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });

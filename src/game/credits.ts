@@ -113,6 +113,9 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   抽出したデータベースは ${link("https://opendatacommons.org/licenses/odbl/1-0/", "Open Database License (ODbL) 1.0")} で提供します（${link(odblUrl, "LICENSE.txt")}）。
   信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。</p>
 
+  <h3>車のモデル</h3>
+  <p>本ゲーム用に ${link(`${REPO_URL}/blob/main/scripts/blender/car.py`, "Blender のスクリプト")}で作成しました。ナンバープレート・行灯・灯火などのテクスチャも手続き的に生成しています（${link(`${REPO_URL}/tree/main/assets/car/textures`, "生成方法")}）。文字は Noto Sans JP（${link("https://openfontlicense.org/", "SIL Open Font License 1.1")}）で描画。実在の車種・事業者・登録番号とは関係ありません。</p>
+
   <h3>町丁・区の境界と人口</h3>
   <p>出典：${link("https://www.e-stat.go.jp/", "政府統計の総合窓口（e-Stat）")}「国勢調査 令和2年 小地域（町丁・字等別）境界データ 東京都」を加工して作成（${link("https://www.e-stat.go.jp/terms-of-use", "利用規約")}：政府標準利用規約 第2.0版準拠）。現在地の区・町丁名の表示、スポットの座標検証、歩行者の人数（人口密度）に使用。</p>
 

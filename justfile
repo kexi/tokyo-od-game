@@ -26,6 +26,14 @@ data:
 regs:
     node scripts/regulations.ts
 
+# 車のテクスチャ（assets/car/textures）を手続き生成し直す（フォントはコミット固定の Noto Sans JP）
+car-textures:
+    uv run scripts/textures/car_textures.py
+
+# Blender CLI で車をモデリングし public/models/car.glb を書き出す（Blender は nix の別シェル）
+car-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/car.py -- public/models/car.glb
+
 # 型チェックを行う
 typecheck:
     pnpm exec tsc --noEmit

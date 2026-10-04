@@ -23,6 +23,9 @@ pre-commit:
     - name: actionlint
       glob: ".github/workflows/*.{yml,yaml}"
       run: actionlint
+    - name: ruff
+      glob: "*.py"
+      run: ruff format --check {staged_files} && ruff check {staged_files}
     - name: knowledge
       glob: "knowledge/**"
       run: bash bin/lint-knowledge.sh
