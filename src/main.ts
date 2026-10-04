@@ -52,6 +52,7 @@ import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { CLOSURE_WORDS } from "./world/closures";
 import { StreetFurniture, type Places } from "./world/streetFurniture";
+import { OrbisDevices } from "./world/orbis";
 import { jstDateAt } from "./geo/sun";
 import { gameClock, inForce as isInForceTime, timeNote, tokyoDate, type GameClock } from "./world/ruleTime";
 import { classifyTurn, laneAllows, laneIndex, planRoute, TURN_WORDS } from "./game/navigation";
@@ -119,7 +120,16 @@ import { CarNavi } from "./game/carNavi";
 import { MotionBlur } from "./world/motionBlur";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
-import { blurLevelOf, loadPrefs, renderKeyList, savePrefs, type ControlPrefs } from "./game/controlsHelp";
+import {
+  blurLevelOf,
+  DEFAULT_PREFS,
+  loadPrefs,
+  renderKeyList,
+  savePrefs,
+  SEAT_RANGE,
+  seatOf,
+  type ControlPrefs,
+} from "./game/controlsHelp";
 import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type Pose, type ReplayCamera } from "./game/replay";
 import { createVehicle, loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
@@ -362,6 +372,8 @@ async function main(): Promise<void> {
   };
   /** Graph + JARTIC/OSM regulations + signals + markings for the current frame. */
   const furniture = new StreetFurniture(scene, (x, z) => groundY(x, z));
+  // オービス and their 予告看板 (loads its own model and police.json).
+  const orbis = new OrbisDevices(scene, (x, z) => groundY(x, z), world);
   let places: Places | null = null;
   void fetch(`${import.meta.env.BASE_URL}data/places.json`)
     .then((r) => (r.ok ? r.json() : null))
@@ -383,6 +395,7 @@ async function main(): Promise<void> {
     const furnitureSigns = furniture.rebuild(graph, places, frame);
     if (applied) applied.signs.push(...furnitureSigns);
     signs.rebuild(graph, applied, control.approaches);
+    orbis.rebuild(graph, frame);
     pedestrians.setNetwork(
       new SidewalkNetwork(
         graph,
@@ -1074,6 +1087,12 @@ async function main(): Promise<void> {
     controls.assist = prefs.assist;
     blur.level = prefs.blur;
     $<HTMLSelectElement>("#opt-blur").value = prefs.blur;
+    cockpit.setSeat(prefs.seatUp, prefs.seatBack);
+    $<HTMLInputElement>("#opt-seat-up").value = String(prefs.seatUp);
+    $<HTMLInputElement>("#opt-seat-back").value = String(prefs.seatBack);
+    const cm = (m: number) => `${m > 0 ? "+" : ""}${Math.round(m * 100)} cm`;
+    $("#opt-seat-up-value").textContent = cm(prefs.seatUp);
+    $("#opt-seat-back-value").textContent = cm(prefs.seatBack);
     $<HTMLSelectElement>("#opt-layout").value = prefs.layout;
     $<HTMLSelectElement>("#opt-assist").value = prefs.assist;
     renderKeyList($("#help-keys"), prefs);
@@ -1085,12 +1104,18 @@ async function main(): Promise<void> {
     }
   };
   applyPrefs(loadPrefs());
-  for (const id of ["#opt-layout", "#opt-assist", "#opt-blur"])
+  for (const id of ["#opt-layout", "#opt-assist", "#opt-blur", "#opt-seat-up", "#opt-seat-back"])
     $(id).addEventListener("change", () => {
       const prefs: ControlPrefs = {
         layout: $<HTMLSelectElement>("#opt-layout").value === "ccd" ? "ccd" : "wasd",
         assist: $<HTMLSelectElement>("#opt-assist").value === "real" ? "real" : "easy",
         blur: blurLevelOf($<HTMLSelectElement>("#opt-blur").value),
+        seatUp: seatOf($<HTMLInputElement>("#opt-seat-up").value, SEAT_RANGE.up, DEFAULT_PREFS.seatUp),
+        seatBack: seatOf(
+          $<HTMLInputElement>("#opt-seat-back").value,
+          SEAT_RANGE.back,
+          DEFAULT_PREFS.seatBack,
+        ),
       };
       savePrefs(prefs);
       applyPrefs(prefs);
@@ -1276,7 +1301,6 @@ async function main(): Promise<void> {
   let hornFor = 0;
   let navHidden = false;
   let pendingScreenshot = false;
-  const orbisFired = new Map<string, number>();
   /** The orbis flash: a red-white burst over the screen. */
   const flashScreen = () => {
     const el = document.createElement("div");
@@ -1556,6 +1580,7 @@ async function main(): Promise<void> {
       refreshRoads(geo.lat, geo.lon);
     control.update(now / 1000);
     signs.update(focus, now);
+    orbis.update(now);
     // カーナビ to the mission target, along legal streets.
     const navTarget = missions.current ? field.localPosition(missions.current.target) : null;
     nav.update({
@@ -1734,29 +1759,25 @@ async function main(): Promise<void> {
         }
         laneHeld = { seg: s, lane };
       } else laneHeld = null;
-      // オービス (速度違反自動取締装置): passing one 30 km/h or more over the limit (the 赤切符 range
-      // they are set for) fires the camera; the notice comes by post after the day ends.
-      for (const [olon, olat] of policeData?.orbis ?? []) {
-        const d = haversineMeters(geo.lat, geo.lon, olat, olon);
-        if (d > 14) continue;
-        const key = `${olon},${olat}`;
-        const isOver = currentLimit !== null && speed - currentLimit >= 30;
-        if (!isOver || now - (orbisFired.get(key) ?? -Infinity) < 15000) continue;
-        orbisFired.set(key, now);
-        const record = law.commit(
-          speedViolation(speed - (currentLimit ?? 0)) ?? VIOLATIONS.signal,
-          now,
-          0,
-          violationContext(
-            `速度違反自動取締装置（オービス）で撮影: ${Math.round(speed)} km/h（制限 ${currentLimit} km/h）`,
-          ),
+      // オービス (速度違反自動取締装置): crossing a device's line in the direction and lanes it
+      // covers, 30 km/h or more over the limit (40 on an expressway: the 赤切符 range they are set
+      // for), fires the camera and its strobe; the notice comes by post after the day ends.
+      for (const hit of orbis.check(lawPrevPos, carPos, speed, now)) {
+        const photo = speedViolation(hit.excess) ?? VIOLATIONS.signal;
+        const context = violationContext(
+          `速度違反自動取締装置（オービス）で撮影: ${Math.round(speed)} km/h（制限 ${hit.limit} km/h）`,
         );
-        if (record) {
-          pendingShots.push(record);
-          law.notice(record, "orbis");
-        }
+        const committed = law.commit(photo, now, 0, context);
+        if (committed) pendingShots.push(committed);
+        // The speed check keeps one speeding record per 20 s, so commit is refused while that one is
+        // open: the photo catches it instead, at the speed the camera measured.
+        const open = law.state.log.findLast(
+          (r) => r.kind === photo.kind && r.status === "uncaught" && now - r.at < 30000,
+        );
+        const record = committed ?? (open ? Object.assign(open, photo, { context }) : null);
+        if (record) law.notice(record, "orbis");
         flashScreen();
-        log("orbis", { kmh: Math.round(speed), limit: currentLimit });
+        log("orbis", { id: hit.site.entry.id, lane: hit.lane, kmh: Math.round(speed), limit: hit.limit });
       }
 
       // 無灯火 (第52条): at night with the headlights switched off.
@@ -2898,7 +2919,6 @@ async function main(): Promise<void> {
   let policeData: {
     stations: Array<[number, number, string]>;
     centres: Array<[number, number, string]>;
-    orbis?: Array<[number, number, number]>;
   } | null = null;
   void fetch(`${import.meta.env.BASE_URL}data/police.json`)
     .then((r) => (r.ok ? r.json() : null))
@@ -3402,6 +3422,7 @@ async function main(): Promise<void> {
         getPatrols: () => patrols,
         getMission: () => missions.current,
         furniture,
+        orbis,
         groundY,
         // Staging for the teaser and tests: the screens behind events that take long to set up.
         debug: { openTicket, endDay, flashScreen, startPursuit, gameNow: () => env.now().getTime() },

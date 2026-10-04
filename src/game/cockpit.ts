@@ -29,6 +29,8 @@ import { RainGlass, WIPER_BLADES } from "./rainGlass";
  * Node names, pivots and angles follow knowledge/cockpit-blender.md.
  */
 const DEG = Math.PI / 180;
+/** How far the steering column is tilted up from the model (m). */
+const COLUMN_RAISE = 0.035;
 /** The render layer of the interior (drawn in a second pass with a near plane of a few cm). */
 export const INTERIOR_LAYER = 1;
 // The needles are modelled pointing at their zero marks (clock angle −120°, the small gauges
@@ -71,9 +73,18 @@ export class Cockpit {
       this.root = gltf.scene;
       this.root.visible = false;
       this.eye = this.root.getObjectByName("DriverEye") ?? null;
+      this.eyeBase = this.eye?.position.clone() ?? null;
+      this.setSeat(this.seat.up, this.seat.back);
       this.needleSpeed = this.root.getObjectByName("Needle_Speed") ?? null;
       this.needleTacho = this.root.getObjectByName("Needle_Tacho") ?? null;
       this.wheel = this.root.getObjectByName("SteeringWheel") ?? null;
+      // The column tilted up 3.5 cm (as a driver sets it for the raised seat, see controlsHelp's
+      // DEFAULT_PREFS): the meters are read through the wheel's upper opening, which a higher eye
+      // looks through lower. The stalks go with it.
+      for (const name of ["SteeringWheel", "Stalk_Indicator", "Stalk_Wiper"]) {
+        const part = this.root.getObjectByName(name);
+        if (part) part.position.y += COLUMN_RAISE;
+      }
       for (const w of WIPER_BLADES) {
         const node = this.root.getObjectByName(w.name);
         if (node) this.wipers.push({ node, sweep: w.sweep });
@@ -178,6 +189,19 @@ export class Cockpit {
     for (const o of this.hiddenExterior) o.visible = !this.active;
     for (const g of this.glass) g.m.opacity = this.active ? 0.08 : g.opacity;
   }
+
+  /**
+   * 座席の調整: the eye raised or lowered and moved back or forward from the model's DriverEye, as
+   * a driver sets the seat (m). The eye node itself moves, so the mirrors follow it.
+   */
+  setSeat(up: number, back: number): void {
+    this.seat = { up, back };
+    if (!this.eye || !this.eyeBase) return;
+    this.eye.position.set(this.eyeBase.x, this.eyeBase.y + up, this.eyeBase.z - back);
+  }
+
+  private eyeBase: Vector3 | null = null;
+  private seat = { up: 0, back: 0 };
 
   /** Camera at the driver's eye, looking ahead (plus a look-aside yaw). */
   placeCamera(camera: PerspectiveCamera, lookYaw: number): void {

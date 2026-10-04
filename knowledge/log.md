@@ -2,6 +2,7 @@
 
 ## 2026-10-05
 
+- **Creation**: [オービス（速度違反自動取締装置）と予告看板](orbis.md) を追加。
 - **Creation**: [空間音響（音源の位置・車内の遮音・ドップラー効果）](spatial-audio.md) を追加。tag `audio` を tags.yml に追加。
 - **Creation**: [アセット台帳（assets/manifest.yml）](asset-manifest.md) を追加。tag `assets` を tags.yml に追加。
 - **Creation**: [深度フォグ（大気の減衰）と違反の再現データ](atmosphere-and-replay-data.md) を追加。

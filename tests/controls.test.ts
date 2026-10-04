@@ -15,7 +15,13 @@ const context = (over: Partial<AutoContext> = {}): AutoContext => ({
 
 describe("簡単操作: the car works its own switches", () => {
   it("is the default, with WASD", () => {
-    expect(DEFAULT_PREFS).toEqual({ layout: "wasd", assist: "easy", blur: "light" });
+    expect(DEFAULT_PREFS).toEqual({
+      layout: "wasd",
+      assist: "easy",
+      blur: "light",
+      seatUp: 0.05,
+      seatBack: 0,
+    });
     expect(new CarControls().assist).toBe("easy");
     // Without storage (here, or a private window) the defaults apply.
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);

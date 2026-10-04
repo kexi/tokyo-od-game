@@ -2,13 +2,15 @@
 // crosswalks, stop lines, stop signs) and, from OpenStreetMap, traffic signals with their
 // intersection names and footbridges (横断歩道橋), cut into z14 tiles under public/data so the
 // game loads only the area around the player.
-// Run: node scripts/regulations.ts [jartic|signals]   (downloads ~40 MB JARTIC; the ~520 MB
+// Run: node scripts/regulations.ts [jartic|signals|police]   (downloads ~40 MB JARTIC; the ~520 MB
 // Geofabrik Kanto extract is cached under .cache/osm for a week)
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { CLOSURE } from "../src/world/closures.ts";
 import { join } from "node:path";
 import { M_LAT, M_LON, parseCoords, streamCsv, turnMask } from "./jartic.ts";
 import { readNodeCoords, readTaggedNodes, readWays } from "./osm-pbf.ts";
+import { buildOrbis } from "./orbis.ts";
+import type { OrbisEntry } from "../src/world/orbisData.ts";
 import { isAllDay as alwaysOn, writeTime, type RuleTime, type Window } from "../src/world/ruleTime.ts";
 import { unzip } from "./shapefile.ts";
 
@@ -405,11 +407,34 @@ type OsmTiles = {
 };
 
 let places: { hydrants: number[][]; schools: Array<[number, number, number, string]> } | null = null;
-let police: {
+type Police = {
   stations: Array<[number, number, string]>;
   centres: Array<[number, number, string]>;
-  orbis: Array<[number, number, number]>;
-} | null = null;
+  orbis: OrbisEntry[];
+};
+let police: Police | null = null;
+
+/**
+ * 警察署 (where notices to appear send the driver), the 運転免許試験場 (where a licence is handed
+ * in for a 免許停止) and the オービス: small enough for one file (public/data/police.json).
+ */
+function buildPolice(file: Uint8Array): Police {
+  const stations = readTaggedNodes(file, (t) => t.amenity === "police" && (t.name ?? "").endsWith("警察署"))
+    .filter((n) => inBbox(n.lon, n.lat))
+    .map((n) => [round(n.lon), round(n.lat), n.tags.name ?? ""] as [number, number, string]);
+  const centreWays = readWays(file, (t) => /^(鮫洲|江東|府中)運転免許試験場$/.test(t.name ?? ""));
+  const centreCoords = readNodeCoords(file, new Set(centreWays.flatMap((w) => w.refs)));
+  const centres = centreWays.map((w) => {
+    const pts = w.refs.map((r) => centreCoords.get(r)).filter((c): c is [number, number] => !!c);
+    const lon = pts.reduce((a, c) => a + c[0], 0) / pts.length;
+    const lat = pts.reduce((a, c) => a + c[1], 0) / pts.length;
+    return [round(lon), round(lat), w.tags.name ?? ""] as [number, number, string];
+  });
+  // 速度違反自動取締装置 (オービス): OSM speed cameras with the direction each enforces, its
+  // lanes and the 予告看板 points up the road (scripts/orbis.ts).
+  const orbis = buildOrbis(file, inBbox);
+  return { stations, centres, orbis };
+}
 
 async function buildOsm(): Promise<OsmTiles> {
   const file = await osmExtract();
@@ -488,31 +513,7 @@ async function buildOsm(): Promise<OsmTiles> {
     at(w.refs, forward);
     at([...w.refs].reverse(), backward);
   }
-  // 警察署 (where notices to appear send the driver) and the 運転免許試験場 (where a licence
-  // is handed in for a 免許停止): small enough for one file.
-  const stations = readTaggedNodes(file, (t) => t.amenity === "police" && (t.name ?? "").endsWith("警察署"))
-    .filter((n) => inBbox(n.lon, n.lat))
-    .map((n) => [round(n.lon), round(n.lat), n.tags.name ?? ""] as [number, number, string]);
-  const centreWays = readWays(file, (t) => /^(鮫洲|江東|府中)運転免許試験場$/.test(t.name ?? ""));
-  const centreCoords = readNodeCoords(file, new Set(centreWays.flatMap((w) => w.refs)));
-  const centres = centreWays.map((w) => {
-    const pts = w.refs.map((r) => centreCoords.get(r)).filter((c): c is [number, number] => !!c);
-    const lon = pts.reduce((a, c) => a + c[0], 0) / pts.length;
-    const lat = pts.reduce((a, c) => a + c[1], 0) / pts.length;
-    return [round(lon), round(lat), w.tags.name ?? ""] as [number, number, string];
-  });
-  // 速度違反自動取締装置 (オービス): OSM speed cameras, with their direction when mapped.
-  const orbis = readTaggedNodes(file, (t) => t.highway === "speed_camera")
-    .filter((n) => inBbox(n.lon, n.lat))
-    .map(
-      (n) =>
-        [round(n.lon), round(n.lat), Number.parseFloat(n.tags.direction ?? "") || -1] as [
-          number,
-          number,
-          number,
-        ],
-    );
-  police = { stations, centres, orbis };
+  police = buildPolice(file);
   // 消火栓 (駐車禁止 within 5 m, 第45条第1項第5号) and schools / kindergartens / nurseries (the 208
   // warning sign and school zones): nodes, and the centres of mapped school grounds.
   const hydrantType: Record<string, number> = { underground: 0, pillar: 1, wall: 2 };
@@ -537,9 +538,9 @@ async function buildOsm(): Promise<OsmTiles> {
   }
   places = { hydrants, schools };
   log("osm_parsed", {
-    police: stations.length,
-    orbis: orbis.length,
-    centres: centres.map((c) => c[2]),
+    police: police.stations.length,
+    orbis: police.orbis.length,
+    centres: police.centres.map((c) => c[2]),
     signals: [...signals.values()].reduce((a, t) => a + t.length, 0),
     named: [...junctions.values()].reduce((a, t) => a + t.length, 0),
     footbridges: kept,
@@ -581,6 +582,20 @@ if (!only || only === "jartic") {
       tiles: [...tiles.keys()],
     }),
   );
+}
+// Only police.json (stations, 試験場, オービス), leaving the OSM tiles as they are.
+if (only === "police") {
+  police = buildPolice(await osmExtract());
+  await writeFile(join(ROOT, "police.json"), JSON.stringify(police));
+  log("police_written", {
+    stations: police.stations.length,
+    orbis: police.orbis.length,
+    // Counts per source (Object.groupBy is ES2024; the project targets ES2023).
+    bySource: police.orbis.reduce<Record<string, number>>((n, o) => {
+      n[o.source] = (n[o.source] ?? 0) + 1;
+      return n;
+    }, {}),
+  });
 }
 if (!only || only === "signals") {
   const osm = await buildOsm();

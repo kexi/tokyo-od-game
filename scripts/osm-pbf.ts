@@ -1,12 +1,14 @@
-// Minimal OpenStreetMap PBF reader: tagged nodes (dense and plain) and ways that match a tag
-// filter, plus coordinates for chosen node ids. Enough to pull traffic signals and footbridges
-// out of a regional extract without osmium or a GIS stack.
+// Minimal OpenStreetMap PBF reader: tagged nodes (dense and plain), ways and relations that match
+// a tag filter, plus coordinates for chosen node ids. Enough to pull traffic signals, footbridges
+// and speed cameras out of a regional extract without osmium or a GIS stack.
 // Format: https://wiki.openstreetmap.org/wiki/PBF_Format
 import { inflateSync } from "node:zlib";
 import Pbf from "pbf";
 
 export type OsmNode = { id: number; lat: number; lon: number; tags: Record<string, string> };
 export type OsmWay = { id: number; refs: number[]; tags: Record<string, string> };
+export type OsmMember = { type: "node" | "way" | "relation"; ref: number; role: string };
+export type OsmRelation = { id: number; members: OsmMember[]; tags: Record<string, string> };
 
 type Block = {
   strings: string[];
@@ -175,6 +177,49 @@ export function readWays(file: Uint8Array, match: (tags: Record<string, string>)
       let ref = 0;
       for (const d of deltas) refs.push((ref += d));
       out.push({ id, refs, tags });
+    }, null);
+  });
+  return out;
+}
+
+const MEMBER_TYPES = ["node", "way", "relation"] as const;
+
+/**
+ * All relations whose tags satisfy `match`: id=1, keys=2, vals=3, roles_sid=8, memids=9
+ * (delta-coded), types=10.
+ */
+export function readRelations(
+  file: Uint8Array,
+  match: (tags: Record<string, string>) => boolean,
+): OsmRelation[] {
+  const out: OsmRelation[] = [];
+  forEachGroup(file, (block, group) => {
+    group.readFields((tag, _r, pbf) => {
+      if (tag !== 4) return;
+      const rel = new Pbf(pbf.readBytes());
+      let id = 0;
+      let keys: number[] = [];
+      let vals: number[] = [];
+      let roles: number[] = [];
+      let deltas: number[] = [];
+      let types: number[] = [];
+      rel.readFields((t, _x, q) => {
+        if (t === 1) id = q.readVarint();
+        else if (t === 2) keys = q.readPackedVarint();
+        else if (t === 3) vals = q.readPackedVarint();
+        else if (t === 8) roles = q.readPackedVarint();
+        else if (t === 9) deltas = q.readPackedSVarint();
+        else if (t === 10) types = q.readPackedVarint();
+      }, null);
+      const tags = Object.fromEntries(keys.map((key, i) => [block.strings[key], block.strings[vals[i]]]));
+      if (!match(tags)) return;
+      let ref = 0;
+      const members = deltas.map((d, i) => ({
+        type: MEMBER_TYPES[types[i]] ?? "node",
+        ref: (ref += d),
+        role: block.strings[roles[i]] ?? "",
+      }));
+      out.push({ id, members, tags });
     }, null);
   });
   return out;

@@ -345,6 +345,20 @@ assets:
     inputs: [landmark-textures]
     docs: [knowledge/landmarks-blender.md]
 
+  - id: orbis
+    name: オービス（速度違反自動取締装置）と予告看板
+    purpose: 道路の上の門型（車線ごとのカメラとストロボ）・狭い道の柱型と、その手前の「スピード落せ 自動速度取締機設置路線」の看板。撮影するとその車線のストロボが光る。
+    kind: model
+    files: [public/models/orbis.glb]
+    generator: { script: scripts/blender/orbis.py, recipe: orbis-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。形はループコイル式の柱上型オービスIII の写真で確かめただけで、外部の 3D 素材・写真・実在の標章は使っていない）
+    license: repo
+    used_by: [src/world/orbis.ts]
+    inputs: [orbis-textures]
+    docs: [knowledge/orbis.md]
+    notes: 梁（GantryBeam）は長さ 1 で、ゲームが車道の幅に伸ばす。配置の元データは public/data/police.json の orbis（OSM、ODbL）。
+
   # ---------------------------------------------------------------- テクスチャ
   - id: car-textures
     name: 車のテクスチャ
@@ -577,6 +591,19 @@ assets:
     license: repo
     used_by: []
     status: unused
+
+  - id: orbis-textures
+    name: オービスの予告看板の図柄
+    purpose: 予告看板の面（青地に黄の「スピード落せ」、白の「自動速度取締機 / 設置路線」）。orbis.glb に埋め込む。
+    kind: texture
+    files: [assets/orbis/textures/*.png]
+    generator: { script: scripts/textures/orbis_textures.py, recipe: orbis-model }
+    made_by: procedural
+    source: 自作（手続き生成。文字はコミット固定の Noto Sans JP。文言と配色は都内の看板の写真にならい、組織名・紋章は入れない）
+    license: repo
+    used_by: []
+    inputs: [noto-sans-jp]
+    docs: [knowledge/orbis.md]
 
   # ---------------------------------------------------------------- 画像
   - id: og-image

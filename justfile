@@ -141,6 +141,11 @@ landmark-models:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_skytree.glb
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_station.glb
 
+# オービス（門型・柱型）と予告看板を Blender CLI でモデリングし public/models/orbis.glb を書き出す（看板の図柄 assets/orbis/textures も作り直す）
+orbis-model:
+    uv run scripts/textures/orbis_textures.py
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/orbis.py -- public/models/orbis.glb
+
 # SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
 og:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/og.py -- "${TMPDIR:-/tmp}/tokyo-od-og-scene.png"

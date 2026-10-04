@@ -8,10 +8,36 @@ import { SOCIAL_APP_NAME } from "./socialTheme";
  * control mode (簡単操作 by default: the car works its own switches; or リアル), remembered in this
  * browser, and the key list in the help that follows them.
  */
-export type ControlPrefs = { layout: KeyLayout; assist: Assist; blur: BlurLevel };
+export type ControlPrefs = {
+  layout: KeyLayout;
+  assist: Assist;
+  blur: BlurLevel;
+  /** 座席: the driver's eye above (+) the model's and behind (+) it, in metres. */
+  seatUp: number;
+  seatBack: number;
+};
 
 const STORE_KEY = "tod.controls";
-export const DEFAULT_PREFS: ControlPrefs = { layout: "wasd", assist: "easy", blur: "light" };
+/**
+ * The model's DriverEye sits 4.5° above the windscreen's lower edge, a low seat for this dashboard
+ * (cars give 7–10°, enough to see the road ahead of the bonnet): 5 cm up by default, with the
+ * steering column tilted up 3.5 cm to keep the meters in view through the wheel (cockpit.ts).
+ */
+export const DEFAULT_PREFS: ControlPrefs = {
+  layout: "wasd",
+  assist: "easy",
+  blur: "light",
+  seatUp: 0.05,
+  seatBack: 0,
+};
+const SEAT_UP = [-0.08, 0.16] as const;
+const SEAT_BACK = [-0.1, 0.12] as const;
+/** A stored or chosen seat setting, kept within the seat's travel. */
+export const seatOf = (value: unknown, range: readonly [number, number], fallback: number): number => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? Math.max(range[0], Math.min(range[1], n)) : fallback;
+};
+export const SEAT_RANGE = { up: SEAT_UP, back: SEAT_BACK };
 
 /** A stored or chosen ブラー level; anything else is the default. */
 export const blurLevelOf = (value: unknown): BlurLevel =>
@@ -22,7 +48,13 @@ export function loadPrefs(): ControlPrefs {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? "null") as Partial<ControlPrefs> | null;
     const layout = saved?.layout === "ccd" ? "ccd" : DEFAULT_PREFS.layout;
     const assist = saved?.assist === "real" ? "real" : DEFAULT_PREFS.assist;
-    return { layout, assist, blur: blurLevelOf(saved?.blur) };
+    return {
+      layout,
+      assist,
+      blur: blurLevelOf(saved?.blur),
+      seatUp: seatOf(saved?.seatUp, SEAT_UP, DEFAULT_PREFS.seatUp),
+      seatBack: seatOf(saved?.seatBack, SEAT_BACK, DEFAULT_PREFS.seatBack),
+    };
   } catch {
     // Storage blocked (private window, previews): the defaults.
     return { ...DEFAULT_PREFS };
