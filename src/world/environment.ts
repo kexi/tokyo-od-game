@@ -74,6 +74,13 @@ export class Environment {
   private isPresetPending = false;
   nightFactor = 0;
   sunElevation = 0;
+  /**
+   * How wet the streets are, 0 (dry) – 1 (soaked): wet within about 20 s of rain, dry over about
+   * 5 min after it stops (shortened from the real half hour or more, to be seen in play). Already
+   * wet when the game or a replay starts in rain. Road, pavement and facade materials read it.
+   */
+  wetness = 0;
+  private isWetnessSet = false;
 
   constructor(
     private readonly scene: Scene,
@@ -210,6 +217,10 @@ export class Environment {
     this.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
 
     const raining = this.isRaining();
+    const isFirstOrReplay = !this.isWetnessSet || this.moment !== null;
+    this.isWetnessSet = true;
+    if (isFirstOrReplay) this.wetness = raining ? 1 : 0;
+    else this.wetness = MathUtils.clamp(this.wetness + (raining ? dt / 20 : -dt / 300), 0, 1);
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(this.sunDir);
     u.turbidity.value = raining ? 12 : 4;
