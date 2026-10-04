@@ -18,6 +18,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { PMREMGenerator } from "three";
 import { QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
+import { spellMinutes } from "./weatherSpells";
 
 export type TimeMode = "real" | "morning" | "day" | "evening" | "night";
 export const TIME_MODES: TimeMode[] = ["real", "morning", "day", "evening", "night"];
@@ -29,12 +30,19 @@ export const TIME_LABEL: Record<TimeMode, string> = {
   night: "夜",
 };
 
-export type WeatherMode = "real" | "clear" | "rain";
+export type WeatherMode = "real" | "auto" | "clear" | "rain";
 export const WEATHER_LABEL: Record<WeatherMode, string> = {
   real: "リアル天気",
+  auto: "おまかせ",
   clear: "晴れ",
   rain: "雨",
 };
+
+/**
+ * Game minutes per real minute outside リアル時刻: a day in 2.4 hours, so morning, noon, dusk and
+ * night all come round in a session. Deadlines, posts' ages and timed rules follow the same clock.
+ */
+export const GAME_TIME_SCALE = 10;
 
 export type Observation = {
   /** Meteorological visibility (m) around Tokyo; 20000 = 20 km or more. */
@@ -71,6 +79,8 @@ export class Environment {
    * 時間帯の一方通行) come into and out of force while playing.
    */
   private gameMs = Date.now();
+  private autoRaining = false;
+  private autoUntil = 0;
   private isPresetPending = false;
   nightFactor = 0;
   sunElevation = 0;
@@ -164,7 +174,16 @@ export class Environment {
   }
 
   set weather(mode: WeatherMode) {
+    const isAutoStart = mode === "auto" && this.weatherMode !== "auto";
     this.weatherMode = mode;
+    if (isAutoStart) this.startAutoWeather(Math.random() < 0.3);
+  }
+
+  /** おまかせ from fair weather or rain now; it turns by itself after a spell (weatherSpells.ts). */
+  startAutoWeather(isRain: boolean): void {
+    this.weatherMode = "auto";
+    this.autoRaining = isRain;
+    this.autoUntil = this.gameMs + spellMinutes(isRain, Math.random()) * 60_000;
   }
 
   setObservation(obs: Observation | null): void {
@@ -190,6 +209,7 @@ export class Environment {
     if (this.moment) return this.moment.raining;
     if (this.weatherMode === "rain") return true;
     if (this.weatherMode === "clear") return false;
+    if (this.weatherMode === "auto") return this.autoRaining;
     return (this.observation?.precip10m ?? 0) > 0;
   }
 
@@ -208,7 +228,9 @@ export class Environment {
 
   update(dt: number, player: Vector3, camera: Vector3, lat: number, lon: number): void {
     this.resolvePreset(lat, lon);
-    this.gameMs = this.mode === "real" ? Date.now() : this.gameMs + dt * 1000;
+    this.gameMs = this.mode === "real" ? Date.now() : this.gameMs + dt * 1000 * GAME_TIME_SCALE;
+    const isSpellOver = this.weatherMode === "auto" && this.gameMs >= this.autoUntil;
+    if (isSpellOver) this.startAutoWeather(!this.autoRaining);
     const date = this.moment ? new Date(this.moment.ms) : this.now();
     const { elevation, azimuth } = sunPosition(date, lat, lon);
     this.sunElevation = elevation;

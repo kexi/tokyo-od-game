@@ -753,7 +753,7 @@ async function main(): Promise<void> {
   for (const b of weatherButtons)
     b.addEventListener("click", () => setWeather(b.dataset.weather as WeatherMode));
   input.on("weather", () => {
-    const order: WeatherMode[] = ["real", "clear", "rain"];
+    const order: WeatherMode[] = ["real", "auto", "clear", "rain"];
     setWeather(order[(order.indexOf(env.weather) + 1) % order.length]);
     toast(`天気: ${WEATHER_LABEL[env.weather]}`);
   });
@@ -1474,8 +1474,9 @@ async function main(): Promise<void> {
     const roll = Math.random();
     const time: TimeMode = roll < 0.2 ? "morning" : roll < 0.6 ? "day" : roll < 0.8 ? "evening" : "night";
     setTime(time);
-    setWeather(Math.random() < 0.3 ? "rain" : "clear");
-    toast(`今日は「${TIME_LABEL[time]}・${WEATHER_LABEL[env.weather]}」から走り出します`, "#4dd2ff");
+    // おまかせ: it starts fair or wet and turns now and then.
+    setWeather("auto");
+    toast(`今日は「${TIME_LABEL[time]}・${env.isRaining() ? "雨" : "晴れ"}」から走り出します`, "#4dd2ff");
     // The phone starts in its holder, on screens wide enough to keep the road in view beside it.
     const isWideScreen = window.innerWidth >= 900;
     if (isWideScreen) {
@@ -3399,6 +3400,7 @@ async function main(): Promise<void> {
     el.append(day, time);
   };
 
+  let wasRaining: boolean | null = null;
   const updateHud = (lat: number, lon: number, yaw: number, now: number) => {
     $("#ward").textContent = wardName;
     $("#town").textContent = townName || " ";
@@ -3407,7 +3409,16 @@ async function main(): Promise<void> {
     const obsText = obs
       ? `東京 ${obs.temp ?? "-"}℃ 風 ${obs.wind ?? "-"}m/s 降水 ${obs.precip10m ?? "-"}mm (${obs.time})`
       : "気象データ取得中…";
-    $("#weather").textContent = env.weather === "real" ? obsText : `${WEATHER_LABEL[env.weather]}（固定）`;
+    const isRaining = env.isRaining();
+    const weatherText =
+      env.weather === "auto"
+        ? `${isRaining ? "雨" : "晴れ"}（おまかせ）`
+        : `${WEATHER_LABEL[env.weather]}（固定）`;
+    $("#weather").textContent = env.weather === "real" ? obsText : weatherText;
+    // おまかせ turned: said once, as the sky changes.
+    const isTurned = env.weather === "auto" && wasRaining !== null && isRaining !== wasRaining;
+    if (isTurned) toast(isRaining ? "☔ 雨が降ってきました" : "🌤 雨が上がりました", "#4dd2ff");
+    wasRaining = isRaining;
     const nearestBus = transit.nearest(lat, lon);
     $("#transit").textContent =
       nearestBus && nearestBus.distance < 120 ? `🚌 ${nearestBus.bus.note.split(" ")[0]}` : transit.status;
