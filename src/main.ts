@@ -885,7 +885,8 @@ async function main(): Promise<void> {
     clones: Map<Object3D, Object3D>;
     /** The live recording, or one rebuilt from a saved violation's clip. */
     rec: ReplayRecorder;
-    marks: Array<{ at: number; label: string }>;
+    /** Violations on the timeline: when, what, and why (shown as a caption around the moment). */
+    marks: Array<{ at: number; label: string; why: string }>;
     isClip: boolean;
   };
   /** Saved clips play through the same director: their samples become a recording again. */
@@ -923,7 +924,7 @@ async function main(): Promise<void> {
         source?.marks ??
         law.state.log
           .filter((r) => r.at >= rec.start && r.at <= rec.end)
-          .map((r) => ({ at: r.at, label: r.label })),
+          .map((r) => ({ at: r.at, label: r.label, why: replayWhy(r) })),
       isClip: source !== undefined,
     };
     if (source) {
@@ -952,6 +953,7 @@ async function main(): Promise<void> {
   const stopReplay = () => {
     const r = replay;
     if (!r) return;
+    $("#replay-caption").hidden = true;
     for (const c of r.clones.values()) scene.remove(c);
     for (const o of liveObjects()) o.visible = true;
     replay = null;
@@ -1008,6 +1010,18 @@ async function main(): Promise<void> {
     log("social", { event: "video", post: post.id, view: current.camera });
     return true;
   };
+  /** Why a violation is one, for the replay caption: the article, points and fine, and what happened. */
+  const replayWhy = (r: ViolationRecord): string => {
+    const fine = r.fine === null ? "反則金なし（刑事手続）" : `反則金 ${r.fine.toLocaleString()} 円`;
+    const c = r.context;
+    const speed = c
+      ? `${Math.round(c.kmh)} km/h${c.limit !== null ? `（${c.limitKind === "sign" ? "規制" : "法定"} ${c.limit} km/h）` : ""}`
+      : "";
+    // The detail already says the speed when there is one.
+    return [`${r.article}・${r.points} 点・${fine}`, c?.detail ?? speed, c?.place]
+      .filter(Boolean)
+      .join(" ／ ");
+  };
   const playReplay = (dt: number) => {
     const r = replay;
     if (!r) return;
@@ -1045,6 +1059,17 @@ async function main(): Promise<void> {
     }
     control.update(r.t / 1000);
     const marks = r.marks.map((v) => v.at);
+    // 違反の理由: from 2.5 s before each violation to 4 s after, what it was and why.
+    const near = r.marks.find((m) => r.t > m.at - 2500 && r.t < m.at + 4000);
+    const caption = $("#replay-caption");
+    caption.hidden = !near;
+    if (near && caption.dataset.at !== String(near.at)) {
+      caption.dataset.at = String(near.at);
+      caption.replaceChildren(
+        Object.assign(document.createElement("strong"), { textContent: `⚠ ${near.label}` }),
+        Object.assign(document.createElement("span"), { textContent: near.why }),
+      );
+    }
     if (r.isClip) replayFocus = pos.clone();
     director.place(
       camera,
@@ -3128,7 +3153,11 @@ async function main(): Promise<void> {
         others,
       });
     }
-    startReplay(clip.t0, { rec, marks: [{ at: clip.at, label: r.label }], moment: clip.moment });
+    startReplay(clip.t0, {
+      rec,
+      marks: [{ at: clip.at, label: r.label, why: replayWhy(r) }],
+      moment: clip.moment,
+    });
   };
   /** A model like the one recorded (vehicle kind, car colour, person's looks). */
   const buildActor = (d: ActorDesc): Object3D | null => {

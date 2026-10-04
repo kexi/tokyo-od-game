@@ -1664,7 +1664,7 @@ pre.notice {
 }
 
 /* While replaying, only the replay bar and messages stay on screen. */
-#hud.replaying > *:not(#replay-bar):not(#toasts) {
+#hud.replaying > *:not(#replay-bar):not(#toasts):not(#replay-caption) {
   visibility: hidden;
 }
 
@@ -2350,4 +2350,24 @@ pre.notice {
 /* 運転席視点: the dashboard has its own speedometer */
 #hud.in-cockpit #hud-speed {
   display: none;
+}
+
+/* リプレイ中の違反の理由: over the replay bar while the moment plays */
+#replay-caption {
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  max-width: min(92vw, 880px);
+  padding: 10px 16px;
+  display: grid;
+  gap: 4px;
+  border-left: 4px solid #ff6b6b;
+  z-index: 16;
+}
+#replay-caption strong {
+  font-size: 18px;
+}
+#replay-caption span {
+  font-size: 13px;
+  opacity: 0.9;
 }
