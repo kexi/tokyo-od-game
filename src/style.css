@@ -2258,3 +2258,90 @@ pre.notice {
   cursor: pointer;
   padding: 4px 8px;
 }
+
+/* A post's video: the poster's frame (16:9, 4:3 or upright 9:16), black beyond it */
+#video-frame {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(100vw, calc(100vh * var(--ar, 1.7778)));
+  aspect-ratio: var(--ar, 1.7778);
+  box-shadow: 0 0 0 100vmax #000;
+  pointer-events: none;
+  z-index: 15;
+}
+.video-frame-label {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  color: #fff;
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* 通知: violations, posts and the police on the left, with their time; 履歴 opens the rest */
+#notice-log {
+  left: 12px;
+  top: 486px;
+  width: 252px;
+  max-height: 210px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+#notice-log header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  opacity: 0.85;
+}
+#notice-log ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#notice-log li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  padding: 4px 6px;
+  border-left: 3px solid;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.35;
+}
+#notice-log li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#notice-log li time {
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+#notice-log li.fresh {
+  animation: notice-in 0.6s ease-out;
+}
+@keyframes notice-in {
+  from {
+    background: rgba(255, 210, 60, 0.35);
+    transform: translateX(-8px);
+  }
+  to {
+    background: rgba(255, 255, 255, 0.04);
+    transform: none;
+  }
+}
+@media (max-width: 900px) {
+  #notice-log {
+    display: none;
+  }
+}

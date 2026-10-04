@@ -263,6 +263,8 @@ function emptyEntry(title: string, body: string): Entry {
 }
 
 export class SocialApp {
+  /** Plays a post's video in the game (its replay from the poster's spot); false when it cannot. */
+  playVideo: ((postId: number) => boolean) | null = null;
   private readonly stage = h("div", "sns-stage");
   private readonly clock = h("span", "sns-clock");
   private readonly nav = h("nav", "sns-nav");
@@ -326,6 +328,15 @@ export class SocialApp {
   /** Opens the app on the home timeline (top, newest order). */
   open(): void {
     this.stack = [{ page: "home", tab: "foryou", scroll: 0 }];
+    this.show();
+  }
+
+  /** A post's own screen (from a notification), with the timeline under it for ←. */
+  openPost(post: SocialPost): void {
+    this.stack = [
+      { page: "home", tab: "foryou", scroll: 0 },
+      { page: "post", target: { kind: "post", post }, scroll: 0 },
+    ];
     this.show();
   }
 
@@ -1524,6 +1535,10 @@ export class SocialApp {
   private viewer(card: Card): void {
     const media = card.media;
     if (!media) return;
+    // A post's video plays for real: the game replays the moment from where the poster stood.
+    const postId = card.key.startsWith("p") ? Number(card.key.slice(1)) : Number.NaN;
+    const isPlayed = media.kind === "clip" && Number.isFinite(postId) && (this.playVideo?.(postId) ?? false);
+    if (isPlayed) return;
     const v = h("div", "sns-viewer");
     const img = h("img");
     img.alt = media.kind === "clip" ? "投稿された動画" : "画像";

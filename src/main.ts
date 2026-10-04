@@ -109,12 +109,13 @@ import {
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
 import { loadViolations, saveViolations, ViolationSync } from "./game/violationStore";
-import { ClipPose, CLIP_AFTER_MS, cutClip, type ActorDesc } from "./game/replayClip";
+import { ClipPose, CLIP_AFTER_MS, CLIP_BEFORE_MS, cutClip, type ActorDesc } from "./game/replayClip";
 import { renderTicket } from "./game/ticketForm";
 import { PolicePatrol } from "./game/policePatrol";
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
 import { CarNavi } from "./game/carNavi";
+import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import { loadPrefs, renderKeyList, savePrefs, type ControlPrefs } from "./game/controlsHelp";
 import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type Pose, type ReplayCamera } from "./game/replay";
@@ -264,7 +265,8 @@ async function main(): Promise<void> {
     storageKeyFor(poiFile?.generatedAt ?? "none"),
   );
   const missions = new Missions(field);
-  scene.add(missions.arrow);
+  // The floating yellow arrow over the car is not added: the route's green arrows and the navi lead
+  // the way, and a pointer through the buildings only distracted.
   const transit = new Transit(scene, world, dem, stopFile?.stops ?? {}, frame);
   const chase = new ChaseCamera(camera);
   const input = new Input();
@@ -579,6 +581,17 @@ async function main(): Promise<void> {
     buildRoadNetwork();
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
+
+  // ---------- 通知（左の欄） ----------
+  const notices = new NoticeLog($("#notice-log"), (n) => {
+    if (n.kind !== "social") return openReview();
+    phone.show();
+    showSocial(true);
+    const post = n.ref as SocialPost | undefined;
+    if (post) socialApp.openPost(post);
+  });
+  const notify = (kind: NoticeKind, text: string, ref?: SocialPost) =>
+    notices.add(kind, text, clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "", ref);
 
   // ---------- 移動（どこへでも） ----------
   /** While the destination loads the car waits there, frozen; then it starts on the nearest street. */
@@ -917,6 +930,53 @@ async function main(): Promise<void> {
     $("#replay-bar").hidden = true;
     $("#hud").classList.remove("replaying");
     vehicle.syncVisuals();
+    // A post's video ends: back to the phone as it was.
+    director.witness = null;
+    videoFrame?.remove();
+    videoFrame = null;
+    if (reopenPhone) phone.show(false);
+    reopenPhone = false;
+  };
+  /** The frame of a post's video: the poster's aspect, black beyond it, who filmed it. */
+  let videoFrame: HTMLElement | null = null;
+  let reopenPhone = false;
+  /**
+   * Play a post's video: its moment replayed from where the poster stood, with their phone's field
+   * of view and hand, framed to their aspect. false when nothing is left to replay (the viewer then
+   * shows the still).
+   */
+  const playPostVideo = (id: number): boolean => {
+    const post = social.posts.find((p) => p.id === id);
+    if (!post) return false;
+    const r = post.record;
+    const isInBuffer = r.session === SESSION && r.at >= recorder.start && r.at <= recorder.end;
+    if (!isInBuffer && !r.replay) return false;
+    const from = post.filmedFrom;
+    const eye = from?.geo
+      ? frame.toLocal(from.geo.lat, from.geo.lon, from.geo.h)
+      : from
+        ? new Vector3(from.eye.x, from.eye.y, from.eye.z)
+        : null;
+    reopenPhone = phone.open;
+    phone.close();
+    if (isInBuffer) startReplay(Math.max(recorder.start, r.at - CLIP_BEFORE_MS));
+    else playClip(r);
+    const current = replay;
+    if (!current) return false;
+    director.witness = eye && from ? { eye, fov: from.fov, tilt: from.tilt } : null;
+    current.camera = director.witness ? "witness" : "roadside";
+    replayCamera.value = current.camera;
+    const [aw, ah] = (from?.aspect ?? "16:9").split(":").map(Number);
+    videoFrame = document.createElement("div");
+    videoFrame.id = "video-frame";
+    videoFrame.style.setProperty("--ar", String(aw / ah));
+    const label = document.createElement("div");
+    label.className = "video-frame-label";
+    label.textContent = `${SOCIAL_APP_NAME} ・ ${post.author}（@${post.handle}）が撮影`;
+    videoFrame.append(label);
+    document.body.append(videoFrame);
+    log("social", { event: "video", post: post.id, view: current.camera });
+    return true;
   };
   const playReplay = (dt: number) => {
     const r = replay;
@@ -1282,7 +1342,11 @@ async function main(): Promise<void> {
     state = "playing";
     // The phone starts in its holder, on screens wide enough to keep the road in view beside it.
     const isWideScreen = window.innerWidth >= 900;
-    if (isWideScreen) phone.show(false);
+    if (isWideScreen) {
+      phone.show(false);
+      // Y is the app the phone has open: the feed is what people around the player are posting.
+      showSocial(true);
+    }
     log("game_started", {});
     toast("光の柱＝東京都オープンデータの実在スポット。N キーで目的地ミッション！", "#4dd2ff");
   });
@@ -1823,7 +1887,7 @@ async function main(): Promise<void> {
     } else if (incidentEvent?.type === "rescued") {
       toast("負傷者は病院へ搬送されました", "#4dd2ff");
     } else if (incidentEvent?.type === "notReported") {
-      toast("警察に事故を報告しませんでした（道路交通法 第72条第1項後段：報告義務）", "#ff6b6b");
+      notify("violation", "警察に事故を報告しませんでした（道路交通法 第72条第1項後段：報告義務）");
     } else if (incidentEvent?.type === "closed") {
       toast("警察の事故処理が終わりました。安全運転を心がけましょう", "#7dff9a");
     }
@@ -2081,13 +2145,13 @@ async function main(): Promise<void> {
     const carPos = vehicle.position();
     if (isAccident) {
       law.cite(booked, "accident");
-      toast(`🚓 ${formatViolation(booked)}`, "#ff6b6b");
+      notify("caught", formatViolation(booked));
       stamps.stamp("違反", shortLabel(booked.label));
     } else if (police?.sees(carPos)) {
       if (police.witness(booked) === "pursuit") startPursuit();
-      toast(`🚨 パトカーに見られた: ${booked.label}`, "#ff6b6b");
+      notify("caught", `パトカーに見られた: ${booked.label}`);
     } else {
-      toast(`⚠ ${booked.label}（未検挙）`, "#ffb347");
+      notify("violation", `${booked.label}（未検挙）`);
     }
     // Bystanders and dashcams nearby: someone may film it and post it.
     // The people the game draws are a sample of the street: busier areas (e-Stat density sets the
@@ -2101,7 +2165,7 @@ async function main(): Promise<void> {
     const filmers = witnessPhones.react(booked, post, carPos);
     if (filmers > 0) log("social", { event: "filmed", kind: booked.kind, filmers, witnesses });
     if (post) {
-      toast(`📱 誰かがあなたの運転を「${SOCIAL_APP_NAME}」にポストしました（${booked.label}）`, "#ffb347");
+      notify("social", `誰かがあなたの運転を「${SOCIAL_APP_NAME}」にポストしました（${booked.label}）`, post);
       socialUnread++;
       log("social", { event: "post", kind: booked.kind, witnesses, reach: post.reach });
     }
@@ -2134,6 +2198,7 @@ async function main(): Promise<void> {
     },
     // The shot's eye is already at eye height; the test adds it again, so lower the start.
     sight: (from, to) => lineOfSight(new Vector3(from.x, from.y - EYE_HEIGHT, from.z), to),
+    subjectObject: () => vehicle.object,
     stage: (shoot) => {
       const wasCockpit = cockpit.active;
       cockpit.setActive(false);
@@ -2141,7 +2206,12 @@ async function main(): Promise<void> {
       cockpit.setActive(wasCockpit);
     },
   });
-  social.camera = (post) => witnessShot.shoot(post);
+  social.camera = (post) => {
+    witnessShot.shoot(post);
+    // Where the poster stood, as latitude/longitude, so the video plays there after a recentre.
+    const from = post.filmedFrom;
+    if (from) from.geo = frame.toGeodetic(new Vector3(from.eye.x, from.eye.y, from.eye.z));
+  };
   // Posts in people's own words when the on-device AI is on (templates otherwise).
   const SOCIAL_VOICE = {
     post: "あなたは東京で暮らす一般の人で、SNS に投稿します。いま目の前で見た危ない運転について、日本語の口語で 1〜2 文だけ書いてください。ナンバーや個人を特定できる情報、ハッシュタグは書かないこと。",
@@ -2164,6 +2234,7 @@ async function main(): Promise<void> {
   const viralShown = new Map<SocialPost, number>();
   const socialApp = new SocialApp($("#social-app"), social, () => env.now().getTime());
   appTile($("#social-open"));
+  socialApp.playVideo = (id) => playPostVideo(id);
   const showSocial = (shown: boolean) => {
     $("#phone-home").hidden = shown;
     $("#phone-social").hidden = !shown;
@@ -2186,16 +2257,17 @@ async function main(): Promise<void> {
     for (const p of social.update(env.now().getTime())) {
       if (p.record.status !== "uncaught") continue;
       law.notice(p.record, "sns");
-      toast("拡散された動画から警察が車を特定しました。後日、出頭の通知が届きます", "#ff6b6b");
+      notify("police", "拡散された動画から警察が車を特定しました。後日、出頭の通知が届きます");
       log("social", { event: "reported", kind: p.record.kind, reposts: p.reposts });
     }
     for (const p of social.posts) {
       const step = p.reposts >= 10000 ? 10000 : p.reposts >= 1000 ? 1000 : 0;
       if (step > (viralShown.get(p) ?? 0)) {
         viralShown.set(p, step);
-        toast(
+        notify(
+          "social",
           `🔥 あなたの運転の動画が拡散中: リポスト ${formatCount(p.reposts)}・いいね ${formatCount(p.likes)}`,
-          "#ff6b6b",
+          p,
         );
       }
     }
@@ -2291,7 +2363,7 @@ async function main(): Promise<void> {
       for (const r of p.seen) law.notice(r, "patrol");
       p.seen.length = 0;
       $("#pursuit-chip").hidden = true;
-      toast("パトカーを振り切った…が、ナンバーは控えられた。後日、出頭の通知が届く", "#ff6b6b");
+      notify("police", "パトカーを振り切った…が、ナンバーは控えられた。後日、出頭の通知が届く");
       log("police", { event: "lost" });
     }
   };
@@ -2823,7 +2895,7 @@ async function main(): Promise<void> {
     if (a.kind === "sanction") {
       appointments.shift();
       executeSanction(a.sanction, false);
-      toast("出頭期限を過ぎたため、処分が執行されました（講習による短縮はありません）", "#ff6b6b");
+      notify("police", "出頭期限を過ぎたため、処分が執行されました（講習による短縮はありません）");
       if (mode === "car") input.trigger("door");
       return;
     }

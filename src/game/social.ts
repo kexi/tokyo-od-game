@@ -51,6 +51,17 @@ export type SocialPost = {
   image?: string;
   /** The poster's own shot from where they stood (witnessShot.ts), a JPEG data URL. */
   photo?: string;
+  /**
+   * Where the poster filmed from and how their phone sees it (for playing the video): the eye in the
+   * local frame when shot, and the game turns it into latitude/longitude so it survives recentering.
+   */
+  filmedFrom?: {
+    eye: { x: number; y: number; z: number };
+    geo?: { lat: number; lon: number; h: number };
+    fov: number;
+    tilt: number;
+    aspect: string;
+  };
   /** Width / height of `photo`. */
   photoAspect?: number;
   /** Length of the clip, seconds. */

@@ -3,6 +3,7 @@ import {
   SRGBColorSpace,
   Vector3,
   WebGLRenderTarget,
+  type Mesh,
   type Object3D,
   type Scene,
   type WebGLRenderer,
@@ -40,9 +41,13 @@ export type ShotWorld = {
   isOpen: (x: number, z: number) => boolean;
   /** An exact eye-to-car test through the solid world, when the game has one (preferred). */
   sight?: (from: Vector3, to: Vector3) => boolean;
+  /** The car's model, for the check that it really shows in the picture (skipped without it). */
+  subjectObject?: () => Object3D;
 };
 
 type Frame = { car: Vector3; fwd: Vector3; witnesses: Vector3[] };
+type Stand = { view: Viewpoint; eye: Vector3 };
+type Aimed = Stand & { focal: number; blur: number; tilt: number; distance: number };
 
 export type Viewpoint =
   | "witness"
@@ -58,6 +63,10 @@ export type Viewpoint =
 export const MAX_SHOTS_PER_EVENT = 4;
 // Rendered this much larger than the photo, then sampled down (antialiasing without MSAA).
 const SUPERSAMPLE = 1.5;
+// Spots tried with a drawn probe at most, and the probe's size.
+const MAX_PROBES = 4;
+const PROBE_W = 64;
+const PROBE_H = 36;
 const EYE = 1.52;
 
 /** Where this post's poster stood (fixed by the account and the post). */
@@ -129,6 +138,7 @@ export class WitnessShot {
       setTimeout(() => {
         post.photo = source.photo;
         post.photoAspect = source.photoAspect;
+        post.filmedFrom = source.filmedFrom;
       }, 0);
       return;
     }
@@ -145,71 +155,55 @@ export class WitnessShot {
     const subject = this.world.subject();
     const car = subject.position.clone();
     const fwd = new Vector3(Math.sin(subject.yaw), 0, Math.cos(subject.yaw));
-    const witnesses = this.world.witnesses(car);
-    const salt = `${post.account.id}/${post.id}`;
-    const u = (k: string) => unitOf(salt, k);
+    const frame: Frame = { car, fwd, witnesses: this.world.witnesses(car) };
     const taken = this.spots.get(post.record) ?? [];
-    const { view, eye } = this.stand(post, { car, fwd, witnesses }, taken);
-    this.spots.set(post.record, [...taken, eye.clone()]);
-    const distance = Math.hypot(eye.x - car.x, eye.z - car.z);
-
-    // People zoom in on a car that is not close: about 2.2 mm (35 mm equivalent) a metre frames it
-    // at a third of the width. Ultra-wide fans stay wide when it is right in front of them.
-    const keepsWide = isDashcam || (spec.focal <= 13 && distance < 9);
-    const focal = keepsWide ? spec.focal : Math.min(240, Math.max(spec.focal, 2.2 * distance));
-    // Past a phone's longest real lens (about 3×) the zoom is digital, and soft; far away the hand shakes too.
-    const blur = Math.min(2.4, Math.max(0, (focal / 77 - 1) * 1.2) + (view === "far" ? 0.6 : 0));
-
-    // Phones point at the car (a little off, as hands do); a dashcam just looks down the road.
-    const aim = isDashcam
-      ? eye
-          .clone()
-          .addScaledVector(view === "behind" ? fwd : fwd.clone().negate(), 20)
-          .setY(eye.y - 0.4)
-      : car
-          .clone()
-          .add(new Vector3((u("ax") - 0.5) * 1.2, 0.7 + (u("ay") - 0.5) * 0.6, (u("az") - 0.5) * 1.2));
-    if (view === "witness") {
-      // The phone is held out in front of the face, not inside the head.
-      eye.addScaledVector(aim.clone().sub(eye).setY(0).normalize(), 0.35);
-    }
-
+    const tries = this.stands(post, frame, taken);
     const { w, h } = frameSize(spec.aspect);
     const rw = Math.round(w * SUPERSAMPLE);
     const rh = Math.round(h * SUPERSAMPLE);
-    const tilt = spec.tilt + (u("tilt") - 0.5) * (isDashcam ? 0 : 0.06);
-    const cam = this.camera;
-    cam.fov = verticalFov(focal, spec.aspect);
-    cam.aspect = w / h;
-    cam.updateProjectionMatrix();
-    cam.position.copy(eye);
-    cam.up.set(0, 1, 0);
-    cam.lookAt(aim);
-    cam.rotateZ(tilt);
-    cam.updateMatrixWorld();
-
-    const pixels = this.render(rw, rh);
-    if (!pixels) return;
+    const out: { shot?: Aimed; pixels?: Uint8Array } = {};
+    this.staged(() => {
+      // The first spot whose picture really shows the car (a wall or a landmark can be in the way
+      // of any test short of drawing it).
+      for (const stand of tries.slice(0, MAX_PROBES)) {
+        const shot = this.aim(post, spec, stand, frame);
+        if (this.seesCar()) {
+          out.shot = shot;
+          break;
+        }
+      }
+      out.shot ??= this.aim(post, spec, tries[0], frame);
+      out.pixels = this.draw(rw, rh);
+    });
+    const { shot, pixels } = out;
+    if (!shot || !pixels) return;
+    this.spots.set(post.record, [...taken, shot.eye.clone()]);
+    post.filmedFrom = {
+      eye: { x: shot.eye.x, y: shot.eye.y, z: shot.eye.z },
+      fov: this.camera.fov,
+      tilt: shot.tilt,
+      aspect: spec.aspect,
+    };
     log("witness_shot", {
       post: post.id,
       account: post.account.id,
       device: spec.kind,
-      view,
-      focal: Math.round(focal),
+      view: shot.view,
+      focal: Math.round(shot.focal),
       aspect: spec.aspect,
-      distance: Math.round(distance),
+      distance: Math.round(shot.distance),
     });
     // A pan following a fast car streaks the frame sideways.
-    const across = Math.abs(fwd.dot(new Vector3(1, 0, 0).applyQuaternion(cam.quaternion)));
-    const streak = isDashcam ? 0 : Math.min(4, (subject.kmh / 25) * across * (focal / 26));
+    const across = Math.abs(fwd.dot(new Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)));
+    const streak = isDashcam ? 0 : Math.min(4, (subject.kmh / 25) * across * (shot.focal / 26));
     const look: Look = {
       ...spec,
-      tilt,
-      barrel: isDashcam ? 0.22 : focal <= 13 ? 0.08 : 0,
-      blur,
+      tilt: shot.tilt,
+      barrel: isDashcam ? 0.22 : shot.focal <= 13 ? 0.08 : 0,
+      blur: shot.blur,
       streak,
       seed: post.id * 7919,
-      stamp: isDashcam ? dashcamStamp(post.postedAt, subject.kmh, view === "behind") : null,
+      stamp: isDashcam ? dashcamStamp(post.postedAt, subject.kmh, shot.view === "behind") : null,
     };
     // Developing is plain JS over every pixel: after this frame, not in it.
     setTimeout(() => {
@@ -218,12 +212,52 @@ export class WitnessShot {
     }, 0);
   }
 
+  /** Points `this.camera` from a stand the way this poster would (zoom, aim, tilt). */
+  private aim(post: SocialPost, spec: CameraSpec, stand: Stand, frame: Frame): Aimed {
+    const isDashcam = spec.kind === "dashcam";
+    const u = (k: string) => unitOf(`${post.account.id}/${post.id}`, k);
+    const { car, fwd } = frame;
+    const eye = stand.eye.clone();
+    const distance = Math.hypot(eye.x - car.x, eye.z - car.z);
+    // People zoom in on a car that is not close: about 2.2 mm (35 mm equivalent) a metre frames it
+    // at a third of the width. Ultra-wide fans stay wide when it is right in front of them.
+    const keepsWide = isDashcam || (spec.focal <= 13 && distance < 9);
+    const focal = keepsWide ? spec.focal : Math.min(240, Math.max(spec.focal, 2.2 * distance));
+    // Past a phone's longest real lens (about 3×) the zoom is digital, and soft; far away the hand shakes too.
+    const blur = Math.min(2.4, Math.max(0, (focal / 77 - 1) * 1.2) + (stand.view === "far" ? 0.6 : 0));
+    // Phones point at the car (a little off, as hands do); a dashcam just looks down the road.
+    const target = isDashcam
+      ? eye
+          .clone()
+          .addScaledVector(stand.view === "behind" ? fwd : fwd.clone().negate(), 20)
+          .setY(eye.y - 0.4)
+      : car
+          .clone()
+          .add(new Vector3((u("ax") - 0.5) * 1.2, 0.7 + (u("ay") - 0.5) * 0.6, (u("az") - 0.5) * 1.2));
+    if (stand.view === "witness") {
+      // The phone is held out in front of the face, not inside the head.
+      eye.addScaledVector(target.clone().sub(eye).setY(0).normalize(), 0.35);
+    }
+    const tilt = spec.tilt + (u("tilt") - 0.5) * (isDashcam ? 0 : 0.06);
+    const cam = this.camera;
+    cam.fov = verticalFov(focal, spec.aspect);
+    const { w, h } = frameSize(spec.aspect);
+    cam.aspect = w / h;
+    cam.updateProjectionMatrix();
+    cam.position.copy(eye);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(target);
+    cam.rotateZ(tilt);
+    cam.updateMatrixWorld();
+    return { view: stand.view, eye, focal, blur, tilt, distance };
+  }
+
   /**
-   * Where the poster stands: their own spot (viewpointFor) if it can see the car and nobody else
-   * who posted this stood there, else the next of a few others (a building in the way would make
-   * a photo of a wall; two posters on one spot would post the same picture).
+   * Where the poster could stand, best first: their own spot (viewpointFor), then a few others.
+   * Spots another poster of this violation took, or with a building in the way by the cheap test,
+   * go to the back (the drawn probe has the last word).
    */
-  private stand(post: SocialPost, frame: Frame, taken: Vector3[]): { view: Viewpoint; eye: Vector3 } {
+  private stands(post: SocialPost, frame: Frame, taken: Vector3[]): Stand[] {
     const first = viewpointFor(post.account, post.id, frame.witnesses.length > 0);
     const isDashcam = cameraFor(post.account).kind === "dashcam";
     const people: Viewpoint[] = frame.witnesses.length > 0 ? ["witness", "witness"] : [];
@@ -231,16 +265,47 @@ export class WitnessShot {
       ? ["behind", "oncoming", "behind", "oncoming"]
       : [...people, "pavement", "opposite", "bus", "pavement", "balcony"];
     const salt = `${post.account.id}/${post.id}`;
-    let fallback: { view: Viewpoint; eye: Vector3 } | null = null;
+    const good: Stand[] = [];
+    const rest: Stand[] = [];
     for (const [i, view] of [first, ...others].entries()) {
       const eye = this.spot(view, i === 0 ? salt : `${salt}#${i}`, frame);
-      fallback ??= { view, eye };
       const isTaken = taken.some((t) => t.distanceTo(eye) < 4);
       // People who can see the car were picked as such; a balcony looks over its own building.
       const isSeen = view === "witness" || this.canSee(eye, frame.car, view === "balcony" ? 5 : 1);
-      if (isSeen && !isTaken) return { view, eye };
+      (isSeen && !isTaken ? good : rest).push({ view, eye });
     }
-    return fallback ?? { view: first, eye: this.spot(first, salt, frame) };
+    return [...good, ...rest];
+  }
+
+  /**
+   * Whether the car shows in the current view: a tiny frame drawn with and without the car's
+   * meshes, compared. Why the meshes and not the car: hiding the car would hide its headlights
+   * too, and a change in the number of lights recompiles every material.
+   */
+  private seesCar(): boolean {
+    const car = this.world.subjectObject?.();
+    if (!car) return true;
+    const shown = this.draw(PROBE_W, PROBE_H);
+    const meshes: Object3D[] = [];
+    car.traverse((o) => {
+      if ((o as Mesh).isMesh && o.visible) meshes.push(o);
+    });
+    for (const m of meshes) m.visible = false;
+    let gone: Uint8Array;
+    try {
+      gone = this.draw(PROBE_W, PROBE_H);
+    } finally {
+      for (const m of meshes) m.visible = true;
+    }
+    let changed = 0;
+    for (let i = 0; i < shown.length; i += 4) {
+      const d =
+        Math.abs(shown[i] - gone[i]) +
+        Math.abs(shown[i + 1] - gone[i + 1]) +
+        Math.abs(shown[i + 2] - gone[i + 2]);
+      if (d > 30) changed++;
+    }
+    return changed >= PROBE_W * PROBE_H * 0.004;
   }
 
   /** A viewpoint's eye position (salted, so each poster stands somewhere of their own). */
@@ -307,27 +372,35 @@ export class WitnessShot {
     return true;
   }
 
-  /** The scene from `this.camera`, as RGBA rows bottom-up (null when it could not be drawn). */
-  private render(rw: number, rh: number): Uint8Array | null {
-    const target = this.target(rw, rh);
+  /**
+   * Runs `fn` with the scene as a bystander sees it: the player's own markers hidden, the cockpit
+   * put away, and the shadow map of the last frame kept (Why: redrawing it for every probe would
+   * cost more than the probes; the sun has not moved since).
+   */
+  private staged(fn: () => void): void {
     const hidden = this.world.hidden().filter((o): o is Object3D => !!o && o.visible);
     for (const o of hidden) o.visible = false;
     const before = this.renderer.getRenderTarget();
-    const out: { pixels?: Uint8Array } = {};
+    const shadows = this.renderer.shadowMap.autoUpdate;
+    this.renderer.shadowMap.autoUpdate = false;
     try {
-      this.world.stage(() => {
-        this.renderer.setRenderTarget(target);
-        this.renderer.clear();
-        this.renderer.render(this.scene, this.camera);
-        const pixels = new Uint8Array(rw * rh * 4);
-        this.renderer.readRenderTargetPixels(target, 0, 0, rw, rh, pixels);
-        out.pixels = pixels;
-      });
+      this.world.stage(fn);
     } finally {
+      this.renderer.shadowMap.autoUpdate = shadows;
       this.renderer.setRenderTarget(before);
       for (const o of hidden) o.visible = true;
     }
-    return out.pixels ?? null;
+  }
+
+  /** The scene from `this.camera` at rw×rh, as RGBA rows bottom-up. */
+  private draw(rw: number, rh: number): Uint8Array {
+    const target = this.target(rw, rh);
+    this.renderer.setRenderTarget(target);
+    this.renderer.clear();
+    this.renderer.render(this.scene, this.camera);
+    const pixels = new Uint8Array(rw * rh * 4);
+    this.renderer.readRenderTargetPixels(target, 0, 0, rw, rh, pixels);
+    return pixels;
   }
 
   private target(rw: number, rh: number): WebGLRenderTarget {

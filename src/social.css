@@ -554,7 +554,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1 1 0;
+  /* Why sized by content (not four equal slots): long counts (35.3万) would run into the next icon
+     in a 375 px phone. */
+  flex: 1 1 auto;
   min-width: 0;
   height: 20px;
   font-size: 13px;

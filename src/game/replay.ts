@@ -6,7 +6,16 @@ import { MathUtils, type Object3D, type PerspectiveCamera, Quaternion, Vector3 }
  * roadside camera the car drives past, a helicopter, a low wheel shot — either chosen by the
  * player or cut automatically like a broadcast. Violation records jump to their moment.
  */
-export type ReplayCamera = "auto" | "chase" | "front" | "side" | "roadside" | "heli" | "wheel" | "cockpit";
+export type ReplayCamera =
+  | "auto"
+  | "chase"
+  | "front"
+  | "side"
+  | "roadside"
+  | "heli"
+  | "wheel"
+  | "cockpit"
+  | "witness";
 export const CAMERA_LABEL: Record<ReplayCamera, string> = {
   auto: "自動",
   chase: "追従",
@@ -16,6 +25,7 @@ export const CAMERA_LABEL: Record<ReplayCamera, string> = {
   heli: "ヘリ",
   wheel: "低い位置",
   cockpit: "車内",
+  witness: "投稿者のスマホ",
 };
 
 export type Pose = { x: number; y: number; z: number; yaw: number };
@@ -78,7 +88,13 @@ export class ReplayRecorder {
 
 /** Cuts between camera angles like a broadcast replay. */
 export class ReplayDirector {
-  private shot: Exclude<ReplayCamera, "auto"> = "chase";
+  /**
+   * 投稿者のスマホ: where a poster stood and how their phone sees (vertical field of view, roll),
+   * for playing their post's video. A hand follows the car a little late and is never quite still.
+   */
+  witness: { eye: Vector3; fov: number; tilt: number } | null = null;
+  private aim: Vector3 | null = null;
+  private shot: Exclude<ReplayCamera, "auto" | "witness"> = "chase";
   private shotUntil = 0;
   private roadside: Vector3 | null = null;
   private seed = 7;
@@ -100,12 +116,29 @@ export class ReplayDirector {
     const fwd = new Vector3(0, 0, 1).applyQuaternion(car.quat).setY(0).normalize();
     const left = new Vector3(fwd.z, 0, -fwd.x);
     const p = car.pos;
-    let shot = choice === "auto" ? this.shot : choice;
+    const isWitness = choice === "witness" && this.witness !== null;
+    if (isWitness && this.witness) {
+      const w = this.witness;
+      const target = p.clone().add(new Vector3(0, 0.7, 0));
+      this.aim = this.aim ? this.aim.lerp(target, 0.25) : target;
+      camera.position.set(
+        w.eye.x + Math.sin(t / 430) * 0.012,
+        w.eye.y + Math.sin(t / 610 + 1) * 0.01,
+        w.eye.z + Math.cos(t / 520) * 0.012,
+      );
+      camera.lookAt(this.aim);
+      camera.rotateZ(w.tilt + Math.sin(t / 900) * 0.004);
+      camera.fov = w.fov;
+      camera.updateProjectionMatrix();
+      return;
+    }
+    this.aim = null;
+    let shot = choice === "auto" || choice === "witness" ? this.shot : choice;
     if (choice === "auto") {
       const nearMark = marks.some((m) => Math.abs(m - t) < 4000);
       const passed = this.roadside && this.roadside.clone().sub(p).dot(fwd) < -12;
       if (t > this.shotUntil || (shot === "roadside" && passed)) {
-        const pool: Array<Exclude<ReplayCamera, "auto">> = nearMark
+        const pool: Array<Exclude<ReplayCamera, "auto" | "witness">> = nearMark
           ? ["roadside", "chase", "front", "roadside"]
           : ["chase", "side", "roadside", "heli", "wheel", "front", "roadside", "cockpit"];
         let next = pool[Math.floor(this.rand() * pool.length)];
