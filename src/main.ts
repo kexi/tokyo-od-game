@@ -44,6 +44,7 @@ import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
+import { SidewalkNetwork } from "./world/sidewalks";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
 import { Input } from "./game/input";
@@ -279,6 +280,17 @@ async function main(): Promise<void> {
     control.rebuild(graph, applied);
     roadSurface.rebuild(graph, applied, control.approaches);
     signs.rebuild(graph, applied, control.approaches);
+    pedestrians.setNetwork(
+      new SidewalkNetwork(
+        graph,
+        applied?.crossings ?? [],
+        (seg, near) => control.mayCross(seg, near),
+        (x, z) => {
+          const g = groundY(x, z);
+          return g !== null && isOpenGround(x, z, g);
+        },
+      ),
+    );
     log("road_network", {
       segments: graph.segments.length,
       oneway: graph.segments.filter((s) => s.onewayRule).length,

@@ -107,6 +107,29 @@ export class TrafficControl {
     return ap.controller ? lightState(this.time, ap.controller.offset, ap.axis) : "green";
   }
 
+  /**
+   * Whether a pedestrian may start across `seg` at `near` now, or null when no signal governs
+   * that spot. Walkers cross with the other road's green, and stop starting 5 s before it ends
+   * (the 歩行者用信号 flashes before the vehicles' green runs out).
+   */
+  mayCross(seg: Segment, near: Vector3): boolean | null {
+    let best: Approach | null = null;
+    let bestD = 30;
+    for (const ap of this.bySegment.get(seg.id) ?? []) {
+      if (ap.kind !== "signal" || !ap.controller) continue;
+      const d = Math.hypot((ap.a.x + ap.b.x) / 2 - near.x, (ap.a.z + ap.b.z) / 2 - near.z);
+      if (d < bestD) {
+        bestD = d;
+        best = ap;
+      }
+    }
+    if (!best?.controller) return null;
+    const other: 0 | 1 = best.axis === 0 ? 1 : 0;
+    const t = (((this.time + best.controller.offset) % CYCLE) + CYCLE) % CYCLE;
+    const local = t - (other === 0 ? 0 : GREEN[0] + YELLOW + ALL_RED);
+    return local >= 0 && local < GREEN[other] - 5;
+  }
+
   /** Next approach on this segment ahead of a car at travel distance `s`. */
   nextStop(seg: Segment, dir: 1 | -1, s: number): { approach: Approach; dist: number } | null {
     let best: { approach: Approach; dist: number } | null = null;

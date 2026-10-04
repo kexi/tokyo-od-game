@@ -1,6 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3, type Group, type Scene } from "three";
 import { animateHuman, createHuman, disposeHuman, type HumanModel } from "./human";
+import type { SidewalkNetwork, Walk } from "./sidewalks";
 
 export type PedestrianProfile = {
   id: number;
@@ -21,6 +22,8 @@ export type Pedestrian = {
   stateTime: number;
   body: RAPIER.RigidBody | null;
   groundCheck: number;
+  /** On the pavement network; null for people wandering a plaza or park. */
+  walk: Walk | null;
 };
 
 const FAMILY = [
@@ -112,8 +115,10 @@ const HAIR = [0x1a1410, 0x3b2a1f, 0x6b4a2f, 0x888888, 0xb08a5a];
 const SKIN = [0xf1c9a5, 0xe0ac86, 0xc68b62];
 
 /**
- * Street crowd around the player. Walks on open ground (ray-tested against building colliders),
- * dodges fast cars, can be bumped (kinematic capsules near the car) and talked to.
+ * Street crowd around the player. Most walk the pavements of the road network and cross at
+ * crosswalks with the signals (SidewalkNetwork); people away from any street wander open ground
+ * (ray-tested against building colliders). They dodge fast cars, can be bumped (kinematic
+ * capsules near the car) and talked to.
  */
 export class Pedestrians {
   readonly list: Pedestrian[] = [];
@@ -122,6 +127,8 @@ export class Pedestrians {
   raining = false;
   /** Target crowd size; set from the 町丁 population density. */
   crowd = 30;
+  private network: SidewalkNetwork | null = null;
+  private car = { pos: new Vector3(), speed: 0, forward: new Vector3(0, 0, 1) };
 
   constructor(
     private readonly scene: Scene,
@@ -139,8 +146,17 @@ export class Pedestrians {
     }
   }
 
+  /** New road network (area change or re-anchoring): everyone finds their street again. */
+  setNetwork(network: SidewalkNetwork | null): void {
+    this.network = network;
+    for (const p of this.list) p.walk = null;
+  }
+
   /** `focus` is where the player is (car or on foot); `car` is used for dodging. */
   update(dt: number, focus: Vector3, car: Vector3, carSpeed: number, carForward: Vector3): void {
+    this.car.pos.copy(car);
+    this.car.speed = carSpeed;
+    this.car.forward.copy(carForward);
     this.fill(focus);
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
@@ -241,8 +257,27 @@ export class Pedestrians {
     }
     if (p.state === "dodge" && p.stateTime > 0.9) p.state = "walk";
 
-    const speed = p.state === "talk" ? 0 : p.state === "dodge" ? 4.5 : p.speed;
-    if (speed > 0) {
+    let speed = p.state === "talk" ? 0 : p.state === "dodge" ? 4.5 : p.speed;
+    const network = this.network;
+    if (p.state === "walk" && network) p.walk ??= network.attach(pos, p.profile.id);
+    if (p.state === "walk" && network && p.walk) {
+      const step = network.advance(p.walk, speed * dt, p.profile.id, this.car, pos);
+      const dx = step.target.x - pos.x;
+      const dz = step.target.z - pos.z;
+      const gap = Math.hypot(dx, dz);
+      // Chase the walking line a little faster than the walk, so a dodge or a corner is made up.
+      const pace = (step.crossing ? 1.25 : 1) * speed;
+      const move = Math.min(gap, pace * 1.5 * dt);
+      if (gap > 0.02) {
+        pos.x += (dx / gap) * move;
+        pos.z += (dz / gap) * move;
+        p.heading = turnToward(p.heading, Math.atan2(dx, dz), dt * 6);
+      }
+      if (step.waiting && step.face) {
+        p.heading = turnToward(p.heading, Math.atan2(step.face.x - pos.x, step.face.z - pos.z), dt * 4);
+      }
+      speed = step.waiting ? 0 : move / Math.max(dt, 1e-3);
+    } else if (speed > 0) {
       const dx = Math.sin(p.heading) * speed * dt;
       const dz = Math.cos(p.heading) * speed * dt;
       const nx = pos.x + dx * 6; // look ~1 step ahead
@@ -283,15 +318,23 @@ export class Pedestrians {
       this.spawnSeed = (this.spawnSeed * 1103515245 + 12345) >>> 0;
       const a = ((this.spawnSeed % 3600) / 3600) * Math.PI * 2;
       const r = SPAWN_MIN + (((this.spawnSeed >>> 12) % 1000) / 1000) * (SPAWN_MAX - SPAWN_MIN);
-      const x = car.x + Math.cos(a) * r;
-      const z = car.z + Math.sin(a) * r;
+      let x = car.x + Math.cos(a) * r;
+      let z = car.z + Math.sin(a) * r;
+      // Mostly on a pavement: move the spot onto the nearest street's walking line.
+      const walk = this.network?.attach(new Vector3(x, 0, z), this.nextId) ?? null;
+      if (walk && this.network) {
+        const at = this.network.point(walk.seg, walk.s, walk.side, walk.lateral);
+        x = at.x;
+        z = at.z;
+      }
       const g = this.groundAt(x, z);
       if (g === null || !this.isOpen(x, z, g)) continue;
-      this.spawn(new Vector3(x, g, z), a * 3.1);
+      const p = this.spawn(new Vector3(x, g, z), a * 3.1);
+      p.walk = walk;
     }
   }
 
-  private spawn(at: Vector3, heading: number): void {
+  private spawn(at: Vector3, heading: number): Pedestrian {
     const profile = profileFor(this.nextId++);
     const pick = <T>(arr: T[], salt: number) => arr[Math.abs(Math.imul(profile.id, 31 + salt)) % arr.length];
     const model = createHuman(
@@ -318,7 +361,9 @@ export class Pedestrians {
       stateTime: 0,
       body: null,
       groundCheck: 0,
+      walk: null,
     });
+    return this.list[this.list.length - 1];
   }
 
   private createBody(p: Pedestrian): void {
@@ -345,4 +390,10 @@ export class Pedestrians {
     disposeHuman(p.model);
     this.list.splice(i, 1);
   }
+}
+
+/** Turn `from` toward `to` (radians) by at most `max`, the short way round. */
+function turnToward(from: number, to: number, max: number): number {
+  const d = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  return from + Math.max(-max, Math.min(max, d));
 }
