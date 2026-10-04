@@ -149,6 +149,9 @@ const reviewOf = (id: string): Review => {
   return r;
 };
 const isDev = import.meta.env.DEV;
+// The dev server only takes reviews that carry the token it put in this page.
+const reviewToken = document.querySelector<HTMLMetaElement>('meta[name="asset-review-token"]')?.content ?? "";
+const reviewHeaders = { "X-Asset-Review-Token": reviewToken };
 let responses: Response[] = [];
 
 // ---------------------------------------------------------------- list
@@ -579,7 +582,7 @@ $("#submit").addEventListener("click", async () => {
   button.disabled = true;
   const res = await fetch(`${base}__asset-review`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...reviewHeaders },
     body: JSON.stringify({ submittedAt: new Date().toISOString(), items }),
   }).catch(() => null);
   if (!res?.ok) {
@@ -596,7 +599,7 @@ $("#submit").addEventListener("click", async () => {
 
 async function loadResponses(): Promise<void> {
   if (!isDev) return;
-  responses = await fetch(`${base}__asset-review/responses`)
+  responses = await fetch(`${base}__asset-review/responses`, { headers: reviewHeaders })
     .then((r) => (r.ok ? (r.json() as Promise<Response[]>) : []))
     .catch(() => []);
 }
