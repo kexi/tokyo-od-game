@@ -66,7 +66,7 @@ assets:
 assets-check:
     pnpm exec vitest run tests/assetManifest.test.ts
 
-# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両のテクスチャを手続き生成し直す
+# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両・東京駅丸の内駅舎のテクスチャを手続き生成し直す
 textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
@@ -83,6 +83,7 @@ textures:
     uv run scripts/textures/landmark_textures.py
     uv run scripts/textures/asphalt_textures.py
     uv run scripts/textures/police_vehicle_textures.py
+    uv run scripts/textures/tokyo_station_textures.py
 
 # 道路標識の図柄と catalog.json を作り直し、群ごとのコンタクトシートを書き出す
 sign-textures sheet="${TMPDIR:-/tmp}/signs":

@@ -347,7 +347,7 @@ assets:
       Wikimedia Commons の写真で測った。写真の画素はモデルにもテクスチャにも使っていない。
     license: [repo, PDL-1.0, ODbL-1.0]
     used_by: [src/world/landmarks.ts]
-    inputs: [landmark-textures]
+    inputs: [landmark-textures, tokyo-station-textures]
     docs: [knowledge/landmarks-blender.md, knowledge/tokyo-station-blender.md]
     notes: >-
       近景の材質（TS_BrickRed ほか）は agy のテクスチャができるまで単色の仮の色。UV はタイル単位のワールド座標で、
@@ -584,13 +584,38 @@ assets:
     name: ランドマークのテクスチャ
     purpose: 東京タワー・スカイツリーのトラスのマスク・外壁・夜間照明の発光マップ・遠景用の絵と、東京駅の遠景の外壁。
     kind: texture
-    files: [assets/landmarks/textures/*.png]
+    files:
+      [
+        assets/landmarks/textures/tt_*.png,
+        assets/landmarks/textures/sk_*.png,
+        assets/landmarks/textures/ts_far*.png,
+      ]
     generator: { script: scripts/textures/landmark_textures.py, recipe: textures }
     made_by: procedural
     source: 自作（手続き生成、シード固定。写真・フォント・ロゴ・文字なし）
     license: repo
     used_by: []
     docs: [knowledge/landmarks-blender.md]
+
+  - id: tokyo-station-textures
+    name: 東京駅丸の内駅舎のテクスチャ
+    purpose: 東京駅丸の内駅舎近景モデルの外壁化粧煉瓦・覆輪目地・稲田石・雄勝スレート・銅板・窓枠・ガラス・時計・屋根ガラスの手続き生成テクスチャ。
+    kind: texture
+    files:
+      - assets/landmarks/textures/ts_brick_*.*
+      - assets/landmarks/textures/ts_granite_*.*
+      - assets/landmarks/textures/ts_slate_*.*
+      - assets/landmarks/textures/ts_copper_*.*
+      - assets/landmarks/textures/ts_frame_*.*
+      - assets/landmarks/textures/ts_glass_*.*
+      - assets/landmarks/textures/ts_clock_*.*
+      - assets/landmarks/textures/ts_roofglass_*.*
+    generator: { script: scripts/textures/tokyo_station_textures.py, recipe: textures }
+    made_by: agy
+    source: 自作（手続き生成・写真なし、シード固定。ロゴ・文字・駅名なし、時計の数字は線描画）
+    license: repo
+    used_by: []
+    docs: [knowledge/tokyo-station-blender.md]
 
   - id: asphalt-textures
     name: 車道のアスファルト
