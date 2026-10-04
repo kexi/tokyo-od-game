@@ -170,6 +170,13 @@ export class Buildings {
     }
   }
 
+  /** Whether a collider is a building's (a tile's, or a landmark's footprint walls). */
+  isCollider(handle: number): boolean {
+    if (this.footprintCollider?.handle === handle) return true;
+    for (const model of this.models.values()) if (model.collider?.handle === handle) return true;
+    return false;
+  }
+
   /** Synchronously build every collider near a point (used before spawning the car). */
   buildCollidersNear(point: Vector3): number {
     let count = 0;

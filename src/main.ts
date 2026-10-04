@@ -1505,9 +1505,13 @@ async function main(): Promise<void> {
         pedestrians.knockDown(ped);
         emergency.start(ped, performance.now());
         onAccident("pedestrian", kmh, ped.profile.name);
-      } else if (!ped && kmh > 5) {
-        onAccident("vehicle", kmh, "");
+        return;
       }
+      if (ped) return;
+      const what = hitKind(other);
+      // Kerbs and the ground are bumps, not accidents.
+      const isAccident = what !== "ground" && kmh > 5;
+      if (isAccident) onAccident(what, kmh, "");
     });
 
     // The camera's view for open-world spawning (traffic and people appear and leave out of it).
@@ -2007,6 +2011,10 @@ async function main(): Promise<void> {
     audio.horn(isHorn);
     hornFor = isHorn ? hornFor + dt : 0;
     const isCockpitView = isInCar && chase.mode === "cockpit";
+    // In the driver's seat the car's own gauges read the speed: no second speedometer over the view.
+    $("#hud").classList.toggle("in-cockpit", isCockpitView);
+    if (isCockpitView)
+      cockpit.setClock(clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "");
     if (isCockpitView)
       carNavi.draw({
         now,
@@ -3199,7 +3207,31 @@ async function main(): Promise<void> {
       `${part("ambulance", "🚑 救急", "119")}${left}　${part("police", "🚓 警察", "110")}`;
   };
 
-  const onAccident = (kind: "pedestrian" | "vehicle", kmh: number, who: string) => {
+  /**
+   * What the car hit, from the collider: traffic and anything moving, or a parked car (a car-sized
+   * box), is a vehicle; a building's or landmark's walls a building; a thin post a pole (signal,
+   * sign, orbis); the terrain and paving (trimeshes) the ground. Why from the shape: the colliders
+   * come from many modules, and only the building and traffic ones keep a list of their own.
+   */
+  const hitKind = (handle: number): "vehicle" | "building" | "pole" | "ground" => {
+    if (traffic.isAiCollider(handle)) return "vehicle";
+    if (buildings.isCollider(handle)) return "building";
+    const collider = world.getCollider(handle);
+    if (!collider) return "ground";
+    const isMoving = collider.parent() !== null && !collider.parent()?.isFixed();
+    if (isMoving) return "vehicle";
+    const shape = collider.shape;
+    if (shape instanceof RAPIER.Cuboid) {
+      const h = shape.halfExtents;
+      const isCarSized = h.x > 0.6 && h.z > 1.5 && h.y < 1.6;
+      if (isCarSized) return "vehicle";
+      const isThin = Math.min(h.x, h.z) < 0.4;
+      return isThin ? "pole" : "building";
+    }
+    const isPost = shape instanceof RAPIER.Cylinder || shape instanceof RAPIER.Capsule;
+    return isPost ? "pole" : "ground";
+  };
+  const onAccident = (kind: "pedestrian" | "vehicle" | "building" | "pole", kmh: number, who: string) => {
     book(VIOLATIONS.safeDriving, performance.now(), 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
     if (phone.isInUse(performance.now()) && mode === "car")
@@ -3207,12 +3239,13 @@ async function main(): Promise<void> {
     if (kind === "pedestrian") book(injuryViolation(kmh), performance.now(), 3000);
     const penalty = kind === "pedestrian" ? 300 : 100;
     score = Math.max(0, score - penalty);
-    toast(
-      kind === "pedestrian"
-        ? `⚠ 歩行者（${who}さん）と接触しました（${Math.round(kmh)} km/h） −${penalty}`
-        : `⚠ 車両と接触しました（${Math.round(kmh)} km/h） −${penalty}`,
-      "#ff6b6b",
-    );
+    const what = {
+      pedestrian: `歩行者（${who}さん）と接触しました`,
+      vehicle: "車両と接触しました",
+      building: "建物に衝突しました（物損事故）",
+      pole: "電柱・標識などに衝突しました（物損事故）",
+    }[kind];
+    toast(`⚠ ${what}（${Math.round(kmh)} km/h） −${penalty}`, "#ff6b6b");
     log("accident", { kind, kmh: Math.round(kmh) });
   };
 

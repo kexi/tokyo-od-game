@@ -2346,3 +2346,8 @@ pre.notice {
     display: none;
   }
 }
+
+/* 運転席視点: the dashboard has its own speedometer */
+#hud.in-cockpit #hud-speed {
+  display: none;
+}

@@ -1,5 +1,6 @@
 import {
   CanvasTexture,
+  DoubleSide,
   type Light,
   type Material,
   Mesh,
@@ -7,6 +8,7 @@ import {
   MeshStandardMaterial,
   type Object3D,
   PerspectiveCamera,
+  PlaneGeometry,
   type Scene,
   SRGBColorSpace,
   Vector3,
@@ -105,6 +107,39 @@ export class Cockpit {
       warn("cockpit_load_failed", { error: String(error) });
     }
   }
+
+  /**
+   * The dash clock: a small seven-segment display at the top of the meter cluster showing the game
+   * time ("23:05"), lit at night. Drawn on a canvas only when the minute changes.
+   */
+  setClock(hhmm: string): void {
+    if (hhmm === this.clockShown || !this.root) return;
+    this.clockShown = hhmm;
+    if (!this.clock) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 192;
+      canvas.height = 64;
+      const texture = new CanvasTexture(canvas);
+      texture.colorSpace = SRGBColorSpace;
+      const mesh = new Mesh(
+        new PlaneGeometry(0.06, 0.02),
+        new MeshBasicMaterial({ map: texture, side: DoubleSide }),
+      );
+      // Top centre of the meter cluster, between the tachometer (x −0.270) and the speedometer
+      // (−0.4735), above their centres (y 0.112), just proud of the cluster face, facing the eye.
+      mesh.position.set(-0.372, 0.165, 0.606);
+      mesh.layers.set(INTERIOR_LAYER);
+      this.root.add(mesh);
+      this.root.updateWorldMatrix(true, true);
+      if (this.eye) mesh.lookAt(new Vector3().setFromMatrixPosition(this.eye.matrixWorld));
+      this.clock = { canvas, texture };
+    }
+    drawSegments(this.clock.canvas, hhmm);
+    this.clock.texture.needsUpdate = true;
+  }
+
+  private clock: { canvas: HTMLCanvasElement; texture: CanvasTexture } | null = null;
+  private clockShown = "";
 
   /** カーナビ: a canvas (the map) shown on the centre display. */
   showOnDisplay(canvas: HTMLCanvasElement): void {
@@ -292,5 +327,54 @@ export class Cockpit {
     renderer.render(scene, m.camera);
     renderer.setRenderTarget(null);
     if (this.root) this.root.visible = wasVisible;
+  }
+}
+
+/** Seven-segment digits ("23:05") in amber on black, as dash clocks show them. */
+function drawSegments(canvas: HTMLCanvasElement, text: string): void {
+  const g = canvas.getContext("2d");
+  if (!g) return;
+  // a b c d e f g, clockwise from the top, then the middle bar.
+  const DIGITS: Record<string, number> = {
+    "0": 0b1111110,
+    "1": 0b0110000,
+    "2": 0b1101101,
+    "3": 0b1111001,
+    "4": 0b0110011,
+    "5": 0b1011011,
+    "6": 0b1011111,
+    "7": 0b1110000,
+    "8": 0b1111111,
+    "9": 0b1111011,
+  };
+  g.fillStyle = "#050505";
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  const w = 30;
+  const h = 48;
+  const t = 6;
+  let x = 14;
+  const y = 8;
+  const segment = (on: boolean, sx: number, sy: number, sw: number, sh: number) => {
+    g.fillStyle = on ? "#ffb02e" : "rgba(255,176,46,0.08)";
+    g.fillRect(sx, sy, sw, sh);
+  };
+  for (const ch of text) {
+    if (ch === ":") {
+      g.fillStyle = "#ffb02e";
+      g.fillRect(x + 2, y + 14, t, t);
+      g.fillRect(x + 2, y + 30, t, t);
+      x += 16;
+      continue;
+    }
+    const bits = DIGITS[ch] ?? 0;
+    const on = (i: number) => ((bits >> (6 - i)) & 1) === 1;
+    segment(on(0), x + t, y, w - 2 * t, t); // a
+    segment(on(1), x + w - t, y + t, t, h / 2 - t); // b
+    segment(on(2), x + w - t, y + h / 2, t, h / 2 - t); // c
+    segment(on(3), x + t, y + h - t, w - 2 * t, t); // d
+    segment(on(4), x, y + h / 2, t, h / 2 - t); // e
+    segment(on(5), x, y + t, t, h / 2 - t); // f
+    segment(on(6), x + t, y + h / 2 - t / 2, w - 2 * t, t); // g
+    x += w + 10;
   }
 }
