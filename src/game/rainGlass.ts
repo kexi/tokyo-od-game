@@ -25,7 +25,7 @@ import {
 import { NodeMaterial, type Node, type TextureNode, type WebGPURenderer } from "three/webgpu";
 import {
   attribute,
-  Break,
+  bool,
   cameraPosition,
   clamp,
   dFdx,
@@ -37,10 +37,8 @@ import {
   Fn,
   fract,
   fwidth,
-  If,
   length,
   log2,
-  Loop,
   max,
   mix,
   normalize,
@@ -820,28 +818,30 @@ function filmTilt(pm: V2, pivot: V2, span: V2, seed: number): V2 {
  * and the transmitted share; zero when the ray ends up back in the glass and so in the cabin.
  */
 function throughCap(q: V2, entering: V3): V4 {
-  const d = vec3(entering).toVar();
   const o = vec3(q, COT_C); // base point relative to the sphere's centre
-  const b = dot(o, d);
-  const p = o.add(d.mul(b.negate().add(sqrt(max(b.mul(b).sub(dot(o, o)).add(INV_SIN2), 0))))).toVar();
-  const out = vec4(0, 0, 0, 0).toVar();
-  Loop(3, () => {
+  const b = dot(o, entering);
+  let d: V3 = entering;
+  let p: V3 = o.add(d.mul(b.negate().add(sqrt(max(b.mul(b).sub(dot(o, o)).add(INV_SIN2), 0)))));
+  let out: V4 = vec4(0, 0, 0, 0);
+  let isDone: Node<"bool"> = bool(false);
+  // Three bounces unrolled into straight-line code (select, not If/Break): the derivatives taken
+  // after this must stay in uniform control flow, which a data-dependent break would end in WGSL.
+  for (let k = 0; k < 3; k++) {
     const n = p.mul(SIN_CAP).toVar();
     const cosI = dot(d, n).toVar();
     const sin2T = N.mul(N).mul(cosI.mul(cosI).oneMinus());
-    If(sin2T.lessThan(1), () => {
-      const cosT = sqrt(sin2T.oneMinus());
-      const fresnel = float(0.98).mul(pow(cosT.oneMinus(), 5)).add(0.02);
-      out.assign(vec4(d.mul(N).add(n.mul(cosT.sub(N.mul(cosI)))), fresnel.oneMinus()));
-      Break();
-    });
-    d.subAssign(n.mul(cosI.mul(2)));
-    p.addAssign(d.mul(dot(p, d).mul(-2)));
-    // Below the base: out through the glass, into the cabin.
-    If(p.z.lessThan(COT_C), () => {
-      Break();
-    });
-  });
+    const isOut = isDone.not().and(sin2T.lessThan(1));
+    const cosT = sqrt(max(sin2T.oneMinus(), 0));
+    const fresnel = float(0.98).mul(pow(cosT.oneMinus(), 5)).add(0.02);
+    out = select(isOut, vec4(d.mul(N).add(n.mul(cosT.sub(N.mul(cosI)))), fresnel.oneMinus()), out).toVar();
+    isDone = isDone.or(isOut).toVar();
+    const reflected = d.sub(n.mul(cosI.mul(2))).toVar();
+    const next = p.add(reflected.mul(dot(p, reflected).mul(-2))).toVar();
+    // Below the base: out through the glass, into the cabin (out stays zero).
+    isDone = isDone.or(next.z.lessThan(COT_C)).toVar();
+    d = select(isDone, d, reflected).toVar();
+    p = select(isDone, p, next).toVar();
+  }
   return out;
 }
 
