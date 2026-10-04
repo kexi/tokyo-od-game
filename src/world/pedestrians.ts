@@ -303,6 +303,7 @@ export class Pedestrians {
         umbrella: pick([0x223355, 0xaa2233, 0x226644, 0xeeeeee], 5),
       },
       0.92 + (profile.id % 7) * 0.025,
+      profile.id,
     );
     model.root.position.copy(at);
     this.scene.add(model.root);

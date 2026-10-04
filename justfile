@@ -34,6 +34,20 @@ car-textures:
 car-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/car.py -- public/models/car.glb
 
+# 道路標識の板・支柱を Blender CLI でモデリングし public/models/signs.glb を書き出す
+sign-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signs.py -- public/models/signs.glb
+
+# 歩行者を Blender CLI でモデリングし public/models/human.glb を書き出す
+human-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/human.py -- public/models/human.glb
+
+# 道路標識・歩行者・建物外壁のテクスチャを手続き生成し直す
+textures:
+    uv run scripts/textures/sign_textures.py
+    uv run scripts/textures/human_textures.py
+    uv run scripts/textures/building_textures.py
+
 # 型チェックを行う
 typecheck:
     pnpm exec tsc --noEmit

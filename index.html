@@ -23,6 +23,11 @@
         <p id="loading-status">データを読み込み中…</p>
         <div class="bar"><div id="loading-bar"></div></div>
         <fieldset class="options">
+          <label class="opt opt-start">
+            <span>スタート地点</span>
+            <select id="opt-start" aria-describedby="opt-start-note"></select>
+          </label>
+          <p class="sub" id="opt-start-note"></p>
           <label class="opt">
             <input type="checkbox" id="opt-ai" />
             <span>会話 AI（Google Gemma 4 E2B・約 2.0GB）をプレイしながらダウンロード</span>
@@ -66,16 +71,14 @@
       <canvas id="minimap" width="180" height="180"></canvas>
 
       <div id="hud-license" class="panel" title="道路交通法に基づく違反点数（普通車）">
-        <div class="limit-sign" title="最高速度"><span id="limit">–</span></div>
         <div>
           <div id="license-points">違反点数 0 / 6</div>
           <div id="license-fines" class="sub">反則金 0円</div>
-          <div id="limit-kind" class="sub">–</div>
           <div id="reg-ahead" hidden></div>
         </div>
       </div>
 
-      <div id="hud-speed" class="panel"><span id="speed">0</span><small>km/h</small></div>
+      <div id="hud-speed" title="速度計（赤い範囲は現在地の最高速度を超える速度）"></div>
 
       <div id="hud-mission" class="panel">
         <div class="label">ミッション</div>

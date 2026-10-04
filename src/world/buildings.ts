@@ -7,6 +7,7 @@ import {
   UnloadTilesPlugin,
 } from "3d-tiles-renderer/plugins";
 import {
+  type BufferGeometry,
   Box3,
   Mesh,
   MeshStandardMaterial,
@@ -23,7 +24,7 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { BUILDING_COLLIDER_RADIUS, PLATEAU_TILESET } from "../config";
 import { QUALITY } from "../device";
 import type { LocalFrame } from "../geo/frame";
-import { applyFacade, facadeUniforms, setFacadeOrigin } from "./facade";
+import { addFacadeAttribute, applyFacade, facadeUniforms, setFacadeOrigin } from "./facade";
 
 type Model = {
   scene: Object3D;
@@ -145,8 +146,21 @@ export class Buildings {
 
     tiles.addEventListener("load-model", ({ scene }) => {
       this.loadedCount++;
+      // Not yet attached to the group: world matrices are in the tileset's ECEF frame here.
+      scene.updateMatrixWorld(true);
+      const v = new Vector3();
       scene.traverse((o) => {
         if (!(o instanceof Mesh)) return;
+        const geometry = o.geometry as BufferGeometry;
+        const pos = geometry.getAttribute("position");
+        const ecef = new Float32Array(pos.count * 3);
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+          ecef.set([v.x, v.y, v.z], i * 3);
+        }
+        // getX, not .array: the id attribute may be interleaved with the vertex data.
+        const ids = geometry.getAttribute("_batchid") ?? geometry.getAttribute("_feature_id_0");
+        addFacadeAttribute(geometry, ecef, ids ? (i) => ids.getX(i) : null);
         // Building shadows double the draw calls; phones skip them (the car still casts one).
         o.castShadow = !QUALITY.isMobile;
         o.receiveShadow = true;

@@ -113,8 +113,8 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   抽出したデータベースは ${link("https://opendatacommons.org/licenses/odbl/1-0/", "Open Database License (ODbL) 1.0")} で提供します（${link(odblUrl, "LICENSE.txt")}）。
   信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。</p>
 
-  <h3>車のモデル</h3>
-  <p>本ゲーム用に ${link(`${REPO_URL}/blob/main/scripts/blender/car.py`, "Blender のスクリプト")}で作成しました。ナンバープレート・行灯・灯火などのテクスチャも手続き的に生成しています（${link(`${REPO_URL}/tree/main/assets/car/textures`, "生成方法")}）。文字は Noto Sans JP（${link("https://openfontlicense.org/", "SIL Open Font License 1.1")}）で描画。実在の車種・事業者・登録番号とは関係ありません。</p>
+  <h3>車・道路標識・歩行者・建物の外観</h3>
+  <p>車・道路標識の板と支柱・歩行者は本ゲーム用に ${link(`${REPO_URL}/tree/main/scripts/blender`, "Blender のスクリプト")}で作成しました。ナンバープレート・標識の図柄・服・建物の外壁などのテクスチャも手続き的に生成しています（${link(`${REPO_URL}/tree/main/assets`, "生成方法")}）。標識の図柄と色は「道路標識、区画線及び道路標示に関する命令」の様式に基づきます。文字は Noto Sans JP（${link("https://openfontlicense.org/", "SIL Open Font License 1.1")}）で描画。実在の車種・事業者・建物・登録番号とは関係ありません。</p>
 
   <h3>町丁・区の境界と人口</h3>
   <p>出典：${link("https://www.e-stat.go.jp/", "政府統計の総合窓口（e-Stat）")}「国勢調査 令和2年 小地域（町丁・字等別）境界データ 東京都」を加工して作成（${link("https://www.e-stat.go.jp/terms-of-use", "利用規約")}：政府標準利用規約 第2.0版準拠）。現在地の区・町丁名の表示、スポットの座標検証、歩行者の人数（人口密度）に使用。</p>
@@ -162,5 +162,5 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   全文は ${link(licensesUrl, "THIRD_PARTY_LICENSES.txt")} を参照。</p>
 
   <h3>通信について</h3>
-  <p class="sub">プレイ中、ブラウザから国土地理院・PLATEAU 配信サービス・気象庁・公共交通オープンデータセンターへ直接通信します（IP アドレス等が各サービスに送信されます）。進捗はこのブラウザの localStorage にのみ保存します。</p>`;
+  <p class="sub">プレイ中、ブラウザから国土地理院・PLATEAU 配信サービス・気象庁・公共交通オープンデータセンターへ直接通信します（IP アドレス等が各サービスに送信されます）。進捗はこのブラウザの localStorage にのみ保存します。スタート地点に「現在地」を選んだ場合、位置情報はこの端末（sessionStorage）にだけ保存し、URL や外部には送りません（ただし、その周辺の地図タイルを各配信元に要求します）。</p>`;
 }

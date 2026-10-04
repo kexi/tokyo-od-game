@@ -1,6 +1,5 @@
 import {
   BoxGeometry,
-  CanvasTexture,
   Color,
   CylinderGeometry,
   DoubleSide,
@@ -10,7 +9,6 @@ import {
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
-  SRGBColorSpace,
   Vector3,
   type Scene,
 } from "three";
@@ -74,7 +72,6 @@ export class TrafficControl {
   private lamps: InstancedMesh | null = null;
   private lampOwners: { approach: Approach; colour: LightState }[] = [];
   private time = 0;
-  private readonly signTexture = stopSignTexture();
 
   constructor(
     private readonly scene: Scene,
@@ -91,7 +88,7 @@ export class TrafficControl {
       list.push(ap);
       this.bySegment.set(ap.seg.id, list);
     }
-    this.buildModels(graph, regs);
+    this.buildModels(graph);
     this.update(this.time);
   }
 
@@ -324,11 +321,8 @@ export class TrafficControl {
 
   // ---------- models ----------
 
-  private buildModels(graph: RoadGraph, regs: AppliedRegulations): void {
+  private buildModels(graph: RoadGraph): void {
     const signals = this.approaches.filter((a) => a.kind === "signal");
-    const stops = regs.stopSigns.filter((s) =>
-      this.approaches.some((a) => a.kind === "stop" && a.seg === s.line.seg && a.dir === s.line.dir),
-    );
     const poleGeo = new CylinderGeometry(0.09, 0.11, 1, 8).translate(0, 0.5, 0);
     const poleMat = new MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.6, metalness: 0.3 });
     // ~1.3× life size (real heads: 30 cm lamps) so they read at driving distance on screen.
@@ -336,18 +330,10 @@ export class TrafficControl {
     const housingMat = new MeshStandardMaterial({ color: 0x5f666d, roughness: 0.7 });
     const lampGeo = new PlaneGeometry(0.42, 0.42);
     const lampMat = new MeshBasicMaterial({ toneMapped: false, side: DoubleSide });
-    const signGeo = new PlaneGeometry(0.9, 0.8);
-    const signMat = new MeshStandardMaterial({
-      map: this.signTexture,
-      transparent: true,
-      alphaTest: 0.5,
-      side: DoubleSide,
-    });
 
-    const poles = new InstancedMesh(poleGeo, poleMat, signals.length * 2 + stops.length);
+    const poles = new InstancedMesh(poleGeo, poleMat, signals.length * 2);
     const housings = new InstancedMesh(housingGeo, housingMat, signals.length);
     const lamps = new InstancedMesh(lampGeo, lampMat, signals.length * 3);
-    const plates = new InstancedMesh(signGeo, signMat, stops.length);
     const o = new Object3D();
     let pole = 0;
     const ground = (p: Vector3) => this.groundAt(p.x, p.z) ?? 0;
@@ -399,25 +385,8 @@ export class TrafficControl {
         this.lampOwners.push({ approach: ap, colour });
       });
     });
-    stops.forEach((s, i) => {
-      const ap = this.approaches.find(
-        (a) => a.kind === "stop" && a.seg === s.line.seg && a.dir === s.line.dir,
-      );
-      const travel = ap?.travel ?? new Vector3(0, 0, 1);
-      const g = ground(s.pos);
-      o.position.set(s.pos.x, g, s.pos.z);
-      o.rotation.set(0, 0, 0);
-      o.scale.set(0.6, 2.4, 0.6);
-      o.updateMatrix();
-      poles.setMatrixAt(pole++, o.matrix);
-      o.position.set(s.pos.x, g + 2.35, s.pos.z);
-      o.rotation.set(0, Math.atan2(-travel.x, -travel.z), 0);
-      o.scale.set(1, 1, 1);
-      o.updateMatrix();
-      plates.setMatrixAt(i, o.matrix);
-    });
     poles.count = pole;
-    for (const mesh of [poles, housings, lamps, plates]) {
+    for (const mesh of [poles, housings, lamps]) {
       mesh.frustumCulled = false; // instances span the whole area
       mesh.castShadow = mesh === poles || mesh === housings;
       this.scene.add(mesh);
@@ -426,37 +395,6 @@ export class TrafficControl {
     for (let i = 0; i < signals.length * 3; i++) lamps.setColorAt(i, LAMP_OFF);
     this.lamps = lamps;
   }
-}
-
-/** 規制標識「一時停止」(330-A): red inverted triangle with white border and 「止まれ」. */
-function stopSignTexture(): CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 228;
-  const g = canvas.getContext("2d");
-  if (g) {
-    const tri = (inset: number) => {
-      g.beginPath();
-      g.moveTo(inset * 1.7, inset);
-      g.lineTo(256 - inset * 1.7, inset);
-      g.lineTo(128, 228 - inset * 2);
-      g.closePath();
-    };
-    g.fillStyle = "#ffffff";
-    tri(0);
-    g.fill();
-    g.fillStyle = "#d7262e";
-    tri(12);
-    g.fill();
-    g.fillStyle = "#ffffff";
-    g.font = "bold 46px sans-serif";
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.fillText("止まれ", 128, 74);
-  }
-  const tex = new CanvasTexture(canvas);
-  tex.colorSpace = SRGBColorSpace;
-  return tex;
 }
 
 const cross = (ox: number, oz: number, ux: number, uz: number, vx: number, vz: number) =>

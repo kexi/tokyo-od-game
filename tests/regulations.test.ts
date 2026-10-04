@@ -1,8 +1,8 @@
 import { Vector3 } from "three";
 import { describe, expect, it } from "vitest";
-import { parseCoords, streamCsv } from "../scripts/jartic";
+import { anchors, M_LAT as LAT_M, M_LON as LON_M, parseCoords, streamCsv, turnMask } from "../scripts/jartic";
 import { LocalFrame } from "../src/geo/frame";
-import { LineGrid, applyRegulations, type RegulationData } from "../src/world/regulations";
+import { LineGrid, SIGN, applyRegulations, type RegulationData } from "../src/world/regulations";
 import { RoadGraph, speedLimit, type RoadLine } from "../src/world/roads";
 import { CYCLE, lightState, segmentsIntersect } from "../src/world/trafficControl";
 
@@ -15,6 +15,10 @@ const empty = (): RegulationData => ({
   crosswalk: [],
   stopLine: [],
   stopSign: [],
+  signs: [],
+  noOvertake: [],
+  lanes: [],
+  noLaneChange: [],
   signals: [],
 });
 // East–west street along lat 35.68; coordinates run west → east.
@@ -119,7 +123,7 @@ describe("matching regulations onto the road graph", () => {
     const data = empty();
     data.crosswalk.push([139.761, 35.68 + 6 * M_LAT, 139.761, 35.68 - 6 * M_LAT]);
     data.crosswalk.push([139.761, 35.69, 139.761, 35.6901]);
-    expect(applyRegulations(graph, data, frame).crosswalks).toHaveLength(1);
+    expect(applyRegulations(graph, data, frame).crossings).toHaveLength(1);
   });
 });
 
@@ -158,5 +162,85 @@ describe("two-phase signals", () => {
     expect(segmentsIntersect(new Vector3(-1, 0, 0), new Vector3(1, 0, 0), a, b)).toBe(true);
     expect(segmentsIntersect(new Vector3(-2, 0, 0), new Vector3(-1, 0, 0), a, b)).toBe(false);
     expect(segmentsIntersect(new Vector3(-1, 0, 4), new Vector3(1, 0, 4), a, b)).toBe(false);
+  });
+});
+
+describe("sign anchors from regulated sections (build time)", () => {
+  it("puts a sign 3 m into the section and repeats it along long sections", () => {
+    const line = [139.76, 35.68, 139.76 + 700 / LON_M, 35.68]; // 700 m due east
+    const a = anchors(line, 300);
+    expect(a.map(([lon]) => Math.round((lon - 139.76) * LON_M))).toEqual([3, 303, 603]);
+    expect(a.every(([, , heading]) => heading === 90)).toBe(true);
+  });
+
+  it("reads 指定方向外進行禁止 arrows relative to the approach", () => {
+    const center = [139.76, 35.68];
+    const south = [139.76, 35.68 - 100 / LAT_M]; // approaching northbound
+    const west = [139.76 - 50 / LON_M, 35.68];
+    const north = [139.76, 35.68 + 50 / LAT_M];
+    const east = [139.76 + 50 / LON_M, 35.68];
+    expect(turnMask(center, south, west)).toBe(1); // left
+    expect(turnMask(center, south, north)).toBe(2); // straight
+    expect(turnMask(center, south, east)).toBe(4); // right
+    expect(turnMask(center, south, [...west, ...north])).toBe(3); // 右折禁止 = left + straight
+  });
+});
+
+describe("signs and lane rules on the road graph", () => {
+  const eastbound = 90;
+
+  it("stands a sign at the left kerb of the traffic it faces", () => {
+    const graph = new RoadGraph([street()], frame);
+    const data = empty();
+    data.signs.push([SIGN.speed, 40, 139.761, 35.68, eastbound]);
+    const [sign] = applyRegulations(graph, data, frame).signs;
+    expect(sign.value).toBe(40);
+    // Left of eastbound traffic is north (−z); 9 m road → 4.5 + 0.7 m from the centreline.
+    const centre = frame.toLocal(35.68, 139.761, frame.origin.h);
+    expect(sign.pos.z - centre.z).toBeCloseTo(-5.2, 0);
+    expect(sign.travel.x).toBeGreaterThan(0.99);
+  });
+
+  it("faces 車両進入禁止 only at wrong-way traffic of a one-way street", () => {
+    const graph = new RoadGraph([street()], frame);
+    const data = empty();
+    data.oneway.push([0, 1440, 139.762, 35.68, 139.76, 35.68]); // westbound only
+    data.signs.push([SIGN.noEntry, 0, 139.7612, 35.68, eastbound]); // against the flow: kept
+    data.signs.push([SIGN.speed, 30, 139.7608, 35.68, eastbound]); // against the flow: dropped
+    data.signs.push([SIGN.speed, 30, 139.7605, 35.68, 270]); // with the flow: kept
+    const signs = applyRegulations(graph, data, frame).signs;
+    expect(signs.map((s) => [s.type, Math.sign(s.travel.x)])).toEqual([
+      [SIGN.noEntry, 1],
+      [SIGN.speed, -1],
+    ]);
+  });
+
+  it("drops 車両進入禁止 on a two-way street", () => {
+    const graph = new RoadGraph([street()], frame);
+    const data = empty();
+    data.signs.push([SIGN.noEntry, 0, 139.761, 35.68, eastbound]);
+    expect(applyRegulations(graph, data, frame).signs).toHaveLength(0);
+  });
+
+  it("takes yellow centre lines, lane counts and 進路変更禁止 from JARTIC sections", () => {
+    const wide = street(35.68, 22);
+    const plain = street(35.684, 9);
+    const graph = new RoadGraph([wide, plain], frame);
+    const data = empty();
+    data.noOvertake.push([139.76, 35.68, 139.762, 35.68]);
+    data.lanes.push([3, 139.76, 35.68, 139.762, 35.68]);
+    data.noLaneChange.push([139.76, 35.68, 139.762, 35.68]);
+    applyRegulations(graph, data, frame);
+    const [a, b] = graph.segments;
+    expect([a.noOvertake, a.lanes, a.noLaneChange]).toEqual([true, 3, true]);
+    expect([b.noOvertake, b.lanes, b.noLaneChange]).toEqual([false, 1, false]);
+  });
+
+  it("treats a lane count that cannot fit one direction as the total for both", () => {
+    const graph = new RoadGraph([street(35.68, 16)], frame);
+    const data = empty();
+    data.lanes.push([4, 139.76, 35.68, 139.762, 35.68]); // 4 × 3 m > 8 m per direction
+    applyRegulations(graph, data, frame);
+    expect(graph.segments[0].lanes).toBe(2);
   });
 });

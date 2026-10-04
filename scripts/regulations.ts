@@ -4,7 +4,7 @@
 // Run: node scripts/regulations.ts   (downloads ~40 MB JARTIC + ~91 MB OSM extract)
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseCoords, streamCsv } from "./jartic.ts";
+import { anchors, M_LAT, M_LON, parseCoords, reversed, streamCsv, turnMask } from "./jartic.ts";
 import { readTaggedNodes } from "./osm-pbf.ts";
 import { unzip } from "./shapefile.ts";
 
@@ -27,8 +27,26 @@ type Tile = {
   crosswalk: number[][]; // [lon1, lat1, lon2, lat2] across the road
   stopLine: number[][]; // [lon, lat]
   stopSign: number[][]; // [lon, lat]
+  // Sign posts derived from the regulated sections: [type, value, lon, lat, heading°] where
+  // heading is the travel direction of the traffic the sign faces (0 = north, clockwise).
+  signs: number[][];
+  noOvertake: number[][]; // 追越しのための右側部分はみ出し通行禁止 (yellow centre line): coords
+  lanes: number[][]; // 車両通行帯: [lanes (0 = unknown), …coords]
+  noLaneChange: number[][]; // 進路変更禁止 (yellow lane lines): coords
 };
 type SignalTile = number[][]; // [lon, lat]
+
+/** Sign type codes in Tile.signs (the game maps them to 道路標識 designs). */
+export const SIGN = {
+  speed: 1, // 最高速度 (323), value = km/h
+  oneway: 2, // 一方通行 (326)
+  noEntry: 3, // 車両進入禁止 (303), at the far end of a one-way street
+  noParking: 4, // 駐車禁止 (316)
+  noStopping: 5, // 駐停車禁止 (315)
+  noUturn: 6, // 転回禁止 (313)
+  slow: 7, // 徐行 (329)
+  turn: 8, // 指定方向外進行禁止 (311), value = allowed mask (1 left, 2 straight, 4 right)
+} as const;
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6;
 const toMin = (hhmm: string) => Math.floor(Number(hhmm) / 100) * 60 + (Number(hhmm) % 100);
@@ -85,11 +103,24 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
   const tile = (key: string) => {
     let t = tiles.get(key);
     if (!t) {
-      t = { speed: [], speedZone: [], oneway: [], crosswalk: [], stopLine: [], stopSign: [] };
+      t = {
+        speed: [],
+        speedZone: [],
+        oneway: [],
+        crosswalk: [],
+        stopLine: [],
+        stopSign: [],
+        signs: [],
+        noOvertake: [],
+        lanes: [],
+        noLaneChange: [],
+      };
       tiles.set(key, t);
     }
     return t;
   };
+  const sign = (type: number, value: number, a: [number, number, number]) =>
+    tile(`${tx(a[0])}-${ty(a[1])}`).signs.push([type, value, ...a]);
   /** File one regulation into its tiles; false when it is not usable in the game. */
   const addRegulation = (
     code: string,
@@ -98,14 +129,24 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     limit: number,
     name: string,
     shape: string,
+    extra: { side: string; lanes: number; entry: number[]; exits: number[] },
   ): boolean => {
     const at = (i: number) => tile(`${tx(coords[i])}-${ty(coords[i + 1])}`);
+    // Line regulations apply both ways unless 片側 (side code 2); signs face each direction.
+    const signsAlong = (type: number, value: number, spacing: number, bothWays: boolean) => {
+      for (const a of anchors(coords, spacing)) sign(type, value, a);
+      if (bothWays) for (const a of anchors(reversed(coords), spacing)) sign(type, value, a);
+    };
     if (code === "11") {
       // Verified against OSM (98 % of 9,126 matched records): coordinates run AGAINST the
       // permitted direction, so reverse them into travel order.
       const travel: number[] = [];
       for (let i = coords.length - 2; i >= 0; i -= 2) travel.push(coords[i], coords[i + 1]);
       for (const key of tilesOf(travel)) tile(key).oneway.push([...window, ...travel]);
+      for (const a of anchors(travel, 150)) sign(SIGN.oneway, 0, a);
+      // 車両進入禁止 at the exit end, facing traffic that would enter against the flow.
+      const [exit] = anchors(coords, 1e9);
+      if (exit) sign(SIGN.noEntry, 0, exit);
       return true;
     }
     if (code === "112" || code === "114") {
@@ -116,6 +157,60 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       const isArea = code === "114" || shape === "3";
       for (const key of tilesOf(coords))
         (isArea ? tile(key).speedZone : tile(key).speed).push([limit, ...coords]);
+      // Zone limits get their signs at the zone entrances, which needs the road graph (runtime).
+      if (!isArea) signsAlong(SIGN.speed, limit, 300, true);
+      return true;
+    }
+    const bothWays = extra.side !== "2";
+    if (code === "115") {
+      signsAlong(SIGN.noParking, 0, 200, bothWays);
+      return true;
+    }
+    if (code === "65") {
+      signsAlong(SIGN.noStopping, 0, 200, bothWays);
+      return true;
+    }
+    if (code === "51") {
+      signsAlong(SIGN.noUturn, 0, 300, bothWays);
+      return true;
+    }
+    if (code === "61") {
+      signsAlong(SIGN.slow, 0, 200, true);
+      return true;
+    }
+    if (code === "17") {
+      for (const key of tilesOf(coords)) tile(key).noOvertake.push(coords);
+      return true;
+    }
+    if (code === "20") {
+      for (const key of tilesOf(coords)) tile(key).lanes.push([extra.lanes, ...coords]);
+      return true;
+    }
+    if (code === "52" || code === "119") {
+      for (const key of tilesOf(coords)) tile(key).noLaneChange.push(coords);
+      return true;
+    }
+    if (code === "12") {
+      // Spec K 2.1: the point is the junction centre, 進入方向 the approach, 指定する方向 the exits.
+      const isRightBan = name === "右折禁止";
+      const mask =
+        extra.entry.length >= 2 && extra.exits.length >= 2
+          ? turnMask(coords, extra.entry, extra.exits)
+          : isRightBan
+            ? 3
+            : name === "右折及び直進禁止"
+              ? 1
+              : 0;
+      if (!mask || mask === 7 || extra.entry.length < 2) return false;
+      const hx = (coords[0] - extra.entry[0]) * M_LON;
+      const hy = (coords[1] - extra.entry[1]) * M_LAT;
+      const dist = Math.hypot(hx, hy);
+      if (dist < 1) return false;
+      // Sign on the approach, ~12 m before the junction centre.
+      const back = Math.min(dist, 12) / dist;
+      const lon = round(coords[0] - (coords[0] - extra.entry[0]) * back);
+      const lat = round(coords[1] - (coords[1] - extra.entry[1]) * back);
+      sign(SIGN.turn, mask, [lon, lat, Math.round(((Math.atan2(hx, hy) * 180) / Math.PI + 360) % 360)]);
       return true;
     }
     if (code === "85") {
@@ -140,7 +235,23 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     }
     const code = row[col["共通規制種別コード"]];
     // 113 (可変速度) is skipped: its value depends on live variable-message signs.
-    const isWanted = ["11", "112", "114", "85", "92", "63"].includes(code);
+    const isWanted = [
+      "11",
+      "112",
+      "114",
+      "85",
+      "92",
+      "63",
+      "115",
+      "65",
+      "51",
+      "61",
+      "17",
+      "20",
+      "52",
+      "119",
+      "12",
+    ].includes(code);
     if (!isWanted) return;
     const cell = (h: string) => (col[h] === undefined ? "" : (row[col[h]] ?? "").trim());
     const isAbolished = cell("意思決定廃止日") !== "";
@@ -164,6 +275,12 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       Number(cell("速度")),
       cell("県別規制種別名称"),
       cell("点・線・面コード"),
+      {
+        side: cell("片側・両側コード"),
+        lanes: Number(cell("車両通行帯数")) || 0,
+        entry: parseCoords(cell("進入方向(座標)")),
+        exits: parseCoords(cell("指定する方向(座標)")),
+      },
     );
     if (kept) counts[code] = (counts[code] ?? 0) + 1;
   });

@@ -24,6 +24,12 @@ export type Segment = {
   /** 規制速度 from JARTIC (km/h), or null when only the statutory limit applies. */
   limit: number | null;
   limitKind: "sign" | "zone" | "statutory";
+  /** 追越しのための右側部分はみ出し通行禁止 (JARTIC): yellow centre line. */
+  noOvertake: boolean;
+  /** 進路変更禁止 (JARTIC): yellow lane lines. */
+  noLaneChange: boolean;
+  /** Lanes per direction: 1 unless JARTIC lists a 車両通行帯 for the section. */
+  lanes: number;
 };
 
 /** Speed limit in force on a segment: posted (JARTIC) when known, statutory otherwise. */
@@ -78,6 +84,9 @@ export class RoadGraph {
         onewayRule: null,
         limit: null,
         limitKind: "statutory",
+        noOvertake: false,
+        noLaneChange: false,
+        lanes: 1,
       });
       this.link(from, id);
       this.link(to, id);

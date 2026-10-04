@@ -194,17 +194,117 @@ button:disabled {
 }
 
 #hud-speed {
-  bottom: 26px;
-  left: 16px;
-  font-size: 40px;
-  font-weight: 700;
+  position: fixed;
+  bottom: 18px;
+  left: 14px;
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, rgba(24, 28, 36, 0.86), rgba(10, 12, 16, 0.92));
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+#hud-speed svg {
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
   font-variant-numeric: tabular-nums;
 }
 
-#hud-speed small {
+#hud-speed .dial {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 3;
+}
+
+#hud-speed .red-zone {
+  fill: none;
+  stroke: #e53935;
+  stroke-width: 7;
+  stroke-linecap: butt;
+}
+
+#hud-speed .tick {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1.5;
+}
+
+#hud-speed .tick.major {
+  stroke: #fff;
+  stroke-width: 2.5;
+}
+
+#hud-speed .tick-label {
+  fill: #e8ecf2;
+  font-size: 12px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+#hud-speed .readout {
+  fill: #fff;
+  font-size: 27px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+#hud-speed .unit {
+  fill: var(--sub);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+#hud-speed .needle {
+  stroke: #ffb74d;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transition: stroke 0.2s;
+}
+
+#hud-speed .hub {
+  fill: #ffb74d;
+}
+
+/* 最高速度 sign: white plate, red ring, blue numerals (道路標識 323). */
+#hud-speed .limit-ring {
+  fill: #fff;
+  stroke: #d7262e;
+  stroke-width: 4;
+}
+
+#hud-speed .limit-value {
+  fill: #1b3f95;
   font-size: 14px;
-  margin-left: 4px;
-  color: var(--sub);
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+#hud-speed .limit-kind {
+  fill: var(--sub);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+#hud-speed svg.over .needle,
+#hud-speed svg.over .hub {
+  stroke: #ff3b30;
+  fill: #ff3b30;
+}
+
+#hud-speed svg.over .readout {
+  fill: #ff5a50;
+  animation: overspeed 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes overspeed {
+  to {
+    opacity: 0.55;
+  }
 }
 
 #hud-mission {
@@ -548,6 +648,21 @@ pre.notice {
   margin-top: 3px;
 }
 
+.opt-start {
+  align-items: center;
+}
+
+.opt-start select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 14, 20, 0.85);
+  color: inherit;
+  font: inherit;
+}
+
 .options .sub {
   margin: 2px 0 10px 24px;
 }
@@ -563,20 +678,6 @@ pre.notice {
   gap: 10px;
   align-items: center;
   font-size: 13px;
-}
-
-.limit-sign {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #fff;
-  border: 5px solid #d7262e;
-  display: grid;
-  place-items: center;
-  color: #1b3f95;
-  font-weight: 800;
-  font-size: 17px;
-  flex: none;
 }
 
 #reg-ahead {
@@ -878,9 +979,10 @@ pre.notice {
     font-size: 9px;
   }
   #hud-speed {
-    font-size: 26px;
-    bottom: 112px;
-    left: 18px;
+    width: 112px;
+    height: 112px;
+    bottom: 104px;
+    left: 12px;
   }
   #hud-toolbar {
     top: 58px;
@@ -944,12 +1046,6 @@ pre.notice {
   }
   #hud-license > div:last-child .sub {
     display: none;
-  }
-  .limit-sign {
-    width: 34px;
-    height: 34px;
-    border-width: 4px;
-    font-size: 13px;
   }
   #phone-button {
     top: 112px;

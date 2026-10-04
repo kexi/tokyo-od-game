@@ -15,6 +15,8 @@ import {
 } from "three";
 import type { z } from "zod";
 import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
+
+const SPAWN_DEFAULT = { ...SPAWN, label: "東京駅 丸の内" };
 import { QUALITY } from "./device";
 import {
   BusStopFileSchema,
@@ -37,6 +39,8 @@ import { ConversationController } from "./game/conversation";
 import { Walker } from "./game/walker";
 import { ChaseCamera } from "./game/camera";
 import { loadCarModels } from "./game/carModel";
+import { Speedometer } from "./game/speedometer";
+import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
 import { Input } from "./game/input";
 import { Minimap } from "./game/minimap";
@@ -61,6 +65,9 @@ import { RoadGraph, leftOf, speedLimit, type RoadLine } from "./world/roads";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
+import { TrafficSigns, loadSignModels } from "./world/signs";
+import { loadHumanModels } from "./world/human";
+import { loadFacadeTextures } from "./world/facade";
 import { TrafficAI } from "./world/traffic-ai";
 import {
   formatViolation,
@@ -132,6 +139,11 @@ async function main(): Promise<void> {
   const areas = areaFile ? new AreaIndex(areaFile) : null;
   const pois: Poi[] = poiFile ? expandPois(poiFile) : [];
   const categories: Category[] = poiFile?.categories ?? [];
+  const stations = pois
+    .filter((p) => p.category === "station")
+    .map((p) => ({ name: p.name, ward: p.ward, lat: p.lat, lon: p.lon }));
+  const spawn = readStart(SPAWN_DEFAULT, stations);
+  initStartPicker($<HTMLSelectElement>("#opt-start"), $("#opt-start-note"), stations, spawn);
   log("data_loaded", {
     pois: pois.length,
     geoid: geoidGrid !== null,
@@ -154,15 +166,18 @@ async function main(): Promise<void> {
   const camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 40000);
 
   const dem = new DemStore(new Geoid(geoidGrid));
-  setLoading("地形（国土地理院 DEM）と車のモデルを読み込み中…", 0.18);
+  setLoading(`地形と 3D モデルを読み込み中…（スタート: ${spawn.label}）`, 0.18);
   await Promise.all([
     dem.load(
-      Math.floor(lonToTileX(SPAWN.lon, TERRAIN_ZOOM)),
-      Math.floor(latToTileY(SPAWN.lat, TERRAIN_ZOOM)),
+      Math.floor(lonToTileX(spawn.lon, TERRAIN_ZOOM)),
+      Math.floor(latToTileY(spawn.lat, TERRAIN_ZOOM)),
     ),
     loadCarModels(),
+    loadSignModels(),
+    loadHumanModels(),
+    loadFacadeTextures(),
   ]);
-  let frame = new LocalFrame(SPAWN.lat, SPAWN.lon, dem.heightAt(SPAWN.lat, SPAWN.lon) ?? 40);
+  let frame = new LocalFrame(spawn.lat, spawn.lon, dem.heightAt(spawn.lat, spawn.lon) ?? 40);
 
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = 1 / 60;
@@ -213,6 +228,8 @@ async function main(): Promise<void> {
   const control = new TrafficControl(scene, (x, z) => groundY(x, z));
   const traffic = new TrafficAI(scene, world, (x, z) => groundY(x, z), control);
   const regulationTiles = new RegulationTiles();
+  const signs = new TrafficSigns(scene, (x, z) => groundY(x, z));
+  const speedometer = new Speedometer($("#hud-speed"));
   const law = new TrafficLaw();
   // Roads follow the rendered terrain (collider = render mesh), falling back to the DEM.
   const roadSurface = new RoadSurface(scene, (x, z) => {
@@ -238,13 +255,15 @@ async function main(): Promise<void> {
     traffic.setGraph(graph);
     control.rebuild(graph, applied);
     roadSurface.rebuild(graph, applied, control.approaches);
+    signs.rebuild(graph, applied, control.approaches);
     log("road_network", {
       segments: graph.segments.length,
       oneway: graph.segments.filter((s) => s.onewayRule).length,
       posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
       signals: control.signalCount(),
       stops: control.approaches.filter((a) => a.kind === "stop").length,
-      crosswalks: applied?.crosswalks.length ?? 0,
+      crossings: applied?.crossings.length ?? 0,
+      signs: applied?.signs.length ?? 0,
     });
   };
   const refreshRoads = (lat: number, lon: number) => {
@@ -427,7 +446,7 @@ async function main(): Promise<void> {
     }
   };
 
-  let lastGeo = { lat: SPAWN.lat, lon: SPAWN.lon };
+  let lastGeo = { lat: spawn.lat, lon: spawn.lon };
   const surroundings = (): Surroundings => {
     const hour = env.displayHour(lastGeo.lat, lastGeo.lon);
     const obs = env.getObservation();
@@ -604,7 +623,7 @@ async function main(): Promise<void> {
     $("#loading").hidden = true;
     $("#hud").hidden = false;
     buildings.buildCollidersNear(new Vector3());
-    vehicle.teleport(findOpenGround(0, 0), SPAWN.yaw);
+    vehicle.teleport(findOpenGround(0, 0), spawn.yaw);
     vehicle.setFrozen(false);
     frozen = false;
     chase.snap();
@@ -623,12 +642,12 @@ async function main(): Promise<void> {
     last = now;
 
     if (state !== "playing") {
-      terrain.update(SPAWN.lat, SPAWN.lon);
+      terrain.update(spawn.lat, spawn.lon);
       buildings.update(new Vector3(), now);
-      env.update(dt, new Vector3(), camera.position, SPAWN.lat, SPAWN.lon);
+      env.update(dt, new Vector3(), camera.position, spawn.lat, spawn.lon);
       camera.position.applyAxisAngle(new Vector3(0, 1, 0), dt * 0.05);
       camera.lookAt(0, 30, 0);
-      const groundReady = terrain.hasColliderAt(SPAWN.lat, SPAWN.lon);
+      const groundReady = terrain.hasColliderAt(spawn.lat, spawn.lon);
       const tilesProgress = buildings.loadProgress();
       const waited = now - loadStart;
       setLoading(
@@ -718,6 +737,7 @@ async function main(): Promise<void> {
       roadGraph.setClock(clockMinutes());
     }
     traffic.update(dt, focus, carPos, carForward, isOnFoot ? 0 : speed / 3.6);
+    speedometer.update(speed, currentLimit, currentLimitKind);
 
     // 道路交通法 checks while driving: speed vs (estimated) limit, keep-left on two-way roads.
     const isDriving = !isOnFoot && !frozen && !law.state.suspended;
@@ -879,7 +899,7 @@ async function main(): Promise<void> {
     if (now - lastHud > 150) {
       lastHud = now;
       const yaw = isOnFoot ? Math.atan2(walker.forward().x, walker.forward().z) : carYaw(carRot);
-      updateHud(geo.lat, geo.lon, yaw, speed, now);
+      updateHud(geo.lat, geo.lon, yaw, now);
       conversation.refreshStatus();
       phone.refresh();
       if (brain.status !== lastBrainStatus) {
@@ -987,8 +1007,7 @@ async function main(): Promise<void> {
     log("accident", { kind, kmh: Math.round(kmh) });
   };
 
-  const updateHud = (lat: number, lon: number, yaw: number, speed: number, now: number) => {
-    $("#speed").textContent = String(Math.round(Math.abs(speed)));
+  const updateHud = (lat: number, lon: number, yaw: number, now: number) => {
     $("#ward").textContent = wardName;
     $("#town").textContent = townName || " ";
     const hour = env.displayHour(lat, lon);
@@ -1005,15 +1024,6 @@ async function main(): Promise<void> {
       nearestBus && nearestBus.distance < 120 ? `🚌 ${nearestBus.bus.note.split(" ")[0]}` : transit.status;
 
     $("#score").textContent = score.toLocaleString();
-    $("#limit").textContent = currentLimit === null ? "–" : String(currentLimit);
-    $("#limit-kind").textContent =
-      currentLimitKind === "sign"
-        ? "規制速度（JARTIC）"
-        : currentLimitKind === "zone"
-          ? "区域規制（JARTIC）"
-          : currentLimitKind === "statutory"
-            ? "法定速度（幅員から推定）"
-            : "–";
     const ahead =
       mode === "foot" ? null : control.ahead(vehicle.position(), headingVector(vehicle.quaternion()));
     const aheadText = ahead
