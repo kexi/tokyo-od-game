@@ -10,6 +10,8 @@ export type Mission = {
   startDistance: number;
   /** The opening drive to a well-known place a few km away, by the rules and without a clock. */
   isTrip?: boolean;
+  /** Driving home to end the day (the post, the day's record, any 行政処分). */
+  isHome?: boolean;
 };
 
 export type MissionResult = { target: Poi; reward: number; seconds: number };
@@ -74,6 +76,54 @@ export class Missions {
       timeLimit: Infinity,
       startDistance: haversineMeters(lat, lon, target.lat, target.lon),
       isTrip: true,
+    };
+    return this.current;
+  }
+
+  /** Go and appear (出頭) at a police station or licence centre; the counter closes at 17:00. */
+  startAppointment(
+    place: { name: string; lat: number; lon: number },
+    now: number,
+    lat: number,
+    lon: number,
+  ): Mission {
+    const target: Poi = {
+      id: -2,
+      category: "appointment",
+      lat: place.lat,
+      lon: place.lon,
+      name: place.name,
+      ward: "",
+      source: -2,
+    };
+    this.current = {
+      target,
+      startedAt: now,
+      timeLimit: Infinity,
+      startDistance: haversineMeters(lat, lon, place.lat, place.lon),
+      isTrip: true,
+    };
+    return this.current;
+  }
+
+  /** Drive home: the day ends on arrival. */
+  startHome(home: { lat: number; lon: number }, now: number, lat: number, lon: number): Mission {
+    const target: Poi = {
+      id: -1,
+      category: "home",
+      lat: home.lat,
+      lon: home.lon,
+      name: "自宅",
+      ward: "",
+      source: -1,
+    };
+    this.current = {
+      target,
+      startedAt: now,
+      timeLimit: Infinity,
+      startDistance: haversineMeters(lat, lon, home.lat, home.lon),
+      isTrip: true,
+      isHome: true,
     };
     return this.current;
   }

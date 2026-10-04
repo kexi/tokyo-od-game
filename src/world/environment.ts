@@ -129,6 +129,14 @@ export class Environment {
     return new Date(this.gameMs);
   }
 
+  /** The next morning at `hour` (JST), the clock running on from there (after the day ends). */
+  startNextDay(hour = 8): void {
+    if (this.mode === "real") this.mode = "morning";
+    this.isPresetPending = false;
+    const tomorrow = new Date(this.gameMs + 24 * 3600_000);
+    this.gameMs = jstDateAt(hour, tomorrow).getTime();
+  }
+
   get weather(): WeatherMode {
     return this.weatherMode;
   }

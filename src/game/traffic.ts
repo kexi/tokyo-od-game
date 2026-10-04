@@ -22,6 +22,8 @@ export type ViolationKind =
   | "safeDriving" // 安全運転義務違反
   | "injury" // 人身事故の付加点数（軽傷・不注意の程度が重い場合の最小）
   | "hitAndRun" // 救護義務違反（ひき逃げ）
+  | "unlicensed" // 無免許運転（免許停止中）
+  | "ignoredStop" // 警察官の停止に従わなかった（無免許などの疑いでの停止）
   | "phone" // 携帯電話使用等（保持）
   | "parking" // 放置駐車違反（駐車禁止場所等）
   | "parkingNoStop"; // 放置駐車違反（駐停車禁止場所等）
@@ -204,6 +206,23 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     points: 3,
     fine: 18000,
   },
+  // 免許の効力が停止されている間の運転は無免許運転（非反則・刑事手続）。
+  unlicensed: {
+    kind: "unlicensed",
+    label: "無免許運転（免許停止中）",
+    article: "道路交通法 第64条第1項",
+    points: 25,
+    fine: null,
+  },
+  // 第67条第1項（無免許・酒気帯び・過労運転などの疑い）による停止に従わず逃げた。点数は無く刑罰のみ
+  // （第119条第1項第13号：三月以下の拘禁刑又は五万円以下の罰金）。
+  ignoredStop: {
+    kind: "ignoredStop",
+    label: "停止命令違反（警察官の停止に従わない）",
+    article: "道路交通法 第67条第1項・第119条第1項第13号",
+    points: 0,
+    fine: null,
+  },
   hitAndRun: {
     kind: "hitAndRun",
     label: "救護義務違反（ひき逃げ）",
@@ -234,12 +253,26 @@ export type ViolationContext = {
   snapshot?: string;
 };
 
-export type ViolationRecord = Violation & { at: number; context?: ViolationContext };
+/**
+ * Who caught it. A violation only counts once someone does: a patrol car or 白バイ that saw it
+ * (現認, ticket on the spot), an orbis photo (the notice comes by post), or the police called to
+ * an accident. Until then it is only the player's own record (未検挙).
+ */
+export type Detector = "patrol" | "officer" | "orbis" | "accident" | "parking";
+export type ViolationStatus = "uncaught" | "caught" | "notice";
+export type ViolationRecord = Violation & {
+  at: number;
+  context?: ViolationContext;
+  status: ViolationStatus;
+  by?: Detector;
+};
 
 export type LicenseState = {
+  /** Points of caught violations (orbis notices count once the day ends and the post comes). */
   points: number;
   fines: number;
   log: ViolationRecord[];
+  /** 行政処分 decided (免許停止・取消): set at the end of the day, or at once on arrest. */
   suspended: boolean;
 };
 
@@ -249,18 +282,61 @@ export class TrafficLaw {
   /** 放置違反金 orders so far (repeated orders can lead to a vehicle 使用制限命令). */
   ownerOrders = 0;
 
-  /** Records a violation unless the same kind was booked within `cooldownMs` (one stop per offence). */
-  book(v: Violation, now: number, cooldownMs = 8000, context?: ViolationContext): ViolationRecord | null {
+  /**
+   * Records a violation the driver committed (未検挙) unless the same kind was recorded within
+   * `cooldownMs` (one offence, not one per frame). It counts only once caught (`cite`/`notice`).
+   */
+  commit(v: Violation, now: number, cooldownMs = 8000, context?: ViolationContext): ViolationRecord | null {
     const until = this.cooldown.get(v.kind) ?? 0;
-    // Keep booking while suspended: an offence committed before the screen appears (e.g. fleeing
-    // after the crash that crossed 6 points) still counts.
     if (now < until) return null;
     this.cooldown.set(v.kind, now + cooldownMs);
-    this.state.points += v.points;
-    this.state.fines += v.fine ?? 0;
-    const record: ViolationRecord = { ...v, at: now, context };
+    const record: ViolationRecord = { ...v, at: now, context, status: "uncaught" };
     this.state.log.push(record);
-    if (this.state.points >= SUSPENSION_POINTS) this.state.suspended = true;
+    return record;
+  }
+
+  /** Caught on the spot (現認・事故): points and the 反則金 (or a criminal case) now. */
+  cite(record: ViolationRecord, by: Detector): void {
+    if (record.status === "caught") return;
+    record.status = "caught";
+    record.by = by;
+    this.state.points += record.points;
+    this.state.fines += record.fine ?? 0;
+  }
+
+  /** Photographed (orbis): the 出頭通知書 comes by post, and the points with it (`deliverNotices`). */
+  notice(record: ViolationRecord, by: Detector): void {
+    if (record.status !== "uncaught") return;
+    record.status = "notice";
+    record.by = by;
+  }
+
+  /** The post at the end of the day: the notices become caught violations. */
+  deliverNotices(): ViolationRecord[] {
+    const delivered = this.state.log.filter((r) => r.status === "notice");
+    for (const r of delivered) {
+      r.status = "caught";
+      this.state.points += r.points;
+      this.state.fines += r.fine ?? 0;
+    }
+    return delivered;
+  }
+
+  /** Whether the points caught so far reach a 行政処分 (前歴なし: 6 停止, 15 取消). */
+  get isSanctioned(): boolean {
+    return this.state.points >= SUSPENSION_POINTS;
+  }
+
+  /** Committed and caught at once (an accident the police attend, an arrest). */
+  book(
+    v: Violation,
+    now: number,
+    cooldownMs = 8000,
+    context?: ViolationContext,
+    by: Detector = "accident",
+  ): ViolationRecord | null {
+    const record = this.commit(v, now, cooldownMs, context);
+    if (record) this.cite(record, by);
     return record;
   }
 
@@ -275,7 +351,7 @@ export class TrafficLaw {
       points: 0,
     };
     this.state.fines += owner.fine ?? 0;
-    this.state.log.push({ ...owner, at: now });
+    this.state.log.push({ ...owner, at: now, status: "caught", by: "parking" });
     this.ownerOrders++;
     return owner;
   }

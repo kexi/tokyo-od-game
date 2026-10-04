@@ -374,6 +374,9 @@ type OsmTiles = {
   turnlanes: Map<string, TurnLaneTile>;
 };
 
+let police: { stations: Array<[number, number, string]>; centres: Array<[number, number, string]> } | null =
+  null;
+
 async function buildOsm(): Promise<OsmTiles> {
   const file = await osmExtract();
   const signals = new Map<string, SignalTile>();
@@ -451,7 +454,23 @@ async function buildOsm(): Promise<OsmTiles> {
     at(w.refs, forward);
     at([...w.refs].reverse(), backward);
   }
+  // 警察署 (where notices to appear send the driver) and the 運転免許試験場 (where a licence
+  // is handed in for a 免許停止): small enough for one file.
+  const stations = readTaggedNodes(file, (t) => t.amenity === "police" && (t.name ?? "").endsWith("警察署"))
+    .filter((n) => inBbox(n.lon, n.lat))
+    .map((n) => [round(n.lon), round(n.lat), n.tags.name ?? ""] as [number, number, string]);
+  const centreWays = readWays(file, (t) => /^(鮫洲|江東|府中)運転免許試験場$/.test(t.name ?? ""));
+  const centreCoords = readNodeCoords(file, new Set(centreWays.flatMap((w) => w.refs)));
+  const centres = centreWays.map((w) => {
+    const pts = w.refs.map((r) => centreCoords.get(r)).filter((c): c is [number, number] => !!c);
+    const lon = pts.reduce((a, c) => a + c[0], 0) / pts.length;
+    const lat = pts.reduce((a, c) => a + c[1], 0) / pts.length;
+    return [round(lon), round(lat), w.tags.name ?? ""] as [number, number, string];
+  });
+  police = { stations, centres };
   log("osm_parsed", {
+    police: stations.length,
+    centres: centres.map((c) => c[2]),
     signals: [...signals.values()].reduce((a, t) => a + t.length, 0),
     named: [...junctions.values()].reduce((a, t) => a + t.length, 0),
     footbridges: kept,
@@ -507,4 +526,6 @@ if (!only || only === "signals") {
       JSON.stringify({ zoom: Z, tiles: [...tiles.keys()], fetchedAt: new Date().toISOString() }),
     );
   }
+  // From OpenStreetMap too (ODbL; the credit line in the game covers it).
+  if (police) await writeFile(join(ROOT, "police.json"), JSON.stringify(police));
 }

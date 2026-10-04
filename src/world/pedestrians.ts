@@ -124,6 +124,8 @@ const SKIN = [0xf1c9a5, 0xe0ac86, 0xc68b62];
  */
 export class Pedestrians {
   readonly list: Pedestrian[] = [];
+  /** Whether a point is in the camera's view (set by the game each frame). */
+  isSeen: (p: Vector3) => boolean = () => false;
   private nextId = 1;
   private spawnSeed = 7;
   raining = false;
@@ -169,11 +171,13 @@ export class Pedestrians {
       const p = this.list[i];
       const pos = p.object.position;
       const dist = Math.hypot(pos.x - focus.x, pos.z - focus.z);
-      if (dist > DESPAWN && p.state !== "injured") {
+      // Only out of view (or far beyond it), so nobody vanishes in front of the camera.
+      const isGone = dist > DESPAWN + 120 || (dist > DESPAWN && !this.isSeen(pos));
+      if (isGone && p.state !== "injured") {
         this.remove(i);
         continue;
       }
-      this.step(p, dt, car, carSpeed, carForward, dist);
+      this.step(p, dt, car, carSpeed, carForward);
       const wantsBody = dist < BODY_RADIUS && p.state !== "fallen" && p.state !== "injured";
       if (wantsBody && !p.body) this.createBody(p);
       else if (!wantsBody) this.dropBody(p);
@@ -224,14 +228,7 @@ export class Pedestrians {
     if (p.state === "talk") p.state = "walk";
   }
 
-  private step(
-    p: Pedestrian,
-    dt: number,
-    car: Vector3,
-    carSpeed: number,
-    carForward: Vector3,
-    dist: number,
-  ): void {
+  private step(p: Pedestrian, dt: number, car: Vector3, carSpeed: number, carForward: Vector3): void {
     p.stateTime += dt;
     const pos = p.object.position;
     if (p.state === "injured") {
@@ -328,7 +325,6 @@ export class Pedestrians {
     p.object.rotation.set(0, p.heading, 0);
     p.phase += dt * speed * 4.2;
     animateHuman(p.model, p.phase, speed, this.raining);
-    if (dist > 120) p.object.visible = dist < DESPAWN - 10;
   }
 
   private fill(car: Vector3): void {
@@ -349,6 +345,8 @@ export class Pedestrians {
       }
       const g = this.groundAt(x, z);
       if (g === null || !this.isOpen(x, z, g) || this.network?.isRoadway(x, z)) continue;
+      // Appear only out of the camera's view.
+      if (this.isSeen(new Vector3(x, g + 0.9, z))) continue;
       const p = this.spawn(new Vector3(x, g, z), a * 3.1);
       p.walk = walk;
     }

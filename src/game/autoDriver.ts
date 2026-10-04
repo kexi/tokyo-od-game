@@ -26,6 +26,11 @@ export type DriveWorld = {
   isPavement?: (x: number, z: number) => boolean;
   /** 進行方向別通行区分 at junction approaches (第35条第1項). */
   laneUse?: readonly LaneUse[];
+  /**
+   * 緊急自動車 in an emergency (赤色の警光灯・サイレン): may go on at a red signal after slowing
+   * to make sure it is safe (第39条第2項), so it creeps through instead of waiting.
+   */
+  isEmergency?: boolean;
 };
 
 const ACCEL = 1.8; // m/s², gentle for passengers
@@ -109,6 +114,7 @@ export class AutoDriver {
   lane = 0;
   private lateral: number | null = null;
   private hints: LaneHint[] = [];
+  private creep = false;
   private at = 0;
   private hint = 0;
   private served = -1; // 一時停止 approach already stopped at
@@ -186,6 +192,9 @@ export class AutoDriver {
     want = Math.min(want, Math.sqrt(2 * BRAKE * 0.6 * Math.max(0, remaining - 0.5)));
     const block = this.blockAhead(route, world, dt);
     if (block < Infinity) want = Math.min(want, Math.sqrt(2 * BRAKE * 0.7 * Math.max(0, block - STOP_GAP)));
+    // Through a red as an emergency vehicle: slowly enough to stop for anyone crossing.
+    if (this.creep) want = Math.min(want, 15 / 3.6);
+    this.creep = false;
     const steer = this.steerFor(route, dt, world);
     const input = this.pedals(want, steer);
     this.braking = input.brake > 0.05 || Math.abs(this.speed) < 0.1;
@@ -234,7 +243,9 @@ export class AutoDriver {
       if (approach.kind === "signal") {
         const state = world.control.state(approach);
         const canStop = dist > (this.speed * this.speed) / (2 * BRAKE);
-        if (state === "red" || (state === "yellow" && canStop)) block = dist;
+        const mustStop = state === "red" || (state === "yellow" && canStop);
+        if (mustStop && world.isEmergency) this.creep = true;
+        else if (mustStop) block = dist;
       } else if (this.served !== approach.id) {
         const isStanding = dist < STOP_GAP + 0.6 && this.speed < 0.1;
         this.waited = isStanding ? this.waited + dt : 0;

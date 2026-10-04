@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { decideSanction } from "../src/game/sanctions";
 import { describe, expect, it } from "vitest";
 import { LocalFrame } from "../src/geo/frame";
 import {
@@ -33,14 +34,34 @@ describe("Road Traffic Act scoring (普通車)", () => {
     expect(injuryViolation(70).points).toBe(13);
   });
 
-  it("suspends the licence at 6 points and books each offence once per stop", () => {
+  it("records each offence once per stop, and counts it only when caught", () => {
     const law = new TrafficLaw();
-    expect(law.book(VIOLATIONS.signal, 0)).not.toBeNull();
-    expect(law.book(VIOLATIONS.signal, 1000)).toBeNull(); // still the same offence
+    const seen = law.commit(VIOLATIONS.signal, 0);
+    expect(seen).not.toBeNull();
+    expect(law.commit(VIOLATIONS.signal, 1000)).toBeNull(); // still the same offence
+    expect(law.state.points).toBe(0); // 未検挙: nobody saw it
+    law.cite(seen!, "patrol");
+    law.cite(seen!, "patrol"); // one ticket per offence
+    expect(law.state.points).toBe(VIOLATIONS.signal.points);
+    expect(seen!.status).toBe("caught");
+  });
+
+  it("adds orbis notices to the points only when the post arrives", () => {
+    const law = new TrafficLaw();
+    const photo = law.commit(VIOLATIONS.signal, 0)!;
+    law.notice(photo, "orbis");
+    expect(law.state.points).toBe(0);
+    expect(law.deliverNotices()).toEqual([photo]);
+    expect(law.state.points).toBe(VIOLATIONS.signal.points);
+  });
+
+  it("reaches a 行政処分 at 6 caught points (前歴なし)", () => {
+    const law = new TrafficLaw();
+    law.book(VIOLATIONS.signal, 0);
     law.book(VIOLATIONS.keepLeft, 2000);
     law.book(VIOLATIONS.pedestrianCrossing, 3000);
     expect(law.state.points).toBe(SUSPENSION_POINTS);
-    expect(law.state.suspended).toBe(true);
+    expect(law.isSanctioned).toBe(true);
     law.reset();
     expect(law.state).toMatchObject({ points: 0, suspended: false });
   });
@@ -86,5 +107,19 @@ describe("road graph", () => {
     expect(estimatedLimit(ew)).toBe(60);
     expect(estimatedLimit(ns)).toBe(60);
     expect(estimatedLimit({ ...ns, width: 4.3 })).toBe(30);
+  });
+});
+
+describe("行政処分 (施行令 別表第三)", () => {
+  it("suspends for 30 days at 6 points without 前歴, 60 at 9, and revokes at 15", () => {
+    expect(decideSanction(5, 0)).toEqual({ kind: "none" });
+    expect(decideSanction(6, 0)).toMatchObject({ kind: "suspension", days: 30 });
+    expect(decideSanction(9, 0)).toMatchObject({ kind: "suspension", days: 60 });
+    expect(decideSanction(15, 0)).toMatchObject({ kind: "revocation" });
+  });
+
+  it("is stricter with 前歴: 4 points already suspend for 60 days", () => {
+    expect(decideSanction(4, 1)).toMatchObject({ kind: "suspension", days: 60 });
+    expect(decideSanction(10, 1)).toMatchObject({ kind: "revocation" });
   });
 });

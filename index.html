@@ -130,6 +130,7 @@
       <div id="hud-toolbar">
         <button type="button" data-action="mission" title="新しい目的地 (N)">目的地</button>
         <button type="button" data-action="autopilot" title="自動運転 (O)">自動運転</button>
+        <button type="button" data-action="home" title="家に帰って今日の運転を終える (G)">帰宅</button>
         <button type="button" data-action="weather" title="天気 (Y)">天気</button>
         <button type="button" data-action="ground" title="地面: 地理院写真 / PLATEAU オルソ (M)">地面</button>
         <button type="button" data-action="camera" title="カメラ (C)">視点</button>
@@ -141,6 +142,10 @@
       <div id="toasts"></div>
 
       <div id="talk-hint" class="panel" hidden>E で話しかける</div>
+
+      <div id="pursuit-chip" class="panel" hidden role="status">
+        🚨 パトカーが追ってきています。左に寄って止まりましょう
+      </div>
 
       <div id="autopilot-chip" class="panel" hidden>
         🚘 自動運転中 <span class="sub">（O・運転操作で解除）</span>
@@ -286,6 +291,43 @@
         <button id="retrain" type="button">講習を受けて運転を再開</button>
       </div>
     </section>
+
+    <dialog id="day-end" aria-labelledby="day-end-title">
+      <h2 id="day-end-title">今日の運転の終わり</h2>
+      <section id="day-mail">
+        <h3>📮 ポスト</h3>
+        <div id="day-mail-body"></div>
+      </section>
+      <section>
+        <h3>今日の記録</h3>
+        <dl id="day-stats"></dl>
+      </section>
+      <section id="day-sanction" hidden>
+        <h3>行政処分</h3>
+        <p id="day-sanction-body"></p>
+        <button id="day-course" type="button" hidden>停止処分者講習を受ける</button>
+      </section>
+      <section>
+        <h3>運転のアドバイス</h3>
+        <ul id="day-advice"></ul>
+      </section>
+      <button id="day-review" type="button">違反の記録を見る</button>
+      <button id="day-next" type="button">翌日へ</button>
+    </dialog>
+
+    <dialog id="office-dialog" aria-labelledby="office-title">
+      <h2 id="office-title"></h2>
+      <p id="office-body"></p>
+      <div id="office-actions"></div>
+    </dialog>
+
+    <dialog id="ticket-dialog" aria-labelledby="ticket-title">
+      <h2 id="ticket-title">交通違反の取り締まり</h2>
+      <p id="ticket-intro"></p>
+      <ul id="ticket-list"></ul>
+      <p id="ticket-note" class="sub"></p>
+      <button id="ticket-accept" type="button">切符を受け取る</button>
+    </dialog>
 
     <dialog id="violations" aria-labelledby="violations-title">
       <h2 id="violations-title">違反の記録</h2>

@@ -2,6 +2,8 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import {
   ACESFilmicToneMapping,
   DoubleSide,
+  Frustum,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
@@ -9,6 +11,7 @@ import {
   PerspectiveCamera,
   Quaternion,
   Scene,
+  Sphere,
   SRGBColorSpace,
   Vector3,
   WebGLRenderer,
@@ -45,6 +48,7 @@ import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { CLOSURE_WORDS } from "./world/closures";
+import { jstDateAt } from "./geo/sun";
 import { gameClock, inForce as isInForceTime, timeNote, tokyoDate, type GameClock } from "./world/ruleTime";
 import { classifyTurn, laneAllows, laneIndex, planRoute, TURN_WORDS } from "./game/navigation";
 import { RouteArrows } from "./game/routeArrows";
@@ -92,7 +96,6 @@ import { TrafficAI } from "./world/traffic-ai";
 import {
   formatViolation,
   injuryViolation,
-  REVOCATION_POINTS,
   speedViolation,
   TrafficLaw,
   VIOLATIONS,
@@ -101,6 +104,9 @@ import {
   type ViolationRecord,
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
+import { PolicePatrol } from "./game/policePatrol";
+import { adviceFor } from "./game/drivingTips";
+import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
@@ -448,8 +454,26 @@ async function main(): Promise<void> {
     return true;
   };
   let needsStreetSpawn = false;
+  const viewFrustum = new Frustum();
+  const viewMatrix = new Matrix4();
+  const viewSphere = new Sphere(new Vector3(), 3);
+  // Within 400 m: buildings hide farther things, and fog and distance do the rest.
+  const isSeen = (p: Vector3) =>
+    p.distanceTo(camera.position) < 400 && viewFrustum.intersectsSphere(viewSphere.set(p, 3));
+  traffic.isSeen = isSeen;
+  pedestrians.isSeen = isSeen;
   // The opening drive is set once the car stands on its street.
   let needsTrip = false;
+  // Where the day starts and ends (the street the game put the car on).
+  let home: { lat: number; lon: number } | null = null;
+  // Today's driving, for the end-of-day record.
+  let todayMetres = 0;
+  let todayFrom = 0; // index into law.state.log where today began
+  let odometerAt: Vector3 | null = null;
+  // 行政処分: earlier 処分 (前歴) and the days of suspension still to serve.
+  let prior = 0;
+  let suspendedDays = 0;
+  let unlicensedWarnedAt = -Infinity;
   let streetSpawnSince = 0;
 
   const respawnHere = () => {
@@ -661,6 +685,15 @@ async function main(): Promise<void> {
       toast("車のそばで F を押すと乗車します");
       return;
     }
+    // Nothing physically stops a suspended driver; the law does. Ask twice.
+    if (law.state.suspended && performance.now() - unlicensedWarnedAt > 5000) {
+      unlicensedWarnedAt = performance.now();
+      toast(
+        `免許停止中です（あと ${suspendedDays} 日）。運転すると無免許運転（道路交通法 第64条）になります。それでも乗るならもう一度 F`,
+        "#ff6b6b",
+      );
+      return;
+    }
     walker.leave();
     vehicle.setParked(false);
     mode = "car";
@@ -816,16 +849,17 @@ async function main(): Promise<void> {
     const isOnFoot = mode === "foot";
     const isInCar = mode === "car";
     const isInTaxi = mode === "taxi" && taxi !== null;
-    // Once the streets are known, move the waiting car onto one (not after the player drove off).
+    // Once the streets are known, move the waiting car onto one — but never once the player has
+    // started driving: stopped at a light later, the car would jump forward.
     // The kerb comes from PLATEAU paving, so wait for it (wards without it: give up after 10 s).
     const hasKerbs = pavements.count > 0 || now - streetSpawnSince > 10000;
-    if (needsStreetSpawn && roadGraph && hasKerbs && isInCar) {
-      const isUntouched = Math.abs(vehicle.speedKmh()) < 2;
-      needsStreetSpawn = isUntouched && !placeOnStreet();
-    }
+    const hasDriven = Math.abs(vehicle.speedKmh()) > 2 || autopilot !== null;
+    if (needsStreetSpawn && hasDriven) needsStreetSpawn = false;
+    if (needsStreetSpawn && roadGraph && hasKerbs && isInCar) needsStreetSpawn = !placeOnStreet();
     if (needsTrip && !needsStreetSpawn && !missions.current) {
       needsTrip = false;
       const g = frame.toGeodetic(vehicle.position());
+      home ??= { lat: g.lat, lon: g.lon };
       const trip = missions.startTrip(g.lat, g.lon, now);
       if (trip) {
         const km = (trip.startDistance / 1000).toFixed(1);
@@ -844,6 +878,7 @@ async function main(): Promise<void> {
     while (accumulator >= world.timestep && steps < 4) {
       if (!frozen && isInCar) vehicle.update(world.timestep, drive);
       taxi?.step(world.timestep);
+      police?.step(world.timestep);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
       accumulator -= world.timestep;
@@ -868,8 +903,17 @@ async function main(): Promise<void> {
       }
     });
 
+    // The camera's view for open-world spawning (traffic and people appear and leave out of it).
+    viewMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    viewFrustum.setFromProjectionMatrix(viewMatrix);
     const carPos = vehicle.position();
     const carRot = vehicle.quaternion();
+    // Today's distance at the wheel (re-anchoring and respawns jump; ignore those).
+    if (isInCar && odometerAt) {
+      const step = Math.hypot(carPos.x - odometerAt.x, carPos.z - odometerAt.z);
+      if (step < 10) todayMetres += step;
+    }
+    odometerAt = isInCar ? carPos.clone() : null;
     const focus = focusPos();
     const geo = frame.toGeodetic(focus);
     const speed = isOnFoot ? walker.speed * 3.6 : isInTaxi && taxi ? taxi.speed * 3.6 : vehicle.speedKmh();
@@ -929,6 +973,7 @@ async function main(): Promise<void> {
     traffic.extraObstacles = taxi ? [taxi.position] : [];
     traffic.update(dt, focus, carPos, carForward, isInCar ? speed / 3.6 : 0);
     updateTaxi(dt, now);
+    updatePolice(dt, now);
     updateAutopilot(dt);
     speedometer.update(speed, currentLimit, currentLimitKind);
 
@@ -963,6 +1008,10 @@ async function main(): Promise<void> {
         onRoad !== null && onRoad.seg.oneway !== 0 && speed > 5 && align * onRoad.seg.oneway < -0.7;
       wrongWaySince = isWrongWay ? (wrongWaySince ?? now) : null;
       if (wrongWaySince !== null && now - wrongWaySince > 1500) book(VIOLATIONS.noEntry, now, 20000);
+
+      // 無免許運転: driving at all while the licence is suspended.
+      if (law.state.suspended && speed > 5)
+        book(VIOLATIONS.unlicensed, now, 10 * 60_000, `免許停止中（あと ${suspendedDays} 日）に運転`);
 
       // 通行禁止 (車両通行止め, 歩行者用道路) in force: entering the street at all is the offence.
       closedSince = onRoad?.seg.closed && speed > 5 ? (closedSince ?? now) : null;
@@ -1161,7 +1210,7 @@ async function main(): Promise<void> {
       );
     } else if (incidentEvent?.type === "arrested") {
       law.book(VIOLATIONS.hitAndRun, now, 0);
-      showArrest(incidentEvent.later);
+      showArrest(incidentEvent.later ? "hitAndRunLater" : "hitAndRun");
     } else if (incidentEvent?.type === "arrived") {
       toast(
         incidentEvent.kind === "ambulance" ? "🚑 救急車が到着しました" : "🚓 パトカーが到着しました",
@@ -1174,8 +1223,7 @@ async function main(): Promise<void> {
     } else if (incidentEvent?.type === "closed") {
       toast("警察の事故処理が終わりました。安全運転を心がけましょう", "#7dff9a");
     }
-    const isIncidentOver = incidentEvent?.type === "closed" || incidentEvent?.type === "notReported";
-    if (isIncidentOver && law.state.suspended) showSuspension();
+
     updateIncidentPanel(now);
     const partner = conversation.active;
     if (partner && partner.object.position.distanceTo(focus) > 18) conversation.close();
@@ -1211,6 +1259,8 @@ async function main(): Promise<void> {
 
     const result = missions.check(geo.lat, geo.lon, now);
     if (result === "timeout") toast("時間切れ… N で次の目的地", "#ff6b6b");
+    else if (result && result.target.category === "home") endDay();
+    else if (result && result.target.category === "appointment") appear();
     else if (result) {
       score += result.reward;
       audio.chime(true);
@@ -1243,6 +1293,7 @@ async function main(): Promise<void> {
 
     if (now - lastHud > 150) {
       lastHud = now;
+      checkDeadlines();
       const yaw = isOnFoot
         ? Math.atan2(walker.forward().x, walker.forward().z)
         : isInTaxi && taxi
@@ -1308,16 +1359,34 @@ async function main(): Promise<void> {
     const url = shotCanvas.toDataURL("image/jpeg", 0.7);
     for (const r of pendingShots.splice(0)) if (r.context) r.context.snapshot = url;
   };
+  // Offences the police always learn of: those of an accident they are called to.
+  const ACCIDENT_KINDS = new Set(["safeDriving", "injury", "phoneDanger", "hitAndRun"]);
+  /**
+   * A violation the driver committed. It counts only if someone catches it: the police at an
+   * accident, or a patrol that sees it (then a chase and a ticket on the spot); otherwise it
+   * stays the driver's own record (未検挙), shown so the player still learns from it.
+   */
   const book = (v: Violation, now: number, cooldownMs?: number, detail?: string) => {
-    const booked = law.book(v, now, cooldownMs, violationContext(detail));
+    const booked = law.commit(v, now, cooldownMs, violationContext(detail));
     if (!booked) return;
     pendingShots.push(booked);
     score = Math.max(0, score - booked.points * 50);
-    toast(`🚓 ${formatViolation(booked)}`, "#ff6b6b");
-    stamps.stamp("違反", shortLabel(booked.label));
+    const isAccident = ACCIDENT_KINDS.has(booked.kind) || booked.kind.startsWith("injury");
+    const carPos = vehicle.position();
+    if (isAccident) {
+      law.cite(booked, "accident");
+      toast(`🚓 ${formatViolation(booked)}`, "#ff6b6b");
+      stamps.stamp("違反", shortLabel(booked.label));
+    } else if (police?.sees(carPos)) {
+      if (police.witness(booked) === "pursuit") startPursuit();
+      toast(`🚨 パトカーに見られた: ${booked.label}`, "#ff6b6b");
+    } else {
+      toast(`⚠ ${booked.label}（未検挙）`, "#ffb347");
+    }
     const c = booked.context;
     log("violation", {
       kind: booked.kind,
+      status: booked.status,
       points: booked.points,
       total: law.state.points,
       place: c?.place,
@@ -1327,8 +1396,106 @@ async function main(): Promise<void> {
       limit: c?.limit,
       detail: c?.detail,
     });
-    // Let the driver finish the rescue / reporting first; show the screen once it is over.
-    if (law.state.suspended && !emergency.active) showSuspension();
+  };
+
+  // ---------- 巡回中のパトカー ----------
+  let police: PolicePatrol | null = null;
+  let policeDueAt = performance.now() + 40000;
+  const policeSay = (text: string) => {
+    if (audio.muted || !("speechSynthesis" in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP";
+    u.rate = 0.95;
+    u.pitch = 0.8;
+    speechSynthesis.speak(u);
+  };
+  const startPursuit = () => {
+    $("#pursuit-chip").hidden = false;
+    policeSay("前の車の運転手さん、左に寄って止まってください。");
+    log("police", { event: "pursuit" });
+  };
+  const openTicket = () => {
+    const p = police;
+    if (!p) return;
+    const seen = [...p.seen];
+    const isRed = seen.some((r) => r.fine === null);
+    $("#ticket-intro").textContent =
+      "警察官が窓の横に来ました。「こんにちは、警察です。いま違反がありましたので、免許証を見せてください。」";
+    $("#ticket-list").replaceChildren(
+      ...seen.map((r) => {
+        const li = document.createElement("li");
+        li.textContent = `${formatViolation(r)}${r.context?.detail ? `（${r.context.detail}）` : ""}`;
+        return li;
+      }),
+    );
+    $("#ticket-note").textContent = isRed
+      ? "反則金の対象にならない違反（赤切符）は刑事手続になり、後日、検察庁や裁判所から呼び出しがあります。違反点数は付き、累積すると後日、行政処分の通知が届きます。"
+      : "交通反則告知書（青切符）と納付書を受け取りました。反則金は告知の翌日から 7 日以内に金融機関で納めます。違反点数は累積し、一定の点数に達すると後日、行政処分の通知が届きます。今日はこのまま運転して帰れます。";
+    $<HTMLDialogElement>("#ticket-dialog").showModal();
+  };
+  $("#ticket-accept").addEventListener("click", () => {
+    const p = police;
+    if (p) {
+      for (const r of p.seen) {
+        law.cite(r, "patrol");
+        stamps.stamp("違反", shortLabel(r.label));
+      }
+      log("police", { event: "ticket", kinds: p.seen.map((r) => r.kind), total: law.state.points });
+      const tw = taxiWorld();
+      if (tw) p.release(tw, vehicle.position());
+    }
+    $("#pursuit-chip").hidden = true;
+    $<HTMLDialogElement>("#ticket-dialog").close();
+  });
+  const updatePolice = (dt: number, now: number) => {
+    const tw = taxiWorld();
+    if (!tw || !roadGraph) return;
+    const focus = focusPos();
+    if (!police && now > policeDueAt) {
+      const p = new PolicePatrol(scene, world, (x, z) => groundY(x, z));
+      if (p.spawn(roadGraph, tw, focus)) police = p;
+      else p.dispose();
+      policeDueAt = now + 30000;
+    }
+    const p = police;
+    if (!p) return;
+    // Out of the area: it goes off duty here and another comes by later.
+    if (p.state !== "pursuing" && p.position.distanceTo(focus) > 1100) {
+      p.dispose();
+      police = null;
+      policeDueAt = now + 60000;
+      return;
+    }
+    tw.obstacles = tw.obstacles.filter((o) => o.distanceTo(p.position) > 1);
+    const geo = frame.toGeodetic(p.position);
+    const ground = { hasCollider: terrain.hasColliderAt(geo.lat, geo.lon), night: env.nightFactor > 0.25 };
+    const event = p.update(
+      dt,
+      tw,
+      ground,
+      { position: vehicle.position(), speed: vehicle.forwardSpeed() },
+      now,
+    );
+    if (event === "callout") policeSay("前の車、左に寄って止まってください。");
+    else if (event === "ticket") openTicket();
+    else if (event === "lost") {
+      // The plate was read: a notice to appear comes by post. Fleeing a stop made because the
+      // driver had no valid licence is itself an offence (第67条第1項・第119条第1項第13号).
+      if (p.seen.some((r) => r.kind === "unlicensed")) {
+        const fled = law.commit(
+          VIOLATIONS.ignoredStop,
+          now,
+          0,
+          violationContext("無免許運転を見とがめられ、停止の求めに従わず逃走"),
+        );
+        if (fled) p.seen.push(fled);
+      }
+      for (const r of p.seen) law.notice(r, "patrol");
+      p.seen.length = 0;
+      $("#pursuit-chip").hidden = true;
+      toast("パトカーを振り切った…が、ナンバーは控えられた。後日、出頭の通知が届く", "#ff6b6b");
+      log("police", { event: "lost" });
+    }
   };
   const isSurfaceStreet = (seg: Segment) => seg.line.kind !== "highway";
   /**
@@ -1609,25 +1776,317 @@ async function main(): Promise<void> {
     }
   };
 
-  const showSuspension = () => {
-    vehicle.setFrozen(true);
-    const isRevoked = law.state.points >= REVOCATION_POINTS;
-    stamps.stamp(isRevoked ? "免許取消" : "免許停止", `違反点数 ${law.state.points} 点`, true);
-    $("#suspended h1").textContent = isRevoked ? "免許取消" : "免許停止";
-    $("#suspended .tagline").textContent = isRevoked
-      ? `違反点数が ${law.state.points} 点になりました（前歴なしの場合 15 点以上で免許取消）。`
-      : `違反点数が ${law.state.points} 点になりました（前歴なしの場合 6 点以上で免許停止）。`;
-    const list = $("#suspended-log");
-    list.replaceChildren(
-      ...law.state.log.map((v) => {
+  // ---------- 帰宅と一日の終わり ----------
+  input.on("home", () => {
+    if (!home) return toast("まだ出発地点が決まっていません");
+    const g = frame.toGeodetic(vehicle.position());
+    const m = missions.startHome(home, performance.now(), g.lat, g.lon);
+    toast(
+      `自宅へ向かいます（約 ${(m.startDistance / 1000).toFixed(1)} km）。着いたら今日の運転は終わりです`,
+      "#ffe14d",
+    );
+  });
+  let pendingSanction: ReturnType<typeof decideSanction> = { kind: "none" };
+  // Notices that came by post today: they ask the driver to appear at the police station.
+  let todayDelivered: ViolationRecord[] = [];
+  const endDay = () => {
+    const today = law.state.log.slice(todayFrom);
+    const delivered = law.deliverNotices();
+    todayDelivered = delivered;
+    pendingSanction = decideSanction(law.state.points, prior);
+    // 📮 the post: orbis and plate notices, and the 行政処分 notice when the points reach it.
+    const mail: string[] = delivered.map(
+      (r) =>
+        `出頭通知書（${r.by === "orbis" ? "速度違反自動取締装置で撮影" : "ナンバーから特定"}）: ${r.label}／違反点数 ${r.points} 点`,
+    );
+    if (pendingSanction.kind !== "none")
+      mail.push("運転免許本部から「行政処分出頭通知書」の封筒が届いています…");
+    const mailBody = $("#day-mail-body");
+    mailBody.replaceChildren(
+      ...(mail.length ? mail : ["ポストには何も届いていませんでした。"]).map((t) => {
+        const p = document.createElement("p");
+        p.textContent = t;
+        return p;
+      }),
+    );
+    const caught = today.filter((r) => r.status === "caught");
+    const uncaught = today.filter((r) => r.status === "uncaught");
+    const stats: Array<[string, string]> = [
+      ["走行距離", `${(todayMetres / 1000).toFixed(1)} km`],
+      ["違反", `${today.length} 件（検挙 ${caught.length} 件・未検挙 ${uncaught.length} 件）`],
+      ["反則金など", `${caught.reduce((a, r) => a + (r.fine ?? 0), 0).toLocaleString()} 円`],
+      ["累積点数", `${law.state.points} 点（前歴 ${prior} 回）`],
+    ];
+    $("#day-stats").replaceChildren(
+      ...stats.flatMap(([k, v]) => {
+        const dt = document.createElement("dt");
+        dt.textContent = k;
+        const dd = document.createElement("dd");
+        dd.textContent = v;
+        return [dt, dd];
+      }),
+    );
+    const sanctionEl = $("#day-sanction");
+    sanctionEl.hidden = pendingSanction.kind === "none";
+    const course = $<HTMLButtonElement>("#day-course");
+    course.hidden = pendingSanction.kind !== "suspension";
+    course.disabled = false;
+    if (pendingSanction.kind === "suspension") {
+      const s = pendingSanction;
+      $("#day-sanction-body").textContent =
+        `免許停止 ${s.days} 日（累積 ${law.state.points} 点・前歴 ${prior} 回）。指定の日に出頭して免許証を預けます。停止処分者講習を受けると、成績により最大 ${s.shortened} 日短くなります（${s.days - s.shortened} 日）。停止中に運転すると無免許運転（第64条）です。`;
+    } else if (pendingSanction.kind === "revocation") {
+      $("#day-sanction-body").textContent =
+        `免許取消（累積 ${law.state.points} 点・前歴 ${prior} 回）。欠格期間 ${pendingSanction.years} 年が過ぎるまで免許を取り直せません。`;
+    }
+    const tips = adviceFor(today);
+    const adviceEl = $("#day-advice");
+    adviceEl.replaceChildren(
+      ...(tips.length
+        ? tips
+        : ["今日は違反がありませんでした。この調子で、法令を守った運転を続けましょう。"]
+      ).map((t) => {
         const li = document.createElement("li");
-        li.textContent = formatViolation(v);
+        li.textContent = t;
         return li;
       }),
     );
-    $("#retrain").textContent = "講習を受けて運転を再開";
-    $("#suspended").hidden = false;
+    // With the on-device AI on, an instructor sums the day up in its own words.
+    if (brain.status === "ready" && today.length > 0) {
+      const facts = today
+        .map((r) => `${r.label}（${r.context?.place ?? ""}、${r.status === "caught" ? "検挙" : "未検挙"}）`)
+        .join("、");
+      const li = document.createElement("li");
+      li.className = "ai-advice";
+      li.textContent = "指導員が考えています…";
+      adviceEl.prepend(li);
+      void brain
+        .reply(
+          -77,
+          "あなたは自動車教習所のベテラン指導員です。今日の運転で起きた違反を聞き、責めずに、次にどう運転すればよいかを日本語で2〜3文で具体的に伝えてください。",
+          `今日の違反: ${facts}`,
+          (partial) => (li.textContent = `🧑‍🏫 ${partial}`),
+        )
+        .then((text) => {
+          if (text) li.textContent = `🧑‍🏫 ${text}`;
+          else li.remove();
+        });
+    }
+    log("day_end", {
+      metres: Math.round(todayMetres),
+      violations: today.length,
+      caught: caught.length,
+      notices: delivered.length,
+      points: law.state.points,
+      sanction: pendingSanction.kind,
+    });
+    vehicle.setFrozen(true);
+    $<HTMLDialogElement>("#day-end").showModal();
   };
+  $("#day-course").addEventListener("click", () => {
+    if (pendingSanction.kind !== "suspension") return;
+    pendingSanction = {
+      ...pendingSanction,
+      days: pendingSanction.days - pendingSanction.shortened,
+      shortened: 0,
+    };
+    $<HTMLButtonElement>("#day-course").disabled = true;
+    $("#day-sanction-body").textContent =
+      `講習を受けました。免許停止は ${pendingSanction.days} 日になりました。`;
+  });
+  $("#day-review").addEventListener("click", () => openReview());
+  // ---------- 出頭（期限つき） ----------
+  type Place = { name: string; lat: number; lon: number };
+  type Appointment = {
+    kind: "notice" | "sanction";
+    place: Place;
+    /** Game time (epoch ms) by which to appear. */
+    deadline: number;
+    records: ViolationRecord[];
+    sanction: ReturnType<typeof decideSanction>;
+    /** Notices not answered so far (the second one ends in an arrest). */
+    strikes: number;
+  };
+  let appointments: Appointment[] = [];
+  let policeData: {
+    stations: Array<[number, number, string]>;
+    centres: Array<[number, number, string]>;
+  } | null = null;
+  void fetch(`${import.meta.env.BASE_URL}data/police.json`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => (policeData = d))
+    .catch(() => undefined);
+  const nearestOf = (list: Array<[number, number, string]>, lat: number, lon: number): Place | null => {
+    let best: Place | null = null;
+    let bestD = Infinity;
+    for (const [plon, plat, name] of list) {
+      const d = haversineMeters(lat, lon, plat, plon);
+      if (d < bestD) {
+        bestD = d;
+        best = { name, lat: plat, lon: plon };
+      }
+    }
+    return best;
+  };
+  /** 17:00 on the game's current day: the counter closes. */
+  const closingTime = () => jstDateAt(17, env.now()).getTime();
+  const deadlineText = (t: number) => {
+    const d = new Date(t + 9 * 3600_000);
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:00`;
+  };
+  /** Go to the next appointment, if any, as the day's destination. */
+  const nextAppointment = (): boolean => {
+    const a = appointments[0];
+    if (!a) return false;
+    const g = frame.toGeodetic(vehicle.position());
+    missions.startAppointment(a.place, performance.now(), g.lat, g.lon);
+    const what = a.kind === "sanction" ? "行政処分の出頭" : "出頭通知の手続き";
+    toast(`${what}: ${a.place.name}へ（${deadlineText(a.deadline)} まで）`, "#ffb347");
+    return true;
+  };
+  const officeDialog = $<HTMLDialogElement>("#office-dialog");
+  const showOffice = (title: string, body: string, actions: Array<[string, () => void]>) => {
+    $("#office-title").textContent = title;
+    $("#office-body").textContent = body;
+    $("#office-actions").replaceChildren(
+      ...actions.map(([label, run]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          officeDialog.close();
+          run();
+        });
+        return b;
+      }),
+    );
+    officeDialog.showModal();
+  };
+  /** The 処分 is carried out: the licence is handed in, points cleared, and it becomes 前歴. */
+  const executeSanction = (sanction: ReturnType<typeof decideSanction>, withCourse: boolean) => {
+    if (sanction.kind === "suspension") suspendedDays = sanction.days - (withCourse ? sanction.shortened : 0);
+    else if (sanction.kind === "revocation") suspendedDays = 365 * sanction.years;
+    prior++;
+    law.state.points = 0;
+    law.state.suspended = suspendedDays > 0;
+    log("sanction", { kind: sanction.kind, days: suspendedDays, course: withCourse, prior });
+  };
+  /** At the counter: the notice is dealt with, or the licence is handed in. */
+  const appear = () => {
+    const a = appointments.shift();
+    if (!a) return;
+    if (a.kind === "notice") {
+      const isRed = a.records.some((r) => r.fine === null);
+      showOffice(
+        `${a.place.name}に出頭しました`,
+        isRed
+          ? "交通課で取り調べを受け、供述調書が作られました。反則金の対象にならない違反（赤切符）は、後日、検察庁や裁判所から呼び出しがあります。"
+          : `交通反則告知書（青切符）と納付書を受け取りました（${a.records.map((r) => r.label).join("、")}）。反則金は 7 日以内に金融機関で納めます。`,
+        [["わかりました", () => nextAppointment()]],
+      );
+      return;
+    }
+    const s = a.sanction;
+    const days = s.kind === "suspension" ? s.days : 0;
+    const body =
+      s.kind === "suspension"
+        ? `免許証を預け、免許停止 ${days} 日の処分を受けました。停止処分者講習（この日に受講）を受けると、成績により最大 ${s.shortened} 日短くなります。処分が始まったので、ここからは運転できません。車は駐車場に置き、タクシーか歩きで帰りましょう。`
+        : `免許取消の処分を受けました。欠格期間が過ぎるまで免許を取り直せません。車は駐車場に置き、タクシーか歩きで帰りましょう。`;
+    const done = (withCourse: boolean) => {
+      executeSanction(s, withCourse);
+      // Out of the driver's seat: the car stays here.
+      if (mode === "car") input.trigger("door");
+      toast(
+        withCourse && s.kind === "suspension"
+          ? `講習を受けました。免許停止は ${suspendedDays} 日です`
+          : `処分が始まりました（あと ${suspendedDays} 日）`,
+        "#ff6b6b",
+      );
+      nextAppointment();
+    };
+    showOffice(
+      `${a.place.name}に出頭しました`,
+      body,
+      s.kind === "suspension"
+        ? [
+            ["停止処分者講習を受ける", () => done(true)],
+            ["講習を受けない", () => done(false)],
+          ]
+        : [["わかりました", () => done(false)]],
+    );
+  };
+  /** Past 17:00 without appearing. */
+  const checkDeadlines = () => {
+    const a = appointments[0];
+    if (!a || env.now().getTime() < a.deadline) return;
+    if (a.kind === "sanction") {
+      appointments.shift();
+      executeSanction(a.sanction, false);
+      toast("出頭期限を過ぎたため、処分が執行されました（講習による短縮はありません）", "#ff6b6b");
+      if (mode === "car") input.trigger("door");
+      return;
+    }
+    a.strikes++;
+    if (a.strikes >= 2) {
+      appointments.shift();
+      showArrest("notice", a.records.map((r) => r.label).join("、"));
+      return;
+    }
+    a.deadline = closingTime() + 24 * 3600_000;
+    toast(
+      `出頭しませんでした。再出頭通知: ${deadlineText(a.deadline)} までに ${a.place.name}へ。応じないと逮捕されることがあります`,
+      "#ff6b6b",
+    );
+  };
+  $("#day-next").addEventListener("click", () => {
+    env.startNextDay(8);
+    // The day's appointments, from the post: the 行政処分 at the licence centre and the
+    // notices at the police station, both by 17:00 today.
+    const g = home ?? frame.toGeodetic(vehicle.position());
+    const deadline = closingTime();
+    const delivered = todayDelivered;
+    todayDelivered = [];
+    const station = policeData ? nearestOf(policeData.stations, g.lat, g.lon) : null;
+    const centre = policeData ? nearestOf(policeData.centres, g.lat, g.lon) : null;
+    if (pendingSanction.kind !== "none" && centre)
+      appointments.push({
+        kind: "sanction",
+        place: centre,
+        deadline,
+        records: [],
+        sanction: pendingSanction,
+        strikes: 0,
+      });
+    else if (pendingSanction.kind !== "none") executeSanction(pendingSanction, false);
+    if (delivered.length && station)
+      appointments.push({
+        kind: "notice",
+        place: station,
+        deadline,
+        records: delivered,
+        sanction: { kind: "none" },
+        strikes: 0,
+      });
+    pendingSanction = { kind: "none" };
+    if (suspendedDays > 0) suspendedDays--;
+    law.state.suspended = suspendedDays > 0;
+    todayMetres = 0;
+    todayFrom = law.state.log.length;
+    $<HTMLDialogElement>("#day-end").close();
+    vehicle.setFrozen(false);
+    if (nextAppointment()) return;
+    if (law.state.suspended) {
+      toast(`免許停止中（あと ${suspendedDays} 日）。今日はタクシーか歩きで出かけましょう`, "#ff6b6b");
+      return;
+    }
+    const pos = frame.toGeodetic(vehicle.position());
+    const trip = missions.startTrip(pos.lat, pos.lon, performance.now());
+    if (trip)
+      toast(
+        `今日の目的地: ${trip.target.name}（約 ${(trip.startDistance / 1000).toFixed(1)} km）`,
+        "#ffe14d",
+      );
+  });
   const openReview = () => {
     renderReview($("#violations-list"), law.state.log);
     const s = law.state;
@@ -1637,19 +2096,28 @@ async function main(): Promise<void> {
   };
   $("#review-open").addEventListener("click", openReview);
   $("#review-from-suspension").addEventListener("click", openReview);
-  const showArrest = (later: boolean) => {
+  const showArrest = (why: "hitAndRun" | "hitAndRunLater" | "notice", detail = "") => {
     vehicle.setFrozen(true);
-    stamps.stamp("逮捕", "救護義務違反（ひき逃げ）", true);
-    $("#suspended h1").textContent = "ひき逃げで逮捕";
-    $("#suspended .tagline").textContent = later
-      ? "現場から逃げ切ったものの、後日、防犯カメラの映像と目撃情報から特定され逮捕されました。"
-      : "パトカーに追いつかれ、その場で逮捕されました。";
-    const lines = [
-      "救護義務違反（ひき逃げ）：交通事故を起こした運転者は、直ちに運転を停止し、負傷者を救護し、警察官に報告しなければなりません（道路交通法 第72条第1項）。",
-      "罰則：人の死傷が運転に起因する場合、10年以下の拘禁刑又は100万円以下の罰金（同法 第117条第2項）。",
-      `違反点数：基礎点数35点を加算し、合計 ${law.state.points} 点 → 免許取消（前歴なしで15点以上）。`,
-      "事故を起こしたら、逃げずに停車し、119番・110番に通報してください。",
-    ];
+    const isNotice = why === "notice";
+    stamps.stamp("逮捕", isNotice ? "出頭要請に応じず" : "救護義務違反（ひき逃げ）", true);
+    $("#suspended h1").textContent = isNotice ? "逮捕" : "ひき逃げで逮捕";
+    $("#suspended .tagline").textContent = isNotice
+      ? "出頭の通知に二度応じなかったため、逃亡のおそれがあるとして逮捕状が出され、朝、自宅で逮捕されました。"
+      : why === "hitAndRunLater"
+        ? "現場から逃げ切ったものの、後日、防犯カメラの映像と目撃情報から特定され逮捕されました。"
+        : "パトカーに追いつかれ、その場で逮捕されました。";
+    const lines = isNotice
+      ? [
+          `元の違反：${detail}。反則金を納めず出頭もしない場合、反則行為も通常の刑事手続になります（道路交通法 第130条）。`,
+          "呼び出しに正当な理由なく応じないと、逮捕されることがあります（刑事訴訟法 第199条）。",
+          "通知が届いたら、期限までに指定の場所へ出頭しましょう。",
+        ]
+      : [
+          "救護義務違反（ひき逃げ）：交通事故を起こした運転者は、直ちに運転を停止し、負傷者を救護し、警察官に報告しなければなりません（道路交通法 第72条第1項）。",
+          "罰則：人の死傷が運転に起因する場合、10年以下の拘禁刑又は100万円以下の罰金（同法 第117条第2項）。",
+          `違反点数：基礎点数35点を加算し、合計 ${law.state.points} 点 → 免許取消（前歴なしで15点以上）。`,
+          "事故を起こしたら、逃げずに停車し、119番・110番に通報してください。",
+        ];
     $("#suspended-log").replaceChildren(
       ...lines.map((t) => {
         const li = document.createElement("li");
@@ -1848,6 +2316,9 @@ async function main(): Promise<void> {
         getAutopilot: () => autopilot,
         pavements,
         getTaxi: () => taxi,
+        getPolice: () => police,
+        getMission: () => missions.current,
+        getHome: () => home,
         getMode: () => mode,
         nav,
         patrol,

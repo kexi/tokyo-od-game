@@ -24,6 +24,8 @@ const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b
 const MAX_CARS = QUALITY.maxAiCars;
 const SPAWN_RADIUS = 350;
 const DESPAWN_RADIUS = 450;
+// Beyond this, cars may come and go even in view (fog and buildings hide it).
+const FAR = 600;
 const BODY_RADIUS = 120;
 const LANE_FRACTION = 0.25; // centre of the left half of a two-way carriageway
 // gapAhead targets a 7 m standstill gap to the next car's centre; a stop line is a "car" this far
@@ -40,6 +42,8 @@ type ParkedCar = { object: Group; body: RAPIER.RigidBody };
 const PARKED_MAX = 16;
 
 export class TrafficAI {
+  /** Whether a point is in the camera's view (set by the game each frame). */
+  isSeen: (p: Vector3) => boolean = () => false;
   private cars: AiCar[] = [];
   /** Other vehicles the AI must not drive into (the robotaxi), set every frame. */
   extraObstacles: Vector3[] = [];
@@ -147,7 +151,9 @@ export class TrafficAI {
     for (let i = this.cars.length - 1; i >= 0; i--) {
       const c = this.cars[i];
       const { pos, dir } = this.pose(graph, c);
-      if (pos.distanceTo(focus) > DESPAWN_RADIUS) {
+      // Never vanish in front of the camera: only out of view, or very far.
+      const away = pos.distanceTo(focus);
+      if (away > FAR || (away > DESPAWN_RADIUS && !this.isSeen(pos))) {
         this.remove(c);
         this.cars.splice(i, 1);
         continue;
@@ -267,7 +273,8 @@ export class TrafficAI {
       const s = (((this.serial >>> 8) % 1000) / 1000) * seg.length;
       const { pos } = graph.sample(seg, s);
       const d = pos.distanceTo(focus);
-      if (d > SPAWN_RADIUS || d < 60) continue;
+      // Appear only where the camera is not looking (open-world spawning), so cars never pop in.
+      if (d > SPAWN_RADIUS || d < 60 || this.isSeen(pos)) continue;
       const dir: 1 | -1 = seg.oneway === -1 ? -1 : seg.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
       const taxi = this.serial % 5 < 2;
       const object = createLowCar({ color: taxi ? 0x1d2a4a : COLORS[this.serial % COLORS.length], taxi });
