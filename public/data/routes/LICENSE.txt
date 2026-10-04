@@ -1,0 +1,12 @@
+Road numbers, street names and destinations in this folder are extracted from OpenStreetMap.
+© OpenStreetMap contributors — https://www.openstreetmap.org/copyright
+This database is made available under the Open Database License (ODbL) 1.0:
+https://opendatacommons.org/licenses/odbl/1-0/
+Source extract: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf (Geofabrik). Filters within the 23 wards:
+- roads: way[highway~"trunk|primary|secondary"] with ref or name, and highway=tertiary named …通り/街道;
+  ref, name and name:en, with the network of their route relation (JP:national / JP:prefectural)
+- dests: way[highway] for vehicles with destination, destination:forward/backward, their :en / :lang:en
+  and destination:ref, at the start of the way in the direction they apply to
+- names: node[junction=yes][name] (junction names the signal nodes of ../junctions do not carry)
+The positions in ../guide-places.json come from the same extract (signal and junction node names,
+place and station nodes, named bridges, amenity=townhall).

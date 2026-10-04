@@ -146,6 +146,18 @@ orbis-model:
     uv run scripts/textures/orbis_textures.py
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/orbis.py -- public/models/orbis.glb
 
+# 案内標識（108 系）の国道・都道番号・通称名・OSM の行き先と表示地名を public/data/routes・guide-places.json に書き出す（OSM は just regs のキャッシュを使う）
+guide-data:
+    node scripts/guide-signs.ts
+
+# 案内標識の板の文字に使う Noto Sans JP・Overpass のサブセット（woff2）を assets/signs/guide に書き出す
+guide-fonts:
+    uv run scripts/textures/guide_fonts.py
+
+# 案内標識の支柱（片持式 F 形・路側式）・腕・標示板を Blender CLI でモデリングし public/models/guide_signs.glb を書き出す
+guide-sign-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/guide_signs.py -- public/models/guide_signs.glb
+
 # SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
 og:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/og.py -- "${TMPDIR:-/tmp}/tokyo-od-og-scene.png"

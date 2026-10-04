@@ -359,6 +359,19 @@ assets:
     docs: [knowledge/orbis.md]
     notes: 梁（GantryBeam）は長さ 1 で、ゲームが車道の幅に伸ばす。配置の元データは public/data/police.json の orbis（OSM、ODbL）。
 
+  - id: guide-sign-model
+    name: 案内標識の支柱・腕・標示板
+    purpose: 方面及び方向（108 系）の案内標識を立てる片持式（F 形）の支柱と腕、路側式の支柱、1 × 1 m の標示板。ゲームが標識ごとに伸縮してインスタンス描画する。
+    kind: model
+    files: [public/models/guide_signs.glb]
+    generator: { script: scripts/blender/guide_signs.py, recipe: guide-sign-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。寸法は道路標識設置基準の設置高さと一般的な F 形柱の鋼管径。外部の 3D 素材・写真は使っていない）
+    license: repo
+    used_by: [src/world/guideSigns.ts]
+    docs: [knowledge/road-markings-and-signs.md]
+    notes: 板の面（GuideFace）は実行時に src/world/guideArt.ts が標識ごとに描く。腕（GuideArm）と板は長さ 1 で、ゲームが伸ばす。
+
   # ---------------------------------------------------------------- テクスチャ
   - id: car-textures
     name: 車のテクスチャ
@@ -650,10 +663,23 @@ assets:
       public/data は普段オープンデータの置き場だが、これは landmarks.py が書く台帳なのでここで管理する。
       OSM の足元の多角形を含むので、公開時は ODbL の帰属表示（各エントリの sources に記載）が要る。
 
+  - id: guide-charset
+    name: 案内標識に出る文字の一覧
+    purpose: 案内標識の板に出うる文字（表示地名・交差点名・通称名・OSM の行き先）。guide-fonts のサブセットの範囲になる。
+    kind: data
+    files: [assets/signs/guide/charset.txt]
+    generator: { script: scripts/guide-signs.ts, recipe: guide-data }
+    made_by: procedural
+    source: 国土交通省「各都道府県において表示される基準地・重要地・主要地一覧表」（平成30年6月末）と OpenStreetMap（交差点名・通称名・destination）に出る文字を集めたもの
+    license: repo
+    used_by: []
+    docs: [knowledge/road-markings-and-signs.md]
+    notes: 文字の一覧だけで、地名や位置は入っていない。データを作り直したら guide-fonts も作り直す。
+
   # ---------------------------------------------------------------- フォント
   - id: noto-sans-jp
     name: Noto Sans JP
-    purpose: ナンバー・標識・表示器・メーターなどテクスチャの文字と、OGP 画像の題字を描く（生成時だけ使い、ゲームには同梱しない）。
+    purpose: ナンバー・標識・表示器・メーターなどテクスチャの文字と、OGP 画像の題字を描く（生成時だけ使い、ゲームには同梱しない。案内標識の文字だけはサブセットを guide-fonts として同梱する）。
     kind: font
     files: []
     remote:
@@ -666,8 +692,39 @@ assets:
       - scripts/textures/car_textures.py
       - scripts/textures/sign_textures.py
       - scripts/textures/og_image.py
+      - scripts/textures/guide_fonts.py
     docs: [knowledge/car-model-blender.md]
     notes: 取得と照合は car_textures.py の get_noto_font。他の生成スクリプトはそれを import する。システムフォントへのフォールバックはしない。
+
+  - id: guide-fonts
+    name: 案内標識の文字（Noto Sans JP・Overpass のサブセット）
+    purpose: 実行時に描く案内標識の板の日本字（Noto Sans JP、ウェイト 700）とローマ字（Overpass、700）。板の文字だけに絞ったサブセットをゲームに同梱する。
+    kind: font
+    files: [assets/signs/guide/*.woff2]
+    generator: { script: scripts/textures/guide_fonts.py, recipe: guide-fonts }
+    made_by: [external, procedural]
+    source: >-
+      Google Fonts の google/fonts コミット 295d98a の Noto Sans JP と Overpass を SHA-256 で照合して取得し、
+      fontTools でウェイト 700 に固定して guide-charset の文字に切り出したもの（名前テーブルの著作権・ライセンス表記は残す）
+    license: OFL-1.1
+    used_by: [src/world/guideArt.ts]
+    inputs: [noto-sans-jp, overpass, guide-charset]
+    docs: [knowledge/road-markings-and-signs.md]
+    notes: OFL の予約フォント名（Noto Sans JP の 'Source'）は使っていない。ゲームでは GuideJP / GuideLatin の名前で読み込む。
+
+  - id: overpass
+    name: Overpass
+    purpose: 案内標識のローマ字。米国の道路標識書体 Highway Gothic を手本にした OFL のサンセリフ（生成時だけ取得し、サブセットを guide-fonts に入れる）。
+    kind: font
+    files: []
+    remote:
+      url: https://raw.githubusercontent.com/google/fonts/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/overpass/Overpass%5Bwght%5D.ttf
+      sha256: 970717df17a7f9911dee45f60695d05bfa9d745fa0a11fc5c348371fa21f0073
+    made_by: external
+    source: Google Fonts（google/fonts のコミット 295d98a で固定。Copyright 2021 The Overpass Project Authors、https://github.com/RedHatOfficial/Overpass）。取得物は ~/.cache/tokyo-od-game/fonts に置き、SHA-256 を照合する
+    license: OFL-1.1
+    used_by: [scripts/textures/guide_fonts.py]
+    docs: [knowledge/road-markings-and-signs.md]
 
   - id: yomogi
     name: Yomogi

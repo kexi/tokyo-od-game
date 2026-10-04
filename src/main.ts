@@ -101,6 +101,7 @@ import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
 import { TrafficSigns, loadSignModels } from "./world/signs";
+import { GuideSigns } from "./world/guideSigns";
 import { createHuman, loadHumanModels } from "./world/human";
 import { loadFacadeTextures } from "./world/facade";
 import { TrafficAI } from "./world/traffic-ai";
@@ -353,6 +354,13 @@ async function main(): Promise<void> {
     world,
     (x, z, g) => isOpenGround(x, z, g),
   );
+  // 案内標識 (方面及び方向, 108 系) at the signalled junctions of numbered and named streets.
+  const guideSigns = new GuideSigns(
+    scene,
+    (x, z) => groundY(x, z),
+    world,
+    (x, z, g) => isOpenGround(x, z, g),
+  );
   const speedometer = new Speedometer($("#hud-speed"));
   const nav = new NavGuide($("#nav"), () => audio.muted);
   const ribbon = new RouteArrows(scene, (x, z) => groundY(x, z));
@@ -421,6 +429,7 @@ async function main(): Promise<void> {
     const furnitureSigns = furniture.rebuild(graph, places, frame);
     if (applied) applied.signs.push(...furnitureSigns);
     signs.rebuild(graph, applied, control.approaches);
+    guideSigns.rebuild(graph, frame, control.approaches, applied, roadCenter, signs.postPositions());
     orbis.rebuild(graph, frame);
     pedestrians.setNetwork(
       new SidewalkNetwork(
@@ -1644,6 +1653,7 @@ async function main(): Promise<void> {
         if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
           refreshRoads(geo.lat, geo.lon);
         signs.update(focus, now);
+        guideSigns.update(focus, now);
       }
       env.update(dt, focus, camera.position, geo.lat, geo.lon);
       water.update(dt, env);
@@ -1798,6 +1808,7 @@ async function main(): Promise<void> {
       refreshRoads(geo.lat, geo.lon);
     control.update(now / 1000);
     signs.update(focus, now);
+    guideSigns.update(focus, now);
     orbis.update(now);
     // カーナビ to the mission target, along legal streets.
     const navTarget = missions.current ? field.localPosition(missions.current.target) : null;
@@ -3692,6 +3703,7 @@ async function main(): Promise<void> {
         furniture,
         streetLights,
         orbis,
+        guideSigns,
         groundY,
         // Staging for the teaser and tests: the screens behind events that take long to set up.
         debug: { openTicket, endDay, flashScreen, startPursuit, gameNow: () => env.now().getTime() },

@@ -307,6 +307,11 @@ export class TrafficSigns {
     return this.meshes.reduce((n, m) => n + m.count, 0);
   }
 
+  /** Feet of the posts standing now (the 案内標識 keep clear of them). */
+  postPositions(): Vector3[] {
+    return this.posts.filter((p) => !p.hidden).map((p) => p.pos.clone());
+  }
+
   clear(): void {
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];

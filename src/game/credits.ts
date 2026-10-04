@@ -78,6 +78,7 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
     .join("");
   const licensesUrl = new URL(`${import.meta.env.BASE_URL}THIRD_PARTY_LICENSES.txt`, location.href).href;
   const odblUrl = new URL(`${import.meta.env.BASE_URL}data/signals/LICENSE.txt`, location.href).href;
+  const routesOdblUrl = new URL(`${import.meta.env.BASE_URL}data/routes/LICENSE.txt`, location.href).href;
   const jarticUrl = regs?.url ?? "https://www.jartic.or.jp/service/opendata/";
   const jarticUse = regs ? `（${jstDate(regs.fetchedAt)}に利用）` : "";
   const jarticEdition = regs ? `${regs.targetMonth}時点のデータ（${regs.releaseDay}公開）` : "";
@@ -112,6 +113,15 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   OpenStreetMap の <code>highway=traffic_signals</code> を ${link("https://download.bbbike.org/osm/bbbike/Tokyo/", "BBBike の東京抽出")} から取り出し、交差点に対応付けて表示しています。
   抽出したデータベースは ${link("https://opendatacommons.org/licenses/odbl/1-0/", "Open Database License (ODbL) 1.0")} で提供します（${link(odblUrl, "LICENSE.txt")}）。
   信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。</p>
+
+  <h3>案内標識（方面及び方向）</h3>
+  <p>© ${link("https://www.openstreetmap.org/copyright", "OpenStreetMap contributors")}。
+  国道・都道の路線番号と通称名、行き先（<code>destination</code>）、交差点名を OpenStreetMap（${link("https://download.geofabrik.de/asia/japan/kanto.html", "Geofabrik の関東抽出")}）から取り出し、道路に対応付けて表示しています。
+  抽出したデータベースは ${link("https://opendatacommons.org/licenses/odbl/1-0/", "Open Database License (ODbL) 1.0")} で提供します（${link(routesOdblUrl, "LICENSE.txt")}）。
+  表示する地名は、出典：国土交通省「${link("https://www.mlit.go.jp/road/sign/sign/annai/6-hyou-timei.htm", "各都道府県において表示される基準地・重要地・主要地一覧表")}」（平成30年6月末時点）を加工して作成（位置は OpenStreetMap）。
+  様式は「道路標識、区画線及び道路標示に関する命令」別表第二と「道路の案内標識の英語による表示に関する告示」（国土交通省）によります。
+  どの地名を出すかはゲームが道路網から推定したもので、実際の案内標識とは異なります。
+  文字は Noto Sans JP と Overpass（いずれも ${link("https://openfontlicense.org/", "SIL Open Font License 1.1")}）のサブセットを同梱しています。</p>
 
   <h3>車・道路標識・歩行者・建物の外観</h3>
   <p>車・道路標識の板と支柱・歩行者は本ゲーム用に ${link(`${REPO_URL}/tree/main/scripts/blender`, "Blender のスクリプト")}で作成しました。ナンバープレート・標識の図柄・服・建物の外壁などのテクスチャも手続き的に生成しています（${link(`${REPO_URL}/tree/main/assets`, "生成方法")}）。標識の図柄と色は「道路標識、区画線及び道路標示に関する命令」の様式に基づきます。文字は Noto Sans JP（${link("https://openfontlicense.org/", "SIL Open Font License 1.1")}）で描画。実在の車種・事業者・建物・登録番号とは関係ありません。</p>
