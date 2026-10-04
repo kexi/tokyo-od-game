@@ -311,17 +311,27 @@ export class TrafficAI {
       c.lean = 0;
       return lane.clone();
     }
-    const lookahead = Math.max(3.5, Math.min(12, 3 + c.speed * 0.55));
-    const target = this.ahead(graph, c, c.wheelbase / 2 + lookahead);
-    const dx = target.x - c.rear.x;
-    const dz = target.z - c.rear.z;
-    const along = dx * fwd.x + dz * fwd.z;
-    const leftward = dx * fwd.z - dz * fwd.x;
-    const reach = Math.max(1, Math.hypot(dx, dz));
-    const alpha = Math.atan2(leftward, along);
     const isBike = c.vehicle?.kind === "motorbike";
     const lock = isBike ? MAX_STEER_BIKE : MAX_STEER;
-    const wanted = Math.max(-lock, Math.min(lock, Math.atan((2 * Math.sin(alpha) * c.wheelbase) / reach)));
+    // The tightest circle the car can drive: a target inside it can never be reached, and pure
+    // pursuit then circles it at full lock for ever (seen at junctions of short road pieces and on
+    // very wide carriageways, where a car off its lane had its target beside it). Such a target is
+    // moved on along the route until the car can steer to it.
+    const maxCurvature = Math.tan(lock) / c.wheelbase;
+    const base = Math.max(3.5, Math.min(12, 3 + c.speed * 0.55));
+    let curvatureWanted = 0;
+    for (let extra = 0; ; extra += 4) {
+      const target = this.ahead(graph, c, c.wheelbase / 2 + base + extra);
+      const dx = target.x - c.rear.x;
+      const dz = target.z - c.rear.z;
+      const along = dx * fwd.x + dz * fwd.z;
+      const leftward = dx * fwd.z - dz * fwd.x;
+      const reach = Math.max(1, Math.hypot(dx, dz));
+      curvatureWanted = (2 * Math.sin(Math.atan2(leftward, along))) / reach;
+      const isReachable = Math.abs(curvatureWanted) <= maxCurvature * 0.9;
+      if (isReachable || extra >= 40) break;
+    }
+    const wanted = Math.max(-lock, Math.min(lock, Math.atan(curvatureWanted * c.wheelbase)));
     // A steering wheel turns at a finite rate.
     c.steer += Math.max(-2.5 * dt, Math.min(2.5 * dt, wanted - c.steer));
     const curvature = Math.tan(c.steer) / c.wheelbase;
