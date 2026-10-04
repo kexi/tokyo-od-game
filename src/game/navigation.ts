@@ -66,6 +66,10 @@ const TURN_COST: Record<Turn, number> = {
 };
 
 const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
+const isWalkable = (seg: Segment) => seg.line.kind !== "highway";
+
+/** Who the route is for: cars obey one-way streets, turn bans and closures; walkers do not. */
+export type TravelMode = "car" | "walk";
 const exitNode = (st: Step) => (st.dir === 1 ? st.seg.to : st.seg.from);
 /** Travel direction at the end (or start) of a step. */
 const tangent = (graph: RoadGraph, st: Step, atEnd: boolean) => {
@@ -79,12 +83,15 @@ export function planRoute(
   target: Vector3,
   clock: GameClock,
   turnRules: TurnRule[],
+  mode: TravelMode = "car",
 ): Route | null {
+  const isWalk = mode === "walk";
+  const usable = isWalk ? isWalkable : (seg: Segment) => isDrivable(seg) && !seg.closed;
   // Where the target meets each street; the goal is the closest street (and any within 30 m of it).
   const proj = new Map<number, { s: number; dist: number }>();
   let nearest = Infinity;
   for (const seg of graph.segments) {
-    if (!isDrivable(seg) || seg.closed) continue;
+    if (!usable(seg)) continue;
     const p = graph.nearestOn(seg, target);
     proj.set(seg.id, { s: p.s, dist: p.dist });
     nearest = Math.min(nearest, p.dist);
@@ -102,7 +109,7 @@ export function planRoute(
   const key = (st: Step) => st.seg.id * 2 + (st.dir === 1 ? 1 : 0);
   const rulesAt = new Map<string, TurnRule[]>();
   for (const r of turnRules) {
-    if (!isInForce(r, clock)) continue;
+    if (isWalk || !isInForce(r, clock)) continue;
     const k = `${r.node}:${r.approach.id}:${r.dir}`;
     rulesAt.set(k, [...(rulesAt.get(k) ?? []), r]);
   }
@@ -143,18 +150,18 @@ export function planRoute(
     const bans = rulesAt.get(`${node}:${step.seg.id}:${step.dir}`) ?? [];
     for (const id of ids) {
       const seg = graph.segments[id];
-      if (!isDrivable(seg)) continue;
+      if (!usable(seg)) continue; // incl. 通行禁止 in force (車両通行止め, 歩行者用道路 …) for cars
       const dir: 1 | -1 = seg.from === node ? 1 : -1;
       if (seg === step.seg && ids.length > 1) continue; // U-turn only at a dead end
-      if (seg.oneway !== 0 && seg.oneway !== dir) continue;
-      if (seg.closed) continue; // 通行禁止 in force (車両通行止め, 歩行者用道路 …)
+      if (!isWalk && seg.oneway !== 0 && seg.oneway !== dir) continue;
       const next: Step = { seg, dir };
       const tOut = tangent(graph, next, false);
       if (bans.some((r) => !(r.mask & turnBit(tIn, tOut)))) continue;
       const turn = classifyTurn(tIn, tOut);
-      // Narrow streets are slower; prefer the main roads like a real navigator.
-      const slow = seg.line.width < 5.5 ? 1.4 : 1;
-      const base = cost + TURN_COST[turn];
+      // Drivers: narrow streets are slower, prefer the main roads like a real navigator.
+      // Walkers: the shortest way, with a little extra for each road to cross.
+      const slow = !isWalk && seg.line.width < 5.5 ? 1.4 : 1;
+      const base = cost + (isWalk ? (turn === "straight" ? 0 : 3) : TURN_COST[turn]);
       const through = base + seg.length * slow;
       if (through < (best.get(key(next)) ?? Infinity)) {
         best.set(key(next), through);

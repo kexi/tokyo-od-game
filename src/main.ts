@@ -826,11 +826,11 @@ async function main(): Promise<void> {
       now,
       graph: roadGraph,
       turnRules: roadApplied?.turnRules ?? [],
-      car: carPos,
-      forward: carForward,
+      car: isOnFoot ? focus : carPos,
+      forward: isOnFoot ? walker.forward() : carForward,
       target: navTarget,
       clock: gameClockNow(),
-      driving: isInCar,
+      mode: isInCar ? "car" : isOnFoot ? "walk" : null,
       junctionNames: roadApplied?.junctionNames,
     });
     ribbon.update(isInCar ? nav.route : null, nav.lastAt, now);

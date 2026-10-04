@@ -96,3 +96,17 @@ describe("car navigation over the road graph", () => {
     expect(p.off).toBeCloseTo(3, 0);
   });
 });
+
+describe("walking navigation", () => {
+  it("walks straight down a one-way street the car has to drive round", () => {
+    const lines = grid();
+    lines[2] = road(100, 100, 0, 100, 1); // east arm: one way, westbound only
+    const graph = new RoadGraph(lines, frame);
+    const start = startOn(graph, 0, 10, NORTH);
+    const byCar = planRoute(graph, start, at(80, 100), clockAt(600), [], "car");
+    const onFoot = planRoute(graph, start, at(80, 100), clockAt(600), [], "walk");
+    expect(onFoot?.maneuvers.map((m) => m.turn)).toEqual(["right"]);
+    expect(onFoot?.maneuvers[0].at).toBeCloseTo(90, 0); // turns at the first junction
+    expect((onFoot?.length ?? 0) < (byCar?.length ?? 0)).toBe(true);
+  });
+});

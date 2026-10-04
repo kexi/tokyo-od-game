@@ -3,7 +3,15 @@ import { drawJunction } from "./junctionView";
 import type { TurnRule } from "../world/regulations";
 import type { GameClock } from "../world/ruleTime";
 import type { RoadGraph, Segment } from "../world/roads";
-import { planRoute, progressOn, TURN_WORDS, type Maneuver, type Route, type Turn } from "./navigation";
+import {
+  planRoute,
+  progressOn,
+  TURN_WORDS,
+  type Maneuver,
+  type Route,
+  type TravelMode,
+  type Turn,
+} from "./navigation";
 
 /** Arrow glyph per turn: a path in a 48×48 box pointing up = straight on. */
 const ARROWS: Record<Turn, string> = {
@@ -39,6 +47,7 @@ export class NavGuide {
   private offSince: number | null = null;
   private readonly called = new Set<string>();
   private arrived = false;
+  mode: TravelMode = "car";
   private names: Array<{ pos: Vector3; name: string }> = [];
   private lastDraw = 0;
   /** Said before the next turn call: "ルート案内を開始します。" or the replanning notice. */
@@ -61,16 +70,25 @@ export class NavGuide {
     forward: Vector3;
     target: Vector3 | null;
     clock: GameClock;
-    driving: boolean;
+    /** null while the player can't use guidance (riding a taxi). */
+    mode: TravelMode | null;
     junctionNames?: Array<{ pos: Vector3; name: string }>;
   }): void {
     this.names = opts.junctionNames ?? [];
     const { now, graph, car, target } = opts;
-    if (!graph || !target || !opts.driving) {
+    if (!graph || !target || !opts.mode) {
       if (!target) this.stop();
       this.panel.hidden = true;
       return;
     }
+    // Switching between driving and walking needs a different route (one-way streets etc.).
+    if (opts.mode !== this.mode && this.route) {
+      this.mode = opts.mode;
+      this.lastPlan = -Infinity;
+      this.plan(graph, opts.turnRules, car, opts.forward, target, opts.clock, now);
+      this.intro = opts.mode === "walk" ? "徒歩ルートで案内します。" : "車のルートで案内します。";
+    }
+    this.mode = opts.mode;
     const isNewTarget = !this.target || this.target.distanceTo(target) > 1;
     const isNewGraph = graph !== this.graph;
     let reason: "new" | "off" | null = isNewTarget ? "new" : isNewGraph ? "off" : null;
@@ -116,13 +134,14 @@ export class NavGuide {
     this.offSince = null;
     this.hint = 0;
     const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
-    const hit = graph.nearest(car, 30, isDrivable);
+    const isUsable = this.mode === "walk" ? (seg: Segment) => seg.line.kind !== "highway" : isDrivable;
+    const hit = graph.nearest(car, 30, isUsable);
     if (!hit) {
       this.route = null;
       return;
     }
     const dir: 1 | -1 = hit.dir.dot(forward) >= 0 ? 1 : -1;
-    this.route = planRoute(graph, { seg: hit.seg, s: hit.s, dir }, target, clock, turnRules);
+    this.route = planRoute(graph, { seg: hit.seg, s: hit.s, dir }, target, clock, turnRules, this.mode);
     this.version++;
   }
 
@@ -143,9 +162,14 @@ export class NavGuide {
     const word = this.panel.querySelector<HTMLElement>(".nav-turn");
     const sub = this.panel.querySelector<HTMLElement>(".nav-sub");
     if (!arrow || !dist || !word || !sub) return;
+    // On foot: the time at 80 m a minute, the walking pace Japanese property listings use.
+    const walkMinutes = Math.max(1, Math.ceil(toEnd / 80));
     sub.textContent = route.reachesTarget
-      ? `目的地まで ${formatDistance(toEnd)}`
+      ? this.mode === "walk"
+        ? `徒歩 ${walkMinutes} 分・${formatDistance(toEnd)}`
+        : `目的地まで ${formatDistance(toEnd)}`
       : "目的地方面へ（地図の外）";
+    this.panel.classList.toggle("walk", this.mode === "walk");
 
     const view = this.panel.querySelector<HTMLCanvasElement>(".nav-junction");
     if (next) {
