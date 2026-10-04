@@ -10,6 +10,7 @@ import {
   type Scene,
 } from "three";
 import type { LocalFrame } from "../geo/frame";
+import { towardEye } from "../render/renderer";
 import { SIGN, type PlacedSign } from "./regulations";
 import { KERB } from "./pavements";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
@@ -66,8 +67,8 @@ export class StreetFurniture {
     alphaTest: 0.1,
     roughness: 0.8,
     polygonOffset: true,
-    polygonOffsetFactor: -3,
-    polygonOffsetUnits: -3,
+    polygonOffsetFactor: towardEye(3),
+    polygonOffsetUnits: towardEye(3),
   });
   private readonly pillar = new MeshStandardMaterial({ color: 0xc0262d, roughness: 0.5 });
   /** Hydrants near the player in the local frame (for the parking rule). */

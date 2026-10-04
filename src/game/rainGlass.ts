@@ -1,12 +1,11 @@
 import {
   Color,
   DataTexture,
-  FramebufferTexture,
+  DoubleSide,
   HalfFloatType,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
   LinearFilter,
-  LinearMipmapLinearFilter,
   Matrix4,
   Mesh,
   NoBlending,
@@ -15,15 +14,53 @@ import {
   OrthographicCamera,
   type PerspectiveCamera,
   PlaneGeometry,
+  RenderTarget,
   RGFormat,
   Scene,
-  ShaderMaterial,
+  type Texture,
   UnsignedByteType,
   Vector2,
   Vector3,
-  type WebGLRenderer,
-  WebGLRenderTarget,
 } from "three";
+import { NodeMaterial, type Node, type TextureNode, type WebGPURenderer } from "three/webgpu";
+import {
+  attribute,
+  Break,
+  cameraPosition,
+  clamp,
+  dFdx,
+  dFdy,
+  Discard,
+  dot,
+  float,
+  floor,
+  Fn,
+  fract,
+  fwidth,
+  If,
+  length,
+  log2,
+  Loop,
+  max,
+  mix,
+  normalize,
+  positionGeometry,
+  positionWorld,
+  pow,
+  screenUV,
+  select,
+  smoothstep,
+  sqrt,
+  step,
+  texture,
+  uniform,
+  uv,
+  varying,
+  vec2,
+  vec3,
+  vec4,
+} from "three/tsl";
+import type { FrameComposer } from "../render/frame";
 
 /**
  * Rain on the windscreen (車内視点): a drop simulation on the glass, and the optics that draw it.
@@ -708,238 +745,105 @@ export class RainSim {
 
 // ---- Optics ----
 
-const SHADER_DEFINES = {
-  SIN_C: SIN_C.toFixed(6),
-  COT_C: (COS_C / SIN_C).toFixed(6),
-  INV_SIN2: (1 / SIN_C ** 2).toFixed(6),
-  N_WATER: N_WATER.toFixed(4),
-};
+const SIN_CAP = float(SIN_C);
+const COT_C = float(COS_C / SIN_C);
+const INV_SIN2 = float(1 / SIN_C ** 2);
+const N = float(N_WATER);
+/** Fine droplets: one candidate per cell of this size (m), drawn radius 0.12–0.32 cells. */
+const MICRO_CELL = 3.2e-3;
+
+type F = Node<"float">;
+type V2 = Node<"vec2">;
+type V3 = Node<"vec3">;
+type V4 = Node<"vec4">;
+
+/** Dave Hoskins' hash (three outputs in [0, 1) from a 2D point). */
+function hash32(p: V2): V3 {
+  const p3 = fract(vec3(p.x, p.y, p.x).mul(vec3(0.1031, 0.103, 0.0973))).toVar();
+  p3.addAssign(dot(p3, p3.yxz.add(33.33)));
+  return fract(p3.xxy.add(p3.yzz).mul(p3.zyx));
+}
+
+function noise1(x: F): F {
+  const i = floor(x);
+  const f = fract(x);
+  return mix(hash32(vec2(i, 7)).x, hash32(vec2(i.add(1), 7)).x, f.mul(f).mul(f.mul(-2).add(3)));
+}
 
 /**
- * One instanced quad per drop, drawn into a glass-space texture: RG = where in its cap each point
- * lies (contact radii, premultiplied), A = coverage.
+ * A fine droplet at cell coordinate cp, where the field says the glass is this wet: its position in
+ * the cap (contact radii) and coverage, premultiplied. Its edge is blurred over `blur` cells (the
+ * defocus), analytically: taps would draw droplets this small as crosses.
  */
-const DROP_VERTEX = /* glsl */ `
-attribute vec4 aDrop; // centre (m), drawn radius (m), tail stretch (≥ 1)
-attribute vec2 aDir;  // direction of motion, zero at rest
-uniform vec2 uGlass;
-varying vec2 vLocal;
-varying vec2 vDir;
-varying float vStretch;
-void main() {
-  vec2 dir = dot(aDir, aDir) > 0.25 ? aDir : vec2(0.0, -1.0);
-  vec2 side = vec2(-dir.y, dir.x);
-  // From the tail (stretch radii behind the centre) to the round front (one radius ahead).
-  vec2 local = vec2(position.x < 0.0 ? -aDrop.w : 1.0, position.y) * 1.04;
-  vec2 p = aDrop.xy + (dir * local.x + side * local.y) * aDrop.z;
-  vLocal = local;
-  vDir = dir;
-  vStretch = aDrop.w;
-  gl_Position = vec4(p / uGlass * 2.0 - 1.0, 0.0, 1.0);
-}`;
-
-const DROP_FRAGMENT = /* glsl */ `
-varying vec2 vLocal;
-varying vec2 vDir;
-varying float vStretch;
-void main() {
-  bool isTail = vLocal.x < 0.0;
-  vec2 q = vec2(isTail ? vLocal.x / vStretch : vLocal.x, vLocal.y);
-  float rho2 = dot(q, q);
-  if (rho2 >= 1.0) discard;
-  // Where in the (round) cap this point lies, in contact radii along the glass axes: the glass
-  // shader traces the view ray through the cap from here. A running drop's tail is the cap
-  // stretched out behind it.
-  vec2 g = vDir * q.x + vec2(-vDir.y, vDir.x) * q.y;
-  float alpha = 1.0 - smoothstep(0.8, 1.0, sqrt(rho2));
-  // Premultiplied, so overlapping edges blend instead of cutting each other.
-  gl_FragColor = vec4(g, 0.0, 1.0) * alpha;
-}`;
-
-const PANE_VERTEX = /* glsl */ `
-#include <common>
-#include <logdepthbuf_pars_vertex>
-varying vec2 vUv;
-varying vec3 vWorld;
-void main() {
-  vUv = uv;
-  vec4 world = modelMatrix * vec4(position, 1.0);
-  vWorld = world.xyz;
-  gl_Position = projectionMatrix * viewMatrix * world;
-  #include <logdepthbuf_vertex>
-}`;
-
-const PANE_FRAGMENT = /* glsl */ `
-#include <common>
-#include <logdepthbuf_pars_fragment>
-uniform sampler2D uFrame;
-uniform vec2 uFrameSize;
-uniform sampler2D uDrops;
-uniform sampler2D uField;
-uniform mat4 uViewProj;
-uniform vec3 uOrigin;
-uniform vec3 uAxisU;
-uniform vec3 uAxisV;
-uniform vec3 uNormal;
-uniform vec2 uGlass;
-uniform vec4 uPivots;
-uniform vec4 uSpans;
-uniform float uGlow;
-varying vec2 vUv;
-varying vec3 vWorld;
-
-// Fine droplets: one candidate per cell of this size (m), drawn radius 0.12–0.32 cells.
-#define MICRO_CELL 3.2e-3
-
-vec2 toScreen(vec3 p) {
-  vec4 c = uViewProj * vec4(p, 1.0);
-  return c.xy / c.w * 0.5 + 0.5;
+function microDrop(cp: V2, wetness: F, blur: F): V3 {
+  const cell = floor(cp);
+  const h = hash32(cell);
+  const r = mix(0.12, 0.32, h.y.mul(h.y));
+  const centre = r.add(
+    r
+      .mul(-2)
+      .add(1)
+      .mul(hash32(cell.add(17)).xy),
+  );
+  const q = cp.sub(cell).sub(centre).div(r);
+  const soft = clamp(blur.div(r), 0.15, 0.9);
+  const edge = float(1)
+    .sub(smoothstep(soft.oneMinus(), soft.mul(0.5).add(1), length(q)))
+    .div(soft.add(1));
+  const a = select(h.x.lessThan(wetness), edge, float(0));
+  return vec3(q, 1).mul(a);
 }
 
-// Where the frame shows what lies along world direction d. The street is far compared with the
-// drop's distance from the eye, so the direction alone picks the pixel. Directions the frame
-// shows only as cabin (roof lining, dashboard, pillars) are pulled back to the edge of the glass,
-// the nearest place the frame shows the outside.
-vec2 throughWindow(vec3 d) {
-  float s = dot(uOrigin - cameraPosition, uNormal) / max(dot(d, uNormal), 1e-3);
-  vec3 q = cameraPosition + d * s - uOrigin;
-  vec2 g = clamp(vec2(dot(q, uAxisU), dot(q, uAxisV)) / uGlass, 0.015, 0.985);
-  return toScreen(uOrigin + uAxisU * (g.x * uGlass.x) + uAxisV * (g.y * uGlass.y));
+/** The blade's rubber wipes unevenly along its length, so its film lies in arcs round the pivot. */
+function streaks(r: F, seed: number): F {
+  return noise1(r.mul(700).add(seed))
+    .mul(0.55)
+    .add(noise1(r.mul(2300).add(seed * 3.1)).mul(0.3))
+    .add(noise1(r.mul(160).add(seed)).mul(0.15));
 }
 
-vec3 hash32(vec2 p) {
-  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
-  p3 += dot(p3, p3.yxz + 33.33);
-  return fract((p3.xxy + p3.yzz) * p3.zyx);
+function filmTilt(pm: V2, pivot: V2, span: V2, seed: number): V2 {
+  const rel = pm.sub(pivot);
+  const r = length(rel);
+  const inSpan = step(span.x, r).mul(step(r, span.y));
+  const slope = streaks(r.add(1e-4), seed)
+    .sub(streaks(r.sub(1e-4), seed))
+    .div(2e-4);
+  return rel.div(max(r, 1e-3)).mul(slope).mul(inSpan);
 }
 
-float noise1(float x) {
-  float i = floor(x);
-  float f = fract(x);
-  return mix(hash32(vec2(i, 7.0)).x, hash32(vec2(i + 1.0, 7.0)).x, f * f * (3.0 - 2.0 * f));
+/**
+ * The view ray through a sessile drop: a spherical cap of contact radius 1 meeting the glass at the
+ * contact angle (sphere radius 1/sinθ, centre cotθ below the glass). The ray enters through the flat
+ * base at q going d (in the water) and leaves through the curved surface, or, past the critical
+ * angle, reflects inside and tries again further on. Returns the direction in the air (glass axes)
+ * and the transmitted share; zero when the ray ends up back in the glass and so in the cabin.
+ */
+function throughCap(q: V2, entering: V3): V4 {
+  const d = vec3(entering).toVar();
+  const o = vec3(q, COT_C); // base point relative to the sphere's centre
+  const b = dot(o, d);
+  const p = o.add(d.mul(b.negate().add(sqrt(max(b.mul(b).sub(dot(o, o)).add(INV_SIN2), 0))))).toVar();
+  const out = vec4(0, 0, 0, 0).toVar();
+  Loop(3, () => {
+    const n = p.mul(SIN_CAP).toVar();
+    const cosI = dot(d, n).toVar();
+    const sin2T = N.mul(N).mul(cosI.mul(cosI).oneMinus());
+    If(sin2T.lessThan(1), () => {
+      const cosT = sqrt(sin2T.oneMinus());
+      const fresnel = float(0.98).mul(pow(cosT.oneMinus(), 5)).add(0.02);
+      out.assign(vec4(d.mul(N).add(n.mul(cosT.sub(N.mul(cosI)))), fresnel.oneMinus()));
+      Break();
+    });
+    d.subAssign(n.mul(cosI.mul(2)));
+    p.addAssign(d.mul(dot(p, d).mul(-2)));
+    // Below the base: out through the glass, into the cabin.
+    If(p.z.lessThan(COT_C), () => {
+      Break();
+    });
+  });
+  return out;
 }
-
-// A fine droplet at cell coordinate cp, where the field says the glass is this wet: its position
-// in the cap (contact radii) and coverage, premultiplied. Its edge is blurred over \`blur\` cells
-// (the defocus), analytically: taps would draw droplets this small as crosses.
-vec3 microDrop(vec2 cp, float wetness, float blur) {
-  vec2 cell = floor(cp);
-  vec3 h = hash32(cell);
-  float r = mix(0.12, 0.32, h.y * h.y);
-  vec2 centre = r + (1.0 - 2.0 * r) * hash32(cell + 17.0).xy;
-  vec2 q = (cp - cell - centre) / r;
-  float soft = clamp(blur / r, 0.15, 0.9);
-  float a = h.x < wetness ? (1.0 - smoothstep(1.0 - soft, 1.0 + soft * 0.5, length(q))) / (1.0 + soft) : 0.0;
-  return vec3(q, 1.0) * a;
-}
-
-// The blade's rubber wipes unevenly along its length, so its film lies in arcs round the pivot.
-float streaks(float r, float seed) {
-  return noise1(r * 700.0 + seed) * 0.55 + noise1(r * 2300.0 + seed * 3.1) * 0.3 + noise1(r * 160.0 + seed) * 0.15;
-}
-
-vec2 filmTilt(vec2 pm, vec2 pivot, vec2 span, float seed) {
-  vec2 rel = pm - pivot;
-  float r = length(rel);
-  float inSpan = step(span.x, r) * step(r, span.y);
-  float slope = (streaks(r + 1e-4, seed) - streaks(r - 1e-4, seed)) / 2e-4;
-  return rel / max(r, 1e-3) * slope * inSpan;
-}
-
-// The view ray through a sessile drop: a spherical cap of contact radius 1 meeting the glass at
-// the contact angle (sphere radius 1/sinθ, centre cotθ below the glass). The ray enters through
-// the flat base at q going d (in the water) and leaves through the curved surface, or, past the
-// critical angle, reflects inside and tries again further on. Returns the direction in the air
-// (glass axes) and the transmitted share; zero when the ray ends up back in the glass and so in
-// the cabin.
-vec4 throughCap(vec2 q, vec3 d) {
-  vec3 o = vec3(q, COT_C); // base point relative to the sphere's centre
-  float b = dot(o, d);
-  vec3 p = o + d * (-b + sqrt(max(b * b - dot(o, o) + INV_SIN2, 0.0)));
-  for (int k = 0; k < 3; k++) {
-    vec3 n = p * SIN_C;
-    float cosI = dot(d, n);
-    float sin2T = N_WATER * N_WATER * (1.0 - cosI * cosI);
-    if (sin2T < 1.0) {
-      float cosT = sqrt(1.0 - sin2T);
-      float fresnel = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-      return vec4(N_WATER * d + (cosT - N_WATER * cosI) * n, 1.0 - fresnel);
-    }
-    d -= 2.0 * cosI * n;
-    p += d * (-2.0 * dot(p, d));
-    if (p.z < COT_C) return vec4(0.0); // below the base: out through the glass
-  }
-  return vec4(0.0);
-}
-
-void main() {
-  #include <logdepthbuf_fragment>
-  vec2 pm = vUv * uGlass;
-  vec2 screen = gl_FragCoord.xy / uFrameSize;
-  vec2 field = texture(uField, vUv).rg;
-  // Defocus: the eye is focused on the road, so the water blurs by a few pixels. Six taps on a
-  // ring 1.6 px across on screen (whatever the glass's foreshortening) plus the centre.
-  vec2 du = dFdx(vUv) * 1.6;
-  vec2 dv = dFdy(vUv) * 1.6;
-  vec4 drop = texture(uDrops, vUv) * 0.25;
-  for (int k = 0; k < 6; k++) {
-    float a = float(k) * 1.0472 + 0.3;
-    drop += texture(uDrops, vUv + du * cos(a) + dv * sin(a)) * 0.125;
-  }
-  vec2 cp = pm / MICRO_CELL;
-  vec2 fw = fwidth(cp);
-  vec3 micro = microDrop(cp, field.r, 1.2 * max(fw.x, fw.y));
-  // Simulated drops over the fine ones (premultiplied "over").
-  vec3 water3 = vec3(drop.xy, drop.a) + micro * (1.0 - drop.a);
-  float wet = clamp(water3.z, 0.0, 1.0);
-  vec2 q = wet > 1e-3 ? water3.xy / water3.z : vec2(0.0);
-
-  // The view ray in glass axes, then into the water through the flat glass (the tangential part
-  // shrinks by 1/n).
-  vec3 view = normalize(vWorld - cameraPosition);
-  vec3 vt = vec3(dot(view, uAxisU), dot(view, uAxisV), dot(view, uNormal));
-  vec2 tw = vt.xy / N_WATER;
-  vec3 inWater = vec3(tw, sqrt(max(0.0, 1.0 - dot(tw, tw))));
-  vec4 cap = throughCap(q, inWater);
-  bool isCabin = cap.w <= 0.0;
-  // The blade's film: streaky arcs that tilt the view a little while it thins out.
-  float film = field.g;
-  vec2 tilt = film > 0.003
-    ? (filmTilt(pm, uPivots.xy, uSpans.xy, 0.0) + filmTilt(pm, uPivots.zw, uSpans.zw, 41.0)) * film * 2.5e-5
-    : vec2(0.0);
-  vec3 outT = mix(vt, cap.xyz, step(1e-3, wet));
-  outT.xy += tilt * (N_WATER - 1.0);
-  vec3 dir = normalize(outT.x * uAxisU + outT.y * uAxisV + outT.z * uNormal);
-  vec2 uvR = isCabin && wet > 1e-3 ? screen : throughWindow(dir);
-
-  // A drop shows a wide view squeezed into a few pixels: the mip level does the averaging, but
-  // two levels short of the full footprint (three at night) so that lights stay points in it.
-  // They twinkle as the car moves, as in real drops; the full average turned every drop grey.
-  vec2 px = uvR * uFrameSize;
-  float footprint = max(length(dFdx(px)), length(dFdy(px)));
-  float lod = clamp(log2(max(footprint, 1.0)) - (2.0 + uGlow) * wet + 1.5 * film, 0.0, 6.0);
-
-  vec3 base = textureLod(uFrame, screen, 0.0).rgb;
-  vec3 seen = textureLod(uFrame, uvR, lod).rgb;
-  vec3 cabin = textureLod(uFrame, vec2(0.5, 0.1), 7.0).rgb * 0.6;
-  vec3 sky = textureLod(uFrame, toScreen(uOrigin + uAxisU * (0.5 * uGlass.x) + uAxisV * (0.92 * uGlass.y)), 5.0).rgb;
-  // The frame is tone-mapped, so a light reads as about 1; the real one is far brighter and the
-  // drop's tiny image of it still saturates. At night push the bright part back up (by day that
-  // would turn every drop showing the overcast sky white).
-  seen += max(seen - 0.55, 0.0) * 2.5 * uGlow;
-  vec3 water = isCabin ? cabin : mix(cabin, seen, cap.w);
-  // At night the lights around also light the whole drop a little (a soft glow).
-  vec3 halo = textureLod(uFrame, screen, 6.0).rgb;
-  water += max(halo - 0.1, 0.0) * 1.2 * uGlow * wet;
-  // The film also scatters a little light: a faint haze over the smear.
-  float smear = film * 0.9;
-  vec3 smeared = mix(seen, sky, 0.08);
-  float total = max(wet, smear);
-  if (total < 0.002) discard;
-  vec3 col = mix(base, smeared, smear * (1.0 - wet));
-  col = mix(col, water, wet);
-  gl_FragColor = vec4(col, 1.0);
-}`;
 
 /**
  * Drawn size over physical size. A screen pixel here spans about 1.2 mrad, four times coarser
@@ -951,8 +855,10 @@ const DRAW_SCALE = 2.5;
 const MIN_DRAWN = 0.6e-3;
 
 /**
- * The windscreen's water: owns the simulation, draws it, and renders the cockpit frame in two
- * passes (scene, then the glass over a copy of it) whenever the glass is wet.
+ * The windscreen's water: owns the simulation and draws it. Each frame the glass is wet, the drops
+ * are drawn into a glass-space texture before the frame (drawDrops), and after the interior the
+ * panes are drawn over the frame from a copy of the street and the wiper arms (drawPanes; the
+ * interior is not behind the glass, so it is not in the copy).
  */
 export class RainGlass {
   readonly sim: RainSim;
@@ -965,22 +871,37 @@ export class RainGlass {
   private readonly dirAttr: InstancedBufferAttribute;
   private readonly fieldTexture: DataTexture;
   private fieldUploaded = -1;
-  private dropsTarget: WebGLRenderTarget | null = null;
-  private frame: FramebufferTexture | null = null;
-  private readonly material: ShaderMaterial;
-  private readonly size = new Vector2();
+  private readonly dropsTarget: RenderTarget;
   private readonly clearColor = new Color();
-  private readonly dropsSize: readonly [number, number];
+  private readonly frameNode: TextureNode;
+  private readonly u = {
+    frameSize: uniform(new Vector2(1, 1)),
+    viewProj: uniform(new Matrix4()),
+    origin: uniform(new Vector3()),
+    axisU: uniform(new Vector3()),
+    axisV: uniform(new Vector3()),
+    normal: uniform(new Vector3()),
+    glow: uniform(0),
+  };
+  private readonly paneMaterial: NodeMaterial;
+  private readonly dropMaterial: NodeMaterial;
   /** 0 by day, 1 at night: how strongly drops gather nearby lights. */
   glow = 0;
 
   constructor({ isMobile = false, maxDrops = 1000 }: { isMobile?: boolean; maxDrops?: number } = {}) {
     this.sim = new RainSim({ maxDrops, seed: 20261005 });
     // Glass texels about 1 mm (0.7 mm on desktop): finer than the drops, near the screen's density.
-    this.dropsSize = isMobile ? [1024, 576] : [2048, 1152];
+    const [w, h] = isMobile ? [1024, 576] : [2048, 1152];
+    this.dropsTarget = new RenderTarget(w, h, {
+      type: HalfFloatType,
+      depthBuffer: false,
+      magFilter: LinearFilter,
+      minFilter: LinearFilter,
+    });
     this.fieldTexture = new DataTexture(this.sim.fieldBytes, FIELD_W, FIELD_H, RGFormat, UnsignedByteType);
     this.fieldTexture.magFilter = LinearFilter;
     this.fieldTexture.minFilter = LinearFilter;
+    this.fieldTexture.needsUpdate = true;
     const quad = new PlaneGeometry(2, 2);
     this.dropGeometry.index = quad.index;
     this.dropGeometry.setAttribute("position", quad.getAttribute("position"));
@@ -988,54 +909,19 @@ export class RainGlass {
     this.dirAttr = new InstancedBufferAttribute(new Float32Array(maxDrops * 2), 2);
     this.dropGeometry.setAttribute("aDrop", this.dropAttr);
     this.dropGeometry.setAttribute("aDir", this.dirAttr);
-    const drops = new Mesh(
-      this.dropGeometry,
-      new ShaderMaterial({
-        vertexShader: DROP_VERTEX,
-        fragmentShader: DROP_FRAGMENT,
-        defines: SHADER_DEFINES,
-        uniforms: { uGlass: { value: new Vector2(GLASS_W, GLASS_H) } },
-        transparent: true,
-        blending: NormalBlending,
-        premultipliedAlpha: true,
-        depthTest: false,
-        depthWrite: false,
-      }),
-    );
+    this.dropGeometry.instanceCount = 0;
+    this.dropMaterial = dropMaterial();
+    const drops = new Mesh(this.dropGeometry, this.dropMaterial);
     drops.frustumCulled = false;
     this.dropScene.add(drops);
-    this.material = new ShaderMaterial({
-      vertexShader: PANE_VERTEX,
-      fragmentShader: PANE_FRAGMENT,
-      defines: SHADER_DEFINES,
-      uniforms: {
-        uFrame: { value: null },
-        uFrameSize: { value: new Vector2(1, 1) },
-        uDrops: { value: null },
-        uField: { value: this.fieldTexture },
-        uViewProj: { value: new Matrix4() },
-        uOrigin: { value: new Vector3() },
-        uAxisU: { value: new Vector3() },
-        uAxisV: { value: new Vector3() },
-        uNormal: { value: new Vector3() },
-        uGlass: { value: new Vector2(GLASS_W, GLASS_H) },
-        uPivots: {
-          value: [...WIPER_BLADES[0].pivot, ...WIPER_BLADES[1].pivot],
-        },
-        uSpans: {
-          value: [WIPER_BLADES[0].rIn, WIPER_BLADES[0].rOut, WIPER_BLADES[1].rIn, WIPER_BLADES[1].rOut],
-        },
-        uGlow: { value: 0 },
-      },
-      // The pane writes every glass pixel it touches (the frame copy plus the water), so no blending.
-      blending: NoBlending,
-      depthWrite: false,
-    });
+    // A stand-in until the first copy of the frame (the composer hands one over each wet frame).
+    this.frameNode = texture(new DataTexture(new Uint8Array(4), 1, 1));
+    this.paneMaterial = this.makePaneMaterial();
   }
 
   /** Draw this Windshield mesh with the rain shader, in a pass after the scene. */
   addPane(mesh: Mesh): void {
-    const proxy = new Mesh(mesh.geometry, this.material);
+    const proxy = new Mesh(mesh.geometry, this.paneMaterial);
     proxy.matrixAutoUpdate = false;
     proxy.matrixWorldAutoUpdate = false;
     proxy.frustumCulled = false;
@@ -1044,66 +930,14 @@ export class RainGlass {
     mesh.visible = false;
   }
 
-  /**
-   * Render the frame from the driver's seat. Dry glass costs nothing beyond the scene itself;
-   * wet glass adds the drop texture, a copy of the frame and the glass pass.
-   */
-  render(
-    renderer: WebGLRenderer,
-    scene: Scene,
-    camera: PerspectiveCamera,
-    car: Object3D,
-    drawInterior: () => void,
-    nearCamera: PerspectiveCamera,
-    afterWorld: () => void = () => {},
-  ): void {
-    const isDry = this.sim.isDry() || this.panes.length === 0;
-    if (isDry) {
-      renderer.render(scene, camera);
-      afterWorld();
-      drawInterior();
-      return;
-    }
-    this.drawDrops(renderer);
-    renderer.render(scene, camera);
-    afterWorld();
-    // The street as the drops refract it (the interior is not behind the glass).
-    const frame = this.copyFrame(renderer);
-    drawInterior();
-    this.syncField();
-    const u = this.material.uniforms;
-    u.uFrame.value = frame;
-    u.uFrameSize.value.set(frame.image.width, frame.image.height);
-    u.uDrops.value = this.dropsTarget?.texture ?? null;
-    u.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    u.uGlow.value = this.glow;
-    // Glass frame in the car (knowledge/cockpit-blender.md): UV (0, 0) corner, u and v axes, and
-    // the outward normal.
-    const m = car.matrixWorld;
-    u.uOrigin.value.set(0.7353, 0.188, 0.9454).applyMatrix4(m);
-    u.uAxisU.value.set(-1, 0, 0).transformDirection(m);
-    u.uAxisV.value.set(0, 0.4204, -0.9073).transformDirection(m);
-    u.uNormal.value.set(0, 0.9073, 0.4204).transformDirection(m);
-    for (const p of this.panes) p.proxy.matrixWorld.copy(p.source.matrixWorld);
-    // The panes with the interior's camera, so the glass close to the eye is not clipped either.
-    const autoClear = renderer.autoClear;
-    const layers = nearCamera.layers.mask;
-    renderer.autoClear = false;
-    nearCamera.layers.enableAll();
-    renderer.render(this.paneScene, nearCamera);
-    nearCamera.layers.mask = layers;
-    renderer.autoClear = autoClear;
+  /** Something on the glass to draw (dry glass costs nothing beyond the scene itself). */
+  isWet(): boolean {
+    return !this.sim.isDry() && this.panes.length > 0;
   }
 
-  /** The drops as spherical caps into the glass-space normal/thickness texture. */
-  private drawDrops(renderer: WebGLRenderer): void {
+  /** The drops as spherical caps into the glass-space texture (before the frame: its own target). */
+  drawDrops(renderer: WebGPURenderer): void {
     const sim = this.sim;
-    this.dropsTarget ??= new WebGLRenderTarget(this.dropsSize[0], this.dropsSize[1], {
-      type: HalfFloatType,
-      depthBuffer: false,
-      magFilter: LinearFilter,
-      minFilter: LinearFilter,
-    });
     const d = this.dropAttr.array as Float32Array;
     const dir = this.dirAttr.array as Float32Array;
     for (let i = 0; i < sim.count; i++) {
@@ -1127,33 +961,65 @@ export class RainGlass {
     // Clear to "no water" (alpha 0) without touching the scene's clear colour.
     const color = renderer.getClearColor(this.clearColor);
     const alpha = renderer.getClearAlpha();
+    const before = renderer.getRenderTarget();
     renderer.setRenderTarget(this.dropsTarget);
     renderer.setClearColor(0x000000, 0);
     renderer.clear(true, false, false);
-    if (sim.count > 0) renderer.render(this.dropScene, this.dropCamera);
-    renderer.setRenderTarget(null);
+    if (sim.count > 0) {
+      const autoClear = renderer.autoClear;
+      renderer.autoClear = false;
+      renderer.render(this.dropScene, this.dropCamera);
+      renderer.autoClear = autoClear;
+    }
+    renderer.setRenderTarget(before);
     renderer.setClearColor(color, alpha);
   }
 
-  /** Copy the frame just rendered (with mipmaps, which the drops sample heavily minified). */
-  private copyFrame(renderer: WebGLRenderer): FramebufferTexture {
-    renderer.getDrawingBufferSize(this.size);
-    const w = Math.floor(this.size.x);
-    const h = Math.floor(this.size.y);
-    const isResized = !this.frame || this.frame.image.width !== w || this.frame.image.height !== h;
-    if (isResized) {
-      this.frame?.dispose();
-      this.frame = new FramebufferTexture(w, h);
-      this.frame.minFilter = LinearMipmapLinearFilter;
-      this.frame.magFilter = LinearFilter;
-      this.frame.generateMipmaps = true;
-    }
-    const frame = this.frame as FramebufferTexture;
-    renderer.copyFramebufferToTexture(frame);
-    // The copy fills level 0 only. Marking the texture updated makes three regenerate the mip
-    // chain when the glass pass binds it (a framebuffer texture's "upload" allocates nothing).
-    frame.needsUpdate = true;
-    return frame;
+  /**
+   * The panes over the frame (after the interior, testing against its depth), refracting `frame`:
+   * the street and the wiper arms, linear HDR with mipmaps. Drawn with the interior's camera, so the
+   * glass close to the eye is not clipped either.
+   */
+  drawPanes(
+    composer: FrameComposer,
+    frame: Texture,
+    camera: PerspectiveCamera,
+    car: Object3D,
+    nearCamera: PerspectiveCamera,
+  ): void {
+    this.syncField();
+    const u = this.u;
+    this.frameNode.value = frame;
+    const image = frame.image as { width: number; height: number };
+    u.frameSize.value.set(image.width, image.height);
+    u.viewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    u.glow.value = this.glow;
+    // Glass frame in the car (knowledge/cockpit-blender.md): UV (0, 0) corner, u and v axes, and
+    // the outward normal.
+    const m = car.matrixWorld;
+    u.origin.value.set(0.7353, 0.188, 0.9454).applyMatrix4(m);
+    u.axisU.value.set(-1, 0, 0).transformDirection(m);
+    u.axisV.value.set(0, 0.4204, -0.9073).transformDirection(m);
+    u.normal.value.set(0, 0.9073, 0.4204).transformDirection(m);
+    for (const p of this.panes) p.proxy.matrixWorld.copy(p.source.matrixWorld);
+    const layers = nearCamera.layers.mask;
+    nearCamera.layers.enableAll();
+    composer.drawOver(this.paneScene, nearCamera, true);
+    nearCamera.layers.mask = layers;
+  }
+
+  /** Build the glass's and the drops' pipelines before the first wet frame. */
+  async precompile(
+    renderer: WebGPURenderer,
+    frameTarget: RenderTarget,
+    near: PerspectiveCamera,
+  ): Promise<void> {
+    renderer.setRenderTarget(frameTarget);
+    const panes = renderer.compileAsync(this.paneScene, near);
+    renderer.setRenderTarget(this.dropsTarget);
+    const drops = renderer.compileAsync(this.dropScene, this.dropCamera);
+    renderer.setRenderTarget(null);
+    await Promise.all([panes, drops]);
   }
 
   /** Upload the fine-droplet coverage and the film when they changed. */
@@ -1162,4 +1028,165 @@ export class RainGlass {
     this.fieldUploaded = this.sim.fieldVersion;
     this.fieldTexture.needsUpdate = true;
   }
+
+  /**
+   * The windscreen: the view ray traced through each drop's cap into the frame copy. Screen
+   * positions are in the frame's uv with the origin at the top left (screenUV, as three samples a
+   * copy of the frame on both backends).
+   */
+  private makePaneMaterial(): NodeMaterial {
+    const u = this.u;
+    const frame = this.frameNode;
+    const drops = texture(this.dropsTarget.texture);
+    const field = texture(this.fieldTexture);
+    const glass = vec2(GLASS_W, GLASS_H);
+    const pivots = vec4(...WIPER_BLADES[0].pivot, ...WIPER_BLADES[1].pivot);
+    const spans = vec4(WIPER_BLADES[0].rIn, WIPER_BLADES[0].rOut, WIPER_BLADES[1].rIn, WIPER_BLADES[1].rOut);
+    const toScreen = (p: V3): V2 => {
+      const c = u.viewProj.mul(vec4(p, 1));
+      const ndc = c.xy.div(c.w);
+      return vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
+    };
+    // Where the frame shows what lies along world direction d. The street is far compared with the
+    // drop's distance from the eye, so the direction alone picks the pixel. Directions the frame
+    // shows only as cabin (roof lining, dashboard, pillars) are pulled back to the edge of the
+    // glass, the nearest place the frame shows the outside.
+    const throughWindow = (d: V3): V2 => {
+      const s = dot(u.origin.sub(cameraPosition), u.normal).div(max(dot(d, u.normal), 1e-3));
+      const q = cameraPosition.add(d.mul(s)).sub(u.origin);
+      const g = clamp(vec2(dot(q, u.axisU), dot(q, u.axisV)).div(glass), 0.015, 0.985);
+      return toScreen(u.origin.add(u.axisU.mul(g.x.mul(GLASS_W))).add(u.axisV.mul(g.y.mul(GLASS_H))));
+    };
+    const shade = Fn(() => {
+      const vUv = uv();
+      const pm = vUv.mul(glass);
+      const screen = screenUV;
+      const wetField = field.sample(vUv).rg;
+      // Defocus: the eye is focused on the road, so the water blurs by a few pixels. Six taps on a
+      // ring 1.6 px across on screen (whatever the glass's foreshortening) plus the centre.
+      // (Derivatives and implicit-LOD samples stay out of branches: WGSL wants them in uniform
+      // control flow.)
+      const du = dFdx(vUv).mul(1.6);
+      const dv = dFdy(vUv).mul(1.6);
+      let drop = drops.sample(vUv).mul(0.25);
+      for (let k = 0; k < 6; k++) {
+        const a = k * 1.0472 + 0.3;
+        drop = drop.add(drops.sample(vUv.add(du.mul(Math.cos(a))).add(dv.mul(Math.sin(a)))).mul(0.125));
+      }
+      const cp = pm.div(MICRO_CELL);
+      const fw = fwidth(cp);
+      const micro = microDrop(cp, wetField.x, max(fw.x, fw.y).mul(1.2));
+      // Simulated drops over the fine ones (premultiplied "over").
+      const water3 = vec3(drop.xy, drop.w).add(micro.mul(drop.w.oneMinus())).toVar();
+      const wet = clamp(water3.z, 0, 1).toVar();
+      const q = select(wet.greaterThan(1e-3), water3.xy.div(water3.z), vec2(0, 0));
+
+      // The view ray in glass axes, then into the water through the flat glass (the tangential
+      // part shrinks by 1/n).
+      const view = normalize(positionWorld.sub(cameraPosition));
+      const vt = vec3(dot(view, u.axisU), dot(view, u.axisV), dot(view, u.normal));
+      const tw = vt.xy.div(N);
+      const inWater = vec3(tw, sqrt(max(dot(tw, tw).oneMinus(), 0)));
+      const cap = throughCap(q, inWater);
+      const isCabin = cap.w.lessThanEqual(0);
+      // The blade's film: streaky arcs that tilt the view a little while it thins out.
+      const film = wetField.y;
+      const tilt = filmTilt(pm, pivots.xy, spans.xy, 0)
+        .add(filmTilt(pm, pivots.zw, spans.zw, 41))
+        .mul(film)
+        .mul(2.5e-5)
+        .mul(step(0.003, film));
+      const bent = mix(vt, cap.xyz, step(1e-3, wet));
+      const outT = vec3(bent.xy.add(tilt.mul(N_WATER - 1)), bent.z).toVar();
+      const dir = normalize(u.axisU.mul(outT.x).add(u.axisV.mul(outT.y)).add(u.normal.mul(outT.z)));
+      const uvR = select(isCabin.and(wet.greaterThan(1e-3)), screen, throughWindow(dir)).toVar();
+
+      // A drop shows a wide view squeezed into a few pixels: the mip level does the averaging, but
+      // two levels short of the full footprint (three at night) so that lights stay points in it.
+      // They twinkle as the car moves, as in real drops; the full average turned every drop grey.
+      const px = uvR.mul(u.frameSize);
+      const footprint = max(length(dFdx(px)), length(dFdy(px)));
+      const lod = clamp(log2(max(footprint, 1)).sub(u.glow.add(2).mul(wet)).add(film.mul(1.5)), 0, 6);
+
+      const base = frame.sample(screen).level(float(0)).rgb;
+      // The copy is linear HDR: a light keeps its brightness in the drop's tiny image of it. (The
+      // WebGL version pushed the bright part back up at night: its copy was tone-mapped, so a light
+      // read as about 1.)
+      const seen = frame.sample(uvR).level(lod).rgb;
+      const cabin = frame.sample(vec2(0.5, 0.9)).level(float(7)).rgb.mul(0.6);
+      const sky = frame
+        .sample(toScreen(u.origin.add(u.axisU.mul(0.5 * GLASS_W)).add(u.axisV.mul(0.92 * GLASS_H))))
+        .level(float(5)).rgb;
+      const water = select(isCabin, cabin, mix(cabin, seen, cap.w)).toVar();
+      // At night the lights around also light the whole drop a little (a soft glow). Squeezed back
+      // into the range the tuning was made in (the linear copy holds the lights' full radiance).
+      const hdrHalo = frame.sample(screen).level(float(6)).rgb;
+      const halo = hdrHalo.div(hdrHalo.add(1));
+      water.addAssign(max(halo.sub(0.1), 0).mul(1.2).mul(u.glow).mul(wet));
+      // The film also scatters a little light: a faint haze over the smear.
+      const smear = film.mul(0.9);
+      const smeared = mix(seen, sky, 0.08);
+      const total = max(wet, smear);
+      Discard(total.lessThan(0.002));
+      const col = mix(mix(base, smeared, smear.mul(wet.oneMinus())), water, wet);
+      return vec4(col, 1);
+    });
+    const material = new NodeMaterial();
+    material.fragmentNode = shade();
+    // The pane writes every glass pixel it touches (the frame copy plus the water), so no blending.
+    material.blending = NoBlending;
+    material.depthWrite = false;
+    material.fog = false;
+    material.name = "rain-glass";
+    return material;
+  }
+}
+
+/**
+ * One instanced quad per drop, drawn into a glass-space texture: RG = where in its cap each point
+ * lies (contact radii, premultiplied), A = coverage.
+ */
+function dropMaterial(): NodeMaterial {
+  const drop = attribute<"vec4">("aDrop", "vec4"); // centre (m), drawn radius (m), tail stretch (≥ 1)
+  const aDir = attribute<"vec2">("aDir", "vec2"); // direction of motion, zero at rest
+  const dir = select(dot(aDir, aDir).greaterThan(0.25), aDir, vec2(0, -1));
+  const side = vec2(dir.y.negate(), dir.x);
+  // From the tail (stretch radii behind the centre) to the round front (one radius ahead).
+  const local = vec2(
+    select(positionGeometry.x.lessThan(0), drop.w.negate(), float(1)),
+    positionGeometry.y,
+  ).mul(1.04);
+  const p = drop.xy.add(dir.mul(local.x).add(side.mul(local.y)).mul(drop.z));
+  const ndc = p.div(vec2(GLASS_W, GLASS_H)).mul(2).sub(1);
+  const material = new NodeMaterial();
+  // Glass v up = the top of the target down: a target's row 0 is sampled at v = 0 on both
+  // backends, so the panes read this texture with the glass UV as it is.
+  material.vertexNode = vec4(ndc.x, ndc.y.negate(), 0, 1);
+  const vLocal = varying(local);
+  const vDir = varying(dir);
+  const vStretch = varying(drop.w);
+  material.fragmentNode = Fn(() => {
+    const isTail = vLocal.x.lessThan(0);
+    const q = vec2(select(isTail, vLocal.x.div(vStretch), vLocal.x), vLocal.y);
+    const rho2 = dot(q, q);
+    Discard(rho2.greaterThanEqual(1));
+    // Where in the (round) cap this point lies, in contact radii along the glass axes: the glass
+    // shader traces the view ray through the cap from here. A running drop's tail is the cap
+    // stretched out behind it.
+    const g = vDir.mul(q.x).add(vec2(vDir.y.negate(), vDir.x).mul(q.y));
+    const alpha = smoothstep(0.8, 1, sqrt(rho2)).oneMinus();
+    // Premultiplied (by three, from this straight colour: premultipliedAlpha), so overlapping edges
+    // blend instead of cutting each other.
+    return vec4(g, 0, alpha);
+  })();
+  material.fog = false;
+  material.transparent = true;
+  material.blending = NormalBlending;
+  material.premultipliedAlpha = true;
+  material.depthTest = false;
+  material.depthWrite = false;
+  // The flipped y turns the quads round.
+  material.side = DoubleSide;
+  material.name = "rain-drops";
+  return material;
 }

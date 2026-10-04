@@ -10,12 +10,11 @@ import {
   MathUtils,
   Vector3,
   type Scene,
-  type WebGLRenderer,
 } from "three";
+import { PMREMGenerator, type WebGPURenderer } from "three/webgpu";
 import { ATMOSPHERE, extinctionFor, installAtmosphere } from "./atmosphere";
-import { Sky } from "three/addons/objects/Sky.js";
+import { SkyMesh } from "three/addons/objects/SkyMesh.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { PMREMGenerator } from "three";
 import { QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
 import { spellMinutes } from "./weatherSpells";
@@ -66,7 +65,10 @@ const RAIN_BOX = 90;
 export class Environment {
   readonly sun = new DirectionalLight(0xffffff, 2.5);
   private readonly hemi = new HemisphereLight(0xbfd9ff, 0x4a4036, 0.9);
-  private readonly sky = new Sky();
+  // WEBGPU-TODO(phase B): the sky as the sky agent draws it on main (skyShader / skyEnvMap /
+  // skyLight, GLSL there). SkyMesh is three's TSL port of the Sky this used (same Preetham model and
+  // the same uniforms, clouds included), standing in until then.
+  private readonly sky = new SkyMesh();
   private readonly fog = new Fog(0xbfd2e4, 400, 3200);
   private readonly rain: LineSegments;
   private readonly sunDir = new Vector3();
@@ -94,16 +96,24 @@ export class Environment {
 
   constructor(
     private readonly scene: Scene,
-    private readonly renderer: WebGLRenderer,
+    private readonly renderer: WebGPURenderer,
   ) {
     // Image-based lighting gives the clear-coated car and PLATEAU façades something to reflect;
-    // a procedural room avoids shipping an HDR asset.
+    // a procedural room avoids shipping an HDR asset. (three/webgpu's PMREMGenerator: the one in
+    // "three" is WebGL's.)
     const pmrem = new PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
     this.sky.scale.setScalar(40000);
     this.sky.frustumCulled = false;
+    // First of the opaque objects: the sky sits at the far plane without writing depth, and with a
+    // reversed depth buffer anything drawn before it would be painted over (its centre is the
+    // camera, so the distance sort cannot be trusted to put it first).
+    this.sky.renderOrder = -1000;
     scene.add(this.sky);
+    // WEBGPU-TODO(phase B): the atmospheric fog (atmosphere.ts patches the WebGL shader chunks,
+    // which node materials do not use) as scene.fogNode; until then node materials get three's
+    // linear Fog below, without the haze by height and the glow towards the sun.
     installAtmosphere();
     scene.fog = this.fog;
 
@@ -243,13 +253,13 @@ export class Environment {
     this.isWetnessSet = true;
     if (isFirstOrReplay) this.wetness = raining ? 1 : 0;
     else this.wetness = MathUtils.clamp(this.wetness + (raining ? dt / 20 : -dt / 300), 0, 1);
-    const u = this.sky.material.uniforms;
-    u.sunPosition.value.copy(this.sunDir);
-    u.turbidity.value = raining ? 12 : 4;
-    u.rayleigh.value = elevation < 12 ? 2.4 : 1.4;
-    u.mieCoefficient.value = raining ? 0.02 : 0.005;
-    u.cloudCoverage.value = raining ? 0.85 : 0.35;
-    u.time.value += dt;
+    // The clouds drift with TSL's own clock (the GLSL Sky took a time uniform).
+    const sky = this.sky;
+    sky.sunPosition.value.copy(this.sunDir);
+    sky.turbidity.value = raining ? 12 : 4;
+    sky.rayleigh.value = elevation < 12 ? 2.4 : 1.4;
+    sky.mieCoefficient.value = raining ? 0.02 : 0.005;
+    sky.cloudCoverage.value = raining ? 0.85 : 0.35;
     this.sky.position.copy(camera);
 
     // 1 at deep night, 0 in full daylight, smooth through civil twilight.

@@ -13,14 +13,15 @@ import {
   type Object3D,
   PerspectiveCamera,
   Plane,
+  RenderTarget,
   Sphere,
   Vector2,
   Vector3,
   Vector4,
-  WebGLRenderTarget,
   type Scene,
-  type WebGLRenderer,
 } from "three";
+import type { WebGPURenderer } from "three/webgpu";
+import { holdShadows } from "../render/frame";
 import { TERRAIN_ZOOM } from "../config";
 import { QUALITY } from "../device";
 import { haversineMeters } from "../geo/ellipsoid";
@@ -55,6 +56,8 @@ import {
   type WaterPolygon,
 } from "./waterGeometry";
 
+/** WEBGPU-TODO(phase B): true once renderReflection draws on WebGPU (see there). */
+const IS_REFLECTION_PORTED = false;
 /** Raster resolution per z16 tile (~497 m): ~1 m on desktop, ~2 m on phones. */
 const RASTER = QUALITY.isMobile ? 256 : 512;
 /** z16 tiles around the player: the roads' 3×3, plus a ring beyond it on desktop for the view. */
@@ -157,7 +160,7 @@ export class WaterLayer implements GroundWater {
   private deckBody: RAPIER.RigidBody | null = null;
   private shoreBody: RAPIER.RigidBody | null = null;
   private graph: RoadGraph | null = null;
-  private reflection: WebGLRenderTarget | null = null;
+  private reflection: RenderTarget | null = null;
   private readonly mirror = new PerspectiveCamera();
   private planeY: number | null = null;
   private planeCheckedAt = 0;
@@ -980,9 +983,19 @@ export class WaterLayer implements GroundWater {
    * drawn from below that plane into a half-size target, sampled by the water shader. Nothing is
    * drawn while no water is in view within REFLECT_RANGE, so towns without water pay nothing.
    */
-  renderReflection(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera, now: number): void {
+  renderReflection(renderer: WebGPURenderer, scene: Scene, camera: PerspectiveCamera, now: number): void {
     const u = this.material.uniforms;
     if (QUALITY.isMobile) return;
+    // WEBGPU-TODO(phase B): the planar reflection on WebGPU. placeMirror's oblique near plane is
+    // written for WebGL's clip space (z in −1…1); WebGPU's is 0…1 and the depth runs reversed
+    // (render/renderer.ts), and the target should be a sceneTarget (render/frame.ts) so the city's
+    // pipelines are shared with the frame. Until then the water shows the sky (the stand-in material
+    // has no reflection either) and this costs nothing.
+    if (!IS_REFLECTION_PORTED) {
+      this.reflectedFor = camera;
+      this.reflectionOn = 0;
+      return;
+    }
     if (now - this.planeCheckedAt > 250) {
       this.planeCheckedAt = now;
       this.planeY = this.nearestLevel(camera);
@@ -1002,7 +1015,7 @@ export class WaterLayer implements GroundWater {
     if (isFresh && this.reflectFrame % REFLECT_EVERY !== 0) return;
     const size = renderer.getDrawingBufferSize(new Vector2()).multiplyScalar(REFLECT_SCALE).floor();
     if (!this.reflection) {
-      this.reflection = new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType });
+      this.reflection = new RenderTarget(size.x, size.y, { type: HalfFloatType });
     } else if (this.reflection.width !== size.x || this.reflection.height !== size.y) {
       this.reflection.setSize(size.x, size.y);
     }
@@ -1027,13 +1040,10 @@ export class WaterLayer implements GroundWater {
       }
     }
     const target = renderer.getRenderTarget();
-    const shadows = renderer.shadowMap.autoUpdate;
-    renderer.shadowMap.autoUpdate = false;
     renderer.setRenderTarget(this.reflection);
     renderer.clear();
-    renderer.render(scene, this.mirror);
+    holdShadows(() => renderer.render(scene, this.mirror));
     renderer.setRenderTarget(target);
-    renderer.shadowMap.autoUpdate = shadows;
     for (const m of visible) m.visible = true;
     u.uReflection.value = this.reflection.texture;
     this.reflectionOn = 1;
@@ -1045,6 +1055,8 @@ export class WaterLayer implements GroundWater {
     camera.updateMatrixWorld();
     this.frustum.setFromProjectionMatrix(
       this.tmpMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+      camera.coordinateSystem,
+      camera.reversedDepth,
     );
     const eye = camera.getWorldPosition(new Vector3());
     const tide = this.material.uniforms.uTide.value as number;

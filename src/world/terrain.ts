@@ -12,8 +12,8 @@ import {
   SRGBColorSpace,
   Vector3,
   type Scene,
-  type WebGLRenderer,
 } from "three";
+import type { WebGPURenderer } from "three/webgpu";
 import {
   GSI,
   PLATEAU_ORTHO,
@@ -86,7 +86,7 @@ export class Terrain {
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
     private readonly dem: DemStore,
-    private readonly renderer: WebGLRenderer,
+    private readonly renderer: WebGPURenderer,
     frame: LocalFrame,
   ) {
     this.frame = frame;
@@ -235,6 +235,8 @@ export class Terrain {
     // Cut the water out of the ground: the photo there shows the river from above, and the water
     // layer draws the surface and the shore walls instead. Only once the photo is on (the cut-out
     // reads the photo's UVs), which is also when the river would show as ground.
+    // WEBGPU-TODO(phase C): the cut-out as a TSL discard reading `water` (the groundWater mask);
+    // node materials ignore onBeforeCompile, so the river photo stays under the water surface.
     material.onBeforeCompile = (shader) => {
       shader.uniforms.groundWater = water;
       shader.fragmentShader = shader.fragmentShader
@@ -385,7 +387,7 @@ export class Terrain {
     if (isDisposed) return;
     const texture = new CanvasTexture(canvas);
     texture.colorSpace = SRGBColorSpace;
-    texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    texture.anisotropy = Math.min(8, this.renderer.getMaxAnisotropy());
     chunk.mesh.material.map?.dispose();
     chunk.mesh.material.map = texture;
     chunk.mesh.material.color.set(0xffffff);
