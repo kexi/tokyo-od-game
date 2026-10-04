@@ -2174,6 +2174,7 @@ async function main(): Promise<void> {
       appliedNight = env.nightFactor;
       buildings.setNightFactor(appliedNight);
     }
+    buildings.setFacadeClock(env.now(), env.wetness);
     const isDark = env.nightFactor > 0.25 || env.isRaining();
     const lamps = controls.lamps();
     vehicle.updateLights(controls.headlightsOn(isDark), { ...lamps, highBeam: controls.highBeam });

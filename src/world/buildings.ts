@@ -24,7 +24,13 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { BUILDING_COLLIDER_RADIUS, PLATEAU_TILESET } from "../config";
 import { QUALITY } from "../device";
 import type { LocalFrame } from "../geo/frame";
-import { addFacadeAttribute, applyFacade, facadeUniforms, setFacadeOrigin } from "./facade";
+import {
+  addFacadeAttribute,
+  applyFacade,
+  facadeUniforms,
+  setFacadeOrigin,
+  updateFacadeClock,
+} from "./facade";
 
 type Model = {
   scene: Object3D;
@@ -190,9 +196,17 @@ export class Buildings {
     return count;
   }
 
-  /** 0 = day, 1 = night: lights up a random share of the procedural windows. */
+  /** 0 = day, 1 = night: how much the lit windows show against the daylight. */
   setNightFactor(f: number): void {
     facadeUniforms.uNight.value = f;
+  }
+
+  /**
+   * Per frame: the game time (which windows are lit: offices empty out after the evening, homes
+   * after midnight, shops at closing time) and how wet the walls are (0–1, Environment.wetness).
+   */
+  setFacadeClock(gameTime: Date, wetness: number): void {
+    updateFacadeClock(gameTime, wetness, performance.now() / 1000);
   }
 
   onResize(): void {
@@ -281,6 +295,10 @@ export class Buildings {
       const model = this.models.get(scene);
       if (model) this.removeCollider(model);
       this.models.delete(scene);
+      // The façade materials replaced the tile's own after the renderer listed what to dispose.
+      scene.traverse((o) => {
+        if (o instanceof Mesh) (o.material as Material).dispose();
+      });
     });
     tiles.addEventListener("tile-visibility-change", ({ scene, visible }) => {
       const model = this.models.get(scene);
