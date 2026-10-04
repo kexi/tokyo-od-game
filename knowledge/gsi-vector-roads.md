@@ -1,12 +1,12 @@
 ---
 type: Reference
 title: 地理院ベクトルタイルの道路
-description: experimental_bvmap の road レイヤの属性、交差点での分割、規制データが無いことと制限速度の推定。
+description: experimental_bvmap の road レイヤの属性、交差点での分割、規制データが無いことと制限速度の推定（規制は後に JARTIC で補った）。
 resource: https://cyberjapandata.gsi.go.jp/xyz/experimental_bvmap/{z}/{x}/{y}.pbf
 tags: [roads, licensing]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T05:00:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T05:40:00Z }
 verified:
   - { by: process:vitest, at: 2026-10-04T04:40:00Z }
 sources:
@@ -49,6 +49,8 @@ sources:
 - それでも `splitAtJunctions` で、共有頂点（約 1m に丸めて照合）ごとに分割している。テストの丁字路で、分割しないと行き止まり扱いになり AI 車が U ターンする不具合が実際に出たため。タイル境界で切れた線も、同じ丸めでつながる。
 
 # 制限速度の推定
+
+> **追記（2026-10-04）**: 下の「JARTIC を対応付ける必要がある」は実施した。規制速度・一方通行・横断歩道・停止線・一時停止は JARTIC、信号機は OSM から取り込んでいる（[交通規制と信号機](traffic-regulations.md)）。幅員からの推定は、規制速度が対応付かない区間の法定速度としてだけ残っている。
 
 規制速度のデータが無いので、法定速度（施行令第 11 条、2026-09-01 改正）を幅員で近似する。
 
