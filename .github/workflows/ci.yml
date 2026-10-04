@@ -33,6 +33,8 @@ jobs:
         run: pnpm exec vite build
       - name: justfile lint (fmt + recipe comments)
         run: bash bin/lint-justfile.sh
+      - name: knowledge lint (OKF type + tag vocabulary)
+        run: bash bin/lint-knowledge.sh
       - name: actionlint
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12

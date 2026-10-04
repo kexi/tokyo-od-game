@@ -56,5 +56,9 @@ lint-actions:
 secrets:
     gitleaks git --no-banner --redact
 
+# knowledge/ の OKF 適合と tag 語彙を検査する
+lint-knowledge:
+    bash bin/lint-knowledge.sh
+
 # CI と同じ検査を一括で実行する
-check: typecheck lint fmt-check test lint-justfile lint-actions
+check: typecheck lint fmt-check test lint-justfile lint-actions lint-knowledge

@@ -1,0 +1,12 @@
+# knowledge/*.md の tag 統制語彙。乱立防止のため frontmatter の tags にはここの tag だけを使う。
+# 新しい tag は説明付きでここへ追加してから使う（bin/lint-knowledge.sh が検証）。
+opendata: 東京都・区・国のオープンデータ（カタログ、API、データ品質）
+plateau: 国土交通省 Project PLATEAU の 3D 都市モデルと配信
+terrain: 地形・標高・ジオイド・座標系
+roads: 道路ネットワーク・道路描画・交通シミュレーション
+traffic-law: 道路交通法・条例・違反点数と反則金
+licensing: データ・ソフトウェアの利用規約、出典表記、法令上の制約
+ai: 端末内 AI（LLM・音声合成）
+rendering: three.js の描画・性能・メモリ
+testing: 検証方法（ヘッドレスブラウザ、エミュレーション）
+mobile: スマホ（Android）対応

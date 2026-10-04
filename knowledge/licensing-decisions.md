@@ -1,0 +1,81 @@
+---
+type: Reference
+title: データ・ソフトウェアの利用条件
+description: 提供元ごとの規約と、それを受けて変えた設計（ジオイド差し替え、標準地図の不使用、逆ジオコーダの廃止、TTS の利用規約）。
+tags: [licensing]
+status: stable
+stale_after: 2027-04-01T00:00:00Z
+generated: { by: claude-opus-5-5/1m, at: 2026-10-04T05:00:00Z }
+sources:
+  - id: legal-review
+    resource: 法務観点エージェントによる規約原文の確認（2026-10-04、取得物は scratchpad/raw と txt）
+    title: 利用規約レビュー
+    author: claude-opus-5-5/1m
+  - id: gsi-ichiran
+    resource: https://maps.gsi.go.jp/development/ichiran.html
+    title: 地理院タイル一覧（リアルタイム読み込みは出典の明示のみで申請不要）
+  - id: gsi-qa
+    resource: https://www.gsi.go.jp/LAW/2930-qa.html
+    title: 測量成果の承認申請 Q&A（Q2-4）
+  - id: plateau-policy
+    resource: https://www.mlit.go.jp/plateau/site-policy/
+    title: PLATEAU サイトポリシー
+  - id: odpt-faq
+    resource: https://developer.odpt.org/ja/faq-info#cc-by-credit
+    title: ODPT FAQ（CC BY の表記例）
+  - id: jma-terms
+    resource: https://www.jma.go.jp/jma/kishou/info/coment.html
+    title: 気象庁ホームページ利用規約
+  - id: sanotts-license
+    resource: https://github.com/ayutaz/sanoTTS-jp/blob/v1.2.0/LICENSE-MODEL.md
+    title: sanoTTS-jp Model License 1.0
+  - id: tyc-corpus
+    resource: https://tyc.rei-yumesaki.net/material/corpus/
+    title: つくよみちゃんコーパス 利用規約
+  - id: gemma-license
+    resource: https://ai.google.dev/gemma/docs/gemma_4_license
+    title: Gemma 4 ライセンス（Apache 2.0）
+---
+
+# 提供元ごとの扱い
+
+| 提供元       | 条件                                                                                                                              | ゲームでの対応                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 東京都・各区 | CC BY 4.0。改変時は「改変して利用」と書く。都・区が作ったように見せない                                                           | 指定の書式で出典画面に列挙し、提供元の個別指定（防災マップ・台東区・水道局）も表示                                   |
+| PLATEAU      | PDL1.0（CC BY 互換）。加工した旨を書く                                                                                            | 「出典：国土交通省 PLATEAUウェブサイト…を加工して作成」と書く[^plateau-policy]                                       |
+| 地理院タイル | リアルタイム読み込みは出典の明示だけで申請不要。表示中は出典を画面に出すのが原則                                                  | 画面下に常時表示。タイルは同梱しない[^gsi-ichiran]                                                                   |
+| ODPT（都営） | CC BY 4.0。提供者名は「東京都交通局・公共交通オープンデータ協議会」                                                               | FAQ の改変時書式に加え、正確性非保証・問い合わせ先を表示[^odpt-faq]                                                  |
+| 気象庁       | 公共データ利用規約 1.0。加工した旨と、編集責任が編集者にある旨を書く                                                              | 「予報・警報ではない」と明記。取得は 10 分に 1 回[^jma-terms]                                                        |
+| e-Stat       | 政府標準利用規約 2.0                                                                                                              | 出典と加工した旨を書く                                                                                               |
+| sanoTTS-jp   | コードは MIT。重みは独自ライセンスで、(A) 表示と Apache-2.0 全文の同梱が義務。合成音声の禁止用途 4 項目を利用規約で課す義務がある | (A) を原文のまま掲載し、禁止事項を出典画面と README に記載。音声の保存機能は持たない[^sanotts-license] [^tyc-corpus] |
+| Gemma 4      | Apache 2.0、ゲートなし                                                                                                            | 各端末が Hugging Face から直接取得するので、再配布はしていない[^gemma-license]                                       |
+| npm 依存     | MIT / Apache-2.0 / BSD                                                                                                            | ビルドで `THIRD_PARTY_LICENSES.txt` を生成（Draco も含む）                                                           |
+
+# 規約を受けて変えた設計
+
+1. **ジオイド**: 国土地理院のモデルの格子値を同梱すると、測量法第 29 条・第 30 条の承認が要る可能性が高い。そのためパブリックドメインの EGM2008 に替えた（[地形・ジオイド](terrain-and-geoid.md)）。[^legal-review]
+2. **標準地図（std）**: 「電子地形図と DEM を重ねて立体的な地図を作る」場合は承認申請の対象になり得る（Q2-4）。地面の選択肢から外し、写真と PLATEAU オルソだけにした。[^gsi-qa]
+3. **逆ジオコーダ**: 地理院地図向けの非公開機能で、継続提供は保証されない。プレイヤーごとに数秒おきに呼ぶのはやめて、e-Stat の境界で判定するようにした。
+4. **NPC のセリフ**: 合成音声で話すため、システムプロンプトで政治・宗教・攻撃的な話題を禁じた。出力も正規表現で検査し、該当すれば定型文に置き換える。
+
+# 報告事項
+
+道路データの調査で、エージェントが Overpass API（overpass-api.de）への試験リクエスト 1 回で、User-Agent に利用者のメールアドレスを入れて送っていた。以後は外している。外部への試験リクエストに個人情報を載せないよう、エージェントへの指示に明記する。
+
+[^legal-review]: 利用規約レビュー
+
+[^gsi-ichiran]: 地理院タイル一覧
+
+[^gsi-qa]: 測量成果の承認申請 Q&A
+
+[^plateau-policy]: PLATEAU サイトポリシー
+
+[^odpt-faq]: ODPT FAQ
+
+[^jma-terms]: 気象庁ホームページ利用規約
+
+[^sanotts-license]: sanoTTS-jp Model License 1.0
+
+[^tyc-corpus]: つくよみちゃんコーパス 利用規約
+
+[^gemma-license]: Gemma 4 ライセンス
