@@ -8,6 +8,10 @@ export type ViolationKind =
   | "signal" // 信号無視（赤色等）
   | "stopSign" // 指定場所一時不停止等
   | "noEntry" // 通行禁止違反（一方通行の逆走）
+  | "turnBan" // 通行禁止違反（指定方向外進行禁止）
+  | "uturn" // 指定横断等禁止違反（転回禁止）
+  | "slow" // 徐行場所違反
+  | "laneChange" // 進路変更禁止違反
   | "keepLeft" // 通行区分違反（右側通行）
   | "speed" // 速度超過
   | "pedestrianCrossing" // 横断歩行者等妨害等
@@ -79,6 +83,38 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     article: "道路交通法 第8条第1項",
     points: 2,
     fine: 7000,
+  },
+  // 指定方向外進行禁止の標識に従わず、指定された方向以外へ進んだ（通行禁止の一種）。
+  turnBan: {
+    kind: "turnBan",
+    label: "通行禁止違反（指定方向外進行禁止）",
+    article: "道路交通法 第8条第1項",
+    points: 2,
+    fine: 7000,
+  },
+  // 転回禁止の区間で U ターンした。
+  uturn: {
+    kind: "uturn",
+    label: "指定横断等禁止違反（転回禁止）",
+    article: "道路交通法 第25条の2第2項",
+    points: 1,
+    fine: 6000,
+  },
+  // 徐行の標識がある区間を、直ちに停止できる速度（おおむね 10km/h）を超えて走った。
+  slow: {
+    kind: "slow",
+    label: "徐行場所違反",
+    article: "道路交通法 第42条",
+    points: 2,
+    fine: 7000,
+  },
+  // 黄色の車線境界線（進路変更禁止）をまたいで車線を変えた。
+  laneChange: {
+    kind: "laneChange",
+    label: "進路変更禁止違反",
+    article: "道路交通法 第26条の2第3項",
+    points: 1,
+    fine: 6000,
   },
   keepLeft: {
     kind: "keepLeft",
@@ -154,6 +190,8 @@ export type LicenseState = {
 export class TrafficLaw {
   readonly state: LicenseState = { points: 0, fines: 0, log: [], suspended: false };
   private readonly cooldown = new Map<ViolationKind, number>();
+  /** 放置違反金 orders so far (repeated orders can lead to a vehicle 使用制限命令). */
+  ownerOrders = 0;
 
   /** Records a violation unless the same kind was booked within `cooldownMs` (one stop per offence). */
   book(v: Violation, now: number, cooldownMs = 8000): Violation | null {
@@ -167,6 +205,22 @@ export class TrafficLaw {
     this.state.log.push({ ...v, at: now });
     if (this.state.points >= SUSPENSION_POINTS) this.state.suspended = true;
     return v;
+  }
+
+  /**
+   * 放置違反金: when the driver does not come forward after a 確認標章, the vehicle's user (使用者)
+   * is ordered to pay the same amount, with no licence points (道路交通法 第51条の4).
+   */
+  chargeOwner(v: Violation, now: number): Violation {
+    const owner: Violation = {
+      ...v,
+      label: `放置違反金（${v.label.replace(/^放置駐車違反/, "放置駐車")}）`,
+      points: 0,
+    };
+    this.state.fines += owner.fine ?? 0;
+    this.state.log.push({ ...owner, at: now });
+    this.ownerOrders++;
+    return owner;
   }
 
   /** Back to a clean licence (after the suspension screen). */

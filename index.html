@@ -234,6 +234,7 @@
       </div>
     </div>
 
+    <div id="stamps" aria-hidden="true"></div>
     <section id="suspended" hidden aria-live="assertive">
       <div class="loading-card">
         <h1>免許停止</h1>
@@ -284,6 +285,27 @@
         光の柱は東京都オープンデータの実在スポットです。車で触れると「発見」できます。進捗はこのブラウザに保存されます。
       </p>
       <form method="dialog"><button>閉じる</button></form>
+    </dialog>
+
+    <dialog id="parking-dialog" aria-labelledby="parking-title">
+      <h2 id="parking-title">放置車両確認標章が取り付けられています</h2>
+      <p>
+        駐車監視員が、運転者のいない車を確認して黄色の標章を貼りました。標章は運転者か使用者しか取り除けません（道路交通法
+        第51条の4）。どちらにしますか？
+      </p>
+      <p id="parking-detail" class="sub"></p>
+      <dl>
+        <dt>警察署に出頭する</dt>
+        <dd>運転者として反則金を納めます。違反点数が付きます。</dd>
+        <dt>出頭しない</dt>
+        <dd>
+          車の使用者（持ち主）に同じ額の放置違反金の納付命令が届きます。違反点数は付きません。命令を繰り返し受けると、車を使えなくなる使用制限命令の対象になり得ます（第75条の2第2項）。
+        </dd>
+      </dl>
+      <div class="row">
+        <button type="button" id="parking-appear">出頭する（反則金・点数）</button>
+        <button type="button" id="parking-owner">出頭しない（放置違反金）</button>
+      </div>
     </dialog>
 
     <dialog id="ai-consent">

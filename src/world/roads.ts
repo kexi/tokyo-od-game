@@ -30,6 +30,8 @@ export type Segment = {
   noLaneChange: boolean;
   /** Lanes per direction: 1 unless JARTIC lists a 車両通行帯 for the section. */
   lanes: number;
+  /** JARTIC sections on this segment: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行. */
+  rules: Array<{ code: number; start: number; end: number }>;
 };
 
 /** Speed limit in force on a segment: posted (JARTIC) when known, statutory otherwise. */
@@ -43,7 +45,9 @@ export function speedLimit(seg: Segment): number {
  * ordinary roads. GSI data has no centre-line flag, so ≥5.5 m carriageways stand in for it.
  */
 export function estimatedLimit(line: RoadLine): number {
-  if (line.kind === "highway") return 80;
+  // 首都高 is a 自動車専用道路, not a 高速自動車国道 (100 km/h, 施行令 第27条), so the ordinary 60 km/h
+  // applies wherever no limit is posted.
+  if (line.kind === "highway") return 60;
   return line.width >= 5.5 ? 60 : 30;
 }
 
@@ -87,6 +91,7 @@ export class RoadGraph {
         noOvertake: false,
         noLaneChange: false,
         lanes: 1,
+        rules: [],
       });
       this.link(from, id);
       this.link(to, id);
@@ -110,12 +115,17 @@ export class RoadGraph {
    * Nearest road to a point: returns the segment, the along-distance, and the signed lateral
    * offset (positive = left of the segment's coordinate direction).
    */
-  nearest(p: Vector3, maxDist: number): { seg: Segment; s: number; lateral: number; dir: Vector3 } | null {
+  nearest(
+    p: Vector3,
+    maxDist: number,
+    accept: (seg: Segment) => boolean = () => true,
+  ): { seg: Segment; s: number; lateral: number; dir: Vector3 } | null {
     let best: { seg: Segment; s: number; lateral: number; dir: Vector3 } | null = null;
     let bestD = maxDist;
     const ab = new Vector3();
     const ap = new Vector3();
     for (const seg of this.segments) {
+      if (!accept(seg)) continue;
       for (let i = 1; i < seg.pts.length; i++) {
         const a = seg.pts[i - 1];
         ab.copy(seg.pts[i]).sub(a);

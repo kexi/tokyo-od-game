@@ -40,6 +40,8 @@ import { Walker } from "./game/walker";
 import { ChaseCamera } from "./game/camera";
 import { loadCarModels } from "./game/carModel";
 import { Speedometer } from "./game/speedometer";
+import { ParkingPatrol } from "./game/parkingPatrol";
+import { Stamps, shortLabel } from "./game/stamp";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
 import { Input } from "./game/input";
@@ -60,8 +62,14 @@ import {
 } from "./world/environment";
 import { Terrain } from "./world/terrain";
 import { Pedestrians } from "./world/pedestrians";
-import { RegulationTiles, applyRegulations, type RegulationData } from "./world/regulations";
-import { RoadGraph, leftOf, speedLimit, type RoadLine } from "./world/roads";
+import {
+  RegulationTiles,
+  applyRegulations,
+  isInForce,
+  type AppliedRegulations,
+  type RegulationData,
+} from "./world/regulations";
+import { RoadGraph, leftOf, speedLimit, type RoadLine, type Segment } from "./world/roads";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
@@ -230,6 +238,10 @@ async function main(): Promise<void> {
   const regulationTiles = new RegulationTiles();
   const signs = new TrafficSigns(scene, (x, z) => groundY(x, z));
   const speedometer = new Speedometer($("#hud-speed"));
+  const stamps = new Stamps($("#stamps"), () => audio.context, $("#scene"));
+  const patrol = new ParkingPatrol(scene, (x, z) => groundY(x, z));
+  /** A 確認標章 waiting for the driver's choice when they get back in. */
+  let pendingParking: Violation | null = null;
   const law = new TrafficLaw();
   // Roads follow the rendered terrain (collider = render mesh), falling back to the DEM.
   const roadSurface = new RoadSurface(scene, (x, z) => {
@@ -241,6 +253,7 @@ async function main(): Promise<void> {
   });
   let roadLines: RoadLine[] = [];
   let roadRegs: RegulationData | null = null;
+  let roadApplied: AppliedRegulations | null = null;
   let roadGraph: RoadGraph | null = null;
   let roadCenter = { lat: 0, lon: 0 };
   let roadsLoading = false;
@@ -250,6 +263,7 @@ async function main(): Promise<void> {
   const buildRoadNetwork = () => {
     const graph = new RoadGraph(roadLines, frame);
     const applied = roadRegs ? applyRegulations(graph, roadRegs, frame) : null;
+    roadApplied = applied;
     graph.setClock(clockMinutes());
     roadGraph = graph;
     traffic.setGraph(graph);
@@ -365,6 +379,7 @@ async function main(): Promise<void> {
     if (walker.active) walker.transform(offset, Math.atan2(f.x, f.z));
     traffic.transform(offset, Math.atan2(f.x, f.z));
     emergency.transform(offset);
+    patrol.transform(offset);
     buildRoadNetwork();
     log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
   };
@@ -530,7 +545,7 @@ async function main(): Promise<void> {
     mode = "car";
     if (ticket.visible) {
       ticket.visible = false;
-      toast("確認標章を外しました（放置違反金の納付が必要です）", "#ffd400");
+      if (pendingParking) openParkingDialog(pendingParking);
     }
     chase.snap();
     toast("乗車しました");
@@ -554,6 +569,10 @@ async function main(): Promise<void> {
   let overSince: number | null = null;
   let rightSince: number | null = null;
   let wrongWaySince: number | null = null;
+  let slowSince: number | null = null;
+  let lastHeading: { seg: Segment; sgn: number; at: number } | null = null;
+  let laneTrack: { seg: Segment; lane: number } | null = null;
+  let lastStreet: { seg: Segment; dir: 1 | -1 } | null = null;
   let lawPrevPos: Vector3 | null = null;
   // Where and when the car last stood still, for 一時停止 (stop before the line, then go).
   let lastStop: { pos: Vector3; at: number } | null = null;
@@ -562,7 +581,6 @@ async function main(): Promise<void> {
   let currentLimitKind: "sign" | "zone" | "statutory" | null = null;
   let currentOneway = false;
   let stoppedSince: number | null = null;
-  let abandonedSince: number | null = null;
   // 確認標章: the yellow notice police stick on an illegally parked car.
   const ticket = new Mesh(
     new PlaneGeometry(0.34, 0.22),
@@ -740,7 +758,8 @@ async function main(): Promise<void> {
     const isDriving = !isOnFoot && !frozen && !law.state.suspended;
     if (isDriving && roadGraph && now - lastLawCheck > 200) {
       lastLawCheck = now;
-      const hit = roadGraph.nearest(carPos, 30);
+      // The car drives at ground level: elevated 首都高 overhead is not the road it is on.
+      const hit = roadGraph.nearest(carPos, 30, isSurfaceStreet);
       const onRoad = hit && Math.abs(hit.lateral) < hit.seg.line.width / 2 + 1.5 ? hit : null;
       currentLimit = onRoad ? speedLimit(onRoad.seg) : null;
       currentLimitKind = onRoad ? onRoad.seg.limitKind : null;
@@ -765,6 +784,66 @@ async function main(): Promise<void> {
       wrongWaySince = isWrongWay ? (wrongWaySince ?? now) : null;
       if (wrongWaySince !== null && now - wrongWaySince > 1500) book(VIOLATIONS.noEntry, now, 20000);
 
+      // JARTIC section rules in force now (時間帯指定を含む).
+      const minutes = clockMinutes();
+      const inForce = (code: number) =>
+        onRoad !== null && onRoad.seg.rules.some((r) => r.code === code && isInForce(r, minutes));
+      // 徐行: a speed at which the car can stop at once (about 10 km/h).
+      slowSince = inForce(61) && speed > 10 ? (slowSince ?? now) : null;
+      if (slowSince !== null && now - slowSince > 1500) book(VIOLATIONS.slow, now, 20000);
+      if (onRoad && Math.abs(align) > 0.7 && speed > 4) {
+        // 転回禁止: the heading along the same street flips.
+        const sgn = Math.sign(align);
+        const isUturn =
+          lastHeading !== null &&
+          lastHeading.seg === onRoad.seg &&
+          lastHeading.sgn !== sgn &&
+          now - lastHeading.at < 20000;
+        if (isUturn && inForce(51)) book(VIOLATIONS.uturn, now, 20000);
+        lastHeading = { seg: onRoad.seg, sgn, at: now };
+        // 指定方向外進行禁止: judged when the car leaves the approach for the next street.
+        const dir: 1 | -1 = align > 0 ? 1 : -1;
+        const prev = lastStreet;
+        if (prev && prev.seg !== onRoad.seg) {
+          const node = prev.dir === 1 ? prev.seg.to : prev.seg.from;
+          const isNext = onRoad.seg.from === node || onRoad.seg.to === node;
+          const rule = isNext
+            ? roadApplied?.turnRules.find(
+                (r) =>
+                  r.node === node && r.approach === prev.seg && r.dir === prev.dir && isInForce(r, minutes),
+              )
+            : undefined;
+          if (rule) {
+            const leaving = onRoad.seg.from === node ? 1 : -1;
+            const tIn = roadGraph
+              .sample(prev.seg, prev.dir === 1 ? prev.seg.length - 1 : 1)
+              .dir.multiplyScalar(prev.dir);
+            const tOut = roadGraph
+              .sample(onRoad.seg, leaving === 1 ? 1 : onRoad.seg.length - 1)
+              .dir.multiplyScalar(leaving);
+            const side = leftOf(tIn, 1).dot(tOut);
+            const turn = side > 0.57 ? 1 : side < -0.57 ? 4 : 2; // left / straight / right
+            if (!(rule.mask & turn)) book(VIOLATIONS.turnBan, now, 15000);
+          }
+        }
+        lastStreet = { seg: onRoad.seg, dir };
+      }
+      // 進路変更禁止: crossing a yellow lane line (lanes counted from the left kerb).
+      const seg = onRoad?.seg;
+      if (onRoad && seg && seg.noLaneChange && seg.lanes >= 2 && speed > 5 && Math.abs(align) > 0.8) {
+        const span = seg.oneway === 0 ? seg.line.width / 2 : seg.line.width;
+        const leftOfTravel = onRoad.lateral * Math.sign(align);
+        const lane = Math.floor((seg.line.width / 2 - leftOfTravel) / (span / seg.lanes));
+        const isLaneChange =
+          laneTrack !== null &&
+          laneTrack.seg === seg &&
+          laneTrack.lane !== lane &&
+          lane >= 0 &&
+          lane < seg.lanes;
+        if (isLaneChange) book(VIOLATIONS.laneChange, now, 15000);
+        laneTrack = { seg, lane };
+      } else laneTrack = null;
+
       // Signals and 一時停止: judged when the car crosses a stop line heading into the junction.
       if (Math.abs(speed) < 3) lastStop = { pos: carPos.clone(), at: now };
       if (lawPrevPos && lawPrevPos.distanceTo(carPos) < 30) {
@@ -784,20 +863,36 @@ async function main(): Promise<void> {
       lawPrevPos = null;
     }
 
-    // 放置駐車: on foot, away from a car left on the carriageway for a minute.
-    const carHit = isOnFoot && roadGraph ? roadGraph.nearest(carPos, 15) : null;
+    // 放置駐車 and the 駐車監視員 patrol. 警視庁: regardless of how long it has stood, a car left on
+    // a street where parking is prohibited, with the driver away and unable to drive it at once,
+    // gets a 放置車両確認標章 — the patrol only has to come by.
+    const carHit = roadGraph ? roadGraph.nearest(carPos, 15, isSurfaceStreet) : null;
     const isOnCarriageway = carHit !== null && Math.abs(carHit.lateral) < carHit.seg.line.width / 2;
-    const isAbandoned = isOnCarriageway && walker.position().distanceTo(carPos) > 10 && !emergency.active;
-    abandonedSince = isAbandoned ? (abandonedSince ?? now) : null;
-    if (abandonedSince !== null && now - abandonedSince > 60_000 && !ticket.visible && carHit) {
-      const near = [carHit.seg.from, carHit.seg.to].some((node) => {
-        const isJunction = (roadGraph?.nodes.get(node)?.length ?? 0) >= 3;
-        const end = node === carHit.seg.from ? 0 : carHit.seg.length;
-        return isJunction && Math.abs(carHit.s - end) < 6;
-      });
-      book(near ? VIOLATIONS.parkingNoStop : VIOLATIONS.parking, now, 120_000);
+    const place = isOnCarriageway && carHit ? parkingPlace(carHit) : null;
+    const isAbandoned =
+      isOnFoot &&
+      place !== null &&
+      walker.position().distanceTo(carPos) > 5 &&
+      !emergency.active &&
+      !ticket.visible;
+    let kerb: Vector3 | null = null;
+    let along: Vector3 | null = null;
+    if (carHit && roadGraph) {
+      const { pos, dir } = roadGraph.sample(carHit.seg, carHit.s);
+      along = dir.clone();
+      kerb = pos.clone().add(leftOf(dir, Math.sign(carHit.lateral || 1) * (carHit.seg.line.width / 2 + 0.8)));
+    }
+    const patrolEvent = patrol.update(dt, now, carPos, kerb, along, isAbandoned);
+    if (patrolEvent === "ticketed" && place) {
       ticket.visible = true;
-      toast("車に確認標章が取り付けられました。車道に車を放置しないでください", "#ffd400");
+      pendingParking = place === "noStopping" ? VIOLATIONS.parkingNoStop : VIOLATIONS.parking;
+      stamps.stamp("確認標章", place === "noStopping" ? "駐停車禁止場所" : "駐車禁止場所");
+      toast(
+        "駐車監視員が放置車両確認標章を取り付けました（警察署への出頭か、放置違反金の納付が必要です）",
+        "#ffd400",
+      );
+    } else if (patrolEvent === "aborted") {
+      toast("運転者が戻ったため、駐車監視員は確認を取りやめました", "#7dff9a");
     }
 
     // Holding the phone while the car moves; emergency calls to rescue the injured are exempt.
@@ -923,13 +1018,71 @@ async function main(): Promise<void> {
     if (!booked) return;
     score = Math.max(0, score - booked.points * 50);
     toast(`🚓 ${formatViolation(booked)}`, "#ff6b6b");
+    stamps.stamp("違反", shortLabel(booked.label));
     log("violation", { kind: booked.kind, points: booked.points, total: law.state.points });
     // Let the driver finish the rescue / reporting first; show the screen once it is over.
     if (law.state.suspended && !emergency.active) showSuspension();
   };
+  const isSurfaceStreet = (seg: Segment) => seg.line.kind !== "highway";
+  /**
+   * Where the car stands, for parking: 駐停車禁止 (道路交通法 第44条: within 5 m of a junction's
+   * side edge or of a crosswalk, or a JARTIC 駐停車禁止 section), 駐車禁止 (JARTIC section in force),
+   * or null where parking on the street is not prohibited.
+   */
+  const parkingPlace = (hit: { seg: Segment; s: number }): "noStopping" | "noParking" | null => {
+    const minutes = clockMinutes();
+    const inForce = (code: number) => hit.seg.rules.some((r) => r.code === code && isInForce(r, minutes));
+    const nearJunction = [hit.seg.from, hit.seg.to].some((node) => {
+      const ids = roadGraph?.nodes.get(node) ?? [];
+      if (ids.length < 3) return false;
+      const sideEdge = Math.max(...ids.map((id) => roadGraph?.segments[id].line.width ?? 0)) / 2;
+      const fromNode = node === hit.seg.from ? hit.s : hit.seg.length - hit.s;
+      return fromNode < sideEdge + 5;
+    });
+    // A crosswalk is 4 m wide: its edges are 2 m either side of its centre.
+    const nearCrossing = (roadApplied?.crossings ?? []).some(
+      (c) => c.seg === hit.seg && Math.abs(c.s - hit.s) < 2 + 5,
+    );
+    if (nearJunction || nearCrossing || inForce(65)) return "noStopping";
+    return inForce(115) ? "noParking" : null;
+  };
+  const parkingDialog = $<HTMLDialogElement>("#parking-dialog");
+  // The choice cannot be skipped with Esc: the sticker stays until one is made.
+  parkingDialog.addEventListener("cancel", (e) => e.preventDefault());
+  const openParkingDialog = (v: Violation) => {
+    $("#parking-detail").textContent =
+      `${v.label}（${v.article}）。反則金・放置違反金はどちらも ${(v.fine ?? 0).toLocaleString()} 円（普通車）、出頭した場合の違反点数は ${v.points} 点です。`;
+    parkingDialog.showModal();
+  };
+  $("#parking-appear").addEventListener("click", () => {
+    if (pendingParking) book(pendingParking, performance.now(), 0);
+    pendingParking = null;
+    parkingDialog.close();
+  });
+  $("#parking-owner").addEventListener("click", () => {
+    if (pendingParking) {
+      const order = law.chargeOwner(pendingParking, performance.now());
+      stamps.stamp("放置違反金", `${(order.fine ?? 0).toLocaleString()}円`);
+      toast(
+        `使用者に放置違反金 ${(order.fine ?? 0).toLocaleString()} 円の納付命令（違反点数なし）`,
+        "#ffd400",
+      );
+      // 警視庁の処分基準: 普通自動車・前歴なしは 6 か月以内の納付命令 3 回で最長 20 日、4 回 30 日、5 回以上 40 日。
+      if (law.ownerOrders >= 3) {
+        const days = law.ownerOrders >= 5 ? 40 : law.ownerOrders === 4 ? 30 : 20;
+        toast(
+          `放置違反金の納付命令 ${law.ownerOrders} 回目: 車両の使用制限命令（最長 ${days} 日）の対象になり得ます（第75条の2第2項）`,
+          "#ff6b6b",
+        );
+      }
+    }
+    pendingParking = null;
+    parkingDialog.close();
+  });
   const showSuspension = () => {
     vehicle.setFrozen(true);
     const isRevoked = law.state.points >= REVOCATION_POINTS;
+    stamps.stamp(isRevoked ? "免許取消" : "免許停止", `違反点数 ${law.state.points} 点`, true);
     $("#suspended h1").textContent = isRevoked ? "免許取消" : "免許停止";
     $("#suspended .tagline").textContent = isRevoked
       ? `違反点数が ${law.state.points} 点になりました（前歴なしの場合 15 点以上で免許取消）。`
@@ -947,6 +1100,7 @@ async function main(): Promise<void> {
   };
   const showArrest = (later: boolean) => {
     vehicle.setFrozen(true);
+    stamps.stamp("逮捕", "救護義務違反（ひき逃げ）", true);
     $("#suspended h1").textContent = "ひき逃げで逮捕";
     $("#suspended .tagline").textContent = later
       ? "現場から逃げ切ったものの、後日、防犯カメラの映像と目撃情報から特定され逮捕されました。"
@@ -1112,6 +1266,11 @@ async function main(): Promise<void> {
         emergency,
         phone,
         law,
+        walker,
+        patrol,
+        stamps,
+        getApplied: () => roadApplied,
+        parkingPlace,
         getFrame: () => frame,
         getState: () => state,
         setDebugCamera: (fn: typeof debugCamera) => (debugCamera = fn),

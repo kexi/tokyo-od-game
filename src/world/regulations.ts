@@ -2,6 +2,7 @@ import { Vector3 } from "three";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX } from "../geo/tiles";
 import { warn } from "../log";
+import { anchors, M_LAT, M_LON, reversed } from "./anchors";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 
 /**
@@ -16,14 +17,15 @@ export type RegulationData = {
   crosswalk: number[][]; // [lon1, lat1, lon2, lat2] kerb to kerb
   stopLine: number[][]; // [lon, lat]
   stopSign: number[][]; // [lon, lat]
-  signs: number[][]; // [type, value, lon, lat, heading°] (see SIGN in scripts/regulations.ts)
+  sections: number[][]; // [code, bothWays, startMin, endMin, …coords]: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行
+  turns: number[][]; // 指定方向外進行禁止: [centreLon, centreLat, entryLon, entryLat, mask, startMin, endMin]
   noOvertake: number[][]; // はみ出し禁止 sections: coords
   lanes: number[][]; // 車両通行帯: [lanes or 0, …coords]
   noLaneChange: number[][]; // 進路変更禁止 sections: coords
   signals: number[][]; // [lon, lat]
 };
 
-/** Sign type codes shared with the build script. */
+/** Sign types (the game maps them to 道路標識 artwork). */
 export const SIGN = {
   speed: 1,
   oneway: 2,
@@ -47,7 +49,8 @@ const empty = (): RegulationData => ({
   crosswalk: [],
   stopLine: [],
   stopSign: [],
-  signs: [],
+  sections: [],
+  turns: [],
   noOvertake: [],
   lanes: [],
   noLaneChange: [],
@@ -218,9 +221,19 @@ export type PlacedSign = {
 };
 /** A crosswalk snapped onto a street: centred at `s`, spanning the carriageway. */
 export type Crossing = { seg: Segment; s: number; pos: Vector3 };
+/** 指定方向外進行禁止 at a junction node, for traffic arriving on `approach` in `dir`. */
+export type TurnRule = {
+  node: number;
+  approach: Segment;
+  dir: 1 | -1;
+  mask: number;
+  start: number;
+  end: number;
+};
 export type AppliedRegulations = {
   crossings: Crossing[];
   signs: PlacedSign[];
+  turnRules: TurnRule[];
   stopLines: StopLine[];
   stopSigns: StopSign[];
   signals: Vector3[];
@@ -286,6 +299,12 @@ export function applyRegulations(
   for (const r of data.noLaneChange) noLaneChange.add(true, toLocal(frame, r));
   const laneLines = new LineGrid<number>();
   for (const r of data.lanes) laneLines.add(r[0], toLocal(frame, r, 1));
+  const sectionGrids = new Map<number, LineGrid<{ start: number; end: number }>>();
+  for (const [code, , start, end, ...coords] of data.sections) {
+    const grid = sectionGrids.get(code) ?? new LineGrid<{ start: number; end: number }>();
+    grid.add({ start, end }, toLocal(frame, coords));
+    sectionGrids.set(code, grid);
+  }
 
   const pos = new Vector3();
   const dir = new Vector3();
@@ -296,6 +315,7 @@ export function applyRegulations(
     seg.noOvertake = false;
     seg.noLaneChange = false;
     seg.lanes = 1;
+    seg.rules = [];
     if (seg.line.kind === "highway") continue;
     const fractions = seg.length < 20 ? [0.5] : [0.2, 0.5, 0.8];
     let votes = 0;
@@ -305,6 +325,7 @@ export function applyRegulations(
     let laneChangeVotes = 0;
     let laneVotes = 0;
     let laneCount = 0;
+    const ruleVotes = new Map<number, { n: number; start: number; end: number }>();
     for (const f of fractions) {
       graph.sample(seg, seg.length * f, pos, dir);
       const isParallel = (dx: number, dz: number) => Math.abs(dx * dir.x + dz * dir.z) > PARALLEL;
@@ -319,6 +340,13 @@ export function applyRegulations(
       const wide = Math.max(MATCH_DIST, seg.line.width / 2 + 2);
       if (noOvertake.nearest(pos.x, pos.z, wide, isParallel)) overtakeVotes++;
       if (noLaneChange.nearest(pos.x, pos.z, wide, isParallel)) laneChangeVotes++;
+      for (const [code, grid] of sectionGrids) {
+        const hit = grid.nearest(pos.x, pos.z, wide, isParallel);
+        if (!hit) continue;
+        const v = ruleVotes.get(code) ?? { n: 0, ...hit.owner };
+        v.n++;
+        ruleVotes.set(code, v);
+      }
       const lane = laneLines.nearest(pos.x, pos.z, wide, isParallel);
       if (lane) {
         laneVotes++;
@@ -330,6 +358,8 @@ export function applyRegulations(
     seg.noOvertake = overtakeVotes >= majority;
     seg.noLaneChange = laneChangeVotes >= majority;
     if (laneVotes >= majority) seg.lanes = lanesPerDirection(seg, laneCount);
+    for (const [code, v] of ruleVotes)
+      if (v.n >= majority) seg.rules.push({ code, start: v.start, end: v.end });
     const posted = [...limitVotes].filter(([, n]) => n >= majority).toSorted((a, b) => b[1] - a[1])[0];
     if (posted) {
       seg.limit = posted[0];
@@ -408,6 +438,7 @@ export function applyRegulations(
   return {
     crossings,
     signs,
+    turnRules: resolveTurns(graph, data, frame),
     stopLines,
     stopSigns,
     signals: data.signals.map(([lon, lat]) => toLocal(frame, [lon, lat])[0]),
@@ -426,6 +457,100 @@ function lanesPerDirection(seg: Segment, count: number): number {
   if (!count) return estimate;
   const perDirection = !isOneWay && count * 3 > span + 1 ? Math.ceil(count / 2) : count;
   return Math.max(1, Math.min(perDirection, Math.floor(span / 2.75)));
+}
+
+/**
+ * Where 道路標識 stand, derived from the regulated sections: [type, value, lon, lat, heading°]
+ * (heading = travel direction of the traffic the sign faces). Signs sit 3 m into a section and
+ * repeat along long ones; 車両進入禁止 faces wrong-way traffic at a one-way street's exit.
+ */
+export function signAnchors(data: RegulationData): number[][] {
+  const out: number[][] = [];
+  const along = (type: number, value: number, coords: number[], spacing: number, bothWays: boolean) => {
+    for (const a of anchors(coords, spacing)) out.push([type, value, ...a]);
+    if (bothWays) for (const a of anchors(reversed(coords), spacing)) out.push([type, value, ...a]);
+  };
+  for (const [limit, ...coords] of data.speed) along(SIGN.speed, limit, coords, 300, true);
+  for (const r of data.oneway) {
+    const travel = r.slice(2);
+    along(SIGN.oneway, 0, travel, 150, false);
+    const [exit] = anchors(reversed(travel), 1e9);
+    if (exit) out.push([SIGN.noEntry, 0, ...exit]);
+  }
+  const bySection: Record<number, [number, number]> = {
+    115: [SIGN.noParking, 200],
+    65: [SIGN.noStopping, 200],
+    51: [SIGN.noUturn, 300],
+    61: [SIGN.slow, 200],
+  };
+  for (const [code, bothWays, , , ...coords] of data.sections) {
+    const kind = bySection[code];
+    if (kind) along(kind[0], 0, coords, kind[1], bothWays === 1);
+  }
+  for (const [cx, cy, ex, ey, mask] of data.turns) {
+    // On the approach, ~12 m before the junction centre.
+    const dx = (cx - ex) * M_LON;
+    const dy = (cy - ey) * M_LAT;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1) continue;
+    const back = Math.min(dist, 12) / dist;
+    const heading = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+    out.push([SIGN.turn, mask, cx - (cx - ex) * back, cy - (cy - ey) * back, heading]);
+  }
+  return out;
+}
+
+/** 指定方向外進行禁止 resolved to a junction node and the approach segment it governs. */
+function resolveTurns(graph: RoadGraph, data: RegulationData, frame: LocalFrame): TurnRule[] {
+  const rules: TurnRule[] = [];
+  const ends: Array<{ node: number; pos: Vector3 }> = [];
+  for (const [node, ids] of graph.nodes) {
+    if (ids.length < 3) continue;
+    const seg = graph.segments[ids[0]];
+    ends.push({ node, pos: seg.from === node ? seg.pts[0] : seg.pts[seg.pts.length - 1] });
+  }
+  for (const [cx, cy, ex, ey, mask, start, end] of data.turns) {
+    const [centre, entry] = toLocal(frame, [cx, cy, ex, ey]);
+    let best: { node: number; pos: Vector3 } | null = null;
+    let bestD = 20;
+    for (const e of ends) {
+      const d = Math.hypot(e.pos.x - centre.x, e.pos.z - centre.z);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (!best) continue;
+    const toEntry = entry.clone().sub(best.pos).setY(0).normalize();
+    let approach: Segment | null = null;
+    let bestDot = 0.6;
+    for (const id of graph.nodes.get(best.node) ?? []) {
+      const seg = graph.segments[id];
+      // Direction leaving the node along this segment.
+      const away =
+        seg.from === best.node
+          ? graph.sample(seg, Math.min(5, seg.length)).dir.clone()
+          : graph
+              .sample(seg, Math.max(0, seg.length - 5))
+              .dir.clone()
+              .negate();
+      const dot = away.dot(toEntry);
+      if (dot > bestDot) {
+        bestDot = dot;
+        approach = seg;
+      }
+    }
+    if (!approach) continue;
+    rules.push({ node: best.node, approach, dir: approach.to === best.node ? 1 : -1, mask, start, end });
+  }
+  return rules;
+}
+
+/** Whether a time-windowed rule [start, end) (minutes of the day) is in force at `minutes`. */
+export function isInForce(rule: { start: number; end: number }, minutes: number): boolean {
+  return rule.start <= rule.end
+    ? minutes >= rule.start && minutes < rule.end
+    : minutes >= rule.start || minutes < rule.end;
 }
 
 /** Heading (0 = north, clockwise) → unit vector in the local frame (x east, z south). */
@@ -455,7 +580,7 @@ function placeSigns(
     );
     if (!isDuplicate) placed.push({ type, value, pos: foot, travel, seg, s, dir });
   };
-  for (const [type, value, lon, lat, heading] of data.signs) {
+  for (const [type, value, lon, lat, heading] of signAnchors(data)) {
     const p = toLocal(frame, [lon, lat])[0];
     const want = headingVector(heading);
     const hit = segs.nearest(p.x, p.z, 15, (dx, dz) => Math.abs(dx * want.x + dz * want.z) > 0.7);

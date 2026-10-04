@@ -1137,3 +1137,111 @@ pre.notice {
     text-align: center;
   }
 }
+
+/* 判子: a red seal slams down (scale from large, overshoot), then fades. */
+#stamps {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.stamp {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-width: 9.5em;
+  padding: 0.35em 0.7em 0.45em;
+  color: #d4202a;
+  border: 5px solid currentColor;
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+  border-radius: 10px;
+  font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-weight: 900;
+  text-align: center;
+  mix-blend-mode: multiply;
+  background: rgba(255, 245, 240, 0.08);
+  transform: translate(var(--dx), var(--dy)) rotate(var(--angle));
+  animation: stamp-slam 0.32s cubic-bezier(0.2, 0.7, 0.3, 1.2) both;
+  /* Ink is never perfectly even: mask with a soft noise so the seal looks pressed. */
+  -webkit-mask-image: radial-gradient(circle at 30% 40%, #000 55%, rgba(0, 0, 0, 0.72) 100%);
+  mask-image: radial-gradient(circle at 30% 40%, #000 55%, rgba(0, 0, 0, 0.72) 100%);
+}
+
+.stamp-main {
+  font-size: clamp(34px, 7vw, 64px);
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+}
+
+.stamp-sub {
+  font-size: clamp(13px, 2.4vw, 18px);
+  letter-spacing: 0.05em;
+  border-top: 2px solid currentColor;
+  padding-top: 2px;
+  max-width: 14em;
+}
+
+.stamp.severe {
+  border-width: 8px;
+  outline-width: 3px;
+  outline-offset: 6px;
+}
+
+.stamp.severe .stamp-main {
+  font-size: clamp(48px, 11vw, 104px);
+}
+
+.stamp.fade {
+  transition: opacity 0.8s ease;
+  opacity: 0;
+}
+
+@keyframes stamp-slam {
+  0% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--angle)) scale(2.6);
+  }
+  35% {
+    opacity: 1;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--angle)) scale(0.94);
+  }
+  100% {
+    opacity: 0.92;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--angle)) scale(1);
+  }
+}
+
+.stamp-shake {
+  animation: stamp-shake 0.22s linear;
+}
+
+@keyframes stamp-shake {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: 3px 4px;
+  }
+  50% {
+    translate: -3px -2px;
+  }
+  75% {
+    translate: 2px -3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp {
+    animation: none;
+  }
+  .stamp-shake {
+    animation: none;
+  }
+}
