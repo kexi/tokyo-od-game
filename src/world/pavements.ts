@@ -226,7 +226,8 @@ export class Pavements {
   ) {
     this.materials = {
       sidewalk: new MeshStandardMaterial({ map: pavingTexture(), roughness: 0.9 }),
-      island: new MeshStandardMaterial({ color: 0xa7a59f, roughness: 0.9 }),
+      // 島 are mostly medians and channelising islands: weathered concrete, darker than paving.
+      island: new MeshStandardMaterial({ color: 0x7d7b76, roughness: 0.95 }),
     };
   }
 

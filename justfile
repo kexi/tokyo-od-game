@@ -42,11 +42,16 @@ sign-model:
 human-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/human.py -- public/models/human.glb
 
+# 信号機（車両用・歩行者用灯器、信号柱）を Blender CLI でモデリングし public/models/signals.glb を書き出す
+signal-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signals.py -- public/models/signals.glb
+
 # 道路標識・歩行者・建物外壁のテクスチャを手続き生成し直す
 textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
     uv run scripts/textures/building_textures.py
+    uv run scripts/textures/signal_textures.py
 
 # SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
 og:

@@ -44,6 +44,7 @@ import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
+import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
 import { initStartPicker, readStart } from "./game/startPoint";
@@ -186,6 +187,7 @@ async function main(): Promise<void> {
     ),
     loadCarModels(),
     loadSignModels(),
+    loadSignalModels(),
     loadHumanModels(),
     loadFacadeTextures(),
   ]);
@@ -244,7 +246,7 @@ async function main(): Promise<void> {
     const centre = p.clone().add(new Vector3(-hit.dir.z * hit.lateral, 0, hit.dir.x * hit.lateral));
     return { pos: centre.add(leftOf(dir, lane)), heading: Math.atan2(dir.x, dir.z) };
   };
-  const control = new TrafficControl(scene, (x, z) => groundY(x, z));
+  const control = new TrafficControl(scene, (x, z) => groundY(x, z), world);
   const traffic = new TrafficAI(scene, world, (x, z) => groundY(x, z), control);
   const regulationTiles = new RegulationTiles();
   const signs = new TrafficSigns(
