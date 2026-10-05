@@ -36,6 +36,13 @@ const DEG = Math.PI / 180;
  * rim's top above UN R125's V2 eye point (knowledge/cockpit-blender.md).
  */
 const COLUMN_RAISE = 0;
+/**
+ * The wheel's opacity from the driver's seat: the rim and the spokes cover much of the meter
+ * cluster from the eye, so they are drawn see-through and the gauges read through them. Why not
+ * move the wheel or the eye: COLUMN_RAISE and the seat already sit where the law's eye point and
+ * the model put them, and any wheel in front of the cluster hides some of it.
+ */
+const WHEEL_OPACITY = 0.6;
 /** Where the dash clock goes if cockpit.glb has no ClockAnchor (the cluster's top centre). */
 const CLOCK_FALLBACK = new Vector3(-0.372, 0.125, 0.638);
 /** The render layer of the interior (drawn in a second pass with a near plane of a few cm). */
@@ -98,6 +105,19 @@ export class Cockpit {
       this.needleSpeed = this.root.getObjectByName("Needle_Speed") ?? null;
       this.needleTacho = this.root.getObjectByName("Needle_Tacho") ?? null;
       this.wheel = this.root.getObjectByName("SteeringWheel") ?? null;
+      // Own copies of its materials: the dashboard's plastics share them and stay solid. No depth
+      // written, so the cluster behind is not cut out where the wheel passes in front of it.
+      const seeThrough = (m: Material) => {
+        const c = m.clone();
+        c.transparent = true;
+        c.opacity = WHEEL_OPACITY;
+        c.depthWrite = false;
+        return c;
+      };
+      this.wheel?.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        o.material = Array.isArray(o.material) ? o.material.map(seeThrough) : seeThrough(o.material);
+      });
       // A column tilt, if any, takes the stalks with it.
       for (const name of ["SteeringWheel", "Stalk_Indicator", "Stalk_Wiper"]) {
         const part = this.root.getObjectByName(name);
