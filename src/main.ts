@@ -67,7 +67,7 @@ import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
-import { Input, LOOK_KEYS } from "./game/input";
+import { Input, keyFor, LOOK_KEYS } from "./game/input";
 import { Minimap } from "./game/minimap";
 import { Missions } from "./game/missions";
 import { PoiField, storageKeyFor } from "./game/pois";
@@ -332,6 +332,8 @@ async function main(): Promise<void> {
   const transit = new Transit(scene, world, dem, stopFile?.stops ?? {}, frame);
   const chase = new ChaseCamera(camera);
   const input = new Input();
+  // The key that gets in and out (Q in both layouts today), as the hints should name it.
+  const doorKey = () => keyFor(input.layout, "door");
   input.bindTouch($("#touch"));
   const audio = new GameAudio();
   const minimap = new Minimap($<HTMLCanvasElement>("#minimap"), categories);
@@ -1479,11 +1481,14 @@ async function main(): Promise<void> {
       vehicle.setParked(true);
       mode = "foot";
       announceIdlingStop();
-      toast("車を降りました（F で乗車・Shift で走る・Space でジャンプ・←→ やドラッグで視点）", "#4dd2ff");
+      toast(
+        `車を降りました（${doorKey()} で乗車・Shift で走る・Space でジャンプ・←→ やドラッグで視点）`,
+        "#4dd2ff",
+      );
       return;
     }
     if (walker.position().distanceTo(vehicle.position()) > 4.5) {
-      toast("車のそばで F を押すと乗車します");
+      toast(`車のそばで ${doorKey()} を押すと乗車します`);
       return;
     }
     // Nothing physically stops a suspended driver; the law does. Ask twice.
@@ -2326,9 +2331,9 @@ async function main(): Promise<void> {
     const hint = $("#talk-hint");
     const hints = [
       talkable ? `E で話しかける（${talkable.profile.name}さん）` : "",
-      nearCar ? "F で乗車" : "",
-      nearTaxi ? "F でタクシーに乗る" : "",
-      isInTaxi && taxi && taxi.speed < 0.5 ? "F でタクシーを降りる" : "",
+      nearCar ? `${doorKey()} で乗車` : "",
+      nearTaxi ? `${doorKey()} でタクシーに乗る` : "",
+      isInTaxi && taxi && taxi.speed < 0.5 ? `${doorKey()} でタクシーを降りる` : "",
     ].filter(Boolean);
     hint.hidden = hints.length === 0 || partner !== null;
     hint.textContent = hints.join("　");
@@ -3153,7 +3158,7 @@ async function main(): Promise<void> {
   $("#taxi-call").addEventListener("click", () => {
     const tw = taxiWorld();
     if (taxi) return taxiStatus("すでに配車中です。");
-    if (mode !== "foot") return taxiStatus("車を降りてから呼んでください（F で降車）。");
+    if (mode !== "foot") return taxiStatus(`車を降りてから呼んでください（${doorKey()} で降車）。`);
     if (!tw) return taxiStatus("道路データを読み込み中です。少し待ってからもう一度。");
     const t = new RoboTaxi(scene, world, (x, z) => groundY(x, z));
     if (!t.dispatch(tw.graph, tw, walker.position(), walker.position())) {
@@ -3236,8 +3241,8 @@ async function main(): Promise<void> {
     }
     if (t.state === "coming" && done) {
       t.state = "waiting";
-      toast("🚕 自動運転タクシーが到着しました。そばで F を押すと乗車します", "#ffd23c");
-      taxiStatus("到着しました。そばで F を押してご乗車ください。");
+      toast(`🚕 自動運転タクシーが到着しました。そばで ${doorKey()} を押すと乗車します`, "#ffd23c");
+      taxiStatus(`到着しました。そばで ${doorKey()} を押してご乗車ください。`);
     } else if (t.state === "riding") {
       $("#taxi-meter").hidden = false;
       $("#taxi-flag").textContent = done ? "支払" : "賃走";
