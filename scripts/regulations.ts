@@ -2,16 +2,17 @@
 // crosswalks, stop lines, stop signs) and, from OpenStreetMap, traffic signals with their
 // intersection names and footbridges (横断歩道橋), cut into z14 tiles under public/data so the
 // game loads only the area around the player.
-// Run: node scripts/regulations.ts [jartic|signals|police]   (downloads ~40 MB JARTIC; the ~520 MB
-// Geofabrik Kanto extract is cached under .cache/osm for a week)
+// Run: pnpm exec tsx scripts/regulations.ts [jartic|signals|police]   (the ~40 MB JARTIC zip and
+// the ~520 MB Geofabrik Kanto extract are cached under .cache/jartic and .cache/osm for a week;
+// `jartic` alone takes ~11 s and ~1.5 GB of memory on an M2 Max)
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { CLOSURE } from "../src/world/closures.ts";
+import { MAX_CLOSURE_AREA_KM2 } from "../src/world/closures.ts";
 import { join } from "node:path";
-import { M_LAT, M_LON, parseCoords, streamCsv, turnMask } from "./jartic.ts";
+import { closureUse, M_LAT, M_LON, parseCoords, ruleUse, streamCsv, turnMask } from "./jartic.ts";
 import { readNodeCoords, readTaggedNodes, readWays } from "./osm-pbf.ts";
 import { buildOrbis } from "./orbis.ts";
 import type { OrbisEntry } from "../src/world/orbisData.ts";
-import { isAllDay as alwaysOn, writeTime, type RuleTime, type Window } from "../src/world/ruleTime.ts";
+import { isAllDay as alwaysOn, writeTime, type RuleTime } from "../src/world/ruleTime.ts";
 import { unzip } from "./shapefile.ts";
 
 const ROOT = join(import.meta.dirname, "..", "public", "data");
@@ -66,7 +67,6 @@ const round = (v: number) => Math.round(v * 1e6) / 1e6;
 // Line regulations are matched to centrelines within 6 m, so ~1 m precision is plenty and keeps
 // the tiles small; point features (stop lines, crosswalks) keep ~0.1 m.
 const coarse = (coords: number[]) => coords.map((v) => Math.round(v * 1e5) / 1e5);
-const toMin = (hhmm: string) => Math.floor(Number(hhmm) / 100) * 60 + (Number(hhmm) % 100);
 const tx = (lon: number) => Math.floor(((lon + 180) / 360) * 2 ** Z);
 const ty = (lat: number) => {
   const r = (lat * Math.PI) / 180;
@@ -98,41 +98,6 @@ async function fetchRetry(url: string): Promise<Response> {
 
 async function fetchBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(await (await fetchRetry(url)).arrayBuffer());
-}
-
-// 対象コード 1 (車両) and 10 (自動車) both bind ordinary cars; other classes do not.
-const bindsCars = (a: string) => a === "" || a === "1" || a === "10";
-// 曜日コード: 1–6 as in the spec; 99 (その他, spelled out in free text) is taken as every day.
-const dayCode = (v: string) => (v === "" || v === "99" ? 0 : Number(v));
-
-/**
- * When a rule applies to an ordinary car, from its 対象 1–5 and 除外 1–5 conditions; null when no
- * condition binds cars or a condition is limited to dates (対象期間, seasonal — not modelled).
- */
-function ruleTime(cell: (h: string) => string): RuleTime | null {
-  const on: Window[] = [];
-  const off: Window[] = [];
-  for (let k = 1; k <= 5; k++) {
-    const start = cell(`規制時間${k}_開始`);
-    const end = cell(`規制時間${k}_終了`);
-    const day = cell(`規制曜日コード${k}`);
-    const vehicle = cell(`対象車両コード${k}_A`);
-    const isEmpty = !start && !day && !vehicle && !cell(`対象期間${k}_開始`);
-    if (isEmpty && k > 1) continue;
-    if (cell(`対象期間${k}_開始`)) return null;
-    if (!bindsCars(vehicle)) continue;
-    on.push([start ? toMin(start) : 0, start ? toMin(end) : 1440, dayCode(day)]);
-  }
-  for (let k = 1; k <= 5; k++) {
-    const start = cell(`除外時間${k}_開始`);
-    const day = cell(`除外曜日コード${k}`);
-    const vehicle = cell(`除外車両コード${k}_A`);
-    if (!start && !day && !cell(`除外期間${k}_開始`)) continue;
-    // Exclusions for other vehicles (許可車両, 路線バス …) do not free an ordinary car.
-    if (cell(`除外期間${k}_開始`) || (vehicle !== "" && !bindsCars(vehicle))) continue;
-    off.push([start ? toMin(start) : 0, start ? toMin(cell(`除外時間${k}_終了`)) : 1440, dayCode(day)]);
-  }
-  return on.length ? { on, off } : null;
 }
 
 async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string; release: string }> {
@@ -182,7 +147,15 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     limit: number,
     name: string,
     shape: string,
-    extra: { side: string; lanes: number; entry: number[]; exits: number[]; target: string; exempt: string },
+    extra: {
+      side: string;
+      lanes: number;
+      entry: number[];
+      exits: number[];
+      target: string;
+      exempt: string;
+      key: string;
+    },
   ): boolean => {
     const at = (i: number) => tile(`${tx(coords[i])}-${ty(coords[i + 1])}`);
     if (code === "11") {
@@ -194,26 +167,22 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       return true;
     }
     if (code === "1" || code === "4") {
-      // Spec 表 4: 1 is 歩行者用道路 (mostly school-run hours), 4 通行止め, whose 対象車両 (category
-      // A bits: "" all traffic, 1 車両, 10 自動車) picks the sign: 301, 302 or 自動車通行止め.
-      // Lines and areas only (points are entrances to closed zones).
-      if (shape !== "2" && shape !== "3") return false;
-      // 車両 closed except category D 15 (その他) is how the expressways' 自動車専用 is encoded
-      // (lines of 30–78 km); they run above surface roads, which must not inherit it. Codes with
-      // digits other than 0/1 are undefined in the spec: skip rather than close a street.
-      const isExpressway = extra.exempt.split("|")[3] === "100000000000000";
-      const isUndefined = /[^01|]/.test(extra.exempt) || /[^01]/.test(extra.target);
-      if (isExpressway || isUndefined) return false;
-      const kind =
-        code === "1"
-          ? CLOSURE.pedestrianRoad
-          : extra.target === "1"
-            ? CLOSURE.vehicles
-            : extra.target === "10"
-              ? CLOSURE.motor
-              : CLOSURE.all;
+      const use = closureUse(code, shape, coords, extra.target, extra.exempt);
+      if ("skip" in use) {
+        closureSkipped[use.skip] = (closureSkipped[use.skip] ?? 0) + 1;
+        if (use.skip === "area")
+          log("closure_area_implausible", {
+            key: extra.key,
+            code,
+            areaKm2: Math.round(use.areaKm2 * 10) / 10,
+            maxKm2: MAX_CLOSURE_AREA_KM2,
+            vertices: coords.length / 2,
+            at: coords.slice(0, 2),
+          });
+        return false;
+      }
       for (const key of tilesOf(coords))
-        tile(key).closures.push([Number(shape), kind, ...writeTime(time), ...coarse(coords)]);
+        tile(key).closures.push([Number(shape), use.kind, ...writeTime(time), ...coarse(coords)]);
       return true;
     }
     if (code === "112" || code === "114") {
@@ -285,7 +254,10 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
   let header: string[] | null = null;
   let col: Record<string, number> = {};
   const counts: Record<string, number> = {};
-  const skipped: Record<string, number> = {};
+  // Why rows were not used: per code (no condition binds the car, or 対象期間), and per reason for
+  // the 通行禁止 records that do bind it.
+  const skipped: Record<string, Record<string, number>> = {};
+  const closureSkipped: Record<string, number> = {};
   streamCsv(files.get(csvName) as Buffer, (row) => {
     if (!header) {
       header = row;
@@ -320,9 +292,10 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     const cell = (h: string) => (col[h] === undefined ? "" : (row[col[h]] ?? "").trim());
     const isAbolished = cell("意思決定廃止日") !== "";
     if (isAbolished) return;
-    const time = ruleTime(cell);
-    if (!time) {
-      skipped[code] = (skipped[code] ?? 0) + 1;
+    const use = ruleUse(cell, code);
+    if ("skip" in use) {
+      const reasons = (skipped[code] ??= {});
+      reasons[use.skip] = (reasons[use.skip] ?? 0) + 1;
       return;
     }
     const coords = parseCoords(row[col["規制場所の経度緯度"]] ?? "");
@@ -330,7 +303,7 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
     const kept = addRegulation(
       code,
       coords,
-      time,
+      use.time,
       Number(cell("速度")),
       cell("県別規制種別名称"),
       cell("点・線・面コード"),
@@ -339,13 +312,14 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
         lanes: Number(cell("車両通行帯数")) || 0,
         entry: parseCoords(cell("進入方向(座標)")),
         exits: parseCoords(cell("指定する方向(座標)")),
-        target: cell("対象車両コード1_A"),
+        target: use.target,
         exempt: ["A", "B", "C", "D"].map((c) => cell(`除外車両コード1_${c}`)).join("|"),
+        key: cell("ユニークキー"),
       },
     );
     if (kept) counts[code] = (counts[code] ?? 0) + 1;
   });
-  log("jartic_parsed", { counts, skipped, tiles: tiles.size });
+  log("jartic_parsed", { counts, skipped, closureSkipped, tiles: tiles.size });
   return { tiles, month: typeD.targetMonth, release: typeD.releaseDay };
 }
 

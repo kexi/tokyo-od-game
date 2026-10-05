@@ -4,7 +4,7 @@ import { latToTileY, lonToTileX } from "../geo/tiles";
 import { warn } from "../log";
 import { anchors, M_LAT, M_LON, reversed } from "./anchors";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
-import { CLOSURE, type ClosureKind } from "./closures";
+import { CLOSURE, MAX_CLOSURE_AREA_KM2, ringAreaKm2, type ClosureKind } from "./closures";
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
 
 /**
@@ -331,6 +331,10 @@ const toLocal = (frame: LocalFrame, coords: number[], from = 0): Vector3[] => {
 // GSI centrelines and JARTIC lines are digitised independently; a few metres apart is normal.
 const MATCH_DIST = 6;
 const PARALLEL = Math.cos((25 * Math.PI) / 180);
+// 区域規制 cover the streets inside the ring, not the roads it runs along: JARTIC traces the ring on
+// the bounding roads and never marks 面規制の外周道路有無 in Tokyo, which the spec uses to say a
+// bounding road is included. A point counts as inside only this far from the ring.
+const AREA_EDGE = 8;
 
 function insidePolygon(x: number, z: number, ring: Vector3[]): boolean {
   let inside = false;
@@ -357,6 +361,22 @@ function distanceToRing(x: number, z: number, ring: Vector3[]): number {
   return best;
 }
 
+// Share of the streets that may carry a 通行禁止 before it is reported. The densest real case seen,
+// the all-day 歩行者用道路 zones of 太子堂, is about 14 %; the misread 環七 truck ban made it 99 %.
+const CLOSED_SHARE_WARN = 0.5;
+
+/**
+ * A guard for any misread that shuts a whole district, whatever its cause: logged, not undone,
+ * since which record is wrong cannot be told from here.
+ */
+function warnIfDistrictClosed(graph: RoadGraph): void {
+  const streets = graph.segments.filter((s) => s.line.kind !== "highway");
+  const closed = streets.filter((s) => s.closures.length > 0).length;
+  const isImplausible = closed >= 200 && closed > streets.length * CLOSED_SHARE_WARN;
+  if (!isImplausible) return;
+  warn("closures_implausible_share", { closed, streets: streets.length, maxShare: CLOSED_SHARE_WARN });
+}
+
 /**
  * Transfer regulations onto the graph's segments (one-way rule, posted limit) and resolve the
  * point features (stop lines, stop signs) to the segment and travel direction they govern.
@@ -377,8 +397,24 @@ export function applyRegulations(
   for (const r of data.closures) {
     const { time, next } = readTime(r, 2);
     const closure = { kind: r[1] as ClosureKind, time };
-    if (r[0] === 3) closureAreas.push({ closure, ring: toLocal(frame, r, next) });
-    else closureLines.add(closure, toLocal(frame, r, next));
+    const isArea = r[0] === 3;
+    if (!isArea) {
+      closureLines.add(closure, toLocal(frame, r, next));
+      continue;
+    }
+    // The data build drops these already; tiles built before that check may still carry one (the
+    // 環七 truck ban read as 通行止め closed a whole district), so drop it here too, with a log.
+    const areaKm2 = ringAreaKm2(r, next);
+    if (areaKm2 > MAX_CLOSURE_AREA_KM2) {
+      warn("closure_area_implausible", {
+        areaKm2: Math.round(areaKm2 * 10) / 10,
+        maxKm2: MAX_CLOSURE_AREA_KM2,
+        kind: closure.kind,
+        at: r.slice(next, next + 2),
+      });
+      continue;
+    }
+    closureAreas.push({ closure, ring: toLocal(frame, r, next) });
   }
   const limits = new LineGrid<number>();
   for (const r of data.speed) limits.add(r[0], toLocal(frame, r, 1));
@@ -445,9 +481,11 @@ export function applyRegulations(
       // of 皇居外苑 running beside it.
       const closed = closureLines.nearest(pos.x, pos.z, MATCH_DIST, isParallel);
       if (closed) closureVotes.set(closed.owner, (closureVotes.get(closed.owner) ?? 0) + 1);
+      // Not the bounding roads: a 歩行者用道路 zone in 太子堂 traced on 国道246 closed it all day.
       for (const area of closureAreas) {
-        if (insidePolygon(pos.x, pos.z, area.ring))
-          closureVotes.set(area.closure, (closureVotes.get(area.closure) ?? 0) + 1);
+        const isInside =
+          insidePolygon(pos.x, pos.z, area.ring) && distanceToRing(pos.x, pos.z, area.ring) > AREA_EDGE;
+        if (isInside) closureVotes.set(area.closure, (closureVotes.get(area.closure) ?? 0) + 1);
       }
       const lane = laneLines.nearest(pos.x, pos.z, wide, isParallel);
       if (lane) {
@@ -471,13 +509,14 @@ export function applyRegulations(
     // 区域規制 (e.g. ゾーン30): roads inside the area, but not the arterials that bound it.
     graph.sample(seg, seg.length / 2, pos, dir);
     const zone = zones.find(
-      (z) => insidePolygon(pos.x, pos.z, z.ring) && distanceToRing(pos.x, pos.z, z.ring) > 8,
+      (z) => insidePolygon(pos.x, pos.z, z.ring) && distanceToRing(pos.x, pos.z, z.ring) > AREA_EDGE,
     );
     if (zone) {
       seg.limit = zone.limit;
       seg.limitKind = "zone";
     }
   }
+  warnIfDistrictClosed(graph);
 
   // Segment index for the point features.
   const segs = new LineGrid<Segment>();
@@ -798,9 +837,45 @@ function resolveTurns(graph: RoadGraph, data: RegulationData, frame: LocalFrame)
       }
     }
     if (!approach) continue;
-    rules.push({ node: best.node, approach, dir: approach.to === best.node ? 1 : -1, mask, time });
+    const dir: 1 | -1 = approach.to === best.node ? 1 : -1;
+    // A rule that forbids every way on is on the wrong node: snapped to the nearest one with three
+    // streets, it can land where no street goes its way (the apex of the 東京駅丸の内 forecourt
+    // loop, where a left-only rule left the loop with no exit). Kept, it made a dead end of the
+    // street for the route planner and would book a turn the sign cannot mean.
+    if (!allowsAWayOn(graph, best.node, approach, dir, mask)) continue;
+    rules.push({ node: best.node, approach, dir, mask, time });
   }
   return rules;
+}
+
+/**
+ * Whether some street leaving `node` (one-way streets only their way, unless the one-way holds only
+ * at times) lies in a direction `mask` allows for traffic arriving on `approach`: 1 left, 2
+ * straight, 4 right, as navigation.ts turnBit classes a turn. Dead ends count as allowed.
+ */
+function allowsAWayOn(graph: RoadGraph, node: number, approach: Segment, dir: 1 | -1, mask: number): boolean {
+  // Directions 2 m from the node, as the route planner measures a turn (navigation.ts tangent).
+  const end = dir === 1 ? Math.max(0, approach.length - 2) : Math.min(2, approach.length);
+  const tIn = graph.sample(approach, end).dir.clone().multiplyScalar(dir);
+  const exits = (graph.nodes.get(node) ?? [])
+    .map((id) => graph.segments[id])
+    .filter((seg) => seg !== approach);
+  if (exits.length === 0) return true;
+  return exits.some((seg) => {
+    const leaving: 1 | -1 = seg.from === node ? 1 : -1;
+    const rule = seg.onewayRule;
+    const isAllDay =
+      rule !== null && rule.time.off.length === 0 && rule.time.on.some(([a, b]) => a === 0 && b >= 1440);
+    const oneway = rule && isAllDay ? rule.dir : seg.line.oneway;
+    if (oneway !== 0 && oneway !== leaving) return false;
+    const tOut = graph
+      .sample(seg, leaving === 1 ? Math.min(2, seg.length) : Math.max(0, seg.length - 2))
+      .dir.clone()
+      .multiplyScalar(leaving);
+    const side = leftOf(tIn, 1).dot(tOut);
+    const bit = side > 0.57 ? 1 : side < -0.57 ? 4 : 2;
+    return (mask & bit) !== 0;
+  });
 }
 
 /** Whether a regulation with its 規制時間・曜日 and 除外 conditions is in force at `clock`. */
