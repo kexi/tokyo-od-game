@@ -214,6 +214,10 @@ make-og-image base="http://localhost:5173/tokyo-od-game/":
     node scripts/teaser/og.mjs --base {{ base }} --out out/og
     uv run scripts/textures/og_image.py out/og/scene.png public/og.png
 
+# 東京駅・スカイツリー・東京タワーの写真を out/photos に撮る（最高画質・雨の夜・車内から・PNG。lang は言語、開発サーバーが必要）
+make-photos lang="en" base="http://localhost:5173/tokyo-od-game/":
+    node scripts/teaser/photos.mjs --base {{ base }} --lang {{ lang }} --out out/photos
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit
