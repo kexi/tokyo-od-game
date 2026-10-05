@@ -222,6 +222,8 @@ const LOOK_LIMIT = 2.6; // rad either way: over the shoulder, short of straight 
  */
 const CAR_PITCH = { up: 0.25, down: 0.12 };
 const clampPitch = (p: number) => Math.max(-CAR_PITCH.down, Math.min(CAR_PITCH.up, p));
+/** The driver's tilt (rad) for the right stick's share of its way (-1 down .. 1 up). */
+export const carPitchOf = (stick: number) => stick * (stick > 0 ? CAR_PITCH.up : CAR_PITCH.down);
 const LOOK_RECENTRE_S = 1.2; // the view drifts back ahead after the mouse rests this long
 
 /** Keyboard + gamepad + on-screen touch controls merged into one analog DriveInput. */
@@ -395,7 +397,7 @@ export class Input {
   private lookUp(dt: number, isMoving: boolean): void {
     const stick = this.pad.lookPitch();
     if (stick !== null) {
-      this.lookPitch = stick > 0 ? stick * CAR_PITCH.up : -stick * CAR_PITCH.down;
+      this.lookPitch = carPitchOf(stick);
       this.padPitched = true;
       return;
     }

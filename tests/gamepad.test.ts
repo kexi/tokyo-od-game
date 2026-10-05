@@ -10,7 +10,7 @@ import {
   rampTrigger,
   stickCurve,
 } from "../src/game/gamepad";
-import type { Action } from "../src/game/input";
+import { carPitchOf, type Action } from "../src/game/input";
 import { parseInputReport, REPORT } from "../src/game/procon";
 import {
   bindControl,
@@ -317,6 +317,15 @@ function rig(onFoot = false) {
 }
 
 describe("コントローラーの入力（PadInput）", () => {
+  it("looks down from the driver's seat with the stick pulled down, not up", () => {
+    // What it guarantees: down tilts the view down (it turned it up before: 「上しか向けない？」),
+    // a little either way — less down than up, the bonnet fills the view sooner than the roof.
+    expect(carPitchOf(-1)).toBeLessThan(0);
+    expect(carPitchOf(1)).toBeGreaterThan(0);
+    expect(Math.abs(carPitchOf(-1))).toBeLessThan(carPitchOf(1));
+    expect(carPitchOf(1)).toBeLessThanOrEqual(0.3);
+  });
+
   it("looks up with the right stick pushed up, and rests level when it is let go", () => {
     // What it guarantees: the right stick's up / down tilts the view (up is the axis's negative
     // side), in the car as a share of the tilt and on foot as a rate; inside the dead zone it rests.
