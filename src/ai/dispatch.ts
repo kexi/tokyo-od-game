@@ -41,7 +41,11 @@ export const alreadyDispatched = (): Said => said("call.already");
  */
 export function operatorPrompt(line: Line, location: string): string {
   const isJapanese = getLocale() === "ja";
-  const role = line === "119" ? "東京消防庁で119番通報を受ける指令員" : "警視庁で110番通報を受ける担当者";
+  // Generic roles: the game names no real organisation (AGENTS.md), and the model would repeat it.
+  const role =
+    line === "119"
+      ? "消防の指令センターで119番通報を受ける指令員"
+      : "警察の通信指令室で110番通報を受ける担当者";
   const goal =
     line === "119"
       ? "場所（住所や目印）、何が起きたか、けが人の様子（意識・呼吸・出血）を一つずつ短く質問し、通報者を落ち着かせてください。"

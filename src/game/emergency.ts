@@ -149,7 +149,8 @@ function createResponder(kind: ResponderKind): Omit<Responder, "path" | "progres
     const black = new MeshStandardMaterial({ color: 0x111111, roughness: 0.35, metalness: 0.5 });
     const white = new MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.35, metalness: 0.3 });
     const doors = new MeshStandardMaterial({
-      map: sideTexture("警視庁", "#111111", "#f4f4f4", "#111111"),
+      // A generic word like the modelled patrol cars' doors: no real organisation's name (AGENTS.md).
+      map: sideTexture("PATROL", "#111111", "#f4f4f4", "#111111"),
       roughness: 0.4,
     });
     const lower = new Mesh(new BoxGeometry(1.8, 0.45, 4.6), black);
