@@ -142,6 +142,32 @@ export const LOG_EVENTS = {
     nav: z.boolean(),
     charm: z.string(),
   }),
+  // ---------- gamepads and the Pro Controller over WebHID (gamepad.ts, procon.ts) ----------
+  /** The pad in use changed (first press, or another pad pressed); `source` api or hid. */
+  pad_connected: info({
+    padId: z.string(),
+    name: z.string(),
+    mapping: z.string(),
+    family: z.string(),
+    source: z.string(),
+  }),
+  /** The pad in use is gone and none is left. */
+  pad_disconnected: info({ padId: z.string() }),
+  /** 設定 › コントローラー saved (once per change, not per slider step). */
+  pad_profile_changed: info({
+    padId: z.string(),
+    changedBindings: count,
+    gyro: z.boolean(),
+    rumble: z.boolean(),
+    steerDeadzone: z.number(),
+    /** -1: unbound. */
+    throttleButton: z.number().int(),
+  }),
+  /** The Pro Controller opened over WebHID; `reportBytes` its output report size (63 USB, 48 BT). */
+  procon_hid_connected: info({ name: z.string(), usb: z.boolean(), reportBytes: count }),
+  procon_hid_disconnected: info({}),
+  /** A WebHID step failed: restore, request, open, init or rumble. */
+  procon_hid_failed: warning({ step: z.string(), error }),
   /** A timed phase over 2 ms (perf.ts, dev builds): `blocking` is main-thread work in one go. */
   perf_phase: info({ phase: z.string(), durationMs: z.number(), blocking: z.boolean() }),
   i18n_missing: warning({ locale: z.string(), key: z.string() }),

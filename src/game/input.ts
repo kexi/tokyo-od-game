@@ -1,4 +1,5 @@
 import type { DriveInput } from "../physics/vehicle";
+import { PadInput } from "./gamepad";
 import type { WalkInput } from "./walker";
 
 export type Action =
@@ -219,6 +220,8 @@ const LOOK_RECENTRE_S = 1.2; // the view drifts back ahead after the mouse rests
 
 /** Keyboard + gamepad + on-screen touch controls merged into one analog DriveInput. */
 export class Input {
+  /** Gamepads (game/gamepad.ts): polled on their own frame, their buttons fire the same actions. */
+  readonly pad: PadInput;
   private readonly keys = new Set<string>();
   private readonly touch = { throttle: 0, brake: 0, steer: 0 };
   private readonly listeners = new Map<Action, () => void>();
@@ -229,11 +232,18 @@ export class Input {
   onFoot = false;
   private lookYaw = 0;
   private lookIdle = 0;
+  /** The view was turned by the right stick (it springs back when the stick is let go). */
+  private padLooked = false;
   /** When the pointer lock was last released (Esc does that, and must not also close things). */
   private unlockedAt = -Infinity;
 
   constructor() {
+    this.pad = new PadInput({
+      trigger: (action) => this.listeners.get(action)?.(),
+      onFoot: () => this.onFoot,
+    });
     window.addEventListener("keydown", (e) => {
+      this.pad.noteKeyboard();
       const isTyping = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
       // A dialog over the game (設定, the ticket, 移動…) takes the keys: nothing drives or switches
       // under it, and its own Esc closes it rather than opening 設定.
@@ -270,6 +280,25 @@ export class Input {
     return this.keys.has(code);
   }
 
+  /** The horn (H, or its pad button) held now. */
+  horn(): boolean {
+    return this.keys.has("KeyH") || this.pad.held("horn");
+  }
+
+  /** The pad's 後ろを見る held (or latched) now. */
+  padLookBack(): boolean {
+    return this.pad.held("lookBack");
+  }
+
+  /**
+   * What to press for an action, for hints and the toolbar: the pad's button when a pad was the
+   * last input, else (or when the pad has none for it) the key in the layout in force — a hint
+   * never names nothing.
+   */
+  label(action: Action): string {
+    return this.pad.label(action) || keyFor(this.layout, action);
+  }
+
   on(action: Action, fn: () => void): void {
     this.listeners.set(action, fn);
   }
@@ -304,6 +333,7 @@ export class Input {
       this.dragTurn -= e.movementX * 0.0045;
       this.lookYaw = Math.max(-LOOK_LIMIT, Math.min(LOOK_LIMIT, this.lookYaw - e.movementX * 0.0035));
       this.lookIdle = 0;
+      this.padLooked = false;
     });
     document.addEventListener("pointerlockchange", () => {
       if (document.pointerLockElement === canvas) return;
@@ -318,9 +348,20 @@ export class Input {
    */
   look(dt: number, isMoving: boolean): number {
     this.dragTurn = 0;
+    // The right stick looks while pushed and lets the view swing back ahead when released.
+    // The stick is a position, not a turn: released, the view comes back ahead at once, moving or
+    // not (the mouse's view stays put until the car moves).
+    const stick = this.pad.lookYaw();
+    if (stick !== null) {
+      this.lookYaw = stick;
+      this.padLooked = true;
+      this.lookIdle = 0;
+      return this.lookYaw;
+    }
     this.lookIdle += dt;
-    const isRecentring = isMoving && this.lookIdle > LOOK_RECENTRE_S;
-    if (isRecentring) this.lookYaw *= Math.max(0, 1 - dt * 3);
+    const isRecentring = this.padLooked || (isMoving && this.lookIdle > LOOK_RECENTRE_S);
+    if (isRecentring) this.lookYaw *= Math.max(0, 1 - dt * (this.padLooked ? 10 : 3));
+    if (Math.abs(this.lookYaw) < 0.01) this.padLooked = false;
     return this.lookYaw;
   }
 
@@ -332,21 +373,18 @@ export class Input {
       Math.max(k("KeyS", "ArrowDown"), this.touch.brake);
     let right = k("KeyD") - k("KeyA");
     let turn = k("ArrowLeft") - k("ArrowRight") + this.touch.steer;
-    const pad = navigator.getGamepads?.().find((g) => g?.connected);
-    if (pad) {
-      const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : v);
-      forward = forward || -dz(pad.axes[1] ?? 0);
-      right = right || dz(pad.axes[0] ?? 0);
-      turn = turn || -dz(pad.axes[2] ?? 0);
-    }
+    const pad = this.pad.walk();
+    forward = forward || pad.forward;
+    right = right || pad.right;
+    turn = turn || pad.turn;
     // Drag is a per-frame delta expressed as a turn rate (consumed once).
     const drag = this.dragTurn * 30;
     this.dragTurn = 0;
     return {
       forward,
       right,
-      run: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || Boolean(pad?.buttons[5]?.pressed),
-      jump: this.keys.has("Space") || Boolean(pad?.buttons[0]?.pressed),
+      run: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || pad.run,
+      jump: this.keys.has("Space") || pad.jump,
       turn: turn + drag,
     };
   }
@@ -387,18 +425,16 @@ export class Input {
     let steerTarget = left - right || this.touch.steer;
     let handbrake = this.keys.has("Space");
 
-    const pad = navigator.getGamepads?.().find((g) => g?.connected);
-    if (pad) {
-      const deadzone = (v: number) => (Math.abs(v) < 0.12 ? 0 : v);
-      throttle = Math.max(throttle, pad.buttons[7]?.value ?? 0);
-      brake = Math.max(brake, pad.buttons[6]?.value ?? 0);
-      const stick = -deadzone(pad.axes[0] ?? 0);
-      if (stick !== 0) steerTarget = stick;
-      handbrake ||= pad.buttons[0]?.pressed ?? false;
-    }
+    const pad = this.pad.drive();
+    throttle = Math.max(throttle, pad.throttle);
+    brake = Math.max(brake, pad.brake);
+    const isPadSteering = pad.steer !== null && (pad.steer !== 0 || steerTarget === 0);
+    if (isPadSteering) steerTarget = pad.steer as number;
+    handbrake ||= pad.handbrake;
 
-    // Keyboard steering is digital; ease it so the car does not twitch.
-    const rate = steerTarget === 0 ? 6 : 3.5;
+    // Keyboard steering is digital; ease it so the car does not twitch. A stick or the gyro is
+    // already analog: followed closely (a little easing still hides the stick's own jitter).
+    const rate = isPadSteering ? 14 : steerTarget === 0 ? 6 : 3.5;
     this.steerSmoothed += (steerTarget - this.steerSmoothed) * Math.min(1, dt * rate);
     return { throttle, brake, steer: this.steerSmoothed, handbrake };
   }

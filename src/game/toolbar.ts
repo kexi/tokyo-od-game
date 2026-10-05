@@ -58,7 +58,7 @@ export function buildToolbar(root: HTMLElement): void {
   onLocaleChange(() => {
     const layout = root.dataset.layout;
     const isLayout = layout === "wasd" || layout === "ccd";
-    if (isLayout) labelToolbar(root, layout);
+    if (isLayout) labelToolbar(root, layout, lastLabel);
   });
   root.replaceChildren(
     ...ITEMS.map((item) => {
@@ -75,17 +75,27 @@ export function buildToolbar(root: HTMLElement): void {
   );
 }
 
-/** Show each button's key (and a tooltip) for a layout. */
-export function labelToolbar(root: HTMLElement, layout: KeyLayout): void {
+/** What the badges name when not the keyboard's key (the pad's button, game/gamepad.ts). */
+let lastLabel: ((action: Action) => string) | undefined;
+
+/**
+ * Show each button's key (and a tooltip) for a layout; with `label`, the badge names what it
+ * returns instead (a pad button, "" for none) and the tooltip keeps the keyboard's key too.
+ */
+export function labelToolbar(root: HTMLElement, layout: KeyLayout, label?: (action: Action) => string): void {
   root.dataset.layout = layout;
+  lastLabel = label;
   for (const item of ITEMS) {
     const b = root.querySelector<HTMLButtonElement>(`[data-action="${item.action}"]`);
     if (!b) continue;
     const key = keyFor(layout, item.action);
+    const badge = label ? label(item.action) : key;
     const kbd = b.querySelector("kbd");
     // Shift as its keycap symbol, so every badge fits the same button.
-    if (kbd) kbd.textContent = key.replace("Shift+", "⇧");
+    if (kbd) kbd.textContent = badge.replace("Shift+", "⇧");
+    if (kbd) kbd.hidden = badge === "";
     const tip = t(item.title ?? item.label);
-    b.title = key ? `${tip} (${key})` : tip;
+    const keys = [badge, key].filter((k, i, all) => k !== "" && all.indexOf(k) === i).join(" / ");
+    b.title = keys ? `${tip} (${keys})` : tip;
   }
 }

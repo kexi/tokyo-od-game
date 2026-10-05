@@ -3305,3 +3305,48 @@ html:lang(zh) [lang="ja"] {
     right: calc(12px + 3 * var(--tool-w) + 2 * 6px + 16px);
   }
 }
+
+/* 設定 › 操作 › コントローラー (game/padSettings.ts) */
+.pad-settings .pad-heading {
+  font-size: 13px;
+  margin: 12px 0 6px;
+  opacity: 0.85;
+}
+.pad-settings .pad-status,
+.pad-settings .pad-hid {
+  margin: 0 0 8px;
+}
+.pad-settings .pad-note {
+  min-height: 1.4em;
+}
+.pad-bindings {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+.pad-bindings td {
+  padding: 3px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.pad-bindings td:nth-child(2) {
+  width: 9em;
+}
+.pad-bindings td:nth-child(3) {
+  width: 2.5em;
+  text-align: right;
+}
+.pad-bindings small {
+  opacity: 0.6;
+}
+.pad-bindings .pad-bind {
+  min-width: 7em;
+  padding: 3px 8px;
+}
+.pad-bindings .pad-bind.waiting {
+  outline: 2px solid #4dd2ff;
+}
+#help-keys .help-pad-head {
+  margin-top: 12px;
+  font-weight: bold;
+}

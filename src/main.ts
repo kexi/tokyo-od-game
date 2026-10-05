@@ -142,6 +142,7 @@ import { CarNavi } from "./game/carNavi";
 import { displayOffset, NaviTv } from "./game/naviTv";
 import type { TvInfo } from "./game/tvRules";
 import { buildToolbar, labelToolbar } from "./game/toolbar";
+import { mountPadSettings } from "./game/padSettings";
 import { MotionBlur } from "./world/motionBlur";
 import { Bloom, bloomSettings } from "./world/bloom";
 import { LensFlare } from "./world/lensFlare";
@@ -506,9 +507,9 @@ async function main(): Promise<void> {
   const chase = new ChaseCamera(camera);
   const input = new Input();
   // The key that gets in and out (Q in both layouts today), as the hints should name it.
-  const doorKey = () => keyFor(input.layout, "door");
-  /** Any action's key in the layout in force, for the hints that name one. */
-  const keyOf = (action: Parameters<typeof keyFor>[1]) => keyFor(input.layout, action);
+  const doorKey = () => input.label("door");
+  /** Any action's key in the layout in force (or its pad button after a pad was used), for hints. */
+  const keyOf = (action: Parameters<typeof keyFor>[1]) => input.label(action);
   input.bindTouch($("#touch"));
   const audio = new GameAudio();
   const minimap = new Minimap($<HTMLCanvasElement>("#minimap"), categories);
@@ -1522,17 +1523,22 @@ async function main(): Promise<void> {
     $("#opt-seat-back-value").textContent = cm(prefs.seatBack);
     $<HTMLSelectElement>("#opt-layout").value = prefs.layout;
     $<HTMLSelectElement>("#opt-assist").value = prefs.assist;
-    renderKeyList($("#help-keys"), prefs);
+    showControls();
+  };
+  /** The help's list, the hints and the toolbar's badges: keys, or the pad's buttons after a pad. */
+  const showControls = () => {
+    const pad = input.pad.pad;
+    renderKeyList($("#help-keys"), prefsNow, pad && { name: pad.name, rows: input.pad.helpRows() });
     showKeyHints();
-    // Each toolbar button shows its key in this layout.
-    labelToolbar($("#hud-toolbar"), prefs.layout);
+    const isPad = input.pad.source === "pad" && pad !== null;
+    labelToolbar($("#hud-toolbar"), prefsNow.layout, isPad ? (a) => input.label(a) : undefined);
   };
   applyPrefs(prefsNow);
-  // The help's key list and the hints' titles are built in code: again in the new language.
-  i18n.onLocaleChange(() => {
-    renderKeyList($("#help-keys"), prefsNow);
-    showKeyHints();
-  });
+  // The help's key list and the hints' titles are built in code: again in the new language, and
+  // when a pad comes, goes, is rebound, or takes over from the keyboard (and back).
+  i18n.onLocaleChange(showControls);
+  input.pad.onChange(showControls);
+  mountPadSettings($("#pad-settings"), input.pad);
   const savePrefsAndApply = (prefs: ControlPrefs) => {
     savePrefs(prefs);
     applyPrefs(prefs);
@@ -2201,7 +2207,7 @@ async function main(): Promise<void> {
         ? Math.PI / 2
         : lookKeys.right && input.held(lookKeys.right)
           ? -Math.PI / 2
-          : input.held(lookKeys.back)
+          : input.held(lookKeys.back) || input.padLookBack()
             ? Math.PI
             : input.look(dt, vehicle.speedKmh() > 5);
     input.onFoot = isOnFoot;
@@ -2240,6 +2246,7 @@ async function main(): Promise<void> {
       const isAccident = carKmh > 3 && victimKmh > 3;
       if (!isAccident) continue;
       pedestrianCooldown.set(ped, performance.now() + 3000);
+      input.pad.contact("impact", blow.impact.dvCar + 1);
       pedestrians.knockDown(ped);
       emergency.start(ped, performance.now());
       onAccident("pedestrian", carKmh, ped.profile.name, blow.impact);
@@ -2271,6 +2278,11 @@ async function main(): Promise<void> {
       const ped = pedestrians.byCollider(other);
       if (ped) return;
       const what = hitKind(other);
+      // The pad feels it: a kerb's bump by speed, anything else by the car's own Δv.
+      input.pad.contact(
+        what === "ground" ? "bump" : "impact",
+        what === "ground" ? kmh / 3.6 : (impact?.dvCar ?? kmh / 3.6),
+      );
       // Kerbs and the ground are bumps, not accidents.
       const isAccident = what !== "ground" && kmh > 5;
       if (isAccident) onAccident(what, kmh, "", impact);
@@ -2848,8 +2860,8 @@ async function main(): Promise<void> {
     if (isInCar) audio.tick((signalLeft || signalRight) && blink);
     if (signalLeft) indicatorSeen.left = now;
     if (signalRight) indicatorSeen.right = now;
-    // 警音器 while H is held.
-    const isHorn = isInCar && input.held("KeyH");
+    // 警音器 while H (or its pad button) is held.
+    const isHorn = isInCar && input.horn();
     audio.horn(isHorn);
     hornFor = isHorn ? hornFor + dt : 0;
     const isCockpitView = isInCar && chase.mode === "cockpit";
@@ -2907,6 +2919,14 @@ async function main(): Promise<void> {
       scene,
     });
     audio.update(isEngineOff ? 0 : speed, isEngineOff ? 0 : drive.throttle, isEngineOff);
+    // The pad's kerb jolts and (if chosen) the idle hum (game/gamepad.ts).
+    input.pad.carFrame({
+      inCar: isInCar,
+      engineOn: isInCar && controls.engineOn && !isEngineOff,
+      kmh: Math.abs(speed),
+      throttle: drive.throttle,
+      verticalSpeed: vehicle.body.linvel().y,
+    });
 
     if (now - lastLocate > 500) {
       lastLocate = now;
@@ -3135,6 +3155,7 @@ async function main(): Promise<void> {
     // Every violation is stamped as it happens, caught or not: the seal says what the driver did;
     // whether anyone saw it is the notice's line (and the ticket's, later).
     stamps.stamp("違反", shortLabel(booked.label));
+    input.pad.rumble("stamp");
     perf.time("violation.pursuit", () => pursuitDirector.onViolation(booked));
     perf.time("violation.police", () => {
       if (isAccident) {

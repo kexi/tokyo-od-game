@@ -150,14 +150,35 @@ export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[
   ];
 }
 
-export function renderKeyList(list: HTMLElement, prefs: ControlPrefs): void {
+const row = ([keys, what]: [string, string]) => {
+  const dt = document.createElement("dt");
+  dt.textContent = keys;
+  const dd = document.createElement("dd");
+  dd.textContent = what;
+  return [dt, dd];
+};
+
+/**
+ * The help's list: the keyboard's rows, then — with a pad in use — its rows under its name
+ * (game/gamepad.ts helpRows(), from the buttons 設定 › コントローラー has bound).
+ */
+export function renderKeyList(
+  list: HTMLElement,
+  prefs: ControlPrefs,
+  pad: { name: string; rows: Array<[string, string]> } | null = null,
+): void {
+  const padHead = () => {
+    const dt = document.createElement("dt");
+    dt.className = "help-pad-head";
+    dt.textContent = `🎮 ${pad?.name ?? ""}`;
+    const dd = document.createElement("dd");
+    dd.className = "help-pad-head";
+    dd.textContent = t("settings.pad");
+    return [dt, dd];
+  };
+  const hasPad = pad !== null && pad.rows.length > 0;
   list.replaceChildren(
-    ...keyRows(prefs).flatMap(([keys, what]) => {
-      const dt = document.createElement("dt");
-      dt.textContent = keys;
-      const dd = document.createElement("dd");
-      dd.textContent = what;
-      return [dt, dd];
-    }),
+    ...keyRows(prefs).flatMap(row),
+    ...(hasPad ? [...padHead(), ...pad.rows.flatMap(row)] : []),
   );
 }
