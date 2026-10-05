@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [影材質のキャッシュ無効化を減らす](shadow-cache-performance.md) - 夜雨の影材質のversion切り替えを抑え、キャッシュキー計算のCPUを約2.1秒→8 msへ削減。両backendの影画像と破棄を検証。新地域の133〜150 msは残る
+
 - [GitHub Actionsの開始前キャンセルを調べる](github-actions-runner-delays.md) - ランナー割り当て失敗をstepsとannotationsで確認する。未開始ジョブの再実行と2026-10-06 JSTの障害中の観測
 
 - [道路反映のフレーム分割と原点変更時のコライダー再利用](road-streaming-performance.md) - 原点変更の同期処理495→約3 ms。歩道・橋・駐車車両の物理を保持し、描画と生成を分割する。DEMをWorker化。通常更新の最長50 ms、新地域には133〜150 msが残る
