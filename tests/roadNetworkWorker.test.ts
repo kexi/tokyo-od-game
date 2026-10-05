@@ -41,6 +41,7 @@ describe("road network worker data", () => {
     const expected = new RoadGraph(lines, frame);
     const applied = applyRegulations(expected, regs, frame);
     const data = structuredClone(computeRoadNetwork({ lines, regs, origin: frame.origin }));
+    expect(data.graph.pieces?.size).toBeGreaterThan(0);
     const actual = restoreRoadNetwork(data, frame);
     expect(actual.graph).toBeInstanceOf(RoadGraph);
     expect(actual.graph.segments).toEqual(expected.segments);

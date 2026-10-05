@@ -1,17 +1,18 @@
 ---
 type: Metric
 title: 道路網・規制の Worker 化と、路面の再生成に残る停止
-description: 道路網構築と規制適用をWorkerへ移し、クラス・区間参照を復元して一括反映する。夜雨の計算単体で最長フレーム116〜167→33.4 msを確認したが、路面生成に約840〜925 msが残り、道路更新全体の停止は未解消。
+description: 道路網構築と規制適用をWorkerへ移し、クラス・区間参照を復元して反映する。夜雨の計算単体で最長フレーム116〜167→33.4 ms。路面生成の停止は続く。2026-10-06訂正：当初の道路セルインデックスはWorkerで準備されていなかった。
 tags: [roads, rendering, testing, logging]
 status: draft
 stale_after: 2027-04-06T00:00:00Z
-generated: { by: codex, at: 2026-10-05T18:16:00Z }
+generated: { by: codex, at: 2026-10-05T22:26:39Z }
 verified:
   - { by: process:vitest, at: 2026-10-05T17:46:00Z }
   - { by: process:tsc, at: 2026-10-05T17:46:00Z }
   - { by: process:vite-build, at: 2026-10-05T17:46:00Z }
   - { by: process:headless-chrome-cdp, at: 2026-10-05T17:49:00Z }
   - { by: process:production-chrome-cdp, at: 2026-10-05T17:51:00Z }
+  - { by: process:road-index-vitest-and-chrome154, at: 2026-10-05T22:26:39Z }
 sources:
   - id: code
     resource: ../src/world/roadNetworkBuilder.ts, ../src/world/roadNetwork.worker.ts, ../src/world/roadNetworkData.ts, ../src/world/roads.ts, ../src/main.ts
@@ -40,6 +41,8 @@ sources:
 `RoadGraph` の構築と `applyRegulations` を1個の常駐module Workerへ移した。メインスレッドで初期化時にWorkerを起動し、道路タイルが揃ってから生の `RoadLine[]`・規制・原点を送る。シーン、描画、物理ワールドはメインスレッドに残る。追加パッケージは無く、production WorkerのJSは約210 KB。[^code]
 
 Workerは計算済みの区間、節点、道路の空間インデックス、規制を返す。区間への参照はID、Vector3は数値の組に変換する。受信後に本物の `RoadGraph` / `Vector3` を作り、横断歩道・標識・右左折規制・車線用途を同じ区間オブジェクトへ結び直す。停止標識と停止線の共有参照、単独の停止標識が持つ線の両方を復元する。`Object.setPrototypeOf` で全オブジェクトを巡る方法は使わず、必要な型を明示している。[^code] [^tests]
+
+> **2026-10-06 JST訂正**：「道路の空間インデックスを返す」は、当初の実装では不正確だった。`snapshot()`は遅延生成の`pieces`をそのまま返し、Worker内でその生成を呼ばなかったため通常はnullだった。規制適用の別のGridはWorkerで計算されるが、この道路セルとは異なる。[近傍検索の改善](road-nearest-performance.md)でsnapshot時にセルを準備するように変更し、実Workerから復元したMapが照会前から存在することと、旧探索との4,776件の一致を確認した。当初の記述は訂正の経緯として残す。
 
 同時に処理する依頼は1件、待ち行列は最新の1件のみ。新しい依頼で古いPromiseは `null` で完了し、古い応答は復元・適用しない。Worker起動失敗、実行エラー、返信の復号エラー、送信失敗、15秒のタイムアウトではWorkerを終了し、最新依頼を同じ計算の同期フォールバックで処理する。`dispose` は待っているPromiseをすべて完了させる。フォールバックでは計算のメインスレッド占有が戻る。[^tests]
 

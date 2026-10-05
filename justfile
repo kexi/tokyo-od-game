@@ -262,6 +262,10 @@ measure-road-worker:
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs
 
+# 実道路の近傍検索を旧全探索と交互比較し、結果の一致とCPU時間を計測する
+measure-road-nearest:
+    node scripts/qa/perf-road-nearest.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit
