@@ -80,6 +80,7 @@ import { Buildings } from "./world/buildings";
 import { DemStore } from "./world/dem";
 import {
   Environment,
+  GAME_TIME_SCALE,
   TIME_LABEL,
   TIME_MODES,
   WEATHER_LABEL,
@@ -148,7 +149,8 @@ import {
 import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type Pose, type ReplayCamera } from "./game/replay";
 import { createVehicle, loadVehicleModels } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
-import { formatCount, SocialFeed, type SocialPost } from "./game/social";
+import { formatCount, SocialFeed, type SocialPost, type SocialWorld } from "./game/social";
+import type { PraiseKind } from "./game/socialTexts";
 import { WitnessPhones } from "./game/witnessPhones";
 import { appTile, SocialApp } from "./game/socialView";
 import { SOCIAL_APP_NAME } from "./game/socialTheme";
@@ -2035,6 +2037,7 @@ async function main(): Promise<void> {
         const record = committed ?? (open ? Object.assign(open, photo, { context }) : null);
         if (record) law.notice(record, "orbis");
         flashScreen();
+        social.note("orbis", env.now().getTime());
         log("orbis", { id: hit.site.entry.id, lane: hit.lane, kmh: Math.round(speed), limit: hit.limit });
       }
 
@@ -2128,7 +2131,14 @@ async function main(): Promise<void> {
           const hasStopped =
             lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
           if (ap.kind === "stop" && !hasStopped) book(VIOLATIONS.stopSign, now, 10000);
+          if (ap.kind === "stop" && hasStopped) praise("fullStop");
         }
+      }
+      // Waiting while someone walks across in front: they may thank the driver (once each).
+      if (Math.abs(speed) < 2) {
+        const crossing = pedestrians.crossingAhead(carPos, carForward, 14).filter((q) => !letAcross.has(q));
+        for (const q of crossing) letAcross.add(q);
+        if (crossing.length > 0) praise("yieldPedestrian");
       }
       lawPrevPos = carPos.clone();
     } else if (!isDriving) {
@@ -2434,7 +2444,6 @@ async function main(): Promise<void> {
         dt,
       });
     };
-    // Plain renderer.render outside the driver's seat; from it, the rain on the glass too.
     cockpit.render(renderer, scene, camera, applyBlur);
     takeShots();
     if (pendingScreenshot) {
@@ -2506,6 +2515,25 @@ async function main(): Promise<void> {
   // Offences the police always learn of: those of an accident they are called to.
   const ACCIDENT_KINDS = new Set(["safeDriving", "injury", "phoneDanger", "hitAndRun"]);
   /**
+   * People who could see the car: pedestrians and drivers within 80 m. The people the game draws are
+   * a sample of the street: busier areas (e-Stat density sets the crowd size) have more eyes and
+   * dashcams than those modelled one by one.
+   */
+  const witnessesAround = (carPos: Vector3) =>
+    pedestrians.list.filter((q) => q.object.position.distanceTo(carPos) < 80).length +
+    traffic.positions().filter((q) => q.distanceTo(carPos) < 80).length +
+    Math.floor(pedestrians.crowd / 12);
+  /** The player drove well where people could see: one of them may thank them on Y. */
+  const praise = (kind: PraiseKind) => {
+    const c = social.maybePraise(kind, witnessesAround(vehicle.position()), env.now().getTime());
+    if (!c) return;
+    notify("social", `「${SOCIAL_APP_NAME}」であなたの運転がほめられています`);
+    socialUnread++;
+    log("social", { event: "praise", kind });
+  };
+  // People already counted as let across (one chance of a thank-you each).
+  const letAcross = new WeakSet<object>();
+  /**
    * A violation the driver committed. It counts only if someone catches it: the police at an
    * accident, or a patrol that sees it (then a chase and a ticket on the spot); otherwise it
    * stays the driver's own record (未検挙), shown so the player still learns from it.
@@ -2533,12 +2561,7 @@ async function main(): Promise<void> {
       notify("violation", `${booked.label}（未検挙）`);
     }
     // Bystanders and dashcams nearby: someone may film it and post it.
-    // The people the game draws are a sample of the street: busier areas (e-Stat density sets the
-    // crowd size) have more eyes and dashcams than those modelled one by one.
-    const witnesses =
-      pedestrians.list.filter((q) => q.object.position.distanceTo(carPos) < 80).length +
-      traffic.positions().filter((q) => q.distanceTo(carPos) < 80).length +
-      Math.floor(pedestrians.crowd / 12);
+    const witnesses = witnessesAround(carPos);
     const post = social.maybePost(booked, witnesses, env.now().getTime());
     // Those of them who can see the car get their phones out (the poster among them).
     const filmers = witnessPhones.react(booked, post, carPos);
@@ -2565,6 +2588,47 @@ async function main(): Promise<void> {
 
   // ---------- Y（SNS） ----------
   const social = new SocialFeed();
+  // What everyday posts can talk about: where the player is, the weather, what is in sight.
+  social.world = (): SocialWorld => {
+    const { lat, lon } = lastGeo;
+    const focus = focusPos();
+    const river = water.riverNear(lat, lon, 1500);
+    const signs = guideSigns.plans
+      .filter((p) => Math.hypot(p.pos.x - focus.x, p.pos.z - focus.z) < 400)
+      .flatMap((p) => p.board.arms.flatMap((a) => a.names))
+      .filter((n, i, all) => all.findIndex((m) => m.ja === n.ja) === i)
+      .slice(0, 6)
+      .map(({ ja, en }) => ({ ja, en }));
+    let standing = 0;
+    traffic.forEachCar((object, speed) => {
+      const isStanding = Math.abs(speed) < 1.5 && object.position.distanceTo(focus) < 80;
+      if (isStanding) standing++;
+    });
+    return {
+      ward: wardName === "—" ? null : wardName,
+      town: townName || null,
+      nearWards: areas?.wardsIn(lon - 0.03, lat - 0.025, lon + 0.03, lat + 0.025) ?? [],
+      lat,
+      lon,
+      raining: env.isRaining(),
+      tempC: env.getObservation()?.temp ?? null,
+      landmarks: landmarkEntries.map((l) => ({
+        name: l.name,
+        km: haversineMeters(lat, lon, l.lat, l.lon) / 1000,
+      })),
+      parks: field
+        .near(lat, lon, 1500)
+        .map((p) => p.name)
+        .filter((n) => n.endsWith("公園"))
+        .slice(0, 5),
+      river: river?.river ?? null,
+      // Gauges are mostly named after their bridge (内匠橋); others (小台, 池上) are not bridges.
+      bridge: river && /^[^（）]+橋$/.test(river.gauge) ? river.gauge : null,
+      signs,
+      buses: transit.positionsNear(lat, lon, 400).length,
+      jammed: standing >= 6,
+    };
+  };
   // Each poster's photo is their own shot from where they stood, not the driver's screen.
   const witnessShot = new WitnessShot(renderer, scene, {
     ground: (x, z) => groundY(x, z),
@@ -2633,6 +2697,8 @@ async function main(): Promise<void> {
   $("#social-back").addEventListener("click", () => showSocial(false));
   /** Posts spread with game time; the police trace the car from clips that spread wide. */
   const updateSocial = () => {
+    // People post at a human pace: the feed converts real seconds by how fast the clock runs.
+    social.timeScale = env.timeMode === "real" ? 1 : GAME_TIME_SCALE;
     for (const p of social.update(env.now().getTime())) {
       if (p.record.status !== "uncaught") continue;
       law.notice(p.record, "sns");
@@ -2683,6 +2749,7 @@ async function main(): Promise<void> {
     speechSynthesis.speak(u);
   };
   const startPursuit = () => {
+    social.note("pursuit", env.now().getTime());
     $("#pursuit-chip").hidden = false;
     policeSay("前の車の運転手さん、左に寄って止まってください。");
     log("police", { event: "pursuit" });
@@ -2733,6 +2800,12 @@ async function main(): Promise<void> {
       if (police === unit) police = null;
     }
     for (const unit of patrols) updatePatrol(unit, tw, dt, now);
+    // A unit passing close by is seen (an unmarked car only once its lights are on).
+    for (const unit of patrols) {
+      const isSeen =
+        unit.position.distanceTo(focus) < 50 && (unit.kind !== "unmarked" || unit.state === "pursuing");
+      if (isSeen) social.note(unit.kind, env.now().getTime());
+    }
     // The one the player deals with: pursuing or ticketing, else the nearest.
     const engaged = patrols.find((u) => u.state === "pursuing" || u.state === "ticketing");
     police =
@@ -2982,6 +3055,7 @@ async function main(): Promise<void> {
       return taxiStatus("近くに配車できる車がありません。広い道路の近くで呼んでください。");
     }
     taxi = t;
+    social.note("robotaxi", env.now().getTime());
     const eta = Math.max(1, Math.round((t.route?.length ?? 400) / 8 / 60));
     taxiStatus(`配車しました（迎車）。到着まで約 ${eta} 分。道路沿いでお待ちください。`);
     $("#taxi-cancel").hidden = false;
@@ -3550,6 +3624,7 @@ async function main(): Promise<void> {
     return isPost ? "pole" : "ground";
   };
   const onAccident = (kind: "pedestrian" | "vehicle" | "building" | "pole", kmh: number, who: string) => {
+    social.note("crash", env.now().getTime());
     book(VIOLATIONS.safeDriving, performance.now(), 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
     if (phone.isInUse(performance.now()) && mode === "car")

@@ -908,6 +908,9 @@
 .sns-note-icon.follow {
   color: var(--sns-accent);
 }
+.sns-note-icon.praise {
+  color: var(--sns-like);
+}
 .sns-note-faces {
   display: flex;
   align-items: center;

@@ -46,13 +46,21 @@ type Stats = {
   bookmarks: number;
 };
 type Media =
-  | { kind: "clip"; src: () => string | undefined; aspect: () => number; seconds: number }
+  | {
+      kind: "clip";
+      src: () => string | undefined;
+      aspect: () => number;
+      seconds: number;
+      /** A still from the poster's camera (a photo post): no ▶, no length, never played. */
+      still?: boolean;
+    }
   | { kind: "picture"; key: string; motif: PictureMotif; hue: number };
 type Target =
   | { kind: "post"; post: SocialPost }
   | { kind: "reply"; post: SocialPost; reply: SocialReply }
   | { kind: "quote"; post: SocialPost; quote: SocialReply }
-  | { kind: "chatter"; chatter: SocialChatter };
+  | { kind: "chatter"; chatter: SocialChatter }
+  | { kind: "chatterReply"; chatter: SocialChatter; reply: SocialReply };
 /** One post as the app shows it, whatever it came from. */
 type Card = {
   key: string;
@@ -124,20 +132,25 @@ function richText(target: HTMLElement, text: string, tags: readonly string[]): v
 // ---------- cards ----------
 
 function postCard(p: SocialPost): Card {
+  // Only the poster's own shot (a passer-by's eye), never the driver's screen; an empty frame
+  // until it is developed. A words-only post has none.
+  const media: Media | undefined =
+    p.media === "text"
+      ? undefined
+      : {
+          kind: "clip",
+          src: () => p.photo,
+          aspect: () => (p.photo ? (p.photoAspect ?? 16 / 9) : 16 / 9),
+          seconds: p.clipSeconds,
+          still: p.media === "photo",
+        };
   return {
     key: `p${p.id}`,
     account: p.account,
     at: p.postedAt,
     text: () => p.text,
     tags: p.tags,
-    media: {
-      kind: "clip",
-      // Only the poster's own shot (a passer-by's eye), never the driver's screen; an empty
-      // frame until it is developed.
-      src: () => p.photo,
-      aspect: () => (p.photo ? (p.photoAspect ?? 16 / 9) : 16 / 9),
-      seconds: p.clipSeconds,
-    },
+    media,
     stats: () => ({
       replies: replyCountOf(p),
       reposts: p.reposts,
@@ -202,7 +215,7 @@ function chatterCard(c: SocialChatter): Card {
       ? { kind: "picture", key: `c${c.id}`, motif: c.picture.motif, hue: c.picture.hue }
       : undefined,
     stats: () => ({
-      replies: 0,
+      replies: c.replies.length,
       reposts: c.reposts,
       likes: c.likes,
       views: c.views,
@@ -213,10 +226,32 @@ function chatterCard(c: SocialChatter): Card {
   };
 }
 
+function chatterReplyCard(c: SocialChatter, r: SocialReply): Card {
+  const parent = r.replyTo === undefined ? undefined : c.replies.find((x) => x.id === r.replyTo);
+  return {
+    key: `cr${c.id}-${r.id}`,
+    account: r.account,
+    at: r.postedAt,
+    text: () => r.text,
+    tags: [],
+    replyingTo: parent?.account ?? c.account,
+    stats: () => ({
+      replies: c.replies.filter((x) => x.replyTo === r.id).length,
+      reposts: Math.round(r.likes * 0.05),
+      likes: r.likes,
+      views: r.likes * 30 + 12 + ((r.id * 37) % 90),
+      bookmarks: 0,
+      quotes: 0,
+    }),
+    target: { kind: "chatterReply", chatter: c, reply: r },
+  };
+}
+
 function cardOf(t: Target): Card {
   if (t.kind === "post") return postCard(t.post);
   if (t.kind === "reply") return replyCard(t.post, t.reply);
   if (t.kind === "quote") return quoteCard(t.post, t.quote);
+  if (t.kind === "chatterReply") return chatterReplyCard(t.chatter, t.reply);
   return chatterCard(t.chatter);
 }
 
@@ -575,7 +610,18 @@ export class SocialApp {
           this.timelineRow(replyCard(p, parent), { threadUp: true, threadDown: () => true }),
         );
     }
-    add("focus", () => this.detailRow(focus, t.kind === "reply"));
+    if (t.kind === "chatterReply") {
+      const c = t.chatter;
+      const parent =
+        t.reply.replyTo === undefined ? undefined : c.replies.find((r) => r.id === t.reply.replyTo);
+      add(`up-c${c.id}`, () => this.timelineRow(chatterCard(c), { threadDown: () => true }));
+      if (parent)
+        add(`up-r${parent.id}`, () =>
+          this.timelineRow(chatterReplyCard(c, parent), { threadUp: true, threadDown: () => true }),
+        );
+    }
+    const isReply = t.kind === "reply" || t.kind === "chatterReply";
+    add("focus", () => this.detailRow(focus, isReply));
     if (t.kind === "post")
       add("engage", () => {
         const b = h("button", "sns-linkrow", "ポストのエンゲージメントを表示", icon("back"));
@@ -607,7 +653,28 @@ export class SocialApp {
         (x, i, all) => all.indexOf(x) === i,
       ))
         add(`r${a.id}`, () => this.timelineRow(replyCard(t.post, a)));
+    if (t.kind === "chatter") this.chatterThread(t.chatter, add);
+    if (t.kind === "chatterReply")
+      for (const a of t.chatter.replies.filter((x) => x.replyTo === t.reply.id))
+        add(`r${a.id}`, () => this.timelineRow(chatterReplyCard(t.chatter, a)));
     return out;
+  }
+
+  /** The replies under an everyday post, each with the poster's answer below it. */
+  private chatterThread(c: SocialChatter, add: (key: string, make: () => Row) => void): void {
+    const top = c.replies.filter((r) => r.replyTo === undefined).toSorted((a, b) => a.postedAt - b.postedAt);
+    for (const r of top) {
+      const answers = c.replies.filter((a) => a.replyTo === r.id);
+      add(`r${r.id}`, () =>
+        this.timelineRow(chatterReplyCard(c, r), {
+          threadDown: () => c.replies.some((a) => a.replyTo === r.id),
+        }),
+      );
+      for (const a of answers)
+        add(`r${a.id}`, () => this.timelineRow(chatterReplyCard(c, a), { threadUp: true }));
+    }
+    if (top.length === 0)
+      add("none", () => emptyEntry("まだ返信はありません", "最初の返信がここに表示されます。").make());
   }
 
   private engagementsPage(route: Extract<Route, { page: "engagements" }>): Page {
@@ -765,13 +832,20 @@ export class SocialApp {
           if (r.account === a) add(replyCard(p, r), r.postedAt, { replyingTo: true });
         continue;
       }
-      if (isMine) add(postCard(p));
+      // A words-only post has nothing for the media tab.
+      const isShown = isMine && (tab !== "media" || p.media !== "text");
+      if (isShown) add(postCard(p));
       if (tab === "media") continue;
       for (const q of p.quotePosts) if (q.account === a) add(quoteCard(p, q));
       const repost = p.reposters.find((r) => r.account === a);
       if (repost) add(postCard(p), repost.at, { repostedBy: a });
     }
-    if (tab === "replies") return out;
+    if (tab === "replies") {
+      for (const c of this.feed.chatter)
+        for (const r of c.replies)
+          if (r.account === a) add(chatterReplyCard(c, r), r.postedAt, { replyingTo: true });
+      return out;
+    }
     for (const c of this.feed.chatter) {
       const isShown = c.account === a && (tab === "posts" || c.picture);
       if (isShown) add(chatterCard(c));
@@ -838,6 +912,7 @@ export class SocialApp {
   private actorOf(e: SocialEvent): SocialAccount {
     if (e.kind === "follow") return e.account;
     if (e.kind === "news") return e.quote.account;
+    if (e.kind === "praise") return e.chatter.account;
     return e.post.account;
   }
 
@@ -1128,10 +1203,11 @@ export class SocialApp {
       box.style.aspectRatio = "16 / 9";
       return staticRow(box);
     }
-    img.alt = "投稿された動画";
+    img.alt = media.still ? "画像" : "投稿された動画";
     box.classList.add("clip");
-    const play = h("span", "sns-play", icon("play"));
-    box.append(play, h("span", "sns-duration", clipLength(media.seconds)));
+    // A photo post shows its still as a picture: no ▶ and no length.
+    if (!media.still)
+      box.append(h("span", "sns-play", icon("play")), h("span", "sns-duration", clipLength(media.seconds)));
     let shown: string | undefined;
     let shape = "";
     return {
@@ -1233,6 +1309,7 @@ export class SocialApp {
       milestone: ["repost", "repost"],
       news: ["star", "trend"],
       follow: ["person", "follow"],
+      praise: ["like", "praise"],
     };
     const [name, cls] = kind[e.kind];
     const faces: SocialAccount[] =
@@ -1240,9 +1317,11 @@ export class SocialApp {
         ? [e.account]
         : e.kind === "news"
           ? [e.quote.account]
-          : e.kind === "milestone"
-            ? [e.post.account, ...e.post.reposters.map((r) => r.account)].slice(0, 5)
-            : [e.post.account];
+          : e.kind === "praise"
+            ? [e.chatter.account]
+            : e.kind === "milestone"
+              ? [e.post.account, ...e.post.reposters.map((r) => r.account)].slice(0, 5)
+              : [e.post.account];
     const who = h("b", "", this.actorOf(e).name);
     const text = h("div", "sns-note-text");
     const preview = h("div", "sns-note-preview");
@@ -1255,6 +1334,9 @@ export class SocialApp {
     } else if (e.kind === "news") {
       text.append(who, "さんが話題のポストを引用しました");
       preview.textContent = e.quote.text;
+    } else if (e.kind === "praise") {
+      text.append(who, "さんがあなたの運転についてポストしました");
+      preview.textContent = e.chatter.text;
     } else {
       text.append(who, "さんにフォローされました");
       preview.textContent = e.account.bio;
@@ -1275,6 +1357,7 @@ export class SocialApp {
     row.addEventListener("click", () => {
       if (e.kind === "follow") return this.openProfile(e.account);
       if (e.kind === "news") return this.openCard(quoteCard(e.post, e.quote));
+      if (e.kind === "praise") return this.openCard(chatterCard(e.chatter));
       this.openCard(postCard(e.post));
     });
     return { el: row, update: (now) => setText(time, relativeTime(e.at, now)) };
@@ -1537,15 +1620,16 @@ export class SocialApp {
     if (!media) return;
     // A post's video plays for real: the game replays the moment from where the poster stood.
     const postId = card.key.startsWith("p") ? Number(card.key.slice(1)) : Number.NaN;
-    const isPlayed = media.kind === "clip" && Number.isFinite(postId) && (this.playVideo?.(postId) ?? false);
+    const isVideo = media.kind === "clip" && !media.still;
+    const isPlayed = isVideo && Number.isFinite(postId) && (this.playVideo?.(postId) ?? false);
     if (isPlayed) return;
     const v = h("div", "sns-viewer");
     const img = h("img");
-    img.alt = media.kind === "clip" ? "投稿された動画" : "画像";
+    img.alt = isVideo ? "投稿された動画" : "画像";
     img.src = media.kind === "clip" ? (media.src() ?? "") : pictureUrl(media.key, media.motif, media.hue);
     const close = this.roundButton("close", "閉じる", () => v.remove(), "sns-viewer-close");
     v.append(close, img);
-    if (media.kind === "clip") {
+    if (isVideo) {
       const bar = h("div", "sns-viewer-bar", h("i"));
       bar.style.setProperty("--sns-clip", `${media.seconds}s`);
       v.append(bar);

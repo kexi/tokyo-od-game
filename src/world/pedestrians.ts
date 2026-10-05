@@ -226,6 +226,25 @@ export class Pedestrians {
   }
 
   /**
+   * People walking across the carriageway in front of the car, within `range` metres ahead and a
+   * lane or so either side: those a stopped car is letting cross (SocialFeed.maybePraise). Only
+   * a crossing leg of the walk may step onto the carriageway, so being on it means crossing.
+   */
+  crossingAhead(car: Vector3, forward: Vector3, range: number): Pedestrian[] {
+    const network = this.network;
+    if (!network) return [];
+    return this.list.filter((p) => {
+      const pos = p.object.position;
+      const dx = pos.x - car.x;
+      const dz = pos.z - car.z;
+      const ahead = dx * forward.x + dz * forward.z;
+      const side = Math.abs(dx * forward.z - dz * forward.x);
+      const isInFront = ahead > 1 && ahead < range && side < 4;
+      return p.state === "walk" && isInFront && network.isRoadway(pos.x, pos.z);
+    });
+  }
+
+  /**
    * Stop, turn to the car and film it for `seconds` (raising and lowering the phone included),
    * then walk on. Someone already filming just keeps at it for longer; `makePhone` is only called
    * for a new filmer. Returns whether this person started filming now.

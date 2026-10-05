@@ -13,7 +13,29 @@ import { SOCIAL_APP_NAME } from "./socialTheme";
  * accounts that post the 晒し.
  */
 
-export type PictureMotif = "cat" | "sunset" | "skyline" | "car" | "ramen" | "flower" | "fuji" | "coffee";
+export type PictureMotif =
+  | "cat"
+  | "sunset"
+  | "skyline"
+  | "car"
+  | "ramen"
+  | "flower"
+  | "fuji"
+  | "coffee"
+  | "dog"
+  | "train"
+  | "bus"
+  | "rainStreet"
+  | "nightCity"
+  | "river"
+  | "bento"
+  | "snack"
+  | "park"
+  | "clouds"
+  | "crossing"
+  | "umbrella"
+  | "leaves";
+/** Every picture the app can paint (socialAvatars.ts has a painter for each). */
 export const PICTURE_MOTIFS: readonly PictureMotif[] = [
   "cat",
   "sunset",
@@ -23,7 +45,77 @@ export const PICTURE_MOTIFS: readonly PictureMotif[] = [
   "flower",
   "fuji",
   "coffee",
+  "dog",
+  "train",
+  "bus",
+  "rainStreet",
+  "nightCity",
+  "river",
+  "bento",
+  "snack",
+  "park",
+  "clouds",
+  "crossing",
+  "umbrella",
+  "leaves",
 ];
+/** The things people pick as a profile picture: each has hobby accounts (HOBBY) of its own. */
+export type AvatarMotif =
+  | "cat"
+  | "sunset"
+  | "skyline"
+  | "car"
+  | "ramen"
+  | "flower"
+  | "fuji"
+  | "coffee"
+  | "dog"
+  | "train"
+  | "bus";
+export const AVATAR_MOTIFS: readonly AvatarMotif[] = [
+  "cat",
+  "sunset",
+  "skyline",
+  "car",
+  "ramen",
+  "flower",
+  "fuji",
+  "coffee",
+  "dog",
+  "train",
+  "bus",
+];
+
+/**
+ * Who someone is, for the everyday posts (socialTexts.ts): what they post about and in what
+ * voice. Every person in the pool has one; throwaway accounts have none.
+ */
+export type Persona =
+  | "office"
+  | "student"
+  | "parent"
+  | "courier"
+  | "taxi"
+  | "busfan"
+  | "cyclist"
+  | "elder"
+  | "tourist"
+  | "touristEn"
+  | "touristZh"
+  | "photographer"
+  | "foodie"
+  | "nightshift"
+  | "instructor"
+  | "trucker"
+  | "runner"
+  | "rider"
+  | "dogwalker"
+  | "catlover"
+  | "homemaker"
+  | "shopkeeper"
+  | "carfan"
+  | "volunteer"
+  | "local";
 
 export type AvatarSpec =
   | {
@@ -62,6 +154,8 @@ export type SocialAccount = {
   isNew: boolean;
   /** Drives for a living or for fun: what they post is often their dashcam's footage. */
   drives: boolean;
+  /** Who they are, for their everyday posts (absent for throwaway and fixed accounts). */
+  persona?: Persona;
   avatar: AvatarSpec;
   banner: BannerSpec;
 };
@@ -134,7 +228,7 @@ export function avatarFor(id: string): AvatarSpec {
   if (u < AVATAR_MIX.portrait + AVATAR_MIX.illustration)
     return {
       kind: "illustration",
-      motif: pickOf(PICTURE_MOTIFS, id, "motif"),
+      motif: pickOf(AVATAR_MOTIFS, id, "motif"),
       hue: Math.floor(unitOf(id, "hue") * 360),
     };
   if (u < 1 - AVATAR_MIX.default)
@@ -164,108 +258,170 @@ function bannerFor(id: string, avatar: AvatarSpec): BannerSpec {
   const motif =
     avatar.kind === "illustration"
       ? avatar.motif
-      : pickOf(["sunset", "skyline", "fuji"] as const, id, "view");
+      : pickOf(["sunset", "skyline", "fuji", "clouds", "river", "nightCity"] as const, id, "view");
   return { kind: "picture", motif, hue };
 }
 
-type Person = { name: string; handle: string; bio: string; location?: string; drives?: boolean };
-const person = (name: string, handle: string, bio: string, location?: string, drives?: boolean): Person => ({
-  name,
-  handle,
-  bio,
-  location,
-  drives,
-});
+type Person = {
+  name: string;
+  handle: string;
+  bio: string;
+  persona?: Persona;
+  location?: string;
+  drives?: boolean;
+};
+const person = (
+  persona: Persona | undefined,
+  name: string,
+  handle: string,
+  bio: string,
+  location?: string,
+  drives?: boolean,
+): Person => ({ name, handle, bio, persona, location, drives });
 
 // People with a photo or an initial for a picture. Handles get a suffix per account.
 const PEOPLE: readonly Person[] = [
-  person("ゆうき🚗", "yuki_drive", "週末ドライブが趣味。安全運転第一", "東京都", true),
-  person("まるこ", "maruko_wknd", "猫と珈琲と週末。", "世田谷区"),
-  person("しんご｜都内勤務", "shingo_tk", "丸の内で働く会社員。電車通勤", "千代田区"),
-  person("タクシー歴20年", "taxi_veteran", "都内でタクシー乗務。道のことなら", "東京", true),
-  person("みー🍜", "mii_ramen", "ラーメンとサウナ", "豊島区"),
-  person("Kenta", "kenta_jp", "Engineer / Tokyo", "Tokyo"),
-  person("さくら🌸", "sakura_0401", "春が好き。二児の母", "練馬区"),
-  person("通勤チャリダー", "bike_commute", "自転車で片道12km通勤", "江東区"),
-  person("パパ3年目", "papa_3rd_year", "娘ラブ。子連れのおでかけ記録", "杉並区"),
-  person("ドラレコ班長", "dorareko_boss", "ドラレコ映像で安全運転を考える", "", true),
-  person("夜勤明けの看護師", "night_nurse_k", "看護師。夜勤明けのポスト多め", "東京"),
-  person("とうふ", "tofu_tofu", "ゆるく生きてます"),
-  person("あおい☁️", "aoi_sora", "空の写真を撮るのが好き", "港区"),
-  person("ひでお", "hideo1962", "定年後のんびり。散歩が日課", "葛飾区"),
-  person("Mika", "mika_tokyo", "Tokyo life / cafe hopping", "渋谷区"),
-  person("なお｜ママ", "nao_mama", "4歳と1歳の母", "板橋区"),
-  person("交通安全おじさん", "anzen_ojisan", "交通安全を呼びかけています"),
-  person("東京散歩🚶", "tokyo_sanpo", "東京の街を歩いて記録しています", "東京"),
-  person("ゆず🍋", "yuzu_lemon", "大学生。カフェ巡り", "目黒区"),
-  person("ごん", "gon_gon", ""),
-  person("鉄道と車が好き", "train_car_fan", "乗り物全般が好き", "大田区", true),
-  person("あやか💄", "ayaka_beauty", "コスメと美容の話", "新宿区"),
-  person("りょう🏃", "ryo_runner", "皇居ラン週3", "中央区"),
-  person("はるき", "haruki_s", "", "台東区"),
-  person("おかか", "okaka_onigiri", "おにぎりはおかか派"),
-  person("そら", "sora_blue", ""),
-  person("ちひろ📷", "chihiro_photo", "写真を撮って歩く人", "墨田区"),
-  person("トラック運転手のケン", "ken_trucker", "長距離トラック乗り。道路事情をポストします", "全国", true),
-  person("下町の電気屋", "denkiya_shita", "創業50年の町の電気屋です", "荒川区"),
-  person("大学生(3年)", "univ_3rd", "経済学部"),
-  person("むぎ", "mugi_wheat", ""),
-  person("千代田区民", "chiyoda_min", "", "千代田区"),
-  person("江東区在住", "koto_life", "湾岸エリアの暮らし", "江東区"),
-  person("ちゃりおじ", "chari_oji", "ロードバイク歴15年"),
-  person("のんびり主婦", "nonbiri_home", "家族のごはんと節約"),
-  person("元教習所勤務", "ex_instructor", "元・自動車教習所の指導員", "東京", true),
-  person("配達ドライバー", "delivery_run", "軽バンで都内を配達中", "東京", true),
-  person("丸の内の会社員", "office_mrnc", "", "千代田区"),
-  person("東京観光中✈️", "tokyo_trip", "旅行で東京に来てます"),
-  person("Daiki", "daiki_0812", ""),
-  person("バイク乗りのまさ", "masa_rider", "250ccで休日ツーリング", "八王子市"),
-  person("しろくま", "shirokuma_z", ""),
+  person("carfan", "ゆうき🚗", "yuki_drive", "週末ドライブが趣味。安全運転第一", "東京都", true),
+  person("local", "まるこ", "maruko_wknd", "猫と珈琲と週末。", "世田谷区"),
+  person("office", "しんご｜都内勤務", "shingo_tk", "丸の内で働く会社員。電車通勤", "千代田区"),
+  person("taxi", "タクシー歴20年", "taxi_veteran", "都内でタクシー乗務。道のことなら", "東京", true),
+  person("foodie", "みー🍜", "mii_ramen", "ラーメンとサウナ", "豊島区"),
+  person("office", "Kenta", "kenta_jp", "Engineer / Tokyo", "Tokyo"),
+  person("parent", "さくら🌸", "sakura_0401", "春が好き。二児の母", "練馬区"),
+  person("cyclist", "通勤チャリダー", "bike_commute", "自転車で片道12km通勤", "江東区"),
+  person("parent", "パパ3年目", "papa_3rd_year", "娘ラブ。子連れのおでかけ記録", "杉並区"),
+  person("carfan", "ドラレコ班長", "dorareko_boss", "ドラレコ映像で安全運転を考える", "", true),
+  person("nightshift", "夜勤明けの看護師", "night_nurse_k", "看護師。夜勤明けのポスト多め", "東京"),
+  person("local", "とうふ", "tofu_tofu", "ゆるく生きてます"),
+  person("photographer", "あおい☁️", "aoi_sora", "空の写真を撮るのが好き", "港区"),
+  person("elder", "ひでお", "hideo1962", "定年後のんびり。散歩が日課", "葛飾区"),
+  person("local", "Mika", "mika_tokyo", "Tokyo life / cafe hopping", "渋谷区"),
+  person("parent", "なお｜ママ", "nao_mama", "4歳と1歳の母", "板橋区"),
+  person("volunteer", "交通安全おじさん", "anzen_ojisan", "交通安全を呼びかけています"),
+  person("local", "東京散歩🚶", "tokyo_sanpo", "東京の街を歩いて記録しています", "東京"),
+  person("student", "ゆず🍋", "yuzu_lemon", "大学生。カフェ巡り", "目黒区"),
+  person("local", "ごん", "gon_gon", ""),
+  person("busfan", "鉄道と車が好き", "train_car_fan", "乗り物全般が好き", "大田区", true),
+  person("local", "あやか💄", "ayaka_beauty", "コスメと美容の話", "新宿区"),
+  person("runner", "りょう🏃", "ryo_runner", "皇居ラン週3", "中央区"),
+  person("local", "はるき", "haruki_s", "", "台東区"),
+  person("local", "おかか", "okaka_onigiri", "おにぎりはおかか派"),
+  person("local", "そら", "sora_blue", ""),
+  person("photographer", "ちひろ📷", "chihiro_photo", "写真を撮って歩く人", "墨田区"),
+  person(
+    "trucker",
+    "トラック運転手のケン",
+    "ken_trucker",
+    "長距離トラック乗り。道路事情をポストします",
+    "全国",
+    true,
+  ),
+  person("shopkeeper", "下町の電気屋", "denkiya_shita", "創業50年の町の電気屋です", "荒川区"),
+  person("student", "大学生(3年)", "univ_3rd", "経済学部"),
+  person("local", "むぎ", "mugi_wheat", ""),
+  person("local", "千代田区民", "chiyoda_min", "", "千代田区"),
+  person("local", "江東区在住", "koto_life", "湾岸エリアの暮らし", "江東区"),
+  person("cyclist", "ちゃりおじ", "chari_oji", "ロードバイク歴15年"),
+  person("homemaker", "のんびり主婦", "nonbiri_home", "家族のごはんと節約"),
+  person("instructor", "元教習所勤務", "ex_instructor", "元・自動車教習所の指導員", "東京", true),
+  person("courier", "配達ドライバー", "delivery_run", "軽バンで都内を配達中", "東京", true),
+  person("office", "丸の内の会社員", "office_mrnc", "", "千代田区"),
+  person("tourist", "東京観光中✈️", "tokyo_trip", "旅行で東京に来てます"),
+  person("local", "Daiki", "daiki_0812", ""),
+  person("rider", "バイク乗りのまさ", "masa_rider", "250ccで休日ツーリング", "八王子市"),
+  person("local", "しろくま", "shirokuma_z", ""),
+  person("office", "外回り営業マン", "eigyo_soto", "営業で都内をぐるぐる。社用車と電車", "東京"),
+  person("student", "専門学生のりく", "riku_senmon", "デザイン専門学校1年"),
+  person("courier", "チャリ配達員", "chari_haitatsu", "自転車で料理を運んでます", "渋谷区"),
+  person("taxi", "個人タクシーのやまさん", "kojin_yama", "個人タクシー。安全・丁寧がモットー", "東京", true),
+  person("elder", "下町のおばあちゃん", "shitamachi_baa", "孫にスマホを習いました", "墨田区"),
+  person("tourist", "地方から観光", "kanko_tokyo", "年に一度の東京旅行", ""),
+  person(
+    "touristEn",
+    "Lena ✈️ Tokyo",
+    "lena_in_tokyo",
+    "Two weeks in Japan. Walking everywhere.",
+    "Travelling",
+  ),
+  person("touristEn", "Sam walks Japan", "samwalks_jp", "Slow travel, coffee, trains.", "Travelling"),
+  person("touristZh", "小雨在东京", "xiaoyu_tokyo", "东京旅行中 ✈️", "旅行中"),
+  person("touristZh", "阿杰旅行记", "ajie_trip", "喜欢拍照和散步", "旅行中"),
+  person("nightshift", "夜勤の警備員", "keibi_yakin", "夜のビルを見回っています", "東京"),
+  person("volunteer", "通学路見守り隊", "mimamori_tai", "朝夕の通学路で旗を持っています"),
+  person("shopkeeper", "商店街の八百屋", "yaoya_shoten", "季節の野菜あります", "北区"),
+  person("homemaker", "ゆるっと家事", "yurutto_kaji", "家事と夕飯の記録"),
+  person("photographer", "まちかど写真部", "machikado_photo", "交差点と雨の日の写真が好き", "東京"),
+  person(
+    "instructor",
+    "教習指導員のみき",
+    "miki_kyoshu",
+    "教習所で指導員をしています。安全確認はしつこく",
+    "東京",
+    true,
+  ),
+  person("runner", "出勤前ラン", "asa_run_kinmu", "出勤前に川沿いを走ってます", "文京区"),
+  person("rider", "原付通勤のゆか", "yuka_gentsuki", "原付で通勤。二段階右折は守る派", "足立区", true),
+  person("trucker", "大型ドライバーのとし", "toshi_ogata", "大型トラックで関東を回ってます", "埼玉", true),
 ];
 
 // People whose picture is a thing they love (by motif).
-const HOBBY: Record<PictureMotif, readonly Person[]> = {
+const HOBBY: Record<AvatarMotif, readonly Person[]> = {
   cat: [
-    person("ねこと暮らす🐈", "neko_kurashi", "保護猫2匹と暮らしています"),
-    person("黒猫のいる部屋", "kuroneko_room", "黒猫のクロ（5歳）"),
+    person("catlover", "ねこと暮らす🐈", "neko_kurashi", "保護猫2匹と暮らしています"),
+    person("catlover", "黒猫のいる部屋", "kuroneko_room", "黒猫のクロ（5歳）"),
   ],
   sunset: [
-    person("夕焼けハンター", "yuyake_hunter", "夕焼けと空の写真"),
-    person("空ログ", "sora_log", "毎日の空を記録"),
+    person("photographer", "夕焼けハンター", "yuyake_hunter", "夕焼けと空の写真"),
+    person("photographer", "空ログ", "sora_log", "毎日の空を記録"),
   ],
   skyline: [
-    person("東京夜景さんぽ", "tokyo_yakei", "夜景と街の写真", "東京"),
-    person("湾岸ビュー", "wangan_view", "ベイエリアの景色", "江東区"),
+    person("photographer", "東京夜景さんぽ", "tokyo_yakei", "夜景と街の写真", "東京"),
+    person("photographer", "湾岸ビュー", "wangan_view", "ベイエリアの景色", "江東区"),
   ],
   car: [
-    person("車好きのたけし", "takeshi_cars", "旧車と国産スポーツが好き", "", true),
-    person("週末ドライバー", "wknd_driver", "安全運転で行こう", "", true),
+    person("carfan", "車好きのたけし", "takeshi_cars", "旧車と国産スポーツが好き", "", true),
+    person("carfan", "週末ドライバー", "wknd_driver", "安全運転で行こう", "", true),
   ],
   ramen: [
-    person("麺活中", "menkatsu", "醤油派。週3ラーメン"),
-    person("ラーメン部長", "ramen_bucho", "替え玉は2回まで"),
+    person("foodie", "麺活中", "menkatsu", "醤油派。週3ラーメン"),
+    person("foodie", "ラーメン部長", "ramen_bucho", "替え玉は2回まで"),
   ],
   flower: [
-    person("花と緑の記録🌷", "hana_midori", "季節の花を撮っています"),
-    person("ベランダ菜園", "veranda_farm", "トマト育ててます"),
+    person("photographer", "花と緑の記録🌷", "hana_midori", "季節の花を撮っています"),
+    person("homemaker", "ベランダ菜園", "veranda_farm", "トマト育ててます"),
   ],
   fuji: [
-    person("富士山が見える日", "fuji_mieru", "東京から富士山が見えた日を記録"),
-    person("山とカメラ", "yama_camera", "週末は山へ"),
+    person("photographer", "富士山が見える日", "fuji_mieru", "東京から富士山が見えた日を記録"),
+    person("photographer", "山とカメラ", "yama_camera", "週末は山へ"),
   ],
-  coffee: [person("喫茶店めぐり", "kissaten_meguri", "純喫茶が好き"), person("珈琲と本", "coffee_hon", "")],
+  coffee: [
+    person("foodie", "喫茶店めぐり", "kissaten_meguri", "純喫茶が好き"),
+    person("foodie", "珈琲と本", "coffee_hon", ""),
+  ],
+  dog: [
+    person("dogwalker", "柴犬と散歩", "shiba_sanpo", "柴犬（7歳）と朝夕の散歩"),
+    person("dogwalker", "トイプーの毎日", "toypoo_days", "ふわふわの家族"),
+  ],
+  train: [
+    person("busfan", "電車の見える部屋", "densha_mieru", "線路沿いに住んでいます", "東京"),
+    person("busfan", "乗り鉄ときどきバス", "noritetsu_bus", "乗るのが好き"),
+  ],
+  bus: [
+    person("busfan", "路線バス乗り歩き", "rosen_bus_walk", "都内の路線バスに乗って記録しています", "東京"),
+    person("busfan", "バス停の時刻表", "busstop_jikoku", "バスの一番前の席が好き"),
+  ],
 };
 
 // Throwaway accounts: no picture, made to post a clip.
 const THROWAWAY: readonly Person[] = [
-  person("通りすがり", "toorisugari", ""),
-  person("名無しのドラレコ", "dorareko", "", "", true),
-  person("ドラレコ晒し", "sarashi", "危ない運転を記録しています", "", true),
-  person("危険運転まとめ", "kiken_matome", "危険運転の動画を載せています", "", true),
-  person("見た人", "mitahito", ""),
-  person("匿名希望", "tokumei", ""),
-  person("交通マナー監視", "manner_watch", ""),
-  person("user", "user", ""),
+  person(undefined, "通りすがり", "toorisugari", ""),
+  person(undefined, "名無しのドラレコ", "dorareko", "", "", true),
+  person(undefined, "ドラレコ晒し", "sarashi", "危ない運転を記録しています", "", true),
+  person(undefined, "危険運転まとめ", "kiken_matome", "危険運転の動画を載せています", "", true),
+  person(undefined, "見た人", "mitahito", ""),
+  person(undefined, "匿名希望", "tokumei", ""),
+  person(undefined, "交通マナー監視", "manner_watch", ""),
+  person(undefined, "user", "user", ""),
 ];
 const SUFFIXES = ["", "_88", "0315", "_jp", "2", "1987", "_01", "__", "7", "_tk"];
 
@@ -320,8 +476,7 @@ function makeAccount(id: string, avatar: AvatarSpec, nowMs: number): SocialAccou
       banner: { kind: "none" },
     };
   }
-  const who =
-    avatar.kind === "illustration" ? pickOf(HOBBY[avatar.motif], id, "who") : pickOf(PEOPLE, id, "who");
+  const who = personOf(id, avatar);
   const isVouched = unitOf(id, "vouched") < 0.06;
   // Followers spread like real ones: most have tens to hundreds, a few have thousands.
   const followers = Math.round(10 ** (1 + 3 * unitOf(id, "followers") ** 1.6) * (isVouched ? 12 : 1));
@@ -340,9 +495,42 @@ function makeAccount(id: string, avatar: AvatarSpec, nowMs: number): SocialAccou
     isVouched,
     isNew,
     drives: who.drives ?? false,
+    persona: who.persona,
     avatar,
     banner: bannerFor(id, avatar),
   };
+}
+
+/** The person behind a picture that is not the default one (a hobby account by its motif). */
+function personOf(id: string, avatar: AvatarSpec): Person {
+  const isHobby =
+    avatar.kind === "illustration" && (AVATAR_MOTIFS as readonly string[]).includes(avatar.motif);
+  return isHobby ? pickOf(HOBBY[avatar.motif as AvatarMotif], id, "who") : pickOf(PEOPLE, id, "who");
+}
+
+/** Seeds of the accounts people on Y are drawn from (accountFor). */
+export const ACCOUNT_POOL = 4000;
+let personaIndex: Map<Persona, number[]> | null = null;
+
+/**
+ * The seeds (in the pool) of everyone with a persona, lowest first: the first few are its
+ * regulars. How: one pass over the pool's pictures, kept after the first call.
+ */
+export function personaSeeds(persona: Persona): readonly number[] {
+  if (!personaIndex) {
+    personaIndex = new Map();
+    for (let seed = 0; seed < ACCOUNT_POOL; seed++) {
+      const id = `u${seed}`;
+      const avatar = avatarFor(id);
+      if (avatar.kind === "default") continue;
+      const who = personOf(id, avatar).persona;
+      if (!who) continue;
+      const list = personaIndex.get(who) ?? [];
+      list.push(seed);
+      personaIndex.set(who, list);
+    }
+  }
+  return personaIndex.get(persona) ?? [];
 }
 
 const fixed = (

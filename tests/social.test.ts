@@ -156,14 +156,16 @@ describe("Y: what the app shows", () => {
     }
   });
 
-  it("fills the rest of the timeline with the last few hours of everyday posts, newest first", () => {
+  it("fills the rest of the timeline with a dozen earlier everyday posts, newest first", () => {
     const feed = new SocialFeed();
     const now = Date.UTC(2026, 9, 5, 3);
     feed.update(now);
     expect(feed.chatter.length).toBeGreaterThan(5);
+    expect(feed.chatter.length).toBeLessThanOrEqual(14);
+    // Twelve posts 20–60 real seconds apart at a game minute a second: within the last 12 hours.
     for (const c of feed.chatter) {
       expect(c.postedAt).toBeLessThanOrEqual(now);
-      expect(c.postedAt).toBeGreaterThan(now - 3 * 3_600_000);
+      expect(c.postedAt).toBeGreaterThan(now - 12 * 3_600_000);
     }
     const times = feed.chatter.map((c) => c.postedAt);
     expect(times).toEqual(times.toSorted((a, b) => b - a));
@@ -190,5 +192,72 @@ describe("Y: what the app shows", () => {
     expect(new Set(post.reposters.map((r) => r.account)).size).toBe(post.reposters.length);
     // The news account quotes the clip the police now know of.
     expect(post.quotePosts.some((q) => q.account.isVouched)).toBe(true);
+  });
+});
+
+/** Game ms in a real second at a clock speed. */
+const REAL_SECOND = (scale: number) => 1000 * scale;
+
+/** Runs `feed` for `seconds` of real time from `t0`, an update each real second. */
+const run = (feed: SocialFeed, t0: number, seconds: number, each?: (at: number, s: number) => void) => {
+  for (let s = 1; s <= seconds; s++) {
+    const at = t0 + s * REAL_SECOND(feed.timeScale);
+    feed.update(at);
+    each?.(at, s);
+  }
+};
+
+describe("Y: people post and reply at a human pace, however fast the game clock runs", () => {
+  it("posts an everyday post every 20–60 real seconds in the day, at a minute a second and in real time", () => {
+    for (const scale of [60, 1]) {
+      const feed = new SocialFeed();
+      feed.timeScale = scale;
+      const t0 = Date.UTC(2026, 9, 5, 1); // 10:00 JST
+      feed.update(t0);
+      const first = feed.chatter[0].id;
+      run(feed, t0, 600);
+      const fresh = feed.chatter.filter((c) => c.id > first).toSorted((a, b) => a.postedAt - b.postedAt);
+      // 10 real minutes: 10 to 30 posts (a few gaps may stay empty rather than repeat a post).
+      expect(fresh.length, `scale ${scale}`).toBeGreaterThanOrEqual(8);
+      expect(fresh.length, `scale ${scale}`).toBeLessThanOrEqual(30);
+      for (let i = 1; i < fresh.length; i++) {
+        const gap = (fresh[i].postedAt - fresh[i - 1].postedAt) / REAL_SECOND(scale);
+        expect(gap).toBeGreaterThanOrEqual(20);
+      }
+      // Timestamps stay in game time: the newest post is less than a real minute old.
+      const now = t0 + 600 * REAL_SECOND(scale);
+      expect(now - fresh.at(-1)!.postedAt).toBeLessThan(60 * REAL_SECOND(scale));
+    }
+  });
+
+  it("spreads a clip over a minute or two of real time, not in a burst", () => {
+    for (const scale of [60, 1]) {
+      const feed = new SocialFeed();
+      feed.timeScale = scale;
+      const post = firstPost(feed, "signal");
+      feed.update(10 * REAL_SECOND(scale));
+      const early = post.reposts / post.reach;
+      feed.update(180 * REAL_SECOND(scale));
+      const late = post.reposts / post.reach;
+      expect(early, `scale ${scale}`).toBeLessThan(0.3);
+      expect(late, `scale ${scale}`).toBeGreaterThan(0.85);
+    }
+  });
+
+  it("brings the replies under a clip one by one over a minute or two", () => {
+    for (const scale of [60, 1]) {
+      const feed = new SocialFeed();
+      feed.timeScale = scale;
+      const post = firstPost(feed, "hitAndRun");
+      const counts: number[] = [];
+      run(feed, 0, 150, () => counts.push(post.replies.filter((r) => r.replyTo === undefined).length));
+      // Not one in the first few seconds, most of them after two minutes.
+      expect(counts[4], `scale ${scale}`).toBe(0);
+      expect(counts.at(-1), `scale ${scale}`).toBeGreaterThanOrEqual(8);
+      // At most one new reply in any 5 real seconds.
+      for (let s = 5; s < counts.length; s++) expect(counts[s] - counts[s - 5]).toBeLessThanOrEqual(1);
+      const top = post.replies.filter((r) => r.replyTo === undefined);
+      for (let k = 1; k < top.length; k++) expect(top[k].postedAt).toBeGreaterThan(top[k - 1].postedAt);
+    }
   });
 });
