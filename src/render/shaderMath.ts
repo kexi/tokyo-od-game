@@ -10,6 +10,14 @@ import { dot, float, floor, fract, mix, select, vec2, vec3 } from "three/tsl";
  * Dave Hoskins' hash12 ("hash without sine"): stable at world coordinates of a few km, 0 ≤ h < 1.
  * Same arithmetic as facadeHash in world/facade.ts, which the tests check.
  */
+/**
+ * The brightest value a pass may write into the frame's half-float target (largest finite half:
+ * 65504). The sky's sun disc is already near it (skyShader.ts SKY_MAX); a pass that adds light on
+ * top (the bloom, the lens flare) would overflow to Inf, which the tone mapping turns into NaN —
+ * black — and the bloom's coarse levels spread into a square. Clamped where light is added.
+ */
+export const HALF_MAX = 65000;
+
 export function hash12(p: Node<"vec2">): Node<"float"> {
   const q = fract(vec3(p.x, p.y, p.x).mul(0.1031));
   const r = q.add(dot(q, vec3(q.y, q.z, q.x).add(33.33)));

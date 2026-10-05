@@ -26,6 +26,7 @@ import {
   Fn,
   length,
   max,
+  min,
   pow,
   screenUV,
   select,
@@ -38,6 +39,7 @@ import {
 } from "three/tsl";
 import { GRAPHICS } from "../device";
 import type { FrameReader, StreetPass } from "../render/frame";
+import { HALF_MAX } from "../render/shaderMath";
 import { smoothstep as smooth } from "./skyLight";
 
 /**
@@ -315,7 +317,8 @@ export class LensFlare implements StreetPass {
         .div(r.add(0.012))
         .mul(exp(r.div(0.35).negate()));
       flare.addAssign(vec3(1, 0.95, 0.88).mul(spikes.mul(falloff).mul(BURST_GAIN)));
-      return vec4(base.rgb.add(flare.mul(this.tint)), base.a);
+      // Within half float: at the sun's centre the starburst lands on the disc (shaderMath HALF_MAX).
+      return vec4(min(base.rgb.add(flare.mul(this.tint)), vec3(HALF_MAX)), base.a);
     })();
   }
 

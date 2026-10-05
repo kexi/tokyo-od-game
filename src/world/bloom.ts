@@ -26,6 +26,7 @@ import {
 } from "three/tsl";
 import { GRAPHICS } from "../device";
 import type { StreetPass } from "../render/frame";
+import { HALF_MAX } from "../render/shaderMath";
 import { smoothstep } from "./skyLight";
 
 /**
@@ -212,7 +213,8 @@ export class Bloom implements StreetPass {
       If(this.ghosts.greaterThan(0), () => {
         lit.addAssign(lampGhosts(this.ghostSource).mul(this.ghosts));
       });
-      return vec4(lit, base.a);
+      // Within half float: the sun's disc plus the bloom would overflow (shaderMath HALF_MAX).
+      return vec4(min(lit, vec3(HALF_MAX)), base.a);
     })();
   }
 
