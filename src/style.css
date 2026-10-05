@@ -1281,7 +1281,9 @@ pre.notice {
 }
 
 .stamp-main {
-  font-size: clamp(34px, 7vw, 64px);
+  /* Two kanji at full size; a longer name shrinks to fit about 600 px (90vw on a phone). */
+  font-size: min(clamp(34px, 7vw, 64px), calc(min(90vw, 600px) / (var(--len, 2) * 1.12 + 0.6)));
+  white-space: nowrap;
   letter-spacing: 0.12em;
   line-height: 1.1;
 }
@@ -1301,7 +1303,7 @@ pre.notice {
 }
 
 .stamp.severe .stamp-main {
-  font-size: clamp(48px, 11vw, 104px);
+  font-size: min(clamp(48px, 11vw, 104px), calc(min(90vw, 760px) / (var(--len, 2) * 1.12 + 0.6)));
 }
 
 .stamp.fade {

@@ -12,8 +12,15 @@ export class Stamps {
     private readonly shake: HTMLElement,
   ) {}
 
-  /** `main` is the large word (違反, 免許停止 …); `detail` the small line under it. */
+  /**
+   * `main` is the large word (逮捕, 確認標章 …); `detail` the small line under it. A violation
+   * (main 違反) is stamped with its own name instead — 信号無視, 指定通行区分違反 — as the one large
+   * word: the generic 違反 said nothing the red seal does not already say.
+   */
   stamp(main: string, detail = "", severe = false): void {
+    const isViolation = main === "違反" && detail !== "";
+    const big = isViolation ? detail : main;
+    const small = isViolation ? "" : detail;
     const n = this.count++;
     const el = document.createElement("div");
     el.className = severe ? "stamp severe" : "stamp";
@@ -26,12 +33,14 @@ export class Stamps {
     el.style.setProperty("--angle", `${angle}deg`);
     const word = document.createElement("div");
     word.className = "stamp-main";
-    word.textContent = main;
+    word.textContent = big;
+    // The CSS shrinks a long name (救護義務違反 …) so it stays on one line inside the frame.
+    word.style.setProperty("--len", String([...big].length));
     el.append(word);
-    if (detail) {
+    if (small) {
       const sub = document.createElement("div");
       sub.className = "stamp-sub";
-      sub.textContent = detail;
+      sub.textContent = small;
       el.append(sub);
     }
     this.layer.append(el);
