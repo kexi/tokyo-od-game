@@ -2930,6 +2930,54 @@ pre.notice {
   padding: 4px 8px;
 }
 
+/* タイトル画面の右上: the language picker (a segmented bar, as 時間帯) and 設定, the same height. */
+.title-prefs {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.lang-picker {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+#title-settings {
+  padding: 4px 14px;
+}
+/* Narrow windows: the centred title would run under the bar, so it starts below it. */
+@media (max-width: 760px) {
+  #loading {
+    padding-top: 64px;
+  }
+}
+
+/* 設定 opened from the title: nothing is paused yet, and closing it goes back to the title. */
+#settings .on-title {
+  display: none;
+}
+#loading:not([hidden]) ~ #settings .on-title {
+  display: inline;
+}
+#loading:not([hidden]) ~ #settings .in-play {
+  display: none;
+}
+
+/* 中文: Simplified glyphs throughout. Hiragino has only some of them, and mixing its Japanese forms
+   with fallback ones reads badly. Only body's font changes, so the parts with a font of their own
+   (the tickets, Y) keep it; the logo stays Japanese (lang="ja"). */
+html:lang(zh) body,
+[lang="zh-Hans"] {
+  font-family:
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Hiragino Sans",
+    system-ui, sans-serif;
+}
+html:lang(zh) [lang="ja"] {
+  font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+}
+
 /* A post's video: the poster's frame (16:9, 4:3 or upright 9:16), black beyond it */
 #video-frame {
   position: fixed;

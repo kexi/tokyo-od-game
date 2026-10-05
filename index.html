@@ -48,37 +48,55 @@
   <body>
     <canvas id="scene"></canvas>
 
-    <div id="rotate-hint" aria-live="polite">📱↻ 端末を横向きにしてください</div>
+    <div id="rotate-hint" aria-live="polite" data-i18n="title.rotate">📱↻ 端末を横向きにしてください</div>
 
     <section id="loading" aria-live="polite">
+      <!-- Language (each named in itself, so anyone finds theirs) and 設定, at the top right.
+           Text with data-i18n* is translated by src/i18n (boot.ts runs before main.ts). -->
+      <div class="title-prefs">
+        <div class="panel segmented lang-picker" role="group" aria-label="言語 / Language / 语言">
+          <button type="button" data-lang="ja" lang="ja">日本語</button>
+          <button type="button" data-lang="en" lang="en">English</button>
+          <button type="button" data-lang="zh" lang="zh-Hans" title="简体中文">中文</button>
+        </div>
+        <button type="button" id="title-settings" class="panel" data-action="settings" disabled>
+          <span aria-hidden="true">⚙</span> <span data-i18n="settings.title">設定</span>
+        </button>
+      </div>
       <div class="loading-card">
-        <h1><em class="compliance">法令厳守</em> TOKYO <span>OPEN</span> DRIVE</h1>
-        <p class="tagline">東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る</p>
-        <p id="loading-status">データを読み込み中…</p>
+        <h1 lang="ja"><em class="compliance">法令厳守</em> TOKYO <span>OPEN</span> DRIVE</h1>
+        <p class="tagline" data-i18n="title.tagline">
+          東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る
+        </p>
+        <p id="loading-status" data-i18n="loading.data">データを読み込み中…</p>
         <div class="bar"><div id="loading-bar"></div></div>
         <fieldset class="options">
           <label class="opt opt-start">
-            <span>スタート地点</span>
+            <span data-i18n="title.startPlace">スタート地点</span>
             <select id="opt-start" aria-describedby="opt-start-note"></select>
           </label>
           <p class="sub" id="opt-start-note"></p>
           <label class="opt">
             <input type="checkbox" id="opt-ai" />
-            <span>会話 AI（Google Gemma 4 E2B・約 2.0GB）をプレイしながらダウンロード</span>
+            <span data-i18n="title.aiOption"
+              >会話 AI（Google Gemma 4 E2B・約 2.0GB）をプレイしながらダウンロード</span
+            >
           </label>
-          <p class="sub" id="opt-ai-note">
+          <p class="sub" id="opt-ai-note" data-i18n="title.aiNote">
             端末内（WebGPU）で動き、会話は外部に送信されません。完了までは定型応答で話せます。Wi-Fi 推奨。
           </p>
           <label class="opt">
             <input type="checkbox" id="opt-voice" checked />
-            <span>歩行者の声（音声合成 sanoTTS-jp・約 6MB）</span>
+            <span data-i18n="title.voiceOption">歩行者の声（音声合成 sanoTTS-jp・約 6MB）</span>
           </label>
         </fieldset>
-        <button id="start" type="button" disabled>スタート</button>
+        <button id="start" type="button" disabled data-i18n="title.start">スタート</button>
         <p class="title-links">
-          <button type="button" data-action="credits">出典・ライセンス</button>
+          <button type="button" data-action="credits" data-i18n="title.credits">出典・ライセンス</button>
         </p>
-        <p class="keys">W/↑ アクセル・S/↓ ブレーキ/バック・A D/← → ハンドル・Space サイド・R 復帰</p>
+        <p class="keys" data-i18n="title.keys">
+          W/↑ アクセル・S/↓ ブレーキ/バック・A D/← → ハンドル・Space サイド・R 復帰
+        </p>
       </div>
     </section>
 
@@ -336,7 +354,9 @@
         >
         ｜©
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
-        contributors ｜<button type="button" data-action="credits">出典・ライセンス</button>
+        contributors ｜<button type="button" data-action="credits" data-i18n="title.credits">
+          出典・ライセンス
+        </button>
       </div>
 
       <div id="touch">
@@ -456,80 +476,109 @@
     </dialog>
 
     <dialog id="settings" aria-labelledby="settings-title">
-      <h2 id="settings-title">設定 <span class="sub">一時停止中</span></h2>
+      <h2 id="settings-title">
+        <span data-i18n="settings.title">設定</span>
+        <span class="sub in-play" data-i18n="settings.paused">一時停止中</span>
+      </h2>
+      <!-- Not translated: whoever cannot read the language in force still finds this row. -->
       <section class="settings-group">
-        <h3>操作</h3>
+        <h3 id="opt-lang-title">言語 / Language / 语言</h3>
+        <div class="control-options">
+          <select id="opt-lang" aria-labelledby="opt-lang-title">
+            <option value="ja" lang="ja">日本語</option>
+            <option value="en" lang="en">English</option>
+            <option value="zh" lang="zh-Hans">中文（简体）</option>
+          </select>
+        </div>
+      </section>
+      <section class="settings-group">
+        <h3 data-i18n="settings.controls">操作</h3>
         <div class="control-options">
           <label
-            >キー配置
+            ><span data-i18n="settings.layout">キー配置</span>
             <select id="opt-layout">
-              <option value="wasd">WASD（FPS 風・クリックでマウス視点）</option>
-              <option value="ccd">City Car Driving（矢印キー）</option>
+              <option value="wasd" data-i18n="settings.layoutWasd">
+                WASD（FPS 風・クリックでマウス視点）
+              </option>
+              <option value="ccd" data-i18n="settings.layoutCcd">City Car Driving（矢印キー）</option>
             </select>
           </label>
           <label
-            >操作モード
+            ><span data-i18n="settings.assist">操作モード</span>
             <select id="opt-assist">
-              <option value="easy">簡単（ライト・ワイパー・ウインカー・ベルト・停止保持を自動）</option>
-              <option value="real">リアル（すべて自分で操作）</option>
+              <option value="easy" data-i18n="settings.assistEasy">
+                簡単（ライト・ワイパー・ウインカー・ベルト・停止保持を自動）
+              </option>
+              <option value="real" data-i18n="settings.assistReal">リアル（すべて自分で操作）</option>
             </select>
           </label>
         </div>
       </section>
       <section class="settings-group">
-        <h3>運転席</h3>
+        <h3 data-i18n="settings.seat">運転席</h3>
         <div class="control-options">
           <label
-            >目の高さ <output id="opt-seat-up-value"></output>
+            ><span data-i18n="settings.seatUp">目の高さ</span> <output id="opt-seat-up-value"></output>
             <input id="opt-seat-up" type="range" min="-0.08" max="0.16" step="0.01" />
           </label>
           <label
-            >前後 <output id="opt-seat-back-value"></output>
+            ><span data-i18n="settings.seatBack">前後</span> <output id="opt-seat-back-value"></output>
             <input id="opt-seat-back" type="range" min="-0.1" max="0.12" step="0.01" />
           </label>
           <label
-            >ミラーの飾り
+            ><span data-i18n="settings.charm">ミラーの飾り</span>
             <select id="opt-charm">
-              <option value="none">なし</option>
-              <option value="plush">ぬいぐるみ</option>
-              <option value="omamori">お守り（交通安全）</option>
-              <option value="both">両方</option>
+              <option value="none" data-i18n="settings.charmNone">なし</option>
+              <option value="plush" data-i18n="settings.charmPlush">ぬいぐるみ</option>
+              <option value="omamori" data-i18n="settings.charmOmamori">お守り（交通安全）</option>
+              <option value="both" data-i18n="settings.charmBoth">両方</option>
             </select>
           </label>
         </div>
-        <p class="sub">
+        <p class="sub" data-i18n="settings.charmNote">
           飾りは小さく、ミラーより下に。視野やミラーの効用を妨げる物は違反になりえます（道路交通法第55条第2項、東京都道路交通規則第8条第8号）。
         </p>
       </section>
       <section class="settings-group">
-        <h3>画面</h3>
+        <h3 data-i18n="settings.screen">画面</h3>
         <div class="control-options">
-          <label class="check"><input id="opt-minimap" type="checkbox" /> 小さな地図</label>
+          <label class="check"
+            ><input id="opt-minimap" type="checkbox" />
+            <span data-i18n="settings.minimap">小さな地図</span></label
+          >
           <label
-            >小さな地図の向き（地図のクリックでも切り替え）
+            ><span data-i18n="settings.minimapNorth">小さな地図の向き（地図のクリックでも切り替え）</span>
             <select id="opt-minimap-north">
-              <option value="heading">進行方向が上</option>
-              <option value="north">北が上</option>
+              <option value="heading" data-i18n="settings.minimapHeading">進行方向が上</option>
+              <option value="north" data-i18n="settings.minimapNorthUp">北が上</option>
             </select>
           </label>
-          <label class="check"><input id="opt-nav" type="checkbox" /> 交差点の案内（ナビ）</label>
+          <label class="check"
+            ><input id="opt-nav" type="checkbox" />
+            <span data-i18n="settings.nav">交差点の案内（ナビ）</span></label
+          >
         </div>
       </section>
       <section class="settings-group">
-        <h3>画質</h3>
+        <h3 data-i18n="settings.graphics">画質</h3>
         <div class="control-options graphics-options" id="graphics-options"></div>
       </section>
       <section class="settings-group">
-        <h3>音</h3>
+        <h3 data-i18n="settings.sound">音</h3>
         <div class="control-options">
           <label
-            >音量 <output id="opt-volume-value"></output>
+            ><span data-i18n="settings.volume">音量</span> <output id="opt-volume-value"></output>
             <input id="opt-volume" type="range" min="0" max="1" step="0.05" />
           </label>
         </div>
       </section>
-      <p class="sub">設定はこのブラウザに保存されます。</p>
-      <form method="dialog"><button>閉じて再開</button></form>
+      <p class="sub" data-i18n="settings.saved">設定はこのブラウザに保存されます。</p>
+      <form method="dialog">
+        <button>
+          <span class="in-play" data-i18n="settings.closeResume">閉じて再開</span
+          ><span class="on-title" data-i18n="settings.close">閉じる</span>
+        </button>
+      </form>
     </dialog>
 
     <dialog id="parking-dialog" aria-labelledby="parking-title">
@@ -581,6 +630,8 @@
       <form method="dialog"><button>閉じる</button></form>
     </dialog>
 
+    <!-- The language first, as its own small script: the title is translated before the game loads. -->
+    <script type="module" src="./src/i18n/boot.ts"></script>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

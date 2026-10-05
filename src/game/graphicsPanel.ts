@@ -7,11 +7,13 @@ import {
   type GraphicsKey,
   type GraphicsPreset,
 } from "../graphics";
+import { bindText, setI18nText, t } from "../i18n";
 
 /**
  * 設定 › 画質: the preset (最高 / 高 / 中 / 低, カスタム once an item is changed by hand) and one
  * select per feature, built from GRAPHICS_ITEMS so a new feature only needs its row there. The
- * items that size what is loaded say so and offer a reload.
+ * items that size what is loaded say so and offer a reload. Every text is an i18n key, kept in the
+ * language in force.
  */
 export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void {
   const loaded = { ...graphics.settings };
@@ -20,12 +22,12 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
   for (const p of ["ultra", "high", "medium", "low", "custom"] as const) {
     const o = document.createElement("option");
     o.value = p;
-    o.textContent = PRESET_LABEL[p];
+    setI18nText(o, PRESET_LABEL[p]);
     // カスタム is where hand-made settings land, not a choice of its own.
     o.disabled = p === "custom";
     preset.append(o);
   }
-  root.append(labelled("プリセット", preset, "graphics-preset"));
+  root.append(labelled(() => t("graphics.preset"), preset, "graphics-preset"));
 
   const selects = new Map<GraphicsKey, HTMLSelectElement>();
   for (const item of GRAPHICS_ITEMS) {
@@ -34,14 +36,15 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
     for (const opt of item.options) {
       const o = document.createElement("option");
       o.value = opt.value;
-      o.textContent = opt.label;
+      setI18nText(o, opt.label);
       select.append(o);
     }
     select.addEventListener("change", () =>
       graphics.set(withItem(graphics.settings, item.key, select.value)),
     );
     selects.set(item.key, select);
-    root.append(labelled(item.onReload ? `${item.label}（再読み込みで反映）` : item.label, select));
+    const text = () => (item.onReload ? t("graphics.reloadSuffix", { label: t(item.label) }) : t(item.label));
+    root.append(labelled(text, select));
   }
   preset.addEventListener("change", () => {
     const isPreset = preset.value !== "custom";
@@ -53,9 +56,11 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
   reload.hidden = true;
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = "再読み込み";
+  setI18nText(button, "graphics.reload");
   button.addEventListener("click", () => location.reload());
-  reload.append("描画距離・車と歩行者の数・アンチエイリアスは再読み込みで変わります。 ", button);
+  const note = document.createElement("span");
+  setI18nText(note, "graphics.reloadNote");
+  reload.append(note, " ", button);
   root.after(reload);
 
   const show = () => {
@@ -68,9 +73,12 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
   show();
 }
 
-function labelled(text: string, control: HTMLElement, className?: string): HTMLLabelElement {
+/** A label whose text (a span, so a language switch can redo it) sits above its control. */
+function labelled(text: () => string, control: HTMLElement, className?: string): HTMLLabelElement {
   const label = document.createElement("label");
   if (className) label.className = className;
-  label.append(text, control);
+  const span = document.createElement("span");
+  bindText(span, text);
+  label.append(span, control);
   return label;
 }

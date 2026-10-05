@@ -1,6 +1,7 @@
 import { personaPrompt, QUICK_QUESTIONS, templateReply, type Surroundings } from "../ai/dialogue";
 import { NpcBrain } from "../ai/llm";
 import type { Voice, VoiceFrom } from "../ai/tts";
+import { t } from "../i18n";
 import type { Pedestrian } from "../world/pedestrians";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
@@ -114,7 +115,7 @@ export class ConversationController {
       ? isCached
         ? "保存済みのモデルがあります（ダウンロード不要）。"
         : ""
-      : `この端末では利用できません: ${support.reason}`;
+      : `この端末では利用できません: ${support.reason ? t(support.reason) : ""}`;
     $<HTMLButtonElement>("#ai-consent-ok").disabled = !support.ok;
     $<HTMLButtonElement>("#ai-consent-ok").textContent = isCached ? "有効化" : "ダウンロードして有効化";
     $<HTMLButtonElement>("#ai-clear").hidden = !isCached;

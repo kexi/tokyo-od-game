@@ -22,8 +22,10 @@ import {
 } from "three";
 import type { z } from "zod";
 import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
+// As a namespace: main has its own `t`s (times, taxis) in inner scopes.
+import * as i18n from "./i18n";
 
-const SPAWN_DEFAULT = { ...SPAWN, label: "東京駅 丸の内" };
+const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
 import { GRAPHICS, pixelRatioFor, QUALITY } from "./device";
 import { buildGraphicsPanel } from "./game/graphicsPanel";
 import type { GraphicsSettings } from "./graphics";
@@ -184,8 +186,9 @@ async function loadJson<S extends z.ZodType>(name: string, schema: S): Promise<z
   }
 }
 
-function setLoading(text: string, progress: number): void {
-  $("#loading-status").textContent = text;
+/** The title screen's progress line; `text` runs again when the language is switched. */
+function setLoading(text: () => string, progress: number): void {
+  i18n.bindText($("#loading-status"), text);
   $("#loading-bar").style.width = `${Math.round(progress * 100)}%`;
 }
 
@@ -199,10 +202,10 @@ function toast(text: string, color = "#ffe14d"): void {
 }
 
 async function main(): Promise<void> {
-  setLoading("物理エンジンを初期化中…", 0.04);
+  setLoading(() => i18n.t("loading.physics"), 0.04);
   await RAPIER.init();
 
-  setLoading("東京都オープンデータを読み込み中…", 0.1);
+  setLoading(() => i18n.t("loading.openData"), 0.1);
   const [poiFile, geoidGrid, stopFile, areaFile] = await Promise.all([
     loadJson("pois.json", PoiFileSchema),
     loadJson("geoid.json", GeoidGridSchema),
@@ -241,7 +244,7 @@ async function main(): Promise<void> {
   const camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 40000);
 
   const dem = new DemStore(new Geoid(geoidGrid));
-  setLoading(`地形と 3D モデルを読み込み中…（スタート: ${spawn.label}）`, 0.18);
+  setLoading(() => i18n.t("loading.models", { place: spawn.label() }), 0.18);
   // 車内視点 (loaded with the other models, attached to the player's car once it exists).
   const cockpit = new Cockpit();
   // ミラーの飾り: hung in the car once both it and the cockpit (whose mirror they hang from) exist.
@@ -1390,6 +1393,8 @@ async function main(): Promise<void> {
   settingsDialog.addEventListener("close", () => {
     paused = pausedBeforeSettings;
   });
+  // The title screen's 設定 waits (disabled) until the dialog's controls above are wired.
+  $<HTMLButtonElement>("#title-settings").disabled = false;
   input.on("cameraPrev", () => {
     chase.cycle();
     chase.cycle();
@@ -1563,13 +1568,12 @@ async function main(): Promise<void> {
     if (!support.ok) {
       optAi.disabled = true;
       optAi.checked = false;
-      optAiNote.textContent = `この端末では会話 AI を使えません（${support.reason}）。定型応答で話せます。`;
+      const reason = support.reason;
+      i18n.bindText(optAiNote, () => i18n.t("title.aiUnsupported", { reason: reason ? i18n.t(reason) : "" }));
       return;
     }
     optAi.checked = NpcBrain.hasConsent();
-    if (cached)
-      optAiNote.textContent =
-        "ダウンロード済みのモデルを使います（再ダウンロード不要）。端末内で動き、会話は外部に送信されません。";
+    if (cached) i18n.bindText(optAiNote, () => i18n.t("title.aiCached"));
   })();
 
   startButton.addEventListener("click", () => {
@@ -1641,16 +1645,17 @@ async function main(): Promise<void> {
       const tilesProgress = buildings.loadProgress();
       const waited = now - loadStart;
       setLoading(
-        groundReady
-          ? `PLATEAU 3D 都市モデルを読み込み中… ${Math.round(tilesProgress * 100)}%`
-          : "地形を構築中…",
+        () =>
+          groundReady
+            ? i18n.t("loading.plateau", { percent: Math.round(tilesProgress * 100) })
+            : i18n.t("loading.terrain"),
         0.25 + 0.75 * (groundReady ? 0.3 + 0.7 * tilesProgress : 0),
       );
       const isReady = groundReady && (tilesProgress >= 0.999 || waited > 20000) && waited > 1500;
       if (isReady && state === "loading") {
         state = "ready";
         startButton.disabled = false;
-        setLoading("準備完了！", 1);
+        setLoading(() => i18n.t("loading.ready"), 1);
       }
       renderer.render(scene, camera);
       return;
@@ -3759,5 +3764,5 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   warn("fatal", { error: String(error) });
-  setLoading(`起動に失敗しました: ${String(error)}`, 0);
+  setLoading(() => i18n.t("loading.failed", { error: String(error) }), 0);
 });
