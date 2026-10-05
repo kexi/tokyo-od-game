@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX } from "../geo/tiles";
-import { warn } from "../log";
+import { warn, type LogFields } from "../log";
 import { anchors, M_LAT, M_LON, reversed } from "./anchors";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { CLOSURE, MAX_CLOSURE_AREA_KM2, ringAreaKm2, type ClosureKind } from "./closures";
@@ -369,12 +369,21 @@ const CLOSED_SHARE_WARN = 0.5;
  * A guard for any misread that shuts a whole district, whatever its cause: logged, not undone,
  * since which record is wrong cannot be told from here.
  */
-function warnIfDistrictClosed(graph: RoadGraph): void {
+export type RegulationDiagnostic =
+  | { event: "closures_implausible_share"; fields: LogFields<"closures_implausible_share"> }
+  | { event: "closure_area_implausible"; fields: LogFields<"closure_area_implausible"> };
+type ReportDiagnostic = (diagnostic: RegulationDiagnostic) => void;
+const reportDiagnostic: ReportDiagnostic = ({ event, fields }) => warn(event, fields);
+
+function warnIfDistrictClosed(graph: RoadGraph, report: ReportDiagnostic): void {
   const streets = graph.segments.filter((s) => s.line.kind !== "highway");
   const closed = streets.filter((s) => s.closures.length > 0).length;
   const isImplausible = closed >= 200 && closed > streets.length * CLOSED_SHARE_WARN;
   if (!isImplausible) return;
-  warn("closures_implausible_share", { closed, streets: streets.length, maxShare: CLOSED_SHARE_WARN });
+  report({
+    event: "closures_implausible_share",
+    fields: { closed, streets: streets.length, maxShare: CLOSED_SHARE_WARN },
+  });
 }
 
 /**
@@ -385,6 +394,7 @@ export function applyRegulations(
   graph: RoadGraph,
   data: RegulationData,
   frame: LocalFrame,
+  report: ReportDiagnostic = reportDiagnostic,
 ): AppliedRegulations {
   const oneways = new LineGrid<RuleTime>();
   for (const r of data.oneway) {
@@ -406,11 +416,14 @@ export function applyRegulations(
     // 環七 truck ban read as 通行止め closed a whole district), so drop it here too, with a log.
     const areaKm2 = ringAreaKm2(r, next);
     if (areaKm2 > MAX_CLOSURE_AREA_KM2) {
-      warn("closure_area_implausible", {
-        areaKm2: Math.round(areaKm2 * 10) / 10,
-        maxKm2: MAX_CLOSURE_AREA_KM2,
-        kind: closure.kind,
-        at: r.slice(next, next + 2),
+      report({
+        event: "closure_area_implausible",
+        fields: {
+          areaKm2: Math.round(areaKm2 * 10) / 10,
+          maxKm2: MAX_CLOSURE_AREA_KM2,
+          kind: closure.kind,
+          at: r.slice(next, next + 2),
+        },
       });
       continue;
     }
@@ -516,7 +529,7 @@ export function applyRegulations(
       seg.limitKind = "zone";
     }
   }
-  warnIfDistrictClosed(graph);
+  warnIfDistrictClosed(graph, report);
 
   // Segment index for the point features.
   const segs = new LineGrid<Segment>();

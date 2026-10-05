@@ -3,7 +3,7 @@ import {
   CanvasTexture,
   Color,
   CustomBlending,
-  InstancedMesh,
+  type InstancedMesh,
   Matrix4,
   MeshStandardMaterial,
   OneFactor,
@@ -17,6 +17,7 @@ import {
   type Object3D,
   type Scene,
 } from "three";
+import { RoadInstances } from "./roadInstances";
 import { type Node, SpriteNodeMaterial } from "three/webgpu";
 import { materialColor, materialOpacity, sRGBTransferEOTF, sRGBTransferOETF, vec4 } from "three/tsl";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -431,6 +432,7 @@ export class OrbisDevices {
   private portableDay = "";
   private dayCheckedAt = -Infinity;
   private meshes: InstancedMesh[] = [];
+  private readonly instances = new RoadInstances();
   /** Lens of each site's lanes, fixed sites first, then the portable ones: lensOf[site][lane]. */
   private lensOf: LensRef[][] = [];
   private flashes: Array<{ lens: LensRef; at: number; glow: Sprite; material: SpriteNodeMaterial }> = [];
@@ -517,14 +519,18 @@ export class OrbisDevices {
   /** Place the devices and their signs on a new road graph (also after re-anchoring the frame). */
   rebuild(graph: RoadGraph, frame: LocalFrame): void {
     this.last = { graph, frame };
-    this.clear();
-    if (!this.kit || !this.entries) return;
+    this.clear(true);
+    if (!this.kit || !this.entries) {
+      this.instances.end();
+      return;
+    }
     this.sites = planSites(graph, this.entries, frame);
     this.warnings = planWarnings(graph, this.entries, this.sites, frame);
     const context = this.portableKit ? this.portableContext() : null;
     this.portableDay = context ? dayKey(context.day) : "";
     this.portable = context ? planPortable(graph, frame, context.day, context.schools) : [];
     this.build(this.kit, context);
+    this.instances.end();
     log("orbis_placed", {
       sites: this.sites.map((s) => ({ siteId: s.entry.id, kind: s.kind, lanes: s.lanes, limitKmh: s.limit })),
       signs: this.warnings.length,
@@ -618,7 +624,9 @@ export class OrbisDevices {
     if (isNewDay) this.rebuild(this.last.graph, this.last.frame);
   }
 
-  clear(): void {
+  clear(reuse = false): void {
+    if (reuse) this.instances.begin();
+    else this.instances.clear();
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
     this.lensOf = [];
@@ -760,7 +768,7 @@ export class OrbisDevices {
     matrices: Matrix4[],
     castShadow: boolean,
   ): InstancedMesh {
-    const mesh = new InstancedMesh(geometry, material, matrices.length);
+    const mesh = this.instances.take(geometry, material, matrices.length);
     matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
     mesh.frustumCulled = false; // instances span the whole area
     mesh.castShadow = castShadow;

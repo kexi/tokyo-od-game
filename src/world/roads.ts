@@ -74,12 +74,36 @@ export function estimatedLimit(line: RoadLine): number {
 const CELL = 32;
 const cellKey = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
 
+export type RoadGraphSnapshot = {
+  segments: Array<Omit<Segment, "pts"> & { pts: Array<[number, number, number]> }>;
+  nodes: Map<number, number[]>;
+  pieces: Map<string, Array<[number, number]>> | null;
+};
+
 export class RoadGraph {
   readonly segments: Segment[] = [];
   readonly nodes = new Map<number, number[]>(); // node id → segment ids
   private readonly nodeIds = new Map<string, number>();
   /** Polyline pieces [segment id, point index] by 32 m cell, for carriageway tests. */
   private pieces: Map<string, Array<[number, number]>> | null = null;
+
+  snapshot(): RoadGraphSnapshot {
+    return {
+      segments: this.segments.map((seg) => ({ ...seg, pts: seg.pts.map((p) => [p.x, p.y, p.z]) })),
+      nodes: this.nodes,
+      pieces: this.pieces,
+    };
+  }
+
+  /** Structured clone drops Vector3 and RoadGraph methods; keep the computed spatial index. */
+  static restore(data: RoadGraphSnapshot, frame: LocalFrame): RoadGraph {
+    const graph = new RoadGraph([], frame);
+    for (const seg of data.segments)
+      graph.segments.push({ ...seg, pts: seg.pts.map((p) => new Vector3(...p)) });
+    for (const [node, ids] of data.nodes) graph.nodes.set(node, ids);
+    graph.pieces = data.pieces;
+    return graph;
+  }
 
   constructor(lines: RoadLine[], frame: LocalFrame) {
     for (const line of splitAtJunctions(lines)) {

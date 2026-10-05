@@ -201,11 +201,23 @@ export const LOG_EVENTS = {
   pavement_tile_failed: failedWith({ key: z.string() }),
   regulation_tile_failed: failedWith({ path: z.string() }),
   road_tile_failed: failedWith({ key: z.string() }),
+  road_worker_failed: failedWith(),
+  road_network_failed: failedWith(),
   route_tile_failed: failedWith({ key: z.string() }),
   water_tile_failed: failedWith({ key: z.string() }),
 
   // ---------- the world as built ----------
+  road_network_prepared: info({
+    backend: z.enum(["worker", "inline"]),
+    segments: count,
+    computeMs: z.number(),
+    restoreMs: z.number(),
+    sendMs: z.number(),
+    durationMs: z.number(),
+  }),
   road_network_built: info({
+    durationMs: z.number().optional(),
+    stagesMs: z.record(z.string(), z.number()).optional(),
     segments: count,
     oneway: count,
     posted: count,
