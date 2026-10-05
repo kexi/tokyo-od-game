@@ -25,6 +25,15 @@ const PORT = Number(args.port ?? 9343);
 const LANG = args.lang ?? "en";
 const ONLY = args.only ? new Set(args.only.split(",")) : null;
 
+/** The game's panels kept (the dialogue, the notices, the navi), not the key bar, the clock and hints. */
+const QUIET_HUD = `document.head.insertAdjacentHTML('beforeend', '<style>#hud-toolbar, #hud-time, #talk-hint, #autopilot-chip, #phone-button, #hud-mission, #hud-score { visibility: hidden !important; }</style>')`;
+
+/** A patrol car 30 m behind sees a red light run (the dev hook) and lights up. */
+const startPursuit = async (game) => {
+  const isStarted = await game.ev("window.__game.debug.pursuit.start('patrol', 'signal')");
+  if (!isStarted) throw new Error("the patrol car could not be placed");
+};
+
 const STATION = { lat: 35.6813763, lon: 139.7660621, height: 46.1 };
 const SKYTREE = { lat: 35.7100392, lon: 139.810708, height: 634 };
 const TOWER = { lat: 35.658592, lon: 139.74545, height: 333 };
@@ -33,6 +42,24 @@ const TOWER = { lat: 35.658592, lon: 139.74545, height: 333 };
  * Each scene: where the car stands (as photos.mjs), what is staged there (`stage`, given the game
  * and the views helpers), how many takes and how many frames apart.
  */
+/** The car on 行幸通り before Tokyo Station (the share card's framing). */
+const STATION_FRONT_SPOT = {
+  landmark: STATION,
+  from: { lat: 35.68124, lon: 139.7652 },
+  fixed: true,
+  turn: -0.08,
+  pitch: 0.06,
+  fov: 62,
+};
+
+/**
+ * The patrol car brought 10 m behind: it stops a driver only within 22 m (pursuitEscalation
+ * STOP_GAP_M), and before the station's front it could not drive up from 30 m.
+ */
+const PATROL_BEHIND = `(() => { const G = window.__game; const u = G.getPolice(); if (!u) return; const y = G.vehicle.yaw();
+  const p = G.vehicle.position().addScaledVector({ x: Math.sin(y), y: 0, z: Math.cos(y) }, -10);
+  p.y = (G.groundY(p.x, p.z) ?? p.y) + 0.86; u.car.teleport(p, y); u.car.syncVisuals(); u.driver.place(p, y); })()`;
+
 const SCENES = [
   {
     name: "y-viral",
@@ -87,27 +114,15 @@ const SCENES = [
   },
   {
     name: "ticket",
-    at: {
-      landmark: STATION,
-      from: { lat: 35.68124, lon: 139.7652 },
-      fixed: true,
-      turn: -0.08,
-      pitch: 0.06,
-      fov: 62,
-    },
+    at: STATION_FRONT_SPOT,
     hud: "drive",
     pick: 0,
     stage: async (game) => {
-      // A patrol car 30 m behind sees the red light run (the dev hook), pulls up behind the stopped
-      // car, and the officer writes the ticket.
-      const isStarted = await game.ev("window.__game.debug.pursuit.start('patrol', 'signal')");
-      if (!isStarted) throw new Error("the patrol car could not be placed");
+      // The patrol car sees the red light run, pulls up behind the stopped car, and the officer
+      // writes the ticket.
+      await startPursuit(game);
       await game.pump(30);
-      // It stops a driver only within 22 m (pursuitEscalation STOP_GAP_M); before the station's
-      // front it could not drive up from 30 m, so it is brought 10 m behind, as the teaser does.
-      await game.ev(`(() => { const G = window.__game; const u = G.getPolice(); if (!u) return; const y = G.vehicle.yaw();
-        const p = G.vehicle.position().addScaledVector({ x: Math.sin(y), y: 0, z: Math.cos(y) }, -10);
-        p.y = (G.groundY(p.x, p.z) ?? p.y) + 0.86; u.car.teleport(p, y); u.car.syncVisuals(); u.driver.place(p, y); })()`);
+      await game.ev(PATROL_BEHIND);
       const isTicket = "document.querySelector('#ticket-dialog').open";
       // At the window the officer talks and the driver answers (open the window, the licence …):
       // the first answer each time, the cooperative one, until the ticket is written.
@@ -120,6 +135,91 @@ const SCENES = [
         throw new Error(`no ticket: ${state}`);
       }
       await game.pump(20);
+    },
+    takes: 1,
+    every: 1,
+  },
+  {
+    name: "police-window",
+    at: STATION_FRONT_SPOT,
+    hud: "all",
+    pick: 1,
+    stage: async (game) => {
+      await game.ev(QUIET_HUD);
+      await startPursuit(game);
+      await game.pump(30);
+      await game.ev(PATROL_BEHIND);
+      // The officer at the driver's window (right-hand drive: the right), knocking.
+      const isKnock = "window.__game.debug.pursuit.state().stop?.step === 'knock'";
+      if (!(await until(game, isKnock, 2400, 15))) throw new Error("the officer did not come to the window");
+      // The officer standing at the window, knocking: near the car and no longer walking (they
+      // leave for the patrol car once the driver answers). Seen from outside, ahead of the
+      // driver's door looking back along the car: the officer at the window, the car's side, the
+      // patrol car's beacons behind in the rain. (From the seat, turned to the window, the pillar
+      // and the door hid them.)
+      const officerAt = `(() => { const o = window.__game.getPursuit().host.scene.officer;
+        const root = o?.model?.root ?? o?.root ?? null; return root ? root.getWorldPosition(root.position.clone()) : null; })()`;
+      let isStanding = false;
+      for (let i = 0; i < 60 && !isStanding; i++) {
+        const before = await game.ev(
+          `(() => { const p = ${officerAt}; return p && [p.x, p.z, p.distanceTo(window.__game.vehicle.position())]; })()`,
+        );
+        await game.pump(10);
+        const after = await game.ev(`(() => { const p = ${officerAt}; return p && [p.x, p.z]; })()`);
+        isStanding = Boolean(
+          before && after && before[2] < 2.0 && Math.hypot(after[0] - before[0], after[1] - before[1]) < 0.05,
+        );
+      }
+      if (!isStanding) throw new Error("the officer did not stop at the window");
+      await game.ev(`window.__tz.camera((cam, c) => { const o = c.G.getPursuit().host.scene.officer;
+        const root = o?.model?.root ?? o?.root; const at = root.getWorldPosition(root.position.clone());
+        const y = c.G.vehicle.yaw(); const fwd = { x: Math.sin(y), z: Math.cos(y) }; const right = { x: -Math.cos(y), z: Math.sin(y) };
+        cam.position.set(at.x + right.x * 3.4 + fwd.x * 3.2, at.y + 1.45, at.z + right.z * 3.4 + fwd.z * 3.2);
+        cam.lookAt(at.x - fwd.x * 3.5, at.y + 1.05, at.z - fwd.z * 3.5); cam.fov = 50; cam.updateProjectionMatrix(); })`);
+      await game.pump(6);
+    },
+    takes: 3,
+    every: 10,
+  },
+  {
+    name: "police-chase",
+    at: { landmark: TOWER, from: { lat: 35.652, lon: 139.743 }, minWidth: 10 },
+    hud: "none",
+    pick: 1,
+    stage: async (game) => {
+      await startPursuit(game);
+      await game.pump(20);
+      // On up the street towards Tokyo Tower, the patrol car after it with its beacons on; the
+      // camera just behind the patrol car, looking past it at the car ahead and the tower.
+      await game.ev("window.__tz.drive(34)");
+      // Soon after it sets off, the two cars still close; the camera low beside the patrol car's
+      // tail, its beacons large in the foreground, the car it is after and the tower ahead.
+      await game.pump(70);
+      await game.ev(`window.__tz.camera((cam, c) => { const u = c.G.getPolice(); const p = u?.position ?? c.car;
+        const y = u ? u.car.yaw() : c.yaw; const f = { x: Math.sin(y), z: Math.cos(y) };
+        cam.position.set(p.x - f.x * 5.5 + f.z * 2.4, p.y + 1.15, p.z - f.z * 5.5 - f.x * 2.4);
+        cam.lookAt(p.x + f.x * 60, p.y + 9, p.z + f.z * 60); cam.fov = 54; cam.updateProjectionMatrix(); })`);
+      await game.pump(4);
+    },
+    takes: 3,
+    every: 6,
+  },
+  {
+    name: "violation-review",
+    at: STATION_FRONT_SPOT,
+    hud: "drive",
+    pick: 0,
+    stage: async (game) => {
+      // Three violations, a moment apart, each booked with the screen as it was (the dev hook
+      // books one in the next frame); then 違反の振り返り, opened as the player opens it.
+      for (const kind of ["signal", "seatBelt", "phone"]) {
+        await game.ev(`void window.__game.debug.perf.violation('${kind}', 'photo', 1); true`);
+        await game.pump(75);
+      }
+      await game.ev("document.querySelector('#review-open').click()");
+      await game.pump(20);
+      const isOpen = "document.querySelector('#violations').open";
+      if (!(await game.ev(isOpen))) throw new Error("the review did not open");
     },
     takes: 1,
     every: 1,

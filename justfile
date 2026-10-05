@@ -232,6 +232,16 @@ make-photos lang="en" base="http://localhost:5173/tokyo-od-game/":
 make-cover-image:
     uv run scripts/textures/cover_image.py out/photos/tokyo-tower-east-raw.png out/cover.png
 
+# 公開・審査用の画像 9 枚と英語版の動画・YouTube の説明文を out/final に番号付きでまとめる（make-photos・make-cover-image・make-teaser-en の後）
+collect-final-media:
+    rm -rf out/final && mkdir -p out/final
+    i=1; for n in cover y-viral police-chase police-window ticket violation-review law-abiding tokyo-station tokyo-skytree-close; do \
+        src=out/photos/$n.png; [ "$n" = cover ] && src=out/cover.png; \
+        cp "$src" "out/final/$(printf '%02d' $i)-$n.png"; i=$((i + 1)); \
+    done
+    cp out/teaser.en.mp4 out/final/teaser-en.mp4
+    [ -f out/youtube-description.txt ] && cp out/youtube-description.txt out/final/ || true
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

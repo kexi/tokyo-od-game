@@ -46,6 +46,21 @@ CAPTIONS: dict[str, tuple[str, str, str]] = {
         "Engine off at the light: Tokyo's anti-idling ordinance, Art. 52",
         "left",
     ),
+    "police-window": (
+        "The officer comes to your window",
+        "Licence, offence, ticket: every stop plays out by the book",
+        "left",
+    ),
+    "police-chase": (
+        "Run, and they give chase",
+        "Patrol cars and police motorcycles. Fleeing is a crime of its own.",
+        "left",
+    ),
+    "violation-review": (
+        "Every violation, on the record",
+        "When, where, the article, the points and the fine",
+        "right",
+    ),
     "tokyo-station": (
         "The real Tokyo, built from open data",
         "Tokyo Station on a rainy night, from the driver's seat",
@@ -69,7 +84,7 @@ CAPTIONS: dict[str, tuple[str, str, str]] = {
 
 # How wide the words may run (px at 2560 wide; default 1000): short of the landmark in the middle
 # (≈ 40–48 % across), and right of the ticket's dialog (it ends ≈ 1660 px in).
-COLUMNS = {"y-viral": 860, "ticket": 720}
+COLUMNS = {"y-viral": 860, "ticket": 720, "police-window": 780, "violation-review": 720}
 
 
 def wrap(draw: ImageDraw.ImageDraw, text: str, font, width: float) -> list[str]:
