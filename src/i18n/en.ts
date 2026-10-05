@@ -5,6 +5,8 @@ import type { Messages } from "./ja";
  * English titles (Road Traffic Act), toolbar labels short enough for the 120 px buttons.
  */
 export const en: Messages = {
+  "app.title": "Law-Abiding TOKYO OPEN DRIVE",
+  "title.badge": "LAW-ABIDING",
   "title.tagline":
     "Drive Tokyo's 23 wards by the letter of the law — built from Tokyo open data × PLATEAU 3D city models",
   "title.startPlace": "Start from",

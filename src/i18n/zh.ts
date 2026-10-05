@@ -5,6 +5,8 @@ import type { Messages } from "./ja";
  * the SNS stays 「Y」. zh-TW / zh-HK browsers get this too until a Traditional dictionary exists.
  */
 export const zh: Messages = {
+  "app.title": "严守法令 TOKYO OPEN DRIVE",
+  "title.badge": "严守法令",
   "title.tagline": "严守交通法规，驾车畅行东京 23 区 —— 东京都开放数据 × PLATEAU 3D 城市模型",
   "title.startPlace": "出发地点",
   "title.aiOption": "边玩边下载对话 AI（Google Gemma 4 E2B，约 2.0 GB）",

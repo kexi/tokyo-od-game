@@ -77,6 +77,11 @@ body {
 }
 
 /* Lead of the title, styled after a 規制標識: white plate, red border, blue lettering. */
+/* Latin letters need less tracking than the four kanji to read as one stamp. */
+html:not([lang="ja"]):not([lang^="zh"]) .loading-card h1 .compliance {
+  letter-spacing: 0.12em;
+  text-indent: 0.12em;
+}
 .loading-card h1 .compliance {
   display: block;
   width: fit-content;

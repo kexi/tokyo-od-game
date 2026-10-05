@@ -122,6 +122,9 @@ export function onLocaleChange(fn: (locale: Locale) => void): () => void {
  * elements given to bindText.
  */
 export function applyI18n(root: ParentNode = document): void {
+  // The tab's title follows too (the brand stays, its 法令厳守 is translated).
+  const isWholePage = typeof document !== "undefined" && root === document;
+  if (isWholePage) document.title = t("app.title");
   for (const el of root.querySelectorAll(SELECTOR)) {
     const key = el.getAttribute("data-i18n");
     if (key) el.textContent = t(key as MessageKey);

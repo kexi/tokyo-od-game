@@ -9,6 +9,8 @@
  */
 export const ja = {
   // タイトル画面
+  "app.title": "法令厳守 TOKYO OPEN DRIVE",
+  "title.badge": "法令厳守",
   "title.tagline": "東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る",
   "title.startPlace": "スタート地点",
   "title.aiOption": "会話 AI（Google Gemma 4 E2B・約 2.0GB）をプレイしながらダウンロード",
