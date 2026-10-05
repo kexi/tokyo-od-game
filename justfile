@@ -20,11 +20,11 @@ preview: build
 
 # 東京都オープンデータ等を取得し public/data を再生成する（ライセンス検証込み）
 data:
-    node scripts/fetch-data.ts
+    pnpm exec tsx scripts/fetch-data.ts
 
 # JARTIC 交通規制情報と OSM の信号機を取得し public/data/regs・signals を再生成する
 regs:
-    node scripts/regulations.ts
+    pnpm exec tsx scripts/regulations.ts
 
 # 車のテクスチャ（assets/car/textures）を手続き生成し直す（フォントはコミット固定の Noto Sans JP）
 car-textures:
@@ -132,6 +132,11 @@ police-bike-models:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_bike.py -- shirobai public/models/police_shirobai.glb
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_bike.py -- rider public/models/police_rider.glb
 
+# 逃走車を追う警察ヘリ（汎用の中型双発機）と検問の資材（パイロン・コーンバー・誘導灯・立て看板・赤色灯）を Blender CLI でモデリングし public/models/police_heli.glb・checkpoint.glb を書き出す
+pursuit-models:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/police_heli.py -- public/models/police_heli.glb
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/checkpoint.py -- public/models/checkpoint.glb
+
 # 車内視点用のコックピット（右ハンドル）を Blender CLI でモデリングし public/models/cockpit.glb を書き出す（先に car-model）
 cockpit-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/cockpit.py -- public/models/cockpit.glb
@@ -154,7 +159,7 @@ charm-models:
 
 # 案内標識（108 系）の国道・都道番号・通称名・OSM の行き先と表示地名を public/data/routes・guide-places.json に書き出す（OSM は just regs のキャッシュを使う）
 guide-data:
-    node scripts/guide-signs.ts
+    pnpm exec tsx scripts/guide-signs.ts
 
 # 案内標識の板の文字に使う Noto Sans JP・Overpass のサブセット（woff2）を assets/signs/guide に書き出す
 guide-fonts:

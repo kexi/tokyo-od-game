@@ -302,7 +302,7 @@ sources:
 
 ## ゲームでの作り方
 
-1. **データ**：`node scripts/guide-signs.ts`（`just guide-data`）。OSM の幹線の番号・通称名・行き先と `junction=yes` の交差点名を `public/data/routes/` に、表示地名を `guide-places.json` に書き、板に出うる文字を `assets/signs/guide/charset.txt` に書く。
+1. **データ**：`pnpm exec tsx scripts/guide-signs.ts`（`just guide-data`）。OSM の幹線の番号・通称名・行き先と `junction=yes` の交差点名を `public/data/routes/` に、表示地名を `guide-places.json` に書き、板に出うる文字を `assets/signs/guide/charset.txt` に書く。
 2. **字形**：`just guide-fonts`。コミット固定の Noto Sans JP（ウェイト 700）と Overpass（700）を charset に切り出して woff2 にする（日本字 233KB・2,005 グリフ、ローマ字 14KB）。
    - Overpass は米国の道路標識書体 Highway Gothic を手本にした OFL のサンセリフである。
    - Roboto Condensed は詰めた書体で、標識の字形の要素が無い。

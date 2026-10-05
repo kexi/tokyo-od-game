@@ -64,7 +64,7 @@ sources:
 
 # データ（OSM からの抽出）
 
-`node scripts/regulations.ts police` で `public/data/police.json` だけを作り直す（警察署・試験場は前回と同じ値になることを確かめた）。中身は `scripts/orbis.ts`。型は `src/world/orbisData.ts`。[^osm]
+`pnpm exec tsx scripts/regulations.ts police` で `public/data/police.json` だけを作り直す（警察署・試験場は前回と同じ値になることを確かめた）。中身は `scripts/orbis.ts`。型は `src/world/orbisData.ts`。[^osm]
 
 | 件数 | 内容                                                                                                                                                                                               |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -13,8 +13,8 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "test": "vitest run",
-    "data": "node scripts/fetch-data.ts",
-    "regs": "node scripts/regulations.ts"
+    "data": "tsx scripts/fetch-data.ts",
+    "regs": "tsx scripts/regulations.ts"
   },
   "dependencies": {
     "3d-tiles-renderer": "^0.5.3",
@@ -32,6 +32,7 @@
     "geotiff": "^3.0.5",
     "oxfmt": "^0.68.0",
     "oxlint": "^1.86.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vitest": "^5.0.3",

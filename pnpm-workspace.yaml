@@ -1,3 +1,7 @@
+# esbuild (through tsx) runs fine without its install script, which only checks and links its
+# native binary: not run, so nothing executes at install time (pnpm 11 wants the choice stated).
+allowBuilds:
+  esbuild: false
 # Supply-chain policy: only install packages published at least 1 day ago (minutes).
 minimumReleaseAge: 1440
 onlyBuiltDependencies: []
