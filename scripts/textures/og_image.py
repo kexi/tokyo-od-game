@@ -10,7 +10,7 @@
 # ///
 """Social-share card (OGP, 1200×630): a frame of the game (scripts/teaser/og.mjs) plus the title.
 
-    uv run scripts/textures/og_image.py <scene.jpg> public/og.jpg
+    uv run scripts/textures/og_image.py <scene.png> public/og.png
 
 The frame is the game's own picture of 東京駅 on a rainy night, so it shows PLATEAU's buildings,
 OpenStreetMap's roads and 地理院タイル: their credit goes on the card itself (PDL 1.0 asks for
@@ -80,7 +80,8 @@ def main() -> None:
     shadowed((64, 590), "© OpenStreetMap contributors・地理院タイル", credit, (190, 198, 212))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    card.save(out_path, "JPEG", quality=88, optimize=True, progressive=True)
+    # PNG: the title's edges and the small credit stay sharp (JPEG blurred them into the dark scene).
+    card.save(out_path, "PNG", optimize=True)
     print(f"saved {out_path} ({out_path.stat().st_size / 1024:.0f} KB)")
 
 

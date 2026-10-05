@@ -90,7 +90,7 @@ just fetch-regs   # JARTIC 交通規制情報（約 400 MB）と OSM の信号�
 
 ```sh
 just make-teaser      # out/teaser.mp4
-just make-og-image    # public/og.jpg（雨の夜の東京駅を車内から撮り、題字を重ねる）
+just make-og-image    # public/og.png（雨の夜の東京駅を車内から撮り、題字を重ねる）
 ```
 
 - **開発サーバーが要る**: どちらも開発サーバーで動いているゲームを、ヘッドレスの Chrome でコマ送りに撮ります。既定の場所は `/Applications/Google Chrome.app` で、別の場所にあるときは環境変数 `CHROME` で指定します。

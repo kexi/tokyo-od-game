@@ -81,7 +81,7 @@ sources:
 - パーサは `yaml`（eemeli/yaml）2.9.1 を devDependency にした。既存の依存に YAML パーサは無かった。pnpm の `minimumReleaseAge: 1440` を通した（`✓ Lockfile passes supply-chain policies`）。[^yaml-pkg]
 - レビューの ID は従来どおり `models/<f>.glb` と `assets/<set>/textures/<f>` にした。下書き（localStorage）と `.review/` の形式は変えていない。
   - 開発サーバーの検査は `.jpg` のテクスチャも受け付けるようにした。ランドマークの外壁とアスファルトが .jpg のため。
-  - `public/og.jpg` などの画像は、プレビューだけ出してレビューの対象外にした。asset-review スキルが直してよい出力先に入っていないため。
+  - `public/og.png` などの画像は、プレビューだけ出してレビューの対象外にした。asset-review スキルが直してよい出力先に入っていないため。
 
 # 台帳を作って分かったこと
 

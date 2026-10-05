@@ -720,7 +720,7 @@ assets:
     name: SNS 共有カード
     purpose: SNS でゲームの URL を共有したときに出る OGP 画像（1200 × 630）。画質 最高のゲーム画面で、雨の夜の東京駅を運転席から見た 1 コマに題字と出典を重ねる。
     kind: image
-    files: [public/og.jpg]
+    files: [public/og.png]
     generator:
       script: [scripts/teaser/og.mjs, scripts/textures/og_image.py]
       recipe: make-og-image

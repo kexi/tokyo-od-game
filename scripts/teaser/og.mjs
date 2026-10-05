@@ -5,8 +5,8 @@
 //
 //   node scripts/teaser/og.mjs [--base http://localhost:5173/tokyo-od-game/] [--out out/og] [--port 9341]
 //
-// Writes one JPEG per framing (out/og/<name>.jpg, 2400×1260: twice the card, scaled down after) so
-// the best can be chosen; --pick <name> names the one og_image.py reads (out/og/scene.jpg, by
+// Writes one PNG per framing (out/og/<name>.png, 2400×1260, lossless: twice the card, scaled down after) so
+// the best can be chosen; --pick <name> names the one og_image.py reads (out/og/scene.png, by
 // default seat-near-1: the second take, the wipers at the edges of the glass).
 // Needs the dev server (just serve-dev) or a development build served with the dev hook.
 import { copyFileSync, mkdirSync } from "node:fs";
@@ -120,13 +120,13 @@ try {
     await b.evaluate(`window.__tz.seat(${shot.yaw}, ${shot.pitch}, ${shot.fov})`);
     await pump(30);
     for (let take = 0; take < TAKES; take++) {
-      await b.screenshot(join(OUT, `${shot.name}-${take}.jpg`), 95);
+      await b.screenshot(join(OUT, `${shot.name}-${take}.png`));
       await pump(30);
     }
     log("og_shot", { name: shot.name, placedOffM: Math.round(placed * 10) / 10 });
   }
   const pick = args.pick ?? "seat-near-1";
-  copyFileSync(join(OUT, `${pick}.jpg`), join(OUT, "scene.jpg"));
+  copyFileSync(join(OUT, `${pick}.png`), join(OUT, "scene.png"));
   log("og_pick", { name: pick });
 } finally {
   await b.close();

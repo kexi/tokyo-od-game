@@ -90,7 +90,7 @@ Both download large files from the network. What they fetch is kept in `.cache/`
 
 ```sh
 just make-teaser      # out/teaser.mp4
-just make-og-image    # public/og.jpg (Tokyo Station on a rainy night shot from inside the car, with the title over it)
+just make-og-image    # public/og.png (Tokyo Station on a rainy night shot from inside the car, with the title over it)
 ```
 
 - **The development server must be running**: both record the game running on the development server frame by frame with headless Chrome. The default location is `/Applications/Google Chrome.app`; if Chrome is somewhere else, set the environment variable `CHROME`.

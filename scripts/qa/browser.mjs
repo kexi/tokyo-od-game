@@ -81,8 +81,10 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
       throw new Error(res.result.exceptionDetails.exception?.description ?? "evaluate failed");
     return res.result?.result?.value;
   };
+  /** A .png file is written losslessly (the share card is cut from it); anything else as JPEG. */
   const screenshot = async (file, quality = 75) => {
-    const res = await send("Page.captureScreenshot", { format: "jpeg", quality });
+    const isPng = file.endsWith(".png");
+    const res = await send("Page.captureScreenshot", isPng ? { format: "png" } : { format: "jpeg", quality });
     writeFileSync(file, Buffer.from(res.result.data, "base64"));
     return file;
   };

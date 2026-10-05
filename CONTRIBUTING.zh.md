@@ -90,7 +90,7 @@ just fetch-regs   # JARTIC 交通管制信息（约 400 MB）和 OSM 的信号�
 
 ```sh
 just make-teaser      # out/teaser.mp4
-just make-og-image    # public/og.jpg（从车内拍摄雨夜的东京站，并叠加标题文字）
+just make-og-image    # public/og.png（从车内拍摄雨夜的东京站，并叠加标题文字）
 ```
 
 - **需要开发服务器**：两者都用无头 Chrome 逐帧拍摄在开发服务器上运行的游戏。默认位置为 `/Applications/Google Chrome.app`，在其他位置时用环境变量 `CHROME` 指定。
