@@ -99,15 +99,19 @@ export function createSkyLook(): SkyLook {
 
 // Sinless 3D hash (as the clouds' gradient()), for the stars and the skyline.
 function skyHash3(q: V3): V3 {
-  const p = fract(q.mul(vec3(0.1031, 0.103, 0.0973))).toVar();
-  p.addAssign(dot(p, p.yxz.add(33.33)));
+  // Plain expressions, no toVar()/addAssign: these are also called while a material is built,
+  // outside any Fn(), where an assignment has no stack to go to (TSL: "No stack defined").
+  const p0 = fract(q.mul(vec3(0.1031, 0.103, 0.0973)));
+  const p = p0.add(dot(p0, p0.yxz.add(33.33)));
   return fract(p.xxy.add(p.yxx).mul(p.zyx));
 }
 
 // Gradient at a lattice corner; sinless hash so every GPU produces the same clouds (SkyMesh).
 function gradient(i: V2): V2 {
-  const p = fract(vec3(i.x, i.y, i.x).mul(vec3(0.1031, 0.103, 0.0973))).toVar();
-  p.addAssign(dot(p, p.yzx.add(33.33)));
+  // Plain expressions, no toVar()/addAssign: these are also called while a material is built,
+  // outside any Fn(), where an assignment has no stack to go to (TSL: "No stack defined").
+  const p0 = fract(vec3(i.x, i.y, i.x).mul(vec3(0.1031, 0.103, 0.0973)));
+  const p = p0.add(dot(p0, p0.yzx.add(33.33)));
   return fract(p.xx.add(p.yz).mul(p.zy)).mul(2).sub(1);
 }
 

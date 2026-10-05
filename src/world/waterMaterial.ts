@@ -79,8 +79,10 @@ function waterUniforms() {
 
 // Dave Hoskins' hash12 (without sine).
 function hash12(p: V2): F {
-  const p3 = fract(vec3(p.x, p.y, p.x).mul(0.1031)).toVar();
-  p3.addAssign(dot(p3, p3.yzx.add(33.33)));
+  // Plain expressions, no toVar()/addAssign: these are also called while a material is built,
+  // outside any Fn(), where an assignment has no stack to go to (TSL: "No stack defined").
+  const p0 = fract(vec3(p.x, p.y, p.x).mul(0.1031));
+  const p3 = p0.add(dot(p0, p0.yzx.add(33.33)));
   return fract(p3.x.add(p3.y).mul(p3.z));
 }
 
