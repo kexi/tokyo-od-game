@@ -718,17 +718,19 @@ assets:
   # ---------------------------------------------------------------- 画像
   - id: og-image
     name: SNS 共有カード
-    purpose: SNS でゲームの URL を共有したときに出る OGP 画像（1200 × 630）。自作の車と標識だけを描き、題字を重ねる。
+    purpose: SNS でゲームの URL を共有したときに出る OGP 画像（1200 × 630）。画質 最高のゲーム画面で、雨の夜の東京駅を運転席から見た 1 コマに題字と出典を重ねる。
     kind: image
     files: [public/og.jpg]
     generator:
-      script: [scripts/blender/og.py, scripts/textures/og_image.py]
+      script: [scripts/teaser/og.mjs, scripts/textures/og_image.py]
       recipe: og
-    made_by: [blender-cli, procedural]
-    source: 自作（car.glb・signs.glb と標識の図柄を Blender で描画し、Noto Sans JP で題字を描いた。地図・3D 都市モデルは写していない）
-    license: repo
+    made_by: procedural
+    source: >-
+      ゲームの画面（ヘッドレス Chrome で撮影）。PLATEAU の建物・OpenStreetMap の道路・地理院タイルを含むため、
+      カードの左下に出典（PLATEAU を加工して作成・© OpenStreetMap contributors・地理院タイル）を書いた。題字は Noto Sans JP。
+    license: [repo, PDL-1.0, ODbL-1.0]
     used_by: [index.html]
-    inputs: [car, sign-plates, sign-textures, noto-sans-jp]
+    inputs: [noto-sans-jp]
 
   # ---------------------------------------------------------------- データ
   - id: sign-catalog

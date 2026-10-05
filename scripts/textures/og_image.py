@@ -8,9 +8,13 @@
 # [tool.uv]
 # exclude-newer = "2026-10-03T00:00:00Z"
 # ///
-"""Social-share card (OGP, 1200×630): the Blender render from scripts/blender/og.py plus the title.
+"""Social-share card (OGP, 1200×630): a frame of the game (scripts/teaser/og.mjs) plus the title.
 
-    uv run scripts/textures/og_image.py <scene.png> public/og.jpg
+    uv run scripts/textures/og_image.py <scene.jpg> public/og.jpg
+
+The frame is the game's own picture of 東京駅 on a rainy night, so it shows PLATEAU's buildings,
+OpenStreetMap's roads and 地理院タイル: their credit goes on the card itself (PDL 1.0 asks for
+「加工して作成」; the ODbL for © OpenStreetMap contributors), not only on the page that links it.
 
 Text uses the pinned Noto Sans JP from car_textures.py (SIL OFL 1.1), drawn in the same style as
 the start screen: white title with OPEN in yellow, and 法令厳守 on a white plate with a red border
@@ -68,9 +72,12 @@ def main() -> None:
     sub = get_noto_font(26, bold=True)
     shadowed((64, 384), "道路交通法と東京都の条例を守って", sub, (235, 240, 248))
     shadowed((64, 422), "23 区をドライブする 3D ゲーム", sub, (235, 240, 248))
+    # Kept left of the dashboard's gauges (from x ≈ 430 in the in-car frame).
     small = get_noto_font(19)
-    shadowed((64, 560), "東京都オープンデータ・PLATEAU・JARTIC 交通規制情報", small, (210, 218, 230))
-    shadowed((64, 588), "kexi.github.io/tokyo-od-game", small, (210, 218, 230))
+    shadowed((64, 528), "kexi.github.io/tokyo-od-game", small, (210, 218, 230))
+    credit = get_noto_font(14)
+    shadowed((64, 568), "出典：国土交通省 PLATEAU を加工して作成", credit, (190, 198, 212))
+    shadowed((64, 590), "© OpenStreetMap contributors・地理院タイル", credit, (190, 198, 212))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     card.save(out_path, "JPEG", quality=88, optimize=True, progressive=True)

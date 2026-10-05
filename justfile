@@ -209,10 +209,10 @@ guide-fonts:
 guide-sign-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/guide_signs.py -- public/models/guide_signs.glb
 
-# SNS 共有カード public/og.jpg を作り直す（自作の車・標識だけを Blender で描き、題字を重ねる）
-og:
-    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/og.py -- "${TMPDIR:-/tmp}/tokyo-od-og-scene.png"
-    uv run scripts/textures/og_image.py "${TMPDIR:-/tmp}/tokyo-od-og-scene.png" public/og.jpg
+# SNS 共有カード public/og.jpg を作り直す（最高画質のゲーム画面で雨の夜の東京駅を車内から撮り、題字を重ねる。開発サーバーが必要）
+og base="http://localhost:5173/tokyo-od-game/":
+    node scripts/teaser/og.mjs --base {{ base }} --out out/og
+    uv run scripts/textures/og_image.py out/og/scene.jpg public/og.jpg
 
 # 型チェックを行う
 typecheck:
