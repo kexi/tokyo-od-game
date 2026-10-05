@@ -73,6 +73,19 @@ export class NpcBrain {
     }
   }
 
+  /**
+   * The title's 会話 AI box, remembered: ticked keeps the consent for next time (the download
+   * itself starts with the drive), unticked withdraws it but keeps a downloaded model cached.
+   */
+  static setConsent(on: boolean): void {
+    try {
+      if (on) localStorage.setItem(CONSENT_KEY, "yes");
+      else localStorage.removeItem(CONSENT_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
   static async clearCache(): Promise<void> {
     await caches.delete(CACHE_NAME).catch(() => undefined);
     try {

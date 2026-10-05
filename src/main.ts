@@ -29,6 +29,7 @@ import { localUtterance } from "./i18n/speech";
 const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
 import { GRAPHICS, pixelRatioFor, QUALITY } from "./device";
 import { buildGraphicsPanel, buildTitlePreset } from "./game/graphicsPanel";
+import { savedVoice, saveVoice } from "./game/titlePrefs";
 import type { GraphicsSettings } from "./graphics";
 import {
   BusStopFileSchema,
@@ -1855,6 +1856,10 @@ async function main(): Promise<void> {
   const optAi = $<HTMLInputElement>("#opt-ai");
   const optVoice = $<HTMLInputElement>("#opt-voice");
   const optAiNote = $("#opt-ai-note");
+  // Both boxes remembered as they are left (titlePrefs.ts / NpcBrain's consent).
+  optVoice.checked = savedVoice();
+  optVoice.addEventListener("change", () => saveVoice(optVoice.checked));
+  optAi.addEventListener("change", () => NpcBrain.setConsent(optAi.checked));
   void (async () => {
     const [support, cached] = await Promise.all([NpcBrain.support(), NpcBrain.isCached()]);
     if (!support.ok) {

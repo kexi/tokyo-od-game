@@ -1,4 +1,5 @@
 import { bindText, setI18nText, t, type MessageKey } from "../i18n";
+import { savedStart, saveStart } from "./titlePrefs";
 
 /**
  * Where the game starts: the default (東京駅 丸の内), a station chosen on the start screen
@@ -28,8 +29,13 @@ const HERE_KEY = "tokyo-od-game:start-here";
 const inBounds = (lat: number, lon: number) =>
   lat >= BOUNDS.minLat && lat <= BOUNDS.maxLat && lon >= BOUNDS.minLon && lon <= BOUNDS.maxLon;
 
+/** The start asked for: the URL's ?start= (a link, a reproduction), else the one chosen last time. */
+function askedStart(): string {
+  return new URLSearchParams(location.search).get("start") ?? savedStart() ?? "";
+}
+
 export function readStart(fallback: StartPoint, stations: Station[]): StartPoint {
-  const raw = new URLSearchParams(location.search).get("start");
+  const raw = askedStart();
   if (!raw) return fallback;
   if (raw === "here") {
     try {
@@ -57,6 +63,7 @@ export function readStart(fallback: StartPoint, stations: Station[]): StartPoint
 
 /** Reload the page starting at `value` ("" = default, "here", or "lat,lon"). */
 function go(value: string): void {
+  saveStart(value);
   const url = new URL(location.href);
   if (value) url.searchParams.set("start", value);
   else url.searchParams.delete("start");
@@ -89,7 +96,7 @@ export function initStartPicker(
       option(`${s.lat},${s.lon}`, s.name, group);
     select.append(group);
   }
-  const param = new URLSearchParams(location.search).get("start") ?? "";
+  const param = askedStart();
   select.value = [...select.options].some((o) => o.value === param) ? param : "";
   bindText(note, () => t("start.current", { place: current.label() }));
 
