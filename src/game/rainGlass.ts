@@ -763,7 +763,10 @@ const PANE_VERTEX = /* glsl */ `
 varying vec2 vUv;
 varying vec3 vWorld;
 void main() {
-  vUv = uv;
+  // Glass metres with v up the glass, as the simulation and its field use. cockpit.py writes v up
+  // in Blender, and glTF stores v from the top (the exporter writes 1 − v), so it is turned back
+  // here; read as it comes, the wiped fans and the drops showed upside down against the blades.
+  vUv = vec2(uv.x, 1.0 - uv.y);
   vec4 world = modelMatrix * vec4(position, 1.0);
   vWorld = world.xyz;
   gl_Position = projectionMatrix * viewMatrix * world;
