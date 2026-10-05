@@ -656,6 +656,8 @@ async function main(): Promise<void> {
     const p = vehicle.position();
     buildings.buildCollidersNear(p);
     vehicle.teleport(findOpenGround(p.x, p.z), carYaw(vehicle.quaternion()));
+    // Back on the nearest street, as after a start or 移動 (open ground where it was, if none).
+    placeOnStreet();
     chase.snap();
   };
 
