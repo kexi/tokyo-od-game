@@ -12,7 +12,7 @@
 //                                    [--lang en] [--only y-viral,ticket] [--port 9343]
 //
 // Writes out/photos/<name>-<take>.png (2560×1440) and <name>-raw.png (the take --pick-<name>
-// names, by default `pick`); scripts/textures/photo_title.py titles them with the landmark photos.
+// names, by default `pick`); scripts/textures/photo_poster.py lays them out with the landmark photos.
 // Needs the dev server (just serve-dev) or a development build served with the dev hook.
 import { copyFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -38,7 +38,7 @@ const SCENES = [
     name: "y-viral",
     at: { landmark: SKYTREE, from: { lat: 35.7104, lon: 139.7962 }, minWidth: 10, fov: 50 },
     hud: "all",
-    pick: 1,
+    pick: 0,
     stage: async (game) => {
       // The game's own account on the left (the violation, the witness, the post on Y), not the key
       // bar and the hints that clutter the picture.
@@ -67,11 +67,12 @@ const SCENES = [
       // The light ahead on green, its lamp and the panel agreeing: the picture is the aftermath an
       // hour on (on red the panel said red while the lamp in view still showed green).
       if ((await game.ev(findSignal(250))) !== null) await until(game, lightIs("green"), 3600, 5);
-      // The seal again as the picture is taken (it fades within 3 s of the violation), moved off
-      // the Skytree to the left, and given time to land (it is see-through while it slams down).
+      // The seal again as the picture is taken (it fades within 3 s of the violation), moved up
+      // right between the Skytree and the phone (the left is the poster's words, photo_poster.py),
+      // and given time to land (it is see-through while it slams down).
       await game.ev(`(() => { const G = window.__game; const r = G.law.state.log.findLast((x) => x.kind === 'signal');
         G.stamps.stamp('違反', r.label.replace(/（.*?）/g, ''), false, '${LANG === "ja" ? "" : "Running a red light"}');
-        const st = document.querySelector('#stamps .stamp:last-child'); st?.style.setProperty('--dx', '-560px'); st?.style.setProperty('--dy', '-20px'); })()`);
+        const st = document.querySelector('#stamps .stamp:last-child'); st?.style.setProperty('--dx', '430px'); st?.style.setProperty('--dy', '-250px'); })()`);
       await game.pump(24);
     },
     // Down the thread to the replies piling up (they say more than the counts above them); takes

@@ -8,7 +8,7 @@
 // Writes out/photos/<name>-<take>.png (2560×1440, lossless), three takes a second apart as the drops
 // gather between the wipers' strokes, and <name>-raw.png: the take --pick-<name> names (by default
 // the one of each where the wipers were off the middle of the glass when last filmed).
-// scripts/textures/photo_title.py then puts the game's title on it as <name>.png.
+// scripts/textures/photo_poster.py then lays it out as <name>.png, as the cover is.
 // Needs the dev server (just serve-dev) or a development build served with the dev hook.
 import { copyFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";

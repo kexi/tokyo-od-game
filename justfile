@@ -214,11 +214,11 @@ make-og-image base="http://localhost:5173/tokyo-od-game/":
     node scripts/teaser/og.mjs --base {{ base }} --out out/og
     uv run scripts/textures/og_image.py out/og/scene.png public/og.png
 
-# 東京駅・スカイツリー・東京タワーの写真 6 枚と、Y の炎上・違反切符・法令遵守の 3 枚を out/photos に撮り、英語の作品名を入れる（最高画質・雨の夜・車内から・PNG。lang はゲームの言語、開発サーバーが必要）
+# 東京駅・スカイツリー・東京タワーの写真 6 枚と、Y の炎上・違反切符・法令遵守の 3 枚を out/photos に撮り、カバーと同じ体裁で英語の作品名・見出しを入れる（最高画質・雨の夜・車内から・PNG。lang はゲームの言語、開発サーバーが必要）
 make-photos lang="en" base="http://localhost:5173/tokyo-od-game/":
     node scripts/teaser/photos.mjs --base {{ base }} --lang {{ lang }} --out out/photos
     node scripts/teaser/features.mjs --base {{ base }} --lang {{ lang }} --out out/photos
-    uv run scripts/textures/photo_title.py out/photos --place y-viral=hud,ticket=corner,law-abiding=corner
+    uv run scripts/textures/photo_poster.py out/photos
 
 # ゲームのカバー画像 out/cover.png（16:9・PNG・英語）を、make-photos の東京タワーの写真から作る
 make-cover-image:
