@@ -84,14 +84,15 @@ export class RoadGraph {
   readonly segments: Segment[] = [];
   readonly nodes = new Map<number, number[]>(); // node id → segment ids
   private readonly nodeIds = new Map<string, number>();
-  /** Polyline pieces [segment id, point index] by 32 m cell, for carriageway tests. */
+  /** Polyline pieces [segment id, point index] by 32 m cell. */
   private pieces: Map<string, Array<[number, number]>> | null = null;
 
   snapshot(): RoadGraphSnapshot {
     return {
       segments: this.segments.map((seg) => ({ ...seg, pts: seg.pts.map((p) => [p.x, p.y, p.z]) })),
       nodes: this.nodes,
-      pieces: this.pieces,
+      // The worker snapshots the network; prepare the shared index before returning to play.
+      pieces: this.pieceIndex(),
     };
   }
 
@@ -154,7 +155,8 @@ export class RoadGraph {
     const best = new Map<number, { d: number; i: number }>();
     for (const [segId, i] of cells.get(cellKey(p.x, p.z)) ?? []) {
       const seg = this.segments[segId];
-      if (seg === except) continue;
+      const isExcluded = seg === except || seg.line.kind === "highway";
+      if (isExcluded) continue;
       const a = seg.pts[i - 1];
       const b = seg.pts[i];
       const abx = b.x - a.x;
@@ -185,7 +187,6 @@ export class RoadGraph {
     if (this.pieces) return this.pieces;
     const cells = new Map<string, Array<[number, number]>>();
     for (const seg of this.segments) {
-      if (seg.line.kind === "highway") continue;
       const reach = seg.line.width / 2 + 3; // widest margin a caller asks for
       for (let i = 1; i < seg.pts.length; i++) {
         const a = seg.pts[i - 1];
@@ -234,7 +235,7 @@ export class RoadGraph {
     let bestD = maxDist;
     const ab = new Vector3();
     const ap = new Vector3();
-    for (const seg of this.segments) {
+    for (const seg of this.nearestCandidates(p, maxDist)) {
       if (!accept(seg)) continue;
       for (let i = 1; i < seg.pts.length; i++) {
         const a = seg.pts[i - 1];
@@ -256,6 +257,30 @@ export class RoadGraph {
       }
     }
     return best;
+  }
+
+  private nearestCandidates(p: Vector3, maxDist: number): Segment[] {
+    const isBounded = Number.isFinite(maxDist) && Number.isFinite(p.x) && Number.isFinite(p.z);
+    if (!isBounded) return this.segments;
+
+    const cells = this.pieceIndex();
+    const x0 = Math.floor((p.x - maxDist) / CELL);
+    const x1 = Math.floor((p.x + maxDist) / CELL);
+    const z0 = Math.floor((p.z - maxDist) / CELL);
+    const z1 = Math.floor((p.z + maxDist) / CELL);
+    const hasUnsafeCell = [x0, x1, z0, z1].some((cell) => !Number.isSafeInteger(cell));
+    if (hasUnsafeCell) return this.segments;
+    const isLargeQuery = (x1 - x0 + 1) * (z1 - z0 + 1) >= cells.size;
+    if (isLargeQuery) return this.segments;
+
+    const ids = new Set<number>();
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        for (const [id] of cells.get(`${x},${z}`) ?? []) ids.add(id);
+      }
+    }
+    // Keep the original segment order so equal-distance roads retain the same winner.
+    return [...ids].toSorted((a, b) => a - b).map((id) => this.segments[id]);
   }
 
   /** Apply one-way rules and closures for a moment (time of day, day of week, 祝日). */

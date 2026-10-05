@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [道路の近傍検索を空間インデックスで絞る](road-nearest-performance.md) - Workerで検索セルを準備。実道路4,776照会が旧処理と一致し、検索CPU262.7→84.4 ms。夜雨の新地域116.6 ms・連続ワープ150 msは残る
+
 - [影材質のキャッシュ無効化を減らす](shadow-cache-performance.md) - 夜雨の影材質のversion切り替えを抑え、キャッシュキー計算のCPUを約2.1秒→8 msへ削減。両backendの影画像と破棄を検証。新地域の133〜150 msは残る
 
 - [GitHub Actionsの開始前キャンセルを調べる](github-actions-runner-delays.md) - ランナー割り当て失敗をstepsとannotationsで確認する。未開始ジョブの再実行と2026-10-06 JSTの障害中の観測
