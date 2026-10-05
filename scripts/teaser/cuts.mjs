@@ -258,6 +258,8 @@ const en = {
   },
   // No controller of the machine's reaches the page; the settings shot plugs in a generic one.
   pads: true,
+  // The game's own sounds over the music (sound.mjs, the scenes in sounds.mjs).
+  sfx: true,
 };
 
 export const CUTS = { ja, en };

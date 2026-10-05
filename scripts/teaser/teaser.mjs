@@ -3,13 +3,14 @@
 // ffmpeg cuts the sections together with a synthesized soundtrack (music.py; no third-party music).
 //
 //   node scripts/teaser/teaser.mjs [--lang ja|en] [--base http://localhost:5173/tokyo-od-game/]
-//                                  [--out out/teaser.mp4] [--only night,day] [--port 9340]
+//                                  [--out out/teaser.mp4] [--only night,day] [--port 9340] [--sfx on|off]
 //
 // --lang picks the cut (cuts.mjs): ja, the Japanese teaser (out/teaser.mp4), or en, the English
 // introduction that shows the features one by one (out/teaser.en.mp4), the game itself in that
 // language. Needs the dev server (just serve-dev) or a development build served with the dev hook.
 // Each session films its sections into out/teaser-frames[-<lang>]/<section>/; --only re-films just
-// those sessions and the edit reuses the other sections' frames from the last run.
+// those sessions and the edit reuses the other sections' frames from the last run. --sfx on lays
+// the game's own sounds over the music (sound.mjs; on by default for the English cut).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -17,6 +18,7 @@ import { launch } from "../qa/browser.mjs";
 import { installClock } from "./clock.mjs";
 import { CUTS } from "./cuts.mjs";
 import { stage } from "./page.mjs";
+import { addSound } from "./sound.mjs";
 
 const args = Object.fromEntries(
   process.argv
@@ -1119,3 +1121,7 @@ execFileSync(
 );
 writeFileSync(join(WORK, "done.json"), JSON.stringify({ frames: frameNo, seconds, starts }, null, 2));
 log("done", { out: OUT, frames: frameNo, seconds: Math.round(seconds * 10) / 10 });
+// The game's own sounds over the music (sound.mjs): by default for a cut with `sfx` (the English
+// one), or with --sfx on / off. Muxed into the same file, the picture as it is.
+const withSound = args.sfx ? args.sfx === "on" : Boolean(CUT.sfx);
+if (withSound) await addSound({ lang: LANG, video: OUT, out: OUT, work: WORK, base: BASE, port: PORT });
