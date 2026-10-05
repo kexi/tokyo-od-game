@@ -10,6 +10,9 @@ export const en: Messages = {
   "title.tagline":
     "Drive Tokyo's 23 wards by the letter of the law — built from Tokyo open data × PLATEAU 3D city models",
   "title.startPlace": "Start from",
+  "title.graphics": "Graphics",
+  "title.graphicsNote":
+    "Fine-tune later in Settings › Graphics. The page reloads when the view distance or similar changes.",
   "title.aiOption": "Download the conversation AI (Google Gemma 4 E2B, about 2.0 GB) while you play",
   "title.aiNote":
     "Runs on your device (WebGPU); conversations never leave it. Until it's ready, people answer with set replies. Wi-Fi recommended.",

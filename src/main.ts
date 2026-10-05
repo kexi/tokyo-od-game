@@ -28,7 +28,7 @@ import { localUtterance } from "./i18n/speech";
 
 const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
 import { GRAPHICS, pixelRatioFor, QUALITY } from "./device";
-import { buildGraphicsPanel } from "./game/graphicsPanel";
+import { buildGraphicsPanel, buildTitlePreset } from "./game/graphicsPanel";
 import type { GraphicsSettings } from "./graphics";
 import {
   BusStopFileSchema,
@@ -1104,6 +1104,7 @@ async function main(): Promise<void> {
   // 画質 (graphics.ts): the panel in 設定, and what the renderer and the passes take from it at
   // once; the shaders read GRAPHICS.settings themselves.
   buildGraphicsPanel($("#graphics-options"), GRAPHICS, renderInfo.label);
+  buildTitlePreset($<HTMLSelectElement>("#opt-graphics"), GRAPHICS);
   const applyGraphics = (g: GraphicsSettings) => {
     renderer.setPixelRatio(pixelRatioFor(g.resolution));
     renderer.setSize(window.innerWidth, window.innerHeight);

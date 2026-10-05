@@ -9,6 +9,8 @@ export const zh: Messages = {
   "title.badge": "严守法令",
   "title.tagline": "严守交通法规，驾车畅行东京 23 区 —— 东京都开放数据 × PLATEAU 3D 城市模型",
   "title.startPlace": "出发地点",
+  "title.graphics": "画质",
+  "title.graphicsNote": "之后可在 设置 › 画质 中细调。可视距离等改变时会重新加载。",
   "title.aiOption": "边玩边下载对话 AI（Google Gemma 4 E2B，约 2.0 GB）",
   "title.aiNote": "在本机（WebGPU）运行，对话内容不会发送到外部。下载完成前使用固定回复。建议使用 Wi-Fi。",
   "title.aiCached": "使用已下载的模型（无需重新下载）。在本机运行，对话内容不会发送到外部。",

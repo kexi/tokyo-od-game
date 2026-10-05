@@ -13,6 +13,9 @@ export const ja = {
   "title.badge": "法令厳守",
   "title.tagline": "東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る",
   "title.startPlace": "スタート地点",
+  "title.graphics": "画質",
+  "title.graphicsNote":
+    "あとから設定 › 画質で細かく変えられます。描画距離などが変わるときは読み込み直します。",
   "title.aiOption": "会話 AI（Google Gemma 4 E2B・約 2.0GB）をプレイしながらダウンロード",
   "title.aiNote":
     "端末内（WebGPU）で動き、会話は外部に送信されません。完了までは定型応答で話せます。Wi-Fi 推奨。",

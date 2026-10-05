@@ -10,6 +10,35 @@ import {
 import { bindText, setI18nText, t, type MessageKey } from "../i18n";
 
 /**
+ * The title screen's 画質: the four presets (and カスタム, shown but not chosen, when the settings
+ * were made by hand), the same setting as 設定 › 画質. Nothing is played yet on the title, so a
+ * preset that changes what is loaded (描画距離, 車と歩行者の数, アンチエイリアス) reloads the page at
+ * once instead of asking: the world in the background is the one loaded for the old settings.
+ */
+export function buildTitlePreset(select: HTMLSelectElement, graphics: Graphics): void {
+  for (const p of ["ultra", "high", "medium", "low", "custom"] as const) {
+    const o = document.createElement("option");
+    o.value = p;
+    setI18nText(o, PRESET_LABEL[p]);
+    o.disabled = p === "custom";
+    select.append(o);
+  }
+  const show = () => {
+    select.value = graphics.settings.preset;
+  };
+  graphics.onChange(show);
+  show();
+  select.addEventListener("change", () => {
+    const isPreset = select.value !== "custom";
+    if (!isPreset) return;
+    const before = graphics.settings;
+    graphics.set(withPreset(select.value as GraphicsPreset, before));
+    const needsReload = GRAPHICS_ITEMS.some((i) => i.onReload && graphics.settings[i.key] !== before[i.key]);
+    if (needsReload) location.reload();
+  });
+}
+
+/**
  * 設定 › 画質: the preset (最高 / 高 / 中 / 低, カスタム once an item is changed by hand) and one
  * select per feature, built from GRAPHICS_ITEMS so a new feature only needs its row there. The
  * items that size what is loaded say so and offer a reload. Every text is an i18n key, kept in the
