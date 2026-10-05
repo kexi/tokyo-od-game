@@ -1,14 +1,8 @@
-import {
-  PerspectiveCamera,
-  SRGBColorSpace,
-  Vector3,
-  WebGLRenderTarget,
-  type Mesh,
-  type Object3D,
-  type Scene,
-  type WebGLRenderer,
-} from "three";
+import { PerspectiveCamera, Vector3, type Mesh, type Object3D, type RenderTarget, type Scene } from "three";
+import type { WebGPURenderer } from "three/webgpu";
 import { log, warn } from "../log";
+import { holdShadows, sceneTarget, type FrameComposer } from "../render/frame";
+import { readPixels } from "../render/renderer";
 import { jstParts, type SocialPost } from "./social";
 import { cameraFor, unitOf, type CameraSpec, type SocialAccount } from "./socialAccounts";
 import type { ViolationRecord } from "./traffic";
@@ -21,8 +15,9 @@ import type { ViolationRecord } from "./traffic";
  * window, far away with the zoom, or a following/oncoming car's dashcam).
  *
  * One off-screen render of the same scene per post (the main camera, the HUD and the cockpit are
- * left alone), read back at once; developing it into a JPEG — exposure, grain, tilt, a dashcam's
- * barrel and time stamp — runs after the frame.
+ * left alone), tone-mapped as the screen is and read back when the GPU is done (WebGPU has no
+ * synchronous readback); developing it into a JPEG — exposure, grain, tilt, a dashcam's barrel and
+ * time stamp — runs then, after the frame.
  */
 
 /** What the shooter needs from the game. */
@@ -43,9 +38,12 @@ export type ShotWorld = {
   sight?: (from: Vector3, to: Vector3) => boolean;
   /** The car's model, for the check that it really shows in the picture (skipped without it). */
   subjectObject?: () => Object3D;
+  /** Told when post.filmedFrom is set (a moment after shoot: the picture is read back first). */
+  filmed?: (post: SocialPost) => void;
 };
 
 type Frame = { car: Vector3; fwd: Vector3; witnesses: Vector3[] };
+type Photo = { shot: Aimed; across: number; pixels: Promise<Uint8Array> };
 type Stand = { view: Viewpoint; eye: Vector3 };
 type Aimed = Stand & { focal: number; blur: number; tilt: number; distance: number };
 
@@ -116,74 +114,92 @@ type Look = CameraSpec & {
 
 export class WitnessShot {
   private readonly camera = new PerspectiveCamera(60, 16 / 9, 0.3, 40000);
-  private readonly targets = new Map<string, WebGLRenderTarget>();
+  private readonly targets = new Map<string, RenderTarget>();
   private readonly shots = new WeakMap<ViolationRecord, SocialPost[]>();
   // Where the posters of each violation stood: no two share a spot.
   private readonly spots = new WeakMap<ViolationRecord, Vector3[]>();
+  /** Each captured post's development: a later post of the same violation waits for it. */
+  private readonly developed = new WeakMap<SocialPost, Promise<void>>();
 
   constructor(
-    private readonly renderer: WebGLRenderer,
+    private readonly renderer: WebGPURenderer,
+    private readonly composer: FrameComposer,
     private readonly scene: Scene,
     private readonly world: ShotWorld,
   ) {}
 
-  /** Takes `post`'s photo now (post.photo is set once developed, a moment later). */
+  /** Takes `post`'s photo now (post.photo and filmedFrom are set once developed, a moment later). */
   shoot(post: SocialPost): void {
     const earlier = this.shots.get(post.record) ?? [];
     this.shots.set(post.record, [...earlier, post]);
     if (earlier.length >= MAX_SHOTS_PER_EVENT) {
-      // Enough cameras for one moment: this poster shares someone else's clip — once it is
-      // developed (timers run in order, so this one runs after that development).
+      // Enough cameras for one moment: this poster shares someone else's clip, once it is developed.
       const source = earlier[post.id % earlier.length];
-      setTimeout(() => {
+      void (this.developed.get(source) ?? Promise.resolve()).then(() => {
         post.photo = source.photo;
         post.photoAspect = source.photoAspect;
         post.filmedFrom = source.filmedFrom;
-      }, 0);
+        if (post.filmedFrom) this.world.filmed?.(post);
+      });
       return;
     }
     try {
-      this.capture(post);
+      this.developed.set(post, this.capture(post).catch(failed));
     } catch (error) {
-      warn("witness_shot_failed", { error: String(error) });
+      failed(error);
     }
   }
 
-  private capture(post: SocialPost): void {
+  /**
+   * Everything is drawn at the moment of the violation: a probe of each of the first stands (with
+   * and without the car, to see whether a wall or a landmark is in the way of any test short of
+   * drawing it) and the photo from the best stand by the cheap test. When the probes come back, the
+   * photo stands if that stand sees the car; otherwise the first stand that does shoots again, a
+   * moment later, at where the car is then (the poster turns to it). Why not every stand's photo at
+   * once: four full renders in the frame of the violation would be the hitch the probes avoid.
+   */
+  private async capture(post: SocialPost): Promise<void> {
     const spec = cameraFor(post.account);
     const isDashcam = spec.kind === "dashcam";
     const subject = this.world.subject();
-    const car = subject.position.clone();
-    const fwd = new Vector3(Math.sin(subject.yaw), 0, Math.cos(subject.yaw));
-    const frame: Frame = { car, fwd, witnesses: this.world.witnesses(car) };
+    const frame = this.frameAt(subject);
     const taken = this.spots.get(post.record) ?? [];
     const tries = this.stands(post, frame, taken);
     const { w, h } = frameSize(spec.aspect);
     const rw = Math.round(w * SUPERSAMPLE);
     const rh = Math.round(h * SUPERSAMPLE);
-    const out: { shot?: Aimed; pixels?: Uint8Array } = {};
+    const probes: Array<Promise<boolean>> = [];
+    let first: Photo | null = null;
     this.staged(() => {
-      // The first spot whose picture really shows the car (a wall or a landmark can be in the way
-      // of any test short of drawing it).
       for (const stand of tries.slice(0, MAX_PROBES)) {
-        const shot = this.aim(post, spec, stand, frame);
-        if (this.seesCar()) {
-          out.shot = shot;
-          break;
-        }
+        this.aim(post, spec, stand, frame);
+        probes.push(this.seesCar());
       }
-      out.shot ??= this.aim(post, spec, tries[0], frame);
-      out.pixels = this.draw(rw, rh);
+      first = this.photo(post, spec, tries[0], frame, rw, rh);
     });
-    const { shot, pixels } = out;
-    if (!shot || !pixels) return;
-    this.spots.set(post.record, [...taken, shot.eye.clone()]);
+    // Taken now, so another poster of this violation shooting in the same frame stands elsewhere.
+    const spot = tries[0].eye.clone();
+    this.spots.set(post.record, [...taken, spot]);
+    const seen = await Promise.all(probes);
+    const best = seen.indexOf(true);
+    let photo = first as Photo | null;
+    if (best > 0) {
+      const later = this.frameAt(this.world.subject());
+      this.staged(() => {
+        photo = this.photo(post, spec, tries[best], later, rw, rh);
+      });
+    }
+    if (!photo) return;
+    const { shot, across } = photo;
+    spot.copy(shot.eye);
+    const pixels = await photo.pixels;
     post.filmedFrom = {
       eye: { x: shot.eye.x, y: shot.eye.y, z: shot.eye.z },
-      fov: this.camera.fov,
+      fov: verticalFov(shot.focal, spec.aspect),
       tilt: shot.tilt,
       aspect: spec.aspect,
     };
+    this.world.filmed?.(post);
     log("witness_shot", {
       post: post.id,
       account: post.account.id,
@@ -194,7 +210,6 @@ export class WitnessShot {
       distance: Math.round(shot.distance),
     });
     // A pan following a fast car streaks the frame sideways.
-    const across = Math.abs(fwd.dot(new Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)));
     const streak = isDashcam ? 0 : Math.min(4, (subject.kmh / 25) * across * (shot.focal / 26));
     const look: Look = {
       ...spec,
@@ -205,11 +220,28 @@ export class WitnessShot {
       seed: post.id * 7919,
       stamp: isDashcam ? dashcamStamp(post.postedAt, subject.kmh, shot.view === "behind") : null,
     };
-    // Developing is plain JS over every pixel: after this frame, not in it.
-    setTimeout(() => {
-      post.photo = develop(pixels, rw, rh, w, h, look);
-      post.photoAspect = w / h;
-    }, 0);
+    post.photo = develop(pixels, rw, rh, w, h, look);
+    post.photoAspect = w / h;
+  }
+
+  private frameAt(subject: ReturnType<ShotWorld["subject"]>): Frame {
+    const car = subject.position.clone();
+    const fwd = new Vector3(Math.sin(subject.yaw), 0, Math.cos(subject.yaw));
+    return { car, fwd, witnesses: this.world.witnesses(car) };
+  }
+
+  /** The photo from `stand` (drawn now, read back later), and how much a pan streaks it. */
+  private photo(
+    post: SocialPost,
+    spec: CameraSpec,
+    stand: Stand,
+    frame: Frame,
+    rw: number,
+    rh: number,
+  ): Photo {
+    const shot = this.aim(post, spec, stand, frame);
+    const across = Math.abs(frame.fwd.dot(new Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)));
+    return { shot, across, pixels: this.draw(rw, rh) };
   }
 
   /** Points `this.camera` from a stand the way this poster would (zoom, aim, tilt). */
@@ -279,24 +311,25 @@ export class WitnessShot {
 
   /**
    * Whether the car shows in the current view: a tiny frame drawn with and without the car's
-   * meshes, compared. Why the meshes and not the car: hiding the car would hide its headlights
-   * too, and a change in the number of lights recompiles every material.
+   * meshes, compared (when both are read back). Why the meshes and not the car: hiding the car
+   * would hide its headlights too, and a change in the number of lights recompiles every material.
    */
-  private seesCar(): boolean {
+  private async seesCar(): Promise<boolean> {
     const car = this.world.subjectObject?.();
     if (!car) return true;
-    const shown = this.draw(PROBE_W, PROBE_H);
+    const shownRead = this.draw(PROBE_W, PROBE_H);
     const meshes: Object3D[] = [];
     car.traverse((o) => {
       if ((o as Mesh).isMesh && o.visible) meshes.push(o);
     });
     for (const m of meshes) m.visible = false;
-    let gone: Uint8Array;
+    let goneRead: Promise<Uint8Array>;
     try {
-      gone = this.draw(PROBE_W, PROBE_H);
+      goneRead = this.draw(PROBE_W, PROBE_H);
     } finally {
       for (const m of meshes) m.visible = true;
     }
+    const [shown, gone] = await Promise.all([shownRead, goneRead]);
     let changed = 0;
     for (let i = 0; i < shown.length; i += 4) {
       const d =
@@ -374,51 +407,47 @@ export class WitnessShot {
 
   /**
    * Runs `fn` with the scene as a bystander sees it: the player's own markers hidden, the cockpit
-   * put away, and the shadow map of the last frame kept (Why: redrawing it for every probe would
-   * cost more than the probes; the sun has not moved since).
+   * put away, and the shadow map of the frame kept (Why: redrawing it for every probe would cost
+   * more than the probes; the sun has not moved since).
    */
   private staged(fn: () => void): void {
     const hidden = this.world.hidden().filter((o): o is Object3D => !!o && o.visible);
     for (const o of hidden) o.visible = false;
     const before = this.renderer.getRenderTarget();
-    const shadows = this.renderer.shadowMap.autoUpdate;
-    this.renderer.shadowMap.autoUpdate = false;
     try {
-      this.world.stage(fn);
+      holdShadows(() => this.world.stage(fn));
     } finally {
-      this.renderer.shadowMap.autoUpdate = shadows;
       this.renderer.setRenderTarget(before);
       for (const o of hidden) o.visible = true;
     }
   }
 
-  /** The scene from `this.camera` at rw×rh, as RGBA rows bottom-up. */
-  private draw(rw: number, rh: number): Uint8Array {
+  /**
+   * The scene from `this.camera` at rw×rh, tone-mapped as the screen is, read back as RGBA rows
+   * bottom-up. The GPU copy is queued now (the targets can be drawn again at once); the pixels
+   * arrive when it is done. The scene target is made like the frame's, so no material builds a
+   * pipeline of its own for the photo (WebGPU tone-maps in a separate pass, not in each material).
+   */
+  private draw(rw: number, rh: number): Promise<Uint8Array> {
     const target = this.target(rw, rh);
     this.renderer.setRenderTarget(target);
-    this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
-    const pixels = new Uint8Array(rw * rh * 4);
-    this.renderer.readRenderTargetPixels(target, 0, 0, rw, rh, pixels);
-    return pixels;
+    const shown = this.composer.toDisplay(target.texture, rw, rh);
+    return readPixels(this.renderer, shown, rw, rh);
   }
 
-  private target(rw: number, rh: number): WebGLRenderTarget {
+  private target(rw: number, rh: number): RenderTarget {
     const key = `${rw}x${rh}`;
     let t = this.targets.get(key);
     if (t) return t;
-    t = new WebGLRenderTarget(rw, rh);
-    t.texture.colorSpace = SRGBColorSpace;
-    // Why flagged as an XR target: WebGLRenderer tone-maps and sRGB-encodes only for the screen or
-    // an XR target. Any other target comes out linear, and every material in the city would compile
-    // a second program for it (a long stall) — this way the photo is drawn exactly like the screen.
-    Object.assign(t, { isXRRenderTarget: true });
+    t = sceneTarget(this.renderer, rw, rh);
     this.targets.set(key, t);
     return t;
   }
 }
 
 const two = (n: number) => String(n).padStart(2, "0");
+const failed = (error: unknown) => warn("witness_shot_failed", { error: String(error) });
 
 /** 2026/10/05 11:30:12  42km/h, burnt into a dashcam's frame. */
 function dashcamStamp(ms: number, kmh: number, isFollowing: boolean): string {

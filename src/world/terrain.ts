@@ -7,13 +7,13 @@ import {
   LinearFilter,
   Matrix4,
   Mesh,
-  MeshStandardMaterial,
   RedFormat,
   SRGBColorSpace,
   Vector3,
   type Scene,
-  type WebGLRenderer,
 } from "three";
+import { texture, uv, vec2 } from "three/tsl";
+import { MeshStandardNodeMaterial, type TextureNode, type WebGPURenderer } from "three/webgpu";
 import {
   GSI,
   PLATEAU_ORTHO,
@@ -31,14 +31,14 @@ import type { DemStore } from "./dem";
 type Chunk = {
   x: number;
   y: number;
-  mesh: Mesh<BufferGeometry, MeshStandardMaterial>;
+  mesh: Mesh<BufferGeometry, MeshStandardNodeMaterial>;
   centerEcef: Vector3;
   collider: RAPIER.Collider | null;
   imageryZoom: number;
   imageryStyle: GroundStyle;
   imageryLoading: boolean;
-  /** The chunk's water cut-out (see GroundWater), shared with its material's shader. */
-  water: { value: DataTexture };
+  /** The chunk's water cut-out (see GroundWater): its texture is the node's value. */
+  water: TextureNode;
   waterMask: Uint8Array | null;
   waterSize: number;
   waterVersion: number;
@@ -56,7 +56,10 @@ export type GroundWater = {
   maskAt(x: number, y: number): { data: Uint8Array; size: number } | null;
 };
 
+/** No water: one dry texel, filtered like the masks that replace it (they share the sampler). */
 const NO_WATER = new DataTexture(new Uint8Array([0]), 1, 1, RedFormat);
+NO_WATER.magFilter = LinearFilter;
+NO_WATER.minFilter = LinearFilter;
 NO_WATER.needsUpdate = true;
 
 const S = TERRAIN_SEGMENTS;
@@ -86,7 +89,7 @@ export class Terrain {
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
     private readonly dem: DemStore,
-    private readonly renderer: WebGLRenderer,
+    private readonly renderer: WebGPURenderer,
     frame: LocalFrame,
   ) {
     this.frame = frame;
@@ -230,24 +233,8 @@ export class Terrain {
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
 
-    const material = new MeshStandardMaterial({ color: 0x8a8f86, roughness: 0.97, metalness: 0 });
-    const water = { value: NO_WATER };
-    // Cut the water out of the ground: the photo there shows the river from above, and the water
-    // layer draws the surface and the shore walls instead. Only once the photo is on (the cut-out
-    // reads the photo's UVs), which is also when the river would show as ground.
-    material.onBeforeCompile = (shader) => {
-      shader.uniforms.groundWater = water;
-      shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", "#include <common>\nuniform sampler2D groundWater;")
-        .replace(
-          "#include <map_fragment>",
-          `#ifdef USE_MAP
-            if ( texture2D( groundWater, vec2( vMapUv.x, 1.0 - vMapUv.y ) ).r > 0.5 ) discard;
-          #endif
-          #include <map_fragment>`,
-        );
-    };
-    material.customProgramCacheKey = () => "ground-water";
+    const material = new MeshStandardNodeMaterial({ color: 0x8a8f86, roughness: 0.97, metalness: 0 });
+    const water = texture(NO_WATER);
     const mesh = new Mesh(geometry, material);
     mesh.matrixAutoUpdate = false;
     mesh.receiveShadow = true;
@@ -332,11 +319,11 @@ export class Terrain {
     chunk.waterMask = mask?.data ?? null;
     chunk.waterSize = mask?.size ?? 0;
     if (mask) {
-      const texture = new DataTexture(mask.data, mask.size, mask.size, RedFormat);
-      texture.magFilter = LinearFilter;
-      texture.minFilter = LinearFilter;
-      texture.needsUpdate = true;
-      chunk.water.value = texture;
+      const maskTexture = new DataTexture(mask.data, mask.size, mask.size, RedFormat);
+      maskTexture.magFilter = LinearFilter;
+      maskTexture.minFilter = LinearFilter;
+      maskTexture.needsUpdate = true;
+      chunk.water.value = maskTexture;
     } else {
       chunk.water.value = NO_WATER;
     }
@@ -383,13 +370,18 @@ export class Terrain {
     chunk.imageryLoading = false;
     const isDisposed = !this.chunks.has(`${chunk.x}/${chunk.y}`);
     if (isDisposed) return;
-    const texture = new CanvasTexture(canvas);
-    texture.colorSpace = SRGBColorSpace;
-    texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
-    chunk.mesh.material.map?.dispose();
-    chunk.mesh.material.map = texture;
-    chunk.mesh.material.color.set(0xffffff);
-    chunk.mesh.material.needsUpdate = true;
+    const photo = new CanvasTexture(canvas);
+    photo.colorSpace = SRGBColorSpace;
+    photo.anisotropy = Math.min(8, this.renderer.getMaxAnisotropy());
+    const material = chunk.mesh.material;
+    material.map?.dispose();
+    material.map = photo;
+    material.color.set(0xffffff);
+    // Cut the water out of the ground: the photo there shows the river from above, and the water
+    // layer draws the surface and the shore walls instead. Only once the photo is on, which is
+    // also when the river would show as ground. The mask's rows run north first (v = 1 here).
+    material.maskNode ??= chunk.water.sample(vec2(uv().x, uv().y.oneMinus())).r.lessThanEqual(0.5);
+    material.needsUpdate = true;
     chunk.imageryZoom = zoom;
     chunk.imageryStyle = style;
   }

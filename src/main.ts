@@ -1,8 +1,8 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
-  ACESFilmicToneMapping,
   DoubleSide,
   Frustum,
+  Group,
   Matrix4,
   MathUtils,
   type Material,
@@ -10,15 +10,12 @@ import {
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
-  PCFShadowMap,
   PerspectiveCamera,
   Quaternion,
   Scene,
   Sphere,
-  SRGBColorSpace,
   Vector2,
   Vector3,
-  WebGLRenderer,
 } from "three";
 import type { z } from "zod";
 import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
@@ -105,7 +102,7 @@ import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
 import { TrafficSigns, loadSignModels } from "./world/signs";
 import { GuideSigns } from "./world/guideSigns";
-import { createHuman, loadHumanModels } from "./world/human";
+import { createHuman, disposeHuman, loadHumanModels } from "./world/human";
 import { loadFacadeTextures } from "./world/facade";
 import { TrafficAI } from "./world/traffic-ai";
 import {
@@ -133,6 +130,9 @@ import type { TvInfo } from "./game/tvRules";
 import { buildToolbar, labelToolbar } from "./game/toolbar";
 import { MotionBlur } from "./world/motionBlur";
 import { Bloom, bloomSettings } from "./world/bloom";
+import { LensFlare } from "./world/lensFlare";
+import { createRenderer } from "./render/renderer";
+import { drawShadowsOf, FrameComposer } from "./render/frame";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import {
@@ -147,7 +147,12 @@ import {
   type ControlPrefs,
 } from "./game/controlsHelp";
 import { CAMERA_LABEL, ReplayDirector, ReplayRecorder, type Pose, type ReplayCamera } from "./game/replay";
-import { createVehicle, loadVehicleModels } from "./game/vehicleModels";
+import {
+  createVehicle,
+  loadVehicleModels,
+  type VehicleInstance,
+  type VehicleKind,
+} from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
 import { formatCount, SocialFeed, type SocialPost, type SocialWorld } from "./game/social";
 import type { PraiseKind } from "./game/socialTexts";
@@ -230,18 +235,15 @@ async function main(): Promise<void> {
     busStops: Object.keys(stopFile?.stops ?? {}).length,
   });
 
-  const renderer = new WebGLRenderer({
-    canvas: $<HTMLCanvasElement>("#scene"),
-    antialias: QUALITY.antialias,
-    logarithmicDepthBuffer: true,
-    powerPreference: "high-performance",
-  });
-  renderer.setPixelRatio(QUALITY.pixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.outputColorSpace = SRGBColorSpace;
-  renderer.shadowMap.enabled = QUALITY.shadows;
-  renderer.shadowMap.type = PCFShadowMap;
+  setLoading(() => i18n.t("loading.renderer"), 0.14);
+  // WebGPU where the browser has it, WebGL 2 otherwise or when 画質 描画方式 asks (render/renderer.ts).
+  const { renderer, info: renderInfo } = await createRenderer(
+    $<HTMLCanvasElement>("#scene"),
+    GRAPHICS.settings,
+    QUALITY,
+  );
+  // The frame is drawn into one HDR target and tone-mapped once (render/frame.ts).
+  const composer = new FrameComposer(renderer);
   const scene = new Scene();
   const camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 40000);
 
@@ -286,13 +288,31 @@ async function main(): Promise<void> {
     landmarkEntries,
   );
   const env = new Environment(scene, renderer);
+  // The sun's shadow map is drawn for the main view; the other views reuse it.
+  drawShadowsOf(env.sun);
   const vehicle = new Vehicle(world);
   cockpit.attach(vehicle.object);
   mirrorCharms.attach(vehicle.object, cockpit.root);
   const carNavi = new CarNavi();
   const blur = new MotionBlur();
-  const bloom = new Bloom();
-  const applyBloom = () => bloom.apply(renderer, bloomSettings(env.nightFactor, env.overcast));
+  // 光のにじみ: thresholds and strength by the light (bloom.ts), 画質 for the resolution.
+  const bloom = new Bloom(renderer, () => bloomSettings(env.nightFactor, env.overcast));
+  // レンズフレア: the sun's ghosts when the frame shows the sun (its probe reads the finished frame).
+  const lensFlare = new LensFlare(renderer, scene, bloom);
+  // The street passes, in order, on the street only (the interior and the wipers stay sharp): the
+  // lights spill, the lens flares, then the street smears.
+  composer.streetPasses.push(bloom, lensFlare, blur);
+  composer.frameReaders.push(lensFlare.reader);
+  const sunDir = new Vector3();
+  /** The sun for the lens flare, this frame (call before the frame is drawn). */
+  const placeFlare = () =>
+    lensFlare.update(camera, {
+      direction: sunDir.copy(env.sun.position).sub(env.sun.target.position).normalize(),
+      elevation: env.sunElevation,
+      overcast: env.overcast,
+      color: env.sun.color,
+      night: env.nightFactor,
+    });
   const viewDir = new Vector3();
   let lastViewYaw = 0;
   cockpit.showOnDisplay(carNavi.canvas);
@@ -864,7 +884,7 @@ async function main(): Promise<void> {
 
   // 画質 (graphics.ts): the panel in 設定, and what the renderer and the passes take from it at
   // once; the shaders read GRAPHICS.settings themselves.
-  buildGraphicsPanel($("#graphics-options"), GRAPHICS);
+  buildGraphicsPanel($("#graphics-options"), GRAPHICS, renderInfo.label);
   const applyGraphics = (g: GraphicsSettings) => {
     renderer.setPixelRatio(pixelRatioFor(g.resolution));
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -874,11 +894,12 @@ async function main(): Promise<void> {
     const size = hasShadows ? Number(g.shadows) : env.sun.shadow.mapSize.x;
     const isShadowChanged = hasShadows !== renderer.shadowMap.enabled || env.sun.shadow.mapSize.x !== size;
     if (!isShadowChanged) return;
-    renderer.shadowMap.enabled = hasShadows;
+    // The shadow node resizes its map to mapSize itself.
     env.sun.shadow.mapSize.set(size, size);
-    env.sun.shadow.map?.dispose();
-    env.sun.shadow.map = null;
-    // Materials compile the shadow lookups in or out: have them rebuilt.
+    const isToggled = hasShadows !== renderer.shadowMap.enabled;
+    renderer.shadowMap.enabled = hasShadows;
+    if (!isToggled) return;
+    // Materials build the shadow lookups in or out: have them rebuilt.
     scene.traverse((o) => {
       const m = (o as Mesh).material as Material | Material[] | undefined;
       for (const x of Array.isArray(m) ? m : m ? [m] : []) x.needsUpdate = true;
@@ -1632,6 +1653,75 @@ async function main(): Promise<void> {
     requestAnimationFrame(tick);
     step(now);
   };
+  let compiling: Promise<void> | null = null;
+  /**
+   * Build the pipelines before play. WebGPU compiles a material's shaders and pipeline when it is
+   * first drawn, a stall of tens of milliseconds each time; compileAsync builds them off the frame
+   * for what a camera would see. So: the town around the start from street level in four
+   * directions, the vehicles and a person that appear later (put in view only while compileAsync
+   * collects them), the driver's seat with its glass, and the street passes.
+   */
+  const precompile = async (): Promise<void> => {
+    const started = performance.now();
+    const ground = groundY(0, 0) ?? 0;
+    const eye = new PerspectiveCamera(100, camera.aspect, camera.near, camera.far);
+    eye.position.set(0, ground + 1.6, 0);
+    const gallery = new Group();
+    const kinds: VehicleKind[] = [
+      "bus",
+      "truck10t",
+      "truck8t",
+      "motorbike",
+      "patrol",
+      "unmarked",
+      "shirobai",
+    ];
+    const vehicles = kinds.map((k) => createVehicle(k)).filter((v): v is VehicleInstance => v !== null);
+    for (const v of vehicles) gallery.add(v.object);
+    gallery.add(createLowCar({ color: 0xd0d4d8 }));
+    const person = createHuman({
+      shirt: 0x3a5f8a,
+      pants: 0x2b2b2b,
+      skin: 0xe0b896,
+      hair: 0x1a1410,
+      umbrella: 0x223344,
+    });
+    gallery.add(person.root);
+    gallery.traverse((o) => (o.frustumCulled = false));
+    gallery.position.set(0, ground, 0);
+    gallery.visible = false;
+    scene.add(gallery);
+    const pending: Array<Promise<unknown>> = [];
+    composer.begin();
+    for (let k = 0; k < 4; k++) {
+      eye.rotation.set(0, (k * Math.PI) / 2, 0);
+      eye.updateMatrixWorld();
+      gallery.visible = k === 0;
+      renderer.setRenderTarget(composer.target);
+      pending.push(renderer.compileAsync(scene, eye));
+    }
+    // compileAsync has collected what to build: the gallery leaves at once (the loading view
+    // orbits over the start, and would show it).
+    scene.remove(gallery);
+    renderer.setRenderTarget(null);
+    pending.push(cockpit.precompile(renderer, composer, scene, camera.aspect), composer.precompile());
+    try {
+      await Promise.all(pending);
+    } finally {
+      disposeHuman(person);
+      for (const v of vehicles) for (const m of [...v.lamps.values(), ...v.beacons.flat()]) m.dispose();
+    }
+    log("pipelines_compiled", { ms: Math.round(performance.now() - started) });
+  };
+  /** The world from the main camera (no cockpit), with the street passes, to the canvas. */
+  const drawPlain = () => {
+    blur.stop();
+    placeFlare();
+    composer.begin();
+    composer.drawWorld(scene, camera);
+    composer.street();
+    composer.present();
+  };
 
   const step = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -1646,20 +1736,28 @@ async function main(): Promise<void> {
       const groundReady = terrain.hasColliderAt(spawn.lat, spawn.lon);
       const tilesProgress = buildings.loadProgress();
       const waited = now - loadStart;
-      setLoading(
-        () =>
-          groundReady
-            ? i18n.t("loading.plateau", { percent: Math.round(tilesProgress * 100) })
-            : i18n.t("loading.terrain"),
-        0.25 + 0.75 * (groundReady ? 0.3 + 0.7 * tilesProgress : 0),
-      );
+      const isLoading = state === "loading" && compiling === null;
+      if (isLoading)
+        setLoading(
+          () =>
+            groundReady
+              ? i18n.t("loading.plateau", { percent: Math.round(tilesProgress * 100) })
+              : i18n.t("loading.terrain"),
+          0.25 + 0.7 * (groundReady ? 0.3 + 0.7 * tilesProgress : 0),
+        );
       const isReady = groundReady && (tilesProgress >= 0.999 || waited > 20000) && waited > 1500;
-      if (isReady && state === "loading") {
-        state = "ready";
-        startButton.disabled = false;
-        setLoading(() => i18n.t("loading.ready"), 1);
+      if (isReady && isLoading) {
+        // The town is here: build its pipelines (and those of what comes later) before play.
+        setLoading(() => i18n.t("loading.shaders"), 0.95);
+        compiling = precompile()
+          .catch((error: unknown) => warn("precompile_failed", { error: String(error) }))
+          .finally(() => {
+            state = "ready";
+            startButton.disabled = false;
+            setLoading(() => i18n.t("loading.ready"), 1);
+          });
       }
-      renderer.render(scene, camera);
+      drawPlain();
       return;
     }
 
@@ -1680,13 +1778,15 @@ async function main(): Promise<void> {
       env.update(dt, focus, camera.position, geo.lat, geo.lon);
       water.update(dt, env);
       water.renderReflection(renderer, scene, camera, now);
-      renderer.render(scene, camera);
-      applyBloom();
+      drawPlain();
       return;
     }
     if (paused) {
       // Through the cockpit as in play: a plain render would leave the interior (its own layer) out.
-      cockpit.render(renderer, scene, camera, applyBloom);
+      blur.stop();
+      placeFlare();
+      cockpit.render(composer, renderer, scene, camera);
+      composer.present();
       return;
     }
     const isOnFoot = mode === "foot";
@@ -1776,7 +1876,7 @@ async function main(): Promise<void> {
 
     // The camera's view for open-world spawning (traffic and people appear and leave out of it).
     viewMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    viewFrustum.setFromProjectionMatrix(viewMatrix);
+    viewFrustum.setFromProjectionMatrix(viewMatrix, camera.coordinateSystem, camera.reversedDepth);
     const carPos = vehicle.position();
     const carRot = vehicle.quaternion();
     // Today's distance at the wheel (re-anchoring and respawns jump; ignore those).
@@ -2416,35 +2516,41 @@ async function main(): Promise<void> {
       Math.abs(speed) / 3.6,
       liveObjects(),
     );
-    // The water's reflection (only with water in view), then the frame. Plain renderer.render
-    // outside the driver's seat; from it, the rain on the glass too.
+    // The water's reflection (only with water in view), then the frame.
     water.renderReflection(renderer, scene, camera, now);
     // ブラー: the car's speed (toward the vanishing point ahead) and the view's turn, smeared over the
-    // street only — in the driver's seat it runs before the interior is drawn.
+    // street only — a street pass of the frame, before the wipers and the interior are drawn.
     camera.getWorldDirection(viewDir);
     const viewYaw = Math.atan2(viewDir.x, viewDir.z);
     const yawRate =
       Math.atan2(Math.sin(viewYaw - lastViewYaw), Math.cos(viewYaw - lastViewYaw)) / Math.max(dt, 1e-3);
     lastViewYaw = viewYaw;
-    const applyBlur = () => {
-      // Bloom first (the lights spill on the street, then the street smears), on foot too.
-      applyBloom();
-      if (!isInCar || QUALITY.isMobile) return;
-      const ahead = carPos
-        .clone()
-        .add(new Vector3(Math.sin(vehicle.yaw()) * 300, 1, Math.cos(vehicle.yaw()) * 300))
-        .project(camera);
-      const isAheadInView = ahead.z < 1 && Math.abs(ahead.x) < 1.2 && Math.abs(ahead.y) < 1.2;
-      blur.apply(renderer, {
+    const aheadWorld = carPos
+      .clone()
+      .add(new Vector3(Math.sin(vehicle.yaw()) * 300, 1, Math.cos(vehicle.yaw()) * 300));
+    // In front of the eye in camera space. Why not the projected z: its range depends on the
+    // depth convention (WebGPU's 0…1, reversed here), and a point behind the eye can land inside it.
+    const isAheadInFront = aheadWorld.clone().applyMatrix4(camera.matrixWorldInverse).z < 0;
+    const ahead = aheadWorld.project(camera);
+    const isAheadInView = isAheadInFront && Math.abs(ahead.x) < 1.2 && Math.abs(ahead.y) < 1.2;
+    const size = renderer.getDrawingBufferSize(new Vector2());
+    blur.update(
+      {
         kmh: speed,
-        focus: isAheadInView ? new Vector2((ahead.x + 1) / 2, (ahead.y + 1) / 2) : null,
+        // Screen uv with the origin at the top left, as the frame's passes sample it.
+        focus: isAheadInView ? new Vector2((ahead.x + 1) / 2, (1 - ahead.y) / 2) : null,
         yawRate,
-        // The interior is drawn after it, so the street can take the full effect.
-        isInside: false,
         dt,
-      });
-    };
-    cockpit.render(renderer, scene, camera, applyBlur);
+        isOn: isInCar && !QUALITY.isMobile,
+      },
+      size.x,
+      size.y,
+    );
+    placeFlare();
+    // The world and the street; from the driver's seat, the wipers, the interior and the glass too.
+    cockpit.render(composer, renderer, scene, camera);
+    composer.present();
+    // Same task as the present: the canvas still holds the frame for the grabs below.
     takeShots();
     if (pendingScreenshot) {
       pendingScreenshot = false;
@@ -2507,7 +2613,7 @@ async function main(): Promise<void> {
     if (pendingShots.length === 0) return;
     const ctx = shotCanvas.getContext("2d");
     if (!ctx) return;
-    // Same task as renderer.render, so the WebGL drawing buffer still holds the frame.
+    // Same task as the frame's present, so the canvas still holds the frame.
     ctx.drawImage(renderer.domElement, 0, 0, shotCanvas.width, shotCanvas.height);
     const url = shotCanvas.toDataURL("image/jpeg", 0.7);
     for (const r of pendingShots.splice(0)) if (r.context) r.context.snapshot = url;
@@ -2630,7 +2736,7 @@ async function main(): Promise<void> {
     };
   };
   // Each poster's photo is their own shot from where they stood, not the driver's screen.
-  const witnessShot = new WitnessShot(renderer, scene, {
+  const witnessShot = new WitnessShot(renderer, composer, scene, {
     ground: (x, z) => groundY(x, z),
     subject: () => ({ position: vehicle.position(), yaw: vehicle.yaw(), kmh: Math.abs(vehicle.speedKmh()) }),
     witnesses: (at) => pedestrians.witnessesOf(at, 60).map((p) => p.object.position),
@@ -2648,13 +2754,13 @@ async function main(): Promise<void> {
       shoot();
       cockpit.setActive(wasCockpit);
     },
-  });
-  social.camera = (post) => {
-    witnessShot.shoot(post);
     // Where the poster stood, as latitude/longitude, so the video plays there after a recentre.
-    const from = post.filmedFrom;
-    if (from) from.geo = frame.toGeodetic(new Vector3(from.eye.x, from.eye.y, from.eye.z));
-  };
+    filmed: (post) => {
+      const from = post.filmedFrom;
+      if (from) from.geo = frame.toGeodetic(new Vector3(from.eye.x, from.eye.y, from.eye.z));
+    },
+  });
+  social.camera = (post) => witnessShot.shoot(post);
   // Posts in people's own words when the on-device AI is on (templates otherwise).
   const SOCIAL_VOICE = {
     post: "あなたは東京で暮らす一般の人で、SNS に投稿します。いま目の前で見た危ない運転について、日本語の口語で 1〜2 文だけ書いてください。ナンバーや個人を特定できる情報、ハッシュタグは書かないこと。",
@@ -3778,6 +3884,10 @@ async function main(): Promise<void> {
         scene,
         camera,
         renderer,
+        renderInfo,
+        composer,
+        bloom,
+        lensFlare,
         world,
         terrain,
         water,

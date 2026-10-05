@@ -7,15 +7,16 @@ import {
   type GraphicsKey,
   type GraphicsPreset,
 } from "../graphics";
-import { bindText, setI18nText, t } from "../i18n";
+import { bindText, setI18nText, t, type MessageKey } from "../i18n";
 
 /**
  * 設定 › 画質: the preset (最高 / 高 / 中 / 低, カスタム once an item is changed by hand) and one
  * select per feature, built from GRAPHICS_ITEMS so a new feature only needs its row there. The
  * items that size what is loaded say so and offer a reload. Every text is an i18n key, kept in the
- * language in force.
+ * language in force. `running` names the backend the renderer is on now (描画方式 自動 may have
+ * fallen back to WebGL 2).
  */
-export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void {
+export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics, running?: MessageKey): void {
   const loaded = { ...graphics.settings };
   const preset = document.createElement("select");
   preset.id = "opt-graphics-preset";
@@ -48,7 +49,7 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
   }
   preset.addEventListener("change", () => {
     const isPreset = preset.value !== "custom";
-    if (isPreset) graphics.set(withPreset(preset.value as GraphicsPreset));
+    if (isPreset) graphics.set(withPreset(preset.value as GraphicsPreset, graphics.settings));
   });
 
   const reload = document.createElement("p");
@@ -61,7 +62,11 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics): void 
   const note = document.createElement("span");
   setI18nText(note, "graphics.reloadNote");
   reload.append(note, " ", button);
-  root.after(reload);
+  const backend = document.createElement("p");
+  backend.className = "graphics-backend";
+  if (running) bindText(backend, () => t("graphics.running", { backend: t(running) }));
+  backend.hidden = running === undefined;
+  root.after(backend, reload);
 
   const show = () => {
     const s = graphics.settings;

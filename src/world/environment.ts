@@ -7,20 +7,18 @@ import {
   LineBasicMaterial,
   LineSegments,
   MathUtils,
-  PMREMGenerator,
   Vector3,
   type Scene,
   type Texture,
-  type WebGLRenderer,
 } from "three";
-import { ATMOSPHERE, extinctionFor, installAtmosphere } from "./atmosphere";
-import { Sky } from "three/addons/objects/Sky.js";
+import { type Node, PMREMGenerator, type WebGPURenderer } from "three/webgpu";
+import { ATMOSPHERE, atmosphereFog, extinctionFor } from "./atmosphere";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GRAPHICS, QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
 import { spellMinutes } from "./weatherSpells";
 import { SkyEnvMap, type EnvState } from "./skyEnvMap";
-import { upgradeSky } from "./skyShader";
+import { type SkyLook, TokyoSky } from "./skyShader";
 import { lightBalance, nightFactorAt, type LightBalance } from "./skyLight";
 
 export type TimeMode = "real" | "morning" | "day" | "evening" | "night";
@@ -66,8 +64,9 @@ const RAIN_BOX = 90;
 const WEATHER_TURN_S = 25;
 /** Where the moonlight comes from (high in the south-east; its phase is not modelled). */
 const MOON_DIR = new Vector3(0.3, 0.8, 0.4).normalize();
-/** The game sky's numeric uniforms that the environment map's sky takes over. */
-const SKY_COPIED = ["turbidity", "rayleigh", "mieCoefficient", "mieDirectionalG", "cloudCoverage", "time"];
+/** The game sky's numeric uniforms that the environment map's sky takes over (the clouds drift with
+ * TSL's own clock in both, so no time is copied). */
+const SKY_COPIED = ["turbidity", "rayleigh", "mieCoefficient", "mieDirectionalG", "cloudCoverage"] as const;
 /**
  * 画質 › 空の映り込み: the sky's environment map size (per cube face) and how far the sky moves
  * before it is drawn again (degrees of sun, see isEnvStale) and how often at most. 高 is 256, the
@@ -86,9 +85,10 @@ const REFLECTIONS = {
 export class Environment {
   readonly sun = new DirectionalLight(0xffffff, 2.5);
   private readonly hemi = new HemisphereLight(0xbfd9ff, 0x4a4036, 0.9);
-  private readonly sky = new Sky();
+  /** Preetham's sky with clouds, in TSL with Tokyo's additions (skyShader.ts). */
+  private readonly sky = new TokyoSky();
   /** The night glow, stars, blue hour, rain deck and horizon haze added to the sky (skyShader.ts). */
-  private readonly look = upgradeSky(this.sky);
+  private readonly look: SkyLook = this.sky.look;
   /** scene.environment drawn from this sky (skyEnvMap.ts), or the studio for 空の映り込み なし. */
   envMap: SkyEnvMap | null = null;
   private studio: Texture | null = null;
@@ -126,17 +126,24 @@ export class Environment {
 
   constructor(
     private readonly scene: Scene,
-    private readonly renderer: WebGLRenderer,
+    private readonly renderer: WebGPURenderer,
   ) {
     // Image-based lighting, set once now (a noon sun) so that materials compile with an
     // environment map from the start; update() redraws it as the sky changes.
-    this.sky.material.uniforms.sunPosition.value.set(0, 1, 0.6);
+    this.sky.sunPosition.value.set(0, 1, 0.6);
     this.updateReflections({ elevation: 59, azimuth: 180, overcast: 0 }, lightBalance(59, 0));
     this.sky.scale.setScalar(40000);
     this.sky.frustumCulled = false;
+    // First of the opaque objects: the sky sits at the far plane without writing depth, and with a
+    // reversed depth buffer anything drawn before it would be painted over (its centre is the
+    // camera, so the distance sort cannot be trusted to put it first).
+    this.sky.renderOrder = -1000;
     scene.add(this.sky);
-    installAtmosphere();
+    // The atmospheric fog (atmosphere.ts) for every node material with fog on. The three Fog stays
+    // as the holder of its colour (a radiance, skyLight.ts) and of the linear floor's near and far,
+    // which the fog node reads, and for the water, which reflects its colour as the horizon.
     scene.fog = this.fog;
+    (scene as Scene & { fogNode: Node | null }).fogNode = atmosphereFog(this.fog);
 
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(QUALITY.shadowMapSize, QUALITY.shadowMapSize);
@@ -279,14 +286,14 @@ export class Environment {
     const cloudStep = (Math.sign(cloudTarget - this.overcast) * dt) / WEATHER_TURN_S;
     this.overcast = isFirstOrReplay ? cloudTarget : MathUtils.clamp(this.overcast + cloudStep, 0, 1);
     const cloud = MathUtils.smoothstep(this.overcast, 0, 1);
-    const u = this.sky.material.uniforms;
-    u.sunPosition.value.copy(this.sunDir);
-    u.turbidity.value = MathUtils.lerp(4, 12, cloud);
+    // The clouds drift with TSL's own clock (the GLSL Sky took a time uniform).
+    const sky = this.sky;
+    sky.sunPosition.value.copy(this.sunDir);
+    sky.turbidity.value = MathUtils.lerp(4, 12, cloud);
     // More Rayleigh while the sun is low (the old step at 12°, smoothed over 8–16°).
-    u.rayleigh.value = MathUtils.lerp(1.4, 2.4, MathUtils.smoothstep(-elevation, -16, -8));
-    u.mieCoefficient.value = MathUtils.lerp(0.005, 0.02, cloud);
-    u.cloudCoverage.value = MathUtils.lerp(0.35, 0.85, cloud);
-    u.time.value += dt;
+    sky.rayleigh.value = MathUtils.lerp(1.4, 2.4, MathUtils.smoothstep(-elevation, -16, -8));
+    sky.mieCoefficient.value = MathUtils.lerp(0.005, 0.02, cloud);
+    sky.cloudCoverage.value = MathUtils.lerp(0.35, 0.85, cloud);
     this.sky.position.copy(camera);
 
     // 1 at deep night, 0 in full daylight, smooth through civil twilight.
@@ -309,7 +316,7 @@ export class Environment {
     this.hemi.groundColor.setRGB(light.hemiGround.r, light.hemiGround.g, light.hemiGround.b);
     this.hemi.intensity = light.hemiIntensity;
 
-    // A radiance (atmosphere.ts tone-maps it); the water reflects it as its horizon.
+    // A radiance, tone-mapped with the frame; the water reflects it as its horizon.
     const fog = light.fog;
     this.fog.color.setRGB(fog.r, fog.g, fog.b);
     // The linear ramp now only hides the end of the streamed world; the haze is atmosphere.ts.
@@ -336,16 +343,14 @@ export class Environment {
     this.renderer.toneMappingExposure = light.exposure;
 
     const look = this.look;
-    if (look) {
-      look.uSkyGain.value = light.skyGain;
-      look.uOzone.value = light.ozone;
-      look.uGlow.value.setRGB(light.glow.r, light.glow.g, light.glow.b);
-      look.uStars.value = light.stars;
-      look.uTwilight.value = light.twilight;
-      look.uDeck.value.set(light.deck.r, light.deck.g, light.deck.b, cloud);
-      // The haze over the sky: less of it in rain, where the deck itself is the grey.
-      look.uHaze.value.set(fog.r, fog.g, fog.b, MathUtils.lerp(0.35, 0.12, cloud));
-    }
+    look.uSkyGain.value = light.skyGain;
+    look.uOzone.value = light.ozone;
+    look.uGlow.value.setRGB(light.glow.r, light.glow.g, light.glow.b);
+    look.uStars.value = light.stars;
+    look.uTwilight.value = light.twilight;
+    look.uDeck.value.set(light.deck.r, light.deck.g, light.deck.b, cloud);
+    // The haze over the sky: less of it in rain, where the deck itself is the grey.
+    look.uHaze.value.set(fog.r, fog.g, fog.b, MathUtils.lerp(0.35, 0.12, cloud));
     // After the sky's uniforms: the environment map copies this frame's.
     const isStudio = this.updateReflections({ elevation, azimuth, overcast: cloud }, light);
     // The studio is a bright room whatever the hour (the old balance); the sky's map dims by itself.
@@ -387,14 +392,11 @@ export class Environment {
    * The environment map's sky is a second Sky (its own uniforms): it takes this one's sun, clouds
    * and night, without the disc, the stars or the screen's haze, and with a ground under it.
    */
-  private syncEnvSky(sky: Sky, light: LightBalance): void {
-    const from = this.sky.material.uniforms;
-    const to = sky.material.uniforms;
-    to.sunPosition.value.copy(from.sunPosition.value);
-    for (const name of SKY_COPIED) to[name].value = from[name].value;
+  private syncEnvSky(sky: TokyoSky, light: LightBalance): void {
+    sky.sunPosition.value.copy(this.sky.sunPosition.value);
+    for (const name of SKY_COPIED) sky[name].value = this.sky[name].value;
     const look = this.look;
-    const envLook = this.envMap?.look;
-    if (!look || !envLook) return;
+    const envLook = sky.look;
     envLook.uSkyGain.value = look.uSkyGain.value;
     envLook.uOzone.value = look.uOzone.value;
     envLook.uGlow.value.copy(look.uGlow.value);
@@ -422,8 +424,11 @@ export class Environment {
   }
 }
 
-/** The old image-based light: a procedural studio room (RoomEnvironment), drawn once. */
-function studioEnvironment(renderer: WebGLRenderer): Texture {
+/**
+ * The old image-based light: a procedural studio room (RoomEnvironment), drawn once (three/webgpu's
+ * PMREMGenerator: the one in "three" is WebGL's).
+ */
+function studioEnvironment(renderer: WebGPURenderer): Texture {
   const pmrem = new PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const texture = pmrem.fromScene(room, 0.04).texture;

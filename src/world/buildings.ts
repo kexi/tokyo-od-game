@@ -10,15 +10,14 @@ import {
   type BufferGeometry,
   Box3,
   Mesh,
-  MeshStandardMaterial,
   Sphere,
+  Vector2,
   Vector3,
   type BufferAttribute,
   type Camera,
   type Material,
   type Object3D,
   type Scene,
-  type WebGLRenderer,
 } from "three";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { BUILDING_COLLIDER_RADIUS, PLATEAU_TILESET } from "../config";
@@ -26,7 +25,7 @@ import { QUALITY } from "../device";
 import type { LocalFrame } from "../geo/frame";
 import {
   addFacadeAttribute,
-  applyFacade,
+  facadeMaterial,
   facadeUniforms,
   setFacadeOrigin,
   updateFacadeClock,
@@ -69,7 +68,8 @@ export class Buildings {
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
     private readonly camera: Camera,
-    private readonly renderer: WebGLRenderer,
+    /** What the tiles need to know of the renderer: the canvas size, for the screen-space error. */
+    private readonly renderer: { getSize(target: Vector2): Vector2 },
     frame: LocalFrame,
   ) {
     this.frame = frame;
@@ -209,8 +209,14 @@ export class Buildings {
     updateFacadeClock(gameTime, wetness, performance.now() / 1000);
   }
 
+  /** Why not setResolutionFromRenderer: it is typed for WebGLRenderer, and reads only the size. */
+  private setResolution(tiles: TilesRenderer): void {
+    const size = this.renderer.getSize(new Vector2());
+    tiles.setResolution(this.camera, size.x, size.y);
+  }
+
   onResize(): void {
-    this.tiles.setResolutionFromRenderer(this.camera, this.renderer);
+    this.setResolution(this.tiles);
   }
 
   update(player: Vector3, now: number): void {
@@ -264,7 +270,7 @@ export class Buildings {
     tiles.lruCache.minBytesSize = QUALITY.buildingCacheBytes * 0.6;
     tiles.lruCache.maxBytesSize = QUALITY.buildingCacheBytes;
     tiles.setCamera(this.camera);
-    tiles.setResolutionFromRenderer(this.camera, this.renderer);
+    this.setResolution(tiles);
 
     tiles.addEventListener("load-model", ({ scene }) => {
       this.loadedCount++;
@@ -321,9 +327,7 @@ export class Buildings {
     // LOD1 ships plain grey materials; replace them with the procedural façade so windows,
     // block colours and night lighting appear without any texture download.
     material.dispose();
-    const facade = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0.05 });
-    applyFacade(facade);
-    return facade;
+    return facadeMaterial();
   }
 
   private computeSphere(scene: Object3D): Sphere {

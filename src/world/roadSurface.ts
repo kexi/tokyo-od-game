@@ -3,7 +3,6 @@ import {
   BufferGeometry,
   CanvasTexture,
   Mesh,
-  MeshStandardMaterial,
   RepeatWrapping,
   SRGBColorSpace,
   type Texture,
@@ -11,12 +10,24 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import {
+  cameraViewMatrix,
+  cross,
+  dot,
+  materialColor,
+  materialRoughness,
+  normalize,
+  normalView,
+  positionWorld,
+  texture,
+  vec4,
+} from "three/tsl";
 import asphaltAlbedoUrl from "../../assets/road/textures/asphalt_albedo.jpg?url";
 import asphaltNormalUrl from "../../assets/road/textures/asphalt_normal.jpg?url";
 import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.png?url";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
-import { streetShading } from "./streetLights";
+import { StreetMaterial, type StreetBase } from "./streetLights";
 import type { Approach } from "./trafficControl";
 
 const STEP = 2.5; // metres between cross-sections; dense enough to hug the terrain mesh
@@ -36,7 +47,7 @@ const DASH = 5; // dashed 中央線 / 車線境界線 in urban areas: 5 m painte
 type Builder = { pos: number[]; idx: number[]; uv?: number[]; st: number[] };
 
 // 密粒度アスファルト textures (scripts/textures/asphalt_textures.py; 1 tile = 4 m), laid in world
-// XZ so every street shares one seamless surface without per-road UVs.
+// XZ so every street shares one seamless surface without per-road UVs (the road geometry has none).
 const ASPHALT_TILE = 4;
 const asphaltMap = (url: string, isColour: boolean): Texture => {
   const t = new TextureLoader().load(url);
@@ -45,36 +56,55 @@ const asphaltMap = (url: string, isColour: boolean): Texture => {
   if (isColour) t.colorSpace = SRGBColorSpace;
   return t;
 };
-const asphalt = new MeshStandardMaterial({
+
+/**
+ * The asphalt's maps in world XZ, as the WebGL version laid them (its vertex shader set the map
+ * UVs to xz / 4). The normal map's tangent frame is the one three derived from those UVs: u along
+ * world +x, v along +z; built here in view space from the geometry normal (the normal stage).
+ */
+function asphaltBase(): StreetBase {
+  const worldUv = positionWorld.xz.div(ASPHALT_TILE);
+  const albedo = asphaltMap(asphaltAlbedoUrl, true);
+  const bumps = asphaltMap(asphaltNormalUrl, false);
+  const rough = asphaltMap(asphaltRoughnessUrl, false);
+  const n = normalView;
+  const east = cameraViewMatrix.mul(vec4(1, 0, 0, 0)).xyz;
+  const t = normalize(east.sub(n.mul(dot(n, east))));
+  const b = cross(t, n);
+  const bump = texture(bumps, worldUv).xyz.mul(2).sub(1);
+  return {
+    // The colour (no map on this material, so a vec3) times the albedo map, as map_fragment did.
+    color: vec4(materialColor, 1).mul(texture(albedo, worldUv)),
+    roughness: materialRoughness.mul(texture(rough, worldUv).g),
+    normal: normalize(t.mul(bump.x).add(b.mul(bump.y)).add(n.mul(bump.z))),
+  };
+}
+const asphalt = new StreetMaterial("asphalt", {
+  hasStreet: true,
+  base: asphaltBase(),
   color: 0xffffff,
-  map: asphaltMap(asphaltAlbedoUrl, true),
-  normalMap: asphaltMap(asphaltNormalUrl, false),
-  roughnessMap: asphaltMap(asphaltRoughnessUrl, false),
   roughness: 1,
   metalness: 0,
 });
-asphalt.onBeforeCompile = (shader) => {
-  shader.vertexShader = shader.vertexShader.replace(
-    "#include <uv_vertex>",
-    `#include <uv_vertex>
-    vec2 worldUv = (modelMatrix * vec4(position, 1.0)).xz / ${ASPHALT_TILE.toFixed(1)};
-    vMapUv = worldUv;
-    vNormalMapUv = worldUv;
-    vRoughnessMapUv = worldUv;`,
-  );
-};
-streetShading(asphalt, "asphalt", true);
-const white = new MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7, emissive: 0x222222 });
+// Paint gets wet and lies in the same puddles as the asphalt under it.
+const white = new StreetMaterial("paint", {
+  hasStreet: true,
+  color: 0xf2f2ee,
+  roughness: 0.7,
+  emissive: 0x222222,
+});
 // 規制標示 (はみ出し禁止, 進路変更禁止, 最高速度) are yellow (命令 別表第六).
 const YELLOW = 0xf2b705;
-const yellow = new MeshStandardMaterial({ color: YELLOW, roughness: 0.7, emissive: 0x221800 });
-// Paint gets wet and lies in the same puddles as the asphalt under it.
-streetShading(white, "paint", true);
-streetShading(yellow, "paint", true);
-const digitMaterials = new Map<number, MeshStandardMaterial>();
+const yellow = new StreetMaterial("paint", {
+  hasStreet: true,
+  color: YELLOW,
+  roughness: 0.7,
+  emissive: 0x221800,
+});
+const digitMaterials = new Map<number, StreetMaterial>();
 
 /** 規制標示「最高速度」(105): yellow numerals stretched along the lane so drivers can read them. */
-function digitsMaterial(limit: number): MeshStandardMaterial {
+function digitsMaterial(limit: number): StreetMaterial {
   let m = digitMaterials.get(limit);
   if (m) return m;
   const canvas = document.createElement("canvas");
@@ -91,20 +121,25 @@ function digitsMaterial(limit: number): MeshStandardMaterial {
   }
   const map = new CanvasTexture(canvas);
   map.colorSpace = SRGBColorSpace;
-  m = new MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.7, emissive: 0x221800 });
-  streetShading(m, "paint", true);
+  m = new StreetMaterial("paint", {
+    hasStreet: true,
+    map,
+    alphaTest: 0.5,
+    roughness: 0.7,
+    emissive: 0x221800,
+  });
   digitMaterials.set(limit, m);
   return m;
 }
 
-const arrowMaterials = new Map<string, MeshStandardMaterial>();
+const arrowMaterials = new Map<string, StreetMaterial>();
 
 /**
  * 規制標示「進行方向別通行区分」(111 / 命令 別表第六): white arrows in each lane, 5 m long, stem from
  * the near end and a head for each direction the lane allows. The canvas is drawn as seen by the
  * approaching driver: up = farther along the lane.
  */
-function arrowMaterial(set: readonly LaneDirection[]): MeshStandardMaterial {
+function arrowMaterial(set: readonly LaneDirection[]): StreetMaterial {
   const key = [...set].sort().join(",");
   let m = arrowMaterials.get(key);
   if (m) return m;
@@ -164,8 +199,13 @@ function arrowMaterial(set: readonly LaneDirection[]): MeshStandardMaterial {
   }
   const map = new CanvasTexture(canvas);
   map.colorSpace = SRGBColorSpace;
-  m = new MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.7, emissive: 0x222222 });
-  streetShading(m, "paint", true);
+  m = new StreetMaterial("paint", {
+    hasStreet: true,
+    map,
+    alphaTest: 0.5,
+    roughness: 0.7,
+    emissive: 0x222222,
+  });
   arrowMaterials.set(key, m);
   return m;
 }
@@ -270,7 +310,7 @@ export class RoadSurface {
     }
     if (regs && isSurveyed) this.surveyed(whites, digits, graph, regs, approaches);
     if (regs) this.laneArrows(arrows, graph, regs, approaches);
-    const parts: Array<[Builder, MeshStandardMaterial, number]> = [
+    const parts: Array<[Builder, StreetMaterial, number]> = [
       [road, asphalt, 1],
       [whites, white, 2],
       [yellows, yellow, 2],

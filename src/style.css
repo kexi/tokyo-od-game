@@ -2823,7 +2823,8 @@ pre.notice {
     grid-template-columns: 1fr;
   }
 }
-.graphics-reload {
+.graphics-reload,
+.graphics-backend {
   font-size: 13px;
   margin: 0 0 8px;
 }

@@ -1,34 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { Sky } from "three/addons/objects/Sky.js";
-import { bloomSettings } from "../src/world/bloom";
+import { BackSide } from "three";
+import { bloomSettings, bloomShare, CAP, KNEE } from "../src/world/bloom";
 import { isEnvStale } from "../src/world/skyEnvMap";
-import { patchSkyFragment } from "../src/world/skyShader";
+import { TokyoSky } from "../src/world/skyShader";
 
-describe("Tokyo's additions to the Preetham sky shader", () => {
-  it("apply to the installed three's Sky.js (each anchor found once)", () => {
-    const patched = patchSkyFragment(new Sky().material.fragmentShader);
-    const uniforms = {
-      uSkyGain: "float",
-      uOzone: "float",
-      uGlow: "vec3",
-      uStars: "float",
-      uTwilight: "float",
-      uDeck: "vec4",
-      uGround: "vec4",
-      uHaze: "vec4",
-    };
-    for (const [name, type] of Object.entries(uniforms))
-      expect(patched).toContain(`uniform ${type} ${name};`);
-    // Behind the clouds (they composite over the glow and the stars), the deck over them, the haze
-    // after the output encoding.
-    const at = (s: string) => patched.indexOf(s);
-    expect(at("texColor += uGlow")).toBeLessThan(at("// Clouds"));
-    expect(at("if ( uDeck.w > 0.0 )")).toBeGreaterThan(at("// Clouds"));
-    expect(at("if ( uHaze.w > 0.0 )")).toBeGreaterThan(at("#include <colorspace_fragment>"));
+describe("Tokyo's sky (TSL)", () => {
+  it("drives like three's SkyMesh: the same uniforms, which the environment map's sky copies", () => {
+    const sky = new TokyoSky();
+    for (const name of ["turbidity", "rayleigh", "mieCoefficient", "cloudCoverage", "sunPosition"] as const)
+      expect(sky[name].isUniformNode).toBe(true);
+    // A box drawn from inside at the far plane, behind everything, without fog of its own.
+    expect(sky.material.side).toBe(BackSide);
+    expect(sky.material.depthWrite).toBe(false);
+    expect(sky.material.fog).toBe(false);
+    expect(sky.material.colorNode).not.toBeNull();
+    expect(sky.material.vertexNode).not.toBeNull();
   });
 
-  it("refuse a shader whose anchors moved (a three update), so the plain sky is kept", () => {
-    expect(() => patchSkyFragment("void main() {}")).toThrow(/anchor/);
+  it("starts with the additions off (no glow, stars, deck, ground or haze until Environment sets them)", () => {
+    const look = new TokyoSky().look;
+    expect(look.uSkyGain.value).toBe(1);
+    expect(look.uStars.value).toBe(0);
+    expect(look.uDeck.value.w).toBe(0);
+    expect(look.uGround.value.w).toBe(0);
+    expect(look.uHaze.value.w).toBe(0);
+    expect(look.uGlow.value.getHex()).toBe(0);
+  });
+
+  it("gives each sky its own uniforms (the environment map's sky has the ground, the screen's the haze)", () => {
+    const a = new TokyoSky();
+    const b = new TokyoSky();
+    a.look.uGround.value.w = 1;
+    expect(b.look.uGround.value.w).toBe(0);
+    expect(a.turbidity).not.toBe(b.turbidity);
   });
 });
 
@@ -56,14 +60,53 @@ describe("when the environment map is drawn again", () => {
   });
 });
 
-describe("bloom by the light", () => {
-  it("lets only clipped light spill by day and lit windows too at night", () => {
+/** The bloom threshold on a clear evening, by the night factor. */
+const thresholdAt = (night: number) => bloomSettings(night, 0).threshold;
+
+describe("bloom by the light (thresholds in exposed radiance: the HDR frame times the exposure)", () => {
+  // Exposed radiances measured or set in the game: the noon sky by the horizon (its brightest
+  // channel), a white wall in the sun, the city's glow on a clear night's horizon, a lit signal
+  // lens's LEDs (the green, the dimmest lit colour: render/untonemapped.ts draws ~1.0–1.8 exposed,
+  // whatever the exposure; tests/untonemapped.test.ts has every colour), a low-beam headlamp, a
+  // street lamp's lens (night exposure 0.8).
+  const NOON_HORIZON = 5.4;
+  const SUNLIT_WALL = 1.5;
+  const NIGHT_SKY = 0.1;
+  const SIGNAL = 1.0;
+  const HEADLAMP = 1.8 * 0.8;
+  const LAMP = 1 * 0.8;
+
+  it("lets only what outshines the sky spill by day: the sun and glints, not the sky or a white wall", () => {
     const day = bloomSettings(0, 0);
+    expect(day.threshold * (1 - KNEE)).toBeGreaterThan(NOON_HORIZON);
+    expect(bloomShare(NOON_HORIZON, day.threshold)).toBe(0);
+    expect(bloomShare(SUNLIT_WALL, day.threshold)).toBe(0);
+    expect(bloomShare(CAP, day.threshold)).toBeGreaterThan(0.5);
+  });
+
+  it("lets lamps, signals and headlights spill at night, not the sky's glow", () => {
     const night = bloomSettings(1, 0);
-    // Pseudo-HDR x / (1 − 0.96·x): a white wall at display 0.85 is ~4.6, a lit window at 0.85–0.9 ~5–7.
-    expect(day.threshold).toBeGreaterThan(14);
-    expect(night.threshold).toBeLessThan(4.6);
-    expect(night.strength).toBeGreaterThan(day.strength);
+    for (const light of [SIGNAL, HEADLAMP, LAMP])
+      expect(bloomShare(light, night.threshold)).toBeGreaterThan(0);
+    expect(bloomShare(SIGNAL, night.threshold)).toBeGreaterThan(bloomShare(LAMP, night.threshold));
+    expect(bloomShare(NIGHT_SKY, night.threshold)).toBe(0);
+    expect(night.strength).toBeGreaterThan(bloomSettings(0, 0).strength);
+  });
+
+  it("moves the threshold in stops through dusk, never below the night's or above the day's", () => {
+    const half = thresholdAt(0.425);
+    expect(half).toBeCloseTo(Math.sqrt(thresholdAt(0) * thresholdAt(1)), 6);
+    for (let n = 0; n <= 1; n += 0.05) {
+      expect(thresholdAt(n)).toBeLessThanOrEqual(thresholdAt(0));
+      expect(thresholdAt(n)).toBeGreaterThanOrEqual(thresholdAt(1));
+      expect(thresholdAt(n + 0.05)).toBeLessThanOrEqual(thresholdAt(n) + 1e-9);
+    }
+  });
+
+  it("holds the sun's disc to CAP, so a 6·10⁴ disc does not flood the chain", () => {
+    const t = bloomSettings(0, 0).threshold;
+    // Its contribution, as a radiance: share × brightness.
+    expect(bloomShare(60000, t) * 60000).toBeCloseTo(bloomShare(CAP, t) * CAP, 6);
   });
 
   it("spreads further in wet air at night, not by day", () => {

@@ -6,7 +6,6 @@ import {
   CanvasTexture,
   Float32BufferAttribute,
   Mesh,
-  MeshStandardMaterial,
   RepeatWrapping,
   SRGBColorSpace,
   ShapeUtils,
@@ -16,7 +15,7 @@ import {
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { warn } from "../log";
-import { streetShading } from "./streetLights";
+import { StreetMaterial } from "./streetLights";
 
 /**
  * 歩道 from PLATEAU 道路モデル LOD2 (2025, PDL1.0): TrafficArea polygons whose tran:function is
@@ -217,23 +216,20 @@ export class Pavements {
   private polygons: Array<{ rings: Vector2[][]; minX: number; minZ: number; maxX: number; maxZ: number }> =
     [];
   private grid = new Map<string, number[]>();
-  private readonly materials: Record<PavementKind, MeshStandardMaterial>;
-  private readonly kerbMaterial = new MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });
+  private readonly materials: Record<PavementKind, StreetMaterial>;
+  private readonly kerbMaterial = new StreetMaterial("concrete", { color: 0xb9b6ae, roughness: 0.85 });
 
   constructor(
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
   ) {
-    this.materials = {
-      sidewalk: new MeshStandardMaterial({ map: pavingTexture(), roughness: 0.9 }),
-      // 島 are mostly medians and channelising islands: weathered concrete, darker than paving.
-      island: new MeshStandardMaterial({ color: 0x7d7b76, roughness: 0.95 }),
-    };
     // Wet like the road but less: Tokyo's interlocking paving is mostly permeable (透水性舗装).
-    streetShading(this.materials.sidewalk, "paving");
-    streetShading(this.materials.island, "concrete");
-    streetShading(this.kerbMaterial, "concrete");
+    this.materials = {
+      sidewalk: new StreetMaterial("paving", { map: pavingTexture(), roughness: 0.9 }),
+      // 島 are mostly medians and channelising islands: weathered concrete, darker than paving.
+      island: new StreetMaterial("concrete", { color: 0x7d7b76, roughness: 0.95 }),
+    };
   }
 
   get count(): number {
@@ -353,7 +349,7 @@ export class Pavements {
     }
   }
 
-  private addMesh(b: { pos: number[]; uv: number[]; idx: number[] }, material: MeshStandardMaterial): void {
+  private addMesh(b: { pos: number[]; uv: number[]; idx: number[] }, material: StreetMaterial): void {
     if (b.idx.length === 0) return;
     const g = new BufferGeometry();
     g.setAttribute("position", new Float32BufferAttribute(b.pos, 3));

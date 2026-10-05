@@ -8,6 +8,8 @@ stale_after: 2027-04-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-10-04T19:30:00Z }
 verified:
   - { by: process:vitest, at: 2026-10-04T19:20:00Z }
+  - { by: process:vitest, at: 2026-10-04T20:40:00Z }
+  - { by: process:naga, at: 2026-10-04T20:40:00Z }
 sources:
   - id: van-dongen-2008
     resource: https://www.proun-game.com/Oogst3D/CODING/InteriorMapping/InteriorMapping.pdf
@@ -25,32 +27,38 @@ sources:
   - id: facade-tests
     resource: tests/facade.test.ts
     title: 点灯割合と窓ハッシュのテスト
+  - id: wgsl-offline
+    resource: webgpu ブランチで three の WGSLNodeBuilder を Node（vitest）上で動かし、影付きの太陽と環境マップのある場面で 夜の窓 flat / lit / rooms の外壁を WGSL にして naga（wgpu-utils 29.0.1）で検証（2026-10-05 05:33 JST、scratchpad/wgsl）
+    title: 外壁の node material の WGSL 生成と検証
+    author: claude-opus-5-5/1m
 ---
 
 # 構成
 
-`src/world/facade.ts` の 1 つのシェーダー（MeshStandardMaterial の onBeforeCompile）だけで描く。描画呼び出し・頂点・テクスチャ取得（1 回）は変えていない。[^session-shots]
+`src/world/facade.ts` の 1 つのマテリアルだけで描く。描画呼び出し・頂点・テクスチャ取得（1 回）は変えていない。[^session-shots] main（WebGL）では MeshStandardMaterial の onBeforeCompile で GLSL を差し込み、webgpu ブランチでは同じ計算を TSL で書いた MeshStandardNodeMaterial（`FacadeMaterial`）にしている（下の表は両方の差し込み位置）。
 
-| 処理           | 差し込み位置                                              | 内容                                                                                                        |
-| -------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| 窓の判定と点灯 | `color_fragment` の後                                     | 1 タイル 4×4 窓（3.2 m × 3.5 m）。窓 ID = ベイ番号（576 m 周期で折り返す）・階・壁の向き・建物の tint       |
-| ガラス         | `roughnessmap`/`metalnessmap`/`normal_fragment_maps` の後 | 窓は roughness 0.07、カーテンウォール（office_glass）は 0.04・metalness 0.65・板ガラスごとに ±1° 程度の傾き |
-| 点灯した窓     | `emissivemap_fragment` の後                               | 近くは部屋、遠くは平らな光。ガラスの反射分（Schlick、F0 0.04 / 0.2）を引く                                  |
-| 地面際         | `aomap_fragment` の後                                     | 間接光を高さ 2.6 m までで最大 65 % 減、街路の谷で 20 % 減。直接光は泥はね分だけ（1 m まで 18 %）            |
+| 処理           | GLSL（main）の差し込み位置                                | TSL（webgpu）の入れ先                          | 内容                                                                                                        |
+| -------------- | --------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 窓の判定と点灯 | `color_fragment` の後                                     | `colorNode`（外壁の変数を property に入れる）  | 1 タイル 4×4 窓（3.2 m × 3.5 m）。窓 ID = ベイ番号（576 m 周期で折り返す）・階・壁の向き・建物の tint       |
+| ガラス         | `roughnessmap`/`metalnessmap`/`normal_fragment_maps` の後 | `roughnessNode`・`metalnessNode`・`normalNode` | 窓は roughness 0.07、カーテンウォール（office_glass）は 0.04・metalness 0.65・板ガラスごとに ±1° 程度の傾き |
+| 点灯した窓     | `emissivemap_fragment` の後                               | `emissiveNode`                                 | 近くは部屋、遠くは平らな光。ガラスの反射分（Schlick、F0 0.04 / 0.2）を引く                                  |
+| 地面際         | `aomap_fragment` の後                                     | 照明モデル（`ambientOcclusion` を上書き）      | 間接光を高さ 2.6 m までで最大 65 % 減、街路の谷で 20 % 減。直接光は泥はね分だけ（1 m まで 18 %）            |
 
-毎フレーム `main.ts` の 1 行（`buildings.setFacadeClock(env.now(), env.wetness)`）で、ゲーム時刻の点灯割合（スタイル 8 種＋路面店）、濡れ具合、テレビのちらつき用の秒を uniform に入れる。
+毎フレーム `main.ts` の 1 行（`buildings.setFacadeClock(env.now(), env.wetness)`）で、ゲーム時刻の点灯割合（スタイル 8 種＋路面店）、濡れ具合、テレビのちらつき用の秒を uniform に入れる。webgpu ブランチではこれらは共有の render グループの uniform で、render ごとに 1 回の転送で全タイルに届く。
 
 ## 画質設定
 
-`GRAPHICS.settings.windows`（設定 › 画質 › 夜の窓）を define にして、設定ごとに別プログラムにしている（`customProgramCacheKey` が設定名を含む）。切り替えると生きている外壁マテリアル全部に `needsUpdate` を立てる。
+`GRAPHICS.settings.windows`（設定 › 画質 › 夜の窓）ごとに別のシェーダーにしている。main では define と `customProgramCacheKey`、webgpu ブランチでは設定ごとに 1 つの node のグラフ（全タイルのマテリアルが共有するので、パイプラインも設定ごとに 1 つ）。切り替えると生きている外壁マテリアル全部のノードを差し替えて `needsUpdate` を立てる。
 
-| 設定                             | define               | 見え方                                                             |
+| 設定                             | define（main）       | 見え方                                                             |
 | -------------------------------- | -------------------- | ------------------------------------------------------------------ |
 | `flat`（単色・低の既定・スマホ） | なし                 | 元のまま。窓の 40 % が同じクリーム色（1.0, 0.78, 0.45）×1.2        |
 | `lit`（点灯のばらつき・中）      | `FACADE_WINDOWS_LIT` | 時刻と用途による点灯、色温度、明るさ、ブラインド・カーテン、テレビ |
 | `rooms`（部屋の奥行き・高/最高） | ＋`FACADE_INTERIOR`  | さらに 140 m 以内の点灯窓の奥に部屋                                |
 
 濡れは `GRAPHICS.settings.wetRoads !== "off"` のときだけ（uniform を 0 にするだけなので再コンパイルなし）。ガラス・地面際・乾いた雨じみは全設定で描く。
+
+webgpu ブランチの 3 つのグラフは、three の WGSLNodeBuilder で WGSL にして naga で検証した（影付きの太陽と環境マップあり。フラグメントは flat 1,153 行・lit 1,833 行・rooms 2,006 行）。[^wgsl-offline] 微分（`fwidth`）とテクスチャ配列の取得は分岐の外に置いている（WGSL は一様な制御フローを要求する）。部屋の箱との交差は本物の分岐の中で、点灯した近くの窓だけが計算する。
 
 # 点灯割合（仮定）
 
@@ -133,3 +141,5 @@ van Dongen の方法: 視線をガラスの奥へ延ばし、規則的に並ぶ�
 [^kelvin-calc]: 黒体色の計算
 
 [^facade-tests]: 点灯割合と窓ハッシュのテスト
+
+[^wgsl-offline]: 外壁の node material の WGSL 生成と検証

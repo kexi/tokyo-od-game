@@ -1,10 +1,6 @@
-import {
-  MeshStandardMaterial,
-  ShaderLib,
-  type WebGLProgramParametersWithUniforms,
-  type WebGLRenderer,
-} from "three";
+import { PhysicalLightingModel } from "three/webgpu";
 import { describe, expect, it } from "vitest";
+import { GRAPHICS } from "../src/device";
 import { LocalFrame } from "../src/geo/frame";
 import { RoadGraph, type RoadLine } from "../src/world/roads";
 import {
@@ -22,7 +18,7 @@ import {
   puddleLevel,
   rippleAmount,
   stations,
-  streetShading,
+  StreetMaterial,
 } from "../src/world/streetLights";
 
 const frame = new LocalFrame(35.68, 139.76, 40);
@@ -237,27 +233,42 @@ describe("nearest-lamp selection", () => {
   });
 });
 
-describe("streetShading", () => {
-  it("lands in three's standard shader: wetness, roughness, normals and the lamp loop", () => {
-    const m = new MeshStandardMaterial();
-    streetShading(m, "asphalt", true);
-    const shader = {
-      uniforms: {},
-      vertexShader: ShaderLib.standard.vertexShader,
-      fragmentShader: ShaderLib.standard.fragmentShader,
-    } as unknown as WebGLProgramParametersWithUniforms;
-    m.onBeforeCompile(shader, {} as WebGLRenderer);
-    for (const call of [
-      "stWetness( normalize( vNormal ) );",
-      "roughnessFactor = mix( roughnessFactor, 0.02, stPuddle );",
-      "nonPerturbedNormal, max( stPuddle",
-      "stLights( normal, material, reflectedLight );",
-    ])
-      expect(shader.fragmentShader).toContain(call);
-    expect(shader.vertexShader).toContain("vStWorld = ( modelMatrix");
-    expect(Object.keys(shader.uniforms)).toEqual(
-      expect.arrayContaining(["stLight", "stColor", "stState", "stRain"]),
-    );
-    expect(m.customProgramCacheKey()).toContain("street:asphalt");
+/** 画質 › 雨の路面, as the settings screen sets it. */
+const withWetRoads = (wetRoads: "off" | "simple" | "full") =>
+  GRAPHICS.set({ ...GRAPHICS.settings, wetRoads });
+
+describe("StreetMaterial", () => {
+  it("puts the water in the colour, roughness and normal stages and the lamps in its lighting", () => {
+    withWetRoads("full");
+    const m = new StreetMaterial("asphalt", { hasStreet: true });
+    expect(m.colorNode).not.toBeNull();
+    expect(m.roughnessNode).not.toBeNull();
+    expect(m.normalNode).not.toBeNull();
+    expect(m.setupLightingModel()).toBeInstanceOf(PhysicalLightingModel);
+    expect(m.customProgramCacheKey()).toContain("street-asphalt-true-full");
+  });
+
+  it("compiles no water for 雨の路面 なし and brings it back when switched on", () => {
+    withWetRoads("full");
+    const m = new StreetMaterial("paving");
+    const version = m.version;
+    withWetRoads("off");
+    expect(m.colorNode).toBeNull();
+    expect(m.normalNode).toBeNull();
+    expect(m.version).toBeGreaterThan(version);
+    expect(m.customProgramCacheKey()).toContain("street-paving-false-off");
+    withWetRoads("simple");
+    expect(m.colorNode).not.toBeNull();
+    expect(m.customProgramCacheKey()).toContain("-simple");
+  });
+
+  it("shares one graph between materials of a kind, and keeps kinds apart", () => {
+    withWetRoads("full");
+    const white = new StreetMaterial("paint", { hasStreet: true, color: 0xffffff });
+    const yellow = new StreetMaterial("paint", { hasStreet: true, color: 0xf2b705 });
+    const kerb = new StreetMaterial("concrete");
+    expect(yellow.colorNode).toBe(white.colorNode);
+    expect(kerb.colorNode).not.toBe(white.colorNode);
+    expect(kerb.customProgramCacheKey()).not.toEqual(white.customProgramCacheKey());
   });
 });

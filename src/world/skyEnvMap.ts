@@ -1,15 +1,6 @@
-import {
-  CubeCamera,
-  HalfFloatType,
-  PMREMGenerator,
-  Scene,
-  WebGLCubeRenderTarget,
-  type Texture,
-  type WebGLRenderTarget,
-  type WebGLRenderer,
-} from "three";
-import { Sky } from "three/addons/objects/Sky.js";
-import { upgradeSky, type SkyLook } from "./skyShader";
+import { CubeCamera, HalfFloatType, type RenderTarget, Scene, type Texture } from "three";
+import { CubeRenderTarget, PMREMGenerator, type WebGPURenderer } from "three/webgpu";
+import { type SkyLook, TokyoSky } from "./skyShader";
 
 /** What the environment map was drawn for; a new one is drawn when this has moved enough. */
 export type EnvState = {
@@ -26,8 +17,9 @@ const DEEP_NIGHT = -12;
 /**
  * Whether the sky has moved enough since `drawn` to draw the environment map again: 1° of sun
  * elevation, 2° of azimuth (while the sun shows at all) or 6% of cloud, times `step`. With the game
- * clock at 10× the sun moves ~2.5° a real minute, so at step 1 that is about one map every 25 s;
- * weather turning over ~25 s gives one every 1.5 s while it lasts.
+ * clock at 60× (GAME_TIME_SCALE) the sun moves ~15° a real minute, so at step 1 that is about one
+ * map every 4 s (高; 低's step 3 and 3 s gap: one every 12 s); weather turning over ~25 s gives one
+ * every 1.5 s while it lasts.
  */
 export function isEnvStale(drawn: EnvState | null, now: EnvState, step = 1): boolean {
   if (!drawn) return true;
@@ -47,15 +39,18 @@ export function isEnvStale(drawn: EnvState | null, now: EnvState, step = 1): boo
  *
  * Why not RoomEnvironment (as before): a studio, so car paint and glass towers reflected softboxes
  * at any time of day. Why not PMREMGenerator.fromScene: it allocates a new target per call.
+ *
+ * On WebGPU: three/webgpu's PMREMGenerator and CubeRenderTarget; the sky is the game's TSL sky
+ * (skyShader.ts) with its ground and skyline on (uGround.w, set by Environment's syncEnvSky).
  */
 export class SkyEnvMap {
   private readonly pmrem: PMREMGenerator;
-  private readonly cube: WebGLCubeRenderTarget;
+  private readonly cube: CubeRenderTarget;
   private readonly cubeCamera: CubeCamera;
   private readonly scene = new Scene();
-  private readonly sky = new Sky();
-  readonly look: SkyLook | null;
-  private target: WebGLRenderTarget | null = null;
+  private readonly sky = new TokyoSky();
+  readonly look: SkyLook = this.sky.look;
+  private target: RenderTarget | null = null;
   private drawn: EnvState | null = null;
   private drawnAt = -Infinity;
   /** CPU milliseconds of the last draw (issuing the passes; the GPU runs them afterwards). */
@@ -64,18 +59,17 @@ export class SkyEnvMap {
   draws = 0;
 
   constructor(
-    private readonly renderer: WebGLRenderer,
+    private readonly renderer: WebGPURenderer,
     readonly size: number,
   ) {
     this.pmrem = new PMREMGenerator(renderer);
-    this.cube = new WebGLCubeRenderTarget(size, { type: HalfFloatType, generateMipmaps: false });
+    this.cube = new CubeRenderTarget(size, { type: HalfFloatType, generateMipmaps: false });
     this.cubeCamera = new CubeCamera(1, 1000, this.cube);
     this.sky.scale.setScalar(500);
     this.sky.frustumCulled = false;
     // The sun's disc stays out: the DirectionalLight's highlight is the sun on glossy surfaces, and
     // a disc of radiance ~10⁴ would ring through the filtered mips.
-    this.sky.material.uniforms.showSunDisc.value = 0;
-    this.look = upgradeSky(this.sky);
+    this.sky.showSunDisc.value = 0;
     this.scene.add(this.sky);
   }
 
@@ -88,7 +82,7 @@ export class SkyEnvMap {
    * Draw again when the sky has moved (isEnvStale with `step`) and at most every `minGapMs`. `sync`
    * copies the game sky's uniforms (sun, clouds, glow) into this sky just before drawing.
    */
-  update(now: EnvState, nowMs: number, sync: (sky: Sky) => void, step = 1, minGapMs = 400): boolean {
+  update(now: EnvState, nowMs: number, sync: (sky: TokyoSky) => void, step = 1, minGapMs = 400): boolean {
     const isDue = isEnvStale(this.drawn, now, step) && nowMs - this.drawnAt >= minGapMs;
     if (!isDue) return false;
     const t0 = performance.now();
@@ -106,7 +100,6 @@ export class SkyEnvMap {
     this.pmrem.dispose();
     this.cube.dispose();
     this.target?.dispose();
-    this.sky.geometry.dispose();
-    this.sky.material.dispose();
+    this.sky.dispose();
   }
 }

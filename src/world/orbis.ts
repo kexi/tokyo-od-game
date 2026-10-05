@@ -1,13 +1,14 @@
 import {
-  AdditiveBlending,
+  AddEquation,
   CanvasTexture,
   Color,
+  CustomBlending,
   InstancedMesh,
   Matrix4,
-  MeshBasicMaterial,
   MeshStandardMaterial,
+  OneFactor,
   Sprite,
-  SpriteMaterial,
+  type SpriteMaterial,
   SRGBColorSpace,
   Vector3,
   type BufferGeometry,
@@ -15,12 +16,15 @@ import {
   type Mesh,
   type Scene,
 } from "three";
+import { type Node, SpriteNodeMaterial } from "three/webgpu";
+import { materialColor, materialOpacity, sRGBTransferEOTF, sRGBTransferOETF, vec4 } from "three/tsl";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { LocalFrame } from "../geo/frame";
 import { log, warn } from "../log";
 import { PROP_GROUPS } from "../physics/groups";
+import { untonemapped, UntonemappedBasicMaterial } from "../render/untonemapped";
 import { isExpresswayClass, parseOrbis, type OrbisEntry, type OrbisSign } from "./orbisData";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 
@@ -357,6 +361,43 @@ function glowTexture(): CanvasTexture {
   return t;
 }
 
+/**
+ * The strobe's glow: an additive sprite (colour × the glow texture, faded by opacity) that shows as
+ * the WebGL version's did over a dark scene, whatever the exposure. WebGL drew it untonemapped onto
+ * the 8-bit canvas with the blend src·alpha + dst, adding the encoded colour × alpha; here the
+ * sprite adds the radiance that the frame's ACES shows as that much over black
+ * (render/untonemapped.ts). Over a lit scene it adds in radiance, so it brightens less than on the
+ * canvas (ACES compresses the sum), as light does.
+ * How the blend adds that radiance as it is: CustomBlending One + One for the colour (the
+ * AdditiveBlending of an unpremultiplied material would multiply it by alpha again, and its
+ * premultiplied form multiplies in the shader); the alpha adds as AdditiveBlending's does.
+ */
+function glowMaterial(): SpriteNodeMaterial {
+  const material = new SpriteNodeMaterial({
+    map: glowTexture(),
+    depthWrite: false,
+    transparent: true,
+    // An additive layer mixed toward the haze would add the haze's colour; a 5 m glow needs no fog.
+    fog: false,
+  });
+  // colour × map (three's materialColor is a vec4 with a map; the cast only quiets the vec3 in its
+  // type, as in streetLights.ts), and its alpha × the fading opacity.
+  const base = vec4(materialColor as unknown as Node<"vec4">);
+  const alpha = base.a.mul(materialOpacity);
+  const encoded = sRGBTransferOETF(base.rgb) as Node<"vec3">;
+  const overBlack = sRGBTransferEOTF(encoded.mul(alpha)) as Node<"vec3">;
+  // The map's alpha: three multiplies colorNode's alpha by the opacity (setupDiffuseColor), so the
+  // output alpha is `alpha`, as the sprite's was.
+  material.colorNode = vec4(untonemapped(overBlack), base.a);
+  material.blending = CustomBlending;
+  material.blendEquation = AddEquation;
+  material.blendSrc = OneFactor;
+  material.blendDst = OneFactor;
+  material.blendSrcAlpha = OneFactor;
+  material.blendDstAlpha = OneFactor;
+  return material;
+}
+
 /** Scene objects for the sites around the player; rebuilt with the road network. */
 export class OrbisDevices {
   sites: OrbisSite[] = [];
@@ -368,20 +409,13 @@ export class OrbisDevices {
   private lenses: InstancedMesh | null = null;
   /** Lens instance of each site's lanes: lensIndex[site][lane]. */
   private lensIndex: number[][] = [];
-  private flashes: Array<{ lens: number; at: number; glow: Sprite }> = [];
+  private flashes: Array<{ lens: number; at: number; glow: Sprite; material: SpriteNodeMaterial }> = [];
   private fired = new Map<number, number>();
   private body: RAPIER.RigidBody | null = null;
-  private readonly lensMaterial = new MeshBasicMaterial({ toneMapped: false });
-  private readonly glowMaterial = new SpriteMaterial({
-    map: glowTexture(),
-    blending: AdditiveBlending,
-    depthWrite: false,
-    transparent: true,
-    toneMapped: false,
-    // The game's depth fog (world/atmosphere.ts) patches the fog chunk with the vertex position,
-    // which sprites do not have; a 5 m glow needs no fog anyway.
-    fog: false,
-  });
+  // The lens shows its instance colour as it is (the WebGL `toneMapped: false`, which
+  // WebGPURenderer ignores: render/untonemapped.ts).
+  private readonly lensMaterial = new UntonemappedBasicMaterial();
+  private readonly glowMaterial = glowMaterial();
 
   constructor(
     private readonly scene: Scene,
@@ -491,7 +525,9 @@ export class OrbisDevices {
     if (lens === undefined || !this.lenses || !this.kit) return;
     const m = new Matrix4();
     this.lenses.getMatrixAt(lens, m);
-    const glow = new Sprite(this.glowMaterial.clone());
+    const material = this.glowMaterial.clone();
+    // three's types take a SpriteMaterial only; WebGPURenderer draws a sprite with its node form.
+    const glow = new Sprite(material as unknown as SpriteMaterial);
     // Just in front of the window, so the burst is not hidden inside the housing.
     glow.position
       .copy(this.kit.lensCentre)
@@ -500,7 +536,7 @@ export class OrbisDevices {
     glow.scale.setScalar(5);
     glow.renderOrder = 10;
     this.scene.add(glow);
-    this.flashes.push({ lens, at: now, glow });
+    this.flashes.push({ lens, at: now, glow, material });
   }
 
   /** Strobe animation: a white burst fading through red, with a glow round the lens. */
@@ -514,15 +550,15 @@ export class OrbisDevices {
       if (isOver) {
         lenses.setColorAt(f.lens, LENS_REST);
         this.scene.remove(f.glow);
-        f.glow.material.dispose();
+        f.material.dispose();
         return false;
       }
       // White for the first fifth, then red fading back to the resting dark red.
       if (t < 0.2) c.copy(LENS_WHITE);
       else c.copy(LENS_RED).lerp(LENS_REST, (t - 0.2) / 0.8);
       lenses.setColorAt(f.lens, c);
-      f.glow.material.opacity = t < 0.2 ? 1 : 1 - (t - 0.2) / 0.8;
-      f.glow.material.color.copy(t < 0.2 ? LENS_WHITE : LENS_RED);
+      f.material.opacity = t < 0.2 ? 1 : 1 - (t - 0.2) / 0.8;
+      f.material.color.copy(t < 0.2 ? LENS_WHITE : LENS_RED);
       return true;
     });
     if (lenses.instanceColor) lenses.instanceColor.needsUpdate = true;

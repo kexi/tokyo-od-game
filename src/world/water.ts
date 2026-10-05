@@ -5,7 +5,6 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Frustum,
-  HalfFloatType,
   type InstancedMesh,
   Matrix4,
   Mesh,
@@ -13,16 +12,18 @@ import {
   type Object3D,
   PerspectiveCamera,
   Plane,
+  type RenderTarget,
   Sphere,
   Vector2,
   Vector3,
   Vector4,
-  WebGLRenderTarget,
   type Scene,
-  type WebGLRenderer,
 } from "three";
+import type { WebGPURenderer } from "three/webgpu";
+import { holdShadows, sceneTarget } from "../render/frame";
+import { clipNearTo, depthRange } from "../render/obliqueClip";
 import { TERRAIN_ZOOM } from "../config";
-import { QUALITY } from "../device";
+import { GRAPHICS, QUALITY } from "../device";
 import { haversineMeters } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
@@ -157,7 +158,7 @@ export class WaterLayer implements GroundWater {
   private deckBody: RAPIER.RigidBody | null = null;
   private shoreBody: RAPIER.RigidBody | null = null;
   private graph: RoadGraph | null = null;
-  private reflection: WebGLRenderTarget | null = null;
+  private reflection: RenderTarget | null = null;
   private readonly mirror = new PerspectiveCamera();
   private planeY: number | null = null;
   private planeCheckedAt = 0;
@@ -987,13 +988,19 @@ export class WaterLayer implements GroundWater {
   }
 
   /**
-   * One planar reflection per frame for the water level nearest the eye (desktop only): the scene
-   * drawn from below that plane into a half-size target, sampled by the water shader. Nothing is
-   * drawn while no water is in view within REFLECT_RANGE, so towns without water pay nothing.
+   * One planar reflection per frame for the water level nearest the eye (desktop, with 画質
+   * 空の映り込み on: phones and 低 see the sky in the water): the scene drawn from below that plane
+   * into a half-size target, sampled by the water shader. Nothing is drawn while no water is in view
+   * within REFLECT_RANGE, so towns without water pay nothing.
    */
-  renderReflection(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera, now: number): void {
+  renderReflection(renderer: WebGPURenderer, scene: Scene, camera: PerspectiveCamera, now: number): void {
     const u = this.material.uniforms;
-    if (QUALITY.isMobile) return;
+    const isSkyOnly = QUALITY.isMobile || GRAPHICS.settings.reflections === "off";
+    if (isSkyOnly) {
+      this.reflectedFor = camera;
+      this.reflectionOn = 0;
+      return;
+    }
     if (now - this.planeCheckedAt > 250) {
       this.planeCheckedAt = now;
       this.planeY = this.nearestLevel(camera);
@@ -1013,11 +1020,13 @@ export class WaterLayer implements GroundWater {
     if (isFresh && this.reflectFrame % REFLECT_EVERY !== 0) return;
     const size = renderer.getDrawingBufferSize(new Vector2()).multiplyScalar(REFLECT_SCALE).floor();
     if (!this.reflection) {
-      this.reflection = new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType });
+      // The frame's format, samples and depth: the city's pipelines are shared with the frame (a
+      // pipeline is built per target format), so the first reflection compiles nothing new.
+      this.reflection = sceneTarget(renderer, size.x, size.y);
     } else if (this.reflection.width !== size.x || this.reflection.height !== size.y) {
       this.reflection.setSize(size.x, size.y);
     }
-    this.placeMirror(camera, planeY);
+    this.placeMirror(renderer, camera, planeY);
     // Not in the reflection: the water itself, and the small things (people, cars, signs, poles:
     // ~2,000 of the ~2,700 draw calls on a street) that a rippled, half-size mirror would blur
     // away anyway. Why not a layer: the objects belong to other modules, made before the water.
@@ -1038,13 +1047,13 @@ export class WaterLayer implements GroundWater {
       }
     }
     const target = renderer.getRenderTarget();
-    const shadows = renderer.shadowMap.autoUpdate;
-    renderer.shadowMap.autoUpdate = false;
+    const autoClear = renderer.autoClear;
+    // Cleared as the pass begins (renderer.clear() would be a pass of its own).
+    renderer.autoClear = true;
     renderer.setRenderTarget(this.reflection);
-    renderer.clear();
-    renderer.render(scene, this.mirror);
+    holdShadows(() => renderer.render(scene, this.mirror));
     renderer.setRenderTarget(target);
-    renderer.shadowMap.autoUpdate = shadows;
+    renderer.autoClear = autoClear;
     for (const m of visible) m.visible = true;
     u.uReflection.value = this.reflection.texture;
     this.reflectionOn = 1;
@@ -1056,6 +1065,8 @@ export class WaterLayer implements GroundWater {
     camera.updateMatrixWorld();
     this.frustum.setFromProjectionMatrix(
       this.tmpMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+      camera.coordinateSystem,
+      camera.reversedDepth,
     );
     const eye = camera.getWorldPosition(new Vector3());
     const tide = this.material.uniforms.uTide.value as number;
@@ -1077,7 +1088,7 @@ export class WaterLayer implements GroundWater {
   }
 
   /** The mirror camera below the plane, with its near plane clipped obliquely to the water. */
-  private placeMirror(camera: PerspectiveCamera, planeY: number): void {
+  private placeMirror(renderer: WebGPURenderer, camera: PerspectiveCamera, planeY: number): void {
     camera.updateMatrixWorld();
     const eye = new Vector3().setFromMatrixPosition(camera.matrixWorld);
     const rot = new Matrix4().extractRotation(camera.matrixWorld);
@@ -1096,28 +1107,23 @@ export class WaterLayer implements GroundWater {
     m.near = camera.near;
     m.far = Math.min(camera.far, REFLECT_FAR);
     m.layers.mask = camera.layers.mask;
+    // The renderer's conventions before the projection is made (the renderer would otherwise make
+    // it again on the first render, without the oblique plane): WebGPU's or WebGL's clip space, and
+    // the reversed depth (the flag has no setter; Renderer sets it the same way).
+    m.coordinateSystem = renderer.coordinateSystem;
+    Reflect.set(m, "_reversedDepth", renderer.reversedDepthBuffer);
     m.updateMatrixWorld();
     m.updateProjectionMatrix();
-    // Texture matrix: world → [0, 1]² of the reflection target.
+    // Texture matrix: world → [0, 1]² of the reflection target, v = 0 at the top (three samples a
+    // render target's row 0 at v = 0 on both backends).
     this.material.uniforms.uReflectionMatrix.value
-      .set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+      .set(0.5, 0, 0, 0.5, 0, -0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
       .multiply(m.projectionMatrix)
       .multiply(m.matrixWorldInverse);
     // Oblique near plane (Lengyel): nothing below the water is drawn into the reflection.
     const plane = new Plane(new Vector3(0, 1, 0), -planeY).applyMatrix4(m.matrixWorldInverse);
     const clip = new Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
-    const e = m.projectionMatrix.elements;
-    const q = new Vector4(
-      (Math.sign(clip.x) + e[8]) / e[0],
-      (Math.sign(clip.y) + e[9]) / e[5],
-      -1,
-      (1 + e[10]) / e[14],
-    );
-    clip.multiplyScalar(2 / clip.dot(q));
-    e[2] = clip.x;
-    e[6] = clip.y;
-    e[10] = clip.z + 1;
-    e[14] = clip.w;
+    clipNearTo(m.projectionMatrix, clip, depthRange(m.coordinateSystem, m.reversedDepth));
     m.projectionMatrixInverse.copy(m.projectionMatrix).invert();
   }
 

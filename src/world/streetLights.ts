@@ -12,11 +12,66 @@ import {
   Quaternion,
   SRGBColorSpace,
   Vector3,
+  Vector4,
   type Scene,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import {
+  abs,
+  attribute,
+  cameraPosition,
+  cameraViewMatrix,
+  clamp as clampN,
+  cross,
+  diffuseContribution,
+  dot,
+  exp,
+  exp2,
+  float,
+  floor,
+  Fn,
+  fract,
+  fwidth,
+  If,
+  int,
+  inverseSqrt,
+  length,
+  Loop,
+  materialColor,
+  materialRoughness,
+  max,
+  min,
+  mix,
+  normalize,
+  normalView,
+  normalWorld,
+  normalWorldGeometry,
+  positionWorld,
+  property,
+  renderGroup,
+  roughness,
+  select,
+  sin,
+  smoothstep as smoothstepN,
+  sqrt,
+  step,
+  uniform,
+  uniformArray,
+  vec2,
+  vec3,
+  vec4,
+} from "three/tsl";
+import {
+  MeshStandardNodeMaterial,
+  PhysicalLightingModel,
+  type MeshStandardNodeMaterialParameters,
+  type Node,
+  type NodeBuilder,
+} from "three/webgpu";
 import { GRAPHICS } from "../device";
+import type { GraphicsSettings } from "../graphics";
 import { log } from "../log";
+import { hash12, valueNoise } from "../render/shaderMath";
 import { PROP_GROUPS } from "../physics/groups";
 import { leftOf, type RoadGraph, type RoadLine, type Segment } from "./roads";
 import type { Approach, LightState } from "./trafficControl";
@@ -28,11 +83,12 @@ import type { Approach, LightState } from "./trafficControl";
  * a wet road. See knowledge/street-lighting-and-wet-roads.md for the sources and measurements.
  *
  * Why not real three.js lights: every PointLight is evaluated by every lit material and changing
- * their number recompiles every program. Here only the street surfaces (asphalt, paint, paving,
- * kerbs) read a small uniform array of the nearest lamps, refilled each frame as the car moves.
- * Why not screen-space reflections: the renderer uses a logarithmic depth buffer and no depth
- * pre-pass, so SSR would cost a depth/normal pass of the whole frame; the streaks come instead from
- * an anisotropic specular lobe over the same lamp list, and the sky from the scene environment map.
+ * their number recompiles every pipeline. Here only the street surfaces (StreetMaterial: asphalt,
+ * paint, paving, kerbs) read a small uniform array of the nearest lamps, refilled each frame as the
+ * car moves, in their lighting model.
+ * Why not screen-space reflections: the frame has no depth/normal pre-pass, so SSR would cost one
+ * over the whole frame; the streaks come instead from an anisotropic specular lobe over the same
+ * lamp list, and the sky from the scene environment map.
  */
 
 // ---------- lamp placement (道路照明施設設置基準 / JIS Z 9111 / 防犯灯) ----------
@@ -105,14 +161,14 @@ const SIDE_PICK = new Vector3(0.6, 0, -0.8);
  * `half` shifts by half a spacing (the other side of a staggered street), which puts the first and
  * last at the segment's ends.
  */
-export function stations(length: number, spacing: number, half = false): number[] {
-  const n = Math.round(length / spacing);
+export function stations(segmentLength: number, spacing: number, half = false): number[] {
+  const n = Math.round(segmentLength / spacing);
   const isShort = n === 0;
-  if (isShort) return length >= spacing * 0.35 && !half ? [length / 2] : [];
-  const step = length / n;
+  if (isShort) return segmentLength >= spacing * 0.35 && !half ? [segmentLength / 2] : [];
+  const gap = segmentLength / n;
   const out: number[] = [];
-  if (half) for (let k = 0; k <= n; k++) out.push(k * step);
-  else for (let k = 0; k < n; k++) out.push((k + 0.5) * step);
+  if (half) for (let k = 0; k <= n; k++) out.push(k * gap);
+  else for (let k = 0; k < n; k++) out.push((k + 0.5) * gap);
   return out;
 }
 
@@ -276,7 +332,7 @@ function lampColour(kelvin: number): Color {
 
 /**
  * Wet-road state from `env.wetness` w (0 dry – 1 soaked) and how hollow a spot is (h: about 0–1.5,
- * value-noise sags plus the kerb gutter and the wheel ruts). The GLSL below uses the same numbers.
+ * value-noise sags plus the kerb gutter and the wheel ruts). The street shader below uses the same numbers.
  * - The film (darker, glossier) covers average spots once w passes ~0.5 and is gone below ~0.3.
  * - Puddles fill the hollows as w rises and, while drying, shrink into the deepest spots (the
  *   gutter) and outlast the film: the threshold only reaches the gutter's depth near w ≈ 0.1.
@@ -390,17 +446,20 @@ const GLINTS: Record<string, { signals: number; cars: number }> = {
   "32": { signals: 6, cars: 5 },
 };
 
+const lightSlots = Array.from({ length: MAX_LIGHTS }, () => new Vector4());
+const colourSlots = Array.from({ length: MAX_LIGHTS }, () => new Vector4());
+
 /**
- * Shared by every street material: three assigns uniform objects by reference, so one update per
- * frame reaches them all. stLight: xyz world position, w intensity (scene units × cd); stColor: rgb
- * linear colour; stState: x lamps, y glints (after the lamps), z wetness, w time (s); stRain: the
- * share of ripple cells with a drop.
+ * Shared by every street material, in the render uniform group: written once per frame, uploaded
+ * once per render for all of them. stLight: xyz world position, w intensity (scene units × cd);
+ * stColor: rgb linear colour; stState: x lamps, y glints (after the lamps), z wetness, w time (s);
+ * stRain: the share of ripple cells with a drop.
  */
 const UNIFORMS = {
-  stLight: { value: new Float32Array(MAX_LIGHTS * 4) },
-  stColor: { value: new Float32Array(MAX_LIGHTS * 4) },
-  stState: { value: { x: 0, y: 0, z: 0, w: 0 } },
-  stRain: { value: 0 },
+  stLight: uniformArray<"vec4">(lightSlots, "vec4").setGroup(renderGroup),
+  stColor: uniformArray<"vec4">(colourSlots, "vec4").setGroup(renderGroup),
+  stState: uniform(new Vector4()).setGroup(renderGroup),
+  stRain: uniform(0).setGroup(renderGroup),
 };
 
 export type SurfaceKind = "asphalt" | "paint" | "paving" | "concrete";
@@ -417,270 +476,346 @@ const SURFACE: Record<SurfaceKind, { darken: number; wetRough: number; drain: nu
   concrete: { darken: 0.62, wetRough: 0.45, drain: 0.45 },
 };
 
-/** 画質「雨の路面」→ ST_WET: 0 dry always, 1 darker and glossy, 2 puddles and ripples too. */
-const WET_MODE: Record<string, number> = { off: 0, simple: 1, full: 2 };
-const wetMode = () => WET_MODE[GRAPHICS.settings.wetRoads] ?? 2;
+/** 画質「雨の路面」: off = dry always, simple = darker and glossy, full = puddles and ripples too. */
+type WetMode = GraphicsSettings["wetRoads"];
+const wetMode = (): WetMode => GRAPHICS.settings.wetRoads;
 
-const f = (n: number) => n.toFixed(4);
+// The wet film and the standing water on this fragment: worked out in the colour stage, read by the
+// roughness and normal stages and by the lamps' streaks.
+const stFilm = property("float", "stFilm");
+const stPuddle = property("float", "stPuddle");
 
-const VERTEX_PARS = /* glsl */ `
-varying vec3 vStWorld;
-#ifdef ST_STREET
-attribute vec4 aStreet;
-varying vec4 vStreet;
-#endif
-`;
-
-const VERTEX = /* glsl */ `
-vStWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
-#ifdef ST_STREET
-vStreet = aStreet;
-#endif
-`;
-
-function fragmentPars(kind: SurfaceKind): string {
-  const s = SURFACE[kind];
-  return /* glsl */ `
-uniform vec4 stLight[ ${MAX_LIGHTS} ];
-uniform vec4 stColor[ ${MAX_LIGHTS} ];
-uniform vec4 stState;
-uniform float stRain;
-varying vec3 vStWorld;
-#ifdef ST_STREET
-varying vec4 vStreet;
-#endif
-float stFilm = 0.0;
-float stPuddle = 0.0;
-
-#if ST_WET == 2
-// Hash without sine (Dave Hoskins): stable at world coordinates of a few km.
-float stHash( vec2 p ) {
-  vec3 p3 = fract( vec3( p.xyx ) * 0.1031 );
-  p3 += dot( p3, p3.yzx + 33.33 );
-  return fract( ( p3.x + p3.y ) * p3.z );
-}
-float stNoise( vec2 p ) {
-  vec2 i = floor( p );
-  vec2 u = fract( p );
-  u = u * u * ( 3.0 - 2.0 * u );
-  return mix( mix( stHash( i ), stHash( i + vec2( 1.0, 0.0 ) ), u.x ),
-    mix( stHash( i + vec2( 0.0, 1.0 ) ), stHash( i + vec2( 1.0, 1.0 ) ), u.x ), u.y );
-}
-
-// How hollow a spot is: sags of 0.5–5 m and of the road profile, the gutter the 1.5–2 % crossfall
-// drains into, and the wheel ruts (±0.85 m from each lane centre).
-float stHollow( vec2 xz ) {
-  float h = stNoise( xz * 0.23 ) * 0.6 + stNoise( xz * 0.71 + 17.0 ) * 0.28 + stNoise( xz * 2.3 + 5.0 ) * 0.12;
-  h += ( stNoise( xz * 0.035 + 3.0 ) - 0.5 ) * 0.25;
-  #ifdef ST_STREET
-  float halfWidth = vStreet.y;
-  if ( halfWidth > 0.5 ) {
-    h += smoothstep( halfWidth - 1.1, halfWidth - 0.15, abs( vStreet.x ) ) * 0.38;
-    float laneWidth = max( vStreet.z, 1.0 );
-    float fromCentre = abs( fract( ( vStreet.x - vStreet.w ) / laneWidth ) - 0.5 ) * laneWidth;
-    h += ( 1.0 - smoothstep( 0.18, 0.42, abs( fromCentre - 0.85 ) ) ) * 0.2;
-  }
-  #endif
-  return h - ${f(s.drain)};
-}
-
-// Raindrop rings in puddles: one drop per 0.38 m cell and cycle (two offset layers), the share of
-// cells with a drop set by the rain; faded out where a cell gets smaller than a few pixels.
-vec2 stRipples( vec2 xz, float t, float amount ) {
-  vec2 q0 = xz * 2.6;
-  float fw = max( fwidth( q0.x ), fwidth( q0.y ) );
-  float fade = 1.0 - smoothstep( 0.2, 0.55, fw );
-  vec2 g = vec2( 0.0 );
-  for ( int k = 0; k < 2; k ++ ) {
-    vec2 q = q0 + float( k ) * vec2( 0.53, 0.29 );
-    vec2 cell = floor( q ) + float( k ) * 37.0;
-    float h1 = stHash( cell );
-    float h2 = stHash( cell + 11.0 );
-    float h3 = stHash( cell + 23.0 );
-    float age = fract( t * 0.85 + h1 );
-    float isDrop = step( h2, amount );
-    vec2 d = fract( q ) - 0.5 - ( vec2( h3, fract( h1 * 7.3 ) ) - 0.5 ) * 0.3;
-    float r = length( d );
-    float x = ( r - age * 0.42 ) * 24.0;
-    float wave = sin( x * 2.4 ) * exp( - x * x * 0.35 ) * ( 1.0 - age ) * ( 1.0 - age );
-    g += isDrop * wave * d / max( r, 1e-3 );
-  }
-  return g * fade * 0.35;
-}
-#endif
-
-void stWetness( vec3 viewNormal ) {
-#if ST_WET > 0
-  float w = stState.z;
-  if ( w <= 0.0 ) return;
-  #if ST_WET == 2
-  float h = stHollow( vStWorld.xz );
-  stFilm = smoothstep( ${f(WET.filmLo)}, ${f(WET.filmHi)}, w + ( h - ${f(WET.average)} ) * ${f(WET.lowSpot)} );
-  float level = mix( ${f(WET.levelDry)}, ${f(WET.levelWet)}, smoothstep( ${f(WET.levelLo)}, ${f(WET.levelHi)}, w ) );
-  // Water stands only on up-facing surfaces: kerb faces just get wet.
-  float isFlat = smoothstep( 0.85, 0.97, ( vec4( viewNormal, 0.0 ) * viewMatrix ).y );
-  stPuddle = smoothstep( level, level + ${f(WET.edge)}, h ) * isFlat;
-  stFilm = max( stFilm, smoothstep( level - ${f(WET.halo)}, level, h ) );
-  #else
-  stFilm = smoothstep( ${f(WET.filmLo)}, ${f(WET.filmHi)}, w );
-  #endif
-#endif
-}
-
-// Cut-off luminaire by cos γ from the nadir (luminaire() in streetLights.ts).
-float stLuminaire( float c ) {
-  return ( 1.0 + 2.0 * ( 1.0 - c * c ) ) * smoothstep( 0.17, 0.42, c );
-}
-
-// Specular of a point source: anisotropic GGX (see stLights) with Hammon's approximation of the
-// height-correlated Smith term (no square roots) and Schlick's Fresnel.
-float stLobe( vec3 L, vec3 V, vec3 N, vec3 T, vec3 B, float NoL, float NoV, float a, float aT, float aB ) {
-  vec3 H = normalize( L + V );
-  float ToH = dot( T, H );
-  float BoH = dot( B, H );
-  float NoH = dot( N, H );
-  float k = ToH * ToH / ( aT * aT ) + BoH * BoH / ( aB * aB ) + NoH * NoH;
-  float D = RECIPROCAL_PI / ( aT * aB * k * k );
-  float Vis = 0.5 / mix( 2.0 * NoL * NoV, NoL + NoV, a );
-  float VoH = saturate( dot( V, H ) );
-  float fresnel = exp2( ( - 5.55473 * VoH - 6.98316 ) * VoH );
-  return D * Vis * mix( 0.04, 1.0, fresnel );
-}
-
-void stLights( const in vec3 viewNormal, const in PhysicalMaterial mat, inout ReflectedLight rl ) {
-  int lamps = int( stState.x );
-  int glints = int( stState.y );
-  if ( lamps + glints == 0 ) return;
-  vec3 P = vStWorld;
-  vec3 toEye = cameraPosition - P;
-  // Beyond 300 m the haze has the street and the lamps' pools are a few pixels.
-  if ( dot( toEye, toEye ) > 90000.0 ) return;
-  vec3 N = normalize( ( vec4( viewNormal, 0.0 ) * viewMatrix ).xyz );
-  vec3 V = normalize( toEye );
-  float NoV = clamp( dot( N, V ), 1e-3, 1.0 );
-  // Streak frame: B along the view direction laid on the surface, T across it. A wet road's
-  // microfacets spread the reflection of a light towards the viewer (long vertical streaks) and
-  // keep it narrow across: anisotropic GGX, alpha_B / alpha_T growing with the water film.
-  vec3 B = V - N * dot( N, V );
-  float bl = length( B );
-  B = bl > 1e-4 ? B / bl : normalize( cross( N, vec3( 1.0, 0.0, 0.0 ) ) );
-  vec3 T = cross( N, B );
-  float a = max( pow2( mat.roughness ), 2e-3 );
-  float stretch = sqrt( mix( 1.0, 3.5, stFilm ) );
-  float aT = a / stretch;
-  float aB = a * stretch;
-  vec3 albedo = BRDF_Lambert( mat.diffuseContribution );
-  // Pole lamps: the pool (their distribution) and the streak (at least the glare of the housing).
-  for ( int i = 0; i < ${MAX_LAMPS}; i ++ ) {
-    if ( i >= lamps ) break;
-    vec4 source = stLight[ i ];
-    vec3 toLight = source.xyz - P;
-    float d2 = max( dot( toLight, toLight ), 0.04 );
-    vec3 L = toLight * inversesqrt( d2 );
-    float NoL = dot( N, L );
-    if ( NoL <= 0.0 ) continue;
-    float shape = stLuminaire( L.y );
-    vec3 E = stColor[ i ].rgb * ( source.w * NoL / d2 );
-    float glare = max( shape, ${f(GLARE_FLOOR)} );
-    rl.directDiffuse += E * shape * albedo;
-    rl.directSpecular += E * ( glare * stLobe( L, V, N, T, B, NoL, NoV, a, aT, aB ) );
-  }
-  // Glints (signal heads, car lamps): only their reflection, so only on the carriageway (asphalt,
-  // paint) and only once it is wet or glossy: on dry asphalt the lobe spreads them to nothing.
-  #ifdef ST_GLINTS
-  if ( stFilm < 0.02 && mat.roughness > 0.55 ) return;
-  for ( int j = 0; j < ${MAX_GLINTS}; j ++ ) {
-    if ( j >= glints ) break;
-    vec4 source = stLight[ lamps + j ];
-    vec3 toLight = source.xyz - P;
-    float d2 = max( dot( toLight, toLight ), 0.04 );
-    vec3 L = toLight * inversesqrt( d2 );
-    float NoL = dot( N, L );
-    if ( NoL <= 0.0 ) continue;
-    vec3 E = stColor[ lamps + j ].rgb * ( source.w * NoL / d2 );
-    rl.directSpecular += E * stLobe( L, V, N, T, B, NoL, NoV, a, aT, aB );
-  }
-  #endif
-}
-`;
-}
-
-function fragmentWet(kind: SurfaceKind): string {
-  return /* glsl */ `
-stWetness( normalize( vNormal ) );
-diffuseColor.rgb *= mix( 1.0, ${f(SURFACE[kind].darken)}, stFilm ) * mix( 1.0, 0.8, stPuddle );
-`;
-}
-
-function fragmentRoughness(kind: SurfaceKind): string {
-  return /* glsl */ `
-roughnessFactor = mix( roughnessFactor, min( roughnessFactor, ${f(SURFACE[kind].wetRough)} ), stFilm );
-roughnessFactor = mix( roughnessFactor, 0.02, stPuddle );
-`;
-}
-
-// Water fills the texture: the puddle is flat (and the film half fills it), then the rings.
-const FRAGMENT_NORMAL = /* glsl */ `
-normal = normalize( mix( normal, nonPerturbedNormal, max( stPuddle, stFilm * 0.5 ) ) );
-#if ST_WET == 2
-if ( stRain > 0.0 ) {
-  vec2 ripple = stRipples( vStWorld.xz, stState.w, stRain ) * stPuddle;
-  normal = normalize( normal - ( viewMatrix * vec4( ripple.x, 0.0, ripple.y, 0.0 ) ).xyz );
-}
-#endif
-`;
-
-const FRAGMENT_LIGHTS = /* glsl */ `
-stLights( normal, material, reflectedLight );
-`;
-
-/** Every material given the street shading, to recompile when 雨の路面 changes. */
-const shaded = new Set<MeshStandardMaterial>();
-let shadedMode = wetMode();
-GRAPHICS.onChange(() => {
-  const mode = wetMode();
-  if (mode === shadedMode) return;
-  shadedMode = mode;
-  for (const m of shaded) {
-    m.defines = { ...m.defines, ST_WET: mode };
-    m.needsUpdate = true;
-  }
-});
+/** `aStreet`: lateral offset from the centreline (left +), half width, lane width, lane origin. */
+const aStreet = attribute<"vec4">("aStreet", "vec4");
 
 /**
- * Give a street material the wet shading and the lamp light. `hasStreet`: its geometry carries
- * `aStreet` (lateral offset from the centreline, half width, lane width, lane origin), which puts
- * puddles in the gutter and the wheel ruts. Chains any onBeforeCompile already set.
+ * How hollow a spot is: sags of 0.5–5 m and of the road profile, the gutter the 1.5–2 % crossfall
+ * drains into, and the wheel ruts (±0.85 m from each lane centre).
  */
-export function streetShading(material: MeshStandardMaterial, kind: SurfaceKind, hasStreet = false): void {
-  const previous = material.onBeforeCompile;
-  const previousKey = material.customProgramCacheKey();
-  const defines: Record<string, unknown> = { ...material.defines, ST_WET: shadedMode };
-  if (hasStreet) defines.ST_STREET = "";
-  const isCarriageway = kind === "asphalt" || kind === "paint";
-  if (isCarriageway) defines.ST_GLINTS = "";
-  material.defines = defines;
-  material.onBeforeCompile = (shader, renderer) => {
-    previous.call(material, shader, renderer);
-    Object.assign(shader.uniforms, UNIFORMS);
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", `#include <common>\n${VERTEX_PARS}`)
-      .replace("#include <project_vertex>", `#include <project_vertex>\n${VERTEX}`);
-    shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", `${fragmentPars(kind)}\nvoid main() {`)
-      .replace("#include <map_fragment>", `#include <map_fragment>\n${fragmentWet(kind)}`)
-      .replace(
-        "#include <roughnessmap_fragment>",
-        `#include <roughnessmap_fragment>\n${fragmentRoughness(kind)}`,
-      )
-      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${FRAGMENT_NORMAL}`)
-      .replace("#include <lights_fragment_end>", `#include <lights_fragment_end>\n${FRAGMENT_LIGHTS}`);
-  };
-  // The program cache keys on this (and the defines), not on the patched source.
-  material.customProgramCacheKey = () => `street:${kind}:${hasStreet}:${previousKey}`;
-  material.needsUpdate = true;
-  shaded.add(material);
+function hollow(xz: Node<"vec2">, kind: SurfaceKind, hasStreet: boolean): Node<"float"> {
+  let h = valueNoise(xz.mul(0.23))
+    .mul(0.6)
+    .add(valueNoise(xz.mul(0.71).add(17)).mul(0.28))
+    .add(valueNoise(xz.mul(2.3).add(5)).mul(0.12))
+    .add(valueNoise(xz.mul(0.035).add(3)).sub(0.5).mul(0.25));
+  if (hasStreet) {
+    const halfWidth = aStreet.y;
+    const gutter = smoothstepN(halfWidth.sub(1.1), halfWidth.sub(0.15), abs(aStreet.x)).mul(0.38);
+    const laneWidth = max(aStreet.z, 1);
+    const fromCentre = abs(fract(aStreet.x.sub(aStreet.w).div(laneWidth)).sub(0.5)).mul(laneWidth);
+    const ruts = smoothstepN(0.18, 0.42, abs(fromCentre.sub(0.85)))
+      .oneMinus()
+      .mul(0.2);
+    h = h.add(select(halfWidth.greaterThan(0.5), gutter.add(ruts), float(0)));
+  }
+  return h.sub(SURFACE[kind].drain);
 }
+
+/**
+ * Raindrop rings in puddles: one drop per 0.38 m cell and cycle (two offset layers), the share of
+ * cells with a drop set by the rain. `fade` is 0 where a cell gets smaller than a few pixels.
+ */
+function ripples(
+  q0: Node<"vec2">,
+  t: Node<"float">,
+  amount: Node<"float">,
+  fade: Node<"float">,
+): Node<"vec2"> {
+  let g: Node<"vec2"> = vec2(0, 0);
+  for (let k = 0; k < 2; k++) {
+    const q = q0.add(vec2(0.53, 0.29).mul(k));
+    const cell = floor(q).add(k * 37);
+    const h1 = hash12(cell);
+    const h2 = hash12(cell.add(11));
+    const h3 = hash12(cell.add(23));
+    const age = fract(t.mul(0.85).add(h1));
+    const isDrop = step(h2, amount);
+    const d = fract(q)
+      .sub(0.5)
+      .sub(
+        vec2(h3, fract(h1.mul(7.3)))
+          .sub(0.5)
+          .mul(0.3),
+      );
+    const r = length(d);
+    const x = r.sub(age.mul(0.42)).mul(24);
+    const wave = sin(x.mul(2.4))
+      .mul(exp(x.mul(x).mul(-0.35)))
+      .mul(age.oneMinus())
+      .mul(age.oneMinus());
+    g = g.add(d.mul(isDrop.mul(wave).div(max(r, 1e-3))));
+  }
+  return g.mul(fade).mul(0.35);
+}
+
+/** What a street material draws under the water, in place of its colour, roughness or normal. */
+export type StreetBase = {
+  /** Albedo and alpha (default: the material's colour and map). */
+  color?: Node<"vec4">;
+  /** Roughness before the water (default: the material's). */
+  roughness?: Node<"float">;
+  /** Shading normal in view space, read in the normal stage (default: the geometry's). */
+  normal?: Node<"vec3">;
+};
+
+type StreetNodes = Pick<MeshStandardNodeMaterial, "colorNode" | "roughnessNode" | "normalNode">;
+
+const graphs = new Map<string, StreetNodes>();
+
+/**
+ * The colour, roughness and normal stages for one surface and 雨の路面 setting. Materials without
+ * their own base share one graph (and so one pipeline per kind and setting).
+ */
+function streetNodes(kind: SurfaceKind, hasStreet: boolean, mode: WetMode, base: StreetBase): StreetNodes {
+  const isShared = base.color === undefined && base.roughness === undefined && base.normal === undefined;
+  const key = `${kind}:${hasStreet}:${mode}`;
+  const shared = isShared ? graphs.get(key) : undefined;
+  if (shared) return shared;
+  const nodes = buildStreetNodes(kind, hasStreet, mode, base);
+  if (isShared) graphs.set(key, nodes);
+  return nodes;
+}
+
+function buildStreetNodes(
+  kind: SurfaceKind,
+  hasStreet: boolean,
+  mode: WetMode,
+  base: StreetBase,
+): StreetNodes {
+  const s = SURFACE[kind];
+  const baseRoughness = base.roughness ?? materialRoughness;
+  const isDry = mode === "off";
+  if (isDry)
+    return {
+      colorNode: base.color ?? null,
+      roughnessNode: base.roughness ?? null,
+      normalNode: base.normal ?? null,
+    };
+  const colorNode = Fn(() => {
+    // How: read the albedo (and its texture) first, in uniform control flow, then the water.
+    // materialColor is the colour (vec3), or colour × map (vec4): vec4() takes either, as three's
+    // own diffuse stage does; the cast only quiets the vec3 in its type.
+    const albedo = (base.color ?? vec4(materialColor as unknown as Node<"vec4">)).toVar();
+    const up = normalWorldGeometry.y.toVar();
+    stFilm.assign(0);
+    stPuddle.assign(0);
+    const w = UNIFORMS.stState.z;
+    If(w.greaterThan(0), () => {
+      if (mode === "simple") {
+        stFilm.assign(smoothstepN(WET.filmLo, WET.filmHi, w));
+        return;
+      }
+      const h = hollow(positionWorld.xz, kind, hasStreet).toVar();
+      const level = mix(WET.levelDry, WET.levelWet, smoothstepN(WET.levelLo, WET.levelHi, w)).toVar();
+      // Water stands only on up-facing surfaces: kerb faces just get wet.
+      const isFlat = smoothstepN(0.85, 0.97, up);
+      stPuddle.assign(smoothstepN(level, level.add(WET.edge), h).mul(isFlat));
+      const film = smoothstepN(WET.filmLo, WET.filmHi, w.add(h.sub(WET.average).mul(WET.lowSpot)));
+      stFilm.assign(max(film, smoothstepN(level.sub(WET.halo), level, h)));
+    });
+    const wetness = mix(1, s.darken, stFilm).mul(mix(1, 0.8, stPuddle));
+    return vec4(albedo.rgb.mul(wetness), albedo.a);
+  })();
+  const film = mix(baseRoughness, min(baseRoughness, s.wetRough), stFilm);
+  const roughnessNode = mix(film, 0.02, stPuddle);
+  // Water fills the texture: the puddle is flat (and the film half fills it), then the rings.
+  const normalNode = Fn(() => {
+    const shading = base.normal ?? normalView;
+    const n = normalize(mix(shading, normalView, max(stPuddle, stFilm.mul(0.5)))).toVar();
+    if (mode === "full") {
+      const q0 = positionWorld.xz.mul(2.6).toVar();
+      // How: the derivative before the branch (uniform control flow, as WGSL requires).
+      const fw = max(fwidth(q0.x), fwidth(q0.y));
+      const fade = smoothstepN(0.2, 0.55, fw).oneMinus().toVar();
+      const rain = UNIFORMS.stRain;
+      If(rain.greaterThan(0).and(stPuddle.greaterThan(0)), () => {
+        const ripple = ripples(q0, UNIFORMS.stState.w, rain, fade).mul(stPuddle);
+        n.assign(normalize(n.sub(cameraViewMatrix.mul(vec4(ripple.x, 0, ripple.y, 0)).xyz)));
+      });
+    }
+    return n;
+  })();
+  return { colorNode, roughnessNode, normalNode };
+}
+
+/** Cut-off luminaire by cos γ from the nadir (luminaire() above). */
+const luminaireNode = (c: Node<"float">) =>
+  c
+    .mul(c)
+    .oneMinus()
+    .mul(2)
+    .add(1)
+    .mul(smoothstepN(0.17, 0.42, c));
+
+type Lobe = {
+  V: Node<"vec3">;
+  N: Node<"vec3">;
+  T: Node<"vec3">;
+  B: Node<"vec3">;
+  NoV: Node<"float">;
+  a: Node<"float">;
+  aT: Node<"float">;
+  aB: Node<"float">;
+};
+
+/**
+ * Specular of a point source: anisotropic GGX (Burley's D) with Hammon's approximation of the
+ * height-correlated Smith term (no square roots) and Schlick's Fresnel.
+ */
+function lobe(L: Node<"vec3">, NoL: Node<"float">, { V, N, T, B, NoV, a, aT, aB }: Lobe): Node<"float"> {
+  const H = normalize(L.add(V));
+  const ToH = dot(T, H);
+  const BoH = dot(B, H);
+  const NoH = dot(N, H);
+  const k = ToH.mul(ToH)
+    .div(aT.mul(aT))
+    .add(BoH.mul(BoH).div(aB.mul(aB)))
+    .add(NoH.mul(NoH));
+  const D = float(1 / Math.PI).div(aT.mul(aB).mul(k).mul(k));
+  const Vis = float(0.5).div(mix(NoL.mul(NoV).mul(2), NoL.add(NoV), a));
+  const VoH = clampN(dot(V, H), 0, 1);
+  const fresnel = exp2(VoH.mul(-5.55473).sub(6.98316).mul(VoH));
+  return D.mul(Vis).mul(mix(0.04, 1, fresnel));
+}
+
+type LightAccumulators = Record<"directDiffuse" | "directSpecular", Node<"vec3">>;
+
+/**
+ * The lamps' pools and streaks, and the glints, added to the direct light. A wet road's
+ * microfacets spread the reflection of a light towards the viewer (long vertical streaks) and keep
+ * it narrow across: anisotropic GGX in a frame with B along the view direction laid on the surface
+ * and T across it, alpha_B / alpha_T growing with the water film.
+ */
+function streetLights(light: LightAccumulators, hasGlints: boolean): void {
+  const lamps = int(UNIFORMS.stState.x).toVar();
+  const glints = int(UNIFORMS.stState.y).toVar();
+  // How: everything the loops read is fixed before the branch, so no shared value is first
+  // computed inside it.
+  const P = positionWorld;
+  const toEye = cameraPosition.sub(P).toVar();
+  const N = normalize(normalWorld).toVar();
+  const albedo = diffuseContribution.mul(1 / Math.PI).toVar();
+  const surfaceRoughness = roughness.toVar();
+  const film = stFilm.toVar();
+  // Beyond 300 m the haze has the street and the lamps' pools are a few pixels.
+  const isNear = lamps.add(glints).greaterThan(0).and(dot(toEye, toEye).lessThanEqual(90000));
+  If(isNear, () => {
+    const V = normalize(toEye).toVar();
+    const NoV = clampN(dot(N, V), 1e-3, 1).toVar();
+    const along = V.sub(N.mul(dot(N, V)));
+    const alongLength = length(along);
+    const B = select(
+      alongLength.greaterThan(1e-4),
+      along.div(alongLength),
+      normalize(cross(N, vec3(1, 0, 0))),
+    ).toVar();
+    const T = cross(N, B).toVar();
+    const a = max(surfaceRoughness.mul(surfaceRoughness), 2e-3).toVar();
+    const stretch = sqrt(mix(1, 3.5, film));
+    const frame: Lobe = { V, N, T, B, NoV, a, aT: a.div(stretch).toVar(), aB: a.mul(stretch).toVar() };
+    // Pole lamps: the pool (their distribution) and the streak (at least the glare of the housing).
+    Loop({ start: int(0), end: lamps, type: "int", condition: "<" }, ({ i }) => {
+      const source = UNIFORMS.stLight.element(i).toVar();
+      const toLight = source.xyz.sub(P);
+      const d2 = max(dot(toLight, toLight), 0.04).toVar();
+      const L = toLight.mul(inverseSqrt(d2)).toVar();
+      const NoL = dot(N, L).toVar();
+      If(NoL.greaterThan(0), () => {
+        const shape = luminaireNode(L.y).toVar();
+        const E = UNIFORMS.stColor.element(i).xyz.mul(source.w.mul(NoL).div(d2)).toVar();
+        light.directDiffuse.addAssign(E.mul(shape).mul(albedo));
+        light.directSpecular.addAssign(E.mul(max(shape, GLARE_FLOOR).mul(lobe(L, NoL, frame))));
+      });
+    });
+    if (!hasGlints) return;
+    // Glints (signal heads, car lamps): only their reflection, so only on the carriageway (asphalt,
+    // paint) and only once it is wet or glossy: on dry asphalt the lobe spreads them to nothing.
+    const isDull = film.lessThan(0.02).and(surfaceRoughness.greaterThan(0.55));
+    If(isDull.not(), () => {
+      Loop({ start: int(0), end: glints, type: "int", condition: "<" }, ({ i }) => {
+        const slot = lamps.add(i);
+        const source = UNIFORMS.stLight.element(slot).toVar();
+        const toLight = source.xyz.sub(P);
+        const d2 = max(dot(toLight, toLight), 0.04).toVar();
+        const L = toLight.mul(inverseSqrt(d2)).toVar();
+        const NoL = dot(N, L).toVar();
+        If(NoL.greaterThan(0), () => {
+          const E = UNIFORMS.stColor.element(slot).xyz.mul(source.w.mul(NoL).div(d2));
+          light.directSpecular.addAssign(E.mul(lobe(L, NoL, frame)));
+        });
+      });
+    });
+  });
+}
+
+/** Three's physical lighting plus the street lamps' light (Why not PointLights: see the top). */
+class StreetLightingModel extends PhysicalLightingModel {
+  constructor(private readonly hasGlints: boolean) {
+    super();
+  }
+
+  override start(builder: NodeBuilder): void {
+    super.start(builder);
+    const { reflectedLight } = builder.context as { reflectedLight: LightAccumulators };
+    streetLights(reflectedLight, this.hasGlints);
+  }
+}
+
+export type StreetMaterialOptions = MeshStandardNodeMaterialParameters & {
+  /** The geometry carries `aStreet`, which puts puddles in the gutter and the wheel ruts. */
+  hasStreet?: boolean;
+  base?: StreetBase;
+};
+
+/**
+ * A street surface (asphalt, markings, paving, kerbs): three's standard material under the wet
+ * shading of 雨の路面 and the light of the nearest street lamps (StreetLights.update).
+ */
+export class StreetMaterial extends MeshStandardNodeMaterial {
+  readonly surface: SurfaceKind;
+  readonly hasStreet: boolean;
+  wetRoads: WetMode;
+  private readonly base: StreetBase;
+
+  constructor(
+    surface: SurfaceKind,
+    { hasStreet = false, base = {}, ...parameters }: StreetMaterialOptions = {},
+  ) {
+    super(parameters);
+    this.surface = surface;
+    this.hasStreet = hasStreet;
+    this.base = base;
+    this.wetRoads = wetMode();
+    Object.assign(this, streetNodes(surface, hasStreet, this.wetRoads, base));
+    shaded.add(this);
+    this.addEventListener("dispose", () => shaded.delete(this));
+  }
+
+  /** Switches the wet shading (rebuilt on the next draw). */
+  setWetRoads(mode: WetMode): void {
+    const isSame = mode === this.wetRoads;
+    if (isSame) return;
+    this.wetRoads = mode;
+    Object.assign(this, streetNodes(this.surface, this.hasStreet, mode, this.base));
+    this.needsUpdate = true;
+  }
+
+  override setupLightingModel(): PhysicalLightingModel {
+    const isCarriageway = this.surface === "asphalt" || this.surface === "paint";
+    return new StreetLightingModel(isCarriageway);
+  }
+
+  // The lighting model is not a node, so the surface goes into the key: kinds must not share one.
+  override customProgramCacheKey(): string {
+    return `${super.customProgramCacheKey()}:street-${this.surface}-${this.hasStreet}-${this.wetRoads}`;
+  }
+}
+
+/** Every street material, to switch when 雨の路面 changes. */
+const shaded = new Set<StreetMaterial>();
+GRAPHICS.onChange((settings) => {
+  for (const m of shaded) m.setWetRoads(settings.wetRoads);
+});
 
 // ---------- lamp models ----------
 
@@ -819,7 +954,7 @@ export class StreetLights {
       ? Math.max(env.weather === "rain" ? 8 : 0, (env.getObservation()?.precip10m ?? 0) * 6)
       : 0;
     this.rain += (rippleAmount(mm) - this.rain) * Math.min(1, dt * 1.5);
-    const isWet = this.enabled && wetMode() > 0;
+    const isWet = this.enabled && wetMode() !== "off";
     const state = UNIFORMS.stState.value;
     state.z = isWet ? env.wetness : 0;
     state.w = this.time;
@@ -992,19 +1127,11 @@ export class StreetLights {
     maxLamps: number,
     budget: { signals: number; cars: number },
   ): [number, number] {
-    const light = UNIFORMS.stLight.value;
-    const tint = UNIFORMS.stColor.value;
     let n = 0;
     const push = (x: number, y: number, z: number, intensity: number, c: Color) => {
       if (intensity <= 1e-4 || n >= MAX_LIGHTS) return;
-      const k = n * 4;
-      light[k] = x;
-      light[k + 1] = y;
-      light[k + 2] = z;
-      light[k + 3] = intensity;
-      tint[k] = c.r;
-      tint[k + 1] = c.g;
-      tint[k + 2] = c.b;
+      lightSlots[n].set(x, y, z, intensity);
+      colourSlots[n].set(c.r, c.g, c.b, 0);
       n++;
     };
     camera.getWorldDirection(this.forward);
