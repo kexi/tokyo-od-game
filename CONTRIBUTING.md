@@ -1,5 +1,7 @@
 # 開発に参加する
 
+**日本語** | [English](CONTRIBUTING.en.md) | [中文](CONTRIBUTING.zh.md)
+
 法令厳守 TOKYO OPEN DRIVE の開発環境の作り方と、日々の作業の流れです。ゲームの説明とデータの出典は [README.md](README.md)、AI エージェント向けの決まりごとは [AGENTS.md](AGENTS.md) にあります。
 
 ## 必要なもの

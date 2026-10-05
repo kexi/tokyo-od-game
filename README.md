@@ -1,5 +1,7 @@
 # 法令厳守 TOKYO OPEN DRIVE
 
+**日本語** | [English](README.en.md) | [中文](README.zh.md)
+
 東京都オープンデータ × PLATEAU 3D 都市モデルで、東京 23 区を車で走り回る three.js 製の 3D ドライブ探索ゲームです。
 
 **プレイ:** https://kexi.github.io/tokyo-od-game/
