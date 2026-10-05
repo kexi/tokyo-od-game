@@ -40,3 +40,25 @@ describe("移動: finding a place by name", () => {
     expect(loadHome()).toBeNull();
   });
 });
+
+describe("移動・目的地: other names find a place", () => {
+  it("finds a place by a name it is not shown with (English, official name, a station's lines)", () => {
+    const airport: Place = {
+      name: "羽田空港",
+      kind: "空港",
+      lat: 35.55,
+      lon: 139.78,
+      aka: "羽田空港 Tokyo International Airport 東京国際空港",
+    };
+    const station: Place = {
+      name: "東京駅",
+      kind: "駅",
+      lat: 35.68,
+      lon: 139.77,
+      aka: "東京駅 Tokyo Station JR東日本・東京メトロ",
+    };
+    expect(searchPlaces([airport, station], "東京国際").map((p) => p.name)).toEqual(["羽田空港"]);
+    expect(searchPlaces([airport, station], "tokyo station").map((p) => p.name)).toEqual(["東京駅"]);
+    expect(searchPlaces([airport, station], "メトロ").map((p) => p.name)).toEqual(["東京駅"]);
+  });
+});

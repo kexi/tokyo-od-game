@@ -3,7 +3,15 @@
  * open-data POIs), landmarks, police stations and the licence centres (for 出頭) — and the search
  * over their names, plus where home is, remembered in this browser.
  */
-export type Place = { name: string; kind: string; lat: number; lon: number; ward?: string };
+export type Place = {
+  name: string;
+  kind: string;
+  lat: number;
+  lon: number;
+  ward?: string;
+  /** Other names it is found by, not shown: the English name, an official name, a station's lines. */
+  aka?: string;
+};
 
 /** Fold widths and case (ＪＲ → jr) so typing on a phone keyboard or a PC finds the same names. */
 const fold = (text: string) => text.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
@@ -18,7 +26,7 @@ export function searchPlaces(places: readonly Place[], query: string, limit = 20
   const scored: Array<{ p: Place; score: number }> = [];
   for (const p of places) {
     const name = fold(p.name);
-    const hay = `${name}${fold(p.ward ?? "")}${fold(p.kind)}`;
+    const hay = `${name}${fold(p.ward ?? "")}${fold(p.kind)}${fold(p.aka ?? "")}`;
     const isMatch = words.every((w) => hay.includes(w));
     if (!isMatch) continue;
     const isPrefix = name.startsWith(words[0]);

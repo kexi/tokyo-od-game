@@ -139,6 +139,7 @@ import { drawShadowsOf, FrameComposer } from "./render/frame";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import { byDistance, renderPlaceList } from "./game/placePicker";
+import { loadDestinations, type Destination } from "./game/destinations";
 import {
   charmOf,
   DEFAULT_PREFS,
@@ -234,6 +235,34 @@ const CATEGORY_KEY: Partial<Record<string, i18n.MessageKey>> = {
   waterbase: "mission.category.waterbase",
   shelter: "mission.category.shelter",
   destination: "mission.category.destination",
+};
+/** destinations.json's kinds (station, temple …) in the language in force. */
+const DEST_KIND_KEY: Partial<Record<string, i18n.MessageKey>> = {
+  station: "destKind.station",
+  airport: "destKind.airport",
+  government: "destKind.government",
+  temple: "destKind.temple",
+  shrine: "destKind.shrine",
+  church: "destKind.church",
+  worship: "destKind.worship",
+  zoo: "destKind.zoo",
+  aquarium: "destKind.aquarium",
+  theme_park: "destKind.theme_park",
+  museum: "destKind.museum",
+  theatre: "destKind.theatre",
+  hall: "destKind.hall",
+  stadium: "destKind.stadium",
+  tower: "destKind.tower",
+  bridge: "destKind.bridge",
+  crossing: "destKind.crossing",
+  market: "destKind.market",
+  shopping: "destKind.shopping",
+  park: "destKind.park",
+  garden: "destKind.garden",
+  historic: "destKind.historic",
+  attraction: "destKind.attraction",
+  viewpoint: "destKind.viewpoint",
+  area: "destKind.area",
 };
 /** A spot category's name in the language in force; the data's own label for one we don't know. */
 const categoryLabel = (id: string, fallback: string): string => {
@@ -767,6 +796,24 @@ async function main(): Promise<void> {
   let needsTrip = false;
   // Where the day starts and ends (the street the game put the car on).
   let home: Home | null = loadHome();
+  // 目的地 and 移動 also search every station and the notable places (destinations.json, OSM).
+  let destinations: Destination[] = [];
+  void loadDestinations().then((d) => {
+    if (d) destinations = d.items;
+  });
+  /** A station or a place as the lists show it: its English name in English, the kind translated. */
+  const destinationPlace = (d: Destination): WarpPlace => {
+    const isEnglish = i18n.getLocale() === "en";
+    const kindKey = DEST_KIND_KEY[d.kind];
+    return {
+      name: isEnglish && d.nameEn ? d.nameEn : d.name,
+      kind: kindKey ? i18n.t(kindKey) : d.kind,
+      lat: d.lat,
+      lon: d.lon,
+      ward: d.ward ?? undefined,
+      aka: [d.name, d.nameEn, d.note].filter(Boolean).join(" "),
+    };
+  };
   // Today's driving, for the end-of-day record.
   let todayMetres = 0;
   let todayFrom = 0; // index into law.state.log where today began
@@ -918,6 +965,7 @@ async function main(): Promise<void> {
         lon: p.lon,
         ward: p.ward,
       })),
+      ...destinations.map(destinationPlace),
     ];
   };
   /** Between a place's kind, ward and distance in the lists. */
@@ -3493,8 +3541,12 @@ async function main(): Promise<void> {
   // ---------- 目的地 ----------
   const destDialog = $<HTMLDialogElement>("#dest");
   const destQuery = $<HTMLInputElement>("#dest-query");
-  /** Before typing: the landmarks — the modelled ones and the 名所・夜景 spots — nearest first. */
+  /**
+   * Before typing: the well-known landmarks (destinations.json's featured: 東京駅, 国会議事堂 …),
+   * then the 名所・夜景 spots nearby, nearest first. Until that file is in, the modelled landmarks.
+   */
   const featuredPlaces = (from: { lat: number; lon: number }): WarpPlace[] => {
+    const featured = destinations.filter((d) => d.featured).map(destinationPlace);
     const landmark = i18n.t("warp.kind.landmark");
     const modelled = landmarkEntries.map((l) => ({ name: l.name, kind: landmark, lat: l.lat, lon: l.lon }));
     const spots = pois
@@ -3506,7 +3558,9 @@ async function main(): Promise<void> {
         lon: p.lon,
         ward: p.ward,
       }));
-    return [...byDistance(modelled, from), ...byDistance(spots, from).slice(0, 40)];
+    const isLoaded = featured.length > 0;
+    const first = isLoaded ? featured : modelled;
+    return [...byDistance(first, from), ...byDistance(spots, from).slice(0, isLoaded ? 20 : 40)];
   };
   const chooseDestination = (p: WarpPlace) => {
     destDialog.close();

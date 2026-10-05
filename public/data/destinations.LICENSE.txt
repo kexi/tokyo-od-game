@@ -1,0 +1,8 @@
+The stations and places in destinations.json are extracted from OpenStreetMap.
+© OpenStreetMap contributors — https://www.openstreetmap.org/copyright
+This database is made available under the Open Database License (ODbL) 1.0:
+https://opendatacommons.org/licenses/odbl/1-0/
+Source extract: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf (Geofabrik). Within the 23 wards:
+railway stations (railway=station / public_transport=station, merged per name and place) and notable
+places with a wikidata tag (tourism, historic, places of worship, parks, stadiums, towers, bridges,
+the airport, government buildings, markets) — see scripts/destinations.ts for the exact filters.

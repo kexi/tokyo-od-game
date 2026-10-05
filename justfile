@@ -161,6 +161,10 @@ charm-models:
 guide-data:
     pnpm exec tsx scripts/guide-signs.ts
 
+# ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just regs のキャッシュを使う）
+destinations:
+    pnpm exec tsx scripts/destinations.ts
+
 # 案内標識の板の文字に使う Noto Sans JP・Overpass のサブセット（woff2）を assets/signs/guide に書き出す
 guide-fonts:
     uv run scripts/textures/guide_fonts.py

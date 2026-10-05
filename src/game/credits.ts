@@ -137,6 +137,7 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   const licensesUrl = new URL(`${import.meta.env.BASE_URL}THIRD_PARTY_LICENSES.txt`, location.href).href;
   const odblUrl = new URL(`${import.meta.env.BASE_URL}data/signals/LICENSE.txt`, location.href).href;
   const routesOdblUrl = new URL(`${import.meta.env.BASE_URL}data/routes/LICENSE.txt`, location.href).href;
+  const destOdblUrl = new URL(`${import.meta.env.BASE_URL}data/destinations.LICENSE.txt`, location.href).href;
   const jarticUrl = regs?.url ?? "https://www.jartic.or.jp/service/opendata/";
   const jarticSource = regs
     ? required("credits.jartic.source", (w) => ({
@@ -220,6 +221,13 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   ${text("credits.guide.style")}
   ${text("credits.guide.estimate")}
   ${text("credits.guide.fonts", { ofl: link(OFL_URL, "SIL Open Font License 1.1") })}</p>
+
+  <h3>${text("credits.h.destinations")}</h3>
+  <p>${osm()}
+  ${text("credits.destinations.extract", {
+    geofabrik: link("https://download.geofabrik.de/asia/japan/kanto.html", t("credits.link.geofabrik")),
+  })}
+  ${odbl(destOdblUrl)}</p>
 
   <h3>${text("credits.h.models")}</h3>
   <p>${text("credits.models", {

@@ -243,3 +243,68 @@ export function readNodeCoords(file: Uint8Array, ids: Set<number>): Map<number, 
   });
   return out;
 }
+
+/**
+ * Ways with the given ids whatever their tags (the members of multipolygon relations): the id is
+ * read first and the rest of a way skipped unless wanted, so this costs one pass over the file
+ * instead of decoding every way as `readWays(file, () => true)` would.
+ */
+export function readWaysById(file: Uint8Array, ids: Set<number>): OsmWay[] {
+  const out: OsmWay[] = [];
+  forEachGroup(file, (block, group) => {
+    group.readFields((tag, _r, pbf) => {
+      if (tag !== 3) return;
+      const way = new Pbf(pbf.readBytes());
+      let id = 0;
+      let keys: number[] = [];
+      let vals: number[] = [];
+      let deltas: number[] = [];
+      way.readFields((t, _x, q) => {
+        // Fields come in tag order, so the id is known before the rest; a field left unread is
+        // skipped by readFields.
+        if (t === 1) id = q.readVarint();
+        else if (!ids.has(id)) return;
+        else if (t === 2) keys = q.readPackedVarint();
+        else if (t === 3) vals = q.readPackedVarint();
+        else if (t === 8) deltas = q.readPackedSVarint();
+      }, null);
+      if (!ids.has(id)) return;
+      const tags = Object.fromEntries(keys.map((key, i) => [block.strings[key], block.strings[vals[i]]]));
+      const refs: number[] = [];
+      let ref = 0;
+      for (const d of deltas) refs.push((ref += d));
+      out.push({ id, refs, tags });
+    }, null);
+  });
+  return out;
+}
+
+/**
+ * The extract's replication timestamp (HeaderBlock field 32, osmosis_replication_timestamp, in
+ * seconds) as ISO 8601: the moment the data is "as of", stable across runs on the same file,
+ * unlike the time a script ran. Null when the header has none.
+ */
+export function readReplicationTimestamp(file: Uint8Array): string | null {
+  const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
+  let p = 0;
+  while (p + 4 <= file.length) {
+    const headerLen = view.getUint32(p);
+    p += 4;
+    let type = "";
+    let dataSize = 0;
+    new Pbf(file.subarray(p, p + headerLen)).readFields((tag, _r, pbf) => {
+      if (tag === 1) type = pbf.readString();
+      else if (tag === 3) dataSize = pbf.readVarint();
+    }, null);
+    p += headerLen;
+    const blob = file.subarray(p, p + dataSize);
+    p += dataSize;
+    if (type !== "OSMHeader") continue;
+    let seconds = 0;
+    new Pbf(readBlob(blob)).readFields((tag, _r, pbf) => {
+      if (tag === 32) seconds = pbf.readVarint(true);
+    }, null);
+    return seconds > 0 ? new Date(seconds * 1000).toISOString().replace(".000Z", "Z") : null;
+  }
+  return null;
+}
