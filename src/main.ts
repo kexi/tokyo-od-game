@@ -1842,9 +1842,14 @@ async function main(): Promise<void> {
       mode: isInCar ? "car" : isOnFoot ? "walk" : null,
       junctionNames: roadApplied?.junctionNames,
       laneUse: roadApplied?.laneUse,
+      roads: guideSigns.roadInfo,
+      approaches: control.approaches,
+      orbis: orbis.sites,
+      place: { ward: wardName, town: townName },
+      speedKmh: speed,
+      visible: !navHidden,
     });
     ribbon.update(isInCar && !navHidden ? nav.route : null, nav.lastAt, now);
-    if (navHidden) $("#nav").hidden = true;
     if (nav.route && navGeo.version !== nav.version) {
       navGeo = {
         version: nav.version,

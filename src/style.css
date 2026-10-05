@@ -1348,44 +1348,70 @@ pre.notice {
   }
 }
 
-/* カーナビ: next turn under the location panel. */
+/* カーナビ: one fixed box under the location panel. Every state (turn, 直進, 道なり, walking,
+   current location) fills the same five slots — picture, main line, list, road line, notice —
+   so the panel never changes size; long names end in an ellipsis. */
 #nav {
   top: 150px;
   left: 12px;
+  width: 264px;
+  height: 352px;
+  padding: 8px;
+  display: grid;
+  grid-template-rows: 160px 48px 60px 24px 24px;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 5px;
+  overflow: hidden;
+}
+
+#nav .nav-picture {
+  position: relative;
+  min-height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0d2346;
+}
+
+#nav .nav-view {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#nav .nav-main {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px 8px 8px;
-  min-width: 200px;
+  gap: 8px;
+  min-width: 0;
 }
 
-/* Within 300 m of a turn the panel grows into the 交差点拡大図 with the text below it. */
-#nav.close {
-  flex-wrap: wrap;
-  width: 252px;
-}
-
-#nav .nav-junction {
-  width: 240px;
-  height: 240px;
-  border-radius: 10px;
+#nav .nav-icon {
+  width: 44px;
+  height: 44px;
   flex: none;
-}
-
-#nav.close .nav-arrow {
-  width: 40px;
-  height: 40px;
-}
-
-#nav .nav-arrow {
-  width: 48px;
-  height: 48px;
-  flex: none;
+  display: grid;
+  place-items: center;
   background: #1f6feb;
   border-radius: 10px;
 }
 
-#nav .nav-arrow path {
+/* Nothing to guide: the heading in words where the arrow was. */
+#nav[data-state="idle"] .nav-icon {
+  background: #24324a;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+#nav[data-state="arrive"] .nav-icon {
+  background: #c79a00;
+}
+
+#nav .nav-arrow {
+  width: 100%;
+  height: 100%;
+}
+
+#nav .nav-arrow path,
+#nav .nav-list svg path {
   fill: none;
   stroke: #fff;
   stroke-width: 4.5;
@@ -1393,71 +1419,205 @@ pre.notice {
   stroke-linejoin: round;
 }
 
-#nav .nav-dist {
-  font-size: 24px;
+#nav .nav-compass {
+  font-size: 15px;
   font-weight: 800;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+#nav .nav-text {
+  flex: 1;
+  min-width: 0;
+}
+
+#nav .nav-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+#nav .nav-dist,
+#nav .nav-turn,
+#nav .nav-list .n,
+#nav .nav-list li.note,
+#nav .nav-road-name,
+#nav .nav-notice {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#nav .nav-dist {
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+#nav[data-state="idle"] .nav-dist {
+  font-size: 18px;
+}
+
+#nav .nav-sub {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 #nav .nav-turn {
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* What comes next: the following turns (and the goal), one line each. */
+#nav .nav-list {
+  margin: 0;
+  padding: 4px 6px;
+  list-style: none;
+  display: grid;
+  grid-auto-rows: 16px;
+  row-gap: 2px;
+  align-content: start;
+  min-height: 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+#nav .nav-list li {
+  display: grid;
+  grid-template-columns: 16px 46px minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+#nav .nav-list li.note {
+  display: block;
+  color: var(--sub);
+  font-weight: 400;
+}
+
+#nav .nav-list svg {
+  width: 16px;
+  height: 16px;
+  background: #1f6feb;
+  border-radius: 4px;
+}
+
+#nav .nav-list svg path {
+  stroke-width: 6;
+}
+
+#nav .nav-list svg.goal {
+  background: #c79a00;
+}
+
+#nav .nav-list .d {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The street and its limit, drawn like the sign: red ring, blue figures. */
+#nav .nav-road {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+#nav .nav-limit {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 3px solid #d32f2f;
+  background: #fff;
+  color: #1a3d8f;
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+}
+
+#nav .nav-limit.unknown {
+  border-color: #6b7a90;
+  color: #6b7a90;
+}
+
+#nav .nav-limit.walk {
+  border: none;
+  background: #2e7d32;
+  color: #fff;
+  font-size: 9px;
+}
+
+#nav .nav-road-name {
+  min-width: 0;
+}
+
+#nav .nav-road-name.unknown {
+  color: var(--sub);
+  font-weight: 400;
+}
+
+/* 安全運転支援: the most important notice ahead, coloured by kind. */
+#nav .nav-notice {
+  padding: 0 8px;
+  border-radius: 6px;
+  line-height: 24px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sub);
+  font-weight: 400;
+}
+
+#nav .nav-notice[data-kind="closure"],
+#nav .nav-notice[data-kind="school"],
+#nav .nav-notice[data-kind="stop"] {
+  background: #c62828;
+  color: #fff;
   font-weight: 700;
 }
 
-@media (max-width: 720px) {
-  #nav {
-    top: auto;
-    bottom: 250px;
-    left: 6px;
-    min-width: 0;
-    padding: 6px 10px 6px 6px;
-  }
-  #nav .nav-arrow {
-    width: 36px;
-    height: 36px;
-  }
-  #nav.close {
-    width: 172px;
-  }
-  #nav .nav-junction {
-    width: 160px;
-    height: 160px;
-  }
-  #nav .nav-dist {
-    font-size: 18px;
-  }
+#nav .nav-notice[data-kind="orbis"] {
+  background: #f9a825;
+  color: #1b1b1b;
+  font-weight: 700;
 }
 
-/* レーン案内: one box per lane, left lane first; the lanes to take are lit. */
+#nav .nav-notice[data-kind="limit"] {
+  background: #1f4f9c;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* レーン案内: one box per lane, left lane first, on the lower edge of the picture as in car
+   navigation; the lanes to take are lit. */
 #nav .nav-lanes {
-  flex-basis: 100%;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   justify-content: center;
   gap: 3px;
   padding: 4px;
-  background: #0b1f3a;
-  border-radius: 8px;
-}
-/* With the 交差点拡大図 the strip sits on its lower edge, as in car navigation, keeping the
-   panel clear of the speedometer. */
-#nav.close .nav-lanes {
-  position: absolute;
-  left: 8px;
-  top: 194px;
-  width: 240px;
-  box-sizing: border-box;
   background: rgba(11, 31, 58, 0.88);
-  border-radius: 0 0 10px 10px;
-}
-@media (max-width: 720px) {
-  #nav.close .nav-lanes {
-    top: 120px;
-    width: 160px;
-  }
 }
 #nav .nav-lanes svg {
-  width: 30px;
-  height: 38px;
+  width: 26px;
+  height: 34px;
   border-radius: 4px;
   background: #24324a;
 }
@@ -1477,6 +1637,114 @@ pre.notice {
 #nav .nav-lanes svg.here {
   outline: 2px solid #ffd23c;
   outline-offset: 1px;
+}
+
+/* Short desktop windows: a smaller picture and two list lines, still one size for all states. */
+@media (max-height: 760px) and (min-width: 721px) {
+  #nav {
+    height: 284px;
+    grid-template-rows: 112px 46px 42px 24px 24px;
+  }
+}
+
+/* Narrow windows: the box above the speedometer, smaller. */
+@media (max-width: 720px) {
+  #nav {
+    top: auto;
+    bottom: 250px;
+    left: 6px;
+    width: 196px;
+    height: 254px;
+    padding: 6px;
+    grid-template-rows: 100px 40px 42px 22px 22px;
+    row-gap: 4px;
+  }
+  #nav .nav-icon {
+    width: 36px;
+    height: 36px;
+  }
+  #nav .nav-compass {
+    font-size: 12px;
+  }
+  #nav .nav-dist {
+    font-size: 18px;
+  }
+  #nav[data-state="idle"] .nav-dist {
+    font-size: 15px;
+  }
+  #nav .nav-turn {
+    font-size: 12px;
+  }
+  #nav .nav-list,
+  #nav .nav-road,
+  #nav .nav-notice {
+    font-size: 11px;
+  }
+  #nav .nav-notice {
+    line-height: 22px;
+  }
+  #nav .nav-limit {
+    width: 22px;
+    height: 22px;
+  }
+  #nav .nav-lanes svg {
+    width: 20px;
+    height: 26px;
+  }
+}
+
+/* Phones held sideways: beside the speedometer, one list line, the road ahead kept clear. */
+@media (pointer: coarse) and (max-height: 520px) {
+  #nav {
+    top: auto;
+    bottom: 104px;
+    left: 130px;
+    width: 188px;
+    height: 194px;
+    padding: 6px;
+    grid-template-rows: 72px 34px 24px 20px 20px;
+    row-gap: 3px;
+  }
+  #nav .nav-icon {
+    width: 32px;
+    height: 32px;
+  }
+  #nav .nav-compass {
+    font-size: 11px;
+  }
+  #nav .nav-dist {
+    font-size: 16px;
+  }
+  #nav[data-state="idle"] .nav-dist {
+    font-size: 14px;
+  }
+  #nav .nav-turn {
+    font-size: 11px;
+  }
+  #nav .nav-list li:nth-child(n + 2) {
+    display: none;
+  }
+  #nav .nav-list,
+  #nav .nav-road,
+  #nav .nav-notice {
+    font-size: 10px;
+  }
+  #nav .nav-notice {
+    line-height: 20px;
+  }
+  #nav .nav-limit {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+    font-size: 9px;
+  }
+  #nav .nav-lanes {
+    padding: 2px;
+  }
+  #nav .nav-lanes svg {
+    width: 16px;
+    height: 20px;
+  }
 }
 
 /* 自動運転タクシー: the phone app and the meter while riding. */
@@ -1563,13 +1831,6 @@ pre.notice {
 }
 #clock .clock-day.sun {
   color: #ff9a9a;
-}
-
-@media (max-width: 720px) {
-  #nav .nav-lanes svg {
-    width: 22px;
-    height: 30px;
-  }
 }
 
 /* 違反の振り返り */

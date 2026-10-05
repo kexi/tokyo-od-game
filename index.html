@@ -92,14 +92,28 @@
         <div id="ai-chip" class="sub" hidden></div>
       </div>
 
-      <div id="nav" class="panel" hidden aria-live="polite">
-        <canvas class="nav-junction" width="240" height="240" hidden aria-hidden="true"></canvas>
-        <svg class="nav-arrow" viewBox="0 0 48 48" aria-hidden="true"><path d="" /></svg>
-        <div class="nav-text">
-          <div><span class="nav-dist">—</span> <span class="nav-turn"></span></div>
-          <div class="nav-sub sub"></div>
+      <!-- カーナビ: one fixed box; navGuide.ts fills the same slots in every state. -->
+      <div id="nav" class="panel" hidden aria-label="ナビ">
+        <div class="nav-picture">
+          <canvas class="nav-view" aria-hidden="true"></canvas>
+          <div class="nav-lanes" hidden aria-label="レーン案内"></div>
         </div>
-        <div class="nav-lanes" hidden aria-label="レーン案内"></div>
+        <div class="nav-main">
+          <div class="nav-icon">
+            <svg class="nav-arrow" viewBox="0 0 48 48" aria-hidden="true"><path d="" /></svg>
+            <span class="nav-compass" hidden></span>
+          </div>
+          <div class="nav-text">
+            <div class="nav-line"><span class="nav-dist">—</span><span class="nav-sub sub"></span></div>
+            <div class="nav-turn" aria-live="polite"></div>
+          </div>
+        </div>
+        <ol class="nav-list" aria-label="この先の案内"></ol>
+        <div class="nav-road">
+          <span class="nav-limit unknown">—</span>
+          <span class="nav-road-name"></span>
+        </div>
+        <div class="nav-notice"></div>
       </div>
 
       <div id="hud-time" class="panel segmented">
