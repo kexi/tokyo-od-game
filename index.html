@@ -111,10 +111,10 @@
       </div>
 
       <!-- カーナビ: one fixed box; navGuide.ts fills the same slots in every state. -->
-      <div id="nav" class="panel" hidden aria-label="ナビ">
+      <div id="nav" class="panel" hidden aria-label="ナビ" data-i18n-aria-label="nav.aria">
         <div class="nav-picture">
           <canvas class="nav-view" aria-hidden="true"></canvas>
-          <div class="nav-lanes" hidden aria-label="レーン案内"></div>
+          <div class="nav-lanes" hidden aria-label="レーン案内" data-i18n-aria-label="nav.lanesAria"></div>
         </div>
         <div class="nav-main">
           <div class="nav-icon">
@@ -126,7 +126,7 @@
             <div class="nav-turn" aria-live="polite"></div>
           </div>
         </div>
-        <ol class="nav-list" aria-label="この先の案内"></ol>
+        <ol class="nav-list" aria-label="この先の案内" data-i18n-aria-label="nav.listAria"></ol>
         <div class="nav-road">
           <span class="nav-limit unknown">—</span>
           <span class="nav-road-name"></span>
@@ -135,19 +135,35 @@
       </div>
 
       <div id="hud-time" class="panel segmented">
-        <span role="group" aria-label="時間帯">
-          <button type="button" data-time="real">リアル</button>
-          <button type="button" data-time="morning">朝</button>
-          <button type="button" data-time="day">昼</button>
-          <button type="button" data-time="evening">夕方</button>
-          <button type="button" data-time="night">夜</button>
+        <span role="group" aria-label="時間帯" data-i18n-aria-label="toolbar.time">
+          <button type="button" data-time="real" data-i18n="time.button.real">リアル</button>
+          <button type="button" data-time="morning" data-i18n="time.label.morning">朝</button>
+          <button type="button" data-time="day" data-i18n="time.label.day">昼</button>
+          <button type="button" data-time="evening" data-i18n="time.label.evening">夕方</button>
+          <button type="button" data-time="night" data-i18n="time.label.night">夜</button>
         </span>
         <span class="segmented-sep" aria-hidden="true"></span>
-        <span role="group" aria-label="天気">
-          <button type="button" data-weather="real" title="気象庁アメダスの実況">実況</button>
-          <button type="button" data-weather="auto" title="晴れと雨がときどき入れ替わる">おまかせ</button>
-          <button type="button" data-weather="clear">晴れ</button>
-          <button type="button" data-weather="rain">雨</button>
+        <span role="group" aria-label="天気" data-i18n-aria-label="toolbar.weather">
+          <button
+            type="button"
+            data-weather="real"
+            title="気象庁アメダスの実況"
+            data-i18n-title="weather.title.real"
+            data-i18n="weather.button.real"
+          >
+            実況
+          </button>
+          <button
+            type="button"
+            data-weather="auto"
+            title="晴れと雨がときどき入れ替わる"
+            data-i18n-title="weather.title.auto"
+            data-i18n="weather.label.auto"
+          >
+            おまかせ
+          </button>
+          <button type="button" data-weather="clear" data-i18n="weather.label.clear">晴れ</button>
+          <button type="button" data-weather="rain" data-i18n="weather.label.rain">雨</button>
         </span>
       </div>
 
@@ -158,19 +174,30 @@
 
       <canvas id="minimap" width="180" height="180"></canvas>
 
-      <div id="hud-license" class="panel" title="道路交通法に基づく違反点数（普通車）">
+      <div
+        id="hud-license"
+        class="panel"
+        title="道路交通法に基づく違反点数（普通車）"
+        data-i18n-title="hud.licenseTitle"
+      >
         <div>
           <div id="license-points">違反点数 0 / 6</div>
           <div id="license-fines" class="sub">反則金 0円</div>
           <div id="reg-ahead" hidden></div>
-          <button id="review-open" type="button" class="link-button">違反の記録を見る</button>
+          <button id="review-open" type="button" class="link-button" data-i18n="hud.reviewOpen">
+            違反の記録を見る
+          </button>
         </div>
       </div>
 
-      <div id="hud-speed" title="速度計（赤い範囲は現在地の最高速度を超える速度）"></div>
+      <div
+        id="hud-speed"
+        title="速度計（赤い範囲は現在地の最高速度を超える速度）"
+        data-i18n-title="hud.speedTitle"
+      ></div>
 
       <div id="hud-mission" class="panel">
-        <div class="label">ミッション</div>
+        <div class="label" data-i18n="hud.missionLabel">ミッション</div>
         <div id="mission-name">N キーで目的地を設定</div>
         <div id="mission-meta" class="sub"></div>
       </div>
@@ -179,8 +206,8 @@
       <div id="hud-toolbar"></div>
 
       <div id="toasts"></div>
-      <section id="notice-log" class="panel" aria-label="通知" hidden>
-        <header><span>通知（最新 10 件）</span></header>
+      <section id="notice-log" class="panel" aria-label="通知" data-i18n-aria-label="hud.notices" hidden>
+        <header><span data-i18n="hud.noticeLog">通知（最新 10 件）</span></header>
         <ol></ol>
       </section>
 
@@ -189,47 +216,64 @@
       <div id="paused" class="panel" hidden role="status">一時停止中（P で再開）</div>
 
       <div id="replay-caption" class="panel" hidden aria-live="polite"></div>
-      <div id="replay-bar" class="panel" hidden aria-label="リプレイ">
-        <button id="replay-play" type="button" aria-label="再生・一時停止">❚❚</button>
+      <div id="replay-bar" class="panel" hidden aria-label="リプレイ" data-i18n-aria-label="toolbar.replay">
+        <button
+          id="replay-play"
+          type="button"
+          aria-label="再生・一時停止"
+          data-i18n-aria-label="replay.playPause"
+        >
+          ❚❚
+        </button>
         <div class="replay-track">
-          <input id="replay-seek" type="range" min="0" max="1000" value="0" aria-label="再生位置" />
+          <input
+            id="replay-seek"
+            type="range"
+            min="0"
+            max="1000"
+            value="0"
+            aria-label="再生位置"
+            data-i18n-aria-label="replay.seek"
+          />
           <div id="replay-marks"></div>
         </div>
         <span id="replay-time">0:00</span>
-        <select id="replay-speed" aria-label="再生速度">
+        <select id="replay-speed" aria-label="再生速度" data-i18n-aria-label="replay.speed">
           <option value="0.25">0.25×</option>
           <option value="0.5">0.5×</option>
           <option value="1" selected>1×</option>
           <option value="2">2×</option>
         </select>
-        <select id="replay-camera" aria-label="カメラ"></select>
-        <button id="replay-exit" type="button">終了</button>
+        <select id="replay-camera" aria-label="カメラ" data-i18n-aria-label="replay.camera"></select>
+        <button id="replay-exit" type="button" data-i18n="replay.exit">終了</button>
       </div>
 
-      <div id="car-status" class="panel" aria-label="車の状態">
+      <div id="car-status" class="panel" aria-label="車の状態" data-i18n-aria-label="hud.carStatus">
         <span id="ind-left" class="ind">◀</span>
         <span id="light-status"></span>
         <span id="belt-status"></span>
         <span id="ind-right" class="ind">▶</span>
       </div>
 
-      <div id="pursuit-chip" class="panel" hidden role="status">
+      <div id="pursuit-chip" class="panel" hidden role="status" data-i18n="hud.pursuit">
         🚨 パトカーが追ってきています。左に寄って止まりましょう
       </div>
 
       <div id="autopilot-chip" class="panel" hidden>
-        🚘 自動運転中 <span class="sub">（O・運転操作で解除）</span>
+        <span data-i18n="hud.autopilotOn">🚘 自動運転中</span>
+        <span class="sub" id="autopilot-how">（O・運転操作で解除）</span>
       </div>
 
       <div id="taxi-meter" class="panel" hidden aria-live="polite">
         <div class="taxi-meter-head">
-          <span id="taxi-flag">賃走</span> <span id="taxi-fare">500</span><small>円</small>
+          <span id="taxi-flag">賃走</span> <span id="taxi-fare">500</span
+          ><small data-i18n="hud.taxiYen">円</small>
         </div>
         <div id="taxi-trip" class="sub"></div>
       </div>
 
       <div id="incident" class="panel" hidden role="alert">
-        <div class="incident-title">⚠ 人身事故が発生しました</div>
+        <div class="incident-title" data-i18n="incident.title">⚠ 人身事故が発生しました</div>
         <div id="incident-text" class="sub">
           直ちに停車し、負傷者を救護してください。スマホ（P）で 119 番（救急）と 110
           番（警察）に通報してください（道路交通法 第72条）。
@@ -240,7 +284,7 @@
       <button type="button" id="phone-button" class="panel" title="スマホ (P)">📱</button>
 
       <div id="phone-backdrop" hidden></div>
-      <aside id="phone" hidden aria-label="スマートフォン">
+      <aside id="phone" hidden aria-label="スマートフォン" data-i18n-aria-label="phoneUi.phone">
         <div class="phone-notch"></div>
         <button
           type="button"
@@ -261,24 +305,30 @@
           <div class="phone-clock" id="phone-clock">--:--</div>
           <div class="phone-loc" id="phone-loc">現在地: —</div>
           <div class="dial-grid">
-            <button type="button" class="dial emergency" data-dial="119">119<small>火事・救急</small></button>
+            <button type="button" class="dial emergency" data-dial="119">
+              119<small data-i18n="phoneUi.fireAmbulance">火事・救急</small>
+            </button>
             <button type="button" class="dial emergency police" data-dial="110">
-              110<small>警察</small>
+              110<small data-i18n="phoneUi.police">警察</small>
             </button>
           </div>
-          <button type="button" id="taxi-open" class="phone-app">🚕 自動運転タクシー</button>
+          <button type="button" id="taxi-open" class="phone-app" data-i18n="phoneUi.taxiApp">
+            🚕 自動運転タクシー
+          </button>
           <button type="button" id="social-open" class="sns-app-tile" aria-label="Y">
             Y <span id="social-badge" hidden></span>
           </button>
-          <p class="sub phone-note">
+          <p class="sub phone-note" data-i18n="phoneUi.nonUrgent">
             緊急でない相談は #7119（救急相談センター）・#9110（警察相談専用電話）へ。
           </p>
-          <p class="sub phone-note">
+          <p class="sub phone-note" data-i18n="phoneUi.simulation">
             これはゲーム内の通報シミュレーションで、実際の 119・110
             にはつながりません。本当の緊急時はお手持ちの電話から通報してください。いたずら通報は犯罪です（軽犯罪法
             第1条第16号）。
           </p>
-          <button type="button" id="phone-close" class="phone-close">閉じる</button>
+          <button type="button" id="phone-close" class="phone-close" data-i18n="settings.close">
+            閉じる
+          </button>
         </section>
         <section id="phone-social" hidden aria-label="Y">
           <div id="social-app"></div>
@@ -288,24 +338,28 @@
             class="sns-home-bar"
             title="ホーム画面に戻る"
             aria-label="ホーム画面に戻る"
+            data-i18n-title="phoneUi.home"
+            data-i18n-aria-label="phoneUi.home"
           ></button>
         </section>
         <section id="phone-taxi" hidden>
-          <div class="call-head"><span>🚕 自動運転タクシー</span></div>
-          <p id="taxi-status" class="sub">レベル 4 の自動運転車が近くから迎えに来ます。</p>
+          <div class="call-head"><span data-i18n="phoneUi.taxiApp">🚕 自動運転タクシー</span></div>
+          <p id="taxi-status" class="sub" data-i18n="phoneUi.taxiIntro">
+            レベル 4 の自動運転車が近くから迎えに来ます。
+          </p>
           <label class="taxi-dest"
-            >行き先
+            ><span data-i18n="phoneUi.taxiDest">行き先</span>
             <select id="taxi-dest"></select
           ></label>
           <div class="row">
-            <button type="button" id="taxi-call">呼ぶ</button>
-            <button type="button" id="taxi-cancel" hidden>キャンセル</button>
+            <button type="button" id="taxi-call" data-i18n="phoneUi.taxiCall">呼ぶ</button>
+            <button type="button" id="taxi-cancel" hidden data-i18n="phoneUi.taxiCancel">キャンセル</button>
           </div>
-          <p class="sub phone-note">
+          <p class="sub phone-note" data-i18n="phoneUi.taxiFares">
             運賃は東京都特別区・武三地区の普通車（2026 年 4 月 20 日から）：初乗り 1.0km 500 円、以降 232m
             ごとに 100 円。時速 10km 以下の間は 1 分 25 秒ごとに 100 円。アプリで自動精算します。
           </p>
-          <button type="button" id="taxi-back" class="phone-close">戻る</button>
+          <button type="button" id="taxi-back" class="phone-close" data-i18n="phoneUi.back">戻る</button>
         </section>
         <section id="phone-call" hidden>
           <div class="call-head">
@@ -314,19 +368,26 @@
           <div id="call-log" aria-live="polite"></div>
           <div id="call-quick"></div>
           <form id="call-form" autocomplete="off">
-            <input id="call-input" maxlength="80" placeholder="話す内容を入力して Enter" />
+            <input
+              id="call-input"
+              maxlength="80"
+              placeholder="話す内容を入力して Enter"
+              data-i18n-placeholder="call.placeholder"
+            />
           </form>
-          <button type="button" id="call-hangup" class="hangup">終話</button>
+          <button type="button" id="call-hangup" class="hangup" data-i18n="call.hangUp">終話</button>
         </section>
       </aside>
 
-      <aside id="chat" class="panel" hidden aria-label="歩行者との会話">
+      <aside id="chat" class="panel" hidden aria-label="歩行者との会話" data-i18n-aria-label="talk.chatLabel">
         <header>
           <div>
             <div id="chat-name"></div>
             <div id="chat-sub" class="sub"></div>
           </div>
-          <button type="button" id="chat-close" aria-label="会話を閉じる">×</button>
+          <button type="button" id="chat-close" aria-label="会話を閉じる" data-i18n-aria-label="talk.close">
+            ×
+          </button>
         </header>
         <div id="chat-log" aria-live="polite"></div>
         <div id="chat-quick"></div>
@@ -335,13 +396,22 @@
             id="chat-input"
             maxlength="80"
             placeholder="Enter で入力 → Enter で送信（Esc で運転に戻る）"
+            data-i18n-placeholder="talk.placeholder"
           />
-          <button type="submit">送信</button>
+          <button type="submit" data-i18n="talk.send">送信</button>
         </form>
         <div id="chat-ai" class="sub">
-          <span id="ai-status">会話: 定型応答（オープンデータから回答）</span>
-          <button type="button" id="ai-enable">会話 AI（Gemma 4）を使う</button>
-          <label><input type="checkbox" id="voice-toggle" /> 音声で話す</label>
+          <span id="ai-status" data-i18n="talk.status.templates"
+            >会話: 定型応答（オープンデータから回答）</span
+          >
+          <button type="button" id="ai-enable" data-i18n="talk.aiEnable">会話 AI（Gemma 4）を使う</button>
+          <!-- sanoTTS-jp speaks Japanese only: in English and Chinese the box says so ("Japanese voice"). -->
+          <label
+            data-i18n-title="talk.voiceToggleTitle"
+            title="歩行者の声（sanoTTS-jp）は日本語だけを話します"
+            ><input type="checkbox" id="voice-toggle" />
+            <span data-i18n="talk.voiceToggle">音声で話す</span></label
+          >
         </div>
       </aside>
 
@@ -349,7 +419,14 @@
            shown, and OpenStreetMap's attribution goes with the map. Everything else (PLATEAU, JARTIC,
            Tokyo's open data, ODPT, JMA, e-Stat, the voice) is in 出典・ライセンス, also on the title. -->
       <div id="attribution">
-        <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener"
+        <!-- 「地理院タイル」 is the credit GSI asks for, in every language; the tooltip translates it. -->
+        <a
+          href="https://maps.gsi.go.jp/development/ichiran.html"
+          target="_blank"
+          rel="noopener"
+          lang="ja"
+          title="国土地理院の地理院タイル"
+          data-i18n-title="credits.gsiTilesTitle"
           >地理院タイル</a
         >
         ｜©
@@ -361,18 +438,38 @@
 
       <div id="touch">
         <div class="left">
-          <button type="button" data-touch="left" aria-label="左">◀</button>
-          <button type="button" data-touch="right" aria-label="右">▶</button>
+          <button type="button" data-touch="left" aria-label="左" data-i18n-aria-label="hud.touchLeft">
+            ◀
+          </button>
+          <button type="button" data-touch="right" aria-label="右" data-i18n-aria-label="hud.touchRight">
+            ▶
+          </button>
         </div>
         <div class="actions">
-          <button type="button" data-action="door">🚪<small>乗降</small></button>
-          <button type="button" data-action="talk">💬<small>話す</small></button>
-          <button type="button" data-action="mission">🎯<small>目的地</small></button>
-          <button type="button" data-action="reset">↺<small>復帰</small></button>
+          <button type="button" data-action="door">🚪<small data-i18n="toolbar.door">乗降</small></button>
+          <button type="button" data-action="talk">💬<small data-i18n="hud.touchTalk">話す</small></button>
+          <button type="button" data-action="mission">
+            🎯<small data-i18n="toolbar.mission">目的地</small>
+          </button>
+          <button type="button" data-action="reset">↺<small data-i18n="toolbar.reset">復帰</small></button>
         </div>
         <div class="right">
-          <button type="button" data-touch="brake" aria-label="ブレーキ／後退">B</button>
-          <button type="button" data-touch="gas" aria-label="アクセル／前進">A</button>
+          <button
+            type="button"
+            data-touch="brake"
+            aria-label="ブレーキ／後退"
+            data-i18n-aria-label="hud.touchBrake"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            data-touch="gas"
+            aria-label="アクセル／前進"
+            data-i18n-aria-label="hud.touchGas"
+          >
+            A
+          </button>
         </div>
       </div>
     </div>
@@ -380,36 +477,44 @@
     <div id="stamps" aria-hidden="true"></div>
     <section id="suspended" hidden aria-live="assertive">
       <div class="loading-card">
-        <h1>免許停止</h1>
-        <p class="tagline">違反点数が 6 点に達しました（前歴なしの場合の免許停止基準）。</p>
+        <h1 data-i18n="sanction.suspendedTitle">免許停止</h1>
+        <p class="tagline" data-i18n="sanction.suspendedTagline">
+          違反点数が 6 点に達しました（前歴なしの場合の免許停止基準）。
+        </p>
         <ul id="suspended-log"></ul>
-        <button id="review-from-suspension" type="button">違反を振り返る</button>
-        <p class="sub">点数・反則金は道路交通法と警察庁の基準（普通車）に基づくゲーム内の参考値です。</p>
-        <button id="retrain" type="button">講習を受けて運転を再開</button>
+        <button id="review-from-suspension" type="button" data-i18n="sanction.reviewButton">
+          違反を振り返る
+        </button>
+        <p class="sub" data-i18n="sanction.referenceNote">
+          点数・反則金は道路交通法と警察庁の基準（普通車）に基づくゲーム内の参考値です。
+        </p>
+        <button id="retrain" type="button" data-i18n="sanction.retrainButton">講習を受けて運転を再開</button>
       </div>
     </section>
 
     <dialog id="day-end" aria-labelledby="day-end-title">
-      <h2 id="day-end-title">今日の運転の終わり</h2>
+      <h2 id="day-end-title" data-i18n="dayEnd.title">今日の運転の終わり</h2>
       <section id="day-mail">
-        <h3>📮 ポスト</h3>
+        <h3 data-i18n="dayEnd.mailTitle">📮 ポスト</h3>
         <div id="day-mail-body"></div>
       </section>
       <section>
-        <h3>今日の記録</h3>
+        <h3 data-i18n="dayEnd.record">今日の記録</h3>
         <dl id="day-stats"></dl>
       </section>
       <section id="day-sanction" hidden>
-        <h3>行政処分</h3>
+        <h3 data-i18n="dayEnd.sanction">行政処分</h3>
         <p id="day-sanction-body"></p>
-        <button id="day-course" type="button" hidden>停止処分者講習を受ける</button>
+        <button id="day-course" type="button" hidden data-i18n="dialog.takeCourse">
+          停止処分者講習を受ける
+        </button>
       </section>
       <section>
-        <h3>運転のアドバイス</h3>
+        <h3 data-i18n="dayEnd.advice">運転のアドバイス</h3>
         <ul id="day-advice"></ul>
       </section>
-      <button id="day-review" type="button">違反の記録を見る</button>
-      <button id="day-next" type="button">翌日へ</button>
+      <button id="day-review" type="button" data-i18n="hud.reviewOpen">違反の記録を見る</button>
+      <button id="day-next" type="button" data-i18n="dayEnd.next">翌日へ</button>
     </dialog>
 
     <dialog id="office-dialog" aria-labelledby="office-title">
@@ -419,60 +524,65 @@
     </dialog>
 
     <dialog id="ticket-dialog" aria-labelledby="ticket-title">
-      <h2 id="ticket-title">交通違反の取り締まり</h2>
+      <h2 id="ticket-title" data-i18n="ticket.title">交通違反の取り締まり</h2>
       <p id="ticket-intro"></p>
       <div id="ticket-form-container"></div>
       <p id="ticket-note" class="sub"></p>
-      <button id="ticket-accept" type="button">切符を受け取る</button>
+      <button id="ticket-accept" type="button" data-i18n="ticket.accept">切符を受け取る</button>
     </dialog>
 
     <dialog id="violations" aria-labelledby="violations-title">
-      <h2 id="violations-title">違反の記録</h2>
+      <h2 id="violations-title" data-i18n="review.title">違反の記録</h2>
       <p id="violations-summary" class="sub"></p>
       <div id="violations-list"></div>
-      <form method="dialog"><button>閉じる</button></form>
+      <form method="dialog"><button data-i18n="settings.close">閉じる</button></form>
     </dialog>
 
     <dialog id="title-dialog" aria-labelledby="title-dialog-title">
-      <h2 id="title-dialog-title">タイトルに戻りますか？</h2>
-      <p>
+      <h2 id="title-dialog-title" data-i18n="dialog.titleQuestion">タイトルに戻りますか？</h2>
+      <p data-i18n="dialog.titleBody">
         今日の運転はここで終わります。違反点数・反則金・行政処分の状態はリセットされます。違反の記録（リプレイ）、発見したスポット、自宅、操作の設定はこのブラウザに残ります。
       </p>
       <div class="dialog-actions">
-        <button type="button" id="title-confirm">タイトルへ</button>
-        <form method="dialog"><button>運転を続ける</button></form>
+        <button type="button" id="title-confirm" data-i18n="dialog.toTitle">タイトルへ</button>
+        <form method="dialog"><button data-i18n="dialog.keepDriving">運転を続ける</button></form>
       </div>
     </dialog>
 
     <dialog id="warp" aria-labelledby="warp-title">
-      <h2 id="warp-title">移動</h2>
-      <p class="sub">行きたい場所へ車ごと移動します。着いたら近くの道路の左側から走り出します。</p>
+      <h2 id="warp-title" data-i18n="toolbar.warp">移動</h2>
+      <p class="sub" data-i18n="warp.intro">
+        行きたい場所へ車ごと移動します。着いたら近くの道路の左側から走り出します。
+      </p>
       <div class="warp-home">
-        <button type="button" id="warp-home">🏠 自宅へ</button>
-        <button type="button" id="warp-set-home">いまの場所を自宅にする</button>
+        <button type="button" id="warp-home" data-i18n="warp.toHome">🏠 自宅へ</button>
+        <button type="button" id="warp-set-home" data-i18n="warp.setHome">いまの場所を自宅にする</button>
         <span id="warp-home-label" class="sub"></span>
       </div>
       <input
         id="warp-query"
         type="search"
         placeholder="駅・スポット・警察署・区の名前など"
+        data-i18n-placeholder="warp.placeholder"
         autocomplete="off"
       />
       <ul id="warp-results"></ul>
-      <form method="dialog"><button>閉じる</button></form>
+      <form method="dialog"><button data-i18n="settings.close">閉じる</button></form>
     </dialog>
 
     <dialog id="help">
-      <h2>操作</h2>
+      <h2 data-i18n="toolbar.help">操作</h2>
+      <!-- Text either side of the button, each in its own words' order (English: "Open [Settings] to …"). -->
       <p class="help-settings">
-        キー配置・簡単操作・座席・ブラー・音量は
-        <button type="button" data-action="settings">設定</button> で変えられます。
+        <span data-i18n="help.settingsBefore">キー配置・簡単操作・座席・ブラー・音量は</span>
+        <button type="button" data-action="settings" data-i18n="settings.title">設定</button>
+        <span data-i18n="help.settingsAfter">で変えられます。</span>
       </p>
       <dl id="help-keys"></dl>
-      <p>
+      <p data-i18n="help.spots">
         光の柱は東京都オープンデータの実在スポットです。車で触れると「発見」できます。進捗はこのブラウザに保存されます。
       </p>
-      <form method="dialog"><button>閉じる</button></form>
+      <form method="dialog"><button data-i18n="settings.close">閉じる</button></form>
     </dialog>
 
     <dialog id="settings" aria-labelledby="settings-title">
@@ -582,52 +692,63 @@
     </dialog>
 
     <dialog id="parking-dialog" aria-labelledby="parking-title">
-      <h2 id="parking-title">放置車両確認標章が取り付けられています</h2>
-      <p>
+      <h2 id="parking-title" data-i18n="parking.title">放置車両確認標章が取り付けられています</h2>
+      <p data-i18n="parking.body">
         駐車監視員が、運転者のいない車を確認して黄色の標章を貼りました。標章は運転者か使用者しか取り除けません（道路交通法
         第51条の4）。どちらにしますか？
       </p>
       <p id="parking-detail" class="sub"></p>
       <dl>
-        <dt>警察署に出頭する</dt>
-        <dd>運転者として反則金を納めます。違反点数が付きます。</dd>
-        <dt>出頭しない</dt>
-        <dd>
+        <dt data-i18n="parking.appearTitle">警察署に出頭する</dt>
+        <dd data-i18n="parking.appearBody">運転者として反則金を納めます。違反点数が付きます。</dd>
+        <dt data-i18n="parking.ownerTitle">出頭しない</dt>
+        <dd data-i18n="parking.ownerBody">
           車の使用者（持ち主）に同じ額の放置違反金の納付命令が届きます。違反点数は付きません。命令を繰り返し受けると、車を使えなくなる使用制限命令の対象になり得ます（第75条の2第2項）。
         </dd>
       </dl>
       <div class="row">
-        <button type="button" id="parking-appear">出頭する（反則金・点数）</button>
-        <button type="button" id="parking-owner">出頭しない（放置違反金）</button>
+        <button type="button" id="parking-appear" data-i18n="parking.appear">出頭する（反則金・点数）</button>
+        <button type="button" id="parking-owner" data-i18n="parking.owner">出頭しない（放置違反金）</button>
       </div>
     </dialog>
 
     <dialog id="ai-consent">
-      <h2>会話 AI（Gemma 4）を有効にしますか？</h2>
+      <h2 data-i18n="ai.consent.title">会話 AI（Gemma 4）を有効にしますか？</h2>
+      <!-- The text round the bold words in spans of their own (data-i18n replaces child elements). -->
       <p>
-        Google の <strong>Gemma 4 E2B</strong>（Apache License
-        2.0）を、このブラウザの中だけで動かします。会話の内容は外部に送信されません。
+        <span data-i18n="ai.consent.introBefore">Google の</span> <strong>Gemma 4 E2B</strong
+        ><span data-i18n="ai.consent.introAfter"
+          >（Apache License
+          2.0）を、このブラウザの中だけで動かします。会話の内容は外部に送信されません。</span
+        >
       </p>
       <ul>
         <li>
-          初回のみ Hugging Face から <strong>約 2.0 GB</strong> をダウンロードします（Wi-Fi
-          推奨）。以後はブラウザに保存されます。
+          <span data-i18n="ai.consent.downloadBefore">初回のみ Hugging Face から</span>
+          <strong data-i18n="ai.consent.size">約 2.0 GB</strong>
+          <span data-i18n="ai.consent.downloadAfter"
+            >をダウンロードします（Wi-Fi 推奨）。以後はブラウザに保存されます。</span
+          >
         </li>
-        <li>WebGPU を使います。GPU メモリを約 1.8 GB 使い、描画が重くなることがあります。</li>
-        <li>AI の発言は不正確なことがあります。</li>
+        <li data-i18n="ai.consent.gpu">
+          WebGPU を使います。GPU メモリを約 1.8 GB 使い、描画が重くなることがあります。
+        </li>
+        <li data-i18n="ai.consent.accuracy">AI の発言は不正確なことがあります。</li>
       </ul>
       <p id="ai-consent-note" class="sub"></p>
       <form method="dialog" class="row">
-        <button value="cancel">やめる（定型応答で遊ぶ）</button>
-        <button value="ok" id="ai-consent-ok">ダウンロードして有効化</button>
-        <button value="clear" id="ai-clear" type="submit">保存済みモデルを削除</button>
+        <button value="cancel" data-i18n="ai.consent.cancel">やめる（定型応答で遊ぶ）</button>
+        <button value="ok" id="ai-consent-ok" data-i18n="ai.consent.download">ダウンロードして有効化</button>
+        <button value="clear" id="ai-clear" type="submit" data-i18n="ai.consent.clear">
+          保存済みモデルを削除
+        </button>
       </form>
     </dialog>
 
     <dialog id="credits">
-      <h2>データ出典・クレジット</h2>
+      <h2 data-i18n="credits.title">データ出典・クレジット</h2>
       <div id="credits-body"></div>
-      <form method="dialog"><button>閉じる</button></form>
+      <form method="dialog"><button data-i18n="settings.close">閉じる</button></form>
     </dialog>
 
     <!-- The language first, as its own small script: the title is translated before the game loads. -->

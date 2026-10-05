@@ -1,3 +1,4 @@
+import { t, type MessageKey } from "../i18n";
 import type { Assist } from "./carControls";
 import { IS_MAC, keyFor, type KeyLayout } from "./input";
 import { SOCIAL_APP_NAME } from "./socialTheme";
@@ -103,64 +104,49 @@ export function savePrefs(prefs: ControlPrefs): void {
 /** The help's key list for a layout; switches the car works itself in 簡単操作 say so. */
 export function keyRows(prefs: Pick<ControlPrefs, "layout" | "assist">): Array<[string, string]> {
   const { layout, assist } = prefs;
-  const auto = (text: string) => (assist === "easy" ? `${text}（簡単操作では自動）` : text);
+  const auto = (key: MessageKey) => (assist === "easy" ? t("help.easyAuto", { text: t(key) }) : t(key));
   const isWasd = layout === "wasd";
   const drive: Array<[string, string]> = isWasd
     ? [
-        ["W / S", "アクセル / ブレーキ（停止中はバック）"],
-        ["A / D", "ハンドル（矢印キーでも操作できます）"],
-        ["マウス", "視点（画面をクリックで開始、Esc で解除）"],
+        ["W / S", t("help.pedals")],
+        ["A / D", t("help.steerWasd")],
+        [t("help.mouse"), t("help.mouseLook")],
       ]
     : [
-        ["↑ / ↓", "アクセル / ブレーキ（停止中はバック）"],
-        ["← →", "ハンドル"],
+        ["↑ / ↓", t("help.pedals")],
+        ["← →", t("help.steer")],
       ];
   const key = (action: Parameters<typeof keyFor>[1]) => keyFor(layout, action);
   return [
     ...drive,
-    ["Space", auto("サイドブレーキ")],
-    [key("talk"), auto("エンジン始動・停止") + "（徒歩では近くの人に話しかける）"],
-    [", / .", auto("左 / 右の方向指示器（曲がり終えると自動で戻る）")],
-    [key("hazard"), "ハザードランプ"],
-    [`${key("lights")} / ${key("highBeam")}`, auto("ライト（AUTO → 点灯 → 消灯）/ ハイビーム")],
-    [key("wipers"), auto("ワイパー")],
-    ["H", "クラクション（危険を防ぐとき以外は違反）"],
-    [key("belt"), auto("シートベルト")],
-    [`${key("camera")} / ${key("cameraPrev")}`, "視点の切り替え"],
+    ["Space", auto("help.parkingBrake")],
+    [key("talk"), t("help.engineRow", { engine: auto("help.engine") })],
+    [", / .", auto("help.indicators")],
+    [key("hazard"), t("help.hazard")],
+    [`${key("lights")} / ${key("highBeam")}`, auto("help.lights")],
+    [key("wipers"), auto("help.wipers")],
+    ["H", t("help.horn")],
+    [key("belt"), auto("help.belt")],
+    [`${key("camera")} / ${key("cameraPrev")}`, t("help.camera")],
     isWasd
-      ? ["Z", "後ろを見る（押している間。左右はマウスで）"]
-      : [IS_MAC ? "左 ⌥ / 右 ⌥ / Z" : "左 Ctrl / 右 Ctrl / Z", "左 / 右 / 後ろを見る（押している間）"],
-    [key("phone"), `スマホ（119・110・タクシー・${SOCIAL_APP_NAME}）`],
-    [key("taxi"), "自動運転タクシーを呼ぶ（スマホのタクシーアプリ）"],
-    [key("phoneZoom"), "スマホの拡大表示 / 元に戻す（操作になるので運転中は使わない）"],
-    [`${key("nav")} / ${key("minimap")}`, "ナビ / 小さな地図の表示"],
-    [
-      `${key("tv")} / ${key("tvChannel")}`,
-      assist === "easy"
-        ? "ナビのテレビ / チャンネル（映像は停車中だけ、走行中は音声のみ。簡単操作では案内中に走り出すと地図に戻る）"
-        : "ナビのテレビ / チャンネル（映像は停車してサイドブレーキ（Space）かエンジン停止のときだけ、走行中は音声のみ）",
-    ],
-    [key("pause"), "一時停止"],
-    [key("reset"), "車を起こす・その場に復帰"],
-    [key("screenshot"), "スクリーンショット"],
-    [key("autopilot"), "自動運転"],
-    [
-      key("door"),
-      `車を降りる / 乗る（徒歩: WASD・Shift で走る・Space でジャンプ・${isWasd ? "マウス" : "← →"}で視点）`,
-    ],
-    [`${key("mission")} / ${key("home")}`, "新しい目的地 / 家に帰る（着くと一日が終わる）"],
-    [`${key("time")} / ${key("weather")}`, "時間帯 / 天気"],
-    [
-      `${key("help")} / ${key("ground")} / ${key("mute")} / ${key("credits")}`,
-      "この画面 / 地面の写真 / 音 / データ出典",
-    ],
-    ...(IS_MAC
-      ? []
-      : ([
-          ["1 2 5 8 9 0", "F1・F2・F5・F8・Home・F12 と同じ（F キー・Home キーの無いキーボード向け）"],
-        ] as Array<[string, string]>)),
-    ["Enter", "会話・通話の入力欄へ（Esc で運転に戻る）"],
-    [key("settings"), "設定（開いている間は一時停止。スマホや会話が開いていればそれを閉じる）"],
+      ? ["Z", t("help.lookBackWasd")]
+      : [t(IS_MAC ? "help.lookKeysMac" : "help.lookKeys"), t("help.look")],
+    [key("phone"), t("help.phone", { app: SOCIAL_APP_NAME })],
+    [key("taxi"), t("help.taxi")],
+    [key("phoneZoom"), t("help.phoneZoom")],
+    [`${key("nav")} / ${key("minimap")}`, t("help.navMap")],
+    [`${key("tv")} / ${key("tvChannel")}`, t(assist === "easy" ? "help.tvEasy" : "help.tvReal")],
+    [key("pause"), t("help.pause")],
+    [key("reset"), t("help.reset")],
+    [key("screenshot"), t("help.screenshot")],
+    [key("autopilot"), t("help.autopilot")],
+    [key("door"), t("help.door", { look: isWasd ? t("help.mouse") : "← →" })],
+    [`${key("mission")} / ${key("home")}`, t("help.missionHome")],
+    [`${key("time")} / ${key("weather")}`, t("help.timeWeather")],
+    [`${key("help")} / ${key("ground")} / ${key("mute")} / ${key("credits")}`, t("help.misc")],
+    ...(IS_MAC ? [] : ([["1 2 5 8 9 0", t("help.digits")]] as Array<[string, string]>)),
+    ["Enter", t("help.enter")],
+    [key("settings"), t("help.settings")],
   ];
 }
 

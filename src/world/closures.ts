@@ -15,7 +15,10 @@ export const CLOSURE = {
 } as const;
 export type ClosureKind = (typeof CLOSURE)[keyof typeof CLOSURE];
 
-/** What the closure is called on the review screen and in the logs. */
+/**
+ * What the closure is called on the review screen and in the logs, in Japanese (records keep it).
+ * The screen shows it in the language in force through the `closure.*` keys (translateWord).
+ */
 export const CLOSURE_WORDS: Record<ClosureKind, string> = {
   [CLOSURE.pedestrianRoad]: "歩行者用道路",
   [CLOSURE.all]: "通行止め",

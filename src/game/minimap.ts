@@ -1,4 +1,5 @@
 import type { Category, Poi } from "../data/schema";
+import { t, type MessageKey } from "../i18n";
 
 const METERS_PER_DEG_LAT = 111_320;
 
@@ -180,15 +181,15 @@ export class Minimap {
     }
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    for (const [label, deg] of [
-      ["東", 90],
-      ["南", 180],
-      ["西", 270],
+    for (const [key, deg] of [
+      ["compass.e", 90],
+      ["compass.s", 180],
+      ["compass.w", 270],
     ] as const) {
       const [x, y] = at((deg * Math.PI) / 180, half - 19);
       ctx.font = "bold 12px system-ui";
       ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.fillText(label, x, y);
+      ctx.fillText(t(key), x, y);
     }
     const [nx, ny] = at(0, half - 20);
     ctx.fillStyle = "#e53935";
@@ -197,9 +198,9 @@ export class Minimap {
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.font = "bold 13px system-ui";
-    ctx.fillText("北", nx, ny + 0.5);
+    ctx.fillText(t("compass.n"), nx, ny + 0.5);
     // The heading in words, on a pill under the car (the rim's bottom letter stays readable).
-    const text = `${compassLabel(heading)}へ`;
+    const text = t("compass.toward", { dir: compassLabel(heading) });
     ctx.font = "bold 12px system-ui";
     const w = ctx.measureText(text).width + 14;
     const y = half + 26;
@@ -212,10 +213,20 @@ export class Minimap {
   }
 }
 
-const COMPASS_8 = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
+/** Clockwise from north: 北 北東 … / N NE … / 北 东北 … (Chinese names the east or west first). */
+const COMPASS_8: readonly MessageKey[] = [
+  "compass.n",
+  "compass.ne",
+  "compass.e",
+  "compass.se",
+  "compass.s",
+  "compass.sw",
+  "compass.w",
+  "compass.nw",
+];
 
-/** The eight-point compass name of a heading (radians, 0 = north, clockwise). */
+/** The eight-point compass name of a heading (radians, 0 = north, clockwise), in the language in force. */
 export function compassLabel(heading: number): string {
   const turn = (((heading / (Math.PI * 2)) % 1) + 1) % 1;
-  return COMPASS_8[Math.round(turn * 8) % 8];
+  return t(COMPASS_8[Math.round(turn * 8) % 8] ?? "compass.n");
 }

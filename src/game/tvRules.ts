@@ -1,3 +1,8 @@
+// A namespace: the sound code below calls its time `t`.
+import * as i18n from "../i18n";
+import type { Locale, MessageKey } from "../i18n";
+import { violationName } from "../i18n/law";
+import { wardInEnglish } from "../i18n/wards";
 import type { Assist } from "./carControls";
 import { whiteNoise } from "./spatialMath";
 
@@ -101,12 +106,39 @@ export const CHANNELS: readonly Channel[] = [
   { number: 12, station: "げんしゅ自然" },
 ];
 
+/**
+ * The Japanese titles: Y's posters (socialTexts.ts) quote them as they are. The screen shows
+ * programmeTitle() and stationName(), in the language in force.
+ */
 export const PROGRAMME_TITLE: Record<Programme, string> = {
   news: "げんしゅニュース",
   weather: "いまの23区",
   nature: "げんしゅ自然紀行",
   colorBars: "放送休止",
 };
+
+const STATION_KEY: readonly MessageKey[] = ["tv.station.news", "tv.station.weather", "tv.station.nature"];
+const PROGRAMME_KEY: Record<Programme, MessageKey> = {
+  news: "tv.programme.news",
+  weather: "tv.programme.weather",
+  nature: "tv.programme.nature",
+  colorBars: "tv.programme.colorBars",
+};
+
+/** A channel's station in the language in force (「げんしゅテレビ」 / "Abide TV" / 「守法电视台」). */
+export function stationName(channel: number): string {
+  const key = STATION_KEY[channel];
+  return key ? i18n.t(key) : (CHANNELS[channel]?.station ?? "");
+}
+
+/** "10ch げんしゅテレビ" / "Ch 10 Abide TV" / "10频道 守法电视台". */
+export function channelLabel(channel: number): string {
+  return i18n.t("tv.channel", { n: CHANNELS[channel]?.number ?? channel, station: stationName(channel) });
+}
+
+export function programmeTitle(p: Programme): string {
+  return i18n.t(PROGRAMME_KEY[p]);
+}
 
 /** What a channel airs at a clock hour (JST): 12ch closes down 1:00–5:00 (the colour bars). */
 export function programmeAt(channel: number, hour: number): Programme {
@@ -148,7 +180,47 @@ export type TvInfo = {
   violations: Array<{ label: string; caught: boolean }>;
 };
 
-export type TickerItem = { tag: string; text: string; speech: string };
+/** What an item is about (its picture on the monitor, the weather channel's pick); `tag` is its label. */
+export type TickerKind = "time" | "place" | "weather" | "violations" | "safety";
+/** `speech` is "" when the item is shown but not read (a place an English voice cannot say). */
+export type TickerItem = { kind: TickerKind; tag: string; text: string; speech: string };
+
+const TAG_KEY: Record<TickerKind, MessageKey> = {
+  time: "tv.tag.time",
+  place: "tv.tag.place",
+  weather: "tv.tag.weather",
+  violations: "tv.tag.violations",
+  safety: "tv.tag.safety",
+};
+const item = (kind: TickerKind, text: string, speech: string): TickerItem => ({
+  kind,
+  tag: i18n.t(TAG_KEY[kind]),
+  text,
+  speech,
+});
+
+// Punctuation between the parts, which the dictionaries cannot hold (they keep no edge spaces):
+// the ticker's items, the numbers of one item, a spoken list, two spoken sentences.
+const TICKER_SEP: Record<Locale, string> = { ja: "　　◆　　", en: "   ◆   ", zh: "　　◆　　" };
+const PART_SEP: Record<Locale, string> = { ja: "　", en: " · ", zh: "　" };
+const SAID_SEP: Record<Locale, string> = { ja: "、", en: ", ", zh: "，" };
+const LABEL_SEP: Record<Locale, string> = { ja: "・", en: ", ", zh: "、" };
+const SENTENCE_SEP: Record<Locale, string> = { ja: "", en: " ", zh: "" };
+const sentences = (...parts: string[]) => parts.filter(Boolean).join(SENTENCE_SEP[i18n.getLocale()]);
+/** English sentences start with a capital; the others are left as they are. */
+const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const SKY_KEY: Record<Sky, MessageKey> = {
+  晴れ: "tv.sky.clear",
+  くもり: "tv.sky.cloudy",
+  雨: "tv.sky.rain",
+  雨なし: "tv.sky.dry",
+};
+
+/** The sky in the language in force: 晴れ / sunny / 晴. */
+export function skyWord(sky: Sky): string {
+  return i18n.t(SKY_KEY[sky]);
+}
 
 /**
  * The sky in a word. Sunshine says 晴れ or くもり by day; at night it says nothing, so only whether it
@@ -167,88 +239,111 @@ const clock = (hour: number) => {
   return { h, m };
 };
 
-/** 21 → 「21度」, −3 → 「氷点下3度」 (the speech engine drops a minus sign). */
-const degreesSpoken = (t: number) => {
-  const r = Math.round(t);
-  return r < 0 ? `氷点下${-r}度` : `${r}度`;
+/** 21 → 「21度」 / "21 degrees", −3 → 「氷点下3度」 / "minus 3 degrees" (the speech engine drops a minus sign). */
+const degreesSpoken = (temp: number) => {
+  const r = Math.round(temp);
+  const n = Math.abs(r);
+  if (r < 0) return i18n.t(n === 1 ? "tv.weather.degBelowOne" : "tv.weather.degBelow", { n });
+  return i18n.t(n === 1 ? "tv.weather.degOne" : "tv.weather.deg", { n: r });
 };
+
+/** The time read aloud: 「10時5分」, "10:05" on a 12-hour clock in English (as people say it), 「10点5分」. */
+function timeSpeech(h: number, m: number): string {
+  const isEnglish = i18n.getLocale() === "en";
+  const hour = isEnglish ? h % 12 || 12 : h;
+  if (m === 0) return i18n.t("tv.time.speechHour", { h: hour });
+  // English reads "10:05" as "ten oh five"; Japanese and Chinese say the minutes as a number.
+  const minutes = isEnglish ? String(m).padStart(2, "0") : String(m);
+  return i18n.t("tv.time.speech", { h: hour, m: minutes });
+}
+
+/**
+ * The place read aloud: the e-Stat names as they are in Japanese and Chinese (a Chinese voice reads
+ * the kanji); in English the ward's English name, or nothing when there is none.
+ */
+function placeSpeech(info: TvInfo): string {
+  const isEnglish = i18n.getLocale() === "en";
+  const place = isEnglish ? wardInEnglish(info.ward) : info.place.replace(" ", "");
+  return place ? i18n.t("tv.place.speech", { place }) : "";
+}
 
 /** The news items, in the order they are read: the time, the place, the weather, the violations, a word on safety. */
 export function tickerItems(info: TvInfo): TickerItem[] {
   const { h, m } = clock(info.hour);
   const items: TickerItem[] = [
-    {
-      tag: "時刻",
-      text: `${h}時${String(m).padStart(2, "0")}分`,
-      speech: m === 0 ? `${h}時になりました。` : `${h}時${m}分になりました。`,
-    },
+    item("time", i18n.t("tv.time.text", { h, mm: String(m).padStart(2, "0") }), timeSpeech(h, m)),
   ];
   if (info.place)
-    items.push({
-      tag: "現在地",
-      text: `${info.place}付近`,
-      speech: `現在地は、${info.place.replace(" ", "")}付近です。`,
-    });
+    items.push(item("place", i18n.t("tv.place.text", { place: info.place }), placeSpeech(info)));
   items.push(weatherItem(info.weather));
   items.push(violationItem(info.violations));
-  items.push({
-    tag: "交通安全",
-    text: "走行中に画面を注視するのは道路交通法違反です（第71条）",
-    speech: "運転中は、画面を見続けないでください。",
-  });
+  items.push(item("safety", i18n.t("tv.safety.text"), i18n.t("tv.safety.speech")));
   return items;
 }
 
 function weatherItem(w: TvWeather): TickerItem {
+  const locale = i18n.getLocale();
   const sky = skyOf(w);
+  const skyText = skyWord(sky);
   const numbers: string[] = [];
   const said: string[] = [];
   if (w.temp !== null) {
-    numbers.push(`気温 ${w.temp.toFixed(1)}℃`);
-    said.push(`気温は${degreesSpoken(w.temp)}`);
+    numbers.push(i18n.t("tv.weather.temp", { t: w.temp.toFixed(1) }));
+    said.push(i18n.t("tv.weather.saidTemp", { deg: degreesSpoken(w.temp) }));
   }
   if (w.humidity !== null) {
-    numbers.push(`湿度 ${Math.round(w.humidity)}%`);
-    said.push(`湿度は${Math.round(w.humidity)}パーセント`);
+    numbers.push(i18n.t("tv.weather.humidity", { n: Math.round(w.humidity) }));
+    said.push(i18n.t("tv.weather.saidHumidity", { n: Math.round(w.humidity) }));
   }
   // The observed rain only with the observed sky: under a set 晴れ it would contradict the screen.
   const rain = w.fixedSky ? 0 : (w.precip10m ?? 0);
-  if (rain > 0) numbers.push(`10分間に ${rain}mm`);
-  if (w.wind !== null) numbers.push(`風 ${w.wind.toFixed(1)}m/s`);
-  const observed = numbers.length > 0 ? `都心（北の丸公園）${numbers.join("　")}` : "";
+  if (rain > 0) numbers.push(i18n.t("tv.weather.rain10", { n: rain }));
+  if (w.wind !== null) numbers.push(i18n.t("tv.weather.wind", { n: w.wind.toFixed(1) }));
+  const sep = PART_SEP[locale];
+  const saidList = said.join(SAID_SEP[locale]);
+  const observed = numbers.length > 0 ? i18n.t("tv.weather.observed", { list: numbers.join(sep) }) : "";
   if (w.fixedSky) {
-    const text = [`${sky}（ゲームの天気）`, observed].filter(Boolean).join("　");
-    const numbersSaid = said.length > 0 ? `都心の${said.join("、")}です。` : "";
-    return { tag: "天気", text, speech: `天気は${sky}です。${numbersSaid}` };
+    const text = [i18n.t("tv.weather.fixed", { sky: skyText }), observed].filter(Boolean).join(sep);
+    const numbersSaid = said.length > 0 ? i18n.t("tv.weather.saidCentre", { said: saidList }) : "";
+    return item("weather", text, sentences(i18n.t("tv.weather.speechFixed", { sky: skyText }), numbersSaid));
   }
-  const text = `都心（北の丸公園）${[sky, ...numbers].join("　")}`;
+  const text = i18n.t("tv.weather.observed", { list: [skyText, ...numbers].join(sep) });
   if (sky === "雨なし") {
-    const numbersSaid = said.length > 0 ? `${said.join("、")}です。` : "";
-    return { tag: "天気", text, speech: `都心は、雨は降っていません。${numbersSaid}` };
+    const numbersSaid = said.length > 0 ? capitalise(i18n.t("tv.weather.saidPlain", { said: saidList })) : "";
+    return item("weather", text, sentences(i18n.t("tv.weather.speechDry"), numbersSaid));
   }
-  return { tag: "天気", text, speech: `${[`都心の天気は${sky}`, ...said].join("、")}です。` };
+  const all = [i18n.t("tv.weather.saidSky", { sky: skyText }), ...said].join(SAID_SEP[locale]);
+  return item("weather", text, capitalise(i18n.t("tv.weather.saidPlain", { said: all })));
 }
 
 function violationItem(list: TvInfo["violations"]): TickerItem {
   if (list.length === 0)
-    return {
-      tag: "本日の交通違反",
-      text: "0件　きょうも法令厳守です",
-      speech: "本日の交通違反は、ゼロ件です。法令厳守、お見事です。",
-    };
-  const labels = [...new Set(list.map((v) => v.label.replace(/（.*?）/g, "").trim()))];
-  const shown = labels.slice(0, 3).join("・") + (labels.length > 3 ? " ほか" : "");
+    return item("violations", i18n.t("tv.violations.none"), i18n.t("tv.violations.noneSpeech"));
+  const locale = i18n.getLocale();
+  // The labels in the language in force, each once, without their bracketed detail.
+  const names = list.map((v) =>
+    violationName(v.label)
+      .replace(/（.*?）|\(.*?\)/g, "")
+      .trim(),
+  );
+  const labels = [...new Set(names)];
+  const listed = labels.slice(0, 3).join(LABEL_SEP[locale]);
+  const shown = labels.length > 3 ? i18n.t("tv.violations.more", { list: listed }) : listed;
   const caught = list.filter((v) => v.caught).length;
-  return {
-    tag: "本日の交通違反",
-    text: `${list.length}件（${shown}）　うち検挙 ${caught}件`,
-    speech: `本日の交通違反は${list.length}件です。${shown.replace(/・/g, "、")}。`,
-  };
+  // Japanese reads the ・ of the list as a pause (、); the others already list with commas.
+  const shownSaid = locale === "ja" ? shown.replace(/・/g, "、") : shown;
+  return item(
+    "violations",
+    i18n.t("tv.violations.text", { n: list.length, shown, caught }),
+    i18n.t("tv.violations.speech", { n: list.length, shown: shownSaid }),
+  );
 }
 
 /** One line for the ticker: every item, its tag in brackets. */
 export function tickerLine(items: TickerItem[]): string {
-  return items.map((i) => `【${i.tag}】${i.text}`).join("　　◆　　");
+  return items
+    .map((i) => i18n.t("tv.tickerItem", { tag: i.tag, text: i.text }))
+    .join(TICKER_SEP[i18n.getLocale()]);
 }
 
 // ---------- sound: a quiet loop for each programme ----------

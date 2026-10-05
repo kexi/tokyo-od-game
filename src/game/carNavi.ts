@@ -1,4 +1,5 @@
 import type { Vector3 } from "three";
+import { t } from "../i18n";
 import type { RoadGraph, Segment } from "../world/roads";
 import type { Route } from "./navigation";
 import { TURN_ARROWS } from "./navGuide";
@@ -246,7 +247,7 @@ export class CarNavi {
     if (s.route) {
       const left = Math.max(0, s.route.length - s.at);
       ctx.font = `400 16px ${font}`;
-      ctx.fillText(`目的地まで ${(left / 1000).toFixed(1)}km`, W - 24, 66);
+      ctx.fillText(t("carNavi.toGoal", { km: (left / 1000).toFixed(1) }), W - 24, 66);
     }
     // The TV's sound playing behind the map, under the clock.
     if (s.tv) {

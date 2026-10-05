@@ -1,6 +1,8 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3, type Scene } from "three";
 import { ODPT } from "../config";
+// As a namespace: `t` is the buses' progress along their legs here.
+import * as i18n from "../i18n";
 import { warn } from "../log";
 import { haversineMeters } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
@@ -45,7 +47,12 @@ export class Transit {
   ];
   private lastPoll = -Infinity;
   private frame: LocalFrame;
-  status = "都営バス: 取得中…";
+  private feed: "loading" | "running" | "failed" = "loading";
+  /** The HUD's line about the buses, in the language in force. */
+  get status(): string {
+    if (this.feed === "running") return i18n.t("transit.running", { n: this.buses.size });
+    return i18n.t(this.feed === "failed" ? "transit.failed" : "transit.loading");
+  }
 
   constructor(
     private readonly scene: Scene,
@@ -184,9 +191,9 @@ export class Transit {
         this.scene.remove(bus.object);
         this.buses.delete(id);
       }
-      this.status = `都営バス ${this.buses.size} 台 運行中`;
+      this.feed = "running";
     } catch (error) {
-      this.status = "都営バス: 取得失敗";
+      this.feed = "failed";
       warn("odpt_poll_failed", { error: String(error) });
     }
   }

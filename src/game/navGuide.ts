@@ -1,4 +1,6 @@
 import type { Vector3 } from "three";
+import { getLocale, t } from "../i18n";
+import { localUtterance } from "../i18n/speech";
 import { drawJunction } from "./junctionView";
 import { laneAdvice, renderLanes } from "./laneView";
 import { compassLabel } from "./minimap";
@@ -12,6 +14,7 @@ import {
 } from "./navAhead";
 import { drawRouteMap } from "./navMap";
 import { collectNotices, NoticeVoice, shownNotice, type Notice, type OrbisLike } from "./navNotices";
+import { joinSpoken, sayLane, sayStraight, sayTurn, turnPhrase, turnWord } from "./navPhrases";
 import {
   CLOSE_RANGE,
   nextGuidance,
@@ -24,9 +27,8 @@ import {
   formatDistance,
   headingOf,
   idleView,
-  NO_ROAD_NAME,
+  noRoadName,
   roadLabel,
-  spokenDistance,
   type NavListItem,
   type NavView,
 } from "./navView";
@@ -38,7 +40,6 @@ import {
   laneIndex,
   planRoute,
   progressOn,
-  TURN_WORDS,
   type LaneHint,
   type Maneuver,
   type Route,
@@ -58,7 +59,7 @@ export const TURN_ARROWS: Record<Turn, string> = {
 /** The goal's flag, in the same 48×48 box. */
 const GOAL_FLAG = "M15 42V8M15 10h19l-5 7 5 7H15";
 
-// Spoken at these distances before a turn, then "まもなく" close to it.
+// Spoken at these distances before a turn, then "まもなく" (soon) close to it.
 const CALLS = [700, 300, 100];
 const SOON = 35;
 const OFF_ROUTE = 18; // metres from the route line before replanning
@@ -75,8 +76,15 @@ const STRAIGHT_LATE = 60; // m: closer than this the straight-on call is dropped
 export type RoadNames = {
   graph: RoadGraph;
   routes: ReadonlyMap<number, RouteInfo>;
-  names: ReadonlyArray<{ ja: string; pos: Vector3 }>;
+  names: ReadonlyArray<{ ja: string; en?: string; pos: Vector3 }>;
 };
+
+/**
+ * Said before the next call: the start of guidance, a replan or a change of travel mode. A replan's
+ * words do not count when telling a repeated call (a replan that lands on the same turn, e.g. once
+ * the regulations arrive, must not repeat it); the travel mode's do, as before.
+ */
+type Intro = { text: string; isReplan: boolean };
 
 const NO_ROUTES: ReadonlyMap<number, RouteInfo> = new Map();
 // Fixed empties: prepare() compares its inputs by identity, a fresh [] per frame would redo it.
@@ -121,7 +129,7 @@ export class NavGuide {
   private visible = true;
   private lastDraw = -Infinity;
   /** Said before the next turn call: "ルート案内を開始します。" or the replanning notice. */
-  private intro: string | null = null;
+  private intro: Intro | null = null;
   /** The car's distance along the route at the last update (for the band on the road). */
   lastAt = 0;
   /** Bumped whenever a new route is planned (the minimap caches its geodetic copy). */
@@ -190,7 +198,8 @@ export class NavGuide {
     clock: GameClock;
     /** null while the player can't use guidance (riding a taxi). */
     mode: TravelMode | null;
-    junctionNames?: Array<{ pos: Vector3; name: string }>;
+    /** Signals' 交差点名 (regulations), with the OSM English name where there is one. */
+    junctionNames?: Array<{ pos: Vector3; name: string; en?: string }>;
     /** 進行方向別通行区分 at junction approaches, for レーン案内. */
     laneUse?: readonly LaneUse[];
     /** Road names and numbers and junction names incl. junction=yes (GuideSigns.roadInfo). */
@@ -236,7 +245,10 @@ export class NavGuide {
       this.mode = opts.mode;
       this.lastPlan = -Infinity;
       this.plan(graph, opts.turnRules, car, opts.forward, target, opts.clock, now);
-      this.intro = opts.mode === "walk" ? "徒歩ルートで案内します。" : "車のルートで案内します。";
+      this.intro = {
+        text: t(opts.mode === "walk" ? "nav.say.walkRoute" : "nav.say.carRoute"),
+        isReplan: false,
+      };
     }
     this.mode = opts.mode;
     const isNewTarget = !this.target || this.target.distanceTo(target) > 1;
@@ -264,9 +276,9 @@ export class NavGuide {
         this.called.clear();
         this.noticeVoice.reset();
         this.arrived = false;
-        this.intro = "ルート案内を開始します。";
-      } else if (reason === "closed") this.intro = "この先、通行止めのため、ルートを再探索します。";
-      else if (reason === "off" && !isNewGraph) this.intro = "ルートを外れました。再探索します。";
+        this.intro = { text: t("nav.say.start"), isReplan: true };
+      } else if (reason === "closed") this.intro = { text: t("nav.say.closedAhead"), isReplan: true };
+      else if (reason === "off" && !isNewGraph) this.intro = { text: t("nav.say.offRoute"), isReplan: true };
     }
     if (!this.route) {
       this.showIdle(graph, car, opts.forward, now, true);
@@ -313,16 +325,19 @@ export class NavGuide {
   }
 
   /** Junction names: the guide-sign data's (signals and junction=yes) when loaded, else the signals'. */
-  private setNames(signals: Array<{ pos: Vector3; name: string }>, roads: RoadNames | null): void {
+  private setNames(signals: NamedPoint[], roads: RoadNames | null): void {
     const from = [signals, roads?.names];
     if (from[0] === this.namesFrom[0] && from[1] === this.namesFrom[1]) return;
     this.namesFrom = from;
-    this.names = roads ? roads.names.map((n) => ({ pos: n.pos, name: n.ja })) : signals;
+    this.names = roads ? roads.names.map((n) => ({ pos: n.pos, name: n.ja, en: n.en })) : signals;
   }
 
-  /** 直進案内 and the turns' junction names, again when the route or what they read changes. */
+  /**
+   * 直進案内 and the turns' junction names, again when the route or what they read changes — or the
+   * language, since the names are kept as shown (日比谷交差点 / Hibiya / 日比谷路口).
+   */
   private prepare(route: Route, graph: RoadGraph): void {
-    const inputs = [route, this.names, this.routes, this.approaches, this.mode];
+    const inputs = [route, this.names, this.routes, this.approaches, this.mode, getLocale()];
     const isSame = inputs.length === this.prepared.length && inputs.every((v, i) => v === this.prepared[i]);
     if (isSame) return;
     this.prepared = inputs;
@@ -444,14 +459,14 @@ export class NavGuide {
     const walkMinutes = Math.max(1, Math.ceil(toEnd / 80));
     const sub = route.reachesTarget
       ? isWalk
-        ? `徒歩 ${walkMinutes} 分・${formatDistance(toEnd)}`
-        : `目的地 ${formatDistance(toEnd)}`
-      : "目的地方面へ";
+        ? t("nav.walkTime", { min: walkMinutes, dist: formatDistance(toEnd) })
+        : t("nav.toGoal", { dist: formatDistance(toEnd) })
+      : t("nav.towardGoal");
     const isArrived = route.reachesTarget && toEnd < 40;
     const listItems: NavListItem[] = list.map((g) => ({
       icon: g.kind === "goal" ? "goal" : g.turn,
       dist: formatDistance(Math.max(0, g.at - p.at)),
-      name: g.kind === "goal" ? (g.name ?? "目的地") : (g.name ?? TURN_WORDS[g.turn]),
+      name: g.kind === "goal" ? (g.name ?? t("nav.goal")) : (g.name ?? turnWord(g.turn)),
     }));
     const guide = primary ? this.guidanceWords(primary) : "";
     const road = this.roadName(hereSeg, now);
@@ -467,15 +482,15 @@ export class NavGuide {
       words: primary
         ? guide
         : isArrived
-          ? "目的地周辺です"
+          ? t("nav.arrived")
           : route.reachesTarget
-            ? "道なり・目的地"
-            : "道なり",
+            ? t("nav.followToGoal")
+            : t("nav.follow"),
       list: listItems,
       listNote: "",
       limit,
       walk: isWalk,
-      road: road ?? NO_ROAD_NAME,
+      road: road ?? noRoadName(),
       roadKnown: road !== null,
       notice: notice ? { kind: notice.kind, text: notice.text } : null,
     };
@@ -506,16 +521,16 @@ export class NavGuide {
       if (!spoke && isWrongLane && advice && !this.called.has(laneKey)) {
         // Going straight on (no turn to call) in a lane that must turn: say which lanes to take.
         this.called.add(laneKey);
-        this.guide(`この先、${advice}を走行してください。`, now);
+        this.guide(sayLane(advice, true), now);
         spoke = true;
       }
     } else {
       if (isArrived && !this.arrived) {
         this.arrived = true;
-        this.guide("目的地周辺です。音声案内を終了します。", now);
+        this.guide(t("nav.say.arrived"), now);
         spoke = true;
       } else if (this.intro) {
-        this.guide(`${this.intro}しばらく道なりです。`, now);
+        this.guide(t("nav.say.follow"), now, this.intro);
         spoke = true;
       }
       this.intro = null;
@@ -524,9 +539,9 @@ export class NavGuide {
     if (!spoke) this.speakNotice(notices, now, this.isGuidanceDue(next, primary, p.at));
   }
 
-  /** 「日比谷交差点を右方向」「直進」: what the panel's second line and the calls say. */
+  /** 「日比谷交差点を右方向」「直進」 / "Turn right at Hibiya": the panel's second line. */
   private guidanceWords(g: GuidePoint): string {
-    return g.name ? `${g.name}を${TURN_WORDS[g.turn]}` : TURN_WORDS[g.turn];
+    return turnPhrase(g.turn, g.name);
   }
 
   /** The turn calls at 700/300/100 m and 「まもなく」; returns whether something was said. */
@@ -543,29 +558,28 @@ export class NavGuide {
     const key = keyOf(next.pos);
     // The lanes for this turn go with its call ("…右方向です。右側の車線を走行してください。").
     const isLaneOfTurn = lane !== null && Math.abs(lane.at - next.at) < 30 && advice !== null;
-    const laneWords = isLaneOfTurn ? `${advice}を走行してください。` : "";
+    const laneWords = isLaneOfTurn && advice ? sayLane(advice) : null;
     if (isLaneOfTurn) this.called.add(laneKey);
-    const words = name ? `${name}を${TURN_WORDS[next.turn]}` : TURN_WORDS[next.turn];
     // After (re)planning, call the next turn at once from wherever the car is.
     const call = this.intro
       ? CALLS.find((c) => d <= c)
       : CALLS.find((c) => d <= c && d > c - 60 && !this.called.has(`${key}:${c}`));
-    const intro = this.intro ?? "";
+    const intro = this.intro;
     this.intro = null;
     if (d < SOON + 15 && !this.called.has(`${key}:soon`)) {
       this.called.add(`${key}:soon`);
       for (const c of CALLS) this.called.add(`${key}:${c}`);
-      this.guide(`${intro}まもなく、${words}です。${laneWords}`, now);
+      this.guide(joinSpoken([sayTurn({ turn: next.turn, name, distance: null }), laneWords]), now, intro);
       return true;
     }
     if (call !== undefined) {
       for (const c of CALLS) if (c >= call) this.called.add(`${key}:${c}`);
       const spoken = d < call - 20 ? d : call;
-      this.guide(`${intro}およそ${spokenDistance(spoken)}先、${words}です。${laneWords}`, now);
+      this.guide(joinSpoken([sayTurn({ turn: next.turn, name, distance: spoken }), laneWords]), now, intro);
       return true;
     }
     if (intro) {
-      this.guide(intro, now);
+      this.guide("", now, intro);
       return true;
     }
     return false;
@@ -597,8 +611,8 @@ export class NavGuide {
     this.called.add(key);
     const isLaneOfJunction = lane !== null && Math.abs(lane.at - g.at) < 30 && advice !== null;
     if (isLaneOfJunction) this.called.add(laneKey);
-    const laneWords = isLaneOfJunction ? `${advice}を走行してください。` : "";
-    this.guide(`${d < STRAIGHT_SOON ? "まもなく" : "この先"}、${g.name}を直進です。${laneWords}`, now);
+    const laneWords = isLaneOfJunction && advice ? sayLane(advice) : null;
+    this.guide(joinSpoken([sayStraight({ name: g.name, soon: d < STRAIGHT_SOON }), laneWords]), now);
     return true;
   }
 
@@ -679,11 +693,15 @@ export class NavGuide {
     setText(e.turn, v.words);
     this.renderList(v);
     if (e.limit) {
-      const text = v.walk ? "徒歩" : v.limit !== null ? String(v.limit) : "—";
+      const text = v.walk ? t("nav.walkBadge") : v.limit !== null ? String(v.limit) : "—";
       setText(e.limit, text);
       e.limit.classList.toggle("walk", v.walk);
       e.limit.classList.toggle("unknown", !v.walk && v.limit === null);
-      const title = v.walk ? "歩行中" : v.limit !== null ? `最高速度 ${v.limit} km/h` : "最高速度 不明";
+      const title = v.walk
+        ? t("nav.walking")
+        : v.limit !== null
+          ? t("nav.limitTitle", { limit: v.limit })
+          : t("nav.limitUnknown");
       if (e.limit.title !== title) e.limit.title = title;
     }
     setText(e.road, v.road);
@@ -691,7 +709,7 @@ export class NavGuide {
     if (e.notice) {
       const kind = v.notice?.kind ?? "";
       if (e.notice.dataset.kind !== kind) e.notice.dataset.kind = kind;
-      setText(e.notice, v.notice?.text ?? "この先の注意情報はありません");
+      setText(e.notice, v.notice?.text ?? t("nav.noNotice"));
     }
   }
 
@@ -733,30 +751,31 @@ export class NavGuide {
 
   private lastSaid = { text: "", at: -Infinity };
 
-  /** A turn or straight-on call: notices keep clear of it for a few seconds. */
-  private guide(text: string, now: number): void {
+  /** A turn or straight-on call (after `intro`, if any): notices keep clear of it for a few seconds. */
+  private guide(text: string, now: number, intro: Intro | null = null): void {
     this.lastGuidanceAt = now;
-    this.say(text);
+    this.say(text, intro);
   }
 
   private isSpeaking(): boolean {
     return "speechSynthesis" in window && speechSynthesis.speaking;
   }
 
-  private say(text: string): void {
+  /**
+   * Speaks `intro` then `core` in the language in force (a voice of that language, speech.ts); a
+   * call heard in the last 10 s is not said again.
+   */
+  private say(core: string, intro: Intro | null = null): void {
+    const text = joinSpoken([intro?.text, core]);
     // A replan that lands on the same turn (e.g. once the regulations arrive) must not repeat it.
-    const spoken = text.replace(
-      /^(ルート案内を開始します。|ルートを外れました。再探索します。|この先、通行止めのため、ルートを再探索します。)/,
-      "",
-    );
-    const isRepeat = spoken === this.lastSaid.text && performance.now() - this.lastSaid.at < 10_000;
-    this.lastSaid = { text: spoken, at: performance.now() };
-    if (!text || isRepeat || this.isMuted() || !("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP";
+    const compared = intro && !intro.isReplan ? text : core;
+    const isRepeat = compared === this.lastSaid.text && performance.now() - this.lastSaid.at < 10_000;
+    this.lastSaid = { text: compared, at: performance.now() };
+    if (!text || isRepeat || this.isMuted()) return;
+    // No voice for the language on this device: the panel alone (speech.ts says why).
+    const u = localUtterance(text);
+    if (!u) return;
     u.rate = 1.05;
-    const voice = speechSynthesis.getVoices().find((v) => v.lang === "ja-JP");
-    if (voice) u.voice = voice;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
   }

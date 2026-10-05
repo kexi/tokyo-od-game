@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 /**
  * Analogue speedometer (SVG): 0–120 km/h over a 240° dial, the range above the speed limit in
  * red, and the limit itself as a 最高速度 sign (red ring, blue numerals) inside the dial.
@@ -26,7 +28,8 @@ const arc = (a: number, b: number, r: number) => {
   return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
 };
 
-const KIND_LABEL = { sign: "規制速度", zone: "区域規制", statutory: "法定速度" } as const;
+/** Under the limit sign: 規制速度 (posted), 区域規制 (zone) or 法定速度 (statutory), in the language in force. */
+const KIND_LABEL = { sign: "speedo.sign", zone: "speedo.zone", statutory: "speedo.statutory" } as const;
 
 export class Speedometer {
   private readonly needle: SVGLineElement;
@@ -41,7 +44,9 @@ export class Speedometer {
     const svg = document.createElementNS(NS, "svg");
     svg.setAttribute("viewBox", "0 0 200 200");
     svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "速度計");
+    // data-i18n-aria-label: applyI18n renames it on a language switch.
+    svg.setAttribute("data-i18n-aria-label", "speedo.aria");
+    svg.setAttribute("aria-label", t("speedo.aria"));
     const el = <K extends keyof SVGElementTagNameMap>(
       tag: K,
       attrs: Record<string, string | number>,
@@ -93,6 +98,6 @@ export class Speedometer {
       this.limitGroup.style.display = limit === null ? "none" : "";
       this.limitText.textContent = limit === null ? "" : String(limit);
     }
-    this.kindText.textContent = kind ? KIND_LABEL[kind] : "";
+    this.kindText.textContent = kind ? t(KIND_LABEL[kind]) : "";
   }
 }

@@ -4,6 +4,11 @@ import { warn } from "../log";
  * Japanese speech for NPCs with sanoTTS-jp compiled to WASM (scripts/build-tts.sh).
  * The engine silently drops digits and Latin letters and rejects inputs over 512 UTF-8 bytes,
  * so text is normalised and split per sentence before synthesis.
+ *
+ * Japanese only, whatever the game's language: in English and Chinese the callers pass the
+ * Japanese original of a set line (the pedestrians' set replies, the 119/110 operators' script)
+ * under a translated caption, nothing for a model's reply in that language, and the TV's
+ * newsreader uses the browser's voice instead (game/naviTv.ts).
  */
 type Pcm = { pcm: Float32Array; sampleRate: number };
 

@@ -1,9 +1,37 @@
-import type { ViolationRecord } from "./traffic";
+import { t, type MessageKey } from "../i18n";
+import { formatNumber } from "../i18n/format";
+import { lawRef, pointsText, recordClock, recordPlace, violationDetail, violationName } from "../i18n/law";
+import type { Detector, ViolationRecord } from "./traffic";
+
+/** Who caught it, as the status line names them. */
+const CAUGHT_BY: Record<Detector, MessageKey> = {
+  patrol: "review.by.patrol",
+  officer: "review.by.officer",
+  orbis: "review.by.orbis",
+  accident: "review.by.accident",
+  parking: "review.by.parking",
+  sns: "review.by.sns",
+};
+
+/** The speed against the limit in force: 規制速度 (posted) or 法定速度 (statutory), when known. */
+function speedText(kmh: number, limit: number | null, limitKind: string | null): string {
+  const speed = Math.round(kmh);
+  if (limit === null) return t("review.kmh", { kmh: speed });
+  const key: MessageKey = limitKind === "sign" ? "review.kmhSign" : "review.kmhStatutory";
+  return t(key, { kmh: speed, limit });
+}
+
+function statusText(v: ViolationRecord): string {
+  if (v.status === "caught") return t("review.caught", { by: t(CAUGHT_BY[v.by ?? "accident"]) });
+  if (v.status === "notice") return t("review.notice");
+  return t("review.uncaught");
+}
 
 /**
  * 違反の振り返り: every booked violation with the screen at that moment, when and where it
  * happened, the speed against the limit, what went wrong, and the article, points and fine — so
- * the player can see what the law asked of them, not just the total.
+ * the player can see what the law asked of them, not just the total. The records stay Japanese;
+ * each line is translated as it is drawn.
  */
 export function renderReview(
   list: HTMLElement,
@@ -13,12 +41,13 @@ export function renderReview(
   if (log.length === 0) {
     const empty = document.createElement("p");
     empty.className = "sub";
-    empty.textContent = "違反の記録はありません。法令を守った運転ができています。";
+    empty.textContent = t("review.empty");
     list.replaceChildren(empty);
     return;
   }
   list.replaceChildren(
     ...log.map((v, i) => {
+      const name = violationName(v.label);
       const item = document.createElement("article");
       item.className = "violation";
       const shot = document.createElement("div");
@@ -26,30 +55,28 @@ export function renderReview(
       if (v.context?.snapshot) {
         const img = document.createElement("img");
         img.src = v.context.snapshot;
-        img.alt = `${v.label}の瞬間の画面`;
+        img.alt = t("review.shotAlt", { label: name });
         shot.append(img);
-      } else shot.textContent = "画面なし";
+      } else shot.textContent = t("review.noShot");
       const body = document.createElement("div");
       const title = document.createElement("h3");
-      title.textContent = `${i + 1}. ${v.label}`;
+      title.textContent = `${i + 1}. ${name}`;
       const article = document.createElement("div");
       article.className = "sub";
-      const fine = v.fine === null ? "罰金（刑事手続）" : `反則金 ${v.fine.toLocaleString()} 円`;
-      article.textContent = `${v.article}・違反点数 ${v.points} 点・${fine}`;
+      article.textContent = t("review.articleLine", {
+        article: lawRef(v.article),
+        points: pointsText(v.points),
+        // 「反則金 0 円」 as the list always said for a points-only violation (not 「反則金なし」).
+        fine: v.fine === null ? t("fine.criminal") : t("fine.amount", { n: formatNumber(v.fine) }),
+      });
       const facts = document.createElement("dl");
       const c = v.context;
       const rows: Array<[string, string]> = c
         ? [
-            ["日時", c.clock],
-            ["場所", c.place],
-            [
-              "速度",
-              `${Math.round(c.kmh)} km/h` +
-                (c.limit !== null
-                  ? `（${c.limitKind === "sign" ? "規制速度" : "法定速度"} ${c.limit} km/h）`
-                  : ""),
-            ],
-            ...(c.detail ? ([["内容", c.detail]] as Array<[string, string]>) : []),
+            [t("review.when"), recordClock(c.clock)],
+            [t("review.where"), recordPlace(c.place)],
+            [t("review.speed"), speedText(c.kmh, c.limit, c.limitKind)],
+            ...(c.detail ? ([[t("review.what"), violationDetail(c.detail)]] as Array<[string, string]>) : []),
           ]
         : [];
       for (const [k, val] of rows) {
@@ -62,19 +89,14 @@ export function renderReview(
       body.append(title, article, facts);
       const status = document.createElement("p");
       status.className = "sub";
-      status.textContent =
-        v.status === "caught"
-          ? `検挙（${{ patrol: "パトカー", officer: "警察官", orbis: "オービス", accident: "事故の処理", parking: "駐車監視員", sns: "投稿された動画" }[v.by ?? "accident"] ?? ""}）`
-          : v.status === "notice"
-            ? "後日、出頭の通知が届きます"
-            : "未検挙（誰にも見られていない）";
+      status.textContent = statusText(v);
       body.append(status);
       if (onReplay) {
         const b = document.createElement("button");
         b.type = "button";
-        b.textContent = "リプレイで見る";
+        b.textContent = t("review.replay");
         b.addEventListener("click", () => {
-          if (!onReplay(v)) b.textContent = "記録が残っていません（直近 5 分のみ）";
+          if (!onReplay(v)) b.textContent = t("review.replayGone");
         });
         body.append(b);
       }

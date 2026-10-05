@@ -1,4 +1,4 @@
-import { bindText, setI18nText, t } from "../i18n";
+import { bindText, setI18nText, t, type MessageKey } from "../i18n";
 
 /**
  * Where the game starts: the default (東京駅 丸の内), a station chosen on the start screen
@@ -13,11 +13,13 @@ export type Station = { name: string; ward: string; lat: number; lon: number };
 
 /**
  * Landmarks to start beside, at the tower itself: the car is put on the nearest street around it
- * (main.ts placeOnStreet), as with a station. Names as the landmark data has them.
+ * (main.ts placeOnStreet), as with a station. `name` as the landmark data has it; `key` is the
+ * name shown, in the language in force (the towers have well-known English and Chinese names,
+ * unlike most stations).
  */
-export const START_LANDMARKS: readonly Station[] = [
-  { name: "東京タワー", ward: "港区", lat: 35.658581, lon: 139.745433 },
-  { name: "東京スカイツリー", ward: "墨田区", lat: 35.710063, lon: 139.8107 },
+export const START_LANDMARKS: ReadonlyArray<Station & { key: MessageKey }> = [
+  { name: "東京タワー", key: "start.towerTokyo", ward: "港区", lat: 35.658581, lon: 139.745433 },
+  { name: "東京スカイツリー", key: "start.towerSkytree", ward: "墨田区", lat: 35.710063, lon: 139.8107 },
 ];
 
 // The game's data covers the 23 wards (same box as the data pipeline).
@@ -44,9 +46,10 @@ export function readStart(fallback: StartPoint, stations: Station[]): StartPoint
   }
   const [lat, lon] = raw.split(",").map(Number);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !inBounds(lat, lon)) return fallback;
-  const station = [...START_LANDMARKS, ...stations].find(
-    (s) => Math.abs(s.lat - lat) < 1e-5 && Math.abs(s.lon - lon) < 1e-5,
-  );
+  const isAt = (s: Station) => Math.abs(s.lat - lat) < 1e-5 && Math.abs(s.lon - lon) < 1e-5;
+  const landmark = START_LANDMARKS.find(isAt);
+  if (landmark) return { lat, lon, yaw: fallback.yaw, label: () => t(landmark.key) };
+  const station = stations.find(isAt);
   // Station names in the data already end in 駅.
   const label = station ? () => station.name : () => t("start.picked");
   return { lat, lon, yaw: fallback.yaw, label };
@@ -76,7 +79,7 @@ export function initStartPicker(
   };
   setI18nText(option("", ""), "start.defaultOption");
   setI18nText(option("here", ""), "start.hereOption");
-  for (const l of START_LANDMARKS) option(`${l.lat},${l.lon}`, l.name);
+  for (const l of START_LANDMARKS) setI18nText(option(`${l.lat},${l.lon}`, ""), l.key);
   const byWard = new Map<string, Station[]>();
   for (const s of stations) byWard.set(s.ward, [...(byWard.get(s.ward) ?? []), s]);
   for (const ward of [...byWard.keys()].toSorted((a, b) => a.localeCompare(b, "ja"))) {

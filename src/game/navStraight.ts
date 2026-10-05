@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { t } from "../i18n";
 import type { RouteInfo } from "../world/guidePlan";
 import type { RoadGraph, Segment } from "../world/roads";
 import { endNode, junctionLabel, nodePos, travelDir, type NamedPoint } from "./navAhead";
@@ -231,7 +232,7 @@ export function nextGuidance(
         name: straight.name,
       }
     : first;
-  const list = turns.filter((t) => t !== primary).slice(0, size);
+  const list = turns.filter((g) => g !== primary).slice(0, size);
   if (list.length < size) {
     const end = route.points[route.points.length - 1] ?? new Vector3();
     list.push({
@@ -240,7 +241,7 @@ export function nextGuidance(
       turn: "straight",
       pos: end,
       dir: new Vector3(),
-      name: route.reachesTarget ? "目的地" : "目的地方面（地図の外）",
+      name: t(route.reachesTarget ? "nav.goal" : "nav.goalOffMap"),
     });
   }
   return { primary, list };

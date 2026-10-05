@@ -12,6 +12,7 @@ import {
 } from "three";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import type { MessageKey } from "../i18n";
 import { warn } from "../log";
 import { type Cabin, cabinFromMirror, CharmRig, type CharmKind, DEFAULT_CABIN } from "../physics/charmRig";
 import { INTERIOR_LAYER } from "./cockpit";
@@ -40,9 +41,8 @@ const NODE: Record<CharmKind, string> = { plush: "Charm_Plush", omamori: "Charm_
 const SIDES = 5;
 const PER_SEGMENT = 3;
 
-/** First-time hint: hang it small; what the law says (knowledge/mirror-charms.md). */
-export const CHARM_TIP =
-  "ミラーの飾りは小さく。視野やミラーの効用を妨げる飾りは違反になりえます（道交法第55条第2項・都規則第8条第8号）。設定で「なし」にできます";
+/** First-time hint: hang it small; what the law says (knowledge/mirror-charms.md). A key of t(). */
+export const CHARM_TIP: MessageKey = "toast.charmTip";
 const TIP_KEY = "tod.charmTip";
 
 /** True the first time in this browser (then remembered). Storage blocked: never, not every drive. */

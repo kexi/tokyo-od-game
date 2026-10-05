@@ -152,6 +152,10 @@ export function laneHints(route: Route, laneUse: readonly LaneUse[]): LaneHint[]
   return hints;
 }
 
+/**
+ * The turns in Japanese, for text that is kept in Japanese (violation records, read back by Y's
+ * posters and the AI). The panel and the voice use navPhrases.ts, in the language in force.
+ */
 export const TURN_WORDS: Record<Turn, string> = {
   straight: "直進",
   slightLeft: "斜め左方向",

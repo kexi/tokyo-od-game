@@ -1,8 +1,13 @@
 import type { Source } from "../data/schema";
+import { getLocale, interpolate, t, type MessageKey, type Params } from "../i18n";
+import { ja } from "../i18n/ja";
 import type { RegulationMeta } from "../world/regulations";
 
 export const REPO_URL = "https://github.com/kexi/tokyo-od-game";
 const CC_BY_DEED = "https://creativecommons.org/licenses/by/4.0/deed.ja";
+const OFL_URL = "https://openfontlicense.org/";
+const OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright";
+const ODBL_URL = "https://opendatacommons.org/licenses/odbl/1-0/";
 
 const esc = (s: string) =>
   s.replace(
@@ -15,6 +20,33 @@ const link = (url: string, text: string) =>
   /^https?:\/\//.test(url)
     ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text)}</a>`
     : esc(text);
+
+/** Picks a key's text: the language in force (t) or Japanese (for the wording a provider requires). */
+type Words = (key: MessageKey) => string;
+const inJa: Words = (key) => ja[key];
+/** A dictionary entry as HTML: its text escaped, its slots filled with ready HTML (links, code). */
+const html = (words: Words, key: MessageKey, params?: Params) => interpolate(esc(words(key)), params);
+
+/**
+ * A credit in the wording its provider asks for: the Japanese as the terms prescribe it, and in
+ * English or Chinese its translation after it. `params` gets the same picker, so link texts inside
+ * the credit follow (the original's in Japanese, the translation's translated).
+ *
+ * Why not translate it alone: the terms (東京都オープンデータ利用規約, PLATEAU, 地理院, JARTIC,
+ * ODPT, 気象庁, e-Stat, the つくよみちゃん corpus) give their wording in Japanese.
+ */
+function required(key: MessageKey, params: (words: Words) => Params = () => ({})): string {
+  const original = html(inJa, key, params(inJa));
+  if (getLocale() === "ja") return original;
+  // Each on a line of its own, so the text that follows starts on the next.
+  return `<span lang="ja">${original}</span><br><span class="sub">${html(t, key, params(t))}</span><br>`;
+}
+
+/** Translated text, as HTML. */
+const text = (key: MessageKey, params?: Params) => html(t, key, params);
+/** A required credit followed by translated text: run together in Japanese, a space between otherwise. */
+const then = (credit: string, rest: string) =>
+  getLocale() === "ja" ? `${credit}${rest}` : `${credit} ${rest}`;
 
 /** Bureaus of the metropolitan government are credited as 東京都・<bureau> (利用規約 2(1)イ). */
 function holder(publisher: string): string {
@@ -62,7 +94,33 @@ function jstDate(iso: string): string {
   return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
 }
 
+/**
+ * A Japanese date of the data (「2026年10月4日」, 「2026年08月」) as the language in force writes it:
+ * "October 4, 2026" / "2026年10月4日"; as it is when it is not one.
+ */
+function localDate(jaDate: string): string {
+  if (getLocale() === "ja") return jaDate;
+  const m = /^(\d{4})年(\d{1,2})月(?:(\d{1,2})日)?$/.exec(jaDate.trim());
+  if (!m) return jaDate;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : null];
+  const options: Intl.DateTimeFormatOptions =
+    day === null
+      ? { year: "numeric", month: "long", timeZone: "UTC" }
+      : { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" };
+  const tag = getLocale() === "zh" ? "zh-Hans" : "en";
+  return new Intl.DateTimeFormat(tag, options).format(Date.UTC(year, month - 1, day ?? 1));
+}
+
+/** The database extracted from OpenStreetMap, offered under the ODbL (its LICENSE.txt beside it). */
+const odbl = (file: string) =>
+  text("credits.odbl", {
+    odbl: link(ODBL_URL, "Open Database License (ODbL) 1.0"),
+    file: link(file, "LICENSE.txt"),
+  });
+const osm = () => text("credits.osm", { osm: link(OSM_COPYRIGHT, "OpenStreetMap contributors") });
+
 export function renderCredits(sources: Source[], regs: RegulationMeta | null = null): string {
+  // The dataset's title, holder and licence in the form the Tokyo terms ask for, in every language.
   const opendata = sources
     .filter((s) => !s.id.startsWith("odpt"))
     .map(
@@ -80,101 +138,171 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   const odblUrl = new URL(`${import.meta.env.BASE_URL}data/signals/LICENSE.txt`, location.href).href;
   const routesOdblUrl = new URL(`${import.meta.env.BASE_URL}data/routes/LICENSE.txt`, location.href).href;
   const jarticUrl = regs?.url ?? "https://www.jartic.or.jp/service/opendata/";
-  const jarticUse = regs ? `（${jstDate(regs.fetchedAt)}に利用）` : "";
-  const jarticEdition = regs ? `${regs.targetMonth}時点のデータ（${regs.releaseDay}公開）` : "";
+  const jarticSource = regs
+    ? required("credits.jartic.source", (w) => ({
+        url: link(jarticUrl, jarticUrl),
+        used: esc(w === inJa ? jstDate(regs.fetchedAt) : localDate(jstDate(regs.fetchedAt))),
+      }))
+    : required("credits.jartic.sourceUndated", () => ({ url: link(jarticUrl, jarticUrl) }));
+  const jarticEdition = regs
+    ? text("credits.jartic.edition", {
+        month: esc(localDate(regs.targetMonth)),
+        day: esc(localDate(regs.releaseDay)),
+      })
+    : text("credits.jartic.editionUnknown");
+  const software =
+    "three.js (MIT) / 3DTilesRendererJS (Apache License 2.0, Copyright 2020 California Institute of Technology) /\n" +
+    "  Rapier (Apache License 2.0, Copyright 2020 Dimforge EURL) / Zod (MIT) / Draco (Apache License 2.0, Google) /\n" +
+    "  LiteRT-LM (Apache License 2.0, Google) / sanoTTS-jp (MIT)";
+  const isJapanese = getLocale() === "ja";
+  // The licence asks for its notice as written; in English and Chinese, say why it stays Japanese.
+  const ttsVerbatim = isJapanese ? "" : `<p class="sub">${text("credits.tts.verbatim")}</p>`;
 
   return `
-  <p>本ゲームは以下のオープンデータ等を利用して開発者が個人で作成した非公式の作品です。東京都・各区・国土交通省・国土地理院・気象庁・日本道路交通情報センター・警察・公共交通事業者が作成・公認したものではありません。</p>
+  <p>${text("credits.intro")}</p>
 
-  <h3>スポット・施設情報（東京都オープンデータ）</h3>
-  <p>このゲームは、以下の著作物を改変（緯度経度・名称の抽出および形式変換）して利用しています。</p>
-  <ul>${opendata || "<li>（データ未生成）</li>"}</ul>
+  <h3>${text("credits.h.opendata")}</h3>
+  <p>${required("credits.opendata.notice")}</p>
+  <ul>${opendata || `<li>${text("credits.opendata.none")}</li>`}</ul>
 
-  <h3>3D 都市モデル</h3>
-  <p>出典：国土交通省 ${link("https://www.mlit.go.jp/plateau/", "PLATEAUウェブサイト")}「3D都市モデル（Project PLATEAU）東京都」（建築物 LOD1、道路 LOD2 の歩道部・島）を加工して作成（外観の窓・色、歩道の舗装と縁石の高さはゲーム側で描画）。
-  著作権者：東京都ほか各地方公共団体。利用条件：${link("https://www.mlit.go.jp/plateau/site-policy/", "PLATEAU サイトポリシー")}（公共データ利用規約 第1.0版／CC BY 4.0 互換）。
-  データ取得：${link("https://docs.plateauview.mlit.go.jp/", "PLATEAU 配信サービス（試験運用）")}。地面の「PLATEAU オルソ画像 2023」も同サービスから取得しています。</p>
+  <h3>${text("credits.h.plateau")}</h3>
+  <p>${then(
+    required("credits.plateau.source", (w) => ({
+      site: link("https://www.mlit.go.jp/plateau/", w("credits.link.plateauSite")),
+    })),
+    text("credits.plateau.drawn"),
+  )}
+  ${text("credits.plateau.terms", {
+    policy: link("https://www.mlit.go.jp/plateau/site-policy/", t("credits.link.plateauPolicy")),
+  })}
+  ${text("credits.plateau.fetch", {
+    service: link("https://docs.plateauview.mlit.go.jp/", t("credits.link.plateauService")),
+  })}</p>
 
-  <h3>地図・空中写真・標高（国土地理院）</h3>
-  <p>出典：${link("https://maps.gsi.go.jp/development/ichiran.html", "国土地理院「地理院タイル」")}（全国最新写真（シームレス）、標高タイル）。
-  地理院タイル（標高タイル（基盤地図情報数値標高モデル））を加工して地形を作成し、5m メッシュ標高のテキスト版から測量時の水面の高さを読み取って水面の高さの推定に使用。
-  道路の中心線・幅員と水域（川・運河・海）の形：出典 ${link("https://github.com/gsi-cyberjapan/gsimaps-vector-experiment", "国土地理院ベクトルタイル提供実験")}（道路の路面・白線・横断歩道の描画、AI 車両の走行、交通違反の判定、水面・護岸・橋の描画に加工して使用）。
-  タイルはプレイ中にリアルタイムで読み込んでおり、本ゲームに同梱・再配布していません。</p>
+  <h3>${text("credits.h.gsi")}</h3>
+  <p>${required("credits.gsi.source", (w) => ({
+    tiles: link("https://maps.gsi.go.jp/development/ichiran.html", w("credits.link.gsiTiles")),
+  }))}
+  ${required("credits.gsi.terrain")}
+  ${required("credits.gsi.vector", (w) => ({
+    vector: link("https://github.com/gsi-cyberjapan/gsimaps-vector-experiment", w("credits.link.gsiVector")),
+  }))}
+  ${text("credits.gsi.live")}</p>
 
-  <h3>交通規制（一方通行・規制速度・横断歩道・停止線・一時停止）</h3>
-  <p>出典：「交通規制情報」（公益財団法人日本道路交通情報センター）（${link(jarticUrl, jarticUrl)}）${esc(jarticUse)}を加工して作成。
-  ${esc(jarticEdition)}の東京都（警視庁）分から 23 区周辺の一方通行・最高速度（区間・区域）・横断歩道・停止線・一時停止を抽出し、国土地理院の道路中心線に対応付けています。
-  期間・曜日指定の規制、首都高速道路（自動車道）の規制、可変速度規制は省略しています。対応付けはゲーム側の推定を含み、実際の規制と異なる場合があります。
-  <strong>実際の運転では現地の標識・標示に従ってください。</strong>
-  利用条件：${link("https://www.jartic.or.jp/d/opendata/riyou_kiyaku.pdf", "交通規制情報 利用規約")}（CC BY 4.0 互換）。</p>
+  <h3>${text("credits.h.jartic")}</h3>
+  <p>${jarticSource}
+  ${text("credits.jartic.extract", { edition: jarticEdition })}
+  ${text("credits.jartic.omitted")}
+  <strong>${text("credits.jartic.real")}</strong>
+  ${text("credits.jartic.terms", {
+    terms: link("https://www.jartic.or.jp/d/opendata/riyou_kiyaku.pdf", t("credits.link.jarticTerms")),
+  })}</p>
 
-  <h3>信号機の位置</h3>
-  <p>© ${link("https://www.openstreetmap.org/copyright", "OpenStreetMap contributors")}。
-  OpenStreetMap の <code>highway=traffic_signals</code> を ${link("https://download.bbbike.org/osm/bbbike/Tokyo/", "BBBike の東京抽出")} から取り出し、交差点に対応付けて表示しています。
-  抽出したデータベースは ${link("https://opendatacommons.org/licenses/odbl/1-0/", "Open Database License (ODbL) 1.0")} で提供します（${link(odblUrl, "LICENSE.txt")}）。
-  信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。</p>
+  <h3>${text("credits.h.signals")}</h3>
+  <p>${osm()}
+  ${text("credits.signals.extract", {
+    tag: "<code>highway=traffic_signals</code>",
+    bbbike: link("https://download.bbbike.org/osm/bbbike/Tokyo/", t("credits.link.bbbike")),
+  })}
+  ${odbl(odblUrl)}
+  ${text("credits.signals.cycle")}</p>
 
-  <h3>案内標識（方面及び方向）</h3>
-  <p>© ${link("https://www.openstreetmap.org/copyright", "OpenStreetMap contributors")}。
-  国道・都道の路線番号と通称名、行き先（<code>destination</code>）、交差点名を OpenStreetMap（${link("https://download.geofabrik.de/asia/japan/kanto.html", "Geofabrik の関東抽出")}）から取り出し、道路に対応付けて表示しています。
-  抽出したデータベースは ${link("https://opendatacommons.org/licenses/odbl/1-0/", "Open Database License (ODbL) 1.0")} で提供します（${link(routesOdblUrl, "LICENSE.txt")}）。
-  表示する地名は、出典：国土交通省「${link("https://www.mlit.go.jp/road/sign/sign/annai/6-hyou-timei.htm", "各都道府県において表示される基準地・重要地・主要地一覧表")}」（平成30年6月末時点）を加工して作成（位置は OpenStreetMap）。
-  様式は「道路標識、区画線及び道路標示に関する命令」別表第二と「道路の案内標識の英語による表示に関する告示」（国土交通省）によります。
-  どの地名を出すかはゲームが道路網から推定したもので、実際の案内標識とは異なります。
-  文字は Noto Sans JP と Overpass（いずれも ${link("https://openfontlicense.org/", "SIL Open Font License 1.1")}）のサブセットを同梱しています。</p>
+  <h3>${text("credits.h.guide")}</h3>
+  <p>${osm()}
+  ${text("credits.guide.extract", {
+    tag: "<code>destination</code>",
+    geofabrik: link("https://download.geofabrik.de/asia/japan/kanto.html", t("credits.link.geofabrik")),
+  })}
+  ${odbl(routesOdblUrl)}
+  ${required("credits.guide.places", (w) => ({
+    list: link("https://www.mlit.go.jp/road/sign/sign/annai/6-hyou-timei.htm", w("credits.link.mlitPlaces")),
+  }))}
+  ${text("credits.guide.style")}
+  ${text("credits.guide.estimate")}
+  ${text("credits.guide.fonts", { ofl: link(OFL_URL, "SIL Open Font License 1.1") })}</p>
 
-  <h3>車・道路標識・歩行者・建物の外観</h3>
-  <p>車・道路標識の板と支柱・歩行者は本ゲーム用に ${link(`${REPO_URL}/tree/main/scripts/blender`, "Blender のスクリプト")}で作成しました。ナンバープレート・標識の図柄・服・建物の外壁などのテクスチャも手続き的に生成しています（${link(`${REPO_URL}/tree/main/assets`, "生成方法")}）。標識の図柄と色は「道路標識、区画線及び道路標示に関する命令」の様式に基づきます。文字は Noto Sans JP（${link("https://openfontlicense.org/", "SIL Open Font License 1.1")}）で描画。実在の車種・事業者・建物・登録番号とは関係ありません。</p>
+  <h3>${text("credits.h.models")}</h3>
+  <p>${text("credits.models", {
+    blender: link(`${REPO_URL}/tree/main/scripts/blender`, t("credits.link.blender")),
+    how: link(`${REPO_URL}/tree/main/assets`, t("credits.link.howMade")),
+    ofl: link(OFL_URL, "SIL Open Font License 1.1"),
+  })}</p>
 
-  <h3>町丁・区の境界と人口</h3>
-  <p>出典：${link("https://www.e-stat.go.jp/", "政府統計の総合窓口（e-Stat）")}「国勢調査 令和2年 小地域（町丁・字等別）境界データ 東京都」を加工して作成（${link("https://www.e-stat.go.jp/terms-of-use", "利用規約")}：政府標準利用規約 第2.0版準拠）。現在地の区・町丁名の表示、スポットの座標検証、歩行者の人数（人口密度）に使用。</p>
+  <h3>${text("credits.h.estat")}</h3>
+  <p>${then(
+    required("credits.estat.source", (w) => ({
+      estat: link("https://www.e-stat.go.jp/", w("credits.link.estat")),
+      terms: link("https://www.e-stat.go.jp/terms-of-use", w("credits.link.terms")),
+    })),
+    text("credits.estat.use"),
+  )}</p>
 
-  <h3>ジオイド高</h3>
-  <p>EGM2008（U.S. National Geospatial-Intelligence Agency、パブリックドメイン）。${link("https://github.com/OSGeo/PROJ-data", "PROJ-data")} の us_nga_egm08_25.tif から東京付近を抽出し、標高→楕円体高の変換に使用。</p>
+  <h3>${text("credits.h.geoid")}</h3>
+  <p>${text("credits.geoid", { proj: link("https://github.com/OSGeo/PROJ-data", "PROJ-data") })}</p>
 
-  <h3>公共交通（都営バス・都営交通）</h3>
-  <p>このゲームは、以下の著作物を改変して利用しています。
-  東京都交通局・公共交通オープンデータ協議会、「${link("https://ckan.odpt.org/dataset/b_bus_location-toei", "東京都交通局 バスロケーション情報")}」「${link("https://ckan.odpt.org/dataset/b_busstop-toei", "東京都交通局 バス停情報")}」${odpt}、
-  クリエイティブ・コモンズ・ライセンス 表示4.0国際（${link(CC_BY_DEED, CC_BY_DEED)}）。<br>
-  本ゲームが利用する公共交通データは、公共交通オープンデータセンターにおいて提供されるものです。
-  公共交通事業者により提供されたデータを元にしていますが、必ずしも正確・完全なものとは限りません。
-  本ゲームの表示内容について、公共交通事業者への直接の問合せは行わないでください。
-  本ゲームに関するお問い合わせ：${link(`${REPO_URL}/issues`, "GitHub Issues")}</p>
+  <h3>${text("credits.h.odpt")}</h3>
+  <p>${required("credits.odpt.credit", () => ({
+    location: link("https://ckan.odpt.org/dataset/b_bus_location-toei", "東京都交通局 バスロケーション情報"),
+    stops: link("https://ckan.odpt.org/dataset/b_busstop-toei", "東京都交通局 バス停情報"),
+    more: odpt,
+    deed: link(CC_BY_DEED, CC_BY_DEED),
+  }))}<br>
+  ${required("credits.odpt.disclaimer", () => ({ issues: link(`${REPO_URL}/issues`, "GitHub Issues") }))}</p>
 
-  <h3>川の水位・潮位</h3>
-  <p>出典：${link("https://www.kasen-suibo.metro.tokyo.lg.jp/", "東京都水防災総合情報システム")}（23 区の水位観測所の 10 分間水位）を加工して作成。観測所ごとに 2025〜2026 年の 14 日分の中央値と日較差を求め、川の水面の高さと潮の満ち引きの幅の推定に使っています（観測所の零点高は各観測所のページから算出）。東京都が作成・公認したものではありません。
-  出典：${link("https://www.data.jma.go.jp/kaiyou/db/tide/suisan/", "気象庁ホームページ（潮位表 東京）")}の毎時の推算潮位を加工して作成。ゲーム内の時刻の潮位で、感潮区間の川・運河・海の水面を上げ下げしています。実際の潮位（気象による偏差を含む）とは異なります。編集・加工の責任は本ゲーム作者にあります。</p>
+  <h3>${text("credits.h.water")}</h3>
+  <p>${then(
+    required("credits.water.source", (w) => ({
+      system: link("https://www.kasen-suibo.metro.tokyo.lg.jp/", w("credits.link.waterSystem")),
+    })),
+    text("credits.water.use"),
+  )}
+  ${then(
+    required("credits.tide.source", (w) => ({
+      tide: link("https://www.data.jma.go.jp/kaiyou/db/tide/suisan/", w("credits.link.jmaTide")),
+    })),
+    text("credits.tide.use"),
+  )}${isJapanese ? "" : " "}${required("credits.jma.responsibility")}</p>
 
-  <h3>気象</h3>
-  <p>出典：${link("https://www.jma.go.jp/bosai/amedas/", "気象庁ホームページ")}のアメダス観測データ（東京）を加工して作成。編集・加工の責任は本ゲーム作者にあります。
-  本ゲームの天候表現は気象庁の予報・警報ではありません。</p>
+  <h3>${text("credits.h.weather")}</h3>
+  <p>${required("credits.weather.source", (w) => ({
+    jma: link("https://www.jma.go.jp/bosai/amedas/", w("credits.link.jma")),
+  }))}${isJapanese ? "" : " "}${required("credits.jma.responsibility")}
+  ${text("credits.weather.notForecast")}</p>
 
-  <h3>交通ルール</h3>
-  <p>違反点数・反則金は道路交通法・同施行令と警視庁の公表資料（普通車、2026-10-04 確認）に基づくゲーム内の参考値です。制限速度は JARTIC の規制速度（区間・区域）が対応付いた道路ではその値を、それ以外の道路では施行令第11条（2026-09-01 改正：中央線等のある道路 60km/h、それ以外 30km/h）を道路幅員から推定した値を使います。救急・警察への通報はゲーム内のシミュレーションで、実際の 119・110 にはつながりません。</p>
+  <h3>${text("credits.h.rules")}</h3>
+  <p>${text("credits.rules")}</p>
 
-  <h3>音声合成（sanoTTS-jp）</h3>
-  <p>歩行者の声は ${link("https://github.com/ayutaz/sanoTTS-jp", "sanoTTS-jp")}（コード: MIT、モデル: LicenseRef-sanoTTS-jp-Model-1.0）をブラウザ内で動かして合成しています。
-  ${link(ttsUrl("LICENSE-MODEL.md"), "モデルライセンス")}・${link(ttsUrl("NOTICE.txt"), "NOTICE")}・${link(ttsUrl("NOTICE-dictionary.txt"), "辞書 NOTICE")}・${link(ttsUrl("NOTICE-openjtalk.txt"), "Open JTalk NOTICE")}・${link(ttsUrl("LICENSE-APACHE-2.0.txt"), "Apache License 2.0 全文")}</p>
-  <pre class="notice">${esc(TTS_ATTRIBUTION)}</pre>
+  <h3>${text("credits.h.tts")}</h3>
+  <p>${text("credits.tts.intro", { sano: link("https://github.com/ayutaz/sanoTTS-jp", "sanoTTS-jp") })}
+  ${text("credits.tts.files", {
+    model: link(ttsUrl("LICENSE-MODEL.md"), t("credits.link.modelLicense")),
+    notice: link(ttsUrl("NOTICE.txt"), "NOTICE"),
+    dict: link(ttsUrl("NOTICE-dictionary.txt"), t("credits.link.dictNotice")),
+    jtalk: link(ttsUrl("NOTICE-openjtalk.txt"), "Open JTalk NOTICE"),
+    apache: link(ttsUrl("LICENSE-APACHE-2.0.txt"), t("credits.link.apacheFull")),
+  })}</p>
+  ${ttsVerbatim}<pre class="notice">${esc(TTS_ATTRIBUTION)}</pre>
 
-  <h3>会話 AI（任意）</h3>
-  <p>有効にした場合のみ、Google ${link("https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm", "Gemma 4 E2B")}（Apache License 2.0）を各端末が Hugging Face から直接ダウンロードし、${link("https://github.com/google-ai-edge/LiteRT-LM", "LiteRT-LM")}（Apache License 2.0）で端末内実行します。会話内容は外部に送信されません。AI の発言は不正確な場合があります。</p>
+  <h3>${text("credits.h.ai")}</h3>
+  <p>${text("credits.ai", {
+    gemma: link("https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm", "Gemma 4 E2B"),
+    litert: link("https://github.com/google-ai-edge/LiteRT-LM", "LiteRT-LM"),
+  })}</p>
 
-  <h3>利用規約（合成音声の禁止事項）</h3>
-  <p>本ゲームが合成した音声を、次の目的で使用することを禁止します（つくよみちゃんコーパスの条件に基づく。${link("https://tyc.rei-yumesaki.net/material/corpus/", "一次ソース")}）。本ゲームには音声を保存・書き出しする機能はありません。</p>
+  <h3>${text("credits.h.tos")}</h3>
+  <p>${text("credits.tos.intro", {
+    source: link("https://tyc.rei-yumesaki.net/material/corpus/", t("credits.link.primary")),
+  })}</p>
   <ul>
-    <li>人を批判・攻撃すること。（「批判・攻撃」の定義は、つくよみちゃんキャラクターライセンスに準じます）</li>
-    <li>特定の政治的立場・宗教・思想への賛同または反対を呼びかけること。</li>
-    <li>刺激の強い表現をゾーニングなしで公開すること。</li>
-    <li>他者に対して二次利用（素材としての利用）を許可する形で公開すること。</li>
+    <li>${required("credits.tos.attack")}</li>
+    <li>${required("credits.tos.politics")}</li>
+    <li>${required("credits.tos.zoning")}</li>
+    <li>${required("credits.tos.reuse")}</li>
   </ul>
 
-  <h3>ソフトウェア</h3>
-  <p>three.js (MIT) / 3DTilesRendererJS (Apache License 2.0, Copyright 2020 California Institute of Technology) /
-  Rapier (Apache License 2.0, Copyright 2020 Dimforge EURL) / Zod (MIT) / Draco (Apache License 2.0, Google) /
-  LiteRT-LM (Apache License 2.0, Google) / sanoTTS-jp (MIT) ほか。
-  全文は ${link(licensesUrl, "THIRD_PARTY_LICENSES.txt")} を参照。</p>
+  <h3>${text("credits.h.software")}</h3>
+  <p>${software} ${text("credits.software.more", { file: link(licensesUrl, "THIRD_PARTY_LICENSES.txt") })}</p>
 
-  <h3>通信について</h3>
-  <p class="sub">プレイ中、ブラウザから国土地理院・PLATEAU 配信サービス・気象庁・公共交通オープンデータセンターへ直接通信します（IP アドレス等が各サービスに送信されます）。進捗はこのブラウザの localStorage にのみ保存します。スタート地点に「現在地」を選んだ場合、位置情報はこの端末（sessionStorage）にだけ保存し、URL や外部には送りません（ただし、その周辺の地図タイルを各配信元に要求します）。</p>`;
+  <h3>${text("credits.h.network")}</h3>
+  <p class="sub">${text("credits.network")}</p>`;
 }

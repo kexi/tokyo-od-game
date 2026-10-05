@@ -1,19 +1,25 @@
 import { Box3, Vector3, type Object3D } from "three";
 import type { Voice, VoiceOutput } from "../ai/tts";
 import type { AreaIndex } from "../geo/areas";
+// A namespace: TvSound calls its time `t`.
+import * as i18n from "../i18n";
+import { localUtterance } from "../i18n/speech";
 import type { GameAudio } from "./audio";
 import type { Assist } from "./carControls";
 import {
   autoReturn,
+  channelLabel,
   CHANNELS,
   mayShowPicture,
   naviView,
   pressChannel,
   pressTv,
-  PROGRAMME_TITLE,
   programmeAt,
   programmeBed,
+  programmeTitle,
   skyOf,
+  skyWord,
+  stationName,
   STOP_KMH,
   tickerItems,
   tickerLine,
@@ -22,6 +28,7 @@ import {
   type NaviView,
   type Programme,
   type TickerItem,
+  type TickerKind,
   type TvDrive,
   type TvInfo,
   type TvState,
@@ -40,13 +47,22 @@ const INFO_MS = 1000;
 const BADGE_MS = 3500;
 const NOTICE_MS = 12000;
 const NOTICE_KEY = "tod.tvNotice";
-const FONT = '"Noto Sans JP", system-ui, sans-serif';
+// Chinese in Chinese fonts first: Noto Sans JP lacks many simplified forms, and a mix of fallbacks
+// is hard to read (the same order as style.css gives html:lang(zh) body).
+const FONTS = {
+  ja: '"Noto Sans JP", system-ui, sans-serif',
+  en: '"Noto Sans JP", system-ui, sans-serif',
+  zh: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif',
+} as const;
+const font = () => FONTS[i18n.getLocale()];
 /** The newsreader's pace (ms between items) on the news, and the weather read again. */
 const PACE: Partial<Record<Programme, number>> = { news: 12000, weather: 25000 };
 /** The bed under the voice, into the navi's speaker 60 cm from the ear: quiet, as TV in a car is. */
 const BED_LEVEL: Record<Programme, number> = { news: 0.05, weather: 0.06, nature: 0.09, colorBars: 0.02 };
 const SPEECH_LEVEL = 0.45;
 const TICKER_PX_PER_MS = 0.07;
+/** The parking brake is Space in both key layouts (input.ts reads it directly, not as an action). */
+const PARKING_BRAKE_KEY = "Space";
 
 export type TvFrame = {
   now: number;
@@ -106,7 +122,7 @@ export class NaviTv {
   press(): string {
     const isOperating = Math.abs(this.drive.kmh) >= STOP_KMH;
     this.setState(pressTv(this.state));
-    if (!this.state.on) return "テレビを消しました（ナビの地図に戻ります）";
+    if (!this.state.on) return i18n.t("tv.off");
     return this.tuneMessage(isOperating);
   }
 
@@ -157,7 +173,7 @@ export class NaviTv {
     this.read(programme, f);
     const isMutedNow = this.deps.audio.muted || !f.inCabin;
     if (isMutedNow && this.utterance) this.hush();
-    return isReturned ? "ルート案内中のため、ナビを地図に戻しました（テレビの音声は続きます）" : null;
+    return isReturned ? i18n.t("tv.backToMap") : null;
   }
 
   /** Draw the TV on the navi's canvas; false when the map should be drawn instead. */
@@ -214,21 +230,25 @@ export class NaviTv {
 
   private tuneMessage(isOperating: boolean): string {
     const ch = CHANNELS[this.state.channel];
-    const label = `📺 ${ch.number}ch ${ch.station}「${PROGRAMME_TITLE[this.programme()]}」`;
+    const label = i18n.t("tv.tuned", {
+      n: ch.number,
+      station: stationName(this.state.channel),
+      title: programmeTitle(this.programme()),
+    });
     const isStopped = Math.abs(this.drive.kmh) < STOP_KMH;
-    const why = mayShowPicture(this.drive)
-      ? ""
-      : !isStopped
-        ? "：走行中は映像を表示できません（音声のみ）"
-        : this.assist === "easy"
-          ? ""
-          : "：映像はサイドブレーキ（Space）をかけるかエンジンを止めると映ります";
+    const isLocked = !mayShowPicture(this.drive);
+    const isBrakeHint = isLocked && isStopped && this.assist !== "easy";
+    const told =
+      isLocked && !isStopped
+        ? i18n.t("tv.tunedMoving", { label })
+        : isBrakeHint
+          ? i18n.t("tv.tunedBrake", { label, key: PARKING_BRAKE_KEY })
+          : label;
     // Working a fitted navi is not 保持 and shows nothing to 注視 (第71条第5号の5), but it takes the
     // eyes off the road for a moment: said once.
     const isFirstWhileMoving = isOperating && !this.hasWarnedMoving;
     if (isFirstWhileMoving) this.hasWarnedMoving = true;
-    const caution = isFirstWhileMoving ? "。走行中の操作は手短に" : "";
-    return `${label}${why}${caution}`;
+    return isFirstWhileMoving ? i18n.t("tv.tunedCaution", { text: told }) : told;
   }
 
   // ---------- sound ----------
@@ -251,11 +271,12 @@ export class NaviTv {
     if (!isDue) return;
     this.lineAt = f.now;
     const all = tickerItems(this.info);
-    this.items = programme === "weather" ? all.filter((i) => i.tag === "天気") : all;
+    this.items = programme === "weather" ? all.filter((i) => i.kind === "weather") : all;
     if (this.items.length === 0) return;
     this.line = (this.line + 1) % this.items.length;
     const item = this.items[this.line];
-    if (item && this.deps.canSpeak()) this.say(item.speech, f.inCabin);
+    const isSpoken = item !== undefined && item.speech !== "";
+    if (isSpoken && this.deps.canSpeak()) this.say(item.speech, f.inCabin);
   }
 
   private say(text: string, inCabin: boolean): void {
@@ -265,15 +286,17 @@ export class NaviTv {
     // synthesised and queue in front of the people's).
     const isSilent = audio.muted || audio.volume <= 0;
     if (isSilent) return;
-    // The on-device voice plays through WebAudio: from the navi's speaker, under the 音量.
-    if (voice.enabled && sound) {
+    // The on-device voice (sanoTTS-jp) plays through WebAudio, from the navi's speaker under the
+    // 音量 — but it speaks Japanese only, so in English and Chinese the browser's voice reads.
+    const isJapaneseVoice = voice.enabled && sound !== null && i18n.getLocale() === "ja";
+    if (isJapaneseVoice) {
       voice.speak(text, () => sound.speechOut());
       return;
     }
-    const canSynthesise = "speechSynthesis" in window && inCabin;
-    if (!canSynthesise) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP";
+    if (!inCabin) return;
+    // In the language in force, with a voice that speaks it (none: the ticker alone).
+    const u = localUtterance(text);
+    if (!u) return;
     u.rate = 1.05;
     u.volume = Math.min(1, audio.volume * 0.6);
     u.addEventListener("end", () => {
@@ -315,12 +338,11 @@ export class NaviTv {
     }
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffffff";
-    ctx.font = `700 34px ${FONT}`;
-    ctx.fillText("走行中は映像を表示できません", W / 2, 236);
-    const ch = CHANNELS[this.state.channel];
+    ctx.font = `700 34px ${font()}`;
+    ctx.fillText(i18n.t("tv.blocked"), W / 2, 236, W - 40);
     ctx.fillStyle = "#aab6c8";
-    ctx.font = `500 22px ${FONT}`;
-    ctx.fillText(`${ch.number}ch ${ch.station}　音声のみ`, W / 2, 280);
+    ctx.font = `500 22px ${font()}`;
+    ctx.fillText(i18n.t("tv.blockedSub", { channel: channelLabel(this.state.channel) }), W / 2, 280, W - 40);
   }
 
   private drawPicture(ctx: CanvasRenderingContext2D, now: number): void {
@@ -349,14 +371,14 @@ export class NaviTv {
     ctx.fill();
     ctx.fillStyle = "#7dff9a";
     ctx.textAlign = "left";
-    ctx.font = `700 40px ${FONT}`;
+    ctx.font = `700 40px ${font()}`;
     ctx.fillText(`${ch.number}`, W - 218, 58);
-    ctx.font = `700 18px ${FONT}`;
+    ctx.font = `700 18px ${font()}`;
     ctx.fillText("ch", W - 168, 58);
     ctx.fillStyle = "#ffffff";
-    ctx.font = `500 17px ${FONT}`;
-    ctx.fillText(ch.station, W - 140, 38, 116);
-    ctx.fillText(PROGRAMME_TITLE[this.programme()], W - 140, 62, 116);
+    ctx.font = `500 17px ${font()}`;
+    ctx.fillText(stationName(this.state.channel), W - 140, 38, 116);
+    ctx.fillText(programmeTitle(this.programme()), W - 140, 62, 116);
   }
 
   /** The studio: a skyline behind glass, the desk, a faceless newsreader, a lower third and the ticker. */
@@ -385,7 +407,7 @@ export class NaviTv {
     ctx.fillRect(388, 62, 222, 150);
     ctx.fillStyle = "#1f5aa0";
     ctx.fillRect(394, 68, 210, 138);
-    drawItemIcon(ctx, item.tag, 499, 137, info);
+    drawItemIcon(ctx, item.kind, 499, 137, info);
     // The newsreader: a figure, no face (nobody real).
     ctx.fillStyle = "#1c2433";
     ctx.beginPath();
@@ -417,16 +439,16 @@ export class NaviTv {
     ctx.fill();
     ctx.fillStyle = "#0d2a52";
     ctx.textAlign = "center";
-    ctx.font = `700 20px ${FONT}`;
-    ctx.fillText(PROGRAMME_TITLE.news, 210, 278);
+    ctx.font = `700 20px ${font()}`;
+    ctx.fillText(programmeTitle("news"), 210, 278, 340);
     // Corner: the channel's mark (text only) and the time.
     const { h, m } = { h: Math.floor(info.hour) % 24, m: Math.floor((info.hour % 1) * 60) };
     ctx.textAlign = "left";
     ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.font = `700 18px ${FONT}`;
-    ctx.fillText(`げんしゅ ${CHANNELS[0].number}`, 18, 34);
+    ctx.font = `700 18px ${font()}`;
+    ctx.fillText(i18n.t("tv.mark", { n: CHANNELS[0].number }), 18, 34);
     ctx.textAlign = "right";
-    ctx.font = `700 24px ${FONT}`;
+    ctx.font = `700 24px ${font()}`;
     ctx.fillText(`${h}:${String(m).padStart(2, "0")}`, W - 18, 36);
     // Lower third: the item being read.
     ctx.fillStyle = "#d8232a";
@@ -435,17 +457,17 @@ export class NaviTv {
     ctx.fillRect(168, 298, W - 168, 40);
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffffff";
-    ctx.font = `700 19px ${FONT}`;
+    ctx.font = `700 19px ${font()}`;
     ctx.fillText(item.tag, 84, 325, 156);
     ctx.textAlign = "left";
     ctx.fillStyle = "#10213d";
-    ctx.font = `700 19px ${FONT}`;
+    ctx.font = `700 19px ${font()}`;
     ctx.fillText(item.text, 180, 325, W - 196);
     // The ticker: everything at once, scrolling right to left.
     ctx.fillStyle = "#0a1a33";
     ctx.fillRect(0, 352, W, 48);
     const text = tickerLine(tickerItems(info));
-    ctx.font = `500 20px ${FONT}`;
+    ctx.font = `500 20px ${font()}`;
     const width = ctx.measureText(text).width;
     const x = W - (((now - this.tunedAt) * TICKER_PX_PER_MS) % (width + W));
     ctx.fillStyle = "#ffffff";
@@ -454,8 +476,8 @@ export class NaviTv {
     ctx.fillRect(0, 352, 96, 48);
     ctx.fillStyle = "#0a1a33";
     ctx.textAlign = "center";
-    ctx.font = `700 18px ${FONT}`;
-    ctx.fillText("ニュース", 48, 383);
+    ctx.font = `700 18px ${font()}`;
+    ctx.fillText(i18n.t("tv.newsBadge"), 48, 383, 88);
   }
 
   /** The 23 wards with the car's ward picked out, the sky as a symbol and the observed numbers. */
@@ -467,10 +489,10 @@ export class NaviTv {
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "left";
-    ctx.font = `700 26px ${FONT}`;
-    ctx.fillText(PROGRAMME_TITLE.weather, 22, 40);
-    ctx.font = `500 15px ${FONT}`;
-    ctx.fillText(`${CHANNELS[1].number}ch ${CHANNELS[1].station}`, 24, 62);
+    ctx.font = `700 26px ${font()}`;
+    ctx.fillText(programmeTitle("weather"), 22, 40);
+    ctx.font = `500 15px ${font()}`;
+    ctx.fillText(channelLabel(1), 24, 62);
     const map = this.wardMapFor(info.ward);
     if (map) {
       ctx.drawImage(map.canvas, 18, 74);
@@ -485,9 +507,9 @@ export class NaviTv {
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = "#ffffff";
-        ctx.font = `700 15px ${FONT}`;
+        ctx.font = `700 15px ${font()}`;
         ctx.textAlign = "center";
-        ctx.fillText("現在地", 18 + x, 74 + y - 14);
+        ctx.fillText(i18n.t("tv.here"), 18 + x, 74 + y - 14);
       }
     }
     const w = info.weather;
@@ -495,24 +517,25 @@ export class NaviTv {
     drawSky(ctx, sky, w.night, 470, 128, 1.25);
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffffff";
-    ctx.font = `700 28px ${FONT}`;
-    ctx.fillText(sky, 470, 212);
-    ctx.font = `700 46px ${FONT}`;
+    ctx.font = `700 28px ${font()}`;
+    const skyText = skyWord(sky);
+    ctx.fillText(skyText.charAt(0).toUpperCase() + skyText.slice(1), 470, 212, 300);
+    ctx.font = `700 46px ${font()}`;
     const temp = w.temp !== null ? `${w.temp.toFixed(1)}℃` : "—";
     ctx.fillText(temp, 470, 266);
-    ctx.font = `500 18px ${FONT}`;
+    ctx.font = `500 18px ${font()}`;
     const rows = [
-      w.humidity !== null ? `湿度 ${Math.round(w.humidity)}%` : "",
-      w.wind !== null ? `風 ${w.wind.toFixed(1)} m/s` : "",
-      w.fixedSky ? "空模様はゲームの天気" : `10分間の雨 ${w.precip10m ?? 0} mm`,
+      w.humidity !== null ? i18n.t("tv.screen.humidity", { n: Math.round(w.humidity) }) : "",
+      w.wind !== null ? i18n.t("tv.screen.wind", { n: w.wind.toFixed(1) }) : "",
+      w.fixedSky ? i18n.t("tv.screen.fixedSky") : i18n.t("tv.screen.rain10", { n: w.precip10m ?? 0 }),
     ].filter(Boolean);
-    rows.forEach((row, i) => ctx.fillText(row, 470, 298 + i * 24));
-    ctx.font = `400 14px ${FONT}`;
+    rows.forEach((row, i) => ctx.fillText(row, 470, 298 + i * 24, 300));
+    ctx.font = `400 14px ${font()}`;
     ctx.fillStyle = "rgba(255,255,255,0.85)";
     const hasNumbers = w.temp !== null || w.humidity !== null;
-    ctx.fillText(hasNumbers ? "数値は都心（北の丸公園）の観測" : "", 470, 374);
+    ctx.fillText(hasNumbers ? i18n.t("tv.screen.observed") : "", 470, 374, 330);
     ctx.textAlign = "left";
-    ctx.fillText("この先の天気は「天気」ボタンしだいです", 22, 392);
+    ctx.fillText(i18n.t("tv.screen.next"), 22, 392, 330);
   }
 
   /** The wards drawn once into a canvas (again when the car's ward changes, to pick it out). */
@@ -648,13 +671,19 @@ class TvSound {
 }
 
 /** The monitor's picture for a news item: a clock, a pin, the sky, a warning sign, a crossing. */
-function drawItemIcon(ctx: CanvasRenderingContext2D, tag: string, x: number, y: number, info: TvInfo): void {
+function drawItemIcon(
+  ctx: CanvasRenderingContext2D,
+  kind: TickerKind,
+  x: number,
+  y: number,
+  info: TvInfo,
+): void {
   ctx.save();
   ctx.translate(x, y);
   ctx.lineWidth = 6;
   ctx.strokeStyle = "#ffffff";
   ctx.fillStyle = "#ffffff";
-  if (tag === "時刻") {
+  if (kind === "time") {
     const { h, m } = { h: info.hour % 12, m: (info.hour % 1) * 60 };
     ctx.beginPath();
     ctx.arc(0, 0, 48, 0, Math.PI * 2);
@@ -667,7 +696,7 @@ function drawItemIcon(ctx: CanvasRenderingContext2D, tag: string, x: number, y: 
     };
     hand((h / 12) * Math.PI * 2, 26);
     hand((m / 60) * Math.PI * 2, 40);
-  } else if (tag === "現在地") {
+  } else if (kind === "place") {
     ctx.fillStyle = "#e3262f";
     ctx.beginPath();
     ctx.arc(0, -14, 26, Math.PI, 0);
@@ -678,9 +707,9 @@ function drawItemIcon(ctx: CanvasRenderingContext2D, tag: string, x: number, y: 
     ctx.beginPath();
     ctx.arc(0, -14, 10, 0, Math.PI * 2);
     ctx.fill();
-  } else if (tag === "天気") {
+  } else if (kind === "weather") {
     drawSky(ctx, skyOf(info.weather), info.weather.night, 0, 0, 0.9);
-  } else if (tag === "本日の交通違反") {
+  } else if (kind === "violations") {
     // A warning triangle (yellow, black rim) with "!".
     ctx.fillStyle = "#ffd400";
     ctx.strokeStyle = "#111111";
@@ -692,7 +721,7 @@ function drawItemIcon(ctx: CanvasRenderingContext2D, tag: string, x: number, y: 
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = "#111111";
-    ctx.font = `900 58px ${FONT}`;
+    ctx.font = `900 58px ${font()}`;
     ctx.textAlign = "center";
     ctx.fillText("!", 0, 36);
   } else {
@@ -833,14 +862,14 @@ function drawNature(ctx: CanvasRenderingContext2D, now: number, night: boolean):
   ctx.fillRect(0, 354, W, 46);
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "left";
-  ctx.font = `700 20px ${FONT}`;
-  ctx.fillText(`${PROGRAMME_TITLE.nature}　〜川のある風景〜`, 18, 384);
+  ctx.font = `700 20px ${font()}`;
+  ctx.fillText(i18n.t("tv.nature.caption", { title: programmeTitle("nature") }), 18, 384, 440);
   ctx.textAlign = "right";
-  ctx.font = `400 14px ${FONT}`;
-  ctx.fillText("映像はイメージです", W - 16, 384);
+  ctx.font = `400 14px ${font()}`;
+  ctx.fillText(i18n.t("tv.nature.illustrative"), W - 16, 384, 150);
   ctx.textAlign = "left";
-  ctx.font = `700 18px ${FONT}`;
-  ctx.fillText(`げんしゅ ${CHANNELS[2].number}`, 18, 34);
+  ctx.font = `700 18px ${font()}`;
+  ctx.fillText(i18n.t("tv.mark", { n: CHANNELS[2].number }), 18, 34);
 }
 
 /** 放送休止: colour bars (75 % bars, reverse bars, −I / white / +Q / PLUGE) and a caption. */
@@ -876,8 +905,8 @@ function drawColorBars(ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(0, 0, W, 44);
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "left";
-  ctx.font = `700 20px ${FONT}`;
-  ctx.fillText(`${CHANNELS[2].number}ch ${CHANNELS[2].station}　放送休止中（5:00 から放送）`, 16, 30);
+  ctx.font = `700 20px ${font()}`;
+  ctx.fillText(i18n.t("tv.colorBars.caption", { channel: channelLabel(2) }), 16, 30, W - 32);
 }
 
 /**
@@ -894,16 +923,18 @@ function drawNotice(ctx: CanvasRenderingContext2D, violations: number): void {
   ctx.stroke();
   ctx.fillStyle = "#2f63e6";
   ctx.textAlign = "center";
-  ctx.font = `700 24px ${FONT}`;
-  ctx.fillText("受信料のお知らせ（フィクション）", W / 2, 132);
+  // Lines no wider than the card (an English line runs longer than its Japanese).
+  const width = W - 170;
+  ctx.font = `700 24px ${font()}`;
+  ctx.fillText(i18n.t("tv.fee.title"), W / 2, 132, width);
   ctx.fillStyle = "#10213d";
-  ctx.font = `500 19px ${FONT}`;
-  ctx.fillText("げんしゅ放送の受信料は「法令厳守」です。", W / 2, 172);
-  ctx.fillText(`本日の交通違反 ${violations} 件 × 0 円 ＝ 0 円`, W / 2, 202);
-  ctx.fillText("違反ゼロのお支払いをお待ちしております。", W / 2, 232);
+  ctx.font = `500 19px ${font()}`;
+  ctx.fillText(i18n.t("tv.fee.line1"), W / 2, 172, width);
+  ctx.fillText(i18n.t("tv.fee.line2", { n: violations }), W / 2, 202, width);
+  ctx.fillText(i18n.t("tv.fee.line3"), W / 2, 232, width);
   ctx.fillStyle = "#5a6577";
-  ctx.font = `400 14px ${FONT}`;
-  ctx.fillText("チャンネルボタンで閉じます（しばらくすると消えます）", W / 2, 262);
+  ctx.font = `400 14px ${font()}`;
+  ctx.fillText(i18n.t("tv.fee.close"), W / 2, 262, width);
 }
 
 function readNoticed(): boolean {

@@ -1,8 +1,15 @@
-import { personaPrompt, QUICK_QUESTIONS, templateReply, type Surroundings } from "../ai/dialogue";
+import {
+  OPENING_WORDS,
+  personaPrompt,
+  QUICK_QUESTIONS,
+  templateLine,
+  type Surroundings,
+} from "../ai/dialogue";
 import { NpcBrain } from "../ai/llm";
 import type { Voice, VoiceFrom } from "../ai/tts";
-import { t } from "../i18n";
-import type { Pedestrian } from "../world/pedestrians";
+import { bindText, getLocale, t } from "../i18n";
+import { matchJapanese, translateWord } from "../i18n/reverse";
+import type { Pedestrian, PedestrianProfile } from "../world/pedestrians";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
   const el = document.querySelector<T>(sel);
@@ -32,11 +39,12 @@ export class ConversationController {
       if (text) void this.send(text);
     });
     const quick = $("#chat-quick");
-    for (const q of QUICK_QUESTIONS) {
+    for (const key of QUICK_QUESTIONS) {
       const b = document.createElement("button");
       b.type = "button";
-      b.textContent = q;
-      b.addEventListener("click", () => void this.send(q));
+      // Shown and asked in the language in force (templateLine understands all three).
+      bindText(b, () => t(key));
+      b.addEventListener("click", () => void this.send(t(key)));
       quick.append(b);
     }
     $<HTMLInputElement>("#voice-toggle").addEventListener("change", (e) => {
@@ -64,11 +72,12 @@ export class ConversationController {
     this.partner = p;
     const s = this.surroundings();
     $("#chat-name").textContent = p.profile.name;
-    $("#chat-sub").textContent = `${p.profile.age}・${p.profile.role}（${s.ward}${s.town}）`;
+    bindText($("#chat-sub"), () => partnerSub(p.profile, `${s.ward}${s.town}`));
     $("#chat-log").replaceChildren();
     $("#chat").hidden = false;
     document.body.classList.add("chatting");
-    this.say("npc", templateReply(p.profile, s, "こんにちは"));
+    const greeting = templateLine(p.profile, s, OPENING_WORDS);
+    this.say("npc", greeting.text, greeting.ja);
     // Do not steal the keyboard: driving / F (get out) keep working until the player presses
     // Enter or clicks the box to type.
   }
@@ -92,14 +101,14 @@ export class ConversationController {
     const s = this.brain.status;
     status.textContent =
       s === "ready"
-        ? "会話: Gemma 4（端末内で生成）"
+        ? t("talk.status.ready")
         : s === "downloading" || s === "loading"
           ? this.brain.detail
           : s === "error"
-            ? `${this.brain.detail}（定型応答で継続）`
-            : "会話: 定型応答（オープンデータから回答）";
+            ? t("talk.status.error", { detail: this.brain.detail })
+            : t("talk.status.templates");
     button.hidden = s === "ready" || s === "loading";
-    button.textContent = s === "downloading" ? "ダウンロードを中止" : "会話 AI（Gemma 4）を使う";
+    button.textContent = s === "downloading" ? t("talk.aiCancel") : t("talk.aiEnable");
   }
 
   private async askConsent(): Promise<void> {
@@ -113,11 +122,13 @@ export class ConversationController {
     const isCached = await NpcBrain.isCached();
     note.textContent = support.ok
       ? isCached
-        ? "保存済みのモデルがあります（ダウンロード不要）。"
+        ? t("ai.consent.cached")
         : ""
-      : `この端末では利用できません: ${support.reason ? t(support.reason) : ""}`;
+      : t("ai.consent.unsupported", { reason: support.reason ? t(support.reason) : "" });
     $<HTMLButtonElement>("#ai-consent-ok").disabled = !support.ok;
-    $<HTMLButtonElement>("#ai-consent-ok").textContent = isCached ? "有効化" : "ダウンロードして有効化";
+    $<HTMLButtonElement>("#ai-consent-ok").textContent = isCached
+      ? t("ai.consent.enable")
+      : t("ai.consent.download");
     $<HTMLButtonElement>("#ai-clear").hidden = !isCached;
     dialog.returnValue = "";
     dialog.showModal();
@@ -146,21 +157,29 @@ export class ConversationController {
       });
     }
     // Fall back to grounded templates when the model is off, failed, or returned nothing.
-    reply = reply?.trim() || templateReply(p.profile, s, text);
-    bubble.textContent = reply;
+    const fromModel = reply?.trim() || null;
+    const fallback = fromModel === null ? templateLine(p.profile, s, text) : null;
+    bubble.textContent = fromModel ?? fallback?.text ?? "";
     this.scroll();
-    this.voice.speak(reply, this.voiceFrom?.(p));
+    // The voice (sanoTTS-jp) speaks Japanese only: a set reply's Japanese original under the
+    // translated bubble; the model's reply only when the game is in Japanese (in English or
+    // Chinese the model answers in that language, and there is no Japanese to say).
+    const isModelInJapanese = fromModel !== null && getLocale() === "ja";
+    const spoken = fallback?.ja ?? (isModelInJapanese ? fromModel : null);
+    if (spoken) this.voice.speak(spoken, this.voiceFrom?.(p));
     this.busy = false;
   }
 
-  private say(who: "npc" | "me", text: string): HTMLElement {
+  /** A bubble; `spoken` is what the pedestrian's voice says with it (null: nothing). */
+  private say(who: "npc" | "me", text: string, spoken: string | null = null): HTMLElement {
     const el = document.createElement("div");
     el.className = `bubble ${who}`;
     el.textContent = text;
     $("#chat-log").append(el);
     this.scroll();
     const p = this.partner;
-    if (who === "npc" && text !== "…") this.voice.speak(text, p ? this.voiceFrom?.(p) : undefined);
+    const isVoiced = who === "npc" && spoken !== null;
+    if (isVoiced) this.voice.speak(spoken, p ? this.voiceFrom?.(p) : undefined);
     return el;
   }
 
@@ -168,4 +187,15 @@ export class ConversationController {
     const log = $("#chat-log");
     log.scrollTop = log.scrollHeight;
   }
+}
+
+/**
+ * Under the partner's name: 「20代・会社員（千代田区丸の内二丁目）」 / "office worker, in their 20s
+ * (…)". The profile is Japanese (the persona prompt reads it); its words are translated here, the
+ * place stays as e-Stat names it.
+ */
+function partnerSub(profile: PedestrianProfile, place: string): string {
+  const decade = matchJapanese(profile.age, "talk.age");
+  const age = decade ? t("talk.age", decade) : profile.age;
+  return t("talk.partnerSub", { age, role: translateWord(profile.role, "talk.role."), place });
 }

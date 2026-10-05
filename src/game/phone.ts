@@ -1,14 +1,18 @@
 import {
-  DISPATCHED,
+  alreadyDispatched,
+  dispatched,
   hasEnoughInfo,
-  OPENING,
+  opening,
   operatorPrompt,
   QUICK_REPLIES,
   scriptedOperator,
   type Line,
+  type Said,
 } from "../ai/dispatch";
 import type { NpcBrain } from "../ai/llm";
 import type { Voice } from "../ai/tts";
+import { bindText, getLocale, onLocaleChange, t } from "../i18n";
+import { translateWord } from "../i18n/reverse";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
   const el = document.querySelector<T>(sel);
@@ -66,6 +70,8 @@ export class Phone {
     $("#phone-backdrop").addEventListener("click", () => this.setZoom(false));
     window.addEventListener("resize", () => this.fitZoom());
     this.applyZoom(readZoom());
+    // The zoom button's label and tooltip, again in a new language.
+    onLocaleChange(() => this.applyZoom(this.zoomed));
     $<HTMLFormElement>("#call-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const input = $<HTMLInputElement>("#call-input");
@@ -136,9 +142,9 @@ export class Phone {
     $("#phone-backdrop").hidden = !(on && this.open);
     const button = $("#phone-zoom");
     button.setAttribute("aria-pressed", String(on));
-    const label = on ? "スマホを元の大きさに戻す" : "スマホを拡大表示";
+    const label = t(on ? "phoneUi.zoomOut" : "phoneUi.zoomIn");
     button.setAttribute("aria-label", label);
-    button.title = `${label} (Shift+F)`;
+    button.title = t("phoneUi.keyTitle", { label, key: "Shift+F" });
     this.fitZoom();
   }
 
@@ -163,7 +169,9 @@ export class Phone {
     if (!this.open) return;
     const ctx = this.context();
     $("#phone-clock").textContent = ctx.clock;
-    $("#phone-loc").textContent = `現在地: ${ctx.location}`;
+    // The town is the data's own (Japanese); only the game's 「不明」 is a word to translate.
+    const place = translateWord(ctx.location, "phoneUi.unknownPlace");
+    $("#phone-loc").textContent = t("phoneUi.location", { place });
     if (this.inCall) {
       const s = Math.floor((performance.now() - this.callStart) / 1000);
       $("#call-timer").textContent =
@@ -185,15 +193,16 @@ export class Phone {
       ...QUICK_REPLIES[line].map((q) => {
         const b = document.createElement("button");
         b.type = "button";
-        b.textContent = q;
+        // Shown and said in the language in force (the operators understand all three).
+        bindText(b, () => t(q.key));
         b.addEventListener("click", () => {
-          const text = q === "現在地を伝える" ? `場所は東京都${this.context().location}付近です` : q;
+          const text = q.location ? t("call.location", { location: this.context().location }) : t(q.key);
           void this.say(text);
         });
         return b;
       }),
     );
-    this.operator(OPENING[line]);
+    this.operator(opening(line));
   }
 
   hangUp(): void {
@@ -226,17 +235,30 @@ export class Phone {
       );
       bubble.remove();
     }
+    let scripted: Said | null = null;
     if (isReadyToDispatch && !this.dispatched) {
       this.dispatched = this.onDispatch(line);
-      reply = this.dispatched ? DISPATCHED[line] : "すでに出動しています。そのまま待っていてください。";
+      scripted = this.dispatched ? dispatched(line) : alreadyDispatched();
     }
-    this.operator(reply?.trim() || scriptedOperator(line, this.callerText, ctx.hasIncident));
+    const fromModel = scripted ? null : reply?.trim() || null;
+    // The model's reply is in the language in force; it has a Japanese voice only in Japanese.
+    const isModelInJapanese = getLocale() === "ja";
+    this.operator(
+      fromModel !== null
+        ? { text: fromModel, ja: isModelInJapanese ? fromModel : "" }
+        : (scripted ?? scriptedOperator(line, this.callerText, ctx.hasIncident)),
+    );
     this.busy = false;
   }
 
-  private operator(text: string): void {
-    this.bubble("op", text);
-    this.voice.speak(text);
+  /**
+   * The operator's line: shown in the language in force, spoken by the on-device voice (sanoTTS-jp,
+   * Japanese only) in its Japanese original — a scripted line has one, a model's reply in English
+   * or Chinese does not, and is not spoken.
+   */
+  private operator(line: Said): void {
+    this.bubble("op", line.text);
+    if (line.ja) this.voice.speak(line.ja);
   }
 
   private bubble(who: "me" | "op", text: string): HTMLElement {

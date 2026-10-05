@@ -1,4 +1,6 @@
-import { CLOSURE, CLOSURE_WORDS, type ClosureKind } from "../world/closures";
+import { t } from "../i18n";
+import { formatDistance } from "../i18n/format";
+import { CLOSURE, type ClosureKind } from "../world/closures";
 import { speedLimit, type Segment } from "../world/roads";
 import {
   inForce,
@@ -63,10 +65,22 @@ export function isSchoolRun(kind: ClosureKind, time: RuleTime): boolean {
   return time.on.some(isMorning) && time.on.every((w) => isMorning(w) || isAfternoon(w));
 }
 
-const distanceText = (m: number) =>
-  Math.round(m / 10) * 10 >= 1000
-    ? `${(m / 1000).toFixed(1)}km`
-    : `${Math.max(10, Math.round(m / 10) * 10)}m`;
+/** The kinds of 通行禁止 in words (src/world/closures.ts CLOSURE_WORDS, in the language in force). */
+const CLOSURE_KEY = {
+  [CLOSURE.pedestrianRoad]: "closure.pedestrianRoad",
+  [CLOSURE.all]: "closure.all",
+  [CLOSURE.vehicles]: "closure.vehicles",
+  [CLOSURE.motor]: "closure.motor",
+} as const satisfies Record<ClosureKind, string>;
+
+/** A closure's kind in words: 車両通行止め / No vehicles / 车辆禁止通行. */
+export const closureWord = (kind: ClosureKind): string => t(CLOSURE_KEY[kind]);
+
+/** The panel's line: what, its hours if any (「（7:30-8:30）」), and how far. */
+const noticeLine = (label: string, hours: string, distance: number) =>
+  hours
+    ? t("notice.withHours", { label, hours, dist: formatDistance(distance) })
+    : t("notice.plain", { label, dist: formatDistance(distance) });
 
 /**
  * Notices along the way ahead. `limit` is the limit where the player is (null when unknown);
@@ -106,21 +120,22 @@ export function collectNotices(
         .find((line) => /\d/.test(line)) ?? "";
     const isSchool = isSchoolRun(closure.kind, closure.time);
     const isPedestrian = closure.kind === CLOSURE.pedestrianRoad;
+    const what = closureWord(closure.kind);
     const label = isSchool
-      ? "通学路 時間規制中"
+      ? t("notice.school")
       : isPedestrian
-        ? "歩行者用道路"
-        : `この先 ${CLOSURE_WORDS[closure.kind]}`;
+        ? t("notice.pedestrianRoad")
+        : t("notice.closedAhead", { what });
     notices.push({
       kind: isSchool ? "school" : "closure",
       key: `closure:${closed.seg.id}`,
       distance: closed.start,
-      text: `${label}${hours ? `（${hours}）` : ""}・${distanceText(closed.start)}`,
+      text: noticeLine(label, hours, closed.start),
       voice: isSchool
-        ? "この先、通学路の時間規制で、車は通行できません。"
+        ? t("notice.schoolSay")
         : isPedestrian
-          ? "この先、歩行者用道路のため、車は通行できません。"
-          : `この先、${CLOSURE_WORDS[closure.kind]}です。`,
+          ? t("notice.pedestrianSay")
+          : t("notice.closedSay", { what }),
       voiceWithin: CLOSURE_RANGE,
       voiceMin: 20,
       minSpeed: 0,
@@ -136,8 +151,8 @@ export function collectNotices(
       kind: "orbis",
       key: `orbis:${site.entry.id}:${site.dir}`,
       distance: d,
-      text: `この先 速度取締機・${distanceText(d)}`,
-      voice: `この先、速度取締機があります。制限速度は${site.limit}キロです。`,
+      text: t("notice.orbis", { dist: formatDistance(d) }),
+      voice: t("notice.orbisSay", { limit: site.limit }),
       voiceWithin: ORBIS_RANGE,
       voiceMin: 50,
       minSpeed: 0,
@@ -160,12 +175,11 @@ export function collectNotices(
       kind: "limit",
       key: `limit:${value}`,
       distance: change.start,
-      text: `この先 ${value}km/h ${isZone ? "区域" : "区間"}・${distanceText(change.start)}`,
-      voice: isLower
-        ? isZone
-          ? `この先、最高速度${value}キロの区域です。`
-          : `この先、制限速度が${value}キロに変わります。`
-        : null,
+      text: t(isZone ? "notice.zone" : "notice.section", {
+        limit: value,
+        dist: formatDistance(change.start),
+      }),
+      voice: isLower ? t(isZone ? "notice.zoneSay" : "notice.sectionSay", { limit: value }) : null,
       voiceWithin: 150,
       voiceMin: 10,
       minSpeed: 0,
@@ -183,8 +197,8 @@ export function collectNotices(
       kind: "stop",
       key: `stop:${ap.seg.id}:${ap.dir}`,
       distance: d,
-      text: `一時停止・${distanceText(d)}`,
-      voice: "この先、一時停止です。",
+      text: t("notice.stop", { dist: formatDistance(d) }),
+      voice: t("notice.stopSay"),
       voiceWithin: 80,
       voiceMin: 15,
       minSpeed: 15,

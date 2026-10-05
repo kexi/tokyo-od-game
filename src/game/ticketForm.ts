@@ -1,3 +1,6 @@
+import { bcp47, getLocale, t } from "../i18n";
+import { formatYen } from "../i18n/format";
+import { lawRef, pointsText, violationName } from "../i18n/law";
 import type { ViolationRecord } from "./traffic";
 
 export type TicketData = {
@@ -504,11 +507,59 @@ export function renderTicketHtml(data: TicketData): string {
 }
 
 /**
- * 違反切符（青切符・赤切符）の DOM エレメントを生成する。
+ * The ticket in a sentence or two for players who don't read Japanese: what the document is, each
+ * offense with its law, points and fine, the total, and how to pay (or that a court will summon
+ * them). Empty in Japanese, where the form says it all.
+ *
+ * Why not translate the form itself: it reproduces a real official form (別記様式第25 / the red
+ * 共用書式); translated, it would show a document that doesn't exist. The form stays as printed and
+ * this box sits above it.
+ */
+export function renderTicketSummaryHtml(violations: readonly ViolationRecord[]): string {
+  if (getLocale() === "ja") return "";
+  const isRed = violations.some((v) => v.fine === null);
+  const totalPoints = violations.reduce((sum, v) => sum + v.points, 0);
+  const totalFine = violations.reduce((sum, v) => sum + (v.fine ?? 0), 0);
+  const items = violations
+    .map((v) => {
+      const fine =
+        v.fine === null ? t("ticket.fineCourt") : v.fine === 0 ? t("ticket.fineNone") : formatYen(v.fine);
+      const line = t("ticket.item", {
+        name: violationName(v.label),
+        law: lawRef(v.article),
+        points: pointsText(v.points),
+        fine,
+      });
+      return `<li>${esc(line)}</li>`;
+    })
+    .join("");
+  const total = isRed
+    ? t("ticket.totalRed", { points: pointsText(totalPoints) })
+    : t("ticket.totalBlue", { points: pointsText(totalPoints), fine: formatYen(totalFine) });
+  return `
+    <aside class="ticket-summary ${isRed ? "ticket-summary-red" : "ticket-summary-blue"}" lang="${bcp47()}">
+      <h3>${esc(t(isRed ? "ticket.summaryHeadingRed" : "ticket.summaryHeadingBlue"))}</h3>
+      <p>${esc(t(isRed ? "ticket.whatRed" : "ticket.whatBlue"))}</p>
+      <ul aria-label="${esc(t("ticket.offenses"))}">${items}</ul>
+      <p class="ticket-summary-total">${esc(total)}</p>
+      <p>${esc(t(isRed ? "ticket.howRed" : "ticket.howBlue"))}</p>
+      <p class="ticket-summary-note">${esc(t("ticket.formNote"))}</p>
+    </aside>
+  `;
+}
+
+/**
+ * 違反切符（青切符・赤切符）の DOM エレメントを生成する。英語・中国語では訳した要約を様式の上に添える。
  */
 export function renderTicket(data: TicketData): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.innerHTML = renderTicketHtml(data);
-  const element = wrapper.firstElementChild as HTMLElement;
-  return element ?? wrapper;
+  const form = (wrapper.firstElementChild as HTMLElement | null) ?? wrapper;
+  const summary = renderTicketSummaryHtml(data.violations);
+  if (!summary) return form;
+  const both = document.createElement("div");
+  both.className = "ticket-with-summary";
+  both.innerHTML = summary;
+  both.append(form);
+  return both;
 }

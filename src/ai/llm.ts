@@ -1,4 +1,4 @@
-import type { MessageKey } from "../i18n";
+import { getLocale, t, type MessageKey, type Params } from "../i18n";
 import { warn } from "../log";
 
 /**
@@ -20,13 +20,23 @@ type Engine = Awaited<ReturnType<typeof import("@litert-lm/core").Engine.create>
 type Conversation = Awaited<ReturnType<Engine["createConversation"]>>;
 
 // Sentences the synthesized voice must never say (sanoTTS-jp model licence §3.2, inherited from
-// the つくよみちゃん corpus terms) and that a street NPC has no business saying anyway.
+// the つくよみちゃん corpus terms) and that a street NPC has no business saying anyway. Replies in
+// English or Chinese are not spoken, but are held to the same topics with their own short lists.
 const BLOCKED = /(選挙|政党|自民|立憲|共産|公明|維新|宗教|信仰|布教|殺|死ね|バカ|アホ|クズ|差別)/;
+const BLOCKED_EN =
+  /\b(elections?|political part(y|ies)|religio\w*|kill\w*|die|stupid|idiot|moron|racis\w*)\b/i;
+const BLOCKED_ZH = /(选举|政党|宗教|信仰|传教|杀|去死|笨蛋|白痴|蠢货|歧视)/;
 
 export class NpcBrain {
   status: LlmStatus = "idle";
   progress = 0;
-  detail = "";
+  /** What the status line says, kept as a key so it reads in the language in force. */
+  private detailText: { key: MessageKey; params?: Params } | null = null;
+
+  /** The download, loading or error line, in the language in force ("" before anything happens). */
+  get detail(): string {
+    return this.detailText ? t(this.detailText.key, this.detailText.params) : "";
+  }
   private engine: Engine | null = null;
   private readonly conversations = new Map<number, Conversation>();
   private abort: AbortController | null = null;
@@ -88,18 +98,20 @@ export class NpcBrain {
       const cache = await caches.open(CACHE_NAME);
       if (!(await cache.match(MODEL_URL))) await this.download(cache);
       this.status = "loading";
-      this.detail = "モデルを GPU に読み込み中…";
+      this.detailText = { key: "ai.loading" };
       await navigator.storage?.persist?.().catch(() => false);
       const { Engine } = await import("@litert-lm/core");
       const cached = await cache.match(MODEL_URL);
       if (!cached?.body) throw new Error("model cache missing");
       this.engine = await Engine.create({ model: cached.body, mainExecutorSettings: { maxNumTokens: 2048 } });
       this.status = "ready";
-      this.detail = "会話 AI 準備完了";
+      this.detailText = { key: "ai.ready" };
     } catch (error) {
       const isAbort = (error as Error).name === "AbortError";
       this.status = isAbort ? "idle" : "error";
-      this.detail = isAbort ? "ダウンロードを中止しました" : `会話 AI を起動できません: ${String(error)}`;
+      this.detailText = isAbort
+        ? { key: "ai.aborted" }
+        : { key: "ai.failed", params: { error: String(error) } };
       warn("llm_enable_failed", { error: String(error) });
     }
   }
@@ -139,7 +151,7 @@ export class NpcBrain {
         if (countSentences(out) >= 3) break;
       }
       const final = trimToSentences(out, 3).trim();
-      return BLOCKED.test(final) ? "ごめんなさい、その話はちょっとわからないです。" : final;
+      return isBlocked(final) ? t("talk.blocked") : final;
     };
     const next = this.busy.then(run, run).catch((error: unknown) => {
       warn("llm_reply_failed", { error: String(error) });
@@ -165,7 +177,10 @@ export class NpcBrain {
       transform: (chunk, controller) => {
         received += chunk.byteLength;
         this.progress = received / MODEL_BYTES;
-        this.detail = `Gemma 4 をダウンロード中… ${(received / 1e9).toFixed(2)} / ${(MODEL_BYTES / 1e9).toFixed(2)} GB`;
+        this.detailText = {
+          key: "ai.downloading",
+          params: { got: (received / 1e9).toFixed(2), total: (MODEL_BYTES / 1e9).toFixed(2) },
+        };
         controller.enqueue(chunk);
       },
     });
@@ -177,14 +192,33 @@ export class NpcBrain {
   }
 }
 
+/** Whether a reply touches a topic the NPCs must not (the Japanese list always, the reply's language's too). */
+export function isBlocked(reply: string): boolean {
+  if (BLOCKED.test(reply)) return true;
+  const locale = getLocale();
+  if (locale === "en") return BLOCKED_EN.test(reply);
+  if (locale === "zh") return BLOCKED_ZH.test(reply);
+  return false;
+}
+
+/** Whether the character at `i` ends a sentence: 。！？!? anywhere, an English full stop before a space. */
+function endsSentence(s: string, i: number): boolean {
+  const c = s[i] ?? "";
+  if (/[。！？!?]/.test(c)) return true;
+  // "21.5 degrees" is not an end; "Hello. Nice car." has two.
+  return c === "." && /\s/.test(s[i + 1] ?? "");
+}
+
 function countSentences(s: string): number {
-  return (s.match(/[。！？!?]/g) ?? []).length;
+  let count = 0;
+  for (let i = 0; i < s.length; i++) if (endsSentence(s, i)) count++;
+  return count;
 }
 
 function trimToSentences(s: string, max: number): string {
   let count = 0;
   for (let i = 0; i < s.length; i++) {
-    if (!/[。！？!?]/.test(s[i])) continue;
+    if (!endsSentence(s, i)) continue;
     count++;
     if (count >= max) return s.slice(0, i + 1);
   }

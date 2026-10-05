@@ -1,3 +1,5 @@
+import { onLocaleChange } from "../i18n";
+
 /**
  * 通知: violations, posts about the player and the police, kept in a panel on the left with their
  * game time, instead of toasts that vanish after three seconds in the middle of the road ahead.
@@ -5,7 +7,8 @@
  */
 export type NoticeKind = "violation" | "caught" | "social" | "police";
 
-export type Notice<T = unknown> = { kind: NoticeKind; text: string; clock: string; ref?: T };
+/** `text` runs again on a language switch, so the notices still listed follow it. */
+export type Notice<T = unknown> = { kind: NoticeKind; text: () => string; clock: string; ref?: T };
 
 const ICON: Record<NoticeKind, string> = { violation: "⚠", caught: "🚓", social: "📱", police: "👮" };
 const COLOR: Record<NoticeKind, string> = {
@@ -22,10 +25,14 @@ export class NoticeLog {
   constructor(
     private readonly root: HTMLElement,
     private readonly onOpen: (n: Notice) => void,
-  ) {}
+  ) {
+    onLocaleChange(() => this.render(false));
+  }
 
-  add(kind: NoticeKind, text: string, clock: string, ref?: unknown): void {
-    this.items.unshift({ kind, text, clock, ref });
+  /** `text` as a function to follow a language switch; a plain string stays as written. */
+  add(kind: NoticeKind, text: string | (() => string), clock: string, ref?: unknown): void {
+    const render = typeof text === "string" ? () => text : text;
+    this.items.unshift({ kind, text: render, clock, ref });
     if (this.items.length > KEEP) this.items.length = KEEP;
     this.root.hidden = false;
     this.render(true);
@@ -42,8 +49,9 @@ export class NoticeLog {
         const time = document.createElement("time");
         time.textContent = n.clock;
         const text = document.createElement("span");
-        text.textContent = `${ICON[n.kind]} ${n.text}`;
-        li.title = n.text;
+        const words = n.text();
+        text.textContent = `${ICON[n.kind]} ${words}`;
+        li.title = words;
         li.append(time, text);
         li.addEventListener("click", () => this.onOpen(n));
         return li;

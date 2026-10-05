@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+import { fineText, lawRef, pointsText, violationName } from "../i18n/law";
 import type { ReplayClip } from "./replayClip";
 /**
  * Road Traffic Act (道路交通法) scoring for the player's car: 違反点数 and 反則金 for 普通車.
@@ -35,6 +37,10 @@ export type ViolationKind =
 
 export type Violation = {
   kind: ViolationKind;
+  /**
+   * In Japanese, as stored and as Y's posters and the AI read it; violationName() and lawRef()
+   * (src/i18n/law.ts) translate label and article for the screen.
+   */
   label: string;
   article: string;
   points: number;
@@ -448,12 +454,15 @@ export function injuryViolation(impactKmh: number): Violation {
   };
 }
 
+/**
+ * One line for the notice when a violation is caught, in the language in force:
+ * 「信号無視（赤色等）／道路交通法 第7条／違反点数 2点・反則金 9,000円」.
+ */
 export function formatViolation(v: Violation): string {
-  const fine =
-    v.fine === null
-      ? "罰金（刑事手続）"
-      : v.fine === 0
-        ? "反則金なし（違反点数のみ）"
-        : `反則金 ${v.fine.toLocaleString()}円`;
-  return `${v.label}／${v.article}／違反点数 ${v.points}点・${fine}`;
+  return t("violation.summaryLine", {
+    label: violationName(v.label),
+    article: lawRef(v.article),
+    points: pointsText(v.points, true),
+    fine: fineText(v.fine, true),
+  });
 }

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { LaneDirection } from "../world/regulations";
 
 /**
@@ -43,13 +44,16 @@ export function renderLanes(
   el.replaceChildren(...(lanes ?? []).map((set, i) => laneSvg(set, ok[i] ?? false, current === i)));
 }
 
-/** "右側の車線" / "左側の車線" / "中央の車線" for the lanes to take, or null when all will do. */
+/**
+ * The lanes to take in words ("右側の車線" / "right lane" / "右侧车道"), in the language in force,
+ * or null when all will do.
+ */
 export function laneAdvice(ok: readonly boolean[]): string | null {
   const idx = ok.flatMap((v, i) => (v ? [i] : []));
   if (idx.length === 0 || idx.length === ok.length) return null;
   const isRight = idx[idx.length - 1] === ok.length - 1;
   const isLeft = idx[0] === 0;
-  if (isRight && !isLeft) return "右側の車線";
-  if (isLeft && !isRight) return "左側の車線";
-  return "中央の車線";
+  if (isRight && !isLeft) return t("lane.right");
+  if (isLeft && !isRight) return t("lane.left");
+  return t("lane.middle");
 }

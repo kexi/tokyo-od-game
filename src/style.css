@@ -2040,6 +2040,41 @@ pre.notice {
   margin: 10px 0;
 }
 
+/* English / Chinese: a translated summary above the Japanese form (ticketForm.ts). In the dialog's
+   own colors, so it reads as the game's note, not as part of the printed form. */
+.ticket-summary {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-left: 4px solid #2563eb;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #e3eaf7;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ticket-summary-red {
+  border-left-color: #c0392b;
+}
+.ticket-summary h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #f0f4fc;
+}
+.ticket-summary p,
+.ticket-summary ul {
+  margin: 4px 0;
+}
+.ticket-summary ul {
+  padding-left: 18px;
+}
+.ticket-summary .ticket-summary-total {
+  font-weight: 700;
+}
+.ticket-summary .ticket-summary-note {
+  color: #9ab0d3;
+  font-size: 12px;
+}
+
 #ticket-dialog #ticket-note {
   color: #cad6ec;
   font-size: 11.5px;

@@ -21,6 +21,10 @@ import type { z } from "zod";
 import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
 // As a namespace: main has its own `t`s (times, taxis) in inner scopes.
 import * as i18n from "./i18n";
+import { formatClock, formatDay, formatNumber, formatYen } from "./i18n/format";
+import { lawRef, recordPlace, violationDetail, violationName } from "./i18n/law";
+import { inJapanese } from "./i18n/reverse";
+import { localUtterance } from "./i18n/speech";
 
 const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
 import { GRAPHICS, pixelRatioFor, QUALITY } from "./device";
@@ -58,7 +62,7 @@ import { StreetLights } from "./world/streetLights";
 import { OrbisDevices } from "./world/orbis";
 import { jstDateAt } from "./geo/sun";
 import { gameClock, inForce as isInForceTime, timeNote, tokyoDate, type GameClock } from "./world/ruleTime";
-import { classifyTurn, laneAllows, laneIndex, planRoute, TURN_WORDS } from "./game/navigation";
+import { classifyTurn, laneAllows, laneIndex, planRoute, type Turn } from "./game/navigation";
 import { RouteArrows } from "./game/routeArrows";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
 import { AutoDriver, keepLeftOffset } from "./game/autoDriver";
@@ -80,7 +84,6 @@ import {
   GAME_TIME_SCALE,
   TIME_LABEL,
   TIME_MODES,
-  WEATHER_LABEL,
   type TimeMode,
   type WeatherMode,
 } from "./world/environment";
@@ -120,7 +123,7 @@ import { renderReview } from "./game/violationReview";
 import { loadViolations, saveViolations, ViolationSync } from "./game/violationStore";
 import { ClipPose, CLIP_AFTER_MS, CLIP_BEFORE_MS, cutClip, type ActorDesc } from "./game/replayClip";
 import { renderTicket } from "./game/ticketForm";
-import { PATROL_LABEL, PolicePatrol, type PatrolKind } from "./game/policePatrol";
+import { PolicePatrol, type PatrolKind } from "./game/policePatrol";
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
 import { CHARM_TIP, firstCharmTip, MirrorCharms } from "./game/mirrorCharm";
@@ -167,7 +170,126 @@ import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
 
-const LIGHT_LABEL = { green: "青", yellow: "黄", red: "赤" } as const;
+const LIGHT_KEY = { green: "hud.signal.green", yellow: "hud.signal.yellow", red: "hud.signal.red" } as const;
+/** What the car hit (`name` fills the pedestrian's). */
+const ACCIDENT_KEY = {
+  pedestrian: "accident.pedestrian",
+  vehicle: "accident.vehicle",
+  building: "accident.building",
+  pole: "accident.pole",
+} as const;
+
+// ---------- Words on screen (the Japanese tables stay for the AI's context and the records) ----------
+const TIME_KEY: Record<TimeMode, i18n.MessageKey> = {
+  real: "time.label.real",
+  morning: "time.label.morning",
+  day: "time.label.day",
+  evening: "time.label.evening",
+  night: "time.label.night",
+};
+const WEATHER_KEY: Record<WeatherMode, i18n.MessageKey> = {
+  real: "weather.label.real",
+  auto: "weather.label.auto",
+  clear: "weather.label.clear",
+  rain: "weather.label.rain",
+};
+const CAMERA_KEY = {
+  chase: "camera.chase",
+  far: "camera.far",
+  hood: "camera.hood",
+  cockpit: "camera.cockpit",
+} as const satisfies Record<string, i18n.MessageKey>;
+const REPLAY_CAMERA_KEY: Record<ReplayCamera, i18n.MessageKey> = {
+  auto: "replay.camera.auto",
+  chase: "replay.camera.chase",
+  front: "replay.camera.front",
+  side: "replay.camera.side",
+  roadside: "replay.camera.roadside",
+  heli: "replay.camera.heli",
+  wheel: "replay.camera.wheel",
+  cockpit: "replay.camera.cockpit",
+  witness: "replay.camera.witness",
+};
+// One sentence per unit rather than the unit in a slot: English needs "a"/"an" and "the" with each.
+const SEEN_BY_KEY: Record<PatrolKind, i18n.MessageKey> = {
+  patrol: "notify.seenBy.patrol",
+  unmarked: "notify.seenBy.unmarked",
+  shirobai: "notify.seenBy.shirobai",
+};
+const ESCAPED_KEY: Record<PatrolKind, i18n.MessageKey> = {
+  patrol: "notify.escaped.patrol",
+  unmarked: "notify.escaped.unmarked",
+  shirobai: "notify.escaped.shirobai",
+};
+/** pois.json's categories by id (their labels in the data are Japanese). */
+const CATEGORY_KEY: Partial<Record<string, i18n.MessageKey>> = {
+  culture: "mission.category.culture",
+  landmark: "mission.category.landmark",
+  nightview: "mission.category.nightview",
+  facility: "mission.category.facility",
+  sports: "mission.category.sports",
+  station: "mission.category.station",
+  water: "mission.category.water",
+  waterbase: "mission.category.waterbase",
+  shelter: "mission.category.shelter",
+};
+/** A spot category's name in the language in force; the data's own label for one we don't know. */
+const categoryLabel = (id: string, fallback: string): string => {
+  const key = CATEGORY_KEY[id];
+  return key ? i18n.t(key) : fallback;
+};
+/** The turn as the records write it (the words TURN_WORDS had), translated back on screen. */
+const TURN_RECORD: Record<Turn, i18n.MessageKey> = {
+  straight: "violationWord.straight",
+  slightLeft: "violationWord.turnSlightLeft",
+  left: "violationWord.turnLeft",
+  slightRight: "violationWord.turnSlightRight",
+  right: "violationWord.turnRight",
+  uturn: "violationWord.turnUturn",
+};
+/** A lane's painted arrows as the records write them. */
+const LANE_RECORD: Partial<Record<string, i18n.MessageKey>> = {
+  left: "violationWord.left",
+  slight_left: "violationWord.slightLeft",
+  through: "violationWord.straight",
+  slight_right: "violationWord.slightRight",
+  right: "violationWord.right",
+  reverse: "violationWord.reverse",
+};
+
+/** "3 日" / "3 days" / "1 day": a count of days with its unit, for the slots that take one. */
+const daysText = (n: number) => i18n.t(n === 1 ? "hud.dayOne" : "hud.days", { n: formatNumber(n) });
+/** "2 点" / "2 points" / "1 point". */
+const pointsCount = (n: number) => i18n.t(n === 1 ? "hud.pointOne" : "hud.points", { n: formatNumber(n) });
+
+/** Items in a sentence: 「A、B」 / "A, B" / 「A、B」. */
+function listOf(items: readonly string[]): string {
+  const locale = i18n.getLocale();
+  if (locale === "ja") return items.join("、");
+  // Why not "conjunction" in English: these are labels, not a sentence's end ("A, B, and C").
+  const isChinese = locale === "zh";
+  const style = isChinese ? "narrow" : "short";
+  return new Intl.ListFormat(i18n.bcp47(), { type: isChinese ? "conjunction" : "unit", style }).format(items);
+}
+
+/**
+ * The HUD's clock in the language in force (formatDay: 「10/5(月・祝)」, "Mon, 10/5 (holiday)").
+ * main's clockLabel stays Japanese: the records keep it and recordClock() reads it back.
+ */
+function renderClock(el: HTMLElement, clock: GameClock, date: { m: number; d: number }): void {
+  const dayClass = clock.holiday || clock.weekday === 0 ? "sun" : clock.weekday === 6 ? "sat" : "";
+  const label = formatDay(date, clock.weekday, clock.holiday);
+  const hhmm = formatClock(clock.minutes);
+  if (el.textContent === `${label} ${hhmm}`) return;
+  el.textContent = "";
+  const day = document.createElement("span");
+  day.className = `clock-day ${dayClass}`;
+  day.textContent = label;
+  const time = document.createElement("span");
+  time.className = "clock-time";
+  time.textContent = ` ${hhmm}`;
+  el.append(day, time);
+}
 
 /** Horizontal unit vector the car's nose points along (local yaw 0 faces +Z). */
 function headingVector(q: Quaternion): Vector3 {
@@ -334,6 +456,8 @@ async function main(): Promise<void> {
   const input = new Input();
   // The key that gets in and out (Q in both layouts today), as the hints should name it.
   const doorKey = () => keyFor(input.layout, "door");
+  /** Any action's key in the layout in force, for the hints that name one. */
+  const keyOf = (action: Parameters<typeof keyFor>[1]) => keyFor(input.layout, action);
   input.bindTouch($("#touch"));
   const audio = new GameAudio();
   const minimap = new Minimap($<HTMLCanvasElement>("#minimap"), categories);
@@ -705,7 +829,8 @@ async function main(): Promise<void> {
     const post = n.ref as SocialPost | undefined;
     if (post) socialApp.openPost(post);
   });
-  const notify = (kind: NoticeKind, text: string, ref?: SocialPost) =>
+  /** `text` as a function follows a language switch while the notice stays listed. */
+  const notify = (kind: NoticeKind, text: () => string, ref?: SocialPost) =>
     notices.add(kind, text, clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "", ref);
 
   // ---------- 移動（どこへでも） ----------
@@ -717,10 +842,10 @@ async function main(): Promise<void> {
       police?.state === "ticketing" ||
       $<HTMLDialogElement>("#ticket-dialog").open ||
       !$("#suspended").hidden;
-    if (isBusy) return toast("いまは移動できません（取り締まり中）", "#ff6b6b");
-    if (mode === "taxi") return toast("タクシーに乗っている間は移動できません");
+    if (isBusy) return toast(i18n.t("toast.warpBusy"), "#ff6b6b");
+    if (mode === "taxi") return toast(i18n.t("toast.warpInTaxi"));
     if (replay) stopReplay();
-    if (autopilot) stopAutopilot("移動のため自動運転を解除しました");
+    if (autopilot) stopAutopilot(i18n.t("toast.autopilotOffForWarp"));
     if (mode === "foot") {
       walker.leave();
       vehicle.setParked(false);
@@ -734,7 +859,7 @@ async function main(): Promise<void> {
     warping = { label: place.name, since: performance.now(), yaw };
     // The local frame follows the car there, so the far town is near the origin again.
     recenter();
-    toast(`${place.name} へ移動しています…`, "#4dd2ff");
+    toast(i18n.t("toast.warping", { place: place.name }), "#4dd2ff");
   };
   const finishWarp = (now: number) => {
     if (!warping) return;
@@ -747,28 +872,43 @@ async function main(): Promise<void> {
     chase.snap();
     needsStreetSpawn = true;
     streetSpawnSince = now;
-    toast(`${warping.label} に着きました`, "#7dff9a");
+    toast(i18n.t("toast.warped", { place: warping.label }), "#7dff9a");
     log("warp", { to: warping.label, ms: Math.round(now - warping.since) });
     warping = null;
   };
   /** Everything with a name and a place: landmarks, police, the licence centres, spots, wards. */
   const warpPlaces = (): WarpPlace[] => {
-    const label = new Map(categories.map((c) => [c.id, c.label]));
+    const label = new Map(categories.map((c) => [c.id, categoryLabel(c.id, c.label)]));
     const wards = new Map<string, { lat: number; lon: number; n: number }>();
     for (const p of pois) {
       const w = wards.get(p.ward) ?? { lat: 0, lon: 0, n: 0 };
       wards.set(p.ward, { lat: w.lat + p.lat, lon: w.lon + p.lon, n: w.n + 1 });
     }
     return [
-      ...landmarkEntries.map((l) => ({ name: l.name, kind: "ランドマーク", lat: l.lat, lon: l.lon })),
+      ...landmarkEntries.map((l) => ({
+        name: l.name,
+        kind: i18n.t("warp.kind.landmark"),
+        lat: l.lat,
+        lon: l.lon,
+      })),
       ...[...wards].map(([ward, w]) => ({
         name: ward,
-        kind: "区（スポットの中心）",
+        kind: i18n.t("warp.kind.ward"),
         lat: w.lat / w.n,
         lon: w.lon / w.n,
       })),
-      ...(policeData?.centres ?? []).map(([lon, lat, name]) => ({ name, kind: "運転免許試験場", lat, lon })),
-      ...(policeData?.stations ?? []).map(([lon, lat, name]) => ({ name, kind: "警察署", lat, lon })),
+      ...(policeData?.centres ?? []).map(([lon, lat, name]) => ({
+        name,
+        kind: i18n.t("warp.kind.licenseCenter"),
+        lat,
+        lon,
+      })),
+      ...(policeData?.stations ?? []).map(([lon, lat, name]) => ({
+        name,
+        kind: i18n.t("warp.kind.policeStation"),
+        lat,
+        lon,
+      })),
       ...pois.map((p) => ({
         name: p.name,
         kind: label.get(p.category) ?? p.category,
@@ -781,10 +921,10 @@ async function main(): Promise<void> {
   const showWarpResults = () => {
     const query = $<HTMLInputElement>("#warp-query").value;
     const places = warpPlaces();
-    // Before typing: the landmarks and the wards to choose from.
-    const shown = query.trim()
-      ? searchPlaces(places, query)
-      : places.filter((p) => p.kind === "ランドマーク" || p.kind.startsWith("区"));
+    // Before typing: the landmarks and the wards to choose from (their kinds, in the language in force).
+    const firstKinds = new Set([i18n.t("warp.kind.landmark"), i18n.t("warp.kind.ward")]);
+    const shown = query.trim() ? searchPlaces(places, query) : places.filter((p) => firstKinds.has(p.kind));
+    const kindSeparator = i18n.getLocale() === "en" ? " · " : "・";
     $("#warp-results").replaceChildren(
       ...shown.map((p) => {
         const li = document.createElement("li");
@@ -794,7 +934,7 @@ async function main(): Promise<void> {
         name.textContent = p.name;
         const kind = document.createElement("span");
         kind.className = "kind";
-        kind.textContent = [p.kind, p.ward].filter(Boolean).join("・");
+        kind.textContent = [p.kind, p.ward].filter(Boolean).join(kindSeparator);
         b.append(name, kind);
         b.addEventListener("click", () => {
           $<HTMLDialogElement>("#warp").close();
@@ -804,20 +944,22 @@ async function main(): Promise<void> {
         return li;
       }),
     );
-    $("#warp-home-label").textContent = home ? `自宅: ${home.label ?? "設定済み"}` : "自宅はまだありません";
+    $("#warp-home-label").textContent = home
+      ? i18n.t("warp.homeLabel", { place: home.label ?? i18n.t("warp.homeSet") })
+      : i18n.t("warp.noHome");
   };
   $("#warp-query").addEventListener("input", showWarpResults);
   $("#warp-home").addEventListener("click", () => {
-    if (!home) return toast("自宅がまだありません。「いまの場所を自宅にする」で決められます");
+    if (!home) return toast(i18n.t("toast.noHome"));
     $<HTMLDialogElement>("#warp").close();
-    warpTo({ name: "自宅", kind: "自宅", lat: home.lat, lon: home.lon });
+    warpTo({ name: i18n.t("warp.home"), kind: i18n.t("warp.home"), lat: home.lat, lon: home.lon });
   });
   $("#warp-set-home").addEventListener("click", () => {
     const g = frame.toGeodetic(focusPos());
     home = { lat: g.lat, lon: g.lon, label: [wardName, townName].filter(Boolean).join(" ") || undefined };
     saveHome(home);
     showWarpResults();
-    toast("いまの場所を自宅にしました", "#7dff9a");
+    toast(i18n.t("toast.homeSet"), "#7dff9a");
   });
 
   // ---------- UI wiring ----------
@@ -831,7 +973,7 @@ async function main(): Promise<void> {
   input.on("time", () => {
     const next = TIME_MODES[(TIME_MODES.indexOf(env.timeMode) + 1) % TIME_MODES.length];
     setTime(next);
-    toast(`時間帯: ${TIME_LABEL[next]}`);
+    toast(i18n.t("toast.timeOfDay", { label: i18n.t(TIME_KEY[next]) }));
   });
   const weatherButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-weather]")];
   const setWeather = (mode: WeatherMode) => {
@@ -844,16 +986,15 @@ async function main(): Promise<void> {
   input.on("weather", () => {
     const order: WeatherMode[] = ["real", "auto", "clear", "rain"];
     setWeather(order[(order.indexOf(env.weather) + 1) % order.length]);
-    toast(`天気: ${WEATHER_LABEL[env.weather]}`);
+    toast(i18n.t("toast.weather", { label: i18n.t(WEATHER_KEY[env.weather]) }));
   });
   input.on("ground", () => {
     terrain.setStyle(terrain.getStyle() === "photo" ? "plateau" : "photo");
-    toast(`地面: ${terrain.getStyle() === "photo" ? "地理院 全国最新写真" : "PLATEAU オルソ画像 2023"}`);
+    const isPhoto = terrain.getStyle() === "photo";
+    toast(i18n.t("toast.ground", { name: i18n.t(isPhoto ? "toast.groundPhoto" : "toast.groundPlateau") }));
   });
-  input.on("camera", () =>
-    toast(`視点: ${{ chase: "追従", far: "俯瞰", hood: "ボンネット", cockpit: "運転席" }[chase.cycle()]}`),
-  );
-  input.on("mute", () => toast(audio.toggleMute() ? "サウンド オフ" : "サウンド オン"));
+  input.on("camera", () => toast(i18n.t("toast.camera", { name: i18n.t(CAMERA_KEY[chase.cycle()]) })));
+  input.on("mute", () => toast(i18n.t(audio.toggleMute() ? "toast.soundOff" : "toast.soundOn")));
   input.on("reset", respawnHere);
   input.on("help", () => $<HTMLDialogElement>("#help").showModal());
   // タイトルへ: the title screen is the page's own start screen, so going back is a fresh load (what
@@ -877,8 +1018,9 @@ async function main(): Promise<void> {
   input.on("mission", () => {
     const g = frame.toGeodetic(vehicle.position());
     const m = missions.start(g.lat, g.lon, performance.now());
-    if (m) toast(`目的地: ${m.target.name}（${Math.round(m.startDistance)} m）`, "#ffe14d");
-    else toast("近くに目的地候補がありません");
+    if (m)
+      toast(i18n.t("toast.missionStart", { name: m.target.name, m: Math.round(m.startDistance) }), "#ffe14d");
+    else toast(i18n.t("toast.noMission"));
   });
   buildToolbar($("#hud-toolbar"));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-action]")) {
@@ -1027,7 +1169,7 @@ async function main(): Promise<void> {
     ...(Object.keys(CAMERA_LABEL) as ReplayCamera[]).map((k) => {
       const o = document.createElement("option");
       o.value = k;
-      o.textContent = `カメラ: ${CAMERA_LABEL[k]}`;
+      i18n.bindText(o, () => i18n.t("replay.cameraOption", { name: i18n.t(REPLAY_CAMERA_KEY[k]) }));
       return o;
     }),
   );
@@ -1037,7 +1179,8 @@ async function main(): Promise<void> {
   /** Open the replay at a moment (default: 20 s before the end of the recording). */
   const startReplay = (at?: number, source?: ReplaySource) => {
     const rec = source?.rec ?? recorder;
-    if (rec.frames.length < (source ? 2 : 10) || state !== "playing") return toast("まだ記録がありません");
+    if (rec.frames.length < (source ? 2 : 10) || state !== "playing")
+      return toast(i18n.t("toast.noRecording"));
     for (const o of liveObjects()) o.visible = false;
     replay = {
       t: at ?? Math.max(rec.start, rec.end - 20000),
@@ -1071,7 +1214,7 @@ async function main(): Promise<void> {
       ...r0.marks.map((r) => {
         const m = document.createElement("span");
         m.style.left = `${((r.at - rec.start) / span) * 100}%`;
-        m.title = r.label;
+        m.title = violationName(r.label);
         return m;
       }),
     );
@@ -1130,7 +1273,11 @@ async function main(): Promise<void> {
     videoFrame.style.setProperty("--ar", String(aw / ah));
     const label = document.createElement("div");
     label.className = "video-frame-label";
-    label.textContent = `${SOCIAL_APP_NAME} ・ ${post.author}（@${post.handle}）が撮影`;
+    label.textContent = i18n.t("replay.filmedBy", {
+      app: SOCIAL_APP_NAME,
+      author: post.author,
+      handle: post.handle,
+    });
     videoFrame.append(label);
     document.body.append(videoFrame);
     log("social", { event: "video", post: post.id, view: current.camera });
@@ -1138,15 +1285,16 @@ async function main(): Promise<void> {
   };
   /** Why a violation is one, for the replay caption: the article, points and fine, and what happened. */
   const replayWhy = (r: ViolationRecord): string => {
-    const fine = r.fine === null ? "反則金なし（刑事手続）" : `反則金 ${r.fine.toLocaleString()} 円`;
+    const fine =
+      r.fine === null ? i18n.t("replay.noFine") : i18n.t("replay.fine", { fine: formatNumber(r.fine) });
     const c = r.context;
-    const speed = c
-      ? `${Math.round(c.kmh)} km/h${c.limit !== null ? `（${c.limitKind === "sign" ? "規制" : "法定"} ${c.limit} km/h）` : ""}`
-      : "";
+    const kmh = c ? Math.round(c.kmh) : 0;
+    const limitKey = c?.limitKind === "sign" ? "replay.kmhSign" : "replay.kmhStatutory";
+    const speed = !c ? "" : c.limit === null ? `${kmh} km/h` : i18n.t(limitKey, { kmh, limit: c.limit });
     // The detail already says the speed when there is one.
-    return [`${r.article}・${r.points} 点・${fine}`, c?.detail ?? speed, c?.place]
-      .filter(Boolean)
-      .join(" ／ ");
+    const why = i18n.t("replay.why", { article: lawRef(r.article), points: pointsCount(r.points), fine });
+    const detail = c?.detail ? violationDetail(c.detail) : speed;
+    return [why, detail, c?.place ? recordPlace(c.place) : ""].filter(Boolean).join(" ／ ");
   };
   const playReplay = (dt: number) => {
     const r = replay;
@@ -1192,7 +1340,7 @@ async function main(): Promise<void> {
     if (near && caption.dataset.at !== String(near.at)) {
       caption.dataset.at = String(near.at);
       caption.replaceChildren(
-        Object.assign(document.createElement("strong"), { textContent: `⚠ ${near.label}` }),
+        Object.assign(document.createElement("strong"), { textContent: `⚠ ${violationName(near.label)}` }),
         Object.assign(document.createElement("span"), { textContent: near.why }),
       );
     }
@@ -1235,6 +1383,17 @@ async function main(): Promise<void> {
   // 設定: WASD and 簡単操作 unless this browser chose otherwise; the seat, the screen, the sound.
   let navHidden = false;
   let prefsNow = loadPrefs();
+  /**
+   * HUD text that names a key, from the layout in force (index.html's own copy names P, O and F
+   * from older layouts): bound, so a language switch redraws it; applyPrefs redraws it for a new
+   * layout.
+   */
+  const showKeyHints = () => {
+    i18n.bindText($("#paused"), () => i18n.t("hud.paused", { key: keyOf("pause") }));
+    i18n.bindText($("#autopilot-how"), () => i18n.t("hud.autopilotHow", { key: keyOf("autopilot") }));
+    i18n.bindText($("#incident-text"), () => i18n.t("incident.text", { key: keyOf("phone") }));
+    $("#phone-button").title = i18n.t("hud.phoneButton", { key: keyOf("phone") });
+  };
   const applyPrefs = (prefs: ControlPrefs) => {
     prefsNow = prefs;
     input.layout = prefs.layout;
@@ -1259,10 +1418,16 @@ async function main(): Promise<void> {
     $<HTMLSelectElement>("#opt-layout").value = prefs.layout;
     $<HTMLSelectElement>("#opt-assist").value = prefs.assist;
     renderKeyList($("#help-keys"), prefs);
+    showKeyHints();
     // Each toolbar button shows its key in this layout.
     labelToolbar($("#hud-toolbar"), prefs.layout);
   };
   applyPrefs(prefsNow);
+  // The help's key list and the hints' titles are built in code: again in the new language.
+  i18n.onLocaleChange(() => {
+    renderKeyList($("#help-keys"), prefsNow);
+    showKeyHints();
+  });
   const savePrefsAndApply = (prefs: ControlPrefs) => {
     savePrefs(prefs);
     applyPrefs(prefs);
@@ -1316,38 +1481,37 @@ async function main(): Promise<void> {
     "hazard",
     inCarOnly(() => {
       controls.hazard = !controls.hazard;
-      toast(controls.hazard ? "ハザードランプ ON" : "ハザードランプ OFF");
+      toast(i18n.t(controls.hazard ? "toast.hazardOn" : "toast.hazardOff"));
     }),
   );
   input.on(
     "lights",
     inCarOnly(() => {
-      const label = { auto: "AUTO", on: "点灯", off: "消灯" }[controls.cycleLights()];
-      toast(`ライト: ${label}`);
+      const lights = controls.cycleLights();
+      const label = lights === "auto" ? "AUTO" : i18n.t(lights === "on" ? "hud.lightsOn" : "hud.lightsOff");
+      toast(i18n.t("toast.lights", { mode: label }));
     }),
   );
   input.on(
     "highBeam",
     inCarOnly(() => {
       controls.highBeam = !controls.highBeam;
-      toast(controls.highBeam ? "ハイビーム（走行用前照灯）" : "ロービーム（すれ違い用前照灯）");
+      toast(i18n.t(controls.highBeam ? "toast.highBeam" : "toast.lowBeam"));
     }),
   );
   input.on(
     "wipers",
     inCarOnly(() => {
       controls.wipers = (controls.wipers + 1) % 4;
-      toast(`ワイパー: ${["OFF", "間欠", "LO", "HI"][controls.wipers]}`);
+      const wipers = ["OFF", i18n.t("hud.wipersIntermittent"), "LO", "HI"][controls.wipers];
+      toast(i18n.t("toast.wipers", { mode: wipers ?? "OFF" }));
     }),
   );
   input.on(
     "belt",
     inCarOnly(() => {
       controls.belt = !controls.belt;
-      toast(
-        controls.belt ? "シートベルトを締めました" : "シートベルトを外しました",
-        controls.belt ? "#7dff9a" : "#ffb347",
-      );
+      toast(i18n.t(controls.belt ? "toast.beltOn" : "toast.beltOff"), controls.belt ? "#7dff9a" : "#ffb347");
     }),
   );
   // ナビのテレビ (game/naviTv.ts): the picture only stopped with the parking brake on, the sound always.
@@ -1405,13 +1569,13 @@ async function main(): Promise<void> {
   // The keys flip the same settings the 設定 screen shows, and they are remembered alike.
   input.on("nav", () => {
     savePrefsAndApply({ ...prefsNow, nav: !prefsNow.nav });
-    toast(navHidden ? "ナビの表示を消しました（M で戻す）" : "ナビを表示します");
+    toast(navHidden ? i18n.t("toast.navHidden", { key: keyOf("nav") }) : i18n.t("toast.navShown"));
   });
   input.on("minimap", () => savePrefsAndApply({ ...prefsNow, minimap: !prefsNow.minimap }));
   // A click on the small map turns it between 進行方向が上 and 北が上.
   $("#minimap").addEventListener("click", () => {
     savePrefsAndApply({ ...prefsNow, minimapNorthUp: !prefsNow.minimapNorthUp });
-    toast(prefsNow.minimapNorthUp ? "小さな地図: 北が上" : "小さな地図: 進行方向が上");
+    toast(i18n.t(prefsNow.minimapNorthUp ? "toast.minimapNorthUp" : "toast.minimapHeadingUp"));
   });
 
   // 設定: everything stops while it is open (as the P pause), and goes on as it was when closed.
@@ -1433,7 +1597,7 @@ async function main(): Promise<void> {
   input.on("cameraPrev", () => {
     chase.cycle();
     chase.cycle();
-    toast(`視点: ${{ chase: "追従", far: "俯瞰", hood: "ボンネット", cockpit: "運転席" }[chase.cycle()]}`);
+    toast(i18n.t("toast.camera", { name: i18n.t(CAMERA_KEY[chase.cycle()]) }));
   });
   input.on("screenshot", () => {
     // The next drawn frame, saved as a PNG.
@@ -1443,14 +1607,14 @@ async function main(): Promise<void> {
     // E: the engine in the car (City Car Driving), talking to someone on foot.
     if (mode === "car" && state === "playing") {
       controls.engineOn = !controls.engineOn;
-      toast(controls.engineOn ? "エンジンを始動しました" : "エンジンを止めました");
+      toast(i18n.t(controls.engineOn ? "toast.engineOn" : "toast.engineOff"));
       return;
     }
     if (conversation.active || state !== "playing") return;
     const isStopped = mode === "foot" || Math.abs(vehicle.speedKmh()) < 4;
     const p = isStopped ? pedestrians.nearest(focusPos(), mode === "foot" ? 3.5 : 10) : null;
     if (!p) {
-      toast(isStopped ? "近くに歩行者がいません" : "停車してから話しかけましょう");
+      toast(i18n.t(isStopped ? "toast.noPedestrian" : "toast.stopToTalk"));
       return;
     }
     pedestrians.startTalk(p, focusPos());
@@ -1460,18 +1624,18 @@ async function main(): Promise<void> {
   input.on("autopilot", () => {
     // A is also the walking key (strafe) on foot: only the driver's seat has an autopilot.
     if (state !== "playing" || mode !== "car") return;
-    if (autopilot) stopAutopilot("自動運転を解除しました");
+    if (autopilot) stopAutopilot(i18n.t("toast.autopilotOff"));
     else startAutopilot();
   });
   input.on("door", () => {
     if (state !== "playing") return;
     if (autopilot) {
-      if (autopilot.driver.speed > 0.5) return toast("停車してから降りましょう");
-      stopAutopilot("自動運転を解除しました");
+      if (autopilot.driver.speed > 0.5) return toast(i18n.t("toast.stopToGetOut"));
+      stopAutopilot(i18n.t("toast.autopilotOff"));
     }
     if (mode === "taxi") {
       if (taxi && taxi.speed < 0.5) leaveTaxi();
-      else toast("タクシーが止まるまでお待ちください");
+      else toast(i18n.t("toast.waitTaxiStop"));
       return;
     }
     if (mode === "foot" && taxi?.state === "waiting" && walker.position().distanceTo(taxi.position) < 5) {
@@ -1480,7 +1644,7 @@ async function main(): Promise<void> {
     }
     if (mode === "car") {
       if (Math.abs(vehicle.speedKmh()) > 5) {
-        toast("停車してから降りましょう");
+        toast(i18n.t("toast.stopToGetOut"));
         return;
       }
       // Right-hand drive: the driver's door is on the car's right (chassis −X when facing +Z).
@@ -1491,23 +1655,18 @@ async function main(): Promise<void> {
       vehicle.setParked(true);
       mode = "foot";
       announceIdlingStop();
-      toast(
-        `車を降りました（${doorKey()} で乗車・Shift で走る・Space でジャンプ・←→ やドラッグで視点）`,
-        "#4dd2ff",
-      );
+      toast(i18n.t("toast.gotOut", { key: doorKey() }), "#4dd2ff");
       return;
     }
     if (walker.position().distanceTo(vehicle.position()) > 4.5) {
-      toast(`車のそばで ${doorKey()} を押すと乗車します`);
+      toast(i18n.t("toast.getInHint", { key: doorKey() }));
       return;
     }
     // Nothing physically stops a suspended driver; the law does. Ask twice.
     if (law.state.suspended && performance.now() - unlicensedWarnedAt > 5000) {
       unlicensedWarnedAt = performance.now();
-      toast(
-        `免許停止中です（あと ${suspendedDays} 日）。運転すると無免許運転（道路交通法 第64条）になります。それでも乗るならもう一度 F`,
-        "#ff6b6b",
-      );
+      // The key from the layout (the hint said F, the phone's key, from before 乗降 moved to Q).
+      toast(i18n.t("toast.suspendedWarn", { days: daysText(suspendedDays), key: doorKey() }), "#ff6b6b");
       return;
     }
     walker.leave();
@@ -1518,7 +1677,7 @@ async function main(): Promise<void> {
       if (pendingParking) openParkingDialog(pendingParking);
     }
     chase.snap();
-    toast("乗車しました");
+    toast(i18n.t("toast.gotIn"));
   });
   // Esc: the conversation, the phone held large or in a call — or else 設定. The phone in its holder
   // stays (F puts it away): it is out all the time, so Esc would never reach 設定.
@@ -1588,7 +1747,7 @@ async function main(): Promise<void> {
   const announceIdlingStop = () => {
     if (idlingAnnounced) return;
     idlingAnnounced = true;
-    toast("エンジンを停止しました（東京都環境確保条例 第52条：アイドリング・ストップ）", "#7dff9a");
+    toast(i18n.t("toast.idlingStop"), "#7dff9a");
   };
   const contactCooldown = new Map<number, number>();
   const loadStart = performance.now();
@@ -1650,7 +1809,8 @@ async function main(): Promise<void> {
     setTime(time);
     // おまかせ: it starts fair or wet and turns now and then.
     setWeather("auto");
-    toast(`今日は「${TIME_LABEL[time]}・${env.isRaining() ? "雨" : "晴れ"}」から走り出します`, "#4dd2ff");
+    const sky = i18n.t(env.isRaining() ? "weather.label.rain" : "weather.label.clear");
+    toast(i18n.t("toast.dayStart", { time: i18n.t(TIME_KEY[time]), weather: sky }), "#4dd2ff");
     // The phone starts in its holder, on screens wide enough to keep the road in view beside it.
     const isWideScreen = window.innerWidth >= 900;
     if (isWideScreen) {
@@ -1660,8 +1820,9 @@ async function main(): Promise<void> {
     }
     log("game_started", {});
     // Once per browser, after the opening toasts: hang it small (knowledge/mirror-charms.md).
-    if (prefsNow.charm !== "none" && firstCharmTip()) setTimeout(() => toast(CHARM_TIP, "#ffe14d"), 7000);
-    toast("光の柱＝東京都オープンデータの実在スポット。N キーで目的地ミッション！", "#4dd2ff");
+    if (prefsNow.charm !== "none" && firstCharmTip())
+      setTimeout(() => toast(i18n.t(CHARM_TIP), "#ffe14d"), 7000);
+    toast(i18n.t("toast.welcome", { key: keyOf("mission") }), "#4dd2ff");
   });
 
   const tick = (now: number) => {
@@ -1827,16 +1988,16 @@ async function main(): Promise<void> {
       const trip = missions.startTrip(g.lat, g.lon, now);
       if (trip) {
         const km = (trip.startDistance / 1000).toFixed(1);
-        toast(`最初の目的地: ${trip.target.name}（約 ${km} km）。法令を守って向かいましょう`, "#ffe14d");
+        toast(i18n.t("toast.firstTrip", { name: trip.target.name, km }), "#ffe14d");
         if (controls.assist === "real")
-          toast("出発前に B でシートベルトを締めましょう（座席ベルト装着義務、第71条の3）", "#4dd2ff");
+          toast(i18n.t("toast.beltBeforeStart", { key: keyOf("belt") }), "#4dd2ff");
         log("trip", { target: trip.target.name, metres: Math.round(trip.startDistance) });
       }
     }
     const manual = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
     // Any steering, accelerator or brake input takes the car back, as with a real driver-assist system.
     const isOverride = Math.abs(manual.throttle) > 0.2 || manual.brake > 0.2 || Math.abs(manual.steer) > 0.3;
-    if (autopilot && isOverride) stopAutopilot("運転操作で自動運転を解除しました");
+    if (autopilot && isOverride) stopAutopilot(i18n.t("toast.autopilotOverride"));
     // With the engine off the accelerator does nothing (E starts it again).
     const pedals = autopilot ? autopilot.input : manual;
     if (isInCar) controls.autoOperate(autoContext(manual.throttle), dt);
@@ -1925,7 +2086,7 @@ async function main(): Promise<void> {
     if (adriftSince !== null && now - adriftSince > 1500) {
       adriftSince = null;
       respawnHere();
-      toast("川に落ちました。岸に戻します", "#4dd2ff");
+      toast(i18n.t("toast.fellInRiver"), "#4dd2ff");
     }
     const footGround = isOnFoot ? groundY(focus.x, focus.z) : null;
     // Fallen in the water (the riverbed is not ground): back up on the nearest bank.
@@ -2010,8 +2171,11 @@ async function main(): Promise<void> {
       overSince = isOver ? (overSince ?? now) : null;
       if (overSince !== null && currentLimit !== null && now - overSince > 3000) {
         const v = speedViolation(speed - currentLimit);
-        const label = currentLimitKind === "sign" ? "規制速度" : "法定速度";
-        const detail = `${label} ${currentLimit} km/h のところ ${Math.round(speed)} km/h（${Math.round(speed - currentLimit)} km/h 超過）`;
+        // Recorded in Japanese (stored, read by Y and the AI); violationDetail() shows it translated.
+        const key =
+          currentLimitKind === "sign" ? "violationDetail.speedSign" : "violationDetail.speedStatutory";
+        const over = Math.round(speed - currentLimit);
+        const detail = inJapanese(key, { limit: currentLimit, kmh: Math.round(speed), over });
         if (v) book(v, now, 20000, detail);
       }
       const isTwoWay = onRoad !== null && onRoad.seg.oneway === 0 && onRoad.seg.line.width >= 5.5;
@@ -2030,15 +2194,26 @@ async function main(): Promise<void> {
 
       // 無免許運転: driving at all while the licence is suspended.
       if (law.state.suspended && speed > 5)
-        book(VIOLATIONS.unlicensed, now, 10 * 60_000, `免許停止中（あと ${suspendedDays} 日）に運転`);
+        book(
+          VIOLATIONS.unlicensed,
+          now,
+          10 * 60_000,
+          inJapanese("violationDetail.unlicensed", { days: suspendedDays }),
+        );
 
       // 通行禁止 (車両通行止め, 歩行者用道路) in force: entering the street at all is the offence.
       closedSince = onRoad?.seg.closed && speed > 5 ? (closedSince ?? now) : null;
       if (closedSince !== null && now - closedSince > 1500 && onRoad) {
         const active = onRoad.seg.closures.find((c) => isInForceTime(c.time, clock));
-        const what = active ? CLOSURE_WORDS[active.kind] : "通行禁止";
+        const what = active ? CLOSURE_WORDS[active.kind] : null;
         const note = active ? timeNote(active.time) : null;
-        book(VIOLATIONS.closedRoad, now, 20000, `${what}の道路に進入${note ? `（${note}）` : ""}`);
+        const detail =
+          what === null
+            ? inJapanese("violationDetail.closedRoadAny")
+            : note
+              ? inJapanese("violationDetail.closedRoadTimed", { what, note })
+              : inJapanese("violationDetail.closedRoad", { what });
+        book(VIOLATIONS.closedRoad, now, 20000, detail);
       }
 
       // JARTIC section rules in force now (時間帯指定を含む).
@@ -2123,7 +2298,9 @@ async function main(): Promise<void> {
             VIOLATIONS.signalOmission,
             now,
             15000,
-            `${side === "left" ? "左折" : "右折"}の合図を出さずに曲がった`,
+            inJapanese(
+              side === "left" ? "violationDetail.turnLeftNoSignal" : "violationDetail.turnRightNoSignal",
+            ),
           );
       }
       // 合図 for changing lanes on a multi-lane road.
@@ -2135,7 +2312,7 @@ async function main(): Promise<void> {
         if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
           const side = lane < laneHeld.lane ? "left" : "right";
           if (now - indicatorSeen[side] > 6000)
-            book(VIOLATIONS.signalOmission, now, 15000, "合図を出さずに車線を変更した");
+            book(VIOLATIONS.signalOmission, now, 15000, inJapanese("violationDetail.laneChangeNoSignal"));
         }
         laneHeld = { seg: s, lane };
       } else laneHeld = null;
@@ -2145,7 +2322,7 @@ async function main(): Promise<void> {
       for (const hit of orbis.check(lawPrevPos, carPos, speed, now)) {
         const photo = speedViolation(hit.excess) ?? VIOLATIONS.signal;
         const context = violationContext(
-          `速度違反自動取締装置（オービス）で撮影: ${Math.round(speed)} km/h（制限 ${hit.limit} km/h）`,
+          inJapanese("violationDetail.orbis", { kmh: Math.round(speed), limit: hit.limit }),
         );
         const committed = law.commit(photo, now, 0, context);
         if (committed) pendingShots.push(committed);
@@ -2163,10 +2340,10 @@ async function main(): Promise<void> {
 
       // 無灯火 (第52条): at night with the headlights switched off.
       if (env.nightFactor > 0.5 && speed > 5 && !autopilot && !controls.headlightsOn(true))
-        book(VIOLATIONS.noLights, now, 5 * 60_000, "夜間に前照灯を消して走行");
+        book(VIOLATIONS.noLights, now, 5 * 60_000, inJapanese("violationDetail.noLights"));
       // 座席ベルト (第71条の3).
       if (speed > 10 && !controls.belt)
-        book(VIOLATIONS.seatBelt, now, 10 * 60_000, "シートベルトを着けずに運転");
+        book(VIOLATIONS.seatBelt, now, 10 * 60_000, inJapanese("violationDetail.seatBelt"));
       // 警音器 (第54条第2項): only to prevent danger; nobody close ahead means it was not needed.
       if (hornFor > 0.4) {
         const fwd = carForward;
@@ -2175,7 +2352,7 @@ async function main(): Promise<void> {
             const d = q.object.position.clone().sub(carPos);
             return d.length() < 20 && d.dot(fwd) > 0;
           }) || traffic.positions().some((q) => q.distanceTo(carPos) < 12);
-        if (!isDanger) book(VIOLATIONS.hornMisuse, now, 30000, "危険がないのに警音器を鳴らした");
+        if (!isDanger) book(VIOLATIONS.hornMisuse, now, 30000, inJapanese("violationDetail.horn"));
       }
 
       // …against the way the car leaves, judged 25 m past the junction (clear of its box).
@@ -2192,22 +2369,18 @@ async function main(): Promise<void> {
               turn,
               source: j.use.source,
             });
-            const words = (d: string) =>
-              ({
-                left: "左折",
-                slight_left: "斜め左",
-                through: "直進",
-                slight_right: "斜め右",
-                right: "右折",
-                reverse: "転回",
-              })[d] ?? d;
+            // In Japanese, as recorded: 「直進・左折の車線（左から 1 番目）から右方向」.
+            const words = (d: string) => {
+              const key = LANE_RECORD[d];
+              return key ? inJapanese(key) : d;
+            };
             const allowed = j.use.lanes[j.lane].map(words).join("・");
-            book(
-              VIOLATIONS.laneDirection,
-              now,
-              15000,
-              `${allowed}の車線（左から ${j.lane + 1} 番目）から${TURN_WORDS[turn]}`,
-            );
+            const detail = inJapanese("violationDetail.laneDirection", {
+              allowed,
+              n: j.lane + 1,
+              turn: inJapanese(TURN_RECORD[turn]),
+            });
+            book(VIOLATIONS.laneDirection, now, 15000, detail);
           }
         }
       }
@@ -2289,12 +2462,9 @@ async function main(): Promise<void> {
       ticket.visible = true;
       pendingParking = place === "noStopping" ? VIOLATIONS.parkingNoStop : VIOLATIONS.parking;
       stamps.stamp("確認標章", place === "noStopping" ? "駐停車禁止場所" : "駐車禁止場所");
-      toast(
-        "駐車監視員が放置車両確認標章を取り付けました（警察署への出頭か、放置違反金の納付が必要です）",
-        "#ffd400",
-      );
+      toast(i18n.t("toast.parkingTicketed"), "#ffd400");
     } else if (patrolEvent === "aborted") {
-      toast("運転者が戻ったため、駐車監視員は確認を取りやめました", "#7dff9a");
+      toast(i18n.t("toast.parkingAborted"), "#7dff9a");
     }
 
     // Working the phone while the car moves (in its holder it is fine); emergency calls to rescue
@@ -2313,24 +2483,21 @@ async function main(): Promise<void> {
       pedestrians.rescue(p),
     );
     if (incidentEvent?.type === "hitAndRun") {
-      toast(
-        "負傷者を救護せず現場を離れました。目撃者が 119 番・110 番に通報し、パトカーが追跡しています",
-        "#ff6b6b",
-      );
+      toast(i18n.t("toast.hitAndRun"), "#ff6b6b");
     } else if (incidentEvent?.type === "arrested") {
       law.book(VIOLATIONS.hitAndRun, now, 0);
       showArrest(incidentEvent.later ? "hitAndRunLater" : "hitAndRun");
     } else if (incidentEvent?.type === "arrived") {
       toast(
-        incidentEvent.kind === "ambulance" ? "🚑 救急車が到着しました" : "🚓 パトカーが到着しました",
+        i18n.t(incidentEvent.kind === "ambulance" ? "toast.ambulanceArrived" : "toast.policeArrived"),
         "#4dd2ff",
       );
     } else if (incidentEvent?.type === "rescued") {
-      toast("負傷者は病院へ搬送されました", "#4dd2ff");
+      toast(i18n.t("toast.rescued"), "#4dd2ff");
     } else if (incidentEvent?.type === "notReported") {
-      notify("violation", "警察に事故を報告しませんでした（道路交通法 第72条第1項後段：報告義務）");
+      notify("violation", () => i18n.t("notify.notReported"));
     } else if (incidentEvent?.type === "closed") {
-      toast("警察の事故処理が終わりました。安全運転を心がけましょう", "#7dff9a");
+      toast(i18n.t("toast.incidentClosed"), "#7dff9a");
     }
 
     updateIncidentPanel(now);
@@ -2345,10 +2512,10 @@ async function main(): Promise<void> {
     const nearTaxi = isOnFoot && taxi?.state === "waiting" && walker.position().distanceTo(taxi.position) < 5;
     const hint = $("#talk-hint");
     const hints = [
-      talkable ? `E で話しかける（${talkable.profile.name}さん）` : "",
-      nearCar ? `${doorKey()} で乗車` : "",
-      nearTaxi ? `${doorKey()} でタクシーに乗る` : "",
-      isInTaxi && taxi && taxi.speed < 0.5 ? `${doorKey()} でタクシーを降りる` : "",
+      talkable ? i18n.t("hud.hintTalk", { key: keyOf("talk"), name: talkable.profile.name }) : "",
+      nearCar ? i18n.t("hud.hintGetIn", { key: doorKey() }) : "",
+      nearTaxi ? i18n.t("hud.hintTaxi", { key: doorKey() }) : "",
+      isInTaxi && taxi && taxi.speed < 0.5 ? i18n.t("hud.hintTaxiOut", { key: doorKey() }) : "",
     ].filter(Boolean);
     hint.hidden = hints.length === 0 || partner !== null;
     hint.textContent = hints.join("　");
@@ -2361,19 +2528,20 @@ async function main(): Promise<void> {
       const cat = field.category(p.category);
       score += cat?.points ?? 10;
       audio.chime();
-      toast(`発見！ ${p.name}（${cat?.label ?? p.category}） +${cat?.points ?? 10}`, cat?.color);
+      const category = categoryLabel(p.category, cat?.label ?? p.category);
+      toast(i18n.t("toast.found", { name: p.name, category, points: cat?.points ?? 10 }), cat?.color);
       log("poi_collected", { id: p.id, category: p.category, ward: p.ward });
     }
     field.update(dt, env.nightFactor);
 
     const result = missions.check(geo.lat, geo.lon, now);
-    if (result === "timeout") toast("時間切れ… N で次の目的地", "#ff6b6b");
+    if (result === "timeout") toast(i18n.t("toast.missionTimeout", { key: keyOf("mission") }), "#ff6b6b");
     else if (result && result.target.category === "home") endDay();
     else if (result && result.target.category === "appointment") appear();
     else if (result) {
       score += result.reward;
       audio.chime(true);
-      toast(`ミッション達成！ ${result.target.name} +${result.reward}`, "#7dff9a");
+      toast(i18n.t("toast.missionDone", { name: result.target.name, points: result.reward }), "#7dff9a");
     }
     const target = missions.current?.target ?? null;
     // In the car the green route arrows show the way; the direction cone would only compete.
@@ -2489,9 +2657,13 @@ async function main(): Promise<void> {
       $("#car-status").hidden = !isInCar;
       $("#ind-left").classList.toggle("on", signalLeft && blink);
       $("#ind-right").classList.toggle("on", signalRight && blink);
-      $("#light-status").textContent =
-        `💡${{ auto: "AUTO", on: "ON", off: "OFF" }[controls.lights]}${controls.highBeam ? "・ハイ" : ""}`;
-      $("#belt-status").textContent = controls.belt ? "ベルト ✓" : "ベルト未着用（B）";
+      const lightMode = { auto: "AUTO", on: "ON", off: "OFF" }[controls.lights];
+      $("#light-status").textContent = controls.highBeam
+        ? i18n.t("hud.lightStatusHigh", { mode: lightMode })
+        : `💡${lightMode}`;
+      $("#belt-status").textContent = controls.belt
+        ? i18n.t("hud.beltOn")
+        : i18n.t("hud.beltOff", { key: keyOf("belt") });
       $("#belt-status").classList.toggle("warn", !controls.belt);
       {
         const c = gameClockNow();
@@ -2514,8 +2686,7 @@ async function main(): Promise<void> {
       conversation.refreshStatus();
       phone.refresh();
       if (brain.status !== lastBrainStatus) {
-        if (brain.status === "ready")
-          toast("会話 AI（Gemma 4）の準備ができました。歩行者に話しかけてみましょう", "#4dd2ff");
+        if (brain.status === "ready") toast(i18n.t("toast.aiReady"), "#4dd2ff");
         if (brain.status === "error") toast(brain.detail, "#ff6b6b");
         lastBrainStatus = brain.status;
       }
@@ -2524,10 +2695,10 @@ async function main(): Promise<void> {
       chip.hidden = !isBusy && brain.status !== "error";
       chip.textContent =
         brain.status === "downloading"
-          ? `会話AI ダウンロード中 ${Math.round(brain.progress * 100)}%`
+          ? i18n.t("hud.aiDownloading", { percent: Math.round(brain.progress * 100) })
           : brain.status === "loading"
-            ? "会話AI 準備中…"
-            : "会話AI: 利用できません（定型応答）";
+            ? i18n.t("hud.aiLoading")
+            : i18n.t("hud.aiUnavailable");
     }
     // Record the moment for replays.
     recorder.capture(
@@ -2653,7 +2824,7 @@ async function main(): Promise<void> {
   const praise = (kind: PraiseKind) => {
     const c = social.maybePraise(kind, witnessesAround(vehicle.position()), env.now().getTime());
     if (!c) return;
-    notify("social", `「${SOCIAL_APP_NAME}」であなたの運転がほめられています`);
+    notify("social", () => i18n.t("notify.praised", { app: SOCIAL_APP_NAME }));
     socialUnread++;
     log("social", { event: "praise", kind });
   };
@@ -2673,7 +2844,7 @@ async function main(): Promise<void> {
     const carPos = vehicle.position();
     if (isAccident) {
       law.cite(booked, "accident");
-      notify("caught", formatViolation(booked));
+      notify("caught", () => formatViolation(booked));
       stamps.stamp("違反", shortLabel(booked.label));
     } else if (patrols.some((u) => u.sees(carPos))) {
       // The unit already on the car takes it; otherwise the first that saw it.
@@ -2681,10 +2852,10 @@ async function main(): Promise<void> {
       if (unit) {
         police = unit;
         if (unit.witness(booked) === "pursuit") startPursuit();
-        notify("caught", `${PATROL_LABEL[unit.kind]}に見られた: ${booked.label}`);
+        notify("caught", () => i18n.t(SEEN_BY_KEY[unit.kind], { label: violationName(booked.label) }));
       }
     } else {
-      notify("violation", `${booked.label}（未検挙）`);
+      notify("violation", () => i18n.t("notify.uncaught", { label: violationName(booked.label) }));
     }
     // Bystanders and dashcams nearby: someone may film it and post it.
     const witnesses = witnessesAround(carPos);
@@ -2693,7 +2864,12 @@ async function main(): Promise<void> {
     const filmers = witnessPhones.react(booked, post, carPos);
     if (filmers > 0) log("social", { event: "filmed", kind: booked.kind, filmers, witnesses });
     if (post) {
-      notify("social", `誰かがあなたの運転を「${SOCIAL_APP_NAME}」にポストしました（${booked.label}）`, post);
+      const label = booked.label;
+      notify(
+        "social",
+        () => i18n.t("notify.posted", { app: SOCIAL_APP_NAME, label: violationName(label) }),
+        post,
+      );
       socialUnread++;
       log("social", { event: "post", kind: booked.kind, witnesses, reach: post.reach });
     }
@@ -2828,18 +3004,15 @@ async function main(): Promise<void> {
     for (const p of social.update(env.now().getTime())) {
       if (p.record.status !== "uncaught") continue;
       law.notice(p.record, "sns");
-      notify("police", "拡散された動画から警察が車を特定しました。後日、出頭の通知が届きます");
+      notify("police", () => i18n.t("notify.traced"));
       log("social", { event: "reported", kind: p.record.kind, reposts: p.reposts });
     }
     for (const p of social.posts) {
       const step = p.reposts >= 10000 ? 10000 : p.reposts >= 1000 ? 1000 : 0;
       if (step > (viralShown.get(p) ?? 0)) {
         viralShown.set(p, step);
-        notify(
-          "social",
-          `🔥 あなたの運転の動画が拡散中: リポスト ${formatCount(p.reposts)}・いいね ${formatCount(p.likes)}`,
-          p,
-        );
+        const counts = { reposts: formatCount(p.reposts), likes: formatCount(p.likes) };
+        notify("social", () => i18n.t("notify.viral", counts), p);
       }
     }
     refreshSocial();
@@ -2858,16 +3031,23 @@ async function main(): Promise<void> {
     const r = Math.random();
     return r < 0.5 ? "patrol" : r < 0.8 ? "shirobai" : "unmarked";
   };
-  /** The loudspeaker on the patrol car: from the car with the on-device voice, else only its level. */
-  const policeSay = (text: string) => {
+  /**
+   * The loudspeaker on the patrol car: from the car with the on-device voice, else only its level.
+   * sanoTTS-jp speaks Japanese only, so with it the officer says the Japanese line (as one in Tokyo
+   * would) and, in English or Chinese, the line is shown translated; speechSynthesis says it in the
+   * player's language (localUtterance: silent when the device has no voice for it).
+   */
+  const policeSay = (key: i18n.MessageKey) => {
     const from = police?.car.object;
     if (voice.enabled && from) {
-      voice.speak(text, audio.spatial.voiceFrom(from, "loudspeaker"));
+      voice.speak(inJapanese(key), audio.spatial.voiceFrom(from, "loudspeaker"));
+      const isJapanese = i18n.getLocale() === "ja";
+      if (!isJapanese) toast(i18n.t("police.said", { line: i18n.t(key) }), "#ff6b6b");
       return;
     }
-    if (audio.muted || !("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP";
+    if (audio.muted) return;
+    const u = localUtterance(i18n.t(key));
+    if (!u) return;
     u.rate = 0.95;
     u.pitch = 0.8;
     // speechSynthesis cannot be routed through WebAudio: only its volume follows the distance.
@@ -2877,7 +3057,7 @@ async function main(): Promise<void> {
   const startPursuit = () => {
     social.note("pursuit", env.now().getTime());
     $("#pursuit-chip").hidden = false;
-    policeSay("前の車の運転手さん、左に寄って止まってください。");
+    policeSay("police.callStop");
     log("police", { event: "pursuit" });
   };
   const openTicket = () => {
@@ -2885,12 +3065,9 @@ async function main(): Promise<void> {
     if (!p) return;
     const seen = [...p.seen];
     const isRed = seen.some((r) => r.fine === null);
-    $("#ticket-intro").textContent =
-      "警察官が窓の横に来ました。「こんにちは、警察です。いま違反がありましたので、免許証を見せてください。」";
+    i18n.setI18nText($("#ticket-intro"), "ticket.intro");
     $("#ticket-form-container").replaceChildren(renderTicket({ violations: seen }));
-    $("#ticket-note").textContent = isRed
-      ? "反則金の対象にならない違反（赤切符）は刑事手続になり、後日、検察庁や裁判所から呼び出しがあります。違反点数は付き、累積すると後日、行政処分の通知が届きます。"
-      : "交通反則告知書（青切符）と納付書を受け取りました。反則金は告知の翌日から 7 日以内に金融機関で納めます。違反点数は累積し、一定の点数に達すると後日、行政処分の通知が届きます。今日はこのまま運転して帰れます。";
+    i18n.setI18nText($("#ticket-note"), isRed ? "ticket.noteRed" : "ticket.noteBlue");
     $<HTMLDialogElement>("#ticket-dialog").showModal();
   };
   $("#ticket-accept").addEventListener("click", () => {
@@ -2963,7 +3140,7 @@ async function main(): Promise<void> {
     if (event === "pursuit") {
       police = p;
       startPursuit();
-    } else if (event === "callout") policeSay("前の車、左に寄って止まってください。");
+    } else if (event === "callout") policeSay("police.callStopShort");
     else if (event === "ticket") openTicket();
     else if (event === "lost") {
       // The plate was read: a notice to appear comes by post. Fleeing a stop made because the
@@ -2973,17 +3150,15 @@ async function main(): Promise<void> {
           VIOLATIONS.ignoredStop,
           now,
           0,
-          violationContext("無免許運転を見とがめられ、停止の求めに従わず逃走"),
+          violationContext(inJapanese("violationDetail.fled")),
         );
         if (fled) p.seen.push(fled);
       }
       for (const r of p.seen) law.notice(r, "patrol");
       p.seen.length = 0;
       $("#pursuit-chip").hidden = true;
-      notify(
-        "police",
-        `${PATROL_LABEL[p.kind]}を振り切った…が、ナンバーは控えられた。後日、出頭の通知が届く`,
-      );
+      const escaped = ESCAPED_KEY[p.kind];
+      notify("police", () => i18n.t(escaped));
       log("police", { event: "lost" });
     }
   };
@@ -3016,8 +3191,14 @@ async function main(): Promise<void> {
   // The choice cannot be skipped with Esc: the sticker stays until one is made.
   parkingDialog.addEventListener("cancel", (e) => e.preventDefault());
   const openParkingDialog = (v: Violation) => {
-    $("#parking-detail").textContent =
-      `${v.label}（${v.article}）。反則金・放置違反金はどちらも ${(v.fine ?? 0).toLocaleString()} 円（普通車）、出頭した場合の違反点数は ${v.points} 点です。`;
+    i18n.bindText($("#parking-detail"), () =>
+      i18n.t("parking.detail", {
+        label: violationName(v.label),
+        article: lawRef(v.article),
+        fine: formatNumber(v.fine ?? 0),
+        points: v.points,
+      }),
+    );
     parkingDialog.showModal();
   };
   $("#parking-appear").addEventListener("click", () => {
@@ -3029,17 +3210,11 @@ async function main(): Promise<void> {
     if (pendingParking) {
       const order = law.chargeOwner(pendingParking, performance.now());
       stamps.stamp("放置違反金", `${(order.fine ?? 0).toLocaleString()}円`);
-      toast(
-        `使用者に放置違反金 ${(order.fine ?? 0).toLocaleString()} 円の納付命令（違反点数なし）`,
-        "#ffd400",
-      );
+      toast(i18n.t("toast.ownerOrder", { fine: formatNumber(order.fine ?? 0) }), "#ffd400");
       // 警視庁の処分基準: 普通自動車・前歴なしは 6 か月以内の納付命令 3 回で最長 20 日、4 回 30 日、5 回以上 40 日。
       if (law.ownerOrders >= 3) {
         const days = law.ownerOrders >= 5 ? 40 : law.ownerOrders === 4 ? 30 : 20;
-        toast(
-          `放置違反金の納付命令 ${law.ownerOrders} 回目: 車両の使用制限命令（最長 ${days} 日）の対象になり得ます（第75条の2第2項）`,
-          "#ff6b6b",
-        );
+        toast(i18n.t("toast.ownerOrderLimit", { n: law.ownerOrders, days }), "#ff6b6b");
       }
     }
     pendingParking = null;
@@ -3059,18 +3234,18 @@ async function main(): Promise<void> {
     return seg && roadGraph ? roadGraph.sample(seg, seg.length / 2).pos.clone() : null;
   };
   const startAutopilot = () => {
-    if (mode !== "car") return toast("車に乗っているときだけ使えます");
+    if (mode !== "car") return toast(i18n.t("toast.autopilotCarOnly"));
     const tw = taxiWorld();
-    if (!tw) return toast("道路データを読み込み中です");
+    if (!tw) return toast(i18n.t("toast.roadsLoading"));
     const mission = missions.current ? field.localPosition(missions.current.target) : null;
     const target = mission ?? cruiseTarget();
-    if (!target) return toast("行き先が見つかりません");
+    if (!target) return toast(i18n.t("toast.noDestination"));
     const driver = new AutoDriver();
     driver.place(vehicle.position(), vehicle.yaw());
-    if (!driver.plan(tw, target)) return toast("ルートが見つかりません（道路の上で使ってください）");
+    if (!driver.plan(tw, target)) return toast(i18n.t("toast.noRoute"));
     autopilot = { driver, cruising: !mission, input: { throttle: 0, brake: 0, steer: 0, handbrake: false } };
     $("#autopilot-chip").hidden = false;
-    toast(mission ? "自動運転を開始しました（目的地へ）" : "自動運転を開始しました（周辺を巡回）", "#3cd17a");
+    toast(i18n.t(mission ? "toast.autopilotToTarget" : "toast.autopilotCruise"), "#3cd17a");
     log("autopilot", { on: true, cruising: !mission, metres: Math.round(driver.route?.length ?? 0) });
   };
   const stopAutopilot = (message: string) => {
@@ -3101,15 +3276,17 @@ async function main(): Promise<void> {
       const next = cruiseTarget();
       if (next && ap.driver.plan(tw, next)) return;
     }
-    stopAutopilot("目的地に着きました。自動運転を終了します");
+    stopAutopilot(i18n.t("toast.autopilotArrived"));
   };
 
   // ---------- 自動運転タクシー ----------
-  type TaxiDest = { name: string; lat: number; lon: number };
+  /** `label` for the app's list (with the distance), `name` for the messages and the meter. */
+  type TaxiDest = { name: string; label: string; lat: number; lon: number };
   let taxiDests: TaxiDest[] = [];
   let taxiArrivedAt = 0;
   let taxiStatusAt = 0;
-  const taxiStatus = (text: string) => ($("#taxi-status").textContent = text);
+  /** The taxi app's status line, kept in the language in force while it stays on screen. */
+  const taxiStatus = (text: () => string) => i18n.bindText($("#taxi-status"), text);
   const taxiWorld = (): TaxiWorld | null =>
     roadGraph
       ? {
@@ -3131,25 +3308,33 @@ async function main(): Promise<void> {
     const dist = (d: { lat: number; lon: number }) => haversineMeters(here.lat, here.lon, d.lat, d.lon);
     const dests: TaxiDest[] = [];
     const mission = missions.current?.target;
-    if (mission) dests.push({ name: `ミッション: ${mission.name}`, lat: mission.lat, lon: mission.lon });
+    const far = (name: string, at: { lat: number; lon: number }) => ({
+      name,
+      label: i18n.t("taxi.destWithKm", { name, km: Math.round(dist(at) / 100) / 10 }),
+      lat: at.lat,
+      lon: at.lon,
+    });
+    if (mission) {
+      const name = i18n.t("taxi.destMission", { name: mission.name });
+      dests.push({ name, label: name, lat: mission.lat, lon: mission.lon });
+    }
     const car = frame.toGeodetic(vehicle.position());
-    if (dist(car) > 150) dests.push({ name: "自分の車", lat: car.lat, lon: car.lon });
+    if (dist(car) > 150)
+      dests.push({ name: i18n.t("taxi.destCar"), label: i18n.t("taxi.destCar"), lat: car.lat, lon: car.lon });
     const near = stations.filter((st) => dist(st) > 300).sort((a, b) => dist(a) - dist(b));
-    for (const st of near.slice(0, 5))
-      dests.push({ name: `${st.name}（${Math.round(dist(st) / 100) / 10}km）`, lat: st.lat, lon: st.lon });
+    for (const st of near.slice(0, 5)) dests.push(far(st.name, st));
     const spots = field
       .visibleList()
       .filter((p) => p.category !== "station" && dist(p) > 300 && dist(p) < 2500)
       .sort((a, b) => dist(a) - dist(b));
-    for (const p of spots.slice(0, 4))
-      dests.push({ name: `${p.name}（${Math.round(dist(p) / 100) / 10}km）`, lat: p.lat, lon: p.lon });
+    for (const p of spots.slice(0, 4)) dests.push(far(p.name, p));
     taxiDests = dests;
     const select = $<HTMLSelectElement>("#taxi-dest");
     select.replaceChildren(
       ...dests.map((d, i) => {
         const o = document.createElement("option");
         o.value = String(i);
-        o.textContent = d.name;
+        o.textContent = d.label;
         return o;
       }),
     );
@@ -3172,20 +3357,20 @@ async function main(): Promise<void> {
   $("#taxi-back").addEventListener("click", () => showTaxiApp(false));
   $("#taxi-call").addEventListener("click", () => {
     const tw = taxiWorld();
-    if (taxi) return taxiStatus("すでに配車中です。");
-    if (mode !== "foot") return taxiStatus(`車を降りてから呼んでください（${doorKey()} で降車）。`);
-    if (!tw) return taxiStatus("道路データを読み込み中です。少し待ってからもう一度。");
+    if (taxi) return taxiStatus(() => i18n.t("taxi.busy"));
+    if (mode !== "foot") return taxiStatus(() => i18n.t("taxi.getOutFirst", { key: doorKey() }));
+    if (!tw) return taxiStatus(() => i18n.t("taxi.loading"));
     const t = new RoboTaxi(scene, world, (x, z) => groundY(x, z));
     if (!t.dispatch(tw.graph, tw, walker.position(), walker.position())) {
       t.dispose();
-      return taxiStatus("近くに配車できる車がありません。広い道路の近くで呼んでください。");
+      return taxiStatus(() => i18n.t("taxi.noCar"));
     }
     taxi = t;
     social.note("robotaxi", env.now().getTime());
     const eta = Math.max(1, Math.round((t.route?.length ?? 400) / 8 / 60));
-    taxiStatus(`配車しました（迎車）。到着まで約 ${eta} 分。道路沿いでお待ちください。`);
+    taxiStatus(() => i18n.t("taxi.dispatched", { min: eta }));
     $("#taxi-cancel").hidden = false;
-    toast(`🚕 自動運転タクシーが向かっています（約 ${eta} 分）`, "#ffd23c");
+    toast(i18n.t("toast.taxiComing", { min: eta }), "#ffd23c");
   });
   $("#taxi-cancel").addEventListener("click", () => {
     if (!taxi || mode === "taxi") return;
@@ -3196,14 +3381,14 @@ async function main(): Promise<void> {
       taxi = null;
     }
     $("#taxi-cancel").hidden = true;
-    taxiStatus("キャンセルしました。");
+    taxiStatus(() => i18n.t("taxi.cancelled"));
   });
   const boardTaxi = () => {
     const tw = taxiWorld();
     if (!taxi || !tw) return;
     const dest = taxiDests[Number($<HTMLSelectElement>("#taxi-dest").value)] ?? taxiDests[0];
     if (!dest) {
-      toast("スマホのタクシーアプリで行き先を選んでください", "#ffd23c");
+      toast(i18n.t("toast.taxiChooseDest"), "#ffd23c");
       return;
     }
     const at = frame.toLocal(dest.lat, dest.lon, frame.origin.h).setY(0);
@@ -3213,10 +3398,7 @@ async function main(): Promise<void> {
     chase.snap();
     $("#taxi-cancel").hidden = true;
     // 道路交通法 第71条の3第2項: every passenger wears a seat belt.
-    toast(
-      `ご乗車ありがとうございます。${dest.name.replace(/（.*）$/, "")}へ向かいます（シートベルトをお締めください）`,
-      "#ffd23c",
-    );
+    toast(i18n.t("toast.taxiBoarded", { place: dest.name }), "#ffd23c");
   };
   const leaveTaxi = () => {
     if (!taxi) return;
@@ -3229,7 +3411,7 @@ async function main(): Promise<void> {
     walker.enter(at, taxi.model.root.rotation.y);
     mode = "foot";
     toast(
-      `🚕 運賃 ${fare.toLocaleString()} 円（${(taxi.metres / 1000).toFixed(1)}km、アプリで精算済み）。ありがとうございました`,
+      i18n.t("toast.taxiFare", { fare: formatNumber(fare), km: (taxi.metres / 1000).toFixed(1) }),
       "#ffd23c",
     );
     log("taxi_ride", { fare, metres: Math.round(taxi.metres), slowSeconds: Math.round(taxi.slowSeconds) });
@@ -3250,24 +3432,25 @@ async function main(): Promise<void> {
     if (t.state === "coming" && !done && now - taxiStatusAt > 1000) {
       taxiStatusAt = now;
       const minutes = Math.max(1, Math.round(t.remaining / 6 / 60));
-      taxiStatus(
-        `迎車中: あと ${Math.round(t.remaining / 10) * 10} m（約 ${minutes} 分）。地図の黄色い車が配車中のタクシーです。`,
-      );
+      const metres = Math.round(t.remaining / 10) * 10;
+      taxiStatus(() => i18n.t("taxi.coming", { m: metres, min: minutes }));
     }
     if (t.state === "coming" && done) {
       t.state = "waiting";
-      toast(`🚕 自動運転タクシーが到着しました。そばで ${doorKey()} を押すと乗車します`, "#ffd23c");
-      taxiStatus(`到着しました。そばで ${doorKey()} を押してご乗車ください。`);
+      toast(i18n.t("toast.taxiArrived", { key: doorKey() }), "#ffd23c");
+      taxiStatus(() => i18n.t("taxi.arrived", { key: doorKey() }));
     } else if (t.state === "riding") {
       $("#taxi-meter").hidden = false;
-      $("#taxi-flag").textContent = done ? "支払" : "賃走";
-      $("#taxi-fare").textContent = t.fare.toLocaleString();
-      $("#taxi-trip").textContent =
-        `${(t.metres / 1000).toFixed(2)}km・${t.destinationName.replace(/（.*）$/, "")}`;
+      $("#taxi-flag").textContent = i18n.t(done ? "taxi.flagPay" : "taxi.flagHired");
+      $("#taxi-fare").textContent = formatNumber(t.fare);
+      $("#taxi-trip").textContent = i18n.t("taxi.trip", {
+        km: (t.metres / 1000).toFixed(2),
+        place: t.destinationName,
+      });
       if (done) {
         t.state = "arrived";
         taxiArrivedAt = now;
-        toast("🚕 目的地に到着しました", "#ffd23c");
+        toast(i18n.t("toast.taxiAtDest"), "#ffd23c");
       }
     } else if (t.state === "arrived" && now - taxiArrivedAt > 1800) {
       leaveTaxi();
@@ -3280,13 +3463,10 @@ async function main(): Promise<void> {
 
   // ---------- 帰宅と一日の終わり ----------
   input.on("home", () => {
-    if (!home) return toast("まだ出発地点が決まっていません");
+    if (!home) return toast(i18n.t("toast.noStartYet"));
     const g = frame.toGeodetic(vehicle.position());
     const m = missions.startHome(home, performance.now(), g.lat, g.lon);
-    toast(
-      `自宅へ向かいます（約 ${(m.startDistance / 1000).toFixed(1)} km）。着いたら今日の運転は終わりです`,
-      "#ffe14d",
-    );
+    toast(i18n.t("toast.headingHome", { km: (m.startDistance / 1000).toFixed(1) }), "#ffe14d");
   });
   let pendingSanction: ReturnType<typeof decideSanction> = { kind: "none" };
   // Notices that came by post today: they ask the driver to appear at the police station.
@@ -3297,15 +3477,15 @@ async function main(): Promise<void> {
     todayDelivered = delivered;
     pendingSanction = decideSanction(law.state.points, prior);
     // 📮 the post: orbis and plate notices, and the 行政処分 notice when the points reach it.
-    const mail: string[] = delivered.map(
-      (r) =>
-        `出頭通知書（${r.by === "orbis" ? "速度違反自動取締装置で撮影" : r.by === "sns" ? "投稿された動画から特定" : "ナンバーから特定"}）: ${r.label}／違反点数 ${r.points} 点`,
-    );
-    if (pendingSanction.kind !== "none")
-      mail.push("運転免許本部から「行政処分出頭通知書」の封筒が届いています…");
+    const mail: string[] = delivered.map((r) => {
+      const how = r.by === "orbis" ? "dayEnd.byOrbis" : r.by === "sns" ? "dayEnd.bySns" : "dayEnd.byPlate";
+      const label = violationName(r.label);
+      return i18n.t("dayEnd.mailNotice", { how: i18n.t(how), label, points: pointsCount(r.points) });
+    });
+    if (pendingSanction.kind !== "none") mail.push(i18n.t("dayEnd.mailSanction"));
     const mailBody = $("#day-mail-body");
     mailBody.replaceChildren(
-      ...(mail.length ? mail : ["ポストには何も届いていませんでした。"]).map((t) => {
+      ...(mail.length ? mail : [i18n.t("dayEnd.noMail")]).map((t) => {
         const p = document.createElement("p");
         p.textContent = t;
         return p;
@@ -3313,11 +3493,12 @@ async function main(): Promise<void> {
     );
     const caught = today.filter((r) => r.status === "caught");
     const uncaught = today.filter((r) => r.status === "uncaught");
+    const counts = { n: today.length, caught: caught.length, uncaught: uncaught.length };
     const stats: Array<[string, string]> = [
-      ["走行距離", `${(todayMetres / 1000).toFixed(1)} km`],
-      ["違反", `${today.length} 件（検挙 ${caught.length} 件・未検挙 ${uncaught.length} 件）`],
-      ["反則金など", `${caught.reduce((a, r) => a + (r.fine ?? 0), 0).toLocaleString()} 円`],
-      ["累積点数", `${law.state.points} 点（前歴 ${prior} 回）`],
+      [i18n.t("dayEnd.distance"), i18n.t("dayEnd.km", { km: (todayMetres / 1000).toFixed(1) })],
+      [i18n.t("dayEnd.violations"), i18n.t("dayEnd.violationCount", counts)],
+      [i18n.t("dayEnd.fines"), formatYen(caught.reduce((a, r) => a + (r.fine ?? 0), 0))],
+      [i18n.t("dayEnd.points"), i18n.t("dayEnd.pointsValue", { points: law.state.points, prior })],
     ];
     $("#day-stats").replaceChildren(
       ...stats.flatMap(([k, v]) => {
@@ -3335,19 +3516,24 @@ async function main(): Promise<void> {
     course.disabled = false;
     if (pendingSanction.kind === "suspension") {
       const s = pendingSanction;
-      $("#day-sanction-body").textContent =
-        `免許停止 ${s.days} 日（累積 ${law.state.points} 点・前歴 ${prior} 回）。指定の日に出頭して免許証を預けます。停止処分者講習を受けると、成績により最大 ${s.shortened} 日短くなります（${s.days - s.shortened} 日）。停止中に運転すると無免許運転（第64条）です。`;
+      $("#day-sanction-body").textContent = i18n.t("dayEnd.suspension", {
+        days: s.days,
+        points: law.state.points,
+        prior,
+        short: s.shortened,
+        min: s.days - s.shortened,
+      });
     } else if (pendingSanction.kind === "revocation") {
-      $("#day-sanction-body").textContent =
-        `免許取消（累積 ${law.state.points} 点・前歴 ${prior} 回）。欠格期間 ${pendingSanction.years} 年が過ぎるまで免許を取り直せません。`;
+      $("#day-sanction-body").textContent = i18n.t("dayEnd.revocation", {
+        points: law.state.points,
+        prior,
+        years: pendingSanction.years,
+      });
     }
     const tips = adviceFor(today);
     const adviceEl = $("#day-advice");
     adviceEl.replaceChildren(
-      ...(tips.length
-        ? tips
-        : ["今日は違反がありませんでした。この調子で、法令を守った運転を続けましょう。"]
-      ).map((t) => {
+      ...(tips.length ? tips : [i18n.t("dayEnd.clean")]).map((t) => {
         const li = document.createElement("li");
         li.textContent = t;
         return li;
@@ -3360,12 +3546,13 @@ async function main(): Promise<void> {
         .join("、");
       const li = document.createElement("li");
       li.className = "ai-advice";
-      li.textContent = "指導員が考えています…";
+      li.textContent = i18n.t("dayEnd.thinking");
       adviceEl.prepend(li);
       void brain
         .reply(
           -77,
-          "あなたは自動車教習所のベテラン指導員です。今日の運転で起きた違反を聞き、責めずに、次にどう運転すればよいかを日本語で2〜3文で具体的に伝えてください。",
+          // The facts stay Japanese (the records' words); the answer comes in the player's language.
+          i18n.t("dayEnd.instructorPrompt"),
           `今日の違反: ${facts}`,
           (partial) => (li.textContent = `🧑‍🏫 ${partial}`),
         )
@@ -3393,8 +3580,7 @@ async function main(): Promise<void> {
       shortened: 0,
     };
     $<HTMLButtonElement>("#day-course").disabled = true;
-    $("#day-sanction-body").textContent =
-      `講習を受けました。免許停止は ${pendingSanction.days} 日になりました。`;
+    $("#day-sanction-body").textContent = i18n.t("dayEnd.courseTaken", { days: pendingSanction.days });
   });
   $("#day-review").addEventListener("click", () => openReview());
   // ---------- 出頭（期限つき） ----------
@@ -3442,8 +3628,11 @@ async function main(): Promise<void> {
     if (!a) return false;
     const g = frame.toGeodetic(vehicle.position());
     missions.startAppointment(a.place, performance.now(), g.lat, g.lon);
-    const what = a.kind === "sanction" ? "行政処分の出頭" : "出頭通知の手続き";
-    toast(`${what}: ${a.place.name}へ（${deadlineText(a.deadline)} まで）`, "#ffb347");
+    const what = i18n.t(a.kind === "sanction" ? "toast.appointSanction" : "toast.appointNotice");
+    toast(
+      i18n.t("toast.appointment", { what, place: a.place.name, deadline: deadlineText(a.deadline) }),
+      "#ffb347",
+    );
     return true;
   };
   const officeDialog = $<HTMLDialogElement>("#office-dialog");
@@ -3479,12 +3668,11 @@ async function main(): Promise<void> {
     if (!a) return;
     if (a.kind === "notice") {
       const isRed = a.records.some((r) => r.fine === null);
+      const labels = listOf(a.records.map((r) => violationName(r.label)));
       showOffice(
-        `${a.place.name}に出頭しました`,
-        isRed
-          ? "交通課で取り調べを受け、供述調書が作られました。反則金の対象にならない違反（赤切符）は、後日、検察庁や裁判所から呼び出しがあります。"
-          : `交通反則告知書（青切符）と納付書を受け取りました（${a.records.map((r) => r.label).join("、")}）。反則金は 7 日以内に金融機関で納めます。`,
-        [["わかりました", () => nextAppointment()]],
+        i18n.t("dialog.officeAppeared", { place: a.place.name }),
+        isRed ? i18n.t("dialog.officeRed") : i18n.t("dialog.officeBlue", { labels }),
+        [[i18n.t("dialog.ok"), () => nextAppointment()]],
       );
       return;
     }
@@ -3492,29 +3680,26 @@ async function main(): Promise<void> {
     const days = s.kind === "suspension" ? s.days : 0;
     const body =
       s.kind === "suspension"
-        ? `免許証を預け、免許停止 ${days} 日の処分を受けました。停止処分者講習（この日に受講）を受けると、成績により最大 ${s.shortened} 日短くなります。処分が始まったので、ここからは運転できません。車は駐車場に置き、タクシーか歩きで帰りましょう。`
-        : `免許取消の処分を受けました。欠格期間が過ぎるまで免許を取り直せません。車は駐車場に置き、タクシーか歩きで帰りましょう。`;
+        ? i18n.t("dialog.suspensionBody", { days, short: s.shortened })
+        : i18n.t("dialog.revocationBody");
     const done = (withCourse: boolean) => {
       executeSanction(s, withCourse);
       // Out of the driver's seat: the car stays here.
       if (mode === "car") input.trigger("door");
-      toast(
-        withCourse && s.kind === "suspension"
-          ? `講習を受けました。免許停止は ${suspendedDays} 日です`
-          : `処分が始まりました（あと ${suspendedDays} 日）`,
-        "#ff6b6b",
-      );
+      const isShortened = withCourse && s.kind === "suspension";
+      const left = { days: daysText(suspendedDays) };
+      toast(i18n.t(isShortened ? "toast.courseDone" : "toast.sanctionStarted", left), "#ff6b6b");
       nextAppointment();
     };
     showOffice(
-      `${a.place.name}に出頭しました`,
+      i18n.t("dialog.officeAppeared", { place: a.place.name }),
       body,
       s.kind === "suspension"
         ? [
-            ["停止処分者講習を受ける", () => done(true)],
-            ["講習を受けない", () => done(false)],
+            [i18n.t("dialog.takeCourse"), () => done(true)],
+            [i18n.t("dialog.skipCourse"), () => done(false)],
           ]
-        : [["わかりました", () => done(false)]],
+        : [[i18n.t("dialog.ok"), () => done(false)]],
     );
   };
   /** Past 17:00 without appearing. */
@@ -3524,19 +3709,22 @@ async function main(): Promise<void> {
     if (a.kind === "sanction") {
       appointments.shift();
       executeSanction(a.sanction, false);
-      notify("police", "出頭期限を過ぎたため、処分が執行されました（講習による短縮はありません）");
+      notify("police", () => i18n.t("notify.sanctionExecuted"));
       if (mode === "car") input.trigger("door");
       return;
     }
     a.strikes++;
     if (a.strikes >= 2) {
       appointments.shift();
-      showArrest("notice", a.records.map((r) => r.label).join("、"));
+      showArrest(
+        "notice",
+        a.records.map((r) => r.label),
+      );
       return;
     }
     a.deadline = closingTime() + 24 * 3600_000;
     toast(
-      `出頭しませんでした。再出頭通知: ${deadlineText(a.deadline)} までに ${a.place.name}へ。応じないと逮捕されることがあります`,
+      i18n.t("toast.missedNotice", { deadline: deadlineText(a.deadline), place: a.place.name }),
       "#ff6b6b",
     );
   };
@@ -3578,14 +3766,14 @@ async function main(): Promise<void> {
     vehicle.setFrozen(false);
     if (nextAppointment()) return;
     if (law.state.suspended) {
-      toast(`免許停止中（あと ${suspendedDays} 日）。今日はタクシーか歩きで出かけましょう`, "#ff6b6b");
+      toast(i18n.t("toast.suspendedToday", { days: daysText(suspendedDays) }), "#ff6b6b");
       return;
     }
     const pos = frame.toGeodetic(vehicle.position());
     const trip = missions.startTrip(pos.lat, pos.lon, performance.now());
     if (trip)
       toast(
-        `今日の目的地: ${trip.target.name}（約 ${(trip.startDistance / 1000).toFixed(1)} km）`,
+        i18n.t("toast.todayTrip", { name: trip.target.name, km: (trip.startDistance / 1000).toFixed(1) }),
         "#ffe14d",
       );
   });
@@ -3664,42 +3852,49 @@ async function main(): Promise<void> {
     });
     const s = law.state;
     const earlier = all.length - s.log.length;
-    $("#violations-summary").textContent =
-      `今回 ${s.log.length} 件${earlier > 0 ? `（これまでの記録 ${earlier} 件も表示）` : ""}・違反点数 ${s.points} 点・反則金など ${s.fines.toLocaleString()} 円（普通車の基準によるゲーム内の参考値）`;
+    const summary = { n: s.log.length, earlier, points: s.points, fines: formatNumber(s.fines) };
+    i18n.bindText($("#violations-summary"), () =>
+      i18n.t(earlier > 0 ? "dialog.reviewSummaryEarlier" : "dialog.reviewSummary", summary),
+    );
     $<HTMLDialogElement>("#violations").showModal();
   };
   $("#review-open").addEventListener("click", openReview);
   $("#review-from-suspension").addEventListener("click", openReview);
-  const showArrest = (why: "hitAndRun" | "hitAndRunLater" | "notice", detail = "") => {
+  /** `labels`: the records' Japanese labels behind a notice-to-appear arrest. */
+  const showArrest = (why: "hitAndRun" | "hitAndRunLater" | "notice", labels: readonly string[] = []) => {
     vehicle.setFrozen(true);
     const isNotice = why === "notice";
+    // The stamp is drawn in the world's own Japanese, like a hanko: not translated.
     stamps.stamp("逮捕", isNotice ? "出頭要請に応じず" : "救護義務違反（ひき逃げ）", true);
-    $("#suspended h1").textContent = isNotice ? "逮捕" : "ひき逃げで逮捕";
-    $("#suspended .tagline").textContent = isNotice
-      ? "出頭の通知に二度応じなかったため、逃亡のおそれがあるとして逮捕状が出され、朝、自宅で逮捕されました。"
+    // Keys, not textContent: the elements carry data-i18n, which a switch would otherwise re-apply.
+    i18n.setI18nText($("#suspended h1"), isNotice ? "arrest.title" : "arrest.titleHitAndRun");
+    const tagline: i18n.MessageKey = isNotice
+      ? "arrest.taglineNotice"
       : why === "hitAndRunLater"
-        ? "現場から逃げ切ったものの、後日、防犯カメラの映像と目撃情報から特定され逮捕されました。"
-        : "パトカーに追いつかれ、その場で逮捕されました。";
-    const lines = isNotice
+        ? "arrest.taglineLater"
+        : "arrest.taglineCaught";
+    i18n.setI18nText($("#suspended .tagline"), tagline);
+    const points = law.state.points;
+    const lines: Array<() => string> = isNotice
       ? [
-          `元の違反：${detail}。反則金を納めず出頭もしない場合、反則行為も通常の刑事手続になります（道路交通法 第130条）。`,
-          "呼び出しに正当な理由なく応じないと、逮捕されることがあります（刑事訴訟法 第199条）。",
-          "通知が届いたら、期限までに指定の場所へ出頭しましょう。",
+          () => i18n.t("arrest.noticeDetail", { detail: listOf(labels.map(violationName)) }),
+          () => i18n.t("arrest.noticeSummons"),
+          () => i18n.t("arrest.noticeAdvice"),
         ]
       : [
-          "救護義務違反（ひき逃げ）：交通事故を起こした運転者は、直ちに運転を停止し、負傷者を救護し、警察官に報告しなければなりません（道路交通法 第72条第1項）。",
-          "罰則：人の死傷が運転に起因する場合、10年以下の拘禁刑又は100万円以下の罰金（同法 第117条第2項）。",
-          `違反点数：基礎点数35点を加算し、合計 ${law.state.points} 点 → 免許取消（前歴なしで15点以上）。`,
-          "事故を起こしたら、逃げずに停車し、119番・110番に通報してください。",
+          () => i18n.t("arrest.hitAndRunDuty"),
+          () => i18n.t("arrest.hitAndRunPenalty"),
+          () => i18n.t("arrest.hitAndRunPoints", { points }),
+          () => i18n.t("arrest.hitAndRunAdvice"),
         ];
     $("#suspended-log").replaceChildren(
-      ...lines.map((t) => {
+      ...lines.map((render) => {
         const li = document.createElement("li");
-        li.textContent = t;
+        i18n.bindText(li, render);
         return li;
       }),
     );
-    $("#retrain").textContent = "最初からやり直す";
+    i18n.setI18nText($("#retrain"), "arrest.restart");
     $("#suspended").hidden = false;
   };
   $("#retrain").addEventListener("click", () => {
@@ -3707,7 +3902,7 @@ async function main(): Promise<void> {
     $("#suspended").hidden = true;
     vehicle.setFrozen(false);
     respawnHere();
-    toast("講習を修了しました。安全運転で！", "#7dff9a");
+    toast(i18n.t("toast.retrained"), "#7dff9a");
   });
 
   // Accident handling: penalty points via the traffic-law model plus a score deduction.
@@ -3715,14 +3910,17 @@ async function main(): Promise<void> {
     const panel = $("#incident");
     panel.hidden = !emergency.active;
     if (!emergency.active) return;
-    const part = (kind: "ambulance" | "police", label: string, number: string) => {
-      if (!emergency.isCalled(kind)) return `${label}: 未通報（スマホで ${number}）`;
+    const part = (kind: "ambulance" | "police", key: i18n.MessageKey, number: string) => {
+      const label = i18n.t(key);
+      if (!emergency.isCalled(kind)) return i18n.t("incident.unreported", { label, number });
       const eta = emergency.eta(kind);
-      return `${label}: ${eta === null ? "到着" : `到着まで約${eta}秒`}`;
+      return eta === null ? i18n.t("incident.arrived", { label }) : i18n.t("incident.eta", { label, s: eta });
     };
-    const left = emergency.isCalled("ambulance") ? "" : `・残り${emergency.secondsLeft(now)}秒`;
+    const left = emergency.isCalled("ambulance")
+      ? ""
+      : i18n.t("incident.left", { s: emergency.secondsLeft(now) });
     $("#incident-status").textContent =
-      `${part("ambulance", "🚑 救急", "119")}${left}　${part("police", "🚓 警察", "110")}`;
+      `${part("ambulance", "incident.ambulance", "119")}${left}　${part("police", "incident.police", "110")}`;
   };
 
   /**
@@ -3754,44 +3952,25 @@ async function main(): Promise<void> {
     book(VIOLATIONS.safeDriving, performance.now(), 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
     if (phone.isInUse(performance.now()) && mode === "car")
-      book(VIOLATIONS.phoneDanger, performance.now(), 30000, "スマホを操作しながら事故を起こした");
+      book(VIOLATIONS.phoneDanger, performance.now(), 30000, inJapanese("violationDetail.phoneCrash"));
     if (kind === "pedestrian") book(injuryViolation(kmh), performance.now(), 3000);
     const penalty = kind === "pedestrian" ? 300 : 100;
     score = Math.max(0, score - penalty);
-    const what = {
-      pedestrian: `歩行者（${who}さん）と接触しました`,
-      vehicle: "車両と接触しました",
-      building: "建物に衝突しました（物損事故）",
-      pole: "電柱・標識などに衝突しました（物損事故）",
-    }[kind];
-    toast(`⚠ ${what}（${Math.round(kmh)} km/h） −${penalty}`, "#ff6b6b");
+    const what = i18n.t(ACCIDENT_KEY[kind], { name: who });
+    toast(i18n.t("toast.accident", { what, kmh: Math.round(kmh), penalty }), "#ff6b6b");
     log("accident", { kind, kmh: Math.round(kmh) });
   };
 
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
   /**
-   * In-game clock: date, weekday and time, as the regulations see them (Saturday blue, Sunday and
-   * 祝日 red as on a Japanese calendar).
+   * In-game clock: date, weekday and time, as the regulations see them, in Japanese whatever the
+   * language: the records keep it (law.ts recordClock() shows it translated). The HUD's own is
+   * renderClock().
    */
   const clockLabel = (clock: GameClock, date: { m: number; d: number }) => {
     const hh = String(Math.floor(clock.minutes / 60)).padStart(2, "0");
     const mm = String(Math.floor(clock.minutes % 60)).padStart(2, "0");
     return `${date.m}/${date.d}(${WEEKDAYS[clock.weekday]}${clock.holiday ? "・祝" : ""}) ${hh}:${mm}`;
-  };
-  const renderClock = (el: HTMLElement, clock: GameClock, date: { m: number; d: number }) => {
-    const hh = String(Math.floor(clock.minutes / 60)).padStart(2, "0");
-    const mm = String(Math.floor(clock.minutes % 60)).padStart(2, "0");
-    const dayClass = clock.holiday || clock.weekday === 0 ? "sun" : clock.weekday === 6 ? "sat" : "";
-    const label = `${date.m}/${date.d}(${WEEKDAYS[clock.weekday]}${clock.holiday ? "・祝" : ""})`;
-    if (el.textContent === `${label} ${hh}:${mm}`) return;
-    el.textContent = "";
-    const day = document.createElement("span");
-    day.className = `clock-day ${dayClass}`;
-    day.textContent = label;
-    const time = document.createElement("span");
-    time.className = "clock-time";
-    time.textContent = ` ${hh}:${mm}`;
-    el.append(day, time);
   };
 
   let wasRaining: boolean | null = null;
@@ -3801,60 +3980,80 @@ async function main(): Promise<void> {
     renderClock($("#clock"), gameClockNow(), tokyoDate(env.now()));
     const obs = env.getObservation();
     const obsText = obs
-      ? `東京 ${obs.temp ?? "-"}℃ 風 ${obs.wind ?? "-"}m/s 降水 ${obs.precip10m ?? "-"}mm (${obs.time})`
-      : "気象データ取得中…";
+      ? i18n.t("hud.weatherObs", {
+          temp: obs.temp ?? "-",
+          wind: obs.wind ?? "-",
+          precip: obs.precip10m ?? "-",
+          time: obs.time,
+        })
+      : i18n.t("hud.weatherLoading");
     const isRaining = env.isRaining();
     const weatherText =
       env.weather === "auto"
-        ? `${isRaining ? "雨" : "晴れ"}（おまかせ）`
-        : `${WEATHER_LABEL[env.weather]}（固定）`;
+        ? i18n.t("hud.weatherAuto", { sky: i18n.t(isRaining ? "weather.label.rain" : "weather.label.clear") })
+        : i18n.t("hud.weatherFixed", { sky: i18n.t(WEATHER_KEY[env.weather]) });
     $("#weather").textContent = env.weather === "real" ? obsText : weatherText;
     // おまかせ turned: said once, as the sky changes.
     const isTurned = env.weather === "auto" && wasRaining !== null && isRaining !== wasRaining;
-    if (isTurned) toast(isRaining ? "☔ 雨が降ってきました" : "🌤 雨が上がりました", "#4dd2ff");
+    if (isTurned) toast(i18n.t(isRaining ? "toast.rainStart" : "toast.rainStop"), "#4dd2ff");
     wasRaining = isRaining;
     const nearestBus = transit.nearest(lat, lon);
     $("#transit").textContent =
       nearestBus && nearestBus.distance < 120 ? `🚌 ${nearestBus.bus.note.split(" ")[0]}` : transit.status;
 
-    $("#score").textContent = score.toLocaleString();
+    $("#score").textContent = formatNumber(score);
     const ahead =
       mode === "foot" ? null : control.ahead(vehicle.position(), headingVector(vehicle.quaternion()));
+    const aheadM = ahead ? Math.round(ahead.dist) : 0;
     const aheadText = ahead
       ? ahead.approach.kind === "signal"
-        ? `🚦 ${LIGHT_LABEL[control.state(ahead.approach)]}・${Math.round(ahead.dist)}m`
-        : `🛑 止まれ・${Math.round(ahead.dist)}m`
+        ? i18n.t("hud.signalAhead", { light: i18n.t(LIGHT_KEY[control.state(ahead.approach)]), m: aheadM })
+        : i18n.t("hud.stopAhead", { m: aheadM })
       : currentOneway
-        ? "⬆ 一方通行"
+        ? i18n.t("hud.oneWay")
         : "";
     const regAhead = $("#reg-ahead");
     regAhead.hidden = aheadText === "";
     regAhead.textContent = aheadText;
     regAhead.dataset.state =
       ahead?.approach.kind === "signal" ? control.state(ahead.approach) : (ahead?.approach.kind ?? "");
-    $("#license-points").textContent = `違反点数 ${law.state.points} / 6`;
-    $("#license-fines").textContent = `反則金 ${law.state.fines.toLocaleString()}円`;
+    $("#license-points").textContent = i18n.t("hud.licensePoints", { points: law.state.points });
+    $("#license-fines").textContent = i18n.t("hud.licenseFines", { fines: formatNumber(law.state.fines) });
     const inWard = pois.filter((p) => p.ward === wardName);
     const wardDone = inWard.filter((p) => field.collected.has(p.id)).length;
-    $("#collected").textContent =
-      `発見 ${field.collected.size.toLocaleString()} / ${pois.length.toLocaleString()}` +
-      (inWard.length ? `・${wardName} ${wardDone}/${wardTotals.get(wardName) ?? 0}` : "");
+    const found = { found: formatNumber(field.collected.size), total: formatNumber(pois.length) };
+    $("#collected").textContent = inWard.length
+      ? i18n.t("hud.collectedWard", {
+          ...found,
+          ward: wardName,
+          wardDone,
+          wardTotal: wardTotals.get(wardName) ?? 0,
+        })
+      : i18n.t("hud.collected", found);
 
     const mission = missions.current;
     if (mission) {
       const d = haversineMeters(lat, lon, mission.target.lat, mission.target.lon);
       const cat = field.category(mission.target.category);
-      $("#mission-name").textContent = mission.target.name;
+      // Home is named by the game (missions.ts: 「自宅」), the spots by the data.
+      const isHome = mission.target.category === "home";
+      $("#mission-name").textContent = isHome ? i18n.t("warp.home") : mission.target.name;
       const left = d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
       const clock = mission.isTrip
-        ? "法令を守って向かおう"
-        : `${Math.max(0, Math.ceil(missions.remaining(now)))} 秒`;
-      $("#mission-meta").textContent = `${cat?.label ?? ""}・${mission.target.ward}・残り ${left}・${clock}`;
+        ? i18n.t("hud.missionTrip")
+        : i18n.t("hud.missionSeconds", { s: Math.max(0, Math.ceil(missions.remaining(now))) });
+      const category = categoryLabel(mission.target.category, cat?.label ?? "");
+      $("#mission-meta").textContent = i18n.t("hud.missionMeta", {
+        category,
+        ward: mission.target.ward,
+        left,
+        clock,
+      });
     } else {
       $("#mission-name").textContent = QUALITY.isMobile
-        ? "🎯 でミッション開始"
-        : "N キー / 目的地ボタンでミッション開始";
-      $("#mission-meta").textContent = `近くのスポット ${field.visibleList().length} 件`;
+        ? i18n.t("hud.missionStartTouch")
+        : i18n.t("hud.missionStartKey", { key: keyOf("mission") });
+      $("#mission-meta").textContent = i18n.t("hud.nearbySpots", { n: field.visibleList().length });
     }
 
     // Heading clockwise from north; local yaw 0 faces +Z (= south).

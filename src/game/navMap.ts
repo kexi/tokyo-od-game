@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { t } from "../i18n";
 import type { RoadGraph, Segment } from "../world/roads";
 import type { AheadStep } from "./navAhead";
 import type { Route, TravelMode } from "./navigation";
@@ -91,7 +92,7 @@ export function drawRouteMap(canvas: HTMLCanvasElement, s: RouteMapState): void 
     ctx.font = `bold 13px "Noto Sans JP", "Hiragino Sans", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("地図を読み込んでいます", w / 2, h / 2);
+    ctx.fillText(t("nav.mapLoading"), w / 2, h / 2);
     return;
   }
 

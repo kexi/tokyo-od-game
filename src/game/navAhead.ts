@@ -2,6 +2,7 @@ import { Vector3 } from "three";
 import type { RouteInfo } from "../world/guidePlan";
 import type { RoadGraph, Segment } from "../world/roads";
 import type { Route, TravelMode } from "./navigation";
+import { junctionName } from "./navPhrases";
 
 /**
  * The way ahead of the player as stretches of streets, for what the nav panel tells about it
@@ -15,8 +16,11 @@ import type { Route, TravelMode } from "./navigation";
  */
 export type AheadStep = { seg: Segment; dir: 1 | -1; start: number; entry: number; length: number };
 
-/** A name on the map (交差点名 from OSM signal or junction=yes nodes). */
-export type NamedPoint = { pos: Vector3; name: string };
+/**
+ * A name on the map (交差点名 from OSM signal or junction=yes nodes): the Japanese `name` and, where
+ * OSM has it, the English `en` (name:en), shown when English is in force.
+ */
+export type NamedPoint = { pos: Vector3; name: string; en?: string };
 
 /** Metres along a street in the travel direction for the along-coordinates distance `s`. */
 export const travelOf = (seg: Segment, dir: 1 | -1, s: number): number => (dir === 1 ? s : seg.length - s);
@@ -113,20 +117,22 @@ export function roadAhead(
 }
 
 /**
- * 交差点名 near a point, as car navigation reads it ("日比谷" → "日比谷交差点"). 60 m by default:
- * big junctions are boxes of several GSI nodes and the name sits on one signal or junction node.
+ * 交差点名 near a point, as car navigation reads it ("日比谷" → "日比谷交差点"; "Hibiya" / 「日比谷路口」
+ * in English and Chinese, navPhrases.junctionName). 60 m by default: big junctions are boxes of
+ * several GSI nodes and the name sits on one signal or junction node.
  */
 export function junctionLabel(names: readonly NamedPoint[], pos: Vector3, radius = 60): string | null {
-  let best: string | null = null;
+  let best: NamedPoint | null = null;
   let bestD = radius;
   for (const n of names) {
     const d = Math.hypot(n.pos.x - pos.x, n.pos.z - pos.z);
     if (d >= bestD) continue;
     bestD = d;
-    best = n.name;
+    best = n;
   }
-  if (!best) return null;
-  return best.endsWith("交差点") ? best : `${best}交差点`;
+  // An empty name on the nearest point names nothing (as before: no other point is taken).
+  if (!best?.name) return null;
+  return junctionName(best.name, best.en);
 }
 
 /**
