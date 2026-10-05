@@ -55,6 +55,8 @@ import { createLowCar, loadCarModels } from "./game/carModel";
 import { Speedometer } from "./game/speedometer";
 import { ParkingPatrol } from "./game/parkingPatrol";
 import { GROUND_QUERY_GROUPS } from "./physics/groups";
+import { centralImpact, massContactsFor, restitution, type Impact } from "./physics/massContacts";
+import { ADULT_KG } from "./physics/masses";
 import { Stamps, shortLabel } from "./game/stamp";
 import { NavGuide } from "./game/navGuide";
 import { CLOSURE_WORDS } from "./world/closures";
@@ -78,7 +80,8 @@ import { Input, keyFor, LOOK_KEYS } from "./game/input";
 import { Minimap } from "./game/minimap";
 import { Missions } from "./game/missions";
 import { PoiField, storageKeyFor } from "./game/pois";
-import { log, warn } from "./log";
+import { captureFailure, reproUrl, setDiagnosticsState } from "./diagnostics";
+import { log, newSpan, recentLogs, warn, type Span } from "./log";
 import { Vehicle, type DriveInput } from "./physics/vehicle";
 import { Buildings } from "./world/buildings";
 import { DemStore } from "./world/dem";
@@ -121,6 +124,7 @@ import {
   type Violation,
   type ViolationContext,
   type ViolationRecord,
+  violationSpan,
 } from "./game/traffic";
 import { renderReview } from "./game/violationReview";
 import { loadViolations, saveViolations, ViolationSync } from "./game/violationStore";
@@ -166,7 +170,7 @@ import {
   type VehicleKind,
 } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
-import { formatCount, SocialFeed, type SocialPost, type SocialWorld } from "./game/social";
+import { formatCount, postSpan, SocialFeed, type SocialPost, type SocialWorld } from "./game/social";
 import type { PraiseKind } from "./game/socialTexts";
 import { WitnessPhones } from "./game/witnessPhones";
 import { appTile, SocialApp } from "./game/socialView";
@@ -351,7 +355,7 @@ async function loadJson<S extends z.ZodType>(name: string, schema: S): Promise<z
     if (!res.ok) return null;
     return schema.parse(await res.json());
   } catch (error) {
-    warn("data_load_failed", { name, error: String(error) });
+    warn("data_load_failed", { file: name, error: String(error) });
     return null;
   }
 }
@@ -437,6 +441,10 @@ async function main(): Promise<void> {
 
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = 1 / 60;
+  // Cars against traffic, people and parked cars by both masses (physics/massContacts.ts).
+  const massContacts = massContactsFor(world);
+  const AT_THE_WHEEL = [{ seat: "driver" as const, kg: ADULT_KG }];
+  const NOBODY: typeof AT_THE_WHEEL = [];
   const terrain = new Terrain(scene, world, dem, renderer, frame);
   // Rivers, canals and the bay: their surface replaces the ground there, bridges get decks.
   const water = new WaterLayer(scene, world, dem, new TokyoTide(), frame);
@@ -656,7 +664,7 @@ async function main(): Promise<void> {
         (x, z) => pavements.contains(x, z),
       ),
     );
-    log("road_network", {
+    log("road_network_built", {
       segments: graph.segments.length,
       oneway: graph.segments.filter((s) => s.onewayRule).length,
       posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
@@ -684,7 +692,7 @@ async function main(): Promise<void> {
       pavementPolys = polys;
       pavements.rebuild(polys, frame);
       pedestrians.pavementsChanged();
-      log("pavements", { wards, polygons: polys.length });
+      log("pavements_built", { wards, polygons: polys.length });
     });
   };
   const brain = new NpcBrain();
@@ -890,7 +898,7 @@ async function main(): Promise<void> {
       patrols.splice(patrols.indexOf(unit), 1);
       if (police === unit) police = null;
     }
-    log("frame_recentered", { lat: g.lat.toFixed(5), lon: g.lon.toFixed(5) });
+    log("frame_recentered", { lat: Number(g.lat.toFixed(5)), lon: Number(g.lon.toFixed(5)) });
   };
 
   // ---------- 通知（左の欄） ----------
@@ -907,7 +915,7 @@ async function main(): Promise<void> {
 
   // ---------- 移動（どこへでも） ----------
   /** While the destination loads the car waits there, frozen; then it starts on the nearest street. */
-  let warping: { label: string; since: number; yaw: number } | null = null;
+  let warping: { label: string; since: number; yaw: number; span: Span } | null = null;
   const warpTo = (place: WarpPlace) => {
     if (enforcing()) return toast(i18n.t("toast.warpBusy"), "#ff6b6b");
     if (mode === "taxi") return toast(i18n.t("toast.warpInTaxi"));
@@ -923,7 +931,8 @@ async function main(): Promise<void> {
     vehicle.teleport(at, yaw);
     frozen = true;
     vehicle.setFrozen(true);
-    warping = { label: place.name, since: performance.now(), yaw };
+    warping = { label: place.name, since: performance.now(), yaw, span: newSpan("warp") };
+    log("warp_start", { to: place.name, lat: place.lat, lon: place.lon }, warping.span);
     // The local frame follows the car there, so the far town is near the origin again.
     recenter();
     toast(i18n.t("toast.warping", { place: place.name }), "#4dd2ff");
@@ -940,7 +949,7 @@ async function main(): Promise<void> {
     needsStreetSpawn = true;
     streetSpawnSince = now;
     toast(i18n.t("toast.warped", { place: warping.label }), "#7dff9a");
-    log("warp", { to: warping.label, ms: Math.round(now - warping.since) });
+    log("warp_landed", { to: warping.label, durationMs: Math.round(now - warping.since) }, warping.span);
     warping = null;
   };
   /** Everything with a name and a place: landmarks, police, the licence centres, spots, wards. */
@@ -1064,7 +1073,7 @@ async function main(): Promise<void> {
     $<HTMLDialogElement>("#title-dialog").showModal();
   });
   $("#title-confirm").addEventListener("click", () => {
-    log("title", {});
+    log("title_reload", {});
     location.reload();
   });
   input.on("warp", () => {
@@ -1154,6 +1163,23 @@ async function main(): Promise<void> {
   };
 
   let lastGeo = { lat: spawn.lat, lon: spawn.lon };
+  // What an uncaught_error line reports of the game (diagnostics.ts reads each on its own).
+  setDiagnosticsState({
+    mode: () => mode,
+    state: () => state,
+    lat: () => lastGeo.lat,
+    lon: () => lastGeo.lon,
+    gameTime: () => env.now().toISOString(),
+    timeMode: () => env.timeMode,
+    weather: () => env.weather,
+    graphicsPreset: () => GRAPHICS.settings.preset,
+    backend: () => renderInfo.backend,
+    activeSpans: () => [
+      pursuitDirector.chase?.span.spanId,
+      pursuitDirector.stop?.span.spanId,
+      warping?.span.spanId,
+    ],
+  });
   const surroundings = (): Surroundings => {
     const hour = env.displayHour(lastGeo.lat, lastGeo.lon);
     const obs = env.getObservation();
@@ -1358,7 +1384,7 @@ async function main(): Promise<void> {
     });
     videoFrame.append(label);
     document.body.append(videoFrame);
-    log("social", { event: "video", post: post.id, view: current.camera });
+    log("social_video_played", { postId: post.id, camera: current.camera }, postSpan(post));
     return true;
   };
   /** Why a violation is one, for the replay caption: the article, points and fine, and what happened. */
@@ -1542,7 +1568,18 @@ async function main(): Promise<void> {
           charm: charmOf($<HTMLSelectElement>("#opt-charm").value),
         };
         savePrefsAndApply(prefs);
-        if (type === "change") log("controls", prefs);
+        if (type === "change")
+          log("controls_changed", {
+            layout: prefs.layout,
+            assist: prefs.assist,
+            seatUpM: prefs.seatUp,
+            seatBackM: prefs.seatBack,
+            volume: prefs.volume,
+            minimap: prefs.minimap,
+            minimapNorthUp: prefs.minimapNorthUp,
+            nav: prefs.nav,
+            charm: prefs.charm,
+          });
       });
   let paused = false;
   const inCarOnly = (fn: () => void) => () => {
@@ -1926,10 +1963,29 @@ async function main(): Promise<void> {
     state = "playing";
     // Each drive starts at a random time of day and weather (the buttons still change them).
     const roll = Math.random();
-    const time: TimeMode = roll < 0.2 ? "morning" : roll < 0.6 ? "day" : roll < 0.8 ? "evening" : "night";
+    // A reproduction URL (drive_started.reproUrl) names the time and the weather it started with.
+    const asked = new URLSearchParams(location.search);
+    const askedTime = TIME_MODES.find((m) => m === asked.get("time"));
+    const askedWeather = (["real", "auto", "clear", "rain"] as const).find((m) => m === asked.get("weather"));
+    const time: TimeMode =
+      askedTime ?? (roll < 0.2 ? "morning" : roll < 0.6 ? "day" : roll < 0.8 ? "evening" : "night");
     setTime(time);
     // おまかせ: it starts fair or wet and turns now and then.
-    setWeather("auto");
+    setWeather(askedWeather ?? "auto");
+    log("drive_started", {
+      time,
+      weather: env.weather,
+      raining: env.isRaining(),
+      startLat: spawn.lat,
+      startLon: spawn.lon,
+      assist: controls.assist,
+      graphicsPreset: GRAPHICS.settings.preset,
+      reproUrl: reproUrl({
+        start: `${spawn.lat},${spawn.lon}`,
+        time,
+        weather: env.isRaining() ? "rain" : "clear",
+      }),
+    });
     const sky = i18n.t(env.isRaining() ? "weather.label.rain" : "weather.label.clear");
     toast(i18n.t("toast.dayStart", { time: i18n.t(TIME_KEY[time]), weather: sky }), "#4dd2ff");
     // The phone starts in its holder, on screens wide enough to keep the road in view beside it.
@@ -2010,7 +2066,7 @@ async function main(): Promise<void> {
       disposeHuman(person);
       for (const v of vehicles) for (const m of [...v.lamps.values(), ...v.beacons.flat()]) m.dispose();
     }
-    log("pipelines_compiled", { ms: Math.round(performance.now() - started) });
+    log("pipelines_compiled", { durationMs: Math.round(performance.now() - started) });
   };
   /** The world from the main camera (no cockpit), with the street passes, to the canvas. */
   const drawPlain = () => {
@@ -2090,6 +2146,8 @@ async function main(): Promise<void> {
     }
     const isOnFoot = mode === "foot";
     const isInCar = mode === "car";
+    // The player's mass in the driver's seat while at the wheel (no change: no work).
+    vehicle.setOccupants(isInCar ? AT_THE_WHEEL : NOBODY);
     const isInTaxi = mode === "taxi" && taxi !== null;
     // Once the streets are known, move the waiting car onto one — but never once the player has
     // started driving: stopped at a light later, the car would jump forward.
@@ -2114,7 +2172,7 @@ async function main(): Promise<void> {
         toast(i18n.t("toast.firstTrip", { name: trip.target.name, km }), "#ffe14d");
         if (controls.assist === "real")
           toast(i18n.t("toast.beltBeforeStart", { key: keyOf("belt") }), "#4dd2ff");
-        log("trip", { target: trip.target.name, metres: Math.round(trip.startDistance) });
+        log("trip_started", { target: trip.target.name, distanceM: Math.round(trip.startDistance) });
       }
     }
     const manual = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
@@ -2156,6 +2214,7 @@ async function main(): Promise<void> {
       for (const unit of patrols) unit.step(world.timestep);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
       world.step(events);
+      massContacts.afterStep(world.timestep);
       accumulator -= world.timestep;
       steps++;
     }
@@ -2183,18 +2242,23 @@ async function main(): Promise<void> {
           throttle: drive.throttle,
         });
       }
+      // The blow by both masses (massContacts.ts); a wall or a post has none, so the car's own speed.
+      const impact = massContacts.recentImpact(other) ?? impactAgainstMass(other, kmh);
       const ped = pedestrians.byCollider(other);
-      if (ped && kmh > 3) {
+      // Knocked down by the push they got as well as the car moving (someone walking into a car that
+      // stands is their own bump): a 60 kg person takes nearly all of a moving car's speed.
+      const victimKmh = impact ? impact.dvOther * 3.6 : kmh;
+      if (ped && kmh > 3 && victimKmh > 3) {
         pedestrians.knockDown(ped);
         emergency.start(ped, performance.now());
-        onAccident("pedestrian", kmh, ped.profile.name);
+        onAccident("pedestrian", kmh, ped.profile.name, impact);
         return;
       }
       if (ped) return;
       const what = hitKind(other);
       // Kerbs and the ground are bumps, not accidents.
       const isAccident = what !== "ground" && kmh > 5;
-      if (isAccident) onAccident(what, kmh, "");
+      if (isAccident) onAccident(what, kmh, "", impact);
     });
 
     // The camera's view for open-world spawning (traffic and people appear and leave out of it).
@@ -2487,13 +2551,18 @@ async function main(): Promise<void> {
         if (committed) stamps.stamp("違反", shortLabel(committed.label));
         flashScreen();
         social.note("orbis", env.now().getTime());
-        log("orbis", {
-          id: hit.site.entry.id,
-          kind: hit.site.kind,
-          lane: hit.lane,
-          kmh: Math.round(speed),
-          limit: hit.limit,
-        });
+        log(
+          "orbis_fired",
+          {
+            siteId: hit.site.entry.id,
+            kind: hit.site.kind,
+            lane: hit.lane,
+            speedKmh: Math.round(speed),
+            limitKmh: hit.limit,
+            violationId: record?.id ?? null,
+          },
+          record ? violationSpan(record) : undefined,
+        );
       }
 
       // 無灯火 (第52条): at night with the headlights switched off.
@@ -2521,7 +2590,7 @@ async function main(): Promise<void> {
           const tOut = carForward.clone().setY(0).normalize();
           const turn = classifyTurn(j.tIn, tOut);
           if (!laneAllows(j.use.lanes[j.lane], turn)) {
-            log("lane_direction", {
+            log("lane_turn_disallowed", {
               lanes: j.use.lanes.map((l) => l.join("+")),
               lane: j.lane,
               turn,
@@ -2691,7 +2760,7 @@ async function main(): Promise<void> {
       audio.chime();
       const category = categoryLabel(p.category, cat?.label ?? p.category);
       toast(i18n.t("toast.found", { name: p.name, category, points: cat?.points ?? 10 }), cat?.color);
-      log("poi_collected", { id: p.id, category: p.category, ward: p.ward });
+      log("poi_collected", { poiId: p.id, category: p.category, ward: p.ward });
     }
     field.update(dt, env.nightFactor);
 
@@ -3022,7 +3091,7 @@ async function main(): Promise<void> {
     if (!c) return;
     notify("social", () => i18n.t("notify.praised", { app: SOCIAL_APP_NAME }));
     socialUnread++;
-    log("social", { event: "praise", kind });
+    log("social_praise", { kind });
   };
   // People already counted as let across (one chance of a thank-you each).
   const letAcross = new WeakSet<object>();
@@ -3078,21 +3147,27 @@ async function main(): Promise<void> {
     const post = perf.time("violation.draft", () => draftWitnessPost(booked, witnesses));
     // Those of them who can see the car get their phones out (the poster among them, typing it).
     const filmers = perf.time("violation.phones", () => witnessPhones.react(booked, post, carPos));
-    if (filmers > 0) log("social", { event: "filmed", kind: booked.kind, filmers, witnesses });
+    const span = violationSpan(booked);
+    if (filmers > 0) log("social_filmed", { kind: booked.kind, filmers, witnesses }, span);
     if (post) queuePost(post, witnesses);
     const c = booked.context;
-    log("violation", {
-      kind: booked.kind,
-      status: booked.status,
-      points: booked.points,
-      total: law.state.points,
-      place: c?.place,
-      lat: c?.lat,
-      lon: c?.lon,
-      kmh: c ? Math.round(c.kmh) : null,
-      limit: c?.limit,
-      detail: c?.detail,
-    });
+    log(
+      "violation_booked",
+      {
+        violationId: booked.id ?? "",
+        kind: booked.kind,
+        status: booked.status,
+        points: booked.points,
+        totalPoints: law.state.points,
+        place: c?.place,
+        lat: c?.lat,
+        lon: c?.lon,
+        speedKmh: c ? Math.round(c.kmh) : null,
+        limitKmh: c?.limit,
+        detail: c?.detail,
+      },
+      span,
+    );
     perf.add("violation.total", performance.now() - started, true, started);
     return booked;
   };
@@ -3227,7 +3302,11 @@ async function main(): Promise<void> {
         post,
       );
       socialUnread++;
-      log("social", { event: "post", kind: post.record.kind, witnesses, reach: post.reach });
+      log(
+        "social_post",
+        { postId: post.id, kind: post.record.kind, witnesses, reach: post.reach },
+        postSpan(post),
+      );
     });
   /** After each frame of play: a post that is due (one a frame), and one render of the shots. */
   const afterViolations = (now: number) => {
@@ -3286,7 +3365,7 @@ async function main(): Promise<void> {
       if (p.record.status !== "uncaught") continue;
       law.notice(p.record, "sns");
       notify("police", () => i18n.t("notify.traced"));
-      log("social", { event: "reported", kind: p.record.kind, reposts: p.reposts });
+      log("social_reported", { postId: p.id, kind: p.record.kind, reposts: p.reposts }, postSpan(p));
     }
     for (const p of social.posts) {
       const step = p.reposts >= 10000 ? 10000 : p.reposts >= 1000 ? 1000 : 0;
@@ -3357,7 +3436,12 @@ async function main(): Promise<void> {
     // Pulling over is the driver's to do: the self-driving hands the car back.
     if (autopilot) stopAutopilot(i18n.t("toast.autopilotOff"));
     if (police) pursuitDirector.begin(police);
-    log("police", { event: "pursuit" });
+    const seen = police?.seen ?? [];
+    log(
+      "patrol_pursuit",
+      { unitKind: police?.kind ?? null, violationIds: seen.flatMap((r) => (r.id ? [r.id] : [])) },
+      violationSpan(seen.at(-1) ?? {}),
+    );
   };
   /** The roadside stop's ticket (pursuitDirector.ts): taken, it calls `onAccept`. */
   let ticketTaken: (() => void) | null = null;
@@ -3389,7 +3473,12 @@ async function main(): Promise<void> {
         // Stamped already when committed (book): the ticket does not stamp it again.
         law.cite(r, "patrol");
       }
-      log("police", { event: "ticket", kinds: p.seen.map((r) => r.kind), total: law.state.points });
+      log("patrol_ticket", {
+        unitKind: p.kind,
+        kinds: p.seen.map((r) => r.kind),
+        violationIds: p.seen.flatMap((r) => (r.id ? [r.id] : [])),
+        totalPoints: law.state.points,
+      });
       const tw = taxiWorld();
       if (tw) p.release(tw, vehicle.position());
     }
@@ -3478,11 +3567,12 @@ async function main(): Promise<void> {
         }
       }
       for (const r of p.seen) law.notice(r, "patrol");
+      const lostIds = p.seen.flatMap((r) => (r.id ? [r.id] : []));
       p.seen.length = 0;
       $("#pursuit-chip").hidden = true;
       const escaped = ESCAPED_KEY[p.kind];
       notify("police", () => i18n.t(escaped));
-      log("police", { event: "lost" });
+      log("patrol_lost", { unitKind: p.kind, violationIds: lostIds });
     }
   };
   const isSurfaceStreet = (seg: Segment) => seg.line.kind !== "highway";
@@ -3594,7 +3684,7 @@ async function main(): Promise<void> {
       witnessPhones.react(moment, post, carPos);
       notify("social", () => i18n.t("notify.stopPosted", { app: SOCIAL_APP_NAME }), post);
       socialUnread++;
-      log("social", { event: "stopPost", phase, reach: post.reach });
+      log("social_stop_post", { postId: post.id, phase, reach: post.reach }, pursuitDirector.stop?.span);
       return true;
     },
     assist: () => controls.assist,
@@ -3754,7 +3844,7 @@ async function main(): Promise<void> {
     autopilot = { driver, cruising: !mission, input: { throttle: 0, brake: 0, steer: 0, handbrake: false } };
     $("#autopilot-chip").hidden = false;
     toast(i18n.t(mission ? "toast.autopilotToTarget" : "toast.autopilotCruise"), "#3cd17a");
-    log("autopilot", { on: true, cruising: !mission, metres: Math.round(driver.route?.length ?? 0) });
+    log("autopilot_on", { cruising: !mission, routeM: Math.round(driver.route?.length ?? 0) });
   };
   const stopAutopilot = (message: string) => {
     if (!autopilot) return;
@@ -3762,7 +3852,7 @@ async function main(): Promise<void> {
     vehicle.lightOverride = null;
     $("#autopilot-chip").hidden = true;
     toast(message, "#3cd17a");
-    log("autopilot", { on: false });
+    log("autopilot_off", {});
   };
   const updateAutopilot = (dt: number) => {
     const ap = autopilot;
@@ -3781,7 +3871,7 @@ async function main(): Promise<void> {
     };
     // Stuck after every go, or blocked where it may not pass: the driver takes the car back.
     if (gaveUp) {
-      log("autopilot", { gaveUp });
+      log("autopilot_gave_up", { why: gaveUp });
       return stopAutopilot(i18n.t(gaveUp === "stuck" ? "toast.autopilotStuck" : "toast.autopilotBlocked"));
     }
     if (!done) return;
@@ -3928,7 +4018,7 @@ async function main(): Promise<void> {
     const isRouted = taxi.board(tw, at, dest.name);
     if (!isRouted) {
       toast(i18n.t("toast.taxiNoRoute", { place: dest.name }), "#ff6b6b");
-      log("taxi", { event: "no_route", to: dest.name });
+      log("taxi_no_route", { to: dest.name });
       return;
     }
     walker.leave();
@@ -3952,7 +4042,11 @@ async function main(): Promise<void> {
       i18n.t("toast.taxiFare", { fare: formatNumber(fare), km: (taxi.metres / 1000).toFixed(1) }),
       "#ffd23c",
     );
-    log("taxi_ride", { fare, metres: Math.round(taxi.metres), slowSeconds: Math.round(taxi.slowSeconds) });
+    log("taxi_ride", {
+      fareYen: fare,
+      distanceM: Math.round(taxi.metres),
+      slowS: Math.round(taxi.slowSeconds),
+    });
     if (tw) taxi.leave(tw);
     $("#taxi-meter").hidden = true;
   };
@@ -4035,7 +4129,7 @@ async function main(): Promise<void> {
     const g = frame.toGeodetic(focusPos());
     const m = missions.startChosen(p, performance.now(), g.lat, g.lon);
     toast(i18n.t("toast.destSet", { name: p.name, km: (m.startDistance / 1000).toFixed(1) }), "#ffe14d");
-    log("destination", { name: p.name, km: Math.round(m.startDistance / 100) / 10 });
+    log("destination_set", { name: p.name, distanceKm: Math.round(m.startDistance / 100) / 10 });
   };
   const showDestinations = () => {
     const here = frame.toGeodetic(focusPos());
@@ -4194,7 +4288,7 @@ async function main(): Promise<void> {
         });
     }
     log("day_end", {
-      metres: Math.round(todayMetres),
+      distanceM: Math.round(todayMetres),
       violations: today.length,
       caught: caught.length,
       notices: delivered.length,
@@ -4292,7 +4386,7 @@ async function main(): Promise<void> {
     prior++;
     law.state.points = 0;
     law.state.suspended = suspendedDays > 0;
-    log("sanction", { kind: sanction.kind, days: suspendedDays, course: withCourse, prior });
+    log("sanction", { kind: sanction.kind, suspendedDays, course: withCourse, prior });
   };
   /** At the counter: the notice is dealt with, or the licence is handed in. */
   const appear = () => {
@@ -4465,6 +4559,8 @@ async function main(): Promise<void> {
       r.replay =
         perf.time("clip.cut", () => cutClip(recorder.frames, r.at, frame, { onFoot: false, moment })) ??
         undefined;
+      if (r.replay)
+        log("replay_clip_saved", { violationId: r.id ?? "", samples: r.replay.count }, violationSpan(r));
     }
   }, 1000);
   const openReview = () => {
@@ -4582,7 +4678,25 @@ async function main(): Promise<void> {
     const isPost = shape instanceof RAPIER.Cylinder || shape instanceof RAPIER.Capsule;
     return isPost ? "pole" : "ground";
   };
-  const onAccident = (kind: "pedestrian" | "vehicle" | "building" | "pole", kmh: number, who: string) => {
+  /**
+   * The blow on a body with a mass when the step's own record missed it (the contact began before
+   * massContacts saw a point): head-on, at the car's speed, with the same restitution.
+   */
+  const impactAgainstMass = (handle: number, kmh: number): Impact | null => {
+    const body = massContacts.bodyOf(handle);
+    if (!body) return null;
+    const closing = kmh / 3.6;
+    const carKg = vehicle.massKg;
+    const e = restitution(closing, body.kind);
+    const { dv1, dv2, energy } = centralImpact(carKg, body.mass, closing, e);
+    return { closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
+  };
+  const onAccident = (
+    kind: "pedestrian" | "vehicle" | "building" | "pole",
+    kmh: number,
+    who: string,
+    impact: Impact | null = null,
+  ) => {
     social.note("crash", env.now().getTime());
     pursuitDirector.onCrash();
     const careless = book(VIOLATIONS.safeDriving, performance.now(), 3000);
@@ -4590,7 +4704,8 @@ async function main(): Promise<void> {
     if (phone.isInUse(performance.now()) && mode === "car")
       book(VIOLATIONS.phoneDanger, performance.now(), 30000, inJapanese("violationDetail.phoneCrash"));
     if (kind === "pedestrian") {
-      const injury = book(injuryViolation(kmh), performance.now(), 3000);
+      // How badly they are hurt goes with the speed the blow gave them (Δv from both masses).
+      const injury = book(injuryViolation(impact ? impact.dvOther * 3.6 : kmh), performance.now(), 3000);
       // In a pursuit: 過失運転致傷 or 危険運転致傷 (自動車運転死傷処罰法), pursuitDirector.ts.
       pursuitDirector.onInjury(
         kmh,
@@ -4602,7 +4717,16 @@ async function main(): Promise<void> {
     score = Math.max(0, score - penalty);
     const what = i18n.t(ACCIDENT_KEY[kind], { name: who });
     toast(i18n.t("toast.accident", { what, kmh: Math.round(kmh), penalty }), "#ff6b6b");
-    log("accident", { kind, kmh: Math.round(kmh) });
+    log("accident", {
+      kind,
+      speedKmh: Math.round(kmh),
+      ...(impact && {
+        otherDeltaVKmh: Math.round(impact.dvOther * 36) / 10,
+        carDeltaVKmh: Math.round(impact.dvCar * 36) / 10,
+        energyKj: Math.round(impact.energy / 100) / 10,
+        otherMassKg: Math.round(impact.otherKg),
+      }),
+    });
   };
 
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -4929,6 +5053,8 @@ async function main(): Promise<void> {
           gameNow: () => env.now().getTime(),
           pursuit: debugPursuit,
           perf: debugPerf,
+          // The last 2,000 log lines: logs.query({ event: /^pursuit_/ }), logs.chain("vio-…"), logs.jsonl().
+          logs: recentLogs,
         },
         getPursuit: () => pursuitDirector,
         social,
@@ -4956,6 +5082,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  warn("fatal", { error: String(error) });
+  captureFailure("fatal", error);
   setLoading(() => i18n.t("loading.failed", { error: String(error) }), 0);
 });

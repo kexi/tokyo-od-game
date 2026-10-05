@@ -27,6 +27,7 @@ import { geodeticToEcef } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import type { DemStore } from "./dem";
+import { FarGround, type TileRect } from "./farGround";
 
 type Chunk = {
   x: number;
@@ -84,6 +85,10 @@ export class Terrain {
   private style: GroundStyle = "photo";
   private readonly tmpMatrix = new Matrix4();
   private water: GroundWater | null = null;
+  /** The ground beyond these chunks, to the horizon (farGround.ts). */
+  private readonly far: FarGround;
+  /** The square of chunks drawn (all built), which the far ground leaves out; null before any. */
+  private square: TileRect | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -93,10 +98,12 @@ export class Terrain {
     frame: LocalFrame,
   ) {
     this.frame = frame;
+    this.far = new FarGround(scene, renderer, (lat, lon, h) => dem.ellipsoidal(lat, lon, h), frame);
   }
 
   setFrame(frame: LocalFrame): void {
     this.frame = frame;
+    this.far.setFrame(frame);
     for (const chunk of this.chunks.values()) {
       this.placeMesh(chunk);
       // Rebuild immediately: leaving the car without ground for even a frame drops it through.
@@ -176,11 +183,33 @@ export class Terrain {
         chunk.imageryZoom < zoom || chunk.imageryZoom > zoom + 1 || chunk.imageryStyle !== this.style;
       if (needsImagery && !chunk.imageryLoading) void this.loadImagery(chunk, zoom);
     }
+    this.square = builtSquare(cx, cy, RENDER_RADIUS, (x, y) => this.chunks.has(`${x}/${y}`));
+    this.showSquare(this.square);
+    this.far.update(lat, lon, this.square);
+  }
+
+  /** The square of z15 chunks drawn around the player (the far ground leaves it out), or null. */
+  coverage(): TileRect | null {
+    return this.square;
+  }
+
+  /** Chunks inside the square are drawn; the rest (kept for a while past the radius) are not. */
+  private showSquare(square: TileRect | null): void {
+    for (const chunk of this.chunks.values()) {
+      const isInside =
+        square !== null &&
+        chunk.x >= square.x0 &&
+        chunk.x < square.x1 &&
+        chunk.y >= square.y0 &&
+        chunk.y < square.y1;
+      chunk.mesh.visible = isInside;
+    }
   }
 
   dispose(): void {
     for (const chunk of this.chunks.values()) this.disposeChunk(chunk);
     this.chunks.clear();
+    this.far.dispose();
   }
 
   private async buildChunk(x: number, y: number, ring: number): Promise<void> {
@@ -394,6 +423,36 @@ export class Terrain {
     chunk.mesh.material.map?.dispose();
     chunk.mesh.material.dispose();
   }
+}
+
+/**
+ * The widest square of z15 chunks round (cx, cy), up to `radius` rings, whose chunks are all built
+ * (`isBuilt`), or null when the centre is not. Why a square of built chunks, not every chunk there
+ * is: the far ground is cut out exactly there, so a chunk still loading leaves the far ground in its
+ * place, never a hole.
+ */
+export function builtSquare(
+  cx: number,
+  cy: number,
+  radius: number,
+  isBuilt: (x: number, y: number) => boolean,
+): TileRect | null {
+  let reach = -1;
+  for (let r = 0; r <= radius; r++) {
+    let isComplete = true;
+    for (let dy = -r; dy <= r && isComplete; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        const isRing = Math.max(Math.abs(dx), Math.abs(dy)) === r;
+        if (isRing && !isBuilt(cx + dx, cy + dy)) {
+          isComplete = false;
+          break;
+        }
+      }
+    if (!isComplete) break;
+    reach = r;
+  }
+  if (reach < 0) return null;
+  return { x0: cx - reach, y0: cy - reach, x1: cx + reach + 1, y1: cy + reach + 1 };
 }
 
 /**

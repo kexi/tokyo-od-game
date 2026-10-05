@@ -8,6 +8,7 @@ import { HELI, heliStation, stepHeli } from "../src/game/pursuitScene";
 import type { StopPhase } from "../src/game/socialTexts";
 import type { ChoiceId } from "../src/game/trafficStop";
 import { TrafficLaw, VIOLATIONS } from "../src/game/traffic";
+import { recentLogs } from "../src/log";
 
 /** A police unit as the director drives it (no physics): where it is and what state it is in. */
 class FakeUnit {
@@ -41,6 +42,11 @@ class FakeUnit {
     this.state = "leaving";
     this.managed = false;
     this.releasedAt = 0;
+  }
+  /** Whether an officer is out of the car (their mass off the car's). */
+  officerOut = false;
+  setOfficerOut(out: boolean): void {
+    this.officerOut = out;
   }
 }
 
@@ -307,6 +313,32 @@ describe("the pursuit's director (pursuitDirector.ts)", () => {
     expect(w.director.stop?.fled).toBe(true);
     expect(w.director.stop?.disposal).toBe("red");
     expect(w.posts[0]).toBe("fledCaught");
+  });
+
+  it("logs the pursuit, the stop and the ticket as spans that lead back to the violation", () => {
+    recentLogs.clear();
+    const unit = pursue(w);
+    const id = unit.seen[0]?.id;
+    run(w, 3);
+    answerAll(w);
+    const chain = recentLogs.chain(`vio-${id}`);
+    const events = chain.map((e) => e.event);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        "pursuit_begin",
+        "pursuit_end",
+        "stop_begin",
+        "stop_ticket",
+        "violation_cited",
+        "stop_end",
+      ]),
+    );
+    const begin = chain.find((e) => e.event === "pursuit_begin");
+    const stop = chain.find((e) => e.event === "stop_begin");
+    expect(begin).toMatchObject({ parentId: `vio-${id}`, violationIds: [id] });
+    expect(stop?.parentId).toBe(begin?.spanId);
+    expect(chain.find((e) => e.event === "stop_ticket")?.spanId).toBe(stop?.spanId);
+    expect(chain.find((e) => e.event === "violation_cited")?.spanId).toBe(`vio-${id}`);
   });
 
   it("refuses a new pursuit while a stop is on, and clears a stray officer when one begins", () => {

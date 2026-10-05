@@ -15,6 +15,17 @@ export type Quality = {
   maxImageryZoom: number;
   buildingLoadRadius: number; // metres
   buildingCacheBytes: number;
+  /** The far ground (farGround.ts): GSI tile zoom, tiles on each side of the player's, grid cells per tile. */
+  farGroundZoom: number;
+  farGroundRing: number;
+  farGroundSegments: number;
+  /**
+   * The far skyline (buildings.ts): PLATEAU tiles within this radius (m), none finer than this
+   * geometric error (m), refined to the screen-space error target (px; 1e6: never by distance).
+   */
+  farBuildingRadius: number;
+  farBuildingMinError: number;
+  farBuildingErrorTarget: number;
   crowdScale: number;
   maxAiCars: number;
 };
@@ -30,13 +41,60 @@ function detectMobile(): boolean {
 const IS_MOBILE = detectMobile();
 export const GRAPHICS = new Graphics(loadGraphics(IS_MOBILE));
 
-const VIEW: Record<
+/**
+ * 描画距離. Beyond the streamed world a far ground and skyline reach the horizon (knowledge/
+ * far-skyline.md): 低 (near) a 3×3 of z10 tiles (≥ 31 km each way, 2 km cells) and each ward's
+ * coarsest PLATEAU tile within 14 km (10–26 tiles, 1–3 MB); 中・高 a 5×5 of z11 tiles (≥ 31 km,
+ * 500 m cells) and the two coarsest levels within 20 km (45–90 tiles, 6–12 MB); 最高 out to 26 km.
+ */
+export const VIEW: Record<
   GraphicsSettings["viewDistance"],
-  Pick<Quality, "terrainRadius" | "maxImageryZoom" | "buildingLoadRadius">
+  Pick<
+    Quality,
+    | "terrainRadius"
+    | "maxImageryZoom"
+    | "buildingLoadRadius"
+    | "farGroundZoom"
+    | "farGroundRing"
+    | "farGroundSegments"
+    | "farBuildingRadius"
+    | "farBuildingMinError"
+    | "farBuildingErrorTarget"
+  >
 > = {
-  near: { terrainRadius: 1, maxImageryZoom: 17, buildingLoadRadius: 1600 },
-  medium: { terrainRadius: 2, maxImageryZoom: 18, buildingLoadRadius: 2800 },
-  far: { terrainRadius: 3, maxImageryZoom: 18, buildingLoadRadius: 4000 },
+  near: {
+    terrainRadius: 1,
+    maxImageryZoom: 17,
+    buildingLoadRadius: 1600,
+    farGroundZoom: 10,
+    farGroundRing: 1,
+    farGroundSegments: 16,
+    farBuildingRadius: 14_000,
+    farBuildingMinError: 200,
+    farBuildingErrorTarget: 1e6,
+  },
+  medium: {
+    terrainRadius: 2,
+    maxImageryZoom: 18,
+    buildingLoadRadius: 2800,
+    farGroundZoom: 11,
+    farGroundRing: 2,
+    farGroundSegments: 32,
+    farBuildingRadius: 20_000,
+    farBuildingMinError: 150,
+    farBuildingErrorTarget: 40,
+  },
+  far: {
+    terrainRadius: 3,
+    maxImageryZoom: 18,
+    buildingLoadRadius: 4000,
+    farGroundZoom: 11,
+    farGroundRing: 2,
+    farGroundSegments: 32,
+    farBuildingRadius: 26_000,
+    farBuildingMinError: 150,
+    farBuildingErrorTarget: 28,
+  },
 };
 const TRAFFIC: Record<GraphicsSettings["traffic"], Pick<Quality, "crowdScale" | "maxAiCars">> = {
   few: { crowdScale: 0.5, maxAiCars: 10 },

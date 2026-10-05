@@ -62,6 +62,38 @@ qa-drive minutes="3" every="6" time="day":
 assets:
     pnpm exec vite --open /tokyo-od-game/assets.html
 
+# 最新のセッションのログを 1 行 1 イベントで末尾 n 行表示する（開発サーバーが .qa/logs に書いたもの）
+logs n="40":
+    pnpm exec tsx scripts/logs.ts tail {{ n }}
+
+# 最新のセッションのログを追いかけて表示し続ける（再読み込みで新しいセッションに移る、Ctrl-C で終了）
+logs-follow:
+    pnpm exec tsx scripts/logs.ts tail 20 --follow
+
+# セッションの warn・error だけを表示する（uncaught_error は発生箇所・span・状態・直前の行も、既定は最新）
+logs-errors session="":
+    pnpm exec tsx scripts/logs.ts errors {{ session }}
+
+# span とそこから起きた span の行を表示する（例: just logs-trace vio-…、既定は最新のセッション）
+logs-trace span session="":
+    pnpm exec tsx scripts/logs.ts trace {{ span }} {{ session }}
+
+# 直近 minutes 分の全セッションの行を時刻順に表示する
+logs-since minutes="10":
+    pnpm exec tsx scripts/logs.ts since {{ minutes }}
+
+# 2 つのセッションの warn・error の件数を比べる（既定は 1 つ前と最新、修正の確認用）
+logs-compare before="" after="":
+    pnpm exec tsx scripts/logs.ts compare {{ before }} {{ after }}
+
+# セッションを同じ seed・出発地・時刻・天気で読み込み直す URL を表示する（既定は最新）
+logs-repro session="":
+    pnpm exec tsx scripts/logs.ts repro {{ session }}
+
+# ログのセッションを新しい順に件数と build 付きで一覧する
+logs-files n="10":
+    pnpm exec tsx scripts/logs.ts files {{ n }}
+
 # アセット台帳（assets/manifest.yml）が全ファイル・生成スクリプト・レシピ・ライセンスと食い違っていないか検査する
 assets-check:
     pnpm exec vitest run tests/assetManifest.test.ts

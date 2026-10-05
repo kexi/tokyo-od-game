@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { recentLogs } from "../src/log";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -121,11 +122,10 @@ describe("訳語の引き方", () => {
   });
 
   it("warns once per missing key in development, not every frame", () => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    recentLogs.clear();
     translate(dicts, "zh", "only-once");
     translate(dicts, "zh", "only-once");
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(String(spy.mock.calls[0][0])).toContain('"event":"i18n_missing"');
+    expect(recentLogs.query({ event: "i18n_missing" })).toMatchObject([{ level: "warn", key: "only-once" }]);
   });
 
   it("fills {name} slots, leaves unknown ones visible", () => {

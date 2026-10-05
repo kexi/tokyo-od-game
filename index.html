@@ -807,6 +807,8 @@
       <form method="dialog"><button data-i18n="settings.close">閉じる</button></form>
     </dialog>
 
+    <!-- Before everything: the seed of Math.random, the failure handlers, the dev log shipping (knowledge/logging.md). -->
+    <script type="module" src="./src/diagnosticsBoot.ts"></script>
     <!-- The language first, as its own small script: the title is translated before the game loads. -->
     <script type="module" src="./src/i18n/boot.ts"></script>
     <script type="module" src="./src/main.ts"></script>

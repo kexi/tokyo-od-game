@@ -8,6 +8,8 @@ import {
   type VehicleInstance,
   type VehicleKind,
 } from "../game/vehicleModels";
+import { MassiveBody, massContactsFor } from "../physics/massContacts";
+import { laden, VEHICLE_SPECS, yawInertia, type MassClass } from "../physics/masses";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { TrafficControl } from "./trafficControl";
 
@@ -40,6 +42,14 @@ type AiCar = {
   route: Array<{ seg: Segment; dir: 1 | -1 }>;
   /** Seconds standing at a dead end (no way on): it leaves once out of view. */
   deadEnd: number;
+  /** Its class, mass with driver, people and load, and motion for the collisions (massContacts). */
+  massClass: MassClass;
+  mass: MassiveBody;
+  /** Everyday acceleration and braking (m/s²): a bus pulls away slower than a taxi. */
+  accel: number;
+  decel: number;
+  /** Seconds it still stands after being shoved (the driver collects themselves), then drives on. */
+  hold: number;
 };
 
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
@@ -65,7 +75,15 @@ const COMFORT_DECEL = 5; // m/s², for deciding whether a yellow/red can still b
  * Taxis and private cars driving on the left (道路交通法 第17条) along the road graph, keeping
  * gaps to the car ahead and to the player. Kinematic bodies near the player make them solid.
  */
-type ParkedCar = { object: Group; body: RAPIER.RigidBody };
+type ParkedCar = { object: Group; body: RAPIER.RigidBody; mass: MassiveBody };
+
+// A shoved car: its driver stands on the brake, the tyres skid (about 0.7 g). A parked one holds
+// only by the parking brake or P on one axle (half that). Assumed, as the brakes in masses.ts.
+const SKID = 0.7 * 9.81;
+const PARKED_GRIP = 0.35 * 9.81;
+/** Seconds a shoved car stands before driving on: 2 s, and 2 s more per m/s of the blow, at most 20. */
+const holdAfter = (dv: number) => Math.min(20, 2 + 2 * dv);
+const UP = new Vector3(0, 1, 0);
 
 const PARKED_MAX = 16;
 
@@ -80,13 +98,17 @@ export class TrafficAI {
   private serial = 1;
   private readonly tmpPos = new Vector3();
   private readonly tmpDir = new Vector3();
+  private readonly tmpQuat = new Quaternion();
+  private readonly contacts: ReturnType<typeof massContactsFor>;
 
   constructor(
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
     private readonly control: TrafficControl | null = null,
-  ) {}
+  ) {
+    this.contacts = massContactsFor(world);
+  }
 
   /**
    * Swap in a rebuilt graph (player moved / frame re-anchored). Cars are re-attached to the
@@ -118,6 +140,8 @@ export class TrafficAI {
   private placeParked(graph: RoadGraph | null): void {
     for (const p of this.parked) {
       this.scene.remove(p.object);
+      const collider = p.body.collider(0);
+      if (collider) this.contacts.remove(collider);
       this.world.removeRigidBody(p.body);
     }
     this.parked = [];
@@ -139,13 +163,20 @@ export class TrafficAI {
       object.position.set(pos.x, ground + 0.86, pos.z);
       object.rotation.y = yaw;
       this.scene.add(object);
+      // Kinematic, not fixed: a car that hits it shoves it by both masses (massContacts) and it
+      // slides on its parking brake, then stands again (a kinematic body that is not moved costs
+      // nothing in the step).
       const body = this.world.createRigidBody(
-        RAPIER.RigidBodyDesc.fixed()
+        RAPIER.RigidBodyDesc.kinematicPositionBased()
           .setTranslation(pos.x, ground + 0.86, pos.z)
-          .setRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw)),
+          .setRotation(new Quaternion().setFromAxisAngle(UP, yaw)),
       );
-      this.world.createCollider(RAPIER.ColliderDesc.cuboid(0.92, 0.6, 2.15), body);
-      this.parked.push({ object, body });
+      const collider = this.world.createCollider(RAPIER.ColliderDesc.cuboid(0.92, 0.6, 2.15), body);
+      const kg = VEHICLE_SPECS.sedan.curbKg;
+      const mass = new MassiveBody(kg, yawInertia(kg, 4.3, 1.84), PARKED_GRIP, "vehicle");
+      mass.setMotion(pos.x, pos.z, 0, 0, 0);
+      this.contacts.add(collider, mass);
+      this.parked.push({ object, body, mass });
     }
   }
 
@@ -156,10 +187,7 @@ export class TrafficAI {
       offset(c.rear);
       c.yaw += yawDelta;
       c.object.rotation.y += yawDelta;
-      if (c.body) {
-        this.world.removeRigidBody(c.body);
-        c.body = null;
-      }
+      if (c.body) this.dropBody(c);
     }
   }
 
@@ -194,6 +222,7 @@ export class TrafficAI {
   update(dt: number, focus: Vector3, player: Vector3, playerForward: Vector3, playerSpeed: number): void {
     const graph = this.graph;
     if (!graph || graph.segments.length === 0) return;
+    for (const p of this.parked) this.slideParked(p, dt);
     this.spawn(graph, focus);
     for (let i = this.cars.length - 1; i >= 0; i--) {
       const c = this.cars[i];
@@ -206,52 +235,19 @@ export class TrafficAI {
         this.cars.splice(i, 1);
         continue;
       }
-      const limit = speedLimit(c.seg) / 3.6;
-      const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
-      const gap = Math.min(
-        this.gapAhead(c, pos, dir, player, playerForward, playerSpeed),
-        this.stopGap(c, dt),
-      );
-      // 7 m centre to centre for cars; longer vehicles keep their own length clear.
-      const standstill = 4.75 + c.half;
-      const target =
-        c.deadEnd > 0
-          ? 0
-          : gap < standstill
-            ? 0
-            : gap < standstill + 18
-              ? Math.min(cruise, (gap - standstill) * 0.8)
-              : cruise;
-      const turnSafe = this.cornerSpeed(graph, c);
-      c.speed += Math.max(-6 * dt, Math.min(2.2 * dt, Math.min(target, turnSafe) - c.speed));
-      const isPlaced = Number.isFinite(c.rear.x);
-      if (!isPlaced) c.s += c.speed * dt;
-      if (c.s >= c.seg.length) this.advance(graph, c);
-
-      c.groundCheck -= dt;
-      if (c.groundCheck <= 0) {
-        c.groundCheck = 0.3;
-        c.ground = this.groundAt(pos.x, pos.z) ?? c.ground;
-      }
-      const centre = this.drive(graph, c, pos, dir, dt);
-      // Where along its lane the car really is: its centre projected onto the road. Why not count the
-      // distance driven: a car rounding a corner cuts it, and the count ran ahead of the car until it
-      // aimed behind itself.
-      if (isPlaced) {
-        const along = graph.nearestOn(c.seg, centre).s;
-        const projected = c.dir === 1 ? along : c.seg.length - along;
-        c.s = Math.max(c.s - 2, Math.min(c.s + c.speed * dt * 2 + 0.05, projected));
-        if (c.s >= c.seg.length - 0.05) {
-          c.s = c.seg.length + 0.05;
-          this.advance(graph, c);
-        }
-      }
+      const isShoved = c.mass.shoved || c.hold > 0;
+      const centre = isShoved
+        ? this.shove(c, dt)
+        : this.follow(graph, c, pos, dir, dt, player, playerForward, playerSpeed);
       const yaw = c.yaw;
       c.object.position.set(centre.x, c.ground + (c.vehicle ? 0 : 0.86), centre.z);
       for (const w of c.vehicle?.wheels ?? []) w.rotation.x += (c.speed * dt) / 0.45;
       for (const w of c.front) w.rotation.y = c.steer;
       // Bikes lean into the turn about their ground contact (their origin is on the ground).
       c.object.rotation.set(0, yaw, -c.lean);
+      // Its motion for the collisions: along its heading, turning at v·tan(δ)/L.
+      const yawRate = (c.speed * Math.tan(c.steer)) / c.wheelbase;
+      c.mass.setMotion(centre.x, centre.z, Math.sin(yaw) * c.speed, Math.cos(yaw) * c.speed, yawRate);
       const isNear = pos.distanceTo(player) < BODY_RADIUS;
       if (isNear && !c.body) {
         c.body = this.world.createRigidBody(
@@ -265,14 +261,117 @@ export class TrafficAI {
               0,
             )
           : RAPIER.ColliderDesc.cuboid(0.92, 0.6, 2.15);
-        this.world.createCollider(box, c.body);
+        this.contacts.add(this.world.createCollider(box, c.body), c.mass);
       } else if (!isNear && c.body) {
-        this.world.removeRigidBody(c.body);
-        c.body = null;
+        this.dropBody(c);
       }
       c.body?.setNextKinematicTranslation(c.object.position);
-      c.body?.setNextKinematicRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw));
+      c.body?.setNextKinematicRotation(this.tmpQuat.setFromAxisAngle(UP, yaw));
     }
+  }
+
+  /** Its own driving along the lane this frame (speed, gaps, signals, steering); returns the centre. */
+  private follow(
+    graph: RoadGraph,
+    c: AiCar,
+    pos: Vector3,
+    dir: Vector3,
+    dt: number,
+    player: Vector3,
+    playerForward: Vector3,
+    playerSpeed: number,
+  ): Vector3 {
+    const limit = speedLimit(c.seg) / 3.6;
+    const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
+    const gap = Math.min(this.gapAhead(c, pos, dir, player, playerForward, playerSpeed), this.stopGap(c, dt));
+    // 7 m centre to centre for cars; longer vehicles keep their own length clear.
+    const standstill = 4.75 + c.half;
+    const target =
+      c.deadEnd > 0
+        ? 0
+        : gap < standstill
+          ? 0
+          : gap < standstill + 18
+            ? Math.min(cruise, (gap - standstill) * 0.8)
+            : cruise;
+    const turnSafe = this.cornerSpeed(graph, c);
+    c.speed += Math.max(-c.decel * dt, Math.min(c.accel * dt, Math.min(target, turnSafe) - c.speed));
+    const isPlaced = Number.isFinite(c.rear.x);
+    if (!isPlaced) c.s += c.speed * dt;
+    if (c.s >= c.seg.length) this.advance(graph, c);
+
+    c.groundCheck -= dt;
+    if (c.groundCheck <= 0) {
+      c.groundCheck = 0.3;
+      c.ground = this.groundAt(pos.x, pos.z) ?? c.ground;
+    }
+    const centre = this.drive(graph, c, pos, dir, dt);
+    // Where along its lane the car really is: its centre projected onto the road. Why not count the
+    // distance driven: a car rounding a corner cuts it, and the count ran ahead of the car until it
+    // aimed behind itself.
+    if (isPlaced) {
+      const along = graph.nearestOn(c.seg, centre).s;
+      const projected = c.dir === 1 ? along : c.seg.length - along;
+      c.s = Math.max(c.s - 2, Math.min(c.s + c.speed * dt * 2 + 0.05, projected));
+      if (c.s >= c.seg.length - 0.05) {
+        c.s = c.seg.length + 0.05;
+        this.advance(graph, c);
+      }
+    }
+    return centre;
+  }
+
+  /**
+   * Shoved by a car (massContacts): it slides by the velocity of the blow and spins by its yaw rate,
+   * slowing on skidding tyres; then it stands for a moment and drives on from where it came to rest
+   * (pure pursuit steers it back to its lane). Returns the centre.
+   */
+  private shove(c: AiCar, dt: number): Vector3 {
+    const m = c.mass;
+    const centre = this.tmpPos.copy(c.rear).addScaledVector(this.forwardOf(c.yaw), c.wheelbase / 2);
+    if (m.shoved) {
+      centre.x += m.vx * dt;
+      centre.z += m.vz * dt;
+      c.yaw += m.w * dt;
+      const isMoving = m.slow(dt);
+      if (!isMoving) c.hold = holdAfter(m.impact.dvOther);
+    } else {
+      c.hold = Math.max(0, c.hold - dt);
+    }
+    c.rear.copy(centre).addScaledVector(this.forwardOf(c.yaw), -c.wheelbase / 2);
+    c.speed = 0;
+    c.steer = 0;
+    c.lean = 0;
+    return centre;
+  }
+
+  private readonly tmpFwd = new Vector3();
+  private forwardOf(yaw: number): Vector3 {
+    return this.tmpFwd.set(Math.sin(yaw), 0, Math.cos(yaw));
+  }
+
+  /** A 路上駐車 car shoved by a car slides on its parking brake, then stands (and is never moved again). */
+  private slideParked(p: ParkedCar, dt: number): void {
+    const m = p.mass;
+    const o = p.object;
+    m.setMotion(o.position.x, o.position.z, 0, 0, 0);
+    if (!m.shoved) return;
+    o.position.x += m.vx * dt;
+    o.position.z += m.vz * dt;
+    o.rotation.y += m.w * dt;
+    m.slow(dt);
+    const ground = this.groundAt(o.position.x, o.position.z);
+    if (ground !== null) o.position.y = ground + 0.86;
+    p.body.setNextKinematicTranslation(o.position);
+    p.body.setNextKinematicRotation(this.tmpQuat.setFromAxisAngle(UP, o.rotation.y));
+  }
+
+  private dropBody(c: AiCar): void {
+    if (!c.body) return;
+    const collider = c.body.collider(0);
+    if (collider) this.contacts.remove(collider);
+    this.world.removeRigidBody(c.body);
+    c.body = null;
   }
 
   /** World pose of a car: lane centre to the left of its travel direction. */
@@ -541,15 +640,43 @@ export class TrafficAI {
         front: (vehicle?.wheels ?? []).filter((w) => FRONT_WHEEL.test(w.name)),
         route: [],
         deadEnd: 0,
+        ...this.massOf(kind && vehicle ? kind : taxi ? "jpnTaxi" : "sedan", vehicle, this.serial),
       });
       for (const w of this.cars.at(-1)?.front ?? []) w.rotation.order = "YXZ";
     }
   }
 
+  /**
+   * Mass (with driver, people and load), yaw inertia and everyday acceleration and braking of a
+   * traffic vehicle of a class: half its launch (grip or power from 36 km/h, as Vehicle drives) and
+   * three quarters of its full brake, within what the traffic always did (2.2 and 6 m/s²).
+   */
+  private massOf(kind: VehicleKind | MassClass, vehicle: VehicleInstance | null, serial: number) {
+    const massClass: MassClass =
+      kind === "patrol" || kind === "unmarked" || kind === "shirobai" ? "sedan" : kind;
+    const spec = VEHICLE_SPECS[massClass];
+    const kg = laden(massClass, serial);
+    const length = vehicle ? vehicle.length : 4.3;
+    const width = vehicle ? vehicle.width : 1.84;
+    const launch = Math.min(spec.launchG * 9.81, (spec.powerKw * 850) / (10 * kg));
+    return {
+      massClass,
+      mass: new MassiveBody(kg, yawInertia(kg, length, width), SKID, "vehicle"),
+      accel: Math.min(2.2, launch / 2),
+      decel: Math.min(6, spec.brake * 0.75),
+      hold: 0,
+    };
+  }
+
+  /** Class and mass of each car (for tests and the accident record), by its scene object. */
+  massOfObject(object: Object3D): { massClass: MassClass; kg: number } | null {
+    const c = this.cars.find((car) => car.object === object);
+    return c ? { massClass: c.massClass, kg: c.mass.mass } : null;
+  }
+
   private remove(c: AiCar): void {
     this.scene.remove(c.object);
-    if (c.body) this.world.removeRigidBody(c.body);
-    c.body = null;
+    this.dropBody(c);
   }
 }
 

@@ -18,7 +18,7 @@ import type { Darkroom } from "./darkroom";
 import { Busy, FrameGate } from "./frameSlices";
 import { perf } from "./perf";
 import type { Look } from "./photoDevelop";
-import { jstParts, type SocialPost } from "./social";
+import { jstParts, postSpan, type SocialPost } from "./social";
 import { cameraFor, unitOf, type CameraSpec, type SocialAccount } from "./socialAccounts";
 import type { ViolationRecord } from "./traffic";
 
@@ -199,7 +199,7 @@ export class WitnessShot {
       this.developed.set(post, shared);
       return;
     }
-    const work = this.capture(post).catch(failed);
+    const work = this.capture(post).catch((error: unknown) => failed(error, post));
     this.developed.set(post, work);
     void this.busy.track(work);
   }
@@ -267,16 +267,20 @@ export class WitnessShot {
       aspect: spec.aspect,
     };
     this.world.filmed?.(post);
-    log("witness_shot", {
-      post: post.id,
-      account: post.account.id,
-      device: spec.kind,
-      view: shot.view,
-      focal: Math.round(shot.focal),
-      aspect: spec.aspect,
-      distance: Math.round(shot.distance),
-      probes: best + 1,
-    });
+    log(
+      "witness_shot",
+      {
+        postId: post.id,
+        account: post.account.id,
+        device: spec.kind,
+        view: shot.view,
+        focalMm: Math.round(shot.focal),
+        aspect: spec.aspect,
+        distanceM: Math.round(shot.distance),
+        probes: best + 1,
+      },
+      postSpan(post),
+    );
     // A pan following a fast car streaks the frame sideways.
     const streak = isDashcam ? 0 : Math.min(4, (subject.kmh / 25) * across * (shot.focal / 26));
     const look: Look = {
@@ -600,7 +604,8 @@ export class WitnessShot {
 }
 
 const two = (n: number) => String(n).padStart(2, "0");
-const failed = (error: unknown) => warn("witness_shot_failed", { error: String(error) });
+const failed = (error: unknown, post: SocialPost) =>
+  warn("witness_shot_failed", { postId: post.id, error: String(error) }, postSpan(post));
 
 /** 2026/10/05 11:30:12  42km/h, burnt into a dashcam's frame. */
 function dashcamStamp(ms: number, kmh: number, isFollowing: boolean): string {

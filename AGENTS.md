@@ -24,3 +24,8 @@
 ## スクリプト
 
 - `scripts/*.ts` は tsx で実行する（`pnpm exec tsx scripts/<name>.ts`、またはそれを呼ぶ just レシピ）。`node scripts/<name>.ts`（Node の型除去）は enum・パラメータプロパティなど型除去で消せない構文や、拡張子なしの import で止まるため使わない。
+
+## ログ
+
+- ログは `src/log.ts` の `log()` / `warn()` / `error()` だけで書き、イベントは `src/logEvents.ts` に Zod スキーマを登録してから使う（`console.*` を直接呼ばない。テストが検査する）。詳細と jq での調べ方は [knowledge/logging.md](knowledge/logging.md)。
+- 不具合を直すときは、ブラウザのコンソールではなく端末でログを読む：`just dev` のページの行は `.qa/logs/` に溜まる。`just logs-errors` で失敗の場所（TypeScript の行）と span を見つけ、`just logs-trace <spanId>` で流れを読み、直したら `just logs-repro` の URL で読み込み直して `just logs-compare` でその `uncaught_error` が `gone` になったことを確かめる（knowledge/logging.md「AI のデバッグループ」）。

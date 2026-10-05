@@ -4,7 +4,7 @@ import { log } from "../log";
  * Timings of the work around a violation, in dev builds only (production calls straight through):
  * each phase of main's book(), of the post published later, of a bystander's shot and of the
  * screen grab, as performance.now() differences. A phase over LOG_OVER_MS is logged as
- * {"event":"perf","phase":…,"ms":…,"blocking":…}; window.__game.debug.perf reads the rest.
+ * {"event":"perf_phase","phase":…,"durationMs":…,"blocking":…}; window.__game.debug.perf reads the rest.
  *
  * `blocking` tells the two kinds apart: true for work done on the main thread in one go (it adds
  * to the frame it lands in), false for a span that waits on the GPU or a worker (from the request
@@ -44,7 +44,7 @@ export class PerfPhases {
     if (!this.isOn) return;
     this.recent.push({ phase, ms, at, blocking });
     if (this.recent.length > KEEP) this.recent.splice(0, this.recent.length - KEEP);
-    if (ms > LOG_OVER_MS) log("perf", { phase, ms: Math.round(ms * 10) / 10, blocking });
+    if (ms > LOG_OVER_MS) log("perf_phase", { phase, durationMs: Math.round(ms * 10) / 10, blocking });
   }
 
   /** Phases that started at or after `t` (performance.now()). */

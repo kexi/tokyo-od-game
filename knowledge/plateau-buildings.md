@@ -6,7 +6,7 @@ resource: https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/13-bldg-lod1-la
 tags: [plateau, rendering]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T10:10:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-05T04:55:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T03:45:00Z }
 sources:
@@ -33,6 +33,11 @@ sources:
   - 半径 250m は全方向を最高詳細度で読む。車の背後にも衝突判定を作るため。
 - 衝突判定は、見えているタイルのメッシュから Rapier の trimesh を作る。作るのは 100ms ごとに 1 個まで。
 - LOD1 には色が無いため、窓・ブロックごとの色・夜の点灯はシェーダーで描く（`src/world/facade.ts`）。
+
+# 遠くの街並み（2026-10-05 追加）
+
+- 同じ集約 tileset をもう 1 つの TilesRenderer で、粗い階層（区ごとの大きい建物 20〜80 棟）だけ 14〜26 km まで読む。子を preprocessNode で刈るプラグイン（`pruneToCoarse`）で、細かい階層と、最初の中身がもう全詳細の台東区を読まない。簡略版の外壁、衝突判定・影なし、近景と重なる所は 0.1 % 奥に描く。
+- 上位の階層の中身（港区の根は 20 棟・411 三角形・141 KB のうち batch table 108 KB）、区ごとの最初の geometricError（165〜1,003 m、台東区は 32〜64 m の葉）、プリセットごとのタイル数と通信量は [遠景](far-skyline.md)。
 
 # なぜ LOD2 ではないのか
 

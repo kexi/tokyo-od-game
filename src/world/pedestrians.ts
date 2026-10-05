@@ -1,5 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3, type Group, type Object3D, type Scene } from "three";
+import { MassiveBody, massContactsFor } from "../physics/massContacts";
+import { personKg } from "../physics/masses";
 import { animateHuman, createHuman, disposeHuman, FILM_GRIP, poseFilming, type HumanModel } from "./human";
 import type { SidewalkNetwork, Walk } from "./sidewalks";
 
@@ -30,6 +32,8 @@ export type Pedestrian = {
   walk: Walk | null;
   /** Seconds spent held at a kerb they were not meant to step off. */
   blocked: number;
+  /** Body mass from age, sex and height, and motion for the collisions (massContacts). */
+  mass: MassiveBody;
 };
 
 const FAMILY = [
@@ -104,10 +108,27 @@ const FILM_LOST = 120; // m: the car is gone, so they stop
 // Sight lines: one ray per this many metres; two closed samples in a row are a building.
 const SIGHT_STEP = 2.5;
 
+// Someone shoved hard enough falls (and a car's blow throws them): above this speed (m/s) of the
+// push they cannot keep their feet. Assumed, about a brisk step.
+const BOWLED = 1.5;
+// A body sliding and tumbling on asphalt slows at about 0.6 g (assumed; throw-distance studies use
+// 0.5–0.8).
+const BODY_GRIP = 0.6 * 9.81;
+
 const SPAWN_MIN = 30;
 const SPAWN_MAX = 180;
 const DESPAWN = 230;
 const BODY_RADIUS = 70;
+
+/**
+ * Body mass (kg) of the person with this id: their age band and sex (a girl's or a boy's given name:
+ * GIVEN alternates them) at the 国民健康・栄養調査 means, scaled to their height (masses.ts).
+ */
+export function pedestrianKg(id: number, heightScale: number): number {
+  const h = (n: number) => Math.abs(Math.imul(id + 1, 2654435761 + n * 97) >>> 0);
+  const isFemale = (h(2) % GIVEN.length) % 2 === 0;
+  return personKg(AGES[h(3) % AGES.length], isFemale, heightScale);
+}
 
 /** Deterministic profile from an id so the same NPC always has the same name and personality. */
 export function profileFor(id: number): PedestrianProfile {
@@ -151,7 +172,10 @@ export class Pedestrians {
     private readonly world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
     private readonly isOpen: (x: number, z: number, groundY: number) => boolean,
-  ) {}
+  ) {
+    this.contacts = massContactsFor(world);
+  }
+  private readonly contacts: ReturnType<typeof massContactsFor>;
 
   /** Re-anchoring moved the world: shift everyone by the same rigid transform. */
   transform(offset: (p: Vector3) => Vector3, yawDelta: number): void {
@@ -159,6 +183,9 @@ export class Pedestrians {
       offset(p.object.position);
       p.heading += yawDelta;
       this.dropBody(p);
+      // Where they are now, so the next frame's motion is not the jump of the frame itself.
+      p.mass.x = p.object.position.x;
+      p.mass.z = p.object.position.z;
     }
   }
 
@@ -190,6 +217,10 @@ export class Pedestrians {
         continue;
       }
       this.step(p, dt, car, carSpeed, carForward);
+      // Their motion for the collisions: from how far they moved this frame (walking, dodging).
+      const m = p.mass;
+      const isMoved = dt > 0 && !m.shoved;
+      m.setMotion(pos.x, pos.z, isMoved ? (pos.x - m.x) / dt : 0, isMoved ? (pos.z - m.z) / dt : 0, 0);
       const wantsBody = dist < BODY_RADIUS && p.state !== "fallen" && p.state !== "injured";
       if (wantsBody && !p.body) this.createBody(p);
       else if (!wantsBody) this.dropBody(p);
@@ -314,6 +345,26 @@ export class Pedestrians {
     return this.list.find((p) => p.body && p.body.collider(0)?.handle === handle) ?? null;
   }
 
+  /**
+   * Carried by a push: along its velocity, slowing on the ground, never into a building (the slide
+   * stops at the wall), following the ground's height.
+   */
+  private slide(p: Pedestrian, dt: number): void {
+    const m = p.mass;
+    const pos = p.object.position;
+    const nx = pos.x + m.vx * dt;
+    const nz = pos.z + m.vz * dt;
+    const g = this.groundAt(nx, nz);
+    const isFree = g !== null && this.isOpen(nx, nz, g);
+    if (!isFree) {
+      m.vx = 0;
+      m.vz = 0;
+    } else {
+      pos.set(nx, g, nz);
+    }
+    m.slow(dt);
+  }
+
   /** Hit by a car: falls and stays down until the ambulance takes them (道路交通法 第72条). */
   knockDown(p: Pedestrian): void {
     if (p.state === "injured") return;
@@ -341,6 +392,17 @@ export class Pedestrians {
   private step(p: Pedestrian, dt: number, car: Vector3, carSpeed: number, carForward: Vector3): void {
     p.stateTime += dt;
     const pos = p.object.position;
+    const m = p.mass;
+    const isDown = p.state === "injured" || p.state === "fallen";
+    // Shoved by a car (massContacts): hard enough, they go down; then the push carries them.
+    const isBowled = m.shoved && !isDown && Math.hypot(m.vx, m.vz) > BOWLED;
+    if (isBowled) {
+      this.stopFilming(p);
+      p.state = "fallen";
+      p.stateTime = 0;
+      this.dropBody(p);
+    }
+    if (m.shoved) this.slide(p, dt);
     if (p.state === "injured") {
       const t = Math.min(1, p.stateTime / 0.4);
       p.object.rotation.set(t * (Math.PI / 2), p.heading, 0);
@@ -506,6 +568,7 @@ export class Pedestrians {
       umbrella: pick([0x223355, 0xaa2233, 0x226644, 0xeeeeee], 5),
     };
     const height = 0.92 + (profile.id % 7) * 0.025;
+    const kg = pedestrianKg(profile.id, height);
     const model = createHuman(colors, height, profile.id);
     // How to build them again for a saved violation's replay (replayClip.ts).
     model.root.userData.replay = { type: "human", colors, height, variant: profile.id };
@@ -526,7 +589,10 @@ export class Pedestrians {
       groundCheck: 0,
       walk: null,
       blocked: 0,
+      // A standing person's yaw inertia is small (about 1.5 kg·m² for 60 kg); a blow mostly moves them.
+      mass: new MassiveBody(kg, kg * 0.025, BODY_GRIP, "person"),
     });
+    this.list[this.list.length - 1].mass.setMotion(at.x, at.z, 0, 0, 0);
     return this.list[this.list.length - 1];
   }
 
@@ -535,14 +601,17 @@ export class Pedestrians {
     p.body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, pos.y + 0.9, pos.z),
     );
-    this.world.createCollider(
+    const collider = this.world.createCollider(
       RAPIER.ColliderDesc.capsule(0.55, 0.28).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
       p.body,
     );
+    this.contacts.add(collider, p.mass);
   }
 
   private dropBody(p: Pedestrian): void {
     if (!p.body) return;
+    const collider = p.body.collider(0);
+    if (collider) this.contacts.remove(collider);
     this.world.removeRigidBody(p.body);
     p.body = null;
   }

@@ -17,6 +17,7 @@ import {
   readWays,
   readWaysById,
 } from "./osm-pbf.ts";
+import { log } from "../src/log.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const OUT = join(ROOT, "public", "data", "destinations.json");
@@ -777,8 +778,6 @@ function placeItem(rep: Part, group: Located[]): Item {
 
 // ---------------------------------------------------------------- extract
 
-const log = (event: string, fields: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
 const inBox = ([lon, lat]: LonLat) =>
   lat >= BBOX.minLat && lat <= BBOX.maxLat && lon >= BBOX.minLon && lon <= BBOX.maxLon;
 
@@ -840,15 +839,15 @@ async function main(): Promise<void> {
   await writeFile(LICENSE_OUT, ODBL_NOTICE);
   const counts: Record<string, number> = {};
   for (const r of rows) counts[r[0]] = (counts[r[0]] ?? 0) + 1;
-  log("written", {
+  log("destinations_written", {
     file: OUT,
     items: rows.length,
     counts,
     featured: report.featured,
     movedIntoWards: report.movedIntoWards.length,
     brandQids: report.brandQids,
-    seconds: Math.round((Date.now() - started) / 1000),
-    rssMB: Math.round(process.memoryUsage().rss / 1e6),
+    durationS: Math.round((Date.now() - started) / 1000),
+    rssMb: Math.round(process.memoryUsage().rss / 1e6),
   });
   log("moved_into_wards", { list: report.movedIntoWards });
 }

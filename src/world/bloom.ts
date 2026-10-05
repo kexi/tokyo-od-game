@@ -18,6 +18,7 @@ import {
   min,
   pow,
   screenUV,
+  smoothstep as smoothstepNode,
   texture,
   uniform,
   vec2,
@@ -43,7 +44,8 @@ import { smoothstep } from "./skyLight";
  *    (低: 3 levels below the quarter instead of 4 below the half).
  * 3. Added onto the street in the pass itself: one bilinear tap of the half-resolution sum per pixel,
  *    and, with 画質 レンズフレア, the lamps' ghosts (lensFlare.ts's night half: lamps and headlights
- *    mirrored through the centre of the picture, from a small level of the chain).
+ *    mirrored through the centre of the picture, from a small level of the chain, only for lights
+ *    that are points on the picture: see lampGhosts).
  *
  * Why not three's BloomNode (three/addons/tsl/display/BloomNode.js): five mips of a separable
  * Gaussian (11 passes, up to 22 taps) where the dual filter spreads as far in 9 passes of 4–8
@@ -102,9 +104,47 @@ export function bloomShare(b: number, threshold: number): number {
 }
 
 /** 画質 › 光のにじみ: the prefilter's resolution divisor and the number of levels from there. */
-const MODES = { low: { first: 4, levels: 4 }, high: { first: 2, levels: 5 } } as const;
+export const MODES = { low: { first: 4, levels: 4 }, high: { first: 2, levels: 5 } } as const;
 /** The level the lamps' ghosts are sampled from (blurred enough to read as soft discs). */
-const GHOST_LEVEL = 2;
+export const GHOST_LEVEL = 2;
+
+/**
+ * The lamps' ghosts: each one's magnification (negative: turned through the centre of the picture,
+ * as a reflection between two lens surfaces turns it) and the tint of the coating that reflected
+ * it. At most 1.4 times: the old set (−1, −1.43, −2.5, −10) blew a light near the centre up to the
+ * whole picture, so a lit tower straight ahead hung upside down under itself as a glowing column.
+ */
+export const LAMP_GHOST_TAPS: ReadonlyArray<{ scale: number; tint: readonly [number, number, number] }> = [
+  { scale: -1, tint: [1, 0.86, 0.62] },
+  { scale: -1.4, tint: [0.62, 0.9, 1] },
+  { scale: -0.62, tint: [0.85, 1, 0.7] },
+  { scale: -0.38, tint: [1, 0.7, 0.9] },
+];
+
+/** Where a ghost of magnification `scale` at screen uv (u, v) comes from: 0.5 + (uv − 0.5) / scale. */
+export function ghostSourceUv(u: number, v: number, scale: number): [number, number] {
+  return [0.5 + (u - 0.5) / scale, 0.5 + (v - 0.5) / scale];
+}
+
+/** Texels of the ghost level between a light and the neighbours it is compared with. */
+export const ISOLATION_STEP = 2;
+/** Ratios of a light to its brightest neighbour from which it makes a ghost, and fully. */
+export const ISOLATION_FROM = 2;
+export const ISOLATION_FULL = 6;
+
+/**
+ * How much of the ghost level at a place makes a ghost, 0–1: only a light that is a point on the
+ * picture, brighter than each of its four neighbours ISOLATION_STEP texels away by ISOLATION_FROM
+ * or more. Lamps, signals and headlights are points (on the CPU copy of the chain, tests/bloomCpu.ts,
+ * a 2-pixel lamp is 20–30 times its neighbours); along a lit tower, a row of lamps or a lit wall,
+ * and at a tower's ends, a neighbour is as bright (≤ 1.6), so they make none: their ghost was an
+ * inverted copy of their shape. Why not compare the level with a wider one (a point falls by four
+ * per level, a line by two): the end of a line passes that test, and a tower cut off by the
+ * skyline left a ghost blob of its foot.
+ */
+export function ghostIsolation(light: number, brightestNeighbour: number): number {
+  return smoothstep(light / (brightestNeighbour + 1e-4), ISOLATION_FROM, ISOLATION_FULL);
+}
 
 type V3 = Node<"vec3">;
 type V4 = Node<"vec4">;
@@ -154,12 +194,17 @@ export class Bloom implements StreetPass {
   private readonly knee = uniform(new Vector4());
   private readonly exposure = uniform(1);
   private readonly strength = uniform(0);
-  // What the street pass adds: the half-resolution sum, and a small level for the ghosts.
+  // What the street pass adds: the half-resolution sum, and the point-like lights of a small level
+  // for the ghosts (drawn by the `isolate` pass into `points`).
   private readonly sum = later();
   private readonly ghostSource = later();
+  private readonly isolateSource = later();
+  private readonly isolateTexel = uniform(new Vector2());
+  private readonly points = levelTarget();
   private readonly prefilter = quadMaterial("prefilter", this.buildPrefilter());
   private readonly down = quadMaterial("down", this.buildDown());
   private readonly up = quadMaterial("up", this.buildUp(), true);
+  private readonly isolate = quadMaterial("isolate", this.buildIsolate());
   private readonly quad = new QuadMesh(this.prefilter);
   /** The prefilter's divisor the targets were made for. */
   private first = 0;
@@ -202,7 +247,16 @@ export class Bloom implements StreetPass {
       this.draw(this.up, this.levels[i - 1]);
     }
     this.sum.value = this.levels[0].texture;
-    this.ghostSource.value = this.levels[Math.min(GHOST_LEVEL, count - 1)].texture;
+    const hasGhosts = this.ghosts.value > 0;
+    if (!hasGhosts) return;
+    // The point-like lights of the ghost level, at its size (a few thousand pixels, five taps each).
+    const level = this.levels[Math.min(GHOST_LEVEL, count - 1)];
+    if (this.points.width !== level.width || this.points.height !== level.height)
+      this.points.setSize(level.width, level.height);
+    this.isolateSource.value = level.texture;
+    this.isolateTexel.value.set(1 / level.width, 1 / level.height);
+    this.draw(this.isolate, this.points);
+    this.ghostSource.value = this.points.texture;
   }
 
   /** The street with the bloom (and the lamps' ghosts) added: it brightens, never darkens. */
@@ -246,6 +300,17 @@ export class Bloom implements StreetPass {
     return vec4(sum.div(max(weights, 1e-4)), 1);
   }
 
+  /** The ghost level kept only where a light is a point (ghostIsolation, in the shader). */
+  private buildIsolate(): V4 {
+    const src = this.isolateSource;
+    const t = this.isolateTexel.mul(ISOLATION_STEP);
+    const light = src.sample(screenUV).rgb;
+    const at = (x: number, y: number) => maxOf(src.sample(screenUV.add(t.mul(vec2(x, y)))).rgb);
+    const neighbour = max(max(at(1, 0), at(-1, 0)), max(at(0, 1), at(0, -1)));
+    const ratio = maxOf(light).div(neighbour.add(1e-4));
+    return vec4(light.mul(smoothstepNode(ISOLATION_FROM, ISOLATION_FULL, ratio)), 1);
+  }
+
   private buildDown(): V4 {
     const src = this.downSource;
     const t = this.downTexel;
@@ -282,27 +347,31 @@ export class Bloom implements StreetPass {
   }
 
   dispose(): void {
-    for (const t of this.levels) t.dispose();
-    for (const m of [this.prefilter, this.down, this.up]) m.dispose();
+    for (const t of [...this.levels, this.points]) t.dispose();
+    for (const m of [this.prefilter, this.down, this.up, this.isolate]) m.dispose();
   }
 }
 
 /**
- * Lamps' ghosts (John Chapman's pseudo lens flare): the bright parts of the picture mirrored through
- * its centre, a few times at growing distances along the line through it, each fainter towards the
- * picture's edge and tinted as a lens coating tints its reflections. Read from a blurred level of
- * the chain, so they are soft discs, as defocused ghosts are.
+ * Lamps' ghosts (John Chapman's pseudo lens flare): the point-like lights of a blurred level of the
+ * chain (the `isolate` pass) mirrored and scaled through the picture's centre (LAMP_GHOST_TAPS),
+ * each fainter where it comes from near the picture's edge and tinted as a lens coating tints its
+ * reflections; soft discs, as defocused ghosts are. Only points make them: a real ghost is the
+ * light's image dimmed a thousandfold or more, which a lamp's or a headlight's luminance survives
+ * and a floodlit tower's or a lit window's does not.
  */
 function lampGhosts(source: TextureNode): V3 {
-  const flipped = vec2(1).sub(screenUV);
-  const toCentre = vec2(0.5).sub(flipped);
-  const tints = [vec3(1, 0.86, 0.62), vec3(0.62, 0.9, 1), vec3(0.85, 1, 0.7), vec3(1, 0.7, 0.9)];
   let sum: V3 = vec3(0);
-  tints.forEach((tint, i) => {
-    const at = flipped.add(toCentre.mul(0.3 * i));
+  for (const { scale, tint } of LAMP_GHOST_TAPS) {
+    const at = screenUV.sub(0.5).div(scale).add(0.5);
     // Faint towards the edges (where a real ghost leaves the lens's field).
     const fade = pow(max(float(1).sub(distance(at, vec2(0.5)).div(Math.SQRT1_2)), 0), 6);
-    sum = sum.add(source.sample(at).rgb.mul(tint).mul(fade));
-  });
+    sum = sum.add(
+      source
+        .sample(at)
+        .rgb.mul(vec3(...tint))
+        .mul(fade),
+    );
+  }
   return sum;
 }

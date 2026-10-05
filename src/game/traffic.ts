@@ -1,5 +1,6 @@
 import { t } from "../i18n";
 import { fineText, lawRef, pointsText, violationName } from "../i18n/law";
+import { log, spanOf, traceId, type Span } from "../log";
 import type { ReplayClip } from "./replayClip";
 /**
  * Road Traffic Act (道路交通法) scoring for the player's car: 違反点数 and 反則金 for 普通車.
@@ -365,8 +366,15 @@ export type ViolationRecord = Violation & {
   absorbedBy?: string;
 };
 
-/** This page load: records from earlier sessions cannot be replayed (the buffer is gone). */
-export const SESSION = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+/**
+ * This page load: records from earlier sessions cannot be replayed (the buffer is gone). It is the
+ * logs' traceId, so a saved record leads to the lines of the session it happened in.
+ */
+export const SESSION = traceId;
+
+/** The span of a violation and of everything it leads to (logs: `vio-<record id>`). */
+export const violationSpan = (record: { id?: string }): Span | undefined =>
+  record.id === undefined ? undefined : spanOf("vio", record.id);
 let recordCount = 0;
 
 export type LicenseState = {
@@ -414,6 +422,7 @@ export class TrafficLaw {
     record.by = by;
     this.state.points += record.points;
     this.state.fines += record.fine ?? 0;
+    this.logCited(record, "spot");
   }
 
   /** Photographed (orbis): the 出頭通知書 comes by post, and the points with it (`deliverNotices`). */
@@ -421,6 +430,7 @@ export class TrafficLaw {
     if (record.status !== "uncaught") return;
     record.status = "notice";
     record.by = by;
+    log("violation_noticed", { violationId: record.id ?? "", kind: record.kind, by }, violationSpan(record));
   }
 
   /** The post at the end of the day: the notices become caught violations. */
@@ -430,8 +440,24 @@ export class TrafficLaw {
       r.status = "caught";
       this.state.points += r.points;
       this.state.fines += r.fine ?? 0;
+      this.logCited(r, "post");
     }
     return delivered;
+  }
+
+  private logCited(record: ViolationRecord, via: "spot" | "post"): void {
+    log(
+      "violation_cited",
+      {
+        violationId: record.id ?? "",
+        kind: record.kind,
+        by: record.by ?? "",
+        via,
+        points: record.points,
+        totalPoints: this.state.points,
+      },
+      violationSpan(record),
+    );
   }
 
   /** Whether the points caught so far reach a 行政処分 (前歴なし: 6 停止, 15 取消). */
@@ -511,16 +537,19 @@ export class TrafficLaw {
 
 /**
  * 付加点数 for an injury accident caused solely by the driver's carelessness, with severity
- * estimated from impact speed (the game never models fatalities). A crash that follows a
- * 反則行為 is not eligible for 反則金 (法第125条第2項第3号), hence fine: null.
+ * estimated from the victim's Δv: the speed the blow gave them, from both masses
+ * (physics/massContacts.ts), so a bus at 30 km/h hurts more than a motorbike at 30 km/h, and a
+ * car that creeps into someone barely does (the game never models fatalities). The tiers are the
+ * ones the impact speed had: for a pedestrian struck by a car the two nearly agree (Δv ≈ 0.96 v).
+ * A crash that follows a 反則行為 is not eligible for 反則金 (法第125条第2項第3号), hence fine: null.
  */
-export function injuryViolation(impactKmh: number): Violation {
+export function injuryViolation(victimDeltaVKmh: number): Violation {
   const [points, injury] =
-    impactKmh >= 60
+    victimDeltaVKmh >= 60
       ? [13, "治療3か月以上"]
-      : impactKmh >= 40
+      : victimDeltaVKmh >= 40
         ? [9, "治療30日以上3か月未満"]
-        : impactKmh >= 20
+        : victimDeltaVKmh >= 20
           ? [6, "治療15日以上30日未満"]
           : [3, "治療15日未満"];
   return {

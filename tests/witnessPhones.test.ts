@@ -1,6 +1,7 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { Group, Object3D, Scene, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
+import { MassiveBody } from "../src/physics/massContacts";
 import { FILM_RANGE, MAX_FILMERS, planFilming } from "../src/game/witnessPhones";
 import { FILM_GRIP, type HumanModel } from "../src/world/human";
 import { type Pedestrian, Pedestrians, profileFor } from "../src/world/pedestrians";
@@ -53,6 +54,7 @@ function person(peds: Pedestrians, x: number, z: number, heading = 0): Pedestria
     groundCheck: 0,
     walk: null,
     blocked: 0,
+    mass: new MassiveBody(60, 1.5, 5.9, "person"),
   };
   peds.list.push(p);
   return p;

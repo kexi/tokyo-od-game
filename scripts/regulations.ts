@@ -14,6 +14,7 @@ import { buildOrbis } from "./orbis.ts";
 import type { OrbisEntry } from "../src/world/orbisData.ts";
 import { isAllDay as alwaysOn, writeTime, type RuleTime } from "../src/world/ruleTime.ts";
 import { unzip } from "./shapefile.ts";
+import { log, warn } from "../src/log.ts";
 
 const ROOT = join(import.meta.dirname, "..", "public", "data");
 const JARTIC_INDEX = "https://www.jartic.or.jp/d/opendata/opendata.json";
@@ -28,9 +29,6 @@ const USER_AGENT = "tokyo-od-game-databuild/0.1 (+https://github.com/kexi/tokyo-
 // 23 wards with a little margin (same box as the POI pipeline).
 const BBOX = { minLat: 35.48, maxLat: 35.84, minLon: 139.55, maxLon: 139.93 };
 const Z = 14;
-
-const log = (event: string, fields: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
 
 type Tile = {
   speed: Array<[number, ...number[]]>; // [limit, lon0, lat0, lon1, lat1, …]
@@ -171,7 +169,8 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
       if ("skip" in use) {
         closureSkipped[use.skip] = (closureSkipped[use.skip] ?? 0) + 1;
         if (use.skip === "area")
-          log("closure_area_implausible", {
+          warn("jartic_closure_skipped", {
+            reason: use.skip,
             key: extra.key,
             code,
             areaKm2: Math.round(use.areaKm2 * 10) / 10,
@@ -330,7 +329,7 @@ async function cachedDownload(url: string, file: string): Promise<Uint8Array> {
     () => Infinity,
   );
   if (age < CACHE_MAX_AGE_MS) {
-    log("cache_hit", { file, ageHours: Math.round(age / 3600_000) });
+    log("cache_hit", { file, ageH: Math.round(age / 3600_000) });
     return new Uint8Array(await readFile(file));
   }
   log("download", { url });

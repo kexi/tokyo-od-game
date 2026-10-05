@@ -22,6 +22,7 @@ import {
   wardFromCode,
   WARD_NAMES,
 } from "./csv.ts";
+import { log } from "../src/log.ts";
 
 const OUT = join(import.meta.dirname, "..", "public", "data");
 const CKAN = "https://catalog.data.metro.tokyo.lg.jp/api/3/action";
@@ -29,9 +30,6 @@ const ODPT = "https://api-public.odpt.org/api/v4";
 const ALLOWED_LICENSES = new Set(["CC-BY-4.0"]);
 // 23-ward bounding box (with a little margin) used to discard Tama/island rows early.
 const BBOX = { minLat: 35.48, maxLat: 35.84, minLon: 139.55, maxLon: 139.93 };
-
-const log = (event: string, fields: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
 
 type CsvSource = {
   kind: "csv";
@@ -286,7 +284,7 @@ async function buildGeoid(): Promise<void> {
   };
   GeoidGridSchema.parse(grid);
   await writeFile(join(OUT, "geoid.json"), JSON.stringify(grid));
-  log("geoid_written", { points: values.length, min: Math.min(...values), max: Math.max(...values) });
+  log("geoid_written", { points: values.length, minM: Math.min(...values), maxM: Math.max(...values) });
 }
 
 async function buildBusStops(): Promise<void> {

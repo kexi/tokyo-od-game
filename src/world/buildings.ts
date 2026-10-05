@@ -7,14 +7,14 @@ import {
   UnloadTilesPlugin,
 } from "3d-tiles-renderer/plugins";
 import {
-  type BufferGeometry,
+  BufferAttribute,
+  BufferGeometry,
   Box3,
   Matrix4,
   Mesh,
   Sphere,
   Vector2,
   Vector3,
-  type BufferAttribute,
   type Camera,
   type Material,
   type Object3D,
@@ -26,6 +26,7 @@ import type { LocalFrame } from "../geo/frame";
 import {
   addFacadeAttribute,
   facadeMaterial,
+  farFacadeMaterial,
   facadeUniforms,
   setFacadeOrigin,
   updateFacadeClock,
@@ -39,14 +40,151 @@ type Model = {
   collider: RAPIER.Collider | null;
 };
 
-// Beyond the fog nothing is visible, so do not spend cache on it (Tokyo-wide tileset would
-// otherwise fill the 0.4 GB LRU with coarse tiles of distant wards and starve nearby detail).
+// The streamed town; beyond it the far skyline (below) has only the coarse tiles. Why a radius:
+// the Tokyo-wide tileset would otherwise fill the LRU with coarse tiles of distant wards and
+// starve nearby detail.
 const LOAD_RADIUS = QUALITY.buildingLoadRadius;
 // Full detail in every direction around the car so colliders exist behind/beside it too.
 const DETAIL_RADIUS = 250;
 /** Colliders go only this far beyond their radius, so one is not rebuilt at the edge every tick. */
 const COLLIDER_HYSTERESIS = 60;
 const COLLIDER_BUDGET_MS = 4;
+/**
+ * The far skyline's first PLATEAU level per municipality must be at least this coarse (m): Taito's
+ * tileset is a quadtree whose first content is already the full detail (errors 32–64 m, ~0.8 MB a
+ * tile, 14 MB for the ward), which a skyline 10 km off does not need.
+ */
+const FIRST_MIN_ERROR = 100;
+/**
+ * The far skyline's LRU: geometry bytes (its tiles are ~0.2–1.2k triangles, ~20–80 KB on the GPU
+ * each) and items (tiles with content plus the ~30–50 municipalities' tileset.json pointers).
+ */
+export const FAR_CACHE = {
+  minBytes: (QUALITY.isMobile ? 16 : 40) * 1024 ** 2,
+  maxBytes: (QUALITY.isMobile ? 24 : 64) * 1024 ** 2,
+  minItems: 200,
+  maxItems: 320,
+};
+/** Milliseconds after which the far skyline starts even if the town is still loading. */
+const FAR_START_MS = 15_000;
+/** Main-thread milliseconds a frame may spend preparing far tiles (the rest wait, hidden). */
+const FAR_PREPARE_BUDGET_MS = 4;
+
+/** A tile as the tiles renderer's preprocessNode hands it to plugins (the tileset JSON, extended). */
+export type TileNode = {
+  content?: { uri?: string };
+  geometricError: number;
+  children?: TileNode[];
+  internal?: { depthFromRenderedParent: number; hasUnrenderableContent?: boolean };
+};
+
+const isRenderable = (t: TileNode) => Boolean(t.content?.uri && !/\.json$/i.test(t.content.uri));
+
+/**
+ * Prune a tileset's JSON tree, in place, so that only coarse levels remain: a tile with content
+ * stops (becomes a leaf) as soon as a child is finer than `minError`; a tile without (a group)
+ * drops children with content finer than `minError`, or than FIRST_MIN_ERROR for the first content
+ * under it (`hasContentAbove` false). The whole tree at once, when its root arrives: the renderer
+ * preprocesses children lazily, and the subtrees it never reaches (out of the region, out of view)
+ * would otherwise stay in memory at full detail (a ward's tileset.json is 100–200 KB of JSON).
+ */
+export function pruneTree(
+  tile: TileNode,
+  minError: number,
+  firstMinError = FIRST_MIN_ERROR,
+  hasContentAbove = false,
+): void {
+  const children = tile.children ?? [];
+  if (children.length === 0) return;
+  const hasContent = isRenderable(tile);
+  if (hasContent) {
+    const hasFiner = children.some((c) => c.geometricError < minError);
+    if (hasFiner) {
+      tile.children = [];
+      return;
+    }
+  } else {
+    const least = hasContentAbove ? minError : firstMinError;
+    tile.children = children.filter((c) => !isRenderable(c) || c.geometricError >= least);
+  }
+  for (const c of tile.children ?? []) pruneTree(c, minError, firstMinError, hasContentAbove || hasContent);
+}
+
+/**
+ * A tiles-renderer plugin keeping the tileset to its coarse levels: each tileset's tree is pruned
+ * (pruneTree) as its root is preprocessed (no parent, or a parent pointing at a tileset.json).
+ */
+class CoarseTilesPlugin {
+  readonly name = "COARSE_TILES_PLUGIN";
+  constructor(private readonly minError: number) {}
+  preprocessNode(tile: TileNode, _dir: string, parent: TileNode | null): void {
+    const isTilesetRoot = !parent || parent.internal?.hasUnrenderableContent === true;
+    if (!isTilesetRoot) return;
+    pruneTree(tile, this.minError, FIRST_MIN_ERROR, (parent?.internal?.depthFromRenderedParent ?? 0) > 0);
+  }
+}
+
+/** What preparing a far tile's meshes needs from the buildings (the landmarks' cut-outs). */
+export type FarTileHost = { cut(geometry: BufferGeometry, ecef: Float32Array): void };
+
+/**
+ * Turn a far tile's meshes into the far skyline's: façade attribute, landmark cut-outs, the shared
+ * simplified material, no shadows; its batch and feature tables dropped (they hold the whole b3dm,
+ * ~150 KB, mostly attribute JSON, and nothing reads them). The tile's own materials are disposed:
+ * the renderer disposes only those (it listed them before load-model), never the shared one.
+ */
+export function prepareFarTile(scene: Object3D, host: FarTileHost): void {
+  Object.assign(scene, { batchTable: null, featureTable: null });
+  scene.updateMatrixWorld(true);
+  const v = new Vector3();
+  scene.traverse((o) => {
+    if (!(o instanceof Mesh)) return;
+    const geometry = o.geometry as BufferGeometry;
+    const pos = geometry.getAttribute("position");
+    const ecef = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      ecef.set([v.x, v.y, v.z], i * 3);
+    }
+    const ids = geometry.getAttribute("_batchid") ?? geometry.getAttribute("_feature_id_0");
+    addFacadeAttribute(geometry, ecef, ids ? (i) => ids.getX(i) : null);
+    host.cut(geometry, ecef);
+    o.castShadow = false;
+    o.receiveShadow = false;
+    const own = o.material as Material;
+    if (own !== farFacadeMaterial()) own.dispose();
+    o.material = farFacadeMaterial();
+  });
+}
+
+/**
+ * The far skyline's tiles renderer: the PLATEAU tileset kept to its coarse levels within `region`.
+ * Why no UnloadTilesPlugin (the near town has one): it disposes the *current* material of a tile
+ * that leaves the view, here the one material every far tile shares, so each turn of the camera
+ * dropped the skyline's pipeline and every far mesh rebuilt its node material (the title screen's
+ * slow pan at 大泉学園 grew the heap by ~1.2 GB in 50 s and once hung the loading). Far tiles are
+ * small and stay on the GPU until the LRU (FAR_CACHE) evicts them.
+ */
+export function createFarTiles(
+  url: string,
+  region: SphereRegion,
+  dracoLoader: ReturnType<typeof sharedDraco>,
+  minError: number,
+  errorTarget: number,
+): TilesRenderer {
+  const tiles = new TilesRenderer(url);
+  tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader }));
+  tiles.registerPlugin(new CoarseTilesPlugin(minError));
+  const regions = new LoadRegionPlugin();
+  regions.addRegion(region);
+  tiles.registerPlugin(regions);
+  tiles.errorTarget = errorTarget;
+  tiles.lruCache.minBytesSize = FAR_CACHE.minBytes;
+  tiles.lruCache.maxBytesSize = FAR_CACHE.maxBytes;
+  tiles.lruCache.minSize = FAR_CACHE.minItems;
+  tiles.lruCache.maxSize = FAR_CACHE.maxItems;
+  return tiles;
+}
 
 /**
  * PLATEAU building tiles streamed straight from the public CORS-enabled catalogue, plus Rapier
@@ -64,13 +202,30 @@ export class Buildings {
   /** Footprints (local XZ rings) of buildings drawn by hero models instead (landmarks). */
   private hidden: Vector3[][] = [];
   private hiddenRings: Array<Array<[number, number]>> = [];
+  /**
+   * The far skyline: the same tileset again, kept to its coarse levels (each ward's largest ~20–80
+   * buildings, its towers among them) out to QUALITY.farBuildingRadius, with the simplified façade
+   * and no colliders or shadows. Started once the town around the player has loaded.
+   */
+  private far: TilesRenderer | null = null;
+  private readonly farRegion = new SphereRegion({ mask: true, errorTarget: 1e9 });
+  private readonly createdAt = performance.now();
+  /** Far tiles loaded (for the console). */
+  farLoadedCount = 0;
+  /** Far tiles loaded but not yet prepared (hidden until then, a few milliseconds a frame). */
+  private readonly farPending: Object3D[] = [];
+  /** False until the far façade's pipeline is built (asynchronously, before any far tile shows). */
+  private isFarCompiled = false;
 
   constructor(
     private readonly scene: Scene,
     private readonly world: RAPIER.World,
     private readonly camera: Camera,
     /** What the tiles need to know of the renderer: the canvas size, for the screen-space error. */
-    private readonly renderer: { getSize(target: Vector2): Vector2 },
+    private readonly renderer: {
+      getSize(target: Vector2): Vector2;
+      compileAsync?(object: Object3D, camera: Camera, targetScene?: Scene | null): Promise<unknown>;
+    },
     frame: LocalFrame,
   ) {
     this.frame = frame;
@@ -168,6 +323,7 @@ export class Buildings {
     this.frame = frame;
     if (this.hiddenRings.length) this.hideFootprints(this.hiddenRings);
     this.applyFrame();
+    if (this.far) this.applyFrameTo(this.far);
     setFacadeOrigin(frame);
     for (const model of this.models.values()) {
       model.sphere = null;
@@ -218,6 +374,7 @@ export class Buildings {
 
   onResize(): void {
     this.setResolution(this.tiles);
+    if (this.far) this.setResolution(this.far);
   }
 
   update(player: Vector3, now: number): void {
@@ -226,7 +383,14 @@ export class Buildings {
     const centerEcef = player.clone().applyMatrix4(this.frame.localToEcef);
     this.maskRegion.sphere.set(centerEcef, LOAD_RADIUS);
     this.detailRegion.sphere.set(centerEcef, DETAIL_RADIUS);
+    this.farRegion.sphere.set(centerEcef, QUALITY.farBuildingRadius);
     this.tiles.update();
+    // After the town (they share the network): the skyline is for the distance.
+    const isTownLoaded = this.loadedCount > 0 && this.tiles.loadProgress >= 0.999;
+    const isLate = now - this.createdAt > FAR_START_MS;
+    if (!this.far && (isTownLoaded || isLate)) this.far = this.createFarTiles();
+    this.far?.update();
+    this.prepareFarTiles();
     const isColliderTick = now - this.lastColliderTick > 100;
     if (!isColliderTick) return;
     this.lastColliderTick = now;
@@ -318,10 +482,83 @@ export class Buildings {
   }
 
   private applyFrame(): void {
-    const group = this.tiles.group;
+    this.applyFrameTo(this.tiles);
+  }
+
+  private applyFrameTo(tiles: TilesRenderer): void {
+    const group = tiles.group;
     group.matrixAutoUpdate = false;
     group.matrix.copy(this.frame.ecefToLocal);
     group.updateMatrixWorld(true);
+  }
+
+  /** The far skyline's tiles renderer (see `far`). */
+  private createFarTiles(): TilesRenderer {
+    const tiles = createFarTiles(
+      PLATEAU_TILESET,
+      this.farRegion,
+      this.draco,
+      QUALITY.farBuildingMinError,
+      QUALITY.farBuildingErrorTarget,
+    );
+    tiles.setCamera(this.camera);
+    this.setResolution(tiles);
+    tiles.addEventListener("load-model", ({ scene }) => {
+      this.farLoadedCount++;
+      // Prepared later, within a frame budget: several tiles can land in one frame.
+      scene.visible = false;
+      this.farPending.push(scene);
+    });
+    tiles.addEventListener("dispose-model", ({ scene }) => {
+      const at = this.farPending.indexOf(scene);
+      if (at >= 0) this.farPending.splice(at, 1);
+    });
+    this.scene.add(tiles.group);
+    this.applyFrameTo(tiles);
+    void this.compileFar();
+    return tiles;
+  }
+
+  /**
+   * Build the far façade's pipeline off the frame, on a stand-in mesh with its attributes: drawn
+   * for the first time inside a frame, the node material's build and the pipeline stalled it.
+   */
+  private async compileFar(): Promise<void> {
+    try {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute("position", new BufferAttribute(new Float32Array(9), 3));
+      geometry.setAttribute("normal", new BufferAttribute(new Float32Array(9), 3));
+      geometry.setAttribute("facade", new BufferAttribute(new Float32Array(6), 2));
+      const stand = new Mesh(geometry, farFacadeMaterial());
+      await this.renderer.compileAsync?.(stand, this.camera, this.scene);
+      geometry.dispose();
+    } catch {
+      // Built on first use instead.
+    } finally {
+      this.isFarCompiled = true;
+    }
+  }
+
+  /** Prepare waiting far tiles until FAR_PREPARE_BUDGET_MS is spent (at least one a frame). */
+  private prepareFarTiles(): void {
+    if (!this.isFarCompiled) return;
+    const start = performance.now();
+    const host: FarTileHost = {
+      cut: (geometry, ecef) => {
+        if (this.hidden.length) this.cutFootprints(geometry, ecef);
+      },
+    };
+    while (this.farPending.length > 0) {
+      const scene = this.farPending.shift() as Object3D;
+      prepareFarTile(scene, host);
+      scene.visible = true;
+      if (performance.now() - start > FAR_PREPARE_BUDGET_MS) break;
+    }
+  }
+
+  /** Far tiles waiting to be prepared (for tests and the console). */
+  get farPendingCount(): number {
+    return this.farPending.length;
   }
 
   private adaptMaterial(material: Material): Material {

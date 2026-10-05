@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindsCar, closureUse, ruleUse } from "../scripts/jartic";
 import { LocalFrame } from "../src/geo/frame";
+import { recentLogs } from "../src/log";
 import { CLOSURE, MAX_CLOSURE_AREA_KM2, ringAreaKm2 } from "../src/world/closures";
 import { applyRegulations, type RegulationData } from "../src/world/regulations";
 import { RoadGraph, type RoadLine } from "../src/world/roads";
@@ -145,14 +146,13 @@ describe("通行禁止 records and the implausible-area guard", () => {
   });
 
   it("ignores an implausibly large closure area in old tiles, with a log", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    recentLogs.clear();
     const graph = new RoadGraph([street()], frame);
     const data = empty();
     data.closures.push([3, CLOSURE.all, ...ALL_DAY, ...KANNANA_RING]);
     applyRegulations(graph, data, frame);
     expect(graph.segments[0].closures).toEqual([]);
-    const events = warn.mock.calls.map((c) => JSON.parse(String(c[0])).event);
-    expect(events).toContain("closure_area_implausible");
+    expect(recentLogs.query({ event: "closure_area_implausible", level: "warn" })).toHaveLength(1);
   });
 
   it("closes the streets inside a small zone but not the road its ring is traced on", () => {
@@ -169,13 +169,12 @@ describe("通行禁止 records and the implausible-area guard", () => {
   });
 
   it("reports a road network that is mostly closed, whatever the cause", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    recentLogs.clear();
     const lines = Array.from({ length: 220 }, (_, i) => street(35.68 + i * 30 * M_LAT, 60));
     const graph = new RoadGraph(lines, frame);
     const data = empty();
     for (const line of lines) data.closures.push([2, CLOSURE.all, ...ALL_DAY, ...line.coords]);
     applyRegulations(graph, data, frame);
-    const events = warn.mock.calls.map((c) => JSON.parse(String(c[0])).event);
-    expect(events).toContain("closures_implausible_share");
+    expect(recentLogs.query({ event: "closures_implausible_share", level: "warn" })).toHaveLength(1);
   });
 });

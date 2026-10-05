@@ -1,5 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { MathUtils, Vector3, type PerspectiveCamera, type Scene } from "three";
+import { ADULT_KG } from "../physics/masses";
 import { animateHuman, createHuman, type HumanModel } from "../world/human";
 
 export type WalkInput = { forward: number; right: number; run: boolean; jump: boolean; turn: number };
@@ -47,6 +48,9 @@ export class Walker {
     this.controller.setMaxSlopeClimbAngle(MathUtils.degToRad(50));
     this.controller.setMinSlopeSlideAngle(MathUtils.degToRad(35));
     this.controller.setApplyImpulsesToDynamicBodies(true);
+    // The pushes on dynamic bodies (a car's chassis) come from the player's body mass: without it
+    // Rapier takes the mass of the character's body, 0 for a kinematic one.
+    this.controller.setCharacterMass(ADULT_KG);
   }
 
   /** Feet position (the capsule centre sits HALF_HEIGHT + RADIUS above). */

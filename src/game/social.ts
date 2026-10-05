@@ -69,7 +69,8 @@ import {
   type SocialLang,
   type StopPhase,
 } from "./socialTexts";
-import type { ViolationKind, ViolationRecord } from "./traffic";
+import { spanOf, type Span } from "../log";
+import { violationSpan, type ViolationKind, type ViolationRecord } from "./traffic";
 
 /**
  * Y (SOCIAL_APP_NAME, a fictional social app on the in-game phone): what happens when bystanders or a
@@ -175,6 +176,9 @@ export type SocialPost = {
   /** A post about a pursuit going on (postChase) or a roadside stop (postStop), not a violation. */
   topic?: "chase" | "stop";
 };
+
+/** The span of a post and its shot (logs: `post-<id>`), caused by the post's violation. */
+export const postSpan = (post: SocialPost): Span => spanOf("post", post.id, violationSpan(post.record));
 
 /** An everyday post of someone else: the rest of the timeline. */
 export type SocialChatter = {

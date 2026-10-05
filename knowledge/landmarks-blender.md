@@ -5,7 +5,7 @@ description: Blender CLI で 3 つのランドマークを実寸で手続き生�
 tags: [rendering, plateau, licensing]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-05T05:00:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-05T04:55:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T15:30:00Z }
 sources:
@@ -61,6 +61,7 @@ sources:
 - テクスチャは `scripts/textures/landmark_textures.py`（PIL、シード固定、文字・ロゴなし）が `assets/landmarks/textures/` に書く。トラスは「白の部材＋透明」のマスク（alphaMode MASK）で、色はマテリアルの baseColorFactor で付ける。
 - 座標は車のモデルと同じ規約（+Y 上、+Z が heading の向き、+X がその左、メートル、原点は基準点の地面）。ゲームでは `rotation.y = π − heading·π/180` で置く（+Z を方位 heading に向ける式）。
 - 遠景 LOD は 220〜552 三角形の 1〜3 マテリアル。近景は 2,405〜9,880 三角形。いずれも 1 MB 未満（後述の表）。
+- ゲームでは遠景を霧から外していたが、何も無い霧の色の端の上に浮いて見えたので、2026-10-05 から街と同じ霧をかけ、地平までの地面と遠くの街並みの上に立たせた。基部の高さ（landmarks.json の baseHeight）は DEM5A と 0.15 m 以内で合っていた（[遠景](far-skyline.md)）。
 
 ## 夜間照明の仕組み
 

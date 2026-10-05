@@ -16,6 +16,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
+import { log } from "../src/log.ts";
 
 const OUT = join(import.meta.dirname, "..", "public", "data", "water-levels.json");
 const USER_AGENT = "tokyo-od-game-databuild/0.1 (+https://github.com/kexi/tokyo-od-game)";
@@ -25,8 +26,6 @@ const AP = -1.1344;
 /** 潮位表基準面 of 東京 (TK) in T.P. m. */
 const TK_DATUM = -1.141;
 
-const log = (event: string, fields: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function get(url: string): Promise<Response | null> {
@@ -281,7 +280,7 @@ async function main(): Promise<void> {
   const inWards = levelStations.filter((s) => s.city.startsWith("131"));
   const nameCount = new Map<string, number>();
   for (const s of levelStations) nameCount.set(s.name, (nameCount.get(s.name) ?? 0) + 1);
-  log("stations", { all: all.length, level: levelStations.length, wards: inWards.length });
+  log("water_stations", { all: all.length, levelStations: levelStations.length, wards: inWards.length });
 
   const pages = new Map<string, { river: string; zeroTP: number; crestTP: number }>();
   for (const s of inWards) {
@@ -357,7 +356,12 @@ async function main(): Promise<void> {
     gauges,
   };
   await writeFile(OUT, `${JSON.stringify(file, null, 1)}\n`);
-  log("written", { path: OUT, gauges: gauges.length, tidal: gauges.filter((g) => g.tidal).length, bay });
+  log("water_levels_written", {
+    file: OUT,
+    gauges: gauges.length,
+    tidal: gauges.filter((g) => g.tidal).length,
+    bay,
+  });
 }
 
 await main();

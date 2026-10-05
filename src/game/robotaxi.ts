@@ -10,6 +10,7 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import { ADULT_KG } from "../physics/masses";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
 import type { RoadGraph, Segment } from "../world/roads";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
@@ -67,7 +68,8 @@ export class RoboTaxi {
     world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
   ) {
-    this.car = new Vehicle(world, { taxi: true });
+    // A JPN TAXI-class car with nobody at the wheel (特定自動運行): only a passenger adds mass.
+    this.car = new Vehicle(world, { taxi: true }, "jpnTaxi");
     this.model = this.car.model;
     scene.add(this.car.object);
     this.pin = makePin();
@@ -137,6 +139,8 @@ export class RoboTaxi {
   board(world: TaxiWorld, destination: Vector3, name: string): boolean {
     if (!this.driver.plan(world, destination)) return false;
     this.state = "riding";
+    // The passenger sits behind the front passenger seat, on the kerb side (the car's left).
+    this.car.setOccupants([{ seat: "rearLeft", kg: ADULT_KG }]);
     this.metres = 0;
     this.slowSeconds = 0;
     this.destinationName = name;
@@ -147,6 +151,7 @@ export class RoboTaxi {
   /** After the passenger leaves: drive off a little way, then the game removes the car. */
   leave(world: TaxiWorld): void {
     this.state = "leaving";
+    this.car.setOccupants([]);
     this.setDisplay("回送");
     this.driver.plan(world, this.position.clone().add(this.driver.heading().multiplyScalar(250)));
   }

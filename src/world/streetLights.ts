@@ -1000,7 +1000,7 @@ export class StreetLights {
     this.metal.castShadow = true;
     this.heads = this.signalHeads(graph);
     this.lastDark = -1;
-    log("street_lights", {
+    log("street_lights_placed", {
       lamps: n,
       sodium: this.lamps.filter((l) => l.sodium).length,
       byClass: Object.fromEntries(
@@ -1010,7 +1010,7 @@ export class StreetLights {
         ]),
       ),
       signals: this.heads.length,
-      ms: Math.round(performance.now() - t0),
+      durationMs: Math.round(performance.now() - t0),
     });
   }
 

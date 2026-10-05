@@ -9,13 +9,16 @@ import {
   fog,
   length,
   max,
+  output,
   positionWorld,
   pow,
   rangeFogFactor,
   reference,
   renderGroup,
   select,
+  smoothstep,
   uniform,
+  vec3,
 } from "three/tsl";
 
 /**
@@ -32,8 +35,12 @@ import {
  *   end (render/frame.ts), so the haze is tone-mapped exactly as the surface it veils. (The WebGL
  *   version tone-mapped the fog colour inside the chunk, because three's chunk ran after the
  *   surface's tone mapping; the sky's horizon haze, skyShader.ts, is mixed the same way as here.)
- * The old linear ramp (fogNear → fogFar) stays as a floor at the edge of the streamed world, so the
- * end of the loaded tiles never shows.
+ * - A light much brighter than the haze around it keeps LIGHT_FLOOR of its radiance however far it
+ *   is (lightsThrough): a floodlit tower in the rain at night, a lamp across the bay.
+ * The old linear ramp (fogNear → fogFar) stays as a floor at the edge of the drawn world (the far
+ * ground's reach, farGround.ts), so its end never shows. It used to sit at 2–4 km, the end of the
+ * streamed tiles, where it painted the city fog-coloured in front of the far towers and their feet
+ * vanished into it: the towers seemed to float.
  *
  * Why not three's FogExp2: exp(−(ρd)²) is not how light is attenuated (it keeps the near field too
  * clean and then closes abruptly) and it has no height or sun. Why not a post-process depth pass:
@@ -58,6 +65,35 @@ export const FOG_UNIFORMS = {
   sun: uniform(ATMOSPHERE.fogSun).setGroup(renderGroup),
   sunColor: uniform(ATMOSPHERE.fogSunColor).setGroup(renderGroup),
 };
+
+/**
+ * Share of a light's own radiance that shows through any depth of haze, and the brightness (relative
+ * to the haze's) from which a light starts to keep it and keeps it fully. Why: Koschmieder's
+ * visibility is the distance at which a black object's contrast falls to 2 %; lights are seen much
+ * farther (Allard's law: at night a lamp is seen many times the visibility away), because their
+ * luminance is thousands of times the airlight's. The frame's lights are only some ten times the
+ * night haze (a floodlit tower ~1.3, the rainy night's haze ~0.11), so Beer–Lambert alone put out
+ * the lit Tokyo Tower 8 km off in the rain (transmission 6·10⁻⁴); the floor keeps it a faint
+ * lit outline there, while dark walls at the same distance go into the haze.
+ */
+export const LIGHT_FLOOR = 0.04;
+export const PIERCE_FROM = 2;
+export const PIERCE_FULL = 8;
+
+const smooth = (x: number, a: number, b: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * How much of the haze's colour covers a surface (the fog factor, 0–1), for an optical depth τ, the
+ * linear floor's factor and the surface's brightness relative to the haze's (the shader's curve).
+ */
+export function hazeCover(tau: number, floorFactor: number, brightness: number): number {
+  const lightsThrough = smooth(brightness, PIERCE_FROM, PIERCE_FULL);
+  const veil = (1 - Math.exp(-tau)) * (1 - LIGHT_FLOOR * lightsThrough);
+  return Math.max(veil, floorFactor);
+}
 
 /** Koschmieder: extinction coefficient (1/m) for a meteorological visibility (m). */
 export const extinctionFor = (visibility: number) => 3.912 / Math.max(50, visibility);
@@ -103,8 +139,13 @@ export function atmosphereFog(sceneFog: Fog): Node<"vec4"> {
   const base = exp(max(cameraPosition.y.sub(u.atmo.z), 0).negate().div(u.atmo.y));
   const tau = u.atmo.x.mul(dist).mul(base).mul(rise);
   const isOn = u.atmo.w.greaterThan(0.5);
-  const factor = select(isOn, max(float(1).sub(exp(tau.negate())), floorFactor), floorFactor);
   const direction = ray.div(max(dist, 1e-3));
   const tint = select(isOn, hazeTint(color, direction), color);
+  // How: `output` is the surface's colour (NodeMaterial.setupFog assigns it before the fog node).
+  const luma = vec3(0.2126, 0.7152, 0.0722);
+  const brightness = dot(output.rgb, luma).div(max(dot(tint, luma), 1e-4));
+  const lightsThrough = smoothstep(PIERCE_FROM, PIERCE_FULL, brightness);
+  const veil = float(1).sub(exp(tau.negate())).mul(lightsThrough.mul(-LIGHT_FLOOR).add(1));
+  const factor = select(isOn, max(veil, floorFactor), floorFactor);
   return fog(tint, factor);
 }

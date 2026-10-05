@@ -11,6 +11,7 @@ import {
   abs,
   attribute,
   cameraPosition,
+  cameraProjectionMatrix,
   cameraViewMatrix,
   clamp,
   dot,
@@ -29,9 +30,11 @@ import {
   min,
   mix,
   mod,
+  modelViewMatrix,
   normalize,
   normalView,
   normalWorldGeometry,
+  positionLocal,
   positionViewDirection,
   positionWorld,
   pow,
@@ -877,4 +880,56 @@ export function facadeMaterial(): MeshStandardNodeMaterial {
   materials.add(material);
   material.addEventListener("dispose", () => materials.delete(material));
   return material;
+}
+
+// ---------- the far skyline's façade ----------
+
+/**
+ * How much deeper (as a share of the distance) the far skyline draws than it is: a building the
+ * streamed tiles also hold is the same triangles in both, and the near copy, with its windows and
+ * rooms, must win the depth test. Along the eye's ray, so nothing moves on the screen: 0.1 % is
+ * 1 m at 1 km and 10 m at 10 km, far less than the gaps between towers.
+ */
+export const FAR_DEPTH_PUSH = 1.001;
+/** Metres per storey on the far skyline (the façade's 3.5 m storeys). */
+const FAR_STOREY = TILE_H / 4;
+
+let farMaterial: MeshStandardNodeMaterial | null = null;
+
+/**
+ * The façade's simplified form for the far skyline (buildings.ts, PLATEAU's coarse tiles beyond the
+ * streamed ones): no texture lookups per window, no rooms, no rain. Each wall takes its style's
+ * average colour and window share from the last mip of the façade textures; at night each storey is
+ * lit or not by the hour's share for the style's use (litShare, the same table and per-building
+ * spread as near), averaged once storeys are under a pixel. One material for every far tile.
+ */
+export function farFacadeMaterial(): MeshStandardNodeMaterial {
+  if (farMaterial) return farMaterial;
+  const m = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0.05 });
+  m.name = "far-facade";
+  const layer = floor(aFacade.x);
+  const tint = fract(aFacade.x);
+  const isWall = step(0.6, abs(normalWorldGeometry.y)).oneMinus();
+  // How: the smallest mip of the style's tile is its average (colour, and the window mask in A).
+  const mean = facadeTexture().sample(vec2(0.5, 0.5)).level(float(12)).depth(layer);
+  const roof = mix(vec3(0.46, 0.47, 0.48), vec3(0.58, 0.57, 0.55), tint);
+  m.colorNode = mix(roof, mean.rgb.mul(tint.mul(0.24).add(0.88)), isWall);
+  const storey = aFacade.y.div(FAR_STOREY);
+  const building = hash12(vec2(tint.mul(531), layer.add(7)));
+  const share = clamp(litShareNode.element(int(layer)).mul(building.add(0.45)), 0, 0.97);
+  const pick = hash12(vec2(floor(storey).add(0.5), tint.mul(313)));
+  // Storeys under a pixel: the share itself (no sparkle on towers 10 km off).
+  const isFar = smoothstep(0.3, 0.8, fwidth(storey));
+  const lit = mix(step(pick, share), share, isFar);
+  const kind = byIndex(layer, USE_INDEX);
+  const lamp = lampColour(byIndex(kind, [0.81, 0.45, 0.55, 0.82, 0.9])).mul(
+    byIndex(kind, [2.4, 1.7, 2.0, 3.6, 2.0]),
+  );
+  // As the near façade's far glow: 0.4 of the lamp through clear glass, on the window share.
+  m.emissiveNode = lamp.mul(0.4).mul(mean.a).mul(lit).mul(isWall).mul(facadeUniforms.uNight);
+  m.vertexNode = cameraProjectionMatrix.mul(
+    vec4(modelViewMatrix.mul(vec4(positionLocal, 1)).xyz.mul(FAR_DEPTH_PUSH), 1),
+  );
+  farMaterial = m;
+  return m;
 }

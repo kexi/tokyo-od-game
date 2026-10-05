@@ -10,6 +10,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AreaIndex, type AreaFile } from "../src/geo/areas.ts";
 import { readNodeCoords, readRelations, readTaggedNodes, readWays, type OsmWay } from "./osm-pbf.ts";
+import { log } from "../src/log.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const OUT = join(ROOT, "public", "data");
@@ -22,8 +23,6 @@ const WIDE = { minLat: 35.3, maxLat: 36.0, minLon: 139.2, maxLon: 140.3 };
 const Z = 14;
 const NEAR_ROUTE = 300; // m: a place "is on" a route whose centreline passes this close
 
-const log = (event: string, fields: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
 const inBox = (box: typeof BBOX, lon: number, lat: number) =>
   lat >= box.minLat && lat <= box.maxLat && lon >= box.minLon && lon <= box.maxLon;
 const round5 = (v: number) => Math.round(v * 1e5) / 1e5;
@@ -540,7 +539,7 @@ async function main(): Promise<void> {
   ].sort();
   await mkdir(join(ROOT, "assets", "signs", "guide"), { recursive: true });
   await writeFile(CHARSET, `${sorted.join("")}\n`);
-  log("written", {
+  log("guide_signs_written", {
     tiles: tiles.size,
     roads: roadCount,
     dests: destCount,

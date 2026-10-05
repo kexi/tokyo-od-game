@@ -10,8 +10,9 @@ import { sharedDraco } from "../render/draco";
  * Tokyo Tower, Tokyo Skytree and Tokyo Station at their real places and heights, with their
  * night illumination switched by each operator's published schedule (Skytree's 粋・雅・幟 cycle,
  * Tokyo Tower's ランドマークライト and the Monday/Thursday ダイヤモンドヴェール). Far away only a
- * light silhouette model is drawn, outside the fog: a 634 m tower stands above the haze from
- * kilometres off, and lit at night it is the city's landmark.
+ * light silhouette model is drawn, in the same haze as the far skyline and ground it stands on
+ * (farGround.ts, buildings.ts): its top, in thinner air, stays clear while its foot fades with the
+ * streets around it, and lit at night its lights show through the haze (atmosphere.ts LIGHT_FLOOR).
  */
 type Rule = {
   mode: string;
@@ -52,7 +53,18 @@ type Loaded = {
   isLoadingNear: boolean;
 };
 
-const FAR_LIMIT = 20_000; // m: beyond this not even the silhouette is drawn
+/**
+ * m: beyond this not even the silhouette is drawn — the camera's far plane (main.ts), so a tower is
+ * seen from anywhere in the 23 wards (corner to corner is close to 30 km; the 20 km of before hid
+ * the Skytree from Setagaya, Nerima and Haneda).
+ */
+const FAR_LIMIT = 40_000;
+/**
+ * m: from here the silhouette widens with distance (not taller), keeping its apparent width: a
+ * 634 m tower 50 m across is under 3 px wide at 25 km and its upper shaft and mast fall between
+ * pixels, so it flickered out. The eye does see it as a thin line on the skyline there.
+ */
+const WIDEN_FROM = 15_000;
 
 /** The landmark list (small; read before the buildings stream so their copies can be left out). */
 export async function fetchLandmarks(): Promise<LandmarkEntry[]> {
@@ -142,6 +154,8 @@ export class Landmarks {
       if (wantsNear && !l.near && !l.isLoadingNear) void this.loadNear(l);
       if (l.near) l.near.visible = wantsNear;
       if (l.far) l.far.visible = !(wantsNear && l.near) && d < FAR_LIMIT;
+      const widen = Math.max(1, d / WIDEN_FROM);
+      if (l.far) l.far.scale.set(widen, 1, widen);
       const mode = lightMode(l.entry, date, isDark);
       if (mode !== l.mode) {
         l.mode = mode;
@@ -169,11 +183,8 @@ export class Landmarks {
         this.scene.add(root);
         const far = await this.loadGltf(entry.farModel, l);
         if (!far) continue;
-        // Above the haze: a silhouette kilometres away is still drawn crisply (and lit at night).
-        far.scene.traverse((o) => {
-          if (o instanceof Mesh)
-            for (const m of [o.material].flat() as Material[]) (m as Material & { fog: boolean }).fog = false;
-        });
+        // In the haze, as the city in front of it. Why not out of the fog, as before: with nothing
+        // drawn under it, a crisp tower over the fog-coloured edge of the streamed world floated.
         l.far = far.scene;
         root.add(far.scene);
         l.mode = null;
@@ -221,16 +232,28 @@ export class Landmarks {
           ? l.materials.get(`${path}|${day.name.replace(/^Day_/, `Light_${l.mode}_`)}`)
           : undefined;
         o.material = lit ?? day;
-        if (lit && part === l.far) (lit as Material & { fog: boolean }).fog = false;
       });
     }
   }
 
   private place(l: Loaded): void {
-    const e = l.entry;
-    const p = this.frame.toLocal(e.lat, e.lon, this.ellipsoidal(e.lat, e.lon, e.baseHeight));
-    l.root.position.copy(p);
-    // The model's +Z faces `heading` (degrees clockwise from north); local −Z is north.
-    l.root.rotation.set(0, Math.PI - (e.heading * Math.PI) / 180, 0);
+    landmarkPose(l.entry, this.frame, this.ellipsoidal, l.root);
   }
+}
+
+/**
+ * Where a landmark's model stands in the game frame: its base at the entry's T.P. height plus the
+ * geoid (`ellipsoidal`), through ECEF as the ground is (so the curvature drop, ~25 m at 18 km, is
+ * the ground's own), and turned to its heading. The model's +Z faces `heading` (degrees clockwise
+ * from north); local −Z is north.
+ */
+export function landmarkPose(
+  e: Pick<LandmarkEntry, "lat" | "lon" | "baseHeight" | "heading">,
+  frame: LocalFrame,
+  ellipsoidal: (lat: number, lon: number, orthometric: number) => number,
+  into: Object3D,
+): Object3D {
+  into.position.copy(frame.toLocal(e.lat, e.lon, ellipsoidal(e.lat, e.lon, e.baseHeight)));
+  into.rotation.set(0, Math.PI - (e.heading * Math.PI) / 180, 0);
+  return into;
 }

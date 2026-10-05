@@ -13,6 +13,7 @@ import {
 } from "three";
 import { type Node, PMREMGenerator, type WebGPURenderer } from "three/webgpu";
 import { ATMOSPHERE, atmosphereFog, extinctionFor } from "./atmosphere";
+import { FAR_GROUND_REACH } from "./farGround";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GRAPHICS, QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
@@ -319,9 +320,11 @@ export class Environment {
     // A radiance, tone-mapped with the frame; the water reflects it as its horizon.
     const fog = light.fog;
     this.fog.color.setRGB(fog.r, fog.g, fog.b);
-    // The linear ramp now only hides the end of the streamed world; the haze is atmosphere.ts.
-    this.fog.near = MathUtils.lerp(2400, 1100, cloud);
-    this.fog.far = MathUtils.lerp(4200, 2200, cloud);
+    // The linear ramp only hides the end of the drawn world, the far ground's (≥ 31 km); the haze is
+    // atmosphere.ts. Why not at the streamed world's end (2.2–4.2 km) as before: the far skyline and
+    // ground carry on past it, and the ramp painted the town in front of them fog-coloured.
+    this.fog.near = FAR_GROUND_REACH * 0.75;
+    this.fog.far = FAR_GROUND_REACH;
     const extinction = extinctionFor(this.visibility(raining));
     const isExtinctionSet = this.extinction > 0 && !isFirstOrReplay;
     this.extinction = isExtinctionSet

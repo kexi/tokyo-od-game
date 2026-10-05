@@ -288,13 +288,13 @@ export class GuideSigns {
         avoid: [...avoid, ...crossings],
       });
       this.build(this.kit);
-      log("guide_signs", {
+      log("guide_signs_placed", {
         signs: this.plans.length,
         advance: this.plans.filter((p) => p.board.distance !== null).length,
         overhead: this.plans.filter((p) => p.mount === "overhead").length,
         routed: routes.size,
         mapped: data.dests.length,
-        ms: Math.round(performance.now() - started),
+        durationMs: Math.round(performance.now() - started),
       });
     });
   }

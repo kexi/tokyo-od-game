@@ -3,7 +3,7 @@ import * as i18n from "../i18n";
 import { formatDistance } from "../i18n/format";
 import { lawRef, violationName } from "../i18n/law";
 import { inJapanese } from "../i18n/reverse";
-import { log } from "../log";
+import { log, newSpan, type Span } from "../log";
 import type { RoadGraph } from "../world/roads";
 import { leftOf } from "../world/roads";
 import { storyPanels, StoryPlayer, type StoryFacts, type StoryKind } from "./arrestStory";
@@ -57,6 +57,7 @@ import {
   type TrafficLaw,
   type Violation,
   type ViolationRecord,
+  violationSpan,
 } from "./traffic";
 
 /**
@@ -172,6 +173,8 @@ type Chase = {
   navAt: number;
   posted: boolean;
   startedAt: number;
+  /** Logs: `pursuit-<n>`, caused by the violation the lead unit saw last. */
+  span: Span;
 };
 
 type Stop = {
@@ -195,6 +198,8 @@ type Stop = {
   /** s.t when the farewell line was said (its answer is taken as given after FAREWELL_WAIT_S). */
   farewellAskedT: number | null;
   posted: boolean;
+  /** Logs: `stop-<n>`, caused by the pursuit. */
+  span: Span;
 };
 
 type Story = {
@@ -204,9 +209,19 @@ type Story = {
   /** The points the case comes to (the last panel). */
   points: number;
   onDone: () => void;
+  span: Span;
 };
 
-type Identify = { left: number; records: ViolationRecord[]; posted: boolean; stage: PursuitStage };
+/** `span`: the pursuit's, which the identification closes. */
+type Identify = {
+  left: number;
+  records: ViolationRecord[];
+  posted: boolean;
+  stage: PursuitStage;
+  span: Span;
+};
+
+const idsOf = (records: readonly ViolationRecord[]): string[] => records.flatMap((r) => (r.id ? [r.id] : []));
 
 /** The police radio speaks at most once in this many seconds. */
 const RADIO_GAP_S = 4.5;
@@ -293,12 +308,17 @@ export class PursuitDirector {
       navAt: -Infinity,
       posted: false,
       startedAt: performance.now(),
+      span: newSpan("pursuit", violationSpan(unit.seen.at(-1) ?? {})),
     };
     this.host.chip(true);
     // 簡単操作 does the driver's part it can: the left indicator now, the hazards once stopped.
     if (this.host.assist() === "easy") this.host.setSignalLeft();
     if (this.chase.article67) this.host.notify("police", () => i18n.t("notify.article67"));
-    log("pursuit", { event: "begin", kind: unit.kind, article67: this.chase.article67 });
+    log(
+      "pursuit_begin",
+      { unitKind: unit.kind, article67: this.chase.article67, violationIds: idsOf(unit.seen) },
+      this.chase.span,
+    );
   }
 
   /** The lead unit's loudspeaker is due: polite, then firmer, then a word to the other traffic. */
@@ -373,7 +393,11 @@ export class PursuitDirector {
     });
     this.host.law.absorb([...accident, ...means], record);
     for (const r of [...accident, ...means]) r.procedure = inJapanese("procedure.absorbed");
-    log("pursuit", { event: "dangerousInjury", item: charge.item, points: record.points });
+    log(
+      "pursuit_dangerous_injury",
+      { item: charge.item, points: record.points, violationId: record.id ?? "" },
+      c.span,
+    );
   }
 
   /** Any accident (for telling a crash stop from a stop). */
@@ -392,7 +416,11 @@ export class PursuitDirector {
     const earlier = c ? c.hits.filter((t) => now - t < 60000).length : 0;
     c?.hits.push(now);
     const deliberate = isDeliberateRam({ ...impact, engaged, earlierHits: earlier });
-    log("pursuit", { event: "unitHit", kind: unit.kind, deliberate, kmh: Math.round(impact.playerKmh) });
+    log(
+      "pursuit_unit_hit",
+      { unitKind: unit.kind, deliberate, speedKmh: Math.round(impact.playerKmh) },
+      c?.span ?? this.stop?.span,
+    );
     if (!deliberate) return;
     this.host.book(VIOLATIONS.obstruction, inJapanese("violationDetail.rammed"));
     this.host.book(VIOLATIONS.propertyDamage, inJapanese("violationDetail.rammed"));
@@ -406,7 +434,7 @@ export class PursuitDirector {
     // One at a time: a chase never runs beside a stop or a story (finish() ends it before either).
     const isOverlapping = this.chase !== null && (this.stop !== null || this.story !== null);
     if (isOverlapping) {
-      log("pursuit", { event: "overlap", stop: this.stop !== null, story: this.story !== null });
+      log("pursuit_overlap", { stop: this.stop !== null, story: this.story !== null }, this.chase?.span);
       this.chase = null;
     }
     // The stop's officer is only in the world during a stop.
@@ -526,7 +554,7 @@ export class PursuitDirector {
       c.ignoredBooked = true;
       this.host.book(VIOLATIONS.ignoredStop, inJapanese("violationDetail.fled"));
     }
-    log("pursuit", { event: "fleeing" });
+    log("pursuit_fleeing", {}, c.span);
   }
 
   /** 緊急配備 (more units, the radio, the navi), then the helicopter and the 検問. */
@@ -566,7 +594,7 @@ export class PursuitDirector {
         speech: i18n.t("tv.breaking.chase", { ward }),
       });
     }
-    log("pursuit", { event: "stage", stage });
+    log("pursuit_stage", { stage }, c.span);
   }
 
   /**
@@ -628,7 +656,7 @@ export class PursuitDirector {
           u.managed = true;
           this.chase?.units.add(u);
         }
-        log("pursuit", { event: "checkpoint", metres: Math.round(travelled + want) });
+        log("pursuit_checkpoint", { aheadM: Math.round(travelled + want) }, this.chase?.span);
         return true;
       }
       travelled += seg.length;
@@ -684,8 +712,12 @@ export class PursuitDirector {
     this.host.scene.showGuide(null);
     this.host.scene.heli.leave();
     this.tvClearAt = performance.now() + 60000;
-    log("pursuit", { event: "end", end, fled, stage: c.esc.stage, records: records.length });
-    if (fled) this.toCriminal(records, FLED_PROCEDURE);
+    log(
+      "pursuit_end",
+      { end, fled, stage: c.esc.stage, records: records.length, violationIds: idsOf(records) },
+      c.span,
+    );
+    if (fled) this.toCriminal(records, FLED_PROCEDURE, c.span);
     if (end === "escaped") {
       this.escaped(c, records);
       return;
@@ -705,12 +737,12 @@ export class PursuitDirector {
     return [...all].toSorted((a, b) => a.at - b.at);
   }
 
-  private toCriminal(records: readonly ViolationRecord[], why: string): void {
+  private toCriminal(records: readonly ViolationRecord[], why: string, span: Span): void {
     const changed = fledRecords(records).filter((r) =>
       this.host.law.toCriminal(r, inJapanese(why as i18n.MessageKey)),
     );
     if (changed.length === 0) return;
-    log("pursuit", { event: "criminal", why, kinds: changed.map((r) => r.kind) });
+    log("pursuit_criminal", { why, kinds: changed.map((r) => r.kind), violationIds: idsOf(changed) }, span);
   }
 
   /** Got away: the offences become notices (the plate was read) and the identification starts. */
@@ -729,6 +761,7 @@ export class PursuitDirector {
       records,
       posted,
       stage: c.esc.stage,
+      span: c.span,
     };
   }
 
@@ -754,8 +787,9 @@ export class PursuitDirector {
       this.host.endHitAndRunChase();
     }
     if (this.host.assist() === "easy") this.host.setHazards(true);
+    const span = newSpan("stop", c.span);
     const isUnlicensed = records.some((r) => r.kind === "unlicensed");
-    if (isUnlicensed) this.toCriminal(records, UNLICENSED_PROCEDURE);
+    if (isUnlicensed) this.toCriminal(records, UNLICENSED_PROCEDURE, span);
     const disposal = decideDisposal({ records, fled, caught: isCaught(end) });
     const verdict = judgePullOver({
       site: this.host.stopSite(),
@@ -785,6 +819,7 @@ export class PursuitDirector {
       farewellT: 0,
       farewellAskedT: null,
       posted: c.posted,
+      span,
     };
     this.host.scene.officer.clear();
     this.host.scene.setShot("patrol");
@@ -794,7 +829,11 @@ export class PursuitDirector {
       unit.car.object,
       "loudspeaker",
     );
-    log("pursuit", { event: "stop", end, disposal, safe: verdict.safe, issues: verdict.issues });
+    log(
+      "stop_begin",
+      { end, disposal, safe: verdict.safe, issues: verdict.issues, violationIds: idsOf(records) },
+      span,
+    );
   }
 
   private updateStop(dt: number): void {
@@ -824,6 +863,7 @@ export class PursuitDirector {
       const window = p.position.clone().add(new Vector3(-1.55, 0, 0.35).applyQuaternion(q));
       window.y = this.host.groundAt(window.x, window.z) ?? window.y;
       scene.officer.start(s.rider ? "rider" : "foot", this.host.month(), door, window, p.yaw + Math.PI / 2);
+      s.unit.setOfficerOut(true);
       scene.setShot("walk");
       // People going past see the car pulled over (after a chase: the chase's end).
       const phaseOfPost: StopPhase = s.fled ? "fledCaught" : s.rider ? "stoppedBike" : "stopped";
@@ -947,12 +987,16 @@ export class PursuitDirector {
         // Stamped already when committed (main.ts book): not again at the ticket.
         this.host.law.cite(r, "patrol");
       }
-      log("police", {
-        event: "ticket",
-        disposal: s.disposal,
-        kinds: s.records.map((r) => r.kind),
-        total: this.host.law.state.points,
-      });
+      log(
+        "stop_ticket",
+        {
+          disposal: s.disposal,
+          kinds: s.records.map((r) => r.kind),
+          violationIds: idsOf(s.records),
+          totalPoints: this.host.law.state.points,
+        },
+        s.span,
+      );
     };
     if (s.disposal === "blue") {
       s.waiting = true;
@@ -969,18 +1013,25 @@ export class PursuitDirector {
       this.host.openTicket(s.records, () => {
         cite();
         s.waiting = false;
-        this.storyFor("redSummons", s.records, s.stage, s.posted, () => this.endStop());
+        this.storyFor("redSummons", s.records, s.stage, s.posted, () => this.endStop(), s.span);
       });
       return;
     }
     cite();
     const kind: StoryKind = s.disposal === "voluntary" ? "voluntary" : "arrest";
     const isHitAndRun = s.records.some((r) => r.kind === "hitAndRun");
-    this.storyFor(kind, s.records, s.stage, s.posted, () => {
-      this.endStop();
-      if (isHitAndRun) this.host.arrestScreen("hitAndRun");
-      else if (kind === "arrest") this.host.endDay();
-    });
+    this.storyFor(
+      kind,
+      s.records,
+      s.stage,
+      s.posted,
+      () => {
+        this.endStop();
+        if (isHitAndRun) this.host.arrestScreen("hitAndRun");
+        else if (kind === "arrest") this.host.endDay();
+      },
+      s.span,
+    );
   }
 
   /** The patrol car's driver door (the 白バイ's side), on the ground: where the officer gets out and in. */
@@ -1005,6 +1056,8 @@ export class PursuitDirector {
     const s = this.stop;
     if (!s) return;
     this.stop = null;
+    log("stop_end", { disposal: s.disposal }, s.span);
+    s.unit.setOfficerOut(false);
     // Whatever path the stop ended by, nobody of it stays standing in the street.
     this.host.scene.officer.clear();
     this.host.scene.setShot(null);
@@ -1029,6 +1082,8 @@ export class PursuitDirector {
     stage: PursuitStage | 0,
     posted: boolean,
     onDone: () => void,
+    /** The stop or the pursuit the story is the end of (none: a debug story). */
+    parent?: Span,
   ): void {
     this.host.scene.setShot(null);
     this.host.scene.officer.clear();
@@ -1054,11 +1109,12 @@ export class PursuitDirector {
       ...stampOf(facts.sanction, points),
     };
     const player = new StoryPlayer(storyPanels(kind, facts));
-    this.story = { player, kind, words, points, onDone };
+    const span = newSpan("story", parent);
+    this.story = { player, kind, words, points, onDone, span };
     this.host.scene.onStoryNext = () => this.storyNext();
     this.host.scene.onStorySkip = () => this.storySkip();
     this.showPanel();
-    log("pursuit", { event: "story", kind, panels: player.panels.length });
+    log("story_begin", { kind, panels: player.panels.length }, span);
   }
 
   private captionOf(story: Story): string {
@@ -1140,13 +1196,20 @@ export class PursuitDirector {
     const kind = laterDisposal(id.records);
     this.host.notify("police", () => i18n.t("notify.identified"));
     if (id.posted) this.host.social("identified");
-    log("pursuit", { event: "identified", kind });
+    log("pursuit_identified", { kind }, id.span);
     const isHitAndRun = id.records.some((r) => r.kind === "hitAndRun");
     if (kind === "laterArrest") for (const r of id.records) this.host.law.cite(r, "patrol");
-    this.storyFor(kind, id.records, id.stage, id.posted, () => {
-      if (isHitAndRun) this.host.arrestScreen("hitAndRunLater");
-      else if (kind === "laterArrest") this.host.endDay();
-    });
+    this.storyFor(
+      kind,
+      id.records,
+      id.stage,
+      id.posted,
+      () => {
+        if (isHitAndRun) this.host.arrestScreen("hitAndRunLater");
+        else if (kind === "laterArrest") this.host.endDay();
+      },
+      id.span,
+    );
   }
 
   /**
@@ -1165,8 +1228,13 @@ export class PursuitDirector {
       this.host.scene.showGuide(null);
     }
     const records = [...(c ? this.caseRecords(c) : []), ...(record ? [record] : [])];
-    this.storyFor(later ? "laterArrest" : "arrest", records, c?.esc.stage ?? 0, c?.posted ?? false, () =>
-      this.host.arrestScreen(later ? "hitAndRunLater" : "hitAndRun"),
+    this.storyFor(
+      later ? "laterArrest" : "arrest",
+      records,
+      c?.esc.stage ?? 0,
+      c?.posted ?? false,
+      () => this.host.arrestScreen(later ? "hitAndRunLater" : "hitAndRun"),
+      c?.span ?? (record ? violationSpan(record) : undefined),
     );
   }
 

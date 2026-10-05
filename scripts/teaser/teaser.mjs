@@ -26,8 +26,11 @@ const WORK = resolve(args.work ?? "out/teaser-frames");
 const ONLY = args.only ? new Set(args.only.split(",")) : null;
 const PORT = Number(args.port ?? 9340);
 const FPS = 30;
+// The line shape of src/log.ts (ts, level, event, traceId = this run). Why not import it: these
+// run on plain node, which cannot load the .ts logger (AGENTS.md: .ts runs through tsx).
+const traceId = crypto.randomUUID();
 const log = (event, fields = {}) =>
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level: "info", event, traceId, ...fields }));
 
 /** The cut, in order. Each id is a section one of the sessions below films into WORK/<id>/. */
 const EDIT = [

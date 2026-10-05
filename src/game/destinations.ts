@@ -77,7 +77,7 @@ export async function loadDestinations(): Promise<{
       generatedAt: file.generatedAt,
     };
   } catch (error) {
-    warn("data_load_failed", { name: "destinations.json", error: String(error) });
+    warn("data_load_failed", { file: "destinations.json", error: String(error) });
     return null;
   }
 }

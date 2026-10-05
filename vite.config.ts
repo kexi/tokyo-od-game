@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import { collectLicenses } from "./scripts/licenses.ts";
 import { MANIFEST_PATH, resolveManifest } from "./scripts/assetManifest.ts";
+import { logSink } from "./scripts/logSink.ts";
 
 const require = createRequire(import.meta.url);
 // three does not export ./package.json, so walk up from its CJS entry (build/three.cjs).
@@ -268,7 +269,8 @@ function assetReview(): Plugin {
 export default defineConfig({
   // GitHub Pages project site: https://<user>.github.io/tokyo-od-game/
   base: process.env.BASE_PATH ?? "/tokyo-od-game/",
-  plugins: [dracoDecoder(), assetManifest(), assetReview()],
+  // logSink: the build label in every log line, and (dev / preview) the page's logs to .qa/logs.
+  plugins: [dracoDecoder(), assetManifest(), assetReview(), logSink(import.meta.dirname)],
   // The project's own tests only: direnv unpacks flake inputs (with their own tests) into .direnv.
   test: { include: ["tests/**/*.test.ts"] },
   // Module workers so the TTS worker can dynamic-import the Emscripten ES module from public/tts.

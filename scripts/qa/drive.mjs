@@ -23,8 +23,11 @@ const url = args.start ? `${base}?start=${args.start}` : base;
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const out = join(import.meta.dirname, "..", "..", ".qa", "runs", stamp);
 mkdirSync(out, { recursive: true });
+// The line shape of src/log.ts (ts, level, event, traceId = this run). Why not import it: these
+// run on plain node, which cannot load the .ts logger (AGENTS.md: .ts runs through tsx).
+const traceId = crypto.randomUUID();
 const log = (event, fields = {}) =>
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...fields }));
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level: "info", event, traceId, ...fields }));
 
 // What the scene should show around the car, in the game's own words (dev-only __game hook).
 const STATE = `(() => {

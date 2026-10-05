@@ -53,7 +53,7 @@ export async function createRenderer(
     reversedDepthBuffer: true,
     forceWebGL: isWebGLAsked,
   });
-  renderer.onDeviceLost = (lost) => warn("gpu_device_lost", { reason: lost.reason, message: lost.message });
+  renderer.onDeviceLost = (lost) => warn("gpu_device_lost", { reason: lost.reason, error: lost.message });
   await renderer.init();
   const isWebGPU = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true;
   // The WebGL 2 backend drops the reversed depth without EXT_clip_control: fall back to the
@@ -73,7 +73,7 @@ export async function createRenderer(
     depth: isReversed ? "reversed" : "logarithmic",
     label: isWebGPU ? "graphics.runningWebgpu" : webgl,
   };
-  log("renderer", { backend: info.backend, depth: info.depth, samples: renderer.samples });
+  log("renderer_ready", { backend: info.backend, depth: info.depth, samples: renderer.samples });
   return { renderer, info };
 }
 

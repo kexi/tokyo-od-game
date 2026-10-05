@@ -53,7 +53,7 @@ export class Voice {
           sampleRate?: number;
         };
         if (msg.type === "ready") {
-          if (!msg.ok) warn("tts_init_failed", { message: msg.message });
+          if (!msg.ok) warn("tts_init_failed", { error: msg.message ?? "" });
           resolve(Boolean(msg.ok));
           return;
         }

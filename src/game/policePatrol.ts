@@ -1,5 +1,6 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { BoxGeometry, Mesh, MeshStandardMaterial, Vector3, type Scene } from "three";
+import { OFFICER_KG, RIDER_KG } from "../physics/masses";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
 import { createVehicle, setBeacons, type VehicleInstance } from "./vehicleModels";
 import type { RoadGraph, Segment } from "../world/roads";
@@ -75,11 +76,16 @@ export class PolicePatrol {
     // The physics car drives; the police model (scripts/blender/police_*.py) is what is seen. Its
     // origin is on the ground, the physics body's at chassis height. A 白バイ gets a bike-sized body.
     const isBike = kind === "shirobai";
-    this.car = new Vehicle(world, {
-      color: 0xf4f4f2,
-      halfWidth: isBike ? 0.42 : undefined,
-      halfLength: isBike ? 1.1 : undefined,
-    });
+    this.car = new Vehicle(
+      world,
+      {
+        color: 0xf4f4f2,
+        halfWidth: isBike ? 0.42 : undefined,
+        halfLength: isBike ? 1.1 : undefined,
+      },
+      kind,
+    );
+    this.setOfficerOut(false);
     this.barMaterial = new MeshStandardMaterial({ color: 0x550000, emissive: 0x000000 });
     this.bar = new Mesh(new BoxGeometry(1.1, 0.14, 0.32), this.barMaterial);
     this.model = createVehicle(kind);
@@ -96,6 +102,20 @@ export class PolicePatrol {
 
   get position(): Vector3 {
     return this.car.object.position;
+  }
+
+  /**
+   * Who is aboard: two officers in a car (driver on the right, the other beside them), the rider on
+   * a 白バイ. At a roadside stop one officer is out at the window (pursuitDirector.ts), so one fewer.
+   */
+  setOfficerOut(out: boolean): void {
+    const isBike = this.kind === "shirobai";
+    if (isBike) {
+      this.car.setOccupants(out ? [] : [{ seat: "rider", kg: RIDER_KG }]);
+      return;
+    }
+    const driver = { seat: "driver" as const, kg: OFFICER_KG };
+    this.car.setOccupants(out ? [driver] : [driver, { seat: "front", kg: OFFICER_KG }]);
   }
 
   /** Put the patrol on a street 250–450 m from `near`, cruising. */

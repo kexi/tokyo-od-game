@@ -526,12 +526,12 @@ export class OrbisDevices {
     this.portable = context ? planPortable(graph, frame, context.day, context.schools) : [];
     this.build(this.kit, context);
     log("orbis_placed", {
-      sites: this.sites.map((s) => ({ id: s.entry.id, kind: s.kind, lanes: s.lanes, limit: s.limit })),
+      sites: this.sites.map((s) => ({ siteId: s.entry.id, kind: s.kind, lanes: s.lanes, limitKmh: s.limit })),
       signs: this.warnings.length,
       portable: this.portable.map((s) => ({
         at: [s.entry.lat, s.entry.lon],
-        bearing: s.entry.bearing,
-        limit: s.limit,
+        bearingDeg: s.entry.bearing,
+        limitKmh: s.limit,
         key: s.entry.origin,
       })),
     });
