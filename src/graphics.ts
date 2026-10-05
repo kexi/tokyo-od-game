@@ -273,8 +273,12 @@ const STORE_KEY = "tod.graphics";
 /** What the presets leave alone, as a fresh browser has it. */
 const NON_PRESET: Omit<GraphicsSettings, PresetKey | "preset"> = { backend: "auto" };
 
+/**
+ * A fresh browser's settings: 最高 on a desktop (the game is made to be seen that way, and the title
+ * screen's 画質 is one click away), 低 on a phone, whose mid-range GPU would not keep up.
+ */
 export function defaultGraphics(isMobile: boolean): GraphicsSettings {
-  const preset: GraphicsPreset = isMobile ? "low" : "high";
+  const preset: GraphicsPreset = isMobile ? "low" : "ultra";
   return { preset, ...NON_PRESET, ...PRESETS[preset] };
 }
 

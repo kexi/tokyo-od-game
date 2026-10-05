@@ -14,7 +14,7 @@ import { zh } from "../src/i18n/zh";
 
 describe("画質", () => {
   it("starts on 高 on a computer and 低 on a phone", () => {
-    expect(defaultGraphics(false).preset).toBe("high");
+    expect(defaultGraphics(false).preset).toBe("ultra");
     expect(defaultGraphics(true).preset).toBe("low");
   });
 
