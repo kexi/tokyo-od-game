@@ -1,16 +1,20 @@
 ---
 type: Reference
 title: 違反の瞬間のカクつき（目撃ポスト・通行人の写真・画面の保存をフレームに散らす）
-description: 違反した瞬間にゲームが止まる原因と、その後の仕事を後のフレームと別スレッドへ散らした方法。違反のフレームでしていたこと（目撃ポストの写真のための画面外の描画 9 回、写真の現像、画面の JPEG 化、初めて出るスマホの材質の組み立て、端末内 AI の書き換え）の見積もり、ポストを下書きと投稿に分けて 2.5〜5.5 秒後に上げる仕組み、1 フレームに画面外の描画 1 回までの関門（FrameGate）、車を単色で描く探り、暗室ワーカー（OffscreenCanvas）、読み込み中の事前コンパイル、測るための開発用フック window.__game.debug.perf。ブラウザでの計測はまだ（手順を記録）。
+description: 違反した瞬間にゲームが止まる原因と、その後の仕事を後のフレームと別スレッドへ散らした方法。違反のフレームでしていたこと（目撃ポストの写真のための画面外の描画 9 回、写真の現像、画面の JPEG 化、初めて出るスマホの材質の組み立て、端末内 AI の書き換え）の見積もり、ポストを下書きと投稿に分けて 2.5〜5.5 秒後に上げる仕組み、1 フレームに画面外の描画 1 回までの関門（FrameGate）、車を単色で描く探り、暗室ワーカー（OffscreenCanvas）、読み込み中の事前コンパイル、測るための開発用フック window.__game.debug.perf。2026-10-06 にヘッドレス Chrome で写真ポストを計測（通常ブラウザは未測定）。
 tags: [rendering, testing]
 status: draft
 stale_after: 2027-04-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-10-05T03:20:00Z }
 verified:
+  - { by: process:headless-chrome-cdp, at: 2026-10-05T16:48:00Z }
   - { by: process:vitest, at: 2026-10-05T03:15:00Z }
   - { by: process:tsc, at: 2026-10-05T03:15:00Z }
   - { by: process:vite-build, at: 2026-10-05T03:14:00Z }
 sources:
+  - id: browser-20261006
+    resource: render-performance.md, ../.qa/perf/validation/report.json
+    title: 2026-10-06 のヘッドレス Chrome での写真ポスト検証（ローカル保存）
   - id: code
     resource: src/main.ts（book・takeShots・afterViolations・Y の配線）、src/game/witnessShot.ts、src/game/witnessPhones.ts、src/game/social.ts、src/render/frame.ts を読んだ（2026-10-05）
     title: 違反のときに走るコード
@@ -95,18 +99,18 @@ three r186 は、描画先の形式（色の形式・型・サンプル数・深
 
 # 測り方（開発ビルド、ユーザーの Chrome で）
 
-ヘッドレスでは測らない（遅いので判断を誤る。[ヘッドレス Chrome での検証](headless-browser-testing.md)）。
+通常の Chrome での計測を優先する。ヘッドレスの絶対 FPS は実機の体感を代表しない（[ヘッドレス Chrome での検証](headless-browser-testing.md)）。2026-10-06 にはヘッドレスでも実時間を使って下記の限定的な検証を行った。
 
 - `perf`（src/game/perf.ts）: `book` の各段（`violation.commit` `violation.pursuit` `violation.police` `violation.witnesses` `violation.draft` `violation.phones` `violation.total`）、`post.publish`、`shot.plan` `shot.probe` `shot.photo`（メインスレッド）、`shot.probe.read` `shot.photo.read` `shot.develop` `screen.encode`（GPU やワーカーを待つ時間で、メインスレッドは空いている: `blocking: false`）、`screen.grab`、`social.update`、`clip.cut`、`violations.save`、`prewarm.phones` `prewarm.shot`。2 ms を超えた段は `{"event":"perf","phase":…,"ms":…,"blocking":…}` を出す。
 - `await __game.debug.perf.violation("signal", "video", 7)`: 次のフレームで信号無視を 1 件記録し、必ず動画の目撃ポストを付ける。返り値は、直前 1 秒のフレーム（`before`）、その後 7 秒のフレーム（`after`: 最長の間隔と時刻、p50・p95、25 ms・50 ms を超えた数）、段ごとの合計と最大（`totals`）、時刻つきの段（`phases`、`at` は違反からの ms）、Chrome の long animation frame（50 ms 超）と長かったスクリプト（`long`）。
 - `__game.debug.perf.spread(false)`: 投稿をその場で上げ、関門を開け（描画を待たせない）、現像と画面の JPEG をメインスレッドで同期に戻す。同じビルドで「前」を測るため。**探りの方式（4 か所 × 2 回を一度に）は戻らない**ので、「前」の違反のフレームは実際の旧版より軽く出る。
 - 比べる数: `after.longest` と `after.over25`（違反の後のカクつき）を `before` と、`spread(true)` と `spread(false)` で。`totals["violation.total"].max`（違反のフレームのメインスレッドの仕事）、`shot.photo` の max（写真の 1 回の描画、今いちばん重い 1 フレーム）、`shot.develop.inline` と `shot.develop`（現像がメインスレッドから消えたか）、`screen.grab`。最初の違反は `?noprewarm` の有無で（スマホの材質の組み立て）。
 
-ブラウザでの値はまだ無い（この文書を書いた時点では、ゲームを動かせる環境で測っていない）。
+初版ではブラウザの値が無かった。2026-10-06 JST、M2 Max / Headless Chrome 154 / WebGPU / ultra の東京駅付近で、最初の信号無視の写真ポストを検証した。違反処理は 2.7 ms、写真描画は 4.0 ms、後続 7 秒の 341 フレームに 50 ms 超は 0 件（最長 33.4 ms）。写真の完成と例外ログ 0 件を確認した。事故・複数目撃者・端末内 AI 同時実行は未検証であり、すべての違反でカクつかないという証明ではない。条件と成果物は [描画性能の記録](render-performance.md) を参照。[^browser-20261006]
 
 # 残っていること・見つけたこと
 
-- **写真の 1 回の描画**は、通行人の目から街全体を描くので、メインの描画に近い CPU の費用が 1 フレームに乗る。望遠で視野が狭いぶん軽いはずだが、測っていない。far を霧の届く距離（晴れで 4.2 km）に縮める案は、遠くのランドマークが写らなくなるので採っていない。
+- **写真の 1 回の描画**は、通行人の目から街全体を描くので CPU の費用が 1 フレームに乗る。2026-10-06 の上記 1 ケースでは 4.0 ms だった。far を霧の届く距離（晴れで 4.2 km）に縮める案は、遠くのランドマークが写らなくなるので採っていない。
 - **事故で救急車とパトカー（emergency.ts）が出るとき**、その PointLight は `root.visible` で出し入れされる。光が増えると three は光を含む全材質の鍵が変わり、初めての組み合わせでは全部を組み立て直す。人をはねた違反のカクつきの大きな原因の候補（このタスクの範囲外で、未確認）。
 - Y を開いたまま運転していると、新しい投稿者のプロフィール画像（歩行者の胸像）を別の WebGLRenderer で描く。これは 30 ms ごとに 2 枚までに既に間引かれている（socialAvatars.ts）。
 - 違反の記録の保存（2 秒ごと）と再現データの切り出し（1 秒ごと）は違反のフレームとは別のタスク。測る段だけ足した。
@@ -125,3 +129,5 @@ three r186 は、描画先の形式（色の形式・型・サンプル数・深
 [^bench]: 現像のピクセル処理の実測
 
 [^tests]: 振る舞いのテスト
+
+[^browser-20261006]: 2026-10-06 のヘッドレス Chrome での写真ポスト検証（ローカル保存）

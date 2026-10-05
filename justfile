@@ -242,6 +242,18 @@ collect-final-media:
     cp out/teaser.en.mp4 out/final/teaser-en.mp4
     [ -f out/youtube-description.txt ] && cp out/youtube-description.txt out/final/ || true
 
+# 実時間で昼晴れ・夜雨のフレーム時間と描画負荷を各3回計測する（開発サーバーが必要）
+measure-perf label="sample":
+    node scripts/qa/perf.mjs --label {{ label }}
+
+# シーンを固定して従来・改善後の描画CPU時間を交互に各4回計測する（開発サーバーが必要）
+measure-perf-fixed:
+    node scripts/qa/perf-fixed-scene.mjs
+
+# 交通と雨が動く通常プレイで夜雨の従来・改善後を交互に各4回計測する
+measure-perf-night:
+    node scripts/qa/perf-fixed-scene.mjs --live --seconds 20
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit
