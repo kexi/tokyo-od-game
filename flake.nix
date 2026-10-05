@@ -56,9 +56,11 @@
               shellcheck
               ruff
               # The Python generators (scripts/textures/*.py, PEP 723) run through uv; the knowledge
-              # lint reads the frontmatter with yq (it skips the tag check without it).
+              # lint reads the frontmatter with yq (it skips the tag check without it); the teaser
+              # (`just make-teaser`) cuts its frames and soundtrack together with ffmpeg.
               uv
               yq-go
+              ffmpeg
             ];
             shellHook = ''
               lefthook install >/dev/null 2>&1 || true

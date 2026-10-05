@@ -29,7 +29,7 @@ just serve-dev
 
 ブラウザで <http://localhost:5173/tokyo-od-game/> を開くとタイトル画面が出ます。
 
-- **開発シェル**（`nix develop`）には次が揃います: Node.js 24、pnpm、just、lefthook、uv、yq、gitleaks、pinact、actionlint、shellcheck、ruff。
+- **開発シェル**（`nix develop`）には次が揃います: Node.js 24、pnpm、just、lefthook、uv、yq、ffmpeg、gitleaks、pinact、actionlint、shellcheck、ruff。
 - **git hook** は、開発シェルに入ると `lefthook install` で自動的に設置されます。
 - **パッケージは公開から 1 日以上たったものだけ**を入れます（`pnpm-workspace.yaml` の `minimumReleaseAge: 1440`）。サプライチェーン攻撃への備えなので、新しいパッケージを足すときも緩めないでください。インストール時のスクリプトも動かしません（`allowBuilds`）。
 - **地図・建物・データ**: `public/data/` のオープンデータはリポジトリに入っているので、取得し直さなくても動きます。PLATEAU の 3D 都市モデル・地理院タイルなどは、遊んでいる間にブラウザが配信元から読み込みます。
@@ -92,7 +92,7 @@ just make-og-image    # public/og.jpg（雨の夜の東京駅を車内から撮�
 ```
 
 - **開発サーバーが要る**: どちらも開発サーバーで動いているゲームを、ヘッドレスの Chrome でコマ送りに撮ります。既定の場所は `/Applications/Google Chrome.app` で、別の場所にあるときは環境変数 `CHROME` で指定します。
-- **ティザーには ffmpeg も要る**: 既定の開発シェルには入っていないので、別に用意してください。
+- **ティザーは ffmpeg で編集する**: 開発シェルに入っています。
 
 ## 守ってほしいこと
 
