@@ -99,3 +99,82 @@ export async function openGame({
   }
   return { b, pump, ev: (js) => b.evaluate(js), close: () => b.close() };
 }
+
+/**
+ * Page side: the car placed for `photo` (photos.mjs describes the fields: landmark, from, toward,
+ * fixed, minWidth); returns the driver's turn towards the landmark (rad, left +) and how far up
+ * its top is (rad), with where it stood.
+ */
+export const placeFor = (photo) => `(() => {
+  const G = window.__game; const V = G.camera.position.constructor; const f = G.getFrame();
+  const lm = f.toLocal(${photo.landmark.lat}, ${photo.landmark.lon}, f.origin.h);
+  const from = f.toLocal(${photo.from.lat}, ${photo.from.lon}, f.origin.h);
+  const to = ${photo.toward ? `f.toLocal(${photo.toward.lat}, ${photo.toward.lon}, f.origin.h)` : "lm"};
+  let p = from.clone(); let heading = new V(to.x - from.x, 0, to.z - from.z).normalize(); let road = null;
+  if (!${Boolean(photo.fixed)}) {
+    const graph = G.getRoadGraph();
+    // Only a road running towards the landmark (within ≈ 25°): the nearest wide road alone was a
+    // cross street, the landmark off to the side behind the pillars.
+    const toward = new V(to.x - from.x, 0, to.z - from.z).normalize();
+    // Not an expressway: its deck is not in the road graph's heights, and a car put on the ground
+    // under it stood among the buildings. A one-way street only the way it may be driven.
+    const isToward = (seg) => {
+      if (seg.line.kind === 'highway') return false;
+      const a = seg.pts[0]; const z = seg.pts[seg.pts.length - 1];
+      const run = new V(z.x - a.x, 0, z.z - a.z);
+      if (run.lengthSq() <= 1) return false;
+      const along = run.normalize().dot(toward);
+      const isAllowed = seg.line.oneway === 0 || Math.sign(along) === seg.line.oneway;
+      return isAllowed && Math.abs(along) > 0.9;
+    };
+    const hit = graph && graph.nearest(from, 250, (seg) => seg.line.width >= ${photo.minWidth ?? 6} && isToward(seg));
+    if (!hit) return { error: 'no road near the viewpoint' };
+    const s = graph.sample(hit.seg, hit.s);
+    const d = s.dir.clone().setY(0).normalize();
+    const toGo = new V(to.x - s.pos.x, 0, to.z - s.pos.z);
+    if (d.dot(toGo) < 0) d.negate();
+    // Keep left: the lane a quarter of the road's width left of its middle (at most 4 m).
+    const left = new V(d.z, 0, -d.x);
+    p = s.pos.clone().addScaledVector(left, Math.min(hit.seg.line.width * 0.25, 4));
+    heading = d;
+    road = { width: hit.seg.line.width, kind: hit.seg.line.kind, offM: Math.round(hit.lateral) };
+  }
+  p.y = (G.groundY(p.x, p.z) ?? 0) + 0.9;
+  const yaw = Math.atan2(heading.x, heading.z);
+  G.vehicle.teleport(p, yaw);
+  const bearing = Math.atan2(lm.x - p.x, lm.z - p.z);
+  const turn = Math.atan2(Math.sin(bearing - yaw), Math.cos(bearing - yaw));
+  const dist = Math.hypot(lm.x - p.x, lm.z - p.z);
+  return { turn, dist: Math.round(dist), top: Math.atan2(${photo.landmark.height} - 1.2, dist), road };
+})()`;
+
+/**
+ * The driver's eye turned towards the landmark (as far as the windscreen allows) and looking up so
+ * its top sits about four fifths of the way up the picture (0.6 of the half view above the middle);
+ * `photo.turn` / `pitch` / `fov` adjust or override it.
+ */
+export async function lookAtLandmark(game, photo, placed) {
+  const yaw = Math.max(-0.6, Math.min(0.6, placed.turn + (photo.turn ?? 0)));
+  const halfView = (((photo.fov ?? 60) / 2) * Math.PI) / 180;
+  const pitch = photo.pitch ?? Math.max(0.03, Math.min(0.3, placed.top - 0.6 * halfView));
+  await game.ev(`window.__tz.seat(${yaw}, ${pitch}, ${photo.fov ?? 60})`);
+  return { yaw, pitch };
+}
+
+/** Page side: the signal ahead of the car within `range` m (kept as window.__ap); its distance. */
+export const findSignal = (range) => `(() => { const G = window.__game; const y = G.vehicle.yaw();
+  const fwd = G.vehicle.position().set(Math.sin(y), 0, Math.cos(y));
+  const a = G.control.ahead(G.vehicle.position(), fwd, ${range});
+  window.__ap = a && a.approach.kind === 'signal' ? a.approach : null; return window.__ap ? a.dist : null; })()`;
+
+/** Page side: whether the signal found by findSignal shows `state`. */
+export const lightIs = (state) => `window.__ap && window.__game.control.state(window.__ap) === '${state}'`;
+
+/** Frames until `js` is true (checked every `every`), at most `max`; true if it came. */
+export async function until(game, js, max, every = 3) {
+  for (let i = 0; i < max; i += every) {
+    if (await game.ev(js)) return true;
+    await game.pump(every);
+  }
+  return Boolean(await game.ev(js));
+}
