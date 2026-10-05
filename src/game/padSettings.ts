@@ -94,7 +94,11 @@ export function mountPadSettings(root: HTMLElement, pad: PadInput): void {
         (v) => save({ ...profile, conflict: v === "clear" ? "clear" : "swap" }),
       ),
     );
-    out.push(feel);
+    // The feel, the gyro and the rumble side by side on a wide 設定 (.pad-panels), one under the
+    // other on a narrow one.
+    const panels = div("pad-panels");
+    panels.append(panel([heading("pad.feelTitle"), feel]));
+    out.push(panels);
 
     const gyro = div("control-options");
     const isHid = pad.procon.connected;
@@ -113,11 +117,13 @@ export function mountPadSettings(root: HTMLElement, pad: PadInput): void {
     );
     const readout = para("", "sub pad-gyro-readout");
     readout.dataset.padGyro = "";
-    out.push(
-      heading("pad.gyroTitle"),
-      gyro,
-      para(t(isHid ? "pad.gyroNote" : "pad.gyroNeedsHid"), "sub"),
-      readout,
+    panels.append(
+      panel([
+        heading("pad.gyroTitle"),
+        gyro,
+        para(t(isHid ? "pad.gyroNote" : "pad.gyroNeedsHid"), "sub"),
+        readout,
+      ]),
     );
 
     const rumble = div("control-options");
@@ -134,10 +140,12 @@ export function mountPadSettings(root: HTMLElement, pad: PadInput): void {
       button(t("pad.rumbleTest"), () => pad.rumble("test", 1), !profile.rumble.enabled),
     );
     const hasVibration = isHid || active.vibration !== null;
-    out.push(
-      heading("pad.rumbleTitle"),
-      rumble,
-      para(t(hasVibration ? "pad.rumbleNote" : "pad.rumbleNone"), "sub"),
+    panels.append(
+      panel([
+        heading("pad.rumbleTitle"),
+        rumble,
+        para(t(hasVibration ? "pad.rumbleNote" : "pad.rumbleNone"), "sub"),
+      ]),
     );
 
     out.push(heading("pad.bindingsTitle"), para(t("pad.bindingsNote"), "sub"));
@@ -259,6 +267,12 @@ const curveName = (v: number) => (v <= 1.05 ? t("pad.linear") : `${v.toFixed(1)}
 function div(className: string): HTMLDivElement {
   const d = document.createElement("div");
   d.className = className;
+  return d;
+}
+
+function panel(children: Node[]): HTMLDivElement {
+  const d = div("pad-panel");
+  d.append(...children);
   return d;
 }
 

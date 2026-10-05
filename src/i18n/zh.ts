@@ -122,6 +122,7 @@ export const zh: Messages = {
   "pad.conflict": "与其他操作重复时",
   "pad.conflictSwap": "互换",
   "pad.conflictClear": "解除原来的分配",
+  "pad.feelTitle": "操控手感",
   "pad.gyroTitle": "陀螺仪转向",
   "pad.gyro": "用陀螺仪转向（倾斜转弯）",
   "pad.gyroRange": "打满所需倾角",

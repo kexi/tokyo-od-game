@@ -129,6 +129,7 @@ export const en: Messages = {
   "pad.conflict": "When a button is taken",
   "pad.conflictSwap": "Swap them",
   "pad.conflictClear": "Unbind the other",
+  "pad.feelTitle": "Feel",
   "pad.gyroTitle": "Gyro steering",
   "pad.gyro": "Steer with the gyro (tilt to turn)",
   "pad.gyroRange": "Tilt for full lock",

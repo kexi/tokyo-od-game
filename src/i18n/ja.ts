@@ -137,6 +137,7 @@ export const ja = {
   "pad.conflict": "ほかの操作と重なったとき",
   "pad.conflictSwap": "入れ替える",
   "pad.conflictClear": "前の割り当てを外す",
+  "pad.feelTitle": "操作感",
   "pad.gyroTitle": "ジャイロ操作",
   "pad.gyro": "ジャイロでハンドル操作（傾けて曲がる）",
   "pad.gyroRange": "フルに切る傾き",
