@@ -255,7 +255,11 @@ export class Input {
       }
       this.keys.add(e.code);
       const isGameKey = e.code.startsWith("Arrow") || BROWSER_KEYS.includes(e.code);
-      if (isGameKey) e.preventDefault();
+      // Looking aside with Ctrl (City Car Driving's layout off a Mac) while pressing a game key: the
+      // browser would take Ctrl+R (reload), Ctrl+F (find), Ctrl+P (print), Ctrl+L, Ctrl+U… — they
+      // stay the game's. Ctrl+N, Ctrl+T, Ctrl+W and Ctrl+Tab no page can take from the browser.
+      const isLookCombo = e.ctrlKey && actionFor(this.layout, e.code, e.shiftKey, this.onFoot) !== undefined;
+      if (isGameKey || isLookCombo) e.preventDefault();
     });
     window.addEventListener("keyup", (e) => this.keys.delete(e.code));
     window.addEventListener("blur", () => this.keys.clear());
