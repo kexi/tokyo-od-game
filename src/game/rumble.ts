@@ -24,47 +24,50 @@ const frame = (lowHz: number, lowAmp: number, highHz: number, highAmp: number): 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 /**
- * The effects, by kind and strength (0–1):
- * - bump (a kerb, a pothole): 50–110 ms of a low thud that fades, a little high band for the edge.
- * - impact (a crash): 150–500 ms, strong low band with a grinding high band, decaying; strength is
+ * The effects, by kind and strength (0–1). The Pro Controller's actuators shake hardest near
+ * their resonance, ≈160 Hz in the low band and ≈320 Hz in the high one: the effects sit there.
+ * Why not lower, as a thud would be: at 70–90 Hz and amplitudes from 0.3 the kerbs and the crashes
+ * were barely felt (user: 「振動は弱いね。もっと強く」); the table's safe 1.0 is still the ceiling.
+ * - bump (a kerb, a pothole): 70–140 ms of a thud that fades, the high band for the edge.
+ * - impact (a crash): 200–600 ms, strong low band with a grinding high band, decaying; strength is
  *   the car's own Δv scaled so 8 m/s (≈30 km/h into a wall) is full.
  * - stamp (the 違反 seal): a hanko's two beats — the press and a softer settle.
- * - test (設定's 試す): a 400 ms sweep through both bands.
+ * - test (設定's 試す): a 400 ms sweep through both bands at nearly full strength.
  */
 export function effectFor(kind: RumbleKind, strength: number, start: number): Effect {
   const s = clamp01(strength);
   switch (kind) {
     case "bump": {
-      const duration = 50 + 60 * s;
+      const duration = 70 + 70 * s;
       return {
         start,
         duration,
         sample: (t) => {
           const fade = 1 - t / duration;
-          return frame(90, (0.3 + 0.5 * s) * fade, 220, 0.2 * s * fade);
+          return frame(160, (0.55 + 0.45 * s) * fade, 320, (0.25 + 0.35 * s) * fade);
         },
       };
     }
     case "impact": {
-      const duration = 150 + 350 * s;
+      const duration = 200 + 400 * s;
       return {
         start,
         duration,
         sample: (t) => {
           const decay = Math.exp((-3 * t) / duration);
-          return frame(70, (0.45 + 0.55 * s) * decay, 160, (0.15 + 0.45 * s) * decay);
+          return frame(130, (0.7 + 0.3 * s) * decay, 250, (0.35 + 0.5 * s) * decay);
         },
       };
     }
     case "stamp":
       return {
         start,
-        duration: 210,
+        duration: 230,
         sample: (t) => {
-          const isPress = t < 60;
-          const isSettle = t >= 130;
-          if (isPress) return frame(120, 0.7, 300, 0.35);
-          if (isSettle) return frame(100, 0.35, 250, 0.1);
+          const isPress = t < 70;
+          const isSettle = t >= 140;
+          if (isPress) return frame(160, 1, 320, 0.6);
+          if (isSettle) return frame(150, 0.6, 300, 0.25);
           return SILENT;
         },
       };
@@ -74,7 +77,7 @@ export function effectFor(kind: RumbleKind, strength: number, start: number): Ef
         duration: 400,
         sample: (t) => {
           const k = t / 400;
-          return frame(60 + 100 * k, 0.6, 200 + 600 * k, 0.4);
+          return frame(100 + 100 * k, 0.9, 200 + 300 * k, 0.7);
         },
       };
   }

@@ -1,3 +1,4 @@
+import { DEFAULT_PROFILE } from "../src/game/padProfile";
 import { describe, expect, it } from "vitest";
 import {
   AMPLITUDES,
@@ -300,6 +301,21 @@ describe("振動の混ぜ方とイベント", () => {
     m.play("impact", 1, 0);
     expect(m.frame(0, 0.5).low.amp).toBeCloseTo(hard.low.amp * 0.5);
     expect(isSilent(m.frame(0, 0))).toBe(true);
+  });
+
+  it("shakes near the actuators' resonance, strongly enough to feel even for a light kerb", () => {
+    // What it guarantees: the effects sit near ≈160 / ≈320 Hz, where the Pro Controller's actuators
+    // move most, and start from a felt amplitude — at 70–90 Hz and from 0.21 they were too weak
+    // (「振動は弱いね。もっと強く」) — with the strength setting at full by default.
+    for (const kind of ["bump", "impact", "stamp"] as const) {
+      const f = effectFor(kind, 0, 0).sample(0);
+      expect(f.low.hz).toBeGreaterThanOrEqual(120);
+      expect(f.low.hz).toBeLessThanOrEqual(200);
+      expect(f.high.hz).toBeGreaterThanOrEqual(240);
+      expect(f.high.hz).toBeLessThanOrEqual(400);
+      expect(f.low.amp).toBeGreaterThanOrEqual(0.5);
+    }
+    expect(DEFAULT_PROFILE.rumble.intensity).toBe(1);
   });
 
   it("presses the stamp in two beats with a gap", () => {

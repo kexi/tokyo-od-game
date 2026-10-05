@@ -218,7 +218,7 @@ export const DEFAULT_PROFILE = {
   conflict: "swap" as ConflictMode,
   gyro: { enabled: false, rangeDeg: 60, invert: false },
   // Off by default for the idle: a pad that hums at every red light gets put down.
-  rumble: { enabled: true, intensity: 0.7, engineIdle: false },
+  rumble: { enabled: true, intensity: 1, engineIdle: false },
 };
 export type PadProfile = typeof DEFAULT_PROFILE;
 

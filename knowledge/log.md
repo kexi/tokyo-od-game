@@ -2,6 +2,7 @@
 
 ## 2026-10-05
 
+- **Update**: [ゲームパッドと Pro コントローラー](gamepad-and-procon.md) を訂正。実機でジャイロの操作が動いたことと、振動が弱かったこと（70–90 Hz・既定 0.7 では感じない）を記録し、効果を振動子の共振（≈160 / 320 Hz）の近くに寄せて振幅の下限と既定の強さ（1.0）を上げた。元の値と見誤りは「振動が弱かった」に残した。
 - **Update**: [交差点の曲がり方](turn-paths.md) に「進路変更禁止（黄色の車線境界線）」を追加。第26条の2第3項・第20条第3項を e-Gov で確認、路上の緑の矢印が黄色の線を越えた原因（右折の 120 m 手前で始まる車線の移動が区間に食い込む、区間の中からの経路が左端から始まる、レーン案内の車線数と判定の車線数の違い、自動運転の移り途中・乗った直後の車線）、`src/world/laneChange.ts` に寄せた定義（判定・路面の黄色の線・経路・自動運転・ナビ）、`planLanes`・`laneBands`・右左折の曲線の終わり・行けない右左折の引き直し（`route_lane_blocked`）、テスト 7 件と実データ 4 地点 600 経路の計測（判定に当たる経路 172 → 5、回数 362 → 5）、落とし穴 4 件を記録。落とし穴 8（走り始めの車線を左端に）を訂正。[ナビの案内パネル](nav-panel.md) に車線案内の落とし穴 5 を追記。`bin/lint-knowledge.sh` に sources のテストが実在するかの検査を追加。
 - **Update**: just のレシピ名を「動詞-名詞」に統一（`default` だけ例外）。文書・台帳・スクリプトの `just …` を新しい名前に直した（例: `logs` → `show-logs`、`logs-errors` → `show-errors`、`logs-trace` → `trace-span`、`og` → `make-og-image`、`car-model` → `make-car-model`、`check` → `check-all`）。この履歴の古い行は当時の名前のまま残す。
 - **Creation**: [ゲームパッドと Nintendo Switch Pro コントローラー](gamepad-and-procon.md) を追加（Chrome の Gamepad API での Pro コンの標準配置・ZL/ZR が 0/1・dual-rumble を Chromium のソースで確認、既定の配置、割り当ての規則と保存 `tod.pad` 版 1、スティックの曲線と踏み込み、WebHID のレポートとサブコマンドと初期化、Chrome のドライバが IMU を切ることへの見張り、相補フィルタ、HD 振動の符号化、テスト 61 件、実機で確かめる手順と未確認の点）。tag `input` を tags.yml に追加。
