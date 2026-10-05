@@ -3007,10 +3007,13 @@ html:lang(zh) [lang="ja"] {
 /* 通知: violations, posts and the police on the left, with their time; 履歴 opens the rest */
 #notice-log {
   left: 12px;
-  top: 486px;
+  /* Under the navi box (top 150, 352 tall; 284 on short windows) — it had a fixed top of its own
+     and overlapped the box once the box grew — and up in its place when the navi is hidden. */
+  --notice-top: calc(150px + 352px + 12px);
+  top: var(--notice-top);
   /* Wider on wide screens (the text is cut at one line), down to the speedometer on tall ones. */
   width: clamp(252px, 24vw, 480px);
-  max-height: clamp(150px, calc(100vh - 486px - 210px), 560px);
+  max-height: clamp(150px, calc(100vh - var(--notice-top) - 210px), 560px);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -3065,6 +3068,14 @@ html:lang(zh) [lang="ja"] {
     background: rgba(255, 255, 255, 0.04);
     transform: none;
   }
+}
+@media (max-height: 760px) and (min-width: 721px) {
+  #notice-log {
+    --notice-top: calc(150px + 284px + 12px);
+  }
+}
+#nav[hidden] ~ #notice-log {
+  --notice-top: 150px;
 }
 @media (max-width: 900px) {
   #notice-log {
