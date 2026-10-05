@@ -7,11 +7,15 @@ status: stable
 stale_after: 2027-01-01T00:00:00Z
 generated: { by: codex, at: 2026-10-05T19:25:00Z }
 verified:
+  - { by: process:chrome154-production-worker-subpath, at: 2026-10-05T19:58:00Z }
   - { by: process:chrome154-tts-and-vitest, at: 2026-10-05T19:25:00Z }
   - { by: process:local-http-and-log-comparison, at: 2026-10-05T18:25:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-10-04T04:55:00Z }
   - { by: process:vitest, at: 2026-10-04T04:30:00Z }
 sources:
+  - id: production-workers
+    resource: ../.qa/perf/production-workers/report.json（git管理外）
+    title: 本番buildのハッシュ付きWorkerと配信サブパスでの3言語PCM検証
   - id: sano-capacity
     resource: ../.qa/perf/2026-10-05T19-24-11-811Z-tts/report.json（git管理外）、../scripts/qa/perf-tts.mjs
     title: 165文字の中文を36.20秒のPCMまで生成した容量超過実測
@@ -126,6 +130,8 @@ M2 Max、macOS、ヘッドレスChrome154、ローカルVite5173、専用の新�
 
 容量超過の追加実測では、165文字の中文「前方右转然后继续直行。」の15回繰り返しを1依頼で渡し、36.20秒のPCMを12.45秒で生成できた。単発ABIの出力容量20秒を超える結果なので、分割再試行と全PCM結合が実際に動いた。再測定のエラー/consoleログも0。[^sano-capacity]
 
+本番buildの配信サブパス`/tokyo-od-game/`でも、ハッシュ付きTTS Workerを起動して同じ案内を合成した。新規Chrome154プロファイルでja/en/zhの初期化は53.6 / 103.3 / 73.7ms、合成は68.5 / 2197.1 / 736.5ms。3言語とも22050Hzの有限・非無音PCMで、ブラウザログは0件。静的ページでのWorker検証であり、ゲーム描画中のFPSや聴感品質の評価ではない。[^production-workers]
+
 ## 配布Web資産のライセンス
 
 公式READMEは推論runtimeをMITと説明するが、`LICENSE.MIT`は対象Cファイルを限定列挙しており、今回同梱するWeb資産は列挙外。Web資産はGPL-3.0-or-laterとして台帳・クレジット・READMEに記載する。日本語sanoTTS-jpの独自モデルライセンスと帰属表示は維持する。対応する固定ソースarchive・ビルド手順・ES module化とgzip判定の変更内容を`public/sanotts/SOURCE.md`からたどれる。[^sano-license]
@@ -141,3 +147,5 @@ M2 Max、macOS、ヘッドレスChrome154、ローカルVite5173、専用の新�
 [^sano-browser]: Chrome154で3言語を初期化・生成しPCM/WAVとWebAudio再生を確認
 
 [^sano-capacity]: 同じローカル配信・新規Chrome154プロファイルでの容量超過実測
+
+[^production-workers]: 本番buildのハッシュ付きWorkerと配信サブパスでの3言語PCM検証

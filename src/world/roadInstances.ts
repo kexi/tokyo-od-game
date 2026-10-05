@@ -1,4 +1,4 @@
-import { InstancedMesh, type BufferGeometry, type Material } from "three";
+import { InstancedMesh, type BufferGeometry, type Material, type Matrix4 } from "three";
 
 /** Retain instance identities: WebGPU's node builder cache includes an InstancedMesh's UUID. */
 export class RoadInstances {
@@ -9,6 +9,10 @@ export class RoadInstances {
       entry.used = false;
       entry.mesh.visible = false;
     }
+  }
+
+  reanchor(matrix: Matrix4): void {
+    for (const { mesh } of this.entries) mesh.applyMatrix4(matrix);
   }
 
   take(geometry: BufferGeometry, material: Material, count: number): InstancedMesh {
@@ -29,6 +33,9 @@ export class RoadInstances {
     }
     entry.used = true;
     const mesh = entry.mesh;
+    mesh.position.set(0, 0, 0);
+    mesh.quaternion.identity();
+    mesh.scale.set(1, 1, 1);
     mesh.visible = true;
     mesh.count = count;
     mesh.instanceMatrix.needsUpdate = true;

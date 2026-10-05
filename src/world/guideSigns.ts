@@ -1,3 +1,4 @@
+import { reanchorBody } from "../physics/reanchor";
 import {
   CanvasTexture,
   Euler,
@@ -22,8 +23,8 @@ import { drawBoard, layoutBoard, loadGuideFonts, type BoardLayout } from "./guid
 import {
   localDests,
   localPlaces,
-  matchRoutes,
-  planGuideSigns,
+  matchRouteSteps,
+  planGuideSteps,
   type GuideApproach,
   type GuideName,
   type GuidePlace,
@@ -36,6 +37,8 @@ import type { AppliedRegulations } from "./regulations";
 import { leftOf, type RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
 import { sharedDraco } from "../render/draco";
+import { RoadInstances } from "./roadInstances";
+import { FrameWork } from "../game/frameWork";
 
 /**
  * 案内標識 108 series on the streets around the player: planned by guidePlan.ts from the road
@@ -126,6 +129,8 @@ export class GuideSigns {
   private kit: Kit | null = null;
   private places: PlaceRow[] | null = null;
   private meshes: InstancedMesh[] = [];
+  private readonly instances = new RoadInstances();
+  private nearPool: Mesh[] = [];
   private faces: InstancedMesh | null = null;
   private body: RAPIER.RigidBody | null = null;
   private readonly tiles = new Map<string, Promise<RouteTile | null>>();
@@ -254,16 +259,21 @@ export class GuideSigns {
     regs: AppliedRegulations | null,
     centre: { lat: number; lon: number },
     avoid: Vector3[],
-  ): void {
+    work = new FrameWork(),
+  ): Promise<void> {
     const generation = ++this.generation;
-    this.clear();
-    if (!graph) return;
+    this.clear(true);
+    if (!graph) {
+      this.instances.end();
+      return Promise.resolve();
+    }
     const guideApproaches: GuideApproach[] = approaches
       .filter((a) => a.kind === "signal" && a.controller)
       .map((a) => ({ seg: a.seg, dir: a.dir, at: a.at, travel: a.travel, nodes: a.controller?.nodes ?? [] }));
-    void Promise.all([this.ready, this.routesAround(centre.lat, centre.lon)]).then(([, data]) => {
+    return Promise.all([this.ready, this.routesAround(centre.lat, centre.lon)]).then(async ([, data]) => {
       if (generation !== this.generation) return;
-      const routes = matchRoutes(graph, data.roads, frame);
+      const routes = await work.run(matchRouteSteps(graph, data.roads, frame));
+      await work.yield();
       const names: GuideName[] = [
         ...(regs?.junctionNames ?? []).map((n) => ({ ja: n.name, en: n.en, pos: n.pos.clone().setY(0) })),
         ...data.names.map(([lon, lat, ja, en]) => ({
@@ -274,20 +284,27 @@ export class GuideSigns {
       ];
       // The nav panel reads them too, even when the boards' model or places failed to load.
       this.roadInfo = { graph, routes, names };
-      if (!this.kit || !this.places) return;
+      if (!this.kit || !this.places) {
+        this.instances.end();
+        return;
+      }
       const places: GuidePlace[] = localPlaces(this.places, frame);
       const crossings = (regs?.crossings ?? []).map((c) => c.pos);
       const started = performance.now();
-      this.plans = planGuideSigns({
-        graph,
-        approaches: guideApproaches,
-        routes,
-        places,
-        names,
-        dests: localDests(data.dests, frame),
-        avoid: [...avoid, ...crossings],
-      });
-      this.build(this.kit);
+      this.plans = await work.run(
+        planGuideSteps({
+          graph,
+          approaches: guideApproaches,
+          routes,
+          places,
+          names,
+          dests: localDests(data.dests, frame),
+          avoid: [...avoid, ...crossings],
+        }),
+      );
+      await work.yield();
+      await work.run(this.build(this.kit));
+      this.instances.end();
       log("guide_signs_placed", {
         signs: this.plans.length,
         advance: this.plans.filter((p) => p.board.distance !== null).length,
@@ -303,14 +320,40 @@ export class GuideSigns {
     return this.signs.length;
   }
 
-  clear(): void {
+  reanchor(matrix: Matrix4, rotation: Quaternion, graph: RoadGraph): void {
+    this.instances.reanchor(matrix);
+    const shiftedCentres = new Set<Vector3>();
+    for (const sign of this.signs) {
+      sign.plan.pos.applyMatrix4(matrix);
+      if (!shiftedCentres.has(sign.plan.centre)) {
+        shiftedCentres.add(sign.plan.centre);
+        sign.plan.centre.applyMatrix4(matrix);
+      }
+      sign.plan.travel.applyQuaternion(rotation);
+      sign.board.premultiply(matrix);
+      for (const foot of sign.feet) foot.applyMatrix4(matrix);
+      sign.near?.applyMatrix4(matrix);
+    }
+    if (this.roadInfo) {
+      this.roadInfo.graph = graph;
+      for (const name of this.roadInfo.names) name.pos.applyMatrix4(matrix);
+    }
+    if (this.body) reanchorBody(this.body, matrix, rotation);
+  }
+
+  clear(reuse = false): void {
+    if (reuse) this.instances.begin();
+    else this.instances.clear();
     for (const m of this.meshes) {
       this.scene.remove(m);
-      m.dispose();
     }
     this.meshes = [];
     this.faces = null;
     for (const s of this.signs) if (s.near) this.dropNear(s);
+    if (!reuse) {
+      for (const m of this.nearPool) (m.material as Material).dispose();
+      this.nearPool = [];
+    }
     this.signs = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
@@ -355,15 +398,21 @@ export class GuideSigns {
   }
 
   private makeNear(s: Sign): void {
-    const material = new MeshStandardMaterial({
-      map: faceTexture(s.key, s.layout),
-      // Retroreflective sheeting, as the other signs: a little self-illumination at night.
-      emissive: 0xffffff,
-      emissiveIntensity: 0.16,
-      roughness: 0.45,
-    });
+    const mesh =
+      this.nearPool.pop() ??
+      new Mesh(
+        this.kit?.face,
+        new MeshStandardMaterial({
+          map: faceTexture(s.key, s.layout),
+          // Retroreflective sheeting, as the other signs: a little self-illumination at night.
+          emissive: 0xffffff,
+          emissiveIntensity: 0.16,
+          roughness: 0.45,
+        }),
+      );
+    const material = mesh.material as MeshStandardMaterial;
+    material.map = faceTexture(s.key, s.layout);
     material.emissiveMap = material.map;
-    const mesh = new Mesh(this.kit?.face, material);
     mesh.matrixAutoUpdate = false;
     mesh.matrix.copy(s.board);
     mesh.castShadow = true;
@@ -375,7 +424,7 @@ export class GuideSigns {
   private dropNear(s: Sign): void {
     if (!s.near) return;
     this.scene.remove(s.near);
-    (s.near.material as Material).dispose(); // the texture stays in the cache
+    this.nearPool.push(s.near);
     s.near = null;
     if (!s.hidden) this.setFace(s, true);
   }
@@ -399,7 +448,7 @@ export class GuideSigns {
     s.colliders = [];
   }
 
-  private build(k: Kit): void {
+  private *build(k: Kit): Generator<boolean> {
     const poles: Matrix4[] = [];
     const arms: Matrix4[] = [];
     const flanges: Matrix4[] = [];
@@ -483,7 +532,7 @@ export class GuideSigns {
       return sign;
     });
     const instanced = (geometry: BufferGeometry, material: Material, list: Matrix4[], shadow = true) => {
-      const mesh = new InstancedMesh(geometry, material, Math.max(1, list.length));
+      const mesh = this.instances.take(geometry, material, list.length);
       mesh.count = list.length;
       list.forEach((m, i) => mesh.setMatrixAt(i, m));
       mesh.frustumCulled = false; // instances span the whole area
@@ -495,11 +544,24 @@ export class GuideSigns {
       for (const o of owners) if (o.list === list) this.signs[o.sign]?.refs.push([mesh, i++]);
       return mesh;
     };
-    for (const p of k.pole) instanced(p.geometry, p.material, poles);
-    for (const p of k.arm) instanced(p.geometry, p.material, arms);
-    for (const p of k.flange) instanced(p.geometry, p.material, flanges);
-    for (const p of k.post) instanced(p.geometry, p.material, posts);
+    for (const p of k.pole) {
+      instanced(p.geometry, p.material, poles);
+      yield true;
+    }
+    for (const p of k.arm) {
+      instanced(p.geometry, p.material, arms);
+      yield true;
+    }
+    for (const p of k.flange) {
+      instanced(p.geometry, p.material, flanges);
+      yield true;
+    }
+    for (const p of k.post) {
+      instanced(p.geometry, p.material, posts);
+      yield true;
+    }
     instanced(k.back.geometry, k.back.material, boards);
     this.faces = instanced(k.face, farMaterial, boards, false);
+    yield true;
   }
 }

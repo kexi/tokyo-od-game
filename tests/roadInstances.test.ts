@@ -1,4 +1,4 @@
-import { BoxGeometry, Color, Matrix4, MeshBasicMaterial, Scene } from "three";
+import { BoxGeometry, Color, Matrix4, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { describe, expect, it, vi } from "vitest";
 import { RoadInstances } from "../src/world/roadInstances";
 
@@ -55,6 +55,35 @@ describe("road instance reuse", () => {
     pool.clear();
     expect(gd).not.toHaveBeenCalled();
     expect(md).not.toHaveBeenCalled();
+  });
+
+  it("moves retained instances with the origin and resets that transform when new local matrices arrive", () => {
+    const pool = new RoadInstances();
+    const geometry = new BoxGeometry(),
+      material = new MeshBasicMaterial();
+    pool.begin();
+    const mesh = pool.take(geometry, material, 1);
+    mesh.setMatrixAt(0, new Matrix4().makeTranslation(5, 2, 7));
+    pool.end();
+    const shift = new Matrix4().makeRotationY(0.2).setPosition(-500, 3, 100);
+    pool.reanchor(shift);
+    mesh.updateMatrixWorld(true);
+    const local = new Matrix4();
+    mesh.getMatrixAt(0, local);
+    const expected = new Vector3(5, 2, 7).applyMatrix4(shift);
+    expect(
+      new Vector3().setFromMatrixPosition(local.premultiply(mesh.matrixWorld)).distanceTo(expected),
+    ).toBeLessThan(1e-6);
+    pool.begin();
+    const reused = pool.take(geometry, material, 1);
+    reused.setMatrixAt(0, new Matrix4().makeTranslation(expected.x, expected.y, expected.z));
+    pool.end();
+    reused.updateMatrixWorld(true);
+    reused.getMatrixAt(0, local);
+    expect(reused).toBe(mesh);
+    expect(
+      new Vector3().setFromMatrixPosition(local.premultiply(reused.matrixWorld)).distanceTo(expected),
+    ).toBeLessThan(1e-5);
   });
 
   it("keeps distinct batches with shared assets and releases batches absent from the next update", () => {

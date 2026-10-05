@@ -1,4 +1,5 @@
 import RAPIER from "@dimforge/rapier3d-compat";
+import { reanchorCollider } from "../physics/reanchor";
 import { TilesRenderer } from "3d-tiles-renderer";
 import {
   GLTFExtensionsPlugin,
@@ -320,6 +321,8 @@ export class Buildings {
   }
 
   setFrame(frame: LocalFrame): void {
+    const matrix = frame.transformFrom(this.frame);
+    const rotation = frame.rotationFrom(this.frame);
     this.frame = frame;
     if (this.hiddenRings.length) this.hideFootprints(this.hiddenRings);
     this.applyFrame();
@@ -328,8 +331,7 @@ export class Buildings {
     for (const model of this.models.values()) {
       model.sphere = null;
       if (!model.collider) continue;
-      this.removeCollider(model);
-      this.createCollider(model);
+      reanchorCollider(model.collider, matrix, rotation);
     }
   }
 

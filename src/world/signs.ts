@@ -1,3 +1,4 @@
+import { reanchorBody } from "../physics/reanchor";
 import {
   BoxGeometry,
   CanvasTexture,
@@ -10,9 +11,13 @@ import {
   Vector3,
   type BufferGeometry,
   type Material,
+  type Matrix4,
+  type Quaternion,
   type Scene,
 } from "three";
 import { RoadInstances } from "./roadInstances";
+import { FrameWork } from "../game/frameWork";
+import { RoadPlates } from "./roadPlates";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PROP_GROUPS } from "../physics/groups";
@@ -243,6 +248,10 @@ export class TrafficSigns {
 
   private posts: Post[] = [];
   private notes: Mesh[] = [];
+  private readonly notePool = new RoadPlates((p) => {
+    p.geometry.dispose();
+    for (const m of p.material as Material[]) if (m !== noteBack) m.dispose();
+  });
   private body: RAPIER.RigidBody | null = null;
   private lastCheck = 0;
 
@@ -254,9 +263,29 @@ export class TrafficSigns {
   ) {}
 
   rebuild(graph: RoadGraph | null, regs: AppliedRegulations | null, approaches: Approach[]): void {
+    for (const _ of this.rebuildSteps(graph, regs, approaches)) {
+      /* synchronous compatibility path */
+    }
+  }
+
+  rebuildAsync(
+    graph: RoadGraph,
+    regs: AppliedRegulations | null,
+    approaches: Approach[],
+    work: FrameWork,
+  ): Promise<void> {
+    return work.run(this.rebuildSteps(graph, regs, approaches));
+  }
+
+  private *rebuildSteps(
+    graph: RoadGraph | null,
+    regs: AppliedRegulations | null,
+    approaches: Approach[],
+  ): Generator<void | boolean> {
     this.clear(true);
     if (!graph || !regs || !kit) {
       this.instances.end();
+      this.notePool.end();
       return;
     }
     const posts: Post[] = [];
@@ -283,13 +312,18 @@ export class TrafficSigns {
     };
     // 一時停止 first so it is the top plate where it shares a post.
     for (const ap of approaches) {
+      yield;
       if (ap.kind !== "stop") continue;
       const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
       add(mid.add(leftOf(ap.travel, ap.seg.line.width / 2 + 0.7)), ap.travel, design(SIGN.stop, 0));
     }
-    for (const s of regs.signs) add(s.pos, s.travel, design(s.type, s.value, s.lanes), s.note);
+    for (const s of regs.signs) {
+      add(s.pos, s.travel, design(s.type, s.value, s.lanes), s.note);
+      yield;
+    }
     const signalStops = approaches.filter((a) => a.kind === "signal");
     for (const c of regs.crossings) {
+      yield;
       const isSignalled = signalStops.some(
         (a) => a.a.clone().add(a.b).multiplyScalar(0.5).distanceTo(c.pos) < 30,
       );
@@ -303,8 +337,9 @@ export class TrafficSigns {
         add(c.pos.clone().add(kerb), travel, design(SIGN.crosswalk, 0));
       }
     }
-    this.build(posts, kit);
+    yield* this.build(posts, kit);
     this.instances.end();
+    this.notePool.end();
   }
 
   count(): number {
@@ -316,15 +351,25 @@ export class TrafficSigns {
     return this.posts.filter((p) => !p.hidden).map((p) => p.pos.clone());
   }
 
+  reanchor(matrix: Matrix4, rotation: Quaternion): void {
+    this.instances.reanchor(matrix);
+    for (const mesh of this.notes) mesh.applyMatrix4(matrix);
+    for (const post of this.posts) {
+      post.pos.applyMatrix4(matrix);
+      post.travel.applyQuaternion(rotation);
+    }
+    if (this.body) reanchorBody(this.body, matrix, rotation);
+  }
+
   clear(reuse = false): void {
+    if (reuse) this.notePool.begin();
+    else this.notePool.clear();
     if (reuse) this.instances.begin();
     else this.instances.clear();
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
     for (const n of this.notes) {
       this.scene.remove(n);
-      n.geometry.dispose();
-      for (const m of n.material as Material[]) if (m !== noteBack) m.dispose();
     }
     this.notes = [];
     if (this.body) this.world.removeRigidBody(this.body);
@@ -357,7 +402,7 @@ export class TrafficSigns {
     }
   }
 
-  private build(posts: Post[], k: Kit): void {
+  private *build(posts: Post[], k: Kit): Generator<void | boolean> {
     const byFile = new Map<string, { d: Design; items: Item[] }>();
     const byShape = new Map<Shape, Item[]>();
     for (const post of posts)
@@ -385,10 +430,12 @@ export class TrafficSigns {
     for (const { d, items } of byFile.values()) {
       const plate = k.plate(d.shape);
       if (plate) this.instanced(plate.face, faceMaterial(d.file), items).userData.key = d.file;
+      yield true;
     }
     for (const [shape, items] of byShape) {
       const plate = k.plate(shape);
       if (plate) this.instanced(plate.back, plate.backMaterial, items);
+      yield true;
     }
     this.instanced(k.bracket.geometry, k.bracket.material as Material, [...byShape.values()].flat(), false);
     const o = new Object3D();
@@ -396,7 +443,7 @@ export class TrafficSigns {
     // Posts are solid: one fixed body carries a thin cylinder per post (60.5 mm steel pipe).
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     const height = POST_TOP + 0.45;
-    posts.forEach((post, i) => {
+    for (const [i, post] of posts.entries()) {
       const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
       o.position.set(post.pos.x, ground, post.pos.z);
       // The modelled post is 3.2 m; stretch it to just above the top plate.
@@ -410,14 +457,18 @@ export class TrafficSigns {
           .setCollisionGroups(PROP_GROUPS),
         this.body ?? undefined,
       );
-    });
+      const checkpoint = i % 32 === 0;
+      if (checkpoint) yield;
+    }
     pole.castShadow = true;
     this.add(pole);
+    yield true;
     this.posts = posts;
     // 補助標識 under the lowest plate (one mesh each: their texts differ).
     for (const post of posts) {
       if (post.notes.length === 0) continue;
-      const plate = notePlate(post.notes[0]);
+      const text = post.notes[0];
+      const plate = this.notePool.take(text, () => notePlate(text));
       const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
       const h = (plate.geometry as BoxGeometry).parameters.height;
       const lowest = ground + POST_TOP - (post.plates.length - 1) * STACK;
@@ -428,6 +479,7 @@ export class TrafficSigns {
       plate.rotation.y = Math.atan2(facing.x, facing.z);
       this.scene.add(plate);
       this.notes.push(plate);
+      yield;
     }
   }
 

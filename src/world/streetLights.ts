@@ -1,3 +1,4 @@
+import { reanchorBody } from "../physics/reanchor";
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
   BoxGeometry,
@@ -13,6 +14,7 @@ import {
   SRGBColorSpace,
   Vector3,
   Vector4,
+  type Matrix4,
   type Scene,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -71,6 +73,8 @@ import {
 import { GRAPHICS } from "../device";
 import type { GraphicsSettings } from "../graphics";
 import { log } from "../log";
+import { FrameWork } from "../game/frameWork";
+import { RoadInstances } from "./roadInstances";
 import { hash12, valueNoise } from "../render/shaderMath";
 import { PROP_GROUPS } from "../physics/groups";
 import { leftOf, type RoadGraph, type RoadLine, type Segment } from "./roads";
@@ -212,6 +216,13 @@ type PlaceGraph = Pick<RoadGraph, "segments" | "sample" | "carriagewaysAt">;
  * or within 0.4 S of a lamp already placed (segment joins, the corner of a crossing street).
  */
 export function placeLamps(graph: PlaceGraph): LampSite[] {
+  const steps = placeLampSteps(graph);
+  let result = steps.next();
+  while (!result.done) result = steps.next();
+  return result.value;
+}
+
+export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> {
   const sites: LampSite[] = [];
   const grid = new Map<string, number[]>();
   const CELL = 16;
@@ -231,6 +242,7 @@ export function placeLamps(graph: PlaceGraph): LampSite[] {
   const probe = new Vector3();
   const out = new Vector3();
   for (const seg of graph.segments) {
+    yield;
     const spec = lampSpecFor(seg.line.width, seg.line.kind);
     if (!spec) continue;
     const half = seg.line.width / 2;
@@ -859,8 +871,6 @@ type EnvLike = {
 };
 
 export type StreetLightDeps = {
-  /** The current road graph (a new object after each rebuild). */
-  graph: () => RoadGraph | null;
   /** Height of the walking surface at (x, z): the paving where PLATEAU has a pavement. */
   groundAt: (x: number, z: number) => number | null;
   /** False where a building stands over (x, z) (GSI 幅員 wider than the street). */
@@ -897,7 +907,7 @@ export class StreetLights {
   enabled = true;
   /** Debug override of 街灯の光 (lamps in the shaders) for frame-time checks; null = the setting. */
   limit: number | null = null;
-  private graph: RoadGraph | null = null;
+  private readonly instances = new RoadInstances();
   private lamps: Lamp[] = [];
   private xs = new Float32Array(0);
   private zs = new Float32Array(0);
@@ -936,8 +946,6 @@ export class StreetLights {
   }
 
   update(dt: number, camera: Camera, env: EnvLike, now: number): void {
-    const graph = this.deps.graph();
-    if (graph !== this.graph) this.rebuild(graph);
     if (now - this.lastSettle > 2000) {
       this.lastSettle = now;
       this.settle(camera.position);
@@ -969,12 +977,54 @@ export class StreetLights {
     if (this.lens) this.lens.visible = this.enabled;
   }
 
-  private rebuild(graph: RoadGraph | null): void {
-    this.clear();
-    this.graph = graph;
-    if (!graph) return;
+  reanchor(matrix: Matrix4, rotation: Quaternion): void {
+    this.instances.reanchor(matrix);
+    const point = new Vector3();
+    const direction = new Vector3();
+    for (const [i, lamp] of this.lamps.entries()) {
+      const ground = lamp.ground ?? 0;
+      point.set(this.xs[i], ground + lamp.spec.height, this.zs[i]).applyMatrix4(matrix);
+      this.xs[i] = point.x;
+      this.zs[i] = point.z;
+      point.set(lamp.x, ground, lamp.z).applyMatrix4(matrix);
+      lamp.x = point.x;
+      lamp.z = point.z;
+      if (lamp.ground !== null) lamp.ground = point.y;
+      direction.set(lamp.ax, 0, lamp.az).applyQuaternion(rotation);
+      lamp.ax = direction.x;
+      lamp.az = direction.z;
+    }
+    for (const head of this.heads) {
+      point.set(head.x, head.y, head.z).applyMatrix4(matrix);
+      head.x = point.x;
+      head.y = point.y;
+      head.z = point.z;
+      direction.set(head.faceX, 0, head.faceZ).applyQuaternion(rotation);
+      head.faceX = direction.x;
+      head.faceZ = direction.z;
+    }
+    if (this.body) reanchorBody(this.body, matrix, rotation);
+    this.lastSettle = performance.now();
+  }
+
+  rebuild(graph: RoadGraph | null): void {
+    for (const _ of this.rebuildSteps(graph)) {
+      /* synchronous compatibility path */
+    }
+  }
+
+  rebuildAsync(graph: RoadGraph, work: FrameWork): Promise<void> {
+    return work.run(this.rebuildSteps(graph));
+  }
+
+  private *rebuildSteps(graph: RoadGraph | null): Generator<void | boolean> {
+    this.clear(true);
+    if (!graph) {
+      this.instances.end();
+      return;
+    }
     const t0 = performance.now();
-    const sites = placeLamps(graph);
+    const sites = yield* placeLampSteps(graph);
     this.lamps = sites.map((s) => ({
       ...s,
       ground: this.deps.groundAt(s.x, s.z),
@@ -985,21 +1035,25 @@ export class StreetLights {
     this.xs = new Float32Array(n);
     this.zs = new Float32Array(n);
     this.live = new Uint8Array(n);
-    this.metal = new InstancedMesh(this.geometry.metal, this.metalMaterial, Math.max(1, n));
-    this.lens = new InstancedMesh(this.geometry.lens, this.lensMaterial, Math.max(1, n));
+    this.metal = this.instances.take(this.geometry.metal, this.metalMaterial, n);
+    this.lens = this.instances.take(this.geometry.lens, this.lensMaterial, n);
     this.metal.count = this.lens.count = n;
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    this.lamps.forEach((lamp, i) => {
+    for (const [i, lamp] of this.lamps.entries()) {
       this.place(lamp, i);
       this.lens?.setColorAt(i, this.colour.setScalar(0.2));
-    });
+      const checkpoint = i % 32 === 0;
+      if (checkpoint) yield;
+    }
     for (const m of [this.metal, this.lens]) {
       m.frustumCulled = false; // instances span the whole area
       this.scene.add(m);
+      yield true;
     }
     this.metal.castShadow = true;
     this.heads = this.signalHeads(graph);
     this.lastDark = -1;
+    this.instances.end();
     log("street_lights_placed", {
       lamps: n,
       sodium: this.lamps.filter((l) => l.sodium).length,
@@ -1014,14 +1068,17 @@ export class StreetLights {
     });
   }
 
-  private clear(): void {
+  private clear(reuse = false): void {
+    if (reuse) this.instances.begin();
+    else this.instances.clear();
     for (const m of [this.metal, this.lens]) if (m) this.scene.remove(m);
-    this.metal?.dispose();
-    this.lens?.dispose();
     this.metal = this.lens = null;
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
     this.lamps = [];
+    this.xs = new Float32Array(0);
+    this.zs = new Float32Array(0);
+    this.live = new Uint8Array(0);
     this.heads = [];
   }
 

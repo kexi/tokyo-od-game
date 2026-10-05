@@ -1,3 +1,5 @@
+import { RoadPlates } from "./roadPlates";
+import { FrameWork } from "../game/frameWork";
 import {
   CanvasTexture,
   CylinderGeometry,
@@ -7,6 +9,8 @@ import {
   PlaneGeometry,
   SRGBColorSpace,
   Vector3,
+  type Matrix4,
+  type Quaternion,
   type Scene,
 } from "three";
 import type { LocalFrame } from "../geo/frame";
@@ -61,6 +65,7 @@ function hydrantDecal(): CanvasTexture {
 
 export class StreetFurniture {
   private readonly group = new Group();
+  private readonly pool = new RoadPlates((m) => m.geometry.dispose());
   private readonly decal = new MeshStandardMaterial({
     map: hydrantDecal(),
     transparent: true,
@@ -85,16 +90,50 @@ export class StreetFurniture {
   }
 
   /** Markings, pillars and the signs to add to the sign posts. */
+  reanchor(matrix: Matrix4, rotation: Quaternion): void {
+    for (const mesh of this.group.children) mesh.applyMatrix4(matrix);
+    for (const p of this.hydrants) p.applyMatrix4(matrix);
+    for (const marking of this.markings) {
+      marking.ground = new Vector3(marking.at.x, marking.ground, marking.at.z).applyMatrix4(matrix).y;
+      marking.at.applyMatrix4(matrix);
+      marking.roadward.applyQuaternion(rotation);
+    }
+  }
+
   rebuild(graph: RoadGraph, places: Places | null, frame: LocalFrame): PlacedSign[] {
-    for (const c of this.group.children) if (c instanceof Mesh) c.geometry.dispose();
+    const steps = this.rebuildSteps(graph, places, frame);
+    let result = steps.next();
+    while (!result.done) result = steps.next();
+    return result.value;
+  }
+
+  rebuildAsync(
+    graph: RoadGraph,
+    places: Places | null,
+    frame: LocalFrame,
+    work: FrameWork,
+  ): Promise<PlacedSign[]> {
+    return work.run(this.rebuildSteps(graph, places, frame));
+  }
+
+  private *rebuildSteps(
+    graph: RoadGraph,
+    places: Places | null,
+    frame: LocalFrame,
+  ): Generator<void, PlacedSign[]> {
+    this.pool.begin();
     this.group.clear();
     this.hydrants = [];
     this.markings = [];
     this.settledAt = -Infinity;
-    if (!places) return [];
+    if (!places) {
+      this.pool.end();
+      return [];
+    }
     const signs: PlacedSign[] = [];
     const isStreet = (s: Segment) => s.line.kind !== "highway" && s.line.width >= 4;
     for (const [lon, lat, type] of places.hydrants) {
+      yield;
       const p = frame.toLocal(lat, lon, frame.origin.h).setY(0);
       if (Math.hypot(p.x, p.z) > RANGE) continue;
       this.hydrants.push(p);
@@ -104,11 +143,14 @@ export class StreetFurniture {
       const along = hit?.dir ?? new Vector3(0, 0, 1);
       if (type === 1) {
         // 地上式消火栓: a red pillar.
-        const m = new Mesh(new CylinderGeometry(0.13, 0.15, 0.8, 12), this.pillar);
+        const m = this.pool.take(
+          "pillar",
+          () => new Mesh(new CylinderGeometry(0.13, 0.15, 0.8, 12), this.pillar),
+        );
         m.position.set(p.x, g + 0.4, p.z);
         this.group.add(m);
       } else {
-        const m = new Mesh(new PlaneGeometry(1.7, 1.28), this.decal);
+        const m = this.pool.take("marking", () => new Mesh(new PlaneGeometry(1.7, 1.28), this.decal));
         m.rotation.x = -Math.PI / 2;
         m.rotation.z = Math.atan2(along.x, along.z);
         m.position.set(p.x, g + ON_ROAD, p.z);
@@ -140,6 +182,7 @@ export class StreetFurniture {
     }
     // 208 学校、幼稚園、保育所等あり: on each street within 60 m of the school, about 60 m before it.
     for (const [lon, lat] of places.schools) {
+      yield;
       const p = frame.toLocal(lat, lon, frame.origin.h).setY(0);
       if (Math.hypot(p.x, p.z) > RANGE) continue;
       const hit = graph.nearest(p, 60, (s) => isStreet(s) && s.line.width >= 5.5);
@@ -163,6 +206,7 @@ export class StreetFurniture {
         });
       }
     }
+    this.pool.end();
     return signs;
   }
 

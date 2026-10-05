@@ -258,6 +258,10 @@ measure-perf-night:
 measure-road-worker:
     node scripts/qa/perf-road-worker.mjs
 
+# 道路の分割反映・原点変更・未読込地域への移動を夜雨で最後まで計測する
+measure-road-streaming:
+    node scripts/qa/perf-road-streaming.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

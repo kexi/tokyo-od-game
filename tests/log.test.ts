@@ -105,6 +105,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   cockpit_load_failed: { error: "Error: x" },
   darkroom_failed: { error: "x" },
   road_worker_failed: { error: "x" },
+  dem_worker_failed: { error: "x" },
   road_network_failed: { error: "x" },
   road_network_prepared: {
     backend: "worker",
@@ -140,6 +141,10 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   route_tile_failed: { key: "14/14550/6450", error: "Error: x" },
   water_tile_failed: { key: "14/14550/6450", error: "Error: x" },
   road_network_built: {
+    durationMs: 900,
+    cpuMs: 240,
+    maxSliceMs: 4,
+    yields: 60,
     segments: 4210,
     oneway: 380,
     posted: 900,

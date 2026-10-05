@@ -50,7 +50,7 @@ try {
   report.initialInstalled = await browser.evaluate(
     "__game.debug.logs.query({event:'road_network_built'}).at(-1)",
   );
-  for (const phase of ["prepare", "install"]) {
+  for (const phase of process.env.QA_VALIDATE_ONLY ? [] : ["prepare", "install"]) {
     for (const inline of [true, false, false, true, false, true]) {
       const work =
         phase === "prepare"
@@ -58,9 +58,19 @@ try {
           : "roads.rebuild()";
       const sample = await browser.evaluate(`(async () => {
         const G = __game, roads = G.debug.roads;
-        const { frameStats, watchFrames, longFramesDuring } = await import(new URL('src/game/perf.ts', location.href).href);
+        const { frameStats, longFramesDuring } = await import(new URL('src/game/perf.ts', location.href).href);
         roads.builder.inline = ${inline};
-        const since = performance.now(), watch = longFramesDuring(since, watchFrames(1800));
+        const stamps = [];
+        let finished = false;
+        const frames = new Promise(resolve => {
+          const loop = t => {
+            stamps.push(t);
+            if (finished) resolve(stamps);
+            else requestAnimationFrame(loop);
+          };
+          requestAnimationFrame(loop);
+        });
+        const since = performance.now(), watch = longFramesDuring(since, frames);
         await new Promise(r => setTimeout(r, 150));
         const beforeGraph = G.getRoadGraph();
         const beforeMeshes = new Set([...roads.surface.meshes.values(), ...G.control.meshes, ...G.orbis.meshes]);
@@ -68,7 +78,9 @@ try {
         const result = await ${work};
         const elapsed = performance.now() - start;
         if (!result) throw new Error('road request was discarded');
-        const {result: stamps, long} = await watch;
+        await new Promise(r => setTimeout(r, 2000));
+        finished = true;
+        const {result: measured, long} = await watch;
         let equal = null;
         if (${phase === "prepare"}) {
           const snapshot = JSON.stringify({segments: result.graph.segments, nodes:[...result.graph.nodes], applied:result.applied});
@@ -81,7 +93,7 @@ try {
         const reused = afterMeshes.filter(m => beforeMeshes.has(m)).length;
         if (${phase === "install"} && reused !== afterMeshes.length)
           throw new Error('unchanged road data recreated render meshes');
-        return { reused, meshCount:afterMeshes.length, phase: ${JSON.stringify(phase)}, inline: ${inline}, elapsed, equal, frames:frameStats(stamps), long,
+        return { reused, meshCount:afterMeshes.length, phase: ${JSON.stringify(phase)}, inline: ${inline}, elapsed, equal, frames:frameStats(measured), long,
           prepared:G.debug.logs.query({event:'road_network_prepared'}).at(-1),
           installed:${phase === "install"} ? G.debug.logs.query({event:'road_network_built'}).at(-1) : null };
       })()`);

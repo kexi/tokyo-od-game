@@ -1,4 +1,8 @@
 import RAPIER from "@dimforge/rapier3d-compat";
+import { FrameWork } from "../game/frameWork";
+import { roadGeometrySteps } from "./roadGeometrySteps";
+import { updateRoadGeometry } from "./roadGeometry";
+import { reanchorBody } from "../physics/reanchor";
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
 import {
@@ -10,6 +14,9 @@ import {
   SRGBColorSpace,
   ShapeUtils,
   Vector2,
+  Vector3,
+  Matrix4,
+  type Quaternion,
   type Scene,
 } from "three";
 import type { LocalFrame } from "../geo/frame";
@@ -211,6 +218,8 @@ function pavingTexture(): CanvasTexture {
  * to find the pavement beside a street.
  */
 export class Pavements {
+  private localToCurrent = new Matrix4();
+  private currentToLocal = new Matrix4();
   private meshes: Mesh[] = [];
   private body: RAPIER.RigidBody | null = null;
   private polygons: Array<{ rings: Vector2[][]; minX: number; minZ: number; maxX: number; maxZ: number }> =
@@ -236,8 +245,25 @@ export class Pavements {
     return this.polygons.length;
   }
 
+  reanchor(matrix: Matrix4, rotation: Quaternion): void {
+    this.localToCurrent.premultiply(matrix);
+    this.currentToLocal.copy(this.localToCurrent).invert();
+    for (const mesh of this.meshes) mesh.applyMatrix4(matrix);
+    if (this.body) reanchorBody(this.body, matrix, rotation);
+  }
+
   rebuild(polys: PavementPolygon[], frame: LocalFrame): void {
-    this.clear();
+    for (const _ of this.rebuildSteps(polys, frame)) {
+      /* synchronous compatibility path */
+    }
+  }
+
+  rebuildAsync(polys: PavementPolygon[], frame: LocalFrame, work: FrameWork): Promise<void> {
+    return work.run(this.rebuildSteps(polys, frame));
+  }
+
+  private *rebuildSteps(polys: PavementPolygon[], frame: LocalFrame): Generator<void | boolean> {
+    const indexedRings: Vector2[][][] = [];
     const byKind: Record<PavementKind, { pos: number[]; uv: number[]; idx: number[] }> = {
       sidewalk: { pos: [], uv: [], idx: [] },
       island: { pos: [], uv: [], idx: [] },
@@ -246,6 +272,7 @@ export class Pavements {
     const colliderPos: number[] = [];
     const colliderIdx: number[] = [];
     for (const poly of polys) {
+      yield;
       const rings = poly.rings.map((r) => densify(toLocalRing(r, frame)));
       if (rings[0].length < 3) continue;
       const flat = rings.flat();
@@ -289,21 +316,96 @@ export class Pavements {
         }
         offset += ring.length;
       }
-      this.index(rings);
+      indexedRings.push(rings);
     }
-    for (const kind of ["sidewalk", "island"] as const) this.addMesh(byKind[kind], this.materials[kind]);
-    this.addMesh(kerb, this.kerbMaterial);
-    if (colliderIdx.length) {
-      this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const parts: Array<{ geometry: BufferGeometry; material: StreetMaterial }> = [];
+    for (const [builder, material] of [
+      [byKind.sidewalk, this.materials.sidewalk],
+      [byKind.island, this.materials.island],
+      [kerb, this.kerbMaterial],
+    ] as const) {
+      const geometry = yield* this.prepareGeometry(builder);
+      if (geometry) parts.push({ geometry, material });
+    }
+    let nextBody: RAPIER.RigidBody | null = null;
+    let committed = false;
+    try {
+      if (colliderIdx.length) {
+        nextBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setEnabled(false));
+        yield* this.colliderSteps(colliderPos, colliderIdx, nextBody);
+      }
+      // Keep the old ground solid during preparation; the new body is disabled until this swap.
+      if (this.body) this.world.removeRigidBody(this.body);
+      this.body = nextBody;
+      this.body?.setEnabled(true);
+      committed = true;
+      this.localToCurrent.identity();
+      this.currentToLocal.identity();
+      this.polygons = [];
+      this.grid.clear();
+      for (const rings of indexedRings) this.index(rings);
+      const oldMeshes = this.meshes;
+      this.meshes = [];
+      for (const { geometry, material } of parts) {
+        const mesh =
+          oldMeshes.find((m) => m.material === material) ?? new Mesh(new BufferGeometry(), material);
+        mesh.geometry = updateRoadGeometry(mesh.geometry, geometry);
+        mesh.position.set(0, 0, 0);
+        mesh.quaternion.identity();
+        mesh.scale.set(1, 1, 1);
+        mesh.receiveShadow = true;
+        mesh.renderOrder = 3;
+        this.scene.add(mesh);
+        this.meshes.push(mesh);
+        yield true;
+      }
+      for (const mesh of oldMeshes) {
+        if (this.meshes.includes(mesh)) continue;
+        mesh.removeFromParent();
+        mesh.geometry.dispose();
+      }
+    } finally {
+      if (!committed && nextBody) this.world.removeRigidBody(nextBody);
+    }
+  }
+
+  private *colliderSteps(pos: number[], index: number[], body: RAPIER.RigidBody): Generator<void> {
+    let vertices: number[] = [];
+    let indices: number[] = [];
+    const ids = new Map<number, number>();
+    const flush = () => {
       this.world.createCollider(
-        RAPIER.ColliderDesc.trimesh(new Float32Array(colliderPos), new Uint32Array(colliderIdx)),
-        this.body,
+        RAPIER.ColliderDesc.trimesh(new Float32Array(vertices), new Uint32Array(indices)),
+        body,
       );
+      vertices = [];
+      indices = [];
+      ids.clear();
+    };
+    for (let i = 0; i < index.length; i += 3) {
+      for (const original of index.slice(i, i + 3)) {
+        let local = ids.get(original);
+        if (local === undefined) {
+          local = vertices.length / 3;
+          ids.set(original, local);
+          vertices.push(pos[original * 3], pos[original * 3 + 1], pos[original * 3 + 2]);
+        }
+        indices.push(local);
+      }
+      const full = indices.length >= 6000;
+      if (full) {
+        flush();
+        yield;
+      }
     }
+    if (indices.length) flush();
   }
 
   /** Is (x, z) on a pavement polygon? */
   contains(x: number, z: number): boolean {
+    const point = new Vector3(x, 0, z).applyMatrix4(this.currentToLocal);
+    x = point.x;
+    z = point.z;
     for (const i of this.grid.get(cellKey(x, z)) ?? []) {
       const p = this.polygons[i];
       if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
@@ -315,6 +417,8 @@ export class Pavements {
   }
 
   clear(): void {
+    this.localToCurrent.identity();
+    this.currentToLocal.identity();
     for (const m of this.meshes) {
       this.scene.remove(m);
       m.geometry.dispose();
@@ -349,19 +453,18 @@ export class Pavements {
     }
   }
 
-  private addMesh(b: { pos: number[]; uv: number[]; idx: number[] }, material: StreetMaterial): void {
-    if (b.idx.length === 0) return;
+  private *prepareGeometry(b: {
+    pos: number[];
+    uv: number[];
+    idx: number[];
+  }): Generator<void, BufferGeometry | null> {
+    if (b.idx.length === 0) return null;
     const g = new BufferGeometry();
     g.setAttribute("position", new Float32BufferAttribute(b.pos, 3));
     g.setAttribute("uv", new Float32BufferAttribute(b.uv, 2));
     g.setIndex(b.idx);
-    g.computeVertexNormals();
-    const mesh = new Mesh(g, material);
-    mesh.receiveShadow = true;
-    // Above the road surface and its markings where they overlap.
-    mesh.renderOrder = 3;
-    this.scene.add(mesh);
-    this.meshes.push(mesh);
+    yield* roadGeometrySteps(g);
+    return g;
   }
 }
 
