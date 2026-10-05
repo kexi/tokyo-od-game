@@ -1,9 +1,9 @@
 import { Group, Mesh, type Material, type Object3D, type Scene } from "three";
-import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { LocalFrame } from "../geo/frame";
 import { haversineMeters } from "../geo/ellipsoid";
 import { warn } from "../log";
+import { sharedDraco } from "../render/draco";
 
 /**
  * Hero models of Tokyo's landmarks (scripts/blender/landmarks.py → public/data/landmarks.json):
@@ -120,9 +120,7 @@ export class Landmarks {
     private readonly ellipsoidal: (lat: number, lon: number, orthometric: number) => number,
     entries: readonly LandmarkEntry[],
   ) {
-    this.loader = new GLTFLoader().setDRACOLoader(
-      new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-    );
+    this.loader = new GLTFLoader().setDRACOLoader(sharedDraco());
     void this.load(entries);
   }
 

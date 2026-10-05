@@ -80,7 +80,9 @@ export class ViolationSync {
     const out: ViolationRecord[] = [];
     for (const r of log) {
       if (!r.id) continue;
-      const signature = `${r.status}|${r.by ?? ""}|${r.context?.snapshot?.length ?? 0}|${r.replay ? 1 : 0}`;
+      // The pursuit can change a record after the fact: its 反則金 gone (procedure), its points
+      // taken into 危険運転致傷's (absorbedBy).
+      const signature = `${r.status}|${r.by ?? ""}|${r.context?.snapshot?.length ?? 0}|${r.replay ? 1 : 0}|${r.fine}|${r.points}|${r.procedure ?? ""}`;
       if (this.saved.get(r.id) === signature) continue;
       this.saved.set(r.id, signature);
       out.push(r);

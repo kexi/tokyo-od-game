@@ -15,12 +15,12 @@ import {
   Vector3,
 } from "three";
 import type { WebGPURenderer } from "three/webgpu";
-import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { GRAPHICS, QUALITY } from "../device";
 import { warn } from "../log";
 import { holdShadows, sceneTarget, type FrameComposer } from "../render/frame";
 import { RainGlass, WIPER_BLADES } from "./rainGlass";
+import { sharedDraco } from "../render/draco";
 
 /**
  * 車内視点: the right-hand-drive cockpit (scripts/blender/cockpit.py) inside the player's car.
@@ -93,9 +93,7 @@ export class Cockpit {
 
   async load(): Promise<void> {
     try {
-      const loader = new GLTFLoader().setDRACOLoader(
-        new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-      );
+      const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
       const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/cockpit.glb`);
       this.root = gltf.scene;
       this.root.visible = false;

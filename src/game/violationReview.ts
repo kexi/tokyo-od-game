@@ -1,6 +1,7 @@
 import { t, type MessageKey } from "../i18n";
 import { formatNumber } from "../i18n/format";
 import { lawRef, pointsText, recordClock, recordPlace, violationDetail, violationName } from "../i18n/law";
+import { keysWithPrefix, retranslate } from "../i18n/reverse";
 import type { Detector, ViolationRecord } from "./traffic";
 
 /** Who caught it, as the status line names them. */
@@ -8,6 +9,7 @@ const CAUGHT_BY: Record<Detector, MessageKey> = {
   patrol: "review.by.patrol",
   officer: "review.by.officer",
   orbis: "review.by.orbis",
+  orbisPortable: "review.by.orbisPortable",
   accident: "review.by.accident",
   parking: "review.by.parking",
   sns: "review.by.sns",
@@ -79,6 +81,9 @@ export function renderReview(
             ...(c.detail ? ([[t("review.what"), violationDetail(c.detail)]] as Array<[string, string]>) : []),
           ]
         : [];
+      // Why it left the 反則金 procedure (fled, no licence) or whose points it is counted in.
+      if (v.procedure)
+        rows.push([t("review.procedure"), retranslate(v.procedure, keysWithPrefix("procedure."))]);
       for (const [k, val] of rows) {
         const dt = document.createElement("dt");
         dt.textContent = k;

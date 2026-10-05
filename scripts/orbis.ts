@@ -1,9 +1,36 @@
 // 速度違反自動取締装置 (オービス) from OpenStreetMap for public/data/police.json: every
 // highway=speed_camera node in the 23 wards, with the travel direction it enforces, the lanes and
 // road class there, and the points up the road where its 予告看板 (warning signs) stand.
-// Used by scripts/regulations.ts (`node scripts/regulations.ts police`).
+// Used by scripts/regulations.ts (`pnpm exec tsx scripts/regulations.ts police`).
 import { readNodeCoords, readRelations, readTaggedNodes, readWays, type OsmWay } from "./osm-pbf.ts";
 import type { OrbisBearingSource, OrbisEntry, OrbisSign } from "../src/world/orbisData.ts";
+
+/** The 23 special wards, as their OSM boundaries (admin_level 7) are named. */
+export const WARDS = [
+  "千代田区",
+  "中央区",
+  "港区",
+  "新宿区",
+  "文京区",
+  "台東区",
+  "墨田区",
+  "江東区",
+  "品川区",
+  "目黒区",
+  "大田区",
+  "世田谷区",
+  "渋谷区",
+  "中野区",
+  "杉並区",
+  "豊島区",
+  "北区",
+  "荒川区",
+  "板橋区",
+  "練馬区",
+  "足立区",
+  "葛飾区",
+  "江戸川区",
+];
 
 /**
  * 予告看板 distances (m before the device). Tokyo's 固定式 devices have at least two signs up the
@@ -184,6 +211,66 @@ function nearestOnNetwork(
 
 const num = (v: string | undefined) => Number.parseFloat(v ?? "") || 0;
 
+/** Edges [lon0, lat0, lon1, lat1] of each ward's boundary, outer and inner rings alike. */
+export type WardShapes = Map<string, number[][]>;
+
+/**
+ * The 23 wards' boundaries from the extract: the admin_level 7 relations named in WARDS whose
+ * edges lie mostly in the box (Chiba and Saitama have a 中央区 and a 北区 of their own, outside it).
+ * Why not the e-Stat 町丁 polygons the game uses (public/data/areas.json): the 2020 census has no
+ * town on the 中央防波堤 reclaimed land, which is 江東区・大田区 and carries two speed cameras.
+ */
+export function readWards(file: Uint8Array, inBox: (lon: number, lat: number) => boolean): WardShapes {
+  const rels = readRelations(
+    file,
+    (t) => t.boundary === "administrative" && t.admin_level === "7" && WARDS.includes(t.name ?? ""),
+  );
+  const ids = new Set(rels.flatMap((r) => r.members.filter((m) => m.type === "way").map((m) => m.ref)));
+  // The boundary ways are tagged boundary=administrative themselves (all 1,195 of the wards' on
+  // the 2026-10-04 extract), so the filter keeps the read small.
+  const ways = new Map(
+    readWays(file, (t) => t.boundary === "administrative")
+      .filter((w) => ids.has(w.id))
+      .map((w) => [w.id, w]),
+  );
+  const coords = readNodeCoords(file, new Set([...ways.values()].flatMap((w) => w.refs)));
+  const out: WardShapes = new Map();
+  for (const r of rels) {
+    const edges: number[][] = [];
+    for (const m of r.members) {
+      const w = m.type === "way" ? ways.get(m.ref) : undefined;
+      if (!w) continue;
+      for (let k = 0; k + 1 < w.refs.length; k++) {
+        const a = coords.get(w.refs[k]);
+        const b = coords.get(w.refs[k + 1]);
+        if (a && b) edges.push([a[0], a[1], b[0], b[1]]);
+      }
+    }
+    const inside = edges.filter((e) => inBox(e[0], e[1])).length;
+    const isTokyo = edges.length > 0 && inside >= edges.length / 2;
+    if (!isTokyo) continue;
+    const name = r.tags.name ?? "";
+    out.set(name, [...(out.get(name) ?? []), ...edges]);
+  }
+  return out;
+}
+
+/**
+ * The ward a point lies in, or null: even-odd crossings of a ray to the east over every edge of
+ * the ward's rings (an inner ring's edges flip it back out, so no ring assembly is needed).
+ */
+export function wardAt(shapes: WardShapes, lon: number, lat: number): string | null {
+  for (const [name, edges] of shapes) {
+    let inside = false;
+    for (const [x0, y0, x1, y1] of edges) {
+      const straddles = y0 > lat !== y1 > lat;
+      if (straddles && lon < x0 + ((lat - y0) * (x1 - x0)) / (y1 - y0)) inside = !inside;
+    }
+    if (inside) return name;
+  }
+  return null;
+}
+
 /** Lanes the given direction has on a way (0 = not mapped). */
 function lanesOf(w: OsmWay, d: 1 | -1): number {
   if (onewayOf(w) !== 0) return num(w.tags.lanes);
@@ -195,9 +282,22 @@ function maxspeedOf(w: OsmWay, d: 1 | -1): number {
   return num(w.tags[d === 1 ? "maxspeed:forward" : "maxspeed:backward"]) || num(w.tags.maxspeed);
 }
 
-/** Every speed camera in the box, resolved against the extract. */
+/**
+ * Every speed camera in the 23 wards, resolved against the extract. The box only narrows the read:
+ * it reaches into 川崎市 and Chiba, so a camera counts when it lies inside a ward's boundary.
+ * Checked on 2026-10-05 for tagging this misses: no way, and no node without highway=speed_camera,
+ * carries enforcement / speed_camera keys in the wards; the enforcement=maxspeed relations all
+ * name a speed_camera node as their device (others are traffic_signals and maxweight).
+ */
 export function buildOrbis(file: Uint8Array, inBox: (lon: number, lat: number) => boolean): OrbisEntry[] {
-  const cams = readTaggedNodes(file, (t) => t.highway === "speed_camera").filter((n) => inBox(n.lon, n.lat));
+  const wards = readWards(file, inBox);
+  const wardOf = new Map<number, string>();
+  const cams = readTaggedNodes(file, (t) => t.highway === "speed_camera").filter((n) => {
+    if (!inBox(n.lon, n.lat)) return false;
+    const ward = wardAt(wards, n.lon, n.lat);
+    if (ward) wardOf.set(n.id, ward);
+    return ward !== null;
+  });
   const camIds = new Set(cams.map((n) => n.id));
   const relations = readRelations(file, (t) => t.type === "enforcement" && t.enforcement === "maxspeed");
   const byDevice = new Map<number, { from?: number; to?: number; maxspeed: number }>();
@@ -309,7 +409,8 @@ export function buildOrbis(file: Uint8Array, inBox: (lon: number, lat: number) =
       ),
     );
   }
-  return out;
+  // Where each entry comes from, kept per entry so a camera from another source can sit beside them.
+  return out.map((e) => ({ ...e, ward: wardOf.get(e.id) ?? "", origin: `osm:node/${e.id}` }));
 }
 
 function entry(

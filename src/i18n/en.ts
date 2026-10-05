@@ -322,10 +322,14 @@ export const en: Messages = {
   "violation.label.unlicensed": "Driving without a license (while suspended)",
   "violation.label.ignoredStop": "Failing to stop for a police officer",
   "violation.label.hitAndRun": "Hit and run (failure to aid the injured)",
+  "violation.label.negligentInjury": "Negligent driving causing injury",
+  "violation.label.obstruction": "Obstructing officers in the performance of duty",
+  "violation.label.propertyDamage": "Damaging property (a police vehicle)",
   // 値の入る違反名（speedViolation・injuryViolation・chargeOwner が作る形）
   "violation.pattern.speed": "Speeding ({over} km/h over)",
   "violation.pattern.injury": "Injury accident, additional points ({injury})",
   "violation.pattern.owner": "Owner's penalty for an unattended car ({what})",
+  "violation.pattern.dangerous": "Dangerous driving causing injury ({injury})",
   "violation.injury.under15": "treatment under 15 days",
   "violation.injury.under30": "treatment of 15–29 days",
   "violation.injury.under3m": "treatment of 30 days to 3 months",
@@ -351,6 +355,8 @@ export const en: Messages = {
   "law.name.tokyoRules": "Tokyo Metropolitan Road Traffic Rules",
   "law.name.tokyoRulesShort": "Tokyo Metropolitan Road Traffic Rules",
   "law.name.criminalProcedure": "Code of Criminal Procedure",
+  "law.name.penalCode": "Penal Code",
+  "law.name.drivingDeathAct": "Act on Punishment of Driving Causing Death or Injury",
   "law.name.minorOffenses": "Minor Offenses Act",
   "law.name.tokyoEnvironment": "Tokyo Metropolitan Environmental Security Ordinance",
   "law.cite": "{law} {refs}",
@@ -388,6 +394,7 @@ export const en: Messages = {
   "review.by.patrol": "patrol car",
   "review.by.officer": "police officer",
   "review.by.orbis": "speed camera",
+  "review.by.orbisPortable": "portable speed camera",
   "review.by.accident": "police at the accident",
   "review.by.parking": "parking enforcement officer",
   "review.by.sns": "a video posted online",
@@ -643,6 +650,8 @@ export const en: Messages = {
   "toast.autopilotToTarget": "Autopilot on (to the destination)",
   "toast.autopilotCruise": "Autopilot on (cruising around)",
   "toast.autopilotArrived": "Arrived. Autopilot off",
+  "toast.autopilotStuck": "Autopilot off: it could not get back onto the road. Please take the wheel",
+  "toast.autopilotBlocked": "Autopilot off: the way ahead is blocked and passing is not allowed here",
   // main.ts: 自動運転タクシー
   "taxi.destMission": "Mission: {name}",
   "taxi.destCar": "My car",
@@ -671,6 +680,7 @@ export const en: Messages = {
   "toast.headingHome": "Heading home (about {km} km). Today's drive ends when you get there",
   "dayEnd.mailNotice": "Notice to appear ({how}): {label} / {points}",
   "dayEnd.byOrbis": "photographed by a speed camera",
+  "dayEnd.byOrbisPortable": "photographed by a portable speed camera",
   "dayEnd.bySns": "identified from a posted video",
   "dayEnd.byPlate": "identified from your plate",
   "dayEnd.mailSanction":
@@ -794,6 +804,8 @@ export const en: Messages = {
   "violationDetail.turnRightNoSignal": "Turned right without signaling",
   "violationDetail.laneChangeNoSignal": "Changed lanes without signaling",
   "violationDetail.orbis": "Photographed by a speed camera (Orbis): {kmh} km/h (limit {limit} km/h)",
+  "violationDetail.orbisPortable":
+    "Photographed by a portable speed camera (portable Orbis): {kmh} km/h (limit {limit} km/h)",
   "violationDetail.noLights": "Drove at night with the headlights off",
   "violationDetail.seatBelt": "Drove without a seatbelt",
   "violationDetail.horn": "Sounded the horn with no danger to avoid",
@@ -1289,4 +1301,179 @@ export const en: Messages = {
   "call.hangUp": "End call",
   "call.replyLanguage": "Reply in English only, in one or two short sentences.",
   // @@talk
+  // The pursuit and what follows (pursuitDirector.ts, trafficStop.ts, arrestStory.ts, storyArt.ts)
+  "stop.speaker.officer": "Police officer",
+  "stop.speaker.rider": "Motorcycle officer",
+  "stop.guide.title": "How to stop (the police are calling you over)",
+  "stop.guide.signal": "Signal left",
+  "stop.guide.kerb":
+    "Pull over to the left curb where it's safe (not in or near an intersection or crosswalk, not in a no-stopping zone)",
+  "stop.guide.stop": "Stop",
+  "stop.guide.hazards": "Turn on the hazard lights",
+  "stop.guide.auto": "(automatic)",
+  "stop.guide.key": "({key})",
+  "stop.remark.perfect":
+    "Thank you for signaling and stopping right away in a safe place. The hazard lights help too.",
+  "stop.remark.good": "Thank you for stopping.",
+  "stop.remark.noSignal": "Thank you for stopping. When you pull over to the left, please signal too.",
+  "stop.remark.notAtKerb":
+    "Thank you. Next time, pull a little closer to the left edge so the cars behind you are safe too.",
+  "stop.remark.junction":
+    "Thank you for stopping. But you can't stop in or near an intersection, so next time please stop after you're through it (Road Traffic Act Art. 44).",
+  "stop.remark.crossing":
+    "Thank you for stopping. But you can't stop near a crosswalk, so next time please go on a little before you stop (Road Traffic Act Art. 44).",
+  "stop.remark.noStopping":
+    "Thank you for stopping. But this is a no-stopping zone, so next time please stop past the end of it.",
+  "stop.remark.rightLane":
+    "Thank you for stopping. Staying in the right lane is dangerous, so next time please pull over to the edge of the left lane.",
+  "stop.remark.fled": "Why didn't you stop right away? A chase puts everyone around you in danger.",
+  "stop.line.knock": "(Knocks on the window) Excuse me, could you lower your window?",
+  "stop.line.licence": "May I see your driver's license?",
+  "stop.line.offence": "At {place}: {list}.",
+  "stop.line.offenceUnlicensed": "Your license is suspended. That makes this {list}.",
+  "stop.offenceItem": "{label} ({article})",
+  "stop.line.confirm": "Is that correct?",
+  "stop.line.objection":
+    "I understand. You can put your view in writing. If you don't pay the fine, you can have a court decide it in the criminal procedure.",
+  "stop.line.blue":
+    "I'll write a Traffic Violation Notice (blue ticket). Please pay the provisional fine at a bank or post office within 7 days, counting from the day after this notice (Road Traffic Act Art. 129(1)).",
+  "stop.line.red":
+    "This violation isn't covered by the fine system. I'll write a red ticket, so please take a seat in the back of the patrol car.",
+  "stop.line.redFled":
+    "You drove off instead of stopping when asked, so the fine system no longer applies (Road Traffic Act Art. 126(1)(ii) and Art. 130(i)). I'll write a red ticket, so please take a seat in the back of the patrol car.",
+  "stop.line.voluntary":
+    "Driving without a valid license isn't covered by the fine system. Please come with us to the station.",
+  "stop.line.arrest": "You're under arrest, caught in the act, on suspicion of {charges}.",
+  "stop.line.farewell": "Thank you for your time. Please drive safely.",
+  "stop.line.farewellKind":
+    "Thanks for stopping right away and putting your hazards on. Please drive safely.",
+  "stop.choice.openWindow": "Lower the window",
+  "stop.choice.showLicence": "Show the license",
+  "stop.choice.watch": "Watch the video of it",
+  "stop.choice.seen": "I see",
+  "stop.choice.agree": "That's correct",
+  "stop.choice.disagree": "I don't agree",
+  "stop.choice.understood": "I understand",
+  "stop.choice.next": "Yes",
+  "stop.choice.thanks": "Thank you",
+  "police.callStopFirm": "Car ahead, stop. Pull over to the left and stop.",
+  "police.callStopDanger": "Stop the car. Stop now, it's dangerous.",
+  "police.callTraffic": "Emergency vehicles coming through. Please clear the way.",
+  "police.callStay": "Stay where you are with your hazards on, please.",
+  "police.callStayFled": "Turn off the engine and stay where you are.",
+  "radio.title": "📻 Police radio (dramatized)",
+  "radio.dispatch":
+    "Control to all units. A car near {place} did not stop when ordered and is still driving. Units nearby, deploy and cover the area.",
+  "radio.ack": "Unit {n}, copy. Heading there.",
+  "radio.heli": "Air unit over the scene. Target vehicle in sight, following.",
+  "radio.checkpoint": "Checkpoint set up at the intersection ahead.",
+  "radio.caught": "Target vehicle has stopped. Checking the driver.",
+  "radio.lost": "Lost sight of the target vehicle. Plate already run.",
+  "notify.article67":
+    "Driving while suspended: the police can stop the car and ask for the license (Road Traffic Act Art. 67(1)). Not obeying is an offense (Art. 119(1)(xiii))",
+  "notify.fledProcedure":
+    "Not stopping when called over: as a flight risk, you're out of the fine (blue ticket) system and into criminal procedure (Road Traffic Act Art. 126(1)(ii) and Art. 130(i))",
+  "notify.manhunt": "Police mobilizing: patrol cars and police motorcycles nearby are converging",
+  "notify.heli": "A police helicopter is following you from above",
+  "notify.checkpoint": "The police have set up a checkpoint ahead",
+  "notify.identified":
+    "From the plate, street cameras and the videos on Y, the police have identified the driver",
+  "notify.chasePosted": "Someone posted your car being chased by the police on “{app}”",
+  "toast.rammed":
+    "You rammed a police vehicle on purpose: obstructing officers (Penal Code Art. 95(1)) and damaging property (Penal Code Art. 261)",
+  "toast.enforcingBusy": "Not now (the police are dealing with you)",
+  "tv.breaking.tag": "BREAKING",
+  "tv.breaking.chase":
+    "Patrol cars and a helicopter are chasing a car near {ward} that did not stop for the police. Please take care in the area.",
+  "notice.emergency": "Emergency vehicle approaching ({dist})",
+  "notice.emergencySay": "An emergency vehicle is approaching. Pull over to the left and give way.",
+  "violationDetail.chaseInjury": "Hit and injured a pedestrian while being chased by the police ({kmh} km/h)",
+  "violationDetail.dangerousSpeed":
+    "Hit and injured someone doing {kmh} km/h on a road with a {limit} km/h limit",
+  "violationDetail.dangerousRed":
+    "Ran a red light into the intersection to get away from the police and hit someone at {kmh} km/h",
+  "violationDetail.chaseReckless":
+    "While being chased, kept driving far over the limit and breaking rules, putting people and cars around in danger",
+  "violationDetail.rammed": "Rammed an on-duty police vehicle on purpose",
+  "violationDetail.droveAtOfficer": "Drove straight at the officer at the checkpoint",
+  "procedure.fled":
+    "Fled instead of stopping, so not settled by a fine (Road Traffic Act Art. 126(1)(ii) and Art. 130(i))",
+  "procedure.unlicensed":
+    "No valid license, so not eligible for the fine system (Road Traffic Act Art. 125(2)(i))",
+  "procedure.absorbed":
+    "Counted in the points for dangerous driving causing injury (Order for Enforcement of the Road Traffic Act, Appended Table 2)",
+  "review.procedure": "Procedure",
+  "social.chaseLabel": "being chased by the police",
+  "story.next": "Next (Enter)",
+  "story.skip": "Skip (Esc)",
+  "story.red.seat":
+    "In the back of the patrol car, the officer writes the red ticket. A violation outside the fine system goes through criminal procedure.",
+  "story.red.ticket":
+    "You get the red ticket and a receipt for your license. On the date written there, you report to the prosecutors and the summary court that handle traffic cases (the “traffic court”).",
+  "story.red.court":
+    "Later, at the traffic court, a prosecutor questions you. If you agree to summary proceedings, you're indicted for a decision on the papers alone (Code of Criminal Procedure Art. 461).",
+  "story.red.fine":
+    "The summary court orders a fine and you pay it on the spot. A fine is a criminal penalty: it goes on your record.",
+  "story.voluntary.ride":
+    "“Please come with us to the station.” You go along voluntarily (Police Duties Execution Act Art. 2(2)).",
+  "story.voluntary.interview":
+    "Questioning. Driving while your license is suspended counts as driving without a license, and the fine system doesn't cover it (Road Traffic Act Art. 64(1) and Art. 125(2)(i)).",
+  "story.voluntary.transfer":
+    "You aren't arrested and go home the same day. The case goes to the prosecutor on paper.",
+  "story.voluntary.court":
+    "Later, the prosecutor decides on a summary indictment and you pay a fine. It can also go to a full trial.",
+  "story.station": "You arrive at the police station and are shown to a room to talk.",
+  "story.arrest.moment":
+    "“You're under arrest, caught in the act, on suspicion of {charges}.” (Code of Criminal Procedure Arts. 212 and 213)",
+  "story.arrest.ride": "In the back of the patrol car, to the police station.",
+  "story.arrest.station": "At the station you're processed and put in a holding cell.",
+  "story.interview":
+    "Questioning: what happened, and why you didn't stop. You don't have to say anything you don't want to, and you can ask for a lawyer.",
+  "story.transfer":
+    "Within 48 hours of the arrest, the case and you are sent to a prosecutor (Code of Criminal Procedure Art. 203(1)).",
+  "story.detention":
+    "The prosecutor asks for detention (Code of Criminal Procedure Art. 205), and if a judge grants it, the investigation goes on with you held. Serious cases are indicted and go to a public trial.",
+  "story.release":
+    "Detention isn't needed, and you're released. The investigation continues while you're at home.",
+  "story.summary":
+    "Later you're indicted in summary proceedings and pay the fine the summary court orders (Code of Criminal Procedure Art. 461).",
+  "story.tv": "That day, the news reported the case near {place}.",
+  "story.y": "On Y, the videos people took had spread.",
+  "story.later.identified": "The plate, street cameras and the videos posted on Y identified the driver.",
+  "story.later.visit":
+    "Later, officers came to your home and asked you to come to the police station (Code of Criminal Procedure Art. 198).",
+  "story.later.trend": "On Y, “Fleeing car identified” is trending.",
+  "story.later.procedure":
+    "Because you fled instead of stopping, the fine system doesn't apply (Road Traffic Act Art. 126(1)(ii) and Art. 130(i)). After questioning you're indicted in summary proceedings and pay a fine.",
+  "story.laterArrest.warrant": "A judge issued an arrest warrant (Code of Criminal Procedure Art. 199(1)).",
+  "story.laterArrest.arrest":
+    "Early in the morning, officers came to your home, showed the warrant and arrested you.",
+  "story.end.revocation":
+    "Your points: {points}. Your license is revoked (an administrative sanction, decided by the points, separate from the criminal case).",
+  "story.end.suspension":
+    "Your points: {points}. The administrative sanction is {stamp}, decided by the points, separate from the criminal case.",
+  "story.end.points":
+    "Your points: {points}. Separate from the criminal case, your license points keep adding up.",
+  "story.art.redTicket": "Red ticket",
+  "story.art.warrant": "Arrest warrant",
+  "story.art.court": "Summary Court",
+  "story.art.counter": "Payment counter",
+  "story.art.fine": "Fine",
+  "story.art.paid": "Paid",
+  "story.art.transfer": "Case file",
+  "story.art.newsTag": "NEWS",
+  "story.art.newsLine": "Traffic case near {place}: driver taken into custody",
+  "story.art.newsSub": "(A fictional channel, broadcast in the game)",
+  "story.art.noPosts": "(No posts yet)",
+  "story.art.licence": "Driver's license (in-game)",
+  "story.art.revoked": "REVOKED",
+  "story.art.revokedSub": "{points} points · disqualification period: {years} yr",
+  "story.art.suspended": "{days} days suspended",
+  "story.art.suspendedSub": "{points} points",
+  "story.art.points": "{points} pts",
+  "story.art.pointsSub": "Not yet at the level of an administrative sanction",
+  "stop.line.knockFled": "(Bangs on the window) Lower your window and turn off the engine.",
+  "notify.stopPosted": "Someone posted your car being stopped by the police on “{app}”",
+  "social.stopLabel": "being stopped by the police",
+  // @@pursuit
 };

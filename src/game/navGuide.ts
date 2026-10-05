@@ -13,7 +13,14 @@ import {
   type NamedPoint,
 } from "./navAhead";
 import { drawRouteMap } from "./navMap";
-import { collectNotices, NoticeVoice, shownNotice, type Notice, type OrbisLike } from "./navNotices";
+import {
+  collectNotices,
+  emergencyNotice,
+  NoticeVoice,
+  shownNotice,
+  type Notice,
+  type OrbisLike,
+} from "./navNotices";
 import { joinSpoken, sayLane, sayStraight, sayTurn, turnPhrase, turnWord } from "./navPhrases";
 import {
   CLOSE_RANGE,
@@ -148,6 +155,8 @@ export class NavGuide {
   } = { at: -Infinity, graph: null, hit: null };
   private lastRoad = { label: null as string | null, at: -Infinity };
   private notices: { at: number; list: Notice[] } = { at: -Infinity, list: [] };
+  /** 緊急車両 approaching (the pursuit): shown first and said every half minute. */
+  alert: { text: string; voice: string } | null = null;
   private readonly noticeVoice = new NoticeVoice();
   /** When a turn or straight-on call was last made (notices keep clear of it). */
   private lastGuidanceAt = -Infinity;
@@ -384,6 +393,7 @@ export class NavGuide {
       orbis: this.orbis,
       clock: this.clock ?? undefined,
     });
+    if (this.alert) list.unshift(emergencyNotice(this.alert));
     this.notices = { at: now, list };
     return list;
   }

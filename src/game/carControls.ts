@@ -52,6 +52,17 @@ export class CarControls {
     this.autoSignal = null;
   }
 
+  /**
+   * 簡単操作 signalling for the driver when the police call the car over (the left indicator to
+   * pull over): held like the driver's own, so the route's auto-signal does not take it back.
+   */
+  holdSignal(side: "left" | "right"): void {
+    if (this.indicator === side) return;
+    this.indicator = side;
+    this.turnStartYaw = null;
+    this.autoSignal = null;
+  }
+
   cycleLights(): LightSwitch {
     this.lights = this.lights === "auto" ? "on" : this.lights === "on" ? "off" : "auto";
     return this.lights;

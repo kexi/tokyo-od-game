@@ -22,7 +22,11 @@ import type { ApproachLike } from "./navStraight";
  * speed cameras (「この先、速度取締機があります」), which is lawful, and the call here ends with the
  * limit in force, so it reminds the player of the law rather than of the camera.
  */
-export type NoticeKind = "closure" | "school" | "orbis" | "limit" | "stop";
+/**
+ * "police": 緊急車両 approaching (the pursuit, pursuitDirector.ts), as the 緊急車両存在通知 of
+ * connected cars says it — with the 第40条 advice to keep left and give way.
+ */
+export type NoticeKind = "closure" | "school" | "orbis" | "limit" | "stop" | "police";
 
 export type Notice = {
   kind: NoticeKind;
@@ -208,6 +212,22 @@ export function collectNotices(
   }
   if (stop) notices.push(stop);
   return notices;
+}
+
+/** The emergency-vehicle notice: always first, said again every half minute while it lasts. */
+export function emergencyNotice(alert: { text: string; voice: string }): Notice {
+  return {
+    kind: "police",
+    key: "police:emergency",
+    distance: 0,
+    text: alert.text,
+    voice: alert.voice,
+    voiceWithin: 1,
+    voiceMin: 0,
+    minSpeed: 0,
+    repeatAfter: 30_000,
+    priority: 9,
+  };
 }
 
 /** The notice the panel shows: the most important, then the nearest. */

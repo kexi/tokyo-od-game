@@ -14,19 +14,21 @@ import {
   type BufferGeometry,
   type Material,
   type Mesh,
+  type Object3D,
   type Scene,
 } from "three";
 import { type Node, SpriteNodeMaterial } from "three/webgpu";
 import { materialColor, materialOpacity, sRGBTransferEOTF, sRGBTransferOETF, vec4 } from "three/tsl";
 import RAPIER from "@dimforge/rapier3d-compat";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { LocalFrame } from "../geo/frame";
 import { log, warn } from "../log";
 import { PROP_GROUPS } from "../physics/groups";
 import { untonemapped, UntonemappedBasicMaterial } from "../render/untonemapped";
 import { isExpresswayClass, parseOrbis, type OrbisEntry, type OrbisSign } from "./orbisData";
+import { dayKey, planPortable, type GameDay, type School } from "./portableOrbis";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
+import { sharedDraco } from "../render/draco";
 
 /**
  * 速度違反自動取締装置 (オービス) on the streets: OSM speed cameras (public/data/police.json, built by
@@ -34,6 +36,8 @@ import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
  * the direction they enforce, with their 予告看板 up the road. A car crossing a device's line in
  * that direction, in a lane it covers, 30 km/h or more over the limit (40 on an expressway) is
  * photographed: the strobe over that lane flashes and the caller books the notice by post.
+ * 可搬式 units (src/world/portableOrbis.ts) stand on residential kerbs for the game day, with no
+ * 予告看板, and take 15 km/h or more over the limit through the same crossing test.
  */
 
 const RANGE = 1300; // m from the frame origin: the road graph's reach
@@ -56,7 +60,8 @@ export type OrbisSite = {
   line: Vector3;
   /** Unit travel direction the device enforces. */
   travel: Vector3;
-  kind: "gantry" | "pole";
+  /** Fixed gantry or pole (OSM), or a 可搬式 unit the game set up for the day. */
+  kind: "gantry" | "pole" | "portable";
   lanes: number;
   /** Lateral (left of travel) of the kerb the lanes are counted from, and their width. */
   kerb: number;
@@ -65,6 +70,16 @@ export type OrbisSite = {
   /** Limit and the excess that fires the camera (km/h). */
   limit: number;
   threshold: number;
+  /** Where a portable unit's tripod stands (y = 0), off the carriageway at the left kerb. */
+  stand?: Vector3;
+};
+
+/** What the 可搬式 units need from the game: its date, and the 小学校 for school routes. */
+export type PortableContext = {
+  day: GameDay;
+  schools: readonly School[];
+  /** Height to add where the tripod stands on a raised pavement (the kerb). */
+  kerbAt?: (x: number, z: number) => number;
 };
 
 export type OrbisWarning = { pos: Vector3; travel: Vector3; seg: Segment; before: number; entry: OrbisEntry };
@@ -338,6 +353,10 @@ type Kit = {
   postSpacing: number;
   poleUnit: [number, number, number];
 };
+/** The 可搬式 unit (scripts/blender/portable_orbis.py): tripod, head, strobe and ground case. */
+type PortableKit = { unit: Part; lens: BufferGeometry; lensCentre: Vector3 };
+/** A strobe window instance: the lens mesh it is in and its index there. */
+type LensRef = { mesh: InstancedMesh; index: number; centre: Vector3; glow: number };
 
 const LENS_REST = new Color(0x2a0909);
 const LENS_WHITE = new Color(0xffffff);
@@ -401,15 +420,20 @@ function glowMaterial(): SpriteNodeMaterial {
 /** Scene objects for the sites around the player; rebuilt with the road network. */
 export class OrbisDevices {
   sites: OrbisSite[] = [];
+  /** 可搬式 units out today (kept apart from `sites`: the カーナビ knows only the fixed ones). */
+  portable: OrbisSite[] = [];
   warnings: OrbisWarning[] = [];
   private kit: Kit | null = null;
+  private portableKit: PortableKit | null = null;
   private entries: OrbisEntry[] | null = null;
   private last: { graph: RoadGraph; frame: LocalFrame } | null = null;
+  /** The game day the portable units were placed for, and when it was last looked at. */
+  private portableDay = "";
+  private dayCheckedAt = -Infinity;
   private meshes: InstancedMesh[] = [];
-  private lenses: InstancedMesh | null = null;
-  /** Lens instance of each site's lanes: lensIndex[site][lane]. */
-  private lensIndex: number[][] = [];
-  private flashes: Array<{ lens: number; at: number; glow: Sprite; material: SpriteNodeMaterial }> = [];
+  /** Lens of each site's lanes, fixed sites first, then the portable ones: lensOf[site][lane]. */
+  private lensOf: LensRef[][] = [];
+  private flashes: Array<{ lens: LensRef; at: number; glow: Sprite; material: SpriteNodeMaterial }> = [];
   private fired = new Map<number, number>();
   private body: RAPIER.RigidBody | null = null;
   // The lens shows its instance colour as it is (the WebGL `toneMapped: false`, which
@@ -421,35 +445,25 @@ export class OrbisDevices {
     private readonly scene: Scene,
     private readonly groundAt: (x: number, z: number) => number | null,
     private readonly world: RAPIER.World,
+    /** The game's date and schools for the 可搬式 units; none are placed without it. */
+    private readonly portableContext: () => PortableContext | null = () => null,
   ) {
     // Model and data load on their own; the first rebuild after both arrive places the devices.
-    void Promise.all([this.loadModel(), this.loadData()])
+    // The portable model is optional: the fixed cameras work without it.
+    void Promise.all([this.loadModel(), this.loadData(), this.loadPortableModel()])
       .then(() => {
         if (this.last) this.rebuild(this.last.graph, this.last.frame);
       })
       .catch((error: unknown) => warn("orbis_load_failed", { error: String(error) }));
   }
 
+  private loader(): GLTFLoader {
+    return new GLTFLoader().setDRACOLoader(sharedDraco());
+  }
+
   private async loadModel(): Promise<void> {
-    const loader = new GLTFLoader().setDRACOLoader(
-      new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-    );
-    const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/orbis.glb`);
-    gltf.scene.updateMatrixWorld(true);
-    const part = (name: string): Part => {
-      const o = gltf.scene.getObjectByName(name);
-      if (!o) throw new Error(`orbis.glb has no ${name}`);
-      const out: Part = [];
-      o.traverse((m) => {
-        const mesh = m as Mesh;
-        if (!mesh.isMesh) return;
-        out.push({
-          geometry: mesh.geometry.clone().applyMatrix4(mesh.matrixWorld),
-          material: mesh.material as Material,
-        });
-      });
-      return out;
-    };
+    const gltf = await this.loader().loadAsync(`${import.meta.env.BASE_URL}models/orbis.glb`);
+    const part = partsOf(gltf.scene, "orbis.glb");
     const extras = gltf.scene.getObjectByName("Orbis")?.userData ?? {};
     const sign = part("WarningSign");
     for (const { material } of sign) {
@@ -478,6 +492,22 @@ export class OrbisDevices {
     };
   }
 
+  private async loadPortableModel(): Promise<void> {
+    try {
+      const gltf = await this.loader().loadAsync(`${import.meta.env.BASE_URL}models/portable_orbis.glb`);
+      const part = partsOf(gltf.scene, "portable_orbis.glb");
+      const lens = part("PortableLens")[0].geometry;
+      lens.computeBoundingBox();
+      this.portableKit = {
+        unit: part("PortableUnit"),
+        lens,
+        lensCentre: lens.boundingBox?.getCenter(new Vector3()) ?? new Vector3(0.1, 1.6, 0.2),
+      };
+    } catch (error: unknown) {
+      warn("portable_orbis_load_failed", { error: String(error) });
+    }
+  }
+
   private async loadData(): Promise<void> {
     const res = await fetch(`${import.meta.env.BASE_URL}data/police.json`);
     const data = res.ok ? ((await res.json()) as { orbis?: unknown }) : {};
@@ -491,10 +521,19 @@ export class OrbisDevices {
     if (!this.kit || !this.entries) return;
     this.sites = planSites(graph, this.entries, frame);
     this.warnings = planWarnings(graph, this.entries, this.sites, frame);
-    this.build(this.kit);
+    const context = this.portableKit ? this.portableContext() : null;
+    this.portableDay = context ? dayKey(context.day) : "";
+    this.portable = context ? planPortable(graph, frame, context.day, context.schools) : [];
+    this.build(this.kit, context);
     log("orbis_placed", {
       sites: this.sites.map((s) => ({ id: s.entry.id, kind: s.kind, lanes: s.lanes, limit: s.limit })),
       signs: this.warnings.length,
+      portable: this.portable.map((s) => ({
+        at: [s.entry.lat, s.entry.lon],
+        bearing: s.entry.bearing,
+        limit: s.limit,
+        key: s.entry.origin,
+      })),
     });
   }
 
@@ -505,7 +544,7 @@ export class OrbisDevices {
   check(prev: Vector3 | null, cur: Vector3, kmh: number, now: number): OrbisHit[] {
     if (!prev) return [];
     const hits: OrbisHit[] = [];
-    this.sites.forEach((site, i) => {
+    [...this.sites, ...this.portable].forEach((site, i) => {
       // On the ground plane: the line is at y = 0, the car at the terrain's height.
       if (Math.hypot(site.line.x - cur.x, site.line.z - cur.z) > 60) return;
       const lane = photographs(site, prev, cur, kmh);
@@ -519,36 +558,38 @@ export class OrbisDevices {
     return hits;
   }
 
-  /** Fire a lane's strobe (also used to stage screenshots). */
+  /** Fire a lane's strobe (also used to stage screenshots); portable sites follow the fixed ones. */
   flash(siteIndex: number, lane: number, now = performance.now()): void {
-    const lens = this.lensIndex[siteIndex]?.[lane];
-    if (lens === undefined || !this.lenses || !this.kit) return;
+    const lens = this.lensOf[siteIndex]?.[lane];
+    if (!lens) return;
     const m = new Matrix4();
-    this.lenses.getMatrixAt(lens, m);
+    lens.mesh.getMatrixAt(lens.index, m);
     const material = this.glowMaterial.clone();
     // three's types take a SpriteMaterial only; WebGPURenderer draws a sprite with its node form.
     const glow = new Sprite(material as unknown as SpriteMaterial);
     // Just in front of the window, so the burst is not hidden inside the housing.
     glow.position
-      .copy(this.kit.lensCentre)
+      .copy(lens.centre)
       .add(new Vector3(0, 0, 0.15))
       .applyMatrix4(m);
-    glow.scale.setScalar(5);
+    glow.scale.setScalar(lens.glow);
     glow.renderOrder = 10;
     this.scene.add(glow);
     this.flashes.push({ lens, at: now, glow, material });
   }
 
-  /** Strobe animation: a white burst fading through red, with a glow round the lens. */
+  /** Strobe animation (a white burst fading through red, with a glow), and the day's units. */
   update(now: number): void {
-    if (!this.lenses || this.flashes.length === 0) return;
-    const lenses = this.lenses;
+    this.followDay(now);
+    if (this.flashes.length === 0) return;
     const c = new Color();
+    const touched = new Set<InstancedMesh>();
     this.flashes = this.flashes.filter((f) => {
       const t = (now - f.at) / FLASH_MS;
       const isOver = t >= 1;
+      touched.add(f.lens.mesh);
       if (isOver) {
-        lenses.setColorAt(f.lens, LENS_REST);
+        f.lens.mesh.setColorAt(f.lens.index, LENS_REST);
         this.scene.remove(f.glow);
         f.material.dispose();
         return false;
@@ -556,28 +597,41 @@ export class OrbisDevices {
       // White for the first fifth, then red fading back to the resting dark red.
       if (t < 0.2) c.copy(LENS_WHITE);
       else c.copy(LENS_RED).lerp(LENS_REST, (t - 0.2) / 0.8);
-      lenses.setColorAt(f.lens, c);
+      f.lens.mesh.setColorAt(f.lens.index, c);
       f.material.opacity = t < 0.2 ? 1 : 1 - (t - 0.2) / 0.8;
       f.material.color.copy(t < 0.2 ? LENS_WHITE : LENS_RED);
       return true;
     });
-    if (lenses.instanceColor) lenses.instanceColor.needsUpdate = true;
+    for (const mesh of touched) if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
+  /**
+   * A new game day moves the portable units (the end of the day, or midnight on the clock):
+   * looked at every 5 s, and the devices rebuilt on the same graph when the date has changed.
+   */
+  private followDay(now: number): void {
+    if (now - this.dayCheckedAt < 5000 || !this.last || !this.portableKit) return;
+    this.dayCheckedAt = now;
+    const context = this.portableContext();
+    const today = context ? dayKey(context.day) : "";
+    const isNewDay = today !== this.portableDay;
+    if (isNewDay) this.rebuild(this.last.graph, this.last.frame);
   }
 
   clear(): void {
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
-    this.lenses = null;
-    this.lensIndex = [];
+    this.lensOf = [];
     for (const f of this.flashes) this.scene.remove(f.glow);
     this.flashes = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
     this.sites = [];
+    this.portable = [];
     this.warnings = [];
   }
 
-  private build(k: Kit): void {
+  private build(k: Kit, context: PortableContext | null): void {
     const ground = (p: Vector3) => this.groundAt(p.x, p.z) ?? 0;
     const up = new Vector3(0, 1, 0);
     const lists = {
@@ -587,8 +641,11 @@ export class OrbisDevices {
       unit: [] as Matrix4[],
       polePost: [] as Matrix4[],
       sign: [] as Matrix4[],
+      portable: [] as Matrix4[],
     };
     const poles: Array<{ pos: Vector3; height: number; radius: number }> = [];
+    /** Lens instance of each fixed site's lanes, in `lists.unit`. */
+    const unitIndex: number[][] = [];
     /** +X across the road (right of travel), +Y up, +Z back at the oncoming traffic. */
     const basis = (travel: Vector3, at: Vector3, scaleX = 1) => {
       const right = leftOf(travel, -1);
@@ -638,7 +695,13 @@ export class OrbisDevices {
         lanesAt.push(m.clone().multiply(new Matrix4().makeTranslation(ux, uy, uz)));
       }
       lists.unit.push(...lanesAt);
-      this.lensIndex.push(lanesAt.map((_, i) => lists.unit.length - lanesAt.length + i));
+      unitIndex.push(lanesAt.map((_, i) => lists.unit.length - lanesAt.length + i));
+    }
+    for (const site of this.portable) {
+      const at = (site.stand ?? site.line).clone().setY(0);
+      at.y = ground(at) + (context?.kerbAt?.(at.x, at.z) ?? 0);
+      lists.portable.push(basis(site.travel, at));
+      poles.push({ pos: at, height: 1.7, radius: 0.3 });
     }
     for (const w of this.warnings) {
       const at = w.pos.clone().setY(0);
@@ -653,9 +716,18 @@ export class OrbisDevices {
     this.instanced(k.polePost, lists.polePost);
     this.instanced(k.sign, lists.sign);
     if (lists.unit.length > 0) {
-      const lenses = this.instancedOne(k.lens, this.lensMaterial, lists.unit, false);
-      for (let i = 0; i < lists.unit.length; i++) lenses.setColorAt(i, LENS_REST);
-      this.lenses = lenses;
+      const lenses = this.lensMesh(k.lens, lists.unit);
+      this.lensOf = unitIndex.map((lanes) =>
+        lanes.map((index) => ({ mesh: lenses, index, centre: k.lensCentre, glow: 5 })),
+      );
+    }
+    const pk = this.portableKit;
+    if (pk && lists.portable.length > 0) {
+      this.instanced(pk.unit, lists.portable);
+      const lenses = this.lensMesh(pk.lens, lists.portable);
+      // A smaller strobe than the gantry's: a smaller burst.
+      for (let i = 0; i < lists.portable.length; i++)
+        this.lensOf[this.sites.length + i] = [{ mesh: lenses, index: i, centre: pk.lensCentre, glow: 3 }];
     }
     // Poles are solid for cars and people (not for ground probes), as the signal poles are.
     if (poles.length === 0) return;
@@ -668,6 +740,13 @@ export class OrbisDevices {
         this.body,
       );
     }
+  }
+
+  /** Strobe windows at the given matrices, resting dark red until a camera fires. */
+  private lensMesh(geometry: BufferGeometry, matrices: Matrix4[]): InstancedMesh {
+    const lenses = this.instancedOne(geometry, this.lensMaterial, matrices, false);
+    for (let i = 0; i < matrices.length; i++) lenses.setColorAt(i, LENS_REST);
+    return lenses;
   }
 
   private instanced(part: Part, matrices: Matrix4[]): void {
@@ -689,4 +768,23 @@ export class OrbisDevices {
     this.meshes.push(mesh);
     return mesh;
   }
+}
+
+/** The meshes under a named node of a loaded glb, baked into the scene's coordinates. */
+function partsOf(root: Object3D, file: string): (name: string) => Part {
+  root.updateMatrixWorld(true);
+  return (name) => {
+    const o = root.getObjectByName(name);
+    if (!o) throw new Error(`${file} has no ${name}`);
+    const out: Part = [];
+    o.traverse((m) => {
+      const mesh = m as Mesh;
+      if (!mesh.isMesh) return;
+      out.push({
+        geometry: mesh.geometry.clone().applyMatrix4(mesh.matrixWorld),
+        material: mesh.material as Material,
+      });
+    });
+    return out;
+  };
 }

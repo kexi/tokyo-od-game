@@ -9,17 +9,21 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   type Object3D,
+  PerspectiveCamera,
   PlaneGeometry,
+  type RenderTarget,
+  type Scene,
   SRGBColorSpace,
   Vector3,
 } from "three";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import type { WebGPURenderer } from "three/webgpu";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { warn } from "../log";
-import type { Pedestrian, Pedestrians } from "../world/pedestrians";
+import type { Pedestrians } from "../world/pedestrians";
 import { severityOf, type SocialPost } from "./social";
 import { SOCIAL_APP_NAME, SOCIAL_LOGO_PATH, SOCIAL_THEME } from "./socialTheme";
 import type { ViolationRecord } from "./traffic";
+import { sharedDraco } from "../render/draco";
 
 /** Only people this close film (a phone camera's useful reach for a car). */
 export const FILM_RANGE = 60;
@@ -93,15 +97,14 @@ export class WitnessPhones {
   private redrawIn = 0;
   private seed = 4242;
   private readonly stills = new Map<string, HTMLImageElement>();
+  private readonly loaded: Promise<void>;
 
   constructor(private readonly pedestrians: Pedestrians) {
-    void this.load().catch((e: unknown) => warn("smartphone_load_failed", { error: String(e) }));
+    this.loaded = this.load().catch((e: unknown) => warn("smartphone_load_failed", { error: String(e) }));
   }
 
   private async load(): Promise<void> {
-    const loader = new GLTFLoader().setDRACOLoader(
-      new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-    );
+    const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
     const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/smartphone.glb`);
     const phone = gltf.scene.getObjectByName("Smartphone");
     if (!phone) throw new Error("smartphone.glb has no Smartphone");
@@ -134,8 +137,48 @@ export class WitnessPhones {
     this.clip = { record, post, time: 0 };
     this.redrawIn = 0;
     for (const { who, seconds } of plan)
-      this.pedestrians.startFilming(who, seconds, () => this.makePhone(who));
+      this.pedestrians.startFilming(who, seconds, () => this.makePhone(who.profile.id));
     return plan.length;
+  }
+
+  /**
+   * Builds, before play, the pipelines the first phones would otherwise build in the frame they
+   * come out (a stall of tens of ms each in WebGPU): a phone of each case colour, with and without
+   * the video light and its glow, and the shared screen, compiled with the town's lights into
+   * `frameTarget`'s format (the frame's: the bystanders' shots share it). The case materials made
+   * here are the ones later phones use.
+   */
+  async precompile(renderer: WebGPURenderer, frameTarget: RenderTarget, scene: Scene): Promise<void> {
+    await this.loaded;
+    if (!this.template) return;
+    const shelf = new Group();
+    // One of each case colour; the even ids carry the video light and its glow.
+    for (let i = 0; i < Math.max(2, this.caseColors.length); i++) shelf.add(this.makePhone(i));
+    // The video light again, as it is after dark: three keys a material's numbers as zero or not,
+    // so the light at 3 is another build than the light at 0.
+    const night = this.makePhone(0);
+    for (const o of [shelf, night]) o.traverse((m) => (m.frustumCulled = false));
+    const glow = this.glow?.mesh.material as Material | undefined;
+    const glowWasVisible = glow?.visible ?? false;
+    const lit = this.light.emissiveIntensity;
+    const eye = new PerspectiveCamera();
+    const before = renderer.getRenderTarget();
+    const compiled: Array<Promise<void>> = [];
+    try {
+      // A hidden material is not drawn, so not compiled either: shown while the build is collected
+      // (compileAsync collects before it returns).
+      if (glow) glow.visible = true;
+      renderer.setRenderTarget(frameTarget);
+      this.light.emissiveIntensity = 0;
+      compiled.push(renderer.compileAsync(shelf, eye, scene));
+      this.light.emissiveIntensity = 3;
+      compiled.push(renderer.compileAsync(night, eye, scene));
+    } finally {
+      this.light.emissiveIntensity = lit;
+      if (glow) glow.visible = glowWasVisible;
+      renderer.setRenderTarget(before);
+    }
+    await Promise.all(compiled);
   }
 
   /** Runs the shared screen; `nightFactor` (0 day … 1 night) switches the video lights on. */
@@ -155,10 +198,10 @@ export class WitnessPhones {
     screen.texture.needsUpdate = true;
   }
 
-  private makePhone(who: Pedestrian): Object3D {
+  /** The phone held by the person with this id (its case colour and light follow from the id). */
+  private makePhone(id: number): Object3D {
     // Not loaded (yet): empty hands still make the pose read as filming.
     if (!this.template) return new Group();
-    const id = who.profile.id;
     const phone = this.template.clone(true);
     const caseColor = this.caseColors[id % this.caseColors.length];
     const hasLight = id % 2 === 0; // half of them switch the video light on after dark

@@ -37,6 +37,10 @@ export type OrbisEntry = {
   name: string;
   /** Warning-sign points, for each enforced direction (both when the bearing is unknown). */
   signs: OrbisSign[];
+  /** The ward it stands in (OSM boundary; builds from 2026-10-05 on). */
+  ward?: string;
+  /** The record it comes from ("osm:node/<id>"; builds from 2026-10-05 on). */
+  origin?: string;
 };
 
 /** 首都高 and other expressways in OSM's classes. */

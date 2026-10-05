@@ -1472,4 +1472,149 @@ export const SOCIAL_EN: Readonly<Record<string, string>> = {
   旅行中: "Traveling",
   全国: "All over Japan",
   埼玉: "Saitama",
+  // ---------- the pursuit and its charges (pursuitDirector.ts) ----------
+  "{place}でパトカーに追われてた車が歩行者をはねた…":
+    "A car being chased by the police just hit a pedestrian at {place}…",
+  "追跡中の車が人をはねたっぽい。{place}。救急車が呼ばれてる":
+    "Looks like the car the police were chasing hit someone. {place}. An ambulance has been called.",
+  "{time}、{place}。逃げてた車が横断中の人に当たった。けがしてる":
+    "{place}, {time}: the car that was fleeing hit someone crossing. They're hurt.",
+  "{place}、パトカーから逃げてた{color}{car}が人をはねた":
+    "{place}: a {color} {car} running from the police hit someone.",
+  "目の前で人がはねられた。追いかけられてた車。{place}":
+    "Someone got hit right in front of me. It was the car being chased. {place}",
+  "{place}で事故。サイレンを鳴らしたパトカーのすぐ前の車が歩行者に…":
+    "Accident at {place}. The car just ahead of a patrol car with its siren on hit a pedestrian…",
+  "{place}で、ものすごいスピードの車が人をはねた。パトカーに追われてた":
+    "A car going insanely fast hit someone at {place}. The police were chasing it.",
+  "赤信号を突っ切った車が横断中の人をはねた…{place}":
+    "A car tore through a red light and hit someone crossing… {place}",
+  "{place}。逃げる車が赤で交差点に入って、歩いてた人に当たった":
+    "{place}. The fleeing car went into the intersection on red and hit someone walking.",
+  "{time}、{place}で信号無視の車が人をはねた。あれは危険運転だと思う":
+    "A car ran a red and hit someone at {place}, {time}. That's dangerous driving if anything is.",
+  "{place}、とんでもない速度で走ってた{color}{car}が人をはねた。けが人が心配":
+    "{place}: a {color} {car} doing a crazy speed hit someone. Worried about them.",
+  "{place}で暴走した車が歩行者をはねる瞬間が映ってた。警察に提供します":
+    "My camera caught the moment a car out of control hit a pedestrian at {place}. Giving it to the police.",
+  "{place}で車がパトカーにぶつかっていった…わざと？":
+    "A car just rammed a patrol car at {place}… on purpose?",
+  "パトカーに体当たりする車を見た。{place}": "Saw a car ram a patrol car. {place}",
+  "{place}、検問の警察官に向かって車が突っ込んでいった。危ない":
+    "{place}: a car drove straight at the officer at the checkpoint. So dangerous.",
+  "{time}、{place}。止めに入った警察の車に車をぶつけてた":
+    "{place}, {time}: a car smashed into the police car trying to stop it.",
+  "{place}でパトカーに車をぶつけて逃げようとする瞬間。ドラレコに残ってた":
+    "My dashcam caught a car ramming a patrol car to get away at {place}.",
+  "{place}で警察の車にぶつけていった{color}{car}。信じられない":
+    "A {color} {car} crashed into a police car at {place}. Unbelievable.",
+  "{place}、パトカーのバンパーがへこんでた。ぶつけた車がいるらしい":
+    "{place}: a patrol car with a dented bumper. Apparently someone rammed it.",
+  "{place}でパトカーに当てていった車。パトカー、けっこう壊れてる":
+    "A car hit a patrol car at {place}. The patrol car's pretty banged up.",
+  "パトカーにぶつけるとか…{place}": "Hitting a patrol car… really? {place}",
+  "{time}、{place}。警察の車両が傷だらけ。逃げた車がぶつけたって":
+    "{place}, {time}: a police vehicle all scratched up. They say the fleeing car hit it.",
+  "{place}、白バイが倒れてた。車にぶつけられたみたい":
+    "{place}: a police motorcycle on its side. Looks like a car hit it.",
+  "{place}でぶつけられたパトカー。ライトが割れてる":
+    "The patrol car that got hit at {place}. Its lights are smashed.",
+  "#公務執行妨害": "#ObstructingPolice",
+  "#ヘリ": "#Helicopter",
+  "【交通】{ward}付近で緊急配備。パトカーや白バイが集まっています。緊急車両には道を譲ってください":
+    "[Traffic] Police are mobilizing around {ward}, with patrol cars and motorcycles converging. Please give way to emergency vehicles.",
+  "【交通】{ward}の上空で警察のヘリコプターが旋回しています":
+    "[Traffic] A police helicopter is circling over {ward}.",
+  "【交通】{ward}付近の交差点で検問が行われています。時間に余裕をもってお出かけください":
+    "[Traffic] Police are running a checkpoint at an intersection near {ward}. Allow extra time.",
+  "{ward}、パトカーと白バイが次々に走っていった。何事？":
+    "Patrol cars and police bikes going past one after another in {ward}. What's going on?",
+  "ヘリの音がずっと近い。{ward}で何かあったのかな":
+    "That helicopter's been overhead forever. Something happening in {ward}?",
+  "{ward}の交差点で検問してた。今日なにかあったの？":
+    "There's a police checkpoint at an intersection in {ward}. What happened today?",
+  "{place}でパトカーが何台も1台の車を追いかけてる": "Several patrol cars are chasing one car at {place}",
+  "サイレンがすごい。{place}でパトカーと白バイが車を追ってる":
+    "Sirens everywhere. Patrol cars and police bikes are chasing a car at {place}",
+  "{place}、逃げる車をパトカーが追跡中。巻き込まれないように":
+    "{place}: the police are chasing a car. Stay clear, everyone.",
+  "{place}でパトカーに追われてる車を撮った。かなりのスピード":
+    "Filmed a car being chased by the police at {place}. Going really fast.",
+  "{time}、{place}。パトカー何台かが同じ車を追いかけていった":
+    "{place}, {time}: a few patrol cars just went by after the same car.",
+  "{place}でパトカーとヘリが車を追ってる": "Patrol cars and a helicopter are chasing a car at {place}",
+  "上空にヘリ、地上にパトカー。{place}で逃げる車を追跡中みたい":
+    "Helicopter above, patrol cars on the ground. Looks like they're chasing a car at {place}.",
+  "{place}の先で検問やってる。追われてる車がいるらしい":
+    "There's a checkpoint up ahead past {place}. Apparently they're after a car.",
+  "{place}でパトカーとヘリが車を追う様子。ニュースになりそう":
+    "Patrol cars and a helicopter chasing a car at {place}. This'll be on the news.",
+  "{time}、{place}。ヘリの音がずっとしてる。逃げてる車がいるって":
+    "{place}, {time}: the helicopter hasn't stopped. They say a car is running from the police.",
+  "{place}でパトカーが車を追いかけてる": "Patrol cars are chasing a car at {place}",
+  "【続報】{place}付近でパトカーの停止に従わず走り去った車について、警察はナンバーや投稿された動画などから運転者を特定したもようです":
+    "[Update] The police appear to have identified the driver of the car that ignored a patrol car's order to stop near {place}, from its plate and videos people posted.",
+  // ---------- a car pulled over at the roadside (SocialFeed.postStop) ----------
+  "ちゃんと止まったなら、それだけでえらい": "If they actually stopped, that's something at least",
+  取り締まりを見ると気が引き締まる: "Seeing a traffic stop makes me drive more carefully",
+  何の違反だったんだろう: "Wonder what they did",
+  "あそこ、取り締まりよくやってるよね": "They do traffic stops there a lot",
+  "晒すのはやめておこう。ナンバーは消してね": "Let's not pile on. Blur the plate, please",
+  "切符を切られたら、次から気をつければいい": "Get a ticket, be more careful next time. That's all",
+  "後ろの車の邪魔にならない所に止めてて、えらい":
+    "Good on them for stopping where they weren't blocking anyone",
+  赤色灯って遠くからでも目立つね: "You can see those red lights from a long way off",
+  逃げなかっただけ立派: "At least they didn't run",
+  "{place}で取り締まり中。安全運転で": "Traffic stop going on at {place}. Drive safe",
+  "止められてる車を見ると、自分の運転を見直す": "Seeing someone pulled over makes me rethink my own driving",
+  ナンバーと顔は映らないようにしてます: "I made sure no plates or faces are visible",
+  しばらくしたら車は走っていきました: "The car drove off after a while",
+  "{place}で白黒パトカーに止められてる車いる": "There's a car pulled over by a patrol car at {place}",
+  "{place}、パトカーが後ろについて車を止めてた。何があったんだろう":
+    "{place}: a patrol car pulled up behind a car and stopped it. Wonder what happened",
+  "{place}でお巡りさんが運転席の窓のところで話してる":
+    "An officer is talking to the driver through the window at {place}",
+  "{time}、{place}。パトカーの赤色灯がずっと回ってる。取り締まりかな":
+    "{place}, {time}: the patrol car's red lights have been flashing for a while. Traffic stop, probably",
+  "{place}の路肩で{color}{car}がパトカーに止められてる":
+    "A {color} {car} is pulled over by the police at the curb at {place}",
+  "{place}、歩道から見えた。パトカーに止められてる車":
+    "{place}: saw it from the sidewalk. A car pulled over by the police",
+  "{place}で白バイに止められてる車いる": "There's a car pulled over by a police motorcycle at {place}",
+  "白バイの隊員さんが車の横で話してる。{place}":
+    "A motorcycle officer is talking to the driver beside the car. {place}",
+  "{time}、{place}。白バイが車を路肩に止めさせてた":
+    "{place}, {time}: a police motorcycle had a car pull over to the curb",
+  "{place}、白バイの取り締まり。歩道から": "{place}: a police motorcycle traffic stop. From the sidewalk",
+  "切符切られてるっぽい。{place}": "Looks like someone's getting a ticket. {place}",
+  "{place}、パトカーに止められた車。青切符かな。自分も気をつけよう":
+    "{place}: a car stopped by the police. Probably a ticket. Note to self: be careful",
+  "{place}で取り締まり。ちゃんと路肩に寄せて止まってた":
+    "Traffic stop at {place}. They pulled over properly to the curb",
+  "{time}、{place}。お巡りさんが何か書いてる。切符だろうな":
+    "{place}, {time}: the officer's writing something. A ticket, I guess",
+  "{place}、運転手さんがパトカーの後ろの席に乗せられてる":
+    "{place}: the driver is getting into the back of the patrol car",
+  "{place}で止められた車、けっこう長く話してる。赤切符かな":
+    "The car pulled over at {place} has been there a while. Something serious, maybe",
+  "パトカーの中で書類を書いてるっぽい。{place}。重めの違反なのかな":
+    "Looks like they're doing paperwork in the patrol car. {place}. A bigger violation, maybe",
+  "{time}、{place}。止められてた車の運転手がパトカーに乗った":
+    "{place}, {time}: the driver of the car that was stopped got into the patrol car",
+  "{place}で運転手が警察に連れて行かれた…": "The police just took a driver away at {place}…",
+  "{place}、パトカーが何台も止まってて、運転手が乗せられていった":
+    "{place}: several patrol cars, and the driver was taken away in one",
+  "逮捕されたっぽい。{place}。何をしたんだろう": "Looks like an arrest. {place}. Wonder what they did",
+  "{place}で運転手がパトカーに乗せられるところ。顔は映してません":
+    "The driver being put into a patrol car at {place}. No faces shown",
+  "{time}、{place}。警察官に囲まれた車から運転手が降りてきた":
+    "{place}, {time}: the driver got out of a car surrounded by officers",
+  "さっきの逃げてた車、{place}でやっと止まったみたい":
+    "The car that was running from the police finally stopped at {place}, it seems",
+  "{place}、パトカーに追われてた車が止められてる。周りに警察官がたくさん":
+    "{place}: the car the police were chasing has been stopped. Officers everywhere",
+  "追跡、{place}で終わったっぽい。けが人がいないといいけど":
+    "Looks like the chase ended at {place}. Hope nobody got hurt",
+  "#取り締まり": "#TrafficStop",
+  "{place}でパトカーが車を止めてる": "The police have pulled a car over at {place}",
 };

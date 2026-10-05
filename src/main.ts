@@ -65,7 +65,9 @@ import { gameClock, inForce as isInForceTime, timeNote, tokyoDate, type GameCloc
 import { classifyTurn, laneAllows, laneIndex, planRoute, type Turn } from "./game/navigation";
 import { RouteArrows } from "./game/routeArrows";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
-import { AutoDriver, keepLeftOffset } from "./game/autoDriver";
+import { AutoDriver, kerbLeft, keepLeftOffset, type DriveObstacle } from "./game/autoDriver";
+import { rapierClearance } from "./game/autoRecovery";
+import { halfLengthOf } from "./game/autoTraffic";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, Pavements, PavementTiles, type PavementPolygon } from "./world/pavements";
@@ -124,6 +126,10 @@ import { loadViolations, saveViolations, ViolationSync } from "./game/violationS
 import { ClipPose, CLIP_AFTER_MS, CLIP_BEFORE_MS, cutClip, type ActorDesc } from "./game/replayClip";
 import { renderTicket } from "./game/ticketForm";
 import { PolicePatrol, type PatrolKind } from "./game/policePatrol";
+import { PursuitDirector } from "./game/pursuitDirector";
+import { isEnforcing } from "./game/pursuitEscalation";
+import { loadPursuitModels, PursuitScene } from "./game/pursuitScene";
+import type { StopSite } from "./game/trafficStop";
 import { CarControls, type AutoContext } from "./game/carControls";
 import { Cockpit } from "./game/cockpit";
 import { CHARM_TIP, firstCharmTip, MirrorCharms } from "./game/mirrorCharm";
@@ -165,6 +171,9 @@ import { WitnessPhones } from "./game/witnessPhones";
 import { appTile, SocialApp } from "./game/socialView";
 import { SOCIAL_APP_NAME } from "./game/socialTheme";
 import { WitnessShot } from "./game/witnessShot";
+import { Darkroom } from "./game/darkroom";
+import { DueQueue } from "./game/frameSlices";
+import { frameStats, longFramesDuring, perf, round, watchFrames } from "./game/perf";
 import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
@@ -420,6 +429,8 @@ async function main(): Promise<void> {
     loadAmbulanceModel(),
     loadHumanModels(),
     loadFacadeTextures(),
+    // The helicopter, the 検問's props and the officers on foot (each may fail on its own).
+    loadPursuitModels(),
   ]);
   let frame = new LocalFrame(spawn.lat, spawn.lon, dem.heightAt(spawn.lat, spawn.lon) ?? 40);
 
@@ -596,7 +607,17 @@ async function main(): Promise<void> {
     player: vehicle,
   });
   // オービス and their 予告看板 (loads its own model and police.json).
-  const orbis = new OrbisDevices(scene, (x, z) => groundY(x, z), world);
+  // 可搬式 units move with the game's date and favour streets by a 小学校 (places.json).
+  const orbis = new OrbisDevices(
+    scene,
+    (x, z) => groundY(x, z),
+    world,
+    () => ({
+      day: tokyoDate(env.now()),
+      schools: places?.schools ?? [],
+      kerbAt: (x, z) => (pavements.contains(x, z) ? KERB : 0),
+    }),
+  );
   let places: Places | null = null;
   void fetch(`${import.meta.env.BASE_URL}data/places.json`)
     .then((r) => (r.ok ? r.json() : null))
@@ -857,6 +878,7 @@ async function main(): Promise<void> {
     traffic.transform(offset, Math.atan2(f.x, f.z));
     emergency.transform(offset);
     patrol.transform(offset);
+    pursuitDirector.transform(offset);
     taxi?.transform(offset, Math.atan2(f.x, f.z));
     autopilot?.driver.transform(offset, Math.atan2(f.x, f.z));
     pavements.rebuild(pavementPolys, frame);
@@ -886,12 +908,7 @@ async function main(): Promise<void> {
   /** While the destination loads the car waits there, frozen; then it starts on the nearest street. */
   let warping: { label: string; since: number; yaw: number } | null = null;
   const warpTo = (place: WarpPlace) => {
-    const isBusy =
-      police?.state === "pursuing" ||
-      police?.state === "ticketing" ||
-      $<HTMLDialogElement>("#ticket-dialog").open ||
-      !$("#suspended").hidden;
-    if (isBusy) return toast(i18n.t("toast.warpBusy"), "#ff6b6b");
+    if (enforcing()) return toast(i18n.t("toast.warpBusy"), "#ff6b6b");
     if (mode === "taxi") return toast(i18n.t("toast.warpInTaxi"));
     if (replay) stopReplay();
     if (autopilot) stopAutopilot(i18n.t("toast.autopilotOffForWarp"));
@@ -1032,11 +1049,19 @@ async function main(): Promise<void> {
   });
   input.on("camera", () => toast(i18n.t("toast.camera", { name: i18n.t(CAMERA_KEY[chase.cycle()]) })));
   input.on("mute", () => toast(i18n.t(audio.toggleMute() ? "toast.soundOff" : "toast.soundOn")));
-  input.on("reset", respawnHere);
+  // 復帰 (R) puts the car on the nearest street: not while the police are dealing with it.
+  input.on("reset", () => {
+    if (enforcing()) return toast(i18n.t("toast.enforcingBusy"), "#ff6b6b");
+    respawnHere();
+  });
   input.on("help", () => $<HTMLDialogElement>("#help").showModal());
   // タイトルへ: the title screen is the page's own start screen, so going back is a fresh load (what
   // the browser keeps — records, spots, home, settings — survives it).
-  input.on("title", () => $<HTMLDialogElement>("#title-dialog").showModal());
+  input.on("title", () => {
+    // A fresh load would end the pursuit, the stop or the story half way: they finish first.
+    if (enforcing()) return toast(i18n.t("toast.enforcingBusy"), "#ff6b6b");
+    $<HTMLDialogElement>("#title-dialog").showModal();
+  });
   $("#title-confirm").addEventListener("click", () => {
     log("title", {});
     location.reload();
@@ -1202,6 +1227,10 @@ async function main(): Promise<void> {
     /** Violations on the timeline: when, what, and why (shown as a caption around the moment). */
     marks: Array<{ at: number; label: string; why: string }>;
     isClip: boolean;
+    /** Close by itself here (the moment shown at the roadside: 5 s after the violation). */
+    stopAt?: number;
+    /** Called once it closes (the roadside conversation goes on). */
+    onClose?: () => void;
   };
   /** Saved clips play through the same director: their samples become a recording again. */
   type ReplaySource = {
@@ -1283,6 +1312,7 @@ async function main(): Promise<void> {
     videoFrame = null;
     if (reopenPhone) phone.show(false);
     reopenPhone = false;
+    r.onClose?.();
   };
   /** The frame of a post's video: the poster's aspect, black beyond it, who filmed it. */
   let videoFrame: HTMLElement | null = null;
@@ -1347,6 +1377,7 @@ async function main(): Promise<void> {
     if (!r) return;
     const rec = r.rec;
     if (r.playing) r.t = Math.min(rec.end, r.t + dt * 1000 * r.speed);
+    if (r.stopAt !== undefined && r.t >= r.stopAt) return stopReplay();
     if (r.t >= rec.end) r.playing = false;
     const s = rec.at(r.t);
     if (!s) return;
@@ -1674,6 +1705,8 @@ async function main(): Promise<void> {
   // the window. Why not E there too: in the car E is the engine (City Car Driving's key), and the
   // hint said 「E で話しかける」 while E switched the engine off.
   input.on("enter", () => {
+    // The window's first answer, or the story's next panel.
+    if (pursuitDirector.primary()) return;
     if (phone.inCall) return phone.focusInput();
     if (conversation.active) return conversation.focusInput();
     if (mode === "car") startTalk();
@@ -1686,6 +1719,8 @@ async function main(): Promise<void> {
   });
   input.on("door", () => {
     if (state !== "playing") return;
+    // Out of the car and away on foot would be a way out of the pursuit or the stop.
+    if (mode === "car" && enforcing()) return toast(i18n.t("toast.enforcingBusy"), "#ff6b6b");
     if (autopilot) {
       if (autopilot.driver.speed > 0.5) return toast(i18n.t("toast.stopToGetOut"));
       stopAutopilot(i18n.t("toast.autopilotOff"));
@@ -1739,6 +1774,8 @@ async function main(): Promise<void> {
   // Esc: the conversation, the phone held large or in a call — or else 設定. The phone in its holder
   // stays (F puts it away): it is out all the time, so Esc would never reach 設定.
   input.on("close", () => {
+    // Esc skips the story panels (what they tell still applies).
+    if (pursuitDirector.skip()) return;
     const isTalking = !$("#chat").hidden;
     if (isTalking) return conversation.close();
     if (phone.open && phone.zoomed) return phone.setZoom(false);
@@ -1938,6 +1975,8 @@ async function main(): Promise<void> {
     scene.remove(gallery);
     renderer.setRenderTarget(null);
     pending.push(cockpit.precompile(renderer, composer, scene, camera.aspect), composer.precompile());
+    // What the first violation would build in its frame: the bystanders' phones, the shots' probe.
+    if (!isPrewarmOff) pending.push(...prewarmWitnesses());
     try {
       await Promise.all(pending);
     } finally {
@@ -2052,6 +2091,7 @@ async function main(): Promise<void> {
       }
     }
     const manual = isInCar ? input.read(dt) : { throttle: 0, brake: 0, steer: 0, handbrake: false };
+    playerThrottle = manual.throttle;
     // Any steering, accelerator or brake input takes the car back, as with a real driver-assist system.
     const isOverride = Math.abs(manual.throttle) > 0.2 || manual.brake > 0.2 || Math.abs(manual.steer) > 0.3;
     if (autopilot && isOverride) stopAutopilot(i18n.t("toast.autopilotOverride"));
@@ -2060,7 +2100,12 @@ async function main(): Promise<void> {
     if (isInCar) controls.autoOperate(autoContext(manual.throttle), dt);
     const isHeld = controls.autoHold && !autopilot;
     const powered = controls.engineOn || autopilot ? pedals : { ...pedals, throttle: 0 };
-    const drive = isHeld ? { ...powered, handbrake: true } : powered;
+    // At the roadside stop and through the story the car stays where it stopped.
+    const drive = pursuitDirector.holdCar
+      ? { ...powered, throttle: 0, brake: 0, handbrake: true }
+      : isHeld
+        ? { ...powered, handbrake: true }
+        : powered;
     if (isInCar) controls.update(vehicle.yaw(), manual.steer);
     // Look aside / behind while held (左右 Ctrl, Z), as in City Car Driving.
     const lookKeys = LOOK_KEYS[input.layout];
@@ -2098,6 +2143,19 @@ async function main(): Promise<void> {
       if (isCoolingDown) return;
       contactCooldown.set(other, performance.now() + 3000);
       const kmh = Math.abs(vehicle.speedKmh());
+      // A police unit: was it hit on purpose? (pursuitLaw.ts decides, conservatively.)
+      const unit = patrols.find((u) => u.car.chassis.handle === other);
+      if (unit) {
+        const fwd = headingVector(vehicle.quaternion());
+        const to = unit.position.clone().sub(vehicle.position()).setY(0).normalize();
+        const unitFwd = new Vector3(Math.sin(unit.car.yaw()), 0, Math.cos(unit.car.yaw()));
+        pursuitDirector.onUnitHit(unit, {
+          playerKmh: kmh,
+          unitKmh: unit.car.forwardSpeed() * 3.6 * unitFwd.dot(fwd),
+          angleDeg: (Math.acos(Math.min(1, Math.max(-1, to.dot(fwd)))) * 180) / Math.PI,
+          throttle: drive.throttle,
+        });
+      }
       const ped = pedestrians.byCollider(other);
       if (ped && kmh > 3) {
         pedestrians.knockDown(ped);
@@ -2211,6 +2269,8 @@ async function main(): Promise<void> {
     traffic.update(dt, focus, carPos, carForward, isInCar ? speed / 3.6 : 0);
     updateTaxi(dt, now);
     updatePolice(dt, now);
+    // The pursuit and what follows it (pursuitDirector.ts): only in play, so the pause holds it.
+    pursuitDirector.update(dt, now);
     updateAutopilot(dt);
     speedometer.update(speed, currentLimit, currentLimitKind);
 
@@ -2376,10 +2436,16 @@ async function main(): Promise<void> {
       // オービス (速度違反自動取締装置): crossing a device's line in the direction and lanes it
       // covers, 30 km/h or more over the limit (40 on an expressway: the 赤切符 range they are set
       // for), fires the camera and its strobe; the notice comes by post after the day ends.
+      // 可搬式 units take 15 km/h or more: below 30 it is a 反則行為, settled with a 青切符 when the
+      // driver answers the notice (第126条), as speedViolation's 反則金 says.
       for (const hit of orbis.check(lawPrevPos, carPos, speed, now)) {
         const photo = speedViolation(hit.excess) ?? VIOLATIONS.signal;
+        const isPortable = hit.site.kind === "portable";
         const context = violationContext(
-          inJapanese("violationDetail.orbis", { kmh: Math.round(speed), limit: hit.limit }),
+          inJapanese(isPortable ? "violationDetail.orbisPortable" : "violationDetail.orbis", {
+            kmh: Math.round(speed),
+            limit: hit.limit,
+          }),
         );
         const committed = law.commit(photo, now, 0, context);
         if (committed) pendingShots.push(committed);
@@ -2389,10 +2455,18 @@ async function main(): Promise<void> {
           (r) => r.kind === photo.kind && r.status === "uncaught" && now - r.at < 30000,
         );
         const record = committed ?? (open ? Object.assign(open, photo, { context }) : null);
-        if (record) law.notice(record, "orbis");
+        if (record) law.notice(record, isPortable ? "orbisPortable" : "orbis");
+        // The photo is a violation on record (book() stamps the others): its seal too.
+        if (committed) stamps.stamp("違反", shortLabel(committed.label));
         flashScreen();
         social.note("orbis", env.now().getTime());
-        log("orbis", { id: hit.site.entry.id, lane: hit.lane, kmh: Math.round(speed), limit: hit.limit });
+        log("orbis", {
+          id: hit.site.entry.id,
+          kind: hit.site.kind,
+          lane: hit.lane,
+          kmh: Math.round(speed),
+          limit: hit.limit,
+        });
       }
 
       // 無灯火 (第52条): at night with the headlights switched off.
@@ -2542,8 +2616,9 @@ async function main(): Promise<void> {
     if (incidentEvent?.type === "hitAndRun") {
       toast(i18n.t("toast.hitAndRun"), "#ff6b6b");
     } else if (incidentEvent?.type === "arrested") {
-      law.book(VIOLATIONS.hitAndRun, now, 0);
-      showArrest(incidentEvent.later ? "hitAndRunLater" : "hitAndRun");
+      const hit = law.book(VIOLATIONS.hitAndRun, now, 0);
+      // The arrest told as the story panels (pursuitDirector.ts), then the arrest screen.
+      pursuitDirector.hitAndRunArrest(incidentEvent.later, hit);
     } else if (incidentEvent?.type === "arrived") {
       toast(
         i18n.t(incidentEvent.kind === "ambulance" ? "toast.ambulanceArrived" : "toast.policeArrived"),
@@ -2597,7 +2672,8 @@ async function main(): Promise<void> {
     const isRouteDone = nav.route !== null && nav.route.reachesTarget && nav.route.length - nav.lastAt < 25;
     const result = missions.check(geo.lat, geo.lon, now, isRouteDone);
     if (result === "timeout") toast(i18n.t("toast.missionTimeout", { key: keyOf("mission") }), "#ff6b6b");
-    else if (result && result.target.category === "home") endDay();
+    // Home while the police are dealing with the car: the day ends once they are done.
+    else if (result && result.target.category === "home") dayEndDue = true;
     else if (result && result.target.category === "appointment") appear();
     else if (result && result.target.category === "destination") {
       audio.chime(true);
@@ -2607,6 +2683,7 @@ async function main(): Promise<void> {
       audio.chime(true);
       toast(i18n.t("toast.missionDone", { name: result.target.name, points: result.reward }), "#7dff9a");
     }
+    if (dayEndDue && !enforcing()) endDay();
     const target = missions.current?.target ?? null;
     // In the car the green route arrows show the way; the direction cone would only compete.
     const isGuided = isInCar && nav.route !== null;
@@ -2615,12 +2692,22 @@ async function main(): Promise<void> {
       target && !isGuided ? field.localPosition(target) : null,
     );
 
+    // The roadside stop's shots (the patrol car behind, the officer walking up, the window).
+    const isFilmed =
+      pursuitDirector.filming &&
+      pursuitScene.placeCamera(camera, {
+        car: carPos,
+        carQuat: carRot,
+        patrol: pursuitDirector.stop?.unit.position ?? null,
+        officer: pursuitScene.officer.position,
+      });
     if (debugCamera) debugCamera(camera, focus);
+    else if (isFilmed) camera.updateMatrixWorld();
     else if (isOnFoot) walker.updateCamera(camera, dt);
     else if (isInTaxi && taxi) chase.update(dt, taxi.position, taxi.model.root.quaternion, taxi.speed);
     else if (isInCar && chase.mode === "cockpit" && cockpit.root) cockpit.placeCamera(camera, chase.look);
     else chase.update(dt, carPos, carRot, speed / 3.6);
-    cockpit.setActive(isInCar && chase.mode === "cockpit");
+    cockpit.setActive(isInCar && chase.mode === "cockpit" && !isFilmed);
     // The listener rides the camera; from inside the car the world is heard through the cabin.
     audio.spatial.update({
       dt,
@@ -2807,6 +2894,8 @@ async function main(): Promise<void> {
     composer.present();
     // Same task as the present: the canvas still holds the frame for the grabs below.
     takeShots();
+    // After the frame: a bystander's post that is due, and one off-screen render of the shots.
+    afterViolations(now);
     if (pendingScreenshot) {
       pendingScreenshot = false;
       renderer.domElement.toBlob((blob) => {
@@ -2861,20 +2950,36 @@ async function main(): Promise<void> {
   };
   // Records whose screen is grabbed right after the next frame is drawn.
   const pendingShots: ViolationRecord[] = [];
-  const shotCanvas = document.createElement("canvas");
-  shotCanvas.width = 480;
-  shotCanvas.height = 270;
+  // Pictures made off the main thread: the screen kept with a record, a bystander's photo.
+  const darkroom = new Darkroom();
+  /**
+   * The screen at the violation, for its records (違反の記録, the roadside stop's 違反の映像). How: an
+   * ImageBitmap of the canvas taken in the frame's own task (the canvas still holds the frame),
+   * encoded to a JPEG in the darkroom worker; the records get it a moment later. Why not
+   * drawImage + toDataURL here (as before): toDataURL waits for the GPU to finish the frame and
+   * encodes on the main thread, in this frame. Still a data URL: the record is kept in IndexedDB,
+   * where a blob: URL would not outlive the page.
+   */
   const takeShots = () => {
     if (pendingShots.length === 0) return;
-    const ctx = shotCanvas.getContext("2d");
-    if (!ctx) return;
-    // Same task as the frame's present, so the canvas still holds the frame.
-    ctx.drawImage(renderer.domElement, 0, 0, shotCanvas.width, shotCanvas.height);
-    const url = shotCanvas.toDataURL("image/jpeg", 0.7);
-    for (const r of pendingShots.splice(0)) if (r.context) r.context.snapshot = url;
+    const records = pendingShots.splice(0);
+    const grabbing = perf.time("screen.grab", () => darkroom.grab(renderer.domElement, 480, 270, 0.7));
+    void (darkroom.inline ? grabbing : perf.span("screen.encode", grabbing))
+      .then((url) => {
+        if (!url) return;
+        for (const r of records) if (r.context) r.context.snapshot = url;
+      })
+      .catch((error: unknown) => warn("screen_grab_failed", { error: String(error) }));
   };
   // Offences the police always learn of: those of an accident they are called to.
-  const ACCIDENT_KINDS = new Set(["safeDriving", "injury", "phoneDanger", "hitAndRun"]);
+  const ACCIDENT_KINDS = new Set([
+    "safeDriving",
+    "injury",
+    "phoneDanger",
+    "hitAndRun",
+    "negligentInjury",
+    "dangerousInjury",
+  ]);
   /**
    * People who could see the car: pedestrians and drivers within 80 m. The people the game draws are
    * a sample of the street: busier areas (e-Stat density sets the crowd size) have more eyes and
@@ -2899,44 +3004,55 @@ async function main(): Promise<void> {
    * accident, or a patrol that sees it (then a chase and a ticket on the spot); otherwise it
    * stays the driver's own record (未検挙), shown so the player still learns from it.
    */
-  const book = (v: Violation, now: number, cooldownMs?: number, detail?: string) => {
-    const booked = law.commit(v, now, cooldownMs, violationContext(detail));
-    if (!booked) return;
+  const book = (
+    v: Violation,
+    now: number,
+    cooldownMs?: number,
+    detail?: string,
+    /** Seen by the units on the car rather than found at an accident (the chase's 安全運転義務違反). */
+    byPatrol = false,
+  ): ViolationRecord | null => {
+    const started = performance.now();
+    const booked = perf.time("violation.commit", () =>
+      law.commit(v, now, cooldownMs, violationContext(detail)),
+    );
+    if (!booked) return null;
     pendingShots.push(booked);
     score = Math.max(0, score - booked.points * 50);
-    const isAccident = ACCIDENT_KINDS.has(booked.kind) || booked.kind.startsWith("injury");
+    const isAccident = !byPatrol && (ACCIDENT_KINDS.has(booked.kind) || booked.kind.startsWith("injury"));
     const carPos = vehicle.position();
-    if (isAccident) {
-      law.cite(booked, "accident");
-      notify("caught", () => formatViolation(booked));
-      stamps.stamp("違反", shortLabel(booked.label));
-    } else if (patrols.some((u) => u.sees(carPos))) {
-      // The unit already on the car takes it; otherwise the first that saw it.
-      const unit = police?.sees(carPos) ? police : (patrols.find((u) => u.sees(carPos)) ?? null);
-      if (unit) {
-        police = unit;
-        if (unit.witness(booked) === "pursuit") startPursuit();
-        notify("caught", () => i18n.t(SEEN_BY_KEY[unit.kind], { label: violationName(booked.label) }));
+    // Every violation is stamped as it happens, caught or not: the seal says what the driver did;
+    // whether anyone saw it is the notice's line (and the ticket's, later).
+    stamps.stamp("違反", shortLabel(booked.label));
+    perf.time("violation.pursuit", () => pursuitDirector.onViolation(booked));
+    perf.time("violation.police", () => {
+      if (isAccident) {
+        law.cite(booked, "accident");
+        notify("caught", () => formatViolation(booked));
+        // Part of the case when a pursuit or a stop is on.
+        pursuitDirector.witness(booked);
+      } else if (pursuitDirector.witness(booked)) {
+        // The units on the car (or the helicopter over it) see it: the line names the article.
+        notify("caught", () => formatViolation(booked));
+      } else if (patrols.some((u) => u.sees(carPos))) {
+        // The unit already on the car takes it; otherwise the first that saw it.
+        const unit = police?.sees(carPos) ? police : (patrols.find((u) => u.sees(carPos)) ?? null);
+        if (unit) {
+          police = unit;
+          if (unit.witness(booked) === "pursuit") startPursuit();
+          notify("caught", () => i18n.t(SEEN_BY_KEY[unit.kind], { label: violationName(booked.label) }));
+        }
+      } else {
+        notify("violation", () => i18n.t("notify.uncaught", { label: violationName(booked.label) }));
       }
-    } else {
-      notify("violation", () => i18n.t("notify.uncaught", { label: violationName(booked.label) }));
-    }
-    // Bystanders and dashcams nearby: someone may film it and post it.
-    const witnesses = witnessesAround(carPos);
-    const post = social.maybePost(booked, witnesses, env.now().getTime());
-    // Those of them who can see the car get their phones out (the poster among them).
-    const filmers = witnessPhones.react(booked, post, carPos);
+    });
+    // Bystanders and dashcams nearby: someone may film it and post it, a few seconds from now.
+    const witnesses = perf.time("violation.witnesses", () => witnessesAround(carPos));
+    const post = perf.time("violation.draft", () => draftWitnessPost(booked, witnesses));
+    // Those of them who can see the car get their phones out (the poster among them, typing it).
+    const filmers = perf.time("violation.phones", () => witnessPhones.react(booked, post, carPos));
     if (filmers > 0) log("social", { event: "filmed", kind: booked.kind, filmers, witnesses });
-    if (post) {
-      const label = booked.label;
-      notify(
-        "social",
-        () => i18n.t("notify.posted", { app: SOCIAL_APP_NAME, label: violationName(label) }),
-        post,
-      );
-      socialUnread++;
-      log("social", { event: "post", kind: booked.kind, witnesses, reach: post.reach });
-    }
+    if (post) queuePost(post, witnesses);
     const c = booked.context;
     log("violation", {
       kind: booked.kind,
@@ -2950,6 +3066,8 @@ async function main(): Promise<void> {
       limit: c?.limit,
       detail: c?.detail,
     });
+    perf.add("violation.total", performance.now() - started, true, started);
+    return booked;
   };
 
   // ---------- Y（SNS） ----------
@@ -2996,31 +3114,100 @@ async function main(): Promise<void> {
     };
   };
   // Each poster's photo is their own shot from where they stood, not the driver's screen.
-  const witnessShot = new WitnessShot(renderer, composer, scene, {
-    ground: (x, z) => groundY(x, z),
-    subject: () => ({ position: vehicle.position(), yaw: vehicle.yaw(), kmh: Math.abs(vehicle.speedKmh()) }),
-    witnesses: (at) => pedestrians.witnessesOf(at, 60).map((p) => p.object.position),
-    hidden: () => [ribbon.object, missions.arrow],
-    isOpen: (x, z) => {
-      const g = groundY(x, z);
-      return g === null || isOpenGround(x, z, g);
+  const witnessShot = new WitnessShot(
+    renderer,
+    composer,
+    scene,
+    {
+      ground: (x, z) => groundY(x, z),
+      subject: () => ({
+        position: vehicle.position(),
+        yaw: vehicle.yaw(),
+        kmh: Math.abs(vehicle.speedKmh()),
+      }),
+      witnesses: (at) => pedestrians.witnessesOf(at, 60).map((p) => p.object.position),
+      hidden: () => [ribbon.object, missions.arrow],
+      isOpen: (x, z) => {
+        const g = groundY(x, z);
+        return g === null || isOpenGround(x, z, g);
+      },
+      // The shot's eye is already at eye height; the test adds it again, so lower the start.
+      sight: (from, to) => lineOfSight(new Vector3(from.x, from.y - EYE_HEIGHT, from.z), to),
+      subjectObject: () => vehicle.object,
+      stage: (shoot) => {
+        const wasCockpit = cockpit.active;
+        cockpit.setActive(false);
+        shoot();
+        cockpit.setActive(wasCockpit);
+      },
+      // Where the poster stood, as latitude/longitude, so the video plays there after a recentre.
+      filmed: (post) => {
+        const from = post.filmedFrom;
+        if (from) from.geo = frame.toGeodetic(new Vector3(from.eye.x, from.eye.y, from.eye.z));
+      },
     },
-    // The shot's eye is already at eye height; the test adds it again, so lower the start.
-    sight: (from, to) => lineOfSight(new Vector3(from.x, from.y - EYE_HEIGHT, from.z), to),
-    subjectObject: () => vehicle.object,
-    stage: (shoot) => {
-      const wasCockpit = cockpit.active;
-      cockpit.setActive(false);
-      shoot();
-      cockpit.setActive(wasCockpit);
-    },
-    // Where the poster stood, as latitude/longitude, so the video plays there after a recentre.
-    filmed: (post) => {
-      const from = post.filmedFrom;
-      if (from) from.geo = frame.toGeodetic(new Vector3(from.eye.x, from.eye.y, from.eye.z));
-    },
-  });
+    darkroom,
+  );
+  // Asked again when a post drafted at the violation is published: the shot is already under way.
   social.camera = (post) => witnessShot.shoot(post);
+  // Dev: `?noprewarm` leaves the witnesses' pipelines to the first violation (to see what it saves).
+  const isPrewarmOff = import.meta.env.DEV && new URLSearchParams(location.search).has("noprewarm");
+  /** Built before play by precompile: the bystanders' phones, the shots' probe, the darkroom worker. */
+  const prewarmWitnesses = (): Array<Promise<unknown>> => {
+    darkroom.warm();
+    return [
+      perf.span("prewarm.phones", witnessPhones.precompile(renderer, composer.target, scene)),
+      perf.span("prewarm.shot", witnessShot.precompile(composer.target)),
+    ].map((p) => p.catch((error: unknown) => warn("prewarm_failed", { error: String(error) })));
+  };
+  // Bystanders' posts waiting to go up, in the order of what they saw.
+  const postsDue = new DueQueue<{ post: SocialPost; witnesses: number }>();
+  // Real seconds from seeing it to posting it (filming it, typing it).
+  const POST_DELAY_S = [2.5, 5.5] as const;
+  // Dev (window.__game.debug.perf): off puts all of it back in the violation's frame, as before.
+  let isSpread = true;
+  // Dev: the next violation is posted, with this medium.
+  let forcedPost: "photo" | "video" | null = null;
+  /** A bystander's post about `booked` if someone makes one: drafted now, published by queuePost. */
+  const draftWitnessPost = (booked: ViolationRecord, witnesses: number): SocialPost | null => {
+    const at = env.now().getTime();
+    if (!forcedPost) return social.draftPost(booked, witnesses, at);
+    // Drafted again until one comes in that medium (a draft only takes an id and an opener).
+    for (let i = 0; i < 60; i++) {
+      const p = social.draftPost(booked, Math.max(witnesses, 6), at);
+      if (p?.media === forcedPost) return p;
+    }
+    return null;
+  };
+  /**
+   * The post goes up a few seconds after the violation, as a bystander's does (they film it, then
+   * type it: the phones show it being typed meanwhile). Its photo is started now, drawn over the
+   * frames right after (the moment itself) and developed by the time it is posted.
+   */
+  const queuePost = (post: SocialPost, witnesses: number) => {
+    if (post.media !== "text") witnessShot.shoot(post);
+    if (!isSpread) return publishPost(post, witnesses);
+    const delay = POST_DELAY_S[0] + Math.random() * (POST_DELAY_S[1] - POST_DELAY_S[0]);
+    postsDue.push({ post, witnesses }, performance.now() + delay * 1000);
+  };
+  const publishPost = (post: SocialPost, witnesses: number) =>
+    perf.time("post.publish", () => {
+      social.publish(post, env.now().getTime());
+      const label = post.record.label;
+      notify(
+        "social",
+        () => i18n.t("notify.posted", { app: SOCIAL_APP_NAME, label: violationName(label) }),
+        post,
+      );
+      socialUnread++;
+      log("social", { event: "post", kind: post.record.kind, witnesses, reach: post.reach });
+    });
+  /** After each frame of play: a post that is due (one a frame), and one render of the shots. */
+  const afterViolations = (now: number) => {
+    const due = postsDue.take(now);
+    if (due) publishPost(due.post, due.witnesses);
+    witnessShot.gate.tick();
+  };
   // Posts in people's own words when the on-device AI is on (templates otherwise).
   const SOCIAL_VOICE = {
     post: "あなたは東京で暮らす一般の人で、SNS に投稿します。いま目の前で見た危ない運転について、日本語の口語で 1〜2 文だけ書いてください。ナンバーや個人を特定できる情報、ハッシュタグは書かないこと。",
@@ -3031,6 +3218,8 @@ async function main(): Promise<void> {
   } as const;
   social.writer = async (role, post, seed) => {
     if (brain.status !== "ready") return null;
+    // After the photos being drawn or developed (this post's too): the model shares the GPU.
+    await witnessShot.idle();
     const c = post.record.context;
     const facts =
       role === "post"
@@ -3065,7 +3254,8 @@ async function main(): Promise<void> {
   const updateSocial = () => {
     // People post at a human pace: the feed converts real seconds by how fast the clock runs.
     social.timeScale = env.timeMode === "real" ? 1 : GAME_TIME_SCALE;
-    for (const p of social.update(env.now().getTime())) {
+    const noticed = perf.time("social.update", () => social.update(env.now().getTime()));
+    for (const p of noticed) {
       if (p.record.status !== "uncaught") continue;
       law.notice(p.record, "sns");
       notify("police", () => i18n.t("notify.traced"));
@@ -3101,45 +3291,76 @@ async function main(): Promise<void> {
    * would) and, in English or Chinese, the line is shown translated; speechSynthesis says it in the
    * player's language (localUtterance: silent when the device has no voice for it).
    */
-  const policeSay = (key: i18n.MessageKey) => {
-    const from = police?.car.object;
-    if (voice.enabled && from) {
-      voice.speak(inJapanese(key), audio.spatial.voiceFrom(from, "loudspeaker"));
+  const policeSay = (key: i18n.MessageKey) =>
+    officerSay(key, undefined, police?.car.object ?? null, "loudspeaker");
+  /**
+   * An officer's line: from the loudspeaker or from the officer at the window. The on-device voice
+   * speaks the Japanese (as an officer in Tokyo would) and, in English or Chinese, the line is shown
+   * translated; speechSynthesis says it in the player's language.
+   */
+  const officerSay = (
+    key: i18n.MessageKey,
+    params: i18n.Params | undefined,
+    from: Object3D | null,
+    style: "loudspeaker" | "voice",
+  ) => {
+    // A line with words filled in the player's language (names, articles) is not for the Japanese voice.
+    const hasLocalWords = params !== undefined && i18n.getLocale() !== "ja";
+    if (voice.enabled && from && !hasLocalWords) {
+      voice.speak(inJapanese(key, params), audio.spatial.voiceFrom(from, style));
       const isJapanese = i18n.getLocale() === "ja";
-      if (!isJapanese) toast(i18n.t("police.said", { line: i18n.t(key) }), "#ff6b6b");
+      const isShownElsewhere = style === "voice";
+      if (!isJapanese && !isShownElsewhere)
+        toast(i18n.t("police.said", { line: i18n.t(key, params) }), "#ff6b6b");
       return;
     }
     if (audio.muted) return;
-    const u = localUtterance(i18n.t(key));
+    const u = localUtterance(i18n.t(key, params));
     if (!u) return;
     u.rate = 0.95;
     u.pitch = 0.8;
     // speechSynthesis cannot be routed through WebAudio: only its volume follows the distance.
-    u.volume = from ? audio.spatial.loudnessAt(from.position, "loudspeaker") : 1;
+    u.volume = from ? audio.spatial.loudnessAt(from.position, style) : 1;
     speechSynthesis.speak(u);
   };
   const startPursuit = () => {
     social.note("pursuit", env.now().getTime());
     $("#pursuit-chip").hidden = false;
     policeSay("police.callStop");
+    // Pulling over is the driver's to do: the self-driving hands the car back.
+    if (autopilot) stopAutopilot(i18n.t("toast.autopilotOff"));
+    if (police) pursuitDirector.begin(police);
     log("police", { event: "pursuit" });
   };
-  const openTicket = () => {
-    const p = police;
-    if (!p) return;
-    const seen = [...p.seen];
+  /** The roadside stop's ticket (pursuitDirector.ts): taken, it calls `onAccept`. */
+  let ticketTaken: (() => void) | null = null;
+  const openTicket = (records?: ViolationRecord[], onAccept?: () => void) => {
+    const seen = records ?? [...(police?.seen ?? [])];
+    if (seen.length === 0) return;
+    ticketTaken = onAccept ?? null;
     const isRed = seen.some((r) => r.fine === null);
     i18n.setI18nText($("#ticket-intro"), "ticket.intro");
     $("#ticket-form-container").replaceChildren(renderTicket({ violations: seen }));
     i18n.setI18nText($("#ticket-note"), isRed ? "ticket.noteRed" : "ticket.noteBlue");
     $<HTMLDialogElement>("#ticket-dialog").showModal();
   };
+  // At the roadside the ticket is taken, not waved away (Esc): the stop goes on from it.
+  $("#ticket-dialog").addEventListener("cancel", (e) => {
+    if (ticketTaken) e.preventDefault();
+  });
   $("#ticket-accept").addEventListener("click", () => {
+    const taken = ticketTaken;
+    if (taken) {
+      ticketTaken = null;
+      $<HTMLDialogElement>("#ticket-dialog").close();
+      taken();
+      return;
+    }
     const p = police;
     if (p) {
       for (const r of p.seen) {
+        // Stamped already when committed (book): the ticket does not stamp it again.
         law.cite(r, "patrol");
-        stamps.stamp("違反", shortLabel(r.label));
       }
       log("police", { event: "ticket", kinds: p.seen.map((r) => r.kind), total: law.state.points });
       const tw = taxiWorld();
@@ -3153,14 +3374,21 @@ async function main(): Promise<void> {
     if (!tw || !roadGraph) return;
     const focus = focusPos();
     if (patrols.length < MAX_PATROLS && now > policeDueAt) {
-      const unit = new PolicePatrol(scene, world, (x, z) => groundY(x, z), patrolKind());
-      if (unit.spawn(roadGraph, tw, focus)) patrols.push(unit);
-      else unit.dispose();
+      spawnPatrol(patrolKind(), focus);
       policeDueAt = now + 12000;
     }
-    // Out of the area: it goes off duty here and another comes by later.
+    // Out of the area: it goes off duty here and another comes by later. A unit sent off after a
+    // stop that is still beside the car 8 s later (blocked behind it, no way out) goes off duty once
+    // out of view, or after 20 s whatever: it must not stand there into the next pursuit.
+    const isLingering = (u: PolicePatrol) =>
+      u.releasedAt !== null &&
+      now - u.releasedAt > 8000 &&
+      u.position.distanceTo(focus) < 60 &&
+      (!isSeen(u.position) || now - u.releasedAt > 20000);
     const isOffDuty = (u: PolicePatrol) =>
-      u.state !== "pursuing" && u.state !== "ticketing" && u.position.distanceTo(focus) > 1100;
+      u.state !== "pursuing" &&
+      u.state !== "ticketing" &&
+      (u.position.distanceTo(focus) > 1100 || isLingering(u));
     for (const unit of patrols.filter(isOffDuty)) {
       unit.dispose();
       patrols.splice(patrols.indexOf(unit), 1);
@@ -3204,7 +3432,8 @@ async function main(): Promise<void> {
     if (event === "pursuit") {
       police = p;
       startPursuit();
-    } else if (event === "callout") policeSay("police.callStopShort");
+    } else if (event === "callout" && p.managed) pursuitDirector.callout(p);
+    else if (event === "callout") policeSay("police.callStopShort");
     else if (event === "ticket") openTicket();
     else if (event === "lost") {
       // The plate was read: a notice to appear comes by post. Fleeing a stop made because the
@@ -3216,7 +3445,10 @@ async function main(): Promise<void> {
           0,
           violationContext(inJapanese("violationDetail.fled")),
         );
-        if (fled) p.seen.push(fled);
+        if (fled) {
+          p.seen.push(fled);
+          stamps.stamp("違反", shortLabel(fled.label));
+        }
       }
       for (const r of p.seen) law.notice(r, "patrol");
       p.seen.length = 0;
@@ -3227,15 +3459,196 @@ async function main(): Promise<void> {
     }
   };
   const isSurfaceStreet = (seg: Segment) => seg.line.kind !== "highway";
+  // ---------- 追跡とその後（pursuitDirector.ts・pursuitScene.ts） ----------
+  const pursuitScene = new PursuitScene(scene, $("#hud"));
+  i18n.onLocaleChange(() => pursuitScene.relabel());
+  /** The driver's accelerator this frame (pressed while boxed in tells that from stopping). */
+  let playerThrottle = 0;
+  /** Where the car stands, for judging a pull-over (第44条's places, the kerb, the lane). */
+  const stopSite = (): StopSite => {
+    const p = vehicle.position();
+    const hit = roadGraph?.nearest(p, 15, isSurfaceStreet) ?? null;
+    const none = { junction: false, crossing: false, noStopping: false, kerbGap: Infinity, rightLane: false };
+    if (!hit) return none;
+    const { junction, crossing, posted } = noStoppingAt(hit);
+    const fwd = headingVector(vehicle.quaternion());
+    const sgn = fwd.dot(hit.dir) >= 0 ? 1 : -1;
+    const travel = hit.dir.clone().multiplyScalar(sgn);
+    // The kerb: PLATEAU paving where there is some, else the carriageway's edge (GSI 幅員).
+    const paved = kerbLeft(p, travel, hit.seg.line.width / 2 + 1, (x, z) => pavements.contains(x, z));
+    const edge = hit.seg.line.width / 2 - hit.lateral * sgn;
+    const kerbGap = Math.max(0, Math.min(paved, edge) - 0.92);
+    const span = hit.seg.oneway === 0 ? hit.seg.line.width / 2 : hit.seg.line.width;
+    const lane = Math.floor(
+      (hit.seg.line.width / 2 - hit.lateral * sgn) / (span / Math.max(1, hit.seg.lanes)),
+    );
+    return { junction, crossing, noStopping: posted, kerbGap, rightLane: hit.seg.lanes >= 2 && lane > 0 };
+  };
+  /**
+   * Nothing a car put at `p` would land on within `radius` m (horizontally): the other police units,
+   * the traffic, the player's car and the taxi. Units are teleported only onto such spots: two
+   * physics cars put into one another end up stacked.
+   */
+  const isSpotClear = (p: Vector3, radius: number, except?: PolicePatrol): boolean => {
+    const isNear = (q: Vector3) => Math.hypot(q.x - p.x, q.z - p.z) < radius;
+    if (patrols.some((u) => u !== except && isNear(u.position))) return false;
+    if (traffic.positions().some(isNear)) return false;
+    if (isNear(vehicle.position())) return false;
+    return !(taxi && isNear(taxi.position));
+  };
+  /** A unit of `kind` on a street 250–450 m from `near`, on a clear spot (a few tries), or null. */
+  const spawnPatrol = (kind: PatrolKind, near: Vector3): PolicePatrol | null => {
+    const tw = taxiWorld();
+    if (!tw || !roadGraph) return null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const unit = new PolicePatrol(scene, world, (x, z) => groundY(x, z), kind);
+      // Disposed in the same frame, before the physics steps, when the spot is taken.
+      const isPlaced = unit.spawn(roadGraph, tw, near) && isSpotClear(unit.position, 8, unit);
+      if (isPlaced) {
+        patrols.push(unit);
+        return unit;
+      }
+      unit.dispose();
+    }
+    return null;
+  };
+  /** A moment of the chase for Y (not a booked record: fleeing an ordinary stop is not an offence). */
+  const chaseMoment = (label: i18n.MessageKey = "social.chaseLabel"): ViolationRecord => ({
+    ...VIOLATIONS.ignoredStop,
+    label: inJapanese(label),
+    at: performance.now(),
+    session: SESSION,
+    status: "caught",
+    context: violationContext(),
+  });
+  /** The moment's replay at the window: the ±5 s around it, closing back to the conversation. */
+  const showClip = (r: ViolationRecord, onDone: () => void): boolean => {
+    const isInBuffer = r.session === SESSION && r.at >= recorder.start && r.at <= recorder.end;
+    if (isInBuffer) startReplay(Math.max(recorder.start, r.at - CLIP_BEFORE_MS));
+    else if (r.replay) playClip(r);
+    const current = replay;
+    if (!current) return false;
+    if (isInBuffer) current.stopAt = r.at + CLIP_AFTER_MS;
+    current.onClose = onDone;
+    return true;
+  };
+  const pursuitDirector = new PursuitDirector({
+    scene: pursuitScene,
+    player: () => ({
+      position: vehicle.position(),
+      quat: vehicle.quaternion(),
+      yaw: vehicle.yaw(),
+      forward: headingVector(vehicle.quaternion()),
+      speedKmh: vehicle.speedKmh(),
+      throttle: playerThrottle,
+    }),
+    limit: () => currentLimit,
+    othersNear: (p, r) =>
+      pedestrians.list.filter((q) => q.object.position.distanceTo(p) < r).length +
+      traffic.positions().filter((q) => q.distanceTo(p) < r).length,
+    groundAt: (x, z) => groundY(x, z),
+    sight: (from, to) => lineOfSight(from, to),
+    night: () => env.nightFactor > 0.35,
+    month: () => tokyoDate(env.now()).m,
+    place: () => [wardName === "—" ? "" : wardName, townName].filter(Boolean).join(" "),
+    graph: () => roadGraph,
+    driveWorld: () => taxiWorld(),
+    units: () => patrols,
+    spawnUnit: (kind, near) => spawnPatrol(kind, near),
+    isClear: (p, radius, except) => isSpotClear(p, radius, except),
+    stopPost: (phase) => {
+      const at = env.now().getTime();
+      const carPos = vehicle.position();
+      const moment = chaseMoment("social.stopLabel");
+      const night = env.nightFactor > 0.5;
+      const post = social.postStop(phase, moment, witnessesAround(carPos), at, night);
+      if (!post) return false;
+      // Those who can see it get their phones out (the poster among them).
+      witnessPhones.react(moment, post, carPos);
+      notify("social", () => i18n.t("notify.stopPosted", { app: SOCIAL_APP_NAME }), post);
+      socialUnread++;
+      log("social", { event: "stopPost", phase, reach: post.reach });
+      return true;
+    },
+    assist: () => controls.assist,
+    leftSignalAgo: () => performance.now() - indicatorSeen.left,
+    hazards: () => controls.hazard,
+    setSignalLeft: () => controls.holdSignal("left"),
+    setHazards: (on) => (controls.hazard = on),
+    stopSite,
+    law,
+    book: (v, detail) => book(v, performance.now(), 0, detail, true),
+    notify: (kind, text) => notify(kind, text),
+    toast,
+    stamp: (title, text, big) => stamps.stamp(title, shortLabel(text), big),
+    say: officerSay,
+    radioVoice: (key, params) => {
+      if (audio.muted) return;
+      const isJapaneseVoice = voice.enabled && i18n.getLocale() === "ja";
+      if (isJapaneseVoice) {
+        voice.speak(inJapanese(key, params), audio.spatial.voiceFrom(vehicle.object, "loudspeaker"));
+        return;
+      }
+      const u = localUtterance(i18n.t(key, params));
+      if (!u) return;
+      u.rate = 1.1;
+      u.volume = 0.6;
+      speechSynthesis.speak(u);
+    },
+    rotor: (on, anchor) => audio.spatial.siren(pursuitScene.heli, on, anchor, "rotor"),
+    social: (event, stage) => {
+      const at = env.now().getTime();
+      if (event === "manhunt" || event === "heli" || event === "checkpoint") {
+        social.note(event, at);
+        return true;
+      }
+      if (event === "identified") return social.identified(at) !== null;
+      const post = social.postChase(
+        stage === 3 ? 3 : 2,
+        chaseMoment(),
+        witnessesAround(vehicle.position()),
+        at,
+      );
+      if (!post) return false;
+      notify("social", () => i18n.t("notify.chasePosted", { app: SOCIAL_APP_NAME }), post);
+      socialUnread++;
+      return true;
+    },
+    posts: () => social.posts.slice(0, 3).map((p) => ({ name: p.author, handle: p.handle, text: p.text })),
+    tv: (b) => naviTv.setBreaking(b),
+    navAlert: (a) => (nav.alert = a),
+    chip: (on) => ($("#pursuit-chip").hidden = !on),
+    openTicket: (records, onAccept) => openTicket(records, onAccept),
+    showClip,
+    hitAndRunPending: () => emergency.chasing,
+    endHitAndRunChase: () => emergency.cancelPursuit(),
+    endDay: () => endDay(),
+    arrestScreen: (why) => showArrest(why),
+    decideSanction: (points) => decideSanction(points, prior),
+    keyOf: (action) => keyOf(action),
+  });
+  /**
+   * The police are dealing with the player (pursuitEscalation.isEnforcing): 移動, 復帰, getting
+   * out, タイトルへ and the day's end at home wait.
+   */
+  const enforcing = () =>
+    isEnforcing({
+      unitEngaged: patrols.some((u) => u.state === "pursuing" || u.state === "ticketing"),
+      pursuitBusy: pursuitDirector.busy,
+      ticketOpen: $<HTMLDialogElement>("#ticket-dialog").open,
+      arrestShown: !$("#suspended").hidden,
+      hitAndRunChase: emergency.chasing,
+    });
   /**
    * Where the car stands, for parking: 駐停車禁止 (道路交通法 第44条: within 5 m of a junction's
    * side edge or of a crosswalk, or a JARTIC 駐停車禁止 section), 駐車禁止 (JARTIC section in force),
    * or null where parking on the street is not prohibited.
    */
-  const parkingPlace = (hit: { seg: Segment; s: number }): "noStopping" | "noParking" | null => {
+  /** The 駐停車禁止 of 第44条 where the car is: a junction, a crosswalk, a posted section. */
+  const noStoppingAt = (hit: { seg: Segment; s: number }) => {
     const clock = gameClockNow();
     const inForce = (code: number) => hit.seg.rules.some((r) => r.code === code && isInForce(r, clock));
-    const nearJunction = [hit.seg.from, hit.seg.to].some((node) => {
+    const junction = [hit.seg.from, hit.seg.to].some((node) => {
       const ids = roadGraph?.nodes.get(node) ?? [];
       if (ids.length < 3) return false;
       const sideEdge = Math.max(...ids.map((id) => roadGraph?.segments[id].line.width ?? 0)) / 2;
@@ -3243,10 +3656,14 @@ async function main(): Promise<void> {
       return fromNode < sideEdge + 5;
     });
     // A crosswalk is 4 m wide: its edges are 2 m either side of its centre.
-    const nearCrossing = (roadApplied?.crossings ?? []).some(
+    const crossing = (roadApplied?.crossings ?? []).some(
       (c) => c.seg === hit.seg && Math.abs(c.s - hit.s) < 2 + 5,
     );
-    if (nearJunction || nearCrossing || inForce(65)) return "noStopping";
+    return { junction, crossing, posted: inForce(65), inForce };
+  };
+  const parkingPlace = (hit: { seg: Segment; s: number }): "noStopping" | "noParking" | null => {
+    const { junction, crossing, posted, inForce } = noStoppingAt(hit);
+    if (junction || crossing || posted) return "noStopping";
     // 消火栓 within 5 m (第45条第1項第5号).
     const isNearHydrant = furniture.nearHydrant(vehicle.position());
     return inForce(115) || isNearHydrant ? "noParking" : null;
@@ -3325,16 +3742,21 @@ async function main(): Promise<void> {
     if (!ap || mode !== "car") return;
     const tw = taxiWorld();
     if (!tw) return;
-    // Its own car is not an obstacle to itself.
-    tw.obstacles = tw.obstacles.filter((o) => o.distanceTo(vehicle.position()) > 1);
+    // The driver leaves its own car out of what it sees (anything within 1 m of itself).
     const pose = { position: vehicle.position(), yaw: vehicle.yaw(), speed: vehicle.forwardSpeed() };
-    const { input, done } = ap.driver.update(dt, tw, pose);
+    const { input, done, gaveUp } = ap.driver.update(dt, tw, pose);
     ap.input = input;
     vehicle.lightOverride = {
       brake: ap.driver.braking,
       left: ap.driver.signal === "left",
       right: ap.driver.signal === "right",
+      reverse: ap.driver.reversing,
     };
+    // Stuck after every go, or blocked where it may not pass: the driver takes the car back.
+    if (gaveUp) {
+      log("autopilot", { gaveUp });
+      return stopAutopilot(i18n.t(gaveUp === "stuck" ? "toast.autopilotStuck" : "toast.autopilotBlocked"));
+    }
     if (!done) return;
     if (ap.cruising) {
       const next = cruiseTarget();
@@ -3351,6 +3773,26 @@ async function main(): Promise<void> {
   let taxiStatusAt = 0;
   /** The taxi app's status line, kept in the language in force while it stays on screen. */
   const taxiStatus = (text: () => string) => i18n.bindText($("#taxi-status"), text);
+  // What the self-driving cars see of the vehicles about (autoTraffic.ts): traffic with its speed
+  // and heading, the kerbside parked cars, the player's car (parked while they are out of it), the
+  // robotaxi and the patrols; each driver leaves itself out.
+  const driveVehicles = (): DriveObstacle[] => {
+    const list: DriveObstacle[] = [];
+    const moving = (key: object, position: Vector3, speed: number, heading: number, halfLength?: number) =>
+      list.push({ position, kind: "vehicle", speed, heading, halfLength, key });
+    traffic.forEachCar((o, speed, kind) => moving(o, o.position, speed, o.rotation.y, halfLengthOf(kind)));
+    for (const p of traffic.parkedPoses()) {
+      list.push({ position: p.position, kind: "parked", heading: p.yaw, key: p.key });
+    }
+    const isDriven = mode === "car";
+    if (isDriven) moving(vehicle, vehicle.position(), vehicle.forwardSpeed(), vehicle.yaw());
+    else list.push({ position: vehicle.position(), kind: "parked", heading: vehicle.yaw(), key: vehicle });
+    if (taxi) moving(taxi, taxi.position, taxi.speed, taxi.car.yaw());
+    for (const u of patrols) moving(u, u.position, u.car.forwardSpeed(), u.car.yaw());
+    return list;
+  };
+  // Buildings, poles and gantries round a pose, for the manoeuvres back onto the road.
+  const driveClearance = rapierClearance(world, (x, z) => groundY(x, z));
   const taxiWorld = (): TaxiWorld | null =>
     roadGraph
       ? {
@@ -3358,13 +3800,12 @@ async function main(): Promise<void> {
           control,
           turnRules: roadApplied?.turnRules ?? [],
           clock: gameClockNow(),
-          obstacles: [
-            ...traffic.positions(),
-            vehicle.position(),
-            ...pedestrians.list.filter((p) => p.state !== "talk").map((p) => p.object.position),
-          ],
+          obstacles: pedestrians.list.filter((p) => p.state !== "talk").map((p) => p.object.position),
+          vehicles: driveVehicles(),
           isPavement: (x: number, z: number) => pavements.contains(x, z),
           laneUse: roadApplied?.laneUse ?? [],
+          crossings: roadApplied?.crossings ?? [],
+          isClear: driveClearance,
         }
       : null;
   const fillTaxiDestinations = () => {
@@ -3625,14 +4066,24 @@ async function main(): Promise<void> {
   let pendingSanction: ReturnType<typeof decideSanction> = { kind: "none" };
   // Notices that came by post today: they ask the driver to appear at the police station.
   let todayDelivered: ViolationRecord[] = [];
+  /** Home was reached while the police were dealing with the car: the day ends after. */
+  let dayEndDue = false;
   const endDay = () => {
+    dayEndDue = false;
     const today = law.state.log.slice(todayFrom);
     const delivered = law.deliverNotices();
     todayDelivered = delivered;
     pendingSanction = decideSanction(law.state.points, prior);
     // 📮 the post: orbis and plate notices, and the 行政処分 notice when the points reach it.
     const mail: string[] = delivered.map((r) => {
-      const how = r.by === "orbis" ? "dayEnd.byOrbis" : r.by === "sns" ? "dayEnd.bySns" : "dayEnd.byPlate";
+      const how =
+        r.by === "orbis"
+          ? "dayEnd.byOrbis"
+          : r.by === "orbisPortable"
+            ? "dayEnd.byOrbisPortable"
+            : r.by === "sns"
+              ? "dayEnd.bySns"
+              : "dayEnd.byPlate";
       const label = violationName(r.label);
       return i18n.t("dayEnd.mailNotice", { how: i18n.t(how), label, points: pointsCount(r.points) });
     });
@@ -3939,7 +4390,8 @@ async function main(): Promise<void> {
     const changed = violationSync.changed(law.state.log);
     if (changed.length === 0) return;
     const known = new Set([...history.map((r) => r.id), ...law.state.log.map((r) => r.id)]);
-    void saveViolations(changed, known.size);
+    // Timed until the transaction is done (IndexedDB copies each record, screen JPEG and replay included).
+    void perf.span("violations.save", saveViolations(changed, known.size));
   }, 2000);
   /** Play a saved violation: rebuild its traffic and people and run it through the replay. */
   const playClip = (r: ViolationRecord) => {
@@ -3983,7 +4435,9 @@ async function main(): Promise<void> {
       const isReady = !r.replay && r.session === SESSION && now >= r.at + CLIP_AFTER_MS;
       if (!isReady) continue;
       const moment = { ms: env.now().getTime() - (now - r.at), raining: env.isRaining() };
-      r.replay = cutClip(recorder.frames, r.at, frame, { onFoot: false, moment }) ?? undefined;
+      r.replay =
+        perf.time("clip.cut", () => cutClip(recorder.frames, r.at, frame, { onFoot: false, moment })) ??
+        undefined;
     }
   }, 1000);
   const openReview = () => {
@@ -4103,11 +4557,20 @@ async function main(): Promise<void> {
   };
   const onAccident = (kind: "pedestrian" | "vehicle" | "building" | "pole", kmh: number, who: string) => {
     social.note("crash", env.now().getTime());
-    book(VIOLATIONS.safeDriving, performance.now(), 3000);
+    pursuitDirector.onCrash();
+    const careless = book(VIOLATIONS.safeDriving, performance.now(), 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
     if (phone.isInUse(performance.now()) && mode === "car")
       book(VIOLATIONS.phoneDanger, performance.now(), 30000, inJapanese("violationDetail.phoneCrash"));
-    if (kind === "pedestrian") book(injuryViolation(kmh), performance.now(), 3000);
+    if (kind === "pedestrian") {
+      const injury = book(injuryViolation(kmh), performance.now(), 3000);
+      // In a pursuit: 過失運転致傷 or 危険運転致傷 (自動車運転死傷処罰法), pursuitDirector.ts.
+      pursuitDirector.onInjury(
+        kmh,
+        injury,
+        [careless, injury].filter((r): r is ViolationRecord => r !== null),
+      );
+    }
     const penalty = kind === "pedestrian" ? 300 : 100;
     score = Math.max(0, score - penalty);
     const what = i18n.t(ACCIDENT_KEY[kind], { name: who });
@@ -4235,6 +4698,142 @@ async function main(): Promise<void> {
 
   if (import.meta.env.DEV) {
     // Debug handle for local inspection only; stripped from production builds.
+    /**
+     * Staging the pursuit and its aftermath for checks in the dev build (window.__game.debug.pursuit):
+     * a unit 30 m behind sees a red-light run and lights up; `flee` jumps the chase on as if the
+     * driver had not stopped for that long (30 s: 緊急配備, 60 s: the helicopter and the 検問); `end`
+     * finishes it a given way; `identify` brings the identification after a getaway forward.
+     */
+    const debugPursuit = {
+      start: (kind: PatrolKind = "patrol", violation: keyof typeof VIOLATIONS = "signal") => {
+        const tw = taxiWorld();
+        if (!tw || !roadGraph || pursuitDirector.busy) return false;
+        // 30 m behind the car, or further back if a unit (the last stop's, leaving) or a car is there.
+        const back = headingVector(vehicle.quaternion());
+        const spot = [30, 38, 46, 55]
+          .map((d) => vehicle.position().addScaledVector(back, -d))
+          .find((p) => isSpotClear(p, 5));
+        if (!spot) return false;
+        const unit = spawnPatrol(kind, vehicle.position());
+        if (!unit) return false;
+        unit.placeAt(spot, vehicle.yaw());
+        unit.state = "cruising";
+        const record = law.commit(VIOLATIONS[violation], performance.now(), 0, violationContext());
+        if (!record) return false;
+        police = unit;
+        if (unit.witness(record) === "pursuit") startPursuit();
+        return true;
+      },
+      /** Driving while suspended (to see a 第67条 stop): the licence suspended for `days`. */
+      suspend: (days = 30) => {
+        suspendedDays = days;
+        law.state.suspended = true;
+        return true;
+      },
+      flee: (seconds = 30) => pursuitDirector.debugAdvance(seconds),
+      end: (how: Parameters<PursuitDirector["debugEnd"]>[0] = "gaveUp") => pursuitDirector.debugEnd(how),
+      identify: () => pursuitDirector.debugIdentifyNow(),
+      story: (kind: Parameters<PursuitDirector["debugStory"]>[0] = "arrest") =>
+        pursuitDirector.debugStory(kind, law.state.log.slice(-4)),
+      state: () => ({
+        mode: pursuitDirector.chase
+          ? "chase"
+          : pursuitDirector.stop
+            ? "stop"
+            : pursuitDirector.story
+              ? "story"
+              : pursuitDirector.identify
+                ? "identify"
+                : null,
+        heli: pursuitScene.heli.describe(
+          pursuitDirector.chase?.lastSeen ?? null,
+          groundY(pursuitScene.heli.root.position.x, pursuitScene.heli.root.position.z) ?? 0,
+        ),
+        heliToCar: Math.round(pursuitScene.heli.root.position.distanceTo(vehicle.position())),
+        chase: pursuitDirector.chase
+          ? {
+              stage: pursuitDirector.chase.esc.stage,
+              fleeing: pursuitDirector.chase.esc.fleeing,
+              elapsed: Math.round(pursuitDirector.chase.esc.elapsed),
+              units: pursuitDirector.chase.units.size,
+              heli: pursuitScene.heli.state,
+              checkpoint: pursuitScene.checkpoint.active,
+            }
+          : null,
+        stop: pursuitDirector.stop
+          ? {
+              end: pursuitDirector.stop.end,
+              disposal: pursuitDirector.stop.disposal,
+              step: pursuitDirector.stop.steps[pursuitDirector.stop.at]?.id,
+            }
+          : null,
+        story: pursuitDirector.story?.kind ?? null,
+        identifyIn: pursuitDirector.identify ? Math.round(pursuitDirector.identify.left) : null,
+        enforcing: enforcing(),
+      }),
+    };
+    /**
+     * Measuring the hitch of a violation (window.__game.debug.perf). `violation(kind, media, seconds)`
+     * books one in the next frame with a bystander's post in that medium (photo or video: both are
+     * shot), and reports the frames of the second before (`before`) and of `seconds` after it
+     * (`after`: the longest gap and when, p50/p95, how many over 25 and 50 ms), each phase timed
+     * meanwhile (perf.ts; `blocking` false is a wait on the GPU or the worker, not main-thread work)
+     * and Chrome's long animation frames with their longest scripts. `spread(false)` puts the post,
+     * the shot's renders, the developing and the screen grab back in the violation's frame, as
+     * before (an A/B in one build); `spread(true)` spreads them again.
+     */
+    const debugPerf = {
+      violation: async (
+        kind: keyof typeof VIOLATIONS = "signal",
+        media: "photo" | "video" = "video",
+        seconds = 7,
+      ) => {
+        if (state !== "playing") return { error: "start a drive first (state is not playing)" };
+        const before = frameStats(await watchFrames(1000));
+        const t0 = performance.now();
+        const watching = longFramesDuring(t0, watchFrames(seconds * 1000));
+        // In a frame, as a violation is (after that frame's own update and render).
+        const booked = await new Promise<ViolationRecord | null>((resolve) =>
+          requestAnimationFrame(() => {
+            forcedPost = media;
+            try {
+              resolve(book(VIOLATIONS[kind], performance.now(), 0));
+            } finally {
+              forcedPost = null;
+            }
+          }),
+        );
+        const { result, long } = await watching;
+        const phases = perf.since(t0).map((p) => ({ ...p, ms: round(p.ms), at: round(p.at - t0) }));
+        const totals: Record<string, { n: number; sum: number; max: number }> = {};
+        for (const p of phases) {
+          const t = (totals[p.phase] ??= { n: 0, sum: 0, max: 0 });
+          t.n++;
+          t.sum = round(t.sum + p.ms);
+          t.max = Math.max(t.max, p.ms);
+        }
+        const post = social.posts.find((p) => p.record === booked) ?? null;
+        return {
+          booked: booked?.kind ?? null,
+          spread: isSpread,
+          // When it went up and when its photo came in: the phases post.publish and shot.develop (at + ms).
+          post: post ? { media: post.media, hasPhoto: Boolean(post.photo) } : null,
+          before,
+          after: frameStats(result),
+          totals,
+          phases,
+          long,
+        };
+      },
+      spread: (on = true) => {
+        isSpread = on;
+        witnessShot.gate.isOpen = !on;
+        darkroom.inline = !on;
+        return on;
+      },
+      /** The phases timed in the last `ms` (perf.ts). */
+      phases: (ms = 10000) => perf.since(performance.now() - ms),
+    };
     // Background tabs pause rAF; `advance` lets automated checks drive frames explicitly.
     // MessageChannel yields to network/decoder tasks without hidden-tab timer throttling.
     const yieldTask = () =>
@@ -4295,7 +4894,16 @@ async function main(): Promise<void> {
         guideSigns,
         groundY,
         // Staging for the teaser and tests: the screens behind events that take long to set up.
-        debug: { openTicket, endDay, flashScreen, startPursuit, gameNow: () => env.now().getTime() },
+        debug: {
+          openTicket,
+          endDay,
+          flashScreen,
+          startPursuit,
+          gameNow: () => env.now().getTime(),
+          pursuit: debugPursuit,
+          perf: debugPerf,
+        },
+        getPursuit: () => pursuitDirector,
         social,
         witnessPhones,
         getHome: () => home,

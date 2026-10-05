@@ -328,6 +328,39 @@ export const OPENERS: Record<ViolationKind, readonly LineLike[]> = {
     "{place}、交差点ぎりぎりに止まった{color}{car}。バスが曲がれなくて困ってた",
     "{time}、{place}。横断歩道の上に止める人、初めて見た",
   ],
+  // The charges of a pursuit (pursuitLaw.ts): what people around saw of them.
+  negligentInjury: [
+    "{place}でパトカーに追われてた車が歩行者をはねた…",
+    "追跡中の車が人をはねたっぽい。{place}。救急車が呼ばれてる",
+    "{time}、{place}。逃げてた車が横断中の人に当たった。けがしてる",
+    "{place}、パトカーから逃げてた{color}{car}が人をはねた",
+    "目の前で人がはねられた。追いかけられてた車。{place}",
+    "{place}で事故。サイレンを鳴らしたパトカーのすぐ前の車が歩行者に…",
+  ],
+  dangerousInjury: [
+    "{place}で、ものすごいスピードの車が人をはねた。パトカーに追われてた",
+    "赤信号を突っ切った車が横断中の人をはねた…{place}",
+    "{place}。逃げる車が赤で交差点に入って、歩いてた人に当たった",
+    "{time}、{place}で信号無視の車が人をはねた。あれは危険運転だと思う",
+    "{place}、とんでもない速度で走ってた{color}{car}が人をはねた。けが人が心配",
+    vid("{place}で暴走した車が歩行者をはねる瞬間が映ってた。警察に提供します"),
+  ],
+  obstruction: [
+    "{place}で車がパトカーにぶつかっていった…わざと？",
+    "パトカーに体当たりする車を見た。{place}",
+    "{place}、検問の警察官に向かって車が突っ込んでいった。危ない",
+    "{time}、{place}。止めに入った警察の車に車をぶつけてた",
+    vid("{place}でパトカーに車をぶつけて逃げようとする瞬間。ドラレコに残ってた"),
+    "{place}で警察の車にぶつけていった{color}{car}。信じられない",
+  ],
+  propertyDamage: [
+    "{place}、パトカーのバンパーがへこんでた。ぶつけた車がいるらしい",
+    "{place}でパトカーに当てていった車。パトカー、けっこう壊れてる",
+    "パトカーにぶつけるとか…{place}",
+    "{time}、{place}。警察の車両が傷だらけ。逃げた車がぶつけたって",
+    "{place}、白バイが倒れてた。車にぶつけられたみたい",
+    shot("{place}でぶつけられたパトカー。ライトが割れてる"),
+  ],
   stopSign: [
     "「止まれ」で一切止まらない車。{place}",
     "一時停止ガン無視…{place}",
@@ -368,6 +401,10 @@ export const TAGS: Record<ViolationKind, readonly string[]> = {
   parking: ["#路上駐車", "#迷惑駐車", "#放置車両"],
   parkingNoStop: ["#迷惑駐車", "#駐停車禁止", "#交差点"],
   stopSign: ["#一時停止", "#止まれ", "#危険運転"],
+  negligentInjury: ["#人身事故", "#拡散希望", "#パトカー"],
+  dangerousInjury: ["#危険運転", "#人身事故", "#拡散希望"],
+  obstruction: ["#パトカー", "#公務執行妨害", "#危険運転"],
+  propertyDamage: ["#パトカー", "#事故", "#拡散希望"],
 };
 
 /** Where the clip came from: a dashcam or someone who saw it. */
@@ -393,7 +430,9 @@ export type ReplyGroup =
   | "lane"
   | "stop"
   | "manner"
-  | "parking";
+  | "parking"
+  // A car pulled over by the police (SocialFeed.postStop): not one of the violation kinds.
+  | "pulledOver";
 export const REPLY_GROUP: Record<ViolationKind, ReplyGroup> = {
   signal: "signal",
   speed: "speed",
@@ -421,6 +460,10 @@ export const REPLY_GROUP: Record<ViolationKind, ReplyGroup> = {
   unlicensed: "manner",
   parking: "parking",
   parkingNoStop: "parking",
+  negligentInjury: "crash",
+  dangerousInjury: "crash",
+  obstruction: "flee",
+  propertyDamage: "flee",
 };
 
 /**
@@ -549,6 +592,17 @@ export const REPLIES: Record<ReplyGroup | "common", readonly LineLike[]> = {
     "巻き込まれた人がいなくてよかった",
     "このあと事故にならないといいけど",
   ],
+  pulledOver: [
+    "ちゃんと止まったなら、それだけでえらい",
+    "取り締まりを見ると気が引き締まる",
+    "何の違反だったんだろう",
+    "あそこ、取り締まりよくやってるよね",
+    "晒すのはやめておこう。ナンバーは消してね",
+    "切符を切られたら、次から気をつければいい",
+    "後ろの車の邪魔にならない所に止めてて、えらい",
+    "赤色灯って遠くからでも目立つね",
+    "逃げなかっただけ立派",
+  ],
   wrongWay: [
     only(["noEntry", "keepLeft"], "正面から来られたら避けようがない"),
     only(["noEntry", "turnBan", "uturn"], "標識、見えにくいのかな"),
@@ -646,6 +700,7 @@ export const QUOTES: Record<ReplyGroup | "common", readonly LineLike[]> = {
   ],
   hitAndRun: ["情報求む。{place}付近", "逃げずに戻ってきて", "見かけた人は警察へ"],
   flee: ["警察から逃げても状況は悪くなるだけ", "{place}付近、パトカーが走ってます"],
+  pulledOver: ["{place}で取り締まり中。安全運転で", "止められてる車を見ると、自分の運転を見直す"],
   wrongWay: [
     only(["noEntry", "keepLeft"], "逆走・はみ出しは正面衝突のもと"),
     "{place}付近の人は気をつけて",
@@ -681,17 +736,97 @@ export const ANSWERS: Record<ReplyGroup | "common", readonly LineLike[]> = {
   ],
   phone: ["横に並んだときに見えました"],
   crash: [
-    only(["injury"], "救急車と警察はもう来てます"),
+    only(["injury", "negligentInjury", "dangerousInjury"], "救急車と警察はもう来てます"),
     only(["safeDriving"], "けが人はいなかったみたいです"),
   ],
   hitAndRun: ["けがをした方には近くの人がついてくれてます"],
   flee: ["パトカーはそのまま追いかけていきました"],
+  pulledOver: ["ナンバーと顔は映らないようにしてます", "しばらくしたら車は走っていきました"],
   wrongWay: ["こっちは止まれたので無事です"],
   lane: ["後ろの車がうまく避けてくれました"],
   stop: ["止まったように見えて、実は止まってないんですよね"],
   manner: ["悪気はなかったのかもしれないけど"],
   parking: ["しばらくしたら監視員さんが来てました"],
 };
+
+/**
+ * Posts about a pursuit going on near the player (SocialFeed.postChase), by its stage: 2 when the
+ * units gather (緊急配備), 3 with the helicopter and the 検問. Fleeing an ordinary stop is not an
+ * offence in itself, so these are about what people see, not a violation.
+ */
+export const CHASE_OPENERS: Record<2 | 3, readonly LineLike[]> = {
+  2: [
+    "{place}でパトカーが何台も1台の車を追いかけてる",
+    "サイレンがすごい。{place}でパトカーと白バイが車を追ってる",
+    "{place}、逃げる車をパトカーが追跡中。巻き込まれないように",
+    vid("{place}でパトカーに追われてる車を撮った。かなりのスピード"),
+    "{time}、{place}。パトカー何台かが同じ車を追いかけていった",
+  ],
+  3: [
+    "{place}でパトカーとヘリが車を追ってる",
+    "上空にヘリ、地上にパトカー。{place}で逃げる車を追跡中みたい",
+    "{place}の先で検問やってる。追われてる車がいるらしい",
+    vid("{place}でパトカーとヘリが車を追う様子。ニュースになりそう"),
+    "{time}、{place}。ヘリの音がずっとしてる。逃げてる車がいるって",
+  ],
+};
+export const CHASE_TAGS = ["#パトカー", "#逃走", "#ヘリ", "#拡散希望"] as const;
+/**
+ * Posts by passers-by and drivers going past while the police deal with a car at the roadside
+ * (SocialFeed.postStop), by what they see: the car pulled over (by a patrol car or a 白バイ), the
+ * officer writing (a ticket), the driver taken into the patrol car (赤切符・同行), an arrest, and the
+ * end of a chase. From the pavement or a passing car: no plate, no face.
+ */
+export type StopPhase = "stopped" | "stoppedBike" | "ticket" | "red" | "arrest" | "fledCaught";
+export const STOP_OPENERS: Record<StopPhase, readonly LineLike[]> = {
+  stopped: [
+    "{place}で白黒パトカーに止められてる車いる",
+    "{place}、パトカーが後ろについて車を止めてた。何があったんだろう",
+    "{place}でお巡りさんが運転席の窓のところで話してる",
+    "{time}、{place}。パトカーの赤色灯がずっと回ってる。取り締まりかな",
+    "{place}の路肩で{color}{car}がパトカーに止められてる",
+    shot("{place}、歩道から見えた。パトカーに止められてる車"),
+  ],
+  stoppedBike: [
+    "{place}で白バイに止められてる車いる",
+    "白バイの隊員さんが車の横で話してる。{place}",
+    "{time}、{place}。白バイが車を路肩に止めさせてた",
+    shot("{place}、白バイの取り締まり。歩道から"),
+  ],
+  ticket: [
+    "切符切られてるっぽい。{place}",
+    "{place}、パトカーに止められた車。青切符かな。自分も気をつけよう",
+    "{place}で取り締まり。ちゃんと路肩に寄せて止まってた",
+    "{time}、{place}。お巡りさんが何か書いてる。切符だろうな",
+  ],
+  red: [
+    "{place}、運転手さんがパトカーの後ろの席に乗せられてる",
+    "{place}で止められた車、けっこう長く話してる。赤切符かな",
+    "パトカーの中で書類を書いてるっぽい。{place}。重めの違反なのかな",
+    "{time}、{place}。止められてた車の運転手がパトカーに乗った",
+  ],
+  arrest: [
+    "{place}で運転手が警察に連れて行かれた…",
+    "{place}、パトカーが何台も止まってて、運転手が乗せられていった",
+    "逮捕されたっぽい。{place}。何をしたんだろう",
+    vid("{place}で運転手がパトカーに乗せられるところ。顔は映してません"),
+    "{time}、{place}。警察官に囲まれた車から運転手が降りてきた",
+  ],
+  fledCaught: [
+    "さっきの逃げてた車、{place}でやっと止まったみたい",
+    "{place}、パトカーに追われてた車が止められてる。周りに警察官がたくさん",
+    "追跡、{place}で終わったっぽい。けが人がいないといいけど",
+  ],
+};
+export const STOP_TAGS = ["#取り締まり", "#パトカー", "#交通安全"] as const;
+/** The opener when none of STOP_OPENERS fits. */
+export const STOP_FALLBACK = "{place}でパトカーが車を止めてる";
+
+/** The opener when none of CHASE_OPENERS fits (its slots cannot be filled). */
+export const CHASE_FALLBACK = "{place}でパトカーが車を追いかけてる";
+/** The news account's follow-up once the driver who got away is identified. {place} where it was. */
+export const NEWS_IDENTIFIED =
+  "【続報】{place}付近でパトカーの停止に従わず走り去った車について、警察はナンバーや投稿された動画などから運転者を特定したもようです";
 
 /** The news account's quote of a clip the police now know of. {what} the offence, {media} 動画/写真. */
 export const NEWS_QUOTE =
@@ -743,6 +878,10 @@ export const KIND_WORDS: Record<ViolationKind, Record<Exclude<SocialLang, "ja">,
   phone: { en: "using a phone while driving", zh: "开车玩手机" },
   parking: { en: "illegal parking", zh: "违章停车" },
   parkingNoStop: { en: "parking where stopping is banned", zh: "在禁停区域停车" },
+  negligentInjury: { en: "injuring someone while fleeing the police", zh: "逃避警察时撞伤行人" },
+  dangerousInjury: { en: "dangerous driving causing injury", zh: "危险驾驶致人受伤" },
+  obstruction: { en: "obstructing police officers", zh: "妨碍警察执行公务" },
+  propertyDamage: { en: "damaging a police vehicle", zh: "损坏警车" },
 };
 
 // ---------- everyday posts (chatter) ----------
@@ -778,6 +917,9 @@ export type HappeningKind =
   | "shirobai"
   | "unmarked"
   | "pursuit"
+  | "manhunt"
+  | "heli"
+  | "checkpoint"
   | "robotaxi"
   | "closure"
   | "rainStart"
@@ -1120,6 +1262,21 @@ export const CHATTER: readonly ChatterTemplate[] = [
     hours: [6, 9],
     periods: ["school"],
   }),
+  c(
+    "news",
+    "police",
+    "【交通】{ward}付近で緊急配備。パトカーや白バイが集まっています。緊急車両には道を譲ってください",
+    { cue: "manhunt" },
+  ),
+  c("news", "police", "【交通】{ward}の上空で警察のヘリコプターが旋回しています", { cue: "heli" }),
+  c(
+    "news",
+    "police",
+    "【交通】{ward}付近の交差点で検問が行われています。時間に余裕をもってお出かけください",
+    {
+      cue: "checkpoint",
+    },
+  ),
   c("news", "police", "【交通】{ward}付近でパトカーが車を追跡しているとの情報。周辺の方は気をつけて", {
     cue: "pursuit",
   }),
@@ -1506,6 +1663,9 @@ export const CHATTER: readonly ChatterTemplate[] = [
   c("local", "praise", "横断歩道で止まってくれる車が増えた気がする。ありがたい"),
   c("local", "sky", "富士山くっきり", { picture: "fuji", hours: [6, 16], sky: "dry" }),
   c("local", "food", "ランチはラーメン", { picture: "ramen", hours: [11, 14] }),
+  c("local", "police", "{ward}、パトカーと白バイが次々に走っていった。何事？", { cue: "manhunt" }),
+  c("local", "police", "ヘリの音がずっと近い。{ward}で何かあったのかな", { cue: "heli" }),
+  c("local", "police", "{ward}の交差点で検問してた。今日なにかあったの？", { cue: "checkpoint" }),
   c("local", "police", "{ward}、パトカーがサイレン鳴らして走っていった。何かあったのかな", {
     cue: "pursuit",
   }),

@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { Vector3 } from "three";
 import { describe, expect, it } from "vitest";
-import { network, walkUpstream as walkOsm } from "../scripts/orbis";
+import { WARDS, network, wardAt, walkUpstream as walkOsm, type WardShapes } from "../scripts/orbis";
 import { LocalFrame } from "../src/geo/frame";
 import {
   crossing,
@@ -10,7 +11,7 @@ import {
   walkUpstream,
   type OrbisSite,
 } from "../src/world/orbis";
-import type { OrbisEntry } from "../src/world/orbisData";
+import { parseOrbis, type OrbisEntry } from "../src/world/orbisData";
 import { RoadGraph, type RoadLine } from "../src/world/roads";
 
 const frame = new LocalFrame(35.68, 139.76, 40);
@@ -208,5 +209,39 @@ describe("orbis warning signs", () => {
     const at1500 = points[1];
     expect((at1500[0] - 139.76) / M_LON).toBeCloseTo(500, -1);
     expect(at1500[2]).toBe(90);
+  });
+});
+
+/** Edges of an axis-aligned rectangle, as WardShapes keeps them. */
+const ring = (x0: number, y0: number, x1: number, y1: number) => [
+  [x0, y0, x1, y0],
+  [x1, y0, x1, y1],
+  [x1, y1, x0, y1],
+  [x0, y1, x0, y0],
+];
+
+describe("orbis data: the 23 wards only", () => {
+  it("finds the ward by even-odd crossings over a boundary's outer and inner rings", () => {
+    // A 2 × 2 square ward with a 1 × 1 hole (an enclave of another ward) in its middle.
+    const shapes: WardShapes = new Map([
+      ["外区", [...ring(0, 0, 2, 2), ...ring(0.5, 0.5, 1.5, 1.5)]],
+      ["内区", ring(0.5, 0.5, 1.5, 1.5)],
+    ]);
+    expect(wardAt(shapes, 0.25, 1)).toBe("外区");
+    expect(wardAt(shapes, 1, 1)).toBe("内区");
+    expect(wardAt(shapes, 3, 1)).toBeNull();
+  });
+
+  it("keeps in police.json only cameras inside a ward, each with its ward and OSM node", () => {
+    const data = JSON.parse(readFileSync("public/data/police.json", "utf8")) as { orbis: unknown };
+    const entries = parseOrbis(data.orbis);
+    expect(entries.length).toBeGreaterThanOrEqual(25);
+    for (const e of entries) {
+      expect(WARDS).toContain(e.ward);
+      expect(e.origin).toBe(`osm:node/${e.id}`);
+    }
+    // The three 川崎市 cameras inside the old box (府中街道バイパス, 横羽線 ×2) are gone.
+    const ids = new Set(entries.map((e) => e.id));
+    for (const id of [603144363, 925552169, 5613509088]) expect(ids.has(id)).toBe(false);
   });
 });

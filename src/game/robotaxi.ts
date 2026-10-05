@@ -38,6 +38,8 @@ export function fareFor(metres: number, slowSeconds: number): number {
 }
 
 const RIDE_HEIGHT = 0.86;
+/** Seconds a robotaxi that gave up (stuck, or blocked where it may not pass) waits before trying again. */
+const RETRY_AFTER = 10;
 const IDLE: DriveInput = { throttle: 0, brake: 1, steer: 0, handbrake: false, brakeOnly: true };
 
 /** The world the taxi drives in (see AutoDriver). */
@@ -53,6 +55,8 @@ export class RoboTaxi {
   /** A map pin over the car while it comes and waits, so the caller can spot it down the street. */
   private readonly pin: Sprite;
   private vacancy: MeshStandardMaterial | null = null;
+  /** Seconds since the driver gave up (see update). */
+  private stalled = 0;
   // Meter
   metres = 0;
   slowSeconds = 0;
@@ -171,8 +175,15 @@ export class RoboTaxi {
   update(dt: number, world: TaxiWorld, ground: { hasCollider: boolean; night: boolean }): boolean {
     this.car.setCoasting(!ground.hasCollider);
     const pose = { position: this.car.position(), yaw: this.car.yaw(), speed: this.car.forwardSpeed() };
-    const { input, moved, done } = this.driver.update(dt, world, pose);
+    const { input, moved, done, gaveUp } = this.driver.update(dt, world, pose);
     this.input = input;
+    // Stuck or blocked for good: no one at the wheel to take over, so after a pause it starts
+    // again from where it stands (as a remote operator of 特定自動運行 would have it do).
+    this.stalled = gaveUp ? this.stalled + dt : 0;
+    if (this.stalled > RETRY_AFTER) {
+      this.stalled = 0;
+      this.driver.retry(world);
+    }
     if (!ground.hasCollider) this.car.coast(dt, input, this.groundAt);
     if (this.state === "riding") {
       this.metres += moved;
@@ -184,6 +195,7 @@ export class RoboTaxi {
       brake: this.driver.braking,
       left: this.driver.signal === "left",
       right: this.driver.signal === "right",
+      reverse: this.driver.reversing,
     };
     this.car.updateLights(ground.night);
     return done;

@@ -13,6 +13,7 @@ const LABEL_PATTERNS: readonly MessageKey[] = [
   "violation.pattern.speed",
   "violation.pattern.injury",
   "violation.pattern.owner",
+  "violation.pattern.dangerous",
 ];
 
 /** A label's values that are Japanese words themselves: the injury's severity, the owner's offence. */
@@ -35,7 +36,7 @@ export function violationName(label: string): string {
 const DIGITS = "〇一二三四五六七八九";
 const NUMBER = "[0-9０-９〇一二三四五六七八九十百]+";
 const LAW = new RegExp(
-  "(道路交通法施行令|道路交通法施行規則|道路交通法|東京都道路交通規則|東京都環境確保条例|刑事訴訟法|軽犯罪法|施行令|道交法|都規則|同法)\\s*",
+  "(道路交通法施行令|道路交通法施行規則|道路交通法|東京都道路交通規則|東京都環境確保条例|刑事訴訟法|自動車運転死傷処罰法|軽犯罪法|刑法|施行令|道交法|都規則|同法)\\s*",
   "y",
 );
 // 第72条第1項前段, 第25条の2第2項, 第71条第5号の5, 第119条第1項第13号

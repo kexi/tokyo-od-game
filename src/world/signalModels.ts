@@ -1,7 +1,7 @@
 import { type BufferGeometry, type Material, Mesh, SRGBColorSpace, TextureLoader, type Texture } from "three";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { UntonemappedBasicMaterial } from "../render/untonemapped";
+import { sharedDraco } from "../render/draco";
 
 /**
  * 信号機 parts modelled in Blender (scripts/blender/signals.py → public/models/signals.glb) and
@@ -38,9 +38,7 @@ let kit: SignalKit | null = null;
 export const signalKit = (): SignalKit | null => kit;
 
 export async function loadSignalModels(): Promise<void> {
-  const loader = new GLTFLoader().setDRACOLoader(
-    new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-  );
+  const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
   const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/signals.glb`);
   const part = (name: string): Part => {
     const o = gltf.scene.getObjectByName(name);

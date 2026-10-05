@@ -152,6 +152,10 @@ orbis-model:
     uv run scripts/textures/orbis_textures.py
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/orbis.py -- public/models/orbis.glb
 
+# 可搬式オービス（三脚の測定部・ストロボ・地面のケース）を Blender CLI でモデリングし public/models/portable_orbis.glb を書き出す
+portable-orbis-model:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/portable_orbis.py -- public/models/portable_orbis.glb
+
 # ミラーの飾り（クマのぬいぐるみ・交通安全のお守り）を Blender CLI でモデリングし public/models/mirror_charms.glb を書き出す（錦と毛並みのテクスチャ assets/charms/textures も作り直す）
 charm-models:
     uv run scripts/textures/charm_textures.py

@@ -33,7 +33,11 @@ export type ViolationKind =
   | "ignoredStop" // 警察官の停止に従わなかった（無免許などの疑いでの停止）
   | "phone" // 携帯電話使用等（保持）
   | "parking" // 放置駐車違反（駐車禁止場所等）
-  | "parkingNoStop"; // 放置駐車違反（駐停車禁止場所等）
+  | "parkingNoStop" // 放置駐車違反（駐停車禁止場所等）
+  | "negligentInjury" // 過失運転致傷（自動車運転死傷処罰法 第5条）
+  | "dangerousInjury" // 危険運転致傷（同法 第2条）
+  | "obstruction" // 公務執行妨害（刑法 第95条第1項）
+  | "propertyDamage"; // 器物損壊（刑法 第261条）
 
 export type Violation = {
   kind: ViolationKind;
@@ -273,6 +277,41 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     points: 35,
     fine: null,
   },
+  // 追跡中に人を負傷させた（運転上必要な注意を怠った）。点数は安全運転義務違反と付加点数で数えるので
+  // この記録自体は 0 点（警視庁「交通事故の付加点数」）。七年以下の拘禁刑又は百万円以下の罰金。
+  negligentInjury: {
+    kind: "negligentInjury",
+    label: "過失運転致傷",
+    article: "自動車運転死傷処罰法 第5条",
+    points: 0,
+    fine: null,
+  },
+  // 第2条の危険運転で人を負傷させた（十五年以下の拘禁刑）。特定違反行為の基礎点数（施行令 別表第二）は
+  // 治療期間で 45・48・51・55 点で、安全運転義務違反と付加点数に代わる（dangerousInjuryViolation）。
+  dangerousInjury: {
+    kind: "dangerousInjury",
+    label: "危険運転致傷（治療15日未満）",
+    article: "自動車運転死傷処罰法 第2条第4号",
+    points: 45,
+    fine: null,
+  },
+  // 職務中の警察官に車をぶつける・向けるなどの暴行（三年以下の拘禁刑又は五十万円以下の罰金）。点数は無い。
+  obstruction: {
+    kind: "obstruction",
+    label: "公務執行妨害",
+    article: "刑法 第95条第1項",
+    points: 0,
+    fine: null,
+  },
+  // わざとぶつけて警察車両を壊した（三年以下の拘禁刑又は三十万円以下の罰金若しくは科料）。
+  // 親告罪（刑法 第264条）なので、起訴には車両を管理する側の告訴が要る。
+  propertyDamage: {
+    kind: "propertyDamage",
+    label: "器物損壊（警察車両）",
+    article: "刑法 第261条",
+    points: 0,
+    fine: null,
+  },
 };
 
 /** 違反点数 at which the licence is revoked (前歴なし, 15 点以上で取消). */
@@ -301,7 +340,7 @@ export type ViolationContext = {
  * (現認, ticket on the spot), an orbis photo (the notice comes by post), or the police called to
  * an accident. Until then it is only the player's own record (未検挙).
  */
-export type Detector = "patrol" | "officer" | "orbis" | "accident" | "parking" | "sns";
+export type Detector = "patrol" | "officer" | "orbis" | "orbisPortable" | "accident" | "parking" | "sns";
 export type ViolationStatus = "uncaught" | "caught" | "notice";
 export type ViolationRecord = Violation & {
   /** Game-loop time (ms since the page loaded): replays and cool-downs use it. */
@@ -316,6 +355,14 @@ export type ViolationRecord = Violation & {
   context?: ViolationContext;
   status: ViolationStatus;
   by?: Detector;
+  /**
+   * Why it left the 反則金 procedure, in Japanese (inJapanese("procedure.…")): the driver fled
+   * (道路交通法 第126条第1項第2号・第130条第1号) or had no valid licence (第125条第2項第1号). The
+   * 反則金 is gone then (fine: null) and the case goes the criminal way (赤切符・略式).
+   */
+  procedure?: string;
+  /** The record whose points include this one's (危険運転致傷 takes in the accident's). */
+  absorbedBy?: string;
 };
 
 /** This page load: records from earlier sessions cannot be replayed (the buffer is gone). */
@@ -421,6 +468,37 @@ export class TrafficLaw {
     return owner;
   }
 
+  /**
+   * The 反則金 procedure no longer applies (`why`, a procedure.* text): a criminal case instead.
+   * Points stay (the 行政処分 counts them either way); a 反則金 already counted is taken back.
+   * Records that never had one (points only, or already criminal) are left as they are.
+   */
+  toCriminal(record: ViolationRecord, why: string): boolean {
+    const isPenalty = record.fine !== null && record.fine > 0;
+    if (!isPenalty) return false;
+    if (record.status === "caught") this.state.fines -= record.fine ?? 0;
+    record.fine = null;
+    record.procedure = why;
+    return true;
+  }
+
+  /**
+   * `into` (危険運転致傷) is scored instead of `records` (the accident's 安全運転義務違反 and
+   * 付加点数): their points and 反則金 come off the total and they keep a pointer to it.
+   */
+  absorb(records: readonly ViolationRecord[], into: ViolationRecord): void {
+    for (const r of records) {
+      if (r === into || r.absorbedBy) continue;
+      if (r.status === "caught") {
+        this.state.points -= r.points;
+        this.state.fines -= r.fine ?? 0;
+      }
+      r.points = 0;
+      r.fine = null;
+      r.absorbedBy = into.id ?? "";
+    }
+  }
+
   /** Back to a clean licence (after the suspension screen). */
   reset(): void {
     this.state.points = 0;
@@ -449,6 +527,30 @@ export function injuryViolation(impactKmh: number): Violation {
     kind: "injury",
     label: `人身事故・付加点数（${injury}）`,
     article: "施行令 別表第二",
+    points,
+    fine: null,
+  };
+}
+
+/** 危険運転致傷's 特定違反行為 points by the injury's 付加点数 tier (施行令 別表第二). */
+const DANGEROUS_POINTS: Record<number, [number, string]> = {
+  3: [45, "治療15日未満"],
+  6: [48, "治療15日以上30日未満"],
+  9: [51, "治療30日以上3か月未満"],
+  13: [55, "治療3か月以上"],
+};
+
+/**
+ * 危険運転致傷 (自動車運転死傷処罰法 第2条): `item` 4 (the numeric high speed) or 10 (a red signal
+ * 殊更に無視, at a seriously dangerous speed), points by how badly the person was hurt — the same
+ * tiers injuryViolation estimates from the impact.
+ */
+export function dangerousInjuryViolation(item: 3 | 4 | 10, injuryPoints: number): Violation {
+  const [points, injury] = DANGEROUS_POINTS[injuryPoints] ?? DANGEROUS_POINTS[3];
+  return {
+    kind: "dangerousInjury",
+    label: `危険運転致傷（${injury}）`,
+    article: `自動車運転死傷処罰法 第2条第${item}号`,
     points,
     fine: null,
   };

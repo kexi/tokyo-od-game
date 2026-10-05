@@ -10,13 +10,13 @@ import {
   Quaternion,
   Vector3,
 } from "three";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { MessageKey } from "../i18n";
 import { warn } from "../log";
 import { type Cabin, cabinFromMirror, CharmRig, type CharmKind, DEFAULT_CABIN } from "../physics/charmRig";
 import { INTERIOR_LAYER } from "./cockpit";
 import type { CharmChoice } from "./controlsHelp";
+import { sharedDraco } from "../render/draco";
 
 /**
  * ミラーの飾り: the plush bear and/or the お守り (public/models/mirror_charms.glb) hanging from the
@@ -70,9 +70,7 @@ export class MirrorCharms {
 
   async load(): Promise<void> {
     try {
-      const loader = new GLTFLoader().setDRACOLoader(
-        new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-      );
+      const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
       const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/mirror_charms.glb`);
       for (const kind of ["plush", "omamori"] as const) {
         const node = gltf.scene.getObjectByName(NODE[kind]);

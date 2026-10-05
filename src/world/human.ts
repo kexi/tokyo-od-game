@@ -9,8 +9,8 @@ import {
   Quaternion,
   Vector3,
 } from "three";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { sharedDraco } from "../render/draco";
 
 export type HumanColors = { shirt: number; pants: number; skin: number; hair: number; umbrella: number };
 
@@ -54,9 +54,7 @@ let parts: Record<PartName, Object3D> | null = null;
 
 /** Loads human.glb once; createHuman needs it to have resolved. */
 export async function loadHumanModels(): Promise<void> {
-  const loader = new GLTFLoader().setDRACOLoader(
-    new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-  );
+  const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
   const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/human.glb`);
   const found = {} as Record<PartName, Object3D>;
   for (const name of PARTS) {

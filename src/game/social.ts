@@ -24,6 +24,12 @@ import {
   ACTIVE_HOURS,
   ANSWERS,
   CAREFUL_TOPICS,
+  CHASE_FALLBACK,
+  CHASE_OPENERS,
+  CHASE_TAGS,
+  STOP_FALLBACK,
+  STOP_OPENERS,
+  STOP_TAGS,
   CHATTER,
   CHATTER_ANSWERS,
   CHATTER_REPLIES,
@@ -31,6 +37,7 @@ import {
   KIND_WORDS,
   LANDMARK_WORDS,
   MEDIA_WORDS,
+  NEWS_IDENTIFIED,
   NEWS_QUOTE,
   OPENERS,
   QUOTES,
@@ -60,6 +67,7 @@ import {
   type ReplyGroup,
   type Season,
   type SocialLang,
+  type StopPhase,
 } from "./socialTexts";
 import type { ViolationKind, ViolationRecord } from "./traffic";
 
@@ -164,6 +172,8 @@ export type SocialPost = {
   reposters: { account: SocialAccount; at: number }[];
   /** The police have seen it (it becomes a notice to appear). */
   isReported: boolean;
+  /** A post about a pursuit going on (postChase) or a roadside stop (postStop), not a violation. */
+  topic?: "chase" | "stop";
 };
 
 /** An everyday post of someone else: the rest of the timeline. */
@@ -258,6 +268,34 @@ export function severityOf(r: ViolationRecord): number {
     return over >= 30 ? 0.75 : over >= 20 ? 0.45 : over >= 15 ? 0.25 : 0.1;
   }
   return SEVERITY[r.kind] ?? (r.kind.startsWith("injury") ? 0.95 : 0.15);
+}
+
+/** How striking a roadside stop looks at each moment (a reach and spread like a violation's). */
+const STOP_SEVERITY: Record<StopPhase, number> = {
+  stopped: 0.3,
+  stoppedBike: 0.3,
+  ticket: 0.3,
+  red: 0.5,
+  arrest: 0.75,
+  fledCaught: 0.7,
+};
+/** The chance someone posts a roadside stop's moment, before the people around and the hour count. */
+const STOP_POST_BASE: Record<StopPhase, number> = {
+  stopped: 0.35,
+  stoppedBike: 0.35,
+  ticket: 0.3,
+  red: 0.55,
+  arrest: 0.8,
+  fledCaught: 0.75,
+};
+
+/**
+ * The chance a roadside stop's moment is posted: more for a driver taken away than a ticket, scaled
+ * by the people who can see it (none: no post) and halved after dark, when fewer are out.
+ */
+export function stopPostChance(phase: StopPhase, witnesses: number, night: boolean): number {
+  if (witnesses <= 0) return 0;
+  return STOP_POST_BASE[phase] * Math.min(1, witnesses / 4) * (night ? 0.5 : 1);
 }
 
 // ---------- slots ----------
@@ -732,8 +770,25 @@ export class SocialFeed {
   /**
    * Maybe someone filmed it: the more people around and the worse it looked, the likelier a
    * post. Returns the post if one was made. `filmedBy` makes that pedestrian the author.
+   * draftPost and publish one after the other, at once.
    */
   maybePost(
+    record: ViolationRecord,
+    witnesses: number,
+    gameNow: number,
+    filmedBy?: SocialWitness,
+  ): SocialPost | null {
+    const post = this.draftPost(record, witnesses, gameNow, filmedBy);
+    if (post) this.publish(post, gameNow);
+    return post;
+  }
+
+  /**
+   * maybePost's decision and its words, not yet on the timeline: the game drafts at the moment
+   * of the violation (the poster is filming and typing it) and publishes a few seconds later, as
+   * people do. Nothing is shot or rewritten until publish.
+   */
+  draftPost(
     record: ViolationRecord,
     witnesses: number,
     gameNow: number,
@@ -787,12 +842,163 @@ export class SocialFeed {
       reposters: [],
       isReported: false,
     };
+    return post;
+  }
+
+  /**
+   * Puts a drafted post on the timeline at `gameNow`: it spreads from then, its poster's shot is
+   * asked for (the camera may have it already) and the on-device AI may rewrite it.
+   */
+  publish(post: SocialPost, gameNow: number): void {
+    post.postedAt = gameNow;
+    // Drafted in the language of that moment: the player may have switched since.
+    post.text = this.say(post.phrase);
+    post.tags = post.tagsJa.map((tag) => tagIn(tag, this.lang));
     this.posts.unshift(post);
     this.spreads.set(post, this.spreadOf(post));
     // Words only: nothing to shoot.
-    if (media !== "text") this.camera?.(post);
+    if (post.media !== "text") this.camera?.(post);
     void this.writer?.("post", post, 0).then((written) => this.keepWritten(post, written));
+  }
+
+  /**
+   * Someone filming a pursuit going on near the player: 「〇〇でパトカーとヘリが車を追ってる」 (stage 3)
+   * or the units gathering (stage 2). `record` stands for the moment (where, when, the car); it is
+   * not a booked violation, and the post is not a lead for the police (they are already on it).
+   * Why not maybePost: its openers, hashtags and its chance are a violation's; a chase that people
+   * stop to watch is posted whenever someone is around.
+   */
+  postChase(stage: 2 | 3, record: ViolationRecord, witnesses: number, gameNow: number): SocialPost | null {
+    if (witnesses <= 0) return null;
+    const tagsJa = CHASE_TAGS.filter((t) => stage === 3 || t !== "#ヘリ");
+    const reach = Math.round(10 ** (2.6 + 1.2 * this.rand()));
+    return this.scenePost(record, gameNow, {
+      lines: CHASE_OPENERS[stage],
+      fallback: CHASE_FALLBACK,
+      tagsJa,
+      severity: stage === 3 ? 0.9 : 0.75,
+      reach,
+      topic: "chase",
+      media: (isDashcam) => (isDashcam || this.rand() < 0.7 ? "video" : "photo"),
+    });
+  }
+
+  /**
+   * Someone going past while the police deal with the player's car at the roadside: 「〇〇で白黒
+   * パトカーに止められてる車いる」, 「切符切られてるっぽい」. Mostly a photo from the pavement or a
+   * passing car (no plate, no face), now and then a clip or words only. More people stop to post an
+   * arrest or a driver taken into the patrol car than a ticket; fewer after dark, and none where
+   * nobody is about (`witnesses`, as for a violation).
+   */
+  postStop(
+    phase: StopPhase,
+    record: ViolationRecord,
+    witnesses: number,
+    gameNow: number,
+    night: boolean,
+  ): SocialPost | null {
+    const chance = stopPostChance(phase, witnesses, night);
+    if (this.rand() >= chance) return null;
+    const severity = STOP_SEVERITY[phase];
+    return this.scenePost(record, gameNow, {
+      lines: STOP_OPENERS[phase],
+      fallback: STOP_FALLBACK,
+      tagsJa: STOP_TAGS,
+      severity,
+      reach: Math.round(10 ** (1 + 2.4 * severity * (0.6 + 0.4 * this.rand()))),
+      topic: "stop",
+      media: (isDashcam) => {
+        const u = this.rand();
+        if (isDashcam) return "video";
+        return u < 0.6 ? "photo" : u < 0.9 ? "video" : "text";
+      },
+    });
+  }
+
+  /** A post about something happening around the player (a chase, a roadside stop), not a violation. */
+  private scenePost(
+    record: ViolationRecord,
+    gameNow: number,
+    o: {
+      lines: readonly LineLike[];
+      fallback: string;
+      tagsJa: readonly string[];
+      severity: number;
+      reach: number;
+      topic: "chase" | "stop";
+      media: (isDashcam: boolean) => PostMedia;
+    },
+  ): SocialPost {
+    const account = this.someone(() => this.rand(), gameNow, POSTER_NEW_SHARE);
+    const isDashcam = cameraFor(account).kind === "dashcam";
+    const media = o.media(isDashcam);
+    const values = postValues(record, gameNow);
+    const shape = { media, kind: record.kind, isDashcam };
+    const opener = pickLine(o.lines, shape, values, this.recentOpeners, () => this.rand()) ?? o.fallback;
+    remember(this.recentOpeners, opener, NO_REPEAT_WINDOW);
+    const said = this.phrase(
+      [opener],
+      chooseSlots(opener, values, () => this.rand()),
+    );
+    const area = record.context?.place?.split(" ")[0];
+    const id = this.nextId++;
+    const tagsJa = [...o.tagsJa, ...(area ? [`#${area}`] : [])];
+    const post: SocialPost = {
+      id,
+      account,
+      author: account.name,
+      handle: account.handle,
+      ...said,
+      tags: tagsJa.map((tag) => tagIn(tag, this.lang)),
+      tagsJa,
+      media,
+      clipSeconds: 10 + (hashString(`${account.id}/${id}`) % 30),
+      record,
+      severity: o.severity,
+      postedAt: gameNow,
+      reach: o.reach,
+      reposts: 0,
+      quotes: 0,
+      likes: 0,
+      views: 0,
+      replies: [],
+      quotePosts: [],
+      reposters: [],
+      // The police are already there: these are not leads for them.
+      isReported: true,
+      topic: o.topic,
+    };
+    this.posts.unshift(post);
+    this.spreads.set(post, this.spreadOf(post));
+    if (media !== "text") this.camera?.(post);
     return post;
+  }
+
+  /**
+   * The driver who got away is identified (the plate, cameras, the posted videos): the news account
+   * follows up on the latest chase post, and it trends again (「逃走車、特定される」).
+   */
+  identified(gameNow: number): SocialReply | null {
+    const post = this.posts.find((p) => p.topic === "chase");
+    if (!post) return null;
+    const [ward, town] = post.record.context?.place?.split(" ") ?? [];
+    const news = FOLLOWED.news;
+    const said = this.phrase([NEWS_IDENTIFIED], { place: placeWord(ward, town) });
+    const quote: SocialReply = {
+      id: this.nextReplyId++,
+      account: news,
+      author: news.name,
+      handle: news.handle,
+      ...said,
+      atMinute: Math.round((gameNow - post.postedAt) / MINUTE),
+      postedAt: gameNow,
+      weight: 0.08,
+      likes: 0,
+    };
+    post.quotePosts.push(quote);
+    post.reach *= 2;
+    this.events.push({ kind: "news", at: gameNow, post, quote }, { kind: "trend", at: gameNow, post });
+    return quote;
   }
 
   /** Video for most; a still or words only for some, more so for what looked less serious. */
@@ -930,7 +1136,13 @@ export class SocialFeed {
     recent: string[],
   ): { text: string; phrase: Phrase } | null {
     const values = postValues(p.record, p.postedAt);
-    const group = REPLY_GROUP[p.record.kind as ViolationKind] as ReplyGroup | undefined;
+    // A roadside stop or a chase is not about the moment's record (it stands for the place only).
+    const group: ReplyGroup | undefined =
+      p.topic === "stop"
+        ? "pulledOver"
+        : p.topic === "chase"
+          ? "flee"
+          : (REPLY_GROUP[p.record.kind as ViolationKind] as ReplyGroup | undefined);
     // By source line, so a line is not used twice under a post whatever the language or the AI wrote.
     const used = new Set(under.map((r) => r.phrase.parts[0]));
     const unused = (lines: readonly LineLike[]) => lines.filter((l) => !used.has(asLine(l).text));

@@ -20,7 +20,6 @@ import {
   type Object3D,
   type Scene,
 } from "three";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { BUILDING_COLLIDER_RADIUS, PLATEAU_TILESET } from "../config";
 import { QUALITY } from "../device";
 import type { LocalFrame } from "../geo/frame";
@@ -31,6 +30,7 @@ import {
   setFacadeOrigin,
   updateFacadeClock,
 } from "./facade";
+import { sharedDraco } from "../render/draco";
 
 type Model = {
   scene: Object3D;
@@ -55,7 +55,7 @@ const COLLIDER_BUDGET_MS = 4;
 export class Buildings {
   tiles!: TilesRenderer;
   private readonly models = new Map<Object3D, Model>();
-  private readonly draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
+  private readonly draco = sharedDraco();
   private frame: LocalFrame;
   private lastColliderTick = 0;
   private readonly maskRegion = new SphereRegion({ mask: true, errorTarget: 1e9 });

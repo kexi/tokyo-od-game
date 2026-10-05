@@ -168,9 +168,16 @@ export class Vehicle {
     const v = this.coastSpeed;
     this.steer += (input.steer * steerLimit(v) - this.steer) * Math.min(1, dt * 8);
     const headroom = Math.min(1, Math.max(0, 1 - v / TOP_SPEED) * 3);
-    const accel = (input.throttle * ENGINE_FORCE * headroom) / MASS - LINEAR_DAMPING * v;
-    const decel = input.brake * COAST_BRAKE + (input.throttle === 0 ? 0.3 : 0);
-    this.coastSpeed = Math.max(0, v + (accel - Math.sign(v) * decel) * dt);
+    // Reverse as update() has it (the brake pedal at a standstill without brakeOnly), so a
+    // self-driving car can back up where there is no ground collider too.
+    const isReversing = input.brake > 0 && v < 1.0 && !input.brakeOnly;
+    const engine = isReversing ? -input.brake * REVERSE_FORCE : input.throttle * ENGINE_FORCE * headroom;
+    const accel = engine / MASS - LINEAR_DAMPING * v;
+    const decel = isReversing ? 0 : input.brake * COAST_BRAKE + (input.throttle === 0 ? 0.3 : 0);
+    const pushed = v + accel * dt;
+    // Brakes and rolling resistance slow the car to a stop, never past it.
+    const slowed = pushed > 0 ? Math.max(0, pushed - decel * dt) : Math.min(0, pushed + decel * dt);
+    this.coastSpeed = isReversing || v < 0 ? slowed : Math.max(0, slowed);
     const yaw = this.yaw() + ((v * Math.tan(this.steer)) / WHEELBASE) * dt;
     const t = this.body.translation();
     const x = t.x + Math.sin(yaw) * v * dt;
@@ -212,6 +219,9 @@ export class Vehicle {
     if (isReversing) engine = -input.brake * REVERSE_FORCE;
     else brake = input.brake * BRAKE_FORCE;
     if (input.throttle === 0 && input.brake === 0) brake = 4; // rolling resistance
+    // After a few seconds on the brake the chassis sleeps, and the reverse force alone never woke
+    // it (measured headlessly: the accelerator got the car going, reverse left it standing).
+    if (engine !== 0) this.body.wakeUp();
 
     for (let i = 0; i < 4; i++) {
       const isFront = i < 2;
@@ -255,7 +265,7 @@ export class Vehicle {
     const o = this.lightOverride;
     this.model.setLights({
       brake: o ? o.brake : input.brake > 0 && speed > 0.5,
-      reverse: o ? false : input.brake > 0 && speed <= 0.5,
+      reverse: o ? (o.reverse ?? false) : input.brake > 0 && speed <= 0.5,
       left: o ? o.left : (switches?.left ?? input.steer > 0.45),
       right: o ? o.right : (switches?.right ?? input.steer < -0.45),
       night,
@@ -263,8 +273,8 @@ export class Vehicle {
     });
   }
 
-  /** While 自動運転モード drives, its brake lamps and 合図 instead of the player's input. */
-  lightOverride: { brake: boolean; left: boolean; right: boolean } | null = null;
+  /** While 自動運転モード drives, its brake lamps, 合図 and 後退灯 instead of the player's input. */
+  lightOverride: { brake: boolean; left: boolean; right: boolean; reverse?: boolean } | null = null;
 
   position(target = new Vector3()): Vector3 {
     const t = this.body.translation();

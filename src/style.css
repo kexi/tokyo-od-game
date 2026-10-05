@@ -1908,6 +1908,115 @@ pre.notice {
   }
 }
 
+/* 追跡とその後: the pull-over guide, the conversation at the window, the radio, the story panels */
+#stop-guide {
+  left: 50%;
+  top: 190px;
+  transform: translateX(-50%);
+  max-width: min(460px, calc(100vw - 32px));
+  font-size: 13px;
+}
+#stop-guide header {
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+#stop-guide ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#stop-guide li.done {
+  color: #7dff9a;
+}
+#stop-dialogue {
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  pointer-events: auto;
+}
+#stop-dialogue[data-tone="kind"] {
+  border-color: #7dff9a;
+}
+#stop-dialogue[data-tone="stern"] {
+  border-color: #ff6b6b;
+}
+#stop-dialogue .stop-speaker {
+  color: var(--accent-2);
+  font-weight: 700;
+  font-size: 13px;
+}
+#stop-dialogue .stop-line {
+  margin: 6px 0 10px;
+  line-height: 1.6;
+}
+#stop-dialogue .stop-shot {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+#stop-dialogue .stop-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#stop-dialogue .stop-choices button {
+  padding: 6px 14px;
+  font-weight: 700;
+}
+#police-radio {
+  left: 12px;
+  bottom: 250px;
+  max-width: min(380px, calc(100vw - 24px));
+  font-size: 12px;
+  border-left: 3px solid #4d7dff;
+}
+#police-radio header {
+  font-weight: 700;
+  color: var(--sub);
+}
+#police-radio ol {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+#pursuit-story {
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  place-items: center;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(4, 6, 10, 0.92);
+  pointer-events: auto;
+}
+#pursuit-story canvas {
+  width: min(100%, calc((100vh - 160px) * 16 / 9));
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+}
+#pursuit-story .story-caption {
+  max-width: min(900px, 100%);
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.7;
+  text-align: center;
+}
+#pursuit-story .story-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+#nav .nav-notice[data-kind="police"] {
+  background: #b3261e;
+  color: #fff;
+}
+
 /* Y (the in-game social app): the app's own styles are in social.css. */
 #social-badge {
   margin-left: 4px;

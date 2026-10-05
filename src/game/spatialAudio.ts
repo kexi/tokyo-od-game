@@ -46,7 +46,8 @@ import {
  * k crossfades between 0 (outside) and 1 (in the cabin) over about 0.3 s.
  */
 
-export type SirenKind = "ambulance" | "police";
+/** "rotor": the police helicopter's blade slap overhead (pursuitScene.ts), on the same voices. */
+export type SirenKind = "ambulance" | "police" | "rotor";
 export type VoiceStyle = "voice" | "loudspeaker";
 /** One car for the traffic hum: its scene object (identity and pose), speed (m/s), model kind. */
 export type CarVisitor = (object: Object3D, speed: number, kind: string | null) => void;
@@ -510,7 +511,8 @@ export class SpatialAudio {
     emitter.place(PLACE.siren, LEVEL.siren);
     emitter.follow(anchor, 0, 1.0, 0.4);
     const osc = new OscillatorNode(ctx, { type: "square" });
-    const lp = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 2400 });
+    // The rotor is a low thump (the blades passing), not a tone: only its low end gets through.
+    const lp = new BiquadFilterNode(ctx, { type: "lowpass", frequency: kind === "rotor" ? 260 : 2400 });
     osc.connect(lp).connect(emitter.input);
     emitter.addDetune(osc.detune);
     const siren: Siren = { kind, emitter, osc, until: ctx.currentTime, step: 0, asked: this.clock };
@@ -688,7 +690,11 @@ export class SpatialAudio {
     const f = s.osc.frequency;
     while (s.until < now + 2) {
       const t = Math.max(s.until, now);
-      if (s.kind === "ambulance") {
+      if (s.kind === "rotor") {
+        // Five blades at about 4.6 turns a second: a square wave at the blade rate, steady.
+        f.setValueAtTime(23, t);
+        s.until = t + 2;
+      } else if (s.kind === "ambulance") {
         // 救急車 「ピーポー」: ~960 Hz / ~770 Hz, 0.65 s each.
         f.setValueAtTime(s.step % 2 ? 770 : 960, t);
         s.until = t + 0.65;

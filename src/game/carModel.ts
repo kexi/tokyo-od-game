@@ -1,6 +1,6 @@
 import { Group, Mesh, MeshStandardMaterial, SpotLight, type Material, type Object3D } from "three";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { sharedDraco } from "../render/draco";
 
 /**
  * Cars modelled in Blender by scripts/blender/car.py (public/models/car.glb): a detailed compact
@@ -56,9 +56,7 @@ let templates: Templates | null = null;
 
 /** Loads car.glb once; createCarModel / createLowCar need it to have resolved. */
 export async function loadCarModels(): Promise<void> {
-  const loader = new GLTFLoader().setDRACOLoader(
-    new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-  );
+  const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
   const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/car.glb`);
   const find = (name: string) => {
     const o = gltf.scene.getObjectByName(name);

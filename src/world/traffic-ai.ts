@@ -173,6 +173,11 @@ export class TrafficAI {
     return this.cars.map((c) => c.object.position);
   }
 
+  /** 路上駐車 cars (they never move off), for self-driving cars to tell from traffic (read-only). */
+  parkedPoses(): Array<{ position: Vector3; yaw: number; key: object }> {
+    return this.parked.map((p) => ({ position: p.object.position, yaw: p.object.rotation.y, key: p.object }));
+  }
+
   /** Visit each car for the traffic hum: its object (identity and pose), speed (m/s), model kind. */
   forEachCar(visit: (object: Object3D, speed: number, kind: VehicleKind | null) => void): void {
     for (const c of this.cars) visit(c.object, c.speed, c.vehicle?.kind ?? null);

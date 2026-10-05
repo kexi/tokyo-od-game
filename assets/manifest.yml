@@ -189,11 +189,10 @@ assets:
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。服制は警察官の服制に関する規則 別表による。旭日章・組織名は入れていない）
     license: repo
-    used_by: []
+    used_by: [src/world/officer.ts]
     inputs: [police-officer-textures, human-textures, human]
-    docs: [knowledge/street-characters-blender.md]
-    status: unused
-    notes: human.glb と同じ骨格（書き出し前に human.glb の関節位置と照合する）。2026-10-05 時点でゲームはまだ読み込んでいない。
+    docs: [knowledge/street-characters-blender.md, knowledge/pursuit-and-aftermath.md]
+    notes: human.glb と同じ骨格（書き出し前に human.glb の関節位置と照合する）。路肩での停止で窓まで歩く警察官と、検問で誘導灯を振る警察官に使う（world/officer.ts が服装の変種のノードを切り替える）。
 
   - id: stroller
     name: ベビーカー（A 形）
@@ -293,11 +292,38 @@ assets:
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。実在の標章・文字は使っていない）
     license: repo
-    used_by: []
+    used_by: [src/world/officer.ts]
     inputs: [police-vehicle-textures, human-textures, human]
-    docs: [knowledge/police-vehicles-blender.md]
-    status: unused
-    notes: 2026-10-05 時点でゲームはまだ読み込んでいない（vehicleModels.ts が読むのは白バイの乗車姿だけ）。
+    docs: [knowledge/police-vehicles-blender.md, knowledge/pursuit-and-aftermath.md]
+    notes: 白バイで止めたとき、窓まで歩いてくる隊員に使う（world/officer.ts。vehicleModels.ts が読むのは乗車姿）。
+
+  - id: police-heli
+    name: 警察ヘリコプター（汎用の中型双発機）
+    purpose: 停止に従わず逃げる車を上空から追い、夜はサーチライトで照らす警察ヘリ（主ローター・テールローター・サーチライトをノードで動かす）。
+    kind: model
+    files: [public/models/police_heli.glb]
+    generator:
+      script: [scripts/blender/police_heli.py, scripts/blender/police_common.py]
+      recipe: pursuit-models
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。特定の機種を写さず、実在の組織名・標章・旭日章・登録記号は入れていない。白地に紺の帯だけ）
+    license: repo
+    used_by: [src/game/pursuitScene.ts]
+    docs: [knowledge/police-vehicles-blender.md, knowledge/pursuit-and-aftermath.md]
+
+  - id: checkpoint-props
+    name: 検問の資材（パイロン・コーンバー・誘導灯・立て看板・赤色灯）
+    purpose: 逃走車の先回りで設ける検問の資材。ノードを 1 つずつ複製して並べる。立て看板の文字（「検問中」）はゲームが CanvasTexture で描く。
+    kind: model
+    files: [public/models/checkpoint.glb]
+    generator:
+      script: [scripts/blender/checkpoint.py, scripts/blender/police_common.py]
+      recipe: pursuit-models
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。組織名・標章は入れていない）
+    license: repo
+    used_by: [src/game/pursuitScene.ts]
+    docs: [knowledge/police-vehicles-blender.md, knowledge/pursuit-and-aftermath.md]
 
   - id: tokyo-tower
     name: 東京タワー
@@ -366,6 +392,19 @@ assets:
     inputs: [orbis-textures]
     docs: [knowledge/orbis.md]
     notes: 梁（GantryBeam）は長さ 1 で、ゲームが車道の幅に伸ばす。配置の元データは public/data/police.json の orbis（OSM、ODbL）。
+
+  - id: portable-orbis
+    name: 可搬式オービス（可搬式速度違反自動取締装置）
+    purpose: 生活道路の路端に日ごとに置く三脚の速度取締装置。測定部（カメラの窓・日よけ・レーダーの面）、上に載るストロボ、地面のバッテリーケースとケーブル。撮影するとストロボ（PortableLens）が光る。
+    kind: model
+    files: [public/models/portable_orbis.glb]
+    generator: { script: scripts/blender/portable_orbis.py, recipe: portable-orbis-model }
+    made_by: blender-cli
+    source: 自作（bpy で手続きモデリング。三脚の測定部・別のストロボ・地面のケースという一般的な配置を Wikimedia Commons の写真で確かめただけで、特定の製品の形・写真・外部の 3D 素材は使わず、メーカー名・型番・警察の標章・組織名も入れていない）
+    license: repo
+    used_by: [src/world/orbis.ts]
+    docs: [knowledge/orbis.md]
+    notes: 置く場所は実在の運用場所ではなく、src/world/portableOrbis.ts がゲームの日付と地点から決める。測定部は路面の方へ 10° 振ってある（extras の headYaw）。
 
   - id: guide-sign-model
     name: 案内標識の支柱・腕・標示板
@@ -522,8 +561,7 @@ assets:
     license: repo
     used_by: []
     docs: [knowledge/street-characters-blender.md]
-    status: unused
-    notes: 材料にしている police-officer モデルがまだゲームで使われていない。
+    notes: police-officer モデル（police.glb）に埋め込まれていて、ゲームはそのモデル経由で使う（world/officer.ts）。
 
   - id: police-vehicle-textures
     name: 警察車両のテクスチャ

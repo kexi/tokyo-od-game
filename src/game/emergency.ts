@@ -10,11 +10,11 @@ import {
   Vector3,
   type Scene,
 } from "three";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Pedestrian } from "../world/pedestrians";
 import type { SpatialAudio } from "./spatialAudio";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
+import { sharedDraco } from "../render/draco";
 
 export type ResponderKind = "ambulance" | "police";
 export type IncidentEvent =
@@ -94,9 +94,7 @@ function wheels(root: Group, xs: number, zf: number, zr: number, r: number): voi
  */
 let ambulanceModel: Group | null = null;
 export async function loadAmbulanceModel(): Promise<void> {
-  const loader = new GLTFLoader().setDRACOLoader(
-    new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-  );
+  const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
   const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/ambulance.glb`);
   ambulanceModel = gltf.scene;
 }
@@ -334,6 +332,13 @@ export class EmergencyResponse {
 
   get chasing(): boolean {
     return this.pursuit !== null;
+  }
+
+  /** The pursuit caught the driver another way (pursuitDirector.ts takes the case): stand down. */
+  cancelPursuit(): void {
+    if (!this.pursuit) return;
+    this.pursuit = null;
+    this.close();
   }
 
   /** A witness reported the plate: a patrol car comes after the fleeing driver. */

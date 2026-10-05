@@ -1,8 +1,23 @@
-import { PerspectiveCamera, Vector3, type Mesh, type Object3D, type RenderTarget, type Scene } from "three";
+import {
+  Color,
+  PerspectiveCamera,
+  SRGBColorSpace,
+  Vector3,
+  type Material,
+  type Mesh,
+  type Object3D,
+  type RenderTarget,
+  type Scene,
+} from "three";
 import type { WebGPURenderer } from "three/webgpu";
 import { log, warn } from "../log";
 import { holdShadows, sceneTarget, type FrameComposer } from "../render/frame";
 import { readPixels } from "../render/renderer";
+import { UntonemappedBasicMaterial } from "../render/untonemapped";
+import type { Darkroom } from "./darkroom";
+import { Busy, FrameGate } from "./frameSlices";
+import { perf } from "./perf";
+import type { Look } from "./photoDevelop";
 import { jstParts, type SocialPost } from "./social";
 import { cameraFor, unitOf, type CameraSpec, type SocialAccount } from "./socialAccounts";
 import type { ViolationRecord } from "./traffic";
@@ -14,10 +29,10 @@ import type { ViolationRecord } from "./traffic";
  * (viewpointFor: a pedestrian who can see the car, the pavement on either side, a balcony, a bus
  * window, far away with the zoom, or a following/oncoming car's dashcam).
  *
- * One off-screen render of the same scene per post (the main camera, the HUD and the cockpit are
- * left alone), tone-mapped as the screen is and read back when the GPU is done (WebGPU has no
- * synchronous readback); developing it into a JPEG — exposure, grain, tilt, a dashcam's barrel and
- * time stamp — runs then, after the frame.
+ * Off-screen renders of the same scene (the main camera, the HUD and the cockpit are left alone),
+ * at most one a frame (`gate`, ticked by main after each frame), tone-mapped as the screen is and
+ * read back when the GPU is done (WebGPU has no synchronous readback); developing the JPEG —
+ * exposure, grain, tilt, a dashcam's barrel and time stamp — runs in the darkroom worker.
  */
 
 /** What the shooter needs from the game. */
@@ -44,6 +59,7 @@ export type ShotWorld = {
 
 type Frame = { car: Vector3; fwd: Vector3; witnesses: Vector3[] };
 type Photo = { shot: Aimed; across: number; pixels: Promise<Uint8Array> };
+type Subject = ReturnType<ShotWorld["subject"]>;
 type Stand = { view: Viewpoint; eye: Vector3 };
 type Aimed = Stand & { focal: number; blur: number; tilt: number; distance: number };
 
@@ -65,7 +81,34 @@ const SUPERSAMPLE = 1.5;
 const MAX_PROBES = 4;
 const PROBE_W = 64;
 const PROBE_H = 36;
+// A probe draws this far past the car (its length and a margin): what is behind cannot hide it.
+const PROBE_BEYOND = 8;
+const FAR = 40000;
 const EYE = 1.52;
+
+/**
+ * The car's colour in a probe, as the 8-bit picture shows it (sRGB): a magenta nothing in town is
+ * painted. ACES can show it (tests/frameSlices.test.ts), so the probe material outputs the radiance
+ * that tone-maps back to it whatever the exposure (UntonemappedBasicMaterial).
+ */
+export const PROBE_SHOWN = [220, 30, 210] as const;
+const PROBE_TOLERANCE = 28;
+
+/**
+ * Whether a probe's pixels (RGBA) show the car: at least 0.4 % of them (10 of 64×36) in the probe
+ * colour. Pixels on the car's edge, blended with what is behind it, do not count.
+ */
+export function probeSees(pixels: Uint8Array): boolean {
+  let hits = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const isProbe =
+      Math.abs(pixels[i] - PROBE_SHOWN[0]) < PROBE_TOLERANCE &&
+      Math.abs(pixels[i + 1] - PROBE_SHOWN[1]) < PROBE_TOLERANCE &&
+      Math.abs(pixels[i + 2] - PROBE_SHOWN[2]) < PROBE_TOLERANCE;
+    if (isProbe) hits++;
+  }
+  return hits >= Math.max(1, (pixels.length / 4) * 0.004);
+}
 
 /** Where this post's poster stood (fixed by the account and the post). */
 export function viewpointFor(account: SocialAccount, postId: number, hasWitness: boolean): Viewpoint {
@@ -101,98 +144,122 @@ export function verticalFov(focal: number, aspect: CameraSpec["aspect"]): number
   return (2 * Math.atan(halfV) * 180) / Math.PI;
 }
 
-type Look = CameraSpec & {
-  /** Barrel distortion (a dashcam's wide lens). */
-  barrel: number;
-  /** Softness in pixels (far and zoomed in, hand-held). */
-  blur: number;
-  /** Panning streak in pixels (following a fast car). */
-  streak: number;
-  seed: number;
-  stamp: string | null;
-};
-
 export class WitnessShot {
-  private readonly camera = new PerspectiveCamera(60, 16 / 9, 0.3, 40000);
+  /**
+   * One off-screen render a frame for all the shots: main ticks it once after each frame.
+   * Open (every turn at once) does everything as soon as it can, as before the slicing.
+   */
+  readonly gate = new FrameGate();
+  // Shots in flight, from the request to the developed photo.
+  private readonly busy = new Busy();
+  private readonly camera = new PerspectiveCamera(60, 16 / 9, 0.3, FAR);
   private readonly targets = new Map<string, RenderTarget>();
   private readonly shots = new WeakMap<ViolationRecord, SocialPost[]>();
   // Where the posters of each violation stood: no two share a spot.
   private readonly spots = new WeakMap<ViolationRecord, Vector3[]>();
-  /** Each captured post's development: a later post of the same violation waits for it. */
+  /** Each post's shot until its photo is in: a later post of the same violation waits for it. */
   private readonly developed = new WeakMap<SocialPost, Promise<void>>();
+  private readonly probeMaterial = new UntonemappedBasicMaterial({
+    name: "WitnessProbe",
+    color: new Color().setRGB(
+      PROBE_SHOWN[0] / 255,
+      PROBE_SHOWN[1] / 255,
+      PROBE_SHOWN[2] / 255,
+      SRGBColorSpace,
+    ),
+    fog: false,
+  });
 
   constructor(
     private readonly renderer: WebGPURenderer,
     private readonly composer: FrameComposer,
     private readonly scene: Scene,
     private readonly world: ShotWorld,
+    private readonly darkroom: Darkroom,
   ) {}
 
-  /** Takes `post`'s photo now (post.photo and filmedFrom are set once developed, a moment later). */
+  /**
+   * Starts `post`'s photo: drawn over the next frames, developed off the main thread (post.photo
+   * and filmedFrom are set when it is in). Asking again for the same post does nothing, so the game
+   * can start it when the post is drafted and the feed ask again when it is published.
+   */
   shoot(post: SocialPost): void {
+    if (this.developed.has(post)) return;
     const earlier = this.shots.get(post.record) ?? [];
     this.shots.set(post.record, [...earlier, post]);
     if (earlier.length >= MAX_SHOTS_PER_EVENT) {
       // Enough cameras for one moment: this poster shares someone else's clip, once it is developed.
       const source = earlier[post.id % earlier.length];
-      void (this.developed.get(source) ?? Promise.resolve()).then(() => {
+      const shared = (this.developed.get(source) ?? Promise.resolve()).then(() => {
         post.photo = source.photo;
         post.photoAspect = source.photoAspect;
         post.filmedFrom = source.filmedFrom;
         if (post.filmedFrom) this.world.filmed?.(post);
       });
+      this.developed.set(post, shared);
       return;
     }
-    try {
-      this.developed.set(post, this.capture(post).catch(failed));
-    } catch (error) {
-      failed(error);
-    }
+    const work = this.capture(post).catch(failed);
+    this.developed.set(post, work);
+    void this.busy.track(work);
+  }
+
+  /** Resolves once no shot is being drawn, read back or developed (at once when none is). */
+  idle(): Promise<void> {
+    return this.busy.idle();
   }
 
   /**
-   * Everything is drawn at the moment of the violation: a probe of each of the first stands (with
-   * and without the car, to see whether a wall or a landmark is in the way of any test short of
-   * drawing it) and the photo from the best stand by the cheap test. When the probes come back, the
-   * photo stands if that stand sees the car; otherwise the first stand that does shoots again, a
-   * moment later, at where the car is then (the poster turns to it). Why not every stand's photo at
-   * once: four full renders in the frame of the violation would be the hitch the probes avoid.
+   * Over the frames after the violation, one off-screen render a frame (this.gate): the stands
+   * are chosen; probed one at a time — a tiny frame clipped just past the car, the car in one flat
+   * colour, read back — until one sees the car (mostly the first); then the photo from that stand,
+   * aimed at where the car is by then (a few frames on: about a metre at 50 km/h); read back and
+   * developed in the darkroom worker.
+   * Why the frames right after, not the posting seconds later from a record of the moment (the car
+   * put back where it was): the frame's shadow map, kept for the shot, would show the car's shadow
+   * where it is now and none under it, and the street (a light that turned, the people now holding
+   * their phones) has moved on. Why one stand at a time: the first stand mostly sees the car, so it
+   * is one probe and one photo, where the probes of four stands (each drawn with and without the
+   * car) and a photo on a guess, all in the violation's frame, were nine renders in that frame.
    */
   private async capture(post: SocialPost): Promise<void> {
     const spec = cameraFor(post.account);
     const isDashcam = spec.kind === "dashcam";
+    // The moment it was seen (a drafted post's time; publishing later moves postedAt on).
+    const seenAt = post.postedAt;
+    await this.gate.turn();
     const subject = this.world.subject();
-    const frame = this.frameAt(subject);
-    const taken = this.spots.get(post.record) ?? [];
-    const tries = this.stands(post, frame, taken);
+    const plan = perf.time("shot.plan", () => {
+      const frame = this.frameAt(subject);
+      const taken = this.spots.get(post.record) ?? [];
+      const tries = this.stands(post, frame, taken);
+      // Taken now, so another poster of this violation shooting meanwhile stands elsewhere.
+      const spot = tries[0].eye.clone();
+      this.spots.set(post.record, [...taken, spot]);
+      return { frame, tries, spot };
+    });
+    const { frame, tries, spot } = plan;
+    // None seeing it: the first stand, as people film what they can.
+    let best = 0;
+    const probes = Math.min(MAX_PROBES, tries.length);
+    for (let i = 0; i < probes; i++) {
+      if (i > 0) await this.gate.turn();
+      const read = perf.time("shot.probe", () => this.probe(post, spec, tries[i], this.follow(frame)));
+      const isSeen = await perf.span("shot.probe.read", read);
+      if (!isSeen) continue;
+      best = i;
+      break;
+    }
+    await this.gate.turn();
     const { w, h } = frameSize(spec.aspect);
     const rw = Math.round(w * SUPERSAMPLE);
     const rh = Math.round(h * SUPERSAMPLE);
-    const probes: Array<Promise<boolean>> = [];
-    let first: Photo | null = null;
-    this.staged(() => {
-      for (const stand of tries.slice(0, MAX_PROBES)) {
-        this.aim(post, spec, stand, frame);
-        probes.push(this.seesCar());
-      }
-      first = this.photo(post, spec, tries[0], frame, rw, rh);
-    });
-    // Taken now, so another poster of this violation shooting in the same frame stands elsewhere.
-    const spot = tries[0].eye.clone();
-    this.spots.set(post.record, [...taken, spot]);
-    const seen = await Promise.all(probes);
-    const best = seen.indexOf(true);
-    let photo = first as Photo | null;
-    if (best > 0) {
-      const later = this.frameAt(this.world.subject());
-      this.staged(() => {
-        photo = this.photo(post, spec, tries[best], later, rw, rh);
-      });
-    }
-    if (!photo) return;
+    const photo = perf.time("shot.photo", () =>
+      this.staged(() => this.photo(post, spec, tries[best], this.follow(frame), rw, rh)),
+    );
     const { shot, across } = photo;
     spot.copy(shot.eye);
-    const pixels = await photo.pixels;
+    const pixels = await perf.span("shot.photo.read", photo.pixels);
     post.filmedFrom = {
       eye: { x: shot.eye.x, y: shot.eye.y, z: shot.eye.z },
       fov: verticalFov(shot.focal, spec.aspect),
@@ -208,26 +275,87 @@ export class WitnessShot {
       focal: Math.round(shot.focal),
       aspect: spec.aspect,
       distance: Math.round(shot.distance),
+      probes: best + 1,
     });
     // A pan following a fast car streaks the frame sideways.
     const streak = isDashcam ? 0 : Math.min(4, (subject.kmh / 25) * across * (shot.focal / 26));
     const look: Look = {
-      ...spec,
+      exposure: spec.exposure,
+      warmth: spec.warmth,
+      noise: spec.noise,
       tilt: shot.tilt,
       barrel: isDashcam ? 0.22 : shot.focal <= 13 ? 0.08 : 0,
       blur: shot.blur,
       streak,
       seed: post.id * 7919,
-      stamp: isDashcam ? dashcamStamp(post.postedAt, subject.kmh, shot.view === "behind") : null,
+      stamp: isDashcam ? dashcamStamp(seenAt, subject.kmh, shot.view === "behind") : null,
     };
-    post.photo = develop(pixels, rw, rh, w, h, look);
+    // Inline (the old way, or no worker) it is all done in the call: main-thread time, not a wait.
+    const url = await (this.darkroom.inline
+      ? perf.time("shot.develop.inline", () => this.darkroom.develop(pixels, rw, rh, w, h, look))
+      : perf.span("shot.develop", this.darkroom.develop(pixels, rw, rh, w, h, look)));
+    if (!url) return;
+    post.photo = url;
     post.photoAspect = w / h;
   }
 
-  private frameAt(subject: ReturnType<ShotWorld["subject"]>): Frame {
+  /**
+   * Builds, before play, what the first shot would otherwise build in its frame: the probe
+   * material's pipeline for each mesh of the car (one per vertex layout), the 8-bit pass a shot is
+   * tone-mapped through and the read-back's buffers. Into `frameTarget`'s format: the shots'
+   * targets are made the same way (sceneTarget), so they share its pipelines.
+   */
+  async precompile(frameTarget: RenderTarget): Promise<void> {
+    const car = this.world.subjectObject?.();
+    if (!car) return;
+    const s = this.world.subject();
+    const cam = this.camera;
+    cam.fov = 50;
+    cam.aspect = PROBE_W / PROBE_H;
+    cam.far = FAR;
+    cam.updateProjectionMatrix();
+    cam.position.copy(s.position).add(new Vector3(-Math.sin(s.yaw) * 7, 2, -Math.cos(s.yaw) * 7));
+    cam.up.set(0, 1, 0);
+    cam.lookAt(s.position);
+    cam.updateMatrixWorld();
+    // Staged as a shot is: from the driver's seat some of the car's outside is hidden, and what is
+    // hidden is not compiled.
+    const compiled = this.staged(() => {
+      const unpaint = this.paint(car);
+      try {
+        this.renderer.setRenderTarget(frameTarget);
+        // compileAsync collects what it builds before it returns: the car can be repainted at once.
+        return this.renderer.compileAsync(car, cam, this.scene);
+      } finally {
+        unpaint();
+      }
+    });
+    await compiled;
+    // One probe drawn for real, now that its pipelines are there: the 8-bit pass and the read-back.
+    await this.staged(() => {
+      const repaint = this.paint(car);
+      try {
+        return this.draw(PROBE_W, PROBE_H);
+      } finally {
+        repaint();
+      }
+    });
+  }
+
+  private frameAt(subject: Subject): Frame {
     const car = subject.position.clone();
     const fwd = new Vector3(Math.sin(subject.yaw), 0, Math.cos(subject.yaw));
     return { car, fwd, witnesses: this.world.witnesses(car) };
+  }
+
+  /** `frame` with the car where it is now: the stands stay those of the moment, the aim follows. */
+  private follow(frame: Frame): Frame {
+    const now = this.world.subject();
+    return {
+      car: now.position.clone(),
+      fwd: new Vector3(Math.sin(now.yaw), 0, Math.cos(now.yaw)),
+      witnesses: frame.witnesses,
+    };
   }
 
   /** The photo from `stand` (drawn now, read back later), and how much a pan streaks it. */
@@ -242,6 +370,57 @@ export class WitnessShot {
     const shot = this.aim(post, spec, stand, frame);
     const across = Math.abs(frame.fwd.dot(new Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)));
     return { shot, across, pixels: this.draw(rw, rh) };
+  }
+
+  /**
+   * Whether the car shows from `stand`: a PROBE_W×PROBE_H frame clipped a few metres past the car
+   * (what is behind it cannot hide it, and the rest of the town is not drawn), with the car's
+   * meshes in the flat probe colour; it shows if enough pixels come back in that colour.
+   * Why a flat colour and not the frame with and without the car (as before): one render, not two,
+   * and nothing that moves between two frames can pass for the car. Why its materials and not
+   * hiding the car: hiding it would take its headlights out of the lights, and a change in the
+   * number of lights rebuilds every material.
+   */
+  private probe(post: SocialPost, spec: CameraSpec, stand: Stand, frame: Frame): Promise<boolean> {
+    const car = this.world.subjectObject?.();
+    if (!car) return Promise.resolve(true);
+    return this.staged(() => {
+      const shot = this.aim(post, spec, stand, frame);
+      const cam = this.camera;
+      cam.far = shot.eye.distanceTo(frame.car) + PROBE_BEYOND;
+      cam.updateProjectionMatrix();
+      const unpaint = this.paint(car);
+      try {
+        return this.draw(PROBE_W, PROBE_H).then(probeSees);
+      } finally {
+        unpaint();
+        cam.far = FAR;
+        cam.updateProjectionMatrix();
+      }
+    });
+  }
+
+  /**
+   * Gives the car's shown meshes the probe material; returns what puts theirs back. Slots that are
+   * hidden (a material with visible off, such as an unlit lamp's glow) stay as they are.
+   */
+  private paint(car: Object3D): () => void {
+    const painted: Array<[Mesh, Material | Material[]]> = [];
+    const probe = this.probeMaterial;
+    car.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh) return;
+      const own = mesh.material;
+      painted.push([mesh, own]);
+      mesh.material = Array.isArray(own)
+        ? own.map((m) => (m.visible ? probe : m))
+        : own.visible
+          ? probe
+          : own;
+    });
+    return () => {
+      for (const [mesh, own] of painted) mesh.material = own;
+    };
   }
 
   /** Points `this.camera` from a stand the way this poster would (zoom, aim, tilt). */
@@ -310,35 +489,21 @@ export class WitnessShot {
   }
 
   /**
-   * Whether the car shows in the current view: a tiny frame drawn with and without the car's
-   * meshes, compared (when both are read back). Why the meshes and not the car: hiding the car
-   * would hide its headlights too, and a change in the number of lights recompiles every material.
+   * Whether nothing big stands between the eye and the car: open ground sampled every 2.5 m, two
+   * closed samples in a row (5 m and more) being a building (the way the crowd judges it).
    */
-  private async seesCar(): Promise<boolean> {
-    const car = this.world.subjectObject?.();
-    if (!car) return true;
-    const shownRead = this.draw(PROBE_W, PROBE_H);
-    const meshes: Object3D[] = [];
-    car.traverse((o) => {
-      if ((o as Mesh).isMesh && o.visible) meshes.push(o);
-    });
-    for (const m of meshes) m.visible = false;
-    let goneRead: Promise<Uint8Array>;
-    try {
-      goneRead = this.draw(PROBE_W, PROBE_H);
-    } finally {
-      for (const m of meshes) m.visible = true;
+  private canSee(from: Vector3, to: Vector3, skip: number): boolean {
+    if (this.world.sight) return this.world.sight(from, to);
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const dist = Math.hypot(dx, dz);
+    let closed = 0;
+    for (let s = skip; s < dist - 3; s += 2.5) {
+      const isClosed = !this.world.isOpen(from.x + (dx / dist) * s, from.z + (dz / dist) * s);
+      closed = isClosed ? closed + 1 : 0;
+      if (closed >= 2) return false;
     }
-    const [shown, gone] = await Promise.all([shownRead, goneRead]);
-    let changed = 0;
-    for (let i = 0; i < shown.length; i += 4) {
-      const d =
-        Math.abs(shown[i] - gone[i]) +
-        Math.abs(shown[i + 1] - gone[i + 1]) +
-        Math.abs(shown[i + 2] - gone[i + 2]);
-      if (d > 30) changed++;
-    }
-    return changed >= PROBE_W * PROBE_H * 0.004;
+    return true;
   }
 
   /** A viewpoint's eye position (salted, so each poster stands somewhere of their own). */
@@ -388,38 +553,26 @@ export class WitnessShot {
   }
 
   /**
-   * Whether nothing big stands between the eye and the car: open ground sampled every 2.5 m, two
-   * closed samples in a row (5 m and more) being a building (the way the crowd judges it).
-   */
-  private canSee(from: Vector3, to: Vector3, skip: number): boolean {
-    if (this.world.sight) return this.world.sight(from, to);
-    const dx = to.x - from.x;
-    const dz = to.z - from.z;
-    const dist = Math.hypot(dx, dz);
-    let closed = 0;
-    for (let s = skip; s < dist - 3; s += 2.5) {
-      const isClosed = !this.world.isOpen(from.x + (dx / dist) * s, from.z + (dz / dist) * s);
-      closed = isClosed ? closed + 1 : 0;
-      if (closed >= 2) return false;
-    }
-    return true;
-  }
-
-  /**
    * Runs `fn` with the scene as a bystander sees it: the player's own markers hidden, the cockpit
    * put away, and the shadow map of the frame kept (Why: redrawing it for every probe would cost
    * more than the probes; the sun has not moved since).
    */
-  private staged(fn: () => void): void {
+  private staged<T>(fn: () => T): T {
     const hidden = this.world.hidden().filter((o): o is Object3D => !!o && o.visible);
     for (const o of hidden) o.visible = false;
     const before = this.renderer.getRenderTarget();
+    let out: T | undefined;
     try {
-      holdShadows(() => this.world.stage(fn));
+      holdShadows(() =>
+        this.world.stage(() => {
+          out = fn();
+        }),
+      );
     } finally {
       this.renderer.setRenderTarget(before);
       for (const o of hidden) o.visible = true;
     }
+    return out as T;
   }
 
   /**
@@ -455,101 +608,4 @@ function dashcamStamp(ms: number, kmh: number, isFollowing: boolean): string {
   // The dashcam's own car: following the player at about its speed, or passing the other way.
   const own = Math.max(0, Math.round(isFollowing ? kmh * 0.9 : 30 + (ms % 20)));
   return `${d.year}/${two(d.month)}/${two(d.day)} ${two(d.hour)}:${two(d.minute)}:${two(d.second)}  ${own}km/h`;
-}
-
-/**
- * The phone's processing: tilt (zoomed to fill the corners), barrel, auto exposure (dark scenes
- * are lifted, and get grainier for it), white balance, grain, vignette; then softness, the pan
- * streak and a dashcam's time stamp. Returns a JPEG data URL.
- */
-function develop(src: Uint8Array, rw: number, rh: number, w: number, h: number, look: Look): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return "";
-  let luma = 0;
-  let samples = 0;
-  for (let i = 0; i < src.length; i += 4 * 53) {
-    luma += 0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2];
-    samples++;
-  }
-  const mean = luma / Math.max(1, samples) / 255;
-  const auto = Math.min(2.2, Math.max(0.85, 0.42 / Math.max(0.03, mean)));
-  const gain = auto * look.exposure;
-  const gr = gain * (1 + look.warmth);
-  const gb = gain * (1 - look.warmth);
-  const grain = look.noise * (5 + 16 * (auto - 0.85));
-  const cos = Math.cos(look.tilt);
-  const sin = Math.sin(look.tilt);
-  const long = Math.max(w, h) / Math.min(w, h);
-  const zoom = Math.abs(cos) + long * Math.abs(sin);
-  const corner = 1 + (h / w) ** 2;
-  const out = ctx.createImageData(w, h);
-  const o = out.data;
-  const half = w / 2;
-  const scale = rw / w;
-  let seed = look.seed >>> 0;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const u = (x + 0.5 - half) / half;
-      const v = (y + 0.5 - h / 2) / half;
-      const r2 = u * u + v * v;
-      // The barrel magnifies the middle and squeezes the edges (corners stay put).
-      const b = (1 + look.barrel * r2) / (1 + look.barrel * corner);
-      // Image y runs down, so the roll turns the other way round on screen.
-      const su = ((u * cos + v * sin) / zoom) * b;
-      const sv = ((-u * sin + v * cos) / zoom) * b;
-      const sx = Math.min(rw - 1.001, Math.max(0, rw / 2 + su * half * scale - 0.5));
-      // GL rows run bottom-up.
-      const sy = Math.min(rh - 1.001, Math.max(0, rh / 2 - sv * half * scale - 0.5));
-      const x0 = Math.floor(sx);
-      const y0 = Math.floor(sy);
-      const fx = sx - x0;
-      const fy = sy - y0;
-      const i00 = (y0 * rw + x0) * 4;
-      const i10 = i00 + 4;
-      const i01 = i00 + rw * 4;
-      const i11 = i01 + 4;
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      const n = ((seed >>> 8) / 0x1000000 - 0.5) * grain;
-      const vignette = 1 - 0.22 * r2;
-      const k = (y * w + x) * 4;
-      for (let c = 0; c < 3; c++) {
-        const top = src[i00 + c] * (1 - fx) + src[i10 + c] * fx;
-        const bottom = src[i01 + c] * (1 - fx) + src[i11 + c] * fx;
-        const g = c === 0 ? gr : c === 2 ? gb : gain;
-        o[k + c] = (top * (1 - fy) + bottom * fy) * g * vignette + n;
-      }
-      o[k + 3] = 255;
-    }
-  }
-  ctx.putImageData(out, 0, 0);
-  if (look.blur > 0) soften(ctx, canvas, look.blur);
-  if (look.streak > 0.5) {
-    ctx.globalAlpha = 0.3;
-    ctx.drawImage(canvas, look.streak, 0);
-    ctx.drawImage(canvas, -look.streak, 0);
-    ctx.globalAlpha = 1;
-  }
-  if (look.stamp) {
-    ctx.font = `700 ${Math.round(w / 40)}px ui-monospace, Menlo, monospace`;
-    ctx.textBaseline = "bottom";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(0,0,0,0.8)";
-    ctx.fillStyle = "#f4f4f4";
-    ctx.strokeText(look.stamp, 12, h - 10);
-    ctx.fillText(look.stamp, 12, h - 10);
-  }
-  return canvas.toDataURL("image/jpeg", 0.8);
-}
-
-/** Box-softens the picture by drawing it smaller and back (cheap, like an out-of-focus zoom). */
-function soften(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, px: number): void {
-  const small = document.createElement("canvas");
-  small.width = Math.max(1, Math.round(canvas.width / (1 + px)));
-  small.height = Math.max(1, Math.round(canvas.height / (1 + px)));
-  small.getContext("2d")?.drawImage(canvas, 0, 0, small.width, small.height);
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(small, 0, 0, canvas.width, canvas.height);
 }

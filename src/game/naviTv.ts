@@ -115,6 +115,11 @@ export class NaviTv {
   private sound: TvSound | null = null;
   private utterance: SpeechSynthesisUtterance | null = null;
   private wardMap: WardMap | null = null;
+  /**
+   * ニュース速報 (a pursuit nearby, pursuitDirector.ts): a chime and a band across the top of any
+   * channel's picture; the news channel's reader reads it at once. Fictional channel, no reporter.
+   */
+  private breaking: { text: string; speech: string; read: boolean } | null = null;
 
   constructor(private readonly deps: Deps) {}
 
@@ -132,6 +137,13 @@ export class NaviTv {
     this.noticeUntil = 0;
     this.setState(pressChannel(this.state));
     return this.tuneMessage(isOperating);
+  }
+
+  /** A 速報 to break in with (null: it is over). */
+  setBreaking(b: { text: string; speech: string } | null): void {
+    this.breaking = b ? { ...b, read: false } : null;
+    if (b && this.state.on) this.sound?.chime();
+    this.drawnAt = -Infinity;
   }
 
   /** Leaving the car takes the key: the navi goes dark (the channel is remembered). */
@@ -170,6 +182,7 @@ export class NaviTv {
     }
     const programme = this.state.on ? this.programme() : null;
     this.ensureSound()?.play(programme);
+    this.readBreaking(programme, f);
     this.read(programme, f);
     const isMutedNow = this.deps.audio.muted || !f.inCabin;
     if (isMutedNow && this.utterance) this.hush();
@@ -279,6 +292,20 @@ export class NaviTv {
     if (isSpoken && this.deps.canSpeak()) this.say(item.speech, f.inCabin);
   }
 
+  /**
+   * The 速報 read at once on the news channel (the next item then waits its pace). Why not wait
+   * for canSpeak as the other items do: it comes in the middle of the chase it is about, when the
+   * loudspeaker is calling, and would only be read after it is over.
+   */
+  private readBreaking(programme: Programme | null, f: TvFrame): void {
+    const b = this.breaking;
+    const isDue = b !== null && !b.read && programme === "news";
+    if (!isDue || !b) return;
+    b.read = true;
+    this.lineAt = f.now;
+    this.say(b.speech, f.inCabin);
+  }
+
   private say(text: string, inCabin: boolean): void {
     const { audio, voice } = this.deps;
     const sound = this.sound;
@@ -361,6 +388,7 @@ export class NaviTv {
       this.noticeUntil = now + NOTICE_MS;
     }
     if (now < this.noticeUntil) drawNotice(ctx, info.violations.length);
+    if (this.breaking) drawBreaking(ctx, this.breaking.text);
   }
 
   private drawBadge(ctx: CanvasRenderingContext2D): void {
@@ -645,6 +673,23 @@ class TvSound {
     this.bed = { src, gain, programme: p };
   }
 
+  /** ニュース速報's chime: three rising notes, as Japanese TV breaks in. */
+  chime(): void {
+    const t = this.ctx.currentTime;
+    for (const [i, hz] of [880, 1175, 1568].entries()) {
+      const osc = new OscillatorNode(this.ctx, { type: "sine", frequency: hz });
+      const gain = new GainNode(this.ctx, { gain: 0 });
+      osc.connect(gain).connect(this.out);
+      const at = t + i * 0.16;
+      gain.gain.setValueAtTime(0, at);
+      gain.gain.linearRampToValueAtTime(0.25, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, at + 0.5);
+      osc.start(at);
+      osc.stop(at + 0.55);
+      osc.addEventListener("ended", () => gain.disconnect());
+    }
+  }
+
   /** Where the on-device voice connects for the newsreader. */
   speechOut(): VoiceOutput {
     return { attach: () => this.speech, release: () => {} };
@@ -907,6 +952,21 @@ function drawColorBars(ctx: CanvasRenderingContext2D): void {
   ctx.textAlign = "left";
   ctx.font = `700 20px ${font()}`;
   ctx.fillText(i18n.t("tv.colorBars.caption", { channel: channelLabel(2) }), 16, 30, W - 32);
+}
+
+/** The ニュース速報 band across the top of the picture (any channel). */
+function drawBreaking(ctx: CanvasRenderingContext2D, text: string): void {
+  ctx.fillStyle = "rgba(10,10,14,0.88)";
+  ctx.fillRect(0, 0, W, 64);
+  ctx.fillStyle = "#d8232a";
+  ctx.fillRect(0, 0, 170, 64);
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.font = `800 22px ${font()}`;
+  ctx.fillText(i18n.t("tv.breaking.tag"), 85, 40, 156);
+  ctx.textAlign = "left";
+  ctx.font = `700 19px ${font()}`;
+  ctx.fillText(text, 182, 40, W - 196);
 }
 
 /**

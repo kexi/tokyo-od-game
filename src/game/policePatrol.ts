@@ -9,9 +9,9 @@ import type { ViolationRecord } from "./traffic";
 /**
  * 巡回中のパトカー. Violations only count once the police see them (現認): a patrol that sees one
  * turns on its 赤色の警光灯 and siren, follows the car and calls it over by loudspeaker
- * (「前の車、左に寄って止まってください」); once the driver pulls over beside it the officer
- * issues the ticket (青切符, or 赤切符 for non-反則 offences) and the patrol drives on. A driver
- * who gets away is still identified by the number plate: the record becomes a notice by post.
+ * (「前の車、左に寄って止まってください」). What follows — the roadside stop, the escalation of a
+ * driver who does not stop (backup, the helicopter, a 検問), the getaway and the arrest — is run by
+ * pursuitDirector.ts, which sets `managed` on the units it directs; this class drives them.
  *
  * Driving goes through the same AutoDriver and physics as the robotaxi; in pursuit it may go
  * on at red signals after slowing (緊急自動車, 第39条第2項).
@@ -56,6 +56,15 @@ export class PolicePatrol {
   private leaveUntil = 0;
   /** When the red lights go on in a pursuit (later for an unmarked car tailing first). */
   private lightsAt = 0;
+  /**
+   * In a pursuit run by pursuitScene.ts (緊急配備, the 検問): the scene decides when the car is
+   * stopped or lost, so this unit neither opens the ticket nor gives up on its own. `target` is
+   * where it heads (the car, or where it was last seen).
+   */
+  managed = false;
+  target: Vector3 | null = null;
+  /** performance.now() when it was sent off after a stop (null: not since it last engaged). */
+  releasedAt: number | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -129,6 +138,10 @@ export class PolicePatrol {
     if (this.state === "pursuing") return null;
     this.state = "pursuing";
     this.stoppedFor = 0;
+    this.releasedAt = null;
+    // The pursuit's end (stopped, lost) is decided by pursuitDirector.ts, also during an unmarked
+    // car's quiet tail: a stop then waits for its lights rather than opening a ticket at once.
+    this.managed = true;
     this.lightsAt = performance.now() + (this.kind === "unmarked" ? UNMARKED_TAIL_MS : 0);
     return this.kind === "unmarked" ? null : "pursuit";
   }
@@ -139,9 +152,51 @@ export class PolicePatrol {
     return isPursuing && performance.now() >= this.lightsAt;
   }
 
+  /**
+   * Called in as backup (緊急配備): pursuing at once with the lights and siren on, toward
+   * `target` (the scene moves it as the car goes).
+   */
+  join(target: Vector3): void {
+    this.state = "pursuing";
+    this.managed = true;
+    this.releasedAt = null;
+    this.target = target;
+    this.stoppedFor = 0;
+    this.lightsAt = performance.now();
+    this.lastCallout = performance.now();
+  }
+
+  /** Stop where it is with the lights on (the car has stopped, or it is posted at a 検問). */
+  hold(): void {
+    this.state = "ticketing";
+    this.lightsAt = Math.min(this.lightsAt, performance.now());
+  }
+
+  /** Put it at `at` facing `yaw` and hold it there (behind the stopped car, across a lane). */
+  placeAt(at: Vector3, yaw: number): void {
+    const p = at.clone();
+    p.y = (this.groundAt(p.x, p.z) ?? p.y) + RIDE_HEIGHT;
+    this.car.teleport(p, yaw);
+    this.car.syncVisuals();
+    this.driver.place(p, yaw);
+    this.hold();
+  }
+
+  /** The car got away (or the case is closed): back on patrol, nothing seen kept. */
+  giveUp(world: DriveWorld | null, near: Vector3): void {
+    this.seen.length = 0;
+    this.managed = false;
+    this.target = null;
+    this.state = "cruising";
+    if (world) this.cruise(world, near);
+  }
+
   /** The ticket was handed over: drive on, siren off. */
   release(world: DriveWorld, near: Vector3): void {
     this.seen.length = 0;
+    this.managed = false;
+    this.target = null;
+    this.releasedAt = performance.now();
     this.state = "leaving";
     this.leaveUntil = performance.now() + 20000;
     this.cruise(world, near);
@@ -168,9 +223,10 @@ export class PolicePatrol {
     const here = this.car.position();
     const gap = Math.hypot(player.position.x - here.x, player.position.z - here.z);
     if (this.state === "pursuing") {
-      // Follow the car: re-plan toward it as it moves.
+      // Follow the car: re-plan toward it as it moves (a managed unit toward where it was seen).
+      const goal = this.managed && this.target ? this.target : player.position;
       if (!this.driver.route || this.driver.remaining < 15 || now % 2000 < dt * 1000) {
-        this.driver.plan({ ...world, isEmergency: true }, player.position);
+        this.driver.plan({ ...world, isEmergency: true }, goal);
       }
       // The unmarked car's beacon comes up when its tail is done: that is when the pursuit shows.
       const isLightsUp = now >= this.lightsAt;
@@ -181,11 +237,11 @@ export class PolicePatrol {
       }
       const isPulledOver = gap < 22 && Math.abs(player.speed) < 1;
       this.stoppedFor = isPulledOver ? this.stoppedFor + dt : 0;
-      if (this.stoppedFor > STOPPED) {
+      if (this.stoppedFor > STOPPED && !this.managed) {
         this.state = "ticketing";
         event = "ticket";
       }
-      if (gap > LOST) {
+      if (gap > LOST && !this.managed) {
         this.state = "cruising";
         event = "lost";
       }

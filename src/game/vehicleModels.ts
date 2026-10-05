@@ -1,7 +1,7 @@
 import { Group, Mesh, MeshStandardMaterial, type Material, type Object3D } from "three";
-import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { warn } from "../log";
+import { sharedDraco } from "../render/draco";
 
 /**
  * Blender-built vehicles other than the player's car (scripts/blender/{bus,truck,motorbike,
@@ -35,9 +35,7 @@ type Template = { scene: Object3D; size: [number, number, number] };
 const templates = new Map<VehicleKind, Template>();
 
 export async function loadVehicleModels(): Promise<void> {
-  const loader = new GLTFLoader().setDRACOLoader(
-    new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-  );
+  const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
   await Promise.all(
     (Object.keys(FILES) as VehicleKind[]).map(async (kind) => {
       try {

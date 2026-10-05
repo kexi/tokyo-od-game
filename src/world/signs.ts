@@ -13,13 +13,13 @@ import {
   type Scene,
 } from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PROP_GROUPS } from "../physics/groups";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import catalog from "../../assets/signs/catalog.json";
 import { leftOf, type RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
+import { sharedDraco } from "../render/draco";
 
 // Sign artwork drawn by scripts/textures/sign_textures.py (道路標識、区画線及び道路標示に関する命令
 // 別表第二); Vite bundles each PNG with a content hash.
@@ -159,9 +159,7 @@ let kit: Kit | null = null;
 
 /** Loads signs.glb (plates, post, bracket) once; TrafficSigns needs it to have resolved. */
 export async function loadSignModels(): Promise<void> {
-  const loader = new GLTFLoader().setDRACOLoader(
-    new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-  );
+  const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
   const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/signs.glb`);
   const meshOf = (name: string, material?: string): Mesh => {
     const found: Mesh[] = [];

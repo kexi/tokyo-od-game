@@ -13,7 +13,6 @@ import {
   type Scene,
 } from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX } from "../geo/tiles";
@@ -36,6 +35,7 @@ import {
 import type { AppliedRegulations } from "./regulations";
 import { leftOf, type RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
+import { sharedDraco } from "../render/draco";
 
 /**
  * 案内標識 108 series on the streets around the player: planned by guidePlan.ts from the road
@@ -153,9 +153,7 @@ export class GuideSigns {
   }
 
   private async loadModel(): Promise<void> {
-    const loader = new GLTFLoader().setDRACOLoader(
-      new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`),
-    );
+    const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
     const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/guide_signs.glb`);
     gltf.scene.updateMatrixWorld(true);
     const part = (name: string): Part[] => {

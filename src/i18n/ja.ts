@@ -332,10 +332,14 @@ export const ja = {
   "violation.label.unlicensed": "無免許運転（免許停止中）",
   "violation.label.ignoredStop": "停止命令違反（警察官の停止に従わない）",
   "violation.label.hitAndRun": "救護義務違反（ひき逃げ）",
+  "violation.label.negligentInjury": "過失運転致傷",
+  "violation.label.obstruction": "公務執行妨害",
+  "violation.label.propertyDamage": "器物損壊（警察車両）",
   // 値の入る違反名（speedViolation・injuryViolation・chargeOwner が作る形）
   "violation.pattern.speed": "速度超過（{over}km/h超過）",
   "violation.pattern.injury": "人身事故・付加点数（{injury}）",
   "violation.pattern.owner": "放置違反金（{what}）",
+  "violation.pattern.dangerous": "危険運転致傷（{injury}）",
   "violation.injury.under15": "治療15日未満",
   "violation.injury.under30": "治療15日以上30日未満",
   "violation.injury.under3m": "治療30日以上3か月未満",
@@ -361,6 +365,8 @@ export const ja = {
   "law.name.tokyoRules": "東京都道路交通規則",
   "law.name.tokyoRulesShort": "都規則",
   "law.name.criminalProcedure": "刑事訴訟法",
+  "law.name.penalCode": "刑法",
+  "law.name.drivingDeathAct": "自動車運転死傷処罰法",
   "law.name.minorOffenses": "軽犯罪法",
   "law.name.tokyoEnvironment": "東京都環境確保条例",
   "law.cite": "{law} {refs}",
@@ -398,6 +404,7 @@ export const ja = {
   "review.by.patrol": "パトカー",
   "review.by.officer": "警察官",
   "review.by.orbis": "オービス",
+  "review.by.orbisPortable": "可搬式オービス",
   "review.by.accident": "事故の処理",
   "review.by.parking": "駐車監視員",
   "review.by.sns": "投稿された動画",
@@ -643,6 +650,8 @@ export const ja = {
   "toast.autopilotToTarget": "自動運転を開始しました（目的地へ）",
   "toast.autopilotCruise": "自動運転を開始しました（周辺を巡回）",
   "toast.autopilotArrived": "目的地に着きました。自動運転を終了します",
+  "toast.autopilotStuck": "道路に戻れないため自動運転を解除しました。手動で運転してください",
+  "toast.autopilotBlocked": "前方がふさがれていて追い越せる場所でもないため、自動運転を解除しました",
   // 自動運転タクシー
   "taxi.destMission": "ミッション: {name}",
   "taxi.destCar": "自分の車",
@@ -671,6 +680,7 @@ export const ja = {
   "toast.headingHome": "自宅へ向かいます（約 {km} km）。着いたら今日の運転は終わりです",
   "dayEnd.mailNotice": "出頭通知書（{how}）: {label}／違反点数 {points}",
   "dayEnd.byOrbis": "速度違反自動取締装置で撮影",
+  "dayEnd.byOrbisPortable": "可搬式の速度違反自動取締装置で撮影",
   "dayEnd.bySns": "投稿された動画から特定",
   "dayEnd.byPlate": "ナンバーから特定",
   "dayEnd.mailSanction": "運転免許本部から「行政処分出頭通知書」の封筒が届いています…",
@@ -792,6 +802,8 @@ export const ja = {
   "violationDetail.turnRightNoSignal": "右折の合図を出さずに曲がった",
   "violationDetail.laneChangeNoSignal": "合図を出さずに車線を変更した",
   "violationDetail.orbis": "速度違反自動取締装置（オービス）で撮影: {kmh} km/h（制限 {limit} km/h）",
+  "violationDetail.orbisPortable":
+    "可搬式の速度違反自動取締装置（可搬式オービス）で撮影: {kmh} km/h（制限 {limit} km/h）",
   "violationDetail.noLights": "夜間に前照灯を消して走行",
   "violationDetail.seatBelt": "シートベルトを着けずに運転",
   "violationDetail.horn": "危険がないのに警音器を鳴らした",
@@ -1274,6 +1286,166 @@ export const ja = {
   "call.hangUp": "終話",
   "call.replyLanguage": "日本語で1〜2文、50文字以内で答えてください。",
   // @@talk
+  // 追跡とその後（pursuitDirector.ts・trafficStop.ts・arrestStory.ts・storyArt.ts）
+  "stop.speaker.officer": "警察官",
+  "stop.speaker.rider": "白バイ隊員",
+  "stop.guide.title": "止まる手順（パトカーの呼びかけ）",
+  "stop.guide.signal": "左にウインカーを出す",
+  "stop.guide.kerb": "安全な場所で左端に寄せる（交差点・横断歩道・駐停車禁止を避ける）",
+  "stop.guide.stop": "止まる",
+  "stop.guide.hazards": "ハザードランプをつける",
+  "stop.guide.auto": "（自動）",
+  "stop.guide.key": "（{key}）",
+  "stop.remark.perfect":
+    "合図を出して、安全な場所にすぐ止めていただいてありがとうございます。ハザードもつけていただいて助かります。",
+  "stop.remark.good": "止まっていただいてありがとうございます。",
+  "stop.remark.noSignal":
+    "止まっていただいてありがとうございます。左に寄せるときは、合図も出してくださいね。",
+  "stop.remark.notAtKerb":
+    "ありがとうございます。止まるときは、もう少し左の端まで寄せてもらえると後ろの車も安全です。",
+  "stop.remark.junction":
+    "止まっていただいてありがとうございます。ただ、交差点とその近くは止めてはいけない場所なので、次からは交差点を過ぎてから止めてくださいね（道路交通法 第44条）。",
+  "stop.remark.crossing":
+    "止まっていただいてありがとうございます。ただ、横断歩道の近くは止めてはいけない場所なので、次からは少し先まで進んでから止めてくださいね（道路交通法 第44条）。",
+  "stop.remark.noStopping":
+    "止まっていただいてありがとうございます。ただ、ここは駐停車禁止の区間なので、次からは標識の区間を過ぎてから止めてくださいね。",
+  "stop.remark.rightLane":
+    "止まっていただいてありがとうございます。右の車線のままだと危ないので、次からは左の車線の端に寄せてくださいね。",
+  "stop.remark.fled": "どうしてすぐに止まらなかったんですか。追跡は、周りの人にとっても危険なんです。",
+  "stop.line.knock": "（窓をノックする）すみません、窓を開けていただけますか。",
+  "stop.line.licence": "免許証を見せていただけますか。",
+  "stop.line.offence": "{place}で、{list}がありました。",
+  "stop.line.offenceUnlicensed": "免許の効力が停止されていますね。{list}になります。",
+  "stop.offenceItem": "{label}（{article}）",
+  "stop.line.confirm": "間違いありませんか。",
+  "stop.line.objection":
+    "わかりました。ご意見は書類に残せます。反則金を納めなければ、刑事手続の中で裁判所に判断してもらうこともできます。",
+  "stop.line.blue":
+    "では、交通反則告知書（青切符）を作ります。反則金は、告知を受けた日の翌日から7日以内に、銀行か郵便局で仮納付してください（道路交通法 第129条第1項）。",
+  "stop.line.red":
+    "この違反は反則金の対象になりません。告知票（赤切符）を作りますので、パトカーの後ろの席へお願いします。",
+  "stop.line.redFled":
+    "停止の求めに従わずに走り去ったので、反則金の手続にはなりません（道路交通法 第126条第1項第2号・第130条第1号）。告知票（赤切符）を作りますので、パトカーの後ろの席へお願いします。",
+  "stop.line.voluntary": "無免許運転は反則金の対象になりません。署まで同行をお願いします。",
+  "stop.line.arrest": "{charges}の疑いで、現行犯逮捕します。",
+  "stop.line.farewell": "お時間をいただきました。安全運転でお願いします。",
+  "stop.line.farewellKind":
+    "すぐに止まって、ハザードもつけていただいて助かりました。安全運転でお願いします。",
+  "stop.choice.openWindow": "窓を開ける",
+  "stop.choice.showLicence": "免許証を見せる",
+  "stop.choice.watch": "そのときの映像を見る",
+  "stop.choice.seen": "確認しました",
+  "stop.choice.agree": "間違いありません",
+  "stop.choice.disagree": "納得できません",
+  "stop.choice.understood": "わかりました",
+  "stop.choice.next": "はい",
+  "stop.choice.thanks": "ありがとうございました",
+  "police.callStopFirm": "前の車、止まりなさい。左に寄せて止まりなさい。",
+  "police.callStopDanger": "止まりなさい。危険ですから止まりなさい。",
+  "police.callTraffic": "緊急車両が通ります。道を空けてください。",
+  "police.callStay": "そのまま、ハザードをつけて待っていてください。",
+  "police.callStayFled": "エンジンを止めて、そのまま待っていなさい。",
+  "radio.title": "📻 警察無線（演出）",
+  "radio.dispatch":
+    "本部から各移動。{place}付近、停止の求めに応じず走行中の乗用車あり。付近の各移動は緊急配備につかれたい。",
+  "radio.ack": "{n}号、了解。現場へ向かう。",
+  "radio.heli": "航空隊、現場上空に到着。対象車両を視認、追尾する。",
+  "radio.checkpoint": "この先の交差点に検問を設置した。",
+  "radio.caught": "対象車両、停止。運転者を確認する。",
+  "radio.lost": "対象車両を見失った。ナンバーは照会済み。",
+  "notify.article67":
+    "免許停止中の運転：警察官は車を止めて免許証の提示を求められる（道路交通法 第67条第1項）。従わないと停止命令違反（第119条第1項第13号）",
+  "notify.fledProcedure":
+    "停止の呼びかけに従っていない：逃亡のおそれがあるとして反則金の手続（青切符）にならず、刑事手続になる（道路交通法 第126条第1項第2号・第130条第1号）",
+  "notify.manhunt": "緊急配備：付近のパトカーや白バイが集まってきた",
+  "notify.heli": "警察のヘリコプターが上空から追っている",
+  "notify.checkpoint": "この先に検問が設けられた",
+  "notify.identified": "ナンバーと街の防犯カメラ、Y の動画から、運転者が特定された",
+  "notify.chasePosted": "{app} に、パトカーに追われるあなたの車が投稿された",
+  "toast.rammed": "警察車両にわざとぶつけた：公務執行妨害（刑法 第95条第1項）・器物損壊（刑法 第261条）",
+  "toast.enforcingBusy": "いまはできません（取り締まり中）",
+  "tv.breaking.tag": "ニュース速報",
+  "tv.breaking.chase":
+    "{ward}付近で、警察の停止に応じず走行する乗用車をパトカーとヘリコプターが追跡しています。付近の方はご注意ください",
+  "notice.emergency": "緊急車両 接近中（{dist}）",
+  "notice.emergencySay": "緊急車両が接近しています。左に寄って進路を譲ってください。",
+  "violationDetail.chaseInjury": "追跡を受けている最中に歩行者をはねてけがをさせた（{kmh}km/h）",
+  "violationDetail.dangerousSpeed": "最高速度 {limit}km/h の道路を {kmh}km/h で走り、人をはねてけがをさせた",
+  "violationDetail.dangerousRed":
+    "追跡から逃れようと赤信号を無視して交差点に入り、{kmh}km/h で人をはねてけがをさせた",
+  "violationDetail.chaseReckless":
+    "追跡を受けながら、制限速度を大きく超える速度や違反を繰り返し、周りの人や車に危険を生じさせた",
+  "violationDetail.rammed": "職務中の警察車両に、わざと車をぶつけた",
+  "violationDetail.droveAtOfficer": "検問の警察官に向けて車を走らせた",
+  "procedure.fled":
+    "停止に従わず逃げたため反則金の手続にならない（道路交通法 第126条第1項第2号・第130条第1号）",
+  "procedure.unlicensed": "無免許のため反則者にあたらない（道路交通法 第125条第2項第1号）",
+  "procedure.absorbed": "危険運転致傷の点数に含めて数える（道路交通法施行令 別表第二）",
+  "review.procedure": "手続",
+  "social.chaseLabel": "パトカーに追われている",
+  "story.next": "次へ（Enter）",
+  "story.skip": "スキップ（Esc）",
+  "story.red.seat":
+    "パトカーの後ろの席で、警察官が告知票（赤切符）を書く。反則金の対象にならない違反は、刑事手続になる。",
+  "story.red.ticket":
+    "告知票・免許証保管証を受け取る。書かれた日に、交通事件を扱う検察庁と簡易裁判所（交通裁判所）へ出頭する。",
+  "story.red.court":
+    "後日、交通裁判所で検察官の取り調べを受ける。略式手続に同意すると、書面だけの裁判（略式起訴）になる（刑事訴訟法 第461条）。",
+  "story.red.fine": "簡易裁判所の略式命令で罰金が言い渡され、その場で納める。罰金は刑罰で、前科になる。",
+  "story.voluntary.ride":
+    "「署まで同行をお願いします」。任意同行で警察署へ向かう（警察官職務執行法 第2条第2項）。",
+  "story.voluntary.interview":
+    "取り調べ。免許の効力が停止されている間の運転は無免許運転で、反則金の対象にならない（道路交通法 第64条第1項・第125条第2項第1号）。",
+  "story.voluntary.transfer":
+    "逮捕はされず、その日のうちに帰される。事件は書類で検察官へ送られる（書類送検）。",
+  "story.voluntary.court": "後日、検察官の判断で略式起訴され、罰金を納める。正式な裁判になることもある。",
+  "story.station": "警察署に着く。話を聞かれる部屋へ案内される。",
+  "story.arrest.moment": "「{charges}の疑いで、現行犯逮捕します」（刑事訴訟法 第212条・第213条）。",
+  "story.arrest.ride": "パトカーの後ろの席で警察署へ向かう。",
+  "story.arrest.station": "警察署で手続を受け、留置施設に入る。",
+  "story.interview":
+    "取り調べ。何があったのか、なぜ止まらなかったのかを聞かれる。言いたくないことは言わなくてよく、弁護人を頼むこともできる。",
+  "story.transfer": "逮捕から48時間以内に、事件と身柄が検察官へ送られる（送致、刑事訴訟法 第203条第1項）。",
+  "story.detention":
+    "検察官が勾留を請求し（刑事訴訟法 第205条）、裁判官が認めると、身柄を拘束されたまま捜査が続く。重い事件は起訴され、公開の裁判になる。",
+  "story.release": "勾留の必要はないとされ、釈放される。捜査は在宅のまま続く。",
+  "story.summary": "後日、略式起訴され、簡易裁判所の略式命令で罰金を納める（刑事訴訟法 第461条）。",
+  "story.tv": "その日のニュースで、{place}付近の事件が伝えられた。",
+  "story.y": "Y では、撮られた動画が拡散していた。",
+  "story.later.identified": "ナンバー、街の防犯カメラ、Y に投稿された動画から、運転者が特定された。",
+  "story.later.visit": "後日、警察官が自宅を訪れ、警察署への出頭を求めた（刑事訴訟法 第198条）。",
+  "story.later.trend": "Y では「逃走車、特定される」がトレンドに。",
+  "story.later.procedure":
+    "停止に従わず逃げたので、反則金の手続にはならない（道路交通法 第126条第1項第2号・第130条第1号）。取り調べのあと略式起訴され、罰金を納める。",
+  "story.laterArrest.warrant": "裁判官が逮捕状を出した（刑事訴訟法 第199条第1項）。",
+  "story.laterArrest.arrest": "早朝、警察官が自宅を訪れ、逮捕状を示して逮捕した（通常逮捕）。",
+  "story.end.revocation":
+    "違反点数は {points} 点。免許は取り消される（行政処分）。刑事の処分とは別に、点数で決まる。",
+  "story.end.suspension":
+    "違反点数は {points} 点。{stamp}の行政処分になる。刑事の処分とは別に、点数で決まる。",
+  "story.end.points": "違反点数は {points} 点。刑事の処分とは別に、免許の点数は積み上がる。",
+  "story.art.redTicket": "告知票（赤切符）",
+  "story.art.warrant": "逮捕状",
+  "story.art.court": "簡易裁判所",
+  "story.art.counter": "納付窓口",
+  "story.art.fine": "罰金",
+  "story.art.paid": "納付済",
+  "story.art.transfer": "送致書類",
+  "story.art.newsTag": "ニュース",
+  "story.art.newsLine": "{place}付近の交通事件 運転者の身柄を確保",
+  "story.art.newsSub": "（架空のチャンネル・ゲーム内の放送です）",
+  "story.art.noPosts": "（まだ投稿はない）",
+  "story.art.licence": "運転免許（ゲーム内）",
+  "story.art.revoked": "取消",
+  "story.art.revokedSub": "違反点数 {points} 点・欠格期間 {years} 年",
+  "story.art.suspended": "停止 {days}日",
+  "story.art.suspendedSub": "違反点数 {points} 点",
+  "story.art.points": "{points} 点",
+  "story.art.pointsSub": "行政処分の基準にはまだ届いていない",
+  "stop.line.knockFled": "（窓を強くたたく）窓を開けて、エンジンを切りなさい。",
+  "notify.stopPosted": "{app} に、警察官に止められているあなたの車が投稿された",
+  "social.stopLabel": "警察官に止められている",
+  // @@pursuit
 } satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof ja;
