@@ -189,17 +189,17 @@ export class NaviTv {
     return isReturned ? i18n.t("tv.backToMap") : null;
   }
 
-  /** Draw the TV on the navi's canvas; false when the map should be drawn instead. */
-  draw(canvas: HTMLCanvasElement, now: number): boolean {
+  /** A displayed TV frame can be reused without another canvas draw or texture upload. */
+  draw(canvas: HTMLCanvasElement, now: number): { visible: boolean; changed: boolean } {
     const view = naviView(this.state, this.drive);
     if (view === "map") {
       this.shown = "map";
-      return false;
+      return { visible: false, changed: false };
     }
     const isFresh = view === this.shown && now - this.drawnAt < REDRAW_MS;
-    if (isFresh) return true;
+    if (isFresh) return { visible: true, changed: false };
     const ctx = canvas.getContext("2d");
-    if (!ctx) return false;
+    if (!ctx) return { visible: false, changed: false };
     this.shown = view;
     this.drawnAt = now;
     ctx.save();
@@ -207,7 +207,7 @@ export class NaviTv {
     if (view === "blocked") this.drawBlocked(ctx);
     else this.drawPicture(ctx, now);
     ctx.restore();
-    return true;
+    return { visible: true, changed: true };
   }
 
   /** State for the dev hook and headless checks. */
@@ -225,6 +225,9 @@ export class NaviTv {
   // ---------- state ----------
 
   private setState(next: TvState): void {
+    const isChanged =
+      next.on !== this.state.on || next.channel !== this.state.channel || next.screen !== this.state.screen;
+    if (isChanged) this.drawnAt = -Infinity;
     const isTuned = next.on && (!this.state.on || next.channel !== this.state.channel);
     this.state = next;
     if (isTuned) {

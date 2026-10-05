@@ -89,11 +89,12 @@ export class CarNavi {
     this.ctx = this.canvas.getContext("2d");
   }
 
-  /** Redraws at most every 120 ms; returns whether the canvas changed. */
-  draw(s: CarNaviState): boolean {
+  /** Redraws at most every 120 ms, or immediately when reclaiming the canvas from TV. */
+  draw(s: CarNaviState, force = false): boolean {
     const ctx = this.ctx;
     if (!ctx) return false;
-    if (s.now - this.drawnAt < REDRAW_MS) return false;
+    const isFresh = !force && s.now - this.drawnAt < REDRAW_MS;
+    if (isFresh) return false;
     this.drawnAt = s.now;
     const pal = s.night ? NIGHT : DAY;
     // Zoom out with speed: ~250 m ahead at a standstill, ~550 m at 100 km/h.

@@ -171,14 +171,16 @@ export function gameClock(y: number, m: number, d: number, minutes: number): Gam
   };
 }
 
-/** Today's date in Japan. */
+const tokyoDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** Today's date in Japan. The formatter is shared, not the date (replays can go backwards). */
 export function tokyoDate(now = new Date()): { y: number; m: number; d: number } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
+  const parts = tokyoDateFormatter
     .formatToParts(now)
     .reduce<Record<string, string>>((acc, p) => ((acc[p.type] = p.value), acc), {});
   return { y: Number(parts.year), m: Number(parts.month), d: Number(parts.day) };

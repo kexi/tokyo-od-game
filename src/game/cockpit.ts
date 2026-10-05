@@ -21,12 +21,14 @@ import { warn } from "../log";
 import { holdShadows, sceneTarget, type FrameComposer } from "../render/frame";
 import { RainGlass, WIPER_BLADES } from "./rainGlass";
 import { sharedDraco } from "../render/draco";
+import { MirrorUpdates } from "./mirrorUpdates";
 
 /**
  * 車内視点: the right-hand-drive cockpit (scripts/blender/cockpit.py) inside the player's car.
  * The gauges read the car (speedometer 0–180 km/h, tachometer, tell-tales), the wheel turns with
  * the steering (about 15:1), the mirrors show what is behind (one of them re-rendered per frame),
- * and in rain drops gather on the windscreen until the wipers sweep them off (game/rainGlass.ts).
+ * skipping mirrors outside the view. In rain drops gather on the windscreen until the wipers
+ * sweep them off (game/rainGlass.ts).
  * Node names, pivots and angles follow knowledge/cockpit-blender.md.
  */
 const DEG = Math.PI / 180;
@@ -82,7 +84,8 @@ export class Cockpit {
   private wipers: Array<{ node: Object3D; sweep: number }> = [];
   private readonly lamps = new Map<string, MeshStandardMaterial>();
   private readonly mirrors: Mirror[] = [];
-  private mirrorTurn = 0;
+  private readonly mirrorUpdates = new MirrorUpdates();
+  private readonly mirrorSurfaces: Mesh[] = [];
   private wiperPhase = 0;
   private readonly rain = new RainGlass({ isMobile: QUALITY.isMobile });
   /** Parts of the exterior model hidden from inside (its simple dashboard, seats and parked wipers). */
@@ -143,6 +146,7 @@ export class Cockpit {
         if (!centre || !mesh) continue;
         // The target is made with the renderer (its format matches the frame's: see sceneTarget).
         mesh.material = new MeshBasicMaterial();
+        this.mirrorSurfaces.push(mesh);
         this.mirrors.push({
           surface: mesh,
           centre,
@@ -205,6 +209,11 @@ export class Cockpit {
     });
   }
 
+  /** The map and TV redraw less often than the scene; upload only their changed pixels. */
+  refreshDisplay(): void {
+    if (this.displayTexture) this.displayTexture.needsUpdate = true;
+  }
+
   /** Put the cockpit inside the car model (same frame as car.glb). */
   attach(car: Object3D): void {
     if (!this.root) return;
@@ -228,6 +237,8 @@ export class Cockpit {
   }
 
   setActive(active: boolean): void {
+    const isLeaving = this.active && !active;
+    if (isLeaving) this.mirrorUpdates.reset();
     this.active = active && this.root !== null;
     if (this.root) this.root.visible = this.active;
     for (const o of this.hiddenExterior) o.visible = !this.active;
@@ -274,8 +285,6 @@ export class Cockpit {
     rainMmH: number;
     /** 0 by day, 1 at night: how much the drops catch nearby lights. */
     night: number;
-    renderer: WebGPURenderer;
-    scene: Scene;
   }): void {
     if (!this.active || !this.root) return;
     const kmh = Math.min(180, Math.abs(opts.kmh));
@@ -300,8 +309,6 @@ export class Cockpit {
     this.lamp("Lamp_Parking", opts.parkingBrake);
     this.updateWipers(opts.dt, opts.wipers, opts.rainMmH, opts.kmh / 3.6);
     this.rain.glow = opts.night;
-    if (this.displayTexture) this.displayTexture.needsUpdate = true;
-    this.updateMirror(opts.renderer, opts.scene);
   }
 
   private lamp(name: string, isOn: boolean): void {
@@ -337,7 +344,13 @@ export class Cockpit {
    * paint and kerbs flicker); with 0.5 m the roof lining, the upper windscreen, the pillars and the
    * door trims (30–60 cm from the eye) were cut away, showing the sky and the car's own tyres.
    */
-  render(composer: FrameComposer, renderer: WebGPURenderer, scene: Scene, camera: PerspectiveCamera): void {
+  render(
+    composer: FrameComposer,
+    renderer: WebGPURenderer,
+    scene: Scene,
+    camera: PerspectiveCamera,
+    updateMirrors = true,
+  ): void {
     if (!this.active || !this.root) {
       composer.begin();
       composer.drawWorld(scene, camera);
@@ -350,8 +363,10 @@ export class Cockpit {
     near.quaternion.copy(camera.quaternion);
     near.fov = camera.fov;
     near.aspect = camera.aspect;
+    near.coordinateSystem = camera.coordinateSystem;
     near.updateProjectionMatrix();
     near.updateMatrixWorld();
+    if (updateMirrors) this.updateMirror(renderer, scene, near);
     // 画質 フロントガラスの雨粒 なし: the glass stays clear (and its simulation is not run).
     const isGlassWet = GRAPHICS.settings.rainGlass !== "off" && this.rain.isWet();
     // The drops go into their own texture first: binding another target mid-frame would split it.
@@ -418,10 +433,12 @@ export class Cockpit {
     });
   }
 
-  /** One mirror per frame, in turn: a camera at the mirror looking along the reflected view. */
-  private updateMirror(renderer: WebGPURenderer, scene: Scene): void {
+  /** At most one visible mirror per frame, using the interior camera's near plane. */
+  private updateMirror(renderer: WebGPURenderer, scene: Scene, viewCamera: PerspectiveCamera): void {
     if (this.mirrors.length === 0 || !this.eye) return;
-    const m = this.mirrors[this.mirrorTurn++ % this.mirrors.length];
+    const index = this.mirrorUpdates.next(this.mirrorSurfaces, viewCamera);
+    if (index === null) return;
+    const m = this.mirrors[index];
     if (!m.target) {
       m.target = sceneTarget(renderer, ...m.size);
       const surface = m.surface.material as MeshBasicMaterial;
@@ -439,10 +456,13 @@ export class Cockpit {
     const wasVisible = this.root?.visible ?? false;
     if (this.root) this.root.visible = false; // the car's own interior is not in the mirror
     const before = renderer.getRenderTarget();
-    renderer.setRenderTarget(m.target);
-    holdShadows(() => renderer.render(scene, m.camera));
-    renderer.setRenderTarget(before);
-    if (this.root) this.root.visible = wasVisible;
+    try {
+      renderer.setRenderTarget(m.target);
+      holdShadows(() => renderer.render(scene, m.camera));
+    } finally {
+      renderer.setRenderTarget(before);
+      if (this.root) this.root.visible = wasVisible;
+    }
   }
 }
 

@@ -1,12 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   gameClock,
+  tokyoDate,
   inForce,
   japaneseHolidays,
   readTime,
   writeTime,
   type RuleTime,
 } from "../src/world/ruleTime";
+
+describe("Tokyo calendar dates", () => {
+  it("crosses midnight, year-end and leap day in Japan independently of the host timezone", () => {
+    expect(tokyoDate(new Date("2025-12-31T14:59:59Z"))).toEqual({ y: 2025, m: 12, d: 31 });
+    expect(tokyoDate(new Date("2025-12-31T15:00:00Z"))).toEqual({ y: 2026, m: 1, d: 1 });
+    expect(tokyoDate(new Date("2024-02-28T15:00:00Z"))).toEqual({ y: 2024, m: 2, d: 29 });
+    expect(tokyoDate(new Date("2024-02-29T15:00:00Z"))).toEqual({ y: 2024, m: 3, d: 1 });
+    // Replays can jump backwards after the formatter has seen a later day.
+    expect(tokyoDate(new Date("2024-02-28T14:59:59Z"))).toEqual({ y: 2024, m: 2, d: 28 });
+  });
+});
 
 describe("JARTIC rule times", () => {
   // 歩行者用道路 7:00–8:30 and 15:00–17:00, 土曜・日曜・休日を除く (the spec's own example).

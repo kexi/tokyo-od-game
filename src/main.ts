@@ -491,6 +491,7 @@ async function main(): Promise<void> {
   const viewDir = new Vector3();
   let lastViewYaw = 0;
   cockpit.showOnDisplay(carNavi.canvas);
+  let wasTvOnScreen = false;
   scene.add(vehicle.object);
   vehicle.setFrozen(true);
   const field = new PoiField(
@@ -2155,7 +2156,7 @@ async function main(): Promise<void> {
       // Through the cockpit as in play: a plain render would leave the interior (its own layer) out.
       blur.stop();
       placeFlare();
-      cockpit.render(composer, renderer, scene, camera);
+      cockpit.render(composer, renderer, scene, camera, false);
       composer.present();
       return;
     }
@@ -2904,22 +2905,31 @@ async function main(): Promise<void> {
       inCabin: cockpit.active,
     });
     if (tvNote) toast(tvNote, "#4dd2ff");
-    const isTvOnScreen = isCockpitView && naviTv.draw(carNavi.canvas, now);
-    if (isCockpitView && !isTvOnScreen)
-      carNavi.draw({
-        now,
-        graph: roadGraph,
-        route: nav.route,
-        at: nav.lastAt,
-        pos: vehicle.position(),
-        yaw: vehicle.yaw(),
-        night: env.nightFactor > 0.35,
-        kmh: vehicle.speedKmh(),
-        limit: currentLimit,
-        place: [wardName, townName].filter(Boolean).join(" "),
-        clock: clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "",
-        tv: naviTv.badge,
-      });
+    if (isCockpitView) {
+      const tvFrame = naviTv.draw(carNavi.canvas, now);
+      const isDisplayChanged =
+        tvFrame.changed ||
+        (!tvFrame.visible &&
+          carNavi.draw(
+            {
+              now,
+              graph: roadGraph,
+              route: nav.route,
+              at: nav.lastAt,
+              pos: vehicle.position(),
+              yaw: vehicle.yaw(),
+              night: env.nightFactor > 0.35,
+              kmh: vehicle.speedKmh(),
+              limit: currentLimit,
+              place: [wardName, townName].filter(Boolean).join(" "),
+              clock: clockLabel(gameClockNow(), tokyoDate(env.now())).split(" ").pop() ?? "",
+              tv: naviTv.badge,
+            },
+            wasTvOnScreen,
+          ));
+      wasTvOnScreen = tvFrame.visible;
+      if (isDisplayChanged) cockpit.refreshDisplay();
+    }
     cockpit.update({
       dt,
       now,
@@ -2933,8 +2943,6 @@ async function main(): Promise<void> {
       wipers: controls.wipers,
       rainMmH: env.rainMmH(),
       night: env.nightFactor,
-      renderer,
-      scene,
     });
     audio.update(isEngineOff ? 0 : speed, isEngineOff ? 0 : drive.throttle, isEngineOff);
     // The pad's kerb jolts and (if chosen) the idle hum (game/gamepad.ts).
