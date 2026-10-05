@@ -765,6 +765,10 @@ export const en: Messages = {
   "incident.unreported": "{label}: not called (dial {number} on your phone)",
   "incident.arrived": "{label}: arrived",
   "incident.eta": "{label}: arriving in about {s} s",
+  "incident.tellPlace": "{label}: on the line — tell them where and what happened to send it",
+  "incident.onTheWay": "{label}: on the way, {distance} · about {time}",
+  "incident.minutes": "{m} min",
+  "incident.seconds": "{s} s",
   "incident.left": "· {s} s left",
   // main.ts: HUD
   "hud.weatherObs": "Tokyo {temp}°C · wind {wind} m/s · rain {precip} mm ({time})",

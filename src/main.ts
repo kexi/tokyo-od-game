@@ -4658,9 +4658,21 @@ async function main(): Promise<void> {
     if (!emergency.active) return;
     const part = (kind: "ambulance" | "police", key: i18n.MessageKey, number: string) => {
       const label = i18n.t(key);
-      if (!emergency.isCalled(kind)) return i18n.t("incident.unreported", { label, number });
-      const eta = emergency.eta(kind);
-      return eta === null ? i18n.t("incident.arrived", { label }) : i18n.t("incident.eta", { label, s: eta });
+      if (!emergency.isCalled(kind)) {
+        // On the line already: the operator sends the vehicle once they know the place and what
+        // happened (ai/dispatch.ts hasEnoughInfo) — said here, as the call alone sends nothing.
+        const isOnThisLine = phone.calling === number;
+        return i18n.t(isOnThisLine ? "incident.tellPlace" : "incident.unreported", { label, number });
+      }
+      const way = emergency.enRoute(kind);
+      if (!way) return i18n.t("incident.arrived", { label });
+      const distance =
+        way.metres >= 950 ? `${(way.metres / 1000).toFixed(1)} km` : `${Math.round(way.metres / 10) * 10} m`;
+      const time =
+        way.seconds >= 90
+          ? i18n.t("incident.minutes", { m: Math.round(way.seconds / 60) })
+          : i18n.t("incident.seconds", { s: way.seconds });
+      return i18n.t("incident.onTheWay", { label, distance, time });
     };
     const left = emergency.isCalled("ambulance")
       ? ""
@@ -4851,6 +4863,11 @@ async function main(): Promise<void> {
       target: mission?.target ?? null,
       buses: transit.positionsNear(lat, lon, 700),
       route: nav.route ? navGeo.points : undefined,
+      incident: emergency.scene ? frame.toGeodetic(emergency.scene) : null,
+      responders: (["ambulance", "police"] as const).flatMap((kind) => {
+        const way = emergency.enRoute(kind);
+        return way ? [{ kind, ...frame.toGeodetic(way.position) }] : [];
+      }),
       taxi:
         taxi && (taxi.state === "coming" || taxi.state === "waiting")
           ? {

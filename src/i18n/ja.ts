@@ -763,6 +763,10 @@ export const ja = {
   "incident.unreported": "{label}: 未通報（スマホで {number}）",
   "incident.arrived": "{label}: 到着",
   "incident.eta": "{label}: 到着まで約{s}秒",
+  "incident.tellPlace": "{label}: 通話中 — 場所と状況を伝えると出動します",
+  "incident.onTheWay": "{label}: 出動中 あと {distance}・約{time}",
+  "incident.minutes": "{m}分",
+  "incident.seconds": "{s}秒",
   "incident.left": "・残り{s}秒",
   // HUD
   "hud.weatherObs": "東京 {temp}℃ 風 {wind}m/s 降水 {precip}mm ({time})",

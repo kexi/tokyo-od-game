@@ -3176,6 +3176,11 @@ html:lang(zh) [lang="ja"] {
   flex: 1;
   padding: 6px 8px;
   font-size: 14px;
+  /* The phone's dial keys are round (.dial: aspect-ratio 1): here a pill, or the two grow into
+     circles as wide as the panel and cover the view. */
+  aspect-ratio: auto;
+  border-radius: 999px;
+  flex-direction: row;
 }
 
 /* 通知: violations, posts and the police on the left, with their time; 履歴 opens the rest */

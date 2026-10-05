@@ -32,6 +32,9 @@ export class Minimap {
     taxi?: { lat: number; lon: number; heading: number; route: Array<{ lat: number; lon: number }> } | null;
     /** 北が上: the map fixed with north up and the car turning on it (else the way ahead is up). */
     northUp?: boolean;
+    /** An accident's scene, and the ambulance and the patrol car on their way to it. */
+    incident?: { lat: number; lon: number } | null;
+    responders?: Array<{ kind: "ambulance" | "police"; lat: number; lon: number }>;
   }): void {
     const { ctx, canvas } = this;
     const size = canvas.width;
@@ -138,6 +141,52 @@ export class Minimap {
       ctx.fillStyle = "#1d2a4a";
       ctx.fillRect(-3, -6, 6, 3); // windscreen: the front
       ctx.restore();
+    }
+    // The scene and the vehicles coming to it, clamped to the rim like the target so a vehicle still
+    // far off shows the way it comes from. The siren's red blinks on the patrol car.
+    const clamp = (lat: number, lon: number): [number, number] => {
+      const [x, y] = project(lat, lon);
+      const d = Math.hypot(x - half, y - half);
+      const edge = half - 10;
+      return d > edge ? [half + ((x - half) / d) * edge, half + ((y - half) / d) * edge] : [x, y];
+    };
+    if (opts.incident) {
+      const [x, y] = clamp(opts.incident.lat, opts.incident.lon);
+      ctx.fillStyle = "#ff4d4d";
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 8);
+      ctx.lineTo(x + 7, y + 5);
+      ctx.lineTo(x - 7, y + 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(x - 1, y - 3, 2, 4);
+      ctx.fillRect(x - 1, y + 2, 2, 1.5);
+    }
+    const blink = Math.floor(performance.now() / 300) % 2 === 0;
+    for (const r of opts.responders ?? []) {
+      const [x, y] = clamp(r.lat, r.lon);
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = r.kind === "police" ? "#1d2a4a" : "#d22";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x - 6, y - 6, 12, 12, 3);
+      ctx.fill();
+      ctx.stroke();
+      if (r.kind === "ambulance") {
+        // A red cross on white.
+        ctx.fillStyle = "#d22";
+        ctx.fillRect(x - 1.5, y - 4, 3, 8);
+        ctx.fillRect(x - 4, y - 1.5, 8, 3);
+      } else {
+        ctx.fillStyle = blink ? "#ff3030" : "#1d2a4a";
+        ctx.fillRect(x - 4, y - 4, 8, 3);
+        ctx.fillStyle = "#1d2a4a";
+        ctx.fillRect(x - 4, y + 1, 8, 3);
+      }
     }
     this.drawCompass(half, view, opts.heading);
     ctx.restore();

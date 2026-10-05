@@ -92,6 +92,11 @@ export class Phone {
     return this.line !== null;
   }
 
+  /** The number on the line now (119 / 110), or null between calls. */
+  get calling(): Line | null {
+    return this.line;
+  }
+
   /** Being worked now: touched in the last 2 s (about the time of a glance that becomes 注視). */
   isInUse(now: number): boolean {
     return this.open && now - this.touchedAt < 2000;

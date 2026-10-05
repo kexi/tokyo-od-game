@@ -727,6 +727,10 @@ export const zh: Messages = {
   "incident.unreported": "{label}：未报警（用手机拨打 {number}）",
   "incident.arrived": "{label}：已到达",
   "incident.eta": "{label}：约 {s} 秒后到达",
+  "incident.tellPlace": "{label}：通话中——说明地点和情况后即出动",
+  "incident.onTheWay": "{label}：已出动 还有 {distance}・约{time}",
+  "incident.minutes": "{m}分钟",
+  "incident.seconds": "{s}秒",
   "incident.left": "·剩余 {s} 秒",
   // main.ts: HUD
   "hud.weatherObs": "东京 {temp}℃ 风 {wind}m/s 降水 {precip}mm（{time}）",

@@ -251,6 +251,29 @@ export class EmergencyResponse {
       : 0;
   }
 
+  /**
+   * Where a called vehicle is and how far it still has to go along its way in (metres, seconds),
+   * for the incident panel and the radar; null when it is not on its way (not called, or there).
+   */
+  enRoute(
+    kind: ResponderKind,
+  ): { position: Vector3; heading: number; metres: number; seconds: number } | null {
+    const r = this.responders[kind];
+    if (!this.isCalled(kind) || r.arrivedAt !== null || r.path.length < 2) return null;
+    const metres = Math.max(0, pathLength(r.path) - r.progress);
+    return {
+      position: r.root.position,
+      heading: r.root.rotation.y,
+      metres,
+      seconds: Math.ceil(metres / SPEED[kind]),
+    };
+  }
+
+  /** The scene of the incident (the victim's place), while one is open. */
+  get scene(): Vector3 | null {
+    return this.incident?.at ?? null;
+  }
+
   eta(kind: ResponderKind): number | null {
     const r = this.responders[kind];
     if (!this.isCalled(kind) || r.arrivedAt !== null) return null;
