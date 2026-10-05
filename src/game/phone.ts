@@ -11,7 +11,7 @@ import {
 } from "../ai/dispatch";
 import type { NpcBrain } from "../ai/llm";
 import type { Voice } from "../ai/tts";
-import { bindText, getLocale, onLocaleChange, t } from "../i18n";
+import { bindText, getLocale, onLocaleChange, t, type Locale } from "../i18n";
 import { translateWord } from "../i18n/reverse";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => {
@@ -226,6 +226,7 @@ export class Phone {
     const line = this.line;
     if (!line || this.busy) return;
     this.busy = true;
+    const locale = getLocale();
     this.bubble("me", text);
     this.callerText += ` ${text}`;
     const ctx = this.context();
@@ -240,6 +241,7 @@ export class Phone {
         (partial) => {
           bubble.textContent = partial || "…";
         },
+        locale,
       );
       bubble.remove();
     }
@@ -249,24 +251,19 @@ export class Phone {
       scripted = this.dispatched ? dispatched(line) : alreadyDispatched();
     }
     const fromModel = scripted ? null : reply?.trim() || null;
-    // The model's reply is in the language in force; it has a Japanese voice only in Japanese.
-    const isModelInJapanese = getLocale() === "ja";
     this.operator(
       fromModel !== null
-        ? { text: fromModel, ja: isModelInJapanese ? fromModel : "" }
+        ? { text: fromModel, ja: locale === "ja" ? fromModel : "" }
         : (scripted ?? scriptedOperator(line, this.callerText, ctx.hasIncident)),
+      fromModel !== null ? locale : getLocale(),
     );
     this.busy = false;
   }
 
-  /**
-   * The operator's line: shown in the language in force, spoken by the on-device voice (sanoTTS-jp,
-   * Japanese only) in its Japanese original — a scripted line has one, a model's reply in English
-   * or Chinese does not, and is not spoken.
-   */
-  private operator(line: Said): void {
+  /** Show and speak the operator's response in the selected language. */
+  private operator(line: Said, locale: Locale = getLocale()): void {
     this.bubble("op", line.text);
-    if (line.ja) this.voice.speak(line.ja);
+    if (line.text) this.voice.speak(line.text, undefined, locale);
   }
 
   private bubble(who: "me" | "op", text: string): HTMLElement {

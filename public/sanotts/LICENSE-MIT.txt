@@ -1,0 +1,92 @@
+MIT License
+
+Copyright (c) 2026 Ampixa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================================================
+SCOPE — which files this covers
+================================================================================
+
+This MIT licence applies ONLY to the inference runtime and its language
+bindings, listed exhaustively below. The repository as a whole remains
+GPL-3.0-or-later (see LICENSE), because the grapheme-to-phoneme layer embeds
+espeak-ng, which is GPL-3.0. Nothing below embeds, links, or derives from it.
+
+  mcu/include/snt_nano.h
+  mcu/include/snt_tts.h
+  mcu/include/snt_port.h
+  mcu/src/snt_nano.c
+  mcu/src/snt_tts.c
+  mcu/src/snt_kernels_ref.c
+  mcu/ports/host/snt_port_host.c
+  mcu/ports/wasm/snt_port_wasm.c
+  mcu/models/*/nano_q8_meta.h        (generated offset headers)
+  mobile/sanotts.h
+  mobile/sanotts.c
+  mobile/swift/SanoTTS.swift
+  mobile/kotlin/SanoTTS.kt
+  mobile/kotlin/sanotts_jni.c
+  mobile/dart/sanotts.dart
+  mobile/CMakeLists.txt
+  mobile/build_ios.sh
+
+Everything else in the repository — in particular the espeak-ng ports under
+mcu/ports/*/espeak*, mcu/ports/esp32s3/firmware/components/espeak-ng/,
+mcu/ports/wasm/build_g2p.sh, and the training and evaluation tooling under
+tools/ — stays GPL-3.0-or-later.
+
+================================================================================
+WHY THIS SPLIT IS SOUND
+================================================================================
+
+The repository was GPL-3.0 on the stated grounds that "the pipeline builds on
+piper + espeak-ng (both GPLv3)". Half of that is wrong: piper and
+piper-phonemize are MIT. The copyleft obligation comes from espeak-ng alone.
+
+The files above were audited for it. They contain no reference to espeak,
+piper, or GPL, and no third-party source: the only "verbatim" note in the
+runtime is a cross-reference to another file in this same repository. The
+espeak-ng code lives entirely in the G2P and port layers, which are not
+listed above and stay GPL-3.0.
+
+Two algorithm reimplementations are worth naming, since neither is a copy:
+
+  * mcu/src/snt_nano.c reproduces PyTorch's MT19937 seeding, its 24-bit
+    uniform, and normal_fill_16's Box-Muller so that a seeded rendering is
+    reproducible across implementations. PyTorch is BSD-3-Clause; this is an
+    independent implementation of the documented algorithm, not its source.
+  * The decoder mirrors the ConvNeXt-1D and iSTFT-head structure of Vocos and
+    the residual-block shape of VITS. Both are MIT. Again structure, not code.
+
+Upstream licences, checked rather than assumed:
+
+  rhasspy/piper             MIT
+  rhasspy/piper-phonemize   MIT
+  espeak-ng/espeak-ng       GPL-3.0   <- the only copyleft input
+  hexgrad/kokoro            Apache-2.0
+  gemelo-ai/vocos           MIT
+  jaywalnut310/vits         MIT
+
+Model weights are distributed separately from this source, are distilled from
+Apache-2.0 (Kokoro) and MIT (piper) teachers, and carry their own terms in
+each voice package's meta.json and README.
+
+This is a statement of the project's licensing intent, not legal advice.

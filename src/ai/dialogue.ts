@@ -20,8 +20,7 @@ export type Surroundings = {
 };
 
 /**
- * A line in the language in force (`text`, shown) and in Japanese (`ja`, what the Japanese voice
- * says: the pedestrians are Tokyo people and sanoTTS-jp speaks Japanese only).
+ * A line in the selected language (`text`, shown and spoken), plus the Japanese original (`ja`).
  */
 export type Line = { text: string; ja: string };
 type Value = string | number | Line;

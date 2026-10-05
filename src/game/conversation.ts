@@ -77,7 +77,7 @@ export class ConversationController {
     $("#chat").hidden = false;
     document.body.classList.add("chatting");
     const greeting = templateLine(p.profile, s, OPENING_WORDS);
-    this.say("npc", greeting.text, greeting.ja);
+    this.say("npc", greeting.text, greeting.text);
     // Do not steal the keyboard: driving / F (get out) keep working until the player presses
     // Enter or clicks the box to type.
   }
@@ -146,27 +146,31 @@ export class ConversationController {
     const p = this.partner;
     if (!p || this.busy) return;
     this.busy = true;
+    const locale = getLocale();
     this.say("me", text);
     const s = this.surroundings();
     const bubble = this.say("npc", "…");
     let reply: string | null = null;
     if (this.brain.ready) {
-      reply = await this.brain.reply(p.profile.id, personaPrompt(p.profile, s), text, (partial) => {
-        bubble.textContent = partial || "…";
-        this.scroll();
-      });
+      reply = await this.brain.reply(
+        p.profile.id,
+        personaPrompt(p.profile, s),
+        text,
+        (partial) => {
+          bubble.textContent = partial || "…";
+          this.scroll();
+        },
+        locale,
+      );
     }
     // Fall back to grounded templates when the model is off, failed, or returned nothing.
     const fromModel = reply?.trim() || null;
     const fallback = fromModel === null ? templateLine(p.profile, s, text) : null;
     bubble.textContent = fromModel ?? fallback?.text ?? "";
     this.scroll();
-    // The voice (sanoTTS-jp) speaks Japanese only: a set reply's Japanese original under the
-    // translated bubble; the model's reply only when the game is in Japanese (in English or
-    // Chinese the model answers in that language, and there is no Japanese to say).
-    const isModelInJapanese = fromModel !== null && getLocale() === "ja";
-    const spoken = fallback?.ja ?? (isModelInJapanese ? fromModel : null);
-    if (spoken) this.voice.speak(spoken, this.voiceFrom?.(p));
+    const spoken = fromModel ?? fallback?.text ?? null;
+    const spokenLocale = fromModel !== null ? locale : getLocale();
+    if (spoken) this.voice.speak(spoken, this.voiceFrom?.(p), spokenLocale);
     this.busy = false;
   }
 

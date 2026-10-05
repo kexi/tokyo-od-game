@@ -298,3 +298,11 @@ lint-knowledge:
 
 # CI と同じ検査を一括で実行する
 check-all: check-types lint-code check-format run-tests lint-justfile lint-actions lint-knowledge
+
+# 英語・中国語のsanoTTS資産を固定コミットとSHA-256で照合して配置する
+fetch-sanotts:
+    pnpm exec tsx scripts/fetch-sanotts.ts
+
+# 新規Chromeプロファイルで3言語の音声初期化・合成・WebAudio再生を実測する
+measure-tts:
+    node scripts/qa/perf-tts.mjs

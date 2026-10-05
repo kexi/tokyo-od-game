@@ -15,7 +15,7 @@ export const zh: Messages = {
   "title.aiNote": "在本机（WebGPU）运行，对话内容不会发送到外部。下载完成前使用固定回复。建议使用 Wi-Fi。",
   "title.aiCached": "使用已下载的模型（无需重新下载）。在本机运行，对话内容不会发送到外部。",
   "title.aiUnsupported": "此设备无法使用对话 AI（{reason}），将使用固定回复。",
-  "title.voiceOption": "行人语音（日语语音合成 sanoTTS-jp，约 6 MB）",
+  "title.voiceOption": "行人中文语音（sanoTTS，约4 MB）",
   "title.start": "开始",
   "title.credits": "数据来源与许可",
   "title.source": "源代码",
@@ -1201,13 +1201,15 @@ export const zh: Messages = {
   "credits.h.rules": "交通规则",
   "credits.rules":
     "违章记分与罚款是依据《道路交通法》及其施行令和警视厅公开资料（普通车，2026-10-04 确认）的游戏内参考值。限速方面，已对应 JARTIC 管制限速（路段、区域）的道路使用该值，其他道路则根据道路宽度按施行令第11条（2026-09-01 修订：有中心线等的道路 60km/h，其他 30km/h）推定。呼叫急救与警察是游戏内的模拟，不会接通真实的 119、110。",
-  "credits.h.tts": "语音合成（sanoTTS-jp）",
+  "credits.h.tts": "语音合成（sanoTTS-jp / sanoTTS）",
   "credits.tts.intro":
-    "行人的声音由在浏览器内运行的 {sano}（代码：MIT；模型：LicenseRef-sanoTTS-jp-Model-1.0）合成。它只会说日语。",
+    "日语使用 {sano}（代码：MIT；模型：LicenseRef-sanoTTS-jp-Model-1.0），英语和中文使用 {sanoOther}（网页发行版：GPL-3.0-or-later）。所有语音都在浏览器的Worker内合成。",
   "credits.link.modelLicense": "模型许可",
   "credits.link.dictNotice": "词典 NOTICE",
   "credits.link.apacheFull": "Apache License 2.0 全文",
   "credits.tts.files": "{model}、{notice}、{dict}、{jtalk}、{apache}",
+  "credits.tts.multilingualFiles":
+    "sanoTTS：{license}、{source}、{dict}。英语使用amy；中文使用chinese-xiaoya。",
   "credits.tts.verbatim": "根据模型许可的规定，以下声明按原文刊载：",
   "credits.h.ai": "对话 AI（可选）",
   "credits.ai":
@@ -1225,7 +1227,7 @@ export const zh: Messages = {
   "credits.h.network": "关于网络通信",
   "credits.network":
     "游戏过程中，浏览器会直接与国土地理院、PLATEAU 分发服务、气象厅和公共交通开放数据中心通信（IP 地址等会发送给各服务）。进度只保存在本浏览器的 localStorage 中。若起点选择“当前位置”，位置信息只保存在本设备（sessionStorage），不会放入 URL 或发送到外部（但会向各提供方请求其周边的地图瓦片）。",
-  // 歩行者との会話（conversation.ts・dialogue.ts・#chat）。歩行者は日本人なので、定型応答の声（sanoTTS-jp）は日本語の原文で話し、画面には訳を出す
+  // 歩行者との会話（conversation.ts・dialogue.ts・#chat）。表示と声は選んだ言語に合わせる
   "talk.chatLabel": "与行人对话",
   "talk.close": "关闭对话",
   "talk.placeholder": "按 Enter 输入 → Enter 发送（Esc 返回驾驶）",
@@ -1235,8 +1237,8 @@ export const zh: Messages = {
   "talk.status.error": "{detail}（继续使用固定回复）",
   "talk.aiEnable": "使用对话 AI（Gemma 4）",
   "talk.aiCancel": "停止下载",
-  "talk.voiceToggle": "日语语音",
-  "talk.voiceToggleTitle": "行人的声音（sanoTTS-jp）只说日语，对话框显示译文",
+  "talk.voiceToggle": "语音",
+  "talk.voiceToggleTitle": "用所选语言说话（日语：sanoTTS-jp；英语和中文：sanoTTS）",
   "talk.partnerSub": "{age}·{role}（{place}）",
   "talk.age": "{n}多岁",
   "talk.role.office": "公司职员",

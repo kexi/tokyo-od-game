@@ -43,6 +43,9 @@ licenses:
     name: sanoTTS-jp Model License 1.0
     url: public/tts/LICENSE-MODEL.md
     notes: 重みに適用。(A) の表示と Apache-2.0 全文の同梱、合成音声の禁止用途 4 項目を利用規約で課すことが義務。
+  GPL-3.0-or-later:
+    name: GNU General Public License v3.0 or later
+    url: public/sanotts/LICENSE-GPL-3.0.txt
   BSD-3-Clause:
     name: BSD 3-Clause License
     url: https://opensource.org/license/bsd-3-clause
@@ -856,3 +859,19 @@ assets:
       エンジン（saan_web_w8a32.mjs / .wasm）は MIT、重み（student_i8.bin）は sanoTTS-jp Model License 1.0、
       辞書（k1_dict.bin.gz）は NAIST-JDIC の BSD 3-Clause、Apache-2.0 全文は学習素材 AISHELL-3 のための同梱。
       just のレシピは無く、作り直すときは bash scripts/build-tts.sh を直接実行する。
+
+  - id: sanotts-multilingual
+    name: 英語・中国語の音声合成 sanoTTS
+    purpose: 英語はamy、中国語はchinese-xiaoyaのWASM音声合成をWorker内で実行する。英語のespeak-ng G2P、中国語のピンイン辞書、固定ソースへの導線とライセンスを含む。
+    kind: audio
+    files: [public/sanotts/**/*, assets/sanotts-files.json]
+    generator: { script: scripts/fetch-sanotts.ts, recipe: fetch-sanotts }
+    made_by: external
+    source: Ampixa/sanoTTS commit 3de9f37cbfedb8a1edcc28f4c8139979c6fcf889（2026-10-01）。全取得URLと取得物/配布物のSHA-256はassets/sanotts-files.json。
+    license: [GPL-3.0-or-later, MIT]
+    used_by: [src/ai/sanoTts.ts, src/ai/tts.worker.ts, src/game/credits.ts]
+    docs: [knowledge/on-device-ai.md]
+    notes: >-
+      Web配布物は公式LICENSEのGPL-3.0-or-laterとして扱う。LICENSE.MITは限定されたC runtimeファイルにのみ適用し、Web資産にMITを推定しない。
+      ピンイン辞書はpypinyin由来のMIT（NOTICE-G2P.md）。JSローダーにES module exportを追加し、Chinese辞書inflateにgzip magic判定を追加した。
+      SOURCE.mdから同一固定commitの対応するソースとビルド手順へアクセスできる。

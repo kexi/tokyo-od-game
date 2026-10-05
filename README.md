@@ -26,7 +26,7 @@
 - 速度計の文字盤には、いま走っている道路の最高速度（規制・区域・法定の別）と、それを超える範囲が赤く表示されます。
 - スタート地点は東京駅のほか、都営交通の各駅やブラウザの位置情報（23 区内のみ）から選べます。
 - 建物の外壁は 8 種類（ガラスのオフィス、タイル張り、マンション、雑居ビル、倉庫、レンガなど）から高さに応じて選び、夜は窓が灯ります。歩行者と道路標識も Blender でモデリングしています。
-- 車を降りて歩けます。歩行者に話しかけると、近くの実在スポットの方角と距離を教えてくれます。会話 AI（Gemma 4、端末内で実行）と音声（sanoTTS-jp）は任意で有効にできます。
+- 車を降りて歩けます。歩行者に話しかけると、近くの実在スポットの方角と距離を教えてくれます。会話 AI（Gemma 4、端末内で実行）と音声（日本語はsanoTTS-jp、英語・中国語はsanoTTS）は任意で有効にできます。
 
 ## 操作
 
@@ -114,7 +114,8 @@ just build-app             # dist/ に本番ビルド
 - **信号機の位置**: © OpenStreetMap contributors。抽出したデータ（`public/data/signals/`）は Open Database License 1.0 で提供します（同フォルダの `LICENSE.txt`）。
 - **町丁・区の境界と人口**: 出典：政府統計の総合窓口（e-Stat）「国勢調査 令和2年 小地域（町丁・字等別）境界データ 東京都」を加工して作成（政府標準利用規約 第2.0版準拠）。現在地の表示、スポット座標の検証、歩行者の人数に使います。
 - **ジオイド高**: EGM2008（NGA、パブリックドメイン。PROJ-data 経由）。
-- **音声合成**: [sanoTTS-jp](https://github.com/ayutaz/sanoTTS-jp)（コードは MIT、モデルは LicenseRef-sanoTTS-jp-Model-1.0）。帰属表示 (A) とライセンス全文は `public/tts/` とゲーム内の出典画面にあります。
+- **英語・中国語の音声合成**: [sanoTTS](https://github.com/Ampixa/sanoTTS)（Web配布物はGPL-3.0-or-later、英語amy・中国語chinese-xiaoya）。ライセンスと固定ソースへの導線は `public/sanotts/` とゲーム内の出典画面にあります。`just fetch-sanotts` で固定コミット・SHA-256を確認して再取得できます。
+- **日本語の音声合成**: [sanoTTS-jp](https://github.com/ayutaz/sanoTTS-jp)（コードは MIT、モデルは LicenseRef-sanoTTS-jp-Model-1.0）。帰属表示 (A) とライセンス全文は `public/tts/` とゲーム内の出典画面にあります。
 - **会話 AI（任意）**: Google Gemma 4 E2B（Apache License 2.0）。有効にした端末だけが Hugging Face から直接ダウンロードし、LiteRT-LM で端末内で実行します。
 
 ### 利用条件を確認して決めたこと

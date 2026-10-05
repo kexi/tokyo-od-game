@@ -94,7 +94,7 @@
           </p>
           <label class="opt">
             <input type="checkbox" id="opt-voice" checked />
-            <span data-i18n="title.voiceOption">歩行者の声（音声合成 sanoTTS-jp・約 6MB）</span>
+            <span data-i18n="title.voiceOption">歩行者の声（日本語 sanoTTS-jp・約6MB）</span>
           </label>
         </fieldset>
         <button id="start" type="button" disabled data-i18n="title.start">スタート</button>
@@ -429,10 +429,10 @@
             >会話: 定型応答（オープンデータから回答）</span
           >
           <button type="button" id="ai-enable" data-i18n="talk.aiEnable">会話 AI（Gemma 4）を使う</button>
-          <!-- sanoTTS-jp speaks Japanese only: in English and Chinese the box says so ("Japanese voice"). -->
+          <!-- The selected language determines the on-device speech model. -->
           <label
             data-i18n-title="talk.voiceToggleTitle"
-            title="歩行者の声（sanoTTS-jp）は日本語だけを話します"
+            title="選んだ言語で話します（日本語 sanoTTS-jp、英語・中国語 sanoTTS）"
             ><input type="checkbox" id="voice-toggle" />
             <span data-i18n="talk.voiceToggle">音声で話す</span></label
           >

@@ -750,6 +750,7 @@ async function main(): Promise<void> {
   };
   const brain = new NpcBrain();
   const voice = new Voice(() => audio.context);
+  nav.voice = voice;
   const wardTotals = new Map<string, number>();
   for (const p of pois) wardTotals.set(p.ward, (wardTotals.get(p.ward) ?? 0) + 1);
 
@@ -3524,16 +3525,14 @@ async function main(): Promise<void> {
   };
   /**
    * The loudspeaker on the patrol car: from the car with the on-device voice, else only its level.
-   * sanoTTS-jp speaks Japanese only, so with it the officer says the Japanese line (as one in Tokyo
-   * would) and, in English or Chinese, the line is shown translated; speechSynthesis says it in the
-   * player's language (localUtterance: silent when the device has no voice for it).
+   * The on-device engine uses the player's language, including the translated loudspeaker line.
+   * speechSynthesis is used when on-device speech is disabled.
    */
   const policeSay = (key: i18n.MessageKey) =>
     officerSay(key, undefined, police?.car.object ?? null, "loudspeaker");
   /**
    * An officer's line: from the loudspeaker or from the officer at the window. The on-device voice
-   * speaks the Japanese (as an officer in Tokyo would) and, in English or Chinese, the line is shown
-   * translated; speechSynthesis says it in the player's language.
+   * speaks the translated line in the player's language.
    */
   const officerSay = (
     key: i18n.MessageKey,
@@ -3541,10 +3540,9 @@ async function main(): Promise<void> {
     from: Object3D | null,
     style: "loudspeaker" | "voice",
   ) => {
-    // A line with words filled in the player's language (names, articles) is not for the Japanese voice.
-    const hasLocalWords = params !== undefined && i18n.getLocale() !== "ja";
-    if (voice.enabled && from && !hasLocalWords) {
-      voice.speak(inJapanese(key, params), audio.spatial.voiceFrom(from, style));
+    const hasSpatialVoice = voice.enabled && from !== null;
+    if (hasSpatialVoice) {
+      voice.speak(i18n.t(key, params), audio.spatial.voiceFrom(from, style));
       const isJapanese = i18n.getLocale() === "ja";
       const isShownElsewhere = style === "voice";
       if (!isJapanese && !isShownElsewhere)
@@ -3832,9 +3830,8 @@ async function main(): Promise<void> {
     say: officerSay,
     radioVoice: (key, params) => {
       if (audio.muted) return;
-      const isJapaneseVoice = voice.enabled && i18n.getLocale() === "ja";
-      if (isJapaneseVoice) {
-        voice.speak(inJapanese(key, params), audio.spatial.voiceFrom(vehicle.object, "loudspeaker"));
+      if (voice.enabled) {
+        voice.speak(i18n.t(key, params), audio.spatial.voiceFrom(vehicle.object, "loudspeaker"));
         return;
       }
       const u = localUtterance(i18n.t(key, params));
