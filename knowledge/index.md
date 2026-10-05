@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [GitHub Actionsの開始前キャンセルを調べる](github-actions-runner-delays.md) - ランナー割り当て失敗をstepsとannotationsで確認する。未開始ジョブの再実行と2026-10-06 JSTの障害中の観測
+
 - [道路反映のフレーム分割と原点変更時のコライダー再利用](road-streaming-performance.md) - 原点変更の同期処理495→約3 ms。歩道・橋・駐車車両の物理を保持し、描画と生成を分割する。DEMをWorker化。通常更新の最長50 ms、新地域には133〜150 msが残る
 
 - [道路更新の地形照会と描画資源の再利用](road-surface-performance.md) - 夜雨で路面生成の中央値868→162 ms、更新時の最長フレーム間隔1783→500 ms。地形・橋の高さ、原点変更、描画資源の再利用を検証
