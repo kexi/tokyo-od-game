@@ -3103,6 +3103,17 @@ pre.notice {
   margin: 10px 0 0;
   text-align: center;
 }
+.title-copyright {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.6;
+}
+.title-links a {
+  color: inherit;
+  opacity: 0.8;
+  font-size: 13px;
+}
 .title-links button {
   background: none;
   border: none;

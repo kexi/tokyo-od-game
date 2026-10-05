@@ -23,6 +23,7 @@ export const en: Messages = {
   "title.voiceOption": "Pedestrian voices in Japanese (sanoTTS-jp speech synthesis, about 6 MB)",
   "title.start": "Start",
   "title.credits": "Credits & licenses",
+  "title.source": "Source code",
   "title.keys": "W/↑ accelerate · S/↓ brake/reverse · A D/← → steer · Space parking brake · R reset",
   "title.rotate": "📱↻ Turn your device sideways",
 

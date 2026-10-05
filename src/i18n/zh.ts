@@ -18,6 +18,7 @@ export const zh: Messages = {
   "title.voiceOption": "行人语音（日语语音合成 sanoTTS-jp，约 6 MB）",
   "title.start": "开始",
   "title.credits": "数据来源与许可",
+  "title.source": "源代码",
   "title.keys": "W/↑ 油门 · S/↓ 刹车/倒车 · A D/← → 转向 · Space 手刹 · R 复位",
   "title.rotate": "📱↻ 请将设备横过来",
 

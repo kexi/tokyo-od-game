@@ -25,6 +25,7 @@ export const ja = {
   "title.voiceOption": "歩行者の声（音声合成 sanoTTS-jp・約 6MB）",
   "title.start": "スタート",
   "title.credits": "出典・ライセンス",
+  "title.source": "ソースコード",
   "title.keys": "W/↑ アクセル・S/↓ ブレーキ/バック・A D/← → ハンドル・Space サイド・R 復帰",
   "title.rotate": "📱↻ 端末を横向きにしてください",
 
