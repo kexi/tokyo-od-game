@@ -9,6 +9,7 @@ import {
 import {
   type BufferGeometry,
   Box3,
+  Matrix4,
   Mesh,
   Sphere,
   Vector2,
@@ -330,23 +331,49 @@ export class Buildings {
     return facadeMaterial();
   }
 
+  /**
+   * A tile's mesh-to-local (game frame) matrix, whether or not the renderer has it under the group
+   * right now. A hidden tile hangs nowhere, and its world matrix is then the tileset's ECEF: a
+   * sphere taken from that lay ~6,370 km off and was cached, so the tile never got its walls (the
+   * car drove through the buildings beside it); a collider rebuilt from it on re-anchoring as well.
+   */
+  private localMatrix(o: Object3D, into: Matrix4): Matrix4 {
+    let up: Object3D | null = o;
+    while (up && up !== this.tiles.group) up = up.parent;
+    const isUnderGroup = up === this.tiles.group;
+    return isUnderGroup
+      ? into.copy(o.matrixWorld)
+      : into.multiplyMatrices(this.frame.ecefToLocal, o.matrixWorld);
+  }
+
   private computeSphere(scene: Object3D): Sphere {
     scene.updateMatrixWorld(true);
-    return new Box3().setFromObject(scene).getBoundingSphere(new Sphere());
+    const box = new Box3();
+    const part = new Box3();
+    const m = new Matrix4();
+    scene.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      if (!o.geometry.boundingBox) return;
+      box.union(part.copy(o.geometry.boundingBox).applyMatrix4(this.localMatrix(o, m)));
+    });
+    return box.getBoundingSphere(new Sphere());
   }
 
   private createCollider(model: Model): void {
     const vertices: number[] = [];
     const indices: number[] = [];
     const v = new Vector3();
+    const m = new Matrix4();
     model.scene.updateMatrixWorld(true);
     model.scene.traverse((o) => {
       if (!(o instanceof Mesh)) return;
       const pos = o.geometry.getAttribute("position") as BufferAttribute | undefined;
       if (!pos) return;
       const base = vertices.length / 3;
+      const toLocal = this.localMatrix(o, m);
       for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        v.fromBufferAttribute(pos, i).applyMatrix4(toLocal);
         vertices.push(v.x, v.y, v.z);
       }
       const index = o.geometry.getIndex();
