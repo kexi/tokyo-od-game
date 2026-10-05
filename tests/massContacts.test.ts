@@ -64,7 +64,7 @@ function crash(kmh: number, makeTarget: (world: RAPIER.World) => Target, seconds
       if (isStart && isOurs) started++;
     });
   }
-  return { car, impact: contacts.recentImpact(target.collider.handle, 10_000), started, target };
+  return { car, impact: contacts.recentImpact(target.collider.handle, 10_000), started, target, contacts };
 }
 
 /** A standing pedestrian (the game's capsule) 6 m ahead. */
@@ -120,6 +120,30 @@ describe("collisions by both masses (massContacts.ts)", () => {
     expect(impact.closing * 3.6).toBeGreaterThan(25);
     expect(impact.dvOther / impact.closing).toBeGreaterThan(0.93);
     expect(impact.dvOther / impact.closing).toBeLessThan(1);
+  });
+
+  it("reports each blow with what was hit, even after its collider is gone (accidents at 50 km/h)", () => {
+    // What it guarantees: the game books the accident from takeBlows(), which names the body hit
+    // (its owner, the Pedestrian) — at 50 km/h the person was bowled over and their collider dropped
+    // before the contact events were read, and no accident was booked (seen in the game).
+    const owner = { name: "歩行者" };
+    const { contacts, target, car } = crash(
+      50,
+      (world) => {
+        const t = pedestrian(60)(world);
+        t.mass.owner = owner;
+        return t;
+      },
+      0.6,
+    );
+    const blows = contacts.takeBlows();
+    expect(blows.length).toBeGreaterThan(0);
+    expect(blows[0].body).toBe(target.mass);
+    expect(blows[0].body.owner).toBe(owner);
+    expect(blows[0].car).toBe(car.chassis);
+    expect(blows[0].impact.dvOther * 3.6).toBeGreaterThan(40);
+    // Taken once: the next call has none left.
+    expect(contacts.takeBlows()).toHaveLength(0);
   });
 
   it("gives clearly different Δv for a parked kei car and a bus", () => {

@@ -96,7 +96,7 @@ import {
 import { Terrain } from "./world/terrain";
 import { TokyoTide } from "./world/tide";
 import { WaterLayer } from "./world/water";
-import { Pedestrians } from "./world/pedestrians";
+import { Pedestrians, type Pedestrian } from "./world/pedestrians";
 import {
   RegulationTiles,
   applyRegulations,
@@ -1904,6 +1904,8 @@ async function main(): Promise<void> {
     toast(i18n.t("toast.idlingStop"), "#7dff9a");
   };
   const contactCooldown = new Map<number, number>();
+  /** A person hit is one accident, however many steps the blow takes to part them. */
+  const pedestrianCooldown = new WeakMap<Pedestrian, number>();
   const loadStart = performance.now();
   let lastBrainStatus = brain.status;
   const startButton = $<HTMLButtonElement>("#start");
@@ -2221,6 +2223,27 @@ async function main(): Promise<void> {
     vehicle.syncVisuals();
     // The charms feel the chassis' motion over the steps just taken (none: they stay as they are).
     mirrorCharms.update(vehicle.body, steps * world.timestep, cockpit.active);
+    // People hit by the player's car, from the blows the mass contacts resolved (not from the
+    // contact events below: a person bowled over drops their collider, and the event then named
+    // nobody, so no accident was booked at speed).
+    for (const blow of massContacts.takeBlows()) {
+      const isPlayersCar = blow.car === vehicle.chassis;
+      const ped = blow.body.owner as Pedestrian | null;
+      const isPerson = blow.body.kind === "person" && ped !== null;
+      if (!isPlayersCar || !isPerson) continue;
+      const isCoolingDown = (pedestrianCooldown.get(ped) ?? 0) > performance.now();
+      if (isCoolingDown) continue;
+      const kmh = Math.abs(vehicle.speedKmh());
+      const carKmh = Math.max(kmh, (blow.impact.closing + blow.impact.dvCar) * 3.6);
+      const victimKmh = blow.impact.dvOther * 3.6;
+      // Someone walking into a car that stands is their own bump.
+      const isAccident = carKmh > 3 && victimKmh > 3;
+      if (!isAccident) continue;
+      pedestrianCooldown.set(ped, performance.now() + 3000);
+      pedestrians.knockDown(ped);
+      emergency.start(ped, performance.now());
+      onAccident("pedestrian", carKmh, ped.profile.name, blow.impact);
+    }
     events.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       const other = h1 === vehicle.chassis.handle ? h2 : h2 === vehicle.chassis.handle ? h1 : null;
@@ -2244,16 +2267,8 @@ async function main(): Promise<void> {
       }
       // The blow by both masses (massContacts.ts); a wall or a post has none, so the car's own speed.
       const impact = massContacts.recentImpact(other) ?? impactAgainstMass(other, kmh);
+      // People are judged from the blows above.
       const ped = pedestrians.byCollider(other);
-      // Knocked down by the push they got as well as the car moving (someone walking into a car that
-      // stands is their own bump): a 60 kg person takes nearly all of a moving car's speed.
-      const victimKmh = impact ? impact.dvOther * 3.6 : kmh;
-      if (ped && kmh > 3 && victimKmh > 3) {
-        pedestrians.knockDown(ped);
-        emergency.start(ped, performance.now());
-        onAccident("pedestrian", kmh, ped.profile.name, impact);
-        return;
-      }
       if (ped) return;
       const what = hitKind(other);
       // Kerbs and the ground are bumps, not accidents.

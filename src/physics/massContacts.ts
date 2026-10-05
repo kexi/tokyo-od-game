@@ -48,6 +48,8 @@ export class MassiveBody {
   /** The latest impact (fields reused) and the step it happened at (−1: never). */
   readonly impact: Impact = { closing: 0, dvCar: 0, dvOther: 0, energy: 0, carKg: 0, otherKg: 0 };
   impactStep = -1;
+  /** Whose body this is (a Pedestrian, a traffic car): what a blow reports back to the game. */
+  owner: unknown = null;
 
   constructor(
     public mass: number,
@@ -128,8 +130,14 @@ const MAX_BIAS_SPEED = 0.5;
 /** A contact point counts from this separation (m); Rapier reports points a little before touching. */
 const TOUCH = 0.02;
 
+/** A blow this module resolved: which car, what it hit (its owner) and how hard. */
+export type Blow = { car: RAPIER.Collider; body: MassiveBody; impact: Impact };
+/** Blows kept until the game takes them (a frame has a few steps; more than this is a pile-up). */
+const MAX_BLOWS = 32;
+
 export class MassContacts {
   private readonly cars: CarEntry[] = [];
+  private blows: Blow[] = [];
   private readonly massive = new Map<number, MassiveBody>();
   private step = 0;
   // Scratch for the visit callbacks (bound once; no allocation per step of ours).
@@ -170,6 +178,17 @@ export class MassContacts {
   }
 
   /** The massive body behind a collider, if it is one. */
+  /**
+   * The blows since the last call, oldest first. The game judges accidents from these, not from
+   * Rapier's contact events: by the time those are read the body hit may already be gone (a person
+   * bowled over drops their collider), and the event then named nobody — no accident was booked.
+   */
+  takeBlows(): Blow[] {
+    const taken = this.blows;
+    this.blows = [];
+    return taken;
+  }
+
   bodyOf(handle: number): MassiveBody | null {
     return this.massive.get(handle) ?? null;
   }
@@ -322,6 +341,7 @@ export class MassContacts {
     im.carKg = carKg;
     im.otherKg = other.mass;
     other.impactStep = this.step;
+    if (this.blows.length < MAX_BLOWS) this.blows.push({ car: car.collider, body: other, impact: { ...im } });
   }
 }
 

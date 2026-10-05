@@ -593,6 +593,8 @@ export class Pedestrians {
       mass: new MassiveBody(kg, kg * 0.025, BODY_GRIP, "person"),
     });
     this.list[this.list.length - 1].mass.setMotion(at.x, at.z, 0, 0, 0);
+    // A blow names its pedestrian (massContacts.takeBlows) even after their collider is dropped.
+    this.list[this.list.length - 1].mass.owner = this.list[this.list.length - 1];
     return this.list[this.list.length - 1];
   }
 
