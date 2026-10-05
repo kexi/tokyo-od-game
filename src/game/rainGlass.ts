@@ -1059,7 +1059,9 @@ export class RainGlass {
       return toScreen(u.origin.add(u.axisU.mul(g.x.mul(GLASS_W))).add(u.axisV.mul(g.y.mul(GLASS_H))));
     };
     const shade = Fn(() => {
-      const vUv = uv();
+      // Glass metres with v up the glass, as the simulation and its field use: glTF counts v from
+      // the top (the exporter writes 1 − v for cockpit.py's v-up UVs), so it is turned back here.
+      const vUv = vec2(uv().x, uv().y.oneMinus());
       const pm = vUv.mul(glass);
       const screen = screenUV;
       const wetField = field.sample(vUv).rg;
