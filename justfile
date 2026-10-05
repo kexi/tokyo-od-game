@@ -270,6 +270,10 @@ measure-road-nearest:
 measure-scene-matrices:
     node scripts/qa/perf-scene-matrices.mjs
 
+# 実水域のWorker・フレーム分割フォールバックを旧処理と比較し、全画素と停止時間を検証する
+measure-water-masks:
+    node scripts/qa/perf-water-masks.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

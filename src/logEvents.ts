@@ -204,11 +204,21 @@ export const LOG_EVENTS = {
   road_tile_failed: failedWith({ key: z.string() }),
   road_worker_failed: failedWith(),
   dem_worker_failed: failedWith(),
+  water_worker_failed: failedWith(),
   road_network_failed: failedWith(),
   route_tile_failed: failedWith({ key: z.string() }),
   water_tile_failed: failedWith({ key: z.string() }),
 
   // ---------- the world as built ----------
+  water_masks_prepared: info({
+    backend: z.enum(["worker", "inline"]),
+    x: z.number().int(),
+    y: z.number().int(),
+    size: count,
+    computeMs: z.number(),
+    durationMs: z.number(),
+    bytes: count,
+  }),
   road_network_prepared: info({
     backend: z.enum(["worker", "inline"]),
     segments: count,

@@ -106,6 +106,16 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   darkroom_failed: { error: "x" },
   road_worker_failed: { error: "x" },
   dem_worker_failed: { error: "x" },
+  water_worker_failed: { error: "x" },
+  water_masks_prepared: {
+    backend: "worker",
+    x: 10,
+    y: 20,
+    size: 512,
+    computeMs: 20,
+    durationMs: 23,
+    bytes: 524288,
+  },
   road_network_failed: { error: "x" },
   road_network_prepared: {
     backend: "worker",

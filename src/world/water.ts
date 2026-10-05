@@ -40,17 +40,15 @@ import type { RoadGraph, Segment } from "./roads";
 import { meshHeightAt, type GroundWater } from "./terrain";
 import type { Tide } from "./tide";
 import { createWaterMaterial } from "./waterMaterial";
+import { WaterCompute } from "./waterCompute";
 import {
   applyGauges,
   chooseLevel,
-  coverage,
   DECK_CLEARANCE,
   deckHeights,
-  dilate,
   fillUnknown,
   GAUGE_REACH,
   isClipEdge,
-  rasterize,
   triangulate,
   WATER_ZOOM,
   waterPolygons,
@@ -139,6 +137,8 @@ type Span = {
 export class WaterLayer implements GroundWater {
   private readonly tiles = new Map<string, WaterTile>();
   private readonly loading = new Map<string, Promise<void>>();
+  private readonly masks = new WaterCompute();
+  private disposed = false;
   /** Water-level gauges (東京都・国土交通省), baked by scripts/water-levels.ts. */
   private readonly gauges: Promise<Gauge[]>;
   private gaugeList: Gauge[] = [];
@@ -203,6 +203,7 @@ export class WaterLayer implements GroundWater {
 
   /** Water in the tiles around a point; resolves once the roads' 3×3 is in (the ring follows). */
   async around(lat: number, lon: number): Promise<void> {
+    if (this.disposed) return;
     const cx = Math.floor(lonToTileX(lon, WATER_ZOOM));
     const cy = Math.floor(latToTileY(lat, WATER_ZOOM));
     this.centre = { x: cx, y: cy };
@@ -624,7 +625,10 @@ export class WaterLayer implements GroundWater {
     let job = this.loading.get(key);
     if (job) return job;
     job = this.fetchTile(x, y)
-      .catch((error: unknown) => warn("water_tile_failed", { key, error: String(error) }))
+      .catch((error: unknown) => {
+        if (this.disposed) return;
+        warn("water_tile_failed", { key, error: String(error) });
+      })
       .finally(() => this.loading.delete(key));
     this.loading.set(key, job);
     return job;
@@ -632,6 +636,7 @@ export class WaterLayer implements GroundWater {
 
   private async fetchTile(x: number, y: number): Promise<void> {
     const vt = await gsiVectorTile(WATER_ZOOM, x, y);
+    if (!this.isCurrentTile(x, y)) return;
     const layer = vt?.layers.waterarea;
     const polygons: WaterPolygon[] = [];
     const features = layer ? Array.from({ length: layer.length }, (_unused, i) => layer.feature(i)) : [];
@@ -639,16 +644,15 @@ export class WaterLayer implements GroundWater {
       if (f.type !== 3 || !layer) continue;
       polygons.push(...waterPolygons(f.loadGeometry(), x, y, layer.extent));
     }
-    const isStale = Math.max(Math.abs(x - this.centre.x), Math.abs(y - this.centre.y)) > OUTER + 1;
-    if (isStale) return;
-    const raster = rasterize(polygons, x, y, 1, RASTER);
+    const { raster, cut } = await this.masks.rasterize(polygons, x, y, RASTER);
+    if (!this.isCurrentTile(x, y)) return;
     const tile: WaterTile = {
       x,
       y,
       version: 1,
       polygons,
       raster,
-      cut: dilate(coverage(polygons, x, y, 1, RASTER), RASTER),
+      cut,
       shores: null,
       surface: null,
       walls: null,
@@ -693,6 +697,10 @@ export class WaterLayer implements GroundWater {
       await work.yield();
       await work.run(this.wallSteps(tile));
     });
+  }
+
+  private isCurrentTile(x: number, y: number): boolean {
+    return !this.disposed && Math.max(Math.abs(x - this.centre.x), Math.abs(y - this.centre.y)) <= OUTER + 1;
   }
 
   /** A ring densified to SHORE_STEP with the still level at each point. */
@@ -1233,6 +1241,8 @@ export class WaterLayer implements GroundWater {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.masks.dispose();
     for (const tile of this.tiles.values()) this.disposeTile(tile);
     this.tiles.clear();
     this.clearDecks();

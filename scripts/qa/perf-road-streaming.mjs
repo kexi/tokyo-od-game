@@ -69,6 +69,17 @@ try {
       input:__game.debug.roads.input().lines.length, initial:__game.debug.logs.query({event:'road_network_built'}).at(-1),
       session:__game.debug.logs.query({event:'session_start'}).at(-1)?.traceId };
   })()`);
+  if (process.env.QA_PROFILE) {
+    await browser.send("Performance.enable", { timeDomain: "timeTicks" });
+    const before = await browser.evaluate("performance.now()");
+    const metrics = await browser.send("Performance.getMetrics");
+    const after = await browser.evaluate("performance.now()");
+    const clock = Object.fromEntries(metrics.result.metrics.map((m) => [m.name, m.value]));
+    const mapped = (clock.Timestamp - clock.NavigationStart) * 1000;
+    const isSameClock = mapped >= before - 1 && mapped <= after + 1;
+    if (!isSameClock) throw new Error("CDP and page clock mapping differs");
+    report.clock = { navigationStart: clock.NavigationStart, before, after, mapped };
+  }
   await browser.evaluate(`window.__qaMeshes = () => {
     const G = __game;
     return [...G.debug.roads.surface.meshes.values(), ...G.control.meshes, ...G.control.plates,
@@ -80,7 +91,12 @@ try {
     object[method] = function(...args) {
       const start = performance.now();
       try { return original.apply(this,args); }
-      finally { __qaCpu.push({phase,ms:performance.now()-start}); }
+      finally {
+        const ms=performance.now()-start;
+        const isRender=phase==='render';
+        const view=isRender ? {world:args[0]===__game.scene,far:args[1]?.far,layers:args[1]?.layers?.mask} : undefined;
+        __qaCpu.push({phase,at:start,ms,view});
+      }
     };
   };
   __qaWrap(__game.world,'step','physics');
@@ -122,7 +138,9 @@ try {
         const loop = t => { stamps.push(t); if(finished) resolve(stamps); else requestAnimationFrame(loop); };
         requestAnimationFrame(loop);
       });
-      const watch = longFramesDuring(performance.now(), frames);
+      const watchStart = performance.now();
+      const beforeWaterCount=G.debug.logs.query({event:'water_masks_prepared'}).length;
+      const watch = longFramesDuring(watchStart, frames);
       await new Promise(r => setTimeout(r, 150));
       const beforeMeshes = new Set(__qaMeshes()), beforeParked = new Set(G.traffic.parkedPoses().map(p=>p.key));
       const beforeLines = G.debug.roads.input().lines;
@@ -165,18 +183,21 @@ try {
       const reused = afterMeshes.filter(m=>beforeMeshes.has(m)).length;
       const parkedReused = afterParked.filter(p=>beforeParked.has(p.key)).length;
       const phases = Object.fromEntries([...new Set(__qaCpu.map(r=>r.phase))].map(phase=>{
-        const rows = __qaCpu.filter(r=>r.phase===phase).map(r=>r.ms).sort((a,b)=>a-b);
+        const rows = __qaCpu.filter(r=>r.phase===phase).map(r=>r.ms).toSorted((a,b)=>a-b);
         return [phase,{calls:rows.length,mean:rows.reduce((a,b)=>a+b,0)/rows.length,max:rows.at(-1),p95:rows[Math.floor(rows.length*.95)]}];
       }));
       if (${JSON.stringify(mode)} === 'update' && (reused !== afterMeshes.length || parkedReused !== afterParked.length))
         throw new Error('unchanged road data recreated render objects');
-      return {mode:${JSON.stringify(mode)},elapsed,frames:frameStats(result),long,phases,reused,meshCount:afterMeshes.length,
+      const framePeaks=result.slice(1).map((end,i)=>({start:result[i],end,ms:end-result[i]})).toSorted((a,b)=>b.ms-a.ms).slice(0,12);
+      const slow=__qaCpu.filter(r=>r.ms>=20).toSorted((a,b)=>b.ms-a.ms).slice(0,40);
+      return {mode:${JSON.stringify(mode)},elapsed,watchStart,framePeaks,slow,frames:frameStats(result),long,phases,reused,meshCount:afterMeshes.length,
         parkedReused,parkedCount:afterParked.length,heldUntilReady,landed,beforeGeo,
         afterGeo:G.getFrame().toGeodetic(G.vehicle.position()),
         recentered:G.debug.logs.query({event:'frame_recentered'}).at(-1),
         installed:G.debug.logs.query({event:'road_network_built'}).at(-1),
         session:G.debug.logs.query({event:'session_start'}).at(-1)?.traceId,
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|log_schema_invalid/})};
+        water:G.debug.logs.query({event:'water_masks_prepared'}).slice(beforeWaterCount),
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|water_worker_failed|water_tile_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");
