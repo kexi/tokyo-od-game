@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { isLaneChangeBanned, laneBand, laneOfOffset } from "../world/laneChange";
 import { laneOffset, leftOf, type RoadGraph, type Segment } from "../world/roads";
 import type { LaneHint, Maneuver, Route, Step, Turn } from "./navigation";
 
@@ -244,14 +245,15 @@ const edgeHug = (seg: Segment) => Math.max(0, Math.min(seg.line.width / 4, seg.l
  * the route's way (第35条第1項; the rightmost of them to turn right, else the leftmost); otherwise
  * the leftmost (第20条第1項), or the rightmost before a right turn (第34条). Within 30 m of the
  * turn, a street without lanes is kept to as the law says: by the centre line (two-way) or the
- * right edge (one-way) to turn right, the left edge of a one-way street to turn left.
+ * right edge (one-way) to turn right, the left edge of a one-way street to turn left. `forced`
+ * overrides the lane (planLanes: held across a 進路変更禁止 stretch, or moved into before it).
  */
 export function laneFor(
   d: number,
   step: Step,
   hints: readonly LaneHint[],
   maneuvers: readonly Maneuver[],
-  held: number | null = null,
+  forced: number | null = null,
 ): Omit<LanePlan, "corner"> {
   const seg = step.seg;
   let count = Math.max(1, seg.lanes);
@@ -264,7 +266,7 @@ export function laneFor(
     lane = isRightward(hint.take) ? ok[ok.length - 1] : ok[0];
     count = hint.lanes.length;
   } else if (next && toTurn < LANE_PREPARE && isRightward(next.turn)) lane = count - 1;
-  if (seg.noLaneChange && held !== null) lane = Math.min(held, count - 1);
+  if (forced !== null) lane = Math.max(0, Math.min(forced, count - 1));
   let offset = count > 1 ? laneCentre(seg, lane, count) : laneOffset(seg);
   const isHugging = next !== undefined && toTurn < HUG_BEFORE && count === 1;
   const isRightTurn = next?.turn === "right" || next?.turn === "uturn";
@@ -399,7 +401,188 @@ export type DrivePath = {
   stepOf: number[];
   lanes: LanePlan[];
   corners: Corner[];
+  /**
+   * Route distances of the turns (and レーン案内 junctions) the plan cannot reach in a lane that
+   * goes there without crossing a yellow lane line: planRoute plans round them.
+   */
+  blocked: number[];
 };
+
+// A lane change before a 進路変更禁止 stretch is over this far before its first point.
+const BAN_LEAD = 10;
+// Metres before a junction that its turn's curve may take (where no lane change can go).
+const TURN_ROOM = 20;
+
+/** Offsets (m left of the centreline) a lane spans, as laneBand gives them. */
+type Band = { min: number; max: number };
+const inBand = (band: Band | null, v: number) => (band ? Math.max(band.min, Math.min(band.max, v)) : v);
+
+/**
+ * The band of offsets each centreline sample must stay in (null: free): on a 進路変更禁止 segment
+ * the painted lane (laneBand, counted as the violation check counts it) of the first sample of that
+ * segment in the stretch, so a change of the lane count the plan uses there (a レーン案内 approach
+ * counts its own lanes) or of the street's width never moves the path over a yellow line. The
+ * junction sample where a stretch begins belongs to the street before, but the path from it runs
+ * on the stretch: it takes the stretch's band too (within the one before's, if both are banned).
+ */
+function laneBands(route: Route, plans: ReadonlyArray<Omit<LanePlan, "corner">>): Array<Band | null> {
+  const { points: axis, cum, stepOf, steps, maneuvers } = route;
+  const isTurnNode = (j: number) => maneuvers.some((m) => Math.abs(m.at - cum[j]) < 1e-6);
+  const segOf = (j: number) => steps[stepOf[j]].seg;
+  const bands: Array<Band | null> = axis.map(() => null);
+  for (let j = 0; j < axis.length; j++) {
+    const seg = segOf(j);
+    if (!isLaneChangeBanned(seg)) continue;
+    const before = j > 0 ? bands[j - 1] : null;
+    const isHeldOn = before !== null && !isTurnNode(j - 1);
+    if (isHeldOn && segOf(j - 1) === seg) {
+      bands[j] = before;
+      continue;
+    }
+    // On into the next segment of the stretch: the lane the path is in there (where it is, not the
+    // lane number the plan counts: the next one may count other lanes, or be wider).
+    const from = isHeldOn ? inBand(before, plans[j - 1].offset) : plans[j].offset;
+    const lane = Math.max(0, Math.min(seg.lanes - 1, laneOfOffset(seg, from)));
+    bands[j] = laneBand(seg, lane);
+  }
+  for (let j = 0; j < axis.length - 1; j++) {
+    const next = bands[j + 1];
+    // Not the zero-length last step of a route that ends at a junction (nothing runs on it).
+    const isEntry = next !== null && segOf(j) !== segOf(j + 1) && !isTurnNode(j) && cum[j + 1] > cum[j] + 0.5;
+    if (!isEntry) continue;
+    const own = bands[j];
+    if (!own) {
+      bands[j] = next;
+      continue;
+    }
+    // Streets of very different widths may share no offset in that lane: then the street it is on.
+    const both = { min: Math.max(own.min, next.min), max: Math.min(own.max, next.max) };
+    if (both.min <= both.max) bands[j] = both;
+  }
+  return bands;
+}
+
+/** A 進路変更禁止 stretch of the route: centreline samples a..b. */
+type Hold = { a: number; b: number };
+
+/**
+ * The lane each centreline sample is held in (null: the plain plan, laneFor), so that the route
+ * never changes lanes on a segment where it is 進路変更禁止 (道路交通法 第26条の2第3項, the
+ * yellow lane line; isLaneChangeBanned is what the violation check books). A stretch is the run of
+ * banned samples between turns; the car stays in one lane through it:
+ *
+ * - entered by a turn: the lane the turn's curve comes into first (the rightmost after a right
+ *   turn, the leftmost after a left one), then as below with no room before it;
+ * - the same lane as it arrives in, when that is wanted at the end too, or when there is room to
+ *   change after it before the next turn;
+ * - else the lane wanted at its end, the change moved before it (finished BAN_LEAD before);
+ *   whichever lane it keeps, the plan is in it over the approach (room for the widest change),
+ *   so a change the plain plan starts just before the stretch never runs into it;
+ * - else (no room either side: the route starts in it, or another stretch just before) the lane it
+ *   arrives in, held up to the next turn, and that turn is reported `blocked` when that lane does
+ *   not go its way.
+ */
+function planLanes(
+  route: Route,
+  hints: readonly LaneHint[],
+  startLane: number,
+): { forced: Array<number | null>; blocked: number[] } {
+  const { points: axis, cum, stepOf, steps, maneuvers } = route;
+  const n = axis.length;
+  const want = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers));
+  const forced: Array<number | null> = axis.map(() => null);
+  forced[0] = startLane;
+  const isHeld = axis.map(() => false);
+  const isTurnNode = (j: number) => j >= 0 && maneuvers.some((m) => Math.abs(m.at - cum[j]) < 1e-6);
+  const isBanned = (j: number) => isLaneChangeBanned(steps[stepOf[j]].seg);
+  const holds: Hold[] = [];
+  for (let j = 0; j < n; j++) {
+    if (!isBanned(j)) continue;
+    const last = holds.at(-1);
+    const isContinued = last !== undefined && last.b === j - 1 && !isTurnNode(j - 1);
+    if (isContinued) last.b = j;
+    else holds.push({ a: j, b: j });
+  }
+  const laneAt = (j: number) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j]).lane;
+  const offsetAt = (j: number, lane: number) =>
+    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, lane).offset;
+  const indexFrom = (d: number) => {
+    let j = 0;
+    while (j < n - 1 && cum[j] < d) j++;
+    return j;
+  };
+  let anchor = 0; // route distance before which the lanes are settled (the last stretch's end)
+  for (const h of holds) {
+    const { a, b } = h;
+    // The lane wanted at its end: at the last point before a junction it ends at (the junction's own
+    // point already plans for the turn after it).
+    const exitWant = want[isTurnNode(b) && b > 0 ? b - 1 : b].lane;
+    const nextTurn = maneuvers.find((m) => m.at >= cum[b] - 1e-6);
+    const turnBefore = maneuvers.filter((m) => m.at > anchor && m.at < cum[a]).at(-1);
+    const entry = a > 0 ? maneuvers.find((m) => Math.abs(m.at - cum[a - 1]) < 1e-6) : undefined;
+    const isEnteredByTurn = entry !== undefined;
+    // The approach a lane change before the stretch may use: room for the widest change on its
+    // first segment (all its lanes across), from the last turn (which can end in any lane) or the
+    // last stretch. Why the widest and not the change at hand: the plain plan may already be
+    // moving over just before the stretch (120 m before a right turn), so the lane at a - 1 is
+    // not the lane the car is settled in.
+    const { count } = want[a];
+    const needWidest = Math.abs(offsetAt(a, 0) - offsetAt(a, count - 1)) / LANE_SLOPE + BAN_LEAD;
+    const zoneFrom = Math.max(turnBefore?.at ?? anchor, cum[a] - needWidest);
+    const zone = a === 0 ? a : Math.max(1, indexFrom(zoneFrom));
+    // The lane it arrives in when nothing moves it over in that approach. Turned into, the lane the
+    // curve reaches first: the curve of a right turn comes in from the centre line, of a left turn
+    // from the kerb, so ending in any other lane would cross the yellow lines on the way.
+    const turnedInto = !entry
+      ? null
+      : entry.turn === "right" || entry.turn === "uturn"
+        ? count - 1
+        : entry.turn === "left"
+          ? 0
+          : exitWant;
+    const arrive = turnedInto ?? (a === 0 ? startLane : laneAt(Math.max(0, zone - 1)));
+    const need = Math.abs(offsetAt(a, exitWant) - offsetAt(a, arrive)) / LANE_SLOPE + BAN_LEAD;
+    const roomAfter = (nextTurn?.at ?? route.length) - cum[b] - TURN_ROOM;
+    const isRoomBefore = a > 0 && !isEnteredByTurn && (turnBefore !== undefined || cum[a] - need >= anchor);
+    const isKept = exitWant === arrive || roomAfter >= need;
+    const lane = isKept || !isRoomBefore ? arrive : exitWant;
+    const isStuck = !isKept && !isRoomBefore;
+    if (isStuck) {
+      // Kept up to the next turn: no lane change between the yellow line and the junction either.
+      const until = nextTurn?.at ?? route.length;
+      for (let j = b + 1; j < n && cum[j] < until; j++) {
+        forced[j] = arrive;
+        isHeld[j] = true;
+      }
+    }
+    // In that lane from the start of the approach, so any change is over before the yellow line.
+    if (!isEnteredByTurn) for (let j = zone; j < a; j++) forced[j] = lane;
+    for (let j = a; j <= b; j++) {
+      forced[j] = lane;
+      isHeld[j] = true;
+    }
+    anchor = cum[b];
+  }
+  // Turns and designated junctions approached in a held lane that does not go their way.
+  const blocked = new Set<number>();
+  const approach = (at: number) => {
+    let j = 0;
+    while (j < n - 1 && cum[j + 1] < at - 1e-6) j++;
+    return j;
+  };
+  for (const hint of hints) {
+    const j = approach(hint.at);
+    const isWrong = isHeld[j] && hint.ok[laneAt(j)] === false;
+    if (isWrong) blocked.add(hint.at);
+  }
+  for (const m of maneuvers) {
+    const j = approach(m.at);
+    const hasHint = hints.some((hint) => Math.abs(hint.at - m.at) < 1e-6);
+    const isWrong = !hasHint && isHeld[j] && laneAt(j) !== want[j].lane;
+    if (isWrong) blocked.add(m.at);
+  }
+  return { forced, blocked: [...blocked] };
+}
 
 /** Smoothstep: 0 below 0, 1 above 1, an S between. */
 const smooth = (u: number) => {
@@ -421,15 +604,29 @@ function spread(pts: readonly Vector3[], from: number, to: number): number[] {
  * curve (cornerPath). `cum` stays the route distance along the centrelines, so `at` values,
  * maneuvers and steps keep their meaning; inside a curve it is spread evenly along the arc.
  */
-export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHint[]): DrivePath {
+export function drivePath(
+  graph: RoadGraph,
+  route: Route,
+  hints: readonly LaneHint[],
+  /** The lane the car is in at the start (0 = leftmost, as the autopilot assumes when unknown). */
+  startLane = 0,
+): DrivePath {
   const { points: axis, cum, stepOf, steps, maneuvers } = route;
-  // Raw lane plan at every centreline point, holding the lane across 進路変更禁止 sections (from
-  // the start in the leftmost, as the autopilot assumes before it has changed lanes).
-  const raw: Array<Omit<LanePlan, "corner">> = [];
-  for (let j = 0; j < axis.length; j++) {
-    raw.push(laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, raw[j - 1]?.lane ?? 0));
-  }
-  const planAt = (j: number, d: number) => laneFor(d, steps[stepOf[j]], hints, maneuvers, raw[j].lane);
+  // Lane plan at every centreline point, held across 進路変更禁止 stretches (planLanes).
+  const { forced, blocked } = planLanes(route, hints, startLane);
+  const plain = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j]));
+  const bands = laneBands(route, plain);
+  const raw = plain.map((plan, j) => ({ ...plan, offset: inBand(bands[j], plan.offset) }));
+  const planAt = (j: number, d: number) => {
+    const plan = laneFor(d, steps[stepOf[j]], hints, maneuvers, forced[j]);
+    return { ...plan, offset: inBand(bands[j], plan.offset) };
+  };
+  /** The centreline sample at or before route distance d. */
+  const sampleAt = (d: number) => {
+    let j = 0;
+    while (j < axis.length - 1 && cum[j + 1] <= d) j++;
+    return j;
+  };
   const turns = vertexTurns(axis);
   const vertices = turns.flatMap((t, j) => (Math.abs(t) > 1e-4 ? [j] : []));
   const groups = findGroups(route, graph, turns);
@@ -501,6 +698,22 @@ export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHi
         minAhead: beta,
         maxAhead: beta + Math.max(0, maxTo - cum[g.last]),
       });
+    // The end of a turn's curve on a 進路変更禁止 segment (a piece of a big junction box, or the
+    // street it turns into): it ends in the lane the curve comes into first, the one by the centre
+    // line after a right turn and by the kerb after a left one. Ending further over, its last
+    // stretch (aligned with the street already) would cross the yellow lines.
+    let isExitBanned = false;
+    for (let j = g.seed + 1; j <= Math.min(axis.length - 1, g.last + 1); j++) {
+      if (isLaneChangeBanned(steps[stepOf[j]].seg)) isExitBanned = true;
+    }
+    const isRightExit = g.kind === "right" || g.kind === "uturn";
+    const entryLane = isRightExit ? outPlan.count - 1 : 0;
+    const isTurnExit = isExitBanned && g.kind !== "bend" && outPlan.count > 1 && outPlan.lane !== entryLane;
+    if (isTurnExit) {
+      const j = Math.min(axis.length - 1, g.last + 1);
+      const offset = inBand(bands[j], laneCentre(outSeg, entryLane, outPlan.count));
+      outPlan = { ...outPlan, lane: entryLane, offset };
+    }
     let path = curve(outPlan.offset);
     // Right into a wide street: a sweep into its far left lane would run along the oncoming half
     // for seconds (右側通行), so the curve ends in the lane by the centre line and the car moves
@@ -572,12 +785,28 @@ export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHi
   };
   // The path as a stream: points of the (rounded) centreline to move into the lane, and the
   // turns' curves, which are already in their lanes.
-  type LaneItem = { p: Vector3; dir: Vector3; d: number; step: number; plan: Plan; scale: number };
+  // On a 進路変更禁止 segment a point also carries the offsets its lane spans there (`band`, the
+  // lane counted as the violation check counts it), and the easing never takes it out of them.
+  type LaneItem = {
+    p: Vector3;
+    dir: Vector3;
+    d: number;
+    step: number;
+    plan: Plan;
+    scale: number;
+    band: Band | null;
+  };
   const stream: Array<LaneItem | Built> = [];
-  let held: number | null = null;
-  const lanePoint = (p: Vector3, dir: Vector3, d: number, step: number, plan: Plan, scale = 1) => {
-    held = plan.lane;
-    stream.push({ p, dir, d, step, plan, scale });
+  const lanePoint = (
+    p: Vector3,
+    dir: Vector3,
+    d: number,
+    step: number,
+    plan: Plan,
+    band: Band | null,
+    scale = 1,
+  ) => {
+    stream.push({ p, dir, d, step, plan, scale, band });
   };
   let ci = 0;
   for (let j = 0; j < axis.length; j++) {
@@ -590,11 +819,20 @@ export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHi
           const behind = pts[Math.max(0, i - 1)];
           const dir = ahead.clone().sub(behind).setY(0).normalize();
           const k = stepAt(d);
-          lanePoint(pts[i], dir, d, k, laneFor(d, steps[k], hints, maneuvers, held));
+          const j0 = sampleAt(d);
+          // The band of the sample the arc point lies after, or of the next one where that is the
+          // previous street's.
+          const jb = stepOf[j0] === k || j0 + 1 >= axis.length ? j0 : j0 + 1;
+          const plan = laneFor(d, steps[k], hints, maneuvers, forced[jb]);
+          // The rounded centreline is off the street's own (inside the bend), and the check
+          // measures from the street's: the band moves by as much.
+          const band = bands[jb];
+          const off = band ? graph.nearestOn(steps[k].seg, pts[i]).lateral * steps[k].dir : 0;
+          const shifted = band ? { min: band.min - off, max: band.max - off } : null;
+          lanePoint(pts[i], dir, d, k, { ...plan, offset: inBand(shifted, plan.offset) }, shifted);
         });
       } else {
         stream.push(corner);
-        held = corner.outPlan.lane;
       }
       // Skip the centreline points the curve replaces (the loop moves on to the first after it).
       let k = j - 1;
@@ -604,11 +842,15 @@ export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHi
       continue;
     }
     // Mitred at small kinks.
+    // The last point of a route ending at a junction is followed by the zero-length last step's
+    // point at the same place: no piece leaves it (pieceDir would answer north), so it is the end.
+    let isEnd = true;
+    for (let k = j + 1; k < axis.length && isEnd; k++) isEnd = axis[k].distanceToSquared(axis[j]) <= 1e-4;
     const into = j > 0 ? pieceDir(axis, j, false) : pieceDir(axis, j, true);
-    const out = j < axis.length - 1 ? pieceDir(axis, j, true) : into;
+    const out = isEnd ? into : pieceDir(axis, j, true);
     const mitre = into.clone().add(out);
     const dir = mitre.lengthSq() > 1e-6 ? mitre.normalize() : out;
-    lanePoint(axis[j], dir, cum[j], stepOf[j], raw[j], 1 / Math.max(0.5, dir.dot(out)));
+    lanePoint(axis[j], dir, cum[j], stepOf[j], raw[j], bands[j], 1 / Math.max(0.5, dir.dot(out)));
   }
   // Lane changes eased at LANE_SLOPE: forward from where the plan changes (and from each turn's
   // exit lane), then backward so the car is already in the lane each turn's curve starts from.
@@ -623,7 +865,7 @@ export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHi
       continue;
     }
     const ease = LANE_SLOPE * Math.max(0, x.d - lastD);
-    value += Math.max(-ease, Math.min(ease, x.plan.offset - value));
+    value = inBand(x.band, value + Math.max(-ease, Math.min(ease, x.plan.offset - value)));
     lastD = x.d;
     eased.set(x, value);
   }
@@ -639,7 +881,7 @@ export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHi
     let v = eased.get(x) ?? x.plan.offset;
     if (nextValue !== null) {
       const ease = LANE_SLOPE * Math.max(0, nextD - x.d);
-      v = Math.max(nextValue - ease, Math.min(nextValue + ease, v));
+      v = inBand(x.band, Math.max(nextValue - ease, Math.min(nextValue + ease, v)));
     }
     eased.set(x, v);
     nextValue = v;
@@ -702,5 +944,5 @@ export function drivePath(graph: RoadGraph, route: Route, hints: readonly LaneHi
     radius: c.path.radius,
     inside: c.path.inside,
   }));
-  return { points, cum: outCum, stepOf: outStep, lanes, corners };
+  return { points, cum: outCum, stepOf: outStep, lanes, corners, blocked };
 }

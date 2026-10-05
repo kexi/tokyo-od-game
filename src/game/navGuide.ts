@@ -42,8 +42,10 @@ import {
 import type { RouteInfo } from "../world/guidePlan";
 import type { LaneUse, TurnRule } from "../world/regulations";
 import type { GameClock } from "../world/ruleTime";
+import { isLaneChangeBanned, laneOfOffset, laneOfPoint } from "../world/laneChange";
 import { speedLimit, type RoadGraph, type Segment } from "../world/roads";
 import {
+  laneAt,
   laneIndex,
   planRoute,
   progressOn,
@@ -93,6 +95,22 @@ export type RoadNames = {
  */
 type Intro = { text: string; isReplan: boolean };
 
+/**
+ * Whether the car, on a 進路変更禁止 segment of the route, is in another lane than the route plans
+ * there (lanes counted as the violation check counts them; not on a corner's curve).
+ */
+function laneAstray(route: Route, graph: RoadGraph, car: Vector3, index: number): boolean {
+  const i = Math.min(index, route.stepOf.length - 1);
+  const step = route.steps[route.stepOf[i] ?? 0];
+  if (!step || !isLaneChangeBanned(step.seg)) return false;
+  const plan = laneAt(route, route.cum[i] ?? 0, i);
+  if (plan.corner) return false;
+  const seg = step.seg;
+  const mine = laneOfPoint(seg, graph.nearestOn(seg, car).lateral * step.dir);
+  const planned = Math.max(0, Math.min(seg.lanes - 1, laneOfOffset(seg, plan.offset)));
+  return mine !== null && mine !== planned;
+}
+
 const NO_ROUTES: ReadonlyMap<number, RouteInfo> = new Map();
 // Fixed empties: prepare() compares its inputs by identity, a fresh [] per frame would redo it.
 const NO_APPROACHES: readonly ApproachLike[] = [];
@@ -117,6 +135,8 @@ export class NavGuide {
   private lastPlan = -Infinity;
   private hint = 0;
   private offSince: number | null = null;
+  /** Since when the car has been in another lane than the route's on a 進路変更禁止 stretch. */
+  private laneSince: number | null = null;
 
   /** The car has left the route (it will be planned again in a moment). */
   get isOffRoute(): boolean {
@@ -262,12 +282,18 @@ export class NavGuide {
     this.mode = opts.mode;
     const isNewTarget = !this.target || this.target.distanceTo(target) > 1;
     const isNewGraph = graph !== this.graph;
-    let reason: "new" | "off" | "closed" | null = isNewTarget ? "new" : isNewGraph ? "off" : null;
+    let reason: "new" | "off" | "closed" | "lane" | null = isNewTarget ? "new" : isNewGraph ? "off" : null;
     if (this.route && !reason) {
       const p = progressOn(this.route, car, this.hint);
       this.hint = p.index;
       this.offSince = p.off > OFF_ROUTE ? (this.offSince ?? now) : null;
       if (this.offSince !== null && now - this.offSince > 1500) reason = "off";
+      // On a yellow lane line the car cannot move over to the route's lane: plan again from its
+      // own (the route then keeps to it, or goes round a turn that lane cannot make). Silently:
+      // the car is on the route, only in another lane.
+      const isLaneAstray = this.mode === "car" && laneAstray(this.route, graph, car, p.index);
+      this.laneSince = isLaneAstray ? (this.laneSince ?? now) : null;
+      if (!reason && this.laneSince !== null && now - this.laneSince > 1500) reason = "lane";
     }
     // A closure that began after the route was planned (通学路 at 7:30): plan round it.
     const isClosureCheckDue = this.mode === "car" && now - this.lastClosedCheck > 2000;
@@ -327,8 +353,10 @@ export class NavGuide {
       return;
     }
     const dir: 1 | -1 = hit.dir.dot(forward) >= 0 ? 1 : -1;
-    const from = { seg: hit.seg, s: hit.s, dir };
+    // From the car's own lane, which the route keeps to on a 進路変更禁止 stretch.
+    const from = { seg: hit.seg, s: hit.s, dir, lane: laneOfPoint(hit.seg, hit.lateral * dir) ?? 0 };
     this.route = planRoute(graph, from, target, clock, turnRules, this.mode, this.laneUse);
+    this.laneSince = null;
     this.hints = this.route?.hints ?? [];
     this.version++;
   }
@@ -461,8 +489,11 @@ export class NavGuide {
     const isOnApproach = lane !== null && step?.seg === lane.seg && step.dir === lane.dir;
     const current = isOnApproach ? laneIndex(graph, lane.seg, lane.dir, lane.lanes.length, car) : null;
     if (this.el.lanes) renderLanes(this.el.lanes, lane?.lanes ?? null, lane?.ok ?? [], current);
-    const advice = lane ? laneAdvice(lane.ok) : null;
     const isWrongLane = lane !== null && current !== null && !lane.ok[current];
+    // In the wrong lane behind a yellow lane line, 「…の車線を走行してください」 would ask for 進路変更禁止違反
+    // (第26条の2第3項): no lane advice there; the route is planned again from this lane instead.
+    const isLaneHeld = isWrongLane && step !== undefined && isLaneChangeBanned(step.seg);
+    const advice = lane && !isLaneHeld ? laneAdvice(lane.ok) : null;
     const laneKey = lane ? `lane:${lane.node}:${Math.round(lane.at)}` : "";
 
     // On foot: the time at 80 m a minute, the walking pace Japanese property listings use.

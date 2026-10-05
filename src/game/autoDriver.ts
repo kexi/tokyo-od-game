@@ -1,5 +1,6 @@
 import { Vector3 } from "three";
 import { steerLimit, WHEELBASE, type DriveInput } from "../physics/vehicle";
+import { isLaneChangeBanned, laneOfPoint } from "../world/laneChange";
 import type { LaneUse, TurnRule } from "../world/regulations";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
 import { inForce, type GameClock } from "../world/ruleTime";
@@ -286,6 +287,8 @@ export class AutoDriver {
     if (!isStanding) this.moveOff = 0;
     else if (this.moveOff <= 0 && !this.hasSignalledOff) this.moveOff = SIGNAL_LEAD;
     this.route = route;
+    // The lane it starts in (the car's own, see routeFrom): held there if a yellow line starts here.
+    this.lane = route.lanes[0]?.lane ?? 0;
     this.at = 0;
     this.hint = 0;
     this.served = -1;
@@ -306,7 +309,18 @@ export class AutoDriver {
   }
 
   private routeFrom(world: DriveWorld, target: Vector3, start: { seg: Segment; s: number; dir: 1 | -1 }) {
-    return planRoute(world.graph, start, target, world.clock, world.turnRules, "car", world.laneUse);
+    // From the lane the car is in: on a 進路変更禁止 stretch the route must keep to it (drivePath).
+    const leftOfTravel = world.graph.nearestOn(start.seg, this.position).lateral * start.dir;
+    const lane = laneOfPoint(start.seg, leftOfTravel) ?? 0;
+    return planRoute(
+      world.graph,
+      { ...start, lane },
+      target,
+      world.clock,
+      world.turnRules,
+      "car",
+      world.laneUse,
+    );
   }
 
   /**
@@ -915,7 +929,7 @@ export class AutoDriver {
     const { pos: centre, dir } = axisAt(route, this.at);
     if (dir.lengthSq() < 1e-6) dir.copy(this.heading());
     const lanes = plan.count;
-    let lane = seg.noLaneChange ? Math.min(this.lane, lanes - 1) : plan.lane;
+    let lane = isLaneChangeBanned(seg) ? Math.min(this.lane, lanes - 1) : plan.lane;
     const onPavement = (i: number) => {
       const p = centre.clone().add(leftOf(dir, laneCentre(seg, i, lanes)));
       return world.isPavement?.(p.x, p.z) ?? false;

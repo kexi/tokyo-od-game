@@ -105,6 +105,7 @@ import {
   type LaneUse,
   type RegulationData,
 } from "./world/regulations";
+import { isLaneChangeBanned, laneOfOffset } from "./world/laneChange";
 import { RoadGraph, leftOf, speedLimit, type RoadLine, type Segment } from "./world/roads";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
@@ -2648,21 +2649,25 @@ async function main(): Promise<void> {
         const turnAhead = nav.route?.maneuvers.find((m) => m.at > nav.lastAt);
         const isPreparingRight =
           turnAhead !== undefined && turnAhead.at - nav.lastAt < 150 && /right|uturn/i.test(turnAhead.turn);
-        const isRightLane = lane === s.lanes - 1 && !isPreparingRight;
+        // 第20条第3項: staying in the lane a yellow lane line keeps it in (第26条の2第3項) is no 通行帯違反.
+        const isRightLane = lane === s.lanes - 1 && !isPreparingRight && !isLaneChangeBanned(s);
         rightLaneSince = isRightLane ? (rightLaneSince ?? now) : null;
         if (rightLaneSince !== null && now - rightLaneSince > 20000) book(VIOLATIONS.laneUse, now, 60000);
       } else rightLaneSince = null;
 
       // 進路変更禁止: crossing a yellow lane line (lanes counted from the left kerb).
       const seg = onRoad?.seg;
-      if (onRoad && seg && seg.noLaneChange && seg.lanes >= 2 && speed > 5 && Math.abs(align) > 0.8) {
-        const span = seg.oneway === 0 ? seg.line.width / 2 : seg.line.width;
-        const leftOfTravel = onRoad.lateral * Math.sign(align);
-        const lane = Math.floor((seg.line.width / 2 - leftOfTravel) / (span / seg.lanes));
+      if (onRoad && seg && isLaneChangeBanned(seg) && speed > 5 && Math.abs(align) > 0.8) {
+        // The same lanes and the same "where" as the route's lane plan (src/world/laneChange.ts).
+        const lane = laneOfOffset(seg, onRoad.lateral * Math.sign(align));
+        // From lane to lane only: coming in over the edge or the centre line (a turn's curve, a
+        // street that widens) crosses no yellow lane line.
         const isLaneChange =
           laneTrack !== null &&
           laneTrack.seg === seg &&
           laneTrack.lane !== lane &&
+          laneTrack.lane >= 0 &&
+          laneTrack.lane < seg.lanes &&
           lane >= 0 &&
           lane < seg.lanes;
         if (isLaneChange) book(VIOLATIONS.laneChange, now, 15000);

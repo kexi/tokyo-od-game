@@ -1,7 +1,9 @@
 import { Vector3 } from "three";
+import { laneOfOffset } from "../world/laneChange";
 import { isInForce, type LaneDirection, type LaneUse, type TurnRule } from "../world/regulations";
 import type { GameClock } from "../world/ruleTime";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
+import { log } from "../log";
 import { drivePath, type Corner, type LanePlan } from "./drivePath";
 
 /**
@@ -75,9 +77,7 @@ export type LaneHint = {
 
 /** Lane (0 = leftmost) a point is in on a designated approach of `n` lanes. */
 export function laneIndex(graph: RoadGraph, seg: Segment, dir: 1 | -1, n: number, p: Vector3): number {
-  const leftOfTravel = graph.nearestOn(seg, p).lateral * dir;
-  const span = seg.oneway === 0 ? seg.line.width / 2 : seg.line.width;
-  const lane = Math.floor((seg.line.width / 2 - leftOfTravel) / (span / n));
+  const lane = laneOfOffset(seg, graph.nearestOn(seg, p).lateral * dir, n);
   return Math.max(0, Math.min(n - 1, lane));
 }
 
@@ -187,9 +187,13 @@ const tangent = (graph: RoadGraph, st: Step, atEnd: boolean) => {
   return graph.sample(st.seg, s).dir.clone().multiplyScalar(st.dir);
 };
 
+/** Times a car route is planned again round turns its lanes cannot reach (drivePath's `blocked`). */
+const LANE_REPLANS = 8;
+
 export function planRoute(
   graph: RoadGraph,
-  start: { seg: Segment; s: number; dir: 1 | -1 },
+  /** `lane`: the car's lane there (0 = leftmost; drivePath's startLane), when known. */
+  start: { seg: Segment; s: number; dir: 1 | -1; lane?: number },
   target: Vector3,
   clock: GameClock,
   turnRules: TurnRule[],
@@ -226,81 +230,108 @@ export function planRoute(
     rulesAt.set(k, [...(rulesAt.get(k) ?? []), r]);
   }
   const startStep: Step = { seg: start.seg, dir: start.dir };
-  const best = new Map<number, number>(); // step key → cost at its exit node
-  const prev = new Map<number, Step>();
-  // Goal entries carry the step they were reached from: the same street can be both a goal
-  // (stop part-way along it) and a through street with a different best predecessor.
-  type Entry = { cost: number; step: Step; goal: boolean; from: Step | null };
-  const open: Entry[] = [];
-  const push = (cost: number, step: Step, goal: boolean, from: Step | null = null) => {
-    open.push({ cost, step, goal, from });
-    // Small graphs (~1,200 segments): a sorted insert keeps the code short and fast enough.
-    for (let i = open.length - 1; i > 0 && open[i].cost > open[i - 1].cost; i--) {
-      [open[i], open[i - 1]] = [open[i - 1], open[i]];
-    }
-  };
-  const remaining = start.dir === 1 ? start.seg.length - start.s : start.s;
-  best.set(key(startStep), remaining);
-  push(remaining, startStep, false);
-  if (isGoal(start.seg)) {
-    const c = goalCost(startStep, start.s);
-    if (Number.isFinite(c)) push(c, startStep, true);
+  // By car: a route whose turn the lanes cannot reach without crossing a yellow lane line
+  // (進路変更禁止, drivePath's `blocked`) is planned again without that turn, a few times at most.
+  // Why not lanes in the search itself: the graph knows streets, not lanes; the stretches and the
+  // room to change lanes are only known along a whole route.
+  const bannedMoves = new Set<string>();
+  let route: Route | null = null;
+  for (let attempt = 0; attempt <= LANE_REPLANS; attempt++) {
+    const steps = search(bannedMoves);
+    if (!steps) break;
+    const endS = proj.get(steps[steps.length - 1].seg.id)?.s ?? 0;
+    const centre = buildRoute(graph, steps, start.s, endS, nearest < 40);
+    if (isWalk) return centre;
+    // The lanes and the curves through the corners (drivePath), with the レーン案内 they follow.
+    const hints = laneHints(centre, laneUse);
+    const { blocked, ...path } = drivePath(graph, centre, hints, start.lane ?? 0);
+    route = { ...centre, ...path, hints };
+    if (blocked.length === 0) break;
+    const moves = blocked.flatMap((at) => {
+      const i = centre.stepStart.findIndex((s0, k) => k > 0 && Math.abs(s0 - at) < 1e-6);
+      return i > 0 ? [`${key(steps[i - 1])}>${key(steps[i])}`] : [];
+    });
+    const isLast = attempt === LANE_REPLANS || moves.every((m) => bannedMoves.has(m));
+    log("route_lane_blocked", { turns: blocked.length, attempt, replanned: !isLast });
+    if (isLast) break;
+    for (const m of moves) bannedMoves.add(m);
   }
+  return route;
 
-  let goal: Entry | null = null;
-  while (open.length) {
-    const entry = open.pop() as Entry;
-    const { cost, step } = entry;
-    if (entry.goal) {
-      goal = entry;
-      break;
-    }
-    if (cost > (best.get(key(step)) ?? Infinity)) continue;
-    const node = exitNode(step);
-    const ids = graph.nodes.get(node) ?? [];
-    const tIn = tangent(graph, step, true);
-    const bans = rulesAt.get(`${node}:${step.seg.id}:${step.dir}`) ?? [];
-    for (const id of ids) {
-      const seg = graph.segments[id];
-      if (!usable(seg)) continue; // incl. 通行禁止 in force (車両通行止め, 歩行者用道路 …) for cars
-      const dir: 1 | -1 = seg.from === node ? 1 : -1;
-      if (seg === step.seg && ids.length > 1) continue; // U-turn only at a dead end
-      if (!isWalk && seg.oneway !== 0 && seg.oneway !== dir) continue;
-      const next: Step = { seg, dir };
-      const tOut = tangent(graph, next, false);
-      if (bans.some((r) => !(r.mask & turnBit(tIn, tOut)))) continue;
-      const turn = classifyTurn(tIn, tOut);
-      // Drivers: narrow streets are slower, prefer the main roads like a real navigator.
-      // Walkers: the shortest way, with a little extra for each road to cross.
-      const slow = !isWalk && seg.line.width < 5.5 ? 1.4 : 1;
-      const base = cost + (isWalk ? (turn === "straight" ? 0 : 3) : TURN_COST[turn]);
-      const through = base + seg.length * slow;
-      if (through < (best.get(key(next)) ?? Infinity)) {
-        best.set(key(next), through);
-        prev.set(key(next), step);
-        push(through, next, false);
+  /** The cheapest legal step list to the goal (Dijkstra over street directions), or null. */
+  function search(banned: ReadonlySet<string>): Step[] | null {
+    const best = new Map<number, number>(); // step key → cost at its exit node
+    const prev = new Map<number, Step>();
+    // Goal entries carry the step they were reached from: the same street can be both a goal
+    // (stop part-way along it) and a through street with a different best predecessor.
+    type Entry = { cost: number; step: Step; goal: boolean; from: Step | null };
+    const open: Entry[] = [];
+    const push = (cost: number, step: Step, goal: boolean, from: Step | null = null) => {
+      open.push({ cost, step, goal, from });
+      // Small graphs (~1,200 segments): a sorted insert keeps the code short and fast enough.
+      for (let i = open.length - 1; i > 0 && open[i].cost > open[i - 1].cost; i--) {
+        [open[i], open[i - 1]] = [open[i - 1], open[i]];
       }
-      if (isGoal(seg)) {
-        const g = goalCost(next, dir === 1 ? 0 : seg.length);
-        if (Number.isFinite(g)) push(base + g * slow, next, true, step);
-      }
+    };
+    const remaining = start.dir === 1 ? start.seg.length - start.s : start.s;
+    best.set(key(startStep), remaining);
+    push(remaining, startStep, false);
+    if (isGoal(start.seg)) {
+      const c = goalCost(startStep, start.s);
+      if (Number.isFinite(c)) push(c, startStep, true);
     }
-  }
-  if (!goal) return null;
 
-  const steps: Step[] = [goal.step];
-  let cur = goal.from;
-  for (let guard = 0; cur && guard < graph.segments.length * 2; guard++) {
-    steps.unshift(cur);
-    if (key(cur) === key(startStep)) break;
-    cur = prev.get(key(cur)) ?? null;
+    let goal: Entry | null = null;
+    while (open.length) {
+      const entry = open.pop() as Entry;
+      const { cost, step } = entry;
+      if (entry.goal) {
+        goal = entry;
+        break;
+      }
+      if (cost > (best.get(key(step)) ?? Infinity)) continue;
+      const node = exitNode(step);
+      const ids = graph.nodes.get(node) ?? [];
+      const tIn = tangent(graph, step, true);
+      const bans = rulesAt.get(`${node}:${step.seg.id}:${step.dir}`) ?? [];
+      for (const id of ids) {
+        const seg = graph.segments[id];
+        if (!usable(seg)) continue; // incl. 通行禁止 in force (車両通行止め, 歩行者用道路 …) for cars
+        const dir: 1 | -1 = seg.from === node ? 1 : -1;
+        if (seg === step.seg && ids.length > 1) continue; // U-turn only at a dead end
+        if (!isWalk && seg.oneway !== 0 && seg.oneway !== dir) continue;
+        const next: Step = { seg, dir };
+        const tOut = tangent(graph, next, false);
+        if (bans.some((r) => !(r.mask & turnBit(tIn, tOut)))) continue;
+        if (banned.has(`${key(step)}>${key(next)}`)) continue;
+        const turn = classifyTurn(tIn, tOut);
+        // Drivers: narrow streets are slower, prefer the main roads like a real navigator.
+        // Walkers: the shortest way, with a little extra for each road to cross.
+        const slow = !isWalk && seg.line.width < 5.5 ? 1.4 : 1;
+        const base = cost + (isWalk ? (turn === "straight" ? 0 : 3) : TURN_COST[turn]);
+        const through = base + seg.length * slow;
+        if (through < (best.get(key(next)) ?? Infinity)) {
+          best.set(key(next), through);
+          prev.set(key(next), step);
+          push(through, next, false);
+        }
+        if (isGoal(seg)) {
+          const g = goalCost(next, dir === 1 ? 0 : seg.length);
+          if (Number.isFinite(g)) push(base + g * slow, next, true, step);
+        }
+      }
+    }
+    if (!goal) return null;
+
+    const steps: Step[] = [goal.step];
+    let cur = goal.from;
+    for (let guard = 0; cur && guard < graph.segments.length * 2; guard++) {
+      steps.unshift(cur);
+      if (key(cur) === key(startStep)) break;
+      cur = prev.get(key(cur)) ?? null;
+    }
+    return steps;
   }
-  const endS = proj.get(goal.step.seg.id)?.s ?? 0;
-  const route = buildRoute(graph, steps, start.s, endS, nearest < 40);
-  if (isWalk) return route;
-  // By car: the lanes and the curves through the corners (drivePath), with the レーン案内 they follow.
-  const hints = laneHints(route, laneUse);
-  return { ...route, ...drivePath(graph, route, hints), hints };
 }
 
 /**

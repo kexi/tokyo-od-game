@@ -159,6 +159,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   poi_collected: { poiId: 12, category: "library", ward: "千代田区" },
   accident: { kind: "pedestrian", speedKmh: 32 },
   lane_turn_disallowed: { lanes: ["left", "straight+right"], lane: 0, turn: "right", source: "osm" },
+  route_lane_blocked: { turns: 1, attempt: 0, replanned: true },
   autopilot_on: { cruising: true, routeM: 1200 },
   autopilot_off: {},
   autopilot_gave_up: { why: "stuck" },

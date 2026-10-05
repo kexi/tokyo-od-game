@@ -274,6 +274,11 @@ export const LOG_EVENTS = {
     turn: z.string(),
     source: z.string(),
   }),
+  /**
+   * A car route turns where its lane cannot get to without crossing a yellow lane line (進路変更禁止):
+   * `turns` such junctions, on try `attempt`; `replanned` when it is planned again without them.
+   */
+  route_lane_blocked: info({ turns: count, attempt: count, replanned: z.boolean() }),
   autopilot_on: info({ cruising: z.boolean(), routeM: z.number() }),
   autopilot_off: info({}),
   autopilot_gave_up: info({ why: z.string() }),
