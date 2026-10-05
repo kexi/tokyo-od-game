@@ -1,4 +1,5 @@
 import RAPIER from "@dimforge/rapier3d-compat";
+import { reanchorBody } from "../physics/reanchor";
 import {
   BufferGeometry,
   Color,
@@ -28,6 +29,10 @@ import { haversineMeters } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { warn } from "../log";
+import { FrameWork } from "../game/frameWork";
+import { SerialWork } from "../game/serialWork";
+import { roadGeometrySteps } from "./roadGeometrySteps";
+import { updateRoadGeometry } from "./roadGeometry";
 import type { DemStore } from "./dem";
 import type { Environment } from "./environment";
 import { gsiVectorTile } from "./gsiVectorTiles";
@@ -150,6 +155,7 @@ export class WaterLayer implements GroundWater {
     roughness: 0.9,
     side: DoubleSide,
   });
+  private readonly tileWork = new SerialWork();
   private frame: LocalFrame;
   private centre = { x: 0, y: 0 };
   private spans: Span[] = [];
@@ -158,6 +164,8 @@ export class WaterLayer implements GroundWater {
   private deckBody: RAPIER.RigidBody | null = null;
   private shoreBody: RAPIER.RigidBody | null = null;
   private graph: RoadGraph | null = null;
+  private deckToCurrent = new Matrix4();
+  private currentToDeck = new Matrix4();
   private reflection: RenderTarget | null = null;
   private readonly mirror = new PerspectiveCamera();
   private planeY: number | null = null;
@@ -216,10 +224,25 @@ export class WaterLayer implements GroundWater {
 
   /** The local frame moved (floating origin): everything is placed again from lon/lat. */
   setFrame(frame: LocalFrame): void {
+    const matrix = frame.transformFrom(this.frame);
+    const rotation = frame.rotationFrom(this.frame);
     this.frame = frame;
-    this.spans = [];
-    this.spanGrid.clear();
-    for (const tile of this.tiles.values()) this.buildSurface(tile);
+    this.deckToCurrent.premultiply(matrix);
+    this.currentToDeck.copy(this.deckToCurrent).invert();
+    this.deckMesh?.applyMatrix4(matrix);
+    for (const body of [this.deckBody, this.shoreBody]) {
+      if (body) reanchorBody(body, matrix, rotation);
+    }
+    const point = new Vector3();
+    for (const tile of this.tiles.values()) {
+      tile.surface?.applyMatrix4(matrix);
+      tile.walls?.applyMatrix4(matrix);
+      tile.sphere.applyMatrix4(matrix);
+      for (let i = 0; i < tile.probe.length; i += 5) {
+        point.fromArray(tile.probe, i).applyMatrix4(matrix);
+        point.toArray(tile.probe, i);
+      }
+    }
   }
 
   /** The river of the nearest water-level gauge within `metres`, and the gauge's name (often a bridge). */
@@ -310,29 +333,51 @@ export class WaterLayer implements GroundWater {
    * stop under the decks.
    */
   setRoads(graph: RoadGraph): void {
-    this.graph = graph;
-    this.clearDecks();
+    for (const _ of this.roadSteps(graph)) {
+      /* synchronous compatibility path */
+    }
+  }
+
+  setRoadsAsync(graph: RoadGraph, work: FrameWork): Promise<void> {
+    return work.run(this.roadSteps(graph));
+  }
+
+  private *roadSteps(graph: RoadGraph): Generator<void> {
+    const spans: Span[] = [];
+    const grid = new Map<number, number[]>();
     for (const seg of graph.segments) {
       if (seg.line.kind === "highway") continue;
-      for (const span of this.spansOf(graph, seg)) this.addSpan(span);
+      for (const span of this.spansOf(graph, seg)) this.addSpan(span, graph, spans, grid);
+      yield;
     }
+    // Keep the old deck and its collider during the scan; replace both before physics runs again.
+    this.graph = graph;
+    this.clearDecks();
+    this.spans = spans;
+    this.spanGrid = grid;
+    this.deckToCurrent.identity();
+    this.currentToDeck.identity();
     this.buildDecks();
-    for (const tile of this.tiles.values()) this.buildWalls(tile);
+    yield;
+    for (const tile of this.tiles.values()) {
+      yield* this.wallSteps(tile);
+      yield;
+    }
     this.buildShoreColliders();
   }
 
   /** Height (local y) of a bridge deck at the point, or null off bridges. */
   deckAt(x: number, z: number): number | null {
-    const ids = this.spanGrid.get(gridKey(x, z));
+    const p = new Vector3(x, 0, z).applyMatrix4(this.currentToDeck);
+    const ids = this.spanGrid.get(gridKey(p.x, p.z));
     if (!ids) return null;
     let best: number | null = null;
-    const p = new Vector3(x, 0, z);
     for (const id of ids) {
       const span = this.spans[id];
       const hit = nearestOnSegment(span.seg, p);
       const isOnDeck = hit.dist <= span.half && hit.s >= span.s0 && hit.s <= span.s1;
       if (!isOnDeck) continue;
-      const h = profileAt(span, hit.s);
+      const h = new Vector3(p.x, profileAt(span, hit.s), p.z).applyMatrix4(this.deckToCurrent).y;
       if (best === null || h > best) best = h;
     }
     return best;
@@ -464,13 +509,13 @@ export class WaterLayer implements GroundWater {
     return best;
   }
 
-  private addSpan(span: Span): void {
-    const id = this.spans.length;
-    this.spans.push(span);
+  private addSpan(span: Span, graph: RoadGraph, spans: Span[], grid: Map<number, number[]>): void {
+    const id = spans.length;
+    spans.push(span);
     const cells = new Set<number>();
     const pos = new Vector3();
     for (let s = span.s0; s <= span.s1 + 1e-6; s += DECK_STEP / 2) {
-      this.graph?.sample(span.seg, s, pos);
+      graph.sample(span.seg, s, pos);
       const r = span.half + 1;
       for (const [ox, oz] of [
         [-r, -r],
@@ -482,9 +527,9 @@ export class WaterLayer implements GroundWater {
         cells.add(gridKey(pos.x + ox, pos.z + oz));
     }
     for (const c of cells) {
-      const list = this.spanGrid.get(c) ?? [];
+      const list = grid.get(c) ?? [];
       list.push(id);
-      this.spanGrid.set(c, list);
+      grid.set(c, list);
     }
   }
 
@@ -630,13 +675,28 @@ export class WaterLayer implements GroundWater {
     jobs.push(this.gauges);
     await Promise.all(jobs);
     if (this.tiles.get(`${x}/${y}`) !== tile) return;
-    tile.shores = tile.polygons.map((poly) => poly.map((ring) => this.shoreRing(ring)));
-    tile.version++;
-    this.buildSurface(tile);
+    await this.tileWork.run(async () => {
+      const isCurrent = this.tiles.get(`${x}/${y}`) === tile;
+      if (!isCurrent) return;
+      const work = new FrameWork();
+      const shores: ShoreRing[][] = [];
+      for (const poly of tile.polygons) {
+        const rings: ShoreRing[] = [];
+        for (const ring of poly) rings.push(await work.run(this.shoreRingSteps(ring)));
+        shores.push(rings);
+      }
+      const stillCurrent = this.tiles.get(`${x}/${y}`) === tile;
+      if (!stillCurrent) return;
+      tile.shores = shores;
+      tile.version++;
+      await work.run(this.surfaceSteps(tile));
+      await work.yield();
+      await work.run(this.wallSteps(tile));
+    });
   }
 
   /** A ring densified to SHORE_STEP with the still level at each point. */
-  private shoreRing(ring: number[]): ShoreRing {
+  private *shoreRingSteps(ring: number[]): Generator<void, ShoreRing> {
     const n = ring.length / 2;
     const lat0 = tileYToLat(ring[1], WATER_ZOOM);
     const step = SHORE_STEP / metresPerUnit(lat0);
@@ -652,10 +712,13 @@ export class WaterLayer implements GroundWater {
     const m = pts.length / 2;
     const level = new Float32Array(m);
     const tide = new Float32Array(m);
-    const choices = fillUnknown(
-      Array.from({ length: m }, (_, i) => this.levelAt(pts[i * 2], pts[i * 2 + 1])),
-      this.bay.still,
-    );
+    const raw: LevelChoice[] = [];
+    for (let i = 0; i < m; i++) {
+      raw.push(this.levelAt(pts[i * 2], pts[i * 2 + 1]));
+      const checkpoint = i % 8 === 0;
+      if (checkpoint) yield;
+    }
+    const choices = fillUnknown(raw, this.bay.still);
     for (const [i, choice] of choices.entries()) {
       level[i] = choice.level;
       tide[i] = choice.tide;
@@ -754,13 +817,9 @@ export class WaterLayer implements GroundWater {
     return this.frame.toLocal(lat, lon, this.dem.ellipsoidal(lat, lon, orthometric), target);
   }
 
-  private buildSurface(tile: WaterTile): void {
-    if (tile.surface) {
-      this.scene.remove(tile.surface);
-      tile.surface.geometry.dispose();
-      tile.surface = null;
-    }
+  private *surfaceSteps(tile: WaterTile): Generator<void> {
     if (!tile.shores) return;
+    const frame = this.frame;
     const pos: number[] = [];
     const tidal: number[] = [];
     const levels: number[] = [];
@@ -773,6 +832,8 @@ export class WaterLayer implements GroundWater {
           pos.push(v.x, v.y, v.z);
           tidal.push(ring.tide[i]);
           levels.push(ring.level[i]);
+          const checkpoint = i % 64 === 0;
+          if (checkpoint) yield;
         }
       }
       for (const t of triangulate(rings.map((r) => r.pts))) idx.push(base + t);
@@ -782,7 +843,18 @@ export class WaterLayer implements GroundWater {
     g.setAttribute("position", new Float32BufferAttribute(pos, 3));
     g.setAttribute("aTidal", new Float32BufferAttribute(tidal, 1));
     g.setIndex(idx);
-    g.computeBoundingSphere();
+    yield* roadGeometrySteps(g);
+    const isCurrent = this.tiles.get(`${tile.x}/${tile.y}`) === tile;
+    if (!isCurrent) {
+      g.dispose();
+      return;
+    }
+    const frameChanged = this.frame !== frame;
+    if (frameChanged) {
+      g.dispose();
+      yield* this.surfaceSteps(tile);
+      return;
+    }
     const mesh = new Mesh(g, this.material);
     mesh.name = `water-${tile.x}-${tile.y}`;
     mesh.onBeforeRender = (_renderer, _scene, camera) => {
@@ -800,9 +872,10 @@ export class WaterLayer implements GroundWater {
     for (let i = 0; i < tidal.length; i += 4)
       probe.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], tidal[i], levels[i]);
     tile.probe = new Float32Array(probe);
+    tile.surface?.removeFromParent();
+    tile.surface?.geometry.dispose();
     tile.surface = mesh;
     this.scene.add(mesh);
-    this.buildWalls(tile);
   }
 
   /**
@@ -810,13 +883,10 @@ export class WaterLayer implements GroundWater {
    * stands high above the water, stopping under bridge decks. Clip edges at the tile square get
    * none: the water goes on in the next tile.
    */
-  private buildWalls(tile: WaterTile): void {
-    if (tile.walls) {
-      this.scene.remove(tile.walls);
-      tile.walls.geometry.dispose();
-      tile.walls = null;
-    }
+  private *wallSteps(tile: WaterTile): Generator<void> {
     if (!tile.shores) return;
+    const frame = this.frame;
+    const graph = this.graph;
     const pos: number[] = [];
     const col: number[] = [];
     const idx: number[] = [];
@@ -834,17 +904,24 @@ export class WaterLayer implements GroundWater {
         // The drawn ground at each shore point, then the highest within two points either side:
         // where the shore runs along a steep bank (神田川's gorge) the ground under a 6 m step
         // jumps by metres, and the wall would end in a saw edge. Never lower, so it meets the ground.
-        const ground = Array.from({ length: m }, (_, k) =>
-          meshHeightAt(
-            this.dem,
-            tileYToLat(ring.pts[k * 2 + 1], WATER_ZOOM),
-            tileXToLon(ring.pts[k * 2], WATER_ZOOM),
-          ),
-        );
+        const ground: number[] = [];
+        for (let k = 0; k < m; k++) {
+          ground.push(
+            meshHeightAt(
+              this.dem,
+              tileYToLat(ring.pts[k * 2 + 1], WATER_ZOOM),
+              tileXToLon(ring.pts[k * 2], WATER_ZOOM),
+            ),
+          );
+          const checkpoint = k % 32 === 0;
+          if (checkpoint) yield;
+        }
         const crest = ground.map((_, k) =>
           Math.max(...[-2, -1, 0, 1, 2].map((d) => ground[(k + d + m) % m])),
         );
         for (let i = 0; i < m; i++) {
+          const checkpoint = i % 16 === 0;
+          if (checkpoint) yield;
           const j = (i + 1) % m;
           const ax = ring.pts[i * 2];
           const ay = ring.pts[i * 2 + 1];
@@ -910,13 +987,33 @@ export class WaterLayer implements GroundWater {
         }
       }
     }
-    if (idx.length === 0) return;
+    if (idx.length === 0) {
+      tile.walls?.removeFromParent();
+      tile.walls?.geometry.dispose();
+      tile.walls = null;
+      return;
+    }
     const g = new BufferGeometry();
     g.setAttribute("position", new Float32BufferAttribute(pos, 3));
     g.setAttribute("color", new Float32BufferAttribute(col, 3));
     g.setIndex(idx);
-    g.computeVertexNormals();
-    const mesh = new Mesh(g, this.wallMaterial);
+    yield* roadGeometrySteps(g);
+    const isCurrent = this.tiles.get(`${tile.x}/${tile.y}`) === tile;
+    if (!isCurrent) {
+      g.dispose();
+      return;
+    }
+    const inputChanged = frame !== this.frame || graph !== this.graph;
+    if (inputChanged) {
+      g.dispose();
+      yield* this.wallSteps(tile);
+      return;
+    }
+    const mesh = tile.walls ?? new Mesh(new BufferGeometry(), this.wallMaterial);
+    mesh.geometry = updateRoadGeometry(mesh.geometry, g);
+    mesh.position.set(0, 0, 0);
+    mesh.quaternion.identity();
+    mesh.scale.set(1, 1, 1);
     mesh.receiveShadow = true;
     mesh.name = `water-walls-${tile.x}-${tile.y}`;
     tile.walls = mesh;
@@ -943,7 +1040,7 @@ export class WaterLayer implements GroundWater {
       if (!index) continue;
       const base = pos.length / 3;
       for (let i = 0; i < src.count; i++) pos.push(src.getX(i), src.getY(i), src.getZ(i));
-      for (let i = 0; i < index.count; i++) idx.push(base + index.getX(i));
+      for (let i = 0; i < tile.walls.geometry.drawRange.count; i++) idx.push(base + index.getX(i));
     }
     if (idx.length === 0) return;
     this.shoreBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());

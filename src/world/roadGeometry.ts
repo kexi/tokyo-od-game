@@ -40,8 +40,11 @@ export function updateRoadGeometry(current: BufferGeometry, source: BufferGeomet
   targetIndex.needsUpdate = true;
   target.setDrawRange(0, index.count);
   // Reserved or stale vertices must not affect culling after an origin change.
-  source.computeBoundingBox();
-  source.computeBoundingSphere();
+  const lacksBounds = source.boundingBox === null || source.boundingSphere === null;
+  if (lacksBounds) {
+    source.computeBoundingBox();
+    source.computeBoundingSphere();
+  }
   target.boundingBox = source.boundingBox!.clone();
   target.boundingSphere = source.boundingSphere!.clone();
   return target;

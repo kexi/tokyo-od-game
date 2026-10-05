@@ -98,8 +98,20 @@ const toLocal = (frame: LocalFrame, lon: number, lat: number) =>
 
 /** OSM route numbers and street names onto the segments (3-point vote, parallel within 25°). */
 export function matchRoutes(graph: RoadGraph, roads: RouteRoad[], frame: LocalFrame): Map<number, RouteInfo> {
+  const steps = matchRouteSteps(graph, roads, frame);
+  let result = steps.next();
+  while (!result.done) result = steps.next();
+  return result.value;
+}
+
+export function* matchRouteSteps(
+  graph: RoadGraph,
+  roads: RouteRoad[],
+  frame: LocalFrame,
+): Generator<void, Map<number, RouteInfo>> {
   const grid = new LineGrid<RouteInfo>(25);
   for (const [cls, ref, name, nameEn, ...coords] of roads) {
+    yield;
     const pts: Vector3[] = [];
     for (let i = 0; i + 1 < coords.length; i += 2) pts.push(toLocal(frame, coords[i], coords[i + 1]));
     const refs = ref ? ref.split(";").filter(Boolean) : [];
@@ -109,6 +121,7 @@ export function matchRoutes(graph: RoadGraph, roads: RouteRoad[], frame: LocalFr
   const out = new Map<number, RouteInfo>();
   const cos = Math.cos(25 * DEG);
   for (const seg of graph.segments) {
+    yield;
     if (seg.line.kind === "highway") continue;
     const fractions = seg.length < 20 ? [0.5] : [0.2, 0.5, 0.8];
     const votes = new Map<RouteInfo, number>();
@@ -779,6 +792,13 @@ export function spotFor(
 
 /** All 108 series signs for the signalled junctions of the graph. */
 export function planGuideSigns(input: PlanInput): GuidePlan[] {
+  const steps = planGuideSteps(input);
+  let result = steps.next();
+  while (!result.done) result = steps.next();
+  return result.value;
+}
+
+export function* planGuideSteps(input: PlanInput): Generator<void, GuidePlan[]> {
   const { graph, routes } = input;
   const junctionNodes: Vector3[] = [];
   for (const [node, ids] of graph.nodes) {
@@ -795,6 +815,7 @@ export function planGuideSigns(input: PlanInput): GuidePlan[] {
       return d < 4 || (d < MIN_SPACING && p.travel.dot(travel) > 0.7);
     });
   for (const ap of input.approaches) {
+    yield;
     const approachCls = roadClass(ap.seg, routes);
     const isArterial = approachCls <= 2 && ap.seg.line.width >= 7;
     if (!isArterial) continue;

@@ -14,6 +14,8 @@ import {
   type Scene,
 } from "three";
 import { RoadInstances } from "./roadInstances";
+import { FrameWork } from "../game/frameWork";
+import { RoadPlates } from "./roadPlates";
 import { PROP_GROUPS } from "../physics/groups";
 import type { AppliedRegulations, Crossing, StopLine } from "./regulations";
 import { HEAD_HANG, LAMP_GAP, PED_LAMP_Y, signalKit, type Part } from "./signalModels";
@@ -99,6 +101,10 @@ export class TrafficControl {
   private pedLamps: { stop: InstancedMesh; go: InstancedMesh } | null = null;
   private pedOwners: PedHead[] = [];
   private plates: Mesh[] = [];
+  private readonly platePool = new RoadPlates((p) => {
+    p.geometry.dispose();
+    for (const m of p.material as Material[]) if (m !== plateBack) m.dispose();
+  });
   private body: RAPIER.RigidBody | null = null;
   private time = 0;
 
@@ -109,10 +115,25 @@ export class TrafficControl {
   ) {}
 
   rebuild(graph: RoadGraph | null, regs: AppliedRegulations | null): void {
+    for (const _ of this.rebuildSteps(graph, regs)) {
+      /* synchronous compatibility path */
+    }
+  }
+
+  rebuildAsync(graph: RoadGraph, regs: AppliedRegulations | null, work: FrameWork): Promise<void> {
+    return work.run(this.rebuildSteps(graph, regs));
+  }
+
+  private *rebuildSteps(graph: RoadGraph | null, regs: AppliedRegulations | null): Generator<void | boolean> {
+    yield* this.setNetwork(graph, regs);
+  }
+
+  setNetwork(graph: RoadGraph | null, regs: AppliedRegulations | null): Generator<void | boolean> {
     this.clear(true);
     if (!graph || !regs) {
       this.instances.end();
-      return;
+      this.platePool.end();
+      return this.modelSteps(null, null);
     }
     const signalled = this.buildSignals(graph, regs);
     this.buildStops(graph, regs, signalled);
@@ -121,10 +142,16 @@ export class TrafficControl {
       list.push(ap);
       this.bySegment.set(ap.seg.id, list);
     }
-    this.buildModels(graph, regs.crossings);
-    this.buildNamePlates(graph, regs.junctionNames);
+    return this.modelSteps(graph, regs);
+  }
+
+  private *modelSteps(graph: RoadGraph | null, regs: AppliedRegulations | null): Generator<void | boolean> {
+    if (!graph || !regs) return;
+    yield* this.buildModels(graph, regs.crossings);
+    yield* this.buildNamePlates(graph, regs.junctionNames);
     this.update(this.time);
     this.instances.end();
+    this.platePool.end();
   }
 
   /** Advance signal phases (seconds) and repaint lamps. */
@@ -235,6 +262,8 @@ export class TrafficControl {
   }
 
   clear(reuse = false): void {
+    if (reuse) this.platePool.begin();
+    else this.platePool.clear();
     if (reuse) this.instances.begin();
     else this.instances.clear();
     // Geometry and materials belong to the shared signal kit: only the instances go.
@@ -248,8 +277,6 @@ export class TrafficControl {
     this.pedOwners = [];
     for (const p of this.plates) {
       this.scene.remove(p);
-      p.geometry.dispose();
-      for (const m of p.material as Material[]) if (m !== plateBack) m.dispose();
     }
     this.plates = [];
     if (this.body) this.world.removeRigidBody(this.body);
@@ -437,7 +464,7 @@ export class TrafficControl {
 
   // ---------- models ----------
 
-  private buildModels(graph: RoadGraph, crossings: Crossing[]): void {
+  private *buildModels(graph: RoadGraph, crossings: Crossing[]): Generator<void | boolean> {
     const kit = signalKit();
     if (!kit) return;
     const signals = this.approaches.filter((a) => a.kind === "signal");
@@ -449,6 +476,7 @@ export class TrafficControl {
     const lamps: Object3D["matrix"][] = [];
 
     for (const ap of signals) {
+      yield;
       // Japanese practice: the head stands beyond the crossing on the far-left corner, hung from
       // an arm over the lane and facing the stop line; 青・黄・赤 from left to right.
       const node = ap.dir === 1 ? ap.seg.to : ap.seg.from;
@@ -510,6 +538,7 @@ export class TrafficControl {
     const pedStops: Object3D["matrix"][] = [];
     const pedGos: Object3D["matrix"][] = [];
     for (const c of crossings) {
+      yield;
       if (this.pedLight(c.seg, c.pos) === null) continue;
       const { dir } = graph.sample(c.seg, c.s);
       for (const side of [1, -1] as const) {
@@ -570,6 +599,7 @@ export class TrafficControl {
     });
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     for (const { pos, height } of poles) {
+      yield;
       this.world.createCollider(
         RAPIER.ColliderDesc.cylinder(height / 2, POLE_RADIUS)
           .setTranslation(pos.x, pos.y + height / 2, pos.z)
@@ -578,13 +608,14 @@ export class TrafficControl {
       );
     }
 
-    this.instancedPart(kit.pole, poleMatrices, true);
-    this.instancedPart(kit.arm, arms, true);
-    this.instancedPart(kit.head, heads, true);
-    this.instancedPart(kit.pedHead, pedHeads, true);
+    yield* this.instancedPart(kit.pole, poleMatrices, true);
+    yield* this.instancedPart(kit.arm, arms, true);
+    yield* this.instancedPart(kit.head, heads, true);
+    yield* this.instancedPart(kit.pedHead, pedHeads, true);
     const lampMesh = this.instanced(kit.lamp, kit.lens, lamps, false);
     for (let i = 0; i < lamps.length; i++) lampMesh.setColorAt(i, LAMP_OFF);
     this.lamps = lampMesh;
+    yield true;
     const stop = this.instanced(kit.pedLamp, kit.pedStop, pedStops, false);
     const go = this.instanced(kit.pedLamp, kit.pedGo, pedGos, false);
     for (let i = 0; i < pedStops.length; i++) {
@@ -592,15 +623,17 @@ export class TrafficControl {
       go.setColorAt(i, LAMP_OFF);
     }
     this.pedLamps = { stop, go };
+    yield true;
   }
 
   /**
    * 交差点名 plates: blue with white lettering (and the English name under it when OSM has one),
    * hung on each signal arm beside the head, facing the approaching driver.
    */
-  private buildNamePlates(graph: RoadGraph, names: AppliedRegulations["junctionNames"]): void {
+  private *buildNamePlates(graph: RoadGraph, names: AppliedRegulations["junctionNames"]): Generator<void> {
     if (names.length === 0) return;
     for (const ap of this.approaches) {
+      yield;
       if (ap.kind !== "signal") continue;
       const node = ap.dir === 1 ? ap.seg.to : ap.seg.from;
       const nodePos = this.nodePos(graph, node);
@@ -627,7 +660,8 @@ export class TrafficControl {
         .add(leftOf(ap.travel, half * 0.35));
       const toHead = head.clone().sub(base).setY(0);
       const armLen = toHead.length();
-      const plate = namePlate(best.name, best.en);
+      const { name, en } = best;
+      const plate = this.platePool.take(`${name}\n${en}`, () => namePlate(name, en));
       const width = (plate.geometry as BoxGeometry).parameters.width;
       // Between the pole and the head when the arm is long enough, else above the head.
       const room = armLen - (0.58 * HEAD_SCALE + 0.3);
@@ -645,8 +679,15 @@ export class TrafficControl {
     }
   }
 
-  private instancedPart(part: Part, matrices: Object3D["matrix"][], castShadow: boolean): void {
-    for (const { geometry, material } of part) this.instanced(geometry, material, matrices, castShadow);
+  private *instancedPart(
+    part: Part,
+    matrices: Object3D["matrix"][],
+    castShadow: boolean,
+  ): Generator<boolean> {
+    for (const { geometry, material } of part) {
+      this.instanced(geometry, material, matrices, castShadow);
+      yield true;
+    }
   }
 
   private instanced(

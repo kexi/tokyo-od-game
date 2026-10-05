@@ -94,5 +94,5 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
     await new Promise((r) => chrome.once("exit", r));
     rmSync(profile, { recursive: true, force: true });
   };
-  return { evaluate, screenshot, sleep, logs, close };
+  return { evaluate, screenshot, sleep, logs, close, send };
 }

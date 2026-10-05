@@ -1,4 +1,5 @@
 import RAPIER from "@dimforge/rapier3d-compat";
+import { reanchorCollider } from "../physics/reanchor";
 import {
   Box3,
   BufferAttribute,
@@ -107,15 +108,15 @@ export class Terrain {
   }
 
   setFrame(frame: LocalFrame): void {
+    const matrix = frame.transformFrom(this.frame);
+    const rotation = frame.rotationFrom(this.frame);
     this.frame = frame;
     this.lastHeight = null;
     this.far.setFrame(frame);
     for (const chunk of this.chunks.values()) {
       this.placeMesh(chunk);
-      // Rebuild immediately: leaving the car without ground for even a frame drops it through.
       if (!chunk.collider) continue;
-      this.removeCollider(chunk);
-      this.createCollider(chunk);
+      reanchorCollider(chunk.collider, matrix, rotation);
     }
   }
 
@@ -330,7 +331,7 @@ export class Terrain {
     const t = this.tmpMatrix.makeTranslation(chunk.centerEcef);
     chunk.mesh.matrix.multiplyMatrices(this.frame.ecefToLocal, t);
     chunk.mesh.matrixWorldNeedsUpdate = true;
-    chunk.mesh.geometry.computeBoundingBox();
+    if (chunk.mesh.geometry.boundingBox === null) chunk.mesh.geometry.computeBoundingBox();
     chunk.heightBounds.copy(chunk.mesh.geometry.boundingBox!).applyMatrix4(chunk.mesh.matrix);
   }
 

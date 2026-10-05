@@ -203,6 +203,7 @@ export const LOG_EVENTS = {
   regulation_tile_failed: failedWith({ path: z.string() }),
   road_tile_failed: failedWith({ key: z.string() }),
   road_worker_failed: failedWith(),
+  dem_worker_failed: failedWith(),
   road_network_failed: failedWith(),
   route_tile_failed: failedWith({ key: z.string() }),
   water_tile_failed: failedWith({ key: z.string() }),
@@ -218,6 +219,9 @@ export const LOG_EVENTS = {
   }),
   road_network_built: info({
     durationMs: z.number().optional(),
+    cpuMs: z.number().optional(),
+    maxSliceMs: z.number().optional(),
+    yields: count.optional(),
     stagesMs: z.record(z.string(), z.number()).optional(),
     segments: count,
     oneway: count,
@@ -228,7 +232,12 @@ export const LOG_EVENTS = {
     signs: count,
   }),
   pavements_built: info({ wards: z.array(z.string()), polygons: count }),
-  frame_recentered: info({ lat: z.number(), lon: z.number() }),
+  frame_recentered: info({
+    lat: z.number(),
+    lon: z.number(),
+    anchorMs: z.number().optional(),
+    stagesMs: z.record(z.string(), z.number()).optional(),
+  }),
   guide_signs_placed: info({
     signs: count,
     advance: count,

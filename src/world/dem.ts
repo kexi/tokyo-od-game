@@ -2,6 +2,9 @@ import { GSI, TERRAIN_ZOOM } from "../config";
 import type { Geoid } from "../geo/geoid";
 import { decodeGsiDem, latToTileY, lonToTileX } from "../geo/tiles";
 
+import { DemCompute } from "./demCompute";
+export { parseDemText, smoothGround } from "./demData";
+
 const SIZE = 256;
 
 async function fetchPixels(url: string): Promise<Uint8ClampedArray | null> {
@@ -33,6 +36,7 @@ function decodeTile(rgba: Uint8ClampedArray): Float32Array {
  * for tiles/pixels DEM5A lacks (water, gaps). Remaining holes are treated as sea level.
  */
 export class DemStore {
+  private readonly compute = new DemCompute();
   private readonly pending = new Map<string, Promise<Float32Array>>();
   private readonly loaded = new Map<string, Float32Array>();
   /** DEM5A's text edition (NaN where it has no value), for reading surveyed water surfaces. */
@@ -92,7 +96,7 @@ export class DemStore {
     if (!p) {
       p = fetch(GSI.dem5aText(TERRAIN_ZOOM, x, y))
         .then((r) => (r.ok ? r.text() : null))
-        .then((text) => (text === null ? null : parseDemText(text)))
+        .then((text) => (text === null ? null : this.compute.parse(text)))
         .catch(() => null)
         .then((tile) => {
           this.surveyedReady.set(key, tile);
@@ -129,7 +133,7 @@ export class DemStore {
   }
 
   private async fetchTile(x: number, y: number): Promise<Float32Array> {
-    return smoothGround(await this.fetchRaw(x, y));
+    return this.compute.smooth(await this.fetchRaw(x, y));
   }
 
   private async fetchRaw(x: number, y: number): Promise<Float32Array> {
@@ -164,61 +168,4 @@ export class DemStore {
     }
     return p;
   }
-}
-
-/** GSI elevation text tile: 256 rows of 256 comma-separated metres, "e" where there is no value. */
-export function parseDemText(text: string): Float32Array {
-  const out = new Float32Array(SIZE * SIZE).fill(Number.NaN);
-  const rows = text.trim().split("\n");
-  for (let j = 0; j < Math.min(SIZE, rows.length); j++) {
-    const cells = rows[j].split(",");
-    for (let i = 0; i < Math.min(SIZE, cells.length); i++) {
-      const v = cells[i].trim();
-      if (v !== "e") out[j * SIZE + i] = Number(v);
-    }
-  }
-  return out;
-}
-
-/**
- * DEM5A in the city is laser ground points with buildings removed; where few ground points
- * survive (beside buildings, under elevated roads) the interpolation leaves 1–1.5 m lumps and
- * pits that read as a bumpy pavement in the game. A 5×5 median (~20 m at z15) removes those
- * while keeping real steps such as moat walls and embankments sharp; a 3×3 binomial pass then
- * softens the median's terraces. Why not a plain Gaussian: it would smear the lumps into wider
- * swells and round off the steps.
- */
-export function smoothGround(src: Float32Array): Float32Array {
-  const median = new Float32Array(SIZE * SIZE);
-  const window = new Float32Array(25);
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      let n = 0;
-      for (let dy = -2; dy <= 2; dy++) {
-        const yy = Math.min(SIZE - 1, Math.max(0, y + dy));
-        for (let dx = -2; dx <= 2; dx++) {
-          const xx = Math.min(SIZE - 1, Math.max(0, x + dx));
-          window[n++] = src[yy * SIZE + xx];
-        }
-      }
-      window.sort();
-      median[y * SIZE + x] = window[12];
-    }
-  }
-  const out = new Float32Array(SIZE * SIZE);
-  const kernel = [1, 2, 1];
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      let sum = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        const yy = Math.min(SIZE - 1, Math.max(0, y + dy));
-        for (let dx = -1; dx <= 1; dx++) {
-          const xx = Math.min(SIZE - 1, Math.max(0, x + dx));
-          sum += median[yy * SIZE + xx] * kernel[dx + 1] * kernel[dy + 1];
-        }
-      }
-      out[y * SIZE + x] = sum / 16;
-    }
-  }
-  return out;
 }

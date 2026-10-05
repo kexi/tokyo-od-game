@@ -1,3 +1,4 @@
+import { reanchorBody } from "../physics/reanchor";
 import {
   AddEquation,
   CanvasTexture,
@@ -15,6 +16,7 @@ import {
   type Material,
   type Mesh,
   type Object3D,
+  type Quaternion,
   type Scene,
 } from "three";
 import { RoadInstances } from "./roadInstances";
@@ -622,6 +624,21 @@ export class OrbisDevices {
     const today = context ? dayKey(context.day) : "";
     const isNewDay = today !== this.portableDay;
     if (isNewDay) this.rebuild(this.last.graph, this.last.frame);
+  }
+
+  reanchor(matrix: Matrix4, rotation: Quaternion): void {
+    this.instances.reanchor(matrix);
+    for (const site of [...this.sites, ...this.portable]) {
+      site.line.applyMatrix4(matrix);
+      site.travel.applyQuaternion(rotation);
+      site.stand?.applyMatrix4(matrix);
+    }
+    for (const warning of this.warnings) {
+      warning.pos.applyMatrix4(matrix);
+      warning.travel.applyQuaternion(rotation);
+    }
+    for (const flash of this.flashes) flash.glow.applyMatrix4(matrix);
+    if (this.body) reanchorBody(this.body, matrix, rotation);
   }
 
   clear(reuse = false): void {

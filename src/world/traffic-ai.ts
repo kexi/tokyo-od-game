@@ -2,6 +2,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { type Object3D, Quaternion, Vector3, type Group, type Scene } from "three";
 import { QUALITY } from "../device";
 import { createLowCar } from "../game/carModel";
+import { FrameWork } from "../game/frameWork";
 import {
   createVehicle,
   hasVehicleModel,
@@ -75,7 +76,7 @@ const COMFORT_DECEL = 5; // m/s², for deciding whether a yellow/red can still b
  * Taxis and private cars driving on the left (道路交通法 第17条) along the road graph, keeping
  * gaps to the car ahead and to the player. Kinematic bodies near the player make them solid.
  */
-type ParkedCar = { object: Group; body: RAPIER.RigidBody; mass: MassiveBody };
+type ParkedCar = { key: string; object: Group; body: RAPIER.RigidBody; mass: MassiveBody };
 
 // A shoved car: its driver stands on the brake, the tyres skid (about 0.7 g). A parked one holds
 // only by the parking brake or P on one axle (half that). Assumed, as the brakes in masses.ts.
@@ -114,10 +115,16 @@ export class TrafficAI {
    * Swap in a rebuilt graph (player moved / frame re-anchored). Cars are re-attached to the
    * matching segment of the new graph so traffic does not visibly pop; strays are removed.
    */
-  setGraph(graph: RoadGraph | null): void {
+  setGraph(graph: RoadGraph | null, rebuildParked = true): void {
     const kept: AiCar[] = [];
+    const byGeometry = new Map(graph?.segments.map((seg) => [seg.line.coords.join(","), seg]));
     for (const c of this.cars) {
-      const hit = graph?.nearest(c.object.position, 4);
+      const matching = byGeometry.get(c.seg.line.coords.join(","));
+      const projection = matching && graph?.nearestOn(matching, c.object.position);
+      const isOnSameRoad = matching && projection && projection.dist < 4;
+      const hit = isOnSameRoad
+        ? { seg: matching, s: projection.s, dir: graph!.sample(matching, projection.s).dir }
+        : graph?.nearest(c.object.position, 4);
       if (!graph || !hit) {
         this.remove(c);
         continue;
@@ -126,31 +133,43 @@ export class TrafficAI {
       c.dir = forward.dot(hit.dir) >= 0 ? 1 : -1;
       c.seg = hit.seg;
       c.s = c.dir === 1 ? hit.s : hit.seg.length - hit.s;
+      c.route = [];
       kept.push(c);
     }
     this.cars = kept;
     this.graph = graph;
-    this.placeParked(graph);
+    if (rebuildParked) {
+      for (const _ of this.parkedSteps(graph)) {
+        /* synchronous compatibility path */
+      }
+    }
+  }
+
+  rebuildParkedAsync(graph: RoadGraph | null, work: FrameWork): Promise<void> {
+    return work.run(this.parkedSteps(graph));
   }
 
   /**
    * 路上駐車: cars left at the kerb of narrower streets. Chosen by a hash of each segment's
    * geometry, so re-anchoring rebuilds them at exactly the same spots.
    */
-  private placeParked(graph: RoadGraph | null): void {
-    for (const p of this.parked) {
-      this.scene.remove(p.object);
-      const collider = p.body.collider(0);
-      if (collider) this.contacts.remove(collider);
-      this.world.removeRigidBody(p.body);
-    }
-    this.parked = [];
-    if (!graph) return;
-    for (const seg of graph.segments) {
-      if (this.parked.length >= PARKED_MAX) break;
+  private *parkedSteps(graph: RoadGraph | null): Generator<void | boolean> {
+    const remaining = new Map(this.parked.map((p) => [p.key, p]));
+    const kept: ParkedCar[] = [];
+    for (const seg of graph?.segments ?? []) {
+      if (kept.length >= PARKED_MAX) break;
+      yield;
       const isSideStreet = seg.line.width >= 4 && seg.line.width < 13 && seg.length > 25;
       const h = hashCoords(seg.line.coords);
       if (!isSideStreet || h % 6 !== 0) continue;
+      const key = `${seg.line.width}/${seg.line.coords.join(",")}`;
+      const existing = remaining.get(key);
+      if (existing) {
+        remaining.delete(key);
+        kept.push(existing);
+        continue;
+      }
+      if (!graph) continue;
       const { pos, dir } = graph.sample(seg, seg.length * (0.3 + ((h >>> 4) % 40) / 100));
       const side = (h >>> 9) % 2 ? 1 : -1;
       pos.add(leftOf(dir, side * (seg.line.width / 2 - 1.1)));
@@ -176,8 +195,18 @@ export class TrafficAI {
       const mass = new MassiveBody(kg, yawInertia(kg, 4.3, 1.84), PARKED_GRIP, "vehicle");
       mass.setMotion(pos.x, pos.z, 0, 0, 0);
       this.contacts.add(collider, mass);
-      this.parked.push({ object, body, mass });
+      const parked = { key, object, body, mass };
+      this.parked.push(parked);
+      kept.push(parked);
+      yield true;
     }
+    for (const p of remaining.values()) {
+      this.scene.remove(p.object);
+      const collider = p.body.collider(0);
+      if (collider) this.contacts.remove(collider);
+      this.world.removeRigidBody(p.body);
+    }
+    this.parked = kept;
   }
 
   /** Re-anchoring: shift cars rigidly; their graph is replaced right after. */
@@ -188,6 +217,21 @@ export class TrafficAI {
       c.yaw += yawDelta;
       c.object.rotation.y += yawDelta;
       if (c.body) this.dropBody(c);
+    }
+    const cos = Math.cos(yawDelta);
+    const sin = Math.sin(yawDelta);
+    for (const p of this.parked) {
+      offset(p.object.position);
+      p.object.rotation.y += yawDelta;
+      p.body.setTranslation(p.object.position, false);
+      p.body.setRotation(p.object.quaternion, false);
+      p.body.setNextKinematicTranslation(p.object.position);
+      p.body.setNextKinematicRotation(p.object.quaternion);
+      const { vx, vz } = p.mass;
+      p.mass.x = p.object.position.x;
+      p.mass.z = p.object.position.z;
+      p.mass.vx = cos * vx + sin * vz;
+      p.mass.vz = -sin * vx + cos * vz;
     }
   }
 
