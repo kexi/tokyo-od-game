@@ -254,6 +254,10 @@ measure-perf-fixed:
 measure-perf-night:
     node scripts/qa/perf-fixed-scene.mjs --live --seconds 20
 
+# 道路Workerと同期フォールバックの処理時間・フレーム停止を実データで比較する
+measure-road-worker:
+    node scripts/qa/perf-road-worker.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

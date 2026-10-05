@@ -1,5 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
+  Box3,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
@@ -28,12 +29,15 @@ import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import type { DemStore } from "./dem";
 import { FarGround, type TileRect } from "./farGround";
+import { TerrainHeight } from "./terrainHeight";
 
 type Chunk = {
   x: number;
   y: number;
   mesh: Mesh<BufferGeometry, MeshStandardNodeMaterial>;
   centerEcef: Vector3;
+  height: TerrainHeight | null;
+  heightBounds: Box3;
   collider: RAPIER.Collider | null;
   imageryZoom: number;
   imageryStyle: GroundStyle;
@@ -80,6 +84,7 @@ const imageryZoom = (ring: number) =>
  */
 export class Terrain {
   private readonly chunks = new Map<string, Chunk>();
+  private lastHeight: TerrainHeight | null = null;
   private readonly building = new Set<string>();
   private frame: LocalFrame;
   private style: GroundStyle = "photo";
@@ -103,6 +108,7 @@ export class Terrain {
 
   setFrame(frame: LocalFrame): void {
     this.frame = frame;
+    this.lastHeight = null;
     this.far.setFrame(frame);
     for (const chunk of this.chunks.values()) {
       this.placeMesh(chunk);
@@ -111,6 +117,33 @@ export class Terrain {
       this.removeCollider(chunk);
       this.createCollider(chunk);
     }
+  }
+
+  /** Rendered terrain only: bridge decks are selected by the caller, buildings are never ground. */
+  surfaceAt(x: number, z: number): number | null {
+    const cached = this.lastHeight?.at(x, z) ?? null;
+    if (cached !== null) return cached;
+    for (const chunk of this.chunks.values()) {
+      const bounds = chunk.heightBounds;
+      const coversPoint =
+        chunk.mesh.visible &&
+        x >= bounds.min.x &&
+        x <= bounds.max.x &&
+        z >= bounds.min.z &&
+        z <= bounds.max.z;
+      if (!coversPoint) continue;
+      chunk.height ??= new TerrainHeight(
+        chunk.mesh.geometry.getAttribute("position") as BufferAttribute,
+        chunk.mesh.geometry.getIndex()!.array,
+        chunk.mesh.matrix,
+      );
+      const height = chunk.height.at(x, z);
+      if (height !== null) {
+        this.lastHeight = chunk.height;
+        return height;
+      }
+    }
+    return null;
   }
 
   setWater(water: GroundWater): void {
@@ -195,6 +228,7 @@ export class Terrain {
 
   /** Chunks inside the square are drawn; the rest (kept for a while past the radius) are not. */
   private showSquare(square: TileRect | null): void {
+    this.lastHeight = null;
     for (const chunk of this.chunks.values()) {
       const isInside =
         square !== null &&
@@ -274,6 +308,8 @@ export class Terrain {
       y,
       mesh,
       centerEcef,
+      height: null,
+      heightBounds: new Box3(),
       collider: null,
       imageryZoom: 0,
       imageryStyle: this.style,
@@ -290,9 +326,12 @@ export class Terrain {
   }
 
   private placeMesh(chunk: Chunk): void {
+    chunk.height = null;
     const t = this.tmpMatrix.makeTranslation(chunk.centerEcef);
     chunk.mesh.matrix.multiplyMatrices(this.frame.ecefToLocal, t);
     chunk.mesh.matrixWorldNeedsUpdate = true;
+    chunk.mesh.geometry.computeBoundingBox();
+    chunk.heightBounds.copy(chunk.mesh.geometry.boundingBox!).applyMatrix4(chunk.mesh.matrix);
   }
 
   private createCollider(chunk: Chunk): void {
@@ -416,6 +455,7 @@ export class Terrain {
   }
 
   private disposeChunk(chunk: Chunk): void {
+    this.lastHeight = null;
     this.removeCollider(chunk);
     if (chunk.water.value !== NO_WATER) chunk.water.value.dispose();
     this.scene.remove(chunk.mesh);

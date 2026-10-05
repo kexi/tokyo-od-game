@@ -3,7 +3,7 @@ import {
   BoxGeometry,
   CanvasTexture,
   Color,
-  InstancedMesh,
+  type InstancedMesh,
   type BufferGeometry,
   type Material,
   Mesh,
@@ -13,6 +13,7 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import { RoadInstances } from "./roadInstances";
 import { PROP_GROUPS } from "../physics/groups";
 import type { AppliedRegulations, Crossing, StopLine } from "./regulations";
 import { HEAD_HANG, LAMP_GAP, PED_LAMP_Y, signalKit, type Part } from "./signalModels";
@@ -92,6 +93,7 @@ export class TrafficControl {
   approaches: Approach[] = [];
   private bySegment = new Map<number, Approach[]>();
   private meshes: InstancedMesh[] = [];
+  private readonly instances = new RoadInstances();
   private lamps: InstancedMesh | null = null;
   private lampOwners: { approach: Approach; colour: LightState }[] = [];
   private pedLamps: { stop: InstancedMesh; go: InstancedMesh } | null = null;
@@ -107,8 +109,11 @@ export class TrafficControl {
   ) {}
 
   rebuild(graph: RoadGraph | null, regs: AppliedRegulations | null): void {
-    this.clear();
-    if (!graph || !regs) return;
+    this.clear(true);
+    if (!graph || !regs) {
+      this.instances.end();
+      return;
+    }
     const signalled = this.buildSignals(graph, regs);
     this.buildStops(graph, regs, signalled);
     for (const ap of this.approaches) {
@@ -119,6 +124,7 @@ export class TrafficControl {
     this.buildModels(graph, regs.crossings);
     this.buildNamePlates(graph, regs.junctionNames);
     this.update(this.time);
+    this.instances.end();
   }
 
   /** Advance signal phases (seconds) and repaint lamps. */
@@ -228,11 +234,12 @@ export class TrafficControl {
     return new Set(this.approaches.filter((a) => a.controller).map((a) => a.controller?.id)).size;
   }
 
-  clear(): void {
+  clear(reuse = false): void {
+    if (reuse) this.instances.begin();
+    else this.instances.clear();
     // Geometry and materials belong to the shared signal kit: only the instances go.
     for (const m of this.meshes) {
       this.scene.remove(m);
-      m.dispose();
     }
     this.meshes = [];
     this.lamps = null;
@@ -648,7 +655,7 @@ export class TrafficControl {
     matrices: Object3D["matrix"][],
     castShadow: boolean,
   ): InstancedMesh {
-    const mesh = new InstancedMesh(geometry, material, Math.max(1, matrices.length));
+    const mesh = this.instances.take(geometry, material, matrices.length);
     mesh.count = matrices.length;
     matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
     mesh.frustumCulled = false; // instances span the whole area

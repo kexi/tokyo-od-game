@@ -25,6 +25,7 @@ import {
 import asphaltAlbedoUrl from "../../assets/road/textures/asphalt_albedo.jpg?url";
 import asphaltNormalUrl from "../../assets/road/textures/asphalt_normal.jpg?url";
 import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.png?url";
+import { updateRoadGeometry } from "./roadGeometry";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { StreetMaterial, type StreetBase } from "./streetLights";
@@ -219,7 +220,7 @@ function arrowMaterial(set: readonly LaneDirection[]): StreetMaterial {
  * speed signs. Junction crossings are synthesised only where the area has no JARTIC data.
  */
 export class RoadSurface {
-  private meshes: Mesh[] = [];
+  private readonly meshes = new Map<StreetMaterial, Mesh>();
 
   constructor(
     private readonly scene: Scene,
@@ -232,8 +233,11 @@ export class RoadSurface {
     regs: AppliedRegulations | null = null,
     approaches: Approach[] = [],
   ): void {
-    this.clear();
-    if (!graph) return;
+    if (!graph) {
+      this.clear();
+      return;
+    }
+    const used = new Set<StreetMaterial>();
     const isSurveyed = regs?.hasMarkings ?? false;
     const road: Builder = { pos: [], idx: [], st: [] };
     const whites: Builder = { pos: [], idx: [], st: [] };
@@ -325,20 +329,29 @@ export class RoadSurface {
       g.setAttribute("aStreet", new BufferAttribute(new Float32Array(b.st), 4));
       g.setIndex(b.idx);
       g.computeVertexNormals();
-      const mesh = new Mesh(g, mat);
+      const mesh = this.meshes.get(mat) ?? new Mesh(new BufferGeometry(), mat);
+      mesh.geometry = updateRoadGeometry(mesh.geometry, g);
+      used.add(mat);
       mesh.receiveShadow = true;
       mesh.renderOrder = order;
       this.scene.add(mesh);
-      this.meshes.push(mesh);
+      this.meshes.set(mat, mesh);
+    }
+    for (const [mat, mesh] of this.meshes) {
+      const obsolete = !used.has(mat);
+      if (!obsolete) continue;
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+      this.meshes.delete(mat);
     }
   }
 
   clear(): void {
-    for (const m of this.meshes) {
+    for (const m of this.meshes.values()) {
       this.scene.remove(m);
       m.geometry.dispose();
     }
-    this.meshes = [];
+    this.meshes.clear();
   }
 
   /** A line along the street from s0 to s1, solid or dashed, interrupted at crosswalks. */

@@ -1,7 +1,7 @@
 import {
   BoxGeometry,
   CanvasTexture,
-  InstancedMesh,
+  type InstancedMesh,
   Mesh,
   MeshStandardMaterial,
   Object3D,
@@ -12,6 +12,7 @@ import {
   type Material,
   type Scene,
 } from "three";
+import { RoadInstances } from "./roadInstances";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PROP_GROUPS } from "../physics/groups";
@@ -238,6 +239,7 @@ type Item = { post: Post; level: number; flip: boolean; facing?: Vector3 };
  */
 export class TrafficSigns {
   private meshes: InstancedMesh[] = [];
+  private readonly instances = new RoadInstances();
 
   private posts: Post[] = [];
   private notes: Mesh[] = [];
@@ -252,8 +254,11 @@ export class TrafficSigns {
   ) {}
 
   rebuild(graph: RoadGraph | null, regs: AppliedRegulations | null, approaches: Approach[]): void {
-    this.clear();
-    if (!graph || !regs || !kit) return;
+    this.clear(true);
+    if (!graph || !regs || !kit) {
+      this.instances.end();
+      return;
+    }
     const posts: Post[] = [];
     const add = (pos: Vector3, travel: Vector3, d: Design | null, note?: string) => {
       if (!d) return;
@@ -299,6 +304,7 @@ export class TrafficSigns {
       }
     }
     this.build(posts, kit);
+    this.instances.end();
   }
 
   count(): number {
@@ -310,7 +316,9 @@ export class TrafficSigns {
     return this.posts.filter((p) => !p.hidden).map((p) => p.pos.clone());
   }
 
-  clear(): void {
+  clear(reuse = false): void {
+    if (reuse) this.instances.begin();
+    else this.instances.clear();
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
     for (const n of this.notes) {
@@ -384,7 +392,7 @@ export class TrafficSigns {
     }
     this.instanced(k.bracket.geometry, k.bracket.material as Material, [...byShape.values()].flat(), false);
     const o = new Object3D();
-    const pole = new InstancedMesh(k.post.geometry, k.post.material as Material, posts.length);
+    const pole = this.instances.take(k.post.geometry, k.post.material as Material, posts.length);
     // Posts are solid: one fixed body carries a thin cylinder per post (60.5 mm steel pipe).
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     const height = POST_TOP + 0.45;
@@ -431,7 +439,7 @@ export class TrafficSigns {
     castShadow = true,
   ): InstancedMesh {
     const o = new Object3D();
-    const mesh = new InstancedMesh(geometry, material, items.length);
+    const mesh = this.instances.take(geometry, material, items.length);
     items.forEach(({ post, level, flip, facing: given }, i) => {
       const facing = given ?? (flip ? post.travel : post.travel.clone().negate());
       const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;

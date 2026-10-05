@@ -99,14 +99,15 @@ import { WaterLayer } from "./world/water";
 import { Pedestrians, type Pedestrian } from "./world/pedestrians";
 import {
   RegulationTiles,
-  applyRegulations,
   isInForce,
   type AppliedRegulations,
   type LaneUse,
   type RegulationData,
 } from "./world/regulations";
 import { isLaneChangeBanned, laneOfOffset } from "./world/laneChange";
-import { RoadGraph, leftOf, speedLimit, type RoadLine, type Segment } from "./world/roads";
+import { leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
+import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
+import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
@@ -590,20 +591,23 @@ async function main(): Promise<void> {
   /** A 確認標章 waiting for the driver's choice when they get back in. */
   let pendingParking: Violation | null = null;
   const law = new TrafficLaw();
-  // Roads follow the rendered terrain (collider = render mesh), falling back to the DEM.
-  const roadSurface = new RoadSurface(scene, (x, z) => {
-    const g = groundY(x, z);
-    if (g === null) return null;
-    const hit = rayDown(x, z, g + 3);
-    // Only accept hits near the DEM height: anything higher is a parked car or a building.
-    return hit !== null && Math.abs(hit - g) < 0.6 ? hit : g;
-  });
+  // Match the rendered triangles without a physics query for every road/paint vertex.
+  const roadSurface = new RoadSurface(
+    scene,
+    (x, z) => water.deckAt(x, z) ?? terrain.surfaceAt(x, z) ?? groundY(x, z),
+  );
   let roadLines: RoadLine[] = [];
   let roadRegs: RegulationData | null = null;
   let roadApplied: AppliedRegulations | null = null;
   let roadGraph: RoadGraph | null = null;
   let roadCenter = { lat: 0, lon: 0 };
+  let roadDataCenter = roadCenter;
   let roadsLoading = false;
+  let roadRevision = 0;
+  let roadLoadSerial = 0;
+  const roadBuilder = new RoadNetworkBuilder();
+  roadBuilder.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoads");
+  roadBuilder.warm();
   /** The moment regulations are judged at: the game's date and time in Japan (曜日・祝日). */
   const gameClockNow = (): GameClock => {
     const minutes = env.displayHour(lastGeo.lat, lastGeo.lon) * 60;
@@ -641,39 +645,53 @@ async function main(): Promise<void> {
     .then((r) => (r.ok ? r.json() : null))
     .then((d: Places | null) => {
       places = d;
-      if (roadGraph) buildRoadNetwork();
+      if (roadGraph) void buildRoadNetwork();
     })
     .catch(() => undefined);
-  const buildRoadNetwork = () => {
-    const graph = new RoadGraph(roadLines, frame);
-    const applied = roadRegs ? applyRegulations(graph, roadRegs, frame) : null;
+  const installRoadNetwork = ({ graph, applied }: RoadNetwork) => {
+    const started = performance.now();
+    const stagesMs: Record<string, number> = {};
+    const measure = <T>(name: string, work: () => T): T => {
+      const start = performance.now();
+      try {
+        return work();
+      } finally {
+        stagesMs[name] = performance.now() - start;
+      }
+    };
     roadApplied = applied;
     graph.setClock(gameClockNow());
     roadGraph = graph;
-    traffic.setGraph(graph);
-    control.rebuild(graph, applied);
+    measure("traffic", () => traffic.setGraph(graph));
+    measure("control", () => control.rebuild(graph, applied));
     // Bridge decks first: the road surface (through groundY) is laid on them.
-    water.setRoads(graph);
-    roadSurface.rebuild(graph, applied, control.approaches);
+    measure("water", () => water.setRoads(graph));
+    measure("surface", () => roadSurface.rebuild(graph, applied, control.approaches));
     // 消火栓 and schools add their own signs to the posts.
-    const furnitureSigns = furniture.rebuild(graph, places, frame);
+    const furnitureSigns = measure("furniture", () => furniture.rebuild(graph, places, frame));
     if (applied) applied.signs.push(...furnitureSigns);
-    signs.rebuild(graph, applied, control.approaches);
-    guideSigns.rebuild(graph, frame, control.approaches, applied, roadCenter, signs.postPositions());
-    orbis.rebuild(graph, frame);
-    pedestrians.setNetwork(
-      new SidewalkNetwork(
-        graph,
-        applied?.crossings ?? [],
-        (seg, near) => control.mayCross(seg, near),
-        (x, z) => {
-          const g = groundY(x, z);
-          return g !== null && isOpenGround(x, z, g);
-        },
-        (x, z) => pavements.contains(x, z),
+    measure("signs", () => signs.rebuild(graph, applied, control.approaches));
+    measure("guideSigns", () =>
+      guideSigns.rebuild(graph, frame, control.approaches, applied, roadDataCenter, signs.postPositions()),
+    );
+    measure("orbis", () => orbis.rebuild(graph, frame));
+    measure("pedestrians", () =>
+      pedestrians.setNetwork(
+        new SidewalkNetwork(
+          graph,
+          applied?.crossings ?? [],
+          (seg, near) => control.mayCross(seg, near),
+          (x, z) => {
+            const g = groundY(x, z);
+            return g !== null && isOpenGround(x, z, g);
+          },
+          (x, z) => pavements.contains(x, z),
+        ),
       ),
     );
     log("road_network_built", {
+      durationMs: performance.now() - started,
+      stagesMs,
       segments: graph.segments.length,
       oneway: graph.segments.filter((s) => s.onewayRule).length,
       posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
@@ -683,21 +701,47 @@ async function main(): Promise<void> {
       signs: applied?.signs.length ?? 0,
     });
   };
+  const buildRoadNetwork = async () => {
+    const revision = ++roadRevision;
+    const requestedFrame = frame;
+    try {
+      const network = await roadBuilder.build(roadLines, roadRegs, requestedFrame);
+      const isStale = revision !== roadRevision || requestedFrame !== frame || network === null;
+      if (isStale) return false;
+      installRoadNetwork(network);
+      return true;
+    } catch (error) {
+      warn("road_network_failed", { error: String(error) });
+      return false;
+    }
+  };
   const refreshRoads = (lat: number, lon: number) => {
     if (roadsLoading) return;
     roadsLoading = true;
+    const load = ++roadLoadSerial;
+    roadRevision++;
+    roadBuilder.invalidate();
     roadCenter = { lat, lon };
     // The water of the same tiles too: the decks of the bridges are built with the streets.
     void Promise.all([roadTiles.around(lat, lon), regulationTiles.around(lat, lon), water.around(lat, lon)])
       .then(([lines, regs]) => {
+        const isStale = load !== roadLoadSerial;
+        if (isStale) return;
         roadLines = lines;
         roadRegs = regs;
-        buildRoadNetwork();
+        roadDataCenter = { lat, lon };
+        return buildRoadNetwork();
       })
-      .finally(() => (roadsLoading = false));
+      .catch((error: unknown) => warn("road_network_failed", { error: String(error) }))
+      .finally(() => {
+        const isCurrent = load === roadLoadSerial;
+        if (isCurrent) roadsLoading = false;
+      });
     // PLATEAU pavements come separately (larger tiles, only some wards): never hold up the roads.
     const wards = areas?.wardsIn(lon - 0.012, lat - 0.01, lon + 0.012, lat + 0.01) ?? [];
     void pavementTiles.around(lat, lon, wards).then((polys) => {
+      const isStale = load !== roadLoadSerial;
+      if (isStale) return;
       pavementPolys = polys;
       pavements.rebuild(polys, frame);
       pedestrians.pavementsChanged();
@@ -873,41 +917,59 @@ async function main(): Promise<void> {
     chase.snap();
   };
 
-  const recenter = () => {
+  let recentering: object | null = null;
+  const recenter = (force = false) => {
+    const isPending = recentering !== null && !force;
+    if (isPending) return;
+    const job = {};
+    recentering = job;
+    const previous = frame;
+    const revision = ++roadRevision;
     const pos = focusPos();
     const g = frame.toGeodetic(pos);
     const next = new LocalFrame(g.lat, g.lon, dem.heightAt(g.lat, g.lon) ?? g.h);
-    const m = next.transformFrom(frame);
-    const q = next.rotationFrom(frame);
-    const offset = (p: Vector3) => p.applyMatrix4(m);
-    vehicle.transform(offset, q);
-    chase.transform(offset, q);
-    camera.position.applyMatrix4(m);
-    frame = next;
-    terrain.setFrame(next);
-    water.setFrame(next);
-    buildings.setFrame(next);
-    landmarks.setFrame(next);
-    field.setFrame(next);
-    transit.setFrame(next);
-    const f = new Vector3(0, 0, 1).applyQuaternion(q);
-    pedestrians.transform(offset, Math.atan2(f.x, f.z));
-    if (walker.active) walker.transform(offset, Math.atan2(f.x, f.z));
-    traffic.transform(offset, Math.atan2(f.x, f.z));
-    emergency.transform(offset);
-    patrol.transform(offset);
-    pursuitDirector.transform(offset);
-    taxi?.transform(offset, Math.atan2(f.x, f.z));
-    autopilot?.driver.transform(offset, Math.atan2(f.x, f.z));
-    pavements.rebuild(pavementPolys, frame);
-    buildRoadNetwork();
-    // Units on patrol are not carried over (another comes by): those engaged keep their record.
-    for (const unit of patrols.filter((u) => u.state === "cruising" || u.state === "leaving")) {
-      unit.dispose();
-      patrols.splice(patrols.indexOf(unit), 1);
-      if (police === unit) police = null;
-    }
-    log("frame_recentered", { lat: Number(g.lat.toFixed(5)), lon: Number(g.lon.toFixed(5)) });
+    return roadBuilder
+      .build(roadLines, roadRegs, next)
+      .then((network) => {
+        const isStale = revision !== roadRevision || frame !== previous || network === null;
+        if (isStale) return;
+        const m = next.transformFrom(previous);
+        const q = next.rotationFrom(previous);
+        const offset = (p: Vector3) => p.applyMatrix4(m);
+        vehicle.transform(offset, q);
+        chase.transform(offset, q);
+        camera.position.applyMatrix4(m);
+        frame = next;
+        terrain.setFrame(next);
+        water.setFrame(next);
+        buildings.setFrame(next);
+        landmarks.setFrame(next);
+        field.setFrame(next);
+        transit.setFrame(next);
+        const f = new Vector3(0, 0, 1).applyQuaternion(q);
+        pedestrians.transform(offset, Math.atan2(f.x, f.z));
+        if (walker.active) walker.transform(offset, Math.atan2(f.x, f.z));
+        traffic.transform(offset, Math.atan2(f.x, f.z));
+        emergency.transform(offset);
+        patrol.transform(offset);
+        pursuitDirector.transform(offset);
+        taxi?.transform(offset, Math.atan2(f.x, f.z));
+        autopilot?.driver.transform(offset, Math.atan2(f.x, f.z));
+        pavements.rebuild(pavementPolys, frame);
+        installRoadNetwork(network);
+        // Units on patrol are not carried over (another comes by): those engaged keep their record.
+        for (const unit of patrols.filter((u) => u.state === "cruising" || u.state === "leaving")) {
+          unit.dispose();
+          patrols.splice(patrols.indexOf(unit), 1);
+          if (police === unit) police = null;
+        }
+        log("frame_recentered", { lat: Number(g.lat.toFixed(5)), lon: Number(g.lon.toFixed(5)) });
+      })
+      .catch((error: unknown) => warn("road_network_failed", { error: String(error) }))
+      .finally(() => {
+        const isCurrent = recentering === job;
+        if (isCurrent) recentering = null;
+      });
   };
 
   // ---------- 通知（左の欄） ----------
@@ -943,11 +1005,17 @@ async function main(): Promise<void> {
     warping = { label: place.name, since: performance.now(), yaw, span: newSpan("warp") };
     log("warp_start", { to: place.name, lat: place.lat, lon: place.lon }, warping.span);
     // The local frame follows the car there, so the far town is near the origin again.
-    recenter();
+    // A tile request from the previous destination must not overwrite this warp's streets.
+    roadLoadSerial++;
+    roadsLoading = false;
+    recenter(true);
     toast(i18n.t("toast.warping", { place: place.name }), "#4dd2ff");
   };
   const finishWarp = (now: number) => {
     if (!warping) return;
+    const pos = vehicle.position();
+    const isRecentering = recentering !== null || Math.hypot(pos.x, pos.z) > 1;
+    if (isRecentering) return;
     const g = frame.toGeodetic(new Vector3());
     const isGroundReady = terrain.hasColliderAt(g.lat, g.lon);
     const isTownReady = buildings.loadProgress() > 0.95 || now - warping.since > 12000;
@@ -2339,7 +2407,8 @@ async function main(): Promise<void> {
           : focus.setY(footGround + 0.5),
         0,
       );
-    if (Math.hypot(focus.x, focus.z) > RECENTER_DISTANCE) recenter();
+    const needsRecenter = Math.hypot(focus.x, focus.z) > (warping ? 1 : RECENTER_DISTANCE);
+    if (needsRecenter) recenter();
 
     terrain.update(geo.lat, geo.lon);
     buildings.update(focus, now);
@@ -5136,6 +5205,14 @@ async function main(): Promise<void> {
         groundY,
         // Staging for the teaser and tests: the screens behind events that take long to set up.
         debug: {
+          roads: {
+            builder: roadBuilder,
+            surface: roadSurface,
+            rebuild: buildRoadNetwork,
+            input: () => ({ lines: roadLines, regs: roadRegs, origin: frame.origin }),
+            recenter: () => recenter(true),
+            warp: warpTo,
+          },
           openTicket,
           endDay,
           flashScreen,
