@@ -266,6 +266,10 @@ measure-road-streaming:
 measure-road-nearest:
     node scripts/qa/perf-road-nearest.mjs
 
+# 車内の行列更新を旧処理と交互比較し、昼晴れ・夜雨の画素と行列の一致を確認する
+measure-scene-matrices:
+    node scripts/qa/perf-scene-matrices.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit
