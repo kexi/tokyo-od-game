@@ -2838,9 +2838,7 @@ async function main(): Promise<void> {
       inCar: isInCar,
       cockpit: cockpit.active,
       windowOpen: isInCar && conversation.active !== null,
-      rainMmH: env.isRaining()
-        ? Math.max(env.weather === "rain" ? 8 : 0, (env.getObservation()?.precip10m ?? 0) * 6)
-        : 0,
+      rainMmH: env.rainMmH(),
     });
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
     water.update(dt, env);
@@ -2910,10 +2908,7 @@ async function main(): Promise<void> {
       highBeam: controls.highBeam && controls.headlightsOn(isDark),
       parkingBrake: drive.handbrake,
       wipers: controls.wipers,
-      // AMeDAS reports 10-minute totals; 「雨」 fixed is a steady 8 mm/h (本降り).
-      rainMmH: env.isRaining()
-        ? Math.max(env.weather === "rain" ? 8 : 0, (env.getObservation()?.precip10m ?? 0) * 6)
-        : 0,
+      rainMmH: env.rainMmH(),
       night: env.nightFactor,
       renderer,
       scene,

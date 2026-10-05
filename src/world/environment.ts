@@ -17,7 +17,7 @@ import { FAR_GROUND_REACH } from "./farGround";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GRAPHICS, QUALITY } from "../device";
 import { jstDateAt, jstHour, sunPosition } from "../geo/sun";
-import { spellMinutes } from "./weatherSpells";
+import { spellMinutes, rainRateMmH } from "./weatherSpells";
 import { SkyEnvMap, type EnvState } from "./skyEnvMap";
 import { type SkyLook, TokyoSky } from "./skyShader";
 import { lightBalance, nightFactorAt, type LightBalance } from "./skyLight";
@@ -242,6 +242,12 @@ export class Environment {
     // 20000 is the instrument's ceiling ("20 km or more"): read it as a clear day.
     if (observed != null) return observed >= 20000 ? 25000 : observed;
     return raining ? 4000 : 25000;
+  }
+
+  /** How hard it rains now (mm/h): the windscreen's drops and the cabin's rain (weatherSpells.ts). */
+  rainMmH(): number {
+    const isMeasured = this.moment === null && this.weatherMode === "real";
+    return rainRateMmH(this.isRaining(), isMeasured, this.observation?.precip10m ?? null);
   }
 
   isRaining(): boolean {
