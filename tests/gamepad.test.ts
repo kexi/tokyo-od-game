@@ -317,6 +317,27 @@ function rig(onFoot = false) {
 }
 
 describe("コントローラーの入力（PadInput）", () => {
+  it("keeps a button bound in 設定 when the game is opened again, for that controller only", () => {
+    // What it guarantees: a binding changed in 設定 › 操作 › コントローラー is in localStorage at once
+    // and drives the next session — the Pro Controller's own, not the Xbox pad's.
+    const data = new Map<string, string>();
+    const storage = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+    } as unknown as Storage;
+    const options = { trigger: () => {}, onFoot: () => false, autoStart: false, storage };
+    const first = new PadInput(options);
+    const pro = padKey(CHROME_PRO);
+    first.setProfile(pro, bindControl(first.profileFor(pro), "highBeam", 13).profile);
+
+    const fired: Action[] = [];
+    const next = new PadInput({ ...options, trigger: (a) => fired.push(a) });
+    next.step(16, [fakePad(CHROME_PRO)]);
+    next.step(32, [fakePad(CHROME_PRO, [13])]); // ↓ on the d-pad, now ハイビーム
+    expect(fired).toEqual(["highBeam"]);
+    expect(bindingsOf(next.profileFor(padKey(CHROME_XBOX))).highBeam).toBe(DEFAULT_BINDINGS.highBeam);
+  });
+
   it("fires an action once per press: holding does not repeat, a new press does", () => {
     const { fired, step } = rig();
     step(fakePad(CHROME_PRO));
