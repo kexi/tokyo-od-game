@@ -11,7 +11,12 @@
 //
 // Why a popover for that layer: the ticket and 設定 are modal dialogs in the top layer, which would
 // cover anything in the page; a popover is in the top layer too and is raised above them.
-export function stage() {
+//
+// `cards`: the title and end cards' words (the Japanese teaser's by default). A null `badge` or `tag`
+// takes the game's own from its title screen (data-i18n title.badge / title.tagline, already in the
+// page's language); `credits` adds a line of data credits under the end card's URL; `captionBand`
+// lays a soft shade behind the captions.
+export function stage(cards = {}) {
   const G = window.__game;
   const V3 = G.camera.position.constructor;
   const Quat = G.camera.quaternion.constructor;
@@ -49,20 +54,41 @@ export function stage() {
         border: 1px solid rgba(255,255,255,.35); }
       .tz-logo.small { font-size: 44px; gap: 16px; }
       .tz-logo.small .badge { font-size: 22px; padding: 7px 4px 7px 13px; border-width: 3px; }
+      .tz-logo.latin .badge { letter-spacing: .12em; padding-left: 12px; padding-right: 6px; }
+      #tz-layer.band #tz-cap::before { content: ""; position: absolute; z-index: -1; left: -64px; right: -160px; top: -40px;
+        bottom: -60px; background: radial-gradient(ellipse 75% 100% at 28% 100%, rgba(3,7,14,.6), rgba(3,7,14,.32) 55%, rgba(3,7,14,0) 100%); }
+      .tz-credits { margin-top: 18px; font-size: 17px; font-weight: 600; opacity: .85; letter-spacing: .01em; }
     </style>`,
   );
+  const fromTitle = (key) => document.querySelector(`[data-i18n="${key}"]`)?.textContent.trim() ?? "";
+  const words = {
+    badge: "法令厳守",
+    tag: "東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る",
+    endTag: "ブラウザでそのまま遊べます",
+    url: "https://kexi.github.io/tokyo-od-game/",
+    credits: "",
+    ...cards,
+  };
+  words.badge ??= fromTitle("title.badge");
+  words.tag ??= fromTitle("title.tagline");
+  // The badge's letters spaced as the title screen spaces them (wide for 法令厳守, narrower for Latin).
+  const isLatin = /^[\x20-\x7e]+$/.test(words.badge);
   const layer = document.createElement("div");
   layer.id = "tz-layer";
   layer.popover = "manual";
+  // A soft shade behind the captions (the English cut's longer lines over busy pictures).
+  if (words.captionBand) layer.classList.add("band");
   const logo = (cls = "") =>
-    `<div class="tz-logo ${cls}"><span class="badge">法令厳守</span><span>TOKYO <span class="open">OPEN</span> DRIVE</span></div>`;
+    `<div class="tz-logo ${cls} ${isLatin ? "latin" : ""}"><span class="badge"></span><span>TOKYO <span class="open">OPEN</span> DRIVE</span></div>`;
   layer.innerHTML = `
     <div id="tz-title" style="opacity:0"><div class="tz-band"></div><div class="tz-card">${logo()}
-      <div class="tz-tag">東京都オープンデータ × PLATEAU 3D 都市モデルで 23 区を走る</div></div></div>
+      <div class="tz-tag" data-w="tag"></div></div></div>
     <div id="tz-end" style="opacity:0"><div class="tz-band"></div><div class="tz-card">${logo("small")}
-      <div class="tz-tag">ブラウザでそのまま遊べます</div>
-      <div class="tz-url">https://kexi.github.io/tokyo-od-game/</div></div></div>
+      <div class="tz-tag" data-w="endTag"></div>
+      <div class="tz-url" data-w="url"></div>${words.credits ? '<div class="tz-credits" data-w="credits"></div>' : ""}</div></div>
     <div id="tz-cap" style="opacity:0"><div class="m"></div><div class="s"></div></div>`;
+  for (const el of layer.querySelectorAll(".badge")) el.textContent = words.badge;
+  for (const el of layer.querySelectorAll("[data-w]")) el.textContent = words[el.dataset.w];
   document.documentElement.append(layer);
   layer.showPopover();
   /** Back on top of a dialog opened since (the top layer stacks in the order things were shown). */
@@ -106,6 +132,21 @@ export function stage() {
       "#hud-toolbar, #hud-time, #hud-score, #hud-mission, #phone-button, #toasts, #notice-log, #talk-hint, #autopilot-chip { visibility: hidden !important; }",
     // As drive, with the toasts (what the game says happened).
     talk: "#hud-toolbar, #hud-time, #hud-score, #hud-mission, #phone-button, #notice-log, #talk-hint, #autopilot-chip { visibility: hidden !important; }",
+    // As talk, with the notices (the violation named, who saw it).
+    law: "#hud-toolbar, #hud-time, #hud-score, #hud-mission, #phone-button, #talk-hint, #autopilot-chip { visibility: hidden !important; }",
+    // Seen from outside the car (the chase view): as drive, without the speedometer and the lamps
+    // the chase view puts at the lower left, under the captions.
+    outside:
+      "#hud-toolbar, #hud-time, #hud-score, #hud-mission, #phone-button, #toasts, #notice-log, #talk-hint, #autopilot-chip, #hud-speed, #car-status { visibility: hidden !important; }",
+    // As outside, with the autopilot's chip.
+    auto: "#hud-toolbar, #hud-time, #hud-score, #hud-mission, #phone-button, #toasts, #notice-log, #talk-hint, #hud-speed, #car-status { visibility: hidden !important; }",
+    // A pursuit from outside: the chip, the notices and the police radio, not the how-to-stop guide.
+    pursuit:
+      "#hud-toolbar, #hud-time, #hud-score, #hud-mission, #phone-button, #talk-hint, #autopilot-chip, #hud-speed, #car-status, #stop-guide { visibility: hidden !important; }",
+    // On foot: the hint of who to talk to and the toasts, no car panels.
+    foot: "#hud-toolbar, #hud-time, #hud-score, #hud-mission, #phone-button, #notice-log, #autopilot-chip, #nav, #hud-license, #car-status { visibility: hidden !important; }",
+    // Only the time-of-day and weather buttons (and the data credits).
+    sky: "#hud > :not(#attribution):not(#hud-time) { visibility: hidden !important; }",
     all: "",
   };
   const hudStyle = document.createElement("style");
@@ -183,8 +224,10 @@ export function stage() {
    * default its middle) sits mid-frame, enlarged s times; s 1 with no sel is the plain frame. The
    * body is scaled (the canvas with it, like a lens), and each open modal dialog alike, as the top
    * layer is outside the body. The boxes are measured once, unzoomed, when the zoom is set.
+   * `edges`: the frame kept inside the page (the focus slides off the middle rather than show what
+   * lies past the page's edge, black); off by default, as the Japanese teaser was filmed.
    */
-  tz.zoom = (keys) => {
+  tz.zoom = (keys, { edges = false } = {}) => {
     const targets = () => [document.body, ...document.querySelectorAll("dialog[open]")];
     for (const el of [...targets(), ...(tz.zoomed ?? [])]) {
       el.style.translate = "";
@@ -208,9 +251,11 @@ export function stage() {
       const a = points[i];
       const b = points[Math.min(i + 1, points.length - 1)];
       const k = b === a ? 1 : smooth((t - a.t) / (b.t - a.t));
-      const x = a.x + (b.x - a.x) * k;
-      const y = a.y + (b.y - a.y) * k;
       const s = a.s + (b.s - a.s) * k;
+      const keep = (v, size) =>
+        edges && s >= 1 ? Math.min(size - size / (2 * s), Math.max(size / (2 * s), v)) : v;
+      const x = keep(a.x + (b.x - a.x) * k, W);
+      const y = keep(a.y + (b.y - a.y) * k, H);
       // Scaled about the focus point and moved by its offset from the middle: the point lands
       // mid-frame in every layer alike.
       for (const { el, box } of boxes) {

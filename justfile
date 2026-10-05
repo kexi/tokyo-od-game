@@ -54,6 +54,10 @@ make-ambulance-model:
 make-teaser base="http://localhost:5173/tokyo-od-game/":
     node scripts/teaser/teaser.mjs --base {{ base }} --out out/teaser.mp4
 
+# 英語版の紹介動画 out/teaser.en.mp4（機能を 1 つずつ、2 分以内）を撮影・編集する（開発サーバーか開発ビルドが必要）
+make-teaser-en base="http://localhost:5173/tokyo-od-game/":
+    node scripts/teaser/teaser.mjs --lang en --base {{ base }} --out out/teaser.en.mp4
+
 # 自動運転で走らせて画面と状態を .qa/runs/ に記録する（road-qa スキルの判定用、開発サーバーが必要）
 record-drive minutes="3" every="6" time="day":
     node scripts/qa/drive.mjs --minutes {{ minutes }} --every {{ every }} --time {{ time }}
