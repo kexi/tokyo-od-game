@@ -638,10 +638,6 @@ export const PLAYER_ACCOUNT: SocialAccount = fixed(
   },
 );
 
-/** 「2019年4月からYを利用しています」 */
-export const joinedLabel = (a: SocialAccount) =>
-  `${a.joined.year}年${a.joined.month}月から${SOCIAL_APP_NAME}を利用しています`;
-
 /**
  * The camera a person shoots with, fixed per account: which lens they use (35 mm equivalent),
  * how they hold the phone (16:9 video, 4:3 photo or 9:16 for a story), how much they tilt it, and

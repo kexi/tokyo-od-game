@@ -1,6 +1,11 @@
+import { getLocale } from "../i18n";
+import { st, stCount, type SocialMessageKey } from "../i18n/socialMessages";
 import {
+  followLocale,
   formatCount,
+  joinedLabel,
   jstParts,
+  originalOf,
   postTimestamp,
   relativeTime,
   replyCountOf,
@@ -10,15 +15,10 @@ import {
   type SocialPost,
   type SocialReply,
 } from "./social";
-import {
-  FOLLOWED_LIST,
-  hashString,
-  joinedLabel,
-  type PictureMotif,
-  type SocialAccount,
-} from "./socialAccounts";
+import { FOLLOWED_LIST, hashString, type PictureMotif, type SocialAccount } from "./socialAccounts";
 import { avatarElement, bannerUrl, pictureUrl } from "./socialAvatars";
 import { icon, pathIcon, type IconName } from "./socialIcons";
+import { localize, WARD_NAMES } from "./socialTexts";
 import { SOCIAL_APP_NAME, SOCIAL_BADGE_PATHS, SOCIAL_LOGO_PATH, SOCIAL_THEME } from "./socialTheme";
 
 /**
@@ -31,11 +31,31 @@ import { SOCIAL_APP_NAME, SOCIAL_BADGE_PATHS, SOCIAL_LOGO_PATH, SOCIAL_THEME } f
  *
  * The app keeps its DOM between refreshes: rows are kept by key and only their counts, times and
  * text are updated, so scrolling, images and the like animation survive the once-a-second refresh.
+ *
+ * Its words follow the UI's language (src/i18n/socialMessages.ts), and so do the posts (the feed
+ * writes them again, social.ts followLocale): a switch rebuilds the screen on show, keeping the
+ * scroll. An opened post that was translated says so and can show its Japanese original.
  */
 
 const T = SOCIAL_THEME;
 const HOUR = 3_600_000;
-const READ_ONLY = "このゲームでは読むだけです（投稿はできません）";
+const APP = { app: SOCIAL_APP_NAME };
+const readOnly = () => st("readOnly");
+/** A bio or a place someone wrote, in the UI's language (wards by their names, the rest translated). */
+const ownWords = (text: string) => {
+  const lang = getLocale();
+  const isJapanese = lang === "ja";
+  if (isJapanese) return text;
+  return WARD_NAMES[text]?.[lang] ?? localize(text, lang);
+};
+/**
+ * A template with a slot for an element (a bold name, a link): the text around the slot as text
+ * nodes, so the element sits where each language puts it (「{name}さんが…」, "{name} posted …").
+ */
+function around(template: string, slot: string, el: Node): (Node | string)[] {
+  const [before, after = ""] = template.split(`{${slot}}`);
+  return [before, el, after].filter((part) => part !== "");
+}
 
 type Stats = {
   replies: number;
@@ -67,7 +87,9 @@ type Card = {
   account: SocialAccount;
   at: number;
   text: () => string;
-  tags: readonly string[];
+  tags: () => readonly string[];
+  /** The Japanese it was translated from (with its tags); null when shown as written. */
+  original: () => { text: string; tags: readonly string[] } | null;
   media?: Media;
   quoted?: Card;
   replyingTo?: SocialAccount;
@@ -120,6 +142,13 @@ const toggleIn = (set: Set<string>, key: string) => {
   return !isOn;
 };
 
+/** The original of a text with no tags of its own (replies, quotes, everyday posts). */
+const untagged = (item: SocialReply | SocialChatter) => () => {
+  const text = originalOf(item);
+  return text === null ? null : { text, tags: [] };
+};
+const noTags = () => [];
+
 /** Text with #tags and @handles in the accent colour (all through textContent). */
 function richText(target: HTMLElement, text: string, tags: readonly string[]): void {
   const full = tags.length > 0 ? `${text}\n${tags.join(" ")}` : text;
@@ -149,7 +178,11 @@ function postCard(p: SocialPost): Card {
     account: p.account,
     at: p.postedAt,
     text: () => p.text,
-    tags: p.tags,
+    tags: () => p.tags,
+    original: () => {
+      const text = originalOf(p);
+      return text === null ? null : { text, tags: p.tagsJa };
+    },
     media,
     stats: () => ({
       replies: replyCountOf(p),
@@ -169,7 +202,8 @@ function quoteCard(p: SocialPost, q: SocialReply): Card {
     account: q.account,
     at: q.postedAt,
     text: () => q.text,
-    tags: [],
+    tags: noTags,
+    original: untagged(q),
     quoted: postCard(p),
     stats: () => ({
       replies: Math.round(q.likes * 0.04),
@@ -190,7 +224,8 @@ function replyCard(p: SocialPost, r: SocialReply): Card {
     account: r.account,
     at: r.postedAt,
     text: () => r.text,
-    tags: [],
+    tags: noTags,
+    original: untagged(r),
     replyingTo: parent?.account ?? p.account,
     stats: () => ({
       replies: p.replies.filter((x) => x.replyTo === r.id).length,
@@ -210,7 +245,8 @@ function chatterCard(c: SocialChatter): Card {
     account: c.account,
     at: c.postedAt,
     text: () => c.text,
-    tags: [],
+    tags: noTags,
+    original: untagged(c),
     media: c.picture
       ? { kind: "picture", key: `c${c.id}`, motif: c.picture.motif, hue: c.picture.hue }
       : undefined,
@@ -233,7 +269,8 @@ function chatterReplyCard(c: SocialChatter, r: SocialReply): Card {
     account: r.account,
     at: r.postedAt,
     text: () => r.text,
-    tags: [],
+    tags: noTags,
+    original: untagged(r),
     replyingTo: parent?.account ?? c.account,
     stats: () => ({
       replies: c.replies.filter((x) => x.replyTo === r.id).length,
@@ -287,6 +324,14 @@ function syncList(list: HTMLElement, rows: Map<string, Row>, entries: readonly E
 }
 
 const staticRow = (el: HTMLElement): Row => ({ el, update: () => undefined });
+
+/** The tab bar: page, icon, label. */
+const NAV = [
+  ["home", "home", "nav.home"],
+  ["search", "search", "nav.search"],
+  ["notifications", "bell", "nav.notifications"],
+  ["messages", "mail", "nav.messages"],
+] as const satisfies readonly (readonly [string, IconName, SocialMessageKey])[];
 
 function emptyEntry(title: string, body: string): Entry {
   return {
@@ -343,21 +388,29 @@ export class SocialApp {
       this.clock,
       h("span", "sns-status-icons", icon("signal"), icon("wifi"), icon("battery")),
     );
-    for (const [page, name, label] of [
-      ["home", "home", "ホーム"],
-      ["search", "search", "検索"],
-      ["notifications", "bell", "通知"],
-      ["messages", "mail", "メッセージ"],
-    ] as const) {
+    for (const [page, name, label] of NAV) {
       const b = h("button", "sns-nav-item");
       b.type = "button";
-      b.setAttribute("aria-label", label);
+      b.setAttribute("aria-label", st(label));
       b.addEventListener("click", () => this.tab(page));
       if (page === "notifications") b.append(this.bellBadge);
       this.navButtons.set(page, { b, name });
       this.nav.append(b);
     }
     root.replaceChildren(status, this.stage, this.nav);
+    followLocale(feed, () => this.relabel());
+  }
+
+  /**
+   * After a language switch (the feed has rewritten its posts): the tab bar's labels, and the
+   * screen built again where the player was. Why rebuild rather than relabel each node: every
+   * screen is built from its route in one place, so building it again covers all of its words.
+   */
+  private relabel(): void {
+    for (const [page, , label] of NAV) this.navButtons.get(page)?.b.setAttribute("aria-label", st(label));
+    if (!this.page) return;
+    this.route.scroll = this.page.el.scrollTop;
+    this.show();
   }
 
   /** Opens the app on the home timeline (top, newest order). */
@@ -496,8 +549,8 @@ export class SocialApp {
       bar,
       this.tabs(
         [
-          ["foryou", "おすすめ"],
-          ["following", "フォロー中"],
+          ["foryou", st("home.forYou")],
+          ["following", st("home.following")],
         ],
         route.tab,
         (t) => {
@@ -541,14 +594,14 @@ export class SocialApp {
         pill.replaceChildren(
           icon("up"),
           h("span", "sns-pill-faces", ...faces.map((a) => avatarElement(a, 22))),
-          "ポストしました",
+          st("home.newPosts"),
         );
       }
       const shown = route.order.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const empty =
         route.tab === "following"
-          ? emptyEntry("まだ何もありません", "フォローしている人のポストとリポストがここに表示されます。")
-          : emptyEntry(`${SOCIAL_APP_NAME}へようこそ`, "話題のポストがここに表示されます。");
+          ? emptyEntry(st("home.emptyFollowing"), st("home.emptyFollowingBody"))
+          : emptyEntry(st("home.welcome", APP), st("home.welcomeBody"));
       syncList(list, rows, shown.length > 0 ? shown : [empty], now);
     };
     pill.addEventListener("click", () => {
@@ -587,7 +640,7 @@ export class SocialApp {
   }
 
   private postPage(route: Extract<Route, { page: "post" }>): Page {
-    const el = h("div", "sns-page", h("header", "sns-header", this.subbar("ポスト")));
+    const el = h("div", "sns-page", h("header", "sns-header", this.subbar(st("post.title"))));
     const list = h("div", "sns-list");
     el.append(list);
     const rows = new Map<string, Row>();
@@ -624,7 +677,7 @@ export class SocialApp {
     add("focus", () => this.detailRow(focus, isReply));
     if (t.kind === "post")
       add("engage", () => {
-        const b = h("button", "sns-linkrow", "ポストのエンゲージメントを表示", icon("back"));
+        const b = h("button", "sns-linkrow", st("post.engagementsLink"), icon("back"));
         b.type = "button";
         b.addEventListener("click", () =>
           this.go({ page: "engagements", post: t.post, tab: "quotes", scroll: 0 }),
@@ -646,7 +699,7 @@ export class SocialApp {
         for (const a of answersTo(p, r))
           add(`r${a.id}`, () => this.timelineRow(replyCard(p, a), { threadUp: true }));
       }
-      if (top.length === 0) out.push(emptyEntry("まだ返信はありません", "最初の返信がここに表示されます。"));
+      if (top.length === 0) out.push(emptyEntry(st("post.noReplies"), st("post.noRepliesBody")));
     }
     if (t.kind === "reply")
       for (const a of [...repliesTo(t.post, t.reply.id), ...answersTo(t.post, t.reply)].filter(
@@ -674,18 +727,18 @@ export class SocialApp {
         add(`r${a.id}`, () => this.timelineRow(chatterReplyCard(c, a), { threadUp: true }));
     }
     if (top.length === 0)
-      add("none", () => emptyEntry("まだ返信はありません", "最初の返信がここに表示されます。").make());
+      add("none", () => emptyEntry(st("post.noReplies"), st("post.noRepliesBody")).make());
   }
 
   private engagementsPage(route: Extract<Route, { page: "engagements" }>): Page {
     const header = h(
       "header",
       "sns-header",
-      this.subbar("ポストのエンゲージメント"),
+      this.subbar(st("engage.title")),
       this.tabs(
         [
-          ["quotes", "引用"],
-          ["reposts", "リポスト"],
+          ["quotes", st("engage.quotes")],
+          ["reposts", st("engage.reposts")],
         ],
         route.tab,
         (t) => {
@@ -712,8 +765,8 @@ export class SocialApp {
             : this.repostersOf(p).map((a) => ({ key: a.id, at: 0, score: 0, make: () => this.personRow(a) }));
         const empty =
           route.tab === "quotes"
-            ? emptyEntry("引用はまだありません", "このポストを引用したポストがここに表示されます。")
-            : emptyEntry("リポストはまだありません", "このポストをリポストした人がここに表示されます。");
+            ? emptyEntry(st("engage.noQuotes"), st("engage.noQuotesBody"))
+            : emptyEntry(st("engage.noReposts"), st("engage.noRepostsBody"));
         syncList(list, rows, entries.length > 0 ? entries.toSorted((a, b) => b.at - a.at) : [empty], now);
       },
     };
@@ -735,16 +788,16 @@ export class SocialApp {
     const url = bannerUrl(a);
     if (url) banner.style.backgroundImage = `url("${url}")`;
     if (this.stack.length > 1)
-      banner.append(this.roundButton("back", "戻る", () => this.back(), "sns-float-back"));
+      banner.append(this.roundButton("back", st("back"), () => this.back(), "sns-float-back"));
     const actions = h(
       "div",
       "sns-profile-actions",
-      this.roundButton("more", "その他", () => this.moreSheet(null, a)),
+      this.roundButton("more", st("more"), () => this.moreSheet(null, a)),
     );
     if (isMe) {
-      const edit = h("button", "sns-pill outline", "プロフィールを編集");
+      const edit = h("button", "sns-pill outline", st("profile.edit"));
       edit.type = "button";
-      edit.addEventListener("click", () => this.snack(READ_ONLY));
+      edit.addEventListener("click", () => this.snack(readOnly()));
       actions.append(edit);
     }
     const follow = isMe ? null : this.followButton(a);
@@ -754,31 +807,32 @@ export class SocialApp {
     const nameLine = h("div", "sns-profile-name", a.name);
     if (a.isVouched) nameLine.append(this.badge());
     const meta = h("div", "sns-profile-meta");
-    if (a.location) meta.append(h("span", "", icon("pin"), a.location));
+    if (a.location) meta.append(h("span", "", icon("pin"), ownWords(a.location)));
     meta.append(h("span", "", icon("calendar"), joinedLabel(a)));
     const following = h("b");
     const followers = h("b");
+    const followersLabel = h("span");
     const counts = h(
       "div",
       "sns-profile-counts",
-      h("span", "", following, " フォロー中"),
-      h("span", "", followers, " フォロワー"),
+      h("span", "", following, " ", st("profile.following")),
+      h("span", "", followers, " ", followersLabel),
     );
     const info = h(
       "div",
       "sns-profile-info",
       nameLine,
       h("div", "sns-handle", `@${a.handle}`),
-      ...(a.bio ? [h("div", "sns-profile-bio", a.bio)] : []),
+      ...(a.bio ? [h("div", "sns-profile-bio", ownWords(a.bio))] : []),
       meta,
       counts,
     );
     const tabItems: [ProfileTab, string][] = [
-      ["posts", "ポスト"],
-      ["replies", "返信"],
-      ["media", "メディア"],
+      ["posts", st("profile.posts")],
+      ["replies", st("profile.replies")],
+      ["media", st("profile.media")],
     ];
-    if (isMe) tabItems.push(["likes", "いいね"]);
+    if (isMe) tabItems.push(["likes", st("profile.likes")]);
     const tabs = this.tabs(tabItems, route.tab, (t) => {
       route.tab = t;
       route.scroll = this.page?.el.scrollTop ?? 0;
@@ -795,16 +849,17 @@ export class SocialApp {
       sync: (now) => {
         setText(following, formatCount(a.following + (isMe ? this.followed.size - FOLLOWED_LIST.length : 0)));
         setText(followers, formatCount(a.followers));
+        setText(followersLabel, stCount("profile.followers", a.followers));
         follow?.update();
         const entries = this.profileEntries(a, route.tab).toSorted((x, y) => y.at - x.at);
         const empty = {
           posts: emptyEntry(
-            isMe ? "まだポストしていません" : `@${a.handle}さんはまだポストしていません`,
-            "ポストすると、ここに表示されます。",
+            isMe ? st("profile.noPostsMe") : st("profile.noPosts", { handle: a.handle }),
+            st("profile.noPostsBody"),
           ),
-          replies: emptyEntry("まだ返信はありません", "返信すると、ここに表示されます。"),
-          media: emptyEntry("メディアはまだありません", "写真や動画を含むポストがここに表示されます。"),
-          likes: emptyEntry("まだいいねしていません", "ポストのハートをタップすると、ここに表示されます。"),
+          replies: emptyEntry(st("profile.noReplies"), st("profile.noRepliesBody")),
+          media: emptyEntry(st("profile.noMedia"), st("profile.noMediaBody")),
+          likes: emptyEntry(st("profile.noLikes"), st("profile.noLikesBody")),
         }[route.tab];
         syncList(list, rows, entries.length > 0 ? entries : [empty], now);
       },
@@ -857,12 +912,12 @@ export class SocialApp {
     const header = h(
       "header",
       "sns-header",
-      this.rootbar("通知"),
+      this.rootbar(st("notes.title")),
       this.tabs(
         [
-          ["all", "すべて"],
-          ["vouched", "認証済み"],
-          ["mentions", "メンション"],
+          ["all", st("notes.all")],
+          ["vouched", st("notes.vouched")],
+          ["mentions", st("notes.mentions")],
         ],
         route.tab,
         (t) => {
@@ -891,18 +946,9 @@ export class SocialApp {
           }))
           .toSorted((a, b) => b.at - a.at);
         const empty = {
-          all: emptyEntry(
-            "まだ通知はありません",
-            "いいね、リポスト、フォローなどの反応がここに表示されます。",
-          ),
-          vouched: emptyEntry(
-            "まだ何もありません",
-            "バッジのついたアカウントからの通知がここに表示されます。",
-          ),
-          mentions: emptyEntry(
-            "まだメンションはありません",
-            "誰かがあなたにメンションすると、ここに表示されます。",
-          ),
+          all: emptyEntry(st("notes.empty"), st("notes.emptyBody")),
+          vouched: emptyEntry(st("notes.emptyVouched"), st("notes.emptyVouchedBody")),
+          mentions: emptyEntry(st("notes.emptyMentions"), st("notes.emptyMentionsBody")),
         }[route.tab];
         syncList(list, rows, entries.length > 0 ? entries : [empty], now);
       },
@@ -917,16 +963,18 @@ export class SocialApp {
   }
 
   private searchPage(route: Extract<Route, { page: "search" }>, overlays: HTMLElement[]): Page {
-    const box = h("div", "sns-search", icon("search"), h("span", "", `${SOCIAL_APP_NAME}を検索`));
-    box.addEventListener("click", () => this.snack(READ_ONLY));
+    const box = h("div", "sns-search", icon("search"), h("span", "", st("search.placeholder", APP)));
+    box.addEventListener("click", () => this.snack(readOnly()));
     const bar = h(
       "div",
       "sns-topbar",
       this.avatarButton(this.feed.player, 32),
       box,
-      this.roundButton("gear", "設定", () => this.snack(READ_ONLY)),
+      this.roundButton("gear", st("settings"), () => this.snack(readOnly())),
     );
-    const names = ["おすすめ", "トレンド", "ニュース", "スポーツ", "エンタメ"];
+    const names = (
+      ["search.forYou", "search.trending", "search.news", "search.sports", "search.entertainment"] as const
+    ).map((key) => st(key));
     const tabs = this.tabs(
       names.map((n, i) => [String(i), n] as [string, string]),
       String(route.tab),
@@ -955,14 +1003,14 @@ export class SocialApp {
               "div",
               "sns-trend",
               h("div", "sns-trend-text", meta, h("div", "sns-trend-name", t.name), count),
-              this.roundButton("more", "その他", () => this.snack("このトレンドは今後表示されません")),
+              this.roundButton("more", st("more"), () => this.snack(st("search.hideTrend"))),
             );
             return {
               el: row,
               update: () => {
                 const current = this.trends(this.now()).find((x) => x.name === t.name) ?? t;
                 setText(meta, `${i + 1} · ${current.topic}`);
-                setText(count, `${formatCount(current.count)}件のポスト`);
+                setText(count, stCount("search.posts", current.count, { count: formatCount(current.count) }));
               },
             };
           },
@@ -979,33 +1027,38 @@ export class SocialApp {
       for (const tag of p.tags)
         counts.set(tag, (counts.get(tag) ?? 0) + Math.round(p.reposts * 2 + p.likes * 0.1) + 1);
     const hourSeed = Math.floor(now / HOUR);
-    const usual: [string, string][] = [
-      ["首都高", "交通 · トレンド"],
-      ["#今日のランチ", "日本のトレンド"],
-      ["渋滞", "交通 · トレンド"],
-      ["#猫のいる生活", "日本のトレンド"],
-      ["ラーメン", "グルメ · トレンド"],
-      ["#東京", "日本のトレンド"],
-      ["夕焼け", "日本のトレンド"],
+    const usual: [SocialMessageKey, SocialMessageKey][] = [
+      ["trend.expressway", "trend.traffic"],
+      ["trend.lunch", "trend.japan"],
+      ["trend.jam", "trend.traffic"],
+      ["trend.cats", "trend.japan"],
+      ["trend.ramen", "trend.food"],
+      ["trend.tokyo", "trend.japan"],
+      ["trend.sunset", "trend.japan"],
     ];
-    const list = [...counts].map(([name, count]) => ({ name, topic: "あなたの近くのトレンド", count }));
+    const list = [...counts].map(([name, count]) => ({ name, topic: st("trend.nearYou"), count }));
+    // Seeded by the key, so a trend's count stays the same in every language.
     for (const [name, topic] of usual)
-      list.push({ name, topic, count: 800 + (hashString(`${name}/${hourSeed}`) % 30000) });
+      list.push({
+        name: st(name),
+        topic: st(topic),
+        count: 800 + (hashString(`${name}/${hourSeed}`) % 30000),
+      });
     return list.toSorted((a, b) => b.count - a.count).slice(0, 12);
   }
 
   private messagesPage(): Page {
-    const write = h("button", "sns-pill accent", "メッセージを書く");
+    const write = h("button", "sns-pill accent", st("messages.write"));
     write.type = "button";
-    write.addEventListener("click", () => this.snack(READ_ONLY));
+    write.addEventListener("click", () => this.snack(readOnly()));
     const empty = h(
       "div",
       "sns-empty",
-      h("h3", "", "受信トレイへようこそ！"),
-      h("p", "", `${SOCIAL_APP_NAME}の利用者同士で、ほかの人には見えない会話ができます。`),
+      h("h3", "", st("messages.welcome")),
+      h("p", "", st("messages.welcomeBody", APP)),
       write,
     );
-    const el = h("div", "sns-page", h("header", "sns-header", this.rootbar("メッセージ")), empty);
+    const el = h("div", "sns-page", h("header", "sns-header", this.rootbar(st("messages.title"))), empty);
     return { el, sync: () => undefined };
   }
 
@@ -1036,7 +1089,7 @@ export class SocialApp {
         const t = card.text();
         if (t !== shownText) {
           shownText = t;
-          richText(text, t, card.tags);
+          richText(text, t, card.tags());
         }
         row.classList.toggle("thread-down", opts.threadDown?.() ?? false);
         media?.update(now);
@@ -1048,7 +1101,8 @@ export class SocialApp {
 
   /**
    * An opened post: bigger text, the full time and views (午後11:30 · 2026年10月5日 · 12.3万 件の
-   * 表示), the counts in their own row (リポスト, 引用, いいね, ブックマーク), then the actions.
+   * 表示), the counts in their own row (リポスト, 引用, いいね, ブックマーク), then the actions. A
+   * translated post says so under its text, with a button that shows the Japanese original.
    */
   private detailRow(card: Card, threadUp: boolean): Row {
     const wrap = h("article", "sns-detail");
@@ -1064,73 +1118,91 @@ export class SocialApp {
       this.avatarButton(card.account, 40),
       h("div", "sns-detail-names", nameLine, h("div", "sns-handle", `@${card.account.handle}`)),
       ...(follow ? [follow.el] : []),
-      this.roundButton("more", "その他", () => this.moreSheet(card, card.account)),
+      this.roundButton("more", st("more"), () => this.moreSheet(card, card.account)),
     );
     wrap.append(who);
     if (card.replyingTo) wrap.append(this.replyingLine(card.replyingTo));
     const text = h("div", "sns-text big");
     wrap.append(text);
+    // 「日本語から翻訳 · 原文を表示」: hidden while the text is shown as written.
+    let showsOriginal = false;
+    let shownText: string | null = null;
+    const toggle = h("button", "sns-translated-toggle");
+    toggle.type = "button";
+    const translated = h("div", "sns-translated", h("span", "", st("post.translatedFrom")), " · ", toggle);
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showsOriginal = !showsOriginal;
+      shownText = null;
+      update(this.now());
+    });
+    wrap.append(translated);
     const media = card.media ? this.mediaBox(card, card.media, true) : null;
     if (media) wrap.append(media.el);
     const quote = card.quoted ? this.quoteBox(card.quoted) : null;
     if (quote) wrap.append(quote.el);
     const views = h("b");
-    wrap.append(h("div", "sns-detail-meta", postTimestamp(card.at), " · ", views, " 件の表示"));
+    const viewsLabel = h("span");
+    wrap.append(h("div", "sns-detail-meta", postTimestamp(card.at), " · ", views, " ", viewsLabel));
     const stats = h("div", "sns-detail-stats");
     const t0 = card.target;
     const engage =
       t0.kind === "post"
         ? (tab: "quotes" | "reposts") => this.go({ page: "engagements", post: t0.post, tab, scroll: 0 })
         : null;
-    const stat = (label: string, tab?: "quotes" | "reposts") => {
+    const stat = (key: SocialMessageKey, tab?: "quotes" | "reposts") => {
       const n = h("b");
-      const el = h("span", "", n, ` 件の${label}`);
+      const label = h("span");
+      const el = h("span", "", n, " ", label);
       if (tab && engage) {
         el.classList.add("link");
         el.addEventListener("click", () => engage(tab));
       }
-      return { el, n };
+      return { el, n, label, key };
     };
     const statRows = {
-      reposts: stat("リポスト", "reposts"),
-      quotes: stat("引用", "quotes"),
-      likes: stat("いいね"),
-      bookmarks: stat("ブックマーク"),
+      reposts: stat("count.reposts", "reposts"),
+      quotes: stat("count.quotes", "quotes"),
+      likes: stat("count.likes"),
+      bookmarks: stat("count.bookmarks"),
     };
     stats.append(...Object.values(statRows).map((x) => x.el));
     wrap.append(stats);
     const actions = this.actionBar(card, "detail");
     wrap.append(actions.el);
-    let shownText: string | null = null;
-    return {
-      el: wrap,
-      update: (now) => {
-        const t = card.text();
-        if (t !== shownText) {
-          shownText = t;
-          richText(text, t, card.tags);
-        }
-        const s = card.stats();
-        setText(views, formatCount(s.views));
-        const own = {
-          reposts: s.reposts + (this.reposted.has(card.key) ? 1 : 0),
-          quotes: s.quotes,
-          likes: s.likes + (this.liked.has(card.key) ? 1 : 0),
-          bookmarks: s.bookmarks + (this.bookmarked.has(card.key) ? 1 : 0),
-        };
-        // Like the app, a count of nothing is left out (and the row with it).
-        for (const [k, row] of Object.entries(statRows)) {
-          const n = own[k as keyof typeof own];
-          row.el.hidden = n === 0;
-          setText(row.n, formatCount(n));
-        }
-        stats.hidden = Object.values(own).every((n) => n === 0);
-        media?.update(now);
-        quote?.update(now);
-        follow?.update();
-        actions.update();
-      },
+    const update = (now: number) => {
+      const original = card.original();
+      const isTranslated = original !== null;
+      translated.hidden = !isTranslated;
+      const showing = showsOriginal && original ? original : { text: card.text(), tags: card.tags() };
+      if (showing.text !== shownText) {
+        shownText = showing.text;
+        richText(text, showing.text, showing.tags);
+        setText(toggle, st(showsOriginal ? "post.showTranslation" : "post.showOriginal"));
+      }
+      const s = card.stats();
+      setText(views, formatCount(s.views));
+      setText(viewsLabel, stCount("count.views", s.views));
+      const own = {
+        reposts: s.reposts + (this.reposted.has(card.key) ? 1 : 0),
+        quotes: s.quotes,
+        likes: s.likes + (this.liked.has(card.key) ? 1 : 0),
+        bookmarks: s.bookmarks + (this.bookmarked.has(card.key) ? 1 : 0),
+      };
+      // Like the app, a count of nothing is left out (and the row with it).
+      for (const [k, row] of Object.entries(statRows)) {
+        const n = own[k as keyof typeof own];
+        row.el.hidden = n === 0;
+        setText(row.n, formatCount(n));
+        setText(row.label, stCount(row.key, n));
+      }
+      stats.hidden = Object.values(own).every((n) => n === 0);
+      media?.update(now);
+      quote?.update(now);
+      follow?.update();
+      actions.update();
     };
+    return { el: wrap, update };
   }
 
   /** Name, badge, @handle · time and the ⋯ of a timeline row. */
@@ -1147,7 +1219,7 @@ export class SocialApp {
       h("span", "sns-handle", `@${a.handle}`),
       h("span", "sns-dot", "·"),
       time,
-      this.roundButton("more", "その他", () => this.moreSheet(card, a), "sns-more"),
+      this.roundButton("more", st("more"), () => this.moreSheet(card, a), "sns-more"),
     );
     return line;
   }
@@ -1179,7 +1251,7 @@ export class SocialApp {
         const t = card.text();
         if (t !== shownText) {
           shownText = t;
-          richText(text, t, card.tags);
+          richText(text, t, card.tags());
         }
         media?.update(now);
       },
@@ -1198,12 +1270,12 @@ export class SocialApp {
         this.viewer(card);
       });
     if (media.kind === "picture") {
-      img.alt = "画像";
+      img.alt = st("media.image");
       img.src = pictureUrl(media.key, media.motif, media.hue);
       box.style.aspectRatio = "16 / 9";
       return staticRow(box);
     }
-    img.alt = media.still ? "画像" : "投稿された動画";
+    img.alt = st(media.still ? "media.image" : "media.video");
     box.classList.add("clip");
     // A photo post shows its still as a picture: no ▶ and no length.
     if (!media.still)
@@ -1272,9 +1344,9 @@ export class SocialApp {
         mark.ic.replaceChildren(icon("bookmark", isMarked));
       }
     };
-    const reply = make("reply", "reply", "返信", () => this.openCard(card));
-    const repost = make("repost", "repost", "リポスト", () => this.repostSheet(card, update));
-    const like = make("like", "like", "いいね", () => {
+    const reply = make("reply", "reply", st("action.reply"), () => this.openCard(card));
+    const repost = make("repost", "repost", st("action.repost"), () => this.repostSheet(card, update));
+    const like = make("like", "like", st("action.like"), () => {
       const isOn = toggleIn(this.liked, card.key);
       if (isOn) this.likedCards.set(card.key, card);
       like.b.classList.remove("pop");
@@ -1286,13 +1358,13 @@ export class SocialApp {
     const views =
       variant === "detail"
         ? null
-        : make("views", "views", "表示", () => this.snack("表示回数: このポストが見られた回数です"));
-    const mark = make("bookmark", "bookmark", "ブックマーク", () => {
+        : make("views", "views", st("action.views"), () => this.snack(st("snack.views")));
+    const mark = make("bookmark", "bookmark", st("action.bookmark"), () => {
       const isOn = toggleIn(this.bookmarked, card.key);
-      this.snack(isOn ? "ブックマークに追加しました" : "ブックマークから削除しました");
+      this.snack(st(isOn ? "snack.bookmarked" : "snack.unbookmarked"));
       update();
     });
-    const share = make("share", "share", "共有", () => this.snack("リンクをコピーしました"));
+    const share = make("share", "share", st("action.share"), () => this.snack(st("snack.linkCopied")));
     bar.append(
       reply.b,
       repost.b,
@@ -1325,21 +1397,24 @@ export class SocialApp {
     const who = h("b", "", this.actorOf(e).name);
     const text = h("div", "sns-note-text");
     const preview = h("div", "sns-note-preview");
+    // The name goes where each language puts it ({name} in the message).
+    const say = (key: SocialMessageKey, params?: Record<string, string>) =>
+      text.append(...around(st(key, params), "name", who));
     if (e.kind === "trend") {
-      text.append(who, "さんのポストがあなたの近くで話題になっています");
+      say("notes.trend");
       preview.textContent = e.post.text;
     } else if (e.kind === "milestone") {
-      text.append(who, `さんのポストのリポストが${formatCount(e.count)}件を超えました`);
+      say("notes.milestone", { count: formatCount(e.count) });
       preview.textContent = e.post.text;
     } else if (e.kind === "news") {
-      text.append(who, "さんが話題のポストを引用しました");
+      say("notes.news");
       preview.textContent = e.quote.text;
     } else if (e.kind === "praise") {
-      text.append(who, "さんがあなたの運転についてポストしました");
+      say("notes.praise");
       preview.textContent = e.chatter.text;
     } else {
-      text.append(who, "さんにフォローされました");
-      preview.textContent = e.account.bio;
+      say("notes.follow");
+      preview.textContent = e.account.bio ? ownWords(e.account.bio) : "";
     }
     const time = h("span", "sns-time");
     const row = h(
@@ -1377,7 +1452,7 @@ export class SocialApp {
         "sns-person-body",
         name,
         h("div", "sns-handle", `@${a.handle}`),
-        ...(a.bio ? [h("div", "sns-person-bio", a.bio)] : []),
+        ...(a.bio ? [h("div", "sns-person-bio", ownWords(a.bio))] : []),
       ),
       ...(follow ? [follow.el] : []),
     );
@@ -1386,16 +1461,16 @@ export class SocialApp {
   }
 
   private composer(): Row {
-    const send = h("button", "sns-pill accent dim", "返信");
+    const send = h("button", "sns-pill accent dim", st("composer.send"));
     send.type = "button";
     const row = h(
       "div",
       "sns-composer",
       avatarElement(this.feed.player, 32),
-      h("span", "sns-composer-input", "返信をポスト"),
+      h("span", "sns-composer-input", st("composer.placeholder")),
       send,
     );
-    row.addEventListener("click", () => this.snack(READ_ONLY));
+    row.addEventListener("click", () => this.snack(readOnly()));
     return staticRow(row);
   }
 
@@ -1416,12 +1491,12 @@ export class SocialApp {
       d: SOCIAL_BADGE_PATHS.tick,
       stroke: T.background,
     });
-    svg.setAttribute("aria-label", `${SOCIAL_APP_NAME}が確認したアカウント`);
+    svg.setAttribute("aria-label", st("badge", APP));
     return svg;
   }
 
   private contextLine(a: SocialAccount): HTMLElement {
-    const label = h("span", "sns-context-label", `${a.name}さんがリポストしました`);
+    const label = h("span", "sns-context-label", st("reposted", { name: a.name }));
     label.addEventListener("click", (e) => {
       e.stopPropagation();
       this.openProfile(a);
@@ -1435,7 +1510,7 @@ export class SocialApp {
       e.stopPropagation();
       this.openProfile(a);
     });
-    return h("div", "sns-replying", "返信先: ", link, "さん");
+    return h("div", "sns-replying", ...around(st("replyingTo"), "handle", link));
   }
 
   private followButton(a: SocialAccount): { el: HTMLButtonElement; update: () => void } {
@@ -1444,7 +1519,7 @@ export class SocialApp {
     let isHover = false;
     const update = () => {
       const isOn = this.followed.has(a.id);
-      setText(b, isOn ? (isHover ? "フォロー解除" : "フォロー中") : "フォロー");
+      setText(b, st(isOn ? (isHover ? "follow.unfollow" : "follow.following") : "follow.follow"));
       b.classList.toggle("light", !isOn);
       b.classList.toggle("outline", isOn);
       b.classList.toggle("danger", isOn && isHover);
@@ -1490,7 +1565,7 @@ export class SocialApp {
       "sns-topbar",
       this.avatarButton(this.feed.player, 32),
       h("div", "sns-title", title),
-      this.roundButton("gear", "設定", () => this.snack(READ_ONLY)),
+      this.roundButton("gear", st("settings"), () => this.snack(readOnly())),
     );
   }
 
@@ -1499,7 +1574,7 @@ export class SocialApp {
     return h(
       "div",
       "sns-topbar sub",
-      this.roundButton("back", "戻る", () => this.back()),
+      this.roundButton("back", st("back"), () => this.back()),
       h("div", "sns-title", title),
     );
   }
@@ -1520,8 +1595,8 @@ export class SocialApp {
   private fab(): HTMLElement {
     const b = h("button", "sns-fab", icon("plus"));
     b.type = "button";
-    b.setAttribute("aria-label", "ポストする");
-    b.addEventListener("click", () => this.snack(READ_ONLY));
+    b.setAttribute("aria-label", st("compose"));
+    b.addEventListener("click", () => this.snack(readOnly()));
     return b;
   }
 
@@ -1554,7 +1629,7 @@ export class SocialApp {
       });
       panel.append(b);
     }
-    const cancel = h("button", "sns-sheet-cancel", "キャンセル");
+    const cancel = h("button", "sns-sheet-cancel", st("sheet.cancel"));
     cancel.type = "button";
     panel.append(cancel);
     backdrop.append(panel);
@@ -1570,13 +1645,13 @@ export class SocialApp {
     this.sheet([
       {
         icon: "repost",
-        label: isOn ? "リポストを取り消す" : "リポスト",
+        label: st(isOn ? "sheet.undoRepost" : "sheet.repost"),
         onPick: () => {
           toggleIn(this.reposted, card.key);
           update();
         },
       },
-      { icon: "pen", label: "引用", onPick: () => this.snack(READ_ONLY) },
+      { icon: "pen", label: st("sheet.quote"), onPick: () => this.snack(readOnly()) },
     ]);
   }
 
@@ -1587,17 +1662,17 @@ export class SocialApp {
     if (card)
       items.push({
         icon: "close",
-        label: "このポストに興味がない",
+        label: st("sheet.notInterested"),
         onPick: () => {
           this.hiddenKeys.add(card.key);
-          this.snack("このポストは今後表示されません");
+          this.snack(st("sheet.hidden"));
           this.refresh();
         },
       });
     if (!isMe)
       items.push({
         icon: "person",
-        label: isFollowing ? `@${a.handle}さんのフォローを解除` : `@${a.handle}さんをフォロー`,
+        label: st(isFollowing ? "sheet.unfollow" : "sheet.follow", { handle: a.handle }),
         onPick: () => {
           toggleIn(this.followed, a.id);
           this.refresh();
@@ -1606,11 +1681,11 @@ export class SocialApp {
     if (card)
       items.push({
         icon: "star",
-        label: "ポストを報告",
+        label: st("sheet.report"),
         danger: true,
-        onPick: () => this.snack("報告を受け付けました。ご協力ありがとうございます"),
+        onPick: () => this.snack(st("sheet.reported")),
       });
-    if (items.length === 0) return this.snack(READ_ONLY);
+    if (items.length === 0) return this.snack(readOnly());
     this.sheet(items);
   }
 
@@ -1625,9 +1700,9 @@ export class SocialApp {
     if (isPlayed) return;
     const v = h("div", "sns-viewer");
     const img = h("img");
-    img.alt = isVideo ? "投稿された動画" : "画像";
+    img.alt = st(isVideo ? "media.video" : "media.image");
     img.src = media.kind === "clip" ? (media.src() ?? "") : pictureUrl(media.key, media.motif, media.hue);
-    const close = this.roundButton("close", "閉じる", () => v.remove(), "sns-viewer-close");
+    const close = this.roundButton("close", st("close"), () => v.remove(), "sns-viewer-close");
     v.append(close, img);
     if (isVideo) {
       const bar = h("div", "sns-viewer-bar", h("i"));

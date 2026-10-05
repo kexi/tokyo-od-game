@@ -119,6 +119,14 @@
     --sns-zoom: 1;
   }
 }
+/* 中文: Simplified glyphs in Y too. style.css switches only body's font, and Y has a font of its own
+   (Noto Sans JP), which would draw the Chinese posts in Japanese forms mixed with fallback ones.
+   PingFang SC and Hiragino Sans GB also carry kana, so the Japanese names stay readable. */
+html:lang(zh) .sns {
+  font-family:
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Noto Sans JP",
+    system-ui, sans-serif;
+}
 .sns button {
   font: inherit;
   color: inherit;
@@ -669,6 +677,20 @@
 }
 .sns-detail .sns-replying {
   margin-top: 12px;
+}
+/* 「日本語から翻訳 · 原文を表示」 under a translated post: on its own screen only, as the apps do
+   (the timeline stays clean). `.sns` in the selector: `.sns button` would otherwise win the colour. */
+.sns-translated {
+  margin-top: 8px;
+  color: var(--sns-sub);
+  font-size: 13px;
+  line-height: 16px;
+}
+.sns .sns-translated-toggle {
+  color: var(--sns-accent);
+}
+.sns .sns-translated-toggle:hover {
+  text-decoration: underline;
 }
 .sns-detail-meta {
   padding: 16px 0;

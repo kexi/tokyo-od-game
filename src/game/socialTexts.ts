@@ -1,4 +1,7 @@
+import type { Locale } from "../i18n";
 import type { FollowedKey, Persona, PictureMotif } from "./socialAccounts";
+import { SOCIAL_EN } from "./socialTextsEn";
+import { SOCIAL_ZH } from "./socialTextsZh";
 import type { ViolationKind } from "./traffic";
 import { CHANNELS, PROGRAMME_TITLE } from "./tvRules";
 
@@ -9,24 +12,68 @@ import { CHANNELS, PROGRAMME_TITLE } from "./tvRules";
  * fills; nothing here decides when or how often.
  *
  * The Japanese text is the source. A translation is a table from that source text to the text in
- * another language (gettext style: the source is the key), so English or Chinese can be added to
- * TRANSLATIONS without touching social.ts. Slots in braces ({ward}, {kmh} …) stay as they are in a
- * translation; social.ts fills them after translating.
+ * another language (gettext style: the source is the key): TRANSLATIONS.en (socialTextsEn.ts) and
+ * .zh (socialTextsZh.ts). Slots in braces ({ward}, {kmh} …) stay as they are in a translation;
+ * social.ts fills them after translating, with the slot's word in the same language (WARD_NAMES,
+ * LANDMARK_WORDS, KIND_WORDS, TIME_WORDS_IN, or the word's own entry in TRANSLATIONS).
  *
  * Rules for the texts: no real brands, shops, people or organisations (places, streets, rivers,
  * parks and the game's own landmarks are fine), no politics, nothing that mocks a group of people.
  * The tests check a list of banned words.
  */
 
-export type SocialLang = "ja" | "en" | "zh";
-/** Translations keyed by the Japanese source text. Empty for now: the feed is written in Japanese. */
+/** The UI's languages (src/i18n): the feed is shown in the one the player chose. */
+export type SocialLang = Locale;
+/**
+ * Translations keyed by the Japanese source text: posts, replies, hashtags, the slot words and
+ * the bios. Why separate files: about 1,050 pairs per language would bury the Japanese source
+ * these tables follow.
+ */
 export const TRANSLATIONS: Record<Exclude<SocialLang, "ja">, Readonly<Record<string, string>>> = {
-  en: {},
-  zh: {},
+  en: SOCIAL_EN,
+  zh: SOCIAL_ZH,
 };
-/** The text in `lang` (the Japanese source when there is no translation yet). */
-export const localize = (ja: string, lang: SocialLang): string =>
-  lang === "ja" ? ja : (TRANSLATIONS[lang][ja] ?? ja);
+
+/**
+ * A source text in `lang`, and the language it ended up in (its slots are filled in that one).
+ * A visitor's own post or answer (English, Chinese) stays as they wrote it in every language;
+ * Japanese without a translation stays Japanese.
+ */
+export function textIn(source: string, lang: SocialLang): { text: string; lang: SocialLang } {
+  const own = languageOf(source);
+  const isAsWritten = own !== "ja" || lang === "ja";
+  if (isAsWritten) return { text: source, lang: own };
+  const translated = TRANSLATIONS[lang][source];
+  return translated ? { text: translated, lang } : { text: source, lang: "ja" };
+}
+/** The text in `lang` (the source when there is no translation). */
+export const localize = (source: string, lang: SocialLang): string => textIn(source, lang).text;
+
+const KANA = /[\p{sc=Hiragana}\p{sc=Katakana}]/u;
+let asWritten: ReadonlyMap<string, SocialLang> | null = null;
+/**
+ * The language a source text is written in: Japanese, except the visitors' own posts, their
+ * answers and the English or Chinese replies people leave them. How: one pass over those tables,
+ * kept after the first call (CHATTER is defined further down).
+ */
+export function languageOf(source: string): SocialLang {
+  if (!asWritten) {
+    const map = new Map<string, SocialLang>();
+    const VISITORS: Partial<Record<ChatterVoice, SocialLang>> = { touristEn: "en", touristZh: "zh" };
+    for (const t of CHATTER) {
+      const lang = VISITORS[t.who];
+      if (lang) map.set(t.text, lang);
+    }
+    for (const lang of ["en", "zh"] as const) for (const text of CHATTER_ANSWERS[lang]) map.set(text, lang);
+    // Replies to the visitors: in their language unless written in Japanese (with kana).
+    for (const text of [...CHATTER_REPLIES.touristEn, ...CHATTER_REPLIES.touristZh]) {
+      if (KANA.test(text)) continue;
+      map.set(text, /[A-Za-z]/.test(text) ? "en" : "zh");
+    }
+    asWritten = map;
+  }
+  return asWritten.get(source) ?? "ja";
+}
 
 // ---------- posts about the player's driving ----------
 
@@ -650,9 +697,53 @@ export const ANSWERS: Record<ReplyGroup | "common", readonly LineLike[]> = {
 export const NEWS_QUOTE =
   "【話題】{place}で撮影された「{what}」の車の{media}が拡散しています。警察も情報を把握しているとみられます";
 export const MEDIA_WORDS: Record<PostMedia, string> = { video: "動画", photo: "写真", text: "投稿" };
-/** When it happened, as people write it ({h} the hour). */
+/**
+ * When it happened, as people write it ({h} the hour; 24-hour in Japanese and Chinese, "11am" in
+ * English, with "noon" and "midnight").
+ */
 export const TIME_WORDS = { about: "{h}時ごろ", half: "{h}時半ごろ", before: "{h}時前" } as const;
+export const TIME_WORDS_IN: Record<Exclude<SocialLang, "ja">, Record<keyof typeof TIME_WORDS, string>> = {
+  en: { about: "around {h}", half: "around {h}", before: "just before {h}" },
+  zh: { about: "{h}点左右", half: "{h}点半左右", before: "快{h}点的时候" },
+};
 export const WEEKDAY_WORDS = ["日曜", "月曜", "火曜", "水曜", "木曜", "金曜", "土曜"] as const;
+export const WEEKDAY_WORDS_IN: Record<Exclude<SocialLang, "ja">, readonly string[]> = {
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+};
+
+/**
+ * The offence as the news account names it in English and Chinese ({what}); Japanese uses the
+ * record's own label. By kind, so a label's detail in brackets never needs translating.
+ */
+export const KIND_WORDS: Record<ViolationKind, Record<Exclude<SocialLang, "ja">, string>> = {
+  signal: { en: "running a red light", zh: "闯红灯" },
+  stopSign: { en: "ignoring a stop sign", zh: "不按规定停车" },
+  noEntry: { en: "wrong way down a one-way street", zh: "单行道逆行" },
+  turnBan: { en: "illegal turn", zh: "违反指定行驶方向" },
+  closedRoad: { en: "driving on a closed road", zh: "驶入禁行道路" },
+  uturn: { en: "illegal U-turn", zh: "违规掉头" },
+  slow: { en: "not slowing down where required", zh: "未按规定慢行" },
+  laneChange: { en: "illegal lane change", zh: "违规变道" },
+  laneUse: { en: "hogging the passing lane", zh: "违规占用超车道" },
+  laneDirection: { en: "wrong lane for the turn", zh: "不按导向车道行驶" },
+  phoneDanger: { en: "phone use that caused danger", zh: "开车玩手机引发危险" },
+  signalOmission: { en: "not signaling", zh: "未打转向灯" },
+  noLights: { en: "driving without lights", zh: "夜间未开车灯" },
+  hornMisuse: { en: "needless honking", zh: "乱按喇叭" },
+  seatBelt: { en: "no seat belt", zh: "未系安全带" },
+  keepLeft: { en: "driving on the wrong side", zh: "逆向行驶" },
+  speed: { en: "speeding", zh: "超速" },
+  pedestrianCrossing: { en: "not stopping for pedestrians", zh: "不礼让行人" },
+  safeDriving: { en: "careless driving", zh: "违反安全驾驶义务" },
+  injury: { en: "a crash with injuries", zh: "致人受伤的事故" },
+  hitAndRun: { en: "hit-and-run", zh: "肇事逃逸" },
+  unlicensed: { en: "unlicensed driving", zh: "无证驾驶" },
+  ignoredStop: { en: "fleeing the police", zh: "拒不停车逃避警察" },
+  phone: { en: "using a phone while driving", zh: "开车玩手机" },
+  parking: { en: "illegal parking", zh: "违章停车" },
+  parkingNoStop: { en: "parking where stopping is banned", zh: "在禁停区域停车" },
+};
 
 // ---------- everyday posts (chatter) ----------
 
@@ -1685,36 +1776,49 @@ export const WORDS: Record<"lunch" | "snack" | "dinner" | "flower" | "color" | "
   car: [word("コンパクトカー"), word("ハッチバック"), word("乗用車")],
 };
 
-/** The 23 wards in English, for visitors' posts ({wardEn}). */
-export const WARD_EN: Readonly<Record<string, string>> = {
-  千代田区: "Chiyoda",
-  中央区: "Chuo",
-  港区: "Minato",
-  新宿区: "Shinjuku",
-  文京区: "Bunkyo",
-  台東区: "Taito",
-  墨田区: "Sumida",
-  江東区: "Koto",
-  品川区: "Shinagawa",
-  目黒区: "Meguro",
-  大田区: "Ota",
-  世田谷区: "Setagaya",
-  渋谷区: "Shibuya",
-  中野区: "Nakano",
-  杉並区: "Suginami",
-  豊島区: "Toshima",
-  北区: "Kita",
-  荒川区: "Arakawa",
-  板橋区: "Itabashi",
-  練馬区: "Nerima",
-  足立区: "Adachi",
-  葛飾区: "Katsushika",
-  江戸川区: "Edogawa",
+/**
+ * The 23 wards (and 「都内」, the posts' word for "somewhere in Tokyo") in English and Chinese: the
+ * wards' own English names without "City" (as on the guide signs), and the Simplified forms of
+ * their kanji. Town names (丸の内二丁目) have no such data and stay Japanese.
+ */
+export const WARD_NAMES: Readonly<Record<string, Record<Exclude<SocialLang, "ja">, string>>> = {
+  千代田区: { en: "Chiyoda", zh: "千代田区" },
+  中央区: { en: "Chuo", zh: "中央区" },
+  港区: { en: "Minato", zh: "港区" },
+  新宿区: { en: "Shinjuku", zh: "新宿区" },
+  文京区: { en: "Bunkyo", zh: "文京区" },
+  台東区: { en: "Taito", zh: "台东区" },
+  墨田区: { en: "Sumida", zh: "墨田区" },
+  江東区: { en: "Koto", zh: "江东区" },
+  品川区: { en: "Shinagawa", zh: "品川区" },
+  目黒区: { en: "Meguro", zh: "目黑区" },
+  大田区: { en: "Ota", zh: "大田区" },
+  世田谷区: { en: "Setagaya", zh: "世田谷区" },
+  渋谷区: { en: "Shibuya", zh: "涩谷区" },
+  中野区: { en: "Nakano", zh: "中野区" },
+  杉並区: { en: "Suginami", zh: "杉并区" },
+  豊島区: { en: "Toshima", zh: "丰岛区" },
+  北区: { en: "Kita", zh: "北区" },
+  荒川区: { en: "Arakawa", zh: "荒川区" },
+  板橋区: { en: "Itabashi", zh: "板桥区" },
+  練馬区: { en: "Nerima", zh: "练马区" },
+  足立区: { en: "Adachi", zh: "足立区" },
+  葛飾区: { en: "Katsushika", zh: "葛饰区" },
+  江戸川区: { en: "Edogawa", zh: "江户川区" },
+  都内: { en: "Tokyo", zh: "东京都内" },
 };
+/** The 23 wards in English, for visitors' posts ({wardEn}). */
+export const WARD_EN: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(WARD_NAMES)
+    .filter(([ja]) => ja.endsWith("区"))
+    .map(([ja, names]) => [ja, names.en]),
+);
 
 /** The game's landmarks as people call them, and how far off they are still seen (km). */
-export const LANDMARK_WORDS: Readonly<Record<string, { ja: string; seenKm: number }>> = {
-  東京タワー: { ja: "東京タワー", seenKm: 7 },
-  東京スカイツリー: { ja: "スカイツリー", seenKm: 10 },
-  東京駅丸の内駅舎: { ja: "東京駅", seenKm: 1.2 },
+export const LANDMARK_WORDS: Readonly<
+  Record<string, { ja: string; en: string; zh: string; seenKm: number }>
+> = {
+  東京タワー: { ja: "東京タワー", en: "Tokyo Tower", zh: "东京塔", seenKm: 7 },
+  東京スカイツリー: { ja: "スカイツリー", en: "Tokyo Skytree", zh: "晴空塔", seenKm: 10 },
+  東京駅丸の内駅舎: { ja: "東京駅", en: "Tokyo Station", zh: "东京站", seenKm: 1.2 },
 };

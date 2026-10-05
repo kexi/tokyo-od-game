@@ -1,4 +1,6 @@
 import { sunPosition } from "../geo/sun";
+import { getLocale, onLocaleChange } from "../i18n";
+import { MONTH_NAMES_EN, st } from "../i18n/socialMessages";
 import { GAME_TIME_SCALE } from "../world/environment";
 import type { HumanColors } from "../world/human";
 import {
@@ -17,6 +19,7 @@ import {
   type PictureMotif,
   type SocialAccount,
 } from "./socialAccounts";
+import { SOCIAL_APP_NAME } from "./socialTheme";
 import {
   ACTIVE_HOURS,
   ANSWERS,
@@ -25,8 +28,8 @@ import {
   CHATTER_ANSWERS,
   CHATTER_REPLIES,
   DASHCAM_LEADS,
+  KIND_WORDS,
   LANDMARK_WORDS,
-  localize,
   MEDIA_WORDS,
   NEWS_QUOTE,
   OPENERS,
@@ -35,9 +38,14 @@ import {
   REPLY_GROUP,
   SOURCE_TAGS,
   TAGS,
+  textIn,
   TIME_WORDS,
+  TIME_WORDS_IN,
+  TRANSLATIONS,
   WARD_EN,
+  WARD_NAMES,
   WEEKDAY_WORDS,
+  WEEKDAY_WORDS_IN,
   WORDS,
   type ChatterTemplate,
   type ChatterVoice,
@@ -64,14 +72,39 @@ import type { ViolationKind, ViolationRecord } from "./traffic";
  * follows the game's world — the ward, the hour, the season, the weather, the landmarks in sight
  * and what just happened nearby — and the notifications the player gets. Nothing here imitates a
  * real service: names, handles and terms are generic. The words are in socialTexts.ts.
+ *
+ * Languages: every text keeps what it was made from (a Phrase: the source lines and the words
+ * picked for its slots), and `text` is that phrase in the feed's language (`lang`), written again
+ * by setLang when the player switches (followLocale wires it to the UI's language). People's
+ * Japanese is shown translated, as if the app translated it; a visitor's English or Chinese stays
+ * as they wrote it.
  */
+
+/** A slot's word: the Japanese (the game's data), and its English and Chinese when known. */
+export type SlotWord = string | { ja: string; en?: string; zh?: string };
+/**
+ * What a text was made from, so it can be written in any language: its source lines (Japanese,
+ * or a visitor's own words) joined in order, and the word picked for each slot.
+ */
+export type Phrase = {
+  parts: readonly string[];
+  slots: Readonly<Record<string, SlotWord>>;
+  /**
+   * The on-device AI's words for it. Japanese (main.ts asks for 日本語), so they are shown in
+   * Japanese only; the other languages show the template's translation.
+   */
+  written?: string;
+};
+
 export type SocialReply = {
   id: number;
   account: SocialAccount;
   /** account.name and account.handle (kept for older readers). */
   author: string;
   handle: string;
+  /** `phrase` in the feed's language. */
   text: string;
+  phrase: Phrase;
   /** Minutes after the post. */
   atMinute: number;
   /** Game time (epoch ms). */
@@ -87,8 +120,13 @@ export type SocialPost = {
   account: SocialAccount;
   author: string;
   handle: string;
+  /** `phrase` in the feed's language. */
   text: string;
+  phrase: Phrase;
+  /** `tagsJa` in the feed's language. */
   tags: string[];
+  /** The hashtags as written in Japanese (#信号無視, #ドラレコ, #千代田区). */
+  tagsJa: readonly string[];
   /** What it carries: the poster's video (most), a still from it, or words only. */
   media: PostMedia;
   /** The driver's own view at the moment (the fallback when no bystander shot could be taken). */
@@ -132,7 +170,9 @@ export type SocialPost = {
 export type SocialChatter = {
   id: number;
   account: SocialAccount;
+  /** `phrase` in the feed's language. */
   text: string;
+  phrase: Phrase;
   picture?: { motif: PictureMotif; hue: number };
   postedAt: number;
   /** Likes it is heading for. */
@@ -223,7 +263,7 @@ export function severityOf(r: ViolationRecord): number {
 // ---------- slots ----------
 
 /** Candidate words per slot name ({ward} → ["千代田区"]); an empty list means it cannot be filled. */
-export type SlotValues = Readonly<Record<string, readonly string[]>>;
+export type SlotValues = Readonly<Record<string, readonly SlotWord[]>>;
 const SLOT = /\{(\w+)\}/g;
 
 /** The slot names in a text, in order. */
@@ -232,18 +272,114 @@ export const slotsOf = (text: string): string[] => [...text.matchAll(SLOT)].map(
 const canFill = (text: string, values: SlotValues) =>
   slotsOf(text).every((s) => (values[s]?.length ?? 0) > 0);
 
-/** Fills every slot with one of its words (the same word each time a slot repeats). */
-export function fillSlots(text: string, values: SlotValues, rand: () => number): string {
-  const chosen = new Map<string, string>();
-  return text.replace(SLOT, (all, name: string) => {
-    const known = chosen.get(name);
-    if (known !== undefined) return known;
+/**
+ * One word for each slot of `text` that has any, in the order they appear (a slot that repeats
+ * keeps its word). Draws `rand` once per slot filled, the same as filling the text did.
+ */
+export function chooseSlots(text: string, values: SlotValues, rand: () => number): Record<string, SlotWord> {
+  const chosen: Record<string, SlotWord> = {};
+  for (const name of slotsOf(text)) {
+    const isKnown = name in chosen;
     const list = values[name] ?? [];
-    if (list.length === 0) return all;
-    const pick = list[Math.floor(rand() * list.length)];
-    chosen.set(name, pick);
-    return pick;
+    if (isKnown || list.length === 0) continue;
+    chosen[name] = list[Math.floor(rand() * list.length)];
+  }
+  return chosen;
+}
+
+/**
+ * A slot's word in `lang`: its own translation (wards, landmarks, signs, times), else the word's
+ * entry in TRANSLATIONS (food, flowers, the car), else the Japanese as it is (towns, parks, rivers).
+ */
+export function wordIn(word: SlotWord, lang: SocialLang): string {
+  const ja = typeof word === "string" ? word : word.ja;
+  if (lang === "ja") return ja;
+  const own = typeof word === "string" ? undefined : word[lang];
+  return own || TRANSLATIONS[lang][ja] || ja;
+}
+
+/** Puts the chosen words into a text written in `lang`; a slot without a word stays as written. */
+export function fillWords(text: string, slots: Readonly<Record<string, SlotWord>>, lang: SocialLang): string {
+  return text.replace(SLOT, (all, name: string) => {
+    const word = slots[name];
+    return word === undefined ? all : wordIn(word, lang);
   });
+}
+
+/** Fills every slot with one of its words, in Japanese (the same word each time a slot repeats). */
+export function fillSlots(text: string, values: SlotValues, rand: () => number): string {
+  return fillWords(text, chooseSlots(text, values, rand), "ja");
+}
+
+/**
+ * A phrase in `lang`: each source line translated (or as written), its slots filled in the
+ * language the line ended up in, the lines joined (a space between them in English).
+ */
+export function renderPhrase(phrase: Phrase, lang: SocialLang): string {
+  const joiner = lang === "en" ? " " : "";
+  return phrase.parts
+    .map((part) => {
+      const line = textIn(part, lang);
+      return fillWords(line.text, phrase.slots, line.lang);
+    })
+    .join(joiner);
+}
+
+/**
+ * What a text said before it was translated (the Japanese, or the AI's words), for 「原文を表示」;
+ * null when it is shown as written (in Japanese, or a visitor's own words).
+ */
+export function originalOf(item: { text: string; phrase: Phrase }): string | null {
+  const original = item.phrase.written ?? renderPhrase(item.phrase, "ja");
+  return original === item.text ? null : original;
+}
+
+/** A hashtag in `lang`: its translation, else a ward's name (#千代田区 → #Chiyoda), else as written. */
+export function tagIn(tag: string, lang: SocialLang): string {
+  if (lang === "ja") return tag;
+  const translated = TRANSLATIONS[lang][tag];
+  if (translated) return translated;
+  const ward = WARD_NAMES[tag.replace(/^#/, "")];
+  return ward ? `#${ward[lang].replace(/\s+/g, "")}` : tag;
+}
+
+/** A ward (or 都内) with its English and Chinese names. */
+const wardWord = (ja: string): SlotWord => {
+  const names = WARD_NAMES[ja];
+  return names ? { ja, ...names } : ja;
+};
+
+/**
+ * Where a post was: 「港区芝公園四丁目」. In English the town (Japanese, there is no romanised
+ * town data) comes first and the ward after, as in an address: 「芝公園四丁目, Minato」.
+ */
+const placeWord = (ward: string | undefined, town: string | undefined): SlotWord => {
+  if (!ward) return wardWord("都内");
+  const names = WARD_NAMES[ward];
+  const ja = `${ward}${town ?? ""}`;
+  if (!names) return ja;
+  return {
+    ja,
+    en: town ? `${town}, ${names.en}` : names.en,
+    zh: `${names.zh}${town ?? ""}`,
+  };
+};
+
+/** When it happened, as people write it: 11時半ごろ / around 11:30am / 11点半左右. */
+export function timeWord(hour: number, minute: number): { ja: string; en: string; zh: string } {
+  const kind = minute < 20 ? "about" : minute < 45 ? "half" : "before";
+  const h = kind === "before" ? (hour + 1) % 24 : hour;
+  const ap = h < 12 ? "am" : "pm";
+  const h12 = h % 12 || 12;
+  const isNoonOrMidnight = h % 12 === 0;
+  // 「12時ごろ」 is noon or midnight: English says which instead of 12pm / 12am.
+  const enHour =
+    kind === "half" ? `${h12}:30${ap}` : isNoonOrMidnight ? (h === 0 ? "midnight" : "noon") : `${h12}${ap}`;
+  return {
+    ja: TIME_WORDS[kind].replace("{h}", String(h)),
+    en: TIME_WORDS_IN.en[kind].replace("{h}", enHour),
+    zh: TIME_WORDS_IN.zh[kind].replace("{h}", String(h)),
+  };
 }
 
 const asLine = (l: LineLike): Line => (typeof l === "string" ? { text: l } : l);
@@ -347,6 +483,12 @@ const inHours = (hour: number, [from, to]: readonly [number, number]) =>
   from <= to ? hour >= from && hour < to : hour >= from || hour < to;
 const isWeekend = (dow: number) => dow === 0 || dow === 6;
 
+/** A landmark (its game name) as people call it in each language. */
+const landmarkWord = (name: string): SlotWord => {
+  const known = LANDMARK_WORDS[name];
+  return known ? { ja: known.ja, en: known.en, zh: known.zh } : name;
+};
+
 /** Everything a template is checked against at one game time. */
 export type Moment = {
   hour: number;
@@ -380,24 +522,26 @@ export function momentAt(at: number, world: SocialWorld | null, cues: ReadonlySe
     .filter((l) => l.km <= (LANDMARK_WORDS[l.name]?.seenKm ?? 0))
     .toSorted((a, b) => a.km - b.km)
     .map((l) => l.name);
+  // Food, flowers and the car are translated through TRANSLATIONS (wordIn), so the Japanese is enough.
   const words = (list: readonly { text: string; seasons?: readonly Season[] }[]) =>
     list.filter((w) => !w.seasons || w.seasons.includes(season)).map((w) => w.text);
   const ward = world?.ward ?? null;
   const town = world?.town?.replace(/[一二三四五六七八九十]+丁目$/, "") || null;
   const values: SlotValues = {
-    ward: ward ? [ward] : [],
+    ward: ward ? [wardWord(ward)] : [],
     town: town ? [town] : [],
-    nearWard: (world?.nearWards ?? []).filter((w) => w !== ward),
+    nearWard: (world?.nearWards ?? []).filter((w) => w !== ward).map(wardWord),
     wardEn: ward && WARD_EN[ward] ? [WARD_EN[ward]] : [],
-    landmark: landmarks.slice(0, 1).map((n) => LANDMARK_WORDS[n]?.ja ?? n),
+    landmark: landmarks.slice(0, 1).map(landmarkWord),
     park: [...(world?.parks ?? [])],
     river: world?.river ? [world.river] : [],
     bridge: world?.bridge ? [world.bridge] : [],
-    sign: (world?.signs ?? []).map((s) => s.ja),
+    // The guide signs carry the place's English (Ginza); Chinese readers get the kanji.
+    sign: (world?.signs ?? []).map((s) => ({ ja: s.ja, ...(s.en ? { en: s.en } : {}) })),
     signEn: (world?.signs ?? []).map((s) => s.en).filter(Boolean),
     temp: observed === null ? [] : [String(Math.round(observed))],
     hour: [String(d.hour)],
-    weekday: [WEEKDAY_WORDS[dow]],
+    weekday: [{ ja: WEEKDAY_WORDS[dow], en: WEEKDAY_WORDS_IN.en[dow], zh: WEEKDAY_WORDS_IN.zh[dow] }],
     lunch: words(WORDS.lunch),
     snack: words(WORDS.snack),
     dinner: words(WORDS.dinner),
@@ -493,7 +637,7 @@ export class SocialFeed {
   camera: SocialCamera | null = null;
   /** What the game knows around the player (main.ts); without it the chatter keeps to the clock. */
   world: (() => SocialWorld) | null = null;
-  /** The language posts are written in (socialTexts.ts TRANSLATIONS). */
+  /** The language texts are shown in (setLang changes it and rewrites them). */
   lang: SocialLang = "ja";
   /**
    * Game ms per real ms: GAME_TIME_SCALE while the game clock runs fast, 1 in リアル時刻 (main.ts
@@ -541,6 +685,46 @@ export class SocialFeed {
     return seconds * 1000 * this.timeScale;
   }
 
+  /**
+   * Shows everything in `lang` from now on: every post, reply, quote, everyday post and hashtag
+   * is written again from its phrase (nothing is picked again, so the same words come back).
+   */
+  setLang(lang: SocialLang): void {
+    if (lang === this.lang) return;
+    this.lang = lang;
+    for (const p of this.posts) {
+      p.text = this.say(p.phrase);
+      p.tags = p.tagsJa.map((tag) => tagIn(tag, lang));
+      for (const r of [...p.replies, ...p.quotePosts]) r.text = this.say(r.phrase);
+    }
+    for (const c of this.chatter) {
+      c.text = this.say(c.phrase);
+      for (const r of c.replies) r.text = this.say(r.phrase);
+    }
+  }
+
+  /** A phrase in the feed's language (the AI's own words in Japanese). */
+  private say(phrase: Phrase): string {
+    const isWrittenHere = this.lang === "ja" && phrase.written !== undefined;
+    return isWrittenHere ? (phrase.written ?? "") : renderPhrase(phrase, this.lang);
+  }
+
+  /** A text from its source lines and slots, in the feed's language. */
+  private phrase(
+    parts: readonly string[],
+    slots: Readonly<Record<string, SlotWord>>,
+  ): { text: string; phrase: Phrase } {
+    const phrase: Phrase = { parts, slots };
+    return { text: this.say(phrase), phrase };
+  }
+
+  /** Keeps the on-device AI's words for a text, and shows them where they fit (Japanese). */
+  private keepWritten(item: { text: string; phrase: Phrase }, written: string | null): void {
+    if (!written) return;
+    item.phrase.written = written;
+    item.text = this.say(item.phrase);
+  }
+
   private spreadOf(p: SocialPost): number {
     return this.spreads.get(p) ?? this.real(SPREAD_S.min + SPREAD_S.extra * (1 - p.severity));
   }
@@ -571,20 +755,23 @@ export class SocialFeed {
       pickLine(openersOf(record.kind), shape, values, this.recentOpeners, () => this.rand()) ??
       "{place}で危ない運転の車がいた";
     remember(this.recentOpeners, opener, NO_REPEAT_WINDOW);
-    const body = fillSlots(localize(opener, this.lang), values, () => this.rand());
+    const slots = chooseSlots(opener, values, () => this.rand());
     const lead = DASHCAM_LEADS[this.nextId % DASHCAM_LEADS.length];
-    const text = isDashcam && this.nextId % 2 === 0 ? `${localize(lead, this.lang)}${body}` : body;
+    const hasLead = isDashcam && this.nextId % 2 === 0;
+    const said = this.phrase(hasLead ? [lead, opener] : [opener], slots);
     const area = record.context?.place?.split(" ")[0];
     const id = this.nextId++;
     // Reach spans from a few reposts to tens of thousands for the worst.
     const reach = Math.round(10 ** (0.8 + 3.6 * severity * (0.55 + 0.45 * this.rand())));
+    const tagsJa = this.tagsFor(record.kind, isDashcam, area);
     const post: SocialPost = {
       id,
       account,
       author: account.name,
       handle: account.handle,
-      text,
-      tags: this.tagsFor(record.kind, isDashcam, area),
+      ...said,
+      tags: tagsJa.map((tag) => tagIn(tag, this.lang)),
+      tagsJa,
       media,
       clipSeconds: 6 + (hashString(`${account.id}/${id}`) % 28),
       record,
@@ -604,9 +791,7 @@ export class SocialFeed {
     this.spreads.set(post, this.spreadOf(post));
     // Words only: nothing to shoot.
     if (media !== "text") this.camera?.(post);
-    void this.writer?.("post", post, 0).then((written) => {
-      if (written) post.text = written;
-    });
+    void this.writer?.("post", post, 0).then((written) => this.keepWritten(post, written));
     return post;
   }
 
@@ -681,19 +866,17 @@ export class SocialFeed {
         const earliest = p.postedAt + this.real(4 + REPLY_PACE_S * k);
         if (earliest > gameNow) break;
         const at = Math.max(earliest, whenReposts(p, 2 ** (k / 1.6) - 1, gameNow, spreadMs));
-        const text = this.postLine(p, REPLIES, p.replies, []);
-        if (text === null) break;
+        const said = this.postLine(p, REPLIES, p.replies, []);
+        if (said === null) break;
         const r = this.line(
           this.someone(() => this.rand(), gameNow),
-          text,
+          said,
           p,
           at,
         );
         p.replies.push(r);
         if (p.replies.length <= LLM_REPLIES)
-          void this.writer?.("reply", p, p.replies.length).then((written) => {
-            if (written) r.text = written;
-          });
+          void this.writer?.("reply", p, p.replies.length).then((written) => this.keepWritten(r, written));
         this.maybeAnswer(p, r, gameNow);
       }
       for (const r of p.replies) r.likes = Math.round(p.likes * r.weight);
@@ -703,19 +886,19 @@ export class SocialFeed {
         const earliest = p.postedAt + this.real(QUOTE_PACE_S * k);
         if (earliest > gameNow) break;
         const at = Math.max(earliest, whenReposts(p, (10 ** (k / 2) - 1) / 0.12, gameNow, spreadMs));
-        const text = this.postLine(p, QUOTES, p.quotePosts, this.recentQuotes);
-        if (text === null) break;
+        const said = this.postLine(p, QUOTES, p.quotePosts, this.recentQuotes);
+        if (said === null) break;
         const q = this.line(
           this.someone(() => this.rand(), gameNow),
-          text,
+          said,
           p,
           at,
         );
         p.quotePosts.push(q);
         if (p.quotePosts.length <= 2)
-          void this.writer?.("quote", p, 100 + p.quotePosts.length).then((written) => {
-            if (written) q.text = written;
-          });
+          void this.writer?.("quote", p, 100 + p.quotePosts.length).then((written) =>
+            this.keepWritten(q, written),
+          );
       }
       for (const q of p.quotePosts) q.likes = Math.round(p.likes * q.weight);
       this.spreadAmongFollowed(p, gameNow);
@@ -745,12 +928,12 @@ export class SocialFeed {
     table: Record<ReplyGroup | "common", readonly LineLike[]>,
     under: readonly SocialReply[],
     recent: string[],
-  ): string | null {
+  ): { text: string; phrase: Phrase } | null {
     const values = postValues(p.record, p.postedAt);
     const group = REPLY_GROUP[p.record.kind as ViolationKind] as ReplyGroup | undefined;
-    const used = new Set(under.map((r) => r.text));
-    const unused = (lines: readonly LineLike[]) =>
-      lines.filter((l) => !used.has(fillSlots(localize(asLine(l).text, this.lang), values, () => 0)));
+    // By source line, so a line is not used twice under a post whatever the language or the AI wrote.
+    const used = new Set(under.map((r) => r.phrase.parts[0]));
+    const unused = (lines: readonly LineLike[]) => lines.filter((l) => !used.has(asLine(l).text));
     // Most of what people write is about this kind of thing; the rest fits anything.
     const isOwn = group !== undefined && this.rand() < 0.55;
     const first = isOwn ? unused(table[group]) : unused(table.common);
@@ -761,7 +944,10 @@ export class SocialFeed {
       pickLine(second, shape, values, recent, () => this.rand());
     if (source === null) return null;
     if (recent.length > 0 || table === QUOTES) remember(recent, source, NO_REPEAT_WINDOW);
-    return fillSlots(localize(source, this.lang), values, () => this.rand());
+    return this.phrase(
+      [source],
+      chooseSlots(source, values, () => this.rand()),
+    );
   }
 
   /**
@@ -784,13 +970,18 @@ export class SocialFeed {
     return a;
   }
 
-  private line(account: SocialAccount, text: string, p: SocialPost, at: number): SocialReply {
+  private line(
+    account: SocialAccount,
+    said: { text: string; phrase: Phrase },
+    p: SocialPost,
+    at: number,
+  ): SocialReply {
     return {
       id: this.nextReplyId++,
       account,
       author: account.name,
       handle: account.handle,
-      text,
+      ...said,
       atMinute: Math.round((at - p.postedAt) / MINUTE),
       postedAt: at,
       // Most replies get a few likes, one or two get many.
@@ -804,10 +995,10 @@ export class SocialFeed {
     const isPoster = r.account === p.account;
     const answered = p.replies.filter((x) => x.account === p.account).length;
     if (isPoster || answered >= 2 || this.rand() > 0.3) return;
-    const text = this.postLine(p, ANSWERS, p.replies, []);
-    if (text === null) return;
+    const said = this.postLine(p, ANSWERS, p.replies, []);
+    if (said === null) return;
     const at = Math.min(gameNow, r.postedAt + this.real(6 + this.rand() * 30));
-    p.replies.push({ ...this.line(p.account, text, p, at), replyTo: r.id });
+    p.replies.push({ ...this.line(p.account, said, p, at), replyTo: r.id });
   }
 
   /** People the player follows repost it as it spreads (one per tenfold). */
@@ -840,20 +1031,21 @@ export class SocialFeed {
   private reportNews(p: SocialPost, gameNow: number): void {
     if (this.covered.has(p.record)) return;
     this.covered.add(p.record);
-    const place = p.record.context?.place?.split(" ").slice(0, 2).join("") || "都内";
-    const what = p.record.label.replace(/（.*?）/g, "");
+    const [ward, town] = p.record.context?.place?.split(" ") ?? [];
+    const kind = p.record.kind.replace(/\d+$/, "") as ViolationKind;
+    const what: SlotWord = { ja: p.record.label.replace(/（.*?）/g, ""), ...KIND_WORDS[kind] };
     const news = FOLLOWED.news;
-    const text = fillSlots(
-      localize(NEWS_QUOTE, this.lang),
-      { place: [place], what: [what], media: [localize(MEDIA_WORDS[p.media], this.lang)] },
-      () => 0,
-    );
+    const said = this.phrase([NEWS_QUOTE], {
+      place: placeWord(ward, town),
+      what,
+      media: MEDIA_WORDS[p.media],
+    });
     const quote: SocialReply = {
       id: this.nextReplyId++,
       account: news,
       author: news.name,
       handle: news.handle,
-      text,
+      ...said,
       atMinute: Math.round((gameNow - p.postedAt) / MINUTE),
       postedAt: gameNow,
       weight: 0.06,
@@ -949,7 +1141,10 @@ export class SocialFeed {
     const c: SocialChatter = {
       id: this.nextChatterId++,
       account,
-      text: fillSlots(localize(t.text, this.lang), m.values, () => this.crand()),
+      ...this.phrase(
+        [t.text],
+        chooseSlots(t.text, m.values, () => this.crand()),
+      ),
       picture: t.picture ? { motif: t.picture, hue: Math.floor(this.crand() * 360) } : undefined,
       postedAt: at,
       reach: Math.round(Math.max(2, account.followers * (0.003 + this.crand() * 0.02))),
@@ -1012,15 +1207,17 @@ export class SocialFeed {
     const top = () => c.replies.filter((r) => r.replyTo === undefined);
     const want = Math.min(MAX_CHATTER_REPLIES, Math.floor(Math.log2(1 + c.likes) / 1.7));
     while (top().length < want) {
-      const used = new Set(c.replies.map((r) => r.text));
+      const used = new Set(c.replies.map((r) => r.phrase.parts[0]));
+      // Every line's words are picked (as many draws as before), then the unfillable and used drop out.
       const lines = [...(t.replies ?? []), ...CHATTER_REPLIES[t.topic]]
-        .map((l) => fillSlots(localize(l, this.lang), values, () => this.crand()))
-        .filter((l) => !used.has(l) && slotsOf(l).length === 0);
+        .map((line) => ({ line, slots: chooseSlots(line, values, () => this.crand()) }))
+        .filter(({ line, slots }) => !used.has(line) && slotsOf(line).every((s) => s in slots));
       if (lines.length === 0) break;
       const k = top().length + 1;
       const at = Math.min(gameNow, c.postedAt + this.real(10 + 25 * k + this.crand() * 15));
       const who = this.someone(() => this.crand(), gameNow, 0, true);
-      const r = this.chatterReply(c, who, pickOf(lines, this.crand()), at);
+      const picked = pickOf(lines, this.crand());
+      const r = this.chatterReply(c, who, this.phrase([picked.line], picked.slots), at);
       c.replies.push(r);
       this.maybeThank(c, r, gameNow);
     }
@@ -1043,16 +1240,21 @@ export class SocialFeed {
             : "ja";
     const text = pickOf(CHATTER_ANSWERS[voice], this.crand());
     const at = Math.min(gameNow, r.postedAt + this.real(5 + this.crand() * 30));
-    c.replies.push({ ...this.chatterReply(c, c.account, localize(text, this.lang), at), replyTo: r.id });
+    c.replies.push({ ...this.chatterReply(c, c.account, this.phrase([text], {}), at), replyTo: r.id });
   }
 
-  private chatterReply(c: SocialChatter, account: SocialAccount, text: string, at: number): SocialReply {
+  private chatterReply(
+    c: SocialChatter,
+    account: SocialAccount,
+    said: { text: string; phrase: Phrase },
+    at: number,
+  ): SocialReply {
     return {
       id: this.nextReplyId++,
       account,
       author: account.name,
       handle: account.handle,
-      text,
+      ...said,
       atMinute: Math.round((at - c.postedAt) / MINUTE),
       postedAt: at,
       weight: 0.02 + 0.1 * this.crand() ** 3,
@@ -1104,25 +1306,19 @@ function openersOf(kind: string): readonly LineLike[] {
 
 /** The slots of a post about a violation: where, how fast, the player's car, when. */
 function postValues(r: ViolationRecord, at: number): SlotValues {
-  const parts = r.context?.place?.split(" ") ?? [];
-  const place = parts.slice(0, 2).join("") || "都内";
+  const [ward, town] = r.context?.place?.split(" ") ?? [];
+  const place = placeWord(ward || undefined, town || undefined);
   const kmh = r.context?.kmh ?? 0;
   const limit = r.context?.limit ?? null;
   const t = jstParts(at);
-  const time =
-    t.minute < 20
-      ? TIME_WORDS.about.replace("{h}", String(t.hour))
-      : t.minute < 45
-        ? TIME_WORDS.half.replace("{h}", String(t.hour))
-        : TIME_WORDS.before.replace("{h}", String((t.hour + 1) % 24));
   return {
     place: [place],
-    ward: parts[0] ? [parts[0]] : ["都内"],
-    town: parts[1] ? [parts[1]] : [place],
+    ward: [wardWord(ward || "都内")],
+    town: town ? [town] : [place],
     kmh: [String(Math.round(kmh))],
     limit: limit === null ? [] : [String(limit)],
     over: limit === null ? [] : [String(Math.max(0, Math.round(kmh - limit)))],
-    time: [time],
+    time: [timeWord(t.hour, t.minute)],
     color: WORDS.color.map((w) => w.text),
     car: WORDS.car.map((w) => w.text),
   };
@@ -1139,15 +1335,33 @@ function whenReposts(p: SocialPost, n: number, gameNow: number, spreadMs: number
 /** Replies a post shows it has: those written out plus the many nobody opens. */
 export const replyCountOf = (p: SocialPost) => p.replies.length + Math.round(p.reposts * 0.2);
 
+// Big counts by language, largest unit first: 万・億 in Japanese, 万・亿 in Chinese, K・M・B in English.
+const COUNT_UNITS: Record<SocialLang, readonly (readonly [string, number])[]> = {
+  ja: [
+    ["億", 100_000_000],
+    ["万", 10_000],
+  ],
+  zh: [
+    ["亿", 100_000_000],
+    ["万", 10_000],
+  ],
+  en: [
+    ["B", 1_000_000_000],
+    ["M", 1_000_000],
+    ["K", 1_000],
+  ],
+};
+
 /**
- * Counts the way the app shows them: 3,456 / 1.2万 / 12.3万 / 123万 / 1.2億. Cut, not rounded
- * (99,999 is 9.9万, never 10.0万).
+ * Counts the way the app shows them: 3,456 / 1.2万 / 12.3万 / 123万 / 1.2億 (Japanese; 亿 in
+ * Chinese) or 3,456 / 12.3K / 123K / 1.2M (English). Cut, not rounded (99,999 is 9.9万 and 99.9K,
+ * never 10.0万). Below 10,000 every language shows the number itself.
  */
-export function formatCount(n: number): string {
+export function formatCount(n: number, lang: SocialLang = getLocale()): string {
   const v = Math.max(0, Math.floor(n));
   // Why a fixed locale: the grouping must not depend on the machine (tests, players abroad).
   if (v < 10_000) return v.toLocaleString("en-US");
-  const [unit, size] = v >= 100_000_000 ? (["億", 100_000_000] as const) : (["万", 10_000] as const);
+  const [unit, size] = COUNT_UNITS[lang].find(([, s]) => v >= s) ?? COUNT_UNITS[lang].at(-1) ?? ["", 1];
   const tenths = Math.floor((v * 10) / size);
   const shown = tenths < 1000 ? tenths / 10 : Math.floor(tenths / 10);
   return `${shown}${unit}`;
@@ -1166,20 +1380,59 @@ export function jstParts(ms: number) {
   };
 }
 
-/** たった今 / 3分 / 2時間 / 10月4日 / 2025年12月31日, as a timeline row shows a post's age. */
-export function relativeTime(thenMs: number, nowMs: number): string {
-  const s = Math.floor((nowMs - thenMs) / 1000);
-  if (s < 60) return "たった今";
-  if (s < 3600) return `${Math.floor(s / 60)}分`;
-  if (s < 86400) return `${Math.floor(s / 3600)}時間`;
-  const d = jstParts(thenMs);
-  const isThisYear = d.year === jstParts(nowMs).year;
-  return isThisYear ? `${d.month}月${d.day}日` : `${d.year}年${d.month}月${d.day}日`;
+/** A month as a date in `lang` writes it: 10 (10月), or Oct / October in English. */
+const monthIn = (month: number, lang: SocialLang, long = false): string => {
+  if (lang !== "en") return String(month);
+  const name = MONTH_NAMES_EN[month - 1];
+  return long ? name : name.slice(0, 3);
+};
+
+/** A date (Japan time) without the year when it is this year's: 10月4日 / Oct 4 / 2025年12月31日. */
+function dateIn(d: ReturnType<typeof jstParts>, withYear: boolean, lang: SocialLang): string {
+  const params = { year: d.year, month: monthIn(d.month, lang), day: d.day };
+  return st(withYear ? "time.dateYear" : "time.date", params, lang);
 }
 
-/** 午前11:30 · 2026年10月5日, as an opened post shows its time. */
-export function postTimestamp(ms: number): string {
+/**
+ * A post's age as a timeline row shows it: たった今 / 3分 / 2時間 / 10月4日 / 2025年12月31日,
+ * now / 3m / 2h / Oct 4 / Dec 31, 2025, 刚刚 / 3分钟 / 2小时 / 10月4日.
+ */
+export function relativeTime(thenMs: number, nowMs: number, lang: SocialLang = getLocale()): string {
+  const s = Math.floor((nowMs - thenMs) / 1000);
+  if (s < 60) return st("time.now", undefined, lang);
+  if (s < 3600) return st("time.minutes", { n: Math.floor(s / 60) }, lang);
+  if (s < 86400) return st("time.hours", { n: Math.floor(s / 3600) }, lang);
+  const d = jstParts(thenMs);
+  const isThisYear = d.year === jstParts(nowMs).year;
+  return dateIn(d, !isThisYear, lang);
+}
+
+/**
+ * An opened post's time (Japan time): 午前11:30 · 2026年10月5日 / 11:30 AM · Oct 5, 2026 /
+ * 上午11:30 · 2026年10月5日. Japanese counts the afternoon from 午後0時; the others from 12.
+ */
+export function postTimestamp(ms: number, lang: SocialLang = getLocale()): string {
   const d = jstParts(ms);
-  const half = d.hour < 12 ? "午前" : "午後";
-  return `${half}${d.hour % 12}:${String(d.minute).padStart(2, "0")} · ${d.year}年${d.month}月${d.day}日`;
+  const half = st(d.hour < 12 ? "time.am" : "time.pm", undefined, lang);
+  const h = lang === "ja" ? d.hour % 12 : d.hour % 12 || 12;
+  const clock = st("time.clock", { half, h, mm: String(d.minute).padStart(2, "0") }, lang);
+  return `${clock} · ${dateIn(d, true, lang)}`;
+}
+
+/** 「2019年4月からYを利用しています」 / "Joined Y in April 2019" / 「2019年4月加入 Y」. */
+export function joinedLabel(a: SocialAccount, lang: SocialLang = getLocale()): string {
+  const month = monthIn(a.joined.month, lang, true);
+  return st("profile.joined", { year: a.joined.year, month, app: SOCIAL_APP_NAME }, lang);
+}
+
+/**
+ * Keeps `feed` in the UI's language: now, and again on every switch, then calls `then` (the
+ * view redraws). Returns the unsubscribe.
+ */
+export function followLocale(feed: SocialFeed, then?: (lang: SocialLang) => void): () => void {
+  feed.setLang(getLocale());
+  return onLocaleChange((lang) => {
+    feed.setLang(lang);
+    then?.(lang);
+  });
 }

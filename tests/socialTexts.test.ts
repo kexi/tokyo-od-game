@@ -31,6 +31,7 @@ import {
   type LineLike,
 } from "../src/game/socialTexts";
 import { VIOLATIONS, type ViolationKind, type ViolationRecord } from "../src/game/traffic";
+import { BANNED } from "./socialBanned";
 
 const KINDS = [...Object.keys(VIOLATIONS), "speed"] as ViolationKind[];
 const textOf = (l: LineLike) => (typeof l === "string" ? l : l.text);
@@ -288,17 +289,6 @@ const all = (): string[] => [
 ];
 
 describe("Y texts: words that must not appear", () => {
-  // Real services, brands, operators and politics (the app is 「Y」 and everything is generic).
-  const BANNED = [
-    /(^|[^A-Za-z])X([^A-Za-z]|$)/,
-    /Twitter|ツイッター|ツイート|tweet|リツイート/i,
-    /Instagram|インスタ|Facebook|TikTok|YouTube|ユーチューブ|(^|[^A-Za-z])LINE([^A-Za-z]|$)/,
-    /セブン|ローソン|ファミマ|ファミリーマート|スタバ|スターバックス|マクドナルド|マック|ドトール|タリーズ|ユニクロ/,
-    /トヨタ|ホンダ|日産|スバル|マツダ|レクサス|テスラ|Uber|ウーバー|出前館|アマゾン|Amazon|Google|グーグル|iPhone/,
-    /NHK|JR|都営|都バス|東京メトロ|京急|東急|小田急|京王|西武|Suica|PASMO|ヤマト|佐川|ディズニー|ポケモン/,
-    /選挙|政党|総理|首相|議員/,
-  ];
-
   it("names no real service, brand, operator or politics in any text or account", () => {
     const people = Array.from({ length: 4000 }, (_, i) => accountFor(i, 0)).flatMap((a) => [a.name, a.bio]);
     for (const text of [...all(), ...people]) for (const word of BANNED) expect(text).not.toMatch(word);
