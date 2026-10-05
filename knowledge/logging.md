@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: 構造化ログ（イベントの登録と Zod スキーマ・trace / span で追う・調べ方）
-description: ゲームとビルドスクリプトのログを 1 行 1 イベントの JSON に揃え、AI エージェントがブラウザを開かずに端末から「失敗の span を見つける → 直す → 再現して確かめる」を回せるようにした仕組み。src/logEvents.ts のイベント 125 種の Zod スキーマ（名前と単位の規約）、log()/warn()/error() の型と実行時の検査（本番は各イベントの最初の 1 行、合わなければ log_schema_invalid）、全行の traceId と build（git の commit・未コミットの変更のハッシュ・版）、spanId / parentId（違反 → ポスト・撮影・通知・映像・追跡 → 停止 → 物語、移動）、開発・プレビューサーバーが受けて .qa/logs/<日付>/<traceId>.jsonl に書く仕組み（localhost だけ・上限つき）、uncaught_error（スタックと TypeScript の行・span・ゲームの状態・直前の行）、session_start / drive_started と ?seed= ?start= ?time= ?weather= での再現、just logs* の使い方と AI のデバッグループ、移行で直した食い違いと旧名の対応。ブラウザでの確認はまだ（開発サーバーと HTTP の受け口は Node から確かめた）。
+description: ゲームとビルドスクリプトのログを 1 行 1 イベントの JSON に揃え、AI エージェントがブラウザを開かずに端末から「失敗の span を見つける → 直す → 再現して確かめる」を回せるようにした仕組み。src/logEvents.ts のイベント 125 種の Zod スキーマ（名前と単位の規約）、log()/warn()/error() の型と実行時の検査（本番は各イベントの最初の 1 行、合わなければ log_schema_invalid）、全行の traceId と build（git の commit・未コミットの変更のハッシュ・版）、spanId / parentId（違反 → ポスト・撮影・通知・映像・追跡 → 停止 → 物語、移動）、開発・プレビューサーバーが受けて .qa/logs/<日付>/<traceId>.jsonl に書く仕組み（localhost だけ・上限つき）、uncaught_error（スタックと TypeScript の行・span・ゲームの状態・直前の行）、session_start / drive_started と ?seed= ?start= ?time= ?weather= での再現、just show-logs ほかログのレシピの使い方と AI のデバッグループ、移行で直した食い違いと旧名の対応。ブラウザでの確認はまだ（開発サーバーと HTTP の受け口は Node から確かめた）。
 tags: [logging, testing]
 status: draft
 stale_after: 2027-04-01T00:00:00Z
@@ -167,7 +167,7 @@ jq -r '.traceId' log.jsonl | sort | uniq -c
 
 # ページのログをディスクへ（開発・プレビュー）
 
-`just dev`（と `vite preview`）で開いたページの行は、そのまま `.qa/logs/<日付>/<traceId>.jsonl` に溜まる（`.qa/` は git の対象外）。`.qa/logs/latest.jsonl` は最後に始まったセッションのファイルへのシンボリックリンク。[^devserver]
+`just serve-dev`（と `vite preview`）で開いたページの行は、そのまま `.qa/logs/<日付>/<traceId>.jsonl` に溜まる（`.qa/` は git の対象外）。`.qa/logs/latest.jsonl` は最後に始まったセッションのファイルへのシンボリックリンク。[^devserver]
 
 - ページ側（`src/diagnostics.ts` の `LogShipper`）: 書かれた行を全部キューに入れ、1 秒ごとに 200 行・256 KB までの束を `POST <base>__log`（text/plain の JSON 行）で送る。ページが隠れる・閉じるときは残りを `sendBeacon` で。キューは 2,000 行まで、溢れた分は古い順に捨てて `log_ship_dropped` で数を残す。ページの host が `localhost` / `127.0.0.1` / `[::1]` のときだけ送る。最初の束が断られたら（受け口の無いサーバー）送るのをやめる。
 - サーバー側（`scripts/logSink.ts` の Vite プラグイン。`configureServer` / `configurePreviewServer` だけで、本番の成果物には入らない）: 接続元がループバック、Host が localhost 系、Origin・Sec-Fetch-Site が同じ origin、POST・text の型、本文 512 KB・1 束 1,000 行・1 行 64 KB、行が基本キーを持ちログの形であること、traceId が id の形（`[A-Za-z0-9-]{8,64}`）であることを全部満たす行だけを書く。1 セッションのファイルは 32 MB まで。外への送信は無く、行にはゲームのデータしか入らない（メールアドレスなどの個人の情報は載せない）。
@@ -193,29 +193,29 @@ jq -r '.traceId' log.jsonl | sort | uniq -c
 - `drive_started`（スタートを押したとき）: その回の時刻と天気（乱数で決まる）、出発地、操作モード、画質、`reproUrl`（`?seed=&start=<緯度>,<経度>&time=<morning|day|evening|night>&weather=<rain|clear>`）。main.ts は `?time=` と `?weather=`（real / auto / clear / rain）があればそれで始める。
 - 限り: 再現 URL の天気は始まったときの晴れ・雨を固定で渡す（おまかせの移り変わりは起きない）。読み込みの順や時間で呼ばれる回数が変わる乱数（交通の湧き方など）、フレームの時間、物理は同じにならない。seed より前に評価されるモジュールの最上位で `Math.random` を使うと seed が効かない（今は無い）。
 
-# 端末から読む（just logs*）
+# 端末から読む（just show-logs ほかログのレシピ）
 
 `scripts/logs.ts`（tsx）が 1 イベント 1 行の短い形で出す：`04:18:00.123 W road_tile_failed key=14/1/2 error="…"`（時刻・レベル I/W/E・イベント・`span<parent`・`key=value`。長い値は 120 字で切る）。セッションはファイルのパスか traceId で指定し、省けば latest。
 
 | レシピ                               | すること                                                                                                                                |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `just logs [n]`                      | 最新のセッションの末尾 n 行（既定 40）                                                                                                  |
-| `just logs-follow`                   | 追いかけて出し続ける。再読み込みで新しいセッションに移る                                                                                |
-| `just logs-errors [session]`         | warn・error だけ。`uncaught_error` は下に発生箇所（TypeScript の行）・span・状態・直前の行                                              |
-| `just logs-trace <spanId> [session]` | その span と、そこから起きた span 全部                                                                                                  |
-| `just logs-since [minutes]`          | 直近の全セッションの行を時刻順に                                                                                                        |
-| `just logs-compare [before] [after]` | 2 つのセッションの warn・error の数（既定は 1 つ前と最新）。`gone` / `fewer` / `same` / `more` / `new` と最後に `uncaught_error 2 -> 0` |
-| `just logs-repro [session]`          | そのセッションを同じように読み込む URL                                                                                                  |
-| `just logs-files [n]`                | セッションの一覧（時刻・行数・warn・error・build）                                                                                      |
+| `just show-logs [n]`                 | 最新のセッションの末尾 n 行（既定 40）                                                                                                  |
+| `just follow-logs`                   | 追いかけて出し続ける。再読み込みで新しいセッションに移る                                                                                |
+| `just show-errors [session]`         | warn・error だけ。`uncaught_error` は下に発生箇所（TypeScript の行）・span・状態・直前の行                                              |
+| `just trace-span <spanId> [session]` | その span と、そこから起きた span 全部                                                                                                  |
+| `just show-logs-since [minutes]`     | 直近の全セッションの行を時刻順に                                                                                                        |
+| `just compare-logs [before] [after]` | 2 つのセッションの warn・error の数（既定は 1 つ前と最新）。`gone` / `fewer` / `same` / `more` / `new` と最後に `uncaught_error 2 -> 0` |
+| `just print-repro-url [session]`     | そのセッションを同じように読み込む URL                                                                                                  |
+| `just list-logs [n]`                 | セッションの一覧（時刻・行数・warn・error・build）                                                                                      |
 
 # AI のデバッグループ
 
-1. `just dev` を動かしたまま、ゲームを開いて（人か、`scripts/qa/drive.mjs` が）問題を起こす。行は勝手に `.qa/logs/` に溜まる。
-2. `just logs-errors` で失敗を見つける。`at=src/…:行` が投げた所、`spans` が何の途中だったか、`before` が直前の流れ。
-3. `just logs-trace <spanId>`（例: `vio-…`、`pursuit-2`）でその仕事の始まりから全部を読む。`build` でどのコードの行かを確かめる（`+` 付きは未コミットの変更つき）。
+1. `just serve-dev` を動かしたまま、ゲームを開いて（人か、`scripts/qa/drive.mjs` が）問題を起こす。行は勝手に `.qa/logs/` に溜まる。
+2. `just show-errors` で失敗を見つける。`at=src/…:行` が投げた所、`spans` が何の途中だったか、`before` が直前の流れ。
+3. `just trace-span <spanId>`（例: `vio-…`、`pursuit-2`）でその仕事の始まりから全部を読む。`build` でどのコードの行かを確かめる（`+` 付きは未コミットの変更つき）。
 4. コードを直す。
-5. `just logs-repro` の URL を開き直す（同じ seed・出発地・時刻・天気）。新しいセッションのファイルができる。
-6. `just logs-compare` で前のセッションと比べ、その `uncaught_error` が `gone` になり、新しい warn・error が増えていないことを確かめる。`just logs-files` の build が直した後のハッシュに変わっていることも見る。
+5. `just print-repro-url` の URL を開き直す（同じ seed・出発地・時刻・天気）。新しいセッションのファイルができる。
+6. `just compare-logs` で前のセッションと比べ、その `uncaught_error` が `gone` になり、新しい warn・error が増えていないことを確かめる。`just list-logs` の build が直した後のハッシュに変わっていることも見る。
 
 # 移行で直したこと（旧名との対応）
 

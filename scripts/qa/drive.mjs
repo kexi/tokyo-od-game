@@ -5,7 +5,7 @@
 //
 //   node scripts/qa/drive.mjs [--minutes 3] [--every 6] [--time day|night|real] [--start lat,lon]
 //
-// Needs the dev server (just dev). Output: .qa/runs/<time>/frame-NNN.jpg + frame-NNN.json + run.json
+// Needs the dev server (just serve-dev). Output: .qa/runs/<time>/frame-NNN.jpg + frame-NNN.json + run.json
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
@@ -59,7 +59,7 @@ const alive = await fetch(base)
   .then((r) => r.ok)
   .catch(() => false);
 if (!alive) {
-  console.error(`dev server not reachable at ${base} — start it with: just dev`);
+  console.error(`dev server not reachable at ${base} — start it with: just serve-dev`);
   process.exit(1);
 }
 

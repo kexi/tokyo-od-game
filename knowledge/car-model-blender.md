@@ -66,7 +66,7 @@ sources:
 
 # 構成
 
-- `just car-model` → `nix develop .#blender -c blender --background --factory-startup --python scripts/blender/car.py -- public/models/car.glb`。Blender は 1.6GB あるので既定の devShell には入れず、別シェルにした。[^blender]
+- `just make-car-model` → `nix develop .#blender -c blender --background --factory-startup --python scripts/blender/car.py -- public/models/car.glb`。Blender は 1.6GB あるので既定の devShell には入れず、別シェルにした。[^blender]
 - ゲーム座標（+Y 上、+Z 前、+X が車の左）のままモデリングし、`export_yup=False` で書き出す。軸変換を一切挟まないので、物理（車輪 x ±0.82・z ±1.35、ハブ y −0.50）と寸法を直接合わせられる。
 - 車体はロフト（断面 31 か所 × 片側 17 区間）→ Catmull-Clark 2 段 → 車軸ごとの円柱でブーリアン差分（切断面がそのままホイールハウスの黒い内張りになる）。窓・ピラーは断面の区間と前後位置でマテリアルを割り当てる。
 - 灯火・グリル・ナンバー周り・継ぎ目は、格子の各頂点から車体へレイを飛ばして表面に沿わせる（シュリンクラップ修飾子は使っていない）。

@@ -42,7 +42,7 @@ sources:
     title: OSM の抽出結果
     author: claude-opus-5-5/1m
   - id: build-run
-    resource: just orbis-model（Blender 5.2.2、M2 Max）で 2 回生成し、glb と PNG の MD5 が一致することと、Cycles のプレビュー 4 枚を目視
+    resource: just make-orbis-model（Blender 5.2.2、M2 Max）で 2 回生成し、glb と PNG の MD5 が一致することと、Cycles のプレビュー 4 枚を目視
     title: モデルの生成
     author: claude-opus-5-5/1m
   - id: game-run
@@ -79,7 +79,7 @@ sources:
     title: 実データでの配置の試算
     author: claude-opus-5-5/1m
   - id: portable-build
-    resource: just portable-orbis-model（Blender 5.2.2）で 2 回生成し MD5 一致（fd55f8f0…）、Cycles のプレビュー 3 枚を目視
+    resource: just make-portable-orbis-model（Blender 5.2.2）で 2 回生成し MD5 一致（fd55f8f0…）、Cycles のプレビュー 3 枚を目視
     title: 可搬式のモデルの生成
     author: claude-opus-5-5/1m
 ---
@@ -255,7 +255,7 @@ sources:
 
 ## モデル（scripts/blender/portable_orbis.py → public/models/portable_orbis.glb）
 
-`just portable-orbis-model`。ゲーム座標（+Y 上、測定部の正面が +Z＝来る車の方、+X が路端から車道へ）、`export_yup=False`。全 456 三角形、glb 12 KB（テクスチャなし）。2 回生成して MD5 が一致した[^portable-build]。
+`just make-portable-orbis-model`。ゲーム座標（+Y 上、測定部の正面が +Z＝来る車の方、+X が路端から車道へ）、`export_yup=False`。全 456 三角形、glb 12 KB（テクスチャなし）。2 回生成して MD5 が一致した[^portable-build]。
 
 | ノード         | 三角形 | 内容                                                                                                                                                                                                                                     |
 | -------------- | -----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

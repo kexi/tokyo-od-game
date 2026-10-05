@@ -51,7 +51,7 @@ sources:
 # 構成
 
 - `src/physics/charmRig.ts`: 物理（Rapier の小さなワールド、紐と飾り、frameStep による動きの判定）。`src/game/mirrorCharm.ts`: 読み込み・紐のチューブ・描画レイヤ・設定との接続。`src/main.ts` は、物理ステップの直後に `mirrorCharms.update(vehicle.body, steps * world.timestep, cockpit.active)` を 1 行呼ぶだけ。一時停止・設定画面・リプレイの間は物理ループが回らないので、飾りはその場で止まる。リプレイでは記録した車の姿勢に、止まったまま付いていく。
-- モデルは `just charm-models`。`scripts/textures/charm_textures.py`（uv run）が錦と毛並みを描き、`scripts/blender/mirror_charms.py` が `public/models/mirror_charms.glb` を書き出す（108 KB、テクスチャは JPEG で埋め込み）。[^blender-run]
+- モデルは `just make-charm-models`。`scripts/textures/charm_textures.py`（uv run）が錦と毛並みを描き、`scripts/blender/mirror_charms.py` が `public/models/mirror_charms.glb` を書き出す（108 KB、テクスチャは JPEG で埋め込み）。[^blender-run]
   - `Charm_Plush`: 独自のデザインの丸いクマ。結び目の輪から足先まで 5.8 cm、幅 3.6 cm（耳込み）、2,076 三角形。毛は KHR_materials_sheen と房の法線マップ。
   - `Charm_Omamori`: 4.4 × 6.6 × 0.9 cm の袋と叶結び風の紐、676 三角形。表は「交通安全」の刺繍だけで、寺社名・紋は入れない。
   - どちらも原点が紐を結ぶ輪で、−Y へ垂れ、+Z が正面。

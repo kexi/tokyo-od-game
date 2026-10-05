@@ -61,7 +61,7 @@
             '';
           };
         }
-        # Blender (~1.6 GB) only regenerates public/models/*.glb (`just car-model`), so it lives in its
+        # Blender (~1.6 GB) only regenerates public/models/*.glb (`just make-car-model`), so it lives in its
         # own shell instead of the default one that CI and every contributor enter. nixpkgs no longer
         # evaluates x86_64-darwin packages, hence the guard.
         // pkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.system != "x86_64-darwin") {

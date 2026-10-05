@@ -160,7 +160,7 @@ main.ts の変更は接点だけ: 読み込み、`book()` が記録を返して�
 
 # モデルとアセット
 
-- 警察ヘリ `public/models/police_heli.glb` と検問の資材 `public/models/checkpoint.glb`（`scripts/blender/police_heli.py`・`checkpoint.py`、`just pursuit-models`）。作り方と寸法は [警察車両のモデリング](police-vehicles-blender.md) の「警察ヘリと検問の資材」。実在の標章・組織名・登録記号は描いていない。
+- 警察ヘリ `public/models/police_heli.glb` と検問の資材 `public/models/checkpoint.glb`（`scripts/blender/police_heli.py`・`checkpoint.py`、`just make-pursuit-models`）。作り方と寸法は [警察車両のモデリング](police-vehicles-blender.md) の「警察ヘリと検問の資材」。実在の標章・組織名・登録記号は描いていない。
 - 歩く警察官は既存の `police.glb`（服装の変種はノードの表示で切り替え、6〜9 月は夏服、検問は夜光チョッキと白い帽子覆い）と `police_rider.glb`。台帳ではどちらも未使用だったので、`used_by` に `src/world/officer.ts` を足した。
 - 「検問中」の看板は CanvasTexture で描く（`flipY = false`）。街の看板なので日本語のまま。
 - ローター音は spatialAudio のサイレンの仕組みに「rotor」を足した（23 Hz の矩形波を 260 Hz で低域通過、5 枚羽根 × 毎秒約 4.6 回転）。

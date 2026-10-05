@@ -4,7 +4,7 @@
 // drive to (temples, shrines, parks, museums, stadiums, bridges, the airport … mostly those with a
 // wikidata tag, which keeps the list to places someone has written about), and a featured list of
 // well-known landmarks for the chooser's view before anything is typed.
-// Run: pnpm exec tsx scripts/destinations.ts   (just destinations; after `just regs` cached the PBF)
+// Run: pnpm exec tsx scripts/destinations.ts   (just make-destinations; after `just fetch-regs` cached the PBF)
 import { existsSync, realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -818,7 +818,9 @@ export function extractFeatures(file: Uint8Array): Feature[] {
 async function main(): Promise<void> {
   const started = Date.now();
   if (!existsSync(OSM_CACHE))
-    throw new Error(`${OSM_CACHE} missing: run \`just regs\` (pnpm exec tsx scripts/regulations.ts signals)`);
+    throw new Error(
+      `${OSM_CACHE} missing: run \`just fetch-regs\` (pnpm exec tsx scripts/regulations.ts signals)`,
+    );
   const file = new Uint8Array(await readFile(OSM_CACHE));
   const areas = new AreaIndex(
     JSON.parse(await readFile(join(ROOT, "public", "data", "areas.json"), "utf8")) as AreaFile,

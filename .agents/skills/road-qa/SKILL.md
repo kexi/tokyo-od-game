@@ -13,8 +13,8 @@ description: >-
 
 ## 1. 撮る
 
-- 開発サーバーが動いていなければ `just dev` を背景で起動する。
-- `just qa-drive`（既定 3 分・6 秒ごと・昼）で走らせる。夜・別の場所は `node scripts/qa/drive.mjs --time night --start <lat>,<lon>`。
+- 開発サーバーが動いていなければ `just serve-dev` を背景で起動する。
+- `just record-drive`（既定 3 分・6 秒ごと・昼）で走らせる。夜・別の場所は `node scripts/qa/drive.mjs --time night --start <lat>,<lon>`。
 - 出力は `.qa/runs/<時刻>/`。`frame-NNN.jpg` と、同じ瞬間に「画面にあるはずのもの」を書いた `frame-NNN.json`（制限速度と種別、通りの幅・車線数・一方通行・黄色の線・規制、前方の標識と向き、前方の信号の色、ナビ表示、違反の記録）、まとめの `run.json`。
 
 ## 2. 判定する

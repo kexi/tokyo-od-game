@@ -2,6 +2,7 @@
 
 ## 2026-10-05
 
+- **Update**: just のレシピ名を「動詞-名詞」に統一（`default` だけ例外）。文書・台帳・スクリプトの `just …` を新しい名前に直した（例: `logs` → `show-logs`、`logs-errors` → `show-errors`、`logs-trace` → `trace-span`、`og` → `make-og-image`、`car-model` → `make-car-model`、`check` → `check-all`）。この履歴の古い行は当時の名前のまま残す。
 - **Creation**: [ゲームパッドと Nintendo Switch Pro コントローラー](gamepad-and-procon.md) を追加（Chrome の Gamepad API での Pro コンの標準配置・ZL/ZR が 0/1・dual-rumble を Chromium のソースで確認、既定の配置、割り当ての規則と保存 `tod.pad` 版 1、スティックの曲線と踏み込み、WebHID のレポートとサブコマンドと初期化、Chrome のドライバが IMU を切ることへの見張り、相補フィルタ、HD 振動の符号化、テスト 61 件、実機で確かめる手順と未確認の点）。tag `input` を tags.yml に追加。
 - **Update**: [遠景](far-skyline.md) に「ヒープが増え続けた」を追加（訂正）。遠くの街並みの `UnloadTilesPlugin` が共有のマテリアルを dispose して全タイルを組み直させていたこと、遠い地面の DEM の取り直し、外したもの・上限（LRU 40〜64 MB・200〜320 件、DEM ≤ 36）・4 ms の予算・事前の pipeline 作成と、それを確かめるテスト。
 - **Creation**: [車と人の質量・乗員・質量で決まる衝突](vehicle-mass-and-collisions.md) を追加（質量の表と出典、ハイブリッドの出力の推定、国民健康・栄養調査からの歩行者の体重、乗員と重心、Rapier の車輪のエンジン力・ブレーキ・ばねの実測、クラスごとの 0–100 km/h と停止距離、solver groups と自前の運動量交換による衝突、退けた案 3 つ、ケガの重さを被害者の Δv に、落とし穴 5 件、まだのこと）。[構造化ログ](logging.md) の単位の接尾辞に `Kg`・`Kj` を追加。

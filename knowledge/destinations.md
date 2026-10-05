@@ -22,7 +22,7 @@ sources:
     title: タグの実態調査
     author: claude-opus-5-5/1m
   - id: build-run
-    resource: just destinations を 2 回実行（M2 Max。161 s・最大 RSS 1.33 GB と 141 s）し、2 回の出力のバイト一致を cmp で確認（SHA-256 f3e95f4f…6172）
+    resource: just make-destinations を 2 回実行（M2 Max。161 s・最大 RSS 1.33 GB と 141 s）し、2 回の出力のバイト一致を cmp で確認（SHA-256 f3e95f4f…6172）
     title: 生成と再現性
     author: claude-opus-5-5/1m
   - id: unit-tests
@@ -34,7 +34,7 @@ sources:
 
 ナビの「目的地」の検索（src/main.ts・src/game/missions.ts）が探す場所の一覧。それまでゲームが持っていた場所は、都のオープンデータの POI（駅は都営だけ、名所は品川・台東に偏る）、案内標識の表示地名 204 件、モデルのあるランドマーク 3 件だけで、国会議事堂・東京ドーム・JR やメトロや私鉄の駅が無かった。
 
-- 生成: `just destinations`（`pnpm exec tsx scripts/destinations.ts`）。OSM は `just regs` がキャッシュした `.cache/osm/kanto-latest.osm.pbf` を読む（無ければ止まる。再ダウンロードはしない）
+- 生成: `just make-destinations`（`pnpm exec tsx scripts/destinations.ts`）。OSM は `just fetch-regs` がキャッシュした `.cache/osm/kanto-latest.osm.pbf` を読む（無ければ止まる。再ダウンロードはしない）
 - 読み込み: `src/game/destinations.ts` の `loadDestinations()`（zod で検査、`import.meta.env.BASE_URL` 基準で fetch、失敗は `data_load_failed` を warn して null）と `expandDestinations()`
 
 # ファイルの形

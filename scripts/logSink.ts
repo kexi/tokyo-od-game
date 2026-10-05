@@ -22,7 +22,7 @@ import { originalPosition, type SourceMapLike } from "./sourceMap.ts";
  * The dev / preview server's end of the page's log shipping (src/diagnostics.ts LogShipper):
  * POST <base>__log with JSON lines appends them to .qa/logs/<date>/<traceId>.jsonl, and
  * .qa/logs/latest.jsonl points at the session that started last. GET <base>__log/build answers the
- * build label of the tree as it is now. `just logs*` (scripts/logs.ts) reads the files.
+ * build label of the tree as it is now. the log recipes (`just show-logs`, `just show-errors`, …: scripts/logs.ts) read the files.
  *
  * Only from this machine, only lines shaped like the logger's: the server writes files on request,
  * so a request from elsewhere (another device on the network, a page on another origin, a DNS

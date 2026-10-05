@@ -8,7 +8,7 @@
 // Writes one JPEG per framing (out/og/<name>.jpg, 2400×1260: twice the card, scaled down after) so
 // the best can be chosen; --pick <name> names the one og_image.py reads (out/og/scene.jpg, by
 // default seat-near-1: the second take, the wipers at the edges of the glass).
-// Needs the dev server (just dev) or a development build served with the dev hook.
+// Needs the dev server (just serve-dev) or a development build served with the dev hook.
 import { copyFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { launch } from "../qa/browser.mjs";

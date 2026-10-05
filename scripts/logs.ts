@@ -4,7 +4,7 @@ import { spanChain } from "../src/logQuery.ts";
 
 /**
  * The page's and the scripts' log files from the terminal, one short line per event, for an agent
- * fixing a problem (knowledge/logging.md「AI のデバッグループ」). `just logs*` calls it:
+ * fixing a problem (knowledge/logging.md「AI のデバッグループ」). The log recipes (`just show-logs`, `just show-errors`, …) call it:
  *
  *   tail [n] [--follow] [file]   the last n lines of the latest session (following new ones)
  *   errors [file]                warn / error lines; uncaught_error with where, spans, state, before
@@ -195,7 +195,8 @@ export function resolveFile(arg: string | undefined, dir = LOG_DIR): string {
   const latest = join(dir, "latest.jsonl");
   if (existsSync(latest)) return realpathSync(latest);
   const newest = sessionFiles(dir)[0];
-  if (!newest) throw new Error(`no logs yet under ${relative(ROOT, dir)} (run just dev and open the game)`);
+  if (!newest)
+    throw new Error(`no logs yet under ${relative(ROOT, dir)} (run just serve-dev and open the game)`);
   return newest;
 }
 

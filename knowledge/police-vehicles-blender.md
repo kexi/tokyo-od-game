@@ -43,7 +43,7 @@ sources:
     resource: scripts/blender/police_{car,bike}.py を M2 Max・Blender 5.2.2 で実行し、Cycles のプレビューを目視、書き出した glb を Blender に読み戻して外形と三角形数を測った
     title: 生成とプレビューの実測
   - id: heli-build
-    resource: just pursuit-models（scripts/blender/police_heli.py・checkpoint.py）を M2 Max・Blender 5.2.2 で 2 回実行して同じ MD5 の glb になることを確認、Cycles のプレビュー（ヘリ 6 枚・資材 3 枚）を目視、glb の JSON（ノード・平行移動・extras・材質）を読み、glTF を Blender に読み戻して SignFace の UV とサーチライトのレンズの向きを確かめた。tests/assetManifest.test.ts 7 件が通過
+    resource: just make-pursuit-models（scripts/blender/police_heli.py・checkpoint.py）を M2 Max・Blender 5.2.2 で 2 回実行して同じ MD5 の glb になることを確認、Cycles のプレビュー（ヘリ 6 枚・資材 3 枚）を目視、glb の JSON（ノード・平行移動・extras・材質）を読み、glTF を Blender に読み戻して SignFace の UV とサーチライトのレンズの向きを確かめた。tests/assetManifest.test.ts 7 件が通過
     title: 警察ヘリと検問の資材の生成と実測
     author: claude-opus-5-5/1m
 ---
@@ -110,7 +110,7 @@ sources:
 | 警察ヘリ   | `police_heli.py` → `public/models/police_heli.glb` | 機首から尾翼まで 13.6 m、主ローター直径 13.8 m、高さ 4.1 m（垂直尾翼の上端）          | 2,390（胴体・尾部・スキッド 1,946、主ローター 268、テールローター 84、灯 92） | 30 KB |
 | 検問の資材 | `checkpoint.py` → `public/models/checkpoint.glb`   | パイロン 0.70 m、コーンバー 1.8 m、誘導灯 0.55 m、立て看板 0.6 × 0.9 m、赤色灯 1.02 m |      996（パイロン 270、コーンバー 272、誘導灯 184、立て看板 36、赤色灯 234） | 16 KB |
 
-レシピは `just pursuit-models`。2 回続けて実行して、どちらの glb も同じ MD5 になった。テクスチャは使っていない（材質の色だけ）。
+レシピは `just make-pursuit-models`。2 回続けて実行して、どちらの glb も同じ MD5 になった。テクスチャは使っていない（材質の色だけ）。
 
 ## ゲームが引く名前
 

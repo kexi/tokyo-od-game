@@ -25,7 +25,7 @@ sources:
 
 # 構成
 
-- `just smartphone-model` → `scripts/blender/smartphone.py` → `public/models/smartphone.glb`（8,228 B、Draco）。[^build-run]
+- `just make-smartphone-model` → `scripts/blender/smartphone.py` → `public/models/smartphone.glb`（8,228 B、Draco）。[^build-run]
 - 本体はケース込みで 147 × 71 × 8 mm、角の半径 9.5 mm。外形は角 1 か所 4 分割の 20 頂点で、背面の丸め・側面・前面のリップの 4 段を帯でつないだ。カメラ部は背面の左上（背面から見て）に 16.5 × 36 mm の島、レンズ 2 個（12 角形）とフラッシュ。音量キーは左側面、電源キーは右側面に付けた。
 - 三角形は 406（本体 388、画面 18）。歩行者 1 人（約 1,100）の半分以下で、何人が持っても負担にならない。
 - ノードは 2 つ。

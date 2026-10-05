@@ -5,7 +5,7 @@
 //   node scripts/teaser/teaser.mjs [--base http://localhost:5173/tokyo-od-game/] [--out out/teaser.mp4]
 //                                  [--only night,day] [--port 9340]
 //
-// Needs the dev server (just dev) or a development build served with the dev hook. Each session
+// Needs the dev server (just serve-dev) or a development build served with the dev hook. Each session
 // films its sections into out/teaser-frames/<section>/; --only re-films just those sessions and the
 // edit reuses the other sections' frames from the last run.
 import { execFileSync } from "node:child_process";

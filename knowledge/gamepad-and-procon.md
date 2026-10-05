@@ -208,7 +208,7 @@ WebUSB を使わなかったのは、Chrome が HID クラスのインターフ�
 4. 「プロコンを接続（ジャイロ・振動）」→ 一覧から Pro Controller を選ぶ。「WebHID で接続中（USB）」と、ジャイロの「いまの傾き」が動く。ハンドルのように右に傾けて角度が正になるか、平らに持っても立てて持っても「中央を合わせる」の後に左右が合うか。ジャイロをオンにして走る。
 5. 振動の「試す」、縁石に乗る、壁にぶつかる（強さが速さで変わる）、信号無視などでスタンプ、アイドリングをオンにして停車。
 6. Bluetooth でつなぎ直して 1〜5（表示が「Bluetooth」になる）。抜き差し・電源の入れ直しで自動でつながり直すか。ページを再読み込みしてもボタンを押さずに WebHID がつながるか（許可の記憶）。
-7. 問題があれば `just logs` で `pad_connected`・`procon_hid_connected`（`usb`・`reportBytes`）・`procon_hid_failed`（`step`）を見る。
+7. 問題があれば `just show-logs` で `pad_connected`・`procon_hid_connected`（`usb`・`reportBytes`）・`procon_hid_failed`（`step`）を見る。
 
 # 落とし穴
 

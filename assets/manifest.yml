@@ -1,10 +1,10 @@
 # アセット台帳: ゲームが使う 3D モデル・テクスチャ・画像・データ・フォント・音声を 1 件ずつ、
 # 名前・用途・生成方法・出典・ライセンスとともに管理する。
 #
-# - スキーマは src/data/assetManifest.ts、検査は tests/assetManifest.test.ts（`just assets-check`）。
+# - スキーマは src/data/assetManifest.ts、検査は tests/assetManifest.test.ts（`just check-assets`）。
 #   assets/ と public/（public/data のオープンデータを除く）の全ファイルが、どれか 1 件の files か docs に
 #   載っていないとテストが落ちる。新しいアセットを足したら、ここにも足す。
-# - アセット管理画面（`just assets` → assets.html）はこの台帳を種類ごとに並べる。
+# - アセット管理画面（`just open-assets` → assets.html）はこの台帳を種類ごとに並べる。
 # - files はリポジトリ相対のパスか glob（Node の fs.globSync の書式）。1 つのファイルは 1 件だけが持つ。
 # - made_by: blender-cli = Blender CLI の bpy スクリプト、procedural = Claude Code が書いた手続き生成、
 #   agy = Antigravity（agy）が書いた手続き生成（受け取り後に確認・修正済み）、external = 外部の配布物、
@@ -55,7 +55,7 @@ assets:
     purpose: 自車の詳細モデル（約 5 万三角形）と AI 車の低ポリゴン版、それぞれのタクシー仕様として道路を走らせる。
     kind: model
     files: [public/models/car.glb]
-    generator: { script: scripts/blender/car.py, recipe: car-model }
+    generator: { script: scripts/blender/car.py, recipe: make-car-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。寸法は src/physics/vehicle.ts に合わせた。外部の 3D 素材は使っていない）
     license: repo
@@ -68,7 +68,7 @@ assets:
     purpose: 運転席視点で見る右ハンドルの車内（メーターの針・ハンドル・ミラー・ワイパーをゲームが動かす）。
     kind: model
     files: [public/models/cockpit.glb]
-    generator: { script: scripts/blender/cockpit.py, recipe: cockpit-model }
+    generator: { script: scripts/blender/cockpit.py, recipe: make-cockpit-model }
     made_by: blender-cli
     source: 自作（car.glb のガラスと塗装面から窓の開口を求めて手続きモデリング。写真は配置の参考のみ）
     license: repo
@@ -82,7 +82,7 @@ assets:
     purpose: 実寸の標識板（円・逆三角・正方形・一方通行など）と支柱・取付金具。図柄は実行時に sign-textures を貼る。
     kind: model
     files: [public/models/signs.glb]
-    generator: { script: scripts/blender/signs.py, recipe: sign-model }
+    generator: { script: scripts/blender/signs.py, recipe: make-sign-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。板の寸法は道路標識、区画線及び道路標示に関する命令 別表第二による）
     license: repo
@@ -94,7 +94,7 @@ assets:
     purpose: 歩道を歩く人・違反を撮影する通行人の体。肩・肘・股・膝で曲がり、服と肌の色は人ごとに材質で変える。
     kind: model
     files: [public/models/human.glb]
-    generator: { script: scripts/blender/human.py, recipe: human-model }
+    generator: { script: scripts/blender/human.py, recipe: make-human-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。外部の 3D 素材は使っていない）
     license: repo
@@ -107,7 +107,7 @@ assets:
     purpose: 交差点の車両用 LED 3 灯横型・歩行者用 2 灯縦型の灯器と、信号柱・アーム。点灯はゲームがレンズの色で切り替える。
     kind: model
     files: [public/models/signals.glb]
-    generator: { script: scripts/blender/signals.py, recipe: signal-model }
+    generator: { script: scripts/blender/signals.py, recipe: make-signal-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。外部の 3D 素材は使っていない）
     license: repo
@@ -120,7 +120,7 @@ assets:
     purpose: 緊急走行で近づき、道を譲る場面を作る高規格救急車（赤色灯は左右交互に光らせる）。
     kind: model
     files: [public/models/ambulance.glb]
-    generator: { script: scripts/blender/ambulance.py, recipe: ambulance-model }
+    generator: { script: scripts/blender/ambulance.py, recipe: make-ambulance-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。赤十字などの標章・組織名は入れていない）
     license: repo
@@ -133,7 +133,7 @@ assets:
     purpose: 交通に混ざって走る都市型ノンステップの路線バス（扉と車輪はノードで動かせる）。
     kind: model
     files: [public/models/bus.glb]
-    generator: { script: scripts/blender/bus.py, recipe: bus-model }
+    generator: { script: scripts/blender/bus.py, recipe: make-bus-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。寸法は国内の 10.5 m 級ノンステップバスの公表値の範囲）
     license: repo
@@ -146,7 +146,7 @@ assets:
     purpose: 交通に混ざって走る 10t 級のアルミウイング車。
     kind: model
     files: [public/models/truck10t.glb]
-    generator: { script: scripts/blender/truck.py, recipe: truck-model }
+    generator: { script: scripts/blender/truck.py, recipe: make-truck-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。メーカーのロゴ・事業者名は入れていない）
     license: repo
@@ -159,7 +159,7 @@ assets:
     purpose: 交通に混ざって走る 8t 増トンの平ボディ車（車両総重量 11t 超で大型免許の区分）。
     kind: model
     files: [public/models/truck8t.glb]
-    generator: { script: scripts/blender/truck.py, recipe: truck-model }
+    generator: { script: scripts/blender/truck.py, recipe: make-truck-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。メーカーのロゴ・事業者名は入れていない）
     license: repo
@@ -172,7 +172,7 @@ assets:
     purpose: 交通に混ざって走る 250cc のバイク。ライダーは歩行者と同じ関節で姿勢を変えられる。
     kind: model
     files: [public/models/motorbike.glb]
-    generator: { script: scripts/blender/motorbike.py, recipe: motorbike-model }
+    generator: { script: scripts/blender/motorbike.py, recipe: make-motorbike-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。メーカーのロゴは描いていない）
     license: repo
@@ -185,7 +185,7 @@ assets:
     purpose: 交通整理・取締りに立つ制服警察官（活動服・夏服・夜光チョッキ・帽子覆いをノードで切り替える）。
     kind: model
     files: [public/models/police.glb]
-    generator: { script: scripts/blender/police.py, recipe: police-model }
+    generator: { script: scripts/blender/police.py, recipe: make-police-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。服制は警察官の服制に関する規則 別表による。旭日章・組織名は入れていない）
     license: repo
@@ -199,7 +199,7 @@ assets:
     purpose: 歩道や横断歩道でベビーカーを押す歩行者の小道具。
     kind: model
     files: [public/models/stroller.glb]
-    generator: { script: scripts/blender/stroller.py, recipe: stroller-model }
+    generator: { script: scripts/blender/stroller.py, recipe: make-stroller-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。ブランドのロゴは入れていない）
     license: repo
@@ -214,7 +214,7 @@ assets:
     purpose: 車道や歩道を走る自転車。ハンドル・車輪・クランクはノードで動かし、乗る人は human.glb の関節で姿勢を作る。
     kind: model
     files: [public/models/bicycle.glb]
-    generator: { script: scripts/blender/bicycle.py, recipe: bicycle-model }
+    generator: { script: scripts/blender/bicycle.py, recipe: make-bicycle-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。大きさは普通自転車の範囲、ブランドのロゴは入れていない）
     license: repo
@@ -229,7 +229,7 @@ assets:
     purpose: 違反を目撃した通行人が横向きに構えて撮るスマホ。画面はゲームが CanvasTexture で描く。
     kind: model
     files: [public/models/smartphone.glb]
-    generator: { script: scripts/blender/smartphone.py, recipe: smartphone-model }
+    generator: { script: scripts/blender/smartphone.py, recipe: make-smartphone-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。特定機種の形・ロゴは使っていない）
     license: repo
@@ -243,7 +243,7 @@ assets:
     files: [public/models/police_patrol.glb]
     generator:
       script: [scripts/blender/police_car.py, scripts/blender/police_common.py]
-      recipe: police-car-models
+      recipe: make-police-car-models
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。実在の標章・文字は使わず、汎用の盾と PATROL、架空の番号にした）
     license: repo
@@ -258,7 +258,7 @@ assets:
     files: [public/models/police_unmarked.glb]
     generator:
       script: [scripts/blender/police_car.py, scripts/blender/police_common.py]
-      recipe: police-car-models
+      recipe: make-police-car-models
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。架空の番号）
     license: repo
@@ -273,7 +273,7 @@ assets:
     files: [public/models/police_shirobai.glb]
     generator:
       script: [scripts/blender/police_bike.py, scripts/blender/police_common.py]
-      recipe: police-bike-models
+      recipe: make-police-bike-models
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。実在の標章・文字は使っていない）
     license: repo
@@ -288,7 +288,7 @@ assets:
     files: [public/models/police_rider.glb]
     generator:
       script: [scripts/blender/police_bike.py, scripts/blender/police_common.py]
-      recipe: police-bike-models
+      recipe: make-police-bike-models
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。実在の標章・文字は使っていない）
     license: repo
@@ -304,7 +304,7 @@ assets:
     files: [public/models/police_heli.glb]
     generator:
       script: [scripts/blender/police_heli.py, scripts/blender/police_common.py]
-      recipe: pursuit-models
+      recipe: make-pursuit-models
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。特定の機種を写さず、実在の組織名・標章・旭日章・登録記号は入れていない。白地に紺の帯だけ）
     license: repo
@@ -318,7 +318,7 @@ assets:
     files: [public/models/checkpoint.glb]
     generator:
       script: [scripts/blender/checkpoint.py, scripts/blender/police_common.py]
-      recipe: pursuit-models
+      recipe: make-pursuit-models
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。組織名・標章は入れていない）
     license: repo
@@ -330,7 +330,7 @@ assets:
     purpose: 芝公園に実寸（333 m）で立つ東京タワー。夜はランドマークライト・ダイヤモンドヴェールで照らし、遠くでは軽いシルエットに替える。
     kind: model
     files: [public/models/tokyo_tower.glb, public/models/tokyo_tower_far.glb]
-    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    generator: { script: scripts/blender/landmarks.py, recipe: make-landmark-models }
     made_by: blender-cli
     source: >-
       自作（bpy で手続きモデリング）。寸法・形は PLATEAU LOD2 の実測と OpenStreetMap の脚の位置、
@@ -346,7 +346,7 @@ assets:
     purpose: 押上に実寸（634 m）で立つ東京スカイツリー。夜は粋・雅・幟のライティングを公式の予定どおりに切り替える。
     kind: model
     files: [public/models/tokyo_skytree.glb, public/models/tokyo_skytree_far.glb]
-    generator: { script: scripts/blender/landmarks.py, recipe: landmark-models }
+    generator: { script: scripts/blender/landmarks.py, recipe: make-landmark-models }
     made_by: blender-cli
     source: >-
       自作（bpy で手続きモデリング）。断面は PLATEAU LOD2 の実測、足元は OpenStreetMap の building:part、
@@ -365,7 +365,7 @@ assets:
     files: [public/models/tokyo_station.glb, public/models/tokyo_station_far.glb]
     generator:
       script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py]
-      recipe: landmark-models
+      recipe: make-landmark-models
     made_by: blender-cli
     source: >-
       自作（bpy で手続きモデリング）。平面と量感は PLATEAU LOD2 の実測と OpenStreetMap、高さは JR 東日本の
@@ -384,7 +384,7 @@ assets:
     purpose: 道路の上の門型（車線ごとのカメラとストロボ）・狭い道の柱型と、その手前の「スピード落せ 自動速度取締機設置路線」の看板。撮影するとその車線のストロボが光る。
     kind: model
     files: [public/models/orbis.glb]
-    generator: { script: scripts/blender/orbis.py, recipe: orbis-model }
+    generator: { script: scripts/blender/orbis.py, recipe: make-orbis-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。形はループコイル式の柱上型オービスIII の写真で確かめただけで、外部の 3D 素材・写真・実在の標章は使っていない）
     license: repo
@@ -398,7 +398,7 @@ assets:
     purpose: 生活道路の路端に日ごとに置く三脚の速度取締装置。測定部（カメラの窓・日よけ・レーダーの面）、上に載るストロボ、地面のバッテリーケースとケーブル。撮影するとストロボ（PortableLens）が光る。
     kind: model
     files: [public/models/portable_orbis.glb]
-    generator: { script: scripts/blender/portable_orbis.py, recipe: portable-orbis-model }
+    generator: { script: scripts/blender/portable_orbis.py, recipe: make-portable-orbis-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。三脚の測定部・別のストロボ・地面のケースという一般的な配置を Wikimedia Commons の写真で確かめただけで、特定の製品の形・写真・外部の 3D 素材は使わず、メーカー名・型番・警察の標章・組織名も入れていない）
     license: repo
@@ -411,7 +411,7 @@ assets:
     purpose: 方面及び方向（108 系）の案内標識を立てる片持式（F 形）の支柱と腕、路側式の支柱、1 × 1 m の標示板。ゲームが標識ごとに伸縮してインスタンス描画する。
     kind: model
     files: [public/models/guide_signs.glb]
-    generator: { script: scripts/blender/guide_signs.py, recipe: guide-sign-model }
+    generator: { script: scripts/blender/guide_signs.py, recipe: make-guide-sign-model }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。寸法は道路標識設置基準の設置高さと一般的な F 形柱の鋼管径。外部の 3D 素材・写真は使っていない）
     license: repo
@@ -424,7 +424,7 @@ assets:
     purpose: 自車のルームミラーのステーから紐で吊るす飾り。丸いクマのぬいぐるみ（約 5.8 cm）と交通安全のお守り（4.4 × 6.6 cm）。Rapier の紐と揺れは src/physics/charmRig.ts。
     kind: model
     files: [public/models/mirror_charms.glb]
-    generator: { script: scripts/blender/mirror_charms.py, recipe: charm-models }
+    generator: { script: scripts/blender/mirror_charms.py, recipe: make-charm-models }
     made_by: blender-cli
     source: 自作（bpy で手続きモデリング。クマは独自のデザインで実在のキャラクターに似せていない。お守りの文字は「交通安全」だけで、寺社名・紋・商標は入れない）
     license: repo
@@ -438,7 +438,7 @@ assets:
     purpose: 自車・タクシーのナンバー（自家用・事業用）、行灯、空車表示、灯火、グリル、タイヤの図柄。car.glb などに埋め込む。
     kind: texture
     files: [assets/car/textures/*.png]
-    generator: { script: scripts/textures/car_textures.py, recipe: car-textures }
+    generator: { script: scripts/textures/car_textures.py, recipe: make-car-textures }
     made_by: agy
     source: 自作（手続き生成、シード固定。文字はコミット固定の Noto Sans JP、番号は架空、実在のロゴなし）
     license: repo
@@ -452,7 +452,7 @@ assets:
     purpose: 別表第一の番号ごとの道路標識の図柄 345 枚。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-catalog）。
     kind: texture
     files: [assets/signs/textures/*.png]
-    generator: { script: scripts/textures/sign_textures.py, recipe: sign-textures }
+    generator: { script: scripts/textures/sign_textures.py, recipe: make-sign-textures }
     made_by: [agy, procedural]
     source: 自作（手続き生成）。様式・色・寸法は道路標識、区画線及び道路標示に関する命令 別表第二（e-Gov、2026-09-01 施行版）による。
     license: repo
@@ -466,7 +466,7 @@ assets:
     purpose: 歩行者の顔・シャツ・ズボン・髪・靴。白基調のグレースケールで、色はゲームが材質で乗算して人ごとに変える。
     kind: texture
     files: [assets/human/textures/*.png]
-    generator: { script: scripts/textures/human_textures.py, recipe: textures }
+    generator: { script: scripts/textures/human_textures.py, recipe: make-textures }
     made_by: agy
     source: 自作（手続き生成、シード固定。外部の画像・フォントは使っていない）
     license: repo
@@ -479,7 +479,7 @@ assets:
     purpose: PLATEAU LOD1 の建物に貼る外壁 8 種（色と窓のマスク、1 枚 = 幅 12.8 m × 高さ 14 m で繰り返す）。
     kind: texture
     files: [assets/buildings/textures/*.png]
-    generator: { script: scripts/textures/building_textures.py, recipe: textures }
+    generator: { script: scripts/textures/building_textures.py, recipe: make-textures }
     made_by: agy
     source: 自作（手続き生成、シード固定。外部の画像は使っていない）
     license: repo
@@ -491,7 +491,7 @@ assets:
     purpose: 車両用灯器の LED の粒と、歩行者用の「止まれ」「進め」の人形のマスク。ゲームが色を掛けて点灯・消灯する。
     kind: texture
     files: [assets/signals/textures/*.png]
-    generator: { script: scripts/textures/signal_textures.py, recipe: textures }
+    generator: { script: scripts/textures/signal_textures.py, recipe: make-textures }
     made_by: agy
     source: 自作（手続き生成、シード固定）
     license: repo
@@ -503,7 +503,7 @@ assets:
     purpose: 救急車の側面・後面の赤帯と「救急」「AMBULANCE」、ボンネットの鏡文字、赤色灯のレンズ。
     kind: texture
     files: [assets/ambulance/textures/*.png]
-    generator: { script: scripts/textures/ambulance_textures.py, recipe: textures }
+    generator: { script: scripts/textures/ambulance_textures.py, recipe: make-textures }
     made_by: agy
     source: 自作（手続き生成、シード固定。文字はコミット固定の Noto Sans JP、標章なし）
     license: repo
@@ -516,7 +516,7 @@ assets:
     purpose: 路線バスの LED 行先表示、架空の塗装帯とステッカー、緑ナンバー、ホイール。
     kind: texture
     files: [assets/bus/textures/*.png]
-    generator: { script: scripts/textures/bus_textures.py, recipe: textures }
+    generator: { script: scripts/textures/bus_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成。実在の事業者の塗装・社名・系統記号は使っていない。番号は架空）
     license: repo
@@ -529,7 +529,7 @@ assets:
     purpose: ウイング荷台の側板、「最大積載量」の表示、大型後部反射器、グリル、緑ナンバー、ホイール。
     kind: texture
     files: [assets/truck/textures/*.png]
-    generator: { script: scripts/textures/truck_textures.py, recipe: textures }
+    generator: { script: scripts/textures/truck_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成。メーカー・事業者のロゴなし、番号は架空）
     license: repo
@@ -542,7 +542,7 @@ assets:
     purpose: 軽二輪の後部ナンバー（第14号様式）と、キャストホイール・ブレーキディスク。
     kind: texture
     files: [assets/motorbike/textures/*.png]
-    generator: { script: scripts/textures/motorbike_textures.py, recipe: textures }
+    generator: { script: scripts/textures/motorbike_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成。番号は架空）
     license: repo
@@ -555,7 +555,7 @@ assets:
     purpose: 制服警察官の活動服・ズボン（白基調で色は材質）、装備のアトラス、夜光チョッキの網。
     kind: texture
     files: [assets/police/textures/*.png]
-    generator: { script: scripts/textures/police_textures.py, recipe: textures }
+    generator: { script: scripts/textures/police_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成、シード固定。旭日章・組織名・文字なし）
     license: repo
@@ -568,7 +568,7 @@ assets:
     purpose: パトカー・覆面・白バイの塗装デカール、警光灯のレンズ、ナンバー、白バイ隊員の制服。
     kind: texture
     files: [assets/police_vehicles/textures/*.png]
-    generator: { script: scripts/textures/police_vehicle_textures.py, recipe: textures }
+    generator: { script: scripts/textures/police_vehicle_textures.py, recipe: make-textures }
     made_by: agy
     source: 自作（手続き生成、シード固定。実在の標章なし、文字はコミット固定の Noto Sans JP、番号は架空）
     license: repo
@@ -582,7 +582,7 @@ assets:
     purpose: ベビーカーの座面・幌の布（白基調で色は材質）とタイヤ。
     kind: texture
     files: [assets/stroller/textures/*.png]
-    generator: { script: scripts/textures/stroller_textures.py, recipe: textures }
+    generator: { script: scripts/textures/stroller_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成、シード固定。フォント・外部画像・ブランドなし）
     license: repo
@@ -596,7 +596,7 @@ assets:
     purpose: ママチャリの前かごの網（隙間は透過、色は材質で付ける）。
     kind: texture
     files: [assets/bicycle/textures/*.png]
-    generator: { script: scripts/textures/bicycle_textures.py, recipe: textures }
+    generator: { script: scripts/textures/bicycle_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成）
     license: repo
@@ -610,7 +610,7 @@ assets:
     purpose: 速度計・回転計・燃料計の盤面、警告灯、空調パネル、シフトゲート、シートと天井の布、樹脂のシボ、スピーカーの網。
     kind: texture
     files: [assets/cockpit/textures/*.png]
-    generator: { script: scripts/textures/cockpit_textures.py, recipe: textures }
+    generator: { script: scripts/textures/cockpit_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成。文字はコミット固定の Noto Sans JP、ロゴ・車名なし）
     license: repo
@@ -628,7 +628,7 @@ assets:
         assets/landmarks/textures/sk_*.png,
         assets/landmarks/textures/ts_far*.png,
       ]
-    generator: { script: scripts/textures/landmark_textures.py, recipe: textures }
+    generator: { script: scripts/textures/landmark_textures.py, recipe: make-textures }
     made_by: procedural
     source: 自作（手続き生成、シード固定。写真・フォント・ロゴ・文字なし）
     license: repo
@@ -648,7 +648,7 @@ assets:
       - assets/landmarks/textures/ts_glass_*.*
       - assets/landmarks/textures/ts_clock_*.*
       - assets/landmarks/textures/ts_roofglass_*.*
-    generator: { script: scripts/textures/tokyo_station_textures.py, recipe: textures }
+    generator: { script: scripts/textures/tokyo_station_textures.py, recipe: make-textures }
     made_by: agy
     source: 自作（手続き生成・写真なし、シード固定。ロゴ・文字・駅名なし、時計の数字は線描画）
     license: repo
@@ -663,7 +663,7 @@ assets:
       - assets/road/textures/asphalt_albedo.jpg
       - assets/road/textures/asphalt_normal.jpg
       - assets/road/textures/asphalt_roughness.png
-    generator: { script: scripts/textures/asphalt_textures.py, recipe: textures }
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
     made_by: unknown
     source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
     license: repo
@@ -682,7 +682,7 @@ assets:
       - assets/road/textures/asphalt_worn_albedo.*
       - assets/road/textures/asphalt_patch_albedo.*
       - assets/road/textures/asphalt_porous_albedo.*
-    generator: { script: scripts/textures/asphalt_textures.py, recipe: textures }
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
     made_by: unknown
     source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
     license: repo
@@ -694,7 +694,7 @@ assets:
     purpose: 予告看板の面（青地に黄の「スピード落せ」、白の「自動速度取締機 / 設置路線」）。orbis.glb に埋め込む。
     kind: texture
     files: [assets/orbis/textures/*.png]
-    generator: { script: scripts/textures/orbis_textures.py, recipe: orbis-model }
+    generator: { script: scripts/textures/orbis_textures.py, recipe: make-orbis-model }
     made_by: procedural
     source: 自作（手続き生成。文字はコミット固定の Noto Sans JP。文言と配色は都内の看板の写真にならい、組織名・紋章は入れない）
     license: repo
@@ -707,7 +707,7 @@ assets:
     purpose: お守りの錦（紫地に金の七宝、表は「交通安全」の金糸の刺繍）とクマの毛並みの法線マップ。mirror_charms.glb に JPEG で埋め込む。
     kind: texture
     files: [assets/charms/textures/*.png]
-    generator: { script: scripts/textures/charm_textures.py, recipe: charm-models }
+    generator: { script: scripts/textures/charm_textures.py, recipe: make-charm-models }
     made_by: procedural
     source: 自作（手続き生成。七宝は古くからある一般的な文様。文字はコミット固定の Noto Sans JP。寺社名・紋は入れない）
     license: repo
@@ -723,7 +723,7 @@ assets:
     files: [public/og.jpg]
     generator:
       script: [scripts/teaser/og.mjs, scripts/textures/og_image.py]
-      recipe: og
+      recipe: make-og-image
     made_by: procedural
     source: >-
       ゲームの画面（ヘッドレス Chrome で撮影）。PLATEAU の建物・OpenStreetMap の道路・地理院タイルを含むため、
@@ -738,7 +738,7 @@ assets:
     purpose: 別表第一の全番号と法定外 7 種について、図柄のファイル・板の形・寸法・根拠（描いていない番号は理由）を引く表。
     kind: data
     files: [assets/signs/catalog.json]
-    generator: { script: scripts/textures/sign_textures.py, recipe: sign-textures }
+    generator: { script: scripts/textures/sign_textures.py, recipe: make-sign-textures }
     made_by: procedural
     source: 道路標識、区画線及び道路標示に関する命令（e-Gov 法令 API、2026-09-01 施行版）の別表第一・第二を読んで作った表
     license: repo
@@ -752,7 +752,7 @@ assets:
     files: [public/data/landmarks.json]
     generator:
       script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py]
-      recipe: landmark-models
+      recipe: make-landmark-models
     made_by: blender-cli
     source: >-
       足元の形は OpenStreetMap（Overpass、2026-10-04）、置き換える建物は PLATEAU の gml_id、
@@ -769,7 +769,7 @@ assets:
     purpose: 案内標識の板に出うる文字（表示地名・交差点名・通称名・OSM の行き先）。guide-fonts のサブセットの範囲になる。
     kind: data
     files: [assets/signs/guide/charset.txt]
-    generator: { script: scripts/guide-signs.ts, recipe: guide-data }
+    generator: { script: scripts/guide-signs.ts, recipe: make-guide-data }
     made_by: procedural
     source: 国土交通省「各都道府県において表示される基準地・重要地・主要地一覧表」（平成30年6月末）と OpenStreetMap（交差点名・通称名・destination）に出る文字を集めたもの
     license: repo
@@ -802,7 +802,7 @@ assets:
     purpose: 実行時に描く案内標識の板の日本字（Noto Sans JP、ウェイト 700）とローマ字（Overpass、700）。板の文字だけに絞ったサブセットをゲームに同梱する。
     kind: font
     files: [assets/signs/guide/*.woff2]
-    generator: { script: scripts/textures/guide_fonts.py, recipe: guide-fonts }
+    generator: { script: scripts/textures/guide_fonts.py, recipe: make-guide-fonts }
     made_by: [external, procedural]
     source: >-
       Google Fonts の google/fonts コミット 295d98a の Noto Sans JP と Overpass を SHA-256 で照合して取得し、

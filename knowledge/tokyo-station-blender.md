@@ -53,7 +53,7 @@ sources:
 
 # 構成
 
-- `scripts/blender/tokyo_station.py` が駅舎を作る。`scripts/blender/landmarks.py` の `build_tokyo_station()` は共通の部品（`Builder`・`Palette`・`material`・足元の多角形）を渡して呼ぶだけで、出力名・入口・ノード名（`TokyoStation_Near` / `TokyoStation_Far`）・夜のモード（`floodlight` / `lightsOut`）は前のまま。`just landmark-models` の 3 行目で `public/models/tokyo_station.glb` と `_far.glb` を書き、`public/data/landmarks.json` の駅のエントリを差し替える。
+- `scripts/blender/tokyo_station.py` が駅舎を作る。`scripts/blender/landmarks.py` の `build_tokyo_station()` は共通の部品（`Builder`・`Palette`・`material`・足元の多角形）を渡して呼ぶだけで、出力名・入口・ノード名（`TokyoStation_Near` / `TokyoStation_Far`）・夜のモード（`floodlight` / `lightsOut`）は前のまま。`just make-landmark-models` の 3 行目で `public/models/tokyo_station.glb` と `_far.glb` を書き、`public/data/landmarks.json` の駅のエントリを差し替える。
 - 座標は他のランドマークと同じ（+Y 上、+Z が heading 287.05° = 行幸通り側、原点は南北ドームの中点の地面）。平面の作業座標は a = 北端へ向かう長さ方向（方位 17.05°）、c = 線路側への奥行き方向で、モデルの x = −a、z = −c。
 - 出力（2026-10-05）: 近景 71,954 三角形（予算 12 万）、遠景 819 三角形。glb 523 KB（Draco、テクスチャは遠景の 2 枚だけ）、遠景 glb 13 KB。前の版は近景 2,405・遠景 266 三角形、918 KB（外壁を絵で描いたテクスチャ 12 枚を含んでいた）。[^build-run]
 - `landmarks.json` で変わったのは `height`（38.4 → 46.1 m、フィニアルを含む最高高さ）だけ。位置・方位・地盤高・足元・置き換える PLATEAU 建物は前と同じ。
@@ -175,10 +175,10 @@ JR の復原後立面図（[^jr-2007] 別紙1）は、地面からフィニア�
 > 1. 写真・既存画像・Web 上の素材を一切使わない。すべて Python（PIL + numpy、PEP 723 形式、`uv run` で動く、依存は `exclude-newer` で固定）でシードを固定して描く。生成スクリプトは `scripts/textures/tokyo_station_textures.py`。
 > 2. ロゴ・文字・駅名は描かない。時計の数字（ローマ数字 I〜XII）はフォントを使わず線で描く。
 > 3. すべて上下左右に継ぎ目なくつながること（端の 1 画素がもう一方の端と連続）。1 タイルの中に目立つ特徴（色むらの塊・欠け）を 1 つだけ置くと繰り返しが見えるので、変化は細かく散らす。
-> 4. 出力は `assets/landmarks/textures/` に下表の名前で置く。ファイルがあれば `just landmark-models` の駅の行（`landmarks.py -- public/models/tokyo_station.glb`）で自動的に使われる（`TEXTURE_FILES`）。basecolor は sRGB、normal と rough は linear。
+> 4. 出力は `assets/landmarks/textures/` に下表の名前で置く。ファイルがあれば `just make-landmark-models` の駅の行（`landmarks.py -- public/models/tokyo_station.glb`）で自動的に使われる（`TEXTURE_FILES`）。basecolor は sRGB、normal と rough は linear。
 > 5. 法線は OpenGL 形式（+Y が上、glTF と同じ）。rough は glTF の metallicRoughness の詰め方: **G = 粗さ、B = 金属度**（R は使わない）。Blender 側は rough があると係数を 1.0 にするので、値はそのまま絶対値で入れる。
 > 6. 合計で 3 MB 以内（basecolor は JPEG 品質 85、normal・rough は PNG）。
-> 7. 作ったら `assets/manifest.yml` に 1 件（made_by: agy、source に「手続き生成・写真なし」）を足し、`just textures` にスクリプトを足す。確認用に全テクスチャを 1 枚に並べたシートを引数で指定した場所に保存する。
+> 7. 作ったら `assets/manifest.yml` に 1 件（made_by: agy、source に「手続き生成・写真なし」）を足し、`just make-textures` にスクリプトを足す。確認用に全テクスチャを 1 枚に並べたシートを引数で指定した場所に保存する。
 >
 > **UV の約束**（モデル側で決まっている）: 壁は外から見て右へ u・上へ v、1.0 = 下表の「1 タイル」の実寸。屋根は u が軒と平行・v が勾配を上る向き。ドームなどの回転体は u が周方向・v が上向き。ヴォールト（かまぼこ屋根）は u が軸方向・v が円弧方向。ガラスと時計は開口ごとに 0–1（v = 1 が上）。
 >
@@ -194,7 +194,7 @@ JR の復原後立面図（[^jr-2007] 別紙1）は、地面からフィニア�
 > | `ts_clock_basecolor.png` / `ts_clock_night.png`               | TS_ClockFace           | 512²                | 円の外接正方形 = 0–1（中心 0.5, 0.5） | 白い琺瑯の文字盤（#EDEBE4）、外周に細い黒の輪と 60 分の目盛り、黒いローマ数字 I〜XII（線で描く）、黒い時針・分針（10 時 08 分の位置）。円の外は文字盤と同じ色で塗る。夜: 文字盤だけ明るく、数字・針・目盛りは暗く抜く。                                                                                                                                                                                                                                                                                                                                     |
 > | `ts_roofglass_basecolor.jpg`                                  | TS_RoofGlass           | 512²                | 1.5 × 1.5 m                           | 中央の屋根（線路側）のガラス: 1.5 m 角の格子に細い暗い枠（#3A3E42）、ガラスは暗い青灰（#5E6E76）。                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 >
-> **確認**: シートを目で見て、継ぎ目・繰り返し・色（上の sRGB の平均と ±10 % 以内）を確かめる。モデルへの組み込み後は `just landmark-models` の駅の行を実行し、`LANDMARK_PREVIEW_VIEWS=front,dome nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- /tmp/x/tokyo_station.glb /tmp/x/preview` で正面とドームのプレビューを撮って、煉瓦 1 個が実寸（ファサードの柱間 4 m に煉瓦 18 個）に見えることを確かめる。
+> **確認**: シートを目で見て、継ぎ目・繰り返し・色（上の sRGB の平均と ±10 % 以内）を確かめる。モデルへの組み込み後は `just make-landmark-models` の駅の行を実行し、`LANDMARK_PREVIEW_VIEWS=front,dome nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- /tmp/x/tokyo_station.glb /tmp/x/preview` で正面とドームのプレビューを撮って、煉瓦 1 個が実寸（ファサードの柱間 4 m に煉瓦 18 個）に見えることを確かめる。
 
 # 夜間照明
 

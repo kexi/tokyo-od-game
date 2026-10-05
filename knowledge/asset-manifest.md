@@ -37,8 +37,8 @@ sources:
 
 - 台帳は `assets/manifest.yml`。1 件 = 1 アセット（モデル 1 つ、テクスチャ 1 セット、フォント 1 書体など）。
 - スキーマは `src/data/assetManifest.ts`（zod）。読み込みと glob の展開は `scripts/assetManifest.ts`。
-- 検査は `tests/assetManifest.test.ts`（`just assets-check`、`just test` にも含まれる）。
-- アセット管理画面（`just assets` → `assets.html`）は、台帳を種類ごとに並べる。
+- 検査は `tests/assetManifest.test.ts`（`just check-assets`、`just run-tests` にも含まれる）。
+- アセット管理画面（`just open-assets` → `assets.html`）は、台帳を種類ごとに並べる。
   - 各件の名前・用途・作成・生成レシピ・出典・ライセンス・読み込み元・材料・組み込み先・資料を出す。
   - 従来のプレビューとレビュー（OK／要修正、ピン、Claude への送信）はファイル単位のまま残した。
 

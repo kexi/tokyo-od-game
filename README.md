@@ -52,29 +52,29 @@
 `nix develop`（direnv）で Node.js 24・pnpm・just・lefthook などが揃います。
 
 ```sh
-just install    # 依存のインストール（公開 1 日未満のパッケージは入れない設定）
-just dev        # 開発サーバ
-just check      # 型・lint・整形・テスト・justfile・Actions の検査
-just data       # オープンデータを取得して public/data を再生成（ライセンスゲート付き）
-just regs       # JARTIC 交通規制情報と OSM の信号機から public/data/regs・signals を再生成
-just car-textures  # 車のテクスチャを再生成（uv）
-just car-model     # Blender CLI で車のモデルを再生成（nix develop .#blender、初回は約 600MB を取得）
-just sign-model    # 道路標識の板・支柱を再生成
-just human-model   # 歩行者を再生成
-just signal-model  # 信号機（灯器・信号柱）を再生成
-just ambulance-model  # 救急車を再生成
-just textures      # 標識・歩行者・建物外壁・信号機・救急車のテクスチャを再生成（uv）
-just assets        # アセット管理画面（モデルとテクスチャのプレビューとレビュー）を開く
-just build      # dist/ に本番ビルド
+just install-deps    # 依存のインストール（公開 1 日未満のパッケージは入れない設定）
+just serve-dev        # 開発サーバ
+just check-all      # 型・lint・整形・テスト・justfile・Actions の検査
+just fetch-data       # オープンデータを取得して public/data を再生成（ライセンスゲート付き）
+just fetch-regs       # JARTIC 交通規制情報と OSM の信号機から public/data/regs・signals を再生成
+just make-car-textures  # 車のテクスチャを再生成（uv）
+just make-car-model     # Blender CLI で車のモデルを再生成（nix develop .#blender、初回は約 600MB を取得）
+just make-sign-model    # 道路標識の板・支柱を再生成
+just make-human-model   # 歩行者を再生成
+just make-signal-model  # 信号機（灯器・信号柱）を再生成
+just make-ambulance-model  # 救急車を再生成
+just make-textures      # 標識・歩行者・建物外壁・信号機・救急車のテクスチャを再生成（uv）
+just open-assets        # アセット管理画面（モデルとテクスチャのプレビューとレビュー）を開く
+just build-app      # dist/ に本番ビルド
 ```
 
 `main` に push すると GitHub Actions が GitHub Pages にデプロイします。
 
 ### アセット管理とレビュー
 
-アセットは台帳 `assets/manifest.yml` で、1 件ごとに名前・用途・生成スクリプトと just のレシピ・出典・ライセンスを管理しています。`assets/` と `public/`（`public/data` を除く）に台帳に無いファイルがあると `just assets-check`（`just test` にも含まれる）が落ちるので、アセットを足したら台帳にも足してください。
+アセットは台帳 `assets/manifest.yml` で、1 件ごとに名前・用途・生成スクリプトと just のレシピ・出典・ライセンスを管理しています。`assets/` と `public/`（`public/data` を除く）に台帳に無いファイルがあると `just check-assets`（`just run-tests` にも含まれる）が落ちるので、アセットを足したら台帳にも足してください。
 
-`just assets` で開くアセット管理画面（`assets.html`）に、台帳のアセットが種類ごとにすべて並びます。モデルは回して見られ、部品の表示切替と三角形数、ワイヤーフレームがあります。テクスチャは透過を市松模様の上で見られます。
+`just open-assets` で開くアセット管理画面（`assets.html`）に、台帳のアセットが種類ごとにすべて並びます。モデルは回して見られ、部品の表示切替と三角形数、ワイヤーフレームがあります。テクスチャは透過を市松模様の上で見られます。
 
 各アセットに OK／要修正を付け、指示を書き、ピン（テクスチャはクリック、モデルは Shift+クリックで部品に）を置いて「レビューを Claude に送る」を押すと、開発サーバーが `.review/pending/` に書き出します。Claude Code のフック（`.claude/hooks/asset-review-watch.sh`、`asyncRewake`）がセッションを起こし、`asset-review` スキル（`.agents/skills/asset-review/`）の手順で生成スクリプトを直して作り直します。対応結果は画面に表示されます。
 
