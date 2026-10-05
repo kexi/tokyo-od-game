@@ -578,6 +578,30 @@
       <form method="dialog"><button data-i18n="settings.close">閉じる</button></form>
     </dialog>
 
+    <dialog id="dest" aria-labelledby="dest-title">
+      <h2 id="dest-title" data-i18n="dest.title">目的地</h2>
+      <p class="sub" data-i18n="dest.intro">行き先を選ぶと、ナビが法令どおりの道順で案内します。</p>
+      <p id="dest-current" class="dest-current" hidden></p>
+      <div class="warp-home">
+        <button type="button" id="dest-random" data-i18n="dest.random">
+          🎲 おまかせ（制限時間つきミッション）
+        </button>
+        <button type="button" id="dest-home" data-i18n="dest.home">🏠 自宅へ</button>
+        <button type="button" id="dest-appointment" hidden></button>
+        <button type="button" id="dest-clear" data-i18n="dest.clear" hidden>案内をやめる</button>
+      </div>
+      <input
+        id="dest-query"
+        type="search"
+        placeholder="駅・ランドマーク・スポット・警察署・区の名前など"
+        data-i18n-placeholder="dest.placeholder"
+        autocomplete="off"
+      />
+      <h3 id="dest-list-title" class="dest-list-title"></h3>
+      <ul id="dest-results"></ul>
+      <form method="dialog"><button data-i18n="settings.close">閉じる</button></form>
+    </dialog>
+
     <dialog id="help">
       <h2 data-i18n="toolbar.help">操作</h2>
       <!-- Text either side of the button, each in its own words' order (English: "Open [Settings] to …"). -->

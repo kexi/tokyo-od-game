@@ -138,6 +138,7 @@ import { createRenderer } from "./render/renderer";
 import { drawShadowsOf, FrameComposer } from "./render/frame";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
+import { byDistance, renderPlaceList } from "./game/placePicker";
 import {
   charmOf,
   DEFAULT_PREFS,
@@ -232,6 +233,7 @@ const CATEGORY_KEY: Partial<Record<string, i18n.MessageKey>> = {
   water: "mission.category.water",
   waterbase: "mission.category.waterbase",
   shelter: "mission.category.shelter",
+  destination: "mission.category.destination",
 };
 /** A spot category's name in the language in force; the data's own label for one we don't know. */
 const categoryLabel = (id: string, fallback: string): string => {
@@ -918,32 +920,19 @@ async function main(): Promise<void> {
       })),
     ];
   };
+  /** Between a place's kind, ward and distance in the lists. */
+  const kindSeparator = () => (i18n.getLocale() === "en" ? " · " : "・");
   const showWarpResults = () => {
     const query = $<HTMLInputElement>("#warp-query").value;
     const places = warpPlaces();
     // Before typing: the landmarks and the wards to choose from (their kinds, in the language in force).
     const firstKinds = new Set([i18n.t("warp.kind.landmark"), i18n.t("warp.kind.ward")]);
     const shown = query.trim() ? searchPlaces(places, query) : places.filter((p) => firstKinds.has(p.kind));
-    const kindSeparator = i18n.getLocale() === "en" ? " · " : "・";
-    $("#warp-results").replaceChildren(
-      ...shown.map((p) => {
-        const li = document.createElement("li");
-        const b = document.createElement("button");
-        b.type = "button";
-        const name = document.createElement("span");
-        name.textContent = p.name;
-        const kind = document.createElement("span");
-        kind.className = "kind";
-        kind.textContent = [p.kind, p.ward].filter(Boolean).join(kindSeparator);
-        b.append(name, kind);
-        b.addEventListener("click", () => {
-          $<HTMLDialogElement>("#warp").close();
-          warpTo(p);
-        });
-        li.append(b);
-        return li;
-      }),
-    );
+    const pick = (p: WarpPlace) => {
+      $<HTMLDialogElement>("#warp").close();
+      warpTo(p);
+    };
+    renderPlaceList($("#warp-results"), shown, pick, { separator: kindSeparator() });
     $("#warp-home-label").textContent = home
       ? i18n.t("warp.homeLabel", { place: home.label ?? i18n.t("warp.homeSet") })
       : i18n.t("warp.noHome");
@@ -1015,13 +1004,16 @@ async function main(): Promise<void> {
       $<HTMLDialogElement>("#credits").showModal();
     });
   });
-  input.on("mission", () => {
+  // 目的地 (N): the chooser — search, landmarks, home, おまかせ (the game's timed mission).
+  input.on("mission", () => openDestinations());
+  /** おまかせ: a real spot nearby, against the clock, for points. */
+  const startRandomMission = () => {
     const g = frame.toGeodetic(vehicle.position());
     const m = missions.start(g.lat, g.lon, performance.now());
     if (m)
       toast(i18n.t("toast.missionStart", { name: m.target.name, m: Math.round(m.startDistance) }), "#ffe14d");
     else toast(i18n.t("toast.noMission"));
-  });
+  };
   buildToolbar($("#hud-toolbar"));
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-action]")) {
     b.addEventListener("click", () => {
@@ -2553,11 +2545,16 @@ async function main(): Promise<void> {
     }
     field.update(dt, env.nightFactor);
 
-    const result = missions.check(geo.lat, geo.lon, now);
+    // A chosen place is reached at the end of the navi's route (the street nearest to it).
+    const isRouteDone = nav.route !== null && nav.route.reachesTarget && nav.route.length - nav.lastAt < 25;
+    const result = missions.check(geo.lat, geo.lon, now, isRouteDone);
     if (result === "timeout") toast(i18n.t("toast.missionTimeout", { key: keyOf("mission") }), "#ff6b6b");
     else if (result && result.target.category === "home") endDay();
     else if (result && result.target.category === "appointment") appear();
-    else if (result) {
+    else if (result && result.target.category === "destination") {
+      audio.chime(true);
+      toast(i18n.t("toast.destArrived", { name: result.target.name }), "#7dff9a");
+    } else if (result) {
       score += result.reward;
       audio.chime(true);
       toast(i18n.t("toast.missionDone", { name: result.target.name, points: result.reward }), "#7dff9a");
@@ -3486,6 +3483,84 @@ async function main(): Promise<void> {
     const g = frame.toGeodetic(vehicle.position());
     const m = missions.startHome(home, performance.now(), g.lat, g.lon);
     toast(i18n.t("toast.headingHome", { km: (m.startDistance / 1000).toFixed(1) }), "#ffe14d");
+  });
+  // ---------- 目的地 ----------
+  const destDialog = $<HTMLDialogElement>("#dest");
+  const destQuery = $<HTMLInputElement>("#dest-query");
+  /** Before typing: the landmarks — the modelled ones and the 名所・夜景 spots — nearest first. */
+  const featuredPlaces = (from: { lat: number; lon: number }): WarpPlace[] => {
+    const landmark = i18n.t("warp.kind.landmark");
+    const modelled = landmarkEntries.map((l) => ({ name: l.name, kind: landmark, lat: l.lat, lon: l.lon }));
+    const spots = pois
+      .filter((p) => p.category === "landmark" || p.category === "nightview")
+      .map((p) => ({
+        name: p.name,
+        kind: categoryLabel(p.category, ""),
+        lat: p.lat,
+        lon: p.lon,
+        ward: p.ward,
+      }));
+    return [...byDistance(modelled, from), ...byDistance(spots, from).slice(0, 40)];
+  };
+  const chooseDestination = (p: WarpPlace) => {
+    destDialog.close();
+    const g = frame.toGeodetic(focusPos());
+    const m = missions.startChosen(p, performance.now(), g.lat, g.lon);
+    toast(i18n.t("toast.destSet", { name: p.name, km: (m.startDistance / 1000).toFixed(1) }), "#ffe14d");
+    log("destination", { name: p.name, km: Math.round(m.startDistance / 100) / 10 });
+  };
+  const showDestinations = () => {
+    const here = frame.toGeodetic(focusPos());
+    const query = destQuery.value.trim();
+    const shown = query ? searchPlaces(warpPlaces(), query, 40) : featuredPlaces(here);
+    renderPlaceList($("#dest-results"), shown, chooseDestination, { separator: kindSeparator(), from: here });
+    const isEmpty = shown.length === 0;
+    $("#dest-list-title").textContent = !query
+      ? i18n.t("dest.featured")
+      : isEmpty
+        ? i18n.t("dest.noResults")
+        : i18n.t("dest.results", { n: shown.length });
+    const current = missions.current?.target;
+    const currentName = current?.category === "home" ? i18n.t("warp.home") : current?.name;
+    $("#dest-current").hidden = !current;
+    $("#dest-current").textContent = current ? i18n.t("dest.current", { name: currentName ?? "" }) : "";
+    $("#dest-clear").hidden = !current;
+    $("#dest-home").hidden = !home;
+    const appointment = appointments[0];
+    $("#dest-appointment").hidden = !appointment;
+    if (appointment)
+      $("#dest-appointment").textContent = i18n.t("dest.appointment", { place: appointment.place.name });
+  };
+  const openDestinations = () => {
+    destQuery.value = "";
+    showDestinations();
+    destDialog.showModal();
+    destQuery.focus();
+  };
+  destQuery.addEventListener("input", showDestinations);
+  // Enter takes the first result; not while the IME is still composing the word.
+  destQuery.addEventListener("keydown", (e) => {
+    const isPickFirst = e.key === "Enter" && !e.isComposing;
+    if (!isPickFirst) return;
+    e.preventDefault();
+    $("#dest-results").querySelector("button")?.click();
+  });
+  $("#dest-random").addEventListener("click", () => {
+    destDialog.close();
+    startRandomMission();
+  });
+  $("#dest-home").addEventListener("click", () => {
+    destDialog.close();
+    input.trigger("home");
+  });
+  $("#dest-appointment").addEventListener("click", () => {
+    destDialog.close();
+    nextAppointment();
+  });
+  $("#dest-clear").addEventListener("click", () => {
+    destDialog.close();
+    missions.clear();
+    toast(i18n.t("toast.destCleared"));
   });
   let pendingSanction: ReturnType<typeof decideSanction> = { kind: "none" };
   // Notices that came by post today: they ask the driver to appear at the police station.

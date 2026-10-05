@@ -106,6 +106,40 @@ export class Missions {
     return this.current;
   }
 
+  /**
+   * A place the driver chose (目的地): guided there by the navi, with no clock and no points (the
+   * points stay with the missions the game picks, so a place next door is not a free reward).
+   */
+  startChosen(
+    place: { name: string; lat: number; lon: number; ward?: string },
+    now: number,
+    lat: number,
+    lon: number,
+  ): Mission {
+    const target: Poi = {
+      id: -3,
+      category: "destination",
+      lat: place.lat,
+      lon: place.lon,
+      name: place.name,
+      ward: place.ward ?? "",
+      source: -3,
+    };
+    this.current = {
+      target,
+      startedAt: now,
+      timeLimit: Infinity,
+      startDistance: haversineMeters(lat, lon, place.lat, place.lon),
+      isTrip: true,
+    };
+    return this.current;
+  }
+
+  /** 案内をやめる: no destination, no guidance. */
+  clear(): void {
+    this.current = null;
+  }
+
   /** Drive home: the day ends on arrival. */
   startHome(home: { lat: number; lon: number }, now: number, lat: number, lon: number): Mission {
     const target: Poi = {
@@ -134,11 +168,17 @@ export class Missions {
   }
 
   /** Returns a result on arrival, "timeout" when the clock runs out, otherwise null. */
-  check(lat: number, lon: number, now: number): MissionResult | "timeout" | null {
+  /**
+   * `isRouteDone`: the navi's route reached its end, the street nearest the target. A chosen place
+   * (a park, an airport, a station building) can lie far inside from any street, so for those the
+   * end of the route is the arrival; the game's own spots keep the 22 m radius.
+   */
+  check(lat: number, lon: number, now: number, isRouteDone = false): MissionResult | "timeout" | null {
     const mission = this.current;
     if (!mission) return null;
     const distance = haversineMeters(lat, lon, mission.target.lat, mission.target.lon);
-    if (distance <= ARRIVE_RADIUS) {
+    const isChosenReached = isRouteDone && mission.target.category === "destination";
+    if (distance <= ARRIVE_RADIUS || isChosenReached) {
       const left = Number.isFinite(mission.timeLimit) ? Math.max(0, this.remaining(now)) : 0;
       this.current = null;
       return {

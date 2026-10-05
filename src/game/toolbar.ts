@@ -12,7 +12,6 @@ type Item = { action: Action; label: MessageKey; title?: MessageKey; wide?: bool
 const ITEMS: Item[] = [
   { action: "mission", label: "toolbar.mission", title: "toolbarTitle.mission" },
   { action: "autopilot", label: "toolbar.autopilot" },
-  { action: "home", label: "toolbar.home", title: "toolbarTitle.home" },
   { action: "warp", label: "toolbar.warp", title: "toolbarTitle.warp" },
   { action: "taxi", label: "toolbar.taxi", title: "toolbarTitle.taxi" },
   { action: "replay", label: "toolbar.replay" },
