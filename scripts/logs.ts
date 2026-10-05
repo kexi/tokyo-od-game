@@ -200,8 +200,24 @@ export function resolveFile(arg: string | undefined, dir = LOG_DIR): string {
 }
 
 const load = (file: string) => readLines(readFileSync(file, "utf8"));
+/**
+ * Control characters (C0, DEL, C1) as visible escapes: the lines carry text from the page — a chat
+ * message typed in the game, a Y post, a stack — and an ESC in one would otherwise drive the
+ * terminal (move the cursor, recolour, rewrite the title, hide what follows). Applied to every
+ * line printed, whichever field it came from.
+ */
+export function terminalSafe(text: string): string {
+  let safe = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    const isControl = code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    safe += isControl ? `\\u${code.toString(16).padStart(4, "0")}` : ch;
+  }
+  return safe;
+}
+
 /** The tool's output (what it reads, not log lines of its own: hence not the logger). */
-const out = (text: string) => process.stdout.write(`${text}\n`);
+const out = (text: string) => process.stdout.write(`${terminalSafe(text)}\n`);
 
 function print(lines: readonly Line[], withDetail = false): void {
   for (const l of lines) {

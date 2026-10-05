@@ -13,6 +13,7 @@ import {
   sessionFiles,
   sinceMinutes,
   type Line,
+  terminalSafe,
 } from "../scripts/logs";
 import { spanChain } from "../src/logQuery";
 
@@ -175,5 +176,21 @@ describe("finding the session files", () => {
     symlinkSync(join("2026-10-05", "aaaaaaaa-1.jsonl"), join(dir, "latest.jsonl"));
     expect(resolveFile(undefined, dir).endsWith("aaaaaaaa-1.jsonl")).toBe(true);
     expect(() => resolveFile("nope", dir)).toThrow(/no log file/);
+  });
+});
+
+describe("printing what the page wrote", () => {
+  it("never passes a control character to the terminal (an ESC in a chat line cannot drive it)", () => {
+    // What it guarantees: text typed in the game or posted on Y reaches the logs, and
+    // ESC [2J / OSC title sequences in it are shown as escapes, not executed.
+    const hostile = "hi\u001b[2J\u001b]0;pwned\u0007 there\u009b31m\u007f";
+    const safe = terminalSafe(hostile);
+    const isControl = (c: string) => {
+      const code = c.codePointAt(0) ?? 0;
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    };
+    expect([...safe].some(isControl)).toBe(false);
+    expect(safe).toBe("hi\\u001b[2J\\u001b]0;pwned\\u0007 there\\u009b31m\\u007f");
+    expect(terminalSafe("渋谷 ✓ ok")).toBe("渋谷 ✓ ok");
   });
 });
