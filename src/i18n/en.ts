@@ -20,7 +20,7 @@ export const en: Messages = {
     "Uses the model you already downloaded (no new download). Runs on your device; conversations never leave it.",
   "title.aiUnsupported":
     "The conversation AI can't run on this device ({reason}). People answer with set replies.",
-  "title.voiceOption": "Pedestrian voices in Japanese (sanoTTS-jp speech synthesis, about 6 MB)",
+  "title.voiceOption": "Pedestrian voices in English (sanoTTS, about 10 MB)",
   "title.start": "Start",
   "title.credits": "Credits & licenses",
   "title.source": "Source code",
@@ -1260,13 +1260,15 @@ export const en: Messages = {
   "credits.h.rules": "Traffic rules",
   "credits.rules":
     "Penalty points and fines are in-game reference values based on the Road Traffic Act, its Enforcement Order and the Metropolitan Police Department's published material (ordinary cars, checked 2026-10-04). Speed limits are JARTIC's posted limits (sections and zones) on the roads matched to them, and elsewhere the Enforcement Order Art. 11 (amended 2026-09-01: 60 km/h on roads with a center line or similar, 30 km/h otherwise) estimated from the road width. Calls to the ambulance and the police are an in-game simulation and never reach the real 119 or 110.",
-  "credits.h.tts": "Speech synthesis (sanoTTS-jp)",
+  "credits.h.tts": "Speech synthesis (sanoTTS-jp / sanoTTS)",
   "credits.tts.intro":
-    "The pedestrians' voices are synthesized in your browser with {sano} (code: MIT; model: LicenseRef-sanoTTS-jp-Model-1.0). It speaks Japanese only.",
+    "Japanese uses {sano} (code: MIT; model: LicenseRef-sanoTTS-jp-Model-1.0). English and Chinese use {sanoOther} (web distribution: GPL-3.0-or-later). All voices run in a Worker in your browser.",
   "credits.link.modelLicense": "Model license",
   "credits.link.dictNotice": "Dictionary NOTICE",
   "credits.link.apacheFull": "Apache License 2.0 (full text)",
   "credits.tts.files": "{model} · {notice} · {dict} · {jtalk} · {apache}",
+  "credits.tts.multilingualFiles":
+    "sanoTTS: {license} · {source} · {dict}. English uses amy; Mandarin uses chinese-xiaoya.",
   "credits.tts.verbatim": "The model license requires the following notice as written:",
   "credits.h.ai": "Conversation AI (optional)",
   "credits.ai":
@@ -1286,7 +1288,7 @@ export const en: Messages = {
   "credits.h.network": "About network access",
   "credits.network":
     "While you play, your browser talks directly to GSI, the PLATEAU distribution service, JMA and the Public Transportation Open Data Center (your IP address and the like reach each service). Progress is saved only in this browser's localStorage. If you start from “your location”, it is kept only on this device (sessionStorage) and never put in a URL or sent anywhere (though the map tiles around it are requested from each provider).",
-  // 歩行者との会話（conversation.ts・dialogue.ts・#chat）。歩行者は日本人なので、定型応答の声（sanoTTS-jp）は日本語の原文で話し、画面には訳を出す
+  // 歩行者との会話（conversation.ts・dialogue.ts・#chat）。表示と声は選んだ言語に合わせる
   "talk.chatLabel": "Conversation with a pedestrian",
   "talk.close": "Close the conversation",
   "talk.placeholder": "Enter to type → Enter to send (Esc to drive)",
@@ -1296,9 +1298,9 @@ export const en: Messages = {
   "talk.status.error": "{detail} (carrying on with set replies)",
   "talk.aiEnable": "Use the conversation AI (Gemma 4)",
   "talk.aiCancel": "Stop the download",
-  "talk.voiceToggle": "Japanese voice",
+  "talk.voiceToggle": "Voice",
   "talk.voiceToggleTitle":
-    "Pedestrians speak aloud in Japanese only (sanoTTS-jp); the bubbles show the translation",
+    "Speak in the selected language (Japanese: sanoTTS-jp; English and Chinese: sanoTTS)",
   "talk.partnerSub": "{role}, {age} ({place})",
   "talk.age": "in their {n}s",
   "talk.role.office": "office worker",

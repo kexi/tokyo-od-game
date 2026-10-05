@@ -128,6 +128,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   llm_enable_failed: { error: "Error: x" },
   llm_reply_failed: { error: "Error: x" },
   tts_init_failed: { error: "wasm" },
+  tts_synth_failed: { locale: "en", id: 1, error: "synthesis failed" },
   amedas_fetch_failed: { error: "Error: x" },
   odpt_poll_failed: { error: "Error: x" },
   tide_table_failed: { year: 2026, error: "Error: x" },

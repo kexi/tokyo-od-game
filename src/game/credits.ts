@@ -154,7 +154,7 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   const software =
     "three.js (MIT) / 3DTilesRendererJS (Apache License 2.0, Copyright 2020 California Institute of Technology) /\n" +
     "  Rapier (Apache License 2.0, Copyright 2020 Dimforge EURL) / Zod (MIT) / Draco (Apache License 2.0, Google) /\n" +
-    "  LiteRT-LM (Apache License 2.0, Google) / sanoTTS-jp (MIT)";
+    "  LiteRT-LM (Apache License 2.0, Google) / sanoTTS-jp (MIT) / sanoTTS Web (GPL-3.0-or-later)";
   const isJapanese = getLocale() === "ja";
   // The licence asks for its notice as written; in English and Chinese, say why it stays Japanese.
   const ttsVerbatim = isJapanese ? "" : `<p class="sub">${text("credits.tts.verbatim")}</p>`;
@@ -281,13 +281,21 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   <p>${text("credits.rules")}</p>
 
   <h3>${text("credits.h.tts")}</h3>
-  <p>${text("credits.tts.intro", { sano: link("https://github.com/ayutaz/sanoTTS-jp", "sanoTTS-jp") })}
+  <p>${text("credits.tts.intro", { sano: link("https://github.com/ayutaz/sanoTTS-jp", "sanoTTS-jp"), sanoOther: link("https://github.com/Ampixa/sanoTTS", "sanoTTS") })}
   ${text("credits.tts.files", {
     model: link(ttsUrl("LICENSE-MODEL.md"), t("credits.link.modelLicense")),
     notice: link(ttsUrl("NOTICE.txt"), "NOTICE"),
     dict: link(ttsUrl("NOTICE-dictionary.txt"), t("credits.link.dictNotice")),
     jtalk: link(ttsUrl("NOTICE-openjtalk.txt"), "Open JTalk NOTICE"),
     apache: link(ttsUrl("LICENSE-APACHE-2.0.txt"), t("credits.link.apacheFull")),
+  })}</p>
+  <p>${text("credits.tts.multilingualFiles", {
+    license: link(
+      new URL(`${import.meta.env.BASE_URL}sanotts/LICENSE-GPL-3.0.txt`, location.href).href,
+      "GPL-3.0-or-later",
+    ),
+    source: link(new URL(`${import.meta.env.BASE_URL}sanotts/SOURCE.md`, location.href).href, "Source"),
+    dict: link(new URL(`${import.meta.env.BASE_URL}sanotts/NOTICE-G2P.md`, location.href).href, "G2P NOTICE"),
   })}</p>
   ${ttsVerbatim}<pre class="notice">${esc(TTS_ATTRIBUTION)}</pre>
 

@@ -1,0 +1,128 @@
+{
+  "commit": "3de9f37cbfedb8a1edcc28f4c8139979c6fcf889",
+  "files": [
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/snt_voice.js",
+      "file": "public/sanotts/snt_voice.mjs",
+      "sha256": "73745db50516d6052802994a02dd8d0e3e27fcd26efa8cbe7e849d7ee5634266",
+      "transform": "esm-voice",
+      "output_sha256": "114a2fceb0cf5a54a9383f41e033c5b756f5ac2025f8aa75d21faa0a31996ebd"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/snt_voice.wasm",
+      "file": "public/sanotts/snt_voice.wasm",
+      "sha256": "cdcfa5bf3ec162797d8556be7b90ce334f88666141956a1650846bdff9517d1c",
+      "output_sha256": "cdcfa5bf3ec162797d8556be7b90ce334f88666141956a1650846bdff9517d1c"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/snt_g2p.js",
+      "file": "public/sanotts/snt_g2p.mjs",
+      "sha256": "3a4ada6f01bb2110e921d4920c2b8b48311d171c8ee891af7a53907556334b06",
+      "transform": "esm-g2p",
+      "output_sha256": "cec4f6406673ccabbeecab0d9f3517f141f078c7bf91e14e07e67484b256bec1"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/snt_g2p.wasm",
+      "file": "public/sanotts/snt_g2p.wasm",
+      "sha256": "f1a00ae6b856b5c501a87ce08bb29bcc7ef2d84b645d7b69ae91bb2e2fcbcb4f",
+      "output_sha256": "f1a00ae6b856b5c501a87ce08bb29bcc7ef2d84b645d7b69ae91bb2e2fcbcb4f"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/snt_g2p.data",
+      "file": "public/sanotts/snt_g2p.data",
+      "sha256": "8cc5ae7eab5e73b8ae5a2a4b7f7a4fef9786058733ce4ebccbcdbb67688ff2f3",
+      "output_sha256": "8cc5ae7eab5e73b8ae5a2a4b7f7a4fef9786058733ce4ebccbcdbb67688ff2f3"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/voices/amy/meta.json",
+      "file": "public/sanotts/voices/amy/meta.json",
+      "sha256": "1c211821b231991138b4b383d2fcdc621c3ea72f9302297ffccbc398cded68f4",
+      "output_sha256": "1c211821b231991138b4b383d2fcdc621c3ea72f9302297ffccbc398cded68f4"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/voices/amy/front_f32.bin",
+      "file": "public/sanotts/voices/amy/front_f32.bin",
+      "sha256": "9bc304dd1db30b17a2efb751795137c6d26f25aaf9c96f05bc1dec7c86e0ce23",
+      "output_sha256": "9bc304dd1db30b17a2efb751795137c6d26f25aaf9c96f05bc1dec7c86e0ce23"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/voices/amy/dec_f32.bin",
+      "file": "public/sanotts/voices/amy/dec_f32.bin",
+      "sha256": "f520bcbf278607343e68170a06619a465a333d2d67476c6823d130e91580281b",
+      "output_sha256": "f520bcbf278607343e68170a06619a465a333d2d67476c6823d130e91580281b"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/voices/chinese-xiaoya/meta.json",
+      "file": "public/sanotts/voices/chinese-xiaoya/meta.json",
+      "sha256": "40ab8bf4e8056e047184ef68d6d60611aec0c0e584908b8ff18df9cb3d9ea6c7",
+      "output_sha256": "40ab8bf4e8056e047184ef68d6d60611aec0c0e584908b8ff18df9cb3d9ea6c7"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/voices/chinese-xiaoya/front_f16.bin",
+      "file": "public/sanotts/voices/chinese-xiaoya/front_f16.bin",
+      "sha256": "b54364e52378b560c014c25acadddc8b2f03090c96d0d6ead9255abb630f6372",
+      "output_sha256": "b54364e52378b560c014c25acadddc8b2f03090c96d0d6ead9255abb630f6372"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/voices/chinese-xiaoya/dec_f16.bin",
+      "file": "public/sanotts/voices/chinese-xiaoya/dec_f16.bin",
+      "sha256": "95f16b0e9c6fb83b3983a5f8ff4a98edc19d2e8d82ae2bcd15c506ac78bca762",
+      "output_sha256": "95f16b0e9c6fb83b3983a5f8ff4a98edc19d2e8d82ae2bcd15c506ac78bca762"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/g2p-lazy/zh/zh_g2p.mjs",
+      "file": "public/sanotts/g2p-lazy/zh/zh_g2p.mjs",
+      "sha256": "3ce1ef33fd35e329edf2d0a23fc0e2c0b5a356f7fa3cfa8221fe18d6bb4158bd",
+      "transform": "gzip-magic",
+      "output_sha256": "8c1a013dc1c03001d93d2ddab220c46684453be4f6daef636514adce42b4b681"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/g2p-lazy/zh/unicode_tables.mjs",
+      "file": "public/sanotts/g2p-lazy/zh/unicode_tables.mjs",
+      "sha256": "03119be690def9344862138c8adfee684829be11cc8ffc56fbabfc7ae0387243",
+      "output_sha256": "03119be690def9344862138c8adfee684829be11cc8ffc56fbabfc7ae0387243"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/g2p-lazy/zh/manifest.json",
+      "file": "public/sanotts/g2p-lazy/zh/manifest.json",
+      "sha256": "d67f0b5c7e10590fc28f869a189d2dd67e6ad4a32633023a502f9e0b6b83ce22",
+      "output_sha256": "d67f0b5c7e10590fc28f869a189d2dd67e6ad4a32633023a502f9e0b6b83ce22"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/g2p-lazy/zh/chars.txt.gz",
+      "file": "public/sanotts/g2p-lazy/zh/chars.txt.gz",
+      "sha256": "ae46385b26133ea2cb0e19c592927dacba270eed6142ed753569ef108a247e09",
+      "output_sha256": "ae46385b26133ea2cb0e19c592927dacba270eed6142ed753569ef108a247e09"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/g2p-lazy/zh/phrases.txt.gz",
+      "file": "public/sanotts/g2p-lazy/zh/phrases.txt.gz",
+      "sha256": "29e07a1f2e910ad5dbe938aae136b8a9a8936aed92010fbafcbc507aebbadbde",
+      "output_sha256": "29e07a1f2e910ad5dbe938aae136b8a9a8936aed92010fbafcbc507aebbadbde"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/web/g2p-lazy/zh/phrase_keys.txt.gz",
+      "file": "public/sanotts/g2p-lazy/zh/phrase_keys.txt.gz",
+      "sha256": "63fe5b37d31438da0b0a60cf5081bc4277ebadd8e6005b6c092aa9aa4d09dea4",
+      "output_sha256": "63fe5b37d31438da0b0a60cf5081bc4277ebadd8e6005b6c092aa9aa4d09dea4"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/LICENSE",
+      "file": "public/sanotts/LICENSE-GPL-3.0.txt",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "output_sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/LICENSE.MIT",
+      "file": "public/sanotts/LICENSE-MIT.txt",
+      "sha256": "2f544ceb6a679cf706652c9df3bf8a6753197ee36456ba61665d97fbed43210e",
+      "output_sha256": "2f544ceb6a679cf706652c9df3bf8a6753197ee36456ba61665d97fbed43210e"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Ampixa/sanoTTS/3de9f37cbfedb8a1edcc28f4c8139979c6fcf889/pypkg/sanotts/g2p_data/NOTICE.md",
+      "file": "public/sanotts/NOTICE-G2P.md",
+      "sha256": "34994c721d7f621fa3e264cbc6cf8c3e7d510964f3542ffcbd76b92c969ada24",
+      "output_sha256": "34994c721d7f621fa3e264cbc6cf8c3e7d510964f3542ffcbd76b92c969ada24"
+    }
+  ]
+}

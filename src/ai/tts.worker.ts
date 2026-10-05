@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
-// sanoTTS-jp (Emscripten build, public/tts) in a worker: one synthesis blocks for 10–200 ms,
-// which would otherwise stall three.js frames.
+import { SanoTts, type Synthesizer } from "./sanoTts";
+
+// The Japanese and multilingual WASM engines stay in a Worker; a synthesis must not block driving.
 
 type SaanModule = {
   HEAPU8: Uint8Array;
@@ -17,7 +18,14 @@ type SaanModule = {
   stringToUTF8(s: string, p: number, max: number): void;
 };
 
-type TtsRequest = { type: "init"; base: string } | { type: "synth"; id: number; text: string };
+type Locale = "ja" | "en" | "zh";
+type TtsRequest =
+  | { type: "init"; base: string; sanoBase: string; locale: Locale }
+  | { type: "synth"; id: number; text: string; locale: Locale };
+
+const voices = new Map<Locale, Synthesizer>();
+let sano: SanoTts | null = null;
+let jobs = Promise.resolve();
 
 let mod: SaanModule | null = null;
 let textBuf = 0;
@@ -41,43 +49,75 @@ function put(m: SaanModule, data: Uint8Array): number {
   return p;
 }
 
-self.addEventListener("message", async (event: MessageEvent<TtsRequest>) => {
-  const data = event.data;
-  if (data.type === "init") {
-    try {
+async function initialise(data: Extract<TtsRequest, { type: "init" }>): Promise<void> {
+  try {
+    if (voices.has(data.locale)) {
+      postMessage({ type: "ready", locale: data.locale, ok: true });
+      return;
+    }
+    const isJapanese = data.locale === "ja";
+    if (isJapanese) {
       const factory = (await import(/* @vite-ignore */ `${data.base}saan_web_w8a32.mjs`))
         .default as () => Promise<SaanModule>;
       const [model, dict] = await Promise.all([
         bytes(`${data.base}student_i8.bin`),
         bytes(`${data.base}k1_dict.bin.gz`),
       ]);
-      const m = await factory();
-      const rc = m._saan_web_init(put(m, model), model.length, put(m, dict), dict.length);
-      mod = rc >= 0 ? m : null;
-      postMessage({ type: "ready", ok: rc >= 0, message: m.UTF8ToString(m._saan_web_message()) });
-    } catch (error) {
-      postMessage({ type: "ready", ok: false, message: String(error) });
+      const module = await factory();
+      const rc = module._saan_web_init(put(module, model), model.length, put(module, dict), dict.length);
+      const hasFailed = rc < 0;
+      if (hasFailed) throw new Error(module.UTF8ToString(module._saan_web_message()));
+      mod = module;
+      voices.set("ja", japanese);
+    } else {
+      sano ??= new SanoTts(data.sanoBase);
+      const language = data.locale === "en" ? "en" : "zh";
+      voices.set(data.locale, await sano.load(language));
     }
-    return;
+    postMessage({ type: "ready", locale: data.locale, ok: true });
+  } catch (error) {
+    sano = null;
+    postMessage({ type: "ready", locale: data.locale, ok: false, message: String(error) });
   }
-  const m = mod;
-  if (!m) {
-    postMessage({ type: "error", id: data.id, message: "not initialised" });
-    return;
-  }
-  const need = m.lengthBytesUTF8(data.text) + 1;
+}
+
+function japanese(text: string): { pcm: Float32Array; sampleRate: number } {
+  const module = mod;
+  if (!module) throw new Error("Japanese voice not initialised");
+  const need = module.lengthBytesUTF8(text) + 1;
   // The C ABI has no free(); keep growing one text buffer instead of leaking per call.
-  if (need > textCap) {
+  const needsCapacity = need > textCap;
+  if (needsCapacity) {
     textCap = Math.max(4096, need);
-    textBuf = m._saan_web_alloc(textCap);
+    textBuf = module._saan_web_alloc(textCap);
   }
-  m.stringToUTF8(data.text, textBuf, textCap);
-  const rc = m._saan_web_synth(textBuf, need - 1);
-  if (rc < 0) {
-    postMessage({ type: "error", id: data.id, message: m.UTF8ToString(m._saan_web_message()) });
+  module.stringToUTF8(text, textBuf, textCap);
+  const rc = module._saan_web_synth(textBuf, need - 1);
+  const hasFailed = rc < 0;
+  if (hasFailed) throw new Error(module.UTF8ToString(module._saan_web_message()));
+  const start = module._saan_web_pcm() >> 2;
+  const pcm = module.HEAPF32.slice(start, start + module._saan_web_n_samples());
+  return { pcm, sampleRate: module._saan_web_sample_rate() };
+}
+
+async function run(data: TtsRequest): Promise<void> {
+  const isInitialising = data.type === "init";
+  if (isInitialising) {
+    await initialise(data);
     return;
   }
-  const start = m._saan_web_pcm() >> 2;
-  const pcm = m.HEAPF32.slice(start, start + m._saan_web_n_samples()); // HEAPF32 can be replaced on growth
-  postMessage({ type: "pcm", id: data.id, pcm, sampleRate: m._saan_web_sample_rate() }, [pcm.buffer]);
+  try {
+    const synth = voices.get(data.locale);
+    if (!synth) throw new Error(`${data.locale} voice not initialised`);
+    const { pcm, sampleRate } = synth(data.text);
+    postMessage({ type: "pcm", id: data.id, pcm, sampleRate }, [pcm.buffer]);
+  } catch (error) {
+    postMessage({ type: "error", id: data.id, message: String(error) });
+  }
+}
+
+self.addEventListener("message", (event: MessageEvent<TtsRequest>) => {
+  // One runtime owns the voice buffers. Serialise asynchronous initialisation with synthesis
+  // rather than let overlapping message handlers observe partially loaded models.
+  jobs = jobs.then(() => run(event.data));
 });

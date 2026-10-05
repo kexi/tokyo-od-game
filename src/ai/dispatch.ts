@@ -9,8 +9,7 @@ import { inJapanese } from "../i18n/reverse";
 export type Line = "119" | "110";
 
 /**
- * An operator's line in the language in force (`text`, shown) and in Japanese (`ja`, what the
- * Japanese voice says: the operators are Tokyo's, and sanoTTS-jp speaks Japanese only).
+ * An operator's line in the selected language (`text`, shown and spoken), plus the Japanese original (`ja`).
  */
 export type Said = { text: string; ja: string };
 

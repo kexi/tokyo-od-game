@@ -1,4 +1,4 @@
-import { getLocale, t, type MessageKey, type Params } from "../i18n";
+import { getLocale, t, type Locale, type MessageKey, type Params } from "../i18n";
 import { warn } from "../log";
 
 /**
@@ -21,7 +21,7 @@ type Conversation = Awaited<ReturnType<Engine["createConversation"]>>;
 
 // Sentences the synthesized voice must never say (sanoTTS-jp model licence §3.2, inherited from
 // the つくよみちゃん corpus terms) and that a street NPC has no business saying anyway. Replies in
-// English or Chinese are not spoken, but are held to the same topics with their own short lists.
+// English and Chinese replies are held to the same topics with their own short lists.
 const BLOCKED = /(選挙|政党|自民|立憲|共産|公明|維新|宗教|信仰|布教|殺|死ね|バカ|アホ|クズ|差別)/;
 const BLOCKED_EN =
   /\b(elections?|political part(y|ies)|religio\w*|kill\w*|die|stupid|idiot|moron|racis\w*)\b/i;
@@ -38,7 +38,7 @@ export class NpcBrain {
     return this.detailText ? t(this.detailText.key, this.detailText.params) : "";
   }
   private engine: Engine | null = null;
-  private readonly conversations = new Map<number, Conversation>();
+  private readonly conversations = new Map<number, { locale: Locale; conversation: Conversation }>();
   private abort: AbortController | null = null;
   private busy: Promise<unknown> = Promise.resolve();
 
@@ -160,16 +160,26 @@ export class NpcBrain {
     persona: string,
     text: string,
     onDelta: (partial: string) => void,
+    locale: Locale = getLocale(),
   ): Promise<string | null> {
+    const blockedReply = t("talk.blocked");
     const run = async (): Promise<string | null> => {
       if (!this.engine) return null;
-      let conv = this.conversations.get(npcId);
+      let cached = this.conversations.get(npcId);
+      const hasChangedLanguage = cached !== undefined && cached.locale !== locale;
+      if (hasChangedLanguage) {
+        // Keeping the old session would retain its system prompt's reply language.
+        this.conversations.delete(npcId);
+        await cached?.conversation.delete().catch(() => undefined);
+        cached = undefined;
+      }
+      let conv = cached?.conversation;
       if (!conv) {
         conv = await this.engine.createConversation({
           preface: { messages: [{ role: "system", content: persona }] },
           sessionConfig: { maxOutputTokens: 120 },
         });
-        this.conversations.set(npcId, conv);
+        this.conversations.set(npcId, { locale, conversation: conv });
       }
       let out = "";
       for await (const chunk of conv.sendMessageStreaming(text)) {
@@ -182,7 +192,7 @@ export class NpcBrain {
         if (countSentences(out) >= 3) break;
       }
       const final = trimToSentences(out, 3).trim();
-      return isBlocked(final) ? t("talk.blocked") : final;
+      return isBlocked(final, locale) ? blockedReply : final;
     };
     const next = this.busy.then(run, run).catch((error: unknown) => {
       warn("llm_reply_failed", { error: String(error) });
@@ -193,7 +203,7 @@ export class NpcBrain {
   }
 
   async forget(npcId: number): Promise<void> {
-    const conv = this.conversations.get(npcId);
+    const conv = this.conversations.get(npcId)?.conversation;
     this.conversations.delete(npcId);
     await conv?.delete().catch(() => undefined);
   }
@@ -224,9 +234,8 @@ export class NpcBrain {
 }
 
 /** Whether a reply touches a topic the NPCs must not (the Japanese list always, the reply's language's too). */
-export function isBlocked(reply: string): boolean {
+export function isBlocked(reply: string, locale: Locale = getLocale()): boolean {
   if (BLOCKED.test(reply)) return true;
-  const locale = getLocale();
   if (locale === "en") return BLOCKED_EN.test(reply);
   if (locale === "zh") return BLOCKED_ZH.test(reply);
   return false;

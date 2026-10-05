@@ -1,3 +1,4 @@
+import type { Voice } from "../ai/tts";
 import type { Vector3 } from "three";
 import { getLocale, t } from "../i18n";
 import { localUtterance } from "../i18n/speech";
@@ -195,6 +196,8 @@ export class NavGuide {
     road: HTMLElement | null;
     notice: HTMLElement | null;
   };
+
+  voice: Voice | null = null;
 
   constructor(
     private readonly panel: HTMLElement,
@@ -799,11 +802,11 @@ export class NavGuide {
   }
 
   private isSpeaking(): boolean {
-    return "speechSynthesis" in window && speechSynthesis.speaking;
+    return this.voice?.speaking === true || ("speechSynthesis" in window && speechSynthesis.speaking);
   }
 
   /**
-   * Speaks `intro` then `core` in the language in force (a voice of that language, speech.ts); a
+   * Speaks `intro` then `core` in the selected language, using the on-device voice when enabled; a
    * call heard in the last 10 s is not said again.
    */
   private say(core: string, intro: Intro | null = null): void {
@@ -813,6 +816,11 @@ export class NavGuide {
     const isRepeat = compared === this.lastSaid.text && performance.now() - this.lastSaid.at < 10_000;
     this.lastSaid = { text: compared, at: performance.now() };
     if (!text || isRepeat || this.isMuted()) return;
+    const hasOnDeviceVoice = this.voice?.enabled === true;
+    if (hasOnDeviceVoice) {
+      this.voice?.speak(text);
+      return;
+    }
     // No voice for the language on this device: the panel alone (speech.ts says why).
     const u = localUtterance(text);
     if (!u) return;

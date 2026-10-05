@@ -1,15 +1,7 @@
 import { warn } from "../log";
+import { getLocale, type Locale } from "../i18n";
 
-/**
- * Japanese speech for NPCs with sanoTTS-jp compiled to WASM (scripts/build-tts.sh).
- * The engine silently drops digits and Latin letters and rejects inputs over 512 UTF-8 bytes,
- * so text is normalised and split per sentence before synthesis.
- *
- * Japanese only, whatever the game's language: in English and Chinese the callers pass the
- * Japanese original of a set line (the pedestrians' set replies, the 119/110 operators' script)
- * under a translated caption, nothing for a model's reply in that language, and the TV's
- * newsreader uses the browser's voice instead (game/naviTv.ts).
- */
+/** Japanese uses sanoTTS-jp; English and Mandarin use sanoTTS, all in the same Worker. */
 type Pcm = { pcm: Float32Array; sampleRate: number };
 
 /**
@@ -26,49 +18,98 @@ export type VoiceFrom = () => VoiceOutput | null;
 
 export class Voice {
   private worker: Worker | null = null;
-  private ready: Promise<boolean> | null = null;
+  private readonly ready = new Map<Locale, Promise<boolean>>();
+  private readonly initialising = new Map<Locale, (ok: boolean) => void>();
+  private generation = 0;
   private seq = 0;
-  private readonly pending = new Map<number, { resolve: (p: Pcm | null) => void }>();
+  private readonly pending = new Map<number, { locale: Locale; resolve: (p: Pcm | null) => void }>();
   private queue: Promise<void> = Promise.resolve();
   private current: AudioBufferSourceNode | null = null;
   enabled = false;
 
   constructor(private readonly getContext: () => AudioContext | null) {}
 
-  /** Starts the worker and loads ~6 MB of model + dictionary on first use. */
-  enable(): Promise<boolean> {
+  /** Load only the language currently needed; later language changes reuse the Worker. */
+  enable(locale: Locale = getLocale()): Promise<boolean> {
     this.enabled = true;
-    if (this.ready) return this.ready;
-    this.worker = new Worker(new URL("./tts.worker.ts", import.meta.url), { type: "module" });
-    this.ready = new Promise((resolve) => {
-      const w = this.worker;
-      if (!w) return resolve(false);
-      w.addEventListener("message", (e: MessageEvent) => {
-        const msg = e.data as {
-          type: string;
-          id?: number;
-          ok?: boolean;
-          message?: string;
-          pcm?: Float32Array;
-          sampleRate?: number;
-        };
-        if (msg.type === "ready") {
-          if (!msg.ok) warn("tts_init_failed", { error: msg.message ?? "" });
-          resolve(Boolean(msg.ok));
-          return;
-        }
-        const job = msg.id !== undefined ? this.pending.get(msg.id) : undefined;
-        if (!job || msg.id === undefined) return;
-        this.pending.delete(msg.id);
-        job.resolve(
-          msg.type === "pcm" && msg.pcm && msg.sampleRate
-            ? { pcm: msg.pcm, sampleRate: msg.sampleRate }
-            : null,
-        );
+    const loaded = this.ready.get(locale);
+    const isLoaded = loaded !== undefined;
+    if (isLoaded) return loaded;
+    try {
+      const needsWorker = this.worker === null;
+      if (needsWorker) {
+        const worker = new Worker(new URL("./tts.worker.ts", import.meta.url), { type: "module" });
+        this.worker = worker;
+        worker.addEventListener("message", (event: MessageEvent) => {
+          const msg = event.data as {
+            type: string;
+            id?: number;
+            locale?: Locale;
+            ok?: boolean;
+            message?: string;
+            pcm?: Float32Array;
+            sampleRate?: number;
+          };
+          const isReady = msg.type === "ready" && msg.locale !== undefined;
+          if (isReady && msg.locale) {
+            const resolve = this.initialising.get(msg.locale);
+            this.initialising.delete(msg.locale);
+            const hasFailed = !msg.ok;
+            if (hasFailed) {
+              this.ready.delete(msg.locale);
+              warn("tts_init_failed", { error: msg.message ?? "" });
+            }
+            resolve?.(Boolean(msg.ok));
+            return;
+          }
+          const job = msg.id !== undefined ? this.pending.get(msg.id) : undefined;
+          if (!job || msg.id === undefined) return;
+          this.pending.delete(msg.id);
+          const hasFailed = msg.type === "error";
+          if (hasFailed)
+            warn("tts_synth_failed", { locale: job.locale, id: msg.id, error: msg.message ?? "" });
+          job.resolve(
+            msg.type === "pcm" && msg.pcm && msg.sampleRate
+              ? { pcm: msg.pcm, sampleRate: msg.sampleRate }
+              : null,
+          );
+        });
+        worker.addEventListener("error", (event) => this.fail(event.message));
+        worker.addEventListener("messageerror", () => this.fail("TTS Worker message could not be read"));
+      }
+      const loading = new Promise<boolean>((resolve) => {
+        this.initialising.set(locale, resolve);
       });
-      w.postMessage({ type: "init", base: `${import.meta.env.BASE_URL}tts/` });
-    });
-    return this.ready;
+      this.ready.set(locale, loading);
+      const worker = this.worker;
+      const hasWorker = worker !== null;
+      if (!hasWorker) throw new Error("TTS Worker was not created");
+      worker.postMessage({
+        type: "init",
+        locale,
+        base: `${import.meta.env.BASE_URL}tts/`,
+        sanoBase: `${import.meta.env.BASE_URL}sanotts/`,
+      });
+      return loading;
+    } catch (error) {
+      this.fail(String(error));
+      return Promise.resolve(false);
+    }
+  }
+
+  private fail(error: string): void {
+    warn("tts_init_failed", { error });
+    this.worker?.terminate();
+    this.worker = null;
+    this.ready.clear();
+    for (const resolve of this.initialising.values()) resolve(false);
+    this.initialising.clear();
+    for (const job of this.pending.values()) job.resolve(null);
+    this.pending.clear();
+  }
+
+  get speaking(): boolean {
+    return this.current !== null;
   }
 
   disable(): void {
@@ -77,30 +118,35 @@ export class Voice {
   }
 
   stop(): void {
+    this.generation++;
     this.current?.stop();
     this.current = null;
     this.queue = Promise.resolve();
   }
 
   /** Speak a line (queued after anything already speaking), from `from` when given. */
-  speak(text: string, from?: VoiceFrom): void {
-    if (!this.enabled) return;
-    const sentences = splitForTts(normalizeForTts(text));
+  speak(text: string, from?: VoiceFrom, locale: Locale = getLocale()): void {
+    const isDisabled = !this.enabled;
+    if (isDisabled) return;
+    const generation = this.generation;
+    const sentences = speechChunks(text, locale);
     for (const s of sentences) {
-      const synth = this.synth(s);
+      const synth = this.synth(s, locale);
       this.queue = this.queue.then(async () => {
         const pcm = await synth;
-        if (pcm && this.enabled) await this.play(pcm, from);
+        const isCurrent = generation === this.generation && this.enabled;
+        if (pcm && isCurrent) await this.play(pcm, from);
       });
     }
   }
 
-  private async synth(text: string): Promise<Pcm | null> {
-    if (!(await this.enable())) return null;
+  private async synth(text: string, locale: Locale): Promise<Pcm | null> {
+    const isReady = await this.enable(locale);
+    if (!isReady) return null;
     const id = ++this.seq;
     return new Promise((resolve) => {
-      this.pending.set(id, { resolve });
-      this.worker?.postMessage({ type: "synth", id, text });
+      this.pending.set(id, { locale, resolve });
+      this.worker?.postMessage({ type: "synth", id, text, locale });
     });
   }
 
@@ -118,6 +164,8 @@ export class Voice {
     this.current = src;
     return new Promise((resolve) => {
       src.addEventListener("ended", () => {
+        const isCurrent = this.current === src;
+        if (isCurrent) this.current = null;
         out?.release();
         resolve();
       });
@@ -127,6 +175,27 @@ export class Voice {
 }
 
 const DIGITS = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+/** Limits each multilingual synthesis to a short sentence, keeping decimals and words intact. */
+export function speechChunks(text: string, locale: Locale): string[] {
+  const isJapanese = locale === "ja";
+  if (isJapanese) return splitForTts(normalizeForTts(text));
+  const sentences = text.normalize("NFKC").match(/(?:[^.!?。！？]|(?<=\d)\.(?=\d))+[.!?。！？]*/gu) ?? [];
+  const chunks: string[] = [];
+  const limit = 100;
+  for (let sentence of sentences.map((part) => part.trim()).filter(Boolean)) {
+    while ([...sentence].length > limit) {
+      const first = [...sentence].slice(0, limit).join("");
+      const breakAt = Math.max(first.lastIndexOf(" "), first.lastIndexOf("，"), first.lastIndexOf(","));
+      const split = breakAt > 35 ? breakAt + 1 : first.length;
+      chunks.push(sentence.slice(0, split).trim());
+      sentence = sentence.slice(split).trim();
+    }
+    const hasText = sentence.length > 0;
+    if (hasText) chunks.push(sentence);
+  }
+  return chunks;
+}
 
 /** 0 ≤ n < 1e12 → kanji numerals (e.g. 1250 → 千二百五十). */
 export function numberToKanji(n: number): string {

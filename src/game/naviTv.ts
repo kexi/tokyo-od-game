@@ -316,10 +316,9 @@ export class NaviTv {
     // synthesised and queue in front of the people's).
     const isSilent = audio.muted || audio.volume <= 0;
     if (isSilent) return;
-    // The on-device voice (sanoTTS-jp) plays through WebAudio, from the navi's speaker under the
-    // 音量 — but it speaks Japanese only, so in English and Chinese the browser's voice reads.
-    const isJapaneseVoice = voice.enabled && sound !== null && i18n.getLocale() === "ja";
-    if (isJapaneseVoice) {
+    // All on-device voices use the cabin speaker and the game's volume.
+    const hasVoiceOutput = voice.enabled && sound !== null;
+    if (hasVoiceOutput) {
       voice.speak(text, () => sound.speechOut());
       return;
     }

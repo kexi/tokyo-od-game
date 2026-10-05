@@ -19,7 +19,7 @@ okf_version: "0.2"
 - [道路交通法の点数・反則金](road-traffic-law.md) - 一次情報で確認した値と 2026-09-01 の法定速度改正
 - [データ・ソフトウェアの利用条件](licensing-decisions.md) - 提供元ごとの規約と、それを受けて変えた設計
 - [東京都公式ホームページの RSS（報道発表）と、Y への転載を見送った理由](tokyo-gov-rss.md) - RSS 2.0 は報道発表の 1 本で CORS は無い。サイトの記事は CC BY ではなく、RSS の新着情報の再配布には事前の申請が要るので、Gemma の要約つきで Y に流す機能は作らなかった。申請が通ったときの設計（架空の集約アカウント、出典とリンク、ビルド時の取得、要約とそのキャッシュ）の下書き
-- [端末内 AI（Gemma 4・sanoTTS-jp）](on-device-ai.md) - LiteRT-LM と WASM TTS の実測と落とし穴
+- [端末内 AI（Gemma 4・sanoTTS-jp・sanoTTS）](on-device-ai.md) - LiteRT-LM、日本語sanoTTS-jp・英語/中国語sanoTTSのWorker音声合成の実測と落とし穴
 - [Blender CLI でのモデリング（車・道路標識・歩行者）](car-model-blender.md) - bpy で手続き生成して glb にする手順、Cycles・join・UV・フォント・角丸めの落とし穴、agy 委譲の確認結果。自車の寸法と実車の諸元の比較、カウルとドアミラーの修正
 - [構造化ログ（イベントの登録と Zod スキーマ・trace / span で追う・AI のデバッグループ）](logging.md) - 1 行 1 イベントの JSON、src/logEvents.ts の 125 イベントの Zod スキーマと名前・単位の規約、型と実行時の検査（本番は各イベントの最初の 1 行、合わなければ log_schema_invalid）、全行の traceId（= 違反の記録の session）と build（commit・未コミットの変更のハッシュ・版）、spanId / parentId（違反 → ポスト・撮影・通知・映像・追跡 → 停止 → 物語、移動）、開発・プレビューサーバーが .qa/logs/<日付>/<traceId>.jsonl に書く仕組み、uncaught_error（TypeScript の行・span・状態・直前の行）、?seed= と再現 URL、just show-logs ほかログのレシピと「見つける → 直す → 再現 → 比べる」の手順、移行で直した `event`・`level` の上書きと旧名の対応
 - [ヘッドレス Chrome での検証](headless-browser-testing.md) - CDP 直叩きの手順と、背景タブ・HMR で検証が壊れる罠

@@ -193,6 +193,7 @@ export const LOG_EVENTS = {
   llm_enable_failed: failedWith(),
   llm_reply_failed: failedWith(),
   tts_init_failed: failedWith(),
+  tts_synth_failed: failedWith({ locale: z.enum(["ja", "en", "zh"]), id: count }),
   amedas_fetch_failed: failedWith(),
   odpt_poll_failed: failedWith(),
   tide_table_failed: failedWith({ year: z.number().int() }),

@@ -22,7 +22,7 @@ export const ja = {
   "title.aiCached":
     "ダウンロード済みのモデルを使います（再ダウンロード不要）。端末内で動き、会話は外部に送信されません。",
   "title.aiUnsupported": "この端末では会話 AI を使えません（{reason}）。定型応答で話せます。",
-  "title.voiceOption": "歩行者の声（音声合成 sanoTTS-jp・約 6MB）",
+  "title.voiceOption": "歩行者の声（日本語 sanoTTS-jp・約6MB）",
   "title.start": "スタート",
   "title.credits": "出典・ライセンス",
   "title.source": "ソースコード",
@@ -1250,13 +1250,15 @@ export const ja = {
   "credits.h.rules": "交通ルール",
   "credits.rules":
     "違反点数・反則金は道路交通法・同施行令と警視庁の公表資料（普通車、2026-10-04 確認）に基づくゲーム内の参考値です。制限速度は JARTIC の規制速度（区間・区域）が対応付いた道路ではその値を、それ以外の道路では施行令第11条（2026-09-01 改正：中央線等のある道路 60km/h、それ以外 30km/h）を道路幅員から推定した値を使います。救急・警察への通報はゲーム内のシミュレーションで、実際の 119・110 にはつながりません。",
-  "credits.h.tts": "音声合成（sanoTTS-jp）",
+  "credits.h.tts": "音声合成（sanoTTS-jp / sanoTTS）",
   "credits.tts.intro":
-    "歩行者の声は {sano}（コード: MIT、モデル: LicenseRef-sanoTTS-jp-Model-1.0）をブラウザ内で動かして合成しています。",
+    "日本語は {sano}（コード: MIT、モデル: LicenseRef-sanoTTS-jp-Model-1.0）、英語・中国語は {sanoOther}（Web配布物: GPL-3.0-or-later）をブラウザ内のWorkerで動かして合成しています。",
   "credits.link.modelLicense": "モデルライセンス",
   "credits.link.dictNotice": "辞書 NOTICE",
   "credits.link.apacheFull": "Apache License 2.0 全文",
   "credits.tts.files": "{model}・{notice}・{dict}・{jtalk}・{apache}",
+  "credits.tts.multilingualFiles":
+    "sanoTTS: {license}・{source}・{dict}。英語はamy、中国語はchinese-xiaoya。",
   "credits.tts.verbatim": "モデルライセンスの定めにより、次の表示を原文のまま掲載します。",
   "credits.h.ai": "会話 AI（任意）",
   "credits.ai":
@@ -1275,7 +1277,7 @@ export const ja = {
   "credits.h.network": "通信について",
   "credits.network":
     "プレイ中、ブラウザから国土地理院・PLATEAU 配信サービス・気象庁・公共交通オープンデータセンターへ直接通信します（IP アドレス等が各サービスに送信されます）。進捗はこのブラウザの localStorage にのみ保存します。スタート地点に「現在地」を選んだ場合、位置情報はこの端末（sessionStorage）にだけ保存し、URL や外部には送りません（ただし、その周辺の地図タイルを各配信元に要求します）。",
-  // 歩行者との会話（conversation.ts・dialogue.ts・#chat）。歩行者は日本人なので、定型応答の声（sanoTTS-jp）は日本語の原文で話し、画面には訳を出す
+  // 歩行者との会話（conversation.ts・dialogue.ts・#chat）。表示と声は選んだ言語に合わせる
   "talk.chatLabel": "歩行者との会話",
   "talk.close": "会話を閉じる",
   "talk.placeholder": "Enter で入力 → Enter で送信（Esc で運転に戻る）",
@@ -1286,7 +1288,7 @@ export const ja = {
   "talk.aiEnable": "会話 AI（Gemma 4）を使う",
   "talk.aiCancel": "ダウンロードを中止",
   "talk.voiceToggle": "音声で話す",
-  "talk.voiceToggleTitle": "歩行者の声（sanoTTS-jp）は日本語だけを話します",
+  "talk.voiceToggleTitle": "選んだ言語で話します（日本語 sanoTTS-jp、英語・中国語 sanoTTS）",
   "talk.partnerSub": "{age}・{role}（{place}）",
   "talk.age": "{n}代",
   "talk.role.office": "会社員",

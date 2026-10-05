@@ -1,5 +1,5 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 110,
-  "ignorePatterns": ["public/data/**", "pnpm-lock.yaml"]
+  "ignorePatterns": ["public/data/**", "public/sanotts/**", "pnpm-lock.yaml"]
 }
