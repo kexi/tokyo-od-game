@@ -7,10 +7,14 @@ status: draft
 stale_after: 2027-04-06T00:00:00Z
 generated: { by: codex, at: 2026-10-05T19:24:00Z }
 verified:
+  - { by: process:chrome154-production-worker-subpath, at: 2026-10-05T19:58:00Z }
   - { by: process:vitest, at: 2026-10-05T19:19:20Z }
   - { by: process:tsc, at: 2026-10-05T19:19:21Z }
   - { by: process:headless-chrome-cdp, at: 2026-10-05T19:12:22Z }
 sources:
+  - id: production-workers
+    resource: ../.qa/perf/production-workers/report.json
+    title: 本番buildの配信サブパスでDEM Workerを起動して解析（ローカル保存）
   - id: baseline
     resource: road-surface-performance.md, ../.qa/perf/2026-10-05T18-12-21-897Z-roads/report.json
     title: 前回マージ版の夜雨の道路反映（ローカル保存）
@@ -78,6 +82,8 @@ M2 Max、Headless Chrome154、WebGPU、ultra、1280×800・DPR1、東京駅・�
 
 実ゲームで道路中点1,183箇所の地形照会とRapierコライダーを比較し、誤差は原点変更前0.0000229 m・変更後0.0000306 m、橋12箇所は誤差0。原点変更後も車の地理座標を保持し、連続ワープの最後の東京駅座標に着地した。session `6a314adc-c645-4bc7-81e5-8c959461f6d9`はdrive_started・frame_recentered・warp_landedが同一traceで、例外・道路失敗・スキーマエラー0件。[^heights]
 
+本番buildの配信サブパス`/tokyo-od-game/`でも、ハッシュ付きDEM Workerを静的ページから起動し、測量テキストの65,536値を解析した。入力`1.5,e,0\n-3,4`に対する数値とNaNを照合し、ブラウザログは0件。開発サーバーのモジュールURLだけに依存せず、配布時のWorker URLが解決することを確認した。[^production-workers]
+
 第2回では街灯の分割反映中に、古い灯数の配列だけが残り、`undefined.threshold`の例外が3件出た。灯を消すときに座標・live配列も空にする修正と、生成途中でも夜雨のupdateが動く回帰テストを追加した。端末ログで、session `cb088415-c52f-471d-8d76-5b20de0cf6b1`から`2a764c5d-37f1-4ea6-9ba5-4f61642e9360`への比較で3→0・goneを確認した。第3・4回の例外・道路失敗・スキーマエラーは0件。[^samples] [^tests]
 
 測定中にHMRが起きた`2026-10-05T19-20-21-903Z-streaming`の結果は無効。再読み込み後にプレイを開始しておらず、道路も0本だったので、見かけの16.7 msを性能改善の根拠に使わない。測定スクリプトはプレイ状態・道路100本以上・反映ログ・同一sessionを検査する。[^qa]
@@ -99,3 +105,5 @@ M2 Max、Headless Chrome154、WebGPU、ultra、1280×800・DPR1、東京駅・�
 [^dem]: Workerと代替処理の検証、水面の非同期生成の回帰検証
 
 [^heights]: 実ゲームの地形コライダー・橋の高さと原点変更、最終ワープの検証
+
+[^production-workers]: 本番buildの配信サブパスでDEM Workerを起動して解析
