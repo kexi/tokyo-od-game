@@ -1660,8 +1660,29 @@ async function main(): Promise<void> {
   // 設定: everything stops while it is open (as the P pause), and goes on as it was when closed.
   const settingsDialog = $<HTMLDialogElement>("#settings");
   let pausedBeforeSettings = false;
+  // 設定 › AI と声: the same two choices as the title's boxes, at any time during play (saved too).
+  const playAi = $<HTMLInputElement>("#opt-ai-play");
+  const playVoice = $<HTMLInputElement>("#opt-voice-play");
+  const talkVoice = $<HTMLInputElement>("#voice-toggle");
+  const showAiVoice = () => {
+    const isAiOn = brain.status === "ready" || brain.status === "downloading" || brain.status === "loading";
+    playAi.checked = isAiOn;
+    playVoice.checked = talkVoice.checked;
+  };
+  playAi.addEventListener("change", () => {
+    if (playAi.checked) void brain.enable();
+    else brain.pause();
+  });
+  playVoice.addEventListener("change", () => {
+    // Through the conversation panel's box, which switches the synthesizer itself.
+    talkVoice.checked = playVoice.checked;
+    talkVoice.dispatchEvent(new Event("change"));
+    saveVoice(playVoice.checked);
+  });
+  talkVoice.addEventListener("change", () => saveVoice(talkVoice.checked));
   input.on("settings", () => {
     if (settingsDialog.open) return;
+    showAiVoice();
     $<HTMLDialogElement>("#help").close();
     pausedBeforeSettings = paused;
     paused = true;

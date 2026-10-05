@@ -54,6 +54,10 @@ export const zh: Messages = {
 
   "settings.title": "设置",
   "settings.paused": "已暂停",
+  "settings.aiVoice": "AI 与语音",
+  "settings.aiOption": "使用对话 AI（Gemma 4 E2B，在本机运行）",
+  "settings.voiceOption": "行人的语音（语音合成）",
+  "settings.aiNote": "开启时若尚未下载，将下载约 2.0GB。关闭期间使用固定回答，再次开启会立即恢复。",
   "settings.controls": "操作",
   "settings.layout": "按键布局",
   "settings.layoutWasd": "WASD（FPS 风格，点击后可用鼠标转视角）",
@@ -1202,6 +1206,7 @@ export const zh: Messages = {
   // 会話 AI の状態（llm.ts）と同意の画面（#ai-consent）
   "ai.loading": "正在将模型载入 GPU…",
   "ai.ready": "对话 AI 已就绪",
+  "ai.paused": "对话 AI 已关闭（固定回答）",
   "ai.aborted": "已停止下载",
   "ai.failed": "无法启动对话 AI：{error}",
   "ai.downloading": "正在下载 Gemma 4… {got} / {total} GB",

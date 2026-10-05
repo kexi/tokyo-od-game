@@ -99,9 +99,27 @@ export class NpcBrain {
     return this.status === "ready";
   }
 
+  /**
+   * 設定 › AI off: templates from now on and the consent withdrawn. The loaded engine is kept, so
+   * switching back on is instant (freeing its GPU memory would make that a reload of 2 GB).
+   */
+  pause(): void {
+    if (this.status === "downloading") this.cancelDownload();
+    if (this.status === "ready") this.status = "idle";
+    this.detailText = { key: "ai.paused" };
+    NpcBrain.setConsent(false);
+  }
+
   /** Download (once) and initialise Gemma. Call only after the player agreed. */
   async enable(): Promise<void> {
     if (this.status === "ready" || this.status === "downloading" || this.status === "loading") return;
+    // Paused (設定 › AI off) with the engine still loaded: on again at once.
+    if (this.engine) {
+      NpcBrain.setConsent(true);
+      this.status = "ready";
+      this.detailText = { key: "ai.ready" };
+      return;
+    }
     try {
       localStorage.setItem(CONSENT_KEY, "yes");
     } catch {

@@ -65,6 +65,11 @@ export const ja = {
   // 設定
   "settings.title": "設定",
   "settings.paused": "一時停止中",
+  "settings.aiVoice": "AI と声",
+  "settings.aiOption": "会話 AI（Gemma 4 E2B・端末内）を使う",
+  "settings.voiceOption": "歩行者の声（音声合成）",
+  "settings.aiNote":
+    "オンにすると未ダウンロードなら約 2.0GB をダウンロードします。オフの間は定型応答で話し、もう一度オンにするとすぐ戻ります。",
   "settings.controls": "操作",
   "settings.layout": "キー配置",
   "settings.layoutWasd": "WASD（FPS 風・クリックでマウス視点）",
@@ -1245,6 +1250,7 @@ export const ja = {
   // 会話 AI の状態（llm.ts）と同意の画面（#ai-consent）
   "ai.loading": "モデルを GPU に読み込み中…",
   "ai.ready": "会話 AI 準備完了",
+  "ai.paused": "会話 AI はオフです（定型応答）",
   "ai.aborted": "ダウンロードを中止しました",
   "ai.failed": "会話 AI を起動できません: {error}",
   "ai.downloading": "Gemma 4 をダウンロード中… {got} / {total} GB",

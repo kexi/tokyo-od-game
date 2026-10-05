@@ -641,6 +641,23 @@
         </div>
       </section>
       <section class="settings-group">
+        <h3 data-i18n="settings.aiVoice">AI と声</h3>
+        <div class="control-options">
+          <label class="check"
+            ><input id="opt-ai-play" type="checkbox" />
+            <span data-i18n="settings.aiOption">会話 AI（Gemma 4 E2B・端末内）を使う</span></label
+          >
+          <label class="check"
+            ><input id="opt-voice-play" type="checkbox" />
+            <span data-i18n="settings.voiceOption">歩行者の声（音声合成）</span></label
+          >
+        </div>
+        <p class="sub" id="opt-ai-play-note" data-i18n="settings.aiNote">
+          オンにすると未ダウンロードなら約 2.0GB
+          をダウンロードします。オフの間は定型応答で話し、もう一度オンにするとすぐ戻ります。
+        </p>
+      </section>
+      <section class="settings-group">
         <h3 data-i18n="settings.controls">操作</h3>
         <div class="control-options">
           <label

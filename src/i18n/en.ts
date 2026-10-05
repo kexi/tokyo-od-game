@@ -59,6 +59,11 @@ export const en: Messages = {
 
   "settings.title": "Settings",
   "settings.paused": "Paused",
+  "settings.aiVoice": "AI and voices",
+  "settings.aiOption": "Use the talking AI (Gemma 4 E2B, on this device)",
+  "settings.voiceOption": "Pedestrians’ voices (speech synthesis)",
+  "settings.aiNote":
+    "Turning it on downloads about 2.0 GB if it is not downloaded yet. While it is off, people reply with set phrases; turning it back on is instant.",
   "settings.controls": "Controls",
   "settings.layout": "Key layout",
   "settings.layoutWasd": "WASD (FPS-style; click for mouse look)",
@@ -1260,6 +1265,7 @@ export const en: Messages = {
   // 会話 AI の状態（llm.ts）と同意の画面（#ai-consent）
   "ai.loading": "Loading the model onto the GPU…",
   "ai.ready": "Conversation AI ready",
+  "ai.paused": "The talking AI is off (set phrases)",
   "ai.aborted": "Download stopped",
   "ai.failed": "Can't start the conversation AI: {error}",
   "ai.downloading": "Downloading Gemma 4… {got} / {total} GB",
