@@ -40,10 +40,12 @@ export const WEATHER_LABEL: Record<WeatherMode, string> = {
 };
 
 /**
- * Game minutes per real minute outside リアル時刻: a day in 2.4 hours, so morning, noon, dusk and
- * night all come round in a session. Deadlines, posts' ages and timed rules follow the same clock.
+ * Game time per real time outside リアル時刻: a minute a second, a day in 24 minutes, so morning,
+ * noon, dusk and night all come round in a session. Deadlines, posts' ages, the tide and timed
+ * rules follow the same clock; what should keep a human pace (the weather's spells, the feed's
+ * chatter) is set in real time.
  */
-export const GAME_TIME_SCALE = 10;
+export const GAME_TIME_SCALE = 60;
 
 export type Observation = {
   /** Meteorological visibility (m) around Tokyo; 20000 = 20 km or more. */

@@ -1,10 +1,9 @@
 /**
- * おまかせの天気: spells of fair weather and rain taking turns, in game minutes. Tokyo's autumn
- * gives showers of an hour or two between longer dry spells; here they are shorter than real ones
- * (and the clock runs 10× fast), so a drive of a quarter of an hour sees the weather turn.
- * Fair: 40–120 min (4–12 real minutes); rain: 20–60 min (2–6 real minutes).
+ * おまかせの天気: spells of fair weather and rain taking turns, in game minutes. With the clock at
+ * a minute a second they are 4–12 game hours of fair weather and 2–6 of rain, much as Tokyo's
+ * autumn has them, and 4–12 / 2–6 real minutes: a drive of a quarter of an hour sees it turn.
  */
-export const SPELL_MINUTES = { clear: [40, 120], rain: [20, 60] } as const;
+export const SPELL_MINUTES = { clear: [240, 720], rain: [120, 360] } as const;
 
 /** How long the next spell lasts (game minutes), `random` in [0, 1). */
 export function spellMinutes(isRain: boolean, random: number): number {

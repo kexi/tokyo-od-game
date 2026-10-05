@@ -222,6 +222,17 @@ export class WaterLayer implements GroundWater {
     for (const tile of this.tiles.values()) this.buildSurface(tile);
   }
 
+  /** The river of the nearest water-level gauge within `metres`, and the gauge's name (often a bridge). */
+  riverNear(lat: number, lon: number, metres: number): { river: string; gauge: string } | null {
+    let best: { river: string; gauge: string; d: number } | null = null;
+    for (const g of this.gaugeList) {
+      const d = haversineMeters(lat, lon, g.lat, g.lon);
+      const isCloser = d < metres && (!best || d < best.d);
+      if (isCloser) best = { river: g.river, gauge: g.name, d };
+    }
+    return best && { river: best.river, gauge: best.gauge };
+  }
+
   // ---------- GroundWater (the terrain's cut-out and non-solid riverbed) ----------
 
   versionAt(x: number, y: number): number {

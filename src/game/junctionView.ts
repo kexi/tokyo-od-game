@@ -1,5 +1,6 @@
 import { Vector3 } from "three";
 import type { RoadGraph } from "../world/roads";
+import { fitCanvas } from "./navMap";
 import type { Maneuver, Route } from "./navigation";
 
 /**
@@ -16,15 +17,17 @@ export function drawJunction(
   canvas: HTMLCanvasElement,
   graph: RoadGraph,
   route: Route,
-  next: Maneuver,
+  /** The turn, or a junction passed straight on (直進案内). */
+  next: Pick<Maneuver, "at" | "pos" | "dir">,
   at: number,
   name: string | null,
 ): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
+  const fit = fitCanvas(canvas);
+  if (!fit) return;
+  const { ctx, w, h } = fit;
   const scale = (Math.min(w, h) * 0.46) / VIEW_M;
+  // Line widths and letters were drawn for a 240-px view; the panel's picture is smaller.
+  const k = Math.min(1, Math.min(w, h) / 240);
   const centre = next.pos;
   // The street's direction arriving at the junction points up on the panel (the path itself is
   // in the lane and already curving there).
@@ -50,7 +53,7 @@ export function drawJunction(
   // Streets near the junction, widest first so narrow ones draw on top of them at the corners.
   const near = graph.segments
     .filter((seg) => seg.line.kind !== "highway" && seg.pts.some((p) => p.distanceTo(centre) < VIEW_M * 1.5))
-    .sort((a, b) => b.line.width - a.line.width);
+    .toSorted((a, b) => b.line.width - a.line.width);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   for (const pass of ["edge", "fill"] as const) {
@@ -82,10 +85,11 @@ export function drawJunction(
     const [px, py] = pts[pts.length - 3] ?? pts[0];
     const ang = Math.atan2(ey - py, ex - px);
     const shaft = pts.slice(0, -2);
-    for (const [colour, width] of [
+    for (const [colour, full] of [
       ["#ffffff", 26],
       ["#1f8fff", 17],
     ] as const) {
+      const width = Math.max(4, full * k);
       ctx.strokeStyle = colour;
       ctx.lineWidth = width;
       ctx.beginPath();
@@ -119,17 +123,19 @@ export function drawJunction(
   }
 
   // Name band and the countdown bar.
+  const band = Math.round(Math.max(22, 34 * k));
   if (name) {
     ctx.fillStyle = "rgba(4, 14, 30, 0.82)";
-    ctx.fillRect(0, 0, w, 34);
+    ctx.fillRect(0, 0, w, band);
     ctx.fillStyle = "#ffffff";
-    ctx.font = `bold 20px "Noto Sans JP", "Hiragino Sans", sans-serif`;
+    ctx.font = `bold ${Math.round(Math.max(13, 20 * k))}px "Noto Sans JP", "Hiragino Sans", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(name, w / 2, 18);
+    // Long names shrink to fit the band rather than run off it.
+    ctx.fillText(name, w / 2, band / 2 + 1, w - 28);
   }
   const left = Math.max(0, Math.min(BAR_M, next.at - at));
-  const barTop = name ? 44 : 12;
+  const barTop = name ? band + 8 : 12;
   const barH = h - barTop - 12;
   ctx.fillStyle = "rgba(255,255,255,0.18)";
   ctx.fillRect(w - 16, barTop, 8, barH);

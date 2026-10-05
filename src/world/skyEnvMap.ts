@@ -17,8 +17,9 @@ const DEEP_NIGHT = -12;
 /**
  * Whether the sky has moved enough since `drawn` to draw the environment map again: 1° of sun
  * elevation, 2° of azimuth (while the sun shows at all) or 6% of cloud, times `step`. With the game
- * clock at 10× the sun moves ~2.5° a real minute, so at step 1 that is about one map every 25 s;
- * weather turning over ~25 s gives one every 1.5 s while it lasts.
+ * clock at 60× (GAME_TIME_SCALE) the sun moves ~15° a real minute, so at step 1 that is about one
+ * map every 4 s (高; 低's step 3 and 3 s gap: one every 12 s); weather turning over ~25 s gives one
+ * every 1.5 s while it lasts.
  */
 export function isEnvStale(drawn: EnvState | null, now: EnvState, step = 1): boolean {
   if (!drawn) return true;

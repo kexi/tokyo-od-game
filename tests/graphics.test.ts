@@ -8,6 +8,9 @@ import {
   withItem,
   withPreset,
 } from "../src/graphics";
+import { en } from "../src/i18n/en";
+import { ja } from "../src/i18n/ja";
+import { zh } from "../src/i18n/zh";
 
 describe("画質", () => {
   it("starts on 高 on a computer and 低 on a phone", () => {
@@ -39,7 +42,12 @@ describe("画質", () => {
     it("is a row of its own, on or off, right after the bloom", () => {
       const keys = GRAPHICS_ITEMS.map((i) => i.key);
       const row = GRAPHICS_ITEMS.find((i) => i.key === "lensFlare");
-      expect(row?.label).toBe("レンズフレア");
+      expect(row?.label).toBe("graphics.lensFlare");
+      expect([ja["graphics.lensFlare"], en["graphics.lensFlare"], zh["graphics.lensFlare"]]).toEqual([
+        "レンズフレア",
+        "Lens flare",
+        "镜头光晕",
+      ]);
       expect(row?.options.map((o) => o.value)).toEqual(["on", "off"]);
       expect(row?.onReload).toBeUndefined();
       expect(keys.indexOf("lensFlare")).toBe(keys.indexOf("bloom") + 1);
@@ -71,9 +79,25 @@ describe("画質", () => {
 
     it("is a row of its own that takes effect on reload", () => {
       const row = GRAPHICS_ITEMS.find((i) => i.key === "backend");
-      expect(row?.label).toBe("描画方式");
+      expect(row?.label).toBe("graphics.backend");
+      expect([ja["graphics.backend"], en["graphics.backend"], zh["graphics.backend"]]).toEqual([
+        "描画方式",
+        "Renderer",
+        "渲染方式",
+      ]);
       expect(row?.onReload).toBe(true);
       expect(row?.options.map((o) => o.value)).toEqual(["auto", "webgl"]);
+    });
+
+    it("says in every language which backend is running, and why WebGL 2 when it is", () => {
+      const keys = [
+        "graphics.running",
+        "graphics.runningWebgpu",
+        "graphics.runningWebglAsked",
+        "graphics.runningWebglFallback",
+      ] as const;
+      for (const dict of [ja, en, zh]) for (const key of keys) expect(dict[key]).toBeTruthy();
+      for (const dict of [ja, en, zh]) expect(dict["graphics.running"]).toContain("{backend}");
     });
 
     it("is not a quality level: WebGL 2 keeps the preset, and a preset keeps WebGL 2", () => {

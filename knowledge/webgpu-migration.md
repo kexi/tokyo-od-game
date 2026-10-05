@@ -5,7 +5,7 @@ description: three.js r186 の WebGPURenderer へ移した段階 A の記録。�
 tags: [rendering]
 status: draft
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-04T20:40:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-10-05T00:25:00Z }
 verified:
   - { by: process:vitest, at: 2026-10-04T20:01:00Z }
   - { by: process:tsc, at: 2026-10-04T20:01:00Z }
@@ -22,6 +22,8 @@ verified:
   - { by: process:tsc, at: 2026-10-04T21:16:00Z }
   - { by: process:naga, at: 2026-10-04T21:12:00Z }
   - { by: process:glslang, at: 2026-10-04T21:12:00Z }
+  - { by: process:vitest, at: 2026-10-05T00:22:00Z }
+  - { by: process:tsc, at: 2026-10-05T00:22:00Z }
 sources:
   - id: three-renderer
     resource: node_modules/three/src/renderers/common/Renderer.js（three 0.186.1）
@@ -346,6 +348,17 @@ main の 7 コミット（案内標識・車と運転席の寸法・空と光と
 - **雨のガラス**: TSL 版のまま、main の新しいガラスの寸法（1.4719 × 0.837 m、傾き 26.9°、`SIN_RAKE`・`COS_RAKE`）・ガラスの原点（0.7359, 0.1618, 0.9465）・ワイパーの軸と停止角を使う。
 - **一時停止中の描画**: main は一時停止中も運転席を通して描くようになった（ミラーの飾りが揺れ止むまで）。合成でもブラーを止めて同じように描く。
 - 案内標識（guideSigns.ts）・ミラーの飾り（mirrorCharm.ts、MeshPhysicalMaterial の sheen）・交差点の曲がり方（drivePath.ts）・東京駅のモデルは WebGL 専用の API を使っていない。
+
+## 2 回目の統合（main 0f58f74〜96e43db、2026-10-05）
+
+- **ナビの案内パネル**（navGuide.ts と navAhead / navStraight / navNotices / navView / navMap）、**Y のポスト**（socialTexts.ts、SocialFeed の world / timeScale / note / maybePraise、`pedestrians.crossingAhead`、`water.riverNear`）は描画に関わらず、そのまま取り込んだ。
+- **ゲーム時計 60 倍**（GAME_TIME_SCALE、天気の移り変わりは実時間のまま）: 太陽が実時間 1 分に約 15° 動くので、空の環境マップは 高 で約 4 秒に 1 回描き直す（低 は約 12 秒に 1 回。`isEnvStale` の説明を直した）。
+- **フロントガラスの UV の v**: main は GLSL のガラスで `1 − v` に直した（0f58f74）。webgpu は TSL 版で同じ直しが入っている（a533983）ので、TSL 版を残した。
+- **多言語対応（i18n フェーズ 1）**: webgpu だけの行と文言もキーにした（ja / en / zh）。
+  - 画質の行: `graphics.backend`（描画方式 / Renderer / 渲染方式）と選択肢 `graphics.backendAuto`・`graphics.backendWebgl`、`graphics.lensFlare`（レンズフレア / Lens flare / 镜头光晕。選択肢は共通の `graphics.on` / `graphics.off`）。
+  - 設定のいまの描画方式: `graphics.running`（`{backend}` を埋める）と `graphics.runningWebgpu`・`graphics.runningWebglAsked`・`graphics.runningWebglFallback`。`RenderInfo.label` は文字列ではなくこのキーになった。
+  - 読み込み: `loading.renderer`（描画の準備中…）、`loading.shaders`（シェーダーを作成中の行）。再読み込みの注記 `graphics.reloadNote` に描画方式を足した。
+- 検査: tsc・oxlint（警告 84 件、統合前の両親と同数）・vitest 44 ファイル 498 件・vite build。シェーダーのコードはこの統合で変わっていない（rainGlass.ts は webgpu 側のまま）ので、naga / glslang は走らせていない。
 
 ## モジュールごとの今と残り
 

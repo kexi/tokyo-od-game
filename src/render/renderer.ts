@@ -1,6 +1,7 @@
 import { ACESFilmicToneMapping, PCFShadowMap, SRGBColorSpace, type RenderTarget } from "three";
 import { WebGPURenderer } from "three/webgpu";
 import type { GraphicsSettings } from "../graphics";
+import type { MessageKey } from "../i18n";
 import { log, warn } from "../log";
 
 /**
@@ -21,8 +22,8 @@ import { log, warn } from "../log";
 export type RenderInfo = {
   backend: "webgpu" | "webgl2";
   depth: "reversed" | "logarithmic";
-  /** For 設定: what is running, and why WebGL 2 when it is. */
-  label: string;
+  /** For 設定 (an i18n key): what is running, and why WebGL 2 when it is. */
+  label: MessageKey;
 };
 
 /** -1 with a standard depth buffer; +1 with a reversed one (nearer is a larger depth). */
@@ -66,11 +67,11 @@ export async function createRenderer(
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.shadowMap.enabled = quality.shadows;
   renderer.shadowMap.type = PCFShadowMap;
-  const why = isWebGLAsked ? "設定で選択" : "この端末・ブラウザに WebGPU が無いため";
+  const webgl = isWebGLAsked ? "graphics.runningWebglAsked" : "graphics.runningWebglFallback";
   const info: RenderInfo = {
     backend: isWebGPU ? "webgpu" : "webgl2",
     depth: isReversed ? "reversed" : "logarithmic",
-    label: isWebGPU ? "WebGPU" : `WebGL 2（${why}）`,
+    label: isWebGPU ? "graphics.runningWebgpu" : webgl,
   };
   log("renderer", { backend: info.backend, depth: info.depth, samples: renderer.samples });
   return { renderer, info };

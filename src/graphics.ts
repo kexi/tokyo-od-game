@@ -1,3 +1,5 @@
+import type { MessageKey } from "./i18n";
+
 /**
  * 画質: each graphics feature on its own setting, and the 最高 / 高 / 中 / 低 presets that set them
  * all. Remembered in this browser; phones start on 低, computers on 高. Most settings take effect
@@ -44,10 +46,11 @@ export type GraphicsKey = Exclude<keyof GraphicsSettings, "preset">;
 /** The items the presets set (描画方式 is not a quality level: the presets leave it alone). */
 export type PresetKey = Exclude<GraphicsKey, "backend">;
 
-type Option = { value: string; label: string };
+/** Labels are i18n keys (src/i18n/ja.ts): the panel shows them in the language in force. */
+type Option = { value: string; label: MessageKey };
 export type GraphicsItem = {
   key: GraphicsKey;
-  label: string;
+  label: MessageKey;
   options: Option[];
   onReload?: boolean;
   /** false: not part of the presets (choosing a preset keeps it, changing it keeps the preset). */
@@ -58,132 +61,132 @@ export type GraphicsItem = {
 export const GRAPHICS_ITEMS: GraphicsItem[] = [
   {
     key: "resolution",
-    label: "解像度",
+    label: "graphics.resolution",
     options: [
-      { value: "2", label: "最高（2倍）" },
-      { value: "1.5", label: "高（1.5倍）" },
-      { value: "1", label: "中（等倍）" },
-      { value: "0.75", label: "低（0.75倍）" },
+      { value: "2", label: "graphics.resolution2" },
+      { value: "1.5", label: "graphics.resolution15" },
+      { value: "1", label: "graphics.resolution1" },
+      { value: "0.75", label: "graphics.resolution075" },
     ],
   },
   {
     key: "shadows",
-    label: "影",
+    label: "graphics.shadows",
     options: [
-      { value: "4096", label: "最高" },
-      { value: "2048", label: "高" },
-      { value: "1024", label: "中" },
-      { value: "off", label: "なし" },
+      { value: "4096", label: "graphics.ultra" },
+      { value: "2048", label: "graphics.high" },
+      { value: "1024", label: "graphics.medium" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "reflections",
-    label: "空の映り込み",
+    label: "graphics.reflections",
     options: [
-      { value: "high", label: "高" },
-      { value: "low", label: "低" },
-      { value: "off", label: "なし" },
+      { value: "high", label: "graphics.high" },
+      { value: "low", label: "graphics.low" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "bloom",
-    label: "光のにじみ（ブルーム）",
+    label: "graphics.bloom",
     options: [
-      { value: "high", label: "高" },
-      { value: "low", label: "低" },
-      { value: "off", label: "なし" },
+      { value: "high", label: "graphics.high" },
+      { value: "low", label: "graphics.low" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "lensFlare",
-    label: "レンズフレア",
+    label: "graphics.lensFlare",
     options: [
-      { value: "on", label: "あり" },
-      { value: "off", label: "なし" },
+      { value: "on", label: "graphics.on" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "motionBlur",
-    label: "ブラー（速度と旋回）",
+    label: "graphics.motionBlur",
     options: [
-      { value: "strong", label: "強" },
-      { value: "light", label: "弱" },
-      { value: "off", label: "なし" },
+      { value: "strong", label: "graphics.strong" },
+      { value: "light", label: "graphics.weak" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "windows",
-    label: "夜の窓",
+    label: "graphics.windows",
     options: [
-      { value: "rooms", label: "部屋の奥行き" },
-      { value: "lit", label: "点灯のばらつき" },
-      { value: "flat", label: "単色" },
+      { value: "rooms", label: "graphics.windowsRooms" },
+      { value: "lit", label: "graphics.windowsLit" },
+      { value: "flat", label: "graphics.windowsFlat" },
     ],
   },
   {
     key: "wetRoads",
-    label: "雨の路面",
+    label: "graphics.wetRoads",
     options: [
-      { value: "full", label: "水たまりと波紋" },
-      { value: "simple", label: "濡れた色と艶" },
-      { value: "off", label: "なし" },
+      { value: "full", label: "graphics.wetRoadsFull" },
+      { value: "simple", label: "graphics.wetRoadsSimple" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "streetLights",
-    label: "街灯の光",
+    label: "graphics.streetLights",
     options: [
-      { value: "32", label: "多" },
-      { value: "16", label: "中" },
-      { value: "8", label: "少" },
-      { value: "0", label: "なし" },
+      { value: "32", label: "graphics.many" },
+      { value: "16", label: "graphics.medium" },
+      { value: "8", label: "graphics.few" },
+      { value: "0", label: "graphics.off" },
     ],
   },
   {
     key: "rainGlass",
-    label: "フロントガラスの雨粒",
+    label: "graphics.rainGlass",
     options: [
-      { value: "on", label: "あり" },
-      { value: "off", label: "なし" },
+      { value: "on", label: "graphics.on" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "viewDistance",
-    label: "描画距離",
+    label: "graphics.viewDistance",
     onReload: true,
     options: [
-      { value: "far", label: "遠" },
-      { value: "medium", label: "中" },
-      { value: "near", label: "近" },
+      { value: "far", label: "graphics.far" },
+      { value: "medium", label: "graphics.medium" },
+      { value: "near", label: "graphics.near" },
     ],
   },
   {
     key: "traffic",
-    label: "車と歩行者の数",
+    label: "graphics.traffic",
     onReload: true,
     options: [
-      { value: "many", label: "多" },
-      { value: "normal", label: "普通" },
-      { value: "few", label: "少" },
+      { value: "many", label: "graphics.many" },
+      { value: "normal", label: "graphics.normal" },
+      { value: "few", label: "graphics.few" },
     ],
   },
   {
     key: "antialias",
-    label: "アンチエイリアス",
+    label: "graphics.antialias",
     onReload: true,
     options: [
-      { value: "on", label: "あり" },
-      { value: "off", label: "なし" },
+      { value: "on", label: "graphics.on" },
+      { value: "off", label: "graphics.off" },
     ],
   },
   {
     key: "backend",
-    label: "描画方式",
+    label: "graphics.backend",
     onReload: true,
     inPreset: false,
     options: [
-      { value: "auto", label: "自動（WebGPU 優先）" },
-      { value: "webgl", label: "WebGL 2" },
+      { value: "auto", label: "graphics.backendAuto" },
+      { value: "webgl", label: "graphics.backendWebgl" },
     ],
   },
 ];
@@ -193,12 +196,12 @@ export const PRESET_ITEMS = GRAPHICS_ITEMS.filter(
   (i): i is GraphicsItem & { key: PresetKey } => i.inPreset !== false,
 );
 
-export const PRESET_LABEL: Record<GraphicsPreset | "custom", string> = {
-  ultra: "最高",
-  high: "高",
-  medium: "中",
-  low: "低",
-  custom: "カスタム",
+export const PRESET_LABEL: Record<GraphicsPreset | "custom", MessageKey> = {
+  ultra: "graphics.ultra",
+  high: "graphics.high",
+  medium: "graphics.medium",
+  low: "graphics.low",
+  custom: "graphics.custom",
 };
 
 /** 高 is the computer's default: what the game drew before the presets, plus the new effects. */

@@ -19,8 +19,10 @@ import {
 } from "three";
 import type { z } from "zod";
 import { RECENTER_DISTANCE, SPAWN, TERRAIN_ZOOM } from "./config";
+// As a namespace: main has its own `t`s (times, taxis) in inner scopes.
+import * as i18n from "./i18n";
 
-const SPAWN_DEFAULT = { ...SPAWN, label: "東京駅 丸の内" };
+const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
 import { GRAPHICS, pixelRatioFor, QUALITY } from "./device";
 import { buildGraphicsPanel } from "./game/graphicsPanel";
 import type { GraphicsSettings } from "./graphics";
@@ -75,6 +77,7 @@ import { Buildings } from "./world/buildings";
 import { DemStore } from "./world/dem";
 import {
   Environment,
+  GAME_TIME_SCALE,
   TIME_LABEL,
   TIME_MODES,
   WEATHER_LABEL,
@@ -151,7 +154,8 @@ import {
   type VehicleKind,
 } from "./game/vehicleModels";
 import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
-import { formatCount, SocialFeed, type SocialPost } from "./game/social";
+import { formatCount, SocialFeed, type SocialPost, type SocialWorld } from "./game/social";
+import type { PraiseKind } from "./game/socialTexts";
 import { WitnessPhones } from "./game/witnessPhones";
 import { appTile, SocialApp } from "./game/socialView";
 import { SOCIAL_APP_NAME } from "./game/socialTheme";
@@ -189,8 +193,9 @@ async function loadJson<S extends z.ZodType>(name: string, schema: S): Promise<z
   }
 }
 
-function setLoading(text: string, progress: number): void {
-  $("#loading-status").textContent = text;
+/** The title screen's progress line; `text` runs again when the language is switched. */
+function setLoading(text: () => string, progress: number): void {
+  i18n.bindText($("#loading-status"), text);
   $("#loading-bar").style.width = `${Math.round(progress * 100)}%`;
 }
 
@@ -204,10 +209,10 @@ function toast(text: string, color = "#ffe14d"): void {
 }
 
 async function main(): Promise<void> {
-  setLoading("物理エンジンを初期化中…", 0.04);
+  setLoading(() => i18n.t("loading.physics"), 0.04);
   await RAPIER.init();
 
-  setLoading("東京都オープンデータを読み込み中…", 0.1);
+  setLoading(() => i18n.t("loading.openData"), 0.1);
   const [poiFile, geoidGrid, stopFile, areaFile] = await Promise.all([
     loadJson("pois.json", PoiFileSchema),
     loadJson("geoid.json", GeoidGridSchema),
@@ -230,7 +235,7 @@ async function main(): Promise<void> {
     busStops: Object.keys(stopFile?.stops ?? {}).length,
   });
 
-  setLoading("描画の準備中…", 0.14);
+  setLoading(() => i18n.t("loading.renderer"), 0.14);
   // WebGPU where the browser has it, WebGL 2 otherwise or when 画質 描画方式 asks (render/renderer.ts).
   const { renderer, info: renderInfo } = await createRenderer(
     $<HTMLCanvasElement>("#scene"),
@@ -243,7 +248,7 @@ async function main(): Promise<void> {
   const camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 40000);
 
   const dem = new DemStore(new Geoid(geoidGrid));
-  setLoading(`地形と 3D モデルを読み込み中…（スタート: ${spawn.label}）`, 0.18);
+  setLoading(() => i18n.t("loading.models", { place: spawn.label() }), 0.18);
   // 車内視点 (loaded with the other models, attached to the player's car once it exists).
   const cockpit = new Cockpit();
   // ミラーの飾り: hung in the car once both it and the cockpit (whose mirror they hang from) exist.
@@ -1411,6 +1416,8 @@ async function main(): Promise<void> {
   settingsDialog.addEventListener("close", () => {
     paused = pausedBeforeSettings;
   });
+  // The title screen's 設定 waits (disabled) until the dialog's controls above are wired.
+  $<HTMLButtonElement>("#title-settings").disabled = false;
   input.on("cameraPrev", () => {
     chase.cycle();
     chase.cycle();
@@ -1584,13 +1591,12 @@ async function main(): Promise<void> {
     if (!support.ok) {
       optAi.disabled = true;
       optAi.checked = false;
-      optAiNote.textContent = `この端末では会話 AI を使えません（${support.reason}）。定型応答で話せます。`;
+      const reason = support.reason;
+      i18n.bindText(optAiNote, () => i18n.t("title.aiUnsupported", { reason: reason ? i18n.t(reason) : "" }));
       return;
     }
     optAi.checked = NpcBrain.hasConsent();
-    if (cached)
-      optAiNote.textContent =
-        "ダウンロード済みのモデルを使います（再ダウンロード不要）。端末内で動き、会話は外部に送信されません。";
+    if (cached) i18n.bindText(optAiNote, () => i18n.t("title.aiCached"));
   })();
 
   startButton.addEventListener("click", () => {
@@ -1733,21 +1739,22 @@ async function main(): Promise<void> {
       const isLoading = state === "loading" && compiling === null;
       if (isLoading)
         setLoading(
-          groundReady
-            ? `PLATEAU 3D 都市モデルを読み込み中… ${Math.round(tilesProgress * 100)}%`
-            : "地形を構築中…",
+          () =>
+            groundReady
+              ? i18n.t("loading.plateau", { percent: Math.round(tilesProgress * 100) })
+              : i18n.t("loading.terrain"),
           0.25 + 0.7 * (groundReady ? 0.3 + 0.7 * tilesProgress : 0),
         );
       const isReady = groundReady && (tilesProgress >= 0.999 || waited > 20000) && waited > 1500;
       if (isReady && isLoading) {
         // The town is here: build its pipelines (and those of what comes later) before play.
-        setLoading("描画の準備中（シェーダーを作成）…", 0.95);
+        setLoading(() => i18n.t("loading.shaders"), 0.95);
         compiling = precompile()
           .catch((error: unknown) => warn("precompile_failed", { error: String(error) }))
           .finally(() => {
             state = "ready";
             startButton.disabled = false;
-            setLoading("準備完了！", 1);
+            setLoading(() => i18n.t("loading.ready"), 1);
           });
       }
       drawPlain();
@@ -1942,9 +1949,14 @@ async function main(): Promise<void> {
       mode: isInCar ? "car" : isOnFoot ? "walk" : null,
       junctionNames: roadApplied?.junctionNames,
       laneUse: roadApplied?.laneUse,
+      roads: guideSigns.roadInfo,
+      approaches: control.approaches,
+      orbis: orbis.sites,
+      place: { ward: wardName, town: townName },
+      speedKmh: speed,
+      visible: !navHidden,
     });
     ribbon.update(isInCar && !navHidden ? nav.route : null, nav.lastAt, now);
-    if (navHidden) $("#nav").hidden = true;
     if (nav.route && navGeo.version !== nav.version) {
       navGeo = {
         version: nav.version,
@@ -2125,6 +2137,7 @@ async function main(): Promise<void> {
         const record = committed ?? (open ? Object.assign(open, photo, { context }) : null);
         if (record) law.notice(record, "orbis");
         flashScreen();
+        social.note("orbis", env.now().getTime());
         log("orbis", { id: hit.site.entry.id, lane: hit.lane, kmh: Math.round(speed), limit: hit.limit });
       }
 
@@ -2218,7 +2231,14 @@ async function main(): Promise<void> {
           const hasStopped =
             lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
           if (ap.kind === "stop" && !hasStopped) book(VIOLATIONS.stopSign, now, 10000);
+          if (ap.kind === "stop" && hasStopped) praise("fullStop");
         }
+      }
+      // Waiting while someone walks across in front: they may thank the driver (once each).
+      if (Math.abs(speed) < 2) {
+        const crossing = pedestrians.crossingAhead(carPos, carForward, 14).filter((q) => !letAcross.has(q));
+        for (const q of crossing) letAcross.add(q);
+        if (crossing.length > 0) praise("yieldPedestrian");
       }
       lawPrevPos = carPos.clone();
     } else if (!isDriving) {
@@ -2601,6 +2621,25 @@ async function main(): Promise<void> {
   // Offences the police always learn of: those of an accident they are called to.
   const ACCIDENT_KINDS = new Set(["safeDriving", "injury", "phoneDanger", "hitAndRun"]);
   /**
+   * People who could see the car: pedestrians and drivers within 80 m. The people the game draws are
+   * a sample of the street: busier areas (e-Stat density sets the crowd size) have more eyes and
+   * dashcams than those modelled one by one.
+   */
+  const witnessesAround = (carPos: Vector3) =>
+    pedestrians.list.filter((q) => q.object.position.distanceTo(carPos) < 80).length +
+    traffic.positions().filter((q) => q.distanceTo(carPos) < 80).length +
+    Math.floor(pedestrians.crowd / 12);
+  /** The player drove well where people could see: one of them may thank them on Y. */
+  const praise = (kind: PraiseKind) => {
+    const c = social.maybePraise(kind, witnessesAround(vehicle.position()), env.now().getTime());
+    if (!c) return;
+    notify("social", `「${SOCIAL_APP_NAME}」であなたの運転がほめられています`);
+    socialUnread++;
+    log("social", { event: "praise", kind });
+  };
+  // People already counted as let across (one chance of a thank-you each).
+  const letAcross = new WeakSet<object>();
+  /**
    * A violation the driver committed. It counts only if someone catches it: the police at an
    * accident, or a patrol that sees it (then a chase and a ticket on the spot); otherwise it
    * stays the driver's own record (未検挙), shown so the player still learns from it.
@@ -2628,12 +2667,7 @@ async function main(): Promise<void> {
       notify("violation", `${booked.label}（未検挙）`);
     }
     // Bystanders and dashcams nearby: someone may film it and post it.
-    // The people the game draws are a sample of the street: busier areas (e-Stat density sets the
-    // crowd size) have more eyes and dashcams than those modelled one by one.
-    const witnesses =
-      pedestrians.list.filter((q) => q.object.position.distanceTo(carPos) < 80).length +
-      traffic.positions().filter((q) => q.distanceTo(carPos) < 80).length +
-      Math.floor(pedestrians.crowd / 12);
+    const witnesses = witnessesAround(carPos);
     const post = social.maybePost(booked, witnesses, env.now().getTime());
     // Those of them who can see the car get their phones out (the poster among them).
     const filmers = witnessPhones.react(booked, post, carPos);
@@ -2660,6 +2694,47 @@ async function main(): Promise<void> {
 
   // ---------- Y（SNS） ----------
   const social = new SocialFeed();
+  // What everyday posts can talk about: where the player is, the weather, what is in sight.
+  social.world = (): SocialWorld => {
+    const { lat, lon } = lastGeo;
+    const focus = focusPos();
+    const river = water.riverNear(lat, lon, 1500);
+    const signs = guideSigns.plans
+      .filter((p) => Math.hypot(p.pos.x - focus.x, p.pos.z - focus.z) < 400)
+      .flatMap((p) => p.board.arms.flatMap((a) => a.names))
+      .filter((n, i, all) => all.findIndex((m) => m.ja === n.ja) === i)
+      .slice(0, 6)
+      .map(({ ja, en }) => ({ ja, en }));
+    let standing = 0;
+    traffic.forEachCar((object, speed) => {
+      const isStanding = Math.abs(speed) < 1.5 && object.position.distanceTo(focus) < 80;
+      if (isStanding) standing++;
+    });
+    return {
+      ward: wardName === "—" ? null : wardName,
+      town: townName || null,
+      nearWards: areas?.wardsIn(lon - 0.03, lat - 0.025, lon + 0.03, lat + 0.025) ?? [],
+      lat,
+      lon,
+      raining: env.isRaining(),
+      tempC: env.getObservation()?.temp ?? null,
+      landmarks: landmarkEntries.map((l) => ({
+        name: l.name,
+        km: haversineMeters(lat, lon, l.lat, l.lon) / 1000,
+      })),
+      parks: field
+        .near(lat, lon, 1500)
+        .map((p) => p.name)
+        .filter((n) => n.endsWith("公園"))
+        .slice(0, 5),
+      river: river?.river ?? null,
+      // Gauges are mostly named after their bridge (内匠橋); others (小台, 池上) are not bridges.
+      bridge: river && /^[^（）]+橋$/.test(river.gauge) ? river.gauge : null,
+      signs,
+      buses: transit.positionsNear(lat, lon, 400).length,
+      jammed: standing >= 6,
+    };
+  };
   // Each poster's photo is their own shot from where they stood, not the driver's screen.
   const witnessShot = new WitnessShot(renderer, composer, scene, {
     ground: (x, z) => groundY(x, z),
@@ -2728,6 +2803,8 @@ async function main(): Promise<void> {
   $("#social-back").addEventListener("click", () => showSocial(false));
   /** Posts spread with game time; the police trace the car from clips that spread wide. */
   const updateSocial = () => {
+    // People post at a human pace: the feed converts real seconds by how fast the clock runs.
+    social.timeScale = env.timeMode === "real" ? 1 : GAME_TIME_SCALE;
     for (const p of social.update(env.now().getTime())) {
       if (p.record.status !== "uncaught") continue;
       law.notice(p.record, "sns");
@@ -2778,6 +2855,7 @@ async function main(): Promise<void> {
     speechSynthesis.speak(u);
   };
   const startPursuit = () => {
+    social.note("pursuit", env.now().getTime());
     $("#pursuit-chip").hidden = false;
     policeSay("前の車の運転手さん、左に寄って止まってください。");
     log("police", { event: "pursuit" });
@@ -2828,6 +2906,12 @@ async function main(): Promise<void> {
       if (police === unit) police = null;
     }
     for (const unit of patrols) updatePatrol(unit, tw, dt, now);
+    // A unit passing close by is seen (an unmarked car only once its lights are on).
+    for (const unit of patrols) {
+      const isSeen =
+        unit.position.distanceTo(focus) < 50 && (unit.kind !== "unmarked" || unit.state === "pursuing");
+      if (isSeen) social.note(unit.kind, env.now().getTime());
+    }
     // The one the player deals with: pursuing or ticketing, else the nearest.
     const engaged = patrols.find((u) => u.state === "pursuing" || u.state === "ticketing");
     police =
@@ -3077,6 +3161,7 @@ async function main(): Promise<void> {
       return taxiStatus("近くに配車できる車がありません。広い道路の近くで呼んでください。");
     }
     taxi = t;
+    social.note("robotaxi", env.now().getTime());
     const eta = Math.max(1, Math.round((t.route?.length ?? 400) / 8 / 60));
     taxiStatus(`配車しました（迎車）。到着まで約 ${eta} 分。道路沿いでお待ちください。`);
     $("#taxi-cancel").hidden = false;
@@ -3645,6 +3730,7 @@ async function main(): Promise<void> {
     return isPost ? "pole" : "ground";
   };
   const onAccident = (kind: "pedestrian" | "vehicle" | "building" | "pole", kmh: number, who: string) => {
+    social.note("crash", env.now().getTime());
     book(VIOLATIONS.safeDriving, performance.now(), 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
     if (phone.isInUse(performance.now()) && mode === "car")
@@ -3863,5 +3949,5 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   warn("fatal", { error: String(error) });
-  setLoading(`起動に失敗しました: ${String(error)}`, 0);
+  setLoading(() => i18n.t("loading.failed", { error: String(error) }), 0);
 });

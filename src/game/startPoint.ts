@@ -1,9 +1,14 @@
+import { bindText, setI18nText, t } from "../i18n";
+
 /**
  * Where the game starts: the default (東京駅 丸の内), a station chosen on the start screen
  * (`?start=lat,lon`), or the browser's position (`?start=here`). The position itself is kept in
  * sessionStorage, not the URL, so a shared or bookmarked link never carries it.
+ *
+ * `label` is a function so the name follows a language switch: our own names are i18n keys, a
+ * station keeps its name as the data has it (Japanese; place names are phase 2 of the i18n).
  */
-export type StartPoint = { lat: number; lon: number; yaw: number; label: string };
+export type StartPoint = { lat: number; lon: number; yaw: number; label: () => string };
 export type Station = { name: string; ward: string; lat: number; lon: number };
 
 // The game's data covers the 23 wards (same box as the data pipeline).
@@ -21,7 +26,8 @@ export function readStart(fallback: StartPoint, stations: Station[]): StartPoint
         lat: number;
         lon: number;
       } | null;
-      if (saved && inBounds(saved.lat, saved.lon)) return { ...saved, yaw: fallback.yaw, label: "現在地" };
+      if (saved && inBounds(saved.lat, saved.lon))
+        return { ...saved, yaw: fallback.yaw, label: () => t("start.here") };
     } catch {
       // storage blocked or corrupt: fall through to the default
     }
@@ -31,7 +37,8 @@ export function readStart(fallback: StartPoint, stations: Station[]): StartPoint
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !inBounds(lat, lon)) return fallback;
   const station = stations.find((s) => Math.abs(s.lat - lat) < 1e-5 && Math.abs(s.lon - lon) < 1e-5);
   // Station names in the data already end in 駅.
-  return { lat, lon, yaw: fallback.yaw, label: station ? station.name : "指定地点" };
+  const label = station ? () => station.name : () => t("start.picked");
+  return { lat, lon, yaw: fallback.yaw, label };
 }
 
 /** Reload the page starting at `value` ("" = default, "here", or "lat,lon"). */
@@ -56,8 +63,8 @@ export function initStartPicker(
     parent.append(o);
     return o;
   };
-  option("", "東京駅 丸の内（既定）");
-  option("here", "現在地（ブラウザの位置情報）");
+  setI18nText(option("", ""), "start.defaultOption");
+  setI18nText(option("here", ""), "start.hereOption");
   const byWard = new Map<string, Station[]>();
   for (const s of stations) byWard.set(s.ward, [...(byWard.get(s.ward) ?? []), s]);
   for (const ward of [...byWard.keys()].toSorted((a, b) => a.localeCompare(b, "ja"))) {
@@ -69,7 +76,7 @@ export function initStartPicker(
   }
   const param = new URLSearchParams(location.search).get("start") ?? "";
   select.value = [...select.options].some((o) => o.value === param) ? param : "";
-  note.textContent = `いまのスタート地点: ${current.label}`;
+  bindText(note, () => t("start.current", { place: current.label() }));
 
   select.addEventListener("change", () => {
     if (select.value !== "here") {
@@ -77,30 +84,28 @@ export function initStartPicker(
       return;
     }
     if (!("geolocation" in navigator)) {
-      note.textContent = "このブラウザでは位置情報が使えません";
+      bindText(note, () => t("start.noGeolocation"));
       return;
     }
-    note.textContent = "位置情報を取得中…";
+    bindText(note, () => t("start.locating"));
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         if (!inBounds(coords.latitude, coords.longitude)) {
-          note.textContent = "現在地が東京 23 区の外のため、ここからは始められません";
+          bindText(note, () => t("start.outside"));
           select.value = param;
           return;
         }
         try {
           sessionStorage.setItem(HERE_KEY, JSON.stringify({ lat: coords.latitude, lon: coords.longitude }));
         } catch {
-          note.textContent = "ブラウザの設定で保存できないため、現在地から始められません";
+          bindText(note, () => t("start.noStorage"));
           return;
         }
         go("here");
       },
       (error) => {
-        note.textContent =
-          error.code === error.PERMISSION_DENIED
-            ? "位置情報の利用が許可されませんでした"
-            : "位置情報を取得できませんでした";
+        const isDenied = error.code === error.PERMISSION_DENIED;
+        bindText(note, () => t(isDenied ? "start.denied" : "start.failed"));
         select.value = param;
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 },

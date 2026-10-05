@@ -1,3 +1,4 @@
+import type { MessageKey } from "../i18n";
 import { warn } from "../log";
 
 /**
@@ -31,18 +32,18 @@ export class NpcBrain {
   private abort: AbortController | null = null;
   private busy: Promise<unknown> = Promise.resolve();
 
-  static async support(): Promise<{ ok: boolean; reason?: string }> {
+  /** Whether Gemma can run here; `reason` is an i18n key, shown in the language in force. */
+  static async support(): Promise<{ ok: boolean; reason?: MessageKey }> {
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if (isIos) return { ok: false, reason: "iOS では動作しません（端末メモリ不足のため）" };
+    if (isIos) return { ok: false, reason: "ai.reason.ios" };
     const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-    if (!gpu) return { ok: false, reason: "このブラウザは WebGPU に対応していません" };
+    if (!gpu) return { ok: false, reason: "ai.reason.noWebGpu" };
     const adapter = await gpu.requestAdapter().catch(() => null);
-    if (!adapter) return { ok: false, reason: "WebGPU のアダプタを取得できません" };
+    if (!adapter) return { ok: false, reason: "ai.reason.noAdapter" };
     const est = await navigator.storage?.estimate?.().catch(() => undefined);
     const free = est?.quota && est.usage !== undefined ? est.quota - est.usage : Infinity;
     const isCached = await NpcBrain.isCached();
-    if (!isCached && free < MODEL_BYTES * 1.05)
-      return { ok: false, reason: "ストレージの空きが 2.1GB 以上必要です" };
+    if (!isCached && free < MODEL_BYTES * 1.05) return { ok: false, reason: "ai.reason.storage" };
     return { ok: true };
   }
 

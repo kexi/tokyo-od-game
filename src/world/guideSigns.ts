@@ -30,6 +30,7 @@ import {
   type GuidePlace,
   type GuidePlan,
   type PlaceRow,
+  type RouteInfo,
   type RouteTile,
 } from "./guidePlan";
 import type { AppliedRegulations } from "./regulations";
@@ -128,6 +129,12 @@ export class GuideSigns {
   private faces: InstancedMesh | null = null;
   private body: RAPIER.RigidBody | null = null;
   private readonly tiles = new Map<string, Promise<RouteTile | null>>();
+  /**
+   * The OSM route numbers and street names matched to the graph's segments and the junction names
+   * (signals and junction=yes), for the nav panel's road line and 交差点名. Null until the route
+   * tiles of the current graph are in.
+   */
+  roadInfo: { graph: RoadGraph; routes: Map<number, RouteInfo>; names: GuideName[] } | null = null;
   private index: Promise<Set<string>> | null = null;
   private generation = 0;
   private lastUpdate = 0;
@@ -257,9 +264,8 @@ export class GuideSigns {
       .filter((a) => a.kind === "signal" && a.controller)
       .map((a) => ({ seg: a.seg, dir: a.dir, at: a.at, travel: a.travel, nodes: a.controller?.nodes ?? [] }));
     void Promise.all([this.ready, this.routesAround(centre.lat, centre.lon)]).then(([, data]) => {
-      if (generation !== this.generation || !this.kit || !this.places) return;
+      if (generation !== this.generation) return;
       const routes = matchRoutes(graph, data.roads, frame);
-      const places: GuidePlace[] = localPlaces(this.places, frame);
       const names: GuideName[] = [
         ...(regs?.junctionNames ?? []).map((n) => ({ ja: n.name, en: n.en, pos: n.pos.clone().setY(0) })),
         ...data.names.map(([lon, lat, ja, en]) => ({
@@ -268,6 +274,10 @@ export class GuideSigns {
           pos: frame.toLocal(lat, lon, frame.origin.h).setY(0),
         })),
       ];
+      // The nav panel reads them too, even when the boards' model or places failed to load.
+      this.roadInfo = { graph, routes, names };
+      if (!this.kit || !this.places) return;
+      const places: GuidePlace[] = localPlaces(this.places, frame);
       const crossings = (regs?.crossings ?? []).map((c) => c.pos);
       const started = performance.now();
       this.plans = planGuideSigns({
