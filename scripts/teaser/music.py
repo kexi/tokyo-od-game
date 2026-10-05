@@ -8,7 +8,11 @@ City-pop-ish house at 120 bpm: four-on-the-floor kick, claps, hats, a filtered s
 pad (Dm9 G13 Cmaj9 Am9) and a 16th-note arpeggio, arranged intro -> build -> drop -> break ->
 drop -> outro over the requested length.
 
-    uv run scripts/teaser/music.py <out.wav> <seconds>
+    uv run scripts/teaser/music.py <out.wav> <seconds> [drop,break,break_end,outro]
+
+The optional cues (seconds into the cut) put the sections on the edit: the drop on the title, a
+break, and the outro on the end card; each is taken to the nearest bar. Without them the sections
+are fractions of the length.
 """
 
 import sys
@@ -90,13 +94,30 @@ def place(track: np.ndarray, sound: np.ndarray, at: float, gain: float) -> None:
     track[i:end] += sound[: end - i] * gain
 
 
-def render(seconds: float) -> np.ndarray:
+def render(seconds: float, cues: list[float] | None = None) -> np.ndarray:
     n = int(seconds * SR)
     mix = np.zeros(n)
     bars = int(np.ceil(seconds / BAR))
 
+    def cued(bar: int) -> str:
+        """The section a bar is in, from the cut's cues (each on its nearest bar)."""
+        drop, brk, brk_end, outro = (round(c / BAR) for c in cues or [])
+        if bar < drop - 2:
+            return "intro"
+        if bar < drop:
+            return "build"
+        if bar < brk:
+            return "drop"
+        if bar < brk_end:
+            return "break"
+        if bar < outro:
+            return "drop2"
+        return "outro"
+
     # Sections by bar (fractions of the length so any duration keeps the shape).
     def section(bar: int) -> str:
+        if cues:
+            return cued(bar)
         f = bar / bars
         if f < 0.12:
             return "intro"
@@ -150,7 +171,7 @@ def render(seconds: float) -> np.ndarray:
                 arp = (np.sin(2 * np.pi * note(m) * t) + 0.3 * np.sin(4 * np.pi * note(m) * t)) * env(an, 0.002, 0.09)
                 place(mix, arp, t0 + k * BEAT / 4, 0.16)
         # Riser into each drop.
-        if s == "build" and section(bar + 1) == "drop":
+        if s == "build" and section(bar + 1) in ("drop", "drop2"):
             rn = int(BAR * SR)
             t = np.arange(rn) / SR
             riser = rng.standard_normal(rn) * (t / BAR) ** 2
@@ -168,7 +189,8 @@ def render(seconds: float) -> np.ndarray:
 
 def main() -> None:
     out, seconds = sys.argv[1], float(sys.argv[2])
-    mono = render(seconds)
+    cues = [float(c) for c in sys.argv[3].split(",")] if len(sys.argv) > 3 else None
+    mono = render(seconds, cues)
     # A little stereo width: hats and arp slightly delayed on the right.
     right = np.concatenate([np.zeros(int(0.012 * SR)), mono])[: len(mono)]
     stereo = np.stack([mono, 0.85 * mono + 0.15 * right], axis=1)

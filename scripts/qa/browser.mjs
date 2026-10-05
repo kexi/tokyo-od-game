@@ -8,7 +8,16 @@ import { join } from "node:path";
 
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-export async function launch(url, { port = 9334, width = 1280, height = 800 } = {}) {
+/**
+ * Open `url` in a fresh headless Chrome. `preload` is page-side JS run in every document before the
+ * page's own scripts (Page.addScriptToEvaluateOnNewDocument): the teaser's virtual clock.
+ */
+export async function launch(url, { port = 9334, width = 1280, height = 800, preload = null } = {}) {
+  // A Chrome left behind on the port (a run that crashed) would answer instead of the new one.
+  const isTaken = await fetch(`http://127.0.0.1:${port}/json/version`)
+    .then(() => true)
+    .catch(() => false);
+  if (isTaken) throw new Error(`port ${port} is already in use (an earlier Chrome still running?)`);
   const profile = mkdtempSync(join(tmpdir(), "tokyo-qa-"));
   const chrome = spawn(
     CHROME,
@@ -64,6 +73,7 @@ export async function launch(url, { port = 9334, width = 1280, height = 800 } = 
   // The exact viewport (the headless window's own chrome would take some height): even sizes
   // also keep the teaser's frames encodable.
   await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+  if (preload) await send("Page.addScriptToEvaluateOnNewDocument", { source: preload });
   await send("Page.navigate", { url });
   const evaluate = async (expression) => {
     const res = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
