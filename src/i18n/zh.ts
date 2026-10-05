@@ -806,6 +806,11 @@ export const zh: Messages = {
   "incident.onTheWay": "{label}：已出动 还有 {distance}・约{time}",
   "incident.minutes": "{m}分钟",
   "incident.seconds": "{s}秒",
+  "stamp.reading.noStopping": "确认标章・禁止停车区域",
+  "stamp.reading.noParking": "确认标章・禁止停放区域",
+  "stamp.reading.parkingFine": "违规停放罚款 {fine} 日元",
+  "stamp.reading.arrestSummons": "逮捕・未响应到案要求",
+  "stamp.reading.arrestHitAndRun": "逮捕・未履行救护义务（肇事逃逸）",
   "incident.left": "·剩余 {s} 秒",
   // main.ts: HUD
   "hud.weatherObs": "东京 {temp}℃ 风 {wind}m/s 降水 {precip}mm（{time}）",

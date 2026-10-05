@@ -847,6 +847,11 @@ export const en: Messages = {
   "incident.onTheWay": "{label}: on the way, {distance} · about {time}",
   "incident.minutes": "{m} min",
   "incident.seconds": "{s} s",
+  "stamp.reading.noStopping": "Parking notice · no-stopping zone",
+  "stamp.reading.noParking": "Parking notice · no-parking zone",
+  "stamp.reading.parkingFine": "Unattended-parking fine ¥{fine}",
+  "stamp.reading.arrestSummons": "Arrest · ignored the summons",
+  "stamp.reading.arrestHitAndRun": "Arrest · failure to aid (hit-and-run)",
   "incident.left": "· {s} s left",
   // main.ts: HUD
   "hud.weatherObs": "Tokyo {temp}°C · wind {wind} m/s · rain {precip} mm ({time})",

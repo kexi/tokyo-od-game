@@ -15,9 +15,12 @@ export class Stamps {
   /**
    * `main` is the large word (逮捕, 確認標章 …); `detail` the small line under it. A violation
    * (main 違反) is stamped with its own name instead — 信号無視, 指定通行区分違反 — as the one large
-   * word: the generic 違反 said nothing the red seal does not already say.
+   * word: the generic 違反 said nothing the red seal does not already say. `reading` is what the
+   * seal says in the language in force, written small under it (empty in Japanese): the seal
+   * itself stays in Japanese, like a hanko, but a player who reads English or Chinese still learns
+   * what they did.
    */
-  stamp(main: string, detail = "", severe = false): void {
+  stamp(main: string, detail = "", severe = false, reading = ""): void {
     const isViolation = main === "違反" && detail !== "";
     const big = isViolation ? detail : main;
     const small = isViolation ? "" : detail;
@@ -42,6 +45,12 @@ export class Stamps {
       sub.className = "stamp-sub";
       sub.textContent = small;
       el.append(sub);
+    }
+    if (reading) {
+      const line = document.createElement("div");
+      line.className = "stamp-reading";
+      line.textContent = reading;
+      el.append(line);
     }
     this.layer.append(el);
     // The thud lands when the seal reaches the paper (the 35 % keyframe of the slam).

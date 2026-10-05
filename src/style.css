@@ -1288,6 +1288,15 @@ pre.notice {
   line-height: 1.1;
 }
 
+/* The seal's words in the player's language (English, Chinese) under the Japanese seal. */
+.stamp-reading {
+  font-size: clamp(12px, 2.2vw, 17px);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-align: center;
+  max-width: 18em;
+  line-height: 1.2;
+}
 .stamp-sub {
   font-size: clamp(13px, 2.4vw, 18px);
   letter-spacing: 0.05em;

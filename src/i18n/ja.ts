@@ -847,6 +847,11 @@ export const ja = {
   "incident.onTheWay": "{label}: 出動中 あと {distance}・約{time}",
   "incident.minutes": "{m}分",
   "incident.seconds": "{s}秒",
+  "stamp.reading.noStopping": "確認標章・駐停車禁止場所",
+  "stamp.reading.noParking": "確認標章・駐車禁止場所",
+  "stamp.reading.parkingFine": "放置違反金 {fine}円",
+  "stamp.reading.arrestSummons": "逮捕・出頭要請に応じず",
+  "stamp.reading.arrestHitAndRun": "逮捕・救護義務違反（ひき逃げ）",
   "incident.left": "・残り{s}秒",
   // HUD
   "hud.weatherObs": "東京 {temp}℃ 風 {wind}m/s 降水 {precip}mm ({time})",

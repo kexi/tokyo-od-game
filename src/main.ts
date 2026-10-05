@@ -579,6 +579,12 @@ async function main(): Promise<void> {
   const ribbon = new RouteArrows(scene, (x, z) => groundY(x, z));
   let navGeo: { version: number; points: Array<{ lat: number; lon: number }> } = { version: -1, points: [] };
   const stamps = new Stamps($("#stamps"), () => audio.context, $("#scene"));
+  // What a seal says, for under it, in a player's language other than Japanese (the seal is a
+  // hanko in Japanese; in Japanese nothing more is written).
+  const isJapanese = () => i18n.getLocale() === "ja";
+  const stampReading = (label: string) => (isJapanese() ? "" : violationName(label));
+  const inPlayersWords = (key: i18n.MessageKey, params?: Record<string, string | number>) =>
+    isJapanese() ? "" : i18n.t(key, params);
   const patrol = new ParkingPatrol(scene, (x, z) => groundY(x, z));
   /** A 確認標章 waiting for the driver's choice when they get back in. */
   let pendingParking: Violation | null = null;
@@ -2576,7 +2582,8 @@ async function main(): Promise<void> {
         const record = committed ?? (open ? Object.assign(open, photo, { context }) : null);
         if (record) law.notice(record, isPortable ? "orbisPortable" : "orbis");
         // The photo is a violation on record (book() stamps the others): its seal too.
-        if (committed) stamps.stamp("違反", shortLabel(committed.label));
+        if (committed)
+          stamps.stamp("違反", shortLabel(committed.label), false, stampReading(committed.label));
         flashScreen();
         social.note("orbis", env.now().getTime());
         log(
@@ -2720,7 +2727,13 @@ async function main(): Promise<void> {
     if (patrolEvent === "ticketed" && place) {
       ticket.visible = true;
       pendingParking = place === "noStopping" ? VIOLATIONS.parkingNoStop : VIOLATIONS.parking;
-      stamps.stamp("確認標章", place === "noStopping" ? "駐停車禁止場所" : "駐車禁止場所");
+      const isNoStopping = place === "noStopping";
+      stamps.stamp(
+        "確認標章",
+        isNoStopping ? "駐停車禁止場所" : "駐車禁止場所",
+        false,
+        inPlayersWords(isNoStopping ? "stamp.reading.noStopping" : "stamp.reading.noParking"),
+      );
       toast(i18n.t("toast.parkingTicketed"), "#ffd400");
     } else if (patrolEvent === "aborted") {
       toast(i18n.t("toast.parkingAborted"), "#7dff9a");
@@ -3159,7 +3172,7 @@ async function main(): Promise<void> {
     const carPos = vehicle.position();
     // Every violation is stamped as it happens, caught or not: the seal says what the driver did;
     // whether anyone saw it is the notice's line (and the ticket's, later).
-    stamps.stamp("違反", shortLabel(booked.label));
+    stamps.stamp("違反", shortLabel(booked.label), false, stampReading(booked.label));
     input.pad.rumble("stamp");
     perf.time("violation.pursuit", () => pursuitDirector.onViolation(booked));
     perf.time("violation.police", () => {
@@ -3604,7 +3617,7 @@ async function main(): Promise<void> {
         );
         if (fled) {
           p.seen.push(fled);
-          stamps.stamp("違反", shortLabel(fled.label));
+          stamps.stamp("違反", shortLabel(fled.label), false, stampReading(fled.label));
         }
       }
       for (const r of p.seen) law.notice(r, "patrol");
@@ -3848,7 +3861,12 @@ async function main(): Promise<void> {
   $("#parking-owner").addEventListener("click", () => {
     if (pendingParking) {
       const order = law.chargeOwner(pendingParking, performance.now());
-      stamps.stamp("放置違反金", `${(order.fine ?? 0).toLocaleString()}円`);
+      stamps.stamp(
+        "放置違反金",
+        `${(order.fine ?? 0).toLocaleString()}円`,
+        false,
+        inPlayersWords("stamp.reading.parkingFine", { fine: formatNumber(order.fine ?? 0) }),
+      );
       toast(i18n.t("toast.ownerOrder", { fine: formatNumber(order.fine ?? 0) }), "#ffd400");
       // 警視庁の処分基準: 普通自動車・前歴なしは 6 か月以内の納付命令 3 回で最長 20 日、4 回 30 日、5 回以上 40 日。
       if (law.ownerOrders >= 3) {
@@ -4636,8 +4654,14 @@ async function main(): Promise<void> {
   const showArrest = (why: "hitAndRun" | "hitAndRunLater" | "notice", labels: readonly string[] = []) => {
     vehicle.setFrozen(true);
     const isNotice = why === "notice";
-    // The stamp is drawn in the world's own Japanese, like a hanko: not translated.
-    stamps.stamp("逮捕", isNotice ? "出頭要請に応じず" : "救護義務違反（ひき逃げ）", true);
+    // The stamp is drawn in the world's own Japanese, like a hanko: not translated (what it says
+    // is written under it in the player's language).
+    stamps.stamp(
+      "逮捕",
+      isNotice ? "出頭要請に応じず" : "救護義務違反（ひき逃げ）",
+      true,
+      inPlayersWords(isNotice ? "stamp.reading.arrestSummons" : "stamp.reading.arrestHitAndRun"),
+    );
     // Keys, not textContent: the elements carry data-i18n, which a switch would otherwise re-apply.
     i18n.setI18nText($("#suspended h1"), isNotice ? "arrest.title" : "arrest.titleHitAndRun");
     const tagline: i18n.MessageKey = isNotice
