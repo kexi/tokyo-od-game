@@ -19,6 +19,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { GRAPHICS, QUALITY } from "../device";
 import { warn } from "../log";
 import { holdShadows, sceneTarget, type FrameComposer } from "../render/frame";
+import { withSceneMatrices } from "../render/sceneMatrices";
 import { RainGlass, WIPER_BLADES } from "./rainGlass";
 import { sharedDraco } from "../render/draco";
 import { MirrorUpdates } from "./mirrorUpdates";
@@ -351,35 +352,39 @@ export class Cockpit {
     camera: PerspectiveCamera,
     updateMirrors = true,
   ): void {
-    if (!this.active || !this.root) {
+    const root = this.root;
+    const isCockpitActive = this.active && root !== null;
+    if (!isCockpitActive) {
       composer.begin();
       composer.drawWorld(scene, camera);
       composer.street();
       return;
     }
     this.lightInterior(scene);
-    const near = this.nearCamera;
-    near.position.copy(camera.position);
-    near.quaternion.copy(camera.quaternion);
-    near.fov = camera.fov;
-    near.aspect = camera.aspect;
-    near.coordinateSystem = camera.coordinateSystem;
-    near.updateProjectionMatrix();
-    near.updateMatrixWorld();
-    if (updateMirrors) this.updateMirror(renderer, scene, near);
-    // 画質 フロントガラスの雨粒 なし: the glass stays clear (and its simulation is not run).
-    const isGlassWet = GRAPHICS.settings.rainGlass !== "off" && this.rain.isWet();
-    // The drops go into their own texture first: binding another target mid-frame would split it.
-    if (isGlassWet) this.rain.drawDrops(renderer);
-    composer.begin();
-    composer.drawWorld(scene, camera);
-    composer.street();
-    near.layers.set(OUTSIDE_LAYER);
-    composer.drawOver(scene, near);
-    near.layers.set(INTERIOR_LAYER);
-    const glassFrame = isGlassWet ? composer.copyForGlass() : null;
-    composer.drawOver(scene, near);
-    if (glassFrame) this.rain.drawPanes(composer, glassFrame, camera, this.root, near);
+    withSceneMatrices(scene, () => {
+      const near = this.nearCamera;
+      near.position.copy(camera.position);
+      near.quaternion.copy(camera.quaternion);
+      near.fov = camera.fov;
+      near.aspect = camera.aspect;
+      near.coordinateSystem = camera.coordinateSystem;
+      near.updateProjectionMatrix();
+      near.updateMatrixWorld();
+      if (updateMirrors) this.updateMirror(renderer, scene, near);
+      // 画質 フロントガラスの雨粒 なし: the glass stays clear (and its simulation is not run).
+      const isGlassWet = GRAPHICS.settings.rainGlass !== "off" && this.rain.isWet();
+      // The drops go into their own texture first: binding another target mid-frame would split it.
+      if (isGlassWet) this.rain.drawDrops(renderer);
+      composer.begin();
+      composer.drawWorld(scene, camera);
+      composer.street();
+      near.layers.set(OUTSIDE_LAYER);
+      composer.drawOver(scene, near);
+      near.layers.set(INTERIOR_LAYER);
+      const glassFrame = isGlassWet ? composer.copyForGlass() : null;
+      composer.drawOver(scene, near);
+      if (glassFrame) this.rain.drawPanes(composer, glassFrame, camera, root, near);
+    });
   }
 
   /**
