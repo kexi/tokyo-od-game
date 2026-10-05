@@ -2828,8 +2828,13 @@ async function main(): Promise<void> {
     else if (isFilmed) camera.updateMatrixWorld();
     else if (isOnFoot) walker.updateCamera(camera, dt);
     else if (isInTaxi && taxi) chase.update(dt, taxi.position, taxi.model.root.quaternion, taxi.speed);
-    else if (isInCar && chase.mode === "cockpit" && cockpit.root) cockpit.placeCamera(camera, chase.look);
-    else chase.update(dt, carPos, carRot, speed / 3.6);
+    else if (isInCar && chase.mode === "cockpit" && cockpit.root) {
+      // Looking aside or back with the keys (a turn of ±90° / 180°) is level; the mouse and the
+      // right stick also tilt the view a little.
+      const isFreeLook =
+        Math.abs(Math.abs(chase.look) - Math.PI / 2) > 1e-6 && Math.abs(chase.look) !== Math.PI;
+      cockpit.placeCamera(camera, chase.look, isFreeLook ? input.pitch : 0);
+    } else chase.update(dt, carPos, carRot, speed / 3.6);
     cockpit.setActive(isInCar && chase.mode === "cockpit" && !isFilmed);
     // The listener rides the camera; from inside the car the world is heard through the cabin.
     audio.spatial.update({

@@ -3,7 +3,21 @@ import { MathUtils, Vector3, type PerspectiveCamera, type Scene } from "three";
 import { ADULT_KG } from "../physics/masses";
 import { animateHuman, createHuman, type HumanModel } from "../world/human";
 
-export type WalkInput = { forward: number; right: number; run: boolean; jump: boolean; turn: number };
+/** `pitch`: looking up (+) or down, a rate like `turn` (the camera orbits under / over the head). */
+export type WalkInput = {
+  forward: number;
+  right: number;
+  run: boolean;
+  jump: boolean;
+  turn: number;
+  pitch?: number;
+};
+
+/** How far the walker's view tilts (rad): well up to the tops of the towers, a little down. */
+const CAM_PITCH_UP = 1.2;
+const CAM_PITCH_DOWN = -0.5;
+/** The camera's own height over the head at rest (0.8 m up over 4.2 m back: about 0.19 rad). */
+const CAM_RISE = Math.atan2(0.8, 4.2);
 
 const RADIUS = 0.3;
 const HALF_HEIGHT = 0.55; // capsule: total height ≈ 1.7 m
@@ -23,6 +37,7 @@ export class Walker {
   private vy = 0;
   private heading = 0;
   private camYaw = 0;
+  private camPitch = 0;
   private phase = 0;
   private readonly camPos = new Vector3();
   private camReady = false;
@@ -67,6 +82,7 @@ export class Walker {
     this.active = true;
     this.heading = heading;
     this.camYaw = heading;
+    this.camPitch = 0;
     this.vy = 0;
     this.camReady = false;
     this.body.setEnabled(true);
@@ -92,6 +108,8 @@ export class Walker {
   update(dt: number, input: WalkInput, raining: boolean): void {
     if (!this.active) return;
     this.camYaw += input.turn * dt * 2.2;
+    const pitch = this.camPitch + (input.pitch ?? 0) * dt * 1.6;
+    this.camPitch = Math.max(CAM_PITCH_DOWN, Math.min(CAM_PITCH_UP, pitch));
     // Movement is relative to the camera so W always walks "into the screen".
     const fx = Math.sin(this.camYaw);
     const fz = Math.cos(this.camYaw);
@@ -131,14 +149,26 @@ export class Walker {
     let diff = this.heading - this.camYaw;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     if (this.speed > 0.5) this.camYaw += diff * Math.min(1, dt * 0.8);
-    const desired = new Vector3(-Math.sin(this.camYaw) * 4.2, 2.3, -Math.cos(this.camYaw) * 4.2).add(feet);
+    // Looking up swings the camera down behind the head (it orbits the head at 4.2 m) until it is
+    // near the ground, then the rest of the tilt turns the view itself; looking down lifts it.
+    // Why not only turn the view: from 0.8 m over the head a steep look up shows the walker's hair.
+    const head = new Vector3(feet.x, feet.y + 1.5, feet.z);
+    const rise = Math.max(Math.atan2(0.3 - 1.5, 4.2), CAM_RISE - this.camPitch);
+    const tilt = this.camPitch - (CAM_RISE - rise);
+    const back = Math.cos(rise) * 4.2;
+    const desired = new Vector3(
+      -Math.sin(this.camYaw) * back,
+      Math.sin(rise) * 4.2,
+      -Math.cos(this.camYaw) * back,
+    ).add(head);
     if (!this.camReady) {
       this.camPos.copy(desired);
       this.camReady = true;
     }
     this.camPos.lerp(desired, Math.min(1, dt * 8));
     camera.position.copy(this.camPos);
-    camera.lookAt(feet.x, feet.y + 1.5, feet.z);
+    camera.lookAt(head);
+    if (tilt > 0) camera.rotateX(tilt);
     if (Math.abs(camera.fov - 60) > 0.1) {
       camera.fov += (60 - camera.fov) * Math.min(1, dt * 3);
       camera.updateProjectionMatrix();

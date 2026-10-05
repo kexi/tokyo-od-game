@@ -216,6 +216,12 @@ export function boundKeys(layout: KeyLayout): string[] {
 }
 
 const LOOK_LIMIT = 2.6; // rad either way: over the shoulder, short of straight back
+/**
+ * From the driver's seat the view tilts only a little (rad): up to signals and signs over the road,
+ * down to the bonnet. Why not as far as on foot: the roof lining and the dashboard fill the view.
+ */
+const CAR_PITCH = { up: 0.25, down: 0.12 };
+const clampPitch = (p: number) => Math.max(-CAR_PITCH.down, Math.min(CAR_PITCH.up, p));
 const LOOK_RECENTRE_S = 1.2; // the view drifts back ahead after the mouse rests this long
 
 /** Keyboard + gamepad + on-screen touch controls merged into one analog DriveInput. */
@@ -231,9 +237,13 @@ export class Input {
   /** On foot, W/A/S/D walk (and are no action); set by the game each frame. */
   onFoot = false;
   private lookYaw = 0;
+  /** The driver's look up (+) / down, rad, in CAR_PITCH; the walker's is a rate (dragPitch). */
+  private lookPitch = 0;
+  private dragPitch = 0;
   private lookIdle = 0;
   /** The view was turned by the right stick (it springs back when the stick is let go). */
   private padLooked = false;
+  private padPitched = false;
   /** When the pointer lock was last released (Esc does that, and must not also close things). */
   private unlockedAt = -Infinity;
 
@@ -307,15 +317,17 @@ export class Input {
     this.listeners.get(action)?.();
   }
 
-  /** Drag on the 3D view to swing the on-foot camera. */
+  /** Drag on the 3D view to swing the on-foot camera (sideways turns it, up and down tilts it). */
   bindDrag(canvas: HTMLElement): void {
-    let lastX: number | null = null;
-    canvas.addEventListener("pointerdown", (e) => (lastX = e.clientX));
-    window.addEventListener("pointerup", () => (lastX = null));
+    let last: { x: number; y: number } | null = null;
+    canvas.addEventListener("pointerdown", (e) => (last = { x: e.clientX, y: e.clientY }));
+    window.addEventListener("pointerup", () => (last = null));
     window.addEventListener("pointermove", (e) => {
-      if (lastX === null) return;
-      this.dragTurn -= (e.clientX - lastX) * 0.006;
-      lastX = e.clientX;
+      if (last === null) return;
+      this.dragTurn -= (e.clientX - last.x) * 0.006;
+      // Dragging the view down looks up, as a map or a photo sphere is pulled.
+      this.dragPitch += (e.clientY - last.y) * 0.006;
+      last = { x: e.clientX, y: e.clientY };
     });
   }
 
@@ -332,12 +344,16 @@ export class Input {
       if (document.pointerLockElement !== canvas) return;
       this.dragTurn -= e.movementX * 0.0045;
       this.lookYaw = Math.max(-LOOK_LIMIT, Math.min(LOOK_LIMIT, this.lookYaw - e.movementX * 0.0035));
+      // The mouse moved up (movementY < 0) looks up.
+      this.dragPitch -= e.movementY * 0.0045;
+      this.lookPitch = clampPitch(this.lookPitch - e.movementY * 0.0035);
       this.lookIdle = 0;
       this.padLooked = false;
     });
     document.addEventListener("pointerlockchange", () => {
       if (document.pointerLockElement === canvas) return;
       this.lookYaw = 0;
+      this.lookPitch = 0;
       this.unlockedAt = performance.now();
     });
   }
@@ -348,6 +364,8 @@ export class Input {
    */
   look(dt: number, isMoving: boolean): number {
     this.dragTurn = 0;
+    this.dragPitch = 0;
+    this.lookUp(dt, isMoving);
     // The right stick looks while pushed and lets the view swing back ahead when released.
     // The stick is a position, not a turn: released, the view comes back ahead at once, moving or
     // not (the mouse's view stays put until the car moves).
@@ -365,6 +383,27 @@ export class Input {
     return this.lookYaw;
   }
 
+  /** How far up (+) / down the driver looks now (rad), as look() last left it. */
+  get pitch(): number {
+    return this.lookPitch;
+  }
+
+  /**
+   * The driver's look up / down: the right stick's push (springing back when let go) or the
+   * mouse's, which drifts back level once the car moves, as the look aside does.
+   */
+  private lookUp(dt: number, isMoving: boolean): void {
+    const stick = this.pad.lookPitch();
+    if (stick !== null) {
+      this.lookPitch = stick > 0 ? stick * CAR_PITCH.up : -stick * CAR_PITCH.down;
+      this.padPitched = true;
+      return;
+    }
+    const isRecentring = this.padPitched || (isMoving && this.lookIdle > LOOK_RECENTRE_S);
+    if (isRecentring) this.lookPitch *= Math.max(0, 1 - dt * (this.padPitched ? 10 : 3));
+    if (Math.abs(this.lookPitch) < 0.005) this.padPitched = false;
+  }
+
   /** On-foot controls: WASD/↑↓ move relative to the camera, ←/→ or drag turn the camera. */
   readWalk(): WalkInput {
     const k = (...codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
@@ -380,12 +419,15 @@ export class Input {
     // Drag is a per-frame delta expressed as a turn rate (consumed once).
     const drag = this.dragTurn * 30;
     this.dragTurn = 0;
+    const dragPitch = this.dragPitch * 30;
+    this.dragPitch = 0;
     return {
       forward,
       right,
       run: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || pad.run,
       jump: this.keys.has("Space") || pad.jump,
       turn: turn + drag,
+      pitch: pad.pitch + dragPitch,
     };
   }
 

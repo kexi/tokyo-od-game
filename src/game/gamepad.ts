@@ -274,7 +274,14 @@ const CONTROL_LABEL: Record<PadControl, MessageKey> = {
 export const controlLabel = (c: PadControl): string => t(CONTROL_LABEL[c]);
 
 export type PadDrive = { throttle: number; brake: number; steer: number | null; handbrake: boolean };
-export type PadWalk = { forward: number; right: number; turn: number; run: boolean; jump: boolean };
+export type PadWalk = {
+  forward: number;
+  right: number;
+  turn: number;
+  pitch: number;
+  run: boolean;
+  jump: boolean;
+};
 export type CarFrame = {
   inCar: boolean;
   engineOn: boolean;
@@ -609,11 +616,31 @@ export class PadInput {
   /** Walking from the left stick, the camera from the right stick's sideways. */
   walk(): PadWalk {
     const a = this.active;
-    if (!a || this.isUnderDialog) return { forward: 0, right: 0, turn: 0, run: false, jump: false };
+    if (!a || this.isUnderDialog) return { forward: 0, right: 0, turn: 0, pitch: 0, run: false, jump: false };
     const [x, y] = radialDeadzone(a.axes[0] ?? 0, a.axes[1] ?? 0, WALK_DEADZONE);
     const rx = Math.abs(a.axes[2] ?? 0) < LOOK_DEADZONE ? 0 : (a.axes[2] ?? 0);
+    const ry = Math.abs(a.axes[3] ?? 0) < LOOK_DEADZONE ? 0 : (a.axes[3] ?? 0);
     const invert = this.profile.invertLookX ? -1 : 1;
-    return { forward: -y, right: x, turn: -rx * invert, run: this.held("run"), jump: this.held("jump") };
+    // The stick pushed up (axis 3 negative) looks up.
+    return {
+      forward: -y,
+      right: x,
+      turn: -rx * invert,
+      pitch: -ry,
+      run: this.held("run"),
+      jump: this.held("jump"),
+    };
+  }
+
+  /**
+   * How far up (+) or down the driver looks with the right stick, as a share of the way (-1..1;
+   * null when it rests): pushed up looks up.
+   */
+  lookPitch(): number | null {
+    const ry = this.active?.axes[3] ?? 0;
+    if (Math.abs(ry) < LOOK_DEADZONE) return null;
+    const n = (Math.abs(ry) - LOOK_DEADZONE) / (1 - LOOK_DEADZONE);
+    return -Math.sign(ry) * Math.min(1, n);
   }
 
   /** Where the driver looks with the right stick (yaw, rad; null when it rests). */

@@ -247,8 +247,8 @@ export class Cockpit {
   private eyeBase: Vector3 | null = null;
   private seat = { up: 0, back: 0 };
 
-  /** Camera at the driver's eye, looking ahead (plus a look-aside yaw). */
-  placeCamera(camera: PerspectiveCamera, lookYaw: number): void {
+  /** Camera at the driver's eye, looking ahead (plus a look-aside yaw and a look up / down). */
+  placeCamera(camera: PerspectiveCamera, lookYaw: number, lookPitch = 0): void {
     if (!this.eye) return;
     this.eye.updateWorldMatrix(true, false);
     const eye = new Vector3().setFromMatrixPosition(this.eye.matrixWorld);
@@ -256,6 +256,7 @@ export class Cockpit {
     camera.quaternion.setFromRotationMatrix(this.eye.matrixWorld);
     // DriverEye looks along the car's +Z; turn the head for 左右 Ctrl / Z.
     if (lookYaw !== 0) camera.rotateY(lookYaw);
+    if (lookPitch !== 0) camera.rotateX(lookPitch);
   }
 
   update(opts: {

@@ -317,6 +317,20 @@ function rig(onFoot = false) {
 }
 
 describe("コントローラーの入力（PadInput）", () => {
+  it("looks up with the right stick pushed up, and rests level when it is let go", () => {
+    // What it guarantees: the right stick's up / down tilts the view (up is the axis's negative
+    // side), in the car as a share of the tilt and on foot as a rate; inside the dead zone it rests.
+    const { pad, step } = rig();
+    step(fakePad(CHROME_PRO, [], [0, 0, 0, -1]));
+    expect(pad.lookPitch()).toBe(1);
+    expect(pad.walk().pitch).toBe(1);
+    step(fakePad(CHROME_PRO, [], [0, 0, 0, 0.6]));
+    expect(pad.lookPitch()).toBeLessThan(0);
+    step(fakePad(CHROME_PRO, [], [0, 0, 0, 0.05]));
+    expect(pad.lookPitch()).toBeNull();
+    expect(Math.abs(pad.walk().pitch)).toBe(0);
+  });
+
   it("keeps a button bound in 設定 when the game is opened again, for that controller only", () => {
     // What it guarantees: a binding changed in 設定 › 操作 › コントローラー is in localStorage at once
     // and drives the next session — the Pro Controller's own, not the Xbox pad's.
