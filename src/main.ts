@@ -1616,6 +1616,10 @@ async function main(): Promise<void> {
       toast(i18n.t(controls.engineOn ? "toast.engineOn" : "toast.engineOff"));
       return;
     }
+    startTalk();
+  });
+  /** Talk to the nearest person: on foot (E), or from the stopped car through the window (Enter). */
+  const startTalk = () => {
     if (conversation.active || state !== "playing") return;
     const isStopped = mode === "foot" || Math.abs(vehicle.speedKmh()) < 4;
     const p = isStopped ? pedestrians.nearest(focusPos(), mode === "foot" ? 3.5 : 10) : null;
@@ -1625,8 +1629,15 @@ async function main(): Promise<void> {
     }
     pedestrians.startTalk(p, focusPos());
     conversation.open(p);
+  };
+  // Enter: into the call's or the conversation's box; in the car with neither open, talking through
+  // the window. Why not E there too: in the car E is the engine (City Car Driving's key), and the
+  // hint said 「E で話しかける」 while E switched the engine off.
+  input.on("enter", () => {
+    if (phone.inCall) return phone.focusInput();
+    if (conversation.active) return conversation.focusInput();
+    if (mode === "car") startTalk();
   });
-  input.on("enter", () => (phone.inCall ? phone.focusInput() : conversation.focusInput()));
   input.on("autopilot", () => {
     // A is also the walking key (strafe) on foot: only the driver's seat has an autopilot.
     if (state !== "playing" || mode !== "car") return;
@@ -2518,7 +2529,9 @@ async function main(): Promise<void> {
     const nearTaxi = isOnFoot && taxi?.state === "waiting" && walker.position().distanceTo(taxi.position) < 5;
     const hint = $("#talk-hint");
     const hints = [
-      talkable ? i18n.t("hud.hintTalk", { key: keyOf("talk"), name: talkable.profile.name }) : "",
+      talkable
+        ? i18n.t("hud.hintTalk", { key: isOnFoot ? keyOf("talk") : "Enter", name: talkable.profile.name })
+        : "",
       nearCar ? i18n.t("hud.hintGetIn", { key: doorKey() }) : "",
       nearTaxi ? i18n.t("hud.hintTaxi", { key: doorKey() }) : "",
       isInTaxi && taxi && taxi.speed < 0.5 ? i18n.t("hud.hintTaxiOut", { key: doorKey() }) : "",

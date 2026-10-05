@@ -917,7 +917,7 @@ export const ja = {
   "help.timeWeather": "時間帯 / 天気",
   "help.misc": "この画面 / 地面の写真 / 音 / データ出典",
   "help.digits": "F1・F2・F5・F8・Home・F12 と同じ（F キー・Home キーの無いキーボード向け）",
-  "help.enter": "会話・通話の入力欄へ（Esc で運転に戻る）",
+  "help.enter": "会話・通話の入力欄へ（Esc で運転に戻る）。車からは窓越しに話しかける（E はエンジン）",
   "help.settings": "設定（開いている間は一時停止。スマホや会話が開いていればそれを閉じる）",
   // 都営バスの行（transit.ts）
   "transit.loading": "都営バス: 取得中…",

@@ -881,7 +881,7 @@ export const zh: Messages = {
   "help.timeWeather": "时段 / 天气",
   "help.misc": "本画面 / 地面照片 / 声音 / 数据来源",
   "help.digits": "等同于 F1·F2·F5·F8·Home·F12（适用于没有 F 键和 Home 键的键盘）",
-  "help.enter": "进入对话·通话输入栏（Esc 返回驾驶）",
+  "help.enter": "进入对话或通话的输入框（按 Esc 返回驾驶）。在车内：隔着车窗搭话（E 是发动机）",
   "help.settings": "设置（打开期间暂停；若手机或对话已打开则先将其关闭）",
   // 都営バスの行（transit.ts）
   "transit.loading": "都营巴士：获取中…",

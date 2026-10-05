@@ -922,7 +922,8 @@ export const en: Messages = {
   "help.timeWeather": "Time of day / weather",
   "help.misc": "This screen / ground photos / sound / data credits",
   "help.digits": "Same as F1, F2, F5, F8, Home, F12 (for keyboards without F keys or Home)",
-  "help.enter": "Type in the conversation or the call (Esc to go back to driving)",
+  "help.enter":
+    "Type in the conversation or call (Esc returns to driving). From the car: talk through the window (E is the engine)",
   "help.settings":
     "Settings (the game pauses while open; first closes the phone or a conversation if one is open)",
   // 都営バスの行（transit.ts）
