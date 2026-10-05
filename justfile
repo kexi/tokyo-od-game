@@ -274,6 +274,10 @@ measure-scene-matrices:
 measure-water-masks:
     node scripts/qa/perf-water-masks.mjs
 
+# 不透明な外壁の影を旧処理と両backend・全窓設定で全画素比較し、生成CPUを計測する
+measure-facade-shadows:
+    node scripts/qa/facade-shadow-parity.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

@@ -557,7 +557,12 @@ function interior(
  * which also fills the façade variables for the later stages.
  */
 function surface(isLit: boolean): Node<"vec4"> {
-  return Fn(() => {
+  return Fn((builder: NodeBuilder) => {
+    const shadowMaterial = builder.material as typeof builder.material & { isShadowPassMaterial?: boolean };
+    const isShadowPass = shadowMaterial.isShadowPassMaterial === true;
+    // Façade alpha is always one. Building its colour graph just to read alpha in a shadow
+    // also builds window lighting and derivatives that opaque shadow depth never needs.
+    if (isShadowPass) return vec4(0, 0, 0, 1);
     const fp = positionWorld.add(facadeUniforms.uOrigin).toVar();
     const fn = normalWorldGeometry;
     fWall.assign(step(0.6, abs(fn.y)).oneMinus());
