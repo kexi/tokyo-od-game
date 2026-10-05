@@ -738,6 +738,8 @@ export const zh: Messages = {
   "hud.paused": "已暂停（按 {key} 继续）",
   "hud.autopilotHow": "（按 {key} 或进行驾驶操作即可解除）",
   "hud.phoneButton": "手机（{key}）",
+  "incident.call119": "拨打 119",
+  "incident.call110": "拨打 110",
   "incident.text":
     "请立即停车并救护伤者。用手机（{key}）拨打 119（急救）和 110（警察）报警（《道路交通法》第72条）。",
   "phoneUi.location": "当前位置：{place}",

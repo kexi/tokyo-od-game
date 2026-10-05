@@ -184,7 +184,10 @@ export class Phone {
     this.callerText = "";
     this.dispatched = false;
     this.callStart = performance.now();
-    $("#phone-home").hidden = true;
+    // Out of the pocket and over whatever app was open (Y, the taxi): the call screen alone. Why not
+    // only hide the home screen: with Y open — as the phone starts — the call stayed behind it.
+    this.show();
+    for (const app of ["#phone-home", "#phone-social", "#phone-taxi"]) $(app).hidden = true;
     $("#phone-call").hidden = false;
     $("#call-number").textContent = line;
     $("#call-log").replaceChildren();

@@ -3039,6 +3039,18 @@ html:lang(zh) [lang="ja"] {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
+/* 事故: the two calls the law asks for, one press each (they open the phone on the call). */
+.incident-calls {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.incident-calls button {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
 /* 通知: violations, posts and the police on the left, with their time; 履歴 opens the rest */
 #notice-log {
   left: 12px;

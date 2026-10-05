@@ -774,6 +774,8 @@ export const en: Messages = {
   "hud.paused": "Paused (press {key} to resume)",
   "hud.autopilotHow": "({key} or take over to turn off)",
   "hud.phoneButton": "Phone ({key})",
+  "incident.call119": "Call 119",
+  "incident.call110": "Call 110",
   "incident.text":
     "Stop at once and help the injured. Call 119 (ambulance) and 110 (police) on your phone ({key}) (Road Traffic Act Art. 72).",
   "phoneUi.location": "Location: {place}",

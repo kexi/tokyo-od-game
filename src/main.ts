@@ -1125,7 +1125,13 @@ async function main(): Promise<void> {
     },
     (line) => emergency.dispatch(line === "119" ? "ambulance" : "police", roadGraph),
   );
-  input.on("phone", () => phone.toggle());
+  // After an accident the phone opens where 119 and 110 are (its home), not on Y as usual.
+  input.on("phone", () => {
+    const isToReport = emergency.active && !phone.inCall;
+    if (!isToReport) return phone.toggle();
+    phone.show();
+    showSocial(false);
+  });
   // 拡大表示 (Shift+F): takes the phone out first if it is put away; either way it is working it.
   input.on("phoneZoom", () => {
     if (!phone.open) phone.show();

@@ -771,6 +771,8 @@ export const ja = {
   "hud.paused": "一時停止中（{key} で再開）",
   "hud.autopilotHow": "（{key}・運転操作で解除）",
   "hud.phoneButton": "スマホ ({key})",
+  "incident.call119": "119 に通報",
+  "incident.call110": "110 に通報",
   "incident.text":
     "直ちに停車し、負傷者を救護してください。スマホ（{key}）で 119 番（救急）と 110 番（警察）に通報してください（道路交通法 第72条）。",
   "phoneUi.location": "現在地: {place}",
