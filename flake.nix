@@ -55,6 +55,10 @@
               actionlint
               shellcheck
               ruff
+              # The Python generators (scripts/textures/*.py, PEP 723) run through uv; the knowledge
+              # lint reads the frontmatter with yq (it skips the tag check without it).
+              uv
+              yq-go
             ];
             shellHook = ''
               lefthook install >/dev/null 2>&1 || true

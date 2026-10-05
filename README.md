@@ -49,23 +49,23 @@
 
 ## 開発
 
-`nix develop`（direnv）で Node.js 24・pnpm・just・lefthook などが揃います。
+開発環境の作り方と作業の流れは [CONTRIBUTING.md](CONTRIBUTING.md) にあります。`nix develop`（direnv）で Node.js 24・pnpm・just・lefthook・uv などが揃います。
 
 ```sh
-just install-deps    # 依存のインストール（公開 1 日未満のパッケージは入れない設定）
-just serve-dev        # 開発サーバ
-just check-all      # 型・lint・整形・テスト・justfile・Actions の検査
-just fetch-data       # オープンデータを取得して public/data を再生成（ライセンスゲート付き）
-just fetch-regs       # JARTIC 交通規制情報と OSM の信号機から public/data/regs・signals を再生成
-just make-car-textures  # 車のテクスチャを再生成（uv）
-just make-car-model     # Blender CLI で車のモデルを再生成（nix develop .#blender、初回は約 600MB を取得）
-just make-sign-model    # 道路標識の板・支柱を再生成
-just make-human-model   # 歩行者を再生成
-just make-signal-model  # 信号機（灯器・信号柱）を再生成
+just install-deps          # 依存のインストール（公開 1 日未満のパッケージは入れない設定）
+just serve-dev             # 開発サーバ
+just check-all             # 型・lint・整形・テスト・justfile・Actions の検査
+just fetch-data            # オープンデータを取得して public/data を再生成（ライセンスゲート付き）
+just fetch-regs            # JARTIC 交通規制情報と OSM の信号機から public/data/regs・signals を再生成
+just make-car-textures     # 車のテクスチャを再生成（uv）
+just make-car-model        # Blender CLI で車のモデルを再生成（nix develop .#blender）
+just make-sign-model       # 道路標識の板・支柱を再生成
+just make-human-model      # 歩行者を再生成
+just make-signal-model     # 信号機（灯器・信号柱）を再生成
 just make-ambulance-model  # 救急車を再生成
-just make-textures      # 標識・歩行者・建物外壁・信号機・救急車のテクスチャを再生成（uv）
-just open-assets        # アセット管理画面（モデルとテクスチャのプレビューとレビュー）を開く
-just build-app      # dist/ に本番ビルド
+just make-textures         # 標識・歩行者・建物外壁・信号機・救急車のテクスチャを再生成（uv）
+just open-assets           # アセット管理画面（モデルとテクスチャのプレビューとレビュー）を開く
+just build-app             # dist/ に本番ビルド
 ```
 
 `main` に push すると GitHub Actions が GitHub Pages にデプロイします。
