@@ -11,6 +11,15 @@ import { bindText, setI18nText, t } from "../i18n";
 export type StartPoint = { lat: number; lon: number; yaw: number; label: () => string };
 export type Station = { name: string; ward: string; lat: number; lon: number };
 
+/**
+ * Landmarks to start beside, at the tower itself: the car is put on the nearest street around it
+ * (main.ts placeOnStreet), as with a station. Names as the landmark data has them.
+ */
+export const START_LANDMARKS: readonly Station[] = [
+  { name: "東京タワー", ward: "港区", lat: 35.658581, lon: 139.745433 },
+  { name: "東京スカイツリー", ward: "墨田区", lat: 35.710063, lon: 139.8107 },
+];
+
 // The game's data covers the 23 wards (same box as the data pipeline).
 const BOUNDS = { minLat: 35.48, maxLat: 35.84, minLon: 139.55, maxLon: 139.93 };
 const HERE_KEY = "tokyo-od-game:start-here";
@@ -35,7 +44,9 @@ export function readStart(fallback: StartPoint, stations: Station[]): StartPoint
   }
   const [lat, lon] = raw.split(",").map(Number);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !inBounds(lat, lon)) return fallback;
-  const station = stations.find((s) => Math.abs(s.lat - lat) < 1e-5 && Math.abs(s.lon - lon) < 1e-5);
+  const station = [...START_LANDMARKS, ...stations].find(
+    (s) => Math.abs(s.lat - lat) < 1e-5 && Math.abs(s.lon - lon) < 1e-5,
+  );
   // Station names in the data already end in 駅.
   const label = station ? () => station.name : () => t("start.picked");
   return { lat, lon, yaw: fallback.yaw, label };
@@ -65,6 +76,7 @@ export function initStartPicker(
   };
   setI18nText(option("", ""), "start.defaultOption");
   setI18nText(option("here", ""), "start.hereOption");
+  for (const l of START_LANDMARKS) option(`${l.lat},${l.lon}`, l.name);
   const byWard = new Map<string, Station[]>();
   for (const s of stations) byWard.set(s.ward, [...(byWard.get(s.ward) ?? []), s]);
   for (const ward of [...byWard.keys()].toSorted((a, b) => a.localeCompare(b, "ja"))) {

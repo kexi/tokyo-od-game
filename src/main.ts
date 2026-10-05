@@ -589,7 +589,15 @@ async function main(): Promise<void> {
     const car = vehicle.position();
     const isStreet = (seg: Segment) =>
       seg.line.kind !== "highway" && seg.line.width >= 5.5 && seg.length > 30 && !seg.closed;
-    const hit = graph.nearest(car, 150, isStreet);
+    const isLane = (seg: Segment) =>
+      seg.line.kind !== "highway" && seg.line.width >= 4 && seg.length > 20 && !seg.closed;
+    // Wider and wider until a street turns up: a place chosen in 移動 or on the start screen (a
+    // park, the palace, a ward's middle, a tower) can be far from one; a narrow lane only if no
+    // street is near at all.
+    const hit =
+      [150, 400, 1000]
+        .map((r) => graph.nearest(car, r, isStreet) ?? graph.nearest(car, r, isLane))
+        .find(Boolean) ?? null;
     if (!hit) return false;
     const seg = hit.seg;
     const s = Math.min(seg.length - 12, Math.max(12, hit.s));
@@ -1801,9 +1809,12 @@ async function main(): Promise<void> {
     // started driving: stopped at a light later, the car would jump forward.
     // The kerb comes from PLATEAU paving, so wait for it (wards without it: give up after 10 s).
     const hasKerbs = pavements.count > 0 || now - streetSpawnSince > 10000;
-    const hasDriven = Math.abs(vehicle.speedKmh()) > 2 || autopilot !== null;
-    if (needsStreetSpawn && hasDriven) needsStreetSpawn = false;
+    // Until it is on its street the car is held (see vehicle.update below): driving off first used
+    // to cancel the move and leave it where the place itself was. After 15 s with no street it is
+    // let go where it stands.
     if (needsStreetSpawn && roadGraph && hasKerbs && isInCar) needsStreetSpawn = !placeOnStreet();
+    const isStreetSearchOver = now - streetSpawnSince > 15000;
+    if (needsStreetSpawn && isStreetSearchOver) needsStreetSpawn = false;
     if (needsTrip && !needsStreetSpawn && !missions.current) {
       needsTrip = false;
       const g = frame.toGeodetic(vehicle.position());
@@ -1846,7 +1857,9 @@ async function main(): Promise<void> {
     accumulator += dt;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
-      if (!frozen && isInCar) vehicle.update(world.timestep, drive);
+      // Held while it is being put on its street after a start or a 移動.
+      const isHeldForStreet = needsStreetSpawn;
+      if (!frozen && isInCar && !isHeldForStreet) vehicle.update(world.timestep, drive);
       taxi?.step(world.timestep);
       for (const unit of patrols) unit.step(world.timestep);
       if (isOnFoot && !frozen) walker.update(world.timestep, walk, env.isRaining());
