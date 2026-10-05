@@ -125,14 +125,19 @@ export class RoboTaxi {
     return this.driver.plan(world, pickup, { seg: start.seg, s: start.s, dir: start.dir });
   }
 
-  /** The passenger is in: drive to the destination with the meter running. */
+  /**
+   * The passenger gets in: drive to the destination with the meter running. The way is planned
+   * first: with none (a closed-off forecourt, a one-way knot), the car stays waiting and false
+   * comes back — an empty route would otherwise count as arrived on the spot.
+   */
   board(world: TaxiWorld, destination: Vector3, name: string): boolean {
+    if (!this.driver.plan(world, destination)) return false;
     this.state = "riding";
     this.metres = 0;
     this.slowSeconds = 0;
     this.destinationName = name;
     this.setDisplay("賃走");
-    return this.driver.plan(world, destination);
+    return true;
   }
 
   /** After the passenger leaves: drive off a little way, then the game removes the car. */

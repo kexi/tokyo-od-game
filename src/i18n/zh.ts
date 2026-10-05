@@ -627,6 +627,7 @@ export const zh: Messages = {
   "toast.taxiComing": "🚕 自动驾驶出租车正在赶来（约 {min} 分钟）",
   "taxi.cancelled": "已取消。",
   "toast.taxiChooseDest": "请在手机的出租车应用中选择目的地",
+  "toast.taxiNoRoute": "从这里找不到前往{place}的路线。请选择其他目的地，或到附近的大路上重新叫车",
   "toast.taxiBoarded": "感谢乘车。前往{place}（请系好安全带）",
   "toast.taxiFare": "🚕 车费 {fare} 日元（{km} 公里，已在应用中结算）。谢谢乘坐",
   "taxi.coming": "接驾中：还有 {m} 米（约 {min} 分钟）。地图上的黄色车辆就是派来的出租车。",

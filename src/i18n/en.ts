@@ -655,6 +655,8 @@ export const en: Messages = {
   "toast.taxiComing": "🚕 A self-driving taxi is on its way (about {min} min)",
   "taxi.cancelled": "Canceled.",
   "toast.taxiChooseDest": "Choose a destination in the taxi app on your phone",
+  "toast.taxiNoRoute":
+    "No way to {place} from here. Choose another destination, or call the taxi again on a nearby main road",
   "toast.taxiBoarded": "Thank you for riding with us. Heading to {place} (please fasten your seatbelt)",
   "toast.taxiFare": "🚕 Fare ¥{fare} ({km} km, paid in the app). Thank you!",
   "taxi.coming": "On its way: {m} m to go (about {min} min). The yellow car on the map is your taxi.",

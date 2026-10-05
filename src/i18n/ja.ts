@@ -655,6 +655,8 @@ export const ja = {
   "toast.taxiComing": "🚕 自動運転タクシーが向かっています（約 {min} 分）",
   "taxi.cancelled": "キャンセルしました。",
   "toast.taxiChooseDest": "スマホのタクシーアプリで行き先を選んでください",
+  "toast.taxiNoRoute":
+    "ここからは{place}への道が見つかりません。別の行き先を選ぶか、近くの大通りで呼び直してください",
   "toast.taxiBoarded": "ご乗車ありがとうございます。{place}へ向かいます（シートベルトをお締めください）",
   "toast.taxiFare": "🚕 運賃 {fare} 円（{km}km、アプリで精算済み）。ありがとうございました",
   "taxi.coming": "迎車中: あと {m} m（約 {min} 分）。地図の黄色い車が配車中のタクシーです。",

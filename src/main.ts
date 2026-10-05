@@ -3408,9 +3408,15 @@ async function main(): Promise<void> {
       return;
     }
     const at = frame.toLocal(dest.lat, dest.lon, frame.origin.h).setY(0);
+    // No way there from where it waits: the passenger stays on the kerb, with no fare.
+    const isRouted = taxi.board(tw, at, dest.name);
+    if (!isRouted) {
+      toast(i18n.t("toast.taxiNoRoute", { place: dest.name }), "#ff6b6b");
+      log("taxi", { event: "no_route", to: dest.name });
+      return;
+    }
     walker.leave();
     mode = "taxi";
-    taxi.board(tw, at, dest.name);
     chase.snap();
     $("#taxi-cancel").hidden = true;
     // 道路交通法 第71条の3第2項: every passenger wears a seat belt.
