@@ -17,6 +17,7 @@ const currentSources = {};
 for (const file of [
   "src/main.ts",
   "src/game/frameWork.ts",
+  "src/game/serialWork.ts",
   "src/render/streamedInstanceShaders.ts",
   "src/world/roadInstances.ts",
   "src/game/autoDriver.ts",
@@ -141,8 +142,23 @@ try {
       ...G.orbis.meshes, ...G.furniture.group.children].filter(Boolean);
   }`);
   await browser.evaluate(`window.__qaCpu=[];window.__qaShaders=[];
-    window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];window.__qaPavements=[];`);
+    window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];window.__qaPavements=[];
+    window.__qaWorldWork=[];`);
   if (detailed) {
+    await browser.evaluate(`{
+      const queue=__game.water.tileWork,run=queue.run;
+      let active=0;
+      queue.run=function(task){
+        const caller=new Error().stack??'',queuedAt=performance.now();
+        const isShore=caller.includes('/world/water.ts');
+        const kind=isShore?'shore':'roads';
+        return run.call(this,async()=>{
+          const at=performance.now(),overlap=++active;
+          try{return await task();}
+          finally{active--;__qaWorldWork.push({kind,queuedAt,at,end:performance.now(),overlap});}
+        });
+      };
+    }`);
     await browser.evaluate(`(async () => {
     const {BuildingMetadataPlugin}=await import(new URL('src/world/buildingMetadata.ts',location.href).href);
     const original=BuildingMetadataPlugin.prototype.parseTile;
@@ -311,7 +327,11 @@ try {
         throw new Error('unchanged road data recreated render objects');
       const framePeaks=result.slice(1).map((end,i)=>({start:result[i],end,ms:end-result[i]})).toSorted((a,b)=>b.ms-a.ms).slice(0,12);
       const slow=__qaCpu.filter(r=>r.ms>=20).toSorted((a,b)=>b.ms-a.ms).slice(0,40);
+      const worldWork=__qaWorldWork.filter(row=>row.end>=watchStart);
+      const overlapped=worldWork.some(row=>row.overlap!==1);
+      if(overlapped)throw new Error('shared world install work overlapped');
       return {mode:${JSON.stringify(mode)},elapsed,watchStart,framePeaks,slow,frames:frameStats(result),long,phases,reused,meshCount:afterMeshes.length,
+        worldWork,
         parkedReused,parkedCount:afterParked.length,heldUntilReady,landed,beforeGeo,
         afterGeo:G.getFrame().toGeodetic(G.vehicle.position()),
         recentered:G.debug.logs.query({event:'frame_recentered'}).at(-1),

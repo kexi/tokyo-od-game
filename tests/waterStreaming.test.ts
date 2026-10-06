@@ -2,9 +2,11 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { BufferGeometry, Mesh, Scene, Sphere, Vector3 } from "three";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { FrameWork } from "../src/game/frameWork";
+import { SerialWork } from "../src/game/serialWork";
 import { LocalFrame } from "../src/geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../src/geo/tiles";
 import type { DemStore } from "../src/world/dem";
+import * as vectorTiles from "../src/world/gsiVectorTiles";
 import type { Tide } from "../src/world/tide";
 import { WaterLayer } from "../src/world/water";
 import { WaterCompute } from "../src/world/waterCompute";
@@ -16,7 +18,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function setup() {
+function setup(queue?: SerialWork) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => ({ ok: false, status: 404 })),
@@ -24,8 +26,15 @@ function setup() {
   const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
   const scene = new Scene();
   const frame = new LocalFrame(35.68, 139.76, 40);
-  const dem = { ellipsoidal: (_lat: number, _lon: number, h: number) => h } as DemStore;
-  const water = new WaterLayer(scene, world, dem, { meanLevel: 0 } as Tide, frame);
+  const dem = {
+    ellipsoidal: (_lat: number, _lon: number, h: number) => h,
+    load: async () => new Float32Array(0),
+    loadSurveyed: async () => new Float32Array(0),
+    surveyedAt: () => 2,
+    sampleGlobal: () => 2,
+    heightAt: () => 8,
+  } as unknown as DemStore;
+  const water = new WaterLayer(scene, world, dem, { meanLevel: 0 } as Tide, frame, queue);
   const gx = lonToTileX(139.76, WATER_ZOOM),
     gy = latToTileY(35.68, WATER_ZOOM);
   const pts = [gx, gy, gx + 0.05, gy, gx + 0.05, gy + 0.05, gx, gy + 0.05];
@@ -54,6 +63,26 @@ function setup() {
   internal.tiles.set(key, tile);
   internal.centre = { x: tile.x, y: tile.y };
   return { water, world, scene, frame, internal, tile, old, key, pts };
+}
+
+function prepareShoreTiles() {
+  const ring = [
+    [
+      { x: 100, y: 100 },
+      { x: 200, y: 100 },
+      { x: 200, y: 200 },
+      { x: 100, y: 200 },
+    ],
+  ];
+  vi.spyOn(vectorTiles, "gsiVectorTile").mockResolvedValue({
+    layers: {
+      waterarea: { length: 1, extent: 4096, feature: () => ({ type: 3, loadGeometry: () => ring }) },
+    },
+  } as unknown as Awaited<ReturnType<typeof vectorTiles.gsiVectorTile>>);
+  vi.spyOn(WaterCompute.prototype, "rasterize").mockResolvedValue({
+    raster: new Uint8Array(512 * 512).fill(1),
+    cut: new Uint8Array(512 * 512).fill(255),
+  });
 }
 
 it("keeps the old surface until publication and restarts in the new local frame", async () => {
@@ -160,6 +189,136 @@ it("does not retain water from an evicted or disposed cached tile", async () => 
     expect(water.isWater(tile.x + 0.5, tile.y + 0.5)).toBe(false);
   } finally {
     water.dispose();
+    world.free();
+  }
+});
+
+it("waits for a yielding road install before generating the shore on the shared queue", async () => {
+  const queue = new SerialWork();
+  const { water, world, scene, internal, tile, key, old } = setup(queue);
+  prepareShoreTiles();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const next = new LocalFrame(35.681, 139.762, 42);
+  const road = queue.run(async () => {
+    await held;
+    water.setFrame(next);
+  });
+  const fetch = internal.fetchTile(tile.x, tile.y);
+  try {
+    await vi.waitFor(() => expect(internal.tiles.get(key)).not.toBe(tile));
+    expect(internal.tiles.get(key)?.shores).toBeNull();
+    expect(scene.children).toEqual([old]);
+    release();
+    await road;
+    await fetch;
+    expect(internal.tiles.get(key)?.shores).not.toBeNull();
+    const mesh = scene.children.find((m) => m.name === `water-${tile.x}-${tile.y}`) as Mesh;
+    expect(mesh).toBeDefined();
+    const position = mesh.geometry.getAttribute("position");
+    const shore = internal.tiles.get(key)!.shores![0][0];
+    expect(position.count).toBe(shore.level.length);
+    for (let i = 0; i < position.count; i++) {
+      const point = next.toLocal(
+        tileYToLat(shore.pts[i * 2 + 1], WATER_ZOOM),
+        tileXToLon(shore.pts[i * 2], WATER_ZOOM),
+        2,
+      );
+      expect([position.getX(i), position.getY(i), position.getZ(i)]).toEqual([
+        Math.fround(point.x),
+        Math.fround(point.y),
+        Math.fround(point.z),
+      ]);
+    }
+  } finally {
+    release();
+    await fetch;
+    water.dispose();
+    old.geometry.dispose();
+    world.free();
+  }
+});
+
+it.each(["evict", "dispose"])(
+  "does not publish shore work delayed by a road install after %s",
+  async (action) => {
+    const queue = new SerialWork();
+    const { water, world, scene, internal, tile, key, old } = setup(queue);
+    prepareShoreTiles();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const road = queue.run(() => held);
+    const fetch = internal.fetchTile(tile.x, tile.y);
+    try {
+      await vi.waitFor(() => expect(internal.tiles.get(key)).not.toBe(tile));
+      const evict = action === "evict";
+      if (evict) {
+        vi.spyOn(
+          internal as unknown as { load(x: number, y: number): Promise<void> },
+          "load",
+        ).mockResolvedValue();
+        await water.around(tileYToLat(tile.y + 10.5, WATER_ZOOM), tileXToLon(tile.x + 10.5, WATER_ZOOM));
+      } else water.dispose();
+      release();
+      await road;
+      await fetch;
+      expect(internal.tiles.has(key)).toBe(false);
+      expect(scene.children).toEqual([old]);
+    } finally {
+      release();
+      await fetch;
+      water.dispose();
+      old.geometry.dispose();
+      world.free();
+    }
+  },
+);
+
+it("carries the shore frame budget from one small tile into the next", async () => {
+  const { water, world, internal, tile, old } = setup();
+  prepareShoreTiles();
+  let now = 0,
+    frames = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames++;
+    queueMicrotask(() => callback(now));
+    return frames;
+  });
+  const steps = water as unknown as {
+    shoreRingSteps(
+      ring: number[],
+    ): Generator<void, { pts: number[]; level: Float32Array; tide: Float32Array }>;
+    surfaceSteps(tile: { x: number }): Generator<void>;
+    wallSteps(tile: { x: number }): Generator<void>;
+  };
+  vi.spyOn(steps, "shoreRingSteps").mockImplementation(function* (ring) {
+    now += 3;
+    yield;
+    return { pts: ring, level: new Float32Array(0), tide: new Float32Array(0) };
+  });
+  const published: Array<{ x: number; frames: number }> = [];
+  vi.spyOn(steps, "surfaceSteps").mockImplementation(function* (value) {
+    published.push({ x: value.x, frames });
+    yield;
+  });
+  vi.spyOn(steps, "wallSteps").mockImplementation(function* () {
+    now += 3;
+    yield;
+  });
+  try {
+    await Promise.all([internal.fetchTile(tile.x, tile.y), internal.fetchTile(tile.x + 1, tile.y)]);
+    expect(published).toEqual([
+      { x: tile.x, frames: 0 },
+      { x: tile.x + 1, frames: 2 },
+    ]);
+  } finally {
+    water.dispose();
+    old.geometry.dispose();
     world.free();
   }
 });
