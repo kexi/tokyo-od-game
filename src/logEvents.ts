@@ -207,6 +207,8 @@ export const LOG_EVENTS = {
   dem_worker_failed: failedWith(),
   water_worker_failed: failedWith(),
   building_worker_failed: failedWith(),
+  building_shader_failed: failedWith({ key: z.string() }),
+  building_shader_prepared: info({ key: z.string(), meshes: count, durationMs: z.number() }),
   terrain_worker_failed: failedWith(),
   terrain_build_failed: failedWith({ key: z.string() }),
   road_network_failed: failedWith(),

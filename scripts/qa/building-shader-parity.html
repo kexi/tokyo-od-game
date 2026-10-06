@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Streamed building shader preparation</title>
+  <body>
+    <script type="module">
+      import * as T from "three/webgpu";
+      import * as facade from "../../src/world/facade";
+      import { prepareBuildingShaders } from "../../src/world/buildingShaders";
+      import { BuildingFacadePlugin } from "../../src/world/buildingFacadePlugin";
+      import { GRAPHICS } from "../../src/device";
+      import { useStableShadows } from "../../src/render/stableShadow";
+
+      const size = 320;
+      const frame = () => new Promise(requestAnimationFrame);
+      const difference = (a, b) => {
+        let changed = 0,
+          max = 0;
+        for (let i = 0; i < a.length; i++) {
+          const delta = Math.abs(a[i] - b[i]);
+          const hasDifference = delta !== 0;
+          if (hasDifference) changed++;
+          max = Math.max(max, delta);
+        }
+        return { changed, max, values: a.length };
+      };
+      await facade.loadFacadeTextures();
+
+      async function capture(prepare, forceWebGL, mode, night, switchWindows = false, cancelTile = false) {
+        GRAPHICS.set({ ...GRAPHICS.settings, windows: switchWindows ? "flat" : mode });
+        facade.updateFacadeClock(
+          new Date(night ? "2026-10-05T12:00:00Z" : "2026-10-05T03:00:00Z"),
+          night ? 0.8 : 0,
+          18,
+        );
+        facade.facadeUniforms.uNight.value = night ? 1 : 0;
+        const renderer = new T.WebGPURenderer({ forceWebGL, antialias: false });
+        await renderer.init();
+        const isWrongBackend = forceWebGL
+          ? !renderer.backend.isWebGLBackend
+          : !renderer.backend.isWebGPUBackend;
+        if (isWrongBackend) throw new Error("unexpected backend");
+        renderer.setSize(size, size);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = T.PCFShadowMap;
+        const scene = new T.Scene();
+        scene.background = new T.Color(night ? 0x152033 : 0x9ebbd1);
+        const camera = new T.PerspectiveCamera(45, 1, 0.1, 200);
+        camera.position.set(35, 35, 40);
+        camera.lookAt(0, 5, 0);
+        const sun = new T.DirectionalLight(0xffffff, night ? 0.7 : 3);
+        sun.position.set(-20, 45, 20);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(512, 512);
+        Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 0.1, far: 100 });
+        sun.shadow.camera.updateProjectionMatrix();
+        useStableShadows(sun);
+        scene.add(sun, sun.target, new T.AmbientLight(0xffffff, night ? 0.1 : 0.4));
+        const floor = new T.Mesh(
+          new T.PlaneGeometry(80, 80),
+          new T.MeshStandardNodeMaterial({ color: 0xbbbbbb }),
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        const model = new T.Group(),
+          buildings = [];
+        for (let i = 0; i < 8; i++) {
+          const height = 8 + i * 2;
+          const geometry = new T.BoxGeometry(5, height, 5);
+          const position = geometry.getAttribute("position");
+          const values = new Float32Array(position.count * 2);
+          for (let v = 0; v < position.count; v++) {
+            values[v * 2] = i + 0.1 + i * 0.09;
+            values[v * 2 + 1] = position.getY(v) + height / 2;
+          }
+          geometry.setAttribute("facade", new T.BufferAttribute(values, 2));
+          geometry.setAttribute(
+            i < 4 ? "_batchid" : "_feature_id_0",
+            new T.BufferAttribute(new Uint16Array(position.count).fill(i), 1),
+          );
+          const mesh = new T.Mesh(geometry, facade.facadeMaterial());
+          mesh.position.set(((i % 4) - 1.5) * 10, height / 2, (Math.floor(i / 4) - 0.5) * 12);
+          mesh.frustumCulled = i % 2 === 0;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          model.add(mesh);
+          buildings.push(mesh);
+        }
+        const originals = buildings.map((mesh) => ({
+          geometry: mesh.geometry,
+          material: mesh.material,
+          culling: mesh.frustumCulled,
+          positions: mesh.geometry.getAttribute("position").array.slice(),
+        }));
+        let phase = "prepare",
+          switched = false,
+          cancelPreparation = null;
+        const builds = [],
+          asyncBuilds = [];
+        renderer.debug.onNodeBuilderCreated = (builder) => {
+          const build = builder.build,
+            buildAsync = builder.buildAsync;
+          builder.build = function (...args) {
+            const start = performance.now();
+            try {
+              return build.apply(this, args);
+            } finally {
+              builds.push({ phase, ms: performance.now() - start, material: this.material.constructor.name });
+            }
+          };
+          builder.buildAsync = async function (...args) {
+            const start = performance.now();
+            const shouldCancel = !!cancelPreparation;
+            if (shouldCancel) {
+              requestAnimationFrame(cancelPreparation);
+              cancelPreparation = null;
+            }
+            const shouldSwitch = switchWindows && !switched;
+            if (shouldSwitch) {
+              switched = true;
+              requestAnimationFrame(() => GRAPHICS.set({ ...GRAPHICS.settings, windows: "rooms" }));
+            }
+            try {
+              return await buildAsync.apply(this, args);
+            } finally {
+              asyncBuilds.push({
+                phase,
+                durationMs: performance.now() - start,
+                material: this.material.constructor.name,
+              });
+            }
+          };
+        };
+        const target = new T.RenderTarget(size, size, { type: T.UnsignedByteType });
+        renderer.setRenderTarget(target);
+        const read = async () => {
+          await frame();
+          const start = performance.now();
+          renderer.render(scene, camera);
+          const drawMs = performance.now() - start;
+          return {
+            pixels: new Uint8Array(await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size)),
+            drawMs,
+          };
+        };
+        try {
+          if (cancelTile) {
+            const tile = {};
+            const compute = {
+              prepare: async (geometry) => ({
+                facade: geometry.getAttribute("facade").array.slice(),
+                ecef: new Float32Array(geometry.getAttribute("position").count * 3),
+              }),
+              dispose() {},
+            };
+            const plugin = new BuildingFacadePlugin(compute, (object) =>
+              prepareBuildingShaders(object, camera, scene, renderer),
+            );
+            cancelPreparation = () => plugin.disposeTile(tile);
+            let aborted = false;
+            try {
+              await plugin.processTileModel(model, tile);
+            } catch (error) {
+              aborted = error.name === "AbortError";
+              if (!aborted) throw error;
+            } finally {
+              plugin.dispose();
+            }
+            return {
+              aborted,
+              geometryCount: renderer.info.memory.geometries,
+              shaderStates: renderer._nodes.nodeBuilderCache.size,
+              asyncBuilds,
+            };
+          }
+          let preparationMs = null;
+          if (prepare) {
+            // Model coordinates are still global and the tile is not in the visible scene.
+            model.position.set(6378137, 2000000, -3000000);
+            await frame();
+            const start = performance.now();
+            await prepareBuildingShaders(model, camera, scene, renderer);
+            preparationMs = performance.now() - start;
+          }
+          const sourcePreserved = buildings.every((mesh, i) => {
+            const before = originals[i];
+            return (
+              mesh.geometry === before.geometry &&
+              mesh.material === before.material &&
+              mesh.frustumCulled === before.culling &&
+              mesh.geometry
+                .getAttribute("position")
+                .array.every((value, j) => Object.is(value, before.positions[j]))
+            );
+          });
+          model.position.set(0, 0, 0);
+          scene.add(model);
+          phase = "first-visible";
+          const first = await read();
+          phase = "steady";
+          const steady = await read();
+          phase = "origin-change";
+          model.position.set(-3, 0, 2);
+          camera.position.add(new T.Vector3(-3, 0, 2));
+          camera.lookAt(-3, 5, 2);
+          const moved = await read();
+          phase = "eviction";
+          scene.remove(model);
+          for (const mesh of buildings) {
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+          }
+          await read();
+          return {
+            first,
+            steady,
+            moved,
+            builds,
+            asyncBuilds,
+            preparationMs,
+            sourcePreserved,
+            switched,
+            statesAfterEviction: renderer._nodes.nodeBuilderCache.size,
+          };
+        } finally {
+          for (const mesh of [floor, ...buildings]) {
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+          }
+          sun.dispose();
+          target.dispose();
+          renderer.dispose();
+        }
+      }
+
+      window.__buildingShaderParity = (async () => {
+        const rows = [];
+        for (const forceWebGL of [false, true])
+          for (const night of [false, true]) {
+            for (const mode of ["flat", "lit", "rooms", "settings-change"]) {
+              const switchWindows = mode === "settings-change";
+              const order = rows.length % 2 === 0 ? [false, true] : [true, false];
+              const runs = {};
+              for (const prepare of order)
+                runs[prepare] = await capture(
+                  prepare,
+                  forceWebGL,
+                  switchWindows ? "rooms" : mode,
+                  night,
+                  prepare && switchWindows,
+                );
+              const before = runs.false,
+                after = runs.true;
+              const differences = ["first", "steady", "moved"].map((view) =>
+                difference(before[view].pixels, after[view].pixels),
+              );
+              const facadeSync = (run) => run.builds.filter((build) => build.material === "FacadeMaterial");
+              const summary = (run) => ({
+                builds: run.builds,
+                asyncBuilds: run.asyncBuilds,
+                facadeSync: facadeSync(run),
+                preparationMs: run.preparationMs,
+                firstDrawMs: run.first.drawMs,
+                sourcePreserved: run.sourcePreserved,
+                switched: run.switched,
+                statesAfterEviction: run.statesAfterEviction,
+              });
+              const cacheFreed = before.statesAfterEviction === after.statesAfterEviction;
+              rows.push({
+                backend: forceWebGL ? "webgl2" : "webgpu",
+                night,
+                mode,
+                differences,
+                cacheFreed,
+                valid:
+                  differences.every((d) => d.changed === 0) &&
+                  before.sourcePreserved &&
+                  after.sourcePreserved &&
+                  cacheFreed &&
+                  facadeSync(after).length === 0 &&
+                  (!switchWindows || after.switched),
+                before: summary(before),
+                after: summary(after),
+              });
+            }
+            const cancelled = await capture(true, forceWebGL, "rooms", night, false, true);
+            rows.push({
+              backend: forceWebGL ? "webgl2" : "webgpu",
+              night,
+              mode: "cancel-during-preparation",
+              cancelled,
+              valid:
+                cancelled.aborted &&
+                cancelled.geometryCount === 0 &&
+                cancelled.shaderStates === 0 &&
+                cancelled.asyncBuilds.length > 0,
+            });
+          }
+        return rows;
+      })();
+    </script>
+  </body>
+</html>

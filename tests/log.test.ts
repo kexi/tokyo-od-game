@@ -108,6 +108,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   dem_worker_failed: { error: "x" },
   water_worker_failed: { error: "x" },
   building_worker_failed: { error: "x" },
+  building_shader_failed: { key: "building", error: "x" },
+  building_shader_prepared: { key: "building", meshes: 2, durationMs: 20 },
   terrain_worker_failed: { error: "x" },
   terrain_build_failed: { key: "1/2", error: "x" },
   terrain_chunk_prepared: {

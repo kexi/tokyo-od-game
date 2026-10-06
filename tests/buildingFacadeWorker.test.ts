@@ -9,6 +9,7 @@ import {
   Matrix4,
   Mesh,
   MeshStandardMaterial,
+  type Object3D,
   Vector3,
 } from "three";
 import type { Tile } from "3d-tiles-renderer/core";
@@ -236,5 +237,97 @@ describe("building worker data ownership", () => {
     await rejected;
     await Promise.resolve();
     expect(callbacks).toHaveLength(1);
+  });
+
+  it.each([false, true])(
+    "awaits shader preparation before finishing the tile (disposed=%s)",
+    async (disposed) => {
+      const worker = new WorkerStub(),
+        compute = new BuildingFacadeCompute(() => worker as unknown as Worker);
+      let finish!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const prepareScene = vi.fn(async (scene: Object3D) => {
+        expect((scene.children[0] as Mesh).geometry.hasAttribute("facade")).toBe(true);
+        await ready;
+      });
+      const plugin = new BuildingFacadePlugin(compute, prepareScene);
+      const model = new Group();
+      const mesh = new Mesh(geometry(), new MeshStandardMaterial());
+      model.add(mesh);
+      const releaseGeometry = vi.spyOn(mesh.geometry, "dispose"),
+        releaseMaterial = vi.spyOn(mesh.material, "dispose");
+      const pending = plugin.processTileModel(model, {} as Tile);
+      const finished = vi.fn();
+      void pending.then(finished, () => {});
+      worker.reply(0);
+      await vi.waitFor(() => expect(prepareScene).toHaveBeenCalledOnce());
+      expect(finished).not.toHaveBeenCalled();
+      if (disposed) plugin.dispose();
+      expect(releaseGeometry).not.toHaveBeenCalled();
+      expect(releaseMaterial).not.toHaveBeenCalled();
+      finish();
+      if (disposed) await expect(pending).rejects.toThrow("disposed");
+      else await pending;
+      expect(releaseGeometry).toHaveBeenCalledTimes(disposed ? 1 : 0);
+      expect(releaseMaterial).toHaveBeenCalledTimes(disposed ? 1 : 0);
+      plugin.dispose();
+    },
+  );
+
+  it("abandons an evicted tile and releases its prepared GPU data after compilation finishes", async () => {
+    const worker = new WorkerStub(),
+      compute = new BuildingFacadeCompute(() => worker as unknown as Worker);
+    let finish!: () => void, signal!: AbortSignal;
+    const ready = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const prepareScene = vi.fn(async (_scene: Object3D, _tile: Tile, value: AbortSignal) => {
+      signal = value;
+      await ready;
+    });
+    const plugin = new BuildingFacadePlugin(compute, prepareScene);
+    const model = new Group(),
+      mesh = new Mesh(geometry(), new MeshStandardMaterial()),
+      tile = {} as Tile;
+    model.add(mesh);
+    const releaseGeometry = vi.spyOn(mesh.geometry, "dispose"),
+      releaseMaterial = vi.spyOn(mesh.material, "dispose");
+    const pending = plugin.processTileModel(model, tile);
+    worker.reply(0);
+    await vi.waitFor(() => expect(prepareScene).toHaveBeenCalledOnce());
+    plugin.disposeTile(tile);
+    expect(signal.aborted).toBe(true);
+    expect(releaseGeometry).not.toHaveBeenCalled();
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    finish();
+    await rejected;
+    expect(releaseGeometry).toHaveBeenCalledOnce();
+    expect(releaseMaterial).toHaveBeenCalledOnce();
+    plugin.dispose();
+  });
+
+  it("keeps a new request for the same tile cancellable when the old request finishes", async () => {
+    const worker = new WorkerStub(),
+      compute = new BuildingFacadeCompute(() => worker as unknown as Worker);
+    const plugin = new BuildingFacadePlugin(compute, vi.fn());
+    const tile = {} as Tile;
+    const model = () => {
+      const group = new Group();
+      group.add(new Mesh(geometry(), new MeshStandardMaterial()));
+      return group;
+    };
+    const first = plugin.processTileModel(model(), tile);
+    const firstRejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    plugin.disposeTile(tile);
+    const second = plugin.processTileModel(model(), tile);
+    const secondRejected = expect(second).rejects.toMatchObject({ name: "AbortError" });
+    worker.reply(0);
+    await firstRejected;
+    plugin.disposeTile(tile);
+    worker.reply(1);
+    await secondRejected;
+    plugin.dispose();
   });
 });
