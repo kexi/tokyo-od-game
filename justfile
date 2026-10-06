@@ -306,6 +306,10 @@ measure-terrain-mask:
 measure-terrain-imagery:
     node scripts/qa/perf-terrain-imagery.mjs
 
+# 実地形・実建物の物理形状とレイを旧処理・Worker・フォールバックで比較し、登録CPUを測る
+measure-collider-worker:
+    node scripts/qa/perf-collider-worker.mjs
+
 # 実地形の標高・頂点・法線・境界を固定した旧処理とWorker・分割版で比較してCPUを測る
 measure-terrain-worker:
     node scripts/qa/perf-terrain-worker.mjs

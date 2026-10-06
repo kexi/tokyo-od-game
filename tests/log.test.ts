@@ -111,6 +111,17 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   building_shader_failed: { key: "building", error: "x" },
   building_shader_prepared: { key: "building", meshes: 2, durationMs: 20 },
   terrain_worker_failed: { error: "x" },
+  collider_worker_failed: { error: "x" },
+  collider_shape_prepared: {
+    key: "terrain-29106/12903",
+    backend: "worker",
+    vertices: 4225,
+    triangles: 8192,
+    bytes: 1160216,
+    computeMs: 3,
+    sendMs: 0.1,
+    durationMs: 12,
+  },
   terrain_build_failed: { key: "1/2", error: "x" },
   terrain_chunk_prepared: {
     key: "1/2",

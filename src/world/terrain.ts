@@ -1,5 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { reanchorCollider } from "../physics/reanchor";
+import { ColliderCompute } from "../physics/colliderCompute";
+import { installCollider, type ColliderMesh, type PreparedCollider } from "../physics/colliderSnapshot";
 import {
   Box3,
   BufferAttribute,
@@ -48,6 +50,8 @@ type Chunk = {
   height: TerrainHeight | null;
   heightBounds: Box3;
   collider: RAPIER.Collider | null;
+  colliderEmpty: boolean;
+  colliderWork: { controller: AbortController; data: PreparedCollider | null } | null;
   imageryZoom: number;
   imageryStyle: GroundStyle;
   imageryLoading: boolean;
@@ -93,6 +97,7 @@ const imageryZoom = (ring: number) =>
  */
 export class Terrain {
   private readonly compute = new TerrainCompute();
+  private readonly colliderCompute = new ColliderCompute();
   private disposed = false;
   private readonly chunks = new Map<string, Chunk>();
   private lastHeight: TerrainHeight | null = null;
@@ -124,6 +129,7 @@ export class Terrain {
     this.lastHeight = null;
     this.far.setFrame(frame);
     for (const chunk of this.chunks.values()) {
+      this.cancelCollider(chunk);
       this.placeMesh(chunk);
       if (!chunk.collider) continue;
       reanchorCollider(chunk.collider, matrix, rotation);
@@ -169,11 +175,12 @@ export class Terrain {
     return this.style;
   }
 
-  /** True once the chunk under the given point has a physics collider. */
+  /** True once physics is ready here, including known water with no solid ground triangles. */
   hasColliderAt(lat: number, lon: number): boolean {
     const x = Math.floor(lonToTileX(lon, TERRAIN_ZOOM));
     const y = Math.floor(latToTileY(lat, TERRAIN_ZOOM));
-    return this.chunks.get(`${x}/${y}`)?.collider != null;
+    const chunk = this.chunks.get(`${x}/${y}`);
+    return chunk !== undefined && (chunk.collider !== null || chunk.colliderEmpty);
   }
 
   update(lat: number, lon: number): void {
@@ -218,11 +225,19 @@ export class Terrain {
         refreshedWater = true;
       }
       const wantsCollider = ring <= TERRAIN_COLLIDER_RADIUS;
-      // One trimesh per frame keeps collider creation from causing visible hitches.
-      if (wantsCollider && !chunk.collider && !createdCollider) {
-        this.createCollider(chunk);
+      const canPrepareCollider =
+        wantsCollider &&
+        !chunk.collider &&
+        !chunk.colliderEmpty &&
+        !createdCollider &&
+        (!chunk.colliderWork || chunk.colliderWork.data !== null);
+      // One preparation or installation per frame; a pending Worker must not block other chunks.
+      if (canPrepareCollider) {
+        const ready = chunk.colliderWork?.data;
+        if (ready) this.createCollider(chunk, ready);
+        else this.prepareCollider(chunk);
         createdCollider = true;
-      } else if (!wantsCollider && chunk.collider) {
+      } else if (!wantsCollider && (chunk.collider || chunk.colliderWork || chunk.colliderEmpty)) {
         this.removeCollider(chunk);
       }
       // z18 (~0.5 m/px) under the car, z17 next ring, z16 at the fog edge.
@@ -260,6 +275,7 @@ export class Terrain {
   dispose(): void {
     this.disposed = true;
     this.compute.dispose();
+    this.colliderCompute.dispose();
     for (const chunk of this.chunks.values()) this.disposeChunk(chunk);
     this.chunks.clear();
     this.far.dispose();
@@ -299,6 +315,8 @@ export class Terrain {
       height: null,
       heightBounds: new Box3(),
       collider: null,
+      colliderEmpty: false,
+      colliderWork: null,
       imageryZoom: 0,
       imageryStyle: this.style,
       imageryLoading: false,
@@ -322,22 +340,65 @@ export class Terrain {
     chunk.heightBounds.copy(chunk.mesh.geometry.boundingBox!).applyMatrix4(chunk.mesh.matrix);
   }
 
-  private createCollider(chunk: Chunk): void {
+  private colliderMesh(chunk: Chunk): ColliderMesh | null {
     const src = chunk.mesh.geometry.getAttribute("position") as BufferAttribute;
     const verts = new Float32Array(src.count * 3);
     const v = new Vector3();
     for (let i = 0; i < src.count; i++) {
       v.fromBufferAttribute(src, i).applyMatrix4(chunk.mesh.matrix);
-      verts.set([v.x, v.y, v.z], i * 3);
+      verts[i * 3] = v.x;
+      verts[i * 3 + 1] = v.y;
+      verts[i * 3 + 2] = v.z;
     }
     const index = chunk.mesh.geometry.getIndex();
-    if (!index) return;
-    const desc = RAPIER.ColliderDesc.trimesh(
-      verts,
-      this.dryTriangles(chunk, index.array),
-      RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES,
-    ).setFriction(1.0);
-    chunk.collider = this.world.createCollider(desc);
+    if (!index) return null;
+    return {
+      vertices: verts,
+      indices: this.dryTriangles(chunk, index.array),
+      flags: RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES,
+    };
+  }
+
+  private prepareCollider(chunk: Chunk): void {
+    const mesh = this.colliderMesh(chunk);
+    if (!mesh) return;
+    const isEmpty = mesh.indices.length < 3;
+    if (isEmpty) {
+      // Rapier rejects empty meshes; known water must let the car fall rather than wait for ground.
+      chunk.colliderEmpty = true;
+      return;
+    }
+    const work = { controller: new AbortController(), data: null as PreparedCollider | null };
+    chunk.colliderWork = work;
+    void this.colliderCompute
+      .prepare(mesh, `terrain-${chunk.x}/${chunk.y}`, work.controller.signal)
+      .then((data) => {
+        const isCurrent = chunk.colliderWork === work;
+        if (isCurrent) work.data = data;
+      })
+      .catch((error) => {
+        const isCancelled = work.controller.signal.aborted || this.disposed;
+        if (isCancelled) return;
+        warn("terrain_build_failed", { key: `${chunk.x}/${chunk.y}`, error: String(error) });
+      });
+  }
+
+  private createCollider(chunk: Chunk, ready?: PreparedCollider): void {
+    const mesh = ready?.mesh ?? this.colliderMesh(chunk);
+    if (!mesh) return;
+    const isEmpty = mesh.indices.length < 3;
+    chunk.colliderEmpty = isEmpty;
+    if (isEmpty) {
+      this.cancelCollider(chunk);
+      return;
+    }
+    chunk.collider = installCollider(this.world, ready ?? { mesh, snapshot: null }, 1.0);
+    this.cancelCollider(chunk);
+  }
+
+  private cancelCollider(chunk: Chunk): void {
+    chunk.colliderWork?.controller.abort();
+    chunk.colliderWork = null;
   }
 
   /**
@@ -369,6 +430,7 @@ export class Terrain {
   }
 
   private applyWater(chunk: Chunk, version: number): void {
+    this.cancelCollider(chunk);
     chunk.waterVersion = version;
     const mask = this.water?.maskAt(chunk.x, chunk.y) ?? null;
     if (chunk.water.value !== NO_WATER) chunk.water.value.dispose();
@@ -385,12 +447,15 @@ export class Terrain {
     }
     const hasImagery = chunk.imageryZoom > 0;
     if (hasImagery) bindTerrainMask(chunk.mesh.material, chunk.water.value);
-    if (!chunk.collider) return;
+    const hadCollider = chunk.collider !== null || chunk.colliderEmpty;
+    if (!hadCollider) return;
     this.removeCollider(chunk);
     this.createCollider(chunk);
   }
 
   private removeCollider(chunk: Chunk): void {
+    this.cancelCollider(chunk);
+    chunk.colliderEmpty = false;
     if (!chunk.collider) return;
     this.world.removeCollider(chunk.collider, false);
     chunk.collider = null;
@@ -441,6 +506,7 @@ export class Terrain {
   }
 
   private disposeChunk(chunk: Chunk): void {
+    this.cancelCollider(chunk);
     this.lastHeight = null;
     this.removeCollider(chunk);
     if (chunk.water.value !== NO_WATER) chunk.water.value.dispose();

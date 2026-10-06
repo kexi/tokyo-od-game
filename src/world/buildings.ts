@@ -1,5 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { reanchorCollider } from "../physics/reanchor";
+import { ColliderCompute } from "../physics/colliderCompute";
+import { installCollider, type ColliderMesh, type PreparedCollider } from "../physics/colliderSnapshot";
 import { TilesRenderer } from "3d-tiles-renderer";
 import { GLTFExtensionsPlugin, LoadRegionPlugin, SphereRegion } from "3d-tiles-renderer/plugins";
 import {
@@ -40,6 +42,7 @@ type Model = {
   visible: boolean;
   sphere: Sphere | null;
   collider: RAPIER.Collider | null;
+  colliderWork: { controller: AbortController; data: PreparedCollider | null } | null;
 };
 
 // The streamed town; beyond it the far skyline (below) has only the coarse tiles. Why a radius:
@@ -194,6 +197,7 @@ export function createFarTiles(
  * trimesh colliders generated on demand from the tiles that are visible near the player.
  */
 export class Buildings {
+  private readonly colliderCompute = new ColliderCompute();
   tiles!: TilesRenderer;
   private readonly models = new Map<Object3D, Model>();
   private readonly draco = sharedDraco();
@@ -332,6 +336,7 @@ export class Buildings {
     if (this.far) this.applyFrameTo(this.far);
     setFacadeOrigin(frame);
     for (const model of this.models.values()) {
+      this.cancelCollider(model);
       model.sphere = null;
       if (!model.collider) continue;
       reanchorCollider(model.collider, matrix, rotation);
@@ -409,16 +414,20 @@ export class Buildings {
       model.sphere ??= this.computeSphere(model.scene);
       const distance = model.sphere.center.distanceTo(player) - model.sphere.radius;
       const isFar = distance > BUILDING_COLLIDER_RADIUS + COLLIDER_HYSTERESIS;
-      if (isFar && model.collider) this.removeCollider(model);
-      const isWanted = !model.collider && model.visible && distance < BUILDING_COLLIDER_RADIUS;
+      const hasWork = model.colliderWork !== null;
+      if (isFar && (model.collider || hasWork)) this.removeCollider(model);
+      const isWanted = !model.collider && (model.visible || hasWork) && distance < BUILDING_COLLIDER_RADIUS;
       if (isWanted) wanted.push({ model, distance });
     }
     // Closest first, within a few milliseconds a tick so building them never stalls a frame.
     wanted.sort((a, b) => a.distance - b.distance);
     const start = performance.now();
     for (const { model } of wanted) {
-      this.createCollider(model);
-      if (performance.now() - start > COLLIDER_BUDGET_MS) break;
+      const ready = model.colliderWork?.data;
+      if (ready) this.createCollider(model, ready);
+      else if (!model.colliderWork) this.prepareCollider(model);
+      const isOverBudget = performance.now() - start > COLLIDER_BUDGET_MS;
+      if (isOverBudget) break;
     }
   }
 
@@ -472,7 +481,7 @@ export class Buildings {
 
     tiles.addEventListener("load-model", ({ scene }) => {
       this.loadedCount++;
-      this.models.set(scene, { scene, visible: false, sphere: null, collider: null });
+      this.models.set(scene, { scene, visible: false, sphere: null, collider: null, colliderWork: null });
     });
     tiles.addEventListener("dispose-model", ({ scene }) => {
       const model = this.models.get(scene);
@@ -609,38 +618,83 @@ export class Buildings {
     return box.getBoundingSphere(new Sphere());
   }
 
-  private createCollider(model: Model): void {
-    const vertices: number[] = [];
-    const indices: number[] = [];
+  private colliderMesh(model: Model): ColliderMesh {
+    const parts: Array<{ mesh: Mesh; position: BufferAttribute }> = [];
+    let vertexCount = 0,
+      indexCount = 0;
+    model.scene.traverse((o) => {
+      const isMesh = o instanceof Mesh;
+      if (!isMesh) return;
+      const position = o.geometry.getAttribute("position") as BufferAttribute | undefined;
+      if (!position) return;
+      parts.push({ mesh: o, position });
+      vertexCount += position.count;
+      indexCount += o.geometry.getIndex()?.count ?? position.count;
+    });
+    const vertices = new Float32Array(vertexCount * 3);
+    const indices = new Uint32Array(indexCount);
     const v = new Vector3();
     const m = new Matrix4();
     model.scene.updateMatrixWorld(true);
-    model.scene.traverse((o) => {
-      if (!(o instanceof Mesh)) return;
-      const pos = o.geometry.getAttribute("position") as BufferAttribute | undefined;
-      if (!pos) return;
-      const base = vertices.length / 3;
+    let base = 0,
+      at = 0;
+    for (const { mesh: o, position: pos } of parts) {
       const toLocal = this.localMatrix(o, m);
       for (let i = 0; i < pos.count; i++) {
         v.fromBufferAttribute(pos, i).applyMatrix4(toLocal);
-        vertices.push(v.x, v.y, v.z);
+        const offset = (base + i) * 3;
+        vertices[offset] = v.x;
+        vertices[offset + 1] = v.y;
+        vertices[offset + 2] = v.z;
       }
       const index = o.geometry.getIndex();
       if (index) {
-        for (let i = 0; i < index.count; i++) indices.push(base + index.getX(i));
+        for (let i = 0; i < index.count; i++) indices[at++] = base + index.getX(i);
       } else {
-        for (let i = 0; i < pos.count; i++) indices.push(base + i);
+        for (let i = 0; i < pos.count; i++) indices[at++] = base + i;
       }
-    });
-    if (indices.length < 3) return;
-    const desc = RAPIER.ColliderDesc.trimesh(
-      new Float32Array(vertices),
-      new Uint32Array(indices),
-    ).setFriction(0.6);
-    model.collider = this.world.createCollider(desc);
+      base += pos.count;
+    }
+    return { vertices, indices };
+  }
+
+  private prepareCollider(model: Model): void {
+    const mesh = this.colliderMesh(model);
+    const hasTriangles = mesh.indices.length >= 3;
+    if (!hasTriangles) return;
+    const work = { controller: new AbortController(), data: null as PreparedCollider | null };
+    model.colliderWork = work;
+    void this.colliderCompute
+      .prepare(mesh, `building-${model.scene.uuid}`, work.controller.signal)
+      .then((data) => {
+        const isCurrent = model.colliderWork === work;
+        if (isCurrent) work.data = data;
+      })
+      .catch((error) => {
+        const isCancelled = work.controller.signal.aborted;
+        if (isCancelled) return;
+        warn("collider_worker_failed", { error: String(error) });
+      });
+  }
+
+  private createCollider(
+    model: Model,
+    ready: PreparedCollider | undefined = model.colliderWork?.data ?? undefined,
+  ): void {
+    const mesh = ready?.mesh ?? this.colliderMesh(model);
+    const hasTriangles = mesh.indices.length >= 3;
+    if (!hasTriangles) return;
+    model.collider = installCollider(this.world, ready ?? { mesh, snapshot: null }, 0.6);
+    this.cancelCollider(model);
+  }
+
+  private cancelCollider(model: Model): void {
+    model.colliderWork?.controller.abort();
+    model.colliderWork = null;
   }
 
   private removeCollider(model: Model): void {
+    this.cancelCollider(model);
     if (!model.collider) return;
     this.world.removeCollider(model.collider, false);
     model.collider = null;

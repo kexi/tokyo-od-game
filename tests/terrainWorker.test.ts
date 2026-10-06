@@ -269,6 +269,40 @@ function terrain(source: TerrainInput) {
 }
 
 describe("terrain asynchronous install", () => {
+  it("treats a fully wet chunk as prepared without an empty trimesh, then restores dry ground", async () => {
+    const source = input(),
+      { worker, ground, build } = terrain(source);
+    const world = { createCollider: vi.fn(() => ({ handle: 9 })), removeCollider: vi.fn() };
+    Reflect.set(ground, "world", world);
+    let data = new Uint8Array(16).fill(255);
+    ground.setWater({ versionAt: () => 1, maskAt: () => ({ data, size: 4 }) });
+    const pending = build(source.x, source.y, 0);
+    await vi.waitFor(() => expect(worker.requests).toHaveLength(1));
+    worker.reply(0);
+    await pending;
+    const chunks = Reflect.get(ground, "chunks") as Map<string, unknown>;
+    const chunk = chunks.get(`${source.x}/${source.y}`)!;
+    const applyWater = Reflect.get(ground, "applyWater").bind(ground);
+    applyWater(chunk, 1);
+    Reflect.get(ground, "prepareCollider").call(ground, chunk);
+    const lat = tileYToLat(source.y + 0.5, source.zoom),
+      lon = tileXToLon(source.x + 0.5, source.zoom);
+    expect(ground.hasColliderAt(lat, lon)).toBe(true);
+    expect(world.createCollider).not.toHaveBeenCalled();
+    ground.setFrame(new LocalFrame(35.71, 139.8, 40));
+    expect(ground.hasColliderAt(lat, lon)).toBe(true);
+    data = new Uint8Array(16);
+    applyWater(chunk, 2);
+    expect(world.createCollider).toHaveBeenCalledOnce();
+    expect(ground.hasColliderAt(lat, lon)).toBe(true);
+    data = new Uint8Array(16).fill(255);
+    applyWater(chunk, 3);
+    expect(world.createCollider).toHaveBeenCalledOnce();
+    expect(world.removeCollider).toHaveBeenCalledOnce();
+    expect(ground.hasColliderAt(lat, lon)).toBe(true);
+    ground.dispose();
+  });
+
   it("keeps water out of the grey placeholder until imagery arrives, then follows later water changes", async () => {
     const source = input(),
       { scene, worker, ground, build } = terrain(source);

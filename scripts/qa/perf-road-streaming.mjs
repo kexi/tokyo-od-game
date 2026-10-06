@@ -38,6 +38,9 @@ for (const file of [
   "src/world/terrain.worker.ts",
   "src/world/dem.ts",
   "src/geo/geoid.ts",
+  "src/physics/colliderSnapshot.ts",
+  "src/physics/colliderCompute.ts",
+  "src/physics/collider.worker.ts",
   "src/world/roadNetworkBuilder.ts",
   "src/world/roadNetworkData.ts",
   "src/world/roadNetwork.worker.ts",
@@ -158,6 +161,11 @@ try {
   __qaWrap(__game.renderer,'render','render');
   __qaWrap(__game.terrain,'update','terrain');
   __qaWrap(__game.buildings,'update','buildings');
+  __qaWrap(__game.terrain,'createCollider','terrainColliderInstall');
+  __qaWrap(__game.terrain,'prepareCollider','terrainColliderPrepare');
+  __qaWrap(__game.terrain,'applyWater','terrainWaterRefresh');
+  __qaWrap(__game.buildings,'createCollider','buildingColliderInstall');
+  __qaWrap(__game.buildings,'prepareCollider','buildingColliderPrepare');
   __qaWrap(__game.streetLights,'update','lights');
   __qaWrap(__game.nav,'update','nav');
   for (const [object,method,phase] of [
@@ -290,8 +298,9 @@ try {
         buildingPreparation:G.debug.logs.query({event:'building_facade_prepared'}).filter(e=>e.ts>=watchDate),
         buildingShaders:G.debug.logs.query({event:'building_shader_prepared'}).filter(e=>e.ts>=watchDate),
         terrainPreparation:G.debug.logs.query({event:'terrain_chunk_prepared'}).filter(e=>e.ts>=watchDate),
+        colliderPreparation:G.debug.logs.query({event:'collider_shape_prepared'}).filter(e=>e.ts>=watchDate),
         roadPreparation:G.debug.logs.query({event:'road_network_prepared'}).filter(e=>e.ts>=watchDate),
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|terrain_worker_failed|terrain_build_failed|log_schema_invalid/})};
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|terrain_worker_failed|terrain_build_failed|collider_worker_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");
