@@ -206,11 +206,24 @@ export const LOG_EVENTS = {
   road_worker_failed: failedWith(),
   dem_worker_failed: failedWith(),
   water_worker_failed: failedWith(),
+  building_worker_failed: failedWith(),
   road_network_failed: failedWith(),
   route_tile_failed: failedWith({ key: z.string() }),
   water_tile_failed: failedWith({ key: z.string() }),
 
   // ---------- the world as built ----------
+  building_facade_prepared: info({
+    key: z.string(),
+    backend: z.enum(["worker", "inline"]),
+    vertices: count,
+    computeMs: z.number(),
+    prepareMs: z.number(),
+    sendMs: z.number(),
+    mainMs: z.number(),
+    durationMs: z.number(),
+    maxSliceMs: z.number(),
+    yields: count,
+  }),
   building_batch_table_skipped: info({
     url: z.string(),
     bytesBefore: count,

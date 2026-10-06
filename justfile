@@ -286,6 +286,10 @@ measure-building-metadata:
 measure-building-gpu:
     node scripts/qa/perf-building-gpu.mjs
 
+# 実建物の座標・外壁属性を固定した旧処理とWorker・分割フォールバックで比較してCPUを測る
+measure-building-worker:
+    node scripts/qa/perf-building-worker.mjs
+
 # 地形の共有マスク式を両backend・昼夜・別タイル・更新・交換で全画素比較し、生成CPUを測る
 measure-terrain-mask:
     node scripts/qa/terrain-mask-parity.mjs
