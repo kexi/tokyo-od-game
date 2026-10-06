@@ -30,6 +30,12 @@ for (const file of [
   "src/world/buildingFacadeCompute.ts",
   "src/world/buildingFacade.worker.ts",
   "src/world/buildingFacadePlugin.ts",
+  "src/world/terrain.ts",
+  "src/world/terrainData.ts",
+  "src/world/terrainCompute.ts",
+  "src/world/terrain.worker.ts",
+  "src/world/dem.ts",
+  "src/geo/geoid.ts",
 ]) {
   const source = readFileSync(file, "utf8");
   currentSources[file] = createHash("sha256").update(source).digest("hex");
@@ -265,7 +271,8 @@ try {
         buildingMetadataKept:__qaKeptMetadata.slice(beforeKeptMetadata),
         shaders:__qaShaders,
         buildingPreparation:G.debug.logs.query({event:'building_facade_prepared'}).filter(e=>e.ts>=watchDate),
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|log_schema_invalid/})};
+        terrainPreparation:G.debug.logs.query({event:'terrain_chunk_prepared'}).filter(e=>e.ts>=watchDate),
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|terrain_worker_failed|terrain_build_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");

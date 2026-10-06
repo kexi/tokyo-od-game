@@ -11,6 +11,7 @@ import {
   Mesh,
   RedFormat,
   SRGBColorSpace,
+  Sphere,
   Vector3,
   type Scene,
 } from "three";
@@ -25,13 +26,14 @@ import {
   type GroundStyle,
 } from "../config";
 import { QUALITY } from "../device";
-import { geodeticToEcef } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
-import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
+import { latToTileY, lonToTileX } from "../geo/tiles";
 import type { DemStore } from "./dem";
 import { FarGround, type TileRect } from "./farGround";
 import { TerrainHeight } from "./terrainHeight";
 import { bindTerrainMask } from "./terrainMaterial";
+import { TerrainCompute } from "./terrainCompute";
+import { warn } from "../log";
 
 type Chunk = {
   x: number;
@@ -85,6 +87,8 @@ const imageryZoom = (ring: number) =>
  * changes mesh matrices; physics colliders (which need local coordinates) are rebuilt instead.
  */
 export class Terrain {
+  private readonly compute = new TerrainCompute();
+  private disposed = false;
   private readonly chunks = new Map<string, Chunk>();
   private lastHeight: TerrainHeight | null = null;
   private readonly building = new Set<string>();
@@ -168,6 +172,7 @@ export class Terrain {
   }
 
   update(lat: number, lon: number): void {
+    if (this.disposed) return;
     const cx = Math.floor(lonToTileX(lon, TERRAIN_ZOOM));
     const cy = Math.floor(latToTileY(lat, TERRAIN_ZOOM));
 
@@ -184,7 +189,12 @@ export class Terrain {
       const isQueued = this.chunks.has(key) || this.building.has(key);
       if (isQueued || this.building.size >= MAX_CONCURRENT_BUILDS) continue;
       this.building.add(key);
-      void this.buildChunk(w.x, w.y, w.ring).finally(() => this.building.delete(key));
+      void this.buildChunk(w.x, w.y, w.ring)
+        .catch((error) => {
+          if (this.disposed) return;
+          warn("terrain_build_failed", { key, error: String(error) });
+        })
+        .finally(() => this.building.delete(key));
     }
 
     let createdCollider = false;
@@ -243,60 +253,31 @@ export class Terrain {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.compute.dispose();
     for (const chunk of this.chunks.values()) this.disposeChunk(chunk);
     this.chunks.clear();
     this.far.dispose();
   }
 
   private async buildChunk(x: number, y: number, ring: number): Promise<void> {
-    // Corner samples at i = S read pixel 0 of the east/south neighbours, so load those too.
-    await Promise.all([
-      this.dem.load(x, y),
-      this.dem.load(x + 1, y),
-      this.dem.load(x, y + 1),
-      this.dem.load(x + 1, y + 1),
-    ]);
-
-    const midLat = tileYToLat(y + 0.5, TERRAIN_ZOOM);
-    const midLon = tileXToLon(x + 0.5, TERRAIN_ZOOM);
-    const c = geodeticToEcef(midLat, midLon, 40);
-    const centerEcef = new Vector3(c.x, c.y, c.z);
-
-    const positions = new Float32Array((S + 1) * (S + 1) * 3);
-    const uvs = new Float32Array((S + 1) * (S + 1) * 2);
-    for (let j = 0; j <= S; j++) {
-      const lat = tileYToLat(y + j / S, TERRAIN_ZOOM);
-      for (let i = 0; i <= S; i++) {
-        const lon = tileXToLon(x + i / S, TERRAIN_ZOOM);
-        const orthometric = this.dem.sampleGlobal((x + i / S) * 256, (y + j / S) * 256);
-        const p = geodeticToEcef(lat, lon, this.dem.ellipsoidal(lat, lon, orthometric));
-        const k = j * (S + 1) + i;
-        positions[k * 3] = p.x - centerEcef.x;
-        positions[k * 3 + 1] = p.y - centerEcef.y;
-        positions[k * 3 + 2] = p.z - centerEcef.z;
-        uvs[k * 2] = i / S;
-        uvs[k * 2 + 1] = 1 - j / S;
-      }
-    }
-    const indices = new Uint32Array(S * S * 6);
-    let n = 0;
-    for (let j = 0; j < S; j++) {
-      for (let i = 0; i < S; i++) {
-        const a = j * (S + 1) + i;
-        const b = a + 1;
-        const c2 = a + (S + 1);
-        const d = c2 + 1;
-        // Counter-clockwise when viewed from above (north = -j direction).
-        indices.set([a, c2, b, b, c2, d], n);
-        n += 6;
-      }
-    }
+    const input = await this.dem.loadTerrainInput(x, y);
+    if (this.disposed) return;
+    const data = await this.compute.prepare(input, `${x}/${y}`);
+    if (this.disposed) return;
+    const centerEcef = new Vector3().fromArray(data.centerEcef);
     const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(positions, 3));
-    geometry.setAttribute("uv", new BufferAttribute(uvs, 2));
-    geometry.setIndex(new BufferAttribute(indices, 1));
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
+    geometry.setAttribute("position", new BufferAttribute(data.positions, 3));
+    geometry.setAttribute("uv", new BufferAttribute(data.uvs, 2));
+    const normals = new BufferAttribute(data.normals, 3);
+    normals.needsUpdate = true;
+    geometry.setAttribute("normal", normals);
+    geometry.setIndex(new BufferAttribute(data.indices, 1));
+    geometry.boundingBox = new Box3(
+      new Vector3().fromArray(data.box.min),
+      new Vector3().fromArray(data.box.max),
+    );
+    geometry.boundingSphere = new Sphere(new Vector3().fromArray(data.sphere.center), data.sphere.radius);
 
     const material = new MeshStandardNodeMaterial({ color: 0x8a8f86, roughness: 0.97, metalness: 0 });
     const water = texture(NO_WATER);

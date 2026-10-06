@@ -10,6 +10,13 @@ import type { GeoidGrid } from "../data/schema";
 export class Geoid {
   constructor(private readonly grid: GeoidGrid | null) {}
 
+  snapshot(): GeoidGrid | null {
+    const grid = this.grid;
+    const isMissing = !grid;
+    if (isMissing) return null;
+    return { ...grid, values: grid.values.slice() };
+  }
+
   undulation(lat: number, lon: number): number {
     const g = this.grid;
     if (!g) return GEOID_FALLBACK;

@@ -1,8 +1,9 @@
-import { GSI, TERRAIN_ZOOM } from "../config";
+import { GSI, TERRAIN_SEGMENTS, TERRAIN_ZOOM } from "../config";
 import type { Geoid } from "../geo/geoid";
 import { decodeGsiDem, latToTileY, lonToTileX } from "../geo/tiles";
 
 import { DemCompute } from "./demCompute";
+import type { TerrainInput } from "./terrainData";
 export { parseDemText, smoothGround } from "./demData";
 
 const SIZE = 256;
@@ -61,6 +62,17 @@ export class DemStore {
 
   isLoaded(x: number, y: number): boolean {
     return this.loaded.has(`${x}/${y}`);
+  }
+
+  /** The east/south tiles supply the bilinear samples at the chunk's outer corners. */
+  async loadTerrainInput(x: number, y: number): Promise<TerrainInput> {
+    const tiles = await Promise.all([
+      this.load(x, y),
+      this.load(x + 1, y),
+      this.load(x, y + 1),
+      this.load(x + 1, y + 1),
+    ]);
+    return { x, y, zoom: TERRAIN_ZOOM, segments: TERRAIN_SEGMENTS, tiles, geoid: this.geoid.snapshot() };
   }
 
   /** Bilinear orthometric height at global z15 pixel coordinates (pixel-corner convention). */
