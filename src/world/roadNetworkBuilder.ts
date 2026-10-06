@@ -2,11 +2,12 @@ import type { LocalFrame } from "../geo/frame";
 import { log, newSpan, warn, type Span } from "../log";
 import type { RegulationData } from "./regulations";
 import type { RoadLine } from "./roads";
+import { unpackRoadNetwork } from "./roadNetworkPacket";
 import {
   computeRoadNetwork,
   restoreRoadNetwork,
   type RoadNetwork,
-  type RoadNetworkData,
+  type RoadNetworkRestorable,
   type RoadNetworkInput,
   type RoadNetworkReply,
 } from "./roadNetworkData";
@@ -85,15 +86,33 @@ export class RoadNetworkBuilder {
         ? this.options.createWorker()
         : new Worker(new URL("./roadNetwork.worker.ts", import.meta.url), { type: "module" });
       worker.addEventListener("message", (event: MessageEvent<RoadNetworkReply>) => {
+        const readStarted = performance.now();
+        const reply = event.data;
+        const readMs = performance.now() - readStarted;
         const job = this.active;
-        const isCurrent = job && event.data.id === job.id;
+        const isCurrent = job && reply.id === job.id;
         if (!isCurrent) return;
-        const hasError = "error" in event.data;
+        const hasError = "error" in reply;
         if (hasError) {
-          this.fail(event.data.error);
+          this.fail(reply.error);
           return;
         }
-        this.finish(job, event.data.data, "worker");
+        const isStale = job.stale || this.disposed;
+        if (isStale) {
+          this.complete(job);
+          return;
+        }
+        try {
+          const unpackStarted = performance.now();
+          const wire = reply.data;
+          const isPacket = "points" in wire;
+          const data = isPacket ? unpackRoadNetwork(wire) : wire;
+          const unpackMs = performance.now() - unpackStarted;
+          this.finish(job, data, "worker", readMs, unpackMs, reply.packMs ?? 0);
+        } catch (error) {
+          job.reject(error);
+          this.complete(job);
+        }
       });
       worker.addEventListener("error", (event) => {
         event.preventDefault();
@@ -149,7 +168,14 @@ export class RoadNetworkBuilder {
     });
   }
 
-  private finish(job: Job, data: RoadNetworkData, backend: "worker" | "inline"): void {
+  private finish(
+    job: Job,
+    data: RoadNetworkRestorable,
+    backend: "worker" | "inline",
+    readMs = 0,
+    unpackMs = 0,
+    packMs = 0,
+  ): void {
     try {
       if (job.stale || this.disposed) return;
       const start = performance.now();
@@ -165,6 +191,9 @@ export class RoadNetworkBuilder {
           computeMs: data.computeMs,
           restoreMs,
           sendMs: job.sendMs,
+          readMs,
+          unpackMs,
+          packMs,
           durationMs: performance.now() - job.start,
         },
         job.span,

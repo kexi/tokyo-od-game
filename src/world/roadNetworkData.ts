@@ -1,7 +1,8 @@
 import { Vector3 } from "three";
+import type { RoadNetworkPacket } from "./roadNetworkPacket";
 import { LocalFrame } from "../geo/frame";
 import type { Geodetic } from "../geo/ellipsoid";
-import { RoadGraph, type RoadGraphSnapshot, type RoadLine } from "./roads";
+import { RoadGraph, type RoadGraphSnapshot, type RoadGraphBuffers, type RoadLine } from "./roads";
 import {
   applyRegulations,
   type AppliedRegulations,
@@ -38,9 +39,14 @@ export type RoadNetworkData = {
   diagnostics: RegulationDiagnostic[];
   computeMs: number;
 };
+export type RoadNetworkRestorable = Omit<RoadNetworkData, "graph"> & {
+  graph: RoadGraphSnapshot | RoadGraphBuffers;
+};
 export type RoadNetwork = { graph: RoadGraph; applied: AppliedRegulations | null };
 export type RoadNetworkRequest = { id: number; input: RoadNetworkInput };
-export type RoadNetworkReply = { id: number; data: RoadNetworkData } | { id: number; error: string };
+export type RoadNetworkReply =
+  | { id: number; data: RoadNetworkData | RoadNetworkPacket; packMs?: number }
+  | { id: number; error: string };
 
 const point = (p: Vector3): Point => [p.x, p.y, p.z];
 const vector = (p: Point): Vector3 => new Vector3(...p);
@@ -89,7 +95,7 @@ function packApplied(applied: AppliedRegulations): WireApplied {
   };
 }
 
-export function restoreRoadNetwork(data: RoadNetworkData, frame: LocalFrame): RoadNetwork {
+export function restoreRoadNetwork(data: RoadNetworkRestorable, frame: LocalFrame): RoadNetwork {
   const graph = RoadGraph.restore(data.graph, frame);
   const a = data.applied;
   const hasNoRegulations = a === null;

@@ -259,6 +259,9 @@ export const LOG_EVENTS = {
     computeMs: z.number(),
     restoreMs: z.number(),
     sendMs: z.number(),
+    readMs: z.number(),
+    unpackMs: z.number(),
+    packMs: z.number(),
     durationMs: z.number(),
   }),
   road_network_built: info({

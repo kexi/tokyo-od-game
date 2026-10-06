@@ -80,6 +80,12 @@ export type RoadGraphSnapshot = {
   pieces: Map<string, Array<[number, number]>> | null;
 };
 
+export type RoadGraphBuffers = Omit<RoadGraphSnapshot, "segments"> & {
+  segments: Array<Omit<Segment, "pts">>;
+  points: Float64Array;
+  pointOffsets: Uint32Array;
+};
+
 export class RoadGraph {
   readonly segments: Segment[] = [];
   readonly nodes = new Map<number, number[]>(); // node id → segment ids
@@ -97,10 +103,23 @@ export class RoadGraph {
   }
 
   /** Structured clone drops Vector3 and RoadGraph methods; keep the computed spatial index. */
-  static restore(data: RoadGraphSnapshot, frame: LocalFrame): RoadGraph {
+  static restore(data: RoadGraphSnapshot | RoadGraphBuffers, frame: LocalFrame): RoadGraph {
     const graph = new RoadGraph([], frame);
-    for (const seg of data.segments)
-      graph.segments.push({ ...seg, pts: seg.pts.map((p) => new Vector3(...p)) });
+    const isPacked = "points" in data;
+    if (isPacked) {
+      // Intermediate tuple arrays would allocate every vertex twice on the page.
+      for (let s = 0; s < data.segments.length; s++) {
+        const pts: Vector3[] = [];
+        for (let i = data.pointOffsets[s]; i < data.pointOffsets[s + 1]; i++) {
+          const k = i * 3;
+          pts.push(new Vector3(data.points[k], data.points[k + 1], data.points[k + 2]));
+        }
+        graph.segments.push({ ...data.segments[s], pts });
+      }
+    } else {
+      for (const seg of data.segments)
+        graph.segments.push({ ...seg, pts: seg.pts.map((p) => new Vector3(...p)) });
+    }
     for (const [node, ids] of data.nodes) graph.nodes.set(node, ids);
     graph.pieces = data.pieces;
     return graph;

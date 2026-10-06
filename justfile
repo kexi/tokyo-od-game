@@ -258,6 +258,10 @@ measure-perf-night:
 measure-road-worker:
     node scripts/qa/perf-road-worker.mjs
 
+# 実道路2地域で旧Worker返答とバッファ転送を交互に全比較し、読み出し・復元CPUを測る
+measure-road-replies:
+    node scripts/qa/perf-road-replies.mjs
+
 # 道路の分割反映・原点変更・未読込地域への移動を夜雨で最後まで計測する
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs

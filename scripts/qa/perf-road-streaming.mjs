@@ -36,6 +36,12 @@ for (const file of [
   "src/world/terrain.worker.ts",
   "src/world/dem.ts",
   "src/geo/geoid.ts",
+  "src/world/roadNetworkBuilder.ts",
+  "src/world/roadNetworkData.ts",
+  "src/world/roadNetwork.worker.ts",
+  "src/world/roadNetworkPacket.ts",
+  "src/world/roads.ts",
+  "src/logEvents.ts",
 ]) {
   const source = readFileSync(file, "utf8");
   currentSources[file] = createHash("sha256").update(source).digest("hex");
@@ -272,6 +278,7 @@ try {
         shaders:__qaShaders,
         buildingPreparation:G.debug.logs.query({event:'building_facade_prepared'}).filter(e=>e.ts>=watchDate),
         terrainPreparation:G.debug.logs.query({event:'terrain_chunk_prepared'}).filter(e=>e.ts>=watchDate),
+        roadPreparation:G.debug.logs.query({event:'road_network_prepared'}).filter(e=>e.ts>=watchDate),
         errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|terrain_worker_failed|terrain_build_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {

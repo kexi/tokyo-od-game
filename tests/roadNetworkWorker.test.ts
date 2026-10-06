@@ -5,6 +5,7 @@ import { RoadGraph, type RoadLine } from "../src/world/roads";
 import { applyRegulations, type RegulationData } from "../src/world/regulations";
 import { gameClock } from "../src/world/ruleTime";
 import { RoadNetworkBuilder } from "../src/world/roadNetworkBuilder";
+import { packRoadNetwork, unpackRoadNetwork, roadNetworkTransfers } from "../src/world/roadNetworkPacket";
 import {
   computeRoadNetwork,
   restoreRoadNetwork,
@@ -37,10 +38,15 @@ const regs: RegulationData = {
 };
 
 describe("road network worker data", () => {
-  it("preserves rules, spatial queries and shared segment/stop-line references after structured clone", () => {
+  it.each(["clone", "transfer"])("preserves rules, queries and shared references after %s", (mode) => {
     const expected = new RoadGraph(lines, frame);
     const applied = applyRegulations(expected, regs, frame);
-    const data = structuredClone(computeRoadNetwork({ lines, regs, origin: frame.origin }));
+    const source = computeRoadNetwork({ lines, regs, origin: frame.origin });
+    const packet = packRoadNetwork(source);
+    const data =
+      mode === "transfer"
+        ? unpackRoadNetwork(structuredClone(packet, { transfer: roadNetworkTransfers(packet) }))
+        : structuredClone(source);
     expect(data.graph.pieces?.size).toBeGreaterThan(0);
     const actual = restoreRoadNetwork(data, frame);
     expect(actual.graph).toBeInstanceOf(RoadGraph);
@@ -80,6 +86,50 @@ describe("road network worker data", () => {
   });
 });
 
+describe("road worker transfer packet", () => {
+  it("keeps every double and index order without detaching the source snapshot", () => {
+    const data = computeRoadNetwork({ lines, regs, origin: frame.origin });
+    data.graph.segments[0].pts[0] = [-0, Number.NaN, Number.MAX_VALUE];
+    data.graph.segments[1].pts[1] = [Number.MIN_VALUE, Math.PI, -Infinity];
+    data.graph.pieces = new Map([
+      [
+        "negative",
+        [
+          [3, 2],
+          [0, 1],
+          [3, 2],
+        ],
+      ],
+      ["empty", []],
+      ["first", [[1, 1]]],
+    ]);
+    const untouched = structuredClone(data);
+    const packet = packRoadNetwork(data);
+    const transfers = roadNetworkTransfers(packet);
+    expect(transfers).toHaveLength(4);
+    const received = structuredClone(packet, { transfer: transfers });
+    expect(transfers.every((buffer) => buffer.byteLength === 0)).toBe(true);
+    const unpacked = unpackRoadNetwork(received);
+    const actual = restoreRoadNetwork(unpacked, frame);
+    expect(actual).toEqual(restoreRoadNetwork(untouched, frame));
+    expect(Object.is(actual.graph.segments[0].pts[0].x, -0)).toBe(true);
+    expect(Number.isNaN(actual.graph.segments[0].pts[0].y)).toBe(true);
+    expect([...unpacked.graph.pieces!]).toEqual([...untouched.graph.pieces!]);
+    expect(data).toEqual(untouched);
+  });
+
+  it.each([null, new Map<string, Array<[number, number]>>()])(
+    "preserves an empty network with pieces %s",
+    (pieces) => {
+      const data = computeRoadNetwork({ lines: [], regs: null, origin: frame.origin });
+      data.graph.pieces = pieces;
+      const packet = packRoadNetwork(data);
+      const received = structuredClone(packet, { transfer: roadNetworkTransfers(packet) });
+      expect(restoreRoadNetwork(unpackRoadNetwork(received), frame)).toEqual(restoreRoadNetwork(data, frame));
+    },
+  );
+});
+
 class WorkerStub extends EventTarget {
   readonly sent: RoadNetworkRequest[] = [];
   terminated = false;
@@ -89,11 +139,19 @@ class WorkerStub extends EventTarget {
   terminate(): void {
     this.terminated = true;
   }
-  reply(index: number): void {
+  reply(index: number, packed = true): void {
     const request = this.sent[index];
+    const source = computeRoadNetwork(request.input);
+    const packet = packRoadNetwork(source);
+    const reply = packed
+      ? structuredClone(
+          { id: request.id, data: packet, packMs: 1 },
+          { transfer: roadNetworkTransfers(packet) },
+        )
+      : structuredClone({ id: request.id, data: source });
     this.dispatchEvent(
       new MessageEvent("message", {
-        data: structuredClone({ id: request.id, data: computeRoadNetwork(request.input) }),
+        data: reply,
       }),
     );
   }
@@ -111,6 +169,28 @@ afterEach(() => {
 });
 
 describe("road worker request lifetime", () => {
+  it("accepts a raw snapshot reply for the inline/reference contract too", async () => {
+    const { worker, builder } = client();
+    const pending = builder.build(lines, regs, frame);
+    worker.reply(0, false);
+    expect((await pending)!.graph.segments).toHaveLength(4);
+  });
+
+  it("does not unpack a cancelled packet before starting the latest request", async () => {
+    const { worker, builder } = client();
+    const first = builder.build(lines, regs, frame);
+    const second = builder.build(lines, regs, frame);
+    const packet = packRoadNetwork(computeRoadNetwork(worker.sent[0].input));
+    const points = vi.fn(() => {
+      throw new Error("obsolete buffer accessed");
+    });
+    Object.defineProperty(packet, "points", { get: points });
+    worker.dispatchEvent(new MessageEvent("message", { data: { id: worker.sent[0].id, data: packet } }));
+    expect(points).not.toHaveBeenCalled();
+    expect(await first).toBeNull();
+    worker.reply(1);
+    expect((await second)!.graph.segments).toHaveLength(4);
+  });
   it("drops superseded areas and keeps only the latest queued origin", async () => {
     const { worker, builder } = client();
     const first = builder.build(lines, regs, frame);
