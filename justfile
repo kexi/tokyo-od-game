@@ -302,6 +302,10 @@ measure-building-worker:
 measure-terrain-mask:
     node scripts/qa/terrain-mask-parity.mjs
 
+# 初期の灰色地形・写真の到着・変更・水域・交換を両backend・昼夜で画素比較し、再生成を測る
+measure-terrain-imagery:
+    node scripts/qa/perf-terrain-imagery.mjs
+
 # 実地形の標高・頂点・法線・境界を固定した旧処理とWorker・分割版で比較してCPUを測る
 measure-terrain-worker:
     node scripts/qa/perf-terrain-worker.mjs

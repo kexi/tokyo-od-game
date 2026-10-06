@@ -16,7 +16,7 @@ import {
   type Scene,
 } from "three";
 import { texture } from "three/tsl";
-import { MeshStandardNodeMaterial, type TextureNode, type WebGPURenderer } from "three/webgpu";
+import type { MeshStandardNodeMaterial, TextureNode, WebGPURenderer } from "three/webgpu";
 import {
   GSI,
   PLATEAU_ORTHO,
@@ -31,7 +31,12 @@ import { latToTileY, lonToTileX } from "../geo/tiles";
 import type { DemStore } from "./dem";
 import { FarGround, type TileRect } from "./farGround";
 import { TerrainHeight } from "./terrainHeight";
-import { bindTerrainMask } from "./terrainMaterial";
+import {
+  bindTerrainMask,
+  createTerrainMaterial,
+  disposeTerrainImagery,
+  setTerrainImagery,
+} from "./terrainMaterial";
 import { TerrainCompute } from "./terrainCompute";
 import { warn } from "../log";
 
@@ -279,7 +284,7 @@ export class Terrain {
     );
     geometry.boundingSphere = new Sphere(new Vector3().fromArray(data.sphere.center), data.sphere.radius);
 
-    const material = new MeshStandardNodeMaterial({ color: 0x8a8f86, roughness: 0.97, metalness: 0 });
+    const material = createTerrainMaterial(NO_WATER);
     const water = texture(NO_WATER);
     const mesh = new Mesh(geometry, material);
     mesh.matrixAutoUpdate = false;
@@ -378,8 +383,8 @@ export class Terrain {
     } else {
       chunk.water.value = NO_WATER;
     }
-    const hasMaskShader = chunk.mesh.material.maskNode !== null;
-    if (hasMaskShader) bindTerrainMask(chunk.mesh.material, chunk.water.value);
+    const hasImagery = chunk.imageryZoom > 0;
+    if (hasImagery) bindTerrainMask(chunk.mesh.material, chunk.water.value);
     if (!chunk.collider) return;
     this.removeCollider(chunk);
     this.createCollider(chunk);
@@ -427,14 +432,10 @@ export class Terrain {
     photo.colorSpace = SRGBColorSpace;
     photo.anisotropy = Math.min(8, this.renderer.getMaxAnisotropy());
     const material = chunk.mesh.material;
-    material.map?.dispose();
-    material.map = photo;
-    material.color.set(0xffffff);
     // Cut the water out of the ground: the photo there shows the river from above, and the water
     // layer draws the surface and the shore walls instead. Only once the photo is on, which is
     // also when the river would show as ground. The mask's rows run north first (v = 1 here).
-    bindTerrainMask(material, chunk.water.value);
-    material.needsUpdate = true;
+    setTerrainImagery(material, photo, chunk.water.value);
     chunk.imageryZoom = zoom;
     chunk.imageryStyle = style;
   }
@@ -445,7 +446,7 @@ export class Terrain {
     if (chunk.water.value !== NO_WATER) chunk.water.value.dispose();
     this.scene.remove(chunk.mesh);
     chunk.mesh.geometry.dispose();
-    chunk.mesh.material.map?.dispose();
+    disposeTerrainImagery(chunk.mesh.material);
     chunk.mesh.material.dispose();
   }
 }
