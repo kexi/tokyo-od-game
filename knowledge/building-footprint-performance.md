@@ -1,12 +1,16 @@
 ---
 type: Metric
 title: ランドマークから離れた建物の三角形走査を省く
-description: 実2地域の近景・遠景48メッシュ204228684比較が一致。4回の除外CPU合計91.3→64.6ms、約29%減。夜雨の両ワープ66.7・66.6ms、実処理の8.8msの外れ値は残る。
+description: 実2地域の近景・遠景48メッシュの最終173842944比較が一致。4回の除外CPU合計77.6→57.8ms、約26%減。別起動でも約29%減。夜雨の両ワープ66.7・66.6ms、実処理の8.8msの外れ値は残る。
 tags: [plateau, terrain, rendering, physics, testing, logging]
 status: draft
 stale_after: 2027-04-06T00:00:00Z
-generated: { by: codex, at: 2026-10-06T09:34:45Z }
+generated: { by: codex, at: 2026-10-06T09:45:07Z }
 verified:
+  - {
+      by: process:chrome154-final-48-real-meshes-173842944-values-four-source-and-528-binary-hashes-terminal-logs,
+      at: 2026-10-06T09:45:07Z,
+    }
   - { by: process:1119-tests-types-lint-format-build-just-actions-and-knowledge, at: 2026-10-06T09:14:29Z }
   - {
       by: process:chrome154-48-real-meshes-204228684-values-source-and-528-binary-hashes-terminal-logs,
@@ -29,10 +33,10 @@ sources:
     resource: https://github.com/kexi/tokyo-od-game/tree/88e0281ccc3b04b0fe65281423c950ebb595110b
     title: 各メッシュで輪郭範囲を作り、全三角形を走査する前段
   - id: component
-    resource: ../scripts/qa/perf-building-footprints.mjs, ../.qa/perf/2026-10-06T09-25-53-123Z-building-footprints/report.json
+    resource: ../scripts/qa/perf-building-footprints.mjs, ../.qa/perf/2026-10-06T09-42-18-688Z-building-footprints/report.json, ../.qa/perf/2026-10-06T09-25-53-123Z-building-footprints/report.json
     title: 実メッシュの数値照合と4回ずつ交互の除外CPU（ローカル保存）
   - id: inputs
-    resource: ../.qa/perf/2026-10-06T09-25-53-123Z-building-footprints/
+    resource: ../.qa/perf/2026-10-06T09-42-18-688Z-building-footprints/, ../.qa/perf/2026-10-06T09-25-53-123Z-building-footprints/
     title: 実ECEF・元の全描画属性とindex・旧結果の528個のf64ファイル、全SHA-256を再検査（ローカル保存）
   - id: initial
     resource: ../.qa/perf/2026-10-06T09-14-42-411Z-building-footprints/, ../scripts/qa/browser.mjs
@@ -44,8 +48,8 @@ sources:
     resource: ../.qa/perf/2026-10-06T09-30-55-607Z-streaming/report.json, ../.qa/perf/2026-10-06T09-30-55-607Z-streaming/frame-stacks.json
     title: 時計対応付きCPU、建物除外の実呼び出し時間と歩道CPU（ローカル保存）
   - id: logs
-    resource: ../.qa/logs/2026-10-06/f8f26978-cedc-462c-9abe-16f74a3c0e6a.jsonl, ../.qa/logs/2026-10-06/aa32a9bb-50fd-4648-a427-b55908cea34f.jsonl, ../.qa/logs/2026-10-06/656423d5-cc62-49ad-970b-1026c968e4f2.jsonl
-    title: 最終3起動のtraceに限定した端末JSONL（ローカル保存）
+    resource: ../.qa/logs/2026-10-06/ebe50282-8745-42c2-9f48-16688b24a60a.jsonl, ../.qa/logs/2026-10-06/f8f26978-cedc-462c-9abe-16f74a3c0e6a.jsonl, ../.qa/logs/2026-10-06/aa32a9bb-50fd-4648-a427-b55908cea34f.jsonl, ../.qa/logs/2026-10-06/656423d5-cc62-49ad-970b-1026c968e4f2.jsonl
+    title: 数値2起動と8場面・CPU診断のtraceに限定した端末JSONL（ローカル保存）
   - id: tests
     resource: ../tests/buildingFootprints.test.ts, ../tests/buildingColliders.test.ts, ../tests/farMemory.test.ts
     title: indexedと非indexed・凹輪郭・境界・原点・入力・非対象の走査省略と既存の物理・遠景
@@ -68,21 +72,23 @@ ECEFを走査・変換する同期ループは残る。作業配列を伸ばす�
 
 M2 Max、Native Chrome154.0.8037.98 / revision b859317bf11f6be47f9b7799ec690a0a42a1fb33、Metal WebGPU、ultra・rooms、1280×800・DPR1、夜雨・seed20261006。東京駅と実ワープ後の吾妻橋で、読み込み済みの大きい近景16・遠景8メッシュを選ぶ。48メッシュには本番ですでに除外済みの形状も含まれるので、未加工の全PLATEAUを照合したとはしない。[^component]
 
-旧Buildingsを88e0281から保存して、旧cutFootprintsを固定する。実メッシュの元の型・interleaved構成を保ったcloneに実ECEFと原点行列を渡す。実際の2輪郭での出力と、各メッシュの非縮退indexの三角形中心を囲む追加の輪郭での出力を比較する。追加ケースでも全48メッシュに除外が起きることを確認する。全描画属性、index、元の描画データ・ECEFの不変、GPU更新version、繰り返しの出力など、**204228684項目がObject.isで一致**した。描画や物理が使う位置とindexを維持する。[^reference] [^component]
+旧Buildingsを88e0281から保存して、旧cutFootprintsを固定する。実メッシュの元の型・interleaved構成を保ったcloneに実ECEFと原点行列を渡す。実際の2輪郭での出力と、各メッシュの非縮退indexの三角形中心を囲む追加の輪郭での出力を比較する。追加ケースでも全48メッシュに除外が起きることを確認する。全描画属性、index、元の描画データ・ECEFの不変、GPU更新version、繰り返しの出力など、**最終173842944項目がObject.isで一致**した。描画や物理が使う位置とindexを維持する。[^reference] [^component]
 
 各4回で旧→新と新→旧を交互にし、メッシュごとに実フレームを挟む。geometryのclone、比較、待機、cleanup、結果保存は除外CPUに含めない。輪郭と作業領域は本番と同じく地域ごとに再利用する。計測中は編集・テスト・ビルドをしない。4ソースの保存ハッシュが最終版と一致した。[^component]
 
 | 各4回の除外CPU合計 |     旧 | 変更後 |
 | ------------------ | -----: | -----: |
-| 東京駅・近景16     | 28.9ms | 22.9ms |
-| 東京駅・遠景8      |  2.1ms |  1.2ms |
-| 吾妻橋・近景16     | 58.5ms | 38.8ms |
-| 吾妻橋・遠景8      |  1.8ms |  1.7ms |
-| 全48メッシュ       | 91.3ms | 64.6ms |
+| 東京駅・近景16     | 29.4ms | 22.5ms |
+| 東京駅・遠景8      |  1.9ms |  1.4ms |
+| 吾妻橋・近景16     | 43.4ms | 32.6ms |
+| 吾妻橋・遠景8      |  2.9ms |  1.3ms |
+| 全48メッシュ       | 77.6ms | 57.8ms |
 
-合計約29%減、全計測の単一メッシュ最大は2.5→1.7ms。東京駅の近景で21%、吾妻橋の近景で34%減るが、遠景の小さい値は時間分解能とばらつきの影響がある。全ゲームの速度向上へ読み替えない。端末2323行は全てinfo、対象失敗0件。[^component] [^logs]
+合計約26%減、全計測の単一メッシュ最大は1.8→1.4ms。東京駅の近景で23%、吾妻橋の近景で25%減るが、遠景の小さい値は時間分解能とばらつきの影響がある。東京駅近景の単一最大は1.1→1.2msで増えた。全ゲームの速度向上へ読み替えない。最終端末2317行は全てinfo、対象失敗0件。[^component] [^logs]
 
-実ECEF、元の描画属性とindex、旧結果をFloat64数値のバイナリ列として528ファイル・329077584byte保存した。各列の個数・byte長・全SHA-256を端末で再検査した。元の属性型、itemSize、normalized、stride、offset、行列、更新versionはreportに保存する。[^inputs]
+計測用のmode条件にも名前を付けた後、最終QAを再起動して上の値を得た。本番のBuildings・BuildingFootprints・QAドライバーは変えていない。前の成功起動も204228684比較が一致し、91.3→64.6ms（約29%減）・最大2.5→1.7ms、端末2323行で全てinfoだった。読み込み済みのタイル集合は起動間で変わり、吾妻橋の選択最大頂点数は128424→72600へ変わった。同じメッシュの起動間CPU差とは扱わず、各起動内の固定メッシュの旧・新の組だけを比較する。[^component] [^logs]
+
+最終の実ECEF、元の描画属性とindex、旧結果をFloat64数値のバイナリ列として528ファイル・280153632byte保存した。前の成功起動も528ファイル・329077584byteを残す。両方の各列の個数・byte長・全SHA-256を端末で再検査した。元の属性型、itemSize、normalized、stride、offset、行列、更新versionはreportに保存する。[^inputs]
 
 # 一括応答の失敗を残す
 

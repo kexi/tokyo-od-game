@@ -177,7 +177,8 @@ try {
       for(let i=0;i<inputs.length;i++){
         await frame();
         const input=inputs[i],geometry=input.geometry.clone(),start=performance.now();
-        if(mode==='old')oldCut.call(input.host,geometry,input.ecef);
+        const isOld=mode==='old';
+        if(isOld)oldCut.call(input.host,geometry,input.ecef);
         else input.cutter.cut(geometry,input.ecef,input.matrix);
         const ms=performance.now()-start;
         compare(rows[i].expected,arrays(geometry));geometry.dispose();
