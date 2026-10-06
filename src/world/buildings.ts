@@ -1,12 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { reanchorCollider } from "../physics/reanchor";
 import { TilesRenderer } from "3d-tiles-renderer";
-import {
-  GLTFExtensionsPlugin,
-  LoadRegionPlugin,
-  SphereRegion,
-  UnloadTilesPlugin,
-} from "3d-tiles-renderer/plugins";
+import { GLTFExtensionsPlugin, LoadRegionPlugin, SphereRegion } from "3d-tiles-renderer/plugins";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -34,6 +29,7 @@ import {
 } from "./facade";
 import { sharedDraco } from "../render/draco";
 import { BuildingMetadataPlugin } from "./buildingMetadata";
+import { BuildingGpuUnloadPlugin } from "./buildingGpuUnload";
 
 type Model = {
   scene: Object3D;
@@ -430,7 +426,7 @@ export class Buildings {
     const tiles = new TilesRenderer(PLATEAU_TILESET);
     tiles.registerPlugin(new BuildingMetadataPlugin());
     tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader: this.draco }));
-    tiles.registerPlugin(new UnloadTilesPlugin());
+    tiles.registerPlugin(new BuildingGpuUnloadPlugin());
     const regions = new LoadRegionPlugin();
     regions.addRegion(this.maskRegion);
     regions.addRegion(this.detailRegion);

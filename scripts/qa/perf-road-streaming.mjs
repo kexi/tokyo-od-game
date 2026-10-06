@@ -22,6 +22,9 @@ for (const file of [
   "src/game/drivingRouteData.ts",
   "src/game/drivingRoutePlanner.ts",
   "src/game/drivingRoute.worker.ts",
+  "src/world/buildings.ts",
+  "src/world/facade.ts",
+  "src/world/buildingGpuUnload.ts",
 ]) {
   const source = readFileSync(file, "utf8");
   currentSources[file] = createHash("sha256").update(source).digest("hex");

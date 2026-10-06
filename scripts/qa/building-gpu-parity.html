@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Cached building GPU lifecycle</title>
+  <body>
+    <script type="module">
+      import * as T from "three/webgpu";
+      import { UnloadTilesPlugin } from "3d-tiles-renderer/plugins";
+      import { BuildingGpuUnloadPlugin } from "../../src/world/buildingGpuUnload";
+      import * as facade from "../../src/world/facade";
+      import { GRAPHICS } from "../../src/device";
+      import { useStableShadows } from "../../src/render/stableShadow";
+
+      const size = 320;
+      const frame = () => new Promise(requestAnimationFrame);
+      const difference = (a, b) => {
+        let changed = 0,
+          max = 0;
+        for (let i = 0; i < a.length; i++) {
+          const delta = Math.abs(a[i] - b[i]);
+          const hasDifference = delta !== 0;
+          if (hasDifference) changed++;
+          max = Math.max(max, delta);
+        }
+        return { changed, max, values: a.length };
+      };
+      await facade.loadFacadeTextures();
+
+      async function capture(retain, forceWebGL, mode, night, changeWindows = false) {
+        GRAPHICS.set({ ...GRAPHICS.settings, windows: mode });
+        facade.updateFacadeClock(
+          new Date(night ? "2026-10-05T12:00:00Z" : "2026-10-05T03:00:00Z"),
+          night ? 0.8 : 0,
+          18,
+        );
+        facade.facadeUniforms.uNight.value = night ? 1 : 0;
+        const renderer = new T.WebGPURenderer({ forceWebGL, antialias: false });
+        await renderer.init();
+        const isWrongBackend = forceWebGL
+          ? !renderer.backend.isWebGLBackend
+          : !renderer.backend.isWebGPUBackend;
+        if (isWrongBackend) throw new Error("unexpected backend");
+        renderer.setSize(size, size);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = T.PCFShadowMap;
+        const scene = new T.Scene();
+        scene.background = new T.Color(night ? 0x152033 : 0x9ebbd1);
+        const camera = new T.PerspectiveCamera(45, 1, 0.1, 200);
+        camera.position.set(35, 35, 40);
+        camera.lookAt(0, 5, 0);
+        const sun = new T.DirectionalLight(0xffffff, night ? 0.7 : 3);
+        sun.position.set(-20, 45, 20);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(512, 512);
+        Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 0.1, far: 100 });
+        sun.shadow.camera.updateProjectionMatrix();
+        useStableShadows(sun);
+        scene.add(sun, sun.target, new T.AmbientLight(0xffffff, night ? 0.1 : 0.4));
+        const floor = new T.Mesh(
+          new T.PlaneGeometry(80, 80),
+          new T.MeshStandardNodeMaterial({ color: 0xbbbbbb }),
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        const model = new T.Group();
+        scene.add(model);
+        const buildings = [];
+        for (let i = 0; i < 8; i++) {
+          const height = 8 + i * 2;
+          const geometry = new T.BoxGeometry(5, height, 5);
+          const position = geometry.getAttribute("position");
+          const values = new Float32Array(position.count * 2);
+          for (let v = 0; v < position.count; v++) {
+            values[v * 2] = i + 0.1 + i * 0.09;
+            values[v * 2 + 1] = position.getY(v) + height / 2;
+          }
+          geometry.setAttribute("facade", new T.BufferAttribute(values, 2));
+          const mesh = new T.Mesh(geometry, facade.facadeMaterial());
+          mesh.position.set(((i % 4) - 1.5) * 10, height / 2, (Math.floor(i / 4) - 0.5) * 12);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          model.add(mesh);
+          buildings.push(mesh);
+        }
+        const plugin = retain ? new BuildingGpuUnloadPlugin() : new UnloadTilesPlugin();
+        let phase = "initial";
+        const builds = [];
+        renderer.debug.onNodeBuilderCreated = (builder) => {
+          const build = builder.build;
+          builder.build = function (...args) {
+            const start = performance.now();
+            try {
+              return build.apply(this, args);
+            } finally {
+              builds.push({ phase, ms: performance.now() - start, material: this.material.type });
+            }
+          };
+        };
+        const target = new T.RenderTarget(size, size, { type: T.UnsignedByteType });
+        const read = async () => {
+          await frame();
+          renderer.setRenderTarget(target);
+          renderer.render(scene, camera);
+          return new Uint8Array(await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size));
+        };
+        const resources = () => ({
+          geometries: renderer.info.memory.geometries,
+          shaderStates: renderer._nodes.nodeBuilderCache.size,
+        });
+        try {
+          await read();
+          const initial = await read();
+          const visibleResources = resources();
+          const restores = [],
+            hiddenResources = [],
+            restoredResources = [];
+          for (let i = 0; i < 3; i++) {
+            phase = "hide-" + i;
+            model.visible = false;
+            plugin.unloadTileFromGPU(model);
+            hiddenResources.push(resources());
+            await read();
+            phase = "restore-" + i;
+            model.visible = true;
+            restores.push(await read());
+            restoredResources.push(resources());
+          }
+          let changedWindows = null;
+          if (changeWindows) {
+            phase = "windows";
+            model.visible = false;
+            plugin.unloadTileFromGPU(model);
+            GRAPHICS.set({ ...GRAPHICS.settings, windows: "rooms" });
+            await read();
+            model.visible = true;
+            changedWindows = await read();
+          }
+          phase = "cpu-eviction";
+          model.visible = false;
+          for (const mesh of buildings) {
+            mesh.material.dispose();
+            mesh.geometry.dispose();
+          }
+          await read();
+          return {
+            initial,
+            restores,
+            changedWindows,
+            builds,
+            visibleResources,
+            hiddenResources,
+            restoredResources,
+            evictedResources: resources(),
+          };
+        } finally {
+          for (const mesh of [floor, ...buildings]) {
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+          }
+          sun.dispose();
+          target.dispose();
+          renderer.dispose();
+        }
+      }
+
+      window.__buildingGpuParity = (async () => {
+        const rows = [];
+        for (const forceWebGL of [false, true])
+          for (const night of [false, true]) {
+            for (const mode of ["flat", "lit", "rooms"]) {
+              // Alternate the order so the second run does not always receive warmed browser state.
+              const order = rows.length % 2 === 0 ? [false, true] : [true, false];
+              const runs = {};
+              for (const retain of order) runs[retain] = await capture(retain, forceWebGL, mode, night);
+              const before = runs.false,
+                after = runs.true;
+              const differences = [difference(before.initial, after.initial)];
+              for (let i = 0; i < 3; i++) {
+                differences.push(difference(before.restores[i], after.restores[i]));
+                differences.push(difference(after.initial, after.restores[i]));
+              }
+              const summary = (run) => ({
+                builds: run.builds,
+                restoreBuilds: run.builds.filter((b) => b.phase.startsWith("restore-")),
+                visibleResources: run.visibleResources,
+                hiddenResources: run.hiddenResources,
+                restoredResources: run.restoredResources,
+                evictedResources: run.evictedResources,
+              });
+              const buffersFreed = after.hiddenResources.every(
+                (r) => r.geometries === after.visibleResources.geometries - 8,
+              );
+              const cacheFreed = after.evictedResources.shaderStates === before.evictedResources.shaderStates;
+              rows.push({
+                backend: forceWebGL ? "webgl2" : "webgpu",
+                night,
+                mode,
+                differences,
+                buffersFreed,
+                cacheFreed,
+                valid: differences.every((d) => d.changed === 0) && buffersFreed && cacheFreed,
+                before: summary(before),
+                after: summary(after),
+              });
+            }
+            const hiddenSwitch = await capture(true, forceWebGL, "flat", night, true);
+            const fresh = await capture(true, forceWebGL, "rooms", night);
+            const diff = difference(hiddenSwitch.changedWindows, fresh.initial);
+            const effect = difference(hiddenSwitch.initial, hiddenSwitch.changedWindows);
+            rows.push({
+              backend: forceWebGL ? "webgl2" : "webgpu",
+              night,
+              mode: "hidden-settings-change",
+              differences: [diff],
+              effect,
+              valid: diff.changed === 0 && effect.changed > 100,
+            });
+          }
+        return rows;
+      })();
+    </script>
+  </body>
+</html>
