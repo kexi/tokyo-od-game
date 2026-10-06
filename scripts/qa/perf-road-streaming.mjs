@@ -11,10 +11,14 @@ const out = join(
   "../../.qa/perf",
   new Date().toISOString().replace(/[:.]/g, "-") + "-streaming",
 );
+const detailed = process.env.QA_TIMING_ONLY !== "1";
 mkdirSync(out, { recursive: true });
 const currentSources = {};
 for (const file of [
   "src/main.ts",
+  "src/game/frameWork.ts",
+  "src/render/streamedInstanceShaders.ts",
+  "src/world/roadInstances.ts",
   "src/game/autoDriver.ts",
   "src/game/policePatrol.ts",
   "src/game/robotaxi.ts",
@@ -65,6 +69,7 @@ const report = {
   commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   status: execFileSync("git", ["status", "--short"], { encoding: "utf8" }),
   currentSources,
+  measurement: { detailed, cpuProfiler: !!process.env.QA_PROFILE },
   host: { cpu: cpus()[0]?.model, load: loadavg() },
   url: url.href,
   samples: [],
@@ -129,7 +134,10 @@ try {
       ...G.guideSigns.meshes, G.streetLights.metal, G.streetLights.lens,
       ...G.orbis.meshes, ...G.furniture.group.children].filter(Boolean);
   }`);
-  await browser.evaluate(`(async () => {
+  await browser.evaluate(`window.__qaCpu=[];window.__qaShaders=[];
+    window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];`);
+  if (detailed) {
+    await browser.evaluate(`(async () => {
     const {BuildingMetadataPlugin}=await import(new URL('src/world/buildingMetadata.ts',location.href).href);
     const original=BuildingMetadataPlugin.prototype.parseTile;
     window.__qaKeptMetadata=[];
@@ -145,7 +153,7 @@ try {
       return result;
     };
   })()`);
-  await browser.evaluate(`window.__qaCpu = []; window.__qaWrap = (object, method, phase) => {
+    await browser.evaluate(`window.__qaCpu = []; window.__qaWrap = (object, method, phase) => {
     const original = object[method];
     object[method] = function(...args) {
       const start = performance.now();
@@ -176,7 +184,7 @@ try {
     [__game.transit,'update','transit'], [__game.control,'update','control'],
     [__game.guideSigns,'update','guideSigns'], [__game.orbis,'update','orbis'],
   ]) __qaWrap(object,method,phase);`);
-  await browser.evaluate(`window.__qaShaders=[];window.__qaAsyncShaders=[];
+    await browser.evaluate(`window.__qaShaders=[];window.__qaAsyncShaders=[];
     const original=__game.renderer.debug.onNodeBuilderCreated;
     __game.renderer.debug.onNodeBuilderCreated=(builder,renderObject)=>{
       original?.(builder,renderObject);
@@ -200,6 +208,7 @@ try {
           constructor:m?.constructor.name,windows:m?.windows,objectName:this.object?.name});}
       };
     };`);
+  }
   const modes = process.env.QA_MODES?.split(",") ?? [
     "baseline",
     "update",
@@ -301,7 +310,8 @@ try {
         terrainPreparation:G.debug.logs.query({event:'terrain_chunk_prepared'}).filter(e=>e.ts>=watchDate),
         colliderPreparation:G.debug.logs.query({event:'collider_shape_prepared'}).filter(e=>e.ts>=watchDate),
         roadPreparation:G.debug.logs.query({event:'road_network_prepared'}).filter(e=>e.ts>=watchDate),
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|terrain_worker_failed|terrain_build_failed|collider_worker_failed|log_schema_invalid/})};
+        instanceShaders:G.debug.logs.query({event:'streamed_shaders_prepared'}).filter(e=>e.ts>=watchDate),
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|streamed_shader_failed|terrain_worker_failed|terrain_build_failed|collider_worker_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");

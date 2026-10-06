@@ -294,6 +294,10 @@ measure-building-gpu:
 measure-building-shaders:
     node scripts/qa/perf-building-shaders.mjs
 
+# 道路インスタンスの表示前の非同期準備を両backend・昼夜で画素比較し、初回生成と中断を検証する
+measure-instance-shaders:
+    node scripts/qa/perf-instance-shaders.mjs
+
 # 実建物の座標・外壁属性を固定した旧処理とWorker・分割フォールバックで比較してCPUを測る
 measure-building-worker:
     node scripts/qa/perf-building-worker.mjs

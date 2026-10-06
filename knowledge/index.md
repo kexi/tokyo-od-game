@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [道路インスタンスのシェーダーを表示前に準備する](streamed-instance-shader-performance.md) - 両backend・昼夜のHDR12582912byteが一致し、固定比較の同期生成9→0回。実夜雨の40回を非同期へ移すが、準備の待ち時間増加とワープ66.7msが残る
+
 - [水域の地形三角形判定で一時配列を作らない](terrain-water-triangle-performance.md) - 実水域16タイル・320比較のCPU85.3→25.2ms。829万個のindex値・30境界マスク・実物理767レイが一致。夜雨のワープ66.7msと同期BVH更新は残る
 
 - [地形と建物のコライダーBVHをWorkerで準備する](collider-worker-performance.md) - 実48タイルの入力・Worker/フォールバックの物理形状・766レイが一致。メインCPU83.0→16.1ms、136.6→36.0ms。全水域は空trimeshなしで準備完了。同期経路と未読込地域66.7msは残る
