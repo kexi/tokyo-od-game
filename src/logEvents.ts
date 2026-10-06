@@ -210,6 +210,12 @@ export const LOG_EVENTS = {
   water_tile_failed: failedWith({ key: z.string() }),
 
   // ---------- the world as built ----------
+  building_batch_table_skipped: info({
+    url: z.string(),
+    bytesBefore: count,
+    bytesAfter: count,
+    cpuMs: z.number(),
+  }),
   water_masks_prepared: info({
     backend: z.enum(["worker", "inline"]),
     x: z.number().int(),

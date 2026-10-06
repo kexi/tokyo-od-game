@@ -33,6 +33,7 @@ import {
   updateFacadeClock,
 } from "./facade";
 import { sharedDraco } from "../render/draco";
+import { BuildingMetadataPlugin } from "./buildingMetadata";
 
 type Model = {
   scene: Object3D;
@@ -174,6 +175,7 @@ export function createFarTiles(
   errorTarget: number,
 ): TilesRenderer {
   const tiles = new TilesRenderer(url);
+  tiles.registerPlugin(new BuildingMetadataPlugin());
   tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader }));
   tiles.registerPlugin(new CoarseTilesPlugin(minError));
   const regions = new LoadRegionPlugin();
@@ -426,6 +428,7 @@ export class Buildings {
 
   private createTiles(): void {
     const tiles = new TilesRenderer(PLATEAU_TILESET);
+    tiles.registerPlugin(new BuildingMetadataPlugin());
     tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader: this.draco }));
     tiles.registerPlugin(new UnloadTilesPlugin());
     const regions = new LoadRegionPlugin();

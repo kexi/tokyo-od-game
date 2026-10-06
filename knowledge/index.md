@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [未使用の建物属性表の解析を省く](building-metadata-performance.md) - 実近景・遠景39タイルのGLB・頂点・ID・行列が一致。属性準備CPU約18→0.3〜0.4ms。夜雨の新地域116.7ms・連続ワープ83.3ms・原点変更66.6msは残る
+
 - [不透明な外壁の影アルファを定数にする](opaque-facade-shadow-performance.md) - 8棟の影生成CPU33.0→1.0ms。両backend・全窓設定・昼夜の新規姿勢が全画素一致。実ワープ100〜117msと同タスク内の影更新差は残る
 
 - [水域マスクのWorker化とタイル間のフレーム予算](water-mask-performance.md) - 実水域25タイル・2解像度の全16384000画素が旧処理と一致。Workerとフォールバックの単体計測で50ms超0回。夜雨のワープには116.7ms・同期シェーダー生成が残る
