@@ -1,9 +1,9 @@
 import { Vector3 } from "three";
 import { steerLimit, WHEELBASE, type DriveInput } from "../physics/vehicle";
-import { isLaneChangeBanned, laneOfPoint } from "../world/laneChange";
+import { isLaneChangeBanned } from "../world/laneChange";
 import type { LaneUse, TurnRule } from "../world/regulations";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
-import { inForce, type GameClock } from "../world/ruleTime";
+import type { GameClock } from "../world/ruleTime";
 import type { TrafficControl } from "../world/trafficControl";
 import {
   backOffPath,
@@ -36,9 +36,13 @@ import {
   type Verdict,
 } from "./autoTraffic";
 import { laneCentre } from "./drivePath";
-import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
+import { axisAt, laneAt, progressOn, type Route } from "./navigation";
+import { drivingRoute, isUturnBanned, routingState, type RouteStart } from "./drivingRoute";
+import type { DrivingRoutePlanner } from "./drivingRoutePlanner";
+import { log, newSpan, warn } from "../log";
 
 export { laneCentre } from "./drivePath";
+export { isUturnBanned };
 export type { DriveObstacle } from "./autoTraffic";
 
 /**
@@ -84,6 +88,8 @@ export type DriveWorld = {
    * to make sure it is safe (第39条第2項), so it creeps through instead of waiting.
    */
   isEmergency?: boolean;
+  /** Route selection can run independently of the car's frame updates. */
+  planner?: DrivingRoutePlanner;
 };
 
 const ACCEL = 1.8; // m/s², gentle for passengers
@@ -104,8 +110,6 @@ const ATTEMPT_PROGRESS = 25;
 /** Waiting behind a blockage it may not pass (or something it cannot judge) this long: give up. */
 const BLOCKED_GIVE_UP = 30;
 const UNSURE_GIVE_UP = 60;
-/** A 転回 at the start costs this much route (m) when choosing which way to go. */
-const TURN_ROUND_COST = 60;
 const SIGNAL_LEAD = 3; // s of 合図 before moving across (施行令 第21条: 3 秒前)
 const PASS_TOP = 20 / 3.6; // m/s beside a parked car
 const SLOW = 10 / 3.6; // 徐行 into a junction where the other road has priority (第36条第3項)
@@ -120,7 +124,6 @@ const SWING_OUT = 14;
 /** Where the car actually is: chassis position, heading (atan2(x, z)) and forward speed (m/s). */
 export type CarPose = { position: Vector3; yaw: number; speed: number };
 
-const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
 const LATERAL_ACCEL = 2.5; // m/s² round the bends of a street
 
@@ -160,11 +163,6 @@ export function keepLeftOffset(
   const isTwoWay = seg.oneway === 0;
   // Two-way: stay left of the centreline even on a narrow carriageway.
   return Math.min(wanted, Math.max(isTwoWay ? 1 : -Infinity, kerb - KERB_CLEARANCE));
-}
-
-/** 転回禁止 (JARTIC 51) in force on a street (第25条の2第2項). */
-export function isUturnBanned(seg: Segment, clock: GameClock): boolean {
-  return seg.rules.some((r) => r.code === 51 && inForce(r.time, clock));
 }
 
 /**
@@ -239,6 +237,11 @@ export class AutoDriver {
   private hasSignalledOff = false;
   /** Bumper gap to the vehicle in front (m), from the last look. */
   private frontGap = Infinity;
+  planning = false;
+  private planSerial = 0;
+  private planner: DrivingRoutePlanner | null = null;
+  private latestWorld: DriveWorld | null = null;
+  private replanAfterTransform = false;
 
   get remaining(): number {
     return this.route ? this.route.length - this.at : 0;
@@ -257,6 +260,7 @@ export class AutoDriver {
 
   /** Where the car is before the first update (for planning from there). */
   place(pos: Vector3, yaw: number): void {
+    this.cancelPlanning();
     this.position.copy(pos);
     this.yaw = yaw;
   }
@@ -268,10 +272,79 @@ export class AutoDriver {
    * turn round where 転回禁止 is in force (第25条の2第2項).
    */
   plan(world: DriveWorld, target: Vector3, from?: { seg: Segment; s: number; dir: 1 | -1 }): boolean {
+    this.cancelPlanning();
     this.graph = world.graph;
     this.target.copy(target);
-    const route = from ? this.routeFrom(world, target, from) : this.bestStart(world, target);
+    const route = drivingRoute(world, this.position, this.yaw, target, from);
     if (!route) return false;
+    return this.acceptRoute(route);
+  }
+
+  /** Keep the physics on the brake until the latest route is ready. Null means cancelled. */
+  async planAsync(world: DriveWorld, target: Vector3, from?: RouteStart): Promise<boolean | null> {
+    const hasPlanner = world.planner !== undefined;
+    if (!hasPlanner) return this.plan(world, target, from);
+    let workStart = performance.now();
+    let mainMs = 0;
+    let found = false;
+    const span = newSpan("route");
+    this.cancelPlanning();
+    const serial = this.planSerial;
+    this.planner = world.planner!;
+    this.latestWorld = world;
+    this.target.copy(target);
+    this.planning = true;
+    try {
+      while (serial === this.planSerial) {
+        const current = this.latestWorld!;
+        const state = routingState(current);
+        const hasNewGraph = this.graph !== current.graph;
+        if (hasNewGraph) this.route = null;
+        this.graph = current.graph;
+        const start = current.graph === world.graph ? from : undefined;
+        const pending = this.planner.plan(this, current, this.position, this.yaw, this.target, start, span);
+        mainMs += performance.now() - workStart;
+        const route = await pending;
+        workStart = performance.now();
+        const isCancelled = serial !== this.planSerial;
+        if (isCancelled) return null;
+        const latest = this.latestWorld!;
+        const graphChanged = latest.graph !== current.graph;
+        const rulesChanged = routingState(latest) !== state;
+        const isObsolete = graphChanged || rulesChanged;
+        if (isObsolete) {
+          log("route_plan_discarded", { reason: graphChanged ? "graph" : "rules" }, span);
+          continue;
+        }
+        const hasRoute = route !== null;
+        if (!hasRoute) return false;
+        found = this.acceptRoute(route);
+        return found;
+      }
+      return null;
+    } catch (error) {
+      const isCurrent = serial === this.planSerial;
+      if (!isCurrent) return null;
+      warn("route_worker_failed", { error: String(error) }, span);
+      return false;
+    } finally {
+      const isCurrent = serial === this.planSerial;
+      if (isCurrent) {
+        this.planning = false;
+        mainMs += performance.now() - workStart;
+        log("route_plan_applied", { mainMs, found }, span);
+      }
+    }
+  }
+
+  cancelPlanning(): void {
+    this.planSerial++;
+    this.planner?.cancel(this);
+    this.planning = false;
+    this.replanAfterTransform = false;
+  }
+
+  private acceptRoute(route: Route): boolean {
     const isSameStart =
       this.route?.steps[0].seg === route.steps[0].seg && this.route?.steps[0].dir === route.steps[0].dir;
     // A manoeuvre under way aims at the old route's lane: keep it when the new route starts alike.
@@ -298,6 +371,15 @@ export class AutoDriver {
     return true;
   }
 
+  private replan(world: DriveWorld): void {
+    const pending = this.planAsync(world, this.target);
+    const serial = this.planSerial;
+    void pending.then((planned) => {
+      const failed = planned === false && serial === this.planSerial;
+      if (failed) this.gaveUp = "blocked";
+    });
+  }
+
   /** Start again after giving up (the robotaxi's remote assistance): plan anew from here. */
   retry(world: DriveWorld): boolean {
     this.blockedFor = 0;
@@ -308,79 +390,11 @@ export class AutoDriver {
     return this.plan(world, this.target);
   }
 
-  private routeFrom(world: DriveWorld, target: Vector3, start: { seg: Segment; s: number; dir: 1 | -1 }) {
-    // From the lane the car is in: on a 進路変更禁止 stretch the route must keep to it (drivePath).
-    const leftOfTravel = world.graph.nearestOn(start.seg, this.position).lateral * start.dir;
-    const lane = laneOfPoint(start.seg, leftOfTravel) ?? 0;
-    return planRoute(
-      world.graph,
-      { ...start, lane },
-      target,
-      world.clock,
-      world.turnRules,
-      "car",
-      world.laneUse,
-    );
-  }
-
-  /**
-   * The street to start from. First the old way: the street the car stands on, the way it faces
-   * (legal there). Failing that — on a pavement or a plaza, facing the wrong way on a one-way
-   * street, on a street that leads nowhere — every open street within 25 m (60 m, 120 m from a
-   * plaza), each legal way, scored by the route's length plus how far off the carriageway the car
-   * is (×3) plus turning round (TURN_ROUND_COST, never where 転回禁止 is in force); the best few are
-   * planned and the cheapest kept. The manoeuvre into the lane follows (offLane).
-   */
-  private bestStart(world: DriveWorld, target: Vector3): Route | null {
-    const graph = world.graph;
-    const here = this.position;
-    const heading = this.heading();
-    const hit = graph.nearest(here, 25, isDrivable);
-    if (hit) {
-      const facing: 1 | -1 = hit.dir.dot(heading) >= 0 ? 1 : -1;
-      const isOnIt = Math.abs(hit.lateral) < hit.seg.line.width / 2 + 0.5;
-      const isLegal = hit.seg.oneway === 0 || hit.seg.oneway === facing;
-      const isFacing = Math.abs(hit.dir.dot(heading)) > 0.7;
-      const route =
-        isOnIt && isLegal && isFacing && !hit.seg.closed
-          ? this.routeFrom(world, target, { seg: hit.seg, s: hit.s, dir: facing })
-          : null;
-      if (route) return route;
-    }
-    for (const radius of [25, 60, 120]) {
-      type Start = { seg: Segment; s: number; dir: 1 | -1; extra: number };
-      const starts: Start[] = [];
-      for (const seg of graph.segments) {
-        if (!isDrivable(seg) || seg.closed) continue;
-        const q = graph.nearestOn(seg, here);
-        if (q.dist > radius) continue;
-        const along = graph.sample(seg, q.s).dir.dot(heading);
-        const off = Math.max(0, q.dist - seg.line.width / 2);
-        const ways: Array<1 | -1> = seg.oneway !== 0 ? [seg.oneway] : [1, -1];
-        for (const dir of ways) {
-          const isTurnRound = along * dir < -0.3;
-          const isBanned = isTurnRound && off === 0 && isUturnBanned(seg, world.clock);
-          if (isBanned) continue;
-          const turn = ((1 - along * dir) / 2) * TURN_ROUND_COST;
-          starts.push({ seg, s: q.s, dir, extra: off * 3 + turn });
-        }
-      }
-      let best: { route: Route; cost: number } | null = null;
-      for (const st of starts.toSorted((a, b) => a.extra - b.extra).slice(0, 6)) {
-        const route = this.routeFrom(world, target, st);
-        if (!route) continue;
-        // Dead-end U-turns on the way are manoeuvres too.
-        const uturns = route.maneuvers.filter((m) => m.turn === "uturn").length;
-        const cost = route.length + st.extra + uturns * 100;
-        if (!best || cost < best.cost) best = { route, cost };
-      }
-      if (best) return best.route;
-    }
-    return null;
-  }
-
   /** Re-anchoring: shift the pose and the route rigidly. */
   transform(offset: (p: Vector3) => Vector3, yawDelta: number): void {
+    const wasPlanning = this.planning || this.replanAfterTransform;
+    this.cancelPlanning();
+    this.replanAfterTransform = wasPlanning;
     offset(this.position);
     this.yaw += yawDelta;
     offset(this.target);
@@ -401,8 +415,25 @@ export class AutoDriver {
     this.yaw = car.yaw;
     this.speed = car.speed;
     this.reversing = false;
+    this.latestWorld = world;
+    const isPlanning = this.planning;
+    if (isPlanning) {
+      this.braking = true;
+      this.lastSteer = 0;
+      return { input: HOLD, moved, done: false, gaveUp: null };
+    }
     // A new road graph (area change, re-anchoring): plan again from where the car is.
-    if (world.graph !== this.graph && this.route) this.plan(world, this.target);
+    const needsGraphPlan = (world.graph !== this.graph && this.route !== null) || this.replanAfterTransform;
+    if (needsGraphPlan) {
+      this.replanAfterTransform = false;
+      const hasPlanner = world.planner !== undefined;
+      if (hasPlanner) {
+        this.replan(world);
+        this.braking = true;
+        return { input: HOLD, moved, done: false, gaveUp: null };
+      }
+      this.plan(world, this.target);
+    }
     this.trackStops(world, dt);
     const out = (input: DriveInput, done = false): DriveResult => {
       this.braking = (input.brake > 0.05 && input.brakeOnly !== false) || Math.abs(this.speed) < 0.1;
@@ -421,7 +452,13 @@ export class AutoDriver {
       this.at = p.at;
       return out(this.manoeuvre(dt, world, route));
     }
-    if (p.off > OFF_ROUTE && this.plan(world, this.target) && this.route) {
+    const isOffRoute = p.off > OFF_ROUTE;
+    const canPlanAsync = isOffRoute && world.planner !== undefined;
+    if (canPlanAsync) {
+      this.replan(world);
+      return out(HOLD);
+    }
+    if (isOffRoute && this.plan(world, this.target) && this.route) {
       route = this.route;
       p = progressOn(route, this.position, 0);
     }
@@ -755,7 +792,7 @@ export class AutoDriver {
     if (canTurn) {
       const s = world.graph.nearestOn(st.seg, this.position).s;
       const back: 1 | -1 = st.dir === 1 ? -1 : 1;
-      const other = this.routeFrom(world, this.target, { seg: st.seg, s, dir: back });
+      const other = drivingRoute(world, this.position, this.yaw, this.target, { seg: st.seg, s, dir: back });
       // Only a way round that does not come back up this street in the blocked direction.
       const isAround = other !== null && !other.steps.some((x) => x.seg === st.seg && x.dir === st.dir);
       if (other && isAround) {

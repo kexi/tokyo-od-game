@@ -71,6 +71,7 @@ import { classifyTurn, laneAllows, laneIndex, planRoute, type Turn } from "./gam
 import { RouteArrows } from "./game/routeArrows";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
 import { AutoDriver, kerbLeft, keepLeftOffset, type DriveObstacle } from "./game/autoDriver";
+import { DrivingRoutePlanner } from "./game/drivingRoutePlanner";
 import { rapierClearance } from "./game/autoRecovery";
 import { halfLengthOf } from "./game/autoTraffic";
 import { loadSignalModels } from "./world/signalModels";
@@ -610,6 +611,10 @@ async function main(): Promise<void> {
   const roadUpdates = new SerialWork();
   roadBuilder.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoads");
   roadBuilder.warm();
+  const routePlanner = new DrivingRoutePlanner();
+  const syncRoutes = import.meta.env.DEV && new URLSearchParams(location.search).has("syncRoutes");
+  routePlanner.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoutes");
+  routePlanner.warm();
   /** The moment regulations are judged at: the game's date and time in Japan (曜日・祝日). */
   const gameClockNow = (): GameClock => {
     const minutes = env.displayHour(lastGeo.lat, lastGeo.lon) * 60;
@@ -3703,7 +3708,7 @@ async function main(): Promise<void> {
     const isOffDuty = (u: PolicePatrol) =>
       u.state !== "pursuing" &&
       u.state !== "ticketing" &&
-      (u.position.distanceTo(focus) > 1100 || isLingering(u));
+      (u.routeUnavailable || u.position.distanceTo(focus) > 1100 || isLingering(u));
     for (const unit of patrols.filter(isOffDuty)) {
       unit.dispose();
       patrols.splice(patrols.indexOf(unit), 1);
@@ -4043,14 +4048,25 @@ async function main(): Promise<void> {
     if (!target) return toast(i18n.t("toast.noDestination"));
     const driver = new AutoDriver();
     driver.place(vehicle.position(), vehicle.yaw());
-    if (!driver.plan(tw, target)) return toast(i18n.t("toast.noRoute"));
-    autopilot = { driver, cruising: !mission, input: { throttle: 0, brake: 0, steer: 0, handbrake: false } };
+    const ap = {
+      driver,
+      cruising: !mission,
+      input: { throttle: 0, brake: 1, steer: 0, handbrake: false, brakeOnly: true },
+    };
+    autopilot = ap;
     $("#autopilot-chip").hidden = false;
-    toast(i18n.t(mission ? "toast.autopilotToTarget" : "toast.autopilotCruise"), "#3cd17a");
-    log("autopilot_on", { cruising: !mission, routeM: Math.round(driver.route?.length ?? 0) });
+    void driver.planAsync(tw, target).then((planned) => {
+      const isCurrent = autopilot === ap && planned !== null;
+      if (!isCurrent) return;
+      const hasRoute = planned === true;
+      if (!hasRoute) return stopAutopilot(i18n.t("toast.noRoute"));
+      toast(i18n.t(mission ? "toast.autopilotToTarget" : "toast.autopilotCruise"), "#3cd17a");
+      log("autopilot_on", { cruising: !mission, routeM: Math.round(driver.route?.length ?? 0) });
+    });
   };
   const stopAutopilot = (message: string) => {
     if (!autopilot) return;
+    autopilot.driver.cancelPlanning();
     autopilot = null;
     vehicle.lightOverride = null;
     $("#autopilot-chip").hidden = true;
@@ -4080,7 +4096,14 @@ async function main(): Promise<void> {
     if (!done) return;
     if (ap.cruising) {
       const next = cruiseTarget();
-      if (next && ap.driver.plan(tw, next)) return;
+      const hasNext = next !== null;
+      if (hasNext) {
+        void ap.driver.planAsync(tw, next).then((planned) => {
+          const failed = autopilot === ap && planned === false;
+          if (failed) stopAutopilot(i18n.t("toast.autopilotArrived"));
+        });
+        return;
+      }
     }
     stopAutopilot(i18n.t("toast.autopilotArrived"));
   };
@@ -4117,6 +4140,7 @@ async function main(): Promise<void> {
     roadGraph
       ? {
           graph: roadGraph,
+          planner: syncRoutes ? undefined : routePlanner,
           control,
           turnRules: roadApplied?.turnRules ?? [],
           clock: gameClockNow(),

@@ -290,6 +290,10 @@ measure-terrain-mask:
 measure-route-search:
     node scripts/qa/perf-route-search.mjs
 
+# 実Workerと固定した同期版の運転経路を全比較し、メインCPUと返答待ち時間を別々に測る
+measure-driver-worker:
+    QA_WORKER=1 QA_REFERENCE=b8a66bace759de324efca6559a26211d206db12d node scripts/qa/perf-route-search.mjs
+
 # 実道路2地域で新旧の信号・停止線・位相・参照の一致と道路対応付けのCPUを測る
 measure-signal-network:
     node scripts/qa/perf-signal-network.mjs

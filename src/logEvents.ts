@@ -33,6 +33,7 @@ const failure = <S extends z.ZodRawShape>(shape: S) => ({
 });
 
 const count = z.number().int().nonnegative();
+const milliseconds = z.number().nonnegative();
 const counts = z.record(z.string(), count);
 /** String(error) of a caught failure ("TypeError: …"). */
 const error = z.string();
@@ -317,6 +318,19 @@ export const LOG_EVENTS = {
    * `turns` such junctions, on try `attempt`; `replanned` when it is planned again without them.
    */
   route_lane_blocked: info({ turns: count, attempt: count, replanned: z.boolean() }),
+  route_worker_failed: failedWith(),
+  route_plan_discarded: info({ reason: z.enum(["graph", "rules"]) }),
+  route_plan_applied: info({ mainMs: milliseconds, found: z.boolean() }),
+  route_plan_prepared: info({
+    backend: z.enum(["worker", "inline"]),
+    segments: count,
+    found: z.boolean(),
+    computeMs: milliseconds,
+    prepareMs: milliseconds,
+    restoreMs: milliseconds,
+    sendMs: milliseconds,
+    durationMs: milliseconds,
+  }),
   autopilot_on: info({ cruising: z.boolean(), routeM: z.number() }),
   autopilot_off: info({}),
   autopilot_gave_up: info({ why: z.string() }),
