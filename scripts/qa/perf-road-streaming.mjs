@@ -43,6 +43,7 @@ for (const file of [
   "src/world/terrainCompute.ts",
   "src/world/terrain.worker.ts",
   "src/world/dem.ts",
+  "src/geo/frame.ts",
   "src/geo/geoid.ts",
   "src/physics/colliderSnapshot.ts",
   "src/physics/colliderCompute.ts",

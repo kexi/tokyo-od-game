@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [地形の高さ照会のタイル検索と一時Vector3を減らす](ground-height-query-performance.md) - 実2地域42411比較が完全一致。最終DEM照会CPU約41%・45%、橋を含む地面照会約9〜13%減。通常約33ms、ワープ50.1・66.6msとGC・道路返答・描画の重なりが残る
+
 - [PLATEAUの外壁シェーダーの頂点構成を保持する](facade-shader-layout-performance.md) - 実2構成の同じキーの再生成を止め、両backend・昼夜の26214400画素成分が一致。破棄後再表示の同期生成4→0回、実両ワープの外壁生成0回。道路反映・地形・影の50.1msが残る
 
 - [道路インスタンスのシェーダーを表示前に準備する](streamed-instance-shader-performance.md) - 両backend・昼夜のHDR12582912byteが一致し、固定比較の同期生成9→0回。実夜雨の40回を非同期へ移すが、準備の待ち時間増加とワープ66.7msが残る
