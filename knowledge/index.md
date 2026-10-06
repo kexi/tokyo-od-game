@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [建物の座標変換と外壁属性をWorkerで準備する](building-facade-worker-performance.md) - 実32メッシュの各7181610数値と本番属性2872644値が旧同期と一致。128依頼の入力準備・送信CPU387.3→10.6ms。夜雨の新地域50.1ms・連続ワープ66.7msと地形の法線生成などが残る
+
 - [建物のGPU解放で外壁のシェーダーを捨てない](building-gpu-cache-performance.md) - 8棟を3回再表示する生成27→0回。両backendの36044800画素値が一致し、頂点解放・CPU破棄・非表示中の窓設定も確認。夜雨の実ワープは66〜83msの停止が残る
 
 - [自動運転の経路選択をWorkerへ移す](driving-route-worker-performance.md) - 実Workerの704ケース・1222067数値が同期版と一致。メインCPU最大35.1→4.6ms、39.5→7.1ms。返答待ちは増え、夜雨のワープには66.7msの停止が残る

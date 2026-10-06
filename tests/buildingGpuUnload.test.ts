@@ -6,6 +6,7 @@ import { GRAPHICS } from "../src/device";
 import { LocalFrame } from "../src/geo/frame";
 import { BuildingGpuUnloadPlugin } from "../src/world/buildingGpuUnload";
 import { Buildings } from "../src/world/buildings";
+import { BuildingFacadePlugin } from "../src/world/buildingFacadePlugin";
 
 describe("cached building GPU resources", () => {
   it("releases vertex buffers without changing the CPU geometry or disposing its material", () => {
@@ -51,6 +52,8 @@ describe("cached building GPU resources", () => {
     const tile = { engineData: { scene: model } } as unknown as Tile;
     const originalDisposal = vi.spyOn(original, "dispose");
     try {
+      const preparation = buildings.tiles.getPluginByName("BUILDING_FACADE_PLUGIN") as BuildingFacadePlugin;
+      await preparation.processTileModel(model, tile);
       buildings.tiles.dispatchEvent({ type: "load-model", scene: model, tile, url: "test.b3dm" });
       expect(originalDisposal).toHaveBeenCalledOnce();
       const facade = mesh.material;

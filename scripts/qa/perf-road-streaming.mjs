@@ -25,6 +25,11 @@ for (const file of [
   "src/world/buildings.ts",
   "src/world/facade.ts",
   "src/world/buildingGpuUnload.ts",
+  "src/world/facadeData.ts",
+  "src/world/buildingFacadeData.ts",
+  "src/world/buildingFacadeCompute.ts",
+  "src/world/buildingFacade.worker.ts",
+  "src/world/buildingFacadePlugin.ts",
 ]) {
   const source = readFileSync(file, "utf8");
   currentSources[file] = createHash("sha256").update(source).digest("hex");
@@ -259,7 +264,8 @@ try {
         buildingMetadata:G.debug.logs.query({event:'building_batch_table_skipped'}).slice(beforeMetadataCount),
         buildingMetadataKept:__qaKeptMetadata.slice(beforeKeptMetadata),
         shaders:__qaShaders,
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|log_schema_invalid/})};
+        buildingPreparation:G.debug.logs.query({event:'building_facade_prepared'}).filter(e=>e.ts>=watchDate),
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");
