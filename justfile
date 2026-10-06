@@ -282,6 +282,10 @@ measure-facade-shadows:
 measure-building-metadata:
     node scripts/qa/perf-building-metadata.mjs
 
+# 建物のGPU解放・再表示を両backend・全窓設定で画素比較し、シェーダー再生成を測る
+measure-building-gpu:
+    node scripts/qa/perf-building-gpu.mjs
+
 # 地形の共有マスク式を両backend・昼夜・別タイル・更新・交換で全画素比較し、生成CPUを測る
 measure-terrain-mask:
     node scripts/qa/terrain-mask-parity.mjs
