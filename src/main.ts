@@ -2178,6 +2178,7 @@ async function main(): Promise<void> {
    */
   const precompile = async (): Promise<void> => {
     const started = performance.now();
+    await buildings.precompile();
     const ground = groundY(0, 0) ?? 0;
     const eye = new PerspectiveCamera(100, camera.aspect, camera.near, camera.far);
     eye.position.set(0, ground + 1.6, 0);

@@ -35,6 +35,7 @@ for (const file of [
   "src/world/buildingFacade.worker.ts",
   "src/world/buildingFacadePlugin.ts",
   "src/world/buildingShaders.ts",
+  "src/world/facadeShaderLayouts.ts",
   "src/world/terrain.ts",
   "src/world/terrainWaterTriangles.ts",
   "src/world/terrainMaterial.ts",
@@ -202,10 +203,14 @@ try {
       };
       const buildAsync=builder.buildAsync;
       if(buildAsync)builder.buildAsync=async function(...args){
-        const start=performance.now(),m=this.material;
+        const start=performance.now(),m=this.material,g=this.object?.geometry;
         try{return await buildAsync.apply(this,args);}
         finally{__qaAsyncShaders.push({at:start,durationMs:performance.now()-start,name:m?.name,
-          constructor:m?.constructor.name,windows:m?.windows,objectName:this.object?.name});}
+          constructor:m?.constructor.name,windows:m?.windows,objectName:this.object?.name,
+          geometryKey:renderObject.getGeometryCacheKey(),cacheKey:renderObject.initialCacheKey,
+          layout:Object.fromEntries(Object.entries(g?.attributes??{}).map(([key,a])=>[key,
+            {size:a.itemSize,normalized:a.normalized,type:a.array.constructor.name,
+             stride:a.data?.stride,offset:a.offset,count:a.count}])),indexed:!!g?.index});}
       };
     };`);
   }

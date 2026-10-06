@@ -34,6 +34,7 @@ import { BuildingMetadataPlugin } from "./buildingMetadata";
 import { BuildingGpuUnloadPlugin } from "./buildingGpuUnload";
 import { BuildingFacadePlugin } from "./buildingFacadePlugin";
 import { prepareBuildingShaders } from "./buildingShaders";
+import { FacadeShaderLayouts } from "./facadeShaderLayouts";
 import { SerialWork } from "../game/serialWork";
 import { log, warn } from "../log";
 
@@ -224,6 +225,7 @@ export class Buildings {
   /** False until the far façade's pipeline is built (asynchronously, before any far tile shows). */
   private isFarCompiled = false;
   private readonly shaderWork = new SerialWork();
+  private readonly facadeShaders: FacadeShaderLayouts;
 
   constructor(
     private readonly scene: Scene,
@@ -237,6 +239,7 @@ export class Buildings {
     frame: LocalFrame,
   ) {
     this.frame = frame;
+    this.facadeShaders = new FacadeShaderLayouts(camera, scene, renderer);
     setFacadeOrigin(frame);
     this.createTiles();
   }
@@ -436,6 +439,11 @@ export class Buildings {
     return this.tiles.loadProgress;
   }
 
+  /** Prepare the surveyed near-tile layouts before the drive starts. */
+  precompile(): Promise<void> {
+    return this.shaderWork.run(() => this.facadeShaders.prepare());
+  }
+
   private createTiles(): void {
     const tiles = new TilesRenderer(PLATEAU_TILESET);
     const preparation = new BuildingFacadePlugin(undefined, (model, tile, signal) =>
@@ -457,6 +465,7 @@ export class Buildings {
         const key = tile.content?.uri ?? "building",
           start = performance.now();
         try {
+          await this.facadeShaders.prepare();
           await prepareBuildingShaders(model, this.camera, this.scene, this.renderer);
           log("building_shader_prepared", { key, meshes, durationMs: performance.now() - start });
         } catch (error) {
