@@ -8,7 +8,7 @@ import type { DemStore } from "../src/world/dem";
 import type { Tide } from "../src/world/tide";
 import { WaterLayer } from "../src/world/water";
 import { WaterCompute } from "../src/world/waterCompute";
-import { WATER_ZOOM } from "../src/world/waterGeometry";
+import { WATER_ZOOM, type WaterPolygon } from "../src/world/waterGeometry";
 
 beforeAll(() => RAPIER.init());
 afterEach(() => {
@@ -35,7 +35,7 @@ function setup() {
     x: Math.floor(gx),
     y: Math.floor(gy),
     version: 1,
-    polygons: [],
+    polygons: [] as WaterPolygon[],
     raster: new Uint8Array(0),
     cut: new Uint8Array(0),
     shores: [[{ pts, level: new Float32Array(4).fill(2), tide: new Float32Array(4) }]],
@@ -117,6 +117,48 @@ it("does not publish an evicted tile after its geometry yielded", async () => {
     expect(tile.surface).toBe(old);
   } finally {
     old.geometry.dispose();
+    water.dispose();
+    world.free();
+  }
+});
+
+it("retains raster boundaries and sees a cached tile replaced by a newly loaded dry tile", async () => {
+  const { water, world, internal, tile } = setup();
+  tile.polygons = [[tile.shores![0][0].pts]];
+  tile.raster = new Uint8Array(512 * 512).fill(1);
+  tile.raster[0] = 0;
+  const get = vi.spyOn(internal.tiles, "get");
+  try {
+    expect(water.isWater(tile.x, tile.y)).toBe(false);
+    expect(water.isWater(tile.x + 1 / 512, tile.y)).toBe(true);
+    expect(water.isWater(tile.x + 1 - Number.EPSILON * tile.x, tile.y + 0.5)).toBe(true);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(water.isWater(tile.x + 1, tile.y)).toBe(false);
+    await internal.fetchTile(tile.x, tile.y);
+    expect(water.isWater(tile.x + 0.5, tile.y + 0.5)).toBe(false);
+  } finally {
+    water.dispose();
+    world.free();
+  }
+});
+
+it("does not retain water from an evicted or disposed cached tile", async () => {
+  const { water, world, internal, tile } = setup();
+  tile.polygons = [[tile.shores![0][0].pts]];
+  tile.raster = new Uint8Array(512 * 512).fill(1);
+  const load = vi
+    .spyOn(internal as unknown as { load(x: number, y: number): Promise<void> }, "load")
+    .mockResolvedValue();
+  try {
+    expect(water.isWater(tile.x + 0.5, tile.y + 0.5)).toBe(true);
+    await water.around(tileYToLat(tile.y + 10.5, WATER_ZOOM), tileXToLon(tile.x + 10.5, WATER_ZOOM));
+    expect(load).toHaveBeenCalled();
+    expect(water.isWater(tile.x + 0.5, tile.y + 0.5)).toBe(false);
+    internal.tiles.set(`${tile.x}/${tile.y}`, tile);
+    expect(water.isWater(tile.x + 0.5, tile.y + 0.5)).toBe(true);
+    water.dispose();
+    expect(water.isWater(tile.x + 0.5, tile.y + 0.5)).toBe(false);
+  } finally {
     water.dispose();
     world.free();
   }

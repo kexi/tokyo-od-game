@@ -278,6 +278,10 @@ measure-scene-matrices:
 measure-water-masks:
     node scripts/qa/perf-water-masks.mjs
 
+# 実川岸2地域で水位・潮位・標高サンプルを旧処理と照合し、川岸生成CPUを計測する
+measure-water-samples:
+    node scripts/qa/perf-water-samples.mjs
+
 # 不透明な外壁の影を旧処理と両backend・全窓設定で全画素比較し、生成CPUを計測する
 measure-facade-shadows:
     node scripts/qa/facade-shadow-parity.mjs
