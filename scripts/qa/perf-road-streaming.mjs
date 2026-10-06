@@ -12,6 +12,7 @@ const out = join(
   new Date().toISOString().replace(/[:.]/g, "-") + "-streaming",
 );
 const detailed = process.env.QA_TIMING_ONLY !== "1";
+const captureVector = process.env.QA_CAPTURE_VECTOR === "1";
 mkdirSync(out, { recursive: true });
 const currentSources = {};
 for (const file of [
@@ -51,6 +52,12 @@ for (const file of [
   "src/world/water.ts",
   "src/world/waterGeometry.ts",
   "src/world/pavements.ts",
+  "src/world/roadTiles.ts",
+  "src/world/gsiVectorTiles.ts",
+  "src/world/vectorTileData.ts",
+  "src/world/vectorTileCompute.ts",
+  "src/world/vectorTile.worker.ts",
+  "src/world/vectorTilePolygons.ts",
   "src/geo/frame.ts",
   "src/geo/geoid.ts",
   "src/physics/colliderSnapshot.ts",
@@ -79,13 +86,33 @@ const report = {
   commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   status: execFileSync("git", ["status", "--short"], { encoding: "utf8" }),
   currentSources,
-  measurement: { detailed, cpuProfiler: !!process.env.QA_PROFILE },
+  measurement: { detailed, cpuProfiler: !!process.env.QA_PROFILE, captureVector },
   host: { cpu: cpus()[0]?.model, load: loadavg() },
   url: url.href,
   samples: [],
 };
 const save = () => writeFileSync(join(out, "report.json"), JSON.stringify(report, null, 2));
-const browser = await launch(url.href, { port: 9359 });
+const preload = captureVector
+  ? `{
+  window.__qaVectorTiles=[];window.__qaVectorInput=new WeakMap();
+  const fetchTile=window.fetch.bind(window);
+  window.fetch=(input,...args)=>{
+    const url=typeof input==='string'?input:input.url??String(input);
+    const vector=/\\/(\\d+)\\/(\\d+)\\/(\\d+)\\.(pbf|mvt)$/.exec(url);
+    if(!vector)return fetchTile(input,...args);
+    return fetchTile(input,...args).then(response=>{
+      const read=response.arrayBuffer.bind(response);
+      response.arrayBuffer=()=>read().then(buffer=>{
+        const entry={url,z:Number(vector[1]),x:Number(vector[2]),y:Number(vector[3]),
+          source:vector[4]==='pbf'?'gsi':'pavement',buffer,
+          geometryMs:0,geometryCalls:0,geometryMaxMs:0,featureMs:0,featureCalls:0,featureMaxMs:0};
+        __qaVectorTiles.push(entry);__qaVectorInput.set(buffer,entry);return buffer;
+      });return response;
+    });
+  };
+}`
+  : null;
+const browser = await launch(url.href, { port: 9359, preload });
 try {
   let ready = false;
   for (let i = 0; i < 120; i++) {
@@ -94,6 +121,26 @@ try {
     await browser.sleep(1000);
   }
   if (!ready) throw new Error("game did not become ready");
+  if (captureVector) {
+    await browser.evaluate(`(async()=>{
+      const path=performance.getEntriesByType('resource').find(e=>e.name.includes('/@mapbox_vector-tile.js'))?.name;
+      if(!path)throw new Error('actual vector-tile module missing');
+      const {VectorTileFeature,VectorTileLayer}=await import(path);
+      const wrap=(object,method,phase)=>{
+        const original=object[method];
+        object[method]=function(...args){
+          const at=performance.now();
+          try{return original.apply(this,args);}
+          finally{
+            const ms=performance.now()-at,entry=__qaVectorInput.get(this._pbf.buf.buffer);
+            if(entry){entry[phase+'Ms']+=ms;entry[phase+'Calls']++;entry[phase+'MaxMs']=Math.max(entry[phase+'MaxMs'],ms);}
+          }
+        };
+      };
+      wrap(VectorTileFeature.prototype,'loadGeometry','geometry');
+      wrap(VectorTileLayer.prototype,'feature','feature');
+    })()`);
+  }
   report.demParity = await browser.evaluate(`(async () => {
     const {DemCompute} = await import(new URL('src/world/demCompute.ts',location.href).href);
     const {smoothGround,parseDemText} = await import(new URL('src/world/demData.ts',location.href).href);
@@ -382,7 +429,7 @@ try {
         colliderPreparation:G.debug.logs.query({event:'collider_shape_prepared'}).filter(e=>e.ts>=watchDate),
         roadPreparation:G.debug.logs.query({event:'road_network_prepared'}).filter(e=>e.ts>=watchDate),
         instanceShaders:G.debug.logs.query({event:'streamed_shaders_prepared'}).filter(e=>e.ts>=watchDate),
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|streamed_shader_failed|terrain_worker_failed|terrain_build_failed|collider_worker_failed|log_schema_invalid/})};
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|vector_tile_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|streamed_shader_failed|terrain_worker_failed|terrain_build_failed|collider_worker_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");
@@ -403,6 +450,25 @@ try {
       }) + "\n",
     );
     await browser.sleep(1000);
+  }
+  if (captureVector) {
+    report.vectorTiles = await browser.evaluate(
+      `__qaVectorTiles.map(({buffer,...entry})=>({...entry,bytes:buffer.byteLength}))`,
+    );
+    for (let i = 0; i < report.vectorTiles.length; i++) {
+      const entry = report.vectorTiles[i],
+        file = `vector-${i}.bin`;
+      const chunks = [];
+      for (let offset = 0; offset < entry.bytes; offset += 32768) {
+        const encoded = await browser.evaluate(
+          `btoa(String.fromCharCode(...new Uint8Array(__qaVectorTiles[${i}].buffer,${offset},Math.min(32768,__qaVectorTiles[${i}].buffer.byteLength-${offset}))))`,
+        );
+        chunks.push(Buffer.from(encoded, "base64"));
+      }
+      writeFileSync(join(out, file), Buffer.concat(chunks));
+      entry.file = file;
+    }
+    save();
   }
   await browser.screenshot(join(out, "night-rain.png"));
   report.host.loadAfter = loadavg();

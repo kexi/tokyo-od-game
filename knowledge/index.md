@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [地図のPBFとMVTを同じWorkerで解析する](vector-tile-worker-performance.md) - 保存した実80タイルの1745904値が旧同期・実Worker・復旧処理で一致。反復比較のメインCPU145.6→54.1ms、総CPUと待ちは増える。夜雨のワープ50.1msと返答読み出し10msの一例は残る
+
 - [道路Workerの受領と復元を別フレームへ分ける](road-reply-frame-performance.md) - 実2地域17658912数値比較が一致。最長CPU区間5.7→3.8ms・7.3→6.2ms、待機約18〜20ms増。夜雨の両ワープ50.1ms、診断付きLoAF59.3msは残る
 
 - [水際と道路・歩道の反映を同じキューで処理する](shared-world-work-performance.md) - 川岸652061比較が一致、実52反映の重なり0件。診断なし8場面のrAF50ms超0回でもLoAF60.5ms・診断付き66.7msと水際の最大5.4秒待ちは残る

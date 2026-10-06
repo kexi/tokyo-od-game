@@ -266,6 +266,10 @@ measure-road-replies:
 measure-road-reply-slices:
     node scripts/qa/perf-road-reply-slices.mjs
 
+# 保存した実PBF/MVTを旧同期・実Worker・分割フォールバックで比較し、全座標とCPUを測る
+measure-vector-tiles report:
+    QA_VECTOR_INPUT={{ quote(report) }} node scripts/qa/perf-vector-tiles.mjs
+
 # 夜雨で目撃写真・動画の証拠画像を4件作り、描画・GPU要求の内訳を測る
 measure-witness-photos:
     node scripts/qa/perf-witness-photos.mjs

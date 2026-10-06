@@ -10,7 +10,7 @@ import * as vectorTiles from "../src/world/gsiVectorTiles";
 import type { Tide } from "../src/world/tide";
 import { WaterLayer } from "../src/world/water";
 import { WaterCompute } from "../src/world/waterCompute";
-import { WATER_ZOOM, type WaterPolygon } from "../src/world/waterGeometry";
+import { WATER_ZOOM, waterPolygons, type WaterPolygon } from "../src/world/waterGeometry";
 
 beforeAll(() => RAPIER.init());
 afterEach(() => {
@@ -74,11 +74,11 @@ function prepareShoreTiles() {
       { x: 100, y: 200 },
     ],
   ];
-  vi.spyOn(vectorTiles, "gsiVectorTile").mockResolvedValue({
-    layers: {
-      waterarea: { length: 1, extent: 4096, feature: () => ({ type: 3, loadGeometry: () => ring }) },
-    },
-  } as unknown as Awaited<ReturnType<typeof vectorTiles.gsiVectorTile>>);
+  vi.spyOn(vectorTiles, "gsiVectorTile").mockImplementation(async (_z, x, y) => ({
+    source: "gsi",
+    roads: [],
+    water: waterPolygons(ring, x, y, 4096),
+  }));
   vi.spyOn(WaterCompute.prototype, "rasterize").mockResolvedValue({
     raster: new Uint8Array(512 * 512).fill(1),
     cut: new Uint8Array(512 * 512).fill(255),

@@ -3,8 +3,8 @@ import { FrameWork } from "../game/frameWork";
 import { roadGeometrySteps } from "./roadGeometrySteps";
 import { updateRoadGeometry } from "./roadGeometry";
 import { reanchorBody } from "../physics/reanchor";
-import { VectorTile } from "@mapbox/vector-tile";
-import Pbf from "pbf";
+import { vectorTileCompute } from "./vectorTileCompute";
+export { polygonsOf } from "./vectorTilePolygons";
 import {
   BufferGeometry,
   CanvasTexture,
@@ -20,7 +20,7 @@ import {
   type Scene,
 } from "three";
 import type { LocalFrame } from "../geo/frame";
-import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
+import { latToTileY, lonToTileX } from "../geo/tiles";
 import { warn } from "../log";
 import { StreetMaterial } from "./streetLights";
 
@@ -103,88 +103,17 @@ async function fetchTile(base: string, x: number, y: number): Promise<PavementPo
   // Tiles outside a ward's data are missing (403 from the bucket, or 404).
   if (res.status === 403 || res.status === 404) return [];
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const tile = new VectorTile(new Pbf(new Uint8Array(await res.arrayBuffer())));
-  const out: PavementPolygon[] = [];
-  for (const [layerName, wanted, kind] of [
-    ["TrafficArea", "歩道部", "sidewalk"],
-    ["AuxiliaryTrafficArea", "島", "island"],
-  ] as const) {
-    const layer = tile.layers[layerName];
-    if (!layer) continue;
-    const extent = layer.extent;
-    for (let i = 0; i < layer.length; i++) {
-      const f = layer.feature(i);
-      if (f.type !== 3 || f.properties.tran_function !== wanted) continue;
-      for (const rings of polygonsOf(f.loadGeometry(), extent)) {
-        out.push({
-          kind,
-          rings: rings.map((ring) =>
-            ring.flatMap((pt) => [tileXToLon(x + pt.x / extent, ZOOM), tileYToLat(y + pt.y / extent, ZOOM)]),
-          ),
-        });
-      }
-    }
-  }
-  return out;
+  const tile = await vectorTileCompute.decode({
+    source: "pavement",
+    z: ZOOM,
+    x,
+    y,
+    buffer: await res.arrayBuffer(),
+  });
+  const isPavement = tile.source === "pavement";
+  if (!isPavement) throw new Error("Pavement tile response mismatch");
+  return tile.polygons;
 }
-
-type Pt = { x: number; y: number };
-
-/**
- * MVT rings → polygons (outer ring, then holes), each clipped to the tile square so the buffer
- * that neighbouring tiles share is not drawn twice. Outer rings are clockwise in tile space
- * (positive shoelace sum with y down), holes anticlockwise.
- */
-export function polygonsOf(rings: Pt[][], extent: number): Pt[][][] {
-  const polygons: Pt[][][] = [];
-  for (const ring of rings) {
-    const clipped = clipToSquare(ring, extent);
-    if (clipped.length < 3) continue;
-    const isOuter = shoelace(ring) > 0;
-    if (isOuter || polygons.length === 0) polygons.push([clipped]);
-    else polygons[polygons.length - 1].push(clipped);
-  }
-  return polygons;
-}
-
-const shoelace = (ring: Pt[]) => {
-  let s = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const a = ring[i];
-    const b = ring[(i + 1) % ring.length];
-    s += a.x * b.y - b.x * a.y;
-  }
-  return s;
-};
-
-/** Sutherland–Hodgman against [0, extent]². */
-function clipToSquare(ring: Pt[], extent: number): Pt[] {
-  let pts = ring;
-  const edges: Array<[(p: Pt) => boolean, (a: Pt, b: Pt) => Pt]> = [
-    [(p) => p.x >= 0, (a, b) => lerpAt(a, b, (0 - a.x) / (b.x - a.x))],
-    [(p) => p.x <= extent, (a, b) => lerpAt(a, b, (extent - a.x) / (b.x - a.x))],
-    [(p) => p.y >= 0, (a, b) => lerpAt(a, b, (0 - a.y) / (b.y - a.y))],
-    [(p) => p.y <= extent, (a, b) => lerpAt(a, b, (extent - a.y) / (b.y - a.y))],
-  ];
-  for (const [inside, cut] of edges) {
-    const next: Pt[] = [];
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length];
-      const aIn = inside(a);
-      const bIn = inside(b);
-      if (aIn) next.push(a);
-      if (aIn !== bIn) next.push(cut(a, b));
-    }
-    pts = next;
-    if (pts.length === 0) break;
-  }
-  // MVT rings repeat the first point at the end; drop it so triangulation sees a clean ring.
-  if (pts.length > 1 && pts[0].x === pts[pts.length - 1].x && pts[0].y === pts[pts.length - 1].y) pts.pop();
-  return pts;
-}
-
-const lerpAt = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 
 /** Procedural interlocking paving: 20×10 cm blocks in a running bond, 1 m per texture repeat. */
 function pavingTexture(): CanvasTexture {

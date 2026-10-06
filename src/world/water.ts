@@ -51,7 +51,6 @@ import {
   isClipEdge,
   triangulate,
   WATER_ZOOM,
-  waterPolygons,
   type Bay,
   type Gauge,
   type LevelChoice,
@@ -647,13 +646,7 @@ export class WaterLayer implements GroundWater {
   private async fetchTile(x: number, y: number): Promise<void> {
     const vt = await gsiVectorTile(WATER_ZOOM, x, y);
     if (!this.isCurrentTile(x, y)) return;
-    const layer = vt?.layers.waterarea;
-    const polygons: WaterPolygon[] = [];
-    const features = layer ? Array.from({ length: layer.length }, (_unused, i) => layer.feature(i)) : [];
-    for (const f of features) {
-      if (f.type !== 3 || !layer) continue;
-      polygons.push(...waterPolygons(f.loadGeometry(), x, y, layer.extent));
-    }
+    const polygons = vt?.water ?? [];
     const { raster, cut } = await this.masks.rasterize(polygons, x, y, RASTER);
     if (!this.isCurrentTile(x, y)) return;
     const tile: WaterTile = {

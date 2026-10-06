@@ -1,5 +1,5 @@
 import { ShapeUtils, Vector2 } from "three";
-import { polygonsOf } from "./pavements";
+import { polygonsOf } from "./vectorTilePolygons";
 
 /**
  * Pure parts of the water layer (GSI 地理院ベクトルタイル `waterarea`): polygons in global tile
