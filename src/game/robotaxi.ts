@@ -163,6 +163,7 @@ export class RoboTaxi {
   }
 
   dispose(): void {
+    this.driver.cancelPlanning();
     this.scene.remove(this.car.object);
     this.car.dispose();
   }

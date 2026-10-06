@@ -66,6 +66,8 @@ export class PolicePatrol {
   target: Vector3 | null = null;
   /** performance.now() when it was sent off after a stop (null: not since it last engaged). */
   releasedAt: number | null = null;
+  /** A newly placed car with no legal route goes off duty after the asynchronous reply. */
+  routeUnavailable = false;
 
   constructor(
     private readonly scene: Scene,
@@ -156,6 +158,7 @@ export class PolicePatrol {
   witness(record: ViolationRecord): PatrolEvent {
     this.seen.push(record);
     if (this.state === "pursuing") return null;
+    this.driver.cancelPlanning();
     this.state = "pursuing";
     this.stoppedFor = 0;
     this.releasedAt = null;
@@ -177,6 +180,7 @@ export class PolicePatrol {
    * `target` (the scene moves it as the car goes).
    */
   join(target: Vector3): void {
+    this.driver.cancelPlanning();
     this.state = "pursuing";
     this.managed = true;
     this.releasedAt = null;
@@ -188,6 +192,7 @@ export class PolicePatrol {
 
   /** Stop where it is with the lights on (the car has stopped, or it is posted at a 検問). */
   hold(): void {
+    this.driver.cancelPlanning();
     this.state = "ticketing";
     this.lightsAt = Math.min(this.lightsAt, performance.now());
   }
@@ -227,6 +232,7 @@ export class PolicePatrol {
   }
 
   dispose(): void {
+    this.driver.cancelPlanning();
     this.scene.remove(this.car.object);
     this.car.dispose();
   }
@@ -245,8 +251,13 @@ export class PolicePatrol {
     if (this.state === "pursuing") {
       // Follow the car: re-plan toward it as it moves (a managed unit toward where it was seen).
       const goal = this.managed && this.target ? this.target : player.position;
-      if (!this.driver.route || this.driver.remaining < 15 || now % 2000 < dt * 1000) {
-        this.driver.plan({ ...world, isEmergency: true }, goal);
+      const needsRoute =
+        !this.driver.planning && (!this.driver.route || this.driver.remaining < 15 || now % 2000 < dt * 1000);
+      if (needsRoute) {
+        const drive = { ...world, isEmergency: true };
+        const hasPlanner = world.planner !== undefined;
+        if (hasPlanner) void this.driver.planAsync(drive, goal);
+        else this.driver.plan(drive, goal);
       }
       // The unmarked car's beacon comes up when its tail is done: that is when the pursuit shows.
       const isLightsUp = now >= this.lightsAt;
@@ -269,7 +280,7 @@ export class PolicePatrol {
       this.state = "cruising";
     }
     if (this.state === "cruising" || this.state === "leaving") {
-      const isArrived = !this.driver.route || this.driver.remaining < 20;
+      const isArrived = !this.driver.planning && (!this.driver.route || this.driver.remaining < 20);
       if (isArrived) this.cruise(world, player.position);
     }
     this.car.setCoasting(!ground.hasCollider);
@@ -310,6 +321,15 @@ export class PolicePatrol {
     const seg = streets[Math.floor(Math.random() * streets.length)];
     if (!seg) return false;
     this.cruiseTarget = graph.sample(seg, seg.length / 2).pos.clone();
+    const hasPlanner = world.planner !== undefined;
+    if (hasPlanner) {
+      this.routeUnavailable = false;
+      void this.driver.planAsync(world, this.cruiseTarget).then((planned) => {
+        const failed = planned === false && this.driver.route === null;
+        if (failed) this.routeUnavailable = true;
+      });
+      return true;
+    }
     return this.driver.plan(world, this.cruiseTarget);
   }
 }

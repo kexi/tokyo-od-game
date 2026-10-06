@@ -5,11 +5,15 @@ import { cpus } from "node:os";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 
-const reference = "b73309b1b446d9e4b7a8a26ca6031589a4ca0ce0";
+const requestedReference = process.env.QA_REFERENCE ?? "b73309b1b446d9e4b7a8a26ca6031589a4ca0ce0";
+const reference = execFileSync("git", ["rev-parse", "--verify", `${requestedReference}^{commit}`], {
+  encoding: "utf8",
+}).trim();
 const out = join(".qa/perf", new Date().toISOString().replace(/[:.]/g, "-") + "-route-search");
 mkdirSync(out, { recursive: true });
 const sources = {};
 const currentSources = {};
+const workerRoutes = process.env.QA_WORKER === "1";
 for (const name of ["navigation", "autoDriver"]) {
   const source = execFileSync("git", ["show", `${reference}:src/game/${name}.ts`], { encoding: "utf8" });
   sources[name] = createHash("sha256").update(source).digest("hex");
@@ -19,6 +23,11 @@ for (const name of ["navigation", "autoDriver"]) {
   const isDriver = name === "autoDriver";
   if (isDriver) served = served.replace('from "../../../src/game/navigation"', 'from "./navigation-before"');
   writeFileSync(join(out, `${name}-before.ts`), served);
+  const current = readFileSync(`src/game/${name}.ts`, "utf8");
+  currentSources[name] = createHash("sha256").update(current).digest("hex");
+  writeFileSync(join(out, `${name}-current.txt`), current);
+}
+for (const name of ["drivingRoute", "drivingRouteData", "drivingRoutePlanner", "drivingRoute.worker"]) {
   const current = readFileSync(`src/game/${name}.ts`, "utf8");
   currentSources[name] = createHash("sha256").update(current).digest("hex");
   writeFileSync(join(out, `${name}-current.txt`), current);
@@ -35,6 +44,7 @@ const report = {
   reference,
   sources,
   currentSources,
+  workerRoutes,
   commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   status: execFileSync("git", ["status", "--short"], { encoding: "utf8" }),
   host: { cpu: cpus()[0]?.model },
@@ -79,6 +89,20 @@ try {
       const {gameClock}=await import(new URL('src/world/ruleTime.ts',location.href).href);
       const {planRoute}=await import(new URL('src/game/navigation.ts',location.href).href);
       const {AutoDriver}=await import(new URL('src/game/autoDriver.ts',location.href).href);
+      const {DrivingRoutePlanner}=await import(new URL('src/game/drivingRoutePlanner.ts',location.href).href);
+      const {onLogLine}=await import(new URL('src/log.ts',location.href).href);
+      const planner=new DrivingRoutePlanner();
+      const spans=new WeakMap(), finish=planner.finish;
+      planner.finish=function(job,...args){
+        spans.set(job.owner,job.span.spanId);
+        return finish.call(this,job,...args);
+      };
+      const routeLogs=[];
+      const stopLogs=onLogLine((_line,entry)=>{
+        if(entry.event==='route_plan_prepared'||entry.event==='route_plan_applied')routeLogs.push(entry);
+      });
+      planner.warm();
+      try {
       const {planRoute:oldRoute}=await import(new URL(${JSON.stringify(out + "/navigation-before.ts")},location.href).href);
       const {AutoDriver:OldDriver}=await import(new URL(${JSON.stringify(out + "/autoDriver-before.ts")},location.href).href);
       const snapshot=source.snapshot(), graph=RoadGraph.restore(snapshot,frame), a=G.getApplied();
@@ -120,7 +144,7 @@ try {
         return [...new Uint8Array(hash)].map(n=>n.toString(16).padStart(2,'0')).join('');
       };
       const methods={old:{route:oldRoute,Driver:OldDriver},current:{route:planRoute,Driver:AutoDriver}};
-      const run=(q,name,timed)=>{
+      const run=async(q,name,timed)=>{
         const method=methods[name], clock=gameClock(2026,10,1,q.minutes), target=new Vector3(...q.target);
         const isRoute=q.kind==='route';
         if(isRoute){
@@ -131,23 +155,36 @@ try {
         }
         const driver=new method.Driver();driver.place(new Vector3(...q.position),q.yaw);
         const world={graph,control:G.control,turnRules:turns,clock,obstacles:[],laneUse:lanes};
-        const before=performance.now(), planned=driver.plan(world,target), ms=performance.now()-before;
+        const useWorker=${workerRoutes} && name==='current';
+        const logStart=routeLogs.length;
+        const before=performance.now();
+        const planned=useWorker?await driver.planAsync({...world,planner},target):driver.plan(world,target);
+        const ms=performance.now()-before;
+        const spanId=spans.get(driver);
+        const logs=routeLogs.slice(logStart).filter(e=>e.spanId===spanId);
+        const prepared=logs.find(e=>e.event==='route_plan_prepared');
+        const applied=logs.find(e=>e.event==='route_plan_applied');
+        if(useWorker && (prepared?.backend!=='worker'||applied===undefined))
+          throw new Error('actual route Worker was not used or metrics missing');
+        if(useWorker && logs.filter(e=>e.event==='route_plan_prepared').length!==1)
+          throw new Error('route metrics contain multiple attempts');
         return {output:{planned,route:driver.route,lane:driver.lane,remaining:driver.remaining,
-          signal:driver.signal,activity:driver.activity,gaveUp:driver.gaveUp},ms:timed?ms:0};
+          signal:driver.signal,activity:driver.activity,gaveUp:driver.gaveUp},ms:timed?ms:0,
+          worker:useWorker?{...prepared,driverMainMs:applied.mainMs,mainMs:applied.mainMs+prepared.restoreMs}:undefined};
       };
-      for(const q of queries.slice(0,12)){
+      for(const q of [...queries.slice(0,12),...queries.filter(q=>q.kind==='driver').slice(0,3)]){
         graph.setClock(gameClock(2026,10,1,q.minutes));
-        run(q,'old',false);run(q,'current',false);
+        await run(q,'old',false);await run(q,'current',false);
         await new Promise(r=>requestAnimationFrame(r));
       }
       const rows=[];
       for(let i=0;i<queries.length;i++){
         const q=queries[i], results={};
         graph.setClock(gameClock(2026,10,1,q.minutes));
-        for(const name of i%2===0?['old','current']:['current','old'])results[name]=run(q,name,true);
+        for(const name of i%2===0?['old','current']:['current','old'])results[name]=await run(q,name,true);
         const matched=same(results.old.output,results.current.output);
         const hashes=await Promise.all([digest(results.old.output),digest(results.current.output)]);
-        rows.push({query:q,oldMs:results.old.ms,currentMs:results.current.ms,matched,hashes});
+        rows.push({query:q,oldMs:results.old.ms,currentMs:results.current.ms,worker:results.current.worker,matched,hashes});
         if(!matched)return {valid:false,rows,old:results.old.output,current:results.current.output};
         await new Promise(r=>requestAnimationFrame(r));
       }
@@ -161,11 +198,16 @@ try {
           summary[kind][name]={totalMs:times.reduce((a,b)=>a+b,0),maxMs:times.at(-1),p95Ms:times[Math.floor(times.length*.95)]};
         }
       }
+      const workerTimes=rows.filter(r=>r.worker).map(r=>r.worker.mainMs).toSorted((a,b)=>a-b);
+      const workerCpu=workerTimes.length?{count:workerTimes.length,totalMs:workerTimes.reduce((a,b)=>a+b,0),
+        maxMs:workerTimes.at(-1),p95Ms:workerTimes[Math.floor(workerTimes.length*.95)]}:null;
       return {valid:true,rows,summary,values,render:G.renderInfo,userAgent:navigator.userAgent,
+        workerCpu,
         segments:graph.segments.length,origin:frame.origin,turnRules:turns.map(r=>({...r,approach:r.approach.id})),
         laneUse:lanes.map(r=>({...r,seg:r.seg.id})),snapshot:{...snapshot,nodes:[...snapshot.nodes],pieces:[...snapshot.pieces]},
         session:G.debug.logs.query({event:'session_start'}).at(-1)?.traceId,
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|log_schema_invalid/})};
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|route_worker_failed|log_schema_invalid/})};
+      } finally {stopLogs();planner.dispose();}
     })()`);
     report.regions.push({ region, ...measured });
     save();
@@ -177,6 +219,7 @@ try {
         segments: measured.segments,
         summary: measured.summary,
         values: measured.values,
+        workerCpu: measured.workerCpu,
       }) + "\n",
     );
   }

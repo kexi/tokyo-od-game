@@ -1,6 +1,7 @@
 // Measure the complete streamed install, including the frames after new GPU data is published.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { cpus, loadavg } from "node:os";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
@@ -11,6 +12,21 @@ const out = join(
   new Date().toISOString().replace(/[:.]/g, "-") + "-streaming",
 );
 mkdirSync(out, { recursive: true });
+const currentSources = {};
+for (const file of [
+  "src/main.ts",
+  "src/game/autoDriver.ts",
+  "src/game/policePatrol.ts",
+  "src/game/robotaxi.ts",
+  "src/game/drivingRoute.ts",
+  "src/game/drivingRouteData.ts",
+  "src/game/drivingRoutePlanner.ts",
+  "src/game/drivingRoute.worker.ts",
+]) {
+  const source = readFileSync(file, "utf8");
+  currentSources[file] = createHash("sha256").update(source).digest("hex");
+  writeFileSync(join(out, file.replaceAll("/", "-") + ".txt"), source);
+}
 const url = new URL(process.env.QA_URL ?? "http://localhost:5173/tokyo-od-game/");
 for (const [key, value] of Object.entries({
   seed: "20261006",
@@ -22,6 +38,7 @@ for (const [key, value] of Object.entries({
 const report = {
   commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   status: execFileSync("git", ["status", "--short"], { encoding: "utf8" }),
+  currentSources,
   host: { cpu: cpus()[0]?.model, load: loadavg() },
   url: url.href,
   samples: [],
@@ -172,6 +189,7 @@ try {
         requestAnimationFrame(loop);
       });
       const watchStart = performance.now();
+      const watchDate = new Date().toISOString();
       const beforeWaterCount=G.debug.logs.query({event:'water_masks_prepared'}).length;
       const beforeMetadataCount=G.debug.logs.query({event:'building_batch_table_skipped'}).length;
       const beforeKeptMetadata=__qaKeptMetadata.length;
@@ -232,12 +250,13 @@ try {
         recentered:G.debug.logs.query({event:'frame_recentered'}).at(-1),
         installed:G.debug.logs.query({event:'road_network_built'}).at(-1),
         sameGame:G===window.__qaGame,
+        routes:G.debug.logs.query({event:/route_plan_prepared|route_plan_applied|route_plan_discarded/}).filter(e=>e.ts>=watchDate),
         session:G.debug.logs.query({limit:1}).at(-1)?.traceId,
         water:G.debug.logs.query({event:'water_masks_prepared'}).slice(beforeWaterCount),
         buildingMetadata:G.debug.logs.query({event:'building_batch_table_skipped'}).slice(beforeMetadataCount),
         buildingMetadataKept:__qaKeptMetadata.slice(beforeKeptMetadata),
         shaders:__qaShaders,
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|water_worker_failed|water_tile_failed|log_schema_invalid/})};
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");
