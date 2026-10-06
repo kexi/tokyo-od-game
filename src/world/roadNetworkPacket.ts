@@ -70,6 +70,15 @@ export function roadNetworkTransfers(packet: RoadNetworkPacket): ArrayBuffer[] {
 
 /** Rebuild the existing snapshot contract, including Map iteration and per-cell piece order. */
 export function unpackRoadNetwork(packet: RoadNetworkPacket): RoadNetworkRestorable {
+  const steps = unpackRoadNetworkSteps(packet);
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+  }
+}
+
+/** The same cell order, with checkpoints inside a large cell as well as between cells. */
+export function* unpackRoadNetworkSteps(packet: RoadNetworkPacket): Generator<void, RoadNetworkRestorable> {
   let pieces: RoadGraphSnapshot["pieces"] = null;
   const hasPieces = packet.pieces !== null;
   if (hasPieces) {
@@ -77,9 +86,14 @@ export function unpackRoadNetwork(packet: RoadNetworkPacket): RoadNetworkRestora
     pieces = new Map();
     for (let c = 0; c < index.keys.length; c++) {
       const pairs: Array<[number, number]> = [];
-      for (let i = index.offsets[c]; i < index.offsets[c + 1]; i++)
+      for (let i = index.offsets[c]; i < index.offsets[c + 1]; i++) {
         pairs.push([index.pairs[i * 2], index.pairs[i * 2 + 1]]);
+        const checkpoint = (i + 1) % 128 === 0;
+        if (checkpoint) yield;
+      }
       pieces.set(index.keys[c], pairs);
+      const checkpoint = (c + 1) % 128 === 0;
+      if (checkpoint) yield;
     }
   }
   return {

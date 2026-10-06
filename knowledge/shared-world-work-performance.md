@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-04-06T00:00:00Z
 generated: { by: codex, at: 2026-10-06T10:31:25Z }
 verified:
+  - { by: process:photo-sample-gap-and-terminal-perf-phase-reconciliation, at: 2026-10-06T11:02:44Z }
   - { by: process:1127-tests-types-lint-format-build-just-actions-and-knowledge, at: 2026-10-06T10:31:25Z }
   - { by: process:17-shared-queue-water-frame-and-pavement-tests-and-types, at: 2026-10-06T10:19:06Z }
   - {
@@ -96,6 +97,8 @@ M2 Max、Native Chrome154.0.8037.98 / Metal WebGPU、ultra・rooms、1280×800�
 別起動の診断は未読込地域50.1ms・50ms超4回、連続66.7ms・3回。before36523.400 ≤ mapped36523.985 ≤ after36542.300msで時計を照合し、44ソースが一致した。外壁FacadeMaterialの同期・非同期生成は両方0回。歩道883・2319ポリゴンの準備はCPU139.2・484.2ms、最大CPU区間は両方5.4ms。[^profile]
 
 連続66.7msの1区間にはGC self10.274ms、影inclusive10.460ms、歩道からのecefToGeodetic self3.552ms、地形colliderMeshからのgetZ self3.177msがある。別の66.7msにはWitnessShot.photo self43.421ms、updateTexture self13.471ms、spatialAudioのget placed self9.808msがあった。写真は既に暗室Workerで現像するため、このselfをJPEG現像と断定せず、次はphotoの描画・読み戻しを調べる。別50.1msには道路Worker返答self3.755msと歩道heightAt self2.523ms。selfとinclusiveを加算して全体CPUの内訳にしない。[^profile] [^previous]
+
+2026-10-06追記: [撮影の再計測](road-reply-frame-performance.md)で、photoの1サンプルの前に57.807msの間隔があり、上記43.421msはその一部の割当であることを確認した。同じtraceの端末perf_phaseのshot.photo実測は29.9ms。43.421msを撮影の実測CPU時間と断定しない。強制4撮影は9.2/6.1/6.5/6.9ms、自然なワープ中撮影はdraw4.3msで、この条件では長い撮影は再現していない。
 
 端末ログは部品2262行（info2261・warn1）、全体3641行・診断3281行は全てinfo。部品のwarnはtide_table_failed（外部fetch失敗）。対象の道路・水域・Worker・未捕捉例外・ログスキーマ失敗は0件。[^logs]
 

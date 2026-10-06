@@ -165,10 +165,98 @@ function client(options: ConstructorParameters<typeof RoadNetworkBuilder>[0] = {
 }
 afterEach(() => {
   builders.splice(0).forEach((b) => b.dispose());
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe("road worker request lifetime", () => {
+  it("leaves the worker message task before restoring or publishing its graph", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+    const { worker, builder } = client();
+    const pending = builder.build(lines, regs, frame);
+    const resolved = vi.fn();
+    void pending.then(resolved);
+    worker.reply(0);
+    await Promise.resolve();
+    expect(resolved).not.toHaveBeenCalled();
+    expect(frames).toHaveLength(1);
+    frames.shift()!(0);
+    const result = await pending;
+    expect(result!.applied!.stopSigns[0].line).toBe(result!.applied!.stopLines[0]);
+    expect(result!.graph.segments).toEqual(
+      restoreRoadNetwork(computeRoadNetwork({ lines, regs, origin: frame.origin }), frame).graph.segments,
+    );
+  });
+
+  it.each(["invalidate", "dispose"] as const)(
+    "never reads a reply cancelled by %s while waiting for a frame",
+    async (operation) => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+      const { worker, builder } = client();
+      const pending = builder.build(lines, regs, frame);
+      const packet = packRoadNetwork(computeRoadNetwork(worker.sent[0].input));
+      const points = vi.fn(() => {
+        throw new Error("cancelled buffer accessed");
+      });
+      Object.defineProperty(packet, "points", { get: points });
+      worker.dispatchEvent(new MessageEvent("message", { data: { id: worker.sent[0].id, data: packet } }));
+      builder[operation]();
+      expect(await pending).toBeNull();
+      frames.shift()!(0);
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+      expect(points).not.toHaveBeenCalled();
+    },
+  );
+
+  it("stops restoring a large cell at the next checkpoint when a newer area arrives", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => (clock += 3));
+    const { worker, builder } = client();
+    const first = builder.build(lines, regs, frame);
+    const data = computeRoadNetwork(worker.sent[0].input);
+    data.graph.pieces = new Map([["large", Array.from({ length: 2048 }, () => [0, 0] as [number, number])]]);
+    const packet = packRoadNetwork(data);
+    const pairs = packet.pieces!.pairs;
+    const read = vi.fn(() => pairs);
+    Object.defineProperty(packet.pieces!, "pairs", { get: read });
+    worker.dispatchEvent(new MessageEvent("message", { data: { id: worker.sent[0].id, data: packet } }));
+    frames.shift()!(0);
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    expect(frames).toHaveLength(1);
+    expect(read.mock.calls.length).toBeGreaterThan(0);
+    expect(read.mock.calls.length).toBeLessThan(4096);
+    const readBefore = read.mock.calls.length;
+    const next = builder.build(lines, regs, new LocalFrame(35.681, 139.762, 35));
+    expect(await first).toBeNull();
+    frames.shift()!(0);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(read).toHaveBeenCalledTimes(readBefore);
+    expect(worker.sent).toHaveLength(2);
+    builder.dispose();
+    expect(await next).toBeNull();
+  });
+
+  it("clears the response timeout and ignores duplicate replies during frame waits", async () => {
+    vi.useFakeTimers();
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+    const { worker, builder } = client({ timeoutMs: 100 });
+    const pending = builder.build(lines, regs, frame);
+    worker.reply(0);
+    worker.reply(0);
+    expect(frames).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(worker.terminated).toBe(false);
+    frames.shift()!(0);
+    expect((await pending)!.graph.segments).toHaveLength(4);
+    expect(worker.sent).toHaveLength(1);
+  });
+
   it("accepts a raw snapshot reply for the inline/reference contract too", async () => {
     const { worker, builder } = client();
     const pending = builder.build(lines, regs, frame);

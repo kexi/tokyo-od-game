@@ -277,6 +277,8 @@ export const LOG_EVENTS = {
     readMs: z.number(),
     unpackMs: z.number(),
     packMs: z.number(),
+    maxSliceMs: z.number(),
+    yields: count,
     durationMs: z.number(),
   }),
   road_network_built: info({
