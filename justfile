@@ -322,6 +322,10 @@ measure-terrain-water:
 measure-terrain-worker:
     node scripts/qa/perf-terrain-worker.mjs
 
+# 実道路・DEM2地域で高さと座標を旧処理と照合し、境界と橋を含め照会CPUを計測する
+measure-ground-queries:
+    node scripts/qa/perf-ground-queries.mjs
+
 # 実道路2地域で旧経路探索と全経路・自動運転計画を比較し、CPUを測る
 measure-route-search:
     node scripts/qa/perf-route-search.mjs

@@ -807,13 +807,14 @@ async function main(): Promise<void> {
   for (const p of pois) wardTotals.set(p.ward, (wardTotals.get(p.ward) ?? 0) + 1);
 
   // ---------- helpers bound to the current frame ----------
+  const groundPoint = new Vector3();
   const groundY = (x: number, z: number): number | null => {
     // On a bridge the ground is its deck: the DEM there is the riverbed.
     const deck = water.deckAt(x, z);
     if (deck !== null) return deck;
-    const g = frame.toGeodetic(new Vector3(x, 0, z));
+    const g = frame.toGeodetic(groundPoint.set(x, 0, z));
     const h = dem.heightAt(g.lat, g.lon);
-    return h === null ? null : frame.toLocal(g.lat, g.lon, h).y;
+    return h === null ? null : frame.toLocal(g.lat, g.lon, h, groundPoint).y;
   };
 
   // Fixed colliders only (terrain + buildings): cars, buses and pedestrians are not "ground".

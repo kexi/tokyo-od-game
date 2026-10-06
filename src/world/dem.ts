@@ -81,10 +81,29 @@ export class DemStore {
     const y0 = Math.floor(gy);
     const tx = gx - x0;
     const ty = gy - y0;
-    const a = this.pixel(x0, y0);
-    const b = this.pixel(x0 + 1, y0);
-    const c = this.pixel(x0, y0 + 1);
-    const d = this.pixel(x0 + 1, y0 + 1);
+    const px = ((x0 % SIZE) + SIZE) % SIZE;
+    const py = ((y0 % SIZE) + SIZE) % SIZE;
+    const crossesTile = px === SIZE - 1 || py === SIZE - 1;
+    let a: number, b: number, c: number, d: number;
+    if (crossesTile) {
+      a = this.pixel(x0, y0);
+      b = this.pixel(x0 + 1, y0);
+      c = this.pixel(x0, y0 + 1);
+      d = this.pixel(x0 + 1, y0 + 1);
+    } else {
+      // Query the live store rather than caching a missing tile across its eventual arrival.
+      const tile = this.loaded.get(`${Math.floor(x0 / SIZE)}/${Math.floor(y0 / SIZE)}`);
+      const isMissing = !tile;
+      if (isMissing) {
+        a = b = c = d = 0;
+      } else {
+        const i = py * SIZE + px;
+        a = tile![i];
+        b = tile![i + 1];
+        c = tile![i + SIZE];
+        d = tile![i + SIZE + 1];
+      }
+    }
     return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
   }
 
