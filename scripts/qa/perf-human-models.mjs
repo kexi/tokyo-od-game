@@ -77,6 +77,7 @@ try {
   save();
   throw error;
 } finally {
-  if (browser) await browser.close();
+  const hasBrowser = browser !== undefined;
+  if (hasBrowser) await browser.close();
   rmSync(join(refDir, "human.ts"), { force: true });
 }

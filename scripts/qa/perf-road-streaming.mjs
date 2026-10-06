@@ -211,12 +211,14 @@ try {
   if (capturePedestrians) {
     await browser.evaluate(`(async()=>{
       const path=performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/world/pedestrians.ts'))?.name;
-      if(!path)throw new Error('actual pedestrians module missing');
+      const pathMissing=!path;
+      if(pathMissing)throw new Error('actual pedestrians module missing');
       const {Pedestrians}=await import(path),prototype=Pedestrians.prototype;
       window.__qaPedestrians=[];
       for(const method of ['spawn','fill']){
         const original=prototype[method];
-        if(typeof original!=='function')throw new Error('pedestrian '+method+' missing');
+        const methodMissing=typeof original!=='function';
+        if(methodMissing)throw new Error('pedestrian '+method+' missing');
         prototype[method]=function(...args){
           const at=performance.now(),before=this.list.length;
           try{return original.apply(this,args);}
