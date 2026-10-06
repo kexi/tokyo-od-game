@@ -326,6 +326,10 @@ measure-terrain-worker:
 measure-ground-queries:
     node scripts/qa/perf-ground-queries.mjs
 
+# 実歩道2地域で補正高・描画・物理を旧処理と照合し、大きな生成区間のCPUを計測する
+measure-pavement-slices:
+    node scripts/qa/perf-pavement-slices.mjs
+
 # 実道路2地域で旧経路探索と全経路・自動運転計画を比較し、CPUを測る
 measure-route-search:
     node scripts/qa/perf-route-search.mjs

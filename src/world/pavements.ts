@@ -277,23 +277,32 @@ export class Pavements {
       if (rings[0].length < 3) continue;
       const flat = rings.flat();
       const tris = ShapeUtils.triangulateShape(rings[0], rings.slice(1));
-      const heights = liftedHeights(flat, tris, (x, z) => (this.groundAt(x, z) ?? 0) + KERB);
+      const heights = yield* liftedHeightSteps(flat, tris, (x, z) => (this.groundAt(x, z) ?? 0) + KERB);
       // Top surface.
       const b = byKind[poly.kind];
       const base = b.pos.length / 3;
       const cBase = colliderPos.length / 3;
-      flat.forEach((p, i) => {
+      for (let i = 0; i < flat.length; i++) {
+        const p = flat[i];
         b.pos.push(p.x, heights[i], p.y);
         b.uv.push(p.x, p.y);
         colliderPos.push(p.x, heights[i], p.y);
-      });
+        const isSlice = (i + 1) % 128 === 0;
+        if (isSlice) yield;
+      }
+      let triangles = 0;
       for (const [i, j, k] of tris) {
         // Wind each triangle to face up (+Y) whatever order the triangulator returned.
-        const [pa, pb, pc] = [flat[i], flat[j], flat[k]];
+        const pa = flat[i],
+          pb = flat[j],
+          pc = flat[k];
         const isUp = (pb.y - pa.y) * (pc.x - pa.x) - (pb.x - pa.x) * (pc.y - pa.y) > 0;
-        const [u, v] = isUp ? [j, k] : [k, j];
+        const u = isUp ? j : k,
+          v = isUp ? k : j;
         b.idx.push(base + i, base + u, base + v);
         colliderIdx.push(cBase + i, cBase + u, cBase + v);
+        const isSlice = ++triangles % 128 === 0;
+        if (isSlice) yield;
       }
       // Kerb faces round every ring, from below the road surface up to the paving.
       let offset = 0;
@@ -313,6 +322,8 @@ export class Pavements {
           const q = colliderPos.length / 3;
           colliderPos.push(a.x, ya, a.y, c.x, yc, c.y, c.x, yc - KERB, c.y, a.x, ya - KERB, a.y);
           colliderIdx.push(q, q + 1, q + 2, q, q + 2, q + 3, q, q + 2, q + 1, q, q + 3, q + 2);
+          const isSlice = (i + 1) % 128 === 0;
+          if (isSlice) yield;
         }
         offset += ring.length;
       }
@@ -491,24 +502,63 @@ export function liftedHeights(
   tris: number[][],
   heightAt: (x: number, z: number) => number,
 ): number[] {
-  const h = pts.map((p) => heightAt(p.x, p.y));
+  const steps = liftedHeightSteps(pts, tris, heightAt);
+  for (;;) {
+    const result = steps.next();
+    const isDone = result.done;
+    if (isDone) return result.value;
+  }
+}
+
+// The probes never change; per-triangle arrays only add garbage during streamed preparation.
+const HEIGHT_PROBES = [
+  [1 / 3, 1 / 3, 1 / 3],
+  [0.5, 0.5, 0],
+  [0, 0.5, 0.5],
+  [0.5, 0, 0.5],
+] as const;
+
+/** Preserve both correction passes while allowing the shared frame budget to stop between probes. */
+export function* liftedHeightSteps(
+  pts: Vector2[],
+  tris: number[][],
+  heightAt: (x: number, z: number) => number,
+): Generator<void, number[]> {
+  const h: number[] = [];
+  h.length = pts.length;
+  let remaining = 128;
+  for (let i = 0; i < pts.length; i++) {
+    const hasPoint = i in pts;
+    if (!hasPoint) continue;
+    const p = pts[i];
+    h[i] = heightAt(p.x, p.y);
+    const isSlice = --remaining === 0;
+    if (isSlice) {
+      remaining = 128;
+      yield;
+    }
+  }
   for (let pass = 0; pass < 2; pass++) {
     const lift = Array.from({ length: pts.length }, () => 0);
     for (const t of tris) {
-      const probes: Array<[number, number, number]> = [
-        [1 / 3, 1 / 3, 1 / 3],
-        [0.5, 0.5, 0],
-        [0, 0.5, 0.5],
-        [0.5, 0, 0.5],
-      ];
-      for (const [wa, wb, wc] of probes) {
+      for (const [wa, wb, wc] of HEIGHT_PROBES) {
         const x = pts[t[0]].x * wa + pts[t[1]].x * wb + pts[t[2]].x * wc;
         const z = pts[t[0]].y * wa + pts[t[1]].y * wb + pts[t[2]].y * wc;
         const deficit = heightAt(x, z) - (h[t[0]] * wa + h[t[1]] * wb + h[t[2]] * wc);
-        if (deficit > 0) for (const i of t) lift[i] = Math.max(lift[i], deficit);
+        const needsLift = deficit > 0;
+        if (needsLift) for (const i of t) lift[i] = Math.max(lift[i], deficit);
+        const isSlice = --remaining === 0;
+        if (isSlice) {
+          remaining = 128;
+          yield;
+        }
       }
     }
-    for (let i = 0; i < h.length; i++) h[i] += lift[i];
+    for (let i = 0; i < h.length; i++) {
+      h[i] += lift[i];
+      const isSlice = (i + 1) % 512 === 0;
+      if (isSlice) yield;
+    }
   }
   return h;
 }

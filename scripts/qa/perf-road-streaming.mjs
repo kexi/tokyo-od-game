@@ -43,6 +43,7 @@ for (const file of [
   "src/world/terrainCompute.ts",
   "src/world/terrain.worker.ts",
   "src/world/dem.ts",
+  "src/world/pavements.ts",
   "src/geo/frame.ts",
   "src/geo/geoid.ts",
   "src/physics/colliderSnapshot.ts",
@@ -137,7 +138,7 @@ try {
       ...G.orbis.meshes, ...G.furniture.group.children].filter(Boolean);
   }`);
   await browser.evaluate(`window.__qaCpu=[];window.__qaShaders=[];
-    window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];`);
+    window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];window.__qaPavements=[];`);
   if (detailed) {
     await browser.evaluate(`(async () => {
     const {BuildingMetadataPlugin}=await import(new URL('src/world/buildingMetadata.ts',location.href).href);
@@ -186,6 +187,14 @@ try {
     [__game.transit,'update','transit'], [__game.control,'update','control'],
     [__game.guideSigns,'update','guideSigns'], [__game.orbis,'update','orbis'],
   ]) __qaWrap(object,method,phase);`);
+    await browser.evaluate(`const pavements=__game.pavements,rebuild=pavements.rebuildAsync;
+    pavements.rebuildAsync=function(polys,frame,work){
+      const at=performance.now();
+      return rebuild.call(this,polys,frame,work).finally(()=>{
+        __qaPavements.push({at,polygons:polys.length,durationMs:performance.now()-at,
+          cpuMs:work.cpuMs,maxSliceMs:work.maxSliceMs,yields:work.yields});
+      });
+    };`);
     await browser.evaluate(`window.__qaShaders=[];window.__qaAsyncShaders=[];
     const original=__game.renderer.debug.onNodeBuilderCreated;
     __game.renderer.debug.onNodeBuilderCreated=(builder,renderObject)=>{
@@ -311,6 +320,7 @@ try {
         buildingMetadataKept:__qaKeptMetadata.slice(beforeKeptMetadata),
         shaders:__qaShaders,
         asyncShaders:__qaAsyncShaders,
+        pavementPreparation:__qaPavements.filter(entry=>entry.at>=watchStart),
         buildingPreparation:G.debug.logs.query({event:'building_facade_prepared'}).filter(e=>e.ts>=watchDate),
         buildingShaders:G.debug.logs.query({event:'building_shader_prepared'}).filter(e=>e.ts>=watchDate),
         terrainPreparation:G.debug.logs.query({event:'terrain_chunk_prepared'}).filter(e=>e.ts>=watchDate),
