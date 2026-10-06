@@ -11,6 +11,7 @@ import {
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { sharedDraco } from "../render/draco";
+import { cloneHumanPart } from "./humanParts";
 
 export type HumanColors = { shirt: number; pants: number; skin: number; hair: number; umbrella: number };
 
@@ -98,13 +99,18 @@ const umbrellaMaterial = (color: number) => {
   return m;
 };
 const shaftMaterial = new MeshStandardMaterial({ color: 0x222222, roughness: 0.5 });
+// Each person moves their own meshes; the identical umbrella vertices need only one CPU/GPU copy.
+const canopyGeometry = new ConeGeometry(0.55, 0.25, 12, 1, true);
+const shaftGeometry = new CylinderGeometry(0.01, 0.01, 0.7);
 
 /** Person (~1.7 m × height) with pivoting limbs for a walk cycle. Feet at y = 0, facing +Z. */
 export function createHuman(colors: HumanColors, height = 1, variant = 0): HumanModel {
-  if (!parts) throw new Error("loadHumanModels() has not finished");
+  const templates = parts;
+  const unavailable = templates === null;
+  if (unavailable) throw new Error("loadHumanModels() has not finished");
   const root = new Group();
   const clone = (name: PartName) => {
-    const o = parts?.[name].clone(true) as Object3D;
+    const o = cloneHumanPart(templates[name]);
     o.traverse((m) => {
       if (m instanceof Mesh) m.material = tint(m.material as Material, colors);
     });
@@ -132,9 +138,11 @@ export function createHuman(colors: HumanColors, height = 1, variant = 0): Human
   const shins: [Group, Group] = [joint("ShinR", legs[0], legs[0]), joint("ShinL", legs[1], legs[1])];
 
   const umbrella = new Group();
-  const canopy = new Mesh(new ConeGeometry(0.55, 0.25, 12, 1, true), umbrellaMaterial(colors.umbrella));
+  const canopy = new Mesh(canopyGeometry, umbrellaMaterial(colors.umbrella));
+  canopy.userData.shared = true;
   canopy.position.y = 2.05;
-  const shaft = new Mesh(new CylinderGeometry(0.01, 0.01, 0.7), shaftMaterial);
+  const shaft = new Mesh(shaftGeometry, shaftMaterial);
+  shaft.userData.shared = true;
   shaft.position.y = 1.75;
   umbrella.add(canopy, shaft);
   umbrella.position.x = -0.2; // held in the right hand (−X)
@@ -155,10 +163,9 @@ export function animateHuman(h: HumanModel, phase: number, speed: number, holdin
   const isMoving = speed > 0.05;
   const run = Math.min(1, Math.max(0, (speed - 2) / 2.5)); // 0 walking … 1 running
   const hipAmp = isMoving ? Math.min(0.75, 0.3 + speed * 0.12) : 0;
-  for (const [k, offset] of [
-    [0, 0],
-    [1, Math.PI],
-  ] as const) {
+  // Each animated person runs this every frame; tuple arrays and iterators would be short-lived.
+  for (let k = 0; k < 2; k++) {
+    const offset = k * Math.PI;
     const p = phase + offset;
     // Positive rotation.x moves a hanging limb backward (toward −Z).
     h.legs[k].rotation.x = -hipAmp * Math.sin(p);
@@ -267,9 +274,10 @@ export function poseFilming(h: HumanModel, phone: Object3D, amount: number, pitc
   }
 }
 
-/** Frees what one person owns (the umbrella); body parts share the loaded templates. */
+/** Only per-person attachments are owned; body parts and umbrellas keep their shared geometry. */
 export function disposeHuman(h: HumanModel): void {
   h.root.traverse((o) => {
-    if (o instanceof Mesh && !o.userData.shared) o.geometry.dispose();
+    const isOwnedGeometry = o instanceof Mesh && !o.userData.shared;
+    if (isOwnedGeometry) o.geometry.dispose();
   });
 }

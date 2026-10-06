@@ -15,6 +15,7 @@ const detailed = process.env.QA_TIMING_ONLY !== "1";
 const captureVector = process.env.QA_CAPTURE_VECTOR === "1";
 const captureBindings = process.env.QA_BINDINGS === "1";
 const coalesceBindings = process.env.QA_COALESCE === "1";
+const capturePedestrians = process.env.QA_PEDESTRIANS === "1";
 mkdirSync(out, { recursive: true });
 const currentSources = {};
 for (const file of [
@@ -28,6 +29,9 @@ for (const file of [
   "src/render/streamedInstanceShaders.ts",
   "src/world/roadInstances.ts",
   "src/game/autoDriver.ts",
+  "src/world/human.ts",
+  "src/world/humanParts.ts",
+  "src/world/pedestrians.ts",
   "src/game/policePatrol.ts",
   "src/game/robotaxi.ts",
   "src/game/drivingRoute.ts",
@@ -95,6 +99,7 @@ const report = {
     captureVector,
     captureBindings,
     coalesceBindings,
+    capturePedestrians,
   },
   host: { cpu: cpus()[0]?.model, load: loadavg() },
   url: url.href,
@@ -203,6 +208,25 @@ try {
   await browser.evaluate(`window.__qaCpu=[];window.__qaShaders=[];
     window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];window.__qaPavements=[];
     window.__qaWorldWork=[];window.__qaWitness=[];`);
+  if (capturePedestrians) {
+    await browser.evaluate(`(async()=>{
+      const path=performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/world/pedestrians.ts'))?.name;
+      const pathMissing=!path;
+      if(pathMissing)throw new Error('actual pedestrians module missing');
+      const {Pedestrians}=await import(path),prototype=Pedestrians.prototype;
+      window.__qaPedestrians=[];
+      for(const method of ['spawn','fill']){
+        const original=prototype[method];
+        const methodMissing=typeof original!=='function';
+        if(methodMissing)throw new Error('pedestrian '+method+' missing');
+        prototype[method]=function(...args){
+          const at=performance.now(),before=this.list.length;
+          try{return original.apply(this,args);}
+          finally{__qaPedestrians.push({at,method,ms:performance.now()-at,before,after:this.list.length});}
+        };
+      }
+    })()`);
+  }
   if (coalesceBindings) {
     await browser.evaluate(`(async()=>{
       const {coalesceUniformUploads}=await import(new URL('scripts/qa/uniformUploads.ts',location.href).href);
@@ -493,6 +517,7 @@ try {
         colliderPreparation:G.debug.logs.query({event:'collider_shape_prepared'}).filter(e=>e.ts>=watchDate),
         roadPreparation:G.debug.logs.query({event:'road_network_prepared'}).filter(e=>e.ts>=watchDate),
         uniformFrames:${captureBindings}?__qaUniformFrames.filter(e=>e.at>=watchStart):undefined,
+        pedestrianCalls:${capturePedestrians}?__qaPedestrians.filter(e=>e.at>=watchStart):undefined,
         instanceShaders:G.debug.logs.query({event:'streamed_shaders_prepared'}).filter(e=>e.ts>=watchDate),
         errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|vector_tile_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|streamed_shader_failed|terrain_worker_failed|terrain_build_failed|collider_worker_failed|log_schema_invalid/})};
     })()`);
