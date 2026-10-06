@@ -286,6 +286,10 @@ measure-building-metadata:
 measure-terrain-mask:
     node scripts/qa/terrain-mask-parity.mjs
 
+# 実道路2地域で旧経路探索と全経路・自動運転計画を比較し、CPUを測る
+measure-route-search:
+    node scripts/qa/perf-route-search.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit
