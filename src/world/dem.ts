@@ -43,6 +43,7 @@ export class DemStore {
   /** DEM5A's text edition (NaN where it has no value), for reading surveyed water surfaces. */
   private readonly surveyed = new Map<string, Promise<Float32Array | null>>();
   private readonly surveyedReady = new Map<string, Float32Array | null>();
+  private surveyedTile: { x: number; y: number; data: Float32Array } | null = null;
   private readonly coarse = new Map<string, Promise<Float32Array | null>>();
 
   constructor(private readonly geoid: Geoid) {}
@@ -131,6 +132,7 @@ export class DemStore {
         .catch(() => null)
         .then((tile) => {
           this.surveyedReady.set(key, tile);
+          this.surveyedTile = null;
           return tile;
         });
       this.surveyed.set(key, p);
@@ -146,9 +148,15 @@ export class DemStore {
   surveyedAt(gx: number, gy: number): number {
     const x = Math.floor(gx);
     const y = Math.floor(gy);
-    const tile = this.surveyedReady.get(`${Math.floor(x / SIZE)}/${Math.floor(y / SIZE)}`);
-    if (!tile) return Number.NaN;
-    return tile[(((y % SIZE) + SIZE) % SIZE) * SIZE + (((x % SIZE) + SIZE) % SIZE)];
+    const tx = Math.floor(x / SIZE);
+    const ty = Math.floor(y / SIZE);
+    const sameTile = this.surveyedTile?.x === tx && this.surveyedTile.y === ty;
+    const tile = sameTile ? this.surveyedTile!.data : this.surveyedReady.get(`${tx}/${ty}`);
+    const isMissing = !tile;
+    if (isMissing) return Number.NaN;
+    const needsRemembering = !sameTile;
+    if (needsRemembering) this.surveyedTile = { x: tx, y: ty, data: tile! };
+    return tile![(((y % SIZE) + SIZE) % SIZE) * SIZE + (((x % SIZE) + SIZE) % SIZE)];
   }
 
   ellipsoidal(lat: number, lon: number, orthometric: number): number {

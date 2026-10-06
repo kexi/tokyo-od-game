@@ -136,6 +136,7 @@ type Span = {
  */
 export class WaterLayer implements GroundWater {
   private readonly tiles = new Map<string, WaterTile>();
+  private waterTile: WaterTile | undefined;
   private readonly loading = new Map<string, Promise<void>>();
   private readonly masks = new WaterCompute();
   private disposed = false;
@@ -219,6 +220,7 @@ export class WaterLayer implements GroundWater {
       if (!isFar) continue;
       this.disposeTile(tile);
       this.tiles.delete(key);
+      this.waterTile = undefined;
     }
     await Promise.all(inner);
   }
@@ -293,11 +295,18 @@ export class WaterLayer implements GroundWater {
 
   /** Is the global z16 point on water (as far as the loaded tiles know)? */
   isWater(gx: number, gy: number): boolean {
-    const tile = this.tiles.get(`${Math.floor(gx)}/${Math.floor(gy)}`);
-    if (!tile || tile.polygons.length === 0) return false;
-    const i = Math.min(RASTER - 1, Math.floor((gx - tile.x) * RASTER));
-    const j = Math.min(RASTER - 1, Math.floor((gy - tile.y) * RASTER));
-    return tile.raster[j * RASTER + i] === 1;
+    const x = Math.floor(gx);
+    const y = Math.floor(gy);
+    const sameTile = this.waterTile?.x === x && this.waterTile.y === y;
+    const tile = sameTile ? this.waterTile : this.tiles.get(`${x}/${y}`);
+    const isMissing = !tile;
+    if (isMissing) return false;
+    this.waterTile = tile;
+    const isDryTile = tile!.polygons.length === 0;
+    if (isDryTile) return false;
+    const i = Math.min(RASTER - 1, Math.floor((gx - tile!.x) * RASTER));
+    const j = Math.min(RASTER - 1, Math.floor((gy - tile!.y) * RASTER));
+    return tile!.raster[j * RASTER + i] === 1;
   }
 
   /** Has the water of the tile under a local point been loaded (it may have none)? */
@@ -660,6 +669,7 @@ export class WaterLayer implements GroundWater {
       probe: new Float32Array(0),
     };
     this.tiles.set(`${x}/${y}`, tile);
+    this.waterTile = undefined;
     if (polygons.length === 0) return;
     // Levels and walls read the DEM around the tile: its z15 parent, and the parents' neighbours on
     // the sides this quarter touches (samples reach 30 m across the border).
@@ -1245,6 +1255,7 @@ export class WaterLayer implements GroundWater {
     this.masks.dispose();
     for (const tile of this.tiles.values()) this.disposeTile(tile);
     this.tiles.clear();
+    this.waterTile = undefined;
     this.clearDecks();
     if (this.shoreBody) this.world.removeRigidBody(this.shoreBody);
     this.reflection?.dispose();

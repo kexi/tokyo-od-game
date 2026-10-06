@@ -44,6 +44,8 @@ for (const file of [
   "src/world/terrainCompute.ts",
   "src/world/terrain.worker.ts",
   "src/world/dem.ts",
+  "src/world/water.ts",
+  "src/world/waterGeometry.ts",
   "src/world/pavements.ts",
   "src/geo/frame.ts",
   "src/geo/geoid.ts",
