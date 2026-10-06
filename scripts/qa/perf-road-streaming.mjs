@@ -13,6 +13,8 @@ const out = join(
 );
 const detailed = process.env.QA_TIMING_ONLY !== "1";
 const captureVector = process.env.QA_CAPTURE_VECTOR === "1";
+const captureBindings = process.env.QA_BINDINGS === "1";
+const coalesceBindings = process.env.QA_COALESCE === "1";
 mkdirSync(out, { recursive: true });
 const currentSources = {};
 for (const file of [
@@ -22,6 +24,7 @@ for (const file of [
   "src/game/witnessShot.ts",
   "src/render/frame.ts",
   "src/render/renderer.ts",
+  "scripts/qa/uniformUploads.ts",
   "src/render/streamedInstanceShaders.ts",
   "src/world/roadInstances.ts",
   "src/game/autoDriver.ts",
@@ -86,7 +89,13 @@ const report = {
   commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   status: execFileSync("git", ["status", "--short"], { encoding: "utf8" }),
   currentSources,
-  measurement: { detailed, cpuProfiler: !!process.env.QA_PROFILE, captureVector },
+  measurement: {
+    detailed,
+    cpuProfiler: !!process.env.QA_PROFILE,
+    captureVector,
+    captureBindings,
+    coalesceBindings,
+  },
   host: { cpu: cpus()[0]?.model, load: loadavg() },
   url: url.href,
   samples: [],
@@ -194,6 +203,61 @@ try {
   await browser.evaluate(`window.__qaCpu=[];window.__qaShaders=[];
     window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];window.__qaPavements=[];
     window.__qaWorldWork=[];window.__qaWitness=[];`);
+  if (coalesceBindings) {
+    await browser.evaluate(`(async()=>{
+      const {coalesceUniformUploads}=await import(new URL('scripts/qa/uniformUploads.ts',location.href).href);
+      const control=coalesceUniformUploads(__game.renderer);
+      if(!control)throw new Error('QA WebGPU upload experiment unavailable');
+    })()`);
+  }
+  if (captureBindings) {
+    await browser.evaluate(`{
+      const backend=__game.renderer.backend;
+      const unavailable=!backend.isWebGPUBackend||!backend.bindingUtils?.updateBinding;
+      if(unavailable)throw new Error('WebGPU binding updates unavailable');
+      const original=backend.bindingUtils.updateBinding;
+      const empty=()=>({calls:0,ms:0,nativeWrites:0,nativeBytes:0,legacyWrites:0,legacyBytes:0,coalescible:0,coalescibleWrites:0,coalescibleBytes:0,
+        coalescedBytes:0,maxSpanBytes:0,maxRanges:0,maxMs:0});
+      let frame=empty(),uniformUpload=false;window.__qaUniformFrames=[];
+      const queue=backend.device.queue,write=queue.writeBuffer;
+      queue.writeBuffer=function(...args){
+        const result=write.apply(this,args);
+        if(uniformUpload){
+          const data=args[2],unit=data.BYTES_PER_ELEMENT??1,start=args[3]??0;
+          const bytes=args[4]===undefined?data.byteLength-start*unit:args[4]*unit;
+          frame.nativeWrites++;frame.nativeBytes+=bytes;
+        }
+        return result;
+      };
+      const flush=at=>{__qaUniformFrames.push({at,...frame});frame=empty();requestAnimationFrame(flush);};
+      requestAnimationFrame(flush);
+      backend.bindingUtils.updateBinding=function(binding){
+        const at=performance.now(),isUniform=binding.isUniformsGroup===true,previous=uniformUpload;
+        uniformUpload=isUniform;
+        try{return original.call(this,binding);}
+        finally{
+          const ms=performance.now()-at;uniformUpload=previous;
+          if(isUniform){
+            const ranges=binding.updateRanges,array=binding.buffer;
+            let writes=1,values=0,first=Infinity,last=0;
+            for(let i=0;i<ranges.length;i++){
+              const range=ranges[i],end=range.start+range.count;
+              first=Math.min(first,range.start);last=Math.max(last,end);values+=range.count;
+              const separated=i>0&&ranges[i-1].start+ranges[i-1].count!==range.start;
+              if(separated)writes++;
+            }
+            const bytes=ranges.length?values*4:array.byteLength;
+            frame.calls++;frame.ms+=ms;frame.legacyWrites+=writes;frame.legacyBytes+=bytes;
+            frame.maxMs=Math.max(frame.maxMs,ms);frame.maxRanges=Math.max(frame.maxRanges,ranges.length);
+            const span=(last-first)*4;
+            const canCoalesce=writes>1&&span<=4096&&array instanceof Float32Array;
+            if(canCoalesce){frame.coalescible++;frame.coalescibleWrites+=writes;
+              frame.coalescibleBytes+=bytes;frame.coalescedBytes+=span;frame.maxSpanBytes=Math.max(frame.maxSpanBytes,span);}
+          }
+        }
+      };
+    }`);
+  }
   if (detailed) {
     await browser.evaluate(`(async()=>{
       const {WitnessShot}=await import(new URL('src/game/witnessShot.ts',location.href).href);
@@ -428,6 +492,7 @@ try {
         terrainPreparation:G.debug.logs.query({event:'terrain_chunk_prepared'}).filter(e=>e.ts>=watchDate),
         colliderPreparation:G.debug.logs.query({event:'collider_shape_prepared'}).filter(e=>e.ts>=watchDate),
         roadPreparation:G.debug.logs.query({event:'road_network_prepared'}).filter(e=>e.ts>=watchDate),
+        uniformFrames:${captureBindings}?__qaUniformFrames.filter(e=>e.at>=watchStart):undefined,
         instanceShaders:G.debug.logs.query({event:'streamed_shaders_prepared'}).filter(e=>e.ts>=watchDate),
         errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|vector_tile_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|streamed_shader_failed|terrain_worker_failed|terrain_build_failed|collider_worker_failed|log_schema_invalid/})};
     })()`);

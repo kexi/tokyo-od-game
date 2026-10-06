@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [GPUのuniform転送をまとめても描画CPUはほぼ変わらない](uniform-upload-measurements.md) - 実ワープの転送回数は約28〜36%減るが、交互比較の描画CPUは昼夜とも約0.35%差。全18874368画素byteは一致。50.1msが残るため本番適用を見送ってQA限定に保存
+
 - [地図のPBFとMVTを同じWorkerで解析する](vector-tile-worker-performance.md) - 保存した実80タイルの1745904値が旧同期・実Worker・復旧処理で一致。反復比較のメインCPU145.6→54.1ms、総CPUと待ちは増える。夜雨のワープ50.1msと返答読み出し10msの一例は残る
 
 - [道路Workerの受領と復元を別フレームへ分ける](road-reply-frame-performance.md) - 実2地域17658912数値比較が一致。最長CPU区間5.7→3.8ms・7.3→6.2ms、待機約18〜20ms増。夜雨の両ワープ50.1ms、診断付きLoAF59.3msは残る

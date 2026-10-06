@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Uniform upload parity</title>
+  <body>
+    <script type="module">
+      import * as T from "three/webgpu";
+      import { float, positionLocal, uniform, vec3, vec4 } from "three/tsl";
+      import { coalesceUniformUploads } from "./uniformUploads.ts";
+      import { useStableShadows } from "../../src/render/stableShadow.ts";
+
+      const size = 256;
+      const legacyOnly = new URL(location.href).searchParams.has("legacyOnly");
+      const compare = (a, b) => {
+        let changed = 0;
+        for (let i = 0; i < a.length; i++) {
+          const differs = a[i] !== b[i];
+          if (differs) changed++;
+        }
+        return { changed, bytes: a.length };
+      };
+      async function capture(optimized, forceWebGL, night) {
+        const renderer = new T.WebGPURenderer({ forceWebGL, antialias: true, reversedDepthBuffer: true });
+        await renderer.init();
+        const correctBackend = forceWebGL
+          ? renderer.backend.isWebGLBackend
+          : renderer.backend.isWebGPUBackend;
+        if (!correctBackend) throw new Error("unexpected backend");
+        renderer.setSize(size, size);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = T.PCFShadowMap;
+        const control = optimized ? coalesceUniformUploads(renderer) : null;
+        if (control) control.enabled = !legacyOnly;
+        const correctControl = optimized && !forceWebGL ? control !== null : control === null;
+        if (!correctControl) throw new Error("unexpected upload control");
+        let writes = 0,
+          bytes = 0;
+        const queue = renderer.backend.device?.queue;
+        const write = queue?.writeBuffer;
+        const memory = new WeakMap(),
+          byteDifferences = [];
+        const bufferMemory = (buffer) => {
+          let entry = memory.get(buffer);
+          if (!entry) {
+            entry = { actual: new Uint8Array(buffer.size), expected: new Uint8Array(buffer.size) };
+            memory.set(buffer, entry);
+          }
+          return entry;
+        };
+        let updating = false;
+        if (queue)
+          queue.writeBuffer = function (buffer, offset, data, start = 0, count = data.length - start) {
+            const isUniform = (buffer.usage & GPUBufferUsage.UNIFORM) !== 0;
+            if (isUniform) {
+              writes++;
+              bytes += count * (data.BYTES_PER_ELEMENT ?? 1);
+              const entry = bufferMemory(buffer),
+                input = new Uint8Array(data.buffer, data.byteOffset + start * 4, count * 4);
+              entry.actual.set(input, offset);
+              if (!updating) entry.expected.set(input, offset);
+            }
+            return write.call(this, buffer, offset, data, start, count);
+          };
+        const utils = renderer.backend.bindingUtils,
+          upload = utils?.updateBinding;
+        if (queue)
+          utils.updateBinding = function (binding) {
+            const isUniform = binding.isUniformsGroup === true;
+            const gpu = isUniform ? renderer.backend.get(binding).buffer : null;
+            const entry = gpu ? bufferMemory(gpu) : null;
+            if (entry) {
+              const array = binding.buffer,
+                ranges = binding.updateRanges;
+              if (!ranges.length)
+                entry.expected.set(new Uint8Array(array.buffer, array.byteOffset, array.byteLength));
+              else
+                for (const range of ranges)
+                  entry.expected.set(
+                    new Uint8Array(array.buffer, array.byteOffset + range.start * 4, range.count * 4),
+                    range.start * 4,
+                  );
+            }
+            const previous = updating;
+            updating = true;
+            try {
+              return upload.call(this, binding);
+            } finally {
+              updating = previous;
+              if (entry && byteDifferences.length < 8) {
+                const delta = compare(entry.expected, entry.actual);
+                if (delta.changed)
+                  byteDifferences.push({
+                    label: gpu.label,
+                    delta,
+                    ranges: structuredClone(binding.updateRanges),
+                    first: Array.from(entry.expected).findIndex((v, i) => v !== entry.actual[i]),
+                  });
+              }
+            }
+          };
+        const target = new T.RenderTarget(size, size, {
+          type: forceWebGL ? T.UnsignedByteType : T.HalfFloatType,
+          samples: renderer.samples,
+          resolveDepthBuffer: false,
+        });
+        target.depthTexture = new T.DepthTexture(size, size, T.FloatType);
+        const scene = new T.Scene();
+        scene.background = new T.Color(night ? 0x07152b : 0xabcddd);
+        const sun = new T.DirectionalLight(0xffffff, night ? 0.8 : 3);
+        sun.position.set(20, 40, 25);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(512, 512);
+        Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 0.1, far: 100 });
+        sun.shadow.camera.updateProjectionMatrix();
+        useStableShadows(sun);
+        scene.add(sun, sun.target, new T.AmbientLight(0xffffff, night ? 0.15 : 0.5));
+        const lights = [];
+        for (let i = 0; i < 4; i++) {
+          const light = new T.PointLight(0xffdda0, 50 + i * 20, 30);
+          light.position.set(i * 9 - 13, 7, -8);
+          scene.add(light);
+          lights.push(light);
+        }
+        const matrix = uniform(new T.Matrix4());
+        const shift = uniform(new T.Vector3());
+        const signed = uniform(-2, "int"),
+          unsigned = uniform(3, "uint");
+        const factor = uniform(0.7);
+        const meshes = [];
+        for (let i = 0; i < 24; i++) {
+          const material = new T.MeshStandardNodeMaterial({
+            color: new T.Color().setHSL(i / 24, 0.4, 0.5),
+            roughness: 0.5,
+            metalness: 0.2,
+          });
+          material.positionNode = matrix.mul(vec4(positionLocal, 1)).xyz.add(shift);
+          material.colorNode = vec4(
+            vec3(material.color).mul(factor.add(float(signed).mul(0.03)).add(float(unsigned).mul(0.02))),
+            1,
+          );
+          const mesh = new T.Mesh(new T.BoxGeometry(3, 5 + (i % 4), 3), material);
+          mesh.position.set((i % 6) * 7 - 18, 4, Math.floor(i / 6) * 7 - 12);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          scene.add(mesh);
+          meshes.push(mesh);
+        }
+        const floor = new T.Mesh(
+          new T.PlaneGeometry(80, 80),
+          new T.MeshStandardNodeMaterial({ color: 0x858b91, roughness: 0.8 }),
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        meshes.push(floor);
+        const cameras = [new T.PerspectiveCamera(45, 1, 0.5, 200), new T.PerspectiveCamera(55, 1, 0.02, 200)];
+        cameras[0].position.set(35, 28, 42);
+        cameras[1].position.set(-35, 18, 35);
+        cameras.forEach((camera) => camera.lookAt(0, 3, 0));
+        const frames = [];
+        try {
+          for (let pose = 0; pose < 6; pose++) {
+            matrix.value.makeRotationY(pose * 0.11);
+            shift.value.set(pose * 0.15, pose * 0.2, -pose * 0.13);
+            signed.value = pose - 3;
+            unsigned.value = pose + 1;
+            factor.value = 0.6 + pose * 0.03;
+            sun.intensity = (night ? 0.8 : 3) + pose * 0.1;
+            lights[pose % lights.length].color.setHSL(pose / 6, 0.4, 0.5);
+            meshes[pose].rotation.z = pose * 0.1;
+            meshes[pose].material.roughness = 0.1 + pose * 0.1;
+            cameras[0].position.x += 0.5;
+            cameras[0].lookAt(pose, 3, 0);
+            const replacing = pose === 3;
+            if (replacing) {
+              meshes[4].geometry.dispose();
+              meshes[4].geometry = new T.SphereGeometry(3, 16, 8);
+            }
+            for (const camera of cameras) {
+              await new Promise(requestAnimationFrame);
+              renderer.setRenderTarget(target);
+              renderer.render(scene, camera);
+              await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size);
+              await new Promise(requestAnimationFrame);
+              renderer.render(scene, camera);
+              const raw = await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size);
+              frames.push(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength).slice());
+            }
+          }
+          return { frames, writes, bytes, byteDifferences };
+        } finally {
+          if (queue) queue.writeBuffer = write;
+          if (queue) utils.updateBinding = upload;
+          control?.restore();
+          for (const mesh of meshes) {
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+          }
+          sun.dispose();
+          target.dispose();
+          renderer.dispose();
+        }
+      }
+      window.__uniformUploadParity = (async () => {
+        const rows = [];
+        for (const forceWebGL of [false, true])
+          for (const night of [false, true]) {
+            const legacy = await capture(false, forceWebGL, night),
+              optimized = await capture(true, forceWebGL, night);
+            const differences = legacy.frames.map((frame, i) => compare(frame, optimized.frames[i]));
+            const matched = differences.every((row) => row.changed === 0);
+            const exercised = compare(legacy.frames[0], legacy.frames[2]).changed > 100;
+            const uploadsReduced = legacyOnly || forceWebGL || optimized.writes < legacy.writes;
+            const sameBytes = legacy.byteDifferences.length === 0 && optimized.byteDifferences.length === 0;
+            if (!matched || !exercised || !uploadsReduced || !sameBytes)
+              throw new Error(
+                JSON.stringify({
+                  forceWebGL,
+                  night,
+                  differences,
+                  exercised,
+                  legacyWrites: legacy.writes,
+                  optimizedWrites: optimized.writes,
+                  legacyByteDifferences: legacy.byteDifferences,
+                  optimizedByteDifferences: optimized.byteDifferences,
+                }),
+              );
+            rows.push({
+              backend: forceWebGL ? "webgl2" : "webgpu",
+              night,
+              differences,
+              exercised,
+              legacyWrites: legacy.writes,
+              optimizedWrites: optimized.writes,
+              legacyBytes: legacy.bytes,
+              optimizedBytes: optimized.bytes,
+              legacyByteDifferences: legacy.byteDifferences,
+              optimizedByteDifferences: optimized.byteDifferences,
+            });
+          }
+        return rows;
+      })();
+    </script>
+  </body>
+</html>
