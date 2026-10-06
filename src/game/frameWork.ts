@@ -8,6 +8,7 @@ export class FrameWork {
   constructor(
     private readonly budgetMs = 4,
     private readonly nextFrame = FrameWork.nextFrame,
+    private readonly beforeFrame?: () => Promise<void>,
   ) {}
 
   private static nextFrame(): Promise<void> {
@@ -21,6 +22,8 @@ export class FrameWork {
   async yield(): Promise<void> {
     this.maxSliceMs = Math.max(this.maxSliceMs, this.sliceMs);
     this.yields++;
+    const hasPreparation = this.beforeFrame !== undefined;
+    if (hasPreparation) await this.beforeFrame!();
     await this.nextFrame();
     this.sliceMs = 0;
   }

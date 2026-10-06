@@ -51,6 +51,42 @@ describe("world work between frames", () => {
     expect(order).toEqual(["mesh 1", "frame", "mesh 2", "frame"]);
   });
 
+  it("finishes asynchronous preparation before publishing a frame or continuing the generator", async () => {
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const order: string[] = [];
+    const work = new FrameWork(
+      4,
+      async () => {
+        order.push("frame");
+      },
+      async () => {
+        order.push("prepare");
+        await held;
+        order.push("ready");
+      },
+    );
+    function* steps(): Generator<boolean> {
+      now += 2;
+      order.push("mesh");
+      yield true;
+      now += 1;
+      order.push("continue");
+    }
+    const pending = work.run(steps());
+    expect(order).toEqual(["mesh", "prepare"]);
+    now += 500;
+    release();
+    await pending;
+    expect(order).toEqual(["mesh", "prepare", "ready", "frame", "continue"]);
+    expect(work.cpuMs).toBe(3);
+    expect(work.maxSliceMs).toBe(2);
+  });
+
   it("serializes yielding installs and frame changes, and recovers after an install rejects", async () => {
     const queue = new SerialWork();
     const order: string[] = [];

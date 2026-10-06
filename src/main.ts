@@ -153,6 +153,7 @@ import { Bloom, bloomSettings } from "./world/bloom";
 import { LensFlare } from "./world/lensFlare";
 import { createRenderer } from "./render/renderer";
 import { drawShadowsOf, FrameComposer } from "./render/frame";
+import { StreamedInstanceShaders } from "./render/streamedInstanceShaders";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import { byDistance, renderPlaceList } from "./game/placePicker";
@@ -609,6 +610,7 @@ async function main(): Promise<void> {
   let roadLoadSerial = 0;
   const roadBuilder = new RoadNetworkBuilder();
   const roadUpdates = new SerialWork();
+  const roadShaders = new StreamedInstanceShaders(renderer, scene, camera, composer.target);
   roadBuilder.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoads");
   roadBuilder.warm();
   const routePlanner = new DrivingRoutePlanner();
@@ -656,7 +658,7 @@ async function main(): Promise<void> {
     .catch(() => undefined);
   const installRoadNetwork = async ({ graph, applied }: RoadNetwork) => {
     const started = performance.now();
-    const work = new FrameWork();
+    const work = new FrameWork(4, undefined, () => roadShaders.prepare());
     const stagesMs: Record<string, number> = {};
     const measure = async <T>(name: string, task: () => T | Promise<T>, cooperative = false): Promise<T> => {
       const start = work.cpuMs;

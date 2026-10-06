@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Streamed instance shader preparation</title>
+  <body>
+    <script type="module">
+      import * as T from "three/webgpu";
+      import { RoadInstances } from "../../src/world/roadInstances";
+      import { StreamedInstanceShaders } from "../../src/render/streamedInstanceShaders";
+      import { useStableShadows } from "../../src/render/stableShadow";
+
+      const size = 256;
+      const frame = () => new Promise(requestAnimationFrame);
+      const diff = (a, b) => {
+        let changed = 0,
+          max = 0;
+        for (let i = 0; i < a.length; i++) {
+          const delta = Math.abs(a[i] - b[i]);
+          const different = delta !== 0;
+          if (different) changed++;
+          max = Math.max(max, delta);
+        }
+        return { changed, max, values: a.length };
+      };
+
+      async function capture(prepare, forceWebGL, night, cancel = false) {
+        const renderer = new T.WebGPURenderer({ forceWebGL, antialias: false });
+        await renderer.init();
+        const correctBackend = forceWebGL
+          ? renderer.backend.isWebGLBackend
+          : renderer.backend.isWebGPUBackend;
+        if (!correctBackend) throw new Error("unexpected backend");
+        renderer.setSize(size, size);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = T.PCFShadowMap;
+        const scene = new T.Scene();
+        scene.background = new T.Color(night ? 0x152033 : 0x9ebbd1);
+        const camera = new T.PerspectiveCamera(45, 1, 0.1, 200);
+        camera.position.set(25, 26, 34);
+        camera.lookAt(0, 3, 0);
+        const sun = new T.DirectionalLight(0xffffff, night ? 0.7 : 3);
+        sun.position.set(-20, 45, 20);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(512, 512);
+        Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 0.1, far: 100 });
+        sun.shadow.camera.updateProjectionMatrix();
+        useStableShadows(sun);
+        scene.add(sun, sun.target, new T.AmbientLight(0xffffff, night ? 0.1 : 0.4));
+        const target = new T.RenderTarget(size, size, { type: T.HalfFloatType });
+        const previousTarget = new T.RenderTarget(16, 16);
+        renderer.setRenderTarget(previousTarget);
+        const shaders = new StreamedInstanceShaders(renderer, scene, camera, target);
+        const floor = new T.Mesh(
+          new T.PlaneGeometry(70, 70),
+          new T.MeshStandardMaterial({ color: 0xbbbbbb }),
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        const pool = new RoadInstances();
+        const geometry = new T.BoxGeometry(1, 5, 1);
+        const material = new T.MeshStandardMaterial({ color: 0x446a87, roughness: night ? 0.2 : 0.7 });
+        const colorMaterial = new T.MeshStandardMaterial({ color: 0xffffff, emissive: 0x221100 });
+        const multiMaterials = [material, colorMaterial, material, colorMaterial, material, colorMaterial];
+        const groups = Array.from({ length: 8 }, (_, i) => ({
+          material: i === 7 ? multiMaterials : i % 2 === 0 ? material : colorMaterial,
+          count: 2,
+          colored: i % 2 === 1,
+        }));
+        let meshes = [],
+          phase = "floor",
+          switched = false,
+          cancelled = false,
+          changingMaterial = false;
+        const builds = [],
+          asyncBuilds = [],
+          timings = [];
+        const publish = () => {
+          pool.begin();
+          meshes = groups.map((group, i) => {
+            const mesh = pool.take(geometry, group.material, group.count);
+            mesh.name = "instance-" + i;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.frustumCulled = i % 2 === 0;
+            for (let j = 0; j < group.count; j++) {
+              const matrix = new T.Matrix4().makeTranslation(
+                ((i % 4) - 1.5) * 5,
+                2.5,
+                (Math.floor(i / 4) - 0.5) * 9 + j * 2,
+              );
+              mesh.setMatrixAt(j, matrix);
+              if (group.colored) mesh.setColorAt(j, new T.Color(j % 2 === 0 ? 0xdd2211 : 0x11dd33));
+            }
+            scene.add(mesh);
+            return mesh;
+          });
+          pool.end();
+        };
+        const read = async () => {
+          await frame();
+          renderer.setRenderTarget(target);
+          const start = performance.now();
+          renderer.render(scene, camera);
+          const drawMs = performance.now() - start;
+          const raw = await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size);
+          renderer.setRenderTarget(previousTarget);
+          return { pixels: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength).slice(), drawMs };
+        };
+        const warm = async (changeMaterial = false) => {
+          const snapshots = meshes.map((mesh) => ({
+            matrix: mesh.instanceMatrix.array.slice(),
+            color: mesh.instanceColor?.array.slice(),
+            geometry: mesh.geometry,
+            material: mesh.material,
+            culling: mesh.frustumCulled,
+            uuid: mesh.uuid,
+          }));
+          const start = performance.now();
+          if (prepare) {
+            const pending = shaders.prepare();
+            const targetRestored = renderer.getRenderTarget() === previousTarget;
+            if (!targetRestored) throw new Error("render target leaked while compilation waits");
+            await pending;
+          } else if (changeMaterial) {
+            material.flatShading = false;
+            material.needsUpdate = true;
+            switched = true;
+          }
+          timings.push({ phase, durationMs: performance.now() - start });
+          const sourcePreserved = meshes.every((mesh, i) => {
+            const old = snapshots[i];
+            return (
+              mesh.uuid === old.uuid &&
+              mesh.geometry === old.geometry &&
+              mesh.material === old.material &&
+              mesh.frustumCulled === old.culling &&
+              mesh.instanceMatrix.array.every((v, j) => Object.is(v, old.matrix[j])) &&
+              (!old.color || mesh.instanceColor.array.every((v, j) => Object.is(v, old.color[j])))
+            );
+          });
+          if (!sourcePreserved) throw new Error("instance source changed during preparation");
+        };
+        try {
+          await read();
+          renderer.debug.onNodeBuilderCreated = (builder) => {
+            const build = builder.build,
+              buildAsync = builder.buildAsync;
+            builder.build = function (...args) {
+              const start = performance.now();
+              try {
+                return build.apply(this, args);
+              } finally {
+                builds.push({
+                  phase,
+                  ms: performance.now() - start,
+                  material: this.material.constructor.name,
+                  instance: this.object?.isInstancedMesh === true,
+                });
+              }
+            };
+            builder.buildAsync = async function (...args) {
+              const start = performance.now();
+              const shouldChange = changingMaterial && !switched;
+              if (shouldChange) {
+                material.flatShading = false;
+                material.needsUpdate = true;
+                switched = true;
+              }
+              if (cancel && !cancelled)
+                requestAnimationFrame(() => {
+                  cancelled = true;
+                  pool.clear();
+                });
+              try {
+                return await buildAsync.apply(this, args);
+              } finally {
+                asyncBuilds.push({
+                  phase,
+                  durationMs: performance.now() - start,
+                  material: this.material.constructor.name,
+                });
+              }
+            };
+          };
+          publish();
+          if (cancel) {
+            await shaders.prepare();
+            const detached = meshes.every((mesh) => mesh.parent === null && !mesh.visible);
+            const instanceBuffersFreed = meshes.every(
+              (mesh) => renderer.backend.data.get(mesh.instanceMatrix) === undefined,
+            );
+            return { cancelled, detached, instanceBuffersFreed, asyncBuilds, builds };
+          }
+          const views = {};
+          phase = "first-visible";
+          await warm();
+          views.first = await read();
+          phase = "steady";
+          views.steady = await read();
+          const originalIds = meshes.map((mesh) => mesh.uuid);
+          phase = "reuse";
+          publish();
+          await warm();
+          const reused = meshes.every((mesh, i) => mesh.uuid === originalIds[i]);
+          views.reuse = await read();
+          phase = "growth";
+          groups[0].count = 5;
+          publish();
+          await warm();
+          const grown = meshes[0].uuid !== originalIds[0] && meshes[0].instanceMatrix.count === 8;
+          views.growth = await read();
+          phase = "material-change";
+          material.flatShading = true;
+          material.needsUpdate = true;
+          changingMaterial = true;
+          await warm(true);
+          views.changed = await read();
+          phase = "origin-change";
+          for (const mesh of meshes) mesh.position.add(new T.Vector3(-3, 0, 2));
+          camera.position.add(new T.Vector3(-3, 0, 2));
+          camera.lookAt(-3, 3, 2);
+          views.moved = await read();
+          const mainSync = builds.filter(
+            (build) => build.instance && build.material.startsWith("MeshStandard"),
+          );
+          return { views, builds, asyncBuilds, mainSync, timings, reused, grown, switched };
+        } finally {
+          pool.clear();
+          geometry.dispose();
+          material.dispose();
+          colorMaterial.dispose();
+          floor.geometry.dispose();
+          floor.material.dispose();
+          sun.dispose();
+          target.dispose();
+          previousTarget.dispose();
+          renderer.dispose();
+        }
+      }
+
+      window.__instanceShaderParity = (async () => {
+        const rows = [];
+        for (const forceWebGL of [false, true])
+          for (const night of [false, true]) {
+            const runs = {};
+            const order = rows.length % 2 === 0 ? [false, true] : [true, false];
+            for (const prepare of order) runs[prepare] = await capture(prepare, forceWebGL, night);
+            const before = runs.false,
+              after = runs.true;
+            const differences = Object.keys(before.views).map((view) => ({
+              view,
+              ...diff(before.views[view].pixels, after.views[view].pixels),
+            }));
+            const summary = (run) => ({
+              mainSync: run.mainSync,
+              builds: run.builds,
+              asyncBuilds: run.asyncBuilds,
+              timings: run.timings,
+              reused: run.reused,
+              grown: run.grown,
+              switched: run.switched,
+              draws: Object.fromEntries(Object.entries(run.views).map(([view, data]) => [view, data.drawMs])),
+            });
+            rows.push({
+              backend: forceWebGL ? "webgl2" : "webgpu",
+              night,
+              differences,
+              before: summary(before),
+              after: summary(after),
+              valid:
+                differences.every((d) => d.changed === 0) &&
+                after.mainSync.length === 0 &&
+                before.mainSync.length > 0 &&
+                before.reused &&
+                after.reused &&
+                before.grown &&
+                after.grown &&
+                before.switched &&
+                after.switched,
+            });
+            const cancelled = await capture(true, forceWebGL, night, true);
+            rows.push({
+              backend: forceWebGL ? "webgl2" : "webgpu",
+              night,
+              cancelled,
+              valid:
+                cancelled.cancelled &&
+                cancelled.detached &&
+                cancelled.instanceBuffersFreed &&
+                cancelled.asyncBuilds.length > 0 &&
+                cancelled.builds.length === 0,
+            });
+          }
+        return rows;
+      })();
+    </script>
+  </body>
+</html>
