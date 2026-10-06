@@ -270,6 +270,14 @@ measure-road-reply-slices:
 measure-vector-tiles report:
     QA_VECTOR_INPUT={{ quote(report) }} node scripts/qa/perf-vector-tiles.mjs
 
+# 実GPU・両backend・昼夜の全画素でQA限定uniform転送実験の同値性を確かめる
+check-uniform-upload-parity:
+    node scripts/qa/uniform-upload-parity.mjs
+
+# ゲームの更新を止めた同じ車内・街でuniform転送の旧処理と実験版のCPUを交互に測る
+measure-uniform-uploads:
+    node scripts/qa/perf-uniform-uploads.mjs
+
 # 夜雨で目撃写真・動画の証拠画像を4件作り、描画・GPU要求の内訳を測る
 measure-witness-photos:
     node scripts/qa/perf-witness-photos.mjs
