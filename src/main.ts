@@ -453,8 +453,9 @@ async function main(): Promise<void> {
   const AT_THE_WHEEL = [{ seat: "driver" as const, kg: ADULT_KG }];
   const NOBODY: typeof AT_THE_WHEEL = [];
   const terrain = new Terrain(scene, world, dem, renderer, frame);
+  const roadUpdates = new SerialWork();
   // Rivers, canals and the bay: their surface replaces the ground there, bridges get decks.
-  const water = new WaterLayer(scene, world, dem, new TokyoTide(), frame);
+  const water = new WaterLayer(scene, world, dem, new TokyoTide(), frame, roadUpdates);
   terrain.setWater(water);
   const buildings = new Buildings(scene, world, camera, renderer, frame);
   // Landmarks (東京タワー, スカイツリー, 東京駅) replace their PLATEAU copies: tell the buildings
@@ -609,7 +610,6 @@ async function main(): Promise<void> {
   let roadRevision = 0;
   let roadLoadSerial = 0;
   const roadBuilder = new RoadNetworkBuilder();
-  const roadUpdates = new SerialWork();
   const roadShaders = new StreamedInstanceShaders(renderer, scene, camera, composer.target);
   roadBuilder.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoads");
   roadBuilder.warm();

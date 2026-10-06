@@ -156,7 +156,7 @@ export class WaterLayer implements GroundWater {
     roughness: 0.9,
     side: DoubleSide,
   });
-  private readonly tileWork = new SerialWork();
+  private readonly shoreWork = new FrameWork();
   private frame: LocalFrame;
   private centre = { x: 0, y: 0 };
   private spans: Span[] = [];
@@ -186,6 +186,7 @@ export class WaterLayer implements GroundWater {
     private readonly dem: DemStore,
     private readonly tide: Tide,
     frame: LocalFrame,
+    private readonly tileWork = new SerialWork(),
   ) {
     this.frame = frame;
     this.bay = { mean: tide.meanLevel, range: BAY_RANGE, still: tide.meanLevel };
@@ -692,7 +693,7 @@ export class WaterLayer implements GroundWater {
     await this.tileWork.run(async () => {
       const isCurrent = this.tiles.get(`${x}/${y}`) === tile;
       if (!isCurrent) return;
-      const work = new FrameWork();
+      const work = this.shoreWork;
       const shores: ShoreRing[][] = [];
       for (const poly of tile.polygons) {
         const rings: ShoreRing[] = [];

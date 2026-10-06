@@ -5,7 +5,7 @@ import { cpus, loadavg } from "node:os";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 
-const reference = "b0106a2b8d732c71bf92b4c191600a8e638706f5";
+const reference = process.env.QA_REFERENCE ?? "b0106a2b8d732c71bf92b4c191600a8e638706f5";
 const out = join(".qa/perf", new Date().toISOString().replace(/[:.]/g, "-") + "-water-samples");
 const refDir = ".qa/reference/water-samples";
 mkdirSync(out, { recursive: true });
