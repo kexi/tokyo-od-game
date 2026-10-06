@@ -31,6 +31,9 @@ import { sharedDraco } from "../render/draco";
 import { BuildingMetadataPlugin } from "./buildingMetadata";
 import { BuildingGpuUnloadPlugin } from "./buildingGpuUnload";
 import { BuildingFacadePlugin } from "./buildingFacadePlugin";
+import { prepareBuildingShaders } from "./buildingShaders";
+import { SerialWork } from "../game/serialWork";
+import { log, warn } from "../log";
 
 type Model = {
   scene: Object3D;
@@ -216,6 +219,7 @@ export class Buildings {
   private readonly farPending: Object3D[] = [];
   /** False until the far façade's pipeline is built (asynchronously, before any far tile shows). */
   private isFarCompiled = false;
+  private readonly shaderWork = new SerialWork();
 
   constructor(
     private readonly scene: Scene,
@@ -425,7 +429,32 @@ export class Buildings {
 
   private createTiles(): void {
     const tiles = new TilesRenderer(PLATEAU_TILESET);
-    const preparation = new BuildingFacadePlugin();
+    const preparation = new BuildingFacadePlugin(undefined, (model, tile, signal) =>
+      this.shaderWork.run(async () => {
+        const isCancelled = signal.aborted;
+        if (isCancelled) return;
+        const hasHiddenFootprints = this.hidden.length > 0;
+        let meshes = 0;
+        model.traverse((o) => {
+          const isMesh = o instanceof Mesh;
+          if (!isMesh) return;
+          meshes++;
+          const ecef = preparation.takeEcef(o);
+          if (hasHiddenFootprints) this.cutFootprints(o.geometry, ecef);
+          o.castShadow = !QUALITY.isMobile;
+          o.receiveShadow = true;
+          o.material = this.adaptMaterial(o.material as Material);
+        });
+        const key = tile.content?.uri ?? "building",
+          start = performance.now();
+        try {
+          await prepareBuildingShaders(model, this.camera, this.scene, this.renderer);
+          log("building_shader_prepared", { key, meshes, durationMs: performance.now() - start });
+        } catch (error) {
+          warn("building_shader_failed", { key, error: String(error) });
+        }
+      }),
+    );
     tiles.registerPlugin(new BuildingMetadataPlugin());
     tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader: this.draco }));
     tiles.registerPlugin(preparation);
@@ -443,16 +472,6 @@ export class Buildings {
 
     tiles.addEventListener("load-model", ({ scene }) => {
       this.loadedCount++;
-      scene.traverse((o) => {
-        if (!(o instanceof Mesh)) return;
-        const geometry = o.geometry as BufferGeometry;
-        const ecef = preparation.takeEcef(o);
-        if (this.hidden.length) this.cutFootprints(geometry, ecef);
-        // Building shadows double the draw calls; phones skip them (the car still casts one).
-        o.castShadow = !QUALITY.isMobile;
-        o.receiveShadow = true;
-        o.material = this.adaptMaterial(o.material as Material);
-      });
       this.models.set(scene, { scene, visible: false, sphere: null, collider: null });
     });
     tiles.addEventListener("dispose-model", ({ scene }) => {

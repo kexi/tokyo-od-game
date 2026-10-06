@@ -290,6 +290,10 @@ measure-building-metadata:
 measure-building-gpu:
     node scripts/qa/perf-building-gpu.mjs
 
+# 建物の表示前の非同期シェーダー準備を両backend・昼夜・全窓設定で画素比較し、同期生成を測る
+measure-building-shaders:
+    node scripts/qa/perf-building-shaders.mjs
+
 # 実建物の座標・外壁属性を固定した旧処理とWorker・分割フォールバックで比較してCPUを測る
 measure-building-worker:
     node scripts/qa/perf-building-worker.mjs

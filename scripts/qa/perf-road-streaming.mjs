@@ -30,6 +30,7 @@ for (const file of [
   "src/world/buildingFacadeCompute.ts",
   "src/world/buildingFacade.worker.ts",
   "src/world/buildingFacadePlugin.ts",
+  "src/world/buildingShaders.ts",
   "src/world/terrain.ts",
   "src/world/terrainData.ts",
   "src/world/terrainCompute.ts",
@@ -165,7 +166,7 @@ try {
     [__game.transit,'update','transit'], [__game.control,'update','control'],
     [__game.guideSigns,'update','guideSigns'], [__game.orbis,'update','orbis'],
   ]) __qaWrap(object,method,phase);`);
-  await browser.evaluate(`window.__qaShaders=[];
+  await browser.evaluate(`window.__qaShaders=[];window.__qaAsyncShaders=[];
     const original=__game.renderer.debug.onNodeBuilderCreated;
     __game.renderer.debug.onNodeBuilderCreated=(builder,renderObject)=>{
       original?.(builder,renderObject);
@@ -180,6 +181,13 @@ try {
             objectName:this.object?.name,world:this.scene===__game.scene,
             attributes:Object.keys(g?.attributes??{}),vertices:g?.attributes.position?.count,indexed:!!g?.index});
         }
+      };
+      const buildAsync=builder.buildAsync;
+      if(buildAsync)builder.buildAsync=async function(...args){
+        const start=performance.now(),m=this.material;
+        try{return await buildAsync.apply(this,args);}
+        finally{__qaAsyncShaders.push({at:start,durationMs:performance.now()-start,name:m?.name,
+          constructor:m?.constructor.name,windows:m?.windows,objectName:this.object?.name});}
       };
     };`);
   const modes = process.env.QA_MODES?.split(",") ?? [
@@ -221,6 +229,7 @@ try {
       const start = performance.now();
       __qaCpu = [];
       __qaShaders = [];
+      __qaAsyncShaders = [];
       let heldUntilReady = null, landed = null;
       if (${JSON.stringify(mode)} === 'baseline') await new Promise(r => setTimeout(r, 6000));
       else if (${JSON.stringify(mode)} === 'update') {
@@ -276,10 +285,12 @@ try {
         buildingMetadata:G.debug.logs.query({event:'building_batch_table_skipped'}).slice(beforeMetadataCount),
         buildingMetadataKept:__qaKeptMetadata.slice(beforeKeptMetadata),
         shaders:__qaShaders,
+        asyncShaders:__qaAsyncShaders,
         buildingPreparation:G.debug.logs.query({event:'building_facade_prepared'}).filter(e=>e.ts>=watchDate),
+        buildingShaders:G.debug.logs.query({event:'building_shader_prepared'}).filter(e=>e.ts>=watchDate),
         terrainPreparation:G.debug.logs.query({event:'terrain_chunk_prepared'}).filter(e=>e.ts>=watchDate),
         roadPreparation:G.debug.logs.query({event:'road_network_prepared'}).filter(e=>e.ts>=watchDate),
-        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|terrain_worker_failed|terrain_build_failed|log_schema_invalid/})};
+        errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|route_worker_failed|water_worker_failed|water_tile_failed|building_worker_failed|building_shader_failed|terrain_worker_failed|terrain_build_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {
       const profile = await browser.send("Profiler.stop");
