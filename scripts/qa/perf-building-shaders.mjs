@@ -12,6 +12,7 @@ for (const file of [
   "src/world/buildings.ts",
   "src/world/buildingFacadePlugin.ts",
   "src/world/buildingShaders.ts",
+  "src/world/facadeShaderLayouts.ts",
   "src/world/facade.ts",
   "scripts/qa/building-shader-parity.html",
 ]) {
@@ -20,7 +21,10 @@ for (const file of [
   writeFileSync(join(out, file.replaceAll("/", "-") + ".txt"), source);
 }
 const base = process.env.QA_URL ?? "http://localhost:5173/tokyo-od-game/";
-const browser = await launch(new URL("scripts/qa/building-shader-parity.html", base).href, { port: 9368 });
+const fixture = new URL("scripts/qa/building-shader-parity.html", base);
+const layoutsOnly = process.env.QA_LAYOUTS_ONLY === "1";
+if (layoutsOnly) fixture.searchParams.set("layoutsOnly", "1");
+const browser = await launch(fixture.href, { port: 9368 });
 try {
   let ready = false;
   for (let i = 0; i < 90; i++) {

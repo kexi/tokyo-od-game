@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [PLATEAUの外壁シェーダーの頂点構成を保持する](facade-shader-layout-performance.md) - 実2構成の同じキーの再生成を止め、両backend・昼夜の26214400画素成分が一致。破棄後再表示の同期生成4→0回、実両ワープの外壁生成0回。道路反映・地形・影の50.1msが残る
+
 - [道路インスタンスのシェーダーを表示前に準備する](streamed-instance-shader-performance.md) - 両backend・昼夜のHDR12582912byteが一致し、固定比較の同期生成9→0回。実夜雨の40回を非同期へ移すが、準備の待ち時間増加とワープ66.7msが残る
 
 - [水域の地形三角形判定で一時配列を作らない](terrain-water-triangle-performance.md) - 実水域16タイル・320比較のCPU85.3→25.2ms。829万個のindex値・30境界マスク・実物理767レイが一致。夜雨のワープ66.7msと同期BVH更新は残る

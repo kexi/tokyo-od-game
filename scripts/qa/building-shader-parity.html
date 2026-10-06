@@ -7,6 +7,7 @@
       import * as T from "three/webgpu";
       import * as facade from "../../src/world/facade";
       import { prepareBuildingShaders } from "../../src/world/buildingShaders";
+      import { FacadeShaderLayouts } from "../../src/world/facadeShaderLayouts";
       import { BuildingFacadePlugin } from "../../src/world/buildingFacadePlugin";
       import { GRAPHICS } from "../../src/device";
       import { useStableShadows } from "../../src/render/stableShadow";
@@ -26,7 +27,15 @@
       };
       await facade.loadFacadeTextures();
 
-      async function capture(prepare, forceWebGL, mode, night, switchWindows = false, cancelTile = false) {
+      async function capture(
+        prepare,
+        forceWebGL,
+        mode,
+        night,
+        switchWindows = false,
+        cancelTile = false,
+        retainLayouts = false,
+      ) {
         GRAPHICS.set({ ...GRAPHICS.settings, windows: switchWindows ? "flat" : mode });
         facade.updateFacadeClock(
           new Date(night ? "2026-10-05T12:00:00Z" : "2026-10-05T03:00:00Z"),
@@ -68,6 +77,8 @@
         for (let i = 0; i < 8; i++) {
           const height = 8 + i * 2;
           const geometry = new T.BoxGeometry(5, height, 5);
+          // The surveyed PLATEAU layouts have no UV attribute; the original fixture variants keep it.
+          if (retainLayouts) geometry.deleteAttribute("uv");
           const position = geometry.getAttribute("position");
           const values = new Float32Array(position.count * 2);
           for (let v = 0; v < position.count; v++) {
@@ -75,10 +86,15 @@
             values[v * 2 + 1] = position.getY(v) + height / 2;
           }
           geometry.setAttribute("facade", new T.BufferAttribute(values, 2));
-          geometry.setAttribute(
-            i < 4 ? "_batchid" : "_feature_id_0",
-            new T.BufferAttribute(new Uint16Array(position.count).fill(i), 1),
-          );
+          const usesSurveyedFeature = retainLayouts && i >= 4;
+          const idAttribute = usesSurveyedFeature
+            ? new T.InterleavedBufferAttribute(
+                new T.InterleavedBuffer(new Uint16Array(position.count * 2).fill(i), 2),
+                1,
+                0,
+              )
+            : new T.BufferAttribute(new Uint16Array(position.count).fill(i), 1);
+          geometry.setAttribute(i < 4 ? "_batchid" : "_feature_id_0", idAttribute);
           const mesh = new T.Mesh(geometry, facade.facadeMaterial());
           mesh.position.set(((i % 4) - 1.5) * 10, height / 2, (Math.floor(i / 4) - 0.5) * 12);
           mesh.frustumCulled = i % 2 === 0;
@@ -98,7 +114,7 @@
           cancelPreparation = null;
         const builds = [],
           asyncBuilds = [];
-        renderer.debug.onNodeBuilderCreated = (builder) => {
+        renderer.debug.onNodeBuilderCreated = (builder, renderObject) => {
           const build = builder.build,
             buildAsync = builder.buildAsync;
           builder.build = function (...args) {
@@ -128,11 +144,19 @@
                 phase,
                 durationMs: performance.now() - start,
                 material: this.material.constructor.name,
+                cacheKey: renderObject.initialCacheKey,
+                geometryKey: renderObject.getGeometryCacheKey(),
+                contextId: renderObject.context.id,
+                materialKey: renderObject.getMaterialCacheKey(),
+                dynamicKey: renderObject.getDynamicCacheKey(),
+                receiveShadow: renderObject.object.receiveShadow,
               });
             }
           };
         };
         const target = new T.RenderTarget(size, size, { type: T.UnsignedByteType });
+        const layouts = prepare && retainLayouts ? new FacadeShaderLayouts(camera, scene, renderer) : null;
+        const reloadedBuildings = [];
         renderer.setRenderTarget(target);
         const read = async () => {
           await frame();
@@ -176,6 +200,7 @@
           }
           let preparationMs = null;
           if (prepare) {
+            await layouts?.prepare();
             // Model coordinates are still global and the tile is not in the visible scene.
             model.position.set(6378137, 2000000, -3000000);
             await frame();
@@ -212,10 +237,35 @@
             mesh.material.dispose();
           }
           await read();
+          let reloaded = null;
+          if (retainLayouts) {
+            const next = new T.Group();
+            next.position.copy(model.position);
+            for (const previous of buildings) {
+              const mesh = new T.Mesh(previous.geometry.clone(), facade.facadeMaterial());
+              mesh.position.copy(previous.position);
+              mesh.castShadow = true;
+              mesh.receiveShadow = true;
+              mesh.frustumCulled = previous.frustumCulled;
+              next.add(mesh);
+              reloadedBuildings.push(mesh);
+            }
+            scene.add(next);
+            phase = "reload-after-eviction";
+            reloaded = await read();
+            scene.remove(next);
+            for (const mesh of reloadedBuildings) {
+              mesh.geometry.dispose();
+              mesh.material.dispose();
+            }
+            layouts?.dispose();
+            await read();
+          }
           return {
             first,
             steady,
             moved,
+            reloaded,
             builds,
             asyncBuilds,
             preparationMs,
@@ -224,6 +274,11 @@
             statesAfterEviction: renderer._nodes.nodeBuilderCache.size,
           };
         } finally {
+          layouts?.dispose();
+          for (const mesh of reloadedBuildings) {
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+          }
           for (const mesh of [floor, ...buildings]) {
             mesh.geometry.dispose();
             mesh.material.dispose();
@@ -238,23 +293,29 @@
         const rows = [];
         for (const forceWebGL of [false, true])
           for (const night of [false, true]) {
-            for (const mode of ["flat", "lit", "rooms", "settings-change"]) {
+            for (const mode of new URLSearchParams(location.search).has("layoutsOnly")
+              ? ["retained-layouts"]
+              : ["flat", "lit", "rooms", "settings-change", "retained-layouts"]) {
               const switchWindows = mode === "settings-change";
+              const retainLayouts = mode === "retained-layouts";
               const order = rows.length % 2 === 0 ? [false, true] : [true, false];
               const runs = {};
               for (const prepare of order)
                 runs[prepare] = await capture(
                   prepare,
                   forceWebGL,
-                  switchWindows ? "rooms" : mode,
+                  switchWindows || retainLayouts ? "rooms" : mode,
                   night,
                   prepare && switchWindows,
+                  false,
+                  retainLayouts,
                 );
               const before = runs.false,
                 after = runs.true;
               const differences = ["first", "steady", "moved"].map((view) =>
                 difference(before[view].pixels, after[view].pixels),
               );
+              if (retainLayouts) differences.push(difference(before.reloaded.pixels, after.reloaded.pixels));
               const facadeSync = (run) => run.builds.filter((build) => build.material === "FacadeMaterial");
               const summary = (run) => ({
                 builds: run.builds,
