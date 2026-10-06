@@ -311,6 +311,12 @@ export class RoadGraph {
     return best;
   }
 
+  /** Candidates for exact projection; the caller applies its distance and usability rules. */
+  projectionCandidates(p: Vector3, radius: number): Segment[] {
+    // A boundary projection can round into the next cell; one cell also covers that neighbour.
+    return this.nearestCandidates(p, radius + CELL);
+  }
+
   /** Segments leaving a node, excluding the one we came from (unless it is a dead end). */
   exits(node: number, cameFrom: number): Segment[] {
     const ids = (this.nodes.get(node) ?? []).filter((id) => id !== cameFrom);

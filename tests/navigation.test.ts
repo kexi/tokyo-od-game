@@ -39,6 +39,57 @@ const grid = () => [
 ];
 
 describe("car navigation over the road graph", () => {
+  it("keeps a cheaper goal within 30 m of the closest street beyond the first search ring", () => {
+    const distant = Array.from({ length: 64 }, (_, i) => road(1000 + i * 100, 1000, 1000 + i * 100, 2000));
+    const graph = new RoadGraph(
+      [road(-110, 0, -110, 500), road(-110, 500, 86, 500), road(86, 500, 86, 0), ...distant],
+      frame,
+    );
+    const route = planRoute(graph, { seg: graph.segments[0], s: 10, dir: 1 }, at(0, 80), clockAt(600), []);
+    expect(route?.steps.map((step) => step.seg.id)).toEqual([0]);
+    expect(route?.reachesTarget).toBe(false);
+  });
+
+  it("expands to all streets when the destination lies far outside the graph", () => {
+    const graph = new RoadGraph([road(0, 0, 0, 100)], frame);
+    const route = planRoute(graph, { seg: graph.segments[0], s: 10, dir: 1 }, at(2000, 80), clockAt(600), []);
+    expect(route?.steps.map((step) => step.seg.id)).toEqual([0]);
+    expect(route?.reachesTarget).toBe(false);
+    expect(route?.length).toBeCloseTo(70, 0);
+  });
+
+  it.each(["car", "walk"] as const)("keeps the newest equal-cost goal for %s routes", (mode) => {
+    const graph = new RoadGraph([], frame);
+    const base = new RoadGraph([road(0, 0, 0, 100)], frame).segments[0];
+    for (let id = 0; id < 3; id++) {
+      const first = id === 0;
+      graph.segments.push({
+        ...base,
+        id,
+        pts: first
+          ? [new Vector3(0, 0, 0), new Vector3(0, 0, -100)]
+          : [new Vector3(0, 0, -100), new Vector3(0, 0, -200)],
+        cum: [0, 100],
+        length: 100,
+        from: first ? 0 : 1,
+        to: first ? 1 : 2,
+      });
+    }
+    graph.nodes.set(0, [0]);
+    graph.nodes.set(1, [0, 1, 2]);
+    graph.nodes.set(2, [1, 2]);
+    const route = planRoute(
+      graph,
+      { seg: graph.segments[0], s: 10, dir: 1 },
+      new Vector3(0, 0, -180),
+      clockAt(600),
+      [],
+      mode,
+    );
+    expect(route?.steps.map((step) => step.seg.id)).toEqual([0, 2]);
+    expect(route?.length).toBe(170);
+  });
+
   it("classifies turns by the angle between the streets (left-hand traffic agnostic)", () => {
     const north = new Vector3(0, 0, -1);
     expect(classifyTurn(north, new Vector3(1, 0, 0))).toBe("right");

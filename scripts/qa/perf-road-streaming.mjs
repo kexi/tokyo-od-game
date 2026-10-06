@@ -67,7 +67,7 @@ try {
     const { GRAPHICS } = await import(new URL('src/device.ts', location.href).href);
     return { render:__game.renderInfo, graphics:GRAPHICS.settings, userAgent:navigator.userAgent,
       input:__game.debug.roads.input().lines.length, initial:__game.debug.logs.query({event:'road_network_built'}).at(-1),
-      session:__game.debug.logs.query({event:'session_start'}).at(-1)?.traceId };
+      session:__game.debug.logs.query({limit:1}).at(-1)?.traceId };
   })()`);
   if (process.env.QA_PROFILE) {
     await browser.send("Performance.enable", { timeDomain: "timeTicks" });
@@ -80,7 +80,7 @@ try {
     if (!isSameClock) throw new Error("CDP and page clock mapping differs");
     report.clock = { navigationStart: clock.NavigationStart, before, after, mapped };
   }
-  await browser.evaluate(`window.__qaMeshes = () => {
+  await browser.evaluate(`window.__qaGame=__game; window.__qaMeshes = () => {
     const G = __game;
     return [...G.debug.roads.surface.meshes.values(), ...G.control.meshes, ...G.control.plates,
       ...G.guideSigns.meshes, G.streetLights.metal, G.streetLights.lens,
@@ -231,7 +231,8 @@ try {
         afterGeo:G.getFrame().toGeodetic(G.vehicle.position()),
         recentered:G.debug.logs.query({event:'frame_recentered'}).at(-1),
         installed:G.debug.logs.query({event:'road_network_built'}).at(-1),
-        session:G.debug.logs.query({event:'session_start'}).at(-1)?.traceId,
+        sameGame:G===window.__qaGame,
+        session:G.debug.logs.query({limit:1}).at(-1)?.traceId,
         water:G.debug.logs.query({event:'water_masks_prepared'}).slice(beforeWaterCount),
         buildingMetadata:G.debug.logs.query({event:'building_batch_table_skipped'}).slice(beforeMetadataCount),
         buildingMetadataKept:__qaKeptMetadata.slice(beforeKeptMetadata),
@@ -244,7 +245,8 @@ try {
     }
     report.samples.push(sample);
     save();
-    if (sample.session !== report.context.session) throw new Error("HMR changed the measured session");
+    const isSameSession = sample.sameGame && sample.session === report.context.session;
+    if (!isSameSession) throw new Error("HMR changed the measured session");
     if (sample.errors.length) throw new Error(`${mode} logged a runtime failure; see ${out}/report.json`);
     process.stdout.write(
       JSON.stringify({

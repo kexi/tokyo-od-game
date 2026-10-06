@@ -206,13 +206,24 @@ export function planRoute(
   // Where the target meets each street; the goal is the closest street (and any within 30 m of it).
   const proj = new Map<number, { s: number; dist: number }>();
   let nearest = Infinity;
-  for (const seg of graph.segments) {
-    if (!usable(seg)) continue;
-    const p = graph.nearestOn(seg, target);
-    proj.set(seg.id, { s: p.s, dist: p.dist });
-    nearest = Math.min(nearest, p.dist);
+  const project = (candidates: readonly Segment[]) => {
+    for (const seg of candidates) {
+      const needsProjection = !proj.has(seg.id) && usable(seg);
+      if (!needsProjection) continue;
+      const p = graph.nearestOn(seg, target);
+      proj.set(seg.id, { s: p.s, dist: p.dist });
+      nearest = Math.min(nearest, p.dist);
+    }
+  };
+  for (let radius = 64; ; radius *= 2) {
+    const candidates = graph.projectionCandidates(target, radius);
+    project(candidates);
+    const hasClosest = nearest <= radius || candidates.length === graph.segments.length;
+    if (hasClosest) break;
   }
   if (!Number.isFinite(nearest)) return null;
+  // Goals within 30 m of the closest street can be cheaper even when outside the first radius.
+  project(graph.projectionCandidates(target, nearest + 30));
   const isGoal = (seg: Segment) => (proj.get(seg.id)?.dist ?? Infinity) <= nearest + 30;
   // Driving past the goal point costs nothing extra, but a street far from the target is worse.
   const goalCost = (st: Step, entered: number) => {
@@ -260,21 +271,21 @@ export function planRoute(
 
   /** The cheapest legal step list to the goal (Dijkstra over street directions), or null. */
   function search(banned: ReadonlySet<string>): Step[] | null {
-    const best = new Map<number, number>(); // step key → cost at its exit node
-    const prev = new Map<number, Step>();
+    // RoadGraph already indexes segments by id; hashing each directional cost is unnecessary.
+    const best = new Float64Array(graph.segments.length * 2).fill(Infinity);
+    const prev: Array<Step | undefined> = [];
     // Goal entries carry the step they were reached from: the same street can be both a goal
     // (stop part-way along it) and a through street with a different best predecessor.
     type Entry = { cost: number; step: Step; goal: boolean; from: Step | null };
     const open: Entry[] = [];
     const push = (cost: number, step: Step, goal: boolean, from: Step | null = null) => {
       open.push({ cost, step, goal, from });
-      // Small graphs (~1,200 segments): a sorted insert keeps the code short and fast enough.
       for (let i = open.length - 1; i > 0 && open[i].cost > open[i - 1].cost; i--) {
         [open[i], open[i - 1]] = [open[i - 1], open[i]];
       }
     };
     const remaining = start.dir === 1 ? start.seg.length - start.s : start.s;
-    best.set(key(startStep), remaining);
+    best[key(startStep)] = remaining;
     push(remaining, startStep, false);
     if (isGoal(start.seg)) {
       const c = goalCost(startStep, start.s);
@@ -289,7 +300,7 @@ export function planRoute(
         goal = entry;
         break;
       }
-      if (cost > (best.get(key(step)) ?? Infinity)) continue;
+      if (cost > best[key(step)]) continue;
       const node = exitNode(step);
       const ids = graph.nodes.get(node) ?? [];
       const tIn = tangent(graph, step, true);
@@ -310,9 +321,9 @@ export function planRoute(
         const slow = !isWalk && seg.line.width < 5.5 ? 1.4 : 1;
         const base = cost + (isWalk ? (turn === "straight" ? 0 : 3) : TURN_COST[turn]);
         const through = base + seg.length * slow;
-        if (through < (best.get(key(next)) ?? Infinity)) {
-          best.set(key(next), through);
-          prev.set(key(next), step);
+        if (through < best[key(next)]) {
+          best[key(next)] = through;
+          prev[key(next)] = step;
           push(through, next, false);
         }
         if (isGoal(seg)) {
@@ -328,7 +339,7 @@ export function planRoute(
     for (let guard = 0; cur && guard < graph.segments.length * 2; guard++) {
       steps.unshift(cur);
       if (key(cur) === key(startStep)) break;
-      cur = prev.get(key(cur)) ?? null;
+      cur = prev[key(cur)] ?? null;
     }
     return steps;
   }
