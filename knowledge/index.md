@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [地形の水域マスク式をタイル間で共有する](terrain-mask-performance.md) - 両backend・昼夜・交換の8192000値が一致。実ワープの地形生成CPU181.5→32.4ms、204.4→10.1ms。原点変更100msなどの停止は残る
+
 - [未使用の建物属性表の解析を省く](building-metadata-performance.md) - 実近景・遠景39タイルのGLB・頂点・ID・行列が一致。属性準備CPU約18→0.3〜0.4ms。夜雨の新地域116.7ms・連続ワープ83.3ms・原点変更66.6msは残る
 
 - [不透明な外壁の影アルファを定数にする](opaque-facade-shadow-performance.md) - 8棟の影生成CPU33.0→1.0ms。両backend・全窓設定・昼夜の新規姿勢が全画素一致。実ワープ100〜117msと同タスク内の影更新差は残る
