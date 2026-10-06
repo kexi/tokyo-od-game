@@ -32,6 +32,7 @@ for (const file of [
   "src/world/buildingFacadePlugin.ts",
   "src/world/buildingShaders.ts",
   "src/world/terrain.ts",
+  "src/world/terrainWaterTriangles.ts",
   "src/world/terrainMaterial.ts",
   "src/world/terrainData.ts",
   "src/world/terrainCompute.ts",

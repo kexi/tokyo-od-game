@@ -33,6 +33,7 @@ import { latToTileY, lonToTileX } from "../geo/tiles";
 import type { DemStore } from "./dem";
 import { FarGround, type TileRect } from "./farGround";
 import { TerrainHeight } from "./terrainHeight";
+import { dryTerrainTriangles } from "./terrainWaterTriangles";
 import {
   bindTerrainMask,
   createTerrainMaterial,
@@ -407,26 +408,7 @@ export class Terrain {
    * shore and streams narrower than the grid (~15 m) keep their ground.
    */
   private dryTriangles(chunk: Chunk, index: ArrayLike<number>): Uint32Array {
-    const mask = chunk.waterMask;
-    if (!mask) return new Uint32Array(index);
-    const size = chunk.waterSize;
-    const isWet = (i: number, j: number) => {
-      const px = Math.min(size - 1, Math.floor((i / S) * size));
-      const py = Math.min(size - 1, Math.floor((j / S) * size));
-      return mask[py * size + px] >= 128;
-    };
-    const kept: number[] = [];
-    for (let t = 0; t + 2 < index.length; t += 3) {
-      const corners = [index[t], index[t + 1], index[t + 2]].map((k) => [
-        k % (S + 1),
-        Math.floor(k / (S + 1)),
-      ]);
-      const ci = (corners[0][0] + corners[1][0] + corners[2][0]) / 3;
-      const cj = (corners[0][1] + corners[1][1] + corners[2][1]) / 3;
-      const isOnWater = corners.every(([i, j]) => isWet(i, j)) && isWet(ci, cj);
-      if (!isOnWater) kept.push(index[t], index[t + 1], index[t + 2]);
-    }
-    return new Uint32Array(kept);
+    return dryTerrainTriangles(index, chunk.waterMask, chunk.waterSize, S);
   }
 
   private applyWater(chunk: Chunk, version: number): void {

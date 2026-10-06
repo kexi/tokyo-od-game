@@ -46,6 +46,7 @@ writeFileSync(
 const sources = {};
 for (const file of [
   "src/world/terrain.ts",
+  "src/world/terrainWaterTriangles.ts",
   "src/world/buildings.ts",
   "src/physics/colliderSnapshot.ts",
   "src/physics/colliderCompute.ts",
