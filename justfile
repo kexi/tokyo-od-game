@@ -278,6 +278,10 @@ measure-water-masks:
 measure-facade-shadows:
     node scripts/qa/facade-shadow-parity.mjs
 
+# 実建物の属性解析を省く前後でGLB・頂点・ID・行列を比較し、メインスレッドの停止を計測する
+measure-building-metadata:
+    node scripts/qa/perf-building-metadata.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

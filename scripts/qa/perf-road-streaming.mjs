@@ -86,6 +86,22 @@ try {
       ...G.guideSigns.meshes, G.streetLights.metal, G.streetLights.lens,
       ...G.orbis.meshes, ...G.furniture.group.children].filter(Boolean);
   }`);
+  await browser.evaluate(`(async () => {
+    const {BuildingMetadataPlugin}=await import(new URL('src/world/buildingMetadata.ts',location.href).href);
+    const original=BuildingMetadataPlugin.prototype.parseTile;
+    window.__qaKeptMetadata=[];
+    BuildingMetadataPlugin.prototype.parseTile=function(buffer,...args){
+      const result=original.call(this,buffer,...args);
+      const hasHeader=buffer.byteLength>=28;
+      if(result!==null||!hasHeader)return result;
+      const header=new DataView(buffer);
+      const hasBatch=header.getUint32(0,true)===0x6d643362&&header.getUint32(20,true)>0;
+      if(!hasBatch)return result;
+      __qaKeptMetadata.push({url:args[2],bytes:buffer.byteLength,
+        header:Array.from({length:6},(_,i)=>header.getUint32((i+1)*4,true))});
+      return result;
+    };
+  })()`);
   await browser.evaluate(`window.__qaCpu = []; window.__qaWrap = (object, method, phase) => {
     const original = object[method];
     object[method] = function(...args) {
@@ -140,6 +156,8 @@ try {
       });
       const watchStart = performance.now();
       const beforeWaterCount=G.debug.logs.query({event:'water_masks_prepared'}).length;
+      const beforeMetadataCount=G.debug.logs.query({event:'building_batch_table_skipped'}).length;
+      const beforeKeptMetadata=__qaKeptMetadata.length;
       const watch = longFramesDuring(watchStart, frames);
       await new Promise(r => setTimeout(r, 150));
       const beforeMeshes = new Set(__qaMeshes()), beforeParked = new Set(G.traffic.parkedPoses().map(p=>p.key));
@@ -197,6 +215,8 @@ try {
         installed:G.debug.logs.query({event:'road_network_built'}).at(-1),
         session:G.debug.logs.query({event:'session_start'}).at(-1)?.traceId,
         water:G.debug.logs.query({event:'water_masks_prepared'}).slice(beforeWaterCount),
+        buildingMetadata:G.debug.logs.query({event:'building_batch_table_skipped'}).slice(beforeMetadataCount),
+        buildingMetadataKept:__qaKeptMetadata.slice(beforeKeptMetadata),
         errors:G.debug.logs.query({event:/uncaught_error|road_network_failed|road_worker_failed|water_worker_failed|water_tile_failed|log_schema_invalid/})};
     })()`);
     if (process.env.QA_PROFILE) {

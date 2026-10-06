@@ -107,6 +107,12 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   road_worker_failed: { error: "x" },
   dem_worker_failed: { error: "x" },
   water_worker_failed: { error: "x" },
+  building_batch_table_skipped: {
+    url: "https://example.invalid/tile.b3dm",
+    bytesBefore: 128,
+    bytesAfter: 96,
+    cpuMs: 1,
+  },
   water_masks_prepared: {
     backend: "worker",
     x: 10,
