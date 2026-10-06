@@ -330,6 +330,10 @@ measure-ground-queries:
 measure-pavement-slices:
     node scripts/qa/perf-pavement-slices.mjs
 
+# 実建物のランドマーク除外を旧処理と照合し、三角形走査とCPUを計測する
+measure-building-footprints:
+    node scripts/qa/perf-building-footprints.mjs
+
 # 実道路2地域で旧経路探索と全経路・自動運転計画を比較し、CPUを測る
 measure-route-search:
     node scripts/qa/perf-route-search.mjs

@@ -49,10 +49,18 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
   let id = 0;
   const pending = new Map();
   const logs = [];
+  const failPending = (error) => {
+    for (const request of pending.values()) request.reject(error);
+    pending.clear();
+  };
+  ws.addEventListener("close", (event) =>
+    failPending(new Error(`CDP connection closed (${event.code}): ${event.reason}`)),
+  );
+  ws.addEventListener("error", () => failPending(new Error("CDP connection failed")));
   ws.addEventListener("message", (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.id && pending.has(msg.id)) {
-      pending.get(msg.id)(msg);
+      pending.get(msg.id).resolve(msg);
       pending.delete(msg.id);
     } else if (msg.method === "Runtime.consoleAPICalled") {
       logs.push(`[${msg.params.type}] ${msg.params.args.map((a) => a.value ?? a.description).join(" ")}`);
@@ -63,10 +71,20 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
     }
   });
   const send = (method, params = {}) =>
-    new Promise((r) => {
+    new Promise((resolve, reject) => {
+      const isOpen = ws.readyState === WebSocket.OPEN;
+      if (!isOpen) {
+        reject(new Error("CDP connection is not open"));
+        return;
+      }
       const mid = ++id;
-      pending.set(mid, r);
-      ws.send(JSON.stringify({ id: mid, method, params }));
+      pending.set(mid, { resolve, reject });
+      try {
+        ws.send(JSON.stringify({ id: mid, method, params }));
+      } catch (error) {
+        pending.delete(mid);
+        reject(error);
+      }
     });
   await send("Runtime.enable");
   await send("Page.enable");
@@ -91,7 +109,8 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
   const close = async () => {
     ws.close();
     chrome.kill();
-    await new Promise((r) => chrome.once("exit", r));
+    const isRunning = chrome.exitCode === null && chrome.signalCode === null;
+    if (isRunning) await new Promise((r) => chrome.once("exit", r));
     rmSync(profile, { recursive: true, force: true });
   };
   return { evaluate, screenshot, sleep, logs, close, send };
