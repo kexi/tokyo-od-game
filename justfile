@@ -282,6 +282,10 @@ measure-facade-shadows:
 measure-building-metadata:
     node scripts/qa/perf-building-metadata.mjs
 
+# 地形の共有マスク式を両backend・昼夜・別タイル・更新・交換で全画素比較し、生成CPUを測る
+measure-terrain-mask:
+    node scripts/qa/terrain-mask-parity.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit
