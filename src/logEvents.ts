@@ -210,12 +210,23 @@ export const LOG_EVENTS = {
   building_shader_failed: failedWith({ key: z.string() }),
   building_shader_prepared: info({ key: z.string(), meshes: count, durationMs: z.number() }),
   terrain_worker_failed: failedWith(),
+  collider_worker_failed: failedWith(),
   terrain_build_failed: failedWith({ key: z.string() }),
   road_network_failed: failedWith(),
   route_tile_failed: failedWith({ key: z.string() }),
   water_tile_failed: failedWith({ key: z.string() }),
 
   // ---------- the world as built ----------
+  collider_shape_prepared: info({
+    key: z.string(),
+    backend: z.enum(["worker", "inline"]),
+    vertices: count,
+    triangles: count,
+    bytes: count,
+    computeMs: z.number(),
+    sendMs: z.number(),
+    durationMs: z.number(),
+  }),
   terrain_chunk_prepared: info({
     key: z.string(),
     backend: z.enum(["worker", "inline"]),
