@@ -5,7 +5,7 @@ description: 実地形50タイルの2919450値が旧同期版・Worker・分割�
 tags: [terrain, rendering, testing, logging]
 status: draft
 stale_after: 2027-04-06T00:00:00Z
-generated: { by: codex, at: 2026-10-06T03:56:00Z }
+generated: { by: codex, at: 2026-10-06T04:01:29Z }
 verified:
   - {
       by: process:vitest-17-terrain-transfer-failure-bounds-disposal-and-reanchor-tests,
@@ -21,6 +21,7 @@ verified:
       at: 2026-10-06T03:52:35Z,
     }
   - { by: process:chrome154-clock-mapped-final-warp-profile-and-source-hashes, at: 2026-10-06T03:55:30Z }
+  - { by: process:road-worker-reply-stack-and-restore-timing-log-distinction, at: 2026-10-06T04:01:29Z }
 sources:
   - id: code
     resource: ../src/world/terrainData.ts, ../src/world/terrainCompute.ts, ../src/world/terrain.worker.ts, ../src/world/terrain.ts, ../src/world/dem.ts, ../src/geo/geoid.ts
@@ -104,7 +105,9 @@ Profilerなしの8場面は次のとおり。全場面のWorker・タイル準�
 
 最終版のProfilerでは新地域66.7ms・50ms超4、連続ワープ66.6ms・同4。地形37/32件がすべてWorkerで、入力準備・送信合計4.9/2.7ms、1件最大1.5/0.2msだった。時計の対応とsessionを検査し、CPUスタックを最長rAF区間へ対応させた。2083行はinfo2082、潮位表の取得失敗1、error0。[^profile] [^logs]
 
-新地域66.7msにはシェーダー生成の包含約22.8msと、舗道の高さ補正からのtoGeodetic約5.1msがある。連続ワープ66.6msには道路Workerの返答コールバック約7.7ms、GPUのwriteBuffer約3.8ms、水位のquantile約3.4msがある。別の50.1msには建物コライダーを作るRapierのtrimesh約15.0ms、頂点の変換などが重なる。**地形の法線生成が消えたことだけで、停止の完全修正とはしない。** 分類の包含とself値は足し合わせない。次は道路網の返答・復元と建物コライダーの準備を調べる。[^profile]
+新地域66.7msにはシェーダー生成の包含約22.8msと、舗道の高さ補正からのtoGeodetic約5.1msがある。連続ワープ66.6msには道路Workerの返答コールバック約7.7ms、GPUのwriteBuffer約3.8ms、水位のquantile約3.4msがある。別の50.1msには建物コライダーを作るRapierのtrimesh約15.0ms、頂点の変換などが重なる。**地形の法線生成が消えたことだけで、停止の完全修正とはしない。** 分類の包含とself値は足し合わせない。次は道路Workerの返答処理と建物コライダーの準備を調べる。[^profile]
+
+その後、同じsessionのroad_network_preparedを端末で照合した。6件のrestoreMsは0.5〜0.9ms、sendMsは0.9〜1.6msだった。**返答コールバックの約7.7msを、RoadGraph・Vector3の復元時間と読み替えてはいけない。** event.dataへの最初のアクセスなど、structured cloneの受信・デシリアライズはこのrestoreMsに含まれず、現ログでは分けて計測していない。索引の「道路網の復元・コライダーの停止」は「道路Workerの返答・コライダーの停止」へ訂正した。次に返答を読む時間と復元時間を分けて測り、対象を確定する。[^profile] [^logs]
 
 前のProfilerなしの新地域50.1ms・連続ワープ66.7msに対し、今回の最長値は66.7/83.3msだった。起動ごとの到着・交通・GC・GPU待機が変動するため、今回の部品改善から全ゲームの停止が改善したとは断定しない。最初のProfilerも50.1/66.7/66.7msで、短いフォールバックへの追加前の記録として残す。[^previous] [^first] [^normal]
 
