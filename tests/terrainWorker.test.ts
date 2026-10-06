@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BufferAttribute, BufferGeometry, Matrix4, Scene, Vector3, type Mesh } from "three";
+import { BufferAttribute, BufferGeometry, Matrix4, Scene, Vector3, type Mesh, type Texture } from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
-import type { WebGPURenderer } from "three/webgpu";
+import type { MeshStandardNodeMaterial, WebGPURenderer } from "three/webgpu";
 import { Geoid } from "../src/geo/geoid";
 import { LocalFrame } from "../src/geo/frame";
 import { geodeticToEcef } from "../src/geo/ellipsoid";
@@ -10,6 +10,7 @@ import { DemStore } from "../src/world/dem";
 import { Terrain } from "../src/world/terrain";
 import { TerrainCompute, type TerrainRequest } from "../src/world/terrainCompute";
 import { computeTerrain, type TerrainData, type TerrainInput } from "../src/world/terrainData";
+import { setTerrainImagery } from "../src/world/terrainMaterial";
 
 vi.mock("../src/world/farGround", () => ({
   FarGround: class {
@@ -268,6 +269,42 @@ function terrain(source: TerrainInput) {
 }
 
 describe("terrain asynchronous install", () => {
+  it("keeps water out of the grey placeholder until imagery arrives, then follows later water changes", async () => {
+    const source = input(),
+      { scene, worker, ground, build } = terrain(source);
+    let data = new Uint8Array(16).fill(255);
+    ground.setWater({ versionAt: () => 1, maskAt: () => ({ data, size: 4 }) });
+    const pending = build(source.x, source.y, 0);
+    await vi.waitFor(() => expect(worker.requests).toHaveLength(1));
+    worker.reply(0);
+    await pending;
+    const mesh = scene.children[0] as Mesh<
+      BufferGeometry,
+      MeshStandardNodeMaterial & { terrainWaterMap: Texture }
+    >;
+    const initialMask = mesh.material.terrainWaterMap;
+    const chunks = Reflect.get(ground, "chunks") as Map<string, unknown>;
+    const chunk = chunks.get(`${source.x}/${source.y}`)! as {
+      imageryZoom: number;
+      water: { value: Texture };
+      waterMask: Uint8Array;
+    };
+    const applyWater = Reflect.get(ground, "applyWater").bind(ground);
+    applyWater(chunk, 1);
+    expect(chunk.waterMask).toBe(data);
+    expect(mesh.material.terrainWaterMap).not.toBe(chunk.water.value);
+    applyWater(chunk, 2);
+    expect(mesh.material.terrainWaterMap).toBe(initialMask);
+    const photo = mesh.material.map!.clone();
+    setTerrainImagery(mesh.material, photo, chunk.water.value);
+    chunk.imageryZoom = 18;
+    expect(mesh.material.terrainWaterMap).toBe(chunk.water.value);
+    data = new Uint8Array(16);
+    applyWater(chunk, 3);
+    expect(chunk.waterMask).toBe(data);
+    expect(mesh.material.terrainWaterMap).toBe(chunk.water.value);
+    ground.dispose();
+  });
   it("installs prepared geometry with the latest local frame after a reanchor while waiting", async () => {
     const source = input(),
       { scene, worker, ground, build } = terrain(source);
