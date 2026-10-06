@@ -297,13 +297,30 @@ export class TrafficControl {
   /** Signals: snap OSM nodes to junctions, cluster them, and create one approach per entry. */
   private buildSignals(graph: RoadGraph, regs: AppliedRegulations): Set<string> {
     const junctions: { node: number; pos: Vector3 }[] = [];
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
     for (const [node, ids] of graph.nodes) {
       if (ids.length < 3) continue;
       const pos = this.nodePos(graph, node);
-      if (pos) junctions.push({ node, pos });
+      const hasPosition = pos !== null;
+      if (!hasPosition) continue;
+      junctions.push({ node, pos });
+      minX = Math.min(minX, pos.x);
+      maxX = Math.max(maxX, pos.x);
+      minZ = Math.min(minZ, pos.z);
+      maxZ = Math.max(maxZ, pos.z);
     }
     const signalled = new Set<number>();
     for (const s of regs.signals) {
+      // OSM tiles extend past the road graph; signals beyond every snap range cannot match.
+      const isOutside =
+        minX - s.x >= SIGNAL_SNAP ||
+        s.x - maxX >= SIGNAL_SNAP ||
+        minZ - s.z >= SIGNAL_SNAP ||
+        s.z - maxZ >= SIGNAL_SNAP;
+      if (isOutside) continue;
       let best: { node: number; pos: Vector3 } | null = null;
       let bestD = SIGNAL_SNAP;
       for (const j of junctions) {

@@ -290,6 +290,10 @@ measure-terrain-mask:
 measure-route-search:
     node scripts/qa/perf-route-search.mjs
 
+# 実道路2地域で新旧の信号・停止線・位相・参照の一致と道路対応付けのCPUを測る
+measure-signal-network:
+    node scripts/qa/perf-signal-network.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit
