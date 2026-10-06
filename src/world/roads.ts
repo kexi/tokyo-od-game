@@ -104,6 +104,17 @@ export class RoadGraph {
 
   /** Structured clone drops Vector3 and RoadGraph methods; keep the computed spatial index. */
   static restore(data: RoadGraphSnapshot | RoadGraphBuffers, frame: LocalFrame): RoadGraph {
+    const steps = RoadGraph.restoreSteps(data, frame);
+    for (;;) {
+      const next = steps.next();
+      if (next.done) return next.value;
+    }
+  }
+
+  static *restoreSteps(
+    data: RoadGraphSnapshot | RoadGraphBuffers,
+    frame: LocalFrame,
+  ): Generator<void, RoadGraph> {
     const graph = new RoadGraph([], frame);
     const isPacked = "points" in data;
     if (isPacked) {
@@ -113,14 +124,34 @@ export class RoadGraph {
         for (let i = data.pointOffsets[s]; i < data.pointOffsets[s + 1]; i++) {
           const k = i * 3;
           pts.push(new Vector3(data.points[k], data.points[k + 1], data.points[k + 2]));
+          const checkpoint = (i + 1) % 128 === 0;
+          if (checkpoint) yield;
         }
         graph.segments.push({ ...data.segments[s], pts });
+        const checkpoint = (s + 1) % 128 === 0;
+        if (checkpoint) yield;
       }
     } else {
-      for (const seg of data.segments)
-        graph.segments.push({ ...seg, pts: seg.pts.map((p) => new Vector3(...p)) });
+      let vertices = 0;
+      for (let s = 0; s < data.segments.length; s++) {
+        const seg = data.segments[s];
+        const pts: Vector3[] = [];
+        for (const p of seg.pts) {
+          pts.push(new Vector3(...p));
+          const checkpoint = ++vertices % 128 === 0;
+          if (checkpoint) yield;
+        }
+        graph.segments.push({ ...seg, pts });
+        const checkpoint = (s + 1) % 128 === 0;
+        if (checkpoint) yield;
+      }
     }
-    for (const [node, ids] of data.nodes) graph.nodes.set(node, ids);
+    let nodes = 0;
+    for (const [node, ids] of data.nodes) {
+      graph.nodes.set(node, ids);
+      const checkpoint = ++nodes % 128 === 0;
+      if (checkpoint) yield;
+    }
     graph.pieces = data.pieces;
     return graph;
   }

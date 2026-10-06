@@ -1,11 +1,13 @@
 import type { LocalFrame } from "../geo/frame";
+import { FrameWork } from "../game/frameWork";
 import { log, newSpan, warn, type Span } from "../log";
 import type { RegulationData } from "./regulations";
 import type { RoadLine } from "./roads";
-import { unpackRoadNetwork } from "./roadNetworkPacket";
+import { unpackRoadNetworkSteps } from "./roadNetworkPacket";
 import {
   computeRoadNetwork,
   restoreRoadNetwork,
+  restoreRoadNetworkSteps,
   type RoadNetwork,
   type RoadNetworkRestorable,
   type RoadNetworkInput,
@@ -20,6 +22,7 @@ type Job = {
   start: number;
   sendMs: number;
   stale: boolean;
+  receiving: boolean;
   resolve(value: RoadNetwork | null): void;
   reject(error: unknown): void;
 };
@@ -53,6 +56,7 @@ export class RoadNetworkBuilder {
         start: performance.now(),
         sendMs: 0,
         stale: false,
+        receiving: false,
         resolve,
         reject,
       };
@@ -90,7 +94,7 @@ export class RoadNetworkBuilder {
         const reply = event.data;
         const readMs = performance.now() - readStarted;
         const job = this.active;
-        const isCurrent = job && reply.id === job.id;
+        const isCurrent = job && reply.id === job.id && !job.receiving;
         if (!isCurrent) return;
         const hasError = "error" in reply;
         if (hasError) {
@@ -102,17 +106,12 @@ export class RoadNetworkBuilder {
           this.complete(job);
           return;
         }
-        try {
-          const unpackStarted = performance.now();
-          const wire = reply.data;
-          const isPacket = "points" in wire;
-          const data = isPacket ? unpackRoadNetwork(wire) : wire;
-          const unpackMs = performance.now() - unpackStarted;
-          this.finish(job, data, "worker", readMs, unpackMs, reply.packMs ?? 0);
-        } catch (error) {
-          job.reject(error);
-          this.complete(job);
-        }
+        job.receiving = true;
+        // The worker answered; a frame wait on the page must not trigger its response timeout.
+        const hasTimer = this.timer !== null;
+        if (hasTimer) clearTimeout(this.timer!);
+        this.timer = null;
+        void this.receive(job, reply, readMs);
       });
       worker.addEventListener("error", (event) => {
         event.preventDefault();
@@ -125,6 +124,50 @@ export class RoadNetworkBuilder {
       this.failed = true;
       warn("road_worker_failed", { error: String(error) });
       return null;
+    }
+  }
+
+  private *currentSteps<T>(job: Job, steps: Generator<void, T>): Generator<void, T | null> {
+    for (;;) {
+      const cancelled = job.stale || this.disposed || this.active !== job;
+      if (cancelled) return null;
+      const next = steps.next();
+      if (next.done) return next.value;
+      yield;
+    }
+  }
+
+  private async receive(
+    job: Job,
+    reply: Exclude<RoadNetworkReply, { error: string }>,
+    readMs: number,
+  ): Promise<void> {
+    const work = new FrameWork();
+    try {
+      // A microtask would add all conversion work to the worker message's animation frame.
+      await work.yield();
+      const wire = reply.data;
+      const isPacket = "points" in wire;
+      const data = isPacket ? await work.run(this.currentSteps(job, unpackRoadNetworkSteps(wire))) : wire;
+      const unpackMs = work.cpuMs;
+      const cancelled = data === null || job.stale || this.disposed || this.active !== job;
+      if (cancelled) return;
+      const result = await work.run(this.currentSteps(job, restoreRoadNetworkSteps(data, job.frame)));
+      const isDiscarded = result === null;
+      if (isDiscarded) return;
+      this.finish(job, data, "worker", {
+        result,
+        readMs,
+        unpackMs,
+        packMs: reply.packMs ?? 0,
+        restoreMs: work.cpuMs - unpackMs,
+        maxSliceMs: work.maxSliceMs,
+        yields: work.yields,
+      });
+    } catch (error) {
+      job.reject(error);
+    } finally {
+      this.complete(job);
     }
   }
 
@@ -172,15 +215,21 @@ export class RoadNetworkBuilder {
     job: Job,
     data: RoadNetworkRestorable,
     backend: "worker" | "inline",
-    readMs = 0,
-    unpackMs = 0,
-    packMs = 0,
+    prepared?: {
+      result: RoadNetwork;
+      readMs: number;
+      unpackMs: number;
+      packMs: number;
+      restoreMs: number;
+      maxSliceMs: number;
+      yields: number;
+    },
   ): void {
     try {
       if (job.stale || this.disposed) return;
       const start = performance.now();
-      const result = restoreRoadNetwork(data, job.frame);
-      const restoreMs = performance.now() - start;
+      const result = prepared?.result ?? restoreRoadNetwork(data, job.frame);
+      const restoreMs = prepared?.restoreMs ?? performance.now() - start;
       // Emit on the page so worker diagnostics retain the page's trace and log sink.
       for (const diagnostic of data.diagnostics) warn(diagnostic.event, diagnostic.fields, job.span);
       log(
@@ -191,9 +240,11 @@ export class RoadNetworkBuilder {
           computeMs: data.computeMs,
           restoreMs,
           sendMs: job.sendMs,
-          readMs,
-          unpackMs,
-          packMs,
+          readMs: prepared?.readMs ?? 0,
+          unpackMs: prepared?.unpackMs ?? 0,
+          packMs: prepared?.packMs ?? 0,
+          maxSliceMs: prepared?.maxSliceMs ?? restoreMs,
+          yields: prepared?.yields ?? 0,
           durationMs: performance.now() - job.start,
         },
         job.span,

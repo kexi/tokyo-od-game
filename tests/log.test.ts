@@ -174,6 +174,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     readMs: 0.5,
     unpackMs: 0.2,
     packMs: 1,
+    maxSliceMs: 1.2,
+    yields: 1,
     durationMs: 105,
   },
   darkroom_grab_failed: { error: "Error: x" },

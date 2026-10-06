@@ -262,6 +262,14 @@ measure-road-worker:
 measure-road-replies:
     node scripts/qa/perf-road-replies.mjs
 
+# 実道路2地域でWorker返答の復元を前段と交互に全比較し、CPU区間と待機時間を測る
+measure-road-reply-slices:
+    node scripts/qa/perf-road-reply-slices.mjs
+
+# 夜雨で目撃写真・動画の証拠画像を4件作り、描画・GPU要求の内訳を測る
+measure-witness-photos:
+    node scripts/qa/perf-witness-photos.mjs
+
 # 道路の分割反映・原点変更・未読込地域への移動を夜雨で最後まで計測する
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs

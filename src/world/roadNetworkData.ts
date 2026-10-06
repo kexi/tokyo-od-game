@@ -96,32 +96,68 @@ function packApplied(applied: AppliedRegulations): WireApplied {
 }
 
 export function restoreRoadNetwork(data: RoadNetworkRestorable, frame: LocalFrame): RoadNetwork {
-  const graph = RoadGraph.restore(data.graph, frame);
+  const steps = restoreRoadNetworkSteps(data, frame);
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+  }
+}
+
+function* mapSteps<T, R>(values: T[], map: (value: T) => R): Generator<void, R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < values.length; i++) {
+    out.push(map(values[i]));
+    const checkpoint = (i + 1) % 128 === 0;
+    if (checkpoint) yield;
+  }
+  return out;
+}
+
+export function* restoreRoadNetworkSteps(
+  data: RoadNetworkRestorable,
+  frame: LocalFrame,
+): Generator<void, RoadNetwork> {
+  const graph = yield* RoadGraph.restoreSteps(data.graph, frame);
   const a = data.applied;
   const hasNoRegulations = a === null;
   if (hasNoRegulations) return { graph, applied: null };
-  const stops = a.stops.map((s) => ({ ...s, seg: graph.segments[s.seg], pos: vector(s.pos) }));
+  const stops = yield* mapSteps(a.stops, (s) => ({ ...s, seg: graph.segments[s.seg], pos: vector(s.pos) }));
+  const crossings = yield* mapSteps(a.crossings, (c) => ({
+    ...c,
+    seg: graph.segments[c.seg],
+    pos: vector(c.pos),
+  }));
+  const signs = yield* mapSteps(a.signs, (s) => ({
+    ...s,
+    seg: graph.segments[s.seg],
+    pos: vector(s.pos),
+    travel: vector(s.travel),
+  }));
+  const turnRules = yield* mapSteps(a.turnRules, (r) => ({ ...r, approach: graph.segments[r.approach] }));
+  const stopSigns = yield* mapSteps(a.stopSigns, (s) => ({ pos: vector(s.pos), line: stops[s.line] }));
+  const signals = yield* mapSteps(a.signals, vector);
+  const junctionNames = yield* mapSteps(a.junctionNames, (n) => ({ ...n, pos: vector(n.pos) }));
+  const footbridges: AppliedRegulations["footbridges"] = [];
+  for (const b of a.footbridges) {
+    const deck = yield* mapSteps(b.deck, vector);
+    const stairs: Vector3[][] = [];
+    for (const stair of b.stairs) stairs.push(yield* mapSteps(stair, vector));
+    footbridges.push({ ...b, deck, stairs });
+    yield;
+  }
+  const laneUse = yield* mapSteps(a.laneUse, (l) => ({ ...l, seg: graph.segments[l.seg] }));
   return {
     graph,
     applied: {
-      crossings: a.crossings.map((c) => ({ ...c, seg: graph.segments[c.seg], pos: vector(c.pos) })),
-      signs: a.signs.map((s) => ({
-        ...s,
-        seg: graph.segments[s.seg],
-        pos: vector(s.pos),
-        travel: vector(s.travel),
-      })),
-      turnRules: a.turnRules.map((r) => ({ ...r, approach: graph.segments[r.approach] })),
+      crossings,
+      signs,
+      turnRules,
       stopLines: stops.slice(0, a.stopLineCount),
-      stopSigns: a.stopSigns.map((s) => ({ pos: vector(s.pos), line: stops[s.line] })),
-      signals: a.signals.map(vector),
-      junctionNames: a.junctionNames.map((n) => ({ ...n, pos: vector(n.pos) })),
-      footbridges: a.footbridges.map((b) => ({
-        ...b,
-        deck: b.deck.map(vector),
-        stairs: b.stairs.map((s) => s.map(vector)),
-      })),
-      laneUse: a.laneUse.map((l) => ({ ...l, seg: graph.segments[l.seg] })),
+      stopSigns,
+      signals,
+      junctionNames,
+      footbridges,
+      laneUse,
       hasMarkings: a.hasMarkings,
     },
   };

@@ -18,6 +18,9 @@ for (const file of [
   "src/main.ts",
   "src/game/frameWork.ts",
   "src/game/serialWork.ts",
+  "src/game/witnessShot.ts",
+  "src/render/frame.ts",
+  "src/render/renderer.ts",
   "src/render/streamedInstanceShaders.ts",
   "src/world/roadInstances.ts",
   "src/game/autoDriver.ts",
@@ -143,8 +146,35 @@ try {
   }`);
   await browser.evaluate(`window.__qaCpu=[];window.__qaShaders=[];
     window.__qaAsyncShaders=[];window.__qaKeptMetadata=[];window.__qaPavements=[];
-    window.__qaWorldWork=[];`);
+    window.__qaWorldWork=[];window.__qaWitness=[];`);
   if (detailed) {
+    await browser.evaluate(`(async()=>{
+      const {WitnessShot}=await import(new URL('src/game/witnessShot.ts',location.href).href);
+      let active=null;
+      const draw=WitnessShot.prototype.draw;
+      WitnessShot.prototype.draw=function(w,h){
+        const previous=active;
+        active={w,h,kind:w===64?'probe':'photo'};
+        const at=performance.now();
+        try{return draw.call(this,w,h);}
+        finally{__qaWitness.push({phase:'draw',at,ms:performance.now()-at,...active});active=previous;}
+      };
+      const wrap=(object,method,phase,detail=()=>({}))=>{
+        const original=object[method];
+        object[method]=function(...args){
+          const context=active,at=performance.now();
+          try{return original.apply(this,args);}
+          finally{if(context)__qaWitness.push({phase,at,ms:performance.now()-at,...context,...detail(args)});}
+        };
+      };
+      wrap(__game.renderer,'render','render');
+      wrap(__game.composer,'toDisplay','toDisplay');
+      wrap(__game.renderer,'readRenderTargetPixelsAsync','readSubmit');
+      wrap(__game.scene,'updateMatrixWorld','matrices');
+      wrap(__game.renderer.backend,'createRenderPipeline','pipeline',args=>({material:args[0].material.name,async:!!args[1]}));
+      wrap(__game.renderer.backend,'updateTexture','textureUpdate',args=>({name:args[0].name}));
+      wrap(__game.renderer.backend,'createTexture','textureCreate',args=>({name:args[0].name}));
+    })()`);
     await browser.evaluate(`{
       const queue=__game.water.tileWork,run=queue.run;
       let active=0;
@@ -332,6 +362,7 @@ try {
       if(overlapped)throw new Error('shared world install work overlapped');
       return {mode:${JSON.stringify(mode)},elapsed,watchStart,framePeaks,slow,frames:frameStats(result),long,phases,reused,meshCount:afterMeshes.length,
         worldWork,
+        witness:__qaWitness.filter(row=>row.at>=watchStart),
         parkedReused,parkedCount:afterParked.length,heldUntilReady,landed,beforeGeo,
         afterGeo:G.getFrame().toGeodetic(G.vehicle.position()),
         recentered:G.debug.logs.query({event:'frame_recentered'}).at(-1),
