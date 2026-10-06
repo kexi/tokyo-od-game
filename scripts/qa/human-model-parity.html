@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>Human allocation measurement</title>
+  </head>
+  <body>
+    <script type="module">
+      import * as T from "three/webgpu";
+      import * as current from "../../src/world/human.ts";
+      import * as legacy from "../../.qa/reference/human-models/human.ts";
+
+      const size = 256;
+      const cases = Array.from({ length: 12 }, (_, i) => ({
+        colors: {
+          shirt: 0x223344 + i * 0x050505,
+          pants: 0x333322 + i * 0x030303,
+          skin: 0xbbaa99 - i * 0x020202,
+          hair: 0x222222 + i * 0x030303,
+          umbrella: 0x335577 + i * 0x020303,
+        },
+        height: 0.92 + (i % 7) * 0.025,
+        variant: i,
+      }));
+      let compared = 0;
+      const same = (a, b, label) => {
+        const differentLength = a.length !== b.length;
+        if (differentLength) throw new Error(label + " length changed");
+        for (let i = 0; i < a.length; i++) {
+          const different = !Object.is(a[i], b[i]);
+          if (different) throw new Error(label + " value changed at " + i);
+          compared++;
+        }
+      };
+      const compareModels = (a, b) => {
+        a.root.updateMatrixWorld(true);
+        b.root.updateMatrixWorld(true);
+        const aa = [],
+          bb = [];
+        a.root.traverse((o) => aa.push(o));
+        b.root.traverse((o) => bb.push(o));
+        same([aa.length], [bb.length], "tree");
+        for (let i = 0; i < aa.length; i++) {
+          const x = aa[i],
+            y = bb[i];
+          same(
+            [x.type, x.name, x.visible, x.castShadow, x.receiveShadow, x.renderOrder],
+            [y.type, y.name, y.visible, y.castShadow, y.receiveShadow, y.renderOrder],
+            "object flags",
+          );
+          same(x.matrix.elements, y.matrix.elements, "local matrix");
+          same(x.matrixWorld.elements, y.matrixWorld.elements, "world matrix");
+          const mesh = x.isMesh;
+          if (!mesh) continue;
+          same(Object.keys(x.geometry.attributes), Object.keys(y.geometry.attributes), "attribute keys");
+          for (const [key, attribute] of Object.entries(x.geometry.attributes)) {
+            const other = y.geometry.attributes[key];
+            same(
+              [attribute.itemSize, attribute.normalized, attribute.count],
+              [other.itemSize, other.normalized, other.count],
+              "attribute layout",
+            );
+            same(attribute.array, other.array, key);
+          }
+          same(x.geometry.index?.array ?? [], y.geometry.index?.array ?? [], "indices");
+          same(
+            [x.material.name, ...x.material.color.toArray(), x.material.roughness, x.material.metalness],
+            [y.material.name, ...y.material.color.toArray(), y.material.roughness, y.material.metalness],
+            "material",
+          );
+        }
+      };
+      const make = (api, input) => api.createHuman(input.colors, input.height, input.variant);
+      const frame = () => new Promise(requestAnimationFrame);
+      const differences = (a, b) => {
+        let changed = 0;
+        for (let i = 0; i < a.length; i++) changed += a[i] !== b[i];
+        const sameSize = a.length === b.length;
+        if (!sameSize) throw new Error("pixel lengths differ");
+        return { changed, bytes: a.length };
+      };
+
+      window.__humanModelMeasurement = (async () => {
+        await Promise.all([legacy.loadHumanModels(), current.loadHumanModels()]);
+        const samples = [];
+        for (const api of [legacy, current])
+          for (let i = 0; i < 128; i++) api.disposeHuman(make(api, cases[i % cases.length]));
+        for (const mode of [
+          "legacy",
+          "current",
+          "current",
+          "legacy",
+          "current",
+          "legacy",
+          "legacy",
+          "current",
+        ]) {
+          const api = mode === "legacy" ? legacy : current,
+            batches = [];
+          for (let batch = 0; batch < 4; batch++) {
+            await frame();
+            const people = [],
+              at = performance.now();
+            for (let i = 0; i < 64; i++) people.push(make(api, cases[i % cases.length]));
+            const createMs = performance.now() - at;
+            for (const person of people) api.disposeHuman(person);
+            batches.push({ people: people.length, createMs });
+          }
+          samples.push({ mode, batches });
+        }
+        // Three's resource IDs increment synchronously. These sentinels are outside CPU timing;
+        // the difference counts the actual constructors, including temporary defaults discarded by copy.
+        const animationSamples = [];
+        const animatePeople = [legacy, current].map((api) =>
+          Array.from({ length: 64 }, (_, i) => make(api, cases[i % cases.length])),
+        );
+        for (let warm = 0; warm < 128; warm++)
+          for (const [index, api] of [legacy, current].entries())
+            for (const person of animatePeople[index]) api.animateHuman(person, warm * 0.1, 1.4, false);
+        for (const mode of [
+          "legacy",
+          "current",
+          "current",
+          "legacy",
+          "current",
+          "legacy",
+          "legacy",
+          "current",
+        ]) {
+          const index = mode === "legacy" ? 0 : 1,
+            api = [legacy, current][index],
+            batches = [];
+          for (let batch = 0; batch < 4; batch++) {
+            await frame();
+            const at = performance.now();
+            for (let step = 0; step < 100; step++)
+              for (const person of animatePeople[index])
+                api.animateHuman(person, step * 0.1, 1.4, step % 2 === 1);
+            batches.push({ updates: 6400, animateMs: performance.now() - at });
+          }
+          animationSamples.push({ mode, batches });
+        }
+        for (const [index, api] of [legacy, current].entries())
+          for (const person of animatePeople[index]) api.disposeHuman(person);
+        const allocations = {};
+        for (const [name, api] of [
+          ["legacy", legacy],
+          ["current", current],
+        ]) {
+          const beforeGeometry = new T.BufferGeometry(),
+            beforeMaterial = new T.MeshBasicMaterial();
+          const person = make(api, cases[0]);
+          const afterGeometry = new T.BufferGeometry(),
+            afterMaterial = new T.MeshBasicMaterial();
+          allocations[name] = {
+            geometries: afterGeometry.id - beforeGeometry.id - 1,
+            materials: afterMaterial.id - beforeMaterial.id - 1,
+          };
+          api.disposeHuman(person);
+          beforeGeometry.dispose();
+          afterGeometry.dispose();
+          beforeMaterial.dispose();
+          afterMaterial.dispose();
+        }
+        const rows = [];
+        for (const forceWebGL of [false, true])
+          for (const night of [false, true]) {
+            const renderer = new T.WebGPURenderer({ antialias: true, reversedDepthBuffer: true, forceWebGL });
+            await renderer.init();
+            renderer.setSize(size, size);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = T.PCFShadowMap;
+            const isGPU = renderer.backend.isWebGPUBackend === true;
+            const correctBackend = isGPU !== forceWebGL;
+            if (!correctBackend) throw new Error("requested backend unavailable");
+            const target = new T.RenderTarget(size, size, {
+              type: isGPU ? T.HalfFloatType : T.UnsignedByteType,
+              samples: renderer.samples,
+              resolveDepthBuffer: false,
+            });
+            target.depthTexture = new T.DepthTexture(size, size, T.FloatType);
+            const worlds = [legacy, current].map((api) => {
+              const scene = new T.Scene();
+              scene.background = new T.Color(night ? 0x090c18 : 0x94b3d0);
+              scene.add(new T.AmbientLight(0xffffff, night ? 0.4 : 1.2));
+              const sun = new T.DirectionalLight(night ? 0xaabbff : 0xffffff, night ? 1 : 3);
+              sun.position.set(4, 8, 4);
+              sun.castShadow = true;
+              sun.shadow.mapSize.set(512, 512);
+              scene.add(sun);
+              const floor = new T.Mesh(
+                new T.PlaneGeometry(15, 15),
+                new T.MeshStandardNodeMaterial({ color: 0x778877 }),
+              );
+              floor.rotation.x = -Math.PI / 2;
+              floor.receiveShadow = true;
+              scene.add(floor);
+              const people = cases.map((input, i) => {
+                const person = make(api, input);
+                person.root.position.set((i % 4) * 1.9 - 2.8, 0, Math.floor(i / 4) * 2.2 - 2);
+                scene.add(person.root);
+                return person;
+              });
+              return { api, scene, people, sun, floor };
+            });
+            const cameras = [
+              new T.PerspectiveCamera(45, 1, 0.05, 50),
+              new T.PerspectiveCamera(48, 1, 0.05, 50),
+            ];
+            cameras[0].position.set(8, 6, 10);
+            cameras[1].position.set(-7, 4, 8);
+            cameras.forEach((camera) => camera.lookAt(0, 1, 0));
+            const images = [],
+              pixelRows = [];
+            try {
+              for (let pose = 0; pose < 6; pose++) {
+                for (const world of worlds)
+                  world.people.forEach((person, i) => {
+                    world.api.animateHuman(person, pose * 0.7 + i, pose % 3, pose % 2 === 1);
+                    person.root.rotation.y = i * 0.12 + pose * 0.2;
+                  });
+                for (let i = 0; i < cases.length; i++)
+                  compareModels(worlds[0].people[i], worlds[1].people[i]);
+                for (const camera of cameras) {
+                  const pair = [];
+                  for (const world of worlds) {
+                    await frame();
+                    renderer.setRenderTarget(target);
+                    renderer.render(world.scene, camera);
+                    await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size);
+                    await frame();
+                    renderer.render(world.scene, camera);
+                    const raw = await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size);
+                    pair.push(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength).slice());
+                  }
+                  images.push(pair[0]);
+                  pixelRows.push(differences(pair[0], pair[1]));
+                }
+              }
+              const exercised = differences(images[0], images[2]).changed > 100;
+              const identical = pixelRows.every((row) => row.changed === 0);
+              if (!exercised || !identical)
+                throw new Error(JSON.stringify({ forceWebGL, night, exercised, pixelRows }));
+              rows.push({ backend: isGPU ? "webgpu" : "webgl2", night, exercised, pixels: pixelRows });
+            } finally {
+              for (const world of worlds) {
+                for (const person of world.people) world.api.disposeHuman(person);
+                world.floor.geometry.dispose();
+                world.floor.material.dispose();
+                world.sun.dispose();
+              }
+              target.dispose();
+              renderer.dispose();
+            }
+          }
+        return {
+          compared,
+          allocations,
+          samples,
+          animationSamples,
+          rows,
+          revision: T.REVISION,
+          userAgent: navigator.userAgent,
+        };
+      })();
+    </script>
+  </body>
+</html>

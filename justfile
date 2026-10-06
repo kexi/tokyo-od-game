@@ -278,6 +278,10 @@ check-uniform-upload-parity:
 measure-uniform-uploads:
     node scripts/qa/perf-uniform-uploads.mjs
 
+# 実GLBの歩行者を旧ソースと交互生成し、CPU・割当数・行列・両backend昼夜の全画素を比較する
+measure-human-models:
+    node scripts/qa/perf-human-models.mjs
+
 # 夜雨で目撃写真・動画の証拠画像を4件作り、描画・GPU要求の内訳を測る
 measure-witness-photos:
     node scripts/qa/perf-witness-photos.mjs
