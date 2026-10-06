@@ -27,6 +27,7 @@ for (const file of [
   "src/game/drivingRoutePlanner.ts",
   "src/game/drivingRoute.worker.ts",
   "src/world/buildings.ts",
+  "src/world/buildingFootprints.ts",
   "src/world/facade.ts",
   "src/world/buildingGpuUnload.ts",
   "src/world/facadeData.ts",
@@ -173,6 +174,7 @@ try {
   __qaWrap(__game.renderer,'render','render');
   __qaWrap(__game.terrain,'update','terrain');
   __qaWrap(__game.buildings,'update','buildings');
+  __qaWrap(__game.buildings,'cutFootprints','buildingCutFootprints');
   __qaWrap(__game.terrain,'createCollider','terrainColliderInstall');
   __qaWrap(__game.terrain,'prepareCollider','terrainColliderPrepare');
   __qaWrap(__game.terrain,'applyWater','terrainWaterRefresh');

@@ -1,12 +1,16 @@
 ---
 type: Metric
 title: 歩道の高さ補正をポリゴン内でもフレーム予算で分割する
-description: 実2地域96ポリゴンの4773448比較が一致。4回合計CPUは127.0→130.6ms・79.3→80.1msで削減なし、最長処理区間は5.2→4.9ms・4.3→4.1ms。夜雨の連続ワープ66.7msは残る。
+description: 実2地域96ポリゴンの4773448比較が一致。4回合計CPUは127.0→130.6ms・79.3→80.1msで削減なし、最長処理区間は5.2→4.9ms・4.3→4.1ms。夜雨の連続ワープ66.7msは残る。50ms件数の説明を訂正。
 tags: [roads, terrain, rendering, physics, testing, logging]
 status: draft
 stale_after: 2027-04-06T00:00:00Z
-generated: { by: codex, at: 2026-10-06T08:58:16Z }
+generated: { by: codex, at: 2026-10-06T09:34:45Z }
 verified:
+  - {
+      by: process:source-inspection-frame-stats-raw-threshold-before-display-rounding,
+      at: 2026-10-06T09:34:45Z,
+    }
   - { by: process:1113-tests-types-lint-format-build-just-actions-and-knowledge, at: 2026-10-06T08:47:17Z }
   - {
       by: process:chrome154-live-ground-96-polygons-4773448-values-source-hashes-and-terminal-logs,
@@ -45,6 +49,9 @@ sources:
   - id: tests
     resource: ../tests/pavements.test.ts, ../tests/pavementsStreaming.test.ts
     title: 高さ照会上限、両補正パス、入力保持と大きな単一ポリゴン準備中の旧物理保持
+  - id: stats
+    resource: ../src/game/perf.ts
+    title: 件数は丸める前のrAF間隔で数え、最長表示だけを小数1桁に丸める
   - id: previous
     resource: ground-height-query-performance.md, road-streaming-performance.md
     title: 高さ照会からのCPUと既存の非同期物理交換の契約
@@ -92,7 +99,9 @@ CPU削減は確認できず、合計は約2.8%・1.0%増えた。長い処理区
 | 未読込地域 |      50.1ms |    3回 |
 | 連続ワープ |      66.7ms |    3回 |
 
-50ms超は保存されたrAF値に対する厳密な比較で、50.0msは数えない。道路描画125件・駐車16件の通常更新での再利用と、原点変更の準備完了までの旧データ保持も維持された。端末3518行は全てinfo、対象失敗0件。最終画像を目視し夜・雨・車内・歩道の表示を確認した。画面には違反とYの投稿表示もあり、ワープ区間の全画素一致をこの画像で保証するわけではない。[^normal] [^logs]
+2026-10-06訂正：元の「50ms超は保存されたrAF値に対する厳密な比較で、50.0msは数えない」は表示と件数の説明として不正確だった。件数は丸める前の実rAF間隔への厳密な比較で、最長表示は小数1桁へ丸める。したがって表示が50.0msでも実際に50msを超えていれば件数に入る。この保存済みの更新3の50ms超0回という観測値は変わらない。[^stats] [^normal]
+
+道路描画125件・駐車16件の通常更新での再利用と、原点変更の準備完了までの旧データ保持も維持された。端末3518行は全てinfo、対象失敗0件。最終画像を目視し夜・雨・車内・歩道の表示を確認した。画面には違反とYの投稿表示もあり、ワープ区間の全画素一致をこの画像で保証するわけではない。[^normal] [^logs]
 
 別起動のCPU診断は未読込地域66.6ms・6回、連続ワープ50.1ms・1回。歩道準備883件はCPU147.5ms・最長4.8ms・38回yield・待機込み1275.6ms、2319件はCPU481.2ms・最長5.6ms・120回yield・待機込み2902.1msだった。40ソースの保存ハッシュと時計対応を確認した。外壁FacadeMaterialの同期・非同期生成はいずれも両ワープ0件で、端末3228行は全てinfo、対象失敗0件。[^profile] [^logs]
 
@@ -115,5 +124,7 @@ CPU削減は確認できず、合計は約2.8%・1.0%増えた。長い処理区
 [^logs]: 3起動のtraceで限定した端末JSONL。
 
 [^tests]: 高さ・中断・旧物理保持と既存の歩道テスト。
+
+[^stats]: frameStatsの未丸めの件数判定と丸めた最長表示。
 
 [^previous]: 前段の実ワープ計測と物理交換。
