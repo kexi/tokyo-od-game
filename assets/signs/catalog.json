@@ -1997,7 +1997,7 @@
       "size_mm": null,
       "variable": null,
       "source": "https://laws.e-gov.go.jp/law/335M50004002003",
-      "figure": null,
+      "figure": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/S35F03102010003-087.jpg",
       "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
     },
     {
