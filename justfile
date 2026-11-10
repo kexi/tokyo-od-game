@@ -71,6 +71,19 @@ mix-teaser-sound lang="en" base="http://localhost:5173/tokyo-od-game/":
 record-drive minutes="3" every="6" time="day":
     node scripts/qa/drive.mjs --minutes {{ minutes }} --every {{ every }} --time {{ time }}
 
+# 視点表 scripts/qa/views/<name>.json の全視点をヘッドレス Chrome で撮り .qa/views/<name>/round-NN/ に画像・JSON・コンタクトシート・run.json・レビューの雛形を書く（多視点レビュー、開発サーバーが必要。失敗したコマがあれば終了コード 1。port を空にすると空きポートを探す）
+shoot-views name round="" base="http://localhost:5173/tokyo-od-game/" port="":
+    pnpm exec tsx scripts/qa/views.ts {{ name }} --base {{ base }} {{ if round != "" { "--round " + round } else { "" } }} {{ if port != "" { "--port " + port } else { "" } }}
+
+# 多視点レビューの .qa/reviews/<name>/round-NN.jsonl を各周の run.json と合わせて前の周と比べ、新規・消えた・持ち越しの指摘（diff-NN.json）と収束判定（verdict.json）を書く
+check-convergence name:
+    pnpm exec tsx scripts/qa/check-convergence.ts {{ name }}
+
+# 標識の見本: 図柄のある全番号を signs.glb の板・支柱に貼って正面・30°・60° で描き .qa/signs/ に番号ごとの画像と角度ごとのシートを書く（Blender は nix の別シェル）
+render-sign-review:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signs.py --python scripts/blender/sign_review.py -- .qa/signs/signs.glb
+    pnpm exec tsx scripts/qa/signSheet.ts .qa/signs
+
 # アセット管理画面（3D モデルとテクスチャのプレビューとレビュー）を開発サーバーで開く
 open-assets:
     pnpm exec vite --open /tokyo-od-game/assets.html
