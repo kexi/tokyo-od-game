@@ -2,7 +2,7 @@ import { DEFAULT_LANES, DEFAULT_SPEED } from "./assumptions";
 import { haversine } from "./geo";
 
 /**
- * OSM motorway / motorway_link ways normalised into the compiler's input (設計書 4.1), then joined
+ * OSM motorway / motorway_link ways normalised into the compiler's input (knowledge/road-redesign-plan.md 4.1), then joined
  * into alignment chains (ways continuing one another through a node, the same ref and the straightest
  * way first) and cut into runs of one structure class. Pure data: the build script reads the pbf and
  * the tests build networks by hand.

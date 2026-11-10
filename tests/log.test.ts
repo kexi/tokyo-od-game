@@ -1,5 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { sourceFiles } from "./sourceCode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   error,
@@ -174,6 +173,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   closure_area_implausible: { areaKm2: 317.2, maxKm2: 5, kind: 1, at: [139.65, 35.64] },
   closures_implausible_share: { closed: 300, streets: 900, maxShare: 0.2 },
+  road_level_mismatch: { count: 1, examples: [{ level: 1, structure: "ground", xid: "c1:0" }] },
   trip_started: { target: "東京タワー", distanceM: 2400 },
   destination_set: { name: "浅草寺", distanceKm: 5.1 },
   poi_collected: { poiId: 12, category: "library", ward: "千代田区" },
@@ -579,23 +579,8 @@ describe("the ring of recent lines (LogRing)", () => {
 
 // ---------- the sources ----------
 
-const ROOT = join(import.meta.dirname, "..");
-
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return sources(path);
-    return name.endsWith(".ts") && !name.endsWith(".d.ts") ? [path] : [];
-  });
-}
-
-const FILES = [...sources(join(ROOT, "src")), ...sources(join(ROOT, "scripts"))].map((p) => ({
-  path: relative(ROOT, p),
-  // Comments out (a `console.log` in a doc comment is not a call).
-  code: readFileSync(p, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1"),
-}));
+// Comments out (a `console.log` in a doc comment is not a call).
+const FILES = sourceFiles("src", "scripts");
 
 describe("the call sites (src/ and scripts/)", () => {
   it("write through the logger, not console.* (only the logger's own sink may)", () => {

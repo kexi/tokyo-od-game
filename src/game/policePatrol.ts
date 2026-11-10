@@ -6,6 +6,7 @@ import { createVehicle, setBeacons, type VehicleInstance } from "./vehicleModels
 import type { RoadGraph, Segment } from "../world/roads";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
 import type { ViolationRecord } from "./traffic";
+import { allowsRoadsideStop } from "../world/roadClass";
 
 /**
  * 巡回中のパトカー. Violations only count once the police see them (現認): a patrol that sees one
@@ -121,7 +122,8 @@ export class PolicePatrol {
   /** Put the patrol on a street 250–450 m from `near`, cruising. */
   spawn(graph: RoadGraph, world: DriveWorld, near: Vector3): boolean {
     const streets = graph.segments.filter((seg) => {
-      if (seg.line.kind === "highway" || seg.line.width < 5.5 || seg.length < 40 || seg.closed) return false;
+      if (!allowsRoadsideStop(seg.line) || seg.line.width < 5.5 || seg.length < 40 || seg.closed)
+        return false;
       const d = graph.sample(seg, seg.length / 2).pos.distanceTo(near);
       return d > 250 && d < 450;
     });
@@ -302,7 +304,7 @@ export class PolicePatrol {
     const graph = world.graph;
     const here = this.car.position();
     const streets = graph.segments.filter((seg) => {
-      if (seg.line.kind === "highway" || seg.line.width < 5.5 || seg.closed) return false;
+      if (!allowsRoadsideStop(seg.line) || seg.line.width < 5.5 || seg.closed) return false;
       const p = graph.sample(seg, seg.length / 2).pos;
       const d = p.distanceTo(here);
       return d > 300 && d < 900 && p.distanceTo(near) < 900;

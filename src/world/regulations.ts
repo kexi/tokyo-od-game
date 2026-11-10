@@ -7,6 +7,8 @@ import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { CLOSURE, MAX_CLOSURE_AREA_KM2, ringAreaKm2, type ClosureKind } from "./closures";
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
 import { SIGN } from "../signs/game";
+import { takesJarticRules } from "./roadClass";
+import { carriagewayWidth, resolveSection } from "./laneChange";
 
 /**
  * Traffic regulations for the area around the player, as tiled by scripts/regulations.ts:
@@ -349,7 +351,7 @@ type ReportDiagnostic = (diagnostic: RegulationDiagnostic) => void;
 const reportDiagnostic: ReportDiagnostic = ({ event, fields }) => warn(event, fields);
 
 function warnIfDistrictClosed(graph: RoadGraph, report: ReportDiagnostic): void {
-  const streets = graph.segments.filter((s) => s.line.kind !== "highway");
+  const streets = graph.segments.filter((s) => takesJarticRules(s.line));
   const closed = streets.filter((s) => s.closures.length > 0).length;
   const isImplausible = closed >= 200 && closed > streets.length * CLOSED_SHARE_WARN;
   if (!isImplausible) return;
@@ -422,15 +424,18 @@ export function applyRegulations(
   const pos = new Vector3();
   const dir = new Vector3();
   for (const seg of graph.segments) {
+    // Only what JARTIC decides is reset: a line outside it (the expressway) keeps the limit and
+    // lanes its own data gave the segment (RoadGraph: OSM maxspeed, line.section).
+    if (!takesJarticRules(seg.line)) continue;
+    // Back to what the line itself says (GSI lines: no limit, one lane), then JARTIC on top.
     seg.onewayRule = null;
-    seg.limit = null;
-    seg.limitKind = "statutory";
+    seg.limit = seg.line.limit ?? null;
+    seg.limitKind = seg.line.limit === undefined ? "statutory" : "sign";
     seg.noOvertake = false;
     seg.noLaneChange = false;
-    seg.lanes = 1;
+    seg.lanes = seg.line.section?.lanes ?? 1;
     seg.rules = [];
     seg.closures = [];
-    if (seg.line.kind === "highway") continue;
     const fractions = seg.length < 20 ? [0.5] : [0.2, 0.5, 0.8];
     let votes = 0;
     let rule: RuleTime | null = null;
@@ -484,7 +489,9 @@ export function applyRegulations(
     for (const [closure, n] of closureVotes) if (n >= majority) seg.closures.push(closure);
     seg.noOvertake = overtakeVotes >= majority;
     seg.noLaneChange = laneChangeVotes >= majority;
-    if (laneVotes >= majority) seg.lanes = lanesPerDirection(seg, laneCount);
+    // A line with its own section keeps its lanes: the section is the stronger evidence (P7's 臨港道路).
+    const hasSection = seg.line.section !== undefined;
+    if (!hasSection && laneVotes >= majority) seg.lanes = lanesPerDirection(seg, laneCount);
     for (const [code, v] of ruleVotes) if (v.n >= majority) seg.rules.push({ code, time: v.time });
     const posted = [...limitVotes].filter(([, n]) => n >= majority).toSorted((a, b) => b[1] - a[1])[0];
     if (posted) {
@@ -506,7 +513,7 @@ export function applyRegulations(
 
   // Segment index for the point features.
   const segs = new LineGrid<Segment>();
-  for (const seg of graph.segments) if (seg.line.kind !== "highway") segs.add(seg, seg.pts);
+  for (const seg of graph.segments) if (takesJarticRules(seg.line)) segs.add(seg, seg.pts);
   const resolveStopLine = (p: Vector3): StopLine | null => {
     const hit = segs.nearest(p.x, p.z, 10);
     if (!hit) return null;
@@ -616,7 +623,7 @@ function exitDirections(graph: RoadGraph, seg: Segment, dir: 1 | -1): Set<LaneDi
   const inbound = arrivingDir(seg, dir);
   const out = new Set<LaneDirection>();
   for (const next of graph.exits(node, seg.id)) {
-    if (next.line.kind === "highway") continue;
+    if (!takesJarticRules(next.line)) continue;
     const forward = next.from === node;
     const n = next.pts.length;
     const [a, b] = forward ? [next.pts[0], next.pts[1]] : [next.pts[n - 1], next.pts[n - 2]];
@@ -661,7 +668,7 @@ function resolveLaneUse(
     const heading = new Vector3(Math.sin(rad), 0, -Math.cos(rad));
     let best: { seg: Segment; dir: 1 | -1; d: number } | null = null;
     for (const seg of graph.segments) {
-      if (seg.line.kind === "highway") continue;
+      if (!takesJarticRules(seg.line)) continue;
       for (const dir of [1, -1] as const) {
         const end = dir === 1 ? seg.pts[seg.pts.length - 1] : seg.pts[0];
         const d = end.distanceTo(p);
@@ -711,16 +718,13 @@ function resolveLaneUse(
 }
 
 /**
- * 車両通行帯 lanes per direction. JARTIC's count is often blank; when it is given and cannot fit
- * one direction of the carriageway at ≥3 m per lane, it is the total for both directions.
+ * 車両通行帯 lanes per direction (resolveSection: JARTIC's count is often blank; when it is given
+ * and cannot fit one direction of the carriageway at ≥3 m per lane, it is the total for both). The
+ * one-way here is the rule's, not the clock's: lanes do not change with the time of day.
  */
 function lanesPerDirection(seg: Segment, count: number): number {
   const isOneWay = (seg.onewayRule?.dir ?? seg.line.oneway) !== 0;
-  const span = isOneWay ? seg.line.width : seg.line.width / 2;
-  const estimate = Math.min(4, Math.max(2, Math.round(span / 3.25)));
-  if (!count) return estimate;
-  const perDirection = !isOneWay && count * 3 > span + 1 ? Math.ceil(count / 2) : count;
-  return Math.max(1, Math.min(perDirection, Math.floor(span / 2.75)));
+  return resolveSection(carriagewayWidth(seg.line), isOneWay, { jartic: count }).lanes;
 }
 
 /**
