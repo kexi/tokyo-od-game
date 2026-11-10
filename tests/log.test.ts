@@ -121,6 +121,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   landmarks_load_failed: { error: "Error: x" },
   landmark_model_failed: { path: "models/tokyo_tower.glb", error: "Error: x" },
   landmark_entry_invalid: { index: 3, landmarkId: "rainbow_bridge", error: "footprint: too small" },
+  landmark_deck_levels_invalid: { landmarkId: "rainbow_bridge", error: "version: expected 1" },
   landmark_near_node_missing: { path: "models/tokyo_tower.glb", node: "TokyoTower_Near" },
   mirror_charms_load_failed: { error: "Error: x" },
   officer_model_failed: { kind: "police", error: "Error: x" },

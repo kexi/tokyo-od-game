@@ -33,7 +33,9 @@ function glbNodeNames(file: string): string[] {
  * Keys a landmark keeps for itself, by id (e.g. rainbow_bridge: ["deckLevels"]). The game reads the
  * file loosely; this register makes a new key a decision: here, or in landmarkEntry.ts if shared.
  */
-const OWN_KEYS: Record<string, readonly string[]> = {};
+const OWN_KEYS: Record<string, readonly string[]> = {
+  rainbow_bridge: ["deckLevels"],
+};
 
 const ring = (lon: number): Array<[number, number]> => [
   [lon, 35],
@@ -193,9 +195,10 @@ describe("the landmarks offered as warps and destinations (landmarkPlaces)", () 
     expect(landmarkPlaces([{ ...entry, excludeFromWarp: true }], "k")).toEqual([]);
   });
 
-  it("offers every existing entry at its lon/lat, as before", () => {
-    expect(landmarkPlaces(entries, "k")).toEqual(
-      entries.map((e) => ({ name: e.name, kind: "k", lat: e.lat, lon: e.lon })),
+  it("offers every entry without warpAt at its lon/lat, as before", () => {
+    const plain = entries.filter((e) => e.warpAt === undefined && e.excludeFromWarp !== true);
+    expect(landmarkPlaces(plain, "k")).toEqual(
+      plain.map((e) => ({ name: e.name, kind: "k", lat: e.lat, lon: e.lon })),
     );
   });
 });
