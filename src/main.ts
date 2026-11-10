@@ -190,6 +190,7 @@ import { frameStats, longFramesDuring, perf, round, watchFrames } from "./game/p
 import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
+import { judgePedestrianBlow } from "./game/pedestrianBlow";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
@@ -2401,17 +2402,21 @@ async function main(): Promise<void> {
       if (!isPlayersCar || !isPerson) continue;
       const isCoolingDown = (pedestrianCooldown.get(ped) ?? 0) > performance.now();
       if (isCoolingDown) continue;
-      const kmh = Math.abs(vehicle.speedKmh());
-      const carKmh = Math.max(kmh, (blow.impact.closing + blow.impact.dvCar) * 3.6);
-      const victimKmh = blow.impact.dvOther * 3.6;
-      // Someone walking into a car that stands is their own bump.
-      const isAccident = carKmh > 3 && victimKmh > 3;
-      if (!isAccident) continue;
+      // Someone walking into a car that stands is their own bump (pedestrianBlow.ts: the car's own
+      // speed decides; the closing speed only says, by the person's Δv, how hard they were hit).
+      const judged = judgePedestrianBlow(vehicle.speedKmh(), blow.impact);
+      if (!judged.isAccident) {
+        log("pedestrian_bump", {
+          carKmh: Math.round(judged.carKmh * 10) / 10,
+          otherDeltaVKmh: Math.round(judged.victimKmh * 10) / 10,
+        });
+        continue;
+      }
       pedestrianCooldown.set(ped, performance.now() + 3000);
       input.pad.contact("impact", blow.impact.dvCar + 1);
       pedestrians.knockDown(ped);
       emergency.start(ped, performance.now());
-      onAccident("pedestrian", carKmh, ped.profile.name, blow.impact);
+      onAccident("pedestrian", judged.carKmh, ped.profile.name, blow.impact);
     }
     events.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;

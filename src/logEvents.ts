@@ -314,6 +314,16 @@ export const LOG_EVENTS = {
     otherMassKg: z.number().optional(),
   }),
   /**
+   * A person and the player's car touched but it was not the driver's accident: the car stood
+   * (game/pedestrianBlow.ts) or the person's Δv was a nudge. `carKmh` is the car's speed into the blow.
+   */
+  pedestrian_bump: info({ carKmh: z.number(), otherDeltaVKmh: z.number() }),
+  /**
+   * The player jumped (移動, 復帰, debug place) while an accident scene was open: the jump is not
+   * counted as leaving the scene (game/emergency.ts); `jumpM` is how far, `awayM` the driven distance.
+   */
+  incident_jump: info({ jumpM: z.number(), awayM: z.number() }),
+  /**
    * Crossed a signal's stop line while an arrow over red allowed only some movements (`allowed`):
    * the 信号無視 check waits for the arm the car leaves by (src/signals/redLight.ts).
    */

@@ -15,6 +15,7 @@ import type { Pedestrian } from "../world/pedestrians";
 import type { SpatialAudio } from "./spatialAudio";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 import { sharedDraco } from "../render/draco";
+import { log } from "../log";
 
 export type ResponderKind = "ambulance" | "police";
 export type IncidentEvent =
@@ -46,10 +47,21 @@ type Incident = {
   policeCalled: boolean;
   fled: boolean;
   rescued: boolean;
+  /**
+   * Where the player would be had they only driven or walked since the accident (jumps left out),
+   * and where they were last frame; null until the first update sees them.
+   */
+  driven: Vector3 | null;
+  last: Vector3 | null;
 };
 
 const REPORT_LIMIT_MS = 60_000; // time to call 119 before it counts as leaving the victim
-const LEAVE_DISTANCE = 80; // metres from the scene
+export const LEAVE_DISTANCE = 80; // metres from the scene, driven (not jumped)
+/**
+ * A frame's move longer than this (metres), and than twice what the speed covers, is a jump
+ * (移動, 復帰, debug place), not driving: the same 10 m the odometer in main.ts leaves out.
+ */
+const JUMP_METRES = 10;
 const SPEED: Record<ResponderKind, number> = { ambulance: 11, police: 12 }; // m/s
 const APPROACH: Record<ResponderKind, number> = { ambulance: 260, police: 320 };
 
@@ -222,6 +234,8 @@ export class EmergencyResponse {
       policeCalled: false,
       fled: false,
       rescued: false,
+      driven: null,
+      last: null,
     };
   }
 
@@ -284,6 +298,8 @@ export class EmergencyResponse {
   transform(offset: (p: Vector3) => Vector3): void {
     if (!this.incident) return;
     offset(this.incident.at);
+    if (this.incident.driven) offset(this.incident.driven);
+    if (this.incident.last) offset(this.incident.last);
     for (const r of Object.values(this.responders)) {
       for (const p of r.path) offset(p);
       offset(r.root.position);
@@ -308,7 +324,7 @@ export class EmergencyResponse {
       r.light.intensity = r.root.visible ? (blink ? 25 : 8) : 0;
     }
 
-    const isAway = player.distanceTo(inc.at) > LEAVE_DISTANCE;
+    const isAway = this.drivenAway(inc, player, playerSpeed, dt) > LEAVE_DISTANCE;
     if (!inc.ambulanceCalled && !inc.fled && (isAway || now - inc.startedAt > REPORT_LIMIT_MS)) {
       // A bystander calls instead; the driver is booked for leaving the victim.
       inc.fled = true;
@@ -351,6 +367,36 @@ export class EmergencyResponse {
       return unreported ? { type: "notReported" } : { type: "closed" };
     }
     return null;
+  }
+
+  /**
+   * How far from the scene the player has driven or walked (metres): each frame's move is added to
+   * `driven` unless it is a jump, so a 移動 or a respawn away from the scene is not leaving it.
+   *
+   * Why not close the scene on a jump: every jump (warp, respawn, debug place, start) would have to
+   * tell this module, and one missed is the bug again; looking at the moves needs no call site.
+   * Why not keep the straight distance and ignore it for a frame: after the jump the player stands
+   * far away, so the next frame would count as left.
+   */
+  private drivenAway(inc: Incident, player: Vector3, playerSpeed: number, dt: number): number {
+    if (!inc.driven || !inc.last) {
+      inc.driven = player.clone();
+      inc.last = player.clone();
+      return inc.driven.distanceTo(inc.at);
+    }
+    const move = player.clone().sub(inc.last);
+    const moveM = move.length();
+    const isJump = moveM > Math.max(JUMP_METRES, playerSpeed * dt * 2);
+    if (isJump) {
+      log("incident_jump", {
+        jumpM: Math.round(moveM),
+        awayM: Math.round(inc.driven.distanceTo(inc.at)),
+      });
+    } else {
+      inc.driven.add(move);
+    }
+    inc.last.copy(player);
+    return inc.driven.distanceTo(inc.at);
   }
 
   get chasing(): boolean {

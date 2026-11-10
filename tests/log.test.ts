@@ -178,6 +178,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   destination_set: { name: "浅草寺", distanceKm: 5.1 },
   poi_collected: { poiId: 12, category: "library", ward: "千代田区" },
   accident: { kind: "pedestrian", speedKmh: 32 },
+  pedestrian_bump: { carKmh: 0.2, otherDeltaVKmh: 4.8 },
+  incident_jump: { jumpM: 1200, awayM: 3 },
   lane_turn_disallowed: { lanes: ["left", "straight+right"], lane: 0, turn: "right", source: "osm" },
   signal_crossing_held: { approachId: 12, allowed: ["right", "uturn"] },
   signal_crossing_resolved: { approachId: 12, outcome: "violation", movement: "through", heldMs: 2400 },
