@@ -18,10 +18,22 @@ import { FrameWork } from "../game/frameWork";
 import { RoadPlates } from "./roadPlates";
 import { PROP_GROUPS } from "../physics/groups";
 import type { AppliedRegulations, Crossing, StopLine } from "./regulations";
-import { HEAD_HANG, LAMP_GAP, PED_LAMP_Y, signalKit, type Part } from "./signalModels";
+import { signalKit, type Part } from "./signalModels";
+import {
+  LAMP_COLOURS,
+  LENS_Z_M,
+  PED_HEAD,
+  VEHICLE_HEAD,
+  headHang,
+  isArrow,
+  lampLayout,
+  type LampColour,
+} from "../signals/heads";
+import { SIGNAL_MOUNTS } from "../signals/mounts";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 
-export type LightState = "green" | "yellow" | "red";
+/** A two-phase signal's state: which of 施行令第2条's three colours is lit. */
+export type LightState = LampColour;
 
 /** A place where traffic on one segment, in one direction, must obey a signal or stop sign. */
 export type Approach = {
@@ -59,18 +71,24 @@ const SIGNAL_SNAP = 25; // OSM signal node → GSI junction node (m)
 const CLUSTER = 30; // junction nodes this close share one controller (dual carriageways)
 const BOX_LINK = 35; // links this short between junction nodes are inside one crossing
 const BOX_RADIUS = 50; // …as long as the node is this close to the signalled one
-const SIGNAL_HEIGHT = 5.2;
 
+// Heads, their lamps, colours and how they are held up are declared in src/signals
+// (knowledge/signal-system.md); heads are drawn larger than life (the mount's drawScale).
 const LAMP_ON: Record<LightState, Color> = {
-  green: new Color(0x19e6b4),
-  yellow: new Color(0xffc21a),
-  red: new Color(0xff2a1a),
+  green: new Color(LAMP_COLOURS.vehicle.green),
+  yellow: new Color(LAMP_COLOURS.vehicle.yellow),
+  red: new Color(LAMP_COLOURS.vehicle.red),
 };
-const LAMP_OFF = new Color(0x1d2226);
-const PED_ON = { stop: new Color(0xff3a24), go: new Color(0x19e6b4) };
-// Heads are drawn larger than life (300 mm lenses) so they read at driving distance on screen.
-const HEAD_SCALE = 1.3;
-const PED_HEIGHT = 2.75; // pedestrian head centre above the pavement
+const LAMP_OFF = new Color(LAMP_COLOURS.off);
+const PED_ON = { stop: new Color(LAMP_COLOURS.pedestrian.red), go: new Color(LAMP_COLOURS.pedestrian.green) };
+const VEHICLE_MOUNT = SIGNAL_MOUNTS[VEHICLE_HEAD.mount];
+const PED_MOUNT = SIGNAL_MOUNTS[PED_HEAD.mount];
+const SIGNAL_HEIGHT = VEHICLE_MOUNT.centreHeightM;
+const HEAD_SCALE = VEHICLE_MOUNT.drawScale;
+const HEAD_HANG = headHang(VEHICLE_HEAD);
+const VEHICLE_LAMPS = lampLayout(VEHICLE_HEAD);
+const PED_HEIGHT = PED_MOUNT.centreHeightM; // pedestrian head centre above the pavement
+const PED_LAMPS = lampLayout(PED_HEAD);
 const POLE_RADIUS = 0.13;
 
 /** Walk phase for people crossing a street: go, flashing go (no new starters), or stop. */
@@ -520,17 +538,21 @@ export class TrafficControl {
       o.scale.setScalar(HEAD_SCALE);
       o.updateMatrix();
       heads.push(o.matrix.clone());
-      (["green", "yellow", "red"] as LightState[]).forEach((colour, k) => {
+      for (const { lamp, x, y } of VEHICLE_LAMPS) {
+        // The shown head has no arrow row; T2's phase table is what will light arrows.
+        if (isArrow(lamp)) continue;
         o.position.set(head.x, g + SIGNAL_HEIGHT, head.z);
         o.rotation.set(0, yaw, 0);
-        // The face looks back along −travel, so local −X is the driver's left: 青・黄・赤.
-        o.translateX((k - 1) * LAMP_GAP * HEAD_SCALE);
-        o.translateZ(0.003);
+        // The face looks back along −travel, so local +X (lampLayout's right) is the driver's
+        // right: 施行令第3条 赤・黄・青 from the right.
+        o.translateX(x * HEAD_SCALE);
+        o.translateY(y * HEAD_SCALE);
+        o.translateZ(LENS_Z_M);
         o.scale.setScalar(HEAD_SCALE);
         o.updateMatrix();
         lamps.push(o.matrix.clone());
-        this.lampOwners.push({ approach: ap, colour });
-      });
+        this.lampOwners.push({ approach: ap, colour: lamp });
+      }
     }
 
     // 歩行者用灯器 at both ends of each crosswalk a signal governs, facing across the road.
@@ -563,19 +585,18 @@ export class TrafficControl {
         poles.push({ pos: at.clone().setY(g), height: PED_HEIGHT + 0.55 });
         // Face the people waiting on the far kerb; the head sits 0.3 m out from its pole.
         const yaw = Math.atan2(across.x, across.z);
-        const headAt = at.clone().addScaledVector(across, 0.3);
+        const headAt = at.clone().addScaledVector(across, PED_MOUNT.offsetM);
         o.position.set(headAt.x, g + PED_HEIGHT, headAt.z);
         o.rotation.set(0, yaw, 0);
         o.scale.setScalar(1);
         o.updateMatrix();
         pedHeads.push(o.matrix.clone());
-        for (const [y, list] of [
-          [PED_LAMP_Y, pedStops],
-          [-PED_LAMP_Y, pedGos],
-        ] as const) {
+        for (const { lamp, y } of PED_LAMPS) {
+          // 施行令第3条: lampLayout puts the red (止まれ) lamp above the green (進め) one.
+          const list = lamp === "red" ? pedStops : pedGos;
           o.position.set(headAt.x, g + PED_HEIGHT + y, headAt.z);
           o.rotation.set(0, yaw, 0);
-          o.translateZ(0.003);
+          o.translateZ(LENS_Z_M);
           o.updateMatrix();
           list.push(o.matrix.clone());
         }

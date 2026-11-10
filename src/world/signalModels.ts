@@ -2,12 +2,13 @@ import { type BufferGeometry, type Material, Mesh, SRGBColorSpace, TextureLoader
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { UntonemappedBasicMaterial } from "../render/untonemapped";
 import { sharedDraco } from "../render/draco";
+import { PED_HEAD, VEHICLE_HEAD } from "../signals/heads";
 
 /**
  * 信号機 parts modelled in Blender (scripts/blender/signals.py → public/models/signals.glb) and
  * the lens artwork drawn by scripts/textures/signal_textures.py (assets/signals/textures).
- * Dimensions in the model are real (300 mm lenses 0.37 m apart, 250 mm pedestrian lenses);
- * the game draws heads a little larger so they read at driving distance.
+ * Dimensions in the model are real (src/signals/heads.ts: 300 mm lenses 0.37 m apart, 250 mm
+ * pedestrian lenses); the game draws heads a little larger so they read at driving distance.
  */
 const ARTWORK = import.meta.glob<string>("../../assets/signals/textures/*.png", {
   eager: true,
@@ -15,9 +16,8 @@ const ARTWORK = import.meta.glob<string>("../../assets/signals/textures/*.png", 
   import: "default",
 });
 
-export const LAMP_GAP = 0.37;
-export const HEAD_HANG = 0.48; // housing centre below the arm (hanger + half the housing)
-export const PED_LAMP_Y = 0.175;
+// Lamp positions and the hanger are not here: src/signals/heads.ts declares them once for the
+// model (via assets/signals/heads.json) and the game (lampLayout).
 
 /** One glTF mesh; several primitives (one per material) when it uses more than one material. */
 export type Part = Array<{ geometry: BufferGeometry; material: Material }>;
@@ -66,8 +66,9 @@ export async function loadSignalModels(): Promise<void> {
   const lensMaterial = (map: Texture | null) =>
     new UntonemappedBasicMaterial({ map, alphaTest: 0.5, transparent: false });
   kit = {
-    head: part("SignalHead"),
-    pedHead: part("PedHead"),
+    // The housings of the heads the game shows (VEHICLE_HEAD / PED_HEAD are the one record of which).
+    head: part(VEHICLE_HEAD.node),
+    pedHead: part(PED_HEAD.node),
     pole: part("SignalPole"),
     arm: part("SignalArm"),
     lamp: part("SignalLamp")[0].geometry,

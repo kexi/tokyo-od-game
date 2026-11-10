@@ -107,7 +107,7 @@ assets:
 
   - id: signals
     name: 信号機
-    purpose: 交差点の車両用 LED 3 灯横型・歩行者用 2 灯縦型の灯器と、信号柱・アーム。点灯はゲームがレンズの色で切り替える。
+    purpose: 交差点の車両用 LED 3 灯横型・歩行者用 2 灯縦型の灯器と、信号柱・アーム。点灯はゲームがレンズの色で切り替える。縦型 3 灯・矢印段付き（右折、左折・直進・右折）の灯器と矢印のレンズも入っているが、ゲームではまだ出さない。
     kind: model
     files: [public/models/signals.glb]
     generator: { script: scripts/blender/signals.py, recipe: make-signal-model }
@@ -115,8 +115,20 @@ assets:
     source: 自作（bpy で手続きモデリング。外部の 3D 素材は使っていない）
     license: repo
     used_by: [src/world/signalModels.ts]
-    inputs: [signal-textures]
-    docs: [knowledge/car-model-blender.md]
+    inputs: [signal-heads, signal-textures]
+    docs: [knowledge/signal-system.md, knowledge/car-model-blender.md]
+
+  - id: signal-heads
+    name: 信号灯器の型と灯の配置
+    purpose: src/signals の灯器の宣言から書き出した、灯器ごとの寸法・灯の位置（施行令第3条の並び）・取付の値。Blender の信号機スクリプトが読む。
+    kind: data
+    files: [assets/signals/heads.json]
+    generator: { script: scripts/signals.ts, recipe: make-signal-layout }
+    made_by: procedural
+    source: 自作（src/signals/heads.ts・mounts.ts から生成。寸法はゲームの従来値で、規格の一次情報は未確認）
+    license: repo
+    used_by: []
+    docs: [knowledge/signal-system.md]
 
   - id: ambulance
     name: 救急車
