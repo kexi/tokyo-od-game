@@ -7,7 +7,9 @@ tags: [roads, traffic-law, opendata, rendering]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-10-04T19:45:00Z }
+updated: { by: claude-opus-5-5, at: 2026-11-10T15:30:00Z }
 verified:
+  - { by: claude-opus-5-5, at: 2026-11-10T15:20:00Z }
   - { by: process:vitest, at: 2026-10-04T19:40:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-10-04T14:30:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-10-04T11:00:00Z }
@@ -211,6 +213,9 @@ sources:
   - `PlateRect60x90`、`PlateRect90x60`
   - `PlateAux60x{18,22,25,32,38,44}`、`PlateAux30x30`、`PlateCircle40`
   - `PlateBacker40x60`、`PlateRect40x15`、`PlateRect30x50`
+- **2026-11-10（G2）**: 板の寸法の正は `src/signs/plates.ts` になった（形ごとに直径・一辺・横 × 縦を mm で書く）。`scripts/blender/signs.py` はそれを registry.json 経由で読んで板を作る。作り直した signs.glb がそれまでのものとバイト一致することを確かめた（knowledge/sign-system.md「板・拡大率・補助標識（G2）」）。
+- **表示の倍率（2026-11-10 訂正）**: ゲームは板を実寸で作り、表示で拡大する。~~全部の板を 1.25 倍で描く~~ 規制・指示は 1.25 倍（備考一(二)9 の 1/2〜2 倍の内）、警戒は 1.3 倍で描く。警戒の拡大は 1.3・1.6・2 倍の段階しか認められておらず（備考一(二)6）、1.25 倍は令の値ではなかった。補助標識は吊る先の板と同じ倍率で描く（備考二(二)2「その附置される本標識板の拡大率又は縮小率と同じ比率で拡大し、又は縮小することができる」。~~補助標識の拡大の規定は見つかっていない~~ と書いたのは誤りで、2026-11-10 に本文で確認して訂正）。値は番号ごとの `displayScale` として定義側にあり、範囲はテストが検査する。
+- **補助標識の描き方（2026-11-10 変更）**: 通行禁止の時間帯は、~~板の下に Canvas の文字で描く~~ 502 日・時間 の図柄で吊るようになった。図柄は `auxiliary.text_plate` で、白地・黒縁・黒文字、60 cm 幅、文字 1〜3 段で 22・32・44 cm である。文言は JARTIC の規制時間から決め（`src/signs/auxPlates.ts`、曜日群の違う時間帯は 1 枚ずつ）、その標識の板のすぐ下に吊る。黒縁（9 mm）は備考二(三)1 に無く、図の見た目による仮定。
 
 ## 進行方向別通行区分の生成
 

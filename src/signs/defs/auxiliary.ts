@@ -1,6 +1,7 @@
 // Converted once from assets/signs/catalog.json (G1a, knowledge/sign-system.md); this file is the
 // definition now: edit it, then `just make-sign-registry`.
-import { group } from "../schema";
+import { auxKey, auxPlatesFor, type AuxSubject } from "../auxPlates";
+import { group, type AuxRender } from "../schema";
 
 /** 補助標識 sizes come from 警察庁「交通規制基準」 (the 別表第二 figures are not legible on e-Gov). */
 const AUX_SIZE_SOURCE =
@@ -469,3 +470,32 @@ export const AUXILIARY = group("補助", [
     sizeSource: AUX_SIZE_SOURCE,
   },
 ]);
+
+/**
+ * The 補助標識 faces the game may hang under a placed sign, drawn ahead of time: what
+ * auxPlatesFor gives for every regulation of public/data/regs that placeSigns puts a plate up for
+ * (the 通行禁止), each once, in the order of their keys (auxKey). scripts/signInputs.ts reads
+ * the regulations. File, plate and painter follow from the number and the lines (registry.ts).
+ *
+ * Why derive instead of listing them: the hours are the data's (`just fetch-regs`), as the lane
+ * patterns are; a written list would have to follow every fetch by hand. Why not draw them at run
+ * time with Canvas: glyph measuring differs between browsers and fonts (design 2, option D), and
+ * the plate would not be the 別表第二 face the Pillow painters draw.
+ */
+export function auxRenders(src: { regulations: readonly AuxSubject[] }): AuxRender[] {
+  const out = new Map<string, AuxRender>();
+  for (const rule of src.regulations)
+    for (const plate of auxPlatesFor(rule)) {
+      const key = auxKey(plate);
+      if (!out.has(key)) out.set(key, { sign: plate.sign, lines: plate.lines });
+    }
+  // Sorted by key, not by where they first appear: a fetch that adds or drops a regulation then
+  // moves only its own entries in registry.json and game.json (review I7).
+  return [...out.entries()].toSorted(([a], [b]) => byCodeUnits(a, b)).map(([, r]) => r);
+}
+
+/** Plain code-unit order. Why not localeCompare: its order depends on the machine's locale and ICU. */
+function byCodeUnits(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}

@@ -522,6 +522,10 @@ export const LOG_EVENTS = {
    * put up. Once per pattern. `lanes` is the render key (src/signs/lanes.ts laneKey).
    */
   sign_lanes_unrendered: warning({ lanes: z.string(), count }),
+  /** A 補助標識 whose wording has no face drawn ahead of time (registry.json older than public/data/regs); left off. */
+  sign_aux_undrawn: warning({ sign: z.string(), lines: z.array(z.string()) }),
+  /** Faces of sign posts left off because their stack would reach below the ground (src/signs/stack.ts; G4). */
+  sign_faces_below_ground: warning({ faces: count, posts: count }),
   osm_read: info({ nodes: count, ways: count, relations: count, coords: count }),
   destinations_written: info({
     file: z.string(),

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "law": {
     "id": "335M50004002003",
     "title": "道路標識、区画線及び道路標示に関する命令",
@@ -8,113 +8,188 @@
     "figureUrl": "https://laws.e-gov.go.jp/api/2/attachment/335M50004002003_20260901_508M60000802003?src=./pict/{}"
   },
   "plates": {
-    "PlateAux30x30": {
-      "shape": "square",
-      "sizeMm": [300, 300]
-    },
-    "PlateAux60x18": {
-      "shape": "rect",
-      "sizeMm": [600, 180]
-    },
-    "PlateAux60x22": {
-      "shape": "rect",
-      "sizeMm": [600, 220]
-    },
-    "PlateAux60x25": {
-      "shape": "rect",
-      "sizeMm": [600, 250]
-    },
-    "PlateAux60x32": {
-      "shape": "rect",
-      "sizeMm": [600, 320]
-    },
-    "PlateAux60x38": {
-      "shape": "rect",
-      "sizeMm": [600, 380]
-    },
-    "PlateAux60x44": {
-      "shape": "rect",
-      "sizeMm": [600, 440]
-    },
-    "PlateBacker40x60": {
-      "shape": "rect",
-      "sizeMm": [400, 600]
-    },
     "PlateCircle": {
       "shape": "circle",
-      "sizeMm": [600, 600]
-    },
-    "PlateCircle40": {
-      "shape": "circle",
-      "sizeMm": [400, 400]
-    },
-    "PlateDiamond": {
-      "shape": "diamond",
-      "sizeMm": [450, 450]
-    },
-    "PlatePentagon": {
-      "shape": "pentagon",
-      "sizeMm": [600, 719.6]
-    },
-    "PlateRect": {
-      "shape": "rect",
-      "sizeMm": [350, 600]
-    },
-    "PlateRect30x50": {
-      "shape": "rect",
-      "sizeMm": [300, 500]
-    },
-    "PlateRect40x15": {
-      "shape": "rect",
-      "sizeMm": [400, 150]
-    },
-    "PlateRect60x90": {
-      "shape": "rect",
-      "sizeMm": [600, 900]
-    },
-    "PlateRect80x90": {
-      "shape": "rect",
-      "sizeMm": [800, 900]
-    },
-    "PlateRect90x60": {
-      "shape": "rect",
-      "sizeMm": [900, 600]
-    },
-    "PlateRect120x90": {
-      "shape": "rect",
-      "sizeMm": [1200, 900]
-    },
-    "PlateRect160x90": {
-      "shape": "rect",
-      "sizeMm": [1600, 900]
-    },
-    "PlateRect200x90": {
-      "shape": "rect",
-      "sizeMm": [2000, 900]
-    },
-    "PlateRect240x90": {
-      "shape": "rect",
-      "sizeMm": [2400, 900]
-    },
-    "PlateRect280x90": {
-      "shape": "rect",
-      "sizeMm": [2800, 900]
-    },
-    "PlateSquare": {
-      "shape": "square",
-      "sizeMm": [600, 600]
-    },
-    "PlateSquare90": {
-      "shape": "square",
-      "sizeMm": [900, 900]
+      "diameterMm": 600,
+      "boxMm": [600, 600]
     },
     "PlateTriangle": {
       "shape": "triangle_down",
-      "sizeMm": [800, 692.8]
+      "sideMm": 800,
+      "cornerMm": 35,
+      "boxMm": [800, 692.8]
+    },
+    "PlateSquare": {
+      "shape": "square",
+      "widthMm": 600,
+      "heightMm": 600,
+      "cornerMm": 25,
+      "boxMm": [600, 600]
     },
     "PlateWide": {
       "shape": "rect",
-      "sizeMm": [600, 350]
+      "widthMm": 600,
+      "heightMm": 350,
+      "cornerMm": 20,
+      "boxMm": [600, 350]
+    },
+    "PlateRect": {
+      "shape": "rect",
+      "widthMm": 350,
+      "heightMm": 600,
+      "cornerMm": 20,
+      "boxMm": [350, 600]
+    },
+    "PlateDiamond": {
+      "shape": "diamond",
+      "sideMm": 450,
+      "cornerMm": 20,
+      "boxMm": [636.4, 636.4]
+    },
+    "PlatePentagon": {
+      "shape": "pentagon",
+      "widthMm": 600,
+      "baseMm": 200,
+      "cornerMm": 35,
+      "boxMm": [600, 719.6]
+    },
+    "PlateSquare90": {
+      "shape": "square",
+      "widthMm": 900,
+      "heightMm": 900,
+      "cornerMm": 40,
+      "boxMm": [900, 900]
+    },
+    "PlateRect80x90": {
+      "shape": "rect",
+      "widthMm": 800,
+      "heightMm": 900,
+      "cornerMm": 40,
+      "boxMm": [800, 900]
+    },
+    "PlateRect120x90": {
+      "shape": "rect",
+      "widthMm": 1200,
+      "heightMm": 900,
+      "cornerMm": 40,
+      "boxMm": [1200, 900]
+    },
+    "PlateRect160x90": {
+      "shape": "rect",
+      "widthMm": 1600,
+      "heightMm": 900,
+      "cornerMm": 40,
+      "boxMm": [1600, 900]
+    },
+    "PlateRect200x90": {
+      "shape": "rect",
+      "widthMm": 2000,
+      "heightMm": 900,
+      "cornerMm": 40,
+      "boxMm": [2000, 900]
+    },
+    "PlateRect240x90": {
+      "shape": "rect",
+      "widthMm": 2400,
+      "heightMm": 900,
+      "cornerMm": 40,
+      "boxMm": [2400, 900]
+    },
+    "PlateRect280x90": {
+      "shape": "rect",
+      "widthMm": 2800,
+      "heightMm": 900,
+      "cornerMm": 40,
+      "boxMm": [2800, 900]
+    },
+    "PlateRect60x90": {
+      "shape": "rect",
+      "widthMm": 600,
+      "heightMm": 900,
+      "cornerMm": 30,
+      "boxMm": [600, 900]
+    },
+    "PlateRect90x60": {
+      "shape": "rect",
+      "widthMm": 900,
+      "heightMm": 600,
+      "cornerMm": 25,
+      "boxMm": [900, 600]
+    },
+    "PlateAux60x18": {
+      "shape": "rect",
+      "widthMm": 600,
+      "heightMm": 180,
+      "cornerMm": 30,
+      "boxMm": [600, 180]
+    },
+    "PlateAux60x22": {
+      "shape": "rect",
+      "widthMm": 600,
+      "heightMm": 220,
+      "cornerMm": 30,
+      "boxMm": [600, 220]
+    },
+    "PlateAux60x25": {
+      "shape": "rect",
+      "widthMm": 600,
+      "heightMm": 250,
+      "cornerMm": 30,
+      "boxMm": [600, 250]
+    },
+    "PlateAux60x32": {
+      "shape": "rect",
+      "widthMm": 600,
+      "heightMm": 320,
+      "cornerMm": 30,
+      "boxMm": [600, 320]
+    },
+    "PlateAux60x38": {
+      "shape": "rect",
+      "widthMm": 600,
+      "heightMm": 380,
+      "cornerMm": 30,
+      "boxMm": [600, 380]
+    },
+    "PlateAux60x44": {
+      "shape": "rect",
+      "widthMm": 600,
+      "heightMm": 440,
+      "cornerMm": 30,
+      "boxMm": [600, 440]
+    },
+    "PlateAux30x30": {
+      "shape": "square",
+      "widthMm": 300,
+      "heightMm": 300,
+      "cornerMm": 30,
+      "boxMm": [300, 300]
+    },
+    "PlateCircle40": {
+      "shape": "circle",
+      "diameterMm": 400,
+      "boxMm": [400, 400]
+    },
+    "PlateBacker40x60": {
+      "shape": "rect",
+      "widthMm": 400,
+      "heightMm": 600,
+      "cornerMm": 30,
+      "boxMm": [400, 600]
+    },
+    "PlateRect40x15": {
+      "shape": "rect",
+      "widthMm": 400,
+      "heightMm": 150,
+      "cornerMm": 35,
+      "boxMm": [400, 150]
+    },
+    "PlateRect30x50": {
+      "shape": "rect",
+      "widthMm": 300,
+      "heightMm": 500,
+      "cornerMm": 28,
+      "boxMm": [300, 500]
     }
   },
   "painterModules": ["sign_textures", "warning", "regulatory", "instruction", "auxiliary", "nonstatutory"],
@@ -124,6 +199,7 @@
       "name": "市町村",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -135,6 +211,7 @@
       "name": "都府県",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -146,6 +223,7 @@
       "name": "都府県",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -157,6 +235,7 @@
       "name": "入口の方向",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -168,6 +247,7 @@
       "name": "入口の方向",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -179,6 +259,7 @@
       "name": "入口の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -190,6 +271,7 @@
       "name": "方面、方向及び距離",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -201,6 +283,7 @@
       "name": "方面、方向及び距離",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -212,6 +295,7 @@
       "name": "方面、方向及び距離",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -223,6 +307,7 @@
       "name": "方面及び距離",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -234,6 +319,7 @@
       "name": "方面及び距離",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -245,6 +331,7 @@
       "name": "方面及び距離",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -256,6 +343,7 @@
       "name": "方面及び車線",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -267,6 +355,7 @@
       "name": "方面及び車線",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -278,6 +367,7 @@
       "name": "方面及び方向の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -289,6 +379,7 @@
       "name": "方面及び方向の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -300,6 +391,7 @@
       "name": "方面及び方向",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -311,6 +403,7 @@
       "name": "方面及び方向",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -322,6 +415,7 @@
       "name": "方面及び方向",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -333,6 +427,7 @@
       "name": "方面及び方向",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -344,6 +439,7 @@
       "name": "方面及び方向",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -355,6 +451,7 @@
       "name": "方面、方向及び道路の通称名の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -366,6 +463,7 @@
       "name": "方面、方向及び道路の通称名",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -377,6 +475,7 @@
       "name": "出口の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -388,6 +487,7 @@
       "name": "方面及び出口の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -399,6 +499,7 @@
       "name": "方面及び出口の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -410,6 +511,7 @@
       "name": "方面、車線及び出口の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -421,6 +523,7 @@
       "name": "方面、車線及び出口の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -432,6 +535,7 @@
       "name": "方面及び出口",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -443,6 +547,7 @@
       "name": "方面及び出口",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -454,6 +559,7 @@
       "name": "出口",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -465,6 +571,7 @@
       "name": "出口",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -476,6 +583,7 @@
       "name": "著名地点",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -487,6 +595,7 @@
       "name": "著名地点",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -498,6 +607,7 @@
       "name": "著名地点",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -509,6 +619,7 @@
       "name": "主要地点",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -520,6 +631,7 @@
       "name": "主要地点",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -531,6 +643,7 @@
       "name": "料金徴収所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -542,6 +655,7 @@
       "name": "サービス・エリア、道の駅及び距離",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -553,6 +667,7 @@
       "name": "サービス・エリア、道の駅の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -564,6 +679,7 @@
       "name": "サービス・エリア、道の駅の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -575,6 +691,7 @@
       "name": "サービス・エリア、道の駅の予告",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -586,6 +703,7 @@
       "name": "サービス・エリア",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -597,6 +715,7 @@
       "name": "サービス・エリア",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -608,6 +727,7 @@
       "name": "非常電話",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -619,6 +739,7 @@
       "name": "待避所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -630,6 +751,7 @@
       "name": "非常駐車帯",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -641,6 +763,7 @@
       "name": "駐車場",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -652,6 +775,7 @@
       "name": "駐車場",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -663,6 +787,7 @@
       "name": "サービス・エリア又は駐車場から本線への入口",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -674,6 +799,7 @@
       "name": "登坂車線",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -685,6 +811,7 @@
       "name": "登坂車線",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -696,6 +823,7 @@
       "name": "国道番号",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -707,6 +835,7 @@
       "name": "国道番号",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -718,6 +847,7 @@
       "name": "国道番号",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -729,6 +859,7 @@
       "name": "都道府県道番号",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -740,6 +871,7 @@
       "name": "都道府県道番号",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -751,6 +883,7 @@
       "name": "都道府県道番号",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -762,6 +895,7 @@
       "name": "高速道路番号",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -773,6 +907,7 @@
       "name": "総重量限度緩和指定道路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -784,6 +919,7 @@
       "name": "総重量限度緩和指定道路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -795,6 +931,7 @@
       "name": "高さ限度緩和指定道路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -806,6 +943,7 @@
       "name": "高さ限度緩和指定道路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -817,6 +955,7 @@
       "name": "高さ限度緩和指定道路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -828,6 +967,7 @@
       "name": "高さ限度緩和指定道路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -839,6 +979,7 @@
       "name": "道路の通称名",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -850,6 +991,7 @@
       "name": "道路の通称名",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -861,6 +1003,7 @@
       "name": "道路の通称名",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -872,6 +1015,7 @@
       "name": "道路の通称名",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -883,6 +1027,7 @@
       "name": "まわり道",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -894,6 +1039,7 @@
       "name": "まわり道",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -905,6 +1051,7 @@
       "name": "エレベーター",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -916,6 +1063,7 @@
       "name": "エレベーター",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -927,6 +1075,7 @@
       "name": "エレベーター",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -938,6 +1087,7 @@
       "name": "エスカレーター",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -949,6 +1099,7 @@
       "name": "エスカレーター",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -960,6 +1111,7 @@
       "name": "エスカレーター",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -971,6 +1123,7 @@
       "name": "傾斜路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -982,6 +1135,7 @@
       "name": "傾斜路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -993,6 +1147,7 @@
       "name": "傾斜路",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1004,6 +1159,7 @@
       "name": "乗合自動車停留所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1015,6 +1171,7 @@
       "name": "乗合自動車停留所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1026,6 +1183,7 @@
       "name": "乗合自動車停留所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1037,6 +1195,7 @@
       "name": "路面電車停留場",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1048,6 +1207,7 @@
       "name": "路面電車停留場",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1059,6 +1219,7 @@
       "name": "路面電車停留場",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1070,6 +1231,7 @@
       "name": "便所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1081,6 +1243,7 @@
       "name": "便所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1092,6 +1255,7 @@
       "name": "便所",
       "group": "案内",
       "plate": null,
+      "displayScale": 1,
       "art": {
         "by": "none",
         "reason": "案内標識は描画対象外（地名・路線番号・施設名が設置場所ごとに異なり、寸法も字数で変わる。ゲームの規制データに出てこない）"
@@ -1103,6 +1267,7 @@
       "name": "┼形道路交差点あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "201a.png",
@@ -1118,6 +1283,7 @@
       "name": "├形（又は┤形）道路交差点あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "201b_right.png",
@@ -1144,6 +1310,7 @@
       "name": "Ｔ形道路交差点あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "201c.png",
@@ -1159,6 +1326,7 @@
       "name": "Ｙ形道路交差点あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "201d.png",
@@ -1174,6 +1342,7 @@
       "name": "ロータリーあり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "201-2.png",
@@ -1189,6 +1358,7 @@
       "name": "右（又は左）方屈曲あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "202_right.png",
@@ -1215,6 +1385,7 @@
       "name": "右（又は左）方屈折あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "203_right.png",
@@ -1241,6 +1412,7 @@
       "name": "右（又は左）背向屈曲あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "204_right.png",
@@ -1267,6 +1439,7 @@
       "name": "右（又は左）背向屈折あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "205_right.png",
@@ -1293,6 +1466,7 @@
       "name": "右（又は左）つづら折りあり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "206_right.png",
@@ -1319,6 +1493,7 @@
       "name": "踏切あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "207a.png",
@@ -1334,6 +1509,7 @@
       "name": "踏切あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "207b.png",
@@ -1352,6 +1528,7 @@
       "name": "学校、幼稚園、保育所等あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "208.png",
@@ -1370,6 +1547,7 @@
       "name": "信号機あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "208-2.png",
@@ -1396,6 +1574,7 @@
       "name": "すべりやすい",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "209.png",
@@ -1411,6 +1590,7 @@
       "name": "落石のおそれあり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "209-2.png",
@@ -1437,6 +1617,7 @@
       "name": "路面凹凸あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "209-3.png",
@@ -1452,6 +1633,7 @@
       "name": "合流交通あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "210.png",
@@ -1478,6 +1660,7 @@
       "name": "車線数減少",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "211.png",
@@ -1504,6 +1687,7 @@
       "name": "幅員減少",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "212.png",
@@ -1519,6 +1703,7 @@
       "name": "二方向交通",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "212-2.png",
@@ -1534,6 +1719,7 @@
       "name": "上り急勾配あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "212-3_10.png",
@@ -1550,6 +1736,7 @@
       "name": "下り急勾配あり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "212-4_10.png",
@@ -1569,6 +1756,7 @@
       "name": "道路工事中",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "213.png",
@@ -1584,6 +1772,7 @@
       "name": "横風注意",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "214.png",
@@ -1599,6 +1788,7 @@
       "name": "動物が飛び出すおそれあり",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "214-2.png",
@@ -1625,6 +1815,7 @@
       "name": "その他の危険",
       "group": "警戒",
       "plate": "PlateDiamond",
+      "displayScale": 1.3,
       "art": {
         "by": "texture",
         "file": "215.png",
@@ -1640,6 +1831,7 @@
       "name": "通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "301.png",
@@ -1658,6 +1850,7 @@
       "name": "車両通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "vehicles_closed.png",
@@ -1677,6 +1870,7 @@
       "name": "車両進入禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "no_entry.png",
@@ -1695,6 +1889,7 @@
       "name": "二輪の自動車以外の自動車通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "304.png",
@@ -1714,6 +1909,7 @@
       "name": "大型貨物自動車等通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "305.png",
@@ -1733,6 +1929,7 @@
       "name": "特定の最大積載量以上の貨物自動車等通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "shares": "305",
       "note": "305 と同じ標示板に補助標識 503-C を附置する（備考一(一)34）",
       "figure": "S35F03102010003-125.jpg"
@@ -1742,6 +1939,7 @@
       "name": "大型乗用自動車等通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "306.png",
@@ -1761,6 +1959,7 @@
       "name": "二輪の自動車・一般原動機付自転車通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "307.png",
@@ -1780,6 +1979,7 @@
       "name": "自転車以外の軽車両通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "308.png",
@@ -1799,6 +1999,7 @@
       "name": "特定小型原動機付自転車・自転車通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "309.png",
@@ -1818,6 +2019,7 @@
       "name": "車両（組合せ）通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "310.png",
@@ -1858,6 +2060,7 @@
       "name": "大型自動二輪車及び普通自動二輪車二人乗り通行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "310-2.png",
@@ -1873,6 +2076,7 @@
       "name": "タイヤチェーンを取り付けていない車両通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "310-3.png",
@@ -1888,6 +2092,7 @@
       "name": "指定方向外進行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "turn_3.png",
@@ -1924,6 +2129,7 @@
       "name": "指定方向外進行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "turn_1.png",
@@ -1960,6 +2166,7 @@
       "name": "指定方向外進行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "turn_2.png",
@@ -1984,6 +2191,7 @@
       "name": "指定方向外進行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "turn_5.png",
@@ -2008,6 +2216,7 @@
       "name": "指定方向外進行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "turn_7.png",
@@ -2023,6 +2232,7 @@
       "name": "指定方向外進行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "311f.png",
@@ -2049,6 +2259,7 @@
       "name": "車両横断禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "312.png",
@@ -2067,6 +2278,7 @@
       "name": "転回禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "no_uturn.png",
@@ -2085,6 +2297,7 @@
       "name": "追越しのための右側部分はみ出し通行禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "314.png",
@@ -2103,6 +2316,7 @@
       "name": "追越し禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "shares": "314",
       "note": "314 と同じ標示板に補助標識 508の2 を附置する（備考一(一)34）",
       "game": {
@@ -2115,6 +2329,7 @@
       "name": "駐停車禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "no_stopping.png",
@@ -2149,6 +2364,7 @@
       "name": "駐車禁止",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "no_parking.png",
@@ -2183,6 +2399,7 @@
       "name": "駐車余地",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "shares": "316",
       "variable": "text",
       "note": "316 と同じ標示板に補助標識 504 を附置する（備考一(一)34）",
@@ -2193,6 +2410,7 @@
       "name": "時間制限駐車区間",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "318.png",
@@ -2224,6 +2442,7 @@
       "name": "危険物積載車両通行止め",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "319.png",
@@ -2239,6 +2458,7 @@
       "name": "重量制限",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "320_5.5.png",
@@ -2266,6 +2486,7 @@
       "name": "高さ制限",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "321_3.3.png",
@@ -2293,6 +2514,7 @@
       "name": "最大幅",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "322_2.2.png",
@@ -2309,6 +2531,7 @@
       "name": "最高速度",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "speed_20.png",
@@ -2440,6 +2663,7 @@
       "name": "特定の種類の車両の最高速度",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "shares": "323",
       "variable": "text",
       "note": "323 と同じ標示板に補助標識 503-A を附置する（備考一(一)34）",
@@ -2450,6 +2674,7 @@
       "name": "最低速度",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "324_30.png",
@@ -2482,6 +2707,7 @@
       "name": "自動車専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325.png",
@@ -2497,6 +2723,7 @@
       "name": "特定小型原動機付自転車・自転車専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-2.png",
@@ -2512,6 +2739,7 @@
       "name": "普通自転車等及び歩行者等専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-3.png",
@@ -2541,6 +2769,7 @@
       "name": "歩行者等専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-4.png",
@@ -2559,6 +2788,7 @@
       "name": "許可車両専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-5a.png",
@@ -2578,6 +2808,7 @@
       "name": "許可車両専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-5b.png",
@@ -2597,6 +2828,7 @@
       "name": "許可車両専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-5c.png",
@@ -2616,6 +2848,7 @@
       "name": "許可車両（組合せ）専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-6.png",
@@ -2635,6 +2868,7 @@
       "name": "広域災害応急対策車両専用",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "325-7.png",
@@ -2650,6 +2884,7 @@
       "name": "一方通行",
       "group": "規制",
       "plate": "PlateWide",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "one_way_right.png",
@@ -2685,6 +2920,7 @@
       "name": "一方通行",
       "group": "規制",
       "plate": "PlateRect",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "one_way.png",
@@ -2700,6 +2936,7 @@
       "name": "特定小型原動機付自転車・自転車一方通行",
       "group": "規制",
       "plate": "PlateWide",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "326-2a_left.png",
@@ -2726,6 +2963,7 @@
       "name": "特定小型原動機付自転車・自転車一方通行",
       "group": "規制",
       "plate": "PlateRect",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "326-2b.png",
@@ -2744,6 +2982,7 @@
       "name": "車両通行区分",
       "group": "規制",
       "plate": "PlateRect120x90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327.png",
@@ -2763,6 +3002,7 @@
       "name": "特定の種類の車両の通行区分",
       "group": "規制",
       "plate": "PlateRect120x90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-2.png",
@@ -2778,6 +3018,7 @@
       "name": "牽引自動車の高速自動車国道通行区分",
       "group": "規制",
       "plate": "PlateSquare90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-3.png",
@@ -2796,6 +3037,7 @@
       "name": "専用通行帯",
       "group": "規制",
       "plate": "PlateSquare90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-4.png",
@@ -2826,6 +3068,7 @@
       "name": "普通自転車専用通行帯",
       "group": "規制",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-4-2.png",
@@ -2844,6 +3087,7 @@
       "name": "路線バス等優先通行帯",
       "group": "規制",
       "plate": "PlateSquare90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-5.png",
@@ -2864,6 +3108,7 @@
       "name": "牽引自動車の自動車専用道路第一通行帯通行指定区間",
       "group": "規制",
       "plate": "PlateSquare90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-6.png",
@@ -2879,6 +3124,7 @@
       "name": "進行方向別通行区分",
       "group": "規制",
       "plate": "PlateRect120x90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-7_lt-t-r.png",
@@ -2896,6 +3142,7 @@
       "name": "進行方向別通行区分",
       "group": "規制",
       "plate": "PlateSquare90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-7_lt.png",
@@ -2913,6 +3160,7 @@
       "name": "進行方向別通行区分",
       "group": "規制",
       "plate": "PlateSquare90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-7_l.png",
@@ -2930,6 +3178,7 @@
       "name": "進行方向別通行区分",
       "group": "規制",
       "plate": "PlateSquare90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-7_t.png",
@@ -2947,6 +3196,7 @@
       "name": "一般原動機付自転車の右折方法（二段階）",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-8.png",
@@ -2962,6 +3212,7 @@
       "name": "一般原動機付自転車の右折方法（小回り）",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-9.png",
@@ -2980,6 +3231,7 @@
       "name": "環状の交差点における右回り通行",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-10.png",
@@ -2995,6 +3247,7 @@
       "name": "平行駐車",
       "group": "規制",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-11.png",
@@ -3013,6 +3266,7 @@
       "name": "直角駐車",
       "group": "規制",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-12.png",
@@ -3031,6 +3285,7 @@
       "name": "斜め駐車",
       "group": "規制",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "327-13.png",
@@ -3049,6 +3304,7 @@
       "name": "警笛鳴らせ",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "328.png",
@@ -3067,6 +3323,7 @@
       "name": "警笛区間",
       "group": "規制",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "shares": "328",
       "note": "328 と同じ標示板に補助標識 505-A・B、506 又は 507-B・C を附置する（備考一(一)34）",
       "figure": "S35F03102010003-176.jpg"
@@ -3076,6 +3333,7 @@
       "name": "徐行",
       "group": "規制",
       "plate": "PlateTriangle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "slow.png",
@@ -3094,6 +3352,7 @@
       "name": "徐行",
       "group": "規制",
       "plate": "PlateTriangle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "329b.png",
@@ -3109,6 +3368,7 @@
       "name": "前方優先道路",
       "group": "規制",
       "plate": "PlateTriangle",
+      "displayScale": 1.25,
       "shares": "329-A",
       "note": "329-A と同じ標示板に補助標識 509 を附置する（備考一(一)34）",
       "figure": "S35F03102010003-177.jpg"
@@ -3118,6 +3378,7 @@
       "name": "前方優先道路",
       "group": "規制",
       "plate": "PlateTriangle",
+      "displayScale": 1.25,
       "shares": "329-B",
       "note": "329-B と同じ標示板に補助標識 509 を附置する（備考一(一)34）",
       "figure": "S35F03102010003-178.jpg"
@@ -3127,6 +3388,7 @@
       "name": "一時停止",
       "group": "規制",
       "plate": "PlateTriangle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "stop.png",
@@ -3145,6 +3407,7 @@
       "name": "一時停止",
       "group": "規制",
       "plate": "PlateTriangle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "330b.png",
@@ -3160,6 +3423,7 @@
       "name": "歩行者等通行止め",
       "group": "規制",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "331.png",
@@ -3176,6 +3440,7 @@
       "name": "歩行者等横断禁止",
       "group": "規制",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "332.png",
@@ -3210,6 +3475,7 @@
       "name": "並進可",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "401.png",
@@ -3225,6 +3491,7 @@
       "name": "軌道敷内通行可",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "402.png",
@@ -3240,6 +3507,7 @@
       "name": "高齢運転者等標章自動車駐車可",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "shares": "403",
       "note": "403 と同じ標示板に補助標識 503-D を附置する（備考一(一)34）",
       "figure": "S35F03102010003-186.jpg"
@@ -3249,6 +3517,7 @@
       "name": "駐車可",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "403.png",
@@ -3267,6 +3536,7 @@
       "name": "高齢運転者等標章自動車停車可",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "shares": "404",
       "note": "404 と同じ標示板に補助標識 503-D を附置する（備考一(一)34）",
       "figure": "S35F03102010003-187.jpg"
@@ -3276,6 +3546,7 @@
       "name": "停車可",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "404.png",
@@ -3291,6 +3562,7 @@
       "name": "優先道路",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "405.png",
@@ -3306,6 +3578,7 @@
       "name": "中央線",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "406.png",
@@ -3321,6 +3594,7 @@
       "name": "停止線",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "406-2.png",
@@ -3336,6 +3610,7 @@
       "name": "横断歩道",
       "group": "指示",
       "plate": "PlatePentagon",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "407a.png",
@@ -3365,6 +3640,7 @@
       "name": "横断歩道",
       "group": "指示",
       "plate": "PlatePentagon",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "407b.png",
@@ -3383,6 +3659,7 @@
       "name": "自転車横断帯",
       "group": "指示",
       "plate": "PlatePentagon",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "407-2.png",
@@ -3398,6 +3675,7 @@
       "name": "横断歩道・自転車横断帯",
       "group": "指示",
       "plate": "PlatePentagon",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "407-3.png",
@@ -3413,6 +3691,7 @@
       "name": "安全地帯",
       "group": "指示",
       "plate": "PlateSquare",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "408.png",
@@ -3428,6 +3707,7 @@
       "name": "規制予告",
       "group": "指示",
       "plate": "PlateRect60x90",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "409a.png",
@@ -3444,6 +3724,7 @@
       "name": "規制予告",
       "group": "指示",
       "plate": "PlateRect90x60",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "409b.png",
@@ -3460,6 +3741,7 @@
       "name": "距離・区域",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "501.png",
@@ -3536,6 +3818,7 @@
       "name": "日・時間",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "502.png",
@@ -3598,6 +3881,7 @@
       "name": "車両の種類",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "503a.png",
@@ -3669,6 +3953,7 @@
       "name": "車両の種類",
       "group": "補助",
       "plate": "PlateAux60x25",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "503b_truck.png",
@@ -3697,6 +3982,7 @@
       "name": "車両の種類",
       "group": "補助",
       "plate": "PlateAux60x38",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "503c.png",
@@ -3715,6 +4001,7 @@
       "name": "車両の種類",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "503d.png",
@@ -3731,6 +4018,7 @@
       "name": "遠隔操作型小型車",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "503-2.png",
@@ -3762,6 +4050,7 @@
       "name": "駐車余地",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "504.png",
@@ -3782,6 +4071,7 @@
       "name": "駐車時間制限",
       "group": "補助",
       "plate": "PlateAux60x32",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "504-2.png",
@@ -3809,6 +4099,7 @@
       "name": "始まり",
       "group": "補助",
       "plate": "PlateAux60x18",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "505a.png",
@@ -3828,6 +4119,7 @@
       "name": "始まり",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "505b.png",
@@ -3847,6 +4139,7 @@
       "name": "始まり",
       "group": "補助",
       "plate": "PlateAux60x32",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "505c.png",
@@ -3866,6 +4159,7 @@
       "name": "区間内",
       "group": "補助",
       "plate": "PlateAux60x18",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "506.png",
@@ -3885,6 +4179,7 @@
       "name": "区域内",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "506-2.png",
@@ -3904,6 +4199,7 @@
       "name": "終わり",
       "group": "補助",
       "plate": "PlateAux60x18",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "507a.png",
@@ -3923,6 +4219,7 @@
       "name": "終わり",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "507b.png",
@@ -3942,6 +4239,7 @@
       "name": "終わり",
       "group": "補助",
       "plate": "PlateCircle40",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "507c.png",
@@ -3958,6 +4256,7 @@
       "name": "終わり",
       "group": "補助",
       "plate": "PlateAux60x32",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "507d.png",
@@ -3977,6 +4276,7 @@
       "name": "通学路",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "508.png",
@@ -3996,6 +4296,7 @@
       "name": "追越し禁止",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "508-2.png",
@@ -4015,6 +4316,7 @@
       "name": "前方優先道路",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "509.png",
@@ -4034,6 +4336,7 @@
       "name": "踏切注意",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "509-2.png",
@@ -4053,6 +4356,7 @@
       "name": "横風注意",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "509-3.png",
@@ -4072,6 +4376,7 @@
       "name": "動物注意",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "509-4.png",
@@ -4091,6 +4396,7 @@
       "name": "注意",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "509-5.png",
@@ -4110,6 +4416,7 @@
       "name": "注意事項",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "510.png",
@@ -4139,6 +4446,7 @@
       "name": "規制理由",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "510-2.png",
@@ -4180,6 +4488,7 @@
       "name": "方向",
       "group": "補助",
       "plate": "PlateAux60x44",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "511_up_right.png",
@@ -4238,6 +4547,7 @@
       "name": "地名",
       "group": "補助",
       "plate": "PlateAux60x32",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "512.png",
@@ -4258,6 +4568,7 @@
       "name": "始点",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "513.png",
@@ -4277,6 +4588,7 @@
       "name": "終点",
       "group": "補助",
       "plate": "PlateAux60x22",
+      "displayScale": null,
       "art": {
         "by": "texture",
         "file": "514.png",
@@ -4296,6 +4608,7 @@
       "name": "ゾーン30 区域の入口（背板付き区域規制標識）",
       "group": "法定外",
       "plate": "PlateBacker40x60",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "x-zone30-entry.png",
@@ -4313,6 +4626,7 @@
       "name": "ゾーン30 区域の出口（背板付き区域規制標識）",
       "group": "法定外",
       "plate": "PlateBacker40x60",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "x-zone30-exit.png",
@@ -4333,6 +4647,7 @@
       "name": "ゾーン30プラス 看板（縮小タイプ）",
       "group": "法定外",
       "plate": "PlateRect40x15",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "x-zone30plus.png",
@@ -4350,6 +4665,7 @@
       "name": "消防水利（指定消防水利の標識）",
       "group": "法定外",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "x-fire-water.png",
@@ -4367,6 +4683,7 @@
       "name": "消火栓 標識（都内で一般的な赤い円板）",
       "group": "法定外",
       "plate": "PlateCircle",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "x-hydrant.png",
@@ -4387,6 +4704,7 @@
       "name": "通学路 板（区の法定外表示）",
       "group": "法定外",
       "plate": "PlateRect30x50",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "x-school-route.png",
@@ -4407,6 +4725,7 @@
       "name": "スクールゾーン 板（区の法定外表示）",
       "group": "法定外",
       "plate": "PlateRect30x50",
+      "displayScale": 1.25,
       "art": {
         "by": "texture",
         "file": "x-school-zone.png",
@@ -5270,6 +5589,5440 @@
       "sign": "327の4",
       "file": "327-7_t~cyc-t-r.png",
       "plate": "PlateRect120x90"
+    }
+  ],
+  "aux": [
+    {
+      "sign": "502",
+      "lines": ["10-14"],
+      "file": "502_h4b57964e.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-14"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["10-16"],
+      "file": "502_h49579328.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["10-17"],
+      "file": "502_h4a5794bb.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["10-18"],
+      "file": "502_h47579002.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["10-19"],
+      "file": "502_h48579195.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["10-20"],
+      "file": "502_hc9548b11.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["10-22"],
+      "file": "502_hc75487eb.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-22"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["10-23"],
+      "file": "502_hc6548658.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["10-23"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["11-13"],
+      "file": "502_h2ebb06ba.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["11-13"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["11-19"],
+      "file": "502_h24baf6fc.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["11-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["11:30-13:30"],
+      "file": "502_h1a08fdb4.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["11:30-13:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["11:30-13:30", "17-19"],
+      "file": "502_ha9a93937.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["11:30-13:30", "17-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-13"],
+      "file": "502_h21cd7ffd.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-13"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-13", "日・休日を除く"],
+      "file": "502_hd87439d2.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-13", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-13・15-18"],
+      "file": "502_hcbf23462.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-13・15-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-13・15-19"],
+      "file": "502_hccf235f5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-13・15-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-13・16-18"],
+      "file": "502_h063f51d1.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-13・16-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-13・22-5", "土・日・休日を除く"],
+      "file": "502_h29fc28c1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-13・22-5", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-18"],
+      "file": "502_h16cd6eac.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-20"],
+      "file": "502_h90d4ea7f.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-21", "土・日・休日を除く"],
+      "file": "502_h3683c371.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-21", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["12-22"],
+      "file": "502_h92d4eda5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["12-22"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-14・11-12", "土・日・休日を除く"],
+      "file": "502_ha60843ed.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-14・11-12", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-15", "土・日・休日を除く"],
+      "file": "502_h066a3537.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-15", "日・休日を除く"],
+      "file": "502_h429ddfdd.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-15", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-16"],
+      "file": "502_h070dc9ff.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-17"],
+      "file": "502_h060dc86c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-18"],
+      "file": "502_h0d0dd371.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-19"],
+      "file": "502_h0c0dd1de.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-20"],
+      "file": "502_h0b100ee2.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-22"],
+      "file": "502_h09100bbc.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-22"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["13-7"],
+      "file": "502_hd76512c5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["13-7"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["14-15", "土・日・休日を除く"],
+      "file": "502_h81ae106c.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["14-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["14-17"],
+      "file": "502_h40c40597.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["14-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["14-18"],
+      "file": "502_h35c3f446.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["14-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["14-18", "日・休日を除く"],
+      "file": "502_h83a2efb1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["14-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["14-20"],
+      "file": "502_h37c1b8d5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["14-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["14-20", "日・休日を除く"],
+      "file": "502_heafd70fa.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["14-20", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-10"],
+      "file": "502_h558553cb.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-10"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-17"],
+      "file": "502_h5a855baa.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-18"],
+      "file": "502_h4d854733.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-18", "土・日・休日を除く"],
+      "file": "502_hc7ca1032.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-18", "日・休日を除く"],
+      "file": "502_hbe40f140.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-18:30"],
+      "file": "502_h449e5068.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-18:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-18:30", "土・日・休日を除く"],
+      "file": "502_he1ca4e85.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-18:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-18:30", "日・休日を除く"],
+      "file": "502_he851032b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-18:30", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-19"],
+      "file": "502_h4c8545a0.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-19", "土・日・休日を除く"],
+      "file": "502_hf0b4d70d.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-19", "日・休日を除く"],
+      "file": "502_ha007f0f3.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-19", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-20"],
+      "file": "502_hc37db230.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-20", "日・休日を除く"],
+      "file": "502_hae9d5863.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-20", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15-5"],
+      "file": "502_h4cafae25.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15-5"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15:30-16:30", "日・休日を除く"],
+      "file": "502_h36ab3f8e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15:30-16:30", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15:30-17:30"],
+      "file": "502_h001465dc.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15:30-17:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["15:30-18:30"],
+      "file": "502_h6e5e0547.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["15:30-18:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-17", "土・日・休日を除く"],
+      "file": "502_h90fa4a5c.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-18"],
+      "file": "502_h78937870.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-18", "土・日・休日を除く"],
+      "file": "502_hf0dbd6fd.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-18", "日・休日を除く"],
+      "file": "502_h6feb1d23.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-19"],
+      "file": "502_h79937a03.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-19", "土・日・休日を除く"],
+      "file": "502_h17e4ef22.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-19", "日・休日を除く"],
+      "file": "502_hdde5dcb0.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-19", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-20"],
+      "file": "502_hf29af443.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-22"],
+      "file": "502_hf49af769.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-22"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16-7"],
+      "file": "502_hc787b55a.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16-7"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16:30-17:30"],
+      "file": "502_h2a0686e7.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16:30-17:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["16:30-18:30"],
+      "file": "502_h2dd9587c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["16:30-18:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["17-19"],
+      "file": "502_he19bc0f2.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["17-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["17-19", "日・休日を除く"],
+      "file": "502_h7d67203d.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["17-19", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["17-20"],
+      "file": "502_h509eae46.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["17-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["17-21"],
+      "file": "502_h519eafd9.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["17-21"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["17-5"],
+      "file": "502_ha2061473.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["17-5"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["17-5", "日・休日を除く"],
+      "file": "502_h5f120e00.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["17-5", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["17-6"],
+      "file": "502_ha3061606.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["17-6"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["18-22"],
+      "file": "502_hdd8b3ad3.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["18-22"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["18:30-21", "日・休日を除く"],
+      "file": "502_h5a5c28e6.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["18:30-21", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["20-5"],
+      "file": "502_h41360b19.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["20-5"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["21-1", "土・日・休日を除く"],
+      "file": "502_hf8f584c3.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["21-1", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["21-7"],
+      "file": "502_h525452ec.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["21-7"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["22-5"],
+      "file": "502_h272b24d7.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["22-5"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["22-5", "土・日・休日を除く"],
+      "file": "502_hf637b3be.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["22-5", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["22-6"],
+      "file": "502_h282b266a.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["22-6"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6-10・15-23"],
+      "file": "502_habb2ceb0.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6-10・15-23"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6-1:30"],
+      "file": "502_h20c493a4.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6-1:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6-22:30"],
+      "file": "502_h243f7b8d.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6-22:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6-23"],
+      "file": "502_h10bb342b.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6-23"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6-24"],
+      "file": "502_h15bb3c0a.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6-24"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6:30-8"],
+      "file": "502_hf85d9057.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6:30-8"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6:30-8", "土・日・休日を除く"],
+      "file": "502_h25cb9c3e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6:30-8", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6:30-8:30"],
+      "file": "502_h3573a514.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6:30-8:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6:30-8:30", "12-13", "土・日・休日を除く"],
+      "file": "502_hb23e9f71.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6:30-8:30", "12-13", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6:30-8・18-22"],
+      "file": "502_h0e6bef74.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6:30-8・18-22"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6:30-9", "土・日・休日を除く"],
+      "file": "502_h5caa2399.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6:30-9", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["6:30-9・13-15", "土・日・休日を除く"],
+      "file": "502_h67f4aacf.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["6:30-9・13-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-0"],
+      "file": "502_h86fbde63.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-0"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-10"],
+      "file": "502_hcb7cb4a0.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-10"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-10・13-18"],
+      "file": "502_hc285943d.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-10・13-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-10・16-19"],
+      "file": "502_h13eeac57.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-10・16-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-10・16-19", "土・日・休日を除く"],
+      "file": "502_h2a6cc03e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-10・16-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-13"],
+      "file": "502_hce7cb959.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-13"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-15"],
+      "file": "502_hd07cbc7f.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-15"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-17"],
+      "file": "502_hd27cbfa5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-18"],
+      "file": "502_hd37cc138.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-18", "土・日・休日を除く"],
+      "file": "502_h2f1c5375.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-19"],
+      "file": "502_hd47cc2cb.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-20"],
+      "file": "502_h5d84563b.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-20", "日・休日を除く"],
+      "file": "502_h70479e58.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-20", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-21"],
+      "file": "502_h5c8454a8.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-21"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8:30"],
+      "file": "502_h8e78d7b0.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8:30", "土・日・休日を除く"],
+      "file": "502_h6558493d.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8:30", "日・休日を除く"],
+      "file": "502_h4b5ca9e3.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8:30", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8:30・12-13", "15:30-18:30"],
+      "file": "502_hb2281883.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8:30・12-13", "15:30-18:30"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8:30・15-18"],
+      "file": "502_h9628b617.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8:30・15-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8:30・16-18"],
+      "file": "502_ha3c24874.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8:30・16-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8:45", "土・日・休日を除く"],
+      "file": "502_he5719a3d.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8:45", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-8・17-18"],
+      "file": "502_h896e310a.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-8・17-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9"],
+      "file": "502_h8dfbe968.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9", "土・日・休日を除く"],
+      "file": "502_h1aca5385.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9", "日・休日を除く"],
+      "file": "502_h3a2ea62b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・12-13"],
+      "file": "502_h384c9cd1.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・12-13"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・12-13", "16-18"],
+      "file": "502_hd379ff44.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・12-13", "16-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・12-15", "土・日・休日を除く"],
+      "file": "502_hda53789e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・12-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・12-19"],
+      "file": "502_h2e4c8d13.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・12-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・13-15"],
+      "file": "502_h1a55a3ce.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・13-15"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・13-16"],
+      "file": "502_h1955a23b.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・13-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・13-16", "土・日・休日を除く"],
+      "file": "502_heb10814a.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・13-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・13-17", "土・日・休日を除く"],
+      "file": "502_he78f49c5.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・13-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・13-18"],
+      "file": "502_h17559f15.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・13-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・13-19", "土・日・休日を除く"],
+      "file": "502_hfe866cc7.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・13-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・14-17"],
+      "file": "502_h4563d50b.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・14-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・14-18"],
+      "file": "502_h4263d052.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・14-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・14-19"],
+      "file": "502_h4363d1e5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・14-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-17"],
+      "file": "502_hdf74137e.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-17", "土・日・休日を除く"],
+      "file": "502_h0c01a88b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-18"],
+      "file": "502_hda740b9f.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-18", "土・日・休日を除く"],
+      "file": "502_hbe2014f6.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-18", "日・休日を除く"],
+      "file": "502_ha8a25bdc.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-19"],
+      "file": "502_hd9740a0c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-19", "土・日・休日を除く"],
+      "file": "502_h7a00ded1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-20"],
+      "file": "502_hd06d401c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15-21"],
+      "file": "502_hd16d41af.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15-21"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・15:30-18", "土・日・休日を除く"],
+      "file": "502_h2bc9b787.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・15:30-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・16-18"],
+      "file": "502_h8533547c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・16-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・16-18", "土・日・休日を除く"],
+      "file": "502_h15ad10e1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・16-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・16-18", "日・休日を除く"],
+      "file": "502_hec41f79f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・16-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・16-19"],
+      "file": "502_h8633560f.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・16-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・16-19", "土・日・休日を除く"],
+      "file": "502_h43e95b46.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・16-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・16-19", "日・休日を除く"],
+      "file": "502_hd1f0b3ac.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・16-19", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・17-18", "土・日・休日を除く"],
+      "file": "502_h43609b58.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・17-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・17-18", "日・休日を除く"],
+      "file": "502_hee1d3136.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・17-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・17-19"],
+      "file": "502_hc204196e.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・17-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7-9・17-19", "土・日・休日を除く"],
+      "file": "502_hf56cf2db.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7-9・17-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:20-8:20", "土・日・休日を除く"],
+      "file": "502_h5a5d4ec0.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:20-8:20", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-10", "土・日・休日を除く"],
+      "file": "502_ha29558a6.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-10", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-10", "日・休日を除く"],
+      "file": "502_h1ebfb8cc.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-10", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-11", "15-18", "土・日・休日を除く"],
+      "file": "502_h0173cb97.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-11", "15-18", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-14"],
+      "file": "502_h50f1c7e3.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-14"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-14", "土・日・休日を除く"],
+      "file": "502_h5611abc2.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-14", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-16"],
+      "file": "502_h52f1cb09.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-16", "土・日・休日を除く"],
+      "file": "502_h67dc40d0.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-16", "日・休日を除く"],
+      "file": "502_h3e87058e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-16", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-17"],
+      "file": "502_h51f1c976.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-17", "土・日・休日を除く"],
+      "file": "502_h891ee693.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-18"],
+      "file": "502_h5cf1dac7.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-18", "土・日・休日を除く"],
+      "file": "502_h849b660e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-19"],
+      "file": "502_h5bf1d934.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30"],
+      "file": "502_h482fdecb.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "12-13・16-19", "日・休日を除く"],
+      "file": "502_hd3a1768b.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "12-13・16-19", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "12-16", "土・日・休日を除く"],
+      "file": "502_h2efde28d.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "12-16", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "13-14", "土・日・休日を除く"],
+      "file": "502_h459bb0d2.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "13-14", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "13-15", "土・日・休日を除く"],
+      "file": "502_h838267ad.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "13-15", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "13-16"],
+      "file": "502_hb9caaa39.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "13-16"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "13-16", "土・日・休日を除く"],
+      "file": "502_he5f4aea0.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "13-16", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "13:30-15", "土・日・休日を除く"],
+      "file": "502_hd6ede630.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "13:30-15", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "14-15", "土・日・休日を除く"],
+      "file": "502_hd9ee9616.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "14-15", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "14-16", "土・日・休日を除く"],
+      "file": "502_h04a913b7.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "14-16", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "14-18"],
+      "file": "502_hb418a238.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "14-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "14:30-15:30", "土・日・休日を除く"],
+      "file": "502_hf922d624.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "14:30-15:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "14:30-16:30", "土・日・休日を除く"],
+      "file": "502_hd9e61d0f.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "14:30-16:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "15-16", "土・日・休日を除く"],
+      "file": "502_h76824c62.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "15-16", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "15-16", "日・休日を除く"],
+      "file": "502_h4d135970.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "15-16", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "15-18", "土・日・休日を除く"],
+      "file": "502_h24af139c.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "15-18", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "15-19"],
+      "file": "502_hf354d9ba.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "15-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "15-19", "土・日・休日を除く"],
+      "file": "502_hec8d58ef.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "15-19", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "15:30-16:30", "土・日・休日を除く"],
+      "file": "502_h411ae0be.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "15:30-16:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "16-17", "土・日・休日を除く"],
+      "file": "502_h46282d26.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "16-17", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "16-17:30", "土・日・休日を除く"],
+      "file": "502_h606d6e51.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "16-17:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "16-18"],
+      "file": "502_he4a2c38e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "16-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "16-18", "土・日・休日を除く"],
+      "file": "502_h5bb603bb.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "16-18", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "16-18", "日・休日を除く"],
+      "file": "502_hc2b58b09.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "16-18", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "16-19", "土・日・休日を除く"],
+      "file": "502_h5b163b38.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "16-19", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "16:30-18:30", "土・日・休日を除く"],
+      "file": "502_hff812f8f.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "16:30-18:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "17-18", "日・休日を除く"],
+      "file": "502_hd87e79f8.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "17-18", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "17-19", "土・日・休日を除く"],
+      "file": "502_hc8035ea5.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "17-19", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "土・日・休日を除く"],
+      "file": "502_hc1830dfa.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:30", "日・休日を除く"],
+      "file": "502_hfbd5bd88.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:30", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-8:50", "土・日・休日を除く"],
+      "file": "502_hd0a4afcc.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-8:50", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9"],
+      "file": "502_h10d05edd.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9", "13-14:30", "土・日・休日を除く"],
+      "file": "502_h5547c29b.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9", "13-14:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9", "13:30-15", "土・日・休日を除く"],
+      "file": "502_hd851b086.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9", "13:30-15", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9", "15:30-19"],
+      "file": "502_h23b873c1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9", "15:30-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9", "土・日・休日を除く"],
+      "file": "502_h7b9e9fcc.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9", "日・休日を除く"],
+      "file": "502_h8b3ffb32.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "11-14・15-18"],
+      "file": "502_hba39a6ef.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "11-14・15-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "11:30-18", "日・休日を除く"],
+      "file": "502_h9cddbd00.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "11:30-18", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "12:30-14", "土・日・休日を除く"],
+      "file": "502_h1042416b.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "12:30-14", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "13-15", "土・日・休日を除く"],
+      "file": "502_h5c8e5398.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "13-15", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "13-17", "土・日・休日を除く"],
+      "file": "502_h5438e9ea.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "13-17", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "15-22", "日・休日を除く"],
+      "file": "502_hca81224e.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "15-22", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "15:30-18:30", "土・日・休日を除く"],
+      "file": "502_hcf1d3781.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "15:30-18:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "16-17", "土・日・休日を除く"],
+      "file": "502_h05d6d4df.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "16-17", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "16-18"],
+      "file": "502_h5ee27d93.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "16-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "16-18", "土・日・休日を除く"],
+      "file": "502_h38fd7852.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "16-18", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "16-18", "日・休日を除く"],
+      "file": "502_h84012ba0.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "16-18", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "土・日・休日を除く"],
+      "file": "502_h79fc1f33.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9:30", "日・休日を除く"],
+      "file": "502_h36d73ba1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9:30", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・10-12", "土・日・休日を除く"],
+      "file": "502_h8ea373e8.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・10-12", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・12-13", "土・日・休日を除く"],
+      "file": "502_ha04f37b9.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・12-13", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・12-15", "土・日・休日を除く"],
+      "file": "502_h641b958b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・12-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・12-16", "土・日・休日を除く"],
+      "file": "502_h8e2373da.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・12-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-14", "土・日・休日を除く"],
+      "file": "502_heea2ed49.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-14", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-14", "日・休日を除く"],
+      "file": "502_h102a5267.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-14", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-15"],
+      "file": "502_h8c0cde27.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-15"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-15", "土・日・休日を除く"],
+      "file": "502_h0c6190ae.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-15", "日・休日を除く"],
+      "file": "502_h7feed8b4.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-15", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-16"],
+      "file": "502_h8d0cdfba.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-16", "土・日・休日を除く"],
+      "file": "502_h22437aef.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-17", "土・日・休日を除く"],
+      "file": "502_h4475559c.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-18"],
+      "file": "502_h7f0cc9b0.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・13-19"],
+      "file": "502_h800ccb43.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・13-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・14-15", "土・日・休日を除く"],
+      "file": "502_hc37b3265.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・14-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・14-16"],
+      "file": "502_h32345341.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・14-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・14-16", "土・日・休日を除く"],
+      "file": "502_hd3cfc498.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・14-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・14-17", "土・日・休日を除く"],
+      "file": "502_hfac5091b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・14-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・14-18"],
+      "file": "502_h2c3449cf.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・14-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・14-18", "土・日・休日を除く"],
+      "file": "502_h3d2e6206.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・14-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・14-19"],
+      "file": "502_h2b34483c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・14-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・15-17"],
+      "file": "502_h50d0e5fb.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・15-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・15-17", "土・日・休日を除く"],
+      "file": "502_haa54b70a.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・15-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・15-18"],
+      "file": "502_h4dd0e142.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・15-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・15-19"],
+      "file": "502_h4ed0e2d5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・15-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・15-19", "土・日・休日を除く"],
+      "file": "502_h66ae2534.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・15-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・16-18"],
+      "file": "502_h138724b1.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・16-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・16-18", "土・日・休日を除く"],
+      "file": "502_h5aaafd68.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・16-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・16-18", "日・休日を除く"],
+      "file": "502_h446a1746.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・16-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・16-19"],
+      "file": "502_h1287231e.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・16-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・16-19", "土・日・休日を除く"],
+      "file": "502_h74cf036b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・16-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・16-19", "日・休日を除く"],
+      "file": "502_hae6fe7f9.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・16-19", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・17-18", "日・休日を除く"],
+      "file": "502_h9f17e66f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・17-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・17-19"],
+      "file": "502_h1e46c17f.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・17-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・17-19", "土・日・休日を除く"],
+      "file": "502_h13212216.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・17-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・17-19", "日・休日を除く"],
+      "file": "502_h9c055f3c.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・17-19", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:30-9・17-21", "日・休日を除く"],
+      "file": "502_h458eb72f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:30-9・17-21", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:40-8:40"],
+      "file": "502_h0d3cb4e9.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:40-8:40"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:40-8:40", "土・日・休日を除く"],
+      "file": "502_hedbb16f0.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:40-8:40", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:40-8:40", "日・休日を除く"],
+      "file": "502_h813937ee.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:40-8:40", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-17"],
+      "file": "502_hf43c0e76.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:30", "土・日・休日を除く"],
+      "file": "502_hae5646fa.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "13-14", "土・日・休日を除く"],
+      "file": "502_hae3cd182.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "13-14", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "13-14:30", "土・日・休日を除く"],
+      "file": "502_h4cfa4b95.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "13-14:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "13-15", "土・日・休日を除く"],
+      "file": "502_haae0c8dd.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "13-15", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "13:30-14:30", "土・日・休日を除く"],
+      "file": "502_h52ecaa46.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "13:30-14:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "14-15:30", "土・日・休日を除く"],
+      "file": "502_h756502b1.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "14-15:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "15-19"],
+      "file": "502_hf38d674a.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "15-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "土・日・休日を除く"],
+      "file": "502_h0e36c5ea.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:45-8:45", "日・休日を除く"],
+      "file": "502_h57c0e838.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:45-8:45", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["7:50-9", "土・日・休日を除く"],
+      "file": "502_h35e1aa46.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["7:50-9", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-10"],
+      "file": "502_hc4f81977.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-10"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-10", "日・休日を除く"],
+      "file": "502_h8c6179a4.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-10", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-10・13-15", "日・休日を除く"],
+      "file": "502_h6218b786.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-10・13-15", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-10・15-17", "日・休日を除く"],
+      "file": "502_h37610fb2.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-10・15-17", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-10・15-18", "日・休日を除く"],
+      "file": "502_hd8c59e13.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-10・15-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-10・16-18", "土・日・休日を除く"],
+      "file": "502_h01626de2.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-10・16-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-14", "土・日・休日を除く"],
+      "file": "502_hfc22ef1a.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-14", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-15"],
+      "file": "502_hbff81198.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-15"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-15", "土・日・休日を除く"],
+      "file": "502_h37ceb095.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-16", "日・休日を除く"],
+      "file": "502_h41e34be6.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-16", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-16:30"],
+      "file": "502_h9a08cfe2.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-16:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-17"],
+      "file": "502_hc1f814be.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-17", "土・日・休日を除く"],
+      "file": "502_h697201cb.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-18"],
+      "file": "502_hbcf80cdf.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-18", "土・日・休日を除く"],
+      "file": "502_h9c7bbf36.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-19"],
+      "file": "502_hbbf80b4c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-20"],
+      "file": "502_hb2f1415c.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-20"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-20", "日・休日を除く"],
+      "file": "502_hc2b59c7f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-20", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-8:30"],
+      "file": "502_ha5ea8b73.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-8:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-8:30", "土・日・休日を除く"],
+      "file": "502_h1d1db072.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-8:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-8:30", "日・休日を除く"],
+      "file": "502_h7b7d5300.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-8:30", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-8:30・12-13", "土・日・休日を除く"],
+      "file": "502_h43bbfe1b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-8:30・12-13", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-8:30・13-16", "土・日・休日を除く"],
+      "file": "502_h22d38bc9.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-8:30・13-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-8:40", "土・日・休日を除く"],
+      "file": "502_h811defe1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-8:40", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9"],
+      "file": "502_h487efaa5.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9", "11:30-13:30", "17-18"],
+      "file": "502_ha1c3428c.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9", "11:30-13:30", "17-18"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9", "14:30-15:30", "土・日・休日を除く"],
+      "file": "502_h98fd528a.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9", "14:30-15:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9", "土・日・休日を除く"],
+      "file": "502_hb8503264.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9", "日・休日を除く"],
+      "file": "502_hbd2b15ea.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30", "11:30-13:30", "17-19:30"],
+      "file": "502_h3fcfc0c9.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30", "11:30-13:30", "17-19:30"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30", "16-17:30", "土・日・休日を除く"],
+      "file": "502_h1f054dd2.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30", "16-17:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30", "土・日・休日を除く"],
+      "file": "502_h043fa12b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30", "日・休日を除く"],
+      "file": "502_hc4932c39.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30・11-14"],
+      "file": "502_h0ef220e1.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30・11-14"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30・13-15", "日・休日を除く"],
+      "file": "502_hf8fda5a7.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30・13-15", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30・13-16", "土・日・休日を除く"],
+      "file": "502_h36410f5c.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30・13-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30・16-17"],
+      "file": "502_h3900508b.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30・16-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9:30・17-18", "日・休日を除く"],
+      "file": "502_h81276b5c.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9:30・17-18", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・12-13", "16-18"],
+      "file": "502_h75a1ceb1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・12-13", "16-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・12-13", "日・休日を除く"],
+      "file": "502_h2f4b052f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・12-13", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・12-14"],
+      "file": "502_h70aee699.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・12-14"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・13-14", "土・日・休日を除く"],
+      "file": "502_h9aba7f01.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・13-14", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・13-15"],
+      "file": "502_hf1e259ef.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・13-15"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・13-15", "土・日・休日を除く"],
+      "file": "502_hd8d55166.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・13-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・13-16"],
+      "file": "502_hf2e25b82.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・13-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・14-15:30", "土・日・休日を除く"],
+      "file": "502_hc225b444.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・14-15:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・15-16", "土・日・休日を除く"],
+      "file": "502_hf6bfcd5d.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・15-16", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・15-16", "日・休日を除く"],
+      "file": "502_hdf15d143.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・15-16", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・15-17", "土・日・休日を除く"],
+      "file": "502_h79aa9002.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・15-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・15-18"],
+      "file": "502_h6dc16f9a.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・15-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・15-18", "土・日・休日を除く"],
+      "file": "502_h8990610f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・15-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・16-17", "日・休日を除く"],
+      "file": "502_h5bbb7907.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・16-17", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・16-17:30", "土・日・休日を除く"],
+      "file": "502_h6be03d48.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・16-17:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・16-18"],
+      "file": "502_h0ae8d689.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・16-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・16-18:30"],
+      "file": "502_hb5a1c91a.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・16-18:30"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・16-19"],
+      "file": "502_h09e8d4f6.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・16-19"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・16-19", "土・日・休日を除く"],
+      "file": "502_h79951113.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・16-19", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・17-18"],
+      "file": "502_hcd181004.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・17-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・17-18", "土・日・休日を除く"],
+      "file": "502_h2016bcd9.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・17-18", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8-9・17-19", "日・休日を除く"],
+      "file": "502_hd62e8544.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8-9・17-19", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8:30-10", "土・日・休日を除く"],
+      "file": "502_h842dfc0f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8:30-10", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8:30-10", "日・休日を除く"],
+      "file": "502_ha32edb95.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8:30-10", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8:30-9:30", "13-14", "土・日・休日を除く"],
+      "file": "502_h1b6a1dbe.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8:30-9:30", "13-14", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8:30-9:30", "13:30-14:30", "土・日・休日を除く"],
+      "file": "502_ha6c7b6f2.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8:30-9:30", "13:30-14:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8:30-9:30", "15:30-16:30", "土・日・休日を除く"],
+      "file": "502_h5dc2f532.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8:30-9:30", "15:30-16:30", "土・日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["8:30-9:30", "土・日・休日を除く"],
+      "file": "502_haad554b6.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["8:30-9:30", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-10・13-14", "土・日・休日を除く"],
+      "file": "502_h74bc8c42.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-10・13-14", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-10・14-15", "土・日・休日を除く"],
+      "file": "502_he2f3a3c6.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-10・14-15", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-12", "土・日・休日を除く"],
+      "file": "502_h15dd47d9.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-12", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-16"],
+      "file": "502_h26e7d4b8.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-16"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-17"],
+      "file": "502_h27e7d64b.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-17"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-17", "土・日・休日を除く"],
+      "file": "502_hc657967a.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-17", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-17", "日・休日を除く"],
+      "file": "502_h47a6e108.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-17", "日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-18"],
+      "file": "502_h24e7d192.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-18"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-9:30", "14-14:30", "日・休日を除く"],
+      "file": "502_hc787ea12.png",
+      "plate": "PlateAux60x44",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-9:30", "14-14:30", "日・休日を除く"],
+          "h": 440
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["9-9:30・12-13", "土・日・休日を除く"],
+      "file": "502_hd30f9e07.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["9-9:30・12-13", "土・日・休日を除く"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "10-12"],
+      "file": "502_h4cc769c4.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "10-12"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "10-18"],
+      "file": "502_h46c76052.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "10-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "12-17"],
+      "file": "502_h9096ef81.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "12-17"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "12-19"],
+      "file": "502_h8a96e60f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "12-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "12-20"],
+      "file": "502_h039e604f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "12-20"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "13-18"],
+      "file": "502_hc767ab01.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "13-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "15-18"],
+      "file": "502_h4cf51783.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "15-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "15-19"],
+      "file": "502_h4bf515f0.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "15-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "8-18"],
+      "file": "502_h438d47ef.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "8-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "8-19"],
+      "file": "502_h428d465c.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "8-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["土・日・休日", "9-18"],
+      "file": "502_he52915e2.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["土・日・休日", "9-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日"],
+      "file": "502_hdd7e4e4f.png",
+      "plate": "PlateAux60x22",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日"],
+          "h": 220
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "10-12"],
+      "file": "502_h9217881e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "10-12"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "10-13"],
+      "file": "502_h931789b1.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "10-13"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "10-15"],
+      "file": "502_h95178cd7.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "10-15"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "10-16"],
+      "file": "502_h96178e6a.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "10-16"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "10-17"],
+      "file": "502_h97178ffd.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "10-17"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "10-18"],
+      "file": "502_h88177860.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "10-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "10-19"],
+      "file": "502_h891779f3.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "10-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "11-16"],
+      "file": "502_h68b69f9b.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "11-16"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "11-18"],
+      "file": "502_h66b69c75.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "11-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "12-16"],
+      "file": "502_hc2a1a974.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "12-16"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "12-17"],
+      "file": "502_hc3a1ab07.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "12-17"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "12-18"],
+      "file": "502_hb8a199b6.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "12-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "12-19"],
+      "file": "502_hb9a19b49.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "12-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "12-20"],
+      "file": "502_h3a9e94c5.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "12-20"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "12-22"],
+      "file": "502_h389e919f.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "12-22"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "13-17"],
+      "file": "502_h24f362da.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "13-17"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "13-18"],
+      "file": "502_h17f34e63.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "13-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "13-19"],
+      "file": "502_h16f34cd0.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "13-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "15-18"],
+      "file": "502_h9128ad61.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "15-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "15-19"],
+      "file": "502_h9028abce.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "15-19"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "16-18"],
+      "file": "502_h90879932.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "16-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "6-18"],
+      "file": "502_hfe274eb3.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "6-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "7-17"],
+      "file": "502_hf1660d17.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "7-17"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "7:30-10"],
+      "file": "502_h41728829.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "7:30-10"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "8-11"],
+      "file": "502_hc257d58e.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "8-11"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "8-17"],
+      "file": "502_hc457d8b4.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "8-17"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "8-18"],
+      "file": "502_hbb57ca89.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "8-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "9-12"],
+      "file": "502_h7786fa92.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "9-12"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "9-13"],
+      "file": "502_h7886fc25.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "9-13"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "9-16"],
+      "file": "502_h7386f446.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "9-16"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "9-17"],
+      "file": "502_h7486f5d9.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "9-17"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "9-18"],
+      "file": "502_h7d870404.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "9-18"],
+          "h": 320
+        }
+      },
+      "colors": 16
+    },
+    {
+      "sign": "502",
+      "lines": ["日・休日", "9-20"],
+      "file": "502_h078e9907.png",
+      "plate": "PlateAux60x32",
+      "paint": {
+        "fn": "auxiliary.text_plate",
+        "args": {
+          "lines": ["日・休日", "9-20"],
+          "h": 320
+        }
+      },
+      "colors": 16
     }
   ]
 }
