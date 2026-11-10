@@ -1,11 +1,19 @@
 import { en } from "../../i18n/en";
 import { ja } from "../../i18n/ja";
 import type { BoxNode, Measure } from "./boxes";
-import type { EntranceContent, ExitContent, ExpresswayDiagramContent, SignName } from "./content";
+import type {
+  EntranceContent,
+  ExitContent,
+  ExpresswayDiagramContent,
+  LaneContent,
+  PictogramContent,
+  SignName,
+} from "./content";
 import { NAME_H, nameWidth, spacedName, textWidth } from "./fonts";
 import { armVector, layoutJunction } from "./junction";
 import { romanHeight } from "./letters";
-import { ROUTE_SYMBOL_RATIO } from "../boardStandards";
+import { ENTRANCE_ROUTE_SYMBOL } from "../expresswaySignAssumptions";
+import { ROUTE_FRAME_ASPECT } from "./routeSymbol";
 
 /**
  * The 都市高速's green boards as templates for G6 (which places them): the branch diagram
@@ -185,7 +193,9 @@ export function layoutEntrance(
   const h = c.letter;
   const m = 0.42 * h;
   const operator: SignName = { ja: ja[c.operator], en: en[c.operator], expressway: false };
-  const symbol = c.route ? ROUTE_SYMBOL_RATIO.value.destination * h * 1.4 : 0;
+  // The band's route symbol: its frame ENTRANCE_ROUTE_SYMBOL of the 日本字 high (an assumption:
+  // the cap of 備考一(五)6 is written for 108の2, G5 review W6).
+  const symbol = c.route ? (ENTRANCE_ROUTE_SYMBOL.value * h) / ROUTE_FRAME_ASPECT : 0;
   const topW = m + (symbol > 0 ? symbol + 0.4 * h : 0) + nameWidth(measure, operator, h) + m;
   const lower: SignName[] = [...(c.entranceName ? [c.entranceName] : []), ...c.names];
   const entranceText = c.distance === null ? "入口" : `入口 ${c.distance}m`;
@@ -243,4 +253,205 @@ export function layoutEntrance(
     maxW: width - lx - m,
   });
   return { width, height, nodes };
+}
+
+/**
+ * 111-B (図 029, 180 × 320 cm): the places centred, then along the bottom the exit number's plate,
+ * the arrow down onto the lane and 「出口 400m」 with EXIT under it.
+ */
+export function layoutLane(
+  c: LaneContent,
+  measure: Measure,
+): { width: number; height: number; nodes: BoxNode[] } {
+  const h = c.letter;
+  const m = 0.42 * h;
+  const plateW = c.number ? Math.max(1.6 * h, textWidth(measure, "latin", h, c.number) + 0.6 * h) : 0;
+  const distanceText = `${c.distance}m`;
+  const exitW =
+    textWidth(measure, "jp", 0.8 * h, "出口") + 0.4 * h + textWidth(measure, "latin", 0.8 * h, distanceText);
+  const namesW = Math.max(...c.names.map((n) => nameWidth(measure, n, h)));
+  const arrowCell = 1.4 * h;
+  const bottomW = plateW + (plateW > 0 ? 0.8 * h : 0) + arrowCell + 0.8 * h + exitW;
+  // 図 029 is 320 cm wide at its letters (read as 30 cm); never narrower than what it carries.
+  const width = Math.max((320 * h) / 30, 2 * m + namesW, 2 * m + bottomW);
+  const namesH = c.names.length * NAME_H(h);
+  const bottomH = 1.4 * h;
+  const height = 2 * m + namesH + 0.2 * h + bottomH;
+  const nodes: BoxNode[] = [{ type: "background", field: "green", letter: h }];
+  c.names.forEach((n, i) => {
+    const w = nameWidth(measure, n, h);
+    nodes.push(...nameNodes(n, (width - w) / 2, m + i * NAME_H(h), w, h, "white"));
+  });
+  const cy = m + namesH + 0.2 * h + bottomH / 2;
+  let x = (width - bottomW) / 2;
+  if (c.number) {
+    nodes.push({
+      type: "field",
+      x,
+      y: cy - 0.6 * h,
+      w: plateW,
+      h: 1.2 * h,
+      radius: 0.1 * h,
+      fill: "white",
+      stroke: null,
+    });
+    nodes.push({
+      type: "text",
+      text: c.number,
+      font: "latin",
+      cm: 0.8 * h,
+      x: x + plateW / 2,
+      y: cy,
+      align: "center",
+      baseline: "middle",
+      colour: "green",
+      maxW: plateW - 0.3 * h,
+    });
+    x += plateW + 0.8 * h;
+  }
+  // The arrow down onto the lane (180°: straight down).
+  nodes.push(arrow(x + arrowCell / 2, cy, 180, 1.35 * h, h));
+  x += arrowCell + 0.8 * h;
+  const line = (text: string, font: "jp" | "latin", cm: number, tx: number, ty: number): BoxNode => ({
+    type: "text",
+    text,
+    font,
+    cm,
+    x: tx,
+    y: ty,
+    align: "left",
+    baseline: "top",
+    colour: "white",
+    maxW: null,
+  });
+  nodes.push(line("出口", "jp", 0.8 * h, x, cy - 0.55 * h));
+  nodes.push(
+    line(
+      distanceText,
+      "latin",
+      0.8 * h,
+      x + textWidth(measure, "jp", 0.8 * h, "出口") + 0.4 * h,
+      cy - 0.47 * h,
+    ),
+  );
+  nodes.push(line("EXIT", "latin", 0.3 * h, x, cy + 0.38 * h));
+  return { width, height, nodes };
+}
+
+/**
+ * 113-A・B 出口 at the nose (図 033, 295 × 150 cm at 50 cm letters: upright): 「出口 EXIT」 on top,
+ * the arrow off the main line, and (113-B) the exit number's plate with the place under it at 0.6
+ * of the letters. G5 laid 113 out as the wide exit board; the figure is upright (G6 review W2).
+ */
+export function layoutNose(
+  c: ExitContent,
+  measure: Measure,
+): { width: number; height: number; nodes: BoxNode[] } {
+  const h = c.letter;
+  const m = 0.42 * h;
+  const small = 0.6 * h;
+  const plateW = c.number ? Math.max(h, textWidth(measure, "latin", 0.76 * h, c.number) + 0.3 * h) : 0;
+  const placeW = c.names.reduce((w, n) => Math.max(w, nameWidth(measure, n, small)), 0);
+  const bottomW = plateW + (plateW > 0 && placeW > 0 ? 0.3 * h : 0) + placeW;
+  const width = Math.max(3 * h, textWidth(measure, "jp", h, "出口") + 2 * m, bottomW + 2 * m);
+  const arrowH = 2.2 * h;
+  const hasBottom = c.number !== null || c.names.length > 0;
+  const bottomH = hasBottom ? 1.3 * h : 0;
+  const height = Math.max(5.9 * h, m + 1.9 * h + arrowH + bottomH + 2 * m);
+  const nodes: BoxNode[] = [{ type: "background", field: "green", letter: h }];
+  const text = (
+    t: string,
+    font: "jp" | "latin",
+    cm: number,
+    x: number,
+    y: number,
+    colour: "white" | "green" = "white",
+  ): BoxNode => ({
+    type: "text",
+    text: t,
+    font,
+    cm,
+    x,
+    y,
+    align: "center",
+    baseline: "top",
+    colour,
+    maxW: width - 2 * m,
+  });
+  nodes.push(text("出口", "jp", h, width / 2, m));
+  nodes.push(text("EXIT", "latin", 0.5 * h, width / 2, m + 1.15 * h));
+  const arrowY = m + 1.9 * h + arrowH / 2;
+  nodes.push(arrow(width / 2, arrowY, c.angle, arrowH * 0.95, 1.2 * h));
+  if (!hasBottom) return { width, height, nodes };
+  const by = height - m - bottomH;
+  let x = (width - bottomW) / 2;
+  if (c.number) {
+    // White ground, green figures (備考一(三)1(13)).
+    nodes.push({
+      type: "field",
+      x,
+      y: by,
+      w: plateW,
+      h: bottomH,
+      radius: 0.08 * h,
+      fill: "white",
+      stroke: null,
+    });
+    nodes.push({
+      type: "text",
+      text: c.number,
+      font: "latin",
+      cm: 0.76 * h,
+      x: x + plateW / 2,
+      y: by + bottomH / 2,
+      align: "center",
+      baseline: "middle",
+      colour: "green",
+      maxW: plateW - 0.2 * h,
+    });
+    x += plateW + 0.3 * h;
+  }
+  for (const n of c.names) nodes.push(...nameNodes(n, x, by + 0.05 * h, placeW, small, "white"));
+  return { width, height, nodes };
+}
+
+/** The figures at 図示: size (cm, wide × high), the caption's height and text, the figure drawn. */
+export const PICTOGRAMS = {
+  "116の4": { w: 60, h: 90, caption: 14, text: "非常電話", figure: "phone" },
+  "116の6": { w: 60, h: 90, caption: 10, text: "非常駐車帯", figure: "bay" },
+} as const;
+
+/**
+ * 116の4・116の6 (図 046・048): green, the figure above and its caption under it, everything scaled
+ * from 図示 by the caption height (`letter`). Why not the Pillow painter the design planned
+ * (`art.by = "painter"`): the other green boards, their face pool and their night return are on
+ * the canvas path, and a Pillow texture on the deck would need a second pool for two fixed figures.
+ */
+export function layoutPictogram(c: PictogramContent): { width: number; height: number; nodes: BoxNode[] } {
+  const f = PICTOGRAMS[c.kind];
+  const k = c.letter / f.caption;
+  const width = f.w * k;
+  const height = f.h * k;
+  const m = 6 * k;
+  const captionH = 1.6 * c.letter;
+  return {
+    width,
+    height,
+    nodes: [
+      { type: "background", field: "green", letter: c.letter },
+      { type: "pictogram", figure: f.figure, x: m, y: m, w: width - 2 * m, h: height - 2 * m - captionH },
+      {
+        type: "text",
+        text: f.text,
+        font: "jp",
+        cm: c.letter,
+        x: width / 2,
+        y: height - m - captionH / 2,
+        align: "center",
+        baseline: "middle",
+        colour: "white",
+        maxW: width - 2 * m,
+      },
+    ],
+  };
 }

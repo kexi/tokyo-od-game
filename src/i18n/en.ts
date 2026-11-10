@@ -1199,7 +1199,7 @@ export const en: Messages = {
   "credits.jartic.extract":
     "From the Tokyo (Metropolitan Police Department) part of {edition}, the one-way streets, speed limits (sections and zones), crosswalks, stop lines and stop signs around the 23 wards are extracted and matched to GSI's road center lines.",
   "credits.jartic.omitted":
-    "Regulations for set periods or days of the week, those on the Metropolitan Expressway, and variable speed limits are left out. The matching includes the game's own estimates and may differ from the actual regulations.",
+    "Regulations for set periods or days of the week, those on the city expressway (a motorway), and variable speed limits are left out. The matching includes the game's own estimates and may differ from the actual regulations.",
   "credits.jartic.real": "When you really drive, follow the signs and road markings on site.",
   "credits.link.jarticTerms": "Traffic Regulation Information terms of use",
   "credits.jartic.terms": "Terms: {terms} (compatible with CC BY 4.0).",

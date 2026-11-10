@@ -592,9 +592,9 @@ export const FOLLOWED = {
   }),
   commute: fixed(
     "f-commute",
-    "毎日首都高",
-    "shutoko_daily",
-    "首都高で通勤20年。渋滞情報と運転のこと",
+    "毎日都市高速",
+    "toshikou_daily",
+    "都市高速で通勤20年。渋滞情報と運転のこと",
     portraitAvatar(
       "f-commute",
       { shirt: 0x3d6fd9, pants: 0x2b3445, skin: 0xe0ac86, hair: 0x1a1410, umbrella: 0 },

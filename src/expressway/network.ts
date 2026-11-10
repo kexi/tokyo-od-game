@@ -1,6 +1,7 @@
 import { DEFAULT_LANES, DEFAULT_SPEED } from "./assumptions";
 import type { RoadClass as AnyRoadClass } from "../world/roadClass";
 import { haversine } from "./geo";
+import { routeName } from "../game/roadNames";
 
 /**
  * OSM motorway / motorway_link ways normalised into the compiler's input (knowledge/road-redesign-plan.md 4.1), then joined
@@ -20,6 +21,10 @@ export type XwNode = {
   /** motorway_junction name / ref (出入口・JCT 名), kept as in OSM. */
   junctionName: string | null;
   junctionRef: string | null;
+  /** name:en of the junction (without the operator), for the boards' English. */
+  junctionNameEn: string | null;
+  /** An emergency=phone node (非常電話, 116の4 marks it). */
+  phone?: boolean;
 };
 
 export type XwWay = {
@@ -27,8 +32,12 @@ export type XwWay = {
   nodes: number[];
   cls: RoadClass;
   ref: string | null;
-  /** A name without the operator's (e.g. "宝町出口"); names carrying it are dropped. */
+  /** A name without the operator's (e.g. "宝町出口", "都心環状線"); names still carrying it are dropped. */
   name: string | null;
+  /** name:en without the operator ("Inner Circular Route"), or null. */
+  nameEn: string | null;
+  /** The OSM maxspeed as tagged, null where none is (323 then shows the statute's 60). */
+  maxspeedTag: number | null;
   destination: string | null;
   destinationRef: string | null;
   lanes: number;
@@ -42,16 +51,16 @@ export type XwWay = {
 export type Network = { ways: Map<number, XwWay>; nodes: Map<number, XwNode> };
 
 /**
- * Words that name the real operator. The game calls it by a fictional name (i18n), so none of these
- * may survive into the data (tests/expresswayData.test.ts checks the tiles).
+ * The real operator's name never survives into the data: a route name loses it in front
+ * (「…都心環状線」 → 「都心環状線」) and anything still naming it is dropped (src/game/roadNames.ts, the
+ * name layer; tests/roadNames.test.ts scans the tiles).
  */
-export const OPERATOR_WORDS = ["首都高", "Shuto", "Metropolitan Expressway", "首都高速"] as const;
-
-const hasOperator = (text: string) =>
-  OPERATOR_WORDS.some((w) => text.toLowerCase().includes(w.toLowerCase()));
-const clean = (text: string | undefined): string | null => {
-  const isUsable = text !== undefined && text.trim() !== "" && !hasOperator(text);
-  return isUsable ? text : null;
+export { OPERATOR_WORDS } from "../game/roadNames";
+const clean = (text: string | undefined): string | null => routeName(text);
+/** A raw OSM maxspeed in km/h, or null where none is tagged (the statute's 60 applies there). */
+const speedTagOf = (text: string | undefined): number | null => {
+  const v = Number.parseInt(text ?? "", 10);
+  return v > 0 ? v : null;
 };
 
 /** Structure from OSM tags. A layer above 0 without a bridge tag is still a viaduct here. */
@@ -90,6 +99,8 @@ export function normalizeWay(id: number, nodes: number[], tags: Record<string, s
     cls,
     ref: clean(tags.ref),
     name: clean(tags.name),
+    nameEn: clean(tags["name:en"]),
+    maxspeedTag: speedTagOf(tags.maxspeed),
     destination: clean(tags.destination),
     destinationRef: clean(tags["destination:ref"]),
     lanes: lanesTag > 0 ? lanesTag : isRamp ? defaults.ramp : defaults.main,
@@ -100,7 +111,14 @@ export function normalizeWay(id: number, nodes: number[], tags: Record<string, s
 }
 
 export function normalizeNode(id: number, lon: number, lat: number, tags: Record<string, string>): XwNode {
-  return { id, lon, lat, junctionName: clean(tags.name), junctionRef: clean(tags.ref) };
+  return {
+    id,
+    lon,
+    lat,
+    junctionName: clean(tags.name),
+    junctionRef: clean(tags.ref),
+    junctionNameEn: clean(tags["name:en"]),
+  };
 }
 
 export type Chain = {

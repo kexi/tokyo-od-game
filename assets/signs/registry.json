@@ -2716,6 +2716,10 @@
         },
         "variants": []
       },
+      "game": {
+        "kind": "motorOnly",
+        "pick": "default"
+      },
       "figure": "S35F03102010003-151.jpg"
     },
     {

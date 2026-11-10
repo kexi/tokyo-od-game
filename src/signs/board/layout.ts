@@ -4,10 +4,20 @@ import {
   isExit,
   isExpresswayDiagram,
   isJunction,
+  isLane,
+  isNose,
+  isPictogram,
   isRows,
   type BoardContent,
 } from "./content";
-import { layoutEntrance, layoutExit, layoutExpresswayDiagram } from "./expressway";
+import {
+  layoutEntrance,
+  layoutExit,
+  layoutExpresswayDiagram,
+  layoutLane,
+  layoutNose,
+  layoutPictogram,
+} from "./expressway";
 import { layoutJunction } from "./junction";
 import { layoutRows } from "./rows";
 
@@ -26,6 +36,9 @@ function layoutByTemplate(c: BoardContent, measure: Measure) {
   if (isRows(c)) return layoutRows(c, measure);
   if (isExpresswayDiagram(c)) return layoutExpresswayDiagram(c, measure);
   if (isExit(c)) return layoutExit(c, measure);
+  if (isNose(c)) return layoutNose(c, measure);
+  if (isLane(c)) return layoutLane(c, measure);
+  if (isPictogram(c)) return layoutPictogram(c);
   return layoutEntrance(c, measure);
 }
 

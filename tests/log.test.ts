@@ -396,6 +396,13 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     detail: "specialGrade V60",
     allowed: true,
   },
+  expressway_signs_placed: { chunks: 12, boards: 9, plates: 4, gantries: 6, girders: 0, barriers: 7 },
+  expressway_signs_failed: { error: "guide_signs.glb: 404" },
+  entrance_board_placed: { run: "207111988", kind: "104", before: 150, sightClear: true },
+  entrance_board_unplaced: { run: "207111988", kind: "104", reason: "street_turns_or_ends" },
+  expressway_sign_invalid: { chunk: "24402611:7", id: "110-B", s: 2202.4 },
+  expressway_signs_planned: { signs: 18, byId: { "110-B": 2, "323": 3 }, entrances: 1, unplaced: 0 },
+  expressway_sign_unplaced: { run: "24402611", id: "110-B", reason: "no_free_distance" },
   expressway_written: {
     range: "hamazakibashi",
     tiles: 2,

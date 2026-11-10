@@ -42,6 +42,7 @@ export const SIGN = {
   hydrant: 28, // 法定外: the red disc at hydrants
   school: 29,
   schoolRoute: 30, // 法定外 plate, under 歩行者専用 in school hours
+  motorOnly: 31, // 325 自動車専用, at the 都市高速's entrances (G6, src/world/expresswaySigns.ts)
 } as const;
 
 export type GameSignKind = keyof typeof SIGN;

@@ -1,4 +1,7 @@
 import { reanchorBody } from "../physics/reanchor";
+import { displayPlace } from "../game/roadNames";
+import type { XwEntrance } from "../expressway/format";
+import { planEntranceBoards } from "./entranceBoards";
 import {
   Euler,
   InstancedMesh,
@@ -20,7 +23,7 @@ import { drawBoard, layoutGuideBoard, loadGuideFonts } from "./guideArt";
 import type { BoardLayout } from "../signs/board/boxes";
 import { boardKey, boardNames, type BoardContent } from "../signs/board/content";
 import { keepValidBoards } from "../signs/board/layout";
-import { BoardFacePool, TEXTURE_PX, type BoardFace } from "./boardFacePool";
+import { sharedBoardFaces, TEXTURE_PX, type BoardFace } from "./boardFacePool";
 import { planRowSteps, type SignalArm } from "./guideRows";
 import {
   localDests,
@@ -116,12 +119,8 @@ type Sign = {
 const at = (p: Vector3, rotY: number, scale: Vector3, pitch = 0) =>
   new Matrix4().compose(p, new Quaternion().setFromEuler(new Euler(pitch, rotY, 0, "YXZ")), scale);
 
-let boardFaces: BoardFacePool | null = null;
-/** Made on first use (the pool's uploads need the renderer, bound by main.ts). */
-function faces(): BoardFacePool {
-  boardFaces ??= new BoardFacePool();
-  return boardFaces;
-}
+/** The one BoardFacePool, shared with ExpresswaySigns (boardFacePool.ts sharedBoardFaces). */
+const faces = sharedBoardFaces;
 
 export class GuideSigns {
   plans: Placed[] = [];
@@ -147,6 +146,13 @@ export class GuideSigns {
   private lastUpdate = 0;
   private lastCheck = 0;
   private ready: Promise<void>;
+  /** The 都市高速's entrances (meta.json, G6): 103・104 stand on the streets before them. */
+  private entrances: XwEntrance[] = [];
+
+  /** The entrances the 103・104 are planned for from the next rebuild on. */
+  setEntrances(entrances: readonly XwEntrance[]): void {
+    this.entrances = [...entrances];
+  }
 
   constructor(
     private readonly scene: Scene,
@@ -276,8 +282,8 @@ export class GuideSigns {
       const names: GuideName[] = [
         ...(regs?.junctionNames ?? []).map((n) => ({ ja: n.name, en: n.en, pos: n.pos.clone().setY(0) })),
         ...data.names.map(([lon, lat, ja, en]) => ({
-          ja,
-          en,
+          ja: displayPlace(ja),
+          en: displayPlace(en, "en"),
           pos: frame.toLocal(lat, lon, frame.origin.h).setY(0),
         })),
       ];
@@ -303,7 +309,9 @@ export class GuideSigns {
       await work.yield();
       // 105・106 after every 108: the 108 boards keep the places they had before G5.
       const rowBoards = await work.run(planRowSteps({ ...planInput, placed: junctionBoards, signalArms }));
-      this.plans = [...junctionBoards, ...rowBoards];
+      // 103・104 last: they stand on the street before an entrance ramp, wherever the 108 are.
+      const entranceBoards = planEntranceBoards(graph, this.entrances, frame, planInput.avoid);
+      this.plans = [...junctionBoards, ...rowBoards, ...entranceBoards];
       await work.yield();
       await work.run(this.build(this.kit));
       this.instances.end();
@@ -312,6 +320,7 @@ export class GuideSigns {
         advance: junctionBoards.filter((p) => p.board.distance !== null).length,
         direction: rowBoards.filter((p) => p.board.kind.startsWith("105")).length,
         confirm: rowBoards.filter((p) => p.board.kind === "106-A").length,
+        entrance: entranceBoards.length,
         overhead: this.plans.filter((p) => p.mount === "overhead").length,
         routed: routes.size,
         mapped: data.dests.length,
@@ -389,6 +398,8 @@ export class GuideSigns {
   }
 
   clear(reuse = false): void {
+    // Nothing stands until the next build: its faces may go to the deck boards meanwhile.
+    if (this.faces) faces().forget("guide");
     if (reuse) this.instances.begin();
     else this.instances.clear();
     for (const m of this.meshes) {
@@ -409,10 +420,10 @@ export class GuideSigns {
    * asked for every 500 ms, weighed as seen from `eye` (the camera: what is on the screen; the
    * building check stays round `focus`, the player).
    */
-  update(focus: Vector3, now: number, eye: Vector3 = focus): void {
+  update(focus: Vector3, now: number, eye: Vector3 = focus, eyeLevel = 0): void {
     if (!this.faces) return;
     const pool = faces();
-    pool.frame();
+    // The pool is pumped once a frame by main.ts (pumpBoardFaces): here only its layers are re-read.
     if (pool.version !== this.layerVersion) this.applyLayers();
     if (now - this.lastUpdate < 500) return;
     this.lastUpdate = now;
@@ -421,7 +432,7 @@ export class GuideSigns {
       if (s.hidden) continue;
       boards.push(this.faceOf(s));
     }
-    const wanted = pool.want(boards, eye);
+    const wanted = pool.want("guide", boards, eye, eyeLevel);
     for (const s of this.signs) s.isNear = !s.hidden && wanted.has(s.key);
     this.applyLayers();
     if (now - this.lastCheck < 2000) return;

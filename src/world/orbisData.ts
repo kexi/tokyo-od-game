@@ -43,7 +43,7 @@ export type OrbisEntry = {
   origin?: string;
 };
 
-/** 首都高 and other expressways in OSM's classes. */
+/** The urban expressway (都市高速) and other expressways in OSM's classes. */
 export const isExpresswayClass = (road: string): boolean => road === "motorway" || road === "motorway_link";
 
 /** Entries of police.json's `orbis`, dropping anything malformed (older builds wrote tuples). */

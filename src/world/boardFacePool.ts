@@ -5,7 +5,7 @@ import { BASE_GLOW } from "../signs/retroAssumptions";
 import { drawBoard } from "./guideArt";
 import { FaceLayerPool } from "./signFaces";
 import { SignFaceMaterial } from "./signFaceMaterial";
-import { boardPriority } from "./boardPriority";
+import { rankBoards } from "./boardPriority";
 
 /**
  * BoardFacePool: the Canvas faces of the 案内標識 (108・105・106 now; G6's green boards, the
@@ -89,6 +89,11 @@ export class BoardFacePool {
   readonly material: SignFaceMaterial;
   private running = false;
   private readonly wanted = new Set<string>();
+  /** Each user's boards and the eye it last ranked them from (insertion order: the last caller last). */
+  private readonly users = new Map<
+    string,
+    { boards: readonly BoardFace[]; eye: Vector3; eyeLevel: number }
+  >();
   readonly stats: PoolStats = { draws: 0, drawMs: 0, stepMs: [], maxSliceMs: 0, wanted: 0, shown: 0 };
 
   constructor() {
@@ -104,35 +109,44 @@ export class BoardFacePool {
   }
 
   /**
-   * The boards to draw from now on, by priority as seen from `eye` (on `eyeLevel`): the NEAR_COUNT
-   * most wanted within NEAR_RANGE. Returns their keys (those show their face once it is in).
+   * The boards a user (GuideSigns "guide", ExpresswaySigns "expressway", …) stands now. Each user
+   * registers its own list; the pool ranks all users' boards together, so one user's call never
+   * drops the faces another asked for (G5 review W5: before, the last caller's list was the whole
+   * wanted set). Returns the keys among this user's boards that were chosen.
+   *
+   * Why not one call with every board: the users rebuild and update on their own clocks (the
+   * streets every 300 m, the decks per tile); a merged list would need a common owner of both.
    */
-  want(boards: readonly BoardFace[], eye: Vector3, eyeLevel = 0): Set<string> {
-    const ranked: Array<{ b: BoardFace; priority: number }> = [];
-    for (const b of boards) {
-      const dx = eye.x - b.pos.x;
-      const dz = eye.z - b.pos.z;
-      const distance = Math.hypot(dx, dz);
-      if (distance >= NEAR_RANGE) continue;
-      const facing = distance > 1e-6 ? (dx * b.normal.x + dz * b.normal.z) / distance : 1;
-      const priority = boardPriority({
-        width: b.width,
-        distance,
-        facing,
-        isOtherLevel: b.level !== eyeLevel,
-      });
-      ranked.push({ b, priority });
-    }
-    // Two boards with the same content share one face: the better placed one speaks for both.
-    const chosen: typeof ranked = [];
-    const seen = new Set<string>();
-    for (const r of ranked.toSorted((p, q) => p.priority - q.priority)) {
-      const isFull = chosen.length >= NEAR_COUNT;
-      if (isFull) break;
-      if (seen.has(r.b.key)) continue;
-      seen.add(r.b.key);
-      chosen.push(r);
-    }
+  want(user: string, boards: readonly BoardFace[], eye: Vector3, eyeLevel = 0): Set<string> {
+    // The last caller last: Map.set keeps an existing key where it was, so it is moved explicitly.
+    // The eye is copied: the caller's camera vector moves on after this call.
+    this.users.delete(user);
+    this.users.set(user, { boards, eye: eye.clone(), eyeLevel });
+    const chosen = this.rank();
+    const mine = new Set(boards.map((b) => b.key));
+    return new Set([...chosen].filter((k) => mine.has(k)));
+  }
+
+  /** A user's boards are gone (its area was cleared): its faces may be given to the others. */
+  forget(user: string): void {
+    this.users.delete(user);
+    this.rank();
+  }
+
+  /**
+   * Every user's boards ranked from the latest eye (the last caller's: they share the camera),
+   * the NEAR_COUNT most wanted within NEAR_RANGE asked of the layer pool.
+   */
+  private rank(): Set<string> {
+    const latest = [...this.users.values()].at(-1);
+    const chosen = latest
+      ? rankBoards(
+          [...this.users.values()].map((u) => u.boards),
+          latest.eye,
+          latest.eyeLevel,
+          { range: NEAR_RANGE, count: NEAR_COUNT },
+        )
+      : [];
     this.wanted.clear();
     for (const { b } of chosen) this.wanted.add(b.key);
     this.pool.want(
@@ -142,7 +156,7 @@ export class BoardFacePool {
     );
     this.stats.wanted = chosen.length;
     this.kick();
-    return new Set(this.wanted);
+    return this.wanted;
   }
 
   /** Per frame: uploads what was drawn and keeps drawing. True when a face moved in or out. */
@@ -200,4 +214,23 @@ export class BoardFacePool {
       yield false;
     }
   }
+}
+
+let sharedPool: BoardFacePool | null = null;
+/**
+ * Once a frame (main.ts): the shared pool's uploads and drawing, for all its users at once (each
+ * user only re-reads its layers when the pool's version moved). Nothing before the pool exists.
+ * Why not each user's update: two users pumped it twice a frame (G6 review W3).
+ */
+export function pumpBoardFaces(): void {
+  sharedPool?.frame();
+}
+
+/**
+ * The one pool every user of the 案内標識 faces registers with (GuideSigns, ExpresswaySigns), made
+ * on first use (its uploads need the renderer, bound by main.ts).
+ */
+export function sharedBoardFaces(): BoardFacePool {
+  sharedPool ??= new BoardFacePool();
+  return sharedPool;
 }

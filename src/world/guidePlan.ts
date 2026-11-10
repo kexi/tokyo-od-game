@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { displayPlace, isExpresswayName } from "../game/roadNames";
 import type { LocalFrame } from "../geo/frame";
 import { LineGrid } from "./regulations";
 import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
@@ -172,11 +173,12 @@ export function localDests(rows: RouteDest[], frame: LocalFrame): GuideDest[] {
   return rows.map(([lon, lat, bearing, dest, en, ref]) => ({
     pos: toLocal(frame, lon, lat),
     heading: bearingVector(bearing),
+    // OSM destinations may name the real operator (「…銀座入口」): shown through the name layer.
     names: dest
       .split(";")
-      .map((s) => s.trim())
+      .map((s) => displayPlace(s.trim()))
       .filter(Boolean),
-    en: en.split(";").map((s) => s.trim()),
+    en: en.split(";").map((s) => displayPlace(s.trim(), "en")),
     ref,
   }));
 }
@@ -225,12 +227,8 @@ export function signEnglish(ja: string, en: string): string {
   return e;
 }
 
-/** 首都高・高速道路の名前: shown in a green box on a blue board (備考一(三)1(13) ただし書). */
-export function isExpresswayName(ja: string): boolean {
-  return /(首都高|高速|自動車道|東名|中央道|関越道|東北道|常磐道|京葉道|外環|第三京浜|湾岸線|JCT$|IC$|^[EC]\d+)/.test(
-    ja,
-  );
-}
+/** 高速道路等の名前 on a blue board: the name layer's rule (src/game/roadNames.ts). */
+export { isExpresswayName };
 
 // ---------------------------------------------------------------- geometry of a junction
 

@@ -376,10 +376,10 @@ describe("the coverage report (just show-sign-coverage)", () => {
     expect(c.notInLaw).toEqual([]);
   });
 
-  it("lists drawn signs the game does not place yet (324 最低速度, 325 自動車専用)", () => {
+  it("lists drawn signs the game does not place yet (324 最低速度; 325 自動車専用 stands on the 都市高速 since G6)", () => {
     const ids = c.unplaced.map((u) => u.id);
     expect(ids).toContain("324");
-    expect(ids).toContain("325");
+    expect(ids).not.toContain("325");
     expect(ids).not.toContain("323");
   });
 });

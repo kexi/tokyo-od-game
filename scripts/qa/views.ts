@@ -301,7 +301,8 @@ function retroAt(aim: ViewTarget | null, scene: unknown) {
   const s = scene as SceneLamps;
   const lamps = s.signFaces?.lamps;
   // A 案内標識 face returns the lamps as a plate does (one SignFaceMaterial).
-  const isSign = (aim?.kind === "sign" || aim?.kind === "guide") && aim.normal !== null;
+  const isSign =
+    (aim?.kind === "sign" || aim?.kind === "guide" || aim?.kind === "deckSign") && aim.normal !== null;
   if (!aim || !isSign || !aim.normal || !lamps || !s.eye) return null;
   const L = retroWhite(
     { ...lamps, beam: lamps.high ? "high" : "low" },
@@ -447,7 +448,7 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     );
     const off = offCentre(p.ndc);
     projection = { ...p, offCentre: off, isCentred: p.isInView && off <= CENTRED_WITHIN, ...box };
-    const isPlate = (aim.kind === "sign" || aim.kind === "guide") && p.isInView;
+    const isPlate = (aim.kind === "sign" || aim.kind === "guide" || aim.kind === "deckSign") && p.isInView;
     if (isPlate) projection.plateLuminance = await plateLuminance(b, join(out, image), p.ndc);
   }
   const scene = await evaluateWithin(
@@ -464,7 +465,10 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
   );
   const retro = retroAt(aim, scene);
   if (retro) (scene as Record<string, unknown>).retroAtTarget = retro;
-  const signInfo = aim?.kind === "sign" || aim?.kind === "guide" ? (catalog.get(aim.id) ?? null) : null;
+  const signInfo =
+    aim?.kind === "sign" || aim?.kind === "guide" || aim?.kind === "deckSign"
+      ? (catalog.get(aim.id) ?? null)
+      : null;
   const record: Shot = {
     image,
     shot: key,

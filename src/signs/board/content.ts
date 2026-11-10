@@ -128,18 +128,55 @@ export const EntranceContentSchema = z.strictObject({
 });
 export type EntranceContent = z.infer<typeof EntranceContentSchema>;
 
+/**
+ * `lane-columns`: 111-B 方面、車線及び出口の予告 on the 都市高速 (図 029): over the exit's lane, its
+ * places, the arrow down onto the lane, the exit number's plate and 「出口 400m」.
+ */
+export const LaneContentSchema = z.strictObject({
+  kind: z.literal("111-B"),
+  names: z.array(SignNameSchema).min(1).max(2),
+  /** 出口番号 (white plate, green figures), or null. */
+  number: z.string().min(1).nullable(),
+  /** Metres to the exit as printed. */
+  distance: z.number().int().positive(),
+  letter: Letter,
+});
+export type LaneContent = z.infer<typeof LaneContentSchema>;
+
+/**
+ * `pictogram`: the fixed figures 116の4 非常電話 (図 046) and 116の6 非常駐車帯 (図 048), green
+ * 90 × 60 cm with their caption; `letter` is the caption's height (14 and 10 cm at 図示), from which
+ * the board scales. Drawn on the canvas like the other green boards (the design put them in Pillow:
+ * knowledge/sign-system.md「G6」 has why not).
+ */
+export const PictogramContentSchema = z.strictObject({
+  kind: z.enum(["116の4", "116の6"]),
+  letter: Letter,
+});
+export type PictogramContent = z.infer<typeof PictogramContentSchema>;
+
 export const BoardContentSchema = z.union([
   JunctionContentSchema,
   RowsContentSchema,
   ExpresswayDiagramContentSchema,
   ExitContentSchema,
   EntranceContentSchema,
+  LaneContentSchema,
+  PictogramContentSchema,
 ]);
 export type BoardContent = z.infer<typeof BoardContentSchema>;
 export type BoardKind = BoardContent["kind"];
 
 /** The layout template of each number (knowledge/sign-system.md「案内標識のレイアウタ（G5）」). */
-export type Template = "junction-diagram" | "rows" | "expressway-diagram" | "exit" | "entrance";
+export type Template =
+  | "junction-diagram"
+  | "rows"
+  | "expressway-diagram"
+  | "exit"
+  | "entrance"
+  | "lane-columns"
+  | "pictogram"
+  | "nose";
 
 const TEMPLATE_OF: Record<BoardKind, Template> = {
   "108-A": "junction-diagram",
@@ -155,11 +192,14 @@ const TEMPLATE_OF: Record<BoardKind, Template> = {
   "108の2-E": "expressway-diagram",
   "110-B": "exit",
   "112-B": "exit",
-  "113-A": "exit",
-  "113-B": "exit",
+  "113-A": "nose",
+  "113-B": "nose",
   "103-A": "entrance",
   "103-B": "entrance",
   "104": "entrance",
+  "111-B": "lane-columns",
+  "116の4": "pictogram",
+  "116の6": "pictogram",
 };
 
 export const templateOf = (kind: BoardKind): Template => TEMPLATE_OF[kind];
@@ -170,6 +210,10 @@ export const isRows = (c: BoardContent): c is RowsContent => templateOf(c.kind) 
 export const isExpresswayDiagram = (c: BoardContent): c is ExpresswayDiagramContent =>
   templateOf(c.kind) === "expressway-diagram";
 export const isExit = (c: BoardContent): c is ExitContent => templateOf(c.kind) === "exit";
+/** 113-A・B: the exit's content, laid out upright at the nose (図 033). */
+export const isNose = (c: BoardContent): c is ExitContent => templateOf(c.kind) === "nose";
+export const isLane = (c: BoardContent): c is LaneContent => templateOf(c.kind) === "lane-columns";
+export const isPictogram = (c: BoardContent): c is PictogramContent => templateOf(c.kind) === "pictogram";
 
 /**
  * A board's key in the face layer pool: its JSON with every object's keys sorted, so two equal
@@ -189,6 +233,8 @@ export function boardKey(c: BoardContent): string {
 export function boardNames(c: BoardContent): SignName[] {
   if ("arms" in c) return c.arms.flatMap((a) => a.names);
   if ("rows" in c) return c.rows.map((r) => r.name);
+  if (isPictogram(c)) return [];
+  if (isLane(c)) return c.names;
   const own = "exitName" in c ? c.exitName : c.entranceName;
   return [...(own ? [own] : []), ...c.names];
 }

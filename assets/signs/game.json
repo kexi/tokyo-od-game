@@ -233,6 +233,17 @@
         }
       ]
     },
+    "motorOnly": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "325",
+          "file": "325",
+          "plate": "PlateCircle",
+          "scale": 1.25
+        }
+      ]
+    },
     "bikeOnPavement": {
       "pick": "default",
       "faces": [

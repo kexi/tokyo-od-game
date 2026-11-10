@@ -5,8 +5,9 @@ This database, including the road surface elevations, is made available under th
 License (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/1-0/
 Source extract: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf (Geofabrik), replication timestamp 2026-10-03T20:20:50Z.
 Filters: way["highway"~"^(motorway|motorway_link)$"] within {"minLon":139.5,"minLat":35.45,"maxLon":139.98,"maxLat":35.87}, and the
-node["highway"="motorway_junction"] on them (name, ref). Names that carry the operator's name are
-dropped. Roads and railways at ground level under the viaducts (way["highway"] / way["railway"]
+node["highway"="motorway_junction"] on them (name, name:en, ref), and node["emergency"="phone"] /
+emergency bays beside them (placed as the signs 116の4・116の6). The operator's name is stripped
+off route names and anything still naming it is dropped. Roads and railways at ground level under the viaducts (way["highway"] / way["railway"]
 without bridge, tunnel or layer) are read as clearance constraints only and are not in this folder.
 Method: scripts/expressway.ts (plan smoothing within 1.5 m of the OSM line, vertical alignment
 within 道路構造令, chunks of at most 300 m).

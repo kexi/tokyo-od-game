@@ -24,6 +24,7 @@ import {
   type XwTile,
 } from "../src/expressway/format.ts";
 import { tileKey } from "../src/expressway/geo.ts";
+import { planSigns } from "../src/expressway/signPlan.ts";
 import {
   type Network,
   normalizeNode,
@@ -91,6 +92,12 @@ const allWays = readWays(file, isMotorway);
 const coords = readNodeCoords(file, new Set(allWays.flatMap((w) => w.refs)));
 const junctionTags = new Map(
   readTaggedNodes(file, (t) => t.highway === "motorway_junction").map((n) => [n.id, n.tags]),
+);
+// 非常電話 and 非常駐車帯 for 116の4・116の6 (G6): OSM's emergency=phone nodes, and the bays where
+// OSM maps them (highway=emergency_bay, or emergency=emergency_bay).
+const isBay = (t: Record<string, string>) => t.highway === "emergency_bay" || t.emergency === "emergency_bay";
+const phoneOrBay = readTaggedNodes(file, (t) => t.emergency === "phone" || isBay(t)).filter((n) =>
+  inBox(UNIVERSE, n.lon, n.lat),
 );
 const universe = allWays.filter((w) =>
   w.refs.some((r) => {
@@ -186,6 +193,33 @@ log("expressway_solved", {
   qpMs: Math.round(result.stats.qpMs),
   durationS: Math.round((performance.now() - solveStarted) / 100) / 10,
 });
+// 6. Signs (G6): where each stands on the decks and what it says; the entrances for 103・104.
+const signPlan = planSigns({
+  chunks: result.chunks,
+  runs: result.runs,
+  features: result.features,
+  net,
+  phones: phoneOrBay
+    .filter((n) => n.tags.emergency === "phone")
+    .map(({ id, lon, lat }) => ({ id, lon, lat })),
+  bays: phoneOrBay.filter((n) => isBay(n.tags)).map(({ id, lon, lat }) => ({ id, lon, lat })),
+});
+for (const chunk of result.chunks) {
+  const signs = signPlan.signs.get(chunk.id);
+  if (signs) chunk.signs = signs;
+  const posted = signPlan.posted.get(chunk.id);
+  if (posted !== undefined) chunk.posted = posted;
+}
+const signCounts: Record<string, number> = {};
+for (const list of signPlan.signs.values())
+  for (const sign of list) signCounts[sign.id] = (signCounts[sign.id] ?? 0) + 1;
+log("expressway_signs_planned", {
+  signs: [...signPlan.signs.values()].reduce((n, l) => n + l.length, 0),
+  byId: signCounts,
+  entrances: signPlan.entrances.length,
+  unplaced: signPlan.unplaced.length,
+});
+for (const u of signPlan.unplaced) warn("expressway_sign_unplaced", u);
 const tiles = new Map<string, XwTile>();
 for (const chunk of result.chunks) {
   const mid = Math.floor(chunk.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
@@ -234,6 +268,7 @@ const meta: XwMeta = {
   },
   runs: result.runs,
   diagnostics: result.diagnostics.filter((d) => plan.needed.includes(d.run)),
+  entrances: signPlan.entrances,
 };
 await writeFile(join(OUT, "meta.json"), JSON.stringify(meta));
 await writeFile(
@@ -245,8 +280,9 @@ This database, including the road surface elevations, is made available under th
 License (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/1-0/
 Source extract: ${OSM_EXTRACT} (Geofabrik), replication timestamp ${timestamp ?? "unknown"}.
 Filters: way["highway"~"^(motorway|motorway_link)$"] within ${JSON.stringify(UNIVERSE)}, and the
-node["highway"="motorway_junction"] on them (name, ref). Names that carry the operator's name are
-dropped. Roads and railways at ground level under the viaducts (way["highway"] / way["railway"]
+node["highway"="motorway_junction"] on them (name, name:en, ref), and node["emergency"="phone"] /
+emergency bays beside them (placed as the signs 116の4・116の6). The operator's name is stripped
+off route names and anything still naming it is dropped. Roads and railways at ground level under the viaducts (way["highway"] / way["railway"]
 without bridge, tunnel or layer) are read as clearance constraints only and are not in this folder.
 Method: scripts/expressway.ts (plan smoothing within 1.5 m of the OSM line, vertical alignment
 within 道路構造令, chunks of at most 300 m).

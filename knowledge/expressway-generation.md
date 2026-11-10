@@ -1,12 +1,13 @@
 ---
 type: Playbook
-title: 高速道路の生成（OSM → 道路構造令の線形 → デッキ、P1・縦断の一括解・P3 の走行・P3.5 の床版の一体化）
+title: 高速道路の生成（OSM → 道路構造令の線形 → デッキ、P1・縦断の一括解・P3 の走行・P3.5 の床版の一体化・G6 の標識）
 description: 首都圏の都市高速を OSM の motorway / motorway_link からビルド時に道路構造令の平面・縦断線形へコンパイルし（src/expressway/、scripts/expressway.ts）、public/data/expressway の ≤300 m チャンクを実行時に床版・壁高欄・箱桁・橋脚へ押し出す（src/world/expresswayDeck.ts、?expressway で有効）。P3 でコライダー（床版と壁高欄の trimesh・橋脚の cuboid）・道路グラフへの統合（端点 ID・ランプ端の接続）・区画線を足し、入口ランプから本線に乗って出口から一般道へ戻る走行を確かめた（多視点レビュー 3 周で収束）。縦断は分合流・交差・床版の重なりでつながる run の連結成分ごとに 1 つの凸 QP（疎な内点法）で解き、高さは交差と重なりの拘束からだけ決める（layer を目標高に使う P1 の逸脱を解消）。設計速度は区間ごと、測点は勾配つきでエルミート補間。試験区間（浜崎橋JCT〜芝公園）は T1〜T7 違反 0、deck_overlap は 4 組・41 測点（理由つき許可）。全域の解けない run、データ量、性能と見た目の確認。
 tags: [roads, terrain, rendering, testing, licensing]
 status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T04:10:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T08:30:00Z }
   - { by: process:vitest, at: 2026-11-11T04:00:00Z }
   - { by: process:headless-chrome-cdp, at: 2026-11-11T03:57:00Z }
   - { by: process:shoot-views, at: 2026-11-11T04:02:00Z }
@@ -269,6 +270,17 @@ P3 レビュー（Fable）の判断「decks の same 区間で子の床版を親
 - **I3 スライス**: `refineRings` を生成器にし、6 区間ごとに譲る。リングごとの sides は 8 リングごと（master の確認で 1 リングの費用が 2 倍になるため）。
 - **再走行（drives-p35d、同じ 3 経路）**: 入口 1,996 m（max |dy| 0.082 m・max |vy| 1.15 m/s・RMS ay 1.04 m/s²）、外回り出口 563 m（0.110・1.47・1.11）、内回り出口 512 m（0.114・0.93・1.04）、落下なし。デッキの組み立ては最初の 62 チャンクで CPU 59.5 ms・最大スライス 4.2 ms（p50 0.6・p90 2.1 ms）で、**4 ms を 0.2 ms 超えた**（初版は 3.4 ms）。Node で温まった後の生成器の 1 ステップは最大 0.6 ms なので、超過はページを開いた直後の最初の組み立て（JIT 前・初回の転送）に出る。走行中の 22 回の refresh は最大 1.8 ms。
 - **I6 出典**: 走行の記録を .qa/drives/p35/ に写し、P3 の多視点の周がどの worktree のものかを書いた。
+
+# 標識（G6 = P5、2026-11-11）
+
+設置点と内容はコンパイラの後段 `src/expressway/signPlan.ts`（`planSigns`）がビルド時に決め、各チャンクの `signs`（`XwSign`: 番号・s・路面の z・level・側・取付・BoardContent か規制の板・桁・何のための標識か）と `meta.json` の `entrances`（入口ランプの地表端・名前・路線）に書く。規則・件数・取付は [標識システム](sign-system.md)「都市高速の板と設置（G6）」。
+
+- **データ形式**: 欄の追加だけで XW_VERSION は 2 のまま（古い読み手は欄を無視し、ゲームは欄があるときだけ読む）。P6 が版 3 にする予定と衝突しない（衝突したら版 3 の側に `signs` を載せる）。
+- **compile.ts の追加**: `CompileResult.features`（run ごとの OSM の節点と way を run の距離で。ファイルには書かない）。出口名と出口番号は motorway_junction の節点、最高速度は way の maxspeed（`XwWay.maxspeedTag`、タグが無ければ null）から読む。
+- **network.ts の変化**: 事業者名を含む名前を捨てるのをやめ、名称層 `routeName` で前置きを外す（`name`・新しい `nameEn`）。試験区間のチャンクの `name` が null から「都心環状線」「1号羽田線」に変わった。測点・橋脚・交差・decks はすべて同じ（81 チャンクを比べて差 0）。
+- **scripts/expressway.ts**: `emergency=phone` と非常駐車帯（`highway=emergency_bay` / `emergency=emergency_bay`）の節点を読む。ログ `expressway_signs_planned`・`expressway_sign_unplaced`。LICENSE.txt に節点の取り込みを追記した。
+- **掲示速度 `XwChunk.posted`**（G6 レビュー W4）: チャンクごとの最高速度（km/h）。323 の板と道路グラフの limit が同じ値を読む（`expresswayRoads.ts` は `chunk.posted ?? run.tagV`）。規則は [標識システム](sign-system.md) の「G6 レビューへの対応」。P6（法規）と合流するときに P6 の規則へ一本化する。
+- 試験区間の結果: 31 枚、unplaced 2（116の4 が他の標識と 20 m 以内）。
 
 # 未対応・既知の欠落
 

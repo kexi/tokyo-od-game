@@ -16,11 +16,13 @@ import {
   STATION_STRIDE,
   XW_VERSION,
   type XwChunk,
+  type XwEntrance,
   type XwMeta,
   type XwRunSummary,
   type XwTile,
 } from "../expressway/format";
 import { haversine, tileKey } from "../expressway/geo";
+import { deckLevelAt, nearestOnChunk } from "../expressway/deckLevel";
 import { ST, surfaceAt } from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
 import { FrameWork } from "../game/frameWork";
@@ -720,6 +722,44 @@ export class ExpresswayDecks {
     }
   }
 
+  /**
+   * Bumped whenever a tile's chunks come in (src/world/expresswaySigns.ts re-plans its signs on a
+   * change).
+   */
+  tileVersion = 0;
+
+  /** The chunks read so far within `radius` m of a point that carry signs (G6). */
+  signChunksNear(lat: number, lon: number, radius: number): XwChunk[] {
+    const out: XwChunk[] = [];
+    for (const c of this.known.values()) {
+      const hasSigns = (c.signs?.length ?? 0) > 0;
+      if (hasSigns && distanceTo(c, lon, lat) <= radius) out.push(c);
+    }
+    return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  }
+
+  /**
+   * The deck level (deckLevel.ts) of a chunk read so far at a point near it, for the car on it; 0
+   * when the chunk is not known (the streets).
+   */
+  levelAt(xid: string, lat: number, lon: number): number {
+    const chunk = this.known.get(xid);
+    if (!chunk) return 0;
+    const at = nearestOnChunk(chunk, lon, lat);
+    return deckLevelAt(chunk, at?.s ?? chunk.st[0]);
+  }
+
+  /** Where a deck's lon/lat/T.P. height is in the current frame (the decks' own transform). */
+  place(): GeoToLocal {
+    return { frame: this.frame, ellipsoidal: this.ellipsoidal };
+  }
+
+  /** The entrances in meta.json (for the 103・104 on the streets), empty without data. */
+  async entrances(): Promise<XwEntrance[]> {
+    const meta = await this.loadMeta();
+    return meta?.entrances ?? [];
+  }
+
   /** How many chunks are drawn (for checks). */
   chunkCount(): number {
     return this.built.size;
@@ -858,6 +898,7 @@ export class ExpresswayDecks {
             this.known.set(c.id, c);
             this.index.add(c);
           }
+          if (tile) this.tileVersion++;
           return tile;
         });
       this.tiles.set(key, p);

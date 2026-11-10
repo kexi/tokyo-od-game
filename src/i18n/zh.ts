@@ -1145,7 +1145,7 @@ export const zh: Messages = {
   "credits.jartic.extract":
     "从{edition}的东京都（警视厅）部分中提取 23 区周边的单行道、最高限速（路段与区域）、人行横道、停止线与停车让行，并与国土地理院的道路中心线对应。",
   "credits.jartic.omitted":
-    "省略了指定期间或星期的管制、首都高速公路（汽车专用道）的管制以及可变限速。对应关系包含游戏的推测，可能与实际管制不同。",
+    "省略了指定期间或星期的管制、都市高速（汽车专用道路）的管制以及可变限速。对应关系包含游戏的推测，可能与实际管制不同。",
   "credits.jartic.real": "实际驾驶时，请遵守现场的标志与标线。",
   "credits.link.jarticTerms": "交通管制信息使用条款",
   "credits.jartic.terms": "使用条件：{terms}（与 CC BY 4.0 兼容）。",

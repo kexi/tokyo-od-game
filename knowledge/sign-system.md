@@ -1,13 +1,15 @@
 ---
 type: Reference
 title: 道路標識の定義とレジストリ（src/signs）
-description: 道路標識の定義を src/signs/defs/*.ts（zod）の 1 か所にまとめ、assets/signs/registry.json と従来の catalog.json を scripts/signs.ts で書き出す仕組み（段階 G1a）。Pillow の図柄生成が registry.json の paint（描く関数と引数）と規則で導いた車線の版 141 件を読んで 345 枚をバイト一致で作り直すこと（G1b、Pillow 12.3.0 固定）。ゲームの標識種別の対応（旧 BY_ID・design() の switch）を定義の game へ移し、assets/signs/game.json で渡す仕組みと、配置が変わらないことを 3 地点のスナップショットで確かめた方法（G1c）。catalog.json からの機械変換の手順、バイト一致による無損失の確認、標識令 別表第一の番号表（law-table.json）を e-Gov から読む方法、定義・図柄・ゲームの対応・番号表の突き合わせテスト、未描画・未配置の一覧（just show-sign-coverage）、e-Gov と旧表で 125-B の図が食い違った件を記録する。 G2 で、板を src/signs/plates.ts の形ごとの寸法から作り（signs.glb はバイト一致）、表示の倍率を番号ごとの displayScale（警戒 1.3 倍、命令の範囲をテスト）にし、補助標識を Canvas の文字から 502 の図柄（public/data/regs の規制時間から導いた 388 枚、曜日群ごとに 1 枚）に替えた。 G4 で、取付 7 種（単柱・複柱・片持 F・門型・壁高欄添架・桁添架・信号柱共架）を src/signs/mount.ts に zod で宣言し、純関数 resolveMount が板の位置・高さと単位部材を決めるようにした（下端は交通規制基準 第2章 3 の歩道上 2.5 m・最低 1.8 m、片持・門型 5.0 m・最低 4.7 m。本板 3 枚の柱は 2 本に振り分け、信号柱の 6 m 以内の標識は共架）。 G3 で、面の材質を SignFaceMaterial 1 つにし（図柄は配列テクスチャの層をインスタンス属性で選ぶ、描画呼び出しは板の形の数、three r186 の WebGPU で層だけの更新と層ごとの mip を PoC で確認、面のテクスチャ 89 MB）、自車の前照灯の再帰反射（表2-2-29 の R_A、配光 × 距離 × 入射角 × 観測角 × 色 × 濡れ）を放射に足した。 G5 で、案内標識を内容（BoardContent、zod）→ 箱（cm、純関数）→ Canvas の 3 段のレイアウタに分け（108 系を移し、5 地点 208 枚の配置と画素が不変）、105（方面、方向及び距離）と 106-A（方面及び距離、確認標識）を立て、都市高速の緑の板（108の2-C〜E・110-B・112-B・113・103・104）のテンプレートを用意し、案内標識の面を BoardFacePool（見かけの大きさ × 正対の優先度、FrameWork 4 ms で描画）にまとめた。
+description: 道路標識の定義を src/signs/defs/*.ts（zod）の 1 か所にまとめ、assets/signs/registry.json と従来の catalog.json を scripts/signs.ts で書き出す仕組み（段階 G1a）。Pillow の図柄生成が registry.json の paint（描く関数と引数）と規則で導いた車線の版 141 件を読んで 345 枚をバイト一致で作り直すこと（G1b、Pillow 12.3.0 固定）。ゲームの標識種別の対応（旧 BY_ID・design() の switch）を定義の game へ移し、assets/signs/game.json で渡す仕組みと、配置が変わらないことを 3 地点のスナップショットで確かめた方法（G1c）。catalog.json からの機械変換の手順、バイト一致による無損失の確認、標識令 別表第一の番号表（law-table.json）を e-Gov から読む方法、定義・図柄・ゲームの対応・番号表の突き合わせテスト、未描画・未配置の一覧（just show-sign-coverage）、e-Gov と旧表で 125-B の図が食い違った件を記録する。 G2 で、板を src/signs/plates.ts の形ごとの寸法から作り（signs.glb はバイト一致）、表示の倍率を番号ごとの displayScale（警戒 1.3 倍、命令の範囲をテスト）にし、補助標識を Canvas の文字から 502 の図柄（public/data/regs の規制時間から導いた 388 枚、曜日群ごとに 1 枚）に替えた。 G4 で、取付 7 種（単柱・複柱・片持 F・門型・壁高欄添架・桁添架・信号柱共架）を src/signs/mount.ts に zod で宣言し、純関数 resolveMount が板の位置・高さと単位部材を決めるようにした（下端は交通規制基準 第2章 3 の歩道上 2.5 m・最低 1.8 m、片持・門型 5.0 m・最低 4.7 m。本板 3 枚の柱は 2 本に振り分け、信号柱の 6 m 以内の標識は共架）。 G3 で、面の材質を SignFaceMaterial 1 つにし（図柄は配列テクスチャの層をインスタンス属性で選ぶ、描画呼び出しは板の形の数、three r186 の WebGPU で層だけの更新と層ごとの mip を PoC で確認、面のテクスチャ 89 MB）、自車の前照灯の再帰反射（表2-2-29 の R_A、配光 × 距離 × 入射角 × 観測角 × 色 × 濡れ）を放射に足した。 G5 で、案内標識を内容（BoardContent、zod）→ 箱（cm、純関数）→ Canvas の 3 段のレイアウタに分け（108 系を移し、5 地点 208 枚の配置と画素が不変）、105（方面、方向及び距離）と 106-A（方面及び距離、確認標識）を立て、都市高速の緑の板（108の2-C〜E・110-B・112-B・113・103・104）のテンプレートを用意し、案内標識の面を BoardFacePool（見かけの大きさ × 正対の優先度、FrameWork 4 ms で描画）にまとめた。 G6 で、都市高速の標識をビルド時に設置点と内容まで決めてタイルに書き（src/expressway/signPlan.ts で 110-B・111-B・112-B・113-B・108の2-C・323・325・116の4、入口は meta の entrances）、床版の高さに門型・壁高欄添架・桁添架で立て（src/world/expresswaySigns.ts、建築限界 4.7 m をデータでテスト）、一般道に 103-A・104 を立て、名称層 src/game/roadNames.ts（事業者は架空の「都市高速」、禁止語テスト）を入れ、BoardContent に 111-B・116の4・116の6 を足し、BoardFacePool を利用者ごとの登録にした（G5 レビュー W5・W6）。
 tags: [assets, traffic-law, testing]
 status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5, at: 2026-11-10T10:30:00Z }
-updated: { by: claude-opus-5-5, at: 2026-11-11T07:00:00Z }
+updated: { by: claude-opus-5-5, at: 2026-11-11T08:30:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T08:30:00Z }
+  - { by: process:shoot-views, at: 2026-11-11T08:30:00Z }
   - { by: claude-opus-5-5, at: 2026-11-11T07:00:00Z }
   - { by: claude-opus-5-5, at: 2026-11-11T06:30:00Z }
   - { by: claude-opus-5-5, at: 2026-11-11T03:20:00Z }
@@ -16,6 +18,16 @@ verified:
   - { by: claude-opus-5-5, at: 2026-11-10T13:20:00Z }
   - { by: claude-opus-5-5, at: 2026-11-10T15:20:00Z }
 sources:
+  - id: g6-data
+    resource: >-
+      just make-expressway-data（試験区間、2026-11-11）の expressway_signs_planned と tests/expresswaySigns.test.ts・tests/roadNames.test.ts（vitest、全 120 ファイル通過）
+    title: 都市高速の標識の設置と検査（G6）
+    author: claude-opus-5-5
+  - id: g6-review
+    resource: >-
+      just shoot-views expressway-signs（vite 5391 番、52 コマ）と .qa/reviews/expressway-signs/round-NN.jsonl、just check-convergence expressway-signs
+    title: 多視点レビューの収束ループ（G6）
+    author: claude-opus-5-5
   - id: g5-invariance
     resource: >-
       scripts/qa/guideBoards.ts（ヘッドレス Chrome、vite 5747 番、丸の内・日比谷・銀座四丁目・霞が関・九段下）を G5 前のコードで
@@ -587,6 +599,91 @@ sources:
 - 1 周目: Warning 4（対象が開始点から遠く画面に無い 2、自車基準の優先度で正面の 106 が遠景の青、105 の板の前を信号の腕が横切る）。直したもの: 開始点を対象の近くへ、プールの目をカメラへ、105・106 の片持は信号の腕を避ける。Info: 105 の柱が建物の壁に入る（108 と同じ建物の検査の範囲）、前照灯の無い夜の正面は暗い（G3 どおり）。
 - 2・3 周目: 新規 0、`just check-convergence guide` が converged。22 コマすべてで対象の板が描いた面（layer > 0）、運転席 30 m の漢字 9.9 px（30 cm の字、fov 40・720 px）、プールの使用率最大 0.81、夜のロービーム 30・60 m の放射 0.09〜0.20（G3 の式の値）。残した Info: 日を正面に受ける 106 の青が 108 より明るく見える（光の向き。色の指定は同じ）。
 - 様式の照合（目視、図 008・011・018 と並べて）: 105 の行の並び（直進・右・左）・右の行の矢印と距離の左右・区切りの白線、106 の 1 本の矢印と遠い地名が上、青地白字・白縁、英字が日本字の 1/2、距離の km が数字より小さいこと。数字と km の大きさ（0.8・0.4）は図に寸法が無いので図から読んだ比で、法令の値ではない。
+
+## 都市高速の板と設置（G6 = 道路再設計 P5）
+
+都市高速の標識は**ビルド時**に設置点と内容を決めてタイルに書き（`src/expressway/signPlan.ts` → `XwChunk.signs`、入口は `meta.json` の `entrances`）、ゲームは読んで立てるだけ（`src/world/expresswaySigns.ts`、103・104 は `src/world/entranceBoards.ts`）。[^g6-data]
+
+### 名称層（`src/game/roadNames.ts`）
+
+- 事業者名は架空の「都市高速」（i18n キー `guide.operator`、英 "TOSHI EXPWY"、ロゴなし）。出入口・JCT 名、路線名（「都心環状線」「1号羽田線」）、路線記号（118の3 の枠の形。事業者独自の盾形は描かない）は実在のまま（ユーザーの決定、AGENTS.md に例外として追記）。
+- 関数: `routeName`（「首都高速都心環状線」→「都心環状線」、英は "Shuto Expressway Route 1 Haneda Line" → "Route 1 Haneda Line"。それでも事業者名が残れば null）、`routeSymbol`・`routeSymbolOf`（ref が無い way は名前の「1号」から "1"）、`facilityName`（「芝公園出口」→「芝公園」）、`displayPlace`（データの事業者名を表示時に「都市高速」へ。OSM の destination「…銀座入口」、junctions の「…出入口」）、`isExpresswayName`（guidePlan.ts から移した）。`network.ts` の `OPERATOR_WORDS` もここへ移し、network.ts は再 export だけ。
+- **データの変化**: これまで network.ts は事業者名を含む名前を丸ごと捨てていたため、本線のチャンクの `name` は null だった。名称層で前置きを外すようにして、試験区間のチャンクの `name` が「都心環状線」「1号羽田線」になった（幾何は 81 チャンクすべて不変を比べて確認）。
+- **禁止語のテスト**（`tests/roadNames.test.ts`）: src の全ファイル（roadNames.ts を除く。名前を認識するためにここだけは綴る）と `public/data/expressway` の全ファイルに `首都高`・`Metropolitan Expressway`・単語としての `Shuto`/`Shutoko` が無いこと。「首都圏」のローマ字 `shutoken` は事業者名ではないので語の境界で見る。
+- **置き換えた箇所**（ゲーム内の表示だけ。出典表示の OSM の帰属表記には事業者名が無かった）: i18n の出典の注記（`credits.jartic.omitted` 日英中）、SNS のトレンド `trend.expressway`（日英中）、SNS の投稿 3 件とその英訳・中国語訳、アカウント「毎日首都高」のハンドルと紹介文（`toshikou_daily`）、src のコメント 6 か所（orbis・roadTiles・roadClass・roads・assumptions の理由）。データ（routes・junctions・police.json）は名称層で表示時に置き換え（`localDests`・`junctionNames`・routes の `names`）、生成スクリプトは変えていない（police.json の名前は表示に使われていない）。
+
+### 設置の規則（`signPlan.ts`、値は `expresswaySignStandards.ts` と `expresswaySignAssumptions.ts`）
+
+| 番号     | 位置                                                  | 規則（別表第一）                                                                   | ゲームの値（仮定）                                     | 取付                                               |
+| -------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------- |
+| 110-B    | 出口の手前                                            | 100〜600 m                                                                         | 500 m から試す                                         | 門型                                               |
+| 111-B    | 出口の手前、出口の車線の上方                          | 100〜500 m                                                                         | 300 m から                                             | 門型（板は出口の車線の上。脚を越えるなら中央寄り） |
+| 112-B    | 出口の手前、車道の上方                                | 300 m 以内                                                                         | 120 m から                                             | 門型、上に床版があればその桁に添架                 |
+| 113-A・B | 出口付近                                              | 左側の路端                                                                         | 床版が本線と分かれる所の 8 m 先、本線側の壁高欄        | 壁高欄添架                                         |
+| 108の2-C | JCT の手前                                            | 300 m 以内                                                                         | 200 m から                                             | 門型                                               |
+| 323      | 掲示速度（`XwChunk.posted`）が変わるチャンクの始まり  | maxspeed、欠測は run の前の値、run の始まりで欠測なら法定 60（施行令 第11条第1号） | 変わり目の 5 m 先（±30 m、run の始まりは 90 m 先まで） | 左の壁高欄                                         |
+| 325      | 入口ランプの始まり                                    | —                                                                                  | ランプの 15 m                                          | 左の壁高欄                                         |
+| 116の4   | OSM の emergency=phone の位置（中心線から 12 m 以内） | 左側の路端                                                                         | 電話が右の壁高欄の側でも左の壁高欄（G6 レビュー S4）   | 壁高欄添架                                         |
+| 116の6   | OSM の emergency_bay                                  | 左側の路端又は中央分離帯                                                           | 試験区間の周りに 0 件                                  | —                                                  |
+| 103-A    | 入口ランプが一般道を離れる所の 15 m 手前              | 左側の路端（距離の規定なし）                                                       | 15 m                                                   | 路側式（2 本柱）                                   |
+| 104      | 同じ道を 150 m（100〜200 m）戻った所                  | 同上                                                                               | 交差点を越えて直進の道をたどる                         | 路側式                                             |
+
+- 同じ run の標識は 60 m 以上離す（`SIGN_SPACING`）。116の4・116の6 は電話の位置から動かさないので、他の標識から 20 m（`PHONE_SPACING`）。門型は上に別の床版がある所に立てない（貫通する）。上の床版は**幾何で**測る（他の run の中心線の区間が、その床版の半幅と自分の半幅を足した距離の内で、路面より 2 m 以上高い所。斜めに交差する床版には chunk.decks の区間が無いため。G6 レビュー W5）。112-B はその桁に吊れれば桁添架（板の高さで resolveMount を通し、下端 4.7 m 以上のときだけ）。入らなければ次の距離を試し、どれもだめなら `expressway_sign_unplaced` で報告して置かない。
+- 床版の上の標識は `z`（その点の路面の T.P.）と `level`（床版の段、下に床版があれば 2）を持つ。ゲームは路面を取付の地面にする（地形の高さではない）。
+- **方面**: どのランプにも destination タグが無いので、JCT の方面は路線名（「1号羽田線」「都心環状線」）、出口の板は出口名（「芝公園」）にした（図 031 の板も地名は出口名）。
+- **件数**（試験区間、2026-11-11、レビュー対応の後、`expressway_signs_planned`）: 31 枚。110-B 2・111-B 2・112-B 2・113-B 2・108の2-C 1・323 6・325 1・116の4 15（床版の横にある OSM の電話 17 点のうち 2 点は他の標識と 20 m 以内で `unplaced`）。入口 1（芝公園、C1）、103-A 1・104 1。girder-mount は 0（試験区間の 112-B の上に床版が無い。合成の区間のテストで実行する）。
+
+### 取付と建築限界（`deckMount`、G4 の `resolveMount`）
+
+- 門型: 脚は壁高欄の天端に立てる（`legBaseM` = 壁高欄の高さ 1.1 m。脚の軸が壁高欄の幅の中心に来るよう内法を決める）。板の下端は 5.0 m（最低 4.7 m と建築限界 4.5 m の高い方）。
+- 壁高欄添架: 枠の原点を壁高欄の内面に置き、面はすべてその外（x ≤ 0）。右の壁高欄は位置だけを左右反転（部材の向きは反転しない。反転した行列は面を裏返す）。
+- 桁添架: 上の床版の桁の下面と桁高（最寄りの測点から）を `girder` に書く。下端 4.7 m 未満なら掛けない。
+- 323・325 の板は 2 つ目の `TrafficSigns`（`standDeckPosts`、柱の枠を床版の高さ `deck.baseY` に立てる）。2 つの TrafficSigns が板の層プールを共有するので、`wantFaces` は利用者ごとの要求を合わせて渡すようにした（同じ問題が BoardFacePool の W5）。
+- **検査**（`tests/expresswaySigns.test.ts`）: 生成済みデータの全標識を resolveMount に通し、`dropped` 0、門型・桁添架の板の下端 ≥ 4.7 m かつ ≥ 4.5 m、門型の脚の軸が車道の外で壁高欄の上、壁高欄添架の面が内面の外、門型の下に床版が無い、別表第一の範囲の内の距離（branch の parentS − 標識の s が `ref.beforeM`）、110-B → 111-B → 112-B の順、60 m の間隔、z が路面、BoardContent の zod、文字がフォントの subset にある、仮定がすべて `verified: false`。合成の区間で planSigns の距離・出口名・番号・323 の値・電話の側も確かめる。
+
+### 板（BoardContent の追加と Canvas）
+
+- `111-B`（`lane-columns`、図 029）: 地名、出口番号の札、下向きの矢印、「出口 300m」と EXIT。
+- `116の4`・`116の6`（`pictogram`、図 046・048）: 緑地 60 × 90 cm、白い正方形に黒い受話器／車道と非常駐車帯、文字（14・10 cm）。**設計からの逸脱**: 設計書 3 章は 116の4・116の6 を Pillow の図柄（`art.by = "painter"`）にする案だった。床版の上の緑の板はすべて BoardFacePool と SignFaceMaterial（Canvas、再帰反射）に乗っており、固定の図柄 2 つのために床版用の 2 つ目の層プールを持つより、同じ描画経路で描く方が安いため Canvas にした（G5 の 1 枚の CPU canvas の使い回しにそのまま乗る）。
+- `113-A・B` は図 033 どおり縦長に描く（`layoutNose`）。G5 のテンプレートは 110-B と同じ横長だった（1 周目のレビュー W2）。
+- 文字の高さは 30 cm（`EXPRESSWAY_LETTER`、設計の仮置き）、板は表示で 1.5 倍（`BOARD_SCALE`、案内の拡大の上限 3 倍の内、`enlargementFor` で検査）、116の4・116の6 は 1.5 倍、323・325 は 1.5 倍（規制の上限 2 倍の内）。
+- **W6（G5 レビュー）**: 108の2-C〜E の腕の路線記号は枠の高さを日本字の 1.2 倍（`ROUTE_SYMBOL_ON_ARM`、備考一(五)6 の経由路線の上限 1.6 の内）、103・104 の上段の路線記号は 0.9 倍（`ENTRANCE_ROUTE_SYMBOL`、108の2 の方面の上限を当てはめた仮定）。G5 は 103・104 で 0.98 倍相当（上限の外）だった。guideLayout のスナップショットの 104 と 108の2-C の行が変わった。
+- **W5（G5 レビュー）**: `BoardFacePool.want(user, boards, eye, level)` で利用者ごとに登録し、全利用者の板をまとめて順位付けする（`rankBoards`、純関数）。G5 までは最後に呼んだ利用者の一覧が要求のすべてで、GuideSigns と ExpresswaySigns が交互に相手の面を落としていた。
+- フォント: subset に「非」が無かった。`scripts/guide-signs.ts` の固定の文字に都市高速の語（非常電話駐車帯出口入口都市高速）を足し、charset.txt に同じ規則で 1 字だけ足して `just make-guide-fonts`（PBF からの作り直しはしていない）。
+- 規制 325 はゲームの種別 `motorOnly`（`SIGN.motorOnly = 31`）を定義に足し、registry.json・game.json を作り直した（coverage の「未配置」から 325 が外れた）。
+
+### 多視点レビュー（G6、収束ループ）
+
+視点表 `scripts/qa/views/expressway-signs.json`（54 コマ: 床版の上の 110-B・111-B・112-B を出口 2 か所で、108の2-C を運転席 300/150/60 m、113-B・116の4・323 を 60 m、325 を 30 m、一般道の 103-A・104 を 30 m、各々 昼・夜。60・150 m はロービーム点灯）。対象は新しい `deckSign` ターゲット（`src/debug/viewHooks.ts`: データの番号と順番で選び、カメラは標識の手前の床版の測点をたどる）。**逸脱**: 依頼は既存の `expressway.json` に足す案だったが、P3 の収束記録（同じ表名）と混ざらないように別の表にした。数値の探りは描いた面の割合（板のコマで layer > 0）と門型・桁添架の板の下端（データを resolveMount に通した最小値）。[^g6-review]
+
+- **数える前の撮り直し**（失敗したコマがあった周は数えない）で見つけて直したもの: (W1) 30 cm の字の 3.2 m の板が運転席 60 m で 4 px → `BOARD_SCALE` 1.5（命令の案内の拡大の上限 3 倍の内）、(W2) 113-B が横長 → 図 033 の縦長（`layoutNose`）、111-B の板が脚を越えて落ちた（`dropped`）→ 脚の内へ寄せる、104 が置けない（手前の道が 79 m で途切れる）→ 交差点を越えて直進の道をたどる `walkBack` と 80・60・50 m の候補、視点表の 116の4 の順番。
+- 1 周目（54 コマ、失敗 0）: Warning 3（103-A・104 の板の前に規制標識の柱、116の4 の受話器が括弧に見える）、Info 2（夜の門型の板が暗い、103 の路線記号が小さい）。
+- 2 周目: 新規の Critical / Warning 0。受話器は直った。103-A・104 の柱は wontfix: 柱の 6 m 以内に立てず、運転者の視線（板の手前 25 m・横 2.5 m）に柱の無い距離から試すようにしたが、芝公園の入口の手前の道は規制標識の柱が並び視線の通る位置が無い（`entrance_board_placed` の `sightClear: false`）。Info を足した: PLATEAU の建物が床版を横切り 111-B の下半分を隠す（P4）、60 m（実距離 62〜77 m）で 45 cm 相当の字が 6 px 前後。
+- 3 周目で converged。G6 レビュー対応（掲示速度・116の4 を左へ・視点の `deckSign` を `{id, run, index}` に）の後に 4〜6 周目を撮った。4 周目: 323 の視点の対象が入口ランプの板に変わり、60 m 手前がランプを横切る PLATEAU の建物（P3 の既知）の中で板が写らない（Warning、視点を 40 m に）。5・6 周目: 新規 0。
+- 数値: 描いた面の割合 1.0（全コマで板の面が描けている）、門型の板の下端の最小 5.0 m（≥ 4.7 m）。
+- 様式の照合（目視、図 029・031・033・046・005/006 と並べて）: 緑地白字・白縁、出口番号は白地緑字の札、111-B の下向き矢印と「出口 300m EXIT」、113-B の縦長（出口 EXIT・矢印・番号と地名）、108の2-C の分岐図と路線記号の枠（白枠・緑地、事業者の盾形なし）、103-A の上段 白地緑字（都市高速・TOSHI EXPWY・C1）と下段 緑地白字。門型の脚は壁高欄の上に立ち、板の下端は 5.0 m。
+
+### G6 レビュー（Fable、2026-11-11、Conditional LGTM）への対応
+
+- **W4 掲示速度を 1 つの値に**: 323 の板の値と取締りの `speedLimit` を同じ値から導く。planSigns がチャンクごとの掲示速度 `XwChunk.posted` を書く（チャンクの始まりの way の maxspeed、欠測の way は run の前の値を引き継ぐ。run の始まりで欠測なら、分岐は親の値、一般道から入って合流するランプは法定 60 と合流先の値の低い方、それ以外は法定 60＝施行令第11条第1号。`POSTED_SPEED_CARRY`）。値の変わるチャンクにだけ 323 を立て、置けなければ `unplaced` に理由（`no_free_distance:run_start:60` など）を出す。グラフの limit は run の tagV ではなく `chunk.posted`（`expresswayRoads.ts`）。**P6（法規の判定）が並行で速度規制を整備中**で、合流するときに P6 の規則へ一本化する（`posted` はそのときの入力）。
+  - 323 の前後（試験区間）: 前は 12 枚（合流の 80 m 先に毎回立て、maxspeed 欠測を法定 60 と読んで C1 で 50→60→50 と並んでいた）。後は 6 枚: C1 外回り 24402611 の 5 m（50）、C1 内回り 45021976 の 5 m（60、始まりの way が欠測で法定）と 1,269 m（50）、1号羽田線 4848762 の分岐の先 117.6 m（40、親の 50 から変わる）、813455519 の 5 m（40）、芝公園入口 207111988 の 80 m（50＝合流先の C1 の値）。出口ランプは親の値を引き継ぐので立たない。unplaced の 323 は 0。
+  - 掲示速度は C1 の両方向で 50 になり（前の tagV は 60）、床版の上の速度違反の判定が変わる。`tests/expresswayDrive.test.ts` の「車線中心から低い制限の床版に捕まらない」は、入口ランプを合流先の値で頭打ちにして通した。
+- **W2 level**: 床版の段の定義を `src/expressway/deckLevel.ts` の `deckLevelAt`（1 ＋ その点で下にある床版の数）1 つにし、標識もゲーム（`ExpresswayDecks.levelAt` で車の下のチャンクの段）も同じ式で読む。前は標識が「1 ＋ 下の床版」、ゲームが「床版の上なら 1」で、上段を走ると同じ段の板が別の段として後回しになっていた。
+- **W3 共有プール**: BoardFacePool と板の層プールは main.ts が 1 フレームに 1 回だけ pump する（`pumpBoardFaces`・`pumpSignFaces`）。各利用者は層の版だけを見る（前は ?expressway で 1 フレーム 2 回 pump していた）。利用者の順は `delete` してから `set`（Map の `set` は既にあるキーを動かさない）、目は複製して持つ。GuideSigns は作り直しの前に `forget("guide")`。TrafficSigns は何も立たなくなったら自分の要求を消す（古い要求が残っていた）。`tests/boardFacePool.test.ts` を足した。
+- **W5 テスト**: 間隔の検査を `SIGN_SPACING`（60 m）と `PHONE_SPACING`（20 m）に合わせた。門型の下の床版は他の run の測点から幾何で測り、門型の上端（脚の頂）より桁下が高いことを見る。板の下端は絶対高さで、板の横の範囲の路面（片勾配を掛けた場合も）から 4.7 m 以上。合成の区間に JCT の腕（路線記号の「1」を名前から）・右の出口（111-B は右の車線、112-B の矢印は右）・交差する床版（112-B を桁添架で吊る）・合流の後に 323 を立てないこと・掲示速度の変わり目・置けない 116の4 の報告を足した。固定の語の検査は layoutBoard の text ノードから集める。
+- **W1 禁止語**: `public/data` 全体を検査し、実名を保持して表示時に `displayPlace` で置き換えるファイル（police.json・routes・junctions）は理由つきの許可リストに載せる（載せた種類に実名が無くなれば検査が落ちる）。AGENTS.md の文言をこれに合わせた。
+- **W6 の重複**: 上の床版の桁が無いときの仮定 `GIRDER_FALLBACK`、116 の字高（`PICTOGRAMS[id].caption`）、法定 60（`STATUTORY_SPEED`）をそれぞれ 1 か所にした。
+- **S2・S3・S4・S5・S9**: 113 のテンプレートを表に（`nose`）。ゲームは zod の出力（`parsed.data`）を使う。`EXPRESSWAY_LETTER` の根拠を 備考一(五)1・(二)3 に訂正。116の4 は左の壁高欄に（別表第一「左側の路端」）。同じ路線の英名を、その路線の way で最も多い name:en にそろえた（C1 は "Circle 1" と "Inner Circular Route" が混ざっていた）。`displayPlace` の "Shuto Expwy" → "TOSHI EXPWY Expwy" の重複を直し、禁止語の型を camelCase・大文字にも効くようにした。視点表の `deckSign` は `{id, run, index}`（run は最初の way の id で安定）。
+- **S8 案内標識 5 地点の比較**（`just compare-guide-boards g6 g6base`、vite 5391 番、`g6base` は同じ worktree で G6 の差分を退避して撮った d39ca4b）: 丸の内 48・日比谷 47・銀座四丁目 59・霞が関 46・九段下 8 の 108 の計画と画素、固定内容 5 枚がすべて一致（changed 0）。105・106 を含む計画の行（53・60・74・56・12 件）も全件同じ。5 地点の周りの OSM destination・交差点名に事業者名を含むものが無く、`displayPlace` で変わる板は無かった（計画の行を全件比べて確認。名前を置き換えた板が出るのは、事業者名の destination を持つ道の案内交差点だけ）。
+
+### 都市高速の板の残課題（P6 着手前）
+
+- **W6 設定値の散在と仮定のタイル焼き込み**: 距離の候補・間隔・拡大率・掲示速度の引き継ぎがビルド時に決まり、タイルに焼き込まれる（ゲームでは変えられない）。仮定を変えるとデータの作り直しが要る。P6 と規則を一本化するとき、どこまでを実行時に回すかを決める。
+- **W7 103・104**: 全入口の計画（試験区間は 1 か所だけで、全域では検証していない）。`walkBack` の途切れの理由を `lastWalk`（モジュールの変数）で渡しており、`entrance_board_unplaced` の reason は文字列のまま（列挙にする）。
+
+[^g6-review]: `just shoot-views expressway-signs`（vite 5391 番）と `.qa/reviews/expressway-signs/round-01〜06.jsonl`、`just check-convergence expressway-signs`。
+
+[^g6-data]: 試験区間の生成と集計は `just make-expressway-data`（2026-11-11、DEM は scripts の取得手順で .cache/gsi-dem へ）の `expressway_signs_planned` と `tests/expresswaySigns.test.ts`。
 
 # catalog.json からの変換（G1a、1 回だけ）
 

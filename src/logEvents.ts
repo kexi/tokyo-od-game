@@ -280,6 +280,27 @@ export const LOG_EVENTS = {
     anchorMs: z.number().optional(),
     stagesMs: z.record(z.string(), z.number()).optional(),
   }),
+  /** The 都市高速's signs stood on the decks around the player (src/world/expresswaySigns.ts). */
+  expressway_signs_placed: info({
+    chunks: count,
+    boards: count,
+    plates: count,
+    gantries: count,
+    girders: count,
+    barriers: count,
+  }),
+  /**
+   * A 103-A / 104 found no place before an entrance (src/world/entranceBoards.ts): no street at the
+   * ramp's ground end, the street across the ramp or one-way against it, or the street turning
+   * away / ending within the distance.
+   */
+  entrance_board_unplaced: warning({ run: z.string(), kind: z.string(), reason: z.string() }),
+  /** A 103-A / 104 stood: how far before the entrance, and whether no post stands in its drivers' sight. */
+  entrance_board_placed: info({ run: z.string(), kind: z.string(), before: count, sightClear: z.boolean() }),
+  /** guide_signs.glb / signs.glb could not be read for the deck signs: none stand. */
+  expressway_signs_failed: warning({ error: z.string() }),
+  /** A deck sign of the tiles that fails the board schema, or a plate with no artwork: left out. */
+  expressway_sign_invalid: warning({ chunk: z.string(), id: z.string(), s: z.number() }),
   guide_signs_placed: info({
     signs: count,
     advance: count,
@@ -287,6 +308,8 @@ export const LOG_EVENTS = {
     direction: count,
     /** 106-A 方面及び距離 (確認標識). */
     confirm: count,
+    /** 103-A・104 before the 都市高速's entrances (src/world/entranceBoards.ts). */
+    entrance: count.optional(),
     overhead: count,
     routed: count,
     mapped: count,
@@ -708,6 +731,15 @@ export const LOG_EVENTS = {
     detail: z.string(),
     allowed: z.boolean(),
   }),
+  /** The signs on the decks (src/expressway/signPlan.ts): all, by 別表第一 number, entrances, unplaced. */
+  expressway_signs_planned: info({
+    signs: count,
+    byId: z.record(z.string(), count),
+    entrances: count,
+    unplaced: count,
+  }),
+  /** A sign the planner found no place for (on the run, clear of the others and of a deck above). */
+  expressway_sign_unplaced: warning({ run: z.string(), id: z.string(), reason: z.string() }),
   expressway_written: info({
     range: z.string(),
     tiles: count,

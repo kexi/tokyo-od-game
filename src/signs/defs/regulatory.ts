@@ -436,6 +436,7 @@ export const REGULATORY = group("規制", [
     name: "自動車専用",
     plate: "PlateCircle",
     art: { by: "texture", file: "325.png", paint: { fn: "regulatory.motor_only" } },
+    game: { kind: "motorOnly", pick: "default" },
   },
   {
     id: "325の2",

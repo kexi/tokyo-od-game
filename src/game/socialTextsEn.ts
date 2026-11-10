@@ -856,11 +856,11 @@ export const SOCIAL_EN: Readonly<Record<string, string>> = {
   "猫、こたつから出てこない": "The cat won't come out from under the kotatsu",
   夜の運動会が始まった: "The nightly zoomies have begun",
 
-  "首都高、今日もそこそこ混んでる": "The Shuto Expressway is fairly busy again today",
+  "都市高速、今日もそこそこ混んでる": "The city expressway is fairly busy again today",
   "車間距離をとるだけで、ブレーキを踏む回数がぜんぜん違う":
     "Just keeping a following distance makes a huge difference in how often you brake",
-  "雨の日の首都高、みんな車間とってて偉い":
-    "Shuto Expressway in the rain, and everyone's keeping their distance. Nice",
+  "雨の日の都市高速、みんな車間とってて偉い":
+    "The city expressway in the rain, and everyone's keeping their distance. Nice",
   "金曜の夕方はどこも混む。のんびり帰ります":
     "Friday evenings are busy everywhere. Taking it easy on the way home",
   月曜の朝はなぜか流れがいい気がする:
@@ -1155,7 +1155,7 @@ export const SOCIAL_EN: Readonly<Record<string, string>> = {
   "夜の病棟は静か。ナースコールが鳴らない夜はありがたい":
     "The hospital is quiet tonight. Grateful for nights when the call button doesn't ring",
   "夜勤の休憩におにぎり。具は鮭": "Rice ball on my night-shift break. Salmon filling",
-  "見回り中。ビルの窓から見える首都高の明かりがきれい":
+  "見回り中。ビルの窓から見える都市高速の明かりがきれい":
     "On my rounds. The expressway lights through the building's windows are beautiful",
   "深夜は道が空いてる。でも飛ばさない": "Roads are empty late at night. Still not speeding",
   雨の深夜は特にお客さんが多い: "Rainy late nights bring especially many fares",
@@ -1461,8 +1461,8 @@ export const SOCIAL_EN: Readonly<Record<string, string>> = {
   "東京の空を毎日撮っています。": "Photographing Tokyo's sky every day.",
   "年間300杯。都内のラーメン記録": "300 bowls a year. A Tokyo ramen log",
   猫との毎日: "Every day with my cat",
-  "首都高で通勤20年。渋滞情報と運転のこと":
-    "20 years commuting on the Shuto Expressway. Traffic updates and driving talk",
+  "都市高速で通勤20年。渋滞情報と運転のこと":
+    "20 years commuting on the city expressway. Traffic updates and driving talk",
   "教習指導員を30年。基本がいちばん大事": "30 years as a driving instructor. The basics matter most",
   朝のコーヒーが生きがい: "Morning coffee is what I live for",
   [`東京をドライブ中。${SOCIAL_APP_NAME}は見る専`]: `Driving around Tokyo. Just here to read ${SOCIAL_APP_NAME}`,

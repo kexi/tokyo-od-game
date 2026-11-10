@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { displayPlace } from "../game/roadNames";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX } from "../geo/tiles";
 import { warn, type LogFields } from "../log";
@@ -597,10 +598,11 @@ export function applyRegulations(
     stopLines,
     stopSigns,
     signals: data.signals.map(([lon, lat]) => toLocal(frame, [lon, lat])[0]),
+    // Through the name layer: a few OSM junction names carry the real operator's (「…出入口」).
     junctionNames: data.junctions.map(([lon, lat, name, en]) => ({
       pos: toLocal(frame, [lon, lat])[0],
-      name,
-      en,
+      name: displayPlace(name),
+      en: displayPlace(en, "en"),
     })),
     footbridges: data.footbridges.map(([width, deck, stairs]) => ({
       width,

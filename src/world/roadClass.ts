@@ -70,7 +70,7 @@ const isStreet = (line: RoadLine): boolean => classOf(line) === "street";
 
 /**
  * 自動車専用道路 (main line or ramp): drawn as such on the maps, matched to expressway orbis, and
- * 60 km/h where nothing is posted (首都高 is not a 高速自動車国道, 施行令 第27条).
+ * 60 km/h where nothing is posted (the 都市高速 is not a 高速自動車国道, 施行令 第27条).
  */
 export const isExpressway = (line: RoadLine): boolean => !isStreet(line);
 

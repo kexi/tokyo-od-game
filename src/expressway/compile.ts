@@ -757,7 +757,36 @@ export type CompileResult = {
   runs: XwRunSummary[];
   diagnostics: XwDiagnostic[];
   stats: SolveStats;
+  /** What lies along each written run, for the sign planner (signPlan.ts); not written to files. */
+  features: Record<string, RunFeatures>;
 };
+
+/**
+ * The OSM nodes and ways along a run at their run distances: the sign planner finds the exits'
+ * and junctions' names (motorway_junction nodes) and the posted speeds (ways) through these.
+ */
+export type RunFeatures = {
+  nodes: Array<{ id: number; s: number }>;
+  ways: Array<{ id: number; s0: number; s1: number }>;
+};
+
+/** A run's nodes and ways with their run distances (the vertices' samples on the smoothed line). */
+function runFeatures(rp: RunPlan): RunFeatures {
+  const base = rp.align.s[rp.i0];
+  const sOf = (i: number) => roundTo(rp.align.s[rp.align.vertexSample[i]] - base, 2);
+  const nodes: RunFeatures["nodes"] = [];
+  for (let i = rp.run.from; i <= rp.run.to; i++) nodes.push({ id: rp.chain.nodes[i], s: sOf(i) });
+  const ways: RunFeatures["ways"] = [];
+  for (const id of rp.run.ways) {
+    const k = rp.chain.ways.indexOf(id);
+    const from = Math.max(rp.run.from, rp.chain.wayStarts[k]);
+    const next = rp.chain.wayStarts[k + 1] ?? rp.chain.nodes.length - 1;
+    const to = Math.min(rp.run.to, next);
+    if (to <= from) continue;
+    ways.push({ id, s0: sOf(from), s1: sOf(to) });
+  }
+  return { nodes, ways };
+}
 
 /** Every z15 DEM pixel tile the solve will read, for the build script to fetch first. */
 export function groundPoints(plan: Plan): Array<[number, number]> {
@@ -1406,9 +1435,11 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   }
   const chunks: XwChunk[] = [];
   const runs: XwRunSummary[] = [];
+  const features: Record<string, RunFeatures> = {};
   for (const id of [...plan.wanted].sort()) {
     const s = solved.get(id);
     if (!s) continue;
+    features[id] = runFeatures(s.rp);
     const runChunks = chunkRun(plan, s, ground, objectPolys);
     chunks.push(...runChunks);
     runs.push({
@@ -1438,7 +1469,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   }
   // Whether a departure is accepted is the allowlist's alone (with its reason), never the compiler's.
   for (const d of diagnostics) d.allowed = isAllowed(d);
-  return { chunks, runs, diagnostics, stats };
+  return { chunks, runs, diagnostics, stats, features };
 }
 
 /**
