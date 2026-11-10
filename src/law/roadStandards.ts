@@ -30,6 +30,17 @@ export const DESIGN_SPEED_TYPE2_CLASS2: Statute<{ standard: DesignSpeed; special
     source: "構造令 第13条第1項",
   };
 
+/**
+ * 第13条: 第二種第一級 (an 都市高速 outside a 大都市の都心部, 第3条第2項第二号) is 80 km/h, or 60 where
+ * unavoidable. A 第一級 road may also be classed one class down where unavoidable (第3条第2項ただし書),
+ * so a section of it designed as 第二種第二級 (60 / 50 / 40) is within the statute too.
+ */
+export const DESIGN_SPEED_TYPE2_CLASS1: Statute<{ standard: DesignSpeed; special: readonly DesignSpeed[] }> =
+  {
+    value: { standard: 80, special: [60] },
+    source: "構造令 第13条第1項、第3条第2項",
+  };
+
 /** 第15条: minimum radius of the centre line of a curve. 30 and 20 have no 特例 value. */
 export const CURVE_RADIUS: Statute<ByRow<Graded>> = {
   value: {
@@ -142,6 +153,16 @@ export const SHOULDER: Statute<{
 export const CLEARANCE_HEIGHT: Statute<number> = { value: 4.5, source: "構造令 第12条" };
 
 /**
+ * 第12条ただし書: on a 第三種第五級 普通道路 (not a 重要物流道路) H may be cut to 4 m where unavoidable
+ * (3 m where large vehicles are very few and can detour). Not the case of any road in the data: the
+ * expressway compiler only borrows the 4 m for an assumption (assumptions.OPEN_FLOOR_GIVE).
+ */
+export const CLEARANCE_HEIGHT_REDUCED: Statute<{ class3grade5: number; fewLargeVehicles: number }> = {
+  value: { class3grade5: 4, fewLargeVehicles: 3 },
+  source: "構造令 第12条ただし書",
+};
+
+/**
  * 第28条第4項: 連結路 (ramps) are exempt from 第5〜8・12・13・15・16・18〜20・22・25条. The compiler
  * still applies the V40 values to ramps as a design target (assumptions.ts says so), but a ramp
  * that misses them is not a statute violation.
@@ -174,6 +195,7 @@ export const MARKING_DIMENSIONS: Statute<{
 
 /** All entries, for the test that every value names its article. */
 export const ROAD_STANDARDS: Readonly<Record<string, Statute<unknown>>> = {
+  DESIGN_SPEED_TYPE2_CLASS1,
   DESIGN_SPEED_TYPE2_CLASS2,
   CURVE_RADIUS,
   MAX_SUPERELEVATION,
@@ -186,6 +208,7 @@ export const ROAD_STANDARDS: Readonly<Record<string, Statute<unknown>>> = {
   MEDIAN_TYPE2_CLASS2,
   SHOULDER,
   CLEARANCE_HEIGHT,
+  CLEARANCE_HEIGHT_REDUCED,
   RAMP_EXEMPTION,
   MARKING_DIMENSIONS,
 };

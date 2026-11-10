@@ -21,6 +21,52 @@ export const STANDARD_UNDERCLEARANCE: Assumption<number> = {
   reason: "未確認。建築限界 4.5 m（第12条）に余裕を足した値。首都高の実際の桁下高の分布は調べていない",
 };
 
+/**
+ * The floor over open ground (no road crossed there in OSM): the girder underside at least 第12条's
+ * 4.5 m over the ground, as if any ground could hold a road. Not the 6.5 m target height
+ * (STANDARD_UNDERCLEARANCE): the floor below which a deck counts as too low.
+ */
+export const OPEN_GROUND_FLOOR: Assumption<number> = {
+  value: 4.5,
+  verified: false,
+  reason:
+    "仮定。第12条の建築限界 4.5 m を、OSM に道路の無い地表全体にも当てはめた（未登録の道路がありうるとして）",
+};
+
+/**
+ * How far a run that fails at its lowest design speed may still miss OPEN_GROUND_FLOOR and count as
+ * solved (the last fallback step, with the amount reported as below_open_ground_floor).
+ */
+export const OPEN_FLOOR_GIVE: Assumption<number> = {
+  value: 0.5,
+  verified: false,
+  reason:
+    "仮定。値は第12条ただし書（第三種第五級でやむを得ない場合の H 4 m）から借りた: 桁下 4.0 m。23 区の都市高速の下の地表に第三種第五級の道路があるという根拠ではない",
+};
+
+/** How far the deck may sit in the smoothed DEM near a low end (the floor there is DEM − this). */
+export const DEM_SINK_FLOOR: Assumption<number> = {
+  value: 0.25,
+  verified: false,
+  reason:
+    "仮定。平滑化した DEM のすぐ上に端を合わせると、拘束点の間の数 cm の起伏で解けなくなったので置いた余裕",
+};
+
+/** How much deeper than DEM_SINK_FLOOR a run failing at its lowest speed may go (last step). */
+export const DEM_SINK_GIVE: Assumption<number> = {
+  value: 0.75,
+  verified: false,
+  reason:
+    "仮定。平滑化した DEM（5×5 中央値と 3×3 の加重平均）は擁壁・盛土の段で段の半分ほどずれるので、低い端の近くでは平滑化した地表に計 1.0 m まで入るのを認めた。実測で確かめていない",
+};
+
+/** A short run's ground end may sit this far above or below the DEM there (T5 allows 5 cm). */
+export const GROUND_END_BAND: Assumption<number> = {
+  value: 0.04,
+  verified: false,
+  reason: "仮定。T5 の 5 cm から地表の丸め（1 cm）を引いた幅",
+};
+
 /** Clearance over a railway (the overhead line), in place of 第12条's 4.5 m which is for roads. */
 export const RAIL_CLEARANCE: Assumption<number> = {
   value: 6.0,
@@ -117,6 +163,11 @@ export const LANE_LINE_DASH: Assumption<{ dash: number; gap: number }> = {
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
   STANDARD_UNDERCLEARANCE,
+  OPEN_GROUND_FLOOR,
+  OPEN_FLOOR_GIVE,
+  DEM_SINK_FLOOR,
+  DEM_SINK_GIVE,
+  GROUND_END_BAND,
   RAIL_CLEARANCE,
   WATER_CLEARANCE,
   PIER_SPACING,

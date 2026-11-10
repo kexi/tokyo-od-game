@@ -233,6 +233,7 @@ const meta: XwMeta = {
     unconverged: result.stats.unconverged,
   },
   runs: result.runs,
+  closed: result.closed,
   diagnostics: result.diagnostics.filter((d) => plan.needed.includes(d.run)),
 };
 await writeFile(join(OUT, "meta.json"), JSON.stringify(meta));
@@ -269,5 +270,7 @@ log("expressway_written", {
   bytes,
   diagnostics: meta.diagnostics.length,
   unsolved: meta.diagnostics.filter((d) => isUnsolved(d.kind)).length,
+  closedMain: result.closed.filter((c) => c.cls === "expressway").length,
+  closedRamps: result.closed.filter((c) => c.cls === "ramp").length,
   durationS: Math.round((performance.now() - started) / 100) / 10,
 });

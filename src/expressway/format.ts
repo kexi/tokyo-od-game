@@ -52,6 +52,13 @@ export type XwChunk = {
   V: number;
   /** Vertical knot spacing of the run (= the length of every vertical curve). */
   vh: number;
+  /**
+   * "cubic": the run is a short 連結路 whose elevation is one cubic Hermite between its two parents'
+   * points (vertical.ts), so `vh` is the run length and no 第22条 minimum length applies (第28条
+   * 第4項); the stations carry the cubic exactly. Absent: parabolas of length `vh`. Optional, so the
+   * format stays version 2.
+   */
+  vform?: "cubic";
   /** Grade limit of this section (第20条 standard or 特例 for `V`, capped by 第25条). */
   gmax: number;
   /** Grade at the chunk's first and last station (stations alone cannot give it on a curve). */
@@ -126,6 +133,13 @@ export type XwRunSummary = {
 
 export type XwDiagnostic = { run: string; kind: string; detail: string; allowed: boolean };
 
+/**
+ * A run of the range that is not in the tiles (its profile could not be solved, or it hangs from
+ * one that could not): the game closes it (P3 leaves it out of the graph), `reason` the diagnostic
+ * kind with the details in `diagnostics`.
+ */
+export type XwClosed = { run: string; chain: string; cls: "expressway" | "ramp"; reason: string };
+
 export type XwMeta = {
   version: typeof XW_VERSION;
   zoom: number;
@@ -137,5 +151,7 @@ export type XwMeta = {
   /** The joint vertical solves (no timings: the file stays byte-stable). */
   solver: { components: number; solves: number; unconverged: number };
   runs: XwRunSummary[];
+  /** Runs of the range left out of the tiles, closed (optional: absent in files before P2.6). */
+  closed?: XwClosed[];
   diagnostics: XwDiagnostic[];
 };

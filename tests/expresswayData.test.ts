@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkChunkJoin,
   checkClearance,
+  climbingEnds,
   checkGrade,
   checkGroundEnd,
   checkJunction,
@@ -24,8 +25,10 @@ import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
 import { OPERATOR_WORDS } from "../src/expressway/network";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
-// checked against 設計書 4.4 T1〜T7 and T10.
-const DIR = join(import.meta.dirname, "..", "public", "data", "expressway");
+// checked against 設計書 4.4 T1〜T7 and T10, and the conditions for shipping the whole ward area
+// (knowledge/expressway-generation.md). XW_DATA_DIR points it at another output (a --range all
+// build written with --out) to judge that before it is shipped.
+const DIR = process.env.XW_DATA_DIR ?? join(import.meta.dirname, "..", "public", "data", "expressway");
 const meta = JSON.parse(readFileSync(join(DIR, "meta.json"), "utf8")) as XwMeta;
 const tileFiles = readdirSync(DIR).filter((f) => /^\d+-\d+\.json$/.test(f));
 const tiles = new Map(
@@ -36,6 +39,100 @@ const runs = new Map(meta.runs.map((r) => [r.id, r]));
 const byRun = new Map<string, XwChunk[]>();
 for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
 for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
+const isTestSection = meta.range?.name === "hamazakibashi";
+const isWholeArea = meta.range === null;
+/** The tightest radius the allowlist accepts on a ramp (ramp_radius with minRadiusM), for T6. */
+const rampFloor = (run: string) =>
+  ALLOWLIST.find((a) => a.kind === "ramp_radius" && a.run === run && a.minRadiusM !== undefined)?.minRadiusM;
+
+// Overlaps recomputed here by brute force, without overlap.ts (the compiler's own detector):
+// every station of a run against every segment of every other run, the other's height the cubic
+// Hermite through its two stations, the bands the carriageways recomputed from 第5・8条 / the ramp
+// assumption (lanes × lane width + shoulders).
+function overlapsByBruteForce() {
+  const kx = 111320 * Math.cos((35.65 * Math.PI) / 180);
+  const ky = 110574;
+  type P = { x: number; y: number; s: number; z: number; g: number; hw: number };
+  const lines = new Map<string, P[]>();
+  for (const [run, list] of byRun) {
+    const pts: P[] = [];
+    for (const c of list) {
+      const hw = (c.lanes * c.laneWidth + c.shoulderL + c.shoulderR) / 2;
+      for (let i = pts.length === 0 ? 0 : STATION_STRIDE; i < c.st.length; i += STATION_STRIDE)
+        pts.push({
+          x: c.st[i + 1] * kx,
+          y: c.st[i + 2] * ky,
+          s: c.st[i],
+          z: c.st[i + 3],
+          g: c.st[i + 6],
+          hw,
+        });
+    }
+    lines.set(run, pts);
+  }
+  const cubic = (p: P, q: P, s: number) => {
+    const h = q.s - p.s;
+    const t = (s - p.s) / h;
+    return (
+      (2 * t ** 3 - 3 * t ** 2 + 1) * p.z +
+      (t ** 3 - 2 * t ** 2 + t) * h * p.g +
+      (-2 * t ** 3 + 3 * t ** 2) * q.z +
+      (t ** 3 - t ** 2) * h * q.g
+    );
+  };
+  // Segments by 100 m cell (each listed in every cell its bounding box touches), so the whole
+  // ward area stays quick; a station looks at its own cell's segments and the eight around it.
+  const CELL = 100;
+  const cells = new Map<string, Array<[string, number]>>();
+  for (const [run, pts] of lines) {
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x0, x1] = [Math.min(pts[i].x, pts[i + 1].x), Math.max(pts[i].x, pts[i + 1].x)];
+      const [y0, y1] = [Math.min(pts[i].y, pts[i + 1].y), Math.max(pts[i].y, pts[i + 1].y)];
+      for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++)
+        for (let cy = Math.floor(y0 / CELL); cy <= Math.floor(y1 / CELL); cy++) {
+          const key = `${cx},${cy}`;
+          cells.set(key, [...(cells.get(key) ?? []), [run, i]]);
+        }
+    }
+  }
+  const out = new Map<string, { stations: number; maxDz: number; at: Array<[string, number]> }>();
+  for (const [a, pa] of lines) {
+    for (const p of pa) {
+      const near = new Map<string, number[]>();
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++)
+          for (const [run, i] of cells.get(`${Math.floor(p.x / CELL) + dx},${Math.floor(p.y / CELL) + dy}`) ??
+            [])
+            if (run !== a) near.set(run, [...(near.get(run) ?? []), i]);
+      for (const [b, segs] of near) {
+        const pb = lines.get(b)!;
+        let best = { d: Infinity, z: 0, hw: 0 };
+        for (const i of new Set(segs)) {
+          const q0 = pb[i];
+          const q1 = pb[i + 1];
+          const ex = q1.x - q0.x;
+          const ey = q1.y - q0.y;
+          const t = Math.min(1, Math.max(0, ((p.x - q0.x) * ex + (p.y - q0.y) * ey) / (ex * ex + ey * ey)));
+          const d = Math.hypot(p.x - q0.x - ex * t, p.y - q0.y - ey * t);
+          if (d < best.d) best = { d, z: cubic(q0, q1, q0.s + (q1.s - q0.s) * t), hw: q0.hw };
+        }
+        const isOver = best.d < p.hw + best.hw;
+        if (!isOver) continue;
+        const dz = Math.abs(p.z - best.z);
+        const isBad = dz > 0.05 && dz < 4.5 + 2.2;
+        if (!isBad) continue;
+        const key = [a, b].sort().join("|");
+        const o = out.get(key) ?? { stations: 0, maxDz: 0, at: [] };
+        o.stations++;
+        o.maxDz = Math.max(o.maxDz, dz);
+        o.at.push([a, p.s]);
+        out.set(key, o);
+      }
+    }
+  }
+  return out;
+}
+const brute = overlapsByBruteForce();
 
 describe("生成済みの高速道路タイル", () => {
   it("meta.json lists exactly the tile files, each chunk sits in the z14 tile of its middle station, ids are <run>:<k>", () => {
@@ -51,12 +148,15 @@ describe("生成済みの高速道路タイル", () => {
     expect(meta.counts.chunks).toBe(chunks.length);
   });
 
-  it("builds the test section: 都心環状線 both ways and the 芝公園 entrance and exit", () => {
-    expect(meta.range?.name).toBe("hamazakibashi");
-    const refs = new Set(meta.runs.filter((r) => r.cls === "expressway").map((r) => r.ref));
-    expect(refs.has("C1")).toBe(true);
-    expect(meta.runs.filter((r) => r.cls === "ramp").length).toBeGreaterThanOrEqual(2);
-  });
+  it.runIf(isTestSection)(
+    "builds the test section: 都心環状線 both ways and the 芝公園 entrance and exit",
+    () => {
+      expect(meta.range?.name).toBe("hamazakibashi");
+      const refs = new Set(meta.runs.filter((r) => r.cls === "expressway").map((r) => r.ref));
+      expect(refs.has("C1")).toBe(true);
+      expect(meta.runs.filter((r) => r.cls === "ramp").length).toBeGreaterThanOrEqual(2);
+    },
+  );
 
   it("every run of the range is in the files with all its chunks", () => {
     for (const r of meta.runs) expect(byRun.get(r.id)?.map((c) => c.id)).toEqual(r.chunks);
@@ -97,8 +197,21 @@ describe("生成済みの高速道路タイル", () => {
     expect(problems).toEqual([]);
   });
 
-  it("T4: every crossing is cleared by 4.5 m + girder, and the ground everywhere outside the climbs from ground ends", () => {
-    expect(chunks.flatMap((c) => checkClearance(c, runs.get(c.run)!))).toEqual([]);
+  it("T4: every crossing is cleared by 4.5 m + girder, and the ground everywhere outside the climbs from low ends", () => {
+    // Low ends recomputed from the run summaries (a ground end, or a junction on a parent still
+    // climbing from one), not taken from the compiler.
+    const climbs = (id: string) => climbingEnds(runs.get(id)!, runs);
+    // A run may miss the assumed standard floor over open ground only by what its allowed
+    // below_open_ground_floor diagnostic says (bounded by the allowlist); the crossings exactly.
+    const openShort = (id: string) => {
+      const d = meta.diagnostics.find(
+        (x) => x.run === id && x.kind === "below_open_ground_floor" && isAllowed(x),
+      );
+      return d ? Number(/^([\d.]+) m under/.exec(d.detail)![1]) + 0.01 : 0;
+    };
+    expect(
+      chunks.flatMap((c) => checkClearance(c, runs.get(c.run)!, climbs(c.run), openShort(c.run))),
+    ).toEqual([]);
     expect(meta.counts.crossings).toBeGreaterThan(0);
   });
 
@@ -112,7 +225,7 @@ describe("生成済みの高速道路タイル", () => {
   });
 
   it("T6: no kink, radius at least the floor for the assigned speed, within 1.5 m of OSM", () => {
-    expect(chunks.flatMap((c) => checkPlan(c, runs.get(c.run)!).problems)).toEqual([]);
+    expect(chunks.flatMap((c) => checkPlan(c, runs.get(c.run)!, rampFloor(c.run)).problems)).toEqual([]);
   });
 
   it("T7: superelevation within 第16条, run in over 第18条's length, composite grade within 第25条", () => {
@@ -124,85 +237,21 @@ describe("生成済みの高速道路タイル", () => {
     expect(meta.diagnostics.filter((d) => !d.allowed || !isAllowed(d))).toEqual([]);
     const unsolved = ["vertical_unsolved", "parent_unsolved", "parent_missing"];
     expect(meta.diagnostics.filter((d) => unsolved.includes(d.kind))).toEqual([]);
+  });
+
+  it.runIf(isTestSection)("T10 (test section): the counts of what is reported stay as reviewed", () => {
     const counts: Record<string, number> = {};
     for (const d of meta.diagnostics) counts[d.kind] = (counts[d.kind] ?? 0) + 1;
     expect(counts).toMatchInlineSnapshot(`
       {
         "crossing_over_or_at_grade": 32,
+        "deck_below_ground": 1,
         "deck_overlap": 4,
         "ramp_radius": 1,
-        "vertical_fallback": 29,
+        "vertical_fallback": 35,
       }
     `);
   });
-
-  // Overlaps recomputed here by brute force, without overlap.ts (the compiler's own detector):
-  // every station of a run against every segment of every other run, the other's height the cubic
-  // Hermite through its two stations, the bands the carriageways recomputed from 第5・8条 / the ramp
-  // assumption (lanes × lane width + shoulders).
-  function overlapsByBruteForce() {
-    const kx = 111320 * Math.cos((35.65 * Math.PI) / 180);
-    const ky = 110574;
-    type P = { x: number; y: number; s: number; z: number; g: number; hw: number };
-    const lines = new Map<string, P[]>();
-    for (const [run, list] of byRun) {
-      const pts: P[] = [];
-      for (const c of list) {
-        const hw = (c.lanes * c.laneWidth + c.shoulderL + c.shoulderR) / 2;
-        for (let i = pts.length === 0 ? 0 : STATION_STRIDE; i < c.st.length; i += STATION_STRIDE)
-          pts.push({
-            x: c.st[i + 1] * kx,
-            y: c.st[i + 2] * ky,
-            s: c.st[i],
-            z: c.st[i + 3],
-            g: c.st[i + 6],
-            hw,
-          });
-      }
-      lines.set(run, pts);
-    }
-    const cubic = (p: P, q: P, s: number) => {
-      const h = q.s - p.s;
-      const t = (s - p.s) / h;
-      return (
-        (2 * t ** 3 - 3 * t ** 2 + 1) * p.z +
-        (t ** 3 - 2 * t ** 2 + t) * h * p.g +
-        (-2 * t ** 3 + 3 * t ** 2) * q.z +
-        (t ** 3 - t ** 2) * h * q.g
-      );
-    };
-    const out = new Map<string, { stations: number; maxDz: number; at: Array<[string, number]> }>();
-    for (const [a, pa] of lines) {
-      for (const [b, pb] of lines) {
-        if (a === b) continue;
-        for (const p of pa) {
-          let best = { d: Infinity, z: 0, hw: 0 };
-          for (let i = 0; i + 1 < pb.length; i++) {
-            const q0 = pb[i];
-            const q1 = pb[i + 1];
-            const ex = q1.x - q0.x;
-            const ey = q1.y - q0.y;
-            const t = Math.min(1, Math.max(0, ((p.x - q0.x) * ex + (p.y - q0.y) * ey) / (ex * ex + ey * ey)));
-            const d = Math.hypot(p.x - q0.x - ex * t, p.y - q0.y - ey * t);
-            if (d < best.d) best = { d, z: cubic(q0, q1, q0.s + (q1.s - q0.s) * t), hw: q0.hw };
-          }
-          const isOver = best.d < p.hw + best.hw;
-          if (!isOver) continue;
-          const dz = Math.abs(p.z - best.z);
-          const isBad = dz > 0.05 && dz < 4.5 + 2.2;
-          if (!isBad) continue;
-          const key = [a, b].sort().join("|");
-          const o = out.get(key) ?? { stations: 0, maxDz: 0, at: [] };
-          o.stations++;
-          o.maxDz = Math.max(o.maxDz, dz);
-          o.at.push([a, p.s]);
-          out.set(key, o);
-        }
-      }
-    }
-    return out;
-  }
-  const brute = overlapsByBruteForce();
 
   it("deck_overlap: carriageways over one another are one surface or a level apart; the rest are the reported pairs, within their allowlist limits", () => {
     const reported = new Map(
@@ -277,9 +326,43 @@ describe("生成済みの高速道路タイル", () => {
     for (const w of OPERATOR_WORDS) expect(text.toLowerCase()).not.toContain(w.toLowerCase());
   });
 
-  it("stays small: the whole data set is recorded in meta.json and under 1 MB for the test section", () => {
+  it("stays small: the whole data set is recorded in meta.json, and under 1 MB for the test section", () => {
     const total = tileFiles.reduce((n, f) => n + readFileSync(join(DIR, f)).length, 0);
     expect(meta.bytes).toBe(total);
-    expect(total).toBeLessThan(1_000_000);
+    if (isTestSection) expect(total).toBeLessThan(1_000_000);
+  });
+});
+
+// The conditions for shipping the whole ward area (P2.5 review), each recomputed from the files.
+describe.runIf(isWholeArea)("全域の出荷条件（--range all の出力）", () => {
+  const closed = meta.closed ?? [];
+
+  it("no main line is left out, and every run end hangs from a run that is in the files", () => {
+    expect(closed.filter((c) => c.cls === "expressway")).toEqual([]);
+    const missing: string[] = [];
+    for (const r of meta.runs)
+      for (const e of [r.start, r.end])
+        if (e.parent !== undefined && !byRun.has(e.parent)) missing.push(`${r.id} → ${e.parent}`);
+    expect(missing).toEqual([]);
+  });
+
+  it("ramps left out are at most 5 %, each closed with its reason and not in the tiles", () => {
+    const rampsIn = meta.runs.filter((r) => r.cls === "ramp").length;
+    const rampsOut = closed.filter((c) => c.cls === "ramp");
+    expect(rampsOut.length / (rampsIn + rampsOut.length)).toBeLessThanOrEqual(0.05);
+    for (const c of rampsOut) {
+      expect(byRun.has(c.run)).toBe(false);
+      expect(meta.diagnostics.some((d) => d.run === c.run && d.kind === c.reason)).toBe(true);
+    }
+  });
+
+  it("no overlap of carriageways outside the allowlist (recomputed by the grid above)", () => {
+    const unallowed = [...brute.keys()].filter((key) => {
+      const [a, b] = key.split("|");
+      return !ALLOWLIST.some(
+        (e) => e.kind === "deck_overlap" && [e.run, e.with].sort().join("|") === key && a !== b,
+      );
+    });
+    expect(unallowed).toEqual([]);
   });
 });

@@ -6,10 +6,16 @@ import {
   lowerDesignSpeed,
   MAX_GRADE,
   TRANSITION_LENGTH,
+  VERTICAL_CURVE_LENGTH,
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
 import {
+  DEM_SINK_FLOOR,
+  DEM_SINK_GIVE,
   GIRDER_DEPTH,
+  GROUND_END_BAND,
+  OPEN_FLOOR_GIVE,
+  OPEN_GROUND_FLOOR,
   GROUND_ROAD_HALF_WIDTH,
   MAX_LATERAL_SHIFT,
   PIER_SPACING,
@@ -18,7 +24,14 @@ import {
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { isAllowed } from "./allowlist";
-import { type XwChunk, type XwDeckStretch, type XwDiagnostic, type XwEnd, type XwRunSummary } from "./format";
+import {
+  type XwChunk,
+  type XwClosed,
+  type XwDeckStretch,
+  type XwDiagnostic,
+  type XwEnd,
+  type XwRunSummary,
+} from "./format";
 import { planeAt, type Plane, roundTo } from "./geo";
 import { alignPlan, type PlanAlignment } from "./horizontal";
 import { buildChains, type Chain, type Network, type Run, splitRuns } from "./network";
@@ -31,7 +44,9 @@ import {
   evalProfile,
   fallbackPlans,
   gradeLimitFor,
+  type Ref,
   type RunInput,
+  type RunProblem,
   solveJoint,
   type VerticalAttempt,
   type VerticalProfile,
@@ -53,10 +68,15 @@ export type GroundSampler = (lon: number, lat: number) => number;
 /** A road or railway at ground level that a viaduct must clear. */
 export type CrossObject = { kind: "road" | "rail"; id: number; pts: Array<[number, number]> };
 
+/** The diagnostics that leave a run out of the data (the first one found is its closure reason). */
+const CLOSING_KINDS = ["vertical_unsolved", "parent_unsolved"];
+
 const GRID_M = 5;
 const MAX_CHUNK_M = 300;
 const GIRDER = GIRDER_DEPTH.value;
 const ROAD_CLEAR = CLEARANCE_HEIGHT.value + GIRDER;
+/** The deck over open ground: the assumed floor under the girder plus the girder. */
+const OPEN_OVER_GROUND = OPEN_GROUND_FLOOR.value + GIRDER;
 /** Two runs sharing a node closer than this to where they cross are splitting, not crossing. */
 const JUNCTION_CROSS_M = 60;
 /** A faster stretch shorter than this between slower ones keeps the slower speed (no flicker). */
@@ -727,6 +747,35 @@ function junctionParents(plan: Plan, id: string): string[] {
   return [...deps].sort();
 }
 
+/** Run distance of a chain node on a run. */
+function nodeS(rp: RunPlan, nodeIndex: number): number {
+  return rp.align.s[rp.align.vertexSample[nodeIndex]] - rp.align.s[rp.i0];
+}
+
+/**
+ * Whether a run's end is at or near the ground: a ground end or portal, or a junction (or seam) on
+ * a parent within the climb (approachLength) from one of the parent's own low ends. A branch that
+ * leaves its parent while the parent is still climbing from the ground starts low too, so it gets
+ * the same climb before the standard floor applies (checks.climbingEnds recomputes this from the
+ * run summaries for T4). Why not only ground ends (P2.5): 9 ramps leaving a parent at 0–3.7 m over
+ * the ground had to rise to 6.7 m at once and fell through to "crossings only".
+ */
+function isLowEnd(plan: Plan, rp: RunPlan, atStart: boolean, seen = new Set<string>()): boolean {
+  const e = endPlan(plan, rp, atStart);
+  if (e.kind === "ground") return true;
+  const isJoined = e.kind === "junction" || e.kind === "seam";
+  if (!isJoined) return false;
+  const key = `${rp.run.id}:${atStart ? 0 : 1}`;
+  const isLoop = seen.has(key);
+  if (isLoop) return false;
+  seen.add(key);
+  const pp = plan.runs.get(e.parent)!;
+  const ps = nodeS(pp, e.parentNodeIndex);
+  const climb = approachLength(pp.planV);
+  const isNearStart = ps < climb && isLowEnd(plan, pp, true, seen);
+  return isNearStart || (pp.length - ps < climb && isLowEnd(plan, pp, false, seen));
+}
+
 export type Solved = {
   rp: RunPlan;
   profile: VerticalProfile;
@@ -755,6 +804,8 @@ export type SolveStats = {
 export type CompileResult = {
   chunks: XwChunk[];
   runs: XwRunSummary[];
+  /** Runs of the range left out (unsolved, or hanging from one): closed to traffic, with why. */
+  closed: XwClosed[];
   diagnostics: XwDiagnostic[];
   stats: SolveStats;
 };
@@ -829,6 +880,14 @@ function climbLimit(V: DesignSpeed, g0: number): (d: number) => number {
   return (d) => (d <= d1 ? g0 * d + (d * d) / (2 * R) : g0 * d1 + (d1 * d1) / (2 * R) + g * (d - d1));
 }
 
+/**
+ * A run of at most two knot intervals (shorter than three 第22条 curve lengths at its plan speed):
+ * its ends meet the ground in a band, and between two parents it is a cubic connector.
+ */
+function isShortRun(rp: RunPlan): boolean {
+  return rp.length < 3 * VERTICAL_CURVE_LENGTH.value[rp.planV];
+}
+
 /** The climb of climbLimit must clear a road by this much more to count as reachable. */
 const REACH_MARGIN_M = 0.1;
 
@@ -846,10 +905,16 @@ type RunSetup = {
   target: Float64Array;
   lower: Float64Array;
   lowerAtCrossings: Float64Array;
+  /** The statute's part of the floor (crossed roads and railways, 第12条), −∞ elsewhere. */
+  lowerLaw: Float64Array;
+  /** The assumed standard floor over open ground (outside the climbs), −∞ elsewhere. */
+  lowerOpen: Float64Array;
   upper: Float64Array;
   /** Fixed start / end (ground and portal ends); junction ends are couplings. */
   fixed: [RunInput["start"], RunInput["end"]];
   ends: [EndPlan, EndPlan];
+  /** The DEM ground at each ground or portal end (null for the others). */
+  groundZ: [number | null, number | null];
   cross: number[];
   blocked: number[];
 };
@@ -883,19 +948,26 @@ function setupRun(
   });
   const ends: [EndPlan, EndPlan] = [endPlan(plan, rp, true), endPlan(plan, rp, false)];
   const fixed: [RunInput["start"], RunInput["end"]] = [{}, {}];
-  const groundZ: Array<number | null> = [null, null];
+  const groundZ: [number | null, number | null] = [null, null];
+  const isShort = isShortRun(rp);
   ends.forEach((e, side) => {
     if (e.kind !== "ground") return;
     const V = zoneSpeedAt(rp.zones, side === 0 ? 0 : S);
     const t = terrainAt(rp, ground, rp.align.vertexSample[e.nodeIndex], V);
     groundZ[side] = t.z;
-    // A portal's grade is the road's own as it goes on down into the tunnel or cut.
-    fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
+    // A short run meets the ground within a band, at whatever grade (within 第20条) gets it over
+    // what it crosses: with its end grades fixed too, two knot intervals or fewer leave no freedom
+    // (P2.5: 43 short runs "end elevation off"). A portal's grade is the road's own as it goes on
+    // down into the tunnel or cut. Why not the band everywhere: a long run's ground end continues as
+    // the road at grade (P9), whose grade it must meet.
+    if (isShort) fixed[side] = { z: t.z, band: GROUND_END_BAND.value };
+    else fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
   });
   // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
   // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
   // the end itself); a hard floor at the DEM made the ends infeasible by centimetres.
-  const lowerAtCrossings = Float64Array.from(groundAt, (g) => g - 0.25);
+  const lowerAtCrossings = Float64Array.from(groundAt, (g) => g - DEM_SINK_FLOOR.value);
+  const lowerLaw = new Float64Array(n).fill(-Infinity);
   const cross: number[] = [];
   const blocked: number[] = [];
   const mine = runPoly(rp);
@@ -930,7 +1002,9 @@ function setupRun(
       const win = Math.min(40, (rp.halfWidth + GROUND_ROAD_HALF_WIDTH.value) / Math.max(sin, 0.25));
       for (let k = 0; k < n; k++) {
         const isInWindow = Math.abs(stations[k] - sc) <= win;
-        if (isInWindow) lowerAtCrossings[k] = Math.max(lowerAtCrossings[k], top + clearance);
+        if (!isInWindow) continue;
+        lowerAtCrossings[k] = Math.max(lowerAtCrossings[k], top + clearance);
+        lowerLaw[k] = Math.max(lowerLaw[k], top + clearance);
       }
       cross.push(sc, top, clearance);
     }
@@ -939,12 +1013,14 @@ function setupRun(
   // the check (checks.checkClearance) expects it.
   const approach = approachLength(rp.planV) - GRID_M;
   const lower = Float64Array.from(lowerAtCrossings);
-  const isGroundStart = ends[0].kind === "ground";
-  const isGroundEnd = ends[1].kind === "ground";
+  const lowerOpen = new Float64Array(n).fill(-Infinity);
+  const isLowStart = isLowEnd(plan, rp, true);
+  const isLowFinish = isLowEnd(plan, rp, false);
   for (let k = 0; k < n; k++) {
-    const nearGround =
-      (isGroundStart && stations[k] < approach) || (isGroundEnd && S - stations[k] < approach);
-    if (!nearGround) lower[k] = Math.max(lower[k], groundPeak[k] + ROAD_CLEAR);
+    const nearGround = (isLowStart && stations[k] < approach) || (isLowFinish && S - stations[k] < approach);
+    if (nearGround) continue;
+    lowerOpen[k] = groundPeak[k] + OPEN_OVER_GROUND;
+    lower[k] = Math.max(lower[k], lowerOpen[k]);
   }
   // Target: the standard underclearance over the ground (averaged over ±60 m). Only crossings and
   // decks over one another raise it (設計書 4.3 の 1); OSM layer orders them but is no height.
@@ -963,9 +1039,12 @@ function setupRun(
     target,
     lower,
     lowerAtCrossings,
+    lowerLaw,
+    lowerOpen,
     upper: stations.map(() => Infinity),
     fixed,
     ends,
+    groundZ,
     cross,
     blocked,
   };
@@ -1004,7 +1083,14 @@ function couplingsOf(plan: Plan, members: Set<string>): Coupling[] {
     const b = { run: p.b, s: p.sb };
     const firm = false;
     if (p.relation === "same")
-      out.push({ kind: "within", a, b, lo: -SAME_SURFACE_M, hi: SAME_SURFACE_M, firm });
+      out.push({
+        kind: "within",
+        a,
+        b,
+        lo: -SAME_SURFACE_M,
+        hi: SAME_SURFACE_M,
+        firm,
+      });
     else if (p.relation === "above")
       out.push({ kind: "within", a, b, lo: LEVEL_APART_M, hi: Infinity, firm });
     else out.push({ kind: "within", a, b, lo: -Infinity, hi: -LEVEL_APART_M, firm });
@@ -1015,27 +1101,100 @@ function couplingsOf(plan: Plan, members: Set<string>): Coupling[] {
 type ComponentResult = {
   solved: Map<string, Solved>;
   unsolved: Map<string, VerticalAttempt[]>;
+  /** Solved runs' worst miss of each assumed floor, keyed "<run>|sunk" / "<run>|floor". */
+  sunk: Map<string, RunProblem>;
+  /** The fallback level each run ended at (to start a later pass there). */
+  levels: Map<string, number>;
   stats: Omit<SolveStats, "components">;
 };
 
 type LevelSolve = {
   profiles: Map<string, VerticalProfile>;
-  /** Exact constraints a run fails (a run with any is not solved at this level). */
-  problems: Map<string, string[]>;
+  /** Exact constraints a run fails (`isFailing` decides which of them unsolve it). */
+  problems: Map<string, RunProblem[]>;
   /** Metres by which a run misses the decks it shares or stands over (soft, summed). */
   soft: Map<string, number>;
+  /** Where on the run those misses are (run distances). */
+  softAt: Map<string, number[]>;
   isConverged: boolean;
 };
+
+/** Half the stretch around a failure that a lower design speed covers (local fallback, `capZones`). */
+const LOWER_WINDOW_M = 150;
+
+/**
+ * Whether a run's problems unsolve it: anything of the statute, any end or junction it cannot meet,
+ * an assumed floor missed at all, or, at the last fallback step (`given`, after the lowest design
+ * speed), missed by more than its give (assumptions.DEM_SINK_GIVE, OPEN_FLOOR_GIVE). Why the give
+ * only there (and not on every run, as first written in P2.6): always on, the QP traded the assumed
+ * floors on runs that met them, and the test section moved by up to 1.9 m.
+ */
+export function isFailing(problems: RunProblem[], given: boolean): boolean {
+  return problems.some((p) => {
+    if (!given) return true;
+    if (p.what === "sunk") return p.by > DEM_SINK_GIVE.value;
+    if (p.what === "floor") return p.by > OPEN_FLOOR_GIVE.value;
+    return true;
+  });
+}
+
+/** Short ramps between two parents of the component, as cubic connectors (none in a cycle). */
+function connectorsOf(plan: Plan, ids: string[]): Map<string, { start: Ref; end: Ref }> {
+  const members = new Set(ids);
+  const out = new Map<string, { start: Ref; end: Ref }>();
+  for (const id of ids) {
+    const rp = plan.runs.get(id)!;
+    const isCandidate = rp.cls === "ramp" && isShortRun(rp);
+    if (!isCandidate) continue;
+    const refs = [true, false].map((atStart): Ref | null => {
+      const e = endPlan(plan, rp, atStart);
+      const isJoined = (e.kind === "junction" || e.kind === "seam") && members.has(e.parent);
+      if (!isJoined) return null;
+      return { run: e.parent, s: nodeS(plan.runs.get(e.parent)!, e.parentNodeIndex) };
+    });
+    const hasBoth = refs[0] !== null && refs[1] !== null && refs.every((r) => r!.run !== id);
+    if (hasBoth) out.set(id, { start: refs[0]!, end: refs[1]! });
+  }
+  // A connector hanging (through other connectors) from itself has no profile to follow.
+  const reaches = (from: string, to: string, seen: Set<string>): boolean => {
+    const f = out.get(from);
+    if (!f) return false;
+    for (const p of [f.start.run, f.end.run]) {
+      if (p === to) return true;
+      if (seen.has(p)) continue;
+      seen.add(p);
+      if (reaches(p, to, seen)) return true;
+    }
+    return false;
+  };
+  for (const id of [...out.keys()].sort()) if (reaches(id, id, new Set())) out.delete(id);
+  return out;
+}
+
+/** Problems of a failing run in lexicographic order of what matters: main lines, ramps, soft misses. */
+export type Score = [number, number, number];
+
+export function isBetter(a: Score, b: Score): boolean {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] < b[i] - 1e-9) return true;
+    if (a[i] > b[i] + 1e-9) return false;
+  }
+  return false;
+}
 
 /**
  * One component through the fallbacks of 設計書 4.3 の 3: solve all its runs jointly, find the
  * runs whose exact constraints still fail (their own bounds and ends, junctions, the crossings'
  * clearance), move only those one step down their fallback list, and solve again, until no failing
- * run has a step left. A ramp that misses a deck it shares (a nose it must leave in time to reach
- * the ground) also steps down, short of "crossings only" (a lower speed allows a shorter vertical
- * curve), and goes back to the step where it missed least if stepping down did not help. Main lines
- * keep their speed for that: their leftovers are stacked carriageways changing over where OSM puts
- * them too close, which no speed solves.
+ * run has a step left. A lower design speed covers only LOWER_WINDOW_M either side of where the run
+ * failed (`capZones`). A run that has no step left for a junction end or a crossing it cannot meet
+ * moves its partner there one step instead (short of "crossings only", around the coupling), since
+ * it is the pair that cannot be met. A ramp that misses a deck it shares (a nose it must leave in
+ * time to reach the ground) also steps down, short of "crossings only", and goes back to the step
+ * where it missed least if stepping down did not help. Main lines keep their speed for that: their
+ * leftovers are stacked carriageways changing over where OSM puts them too close, which no speed
+ * solves. The best state seen (fewest failing main lines, then ramps, then metres of missed decks)
+ * is the one kept: a later step can make things worse (W1 of the P2.5 review).
  */
 function solveComponent(
   plan: Plan,
@@ -1043,16 +1202,31 @@ function solveComponent(
   ground: GroundSampler,
   objects: ObjectPoly[],
   diagnostics: XwDiagnostic[],
+  pins: Map<string, VerticalProfile> = new Map(),
+  start: Map<string, number> = new Map(),
 ): ComponentResult {
   const members = new Set(ids);
   const setups = new Map(
     ids.map((id) => [id, setupRun(plan, plan.runs.get(id)!, ground, objects, diagnostics)]),
   );
   const couplings = couplingsOf(plan, members);
+  const connectors = connectorsOf(plan, ids);
+  // Without "crossings only": the standard floor over open ground is judged at every step (T4
+  // checks it), so dropping it from the QP can only let the run and its neighbours sink further (in
+  // P2.5 it shipped 17 runs below that floor). Why keep it in fallbackPlans: the single-run solve
+  // (solveVertical, T9) still reports the whole ladder of 4.3 の 3.
   const ladders = new Map(
-    ids.map((id) => [id, fallbackPlans(plan.runs.get(id)!.planV, plan.runs.get(id)!.minV)]),
+    ids.map((id) => {
+      const rp = plan.runs.get(id)!;
+      const plans = fallbackPlans(rp.planV, rp.minV).filter((p) => !p.crossingsOnly);
+      const lowest = plans[plans.length - 1];
+      return [id, [...plans, { ...lowest, steps: [...lowest.steps, "assumedGive" as const] }]];
+    }),
   );
-  const level = new Map(ids.map((id) => [id, 0]));
+  const level = new Map(ids.map((id) => [id, Math.min(start.get(id) ?? 0, ladders.get(id)!.length - 1)]));
+  const isGiven = (id: string) => ladders.get(id)![level.get(id)!].steps.includes("assumedGive");
+  const fails = (id: string, problems: RunProblem[]) => isFailing(problems, isGiven(id));
+  const windows = new Map<string, Array<[number, number]>>(ids.map((id) => [id, []]));
   const attempts = new Map<string, VerticalAttempt[]>(ids.map((id) => [id, []]));
   /** Per ramp: the soft miss at each step it was solved with, and whether the step was clean. */
   const history = new Map<string, Array<{ soft: number; clean: boolean }>>(ids.map((id) => [id, []]));
@@ -1067,22 +1241,37 @@ function solveComponent(
   };
   const unconverged: string[] = [];
   const isRamp = (id: string) => plan.runs.get(id)!.cls === "ramp";
+  const junctionAt = (id: string, atStart: boolean) =>
+    couplings.find(
+      (c): c is Extract<Coupling, { kind: "junction" }> =>
+        c.kind === "junction" && c.child === id && c.atStart === atStart,
+    );
 
   const solveAt = (): LevelSolve => {
     const inputs: RunInput[] = ids.map((id) => {
       const st = setups.get(id)!;
       const step = ladders.get(id)![level.get(id)!];
+      const isLowered = step.steps.includes("lowerSpeed");
+      const around = windows.get(id)!;
+      const follow = connectors.get(id);
       return {
         id,
         length: st.rp.length,
-        zones: capZones(st.rp.zones, step.cap),
+        zones: isLowered
+          ? capZones(st.rp.zones, step.cap, around.length > 0 ? around : undefined)
+          : st.rp.zones,
         special: step.special,
         stations: st.stations,
         target: st.target,
         lower: step.crossingsOnly ? st.lowerAtCrossings : st.lower,
+        lowerLaw: st.lowerLaw,
+        lowerOpen: st.lowerOpen,
+        assumedGive: step.steps.includes("assumedGive"),
+        ...(pins.has(id) ? { pinned: pins.get(id)! } : {}),
         upper: st.upper,
         start: st.fixed[0],
         end: st.fixed[1],
+        ...(follow ? { follow } : {}),
       };
     });
     const started = performance.now();
@@ -1106,10 +1295,26 @@ function solveComponent(
       const isShort = gap < ROAD_CLEAR;
       if (!isShort) continue;
       const what = `clearance over ${c.lower} ${gap.toFixed(2)} m < ${ROAD_CLEAR} m at ${Math.round(c.sUpper)} m`;
-      problems.get(c.upper)!.push(what);
-      problems.get(c.lower)!.push(`under ${c.upper}: ${what}`);
+      const by = ROAD_CLEAR - gap;
+      problems.get(c.upper)!.push({
+        what: "crossing",
+        basis: "law",
+        s: c.sUpper,
+        by,
+        text: what,
+        partner: { run: c.lower, s: c.sLower },
+      });
+      problems.get(c.lower)!.push({
+        what: "crossing",
+        basis: "law",
+        s: c.sLower,
+        by,
+        text: `under ${c.upper}: ${what}`,
+        partner: { run: c.upper, s: c.sUpper },
+      });
     }
     const soft = new Map(ids.map((id) => [id, 0]));
+    const softAt = new Map<string, number[]>(ids.map((id) => [id, []]));
     for (const c of couplings) {
       if (c.kind !== "within" || c.firm) continue;
       const d = evalProfile(profiles.get(c.a.run)!, c.a.s).z - evalProfile(profiles.get(c.b.run)!, c.b.s).z;
@@ -1117,35 +1322,107 @@ function solveComponent(
       if (miss <= SOFT_SLACK_M) continue;
       soft.set(c.a.run, soft.get(c.a.run)! + miss);
       soft.set(c.b.run, soft.get(c.b.run)! + miss);
+      softAt.get(c.a.run)!.push(c.a.s);
+      softAt.get(c.b.run)!.push(c.b.s);
     }
     for (const id of ids) {
       const step = ladders.get(id)![level.get(id)!];
-      const worst = problems.get(id)!.join("; ");
+      const worst = problems
+        .get(id)!
+        .map((p) => p.text)
+        .join("; ");
       attempts
         .get(id)!
         .push({ V: step.cap, special: step.special, crossingsOnly: step.crossingsOnly, worst });
-      history.get(id)![level.get(id)!] = { soft: soft.get(id)!, clean: worst === "" };
+      history.get(id)![level.get(id)!] = { soft: soft.get(id)!, clean: !fails(id, problems.get(id)!) };
     }
-    return { profiles, problems, soft, isConverged };
+    return { profiles, problems, soft, softAt, isConverged };
+  };
+
+  const scoreOf = (r: LevelSolve): Score => {
+    if (!r.isConverged) return [Infinity, Infinity, Infinity];
+    let main = 0;
+    let ramp = 0;
+    let soft = 0;
+    for (const id of ids) {
+      const isUnsolved = fails(id, r.problems.get(id)!);
+      if (isUnsolved && isRamp(id)) ramp++;
+      else if (isUnsolved) main++;
+      soft += r.soft.get(id)!;
+    }
+    return [main, ramp, soft];
+  };
+  type State = {
+    result: LevelSolve;
+    score: Score;
+    level: Map<string, number>;
+    windows: Map<string, Array<[number, number]>>;
+  };
+  const snapshot = (r: LevelSolve): State => ({
+    result: r,
+    score: scoreOf(r),
+    level: new Map(level),
+    windows: new Map([...windows].map(([id, w]) => [id, [...w]])),
+  });
+
+  /** Moves a run one step down, widening its lowered stretch around `at` when the step lowers V. */
+  const stepDown = (id: string, at: number[]) => {
+    const ladder = ladders.get(id)!;
+    const next = level.get(id)! + 1;
+    const isLowering = ladder[next].steps.includes("lowerSpeed");
+    if (isLowering) {
+      const S = plan.runs.get(id)!.length;
+      for (const s of at)
+        windows.get(id)!.push([Math.max(0, s - LOWER_WINDOW_M), Math.min(S, s + LOWER_WINDOW_M)]);
+    }
+    level.set(id, next);
+  };
+  /** Where a failing run's partner is at the coupling it cannot meet (a junction end, a crossing). */
+  const partnersOf = (id: string, problems: RunProblem[]): Ref[] => {
+    const out: Ref[] = [];
+    for (const p of problems) {
+      if (p.partner) out.push(p.partner);
+      const isEnd = p.what === "end" || p.what === "start";
+      const j = isEnd ? junctionAt(id, p.what === "start") : undefined;
+      if (j) out.push(j.parent);
+    }
+    return out;
   };
 
   let result = solveAt();
+  let best = snapshot(result);
   for (;;) {
     // An unconverged solve is no verdict on any run: stepping runs down on it would lower speeds
     // for nothing. Stop and report (solver_not_converged); the exact checks still judge each run.
     if (!result.isConverged) break;
-    const canStep = (id: string) => {
-      const ladder = ladders.get(id)!;
-      const next = level.get(id)! + 1;
-      const isHard = result.problems.get(id)!.length > 0;
-      if (isHard) return next < ladder.length;
+    const advance = new Map<string, number[]>();
+    const add = (id: string, at: number[]) => advance.set(id, [...(advance.get(id) ?? []), ...at]);
+    const hasStep = (id: string) => !pins.has(id) && level.get(id)! + 1 < ladders.get(id)!.length;
+    // A soft miss or a partner's failure never takes a run to the give on the assumed floors.
+    const hasSoftStep = (id: string) =>
+      hasStep(id) && !ladders.get(id)![level.get(id)! + 1].steps.includes("assumedGive");
+    for (const id of ids) {
+      const problems = result.problems.get(id)!;
+      if (fails(id, problems)) {
+        if (hasStep(id)) {
+          add(
+            id,
+            problems.map((p) => p.s),
+          );
+          continue;
+        }
+        for (const p of partnersOf(id, problems))
+          if (members.has(p.run) && hasSoftStep(p.run)) add(p.run, [p.s]);
+        continue;
+      }
       const isSoft = result.soft.get(id)! > 0;
-      return isRamp(id) && isSoft && next < ladder.length && !ladder[next].crossingsOnly;
-    };
-    const advance = ids.filter(canStep);
-    if (advance.length === 0) break;
-    for (const id of advance) level.set(id, level.get(id)! + 1);
+      if (isRamp(id) && isSoft && hasSoftStep(id)) add(id, result.softAt.get(id)!);
+    }
+    if (advance.size === 0) break;
+    for (const [id, at] of advance) stepDown(id, at);
     result = solveAt();
+    const now = snapshot(result);
+    if (isBetter(now.score, best.score)) best = now;
   }
   // Ramps that stepped down for a shared deck and missed it no less: back to the cleanest step
   // that missed least (lowest first), then one more solve; a ramp the move breaks keeps its step.
@@ -1153,25 +1430,34 @@ function solveComponent(
   for (const id of ids) {
     if (!isRamp(id)) continue;
     const seen = history.get(id)!;
-    let best = level.get(id)!;
+    let bestStep = level.get(id)!;
     for (let k = 0; k < seen.length; k++) {
       const h = seen[k];
-      const isBetter = h !== undefined && h.clean && h.soft < seen[best].soft - 0.05;
-      const isTie = h !== undefined && h.clean && Math.abs(h.soft - seen[best].soft) <= 0.05 && k < best;
-      if (isBetter || isTie) best = k;
+      const isLess = h !== undefined && h.clean && h.soft < seen[bestStep].soft - 0.05;
+      const isTie =
+        h !== undefined && h.clean && Math.abs(h.soft - seen[bestStep].soft) <= 0.05 && k < bestStep;
+      if (isLess || isTie) bestStep = k;
     }
-    if (best === level.get(id)!) continue;
+    if (bestStep === level.get(id)!) continue;
     moved.set(id, level.get(id)!);
-    level.set(id, best);
+    level.set(id, bestStep);
   }
   if (moved.size > 0) {
     const tried = solveAt();
-    const broken = [...moved.keys()].filter((id) => tried.problems.get(id)!.length > 0);
+    const broken = [...moved.keys()].filter((id) => fails(id, tried.problems.get(id)!));
     const isUsable = tried.isConverged && broken.length === 0;
     if (!isUsable) for (const id of tried.isConverged ? broken : moved.keys()) level.set(id, moved.get(id)!);
     result = isUsable ? tried : solveAt();
+    const now = snapshot(result);
+    if (isBetter(now.score, best.score)) best = now;
   }
-  if (unconverged.length > 0) {
+  const isWorse = isBetter(best.score, scoreOf(result));
+  if (isWorse) {
+    result = best.result;
+    for (const [id, l] of best.level) level.set(id, l);
+    for (const [id, w] of best.windows) windows.set(id, w);
+  }
+  if (!result.isConverged) {
     diagnostics.push({
       run: ids[0],
       kind: "solver_not_converged",
@@ -1183,16 +1469,30 @@ function solveComponent(
   const banks = banksOf(plan, ids, profiles, setups);
   const solved = new Map<string, Solved>();
   const unsolved = new Map<string, VerticalAttempt[]>();
+  const sunk = new Map<string, RunProblem>();
   for (const id of ids) {
-    const isFailing = problems.get(id)!.length > 0;
-    if (isFailing) {
-      unsolved.set(id, attempts.get(id)!);
+    const mine = problems.get(id)!;
+    if (fails(id, mine)) {
+      // The attempts in order, then what the state kept fails on (it may be an earlier one, W1).
+      const step = ladders.get(id)![level.get(id)!];
+      const kept = {
+        V: step.cap,
+        special: step.special,
+        crossingsOnly: false,
+        worst: `kept: ${mine.map((p) => p.text).join("; ")}`,
+      };
+      unsolved.set(id, [...attempts.get(id)!, kept]);
       continue;
+    }
+    // The worst miss of each assumed floor a solved run keeps (W2), reported with how much.
+    for (const what of ["sunk", "floor"] as const) {
+      const worst = mine.filter((p) => p.what === what).sort((p, q) => q.by - p.by)[0];
+      if (worst) sunk.set(`${id}|${what}`, worst);
     }
     const st = setups.get(id)!;
     const profile = profiles.get(id)!;
     const ends = st.ends.map((e, side) =>
-      xwEnd(plan, e, side === 0 ? 0 : st.rp.length, profile, profiles, banks),
+      xwEnd(plan, e, side === 0 ? 0 : st.rp.length, profile, profiles, banks, st.groundZ[side]),
     );
     solved.set(id, {
       rp: st.rp,
@@ -1205,7 +1505,148 @@ function solveComponent(
       blocked: st.blocked,
     });
   }
-  return { solved, unsolved, stats };
+  return { solved, unsolved, sunk, levels: new Map(level), stats };
+}
+
+/**
+ * A component solved, then solved again without the failing ramps that hold a failing main line
+ * (coupled to it directly, or through other failing ramps), for as long as that leaves fewer runs
+ * unsolved: a ramp that cannot meet a crossing or a nose otherwise keeps the main line it couples
+ * to unsolved too, and every other branch of that main line with it (P2.5: 141 runs lost behind
+ * two main lines short by 16–29 cm). Each pass starts from the levels the last one ended at, and
+ * the best pass is kept. Once the main lines are solved, the shed ramps (and the runs hanging from
+ * them) are put back with every solved run held at its profile, and those that now solve are kept.
+ * The rest stay unsolved (closed, with their attempts); the runs hanging from them are reported
+ * as parent_unsolved. A failing ramp coupled to no failing main line is never shed.
+ */
+function solveShedding(
+  plan: Plan,
+  ids: string[],
+  ground: GroundSampler,
+  objects: ObjectPoly[],
+  diagnostics: XwDiagnostic[],
+): ComponentResult & { orphaned: Map<string, string> } {
+  const component = new Set(ids);
+  const stats = {
+    largestRuns: ids.length,
+    largestVariables: 0,
+    solves: 0,
+    iterations: 0,
+    qpMs: 0,
+    unconverged: 0,
+  };
+  const add = (res: ComponentResult) => {
+    stats.largestVariables = Math.max(stats.largestVariables, res.stats.largestVariables);
+    stats.solves += res.stats.solves;
+    stats.iterations += res.stats.iterations;
+    stats.qpMs += res.stats.qpMs;
+    stats.unconverged += res.stats.unconverged;
+  };
+  const isMain = (id: string) => plan.runs.get(id)!.cls !== "ramp";
+  const neighbours = couplingGraph(plan, component);
+  type Pass = {
+    res: ComponentResult;
+    local: XwDiagnostic[];
+    shed: Map<string, VerticalAttempt[]>;
+    orphaned: Map<string, string>;
+    lost: [number, number];
+  };
+  const run = (
+    members: string[],
+    shed: Map<string, VerticalAttempt[]>,
+    orphaned: Map<string, string>,
+    start: Map<string, number>,
+  ): Pass => {
+    const local: XwDiagnostic[] = [];
+    const res = solveComponent(plan, members, ground, objects, local, new Map(), start);
+    add(res);
+    const failing = [...res.unsolved.keys()];
+    const mains = failing.filter(isMain).length;
+    const lost = mains + [...shed.keys(), ...orphaned.keys()].filter(isMain).length;
+    return { res, local, shed, orphaned, lost: [lost, failing.length + shed.size + orphaned.size] };
+  };
+  const isFewer = (a: [number, number], b: [number, number]) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+  let pass = run([...ids], new Map(), new Map(), new Map());
+  let best = pass;
+  for (;;) {
+    const failing = new Set(pass.res.unsolved.keys());
+    // Failing ramps reachable from a failing main line through failing runs.
+    const holding = new Set<string>();
+    const queue = [...failing].filter(isMain);
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      for (const n of neighbours.get(id) ?? []) {
+        const isHeld = failing.has(n) && !isMain(n) && !holding.has(n);
+        if (!isHeld) continue;
+        holding.add(n);
+        queue.push(n);
+      }
+    }
+    if (holding.size === 0) break;
+    const shed = new Map(pass.shed);
+    for (const id of holding) shed.set(id, pass.res.unsolved.get(id)!);
+    const orphaned = new Map(pass.orphaned);
+    const removed = new Set([...shed.keys(), ...orphaned.keys()]);
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const id of ids) {
+        if (removed.has(id)) continue;
+        const lostParent = junctionParents(plan, id).find((p) => component.has(p) && removed.has(p));
+        if (lostParent === undefined) continue;
+        removed.add(id);
+        orphaned.set(id, lostParent);
+        changed = true;
+      }
+    }
+    const members = ids.filter((id) => !removed.has(id));
+    if (members.length === 0) break;
+    pass = run(members, shed, orphaned, pass.res.levels);
+    const isImproved = isFewer(pass.lost, best.lost);
+    if (!isImproved) break;
+    best = pass;
+  }
+  const { res, shed, orphaned } = best;
+  const isMainSolved = [...res.unsolved.keys()].every((id) => !isMain(id));
+  const hasShed = shed.size > 0 || orphaned.size > 0;
+  if (isMainSolved && hasShed) {
+    // Put the shed runs back around everything solved, held where it is.
+    const pins = new Map([...res.solved].map(([id, s]) => [id, s.profile]));
+    const local: XwDiagnostic[] = [];
+    const back = solveComponent(plan, [...ids], ground, objects, local, pins, res.levels);
+    add(back);
+    const returned = [...shed.keys(), ...orphaned.keys()].filter((id) => back.solved.has(id));
+    const isWorth = returned.length > 0 && [...res.solved.keys()].every((id) => back.solved.has(id));
+    if (isWorth) {
+      diagnostics.push(...local);
+      const keepShed = new Map([...shed].filter(([id]) => !back.solved.has(id)));
+      // Still hanging from a run that stays out: reported with that parent; the others fail on their own.
+      const keepOrphans = new Map(
+        [...orphaned].filter(([id, parent]) => !back.solved.has(id) && !back.solved.has(parent)),
+      );
+      const unsolved = new Map([...back.unsolved].filter(([id]) => !keepOrphans.has(id)));
+      for (const [id, a] of keepShed) unsolved.set(id, unsolved.get(id) ?? a);
+      return { ...back, unsolved, stats, orphaned: keepOrphans };
+    }
+  }
+  diagnostics.push(...best.local);
+  const unsolved = new Map(res.unsolved);
+  for (const [id, a] of shed) unsolved.set(id, a);
+  return { ...res, unsolved, stats, orphaned };
+}
+
+/** Runs coupled to each other in a component: junctions, crossings, decks over one another. */
+function couplingGraph(plan: Plan, members: Set<string>): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    const isInside = members.has(a) && members.has(b) && a !== b;
+    if (!isInside) return;
+    out.set(a, (out.get(a) ?? new Set()).add(b));
+    out.set(b, (out.get(b) ?? new Set()).add(a));
+  };
+  for (const id of members) for (const p of junctionParents(plan, id)) link(id, p);
+  for (const c of plan.crossings) link(c.upper, c.lower);
+  for (const p of plan.pairs) link(p.a, p.b);
+  return out;
 }
 
 function xwEnd(
@@ -1215,20 +1656,22 @@ function xwEnd(
   profile: VerticalProfile,
   profiles: Map<string, VerticalProfile>,
   banks: Map<string, Float64Array>,
+  groundZ: number | null,
 ): XwEnd {
   if (e.kind === "open") return { kind: "open" };
   const here = evalProfile(profile, s);
   if (e.kind === "ground") {
+    // `ground` is the DEM where the run meets it (T5 measures the deck against it), not the deck.
     const base = {
       z: roundTo(here.z, 3),
       grade: roundTo(here.grade, 5),
-      ground: roundTo(here.z, 3),
+      ground: roundTo(groundZ ?? here.z, 3),
       bank: 0,
     };
     return e.into ? { kind: "portal", into: e.into, ...base } : { kind: "ground", ...base };
   }
   const pp = plan.runs.get(e.parent)!;
-  const ps = pp.align.s[pp.align.vertexSample[e.parentNodeIndex]] - pp.align.s[pp.i0];
+  const ps = nodeS(pp, e.parentNodeIndex);
   const parent = profiles.get(e.parent)!;
   const v = evalProfile(parent, ps);
   const pBank = banks.get(e.parent)!;
@@ -1347,7 +1790,11 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   };
   for (const cid of neededComponents) {
     const ids = plan.components.get(cid)!;
-    const res = solveComponent(plan, ids, ground, objectPolys, diagnostics);
+    const res = solveShedding(plan, ids, ground, objectPolys, diagnostics);
+    for (const [id, parent] of res.orphaned) {
+      failed.add(id);
+      diagnostics.push({ run: id, kind: "parent_unsolved", detail: `parent ${parent}`, allowed: false });
+    }
     stats.components++;
     stats.largestRuns = Math.max(stats.largestRuns, res.stats.largestRuns);
     stats.largestVariables = Math.max(stats.largestVariables, res.stats.largestVariables);
@@ -1356,6 +1803,18 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
     stats.qpMs += res.stats.qpMs;
     stats.unconverged += res.stats.unconverged;
     for (const [id, s] of res.solved) solved.set(id, s);
+    for (const [key, p] of res.sunk) {
+      const run = key.split("|")[0];
+      const isSunk = p.what === "sunk";
+      diagnostics.push({
+        run,
+        kind: isSunk ? "deck_below_ground" : "below_open_ground_floor",
+        detail: isSunk
+          ? `${p.by.toFixed(2)} m under the assumed floor (DEM − ${DEM_SINK_FLOOR.value} m) at ${Math.round(p.s)} m, near a low end`
+          : `${p.by.toFixed(2)} m under the open-ground floor (${OPEN_OVER_GROUND} m) at ${Math.round(p.s)} m`,
+        allowed: false,
+      });
+    }
     for (const [id, attempts] of res.unsolved) {
       failed.add(id);
       diagnostics.push({
@@ -1386,13 +1845,10 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   }
   for (const s of solved.values()) {
     const isFallback = s.steps[0] !== "standard";
-    // Dropping the floor over open ground (crossings only) breaks T4's clearance away from the
-    // ground ends, so it is a kind of its own that the allowlist does not cover wholesale.
-    const isCrossingsOnly = s.steps.includes("crossingsOnly");
     if (isFallback)
       diagnostics.push({
         run: s.rp.run.id,
-        kind: isCrossingsOnly ? "vertical_crossings_only" : "vertical_fallback",
+        kind: "vertical_fallback",
         detail: s.steps.join(">") + ` V${Math.max(...s.profile.zones.map((z) => z.V))}`,
         allowed: false,
       });
@@ -1438,7 +1894,14 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   }
   // Whether a departure is accepted is the allowlist's alone (with its reason), never the compiler's.
   for (const d of diagnostics) d.allowed = isAllowed(d);
-  return { chunks, runs, diagnostics, stats };
+  const closed: XwClosed[] = [];
+  for (const id of [...plan.wanted].sort()) {
+    if (solved.has(id)) continue;
+    const why = diagnostics.find((d) => d.run === id && CLOSING_KINDS.includes(d.kind));
+    const rp = plan.runs.get(id)!;
+    closed.push({ run: id, chain: rp.chain.id, cls: rp.cls, reason: why?.kind ?? "vertical_unsolved" });
+  }
+  return { chunks, runs, closed, diagnostics, stats };
 }
 
 /**
@@ -1631,11 +2094,10 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
     // station interval then lies within one parabola, which the Hermite surface reproduces exactly.
     // Why not plan stations alone: across a knot the cubic overshoots the end grades (5.02 % on a
     // 5 % section) and the curvature (1.05e-3 against 1/1000).
-    const positions: number[] = [];
-    for (let sv = a; sv < b - 2;) {
+    // The start always, even of a chunk under 2 m (a short speed zone): one station is no chunk.
+    const positions: number[] = [a];
+    for (let sv = a + stationStep(poseAt(rp, a).kappa); sv < b - 2; sv += stationStep(poseAt(rp, sv).kappa))
       positions.push(sv);
-      sv += stationStep(poseAt(rp, sv).kappa);
-    }
     positions.push(b);
     for (const sv of stationPositions(positions, curvatureKnots(profile, a, b), a, b)) push(sv);
     const section = sec(sampleAt(rp, (a + b) / 2));
@@ -1673,6 +2135,7 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       basis: section.basis,
       V,
       vh: roundTo(profile.h, 3),
+      ...(profile.cubic ? { vform: "cubic" as const } : {}),
       gmax: gradeLimitFor(V, profile.special),
       g0: roundTo(evalProfile(profile, a).grade, 6),
       g1: roundTo(evalProfile(profile, b).grade, 6),

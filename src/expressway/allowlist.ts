@@ -1,3 +1,4 @@
+import { DEM_SINK_GIVE, OPEN_FLOOR_GIVE, OPEN_GROUND_FLOOR } from "./assumptions";
 import type { XwDiagnostic } from "./format";
 
 /**
@@ -14,6 +15,10 @@ export type AllowEntry = {
   /** For a deck_overlap: the most stations and the largest |Δz| (m) accepted; more fails T10. */
   maxStations?: number;
   maxDzM?: number;
+  /** For a ramp_radius: the tightest radius (m) accepted on that ramp (T6 checks the plan against it). */
+  minRadiusM?: number;
+  /** For a miss of an assumed floor (detail "<m> m under …"): the most accepted. */
+  maxShortM?: number;
   reason: string;
 };
 
@@ -35,20 +40,33 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
   },
   {
     run: "*",
+    kind: "below_open_ground_floor",
+    maxShortM: OPEN_FLOOR_GIVE.value,
+    reason: `最も低い設計速度でも解けない run だけ（最終段）。${OPEN_GROUND_FLOOR.reason}。${OPEN_FLOOR_GIVE.reason}。OSM の道路は交差として 4.5 m を満たす`,
+  },
+  {
+    run: "*",
+    kind: "deck_below_ground",
+    maxShortM: DEM_SINK_GIVE.value,
+    reason: `最も低い設計速度でも解けない run の、低い端の近くだけ（最終段）。${DEM_SINK_GIVE.reason}`,
+  },
+  {
+    run: "*",
     kind: "crossing_over_or_at_grade",
     reason:
       "OSM に高さの無い「地上」の道路が地表端の近くにあり、標準勾配では越えられない。掘割の上を渡る道か地下道とみなし、タイルの blocked に記録した（P3 で通行止め・迂回を決める）",
   },
-  { run: "203059412", kind: "ramp_radius", reason: `R 11.7 m。${RAMP_RADIUS_REASON}` },
-  { run: "203059413", kind: "ramp_radius", reason: `R 10.7 m。${RAMP_RADIUS_REASON}` },
+  { run: "203059412", kind: "ramp_radius", minRadiusM: 11.7, reason: `R 11.7 m。${RAMP_RADIUS_REASON}` },
+  { run: "203059413", kind: "ramp_radius", minRadiusM: 10.7, reason: `R 10.7 m。${RAMP_RADIUS_REASON}` },
   {
     run: "203873831",
     kind: "ramp_radius",
+    minRadiusM: 13.4,
     reason: `R 13.4 m（試験区間の C1 と同じ成分で解く連結路）。${RAMP_RADIUS_REASON}`,
   },
-  { run: "24039815", kind: "ramp_radius", reason: `R 14.5 m。${RAMP_RADIUS_REASON}` },
-  { run: "5213291", kind: "ramp_radius", reason: `R 13.5 m。${RAMP_RADIUS_REASON}` },
-  { run: "761796514", kind: "ramp_radius", reason: `R 11.6 m。${RAMP_RADIUS_REASON}` },
+  { run: "24039815", kind: "ramp_radius", minRadiusM: 14.5, reason: `R 14.5 m。${RAMP_RADIUS_REASON}` },
+  { run: "5213291", kind: "ramp_radius", minRadiusM: 13.5, reason: `R 13.5 m。${RAMP_RADIUS_REASON}` },
+  { run: "761796514", kind: "ramp_radius", minRadiusM: 11.6, reason: `R 11.6 m。${RAMP_RADIUS_REASON}` },
   {
     run: "24402611",
     kind: "deck_overlap",
@@ -94,6 +112,12 @@ export function isAllowed(d: Pick<XwDiagnostic, "run" | "kind"> & { detail?: str
     const isRun = a.run === "*" || a.run === d.run;
     const isPair = a.with === undefined || (d.detail ?? "").startsWith(`with ${a.with}:`);
     if (!isRun || a.kind !== d.kind || !isPair) return false;
+    const radius = /R=([\d.]+) m/.exec(d.detail ?? "");
+    const isRadiusLimited = a.minRadiusM !== undefined;
+    if (isRadiusLimited) return radius !== null && Number(radius[1]) >= a.minRadiusM!;
+    const short = /^([\d.]+) m under/.exec(d.detail ?? "");
+    const isShortLimited = a.maxShortM !== undefined;
+    if (isShortLimited) return short !== null && Number(short[1]) <= a.maxShortM!;
     const hasLimit = a.maxStations !== undefined || a.maxDzM !== undefined;
     if (!hasLimit) return true;
     const size = overlapSize(d.detail ?? "");
