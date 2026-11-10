@@ -335,13 +335,28 @@ function drawNode(ctx: Ctx, node: BoxNode, W: number, H: number, k: number): voi
   }
 }
 
-/** Draw a laid-out board on a canvas `px` wide (the height follows the board's proportions). */
+/**
+ * The one canvas every board is drawn on, with a CPU-backed context (willReadFrequently): the
+ * commands rasterise as they are drawn, and createImageBitmap copies memory instead of reading the
+ * GPU canvas back (knowledge/sign-system.md「BoardFacePool」 has the measurement).
+ * Why not a fresh canvas per board (G5): a canvas and its context per board, and a GPU read back in
+ * every createImageBitmap.
+ */
+let boardCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Draw a laid-out board on a canvas `px` wide (the height follows the board's proportions). The
+ * canvas is shared: the next call redraws it, so take its pixels (createImageBitmap, getImageData,
+ * toDataURL) before drawing another board.
+ */
 export function drawBoard(layout: BoardLayout, px: number): HTMLCanvasElement {
   const k = px / layout.width;
-  const canvas = document.createElement("canvas");
+  boardCanvas ??= document.createElement("canvas");
+  const canvas = boardCanvas;
+  // Setting the size clears the pixels and resets the context's state, even when it is the same.
   canvas.width = px;
   canvas.height = Math.round(layout.height * k);
-  const ctx = canvas.getContext("2d") as Ctx;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }) as Ctx;
   const W = layout.width * k;
   const H = layout.height * k;
   for (const node of layout.nodes) drawNode(ctx, node, W, H, k);

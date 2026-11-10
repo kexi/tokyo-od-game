@@ -246,9 +246,10 @@ export class FaceLayerPool {
 
 /**
  * A drawn face's bitmap: the canvas is drawn now and createImageBitmap called on it now, both on
- * the main thread inside FaceLayerPool.start. The draw only records the canvas commands;
+ * the main thread inside FaceLayerPool.start. The draw mostly records the canvas commands;
  * createImageBitmap's synchronous part rasterises and copies the canvas, and is most of the cost
- * (knowledge/sign-system.md「BoardFacePool」: 12.5–48.6 ms slices against 0.4 ms of recording).
+ * (knowledge/sign-system.md「BoardFacePool」: a step of 6–7 ms on a GPU canvas, 4.6–5.9 ms on
+ * the CPU canvas guideArt.ts draws on now, against ≈0.4 ms in the draw).
  * Only the resize to the layer may finish later. A draw that throws is a failed face (backed off
  * like a failed fetch).
  * Why not draw in a microtask (before G5): the draw then ran outside any budget, after the frame's

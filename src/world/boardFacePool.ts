@@ -24,13 +24,14 @@ import { boardPriority } from "./boardPriority";
  *   `FaceLayerPool.start(1)`: drawBoard records the canvas commands (≈0.4 ms a board), then
  *   createImageBitmap's synchronous part rasterises and copies the canvas, and that is most of a
  *   step. The 4 ms cut is between boards, so one board's step is not cut: G5 measured the longest
- *   slice at 12.5–48.6 ms (knowledge/sign-system.md「BoardFacePool」, the target of 4 ms is not met
- *   and is tracked there). `stats.stepMs` times every step.
+ *   slice at 12.5–58.9 ms; with the reused CPU canvas (guideArt.ts drawBoard) 5.8–9.4 ms, steady
+ *   steps 4.6–5.9 ms. The 4 ms target is not met and is tracked in knowledge/sign-system.md
+ *   「BoardFacePool」. `stats.stepMs` times every step.
  *
  * Why not a pool per kind of board: the layers are the memory, and one budget can give them to
  * whichever boards are in front of the driver. Why not draw on a worker (OffscreenCanvas) yet: the
- * fonts are the document's FontFaces, which a worker would have to load again, and the cheaper
- * remedy (a CPU canvas, reused) is tried first; the worker is the next step if that is not enough.
+ * fonts are the document's FontFaces, which a worker would have to load again; the cheaper remedy
+ * (the CPU canvas) came first, and the worker is the tracked next step.
  */
 
 /** m: boards this close get their drawn face (beyond, a 30 cm 漢字 is under 3 px). */
