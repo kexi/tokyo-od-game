@@ -169,7 +169,10 @@ describe("the footprints the buildings leave out and wall off (hiddenFootprints 
     // Stated over the real landmarks.json so a new entry cannot slip past the contract; the fixtures
     // above pin each shape (tower, Diet, east hotel, bridge) on its own.
     const hidesPlateau = (e: (typeof entries)[number]) => e.plateau?.some((p) => p.hide) ?? false;
-    const cut = entries.flatMap((e) => [...(hidesPlateau(e) ? [e.footprint] : []), ...(e.extraFootprints ?? [])]);
+    const cut = entries.flatMap((e) => [
+      ...(hidesPlateau(e) ? [e.footprint] : []),
+      ...(e.extraFootprints ?? []),
+    ]);
     const walled = entries.flatMap((e) =>
       (e.solid ?? hidesPlateau(e)) ? [e.footprint, ...(e.extraFootprints ?? [])] : [],
     );
