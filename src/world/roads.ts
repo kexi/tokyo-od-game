@@ -426,6 +426,11 @@ export class RoadGraph {
    * Road surface height (local y) `s` metres along a segment: the deck's own heights where it has
    * them (Segment.elev, linear between points), otherwise the terrain under the centreline, or
    * null where the terrain has not loaded.
+   *
+   * On an expressway deck this is the collider's face within 1 cm (T11), except on a ramp cut at
+   * the main line's edge (expresswayMerge.ts, P3.5): while the ramp's centre lies on the main line's
+   * face or within MERGE_RAMP (1 m) of the seam, a car there rides the main line's face, which can
+   * differ from the ramp's own height by up to MERGE_MAX_DZ (0.15 m; the compiler aims at ≤ 5 cm).
    */
   surfaceY(seg: Segment, s: number): number | null {
     const elev = seg.elev;

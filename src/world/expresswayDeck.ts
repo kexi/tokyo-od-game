@@ -48,6 +48,8 @@ import {
   MERGE_SKIRT,
   MERGE_TUCK,
   openSide,
+  type MergeSkip,
+  ringBetween,
   ringPoint,
 } from "./expresswayMerge";
 import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expresswayRoads";
@@ -151,6 +153,8 @@ export function* deckArraySteps(
     marks: XwMarkingPlan;
     rings: DeckRing[];
     sides: RingSides[];
+    /** Stretches of a "same" pair left apart (expressway_merge_skipped). */
+    skipped: MergeSkip[];
   }
 > {
   const n = chunk.st.length / STATION_STRIDE;
@@ -169,11 +173,12 @@ export function* deckArraySteps(
   const baseSides: RingSides[] = [];
   for (const r of own.rings) {
     baseSides.push(merge ? merge.sides(own, r) : { left: openSide(own), right: openSide(own) });
-    const checkpoint = baseSides.length % 24 === 0;
+    // Every 8 rings: a ring whose master is itself checked (masterShortfall) costs two sides.
+    const checkpoint = baseSides.length % 8 === 0;
     if (checkpoint) yield;
   }
   const { rings, sides, closing } = merge
-    ? refineRings(own, baseSides, merge)
+    ? yield* refineRings(own, baseSides, merge)
     : { rings: own.rings, sides: baseSides, closing: new Set<number>() };
   yield;
   const m = rings.length;
@@ -296,6 +301,7 @@ export function* deckArraySteps(
     marks,
     rings,
     sides,
+    skipped: merge?.skipped.get(chunk.id) ?? [],
   };
 }
 
@@ -314,34 +320,6 @@ function triangleArea2(a: number[], b: number[], c: number[]): number {
 const isOpen = (sd: RingSides) => sd.left.reach + sd.right.reach > 1e-3;
 const hasSeam = (sd: RingSides) => sd.left.seam !== null || sd.right.seam !== null;
 
-/** A ring on the straight piece between two rings (the slab's face there, unchanged). */
-function ringBetween(a: DeckRing, b: DeckRing, tau: number, alongChord: boolean): DeckRing {
-  const lerp = (x: number, y: number) => x + (y - x) * tau;
-  const c = a.c.clone().lerp(b.c, tau);
-  // Through a master's edge vertex the ring runs square to the chord: the vertex, the chord's
-  // perpendicular foot, lies on its cross-section line exactly.
-  const t = alongChord
-    ? new Vector3(b.c.x - a.c.x, 0, b.c.z - a.c.z).normalize()
-    : a.t.clone().lerp(b.t, tau).normalize();
-  const f = a.frame;
-  const g = b.frame;
-  return {
-    c,
-    t,
-    groundY: lerp(a.groundY, b.groundY),
-    frame: {
-      s: lerp(f.s, g.s),
-      lon: lerp(f.lon, g.lon),
-      lat: lerp(f.lat, g.lat),
-      z: lerp(f.z, g.z),
-      grade: lerp(f.grade, g.grade),
-      bank: lerp(f.bank, g.bank),
-      ground: lerp(f.ground, g.ground),
-    },
-    isStation: false,
-  };
-}
-
 /**
  * More rings where decks are made one (expresswayMerge.ts), between two rings of the chunk:
  * - one through each of the master's edge vertices where this deck is cut at its edge, so the cut
@@ -359,11 +337,11 @@ function ringBetween(a: DeckRing, b: DeckRing, tau: number, alongChord: boolean)
  * graph's surfaceY along the centre (expresswayRoads.ts has a point at the old rings only), does
  * not change.
  */
-function refineRings(
+function* refineRings(
   own: ChunkRings,
   baseSides: RingSides[],
   merge: DeckMerge,
-): { rings: DeckRing[]; sides: RingSides[]; closing: Set<number> } {
+): Generator<void, { rings: DeckRing[]; sides: RingSides[]; closing: Set<number> }> {
   const base = own.rings;
   const rings: DeckRing[] = [base[0]];
   const sides: RingSides[] = [baseSides[0]];
@@ -379,6 +357,9 @@ function refineRings(
     return lines;
   };
   for (let i = 0; i + 1 < base.length; i++) {
+    // A slice per few intervals: a 浜崎橋-sized JCT bisects many events in one chunk.
+    const checkpoint = i % 6 === 5;
+    if (checkpoint) yield;
     const a = base[i];
     const b = base[i + 1];
     const sa = baseSides[i];
@@ -430,6 +411,15 @@ function refineRings(
     }
     for (const key of ["left", "right"] as const) {
       const hasWall = (sd: RingSides) => sd[key].wall !== null;
+      // Where the seam starts sliding off the master's face (seamWeight leaves 1): one ring
+      // there, so the stretch at the face is exact and only the sliding stretch is linear.
+      const isExact = (sd: RingSides) => sd[key].seam === null || sd[key].seamWeight >= 1;
+      const slides = isExact(sa) !== isExact(sb);
+      if (slides) {
+        const { lo, atLo, hi, atHi } = bisect(isExact);
+        const [tau, sd] = isExact(atLo) ? [lo, atLo] : [hi, atHi];
+        extra.push({ tau, ring: ringBetween(a, b, tau, false), sides: sd, isClosing: false });
+      }
       const switches = hasWall(sa) !== hasWall(sb);
       if (!switches) continue;
       const { lo, hi, atLo, atHi } = bisect(hasWall);
@@ -888,9 +878,10 @@ export class ExpresswayDecks {
    * The tiles round a chunk (scripts/expressway.ts files a chunk under its middle station, at most
    * 150 m from any part of it, so every chunk it shares a surface with is in one of them).
    */
-  private async tilesAround(meta: XwMeta, c: XwChunk): Promise<void> {
+  private async tilesAround(meta: XwMeta, c: XwChunk): Promise<boolean> {
     const mid = Math.floor(c.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
-    await this.tilesNear(meta, c.st[mid + ST.lat], c.st[mid + ST.lon]);
+    const tiles = await this.tilesNear(meta, c.st[mid + ST.lat], c.st[mid + ST.lon]);
+    return tiles.every((t) => t !== null);
   }
 
   private async chunksAround(meta: XwMeta, lat: number, lon: number): Promise<XwChunk[]> {
@@ -959,8 +950,21 @@ export class ExpresswayDecks {
       try {
         // The decks it is made one with must be known first, or its slab would depend on which
         // tiles happened to be read (and its master's rails on whether it had been built).
-        await this.tilesAround(meta, c);
+        // A tile that failed to load may hold the deck it is one slab with: built now, its slab
+        // would differ from the one built later. It waits for the next refresh (the tile is asked
+        // again, loadTile forgets a failure).
+        const hasNeighbours = await this.tilesAround(meta, c);
+        if (!hasNeighbours) continue;
         const result = await work.run(deckArraySteps(c, place, this.bank, { index: this.index }));
+        for (const x of result.skipped)
+          log("expressway_merge_skipped", {
+            chunk: c.id,
+            with: x.with,
+            reason: x.reason,
+            s0: Math.round(x.s0 * 10) / 10,
+            s1: Math.round(x.s1 * 10) / 10,
+            maxDzM: Math.round(x.maxDzM * 1000) / 1000,
+          });
         await yieldIfSpent();
         const built = work.measure(() => this.publish(c, result, frame));
         // Built in the frame of its start: carry it over if the origin moved meanwhile.

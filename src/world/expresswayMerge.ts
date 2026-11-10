@@ -1,6 +1,8 @@
 import { Vector3 } from "three";
+import { SAME_SURFACE_ALLOWED_DZ_M } from "../expressway/allowlist";
 import { PARAPET_WIDTH } from "../expressway/assumptions";
 import { STATION_STRIDE, type XwChunk } from "../expressway/format";
+import { SAME_SURFACE_M } from "../expressway/overlap";
 import { frameAt, ST, type SurfaceFrame, surfaceHeight, surfaceSamples } from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
 import type { LocalFrame } from "../geo/frame";
@@ -67,9 +69,17 @@ export type ChunkRings = {
 /**
  * Decks farther apart than this at a ring are not made one there, whatever the relation says: the
  * compiler couples the pair softly (|Δz| ≤ 5 cm, overlap.ts SAME_SURFACE_M) and its allowlist accepts
- * up to 0.14 m at 浜崎橋 JCT and metres at the C1 changeover, where one slab would be a cliff.
+ * up to SAME_SURFACE_ALLOWED_DZ_M (0.14 m at 浜崎橋 JCT) as one surface and metres at the C1
+ * changeover, where one slab would be a cliff. 1 cm over the allowlist, so every accepted miss is
+ * drawn as one slab (tests/expresswayData.test.ts lists the same stretches past it).
  */
-export const MERGE_MAX_DZ = 0.15;
+export const MERGE_MAX_DZ = SAME_SURFACE_ALLOWED_DZ_M + 0.01;
+/**
+ * Up to this the seam stands at the master's face exactly; from here to MERGE_MAX_DZ it slides to
+ * the cut deck's own height (seamY = ownY + (masterY − ownY)·w), so where the pair lets go the road
+ * runs on with no step across travel (review of P3.5, W1: a 0.15 m face across the road at the guard).
+ */
+export const MERGE_FULL_DZ = SAME_SURFACE_M;
 /** How far below the master's face the hidden corners of a cut deck are put (no coplanar slivers). */
 export const MERGE_TUCK = 0.03;
 /**
@@ -181,7 +191,15 @@ export function ringPoint(ring: Pick<DeckRing, "c" | "t">, u: number, v: number)
 }
 
 /** A run's rings joined across its consecutive chunks, with the section at each ring. */
-type Line = { rings: DeckRing[]; edge: number[]; laneL: number[]; laneR: number[]; bank: boolean };
+type Line = {
+  rings: DeckRing[];
+  /** The chunk each ring belongs to (its own sides, for a master that is itself cut). */
+  owner: ChunkRings[];
+  edge: number[];
+  laneL: number[];
+  laneR: number[];
+  bank: boolean;
+};
 
 type Foot = { line: Line; k: number; tau: number; point: Vector3; tangent: Vector3 };
 
@@ -200,6 +218,7 @@ export function openSide(own: Pick<ChunkRings, "hw" | "edge">): DeckSide {
     wall: { inner: own.hw, outer: own.edge },
     seam: null,
     seamOf: null,
+    seamWeight: 1,
   };
 }
 
@@ -253,11 +272,12 @@ export class DeckMerge {
       const isNext = r.chunk.k === prevK + 1 && out.length > 0;
       const line: Line = isNext
         ? out[out.length - 1]
-        : { rings: [], edge: [], laneL: [], laneR: [], bank: r.bank };
+        : { rings: [], owner: [], edge: [], laneL: [], laneR: [], bank: r.bank };
       if (!isNext) out.push(line);
       const from = isNext ? 1 : 0;
       for (let i = from; i < r.rings.length; i++) {
         line.rings.push(r.rings[i]);
+        line.owner.push(r);
         line.edge.push(r.edge);
         line.laneL.push(r.laneL);
         line.laneR.push(r.laneR);
@@ -343,62 +363,160 @@ export class DeckMerge {
   }
 
   /**
+   * Where a pair the compiler made one surface was left apart, by chunk: the other run, why, the
+   * s range and the largest miss (expresswayDeck.ts logs one expressway_merge_skipped per chunk).
+   * Only rings inside an unpadded "same" stretch count: past its end the decks are meant to part.
+   */
+  readonly skipped = new Map<string, MergeSkip[]>();
+
+  private skip(own: ChunkRings, s: number, other: string, reason: MergeSkip["reason"], dz: number): void {
+    const isInStretch = own.chunk.decks.some(
+      (d) => d.with === other && d.relation === "same" && s >= d.s0 && s <= d.s1,
+    );
+    if (!isInStretch) return;
+    const list = this.skipped.get(own.chunk.id) ?? [];
+    const last = list.find((x) => x.with === other && x.reason === reason);
+    if (last) {
+      last.s0 = Math.min(last.s0, s);
+      last.s1 = Math.max(last.s1, s);
+      last.maxDzM = Math.max(last.maxDzM, Math.abs(dz));
+    } else list.push({ with: other, reason, s0: s, s1: s, maxDzM: Math.abs(dz) });
+    this.skipped.set(own.chunk.id, list);
+  }
+
+  /** What one partner is at a ring: its foot, where its slab crosses this ring's line, its height. */
+  private partnerAt(own: ChunkRings, ring: DeckRing, other: string) {
+    const foot = this.footOf(this.linesNear(other, own), ring.c);
+    if (!foot) return null;
+    const lx = ring.t.z;
+    const lz = -ring.t.x;
+    const d = (foot.point.x - ring.c.x) * lx + (foot.point.z - ring.c.z) * lz;
+    const left = this.crossEdge(ring, foot, 1);
+    const right = this.crossEdge(ring, foot, -1);
+    // Where the cross-section misses one of its edges (its run ends there) the pair is left apart.
+    if (!left || !right) return null;
+    const [lo, hi] = left.u < right.u ? [left, right] : [right, left];
+    const isOverlapping = lo.u < own.edge && hi.u > -own.edge;
+    if (!isOverlapping) return null;
+    // Heights compared where this deck's centre is: the other's face there (its centre plus its
+    // bank × the offset of this centre in its own frame), against this centre.
+    const { line, k, tau } = foot;
+    const r = line.rings[k];
+    const q = line.rings[k + 1];
+    const theirU = (ring.c.x - foot.point.x) * foot.tangent.z - (ring.c.z - foot.point.z) * foot.tangent.x;
+    const theirLift = liftAt(r, theirU, line.bank) * (1 - tau) + liftAt(q, theirU, line.bank) * tau;
+    const dz = foot.point.y + theirLift - ring.c.y;
+    return { other, foot, d, lo, hi, dz, isSameWay: foot.tangent.dot(ring.t) > 0 };
+  }
+
+  /**
    * The two sides of a ring of `own` as the decks it shares a surface with leave them (DeckSide):
    * where its road ends, which 壁高欄 stand, the seam on a master's edge, and what the markings need.
+   *
+   * Same-direction partners first, then opposite ones, so the answer does not depend on the order of
+   * `decks`: a seam on a same-direction master is kept (an opposite deck beyond it does not move the
+   * road's end off the master's face), and the master's road out to its edge is then cut back by a
+   * 分離壁 there. `depth` 1 is a master's own sides, read to see whether it is cut itself.
    */
-  sides(own: ChunkRings, ring: DeckRing): RingSides {
+  sides(own: ChunkRings, ring: DeckRing, depth = 0): RingSides {
     const run = own.chunk.run;
     const out: RingSides = { left: openSide(own), right: openSide(own) };
-    for (const other of this.index.partnersAt(own.chunk, ring.frame.s)) {
-      const foot = this.footOf(this.linesNear(other, own), ring.c);
-      if (!foot) continue;
-      const isOtherLevel = Math.abs(foot.point.y - ring.c.y) > MERGE_MAX_DZ;
-      if (isOtherLevel) continue;
-      const lx = ring.t.z;
-      const lz = -ring.t.x;
-      const d = (foot.point.x - ring.c.x) * lx + (foot.point.z - ring.c.z) * lz;
-      const isSameWay = foot.tangent.dot(ring.t) > 0;
-      const left = this.crossEdge(ring, foot, 1);
-      const right = this.crossEdge(ring, foot, -1);
-      // Where the cross-section misses one of its edges (its run ends there) the pair is left apart.
-      if (!left || !right) continue;
-      const [lo, hi] = left.u < right.u ? [left, right] : [right, left];
-      const isOverlapping = lo.u < own.edge && hi.u > -own.edge;
-      if (!isOverlapping) continue;
+    const partners = this.index
+      .partnersAt(own.chunk, ring.frame.s)
+      .map((other) => this.partnerAt(own, ring, other))
+      .filter((p) => p !== null)
+      .toSorted((a, b) => Number(b.isSameWay) - Number(a.isSameWay));
+    for (const p of partners) {
       // The side the other deck lies on; at a nose (centres on one point) its left.
-      const sign: 1 | -1 = d >= 0 ? 1 : -1;
+      const sign: 1 | -1 = p.d >= 0 ? 1 : -1;
       const sideKey = sign > 0 ? "left" : "right";
-      if (isSameWay) {
-        const isMaster = outranksAsMaster(this.index, run, other);
-        this.joinSameWay(out, own, { lo, hi, sign, d, foot, other, isMaster });
+      const isApart = Math.abs(p.dz) > MERGE_MAX_DZ;
+      if (p.isSameWay) {
+        const isMaster = outranksAsMaster(this.index, run, p.other);
+        if (isApart) {
+          this.skip(own, ring.frame.s, p.other, "level_apart", p.dz);
+          if (!isMaster) this.letGo(out, own, p.lo, p.hi, sign);
+          continue;
+        }
+        const shortfall = isMaster && depth === 0 ? this.masterShortfall(p.foot, ring) : 0;
+        this.joinSameWay(out, own, ring, { ...p, sign, isMaster, shortfall });
         continue;
       }
+      if (isApart) {
+        this.skip(own, ring.frame.s, p.other, "level_apart", p.dz);
+        continue;
+      }
+      const side = out[sideKey];
+      // A seam on a same-direction master stays: the road ends on that master's face.
+      if (side.seam) continue;
       // 分離壁 in the middle of the overlap, once it is a wall wide: below that the two rails at
       // their own places already overlap each other, and moving one to the middle would jump.
-      const nearEnd = sign > 0 ? lo.u : hi.u;
+      const nearEnd = sign > 0 ? p.lo.u : p.hi.u;
       const overlap = sign * (sign * own.edge - nearEnd);
       const isWide = overlap >= PARAPET;
       if (!isWide) continue;
       const middle = Math.abs((sign * own.edge + nearEnd) / 2);
-      const keepsWall = run < other;
-      const side = out[sideKey];
+      const keepsWall = run < p.other;
       const reach = keepsWall ? middle - PARAPET / 2 : middle;
       out[sideKey] = {
         ...side,
         reach: Math.min(side.reach, reach),
         wall: keepsWall ? { inner: middle - PARAPET / 2, outer: middle + PARAPET / 2 } : null,
-        seam: null,
-        seamOf: null,
       };
     }
     return out;
+  }
+
+  /**
+   * How far a master's own road stops short of its slab edge on the side facing this ring (0: it
+   * runs out to its edge, or its own 壁高欄 stands at its place). Short where a 分離壁 stands on that
+   * side (it shares a slab with an opposite carriageway there) or it is itself cut by its own master:
+   * a seam on its nominal edge would then meet no face of it.
+   */
+  private masterShortfall(foot: Foot, ring: DeckRing): number {
+    const { line, k, tau } = foot;
+    const master = line.owner[tau < 0.5 ? k : k + 1];
+    const at = ringBetween(line.rings[k], line.rings[k + 1], tau, false);
+    const sd = this.sides(master, at, 1);
+    const u = (ring.c.x - at.c.x) * at.t.z - (ring.c.z - at.c.z) * at.t.x;
+    const side = u >= 0 ? sd.left : sd.right;
+    const isOwnWall =
+      side.wall !== null && Math.abs(side.wall.inner - master.hw) < 1e-3 && side.seam === null;
+    if (isOwnWall) return 0;
+    return Math.max(0, master.edge - side.reach);
+  }
+
+  /**
+   * A master whose pair has let go (MERGE_MAX_DZ): its 壁高欄 returns only where it stands clear of
+   * the other deck's carriageway; over it the road still runs out to the slab edge (the two faces are
+   * then a step apart, never a wall in the other's shoulder: review of P3.5, W1 at 4853798 s 198).
+   */
+  private letGo(out: RingSides, own: ChunkRings, lo: Crossing, hi: Crossing, sign: 1 | -1): void {
+    const side = out[sign > 0 ? "left" : "right"];
+    // Its carriageway: its slab less the parapets at both edges.
+    const [from, to] = [lo.u + PARAPET, hi.u - PARAPET];
+    const reachesWall = sign > 0 ? to > own.hw && from < own.edge : from < -own.hw && to > -own.edge;
+    if (!reachesWall) return;
+    side.wall = null;
+    side.reach = Math.max(side.reach, own.edge);
   }
 
   /** One same-direction partner's effect on a ring (DeckMerge.sides). */
   private joinSameWay(
     out: RingSides,
     own: ChunkRings,
-    p: { lo: Crossing; hi: Crossing; sign: 1 | -1; d: number; foot: Foot; other: string; isMaster: boolean },
+    ring: DeckRing,
+    p: {
+      lo: Crossing;
+      hi: Crossing;
+      sign: 1 | -1;
+      d: number;
+      dz: number;
+      foot: Foot;
+      other: string;
+      isMaster: boolean;
+      shortfall: number;
+    },
   ): void {
     const { lo, hi, sign, d, foot, other, isMaster } = p;
     const sideKey = sign > 0 ? "left" : "right";
@@ -415,17 +533,27 @@ export class DeckMerge {
       side.otherLaneEdge = nearEdge;
     }
     if (isMaster) {
-      // Cut at its edge: the road ends on its near edge, at its face there. A side whose slab edge
-      // lies on it loses its rail (it would stand in the other deck's carriageway).
+      // Cut at its edge: the road ends on its near edge, at its face there (sliding to this deck's
+      // own height as the miss grows past MERGE_FULL_DZ). A side whose slab edge lies on it loses
+      // its rail (it would stand in the other deck's carriageway).
       const end = sign > 0 ? lo : hi;
-      const reach = sign * end.u;
+      // A master whose road stops short of its edge (masterShortfall) is met where its road ends,
+      // under the 分離壁 or at the seam that cut it: this deck's road runs on towards the master's centre to meet it.
+      // Why not leave the pair apart there: the two faces would overlap again and flicker.
+      const reach = sign * end.u + p.shortfall;
+      const lx = ring.t.z;
+      const lz = -ring.t.x;
+      const point = end.point.clone().add(new Vector3(sign * lx * p.shortfall, 0, sign * lz * p.shortfall));
       // Where the master's edge lies in this deck's parapet zone the road runs out to it (the wall
       // there goes, below), so the two still meet.
       const isNearerCut = side.seam === null || reach < side.reach;
       if (isNearerCut) {
+        const w = seamWeight(p.dz);
+        const ownY = ring.c.y + liftAt(ring, sign * reach, own.bank);
         side.reach = reach;
-        side.seam = end.point;
+        side.seam = new Vector3(point.x, ownY + (point.y - ownY) * w, point.z);
         side.seamOf = { run: other, edge: end.edge };
+        side.seamWeight = w;
       }
       for (const key of ["left", "right"] as const) {
         const edgeU = key === "left" ? own.edge : -own.edge;
@@ -444,6 +572,50 @@ export class DeckMerge {
     side.wall = null;
     side.reach = Math.max(side.reach, own.edge);
   }
+}
+
+/** A stretch of a "same" pair left apart at a chunk (expressway_merge_skipped). */
+export type MergeSkip = {
+  with: string;
+  /** level_apart: |Δz| > MERGE_MAX_DZ there. */
+  reason: "level_apart";
+  s0: number;
+  s1: number;
+  maxDzM: number;
+};
+
+/** How far the seam stands at the master's face (1) or at the cut deck's own height (0). */
+export function seamWeight(dz: number): number {
+  const miss = Math.abs(dz);
+  return Math.min(1, Math.max(0, (MERGE_MAX_DZ - miss) / (MERGE_MAX_DZ - MERGE_FULL_DZ)));
+}
+
+/** A ring on the straight piece between two rings (the slab's face there, unchanged). */
+export function ringBetween(a: DeckRing, b: DeckRing, tau: number, alongChord: boolean): DeckRing {
+  const lerp = (x: number, y: number) => x + (y - x) * tau;
+  const c = a.c.clone().lerp(b.c, tau);
+  // Through a master's edge vertex the ring runs square to the chord: the vertex, the chord's
+  // perpendicular foot, lies on its cross-section line exactly.
+  const t = alongChord
+    ? new Vector3(b.c.x - a.c.x, 0, b.c.z - a.c.z).normalize()
+    : a.t.clone().lerp(b.t, tau).normalize();
+  const f = a.frame;
+  const g = b.frame;
+  return {
+    c,
+    t,
+    groundY: lerp(a.groundY, b.groundY),
+    frame: {
+      s: lerp(f.s, g.s),
+      lon: lerp(f.lon, g.lon),
+      lat: lerp(f.lat, g.lat),
+      z: lerp(f.z, g.z),
+      grade: lerp(f.grade, g.grade),
+      bank: lerp(f.bank, g.bank),
+      ground: lerp(f.ground, g.ground),
+    },
+    isStation: false,
+  };
 }
 
 /** Whether `other` is the master over `run` (run is the one cut): the parent, or the higher rank. */

@@ -26,6 +26,13 @@ const C1_CHANGEOVER_REASON =
 const HAMAZAKIBASHI_REASON =
   "浜崎橋 JCT で 1 号羽田線への分岐（4848762）のノーズが内回りと同一面、外回りの 1 段上（OSM layer）を同時に求められ、内回りと外回りの移り変わりと重なる。三者の OSM の線が 1.3–8 m に集まり、全部は満たせない";
 
+/**
+ * The largest same-surface miss the list accepts (浜崎橋 JCT, 24402611 × 4848762). The game makes
+ * one slab of a pair only within this (expresswayMerge.ts MERGE_MAX_DZ is derived from it): what the
+ * project accepts as one surface is what is drawn as one.
+ */
+export const SAME_SURFACE_ALLOWED_DZ_M = 0.14;
+
 export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
   {
     run: "*",
@@ -62,7 +69,7 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     kind: "deck_overlap",
     with: "4848762",
     maxStations: 6,
-    maxDzM: 0.14,
+    maxDzM: SAME_SURFACE_ALLOWED_DZ_M,
     reason: HAMAZAKIBASHI_REASON,
   },
   {

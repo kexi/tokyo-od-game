@@ -22,6 +22,8 @@ import {
 import { tileKey } from "../src/expressway/geo";
 import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
 import { OPERATOR_WORDS } from "../src/expressway/network";
+import { MERGE_MAX_DZ } from "../src/world/expresswayMerge";
+import { pairPoints } from "./expresswayPairs";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
 // checked against knowledge/road-redesign-plan.md 4.4 T1〜T7 and T10.
@@ -234,6 +236,54 @@ describe("生成済みの高速道路タイル", () => {
       byRun.get(run)!.some((c) => c.decks.some((d) => s >= d.s0 - 6 && s <= d.s1 + 6));
     for (const o of brute.values())
       for (const [run, s] of o.at) expect(covered(run, s), `${run}@${s}`).toBe(true);
+  });
+
+  it("lists where a same-surface stretch misses by more than the game makes one slab (MERGE_MAX_DZ), each with why", () => {
+    // Unpadded "same" stretches only, every 0.5 m, against the other run's Hermite surface at the
+    // nearest point of its centre line (tests/expresswayPairs.ts): the deck builder leaves these
+    // apart and logs expressway_merge_skipped. A new entry, or a larger miss, fails here.
+    const known = new Set(chunks.map((c) => c.run));
+    const found = new Map<string, { chunk: string; with: string; s0: number; s1: number; maxDzM: number }>();
+    for (const p of pairPoints(chunks)) {
+      const isApart = known.has(p.with) && Math.abs(p.dz) > MERGE_MAX_DZ;
+      if (!isApart) continue;
+      const key = `${p.chunk.id}|${p.with}`;
+      const g = found.get(key) ?? { chunk: p.chunk.id, with: p.with, s0: p.s, s1: p.s, maxDzM: 0 };
+      g.s0 = Math.min(g.s0, p.s);
+      g.s1 = Math.max(g.s1, p.s);
+      g.maxDzM = Math.max(g.maxDzM, Math.abs(p.dz));
+      found.set(key, g);
+    }
+    const C1 =
+      "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）";
+    const JCT = "浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端";
+    const DROP =
+      "出口ランプが本線の床版の縁から離れる最後の数 m で、地表へ下り始める（車線域はもう重ならない）";
+    const expected: Array<{ chunk: string; with: string; s: [number, number]; maxDzM: number; why: string }> =
+      [
+        { chunk: "24402611:14", with: "45021976", s: [2237.4, 2309.4], maxDzM: 3.64, why: C1 },
+        { chunk: "45021976:16", with: "24402611", s: [2754.5, 2799.5], maxDzM: 1.18, why: C1 },
+        { chunk: "45021976:17", with: "24402611", s: [2799.9, 2824.9], maxDzM: 3.49, why: C1 },
+        { chunk: "24402611:20", with: "45021976", s: [3740.1, 3816.1], maxDzM: 3.76, why: C1 },
+        { chunk: "24402611:20", with: "4848762", s: [3806.8, 3814.8], maxDzM: 0.52, why: JCT },
+        { chunk: "24402611:20", with: "813455519", s: [3791.8, 3806.3], maxDzM: 2.64, why: `${C1}。${JCT}` },
+        { chunk: "45021976:10", with: "24402611", s: [1241.8, 1263.8], maxDzM: 4.17, why: C1 },
+        { chunk: "45021976:11", with: "24402611", s: [1264.3, 1321.8], maxDzM: 1.89, why: C1 },
+        { chunk: "45021976:11", with: "813455519", s: [1267.3, 1271.3], maxDzM: 0.37, why: JCT },
+        { chunk: "45021976:14", with: "4853798", s: [2132, 2136], maxDzM: 0.39, why: DROP },
+        { chunk: "4853798:0", with: "45021976", s: [198.6, 202.1], maxDzM: 0.37, why: DROP },
+        { chunk: "813455519:1", with: "24402611", s: [306.7, 316.7], maxDzM: 2.89, why: `${C1}。${JCT}` },
+      ];
+    const got = [...found.values()];
+    expect(got.map((g) => `${g.chunk}|${g.with}`).toSorted()).toEqual(
+      expected.map((e) => `${e.chunk}|${e.with}`).toSorted(),
+    );
+    for (const e of expected) {
+      const g = found.get(`${e.chunk}|${e.with}`)!;
+      expect(g.s0, e.chunk).toBeCloseTo(e.s[0], 0);
+      expect(g.s1, e.chunk).toBeCloseTo(e.s[1], 0);
+      expect(g.maxDzM, `${e.chunk} × ${e.with}: ${e.why}`).toBeLessThanOrEqual(e.maxDzM);
+    }
   });
 
   it("says which format it is (meta.version 2) and that every joint solve converged", () => {

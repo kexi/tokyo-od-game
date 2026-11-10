@@ -190,6 +190,14 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   expressway_building_crossed: { lat: 35.65342, lon: 139.75022, xid: "207111988:0" },
   expressway_chunk_failed: { chunk: "24402611:3", error: "TypeError: x" },
   expressway_hold_expired: { chunks: ["24402611:3"], heldMs: 5000 },
+  expressway_merge_skipped: {
+    chunk: "4853798:0",
+    with: "45021976",
+    reason: "level_apart",
+    s0: 198.2,
+    s1: 202.2,
+    maxDzM: 0.21,
+  },
   expressway_drive_checked: {
     label: "entry",
     seconds: 40,

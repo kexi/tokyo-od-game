@@ -23,7 +23,8 @@ import {
   PROP_GROUPS,
 } from "../src/physics/groups";
 import { DeckIndex, type DeckSide, planDeckMarkings, type RingSides } from "../src/world/expresswayMarkings";
-import { chunkRings, MERGE_MAX_DZ, MERGE_RAMP } from "../src/world/expresswayMerge";
+import { chunkRings, MERGE_FULL_DZ, MERGE_MAX_DZ, MERGE_RAMP } from "../src/world/expresswayMerge";
+import { probeGenerated } from "./expresswaySeams";
 import { frameAt, surfaceHeight } from "../src/expressway/profile";
 import { expresswayRoadInput, joinExpressway, type XwRoadInput } from "../src/world/expresswayRoads";
 import { laneCentreOffset, sectionWidth } from "../src/world/laneChange";
@@ -691,6 +692,99 @@ describe("one slab where two decks share a surface (P3.5, expresswayMerge.ts)", 
     expect(b.sides.every((sd) => sd.left.seam === null && sd.right.seam === null)).toBe(true);
   });
 
+  it("keeps the ramp's seam on the main line when three decks meet, whatever the order of decks, and meets the main line where its road ends", () => {
+    // B runs the other way 8 m left of M (one slab with M, B's 分離壁 in the middle: "B" sorts
+    // first), and C leaves M to the left into that slab: C's master M stops short of its edge there.
+    const { runs: rs, m: ms, c: ramp } = diverge();
+    const lenB = (300 * (RM - 8)) / RM;
+    const b = chunkOf("B:0", "B", 0, lenB, 10, (sB) => {
+      const sM = 300 - (sB * RM) / (RM - 8);
+      const [x, y] = mAt(sM);
+      const th = sM / RM;
+      return [x - Math.sin(th) * 8, y + Math.cos(th) * 8, zM(sM), (-gM(sM) * RM) / (RM - 8)];
+    });
+    b.h0 = Math.PI + 300 / RM;
+    b.h1 = Math.PI;
+    b.decks = [
+      { with: "M", relation: "same", s0: 0, s1: lenB },
+      { with: "C", relation: "same", s0: 0, s1: lenB },
+    ];
+    ms[0].decks = [...ms[0].decks, { with: "B", relation: "same", s0: 0, s1: 120 }];
+    ms[1].decks = [{ with: "B", relation: "same", s0: 120, s1: 300 }];
+    const forward = [...ramp.decks, { with: "B", relation: "same" as const, s0: 0, s1: 200 }];
+    const open = { kind: "open" };
+    const all = [
+      ...rs,
+      { id: "B", cls: "expressway", start: open, end: open, chunks: ["B:0"] } as unknown as XwRunSummary,
+    ];
+    const sidesWith = (decks: typeof forward) => {
+      const c = { ...ramp, decks };
+      const index = indexOf([...ms, c, b], all);
+      return { c, index, built: built(c, frame, { index }) };
+    };
+    const one = sidesWith(forward);
+    const other = sidesWith(forward.toReversed());
+    const key = (r: ReturnType<typeof built>) =>
+      r.sides.map((sd) => [
+        sd.left.reach.toFixed(4),
+        sd.right.reach.toFixed(4),
+        !!sd.left.seam,
+        !!sd.right.seam,
+      ]);
+    expect(key(other.built)).toEqual(key(one.built));
+    // Where C is half out of M (sM 80–93), its seam is on M's side and at M's road end under B's
+    // wall (the middle of M and B's overlap, 4.0 m left of M's centre), not on M's nominal edge.
+    let checked = 0;
+    one.built.rings.forEach((r, i) => {
+      const sM = sMOf(r.frame.s);
+      const isHalfOut = sM > 80 && sM < 93;
+      if (!isHalfOut) return;
+      const seam = one.built.sides[i].right.seam;
+      expect(seam, `sC ${r.frame.s.toFixed(1)}`).not.toBeNull();
+      const f = mAtS(sM);
+      const u = new Vector3(seam!.x, seam!.y, seam!.z).sub(f.c).dot(f.left);
+      expect(u, `sC ${r.frame.s.toFixed(1)}`).toBeCloseTo(4.0, 1);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("makes one slab of two banked decks the same (片勾配: heights compared on the master's tilted face)", () => {
+    const { chunks: cs, runs: rs, m: ms, c: ramp } = diverge();
+    const BANK = 0.04;
+    for (const ch of ms) for (let i = 0; i < ch.st.length; i += 7) ch.st[i + 4] = BANK;
+    // C on M's tilted face: its centre w metres left of M's stands BANK·w higher, plus 1 cm.
+    for (let i = 0; i < ramp.st.length; i += 7) {
+      const sM = sMOf(ramp.st[i]);
+      ramp.st[i + 3] = zM(sM) + BANK * wOf(sM) + 0.01;
+      ramp.st[i + 4] = BANK;
+    }
+    const index = indexOf(cs, rs);
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    worlds.push(world);
+    for (const ch of cs) {
+      const steps = deckArraySteps(ch, place(frame), true, { index });
+      let r = steps.next();
+      while (!r.done) r = steps.next();
+      if (ch === ramp) expect(r.value.skipped).toEqual([]);
+      createDeckBody(world, r.value.collider, r.value.piers, null);
+    }
+    world.step();
+    let checked = 0;
+    for (let s = 80.13; s < 120; s += 0.73) {
+      const f = mAtS(s);
+      const inside = f.c.clone().addScaledVector(f.left, edgeM - 0.002);
+      const outside = f.c.clone().addScaledVector(f.left, edgeM + 0.002);
+      const yIn = down(world, inside.x, inside.y + 1, inside.z);
+      const yOut = down(world, outside.x, outside.y + 1, outside.z);
+      expect(yIn, `s ${s}`).not.toBeNull();
+      expect(yOut, `s ${s}`).not.toBeNull();
+      expect(Math.abs(yIn! - yOut!), `s ${s.toFixed(2)}`).toBeLessThanOrEqual(0.001);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(40);
+  });
+
   it("puts one 分離壁 in the middle of two opposite carriageways' overlap, built by the run that sorts first", () => {
     const east = chunkOf("A:0", "A", 0, 200, 20, (s) => [s, 0, zA(s), gA(s)]);
     const west = chunkOf("B:0", "B", 0, 200, 20, (s) => [200 - s, 8, zA(200 - s), -gA(200 - s)]);
@@ -737,6 +831,7 @@ describe("markings where decks meet (expresswayMarkings.ts)", () => {
     wall: { inner: half, outer: half + PARAPET_WIDTH.value },
     seam: null,
     seamOf: null,
+    seamWeight: 1,
   });
 
   it("paints edge, lane, branch lines and the 導流帯 within 標識令 別表第四's dimensions", () => {
@@ -965,59 +1060,45 @@ describe("which deck a car is on at a 分合流 (the main line over the ramp lyi
   });
 });
 
-describe("the generated data's merges (P3.5): every seam meets its master's face", () => {
-  it("puts each cut deck's road end level with the master's face beside it (≤ 1 mm) at every seam ring", () => {
-    const dir = join(import.meta.dirname, "..", "public", "data", "expressway");
-    const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as XwMeta;
-    const real = readdirSync(dir)
-      .filter((f) => /^\d+-\d+\.json$/.test(f))
-      .flatMap((f) => (JSON.parse(readFileSync(join(dir, f), "utf8")) as XwTile).chunks);
-    const index = indexOf(real, meta.runs);
-    const at = new LocalFrame(35.6537, 139.7508, 40);
-    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+describe("the generated data's merges (P3.5): seams and let-go points probed from the chunks alone", () => {
+  // Where to probe comes from the stations and the Hermite surface (tests/expresswayPairs.ts), not
+  // from the deck builder's rings or sides; heights are rays into all 81 merged chunks at once.
+  const probed = () => probeGenerated();
+
+  it("meets the master's face at every seam a car drives over: ≤ 1 mm where the pair is within 5 cm, never a hole", () => {
+    const { seams, world } = probed();
     worlds.push(world);
-    const builds = real.map((c) => {
-      const b = built(c, at, { index });
-      createDeckBody(world, b.collider, b.piers, null);
-      return { c, b };
-    });
-    world.step();
-    let checked = 0;
+    // Every 0.5 m of the ramps' "same" stretches whose road lies past the master's slab edge and
+    // within MERGE_MAX_DZ of it: a fixed count, so a probe that stops finding its seam fails here.
+    expect(seams).toHaveLength(1066);
+    const holes = seams.filter((x) => x.step === null).map((x) => `${x.chunk} s ${x.s.toFixed(2)}`);
+    expect(holes).toEqual([]);
     const steps: string[] = [];
-    for (const { c, b } of builds) {
-      b.rings.forEach((r, i) => {
-        for (const [key, sign] of [
-          ["left", 1],
-          ["right", -1],
-        ] as const) {
-          const seam = b.sides[i][key].seam;
-          // A seam ring whose road is open (a closed ring's corners are tucked under the master),
-          // not one of the two rings where a wall starts or stops (one place, the wall's square end:
-          // at 4853798:0 s 198.2 the ramp drops past MERGE_MAX_DZ and its own wall returns).
-          const isOpen = b.sides[i].left.reach + b.sides[i].right.reach > 0.02;
-          const isWallEnd = b.rings[i - 1] === r || b.rings[i + 1] === r;
-          if (!seam || !isOpen || isWallEnd) continue;
-          const left = new Vector3(r.t.z, 0, -r.t.x);
-          // The master lies on that side: 5 mm into it, and 5 mm back onto this deck's road.
-          const into = new Vector3(seam.x, seam.y, seam.z).addScaledVector(left, sign * 0.005);
-          const back = new Vector3(seam.x, seam.y, seam.z).addScaledVector(left, -sign * 0.005);
-          const yInto = down(world, into.x, seam.y + 0.3, into.z);
-          const yBack = down(world, back.x, seam.y + 0.3, back.z);
-          const isBothRoad =
-            yInto !== null &&
-            yBack !== null &&
-            Math.abs(yInto - seam.y) < 0.2 &&
-            Math.abs(yBack - seam.y) < 0.2;
-          if (!isBothRoad) continue;
-          checked++;
-          const step = Math.abs(yInto - yBack);
-          if (step > 0.001)
-            steps.push(`${c.id} s ${r.frame.s.toFixed(2)} ${key}: ${(step * 1000).toFixed(1)} mm`);
-        }
-      });
+    for (const x of seams) {
+      // At the master's face up to MERGE_FULL_DZ; sliding to the ramp's own height (≤ the miss,
+      // linear between rings) up to MERGE_MAX_DZ. Same-frame values (one world, one origin).
+      const limit = Math.abs(x.dz) <= MERGE_FULL_DZ ? 0.001 : MERGE_MAX_DZ + 0.001;
+      if (x.step! > limit)
+        steps.push(`${x.chunk} s ${x.s.toFixed(2)} dz ${x.dz.toFixed(3)}: ${x.step!.toFixed(4)} m`);
+      // Inside the seam is the master's own face: within the 1 cm its chords keep to its surface.
+      expect(Math.abs(x.inside!), `${x.chunk} s ${x.s}`).toBeLessThanOrEqual(0.01);
     }
-    expect(checked).toBeGreaterThan(100);
     expect(steps).toEqual([]);
+  });
+
+  it("lets go of a pair with no step along travel, at the three places the miss passes MERGE_MAX_DZ", () => {
+    const { cuts, world } = probed();
+    worlds.push(world);
+    // Before P3.5's review these were faces across the road up to 0.15 m high (W1).
+    expect(cuts.map(({ chunk, with: w, s }) => ({ chunk, with: w, s }))).toEqual([
+      { chunk: "207111988:2", with: "24402611", s: 157.5 },
+      { chunk: "4853798:0", with: "45021976", s: 198.5 },
+      { chunk: "4853799:0", with: "24402611", s: 82.3 },
+    ]);
+    for (const c of cuts) {
+      expect(c.alongStep, `${c.chunk} s ${c.s}`).not.toBeNull();
+      expect(c.alongStep!, `${c.chunk} s ${c.s}`).toBeLessThanOrEqual(0.001);
+    }
   });
 });
 
@@ -1051,6 +1132,7 @@ describe("markings at the sizes the plan fixes (not read back from the same cons
       wall: { inner: 4.25, outer: 4.75 },
       seam: null,
       seamOf: null,
+      seamWeight: 1,
     };
     const plan = planDeckMarkings(section().chunks[0], [
       { s: 0, sides: { left: open, right: open } },

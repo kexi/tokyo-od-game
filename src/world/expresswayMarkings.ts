@@ -34,7 +34,11 @@ const ZEBRA_MIN_GAP = 0.3;
 export const XW_EDGE_WIDTH = MARKING_DIMENSIONS.value.edgeLine.width[1];
 /** 車線境界線 width (102: 0.10–0.15 m). */
 export const XW_LANE_WIDTH = MARKING_DIMENSIONS.value.laneLine.width[1];
-/** Past the end of a "same" stretch the pair stays one slab while the slabs still overlap (the nose). */
+/**
+ * Past the end of a "same" stretch the pair stays one slab while the slabs still overlap (the nose):
+ * the compiler couples carriageways, not slabs. Set it to 0 once the compiler holds a pair to one
+ * surface for as long as their slabs overlap (P2.6 / P2.7, knowledge/expressway-generation.md).
+ */
 export const MERGE_PAD_M = 20;
 
 /** One side of a ring as the other decks leave it. */
@@ -63,6 +67,11 @@ export type DeckSide = {
   seam: { x: number; y: number; z: number } | null;
   /** Whose edge the seam lies on (run and which of its edges, left +1), for the rings it needs. */
   seamOf: { run: string; edge: 1 | -1 } | null;
+  /**
+   * How far the seam stands at the master's face (1) rather than at this deck's own height (0):
+   * below 1 where the pair misses by more than MERGE_FULL_DZ (expresswayMerge.ts seamWeight).
+   */
+  seamWeight: number;
 };
 
 export type RingSides = { left: DeckSide; right: DeckSide };
