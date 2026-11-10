@@ -35,6 +35,7 @@ function glbNodeNames(file: string): string[] {
  */
 const OWN_KEYS: Record<string, readonly string[]> = {
   rainbow_bridge: ["deckLevels"],
+  national_diet: ["plateauNote"], // scripts/blender/major_buildings.py: why it hides nothing (PLATEAU has no copy)
 };
 
 const ring = (lon: number): Array<[number, number]> => [
@@ -167,10 +168,10 @@ describe("the footprints the buildings leave out and wall off (hiddenFootprints 
   it("cuts and walls every shipped entry by the documented rule (hide → cut, solid ?? hide → wall, extras follow)", () => {
     // Stated over the real landmarks.json so a new entry cannot slip past the contract; the fixtures
     // above pin each shape (tower, Diet, east hotel, bridge) on its own.
-    const hides = (e: (typeof entries)[number]) => e.plateau?.some((p) => p.hide) ?? false;
-    const cut = entries.flatMap((e) => [...(hides(e) ? [e.footprint] : []), ...(e.extraFootprints ?? [])]);
+    const hidesPlateau = (e: (typeof entries)[number]) => e.plateau?.some((p) => p.hide) ?? false;
+    const cut = entries.flatMap((e) => [...(hidesPlateau(e) ? [e.footprint] : []), ...(e.extraFootprints ?? [])]);
     const walled = entries.flatMap((e) =>
-      (e.solid ?? hides(e)) ? [e.footprint, ...(e.extraFootprints ?? [])] : [],
+      (e.solid ?? hidesPlateau(e)) ? [e.footprint, ...(e.extraFootprints ?? [])] : [],
     );
     expect(hiddenFootprints(entries)).toEqual(cut);
     expect(walledFootprints(entries)).toEqual(walled);

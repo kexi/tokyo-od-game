@@ -1266,6 +1266,7 @@ BUILDERS = {
 LANDMARK_MODULES = [
     "tower_area",
     "rainbow_bridge",
+    "major_buildings",
 ]
 
 # The landmarks whose near file also carries the far node (the game shows only nodes.near). Every
