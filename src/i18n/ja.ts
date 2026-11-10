@@ -863,6 +863,8 @@ export const ja = {
   "hud.signal.green": "青",
   "hud.signal.yellow": "黄",
   "hud.signal.red": "赤",
+  "hud.signal.redRightArrow": "赤・右折矢印",
+  "hud.signal.redArrows": "赤・矢印",
   "hud.signalAhead": "🚦 {light}・{m}m",
   "hud.stopAhead": "🛑 止まれ・{m}m",
   "hud.oneWay": "⬆ 一方通行",

@@ -13,6 +13,8 @@ import { MassiveBody, massContactsFor } from "../physics/massContacts";
 import { laden, VEHICLE_SPECS, yawInertia, type MassClass } from "../physics/masses";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { TrafficControl } from "./trafficControl";
+import { movementOf } from "../signals/movement";
+import { mayProceed, type Movement } from "../signals/plan";
 
 type AiCar = {
   object: Group;
@@ -327,7 +329,10 @@ export class TrafficAI {
   ): Vector3 {
     const limit = speedLimit(c.seg) / 3.6;
     const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
-    const gap = Math.min(this.gapAhead(c, pos, dir, player, playerForward, playerSpeed), this.stopGap(c, dt));
+    const gap = Math.min(
+      this.gapAhead(c, pos, dir, player, playerForward, playerSpeed),
+      this.stopGap(graph, c, dt),
+    );
     // 7 m centre to centre for cars; longer vehicles keep their own length clear.
     const standstill = 4.75 + c.half;
     const target =
@@ -536,6 +541,19 @@ export class TrafficAI {
     return this.lanePoint(graph, seg, dir, Math.min(s, seg.length));
   }
 
+  /**
+   * The movement it makes at the end of this road, by the road it has chosen next. Only that next
+   * road is looked at: in a junction box of several nodes the real turn may come one link later,
+   * and reading it as through is the safe side (an arrow for a turn does not let it go).
+   */
+  private movementAt(graph: RoadGraph, c: AiCar): Movement {
+    const next = this.peekNext(graph, c);
+    if (!next) return "through";
+    const tIn = this.lanePoint(graph, c.seg, c.dir, c.seg.length).dir;
+    const tOut = this.lanePoint(graph, next.seg, next.dir, 0).dir;
+    return movementOf(tIn, tOut);
+  }
+
   /** The road it will take at the end of this one (chosen once, kept until it gets there). */
   private peekNext(graph: RoadGraph, c: AiCar): { seg: Segment; dir: 1 | -1 } | null {
     return this.upcoming(graph, c, 0);
@@ -565,14 +583,15 @@ export class TrafficAI {
    * Virtual obstacle at the next stop line: red/yellow signals (unless too close to stop, as
    * 施行令 第2条 allows on yellow) and 一時停止, released after a full stop.
    */
-  private stopGap(c: AiCar, dt: number): number {
+  private stopGap(graph: RoadGraph, c: AiCar, dt: number): number {
     const next = this.control?.nextStop(c.seg, c.dir, c.s);
     if (!next || !this.control) return Infinity;
     const { approach, dist } = next;
     if (approach.kind === "signal") {
-      const state = this.control.state(approach);
+      const permission = this.control.permits(approach, this.movementAt(graph, c));
       const canStop = dist > (c.speed * c.speed) / (2 * COMFORT_DECEL);
-      return state !== "green" && canStop ? dist + STOP_LINE_GAP : Infinity;
+      // Anything short of `go` (黄, 赤 without an arrow its way, an unconfirmed 転回) stops it when it can.
+      return !mayProceed(permission) && canStop ? dist + STOP_LINE_GAP : Infinity;
     }
     if (c.served === approach.id) return Infinity;
     const isStanding = dist < 3 && c.speed < 0.2;

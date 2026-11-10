@@ -2,7 +2,7 @@ import { type BufferGeometry, type Material, Mesh, SRGBColorSpace, TextureLoader
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { UntonemappedBasicMaterial } from "../render/untonemapped";
 import { sharedDraco } from "../render/draco";
-import { PED_HEAD, VEHICLE_HEAD } from "../signals/heads";
+import { PED_HEAD, SIGNAL_HEADS, VEHICLE_HEAD } from "../signals/heads";
 
 /**
  * 信号機 parts modelled in Blender (scripts/blender/signals.py → public/models/signals.glb) and
@@ -23,10 +23,14 @@ const ARTWORK = import.meta.glob<string>("../../assets/signals/textures/*.png", 
 export type Part = Array<{ geometry: BufferGeometry; material: Material }>;
 export type SignalKit = {
   head: Part;
+  /** The 3 灯横型 with its right-arrow row, over approaches whose plan has a 右折矢印 step. */
+  headRightArrow: Part;
   pedHead: Part;
   pole: Part;
   arm: Part;
   lamp: BufferGeometry;
+  /** The arrow lens (pointing up; lampLayout's `turn` rotates it), lit like the round lamps. */
+  arrowLamp: BufferGeometry;
   pedLamp: BufferGeometry;
   /** Lens materials; per-instance colours light them (white artwork × colour). */
   lens: UntonemappedBasicMaterial;
@@ -68,10 +72,12 @@ export async function loadSignalModels(): Promise<void> {
   kit = {
     // The housings of the heads the game shows (VEHICLE_HEAD / PED_HEAD are the one record of which).
     head: part(VEHICLE_HEAD.node),
+    headRightArrow: part(SIGNAL_HEADS["vehicle-h3-right"].node),
     pedHead: part(PED_HEAD.node),
     pole: part("SignalPole"),
     arm: part("SignalArm"),
     lamp: part("SignalLamp")[0].geometry,
+    arrowLamp: part("SignalArrowLamp")[0].geometry,
     pedLamp: part("PedLamp")[0].geometry,
     lens: lensMaterial(lensMap),
     pedStop: lensMaterial(stopMap),

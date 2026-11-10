@@ -23,16 +23,31 @@ import {
   LAMP_COLOURS,
   LENS_Z_M,
   PED_HEAD,
+  SIGNAL_HEADS,
   VEHICLE_HEAD,
+  arrowDirection,
   headHang,
   isArrow,
   lampLayout,
+  type ArrowDirection,
   type LampColour,
 } from "../signals/heads";
 import { SIGNAL_MOUNTS } from "../signals/mounts";
+import { hasRightArrow, planForJunction } from "../signals/assign";
+import {
+  cycleTime,
+  permits,
+  stepAt,
+  type CompiledPlan,
+  type GroupId,
+  type MainAspect,
+  type Movement,
+  type Permission,
+  type Step,
+} from "../signals/plan";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 
-/** A two-phase signal's state: which of 施行令第2条's three colours is lit. */
+/** Which of 施行令第2条's three colours a signal's main lamps show (flashing ones by their colour). */
 export type LightState = LampColour;
 
 /** A place where traffic on one segment, in one direction, must obey a signal or stop sign. */
@@ -44,27 +59,54 @@ export type Approach = {
   kind: "signal" | "stop";
   controller: Controller | null;
   axis: 0 | 1;
+  /** The plan's signal group the approach's heads belong to ("a" for axis 0, "b" for axis 1). */
+  group: GroupId;
+  /** The junction node the approach arrives at. */
+  node: Vector3;
+  /**
+   * How far from `node` a car has left the junction: the controller's box plus 20 m, at least 25 m,
+   * and always beyond the stop line (stop line distance plus 10 m) — a judgement at the line itself
+   * would read every crossing as through.
+   */
+  exitM: number;
   /** Stop line across the whole carriageway, for crossing tests. */
   a: Vector3;
   b: Vector3;
   travel: Vector3; // unit travel direction at the stop line
 };
 
-type Controller = { id: number; offset: number; nodes: number[] };
+/**
+ * One signal controller: its junction nodes, its 現示表 and the step it shows now. `step` is a cache
+ * refreshed by TrafficControl.update for the controllers of the current network only: an Approach
+ * kept from before a rebuild (streetLights.ts holds approaches between its own rebuilds) points at
+ * a controller that is no longer updated, so its lamps and permits stay frozen until it is replaced.
+ */
+type Controller = { id: number; offset: number; nodes: number[]; plan: CompiledPlan; step: Step };
 
-// Signal plan (seconds). Shorter than real Tokyo cycles (100–140 s) to keep the game moving.
-const GREEN = [20, 15] as const;
-const YELLOW = 3; // 施行令 第2条: stop unless unable to stop safely
-const ALL_RED = 2;
-export const CYCLE = GREEN[0] + GREEN[1] + 2 * (YELLOW + ALL_RED);
+/** The default plan (src/signals/plan.ts twoPhase), the compiled one assign.ts shares. */
+const TWO_PHASE = planForJunction([]);
+/** The default plan's cycle (s). Plans with arrows run longer. */
+export const CYCLE = TWO_PHASE.cycle;
 
-/** Phase of one axis of a two-phase signal at `seconds` (axis 1 starts after axis 0 clears). */
+const MAIN_COLOUR: Record<MainAspect, LightState> = {
+  G: "green",
+  Y: "yellow",
+  R: "red",
+  FY: "yellow",
+  FR: "red",
+  off: "red",
+};
+const groupOfAxis = (axis: 0 | 1): GroupId => (axis === 0 ? "a" : "b");
+/** The walkers who go with `group`'s traffic cross the other group's road. */
+const walkersCrossing = (group: GroupId): GroupId => (group === "a" ? "b" : "a");
+
+/**
+ * Main lamps of one axis of the default two-phase plan at `seconds` (compatibility: the plan is
+ * src/signals/plan.ts twoPhase; TrafficControl reads each controller's own plan).
+ */
 export function lightState(seconds: number, offset: number, axis: 0 | 1): LightState {
-  const t = (((seconds + offset) % CYCLE) + CYCLE) % CYCLE;
-  const local = t - (axis === 0 ? 0 : GREEN[0] + YELLOW + ALL_RED);
-  if (local >= 0 && local < GREEN[axis]) return "green";
-  if (local >= 0 && local < GREEN[axis] + YELLOW) return "yellow";
-  return "red";
+  const step = stepAt(TWO_PHASE, cycleTime(seconds, offset, TWO_PHASE.cycle));
+  return MAIN_COLOUR[step.main[groupOfAxis(axis)]];
 }
 
 const SIGNAL_SNAP = 25; // OSM signal node → GSI junction node (m)
@@ -86,7 +128,8 @@ const PED_MOUNT = SIGNAL_MOUNTS[PED_HEAD.mount];
 const SIGNAL_HEIGHT = VEHICLE_MOUNT.centreHeightM;
 const HEAD_SCALE = VEHICLE_MOUNT.drawScale;
 const HEAD_HANG = headHang(VEHICLE_HEAD);
-const VEHICLE_LAMPS = lampLayout(VEHICLE_HEAD);
+/** The head over approaches whose group has a 右折矢印 step (src/signals/assign.ts). */
+const RIGHT_ARROW_HEAD = SIGNAL_HEADS["vehicle-h3-right"];
 const PED_HEIGHT = PED_MOUNT.centreHeightM; // pedestrian head centre above the pavement
 const PED_LAMPS = lampLayout(PED_HEAD);
 const POLE_RADIUS = 0.13;
@@ -114,8 +157,11 @@ export class TrafficControl {
   private bySegment = new Map<number, Approach[]>();
   private meshes: InstancedMesh[] = [];
   private readonly instances = new RoadInstances();
+  private controllers: Controller[] = [];
   private lamps: InstancedMesh | null = null;
   private lampOwners: { approach: Approach; colour: LightState }[] = [];
+  private arrowLamps: InstancedMesh | null = null;
+  private arrowOwners: { approach: Approach; dir: ArrowDirection }[] = [];
   private pedLamps: { stop: InstancedMesh; go: InstancedMesh } | null = null;
   private pedOwners: PedHead[] = [];
   private plates: Mesh[] = [];
@@ -175,15 +221,28 @@ export class TrafficControl {
   /** Advance signal phases (seconds) and repaint lamps. */
   update(seconds: number): void {
     this.time = seconds;
+    // One step lookup per controller per frame; state(), permits() and pedLight() read it there.
+    for (const c of this.controllers) c.step = stepAt(c.plan, cycleTime(seconds, c.offset, c.plan.cycle));
     const lamps = this.lamps;
     if (!lamps) return;
-    this.lampOwners.forEach(({ approach, colour }, i) =>
-      lamps.setColorAt(i, this.state(approach) === colour ? LAMP_ON[colour] : LAMP_OFF),
-    );
+    const blinkOn = Math.floor(seconds * 2) % 2 === 0;
+    this.lampOwners.forEach(({ approach, colour }, i) => {
+      const aspect = approach.controller?.step.main[approach.group] ?? "off";
+      const isFlashing = aspect === "FY" || aspect === "FR";
+      const isLit = aspect !== "off" && MAIN_COLOUR[aspect] === colour && (!isFlashing || blinkOn);
+      lamps.setColorAt(i, isLit ? LAMP_ON[colour] : LAMP_OFF);
+    });
     if (lamps.instanceColor) lamps.instanceColor.needsUpdate = true;
+    const arrows = this.arrowLamps;
+    if (arrows) {
+      this.arrowOwners.forEach(({ approach, dir }, i) => {
+        const isLit = approach.controller?.step.arrows[approach.group]?.includes(dir) ?? false;
+        arrows.setColorAt(i, isLit ? LAMP_ON.green : LAMP_OFF);
+      });
+      if (arrows.instanceColor) arrows.instanceColor.needsUpdate = true;
+    }
     const ped = this.pedLamps;
     if (!ped) return;
-    const blinkOn = Math.floor(seconds * 2) % 2 === 0;
     this.pedOwners.forEach(({ seg, near }, i) => {
       const light = this.pedLight(seg, near) ?? "stop";
       ped.stop.setColorAt(i, light === "stop" ? PED_ON.stop : LAMP_OFF);
@@ -193,8 +252,34 @@ export class TrafficControl {
     for (const m of [ped.stop, ped.go]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
   }
 
+  /**
+   * The colour of `ap`'s main lamps (compatibility for the HUD and the lamp glow: it says nothing of
+   * arrows). Whether a car may go is `permits`.
+   */
   state(ap: Approach): LightState {
-    return ap.controller ? lightState(this.time, ap.controller.offset, ap.axis) : "green";
+    return ap.controller ? MAIN_COLOUR[ap.controller.step.main[ap.group]] : "green";
+  }
+
+  /**
+   * 施行令第2条 for a vehicle on `ap` making `movement` (src/signals/plan.ts permits): the one test
+   * the violation check, the autopilot and the traffic AI use. 一時停止 approaches answer `go`: their
+   * stop is the stop-sign logic's, not a signal's.
+   */
+  permits(ap: Approach, movement: Movement): Permission {
+    if (ap.kind !== "signal" || !ap.controller) return "go";
+    return permits(ap.controller.step, ap.group, movement);
+  }
+
+  /** `permits` as it stood `agoS` seconds ago (the violation check's grace after an arrow goes out). */
+  permitsBefore(ap: Approach, movement: Movement, agoS: number): Permission {
+    const c = ap.controller;
+    if (ap.kind !== "signal" || !c) return "go";
+    return permits(stepAt(c.plan, cycleTime(this.time - agoS, c.offset, c.plan.cycle)), ap.group, movement);
+  }
+
+  /** How many controllers run a plan with a 右折矢印 (for the network summary log). */
+  rightArrowCount(): number {
+    return this.controllers.filter((c) => ["a", "b"].some((g) => hasRightArrow(c.plan, g))).length;
   }
 
   /**
@@ -214,11 +299,7 @@ export class TrafficControl {
       }
     }
     if (!best?.controller) return null;
-    const other: 0 | 1 = best.axis === 0 ? 1 : 0;
-    const t = (((this.time + best.controller.offset) % CYCLE) + CYCLE) % CYCLE;
-    const local = t - (other === 0 ? 0 : GREEN[0] + YELLOW + ALL_RED);
-    if (local < 0 || local >= GREEN[other]) return "stop";
-    return local < GREEN[other] - 5 ? "go" : "flash";
+    return best.controller.step.ped[walkersCrossing(best.group)] ?? "stop";
   }
 
   /**
@@ -291,6 +372,9 @@ export class TrafficControl {
     this.meshes = [];
     this.lamps = null;
     this.lampOwners = [];
+    this.arrowLamps = null;
+    this.arrowOwners = [];
+    this.controllers = [];
     this.pedLamps = null;
     this.pedOwners = [];
     for (const p of this.plates) {
@@ -355,13 +439,22 @@ export class TrafficControl {
         Math.imul(Math.round(seg.line.coords[i + 1] * 1e4), 19349663);
       return h >>> 0;
     };
+    // The offset is the smallest node hash modulo the plan's cycle, worked out once the plan is
+    // chosen (below): for twoPhase that is the offset the game always used.
     const controllers = new Map<number, Controller>();
+    const hashes = new Map<Controller, number[]>();
     for (const j of list) {
       const r = root(j.node);
-      const c = controllers.get(r) ?? { id: r, offset: Infinity, nodes: [] };
+      const c = controllers.get(r) ?? {
+        id: r,
+        offset: 0,
+        nodes: [],
+        plan: TWO_PHASE,
+        step: TWO_PHASE.plan.steps[0],
+      };
       c.nodes.push(j.node);
-      c.offset = Math.min(c.offset, nodeHash(j.node) % CYCLE);
       controllers.set(r, c);
+      hashes.set(c, [...(hashes.get(c) ?? []), nodeHash(j.node)]);
     }
 
     // A big crossing is several GSI nodes joined by short links, and OSM often tags a signal at
@@ -388,6 +481,7 @@ export class TrafficControl {
     }
 
     const taken = new Set<string>();
+    const laneUse = new Map(regs.laneUse.map((u) => [`${u.seg.id}/${u.dir}`, u]));
     for (const c of controllers.values()) {
       const members = new Set(c.nodes);
       const entries: { seg: Segment; node: number; dir: 1 | -1; bearing: Vector3 }[] = [];
@@ -408,13 +502,25 @@ export class TrafficControl {
       if (entries.length === 0) continue;
       // Axis 0 follows the widest road through the crossing; roughly perpendicular entries get axis 1.
       const main = entries.reduce((a, b) => (b.seg.line.width > a.seg.line.width ? b : a));
+      const axisOf = (e: (typeof entries)[number]): 0 | 1 =>
+        Math.abs(e.bearing.dot(main.bearing)) >= Math.SQRT1_2 ? 0 : 1;
+      const plan = planForJunction(
+        entries.map((e) => ({ group: groupOfAxis(axisOf(e)), lanes: laneUse.get(`${e.seg.id}/${e.dir}`) })),
+      );
+      c.plan = plan;
+      c.offset = Math.min(...(hashes.get(c) ?? [0]).map((h) => h % c.plan.cycle));
+      c.step = stepAt(c.plan, cycleTime(this.time, c.offset, c.plan.cycle));
+      this.controllers.push(c);
+      const nodes = c.nodes.map((n) => this.nodePos(graph, n)).filter((p): p is Vector3 => p !== null);
       for (const e of entries) {
-        const axis: 0 | 1 = Math.abs(e.bearing.dot(main.bearing)) >= Math.SQRT1_2 ? 0 : 1;
         const fromNode = this.clearance(graph, e.node, e.seg) + 5;
         const jartic = this.jarticStop(regs.stopLines, e.seg, e.dir, fromNode + 15);
         const back = jartic ?? fromNode;
         if (e.seg.length - back < 1) continue;
-        const ap = this.approach(graph, e.seg, e.dir, e.seg.length - back, "signal", c, axis);
+        const ap = this.approach(graph, e.seg, e.dir, e.seg.length - back, "signal", c, axisOf(e));
+        const box = Math.max(0, ...nodes.map((p) => p.distanceTo(ap.node)));
+        const lineM = ap.a.clone().add(ap.b).multiplyScalar(0.5).distanceTo(ap.node);
+        ap.exitM = Math.max(25, box + 20, lineM + 10);
         this.approaches.push(ap);
         taken.add(`${e.seg.id}/${e.dir}`);
       }
@@ -458,6 +564,7 @@ export class TrafficControl {
     const { pos, dir: d } = graph.sample(seg, along);
     const travel = d.clone().multiplyScalar(dir);
     const half = seg.line.width / 2 + 1;
+    const node = graph.sample(seg, dir === 1 ? seg.length : 0).pos.clone();
     return {
       id: this.approaches.length,
       seg,
@@ -466,6 +573,9 @@ export class TrafficControl {
       kind,
       controller,
       axis,
+      group: groupOfAxis(axis),
+      node,
+      exitM: 25,
       a: pos.clone().add(leftOf(travel, half)),
       b: pos.clone().add(leftOf(travel, -half)),
       travel,
@@ -482,6 +592,12 @@ export class TrafficControl {
 
   // ---------- models ----------
 
+  /** The head over `ap`: with the right-arrow row when its group's plan ever lights a right arrow. */
+  private headFor(ap: Approach) {
+    const isArrowGroup = ap.controller !== null && hasRightArrow(ap.controller.plan, ap.group);
+    return isArrowGroup ? RIGHT_ARROW_HEAD : VEHICLE_HEAD;
+  }
+
   private *buildModels(graph: RoadGraph, crossings: Crossing[]): Generator<void | boolean> {
     const kit = signalKit();
     if (!kit) return;
@@ -491,7 +607,9 @@ export class TrafficControl {
     const poles: Array<{ pos: Vector3; height: number }> = [];
     const arms: Object3D["matrix"][] = [];
     const heads: Object3D["matrix"][] = [];
+    const arrowHeads: Object3D["matrix"][] = [];
     const lamps: Object3D["matrix"][] = [];
+    const arrowLamps: Object3D["matrix"][] = [];
 
     for (const ap of signals) {
       yield;
@@ -537,19 +655,24 @@ export class TrafficControl {
       o.rotation.set(0, yaw, 0);
       o.scale.setScalar(HEAD_SCALE);
       o.updateMatrix();
-      heads.push(o.matrix.clone());
-      for (const { lamp, x, y } of VEHICLE_LAMPS) {
-        // The shown head has no arrow row; T2's phase table is what will light arrows.
-        if (isArrow(lamp)) continue;
+      const def = this.headFor(ap);
+      (def === RIGHT_ARROW_HEAD ? arrowHeads : heads).push(o.matrix.clone());
+      for (const { lamp, x, y, turn } of lampLayout(def)) {
         o.position.set(head.x, g + SIGNAL_HEIGHT, head.z);
         o.rotation.set(0, yaw, 0);
         // The face looks back along −travel, so local +X (lampLayout's right) is the driver's
-        // right: 施行令第3条 赤・黄・青 from the right.
+        // right: 施行令第3条 赤・黄・青 from the right, and a right arrow points the driver's right.
         o.translateX(x * HEAD_SCALE);
         o.translateY(y * HEAD_SCALE);
         o.translateZ(LENS_Z_M);
+        o.rotateZ(turn);
         o.scale.setScalar(HEAD_SCALE);
         o.updateMatrix();
+        if (isArrow(lamp)) {
+          arrowLamps.push(o.matrix.clone());
+          this.arrowOwners.push({ approach: ap, dir: arrowDirection(lamp) });
+          continue;
+        }
         lamps.push(o.matrix.clone());
         this.lampOwners.push({ approach: ap, colour: lamp });
       }
@@ -632,10 +755,17 @@ export class TrafficControl {
     yield* this.instancedPart(kit.pole, poleMatrices, true);
     yield* this.instancedPart(kit.arm, arms, true);
     yield* this.instancedPart(kit.head, heads, true);
+    // Only when a plan here has an arrow: no empty meshes (and no extra pipeline) elsewhere.
+    if (arrowHeads.length > 0) yield* this.instancedPart(kit.headRightArrow, arrowHeads, true);
     yield* this.instancedPart(kit.pedHead, pedHeads, true);
     const lampMesh = this.instanced(kit.lamp, kit.lens, lamps, false);
     for (let i = 0; i < lamps.length; i++) lampMesh.setColorAt(i, LAMP_OFF);
     this.lamps = lampMesh;
+    if (arrowLamps.length > 0) {
+      const arrowMesh = this.instanced(kit.arrowLamp, kit.lens, arrowLamps, false);
+      for (let i = 0; i < arrowLamps.length; i++) arrowMesh.setColorAt(i, LAMP_OFF);
+      this.arrowLamps = arrowMesh;
+    }
     yield true;
     const stop = this.instanced(kit.pedLamp, kit.pedStop, pedStops, false);
     const go = this.instanced(kit.pedLamp, kit.pedGo, pedGos, false);
