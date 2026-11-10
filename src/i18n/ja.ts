@@ -1206,6 +1206,8 @@ export const ja = {
   "credits.h.guide": "案内標識（方面及び方向）",
   "credits.h.destinations": "目的地の一覧（駅・名所）",
   "credits.h.expressway": "高架の自動車専用道路（都市高速）",
+  // The operator on the 都市高速's green boards (src/signs/board/expressway.ts): fictional, never a real operator's name.
+  "guide.operator": "都市高速",
   "credits.expressway.extract":
     "Geofabrik の関東抽出（{geofabrik}）から自動車専用道路の中心線・車線数・路線記号・出入口名を取り出し、道路構造令の範囲で平面・縦断線形を設計し直して（data/expressway）描いています。線形・高さ・橋脚の位置はゲームの推定で、実際の構造とは異なります。",
   "credits.destinations.extract":

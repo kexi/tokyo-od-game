@@ -16,7 +16,11 @@ import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX } from "../geo/tiles";
 import { log, warn } from "../log";
 import { PROP_GROUPS } from "../physics/groups";
-import { drawBoard, layoutBoard, loadGuideFonts, type BoardLayout } from "./guideArt";
+import { drawBoard, layoutGuideBoard, loadGuideFonts } from "./guideArt";
+import type { BoardLayout } from "../signs/board/boxes";
+import { boardNames, type BoardContent } from "../signs/board/content";
+import { BoardFacePool, TEXTURE_PX, type BoardFace } from "./boardFacePool";
+import { planRowSteps, type SignalArm } from "./guideRows";
 import {
   localDests,
   localPlaces,
@@ -38,38 +42,26 @@ import { MEMBER_NODES, resolveMount, type MemberRole } from "../signs/mount";
 import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
 import { RoadInstances } from "./roadInstances";
 import { FrameWork } from "../game/frameWork";
-import { FaceLayerPool } from "./signFaces";
-import { attachFaceLayers, SignFaceMaterial } from "./signFaceMaterial";
-import { BASE_GLOW } from "../signs/retroAssumptions";
+import { attachFaceLayers } from "./signFaceMaterial";
 
 /**
- * 案内標識 108 series on the streets around the player: planned by guidePlan.ts from the road
- * graph, the OSM route numbers and destinations (public/data/routes) and the 表示地名
- * (public/data/guide-places.json); poles, arms and boards from scripts/blender/guide_signs.py;
- * faces drawn by guideArt.ts.
+ * 案内標識 on the streets around the player: the 108 series planned by guidePlan.ts and the 105・106
+ * by guideRows.ts from the road graph, the OSM route numbers and destinations (public/data/routes)
+ * and the 表示地名 (public/data/guide-places.json); poles, arms and boards from
+ * scripts/blender/guide_signs.py; faces laid out by src/signs/board/ and drawn by guideArt.ts.
  *
  * Cost: every part is one InstancedMesh, and the board faces too: one SignFaceMaterial
- * (signFaceMaterial.ts) over a FaceLayerPool of drawn faces (signFaces.ts), each board's layer an
- * instance attribute. Only the nearest boards (≤ NEAR_COUNT within NEAR_RANGE) show their drawn
- * face; the rest show layer 0, the plain blue far face. The pool keeps CACHE_LIMIT faces across
- * rebuilds (the least recently wanted goes first). Why not a texture per board for all of them:
- * 100 boards at 512 px are ~110 MB of GPU memory with mipmaps, and beyond ~400 m the letters are a
- * few pixels high anyway. Why not a Mesh and material per near board (before G3): 24 more draw
- * calls and materials, and the faces could not share the plates' headlamp return.
+ * (signFaceMaterial.ts) over the BoardFacePool (boardFacePool.ts), each board's layer an instance
+ * attribute. Only the most wanted boards (apparent size × facing, ≤ NEAR_COUNT within NEAR_RANGE)
+ * show their drawn face; the rest show layer 0, the plain blue far face. The pool keeps 32 faces
+ * across rebuilds (the least recently wanted goes first). Why not a texture per board for all of
+ * them: 100 boards at 512 px are ~110 MB of GPU memory with mipmaps, and beyond ~400 m the letters
+ * are a few pixels high anyway. Why not a Mesh and material per near board (before G3): 24 more
+ * draw calls and materials, and the faces could not share the plates' headlamp return.
  */
 
 const ROUTE_ZOOM = 14;
 const ROAD_ZOOM = 16;
-const NEAR_RANGE = 400; // m: boards this close get their drawn face (beyond, letters are < 3 px)
-const NEAR_COUNT = 24;
-const DRAWS_PER_UPDATE = 3; // canvas draws per update (a board takes a few ms)
-const TEXTURE_PX = 512; // 280 cm → 1.8 px/cm: a 30 cm 漢字 is 55 px
-// Layers are 512 × 320: the boards are about 1.6 times as wide as tall (the canvas is stretched to
-// it; the face's UVs cover the board either way). 33 layers with mipmaps: 28.8 MB.
-const TEXTURE_PX_HIGH = 320;
-const CACHE_LIMIT = 32; // drawn faces kept, + layer 0 (the far face)
-/** The 案内標識 blue (guideArt.ts BLUE), the far face as the plain far material drew it. */
-const FAR_FACE: [number, number, number, number] = [0x1d, 0x4f, 0x9c, 255];
 // Heights, the 3° lean and the gap to the pole: src/signs/mount.ts (片持式 cantilever-f, 路側式
 // double-post on the pavement, 2.5 m).
 
@@ -83,8 +75,28 @@ type Kit = {
   back: Part;
 };
 
+/** A board as the review hooks see it (GuideSigns.debugTargets). */
+export type GuideTargetView = {
+  kind: string;
+  pos: Vector3;
+  normal: Vector3;
+  width: number;
+  height: number;
+  letterCm: number;
+  mount: "overhead" | "roadside";
+  before: number;
+  bottomM: number;
+  hidden: boolean;
+  /** The layer it shows (0: the plain far face). */
+  layer: number;
+  names: string[];
+};
+
+/** A placed board of any number (108 from guidePlan.ts, 105・106 from guideRows.ts). */
+type Placed = GuidePlan<BoardContent>;
+
 type Sign = {
-  plan: GuidePlan;
+  plan: Placed;
   layout: BoardLayout;
   key: string;
   /** Board centre and orientation (the face's matrix), for the near face mesh. */
@@ -103,28 +115,15 @@ type Sign = {
 const at = (p: Vector3, rotY: number, scale: Vector3, pitch = 0) =>
   new Matrix4().compose(p, new Quaternion().setFromEuler(new Euler(pitch, rotY, 0, "YXZ")), scale);
 
-type Faces = { pool: FaceLayerPool; material: SignFaceMaterial };
-let guideFaces: Faces | null = null;
-/** Made on first use (the pool needs the renderer, bound by main.ts). */
-function faces(): Faces {
-  if (guideFaces) return guideFaces;
-  const pool = new FaceLayerPool({
-    name: "guide",
-    size: TEXTURE_PX,
-    height: TEXTURE_PX_HIGH,
-    layers: CACHE_LIMIT + 1,
-    anisotropy: 8,
-    standIn: FAR_FACE,
-  });
-  guideFaces = {
-    pool,
-    material: new SignFaceMaterial({ small: pool.texture, baseGlow: BASE_GLOW.value.guide }),
-  };
-  return guideFaces;
+let boardFaces: BoardFacePool | null = null;
+/** Made on first use (the pool's uploads need the renderer, bound by main.ts). */
+function faces(): BoardFacePool {
+  boardFaces ??= new BoardFacePool();
+  return boardFaces;
 }
 
 export class GuideSigns {
-  plans: GuidePlan[] = [];
+  plans: Placed[] = [];
   private signs: Sign[] = [];
   private kit: Kit | null = null;
   private places: PlaceRow[] | null = null;
@@ -258,6 +257,7 @@ export class GuideSigns {
     centre: { lat: number; lon: number },
     avoid: Vector3[],
     work = new FrameWork(),
+    signalArms: SignalArm[] = [],
   ): Promise<void> {
     const generation = ++this.generation;
     this.clear(true);
@@ -289,23 +289,28 @@ export class GuideSigns {
       const places: GuidePlace[] = localPlaces(this.places, frame);
       const crossings = (regs?.crossings ?? []).map((c) => c.pos);
       const started = performance.now();
-      this.plans = await work.run(
-        planGuideSteps({
-          graph,
-          approaches: guideApproaches,
-          routes,
-          places,
-          names,
-          dests: localDests(data.dests, frame),
-          avoid: [...avoid, ...crossings],
-        }),
-      );
+      const planInput = {
+        graph,
+        approaches: guideApproaches,
+        routes,
+        places,
+        names,
+        dests: localDests(data.dests, frame),
+        avoid: [...avoid, ...crossings],
+      };
+      const junctionBoards = await work.run(planGuideSteps(planInput));
+      await work.yield();
+      // 105・106 after every 108: the 108 boards keep the places they had before G5.
+      const rowBoards = await work.run(planRowSteps({ ...planInput, placed: junctionBoards, signalArms }));
+      this.plans = [...junctionBoards, ...rowBoards];
       await work.yield();
       await work.run(this.build(this.kit));
       this.instances.end();
       log("guide_signs_placed", {
         signs: this.plans.length,
-        advance: this.plans.filter((p) => p.board.distance !== null).length,
+        advance: junctionBoards.filter((p) => p.board.distance !== null).length,
+        direction: rowBoards.filter((p) => p.board.kind.startsWith("105")).length,
+        confirm: rowBoards.filter((p) => p.board.kind === "106-A").length,
         overhead: this.plans.filter((p) => p.mount === "overhead").length,
         routed: routes.size,
         mapped: data.dests.length,
@@ -316,6 +321,50 @@ export class GuideSigns {
 
   count(): number {
     return this.signs.length;
+  }
+
+  /**
+   * Dev (scripts/qa/guideBoards.ts, the review): each plan's face drawn now at the layer's width,
+   * and the pool's budget and use.
+   */
+  /**
+   * Dev (the review's `guide` targets, src/debug/viewHooks.ts): every standing board's face as
+   * drawn now — its centre and normal from the face's instance matrix, size, number, mount, the
+   * layer it shows and the height of its lower edge.
+   */
+  debugTargets(): GuideTargetView[] {
+    const pool = faces();
+    return this.signs.map((s) => {
+      const pos = new Vector3().setFromMatrixPosition(s.board);
+      const normal = new Vector3(0, 0, 1).transformDirection(s.board).setY(0).normalize();
+      const ground = this.groundAt(s.plan.pos.x, s.plan.pos.z) ?? 0;
+      const h = s.layout.height / 100;
+      return {
+        kind: s.plan.board.kind,
+        pos,
+        normal,
+        width: s.layout.width / 100,
+        height: h,
+        letterCm: s.plan.board.letter,
+        mount: s.plan.mount,
+        before: s.plan.before,
+        bottomM: pos.y - h / 2 - ground,
+        hidden: s.hidden,
+        layer: s.isNear ? pool.layerOf(s.key) : 0,
+        names: boardNames(s.plan.board).map((n) => n.ja),
+      };
+    });
+  }
+
+  debugBoards() {
+    const pool = faces();
+    return {
+      plans: this.plans,
+      draw: (i: number) => drawBoard(layoutGuideBoard(this.plans[i].board), TEXTURE_PX),
+      layout: (i: number) => layoutGuideBoard(this.plans[i].board),
+      usage: pool.usage(),
+      stats: { ...pool.stats },
+    };
   }
 
   reanchor(matrix: Matrix4, rotation: Quaternion, graph: RoadGraph): void {
@@ -352,34 +401,26 @@ export class GuideSigns {
   }
 
   /**
-   * Drawn faces for the nearest boards, the far face for the rest; and, every 2 s, signs near the
-   * player that stand inside a building (GSI 幅員 wider than the street) are hidden. The pool
-   * uploads a couple of faces a frame; the boards are asked for every 500 ms, at most
-   * DRAWS_PER_UPDATE new canvases each time (a board takes a few ms to draw).
+   * Drawn faces for the most wanted boards, the far face for the rest; and, every 2 s, signs near
+   * the player that stand inside a building (GSI 幅員 wider than the street) are hidden. The pool
+   * uploads a couple of faces a frame and draws canvases in 4 ms FrameWork slices; the boards are
+   * asked for every 500 ms, weighed as seen from `eye` (the camera: what is on the screen; the
+   * building check stays round `focus`, the player).
    */
-  update(focus: Vector3, now: number): void {
+  update(focus: Vector3, now: number, eye: Vector3 = focus): void {
     if (!this.faces) return;
-    const { pool } = faces();
-    pool.pump();
+    const pool = faces();
+    pool.frame();
     if (pool.version !== this.layerVersion) this.applyLayers();
     if (now - this.lastUpdate < 500) return;
     this.lastUpdate = now;
-    const byDistance = this.signs
-      .filter((s) => !s.hidden)
-      .map((s) => ({ s, d: Math.hypot(s.plan.pos.x - focus.x, s.plan.pos.z - focus.z) }))
-      .toSorted((a, b) => a.d - b.d);
-    const wanted = byDistance.filter((e) => e.d < NEAR_RANGE).slice(0, NEAR_COUNT);
-    const isNear = new Set(wanted.map((e) => e.s));
-    for (const s of this.signs) s.isNear = isNear.has(s);
-    pool.want(
-      new Map(
-        wanted.map(({ s, d }) => [
-          s.key,
-          { source: { draw: () => drawBoard(s.layout, TEXTURE_PX) }, priority: d },
-        ]),
-      ),
-    );
-    pool.start(DRAWS_PER_UPDATE);
+    const boards: BoardFace[] = [];
+    for (const s of this.signs) {
+      if (s.hidden) continue;
+      boards.push(this.faceOf(s));
+    }
+    const wanted = pool.want(boards, eye);
+    for (const s of this.signs) s.isNear = !s.hidden && wanted.has(s.key);
     this.applyLayers();
     if (now - this.lastCheck < 2000) return;
     this.lastCheck = now;
@@ -393,11 +434,24 @@ export class GuideSigns {
     }
   }
 
+  /** A sign as the pool weighs it: the face's centre and normal, its width. */
+  private faceOf(s: Sign): BoardFace {
+    const pos = new Vector3().setFromMatrixPosition(s.board);
+    return {
+      key: s.key,
+      layout: s.layout,
+      pos,
+      normal: s.plan.travel.clone().negate(),
+      width: s.layout.width / 100,
+      level: 0,
+    };
+  }
+
   /** Each board's layer: its drawn face when it is near and the face is in, else the far face (0). */
   private applyLayers(): void {
     const mesh = this.faces;
     if (!mesh) return;
-    const { pool } = faces();
+    const pool = faces();
     const attribute = attachFaceLayers(mesh);
     for (const s of this.signs) attribute.setX(s.faceIndex, s.isNear ? pool.layerOf(s.key) : 0);
     attribute.needsUpdate = true;
@@ -438,7 +492,7 @@ export class GuideSigns {
     };
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     this.signs = this.plans.map((plan, index) => {
-      const layout = layoutBoard(plan.board);
+      const layout = layoutGuideBoard(plan.board);
       const w = layout.width / 100;
       const h = layout.height / 100;
       const ground = this.groundAt(plan.pos.x, plan.pos.z) ?? 0;

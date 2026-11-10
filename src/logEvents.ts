@@ -265,6 +265,10 @@ export const LOG_EVENTS = {
   guide_signs_placed: info({
     signs: count,
     advance: count,
+    /** 105-A〜C 方面、方向及び距離 (src/world/guideRows.ts). */
+    direction: count,
+    /** 106-A 方面及び距離 (確認標識). */
+    confirm: count,
     overhead: count,
     routed: count,
     mapped: count,
@@ -640,6 +644,12 @@ export const LOG_EVENTS = {
   views_shot_failed: failedWith({ viewTable: z.string(), viewId: z.string() }),
   /** Every view of a table is shot; the contact sheet and the review template are written. */
   views_done: info({ viewTable: z.string(), round: count, shots: count, failed: count, outDir: z.string() }),
+  /** scripts/qa/guideBoards.ts: one place's 案内標識 plans and drawn faces written. */
+  guide_boards_dumped: info({ place: z.string(), plans: count, durationMs: z.number() }),
+  /** scripts/qa/guideBoards.ts: a place has no dump under the label compared against. */
+  guide_boards_no_baseline: warning({ place: z.string(), against: z.string() }),
+  /** scripts/qa/guideBoards.ts: placements and faces compared with an earlier label (changes: 108 series). */
+  guide_boards_compared: info({ label: z.string(), against: z.string(), changed: count }),
   /** A review round compared with the one before (scripts/qa/reviewLoop.ts). */
   review_round_checked: info({
     viewTable: z.string(),

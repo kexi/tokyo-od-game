@@ -162,16 +162,21 @@ export class FaceLayerPool {
 
   /**
    * Starts decoding up to `maxStarts` of the most wanted faces that fit and are not in
-   * (DECODES_AT_ONCE in flight at most). A drawn face is drawn here, so `maxStarts` bounds the
-   * canvas work of one call.
+   * (DECODES_AT_ONCE in flight at most), and returns how many it started. A drawn face is drawn
+   * here, inside the call, so the caller can time the canvas work (boardFacePool.ts slices it by
+   * a FrameWork budget).
    */
-  start(maxStarts = DECODES_AT_ONCE, now = performance.now()): void {
-    if (!this.uploader) return;
+  start(maxStarts = DECODES_AT_ONCE, now = performance.now()): number {
+    if (!this.uploader) return 0;
     const room = Math.min(maxStarts, DECODES_AT_ONCE - this.decoding);
+    let started = 0;
     for (const key of this.slots.toDecode(room, now)) {
       const source = this.sources.get(key);
-      if (source) this.decode(key, source);
+      if (!source) continue;
+      this.decode(key, source);
+      started++;
     }
+    return started;
   }
 
   /** Uploads up to `perFrame` decoded faces. True when one moved in (meshes re-read their layers). */
@@ -211,7 +216,7 @@ export class FaceLayerPool {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.blob().then((b) => createImageBitmap(b, options));
           })
-        : Promise.resolve().then(() => createImageBitmap(source.draw(), options));
+        : drawn(source.draw, options);
     bitmap
       .then((image) => this.decoded.push({ key, image }))
       .catch((error: unknown) => {
@@ -236,6 +241,24 @@ export class FaceLayerPool {
     (this.texture.image.data as Uint8Array).set(pixels, size * this.height * 4 * layer);
     this.texture.addLayerUpdate(layer);
     this.texture.needsUpdate = true;
+  }
+}
+
+/**
+ * A drawn face's bitmap: the canvas is drawn now (synchronously, so its cost falls inside
+ * FaceLayerPool.start), the copy to a bitmap runs off the main thread. A draw that throws is a
+ * failed face (backed off like a failed fetch).
+ * Why not draw in a microtask (before G5): the draw then ran outside any budget, after the frame's
+ * work was measured.
+ */
+function drawn(
+  draw: () => HTMLCanvasElement | OffscreenCanvas,
+  options: ImageBitmapOptions,
+): Promise<ImageBitmap> {
+  try {
+    return createImageBitmap(draw(), options);
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error(String(error)));
   }
 }
 

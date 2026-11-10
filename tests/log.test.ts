@@ -159,7 +159,16 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   pavements_built: { wards: ["千代田区"], polygons: 812 },
   frame_recentered: { lat: 35.68124, lon: 139.76712 },
-  guide_signs_placed: { signs: 12, advance: 3, overhead: 5, routed: 9, mapped: 40, durationMs: 18 },
+  guide_signs_placed: {
+    signs: 12,
+    advance: 3,
+    direction: 1,
+    confirm: 2,
+    overhead: 5,
+    routed: 9,
+    mapped: 40,
+    durationMs: 18,
+  },
   street_lights_placed: {
     lamps: 600,
     sodium: 40,
@@ -366,6 +375,9 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   views_shot_failed: { viewTable: "signals", viewId: "far-junction", error: "no signal near the start" },
   views_done: { viewTable: "signals", round: 1, shots: 3, failed: 0, outDir: ".qa/views/signals/round-01" },
+  guide_boards_dumped: { place: "marunouchi", plans: 48, durationMs: 17440 },
+  guide_boards_no_baseline: { place: "hibiya", against: "before" },
+  guide_boards_compared: { label: "after", against: "before", changed: 0 },
   review_round_checked: {
     viewTable: "signals",
     round: 3,

@@ -123,6 +123,7 @@ import {
   updateSignLamps,
 } from "./world/signFaces";
 import { GuideSigns } from "./world/guideSigns";
+import { boardNames } from "./signs/board/content";
 import { createHuman, disposeHuman, loadHumanModels } from "./world/human";
 import { loadFacadeTextures } from "./world/facade";
 import { TrafficAI } from "./world/traffic-ai";
@@ -749,6 +750,7 @@ async function main(): Promise<void> {
           roadDataCenter,
           signs.postPositions(),
           work,
+          control.signalPoles,
         ),
       true,
     );
@@ -2324,7 +2326,7 @@ async function main(): Promise<void> {
         if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
           refreshRoads(geo.lat, geo.lon);
         signs.update(focus, now);
-        guideSigns.update(focus, now);
+        guideSigns.update(focus, now, camera.position);
       }
       env.update(dt, focus, camera.position, geo.lat, geo.lon);
       water.update(dt, env);
@@ -2538,7 +2540,7 @@ async function main(): Promise<void> {
     expressway?.update(geo.lat, geo.lon);
     control.update(now / 1000);
     signs.update(focus, now);
-    guideSigns.update(focus, now);
+    guideSigns.update(focus, now, camera.position);
     orbis.update(now);
     // カーナビ to the mission target, along legal streets.
     const navTarget = missions.current ? field.localPosition(missions.current.target) : null;
@@ -3430,7 +3432,7 @@ async function main(): Promise<void> {
     const river = water.riverNear(lat, lon, 1500);
     const signs = guideSigns.plans
       .filter((p) => Math.hypot(p.pos.x - focus.x, p.pos.z - focus.z) < 400)
-      .flatMap((p) => p.board.arms.flatMap((a) => a.names))
+      .flatMap((p) => boardNames(p.board))
       .filter((n, i, all) => all.findIndex((m) => m.ja === n.ja) === i)
       .slice(0, 6)
       .map(({ ja, en }) => ({ ja, en }));
@@ -5303,6 +5305,7 @@ async function main(): Promise<void> {
       carPosition: () => vehicle.position(),
       landmarks: landmarkEntries,
       signs,
+      guide: guideSigns,
       control,
       env,
       baseUrl: import.meta.env.BASE_URL,

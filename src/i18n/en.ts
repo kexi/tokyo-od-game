@@ -1214,6 +1214,7 @@ export const en: Messages = {
   "credits.h.guide": "Guide signs (destinations and directions)",
   "credits.h.destinations": "Destinations (stations and places)",
   "credits.h.expressway": "Elevated urban expressways",
+  "guide.operator": "TOSHI EXPWY",
   "credits.expressway.extract":
     "The expressway center lines, lane counts, route numbers and entrance names are taken from Geofabrik’s Kanto extract ({geofabrik}), and their plan and vertical alignment are redesigned within the Road Structure Ordinance (data/expressway). The alignment, heights and pier positions are the game’s estimates and differ from the real structures.",
   "credits.destinations.extract":

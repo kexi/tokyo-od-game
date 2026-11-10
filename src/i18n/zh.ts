@@ -1158,6 +1158,7 @@ export const zh: Messages = {
   "credits.h.guide": "指路标志（方向及方位）",
   "credits.h.destinations": "目的地列表（车站・名胜）",
   "credits.h.expressway": "高架汽车专用道路（城市高速）",
+  "guide.operator": "都市高速",
   "credits.expressway.extract":
     "从 Geofabrik 的关东提取数据（{geofabrik}）中取出汽车专用道路的中心线、车道数、路线编号和出入口名称，并在《道路构造令》的范围内重新设计平面与纵断线形（data/expressway）后绘制。线形、高度与桥墩位置为游戏的推算，与实际结构不同。",
   "credits.destinations.extract":
