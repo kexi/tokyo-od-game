@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the road model at three places is unchanged by the P2 refactor > gives the same graph, regulations, lines, routes, autopilot and traffic lanes at 丸の内 1`] = `
+exports[`the road model at three places is unchanged by the P2 refactor > gives the same graph, regulations, lines, routes, autopilot and traffic lanes at 丸の内 (float digests, darwin) 1`] = `
 {
   "autopilot": [
     "0 1200 d24e8712682ba1f1",
@@ -61,7 +61,7 @@ exports[`the road model at three places is unchanged by the P2 refactor > gives 
 }
 `;
 
-exports[`the road model at three places is unchanged by the P2 refactor > gives the same graph, regulations, lines, routes, autopilot and traffic lanes at 渋谷 1`] = `
+exports[`the road model at three places is unchanged by the P2 refactor > gives the same graph, regulations, lines, routes, autopilot and traffic lanes at 渋谷 (float digests, darwin) 1`] = `
 {
   "autopilot": [
     "0 1200 0d6fccbe152cdbce",
@@ -122,7 +122,7 @@ exports[`the road model at three places is unchanged by the P2 refactor > gives 
 }
 `;
 
-exports[`the road model at three places is unchanged by the P2 refactor > gives the same graph, regulations, lines, routes, autopilot and traffic lanes at 芝公園 1`] = `
+exports[`the road model at three places is unchanged by the P2 refactor > gives the same graph, regulations, lines, routes, autopilot and traffic lanes at 芝公園 (float digests, darwin) 1`] = `
 {
   "autopilot": [
     "0 1200 33107d24c910a3ce",
