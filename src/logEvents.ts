@@ -345,6 +345,19 @@ export const LOG_EVENTS = {
    */
   expressway_chunk_failed: failedWith({ chunk: z.string() }),
   /**
+   * A stretch of a chunk that the compiler made one surface with another run (decks "same") but the
+   * deck builder left apart (expresswayMerge.ts): level_apart where |Δz| > MERGE_MAX_DZ. One line per
+   * chunk, partner and reason.
+   */
+  expressway_merge_skipped: info({
+    chunk: z.string(),
+    with: z.string(),
+    reason: z.enum(["level_apart"]),
+    s0: z.number(),
+    s1: z.number(),
+    maxDzM: z.number(),
+  }),
+  /**
    * A chunk near the car has had no collider for longer than the hold allows: the car is let go
    * (isReadyNear), as a missing deck must not freeze the game.
    */
