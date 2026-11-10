@@ -370,8 +370,10 @@ export function createViewHooks(deps: ViewHookDeps) {
       post.plates.forEach((plate, level) => {
         if (!isWanted(post, plate.id)) return;
         const drawn = nearestInstance(faces.get(plate.file) ?? [], post.pos, post.travel);
+        // Undrawn (the face not built yet): where the mount put it, or G2's 2.6 m − 1 m a level.
+        const mounted = post.plateHeights?.[level] ?? 2.6 - level;
         const point =
-          drawn?.pos ?? post.pos.clone().setY((deps.groundY(post.pos.x, post.pos.z) ?? 0) + 2.6 - level);
+          drawn?.pos ?? post.pos.clone().setY((deps.groundY(post.pos.x, post.pos.z) ?? 0) + mounted);
         const normal = drawn?.normal ?? post.travel.clone().negate();
         // The plate's drawing scale by number (G2: 警戒 1.3 倍 …) widens its box.
         const half = 0.45 * (plate.scale ?? 1);

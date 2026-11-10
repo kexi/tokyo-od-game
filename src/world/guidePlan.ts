@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import type { LocalFrame } from "../geo/frame";
 import { LineGrid } from "./regulations";
+import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 
 /**
@@ -89,7 +90,7 @@ const MIN_PLACE = 300; // a place this close is "here", not a direction
 const MAX_PLACE = 12000;
 const MAX_STATION = 3000;
 const MIN_SPACING = 30; // two guide signs for the same traffic stand at least this far apart
-const KERB_GAP = 0.9; // pole axis behind the kerb line
+const KERB_GAP = GUIDE_POLE_KERB.value; // pole axis behind the kerb line (src/signs/mountAssumptions.ts)
 
 // ---------------------------------------------------------------- data on the graph
 

@@ -1,16 +1,16 @@
 import { reanchorBody } from "../physics/reanchor";
 import {
+  Euler,
   type InstancedMesh,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
-  Object3D,
+  Quaternion,
   SRGBColorSpace,
   TextureLoader,
   Vector3,
   type BufferGeometry,
   type Material,
-  type Matrix4,
-  type Quaternion,
   type Scene,
 } from "three";
 import { RoadInstances } from "./roadInstances";
@@ -21,12 +21,23 @@ import { PROP_GROUPS } from "../physics/groups";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import gameTable from "../../assets/signs/game.json";
 import { auxKey, type AuxPlate } from "../signs/auxPlates";
-import { POST_TOP, stackPlates } from "../signs/stack";
+import {
+  MEMBER_NODES,
+  MEMBER_ROLES,
+  resolveMount,
+  withoutColumn,
+  type MemberRole,
+  type MountKind,
+  type MountPlacement,
+  type ResolvedMount,
+} from "../signs/mount";
+import { SIGNAL_SHARE_RADIUS, SIGN_KERB } from "../signs/mountAssumptions";
+import { PLATES, plateBoxMm } from "../signs/plates";
 import { auxDesignFor, designFor, type Design, type GameTable } from "../signs/game";
 import { laneKey } from "../signs/lanes";
-import { warn } from "../log";
+import { log, warn } from "../log";
 import { leftOf, type RoadGraph } from "./roads";
-import type { Approach } from "./trafficControl";
+import type { Approach, SignalPole } from "./trafficControl";
 import { sharedDraco } from "../render/draco";
 
 // Sign artwork drawn by scripts/textures/sign_textures.py (道路標識、区画線及び道路標示に関する命令
@@ -42,8 +53,7 @@ const artworkUrl = (name: string) => ARTWORK[`../../assets/signs/textures/${name
 
 // Plates are modelled at their real size (60 cm circles, 80 cm triangles); each is drawn at its
 // definition's displayScale (Design.scale: 1.25× for 規制・指示, 1.3× for 警戒, inside 別表第二
-// 備考一(二)) so they read at game camera distances. Their heights on the post: src/signs/stack.ts.
-const PLATE_OFFSET = 0.05; // plate face in front of the post axis (bracket depth)
+// 備考一(二)) so they read at game camera distances. Where they hang: src/signs/mount.ts.
 
 const GAME_TABLE = gameTable as GameTable;
 
@@ -82,12 +92,14 @@ function reportUnrenderedLanes(lanes: readonly LaneDirection[][]): void {
   warn("sign_lanes_unrendered", { lanes: key, count: lanes.length });
 }
 
-/** A plate of signs.glb; `height` is its modelled height in metres (the face's bounding box). */
-type Part = { face: BufferGeometry; back: BufferGeometry; backMaterial: Material; height: number };
-type Kit = { plate: (shape: Shape) => Part | null; post: Mesh; bracket: Mesh };
+/** A plate of signs.glb. */
+type Part = { face: BufferGeometry; back: BufferGeometry; backMaterial: Material };
+/** The member roles drawn from signs.glb (src/signs/mount.ts MEMBER_NODES); the rest are guide_signs.glb's. */
+const SIGN_ROLES = MEMBER_ROLES.filter((r) => MEMBER_NODES[r].glb === "signs");
+type Kit = { plate: (shape: Shape) => Part | null; members: Partial<Record<MemberRole, Mesh>> };
 let kit: Kit | null = null;
 
-/** Loads signs.glb (plates, post, bracket) once; TrafficSigns needs it to have resolved. */
+/** Loads signs.glb (plates and the unit members) once; TrafficSigns needs it to have resolved. */
 export async function loadSignModels(): Promise<void> {
   const loader = new GLTFLoader().setDRACOLoader(sharedDraco());
   const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/signs.glb`);
@@ -102,14 +114,10 @@ export async function loadSignModels(): Promise<void> {
   };
   const part = (name: Shape): Part => {
     const back = meshOf(name, "SignBack");
-    const face = meshOf(name, "SignFace").geometry;
-    face.computeBoundingBox();
-    const box = face.boundingBox;
     return {
-      face,
+      face: meshOf(name, "SignFace").geometry,
       back: back.geometry,
       backMaterial: back.material as Material,
-      height: box ? box.max.y - box.min.y : 0,
     };
   };
   const plates = new Map<Shape, Part | null>();
@@ -125,8 +133,7 @@ export async function loadSignModels(): Promise<void> {
       }
       return plates.get(shape) ?? null;
     },
-    post: meshOf("Post"),
-    bracket: meshOf("Bracket"),
+    members: Object.fromEntries(SIGN_ROLES.map((r) => [r, meshOf(MEMBER_NODES[r].node)])),
   };
 }
 
@@ -152,19 +159,238 @@ function faceMaterial(file: string): MeshStandardMaterial {
   return m;
 }
 
-type Post = {
+/**
+ * One column of a post as it stands: the instances drawing it and its colliders (to hide them
+ * together), and where its feet stand (world, y = 0) for the building test.
+ */
+type ColumnState = {
+  refs: Array<[InstancedMesh, number]>;
+  colliders: RAPIER.Collider[];
+  feet: Vector3[];
+  hidden: boolean;
+};
+type Post = PostMount & {
+  /** The plates as gathered (for debugPlates), before the mount split them into faces. */
+  plates: Design[];
+  auxOf: AuxPlate[][];
+  /** By MountFace.column: a double post's columns are hidden one by one. */
+  columns: ColumnState[];
+  /** Every column hidden (inside buildings). */
+  hidden: boolean;
+};
+/** One instance, the post it belongs to and the column it is drawn in (to hide it with that column). */
+type Item = { post: Post; column: number; matrix: Matrix4 };
+
+/**
+ * A post as the review hooks read it (src/debug/privateViews.ts, through TrafficSigns.debugPlates):
+ * where it stands, the plates gathered on it with their 補助標識, whether it is hidden, its mount
+ * and the centre height of each plate above the ground (null: left off).
+ */
+export type PostDebug = {
   pos: Vector3;
   travel: Vector3;
   plates: Design[];
-  /** Instances drawing this post, to hide it if it turns out to stand inside a building. */
-  refs: Array<[InstancedMesh, number]>;
+  auxOf: AuxPlate[][];
+  hidden: boolean;
+  kind: MountKind;
+  plateHeights: Array<number | null>;
+};
+
+/**
+ * The mount's frame in the world: origin at the foot on the ground, +x across toward the
+ * carriageway (right of travel), +z toward the oncoming traffic (−travel). A turn about +Y by the
+ * facing's yaw maps local +z onto the facing and local +x onto the right of travel, so the frame
+ * is a plain rotation (no mirror).
+ */
+function mountFrame(post: Pick<PostMount, "pos" | "travel">, ground: number): Matrix4 {
+  const facing = post.travel.clone().negate();
+  const yaw = Math.atan2(facing.x, facing.z);
+  return new Matrix4().compose(
+    new Vector3(post.pos.x, ground, post.pos.z),
+    new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw),
+    new Vector3(1, 1, 1),
+  );
+}
+
+/**
+ * A post with its mount resolved: `pos` is the foot of the mount's frame (the post, or the signal
+ * pole it shares), the faces look at traffic travelling along `travel`, and `designs` gives the
+ * artwork of each of `mount.faces` (same index).
+ */
+export type PostMount = { pos: Vector3; travel: Vector3; mount: ResolvedMount; designs: Design[] };
+
+/** Size of a face as drawn, m: the plate's texture box (plates.ts) at the design's scale. */
+function drawnSize(d: Design): { width: number; height: number } {
+  const plate = PLATES[d.shape as keyof typeof PLATES] as (typeof PLATES)[keyof typeof PLATES] | undefined;
+  const [w, h] = plate ? plateBoxMm(plate) : [0, 0];
+  return { width: (w / 1000) * d.scale, height: (h / 1000) * d.scale };
+}
+/** A 326-A drawn back to back, parallel to the street. */
+const isParallel = (d: Design) => d.parallel && d.back !== undefined;
+
+/**
+ * Resolves one gathered post: on the signal pole it is given when its plates fit there (one
+ * column under the arm), otherwise on its own post or two (src/signs/mount.ts). The plates hang
+ * over the pavement (site "pavement": every game sign stands SIGN_KERB behind the kerb). A
+ * 補助標識 with no face drawn ahead of time is left off with a warning, the plate above standing.
+ * `isInRoad` (a point of the mount's frame, world) drops a column whose feet would stand in a
+ * carriageway (the second column stands further from the kerb, maybe across a narrow pavement).
+ */
+export function mountPost(
+  plan: PostPlan,
+  pole: SignalPole | null = null,
+  isInRoad: (p: Vector3) => boolean = () => false,
+): PostMount {
+  const auxOf = plan.plates.map((d, level) =>
+    (plan.auxOf[level] ?? []).flatMap((plate) => {
+      const aux = auxDesignFor(GAME_TABLE, plate, d.scale);
+      if (aux) return [aux];
+      reportUndrawnAux(plate);
+      return [];
+    }),
+  );
+  const plates = plan.plates.map((d, level) => ({
+    ...drawnSize(d),
+    parallel: isParallel(d),
+    twoSided: d.bothFaces === true || isParallel(d),
+    kerbSide: d.kerbSide === true,
+    aux: auxOf[level].map(drawnSize),
+  }));
+  const designsOf = (m: ResolvedMount) =>
+    m.faces.map((f) => (f.aux === null ? plan.plates[f.plate] : auxOf[f.plate][f.aux]));
+  if (pole) {
+    const shared = resolveMount({
+      kind: "signal-share",
+      site: "pavement",
+      kerbM: pole.kerbM,
+      armY: pole.armY,
+      minBottomM: pole.minBottomM,
+      plates,
+    });
+    const isFit = shared.dropped === 0;
+    if (isFit)
+      return { pos: pole.pos.clone(), travel: plan.travel, mount: shared, designs: designsOf(shared) };
+  }
+  const placement: MountPlacement = { kind: "single-post", site: "pavement", kerbM: SIGN_KERB.value, plates };
+  let mount = resolveMount(placement);
+  const frame = mountFrame(plan, 0);
+  const columns = new Set(mount.feet.map((f) => f.column));
+  for (const column of columns) {
+    const isBlocked = mount.feet.some(
+      (f) => f.column === column && isInRoad(new Vector3(f.x, 0, f.z).applyMatrix4(frame)),
+    );
+    if (isBlocked) mount = withoutColumn(mount, column);
+  }
+  return { pos: plan.pos, travel: plan.travel, mount, designs: designsOf(mount) };
+}
+
+/**
+ * The signal pole each post shares, if any: within SIGNAL_SHARE_RADIUS, heads facing the same
+ * traffic, one post per pole, the nearest pairs first (so a nearer post wins a pole over one
+ * gathered earlier). Plates whose place means something (game.fixedPlace: 一時停止, 横断歩道) never
+ * move to a pole.
+ */
+export function sharedPoles(
+  plans: readonly PostPlan[],
+  poles: readonly SignalPole[],
+): Array<SignalPole | null> {
+  const pairs: Array<{ plan: number; pole: SignalPole; d: number }> = [];
+  for (const [i, plan] of plans.entries()) {
+    const isMovable = plan.plates.every((d) => d.fixedPlace !== true);
+    if (!isMovable) continue;
+    for (const pole of poles) {
+      const d = Math.hypot(pole.pos.x - plan.pos.x, pole.pos.z - plan.pos.z);
+      const isCandidate = d < SIGNAL_SHARE_RADIUS.value && pole.travel.dot(plan.travel) > 0.9;
+      if (isCandidate) pairs.push({ plan: i, pole, d });
+    }
+  }
+  const out: Array<SignalPole | null> = plans.map(() => null);
+  const taken = new Set<SignalPole>();
+  for (const pair of pairs.toSorted((a, b) => a.d - b.d)) {
+    const isFree = out[pair.plan] === null && !taken.has(pair.pole);
+    if (!isFree) continue;
+    out[pair.plan] = pair.pole;
+    taken.add(pair.pole);
+  }
+  return out;
+}
+
+/** The plates for one traffic stream at one spot, before their mount is resolved (top to bottom). */
+export type PostPlan = {
+  pos: Vector3;
+  travel: Vector3;
+  plates: Design[];
   /** The 補助標識 of each plate (same index), hung right under it. */
   auxOf: AuxPlate[][];
-  collider: RAPIER.Collider | null;
-  hidden: boolean;
 };
-/** One plate instance: its post, the height of its centre above the ground and its scale. */
-type Item = { post: Post; y: number; scale: number; flip: boolean; facing?: Vector3 };
+
+/**
+ * Gathers the plates of the placed signs into posts: 一時停止 first (the top plate where it shares
+ * a post), then the regulation signs, then 横断歩道 at both kerb ends of crossings without signals.
+ * Plates for the same traffic within 2 m share a post, three at most. One step per sign, so the
+ * rebuild can spread it over frames.
+ */
+export function* gatherPostSteps(
+  graph: RoadGraph,
+  regs: AppliedRegulations,
+  approaches: Approach[],
+  posts: PostPlan[],
+): Generator<void> {
+  const add = (pos: Vector3, travel: Vector3, d: Design | null, aux: AuxPlate[] = []) => {
+    if (!d) return;
+    // Never in another road's carriageway (junctions, the far side of a narrow crossing).
+    if (graph.carriagewaysAt(pos, 0.3).length > 0) return;
+    // Several plates for the same traffic at (nearly) the same spot share one post.
+    const post = posts.find((p) => p.pos.distanceTo(pos) < 2 && p.travel.dot(travel) > 0.7);
+    if (!post) {
+      posts.push({ pos, travel, plates: [d], auxOf: [aux] });
+      return;
+    }
+    const isNewPlate = !post.plates.some((x) => x.file === d.file) && post.plates.length < 3;
+    if (!isNewPlate) return;
+    post.plates.push(d);
+    post.auxOf.push(aux);
+  };
+  const kerb = SIGN_KERB.value;
+  for (const ap of approaches) {
+    yield;
+    if (ap.kind !== "stop") continue;
+    const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
+    add(mid.add(leftOf(ap.travel, ap.seg.line.width / 2 + kerb)), ap.travel, design(SIGN.stop, 0));
+  }
+  for (const s of regs.signs) {
+    add(s.pos, s.travel, design(s.type, s.value, s.lanes), s.aux);
+    yield;
+  }
+  const signalStops = approaches.filter((a) => a.kind === "signal");
+  for (const c of regs.crossings) {
+    yield;
+    const isSignalled = signalStops.some(
+      (a) => a.a.clone().add(a.b).multiplyScalar(0.5).distanceTo(c.pos) < 30,
+    );
+    if (isSignalled) continue;
+    // One post at each kerb end of the crossing, facing the traffic that keeps to that side.
+    const seg = c.seg;
+    const { dir: along } = graph.sample(seg, c.s);
+    for (const side of [1, -1]) {
+      const travel = along.clone().multiplyScalar(seg.oneway === 0 ? side : seg.oneway);
+      const offset = leftOf(along, side * (seg.line.width / 2 + kerb));
+      add(c.pos.clone().add(offset), travel, design(SIGN.crosswalk, 0));
+    }
+  }
+}
+
+/** gatherPostSteps all at once (tests). */
+export function gatherPosts(graph: RoadGraph, regs: AppliedRegulations, approaches: Approach[]): PostPlan[] {
+  const posts: PostPlan[] = [];
+  for (const _ of gatherPostSteps(graph, regs, approaches, posts)) {
+    /* run to the end */
+  }
+  return posts;
+}
+
+/** Columns hidden inside buildings since the last rebuild, by what they belonged to. */
+type HiddenCounts = { single: number; doubleFirst: number; doubleSecond: number; doubleWhole: number };
 
 /**
  * 道路標識 posts where JARTIC puts them (sections' starts and repeats, junction approaches,
@@ -178,6 +404,8 @@ export class TrafficSigns {
   private posts: Post[] = [];
   private body: RAPIER.RigidBody | null = null;
   private lastCheck = 0;
+  private hiddenCounts: HiddenCounts = { single: 0, doubleFirst: 0, doubleSecond: 0, doubleWhole: 0 };
+  private readonly reportedRoles = new Set<MemberRole>();
 
   constructor(
     private readonly scene: Scene,
@@ -186,8 +414,17 @@ export class TrafficSigns {
     private readonly isOpen: (x: number, z: number, groundY: number) => boolean,
   ) {}
 
-  rebuild(graph: RoadGraph | null, regs: AppliedRegulations | null, approaches: Approach[]): void {
-    for (const _ of this.rebuildSteps(graph, regs, approaches)) {
+  /**
+   * `poles` are the 車両用 signal poles standing now (TrafficControl.signalPoles, built first):
+   * posts near one hang their plates on it.
+   */
+  rebuild(
+    graph: RoadGraph | null,
+    regs: AppliedRegulations | null,
+    approaches: Approach[],
+    poles: readonly SignalPole[] = [],
+  ): void {
+    for (const _ of this.rebuildSteps(graph, regs, approaches, poles)) {
       /* synchronous compatibility path */
     }
   }
@@ -196,63 +433,40 @@ export class TrafficSigns {
     graph: RoadGraph,
     regs: AppliedRegulations | null,
     approaches: Approach[],
+    poles: readonly SignalPole[],
     work: FrameWork,
   ): Promise<void> {
-    return work.run(this.rebuildSteps(graph, regs, approaches));
+    return work.run(this.rebuildSteps(graph, regs, approaches, poles));
   }
 
   private *rebuildSteps(
     graph: RoadGraph | null,
     regs: AppliedRegulations | null,
     approaches: Approach[],
+    poles: readonly SignalPole[],
   ): Generator<void | boolean> {
     this.clear(true);
     if (!graph || !regs || !kit) {
       this.instances.end();
       return;
     }
+    const plans: PostPlan[] = [];
+    yield* gatherPostSteps(graph, regs, approaches, plans);
+    const shared = sharedPoles(plans, poles);
+    const isInRoad = (p: Vector3) => graph.carriagewaysAt(p, 0.3).length > 0;
     const posts: Post[] = [];
-    const add = (pos: Vector3, travel: Vector3, d: Design | null, aux: AuxPlate[] = []) => {
-      if (!d) return;
-      // Never in another road's carriageway (junctions, the far side of a narrow crossing).
-      if (graph.carriagewaysAt(pos, 0.3).length > 0) return;
-      // Several plates for the same traffic at (nearly) the same spot share one post.
-      const post = posts.find((p) => p.pos.distanceTo(pos) < 2 && p.travel.dot(travel) > 0.7);
-      if (!post) {
-        posts.push({ pos, travel, plates: [d], refs: [], collider: null, hidden: false, auxOf: [aux] });
-        return;
-      }
-      const isNewPlate = !post.plates.some((x) => x.file === d.file) && post.plates.length < 3;
-      if (!isNewPlate) return;
-      post.plates.push(d);
-      post.auxOf.push(aux);
-    };
-    // 一時停止 first so it is the top plate where it shares a post.
-    for (const ap of approaches) {
-      yield;
-      if (ap.kind !== "stop") continue;
-      const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
-      add(mid.add(leftOf(ap.travel, ap.seg.line.width / 2 + 0.7)), ap.travel, design(SIGN.stop, 0));
-    }
-    for (const s of regs.signs) {
-      add(s.pos, s.travel, design(s.type, s.value, s.lanes), s.aux);
-      yield;
-    }
-    const signalStops = approaches.filter((a) => a.kind === "signal");
-    for (const c of regs.crossings) {
-      yield;
-      const isSignalled = signalStops.some(
-        (a) => a.a.clone().add(a.b).multiplyScalar(0.5).distanceTo(c.pos) < 30,
-      );
-      if (isSignalled) continue;
-      // One post at each kerb end of the crossing, facing the traffic that keeps to that side.
-      const seg = c.seg;
-      const { dir: along } = graph.sample(seg, c.s);
-      for (const side of [1, -1]) {
-        const travel = along.clone().multiplyScalar(seg.oneway === 0 ? side : seg.oneway);
-        const kerb = leftOf(along, side * (seg.line.width / 2 + 0.7));
-        add(c.pos.clone().add(kerb), travel, design(SIGN.crosswalk, 0));
-      }
+    for (const [i, plan] of plans.entries()) {
+      const mounted = mountPost(plan, shared[i], isInRoad);
+      const count = Math.max(1, ...mounted.mount.feet.map((f) => f.column + 1));
+      const columns = Array.from({ length: count }, () => ({
+        refs: [],
+        colliders: [],
+        feet: [],
+        hidden: false,
+      }));
+      posts.push({ ...mounted, plates: plan.plates, auxOf: plan.auxOf, columns, hidden: false });
+      const checkpoint = i % 64 === 0;
+      if (checkpoint) yield;
     }
     yield* this.build(posts, kit);
     this.instances.end();
@@ -267,11 +481,27 @@ export class TrafficSigns {
     return this.posts.filter((p) => !p.hidden).map((p) => p.pos.clone());
   }
 
+  /** The posts standing now, read-only, for the review hooks (src/debug/viewHooks.ts). */
+  debugPlates(): PostDebug[] {
+    return this.posts.map((p) => ({
+      pos: p.pos.clone(),
+      travel: p.travel.clone(),
+      plates: p.plates,
+      auxOf: p.auxOf,
+      hidden: p.hidden,
+      kind: p.mount.kind,
+      plateHeights: p.plates.map(
+        (_, level) => p.mount.faces.find((f) => f.plate === level && f.aux === null)?.y ?? null,
+      ),
+    }));
+  }
+
   reanchor(matrix: Matrix4, rotation: Quaternion): void {
     this.instances.reanchor(matrix);
     for (const post of this.posts) {
       post.pos.applyMatrix4(matrix);
       post.travel.applyQuaternion(rotation);
+      for (const c of post.columns) for (const foot of c.feet) foot.applyMatrix4(matrix).setY(0);
     }
     if (this.body) reanchorBody(this.body, matrix, rotation);
   }
@@ -284,61 +514,135 @@ export class TrafficSigns {
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
     this.posts = [];
+    this.hiddenCounts = { single: 0, doubleFirst: 0, doubleSecond: 0, doubleWhole: 0 };
   }
 
   /**
    * Building tiles stream in after the signs are placed, so posts near the player are re-tested
-   * now and then; one that stands inside a building (the road is narrower than its GSI 幅員) is
-   * hidden and loses its collider.
+   * now and then; a column whose foot stands inside a building (the road is narrower than its GSI
+   * 幅員) is hidden and loses its colliders, the other column of a double post still standing.
+   * A post on a signal pole has no feet of its own and is not tested (the pole stays either way).
+   *
+   * Why per column and not the whole post: the second column stands 0.85–1.65 m further from the
+   * kerb, and hiding the post with it took the first column (often 一時停止) away too (review W1).
    */
   update(focus: Vector3, now: number): void {
     if (now - this.lastCheck < 2000) return;
     this.lastCheck = now;
-    const hide = new Object3D();
-    hide.scale.setScalar(0);
-    hide.updateMatrix();
+    const hide = new Matrix4().makeScale(0, 0, 0);
+    let changed = false;
     for (const post of this.posts) {
       if (post.hidden || post.pos.distanceTo(focus) > 200) continue;
-      const ground = this.groundAt(post.pos.x, post.pos.z);
-      if (ground === null || this.isOpen(post.pos.x, post.pos.z, ground)) continue;
-      post.hidden = true;
-      for (const [mesh, i] of post.refs) {
-        mesh.setMatrixAt(i, hide.matrix);
-        mesh.instanceMatrix.needsUpdate = true;
+      for (const [k, column] of post.columns.entries()) {
+        const isInside = column.feet.some((p) => {
+          const ground = this.groundAt(p.x, p.z);
+          return ground !== null && !this.isOpen(p.x, p.z, ground);
+        });
+        if (column.hidden || !isInside) continue;
+        column.hidden = true;
+        changed = true;
+        for (const [mesh, i] of column.refs) {
+          mesh.setMatrixAt(i, hide);
+          mesh.instanceMatrix.needsUpdate = true;
+        }
+        for (const c of column.colliders) this.world.removeCollider(c, false);
+        column.colliders = [];
+        this.countHidden(post, k);
       }
-      if (post.collider) this.world.removeCollider(post.collider, false);
-      post.collider = null;
+      post.hidden = post.columns.every((c) => c.hidden);
     }
+    if (changed) log("sign_columns_hidden", { ...this.hiddenCounts, posts: this.posts.length });
+  }
+
+  private countHidden(post: Post, column: number): void {
+    const isDouble = post.columns.length > 1;
+    if (!isDouble) {
+      this.hiddenCounts.single++;
+      return;
+    }
+    if (column === 0) this.hiddenCounts.doubleFirst++;
+    else this.hiddenCounts.doubleSecond++;
+    const isWhole = post.columns.every((c) => c.hidden);
+    if (isWhole) this.hiddenCounts.doubleWhole++;
   }
 
   private *build(posts: Post[], k: Kit): Generator<void | boolean> {
     const byFile = new Map<string, { d: Design; items: Item[] }>();
     const byShape = new Map<Shape, Item[]>();
-    const place = (post: Post, d: Design, y: number) => {
-      const entry = byFile.get(d.file) ?? { d, items: [] };
-      byFile.set(d.file, entry);
-      const scale = d.scale;
-      if (d.parallel && d.back) {
-        // Face the carriageway (right of travel) and, back to back, the pavement.
-        const right = leftOf(post.travel, -1);
-        entry.items.push({ post, y, scale, flip: false, facing: right });
-        const back = byFile.get(d.back) ?? { d: { ...d, file: d.back }, items: [] };
-        byFile.set(d.back, back);
-        back.items.push({ post, y, scale, flip: false, facing: right.clone().negate() });
-        return;
-      }
-      entry.items.push({ post, y, scale, flip: false });
-      if (d.bothFaces) {
-        entry.items.push({ post, y, scale, flip: true });
-        return;
-      }
-      const backs = byShape.get(d.shape) ?? [];
-      backs.push({ post, y, scale, flip: false });
-      byShape.set(d.shape, backs);
+    const byRole = new Map<MemberRole, Item[]>();
+    const push = <K>(map: Map<K, Item[]>, key: K, item: Item) => {
+      const list = map.get(key) ?? [];
+      list.push(item);
+      map.set(key, list);
     };
+    const faceItem = (key: Design) => {
+      const entry = byFile.get(key.file) ?? { d: key, items: [] };
+      byFile.set(key.file, entry);
+      return entry.items;
+    };
+    // Posts are solid: one fixed body carries a thin cylinder per foot (60.5 mm steel pipe).
+    this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     let dropped = 0;
-    for (const post of posts) dropped += this.layOut(post, k, place);
-    if (dropped > 0) warn("sign_faces_below_ground", { faces: dropped, posts: posts.length });
+    for (const [n, post] of posts.entries()) {
+      const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
+      const frame = mountFrame(post, ground);
+      const { mount } = post;
+      dropped += mount.dropped;
+      for (const [i, f] of mount.faces.entries()) {
+        const d = post.designs[i];
+        const local = (x: number, z: number, yaw: number) =>
+          new Matrix4().compose(
+            new Vector3(x, f.y, z),
+            new Quaternion().setFromEuler(new Euler(f.pitch, yaw, 0, "YXZ")),
+            new Vector3(d.scale, d.scale, d.scale),
+          );
+        const at = (m: Matrix4): Item => ({ post, column: f.column, matrix: frame.clone().multiply(m) });
+        if (f.parallel && d.back) {
+          // Face the carriageway (+x) and, back to back, the pavement.
+          faceItem(d).push(at(local(f.x + f.standoff, f.z, Math.PI / 2)));
+          faceItem({ ...d, file: d.back }).push(at(local(f.x - f.standoff, f.z, -Math.PI / 2)));
+          continue;
+        }
+        const front = at(local(f.x, f.z + f.standoff, 0));
+        faceItem(d).push(front);
+        if (d.bothFaces) {
+          faceItem(d).push(at(local(f.x, f.z - f.standoff, Math.PI)));
+          continue;
+        }
+        push(byShape, d.shape, front);
+      }
+      for (const m of mount.members) {
+        const isLoaded = k.members[m.role] !== undefined;
+        if (!isLoaded) {
+          this.reportUnloadedRole(m.role);
+          continue;
+        }
+        const local = new Matrix4().compose(
+          new Vector3(m.x, m.y, m.z),
+          new Quaternion().setFromEuler(new Euler(m.pitch, 0, 0)),
+          new Vector3(m.sx, m.sy, m.sz),
+        );
+        push(byRole, m.role, { post, column: m.column, matrix: frame.clone().multiply(local) });
+      }
+      for (const foot of mount.feet) {
+        const p = new Vector3(foot.x, 0, foot.z).applyMatrix4(frame);
+        const column = post.columns[foot.column];
+        column.feet.push(p.clone().setY(0));
+        const collider = RAPIER.ColliderDesc.cylinder(foot.height / 2, Math.max(foot.radius, 0.05))
+          .setTranslation(p.x, p.y + foot.height / 2, p.z)
+          .setCollisionGroups(PROP_GROUPS);
+        column.colliders.push(this.world.createCollider(collider, this.body ?? undefined));
+      }
+      const checkpoint = n % 32 === 0;
+      if (checkpoint) yield;
+    }
+    if (dropped > 0) warn("sign_faces_unmounted", { faces: dropped, posts: posts.length });
+    log("sign_mounts_resolved", {
+      posts: posts.length,
+      double: posts.filter((p) => p.mount.kind === "double-post").length,
+      shared: posts.filter((p) => p.mount.kind === "signal-share").length,
+      faces: posts.reduce((n, p) => n + p.mount.faces.length, 0),
+    });
     for (const { d, items } of byFile.values()) {
       const plate = k.plate(d.shape);
       if (plate) this.instanced(plate.face, faceMaterial(d.file), items).userData.key = d.file;
@@ -349,80 +653,35 @@ export class TrafficSigns {
       if (plate) this.instanced(plate.back, plate.backMaterial, items);
       yield true;
     }
-    this.instanced(k.bracket.geometry, k.bracket.material as Material, [...byShape.values()].flat(), false);
-    const o = new Object3D();
-    const pole = this.instances.take(k.post.geometry, k.post.material as Material, posts.length);
-    // Posts are solid: one fixed body carries a thin cylinder per post (60.5 mm steel pipe).
-    this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    const height = POST_TOP + 0.45;
-    for (const [i, post] of posts.entries()) {
-      const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
-      o.position.set(post.pos.x, ground, post.pos.z);
-      // The modelled post is 3.2 m; stretch it to just above the top plate.
-      o.scale.set(1, height / 3.2, 1);
-      o.updateMatrix();
-      pole.setMatrixAt(i, o.matrix);
-      post.refs.push([pole, i]);
-      post.collider = this.world.createCollider(
-        RAPIER.ColliderDesc.cylinder(height / 2, 0.05)
-          .setTranslation(post.pos.x, ground + height / 2, post.pos.z)
-          .setCollisionGroups(PROP_GROUPS),
-        this.body ?? undefined,
-      );
-      const checkpoint = i % 32 === 0;
-      if (checkpoint) yield;
+    for (const [role, items] of byRole) {
+      const mesh = k.members[role];
+      if (!mesh) continue;
+      // Small fittings cast no shadow worth its cost; the posts do.
+      const isPost = role === "post";
+      this.instanced(mesh.geometry, mesh.material as Material, items, isPost);
+      yield true;
     }
-    pole.castShadow = true;
-    this.add(pole);
-    yield true;
     this.posts = posts;
   }
 
-  /**
-   * The plates of a post from the top, each with its 補助標識 right under it at the plate's scale
-   * (別表第二 備考二(二)2), at the heights src/signs/stack.ts gives. A 補助標識 with no face drawn
-   * ahead of time (public/data/regs newer than registry.json) is left off with a warning, the plate
-   * above still standing. Returns how many faces did not fit above the ground.
-   */
-  private layOut(post: Post, k: Kit, place: (post: Post, d: Design, y: number) => void): number {
-    const heightOf = (d: Design) => (k.plate(d.shape)?.height ?? 0) * d.scale;
-    const auxOf = post.plates.map((d, level) =>
-      (post.auxOf[level] ?? []).flatMap((plate) => {
-        const aux = auxDesignFor(GAME_TABLE, plate, d.scale);
-        if (aux) return [aux];
-        reportUndrawnAux(plate);
-        return [];
-      }),
-    );
-    const { placed, dropped } = stackPlates(
-      post.plates.map((d, level) => ({ height: heightOf(d), aux: auxOf[level].map(heightOf) })),
-    );
-    for (const f of placed) {
-      const d = f.aux === null ? post.plates[f.plate] : auxOf[f.plate][f.aux];
-      place(post, d, f.y);
-    }
-    return dropped;
+  /** Logs a member role with no signs.glb part (a guide_signs.glb role on a sign post), once per role. */
+  private reportUnloadedRole(role: MemberRole): void {
+    if (this.reportedRoles.has(role)) return;
+    this.reportedRoles.add(role);
+    warn("sign_member_unloaded", { role, glb: MEMBER_NODES[role].glb, node: MEMBER_NODES[role].node });
   }
 
-  /** One instance per plate; the face looks at oncoming traffic (−travel), just in front of the post. */
+  /** One instance per item, at the item's matrix, remembered by its post's column. */
   private instanced(
     geometry: BufferGeometry,
     material: Material,
     items: Item[],
     castShadow = true,
   ): InstancedMesh {
-    const o = new Object3D();
     const mesh = this.instances.take(geometry, material, items.length);
-    items.forEach(({ post, y, scale, flip, facing: given }, i) => {
-      const facing = given ?? (flip ? post.travel : post.travel.clone().negate());
-      const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
-      o.position.set(post.pos.x, ground + y, post.pos.z);
-      o.position.addScaledVector(facing, PLATE_OFFSET);
-      o.rotation.set(0, Math.atan2(facing.x, facing.z), 0);
-      o.scale.setScalar(scale);
-      o.updateMatrix();
-      mesh.setMatrixAt(i, o.matrix);
-      post.refs.push([mesh, i]);
+    items.forEach(({ post, column, matrix }, i) => {
+      mesh.setMatrixAt(i, matrix);
+      post.columns[column]?.refs.push([mesh, i]);
     });
     mesh.castShadow = castShadow;
     this.add(mesh);

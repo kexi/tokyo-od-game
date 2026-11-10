@@ -82,7 +82,10 @@ assets:
 
   - id: sign-plates
     name: 道路標識の板と支柱
-    purpose: 実寸の標識板（円・逆三角・正方形・一方通行など）と支柱・取付金具。図柄は実行時に sign-textures を貼る。
+    purpose: >-
+      実寸の標識板（円・逆三角・正方形・一方通行など）と、取付の単位部材（1 m の支柱 SignPostUnit・笠 SignPostCap・
+      1 m のレール SignRail・U バンド SignBand・信号柱の共架バンド SignalBand・壁高欄の金具 BarrierBracket・桁の吊り金具
+      GirderHanger）。図柄は実行時に sign-textures を貼り、部材は src/signs/mount.ts の resolveMount が伸ばす・並べる。
     kind: model
     files: [public/models/signs.glb]
     generator: { script: scripts/blender/signs.py, recipe: make-sign-model }
@@ -97,6 +100,9 @@ assets:
     notes: >-
       G2 から板を src/signs/plates.ts の宣言から作る（それまでは signs.py に寸法を直書き）。移したあとの出力が
       移す前の signs.glb とバイト一致することを確かめた（knowledge/sign-system.md）。ノード名は互換のため固定。
+      G4 で単位部材のノードを末尾に足した。既存のノード（板・Post・Bracket）は符号化済みの頂点までバイト一致のまま
+      （Post・Bracket はゲームでは使わなくなったが互換のため残す）。部材の径は仮定（mount.ts の MEMBER_SIZES、
+      tests/signMount.test.ts が signs.py の定数と照合）。
 
   - id: human
     name: 歩行者
@@ -506,7 +512,9 @@ assets:
 
   - id: guide-sign-model
     name: 案内標識の支柱・腕・標示板
-    purpose: 方面及び方向（108 系）の案内標識を立てる片持式（F 形）の支柱と腕、路側式の支柱、1 × 1 m の標示板。ゲームが標識ごとに伸縮してインスタンス描画する。
+    purpose: >-
+      方面及び方向（108 系）の案内標識を立てる片持式（F 形）の支柱と腕、路側式の支柱、1 × 1 m の標示板と、門型の脚
+      （GantryLeg・GantryFoot）と梁の 1 m の節（GantryTruss）。ゲームが標識ごとに伸縮・反復してインスタンス描画する。
     kind: model
     files: [public/models/guide_signs.glb]
     generator: { script: scripts/blender/guide_signs.py, recipe: make-guide-sign-model }
@@ -514,8 +522,11 @@ assets:
     source: 自作（bpy で手続きモデリング。寸法は道路標識設置基準の設置高さと一般的な F 形柱の鋼管径。外部の 3D 素材・写真は使っていない）
     license: repo
     used_by: [src/world/guideSigns.ts]
-    docs: [knowledge/road-markings-and-signs.md]
-    notes: 板の面（GuideFace）は実行時に src/world/guideArt.ts が標識ごとに描く。腕（GuideArm）と板は長さ 1 で、ゲームが伸ばす。
+    docs: [knowledge/road-markings-and-signs.md, knowledge/sign-system.md]
+    notes: >-
+      板の面（GuideFace）は実行時に src/world/guideArt.ts が標識ごとに描く。腕（GuideArm）と板は長さ 1 で、ゲームが伸ばす。
+      配置は G4 から src/signs/mount.ts の resolveMount（片持式 cantilever-f・路側式 double-post）。門型の部材は G6（都市高速）
+      まで使わない。既存のノードは G4 の前とバイト一致。
 
   - id: mirror-charms
     name: ミラーの飾り（ぬいぐるみ・お守り）

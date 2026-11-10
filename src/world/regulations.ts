@@ -8,6 +8,7 @@ import { CLOSURE, MAX_CLOSURE_AREA_KM2, readClosureRow, ringAreaKm2, type Closur
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
 import { auxPlatesFor, type AuxPlate } from "../signs/auxPlates";
 import { SIGN } from "../signs/game";
+import { SIGN_KERB } from "../signs/mountAssumptions";
 
 /**
  * Traffic regulations for the area around the player, as tiled by scripts/regulations.ts:
@@ -573,7 +574,7 @@ export function applyRegulations(
     signs.push({
       type: SIGN.laneArrows,
       value: 0,
-      pos: pos.clone().add(leftOf(travel, seg.line.width / 2 + 0.7)),
+      pos: pos.clone().add(leftOf(travel, seg.line.width / 2 + SIGN_KERB.value)),
       travel,
       seg,
       s,
@@ -901,7 +902,7 @@ function placeSigns(
       if (s < 1 || s > seg.length - 1) break;
       ({ pos, dir: d } = graph.sample(seg, s));
       const travelHere = d.clone().multiplyScalar(dir);
-      const candidate = pos.clone().add(leftOf(travelHere, seg.line.width / 2 + 0.7));
+      const candidate = pos.clone().add(leftOf(travelHere, seg.line.width / 2 + SIGN_KERB.value));
       if (isClear(seg, s, candidate)) {
         foot = candidate;
         break;

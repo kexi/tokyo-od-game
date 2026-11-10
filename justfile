@@ -81,6 +81,7 @@ check-convergence name:
 
 # 標識の見本: 図柄のある全番号を signs.glb の板・支柱に貼って正面・30°・60° で描き .qa/signs/ に番号ごとの画像と角度ごとのシートを書く（Blender は nix の別シェル）
 render-sign-review:
+    pnpm exec tsx scripts/qa/signMounts.ts .qa/signs
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signs.py --python scripts/blender/sign_review.py -- .qa/signs/signs.glb
     pnpm exec tsx scripts/qa/signSheet.ts .qa/signs
 

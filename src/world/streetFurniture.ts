@@ -18,6 +18,7 @@ import { towardEye } from "../render/renderer";
 import { SIGN, type PlacedSign } from "./regulations";
 import { KERB } from "./pavements";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { SIGN_KERB } from "../signs/mountAssumptions";
 
 /**
  * Things along Tokyo's streets that matter to a driver, from OpenStreetMap (public/data/places.json):
@@ -198,7 +199,7 @@ export class StreetFurniture {
         signs.push({
           type: SIGN.school,
           value: 0,
-          pos: pos.clone().add(leftOf(travel, seg.line.width / 2 + 0.7)),
+          pos: pos.clone().add(leftOf(travel, seg.line.width / 2 + SIGN_KERB.value)),
           travel,
           seg,
           s,

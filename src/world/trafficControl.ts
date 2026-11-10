@@ -33,6 +33,7 @@ import {
   type LampColour,
 } from "../signals/heads";
 import { SIGNAL_MOUNTS } from "../signals/mounts";
+import { PED_HEAD_CLEAR, PED_NEAR_POLE, SIGNAL_POLE_KERB } from "../signs/mountAssumptions";
 import { hasRightArrow, planForJunction } from "../signals/assign";
 import {
   cycleTime,
@@ -152,8 +153,20 @@ function clearSpot(graph: RoadGraph, candidates: Vector3[]): Vector3 | null {
   return candidates.find((p) => graph.carriagewaysAt(p, 0.3).length === 0) ?? null;
 }
 
+/**
+ * A 車両用 signal pole as it stands: its foot (y = ground), the traffic its head faces, the arm's
+ * height above the foot, and how far the foot is from that traffic's carriageway edge (at least;
+ * the pole may have been stepped further out). Road signs hang on it (src/world/signs.ts, G4),
+ * no lower than `minBottomM` above its foot: over the 歩行者用灯器 when one stands beside it.
+ */
+export type SignalPole = { pos: Vector3; travel: Vector3; armY: number; kerbM: number; minBottomM: number };
+/** From the far-left corner spot of a 車両用 pole to its approach's carriageway edge, m. */
+const POLE_KERB = SIGNAL_POLE_KERB.value;
+
 export class TrafficControl {
   approaches: Approach[] = [];
+  /** The 車両用 poles of the last build (one per signalled approach). */
+  signalPoles: SignalPole[] = [];
   private bySegment = new Map<number, Approach[]>();
   private meshes: InstancedMesh[] = [];
   private readonly instances = new RoadInstances();
@@ -377,6 +390,7 @@ export class TrafficControl {
     this.controllers = [];
     this.pedLamps = null;
     this.pedOwners = [];
+    this.signalPoles = [];
     for (const p of this.plates) {
       this.scene.remove(p);
     }
@@ -622,7 +636,7 @@ export class TrafficControl {
       const corner = nodePos
         .clone()
         .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, half + 1.2));
+        .add(leftOf(ap.travel, half + POLE_KERB));
       // The pole stands on the pavement: in a big junction box the corner by GSI widths can fall
       // in a crossing street's carriageway, so step further on and further out until it is clear.
       const base =
@@ -644,6 +658,14 @@ export class TrafficControl {
       const g = ground(base);
       const armY = g + SIGNAL_HEIGHT + HEAD_HANG * HEAD_SCALE;
       poles.push({ pos: base.clone().setY(g), height: armY - g + 0.25 });
+      // The corner stands POLE_KERB beyond the carriageway edge; clearSpot moves it on or further out.
+      this.signalPoles.push({
+        pos: base.clone().setY(g),
+        travel: ap.travel.clone(),
+        armY: armY - g,
+        kerbM: POLE_KERB,
+        minBottomM: 0,
+      });
       const toHead = new Vector3(head.x - base.x, 0, head.z - base.z);
       o.position.set(base.x, armY, base.z);
       o.quaternion.setFromUnitVectors(UP, toHead.clone().normalize());
@@ -733,6 +755,16 @@ export class TrafficControl {
       }
     }
 
+    // A 歩行者用灯器 beside a 車両用 pole: plates shared onto that pole go above its housing
+    // (multi-view review G4 round 1: in 神田 the head hid the lower plate).
+    const pedTop = PED_HEIGHT + PED_HEAD.housing.hM / 2 + PED_HEAD_CLEAR.value;
+    for (const pole of this.signalPoles) {
+      const hasPedHead = this.pedOwners.some(
+        (h) => Math.hypot(h.at.x - pole.pos.x, h.at.z - pole.pos.z) < PED_NEAR_POLE.value,
+      );
+      if (hasPedHead) pole.minBottomM = pedTop;
+    }
+
     // Poles: the unit pole stretched to height; solid for cars and people (not ground probes).
     const poleMatrices = poles.map(({ pos, height }) => {
       o.position.copy(pos);
@@ -804,7 +836,7 @@ export class TrafficControl {
       const base = nodePos
         .clone()
         .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, half + 1.2));
+        .add(leftOf(ap.travel, half + POLE_KERB));
       const head = nodePos
         .clone()
         .addScaledVector(ap.travel, far)

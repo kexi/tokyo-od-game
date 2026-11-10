@@ -722,7 +722,11 @@ async function main(): Promise<void> {
       true,
     );
     if (applied) applied.signs.push(...furnitureSigns);
-    await measure("signs", () => signs.rebuildAsync(graph, applied, control.approaches, work), true);
+    await measure(
+      "signs",
+      () => signs.rebuildAsync(graph, applied, control.approaches, control.signalPoles, work),
+      true,
+    );
     await measure(
       "guideSigns",
       () =>

@@ -15,11 +15,11 @@ import {
 const ROOT = join(import.meta.dirname, "..");
 const source = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
-describe("the private fields the review hooks read", () => {
-  it("are still declared in world/signs.ts (posts and the Post fields, the face meshes' userData.key)", () => {
+describe("the fields the review hooks read", () => {
+  it("are still declared in world/signs.ts (debugPlates() and the PostDebug fields, the face meshes' userData.key)", () => {
     const signs = source("src/world/signs.ts");
-    expect(signs).toMatch(new RegExp(`private ${READ_FIELDS.signs.list}: Post\\[\\]`));
-    const post = /type Post = \{([\s\S]*?)\n\};/.exec(signs)?.[1] ?? "";
+    expect(signs).toMatch(new RegExp(`\\n  ${READ_FIELDS.signs.method}\\(\\): PostDebug\\[\\]`));
+    const post = /export type PostDebug = \{([\s\S]*?)\n\};/.exec(signs)?.[1] ?? "";
     for (const f of READ_FIELDS.signs.item) expect(post).toMatch(new RegExp(`\\n  ${f}: `));
     expect(signs).toMatch(/userData\.key = d\.file/);
     const design = /export type Design = \{([\s\S]*?)\n\};/.exec(source("src/signs/game.ts"))?.[1] ?? "";
@@ -35,6 +35,9 @@ describe("the private fields the review hooks read", () => {
   });
 });
 
+/** A stand-in TrafficSigns whose debugPlates() returns these posts. */
+const signsOf = (posts: unknown[]) => ({ debugPlates: () => posts });
+
 describe("reading the sign posts", () => {
   const post = {
     pos: new Vector3(),
@@ -45,27 +48,29 @@ describe("reading the sign posts", () => {
   };
 
   it("reads posts of the expected shape, and a post's 補助標識 as texts", () => {
-    const read = readPosts({ posts: [post] });
+    const read = readPosts(signsOf([post]));
     expect(read).toMatchObject({ ok: true });
     expect(read.ok && notesOf(read.value[0])).toEqual(["土・日・休日\n12-17"]);
   });
 
   it("says not-built while there are no posts yet", () => {
-    expect(readPosts({ posts: [] })).toMatchObject({ ok: false, reason: "not-built" });
+    expect(readPosts(signsOf([]))).toMatchObject({ ok: false, reason: "not-built" });
   });
 
   it("says renamed when a field it reads is gone, instead of a TypeError later", () => {
-    expect(readPosts({ postz: [post] })).toMatchObject({ ok: false, reason: "renamed" });
-    expect(readPosts({ posts: [{ ...post, pos: undefined, position: new Vector3() }] })).toMatchObject({
+    // Before G4 the hooks read the private TrafficSigns.posts; without debugPlates() they must say so.
+    expect(readPosts({ posts: [post] })).toMatchObject({ ok: false, reason: "renamed" });
+    expect(readPosts({ debugPlates: () => "posts" })).toMatchObject({ ok: false, reason: "renamed" });
+    expect(readPosts(signsOf([{ ...post, pos: undefined, position: new Vector3() }]))).toMatchObject({
       reason: "renamed",
     });
-    expect(readPosts({ posts: [{ ...post, plates: [{ number: "323", file: "323" }] }] })).toMatchObject({
+    expect(readPosts(signsOf([{ ...post, plates: [{ number: "323", file: "323" }] }]))).toMatchObject({
       reason: "renamed",
     });
     // Before G2 the 補助標識 were Post.notes (strings); a reader of that shape must say so.
     const { auxOf: _gone, ...old } = post;
-    expect(readPosts({ posts: [{ ...old, notes: ["12-17"] }] })).toMatchObject({ reason: "renamed" });
-    expect(readPosts({ posts: [{ ...post, auxOf: [[{ code: "502", text: "12-17" }]] }] })).toMatchObject({
+    expect(readPosts(signsOf([{ ...old, notes: ["12-17"] }]))).toMatchObject({ reason: "renamed" });
+    expect(readPosts(signsOf([{ ...post, auxOf: [[{ code: "502", text: "12-17" }]] }]))).toMatchObject({
       reason: "renamed",
     });
   });

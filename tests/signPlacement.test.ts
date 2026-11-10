@@ -12,7 +12,7 @@ import {
 } from "../src/world/regulations";
 import { RoadGraph, type RoadLine } from "../src/world/roads";
 import { readTime } from "../src/world/ruleTime";
-import { design } from "../src/world/signs";
+import { design, gatherPosts, mountPost } from "../src/world/signs";
 
 /**
  * Which signs the game puts up, where, and with which artwork, pinned as a snapshot taken before
@@ -24,6 +24,13 @@ import { design } from "../src/world/signs";
  * the wording unchanged but for a line too long for the plate, now broken at 「・」), and the 警戒 plate the game shows (208 学校あり) is drawn at 1.3×, the
  * smallest enlargement 別表第二 備考一(二)6 allows, instead of 1.25×. No sign was added, dropped
  * or moved.
+ *
+ * G4 (knowledge/sign-system.md「G4 のスナップショット」) added the posts: how gatherPosts groups the
+ * plates and how resolveMount (src/signs/mount.ts) holds them up. That block was first written with
+ * G2's layout (stackPlates from 2.6 m, 1.0 m apart) and then rewritten on purpose: the same 3,789
+ * posts with the same faces, only their heights and supports changed. Lower edges now start at the
+ * 2.5 m 交通規制基準 asks over a pavement and never go under 1.8 m (201 posts did), and 42 posts
+ * stand on two (three plates, or a 327の7 board wider than 1.2 m). The rows above it are unchanged.
  *
  * The inputs are frozen copies of three regs / turnlanes tiles (tests/fixtures/sign-placement, with
  * their sources), so `just fetch-regs` does not rewrite the snapshot.
@@ -141,6 +148,41 @@ function placements(tile: string): string[] {
     return `${KIND.get(s.type)} ${s.value} ${laneKey(s.lanes)} | ${art} | ${where}${auxOf(s)}`;
   });
 }
+
+/**
+ * One line per post the game stands: its foot and heading, the mount (kind and where its supports
+ * stand across, from the foot) and each face top to bottom (artwork, where across, lower edge).
+ * The posts come from gatherPosts without approaches (no 一時停止, every crossing unsignalled, no
+ * signal poles to share: the regs tiles carry no signals), so signal-share is covered by
+ * tests/signMount.test.ts instead.
+ */
+function postRows(tile: string): string[] {
+  const data = tileData(tile);
+  const [x, y] = tile.split("-").map(Number);
+  const lon = ((x + 0.5) / 2 ** 14) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 0.5)) / 2 ** 14))) * 180) / Math.PI;
+  const frame = new LocalFrame(lat, lon, 40);
+  const graph = new RoadGraph(roadsOf(data), frame);
+  const applied = applyRegulations(graph, data, frame, () => {});
+  return gatherPosts(graph, applied, []).map((plan) => {
+    const { pos, travel, mount, designs } = mountPost(plan);
+    const heading = ((Math.atan2(travel.x, -travel.z) * 180) / Math.PI + 360) % 360;
+    const feet = mount.feet.map((f) => fixed(f.x)).join(",");
+    const faces = mount.faces.map(
+      (f, i) => `${designs[i].file} x=${fixed(f.x)} bottom=${fixed(f.y - f.height / 2)}`,
+    );
+    const dropped = mount.dropped > 0 ? ` | dropped=${mount.dropped}` : "";
+    return `${fixed(pos.x)},${fixed(pos.z)} ${heading.toFixed(1)}° | ${mount.kind} feet=${feet} | ${faces.join(" ; ")}${dropped}`;
+  });
+}
+
+describe("the posts the game stands (gatherPosts and resolveMount)", () => {
+  for (const place of PLACES) {
+    it(`stand as pinned at ${place.name} (regs ${place.tile})`, () => {
+      expect(postRows(place.tile)).toMatchSnapshot();
+    });
+  }
+});
 
 describe("the signs the game places (placeSigns and design())", () => {
   for (const place of PLACES) {

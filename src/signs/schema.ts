@@ -223,6 +223,16 @@ export const SignDefSchema = z
         back: z.string().min(1).optional(),
         /** Two copies of the face back to back, one per direction. */
         bothFaces: z.literal(true).optional(),
+        /**
+         * On a post split in two columns, keep this plate on the column by the carriageway
+         * (交通規制基準 第2章 9 (2) イ (ア): 横断歩道 at the bottom, or on the right). src/signs/mount.ts.
+         */
+        kerbSide: z.literal(true).optional(),
+        /**
+         * Never hung on a nearby signal pole (信号柱への共架): its place means something (一時停止 at the
+         * stop line, 横断歩道 at the crossing), and the pole stands beyond the junction.
+         */
+        fixedPlace: z.literal(true).optional(),
       })
       .optional(),
     /**

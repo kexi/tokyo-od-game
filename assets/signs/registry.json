@@ -3398,7 +3398,8 @@
         "variants": []
       },
       "game": {
-        "kind": "stop"
+        "kind": "stop",
+        "fixedPlace": true
       },
       "figure": "S35F03102010003-179.jpg"
     },
@@ -3631,7 +3632,9 @@
       "note": "現行の様式は青の五角形に白の記号（図 191）。旧 crosswalk.png（青の正方形に白の三角）は様式外として variants に残す",
       "game": {
         "kind": "crosswalk",
-        "bothFaces": true
+        "bothFaces": true,
+        "kerbSide": true,
+        "fixedPlace": true
       },
       "figure": "S35F03102010003-191.jpg"
     },

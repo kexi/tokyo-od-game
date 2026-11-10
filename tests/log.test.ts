@@ -288,6 +288,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     revision: "335M50004002003_20260901_508M60000802003",
     signs: 237,
   },
+  sign_mounts_written: { file: ".qa/signs/mounts.json", plates: 30 },
   sign_registry_written: {
     files: ["assets/signs/registry.json", "assets/signs/catalog.json", "assets/signs/game.json"],
     signs: 244,
@@ -297,7 +298,10 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   signal_heads_written: { file: "assets/signals/heads.json", heads: 5 },
   sign_lanes_unrendered: { lanes: "l-t-t-t-t-t-t-r", count: 8 },
   sign_aux_undrawn: { sign: "502", lines: ["7:30-9", "土・日・休日を除く"] },
-  sign_faces_below_ground: { faces: 2, posts: 120 },
+  sign_faces_unmounted: { faces: 2, posts: 120 },
+  sign_mounts_resolved: { posts: 120, double: 4, shared: 9, faces: 150 },
+  sign_columns_hidden: { single: 3, doubleFirst: 0, doubleSecond: 2, doubleWhole: 0, posts: 120 },
+  sign_member_unloaded: { role: "boardPost", glb: "guide_signs", node: "GuidePost" },
   osm_read: { nodes: 1, ways: 2, relations: 3, coords: 4 },
   destinations_written: {
     file: "public/data/destinations.json",
