@@ -760,12 +760,14 @@ assets:
     made_by: procedural
     source: 道路標識、区画線及び道路標示に関する命令（e-Gov 法令 API、2026-09-01 施行版）の別表第一・第二を読んで作った表
     license: repo
-    used_by: [src/world/signs.ts, src/world/coverage.ts]
+    used_by: []
     inputs: [sign-law-table]
     docs: [knowledge/sign-system.md, knowledge/road-markings-and-signs.md]
+    status: unused
     notes: >-
       G1a から定義の正は src/signs/defs/*.ts で、scripts/signs.ts が registry から同じ形・同じバイトで書く
-      （tests/signRegistry.test.ts が保証）。利用側がレジストリへ移ったら消す。
+      （tests/signRegistry.test.ts が保証）。G1c でゲーム（src/world/signs.ts）は sign-game-table を読むようになり、
+      今は tests/coverage.test.ts だけが読む。そこを移したら消す。
 
   - id: sign-registry
     name: 道路標識レジストリ
@@ -787,6 +789,24 @@ assets:
     notes: >-
       古いとテスト（tests/signRegistry.test.ts）が落ちる。定義を直したら just make-sign-registry。
       just fetch-regs で turnlanes が変わったときも書き直し、図柄を just make-sign-textures で足す。
+
+  - id: sign-game-table
+    name: 道路標識のゲーム対応表
+    purpose: >-
+      ゲームの標識種別（src/signs/game.ts の SIGN）ごとに、表示する番号・図柄・板と選び方（既定の図柄・値・車線）。
+      配置した標識の図柄を決める（src/world/signs.ts design()）。
+    kind: data
+    files: [assets/signs/game.json]
+    generator: { script: scripts/signs.ts, recipe: make-sign-registry }
+    made_by: procedural
+    source: src/signs/defs/*.ts の game・gameValue と車線の版（src/signs/gameTable.ts が組む）
+    license: repo
+    used_by: [src/world/signs.ts]
+    inputs: [sign-registry]
+    docs: [knowledge/sign-system.md]
+    notes: >-
+      定義の名前・注記をバンドルに入れないため、ゲームには registry.json でも catalog.json でもなくこれを読ませる
+      （約 25 KB、レビュー I9）。古いとテスト（tests/signRegistry.test.ts）が落ちる。
 
   - id: sign-law-table
     name: 標識令 別表第一の番号表

@@ -22,7 +22,10 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PROP_GROUPS } from "../physics/groups";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
-import catalog from "../../assets/signs/catalog.json";
+import gameTable from "../../assets/signs/game.json";
+import { designFor, type Design, type GameTable } from "../signs/game";
+import { laneKey } from "../signs/lanes";
+import { warn } from "../log";
 import { leftOf, type RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
 import { sharedDraco } from "../render/draco";
@@ -43,121 +46,32 @@ const POST_TOP = 2.6; // ground to the centre of the top plate
 const STACK = 0.8 * SCALE; // vertical spacing of plates sharing a post
 const PLATE_OFFSET = 0.05; // plate face in front of the post axis (bracket depth)
 
-/**
- * Plate meshes are named in signs.glb (PlateCircle, PlateDiamond, PlateRect120x90 …); the
- * catalogue (assets/signs/catalog.json, scripts/textures/sign_textures.py) says which plate and
- * artwork each sign of 別表第一 uses.
- */
+const GAME_TABLE = gameTable as GameTable;
+
+/** Plate meshes are named in signs.glb (PlateCircle, PlateDiamond, PlateRect120x90 …). */
 type Shape = string;
+
 /**
- * `bothFaces`: back-to-back copies of the same face. `parallel`: mounted along the street with
- * `back` as the other face (一方通行 326-A, 道路標識設置基準 3-1-4: 平行又は斜め 0°〜45°).
+ * The artwork and plate of a placed sign (exported for tests/signRegistry.test.ts). Which number
+ * and face a type shows is declared on the sign definitions (src/signs/defs `game`) and comes in
+ * as assets/signs/game.json. Why not import the definitions or catalog.json: their names, notes
+ * and figures would all land in the bundle (review I9).
  */
-type Design = { file: string; shape: Shape; bothFaces?: boolean; parallel?: boolean; back?: string };
-
-type CatalogSign = { id: string; texture: string | null; plate_node?: string };
-const CATALOG = new Map((catalog.signs as CatalogSign[]).map((c) => [c.id, c]));
-const LANE_SIGNS = new Map(
-  (catalog.lanes.rendered as Array<{ lanes: string; texture: string; plate_node: string }>).map((r) => [
-    r.lanes,
-    r,
-  ]),
-);
-
-/** The catalogue's design for a sign number (null when not drawn). */
-function catalogued(id: string, extra: Partial<Design> = {}): Design | null {
-  const c = CATALOG.get(id);
-  if (!c?.texture || !c.plate_node) return null;
-  return { file: c.texture.replace(/\.png$/, ""), shape: c.plate_node, ...extra };
-}
-
-// Lane letters in the lane-sign file names (scripts/textures/signs/lanes.py), in their order.
-const LANE_LETTERS: Array<[LaneDirection, string]> = [
-  ["reverse", "u"],
-  ["left", "l"],
-  ["slight_left", "hl"],
-  ["through", "t"],
-  ["slight_right", "hr"],
-  ["right", "r"],
-];
-
-/** 327の7 進行方向別通行区分 for these lanes, if that pattern was drawn. */
-function laneDesign(lanes: readonly LaneDirection[][]): Design | null {
-  const key = lanes
-    .map((set) =>
-      LANE_LETTERS.filter(([d]) => set.includes(d))
-        .map(([, l]) => l)
-        .join(""),
-    )
-    .join("-");
-  const r = LANE_SIGNS.get(key);
-  return r ? { file: r.texture.replace(/\.png$/, ""), shape: r.plate_node } : null;
-}
-
-// Game sign types drawn straight from the catalogue.
-const BY_ID: Partial<Record<number, string>> = {
-  [SIGN.closed]: "302",
-  [SIGN.pedestrianRoad]: "325の4",
-  [SIGN.roadClosed]: "301",
-  [SIGN.motorClosed]: "310",
-  [SIGN.noPedestrianCrossing]: "332",
-  [SIGN.noOvertakeRight]: "314",
-  [SIGN.noOvertake]: "314の2",
-  [SIGN.noVehicleCrossing]: "312",
-  [SIGN.horn]: "328",
-  [SIGN.bikeOnPavement]: "325の3",
-  [SIGN.parkingAllowed]: "403",
-  [SIGN.timedParking]: "318",
-  [SIGN.busLane]: "327の4",
-  [SIGN.bikeLane]: "327の4の2",
-  [SIGN.busPriority]: "327の5",
-  [SIGN.vehicleClass]: "327",
-  [SIGN.hydrant]: "x-hydrant",
-  [SIGN.school]: "208",
-  [SIGN.schoolRoute]: "x-school-route",
-};
-
-/** The artwork and plate of a placed sign (exported for tests/signRegistry.test.ts). */
 export function design(type: number, value: number, lanes?: readonly LaneDirection[][]): Design | null {
-  const id = BY_ID[type];
-  if (id) return catalogued(id);
-  switch (type) {
-    case SIGN.speed:
-      return [20, 30, 40, 50, 60, 70, 80].includes(value)
-        ? { file: `speed_${value}`, shape: "PlateCircle" }
-        : null;
-    case SIGN.noEntry:
-      return { file: "no_entry", shape: "PlateCircle" };
-    case SIGN.noParking:
-      return { file: "no_parking", shape: "PlateCircle" };
-    case SIGN.noStopping:
-      return { file: "no_stopping", shape: "PlateCircle" };
-    case SIGN.noUturn:
-      return { file: "no_uturn", shape: "PlateCircle" };
-    case SIGN.turn:
-      return value >= 1 && value <= 6 ? { file: `turn_${value}`, shape: "PlateCircle" } : null;
-    case SIGN.oneway:
-      // Seen from the carriageway the arrow points right, the way the traffic beside it goes;
-      // the face on the back points left for the far side.
-      return { file: "one_way_right", back: "one_way_left", shape: "PlateWide", parallel: true };
-    case SIGN.slow:
-      return { file: "slow", shape: "PlateTriangle" };
-    case SIGN.stop:
-      return { file: "stop", shape: "PlateTriangle" };
-    case SIGN.crosswalk:
-      // 横断歩道 (407-A, the current blue pentagon), back to back: one face per direction.
-      return (
-        catalogued("407-A", { bothFaces: true }) ?? {
-          file: "crosswalk",
-          shape: "PlateSquare",
-          bothFaces: true,
-        }
-      );
-    case SIGN.laneArrows:
-      return lanes ? laneDesign(lanes) : null;
-    default:
-      return null;
-  }
+  const d = designFor(GAME_TABLE, type, value, lanes);
+  const isUnrenderedLanes = d === null && type === SIGN.laneArrows && lanes !== undefined;
+  if (isUnrenderedLanes) reportUnrenderedLanes(lanes);
+  return d;
+}
+
+const reportedLanes = new Set<string>();
+
+/** Logs a lane pattern with no pre-rendered plate, once per pattern (it is placed on every rebuild). */
+function reportUnrenderedLanes(lanes: readonly LaneDirection[][]): void {
+  const key = laneKey(lanes);
+  if (reportedLanes.has(key)) return;
+  reportedLanes.add(key);
+  warn("sign_lanes_unrendered", { lanes: key, count: lanes.length });
 }
 
 type Part = { face: BufferGeometry; back: BufferGeometry; backMaterial: Material };

@@ -6,6 +6,7 @@ import { anchors, M_LAT, M_LON, reversed } from "./anchors";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { CLOSURE, MAX_CLOSURE_AREA_KM2, ringAreaKm2, type ClosureKind } from "./closures";
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
+import { SIGN } from "../signs/game";
 
 /**
  * Traffic regulations for the area around the player, as tiled by scripts/regulations.ts:
@@ -59,39 +60,11 @@ export type LaneUse = {
   source: "osm" | "assumed";
 };
 
-/** Sign types (the game maps them to 道路標識 artwork). */
-export const SIGN = {
-  speed: 1,
-  oneway: 2,
-  noEntry: 3,
-  noParking: 4,
-  noStopping: 5,
-  noUturn: 6,
-  slow: 7,
-  turn: 8,
-  crosswalk: 9, // 横断歩道 (407-A), placed at runtime at crossings without signals
-  stop: 10, // 一時停止 (330-A), placed at runtime at 一時停止 approaches
-  closed: 11, // 車両通行止め (302), at the entrances of streets under 通行禁止
-  pedestrianRoad: 12, // 歩行者等専用 (325の4: 歩行者用道路), mostly with school-run hours
-  roadClosed: 13, // 通行止め (301)
-  motorClosed: 14, // 自動車 (incl. 二輪) 通行止め (310 with 補助)
-  noPedestrianCrossing: 15, // 歩行者等横断禁止 (332)
-  noOvertakeRight: 16, // 追越しのための右側部分はみ出し通行禁止 (314)
-  noOvertake: 17, // 追越し禁止 (314の2)
-  noVehicleCrossing: 18, // 車両横断禁止 (312)
-  horn: 19, // 警笛鳴らせ (328)
-  bikeOnPavement: 20, // 普通自転車等及び歩行者等専用 (325の3: 普通自転車歩道通行可)
-  parkingAllowed: 21, // 駐車可 (403)
-  timedParking: 22, // 時間制限駐車区間 (318)
-  busLane: 23, // 専用通行帯 (327の4)
-  bikeLane: 24, // 普通自転車専用通行帯 (327の4の2)
-  busPriority: 25, // 路線バス等優先通行帯 (327の5)
-  vehicleClass: 26, // 車両通行区分 (327)
-  laneArrows: 27, // 進行方向別通行区分 (327の7), the lanes in PlacedSign.lanes
-  hydrant: 28, // 消火栓 (法定外: the red disc at hydrants)
-  school: 29, // 学校、幼稚園、保育所等あり (208)
-  schoolRoute: 30, // 通学路 (法定外 plate, under 歩行者専用 in school hours)
-} as const;
+/**
+ * Sign types (codes in PlacedSign.type). The table lives with the sign definitions, which say which
+ * 別表第一 number and face each type shows (src/signs/game.ts, src/signs/defs).
+ */
+export { SIGN } from "../signs/game";
 
 const REG_ZOOM = 14;
 const ROAD_ZOOM = 16; // RoadTiles covers the 3×3 z16 tiles around the player

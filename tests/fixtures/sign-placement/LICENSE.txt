@@ -1,0 +1,14 @@
+Frozen copies of three z14 tiles of public/data for tests/signPlacement.test.ts (丸の内 14552-6451,
+渋谷 14549-6452, 芝公園 14552-6453), copied on 2026-11-10 so that `just fetch-regs` does not rewrite the
+snapshot. Do not refresh them with the data; the test pins the game's behaviour, not the data.
+
+regs-*.json: 出典：「交通規制情報」（公益財団法人日本道路交通情報センター）
+(https://www.jartic.or.jp/service/opendata/)（2026年10月05日に利用）を加工して作成
+(対象月 2026年08月、公開日 2026年10月01日; tiled by scripts/regulations.ts).
+
+turnlanes-*.json: turn:lanes extracted from OpenStreetMap.
+© OpenStreetMap contributors — https://www.openstreetmap.org/copyright
+This database is made available under the Open Database License (ODbL) 1.0:
+https://opendatacommons.org/licenses/odbl/1-0/
+Source extract: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf (Geofabrik), see
+scripts/regulations.ts.

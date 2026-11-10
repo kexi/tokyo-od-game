@@ -1897,6 +1897,7 @@
             "pattern": 3
           }
         },
+        "gameValue": 3,
         "variants": [
           {
             "key": "right",
@@ -1906,13 +1907,16 @@
               "args": {
                 "pattern": 6
               }
-            }
+            },
+            "gameValue": 6
           }
         ]
       },
       "game": {
-        "kind": "turn"
+        "kind": "turn",
+        "pick": "value"
       },
+      "legacy": ["turn_3", "turn_6"],
       "figure": "S35F03102010003-133.jpg"
     },
     {
@@ -1929,6 +1933,7 @@
             "pattern": 1
           }
         },
+        "gameValue": 1,
         "variants": [
           {
             "key": "right",
@@ -1938,13 +1943,16 @@
               "args": {
                 "pattern": 4
               }
-            }
+            },
+            "gameValue": 4
           }
         ]
       },
       "game": {
-        "kind": "turn"
+        "kind": "turn",
+        "pick": "value"
       },
+      "legacy": ["turn_1", "turn_4"],
       "figure": "S35F03102010003-134.jpg"
     },
     {
@@ -1961,11 +1969,14 @@
             "pattern": 2
           }
         },
+        "gameValue": 2,
         "variants": []
       },
       "game": {
-        "kind": "turn"
+        "kind": "turn",
+        "pick": "value"
       },
+      "legacy": ["turn_2"],
       "figure": "S35F03102010003-135.jpg"
     },
     {
@@ -1982,11 +1993,14 @@
             "pattern": 5
           }
         },
+        "gameValue": 5,
         "variants": []
       },
       "game": {
-        "kind": "turn"
+        "kind": "turn",
+        "pick": "value"
       },
+      "legacy": ["turn_5"],
       "figure": "S35F03102010003-136.jpg"
     },
     {
@@ -2304,6 +2318,7 @@
             "speed": 20
           }
         },
+        "gameValue": 20,
         "variants": [
           {
             "key": "30",
@@ -2313,7 +2328,8 @@
               "args": {
                 "speed": 30
               }
-            }
+            },
+            "gameValue": 30
           },
           {
             "key": "40",
@@ -2323,7 +2339,8 @@
               "args": {
                 "speed": 40
               }
-            }
+            },
+            "gameValue": 40
           },
           {
             "key": "50",
@@ -2333,7 +2350,8 @@
               "args": {
                 "speed": 50
               }
-            }
+            },
+            "gameValue": 50
           },
           {
             "key": "60",
@@ -2343,7 +2361,8 @@
               "args": {
                 "speed": 60
               }
-            }
+            },
+            "gameValue": 60
           },
           {
             "key": "70",
@@ -2353,7 +2372,8 @@
               "args": {
                 "speed": 70
               }
-            }
+            },
+            "gameValue": 70
           },
           {
             "key": "80",
@@ -2363,7 +2383,8 @@
               "args": {
                 "speed": 80
               }
-            }
+            },
+            "gameValue": 80
           },
           {
             "key": "10",
@@ -2409,7 +2430,8 @@
       },
       "variable": "text",
       "game": {
-        "kind": "speed"
+        "kind": "speed",
+        "pick": "value"
       },
       "figure": "S35F03102010003-149.jpg"
     },
@@ -2652,7 +2674,9 @@
       },
       "note": "図 155 は矢印のみ。既存テクスチャは矢印の軸に「一方通行」を青字で入れた実務上の表示（図示は例示）",
       "game": {
-        "kind": "oneway"
+        "kind": "oneway",
+        "mount": "parallel",
+        "back": "left"
       },
       "figure": "S35F03102010003-155.jpg"
     },
@@ -2862,7 +2886,8 @@
       },
       "variable": "lanes",
       "game": {
-        "kind": "laneArrows"
+        "kind": "laneArrows",
+        "pick": "lanes"
       },
       "figure": "S35F03102010003-166.jpg"
     },
@@ -2878,7 +2903,8 @@
       },
       "variable": "lanes",
       "game": {
-        "kind": "laneArrows"
+        "kind": "laneArrows",
+        "pick": "lanes"
       },
       "figure": "S35F03102010003-167.jpg"
     },
@@ -2894,7 +2920,8 @@
       },
       "variable": "lanes",
       "game": {
-        "kind": "laneArrows"
+        "kind": "laneArrows",
+        "pick": "lanes"
       },
       "figure": "S35F03102010003-168.jpg"
     },
@@ -2910,7 +2937,8 @@
       },
       "variable": "lanes",
       "game": {
-        "kind": "laneArrows"
+        "kind": "laneArrows",
+        "pick": "lanes"
       },
       "figure": "S35F03102010003-169.jpg"
     },
@@ -3327,7 +3355,8 @@
       },
       "note": "現行の様式は青の五角形に白の記号（図 191）。旧 crosswalk.png（青の正方形に白の三角）は様式外として variants に残す",
       "game": {
-        "kind": "crosswalk"
+        "kind": "crosswalk",
+        "bothFaces": true
       },
       "figure": "S35F03102010003-191.jpg"
     },

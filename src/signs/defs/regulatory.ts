@@ -135,15 +135,18 @@ export const REGULATORY = group("規制", [
       by: "texture",
       file: "turn_3.png",
       paint: { fn: "sign_textures.draw_turn_sign", args: { pattern: 3 } },
+      gameValue: 3,
       variants: [
         {
           key: "right",
           file: "turn_6.png",
           paint: { fn: "sign_textures.draw_turn_sign", args: { pattern: 6 } },
+          gameValue: 6,
         },
       ],
     },
-    game: { kind: "turn" },
+    game: { kind: "turn", pick: "value" },
+    legacy: ["turn_3", "turn_6"],
   },
   {
     id: "311-B",
@@ -153,15 +156,18 @@ export const REGULATORY = group("規制", [
       by: "texture",
       file: "turn_1.png",
       paint: { fn: "sign_textures.draw_turn_sign", args: { pattern: 1 } },
+      gameValue: 1,
       variants: [
         {
           key: "right",
           file: "turn_4.png",
           paint: { fn: "sign_textures.draw_turn_sign", args: { pattern: 4 } },
+          gameValue: 4,
         },
       ],
     },
-    game: { kind: "turn" },
+    game: { kind: "turn", pick: "value" },
+    legacy: ["turn_1", "turn_4"],
   },
   {
     id: "311-C",
@@ -171,8 +177,10 @@ export const REGULATORY = group("規制", [
       by: "texture",
       file: "turn_2.png",
       paint: { fn: "sign_textures.draw_turn_sign", args: { pattern: 2 } },
+      gameValue: 2,
     },
-    game: { kind: "turn" },
+    game: { kind: "turn", pick: "value" },
+    legacy: ["turn_2"],
   },
   {
     id: "311-D",
@@ -182,8 +190,10 @@ export const REGULATORY = group("規制", [
       by: "texture",
       file: "turn_5.png",
       paint: { fn: "sign_textures.draw_turn_sign", args: { pattern: 5 } },
+      gameValue: 5,
     },
-    game: { kind: "turn" },
+    game: { kind: "turn", pick: "value" },
+    legacy: ["turn_5"],
   },
   {
     id: "311-E",
@@ -349,36 +359,43 @@ export const REGULATORY = group("規制", [
       by: "texture",
       file: "speed_20.png",
       paint: { fn: "sign_textures.draw_speed_limit", args: { speed: 20 } },
+      gameValue: 20,
       variants: [
         {
           key: "30",
           file: "speed_30.png",
           paint: { fn: "sign_textures.draw_speed_limit", args: { speed: 30 } },
+          gameValue: 30,
         },
         {
           key: "40",
           file: "speed_40.png",
           paint: { fn: "sign_textures.draw_speed_limit", args: { speed: 40 } },
+          gameValue: 40,
         },
         {
           key: "50",
           file: "speed_50.png",
           paint: { fn: "sign_textures.draw_speed_limit", args: { speed: 50 } },
+          gameValue: 50,
         },
         {
           key: "60",
           file: "speed_60.png",
           paint: { fn: "sign_textures.draw_speed_limit", args: { speed: 60 } },
+          gameValue: 60,
         },
         {
           key: "70",
           file: "speed_70.png",
           paint: { fn: "sign_textures.draw_speed_limit", args: { speed: 70 } },
+          gameValue: 70,
         },
         {
           key: "80",
           file: "speed_80.png",
           paint: { fn: "sign_textures.draw_speed_limit", args: { speed: 80 } },
+          gameValue: 80,
         },
         { key: "10", file: "speed_10.png", paint: { fn: "regulatory.speed_sign", args: { value: 10 } } },
         { key: "100", file: "speed_100.png", paint: { fn: "regulatory.speed_sign", args: { value: 100 } } },
@@ -387,7 +404,7 @@ export const REGULATORY = group("規制", [
       ],
     },
     variable: "text",
-    game: { kind: "speed" },
+    game: { kind: "speed", pick: "value" },
   },
   {
     id: "323の2",
@@ -517,7 +534,7 @@ export const REGULATORY = group("規制", [
       ],
     },
     note: "図 155 は矢印のみ。既存テクスチャは矢印の軸に「一方通行」を青字で入れた実務上の表示（図示は例示）",
-    game: { kind: "oneway" },
+    game: { kind: "oneway", mount: "parallel", back: "left" },
   },
   {
     id: "326-B",
@@ -623,7 +640,7 @@ export const REGULATORY = group("規制", [
     plate: "PlateRect120x90",
     art: { by: "texture", file: "327-7_lt-t-r.png" },
     variable: "lanes",
-    game: { kind: "laneArrows" },
+    game: { kind: "laneArrows", pick: "lanes" },
   },
   {
     id: "327の7-B",
@@ -631,7 +648,7 @@ export const REGULATORY = group("規制", [
     plate: "PlateSquare90",
     art: { by: "texture", file: "327-7_lt.png" },
     variable: "lanes",
-    game: { kind: "laneArrows" },
+    game: { kind: "laneArrows", pick: "lanes" },
   },
   {
     id: "327の7-C",
@@ -639,7 +656,7 @@ export const REGULATORY = group("規制", [
     plate: "PlateSquare90",
     art: { by: "texture", file: "327-7_l.png" },
     variable: "lanes",
-    game: { kind: "laneArrows" },
+    game: { kind: "laneArrows", pick: "lanes" },
   },
   {
     id: "327の7-D",
@@ -647,7 +664,7 @@ export const REGULATORY = group("規制", [
     plate: "PlateSquare90",
     art: { by: "texture", file: "327-7_t.png" },
     variable: "lanes",
-    game: { kind: "laneArrows" },
+    game: { kind: "laneArrows", pick: "lanes" },
   },
   {
     id: "327の8",

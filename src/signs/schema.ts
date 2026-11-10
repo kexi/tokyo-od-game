@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GAME_PICKS, GAME_SIGN_KINDS } from "./game";
 import { PLATES } from "./plates";
 
 /**
@@ -60,11 +61,19 @@ export const PaintSchema = z.strictObject({
 });
 export type Paint = z.infer<typeof PaintSchema>;
 
+/**
+ * The placed value (src/world/regulations.ts PlacedSign.value) a face is shown for, on a sign whose
+ * game type picks by value: the speed limit; the directions a 指定方向外進行禁止 allows (1 左折,
+ * 2 直進, 4 右折, added up).
+ */
+const GameValue = z.number().int();
+
 export const VariantSchema = z.strictObject({
   /** What tells it apart (`left`, `8-20`, `kyujitsu`). */
   key: z.string().min(1),
   file: PngFile,
   paint: PaintSchema.optional(),
+  gameValue: GameValue.optional(),
   /** Its own plate when it is not the sign's (a two-line 補助標識, the old square 407-A). */
   plate: PlateNodeSchema.optional(),
 });
@@ -77,6 +86,7 @@ export const ArtSchema = z.discriminatedUnion("by", [
     file: PngFile,
     /** Required unless the file is a lane render (registry.ts checks). */
     paint: PaintSchema.optional(),
+    gameValue: GameValue.optional(),
     variants: z.array(VariantSchema).default([]),
   }),
   /** Not drawn, and why. */
@@ -106,8 +116,26 @@ export const SignDefSchema = z
     /** Where the size comes from when it is not 別表第二 (補助標識: 交通規制基準). */
     sizeSource: z.url().optional(),
     note: z.string().min(1).optional(),
-    /** The game's sign type (regulations.ts SIGN key) drawn with this number. */
-    game: z.strictObject({ kind: z.string().min(1) }).optional(),
+    /** The game's sign type drawn with this number, and how it is shown (assets/signs/game.json). */
+    game: z
+      .strictObject({
+        /** src/signs/game.ts SIGN key. */
+        kind: z.enum(GAME_SIGN_KINDS),
+        /** How a placed sign picks its face (game.ts GAME_PICKS); omitted: the default face. */
+        pick: z.enum(GAME_PICKS).optional(),
+        /**
+         * Along the street (道路標識設置基準 3-1-4) with the variant `back` on the other side. Only how
+         * the plate faces; the supports and their heights (design 4, `mount` of G4) will be a
+         * separate field, which this one is then folded into.
+         */
+        mount: z.literal("parallel").optional(),
+        back: z.string().min(1).optional(),
+        /** Two copies of the face back to back, one per direction. */
+        bothFaces: z.literal(true).optional(),
+      })
+      .optional(),
+    /** Former names of its faces: the game called 311-A's faces turn_3 and turn_6 before it used the number. */
+    legacy: z.array(z.string().min(1)).optional(),
   })
   .refine((d) => (d.shares === undefined) !== (d.art === undefined), {
     message: "art か shares のどちらか一方だけを書く",

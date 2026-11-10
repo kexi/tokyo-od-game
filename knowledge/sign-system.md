@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: 道路標識の定義とレジストリ（src/signs）
-description: 道路標識の定義を src/signs/defs/*.ts（zod）の 1 か所にまとめ、assets/signs/registry.json と従来の catalog.json を scripts/signs.ts で書き出す仕組み（段階 G1a）。Pillow の図柄生成が registry.json の paint（描く関数と引数）と規則で導いた車線の版 141 件を読んで 345 枚をバイト一致で作り直すこと（G1b、Pillow 12.3.0 固定）。catalog.json からの機械変換の手順、バイト一致による無損失の確認、標識令 別表第一の番号表（law-table.json）を e-Gov から読む方法、定義・図柄・ゲームの対応・番号表の突き合わせテスト、未描画・未配置の一覧（just show-sign-coverage）、e-Gov と旧表で 125-B の図が食い違った件を記録する。
+description: 道路標識の定義を src/signs/defs/*.ts（zod）の 1 か所にまとめ、assets/signs/registry.json と従来の catalog.json を scripts/signs.ts で書き出す仕組み（段階 G1a）。Pillow の図柄生成が registry.json の paint（描く関数と引数）と規則で導いた車線の版 141 件を読んで 345 枚をバイト一致で作り直すこと（G1b、Pillow 12.3.0 固定）。ゲームの標識種別の対応（旧 BY_ID・design() の switch）を定義の game へ移し、assets/signs/game.json で渡す仕組みと、配置が変わらないことを 3 地点のスナップショットで確かめた方法（G1c）。catalog.json からの機械変換の手順、バイト一致による無損失の確認、標識令 別表第一の番号表（law-table.json）を e-Gov から読む方法、定義・図柄・ゲームの対応・番号表の突き合わせテスト、未描画・未配置の一覧（just show-sign-coverage）、e-Gov と旧表で 125-B の図が食い違った件を記録する。
 tags: [assets, traffic-law, testing]
 status: draft
 stale_after: 2027-05-01T00:00:00Z
@@ -52,6 +52,27 @@ sources:
       手書きの LANE_RENDERS 141 件と JSON で比較し、順序・番号まで一致（scratchpad の比較スクリプト、2026-11-10）
     title: 車線の版の導出と旧一覧の一致
     author: claude-opus-5-5
+  - id: placement-snapshot
+    resource: >-
+      tests/signPlacement.test.ts を G1c の変更前のコード（7fd65b9 + G1b）で書いてスナップショットを作り（4 件書き込み）、
+      変更後に同じテストが一致で通ることを確認。丸の内 14552-6451・渋谷 14549-6452・芝公園 14552-6453 の placeSigns の
+      全標識（種別・値・車線・図柄・板・位置・向き・補助の文字）と、全 30 種別 × 値 20 通り × 車線 6 通りの design()
+    title: 配置と図柄の不変（G1c）
+    author: claude-opus-5-5
+  - id: bundle-check
+    resource: >-
+      G1c の後に vite build し、出力の JS 11 本から定義の注記（「帯の無い旧テクスチャ」）・別表第二の図名（S35F03102010003）・
+      未描画の理由（「描画対象外」）を grep。ゲーム本体（main）と共有チャンクには 0 件、図名 1 件がアセット管理画面の
+      チャンクだけにある（台帳の文面）。変更前は src/world/signs.ts が catalog.json（183,848 バイト、注記つき）を import していた
+    title: バンドルに定義の文字列が入らないことの確認
+    author: claude-opus-5-5
+  - id: headless-run
+    resource: >-
+      G1c の後に vite を 5293 番で起動し、ヘッドレス Chrome（scripts/qa/browser.mjs）で丸の内から開始。配置後のシーンの
+      標識の InstancedMesh から図柄を集め、41 種（speed_20〜50、turn_1・3〜6、no_entry、one_way_right/left、407a、
+      327-7_* の車線 13 種ほか）が描かれていることと、just show-errors が 0 件であることを確認
+    title: ゲームでの表示の確認
+    author: claude-opus-5-5
   - id: painters-recorded
     resource: >-
       旧 catalog.py の textures() の各図柄（車線の版を除く 204 件）を、描画関数を記録用の関数に差し替えて呼び、
@@ -69,10 +90,13 @@ sources:
     - `over` は、同じ実行で先に描いた PNG の上に描く図柄（316 の上の「８―２０」）。生成器はその PNG をディスクから読み直して第 1 引数に渡す。
     - 車線の版（`327-7_*.png`）だけは `paint` を書かない（書くと拒む）。`lanes.lane_sign` がキーから描く。
   - 同じ標示板に補助標識を附置する番号（305の2・314の2 など 9 件、備考一(一)34）は `shares` で板と図柄を借り、`art` も `plate` も書かない（`plate` はレジストリで借り先から決まる。書くなら借り先と同じ板でなければ拒む）。
-  - `game.kind` はゲームの標識種別（`src/world/regulations.ts` の `SIGN` のキー）。どの番号をどの種別で描くかの宣言で、実際の対応はまだ `src/world/signs.ts` の `BY_ID` と `design()` にある（G1c で移す）。
-- **書き出し**: `just make-sign-registry`（`scripts/signs.ts`）が定義を検査し、次の 2 つを書く。
+  - `game` はゲームの標識種別（`src/signs/game.ts` の `SIGN` のキー）と、その表示のしかた（G1c）。
+    - `pick`: 既定の図柄（省略時）、`value`（図柄の `gameValue` が配置の値と同じもの。速度の値、指定方向外進行禁止の許す向き 1 左折・2 直進・4 右折の和）、`lanes`（配置の車線の版）。
+    - `mount: "parallel"` と `back`（変種の key）は道路に平行に立て裏に別の図柄を出す一方通行 326-A、`bothFaces` は背中合わせの横断歩道 407-A。
+    - `legacy` は面の旧名（311-A の `turn_3`・`turn_6` など）。ファイル名は変えていないが、ゲームは 311 を正式番号で扱う（`design()` が返す `id`）。
+- **書き出し**: `just make-sign-registry`（`scripts/signs.ts`）が定義を検査し、次の 3 つを書く（game.json は G1c から、下の「ゲームへの対応表」）。
   - `assets/signs/registry.json`（version 2）: 検査済みの定義・板・車線の版・描画関数と、番号ごとの別表第二の図。図柄（Pillow）の入力。板（Blender）は G2 から読む。
-  - `assets/signs/catalog.json`: 従来の形のまま。`src/world/signs.ts`・`tests/coverage.test.ts` が読む（アセット管理画面は読まない）。利用側がレジストリへ移ったら消す。
+  - `assets/signs/catalog.json`: 従来の形のまま。G1c からゲームは読まず、`tests/coverage.test.ts` だけが読む（アセット管理画面も読まない）。撤去は「落とし穴・未解決」の残課題。
 - **番号表**: `assets/signs/law-table.json`。`just fetch-sign-law-table`（`scripts/sign-law-table.ts`）が e-Gov 法令 API v2 から版を固定して書く。表の読み取りは `src/signs/lawTable.ts` の純粋関数（`tests/signLawTable.test.ts` が小さな合成表で検査）。G1b までは `scripts/textures/signs/law_table.py` もこれを読んでいたが、Python が registry.json だけを読むようになって削除した。
   - law-table.json は生成器の出力そのものにする。手で直さない（直したい値は `FIGURE_OVERRIDES` に理由つきで書く）。
 
@@ -108,6 +132,28 @@ sources:
 ### 図柄の枚数（345 と 346）
 
 設計書の「346 枚」は `assets/signs/textures` の項目数で、`README.md` を含む。PNG は 345 枚で、README・台帳・catalog.json の数（204 図柄＋車線の版 141 件）と一致する（2026-11-10 に `ls | grep -c png` と catalog.json のファイル集合で確認）。
+
+## ゲームへの対応表（G1c）
+
+- `just make-sign-registry` が定義から `assets/signs/game.json` も書く（`src/signs/gameTable.ts`）。種別ごとに選び方・図柄（番号・ファイル・板・値）・車線の版・裏の図柄だけを持つ（約 25 KB）。
+- `src/world/signs.ts` の `design()` は `src/signs/game.ts` の `designFor` でこの表を引くだけになった。`BY_ID`・switch・`catalog.json` の import を消した。
+  - registry.json や defs を import しなかった理由: 名前・注記・図名・理由がバンドルに入る（レビュー I9）。game.json はファイル名・板・番号だけ。
+- `SIGN`（種別のコード）は `src/signs/game.ts` へ移し、`src/world/regulations.ts` が再 export する。コードは数値のまま固定（標識の配置は数値で受け渡すので、定義が増えてもずれてはならない）。スキーマは `game.kind` をこのキーに限る。
+- 定義の検査（`buildRegistry`）は、種別ごとに図柄が 1 つに決まることを確かめる。既定の図柄で出す種別に定義が 2 つ、値で選ぶのに値が無い・重複、値で選ばない種別の `gameValue`、車線の版の無い `lanes`、変種に無い `back`、重複した `legacy` や番号と同じ `legacy` を拒む。
+- 車線の版の引き方: 方向の無い車線（知らない語だけの車線を含む）は直進として引く（`[[], ["right"]]` → `327-7_t-r`）。turn:lanes を読むほかの場所と同じ。旧 `laneDesign` は空の文字列にして版が見つからず、何も立てなかった（レビューで design() の新旧 9,835 入力を比べ、差はこの 4 行だけ）。ゲームの車線は空にならないので、配置は変わらない。
+- 描いていない車線の版（6 車線を超える、registry より新しい turn:lanes）は標識を立てず、`sign_lanes_unrendered`（警告、版ごとに 1 回）をログに出す。
+- `game.mount` は板の向き（平行）だけを表す。支柱と高さ（設計 4 章、G4 の `mount`）は別の項目になり、そのときにまとめる。同じ種別の定義どうしで `mount`・`back`・`bothFaces` が食い違えば拒む（game.json は種別に 1 つしか持たない）。
+- 移した結果わかったこと: 323 は 10・100・110・120 km/h の図柄も持つが、ゲームは 20〜80 しか出さない（旧 switch の配列）。挙動を変えないため `gameValue` は 20〜80 にだけ付けた。
+
+### 不変の確かめ方（tests/signPlacement.test.ts）
+
+- 変更前のコードでスナップショットを作り、変更後に一致することを確かめた（sources の placement-snapshot）。
+- 入力の 3 タイル（regs と turnlanes）は `tests/fixtures/sign-placement/` に凍結した（出典と ODbL の表記は同じ場所の LICENSE.txt）。`just fetch-regs` でスナップショットが書き換わらないようにするため。
+- 道路は実行時に地理院ベクトルタイルから読むためリポジトリに無い。そこで regs タイルの規制の線（速度・一方通行・区間規制・通行禁止・車線など）を重複なく道路の中心線とみなして道路網を作り、`applyRegulations` の `placeSigns` を流す。位置はゲームの実際の位置ではない。
+  - この道路では届かない分岐がある: すべて幅 9 m の対面通行の local なので、highway の分岐と道路自身の一方通行（`line.oneway ≠ 0`）は通らず、`lanesPerDirection` は常に 2。closed・noVehicleCrossing・horn・busPriority・hydrant・school の 6 種別は 3 地点に出ない。crosswalk・stop は placeSigns ではなく TrafficSigns が置く。
+  - これらは 2 つ目の表（全種別 × 値 × 車線の `design()`）が補う。
+  - 地理院タイルをテスト用に置かなかった理由: 実時間の利用として提供されている（src/world/gsiVectorTiles.ts の注記）。
+- 3 地点で 1 行 1 標識（種別・値・車線・図柄と板・裏・平行・背中合わせ・位置・向き・補助の文字）、ほかに全種別 × 値 × 車線の `design()` の表。
 
 # catalog.json からの変換（G1a、1 回だけ）
 
@@ -145,7 +191,8 @@ sources:
 - 各図柄の `paint.fn` が `scripts/textures` に `def` として実在する（Python を起動せずソースを読む）。`paint` の無い図柄、車線の版に書いた `paint`、自分では描かれない PNG を指す `over` を拒む。
 - 車線の版の読み方（`+` と `;`、知らない語を捨てる、空の車線は直進）と番号の規則、並びの先頭（図示）と末尾（専用・優先の例示）。
 - 板がすべて `public/models/signs.glb` のノードにある（glb の JSON チャンクを読む）。名前の寸法（`120x90`）が `sizeMm` と合い、逆三角形は外接矩形 80 × 69.3 cm を覆う。
-- `game.kind` が `SIGN` のキーだけを指し、`SIGN` のすべての種別に定義がある。
+- `game.kind` が `SIGN` のキーだけを指し、`SIGN` のすべての種別に定義がある。game.json が定義から作ったものとバイト一致する。
+- 311 の面は `design()` が正式番号（311-A〜D）で返し、`legacy` の `turn_<値>` がその番号を指す。速度は 20〜80 だけを出す。
   - 実際にゲームが描く図柄とも突き合わせる。`design()`（`src/world/signs.ts`、テストのために export した）が種別ごとに選ぶ全ファイルが、その種別を名乗る定義の図柄になっていること。逆に、種別を名乗る定義のどれかの図柄を `design()` が選ぶこと。
 - 壊れた定義は、番号と項目を添えてすべて並べて拒む。対象は、無い板、`art` も `shares` も無い、`shares` 以外で `plate` を省いた、法定外でない `x-`、根拠の無い法定外、描いていない番号への `shares`・車線の版、借り先と違う板、id の重複、別表第一に無い番号、同じ番号の中で変種の key の重複、車線の版の重複、方向の無い車線（`t--r`・`-t`・`~bus`）。
 - `layoutJson` は、オブジェクトの undefined の値を飛ばし、配列の中の undefined・NaN・Infinity を拒む。Python と表記が分かれる float（1e16 以上、0 でない 1e-4 未満）も拒む。
