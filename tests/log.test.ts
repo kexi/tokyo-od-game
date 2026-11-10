@@ -277,6 +277,17 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   ways_read: { roads: 1000, dests: 300, nodes: 90000 },
   places_located: { placed: 300, stations: 120, missing: ["某"], via: { 新宿: "signal" } },
   guide_signs_written: { tiles: 900, roads: 1000, dests: 300, places: 300, chars: 2400 },
+  sign_law_table_written: {
+    file: "assets/signs/law-table.json",
+    revision: "335M50004002003_20260901_508M60000802003",
+    signs: 237,
+  },
+  sign_registry_written: {
+    files: ["assets/signs/registry.json", "assets/signs/catalog.json"],
+    signs: 244,
+    drawn: 155,
+    lanes: 141,
+  },
   osm_read: { nodes: 1, ways: 2, relations: 3, coords: 4 },
   destinations_written: {
     file: "public/data/destinations.json",

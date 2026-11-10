@@ -1,5 +1,9 @@
 # Directory Update Log
 
+## 2026-11-10
+
+- **Creation**: [道路標識の定義とレジストリ](sign-system.md) を追加（段階 G1a）。src/signs/defs/*.ts を定義の正にし、scripts/signs.ts が assets/signs/registry.json と catalog.json を書く。catalog.json は変換前とバイト一致。別表第一の番号表 assets/signs/law-table.json を e-Gov 法令 API から読む scripts/sign-law-table.ts、突き合わせテスト tests/signRegistry.test.ts（22 件）、`just show-sign-coverage` を記録。e-Gov の表では 125-B の図が -087 で、旧 law_table.py の null と食い違うこと（G1a では旧表のまま）を記録。
+
 ## 2026-10-05
 
 - **Update**: [ティザー動画の撮り方](teaser-movie.md) に「ゲームの音（曲に重ねる）」を追加。撮り直さずに、区間ごとの場面（sounds.mjs）をゲーム自身の GameAudio・SpatialAudio・判子の音・テレビの音で OfflineAudioContext に鳴らし（sfxPage.mjs）、カットに並べて曲と混ぜ（mix.py、ダッキング −6 dB、ゲームの音のリミッター）、−16 LUFS・真のピーク −1 dBTP 以下で映像はそのままで入れ直す仕組み（sound.mjs、`just make-teaser-en` の既定、`just mix-teaser-sound`）。コマから読んだ時刻と仮定したもの、ゲームに音が無いので足さなかったもの（オービスのシャッター・Y の通知・切符・ノック・発信音・ワイパー・足音・声）、loudnorm を使わなかった理由、結果のラウドネス（英語版 −16.0 LUFS・−2.2 dBTP、日本語版の音付き out/teaser.sfx.mp4 −16.1 LUFS・−2.9 dBTP）を記録。
