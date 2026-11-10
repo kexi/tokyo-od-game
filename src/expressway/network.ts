@@ -1,4 +1,5 @@
 import { DEFAULT_LANES, DEFAULT_SPEED } from "./assumptions";
+import type { RoadClass as AnyRoadClass } from "../world/roadClass";
 import { haversine } from "./geo";
 
 /**
@@ -9,7 +10,8 @@ import { haversine } from "./geo";
  */
 
 export type Structure = "viaduct" | "ground" | "tunnel" | "cut";
-export type RoadClass = "expressway" | "ramp";
+/** The road classes an OSM motorway / motorway_link compiles to (roadClass.ts has the street too). */
+export type RoadClass = Exclude<AnyRoadClass, "street">;
 
 export type XwNode = {
   id: number;

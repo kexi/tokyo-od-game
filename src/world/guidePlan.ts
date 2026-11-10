@@ -124,7 +124,7 @@ export function* matchRouteSteps(
   const cos = Math.cos(25 * DEG);
   for (const seg of graph.segments) {
     yield;
-    if (!isDrivable(seg.line, "navigation")) continue;
+    if (!isDrivable(seg.line, "guide")) continue;
     const fractions = seg.length < 20 ? [0.5] : [0.2, 0.5, 0.8];
     const votes = new Map<RouteInfo, number>();
     for (const f of fractions) {
@@ -319,7 +319,7 @@ export function traceRoad(
     let best: { seg: Segment; dir: 1 | -1; score: number } | null = null;
     for (const id of graph.nodes.get(end) ?? []) {
       const c = graph.segments[id];
-      if (c === cur || !isDrivable(c.line, "navigation")) continue;
+      if (c === cur || !isDrivable(c.line, "guide")) continue;
       const cd: 1 | -1 = c.from === end ? 1 : -1;
       const isAllowed = c.oneway === 0 || c.oneway === cd;
       if (!isAllowed) continue;
@@ -392,7 +392,7 @@ export function junctionArms(
     for (const id of graph.nodes.get(node) ?? []) {
       const seg = graph.segments[id];
       const other = seg.from === node ? seg.to : seg.from;
-      if (members.has(other) || !isDrivable(seg.line, "navigation")) continue;
+      if (members.has(other) || !isDrivable(seg.line, "guide")) continue;
       const dir: 1 | -1 = seg.from === node ? 1 : -1;
       const isAllowed = seg.oneway === 0 || seg.oneway === dir;
       if (!isAllowed) continue;
@@ -743,7 +743,7 @@ export function walkBack(
     let best: { seg: Segment; dir: 1 | -1; score: number } | null = null;
     for (const id of graph.nodes.get(node) ?? []) {
       const c = graph.segments[id];
-      if (c === cur || !isDrivable(c.line, "navigation")) continue;
+      if (c === cur || !isDrivable(c.line, "guide")) continue;
       const arrives: 1 | -1 = c.to === node ? 1 : -1;
       const isAllowed = c.oneway === 0 || c.oneway === arrives;
       if (!isAllowed) continue;

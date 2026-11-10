@@ -25,6 +25,9 @@ export type RoadStructure = "ground" | "viaduct" | "tunnel" | "cut";
 
 const EXPRESSWAY_KIND: RoadKind = "highway";
 
+/** The kind (行政区分) an OSM expressway line carries: GSI's 高速道路 class, which it replaces. */
+export const OSM_EXPRESSWAY_KIND: RoadKind = EXPRESSWAY_KIND;
+
 /** RoadLine.kind from GSI's 道路種別 (rdCtg) and 高速道路フラグ (motorway). */
 export function kindFromGsi(rdCtg: number, motorway: number): RoadKind {
   const isExpressway = rdCtg === 3 || motorway === 1;
@@ -97,26 +100,58 @@ export const takesJarticRules = (line: RoadLine): boolean => isStreet(line);
  */
 export const usesGroundSurface = (line: RoadLine): boolean => isStreet(line) && isOnGround(line);
 
-/** Who asks whether a road may be driven: each can be opened to the expressway on its own. */
-export type RouteUse = "navigation" | "autopilot" | "traffic" | "spawn" | "map";
+/**
+ * Who asks whether a road may be driven: each can be opened to the expressway on its own. "guide"
+ * is the guide boards' route numbers (guidePlan.ts): which street a 国道・都道 number belongs to, not
+ * where a car may go, so opening the navi to the expressway does not move a number onto a ramp.
+ */
+export type RouteUse = "navigation" | "autopilot" | "traffic" | "spawn" | "map" | "guide";
 
 /**
- * Which uses may take the expressway. All closed until it has colliders, graph links and merges
- * (P3, P6); opening one is a change here, not at its call sites. Why not one flag: the navi can
- * route over a ramp long before the traffic AI can merge.
+ * Which uses may take the OSM expressway (P3: the decks have colliders and the chunks are in the
+ * graph). The map draws it and a car on a deck may be put back on it (spawn); the navi, the
+ * autopilot and the traffic AI wait for merges and LaneLink (P6). Opening one is a change here, not
+ * at its call sites. Why not one flag: the navi can route over a ramp long before the traffic AI
+ * can merge.
  */
 const EXPRESSWAY_OPEN: Readonly<Record<RouteUse, boolean>> = {
   navigation: false,
   autopilot: false,
   traffic: false,
-  spawn: false,
-  map: false,
+  spawn: true,
+  map: true,
+  guide: false,
 };
 
-/** Whether `use` may route a car over the road (width and closures are the caller's). */
+/** Carried so a car can drive it now: tunnels and cuttings have no floor, walls or roof until P9. */
+const isOpenStructure = (line: RoadLine): boolean => {
+  const structure = structureOf(line);
+  return structure === "ground" || structure === "viaduct";
+};
+
+/**
+ * Whether `use` may route a car over the road (width and closures are the caller's). GSI's own
+ * 高速道路 lines stay closed for every use: they are a single centreline for both directions with
+ * no ramps, and where the OSM chunks are loaded they are dropped (expresswayRoads.ts).
+ */
 export function isDrivable(line: RoadLine, use: RouteUse): boolean {
+  if (!isOpenStructure(line)) return false;
   if (isStreet(line)) return true;
+  const isGsiExpressway = sourceOf(line) === "gsi";
+  if (isGsiExpressway) return false;
   return EXPRESSWAY_OPEN[use];
+}
+
+/**
+ * A road a car can turn into or arrive from at a junction: the streets, and the OSM expressway
+ * where it meets them (an on-ramp leaving a street junction is one of its exits, an off-ramp one of
+ * its approaches). Not the same as hasRoadside: an off-ramp's end gets a stop line and may face a
+ * signal, but no lamps or 歩道 stand on it. GSI's 高速道路 lines stay out, as before P3.
+ */
+export function isEnterable(line: RoadLine): boolean {
+  if (!isOpenStructure(line)) return false;
+  if (isStreet(line)) return isOnGround(line);
+  return sourceOf(line) === "osm";
 }
 
 /**

@@ -115,6 +115,27 @@ export const LANE_LINE_DASH: Assumption<{ dash: number; gap: number }> = {
   reason: "未確認。令の範囲内の値。実務値は調べていない",
 };
 
+/**
+ * The thick dashed line between a main line and a ramp where they merge or part (標識令 別表第四
+ * の分合流部: 幅 0.30〜0.75 m、線長 2〜5 m、間隔 線長の 1〜1.5 倍). 0.45 / 3 / 3 is within it; the value
+ * painted on urban expressways is not confirmed.
+ */
+export const BRANCH_LINE: Assumption<{ width: number; dash: number; gap: number }> = {
+  value: { width: 0.45, dash: 3, gap: 3 },
+  verified: false,
+  reason: "未確認。令の範囲内の値。実務値は調べていない",
+};
+
+/**
+ * 導流帯 (標示 107) at a nose: outline width, stripe width and the stripes' spacing along the road.
+ * The order's example figure is not transcribed yet (knowledge/road-redesign-plan.md 4.7).
+ */
+export const ZEBRA: Assumption<{ outline: number; stripe: number; pitch: number }> = {
+  value: { outline: 0.2, stripe: 0.45, pitch: 3 },
+  verified: false,
+  reason: "未確認。別表の例示図から転記していない。見た目の目安",
+};
+
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
   STANDARD_UNDERCLEARANCE,
@@ -131,4 +152,6 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   RAMP_SECTION,
   GROUND_ROAD_HALF_WIDTH,
   LANE_LINE_DASH,
+  BRANCH_LINE,
+  ZEBRA,
 };

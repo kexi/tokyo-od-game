@@ -1,12 +1,16 @@
 ---
 type: Playbook
-title: 高速道路の生成（OSM → 道路構造令の線形 → 描画だけのデッキ、P1・縦断の一括解）
-description: 首都圏の都市高速を OSM の motorway / motorway_link からビルド時に道路構造令の平面・縦断線形へコンパイルし（src/expressway/、scripts/expressway.ts）、public/data/expressway の ≤300 m チャンクを実行時に床版・壁高欄・箱桁・橋脚へ押し出す（src/world/expresswayDeck.ts、?expressway で有効、コライダー無し）。縦断は分合流・交差・床版の重なりでつながる run の連結成分ごとに 1 つの凸 QP（疎な内点法）で解き、高さは交差と重なりの拘束からだけ決める（layer を目標高に使う P1 の逸脱を解消）。設計速度は区間ごと、測点は勾配つきでエルミート補間。試験区間（浜崎橋JCT〜芝公園）は T1〜T7 違反 0、deck_overlap は 4 組・41 測点（理由つき許可）。全域の解けない run、データ量、性能と見た目の確認。
+title: 高速道路の生成（OSM → 道路構造令の線形 → デッキ、P1・縦断の一括解・P3 の走行）
+description: 首都圏の都市高速を OSM の motorway / motorway_link からビルド時に道路構造令の平面・縦断線形へコンパイルし（src/expressway/、scripts/expressway.ts）、public/data/expressway の ≤300 m チャンクを実行時に床版・壁高欄・箱桁・橋脚へ押し出す（src/world/expresswayDeck.ts、?expressway で有効）。P3 でコライダー（床版と壁高欄の trimesh・橋脚の cuboid）・道路グラフへの統合（端点 ID・ランプ端の接続）・区画線を足し、入口ランプから本線に乗って出口から一般道へ戻る走行を確かめた（多視点レビュー 3 周で収束）。縦断は分合流・交差・床版の重なりでつながる run の連結成分ごとに 1 つの凸 QP（疎な内点法）で解き、高さは交差と重なりの拘束からだけ決める（layer を目標高に使う P1 の逸脱を解消）。設計速度は区間ごと、測点は勾配つきでエルミート補間。試験区間（浜崎橋JCT〜芝公園）は T1〜T7 違反 0、deck_overlap は 4 組・41 測点（理由つき許可）。全域の解けない run、データ量、性能と見た目の確認。
 tags: [roads, terrain, rendering, testing, licensing]
 status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T02:00:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T02:10:00Z }
+  - { by: process:headless-chrome-cdp, at: 2026-11-11T01:48:00Z }
+  - { by: process:shoot-views, at: 2026-11-11T01:54:00Z }
+  - { by: process:perf-road-streaming, at: 2026-11-11T02:10:00Z }
   - { by: process:vitest, at: 2026-11-11T02:00:00Z }
   - { by: claude-fable/review-p25, at: 2026-11-11T00:00:00Z }
   - { by: process:vitest, at: 2026-11-10T16:00:00Z }
@@ -22,8 +26,17 @@ sources:
   - id: code
     resource: src/expressway/（network・horizontal・vertical・qp・sparse・profile・overlap・superelevation・section・compile・checks・format・ranges・allowlist）、scripts/expressway.ts、src/world/expresswayDeck.ts、src/main.ts（?expressway）
     title: 実装
+  - id: p3
+    resource: src/world/expresswayDeck.ts（コライダー・出し入れ）、src/world/expresswayRoads.ts（グラフの線・ランプ端）、src/world/expresswayMarkings.ts（壁高欄の要否・区画線）、src/debug/expresswayDrive.ts（一定速の走行フック）、tests/expresswayDrive.test.ts
+    title: P3 の実行時（走れる高速道路）
+  - id: drive
+    resource: 依頼元 scratchpad の qa/drives-r1.json（2026-11-11、vite 5317 番、ヘッドレス Chrome、?expressway&start=35.6534,139.7500、ログ expressway_drive_checked）
+    title: 自車を一定速で走らせた記録
+  - id: views-p3
+    resource: .qa/views/expressway/round-01〜03 と .qa/reviews/expressway/round-01〜03.jsonl（ローカル、git 管理外）
+    title: P3 の多視点レビュー（9 視点 × 昼・夜、3 周で収束）
   - id: tests
-    resource: tests/expresswayAlignment.test.ts、tests/expresswayData.test.ts、tests/expresswayDeck.test.ts
+    resource: tests/expresswayAlignment.test.ts、tests/expresswayData.test.ts、tests/expresswayDeck.test.ts、tests/expresswayDrive.test.ts
     title: T1〜T10 と合成テスト（一括解・同一面と 1 段離し・区間ごとの V・エルミート補間・ノーズ）、生成済みタイル全件、デッキの幾何
   - id: osm
     resource: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf
@@ -133,10 +146,59 @@ T10 の内訳は `vertical_fallback` 29・`crossing_over_or_at_grade` 32・`deck
 
 デッキの組み立て（`expressway_decks_built`、芝公園の開始地点、同じ撮影条件）: P1 は 39 チャンクで CPU 16.9 ms・最大スライス 2.6 ms。今回は 64 チャンクで CPU 22.7〜26.1 ms・最大スライス 1.6〜2.4 ms（4 ms 予算内）。チャンク 1 個あたりの CPU は 0.43 → 0.35〜0.41 ms で、エルミートの分割で断面が増えた分は、V の変わり目で切ってチャンクが短くなった分と相殺している。フレーム時間の A/B（perf-road-streaming）は測り直していない（P3 で）。
 
+**P3（2026-11-11）**: 区画線・壁の判定・コライダーの配列を足したデッキの組み立ては 62 チャンクで CPU 40〜62 ms（P2.5 の 1.7〜2.4 倍）、最大スライスは 2.6〜11 ms で、**4 ms 予算を超える回がある**（1 チャンクの組み立ての中の区画線の塗りと、body の作成を 1 ステップで測っている。壁の判定は 24 リングごとに譲るようにした）。`just measure-road-streaming` を芝公園（35.6537, 139.7508）で ?expressway の無し・有りを交互に 3 回ずつ（M2 Max、開発サーバー、他のエージェントが並行。.qa/perf/2026-11-10T16-54-52〜17-07-47-streaming）: 最長フレーム（ms、16.7 ms 刻み）は、通常 50.1〜66.7 / 50.1、更新 50.1〜83.3 / 50〜83.3、原点変更 66.6〜66.8 / 50.1〜66.7、ワープ cold 150〜200 / 150〜183.3、ワープ latest 116.7〜150 / 133.3〜150.1（無し / 有り）。1 フレームの刻みで上下し、差は読み取れない（悪化とも改善とも言えない）。
+
+# 実行時（P3: 走れる高速道路、?expressway）
+
+データ（meta.version 2）は変えていない。契約は profile.ts に `surfaceSamples`（面を折れ線で切る位置: 測点と、エルミート面から 1 cm 以内になるまでの分割）を足しただけ。床版・コライダー・グラフの区間がすべてこの位置で切れる。[^p3]
+
+- **コライダー**: チャンクごとの fixed body。床版の上面と壁高欄（内面・天端）の trimesh は描画と同じ頂点、橋脚は cuboid。プレイヤーから 400 m 以内で作り 550 m で外す（refresh は 120 m 動くごと、FrameWork のステップで）。原点移動は `reanchorBody`、古い原点で作ったメッシュから後で body を作るときはその原点からの変換を最初に掛ける。近く（60 m）に body の無いチャンクがあれば車を止め（地形と同じ）、ワープの着地は最後の refresh が着地点で終わるまで待つ（12 s で諦める）。
+- **T11**: 合成の試験区間（`tests/expresswayDrive.test.ts`）で、中心線 0.5 m ごとのコライダーの高さと `surfaceY` の差 ≤ 1 cm、0.5 m 格子のレイに穴なし、チャンク継ぎ目の段差 ≤ 1 mm、原点を移した body でも同じ点に当たる。実データでは入口・出口ランプの中心線で最大 9 mm（曲率の大きいランプで、隣り合う 2 枚の三角形がねじれる分）。**落とし穴**: レイがちょうど三角形の共有辺（リングの位置）を通ると Rapier の trimesh は外すことがある。テストは辺から 1.3 cm ずらして撃つ。
+- **グラフ**: ページ側で各チャンクを 1 本の RoadLine にする（`expresswayRoadInput`）。点はリング、点ごとに楕円体高 `heights` を持ち、Worker がその原点の `frame.toLocal` で `Segment.elev` にする（デッキのリングと同じ式なので T11 が成り立つ）。節点 ID は継ぎ目 `xw:<a>|<b>`、run の端 `xw:<run>:start|end`、内部は一意の ID（二層の C1 で平面の点が重なっても結ばない）。分合流は子の端の ID を親の線の parentS に点として挿入（端の位置は親の中心線と 0 mm で一致することを確かめた）。level 1・structure viaduct・section（中央帯 0）・limit は run の tagV（**規制速度ではなく、run の中で最も高い設計速度に丸めた OSM maxspeed の上限値**。W5、下の逸脱）。チャンクの線は frame に依らないので世代をまたいでも同じ（古い要求の結果は RoadNetworkBuilder が捨てる）。
+- **ランプ端**: Worker の `joinExpressway` が、チャンクから 40 m 以内の GSI 高速道路の線を落とし、ランプの地表端から 15 m 以内の GSI の高速道路の地平部（GSI が lvOrder 0 で持つランプの続き）をたどって一般道の頂点まで（250 m 以内）の地上の接続線を作る。無ければ 15 m 以内の一般道へ射影して頂点を挿入。どちらも無ければ `ramp_unattached`。**設計書からの逸脱**: 設計書は「OSM で一般道と共有する節点を射影」だが、データにその節点が無い（地平部の way は run にしていない）。試験区間では 207111988（入口、接続線 31 m）と 4853798（出口、16 m）がつながり、4853799 の地表端は最寄りの GSI 高速道路の線まで 26.6 m で `ramp_unattached`。
+- **壁高欄と区画線**（`expresswayMarkings.ts`）: 各リングの左右の壁の位置が他の run の床版（高さ差 1.5 m 以内）の上に載るなら壁を作らない。同じ向きの 2 枚（分合流）は両方の壁を消し、逆向き（C1 の並走）は名前順で先の run の壁を 1 本残す（分離壁）。区画線は外側線（白実線 0.20 m、路肩の内側）、車線境界線（白破線 8／12 m、`laneLeftEdge − k·laneWidth`）、分合流部の太い破線（0.45 m・3／3 m、親の側の外側線を置き換え）、導流帯（子の床版で、車線どうしが離れている帯に外枠と 45° の斜線）。子の車線が親の車線の内側に入る区間は子は何も塗らない。寸法は令の範囲内（テストで検査）、分合流と導流帯の実務値は未確認（assumptions.ts の BRANCH_LINE・ZEBRA）。
+- **PLATEAU の建物**: 入口ランプ 207111988 の s 16〜35 m を建物が横切っていた（床版が建物を貫く）。床版の上にいる車（グラフで判定、10 回／秒）は建物の衝突形状を無視する（`Vehicle.setOnDeck`、groups.ts の BUILDINGS）。見た目の貫通は残る（P4）。
+
+## 走行の確認
+
+開発用フック `window.__game.debug.expressway.cruise({ kmh, prefer })` で、グラフの区間の車線中心を純追跡し、先のカーブの半径で横加速度 2.5 m/s² 以下に落として走らせ、`stop()` が `expressway_drive_checked` を書く（dy は車体中心の路面からの高さ − 0.86 m、立ち上がり 1.5 s を除く）。[^drive]
+
+| 走行           | 経路                                                                                |    距離 | max \|dy\| | max \|vy\| |    RMS ay | 落下 |
+| -------------- | ----------------------------------------------------------------------------------- | ------: | ---------: | ---------: | --------: | ---- |
+| 入口           | 一般道 → 接続線 → 207111988（芝公園入口）→ C1 内回り 24402611:19〜29 → 汐留の地表端 | 1,985 m |    0.076 m |   1.13 m/s | 0.98 m/s² | なし |
+| 出口（外回り） | 45021976:12 → 4853798（芝公園出口）→ 地上                                           |   563 m |    0.451 m |   1.53 m/s | 1.57 m/s² | なし |
+| 出口（内回り） | 24402611:15 → 4853799 → 地表端 → 地上                                               |   512 m |    0.111 m |   0.98 m/s | 1.10 m/s² | なし |
+
+途中で見つけて直したもの: (1) 床版が川（古川）の上にあると「水に落ちた」判定で車が岸へ戻された（床版の上は対象外にした）。(2) 分流の始まりで、相手の中心がある側の壁だけを消していたので反対側の壁の切れ端が本線の車線に立ち、車が当たった。(3) 入口ランプを横切る建物で車が止まった（上記）。(4) 速度一定 47 km/h で V20 の出口ランプに入ると横転した（フックの側の問題、カーブで落とすようにした）。外回り出口の max dy 0.45 m は地表端の手前でランプが地面に擦り付く所と急カーブでの車体の傾きを含み、跳ねた記録（vy の急変）は無い。
+
+## 多視点レビュー
+
+`scripts/qa/views/expressway.json` に合流（運転席・俯瞰）、外回り出口の分流、内回り出口の分流（俯瞰）、C1 の並走部、入口ランプの地表端を足し、昼・夜の 2 look にした（9 視点 × 2 = 18 コマ）。round 1 で Critical 1（分流の壁の切れ端）・Warning 3、round 2 で修正を確認し新規 0、round 3 も新規 0 で `converged`。分流部の区画線のちらつき（同一面の 2 枚の床版が 5 cm 以内で交互に上に出る）は床版の一体化が要るので wontfix（理由つき）。夜は高架の上に照明が無く暗い（照明は範囲外）。[^views-p3]
+
+## P3 レビュー（Fable、2026-11-11）の指摘と対応
+
+- **分合流での区間の取り違え（必須）**: 合流・分流の数十 m はランプの床版が本線の床版に重なり、本線の車線 0 の中心の車がランプ（limit 40）に判定されていた（実データ 4 か所で 18〜30 m、左寄りで最大 54〜58 m。60 km/h で 3.5 s は速度違反の閾値 3 s を超え、HUD の制限速度も 60→40→60 と揺れた）。訂正: 車道幅のゲートを通る床版が複数あれば、本線（cls expressway）→ 規制速度の高い方 → 中心線の近い方の順に選ぶ（roads.ts `deckRank`）。合成区間の両車線と、生成済みデータの全区間・全車線の中心を 2 m ごとに総当たりし、自分の区間より低い制限速度の区間に判定される点が 0 であることをテストした（修正前 55 点）。ランプの車が重なりの区間で本線と判定されるのは寛容な側の誤りで、許容した。
+- **降車と R の復帰**: 降りた人を床版の上に置く（groundY に車の高さを nearY で渡す）。R の復帰は、床版の上ならテレポートの前に床版の左車線へ戻す。surfaceBelow（groundY の nearY の答え）はライフサイクルのテストで確かめた。降車と R そのものはブラウザで確かめていない。
+- **毎フレームの全区間走査**: 駐車の判定が毎フレーム locate を呼んでいた（?expressway が無くても走査が 2 回）。10 Hz の床版判定の結果 `carOnDeck` を使い、違反判定も床版の上のときだけ locate、それ以外は従来の nearest にした。
+- **止まったままの車**: refresh の中の 1 チャンクの例外で残りが作られず、そのチャンクの近くで車が止まり続けることがあった。チャンク単位で捕まえて以後は除外（`expressway_chunk_failed` を 1 回）、isReadyNear は 5 s（HOLD_MAX_MS）で手放す（`expressway_hold_expired`）。isSettledAt が meta の読み込み前に「データ無し」と答えていた不具合も直した（ワープが早く着地しえた）。
+- **スライス超過**: 区画線の塗りを線ごとのステップにし、リングの探索を二分探索にした（線形探索と全リングの filter で 1 チャンクの塗りが 5〜12 ms の 1 スライスだった）。publish と body の作成の前に、そのスライスで 4 ms を使っていれば譲る。FrameWork が各スライスの長さを持ち、`expressway_decks_built` に中央値・p90・最大と、body 1 個の最長（trimesh の生成は分割できない）を出す。
+- **建物の衝突（暫定、P4 まで）**: 床版を離れても車体が建物と交差している間は無視を続け、交差していなければ戻す（`Vehicle.overlapsBuilding`）。床版の上で建物と交差した所を `expressway_building_crossed` に出す（約 20 m ごとに 1 回、P4 の切り抜きリスト）。
+- **レビュー後の再走行（drives-r3、同じ 3 経路）**: 入口 1,995 m（max |dy| 0.076 m・max |vy| 1.12 m/s・RMS ay 1.09 m/s²）、外回り出口 563 m（0.454 m・1.59・1.63）、内回り出口 512 m（0.111 m・0.90・0.97）、落下なし。デッキの組み立ては 23 回の refresh で最大スライス 2.2 ms（別の回は 3.6 ms）、各回の中央値の最大 1.1 ms・p90 の最大 1.2〜2.7 ms、body 1 個（trimesh）の最長 0.3 ms（分割の要る例外は無し）。建物の交差は 3 か所（207111988:0 の 35.65350, 139.75022、24402611:19 の 35.65335, 139.75312、24402611:24 の 35.65585, 139.76008）。合流のたびに合図不履行（signalOmission）が記録される（走行フックが合図を出さないため。合流は進路変更なので合図が要る）。警察の自動運転が AutoDriver.pathAt で例外を出した回があった（経路の点が 1 個、road-model.md に既知、P3 の変更では触っていない）。
+- **その他**: 床版判定の検索距離 8 m → 15 m（幅のゲートが決める）、壁高欄の外面もコライダーに、地上の接続線をスポーン候補から外した、RIDE_HEIGHT を vehicle.ts から読む、区画線の幅を 0.20・0.15 の数値でテスト、T11 に解析値 z(s) との比較、衝突グループの組み合わせのテスト。
+
+**逸脱と残課題として記録（P6 の前に）**:
+
+- **W5 limit は規制速度ではない**: チャンクの区間の limit は run の tagV（run の中で最も高い、設計速度の表に丸めた OSM maxspeed）で、P3 では「上限値」として扱う。区間ごとの規制速度は、コンパイラがチャンクごとに maxspeed の生の値を出すデータ形式（XW_VERSION 3）で直す。
+- **W6 ランプ接続が読み込みの中心に依存**: 道路網の読み込み範囲（GSI の 3×3 タイル）の端にあるランプ端はつながらない（レビューの掃引で 51 回中 12 回 rampEndsJoined 0）。対応: 読み込んだ一般道の範囲（外接矩形から 60 m 内側）の外の端は接続も報告もしない（次の範囲でつながる）。範囲の中でつながらないものだけを `ramp_unattached` とする。
+- **W7 DeckIndex は chunk.decks を使っていない**: 壁と区画線のための重なりを実行時に再計算している（format.ts の契約「P3 は重なりを再計算しない」からの逸脱）。decks は区間と関係（same / above / below）だけで、壁の位置ごとの判定（相手の床版に載るか）には足りないため。P3.5 の床版の一体化でデータ側に寄せる。
+
 # 未対応・既知の欠落
 
-- コライダー・グラフ統合・ランプ端の接続（P3）、区画線（P2・P3）、テクスチャ（P4）、標識（P5）、トンネル・掘割の本体（P9）。
-- 同一面の床版どうしの壁高欄は描画で消していない（ノーズでランプの壁高欄が本線の車線域に立つ）。設計書 4.2 の一体化と分離壁は P3。
+- テクスチャ（P4）、標識（P5）、ナビ・自動運転・交通 AI の解除と合流（P6）、トンネル・掘割の本体（P9）。
+- 同一面の床版の一体化（設計書 4.2）。P3 は相手の床版に載る壁を消すだけで、2 枚の床版は 5 cm 以内で重なったまま（描画のちらつき、車が移るときの最大 5 cm の段差）。
+- PLATEAU の建物の切り抜き（入口ランプを横切る建物）。
+- 4853799 の地表端は一般道とつながらない（ramp_unattached）。地平部が GSI に無いか、15 m より遠い。
+- blocked（地表端の近くで床版が塞ぐ地上道路）の通行止め・迂回は未対応。
 - 片勾配を有効にした描画（`?expressway=bank`）では、同一面の 2 本の中心の高さを揃えているだけなので、横断勾配 × 中心間隔（2.5 % × 3 m で 7 cm 程度）の差が残る。
 - 二層の上の床版は、下の床版の上に来る橋脚を置かない（車線を貫かないため）。門形の橋脚は P3・P4。
 - 鉄道の上の桁下 6.0 m、桁高、標準桁下高は未確認の仮定。
@@ -173,3 +235,9 @@ T10 の内訳は `vertical_fallback` 29・`crossing_over_or_at_grade` 32・`deck
 [^shots]: 多視点の撮影
 
 [^all]: 全域の生成
+
+[^p3]: P3 の実行時（走れる高速道路）
+
+[^drive]: 自車を一定速で走らせた記録
+
+[^views-p3]: P3 の多視点レビュー

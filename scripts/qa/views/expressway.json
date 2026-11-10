@@ -1,6 +1,6 @@
 {
   "name": "expressway",
-  "description": "?expressway の試験区間（浜崎橋付近、public/data/expressway）の視点。床版・壁高欄・橋脚の幾何、縦断の折れ、地面との合い。",
+  "description": "?expressway の試験区間（浜崎橋〜芝公園、public/data/expressway）の視点。床版・壁高欄・橋脚の幾何、縦断の折れ、地面との合い（P1）、P3 の走行面（区画線・ランプの合流と出口の分流・高架下・C1 の並走部・夜）。",
   "defaults": {
     "time": "day",
     "weather": "clear",
@@ -8,7 +8,20 @@
     "params": {
       "expressway": ""
     },
-    "moment": "2026-11-10T11:00:00+09:00"
+    "moment": "2026-11-10T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-10T11:00:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-10T20:00:00+09:00"
+      }
+    ],
+    "hide": ["traffic"]
   },
   "sessions": [
     {
@@ -26,7 +39,8 @@
           "fov": 55,
           "expect": {
             "deck": "片側 2 車線の床版、両側の壁高欄",
-            "grade": "折れや段差がない"
+            "grade": "折れや段差がない",
+            "markings": "外側線（白実線 0.20 m、路肩の内側）と車線境界線（白破線 8 m／12 m）が床版の上にある"
           }
         },
         {
@@ -67,6 +81,106 @@
           "expect": {
             "deck": "高架下から見上げた桁と橋脚",
             "piers": "脚が地面に立ち、車道の上に無い"
+          }
+        },
+        {
+          "id": "merge-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "207111988:2",
+            "share": 0.7
+          },
+          "distanceM": 45,
+          "fov": 60,
+          "expect": {
+            "merge": "芝公園入口のランプが本線（C1 内回り）へ合流する。合流側の壁高欄は本線の車線域に立たない",
+            "markings": "本線側の外側線が分合流部の太い破線（幅 0.45 m・線長 3 m）になり、ランプ側に導流帯（ゼブラ）",
+            "surface": "ランプと本線の床版の段差が見えない"
+          }
+        },
+        {
+          "id": "merge-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "207111988:2",
+            "share": 0.85
+          },
+          "altitudeM": 90,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "merge": "ランプの床版が本線の床版に重なる部分で壁高欄が切れ、外側を囲む壁高欄は続く",
+            "markings": "太い破線と導流帯の位置が床版の重なりと合う"
+          }
+        },
+        {
+          "id": "diverge-outer",
+          "camera": "driver",
+          "target": {
+            "expressway": "4853798:0",
+            "share": 0.12
+          },
+          "distanceM": 45,
+          "fov": 60,
+          "expect": {
+            "diverge": "C1 外回りから芝公園出口が分かれる。分流側の壁高欄が本線の車線域に立たない",
+            "markings": "分流部の太い破線、ノーズ手前の導流帯"
+          }
+        },
+        {
+          "id": "diverge-inner-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "4853799:0",
+            "share": 0.1
+          },
+          "altitudeM": 90,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "diverge": "C1 内回りから出口ランプが分かれる。床版が一枚につながり、穴や重なった壁が無い"
+          }
+        },
+        {
+          "id": "c1-parallel",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:17",
+            "share": 0.5
+          },
+          "altitudeM": 120,
+          "pitchDeg": 70,
+          "angleDeg": 30,
+          "fov": 55,
+          "expect": {
+            "parallel": "C1 内回りと外回りの並走部。向きの違う床版の間に壁（分離壁）が 1 本",
+            "markings": "それぞれの床版に外側線と車線境界線"
+          }
+        },
+        {
+          "id": "ramp-foot",
+          "camera": "free",
+          "eye": {
+            "lat": 35.65342,
+            "lon": 139.7497,
+            "h": 1.6,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.65342,
+            "lon": 139.75005,
+            "h": 5.5,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "207111988:0",
+            "share": 0.05
+          },
+          "fov": 60,
+          "expect": {
+            "foot": "入口ランプの地表端。床版が地面に段差なく擦り付き、桁が地面に潜らない"
           }
         }
       ]

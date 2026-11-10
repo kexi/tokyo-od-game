@@ -1,5 +1,5 @@
 import { MARKING_DIMENSIONS } from "../law/roadStandards";
-import { carriagewayWidth, isLaneChangeBanned, KERB_INSET, sectionOf } from "./laneChange";
+import { carriagewayWidth, isLaneChangeBanned, KERB_INSET, laneLeftEdge, sectionOf } from "./laneChange";
 import type { AppliedRegulations } from "./regulations";
 import type { RoadGraph, Segment } from "./roads";
 
@@ -128,18 +128,38 @@ export function planMarkings(
   const add = (kind: MarkingKind, offset: number, colour: MarkingColour, isDashed: boolean) =>
     lines.push({ kind, offset, from, to, colour, width: MARKING.lineWidth, dash: isDashed ? dashed : null });
 
-  for (const side of [-1, 1]) add("edge", side * (w / 2 - KERB_INSET.edgeLine), "white", false);
   const isTwoWay = seg.oneway === 0;
   const lanes = seg.lanes;
+  const section = sectionOf(seg);
+  // The edges of the lanes, inside the shoulders (the right one mirrored across the centre on a
+  // two-way street). A line with no section of its own (every GSI street) keeps the old inset
+  // from the 幅員 edge: its 幅員 may include the pavement (KERB_INSET, P8).
+  const hasSection = seg.line.section !== undefined;
+  const leftEdge = hasSection ? laneLeftEdge(seg) : w / 2 - KERB_INSET.edgeLine;
+  const rightEdge = !hasSection
+    ? -(w / 2 - KERB_INSET.edgeLine)
+    : isTwoWay
+      ? -laneLeftEdge(seg)
+      : -(w / 2 - section.shoulderR);
+  add("edge", rightEdge, "white", false);
+  add("edge", leftEdge, "white", false);
   if (isTwoWay) {
     const isSolid = lanes >= 2 || w / 2 >= MARKING.solidCentreHalf;
-    add("centre", 0, seg.noOvertake ? "yellow" : "white", !seg.noOvertake && !isSolid);
+    const colour = seg.noOvertake ? "yellow" : "white";
+    const isDashed = !seg.noOvertake && !isSolid;
+    // A median splits the centre line in two, one at each edge of it.
+    const hasMedian = section.median > 0;
+    if (hasMedian) for (const side of [1, -1]) add("centre", (side * section.median) / 2, colour, isDashed);
+    else add("centre", 0, colour, isDashed);
   }
   if (lanes >= 2) {
-    const laneWidth = sectionOf(seg).laneWidth;
+    const laneWidth = section.laneWidth;
     const isBanned = isLaneChangeBanned(seg);
+    // laneLeftEdge − j·laneWidth for j = lanes − k: the lines between the lanes counted from the
+    // left edge (laneChange.ts), listed from the centre outwards as before (the drawn order).
+    const fromLeft = (k: number) => laneLeftEdge(seg) - (lanes - k) * laneWidth;
     for (let k = 1; k < lanes; k++) {
-      const offsets = isTwoWay ? [k * laneWidth, -k * laneWidth] : [-w / 2 + k * laneWidth];
+      const offsets = isTwoWay ? [fromLeft(k), -fromLeft(k)] : [fromLeft(k)];
       for (const o of offsets) add("lane", o, isBanned ? "yellow" : "white", !isBanned);
     }
   }

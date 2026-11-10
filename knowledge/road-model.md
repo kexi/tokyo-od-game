@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-10T14:00:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T02:10:00Z }
   - { by: process:vitest, at: 2026-11-11T00:30:00Z }
   - { by: process:vitest, at: 2026-11-10T14:40:00Z }
   - { by: process:tsc, at: 2026-11-10T14:40:00Z }
@@ -147,16 +148,17 @@ P8（一般道）:
 - `KERB_INSET` の各値を断面の路肩に置き換える（路面・車・矢印の位置が変わる）。`line.width` の直接の読み取り約 117 か所を `carriagewayWidth` へ移す。
 - 中央線・停止線・横断歩道・◇の寸法を標識令 別表から確かめる。
 
-P3・P6（高速道路をグラフへ）。2026-11-10 レビューの指摘で、P2 では直さず記録だけにしたもの:
+P3・P6（高速道路をグラフへ）。2026-11-10 レビューの指摘で、P2 では直さず記録だけにしたもの（2026-11-11、P3 で直したものに印）:
 
-- trafficControl の進入路を `hasRoadside` で判定しているので、ランプ端の信号の接近路が作られない。P6 で信号の述語を分ける。
-- guidePlan の matchRouteSteps（路線番号の対応付け）は `isDrivable("navigation")` を使っているが、意味は案内標識の路線なので RouteUse に "guide" を足す。regulations.ts の exitDirections（矢印の向き）は `takesJarticRules` で出口を数えており、ランプへの出口を数えない。
-- `isDrivable` は構造（tunnel・cut は P9 まで走れない）を見ていない。structure の軸を足す。
-- policePatrol は出現・巡回の道路選びにも `allowsRoadsideStop` を使っている（寄せて止まる以外の意味も混ざる）。
-- 起点探索（main.ts placeOnStreet、autoDriver の bestStart など）は `nearest` 経由で地上だけを見る。高架の上の車には `nearestOnSurface` が要る。
-- planMarkings は断面の路肩・中央帯を見ない（外側線は 幅/2 − 0.4、中央線は 0）。デッキの区画線に使う前に断面から位置を出す。
-- `nearestOnSurface` の地形の既定は 0（`graph.ground` を地形に結ぶまで）で、垂直ゲートは車道の幅を見ない（横に 30 m 離れた別の層の道路でも高さが合えば拾う）。
-- `src/expressway/section.ts` の CrossSection（basis: statute / assumption、中央帯なし）・RoadClass（expressway | ramp）・carriagewayWidth と、laneChange.ts・roadClass.ts の同名の型・関数を 1 つにする。高速の区間は `line.section` を持たせる（区間の lanes と sectionOf がそれを読む）。
+- ~~trafficControl の進入路を `hasRoadside` で判定~~ → 進入路は `isEnterable`（地上の一般道と OSM の高速道路。出口ランプの端は信号の接近路になり、路端設備は立たない）。箱の内部リンクは `hasRoadside` のまま。GSI の線では `hasRoadside` と同じ値（テスト）。
+- ~~guidePlan の matchRouteSteps が `isDrivable("navigation")`~~ → RouteUse に "guide" を足し、guidePlan の 4 か所を置き換えた（P6 でナビを開けても案内標識の路線番号はランプに移らない）。~~exitDirections が `takesJarticRules` で出口を数える~~ → `isEnterable`（入口ランプも出口の向きに数える）。
+- ~~`isDrivable` は構造を見ていない~~ → tunnel・cut は全用途で false（P9 まで）。GSI の高速道路の線はどの用途でも false のまま（OSM のチャンクに置き換わる）。`EXPRESSWAY_OPEN` は map・spawn を開けた（OSM の線だけ）。
+- policePatrol は出現・巡回の道路選びにも `allowsRoadsideStop` を使っている（未対応、P6）。
+- ~~起点探索は `nearest` 経由で地上だけ~~ → `RoadGraph.locate`（床版の上にいれば nearestOnSurface の床版、そうでなければ nearest と同じ答え。地上の検索と同点の扱いをビット単位で保つため、全部を nearestOnSurface にはしていない）を main の違反判定・駐車の判定・autoDriver の bestStart で使う。placeOnStreet は床版の上の車を床版の左車線へ戻す。navGuide の locate は P6。
+- ~~planMarkings は断面の路肩・中央帯を見ない~~ → 断面を持つ線は外側線を車線域の端（`laneLeftEdge`、右は 幅/2 − 右路肩）に、車線境界線を `laneLeftEdge − (lanes − k)·laneWidth` に、中央帯があれば中央線を中央帯の両端に引く。GSI の線（断面なし）は外側線 幅/2 − 0.4 のまま（不変テストの指紋は一致）。
+- ~~`nearestOnSurface` の地形の既定は 0、垂直ゲートは車道の幅を見ない~~ → `graph.ground` の既定は null（不明）で、main が地形（橋は床版）に結ぶ。高さ不明の地上の道路は、高さの分かる道路が無いときだけ答えにして `unknownGroundHits` を数え、網を入れ替えるとき `road_surface_unknown` で記録する。床版（地上でない線）は車道の半幅 + 1 m（DECK_REACH）の内側だけ。`surfaceY` は number | null。 **訂正（2026-11-11 レビュー）**: 床版どうしは最も近い中心線で選んでいたので、分合流で本線の車がランプ（limit 40）に判定された。ゲートを通る床版が複数なら本線 → 規制速度の高い方 → 近い方（`deckRank`）。床版と地上の道路が両方通るときは近い方。
+- ~~CrossSection・RoadClass・carriagewayWidth の二重~~ → CrossSection は laneChange.ts の 1 つ（src/expressway/section.ts は再輸出し、`XwSection` で basis を statute / assumption に絞る）。expressway の RoadClass は `Exclude<RoadClass, "street">`、幅は laneChange.ts の `sectionWidth`（section.ts の carriagewayWidth はその別名）。高速の区間は `line.section` を持つ。
+- 残る: `Segment.bank`（片勾配）は持たせていない（描画も既定は平ら）。
 
 [^code]: 実装
 

@@ -8,6 +8,7 @@ stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-fable/design, at: 2026-11-10T09:00:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-11-10T14:30:00Z }
+  - { by: process:headless-chrome-cdp, at: 2026-11-11T01:48:00Z }
 sources:
   - id: original
     resource: 依頼元の scratchpad の road-redesign.md（2026-11-10 作成、この文書の本文はその写し。scratchpad はリポジトリ外で消えるため取り込んだ）
@@ -28,7 +29,8 @@ sources:
 - **訂正**: 第25条（合成勾配）は 60 km/h が 10.5 %（本文 3.4 の「11.5 % と読める」は誤り、[道路構造令・標識令の値](road-standards.md)）。
 - **P1 完了**: コンパイラと検証、試験区間の描画だけのデッキ（[高速道路の生成](expressway-generation.md)）。未解決の課題はその文書の末尾。
 - **P2 完了**: 述語・断面・MarkingPlan・層つき検索、挙動不変（[道路モデル](road-model.md)）。
-- 未着手: P3〜P9。
+- **P3 実装（2026-11-11、レビュー待ち）**: 床版と壁高欄の trimesh・橋脚の cuboid のコライダー（400 m の出し入れ、reanchor、T11 をテスト）、チャンクを level 1 の区間として RoadGraph へ（端点 ID、分合流、ランプ端は GSI の地平部をたどって一般道へ、失敗は ramp_unattached）、`RoadGraph.locate`・nearestOnSurface の W9、W4・W6・CrossSection の一本化、床版の区画線（外側線・車線境界線・分合流の太い破線・導流帯）、EXPRESSWAY_OPEN の map・spawn。入口ランプ → C1 内回り、本線 → 出口 2 本 → 地上を一定速で走らせて落下・跳ね無し、多視点レビュー 3 周で収束（[高速道路の生成](expressway-generation.md) の「実行時」）。逸脱: ランプ端の接続は OSM の共有節点ではなく GSI の高速道路の地平部（データに節点が無い）、床版の上の車は PLATEAU の建物を通り抜ける（貫通の切り抜きは P4）。
+- 未着手: P4〜P9（P2.6・P8 は並行中）。
 
 作成 2026-11-10。対象 `tokyo-od-game`。コードは書かない（実装は Opus が段階的に行う）。
 

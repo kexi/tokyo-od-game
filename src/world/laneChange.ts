@@ -31,6 +31,17 @@ export type CrossSection = {
 };
 
 /**
+ * Width of a carriageway built from its section: the lanes, both shoulders and the median. The
+ * expressway's deck is this wide between its parapets (src/expressway/section.ts re-exports it),
+ * and an expressway line's `width` is this.
+ */
+export function sectionWidth(
+  s: Pick<CrossSection, "lanes" | "laneWidth" | "shoulderL" | "shoulderR"> & { median?: number },
+): number {
+  return s.lanes * s.laneWidth + s.shoulderL + s.shoulderR + (s.median ?? 0);
+}
+
+/**
  * The width the lanes are laid out in. Today the GSI 幅員 as it comes, though it may include the
  * pavement; the insets that cope with that in the lane arithmetic are in KERB_INSET below. P8
  * corrects the width here (lanes × width + shoulders, capped by 幅員), but that is not one change:
