@@ -92,7 +92,7 @@ const byRun = (chunks: XwChunk[]) => {
   return out;
 };
 
-describe("法令値と仮定の集約（設計書 3.4）", () => {
+describe("法令値と仮定の集約（knowledge/road-redesign-plan.md 3.4）", () => {
   it("every statute value names its article, and every assumption says it is unverified and why", () => {
     for (const [name, entry] of Object.entries(ROAD_STANDARDS)) {
       expect(entry.source, name).toMatch(/^(構造令|標識令) /);
@@ -109,7 +109,7 @@ describe("法令値と仮定の集約（設計書 3.4）", () => {
   });
 });
 
-describe("入力の正規化（設計書 4.1）", () => {
+describe("入力の正規化（knowledge/road-redesign-plan.md 4.1）", () => {
   it("drops names carrying the operator and keeps entrance names, ref and destination", () => {
     const w = normalizeWay(1, [1, 2], {
       highway: "motorway",
@@ -133,7 +133,7 @@ describe("入力の正規化（設計書 4.1）", () => {
   });
 });
 
-describe("平面線形（設計書 4.2, T6）", () => {
+describe("平面線形（knowledge/road-redesign-plan.md 4.2, T6）", () => {
   // A 600 m straight with ±0.8 m zigzag (OSM vertex wobble) and an anchor in the middle.
   const xy: Array<[number, number]> = Array.from({ length: 61 }, (_, i) => [
     i * 10,
@@ -194,7 +194,7 @@ describe("平面線形（設計書 4.2, T6）", () => {
   });
 });
 
-describe("縦断線形（設計書 4.3）", () => {
+describe("縦断線形（knowledge/road-redesign-plan.md 4.3）", () => {
   const step = (d: number): VerticalInput => {
     const n = Math.round(d / 5) + 1;
     const stations = Float64Array.from({ length: n }, (_, i) => (i * d) / (n - 1));
@@ -312,7 +312,7 @@ describe("合成した高架とランプのコンパイル（T1〜T5, T7）", ()
   });
 });
 
-describe("片勾配（設計書 4.3 の 4, T7）", () => {
+describe("片勾配（knowledge/road-redesign-plan.md 4.3 の 4, T7）", () => {
   it("e = V²/127R − f, signed so a right-hand curve raises the left edge", () => {
     expect(targetSuperelevation(60, -1 / 150)).toBeCloseTo(3600 / (127 * 150) - 0.15, 9);
     expect(targetSuperelevation(60, 1 / 150)).toBeLessThan(0);

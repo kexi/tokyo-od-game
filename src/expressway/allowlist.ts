@@ -3,7 +3,7 @@ import type { XwDiagnostic } from "./format";
 /**
  * What the compiler reports and the project accepts, each with why. Only this list decides a
  * diagnostic's `allowed` (compile.ts sets it from here; the compiler itself never does), and
- * tests/expresswayData.test.ts fails on anything it does not cover (設計書 4.4 T10), while the
+ * tests/expresswayData.test.ts fails on anything it does not cover (knowledge/road-redesign-plan.md 4.4 T10), while the
  * counts per kind are a reviewed snapshot. `run: "*"` covers the kind everywhere; `with` narrows a
  * deck_overlap entry to one pair (the diagnostic's detail starts "with <run>:").
  */
@@ -31,7 +31,7 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     run: "*",
     kind: "vertical_fallback",
     reason:
-      "特例値の勾配・下げた設計速度はどちらも第20条・第13条の範囲内（設計書 4.3 の 3 の順に試した結果）。地表の床を外す「交差のみ」は別の kind（vertical_crossings_only）で、ここには含まない",
+      "特例値の勾配・下げた設計速度はどちらも第20条・第13条の範囲内（knowledge/road-redesign-plan.md 4.3 の 3 の順に試した結果）。地表の床を外す「交差のみ」は別の kind（vertical_crossings_only）で、ここには含まない",
   },
   {
     run: "*",

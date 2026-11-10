@@ -45,7 +45,7 @@ const atAngle = (deg: number) => luminaire(Math.cos((deg * Math.PI) / 180));
 describe("lighting class by carriageway width (道路照明施設設置基準)", () => {
   it("keeps the spacing within 3.5 H and picks the arrangement by width against the mounting height", () => {
     for (const width of [5.5, 9, 16, 22, 30]) {
-      const spec = lampSpecFor(width, "local");
+      const spec = lampSpecFor(street(0, 100, width, "local"));
       expect(spec).not.toBeNull();
       if (!spec) continue;
       expect(spec.spacing).toBeLessThanOrEqual(3.5 * spec.height);
@@ -59,12 +59,14 @@ describe("lighting class by carriageway width (道路照明施設設置基準)",
   });
 
   it("gives narrow streets small, sparser 防犯灯 and the elevated 首都高 none", () => {
-    const residential = lampSpecFor(4.3, "narrow");
-    const street9 = lampSpecFor(9, "local");
+    const residential = lampSpecFor(street(0, 100, 4.3, "narrow"));
+    const street9 = lampSpecFor(street(0, 100, 9, "local"));
     expect(residential?.height).toBeLessThan(7);
     expect(residential?.candela).toBeLessThan(street9?.candela ?? 0);
     expect(residential?.spacing).toBeGreaterThan(street9?.spacing ?? Infinity);
-    expect(lampSpecFor(22, "highway")).toBeNull();
+    expect(lampSpecFor(street(0, 100, 22, "highway"))).toBeNull();
+    // A street on a deck has no roadside either: the line, not just its kind, decides.
+    expect(lampSpecFor({ ...street(0, 100, 22), structure: "viaduct", level: 1 })).toBeNull();
   });
 });
 
@@ -138,7 +140,7 @@ describe("photometry", () => {
   });
 
   it("lights a 35 m one-sided layout with an illuminance uniformity near the 0.4 the standard asks", () => {
-    const spec = lampSpecFor(9, "local");
+    const spec = lampSpecFor(street(0, 100, 9, "local"));
     if (!spec) throw new Error("no spec");
     // Two neighbouring lamps; the darkest point is half way between them.
     const at = (d: number) => groundLux(spec, d) + groundLux(spec, spec.spacing - d);

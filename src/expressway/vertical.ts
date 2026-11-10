@@ -9,7 +9,7 @@ import {
 import { QpBuilder, type QpStatus, solveQp } from "./qp";
 
 /**
- * Vertical alignment (設計書 4.3). Each run's profile is a chain of equal parabolic arcs: knots
+ * Vertical alignment (knowledge/road-redesign-plan.md 4.3). Each run's profile is a chain of equal parabolic arcs: knots
  * every h metres (h ≥ the 第22条 minimum curve length of the run's highest design speed), the grade
  * varying linearly between knots. Each arc is a vertical curve whose PVI is the arc's midpoint, of
  * length h and radius h / |Δgrade|, so

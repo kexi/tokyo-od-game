@@ -299,6 +299,16 @@ export const LOG_EVENTS = {
     at: z.array(z.number()),
   }),
   closures_implausible_share: warning({ closed: count, streets: count, maxShare: z.number() }),
+  /**
+   * Road lines whose level and structure contradict (a ground line off level 0, a viaduct at or
+   * below it; roadClass.ts isLevelInconsistent): kept as given, the data needs fixing.
+   */
+  road_level_mismatch: warning({
+    count,
+    examples: z.array(
+      z.strictObject({ level: z.number(), structure: z.string(), xid: z.string().nullable() }),
+    ),
+  }),
 
   // ---------- driving ----------
   trip_started: info({ target: z.string(), distanceM: z.number() }),
@@ -542,7 +552,7 @@ export const LOG_EVENTS = {
   station_page_unreadable: info({ code: z.string(), name: z.string() }),
   levels_missing: info({ day: z.string() }),
   water_levels_written: info({ file: z.string(), gauges: count, tidal: count, bay: z.unknown() }),
-  // scripts/expressway.ts (the expressway compiler, 設計書 4)
+  // scripts/expressway.ts (the expressway compiler, knowledge/road-redesign-plan.md 4)
   expressway_osm_read: info({ ways: count, universeWays: count, nodes: count, junctions: count }),
   expressway_planned: info({ chains: count, runs: count, wanted: count, needed: count, crossings: count }),
   expressway_dem_ready: info({ tiles: count, fetched: count }),

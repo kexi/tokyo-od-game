@@ -1,4 +1,4 @@
-// Build-time expressway compiler (設計書 4): OSM motorway / motorway_link from the Geofabrik Kanto
+// Build-time expressway compiler (knowledge/road-redesign-plan.md 4): OSM motorway / motorway_link from the Geofabrik Kanto
 // extract → plan and vertical alignment within 道路構造令 (src/expressway/) → public/data/expressway/
 // <x>-<y>.json (z14 tiles of ≤ 300 m chunks) and meta.json. The ground constraints read GSI DEM
 // tiles exactly as the game does (scripts/demTiles.ts), cached under .cache/gsi-dem.

@@ -40,7 +40,7 @@ import {
 } from "./vertical";
 
 /**
- * The expressway compiler (設計書 4): chains → plan alignment and design speed per stretch → the
+ * The expressway compiler (knowledge/road-redesign-plan.md 4): chains → plan alignment and design speed per stretch → the
  * runs a range needs (every run coupled to them) → one joint vertical QP per group of coupled runs
  * (junctions, crossings, decks over or beside one another) → superelevation → stations, piers and
  * ≤ 300 m chunks with stable ids. Pure: the build script gives it the OSM network, the ground (DEM)
@@ -671,7 +671,7 @@ type EndPlan =
   | { kind: "open" }
   | { kind: "junction" | "seam"; parent: string; parentNodeIndex: number; nodeIndex: number };
 
-/** What fixes a run's start or end (設計書 4.3 の 1). */
+/** What fixes a run's start or end (knowledge/road-redesign-plan.md 4.3 の 1). */
 export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const { chain, run } = rp;
   const idx = atStart ? run.from : run.to;

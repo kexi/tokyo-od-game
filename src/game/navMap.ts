@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import type { RoadGraph, Segment } from "../world/roads";
 import type { AheadStep } from "./navAhead";
 import type { Route, TravelMode } from "./navigation";
+import { isDrivable } from "../world/roadClass";
 
 /**
  * The nav panel's picture when no 交差点拡大図 is due: a small heading-up map of the streets round
@@ -117,7 +118,7 @@ export function drawRouteMap(canvas: HTMLCanvasElement, s: RouteMapState): void 
     });
   };
   for (const seg of s.graph.segments) {
-    if (seg.line.kind === "highway") continue;
+    if (!isDrivable(seg.line, "map")) continue;
     const a = seg.pts[0];
     const isFar = Math.hypot(a.x - s.car.x, a.z - s.car.z) - seg.length > reach;
     if (isFar) continue;

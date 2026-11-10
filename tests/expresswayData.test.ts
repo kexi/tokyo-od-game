@@ -24,7 +24,7 @@ import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
 import { OPERATOR_WORDS } from "../src/expressway/network";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
-// checked against 設計書 4.4 T1〜T7 and T10.
+// checked against knowledge/road-redesign-plan.md 4.4 T1〜T7 and T10.
 const DIR = join(import.meta.dirname, "..", "public", "data", "expressway");
 const meta = JSON.parse(readFileSync(join(DIR, "meta.json"), "utf8")) as XwMeta;
 const tileFiles = readdirSync(DIR).filter((f) => /^\d+-\d+\.json$/.test(f));

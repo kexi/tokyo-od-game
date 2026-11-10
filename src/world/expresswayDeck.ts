@@ -32,7 +32,7 @@ import type { LocalFrame } from "../geo/frame";
 import { log, warn } from "../log";
 
 /**
- * Expressway decks from public/data/expressway (設計書 4.5, P1: drawing only). Each ≤ 300 m chunk is
+ * Expressway decks from public/data/expressway (knowledge/road-redesign-plan.md 4.5, P1: drawing only). Each ≤ 300 m chunk is
  * extruded once along its stations — deck slab, 壁高欄, the box girder's webs and soffit — with its
  * piers baked into the same mesh, and kept until the player is far away: the road network's 300 m
  * rebuilds never touch it. No colliders and nothing in the road graph yet (P3).
@@ -71,7 +71,7 @@ export type DeckArrays = { position: Float32Array; color: Float32Array };
 
 /**
  * The extruded deck of one chunk as non-indexed triangles (flat-shaded concrete), in local
- * coordinates. `bank` tilts the slab by the compiled superelevation (off in P1, 設計書 4.3 の 4).
+ * coordinates. `bank` tilts the slab by the compiled superelevation (off in P1, knowledge/road-redesign-plan.md 4.3 の 4).
  */
 export function* deckArraySteps(
   chunk: XwChunk,
@@ -184,7 +184,7 @@ export function* deckArraySteps(
 /**
  * Piers at the compiled distances (they never move between builds), as boxes from 0.6 m into the
  * ground to the girder's soffit, in the chunk's own triangles. Why not an InstancedMesh per chunk
- * (設計書 4.5): with ~40 chunks drawn that doubled the draw calls (and the shadow pass's), which
+ * (knowledge/road-redesign-plan.md 4.5): with ~40 chunks drawn that doubled the draw calls (and the shadow pass's), which
  * showed up as slower ordinary frames in the A/B; a box is 36 vertices, so baking costs nothing.
  */
 function pierTriangles(

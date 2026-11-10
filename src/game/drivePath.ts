@@ -1,5 +1,12 @@
 import { Vector3 } from "three";
-import { isLaneChangeBanned, laneBand, laneOfOffset } from "../world/laneChange";
+import {
+  carriagewayWidth,
+  isLaneChangeBanned,
+  KERB_INSET,
+  laneBand,
+  laneCentreOffset,
+  laneOfOffset,
+} from "../world/laneChange";
 import { laneOffset, leftOf, type RoadGraph, type Segment } from "../world/roads";
 import type { LaneHint, Maneuver, Route, Step, Turn } from "./navigation";
 
@@ -229,11 +236,10 @@ export type Corner = { from: number; to: number; kind: CornerKind; radius: numbe
  */
 export function laneCentre(seg: Segment, i: number, count = seg.lanes): number {
   const lanes = Math.max(1, count);
-  const half = seg.line.width / 2;
-  const span = seg.oneway === 0 ? half : seg.line.width;
-  const width = span / lanes;
-  const offset = half - (Math.min(i, lanes - 1) + 0.5) * width;
-  return seg.oneway === 0 ? Math.max(0.8, Math.min(offset, half - 1.6)) : Math.min(offset, half - 1.6);
+  const half = carriagewayWidth(seg.line) / 2;
+  const offset = laneCentreOffset(seg, Math.min(i, lanes - 1), lanes);
+  const inside = Math.min(offset, half - KERB_INSET.laneCentre);
+  return seg.oneway === 0 ? Math.max(KERB_INSET.centreLine, inside) : inside;
 }
 
 const isRightward = (turn: Turn) => turn === "right" || turn === "slightRight" || turn === "uturn";

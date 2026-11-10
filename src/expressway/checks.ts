@@ -17,7 +17,7 @@ import { haversine } from "./geo";
 import { surfaceAt } from "./profile";
 
 /**
- * The properties of 設計書 4.4 checked on compiled chunks, as the data test reads them from the
+ * The properties of knowledge/road-redesign-plan.md 4.4 checked on compiled chunks, as the data test reads them from the
  * tiles: T1 grade, T2 vertical curves, T3 continuity, T4 clearance, T5 meeting the ground, T6 plan,
  * T7 superelevation. Each returns the violations it found ("<chunk>: what"), empty when it holds.
  * The tolerances are the rounding of the files (z to 1 mm, s to 1 cm, lon/lat to 1e-7°). Limits are

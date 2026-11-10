@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { LocalFrame } from "../geo/frame";
 import type { Geodetic } from "../geo/ellipsoid";
-import { RoadGraph, type RoadGraphSnapshot, type RoadLine } from "./roads";
+import { RoadGraph, type RoadDiagnostic, type RoadGraphSnapshot, type RoadLine } from "./roads";
 import {
   applyRegulations,
   type AppliedRegulations,
@@ -35,7 +35,7 @@ export type RoadNetworkInput = { lines: RoadLine[]; regs: RegulationData | null;
 export type RoadNetworkData = {
   graph: RoadGraphSnapshot;
   applied: WireApplied | null;
-  diagnostics: RegulationDiagnostic[];
+  diagnostics: Array<RegulationDiagnostic | RoadDiagnostic>;
   computeMs: number;
 };
 export type RoadNetwork = { graph: RoadGraph; applied: AppliedRegulations | null };
@@ -49,8 +49,8 @@ export function computeRoadNetwork(input: RoadNetworkInput): RoadNetworkData {
   const start = performance.now();
   const { lat, lon, h } = input.origin;
   const frame = new LocalFrame(lat, lon, h);
-  const graph = new RoadGraph(input.lines, frame);
-  const diagnostics: RegulationDiagnostic[] = [];
+  const diagnostics: RoadNetworkData["diagnostics"] = [];
+  const graph = new RoadGraph(input.lines, frame, (d) => diagnostics.push(d));
   const applied = input.regs ? applyRegulations(graph, input.regs, frame, (d) => diagnostics.push(d)) : null;
   const data = { graph: graph.snapshot(), applied: applied ? packApplied(applied) : null, diagnostics };
   return { ...data, computeMs: performance.now() - start };
