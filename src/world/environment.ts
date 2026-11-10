@@ -21,6 +21,7 @@ import { spellMinutes, rainRateMmH } from "./weatherSpells";
 import { SkyEnvMap, type EnvState } from "./skyEnvMap";
 import { type SkyLook, TokyoSky } from "./skyShader";
 import { lightBalance, nightFactorAt, type LightBalance } from "./skyLight";
+import { useStableShadows } from "../render/stableShadow";
 
 export type TimeMode = "real" | "morning" | "day" | "evening" | "night";
 export const TIME_MODES: TimeMode[] = ["real", "morning", "day", "evening", "night"];
@@ -147,6 +148,7 @@ export class Environment {
     (scene as Scene & { fogNode: Node | null }).fogNode = atmosphereFog(this.fog);
 
     this.sun.castShadow = true;
+    useStableShadows(this.sun);
     this.sun.shadow.mapSize.set(QUALITY.shadowMapSize, QUALITY.shadowMapSize);
     const cam = this.sun.shadow.camera;
     cam.left = cam.bottom = -140;
