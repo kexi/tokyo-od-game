@@ -17,15 +17,8 @@ const LAW_ID = "335M50004002003";
 const REVISION = "335M50004002003_20260901_508M60000802003";
 const API = `https://laws.e-gov.go.jp/api/2/law_data/${REVISION}?law_full_text_format=json`;
 
-/**
- * Figures written other than e-Gov gives them. 125-B: e-Gov's 別表第二 puts S35F03102010003-087.jpg
- * under 「路面電車停留場（１２５―Ｂ）」, which the old law_table.py missed (null). G1a keeps null so
- * catalog.json stays byte-identical to the file it was converted from.
- * Why not edit law-table.json by hand instead: then the committed file is no longer this script's
- * output and the next run silently changes it. Remove the entry in the commit right after G1a (the
- * figure becomes -087.jpg, catalog.json's 125-B `figure` changes by one line).
- */
-const FIGURE_OVERRIDES: Readonly<Record<string, string | null>> = { "125-B": null };
+/** Figures written other than e-Gov gives them (none now; add with a Why not and a removal condition). */
+const FIGURE_OVERRIDES: Readonly<Record<string, string | null>> = {};
 
 async function lawData(): Promise<LawData> {
   const from = process.argv.indexOf("--from");

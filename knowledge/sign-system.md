@@ -118,8 +118,7 @@ catalog.json を書くのは `scripts/signs.ts` だけである。`scripts/textu
 
 - **125-B（路面電車停留場）の図**: e-Gov の別表第二の表では、行 59 の 3 番目の見出し「路面電車停留場（１２５―Ｂ）」の下の図が `S35F03102010003-087.jpg` である。どの番号も使っていない添付の連番に当たる。
   - 旧 law_table.py は null で、見出しと図の colspan のずれ（見出し 3・3・1、図 3・2・2）で取りこぼしたとみられる。
-  - G1a ではバイト一致を守るため、`scripts/sign-law-table.ts` の `FIGURE_OVERRIDES` に `{ "125-B": null }` を置き、旧表どおり null を書かせている（law-table.json は生成器の出力のまま）。
-  - 撤去条件: G1a の直後の別コミットでこの 1 件を消し、`just fetch-sign-law-table` と `just make-sign-registry` を流す。law-table.json と catalog.json の 125-B の `figure` が 1 行ずつ -087.jpg に変わる。
+  - G1a ではバイト一致を守るため `FIGURE_OVERRIDES` で null を書かせていた。2026-11-10 に G1a の直後のコミットで上書きを外し、`just fetch-sign-law-table` と `just make-sign-registry` を流した。law-table.json・catalog.json・registry.json の 125-B の `figure` が 1 行ずつ -087.jpg に変わったことを `git diff --stat`（各 1 行）で確かめた。
 - **別表第二の図の取り方**: 見出しの行（1 行とは限らない。305 と 305の2 は rowspan 2 の隣に 2 段の見出し）の下に図の行が来る。
   - 図は、その列の範囲で始まる見出しすべてに当てる。セルの順で対にすると、colspan の違いでずれる。
 - **別表第一の列**: 列の数は表によって違う（規制・指示には「意味」の列がある）。種類が rowspan でまたがる行は番号から始まるので、先頭のセルに番号があるかで見分ける。
