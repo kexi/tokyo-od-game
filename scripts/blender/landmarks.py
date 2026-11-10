@@ -1265,6 +1265,7 @@ BUILDERS = {
 # file, where the entry lands in landmarks.json, how previews are lit). One module per line.
 LANDMARK_MODULES = [
     "tower_area",
+    "rainbow_bridge",
 ]
 
 # The landmarks whose near file also carries the far node (the game shows only nodes.near). Every

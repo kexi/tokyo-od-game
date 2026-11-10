@@ -1080,3 +1080,33 @@ assets:
     license: repo
     used_by: []
     docs: [knowledge/tokyo-tower-surroundings-blender.md]
+
+  - id: rainbow-bridge
+    name: レインボーブリッジ（東京港連絡橋）
+    purpose: >-
+      芝浦〜台場の吊橋を実寸（中央径間 570 m・主塔 T.P.+126 m・桁下 T.P.+51.266 m）で描く構造物だけのモデル。
+      主塔 2 基・主ケーブルとハンガー・2 層の補剛トラス・芝浦と台場のアンカレイジと、夏・冬のライトアップ。
+      路面・床版・衝突判定は持たず、上層（高速道路）・下層（臨港道路・ゆりかもめ・遊歩道）の路面は
+      道路側が landmark-placements の deckLevels に合わせて作る。遠くではケーブル・ハンガーを省いた軽いシルエットに替える。
+    kind: model
+    files: [public/models/rainbow_bridge.glb, public/models/rainbow_bridge_far.glb]
+    generator:
+      script:
+        [
+          scripts/blender/landmarks.py,
+          scripts/blender/rainbow_bridge.py,
+          scripts/blender/rainbow_bridge_spec.py,
+        ]
+      recipe: make-all-landmark-models
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。平面（主塔・アンカレイジ・橋軸・橋上の道路の位置）は OpenStreetMap、
+      寸法は Wikipedia（橋梁年鑑・『橋梁』1991 を引く値）と開通 30 周年の主塔ツアーの報道、公表されていない高さ
+      （主塔位置の桁下・トラス高・横梁）は Wikimedia Commons の写真で測った。写真の画素は使っていない。
+      道路事業者の名称・ロゴは描いていない。
+    license: [repo, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    docs: [knowledge/rainbow-bridge-blender.md]
+    notes: >-
+      配置・点灯予定・デッキの高さ（deckLevels）は landmark-placements（public/data/landmarks.json）の rainbow_bridge。
+      y = T.P. の標高（baseHeight 0）。_far.glb は遠景だけの別ファイル。
