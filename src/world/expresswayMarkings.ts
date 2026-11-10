@@ -1,22 +1,19 @@
-import { BRANCH_LINE, LANE_LINE_DASH, PARAPET_WIDTH, ZEBRA } from "../expressway/assumptions";
-import { STATION_STRIDE, type XwChunk, type XwRunSummary } from "../expressway/format";
-import { planeAt } from "../expressway/geo";
-import { ST } from "../expressway/profile";
+import { BRANCH_LINE, LANE_LINE_DASH, ZEBRA } from "../expressway/assumptions";
+import type { XwChunk, XwRunSummary } from "../expressway/format";
 import { MARKING_DIMENSIONS } from "../law/roadStandards";
 import { sectionWidth } from "./laneChange";
 import type { MarkingColour } from "./roadMarkings";
 
 /**
  * What stands and what is painted at each side of an expressway deck where it meets another deck
- * (knowledge/road-redesign-plan.md 4.2 and 4.7, P3). Pure: no three.js, so the tests and the deck
- * builder read the same plan.
+ * (knowledge/road-redesign-plan.md 4.2 and 4.7, P3 and P3.5). Pure: no three.js, so the tests and
+ * the deck builder read the same plan.
  *
  * Decks of different runs lie side by side or over one another at every 分合流 and where the two
- * directions of C1 run as one structure. At each ring of a deck, `DeckIndex.sides` finds the other
- * decks near it in plan and within NEIGHBOUR_DZ of its height. Where this deck's 壁高欄 would stand
- * on the other deck's slab it is not built (railsAt): a car on the main line must not meet the
- * ramp's wall inside its lanes, nor the ramp's car the main line's. Two decks of opposite
- * directions keep one wall between them, the one of the run that sorts first (分離壁).
+ * directions of C1 run as one structure. The compiler records which (`XwChunk.decks`); DeckIndex
+ * answers, for a ring of a deck, the runs it shares one surface with there, and expresswayMerge.ts
+ * makes the pair one slab and fills in each side of the ring (DeckSide): where the road ends, which
+ * 壁高欄 stand, and how the other deck's lanes lie.
  *
  * The plan (planDeckMarkings) follows from the same sides:
  * - 車道外側線 (103): white solid at each edge of the lanes (inside the shoulders), 0.20 m.
@@ -25,63 +22,57 @@ import type { MarkingColour } from "./roadMarkings";
  *   the thick dashed BRANCH_LINE and the ramp's edge line on that side goes (its lane continues
  *   into the main line's).
  * - 導流帯 (107): where the two decks are one slab but their lanes are still apart (the nose), the
- *   strip between them on the ramp's deck is outlined and striped (ZEBRA).
- * Yellow lines (進路変更禁止) are not painted: there is no data for them (設計書 4.7).
+ *   strip between them, painted by the deck that is cut, from its lane edge to the master's.
+ * A line is painted only where it lies on the deck's own road (a cut deck's lines stop at the
+ * master's edge: the master's own lines are the ones on its face). Yellow lines (進路変更禁止) are
+ * not painted: there is no data for them (設計書 4.7).
  */
 
-/** Plane for neighbour tests: fixed, so a deck's rails never depend on which chunks loaded first. */
-const PLANE = planeAt(139.76, 35.68);
-const CELL = 25;
-/** Decks farther apart in height than this are on different levels (a stacked deck is ≥ 6.7 m). */
-const NEIGHBOUR_DZ = 1.5;
 /** Lanes closer than this to the other deck's lanes are treated as meeting (no strip to stripe). */
 const ZEBRA_MIN_GAP = 0.3;
 /** 車道外側線 width on the expressway (標識令 別表第四 103: 0.15–0.20 m, the upper value). */
 export const XW_EDGE_WIDTH = MARKING_DIMENSIONS.value.edgeLine.width[1];
 /** 車線境界線 width (102: 0.10–0.15 m). */
 export const XW_LANE_WIDTH = MARKING_DIMENSIONS.value.laneLine.width[1];
-
-type Piece = {
-  run: string;
-  ax: number;
-  ay: number;
-  bx: number;
-  by: number;
-  za: number;
-  zb: number;
-  /** Half the carriageway, the shoulders (left, right of travel) and half the slab. */
-  half: number;
-  shoulderL: number;
-  shoulderR: number;
-  slab: number;
-};
+/** Past the end of a "same" stretch the pair stays one slab while the slabs still overlap (the nose). */
+export const MERGE_PAD_M = 20;
 
 /** One side of a ring as the other decks leave it. */
 export type DeckSide = {
-  /** Whether this deck's 壁高欄 stands on that side. */
-  rail: boolean;
   /**
-   * Another deck in the same direction is joined to this one on that side: "child" this run ends
-   * or starts on it (the ramp), "parent" it ends or starts on this run, "peer" neither.
+   * Another deck in the same direction is joined to this one on that side: "child" this deck is the
+   * one cut at the other's edge (the ramp), "parent" the other is cut at this deck's edge.
    */
-  joined: "child" | "parent" | "peer" | null;
+  joined: "child" | "parent" | null;
   /**
    * The other deck's nearest lane edge, metres left of this deck's centre, where joined; null
    * otherwise.
    */
   otherLaneEdge: number | null;
+  /**
+   * Where this deck's road surface ends on that side, metres from the centre towards it (below zero:
+   * the other deck covers past the centre). Normally the 壁高欄's inner face.
+   */
+  reach: number;
+  /** The 壁高欄 on that side (inner and outer face, metres from the centre), or none. */
+  wall: { inner: number; outer: number } | null;
+  /**
+   * Where the road ends on the master deck's slab edge (local frame): the point of the master's
+   * face there, so the two meet with no step. The master's face continues past it.
+   */
+  seam: { x: number; y: number; z: number } | null;
+  /** Whose edge the seam lies on (run and which of its edges, left +1), for the rings it needs. */
+  seamOf: { run: string; edge: 1 | -1 } | null;
 };
 
 export type RingSides = { left: DeckSide; right: DeckSide };
-
-const OPEN: DeckSide = { rail: true, joined: null, otherLaneEdge: null };
 
 /** Which run ends on which (meta.json's run ends): the 分合流 between two runs. */
 export function roleOf(
   runs: ReadonlyMap<string, XwRunSummary>,
   mine: string,
   other: string,
-): DeckSide["joined"] {
+): "child" | "parent" | "peer" {
   const endsOn = (a: string, b: string) => {
     const r = runs.get(a);
     return r !== undefined && (r.start.parent === b || r.end.parent === b);
@@ -91,124 +82,50 @@ export function roleOf(
   return "peer";
 }
 
-/** The decks of the loaded chunks, piece by piece between stations, for neighbour tests. */
+/**
+ * The loaded chunks by run, and which runs a chunk shares one surface with (its `decks`). Why not
+ * the overlaps found again at run time (P3's NEIGHBOUR_DZ over every loaded deck, W7): the
+ * compiler already decided the relation from the plan lines, the crossings and the OSM layers,
+ * and format.ts promises the game reads it instead.
+ */
 export class DeckIndex {
-  private readonly grid = new Map<string, Piece[]>();
+  private readonly byRun = new Map<string, XwChunk[]>();
   private readonly added = new Set<string>();
 
-  constructor(private readonly runs: ReadonlyMap<string, XwRunSummary>) {}
+  constructor(readonly runs: ReadonlyMap<string, XwRunSummary>) {}
 
   add(chunk: XwChunk): void {
     if (this.added.has(chunk.id)) return;
     this.added.add(chunk.id);
-    const half = sectionWidth(chunk) / 2;
-    const slab = half + PARAPET_WIDTH.value;
-    const n = chunk.st.length / STATION_STRIDE;
-    for (let i = 0; i + 1 < n; i++) {
-      const o = i * STATION_STRIDE;
-      const q = o + STATION_STRIDE;
-      const [ax, ay] = PLANE.toXY(chunk.st[o + ST.lon], chunk.st[o + ST.lat]);
-      const [bx, by] = PLANE.toXY(chunk.st[q + ST.lon], chunk.st[q + ST.lat]);
-      const piece: Piece = {
-        run: chunk.run,
-        ax,
-        ay,
-        bx,
-        by,
-        za: chunk.st[o + ST.z],
-        zb: chunk.st[q + ST.z],
-        half,
-        shoulderL: chunk.shoulderL,
-        shoulderR: chunk.shoulderR,
-        slab,
-      };
-      const reach = slab + 2;
-      for (
-        let cx = Math.floor((Math.min(ax, bx) - reach) / CELL);
-        cx <= Math.floor((Math.max(ax, bx) + reach) / CELL);
-        cx++
-      )
-        for (
-          let cy = Math.floor((Math.min(ay, by) - reach) / CELL);
-          cy <= Math.floor((Math.max(ay, by) + reach) / CELL);
-          cy++
-        ) {
-          const key = `${cx},${cy}`;
-          const list = this.grid.get(key) ?? [];
-          list.push(piece);
-          this.grid.set(key, list);
-        }
-    }
+    const list = this.byRun.get(chunk.run) ?? [];
+    list.push(chunk);
+    list.sort((a, b) => a.k - b.k);
+    this.byRun.set(chunk.run, list);
+  }
+
+  /** The loaded chunks of a run, in order. */
+  chunksOf(run: string): readonly XwChunk[] {
+    return this.byRun.get(run) ?? [];
   }
 
   /**
-   * The two sides of a ring of `run` at (lon, lat), surface elevation z (T.P.), heading `h`
-   * (radians anticlockwise from east, as the chunks' h0/h1), with this deck's half carriageway and
-   * shoulders. Another deck counts on a side when its centreline is on that side and the point of
-   * this deck's 壁高欄 lies on its slab (within NEIGHBOUR_DZ of its height).
+   * The runs `chunk` shares one surface with at s: the "same" stretches of it and of its loaded
+   * neighbours in the run (the compiler cuts a stretch at the chunk's ends), padded by MERGE_PAD_M
+   * (the slabs still overlap for a few metres after the carriageways part), but not where it stands
+   * over or under that run (a padded end must not reach into a two-level stretch).
    */
-  sides(
-    run: string,
-    lon: number,
-    lat: number,
-    z: number,
-    h: number,
-    deck: { half: number; shoulderL: number; shoulderR: number },
-  ): RingSides {
-    const [px, py] = PLANE.toXY(lon, lat);
-    const ux = Math.cos(h);
-    const uy = Math.sin(h);
-    // Left of travel in an east/north plane: the heading turned 90° anticlockwise.
-    const lx = -uy;
-    const ly = ux;
-    const out: RingSides = { left: OPEN, right: OPEN };
-    const rail = deck.half + PARAPET_WIDTH.value / 2;
-    const seen = new Set<Piece>();
-    for (const piece of this.grid.get(`${Math.floor(px / CELL)},${Math.floor(py / CELL)}`) ?? []) {
-      if (piece.run === run || seen.has(piece)) continue;
-      seen.add(piece);
-      const ex = piece.bx - piece.ax;
-      const ey = piece.by - piece.ay;
-      const len2 = ex * ex + ey * ey;
-      if (len2 < 1e-9) continue;
-      const t = Math.min(1, Math.max(0, ((px - piece.ax) * ex + (py - piece.ay) * ey) / len2));
-      const fx = piece.ax + ex * t - px;
-      const fy = piece.ay + ey * t - py;
-      const zf = piece.za + (piece.zb - piece.za) * t;
-      const isOtherLevel = Math.abs(zf - z) > NEIGHBOUR_DZ;
-      if (isOtherLevel) continue;
-      const d = fx * lx + fy * ly;
-      const along = Math.abs(fx * ux + fy * uy);
-      // The foot must be beside the ring, not ahead of or behind it past the piece's end.
-      const isBeside = along < 3;
-      if (!isBeside) continue;
-      const len = Math.sqrt(len2);
-      const isSameWay = (ex * ux + ey * uy) / len > 0;
-      // Its lanes in this deck's offsets: its left is ours when it runs the same way.
-      const k = isSameWay ? 1 : -1;
-      const itsLeft = d + k * (piece.half - piece.shoulderL);
-      const itsRight = d - k * (piece.half - piece.shoulderR);
-      const role = isSameWay ? roleOf(this.runs, run, piece.run) : null;
-      // Each side on its own: where two decks overlap fully (the first metres of a diverge, both
-      // centrelines on one point) the walls of both sides stand on the other deck.
-      for (const side of ["left", "right"] as const) {
-        const sign = side === "left" ? 1 : -1;
-        const isOnItsSlab = Math.abs(sign * rail - d) <= piece.slab;
-        if (!isOnItsSlab) continue;
-        // 分離壁: of two opposite carriageways one keeps its wall (the facing one), the run that
-        // sorts first.
-        const isFacing = sign * d >= 0;
-        const keepsWall = !isSameWay && isFacing && run < piece.run;
-        const nearEdge = sign > 0 ? Math.min(itsLeft, itsRight) : Math.max(itsLeft, itsRight);
-        const prev = out[side];
-        const isNearer = prev.otherLaneEdge === null || Math.abs(nearEdge) < Math.abs(prev.otherLaneEdge);
-        const isJoinedHere = isSameWay && isFacing && isNearer;
-        out[side] = {
-          rail: prev.rail && keepsWall,
-          joined: isJoinedHere ? role : prev.joined,
-          otherLaneEdge: isJoinedHere ? nearEdge : prev.otherLaneEdge,
-        };
-      }
+  partnersAt(chunk: Pick<XwChunk, "run" | "k" | "decks">, s: number): string[] {
+    const near = this.chunksOf(chunk.run).filter((c) => Math.abs(c.k - chunk.k) === 1);
+    const decks = [...chunk.decks, ...near.flatMap((c) => c.decks)];
+    const out: string[] = [];
+    for (const d of decks) {
+      const isSame = d.relation === "same";
+      const isNear = s >= d.s0 - MERGE_PAD_M && s <= d.s1 + MERGE_PAD_M;
+      if (!isSame || !isNear || out.includes(d.with)) continue;
+      const isLevelApart = decks.some(
+        (e) => e.with === d.with && e.relation !== "same" && s >= e.s0 && s <= e.s1,
+      );
+      if (!isLevelApart) out.push(d.with);
     }
     return out;
   }
@@ -234,20 +151,43 @@ export type XwMarkingPlan = { lines: XwMarkingLine[]; zebras: XwZebra[] };
 
 type SideState = { kind: "edge" | "branch" | "none" } | { kind: "zebra"; inner: number; outer: number };
 
+/** Width of an edge line and of the 分合流部 line that replaces it. */
+const widthOf = (kind: "edge" | "branch") => (kind === "edge" ? XW_EDGE_WIDTH : BRANCH_LINE.value.width);
+
+/** Whether a line `width` wide at offset u lies on a ring's own road (between the two reaches). */
+function isOnRoad(sides: RingSides, u: number, width: number): boolean {
+  return u - width / 2 >= -sides.right.reach - 1e-6 && u + width / 2 <= sides.left.reach + 1e-6;
+}
+
+/** [from, to] windows of the rings where `on` holds, cut halfway between two rings that differ. */
+function windowsOf(ss: readonly number[], on: readonly boolean[]): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let from: number | null = null;
+  for (let i = 0; i < ss.length; i++) {
+    const isEnd = i === ss.length - 1;
+    const start = i === 0 ? ss[0] : (ss[i - 1] + ss[i]) / 2;
+    if (on[i] && from === null) from = start;
+    const isClosing = from !== null && (isEnd || !on[i + 1]);
+    if (!isClosing) continue;
+    const to = isEnd ? ss[i] : (ss[i] + ss[i + 1]) / 2;
+    if (to - from! > 0.05) out.push([from!, to]);
+    from = null;
+  }
+  return out;
+}
+
 /**
  * The markings of one chunk from its rings (distance s and sides). Lines are cut where a side's
- * state changes, halfway between the two rings.
+ * state changes, halfway between the two rings, and wherever they would leave the deck's own road.
  */
 export function planDeckMarkings(
   chunk: Pick<XwChunk, "lanes" | "laneWidth" | "shoulderL" | "shoulderR">,
   rings: ReadonlyArray<{ s: number; sides: RingSides }>,
 ): XwMarkingPlan {
   const half = sectionWidth(chunk) / 2;
-  const slabEdge = half + PARAPET_WIDTH.value;
   const lines: XwMarkingLine[] = [];
   const zebras: XwZebra[] = [];
-  const first = rings[0].s;
-  const last = rings[rings.length - 1].s;
+  const ss = rings.map((r) => r.s);
   const edgeOf = (sign: 1 | -1) => sign * (half - (sign > 0 ? chunk.shoulderL : chunk.shoulderR));
   const stateAt = (side: DeckSide, sign: 1 | -1): SideState => {
     const own = edgeOf(sign);
@@ -256,10 +196,11 @@ export function planDeckMarkings(
     if (!isJoined) return { kind: "edge" };
     const gap = sign * (other - own);
     const isApart = gap > ZEBRA_MIN_GAP;
-    const paints = side.joined === "child" || side.joined === "peer";
     if (isApart) {
-      const outer = sign * Math.min(Math.abs(other), slabEdge);
-      return paints ? { kind: "zebra", inner: own, outer } : { kind: "edge" };
+      // The strip runs to the master's lane edge over its face (the seam is level with it); with
+      // no master face past the road's end it stops there.
+      const outer = side.seam ? other : sign * Math.min(Math.abs(other), side.reach);
+      return side.joined === "child" ? { kind: "zebra", inner: own, outer } : { kind: "edge" };
     }
     return side.joined === "parent" ? { kind: "branch" } : { kind: "none" };
   };
@@ -272,64 +213,58 @@ export function planDeckMarkings(
       return side.joined === "child" && stateAt(side, sign).kind === "none";
     });
   for (const sign of [1, -1] as const) {
-    const states = rings.map((r) =>
-      isInsideParent(r) ? { kind: "none" as const } : stateAt(sign > 0 ? r.sides.left : r.sides.right, sign),
-    );
-    let from = first;
+    const states = rings.map((r): SideState => {
+      if (isInsideParent(r)) return { kind: "none" };
+      const st = stateAt(sign > 0 ? r.sides.left : r.sides.right, sign);
+      const isLine = st.kind === "edge" || st.kind === "branch";
+      const isOff = isLine && !isOnRoad(r.sides, edgeOf(sign), widthOf(st.kind as "edge" | "branch"));
+      return isOff ? { kind: "none" } : st;
+    });
+    for (const kind of ["edge", "branch"] as const) {
+      for (const [from, to] of windowsOf(
+        ss,
+        states.map((st) => st.kind === kind),
+      ))
+        lines.push({
+          kind,
+          offset: edgeOf(sign),
+          from,
+          to,
+          colour: "white",
+          width: widthOf(kind),
+          dash: kind === "branch" ? { length: BRANCH_LINE.value.dash, gap: BRANCH_LINE.value.gap } : null,
+        });
+    }
     for (let i = 0; i < rings.length; i++) {
-      const isEnd = i === rings.length - 1;
-      const isChange = !isEnd && states[i + 1].kind !== states[i].kind;
-      if (!isEnd && !isChange) continue;
-      const to = isEnd ? last : (rings[i].s + rings[i + 1].s) / 2;
-      const st = states[i];
-      const span = to - from;
-      if (span > 0.05 && st.kind === "edge")
-        lines.push({
-          kind: "edge",
-          offset: edgeOf(sign),
-          from,
-          to,
-          colour: "white",
-          width: XW_EDGE_WIDTH,
-          dash: null,
-        });
-      if (span > 0.05 && st.kind === "branch")
-        lines.push({
-          kind: "branch",
-          offset: edgeOf(sign),
-          from,
-          to,
-          colour: "white",
-          width: BRANCH_LINE.value.width,
-          dash: { length: BRANCH_LINE.value.dash, gap: BRANCH_LINE.value.gap },
-        });
-      if (st.kind === "zebra") {
-        const zebra: XwZebra = { s: [], inner: [], outer: [] };
-        for (let j = i; j >= 0 && states[j].kind === "zebra"; j--) {
-          const z = states[j] as Extract<SideState, { kind: "zebra" }>;
-          zebra.s.unshift(rings[j].s);
-          zebra.inner.unshift(z.inner);
-          zebra.outer.unshift(z.outer);
-        }
-        const isLong = zebra.s.length >= 2;
-        if (isLong) zebras.push(zebra);
+      const isZebraEnd =
+        states[i].kind === "zebra" && (i === rings.length - 1 || states[i + 1].kind !== "zebra");
+      if (!isZebraEnd) continue;
+      const zebra: XwZebra = { s: [], inner: [], outer: [] };
+      for (let j = i; j >= 0 && states[j].kind === "zebra"; j--) {
+        const z = states[j] as Extract<SideState, { kind: "zebra" }>;
+        zebra.s.unshift(rings[j].s);
+        zebra.inner.unshift(z.inner);
+        zebra.outer.unshift(z.outer);
       }
-      from = to;
+      const isLong = zebra.s.length >= 2;
+      if (isLong) zebras.push(zebra);
     }
   }
   const dash = LANE_LINE_DASH.value;
   for (let k = 1; k < chunk.lanes; k++) {
     // laneLeftEdge − k·laneWidth (laneChange.ts counts lanes from the left edge of the lanes).
     const offset = edgeOf(1) - k * chunk.laneWidth;
-    lines.push({
-      kind: "lane",
-      offset,
-      from: first,
-      to: last,
-      colour: "white",
-      width: XW_LANE_WIDTH,
-      dash: { length: dash.dash, gap: dash.gap },
-    });
+    const on = rings.map((r) => isOnRoad(r.sides, offset, XW_LANE_WIDTH));
+    for (const [from, to] of windowsOf(ss, on))
+      lines.push({
+        kind: "lane",
+        offset,
+        from,
+        to,
+        colour: "white",
+        width: XW_LANE_WIDTH,
+        dash: { length: dash.dash, gap: dash.gap },
+      });
   }
   return { lines, zebras };
 }

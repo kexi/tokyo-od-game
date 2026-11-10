@@ -144,6 +144,23 @@
           }
         },
         {
+          "id": "diverge-outer-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "4853798:0",
+            "share": 0.3
+          },
+          "altitudeM": 70,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "diverge": "C1 外回りから芝公園出口が分かれる（P3.5 の一体化）。床版が一枚で、本線の縁でランプの床版が切れ、継ぎ目に段差・隙間・ちらつきが無い",
+            "markings": "本線の外側線が分流の範囲で太い破線になり、導流帯がランプの車線端から本線の車線端まで。区画線が二重にならない",
+            "walls": "壁高欄は一枚の床版の外周だけ。本線とランプの間に壁が残らない"
+          }
+        },
+        {
           "id": "c1-parallel",
           "camera": "overhead",
           "target": {

@@ -20,15 +20,8 @@ import {
   type XwRunSummary,
   type XwTile,
 } from "../expressway/format";
-import { haversine, planeAt, tileKey } from "../expressway/geo";
-import {
-  frameAt,
-  ST,
-  type SurfaceFrame,
-  surfaceAt,
-  surfaceHeight,
-  surfaceSamples,
-} from "../expressway/profile";
+import { haversine, tileKey } from "../expressway/geo";
+import { ST, surfaceAt } from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
 import { FrameWork } from "../game/frameWork";
 import { SerialWork } from "../game/serialWork";
@@ -38,11 +31,25 @@ import { reanchorBody } from "../physics/reanchor";
 import {
   dashWindows,
   DeckIndex,
+  type DeckSide,
   planDeckMarkings,
   type RingSides,
   type XwMarkingPlan,
   zebraStripes,
 } from "./expresswayMarkings";
+import {
+  type ChunkRings,
+  chunkRings,
+  type DeckRing,
+  DeckMerge,
+  type GeoToLocal,
+  liftAt,
+  MERGE_RAMP,
+  MERGE_SKIRT,
+  MERGE_TUCK,
+  openSide,
+  ringPoint,
+} from "./expresswayMerge";
 import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expresswayRoads";
 
 /**
@@ -63,11 +70,7 @@ import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expre
  * decks); a body made later from a mesh built in an older frame starts from that frame's transform.
  */
 
-export type GeoToLocal = {
-  frame: LocalFrame;
-  /** WGS84 ellipsoidal height of an orthometric (T.P.) one at a point. */
-  ellipsoidal: Ellipsoidal;
-};
+export type { GeoToLocal };
 
 const Z = 14;
 const RENDER_RADIUS_M = 1500;
@@ -106,13 +109,31 @@ export type ColliderArrays = { position: Float32Array; index: Uint32Array };
 /** A pier's box: centre, half extents (along, up, across) and the yaw of `along` (local frame). */
 export type PierBox = { centre: Vector3; half: Vector3; yaw: number };
 
-/** What the deck builder knows of the other decks (rails and markings where they meet). */
+/** What the deck builder knows of the other decks (rails, merges and markings where they meet). */
 export type DeckContext = { index: DeckIndex };
+
+/** A cross-section's corners in the local frame, in loop order (see SECTION_FACES). */
+type Corners = number[][];
+
+/**
+ * The faces between consecutive corners of a cross-section, drawn left → right over the top:
+ * 0–1 the road (split at the centre so a cut deck's road meets the master's face at the seam and
+ * still lies on its own surface at the centre), 2 the strip from the road's end to a 壁高欄 that
+ * stands back from it (hidden under the master), 3–5 the left 壁高欄's inner face, top and outer
+ * face, 6 the slab's bottom out to its edge, 7 the girder's web, 8 the soffit, 9–14 the right side
+ * mirrored. A face with nothing to show (no wall, no cut) has zero area and is left out.
+ */
+const ROAD_FACES = new Set([0, 1]);
+/** The faces a car meets: the road and both 壁高欄 (a car on a deck alongside meets the outer face). */
+const SOLID_FACES = new Set([0, 1, 3, 4, 5, 11, 12, 13]);
+const SOFFIT_FACE = 8;
+const faceColour = (k: number) => (ROAD_FACES.has(k) ? ASPHALT : k === SOFFIT_FACE ? SOFFIT : CONCRETE);
 
 /**
  * The extruded deck of one chunk as non-indexed triangles (flat-shaded concrete, painted lines on
  * top), in local coordinates, with its collider's triangles and pier boxes. `bank` tilts the slab
- * by the compiled superelevation (off by default, knowledge/road-redesign-plan.md 4.3 の 4).
+ * by the compiled superelevation (off by default, knowledge/road-redesign-plan.md 4.3 の 4). With a
+ * context, the decks it shares one surface with are made one slab with it (expresswayMerge.ts).
  */
 export function* deckArraySteps(
   chunk: XwChunk,
@@ -128,6 +149,8 @@ export function* deckArraySteps(
     collider: ColliderArrays;
     piers: PierBox[];
     marks: XwMarkingPlan;
+    rings: DeckRing[];
+    sides: RingSides[];
   }
 > {
   const n = chunk.st.length / STATION_STRIDE;
@@ -138,91 +161,119 @@ export function* deckArraySteps(
     const lat = chunk.st[o + ST.lat];
     centre.push(place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, chunk.st[o + ST.z])));
   }
-  // Cross-sections ("rings") where profile.ts samples the surface: every station and as many more
-  // as the Hermite surface needs to stay within 1 cm of the slab's straight faces. The graph's
-  // segments (expresswayRoads.ts) have a point at every ring, so surfaceY is the face too.
-  const rings: Ring[] = surfaceSamples(chunk.st).map(({ i, t }) => {
-    const o = i * STATION_STRIDE;
-    return ringAt(chunk, place, o, Math.min(o + STATION_STRIDE, (n - 1) * STATION_STRIDE), t);
-  });
+  // Rings where profile.ts samples the surface; the graph's segments (expresswayRoads.ts) have a
+  // point at every one of them, so surfaceY is the face too.
+  const own = chunkRings(chunk, place, bank);
   yield;
-  const m = rings.length;
-  const tangents = rings.map((_, i) => {
-    const a = rings[Math.max(0, i - 1)].c;
-    const b = rings[Math.min(m - 1, i + 1)].c;
-    return new Vector3(b.x - a.x, 0, b.z - a.z).normalize();
-  });
-  // The ends take the compiled heading, which the neighbouring chunk shares: a one-sided difference
-  // here left the deck edges up to 0.31 m apart at seams on curves.
-  tangents[0] = headingTangent(chunk, 0, chunk.h0, place);
-  tangents[m - 1] = headingTangent(chunk, n - 1, chunk.h1, place);
-  const hw = carriagewayWidth(chunk) / 2;
-  const pw = PARAPET_WIDTH.value;
-  const ph = PARAPET_HEIGHT.value;
-  const edge = hw + pw;
-  const gw = edge * GIRDER_BOTTOM_SHARE;
-  const sides: RingSides[] = [];
-  for (const side of ringSides(chunk, rings, context)) {
-    sides.push(side);
-    const checkpoint = sides.length % 24 === 0;
+  const merge = context ? new DeckMerge(context.index, place, bank) : null;
+  const baseSides: RingSides[] = [];
+  for (const r of own.rings) {
+    baseSides.push(merge ? merge.sides(own, r) : { left: openSide(own), right: openSide(own) });
+    const checkpoint = baseSides.length % 24 === 0;
     if (checkpoint) yield;
   }
-  // Cross-section corners [lateral (left +), vertical]; consecutive pairs are faces. A side whose
-  // 壁高欄 is not built (it would stand on another deck) keeps its corners at the slab's top.
-  const section = (i: number) => {
-    const f = rings[i].frame;
+  const { rings, sides, closing } = merge
+    ? refineRings(own, baseSides, merge)
+    : { rings: own.rings, sides: baseSides, closing: new Set<number>() };
+  yield;
+  const m = rings.length;
+  const gw = own.edge * GIRDER_BOTTOM_SHARE;
+  const ph = PARAPET_HEIGHT.value;
+  const corners = (i: number): Corners => {
+    const r = rings[i];
+    const sd = sides[i];
+    const lift = (u: number) => liftAt(r, u, bank);
+    const at = (u: number, v: number) => ringPoint(r, u, v).toArray();
     // The girder never reaches below the ground: near a ground end it shortens into a wall.
-    const clear = rings[i].c.y - rings[i].groundY;
+    const clear = r.c.y - r.groundY;
     const depth = Math.max(SLAB, Math.min(chunk.girder, clear + 0.3));
-    // Offsets from the centre of the shared surface contract (profile.ts surfaceHeight).
-    const lift = (u: number) => surfaceHeight(f, u, bank) - f.z;
-    const left = sides[i].left.rail ? ph : 0;
-    const right = sides[i].right.rail ? ph : 0;
-    return [
-      [-hw, lift(-hw)],
-      [hw, lift(hw)],
-      [hw, lift(hw) + left],
-      [edge, lift(edge) + left],
-      [edge, lift(edge) - SLAB],
-      [gw, -depth],
-      [-gw, -depth],
-      [-edge, lift(-edge) - SLAB],
-      [-edge, lift(-edge) + right],
-      [-hw, lift(-hw) + right],
-      [-hw, lift(-hw)],
-    ];
+    let lo = -sd.right.reach;
+    let hi = sd.left.reach;
+    const seamL = sd.left.seam ? [sd.left.seam.x, sd.left.seam.y, sd.left.seam.z] : null;
+    const seamR = sd.right.seam ? [sd.right.seam.x, sd.right.seam.y, sd.right.seam.z] : null;
+    const isClosed = closing.has(i) || hi - lo <= 1e-3;
+    let road: Corners;
+    if (isClosed) {
+      // Nothing of the road shows: its corners meet at the cut. On the ring where the road closes
+      // that is the master's edge itself; elsewhere a little under the master's face, so the
+      // triangles towards the next ring never lie level with it (no flickering slivers).
+      const seam = seamL ?? seamR;
+      const u = Math.min(own.edge, Math.max(-own.edge, (lo + hi) / 2));
+      const seamV = seam ? seam[1] - r.c.y : lift(u);
+      const point = closing.has(i) && seam ? seam : at(u, Math.min(lift(u), seamV) - MERGE_TUCK);
+      lo = u;
+      hi = u;
+      road = [point, point, point];
+    } else {
+      const right = seamR ?? at(lo, lift(lo));
+      const left = seamL ?? at(hi, lift(hi));
+      // From a seam the road climbs (or drops) to its own surface over MERGE_RAMP, then runs on it.
+      // Without one the middle corner is the right end: one face across, as before P3.5. Why not a
+      // corner at the centre always: a ray exactly along that edge may slip between its triangles
+      // (Rapier's trimesh), and on an ordinary deck every car and test drives along the centre.
+      let middle = right;
+      if (seamR && !seamL) {
+        const u = Math.min(hi, lo + MERGE_RAMP);
+        middle = at(u, lift(u));
+      } else if (seamL && !seamR) {
+        const u = Math.max(lo, hi - MERGE_RAMP);
+        middle = at(u, lift(u));
+      } else if (seamL && seamR) {
+        middle = right.map((v, k) => (v + left[k]) / 2);
+      }
+      road = [right, middle, left];
+    }
+    const side = (sign: 1 | -1, s: DeckSide, end: number[], endU: number): Corners => {
+      const w = s.wall;
+      const slabBottom = at(sign * own.edge, lift(sign * own.edge) - SLAB);
+      const girder = at(sign * gw, -depth);
+      if (!w) return [end, end, end, at(endU, lift(endU) - SLAB), slabBottom, girder];
+      // A wall whose road does not run up to it stands partly on the master's slab: its inner face
+      // starts below the road, so the master's face (up to MERGE_MAX_DZ lower) meets it.
+      const isAtWall = !isClosed && Math.abs(sign * endU - w.inner) < 1e-6;
+      const inner = sign * w.inner;
+      const outer = sign * w.outer;
+      return [
+        at(inner, lift(inner) - (isAtWall ? 0 : MERGE_SKIRT)),
+        at(inner, lift(inner) + ph),
+        at(outer, lift(outer) + ph),
+        at(outer, lift(outer) - SLAB),
+        slabBottom,
+        girder,
+      ];
+    };
+    const left = side(1, sd.left, road[2], hi);
+    const right = side(-1, sd.right, road[0], lo).toReversed();
+    const loop = [...road, ...left, ...right];
+    loop.push(loop[0]);
+    return loop;
   };
-  // The faces a car meets: the road and the 壁高欄's inner faces, tops and outer faces (a car on a
-  // deck alongside meets the outer one). A dropped rail's top is the slab beyond the carriageway,
-  // driven on where two decks are one.
-  const SOLID_FACES = new Set([0, 1, 2, 3, 7, 8, 9]);
-  const faceColour = (k: number) => (k === 0 ? ASPHALT : k === 5 ? SOFFIT : CONCRETE);
   const pos: number[] = [];
   const col: number[] = [];
   const solid: number[] = [];
-  const point = (i: number, u: number, v: number) => {
-    const t = tangents[i];
-    // Left of travel: the tangent turned 90° anticlockwise seen from above (+y up, −z north).
-    const lx = t.z;
-    const lz = -t.x;
-    const c = rings[i].c;
-    return [c.x + lx * u, c.y + v, c.z + lz * u];
-  };
-  const sections = [section(0)];
+  const sections = [corners(0)];
   for (let i = 1; i < m; i++) {
     const prev = sections[i - 1];
-    const cur = section(i);
+    const cur = corners(i);
     sections.push(cur);
     for (let k = 0; k + 1 < cur.length; k++) {
-      const a = point(i - 1, prev[k][0], prev[k][1]);
-      const b = point(i - 1, prev[k + 1][0], prev[k + 1][1]);
-      const c = point(i, cur[k + 1][0], cur[k + 1][1]);
-      const d = point(i, cur[k][0], cur[k][1]);
-      // Faces wind so their front is outward for a loop drawn left → right over the top.
-      pos.push(...a, ...d, ...c, ...a, ...c, ...b);
+      const a = prev[k];
+      const b = prev[k + 1];
+      const c = cur[k + 1];
+      const d = cur[k];
       const colour = faceColour(k);
-      for (let v = 0; v < 6; v++) col.push(...colour);
-      if (SOLID_FACES.has(k)) solid.push(...a, ...d, ...c, ...a, ...c, ...b);
+      const isSolid = SOLID_FACES.has(k);
+      // Faces wind so their front is outward for a loop drawn left → right over the top.
+      for (const tri of [
+        [a, d, c],
+        [a, c, b],
+      ]) {
+        const isDegenerate = triangleArea2(tri[0], tri[1], tri[2]) < 1e-8;
+        if (isDegenerate) continue;
+        for (const p of tri) pos.push(p[0], p[1], p[2]);
+        for (let v = 0; v < 3; v++) col.push(...colour);
+        if (isSolid) for (const p of tri) solid.push(p[0], p[1], p[2]);
+      }
     }
     const checkpoint = i % 16 === 0;
     if (checkpoint) yield;
@@ -231,8 +282,8 @@ export function* deckArraySteps(
     chunk,
     rings.map((r, i) => ({ s: r.frame.s, sides: sides[i] })),
   );
-  yield* paintTriangles(marks, rings, sections, point, pos, col);
-  const stationTangents = rings.flatMap((r, i) => (r.isStation ? [tangents[i]] : []));
+  yield* paintTriangles(marks, rings, sections, pos, col);
+  const stationTangents = rings.flatMap((r) => (r.isStation ? [r.t] : []));
   const piers = pierTriangles(chunk, place, stationTangents, pos, col);
   const index = new Uint32Array(solid.length / 3);
   for (let i = 0; i < index.length; i++) index[i] = i;
@@ -243,45 +294,178 @@ export function* deckArraySteps(
     collider: { position: new Float32Array(solid), index },
     piers,
     marks,
+    rings,
+    sides,
   };
 }
 
-/** The sides of every ring as the other loaded decks leave them (all rails up without a context). */
-function* ringSides(chunk: XwChunk, rings: Ring[], context: DeckContext | null): Generator<RingSides> {
-  const open = { rail: true, joined: null, otherLaneEdge: null };
-  if (!context) {
-    for (const _ of rings) yield { left: open, right: open };
-    return;
-  }
-  const deck = { half: carriagewayWidth(chunk) / 2, shoulderL: chunk.shoulderL, shoulderR: chunk.shoulderR };
-  const plane = planeAt(rings[0].frame.lon, rings[0].frame.lat);
-  for (let i = 0; i < rings.length; i++) {
-    const r = rings[i];
-    const isFirst = i === 0;
-    const isLast = i === rings.length - 1;
-    let h: number;
-    if (isFirst) h = chunk.h0;
-    else if (isLast) h = chunk.h1;
-    else {
-      const [ax, ay] = plane.toXY(rings[i - 1].frame.lon, rings[i - 1].frame.lat);
-      const [bx, by] = plane.toXY(rings[i + 1].frame.lon, rings[i + 1].frame.lat);
-      h = Math.atan2(by - ay, bx - ax);
-    }
-    yield context.index.sides(chunk.run, r.frame.lon, r.frame.lat, r.frame.z, h, deck);
-  }
+/** Twice the area of a triangle (the length of its edges' cross product). */
+function triangleArea2(a: number[], b: number[], c: number[]): number {
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const uz = b[2] - a[2];
+  const vx = c[0] - a[0];
+  const vy = c[1] - a[1];
+  const vz = c[2] - a[2];
+  return Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+}
+
+/** Whether some of a ring's road shows (its two ends do not meet). */
+const isOpen = (sd: RingSides) => sd.left.reach + sd.right.reach > 1e-3;
+const hasSeam = (sd: RingSides) => sd.left.seam !== null || sd.right.seam !== null;
+
+/** A ring on the straight piece between two rings (the slab's face there, unchanged). */
+function ringBetween(a: DeckRing, b: DeckRing, tau: number, alongChord: boolean): DeckRing {
+  const lerp = (x: number, y: number) => x + (y - x) * tau;
+  const c = a.c.clone().lerp(b.c, tau);
+  // Through a master's edge vertex the ring runs square to the chord: the vertex, the chord's
+  // perpendicular foot, lies on its cross-section line exactly.
+  const t = alongChord
+    ? new Vector3(b.c.x - a.c.x, 0, b.c.z - a.c.z).normalize()
+    : a.t.clone().lerp(b.t, tau).normalize();
+  const f = a.frame;
+  const g = b.frame;
+  return {
+    c,
+    t,
+    groundY: lerp(a.groundY, b.groundY),
+    frame: {
+      s: lerp(f.s, g.s),
+      lon: lerp(f.lon, g.lon),
+      lat: lerp(f.lat, g.lat),
+      z: lerp(f.z, g.z),
+      grade: lerp(f.grade, g.grade),
+      bank: lerp(f.bank, g.bank),
+      ground: lerp(f.ground, g.ground),
+    },
+    isStation: false,
+  };
 }
 
 /**
- * The plan's lines and 導流帯 as thin white quads PAINT_LIFT over the slab, between the rings they
- * span (positions linear between two rings, as the slab's faces are). A step per line or 導流帯 (the
- * FrameWork splits there), and the rings are found by bisection: the linear scans made a chunk's
- * paint one 5–12 ms slice (review of P3).
+ * More rings where decks are made one (expresswayMerge.ts), between two rings of the chunk:
+ * - one through each of the master's edge vertices where this deck is cut at its edge, so the cut
+ *   follows the master's edge polyline vertex for vertex (a straight cut between the rings' own seam
+ *   points left gaps and overlaps of up to ~6 cm on curves: the sagitta of the two decks' different
+ *   ring spacings);
+ * - where the road closes (its visible width passes zero), one ring whose road ends on the master's
+ *   edge, so the triangles beside it end there;
+ * - where a 壁高欄 starts or stops, two rings at one place, the wall's state before and after, so it
+ *   ends square instead of sloping down over the whole interval (the ramp of two walls crossing at a
+ *   nose; and a 0.36 m step against the master's road beside it).
+ * Events are found by bisection to 1/4096 of the interval (≤ 5 mm).
+ *
+ * The new rings lie on the straight pieces between the old ones: the slab's face, and so the
+ * graph's surfaceY along the centre (expresswayRoads.ts has a point at the old rings only), does
+ * not change.
+ */
+function refineRings(
+  own: ChunkRings,
+  baseSides: RingSides[],
+  merge: DeckMerge,
+): { rings: DeckRing[]; sides: RingSides[]; closing: Set<number> } {
+  const base = own.rings;
+  const rings: DeckRing[] = [base[0]];
+  const sides: RingSides[] = [baseSides[0]];
+  const closing = new Set<number>();
+  const edgeCache = new Map<string, Vector3[][]>();
+  const edgesOf = (run: string, edge: 1 | -1) => {
+    const key = `${run}|${edge}`;
+    let lines = edgeCache.get(key);
+    if (!lines) {
+      lines = merge.edgeLines(run, edge, own);
+      edgeCache.set(key, lines);
+    }
+    return lines;
+  };
+  for (let i = 0; i + 1 < base.length; i++) {
+    const a = base[i];
+    const b = base[i + 1];
+    const sa = baseSides[i];
+    const sb = baseSides[i + 1];
+    type Extra = { tau: number; ring: DeckRing; sides: RingSides; isClosing: boolean };
+    const extra: Extra[] = [];
+    const sidesAt = (tau: number) => merge.sides(own, ringBetween(a, b, tau, false));
+    /** The last τ where `holds` is as at a and the first where it is as at b. */
+    const bisect = (holds: (sd: RingSides) => boolean) => {
+      let lo = 0;
+      let hi = 1;
+      let atLo = sa;
+      let atHi = sb;
+      const want = holds(sa);
+      for (let k = 0; k < 12; k++) {
+        const mid = (lo + hi) / 2;
+        const sd = sidesAt(mid);
+        if (holds(sd) === want) [lo, atLo] = [mid, sd];
+        else [hi, atHi] = [mid, sd];
+      }
+      return { lo, hi, atLo, atHi };
+    };
+    const masters = new Map<string, { run: string; edge: 1 | -1 }>();
+    for (const sd of [sa, sb])
+      for (const s of [sd.left, sd.right])
+        if (s.seamOf) masters.set(`${s.seamOf.run}|${s.seamOf.edge}`, s.seamOf);
+    const ex = b.c.x - a.c.x;
+    const ez = b.c.z - a.c.z;
+    const len2 = ex * ex + ez * ez;
+    for (const { run, edge } of masters.values()) {
+      for (const line of edgesOf(run, edge))
+        for (const e of line) {
+          const isAfterA = (e.x - a.c.x) * a.t.x + (e.z - a.c.z) * a.t.z > 0.01;
+          const isBeforeB = (e.x - b.c.x) * b.t.x + (e.z - b.c.z) * b.t.z < -0.01;
+          if (!isAfterA || !isBeforeB || len2 < 1e-9) continue;
+          const tau = ((e.x - a.c.x) * ex + (e.z - a.c.z) * ez) / len2;
+          const isInside = tau > 1e-3 && tau < 1 - 1e-3;
+          if (!isInside) continue;
+          const ring = ringBetween(a, b, tau, true);
+          extra.push({ tau, ring, sides: merge.sides(own, ring), isClosing: false });
+        }
+    }
+    const closes = isOpen(sa) !== isOpen(sb) && (hasSeam(sa) || hasSeam(sb));
+    if (closes) {
+      const { hi, atHi, lo, atLo } = bisect(isOpen);
+      // The open one of the two: its road is a sliver whose corners meet at the seam.
+      const [tau, sd] = isOpen(atHi) ? [hi, atHi] : [lo, atLo];
+      extra.push({ tau, ring: ringBetween(a, b, tau, false), sides: sd, isClosing: true });
+    }
+    for (const key of ["left", "right"] as const) {
+      const hasWall = (sd: RingSides) => sd[key].wall !== null;
+      const switches = hasWall(sa) !== hasWall(sb);
+      if (!switches) continue;
+      const { lo, hi, atLo, atHi } = bisect(hasWall);
+      const tau = (lo + hi) / 2;
+      const ring = ringBetween(a, b, tau, false);
+      // Both at one place: the faces between them are the wall's square end.
+      extra.push({ tau: tau - 1e-9, ring, sides: atLo, isClosing: false });
+      extra.push({ tau: tau + 1e-9, ring, sides: atHi, isClosing: false });
+    }
+    let last = -1;
+    for (const x of extra.toSorted((p, q) => p.tau - q.tau)) {
+      const isRepeat = x.tau - last < 1e-4 && !x.isClosing && x.ring !== rings[rings.length - 1];
+      if (isRepeat) continue;
+      last = x.tau;
+      if (x.isClosing) closing.add(rings.length);
+      rings.push(x.ring);
+      sides.push(x.sides);
+    }
+    rings.push(b);
+    sides.push(sb);
+  }
+  return { rings, sides, closing };
+}
+
+/**
+ * The plan's lines and 導流帯 as thin white quads PAINT_LIFT over the road, between the rings they
+ * span (positions linear between two rings, as the slab's faces are). The road's top at offset u on
+ * a ring is the polyline of its three road corners; past a cut deck's road end the master's face
+ * continues level with the seam, which a 導流帯 crosses. A step per line or 導流帯 (the FrameWork
+ * splits there), and the rings are found by bisection: the linear scans made a chunk's paint one
+ * 5–12 ms slice (review of P3).
  */
 function* paintTriangles(
   marks: XwMarkingPlan,
-  rings: Ring[],
-  sections: number[][][],
-  point: (i: number, u: number, v: number) => number[],
+  rings: DeckRing[],
+  sections: Corners[],
   pos: number[],
   col: number[],
 ): Generator<void> {
@@ -298,21 +482,27 @@ function* paintTriangles(
     }
     return Math.min(lo, ss.length - 2);
   };
-  const ringAtS = (s: number) => {
+  // Each ring's road corners as (offset, height over the centre): offsets along its own line.
+  const profile = sections.map((corners, i) => {
+    const r = rings[i];
+    return corners.slice(0, 3).map((p) => ({
+      u: (p[0] - r.c.x) * r.t.z - (p[2] - r.c.z) * r.t.x,
+      v: p[1] - r.c.y,
+    }));
+  });
+  const heightAt = (i: number, u: number) => {
+    const [a, b, c] = profile[i];
+    if (u <= a.u) return a.v;
+    if (u >= c.u) return c.v;
+    const [p, q] = u <= b.u ? [a, b] : [b, c];
+    return p.v + ((q.v - p.v) * (u - p.u)) / (q.u - p.u || 1);
+  };
+  const at = (s: number, u: number) => {
     const i = below(s);
     const t = Math.min(1, Math.max(0, (s - ss[i]) / (ss[i + 1] - ss[i] || 1)));
-    return { i, t };
-  };
-  // The road's top is section corner 0 → 1 (flat across unless banked): its height at offset u.
-  const at = (s: number, u: number) => {
-    const { i, t } = ringAtS(s);
-    const hw = sections[i][1][0];
-    const v0 = sections[i][0][1] + ((sections[i][1][1] - sections[i][0][1]) * (u + hw)) / (2 * hw);
-    const v1 =
-      sections[i + 1][0][1] + ((sections[i + 1][1][1] - sections[i + 1][0][1]) * (u + hw)) / (2 * hw);
-    const a = point(i, u, v0 + PAINT_LIFT);
-    const b = point(i + 1, u, v1 + PAINT_LIFT);
-    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const a = ringPoint(rings[i], u, heightAt(i, u) + PAINT_LIFT);
+    const b = ringPoint(rings[i + 1], u, heightAt(i + 1, u) + PAINT_LIFT);
+    return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t];
   };
   const quad = (p: number[][], colour: number[]) => {
     pos.push(...p[0], ...p[3], ...p[2], ...p[0], ...p[2], ...p[1]);
@@ -429,37 +619,6 @@ function pierTriangles(
     });
   }
   return boxes;
-}
-
-type Ring = { c: Vector3; groundY: number; frame: SurfaceFrame; isStation: boolean };
-
-/** The cross-section at fraction t from station offset o to q (t = 0: the station itself). */
-function ringAt(chunk: XwChunk, place: GeoToLocal, o: number, q: number, t: number): Ring {
-  const st = chunk.st;
-  const s = st[o + ST.s] + (st[q + ST.s] - st[o + ST.s]) * t;
-  // The station itself is read as stored (no interpolation error at the seams between chunks).
-  const f = t === 0 ? frameAt(st, st[o + ST.s]) : frameAt(st, s);
-  const z = t === 0 ? st[o + ST.z] : f.z;
-  const lon = t === 0 ? st[o + ST.lon] : f.lon;
-  const lat = t === 0 ? st[o + ST.lat] : f.lat;
-  return {
-    c: place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, z)),
-    groundY: place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, f.ground)).y,
-    frame: { ...f, lon, lat, z },
-    isStation: t === 0,
-  };
-}
-
-/** The local-frame direction of a compiled heading at station i (a short step along it, mapped). */
-function headingTangent(chunk: XwChunk, i: number, heading: number, place: GeoToLocal): Vector3 {
-  const o = i * STATION_STRIDE;
-  const lon = chunk.st[o + 1];
-  const lat = chunk.st[o + 2];
-  const step = 1e-5;
-  const kx = Math.cos((lat * Math.PI) / 180);
-  const p = place.frame.toLocal(lat, lon, 0);
-  const q = place.frame.toLocal(lat + Math.sin(heading) * step, lon + (Math.cos(heading) * step) / kx, 0);
-  return new Vector3(q.x - p.x, 0, q.z - p.z).normalize();
 }
 
 type Built = {
@@ -716,12 +875,26 @@ export class ExpresswayDecks {
     return p;
   }
 
-  private async chunksAround(meta: XwMeta, lat: number, lon: number): Promise<XwChunk[]> {
+  /** The listed tiles of the 3 × 3 around a point (z14, ~2 km: every deck near it is in one). */
+  private tilesNear(meta: XwMeta, lat: number, lon: number): Promise<Array<XwTile | null>> {
     const listed = new Set(meta.tiles);
     const [cx, cy] = tileKey(lon, lat, Z).split("-").map(Number);
     const keys: string[] = [];
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) keys.push(`${cx + dx}-${cy + dy}`);
-    const tiles = await Promise.all(keys.filter((k) => listed.has(k)).map((k) => this.loadTile(k)));
+    return Promise.all(keys.filter((k) => listed.has(k)).map((k) => this.loadTile(k)));
+  }
+
+  /**
+   * The tiles round a chunk (scripts/expressway.ts files a chunk under its middle station, at most
+   * 150 m from any part of it, so every chunk it shares a surface with is in one of them).
+   */
+  private async tilesAround(meta: XwMeta, c: XwChunk): Promise<void> {
+    const mid = Math.floor(c.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
+    await this.tilesNear(meta, c.st[mid + ST.lat], c.st[mid + ST.lon]);
+  }
+
+  private async chunksAround(meta: XwMeta, lat: number, lon: number): Promise<XwChunk[]> {
+    const tiles = await this.tilesNear(meta, lat, lon);
     // A chunk is in one tile only; by id all the same, so a repeat could never be built twice.
     const byId = new Map<string, XwChunk>();
     for (const c of tiles.flatMap((t) => t?.chunks ?? [])) if (!byId.has(c.id)) byId.set(c.id, c);
@@ -784,6 +957,9 @@ export class ExpresswayDecks {
       // One chunk that fails (bad data, a bug) must not stop the others nor hold the car: it is
       // left out from then on, with one warning.
       try {
+        // The decks it is made one with must be known first, or its slab would depend on which
+        // tiles happened to be read (and its master's rails on whether it had been built).
+        await this.tilesAround(meta, c);
         const result = await work.run(deckArraySteps(c, place, this.bank, { index: this.index }));
         await yieldIfSpent();
         const built = work.measure(() => this.publish(c, result, frame));
