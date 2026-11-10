@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-10T14:00:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T00:30:00Z }
   - { by: process:vitest, at: 2026-11-10T14:40:00Z }
   - { by: process:tsc, at: 2026-11-10T14:40:00Z }
   - { by: claude-fable/review, at: 2026-11-10T14:20:00Z }
@@ -21,7 +22,7 @@ sources:
     resource: src/world/roadClass.ts、src/world/laneChange.ts、src/world/roadMarkings.ts、src/world/roads.ts、src/world/roadSurface.ts、src/world/regulations.ts
     title: 実装
   - id: invariance
-    resource: tests/roadModelInvariance.test.ts（入力は tests/fixtures/sign-placement の凍結タイル）
+    resource: tests/roadModelInvariance.test.ts（入力は tests/fixtures/sign-placement の凍結タイル、指紋は tests/fixtures/road-model）
     title: 変更前のコードで取ったスナップショットとの一致
   - id: tests
     resource: tests/roadClass.test.ts、tests/roadModel.test.ts、tests/roadMarkings.test.ts、tests/sourceCode.ts
@@ -103,11 +104,22 @@ GSI の rdCtg=3 / motorway=1（`kind` の値 `highway`）を名指ししてい�
 
 比べたもの: Worker の返信全体（グラフのスナップショット・詰めた規制・診断）、車線の計算（laneCentre・laneOffset・laneBand・laneOfOffset・lanesFor・規制速度）、40 m 格子での nearest と carriagewaysAt、RoadSurface の全メッシュの頂点・aStreet・uv・索引（測量あり／なし）、24 本の経路（徒歩 4 本）、自動運転、交通 AI の車線位置。
 
-**訂正（2026-11-10 レビュー）**: 当初「自動運転 6 走行」と書いたが、3 地点 18 走行のうち実際に走ったのは 7 で、9 は経路の点が 1 個（車が目標の上）で AutoDriver.pathAt が例外を出し、2 は経路が立たなかった。起点を順に試し、走れない起点を飛ばして各地点 6 走行（計 18、飛ばした起点は 7・10・10）を実際に 40 秒走らせる形に直した。uv 属性はハッシュに入っていなかったので足した。
+**訂正（2026-11-10 レビュー）**: 当初「自動運転 6 走行」と書いたが、3 地点 18 走行のうち実際に走ったのは 7 で、9 は経路の点が 1 個（車が目標の上）で AutoDriver.pathAt が例外を出し、2 は経路が立たなかった。起点を順に試し、走れない起点を飛ばして各地点 6 走行を実際に 40 秒走らせる形に直した。uv 属性はハッシュに入っていなかったので足した。
+
+**訂正（2026-11-11、CI の Linux で失敗）**: macOS で通ったハッシュが GitHub Actions（Linux x64）で wire・search・surface・routes だけ食い違った。手元で入力の全座標を 1 ulp 動かして再現し、原因を 4 つに分けた。
+
+1. Worker の返信を生の double のまま JSON にしていた（wire）。整数と 1e-15 の違い（停止線の `at` が 0 か微小値か）も型の違いとして出た。
+2. 規制タイルの線をそのまま道路にしたので、同じ道路の別の記録（上下線・重なる区間）が重なる区間になり、等距離の 2 区間のどちらを取るか（nearest、横断歩道の割り当て）が最下位ビットで決まっていた（wire・search）。
+3. 経路と自動運転の起点・目標を区間の中点に置いたので、起点と目標が同じ区間で一致する場合に、進むか転回するかが同点になった（routes）。
+4. 区間の頂点にちょうど乗った標本（`graph.sample` の `cum[i] < d`）がどちらの辺の向きを取るかが最下位ビットで決まり、そこで描く帯と計画する車線位置が変わる（surface・routes の車線）。これはゲームのコード自体の性質で、P2 の前後で同じ。
+
+対処: 1 は数値を刻みの整数にした（m は 1e-3、単位ベクトルと比は 1e-6、経緯度は 1e-9°、-0 は 0）。2 は他の線に 1.5 m 以内で沿う線を入力から除いた（道路は約 1,100 → 330〜410 区間）。3 は起点を区間の 1/4、目標を 3/4 に置いた（走れない起点は 0 になった）。4 は丸めでは消えないので、路面の頂点・aStreet・uv と経路の点・車線位置は和・絶対値の和・二乗和の「指紋」（`tests/fixtures/road-model/fingerprints.json`）にして、絶対 0.5＋相対 1e-9 の許容で比べる。頂点の数・索引・経路の区間列・車線番号は今まで通りハッシュで比べる。最後のテストが入力の全座標を 1 ulp 動かして、ハッシュも指紋も変わらないことを確かめる（指紋の差は相対 1e-9 以内に収まった）。
+
+基準は origin/main 1305f52 の src に戻して 2 回取り（一致）、P2 のコードで照合して一致した（指紋もビット単位で同じ）。Linux での実行は、Docker のデーモンが起動できず手元では確かめていない（CI が確かめる）。
 
 カバーしない領域: 信号の制御機と歩行者灯（trafficControl.ts のうち路面が読む接近路以外）、案内標識（guidePlan.ts）、歩道（sidewalks.ts）、街灯（streetLights.ts）、水面と橋（water.ts）、オービス・可搬オービス（orbis.ts・portableOrbis.ts）、パトロールと追跡（policePatrol.ts・pursuitDirector.ts）。これらはそれぞれのテスト（signalPlacement・guideSigns・sidewalks・streetLights・water・orbis・pursuit など）が固定している。
 
-スナップショットを更新してよいのは、道路モデルの出力を変えるつもりの変更（P8 の車線と幅員の補正など）だけで、理由をコミットに書き、前後の行を比べる。不一致のときは行を `.qa/road-model/<地点>/<観点>.txt` に書き出す（git 管理外）。
+スナップショットを更新してよいのは、道路モデルの出力を変えるつもりの変更（P8 の車線と幅員の補正など）と、行の作り方の変更（上の丸め）だけ。理由をコミットに書き、前後の行を比べる。行の作り方を変えたときは基準を変更前のコードから取り直す（`vitest -u` と `ROAD_MODEL_UPDATE=1`）。不一致のときは行を `.qa/road-model/<地点>/<観点>.txt` に書き出す（git 管理外）。
 
 落とし穴: 自動運転は操作の探索を壁時計で 4 ms に打ち切る（PLAN_MS）ので、同じコードでも走行のハッシュが回ごとに変わった。テストでは `performance.now` を呼ぶたびに 0.05 ms 進む時計に差し替えて決定的にした（変更前のコードで 2 回取って一致を確認）。
 
