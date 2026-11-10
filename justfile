@@ -125,13 +125,25 @@ make-textures:
     uv run scripts/textures/police_vehicle_textures.py
     uv run scripts/textures/tokyo_station_textures.py
 
-# 道路標識の図柄と catalog.json を作り直し、群ごとのコンタクトシートを書き出す
+# 道路標識の図柄を作り直し（catalog.json と食い違えば止まる）、群ごとのコンタクトシートを書き出す
 make-sign-textures sheet="${TMPDIR:-/tmp}/signs":
     uv run scripts/textures/sign_textures.py --sheet {{ sheet }}
 
 # 文字や車線が変わる道路標識を 1 枚描く（例: just render-sign 327の7-A --lanes "left+through,through,right" -o out.png）
 render-sign *args:
     uv run scripts/textures/sign_textures.py render {{ args }}
+
+# 道路標識の定義（src/signs/defs）を検査し、assets/signs/registry.json と catalog.json に書き出す
+make-sign-registry:
+    pnpm exec tsx scripts/signs.ts
+
+# 道路標識の定義のうち、未描画の番号と、図柄はあるがゲームが配置していない番号を一覧する
+show-sign-coverage:
+    pnpm exec tsx scripts/signs.ts coverage
+
+# 標識令の別表第一（番号・種類・別表第二の図）を e-Gov 法令 API から assets/signs/law-table.json に書き出す（版は scripts/sign-law-table.ts に固定）
+fetch-sign-law-table:
+    pnpm exec tsx scripts/sign-law-table.ts
 
 # 大型路線バス（ノンステップ）を Blender CLI でモデリングし public/models/bus.glb を書き出す
 make-bus-model:

@@ -141,6 +141,8 @@ sources:
 
 `assets/signs/catalog.json` には、別表第一の全番号と法定外 7 種を 1 エントリずつ載せた。描いていない番号も `texture: null` と理由を付けて残している。図柄の生成元は `scripts/textures/sign_textures.py` と `scripts/textures/signs/` である。[^catalog-run]
 
+**追記（2026-11-10）**: 番号ごとの板・図柄・変種の定義は `src/signs/defs/*.ts` に移した。catalog.json は、そこから `just make-sign-registry` が同じ形・同じバイトで書く（[sign-system.md](sign-system.md)）。
+
 ## 法令の取り方
 
 - 本文は API v2 の `law_data/335M50004002003` で JSON として取った。[^meirei]

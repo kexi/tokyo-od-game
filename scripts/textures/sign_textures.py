@@ -11,11 +11,12 @@
 """Procedural texture generator for Tokyo Open Drive traffic signs.
 
 Draws the 道路標識 of 道路標識、区画線及び道路標示に関する命令 別表第一 / 別表第二 (e-Gov, 2026-09-01
-施行版) and writes assets/signs/textures/*.png plus assets/signs/catalog.json (every 別表第一
-number, drawn or not). The first 24 designs live in this file; the rest are in signs/ (one module
-per group, shared canvas and pictograms). Noto Sans JP is the only font, pinned by hash.
+施行版) and writes assets/signs/textures/*.png, then checks that assets/signs/catalog.json (written by
+scripts/signs.ts from src/signs/defs) lists exactly the textures drawn here. The first 24 designs
+live in this file; the rest are in signs/ (one module per group, shared canvas and pictograms).
+Noto Sans JP is the only font, pinned by hash.
 
-    uv run scripts/textures/sign_textures.py                      # all textures + catalog.json
+    uv run scripts/textures/sign_textures.py                      # all textures, catalog.json checked
     uv run scripts/textures/sign_textures.py --sheet DIR          # … and contact sheets in DIR
     uv run scripts/textures/sign_textures.py render 327の7-A --lanes "left+through,through,right" -o a.png
     uv run scripts/textures/sign_textures.py render 501 --text "この先200m" -o b.png
@@ -1068,7 +1069,15 @@ def generate(sheet_dir: Path | None = None) -> None:
             )
         )
     data = catalog.build(written)
-    CATALOG_PATH.write_text(catalog.dumps(data))
+    # catalog.json is written by scripts/signs.ts from src/signs/defs (just make-sign-registry); here
+    # it is only checked. Why not write it here too: two writers let a change to this file's tables
+    # land in catalog.json without the definitions, which are the source since G1a.
+    is_stale = catalog.dumps(data) != CATALOG_PATH.read_text(encoding="utf-8")
+    if is_stale:
+        raise SystemExit(
+            f"{CATALOG_PATH}: the textures drawn here disagree with src/signs/defs. Update the definitions "
+            "and run `just make-sign-registry` (knowledge/sign-system.md)"
+        )
     print(
         json.dumps(
             {"event": "catalog", "file": str(CATALOG_PATH), "signs": len(data["signs"]), "coverage": data["coverage"]},

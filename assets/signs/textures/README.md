@@ -4,7 +4,7 @@ Tokyo Open Drive の道路標識の図柄です。標識板は `public/models/si
 すべて `scripts/textures/sign_textures.py` と `scripts/textures/signs/` が手続き生成します。
 外部画像と AI 生成は使っていません。
 
-どの番号がどのファイル・板・寸法に当たるかの一覧は `assets/signs/catalog.json` です。
+どの番号がどのファイル・板・寸法に当たるかの定義は `src/signs/defs/*.ts` で、`assets/signs/catalog.json`（と `registry.json`）はそこから `just make-sign-registry` が書き出します（knowledge/sign-system.md）。
 別表第一の全番号を収めており、描いていない案内標識も `texture: null` と理由付きで載せています。
 
 ## 根拠
@@ -12,7 +12,7 @@ Tokyo Open Drive の道路標識の図柄です。標識板は `public/models/si
 - 様式（形・色・寸法・記号）は「道路標識、区画線及び道路標示に関する命令」別表第二（e-Gov、2026-09-01 施行版）によります。
   - 図は e-Gov API の添付ファイルで確認しました。各エントリの `figure` に URL があります。
   - 色は備考一(三)、縁・縁線の太さは備考一(五)8 によります。
-- 番号と種類は別表第一から取りました（`scripts/textures/signs/law_table.py`）。
+- 番号と種類は別表第一から取りました（`assets/signs/law-table.json`、`scripts/sign-law-table.ts` が e-Gov 法令 API から書く）。
 - 補助標識の寸法は、別表第二の図が e-Gov では判読できないため、警察庁「交通規制基準」によります。
   - 横 60 cm です。
   - 縦は矢印 1 段で 18 cm、文字 1 段で 22 cm、2 段で 32 cm、3 段で 44 cm です。
@@ -34,7 +34,7 @@ Tokyo Open Drive の道路標識の図柄です。標識板は `public/models/si
 ## 再生成
 
 ```bash
-# 全テクスチャと catalog.json
+# 全テクスチャ（catalog.json は書かず、定義と食い違えば止まる。catalog.json は just make-sign-registry）
 uv run scripts/textures/sign_textures.py
 # 確認用のコンタクトシート（群ごと、実寸比で表示）
 uv run scripts/textures/sign_textures.py --sheet /tmp/signs

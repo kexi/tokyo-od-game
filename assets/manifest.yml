@@ -460,7 +460,7 @@ assets:
     source: 自作（手続き生成）。様式・色・寸法は道路標識、区画線及び道路標示に関する命令 別表第二（e-Gov、2026-09-01 施行版）による。
     license: repo
     used_by: [src/world/signs.ts]
-    inputs: [noto-sans-jp]
+    inputs: [noto-sans-jp, sign-law-table]
     docs: [assets/signs/textures/README.md, knowledge/road-markings-and-signs.md]
     notes: 最初の 24 種は agy への 2 回目の委譲で作り、残りは Claude Code が scripts/textures/signs/ に群ごとに足した。
 
@@ -741,12 +741,52 @@ assets:
     purpose: 別表第一の全番号と法定外 7 種について、図柄のファイル・板の形・寸法・根拠（描いていない番号は理由）を引く表。
     kind: data
     files: [assets/signs/catalog.json]
-    generator: { script: scripts/textures/sign_textures.py, recipe: make-sign-textures }
+    generator: { script: scripts/signs.ts, recipe: make-sign-registry }
     made_by: procedural
     source: 道路標識、区画線及び道路標示に関する命令（e-Gov 法令 API、2026-09-01 施行版）の別表第一・第二を読んで作った表
     license: repo
     used_by: [src/world/signs.ts, src/world/coverage.ts]
-    docs: [knowledge/road-markings-and-signs.md]
+    inputs: [sign-law-table]
+    docs: [knowledge/sign-system.md, knowledge/road-markings-and-signs.md]
+    notes: >-
+      G1a から定義の正は src/signs/defs/*.ts で、scripts/signs.ts が registry から同じ形・同じバイトで書く
+      （tests/signRegistry.test.ts が保証）。sign_textures.py は書かず、自分の表と食い違えば止まる（G1b まで）。
+      利用側がレジストリへ移ったら消す。
+
+  - id: sign-registry
+    name: 道路標識レジストリ
+    purpose: >-
+      道路標識の定義（src/signs/defs）を検査して書き出したもの。番号ごとの板・図柄・変種・車線の版・
+      ゲームの標識種別と、別表第二の図。図柄（Pillow）と板（Blender）の生成の入力にする予定（G1b）。
+    kind: data
+    files: [assets/signs/registry.json]
+    generator: { script: scripts/signs.ts, recipe: make-sign-registry }
+    made_by: procedural
+    source: src/signs/defs/*.ts（catalog.json から機械変換した定義）と sign-law-table
+    license: repo
+    used_by: []
+    inputs: [sign-law-table]
+    docs: [knowledge/sign-system.md]
+    status: unused
+    notes: 古いとテスト（tests/signRegistry.test.ts）が落ちる。定義を直したら just make-sign-registry。
+
+  - id: sign-law-table
+    name: 標識令 別表第一の番号表
+    purpose: 別表第一の全番号（範囲は展開）の種類・群・別表第二の図のファイル名。標識の定義が全番号を覆うことをこの表で検査する。
+    kind: data
+    files: [assets/signs/law-table.json]
+    generator: { script: scripts/sign-law-table.ts, recipe: fetch-sign-law-table }
+    made_by: procedural
+    source: >-
+      e-Gov 法令 API v2 law_data（道路標識、区画線及び道路標示に関する命令、
+      版 335M50004002003_20260901_508M60000802003）の別表第一・第二の表を読んだもの
+    license: repo
+    used_by: []
+    docs: [knowledge/sign-system.md]
+    notes: >-
+      法令の表の写し（著作権法第 13 条により権利の目的とならない）。scripts/textures/signs/law_table.py もこれを読む。
+      手で直さない（生成器の出力そのもの）。125-B の図は sign-law-table.ts の FIGURE_OVERRIDES で旧 law_table.py
+      どおり null にしている（e-Gov の表では S35F03102010003-087.jpg。G1a の直後に撤去、knowledge/sign-system.md）。
 
   - id: landmark-placements
     name: ランドマークの配置と点灯予定

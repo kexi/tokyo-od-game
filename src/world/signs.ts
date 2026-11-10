@@ -117,7 +117,8 @@ const BY_ID: Partial<Record<number, string>> = {
   [SIGN.schoolRoute]: "x-school-route",
 };
 
-function design(type: number, value: number, lanes?: readonly LaneDirection[][]): Design | null {
+/** The artwork and plate of a placed sign (exported for tests/signRegistry.test.ts). */
+export function design(type: number, value: number, lanes?: readonly LaneDirection[][]): Design | null {
   const id = BY_ID[type];
   if (id) return catalogued(id);
   switch (type) {

@@ -469,6 +469,10 @@ export const LOG_EVENTS = {
     via: z.record(z.string(), z.string()),
   }),
   guide_signs_written: info({ tiles: count, roads: count, dests: count, places: count, chars: count }),
+  /** scripts/sign-law-table.ts: 別表第一 read from e-Gov at the pinned revision. */
+  sign_law_table_written: info({ file: z.string(), revision: z.string(), signs: count }),
+  /** scripts/signs.ts: the sign definitions written out as registry.json and catalog.json. */
+  sign_registry_written: info({ files: z.array(z.string()), signs: count, drawn: count, lanes: count }),
   osm_read: info({ nodes: count, ways: count, relations: count, coords: count }),
   destinations_written: info({
     file: z.string(),
