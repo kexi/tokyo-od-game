@@ -207,6 +207,8 @@ export const LOG_EVENTS = {
   road_network_failed: failedWith(),
   route_tile_failed: failedWith({ key: z.string() }),
   water_tile_failed: failedWith({ key: z.string() }),
+  /** public/data/expressway (meta.json or a tile) could not be loaded: no decks there. */
+  expressway_tile_failed: failedWith({ key: z.string() }),
 
   // ---------- the world as built ----------
   road_network_prepared: info({
@@ -232,6 +234,15 @@ export const LOG_EVENTS = {
     signs: count,
   }),
   pavements_built: info({ wards: z.array(z.string()), polygons: count }),
+  /** Expressway decks (render only, P1) built or dropped around the player (expresswayDeck.ts). */
+  expressway_decks_built: info({
+    chunks: count,
+    built: count,
+    dropped: count,
+    cpuMs: z.number(),
+    maxSliceMs: z.number(),
+    durationMs: z.number(),
+  }),
   frame_recentered: info({
     lat: z.number(),
     lon: z.number(),
@@ -491,6 +502,29 @@ export const LOG_EVENTS = {
   station_page_unreadable: info({ code: z.string(), name: z.string() }),
   levels_missing: info({ day: z.string() }),
   water_levels_written: info({ file: z.string(), gauges: count, tidal: count, bay: z.unknown() }),
+  // scripts/expressway.ts (the expressway compiler, 設計書 4)
+  expressway_osm_read: info({ ways: count, universeWays: count, nodes: count, junctions: count }),
+  expressway_planned: info({ chains: count, runs: count, wanted: count, needed: count, crossings: count }),
+  expressway_dem_ready: info({ tiles: count, fetched: count }),
+  expressway_objects_read: info({ roads: count, rails: count }),
+  /** A run the compiler could not satisfy, or satisfied only by a fallback (allowed: in the allowlist). */
+  expressway_diagnostic: warning({
+    run: z.string(),
+    kind: z.string(),
+    detail: z.string(),
+    allowed: z.boolean(),
+  }),
+  expressway_written: info({
+    range: z.string(),
+    tiles: count,
+    runs: count,
+    chunks: count,
+    stations: count,
+    bytes: count,
+    diagnostics: count,
+    unsolved: count,
+    durationS: z.number(),
+  }),
 } as const;
 
 export type LogEvents = typeof LOG_EVENTS;

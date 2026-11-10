@@ -138,6 +138,8 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   const odblUrl = new URL(`${import.meta.env.BASE_URL}data/signals/LICENSE.txt`, location.href).href;
   const routesOdblUrl = new URL(`${import.meta.env.BASE_URL}data/routes/LICENSE.txt`, location.href).href;
   const destOdblUrl = new URL(`${import.meta.env.BASE_URL}data/destinations.LICENSE.txt`, location.href).href;
+  const expresswayOdblUrl = new URL(`${import.meta.env.BASE_URL}data/expressway/LICENSE.txt`, location.href)
+    .href;
   const jarticUrl = regs?.url ?? "https://www.jartic.or.jp/service/opendata/";
   const jarticSource = regs
     ? required("credits.jartic.source", (w) => ({
@@ -188,6 +190,7 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
   ${required("credits.gsi.vector", (w) => ({
     vector: link("https://github.com/gsi-cyberjapan/gsimaps-vector-experiment", w("credits.link.gsiVector")),
   }))}
+  ${required("credits.gsi.expressway")}
   ${text("credits.gsi.live")}</p>
 
   <h3>${text("credits.h.jartic")}</h3>
@@ -228,6 +231,13 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
     geofabrik: link("https://download.geofabrik.de/asia/japan/kanto.html", t("credits.link.geofabrik")),
   })}
   ${odbl(destOdblUrl)}</p>
+
+  <h3>${text("credits.h.expressway")}</h3>
+  <p>${osm()}
+  ${text("credits.expressway.extract", {
+    geofabrik: link("https://download.geofabrik.de/asia/japan/kanto.html", t("credits.link.geofabrik")),
+  })}
+  ${odbl(expresswayOdblUrl)}</p>
 
   <h3>${text("credits.h.models")}</h3>
   <p>${text("credits.models", {

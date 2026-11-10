@@ -1131,6 +1131,8 @@ export const zh: Messages = {
   "credits.gsi.vector":
     "道路中心线、宽度以及水域（河流、运河、海）的形状：来源 {vector}（经加工用于绘制路面、白线与人行横道，驱动 AI 车辆，判定交通违法，以及绘制水面、护岸与桥梁）。",
   "credits.gsi.live": "瓦片在游戏过程中实时加载，本游戏未打包或再分发这些瓦片。",
+  "credits.gsi.expressway":
+    "高架道路的路面高度：加工地理院瓦片（高程瓦片：基础地图信息数字高程模型）制作。这是本游戏以地表高程为约束设计的推算值，并非实际路面高度或测量成果。数据中也包含经加工的测点与桥墩处的地表高程（高程瓦片的平滑值）。",
   "credits.h.jartic": "交通管制（单行道、限速、人行横道、停止线、停车让行）",
   "credits.jartic.source":
     "来源：“交通管制信息”（公益财团法人日本道路交通情报中心）（{url}）（{used}使用），经加工制作。",
@@ -1153,6 +1155,9 @@ export const zh: Messages = {
   "credits.signals.cycle": "信号灯的周期（绿、黄、红的时长及各路口间的错开）由游戏设定，与实际信号灯不同。",
   "credits.h.guide": "指路标志（方向及方位）",
   "credits.h.destinations": "目的地列表（车站・名胜）",
+  "credits.h.expressway": "高架汽车专用道路（城市高速）",
+  "credits.expressway.extract":
+    "从 Geofabrik 的关东提取数据（{geofabrik}）中取出汽车专用道路的中心线、车道数、路线编号和出入口名称，并在《道路构造令》的范围内重新设计平面与纵断线形（data/expressway）后绘制。线形、高度与桥墩位置为游戏的推算，与实际结构不同。",
   "credits.destinations.extract":
     "从 Geofabrik 的关东提取数据（{geofabrik}）中取出 23 区内的铁路车站和带有 wikidata 的名胜，作为目的地列表（data/destinations.json）。",
   "credits.link.geofabrik": "Geofabrik 的关东提取数据",

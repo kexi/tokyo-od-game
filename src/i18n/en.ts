@@ -1184,6 +1184,8 @@ export const en: Messages = {
     "Road center lines and widths, and the shapes of the water (rivers, canals, sea): source {vector} (processed to draw the road surface, white lines and crosswalks, to drive the AI vehicles, to judge traffic violations, and to draw the water, embankments and bridges).",
   "credits.gsi.live":
     "The tiles are loaded live while you play; they are not bundled with or redistributed by this game.",
+  "credits.gsi.expressway":
+    "Road surface heights of the elevated roads: made by processing GSI Tiles (elevation tiles: the Fundamental Geospatial Data digital elevation model). They are estimates the game designed with the ground elevation as a constraint, not the real road heights or survey results. The ground elevations under the stations and piers (smoothed values of the elevation tiles) are included, processed, as well.",
   "credits.h.jartic":
     "Traffic regulations (one-way streets, speed limits, crosswalks, stop lines, stop signs)",
   "credits.jartic.source":
@@ -1209,6 +1211,9 @@ export const en: Messages = {
     "The signal cycles (the green, yellow and red times and the offsets between junctions) are the game's own and differ from the real signals.",
   "credits.h.guide": "Guide signs (destinations and directions)",
   "credits.h.destinations": "Destinations (stations and places)",
+  "credits.h.expressway": "Elevated urban expressways",
+  "credits.expressway.extract":
+    "The expressway center lines, lane counts, route numbers and entrance names are taken from Geofabrik’s Kanto extract ({geofabrik}), and their plan and vertical alignment are redesigned within the Road Structure Ordinance (data/expressway). The alignment, heights and pier positions are the game’s estimates and differ from the real structures.",
   "credits.destinations.extract":
     "The railway stations and the places with a wikidata tag in the 23 wards are taken from Geofabrik’s Kanto extract ({geofabrik}) as the list of destinations (data/destinations.json).",
   "credits.link.geofabrik": "Geofabrik's Kanto extract",
