@@ -21,7 +21,7 @@ okf_version: "0.2"
 - [信号灯器の宣言と施行令第3条の 3 層テスト](signal-system.md) - src/signals の灯器の型（横・縦・矢印段・歩行者）と取付、lampLayout を Blender とゲームで共用（LAMP_GAP の二重定義を解消）、第3条を定義と実行時の配置の投影でテスト、glb と lampLayout の同期検査（SHA-256）、矢印段は慣行で一次情報未確認、挙動不変の確かめ方と多視点レビュー 6 周の収束
 - [歩道と歩道橋のデータ](sidewalks-and-footbridges.md) - PLATEAU・地理院・OSM・道路施設点検 DB の比較と、PLATEAU 歩道部を縁石付きの舗装として描いた方法
 - [区画線・道路標示・道路標識（法令と JARTIC）](road-markings-and-signs.md) - 命令で確かめた色と設置条件、JARTIC コードの読み方、線が埋もれた・標識が上下逆になった落とし穴。案内標識（方面及び方向 108 系）のデータの網羅状況・表示地名と英語表記の規定・行き先の選び方・片持式の支柱（2026-10-05、「案内標識は描いていない」を訂正）
-- [道路標識の定義とレジストリ（src/signs）](sign-system.md) - 定義を src/signs/defs の 1 か所にし registry.json と catalog.json（変換前とバイト一致）を書き出す仕組み、e-Gov から読む別表第一の番号表、定義・図柄・ゲーム・番号表の突き合わせテスト、未描画 89・図柄あり未配置 119（just show-sign-coverage）、125-B の図の食い違い
+- [道路標識の定義とレジストリ（src/signs）](sign-system.md) - 定義を src/signs/defs の 1 か所にし registry.json と catalog.json（変換前とバイト一致）を書き出す仕組み、e-Gov から読む別表第一の番号表、定義・図柄・ゲーム・番号表の突き合わせテスト、未描画 89・図柄あり未配置 119（just show-sign-coverage）、125-B の図の食い違い。G1b: Pillow が registry.json の paint と規則で導いた車線の版を読み、345 枚をバイト一致で再生成（Pillow 12.3.0 固定）
 - [道路交通法の点数・反則金](road-traffic-law.md) - 一次情報で確認した値と 2026-09-01 の法定速度改正
 - [データ・ソフトウェアの利用条件](licensing-decisions.md) - 提供元ごとの規約と、それを受けて変えた設計
 - [東京都公式ホームページの RSS（報道発表）と、Y への転載を見送った理由](tokyo-gov-rss.md) - RSS 2.0 は報道発表の 1 本で CORS は無い。サイトの記事は CC BY ではなく、RSS の新着情報の再配布には事前の申請が要るので、Gemma の要約つきで Y に流す機能は作らなかった。申請が通ったときの設計（架空の集約アカウント、出典とリンク、ビルド時の取得、要約とそのキャッシュ）の下書き

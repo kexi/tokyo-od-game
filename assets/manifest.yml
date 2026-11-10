@@ -464,7 +464,7 @@ assets:
 
   - id: sign-textures
     name: 道路標識の図柄
-    purpose: 別表第一の番号ごとの道路標識の図柄 345 枚。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-catalog）。
+    purpose: 別表第一の番号ごとの道路標識の図柄 345 枚。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-registry）。
     kind: texture
     files: [assets/signs/textures/*.png]
     generator: { script: scripts/textures/sign_textures.py, recipe: make-sign-textures }
@@ -472,9 +472,12 @@ assets:
     source: 自作（手続き生成）。様式・色・寸法は道路標識、区画線及び道路標示に関する命令 別表第二（e-Gov、2026-09-01 施行版）による。
     license: repo
     used_by: [src/world/signs.ts]
-    inputs: [noto-sans-jp, sign-law-table]
-    docs: [assets/signs/textures/README.md, knowledge/road-markings-and-signs.md]
-    notes: 最初の 24 種は agy への 2 回目の委譲で作り、残りは Claude Code が scripts/textures/signs/ に群ごとに足した。
+    inputs: [noto-sans-jp, sign-registry]
+    docs: [assets/signs/textures/README.md, knowledge/road-markings-and-signs.md, knowledge/sign-system.md]
+    notes: >-
+      最初の 24 種は agy への 2 回目の委譲で作り、残りは Claude Code が scripts/textures/signs/ に群ごとに足した。
+      G1b から、何をどの関数で描くかは sign-registry（各図柄の paint と車線の版）を読む。Pillow は 12.3.0 に固定し、
+      作り直した 345 枚がコミット済みのものとバイト一致することを確かめてある（knowledge/sign-system.md）。
 
   - id: human-textures
     name: 歩行者のテクスチャ
@@ -762,25 +765,28 @@ assets:
     docs: [knowledge/sign-system.md, knowledge/road-markings-and-signs.md]
     notes: >-
       G1a から定義の正は src/signs/defs/*.ts で、scripts/signs.ts が registry から同じ形・同じバイトで書く
-      （tests/signRegistry.test.ts が保証）。sign_textures.py は書かず、自分の表と食い違えば止まる（G1b まで）。
-      利用側がレジストリへ移ったら消す。
+      （tests/signRegistry.test.ts が保証）。利用側がレジストリへ移ったら消す。
 
   - id: sign-registry
     name: 道路標識レジストリ
     purpose: >-
       道路標識の定義（src/signs/defs）を検査して書き出したもの。番号ごとの板・図柄・変種・車線の版・
-      ゲームの標識種別と、別表第二の図。図柄（Pillow）と板（Blender）の生成の入力にする予定（G1b）。
+      ゲームの標識種別、各図柄を描く関数（paint）と、別表第二の図。図柄（Pillow、sign_textures.py）の入力。
+      板（Blender）は G2 から読む。
     kind: data
     files: [assets/signs/registry.json]
     generator: { script: scripts/signs.ts, recipe: make-sign-registry }
     made_by: procedural
-    source: src/signs/defs/*.ts（catalog.json から機械変換した定義）と sign-law-table
+    source: >-
+      src/signs/defs/*.ts（catalog.json から機械変換した定義）と sign-law-table。車線の版は、ゲームの assumedLanes と
+      public/data/turnlanes（OSM、オープンデータのため台帳の外）の turn:lanes から規則で導く（src/signs/defs/lanes.ts）
     license: repo
     used_by: []
     inputs: [sign-law-table]
     docs: [knowledge/sign-system.md]
-    status: unused
-    notes: 古いとテスト（tests/signRegistry.test.ts）が落ちる。定義を直したら just make-sign-registry。
+    notes: >-
+      古いとテスト（tests/signRegistry.test.ts）が落ちる。定義を直したら just make-sign-registry。
+      just fetch-regs で turnlanes が変わったときも書き直し、図柄を just make-sign-textures で足す。
 
   - id: sign-law-table
     name: 標識令 別表第一の番号表
@@ -796,7 +802,7 @@ assets:
     used_by: []
     docs: [knowledge/sign-system.md]
     notes: >-
-      法令の表の写し（著作権法第 13 条により権利の目的とならない）。scripts/textures/signs/law_table.py もこれを読む。
+      法令の表の写し（著作権法第 13 条により権利の目的とならない）。
       手で直さない（生成器の出力そのもの）。125-B の図は sign-law-table.ts の FIGURE_OVERRIDES で旧 law_table.py
       どおり null にしている（e-Gov の表では S35F03102010003-087.jpg。G1a の直後に撤去、knowledge/sign-system.md）。
 

@@ -1,9 +1,9 @@
 # /// script
-# requires-python = ">=3.9"
+# requires-python = ">=3.12"  # numpy 2.5.3 needs 3.12
 # dependencies = [
-#     "pillow>=10.0.0",
-#     "numpy>=1.26.0",
-#     "requests>=2.31.0",
+#     "pillow==12.3.0",
+#     "numpy==2.5.3",
+#     "requests==2.34.2",
 # ]
 # [tool.uv]
 # exclude-newer = "2026-10-03T00:00:00Z"
@@ -11,13 +11,16 @@
 """Procedural texture generator for Tokyo Open Drive traffic signs.
 
 Draws the 道路標識 of 道路標識、区画線及び道路標示に関する命令 別表第一 / 別表第二 (e-Gov, 2026-09-01
-施行版) and writes assets/signs/textures/*.png, then checks that assets/signs/catalog.json (written by
-scripts/signs.ts from src/signs/defs) lists exactly the textures drawn here. The first 24 designs
-live in this file; the rest are in signs/ (one module per group, shared canvas and pictograms).
-Noto Sans JP is the only font, pinned by hash.
+施行版) into assets/signs/textures/*.png. What to draw comes from assets/signs/registry.json, which
+scripts/signs.ts writes from src/signs/defs (`just make-sign-registry`): every face names its file and
+the function drawing it (`paint`: `module.function` and keyword arguments), lane renders their lane
+key. The first designs live in this file; the rest are in signs/ (one module per group, shared canvas
+and pictograms). Noto Sans JP is the only font, pinned by hash. Pillow is pinned too: PNG bytes
+depend on its version (and the zlib it bundles), and the textures are checked byte for byte.
 
-    uv run scripts/textures/sign_textures.py                      # all textures, catalog.json checked
+    uv run scripts/textures/sign_textures.py                      # all textures of registry.json
     uv run scripts/textures/sign_textures.py --sheet DIR          # … and contact sheets in DIR
+    uv run scripts/textures/sign_textures.py --prune              # … and delete PNGs no definition names
     uv run scripts/textures/sign_textures.py render 327の7-A --lanes "left+through,through,right" -o a.png
     uv run scripts/textures/sign_textures.py render 501 --text "この先200m" -o b.png
 """
@@ -25,10 +28,13 @@ Noto Sans JP is the only font, pinned by hash.
 from __future__ import annotations
 
 import argparse
+import importlib
+import inspect
 import json
 import math
 import random
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Tuple
 
@@ -46,7 +52,8 @@ np.random.seed(SEED)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 TEXTURES_DIR = PROJECT_ROOT / "assets" / "signs" / "textures"
-CATALOG_PATH = PROJECT_ROOT / "assets" / "signs" / "catalog.json"
+REGISTRY_PATH = PROJECT_ROOT / "assets" / "signs" / "registry.json"
+REGISTRY_VERSION = 2  # src/signs/registry.ts Registry.version
 
 # Color constants (spec目安: 赤 #D7262E, 青 #0B4EA2, 白 #FFFFFF, 黒 #1A1A1A)
 COLOR_RED = (215, 38, 46, 255)
@@ -197,17 +204,6 @@ def draw_no_entry(scale: int = 4) -> Image.Image:
     )
 
     return img.resize((target_size, target_size), Image.Resampling.LANCZOS)
-
-
-def draw_vehicles_closed(scale: int = 4) -> Image.Image:
-    """車両通行止め (302): red ring and red slash on white (別表第二 図 S35F03102010003-122).
-
-    The first version left the slash out; the figure and 国土交通省「道路標識一覧」 both show it.
-    """
-    from signs import regulatory
-
-    del scale
-    return regulatory.vehicles_closed()
 
 
 # ----------------------------------------------------------------------
@@ -880,71 +876,116 @@ def draw_crosswalk(scale: int = 4) -> Image.Image:
 
 
 # ----------------------------------------------------------------------
-# Generator Registry
+# What to draw: assets/signs/registry.json
 # ----------------------------------------------------------------------
-SIGN_GENERATORS: Dict[str, Callable[[], Image.Image]] = {
-    "speed_20.png": lambda: draw_speed_limit(20),
-    "speed_30.png": lambda: draw_speed_limit(30),
-    "speed_40.png": lambda: draw_speed_limit(40),
-    "speed_50.png": lambda: draw_speed_limit(50),
-    "speed_60.png": lambda: draw_speed_limit(60),
-    "speed_70.png": lambda: draw_speed_limit(70),
-    "speed_80.png": lambda: draw_speed_limit(80),
-    "speed_10.png": lambda: draw_speed_limit(10),
-    "speed_100.png": lambda: draw_speed_limit(100),
-    "speed_110.png": lambda: draw_speed_limit(110),
-    "speed_120.png": lambda: draw_speed_limit(120),
-    "no_entry.png": draw_no_entry,
-    "vehicles_closed.png": draw_vehicles_closed,
-    "no_parking.png": lambda: draw_no_parking(no_stopping=False),
-    "no_stopping.png": lambda: draw_no_parking(no_stopping=True),
-    "no_uturn.png": draw_no_uturn,
-    "turn_1.png": lambda: draw_turn_sign(1),
-    "turn_2.png": lambda: draw_turn_sign(2),
-    "turn_3.png": lambda: draw_turn_sign(3),
-    "turn_4.png": lambda: draw_turn_sign(4),
-    "turn_5.png": lambda: draw_turn_sign(5),
-    "turn_6.png": lambda: draw_turn_sign(6),
-    "one_way.png": draw_one_way,
-    "one_way_right.png": lambda: draw_one_way_wide(True),
-    "one_way_left.png": lambda: draw_one_way_wide(False),
-    "slow.png": draw_slow,
-    "stop.png": draw_stop,
-    "crosswalk.png": draw_crosswalk,
-}
+@dataclass(frozen=True)
+class Job:
+    """One PNG to draw: the face of a sign in the registry and the function that draws it."""
+
+    sign: str
+    group: str
+    key: str | None  # None: the sign's default face; "lanes:<key>" for a lane render
+    file: str
+    plate: str  # signs.glb node, a key of registry["plates"]
+    paint: dict | None  # {"fn", "args"?, "over"?}; None for a lane render
+    lanes: str | None = None  # the lane key of a lane render
 
 
-def all_textures() -> list:
-    """Every texture of the catalogue, with the function drawing it (the designs above, or signs/)."""
-    from signs import catalog
-
-    out = []
-    for tex in catalog.textures():
-        draw = tex.draw or SIGN_GENERATORS.get(tex.file)
-        if draw is None:
-            raise RuntimeError(f"no generator for {tex.file}")
-        out.append((tex, draw))
-    return out
-
-
-def _true_size(tex, img: Image.Image) -> Tuple[float, float]:
-    """The plate box in mm a texture covers, to show it at its real proportions."""
-    from signs import catalog
-
-    if tex.size_mm:
-        return tex.size_mm
-    for sign_id, _name, group, _fig in catalog.SIGNS:
-        if sign_id == tex.sign:
-            meta = catalog.meta_for(sign_id, group)
-            if meta:
-                w, h = meta.size_mm
-                if meta.plate == "diamond":
-                    return (w * math.sqrt(2), h * math.sqrt(2))
-                return (w, h)
-    return (float(img.width), float(img.height))
+def load_registry() -> dict:
+    """registry.json as scripts/signs.ts wrote it from src/signs/defs."""
+    reg = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    is_other_version = reg.get("version") != REGISTRY_VERSION
+    if is_other_version:
+        raise SystemExit(
+            f"{REGISTRY_PATH}: version {reg.get('version')}, this generator reads {REGISTRY_VERSION}. "
+            "Run `just make-sign-registry` (knowledge/sign-system.md)"
+        )
+    PAINTER_MODULES[:] = reg["painterModules"]
+    return reg
 
 
-def build_contact_sheet(images: Dict[str, Image.Image], cols: int = 6, thumb_size: int = 160) -> Image.Image:
+def jobs_of(reg: dict) -> list[Job]:
+    """Every face of the registry once: each sign's own faces (a `shares` sign has none), then the
+    lane renders. Faces drawn over another face come last, so that one is on disk by then."""
+    jobs: list[Job] = []
+    for s in reg["signs"]:
+        art = s.get("art")
+        is_drawn = art is not None and art["by"] == "texture"
+        if not is_drawn:
+            continue
+        faces = [(None, art["file"], art.get("paint"), s["plate"])]
+        faces += [(v["key"], v["file"], v.get("paint"), v.get("plate", s["plate"])) for v in art["variants"]]
+        for key, file, paint, plate in faces:
+            # Why not draw it here: a face without paint is a lane render, listed (and drawn) once below.
+            if paint is not None:
+                jobs.append(Job(s["id"], s["group"], key, file, plate, paint))
+    group_of = {s["id"]: s["group"] for s in reg["signs"]}
+    for r in reg["lanes"]:
+        jobs.append(Job(r["sign"], group_of[r["sign"]], f"lanes:{r['lanes']}", r["file"], r["plate"], None, r["lanes"]))
+    return sorted(jobs, key=lambda j: 1 if j.paint and j.paint.get("over") else 0)
+
+
+# The registry lists the modules (src/signs/schema.ts PAINTER_MODULES); filled by load_registry.
+PAINTER_MODULES: list[str] = []
+
+
+def _module(name: str):
+    """sign_textures is this file; the others are signs/<name>.py."""
+    if name == "sign_textures":
+        return sys.modules[__name__]
+    return importlib.import_module(f"signs.{name}")
+
+
+def _returns_image(fn) -> bool:
+    # The modules use `from __future__ import annotations`, so the annotation may be the string.
+    annotation = inspect.signature(fn).return_annotation
+    return annotation in ("Image.Image", Image.Image)
+
+
+def painter(name: str) -> Callable[..., Image.Image]:
+    """The function of a `module.function` painter name: public, in a listed module, and declared to
+    return an image. Why not any callable: `generate` or `render` would run the generator again."""
+    module, _, fn = name.partition(".")
+    found = getattr(_module(module), fn, None) if module in PAINTER_MODULES and not fn.startswith("_") else None
+    is_painter = callable(found) and _returns_image(found)
+    if not is_painter:
+        raise SystemExit(f"no painter {name} in scripts/textures (registry.json paint.fn)")
+    return found
+
+
+def _draw_job(job: Job) -> Image.Image:
+    """The face of a job: a lane render from its key, any other with its painter's arguments."""
+    from signs import lanes
+
+    if job.lanes is not None:
+        return lanes.lane_sign(lanes.spec_of(job.lanes))
+    assert job.paint is not None
+    return _paint_with(job.paint)
+
+
+def _paint_with(paint: dict) -> Image.Image:
+    fn = painter(paint["fn"])
+    args = paint.get("args", {})
+    over = paint.get("over")
+    if over is None:
+        return fn(**args)
+    # Read back from disk, not kept from the run: the overlay is drawn on the PNG as saved.
+    return fn(Image.open(TEXTURES_DIR / over).convert("RGBA"), **args)
+
+
+# ----------------------------------------------------------------------
+# Contact sheets (review only, not committed)
+# ----------------------------------------------------------------------
+def _true_size(job: Job, plates: dict) -> Tuple[float, float]:
+    """The plate box in mm a texture covers, to show it at its real proportions (菱形 by its side)."""
+    plate = plates[job.plate]
+    w, h = plate["sizeMm"]
+    if plate["shape"] == "diamond":
+        return (w * math.sqrt(2), h * math.sqrt(2))
+    return (w, h)
+
+
+def _build_contact_sheet(images: Dict[str, Image.Image], cols: int = 6, thumb_size: int = 160) -> Image.Image:
     """Build a review contact sheet grid of all generated textures with dark checkerboard background."""
     keys = list(images.keys())
     rows = math.ceil(len(keys) / cols)
@@ -999,68 +1040,62 @@ def build_contact_sheet(images: Dict[str, Image.Image], cols: int = 6, thumb_siz
     return sheet
 
 
-def write_sheets(out_dir: Path, done: list) -> list[Path]:
-    """Contact sheets per group, each texture shown at its plate's real proportions."""
-    from signs import catalog
+SHEET_NAMES = {
+    "警戒": "warning",
+    "規制": "regulatory",
+    "指示": "instruction",
+    "補助": "auxiliary",
+    "法定外": "nonstatutory",
+}
 
-    group_of = {sid: g for sid, _n, g, _f in catalog.SIGNS}
+
+def write_sheets(out_dir: Path, done: list, plates: dict) -> list[Path]:
+    """Contact sheets per group, each texture shown at its plate's real proportions."""
     groups: Dict[str, Dict[str, Image.Image]] = {}
-    for tex, img in done:
-        g = group_of.get(tex.sign, "法定外")
-        w_mm, h_mm = _true_size(tex, img)
+    for job, img in done:
+        w_mm, h_mm = _true_size(job, plates)
         k = 512 / max(w_mm, h_mm)
         shown = img.resize((max(1, round(w_mm * k)), max(1, round(h_mm * k))), Image.Resampling.LANCZOS)
-        label = tex.sign + (f" {tex.variant.removeprefix('lanes:')}" if tex.variant else "")
-        bucket = groups.setdefault(g, {})
-        bucket[label if label not in bucket else f"{label} ({tex.file})"] = shown
+        label = job.sign + (f" {job.key.removeprefix('lanes:')}" if job.key else "")
+        bucket = groups.setdefault(job.group, {})
+        bucket[label if label not in bucket else f"{label} ({job.file})"] = shown
     out_dir.mkdir(parents=True, exist_ok=True)
-    names = {
-        "警戒": "warning",
-        "規制": "regulatory",
-        "指示": "instruction",
-        "補助": "auxiliary",
-        "法定外": "nonstatutory",
-    }
     paths = []
     for g, imgs in groups.items():
         items = list(imgs.items())
         per = 48
         for page in range(math.ceil(len(items) / per)):
             chunk = dict(items[page * per : (page + 1) * per])
-            sheet = build_contact_sheet(chunk, cols=8, thumb_size=200)
-            p = out_dir / f"sheet_{names.get(g, g)}_{page + 1}.png"
+            sheet = _build_contact_sheet(chunk, cols=8, thumb_size=200)
+            p = out_dir / f"sheet_{SHEET_NAMES.get(g, g)}_{page + 1}.png"
             sheet.save(p, "PNG")
             paths.append(p)
     return paths
 
 
-def generate(sheet_dir: Path | None = None) -> None:
-    from signs import catalog
-
-    print(json.dumps({"event": "start", "dir": str(TEXTURES_DIR)}, ensure_ascii=False))
+# ----------------------------------------------------------------------
+# Commands
+# ----------------------------------------------------------------------
+def generate(sheet_dir: Path | None = None, prune: bool = False) -> None:
+    reg = load_registry()
+    print(json.dumps({"event": "start", "dir": str(TEXTURES_DIR), "registry": str(REGISTRY_PATH)}, ensure_ascii=False))
     TEXTURES_DIR.mkdir(parents=True, exist_ok=True)
-    written: Dict[str, Tuple[int, int]] = {}
     done = []
-    # The designs of this file first: some signs/ textures are drawn over them (315 with hours).
-    order = sorted(all_textures(), key=lambda td: 0 if td[0].draw is None else 1)
-    for tex, draw in order:
-        if tex.file in written:
-            continue
-        img = draw()
+    for job in jobs_of(reg):
+        img = _draw_job(job)
         w, h = img.size
         is_pow2 = (w & (w - 1)) == 0 and (h & (h - 1)) == 0
         if not is_pow2:
-            raise RuntimeError(f"{tex.file}: {w}x{h} is not a power of two")
-        out_path = TEXTURES_DIR / tex.file
+            raise RuntimeError(f"{job.file}: {w}x{h} is not a power of two")
+        out_path = TEXTURES_DIR / job.file
         img.save(out_path, "PNG", optimize=True)
-        written[tex.file] = (w, h)
-        done.append((tex, img))
+        done.append((job, img))
         print(
             json.dumps(
                 {
                     "event": "texture",
-                    "file": tex.file,
-                    "sign": tex.sign,
+                    "file": job.file,
+                    "sign": job.sign,
                     "w": w,
                     "h": h,
                     "kb": round(out_path.stat().st_size / 1024, 1),
@@ -1068,30 +1103,46 @@ def generate(sheet_dir: Path | None = None) -> None:
                 ensure_ascii=False,
             )
         )
-    data = catalog.build(written)
-    # catalog.json is written by scripts/signs.ts from src/signs/defs (just make-sign-registry); here
-    # it is only checked. Why not write it here too: two writers let a change to this file's tables
-    # land in catalog.json without the definitions, which are the source since G1a.
-    is_stale = catalog.dumps(data) != CATALOG_PATH.read_text(encoding="utf-8")
-    if is_stale:
-        raise SystemExit(
-            f"{CATALOG_PATH}: the textures drawn here disagree with src/signs/defs. Update the definitions "
-            "and run `just make-sign-registry` (knowledge/sign-system.md)"
-        )
+    drawn = {job.file for job, _ in done}
+    # Why not delete them by default: a stray PNG may be a face whose definition is being written;
+    # the registry test (tests/signRegistry.test.ts) fails on it either way. --prune deletes them.
+    stray = sorted(p.name for p in TEXTURES_DIR.glob("*.png") if p.name not in drawn)
+    if prune:
+        for name in stray:
+            (TEXTURES_DIR / name).unlink()
     print(
         json.dumps(
-            {"event": "catalog", "file": str(CATALOG_PATH), "signs": len(data["signs"]), "coverage": data["coverage"]},
-            ensure_ascii=False,
+            {"event": "textures_written", "count": len(drawn), "stray": stray, "pruned": prune}, ensure_ascii=False
         )
     )
     if sheet_dir is not None:
-        for p in write_sheets(sheet_dir, done):
+        for p in write_sheets(sheet_dir, done, reg["plates"]):
             print(json.dumps({"event": "sheet", "file": str(p)}, ensure_ascii=False))
 
 
+def _with_hours(args: dict, text: str) -> dict:
+    minutes, _, hours = text.partition(" ")
+    return {**args, "minutes": minutes, "hours": hours or None}
+
+
+# How `render --text` sets the value of a painter (the number or words that vary by place).
+TEXT_ARGS: Dict[str, Callable[[dict, str], dict]] = {
+    "sign_textures.draw_speed_limit": lambda a, t: {**a, "speed": int(t)},
+    "regulatory.speed_sign": lambda a, t: {**a, "value": int(t)},
+    "regulatory.weight_limit": lambda a, t: {**a, "value": t},
+    "regulatory.height_limit": lambda a, t: {**a, "value": t},
+    "regulatory.width_limit": lambda a, t: {**a, "value": t},
+    "regulatory.overlay_ring_text": lambda a, t: {**a, "text": t},
+    "regulatory.time_limited_parking": _with_hours,
+    "warning.gradient": lambda a, t: {**a, "percent": t},
+    "auxiliary.text_plate": lambda a, t: {**a, "lines": t.split("/")},
+}
+
+
 def render(args: argparse.Namespace) -> None:
-    """Draw one variable sign on demand (any lane list or text) without touching the assets."""
-    from signs import auxiliary, lanes, regulatory, warning
+    """Draw one variable sign on demand (any lane list or text) without touching the assets: the
+    first face of the sign (or of the number it shares) whose painter takes a value, with --text."""
+    from signs import lanes
 
     sid = args.sign
     if args.lanes is not None:
@@ -1100,28 +1151,18 @@ def render(args: argparse.Namespace) -> None:
             uses = args.use.split(",")
             spec = [{"dirs": d, "use": (u or None)} for d, u in zip(spec, uses + [""] * len(spec), strict=False)]
         img = lanes.lane_sign(spec)
-    elif sid.startswith("5") and sid not in ("505-A", "506", "507-A", "507-C", "511"):
-        img = auxiliary.text_plate(args.text.split("/"))
-    elif sid == "323":
-        img = draw_speed_limit(int(args.text))
-    elif sid == "324":
-        img = regulatory.speed_sign(int(args.text), True)
-    elif sid == "320":
-        img = regulatory.weight_limit(args.text)
-    elif sid == "321":
-        img = regulatory.height_limit(args.text)
-    elif sid == "322":
-        img = regulatory.width_limit(args.text)
-    elif sid in ("315", "316"):
-        base = draw_no_parking(no_stopping=sid == "315")
-        img = regulatory.overlay_ring_text(base, args.text)
-    elif sid == "318":
-        minutes, _, hours = args.text.partition(" ")
-        img = regulatory.time_limited_parking(minutes, hours or None)
-    elif sid in ("212の3", "212の4"):
-        img = warning.gradient(sid == "212の3", args.text)
     else:
-        raise SystemExit(f"render: {sid} has no variable form (see catalog.json 'variable')")
+        reg = load_registry()
+        by_id = {s["id"]: s for s in reg["signs"]}
+        sign = by_id.get(sid)
+        if sign is None:
+            raise SystemExit(f"render: {sid} is not in {REGISTRY_PATH}")
+        owner = by_id.get(sign.get("shares", ""), sign)
+        candidates = [j.paint for j in jobs_of({**reg, "signs": [owner], "lanes": []}) if j.paint]
+        paint = next((p for p in candidates if p["fn"] in TEXT_ARGS), None)
+        if paint is None or args.text is None:
+            raise SystemExit(f"render: {sid} has no face drawn from a value or words (give --lanes or --text)")
+        img = _paint_with({**paint, "args": TEXT_ARGS[paint["fn"]](paint.get("args", {}), args.text)})
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out, "PNG", optimize=True)
@@ -1146,9 +1187,10 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("sheet", nargs="?", help="(legacy) write one contact sheet PNG here")
     p.add_argument("--sheet", dest="sheet_dir", help="write contact sheets per group into this directory")
+    p.add_argument("--prune", action="store_true", help="delete PNGs that no definition names")
     a = p.parse_args(argv)
     sheet_dir = Path(a.sheet_dir) if a.sheet_dir else (Path(a.sheet).parent if a.sheet else None)
-    generate(sheet_dir)
+    generate(sheet_dir, a.prune)
 
 
 if __name__ == "__main__":

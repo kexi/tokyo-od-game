@@ -2,6 +2,7 @@ import { z } from "zod";
 import { layoutJson, type Json } from "./jsonLayout";
 import { PLATES } from "./plates";
 import {
+  PAINTER_MODULES,
   LaneRenderSchema,
   LawTableSchema,
   SignDefSchema,
@@ -14,13 +15,15 @@ import {
 
 /**
  * The checked, resolved form of the sign definitions: what scripts/signs.ts writes as
- * assets/signs/registry.json (the input of the Pillow and Blender generators from G1b on) and what
+ * assets/signs/registry.json (what the Pillow generator draws from; Blender from G2) and what
  * the legacy catalog.json and the coverage report are derived from.
  */
 export type Registry = {
-  version: 1;
+  version: 2;
   law: LawTable["law"];
   plates: typeof PLATES;
+  /** The scripts/textures modules a `paint.fn` may name (sign_textures.py imports exactly these). */
+  painterModules: typeof PAINTER_MODULES;
   /**
    * Each definition with its plate resolved (a `shares` sign's from the number it shares) and its
    * 別表第二 figure (from the law table; null for 法定外 or where none).
@@ -34,10 +37,10 @@ export type ResolvedSign = Omit<SignDef, "plate"> & { plate: PlateNode | null; f
 /** One face of a sign: the PNG and the plate it goes on. */
 export type Face = { key: string | null; file: string; plate: PlateNode };
 
-/** 327の7 lane renders: file name (scripts/textures/signs/lanes.py file_name). */
+/** 327の7 lane renders: the PNG of a lane key (the generator draws it from the key, lanes.py spec_of). */
 export const laneFile = (lanes: string) => `327-7_${lanes}.png`;
 
-/** 40 cm per lane × 90 cm, one lane on the 90 cm square (lanes.py plate_node). */
+/** 40 cm per lane × 90 cm, one lane on the 90 cm square (as lanes.py plate_size draws them). */
 export function lanePlate(lanes: string): PlateNode {
   const n = lanes.split("-").length;
   return (n === 1 ? "PlateSquare90" : `PlateRect${n * 40}x90`) as PlateNode;
@@ -103,6 +106,33 @@ function crossCheck(signs: SignDef[], renders: LaneRender[], table: LawTable): s
     const keys = [...art.variants.map((v) => v.key), ...lanes.map((r) => `lanes:${r.lanes}`)];
     for (const key of duplicates(keys)) problems.push(`sign ${s.id}: variant key ${key} used more than once`);
   }
+  problems.push(...paintProblems(signs, renders));
+  return problems;
+}
+
+/**
+ * Every face has a painter, except lane renders (lanes.lane_sign draws them from the key), and a
+ * face drawn over another names one that is drawn on its own.
+ */
+function paintProblems(signs: SignDef[], renders: LaneRender[]): string[] {
+  const problems: string[] = [];
+  const laneFiles = new Set(renders.map((r) => laneFile(r.lanes)));
+  const faces = signs.flatMap((s) => {
+    const art = s.art;
+    if (art?.by !== "texture") return [];
+    const all = [{ file: art.file, paint: art.paint }, ...art.variants];
+    return all.map((f) => ({ id: s.id, ...f }));
+  });
+  const standalone = new Set(faces.filter((f) => f.paint && !f.paint.over).map((f) => f.file));
+  for (const f of faces) {
+    const isLaneRender = laneFiles.has(f.file);
+    if (isLaneRender && f.paint)
+      problems.push(`sign ${f.id}: ${f.file} is a lane render, drawn from its key`);
+    if (!isLaneRender && !f.paint) problems.push(`sign ${f.id}: ${f.file} has no paint`);
+    const over = f.paint?.over;
+    const isOverUndrawn = over !== undefined && !standalone.has(over);
+    if (isOverUndrawn) problems.push(`sign ${f.id}: ${f.file} is drawn over ${over}, not drawn on its own`);
+  }
   return problems;
 }
 
@@ -120,9 +150,10 @@ export function buildRegistry(defs: readonly unknown[], lanes: readonly unknown[
     return known.get(s.shares ?? "")?.plate ?? null;
   };
   return {
-    version: 1,
+    version: 2,
     law: table.law,
     plates: PLATES,
+    painterModules: PAINTER_MODULES,
     // The plate goes right after the group, where the definitions write it, also when derived.
     signs: signs.map((s) => {
       const { id, name, group, plate: _given, ...rest } = s;

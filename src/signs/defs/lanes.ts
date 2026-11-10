@@ -1,159 +1,66 @@
-// Converted once from assets/signs/catalog.json (G1a, knowledge/sign-system.md); this file is the
-// definition now: edit it, then `just make-sign-registry`.
+// The lane patterns of 進行方向別通行区分 that are drawn ahead of time. Edit the lists here; the
+// rest comes from the game's assumedLanes and public/data/turnlanes. Then `just make-sign-registry`
+// and `just make-sign-textures` (knowledge/sign-system.md).
+import { laneKey, laneSign, type LaneSpec } from "../lanes";
 import type { LaneRender } from "../schema";
 
-/**
- * Pre-rendered 進行方向別通行区分 lane patterns, in render order: the lane key (scripts/textures/signs/
- * lanes.py slug) and the sign whose variant it is. File and plate follow from the key (registry.ts
- * laneFile / lanePlate).
- *
- * Where the 141 come from (each counted where it first appears, as catalog.py `_lane_variants`
- * collected them): the 4 図示 (lt-t-r, lt, l, t); 32 more from regulations.ts assumedLanes for 1–6
- * lanes × 7 sets of exits; 100 more from the OSM turn:lanes values in public/data/turnlanes; the 5
- * 専用・優先 examples (lt~bus-t-r, lt~busp-t-r, lt~bus-t-t-r, lt~busp-t-t-r, t~cyc-t-r).
- * tests/signRegistry.test.ts checks that every assumedLanes pattern and turnlanes value is here:
- * after `just fetch-regs` brings new turn:lanes values, add them (and draw them) before shipping.
- */
-export const LANE_RENDERS: LaneRender[] = [
-  { lanes: "lt-t-r", sign: "327の7-A" },
-  { lanes: "lt", sign: "327の7-B" },
-  { lanes: "l", sign: "327の7-C" },
-  { lanes: "t", sign: "327の7-D" },
-  { lanes: "r", sign: "327の7-B" },
-  { lanes: "lr", sign: "327の7-B" },
-  { lanes: "t-t", sign: "327の7-A" },
-  { lanes: "lt-t", sign: "327の7-A" },
-  { lanes: "t-tr", sign: "327の7-A" },
-  { lanes: "lt-tr", sign: "327の7-A" },
-  { lanes: "l-r", sign: "327の7-A" },
-  { lanes: "l-t", sign: "327の7-A" },
-  { lanes: "t-r", sign: "327の7-A" },
-  { lanes: "t-t-t", sign: "327の7-A" },
-  { lanes: "lt-t-t", sign: "327の7-A" },
-  { lanes: "t-t-r", sign: "327の7-A" },
-  { lanes: "l-t-r", sign: "327の7-A" },
-  { lanes: "l-t-t", sign: "327の7-A" },
-  { lanes: "t-t-t-t", sign: "327の7-A" },
-  { lanes: "lt-t-t-t", sign: "327の7-A" },
-  { lanes: "t-t-t-r", sign: "327の7-A" },
-  { lanes: "lt-t-t-r", sign: "327の7-A" },
-  { lanes: "l-t-t-r", sign: "327の7-A" },
-  { lanes: "l-t-t-t", sign: "327の7-A" },
-  { lanes: "t-t-t-t-t", sign: "327の7-A" },
-  { lanes: "lt-t-t-t-t", sign: "327の7-A" },
-  { lanes: "t-t-t-t-r", sign: "327の7-A" },
-  { lanes: "lt-t-t-t-r", sign: "327の7-A" },
-  { lanes: "l-t-t-t-r", sign: "327の7-A" },
-  { lanes: "l-t-t-t-t", sign: "327の7-A" },
-  { lanes: "t-t-t-t-t-t", sign: "327の7-A" },
-  { lanes: "lt-t-t-t-t-t", sign: "327の7-A" },
-  { lanes: "t-t-t-t-t-r", sign: "327の7-A" },
-  { lanes: "lt-t-t-t-t-r", sign: "327の7-A" },
-  { lanes: "l-t-t-t-t-r", sign: "327の7-A" },
-  { lanes: "l-t-t-t-t-t", sign: "327の7-A" },
-  { lanes: "lhl-r", sign: "327の7-A" },
-  { lanes: "l-tr", sign: "327の7-A" },
-  { lanes: "lt-r", sign: "327の7-A" },
-  { lanes: "l-tr-r", sign: "327の7-A" },
-  { lanes: "lt-t-tr", sign: "327の7-A" },
-  { lanes: "lt-t-r-r", sign: "327の7-A" },
-  { lanes: "hlt-t", sign: "327の7-A" },
-  { lanes: "l-r-r", sign: "327の7-A" },
-  { lanes: "t-r-r", sign: "327の7-A" },
-  { lanes: "l-l-t-t", sign: "327の7-A" },
-  { lanes: "t-l", sign: "327の7-A" },
-  { lanes: "hl-hr-hr", sign: "327の7-A" },
-  { lanes: "l-l-tr", sign: "327の7-A" },
-  { lanes: "t-hr", sign: "327の7-A" },
-  { lanes: "l-t-t-r-r", sign: "327の7-A" },
-  { lanes: "l-t-r-r", sign: "327の7-A" },
-  { lanes: "hl-t", sign: "327の7-A" },
-  { lanes: "hl-t-t", sign: "327の7-A" },
-  { lanes: "hl-hl-hl-hr-r", sign: "327の7-A" },
-  { lanes: "lt-thr-r", sign: "327の7-A" },
-  { lanes: "lr-r", sign: "327の7-A" },
-  { lanes: "lt-t-t-hr", sign: "327の7-A" },
-  { lanes: "l-l-r", sign: "327の7-A" },
-  { lanes: "r-r", sign: "327の7-A" },
-  { lanes: "lt-r-r", sign: "327の7-A" },
-  { lanes: "hl-hl-hr", sign: "327の7-A" },
-  { lanes: "lt-hr", sign: "327の7-A" },
-  { lanes: "hr-r", sign: "327の7-A" },
-  { lanes: "l-lr", sign: "327の7-A" },
-  { lanes: "hl-r", sign: "327の7-A" },
-  { lanes: "l-t-t-hr", sign: "327の7-A" },
-  { lanes: "lt-tr-t", sign: "327の7-A" },
-  { lanes: "l-t-t-hr-r", sign: "327の7-A" },
-  { lanes: "l-t-t-hrr", sign: "327の7-A" },
-  { lanes: "r-t", sign: "327の7-A" },
-  { lanes: "lhl-hl-hl-hr-r", sign: "327の7-A" },
-  { lanes: "lt-t-t-hr-hr", sign: "327の7-A" },
-  { lanes: "lhlt-t-r-r", sign: "327の7-A" },
-  { lanes: "hl", sign: "327の7-B" },
-  { lanes: "t-t-tr", sign: "327の7-A" },
-  { lanes: "lt-thr", sign: "327の7-A" },
-  { lanes: "lt-t-r-t", sign: "327の7-A" },
-  { lanes: "lt-t-hr-r", sign: "327の7-A" },
-  { lanes: "t-t-r-r", sign: "327の7-A" },
-  { lanes: "l-t-tr", sign: "327の7-A" },
-  { lanes: "ltr-r", sign: "327の7-A" },
-  { lanes: "lhl-hr-hr", sign: "327の7-A" },
-  { lanes: "lt-t-t-hr-hrr-r", sign: "327の7-A" },
-  { lanes: "hlhr-hrr", sign: "327の7-A" },
-  { lanes: "t-lt-t-t", sign: "327の7-A" },
-  { lanes: "lt-t-u", sign: "327の7-A" },
-  { lanes: "l-l-hl-hl-hr-r", sign: "327の7-A" },
-  { lanes: "lhlt-r", sign: "327の7-A" },
-  { lanes: "l-hl-hlhrr", sign: "327の7-A" },
-  { lanes: "lt-hr-hrr", sign: "327の7-A" },
-  { lanes: "lt-hr-hr", sign: "327の7-A" },
-  { lanes: "hr-hr", sign: "327の7-A" },
-  { lanes: "lhlt-r-r", sign: "327の7-A" },
-  { lanes: "t-hrr", sign: "327の7-A" },
-  { lanes: "lt-hrr", sign: "327の7-A" },
-  { lanes: "l-hl-hrr", sign: "327の7-A" },
-  { lanes: "l-hl-hr-r", sign: "327の7-A" },
-  { lanes: "t-hr-r", sign: "327の7-A" },
-  { lanes: "hr-uhr", sign: "327の7-A" },
-  { lanes: "lhl-t-t", sign: "327の7-A" },
-  { lanes: "hl-hl-hr-hr", sign: "327の7-A" },
-  { lanes: "l-l-t", sign: "327の7-A" },
-  { lanes: "lt-t-hr-hr", sign: "327の7-A" },
-  { lanes: "t-t-t-r-r", sign: "327の7-A" },
-  { lanes: "l-t-t-tr", sign: "327の7-A" },
-  { lanes: "hl-hr", sign: "327の7-A" },
-  { lanes: "hl-t-t-t", sign: "327の7-A" },
-  { lanes: "hl-hl-t-t", sign: "327の7-A" },
-  { lanes: "t-thr-hr", sign: "327の7-A" },
-  { lanes: "lt-t-t-t-thr", sign: "327の7-A" },
-  { lanes: "t-thr", sign: "327の7-A" },
-  { lanes: "hl-t-r", sign: "327の7-A" },
-  { lanes: "l-lt-r", sign: "327の7-A" },
-  { lanes: "hl-t-hr-hr", sign: "327の7-A" },
-  { lanes: "t-l-t-tr", sign: "327の7-A" },
-  { lanes: "l-l-t-r", sign: "327の7-A" },
-  { lanes: "l-lt-t-t", sign: "327の7-A" },
-  { lanes: "l-r-r-r", sign: "327の7-A" },
-  { lanes: "hl-hl-hlr", sign: "327の7-A" },
-  { lanes: "l-l-t-r-r", sign: "327の7-A" },
-  { lanes: "hl-t-t-hr", sign: "327の7-A" },
-  { lanes: "l-l", sign: "327の7-A" },
-  { lanes: "t-lt-tr", sign: "327の7-A" },
-  { lanes: "l-l-t-t-t-r-r", sign: "327の7-A" },
-  { lanes: "r-lr", sign: "327の7-A" },
-  { lanes: "lt-t-hr", sign: "327の7-A" },
-  { lanes: "tr", sign: "327の7-B" },
-  { lanes: "hl-hl-hr-hr-r", sign: "327の7-A" },
-  { lanes: "l-lt-t-tr", sign: "327の7-A" },
-  { lanes: "l-lt-t-t-t", sign: "327の7-A" },
-  { lanes: "l-lt-t-tr-r", sign: "327の7-A" },
-  { lanes: "l-lt-t-r", sign: "327の7-A" },
-  { lanes: "lt-t-t-r-r", sign: "327の7-A" },
-  { lanes: "l-l-r-r", sign: "327の7-A" },
-  { lanes: "hlt-t-r", sign: "327の7-A" },
-  { lanes: "lt~bus-t-r", sign: "327の4" },
-  { lanes: "lt~busp-t-r", sign: "327の5" },
-  { lanes: "lt~bus-t-t-r", sign: "327の4" },
-  { lanes: "lt~busp-t-t-r", sign: "327の5" },
-  { lanes: "t~cyc-t-r", sign: "327の4" },
+/** The 図示 of 別表第二 図 166–169 (327の7-A…D). */
+const ILLUSTRATED: LaneSpec[][] = [
+  ["left;through", "through", "right"],
+  ["left;through"],
+  ["left"],
+  ["through"],
 ];
+
+/** The exits a junction approach can have, as assumedLanes is asked for them. */
+const EXIT_SETS: ReadonlyArray<ReadonlyArray<"left" | "through" | "right">> = [
+  ["through"],
+  ["left", "through"],
+  ["through", "right"],
+  ["left", "through", "right"],
+  ["left", "right"],
+  ["left"],
+  ["right"],
+];
+
+/** Lane counts the game assumes a pattern for (regulations.ts lanesPerDirection stays within). */
+const MAX_ASSUMED_LANES = 6;
+
+/** 専用・優先 lanes on 327の4 / 327の5, after 図 162–164 (the 路線バス等 and 自転車 marks). */
+const USE_EXAMPLES: LaneSpec[][] = [
+  [{ dirs: "left;through", use: "bus" }, "through", "right"],
+  [{ dirs: "left;through", use: "bus_priority" }, "through", "right"],
+  [{ dirs: "left;through", use: "bus" }, "through", "through", "right"],
+  [{ dirs: "left;through", use: "bus_priority" }, "through", "through", "right"],
+  [{ dirs: "through", use: "bicycle" }, "through", "right"],
+];
+
+export type LaneSources = {
+  /** turn:lanes values of public/data/turnlanes (z14 tiles in file-name order, rows in order). */
+  turnlanes: readonly string[];
+  /** src/world/regulations.ts assumedLanes: the usual pattern for n lanes and the exits. */
+  assumed: (n: number, exits: Set<"left" | "through" | "right">) => readonly string[][];
+};
+
+/**
+ * Pre-rendered 進行方向別通行区分 lane patterns, in render order, each counted where it first
+ * appears: the 図示, every pattern assumedLanes gives for 1–6 lanes and each set of exits, every
+ * turn:lanes value of the data, then the 専用・優先 examples. File and plate follow from the key
+ * (registry.ts laneFile / lanePlate), the number from the lanes (lanes.ts laneSign).
+ *
+ * Why derive instead of listing them: the list is what the game may ask for, so it has to follow
+ * the data (`just fetch-regs`) and the game's rule; a written-out list had to be redone by hand each time.
+ */
+export function laneRenders(src: LaneSources): LaneRender[] {
+  const out = new Map<string, LaneRender>();
+  const add = (lanes: string | readonly LaneSpec[]) => {
+    const key = laneKey(lanes);
+    if (!out.has(key)) out.set(key, { lanes: key, sign: laneSign(lanes) });
+  };
+  for (const lanes of ILLUSTRATED) add(lanes);
+  for (let n = 1; n <= MAX_ASSUMED_LANES; n++)
+    for (const exits of EXIT_SETS) add(src.assumed(n, new Set(exits)));
+  for (const value of src.turnlanes) add(value);
+  for (const lanes of USE_EXAMPLES) add(lanes);
+  return [...out.values()];
+}
