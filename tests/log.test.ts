@@ -288,6 +288,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     drawn: 155,
     lanes: 141,
   },
+  signal_heads_written: { file: "assets/signals/heads.json", heads: 5 },
   osm_read: { nodes: 1, ways: 2, relations: 3, coords: 4 },
   destinations_written: {
     file: "public/data/destinations.json",

@@ -4,14 +4,22 @@
 #     --python scripts/blender/signals.py -- public/models/signals.glb [preview-dir]
 #
 # Game coordinates (+Y up, lamp faces toward +Z), exported with export_yup=False. Parts:
-# - SignalHead: 車両用 LED 薄型 3 灯横型 housing (1.15 × 0.40 m, 300 mm lamps 0.37 m apart) with
-#   a visor (庇) over each lamp and a hanger on top; origin at the housing centre, front face z = 0.
-# - SignalLamp: one 300 mm lens disc (UV 0–1 over the disc) for the game to tint and light.
-# - PedHead: 歩行者用 2 灯縦型 housing (0.36 × 0.72 m) with a bracket behind; PedLamp: one 250 mm
-#   square lens. Upper lamp = 止まれ, lower = 進め.
+# - One housing per head type in assets/signals/heads.json (written from src/signals/heads.ts by
+#   `just make-signal-layout`): SignalHead (車両用 LED 薄型 3 灯横型 1.15 × 0.40 m, 300 mm lamps
+#   0.37 m apart), SignalHeadVertical (3 灯縦型), SignalHeadRightArrow / SignalHeadArrows (横型 with
+#   the arrow row under it), PedHead (歩行者用 2 灯縦型 0.36 × 0.72 m, 250 mm square lenses, upper =
+#   止まれ). Each has a visor (庇) per lamp and a hanger on top (or a bracket behind for PedHead);
+#   origin at the main housing's centre, front face z = 0. An empty `<node>_<lamp>` marks each lens
+#   centre (tests/signalHeads.test.ts checks 施行令第3条 against them).
+# - SignalLamp: one 300 mm lens disc (UV 0–1 over the disc) for the game to tint and light;
+#   SignalArrowLamp: an arrow pointing up (直進) on the same UV square, turned for left/right;
+#   PedLamp: one 250 mm square lens.
 # - SignalPole: tapered steel pole of unit height (the game stretches it along Y);
 #   SignalArm: overhang arm of unit length along +Y (the game turns +Y toward the head).
 # Lens artwork comes from assets/signals/textures (agy); the game swaps textures and colours.
+# With a preview dir, every head is also rendered lit, mounted as the game mounts it, from the
+# front, 30° and 60° off its axis, and from a driver's seat 30 m away (<preview>/<id>-<view>.png).
+import hashlib
 import json
 import math
 import os
@@ -27,12 +35,15 @@ OUT = os.path.abspath(ARGS[0]) if ARGS else os.path.join(ROOT, "public", "models
 PREVIEW = os.path.abspath(ARGS[1]) if len(ARGS) > 1 else None
 TEX = os.path.join(ROOT, "assets", "signals", "textures")
 
-LAMP_R = 0.15  # 300 mm lens
-LAMP_GAP = 0.37  # centre to centre
-HEAD_W, HEAD_H, HEAD_D = 1.15, 0.40, 0.11
-PED_W, PED_H, PED_D = 0.36, 0.72, 0.10
-PED_LAMP = 0.25
-PED_Y = 0.175  # lamp centres at ±PED_Y
+# Head types, lamp positions and mounts come from src/signals (via scripts/signals.ts), the same
+# definitions the game places lamps by. Why not constants here: the lamp spacing was once written
+# both here and in the game, and two copies drift.
+with open(os.path.join(ROOT, "assets", "signals", "heads.json"), "rb") as f:
+    REG_BYTES = f.read()
+REG = json.loads(REG_BYTES)
+# Written into the glb's scene extras: tests/signalHeads.test.ts compares it with heads.json to
+# catch a glb not rebuilt after the definitions changed.
+REG_SHA256 = hashlib.sha256(REG_BYTES).hexdigest()
 
 
 def log(event, **fields):
@@ -188,51 +199,114 @@ def tube(bm, p0, p1, r, mat, segments=12, cap=True):
         bm.faces.new(rings[1]).material_index = mat
 
 
-# ---------------------------------------------------------------- 車両用灯器
-bm = bmesh.new()
-prism(bm, rounded_rect(HEAD_W, HEAD_H, 0.07), -HEAD_D, 0.0, 0)
-for k in (-1, 0, 1):
-    x = k * LAMP_GAP
-    disc(bm, x, 0.0, 0.001, LAMP_R + 0.018, 1)  # black bezel round the lens
-    visor(bm, x, 0.0, LAMP_R + 0.02, 0.14, 1)
-# Hanger: a short pipe up to the arm, with a clamp plate.
-tube(bm, (0.0, HEAD_H / 2, -HEAD_D / 2), (0.0, HEAD_H / 2 + 0.28, -HEAD_D / 2), 0.03, 0)
-box(bm, 0.0, HEAD_H / 2 + 0.02, -HEAD_D / 2, 0.22, 0.04, 0.09, 0)
-bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-new_object("SignalHead", bm, ["SignalBody", "SignalInner"])
+def lens_radius(head):
+    return head["lens"]["sizeMm"] / 2000
 
-bm = bmesh.new()
-uvl = bm.loops.layers.uv.new("UVMap")
+
+def rounded_box(bm, box_, corner, depth, mat):
+    outline = [(box_["x"] + x, box_["y"] + y) for x, y in rounded_rect(box_["wM"], box_["hM"], corner)]
+    prism(bm, outline, -depth, 0.0, mat)
+
+
+def build_head(head):
+    """One housing node from its registry entry: boxes, a bezel and a visor per lens, the fitting."""
+    bm = bmesh.new()
+    hs = head["housing"]
+    for box_ in head["housings"]:
+        rounded_box(bm, box_, hs["cornerM"], hs["dM"], 0)
+    r = lens_radius(head)
+    bezel = head["lens"]["bezelM"]
+    visor_def = head["visor"]
+    # Top row first, left to right: the order the hand-written heads were built in, so the two
+    # shown heads come out vertex for vertex as before.
+    for p in sorted(head["layout"], key=lambda p: (-p["y"], p["x"])):
+        x, y = p["x"], p["y"]
+        if head["lens"]["shape"] == "round":
+            disc(bm, x, y, 0.001, r + bezel, 1)
+        else:
+            s = r + bezel
+            outline = [(x - s, y - s), (x + s, y - s), (x + s, y + s), (x - s, y + s)]
+            bm.faces.new([bm.verts.new((xx, yy, 0.001)) for xx, yy in outline]).material_index = 1
+        if visor_def:
+            visor(bm, x, y, r + visor_def["gapM"], visor_def["depthM"], 1, sweep=visor_def["sweepDeg"])
+    top = hs["hM"] / 2
+    if head["fitting"] == "hanger":
+        # A short pipe up to the arm, with a clamp plate.
+        tube(bm, (0.0, top, -hs["dM"] / 2), (0.0, top + REG["hangerM"], -hs["dM"] / 2), 0.03, 0)
+        box(bm, 0.0, top + 0.02, -hs["dM"] / 2, 0.22, 0.04, 0.09, 0)
+    else:
+        # Bracket back to the pole (the game stands the head beside its pole).
+        box(bm, 0.0, 0.0, -hs["dM"] - 0.09, 0.08, 0.30, 0.18, 0)
+    # The arrow row hangs from the main housing on two straps behind it.
+    for row in head["housings"][1:]:
+        gap_top = -hs["hM"] / 2
+        gap_bottom = row["y"] + row["hM"] / 2
+        for side in (-1, 1):
+            sx = row["x"] + side * (row["wM"] / 2 - 0.06)
+            box(bm, sx, (gap_top + gap_bottom) / 2, -hs["dM"] / 2, 0.05, gap_top - gap_bottom + 0.06, 0.06, 0)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    ob = new_object(head["node"], bm, ["SignalBody", "SignalInner"])
+    # Each lens centre as an empty under the housing (`<node>_<lamp>`): tests/signalHeads.test.ts
+    # reads them from the glb to check 施行令第3条 on the model itself. Why not a "." or ":" in the
+    # name: GLTFLoader strips those from node names.
+    for p in head["layout"]:
+        e = bpy.data.objects.new(f"{head['node']}_{p['lamp']}", None)
+        e.location = (p["x"], p["y"], 0.0)
+        e.parent = ob
+        SCENE.collection.objects.link(e)
+    return ob
+
+
+def lens_object(name, outline, size, mat):
+    """A flat lens at z = 0 whose UV 0–1 covers a size × size square round its centre."""
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("UVMap")
+    f = bm.faces.new([bm.verts.new((x, y, 0.0)) for x, y in outline])
+    for loop in f.loops:
+        loop[uvl].uv = (0.5 + loop.vert.co.x / size, 0.5 + loop.vert.co.y / size)
+    return new_object(name, bm, [mat])
+
+
+# ---------------------------------------------------------------- 灯器（assets/signals/heads.json）
+HEADS = {h["id"]: h for h in REG["heads"]}
+for h in REG["heads"]:
+    build_head(h)
+
+LAMP_R = lens_radius(HEADS["vehicle-h3"])
 segs = 32
-vs = [
-    bm.verts.new((LAMP_R * math.cos(2 * math.pi * i / segs), LAMP_R * math.sin(2 * math.pi * i / segs), 0.0))
-    for i in range(segs)
-]
-f = bm.faces.new(vs)
-for loop in f.loops:
-    loop[uvl].uv = (0.5 + loop.vert.co.x / (2 * LAMP_R), 0.5 + loop.vert.co.y / (2 * LAMP_R))
-new_object("SignalLamp", bm, ["Lens"])
+lens_object(
+    "SignalLamp",
+    [(LAMP_R * math.cos(2 * math.pi * i / segs), LAMP_R * math.sin(2 * math.pi * i / segs)) for i in range(segs)],
+    2 * LAMP_R,
+    "Lens",
+)
 
-# ---------------------------------------------------------------- 歩行者用灯器
-bm = bmesh.new()
-prism(bm, rounded_rect(PED_W, PED_H, 0.05), -PED_D, 0.0, 0)
-for y in (PED_Y, -PED_Y):
-    s = PED_LAMP / 2 + 0.015
-    outline = [(-s, y - s), (s, y - s), (s, y + s), (-s, y + s)]
-    bm.faces.new([bm.verts.new((x, yy, 0.001)) for x, yy in outline]).material_index = 1
-    visor(bm, 0.0, y, PED_LAMP / 2 + 0.03, 0.10, 1, sweep=160)
-# Bracket back to the pole (the game stands the head beside its pole, facing across the road).
-box(bm, 0.0, 0.0, -PED_D - 0.09, 0.08, 0.30, 0.18, 0)
-bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-new_object("PedHead", bm, ["SignalBody", "SignalInner"])
-
-bm = bmesh.new()
-uvl = bm.loops.layers.uv.new("UVMap")
+PED_LAMP = HEADS["ped-v2"]["lens"]["sizeMm"] / 1000
 h = PED_LAMP / 2
-f = bm.faces.new([bm.verts.new((x, y, 0.0)) for x, y in ((-h, -h), (h, -h), (h, h), (-h, h))])
-for loop in f.loops:
-    loop[uvl].uv = (0.5 + loop.vert.co.x / PED_LAMP, 0.5 + loop.vert.co.y / PED_LAMP)
-new_object("PedLamp", bm, ["PedLens"])
+lens_object("PedLamp", ((-h, -h), (h, -h), (h, h), (-h, h)), PED_LAMP, "PedLens")
+
+
+def arrow_outline(r):
+    """An arrow pointing up (+Y, 直進) inside a lens of radius r; the game turns it for left/right."""
+    shaft, head_w, tip, neck, tail = 0.26 * r, 0.78 * r, 0.74 * r, 0.12 * r, -0.70 * r
+    return [
+        (-shaft / 2, tail),
+        (shaft / 2, tail),
+        (shaft / 2, neck),
+        (head_w / 2, neck),
+        (0.0, tip),
+        (-head_w / 2, neck),
+        (-shaft / 2, neck),
+    ]
+
+
+# Concave outline: one n-gon renders, but triangulate so every importer agrees on the fill.
+arrow = lens_object("SignalArrowLamp", arrow_outline(LAMP_R), 2 * LAMP_R, "Lens")
+bm = bmesh.new()
+bm.from_mesh(arrow.data)
+bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="EAR_CLIP")
+bm.to_mesh(arrow.data)
+bm.free()
 
 # ---------------------------------------------------------------- 信号柱・アーム
 bm = bmesh.new()
@@ -260,6 +334,7 @@ new_object("SignalArm", bm, ["Pole"], smooth=True, sharp_angle=60)
 for ob in list(SCENE.objects):
     ob.select_set(False)
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
+SCENE["signalHeadsSha256"] = REG_SHA256
 bpy.ops.export_scene.gltf(
     filepath=OUT,
     export_format="GLB",
@@ -269,59 +344,120 @@ bpy.ops.export_scene.gltf(
     export_image_format="AUTO",
     export_cameras=False,
     export_lights=False,
+    export_extras=True,
 )
 tris = {o.name: sum(len(p.vertices) - 2 for p in o.data.polygons) for o in SCENE.objects if o.type == "MESH"}
 log("exported", file=OUT, bytes=os.path.getsize(OUT), tris=tris)
 
+# ---------------------------------------------------------------- 多視点レビュー
+# The game's lit colours (LAMP_COLOURS in src/signals/heads.ts), so the review shows its hues.
+LIT = {
+    use: {name: lin(hex_color)[:3] for name, hex_color in colours.items()}
+    for use, colours in REG["lampColours"].items()
+    if use != "off"
+}
+
+
+def lit_material(name, rgb, image=None):
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    b = m.node_tree.nodes["Principled BSDF"]
+    # Black base: the game draws lit lenses unlit, so neither the sun nor a visor's shadow shows
+    # on them; only the emission does.
+    b.inputs["Base Color"].default_value = (0.0, 0.0, 0.0, 1)
+    b.inputs["Emission Color"].default_value = (*rgb, 1)
+    # 1.0: any stronger clips the green channel and 青 (0x19e6b4) reads as cyan.
+    b.inputs["Emission Strength"].default_value = 1.0
+    if image and os.path.exists(image):
+        # The pictogram mask (white figure on a dark plate) times the lamp colour, as in the game.
+        tex = m.node_tree.nodes.new("ShaderNodeTexImage")
+        tex.image = bpy.data.images.load(image)
+        mix = m.node_tree.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        mix.blend_type = "MULTIPLY"
+        mix.inputs["Factor"].default_value = 1.0
+        mix.inputs["B"].default_value = (*rgb, 1)
+        m.node_tree.links.new(tex.outputs["Color"], mix.inputs["A"])
+        m.node_tree.links.new(mix.outputs["Result"], b.inputs["Emission Color"])
+    return m
+
+
+def lamp_colour(lamp):
+    return "green" if lamp.startswith("arrow-") else lamp
+
+
+def place(src, name, matrix, mat):
+    ob = bpy.data.objects.new(name, src.data.copy())
+    ob.data.materials[0] = mat
+    ob.matrix_world = matrix
+    SCENE.collection.objects.link(ob)
+    return ob
+
+
+def assemble(head):
+    """The head as the game mounts it, every lens lit in its own colour; returns the head's centre."""
+    objs = {o.name: o for o in SCENE.objects}
+    is_vehicle = head["use"] == "vehicle"
+    mount = REG["mounts"][head["mount"]]
+    scale = mount["drawScale"]
+    centre = Vector((0.0, mount["centreHeightM"], 0.0))
+    housing = objs[head["node"]]
+    housing.hide_render = False
+    housing.matrix_world = Matrix.Translation(centre) @ Matrix.Scale(scale, 4)
+    shown = [housing]
+    for p in head["layout"]:
+        colour = lamp_colour(p["lamp"])
+        if p["lamp"].startswith("arrow-"):
+            src, image = objs["SignalArrowLamp"], None
+        elif is_vehicle:
+            src, image = objs["SignalLamp"], None
+        else:
+            src = objs["PedLamp"]
+            image = os.path.join(TEX, "ped_stop.png" if p["lamp"] == "red" else "ped_go.png")
+        local = Matrix.Translation((p["x"], p["y"], REG["lensZM"])) @ Matrix.Rotation(p["turn"], 4, "Z")
+        mat = lit_material(f"Lit-{head['id']}-{p['lamp']}", LIT[head["use"]][colour], image)
+        shown.append(place(src, f"Review-{p['lamp']}", housing.matrix_world @ local, mat))
+    if is_vehicle:
+        # Arm from a pole on the driver's left (−X) to the hanger's top.
+        arm_y = centre.y + head["hangM"] * scale
+        pole = place(
+            objs["SignalPole"],
+            "Review-pole",
+            Matrix.Translation((-3.4, 0, -0.07)) @ Matrix.Diagonal((1, arm_y + 0.25, 1, 1)),
+            MAT["Pole"],
+        )
+        arm = place(
+            objs["SignalArm"],
+            "Review-arm",
+            Matrix.Translation((-3.4, arm_y, -0.07))
+            @ Matrix.Rotation(math.radians(-90), 4, "Z")
+            @ Matrix.Diagonal((1, 3.4, 1, 1)),
+            MAT["Pole"],
+        )
+        shown += [pole, arm]
+    else:
+        pole = place(
+            objs["SignalPole"],
+            "Review-pole",
+            Matrix.Translation((0, 0, -mount["offsetM"])) @ Matrix.Diagonal((1, mount["centreHeightM"] + 0.55, 1, 1)),
+            MAT["Pole"],
+        )
+        shown.append(pole)
+    return centre, shown
+
+
+def look(cam, eye, target):
+    cam.location = eye
+    fwd = (Vector(target) - Vector(eye)).normalized()
+    right = fwd.cross(Vector((0.0, 1.0, 0.0))).normalized()
+    up = right.cross(fwd)
+    cam.rotation_euler = Matrix((right, up, -fwd)).transposed().to_euler()
+
+
 if PREVIEW:
     os.makedirs(PREVIEW, exist_ok=True)
-    # Assemble one corner: pole, arm, vehicle head with lit red lamp, pedestrian head with lit go lamp.
-    objs = {o.name: o for o in SCENE.objects}
-    pole = objs["SignalPole"]
-    pole.scale = (1, 5.6, 1)
-    arm = objs["SignalArm"]
-    arm.location = (0.0, 5.45, 0.0)
-    arm.rotation_euler = (0, 0, math.radians(-90))  # +Y → +X
-    arm.scale = (1, 3.2, 1)
-    head = objs["SignalHead"]
-    head.location = (2.6, 5.45 - 0.48, 0.07)
-    lamps = []
-    for k in (-1, 0, 1):
-        c = objs["SignalLamp"].copy()
-        c.data = objs["SignalLamp"].data
-        SCENE.collection.objects.link(c)
-        c.location = (2.6 + k * LAMP_GAP, 5.45 - 0.48, 0.072)
-        lamps.append(c)
-    objs["SignalLamp"].hide_render = True
-    red = bpy.data.materials.new("LitRed")
-    red.use_nodes = True
-    rb = red.node_tree.nodes["Principled BSDF"]
-    rb.inputs["Base Color"].default_value = (1.0, 0.05, 0.02, 1)
-    rb.inputs["Emission Color"].default_value = (1.0, 0.05, 0.02, 1)
-    rb.inputs["Emission Strength"].default_value = 6.0
-    lamps[2].data = lamps[2].data.copy()
-    lamps[2].data.materials[0] = red
-    ped = objs["PedHead"]
-    ped.location = (0.0, 2.75, 0.32)
-    for y, name in ((PED_Y, "stop"), (-PED_Y, "go")):
-        c = objs["PedLamp"].copy()
-        c.data = objs["PedLamp"].data.copy()
-        SCENE.collection.objects.link(c)
-        c.location = (0.0, 2.75 + y, 0.322)
-        if name == "go":
-            green = bpy.data.materials.new("LitGreen")
-            green.use_nodes = True
-            gb = green.node_tree.nodes["Principled BSDF"]
-            tex = green.node_tree.nodes.new("ShaderNodeTexImage")
-            path = os.path.join(TEX, "ped_go.png")
-            if os.path.exists(path):
-                tex.image = bpy.data.images.load(path)
-                green.node_tree.links.new(tex.outputs["Color"], gb.inputs["Emission Color"])
-            gb.inputs["Base Color"].default_value = (0.05, 0.9, 0.6, 1)
-            gb.inputs["Emission Strength"].default_value = 4.0
-            c.data.materials[0] = green
-    objs["PedLamp"].hide_render = True
-
+    for o in SCENE.objects:
+        o.hide_render = True
     world = bpy.data.worlds.new("World")
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.55, 0.65, 0.78, 1)
@@ -330,6 +466,13 @@ if PREVIEW:
     sun.data.energy = 3.0
     sun.rotation_euler = (math.radians(-55), math.radians(30), 0)
     SCENE.collection.objects.link(sun)
+    ground = bpy.data.objects.new("Ground", bpy.data.meshes.new("Ground"))
+    gbm = bmesh.new()
+    gbm.faces.new([gbm.verts.new((x, 0.0, z)) for x, z in ((-80, 80), (80, 80), (80, -80), (-80, -80))])
+    gbm.to_mesh(ground.data)
+    gbm.free()
+    ground.data.materials.append(material("Asphalt", 0x55585C, roughness=0.9))
+    SCENE.collection.objects.link(ground)
     cam = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
     cam.data.lens = 50
     SCENE.collection.objects.link(cam)
@@ -339,15 +482,31 @@ if PREVIEW:
     SCENE.cycles.samples = 32
     SCENE.render.resolution_x = 1280
     SCENE.render.resolution_y = 720
-    for view, (eye, target) in {
-        "corner": ((5.5, 3.2, 9.0), (1.4, 3.8, 0.0)),
-        "head": ((3.4, 5.0, 2.4), (2.6, 4.97, 0.0)),
-    }.items():
-        cam.location = eye
-        fwd = (Vector(target) - Vector(eye)).normalized()
-        right = fwd.cross(Vector((0.0, 1.0, 0.0))).normalized()
-        up = right.cross(fwd)
-        cam.rotation_euler = Matrix((right, up, -fwd)).transposed().to_euler()
-        SCENE.render.filepath = os.path.join(PREVIEW, f"signals-{view}.png")
-        bpy.ops.render.render(write_still=True)
-        log("preview", view=view)
+    # Standard, not the default AgX: AgX desaturates bright emission toward white, and the review
+    # has to tell 赤・黄・青 apart.
+    SCENE.view_settings.view_transform = "Standard"
+    for head in REG["heads"]:
+        centre, shown = assemble(head)
+        scale = REG["mounts"][head["mount"]]["drawScale"]
+        top = max(b["y"] + b["hM"] / 2 for b in head["housings"])
+        bottom = min(b["y"] - b["hM"] / 2 for b in head["housings"])
+        width = max(b["wM"] for b in head["housings"])
+        # Fit the housing (and the hanger above it) with a margin: 50 mm lens, 16:9.
+        near = max(1.95 * width * scale, 3.5 * ((top - bottom) * scale + 0.4))
+        focus = centre + Vector((0.0, (top + bottom) / 2 * scale, 0.0))
+        views = {}
+        for deg in (0, 30, 60):
+            a = math.radians(deg)
+            views[f"oblique{deg:02d}" if deg else "front"] = (
+                (focus.x + near * math.sin(a), focus.y, focus.z + near * math.cos(a)),
+                focus,
+            )
+        # A driver 30 m short of the head, eyes 1.2 m up, sitting 1.5 m right of the head's line.
+        views["driver30m"] = ((1.5, 1.2, 30.0), focus)
+        for view, (eye, target) in views.items():
+            look(cam, eye, target)
+            SCENE.render.filepath = os.path.join(PREVIEW, f"{head['id']}-{view}.png")
+            bpy.ops.render.render(write_still=True)
+            log("preview", head=head["id"], view=view)
+        for o in shown:
+            o.hide_render = True

@@ -42,9 +42,14 @@ make-sign-model:
 make-human-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/human.py -- public/models/human.glb
 
-# 信号機（車両用・歩行者用灯器、信号柱）を Blender CLI でモデリングし public/models/signals.glb を書き出す
-make-signal-model:
-    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signals.py -- public/models/signals.glb
+# 信号灯器の型と灯の配置（src/signals）から Blender 用の assets/signals/heads.json を書き出す
+make-signal-layout:
+    pnpm exec tsx scripts/signals.ts
+    pnpm exec oxfmt assets/signals/heads.json
+
+# 信号機（車両用・歩行者用灯器、信号柱）を Blender CLI でモデリングし public/models/signals.glb を書き出す（preview を渡すと灯器ごとに多視点のレンダーも書く）
+make-signal-model preview="": make-signal-layout
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signals.py -- public/models/signals.glb {{ preview }}
 
 # 高規格救急車を Blender CLI でモデリングし public/models/ambulance.glb を書き出す
 make-ambulance-model:

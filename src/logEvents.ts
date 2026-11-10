@@ -473,6 +473,8 @@ export const LOG_EVENTS = {
   sign_law_table_written: info({ file: z.string(), revision: z.string(), signs: count }),
   /** scripts/signs.ts: the sign definitions written out as registry.json and catalog.json. */
   sign_registry_written: info({ files: z.array(z.string()), signs: count, drawn: count, lanes: count }),
+  /** scripts/signals.ts wrote the signal-head registry signals.py models from. */
+  signal_heads_written: info({ file: z.string(), heads: count }),
   osm_read: info({ nodes: count, ways: count, relations: count, coords: count }),
   destinations_written: info({
     file: z.string(),
