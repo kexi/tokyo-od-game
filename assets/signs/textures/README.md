@@ -4,7 +4,7 @@ Tokyo Open Drive の道路標識の図柄です。標識板は `public/models/si
 すべて `scripts/textures/sign_textures.py` と `scripts/textures/signs/` が手続き生成します。
 外部画像と AI 生成は使っていません。
 
-どの番号がどのファイル・板・寸法に当たるかの定義は `src/signs/defs/*.ts` で、`assets/signs/catalog.json`（と `registry.json`）はそこから `just make-sign-registry` が書き出します（knowledge/sign-system.md）。
+どの番号がどのファイル・板・寸法に当たり、どの関数で描くか（`paint`）の定義は `src/signs/defs/*.ts` で、`assets/signs/registry.json`（と従来の `catalog.json`）はそこから `just make-sign-registry` が書き出します。生成器は registry.json を読んで描くので、Python 側に番号・寸法・変種の一覧はありません（knowledge/sign-system.md）。
 別表第一の全番号を収めており、描いていない案内標識も `texture: null` と理由付きで載せています。
 
 ## 根拠
@@ -34,7 +34,7 @@ Tokyo Open Drive の道路標識の図柄です。標識板は `public/models/si
 ## 再生成
 
 ```bash
-# 全テクスチャ（catalog.json は書かず、定義と食い違えば止まる。catalog.json は just make-sign-registry）
+# 全テクスチャ（assets/signs/registry.json の全図柄。先に just make-sign-registry）
 uv run scripts/textures/sign_textures.py
 # 確認用のコンタクトシート（群ごと、実寸比で表示）
 uv run scripts/textures/sign_textures.py --sheet /tmp/signs
@@ -42,6 +42,8 @@ uv run scripts/textures/sign_textures.py --sheet /tmp/signs
 uv run scripts/textures/sign_textures.py render 327の7-A --lanes "left+through,through,right" -o /tmp/a.png
 uv run scripts/textures/sign_textures.py render 501 --text "この先/200m" -o /tmp/b.png
 ```
+
+Pillow は PEP 723 のメタデータで 12.3.0 に固定しています。PNG のバイト列は Pillow（と同梱の zlib）の版で変わるためで、作り直した 345 枚がコミット済みのものとバイト一致することを確かめています。
 
 ## フォント
 

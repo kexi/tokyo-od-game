@@ -3,17 +3,17 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatCatalog } from "../src/signs/catalog";
 import { signCoverage } from "../src/signs/coverage";
-import { LANE_RENDERS, SIGN_DEFS } from "../src/signs/defs";
 import { layoutJson, PyFloat } from "../src/signs/jsonLayout";
 import { buildRegistry, facesOf, formatRegistry, lanePlate } from "../src/signs/registry";
-import { LANE_KEY, LawTableSchema } from "../src/signs/schema";
+import { laneKey as signLaneKey, laneSign } from "../src/signs/lanes";
+import { LANE_KEY, PAINTER_MODULES } from "../src/signs/schema";
 import { assumedLanes, SIGN, type LaneDirection } from "../src/world/regulations";
 import { design } from "../src/world/signs";
+import { loadRegistry, turnlaneValues } from "../scripts/signInputs";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
-const law = LawTableSchema.parse(JSON.parse(read("assets/signs/law-table.json")));
-const registry = buildRegistry(SIGN_DEFS, LANE_RENDERS, law);
+const { law, registry } = loadRegistry(root);
 const statutory = registry.signs.filter((s) => s.group !== "法定外");
 
 /** Every face of every sign, with the sign it belongs to. */
@@ -91,17 +91,54 @@ function laneKey(lanes: readonly LaneDirection[][]): string {
 describe("the pre-rendered lane signs (src/signs/defs/lanes.ts)", () => {
   const rendered = new Set(registry.lanes.map((r) => r.lanes));
 
-  it("include every turn:lanes value of public/data/turnlanes", () => {
-    const dir = join(root, "public/data/turnlanes");
-    const values = readdirSync(dir)
-      .filter((f) => /^\d+-\d+\.json$/.test(f)) // the z14 tiles (meta.json lists them)
-      .flatMap((f) =>
-        (JSON.parse(readFileSync(join(dir, f), "utf8")) as Array<[number, number, number, string]>).map(
-          (r) => r[3],
-        ),
-      );
+  it("include every turn:lanes value of public/data/turnlanes, read as the game reads it", () => {
+    const values = turnlaneValues(root);
     expect(values.length).toBeGreaterThan(0);
     expect([...new Set(values.map(osmLaneKey))].filter((k) => !rendered.has(k))).toEqual([]);
+  });
+
+  it("start with the 図示 of 327の7-A…D and end with the 専用・優先 examples", () => {
+    // That the rule gives the 141 patterns lanes.ts listed by hand until G1b, in that order, was
+    // checked once (knowledge/sign-system.md); the registry freshness test keeps it since.
+    expect(registry.lanes.slice(0, 4).map((r) => `${r.lanes} ${r.sign}`)).toEqual([
+      "lt-t-r 327の7-A",
+      "lt 327の7-B",
+      "l 327の7-C",
+      "t 327の7-D",
+    ]);
+    expect(registry.lanes.slice(-5).map((r) => `${r.lanes} ${r.sign}`)).toEqual([
+      "lt~bus-t-r 327の4",
+      "lt~busp-t-r 327の5",
+      "lt~bus-t-t-r 327の4",
+      "lt~busp-t-t-r 327の5",
+      "t~cyc-t-r 327の4",
+    ]);
+  });
+
+  it("read lanes as lanes.py does: + or ; between words, unknown words dropped, an empty lane straight on", () => {
+    expect(signLaneKey("left;through|through|right")).toBe("lt-t-r");
+    expect(signLaneKey(["right+left", " through ", "", "u_turn"])).toBe("lr-t-t-t");
+    expect(signLaneKey([{ dirs: "left;through", use: "bus_priority" }, "slight_right;reverse"])).toBe(
+      "lt~busp-uhr",
+    );
+  });
+
+  it("belong to 327の7-D/C/B for one lane, -A for more, and 327の4 / 327の5 with a 専用・優先 lane", () => {
+    expect(["through", "left", "left;through", "right", "reverse"].map((l) => laneSign(l))).toEqual([
+      "327の7-D",
+      "327の7-C",
+      "327の7-B",
+      "327の7-B",
+      "327の7-B",
+    ]);
+    expect(laneSign("through|right")).toBe("327の7-A");
+    expect(laneSign([{ dirs: "through", use: "bicycle" }])).toBe("327の4");
+    expect(
+      laneSign([
+        { dirs: "through", use: "bus" },
+        { dirs: "through", use: "bus_priority" },
+      ]),
+    ).toBe("327の5");
   });
 
   it("include every pattern assumedLanes gives for 1–6 lanes and the exits a junction can have", () => {
@@ -151,6 +188,36 @@ describe("the definitions against the artwork (assets/signs/textures)", () => {
     const named = new Set(faces.map((f) => f.file));
     expect([...named].filter((f) => !pngs.includes(f))).toEqual([]);
     expect(pngs.filter((f) => !named.has(f))).toEqual([]);
+  });
+
+  it("name Pillow functions of scripts/textures that are declared to return an image", () => {
+    const source = new Map(
+      PAINTER_MODULES.map((m) => {
+        const file = m === "sign_textures" ? "sign_textures.py" : `signs/${m}.py`;
+        return [m, read(`scripts/textures/${file}`)];
+      }),
+    );
+    const named = registry.signs.flatMap((s) =>
+      s.art?.by === "texture" ? [s.art.paint, ...s.art.variants.map((v) => v.paint)] : [],
+    );
+    /** A public `def` declared `-> Image.Image` (parameters may hold one level of brackets). */
+    const isPainter = (module: (typeof PAINTER_MODULES)[number], fn: string) =>
+      !fn.startsWith("_") &&
+      new RegExp(`^def ${fn}\\((?:[^()]|\\([^()]*\\))*\\) -> Image\\.Image:`, "m").test(
+        source.get(module) ?? "",
+      );
+    const missing = named.flatMap((p) => {
+      if (!p) return [];
+      const [module, fn] = p.fn.split(".") as [(typeof PAINTER_MODULES)[number], string];
+      return isPainter(module, fn) ? [] : [p.fn];
+    });
+    // The generator's own functions and helpers that draw nothing on their own are not painters.
+    for (const fn of ["generate", "render", "main", "draw_arrow_head", "_paint_with"])
+      expect(isPainter("sign_textures", fn), fn).toBe(false);
+    expect(isPainter("auxiliary", "plate_height")).toBe(false);
+    expect(named.length).toBeGreaterThan(200);
+    expect([...new Set(missing)]).toEqual([]);
+    expect(registry.painterModules).toEqual(PAINTER_MODULES);
   });
 
   it("give each PNG one owner (a sign showing another's plate borrows it through shares)", () => {
@@ -292,7 +359,7 @@ describe("a broken definition", () => {
     name: "通行止め",
     group: "規制",
     plate: "PlateCircle",
-    art: { by: "texture", file: "a.png" },
+    art: { by: "texture", file: "a.png", paint: { fn: "regulatory.road_closed" } },
   };
 
   it("is refused when its id is given twice, or is not a 番号 of 別表第一", () => {
@@ -320,6 +387,24 @@ describe("a broken definition", () => {
       ],
     };
     expect(build([{ ...drawn, art: twice }])).toThrow(/sign 301: variant key x used more than once/);
+  });
+
+  it("is refused when a face has no painter, a lane render has one, or a face is drawn over nothing", () => {
+    const paint = { fn: "regulatory.road_closed" };
+    expect(build([{ ...drawn, art: { by: "texture", file: "a.png" } }])).toThrow(
+      /sign 301: a.png has no paint/,
+    );
+    const laneArt = { by: "texture", file: "327-7_t.png", paint };
+    expect(build([{ ...drawn, art: laneArt }], [{ lanes: "t", sign: "301" }])).toThrow(
+      /327-7_t.png is a lane render/,
+    );
+    const over = { key: "x", file: "b.png", paint: { ...paint, over: "z.png" } };
+    expect(build([{ ...drawn, art: { ...drawn.art, variants: [over] } }])).toThrow(
+      /b.png is drawn over z.png, not drawn on its own/,
+    );
+    expect(build([{ ...drawn, art: { ...drawn.art, paint: { fn: "os.system" } } }])).toThrow(
+      /module.function/,
+    );
   });
 });
 

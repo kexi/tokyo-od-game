@@ -16,6 +16,7 @@ plate. 図示の記号は例示 (備考一(一)1), so any combination of arrows 
 
 from __future__ import annotations
 
+import re
 from typing import Sequence, Union
 
 from PIL import Image
@@ -61,16 +62,29 @@ def slug(lanes: Union[str, Sequence[LaneSpec]]) -> str:
     return "-".join(parts)
 
 
-def file_name(lanes: Union[str, Sequence[LaneSpec]]) -> str:
-    return f"327-7_{slug(lanes)}.png"
+_LETTERS = {v: k for k, v in SLUG.items()}
+_USE_OF = {v: k for k, v in USES.items()}
+_LETTER = re.compile(r"hl|hr|u|l|t|r")
+
+
+def spec_of(key: str) -> list[dict]:
+    """The lanes of a render key (registry.json lanes[].lanes, the inverse of `slug`):
+    "lt~bus-t-r" → [{dirs: "left;through", use: "bus"}, {dirs: "through"}, {dirs: "right"}]."""
+    out: list[dict] = []
+    for part in key.split("-"):
+        letters, _, use = part.partition("~")
+        found = _LETTER.findall(letters)
+        is_unknown = "".join(found) != letters or (use and use not in _USE_OF)
+        if is_unknown or not found:
+            raise ValueError(f"lane key {key!r}: cannot read {part!r}")
+        out.append({"dirs": ";".join(_LETTERS[d] for d in found), "use": _USE_OF[use] if use else None})
+    if slug(out) != key:
+        raise ValueError(f"lane key {key!r} is not in slug order (it reads back as {slug(out)!r})")
+    return out
 
 
 def plate_size(n: int) -> tuple[float, float]:
     return (LANE_H, LANE_H) if n == 1 else (LANE_W * n, LANE_H)
-
-
-def plate_node(n: int) -> str:
-    return "PlateSquare90" if n == 1 else f"PlateRect{n * 40}x90"
 
 
 def _dashes(f: Face, x: float, top: float, bottom: float, w: float, solid: bool = False) -> None:
@@ -176,21 +190,3 @@ def lane_sign(lanes: Union[str, Sequence[LaneSpec]]) -> Image.Image:
         f.text(cx, ty, word[0] + "　" + word[1] if n == 1 else word, th, WHITE, weight=700, max_w=2 * half)
         _arrows(f, cx, ty + th / 2 + 40, bottom - 20, half, dirs, k * 0.8)
     return f.finish()
-
-
-def assumed_lanes(n: int, exits: set[str]) -> list[list[str]]:
-    """Port of `assumedLanes` in src/world/regulations.ts: the usual Tokyo pattern for `n` lanes
-    (左折・直進 | 直進 … | 右折; 2 lanes: 直進・右折), used to pre-render what the game may ask for."""
-    lanes = []
-    for i in range(n):
-        is_left, is_right = i == 0, i == n - 1
-        s = []
-        if is_left and "left" in exits:
-            s.append("left")
-        is_through = (not is_right) or n == 2 or "right" not in exits
-        if "through" in exits and is_through:
-            s.append("through")
-        if is_right and "right" in exits:
-            s.append("right")
-        lanes.append(s or ["through"])
-    return lanes

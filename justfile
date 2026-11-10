@@ -130,7 +130,7 @@ make-textures:
     uv run scripts/textures/police_vehicle_textures.py
     uv run scripts/textures/tokyo_station_textures.py
 
-# 道路標識の図柄を作り直し（catalog.json と食い違えば止まる）、群ごとのコンタクトシートを書き出す
+# 道路標識の図柄を assets/signs/registry.json から作り直し、群ごとのコンタクトシートを書き出す
 make-sign-textures sheet="${TMPDIR:-/tmp}/signs":
     uv run scripts/textures/sign_textures.py --sheet {{ sheet }}
 
@@ -141,6 +141,10 @@ render-sign *args:
 # 道路標識の定義（src/signs/defs）を検査し、assets/signs/registry.json と catalog.json に書き出す
 make-sign-registry:
     pnpm exec tsx scripts/signs.ts
+
+# fetch-regs の後に、道路標識のレジストリと図柄を作り直し、どの定義にも無い図柄を消す（車線の版が turn:lanes から決まるため）
+rebuild-sign-assets: make-sign-registry
+    uv run scripts/textures/sign_textures.py --prune
 
 # 道路標識の定義のうち、未描画の番号と、図柄はあるがゲームが配置していない番号を一覧する
 show-sign-coverage:

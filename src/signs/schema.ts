@@ -6,10 +6,11 @@ import { PLATES } from "./plates";
  * scripts/signs.ts checks every definition against these schemas and writes them out as
  * assets/signs/registry.json, and from it the older assets/signs/catalog.json (knowledge/sign-system.md).
  *
- * Fixed pictograms are referred to by the PNG that draws them; what varies (lanes, numbers, words)
- * is only flagged by `variable` for now. The fuller schema of the design (painter names, colours,
- * scale, mount, retroreflection) lands with the phases that read it (G1b–G4), so nothing here is a
- * field no one fills.
+ * Each face names its PNG and the Pillow function that draws it (`paint`, which
+ * scripts/textures/sign_textures.py reads from registry.json); what varies (lanes, numbers, words)
+ * is flagged by `variable`. The fuller schema of the design (colours, scale, mount,
+ * retroreflection) lands with the phases that read it (G2–G4), so nothing here is a field no one
+ * fills.
  */
 
 export const SIGN_GROUPS = ["案内", "警戒", "規制", "指示", "補助", "法定外"] as const;
@@ -35,10 +36,35 @@ const PngFile = z.string().regex(/^[^/\\\s]+\.png$/, "assets/signs/textures の�
 export const SIGN_ID = /^(\d{3}(の\d+)*(-[A-Z])?|x-[a-z0-9]+(-[a-z0-9]+)*)$/;
 const isNonStatutoryId = (id: string) => id.startsWith("x-");
 
+/** The Python modules of scripts/textures whose functions draw sign faces (registry.json painterModules: sign_textures.py imports only these). */
+export const PAINTER_MODULES = [
+  "sign_textures",
+  "warning",
+  "regulatory",
+  "instruction",
+  "auxiliary",
+  "nonstatutory",
+] as const;
+const PAINTER_NAME = new RegExp(`^(${PAINTER_MODULES.join("|")})\\.[a-z][a-z0-9_]*$`);
+
+/**
+ * The Pillow function drawing a face: `module.function` of scripts/textures (sign_textures.py, or
+ * signs/<module>.py), called with `args` as keyword arguments. `over` names a PNG drawn earlier in
+ * the same run that the function draws on (the hours over 316, 備考一(一)35); it is passed first.
+ * Lane renders have none: lanes.lane_sign draws them from their key.
+ */
+export const PaintSchema = z.strictObject({
+  fn: z.string().regex(PAINTER_NAME, "scripts/textures の module.function にする"),
+  args: z.record(z.string(), z.json()).optional(),
+  over: PngFile.optional(),
+});
+export type Paint = z.infer<typeof PaintSchema>;
+
 export const VariantSchema = z.strictObject({
   /** What tells it apart (`left`, `8-20`, `kyujitsu`). */
   key: z.string().min(1),
   file: PngFile,
+  paint: PaintSchema.optional(),
   /** Its own plate when it is not the sign's (a two-line 補助標識, the old square 407-A). */
   plate: PlateNodeSchema.optional(),
 });
@@ -49,6 +75,8 @@ export const ArtSchema = z.discriminatedUnion("by", [
   z.strictObject({
     by: z.literal("texture"),
     file: PngFile,
+    /** Required unless the file is a lane render (registry.ts checks). */
+    paint: PaintSchema.optional(),
     variants: z.array(VariantSchema).default([]),
   }),
   /** Not drawn, and why. */

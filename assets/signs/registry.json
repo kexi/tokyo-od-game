@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "law": {
     "id": "335M50004002003",
     "title": "道路標識、区画線及び道路標示に関する命令",
@@ -117,6 +117,7 @@
       "sizeMm": [600, 350]
     }
   },
+  "painterModules": ["sign_textures", "warning", "regulatory", "instruction", "auxiliary", "nonstatutory"],
   "signs": [
     {
       "id": "101",
@@ -1105,6 +1106,9 @@
       "art": {
         "by": "texture",
         "file": "201a.png",
+        "paint": {
+          "fn": "warning.crossroads"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-093.jpg"
@@ -1117,10 +1121,19 @@
       "art": {
         "by": "texture",
         "file": "201b_right.png",
+        "paint": {
+          "fn": "warning.side_road"
+        },
         "variants": [
           {
             "key": "left",
-            "file": "201b_left.png"
+            "file": "201b_left.png",
+            "paint": {
+              "fn": "warning.side_road",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1134,6 +1147,9 @@
       "art": {
         "by": "texture",
         "file": "201c.png",
+        "paint": {
+          "fn": "warning.t_junction"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-095.jpg"
@@ -1146,6 +1162,9 @@
       "art": {
         "by": "texture",
         "file": "201d.png",
+        "paint": {
+          "fn": "warning.y_junction"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-096.jpg"
@@ -1158,6 +1177,9 @@
       "art": {
         "by": "texture",
         "file": "201-2.png",
+        "paint": {
+          "fn": "warning.rotary"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-097.jpg"
@@ -1170,10 +1192,19 @@
       "art": {
         "by": "texture",
         "file": "202_right.png",
+        "paint": {
+          "fn": "warning.bend"
+        },
         "variants": [
           {
             "key": "left",
-            "file": "202_left.png"
+            "file": "202_left.png",
+            "paint": {
+              "fn": "warning.bend",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1187,10 +1218,19 @@
       "art": {
         "by": "texture",
         "file": "203_right.png",
+        "paint": {
+          "fn": "warning.sharp_bend"
+        },
         "variants": [
           {
             "key": "left",
-            "file": "203_left.png"
+            "file": "203_left.png",
+            "paint": {
+              "fn": "warning.sharp_bend",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1204,10 +1244,19 @@
       "art": {
         "by": "texture",
         "file": "204_right.png",
+        "paint": {
+          "fn": "warning.reverse_bend"
+        },
         "variants": [
           {
             "key": "left",
-            "file": "204_left.png"
+            "file": "204_left.png",
+            "paint": {
+              "fn": "warning.reverse_bend",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1221,10 +1270,19 @@
       "art": {
         "by": "texture",
         "file": "205_right.png",
+        "paint": {
+          "fn": "warning.reverse_sharp_bend"
+        },
         "variants": [
           {
             "key": "left",
-            "file": "205_left.png"
+            "file": "205_left.png",
+            "paint": {
+              "fn": "warning.reverse_sharp_bend",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1238,10 +1296,19 @@
       "art": {
         "by": "texture",
         "file": "206_right.png",
+        "paint": {
+          "fn": "warning.winding"
+        },
         "variants": [
           {
             "key": "left",
-            "file": "206_left.png"
+            "file": "206_left.png",
+            "paint": {
+              "fn": "warning.winding",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1255,6 +1322,9 @@
       "art": {
         "by": "texture",
         "file": "207a.png",
+        "paint": {
+          "fn": "warning.level_crossing"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-103.jpg"
@@ -1267,6 +1337,12 @@
       "art": {
         "by": "texture",
         "file": "207b.png",
+        "paint": {
+          "fn": "warning.level_crossing",
+          "args": {
+            "electric": true
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-104.jpg"
@@ -1279,6 +1355,9 @@
       "art": {
         "by": "texture",
         "file": "208.png",
+        "paint": {
+          "fn": "warning.school"
+        },
         "variants": []
       },
       "game": {
@@ -1294,10 +1373,19 @@
       "art": {
         "by": "texture",
         "file": "208-2.png",
+        "paint": {
+          "fn": "warning.traffic_signal"
+        },
         "variants": [
           {
             "key": "vertical",
-            "file": "208-2_vertical.png"
+            "file": "208-2_vertical.png",
+            "paint": {
+              "fn": "warning.traffic_signal",
+              "args": {
+                "vertical": true
+              }
+            }
           }
         ]
       },
@@ -1311,6 +1399,9 @@
       "art": {
         "by": "texture",
         "file": "209.png",
+        "paint": {
+          "fn": "warning.slippery"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-107.jpg"
@@ -1323,10 +1414,19 @@
       "art": {
         "by": "texture",
         "file": "209-2.png",
+        "paint": {
+          "fn": "warning.rockfall"
+        },
         "variants": [
           {
             "key": "mirror",
-            "file": "209-2_mirror.png"
+            "file": "209-2_mirror.png",
+            "paint": {
+              "fn": "warning.rockfall",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1340,6 +1440,9 @@
       "art": {
         "by": "texture",
         "file": "209-3.png",
+        "paint": {
+          "fn": "warning.bumpy"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-109.jpg"
@@ -1352,10 +1455,19 @@
       "art": {
         "by": "texture",
         "file": "210.png",
+        "paint": {
+          "fn": "warning.merge"
+        },
         "variants": [
           {
             "key": "mirror",
-            "file": "210_mirror.png"
+            "file": "210_mirror.png",
+            "paint": {
+              "fn": "warning.merge",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1369,10 +1481,19 @@
       "art": {
         "by": "texture",
         "file": "211.png",
+        "paint": {
+          "fn": "warning.lanes_reduce"
+        },
         "variants": [
           {
             "key": "mirror",
-            "file": "211_mirror.png"
+            "file": "211_mirror.png",
+            "paint": {
+              "fn": "warning.lanes_reduce",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1386,6 +1507,9 @@
       "art": {
         "by": "texture",
         "file": "212.png",
+        "paint": {
+          "fn": "warning.road_narrows"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-112.jpg"
@@ -1398,6 +1522,9 @@
       "art": {
         "by": "texture",
         "file": "212-2.png",
+        "paint": {
+          "fn": "warning.two_way"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-113.jpg"
@@ -1410,6 +1537,9 @@
       "art": {
         "by": "texture",
         "file": "212-3_10.png",
+        "paint": {
+          "fn": "warning.gradient"
+        },
         "variants": []
       },
       "variable": "text",
@@ -1423,6 +1553,12 @@
       "art": {
         "by": "texture",
         "file": "212-4_10.png",
+        "paint": {
+          "fn": "warning.gradient",
+          "args": {
+            "up": false
+          }
+        },
         "variants": []
       },
       "variable": "text",
@@ -1436,6 +1572,9 @@
       "art": {
         "by": "texture",
         "file": "213.png",
+        "paint": {
+          "fn": "warning.road_works"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-116.jpg"
@@ -1448,6 +1587,9 @@
       "art": {
         "by": "texture",
         "file": "214.png",
+        "paint": {
+          "fn": "warning.crosswind"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-117.jpg"
@@ -1460,10 +1602,19 @@
       "art": {
         "by": "texture",
         "file": "214-2.png",
+        "paint": {
+          "fn": "warning.animals"
+        },
         "variants": [
           {
             "key": "mirror",
-            "file": "214-2_mirror.png"
+            "file": "214-2_mirror.png",
+            "paint": {
+              "fn": "warning.animals",
+              "args": {
+                "left": true
+              }
+            }
           }
         ]
       },
@@ -1477,6 +1628,9 @@
       "art": {
         "by": "texture",
         "file": "215.png",
+        "paint": {
+          "fn": "warning.danger"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-119.jpg"
@@ -1489,6 +1643,9 @@
       "art": {
         "by": "texture",
         "file": "301.png",
+        "paint": {
+          "fn": "regulatory.road_closed"
+        },
         "variants": []
       },
       "game": {
@@ -1504,6 +1661,9 @@
       "art": {
         "by": "texture",
         "file": "vehicles_closed.png",
+        "paint": {
+          "fn": "regulatory.vehicles_closed"
+        },
         "variants": []
       },
       "note": "図 122 は赤の環と斜めの帯（2026-10-04 に帯の無い旧テクスチャを訂正）",
@@ -1520,6 +1680,9 @@
       "art": {
         "by": "texture",
         "file": "no_entry.png",
+        "paint": {
+          "fn": "sign_textures.draw_no_entry"
+        },
         "variants": []
       },
       "game": {
@@ -1535,6 +1698,13 @@
       "art": {
         "by": "texture",
         "file": "304.png",
+        "paint": {
+          "fn": "regulatory.vehicle_closed",
+          "args": {
+            "name": "car_front",
+            "w": 290
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-124.jpg"
@@ -1547,6 +1717,13 @@
       "art": {
         "by": "texture",
         "file": "305.png",
+        "paint": {
+          "fn": "regulatory.vehicle_closed",
+          "args": {
+            "name": "truck_side",
+            "w": 310
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-125.jpg"
@@ -1568,6 +1745,13 @@
       "art": {
         "by": "texture",
         "file": "306.png",
+        "paint": {
+          "fn": "regulatory.vehicle_closed",
+          "args": {
+            "name": "bus_side",
+            "w": 340
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-126.jpg"
@@ -1580,6 +1764,13 @@
       "art": {
         "by": "texture",
         "file": "307.png",
+        "paint": {
+          "fn": "regulatory.vehicle_closed",
+          "args": {
+            "name": "moped_rider",
+            "w": 300
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000215355.jpg"
@@ -1592,6 +1783,13 @@
       "art": {
         "by": "texture",
         "file": "308.png",
+        "paint": {
+          "fn": "regulatory.vehicle_closed",
+          "args": {
+            "name": "cart",
+            "w": 340
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-128.jpg"
@@ -1604,6 +1802,13 @@
       "art": {
         "by": "texture",
         "file": "309.png",
+        "paint": {
+          "fn": "regulatory.vehicle_closed",
+          "args": {
+            "name": "bicycle",
+            "w": 375
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000215357.jpg"
@@ -1616,14 +1821,29 @@
       "art": {
         "by": "texture",
         "file": "310.png",
+        "paint": {
+          "fn": "regulatory.combination_closed"
+        },
         "variants": [
           {
             "key": "truck-bus",
-            "file": "310_truck-bus.png"
+            "file": "310_truck-bus.png",
+            "paint": {
+              "fn": "regulatory.combination_closed",
+              "args": {
+                "names": ["truck_side", "bus_side"]
+              }
+            }
           },
           {
             "key": "car-bicycle",
-            "file": "310_car-bicycle.png"
+            "file": "310_car-bicycle.png",
+            "paint": {
+              "fn": "regulatory.combination_closed",
+              "args": {
+                "names": ["car_front", "bicycle"]
+              }
+            }
           }
         ]
       },
@@ -1641,6 +1861,9 @@
       "art": {
         "by": "texture",
         "file": "310-2.png",
+        "paint": {
+          "fn": "regulatory.two_up_closed"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-131.jpg"
@@ -1653,6 +1876,9 @@
       "art": {
         "by": "texture",
         "file": "310-3.png",
+        "paint": {
+          "fn": "regulatory.tyre_chain"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-132.jpg"
@@ -1665,10 +1891,22 @@
       "art": {
         "by": "texture",
         "file": "turn_3.png",
+        "paint": {
+          "fn": "sign_textures.draw_turn_sign",
+          "args": {
+            "pattern": 3
+          }
+        },
         "variants": [
           {
             "key": "right",
-            "file": "turn_6.png"
+            "file": "turn_6.png",
+            "paint": {
+              "fn": "sign_textures.draw_turn_sign",
+              "args": {
+                "pattern": 6
+              }
+            }
           }
         ]
       },
@@ -1685,10 +1923,22 @@
       "art": {
         "by": "texture",
         "file": "turn_1.png",
+        "paint": {
+          "fn": "sign_textures.draw_turn_sign",
+          "args": {
+            "pattern": 1
+          }
+        },
         "variants": [
           {
             "key": "right",
-            "file": "turn_4.png"
+            "file": "turn_4.png",
+            "paint": {
+              "fn": "sign_textures.draw_turn_sign",
+              "args": {
+                "pattern": 4
+              }
+            }
           }
         ]
       },
@@ -1705,6 +1955,12 @@
       "art": {
         "by": "texture",
         "file": "turn_2.png",
+        "paint": {
+          "fn": "sign_textures.draw_turn_sign",
+          "args": {
+            "pattern": 2
+          }
+        },
         "variants": []
       },
       "game": {
@@ -1720,6 +1976,12 @@
       "art": {
         "by": "texture",
         "file": "turn_5.png",
+        "paint": {
+          "fn": "sign_textures.draw_turn_sign",
+          "args": {
+            "pattern": 5
+          }
+        },
         "variants": []
       },
       "game": {
@@ -1735,6 +1997,9 @@
       "art": {
         "by": "texture",
         "file": "turn_7.png",
+        "paint": {
+          "fn": "regulatory.turn_all"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-137.jpg"
@@ -1747,10 +2012,19 @@
       "art": {
         "by": "texture",
         "file": "311f.png",
+        "paint": {
+          "fn": "regulatory.turn_diagonal"
+        },
         "variants": [
           {
             "key": "right",
-            "file": "311f_right.png"
+            "file": "311f_right.png",
+            "paint": {
+              "fn": "regulatory.turn_diagonal",
+              "args": {
+                "right": true
+              }
+            }
           }
         ]
       },
@@ -1764,6 +2038,9 @@
       "art": {
         "by": "texture",
         "file": "312.png",
+        "paint": {
+          "fn": "regulatory.no_crossing"
+        },
         "variants": []
       },
       "game": {
@@ -1779,6 +2056,9 @@
       "art": {
         "by": "texture",
         "file": "no_uturn.png",
+        "paint": {
+          "fn": "sign_textures.draw_no_uturn"
+        },
         "variants": []
       },
       "game": {
@@ -1794,6 +2074,9 @@
       "art": {
         "by": "texture",
         "file": "314.png",
+        "paint": {
+          "fn": "regulatory.no_overtaking"
+        },
         "variants": []
       },
       "game": {
@@ -1821,10 +2104,23 @@
       "art": {
         "by": "texture",
         "file": "no_stopping.png",
+        "paint": {
+          "fn": "sign_textures.draw_no_parking",
+          "args": {
+            "no_stopping": true
+          }
+        },
         "variants": [
           {
             "key": "8-20",
-            "file": "315_8-20.png"
+            "file": "315_8-20.png",
+            "paint": {
+              "fn": "regulatory.overlay_ring_text",
+              "args": {
+                "text": "8-20"
+              },
+              "over": "no_stopping.png"
+            }
           }
         ]
       },
@@ -1842,10 +2138,23 @@
       "art": {
         "by": "texture",
         "file": "no_parking.png",
+        "paint": {
+          "fn": "sign_textures.draw_no_parking",
+          "args": {
+            "no_stopping": false
+          }
+        },
         "variants": [
           {
             "key": "8-20",
-            "file": "316_8-20.png"
+            "file": "316_8-20.png",
+            "paint": {
+              "fn": "regulatory.overlay_ring_text",
+              "args": {
+                "text": "8-20"
+              },
+              "over": "no_parking.png"
+            }
           }
         ]
       },
@@ -1873,10 +2182,20 @@
       "art": {
         "by": "texture",
         "file": "318.png",
+        "paint": {
+          "fn": "regulatory.time_limited_parking"
+        },
         "variants": [
           {
             "key": "60",
-            "file": "318_60.png"
+            "file": "318_60.png",
+            "paint": {
+              "fn": "regulatory.time_limited_parking",
+              "args": {
+                "minutes": "60",
+                "hours": null
+              }
+            }
           }
         ]
       },
@@ -1894,6 +2213,9 @@
       "art": {
         "by": "texture",
         "file": "319.png",
+        "paint": {
+          "fn": "regulatory.dangerous_goods"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-145.jpg"
@@ -1906,10 +2228,19 @@
       "art": {
         "by": "texture",
         "file": "320_5.5.png",
+        "paint": {
+          "fn": "regulatory.weight_limit"
+        },
         "variants": [
           {
             "key": "20",
-            "file": "320_20.png"
+            "file": "320_20.png",
+            "paint": {
+              "fn": "regulatory.weight_limit",
+              "args": {
+                "value": "20"
+              }
+            }
           }
         ]
       },
@@ -1924,10 +2255,19 @@
       "art": {
         "by": "texture",
         "file": "321_3.3.png",
+        "paint": {
+          "fn": "regulatory.height_limit"
+        },
         "variants": [
           {
             "key": "3.8",
-            "file": "321_3.8.png"
+            "file": "321_3.8.png",
+            "paint": {
+              "fn": "regulatory.height_limit",
+              "args": {
+                "value": "3.8"
+              }
+            }
           }
         ]
       },
@@ -1942,6 +2282,9 @@
       "art": {
         "by": "texture",
         "file": "322_2.2.png",
+        "paint": {
+          "fn": "regulatory.width_limit"
+        },
         "variants": []
       },
       "variable": "text",
@@ -1955,46 +2298,112 @@
       "art": {
         "by": "texture",
         "file": "speed_20.png",
+        "paint": {
+          "fn": "sign_textures.draw_speed_limit",
+          "args": {
+            "speed": 20
+          }
+        },
         "variants": [
           {
             "key": "30",
-            "file": "speed_30.png"
+            "file": "speed_30.png",
+            "paint": {
+              "fn": "sign_textures.draw_speed_limit",
+              "args": {
+                "speed": 30
+              }
+            }
           },
           {
             "key": "40",
-            "file": "speed_40.png"
+            "file": "speed_40.png",
+            "paint": {
+              "fn": "sign_textures.draw_speed_limit",
+              "args": {
+                "speed": 40
+              }
+            }
           },
           {
             "key": "50",
-            "file": "speed_50.png"
+            "file": "speed_50.png",
+            "paint": {
+              "fn": "sign_textures.draw_speed_limit",
+              "args": {
+                "speed": 50
+              }
+            }
           },
           {
             "key": "60",
-            "file": "speed_60.png"
+            "file": "speed_60.png",
+            "paint": {
+              "fn": "sign_textures.draw_speed_limit",
+              "args": {
+                "speed": 60
+              }
+            }
           },
           {
             "key": "70",
-            "file": "speed_70.png"
+            "file": "speed_70.png",
+            "paint": {
+              "fn": "sign_textures.draw_speed_limit",
+              "args": {
+                "speed": 70
+              }
+            }
           },
           {
             "key": "80",
-            "file": "speed_80.png"
+            "file": "speed_80.png",
+            "paint": {
+              "fn": "sign_textures.draw_speed_limit",
+              "args": {
+                "speed": 80
+              }
+            }
           },
           {
             "key": "10",
-            "file": "speed_10.png"
+            "file": "speed_10.png",
+            "paint": {
+              "fn": "regulatory.speed_sign",
+              "args": {
+                "value": 10
+              }
+            }
           },
           {
             "key": "100",
-            "file": "speed_100.png"
+            "file": "speed_100.png",
+            "paint": {
+              "fn": "regulatory.speed_sign",
+              "args": {
+                "value": 100
+              }
+            }
           },
           {
             "key": "110",
-            "file": "speed_110.png"
+            "file": "speed_110.png",
+            "paint": {
+              "fn": "regulatory.speed_sign",
+              "args": {
+                "value": 110
+              }
+            }
           },
           {
             "key": "120",
-            "file": "speed_120.png"
+            "file": "speed_120.png",
+            "paint": {
+              "fn": "regulatory.speed_sign",
+              "args": {
+                "value": 120
+              }
+            }
           }
         ]
       },
@@ -2022,10 +2431,24 @@
       "art": {
         "by": "texture",
         "file": "324_30.png",
+        "paint": {
+          "fn": "regulatory.speed_sign",
+          "args": {
+            "value": 30,
+            "minimum": true
+          }
+        },
         "variants": [
           {
             "key": "50",
-            "file": "324_50.png"
+            "file": "324_50.png",
+            "paint": {
+              "fn": "regulatory.speed_sign",
+              "args": {
+                "value": 50,
+                "minimum": true
+              }
+            }
           }
         ]
       },
@@ -2040,6 +2463,9 @@
       "art": {
         "by": "texture",
         "file": "325.png",
+        "paint": {
+          "fn": "regulatory.motor_only"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-151.jpg"
@@ -2052,6 +2478,9 @@
       "art": {
         "by": "texture",
         "file": "325-2.png",
+        "paint": {
+          "fn": "regulatory.cycle_only"
+        },
         "variants": []
       },
       "figure": "2JH00000215380.jpg"
@@ -2064,10 +2493,19 @@
       "art": {
         "by": "texture",
         "file": "325-3.png",
+        "paint": {
+          "fn": "regulatory.cycle_pedestrian_only"
+        },
         "variants": [
           {
             "key": "mirror",
-            "file": "325-3_mirror.png"
+            "file": "325-3_mirror.png",
+            "paint": {
+              "fn": "regulatory.cycle_pedestrian_only",
+              "args": {
+                "mirror": true
+              }
+            }
           }
         ]
       },
@@ -2084,6 +2522,9 @@
       "art": {
         "by": "texture",
         "file": "325-4.png",
+        "paint": {
+          "fn": "regulatory.pedestrian_only"
+        },
         "variants": []
       },
       "game": {
@@ -2099,6 +2540,13 @@
       "art": {
         "by": "texture",
         "file": "325-5a.png",
+        "paint": {
+          "fn": "regulatory.permitted_only",
+          "args": {
+            "names": ["bus_side"],
+            "widths": [400]
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000267345.jpg"
@@ -2111,6 +2559,13 @@
       "art": {
         "by": "texture",
         "file": "325-5b.png",
+        "paint": {
+          "fn": "regulatory.permitted_only",
+          "args": {
+            "names": ["taxi_side"],
+            "widths": [400]
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000267346.jpg"
@@ -2123,6 +2578,13 @@
       "art": {
         "by": "texture",
         "file": "325-5c.png",
+        "paint": {
+          "fn": "regulatory.permitted_only",
+          "args": {
+            "names": ["truck_front"],
+            "widths": [230]
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000267347.jpg"
@@ -2135,6 +2597,13 @@
       "art": {
         "by": "texture",
         "file": "325-6.png",
+        "paint": {
+          "fn": "regulatory.permitted_only",
+          "args": {
+            "names": ["bus_side", "taxi_side"],
+            "widths": [260, 220]
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000267348.jpg"
@@ -2147,6 +2616,9 @@
       "art": {
         "by": "texture",
         "file": "325-7.png",
+        "paint": {
+          "fn": "regulatory.disaster_only"
+        },
         "variants": []
       },
       "figure": "2JH00000215387.jpg"
@@ -2159,10 +2631,22 @@
       "art": {
         "by": "texture",
         "file": "one_way_right.png",
+        "paint": {
+          "fn": "sign_textures.draw_one_way_wide",
+          "args": {
+            "pointing_right": true
+          }
+        },
         "variants": [
           {
             "key": "left",
-            "file": "one_way_left.png"
+            "file": "one_way_left.png",
+            "paint": {
+              "fn": "sign_textures.draw_one_way_wide",
+              "args": {
+                "pointing_right": false
+              }
+            }
           }
         ]
       },
@@ -2180,6 +2664,9 @@
       "art": {
         "by": "texture",
         "file": "one_way.png",
+        "paint": {
+          "fn": "sign_textures.draw_one_way"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-156.jpg"
@@ -2192,10 +2679,19 @@
       "art": {
         "by": "texture",
         "file": "326-2a_left.png",
+        "paint": {
+          "fn": "regulatory.cycle_one_way"
+        },
         "variants": [
           {
             "key": "right",
-            "file": "326-2a_right.png"
+            "file": "326-2a_right.png",
+            "paint": {
+              "fn": "regulatory.cycle_one_way",
+              "args": {
+                "pointing_right": true
+              }
+            }
           }
         ]
       },
@@ -2209,6 +2705,12 @@
       "art": {
         "by": "texture",
         "file": "326-2b.png",
+        "paint": {
+          "fn": "regulatory.cycle_one_way",
+          "args": {
+            "tall": true
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000215391.jpg"
@@ -2221,6 +2723,9 @@
       "art": {
         "by": "texture",
         "file": "327.png",
+        "paint": {
+          "fn": "regulatory.vehicle_class_division"
+        },
         "variants": []
       },
       "variable": "text",
@@ -2237,6 +2742,9 @@
       "art": {
         "by": "texture",
         "file": "327-2.png",
+        "paint": {
+          "fn": "regulatory.vehicle_type_lane"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-160.jpg"
@@ -2249,6 +2757,12 @@
       "art": {
         "by": "texture",
         "file": "327-3.png",
+        "paint": {
+          "fn": "regulatory.vehicle_type_lane",
+          "args": {
+            "trailer": true
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-161.jpg"
@@ -2261,10 +2775,19 @@
       "art": {
         "by": "texture",
         "file": "327-4.png",
+        "paint": {
+          "fn": "regulatory.exclusive_lane_bus"
+        },
         "variants": [
           {
             "key": "text",
-            "file": "327-4_text.png"
+            "file": "327-4_text.png",
+            "paint": {
+              "fn": "regulatory.exclusive_lane_bus",
+              "args": {
+                "label": "路線バス等"
+              }
+            }
           }
         ]
       },
@@ -2282,6 +2805,9 @@
       "art": {
         "by": "texture",
         "file": "327-4-2.png",
+        "paint": {
+          "fn": "regulatory.cycle_lane"
+        },
         "variants": []
       },
       "game": {
@@ -2297,6 +2823,9 @@
       "art": {
         "by": "texture",
         "file": "327-5.png",
+        "paint": {
+          "fn": "regulatory.bus_priority_lane"
+        },
         "variants": []
       },
       "variable": "lanes",
@@ -2314,6 +2843,9 @@
       "art": {
         "by": "texture",
         "file": "327-6.png",
+        "paint": {
+          "fn": "regulatory.trailer_first_lane"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-165.jpg"
@@ -2390,6 +2922,9 @@
       "art": {
         "by": "texture",
         "file": "327-8.png",
+        "paint": {
+          "fn": "regulatory.moped_two_step"
+        },
         "variants": []
       },
       "figure": "2JH00000215403.jpg"
@@ -2402,6 +2937,12 @@
       "art": {
         "by": "texture",
         "file": "327-9.png",
+        "paint": {
+          "fn": "regulatory.moped_two_step",
+          "args": {
+            "small_turn": true
+          }
+        },
         "variants": []
       },
       "figure": "2JH00000215404.jpg"
@@ -2414,6 +2955,9 @@
       "art": {
         "by": "texture",
         "file": "327-10.png",
+        "paint": {
+          "fn": "regulatory.roundabout"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-172.jpg"
@@ -2426,6 +2970,12 @@
       "art": {
         "by": "texture",
         "file": "327-11.png",
+        "paint": {
+          "fn": "regulatory.parking_method",
+          "args": {
+            "kind": "parallel"
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-173.jpg"
@@ -2438,6 +2988,12 @@
       "art": {
         "by": "texture",
         "file": "327-12.png",
+        "paint": {
+          "fn": "regulatory.parking_method",
+          "args": {
+            "kind": "perpendicular"
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-174.jpg"
@@ -2450,6 +3006,12 @@
       "art": {
         "by": "texture",
         "file": "327-13.png",
+        "paint": {
+          "fn": "regulatory.parking_method",
+          "args": {
+            "kind": "angle"
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-175.jpg"
@@ -2462,6 +3024,9 @@
       "art": {
         "by": "texture",
         "file": "328.png",
+        "paint": {
+          "fn": "regulatory.horn"
+        },
         "variants": []
       },
       "game": {
@@ -2486,6 +3051,9 @@
       "art": {
         "by": "texture",
         "file": "slow.png",
+        "paint": {
+          "fn": "sign_textures.draw_slow"
+        },
         "variants": []
       },
       "game": {
@@ -2501,6 +3069,9 @@
       "art": {
         "by": "texture",
         "file": "329b.png",
+        "paint": {
+          "fn": "regulatory.slow_jp_only"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-178.jpg"
@@ -2531,6 +3102,9 @@
       "art": {
         "by": "texture",
         "file": "stop.png",
+        "paint": {
+          "fn": "sign_textures.draw_stop"
+        },
         "variants": []
       },
       "game": {
@@ -2546,6 +3120,9 @@
       "art": {
         "by": "texture",
         "file": "330b.png",
+        "paint": {
+          "fn": "regulatory.stop_jp_only"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-180.jpg"
@@ -2558,6 +3135,9 @@
       "art": {
         "by": "texture",
         "file": "331.png",
+        "paint": {
+          "fn": "regulatory.pedestrians"
+        },
         "variants": []
       },
       "note": "図に外形寸法の記載がないため規制標識の標準 60 cm の正方形とした",
@@ -2571,10 +3151,23 @@
       "art": {
         "by": "texture",
         "file": "332.png",
+        "paint": {
+          "fn": "regulatory.pedestrians",
+          "args": {
+            "no_crossing_walk": true
+          }
+        },
         "variants": [
           {
             "key": "watarun",
-            "file": "332_watarun.png"
+            "file": "332_watarun.png",
+            "paint": {
+              "fn": "regulatory.pedestrians",
+              "args": {
+                "no_crossing_walk": true,
+                "wording": "わたるな"
+              }
+            }
           }
         ]
       },
@@ -2592,6 +3185,9 @@
       "art": {
         "by": "texture",
         "file": "401.png",
+        "paint": {
+          "fn": "instruction.side_by_side"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-184.jpg"
@@ -2604,6 +3200,9 @@
       "art": {
         "by": "texture",
         "file": "402.png",
+        "paint": {
+          "fn": "instruction.tram_tracks"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-185.jpg"
@@ -2625,6 +3224,9 @@
       "art": {
         "by": "texture",
         "file": "403.png",
+        "paint": {
+          "fn": "instruction.parking_ok"
+        },
         "variants": []
       },
       "game": {
@@ -2649,6 +3251,9 @@
       "art": {
         "by": "texture",
         "file": "404.png",
+        "paint": {
+          "fn": "instruction.stopping_ok"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-187.jpg"
@@ -2661,6 +3266,9 @@
       "art": {
         "by": "texture",
         "file": "405.png",
+        "paint": {
+          "fn": "instruction.priority_road"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-188.jpg"
@@ -2673,6 +3281,9 @@
       "art": {
         "by": "texture",
         "file": "406.png",
+        "paint": {
+          "fn": "instruction.centre_line"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-189.jpg"
@@ -2685,6 +3296,9 @@
       "art": {
         "by": "texture",
         "file": "406-2.png",
+        "paint": {
+          "fn": "instruction.stop_line"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-190.jpg"
@@ -2697,10 +3311,16 @@
       "art": {
         "by": "texture",
         "file": "407a.png",
+        "paint": {
+          "fn": "instruction.crosswalk"
+        },
         "variants": [
           {
             "key": "legacy",
             "file": "crosswalk.png",
+            "paint": {
+              "fn": "sign_textures.draw_crosswalk"
+            },
             "plate": "PlateSquare"
           }
         ]
@@ -2719,6 +3339,12 @@
       "art": {
         "by": "texture",
         "file": "407b.png",
+        "paint": {
+          "fn": "instruction.crosswalk",
+          "args": {
+            "children": true
+          }
+        },
         "variants": []
       },
       "figure": "S35F03102010003-192.jpg"
@@ -2731,6 +3357,9 @@
       "art": {
         "by": "texture",
         "file": "407-2.png",
+        "paint": {
+          "fn": "instruction.cycle_crossing"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-193.jpg"
@@ -2743,6 +3372,9 @@
       "art": {
         "by": "texture",
         "file": "407-3.png",
+        "paint": {
+          "fn": "instruction.crosswalk_and_cycle"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-194.jpg"
@@ -2755,6 +3387,9 @@
       "art": {
         "by": "texture",
         "file": "408.png",
+        "paint": {
+          "fn": "instruction.safety_zone"
+        },
         "variants": []
       },
       "figure": "S35F03102010003-195.jpg"
@@ -2767,6 +3402,9 @@
       "art": {
         "by": "texture",
         "file": "409a.png",
+        "paint": {
+          "fn": "instruction.advance_notice"
+        },
         "variants": []
       },
       "variable": "text",
@@ -2780,6 +3418,9 @@
       "art": {
         "by": "texture",
         "file": "409b.png",
+        "paint": {
+          "fn": "instruction.detour_notice"
+        },
         "variants": []
       },
       "variable": "text",
@@ -2793,26 +3434,67 @@
       "art": {
         "by": "texture",
         "file": "501.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["この先100m"]
+          }
+        },
         "variants": [
           {
             "key": "k50",
-            "file": "501_k50.png"
+            "file": "501_k50.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["ここから50m"],
+                "spread": false
+              }
+            }
           },
           {
             "key": "zen",
-            "file": "501_zen.png"
+            "file": "501_zen.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["市内全域"],
+                "spread": true
+              }
+            }
           },
           {
             "key": "s50",
-            "file": "501_s50.png"
+            "file": "501_s50.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["この先50m"],
+                "spread": false
+              }
+            }
           },
           {
             "key": "s200",
-            "file": "501_s200.png"
+            "file": "501_s200.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["この先200m"],
+                "spread": false
+              }
+            }
           },
           {
             "key": "k100",
-            "file": "501_k100.png"
+            "file": "501_k100.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["ここから100m"],
+                "spread": false
+              }
+            }
           }
         ]
       },
@@ -2828,22 +3510,52 @@
       "art": {
         "by": "texture",
         "file": "502.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["8-20"]
+          }
+        },
         "variants": [
           {
             "key": "kyujitsu",
-            "file": "502_kyujitsu.png"
+            "file": "502_kyujitsu.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["日曜・休日を除く"]
+              }
+            }
           },
           {
             "key": "7-9",
-            "file": "502_7-9.png"
+            "file": "502_7-9.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["7-9"]
+              }
+            }
           },
           {
             "key": "7-19",
-            "file": "502_7-19.png"
+            "file": "502_7-19.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["7-19"]
+              }
+            }
           },
           {
             "key": "kyujitsu-8-20",
             "file": "502_kyujitsu-8-20.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["日曜・休日を除く", "8-20"]
+              }
+            },
             "plate": "PlateAux60x32"
           }
         ]
@@ -2860,26 +3572,62 @@
       "art": {
         "by": "texture",
         "file": "503a.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["大　　貨"]
+          }
+        },
         "variants": [
           {
             "key": "gentsuki",
-            "file": "503a_gentsuki.png"
+            "file": "503a_gentsuki.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["原付を除く"]
+              }
+            }
           },
           {
             "key": "jitensha",
-            "file": "503a_jitensha.png"
+            "file": "503a_jitensha.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["自転車を除く"]
+              }
+            }
           },
           {
             "key": "ogata",
-            "file": "503a_ogata.png"
+            "file": "503a_ogata.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["大型等"]
+              }
+            }
           },
           {
             "key": "nirin",
-            "file": "503a_nirin.png"
+            "file": "503a_nirin.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["二輪を除く"]
+              }
+            }
           },
           {
             "key": "taxi",
-            "file": "503a_taxi.png"
+            "file": "503a_taxi.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["タクシーを除く"]
+              }
+            }
           }
         ]
       },
@@ -2895,10 +3643,19 @@
       "art": {
         "by": "texture",
         "file": "503b_truck.png",
+        "paint": {
+          "fn": "auxiliary.vehicle_plate"
+        },
         "variants": [
           {
             "key": "bus",
-            "file": "503b_bus.png"
+            "file": "503b_bus.png",
+            "paint": {
+              "fn": "auxiliary.vehicle_plate",
+              "args": {
+                "names": ["bus_side"]
+              }
+            }
           }
         ]
       },
@@ -2914,6 +3671,9 @@
       "art": {
         "by": "texture",
         "file": "503c.png",
+        "paint": {
+          "fn": "auxiliary.load_plate"
+        },
         "variants": []
       },
       "variable": "text",
@@ -2929,6 +3689,9 @@
       "art": {
         "by": "texture",
         "file": "503d.png",
+        "paint": {
+          "fn": "auxiliary.badge_only"
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -2942,10 +3705,22 @@
       "art": {
         "by": "texture",
         "file": "503-2.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["遠隔小型"]
+          }
+        },
         "variants": [
           {
             "key": "jogai",
-            "file": "503-2_jogai.png"
+            "file": "503-2_jogai.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["遠隔小型を除く"]
+              }
+            }
           }
         ]
       },
@@ -2961,6 +3736,12 @@
       "art": {
         "by": "texture",
         "file": "504.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["駐車余地6m"]
+          }
+        },
         "variants": []
       },
       "variable": "text",
@@ -2975,10 +3756,19 @@
       "art": {
         "by": "texture",
         "file": "504-2.png",
+        "paint": {
+          "fn": "auxiliary.parking_time"
+        },
         "variants": [
           {
             "key": "ticket",
-            "file": "504-2_ticket.png"
+            "file": "504-2_ticket.png",
+            "paint": {
+              "fn": "auxiliary.parking_time",
+              "args": {
+                "meter": false
+              }
+            }
           }
         ]
       },
@@ -2993,6 +3783,12 @@
       "art": {
         "by": "texture",
         "file": "505a.png",
+        "paint": {
+          "fn": "auxiliary.arrow_plate",
+          "args": {
+            "kind": "right"
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3006,6 +3802,12 @@
       "art": {
         "by": "texture",
         "file": "505b.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["こ こ か ら"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3019,6 +3821,12 @@
       "art": {
         "by": "texture",
         "file": "505c.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["区　域", "ここから"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3032,6 +3840,12 @@
       "art": {
         "by": "texture",
         "file": "506.png",
+        "paint": {
+          "fn": "auxiliary.arrow_plate",
+          "args": {
+            "kind": "both"
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3045,6 +3859,12 @@
       "art": {
         "by": "texture",
         "file": "506-2.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["区 域 内"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3058,6 +3878,12 @@
       "art": {
         "by": "texture",
         "file": "507a.png",
+        "paint": {
+          "fn": "auxiliary.arrow_plate",
+          "args": {
+            "kind": "left"
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3071,6 +3897,12 @@
       "art": {
         "by": "texture",
         "file": "507b.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["こ こ ま で"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3084,6 +3916,9 @@
       "art": {
         "by": "texture",
         "file": "507c.png",
+        "paint": {
+          "fn": "auxiliary.end_of_restriction"
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3097,6 +3932,12 @@
       "art": {
         "by": "texture",
         "file": "507d.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["区　域", "ここまで"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3110,6 +3951,12 @@
       "art": {
         "by": "texture",
         "file": "508.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["通　学　路"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3123,6 +3970,12 @@
       "art": {
         "by": "texture",
         "file": "508-2.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["追越し禁止"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3136,6 +3989,12 @@
       "art": {
         "by": "texture",
         "file": "509.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["前方優先道路"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3149,6 +4008,12 @@
       "art": {
         "by": "texture",
         "file": "509-2.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["踏切注意"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3162,6 +4027,12 @@
       "art": {
         "by": "texture",
         "file": "509-3.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["横風注意"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3175,6 +4046,12 @@
       "art": {
         "by": "texture",
         "file": "509-4.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["動物注意"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3188,6 +4065,12 @@
       "art": {
         "by": "texture",
         "file": "509-5.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["注　　意"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3201,10 +4084,19 @@
       "art": {
         "by": "texture",
         "file": "510.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["路肩弱し"]
+          }
+        },
         "variants": [
           {
             "key": "anzen-30",
             "file": "510_anzen-30.png",
+            "paint": {
+              "fn": "auxiliary.safe_speed"
+            },
             "plate": "PlateAux30x30"
           }
         ]
@@ -3221,14 +4113,32 @@
       "art": {
         "by": "texture",
         "file": "510-2.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["騒音防止区間"]
+          }
+        },
         "variants": [
           {
             "key": "hokosha",
-            "file": "510-2_hokosha.png"
+            "file": "510-2_hokosha.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["歩行者横断多し"]
+              }
+            }
           },
           {
             "key": "taikosha",
-            "file": "510-2_taikosha.png"
+            "file": "510-2_taikosha.png",
+            "paint": {
+              "fn": "auxiliary.text_plate",
+              "args": {
+                "lines": ["対向車多し"]
+              }
+            }
           }
         ]
       },
@@ -3244,22 +4154,49 @@
       "art": {
         "by": "texture",
         "file": "511_up_right.png",
+        "paint": {
+          "fn": "auxiliary.direction_plate"
+        },
         "variants": [
           {
             "key": "up_left",
-            "file": "511_up_left.png"
+            "file": "511_up_left.png",
+            "paint": {
+              "fn": "auxiliary.direction_plate",
+              "args": {
+                "angle": "up_left"
+              }
+            }
           },
           {
             "key": "right",
-            "file": "511_right.png"
+            "file": "511_right.png",
+            "paint": {
+              "fn": "auxiliary.direction_plate",
+              "args": {
+                "angle": "right"
+              }
+            }
           },
           {
             "key": "left",
-            "file": "511_left.png"
+            "file": "511_left.png",
+            "paint": {
+              "fn": "auxiliary.direction_plate",
+              "args": {
+                "angle": "left"
+              }
+            }
           },
           {
             "key": "up",
-            "file": "511_up.png"
+            "file": "511_up.png",
+            "paint": {
+              "fn": "auxiliary.direction_plate",
+              "args": {
+                "angle": "up"
+              }
+            }
           }
         ]
       },
@@ -3275,6 +4212,12 @@
       "art": {
         "by": "texture",
         "file": "512.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["小 諸 市", "本　町"]
+          }
+        },
         "variants": []
       },
       "variable": "text",
@@ -3289,6 +4232,12 @@
       "art": {
         "by": "texture",
         "file": "513.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["始　　　点"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3302,6 +4251,12 @@
       "art": {
         "by": "texture",
         "file": "514.png",
+        "paint": {
+          "fn": "auxiliary.text_plate",
+          "args": {
+            "lines": ["終　　　点"]
+          }
+        },
         "variants": []
       },
       "sizeSource": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=36",
@@ -3315,6 +4270,9 @@
       "art": {
         "by": "texture",
         "file": "x-zone30-entry.png",
+        "paint": {
+          "fn": "nonstatutory.zone30"
+        },
         "variants": []
       },
       "source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=185",
@@ -3329,6 +4287,12 @@
       "art": {
         "by": "texture",
         "file": "x-zone30-exit.png",
+        "paint": {
+          "fn": "nonstatutory.zone30",
+          "args": {
+            "entry": false
+          }
+        },
         "variants": []
       },
       "source": "https://www.npa.go.jp/bureau/traffic/seibi2/kisei/mokuteki/kiseikijun/260316kiseikijun.pdf#page=185",
@@ -3343,6 +4307,9 @@
       "art": {
         "by": "texture",
         "file": "x-zone30plus.png",
+        "paint": {
+          "fn": "nonstatutory.zone30_plus"
+        },
         "variants": []
       },
       "source": "https://www.mlit.go.jp/road/road/traffic/sesaku/pdf/zone_plus30_06.pdf",
@@ -3357,6 +4324,9 @@
       "art": {
         "by": "texture",
         "file": "x-fire-water.png",
+        "paint": {
+          "fn": "nonstatutory.fire_water"
+        },
         "variants": []
       },
       "source": "https://laws.e-gov.go.jp/law/336M50000008006",
@@ -3371,6 +4341,9 @@
       "art": {
         "by": "texture",
         "file": "x-hydrant.png",
+        "paint": {
+          "fn": "nonstatutory.hydrant"
+        },
         "variants": []
       },
       "source": "https://commons.wikimedia.org/wiki/File:Fire_hydrant_sign,_Ogikubo_202406.jpg",
@@ -3388,6 +4361,9 @@
       "art": {
         "by": "texture",
         "file": "x-school-route.png",
+        "paint": {
+          "fn": "nonstatutory.school_route"
+        },
         "variants": []
       },
       "source": "https://commons.wikimedia.org/wiki/File:Honmachi_school_zone_shibuya.jpg",
@@ -3405,6 +4381,13 @@
       "art": {
         "by": "texture",
         "file": "x-school-zone.png",
+        "paint": {
+          "fn": "nonstatutory.school_route",
+          "args": {
+            "zone": true,
+            "hours": "7:30-8:30"
+          }
+        },
         "variants": []
       },
       "source": "https://commons.wikimedia.org/wiki/File:Honmachi_school_zone_shibuya.jpg",

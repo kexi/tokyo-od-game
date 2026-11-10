@@ -10,7 +10,7 @@
 # 規制標識 60 cm, 一時停止・徐行 inverted triangle 80 cm per side, 指示標識 60 cm square, 一方通行
 # 326-A 60 × 35 cm and 326-B 35 × 60 cm, 警戒標識 a 45 cm square on its corner, 横断歩道 (407) a
 # pentagon 60 cm wide, 327 series 90 × 90 cm or 40 cm per lane × 90 cm, 補助標識 60 cm wide
-# (警察庁「交通規制基準」: 18/22/32/44 cm high). assets/signs/catalog.json names the plate of each
+# (警察庁「交通規制基準」: 18/22/32/44 cm high). assets/signs/registry.json names the plate of each
 # sign; posts are 60.5 mm galvanised steel pipe.
 import json
 import math
