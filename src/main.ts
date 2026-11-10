@@ -107,8 +107,9 @@ import {
   type LaneUse,
   type RegulationData,
 } from "./world/regulations";
-import { isLaneChangeBanned, laneOfOffset } from "./world/laneChange";
-import { leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
+import { carriagewayWidth, isLaneChangeBanned, laneOfOffset } from "./world/laneChange";
+import { lanesUnderPavement, sectionSummary } from "./world/roadMarkings";
+import { laneOffset, leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
 import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
@@ -576,7 +577,7 @@ async function main(): Promise<void> {
     // Travel along the road in the direction closest to the stop-to-stop heading.
     const fwd = new Vector3(Math.sin(heading), 0, Math.cos(heading));
     const dir = hit.dir.clone().multiplyScalar(fwd.dot(hit.dir) >= 0 ? 1 : -1);
-    const lane = hit.seg.oneway === 0 ? hit.seg.line.width / 4 : 0;
+    const lane = laneOffset(hit.seg);
     const centre = p.clone().add(new Vector3(-hit.dir.z * hit.lateral, 0, hit.dir.x * hit.lateral));
     return { pos: centre.add(leftOf(dir, lane)), heading: Math.atan2(dir.x, dir.z) };
   };
@@ -757,6 +758,7 @@ async function main(): Promise<void> {
       crossings: applied?.crossings.length ?? 0,
       signs: applied?.signs.length ?? 0,
     });
+    log("road_sections", sectionSummary(graph));
   };
   const buildRoadNetwork = async () => {
     const revision = ++roadRevision;
@@ -809,6 +811,11 @@ async function main(): Promise<void> {
           await pavements.rebuildAsync(polys, frame, new FrameWork());
           pedestrians.pavementsChanged();
           log("pavements_built", { wards, polygons: polys.length });
+          if (roadGraph)
+            log(
+              "pavement_over_lanes",
+              lanesUnderPavement(roadGraph, (x, z) => pavements.contains(x, z)),
+            );
         }),
       )
       .catch((error: unknown) => warn("road_network_failed", { error: String(error) }));
@@ -2721,8 +2728,8 @@ async function main(): Promise<void> {
       // 合図 for changing lanes on a multi-lane road.
       if (onRoad && onRoad.seg.lanes >= 2 && Math.abs(align) > 0.85 && speed > 15) {
         const s = onRoad.seg;
-        const span = s.oneway === 0 ? s.line.width / 2 : s.line.width;
-        const lane = Math.floor((s.line.width / 2 - onRoad.lateral * Math.sign(align)) / (span / s.lanes));
+        // The lanes as painted (laneChange.ts), counted from the left edge line.
+        const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
         const isSameRoad = laneHeld !== null && laneHeld.seg === s;
         if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
           const side = lane < laneHeld.lane ? "left" : "right";
@@ -2823,9 +2830,7 @@ async function main(): Promise<void> {
       // getting ready to turn right, not for driving along.
       if (onRoad && onRoad.seg.lanes >= 2 && onRoad.seg.oneway === 0 && speed > 10 && Math.abs(align) > 0.8) {
         const s = onRoad.seg;
-        const leftOfTravel = onRoad.lateral * Math.sign(align);
-        const laneWidth = s.line.width / 2 / s.lanes;
-        const lane = Math.floor((s.line.width / 2 - leftOfTravel) / laneWidth);
+        const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
         const turnAhead = nav.route?.maneuvers.find((m) => m.at > nav.lastAt);
         const isPreparingRight =
           turnAhead !== undefined && turnAhead.at - nav.lastAt < 150 && /right|uturn/i.test(turnAhead.turn);
@@ -3827,14 +3832,13 @@ async function main(): Promise<void> {
     const fwd = headingVector(vehicle.quaternion());
     const sgn = fwd.dot(hit.dir) >= 0 ? 1 : -1;
     const travel = hit.dir.clone().multiplyScalar(sgn);
-    // The kerb: PLATEAU paving where there is some, else the carriageway's edge (GSI 幅員).
+    // The kerb: PLATEAU paving where it comes first, else the carriageway's edge (the section's,
+    // carriagewayWidth). Why not the GSI 幅員's edge: where it includes the pavement, a car 3 m
+    // from the paint would have read as tucked in to the kerb.
     const paved = kerbLeft(p, travel, hit.seg.line.width / 2 + 1, (x, z) => pavements.contains(x, z));
-    const edge = hit.seg.line.width / 2 - hit.lateral * sgn;
+    const edge = carriagewayWidth(hit.seg) / 2 - hit.lateral * sgn;
     const kerbGap = Math.max(0, Math.min(paved, edge) - 0.92);
-    const span = hit.seg.oneway === 0 ? hit.seg.line.width / 2 : hit.seg.line.width;
-    const lane = Math.floor(
-      (hit.seg.line.width / 2 - hit.lateral * sgn) / (span / Math.max(1, hit.seg.lanes)),
-    );
+    const lane = laneOfOffset(hit.seg, hit.lateral * sgn);
     return { junction, crossing, noStopping: posted, kerbGap, rightLane: hit.seg.lanes >= 2 && lane > 0 };
   };
   /**
