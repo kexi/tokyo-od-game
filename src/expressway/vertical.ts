@@ -9,7 +9,7 @@ import {
 import { solveQp, type Qp } from "./qp";
 
 /**
- * Vertical alignment (設計書 4.3). The profile is a chain of equal parabolic arcs: knots every h
+ * Vertical alignment (knowledge/road-redesign-plan.md 4.3). The profile is a chain of equal parabolic arcs: knots every h
  * metres (h ≥ the 第22条 minimum curve length), the grade varying linearly between knots. Each arc
  * is a vertical curve whose PVI is the arc's midpoint, of length h and radius h / |Δgrade|, so
  *
@@ -38,7 +38,7 @@ export type VerticalInput = {
   upper: Float64Array;
   /**
    * The part of `lower` that only keeps the viaduct at its standard height over open ground (not a
-   * crossing): the third fallback drops it to the crossings' own bounds (設計書 4.3 の 3).
+   * crossing): the third fallback drops it to the crossings' own bounds (knowledge/road-redesign-plan.md 4.3 の 3).
    */
   lowerAtCrossings: Float64Array;
   start: EndCondition;
@@ -254,7 +254,7 @@ function finish(
 }
 
 /**
- * Solve, falling back in the order of 設計書 4.3 の 3: the 特例 grade, then lower design speeds,
+ * Solve, falling back in the order of knowledge/road-redesign-plan.md 4.3 の 3: the 特例 grade, then lower design speeds,
  * then only the crossings' clearance. Every attempt is reported; nothing is relaxed silently.
  */
 export function solveVertical(input: VerticalInput): VerticalResult {

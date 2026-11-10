@@ -15,6 +15,8 @@ import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { TrafficControl } from "./trafficControl";
 import { movementOf } from "../signals/movement";
 import { mayProceed, type Movement } from "../signals/plan";
+import { isDrivable } from "./roadClass";
+import { laneCentreOffset } from "./laneChange";
 
 type AiCar = {
   object: Group;
@@ -62,7 +64,6 @@ const DESPAWN_RADIUS = 450;
 // Beyond this, cars may come and go even in view (fog and buildings hide it).
 const FAR = 600;
 const BODY_RADIUS = 120;
-const LANE_FRACTION = 0.25; // centre of the left half of a two-way carriageway
 const GRAVITY = 9.81;
 // Steering locks: about 35° for cars, buses and trucks, 25° for a bike at street speeds.
 const MAX_STEER = 0.6;
@@ -433,7 +434,9 @@ export class TrafficAI {
     const along = dir === 1 ? s : seg.length - s;
     const sample = graph.sample(seg, Math.max(0, Math.min(seg.length, along)), this.tmpPos, this.tmpDir);
     if (dir === -1) sample.dir.negate();
-    const lane = seg.oneway === 0 ? seg.line.width * LANE_FRACTION : 0;
+    // One lane each way, whatever JARTIC lists: the centre of the left half of a two-way street,
+    // the centreline of a one-way one. Why not the listed lanes: the AI does not change lanes yet.
+    const lane = laneCentreOffset(seg, 0, 1);
     sample.pos.add(leftOf(sample.dir, lane));
     return { pos: sample.pos.clone(), dir: sample.dir.clone() };
   }
@@ -651,7 +654,7 @@ export class TrafficAI {
       tries++;
       this.serial = (this.serial * 1664525 + 1013904223) >>> 0;
       const seg = graph.segments[this.serial % graph.segments.length];
-      const isCarRoad = seg.line.width >= 4 && seg.line.kind !== "highway";
+      const isCarRoad = seg.line.width >= 4 && isDrivable(seg.line, "traffic");
       if (!isCarRoad) continue;
       const s = (((this.serial >>> 8) % 1000) / 1000) * seg.length;
       const { pos } = graph.sample(seg, s);

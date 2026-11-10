@@ -16,6 +16,7 @@ import type { RoadGraph, Segment } from "../world/roads";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
 import { progressOn } from "./navigation";
 import type { CarModel } from "./carModel";
+import { isDrivable as isRoutable } from "../world/roadClass";
 
 /**
  * 自動運転タクシー (robotaxi) called from the phone. Level-4 driverless operation (特定自動運行,
@@ -228,7 +229,7 @@ export class RoboTaxi {
   }
 }
 
-const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
+const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 
 const displays = new Map<string, CanvasTexture>();
 const DISPLAY_COLOUR: Record<string, string> = {

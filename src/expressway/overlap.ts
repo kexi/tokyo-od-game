@@ -4,7 +4,7 @@ import { STATION_STRIDE, type XwChunk } from "./format";
 import { carriagewayWidth } from "./section";
 
 /**
- * Decks whose plan bands overlap (設計書 4.2 「同じ層の車線域が重ならないことを検査」): where the
+ * Decks whose plan bands overlap (knowledge/road-redesign-plan.md 4.2 「同じ層の車線域が重ならないことを検査」): where the
  * deck of one run lies over (or under) the deck of another, the two must either be one surface
  * (|Δz| ≤ 5 cm, a nose or merged carriageways) or be a whole level apart (|Δz| ≥ clearance + girder).
  * Anything between is a deck sunk into the side of another or a girder over a carriageway. P1

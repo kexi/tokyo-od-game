@@ -3,7 +3,7 @@ import { PARAPET_WIDTH, RAMP_SECTION } from "./assumptions";
 import type { RoadClass } from "./network";
 
 /**
- * Cross-section of an expressway chunk (設計書 3.1 CrossSection, the part P1 needs). A main line is
+ * Cross-section of an expressway chunk (knowledge/road-redesign-plan.md 3.1 CrossSection, the part P1 needs). A main line is
  * 第二種第二級 (都心部の自動車専用道路): lanes of 第5条第4項, shoulders of 第8条. A ramp is freed
  * from those articles (第28条第4項) and takes assumptions.RAMP_SECTION.
  */

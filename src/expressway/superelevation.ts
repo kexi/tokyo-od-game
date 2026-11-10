@@ -7,11 +7,11 @@ import {
 import { SIDE_FRICTION } from "./assumptions";
 
 /**
- * Superelevation (設計書 4.3 の 4): e = clamp(V²/(127R) − f, 0, 10 %), run in linearly over the
+ * Superelevation (knowledge/road-redesign-plan.md 4.3 の 4): e = clamp(V²/(127R) − f, 0, 10 %), run in linearly over the
  * 第18条 transition length (a box filter of that length turns a step into a linear ramp of exactly
  * that length). The sign follows the curve: `bank` is the rise of the left edge per metre of width,
  * so a right-hand curve (outer edge on the left) has a positive bank. P1 computes and checks it; the
- * deck uses it only behind a flag because it changes what the car feels (設計書 4.3).
+ * deck uses it only behind a flag because it changes what the car feels (knowledge/road-redesign-plan.md 4.3).
  */
 
 export function targetSuperelevation(V: DesignSpeed, kappa: number): number {

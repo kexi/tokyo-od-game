@@ -8,6 +8,7 @@ stale_after: 2027-11-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-10T11:00:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-11-10T09:40:00Z }
+  - { by: process:vitest, at: 2026-11-10T13:55:00Z }
   - { by: process:vitest, at: 2026-11-10T11:00:00Z }
 sources:
   - id: kozorei
@@ -22,6 +23,9 @@ sources:
   - id: tests
     resource: tests/expresswayAlignment.test.ts
     title: 出典の欠落・仮定の verified=false・第25条の読みを検査するテスト
+  - id: marking-tests
+    resource: tests/roadMarkings.test.ts
+    title: 一般道の区画線のテスト
 ---
 
 # 置き場の分け方
@@ -67,6 +71,16 @@ e-Gov の添付画像から読んだ。[^hyoshikirei]
 | 高速道路等の左側端の太い破線（変速車線との境） | 0.30〜0.75 m | ℓ1 = 2〜5 m、ℓ2 = (1.0〜1.5) ℓ1            |
 
 破線の 8 m / 12 m は令の範囲内だが、首都圏の都市高速で実際に引かれている値は確かめていない（仮定に置いた）。導流帯の斜線の寸法は図の例示で、P1 では使っていない。
+
+## 一般道の区画線（P2、2026-11-10 追記）
+
+一般道の区画線は `src/world/roadMarkings.ts` の `MARKING`（純関数 `planMarkings` が使う）にまとめ、車線境界線（102）・車道外側線（103）の寸法は上の表の範囲に入ることを `tests/roadMarkings.test.ts` が `MARKING_DIMENSIONS` から検査する。値は P2 の前と同じ。[^marking-tests]
+
+- 範囲内: 車線境界線 幅 0.15（上限）・破線 5 m／間隔 5 m（ℓ2 = 1.0 ℓ1）、車道外側線 幅 0.15（下限）。
+- 範囲外: 0 件。
+- この表に未収録（令の値を確かめていない）: 中央線（幅 0.15・破線 5／5）、停止線（奥行き 0.45）、横断歩道（縞 0.45・間隔 0.45・奥行き 4）、◇（210、3 × 1.5）。P8 で別表から読む。詳細は [道路モデル](road-model.md)。
+
+[^marking-tests]: 一般道の区画線のテスト
 
 [^kozorei]: 道路構造令
 

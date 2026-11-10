@@ -3,6 +3,7 @@ import type { LocalFrame } from "../geo/frame";
 import type { OrbisSite } from "./orbis";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import { isAllDay } from "./ruleTime";
+import { hasRoadside } from "./roadClass";
 
 /**
  * 可搬式オービス (portable speed cameras) set up by the game: the 警視庁 runs them on 生活道路 and
@@ -132,7 +133,7 @@ export function planPortable(
   day: GameDay,
   schools: readonly School[] = [],
 ): OrbisSite[] {
-  const streets = graph.segments.filter((seg) => seg.line.kind !== "highway");
+  const streets = graph.segments.filter((seg) => hasRoadside(seg.line));
   if (streets.length === 0) return [];
   const boxes = new Map(streets.map((seg) => [seg, boxOf(seg)]));
   const all = [...boxes.values()];

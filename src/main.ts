@@ -195,6 +195,7 @@ import { JUMP_METRES, STANDING_KMH } from "./game/motion";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
+import { isDrivable, usesGroundSurface } from "./world/roadClass";
 
 const LIGHT_KEY = { green: "hud.signal.green", yellow: "hud.signal.yellow", red: "hud.signal.red" } as const;
 /** What the car hit (`name` fills the pedestrian's). */
@@ -891,9 +892,9 @@ async function main(): Promise<void> {
     if (!graph) return false;
     const car = vehicle.position();
     const isStreet = (seg: Segment) =>
-      seg.line.kind !== "highway" && seg.line.width >= 5.5 && seg.length > 30 && !seg.closed;
+      isDrivable(seg.line, "spawn") && seg.line.width >= 5.5 && seg.length > 30 && !seg.closed;
     const isLane = (seg: Segment) =>
-      seg.line.kind !== "highway" && seg.line.width >= 4 && seg.length > 20 && !seg.closed;
+      isDrivable(seg.line, "spawn") && seg.line.width >= 4 && seg.length > 20 && !seg.closed;
     // Wider and wider until a street turns up: a place chosen in 移動 or on the start screen (a
     // park, the palace, a ward's middle, a tower) can be far from one; a narrow lane only if no
     // street is near at all.
@@ -3810,7 +3811,7 @@ async function main(): Promise<void> {
       log("patrol_lost", { unitKind: p.kind, violationIds: lostIds });
     }
   };
-  const isSurfaceStreet = (seg: Segment) => seg.line.kind !== "highway";
+  const isSurfaceStreet = (seg: Segment) => usesGroundSurface(seg.line);
   // ---------- 追跡とその後（pursuitDirector.ts・pursuitScene.ts） ----------
   const pursuitScene = new PursuitScene(scene, $("#hud"));
   i18n.onLocaleChange(() => pursuitScene.relabel());
@@ -4063,7 +4064,7 @@ async function main(): Promise<void> {
     if (!roadGraph) return null;
     const here = vehicle.position();
     const far = roadGraph.segments.filter((seg) => {
-      if (seg.line.kind === "highway" || seg.line.width < 5.5 || seg.closed) return false;
+      if (!isDrivable(seg.line, "autopilot") || seg.line.width < 5.5 || seg.closed) return false;
       const d = roadGraph?.sample(seg, seg.length / 2).pos.distanceTo(here) ?? 0;
       return d > 600 && d < 1200;
     });
