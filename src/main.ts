@@ -5264,6 +5264,35 @@ async function main(): Promise<void> {
       }
       for (const code of keys) window.dispatchEvent(new KeyboardEvent("keyup", { code }));
     };
+    // The multi-view review's camera and targets (scripts/qa/views.ts, knowledge/review-loop.md).
+    // Imported here, in the dev block, so the production bundle never contains it.
+    const { createViewHooks } = await import("./debug/viewHooks");
+    const viewHooks = createViewHooks({
+      scene,
+      camera,
+      frame: () => frame,
+      groundEllipsoidal: (lat, lon) => dem.heightAt(lat, lon),
+      ellipsoidal: (lat, lon, h) => dem.ellipsoidal(lat, lon, h),
+      groundY,
+      setDebugCamera: (fn) => (debugCamera = fn),
+      carPosition: () => vehicle.position(),
+      landmarks: landmarkEntries,
+      signs,
+      control,
+      env,
+      baseUrl: import.meta.env.BASE_URL,
+      onPlaced: (isPlaced) => (blur.level = isPlaced ? "off" : GRAPHICS.settings.motionBlur),
+      hiddenWhilePlaced: () => [ribbon.object],
+      hideables: {
+        traffic: () => traffic.objects(),
+        pedestrians: () => pedestrians.list.map((p) => p.object),
+      },
+      loadState: () => ({
+        isRoadsLoading: roadsLoading,
+        hasRoads: roadGraph !== null,
+        buildingsProgress: buildings.loadProgress(),
+      }),
+    });
     Object.assign(window, {
       __game: {
         scene,
@@ -5331,6 +5360,10 @@ async function main(): Promise<void> {
           perf: debugPerf,
           // The last 2,000 log lines: logs.query({ event: /^pursuit_/ }), logs.chain("vio-…"), logs.jsonl().
           logs: recentLogs,
+          camera: viewHooks.camera,
+          targets: viewHooks.targets,
+          signals: viewHooks.signals,
+          settled: viewHooks.settled,
         },
         getPursuit: () => pursuitDirector,
         social,

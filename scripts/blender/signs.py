@@ -5,13 +5,13 @@
 #
 # Game coordinates (+Y up, +Z = the side the sign face looks at), exported with export_yup=False.
 # Plates are centred on their own origin with the face toward +Z; the face primitive uses the
-# material "SignFace" with UVs covering the artwork square (0–1), so the game can swap in any
-# texture from assets/signs/textures. Real sizes (命令 別表第二 standard dimensions): circular
-# 規制標識 60 cm, 一時停止・徐行 inverted triangle 80 cm per side, 指示標識 60 cm square, 一方通行
-# 326-A 60 × 35 cm and 326-B 35 × 60 cm, 警戒標識 a 45 cm square on its corner, 横断歩道 (407) a
-# pentagon 60 cm wide, 327 series 90 × 90 cm or 40 cm per lane × 90 cm, 補助標識 60 cm wide
-# (警察庁「交通規制基準」: 18/22/32/44 cm high). assets/signs/registry.json names the plate of each
-# sign; posts are 60.5 mm galvanised steel pipe.
+# material "SignFace" with UVs covering the plate's bounding box (0–1), so the game can swap in any
+# texture from assets/signs/textures. Which plates there are and their outlines (別表第二 standard
+# dimensions, mm) come from assets/signs/registry.json `plates`, which scripts/signs.ts writes from
+# src/signs/plates.ts: run `just make-sign-registry` first. Node names are the registry's keys
+# (PlateCircle, PlateRect120x90 …) and are fixed: the game and the definitions look plates up by
+# them. Why not draw every plate here as before: the sizes were then written twice (here and in the
+# definitions), and the texture boxes in a third place. Posts are 60.5 mm galvanised steel pipe.
 import json
 import math
 import os
@@ -149,75 +149,53 @@ def circle(r, segments=48):
     ]
 
 
-# Plates. UV boxes match the texture canvases: square artwork for circle/triangle/square, 1:2 for one-way.
-plate("PlateCircle", circle(0.30), ((-0.30, -0.30), (0.30, 0.30)))
-tri_h = 0.80 * math.sqrt(3) / 2
-# Inverted triangle, counter-clockwise: top-left → bottom apex → top-right. The texture's top edge
-# is the plate's top edge and its bottom-centre is the apex.
-triangle = [(-0.40, tri_h / 2), (0.0, -tri_h / 2), (0.40, tri_h / 2)]
-plate("PlateTriangle", rounded(triangle, 0.035), ((-0.40, -tri_h / 2), (0.40, tri_h / 2)))
-plate(
-    "PlateSquare",
-    rounded([(-0.30, -0.30), (0.30, -0.30), (0.30, 0.30), (-0.30, 0.30)], 0.025),
-    ((-0.30, -0.30), (0.30, 0.30)),
-)
-# 一方通行 326-A: 60 × 35 cm, mounted parallel to the street.
-plate(
-    "PlateWide",
-    rounded([(-0.30, -0.175), (0.30, -0.175), (0.30, 0.175), (-0.30, 0.175)], 0.02),
-    ((-0.30, -0.175), (0.30, 0.175)),
-)
-# 一方通行 326-B: 35 × 60 cm (図 156; the first version was 30 × 60).
-plate(
-    "PlateRect",
-    rounded([(-0.175, -0.30), (0.175, -0.30), (0.175, 0.30), (-0.175, 0.30)], 0.02),
-    ((-0.175, -0.30), (0.175, 0.30)),
-)
+def rect_outline(w, h):
+    return [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
 
 
-def rect_plate(name, w, h, r):
-    """A w × h m rounded rectangle whose texture covers it exactly."""
-    plate(
-        name,
-        rounded([(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)], r),
-        ((-w / 2, -h / 2), (w / 2, h / 2)),
-    )
+def outline_of(p):
+    """The outline (counter-clockwise, metres, corners still sharp) of a registry plate and its
+    corner radius. The texture box (UV 0–1) is the outline's bounding box, as plateBoxMm gives it."""
+    shape = p["shape"]
+    if shape == "circle":
+        return circle(p["diameterMm"] / 2000), 0.0
+    corner = p["cornerMm"] / 1000
+    if shape == "triangle_down":
+        # Counter-clockwise: top-left → bottom apex → top-right. The texture's top edge is the
+        # plate's top edge and its bottom-centre is the apex.
+        side = p["sideMm"] / 1000
+        tri_h = side * math.sqrt(3) / 2
+        return [(-side / 2, tri_h / 2), (0.0, -tri_h / 2), (side / 2, tri_h / 2)], corner
+    if shape == "diamond":
+        # A square on its corner; the texture covers its bounding square (the diagonal).
+        half_diag = p["sideMm"] / 1000 * math.sqrt(2) / 2
+        return [(0.0, -half_diag), (half_diag, 0.0), (0.0, half_diag), (-half_diag, 0.0)], corner
+    if shape == "pentagon":
+        # An equilateral triangle on a base of the same width (407).
+        w, base = p["widthMm"] / 1000, p["baseMm"] / 1000
+        h = w * math.sqrt(3) / 2 + base
+        return [
+            (-w / 2, -h / 2),
+            (w / 2, -h / 2),
+            (w / 2, -h / 2 + base),
+            (0.0, h / 2),
+            (-w / 2, -h / 2 + base),
+        ], corner
+    return rect_outline(p["widthMm"] / 1000, p["heightMm"] / 1000), corner
 
 
-# 警戒標識: a 45 cm square on its corner; the texture covers its 63.6 cm bounding square.
-half_diag = 0.45 * math.sqrt(2) / 2
-plate(
-    "PlateDiamond",
-    rounded([(0.0, -half_diag), (half_diag, 0.0), (0.0, half_diag), (-half_diag, 0.0)], 0.02),
-    ((-half_diag, -half_diag), (half_diag, half_diag)),
-)
-# 横断歩道・自転車横断帯 (407 series): a 60 cm equilateral triangle on a 60 × 20 cm base, R 3.5 cm.
-penta_h = 0.60 * math.sqrt(3) / 2 + 0.20
-penta = [
-    (-0.30, -penta_h / 2),
-    (0.30, -penta_h / 2),
-    (0.30, -penta_h / 2 + 0.20),
-    (0.0, penta_h / 2),
-    (-0.30, -penta_h / 2 + 0.20),
-]
-plate("PlatePentagon", rounded(penta, 0.035), ((-0.30, -penta_h / 2), (0.30, penta_h / 2)))
-# 327 series: 90 × 90 cm, and 40 cm per lane × 90 cm for 進行方向別通行区分 (327の7-A).
-rect_plate("PlateSquare90", 0.90, 0.90, 0.04)
-for lanes in range(2, 8):
-    rect_plate(f"PlateRect{lanes * 40}x90", lanes * 0.40, 0.90, 0.04)
-# 規制予告 409-A (60 × 90 cm) and 409-B (90 × 60 cm).
-rect_plate("PlateRect60x90", 0.60, 0.90, 0.03)
-rect_plate("PlateRect90x60", 0.90, 0.60, 0.025)
-# 補助標識: 60 cm wide, 18 (arrows), 22 (one line), 25 (503-B), 32 (two lines), 38 (503-C) and
-# 44 cm (three lines, 511) high; the 30 × 30 cm 510 example; 終わり 507-C is a 40 cm disc.
-for h in (18, 22, 25, 32, 38, 44):
-    rect_plate(f"PlateAux60x{h}", 0.60, h / 100, 0.03)
-rect_plate("PlateAux30x30", 0.30, 0.30, 0.03)
-plate("PlateCircle40", circle(0.20), ((-0.20, -0.20), (0.20, 0.20)))
-# 法定外: ゾーン30 backing plate 40 × 60 cm, ゾーン30プラス plate 40 × 15 cm, ward 通学路 plate 30 × 50 cm.
-rect_plate("PlateBacker40x60", 0.40, 0.60, 0.03)
-rect_plate("PlateRect40x15", 0.40, 0.15, 0.035)
-rect_plate("PlateRect30x50", 0.30, 0.50, 0.028)
+def bounds(points):
+    xs = [x for x, _ in points]
+    ys = [y for _, y in points]
+    return ((min(xs), min(ys)), (max(xs), max(ys)))
+
+
+# Plates: every plate of registry.json (src/signs/plates.ts), in its order, named by its node. The
+# texture covers the sharp outline's bounding box; the corners are rounded after.
+REGISTRY = json.load(open(os.path.join(ROOT, "assets", "signs", "registry.json"), encoding="utf-8"))
+for node, spec in REGISTRY["plates"].items():
+    points, radius = outline_of(spec)
+    plate(node, rounded(points, radius) if radius > 0 else points, bounds(points))
 
 
 def post(name):

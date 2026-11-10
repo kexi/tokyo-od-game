@@ -1,7 +1,5 @@
 import { reanchorBody } from "../physics/reanchor";
 import {
-  BoxGeometry,
-  CanvasTexture,
   type InstancedMesh,
   Mesh,
   MeshStandardMaterial,
@@ -17,13 +15,14 @@ import {
 } from "three";
 import { RoadInstances } from "./roadInstances";
 import { FrameWork } from "../game/frameWork";
-import { RoadPlates } from "./roadPlates";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PROP_GROUPS } from "../physics/groups";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import gameTable from "../../assets/signs/game.json";
-import { designFor, type Design, type GameTable } from "../signs/game";
+import { auxKey, type AuxPlate } from "../signs/auxPlates";
+import { POST_TOP, stackPlates } from "../signs/stack";
+import { auxDesignFor, designFor, type Design, type GameTable } from "../signs/game";
 import { laneKey } from "../signs/lanes";
 import { warn } from "../log";
 import { leftOf, type RoadGraph } from "./roads";
@@ -34,16 +33,16 @@ import { sharedDraco } from "../render/draco";
 // 別表第二); Vite bundles each PNG with a content hash.
 const ARTWORK = import.meta.glob<string>("../../assets/signs/textures/*.png", {
   eager: true,
-  query: "?url",
+  // no-inline: Vite would otherwise put every PNG under assetsInlineLimit (4 KB) into the chunk as
+  // a data URI, and the small 補助標識 faces (79 of them) would load with the game whether shown or not.
+  query: "?url&no-inline",
   import: "default",
 });
 const artworkUrl = (name: string) => ARTWORK[`../../assets/signs/textures/${name}.png`];
 
-// Plates are modelled at their real size (60 cm circles, 80 cm triangles); drawn 1.25× so they
-// read at game camera distances.
-const SCALE = 1.25;
-const POST_TOP = 2.6; // ground to the centre of the top plate
-const STACK = 0.8 * SCALE; // vertical spacing of plates sharing a post
+// Plates are modelled at their real size (60 cm circles, 80 cm triangles); each is drawn at its
+// definition's displayScale (Design.scale: 1.25× for 規制・指示, 1.3× for 警戒, inside 別表第二
+// 備考一(二)) so they read at game camera distances. Their heights on the post: src/signs/stack.ts.
 const PLATE_OFFSET = 0.05; // plate face in front of the post axis (bracket depth)
 
 const GAME_TABLE = gameTable as GameTable;
@@ -65,6 +64,15 @@ export function design(type: number, value: number, lanes?: readonly LaneDirecti
 }
 
 const reportedLanes = new Set<string>();
+const reportedAux = new Set<string>();
+
+/** Logs a 補助標識 with no face drawn ahead of time, once per wording (it is placed on every rebuild). */
+function reportUndrawnAux(plate: AuxPlate): void {
+  const key = auxKey(plate);
+  if (reportedAux.has(key)) return;
+  reportedAux.add(key);
+  warn("sign_aux_undrawn", { sign: plate.sign, lines: plate.lines });
+}
 
 /** Logs a lane pattern with no pre-rendered plate, once per pattern (it is placed on every rebuild). */
 function reportUnrenderedLanes(lanes: readonly LaneDirection[][]): void {
@@ -74,7 +82,8 @@ function reportUnrenderedLanes(lanes: readonly LaneDirection[][]): void {
   warn("sign_lanes_unrendered", { lanes: key, count: lanes.length });
 }
 
-type Part = { face: BufferGeometry; back: BufferGeometry; backMaterial: Material };
+/** A plate of signs.glb; `height` is its modelled height in metres (the face's bounding box). */
+type Part = { face: BufferGeometry; back: BufferGeometry; backMaterial: Material; height: number };
 type Kit = { plate: (shape: Shape) => Part | null; post: Mesh; bracket: Mesh };
 let kit: Kit | null = null;
 
@@ -93,10 +102,14 @@ export async function loadSignModels(): Promise<void> {
   };
   const part = (name: Shape): Part => {
     const back = meshOf(name, "SignBack");
+    const face = meshOf(name, "SignFace").geometry;
+    face.computeBoundingBox();
+    const box = face.boundingBox;
     return {
-      face: meshOf(name, "SignFace").geometry,
+      face,
       back: back.geometry,
       backMaterial: back.material as Material,
+      height: box ? box.max.y - box.min.y : 0,
     };
   };
   const plates = new Map<Shape, Part | null>();
@@ -145,12 +158,13 @@ type Post = {
   plates: Design[];
   /** Instances drawing this post, to hide it if it turns out to stand inside a building. */
   refs: Array<[InstancedMesh, number]>;
-  /** 補助標識 texts hung under the plates. */
-  notes: string[];
+  /** The 補助標識 of each plate (same index), hung right under it. */
+  auxOf: AuxPlate[][];
   collider: RAPIER.Collider | null;
   hidden: boolean;
 };
-type Item = { post: Post; level: number; flip: boolean; facing?: Vector3 };
+/** One plate instance: its post, the height of its centre above the ground and its scale. */
+type Item = { post: Post; y: number; scale: number; flip: boolean; facing?: Vector3 };
 
 /**
  * 道路標識 posts where JARTIC puts them (sections' starts and repeats, junction approaches,
@@ -162,11 +176,6 @@ export class TrafficSigns {
   private readonly instances = new RoadInstances();
 
   private posts: Post[] = [];
-  private notes: Mesh[] = [];
-  private readonly notePool = new RoadPlates((p) => {
-    p.geometry.dispose();
-    for (const m of p.material as Material[]) if (m !== noteBack) m.dispose();
-  });
   private body: RAPIER.RigidBody | null = null;
   private lastCheck = 0;
 
@@ -200,30 +209,23 @@ export class TrafficSigns {
     this.clear(true);
     if (!graph || !regs || !kit) {
       this.instances.end();
-      this.notePool.end();
       return;
     }
     const posts: Post[] = [];
-    const add = (pos: Vector3, travel: Vector3, d: Design | null, note?: string) => {
+    const add = (pos: Vector3, travel: Vector3, d: Design | null, aux: AuxPlate[] = []) => {
       if (!d) return;
       // Never in another road's carriageway (junctions, the far side of a narrow crossing).
       if (graph.carriagewaysAt(pos, 0.3).length > 0) return;
       // Several plates for the same traffic at (nearly) the same spot share one post.
       const post = posts.find((p) => p.pos.distanceTo(pos) < 2 && p.travel.dot(travel) > 0.7);
-      if (!post)
-        posts.push({
-          pos,
-          travel,
-          plates: [d],
-          refs: [],
-          collider: null,
-          hidden: false,
-          notes: note ? [note] : [],
-        });
-      else if (!post.plates.some((x) => x.file === d.file) && post.plates.length < 3) {
-        post.plates.push(d);
-        if (note) post.notes.push(note);
+      if (!post) {
+        posts.push({ pos, travel, plates: [d], refs: [], collider: null, hidden: false, auxOf: [aux] });
+        return;
       }
+      const isNewPlate = !post.plates.some((x) => x.file === d.file) && post.plates.length < 3;
+      if (!isNewPlate) return;
+      post.plates.push(d);
+      post.auxOf.push(aux);
     };
     // 一時停止 first so it is the top plate where it shares a post.
     for (const ap of approaches) {
@@ -233,7 +235,7 @@ export class TrafficSigns {
       add(mid.add(leftOf(ap.travel, ap.seg.line.width / 2 + 0.7)), ap.travel, design(SIGN.stop, 0));
     }
     for (const s of regs.signs) {
-      add(s.pos, s.travel, design(s.type, s.value, s.lanes), s.note);
+      add(s.pos, s.travel, design(s.type, s.value, s.lanes), s.aux);
       yield;
     }
     const signalStops = approaches.filter((a) => a.kind === "signal");
@@ -254,7 +256,6 @@ export class TrafficSigns {
     }
     yield* this.build(posts, kit);
     this.instances.end();
-    this.notePool.end();
   }
 
   count(): number {
@@ -268,7 +269,6 @@ export class TrafficSigns {
 
   reanchor(matrix: Matrix4, rotation: Quaternion): void {
     this.instances.reanchor(matrix);
-    for (const mesh of this.notes) mesh.applyMatrix4(matrix);
     for (const post of this.posts) {
       post.pos.applyMatrix4(matrix);
       post.travel.applyQuaternion(rotation);
@@ -277,16 +277,10 @@ export class TrafficSigns {
   }
 
   clear(reuse = false): void {
-    if (reuse) this.notePool.begin();
-    else this.notePool.clear();
     if (reuse) this.instances.begin();
     else this.instances.clear();
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
-    for (const n of this.notes) {
-      this.scene.remove(n);
-    }
-    this.notes = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
     this.posts = [];
@@ -320,28 +314,31 @@ export class TrafficSigns {
   private *build(posts: Post[], k: Kit): Generator<void | boolean> {
     const byFile = new Map<string, { d: Design; items: Item[] }>();
     const byShape = new Map<Shape, Item[]>();
-    for (const post of posts)
-      post.plates.forEach((d, level) => {
-        const entry = byFile.get(d.file) ?? { d, items: [] };
-        byFile.set(d.file, entry);
-        if (d.parallel && d.back) {
-          // Face the carriageway (right of travel) and, back to back, the pavement.
-          const right = leftOf(post.travel, -1);
-          entry.items.push({ post, level, flip: false, facing: right });
-          const back = byFile.get(d.back) ?? { d: { ...d, file: d.back }, items: [] };
-          byFile.set(d.back, back);
-          back.items.push({ post, level, flip: false, facing: right.clone().negate() });
-          return;
-        }
-        entry.items.push({ post, level, flip: false });
-        if (d.bothFaces) {
-          entry.items.push({ post, level, flip: true });
-          return;
-        }
-        const backs = byShape.get(d.shape) ?? [];
-        backs.push({ post, level, flip: false });
-        byShape.set(d.shape, backs);
-      });
+    const place = (post: Post, d: Design, y: number) => {
+      const entry = byFile.get(d.file) ?? { d, items: [] };
+      byFile.set(d.file, entry);
+      const scale = d.scale;
+      if (d.parallel && d.back) {
+        // Face the carriageway (right of travel) and, back to back, the pavement.
+        const right = leftOf(post.travel, -1);
+        entry.items.push({ post, y, scale, flip: false, facing: right });
+        const back = byFile.get(d.back) ?? { d: { ...d, file: d.back }, items: [] };
+        byFile.set(d.back, back);
+        back.items.push({ post, y, scale, flip: false, facing: right.clone().negate() });
+        return;
+      }
+      entry.items.push({ post, y, scale, flip: false });
+      if (d.bothFaces) {
+        entry.items.push({ post, y, scale, flip: true });
+        return;
+      }
+      const backs = byShape.get(d.shape) ?? [];
+      backs.push({ post, y, scale, flip: false });
+      byShape.set(d.shape, backs);
+    };
+    let dropped = 0;
+    for (const post of posts) dropped += this.layOut(post, k, place);
+    if (dropped > 0) warn("sign_faces_below_ground", { faces: dropped, posts: posts.length });
     for (const { d, items } of byFile.values()) {
       const plate = k.plate(d.shape);
       if (plate) this.instanced(plate.face, faceMaterial(d.file), items).userData.key = d.file;
@@ -379,23 +376,32 @@ export class TrafficSigns {
     this.add(pole);
     yield true;
     this.posts = posts;
-    // 補助標識 under the lowest plate (one mesh each: their texts differ).
-    for (const post of posts) {
-      if (post.notes.length === 0) continue;
-      const text = post.notes[0];
-      const plate = this.notePool.take(text, () => notePlate(text));
-      const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
-      const h = (plate.geometry as BoxGeometry).parameters.height;
-      const lowest = ground + POST_TOP - (post.plates.length - 1) * STACK;
-      const facing = post.travel.clone().negate();
-      plate.position
-        .set(post.pos.x, lowest - 0.3 * SCALE - 0.06 - h / 2, post.pos.z)
-        .addScaledVector(facing, PLATE_OFFSET);
-      plate.rotation.y = Math.atan2(facing.x, facing.z);
-      this.scene.add(plate);
-      this.notes.push(plate);
-      yield;
+  }
+
+  /**
+   * The plates of a post from the top, each with its 補助標識 right under it at the plate's scale
+   * (別表第二 備考二(二)2), at the heights src/signs/stack.ts gives. A 補助標識 with no face drawn
+   * ahead of time (public/data/regs newer than registry.json) is left off with a warning, the plate
+   * above still standing. Returns how many faces did not fit above the ground.
+   */
+  private layOut(post: Post, k: Kit, place: (post: Post, d: Design, y: number) => void): number {
+    const heightOf = (d: Design) => (k.plate(d.shape)?.height ?? 0) * d.scale;
+    const auxOf = post.plates.map((d, level) =>
+      (post.auxOf[level] ?? []).flatMap((plate) => {
+        const aux = auxDesignFor(GAME_TABLE, plate, d.scale);
+        if (aux) return [aux];
+        reportUndrawnAux(plate);
+        return [];
+      }),
+    );
+    const { placed, dropped } = stackPlates(
+      post.plates.map((d, level) => ({ height: heightOf(d), aux: auxOf[level].map(heightOf) })),
+    );
+    for (const f of placed) {
+      const d = f.aux === null ? post.plates[f.plate] : auxOf[f.plate][f.aux];
+      place(post, d, f.y);
     }
+    return dropped;
   }
 
   /** One instance per plate; the face looks at oncoming traffic (−travel), just in front of the post. */
@@ -407,13 +413,13 @@ export class TrafficSigns {
   ): InstancedMesh {
     const o = new Object3D();
     const mesh = this.instances.take(geometry, material, items.length);
-    items.forEach(({ post, level, flip, facing: given }, i) => {
+    items.forEach(({ post, y, scale, flip, facing: given }, i) => {
       const facing = given ?? (flip ? post.travel : post.travel.clone().negate());
       const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
-      o.position.set(post.pos.x, ground + POST_TOP - level * STACK, post.pos.z);
+      o.position.set(post.pos.x, ground + y, post.pos.z);
       o.position.addScaledVector(facing, PLATE_OFFSET);
       o.rotation.set(0, Math.atan2(facing.x, facing.z), 0);
-      o.scale.setScalar(SCALE);
+      o.scale.setScalar(scale);
       o.updateMatrix();
       mesh.setMatrixAt(i, o.matrix);
       post.refs.push([mesh, i]);
@@ -428,51 +434,4 @@ export class TrafficSigns {
     this.scene.add(mesh);
     this.meshes.push(mesh);
   }
-}
-
-const noteBack = new MeshStandardMaterial({ color: 0x9aa1a8, metalness: 0.6, roughness: 0.45 });
-const noteTextures = new Map<string, { texture: CanvasTexture; lines: number }>();
-
-/** 補助標識: black text on a white plate with a black border, 60 cm wide. */
-function notePlate(text: string): Mesh {
-  let entry = noteTextures.get(text);
-  if (!entry) {
-    const lines = text.split("\n");
-    const canvas = document.createElement("canvas");
-    canvas.width = 320;
-    canvas.height = 24 + lines.length * 70;
-    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#111111";
-    ctx.lineWidth = 8;
-    ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
-    ctx.fillStyle = "#111111";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    lines.forEach((line, i) => {
-      let size = 54;
-      ctx.font = `bold ${size}px "Noto Sans JP", "Hiragino Sans", sans-serif`;
-      while (ctx.measureText(line).width > canvas.width - 40 && size > 22) {
-        size -= 2;
-        ctx.font = `bold ${size}px "Noto Sans JP", "Hiragino Sans", sans-serif`;
-      }
-      ctx.fillText(line, canvas.width / 2, 12 + 35 + i * 70);
-    });
-    const texture = new CanvasTexture(canvas);
-    texture.colorSpace = SRGBColorSpace;
-    entry = { texture, lines: lines.length };
-    noteTextures.set(text, entry);
-  }
-  const width = 0.6 * SCALE;
-  const height = width * ((24 + entry.lines * 70) / 320);
-  const face = new MeshStandardMaterial({ map: entry.texture, roughness: 0.45 });
-  return new Mesh(new BoxGeometry(width, height, 0.01), [
-    noteBack,
-    noteBack,
-    noteBack,
-    noteBack,
-    face,
-    noteBack,
-  ]);
 }

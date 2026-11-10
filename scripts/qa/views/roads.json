@@ -1,0 +1,62 @@
+{
+  "name": "roads",
+  "description": "一般道の視点（区画線・道路標示・停止線・横断歩道・歩道の幾何）。地点と向きで立つ運転席・後方追従と、交差点の真上からの俯瞰。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261110,
+    "moment": "2026-11-10T11:00:00+09:00"
+  },
+  "sessions": [
+    {
+      "id": "marunouchi-junction",
+      "start": [35.68043, 139.76424],
+      "views": [
+        {
+          "id": "junction-driver",
+          "camera": "driver",
+          "at": {
+            "lat": 35.68043,
+            "lon": 139.76424,
+            "headingDeg": 284,
+            "lookAheadM": 40
+          },
+          "expect": {
+            "markings": "停止線・横断歩道・進行方向別通行区分の矢印",
+            "lanes": "左折直進・右折・右折"
+          }
+        },
+        {
+          "id": "junction-chase",
+          "camera": "chase",
+          "at": {
+            "lat": 35.68043,
+            "lon": 139.76424,
+            "headingDeg": 284,
+            "lookAheadM": 40
+          },
+          "expect": {
+            "car": "自車が車線の中にいる"
+          }
+        },
+        {
+          "id": "junction-overhead",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.6805,
+              "lon": 139.7638,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 90,
+          "pitchDeg": 90,
+          "expect": {
+            "geometry": "交差点内に区画線が無い、横断歩道と停止線の位置"
+          }
+        }
+      ]
+    }
+  ]
+}

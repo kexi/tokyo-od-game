@@ -532,6 +532,10 @@ export const LOG_EVENTS = {
    * put up. Once per pattern. `lanes` is the render key (src/signs/lanes.ts laneKey).
    */
   sign_lanes_unrendered: warning({ lanes: z.string(), count }),
+  /** A 補助標識 whose wording has no face drawn ahead of time (registry.json older than public/data/regs); left off. */
+  sign_aux_undrawn: warning({ sign: z.string(), lines: z.array(z.string()) }),
+  /** Faces of sign posts left off because their stack would reach below the ground (src/signs/stack.ts; G4). */
+  sign_faces_below_ground: warning({ faces: count, posts: count }),
   osm_read: info({ nodes: count, ways: count, relations: count, coords: count }),
   destinations_written: info({
     file: z.string(),
@@ -570,6 +574,42 @@ export const LOG_EVENTS = {
     diagnostics: count,
     unsolved: count,
     durationS: z.number(),
+  }),
+
+  // ---------- the multi-view review (src/debug/viewHooks.ts, scripts/qa/views.ts) ----------
+  /** The dev camera was put at a view (window.__game.debug.camera). */
+  debug_camera_placed: info({
+    lat: z.number(),
+    lon: z.number(),
+    fovDeg: z.number(),
+    isGroundReady: z.boolean(),
+  }),
+  /** A view's target is not in the game (an unknown id, or a renamed private list the hook reads). */
+  debug_target_missing: warning({ kind: z.string(), targetId: z.string() }),
+  /** A view table's page is loaded and the world streamed in around its start. */
+  views_session_loaded: info({ viewTable: z.string(), start: z.string(), views: count, loadS: z.number() }),
+  /** One view shot: the picture and its JSON. */
+  views_shot: info({
+    viewTable: z.string(),
+    viewId: z.string(),
+    file: z.string(),
+    targetId: z.string().nullable(),
+    isInView: z.boolean().nullable(),
+    offCentre: z.number().nullable(),
+  }),
+  /** A view could not be shot (its target is not found near its start, or the page failed). */
+  views_shot_failed: failedWith({ viewTable: z.string(), viewId: z.string() }),
+  /** Every view of a table is shot; the contact sheet and the review template are written. */
+  views_done: info({ viewTable: z.string(), round: count, shots: count, failed: count, outDir: z.string() }),
+  /** A review round compared with the one before (scripts/qa/reviewLoop.ts). */
+  review_round_checked: info({
+    viewTable: z.string(),
+    round: count,
+    newBlocking: count,
+    gone: count,
+    openCritical: count,
+    verdict: z.enum(["converged", "continue", "escalate"]),
+    reason: z.string(),
   }),
 } as const;
 

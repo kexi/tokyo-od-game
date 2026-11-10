@@ -1,0 +1,75 @@
+{
+  "name": "expressway",
+  "description": "?expressway の試験区間（浜崎橋付近、public/data/expressway）の視点。床版・壁高欄・橋脚の幾何、縦断の折れ、地面との合い。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261110,
+    "params": {
+      "expressway": ""
+    },
+    "moment": "2026-11-10T11:00:00+09:00"
+  },
+  "sessions": [
+    {
+      "id": "hamazakibashi",
+      "start": [35.6537, 139.7508],
+      "views": [
+        {
+          "id": "deck-driver-40",
+          "camera": "driver",
+          "target": {
+            "expressway": "24402611:14",
+            "share": 0.6
+          },
+          "distanceM": 40,
+          "fov": 55,
+          "expect": {
+            "deck": "片側 2 車線の床版、両側の壁高欄",
+            "grade": "折れや段差がない"
+          }
+        },
+        {
+          "id": "deck-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:14",
+            "share": 0.5
+          },
+          "altitudeM": 220,
+          "pitchDeg": 75,
+          "angleDeg": 90,
+          "fov": 50,
+          "expect": {
+            "deck": "床版の幅と線形、橋脚の並び"
+          }
+        },
+        {
+          "id": "deck-below",
+          "camera": "free",
+          "eye": {
+            "lat": 35.65335,
+            "lon": 139.75105,
+            "h": 1.6,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.653642,
+            "lon": 139.751258,
+            "h": 19.2,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402611:14",
+            "share": 0.5
+          },
+          "fov": 60,
+          "expect": {
+            "deck": "高架下から見上げた桁と橋脚",
+            "piers": "脚が地面に立ち、車道の上に無い"
+          }
+        }
+      ]
+    }
+  ]
+}

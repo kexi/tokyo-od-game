@@ -1,3 +1,4 @@
+import { auxKey, type AuxPlate } from "./auxPlates";
 import { laneKey } from "./lanes";
 
 /**
@@ -53,8 +54,12 @@ export const GAME_SIGN_KINDS = Object.keys(SIGN) as [GameSignKind, ...GameSignKi
 export const GAME_PICKS = ["default", "value", "lanes"] as const;
 export type GamePick = (typeof GAME_PICKS)[number];
 
-/** A face as the game draws it: the number, the PNG without .png, the signs.glb plate node. */
-export type GameFace = { id: string; file: string; plate: string; value?: number };
+/**
+ * A face as the game draws it: the number, the PNG without .png, the signs.glb plate node and the
+ * scale the plate is drawn at (the definition's displayScale; none on a 補助標識, which takes the
+ * scale of the plate it hangs under).
+ */
+export type GameFace = { id: string; file: string; plate: string; scale?: number; value?: number };
 
 export type GameKindEntry = {
   pick: GamePick;
@@ -69,18 +74,23 @@ export type GameKindEntry = {
   bothFaces?: true;
 };
 
-/** assets/signs/game.json. */
-export type GameTable = { kinds: Partial<Record<GameSignKind, GameKindEntry>> };
+/** assets/signs/game.json. `aux`: the 補助標識 faces by auxPlates.ts auxKey. */
+export type GameTable = {
+  kinds: Partial<Record<GameSignKind, GameKindEntry>>;
+  aux: Record<string, GameFace>;
+};
 
 /**
  * The artwork of a placed sign: `id` is the 別表第一 number shown (311-A, not the old turn_3),
- * `shape` the plate node. `bothFaces`: back-to-back copies; `parallel`: along the street with
- * `back` as the other face (道路標識設置基準 3-1-4: 平行又は斜め 0°〜45°).
+ * `shape` the plate node, `scale` how much larger than 図示 it is drawn (within 別表第二
+ * 備考一(二), src/signs/schema.ts ENLARGEMENT). `bothFaces`: back-to-back copies; `parallel`: along
+ * the street with `back` as the other face (道路標識設置基準 3-1-4: 平行又は斜め 0°〜45°).
  */
 export type Design = {
   id: string;
   file: string;
   shape: string;
+  scale: number;
   bothFaces?: boolean;
   parallel?: boolean;
   back?: string;
@@ -119,8 +129,19 @@ export function designFor(
     id: face.id,
     file: face.file,
     shape: face.plate,
+    scale: face.scale ?? 1,
     ...(entry.back ? { back: entry.back.file } : {}),
     ...(entry.parallel ? { parallel: true } : {}),
     ...(entry.bothFaces ? { bothFaces: true } : {}),
   };
+}
+
+/**
+ * The face of a 補助標識 hung under a plate drawn at `scale`, or null when it was not drawn ahead
+ * of time (public/data/regs newer than registry.json; the registry test fails on that).
+ */
+export function auxDesignFor(table: GameTable, plate: AuxPlate, scale: number): Design | null {
+  const face = table.aux[auxKey(plate)];
+  if (!face) return null;
+  return { id: face.id, file: face.file, shape: face.plate, scale };
 }
