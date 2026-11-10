@@ -394,6 +394,83 @@ assets:
       近景の材質（TS_BrickRed ほか）は agy のテクスチャができるまで単色の仮の色。UV はタイル単位のワールド座標で、
       材質ごとのテクスチャの大きさ・タイル寸法は knowledge/tokyo-station-blender.md の「テクスチャの依頼書」にある。
 
+  - id: tokyo-tocho
+    name: 東京都庁第一本庁舎
+    purpose: >-
+      西新宿に実寸（最高部 243.4 m）で立つ都庁第一本庁舎。低層部の上で分かれる双塔（「33 階で分かれる」は一次情報で未確認）、45° 回した上層、北塔の無線塔。
+      夜は塔頂部の投光と執務室の窓。遠くでは箱のシルエットに替える。
+    kind: model
+    files: [public/models/tokyo_tocho.glb, public/models/tokyo_tocho_far.glb]
+    generator:
+      script: [scripts/blender/landmarks.py, scripts/blender/major_buildings.py]
+      recipe: make-all-landmark-models
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。高さ・階数は東京都財務局の公表値、平面は OpenStreetMap、段の高さと平面の
+      段差は PLATEAU LOD2 の断面、見た目は Wikimedia Commons の写真で確かめた。写真の画素は使っていない。
+    license: [repo, PDL-1.0, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [major-building-textures]
+    docs: [knowledge/major-buildings-blender.md]
+    notes: 配置と点灯時刻は landmark-placements（public/data/landmarks.json）。_far.glb は遠景だけの別ファイル。
+
+  - id: national-diet
+    name: 国会議事堂
+    purpose: >-
+      永田町に実寸（幅 206.36 m・奥行 88.63 m・中央塔 65.45 m）で立つ国会議事堂。両翼・中庭・中央の柱廊と
+      段々のピラミッド屋根の塔。夜は残業の窓と外灯の照り返し。
+    kind: model
+    files: [public/models/national_diet.glb, public/models/national_diet_far.glb]
+    generator:
+      script: [scripts/blender/landmarks.py, scripts/blender/major_buildings.py]
+      recipe: make-all-landmark-models
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。寸法は衆議院・参議院の公表値、平面と中庭は OpenStreetMap、塔の段の高さは
+      Wikimedia Commons の正面写真で測った。PLATEAU には議事堂が無い。紋章・院名の文字は入れていない。
+    license: [repo, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [major-building-textures]
+    docs: [knowledge/major-buildings-blender.md]
+
+  - id: tokyo-intl-exhibition
+    name: 東京国際展示場 会議棟
+    purpose: >-
+      有明に実寸（高さ 58 m）で立つ展示場の会議棟。4 本の柱に載る 4 つの逆ピラミッドとその間のガラスの吹き抜け。
+      夜は逆三角形の照り返しと吹き抜けの明かり。
+    kind: model
+    files: [public/models/tokyo_intl_exhibition.glb, public/models/tokyo_intl_exhibition_far.glb]
+    generator:
+      script: [scripts/blender/landmarks.py, scripts/blender/major_buildings.py]
+      recipe: make-all-landmark-models
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。逆ピラミッドの段と柱は OpenStreetMap の building:part、高さは観光公式と
+      Wikipedia、デッキ高は PLATEAU LOD2、外装は Wikimedia Commons の写真で確かめた。施設名・ロゴは入れていない。
+    license: [repo, PDL-1.0, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [major-building-textures]
+    docs: [knowledge/major-buildings-blender.md]
+
+  - id: national-stadium
+    name: 国立競技場
+    purpose: >-
+      霞ヶ丘町に実寸（最高 47.35 m・南北約 350 m）で立つ 2019 年竣工の国立競技場。木の軒庇 3 段、屋根と開口、
+      3 層のスタンド、トラックと芝。夜は軒庇の木の照り返し。
+    kind: model
+    files: [public/models/national_stadium.glb, public/models/national_stadium_far.glb]
+    generator:
+      script: [scripts/blender/landmarks.py, scripts/blender/major_buildings.py]
+      recipe: make-all-landmark-models
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。高さは JIA 建築賞の設計概要、外形・席数は JSC、平面と屋根の開口・軒庇の高さは
+      PLATEAU LOD2 の断面と OpenStreetMap から取った。命名権の名称・ロゴは入れていない。
+    license: [repo, PDL-1.0, ODbL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [major-building-textures]
+    docs: [knowledge/major-buildings-blender.md]
+
   - id: orbis
     name: オービス（速度違反自動取締装置）と予告看板
     purpose: 道路の上の門型（車線ごとのカメラとストロボ）・狭い道の柱型と、その手前の「スピード落せ 自動速度取締機設置路線」の看板。撮影するとその車線のストロボが光る。
@@ -673,6 +750,20 @@ assets:
     used_by: []
     docs: [knowledge/tokyo-station-blender.md]
 
+  - id: major-building-textures
+    name: 主要な建物 4 棟のテクスチャ
+    purpose: >-
+      都庁の外壁（花崗岩の格子と窓）、国会議事堂の翼の一間と切石、会議棟のチタンの三角パネルとガラス、
+      国立競技場の杉のルーバー・客席のモザイク・トラックと芝、夜の窓の発光マップ。
+    kind: texture
+    files: [assets/landmarks/textures/mb_*]
+    generator: { script: scripts/textures/major_building_textures.py, recipe: make-textures }
+    made_by: procedural
+    source: 自作（手続き生成、シード固定。写真・フォント・ロゴ・文字なし）
+    license: repo
+    used_by: []
+    docs: [knowledge/major-buildings-blender.md]
+
   - id: asphalt-textures
     name: 車道のアスファルト
     purpose: 車道の密粒度アスファルト（色・法線・粗さ、4 m で 1 タイル）。ワールド座標で敷くので継ぎ目が出ない。
@@ -834,7 +925,13 @@ assets:
     kind: data
     files: [public/data/landmarks.json]
     generator:
-      script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py, scripts/blender/tower_area.py]
+      script:
+        [
+          scripts/blender/landmarks.py,
+          scripts/blender/tokyo_station.py,
+          scripts/blender/tower_area.py,
+          scripts/blender/major_buildings.py,
+        ]
       recipe: make-all-landmark-models
     made_by: blender-cli
     source: >-
