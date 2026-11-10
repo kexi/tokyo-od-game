@@ -191,6 +191,7 @@ import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
 import { judgePedestrianBlow } from "./game/pedestrianBlow";
+import { JUMP_METRES, STANDING_KMH } from "./game/motion";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
@@ -2075,6 +2076,11 @@ async function main(): Promise<void> {
   const contactCooldown = new Map<number, number>();
   /** A person hit is one accident, however many steps the blow takes to part them. */
   const pedestrianCooldown = new WeakMap<Pedestrian, number>();
+  /**
+   * When each person's next pedestrian_bump may be logged. Why not pedestrianCooldown: that one
+   * holds off the next accident, and a bump must not delay the booking of a real hit after it.
+   */
+  const bumpLogCooldown = new WeakMap<Pedestrian, number>();
   const loadStart = performance.now();
   let lastBrainStatus = brain.status;
   const startButton = $<HTMLButtonElement>("#start");
@@ -2403,9 +2409,13 @@ async function main(): Promise<void> {
       const isCoolingDown = (pedestrianCooldown.get(ped) ?? 0) > performance.now();
       if (isCoolingDown) continue;
       // Someone walking into a car that stands is their own bump (pedestrianBlow.ts: the car's own
-      // speed decides; the closing speed only says, by the person's Δv, how hard they were hit).
-      const judged = judgePedestrianBlow(vehicle.speedKmh(), blow.impact);
+      // speed going into the blow decides; the closing speed only says, by the person's Δv, how
+      // hard they were hit).
+      const judged = judgePedestrianBlow(blow.impact);
       if (!judged.isAccident) {
+        const isBumpLogged = (bumpLogCooldown.get(ped) ?? 0) > performance.now();
+        if (isBumpLogged) continue;
+        bumpLogCooldown.set(ped, performance.now() + 3000);
         log("pedestrian_bump", {
           carKmh: Math.round(judged.carKmh * 10) / 10,
           otherDeltaVKmh: Math.round(judged.victimKmh * 10) / 10,
@@ -2463,7 +2473,7 @@ async function main(): Promise<void> {
     // Today's distance at the wheel (re-anchoring and respawns jump; ignore those).
     if (isInCar && odometerAt) {
       const step = Math.hypot(carPos.x - odometerAt.x, carPos.z - odometerAt.z);
-      if (step < 10) todayMetres += step;
+      if (step < JUMP_METRES) todayMetres += step;
     }
     odometerAt = isInCar ? carPos.clone() : null;
     const focus = focusPos();
@@ -2912,7 +2922,7 @@ async function main(): Promise<void> {
       book(VIOLATIONS.phone, now, 30000);
     }
     // Tokyo's environmental ordinance: switch the engine off when stopped for a while.
-    const isStoppedInCar = isInCar && Math.abs(speed) < 1 && drive.throttle === 0;
+    const isStoppedInCar = isInCar && Math.abs(speed) < STANDING_KMH && drive.throttle === 0;
     stoppedSince = isStoppedInCar ? (stoppedSince ?? now) : null;
     const isEngineOff = !isInCar || (stoppedSince !== null && now - stoppedSince > 20000);
     if (isEngineOff && isInCar) announceIdlingStop();
@@ -4936,7 +4946,7 @@ async function main(): Promise<void> {
     const carKg = vehicle.massKg;
     const e = restitution(closing, body.kind);
     const { dv1, dv2, energy } = centralImpact(carKg, body.mass, closing, e);
-    return { closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
+    return { closing, carSpeed: closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
   };
   const onAccident = (
     kind: "pedestrian" | "vehicle" | "building" | "pole",

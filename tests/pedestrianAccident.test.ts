@@ -1,114 +1,146 @@
 import { Scene, Vector3 } from "three";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Pedestrian } from "../src/world/pedestrians";
-import { judgePedestrianBlow } from "../src/game/pedestrianBlow";
 
-/** A 60 kg person walking at 5 km/h into the player's car: the blow massContacts.ts gives back. */
-const walkingInto = { dvCar: 0.06 / 3.6, dvOther: 4.8 / 3.6 };
-/** The car at 30 km/h hitting a standing person (Δv ≈ 0.96 of the speed, massContacts.test.ts). */
-const hitAt30 = { dvCar: 1.2 / 3.6, dvOther: 28.8 / 3.6 };
+// Whether a blow is the driver's accident is tested with the real physics in massContacts.test.ts.
 
-describe("whether a blow with a person is the driver's accident", () => {
-  it("is not an accident when a person walks into the standing car, however fast they close", () => {
-    // The car's own speed after the blow is the shove the person gave it.
-    expect(judgePedestrianBlow(0.2, walkingInto).isAccident).toBe(false);
-    // A runner closing at 15 km/h is still their own bump.
-    expect(judgePedestrianBlow(0, { dvCar: 0.2 / 3.6, dvOther: 14 / 3.6 }).isAccident).toBe(false);
-  });
-
-  it("is an accident when the moving car knocks a person down, as before", () => {
-    const judged = judgePedestrianBlow(29, hitAt30);
-    expect(judged.isAccident).toBe(true);
-    // The speed booked is the car's own going into the blow, not the closing speed.
-    expect(judged.carKmh).toBeCloseTo(30.2, 1);
-    expect(judged.victimKmh).toBeCloseTo(28.8, 1);
-  });
-
-  it("counts a creeping car (above 1 km/h) as moving: only a standstill is the person's own bump", () => {
-    expect(judgePedestrianBlow(2, walkingInto).isAccident).toBe(true);
-    expect(judgePedestrianBlow(-2, walkingInto).isAccident).toBe(true); // reversing
-  });
-
-  it("is not an accident when the person is only nudged, even by a moving car", () => {
-    expect(judgePedestrianBlow(10, { dvCar: 0, dvOther: 2 / 3.6 }).isAccident).toBe(false);
-  });
-});
-
-describe("leaving the scene of an accident (ひき逃げ)", () => {
+describe("leaving the scene of an accident (ひき逃げ, emergency.ts)", () => {
   let EmergencyResponse: typeof import("../src/game/emergency").EmergencyResponse;
   let LEAVE_DISTANCE: number;
+  let REPORT_LIMIT_MS: number;
 
   beforeAll(async () => {
     // The responders' side panels are drawn on a canvas; nothing is drawn in Node.
     vi.stubGlobal("document", {
       createElement: () => ({ width: 0, height: 0, getContext: () => null }),
     });
-    ({ EmergencyResponse, LEAVE_DISTANCE } = await import("../src/game/emergency"));
+    ({ EmergencyResponse, LEAVE_DISTANCE, REPORT_LIMIT_MS } = await import("../src/game/emergency"));
   });
 
-  const scene = () => {
+  const DT = 1 / 60;
+  /** An accident at the origin at t = 0, the player beside the victim, and a clock to move them by. */
+  const accident = () => {
     const emergency = new EmergencyResponse(new Scene(), { siren: () => {} }, () => 0);
     const victim = { object: { position: new Vector3(0, 0, 0) } } as unknown as Pedestrian;
     emergency.start(victim, 0);
-    return emergency;
-  };
-  const dt = 1 / 60;
-  /** Drives the player from `from` along +x at `speed` m/s for `metres`; returns the events. */
-  const drive = (emergency: ReturnType<typeof scene>, from: Vector3, speed: number, metres: number) => {
+    const player = new Vector3(2, 0, 0);
+    let now = 0;
     const events: string[] = [];
-    const at = from.clone();
-    const frames = Math.ceil(metres / (speed * dt));
-    for (let i = 0; i <= frames; i++) {
-      const event = emergency.update(dt, i * dt * 1000, at, speed, () => {});
+    const frame = (speed: number) => {
+      const event = emergency.update(DT, now, player, speed, () => {});
       if (event) events.push(event.type);
-      at.x += speed * dt;
-    }
-    return { events, at };
+      now += DT * 1000;
+    };
+    return {
+      emergency,
+      player,
+      events,
+      now: () => now,
+      /** Drives `metres` along `dir` at 10 m/s, frame by frame. */
+      drive(metres: number, dir = new Vector3(1, 0, 0)) {
+        const frames = Math.ceil(metres / (10 * DT));
+        for (let i = 0; i < frames; i++) {
+          player.addScaledVector(dir, 10 * DT);
+          frame(10);
+        }
+      },
+      /** Stands where they are for `seconds`. */
+      wait(seconds: number) {
+        for (let t = 0; t < seconds; t += DT) frame(0);
+      },
+      /** Put down elsewhere in one frame (移動, 復帰, debug place). */
+      jump(to: Vector3) {
+        player.copy(to);
+        frame(0);
+      },
+    };
   };
 
   it("books ひき逃げ when the player drives more than 80 m away without calling 119", () => {
-    const emergency = scene();
-    const { events } = drive(emergency, new Vector3(2, 0, 0), 10, LEAVE_DISTANCE + 5);
-    expect(events).toContain("hitAndRun");
-    expect(emergency.chasing).toBe(true);
+    const a = accident();
+    a.wait(0.1);
+    a.drive(LEAVE_DISTANCE + 5);
+    expect(a.events).toContain("hitAndRun");
+    expect(a.emergency.chasing).toBe(true);
   });
 
-  it("does not book ひき逃げ while the player stays within 80 m", () => {
-    const emergency = scene();
-    const { events } = drive(emergency, new Vector3(2, 0, 0), 10, LEAVE_DISTANCE - 10);
-    expect(events).not.toContain("hitAndRun");
+  it("does not book ひき逃げ while the player stays within 80 m and inside the deadline", () => {
+    const a = accident();
+    a.drive(LEAVE_DISTANCE - 10);
+    a.wait(5);
+    expect(a.events).not.toContain("hitAndRun");
   });
 
-  it("does not count a jump (移動, 復帰, debug place) away from the scene as leaving it", () => {
-    const emergency = scene();
-    expect(emergency.update(dt, 0, new Vector3(2, 0, 0), 0, () => {})).toBeNull();
-    // Put down 1.2 km away, standing.
-    const far = new Vector3(1200, 0, 300);
-    for (let i = 1; i <= 120; i++) {
-      expect(emergency.update(dt, i * dt * 1000, far, 0, () => {})).toBeNull();
+  it("books ひき逃げ when 119 is not called within the deadline at the scene", () => {
+    const a = accident();
+    a.wait(REPORT_LIMIT_MS / 1000 + 1);
+    expect(a.events).toContain("hitAndRun");
+  });
+
+  it("holds the leaving check and the 119 deadline while a jump keeps the player away", () => {
+    const a = accident();
+    a.wait(10);
+    const left = a.emergency.secondsLeft(a.now());
+    a.jump(new Vector3(1200, 0, 300));
+    // Well past the deadline, 1.2 km from the scene.
+    a.wait(REPORT_LIMIT_MS / 1000 + 30);
+    expect(a.events).not.toContain("hitAndRun");
+    expect(a.emergency.chasing).toBe(false);
+    expect(a.emergency.active).toBe(true);
+    // (The second rounds up: the jump's own frame may tip it by one.)
+    expect(a.emergency.secondsLeft(a.now())).toBeGreaterThanOrEqual(left - 1);
+    // Driving about where they were put down is still being away by the jump.
+    a.drive(200);
+    expect(a.events).not.toContain("hitAndRun");
+  });
+
+  it("resumes once the player is back within 80 m, and then books ひき逃げ for driving 80 m away", () => {
+    const a = accident();
+    a.wait(0.1);
+    a.jump(new Vector3(0, 0, 150));
+    a.wait(90);
+    // Back towards the scene by driving: within 80 m the hold ends.
+    a.drive(100, new Vector3(0, 0, -1));
+    expect(a.events).not.toContain("hitAndRun");
+    a.drive(LEAVE_DISTANCE + 60, new Vector3(0, 0, 1));
+    expect(a.events).toContain("hitAndRun");
+  });
+
+  it("leaves the held time out of the deadline after the player is back", () => {
+    const a = accident();
+    a.wait(30);
+    a.jump(new Vector3(1200, 0, 0));
+    a.wait(100);
+    a.jump(new Vector3(2, 0, 0));
+    a.wait(25);
+    expect(a.events).not.toContain("hitAndRun");
+    a.wait(10);
+    expect(a.events).toContain("hitAndRun");
+  });
+
+  it("does not take a re-anchoring (the world and the player moved together) for a jump", () => {
+    const a = accident();
+    // 119 called: driving away is not ひき逃げ, so the player can be away without a jump.
+    a.emergency.dispatch("ambulance", null);
+    // (Before the ambulance, 130 m off, gets there in 12 s and the scene closes.)
+    a.drive(LEAVE_DISTANCE + 5);
+    const shift = new Vector3(-3000, 0, 1500);
+    a.emergency.transform((p) => p.add(shift));
+    a.player.add(shift);
+    const before = a.emergency.secondsLeft(a.now());
+    a.wait(2);
+    // Not held: the deadline runs on.
+    expect(a.emergency.active).toBe(true);
+    expect(a.emergency.secondsLeft(a.now())).toBeLessThanOrEqual(before - 1);
+  });
+
+  it("does not take a fast car's frames for jumps (240 km/h at the longest frame, 0.05 s)", () => {
+    const a = accident();
+    const speed = 240 / 3.6;
+    for (let i = 0; i < 40; i++) {
+      a.player.x += speed * 0.05;
+      a.emergency.update(0.05, i * 50, a.player, speed, () => {});
     }
-    expect(emergency.chasing).toBe(false);
-    expect(emergency.active).toBe(true);
-  });
-
-  it("still books ひき逃げ when the player then drives 80 m on from where they were put down", () => {
-    const emergency = scene();
-    emergency.update(dt, 0, new Vector3(2, 0, 0), 0, () => {});
-    const { events } = drive(emergency, new Vector3(1200, 0, 300), 10, LEAVE_DISTANCE + 5);
-    expect(events).toContain("hitAndRun");
-  });
-
-  it("keeps a fast car's frames as driving, not as jumps", () => {
-    const emergency = scene();
-    // 120 km/h on the expressway at 15 frames a second: 2.2 m a frame, well under the jump.
-    const events: string[] = [];
-    const at = new Vector3(2, 0, 0);
-    const speed = 120 / 3.6;
-    for (let i = 0; i < 60; i++) {
-      const event = emergency.update(1 / 15, (i * 1000) / 15, at, speed, () => {});
-      if (event) events.push(event.type);
-      at.x += speed / 15;
-    }
-    expect(events).toContain("hitAndRun");
+    expect(a.emergency.chasing).toBe(true);
   });
 });
