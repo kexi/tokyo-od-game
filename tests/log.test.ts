@@ -157,6 +157,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     signs: 210,
   },
   pavements_built: { wards: ["千代田区"], polygons: 812 },
+  road_sections: { segments: 1189, byBasis: { jartic: 415, osm: 180, width: 594 }, asymmetric: 12 },
+  pavement_over_lanes: { checked: 900, under: 40 },
   frame_recentered: { lat: 35.68124, lon: 139.76712 },
   guide_signs_placed: { signs: 12, advance: 3, overhead: 5, routed: 9, mapped: 40, durationMs: 18 },
   street_lights_placed: {
@@ -277,6 +279,14 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     footbridges: 400,
     stairs: 800,
     turnlanes: 2000,
+  },
+  osm_road_lanes: {
+    ways: 40000,
+    tiles: 120,
+    lanes: 30000,
+    forwardBackward: 5000,
+    width: 3000,
+    oneway: 12000,
   },
   police_written: { stations: 102, orbis: 25, bySource: { osm: 25 } },
   osm_loaded: { bytes: 400_000_000 },

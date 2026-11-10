@@ -7,16 +7,15 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AutoDriver, type DriveWorld } from "../src/game/autoDriver";
 import { laneCentre } from "../src/game/drivePath";
 import { planRoute } from "../src/game/navigation";
-import { LocalFrame } from "../src/geo/frame";
 import { steerLimit, WHEELBASE } from "../src/physics/vehicle";
 import { lanesFor } from "../src/world/guidePlan";
 import { laneBand, laneOfOffset, laneWidth } from "../src/world/laneChange";
 import { computeRoadNetwork, restoreRoadNetwork } from "../src/world/roadNetworkData";
-import type { RegulationData } from "../src/world/regulations";
-import { laneOffset, speedLimit, type RoadGraph, type RoadLine, type Segment } from "../src/world/roads";
-import { gameClock, readTime } from "../src/world/ruleTime";
+import { laneOffset, speedLimit, type RoadGraph, type Segment } from "../src/world/roads";
+import { gameClock } from "../src/world/ruleTime";
 import { TrafficAI } from "../src/world/traffic-ai";
 import { TrafficControl } from "../src/world/trafficControl";
+import { PLACES, placeFrame, roadsOf, tileData } from "./roadFixtures";
 
 /**
  * What the road model (RoadGraph, the applied regulations, the painted lines, the routes, the
@@ -24,16 +23,30 @@ import { TrafficControl } from "../src/world/trafficControl";
  * the code from before the road model was split into predicates, sections, MarkingPlan and
  * layered search (P2 of the road redesign, knowledge/road-model.md). P2 must not change any of it.
  *
- * Inputs are the frozen regulation and turn-lane tiles of tests/fixtures/sign-placement (sources
- * in its LICENSE.txt): GSI tiles are served for real-time use, so the roads are the regulation
+ * Updated once on purpose by P8 (one lane policy, carriageway and 路肩, 2026-11-11): every street
+ * gets the lanes its JARTIC 車両通行帯 or OSM lanes (roadlanes-*.json, a new input) give, one lane
+ * otherwise; every count is checked against the room the GSI 幅員 leaves (less two 3.5 m pavements
+ * from 13 m), which also tells a JARTIC total from a count a direction; the carriageway is capped
+ * at lanes × 3.25 m plus 0.5 m 路肩 (構造令 第5条・第8条) in that room; and the edge lines, lane
+ * lines, stop lines and lane centres sit on that section. Against the P2 rows (ac0f603): the lane
+ * count changed on 68 of 333 segments at 丸の内, 44 of 410 at 渋谷 and 58 of 333 at 芝公園 (mostly
+ * 2 → 1 and 3 → 2: JARTIC counts on synthetic widths that now read as totals or do not fit the
+ * room); the paths of 6, 5 and 3 of the 24 routes moved (no route changed its streets or turns,
+ * only its lanes); 3, 4 and 3 of the 6 autopilot drives changed (the same starts drive); the
+ * traffic AI's lane points moved on 188, 200 and 190 segments (the left lane's centre now sits
+ * inside the 0.5 m shoulder). The darwin baseline (fingerprints.json, discrete.json) was retaken
+ * with the P8 code.
+ *
+ * Inputs are the frozen regulation, turn-lane and street-lane tiles of
+ * tests/fixtures/sign-placement (sources in its LICENSE.txt; read by tests/roadFixtures.ts): GSI tiles are served for real-time use, so the roads are the regulation
  * tile's own lines, as in tests/signPlacement.test.ts. Unlike there, each line gets a kind, a
  * width class, a one-way and a 橋 flag from its index, so the expressway ("highway") branches,
  * one-way streets and every GSI width class run.
  *
  * When the snapshot may be updated (`vitest -u` together with ROAD_MODEL_UPDATE=1, on darwin; it
  * rewrites tests/fixtures/road-model/fingerprints.json and discrete.json too): only for a change
- * meant to alter the road model's output (P8's lane and kerb corrections, for one), with the
- * reason in the commit and the rows of before and after diffed; or for a change of how the rows
+ * meant to alter the road model's output (as P8 did, above), with the reason in the commit and
+ * the rows of before and after compared; or for a change of how the rows
  * are made (as the rounding and the platform split below), then
  * taken again from the code before P2 (origin/main 1305f52) and matched by the new code. Delete
  * the test once a later phase replaces these places' pins with tests of its own; a refactor (P2)
@@ -87,113 +100,6 @@ vi.mock("three", async (importOriginal) => {
 vi.stubGlobal("document", {
   createElement: () => ({ width: 0, height: 0, getContext: () => null }),
 });
-
-const FIXTURES = join(import.meta.dirname, "fixtures", "sign-placement");
-const PLACES = [
-  { name: "丸の内", tile: "14552-6451" },
-  { name: "渋谷", tile: "14549-6452" },
-  { name: "芝公園", tile: "14552-6453" },
-] as const;
-
-function tileData(tile: string): RegulationData {
-  const regs = JSON.parse(readFileSync(join(FIXTURES, `regs-${tile}.json`), "utf8"));
-  const lanesFile = join(FIXTURES, `turnlanes-${tile}.json`);
-  const turnlanes = existsSync(lanesFile) ? JSON.parse(readFileSync(lanesFile, "utf8")) : [];
-  return {
-    speed: [],
-    speedZone: [],
-    oneway: [],
-    crosswalk: [],
-    stopLine: [],
-    stopSign: [],
-    sections: [],
-    turns: [],
-    closures: [],
-    noOvertake: [],
-    lanes: [],
-    noLaneChange: [],
-    laneArrows: [],
-    signals: [],
-    junctions: [],
-    footbridges: [],
-    ...regs,
-    turnlanes,
-  };
-}
-
-const WIDTHS = [2.5, 4.3, 5.5, 9, 13, 16, 22, 9, 6];
-const KINDS: RoadLine["kind"][] = ["local", "national", "prefectural", "local", "narrow"];
-
-/** Metres east / north per degree near Tokyo (enough to tell coincident lines apart). */
-const M_PER_LAT = 110_950;
-const M_PER_LON = 111_320 * Math.cos((35.67 * Math.PI) / 180);
-/** Closer than this to a kept line, a piece of a new line runs along it. */
-const COINCIDENT_M = 1.5;
-
-/** Distance (m) from point (x, y) to the segment a–b, all in metres. */
-function pointToSegment(x: number, y: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 < 1e-9 ? 0 : Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / len2));
-  return Math.hypot(ax + dx * t - x, ay + dy * t - y);
-}
-
-/** Lon / lat to local metres (east, north), up to an offset. */
-const toM = (lon: number, lat: number): [number, number] => [lon * M_PER_LON, lat * M_PER_LAT];
-
-/** Whether any edge midpoint of `coords` lies on one of the kept lines. */
-function overlapsAny(coords: number[], kept: readonly RoadLine[]): boolean {
-  for (let i = 0; i + 3 < coords.length; i += 2) {
-    const [x, y] = toM((coords[i] + coords[i + 2]) / 2, (coords[i + 1] + coords[i + 3]) / 2);
-    for (const line of kept) {
-      const c = line.coords;
-      for (let j = 0; j + 3 < c.length; j += 2) {
-        const [ax, ay] = toM(c[j], c[j + 1]);
-        const [bx, by] = toM(c[j + 2], c[j + 3]);
-        const isOnIt = pointToSegment(x, y, ax, ay, bx, by) < COINCIDENT_M;
-        if (isOnIt) return true;
-      }
-    }
-  }
-  return false;
-}
-
-/** The regulation tile's lines (each once, none along another) as road centrelines, varied by index. */
-function roadsOf(data: RegulationData): RoadLine[] {
-  const coordLists = [
-    ...data.speed.map((r) => r.slice(1)),
-    ...data.oneway.map((r) => r.slice(readTime(r, 0).next)),
-    ...data.sections.map((r) => r.slice(readTime(r, 2).next)),
-    ...data.closures.filter((r) => r[0] === 2).map((r) => r.slice(readTime(r, 2).next)),
-    ...data.noOvertake,
-    ...data.noLaneChange,
-    ...data.lanes.map((r) => r.slice(1)),
-    ...data.laneArrows.map((r) => r.slice(1)),
-  ];
-  const seen = new Set<string>();
-  const lines: RoadLine[] = [];
-  for (const coords of coordLists) {
-    const key = coords.join(",");
-    const isLine = coords.length >= 4 && !seen.has(key);
-    if (!isLine) continue;
-    seen.add(key);
-    // JARTIC lists one road in several records (each direction, overlapping sections). Kept, they
-    // make coincident segments, and which of two equally near ones wins is then decided by the
-    // last bit of a double: different on another machine. Real GSI roads do not coincide.
-    if (overlapsAny(coords, lines)) continue;
-    const i = lines.length;
-    const isExpressway = i % 17 === 5;
-    lines.push({
-      coords,
-      width: WIDTHS[i % WIDTHS.length],
-      oneway: i % 11 === 3 ? 1 : i % 13 === 7 ? -1 : 0,
-      kind: isExpressway ? ("highway" as RoadLine["kind"]) : KINDS[i % KINDS.length],
-      ...(i % 19 === 2 ? { bridge: true } : {}),
-    });
-  }
-  return lines;
-}
 
 const hash = (rows: readonly string[]) =>
   createHash("sha256").update(rows.join("\n")).digest("hex").slice(0, 16);
@@ -254,13 +160,6 @@ function nextDouble(v: number, dir: 1 | -1): number {
   const isTowardsZero = v > 0 !== dir > 0;
   view.setBigInt64(0, bits + (isTowardsZero ? -1n : 1n));
   return view.getFloat64(0);
-}
-
-function placeFrame(tile: string): LocalFrame {
-  const [x, y] = tile.split("-").map(Number);
-  const lon = ((x + 0.5) / 2 ** 14) * 360 - 180;
-  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 0.5)) / 2 ** 14))) * 180) / Math.PI;
-  return new LocalFrame(lat, lon, 40);
 }
 
 /** The worker's reply (graph snapshot and packed regulations), with its Maps as arrays. */
@@ -795,7 +694,7 @@ function rowMismatches(got: Record<string, string[]>, want: Record<string, strin
   return out;
 }
 
-describe("the road model at three places is unchanged by the P2 refactor", () => {
+describe("the road model at three places is pinned (unchanged by P2, changed on purpose by P8)", () => {
   const isUpdate = process.env.ROAD_MODEL_UPDATE === "1";
   const stored: Record<string, Fingerprints> =
     isUpdate || !existsSync(PRINTS_FILE) ? {} : JSON.parse(readFileSync(PRINTS_FILE, "utf8"));

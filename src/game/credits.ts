@@ -227,7 +227,8 @@ export function renderCredits(
     bbbike: link("https://download.bbbike.org/osm/bbbike/Tokyo/", t("credits.link.bbbike")),
   })}
   ${odbl(odblUrl)}
-  ${text("credits.signals.cycle")}</p>
+  ${text("credits.signals.cycle")}
+  ${text("credits.roadlanes.extract", { tags: "<code>lanes</code>・<code>width</code>" })}</p>
 
   <h3>${text("credits.h.guide")}</h3>
   <p>${osm()}

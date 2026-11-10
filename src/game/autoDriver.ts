@@ -1020,6 +1020,10 @@ export class AutoDriver {
 
   /** Point on the route's driven path at route distance `d`. */
   private pathAt(route: Route, d: number): Vector3 {
+    // A route of one point (the car stands on its target): that point. Why a guard and not "never
+    // plan such a route": planRoute returns it legitimately, and indexing points[1] threw.
+    const isSinglePoint = route.points.length < 2;
+    if (isSinglePoint) return route.points[0].clone();
     let i = 1;
     while (i < route.cum.length - 1 && route.cum[i] < d) i++;
     const a = route.points[i - 1];

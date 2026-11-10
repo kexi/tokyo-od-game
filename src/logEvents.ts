@@ -247,6 +247,10 @@ export const LOG_EVENTS = {
     signs: count,
   }),
   pavements_built: info({ wards: z.array(z.string()), polygons: count }),
+  /** Street sections after a rebuild: segments by basis, and OSM lanes that differ by direction. */
+  road_sections: info({ segments: count, byBasis: counts, asymmetric: count }),
+  /** Streets whose lanes reach into PLATEAU's pavement (the 幅員 / pavement assumption to check). */
+  pavement_over_lanes: info({ checked: count, under: count }),
   /** Expressway decks (render only, P1) built or dropped around the player (expresswayDeck.ts). */
   expressway_decks_built: info({
     chunks: count,
@@ -509,6 +513,15 @@ export const LOG_EVENTS = {
     footbridges: count,
     stairs: count,
     turnlanes: count,
+  }),
+  /** scripts/regulations.ts: street ways with lanes / width kept for public/data/roadlanes. */
+  osm_road_lanes: info({
+    ways: count,
+    tiles: count,
+    lanes: count,
+    forwardBackward: count,
+    width: count,
+    oneway: count,
   }),
   police_written: info({ stations: count, orbis: count, bySource: counts }),
   osm_loaded: info({ bytes: count }),
