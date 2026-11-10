@@ -1,0 +1,124 @@
+{
+  "name": "landmarks",
+  "description": "ランドマークのモデル（public/data/landmarks.json）を街の中で見る視点。PLATEAU の建物との合い、地面との接地、昼夜のライトアップ。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261110,
+    "moment": "2026-11-10T11:00:00+09:00"
+  },
+  "sessions": [
+    {
+      "id": "tokyo-tower",
+      "start": [35.658581, 139.745433],
+      "views": [
+        {
+          "id": "tower-street-zojoji",
+          "camera": "pedestrian",
+          "target": {
+            "landmark": "tokyo_tower",
+            "heightShare": 0.45
+          },
+          "bearingDeg": 110,
+          "distanceM": 330,
+          "fov": 60,
+          "expect": {
+            "landmark": "東京タワー",
+            "base": "脚が地面に接し、周りの建物に埋まらない"
+          }
+        },
+        {
+          "id": "tower-driver-east",
+          "camera": "driver",
+          "target": {
+            "landmark": "tokyo_tower",
+            "heightShare": 0.5
+          },
+          "bearingDeg": 75,
+          "distanceM": 450,
+          "fov": 55,
+          "expect": {
+            "landmark": "東京タワー"
+          }
+        },
+        {
+          "id": "tower-overhead",
+          "camera": "overhead",
+          "target": {
+            "landmark": "tokyo_tower",
+            "heightShare": 0.3
+          },
+          "bearingDeg": 160,
+          "altitudeM": 420,
+          "pitchDeg": 38,
+          "fov": 50,
+          "expect": {
+            "landmark": "東京タワー",
+            "around": "芝公園・増上寺と隣の建物の配置"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rainbow-bridge",
+      "start": [35.6391198, 139.7560316],
+      "views": [
+        {
+          "id": "bridge-free-shibaura",
+          "camera": "free",
+          "eye": {
+            "lat": 35.6388,
+            "lon": 139.7552,
+            "h": 25,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.636573,
+            "lon": 139.7631596,
+            "h": 60,
+            "ref": "tp"
+          },
+          "target": {
+            "landmark": "rainbow_bridge",
+            "heightShare": 0.5
+          },
+          "fov": 50,
+          "expect": {
+            "landmark": "レインボーブリッジ",
+            "deck": "上下 2 層の床版と主塔"
+          }
+        },
+        {
+          "id": "bridge-pedestrian",
+          "camera": "pedestrian",
+          "target": {
+            "landmark": "rainbow_bridge",
+            "heightShare": 0.4
+          },
+          "bearingDeg": 250,
+          "distanceM": 800,
+          "fov": 55,
+          "expect": {
+            "landmark": "レインボーブリッジ"
+          }
+        },
+        {
+          "id": "bridge-overhead",
+          "camera": "overhead",
+          "target": {
+            "landmark": "rainbow_bridge",
+            "heightShare": 0.2
+          },
+          "bearingDeg": 200,
+          "altitudeM": 450,
+          "pitchDeg": 35,
+          "fov": 55,
+          "expect": {
+            "landmark": "レインボーブリッジ",
+            "approach": "芝浦側のループと高速道路の取り付け"
+          }
+        }
+      ]
+    }
+  ]
+}

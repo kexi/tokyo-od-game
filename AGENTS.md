@@ -32,7 +32,7 @@
 3. `just make-sign-textures`（図柄を registry.json から描く。既存の PNG がバイト一致のまま変わらないことも `git status` で見る）。
 4. `pnpm exec vitest run tests/signRegistry.test.ts tests/signPlacement.test.ts` と `just check-assets`。
 
-`just fetch-regs` で turn:lanes が変わったら `just rebuild-sign-assets`（レジストリ → 図柄 → どの定義にも無い図柄の削除）。
+`just fetch-regs` で turn:lanes や通行禁止の規制時間（補助標識の文言）が変わったら `just rebuild-sign-assets`（レジストリ → 図柄 → どの定義にも無い図柄の削除）。
 
 ## スクリプト
 
@@ -42,6 +42,15 @@
 
 - ログは `src/log.ts` の `log()` / `warn()` / `error()` だけで書き、イベントは `src/logEvents.ts` に Zod スキーマを登録してから使う（`console.*` を直接呼ばない。テストが検査する）。詳細と jq での調べ方は [knowledge/logging.md](knowledge/logging.md)。
 - 不具合を直すときは、ブラウザのコンソールではなく端末でログを読む：`just serve-dev` のページの行は `.qa/logs/` に溜まる。`just show-errors` で失敗の場所（TypeScript の行）と span を見つけ、`just trace-span <spanId>` で流れを読み、直したら `just print-repro-url` の URL で読み込み直して `just compare-logs` でその `uncaught_error` が `gone` になったことを確かめる（knowledge/logging.md「AI のデバッグループ」）。
+
+## 多視点レビュー
+
+詳細は [knowledge/review-loop.md](knowledge/review-loop.md)、手順は `.agents/skills/road-qa/SKILL.md`。
+
+- 標識・信号・ランドマーク・高速道路・一般道の見た目は、視点表 `scripts/qa/views/<name>.json` で狙った物を毎周同じに撮って確かめる。`just serve-dev` を起動し、`just shoot-views signs`（名前は位置引数。base・port も位置引数で `just shoot-views signs "" http://localhost:5231/tokyo-od-game/`）で `.qa/views/<name>/round-NN/` に画像・各コマの JSON・コンタクトシート・run.json を書く。失敗したコマがあれば終了コード 1 で、その周は数えない（同じ番号で撮り直す）。
+- 指摘は `.qa/reviews/<name>/round-NN.jsonl` に書く。毎周、観点と見たコマを書いた `review` 行が要る。指摘は Critical / Warning / Info で、id は周をまたいで同じものを使う。閉じるのは `fixed`、または理由を `fix` に書いた `wontfix` だけ。`just check-convergence signs` で判定する。完全に撮れた周で Critical / Warning の新規 0 が 2 周続き、open の Critical / Warning が無く、数値の探りが範囲内なら止める。6 周で収束しなければ設計へ差し戻す。
+- 標識の全描画済み番号の見本は `just render-sign-review`（Blender、`.qa/signs/`）。
+- カメラと対象の位置は開発ビルドの `window.__game.debug.camera` / `.targets` / `.signals` / `.settled`（`src/debug/viewHooks.ts`）で扱う。撮影スクリプトで private なフィールドを直接触らない。
 
 ## 高速道路データ
 

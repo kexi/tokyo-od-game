@@ -1,3 +1,4 @@
+import { readTime, type RuleTime } from "../time/ruleTime";
 import { M_LAT, M_LON } from "./anchors";
 
 /**
@@ -16,6 +17,22 @@ export const CLOSURE = {
   motor: 4,
 } as const;
 export type ClosureKind = (typeof CLOSURE)[keyof typeof CLOSURE];
+
+/**
+ * One 通行禁止 row of a regs tile (RegulationData.closures): [shape (2 line, 3 area), kind
+ * (CLOSURE), TIME…, …coords]. `coordsFrom` is the index the lon/lat pairs start at. The game
+ * (regulations.ts) and the sign registry (scripts/signInputs.ts, which draws the 補助標識 for the
+ * hours) both read rows through this, so the layout is spelt out once.
+ */
+export function readClosureRow(row: number[]): {
+  isArea: boolean;
+  kind: ClosureKind;
+  time: RuleTime;
+  coordsFrom: number;
+} {
+  const { time, next } = readTime(row, 2);
+  return { isArea: row[0] === 3, kind: row[1] as ClosureKind, time, coordsFrom: next };
+}
 
 /**
  * The largest 通行禁止 area believed, in km². The largest real ones in the 23 wards are school-run

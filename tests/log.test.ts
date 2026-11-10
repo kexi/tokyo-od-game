@@ -306,6 +306,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   signal_heads_written: { file: "assets/signals/heads.json", heads: 5 },
   sign_lanes_unrendered: { lanes: "l-t-t-t-t-t-t-r", count: 8 },
+  sign_aux_undrawn: { sign: "502", lines: ["7:30-9", "土・日・休日を除く"] },
+  sign_faces_below_ground: { faces: 2, posts: 120 },
   osm_read: { nodes: 1, ways: 2, relations: 3, coords: 4 },
   destinations_written: {
     file: "public/data/destinations.json",
@@ -351,6 +353,28 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     diagnostics: 3,
     unsolved: 0,
     durationS: 60,
+  },
+  debug_camera_placed: { lat: 35.68043, lon: 139.76424, fovDeg: 50, isGroundReady: true },
+  debug_target_missing: { kind: "landmark", targetId: "tokyo_towr" },
+  views_session_loaded: { viewTable: "signals", start: "35.68043,139.76424", views: 3, loadS: 42.5 },
+  views_shot: {
+    viewTable: "signals",
+    viewId: "marunouchi-arrow-driver-30",
+    file: ".qa/views/signals/round-01/marunouchi-arrow-driver-30.jpg",
+    targetId: "812",
+    isInView: true,
+    offCentre: 0.02,
+  },
+  views_shot_failed: { viewTable: "signals", viewId: "far-junction", error: "no signal near the start" },
+  views_done: { viewTable: "signals", round: 1, shots: 3, failed: 0, outDir: ".qa/views/signals/round-01" },
+  review_round_checked: {
+    viewTable: "signals",
+    round: 3,
+    newBlocking: 0,
+    gone: 2,
+    openCritical: 0,
+    verdict: "converged",
+    reason: "2 rounds without a new Critical/Warning",
   },
 };
 

@@ -35,7 +35,7 @@ make-car-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/car.py -- public/models/car.glb
 
 # 道路標識の板・支柱を Blender CLI でモデリングし public/models/signs.glb を書き出す
-make-sign-model:
+make-sign-model: make-sign-registry
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signs.py -- public/models/signs.glb
 
 # 歩行者を Blender CLI でモデリングし public/models/human.glb を書き出す
@@ -78,6 +78,19 @@ mix-teaser-sound lang="en" base="http://localhost:5173/tokyo-od-game/":
 # 自動運転で走らせて画面と状態を .qa/runs/ に記録する（road-qa スキルの判定用、開発サーバーが必要）
 record-drive minutes="3" every="6" time="day":
     node scripts/qa/drive.mjs --minutes {{ minutes }} --every {{ every }} --time {{ time }}
+
+# 視点表 scripts/qa/views/<name>.json の全視点をヘッドレス Chrome で撮り .qa/views/<name>/round-NN/ に画像・JSON・コンタクトシート・run.json・レビューの雛形を書く（多視点レビュー、開発サーバーが必要。失敗したコマがあれば終了コード 1。port を空にすると空きポートを探す）
+shoot-views name round="" base="http://localhost:5173/tokyo-od-game/" port="":
+    pnpm exec tsx scripts/qa/views.ts {{ name }} --base {{ base }} {{ if round != "" { "--round " + round } else { "" } }} {{ if port != "" { "--port " + port } else { "" } }}
+
+# 多視点レビューの .qa/reviews/<name>/round-NN.jsonl を各周の run.json と合わせて前の周と比べ、新規・消えた・持ち越しの指摘（diff-NN.json）と収束判定（verdict.json）を書く
+check-convergence name:
+    pnpm exec tsx scripts/qa/check-convergence.ts {{ name }}
+
+# 標識の見本: 図柄のある全番号を signs.glb の板・支柱に貼って正面・30°・60° で描き .qa/signs/ に番号ごとの画像と角度ごとのシートを書く（Blender は nix の別シェル）
+render-sign-review:
+    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signs.py --python scripts/blender/sign_review.py -- .qa/signs/signs.glb
+    pnpm exec tsx scripts/qa/signSheet.ts .qa/signs
 
 # アセット管理画面（3D モデルとテクスチャのプレビューとレビュー）を開発サーバーで開く
 open-assets:
@@ -152,7 +165,7 @@ render-sign *args:
 make-sign-registry:
     pnpm exec tsx scripts/signs.ts
 
-# fetch-regs の後に、道路標識のレジストリと図柄を作り直し、どの定義にも無い図柄を消す（車線の版が turn:lanes から決まるため）
+# fetch-regs の後に、道路標識のレジストリと図柄を作り直し、どの定義にも無い図柄を消す（車線の版は turn:lanes、補助標識の文言は規制時間から決まるため）
 rebuild-sign-assets: make-sign-registry
     uv run scripts/textures/sign_textures.py --prune
 

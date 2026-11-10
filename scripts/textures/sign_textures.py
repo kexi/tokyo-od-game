@@ -53,7 +53,7 @@ np.random.seed(SEED)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 TEXTURES_DIR = PROJECT_ROOT / "assets" / "signs" / "textures"
 REGISTRY_PATH = PROJECT_ROOT / "assets" / "signs" / "registry.json"
-REGISTRY_VERSION = 2  # src/signs/registry.ts Registry.version
+REGISTRY_VERSION = 3  # src/signs/registry.ts Registry.version
 
 # Color constants (spec目安: 赤 #D7262E, 青 #0B4EA2, 白 #FFFFFF, 黒 #1A1A1A)
 COLOR_RED = (215, 38, 46, 255)
@@ -884,11 +884,12 @@ class Job:
 
     sign: str
     group: str
-    key: str | None  # None: the sign's default face; "lanes:<key>" for a lane render
+    key: str | None  # None: the default face; "lanes:<key>" a lane render; "aux:<lines>" a 補助標識 for the game
     file: str
     plate: str  # signs.glb node, a key of registry["plates"]
     paint: dict | None  # {"fn", "args"?, "over"?}; None for a lane render
     lanes: str | None = None  # the lane key of a lane render
+    colors: int | None = None  # saved as a palette PNG of this many colours (registry aux `colors`)
 
 
 def load_registry() -> dict:
@@ -906,7 +907,8 @@ def load_registry() -> dict:
 
 def jobs_of(reg: dict) -> list[Job]:
     """Every face of the registry once: each sign's own faces (a `shares` sign has none), then the
-    lane renders. Faces drawn over another face come last, so that one is on disk by then."""
+    lane renders, then the 補助標識 faces drawn for the game's regulations. Faces drawn over another
+    face come last, so that one is on disk by then."""
     jobs: list[Job] = []
     for s in reg["signs"]:
         art = s.get("art")
@@ -922,6 +924,9 @@ def jobs_of(reg: dict) -> list[Job]:
     group_of = {s["id"]: s["group"] for s in reg["signs"]}
     for r in reg["lanes"]:
         jobs.append(Job(r["sign"], group_of[r["sign"]], f"lanes:{r['lanes']}", r["file"], r["plate"], None, r["lanes"]))
+    for a in reg["aux"]:
+        key = "aux:" + "/".join(a["lines"])
+        jobs.append(Job(a["sign"], group_of[a["sign"]], key, a["file"], a["plate"], a["paint"], colors=a["colors"]))
     return sorted(jobs, key=lambda j: 1 if j.paint and j.paint.get("over") else 0)
 
 
@@ -977,11 +982,8 @@ def _paint_with(paint: dict) -> Image.Image:
 # Contact sheets (review only, not committed)
 # ----------------------------------------------------------------------
 def _true_size(job: Job, plates: dict) -> Tuple[float, float]:
-    """The plate box in mm a texture covers, to show it at its real proportions (菱形 by its side)."""
-    plate = plates[job.plate]
-    w, h = plate["sizeMm"]
-    if plate["shape"] == "diamond":
-        return (w * math.sqrt(2), h * math.sqrt(2))
+    """The plate box in mm a texture covers (registry plates `boxMm`), to show it at its real proportions."""
+    w, h = plates[job.plate]["boxMm"]
     return (w, h)
 
 
@@ -1076,6 +1078,16 @@ def write_sheets(out_dir: Path, done: list, plates: dict) -> list[Path]:
 # ----------------------------------------------------------------------
 # Commands
 # ----------------------------------------------------------------------
+def _save(img: Image.Image, path: Path, colors: int | None) -> None:
+    """RGBA, or a palette of `colors` (alpha kept as tRNS) for the 補助標識 drawn for the game.
+    Why not a palette for every face: the committed 345 are checked byte for byte, and the
+    pictograms' red and blue gradients need more than a few colours."""
+    if colors is None:
+        img.save(path, "PNG", optimize=True)
+        return
+    img.quantize(colors=colors, method=Image.Quantize.FASTOCTREE).save(path, "PNG", optimize=True)
+
+
 def generate(sheet_dir: Path | None = None, prune: bool = False) -> None:
     reg = load_registry()
     print(json.dumps({"event": "start", "dir": str(TEXTURES_DIR), "registry": str(REGISTRY_PATH)}, ensure_ascii=False))
@@ -1088,7 +1100,7 @@ def generate(sheet_dir: Path | None = None, prune: bool = False) -> None:
         if not is_pow2:
             raise RuntimeError(f"{job.file}: {w}x{h} is not a power of two")
         out_path = TEXTURES_DIR / job.file
-        img.save(out_path, "PNG", optimize=True)
+        _save(img, out_path, job.colors)
         done.append((job, img))
         print(
             json.dumps(
@@ -1158,7 +1170,7 @@ def render(args: argparse.Namespace) -> None:
         if sign is None:
             raise SystemExit(f"render: {sid} is not in {REGISTRY_PATH}")
         owner = by_id.get(sign.get("shares", ""), sign)
-        candidates = [j.paint for j in jobs_of({**reg, "signs": [owner], "lanes": []}) if j.paint]
+        candidates = [j.paint for j in jobs_of({**reg, "signs": [owner], "lanes": [], "aux": []}) if j.paint]
         paint = next((p for p in candidates if p["fn"] in TEXT_ARGS), None)
         if paint is None or args.text is None:
             raise SystemExit(f"render: {sid} has no face drawn from a value or words (give --lanes or --text)")

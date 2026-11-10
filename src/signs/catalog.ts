@@ -1,5 +1,6 @@
 import { layoutJson, PyFloat, type Json } from "./jsonLayout";
 import { facesOf, type Registry } from "./registry";
+import type { Plate } from "./schema";
 
 /**
  * assets/signs/catalog.json, the older table, derived from the registry in exactly the shape (and
@@ -36,8 +37,18 @@ const LANES_NOTES = {
 
 type Sign = Registry["signs"][number];
 
+/**
+ * The catalogue's `size_mm`: the box the texture covers, except for the 菱形, which catalog.py gave
+ * by its side (SCHEMA_NOTES). Kept as it was, mixed meaning and all, so the file stays byte for
+ * byte; the registry's plates say which is which (outline and `boxMm`).
+ */
+function catalogSizeMm(p: Plate): [number, number] {
+  if (p.shape === "diamond") return [p.sideMm, p.sideMm];
+  return p.boxMm;
+}
+
 function size(reg: Registry, plate: keyof Registry["plates"], asFloat: boolean): Json {
-  const [w, h] = reg.plates[plate].sizeMm;
+  const [w, h] = catalogSizeMm(reg.plates[plate]);
   return asFloat ? [new PyFloat(w), new PyFloat(h)] : [w, h];
 }
 
@@ -76,7 +87,8 @@ function entry(reg: Registry, s: Sign): Json {
   const own = reg.plates[plate];
   const variants = faces.slice(1).map((f): Json => {
     const other = reg.plates[f.plate];
-    const isOtherSize = other.sizeMm.some((v, i) => v !== own.sizeMm[i]);
+    const ownSize = catalogSizeMm(own);
+    const isOtherSize = catalogSizeMm(other).some((v, i) => v !== ownSize[i]);
     return {
       key: f.key ?? f.file.replace(/\.png$/, ""),
       texture: f.file,
