@@ -28,12 +28,33 @@ export type ExpresswayDriveDeps = {
   snapCamera: () => void;
 };
 
-type Sample = { t: number; xid: string | null; dy: number; vy: number; ay: number; y: number };
+/**
+ * One ride sample. `kmh` the car's speed and `target` the cruise's own (so a wall that stops the car
+ * shows as a drop far under the target), `off` its distance from its lane's centre (m).
+ */
+type Sample = {
+  t: number;
+  xid: string | null;
+  dy: number;
+  vy: number;
+  ay: number;
+  y: number;
+  kmh: number;
+  target: number;
+  off: number;
+};
 
 /** The ride is sampled at most this often (s of game time). */
 const SAMPLE_S = 0.05;
 /** Side acceleration the cruise allows in a bend (m/s², a calm driver). */
 const LATERAL_MS2 = 2.5;
+
+/** The chunk of the sample where `f` is largest, or null for none. */
+function argMax(xs: readonly Sample[], f: (x: Sample) => number): string | null {
+  let best: Sample | null = null;
+  for (const x of xs) if (best === null || f(x) > f(best)) best = x;
+  return best?.xid ?? null;
+}
 
 export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
   let samples: Sample[] = [];
@@ -42,6 +63,7 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
   let t = 0;
   let distance = 0;
   let last: Vector3 | null = null;
+  let lastTarget = 0;
   const anySurface = () => true;
 
   /** Put the car on segment `xid` (an expressway chunk) at `share` of its length, in lane `lane`. */
@@ -126,7 +148,21 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
         const vy = prev ? (p.y - prev.y) / window : 0;
         const ay = prev ? (vy - prev.vy) / window : 0;
         prev = { y: p.y, vy, t };
-        samples.push({ t, xid, dy: surface === null ? NaN : p.y - surface - RIDE_HEIGHT, vy, ay, y: p.y });
+        const isLane = hit !== null && hit.seg.line.xid !== undefined;
+        const off = isLane
+          ? Math.abs(hit.lateral - laneCentreOffset(hit.seg, Math.min(lane, hit.seg.lanes - 1)))
+          : NaN;
+        samples.push({
+          t,
+          xid,
+          dy: surface === null ? NaN : p.y - surface - RIDE_HEIGHT,
+          vy,
+          ay,
+          y: p.y,
+          kmh: speed * 3.6,
+          target: lastTarget * 3.6,
+          off,
+        });
       }
       if (!hit || !graph) return { throttle: 0, brake: 0.3, steer: 0, handbrake: false, brakeOnly: true };
       const ahead = Math.max(8, 0.9 * Math.abs(speed));
@@ -150,6 +186,7 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       const bend = Math.min(turn, 2 * Math.PI - turn) / 15;
       const posted = speedLimit(hit.seg) / 3.6;
       const target = Math.min(want, posted, Math.sqrt(LATERAL_MS2 / Math.max(bend, 1e-4)));
+      lastTarget = target;
       const error = target - speed;
       const throttle = Math.max(0, Math.min(1, error * 0.35));
       const brake = error < -1 ? Math.min(1, -error * 0.2) : 0;
@@ -166,6 +203,9 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
     const rms = (xs: number[]) => Math.sqrt(xs.reduce((a, x) => a + x * x, 0) / Math.max(1, xs.length));
     // Fallen: well under the deck's surface while the graph still puts the car on a deck.
     const fell = settled.some((s) => s.dy < -1.5);
+    // From the first time the car is up to its target (the run-up from a standstill is no hit).
+    const upTo = settled.findIndex((s) => s.kmh >= 0.9 * s.target);
+    const cruising = upTo < 0 ? [] : settled.slice(upTo);
     const summary = {
       label,
       seconds: Math.round(t * 10) / 10,
@@ -177,6 +217,14 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       maxAbsVyMs: Math.round(maxAbs(settled.map((s) => s.vy)) * 1000) / 1000,
       rmsAyMs2: Math.round(rms(settled.map((s) => s.ay)) * 1000) / 1000,
       maxAbsAyMs2: Math.round(maxAbs(settled.map((s) => s.ay)) * 100) / 100,
+      // A 壁高欄 hit stops the car or throws it off its lane: the largest shortfall under the cruise's
+      // own target speed, and the largest distance from the lane's centre.
+      maxShortfallKmh: Math.round(Math.max(0, ...cruising.map((s) => s.target - s.kmh)) * 10) / 10,
+      maxLaneOffM: Math.round(maxAbs(settled.map((s) => s.off).filter(Number.isFinite)) * 100) / 100,
+      // Where the largest of each was seen (the chunk the car was on), to tell a bend from a step.
+      maxDyAt: argMax(settled, (x) => Math.abs(x.dy)),
+      maxLaneOffAt: argMax(settled, (x) => (Number.isFinite(x.off) ? x.off : 0)),
+      maxShortfallAt: argMax(cruising, (x) => x.target - x.kmh),
       fell,
       endsOnDeck: samples.length > 0 && samples[samples.length - 1].xid !== null,
     };

@@ -5,6 +5,7 @@ import {
   designSpeedAtMost,
   lowerDesignSpeed,
   MAX_GRADE,
+  MAX_SUPERELEVATION,
   TRANSITION_LENGTH,
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
@@ -18,12 +19,34 @@ import {
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { isAllowed } from "./allowlist";
-import { type XwChunk, type XwDeckStretch, type XwDiagnostic, type XwEnd, type XwRunSummary } from "./format";
+import {
+  STATION_STRIDE,
+  type XwChunk,
+  type XwDeckStretch,
+  type XwDiagnostic,
+  type XwEnd,
+  type XwOver,
+  type XwRunStructure,
+  type XwRunSummary,
+} from "./format";
 import { planeAt, type Plane, roundTo } from "./geo";
 import { alignPlan, type PlanAlignment } from "./horizontal";
-import { buildChains, type Chain, type Network, type Run, splitRuns } from "./network";
+import { buildChains, type Chain, type Network, type RoadClass, type Run, splitRuns } from "./network";
 import { deckOverlaps, LEVEL_APART_M, type PlanLine, planOverlaps, SAME_SURFACE_M } from "./overlap";
-import { carriagewayWidth, deckWidth, sectionFor } from "./section";
+import { carriagewayWidth, deckWidth, sectionFor, type XwSection } from "./section";
+import {
+  assertOsmMatches,
+  deckSurface,
+  fromAxis,
+  isOnStructure,
+  isPierFree,
+  type OsmMismatch,
+  osmDeviation,
+  type Structure,
+  type StructureDeck,
+  StructureMismatchError,
+  toAxis,
+} from "./structures";
 import { compositeLimit, superelevation } from "./superelevation";
 import {
   capZones,
@@ -31,6 +54,7 @@ import {
   evalProfile,
   fallbackPlans,
   gradeLimitFor,
+  type ProfilePin,
   type RunInput,
   solveJoint,
   type VerticalAttempt,
@@ -65,6 +89,49 @@ const MIN_ZONE_M = 120;
 const SOFT_SLACK_M = 0.02;
 /** Overlap stations this close to each other belong to one continuous stretch (nose to separation). */
 const STRETCH_GAP_M = 12;
+/**
+ * Beyond a structure's girder the deck runs from the structure's band back to the OSM line over
+ * this length (on the anchorage, where OSM's decks curve away: the 11号 upper floor turns north on
+ * the 芝浦 anchorage), its section stepping in TAPER_STEPS chunks (structures.ts). Why 80 m: a 3 m
+ * move over it is a reverse curve of R ≈ 350 m, above 第15条's 150 m at 60 km/h; shorter steps the
+ * walls harder. Why 8 steps: with 4 the 壁高欄 stepped 0.3–0.6 m at a time on the 芝浦 anchorage
+ * (多視点 round 1); a chunk has one section, so a smooth change would need a new data format.
+ */
+const TAPER_M = 80;
+const TAPER_STEPS = 8;
+/** In the taper a sample farther than this from the strip is another part of the chain (a loop). */
+const TAPER_REACH_M = 30;
+/** How far a compiled structure deck may stand off its levels (設計書 4.6 「z の差 ≤ 5 cm」). */
+const STRUCTURE_CHECK_M = 0.05;
+
+/** Smoothstep: 0 at the girder's end, 1 at the taper's end, flat at both. */
+const ease = (t: number) => {
+  const u = Math.min(1, Math.max(0, t));
+  return u * u * (3 - 2 * u);
+};
+
+/**
+ * A run's part of a structure (structures.ts), in run distances: the girder [g0, g1] (plan pinned
+ * on the deck's band line, the levels' section), sRange [p0, p1] (profile pinned to the formula, no
+ * piers, no girder), the tapers' far ends [t0, t1], and the axis distance of a run distance, measured
+ * by projecting the run's own line (on the girder it is slope · s + base exactly). `osm` is the 3 m
+ * rule's worst point, checked when the plan was made.
+ */
+type RunOver = {
+  st: Structure;
+  deck: StructureDeck;
+  /** da/ds on the girder: ±1 to within the chain plane's scale (a sphere, 0.2 % off true metres). */
+  slope: number;
+  base: number;
+  g0: number;
+  g1: number;
+  p0: number;
+  p1: number;
+  t0: number;
+  t1: number;
+  axisAt: (s: number) => number;
+  osm: OsmMismatch;
+};
 
 type RunPlan = {
   run: Run;
@@ -74,7 +141,7 @@ type RunPlan = {
   i0: number;
   i1: number;
   length: number;
-  cls: "expressway" | "ramp";
+  cls: RoadClass;
   ref: string | null;
   name: string | null;
   /** Highest tagged speed along the run, and the highest after the radius check. */
@@ -94,6 +161,8 @@ type RunPlan = {
    */
   laneHalfAt: Float32Array;
   halfWidth: number;
+  /** The structure deck this run carries, if any. */
+  over: RunOver | null;
 };
 
 type Crossing = { upper: string; lower: string; sUpper: number; sLower: number; sinAngle: number };
@@ -130,7 +199,7 @@ export type Plan = {
 };
 
 const priority = (net: Network, c: Chain) => {
-  const isRamp = net.ways.get(c.ways[0])!.cls === "ramp";
+  const isRamp = net.ways.get(c.ways[0])!.cls !== "expressway";
   return { ramp: isRamp ? 1 : 0, nodes: -c.nodes.length, id: c.id };
 };
 const comparePriority = (net: Network) => (a: Chain, b: Chain) => {
@@ -255,8 +324,131 @@ function speedZones(
   return { zones, tagV, planV };
 }
 
+/**
+ * The structure-override pin of a chain (structures.ts): samples of the chain over the structure's
+ * girder go onto the deck's band line, those in the tapers beyond move from it back to the OSM line.
+ * Null when no deck names one of the chain's ways. Throws (StructureMismatchError) when the chain's
+ * OSM line is more than the tolerance off the strip over the girder: the 3 m rule.
+ */
+function chainPin(
+  net: Network,
+  chain: Chain,
+  plane: Plane,
+  structures: readonly Structure[],
+): {
+  pin: (x: number, y: number) => [number, number] | null;
+  st: Structure;
+  deck: StructureDeck;
+  osm: OsmMismatch;
+} | null {
+  for (const st of structures) {
+    for (const deck of st.decks) {
+      const isNamed = chain.ways.some((w) => deck.ways.includes(w));
+      if (!isNamed) continue;
+      // Over the girder, on the OSM nodes of the whole chain, before anything is smoothed. Why the
+      // girder and not sRange: on the anchorages the decks may turn off the axis (the upper floor
+      // curves north on the 芝浦 one); the rule and the levels' strips are the suspended girder's.
+      let worst: OsmMismatch | null = null;
+      for (const w of chain.ways) {
+        const way = net.ways.get(w)!;
+        const pts = way.nodes.map((id) => [net.nodes.get(id)!.lon, net.nodes.get(id)!.lat] as const);
+        const found = osmDeviation(st, deck, w, pts);
+        const isWorse = found !== null && (worst === null || found.deviationM > worst.deviationM);
+        if (isWorse) worst = found;
+      }
+      assertOsmMatches(st, deck, worst);
+      const [r0, r1] = st.levels.axis.girderRange;
+      const pin = (x: number, y: number): [number, number] | null => {
+        const [lon, lat] = plane.toLonLat(x, y);
+        const a = toAxis(st, lon, lat);
+        const beyond = a.s < r0 ? r0 - a.s : a.s > r1 ? a.s - r1 : 0;
+        const isFar = beyond >= TAPER_M;
+        if (isFar) return null;
+        const reach = beyond > 0 ? TAPER_REACH_M : 2 * st.levels.tolerance.horizontal;
+        const isOtherPart = Math.abs(a.offset - deck.stripOffset) > reach;
+        if (isOtherPart) return null;
+        const offset = deck.bandOffset + (a.offset - deck.bandOffset) * ease(beyond / TAPER_M);
+        const [plon, plat] = fromAxis(st, a.s, offset);
+        return plane.toXY(plon, plat);
+      };
+      return { pin, st, deck, osm: worst! };
+    }
+  }
+  return null;
+}
+
+/** The structure part of a run whose chain is pinned: where along the run its stretches lie. */
+function runOver(rp: Omit<RunPlan, "over">, found: NonNullable<ReturnType<typeof chainPin>>): RunOver | null {
+  const { st, deck } = found;
+  const base = rp.align.s[rp.i0];
+  const n = rp.i1 - rp.i0 + 1;
+  const runS = new Float64Array(n);
+  const axisS = new Float64Array(n);
+  const onGirder: number[] = [];
+  const [g0, g1] = st.levels.axis.girderRange;
+  for (let k = 0; k < n; k++) {
+    const i = rp.i0 + k;
+    const [lon, lat] = rp.plane.toLonLat(rp.align.xy[2 * i], rp.align.xy[2 * i + 1]);
+    runS[k] = rp.align.s[i] - base;
+    axisS[k] = toAxis(st, lon, lat).s;
+    const isOnGirder = rp.align.pinned[i] === 1 && axisS[k] >= g0 && axisS[k] <= g1;
+    if (isOnGirder) onGirder.push(k);
+  }
+  const hasStructure = onGirder.length >= 2;
+  if (!hasStructure) return null;
+  const first = onGirder[0];
+  const last = onGirder[onGirder.length - 1];
+  // On the girder the pinned line is straight, so axis distance is linear in arc length. Why not a
+  // slope of exactly ±1: arc length is measured in the chain's plane (geo.ts, a sphere) and the axis
+  // in true metres; the 0.2 % between them is 0.8 m over the girder, 1.5 cm of height at its grade.
+  const slope = (axisS[last] - axisS[first]) / (runS[last] - runS[first]);
+  const axisBase = axisS[first] - slope * runS[first];
+  // Run distance where the axis distance passes `a` (the run's line is monotone in s near the bridge).
+  const runAt = (a: number): number => {
+    for (let k = 1; k < n; k++) {
+      const lo = Math.min(axisS[k - 1], axisS[k]);
+      const hi = Math.max(axisS[k - 1], axisS[k]);
+      const isHere = a >= lo && a <= hi && hi - lo > 1e-9;
+      if (isHere)
+        return runS[k - 1] + ((a - axisS[k - 1]) / (axisS[k] - axisS[k - 1])) * (runS[k] - runS[k - 1]);
+    }
+    // Not reached: the run ends first (clamped to its end on that side).
+    return (a - axisBase) / slope < 0 ? 0 : rp.length;
+  };
+  const pair = (a: number, b: number) => [runAt(a), runAt(b)].sort((p, q) => p - q);
+  const [rg0, rg1] = pair(g0, g1);
+  const [rp0, rp1] = pair(...st.levels.axis.sRange);
+  const [rt0, rt1] = pair(g0 - TAPER_M, g1 + TAPER_M);
+  const axisAt = (s: number): number => {
+    const k = Math.min(n - 2, Math.max(0, sampleAt(rp, s) - rp.i0));
+    const t = (s - runS[k]) / Math.max(1e-9, runS[k + 1] - runS[k]);
+    return axisS[k] + (axisS[k + 1] - axisS[k]) * Math.min(1, Math.max(0, t));
+  };
+  return {
+    st,
+    deck,
+    slope,
+    base: axisBase,
+    g0: rg0,
+    g1: rg1,
+    p0: rp0,
+    p1: rp1,
+    t0: rt0,
+    t1: rt1,
+    axisAt,
+    osm: found.osm,
+  };
+}
+
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
-export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox | null): Plan {
+export function planNetwork(
+  net: Network,
+  outsideNodes: Set<number>,
+  range: Bbox | readonly Bbox[] | null,
+  structures: readonly Structure[] = [],
+): Plan {
+  const ranges: readonly Bbox[] | null =
+    range === null ? null : Array.isArray(range) ? range : [range as Bbox];
   const chains = new Map(buildChains(net).map((c) => [c.id, c]));
   const nodeChains = new Map<number, string[]>();
   for (const c of chains.values()) {
@@ -279,10 +471,11 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
       const node = net.nodes.get(n)!;
       return plane.toXY(node.lon, node.lat);
     });
-    const align = alignPlan({ xy, anchors });
+    const found = chainPin(net, chain, plane, structures);
+    const align = alignPlan(found ? { xy, anchors, pin: found.pin } : { xy, anchors });
     for (const run of chainRuns) {
       if (!run.elevated) continue;
-      const rp = runPlan(net, chain, plane, align, run);
+      const rp = runPlan(net, chain, plane, align, run, found);
       runs.set(run.id, rp);
       checkRadius(rp, diagnostics);
       const isClamped = align.clamped > 0;
@@ -294,6 +487,18 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
           allowed: false,
         });
       }
+    }
+  }
+  // Every deck of a structure whose ways are in the network is carried by a run: a deck the plan
+  // pinned but no run took (its run too short to reach the girder) would leave the bridge without it.
+  for (const st of structures) {
+    for (const deck of st.decks) {
+      const isInNetwork = deck.ways.some((w) => net.ways.has(w));
+      const isCarried = [...runs.values()].some((rp) => rp.over?.deck.id === deck.id);
+      if (isInNetwork && !isCarried)
+        throw new StructureMismatchError(
+          `${deck.id}: its ways are in the network but no elevated run carries the deck`,
+        );
     }
   }
   const { crossings, ambiguous } = findCrossings(runs, diagnostics);
@@ -318,11 +523,12 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
   plan.pairs = classifyPairs(plan);
   groupComponents(plan);
   const wanted = [...runs.values()].filter((rp) => {
-    if (!range) return true;
+    if (!ranges) return true;
     for (let i = rp.i0; i <= rp.i1; i += 5) {
       const [lon, lat] = lonLatAt(rp, i);
-      const isInside =
-        lon >= range.minLon && lon <= range.maxLon && lat >= range.minLat && lat <= range.maxLat;
+      const isInside = ranges.some(
+        (r) => lon >= r.minLon && lon <= r.maxLon && lat >= r.minLat && lat <= r.maxLat,
+      );
       if (isInside) return true;
     }
     return false;
@@ -335,10 +541,16 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
   return plan;
 }
 
-function runPlan(net: Network, chain: Chain, plane: Plane, align: PlanAlignment, run: Run): RunPlan {
+function runPlan(
+  net: Network,
+  chain: Chain,
+  plane: Plane,
+  align: PlanAlignment,
+  run: Run,
+  found: ReturnType<typeof chainPin>,
+): RunPlan {
   const i0 = align.vertexSample[run.from];
   const i1 = align.vertexSample[run.to];
-  const isRamp = net.ways.get(run.ways[0])!.cls === "ramp";
   let maxK = 0;
   for (let i = i0; i <= i1; i++) maxK = Math.max(maxK, Math.abs(align.kappa[i]));
   const minRadius = maxK > 0 ? 1 / maxK : Infinity;
@@ -348,6 +560,9 @@ function runPlan(net: Network, chain: Chain, plane: Plane, align: PlanAlignment,
     const a = align.vertexSample[chain.wayStarts[wayIndex]];
     for (let i = Math.max(a, i0); i <= i1; i++) wayAt[i - i0] = run.ways[w];
   }
+  const cls = majorityClass(net, wayAt);
+  // Streets take a ramp's lowest speeds (第四種 goes down to 20 km/h, 第13条).
+  const isRamp = cls !== "expressway";
   const { zones, tagV, planV } = speedZones(net, align, i0, i1, wayAt, isRamp);
   const filled = new Set(run.filledWays);
   const layerAt = new Int16Array(wayAt.length);
@@ -356,8 +571,10 @@ function runPlan(net: Network, chain: Chain, plane: Plane, align: PlanAlignment,
   for (let k = 0; k < wayAt.length; k++) {
     const way = net.ways.get(wayAt[k])!;
     layerAt[k] = way.layer;
-    laneHalfAt[k] = carriagewayWidth(sectionFor(way.cls, way.lanes)) / 2;
-    halfWidth = Math.max(halfWidth, deckWidth(sectionFor(way.cls, way.lanes)) / 2);
+    // On a structure the deck levels' section (the band), wherever the plan is pinned.
+    const section = found && align.pinned[i0 + k] ? found.deck.section : sectionFor(way.cls, way.lanes);
+    laneHalfAt[k] = carriagewayWidth(section) / 2;
+    halfWidth = Math.max(halfWidth, deckWidth(section) / 2);
   }
   // A gap-filled way (no bridge tag between two viaducts) has no meaningful layer: take the
   // nearest tagged sample's.
@@ -374,7 +591,7 @@ function runPlan(net: Network, chain: Chain, plane: Plane, align: PlanAlignment,
     }
   }
   const firstWay = net.ways.get(run.ways[0])!;
-  return {
+  const rp: Omit<RunPlan, "over"> = {
     run,
     chain,
     plane,
@@ -382,7 +599,7 @@ function runPlan(net: Network, chain: Chain, plane: Plane, align: PlanAlignment,
     i0,
     i1,
     length: align.s[i1] - align.s[i0],
-    cls: firstWay.cls,
+    cls,
     ref: firstWay.ref,
     name: run.ways.map((id) => net.ways.get(id)!.name).find((n) => n !== null) ?? null,
     tagV,
@@ -395,9 +612,26 @@ function runPlan(net: Network, chain: Chain, plane: Plane, align: PlanAlignment,
     laneHalfAt,
     halfWidth,
   };
+  return { ...rp, over: found ? runOver(rp, found) : null };
+}
+
+/**
+ * A run's class: the class of most of its length (its 1 m samples). Why not the first way's (P1):
+ * 11号台場線's backward chain starts on the 台場 entrance's link, and the whole 4.3 km over the
+ * Rainbow Bridge was compiled as a ramp (stepped down to 20 km/h for a nose at 芝浦 JCT).
+ */
+export function majorityClass(net: Network, wayAt: Int32Array): RoadClass {
+  const length = new Map<RoadClass, number>();
+  for (const w of wayAt) {
+    const cls = net.ways.get(w)!.cls;
+    length.set(cls, (length.get(cls) ?? 0) + 1);
+  }
+  const order: RoadClass[] = ["expressway", "street", "ramp"];
+  return order.reduce((best, c) => ((length.get(c) ?? 0) > (length.get(best) ?? 0) ? c : best));
 }
 
 function checkRadius(rp: RunPlan, diagnostics: XwDiagnostic[]): void {
+  // A street (第四種) has the main line's 第15条 floor; only a ramp is freed from it (第28条第4項).
   const isRamp = rp.cls === "ramp";
   const tightest = Math.min(...rp.zones.map((z) => z.V)) as DesignSpeed;
   const floor = isRamp ? RAMP_MIN_RADIUS.value : CURVE_RADIUS.value[tightest].special;
@@ -939,8 +1173,12 @@ function setupRun(
   // the check (checks.checkClearance) expects it.
   const approach = approachLength(rp.planV) - GRID_M;
   const lower = Float64Array.from(lowerAtCrossings);
-  const isGroundStart = ends[0].kind === "ground";
-  const isGroundEnd = ends[1].kind === "ground";
+  // A ramp ending on a structure's street (台場出口 onto the 臨港道路's descent to the 台場 streets)
+  // comes down with it: the street's own floor governs there, as at a ground end. Why not every
+  // junction: an expressway parent keeps its clearance, and so must a ramp beside it.
+  const isOnStreet = (e: EndPlan) => e.kind === "junction" && plan.runs.get(e.parent)?.cls === "street";
+  const isGroundStart = ends[0].kind === "ground" || isOnStreet(ends[0]);
+  const isGroundEnd = ends[1].kind === "ground" || isOnStreet(ends[1]);
   for (let k = 0; k < n; k++) {
     const nearGround =
       (isGroundStart && stations[k] < approach) || (isGroundEnd && S - stations[k] < approach);
@@ -969,6 +1207,26 @@ function setupRun(
     cross,
     blocked,
   };
+}
+
+/**
+ * The structure's profile as a pin of the run (vertical.ts ProfilePin): over sRange the elevation of
+ * deckLevels' formula at the axis distance of each run distance. On the girder that distance is
+ * linear in s (the pinned line is straight), so the formula is a parabola of s and the knots there
+ * are held exactly; on the anchorages, where the deck may turn off the axis, it is measured on the
+ * run's own line and the arcs are fitted to it.
+ */
+function profilePins(rp: RunPlan): ProfilePin[] {
+  const o = rp.over;
+  if (!o) return [];
+  const isOnGirder = (s: number) => s >= o.g0 && s <= o.g1;
+  const at = (s: number) => {
+    const a = isOnGirder(s) ? o.slope * s + o.base : o.axisAt(s);
+    const v = deckSurface(o.st, o.deck, a);
+    const da = isOnGirder(s) ? o.slope : (o.axisAt(s + 0.5) - o.axisAt(s - 0.5)) / 1;
+    return { z: v.z, grade: v.grade * da };
+  };
+  return [{ from: o.p0, to: o.p1, exact: [o.g0, o.g1], at }];
 }
 
 /** The couplings among a component's runs: junctions, crossings and decks over one another. */
@@ -1083,6 +1341,7 @@ function solveComponent(
         upper: st.upper,
         start: st.fixed[0],
         end: st.fixed[1],
+        pins: profilePins(st.rp),
       };
     });
     const started = performance.now();
@@ -1291,7 +1550,9 @@ function banksOf(
     const room = sampleS.map((sv) => {
       const g = evalProfile(profile, sv).grade;
       const limit = compositeLimit(zoneSpeedAt(profile.zones, sv));
-      return Math.sqrt(Math.max(0, limit * limit - g * g)) * 0.995;
+      // A street (第四種) banks to 6 % at most (第16条), the expressway to 10 %.
+      const cap = rp.cls === "street" ? MAX_SUPERELEVATION.value.type4 : Infinity;
+      return Math.min(cap, Math.sqrt(Math.max(0, limit * limit - g * g)) * 0.995);
     });
     const pins = new Float64Array(n).fill(Number.NaN);
     let transitionV = Math.max(...speeds) as DesignSpeed;
@@ -1408,8 +1669,16 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   const runs: XwRunSummary[] = [];
   for (const id of [...plan.wanted].sort()) {
     const s = solved.get(id);
+    const over = plan.runs.get(id)!.over;
+    // A structure's deck that cannot be solved would leave a hole in the bridge: stop the build.
+    const isLostDeck = !s && over !== null;
+    if (isLostDeck) {
+      const why = diagnostics.filter((d) => d.run === id).map((d) => `${d.kind}: ${d.detail}`);
+      throw new StructureMismatchError(`${over.deck.id}: run ${id} is not solved (${why.join("; ")})`);
+    }
     if (!s) continue;
     const runChunks = chunkRun(plan, s, ground, objectPolys);
+    const structure = over ? structureCheck(over, runChunks) : null;
     chunks.push(...runChunks);
     runs.push({
       id,
@@ -1426,6 +1695,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
       start: s.start,
       end: s.end,
       chunks: runChunks.map((c) => c.id),
+      structure,
     });
   }
   for (const o of deckOverlaps(chunks)) {
@@ -1439,6 +1709,44 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   // Whether a departure is accepted is the allowlist's alone (with its reason), never the compiler's.
   for (const d of diagnostics) d.allowed = isAllowed(d);
   return { chunks, runs, diagnostics, stats };
+}
+
+/**
+ * How a run's chunks meet its structure (設計書 4.6 の検査): over the girder each station's distance
+ * from axis + band centre, over sRange its z from the formula at the station's own axis distance.
+ * Past the tolerances (`tolerance.horizontal` / `.vertical`) the build fails: the pins hold plan and
+ * profile, so a miss is a bug or a structure the QP could not meet.
+ */
+function structureCheck(o: RunOver, chunks: XwChunk[]): XwRunStructure {
+  let planM = 0;
+  let zM = 0;
+  for (const c of chunks) {
+    for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
+      const s = c.st[i];
+      const p = toAxis(o.st, c.st[i + 1], c.st[i + 2]);
+      const isOnGirder = s >= o.g0 - 1e-6 && s <= o.g1 + 1e-6;
+      if (isOnGirder) planM = Math.max(planM, Math.abs(p.offset - o.deck.bandOffset));
+      const isOnStructureRange = s >= o.p0 - 1e-6 && s <= o.p1 + 1e-6 && isOnStructure(o.st, p.s);
+      if (isOnStructureRange) zM = Math.max(zM, Math.abs(c.st[i + 3] - deckSurface(o.st, o.deck, p.s).z));
+    }
+  }
+  // 設計書 4.6: z within 5 cm of the levels where the structure carries the deck, and the plan as
+  // pinned. Why not the levels' matching tolerance (3 m / 1.5 m): that rule is for OSM's lines; the
+  // compiled deck is pinned, so anything past a few centimetres is a bug.
+  const isOff = zM > STRUCTURE_CHECK_M || planM > STRUCTURE_CHECK_M;
+  if (isOff) {
+    throw new StructureMismatchError(
+      `${o.deck.id}: compiled deck off its levels by ${planM.toFixed(3)} m across, ${zM.toFixed(3)} m in height (allowed ${STRUCTURE_CHECK_M} m)`,
+    );
+  }
+  return {
+    deck: o.deck.id,
+    s0: roundTo(o.p0, 2),
+    s1: roundTo(o.p1, 2),
+    osmM: roundTo(o.osm.deviationM, 3),
+    planM: roundTo(planM, 4),
+    zM: roundTo(zM, 4),
+  };
 }
 
 /**
@@ -1560,6 +1868,33 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
     if (isJunction || isSectionChange) cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
   }
   for (const z of profile.zones) if (z.from > 0) cuts.add(z.from);
+  const o = rp.over;
+  if (o) {
+    // The girder's ends, sRange's (no girder inside), and the taper's steps (each step one section).
+    for (const v of [o.g0, o.g1, o.p0, o.p1]) if (v > 0 && v < S) cuts.add(v);
+    // A taper only where the way's section differs from the deck's (the upper floor); where they are
+    // the same (the lower road: 第四種 and the strips agree) its chunks are not cut at all.
+    const differs = (sv: number) => {
+      const way = plan.net.ways.get(rp.wayAt[Math.min(rp.i1, sampleAt(rp, sv)) - rp.i0])!;
+      const own = sectionFor(way.cls, way.lanes);
+      const d = o.deck.section;
+      return (
+        own.lanes === d.lanes &&
+        (own.laneWidth !== d.laneWidth || own.shoulderL !== d.shoulderL || own.shoulderR !== d.shoulderR)
+      );
+    };
+    const ends = [
+      { from: o.g0, to: o.t0, isTaper: differs(o.t0) },
+      { from: o.g1, to: o.t1, isTaper: differs(o.t1) },
+    ];
+    for (const e of ends) {
+      if (!e.isTaper) continue;
+      for (let k = 1; k <= TAPER_STEPS; k++) {
+        const v = e.from + (e.to - e.from) * (k / TAPER_STEPS);
+        if (v > 0 && v < S) cuts.add(v);
+      }
+    }
+  }
   const sortedCuts = [...cuts].sort((a, b) => a - b).filter((v, i, arr) => i === 0 || v - arr[i - 1] > 0.5);
   const bounds: number[] = [0];
   for (let c = 1; c < sortedCuts.length; c++) {
@@ -1597,6 +1932,9 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
     }
     const isOverDeck = decksBelow.some(([a, b]) => at >= a && at <= b);
     if (isOverDeck) continue;
+    // The structure's spans and anchorages carry the deck (pierFreeRange): no pier of our own there.
+    const isCarried = rp.over !== null && isPierFree(rp.over.st, rp.over.axisAt(at));
+    if (isCarried) continue;
     const p = poseAt(rp, at);
     const g = ground(p.lon, p.lat);
     const z = evalProfile(profile, at).z;
@@ -1606,6 +1944,48 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
   const sec = (sampleIdx: number) => {
     const way = plan.net.ways.get(rp.wayAt[sampleIdx - rp.i0])!;
     return sectionFor(way.cls, way.lanes);
+  };
+  /**
+   * A chunk's section and structure: on the structure its deck's (no girder), in a taper step the
+   * way's section moved towards the deck's by how far the step's middle is from the taper's end.
+   */
+  const sectionAt = (a: number, b: number): { section: XwSection; over: XwOver | null; girder: number } => {
+    const mid = (a + b) / 2;
+    const own = sec(sampleAt(rp, mid));
+    if (!o) return { section: own, over: null, girder: GIRDER };
+    // Inside sRange the structure carries the deck: no girder of our own (the truss, the anchorage).
+    const girder = mid > o.p0 && mid < o.p1 ? 0 : GIRDER;
+    const isOnGirder = mid > o.g0 && mid < o.g1;
+    if (isOnGirder) {
+      const over: XwOver = {
+        deck: o.deck.id,
+        level: o.deck.level,
+        apronL: o.deck.aprons.left,
+        apronR: o.deck.aprons.right,
+      };
+      return { section: o.deck.section, over, girder };
+    }
+    const t =
+      mid <= o.g0 ? (o.g0 - mid) / Math.max(1e-6, o.g0 - o.t0) : (mid - o.g1) / Math.max(1e-6, o.t1 - o.g1);
+    const d = o.deck.section;
+    const isTaper = t < 1 && d.lanes === own.lanes;
+    if (!isTaper) return { section: own, over: null, girder };
+    const w = 1 - ease(t);
+    const lerp = (p: number, q: number) => roundTo(p + (q - p) * w, 3);
+    const isSame =
+      d.laneWidth === own.laneWidth && d.shoulderL === own.shoulderL && d.shoulderR === own.shoulderR;
+    if (isSame) return { section: own, over: null, girder };
+    return {
+      section: {
+        ...own,
+        laneWidth: lerp(own.laneWidth, d.laneWidth),
+        shoulderL: lerp(own.shoulderL, d.shoulderL),
+        shoulderR: lerp(own.shoulderR, d.shoulderR),
+        basis: "assumption",
+      },
+      over: null,
+      girder,
+    };
   };
   const chunks: XwChunk[] = [];
   for (let k = 0; k + 1 < bounds.length; k++) {
@@ -1638,7 +2018,7 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
     }
     positions.push(b);
     for (const sv of stationPositions(positions, curvatureKnots(profile, a, b), a, b)) push(sv);
-    const section = sec(sampleAt(rp, (a + b) / 2));
+    const { section, over, girder } = sectionAt(a, b);
     const V = zoneSpeedAt(profile.zones, (a + b) / 2);
     const chunkPiers: number[] = [];
     for (let i = 0; i < piers.length; i += 2) {
@@ -1666,6 +2046,7 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       ref: rp.ref,
       name: rp.name,
       structure: "viaduct",
+      over,
       lanes: section.lanes,
       laneWidth: section.laneWidth,
       shoulderL: section.shoulderL,
@@ -1678,7 +2059,7 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       g1: roundTo(evalProfile(profile, b).grade, 6),
       h0: roundTo(headingAt(rp, a), 6),
       h1: roundTo(headingAt(rp, b), 6),
-      girder: GIRDER,
+      girder,
       st,
       piers: chunkPiers,
       cross: chunkCross,

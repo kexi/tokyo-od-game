@@ -378,6 +378,11 @@ export const LOG_EVENTS = {
     maxAbsVyMs: z.number(),
     rmsAyMs2: z.number(),
     maxAbsAyMs2: z.number(),
+    maxShortfallKmh: z.number(),
+    maxLaneOffM: z.number(),
+    maxDyAt: z.string().nullable(),
+    maxLaneOffAt: z.string().nullable(),
+    maxShortfallAt: z.string().nullable(),
     fell: z.boolean(),
     endsOnDeck: z.boolean(),
   }),
@@ -646,6 +651,19 @@ export const LOG_EVENTS = {
     kind: z.string(),
     detail: z.string(),
     allowed: z.boolean(),
+  }),
+  /**
+   * A structure override's landmark has no deck levels that parse (structures.ts): its bridge is
+   * compiled as an ordinary viaduct (設計書 4.6「deckLevels が無ければ通常生成に落として警告」).
+   */
+  expressway_structure_missing: warning({ landmarkId: z.string(), hasEntry: z.boolean() }),
+  /** How each structure deck met its deck levels (the 3 m rule and the compiled deck's distance). */
+  expressway_structure_built: info({
+    deck: z.string(),
+    run: z.string(),
+    osmM: z.number(),
+    planM: z.number(),
+    zM: z.number(),
   }),
   expressway_written: info({
     range: z.string(),
