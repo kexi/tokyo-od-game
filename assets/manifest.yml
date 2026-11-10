@@ -87,10 +87,16 @@ assets:
     files: [public/models/signs.glb]
     generator: { script: scripts/blender/signs.py, recipe: make-sign-model }
     made_by: blender-cli
-    source: 自作（bpy で手続きモデリング。板の寸法は道路標識、区画線及び道路標示に関する命令 別表第二による）
+    source: >-
+      自作（bpy で手続きモデリング。板の種類・形・寸法は sign-registry の plates（src/signs/plates.ts）を読む。
+      寸法は道路標識、区画線及び道路標示に関する命令 別表第二と警察庁「交通規制基準」による）
     license: repo
     used_by: [src/world/signs.ts]
-    docs: [knowledge/car-model-blender.md, knowledge/road-markings-and-signs.md]
+    inputs: [sign-registry]
+    docs: [knowledge/sign-system.md, knowledge/car-model-blender.md, knowledge/road-markings-and-signs.md]
+    notes: >-
+      G2 から板を src/signs/plates.ts の宣言から作る（それまでは signs.py に寸法を直書き）。移したあとの出力が
+      移す前の signs.glb とバイト一致することを確かめた（knowledge/sign-system.md）。ノード名は互換のため固定。
 
   - id: human
     name: 歩行者
@@ -541,7 +547,9 @@ assets:
 
   - id: sign-textures
     name: 道路標識の図柄
-    purpose: 別表第一の番号ごとの道路標識の図柄 345 枚。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-registry）。
+    purpose: >-
+      別表第一の番号ごとの道路標識の図柄 345 枚と、ゲームが通行禁止の標識の下に吊る補助標識 502 日・時間の図柄 388 枚
+      （502_h<文言のハッシュ>.png、16 色のパレット PNG）。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-registry）。
     kind: texture
     files: [assets/signs/textures/*.png]
     generator: { script: scripts/textures/sign_textures.py, recipe: make-sign-textures }
@@ -555,6 +563,8 @@ assets:
       最初の 24 種は agy への 2 回目の委譲で作り、残りは Claude Code が scripts/textures/signs/ に群ごとに足した。
       G1b から、何をどの関数で描くかは sign-registry（各図柄の paint と車線の版）を読む。Pillow は 12.3.0 に固定し、
       作り直した 345 枚がコミット済みのものとバイト一致することを確かめてある（knowledge/sign-system.md）。
+      G2 で補助標識の 388 枚を足した（16 色のパレット PNG、2.3〜15.5 KB、計 2.55 MB）。文言は public/data/regs（JARTIC 交通規制情報）の規制時間から src/signs/auxPlates.ts が決め、
+      sign-registry の aux に並ぶ。just fetch-regs のあとは just rebuild-sign-assets で足し引きする。
 
   - id: human-textures
     name: 歩行者のテクスチャ
@@ -864,28 +874,29 @@ assets:
     name: 道路標識レジストリ
     purpose: >-
       道路標識の定義（src/signs/defs）を検査して書き出したもの。番号ごとの板・図柄・変種・車線の版・
-      ゲームの標識種別、各図柄を描く関数（paint）と、別表第二の図。図柄（Pillow、sign_textures.py）の入力。
-      板（Blender）は G2 から読む。
+      ゲームの標識種別、各図柄を描く関数（paint）、表示の倍率（displayScale）と、別表第二の図。板の形と寸法（plates）、
+      ゲームが吊る補助標識の文言と描き方（aux）。図柄（Pillow、sign_textures.py）と板（Blender、signs.py）の入力。
     kind: data
     files: [assets/signs/registry.json]
     generator: { script: scripts/signs.ts, recipe: make-sign-registry }
     made_by: procedural
     source: >-
       src/signs/defs/*.ts（catalog.json から機械変換した定義）と sign-law-table。車線の版は、ゲームの assumedLanes と
-      public/data/turnlanes（OSM、オープンデータのため台帳の外）の turn:lanes から規則で導く（src/signs/defs/lanes.ts）
+      public/data/turnlanes（OSM、オープンデータのため台帳の外）の turn:lanes から規則で導く（src/signs/defs/lanes.ts）。
+      補助標識の文言は public/data/regs（JARTIC 交通規制情報）の通行禁止の規制時間から導く（src/signs/defs/auxiliary.ts）
     license: repo
     used_by: []
     inputs: [sign-law-table]
     docs: [knowledge/sign-system.md]
     notes: >-
       古いとテスト（tests/signRegistry.test.ts）が落ちる。定義を直したら just make-sign-registry。
-      just fetch-regs で turnlanes が変わったときも書き直し、図柄を just make-sign-textures で足す。
+      just fetch-regs で turnlanes・regs が変わったときも書き直し、図柄を just make-sign-textures で足す。
 
   - id: sign-game-table
     name: 道路標識のゲーム対応表
     purpose: >-
-      ゲームの標識種別（src/signs/game.ts の SIGN）ごとに、表示する番号・図柄・板と選び方（既定の図柄・値・車線）。
-      配置した標識の図柄を決める（src/world/signs.ts design()）。
+      ゲームの標識種別（src/signs/game.ts の SIGN）ごとに、表示する番号・図柄・板・倍率と選び方（既定の図柄・値・車線）。
+      補助標識は文言ごとの図柄（aux）。配置した標識の図柄を決める（src/world/signs.ts design()）。
     kind: data
     files: [assets/signs/game.json]
     generator: { script: scripts/signs.ts, recipe: make-sign-registry }
@@ -897,7 +908,7 @@ assets:
     docs: [knowledge/sign-system.md]
     notes: >-
       定義の名前・注記をバンドルに入れないため、ゲームには registry.json でも catalog.json でもなくこれを読ませる
-      （約 25 KB、レビュー I9）。古いとテスト（tests/signRegistry.test.ts）が落ちる。
+      （約 78 KB、うち補助標識の表が約 49 KB。レビュー I9）。古いとテスト（tests/signRegistry.test.ts）が落ちる。
 
   - id: sign-law-table
     name: 標識令 別表第一の番号表
