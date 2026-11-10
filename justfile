@@ -138,7 +138,7 @@ make-sign-textures sheet="${TMPDIR:-/tmp}/signs":
 render-sign *args:
     uv run scripts/textures/sign_textures.py render {{ args }}
 
-# 道路標識の定義（src/signs/defs）を検査し、assets/signs/registry.json と catalog.json に書き出す
+# 道路標識の定義（src/signs/defs）を検査し、assets/signs/registry.json・game.json・catalog.json に書き出す
 make-sign-registry:
     pnpm exec tsx scripts/signs.ts
 

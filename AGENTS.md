@@ -21,6 +21,19 @@
 - 実在の団体・企業・人物のロゴ、紋章、名称、Google のストリートビュー・地図の画像は使わない。
 - 一覧は `just open-assets`（アセット管理画面 `assets.html`）で確認できる。
 
+## 道路標識の追加
+
+詳細は [knowledge/sign-system.md](knowledge/sign-system.md)。標識の定義は `src/signs/defs/*.ts` の 1 か所だけに書く（Python・ゲーム側に番号の一覧を書かない）。
+
+1. 定義を 1 件足す（群のファイルへ。番号・名前は別表第一の表 `assets/signs/law-table.json` と一致させる）。図柄は `art: { by: "texture", file, paint }`。
+   - 固定の図柄なら、描画関数を 1 つ `scripts/textures/signs/<群>.py` に足し、`paint: { fn: "<群>.<関数>", args }` で指す。数値や文言だけが違うなら既存の関数を引数で呼ぶ。
+   - ゲームが配置するなら `game: { kind }`（必要なら `pick`・`gameValue`）を書く。
+2. `just make-sign-registry`（registry.json・game.json・catalog.json を書き直す）。
+3. `just make-sign-textures`（図柄を registry.json から描く。既存の PNG がバイト一致のまま変わらないことも `git status` で見る）。
+4. `pnpm exec vitest run tests/signRegistry.test.ts tests/signPlacement.test.ts` と `just check-assets`。
+
+`just fetch-regs` で turn:lanes が変わったら `just rebuild-sign-assets`（レジストリ → 図柄 → どの定義にも無い図柄の削除）。
+
 ## スクリプト
 
 - `scripts/*.ts` は tsx で実行する（`pnpm exec tsx scripts/<name>.ts`、またはそれを呼ぶ just レシピ）。`node scripts/<name>.ts`（Node の型除去）は enum・パラメータプロパティなど型除去で消せない構文や、拡張子なしの import で止まるため使わない。

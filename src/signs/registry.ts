@@ -106,8 +106,60 @@ function crossCheck(signs: SignDef[], renders: LaneRender[], table: LawTable): s
     const keys = [...art.variants.map((v) => v.key), ...lanes.map((r) => `lanes:${r.lanes}`)];
     for (const key of duplicates(keys)) problems.push(`sign ${s.id}: variant key ${key} used more than once`);
   }
-  problems.push(...paintProblems(signs, renders));
+  problems.push(...paintProblems(signs, renders), ...gameProblems(signs, renders));
   return problems;
+}
+
+/**
+ * The game types resolve to one face for every placement: one definition for a type shown by its
+ * default face, distinct values for one shown by value (and values nowhere else), lane renders for
+ * one shown by lanes, a `back` that is a variant. Legacy names are unique and are not ids.
+ */
+function gameProblems(signs: SignDef[], renders: LaneRender[]): string[] {
+  const problems: string[] = [];
+  const byKind = new Map<string, SignDef[]>();
+  for (const s of signs) if (s.game) byKind.set(s.game.kind, [...(byKind.get(s.game.kind) ?? []), s]);
+  for (const [kind, defs] of byKind) {
+    const picks = new Set(defs.map((s) => s.game?.pick ?? "default"));
+    if (picks.size > 1) problems.push(`game ${kind}: its definitions pick faces in different ways`);
+    // game.json keeps one mounting per type, so every definition of the type must agree on it.
+    const mounts = new Set(defs.map((s) => JSON.stringify([s.game?.mount, s.game?.back, s.game?.bothFaces])));
+    if (mounts.size > 1) problems.push(`game ${kind}: its definitions differ in mount, back or bothFaces`);
+    const pick = [...picks][0];
+    const isAmbiguous = pick === "default" && defs.length > 1;
+    if (isAmbiguous)
+      problems.push(`game ${kind}: shown by default face, but ${defs.map((s) => s.id)} claim it`);
+    const values = defs.flatMap((s) => valuedFaces(s).map((f) => f.gameValue));
+    if (pick === "value" && values.length === 0)
+      problems.push(`game ${kind}: picks by value, but no face has one`);
+    for (const v of duplicates(values.map(String)))
+      problems.push(`game ${kind}: value ${v} on more than one face`);
+    const hasLanes = defs.some((s) => renders.some((r) => r.sign === s.id));
+    if (pick === "lanes" && !hasLanes) problems.push(`game ${kind}: picks by lanes, but none are rendered`);
+  }
+  for (const s of signs) {
+    const isStrayValue = valuedFaces(s).length > 0 && s.game?.pick !== "value";
+    if (isStrayValue)
+      problems.push(`sign ${s.id}: gameValue on a sign whose game type does not pick by value`);
+    const back = s.game?.back;
+    const variants = s.art?.by === "texture" ? s.art.variants : [];
+    const isUnknownBack = back !== undefined && !variants.some((v) => v.key === back);
+    if (isUnknownBack) problems.push(`sign ${s.id}: game.back ${back} is not one of its variants`);
+  }
+  const ids = new Set(signs.map((s) => s.id));
+  const legacy = signs.flatMap((s) => s.legacy ?? []);
+  for (const name of duplicates(legacy)) problems.push(`legacy ${name}: given to more than one sign`);
+  for (const name of legacy.filter((n) => ids.has(n))) problems.push(`legacy ${name}: is a sign id`);
+  return problems;
+}
+
+/** The faces of a definition that carry a gameValue. */
+function valuedFaces(s: SignDef): Array<{ gameValue: number }> {
+  const art = s.art;
+  if (art?.by !== "texture") return [];
+  return [art, ...art.variants].flatMap((f) =>
+    f.gameValue === undefined ? [] : [{ gameValue: f.gameValue }],
+  );
 }
 
 /**

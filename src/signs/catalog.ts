@@ -2,9 +2,10 @@ import { layoutJson, PyFloat, type Json } from "./jsonLayout";
 import { facesOf, type Registry } from "./registry";
 
 /**
- * assets/signs/catalog.json, the older table src/world/signs.ts, src/world/coverage.ts and the asset
- * page read, derived from the registry in exactly the shape (and bytes) scripts/textures/signs/
- * catalog.py wrote it. Kept until those readers move to the registry (design 2.2); then it goes.
+ * assets/signs/catalog.json, the older table, derived from the registry in exactly the shape (and
+ * bytes) scripts/textures/signs/catalog.py wrote it. Since G1c the game reads assets/signs/game.json
+ * instead and only tests/coverage.test.ts reads this; once that moves to the registry, it goes
+ * (knowledge/sign-system.md「落とし穴・未解決」).
  *
  * Python's float / int split shows in the file: sizes of 別表第一 signs and lane renders were
  * floats (`600.0`), the hand-written 法定外 sizes ints (`600`). `size` reproduces that.

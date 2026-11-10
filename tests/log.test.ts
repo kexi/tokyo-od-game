@@ -285,12 +285,13 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     signs: 237,
   },
   sign_registry_written: {
-    files: ["assets/signs/registry.json", "assets/signs/catalog.json"],
+    files: ["assets/signs/registry.json", "assets/signs/catalog.json", "assets/signs/game.json"],
     signs: 244,
     drawn: 155,
     lanes: 141,
   },
   signal_heads_written: { file: "assets/signals/heads.json", heads: 5 },
+  sign_lanes_unrendered: { lanes: "l-t-t-t-t-t-t-r", count: 8 },
   osm_read: { nodes: 1, ways: 2, relations: 3, coords: 4 },
   destinations_written: {
     file: "public/data/destinations.json",

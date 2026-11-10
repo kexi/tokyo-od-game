@@ -1,0 +1,1055 @@
+{
+  "kinds": {
+    "school": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "208",
+          "file": "208",
+          "plate": "PlateDiamond"
+        }
+      ]
+    },
+    "roadClosed": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "301",
+          "file": "301",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "closed": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "302",
+          "file": "vehicles_closed",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "noEntry": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "303",
+          "file": "no_entry",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "motorClosed": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "310",
+          "file": "310",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "turn": {
+      "pick": "value",
+      "faces": [
+        {
+          "id": "311-A",
+          "file": "turn_3",
+          "plate": "PlateCircle",
+          "value": 3
+        },
+        {
+          "id": "311-A",
+          "file": "turn_6",
+          "plate": "PlateCircle",
+          "value": 6
+        },
+        {
+          "id": "311-B",
+          "file": "turn_1",
+          "plate": "PlateCircle",
+          "value": 1
+        },
+        {
+          "id": "311-B",
+          "file": "turn_4",
+          "plate": "PlateCircle",
+          "value": 4
+        },
+        {
+          "id": "311-C",
+          "file": "turn_2",
+          "plate": "PlateCircle",
+          "value": 2
+        },
+        {
+          "id": "311-D",
+          "file": "turn_5",
+          "plate": "PlateCircle",
+          "value": 5
+        }
+      ]
+    },
+    "noVehicleCrossing": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "312",
+          "file": "312",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "noUturn": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "313",
+          "file": "no_uturn",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "noOvertakeRight": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "314",
+          "file": "314",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "noOvertake": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "314の2",
+          "file": "314",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "noStopping": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "315",
+          "file": "no_stopping",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "noParking": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "316",
+          "file": "no_parking",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "timedParking": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "318",
+          "file": "318",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "speed": {
+      "pick": "value",
+      "faces": [
+        {
+          "id": "323",
+          "file": "speed_20",
+          "plate": "PlateCircle",
+          "value": 20
+        },
+        {
+          "id": "323",
+          "file": "speed_30",
+          "plate": "PlateCircle",
+          "value": 30
+        },
+        {
+          "id": "323",
+          "file": "speed_40",
+          "plate": "PlateCircle",
+          "value": 40
+        },
+        {
+          "id": "323",
+          "file": "speed_50",
+          "plate": "PlateCircle",
+          "value": 50
+        },
+        {
+          "id": "323",
+          "file": "speed_60",
+          "plate": "PlateCircle",
+          "value": 60
+        },
+        {
+          "id": "323",
+          "file": "speed_70",
+          "plate": "PlateCircle",
+          "value": 70
+        },
+        {
+          "id": "323",
+          "file": "speed_80",
+          "plate": "PlateCircle",
+          "value": 80
+        }
+      ]
+    },
+    "bikeOnPavement": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "325の3",
+          "file": "325-3",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "pedestrianRoad": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "325の4",
+          "file": "325-4",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "oneway": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "326-A",
+          "file": "one_way_right",
+          "plate": "PlateWide"
+        }
+      ],
+      "back": {
+        "id": "326-A",
+        "file": "one_way_left",
+        "plate": "PlateWide"
+      },
+      "parallel": true
+    },
+    "vehicleClass": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "327",
+          "file": "327",
+          "plate": "PlateRect120x90"
+        }
+      ]
+    },
+    "busLane": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "327の4",
+          "file": "327-4",
+          "plate": "PlateSquare90"
+        }
+      ]
+    },
+    "bikeLane": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "327の4の2",
+          "file": "327-4-2",
+          "plate": "PlateSquare"
+        }
+      ]
+    },
+    "busPriority": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "327の5",
+          "file": "327-5",
+          "plate": "PlateSquare90"
+        }
+      ]
+    },
+    "laneArrows": {
+      "pick": "lanes",
+      "faces": [],
+      "lanes": {
+        "lt-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-r",
+          "plate": "PlateRect120x90"
+        },
+        "t-t": {
+          "id": "327の7-A",
+          "file": "327-7_t-t",
+          "plate": "PlateRect80x90"
+        },
+        "lt-t": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t",
+          "plate": "PlateRect80x90"
+        },
+        "t-tr": {
+          "id": "327の7-A",
+          "file": "327-7_t-tr",
+          "plate": "PlateRect80x90"
+        },
+        "lt-tr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-tr",
+          "plate": "PlateRect80x90"
+        },
+        "l-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-r",
+          "plate": "PlateRect80x90"
+        },
+        "l-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-t",
+          "plate": "PlateRect80x90"
+        },
+        "t-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-r",
+          "plate": "PlateRect80x90"
+        },
+        "t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t",
+          "plate": "PlateRect120x90"
+        },
+        "lt-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t",
+          "plate": "PlateRect120x90"
+        },
+        "t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-r",
+          "plate": "PlateRect120x90"
+        },
+        "l-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-r",
+          "plate": "PlateRect120x90"
+        },
+        "l-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t",
+          "plate": "PlateRect120x90"
+        },
+        "t-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "lt-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "t-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t-r",
+          "plate": "PlateRect160x90"
+        },
+        "lt-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-r",
+          "plate": "PlateRect160x90"
+        },
+        "l-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-r",
+          "plate": "PlateRect160x90"
+        },
+        "l-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "t-t-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t-t-t",
+          "plate": "PlateRect200x90"
+        },
+        "lt-t-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-t-t",
+          "plate": "PlateRect200x90"
+        },
+        "t-t-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t-t-r",
+          "plate": "PlateRect200x90"
+        },
+        "lt-t-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-t-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-t-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-t-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-t-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-t-t",
+          "plate": "PlateRect200x90"
+        },
+        "t-t-t-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t-t-t-t",
+          "plate": "PlateRect240x90"
+        },
+        "lt-t-t-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-t-t-t",
+          "plate": "PlateRect240x90"
+        },
+        "t-t-t-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t-t-t-r",
+          "plate": "PlateRect240x90"
+        },
+        "lt-t-t-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-t-t-r",
+          "plate": "PlateRect240x90"
+        },
+        "l-t-t-t-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-t-t-r",
+          "plate": "PlateRect240x90"
+        },
+        "l-t-t-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-t-t-t",
+          "plate": "PlateRect240x90"
+        },
+        "lhl-r": {
+          "id": "327の7-A",
+          "file": "327-7_lhl-r",
+          "plate": "PlateRect80x90"
+        },
+        "l-tr": {
+          "id": "327の7-A",
+          "file": "327-7_l-tr",
+          "plate": "PlateRect80x90"
+        },
+        "lt-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-r",
+          "plate": "PlateRect80x90"
+        },
+        "l-tr-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-tr-r",
+          "plate": "PlateRect120x90"
+        },
+        "lt-t-tr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-tr",
+          "plate": "PlateRect120x90"
+        },
+        "lt-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-r-r",
+          "plate": "PlateRect160x90"
+        },
+        "hlt-t": {
+          "id": "327の7-A",
+          "file": "327-7_hlt-t",
+          "plate": "PlateRect80x90"
+        },
+        "l-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-r-r",
+          "plate": "PlateRect120x90"
+        },
+        "t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-r-r",
+          "plate": "PlateRect120x90"
+        },
+        "l-l-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "t-l": {
+          "id": "327の7-A",
+          "file": "327-7_t-l",
+          "plate": "PlateRect80x90"
+        },
+        "hl-hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hr-hr",
+          "plate": "PlateRect120x90"
+        },
+        "l-l-tr": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-tr",
+          "plate": "PlateRect120x90"
+        },
+        "t-hr": {
+          "id": "327の7-A",
+          "file": "327-7_t-hr",
+          "plate": "PlateRect80x90"
+        },
+        "l-t-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-r-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-r-r",
+          "plate": "PlateRect160x90"
+        },
+        "hl-t": {
+          "id": "327の7-A",
+          "file": "327-7_hl-t",
+          "plate": "PlateRect80x90"
+        },
+        "hl-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_hl-t-t",
+          "plate": "PlateRect120x90"
+        },
+        "hl-hl-hl-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hl-hl-hr-r",
+          "plate": "PlateRect200x90"
+        },
+        "lt-thr-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-thr-r",
+          "plate": "PlateRect120x90"
+        },
+        "lr-r": {
+          "id": "327の7-A",
+          "file": "327-7_lr-r",
+          "plate": "PlateRect80x90"
+        },
+        "lt-t-t-hr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-hr",
+          "plate": "PlateRect160x90"
+        },
+        "l-l-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-r",
+          "plate": "PlateRect120x90"
+        },
+        "r-r": {
+          "id": "327の7-A",
+          "file": "327-7_r-r",
+          "plate": "PlateRect80x90"
+        },
+        "lt-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-r-r",
+          "plate": "PlateRect120x90"
+        },
+        "hl-hl-hr": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hl-hr",
+          "plate": "PlateRect120x90"
+        },
+        "lt-hr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-hr",
+          "plate": "PlateRect80x90"
+        },
+        "hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_hr-r",
+          "plate": "PlateRect80x90"
+        },
+        "l-lr": {
+          "id": "327の7-A",
+          "file": "327-7_l-lr",
+          "plate": "PlateRect80x90"
+        },
+        "hl-r": {
+          "id": "327の7-A",
+          "file": "327-7_hl-r",
+          "plate": "PlateRect80x90"
+        },
+        "l-t-t-hr": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-hr",
+          "plate": "PlateRect160x90"
+        },
+        "lt-tr-t": {
+          "id": "327の7-A",
+          "file": "327-7_lt-tr-t",
+          "plate": "PlateRect120x90"
+        },
+        "l-t-t-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-hr-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-t-t-hrr": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-hrr",
+          "plate": "PlateRect160x90"
+        },
+        "r-t": {
+          "id": "327の7-A",
+          "file": "327-7_r-t",
+          "plate": "PlateRect80x90"
+        },
+        "lhl-hl-hl-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_lhl-hl-hl-hr-r",
+          "plate": "PlateRect200x90"
+        },
+        "lt-t-t-hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-hr-hr",
+          "plate": "PlateRect200x90"
+        },
+        "lhlt-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_lhlt-t-r-r",
+          "plate": "PlateRect160x90"
+        },
+        "t-t-tr": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-tr",
+          "plate": "PlateRect120x90"
+        },
+        "lt-thr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-thr",
+          "plate": "PlateRect80x90"
+        },
+        "lt-t-r-t": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-r-t",
+          "plate": "PlateRect160x90"
+        },
+        "lt-t-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-hr-r",
+          "plate": "PlateRect160x90"
+        },
+        "t-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-r-r",
+          "plate": "PlateRect160x90"
+        },
+        "l-t-tr": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-tr",
+          "plate": "PlateRect120x90"
+        },
+        "ltr-r": {
+          "id": "327の7-A",
+          "file": "327-7_ltr-r",
+          "plate": "PlateRect80x90"
+        },
+        "lhl-hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_lhl-hr-hr",
+          "plate": "PlateRect120x90"
+        },
+        "lt-t-t-hr-hrr-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-hr-hrr-r",
+          "plate": "PlateRect240x90"
+        },
+        "hlhr-hrr": {
+          "id": "327の7-A",
+          "file": "327-7_hlhr-hrr",
+          "plate": "PlateRect80x90"
+        },
+        "t-lt-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_t-lt-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "lt-t-u": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-u",
+          "plate": "PlateRect120x90"
+        },
+        "l-l-hl-hl-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-hl-hl-hr-r",
+          "plate": "PlateRect240x90"
+        },
+        "lhlt-r": {
+          "id": "327の7-A",
+          "file": "327-7_lhlt-r",
+          "plate": "PlateRect80x90"
+        },
+        "l-hl-hlhrr": {
+          "id": "327の7-A",
+          "file": "327-7_l-hl-hlhrr",
+          "plate": "PlateRect120x90"
+        },
+        "lt-hr-hrr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-hr-hrr",
+          "plate": "PlateRect120x90"
+        },
+        "lt-hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-hr-hr",
+          "plate": "PlateRect120x90"
+        },
+        "hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_hr-hr",
+          "plate": "PlateRect80x90"
+        },
+        "lhlt-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_lhlt-r-r",
+          "plate": "PlateRect120x90"
+        },
+        "t-hrr": {
+          "id": "327の7-A",
+          "file": "327-7_t-hrr",
+          "plate": "PlateRect80x90"
+        },
+        "lt-hrr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-hrr",
+          "plate": "PlateRect80x90"
+        },
+        "l-hl-hrr": {
+          "id": "327の7-A",
+          "file": "327-7_l-hl-hrr",
+          "plate": "PlateRect120x90"
+        },
+        "l-hl-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-hl-hr-r",
+          "plate": "PlateRect160x90"
+        },
+        "t-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-hr-r",
+          "plate": "PlateRect120x90"
+        },
+        "hr-uhr": {
+          "id": "327の7-A",
+          "file": "327-7_hr-uhr",
+          "plate": "PlateRect80x90"
+        },
+        "lhl-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_lhl-t-t",
+          "plate": "PlateRect120x90"
+        },
+        "hl-hl-hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hl-hr-hr",
+          "plate": "PlateRect160x90"
+        },
+        "l-l-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-t",
+          "plate": "PlateRect120x90"
+        },
+        "lt-t-hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-hr-hr",
+          "plate": "PlateRect160x90"
+        },
+        "t-t-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_t-t-t-r-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-t-t-tr": {
+          "id": "327の7-A",
+          "file": "327-7_l-t-t-tr",
+          "plate": "PlateRect160x90"
+        },
+        "hl-hr": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hr",
+          "plate": "PlateRect80x90"
+        },
+        "hl-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_hl-t-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "hl-hl-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hl-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "t-thr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_t-thr-hr",
+          "plate": "PlateRect120x90"
+        },
+        "lt-t-t-t-thr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-t-thr",
+          "plate": "PlateRect200x90"
+        },
+        "t-thr": {
+          "id": "327の7-A",
+          "file": "327-7_t-thr",
+          "plate": "PlateRect80x90"
+        },
+        "hl-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_hl-t-r",
+          "plate": "PlateRect120x90"
+        },
+        "l-lt-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-lt-r",
+          "plate": "PlateRect120x90"
+        },
+        "hl-t-hr-hr": {
+          "id": "327の7-A",
+          "file": "327-7_hl-t-hr-hr",
+          "plate": "PlateRect160x90"
+        },
+        "t-l-t-tr": {
+          "id": "327の7-A",
+          "file": "327-7_t-l-t-tr",
+          "plate": "PlateRect160x90"
+        },
+        "l-l-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-t-r",
+          "plate": "PlateRect160x90"
+        },
+        "l-lt-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-lt-t-t",
+          "plate": "PlateRect160x90"
+        },
+        "l-r-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-r-r-r",
+          "plate": "PlateRect160x90"
+        },
+        "hl-hl-hlr": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hl-hlr",
+          "plate": "PlateRect120x90"
+        },
+        "l-l-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-t-r-r",
+          "plate": "PlateRect200x90"
+        },
+        "hl-t-t-hr": {
+          "id": "327の7-A",
+          "file": "327-7_hl-t-t-hr",
+          "plate": "PlateRect160x90"
+        },
+        "l-l": {
+          "id": "327の7-A",
+          "file": "327-7_l-l",
+          "plate": "PlateRect80x90"
+        },
+        "t-lt-tr": {
+          "id": "327の7-A",
+          "file": "327-7_t-lt-tr",
+          "plate": "PlateRect120x90"
+        },
+        "l-l-t-t-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-t-t-t-r-r",
+          "plate": "PlateRect280x90"
+        },
+        "r-lr": {
+          "id": "327の7-A",
+          "file": "327-7_r-lr",
+          "plate": "PlateRect80x90"
+        },
+        "lt-t-hr": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-hr",
+          "plate": "PlateRect120x90"
+        },
+        "hl-hl-hr-hr-r": {
+          "id": "327の7-A",
+          "file": "327-7_hl-hl-hr-hr-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-lt-t-tr": {
+          "id": "327の7-A",
+          "file": "327-7_l-lt-t-tr",
+          "plate": "PlateRect160x90"
+        },
+        "l-lt-t-t-t": {
+          "id": "327の7-A",
+          "file": "327-7_l-lt-t-t-t",
+          "plate": "PlateRect200x90"
+        },
+        "l-lt-t-tr-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-lt-t-tr-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-lt-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-lt-t-r",
+          "plate": "PlateRect160x90"
+        },
+        "lt-t-t-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_lt-t-t-r-r",
+          "plate": "PlateRect200x90"
+        },
+        "l-l-r-r": {
+          "id": "327の7-A",
+          "file": "327-7_l-l-r-r",
+          "plate": "PlateRect160x90"
+        },
+        "hlt-t-r": {
+          "id": "327の7-A",
+          "file": "327-7_hlt-t-r",
+          "plate": "PlateRect120x90"
+        },
+        "lt": {
+          "id": "327の7-B",
+          "file": "327-7_lt",
+          "plate": "PlateSquare90"
+        },
+        "r": {
+          "id": "327の7-B",
+          "file": "327-7_r",
+          "plate": "PlateSquare90"
+        },
+        "lr": {
+          "id": "327の7-B",
+          "file": "327-7_lr",
+          "plate": "PlateSquare90"
+        },
+        "hl": {
+          "id": "327の7-B",
+          "file": "327-7_hl",
+          "plate": "PlateSquare90"
+        },
+        "tr": {
+          "id": "327の7-B",
+          "file": "327-7_tr",
+          "plate": "PlateSquare90"
+        },
+        "l": {
+          "id": "327の7-C",
+          "file": "327-7_l",
+          "plate": "PlateSquare90"
+        },
+        "t": {
+          "id": "327の7-D",
+          "file": "327-7_t",
+          "plate": "PlateSquare90"
+        }
+      }
+    },
+    "horn": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "328",
+          "file": "328",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "slow": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "329-A",
+          "file": "slow",
+          "plate": "PlateTriangle"
+        }
+      ]
+    },
+    "stop": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "330-A",
+          "file": "stop",
+          "plate": "PlateTriangle"
+        }
+      ]
+    },
+    "noPedestrianCrossing": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "332",
+          "file": "332",
+          "plate": "PlateSquare"
+        }
+      ]
+    },
+    "parkingAllowed": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "403",
+          "file": "403",
+          "plate": "PlateSquare"
+        }
+      ]
+    },
+    "crosswalk": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "407-A",
+          "file": "407a",
+          "plate": "PlatePentagon"
+        }
+      ],
+      "bothFaces": true
+    },
+    "hydrant": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "x-hydrant",
+          "file": "x-hydrant",
+          "plate": "PlateCircle"
+        }
+      ]
+    },
+    "schoolRoute": {
+      "pick": "default",
+      "faces": [
+        {
+          "id": "x-school-route",
+          "file": "x-school-route",
+          "plate": "PlateRect30x50"
+        }
+      ]
+    }
+  }
+}

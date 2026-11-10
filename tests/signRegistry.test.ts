@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatCatalog } from "../src/signs/catalog";
+import { formatGameTable } from "../src/signs/gameTable";
 import { signCoverage } from "../src/signs/coverage";
 import { layoutJson, PyFloat } from "../src/signs/jsonLayout";
 import { buildRegistry, facesOf, formatRegistry, lanePlate } from "../src/signs/registry";
@@ -62,6 +63,7 @@ describe("the generated files", () => {
     // sha256 is in knowledge/sign-system.md.
     expect(formatRegistry(registry)).toBe(read("assets/signs/registry.json"));
     expect(formatCatalog(registry)).toBe(read("assets/signs/catalog.json"));
+    expect(formatGameTable(registry)).toBe(read("assets/signs/game.json"));
   });
 });
 
@@ -75,7 +77,11 @@ function osmLaneKey(value: string): string {
   return laneKey(lanes);
 }
 
-/** Lane directions as the render key, letters in slug order (signs.ts laneDesign). */
+/**
+ * Lane directions as the render key, letters in slug order. Spelt out here apart from
+ * src/signs/lanes.ts laneKey (which builds the registry and the game's lookup), so the game's own
+ * reading of turn:lanes and assumedLanes is checked against the rendered keys independently.
+ */
 function laneKey(lanes: readonly LaneDirection[][]): string {
   const order: Array<[LaneDirection, string]> = [
     ["reverse", "u"],
@@ -276,6 +282,34 @@ describe("the plates (src/signs/plates.ts)", () => {
 describe("the definitions against the game (regulations.ts SIGN, signs.ts design)", () => {
   const kinds = Object.keys(SIGN) as Array<keyof typeof SIGN>;
 
+  it("show 指定方向外進行禁止 by its 別表第一 number, the old turn_<mask> names kept as legacy aliases", () => {
+    const byLegacy = new Map(registry.signs.flatMap((s) => (s.legacy ?? []).map((n) => [n, s.id] as const)));
+    for (const mask of [1, 2, 3, 4, 5, 6]) {
+      const d = design(SIGN.turn, mask);
+      expect(d?.id, `mask ${mask}`).toMatch(/^311-[A-D]$/);
+      expect(byLegacy.get(`turn_${mask}`), `turn_${mask}`).toBe(d?.id);
+    }
+    expect(design(SIGN.turn, 7)).toBeNull(); // 311-E (all three) is drawn but not placed
+  });
+
+  it("read a lane with no direction, or only unknown words, as straight on when picking the lane plate", () => {
+    const empty = [[], ["right"]] as unknown as LaneDirection[][];
+    expect(design(SIGN.laneArrows, 0, empty)?.file).toBe("327-7_t-r");
+    expect(design(SIGN.laneArrows, 0, [["through"], ["right"]])?.file).toBe("327-7_t-r");
+  });
+
+  it("put up no lane plate for a pattern that was not drawn (more lanes than assumedLanes covers)", () => {
+    const eight = Array.from({ length: 8 }, () => ["through"]) as LaneDirection[][];
+    expect(design(SIGN.laneArrows, 0, eight)).toBeNull();
+  });
+
+  it("show the posted speed only for the limits the game always drew (20–80 km/h), not 10 or 100–120", () => {
+    expect([20, 30, 40, 50, 60, 70, 80].map((v) => design(SIGN.speed, v)?.file)).toEqual(
+      [20, 30, 40, 50, 60, 70, 80].map((v) => `speed_${v}`),
+    );
+    expect([10, 100, 110, 120].map((v) => design(SIGN.speed, v))).toEqual([null, null, null, null]);
+  });
+
   it("name only sign types the game has", () => {
     const named = registry.signs.flatMap((s) => (s.game ? [s.game.kind] : []));
     expect(named.filter((k) => !(k in SIGN))).toEqual([]);
@@ -387,6 +421,38 @@ describe("a broken definition", () => {
       ],
     };
     expect(build([{ ...drawn, art: twice }])).toThrow(/sign 301: variant key x used more than once/);
+  });
+
+  it("is refused when the game could not tell which face to show", () => {
+    const game = (g: object) => ({ ...drawn, game: g });
+    expect(build([game({ kind: "roadClosed" }), { ...game({ kind: "roadClosed" }), id: "302" }])).toThrow(
+      /game roadClosed: shown by default face, but 301,302 claim it/,
+    );
+    expect(build([game({ kind: "speed", pick: "value" })])).toThrow(
+      /game speed: picks by value, but no face has one/,
+    );
+    const valued = { ...drawn.art, gameValue: 3 };
+    expect(build([{ ...drawn, art: valued }])).toThrow(/sign 301: gameValue on a sign whose game type/);
+    expect(build([game({ kind: "laneArrows", pick: "lanes" })])).toThrow(
+      /picks by lanes, but none are rendered/,
+    );
+    expect(build([game({ kind: "oneway", back: "left" })])).toThrow(
+      /game.back left is not one of its variants/,
+    );
+    expect(build([game({ kind: "nothing" })])).toThrow(/sign 301 game.kind/);
+    expect(build([{ ...drawn, legacy: ["301"] }])).toThrow(/legacy 301: is a sign id/);
+    const crossing = (id: string, g: object) => ({
+      ...drawn,
+      id,
+      game: { kind: "turn", pick: "value", ...g },
+    });
+    const valuedArt = (v: number) => ({ ...drawn.art, gameValue: v });
+    expect(
+      build([
+        { ...crossing("311-A", {}), art: valuedArt(1) },
+        { ...crossing("311-B", { bothFaces: true }), art: valuedArt(2) },
+      ]),
+    ).toThrow(/game turn: its definitions differ in mount, back or bothFaces/);
   });
 
   it("is refused when a face has no painter, a lane render has one, or a face is drawn over nothing", () => {
