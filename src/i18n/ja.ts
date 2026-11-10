@@ -396,6 +396,7 @@ export const ja = {
   // 違反・法令・行政処分・切符（traffic.ts・sanctions.ts・violationReview.ts・drivingTips.ts・ticketForm.ts・src/i18n/law.ts）
   // 違反名（traffic.ts の label と日本語が一致するもの。記録は日本語のまま保存し、表示で訳す）
   "violation.label.signal": "信号無視（赤色等）",
+  "violation.label.signalFlashing": "信号無視（点滅）",
   "violation.label.stopSign": "指定場所一時不停止等",
   "violation.label.noEntry": "通行禁止違反（一方通行）",
   "violation.label.turnBan": "通行禁止違反（指定方向外進行禁止）",

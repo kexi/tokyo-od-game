@@ -213,6 +213,18 @@ export const SOCIAL_EN: Readonly<Record<string, string>> = {
   "画面見ながら運転するとこうなる…{place}":
     "This is what happens when you drive looking at a screen… {place}",
 
+  // ---------- openers: signalFlashing ----------
+  "{place}、赤の点滅で一時停止しないで交差点に入る{car}。横から来た車がクラクション":
+    "{place}: a {car} rolled into the junction on a flashing red without stopping. The car from the side honked",
+  "{time}、{place}の赤点滅。止まらずに突っ込む{color}{car}が映ってた":
+    "{time}, flashing red at {place}. Caught a {color}{car} going straight through without stopping",
+  "{place}の点滅信号、赤の点滅なのに止まらずに入っていった車がいた":
+    "At {place} the light was flashing red and a car went straight in without stopping",
+  "赤の点滅は一時停止なんだけどな…{place}": "A flashing red means stop first, you know… {place}",
+  "夜の{place}、赤点滅の交差点を{color}{car}がそのまま通過していった":
+    "{place} at night: a {color}{car} sailed through the flashing-red junction",
+  "{place}で赤点滅を止まらずに通過する車。夜は気をつけて":
+    "A car went through the flashing red at {place} without stopping. Take care at night",
   // ---------- openers: signalOmission ----------
   "ウインカー出さずに曲がる車、多すぎ。{place}": "Way too many cars turning without signaling. {place}",
   "{place}、合図なしでいきなり左折。自転車の人が危なかった":
@@ -448,6 +460,7 @@ export const SOCIAL_EN: Readonly<Record<string, string>> = {
   "#放置車両": "#AbandonedCar",
   "#駐停車禁止": "#NoStopping",
   "#一時停止": "#StopSign",
+  "#赤点滅": "#FlashingRed",
   "#止まれ": "#Stop",
   "#ドラレコ": "#Dashcam",
   "#目撃情報": "#Eyewitness",

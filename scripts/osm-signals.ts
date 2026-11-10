@@ -2,7 +2,7 @@
 // pedestrian crossing's signal, how far it is from a car-road junction, and its button, sound and
 // direction tags. Used by scripts/regulations.ts (the tiles) and scripts/signal-tags.ts (the census).
 import { readNodeCoords, readTaggedNodes, readWays, type OsmNode, type OsmWay } from "./osm-pbf.ts";
-import { buttonOf, soundOf, type SignalNodeFacts } from "../src/signals/osmTags.ts";
+import { buttonOf, hasPhaseFacts, phaseOf, soundOf, type SignalNodeFacts } from "../src/signals/osmTags.ts";
 import { SIGNAL_JUNCTION_M } from "../src/signals/siting.ts";
 
 /**
@@ -116,6 +116,7 @@ export function classifySignalNodes(
         button: buttonOf(node.tags),
         sound: soundOf(node.tags),
         bearing: bearingOf(node),
+        phase: phaseOf(node.tags),
       },
     };
   });
@@ -123,12 +124,15 @@ export function classifySignalNodes(
 
 /**
  * Whether the tiles keep a node: every highway=traffic_signals node (as before T3), and of the
- * crossing nodes tagged only as crossings those on a car road that are 単路 (mid-block) or carry a
- * sound tag (which says how the crosswalk's 音響式 runs). Why not every crossing node: the ~17,000
- * crossings next to junctions would only repeat what the junction's own node says.
+ * crossing nodes tagged only as crossings those on a car road that are 単路 (mid-block), carry a
+ * sound tag (which says how the crosswalk's 音響式 runs), a button (T4: a junction's push-button
+ * walk), or a T4 plan fact (歩車分離 and the rest, osmTags.ts phaseOf). Why not every crossing node:
+ * the ~17,000 crossings next to junctions would only repeat what the junction's own node says.
  */
 export function isKept(s: SignalNode): boolean {
   if (s.facts.isHighwaySignal) return true;
   if (!s.onCarRoad) return false;
-  return s.facts.awayFromJunction || s.facts.sound !== null;
+  const hasPlanFact =
+    s.facts.button === true || (s.facts.phase !== undefined && hasPhaseFacts(s.facts.phase));
+  return s.facts.awayFromJunction || s.facts.sound !== null || hasPlanFact;
 }

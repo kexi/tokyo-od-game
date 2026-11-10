@@ -14,11 +14,15 @@ import {
   driverAction,
   orderIssues,
   permits,
+  nightFlash,
   pushButton,
   safetyIssues,
+  scramble,
+  staggered,
   stepAt,
   twoPhase,
   twoPhaseWithRightArrow,
+  withWalkButtons,
   type Permission,
   type SignalPlan,
   type Step,
@@ -119,6 +123,25 @@ const TEMPLATES: Record<string, SignalPlan> = {
     clearance: 3,
   }),
   crossingFixed: crossingFixed("default"),
+  // T4
+  scramble: scramble("osm"),
+  scrambleSlow: scramble("osm", {
+    green: [40, 30],
+    yellow: 4,
+    allRed: 3,
+    walk: 30,
+    pedFlash: 10,
+    clearance: 4,
+  }),
+  staggered: staggered("osm"),
+  staggeredSlow: staggered("inferred", { green: [40, 30], yellow: 4, allRed: 3, pedFlash: 8, lag: 10 }),
+  nightFlash: nightFlash(twoPhase("default"), { a: "FY", b: "FR" }, "osm"),
+  nightFlashAllRed: nightFlash(twoPhase("default"), { a: "FR", b: "FR" }, "osm"),
+  nightFlashScramble: nightFlash(scramble("osm"), { a: "FY", b: "FR" }, "osm"),
+  nightFlashStaggered: nightFlash(staggered("osm"), { a: "FY", c: "FY", b: "FR" }, "osm"),
+  walkButtons: withWalkButtons(twoPhase("default"), "osm"),
+  walkButtonsArrow: withWalkButtons(twoPhaseWithRightArrow(["a"], "inferred"), "osm"),
+  walkButtonsScramble: withWalkButtons(scramble("osm"), "osm"),
 };
 
 describe("施行令第3条第2項: every template shows its signals in the law's order", () => {
@@ -382,7 +405,7 @@ describe("the 単路 crossing rule (assign.ts planForCrossing)", () => {
 describe("driverAction and crossingVerdict: the one reading of each permission", () => {
   const PERMISSIONS: Permission[] = ["go", "stopIfAble", "stop", "stopFirst", "unconfirmed"];
 
-  it("a driver goes on go, and on anything else stops when it can and goes on when it cannot (as before T3)", () => {
+  it("a driver goes on go, stops when it can on 黄・赤・dark, and on 赤の点滅 makes the 一時停止 first (fullStop); one that cannot stop goes on", () => {
     const table = Object.fromEntries(
       PERMISSIONS.map((p) => [p, [driverAction(p, true), driverAction(p, false)]]),
     );
@@ -390,19 +413,23 @@ describe("driverAction and crossingVerdict: the one reading of each permission",
       go: ["go", "go"],
       stopIfAble: ["stop", "go"],
       stop: ["stop", "go"],
-      stopFirst: ["stop", "go"],
+      stopFirst: ["fullStop", "go"],
       unconfirmed: ["stop", "go"],
     });
   });
 
-  it("信号無視 books only 赤 with no arrow its way; 黄 and 赤の点滅 are not booked, a dark signal is unconfirmed", () => {
-    expect(Object.fromEntries(PERMISSIONS.map((p) => [p, crossingVerdict(p)]))).toEqual({
+  it("信号無視 books 赤 with no arrow its way (赤色等) and 赤の点滅 crossed without stopping (点滅); 黄 is not booked, a dark signal is unconfirmed", () => {
+    const verdicts = (hasStopped: boolean) =>
+      Object.fromEntries(PERMISSIONS.map((p) => [p, crossingVerdict(p, hasStopped)]));
+    expect(verdicts(false)).toEqual({
       go: "allowed",
       stopIfAble: "allowed",
       stop: "booked",
-      stopFirst: "allowed",
+      stopFirst: "bookedFlashing",
       unconfirmed: "unconfirmed",
     });
+    // Having stopped changes only 赤の点滅: 赤 is booked however long the car stood (第2条 forbids the crossing).
+    expect(verdicts(true)).toEqual({ ...verdicts(false), stopFirst: "allowed" });
   });
 });
 
@@ -465,14 +492,14 @@ describe("pushButton: rests at the vehicles' 青 until a walker calls (押ボタ
 
   it("after a press: 黄 → 全赤 → walkers' 青 → its flash → 全赤 → back to 青, in that order and timing", () => {
     const run = new OnDemandRun(plan, 0);
-    expect(run.call(100)).toBe(true);
-    expect(run.isWaiting(100)).toBe(true);
+    expect(run.call("p", 100)).toBe(true);
+    expect(run.isWaiting("p", 100)).toBe(true);
     expect(look(run, 100.5)).toBe("Y/stop");
     expect(look(run, 100 + t.yellow + 0.5)).toBe("R/stop");
     const walk = 100 + t.yellow + t.allRed;
-    expect(run.isWaiting(walk - 0.1)).toBe(true);
+    expect(run.isWaiting("p", walk - 0.1)).toBe(true);
     expect(look(run, walk + 0.5)).toBe("R/go");
-    expect(run.isWaiting(walk + 0.5)).toBe(false);
+    expect(run.isWaiting("p", walk + 0.5)).toBe(false);
     expect(look(run, walk + t.walk + 0.5)).toBe("R/flash");
     expect(look(run, walk + t.walk + t.pedFlash + 0.5)).toBe("R/stop");
     const back = walk + t.walk + t.pedFlash + t.clearance;
@@ -482,11 +509,11 @@ describe("pushButton: rests at the vehicles' 青 until a walker calls (押ボタ
 
   it("serves a call only after the vehicles' shortest green, and ignores presses while the walk is still to come", () => {
     const run = new OnDemandRun(plan, 0);
-    run.call(10);
+    run.call("p", 10);
     run.stepAt(10.5);
-    expect(run.call(11)).toBe(false); // the walk this run will show serves it
+    expect(run.call("p", 11)).toBe(false); // the walk this run will show serves it
     const back = 10 + plan.cycle - t.minGreen;
-    expect(run.call(back - 1)).toBe(true); // during the clearance: waits for the next run
+    expect(run.call("p", back - 1)).toBe(true); // during the clearance: waits for the next run
     expect(look(run, back + 1)).toBe("G/stop");
     expect(look(run, back + t.minGreen - 0.5)).toBe("G/stop");
     expect(look(run, back + t.minGreen + 0.5)).toBe("Y/stop");
@@ -494,7 +521,7 @@ describe("pushButton: rests at the vehicles' 青 until a walker calls (押ボタ
 
   it("answers what showed a moment ago (the violation check's grace) without moving the run", () => {
     const run = new OnDemandRun(plan, 0);
-    run.call(50);
+    run.call("p", 50);
     run.stepAt(50 + t.yellow + 1);
     expect(run.stepBefore(50 + t.yellow + 1, 2).main.v).toBe("Y");
     expect(run.stepBefore(50 + t.yellow + 1, 10).main.v).toBe("G");
@@ -502,7 +529,7 @@ describe("pushButton: rests at the vehicles' 青 until a walker calls (押ボタ
 
   it("drops the run when the clock goes back (the replay rewinds it)", () => {
     const run = new OnDemandRun(plan, 0);
-    run.call(100);
+    run.call("p", 100);
     expect(look(run, 101)).toBe("Y/stop");
     expect(look(run, 20)).toBe("G/stop");
   });

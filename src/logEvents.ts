@@ -245,6 +245,10 @@ export const LOG_EVENTS = {
     /** 単路 (mid-block) crossing controllers, and those of them that are push-button (T3). */
     crossingSignals: count.optional(),
     pushButtons: count.optional(),
+    /** Junction controllers by day plan template and by night plan (`night:<template>`) (T4). */
+    signalPlans: z.record(z.string(), count).optional(),
+    /** Right-turn arrow groups the scramble and 時差式 templates dropped (T4, assign.ts). */
+    droppedRightArrows: count.optional(),
     stops: count,
     crossings: count,
     signs: count,
@@ -338,6 +342,11 @@ export const LOG_EVENTS = {
    * or while the walk is still to come are not logged.
    */
   signal_button_pressed: info({ controllerId: z.number() }),
+  /**
+   * A junction controller went into or out of its night plan (夜間点滅, 夜間の押ボタン; T4) as the
+   * game's time of day crossed the plan's window: `template` is the plan it runs now.
+   */
+  signal_plan_switched: info({ controllerId: z.number(), template: z.string(), isNight: z.boolean() }),
   /**
    * 単路 crossings among the OSM records that got no controller, by why (trafficControl.ts): off
    * the road graph's streets (the tiles reach further), no JARTIC 横断歩道 within reach, next to a

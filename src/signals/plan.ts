@@ -18,8 +18,12 @@ export type GroupId = z.infer<typeof GroupId>;
 /** The main lamps: 青・黄・赤, 黄の点滅, 赤の点滅, or dark. */
 export const MainAspect = z.enum(["G", "Y", "R", "FY", "FR", "off"]);
 export type MainAspect = z.infer<typeof MainAspect>;
-/** 人の形の記号を有する青色の灯火 / その点滅 / 赤色の灯火. */
-export const PedAspect = z.enum(["go", "flash", "stop"]);
+/**
+ * 人の形の記号を有する青色の灯火 / その点滅 / 赤色の灯火, or dark (`off`: the walk lamps go out while
+ * the vehicle lamps flash, and walkers read the vehicle lamps they face: 施行令第2条 黄色の灯火の点滅・
+ * 赤色の灯火の点滅 一 「歩行者等は、他の交通に注意して進行することができること」).
+ */
+export const PedAspect = z.enum(["go", "flash", "stop", "off"]);
 export type PedAspect = z.infer<typeof PedAspect>;
 
 export const StepSchema = z.strictObject({
@@ -41,8 +45,20 @@ export type PlanSource = z.infer<typeof PlanSource>;
  * must be stopped while they walk), and the group they walk alongside, if any (its turning arrows
  * cross their path; its 青 does not, as turners yield to walkers under 道路交通法第38条).
  */
-export const WalkersSchema = z.strictObject({ across: GroupId, alongside: GroupId.optional() });
+export const WalkersSchema = z.strictObject({
+  /** One group's road, or several (歩車分離's diagonal walkers cross every road at once). */
+  across: z.union([GroupId, z.array(GroupId).min(1)]),
+  alongside: GroupId.optional(),
+  /** 歩車分離's diagonal walkers (斜め横断): they go corner to opposite corner, across `across` at once. */
+  diagonal: z.literal(true).optional(),
+});
 export type Walkers = z.output<typeof WalkersSchema>;
+
+/** The vehicle groups whose roads `w`'s people cross. */
+export const crossedBy = (w: Walkers): readonly GroupId[] =>
+  typeof w.across === "string" ? [w.across] : w.across;
+/** Whether `w` are diagonal walkers (歩車分離's 斜め横断). */
+export const isDiagonal = (w: Walkers): boolean => w.diagonal === true;
 
 export const SignalPlanSchema = z
   .strictObject({
@@ -58,6 +74,17 @@ export const SignalPlanSchema = z
     conflicts: z.array(z.tuple([GroupId, GroupId])),
     /** Every pedestrian group the steps light, and whose road it crosses. */
     walkers: z.record(GroupId, WalkersSchema),
+    /**
+     * Pairs of groups that face each other across the junction on one road (時差式 splits the two
+     * directions into two groups). Not crossing (conflicts), but the safety checks keep one's
+     * turning arrow off while the other moves.
+     */
+    opposing: z.array(z.tuple([GroupId, GroupId])).default([]),
+    /**
+     * Walker groups whose walk shows only when someone has pressed the button for it (a junction's
+     * 押ボタン, T4): the steps keep their go and flash, and WalkCalls turns them to stop when uncalled.
+     */
+    onCall: z.array(GroupId).default([]),
     /**
      * Push-button (押ボタン式) running: step 0 is the rest the controller holds until a walker
      * calls, for at least its `s` seconds (the vehicles' shortest green); a call then runs the
@@ -80,7 +107,8 @@ export const SignalPlanSchema = z
         continue;
       }
       const isUnknownGroup =
-        !vehicleGroups.has(w.across) || (w.alongside !== undefined && !vehicleGroups.has(w.alongside));
+        crossedBy(w).some((h) => !vehicleGroups.has(h)) ||
+        (w.alongside !== undefined && !vehicleGroups.has(w.alongside));
       if (isUnknownGroup)
         ctx.addIssue({
           code: "custom",
@@ -88,6 +116,14 @@ export const SignalPlanSchema = z
           message: `walkers ${g} name a group with no lamps`,
         });
     }
+    const isUnknownPair = [...plan.opposing, ...plan.conflicts].some(
+      ([g, h]) => !vehicleGroups.has(g) || !vehicleGroups.has(h),
+    );
+    if (isUnknownPair)
+      ctx.addIssue({ code: "custom", path: ["conflicts"], message: "a pair names a group with no lamps" });
+    const isUnknownCall = plan.onCall.some((g) => !pedGroups.has(g));
+    if (isUnknownCall)
+      ctx.addIssue({ code: "custom", path: ["onCall"], message: "onCall names walkers no step lights" });
     const isTooShortForDemand = plan.onDemand && plan.steps.length < 2;
     if (isTooShortForDemand)
       ctx.addIssue({
@@ -101,7 +137,7 @@ export type SignalPlan = z.output<typeof SignalPlanSchema>;
 // ---------- 施行令第3条第2項: the order of the signals ----------
 
 const NEXT_MAIN: Partial<Record<MainAspect, MainAspect>> = { G: "Y", Y: "R", R: "G" };
-const NEXT_PED: Record<PedAspect, PedAspect> = { go: "flash", flash: "stop", stop: "go" };
+const NEXT_PED: Partial<Record<PedAspect, PedAspect>> = { go: "flash", flash: "stop", stop: "go" };
 
 /** The cyclic sequence of `values` with repeats run together (`[R, G, G, Y, R]` → `[G, Y, R]`). */
 function changes<T>(values: readonly T[]): T[] {
@@ -111,8 +147,8 @@ function changes<T>(values: readonly T[]): T[] {
 
 /**
  * 施行令第3条第2項: 青→黄→赤 for the vehicle lamps and 青→青の点滅→赤 for the walk lamps, wherever
- * those are shown in succession. Flashing and dark steps are outside that paragraph (they are not
- * 青・黄・赤 in succession) and are not checked here.
+ * those are shown in succession. Flashing and dark steps (and dark walk lamps) are outside that
+ * paragraph (they are not 青・黄・赤 in succession) and are not checked here.
  */
 export function orderIssues(plan: {
   steps: readonly { main: Record<string, MainAspect>; ped?: Record<string, PedAspect> }[];
@@ -130,7 +166,7 @@ export function orderIssues(plan: {
   }
   const pedGroups = new Set(plan.steps.flatMap((st) => Object.keys(st.ped ?? {})));
   for (const g of pedGroups) {
-    const seq = changes(plan.steps.map((st) => st.ped?.[g] ?? "stop"));
+    const seq = changes(plan.steps.map((st) => st.ped?.[g] ?? "stop").filter((a) => a in NEXT_PED));
     if (seq.length < 2) continue;
     seq.forEach((a, i) => {
       const next = seq[(i + 1) % seq.length];
@@ -163,7 +199,9 @@ const isWalkingIn = (st: Step, walkers: string) => st.ped[walkers] === "go" || s
  * side of their walk; every yellow lasts at least 3 s, arrows show only over 赤 or 黄, and an
  * all-red separates crossing groups.
  */
-export function safetyIssues(plan: SignalPlan): string[] {
+export function safetyIssues(
+  plan: Pick<SignalPlan, "steps" | "conflicts" | "walkers"> & Partial<Pick<SignalPlan, "opposing">>,
+): string[] {
   const issues: string[] = [];
   const n = plan.steps.length;
   const crosses = (g: string, h: string) =>
@@ -172,7 +210,7 @@ export function safetyIssues(plan: SignalPlan): string[] {
   const walkerGroups = Object.entries(plan.walkers);
   plan.steps.forEach((st, i) => {
     for (const [p, w] of walkerGroups) {
-      const isCrossedByTraffic = isOpen(st, w.across);
+      const isCrossedByTraffic = crossedBy(w).some((g) => isOpen(st, g));
       const isCrossedByTurners = w.alongside !== undefined && (st.arrows[w.alongside]?.length ?? 0) > 0;
       if (isWalkingIn(st, p) && (isCrossedByTraffic || isCrossedByTurners))
         issues.push(`step ${i}: walkers ${p} cross moving traffic`);
@@ -185,6 +223,18 @@ export function safetyIssues(plan: SignalPlan): string[] {
       const hasArrows = (st.arrows[g]?.length ?? 0) > 0;
       const isOverRedOrYellow = st.main[g] === "R" || st.main[g] === "Y";
       if (hasArrows && !isOverRedOrYellow) issues.push(`step ${i}: ${g}'s arrows over ${st.main[g]}`);
+    }
+    // 時差式: a right arrow tells its drivers the way is theirs; with the oncoming group moving it is
+    // not (their right turn under 第37条 would meet oncoming traffic that was promised a clear road).
+    for (const [g, h] of plan.opposing ?? []) {
+      for (const [mine, theirs] of [
+        [g, h],
+        [h, g],
+      ] as const) {
+        const hasRightArrow = (st.arrows[mine] ?? []).includes("right");
+        if (hasRightArrow && isOpen(st, theirs))
+          issues.push(`step ${i}: ${mine}'s right arrow while oncoming ${theirs} moves`);
+      }
     }
   });
   for (const g of groups) {
@@ -228,12 +278,13 @@ export function safetyIssues(plan: SignalPlan): string[] {
         let clear = 0;
         for (let k = 1; k < n; k++) {
           const other = plan.steps[(((i + way * k) % n) + n) % n];
-          if (isOpen(other, w.across) || isWalkingIn(other, p)) break;
+          const isCrossed = crossedBy(w).some((g) => isOpen(other, g));
+          if (isCrossed || isWalkingIn(other, p)) break;
           clear += other.s;
         }
         const side = way > 0 ? "after" : "before";
         if (clear < MIN_ALL_RED_S)
-          issues.push(`step ${i}: walkers ${p} have ${clear} s clear of ${w.across} ${side}`);
+          issues.push(`step ${i}: walkers ${p} have ${clear} s clear of ${crossedBy(w).join("+")} ${side}`);
       }
     });
   }
@@ -292,18 +343,20 @@ export function permits(step: Step, group: GroupId, movement: Movement): Permiss
  * can. Anything short of `go` stops a car that can stop and lets one that cannot go on — on 黄 that
  * is 第2条's "unless unable to stop safely"; on 赤 it is T2's safe side (an arrow goes out into the
  * all-red with no yellow, and braking past what the car can do would leave it standing in the box).
- * - `stopFirst` (赤の点滅): stops like 赤 for now. Why not "stop, then go on": no plan shows it yet
- *   (nightFlash is T4), and the 一時停止 logic it belongs to is not wired to signals.
+ * - `stopFirst` (赤色の灯火の点滅: 「車両等は、停止位置において一時停止しなければならない」): `fullStop` —
+ *   stop at the line, then on, as at a 一時停止 sign (the callers' served/waited logic). A car that
+ *   can no longer stop goes on (it cannot do otherwise; the violation check books it).
  * - `unconfirmed` (dark): the safe side, stop.
  */
-export type DriverAction = "go" | "stop";
+export type DriverAction = "go" | "stop" | "fullStop";
 export function driverAction(permission: Permission, canStop: boolean): DriverAction {
   switch (permission) {
     case "go":
       return "go";
+    case "stopFirst":
+      return canStop ? "fullStop" : "go";
     case "stopIfAble":
     case "stop":
-    case "stopFirst":
     case "unconfirmed":
       return canStop ? "stop" : "go";
     default:
@@ -320,18 +373,24 @@ export const letsDriverGo = (permission: Permission): boolean => driverAction(pe
 
 /**
  * How 信号無視 reads the permission of the movement a car made past the stop line: `booked` (赤 with
- * no arrow its way), `allowed`, or `unconfirmed` (not booked: the law text read does not settle it).
- * 黄 is allowed: the car may have been too close to stop (第2条), which the game cannot tell.
- * `stopFirst` (赤の点滅) is not 信号無視 but a 一時停止 matter (design 5.4), not wired yet.
+ * no arrow its way: 信号無視（赤色等）), `bookedFlashing` (赤の点滅 crossed without the 一時停止:
+ * 信号無視（点滅）), `allowed`, or `unconfirmed` (not booked: the law text read does not settle it).
+ * 黄 is allowed: the car may have been too close to stop (第2条), which the game cannot tell; so is
+ * 黄の点滅 (他の交通に注意して進行することができる).
+ * Why 赤の点滅 is 信号無視 and not 一時不停止 (design 5.4 guessed the latter): 施行令 別表第六 備考 17
+ * defines 信号無視（点滅） as 「法第七条の規定に違反する行為（16 に規定する行為を除く。）」, 16 being the
+ * 赤色・黄色の灯火 ones; 第43条 (指定場所一時不停止等) is the 一時停止 sign's.
+ * `hasStopped`: the car stood still just short of the line before crossing it.
  */
-export type CrossingVerdict = "booked" | "allowed" | "unconfirmed";
-export function crossingVerdict(permission: Permission): CrossingVerdict {
+export type CrossingVerdict = "booked" | "bookedFlashing" | "allowed" | "unconfirmed";
+export function crossingVerdict(permission: Permission, hasStopped = false): CrossingVerdict {
   switch (permission) {
     case "stop":
       return "booked";
+    case "stopFirst":
+      return hasStopped ? "allowed" : "bookedFlashing";
     case "go":
     case "stopIfAble":
-    case "stopFirst":
       return "allowed";
     case "unconfirmed":
       return "unconfirmed";
@@ -339,6 +398,10 @@ export function crossingVerdict(permission: Permission): CrossingVerdict {
       return unreachable(permission);
   }
 }
+
+/** Whether `verdict` books the crossing (either 信号無視). */
+export const isBooked = (verdict: CrossingVerdict): boolean =>
+  verdict === "booked" || verdict === "bookedFlashing";
 
 function unreachable(value: never): never {
   throw new Error(`unhandled permission ${String(value)}`);
@@ -368,11 +431,28 @@ export function stepAt(c: CompiledPlan, t: number): Step {
   return c.plan.steps[stepIndexAt(c, t)];
 }
 
-function stepIndexAt(c: CompiledPlan, t: number): number {
+/** The index of the step showing `t` seconds into the cycle (0 ≤ t < cycle). */
+export function stepIndexAt(c: CompiledPlan, t: number): number {
   const { starts } = c;
   let i = starts.length - 1;
   while (i > 0 && starts[i] > t) i--;
   return i;
+}
+
+/**
+ * How a controller runs its plan in time, whatever drives it (the clock, a push button, the day's
+ * windows): the step showing now and a moment ago, a walker's press for walker group `group`, and
+ * whether a press for it waits (the box's おまちください lamp). TrafficControl holds one per
+ * controller and reads nothing else of it.
+ */
+export interface PlanRun {
+  /** The step showing at `now` (moves the run on: call with a clock that only goes forward). */
+  stepAt(now: number): Step;
+  /** The step that showed `agoS` before `now`, from what was run (the violation check's grace). */
+  stepBefore(now: number, agoS: number): Step;
+  /** A press for `group`'s walk at `now`; true when that made a new call. */
+  call(group: GroupId, now: number): boolean;
+  isWaiting(group: GroupId, now: number): boolean;
 }
 
 /**
@@ -382,7 +462,7 @@ function stepIndexAt(c: CompiledPlan, t: number): number {
  * run, which starts once the rest has lasted its `s` (the vehicles' shortest green).
  * The clock is TrafficControl's seconds; going back (the replay rewinds it) drops the run.
  */
-export class OnDemandRun {
+export class OnDemandRun implements PlanRun {
   private restSince: number;
   private runStart: number | null = null;
   private lastRunStart: number | null = null;
@@ -405,8 +485,11 @@ export class OnDemandRun {
     return this.calledAt !== null;
   }
 
-  /** A walker pressed the button at `now`. True when that registered a new call. */
-  call(now: number): boolean {
+  /**
+   * A walker pressed the button at `now`. True when that registered a new call. The run has one
+   * walk, so the group does not matter.
+   */
+  call(_group: GroupId, now: number): boolean {
     this.advance(now);
     const isAlreadyCalled = this.calledAt !== null;
     if (isAlreadyCalled || this.isWalkAhead(now)) return false;
@@ -416,7 +499,7 @@ export class OnDemandRun {
   }
 
   /** Whether the box's おまちください lamp shows at `now`: called, and the walk not yet begun. */
-  isWaiting(now: number): boolean {
+  isWaiting(_group: GroupId, now: number): boolean {
     this.advance(now);
     if (this.calledAt !== null) return true;
     const isWalkShowing = Object.values(this.stepShown(now).ped).some((p) => p !== "stop");
@@ -469,6 +552,208 @@ export class OnDemandRun {
     this.runStart = now;
     this.calledAt = null;
   }
+}
+
+/** Walks of one walker group in cycle time: [start, start + length), which may run past the cycle. */
+type Walk = { start: number; length: number };
+
+/** Each walker group's walks (runs of go and flash) in one cycle of `c`, wrapping round its end. */
+function walksOf(c: CompiledPlan, group: GroupId): Walk[] {
+  const steps = c.plan.steps;
+  const n = steps.length;
+  const isWalking = (i: number) => isWalkingIn(steps[((i % n) + n) % n], group);
+  const walks: Walk[] = [];
+  for (let i = 0; i < n; i++) {
+    const isStart = isWalking(i) && !isWalking(i - 1);
+    if (!isStart) continue;
+    let length = 0;
+    for (let k = 0; k < n && isWalking(i + k); k++) length += steps[(i + k) % n].s;
+    walks.push({ start: c.starts[i], length });
+  }
+  return walks;
+}
+
+/**
+ * The 押ボタン of a junction (T4) on a fixed cycle: the vehicles' steps run as ever, and the walks
+ * of the plan's `onCall` walkers show only when someone pressed the button before that walk began
+ * (uncalled, the walk lamps stay at red through it). A press during a walk that is showing red, or
+ * after the walk, is for the next one. The clock is TrafficControl's seconds plus the controller's
+ * offset; going back (the replay) drops the calls.
+ * Why not OnDemandRun (the 単路 push-button): at a junction the crossing road's vehicles need their
+ * green whether anyone walks or not, and the game has no vehicle detectors to call it.
+ */
+export class WalkCalls {
+  private readonly walks: Map<GroupId, Walk[]>;
+  /** For each group, the start (seconds + offset) of the walk its call is for. */
+  private readonly called = new Map<GroupId, number>();
+  private readonly masked = new Map<Step, Map<string, Step>>();
+  private last = -Infinity;
+
+  constructor(
+    readonly compiled: CompiledPlan,
+    readonly offset: number,
+  ) {
+    this.walks = new Map(compiled.plan.onCall.map((g) => [g, walksOf(compiled, g)]));
+  }
+
+  /** A walker pressed the button for `group` at `seconds`. True when that made a new call. */
+  call(group: GroupId, seconds: number): boolean {
+    const u = this.clock(seconds);
+    const walks = this.walks.get(group);
+    if (!walks) return false;
+    const showing = this.walkAt(walks, u);
+    const isServing = showing !== null && this.called.get(group) === showing;
+    if (isServing) return false;
+    const next = this.nextWalk(walks, u);
+    if (next === null || this.called.get(group) === next) return false;
+    this.called.set(group, next);
+    return true;
+  }
+
+  /** Whether a call for `group` waits for its walk (the box's おまちください lamp). */
+  isWaiting(group: GroupId, seconds: number): boolean {
+    const target = this.called.get(group);
+    return target !== undefined && this.clock(seconds) < target;
+  }
+
+  /** `step` (showing at `seconds`) with the uncalled walks at red. */
+  mask(step: Step, seconds: number): Step {
+    const u = this.clock(seconds);
+    const stopped: GroupId[] = [];
+    for (const [g, walks] of this.walks) {
+      if (!isWalkingIn(step, g)) continue;
+      const showing = this.walkAt(walks, u);
+      const isCalled = showing !== null && this.called.get(g) === showing;
+      if (!isCalled) stopped.push(g);
+    }
+    if (stopped.length === 0) return step;
+    const key = stopped.join();
+    const byKey = this.masked.get(step) ?? new Map<string, Step>();
+    this.masked.set(step, byKey);
+    const hit = byKey.get(key);
+    if (hit) return hit;
+    const out: Step = {
+      ...step,
+      ped: { ...step.ped, ...Object.fromEntries(stopped.map((g) => [g, "stop"])) },
+    };
+    byKey.set(key, out);
+    return out;
+  }
+
+  private clock(seconds: number): number {
+    const u = seconds + this.offset;
+    const isRewound = u < this.last - 1;
+    if (isRewound) this.called.clear();
+    this.last = u;
+    // A served call is spent once its walk is over.
+    for (const [g, target] of this.called) {
+      const walk = this.walks.get(g)?.find((w) => this.isSameWalk(w, target));
+      const isOver = walk !== undefined && u >= target + walk.length;
+      if (isOver) this.called.delete(g);
+    }
+    return u;
+  }
+
+  private isSameWalk(w: Walk, target: number): boolean {
+    const cycle = this.compiled.cycle;
+    const r = (((target - w.start) % cycle) + cycle) % cycle;
+    return Math.abs(r) < 1e-6 || Math.abs(r - cycle) < 1e-6;
+  }
+
+  /** The start of the walk showing at `u`, or null. */
+  private walkAt(walks: readonly Walk[], u: number): number | null {
+    const cycle = this.compiled.cycle;
+    const k = Math.floor(u / cycle);
+    for (const w of walks)
+      for (const kk of [k, k - 1]) {
+        const start = kk * cycle + w.start;
+        if (u >= start && u < start + w.length) return start;
+      }
+    return null;
+  }
+
+  /** The start of the first walk after `u`. */
+  private nextWalk(walks: readonly Walk[], u: number): number | null {
+    const cycle = this.compiled.cycle;
+    const k = Math.floor(u / cycle);
+    let best: number | null = null;
+    for (const w of walks)
+      for (const kk of [k, k + 1]) {
+        const start = kk * cycle + w.start;
+        const isBetter = start > u && (best === null || start < best);
+        if (isBetter) best = start;
+      }
+    return best;
+  }
+}
+
+/**
+ * Whether `t` seconds into `c`'s cycle is a moment the controller may change plans (T4, 夜間点滅・
+ * 夜間の押ボタン): every vehicle group at 赤 with no arrow, no walker walking, and the all-red has
+ * already lasted MIN_ALL_RED_S. From there a flash, a walk or a green may follow and the clearance
+ * the safety checks ask between crossing groups is already behind.
+ */
+export function isChangeMoment(c: CompiledPlan, t: number): boolean {
+  const i = stepIndexAt(c, t);
+  const st = c.plan.steps[i];
+  const isAllRed =
+    Object.values(st.main).every((m) => m === "R") && Object.values(st.arrows).every((a) => a.length === 0);
+  const isNobodyWalking = Object.keys(st.ped).every((p) => !isWalkingIn(st, p));
+  return isAllRed && isNobodyWalking && t - c.starts[i] >= MIN_ALL_RED_S;
+}
+
+/**
+ * Seconds of walk (青 and its flash) left for walker group `group` at `t` into `c`'s cycle; 0 when
+ * it is not walking. The diagonal of a scramble is set out on only when this covers it.
+ */
+export function walkLeftS(c: CompiledPlan, group: GroupId, t: number): number {
+  const steps = c.plan.steps;
+  const i = stepIndexAt(c, t);
+  if (!isWalkingIn(steps[i], group)) return 0;
+  let left = c.starts[i] + steps[i].s - t;
+  for (let k = 1; k < steps.length && isWalkingIn(steps[(i + k) % steps.length], group); k++)
+    left += steps[(i + k) % steps.length].s;
+  return left;
+}
+
+/** The way out of a flash (T4): each 黄の点滅 to 黄 for `yellowS`, each 赤の点滅 to 赤, then all 赤. */
+export const FLASH_EXIT = { yellowS: 3, allRedS: 2 } as const;
+
+/**
+ * The steps a controller shows between `flash` (a nightFlash plan) and its day plan's first step:
+ * 黄の点滅 → 黄 (施行令第3条第2項 青→黄→赤 is about the steady lamps; a group that was let go with care
+ * is told to stop by the yellow, as a 青 would be), 赤の点滅 → 赤, then an all-red; walk lamps from
+ * dark to red. Not parsed as a plan of its own: alone, 黄→赤 looping back to 黄 breaks the order,
+ * which only holds once it runs into the day plan's 青 (tests/signalT4.test.ts checks the whole run).
+ */
+export function flashExit(flash: SignalPlan, t: typeof FLASH_EXIT = FLASH_EXIT): CompiledPlan {
+  const main = flash.steps[0].main;
+  const stopped = Object.fromEntries(Object.keys(flash.walkers).map((p) => [p, "stop"])) as Record<
+    string,
+    PedAspect
+  >;
+  const yellow = Object.fromEntries(
+    Object.entries(main).map(([g, m]) => [g, m === "FY" ? "Y" : "R"]),
+  ) as Record<string, MainAspect>;
+  const red = Object.fromEntries(Object.keys(main).map((g) => [g, "R"])) as Record<string, MainAspect>;
+  return compilePlan({
+    ...flash,
+    template: "flashExit",
+    steps: [
+      { s: t.yellowS, main: yellow, arrows: {}, ped: stopped },
+      { s: t.allRedS, main: red, arrows: {}, ped: stopped },
+    ],
+  });
+}
+
+/**
+ * Whether `minute` (after midnight) is inside `window` ([from, to) minutes; a window with `to`
+ * before `from` runs past midnight, 22:00–06:00).
+ */
+export function isInWindow(minute: number, window: readonly [number, number]): boolean {
+  const [from, to] = window;
+  const m = ((minute % 1440) + 1440) % 1440;
+  return from <= to ? m >= from && m < to : m >= from || m < to;
 }
 
 // ---------- templates ----------
@@ -613,4 +898,160 @@ export function crossingFixed(source: PlanSource, t: CrossingTiming = CROSSING_T
     walkers: { p: { across: "v" } },
     steps: crossingSteps(t),
   });
+}
+
+// ---------- T4: 歩車分離・時差式・点滅・交差点の押ボタン ----------
+
+/**
+ * 歩車分離 (scramble) timing (seconds): the two vehicle phases as twoPhase's, then every walker at
+ * once — 青 `walk`, its flash `pedFlash` and a clearance all-red before the vehicles' 青. Assumed:
+ * no Tokyo figures were read. 青 and flash together (30 s) take a walker at 1.3 m/s 39 m; a longer
+ * diagonal is set out on only while the walk left allows it (sidewalks.ts, walkLeftS).
+ */
+export const SCRAMBLE_TIMING = {
+  green: [20, 15],
+  yellow: 3,
+  allRed: 2,
+  walk: 22,
+  pedFlash: 8,
+  clearance: 3,
+} as const;
+export type ScrambleTiming = {
+  green: readonly [number, number];
+  yellow: number;
+  allRed: number;
+  walk: number;
+  pedFlash: number;
+  clearance: number;
+};
+
+/** The diagonal walkers of a scramble plan: they cross both roads (歩車分離's 斜め横断). */
+export const DIAGONAL_WALKERS = "x";
+
+/**
+ * 歩車分離 (スクランブル): the vehicles of a and of b each in turn with every walker at red, then all
+ * vehicles at red and every walker — along either road and on the diagonal — at 青, flashing, red.
+ * OSM crossing:scramble=yes (crossing_ref=pedestrian_scramble) chooses it.
+ */
+export function scramble(source: PlanSource, t: ScrambleTiming = SCRAMBLE_TIMING): SignalPlan {
+  const stopped = { a: "stop", b: "stop", [DIAGONAL_WALKERS]: "stop" } as Record<string, PedAspect>;
+  const all = (p: PedAspect) => ({ a: p, b: p, [DIAGONAL_WALKERS]: p }) as Record<string, PedAspect>;
+  const step = (s: number, a: MainAspect, b: MainAspect, ped: Record<string, PedAspect>): Step => ({
+    s,
+    main: { a, b },
+    arrows: {},
+    ped,
+  });
+  return SignalPlanSchema.parse({
+    template: "scramble",
+    source,
+    conflicts: [["a", "b"]],
+    walkers: { ...TWO_PHASE_WALKERS, [DIAGONAL_WALKERS]: { across: ["a", "b"], diagonal: true } },
+    steps: [
+      step(t.green[0], "G", "R", stopped),
+      step(t.yellow, "Y", "R", stopped),
+      step(t.allRed, "R", "R", stopped),
+      step(t.green[1], "R", "G", stopped),
+      step(t.yellow, "R", "Y", stopped),
+      step(t.allRed, "R", "R", stopped),
+      step(t.walk, "R", "R", all("go")),
+      step(t.pedFlash, "R", "R", all("flash")),
+      step(t.clearance, "R", "R", stopped),
+    ],
+  });
+}
+
+/**
+ * 時差式 timing (seconds): both directions of the main road at 青 for `green[0]` (the walkers along it
+ * flash for its last `pedFlash`), then the direction that ends first goes 黄 → 赤 while the other
+ * keeps 青 for `lag` more (its right-turners clear with the oncoming stopped), then 黄 → 全赤 and the
+ * crossing road's phase as twoPhase's. Assumed, like every time here.
+ */
+export const STAGGERED_TIMING = { green: [20, 15], yellow: 3, allRed: 2, pedFlash: 5, lag: 6 } as const;
+export type StaggeredTiming = TwoPhaseTiming & { lag: number };
+
+/** Group ids of a 時差式 plan: the direction whose 青 ends later, the one that ends first, the crossing road. */
+export const STAGGERED_GROUPS = { later: "a", first: "c", crossing: "b" } as const;
+
+/**
+ * 時差式: the two directions of one road start 青 together and end apart (青の終わりがずれる). The
+ * direction that keeps 青 has its right-turners cross with the oncoming at 赤 — never under an arrow
+ * while the oncoming moves (safetyIssues, `opposing`). A 補助標識「時差式」 hangs with the heads of
+ * that road (trafficControl.ts) because the driver who sees 黄 cannot see that the oncoming still
+ * has 青. Walkers along the road walk only while both directions are at 青.
+ */
+export function staggered(source: PlanSource, t: StaggeredTiming = STAGGERED_TIMING): SignalPlan {
+  const { later: a, first: c, crossing: b } = STAGGERED_GROUPS;
+  const stopped = { a: "stop", b: "stop" } as Record<string, PedAspect>;
+  const step = (s: number, main: [MainAspect, MainAspect, MainAspect], ped = stopped): Step => ({
+    s,
+    main: { [a]: main[0], [c]: main[1], [b]: main[2] },
+    arrows: {},
+    ped,
+  });
+  return SignalPlanSchema.parse({
+    template: "staggered",
+    source,
+    conflicts: [
+      [a, b],
+      [c, b],
+    ],
+    opposing: [[a, c]],
+    walkers: { a: { across: b, alongside: a }, b: { across: [a, c], alongside: b } },
+    steps: [
+      step(t.green[0] - t.pedFlash, ["G", "G", "R"], { ...stopped, a: "go" }),
+      step(t.pedFlash, ["G", "G", "R"], { ...stopped, a: "flash" }),
+      step(t.yellow, ["G", "Y", "R"]),
+      step(t.lag, ["G", "R", "R"]),
+      step(t.yellow, ["Y", "R", "R"]),
+      step(t.allRed, ["R", "R", "R"]),
+      step(t.green[1] - t.pedFlash, ["R", "R", "G"], { ...stopped, b: "go" }),
+      step(t.pedFlash, ["R", "R", "G"], { ...stopped, b: "flash" }),
+      step(t.yellow, ["R", "R", "Y"]),
+      step(t.allRed, ["R", "R", "R"]),
+    ],
+  });
+}
+
+/** One flashing lamp: 黄色の灯火の点滅 or 赤色の灯火の点滅. */
+export type FlashAspect = "FY" | "FR";
+
+/**
+ * 点滅 (flashing operation) for a controller whose normal plan is `day`: one long step with each
+ * group's lamp flashing as `flashing` says and every walk lamp dark (walkers then read the vehicle
+ * lamps, 施行令第2条). The groups, conflicts and walkers are `day`'s, so the controller's heads and
+ * crosswalks keep their groups. Two crossing groups may not both flash yellow (safetyIssues: both
+ * would be "go" — 他の交通に注意して進行 — with nobody told to stop first).
+ */
+export function nightFlash(
+  day: SignalPlan,
+  flashing: Record<GroupId, FlashAspect>,
+  source: PlanSource,
+): SignalPlan {
+  const off = Object.fromEntries(Object.keys(day.walkers).map((p) => [p, "off"])) as Record<
+    string,
+    PedAspect
+  >;
+  // Every group of the day plan flashes: one the caller did not name, red (the safe side).
+  const main = Object.fromEntries(Object.keys(day.steps[0].main).map((g) => [g, flashing[g] ?? "FR"]));
+  return SignalPlanSchema.parse({
+    template: "nightFlash",
+    source,
+    conflicts: day.conflicts,
+    opposing: day.opposing,
+    walkers: day.walkers,
+    steps: [{ s: 60, main, arrows: {}, ped: off }],
+  });
+}
+
+/**
+ * `plan` with a 押ボタン for every walker group that walks in it (a junction's push-button walks,
+ * T4): the walks show only when called (WalkCalls). Why every group, not the crosswalk OSM tagged:
+ * the button nodes lie on one or two of a junction's crosswalks, but the game's crosswalks are
+ * JARTIC's and the match of each node to a crosswalk end was not built; one box per end, all
+ * called alike, is the simpler wrong.
+ */
+export function withWalkButtons(plan: SignalPlan, source: PlanSource): SignalPlan {
+  const walking = Object.keys(plan.walkers).filter((p) => plan.steps.some((st) => isWalkingIn(st, p)));
+  return SignalPlanSchema.parse({ ...plan, template: `${plan.template}+button`, source, onCall: walking });
 }

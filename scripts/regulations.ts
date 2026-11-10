@@ -426,7 +426,18 @@ async function buildOsm(): Promise<OsmTiles> {
   const signals = new Map<string, SignalTile>();
   const junctions = new Map<string, JunctionTile>();
   const signalNodes = readSignalNodes(file, inBbox);
-  const signalCounts = { kept: 0, midBlock: 0, pushButton: 0, sound: 0, crossingOnly: 0 };
+  const signalCounts = {
+    kept: 0,
+    midBlock: 0,
+    pushButton: 0,
+    sound: 0,
+    crossingOnly: 0,
+    // T4 (osmTags.ts phaseOf): 歩車分離, 夜間の押ボタン, 点滅, 時差式.
+    scramble: 0,
+    buttonNight: 0,
+    flash: 0,
+    staggered: 0,
+  };
   for (const s of signalNodes) {
     if (!isKept(s)) continue;
     const n = s.node;
@@ -437,6 +448,11 @@ async function buildOsm(): Promise<OsmTiles> {
     if (isMidBlock && s.facts.button === true) signalCounts.pushButton++;
     if (s.facts.sound !== null) signalCounts.sound++;
     if (!s.facts.isHighwaySignal) signalCounts.crossingOnly++;
+    const phase = s.facts.phase;
+    if (phase?.scramble) signalCounts.scramble++;
+    if (phase?.buttonNight) signalCounts.buttonNight++;
+    if (phase?.flash) signalCounts.flash++;
+    if (phase?.staggered) signalCounts.staggered++;
     // 交差点名: OSM puts the name of a signalled junction on its signal node.
     const name = n.tags.name;
     if (name && s.facts.isHighwaySignal)

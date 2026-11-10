@@ -375,6 +375,7 @@ export const zh: Messages = {
   // Violations, laws, sanctions, tickets (traffic.ts, sanctions.ts, violationReview.ts, drivingTips.ts, ticketForm.ts, src/i18n/law.ts)
   // 違反名（traffic.ts の label と日本語が一致するもの。記録は日本語のまま保存し、表示で訳す）
   "violation.label.signal": "闯红灯",
+  "violation.label.signalFlashing": "红灯闪烁时未停车",
   "violation.label.stopSign": "未在停车让行处停车",
   "violation.label.noEntry": "单行道逆行",
   "violation.label.turnBan": "违反指定行驶方向（禁止转向）",
