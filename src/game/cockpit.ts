@@ -258,6 +258,17 @@ export class Cockpit {
   private eyeBase: Vector3 | null = null;
   private seat = { up: 0, back: 0 };
 
+  /**
+   * The driver's eye in the world (the DriverEye node with the seat's adjustment), whether or not
+   * the cockpit view is on: the sign faces' retroreflection is seen from it (world/signFaces.ts).
+   * Null before the model is in.
+   */
+  driverEye(target: Vector3): Vector3 | null {
+    if (!this.eye) return null;
+    this.eye.updateWorldMatrix(true, false);
+    return target.setFromMatrixPosition(this.eye.matrixWorld);
+  }
+
   /** Camera at the driver's eye, looking ahead (plus a look-aside yaw and a look up / down). */
   placeCamera(camera: PerspectiveCamera, lookYaw: number, lookPitch = 0): void {
     if (!this.eye) return;

@@ -73,6 +73,23 @@ export const StateSchema = z.strictObject({
   signalStep: z
     .union([z.number().int().nonnegative(), z.enum(["green", "yellow", "red", "arrow"])])
     .optional(),
+  headlamps: z
+    .strictObject({
+      /** ロービーム (すれ違い用) or ハイビーム (走行用). */
+      beam: z.enum(["low", "high"]),
+      /**
+       * Where the player's car stands, lamps lit, facing the target: m from the target along its
+       * facing, turned by `angleDeg`, `lateralM` to the right. Not given: right under the view's eye
+       * (the driver's own lamps). Given apart from the eye, the plate is lit from where the eye is
+       * not: a large observation angle (a passer-by's photo, a mirror).
+       */
+      distanceM: z.number().positive().optional(),
+      angleDeg: z.number().min(-180).max(180).optional(),
+      lateralM: z.number().optional(),
+      /** Degrees the car is turned left (+) from facing the target: the plate out of the beam. */
+      turnDeg: z.number().min(-180).max(180).default(0),
+    })
+    .optional(),
 });
 export type ViewState = z.infer<typeof StateSchema>;
 
@@ -164,6 +181,13 @@ export const ViewSchema = z
     const isSignalTarget = v.target !== undefined && "signal" in v.target;
     if (isSignalHeld && !isSignalTarget)
       ctx.addIssue({ code: "custom", message: `view ${v.id}: state.signalStep needs a signal target` });
+    const isLampLit = v.state?.headlamps !== undefined;
+    const isFacingView = v.camera !== "overhead" && v.camera !== "free" && v.target !== undefined;
+    if (isLampLit && !isFacingView)
+      ctx.addIssue({
+        code: "custom",
+        message: `view ${v.id}: state.headlamps needs a target in front of the eye`,
+      });
   });
 export type View = z.infer<typeof ViewSchema>;
 

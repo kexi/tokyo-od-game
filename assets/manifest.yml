@@ -561,6 +561,8 @@ assets:
     purpose: >-
       別表第一の番号ごとの道路標識の図柄 345 枚と、ゲームが通行禁止の標識の下に吊る補助標識 502 日・時間の図柄 388 枚
       （502_h<文言のハッシュ>.png、16 色のパレット PNG）。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-registry）。
+      G3 から、置いた図柄だけを配列テクスチャの層（256 px、90 cm の板は 512 px）に縮めて載せ、SignFaceMaterial が層を選ぶ
+      （src/world/signFaces.ts）。
     kind: texture
     files: [assets/signs/textures/*.png]
     generator: { script: scripts/textures/sign_textures.py, recipe: make-sign-textures }

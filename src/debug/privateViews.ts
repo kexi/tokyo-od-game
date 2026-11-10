@@ -14,7 +14,7 @@ import { InstancedMesh, Matrix4, Vector3, type Object3D } from "three";
  */
 
 export const READ_FIELDS = {
-  /** world/signs.ts: TrafficSigns.debugPlates() (type PostDebug) and the face meshes' userData.key. */
+  /** world/signs.ts: TrafficSigns.debugPlates() (type PostDebug) and the face meshes' userData.faceKeys. */
   signs: {
     method: "debugPlates",
     item: ["pos", "travel", "plates", "auxOf", "hidden", "plateHeights"],
@@ -97,16 +97,23 @@ export function readLamps(control: unknown): Readable<LampView> | Unreadable {
 
 export type FaceInstance = { pos: Vector3; normal: Vector3 };
 
-/** Sign face instances drawn now, by artwork file: position and the plate's facing (its local +Z). */
+/**
+ * Sign face instances drawn now, by artwork file: position and the plate's facing (its local +Z).
+ * A face mesh holds one plate shape with any artwork (G3, SignFaceMaterial): `userData.faceKeys`
+ * names the artwork of each instance.
+ */
 export function faceInstances(children: readonly Object3D[]): Map<string, FaceInstance[]> {
   const byFile = new Map<string, FaceInstance[]>();
   const m = new Matrix4();
   for (const o of children) {
-    const key: unknown = o.userData.key;
-    const isFace = o instanceof InstancedMesh && typeof key === "string";
+    const keys: unknown = o.userData.faceKeys;
+    const isFace = o instanceof InstancedMesh && Array.isArray(keys);
     if (!isFace) continue;
-    const list = byFile.get(key) ?? [];
     for (let i = 0; i < o.count; i++) {
+      const key: unknown = keys[i];
+      if (typeof key !== "string") continue;
+      const list = byFile.get(key) ?? [];
+      byFile.set(key, list);
       o.getMatrixAt(i, m);
       const z = new Vector3().setFromMatrixColumn(m, 2);
       // A hidden plate (its post inside a building) is scaled to nothing.
@@ -114,7 +121,6 @@ export function faceInstances(children: readonly Object3D[]): Map<string, FaceIn
       if (isHidden) continue;
       list.push({ pos: new Vector3().setFromMatrixPosition(m), normal: z.setY(0).normalize() });
     }
-    byFile.set(key, list);
   }
   return byFile;
 }

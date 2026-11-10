@@ -547,6 +547,34 @@ export const LOG_EVENTS = {
   }),
   /** A mount member role with no part in signs.glb (src/signs/mount.ts MEMBER_NODES), left undrawn; once per role. */
   sign_member_unloaded: warning({ role: z.string(), glb: z.string(), node: z.string() }),
+  /**
+   * src/world/signFaces.ts: an array texture of sign faces is on the GPU (its layer size, layer
+   * count, backend and MB with mipmaps).
+   */
+  sign_face_pool_ready: info({
+    pool: z.string(),
+    size: count,
+    layers: count,
+    backend: z.enum(["webgpu", "webgl2", "three-fallback"]),
+    mb: z.number(),
+  }),
+  /**
+   * src/render/layerUpload.ts: on WebGPU, three's internals were not what the direct layer upload
+   * expects (a three update), so the layers go through three's slow path (every layer's mips redrawn).
+   */
+  sign_face_upload_fallback: warning({ pool: z.string(), reason: z.string() }),
+  /**
+   * src/world/signFaces.ts: more faces wanted than a pool has layers; the furthest show the stand-in
+   * (layer 0). Once per wanted-set size.
+   */
+  sign_face_layers_short: warning({ pool: z.string(), wanted: count, capacity: count }),
+  /** src/world/signFaces.ts: a face's picture could not be decoded (it keeps the stand-in). */
+  sign_face_load_failed: warning({ pool: z.string(), key: z.string(), error: z.string() }),
+  /**
+   * src/world/signs.ts / guideSigns.ts: the faces of a rebuild by pool: distinct artworks wanted,
+   * layers in use, and the face meshes (draw calls) they need.
+   */
+  sign_faces_built: info({ pool: z.string(), artworks: count, meshes: count, instances: count }),
   osm_read: info({ nodes: count, ways: count, relations: count, coords: count }),
   destinations_written: info({
     file: z.string(),

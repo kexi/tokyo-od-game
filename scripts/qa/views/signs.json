@@ -1,12 +1,64 @@
 {
   "name": "signs",
-  "description": "道路標識の実地の視点（板の正面・斜め・運転席）。様式・寸法・取付・補助標識の順。全番号を並べた見本は just render-sign-review（Blender）で撮る。",
+  "description": "道路標識の実地の視点（板の正面・斜め・運転席）。様式・寸法・取付・補助標識の順と、G3 の面の材質（昼の見え・夜の前照灯の再帰反射・雨の夜）。運転席の視点は自車を目の下に置いて前照灯を点け（state.headlamps、車体は隠す）、観測角の大きい視点は前照灯を目から離して置く。全番号を並べた見本は just render-sign-review（Blender）で撮る。",
   "defaults": {
     "time": "day",
     "weather": "clear",
     "seed": 20261110,
-    "moment": "2026-11-10T11:00:00+09:00"
+    "moment": "2026-11-10T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-10T11:00:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-10T22:00:00+09:00"
+      },
+      {
+        "id": "rain-night",
+        "time": "night",
+        "weather": "rain",
+        "moment": "2026-11-10T22:00:00+09:00"
+      }
+    ],
+    "hide": ["traffic"]
   },
+  "metrics": [
+    {
+      "name": "day-centre-delta-e",
+      "max": 2.0,
+      "unit": "ΔE*ab",
+      "note": "前照灯を点けない昼のコマ（note-*）の中央 120 px 四方（対象の板）の平均色差の最大。G3 前の同じ視点（.qa/views/g3base/round-01）と比べる。前照灯を点けた昼のコマは撮影側の自車の置き方が G3 の間に直ったので比べない"
+    },
+    {
+      "name": "retro-low-30-night",
+      "min": 0.1,
+      "note": "夜・ロービーム 30 m の対象の板で、材質が白に足す再帰反射（各コマの JSON の scene.retroAtTarget.emission）。式の値（src/signs/retroreflection.ts の retroWhite。シェーダーが同じ式を写す）で、画素は plate-luminance-ratio が測る"
+    },
+    {
+      "name": "retro-observer-apart-night",
+      "max": 0.01,
+      "note": "前照灯から目が離れた視点（観測角が大きい）の再帰反射。式の値（src/signs/retroreflection.ts の retroWhite。シェーダーが同じ式を写す）で、画素は plate-luminance-ratio が測る"
+    },
+    {
+      "name": "retro-out-of-beam-night",
+      "max": 0.02,
+      "note": "板が前照灯の外にある視点の再帰反射。式の値（src/signs/retroreflection.ts の retroWhite。シェーダーが同じ式を写す）で、画素は plate-luminance-ratio が測る"
+    },
+    {
+      "name": "plate-luminance-ratio-night",
+      "min": 2.0,
+      "note": "画素から測る: 夜・ロービーム 30 m（lamps-low-30）と前照灯の外（lamps-out-of-beam）の、板の中心 5×5 px の相対輝度の比（各コマの JSON の projection.plateLuminance）。シェーダーが本当に前照灯の中の板を明るくしているか"
+    },
+    {
+      "name": "retro-chase-low-30-night",
+      "min": 0.1,
+      "note": "後方追従（6 m 後ろ・2.6 m 上）でも運転者の目から測った再帰反射（式の値）。追従カメラの位置で測ると 0.001 になる"
+    }
+  ],
   "sessions": [
     {
       "id": "marunouchi-note",
@@ -23,7 +75,8 @@
           "fov": 35,
           "expect": {
             "plate": "本標識の下に補助標識",
-            "order": "補助標識は本標識の直下（設置基準）"
+            "order": "補助標識は本標識の直下（設置基準）",
+            "night": "前照灯は点けない（車は隠す）: 板は下駄の弱い光だけで暗い"
           }
         },
         {
@@ -52,6 +105,182 @@
           "fov": 40,
           "expect": {
             "readability": "運転席から 30 m で文字が読める"
+          }
+        },
+        {
+          "id": "lamps-low-10",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 10,
+          "lateralM": 2.5,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "night": "ロービーム 10 m: 観測角が 5° を超え、再帰反射は弱い（前照灯の拡散光で照らされる）"
+          }
+        },
+        {
+          "id": "lamps-low-30",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "night": "ロービーム 30 m: 板が光る（白は灰より明るく、白飛びしない）"
+          }
+        },
+        {
+          "id": "lamps-low-60",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 60,
+          "lateralM": 2.5,
+          "fov": 30,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "night": "ロービーム 60 m: 板が光る"
+          }
+        },
+        {
+          "id": "lamps-high-30",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "high"
+            }
+          },
+          "expect": {
+            "night": "ハイビーム 30 m: ロービームより明るく、白飛び・にじみなし"
+          }
+        },
+        {
+          "id": "lamps-oblique-30deg",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 30,
+          "angleDeg": 30,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "night": "斜め 30°: 入射角で正面より少し暗い"
+          }
+        },
+        {
+          "id": "lamps-oblique-60deg",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 30,
+          "angleDeg": 60,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "night": "斜め 60°: 入射角が表（40°まで）を越え、ほとんど返さない"
+          }
+        },
+        {
+          "id": "lamps-out-of-beam",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low",
+              "turnDeg": -45
+            }
+          },
+          "expect": {
+            "night": "車を右へ 45° 振り、板は前照灯の外: 光らない"
+          }
+        },
+        {
+          "id": "lamps-observer-apart",
+          "camera": "pedestrian",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 12,
+          "angleDeg": 45,
+          "fov": 35,
+          "state": {
+            "headlamps": {
+              "beam": "high",
+              "distanceM": 30,
+              "lateralM": 2.5
+            }
+          },
+          "expect": {
+            "night": "前照灯は正面 30 m（ハイビーム）、目は斜め 45°・12 m（通行人の写真・ミラー越しのように観測角が大きい）: 前照灯の拡散光は当たるが、再帰反射では光らない"
+          }
+        },
+        {
+          "id": "chase-lamps-low-30",
+          "camera": "chase",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "backM": 6,
+          "heightM": 2.6,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "night": "後方追従の夜: 再帰反射は運転者の目から測るので、運転席のロービーム 30 m と同じように板が光る（G3 前より暗くならない）。前照灯の外の標識（夜の下駄 0.05）が暗すぎないか"
           }
         }
       ]

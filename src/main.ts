@@ -116,6 +116,12 @@ import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
 import { SignalViolationCheck } from "./game/signalViolations";
 import { TrafficSigns, loadSignModels } from "./world/signs";
+import {
+  bindSignFaceRenderer,
+  debugSignFaces,
+  markPlayerHeadlamps,
+  updateSignLamps,
+} from "./world/signFaces";
 import { GuideSigns } from "./world/guideSigns";
 import { createHuman, disposeHuman, loadHumanModels } from "./world/human";
 import { loadFacadeTextures } from "./world/facade";
@@ -417,6 +423,8 @@ async function main(): Promise<void> {
     GRAPHICS.settings,
     QUALITY,
   );
+  // The sign faces' array textures are written on the GPU directly (world/signFaces.ts).
+  bindSignFaceRenderer(renderer);
   // The frame is drawn into one HDR target and tone-mapped once (render/frame.ts).
   const composer = new FrameComposer(renderer);
   const scene = new Scene();
@@ -486,6 +494,9 @@ async function main(): Promise<void> {
   drawShadowsOf(env.sun);
   const vehicle = new Vehicle(world);
   cockpit.attach(vehicle.object);
+  // Before any sign face is built: only these lamps lose the faces' glossy lobe (world/signFaces.ts).
+  markPlayerHeadlamps(vehicle.headlights);
+  const signEye = new Vector3();
   mirrorCharms.attach(vehicle.object, cockpit.root);
   const carNavi = new CarNavi();
   const blur = new MotionBlur();
@@ -2289,6 +2300,17 @@ async function main(): Promise<void> {
       drawPlain();
       return;
     }
+
+    // What the sign faces send back of the player's lamps, and the driver's eye the game camera
+    // sees them from (world/signFaces.ts). Before the replay's branch, which returns early.
+    updateSignLamps(vehicle.headlights, {
+      highBeam: controls.highBeam,
+      darkness: env.nightFactor,
+      wetness: env.wetness,
+      camera,
+      inCar: mode === "car",
+      driverEye: cockpit.driverEye(signEye),
+    });
 
     if (replay) {
       playReplay(dt);
@@ -5310,6 +5332,8 @@ async function main(): Promise<void> {
         water,
         buildings,
         vehicle,
+        // The light switch and beam (the review's state.headlamps sets them: scripts/qa/views.ts).
+        controls,
         audio,
         dem,
         field,
@@ -5361,6 +5385,8 @@ async function main(): Promise<void> {
           gameNow: () => env.now().getTime(),
           pursuit: debugPursuit,
           perf: debugPerf,
+          // The sign face pools (layers in use, MB) and the lamps the faces return (G3).
+          signFaces: debugSignFaces,
           // The last 2,000 log lines: logs.query({ event: /^pursuit_/ }), logs.chain("vio-…"), logs.jsonl().
           logs: recentLogs,
           camera: viewHooks.camera,
