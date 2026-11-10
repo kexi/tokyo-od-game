@@ -19,13 +19,14 @@ import {
 } from "../src/world/guidePlan";
 import { RoadGraph, type RoadLine, type Segment } from "../src/world/roads";
 import {
+  isDirectionSite,
   isUnderSignalArm,
   planRowSigns,
   printedKm,
   roadDistance,
   ROW_PLACEMENTS,
 } from "../src/world/guideRows";
-import { ROAD_DETOUR } from "../src/signs/boardAssumptions";
+import { DIRECTION_SITE, ROAD_DETOUR } from "../src/signs/boardAssumptions";
 
 const frame = new LocalFrame(35.68, 139.76, 40);
 const M_LAT = 1 / 110_950;
@@ -371,6 +372,16 @@ describe("105・106 at the same crossing (guideRows.ts)", () => {
     expect((direction?.before ?? Infinity) - stopToCentre).toBeLessThanOrEqual(
       ROW_PLACEMENTS["105"].maxBeforeM + 1,
     );
+  });
+
+  it("takes where a 105 stands from the one declared game rule, an assumption and not the 命令's", () => {
+    expect(ROW_PLACEMENTS["105"].where).toBe(DIRECTION_SITE.value);
+    expect(DIRECTION_SITE.verified).toBe(false);
+    const bare = { isGuide: true, hasJunctionBoard: false };
+    expect(isDirectionSite("without-108の2", bare)).toBe(true);
+    expect(isDirectionSite("without-108の2", { ...bare, hasJunctionBoard: true })).toBe(false);
+    expect(isDirectionSite("without-108の2", { ...bare, isGuide: false })).toBe(false);
+    expect(isDirectionSite("none", bare)).toBe(false);
   });
 
   it("keeps an overhead 105・106 out from under a signal arm over the same road", () => {

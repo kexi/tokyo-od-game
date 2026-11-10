@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BoxNode, Measure, TextBox } from "../src/signs/board/boxes";
 import {
   BoardContentSchema,
+  boardKey,
   boardNames,
   templateOf,
   type BoardContent,
@@ -14,7 +15,7 @@ import {
   letterHeight,
   romanHeight,
 } from "../src/signs/board/letters";
-import { layoutBoard, parseBoardContent } from "../src/signs/board/layout";
+import { keepValidBoards, layoutBoard, parseBoardContent } from "../src/signs/board/layout";
 import { LETTER_ENLARGEMENTS } from "../src/signs/boardStandards";
 import { boardPriority } from "../src/world/boardPriority";
 
@@ -150,6 +151,28 @@ describe("board content (zod)", () => {
     const four = { ...CONFIRM, rows: [...CONFIRM.rows, ...CONFIRM.rows] };
     expect(parseBoardContent(four).success).toBe(false);
     expect(parseBoardContent({ ...ENTRANCE, operator: "首都高速" }).success).toBe(false);
+  });
+
+  it("keys two equal contents to one face whatever order their properties were written in", () => {
+    const reordered = {
+      letter: JUNCTION.letter,
+      distance: JUNCTION.distance,
+      arms: JUNCTION.arms.map(({ street, shields, names, angle }) => ({ street, shields, names, angle })),
+      kind: JUNCTION.kind,
+    } as BoardContent;
+    expect(boardKey(reordered)).toBe(boardKey(JUNCTION));
+    expect(boardKey({ ...JUNCTION, letter: 20 })).not.toBe(boardKey(JUNCTION));
+  });
+
+  it("stands only the boards that pass the schema and reports why the others fail", () => {
+    const reported: Array<{ kind: string; paths: string[] }> = [];
+    const kept = keepValidBoards(
+      [{ board: JUNCTION }, { board: { ...JUNCTION, arms: [] } }, { board: CONFIRM }],
+      (item, issues) => reported.push({ kind: item.board.kind, paths: issues.map((i) => i.path) }),
+    );
+    expect(kept.map((k) => k.board)).toEqual([JUNCTION, CONFIRM]);
+    expect(kept[0].board).toBe(JUNCTION); // kept as it was, not zod's copy
+    expect(reported).toEqual([{ kind: JUNCTION.kind, paths: ["arms"] }]);
   });
 
   it("lists the places a board names in reading order", () => {

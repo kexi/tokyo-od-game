@@ -10,7 +10,7 @@ export const CONFIRM_AFTER: Assumption<readonly number[]> = {
   value: [80, 100, 120, 140, 160, 180, 200, 60],
   verified: false,
   reason:
-    "未確認。別表第一は「設置を必要とする地点」だけで距離を定めない。交差点を出て流れが落ち着いた所（交差点の先で、次の交差点の 108の2 の 55〜140 m と重なりにくい所）の目安",
+    "未確認。別表第一は「設置を必要とする地点」だけで距離を定めない。交差点を出て流れが落ち着いた所（交差点の先で、次の交差点の 108の2 を試す停止線の手前 35〜140 m と重なりにくい所）の目安",
 };
 
 /** 106-A: two boards for the same traffic stand at least this far apart, m. */
@@ -27,6 +27,22 @@ export const ROAD_DETOUR: Assumption<number> = {
   verified: false,
   reason:
     "未確認。道路網の外は直線距離しか分からない。23 区の幹線の道のり／直線の比の目安（板の km は整数に丸めるので、1 割の差は数 km 先で 1 変わる程度）",
+};
+
+/**
+ * 105: at which guide junctions it stands — the one switch of the rule (src/world/guideRows.ts
+ * reads ROW_PLACEMENTS["105"].where and nothing else).
+ * - "without-108の2": a guide junction whose approach got no 108の2 from the 108 planner (it tries
+ *   35〜140 m before the stop line, src/world/guidePlan.ts BACK_JUNCTION).
+ * - "none": no 105 at all.
+ */
+export const DIRECTION_SITE: Assumption<"without-108の2" | "none"> = {
+  value: "without-108の2",
+  verified: false,
+  reason:
+    "ゲームの規則で、法令の根拠は無い。別表第一の 105 は「交差点の手前 30 m 以内」、108の2-A・B は「交差点の手前 150 m 以内」で下限が無く、" +
+    "108の2 が置けないときに 105 を立てるという定めは無い。案内交差点に方面の板が 1 枚も無いのを避けるための補い。" +
+    "実物の 23 区でこの切り替えが行われているかは確かめていない",
 };
 
 /** 105: metres before the stop line it is tried at (別表第一: 交差点の手前 30 m 以内). */

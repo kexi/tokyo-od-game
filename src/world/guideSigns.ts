@@ -18,7 +18,8 @@ import { log, warn } from "../log";
 import { PROP_GROUPS } from "../physics/groups";
 import { drawBoard, layoutGuideBoard, loadGuideFonts } from "./guideArt";
 import type { BoardLayout } from "../signs/board/boxes";
-import { boardNames, type BoardContent } from "../signs/board/content";
+import { boardKey, boardNames, type BoardContent } from "../signs/board/content";
+import { keepValidBoards } from "../signs/board/layout";
 import { BoardFacePool, TEXTURE_PX, type BoardFace } from "./boardFacePool";
 import { planRowSteps, type SignalArm } from "./guideRows";
 import {
@@ -363,7 +364,7 @@ export class GuideSigns {
       draw: (i: number) => drawBoard(layoutGuideBoard(this.plans[i].board), TEXTURE_PX),
       layout: (i: number) => layoutGuideBoard(this.plans[i].board),
       usage: pool.usage(),
-      stats: { ...pool.stats },
+      stats: { ...pool.stats, stepMs: [...pool.stats.stepMs] },
     };
   }
 
@@ -403,7 +404,8 @@ export class GuideSigns {
   /**
    * Drawn faces for the most wanted boards, the far face for the rest; and, every 2 s, signs near
    * the player that stand inside a building (GSI 幅員 wider than the street) are hidden. The pool
-   * uploads a couple of faces a frame and draws canvases in 4 ms FrameWork slices; the boards are
+   * uploads a couple of faces a frame and draws a board per FrameWork step, yielding once 4 ms are
+   * spent (one board's step can take longer: boardFacePool.ts); the boards are
    * asked for every 500 ms, weighed as seen from `eye` (the camera: what is on the screen; the
    * building check stays round `focus`, the player).
    */
@@ -490,6 +492,11 @@ export class GuideSigns {
       reported.add(role);
       warn("sign_member_unloaded", { role, glb: MEMBER_NODES[role].glb, node: MEMBER_NODES[role].node });
     };
+    // The boundary between the planners and the boards: a content that fails the schema is not
+    // stood up (and the log says why), so the layout and the drawing only see checked contents.
+    this.plans = keepValidBoards(this.plans, (plan, issues) =>
+      warn("guide_board_invalid", { kind: String(plan.board.kind), issues }),
+    );
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     this.signs = this.plans.map((plan, index) => {
       const layout = layoutGuideBoard(plan.board);
@@ -501,7 +508,7 @@ export class GuideSigns {
       const sign: Sign = {
         plan,
         layout,
-        key: JSON.stringify(plan.board),
+        key: boardKey(plan.board),
         board: new Matrix4(),
         feet: [plan.pos.clone()],
         refs: [],

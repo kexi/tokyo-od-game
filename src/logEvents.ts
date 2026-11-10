@@ -187,6 +187,14 @@ export const LOG_EVENTS = {
   darkroom_grab_failed: failedWith(),
   guide_fonts_failed: failedWith(),
   guide_signs_load_failed: failedWith(),
+  /**
+   * src/world/guideSigns.ts: a planned 案内標識 whose content fails BoardContentSchema
+   * (src/signs/board/content.ts); it is not stood up.
+   */
+  guide_board_invalid: warning({
+    kind: z.string(),
+    issues: z.array(z.object({ path: z.string(), message: z.string() })),
+  }),
   landmarks_load_failed: failedWith(),
   landmark_model_failed: failedWith({ path: z.string() }),
   /** A landmark's deckLevels that do not match src/world/deckLevels.ts (the roads ignore them). */
@@ -725,7 +733,21 @@ export const LOG_EVENTS = {
   /** Every view of a table is shot; the contact sheet and the review template are written. */
   views_done: info({ viewTable: z.string(), round: count, shots: count, failed: count, outDir: z.string() }),
   /** scripts/qa/guideBoards.ts: one place's 案内標識 plans and drawn faces written. */
-  guide_boards_dumped: info({ place: z.string(), plans: count, durationMs: z.number() }),
+  guide_boards_dumped: info({
+    place: z.string(),
+    plans: count,
+    durationMs: z.number(),
+    /**
+     * The BoardFacePool's drawing steps while the place settled (G5 on): how many, the first two
+     * (the warm-up) and the rest's median and longest, ms; and FrameWork's longest slice. Absent
+     * before G5 and for the fixed boards.
+     */
+    steps: count.optional(),
+    warmupStepMs: z.array(z.number()).optional(),
+    steadyMedianStepMs: z.number().optional(),
+    steadyMaxStepMs: z.number().optional(),
+    maxSliceMs: z.number().optional(),
+  }),
   /** scripts/qa/guideBoards.ts: a place has no dump under the label compared against. */
   guide_boards_no_baseline: warning({ place: z.string(), against: z.string() }),
   /** scripts/qa/guideBoards.ts: placements and faces compared with an earlier label (changes: 108 series). */
