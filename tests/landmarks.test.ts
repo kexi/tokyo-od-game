@@ -162,10 +162,16 @@ describe("the footprints the buildings leave out and wall off (hiddenFootprints 
     expect(walledFootprints([bridge])).toEqual([]);
   });
 
-  it("keeps, for the existing entries, cutting and walling exactly those that hide a PLATEAU building", () => {
-    const hiding = entries.filter((e) => e.plateau?.some((p) => p.hide)).map((e) => e.footprint);
-    expect(hiddenFootprints(entries)).toEqual(hiding);
-    expect(walledFootprints(entries)).toEqual(hiding);
+  it("cuts and walls every shipped entry by the documented rule (hide → cut, solid ?? hide → wall, extras follow)", () => {
+    // Stated over the real landmarks.json so a new entry cannot slip past the contract; the fixtures
+    // above pin each shape (tower, Diet, east hotel, bridge) on its own.
+    const hides = (e: (typeof entries)[number]) => e.plateau?.some((p) => p.hide) ?? false;
+    const cut = entries.flatMap((e) => [...(hides(e) ? [e.footprint] : []), ...(e.extraFootprints ?? [])]);
+    const walled = entries.flatMap((e) =>
+      (e.solid ?? hides(e)) ? [e.footprint, ...(e.extraFootprints ?? [])] : [],
+    );
+    expect(hiddenFootprints(entries)).toEqual(cut);
+    expect(walledFootprints(entries)).toEqual(walled);
   });
 });
 

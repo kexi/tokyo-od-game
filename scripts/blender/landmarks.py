@@ -1263,7 +1263,9 @@ BUILDERS = {
 # Export, the landmarks.json entry and the preview renders stay here, so a module has no main() of its
 # own. Why not one script per module as before: each copied main() drifted (which nodes go in the near
 # file, where the entry lands in landmarks.json, how previews are lit). One module per line.
-LANDMARK_MODULES = []
+LANDMARK_MODULES = [
+    "tower_area",
+]
 
 # The landmarks whose near file also carries the far node (the game shows only nodes.near). Every
 # registered module's near file holds the near node alone. Why not all of them near-only now: these
