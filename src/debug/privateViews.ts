@@ -17,8 +17,10 @@ export const READ_FIELDS = {
   /** world/signs.ts: TrafficSigns.posts (type Post) and the face meshes' userData.key. */
   signs: {
     list: "posts",
-    item: ["pos", "travel", "plates", "notes", "hidden"],
+    item: ["pos", "travel", "plates", "auxOf", "hidden"],
     plate: ["id", "file", "parallel"],
+    /** src/signs/auxPlates.ts AuxPlate: a 補助標識 hung under a plate (G2). */
+    aux: ["sign", "lines"],
   },
   /** world/trafficControl.ts: the lamp meshes and their owners (the approach of each instance). */
   control: { lists: ["lamps", "lampOwners", "arrowLamps", "arrowOwners"], owner: ["approach"] },
@@ -30,10 +32,14 @@ export type Readable<T> = { ok: true; value: T };
 export type PostView = {
   pos: Vector3;
   travel: Vector3;
-  plates: Array<{ id: string; file: string; parallel?: boolean }>;
-  notes: string[];
+  plates: Array<{ id: string; file: string; parallel?: boolean; scale?: number }>;
+  /** The 補助標識 of each plate (same index as `plates`), drawn as faces right under it. */
+  auxOf: Array<Array<{ sign: string; lines: string[] }>>;
   hidden: boolean;
 };
+
+/** A post's 補助標識 as texts (their lines joined), all plates' together. */
+export const notesOf = (p: PostView): string[] => p.auxOf.flat().map((a) => a.lines.join("\n"));
 
 export type LampView = {
   lamps: InstancedMesh;
@@ -56,11 +62,17 @@ export function readPosts(signs: unknown): Readable<PostView[]> | Unreadable {
   if (posts.length === 0) return { ok: false, reason: "not-built", detail: "no sign posts yet" };
   const p = posts[0] as Record<string, unknown>;
   if (!isVec(p.pos) || !isVec(p.travel)) return renamed("Post.pos / Post.travel is not a vector");
-  if (!Array.isArray(p.plates) || !Array.isArray(p.notes) || typeof p.hidden !== "boolean")
-    return renamed("Post.plates / notes / hidden changed");
+  if (!Array.isArray(p.plates) || !Array.isArray(p.auxOf) || typeof p.hidden !== "boolean")
+    return renamed("Post.plates / auxOf / hidden changed");
   const plate = p.plates[0] as Record<string, unknown> | undefined;
   const isPlateOk = plate !== undefined && typeof plate.id === "string" && typeof plate.file === "string";
   if (!isPlateOk) return renamed("Post.plates[].id / file changed");
+  // The first 補助標識 anywhere stands for all (most posts have none).
+  const aux = (posts as Array<{ auxOf?: unknown }>)
+    .flatMap((x) => (Array.isArray(x.auxOf) ? (x.auxOf as unknown[]).flat() : []))
+    .at(0) as Record<string, unknown> | undefined;
+  const isAuxOk = aux === undefined || (typeof aux.sign === "string" && Array.isArray(aux.lines));
+  if (!isAuxOk) return renamed("Post.auxOf[][].sign / lines changed");
   return { ok: true, value: posts as PostView[] };
 }
 

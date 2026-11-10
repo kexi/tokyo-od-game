@@ -98,7 +98,7 @@ sources:
 
 ## private なフィールドの読み方（暫定）
 
-TrafficSigns の `posts`（Post の `pos`・`travel`・`plates`・`notes`・`hidden`、板の `id`・`file`）と TrafficControl の `lamps`・`lampOwners`・`arrowLamps`・`arrowOwners` は private。並行して作り替えている（G2・T3）ため、公開の口は足していない。`src/debug/privateViews.ts` が形を一つずつ確かめて読み、合わなければ `renamed`、空なら `not-built` を返す。TypeError が「対象が見つからない」に紛れることはない。読むフィールドの名前は `READ_FIELDS` に集め、`tests/viewHooks.test.ts` が signs.ts・trafficControl.ts・signs/game.ts の宣言にまだあることを確かめる。
+TrafficSigns の `posts`（Post の `pos`・`travel`・`plates`・`auxOf`・`hidden`、板の `id`・`file`・`scale`、補助標識の `sign`・`lines`。G2（#45）で `notes` の文字列から `auxOf` の描画済みの板に変わり、改名の検査がそれを捕まえた）と TrafficControl の `lamps`・`lampOwners`・`arrowLamps`・`arrowOwners` は private。並行して作り替えている（G2・T3）ため、公開の口は足していない。`src/debug/privateViews.ts` が形を一つずつ確かめて読み、合わなければ `renamed`、空なら `not-built` を返す。TypeError が「対象が見つからない」に紛れることはない。読むフィールドの名前は `READ_FIELDS` に集め、`tests/viewHooks.test.ts` が signs.ts・trafficControl.ts・signs/game.ts の宣言にまだあることを確かめる。
 
 # 各コマの JSON
 

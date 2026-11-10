@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   faceInstances,
   nearestInstance,
+  notesOf,
   READ_FIELDS,
   readLamps,
   readPosts,
@@ -23,6 +24,8 @@ describe("the private fields the review hooks read", () => {
     expect(signs).toMatch(/userData\.key = d\.file/);
     const design = /export type Design = \{([\s\S]*?)\n\};/.exec(source("src/signs/game.ts"))?.[1] ?? "";
     for (const f of READ_FIELDS.signs.plate) expect(design).toMatch(new RegExp(`\\n  ${f}\\??: `));
+    const aux = /export type AuxPlate = \{([^}]*)\}/.exec(source("src/signs/auxPlates.ts"))?.[1] ?? "";
+    for (const f of READ_FIELDS.signs.aux) expect(aux).toMatch(new RegExp(`\\b${f}: `));
   });
 
   it("are still declared in world/trafficControl.ts (the lamp meshes and their owners' approach)", () => {
@@ -36,13 +39,15 @@ describe("reading the sign posts", () => {
   const post = {
     pos: new Vector3(),
     travel: new Vector3(0, 0, 1),
-    plates: [{ id: "323", file: "323" }],
-    notes: [],
+    plates: [{ id: "325の4", file: "325-4", scale: 1 }],
+    auxOf: [[{ sign: "502", lines: ["土・日・休日", "12-17"] }]],
     hidden: false,
   };
 
-  it("reads posts of the expected shape", () => {
-    expect(readPosts({ posts: [post] })).toMatchObject({ ok: true });
+  it("reads posts of the expected shape, and a post's 補助標識 as texts", () => {
+    const read = readPosts({ posts: [post] });
+    expect(read).toMatchObject({ ok: true });
+    expect(read.ok && notesOf(read.value[0])).toEqual(["土・日・休日\n12-17"]);
   });
 
   it("says not-built while there are no posts yet", () => {
@@ -55,6 +60,12 @@ describe("reading the sign posts", () => {
       reason: "renamed",
     });
     expect(readPosts({ posts: [{ ...post, plates: [{ number: "323", file: "323" }] }] })).toMatchObject({
+      reason: "renamed",
+    });
+    // Before G2 the 補助標識 were Post.notes (strings); a reader of that shape must say so.
+    const { auxOf: _gone, ...old } = post;
+    expect(readPosts({ posts: [{ ...old, notes: ["12-17"] }] })).toMatchObject({ reason: "renamed" });
+    expect(readPosts({ posts: [{ ...post, auxOf: [[{ code: "502", text: "12-17" }]] }] })).toMatchObject({
       reason: "renamed",
     });
   });

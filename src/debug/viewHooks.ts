@@ -11,6 +11,7 @@ import {
   readLamps,
   readPosts,
   screenShare,
+  notesOf,
   type PostView,
 } from "./privateViews";
 
@@ -358,10 +359,10 @@ export function createViewHooks(deps: ViewHookDeps) {
     const from = q.near ?? plain(deps.carPosition());
     const isWanted = (p: PostView, id: string) => {
       const isIdOk = q.id === undefined || id === q.id;
-      const hasNote = (n: string) => p.notes.some((x) => x.includes(n));
+      const notes = notesOf(p);
+      const hasNote = (n: string) => notes.some((x) => x.includes(n));
       const isNoteOk =
-        q.note === undefined ||
-        (typeof q.note === "string" ? hasNote(q.note) : q.note === p.notes.length > 0);
+        q.note === undefined || (typeof q.note === "string" ? hasNote(q.note) : q.note === notes.length > 0);
       return isIdOk && isNoteOk && !p.hidden;
     };
     const found: ViewTarget[] = [];
@@ -372,13 +373,15 @@ export function createViewHooks(deps: ViewHookDeps) {
         const point =
           drawn?.pos ?? post.pos.clone().setY((deps.groundY(post.pos.x, post.pos.z) ?? 0) + 2.6 - level);
         const normal = drawn?.normal ?? post.travel.clone().negate();
+        // The plate's drawing scale by number (G2: 警戒 1.3 倍 …) widens its box.
+        const half = 0.45 * (plate.scale ?? 1);
         found.push({
           kind: "sign",
           id: plate.id,
           point: plain(point),
           normal: plain(normal),
-          size: 0.9,
-          box: boxAround(point, { x: 0.45, y: 0.45, z: 0.45 }),
+          size: 2 * half,
+          box: boxAround(point, { x: half, y: half, z: half }),
           geo: geoOf(point),
           distanceM: fromCar(point),
           isDrawn: drawn !== null,
@@ -386,7 +389,10 @@ export function createViewHooks(deps: ViewHookDeps) {
             file: plate.file,
             level,
             platesOnPost: post.plates.map((x) => x.id),
-            notes: post.notes,
+            // Every 補助標識 on the post, and the ones hung under this plate (別表第二 備考二(二)2).
+            notes: notesOf(post),
+            aux: (post.auxOf[level] ?? []).map((a) => ({ sign: a.sign, lines: a.lines })),
+            scale: plate.scale ?? 1,
             isParallel: plate.parallel === true,
             plateHeightM: round(point.y - (deps.groundY(point.x, point.z) ?? point.y)),
             travel: plain(post.travel),
