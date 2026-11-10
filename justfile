@@ -222,6 +222,10 @@ make-charm-models:
 make-guide-data:
     pnpm exec tsx scripts/guide-signs.ts
 
+# OSM の高速道路（motorway・motorway_link）を道路構造令の平面・縦断線形にコンパイルし public/data/expressway を書き出す（range は hamazakibashi か all、OSM は just fetch-regs のキャッシュ、標高は .cache/gsi-dem）
+make-expressway-data range="hamazakibashi":
+    pnpm exec tsx scripts/expressway.ts --range {{ range }}
+
 # ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just fetch-regs のキャッシュを使う）
 make-destinations:
     pnpm exec tsx scripts/destinations.ts

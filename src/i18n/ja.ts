@@ -1177,6 +1177,8 @@ export const ja = {
   "credits.gsi.vector":
     "道路の中心線・幅員と水域（川・運河・海）の形：出典 {vector}（道路の路面・白線・横断歩道の描画、AI 車両の走行、交通違反の判定、水面・護岸・橋の描画に加工して使用）。",
   "credits.gsi.live": "タイルはプレイ中にリアルタイムで読み込んでおり、本ゲームに同梱・再配布していません。",
+  "credits.gsi.expressway":
+    "高架道路の路面の高さ：地理院タイル（標高タイル（基盤地図情報数値標高モデル））を加工して作成。地表の標高を拘束条件に本ゲームが設計した推定値で、実際の路面高や測量成果ではありません。測点と橋脚の地表の標高（標高タイルを平滑化した値）も加工して含みます。",
   "credits.h.jartic": "交通規制（一方通行・規制速度・横断歩道・停止線・一時停止）",
   "credits.jartic.source":
     "出典：「交通規制情報」（公益財団法人日本道路交通情報センター）（{url}）（{used}に利用）を加工して作成。",
@@ -1201,6 +1203,9 @@ export const ja = {
     "信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。",
   "credits.h.guide": "案内標識（方面及び方向）",
   "credits.h.destinations": "目的地の一覧（駅・名所）",
+  "credits.h.expressway": "高架の自動車専用道路（都市高速）",
+  "credits.expressway.extract":
+    "Geofabrik の関東抽出（{geofabrik}）から自動車専用道路の中心線・車線数・路線記号・出入口名を取り出し、道路構造令の範囲で平面・縦断線形を設計し直して（data/expressway）描いています。線形・高さ・橋脚の位置はゲームの推定で、実際の構造とは異なります。",
   "credits.destinations.extract":
     "Geofabrik の関東抽出（{geofabrik}）から、23 区内の鉄道駅と wikidata の付いた名所を取り出し、目的地の一覧（data/destinations.json）にしています。",
   "credits.link.geofabrik": "Geofabrik の関東抽出",

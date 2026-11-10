@@ -19,6 +19,9 @@ for (const [key, value] of Object.entries({
   weather: "rain",
 }))
   url.searchParams.set(key, value);
+// QA_PARAMS="start=35.656,139.756&expressway=1" overrides or adds query parameters (A/B of a flag
+// at another place, e.g. the expressway decks).
+for (const [key, value] of new URLSearchParams(process.env.QA_PARAMS ?? "")) url.searchParams.set(key, value);
 const report = {
   commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   status: execFileSync("git", ["status", "--short"], { encoding: "utf8" }),

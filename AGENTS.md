@@ -29,3 +29,8 @@
 
 - ログは `src/log.ts` の `log()` / `warn()` / `error()` だけで書き、イベントは `src/logEvents.ts` に Zod スキーマを登録してから使う（`console.*` を直接呼ばない。テストが検査する）。詳細と jq での調べ方は [knowledge/logging.md](knowledge/logging.md)。
 - 不具合を直すときは、ブラウザのコンソールではなく端末でログを読む：`just serve-dev` のページの行は `.qa/logs/` に溜まる。`just show-errors` で失敗の場所（TypeScript の行）と span を見つけ、`just trace-span <spanId>` で流れを読み、直したら `just print-repro-url` の URL で読み込み直して `just compare-logs` でその `uncaught_error` が `gone` になったことを確かめる（knowledge/logging.md「AI のデバッグループ」）。
+
+## 高速道路データ
+
+- 高架の高速道路は `just make-expressway-data`（`scripts/expressway.ts`）で OSM から道路構造令の線形にコンパイルし、`public/data/expressway` に書く。法令値は `src/law/roadStandards.ts`（条文つき）、法令に無い仮定は `src/expressway/assumptions.ts`（未確認と明記）に分け、混ぜない。生成後は `pnpm exec vitest run tests/expresswayData.test.ts` で T1〜T10 を確かめる。詳細は [knowledge/expressway-generation.md](knowledge/expressway-generation.md)。
+- 事業者の実名（首都高など）はデータとゲームの表示に入れない（ゲームでは架空名「都市高速」。テストが `public/data/expressway` を検査する）。

@@ -305,6 +305,36 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   station_page_unreadable: { code: "101", name: "某橋" },
   levels_missing: { day: "20261001" },
   water_levels_written: { file: "public/data/water-levels.json", gauges: 60, tidal: 12, bay: { tp: 0.1 } },
+  expressway_tile_failed: { key: "14552-6451", error: "Error: HTTP 404" },
+  expressway_decks_built: {
+    chunks: 40,
+    built: 12,
+    dropped: 3,
+    cpuMs: 30.5,
+    maxSliceMs: 3.9,
+    durationMs: 420,
+  },
+  expressway_osm_read: { ways: 13000, universeWays: 1900, nodes: 110000, junctions: 900 },
+  expressway_planned: { chains: 700, runs: 600, wanted: 20, needed: 35, crossings: 300 },
+  expressway_dem_ready: { tiles: 12, fetched: 0 },
+  expressway_objects_read: { roads: 400, rails: 12 },
+  expressway_diagnostic: {
+    run: "24039738",
+    kind: "vertical_fallback",
+    detail: "specialGrade V60",
+    allowed: true,
+  },
+  expressway_written: {
+    range: "hamazakibashi",
+    tiles: 2,
+    runs: 20,
+    chunks: 40,
+    stations: 3000,
+    bytes: 200000,
+    diagnostics: 3,
+    unsolved: 0,
+    durationS: 60,
+  },
 };
 
 /** What the logger wrote while `fn` ran, oldest first. */

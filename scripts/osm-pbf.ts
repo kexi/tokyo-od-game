@@ -154,8 +154,15 @@ export function readTaggedNodes(
   return out;
 }
 
-/** All ways whose tags satisfy `match`: id=1, keys=2, vals=3, refs=8 (delta-coded). */
-export function readWays(file: Uint8Array, match: (tags: Record<string, string>) => boolean): OsmWay[] {
+/**
+ * All ways whose tags satisfy `match`: id=1, keys=2, vals=3, refs=8 (delta-coded). `keep`, if given,
+ * also has to accept the node ids, so a filter by place does not hold every road of the region.
+ */
+export function readWays(
+  file: Uint8Array,
+  match: (tags: Record<string, string>) => boolean,
+  keep?: (refs: number[]) => boolean,
+): OsmWay[] {
   const out: OsmWay[] = [];
   forEachGroup(file, (block, group) => {
     group.readFields((tag, _r, pbf) => {
@@ -176,7 +183,8 @@ export function readWays(file: Uint8Array, match: (tags: Record<string, string>)
       const refs: number[] = [];
       let ref = 0;
       for (const d of deltas) refs.push((ref += d));
-      out.push({ id, refs, tags });
+      const isKept = !keep || keep(refs);
+      if (isKept) out.push({ id, refs, tags });
     }, null);
   });
   return out;
@@ -238,6 +246,28 @@ export function readNodeCoords(file: Uint8Array, ids: Set<number>): Map<number, 
       } else if (tag === 1) {
         const node = plainNode(block, new Pbf(pbf.readBytes()));
         if (ids.has(node.id)) out.set(node.id, [node.lon, node.lat]);
+      }
+    }, null);
+  });
+  return out;
+}
+
+/** Coordinates [lon, lat] of every node (tagged or not) whose position satisfies `where`. */
+export function readNodeCoordsWhere(
+  file: Uint8Array,
+  where: (lon: number, lat: number) => boolean,
+): Map<number, [number, number]> {
+  const out = new Map<number, [number, number]>();
+  const all: OsmNode[] = [];
+  forEachGroup(file, (block, group) => {
+    group.readFields((tag, _r, pbf) => {
+      if (tag === 2) {
+        all.length = 0;
+        denseNodes(block, new Pbf(pbf.readBytes()), () => true, all);
+        for (const n of all) if (where(n.lon, n.lat)) out.set(n.id, [n.lon, n.lat]);
+      } else if (tag === 1) {
+        const node = plainNode(block, new Pbf(pbf.readBytes()));
+        if (where(node.lon, node.lat)) out.set(node.id, [node.lon, node.lat]);
       }
     }, null);
   });

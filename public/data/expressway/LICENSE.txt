@@ -1,0 +1,19 @@
+Expressway centrelines, lanes, ref and entrance/exit names in this folder are extracted from
+OpenStreetMap and altered (smoothed and resampled).
+© OpenStreetMap contributors — https://www.openstreetmap.org/copyright
+This database, including the road surface elevations, is made available under the Open Database
+License (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/1-0/
+Source extract: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf (Geofabrik), replication timestamp 2026-10-03T20:20:50Z.
+Filters: way["highway"~"^(motorway|motorway_link)$"] within {"minLon":139.5,"minLat":35.45,"maxLon":139.98,"maxLat":35.87}, and the
+node["highway"="motorway_junction"] on them (name, ref). Names that carry the operator's name are
+dropped. Roads and railways at ground level under the viaducts (way["highway"] / way["railway"]
+without bridge, tunnel or layer) are read as clearance constraints only and are not in this folder.
+Method: scripts/expressway.ts (plan smoothing within 1.5 m of the OSM line, vertical alignment
+within 道路構造令, chunks of at most 300 m).
+Elevations: 地理院タイル（標高タイル（基盤地図情報数値標高モデル））を加工して作成
+(https://maps.gsi.go.jp/development/ichiran.html). They are a vertical alignment designed by this
+project with the ground elevation as a constraint — estimates, not surveyed values and not a
+product of GSI. The files also carry the ground elevation under each station and pier (the last
+value of a station, the second of a pier): 地理院の標高タイルを平滑化（5×5 中央値と 3×3 の重み付き平均）
+した値を加工して含む — processed (smoothed) GSI elevation-tile values, offered under the same ODbL,
+used by the game to stop girders and piers at the ground.

@@ -98,6 +98,7 @@ import {
 import { Terrain } from "./world/terrain";
 import { TokyoTide } from "./world/tide";
 import { WaterLayer } from "./world/water";
+import { ExpresswayDecks } from "./world/expresswayDeck";
 import { Pedestrians, type Pedestrian } from "./world/pedestrians";
 import {
   RegulationTiles,
@@ -453,6 +454,19 @@ async function main(): Promise<void> {
   const terrain = new Terrain(scene, world, dem, renderer, frame);
   // Rivers, canals and the bay: their surface replaces the ground there, bridges get decks.
   const water = new WaterLayer(scene, world, dem, new TokyoTide(), frame);
+  // Expressway decks (P1: drawn only, no colliders, the road graph unchanged) behind ?expressway;
+  // ?expressway=bank also tilts them by the compiled superelevation.
+  const expresswayFlag = new URLSearchParams(location.search).get("expressway");
+  const expressway =
+    expresswayFlag === null
+      ? null
+      : new ExpresswayDecks(
+          scene,
+          (lat, lon, h) => dem.ellipsoidal(lat, lon, h),
+          frame,
+          import.meta.env.BASE_URL,
+          expresswayFlag === "bank",
+        );
   terrain.setWater(water);
   const buildings = new Buildings(scene, world, camera, renderer, frame);
   // Landmarks (東京タワー, スカイツリー, 東京駅) replace their PLATEAU copies: tell the buildings
@@ -1000,6 +1014,7 @@ async function main(): Promise<void> {
           frame = next;
           anchorStage("terrain", () => terrain.setFrame(next));
           anchorStage("water", () => water.setFrame(next));
+          if (expressway) anchorStage("expressway", () => expressway.setFrame(next));
           roadSurface.reanchor(m);
           signs.reanchor(m, q);
           guideSigns.reanchor(m, q, network.graph);
@@ -2494,6 +2509,7 @@ async function main(): Promise<void> {
     witnessPhones.update(dt, env.nightFactor);
     if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
       refreshRoads(geo.lat, geo.lon);
+    expressway?.update(geo.lat, geo.lon);
     control.update(now / 1000);
     signs.update(focus, now);
     guideSigns.update(focus, now);
@@ -5315,6 +5331,7 @@ async function main(): Promise<void> {
         naviTv,
         mirrorCharms,
         setDebugCamera: (fn: typeof debugCamera) => (debugCamera = fn),
+        expressway,
       },
     });
   }
