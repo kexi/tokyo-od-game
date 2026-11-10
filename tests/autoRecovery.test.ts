@@ -286,11 +286,20 @@ const crosswalkAt95 = (graph: RoadGraph) => {
 const redAt100 = (graph: RoadGraph) => {
   const seg: Segment = graph.segments[0];
   const stopAt = graph.nearestOn(seg, at(0, 100)).s;
-  const approach = { id: 1, seg, dir: 1, at: stopAt, kind: "signal" } as unknown as Approach;
+  const travel = at(0, 101).sub(at(0, 100)).normalize();
+  const approach = {
+    id: 1,
+    seg,
+    dir: 1,
+    at: stopAt,
+    kind: "signal",
+    travel,
+    exitM: 25,
+  } as unknown as Approach;
   return {
     nextStop: (s: Segment, dir: 1 | -1, travel: number) =>
       s === seg && dir === 1 && stopAt - travel > -0.5 ? { approach, dist: stopAt - travel } : null,
-    state: () => "red",
+    permits: () => "stop",
   } as unknown as TrafficControl;
 };
 

@@ -39,6 +39,11 @@ const error = z.string();
 /** [lat, lon]. */
 const latLon = z.array(z.number()).length(2);
 const ids = z.array(z.string());
+/**
+ * A movement at a signal (src/signals/plan.ts Movement). An enum written out here rather than
+ * imported: the logger stays a leaf module (see the note above on kinds); the four are fixed by law.
+ */
+const movement = z.enum(["left", "through", "right", "uturn"]);
 
 /** A failure with nothing more to say than the error. */
 const failedWith = <S extends z.ZodRawShape = {}>(extra?: S) => warning({ ...(extra as S), error });
@@ -235,6 +240,8 @@ export const LOG_EVENTS = {
     oneway: count,
     posted: count,
     signals: count,
+    /** Controllers whose plan has a 右折矢印 step (src/signals/assign.ts). */
+    rightArrows: count.optional(),
     stops: count,
     crossings: count,
     signs: count,
@@ -305,6 +312,23 @@ export const LOG_EVENTS = {
     carDeltaVKmh: z.number().optional(),
     energyKj: z.number().optional(),
     otherMassKg: z.number().optional(),
+  }),
+  /**
+   * Crossed a signal's stop line while an arrow over red allowed only some movements (`allowed`):
+   * the 信号無視 check waits for the arm the car leaves by (src/signals/redLight.ts).
+   */
+  signal_crossing_held: info({ approachId: count, allowed: z.array(movement) }),
+  /**
+   * A held crossing decided: `violation` (left by a movement the arrow did not allow; the booking
+   * follows), `permitted`, `unconfirmed` (not booked: what the law text read does not settle), or
+   * `dropped` (`reason`: backedOut, reset) with `movement` null.
+   */
+  signal_crossing_resolved: info({
+    approachId: count,
+    outcome: z.enum(["violation", "permitted", "unconfirmed", "dropped"]),
+    movement: movement.nullable(),
+    reason: z.enum(["backedOut", "reset"]).optional(),
+    heldMs: z.number(),
   }),
   /** Left a junction the way its lane does not allow (the booking follows). */
   lane_turn_disallowed: info({

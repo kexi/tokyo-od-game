@@ -114,6 +114,7 @@ import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl } from "./world/trafficControl";
+import { SignalViolationCheck } from "./game/signalViolations";
 import { TrafficSigns, loadSignModels } from "./world/signs";
 import { GuideSigns } from "./world/guideSigns";
 import { createHuman, disposeHuman, loadHumanModels } from "./world/human";
@@ -748,6 +749,7 @@ async function main(): Promise<void> {
       oneway: graph.segments.filter((s) => s.onewayRule).length,
       posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
       signals: control.signalCount(),
+      rightArrows: control.rightArrowCount(),
       stops: control.approaches.filter((a) => a.kind === "stop").length,
       crossings: applied?.crossings.length ?? 0,
       signs: applied?.signs.length ?? 0,
@@ -2047,6 +2049,8 @@ async function main(): Promise<void> {
   let lawPrevPos: Vector3 | null = null;
   // Where and when the car last stood still, for 一時停止 (stop before the line, then go).
   let lastStop: { pos: Vector3; at: number } | null = null;
+  // 信号無視 with arrows: a crossing under an arrow waits for the arm the car leaves by.
+  const signalCheck = new SignalViolationCheck(control, (now) => book(VIOLATIONS.signal, now, 10000));
   let lastClockSync = 0;
   let currentLimit: number | null = null;
   let currentLimitKind: "sign" | "zone" | "statutory" | null = null;
@@ -2834,18 +2838,22 @@ async function main(): Promise<void> {
         laneTrack = { seg, lane };
       } else laneTrack = null;
 
-      // Signals and 一時停止: judged when the car crosses a stop line heading into the junction.
+      // Signals and 一時停止: judged when the car crosses a stop line heading into the junction. A
+      // signal showing an arrow over red holds the crossing until the car leaves by an arm
+      // (game/signalViolations.ts): only then is it known whether the arrow allowed that movement.
       if (Math.abs(speed) < 3) lastStop = { pos: carPos.clone(), at: now };
-      if (lawPrevPos && lawPrevPos.distanceTo(carPos) < 30) {
-        for (const ap of control.crossed(lawPrevPos, carPos)) {
-          if (ap.kind === "signal" && control.state(ap) === "red") book(VIOLATIONS.signal, now, 10000);
+      const isContinuous = lawPrevPos !== null && lawPrevPos.distanceTo(carPos) < 30;
+      if (lawPrevPos && isContinuous) {
+        const crossed = control.crossed(lawPrevPos, carPos);
+        signalCheck.step(crossed, lawPrevPos, carPos, carForward, now);
+        for (const ap of crossed) {
           const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
           const hasStopped =
             lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
           if (ap.kind === "stop" && !hasStopped) book(VIOLATIONS.stopSign, now, 10000);
           if (ap.kind === "stop" && hasStopped) praise("fullStop");
         }
-      }
+      } else signalCheck.reset(now); // jumped (warp, respawn)
       // Waiting while someone walks across in front: they may thank the driver (once each).
       if (Math.abs(speed) < 2) {
         const crossing = pedestrians.crossingAhead(carPos, carForward, 14).filter((q) => !letAcross.has(q));
@@ -2858,6 +2866,7 @@ async function main(): Promise<void> {
       currentLimitKind = null;
       currentOneway = false;
       lawPrevPos = null;
+      signalCheck.reset(now);
     }
 
     // 放置駐車 and the 駐車監視員 patrol. 警視庁: regardless of how long it has stood, a car left on
@@ -5006,9 +5015,23 @@ async function main(): Promise<void> {
     const ahead =
       mode === "foot" ? null : control.ahead(vehicle.position(), headingVector(vehicle.quaternion()));
     const aheadM = ahead ? Math.round(ahead.dist) : 0;
+    // 赤 with arrows reads as its own state: "赤" alone would tell the arrows' traffic to wait.
+    const isRedAhead = ahead !== null && control.state(ahead.approach) === "red";
+    const arrowWays =
+      ahead && isRedAhead
+        ? (["left", "through", "right"] as const).filter((m) => control.permits(ahead.approach, m) === "go")
+        : [];
+    const isRightArrowOnly = arrowWays.length === 1 && arrowWays[0] === "right";
+    const lightKey = !ahead
+      ? LIGHT_KEY.red
+      : isRightArrowOnly
+        ? "hud.signal.redRightArrow"
+        : arrowWays.length > 0
+          ? "hud.signal.redArrows"
+          : LIGHT_KEY[control.state(ahead.approach)];
     const aheadText = ahead
       ? ahead.approach.kind === "signal"
-        ? i18n.t("hud.signalAhead", { light: i18n.t(LIGHT_KEY[control.state(ahead.approach)]), m: aheadM })
+        ? i18n.t("hud.signalAhead", { light: i18n.t(lightKey), m: aheadM })
         : i18n.t("hud.stopAhead", { m: aheadM })
       : currentOneway
         ? i18n.t("hud.oneWay")

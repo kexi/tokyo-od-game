@@ -863,6 +863,8 @@ export const en: Messages = {
   "hud.signal.green": "Green",
   "hud.signal.yellow": "Yellow",
   "hud.signal.red": "Red",
+  "hud.signal.redRightArrow": "Red + right arrow",
+  "hud.signal.redArrows": "Red + arrow",
   "hud.signalAhead": "🚦 {light} · {m} m",
   "hud.stopAhead": "🛑 Stop · {m} m",
   "hud.oneWay": "⬆ One way",

@@ -822,6 +822,8 @@ export const zh: Messages = {
   "hud.signal.green": "绿",
   "hud.signal.yellow": "黄",
   "hud.signal.red": "红",
+  "hud.signal.redRightArrow": "红・右转箭头",
+  "hud.signal.redArrows": "红・箭头",
   "hud.signalAhead": "🚦 {light}·{m}米",
   "hud.stopAhead": "🛑 停车·{m}米",
   "hud.oneWay": "⬆ 单行道",

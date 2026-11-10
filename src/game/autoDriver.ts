@@ -4,7 +4,9 @@ import { isLaneChangeBanned, laneOfPoint } from "../world/laneChange";
 import type { LaneUse, TurnRule } from "../world/regulations";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
 import { inForce, type GameClock } from "../world/ruleTime";
-import type { TrafficControl } from "../world/trafficControl";
+import type { Approach, TrafficControl } from "../world/trafficControl";
+import { movementOf } from "../signals/movement";
+import { mayProceed, type Movement } from "../signals/plan";
 import {
   backOffPath,
   HALF_LENGTH,
@@ -522,9 +524,12 @@ export class AutoDriver {
     if (next) {
       const { approach, dist } = next;
       if (approach.kind === "signal") {
-        const state = world.control.state(approach);
+        const permission = world.control.permits(approach, this.movementAt(route, approach, dist));
         const canStop = dist > (this.speed * this.speed) / (2 * BRAKE);
-        const mustStop = state === "red" || (state === "yellow" && canStop);
+        // Anything short of go stops it where it can, as traffic-ai.ts does. Why not "red stops it
+        // however close": an arrow goes out straight into the all-red with no yellow between
+        // (plan.ts), and braking past what the car can do would leave it standing in the box.
+        const mustStop = !mayProceed(permission) && canStop;
         if (mustStop && world.isEmergency) this.creep = true;
         else if (mustStop) block = dist;
       } else if (this.served !== approach.id) {
@@ -783,7 +788,10 @@ export class AutoDriver {
     const isAtStop =
       stop !== null &&
       stop.dist < 17 &&
-      (stop.approach.kind === "stop" || world.control.state(stop.approach) !== "green");
+      (stop.approach.kind === "stop" ||
+        !mayProceed(
+          world.control.permits(stop.approach, this.movementAt(route, stop.approach, stop.dist, at)),
+        ));
     if (isAtStop) return true;
     const isAtJunction = junctionsAhead(route, world.graph, world.control, at - 2, at + 20).length > 0;
     const isAtCrossing = crossingsAhead(route, world.crossings ?? [], at - 2, at + 10).length > 0;
@@ -905,6 +913,19 @@ export class AutoDriver {
     let i = Math.max(1, this.hint);
     while (i < route.cum.length - 1 && route.cum[i] < this.at) i++;
     return route.stepOf[Math.min(i, route.stepOf.length - 1)] ?? 0;
+  }
+
+  /**
+   * The movement the route makes at the junction `approach` leads into, `dist` beyond route distance
+   * `at`: the way in against the route's way `exitM` past the node (clear of a box of several nodes,
+   * as the violation check judges it). A route ending before then counts as through — the safe side,
+   * since an arrow for a turn does not let it go.
+   */
+  private movementAt(route: Route, approach: Approach, dist: number, at = this.at): Movement {
+    const nodeAt = at + dist + (approach.seg.length - approach.at);
+    const outAt = nodeAt + approach.exitM;
+    if (outAt > route.length) return "through";
+    return movementOf(approach.travel, axisAt(route, outAt).dir);
   }
 
   /** Step of the route at route distance `at`. */
