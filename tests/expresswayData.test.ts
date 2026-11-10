@@ -9,16 +9,22 @@ import {
   checkJunction,
   checkPlan,
   checkSuperelevation,
+  checkSurface,
   checkVerticalCurves,
 } from "../src/expressway/checks";
-import type { XwChunk, XwMeta, XwTile } from "../src/expressway/format";
+import {
+  BLOCKED_STRIDE,
+  STATION_STRIDE,
+  type XwChunk,
+  type XwMeta,
+  type XwTile,
+} from "../src/expressway/format";
 import { tileKey } from "../src/expressway/geo";
-import { isAllowed } from "../src/expressway/allowlist";
+import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
 import { OPERATOR_WORDS } from "../src/expressway/network";
-import { deckOverlaps } from "../src/expressway/overlap";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
-// checked against 設計書 4.4 T1〜T7 and T10.
+// checked against knowledge/road-redesign-plan.md 4.4 T1〜T7 and T10.
 const DIR = join(import.meta.dirname, "..", "public", "data", "expressway");
 const meta = JSON.parse(readFileSync(join(DIR, "meta.json"), "utf8")) as XwMeta;
 const tileFiles = readdirSync(DIR).filter((f) => /^\d+-\d+\.json$/.test(f));
@@ -36,7 +42,7 @@ describe("生成済みの高速道路タイル", () => {
     expect([...tiles.keys()].sort()).toEqual([...meta.tiles].sort());
     for (const [key, tile] of tiles) {
       for (const c of tile.chunks) {
-        const mid = Math.floor(c.st.length / 12) * 6;
+        const mid = Math.floor(c.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
         expect(tileKey(c.st[mid + 1], c.st[mid + 2], meta.zoom)).toBe(key);
         expect(c.id).toBe(`${c.run}:${c.k}`);
       }
@@ -56,9 +62,18 @@ describe("生成済みの高速道路タイル", () => {
     for (const r of meta.runs) expect(byRun.get(r.id)?.map((c) => c.id)).toEqual(r.chunks);
   });
 
-  it("T1・T2: grades within 第20条 and vertical curves within 第22条 on every chunk", () => {
+  it("T1・T2: grades within 第20条 and vertical curves within 第22条 on every chunk, between stations too (the Hermite surface)", () => {
     expect(chunks.flatMap((c) => checkGrade(c, runs.get(c.run)!))).toEqual([]);
     expect(chunks.flatMap(checkVerticalCurves)).toEqual([]);
+    expect(chunks.flatMap(checkSurface)).toEqual([]);
+  });
+
+  it("design speed is per section: a run's chunks may differ, each within the run's highest and its tag", () => {
+    for (const r of meta.runs) {
+      const speeds = byRun.get(r.id)!.map((c) => c.V);
+      expect(Math.max(...speeds)).toBe(r.V);
+      expect(r.V).toBeLessThanOrEqual(r.tagV);
+    }
   });
 
   it("T3: chunks join exactly within a run, and runs join their parent at a junction in height, grade and bank", () => {
@@ -107,26 +122,151 @@ describe("生成済みの高速道路タイル", () => {
   it("T10: nothing outside the allowlist is left, and the counts of what is reported stay as reviewed", () => {
     // allowed comes from src/expressway/allowlist.ts (with reasons), recomputed here too.
     expect(meta.diagnostics.filter((d) => !d.allowed || !isAllowed(d))).toEqual([]);
+    const unsolved = ["vertical_unsolved", "parent_unsolved", "parent_missing"];
+    expect(meta.diagnostics.filter((d) => unsolved.includes(d.kind))).toEqual([]);
     const counts: Record<string, number> = {};
     for (const d of meta.diagnostics) counts[d.kind] = (counts[d.kind] ?? 0) + 1;
     expect(counts).toMatchInlineSnapshot(`
       {
-        "crossing_over_or_at_grade": 11,
-        "deck_overlap": 8,
-        "vertical_fallback": 5,
+        "crossing_over_or_at_grade": 32,
+        "deck_overlap": 4,
+        "ramp_radius": 1,
+        "vertical_fallback": 29,
       }
     `);
   });
 
-  it("deck_overlap: decks over or beside one another are either one surface or a level apart, else recorded (P1 records, P3 fixes)", () => {
-    // Recomputed from the tiles alone and compared with what the compiler reported.
-    const found = deckOverlaps(chunks).map((o) => `${o.a}|${o.b}`);
+  // Overlaps recomputed here by brute force, without overlap.ts (the compiler's own detector):
+  // every station of a run against every segment of every other run, the other's height the cubic
+  // Hermite through its two stations, the bands the carriageways recomputed from 第5・8条 / the ramp
+  // assumption (lanes × lane width + shoulders).
+  function overlapsByBruteForce() {
+    const kx = 111320 * Math.cos((35.65 * Math.PI) / 180);
+    const ky = 110574;
+    type P = { x: number; y: number; s: number; z: number; g: number; hw: number };
+    const lines = new Map<string, P[]>();
+    for (const [run, list] of byRun) {
+      const pts: P[] = [];
+      for (const c of list) {
+        const hw = (c.lanes * c.laneWidth + c.shoulderL + c.shoulderR) / 2;
+        for (let i = pts.length === 0 ? 0 : STATION_STRIDE; i < c.st.length; i += STATION_STRIDE)
+          pts.push({
+            x: c.st[i + 1] * kx,
+            y: c.st[i + 2] * ky,
+            s: c.st[i],
+            z: c.st[i + 3],
+            g: c.st[i + 6],
+            hw,
+          });
+      }
+      lines.set(run, pts);
+    }
+    const cubic = (p: P, q: P, s: number) => {
+      const h = q.s - p.s;
+      const t = (s - p.s) / h;
+      return (
+        (2 * t ** 3 - 3 * t ** 2 + 1) * p.z +
+        (t ** 3 - 2 * t ** 2 + t) * h * p.g +
+        (-2 * t ** 3 + 3 * t ** 2) * q.z +
+        (t ** 3 - t ** 2) * h * q.g
+      );
+    };
+    const out = new Map<string, { stations: number; maxDz: number; at: Array<[string, number]> }>();
+    for (const [a, pa] of lines) {
+      for (const [b, pb] of lines) {
+        if (a === b) continue;
+        for (const p of pa) {
+          let best = { d: Infinity, z: 0, hw: 0 };
+          for (let i = 0; i + 1 < pb.length; i++) {
+            const q0 = pb[i];
+            const q1 = pb[i + 1];
+            const ex = q1.x - q0.x;
+            const ey = q1.y - q0.y;
+            const t = Math.min(1, Math.max(0, ((p.x - q0.x) * ex + (p.y - q0.y) * ey) / (ex * ex + ey * ey)));
+            const d = Math.hypot(p.x - q0.x - ex * t, p.y - q0.y - ey * t);
+            if (d < best.d) best = { d, z: cubic(q0, q1, q0.s + (q1.s - q0.s) * t), hw: q0.hw };
+          }
+          const isOver = best.d < p.hw + best.hw;
+          if (!isOver) continue;
+          const dz = Math.abs(p.z - best.z);
+          const isBad = dz > 0.05 && dz < 4.5 + 2.2;
+          if (!isBad) continue;
+          const key = [a, b].sort().join("|");
+          const o = out.get(key) ?? { stations: 0, maxDz: 0, at: [] };
+          o.stations++;
+          o.maxDz = Math.max(o.maxDz, dz);
+          o.at.push([a, p.s]);
+          out.set(key, o);
+        }
+      }
+    }
+    return out;
+  }
+  const brute = overlapsByBruteForce();
+
+  it("deck_overlap: carriageways over one another are one surface or a level apart; the rest are the reported pairs, within their allowlist limits", () => {
+    const reported = new Map(
+      meta.diagnostics
+        .filter((d) => d.kind === "deck_overlap")
+        .map((d) => [[d.run, /^with (\S+):/.exec(d.detail)![1]].sort().join("|"), d] as const),
+    );
+    expect([...brute.keys()].sort()).toEqual([...reported.keys()].sort());
+    for (const [key, o] of brute) {
+      const [a, b] = key.split("|");
+      const entry = ALLOWLIST.find(
+        (e) => e.kind === "deck_overlap" && [e.run, e.with].sort().join("|") === [a, b].join("|"),
+      );
+      expect(entry, key).toBeDefined();
+      expect(o.stations).toBeLessThanOrEqual(entry!.maxStations!);
+      expect(o.maxDz).toBeLessThanOrEqual(entry!.maxDzM! + 0.005);
+    }
+  });
+
+  it("records where carriageways overlap (decks), covering every overlapping station found independently", () => {
+    for (const c of chunks) {
+      for (const d of c.decks) {
+        expect(["same", "above", "below"]).toContain(d.relation);
+        expect(d.s0).toBeGreaterThanOrEqual(c.st[0] - 1e-6);
+        expect(d.s1).toBeLessThanOrEqual(c.st[c.st.length - STATION_STRIDE] + 1e-6);
+      }
+    }
+    const covered = (run: string, s: number) =>
+      byRun.get(run)!.some((c) => c.decks.some((d) => s >= d.s0 - 6 && s <= d.s1 + 6));
+    for (const o of brute.values())
+      for (const [run, s] of o.at) expect(covered(run, s), `${run}@${s}`).toBe(true);
+  });
+
+  it("says which format it is (meta.version 2) and that every joint solve converged", () => {
+    expect(meta.version).toBe(2);
+    expect(meta.solver.unconverged).toBe(0);
+    expect(meta.solver.solves).toBeGreaterThan(0);
+    expect(meta.diagnostics.filter((d) => d.kind === "solver_not_converged")).toEqual([]);
+  });
+
+  it("records the roads at ground level a low deck does not clear (blocked), one per crossing_over_or_at_grade of a run in the files", () => {
+    const blocked: string[] = [];
+    for (const c of chunks) {
+      for (let i = 0; i < c.blocked.length; i += BLOCKED_STRIDE) {
+        const [s, top, z] = c.blocked.slice(i, i + BLOCKED_STRIDE);
+        // The deck there is below the clearance over the road (else it would be a crossing).
+        expect(z - top).toBeLessThan(4.5 + c.girder);
+        blocked.push(`${c.run}@${Math.round(s)}`);
+      }
+    }
     const reported = meta.diagnostics
-      .filter((d) => d.kind === "deck_overlap")
-      .map((d) => `${d.run}|${/^with (\S+):/.exec(d.detail)![1]}`);
-    expect(found.sort()).toEqual(reported.sort());
-    const stations = deckOverlaps(chunks).reduce((n, o) => n + o.stations, 0);
-    expect(stations).toMatchInlineSnapshot(`177`);
+      .filter((d) => d.kind === "crossing_over_or_at_grade" && runs.has(d.run))
+      .map((d) => `${d.run}@${/ at (\d+) m/.exec(d.detail)![1]}`);
+    expect(blocked.sort()).toEqual(reported.sort());
+  });
+
+  it("tells a portal (the road goes on into a tunnel or cut) from a touchdown at grade", () => {
+    for (const r of meta.runs) {
+      for (const e of [r.start, r.end]) {
+        const isPortal = e.kind === "portal";
+        if (isPortal) expect(["tunnel", "cut"]).toContain(e.into);
+        else expect(e.into).toBeUndefined();
+      }
+    }
   });
 
   it("carries no operator name (the game calls it by a fictional name)", () => {

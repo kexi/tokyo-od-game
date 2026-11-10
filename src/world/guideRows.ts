@@ -32,6 +32,7 @@ import {
   type Trace,
 } from "./guidePlan";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
+import { hasRoadside } from "./roadClass";
 
 /**
  * 105 方面、方向及び距離 and 106-A 方面及び距離 (確認標識) for the signalled junctions, planned after
@@ -317,7 +318,7 @@ export function* planRowSteps(input: RowsInput): Generator<void, RowsPlan[]> {
       const at = alongArm(graph, ahead, after);
       if (!at) continue;
       const isPastOtherSignal = at.passed.some((n) => signalled.has(n) && !own.has(n));
-      if (isPastOtherSignal || at.seg.line.bridge || at.seg.line.kind === "highway") continue;
+      if (isPastOtherSignal || at.seg.line.bridge || !hasRoadside(at.seg.line)) continue;
       const travel = at.dir;
       const kerb = at.pos.clone().add(leftOf(travel, at.seg.line.width / 2 + KERB_GAP));
       if (graph.carriagewaysAt(kerb, 0.3).length > 0) continue;

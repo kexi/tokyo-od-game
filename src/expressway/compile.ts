@@ -5,6 +5,7 @@ import {
   designSpeedAtMost,
   lowerDesignSpeed,
   MAX_GRADE,
+  TRANSITION_LENGTH,
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
 import {
@@ -16,21 +17,34 @@ import {
   RAMP_MIN_RADIUS,
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
-import { type XwChunk, type XwDiagnostic, type XwEnd, type XwRunSummary } from "./format";
+import { isAllowed } from "./allowlist";
+import { type XwChunk, type XwDeckStretch, type XwDiagnostic, type XwEnd, type XwRunSummary } from "./format";
 import { planeAt, type Plane, roundTo } from "./geo";
 import { alignPlan, type PlanAlignment } from "./horizontal";
 import { buildChains, type Chain, type Network, type Run, splitRuns } from "./network";
-import { isAllowed } from "./allowlist";
-import { deckOverlaps } from "./overlap";
-import { deckWidth, sectionFor } from "./section";
+import { deckOverlaps, LEVEL_APART_M, type PlanLine, planOverlaps, SAME_SURFACE_M } from "./overlap";
+import { carriagewayWidth, deckWidth, sectionFor } from "./section";
 import { compositeLimit, superelevation } from "./superelevation";
-import { evalProfile, solveVertical, type VerticalProfile } from "./vertical";
+import {
+  capZones,
+  type Coupling,
+  evalProfile,
+  fallbackPlans,
+  gradeLimitFor,
+  type RunInput,
+  solveJoint,
+  type VerticalAttempt,
+  type VerticalProfile,
+  type Zone,
+  zoneSpeedAt,
+} from "./vertical";
 
 /**
- * The expressway compiler (設計書 4): chains → plan alignment → which runs a range needs → vertical
- * alignment in dependency order (a ramp after its main line, an upper deck after what it crosses) →
- * superelevation → stations, piers and ≤ 300 m chunks with stable ids. Pure: the build script gives
- * it the OSM network, the ground (DEM) and the roads and railways underneath.
+ * The expressway compiler (knowledge/road-redesign-plan.md 4): chains → plan alignment and design speed per stretch → the
+ * runs a range needs (every run coupled to them) → one joint vertical QP per group of coupled runs
+ * (junctions, crossings, decks over or beside one another) → superelevation → stations, piers and
+ * ≤ 300 m chunks with stable ids. Pure: the build script gives it the OSM network, the ground (DEM)
+ * and the roads and railways underneath.
  */
 
 export type Bbox = { minLon: number; minLat: number; maxLon: number; maxLat: number };
@@ -45,6 +59,12 @@ const GIRDER = GIRDER_DEPTH.value;
 const ROAD_CLEAR = CLEARANCE_HEIGHT.value + GIRDER;
 /** Two runs sharing a node closer than this to where they cross are splitting, not crossing. */
 const JUNCTION_CROSS_M = 60;
+/** A faster stretch shorter than this between slower ones keeps the slower speed (no flicker). */
+const MIN_ZONE_M = 120;
+/** A shared surface or a level apart missed by more than this counts as not kept (overlap.ts bands). */
+const SOFT_SLACK_M = 0.02;
+/** Overlap stations this close to each other belong to one continuous stretch (nose to separation). */
+const STRETCH_GAP_M = 12;
 
 type RunPlan = {
   run: Run;
@@ -57,36 +77,56 @@ type RunPlan = {
   cls: "expressway" | "ramp";
   ref: string | null;
   name: string | null;
+  /** Highest tagged speed along the run, and the highest after the radius check. */
   tagV: DesignSpeed;
-  V: DesignSpeed;
+  planV: DesignSpeed;
   minV: DesignSpeed;
+  /** Design speed per stretch (run distance), from the tags and the local radius. */
+  zones: Zone[];
   minRadius: number;
   /** Way id of every sample in the run (for layers and sections). */
   wayAt: Int32Array;
+  /** OSM layer per sample, gap-filled ways taking their neighbours' (layerOf in network.ts). */
+  layerAt: Int16Array;
+  /**
+   * Half width of the carriageway (車線域: lanes and shoulders, inside the parapets) per sample,
+   * from the lanes of the way there; and the largest half width of the whole deck.
+   */
+  laneHalfAt: Float32Array;
   halfWidth: number;
 };
 
 type Crossing = { upper: string; lower: string; sUpper: number; sLower: number; sinAngle: number };
 
+/** How station `sa` of run a stands to b's deck at sb: one surface, or a level above / below it. */
+export type DeckPair = {
+  a: string;
+  sa: number;
+  b: string;
+  sb: number;
+  relation: "same" | "above" | "below";
+  cos: number;
+};
+
 export type Plan = {
   net: Network;
   chains: Map<string, Chain>;
   runs: Map<string, RunPlan>;
-  /** Runs that touch the range, and everything they depend on. */
+  /** Runs that touch the range, and every run coupled to them (their whole components). */
   needed: string[];
   wanted: Set<string>;
   crossings: Crossing[];
+  /** Crossings on the same layer: no order to impose (reported as crossing_layer_ambiguous). */
+  ambiguous: Crossing[];
+  pairs: DeckPair[];
+  /** Groups of runs solved together (component id = smallest run id → members). */
+  components: Map<string, string[]>;
+  componentOf: Map<string, string>;
   diagnostics: XwDiagnostic[];
   outsideNodes: Set<number>;
   /** Chains through each node, and the elevated runs of each chain. */
   nodeChains: Map<number, string[]>;
   chainRuns: Map<string, RunPlan[]>;
-  /**
-   * The order runs are solved in, over the whole universe (so it does not depend on the range): a
-   * ramp after the run it joins, otherwise lower decks first. Of two runs that cross, the later one
-   * takes the clearance as a bound (a lower bound over, an upper bound under the other).
-   */
-  rank: Map<string, number>;
 };
 
 const priority = (net: Network, c: Chain) => {
@@ -104,7 +144,7 @@ function lonLatAt(rp: RunPlan, i: number): [number, number] {
 }
 
 /** Sample index of the run at run distance s (nearest sample at or before). */
-function sampleAt(rp: RunPlan, s: number): number {
+function sampleAt(rp: Pick<RunPlan, "align" | "i0" | "i1">, s: number): number {
   const base = rp.align.s[rp.i0];
   let lo = rp.i0;
   let hi = rp.i1;
@@ -130,27 +170,92 @@ function poseAt(rp: RunPlan, s: number): { lon: number; lat: number; x: number; 
   return { lon, lat, x, y, kappa: rp.align.kappa[i] + (rp.align.kappa[i + 1] - rp.align.kappa[i]) * t };
 }
 
-function runSpeed(
+/**
+ * Design speed per stretch (設計書 4.2, per section rather than per run): each sample takes the
+ * tagged speed of its way, lowered while the local radius is below 第15条's value for it (to 40 on
+ * the main line, 20 on a ramp). A lowered speed then covers the 第18条 length either side of the
+ * tight sample (the transition belongs to the curve), and a faster stretch shorter than MIN_ZONE_M
+ * between slower ones takes the slower speed. Why not one speed per run (P1): one tight curve set
+ * 17.7 km of 45661183 to 50 km/h.
+ */
+function speedZones(
   net: Network,
-  run: Run,
-  minRadius: number,
+  align: PlanAlignment,
+  i0: number,
+  i1: number,
+  wayAt: Int32Array,
   isRamp: boolean,
-): { tagV: DesignSpeed; V: DesignSpeed } {
-  const tag = Math.min(...run.ways.map((id) => net.ways.get(id)!.speedKmh));
-  const tagV = designSpeedAtMost(tag);
+): { zones: Zone[]; tagV: DesignSpeed; planV: DesignSpeed } {
+  const n = i1 - i0 + 1;
   const floor: DesignSpeed = isRamp ? 20 : 40;
-  let V: DesignSpeed = tagV;
-  // 設計書 4.2: the radius on site cannot move, so a radius below R_min(V) lowers V.
-  for (;;) {
-    const fits = minRadius >= CURVE_RADIUS.value[V].standard;
-    const lower = lowerDesignSpeed(V);
-    if (fits || lower === null || lower < floor) break;
-    V = lower;
+  const raw = new Int16Array(n);
+  let tagV: DesignSpeed = 20;
+  for (let k = 0; k < n; k++) {
+    const tag = designSpeedAtMost(net.ways.get(wayAt[k])!.speedKmh);
+    tagV = Math.max(tagV, tag) as DesignSpeed;
+    const R = 1 / Math.max(Math.abs(align.kappa[i0 + k]), 1e-9);
+    let V: DesignSpeed = tag;
+    for (;;) {
+      const fits = R >= CURVE_RADIUS.value[V].standard;
+      const lower = lowerDesignSpeed(V);
+      if (fits || lower === null || lower < floor) break;
+      V = lower;
+    }
+    raw[k] = V;
   }
-  return { tagV, V };
+  const s = (k: number) => align.s[i0 + k] - align.s[i0];
+  // Sliding minimum over ±L (two pointers over the 1 m samples).
+  const L = TRANSITION_LENGTH.value[tagV];
+  const spread = new Int16Array(n);
+  let lo = 0;
+  let hi = 0;
+  const deque: number[] = [];
+  for (let k = 0; k < n; k++) {
+    while (hi < n && s(hi) <= s(k) + L) {
+      while (deque.length > 0 && raw[deque[deque.length - 1]] >= raw[hi]) deque.pop();
+      deque.push(hi);
+      hi++;
+    }
+    while (s(lo) < s(k) - L) lo++;
+    while (deque[0] < lo) deque.shift();
+    spread[k] = raw[deque[0]];
+  }
+  const zones: Zone[] = [];
+  for (let k = 0; k < n; k++) {
+    const V = spread[k] as DesignSpeed;
+    const last = zones[zones.length - 1];
+    const isSame = last !== undefined && last.V === V;
+    if (isSame) last.to = s(k);
+    else {
+      if (last) last.to = s(k);
+      zones.push({ from: s(k), to: s(k), V });
+    }
+  }
+  zones[zones.length - 1].to = s(n - 1);
+  for (let changed = true; changed;) {
+    changed = false;
+    for (let z = 0; z < zones.length; z++) {
+      const prev = zones[z - 1];
+      const next = zones[z + 1];
+      const isShort = zones[z].to - zones[z].from < MIN_ZONE_M;
+      const neighbours = [prev, next].filter((v) => v !== undefined).map((v) => v.V);
+      const isIsland = neighbours.length > 0 && neighbours.every((v) => v < zones[z].V);
+      if (!isShort || !isIsland) continue;
+      zones[z].V = Math.max(...neighbours) as DesignSpeed;
+      changed = true;
+    }
+    for (let z = zones.length - 1; z > 0; z--) {
+      const isSame = zones[z].V === zones[z - 1].V;
+      if (!isSame) continue;
+      zones[z - 1].to = zones[z].to;
+      zones.splice(z, 1);
+    }
+  }
+  const planV = Math.max(...zones.map((z) => z.V)) as DesignSpeed;
+  return { zones, tagV, planV };
 }
 
-/** Plan the alignment of every chain and the dependencies of the runs the range needs. */
+/** Plan the alignment of every chain, the couplings between runs and what the range needs. */
 export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox | null): Plan {
   const chains = new Map(buildChains(net).map((c) => [c.id, c]));
   const nodeChains = new Map<number, string[]>();
@@ -177,40 +282,9 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
     const align = alignPlan({ xy, anchors });
     for (const run of chainRuns) {
       if (!run.elevated) continue;
-      const i0 = align.vertexSample[run.from];
-      const i1 = align.vertexSample[run.to];
-      const isRamp = net.ways.get(run.ways[0])!.cls === "ramp";
-      let maxK = 0;
-      for (let i = i0; i <= i1; i++) maxK = Math.max(maxK, Math.abs(align.kappa[i]));
-      const minRadius = maxK > 0 ? 1 / maxK : Infinity;
-      const { tagV, V } = runSpeed(net, run, minRadius, isRamp);
-      const wayAt = new Int32Array(i1 - i0 + 1);
-      for (let w = 0; w < run.ways.length; w++) {
-        const wayIndex = chain.ways.indexOf(run.ways[w]);
-        const a = align.vertexSample[chain.wayStarts[wayIndex]];
-        for (let i = Math.max(a, i0); i <= i1; i++) wayAt[i - i0] = run.ways[w];
-      }
-      const firstWay = net.ways.get(run.ways[0])!;
-      const maxLanes = Math.max(...run.ways.map((id) => net.ways.get(id)!.lanes));
-      runs.set(run.id, {
-        run,
-        chain,
-        plane,
-        align,
-        i0,
-        i1,
-        length: align.s[i1] - align.s[i0],
-        cls: firstWay.cls,
-        ref: firstWay.ref,
-        name: run.ways.map((id) => net.ways.get(id)!.name).find((n) => n !== null) ?? null,
-        tagV,
-        V,
-        minV: isRamp ? 20 : 40,
-        minRadius,
-        wayAt,
-        halfWidth: deckWidth(sectionFor(firstWay.cls, maxLanes)) / 2,
-      });
-      checkRadius(runs.get(run.id)!, diagnostics);
+      const rp = runPlan(net, chain, plane, align, run);
+      runs.set(run.id, rp);
+      checkRadius(rp, diagnostics);
       const isClamped = align.clamped > 0;
       if (isClamped) {
         diagnostics.push({
@@ -222,7 +296,7 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
       }
     }
   }
-  const crossings = findCrossings(net, runs, diagnostics);
+  const { crossings, ambiguous } = findCrossings(runs, diagnostics);
   const plan: Plan = {
     net,
     chains,
@@ -230,15 +304,19 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
     needed: [],
     wanted: new Set(),
     crossings,
+    ambiguous,
+    pairs: [],
+    components: new Map(),
+    componentOf: new Map(),
     diagnostics,
     outsideNodes,
     nodeChains,
     chainRuns: new Map(),
-    rank: new Map(),
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
-  rankRuns(plan);
+  plan.pairs = classifyPairs(plan);
+  groupComponents(plan);
   const wanted = [...runs.values()].filter((rp) => {
     if (!range) return true;
     for (let i = rp.i0; i <= rp.i1; i += 5) {
@@ -251,26 +329,84 @@ export function planNetwork(net: Network, outsideNodes: Set<number>, range: Bbox
   });
   plan.wanted = new Set(wanted.map((r) => r.run.id));
   const needed = new Set<string>();
-  const stack = [...plan.wanted];
-  while (stack.length > 0) {
-    const id = stack.pop()!;
-    if (needed.has(id)) continue;
-    needed.add(id);
-    for (const dep of dependencies(plan, id)) stack.push(dep);
-  }
+  for (const id of plan.wanted)
+    for (const m of plan.components.get(plan.componentOf.get(id)!)!) needed.add(m);
   plan.needed = [...needed].sort();
   return plan;
 }
 
+function runPlan(net: Network, chain: Chain, plane: Plane, align: PlanAlignment, run: Run): RunPlan {
+  const i0 = align.vertexSample[run.from];
+  const i1 = align.vertexSample[run.to];
+  const isRamp = net.ways.get(run.ways[0])!.cls === "ramp";
+  let maxK = 0;
+  for (let i = i0; i <= i1; i++) maxK = Math.max(maxK, Math.abs(align.kappa[i]));
+  const minRadius = maxK > 0 ? 1 / maxK : Infinity;
+  const wayAt = new Int32Array(i1 - i0 + 1);
+  for (let w = 0; w < run.ways.length; w++) {
+    const wayIndex = chain.ways.indexOf(run.ways[w]);
+    const a = align.vertexSample[chain.wayStarts[wayIndex]];
+    for (let i = Math.max(a, i0); i <= i1; i++) wayAt[i - i0] = run.ways[w];
+  }
+  const { zones, tagV, planV } = speedZones(net, align, i0, i1, wayAt, isRamp);
+  const filled = new Set(run.filledWays);
+  const layerAt = new Int16Array(wayAt.length);
+  const laneHalfAt = new Float32Array(wayAt.length);
+  let halfWidth = 0;
+  for (let k = 0; k < wayAt.length; k++) {
+    const way = net.ways.get(wayAt[k])!;
+    layerAt[k] = way.layer;
+    laneHalfAt[k] = carriagewayWidth(sectionFor(way.cls, way.lanes)) / 2;
+    halfWidth = Math.max(halfWidth, deckWidth(sectionFor(way.cls, way.lanes)) / 2);
+  }
+  // A gap-filled way (no bridge tag between two viaducts) has no meaningful layer: take the
+  // nearest tagged sample's.
+  for (let k = 0; k < wayAt.length; k++) {
+    if (!filled.has(wayAt[k])) continue;
+    let d = 1;
+    for (; d < wayAt.length; d++) {
+      const before = k - d >= 0 && !filled.has(wayAt[k - d]) ? k - d : -1;
+      const after = k + d < wayAt.length && !filled.has(wayAt[k + d]) ? k + d : -1;
+      const found = before >= 0 ? before : after;
+      if (found < 0) continue;
+      layerAt[k] = net.ways.get(wayAt[found])!.layer;
+      break;
+    }
+  }
+  const firstWay = net.ways.get(run.ways[0])!;
+  return {
+    run,
+    chain,
+    plane,
+    align,
+    i0,
+    i1,
+    length: align.s[i1] - align.s[i0],
+    cls: firstWay.cls,
+    ref: firstWay.ref,
+    name: run.ways.map((id) => net.ways.get(id)!.name).find((n) => n !== null) ?? null,
+    tagV,
+    planV,
+    minV: isRamp ? 20 : 40,
+    zones,
+    minRadius,
+    wayAt,
+    layerAt,
+    laneHalfAt,
+    halfWidth,
+  };
+}
+
 function checkRadius(rp: RunPlan, diagnostics: XwDiagnostic[]): void {
   const isRamp = rp.cls === "ramp";
-  const floor = isRamp ? RAMP_MIN_RADIUS.value : CURVE_RADIUS.value[rp.V].special;
+  const tightest = Math.min(...rp.zones.map((z) => z.V)) as DesignSpeed;
+  const floor = isRamp ? RAMP_MIN_RADIUS.value : CURVE_RADIUS.value[tightest].special;
   const isBelow = rp.minRadius < floor;
   if (!isBelow) return;
   diagnostics.push({
     run: rp.run.id,
     kind: isRamp ? "ramp_radius" : "curve_radius",
-    detail: `R=${rp.minRadius.toFixed(1)} m < ${floor} m (V${rp.V})`,
+    detail: `R=${rp.minRadius.toFixed(1)} m < ${floor} m (V${tightest})`,
     allowed: false,
   });
 }
@@ -278,28 +414,27 @@ function checkRadius(rp: RunPlan, diagnostics: XwDiagnostic[]): void {
 /** Global plane only for finding where runs cross; stations are measured on each run's own plane. */
 const CROSS_PLANE = planeAt(139.76, 35.68);
 
-type Poly = { id: string; xy: Float64Array; s: Float64Array };
+type Poly = { id: string; xy: Float64Array; s: Float64Array; hw: Float64Array };
 
 function runPoly(rp: RunPlan): Poly {
   const pts: number[] = [];
   const ss: number[] = [];
+  const hw: number[] = [];
   const base = rp.align.s[rp.i0];
-  for (let i = rp.i0; i <= rp.i1; i += GRID_M) {
+  const push = (i: number) => {
     const [lon, lat] = lonLatAt(rp, i);
     pts.push(...CROSS_PLANE.toXY(lon, lat));
     ss.push(rp.align.s[i] - base);
-  }
+    hw.push(rp.laneHalfAt[i - rp.i0]);
+  };
+  for (let i = rp.i0; i <= rp.i1; i += GRID_M) push(i);
   const lastIsMissing = (rp.i1 - rp.i0) % GRID_M !== 0;
-  if (lastIsMissing) {
-    const [lon, lat] = lonLatAt(rp, rp.i1);
-    pts.push(...CROSS_PLANE.toXY(lon, lat));
-    ss.push(rp.length);
-  }
-  return { id: rp.run.id, xy: new Float64Array(pts), s: new Float64Array(ss) };
+  if (lastIsMissing) push(rp.i1);
+  return { id: rp.run.id, xy: new Float64Array(pts), s: new Float64Array(ss), hw: new Float64Array(hw) };
 }
 
 /** Intersections of two polylines: [s on a, s on b, sin of the angle]. */
-function intersect(a: Poly, b: Poly): Array<[number, number, number]> {
+function intersect(a: Pick<Poly, "xy" | "s">, b: Pick<Poly, "xy" | "s">): Array<[number, number, number]> {
   const out: Array<[number, number, number]> = [];
   const na = a.xy.length / 2;
   const nb = b.xy.length / 2;
@@ -326,7 +461,7 @@ function intersect(a: Poly, b: Poly): Array<[number, number, number]> {
   return out;
 }
 
-function bboxOf(p: Poly): [number, number, number, number] {
+function bboxOf(p: Pick<Poly, "xy">): [number, number, number, number] {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -340,11 +475,19 @@ function bboxOf(p: Poly): [number, number, number, number] {
   return [minX, minY, maxX, maxY];
 }
 
-function findCrossings(net: Network, runs: Map<string, RunPlan>, diagnostics: XwDiagnostic[]): Crossing[] {
+function layerAtS(rp: RunPlan, s: number): number {
+  return rp.layerAt[Math.min(rp.layerAt.length - 1, Math.max(0, sampleAt(rp, s) - rp.i0))];
+}
+
+function findCrossings(
+  runs: Map<string, RunPlan>,
+  diagnostics: XwDiagnostic[],
+): { crossings: Crossing[]; ambiguous: Crossing[] } {
   const ids = [...runs.keys()].sort();
   const polys = new Map(ids.map((id) => [id, runPoly(runs.get(id)!)]));
   const boxes = new Map(ids.map((id) => [id, bboxOf(polys.get(id)!)]));
   const out: Crossing[] = [];
+  const ambiguous: Crossing[] = [];
   for (let a = 0; a < ids.length; a++) {
     for (let b = a + 1; b < ids.length; b++) {
       const A = boxes.get(ids[a])!;
@@ -359,8 +502,8 @@ function findCrossings(net: Network, runs: Map<string, RunPlan>, diagnostics: Xw
           ([na, nb]) => Math.abs(na - sa) < JUNCTION_CROSS_M && Math.abs(nb - sb) < JUNCTION_CROSS_M,
         );
         if (isJunction) continue;
-        const la = net.ways.get(ra.wayAt[sampleAt(ra, sa) - ra.i0])!.layer;
-        const lb = net.ways.get(rb.wayAt[sampleAt(rb, sb) - rb.i0])!.layer;
+        const la = layerAtS(ra, sa);
+        const lb = layerAtS(rb, sb);
         const isUnordered = la === lb;
         if (isUnordered) {
           // OSM says neither is above: no clearance can be imposed, so it is reported, not guessed.
@@ -370,6 +513,7 @@ function findCrossings(net: Network, runs: Map<string, RunPlan>, diagnostics: Xw
             detail: `crosses ${rb.run.id} at ${sa.toFixed(0)} m on the same layer ${la}`,
             allowed: false,
           });
+          ambiguous.push({ upper: ra.run.id, lower: rb.run.id, sUpper: sa, sLower: sb, sinAngle: sin });
           continue;
         }
         const isAUpper = la > lb;
@@ -383,7 +527,7 @@ function findCrossings(net: Network, runs: Map<string, RunPlan>, diagnostics: Xw
       }
     }
   }
-  return out;
+  return { crossings: out, ambiguous };
 }
 
 /** Run distances of the nodes two runs share: [s on a, s on b]. */
@@ -402,17 +546,148 @@ function sharedNodes(a: RunPlan, b: RunPlan): Array<[number, number]> {
   return out;
 }
 
+/**
+ * Decks over or beside one another (overlap.ts on the plan lines), each station pair given its
+ * relation (設計書 4.2): near a crossing, the crossing's order (OSM layer); from a nose (a node the
+ * two share) to where the decks part, one surface; elsewhere one surface on the same OSM layer and
+ * a level apart on different ones. Pairs near a same-layer crossing get none (it is reported).
+ */
+function classifyPairs(plan: Plan): DeckPair[] {
+  const ids = [...plan.runs.keys()].sort();
+  const lines: PlanLine[] = ids.map((id) => {
+    const p = runPoly(plan.runs.get(id)!);
+    const n = p.s.length;
+    return {
+      id,
+      x: Float64Array.from({ length: n }, (_, i) => p.xy[2 * i]),
+      y: Float64Array.from({ length: n }, (_, i) => p.xy[2 * i + 1]),
+      s: p.s,
+      hw: p.hw,
+    };
+  });
+  const groups = new Map<string, ReturnType<typeof planOverlaps>>();
+  for (const pair of planOverlaps(lines)) {
+    const key = `${pair.a}|${pair.b}`;
+    const list = groups.get(key);
+    if (list) list.push(pair);
+    else groups.set(key, [pair]);
+  }
+  const out: DeckPair[] = [];
+  for (const [key, list] of [...groups.entries()].sort((p, q) => (p[0] < q[0] ? -1 : 1))) {
+    const [a, b] = key.split("|");
+    const ra = plan.runs.get(a)!;
+    const rb = plan.runs.get(b)!;
+    const window = (sin: number) => Math.min(60, (ra.halfWidth + rb.halfWidth) / Math.max(sin, 0.2)) + 10;
+    const ordered = plan.crossings.filter(
+      (c) => (c.upper === a && c.lower === b) || (c.upper === b && c.lower === a),
+    );
+    const unordered = plan.ambiguous.filter(
+      (c) => (c.upper === a && c.lower === b) || (c.upper === b && c.lower === a),
+    );
+    const near = (c: Crossing, sa: number, sb: number) => {
+      const [ca, cb] = c.upper === a ? [c.sUpper, c.sLower] : [c.sLower, c.sUpper];
+      const w = window(c.sinAngle);
+      return Math.abs(sa - ca) <= w && Math.abs(sb - cb) <= w;
+    };
+    list.sort((p, q) => p.sa - q.sa);
+    const nose = new Uint8Array(list.length);
+    for (const [na] of sharedNodes(ra, rb)) {
+      let start = -1;
+      for (let i = 0; i < list.length; i++) {
+        const isAtNode = Math.abs(list[i].sa - na) <= STRETCH_GAP_M;
+        if (isAtNode && (start < 0 || Math.abs(list[i].sa - na) < Math.abs(list[start].sa - na))) start = i;
+      }
+      if (start < 0) continue;
+      nose[start] = 1;
+      for (let i = start + 1; i < list.length && list[i].sa - list[i - 1].sa <= STRETCH_GAP_M; i++)
+        nose[i] = 1;
+      for (let i = start - 1; i >= 0 && list[i + 1].sa - list[i].sa <= STRETCH_GAP_M; i--) nose[i] = 1;
+    }
+    list.forEach((p, i) => {
+      const crossing = ordered.find((c) => near(c, p.sa, p.sb));
+      if (crossing) {
+        out.push({
+          a,
+          sa: p.sa,
+          b,
+          sb: p.sb,
+          relation: crossing.upper === a ? "above" : "below",
+          cos: p.cos,
+        });
+        return;
+      }
+      const isAmbiguous = unordered.some((c) => near(c, p.sa, p.sb));
+      if (isAmbiguous) return;
+      if (nose[i]) {
+        out.push({ a, sa: p.sa, b, sb: p.sb, relation: "same", cos: p.cos });
+        return;
+      }
+      const la = layerAtS(ra, p.sa);
+      const lb = layerAtS(rb, p.sb);
+      const relation = la === lb ? "same" : la > lb ? "above" : "below";
+      out.push({ a, sa: p.sa, b, sb: p.sb, relation, cos: p.cos });
+    });
+  }
+  return out;
+}
+
+/** Union of runs joined at junctions, crossing each other or over one another's decks. */
+function groupComponents(plan: Plan): void {
+  const parent = new Map<string, string>();
+  for (const id of plan.runs.keys()) parent.set(id, id);
+  const find = (a: string): string => {
+    let r = a;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    let c = a;
+    while (parent.get(c) !== r) {
+      const next = parent.get(c)!;
+      parent.set(c, r);
+      c = next;
+    }
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    // The smaller id is the root, so a component's id does not depend on the order of unions.
+    if (ra < rb) parent.set(rb, ra);
+    else parent.set(ra, rb);
+  };
+  for (const id of plan.runs.keys()) for (const p of junctionParents(plan, id)) union(id, p);
+  for (const c of plan.crossings) union(c.upper, c.lower);
+  for (const p of plan.pairs) union(p.a, p.b);
+  for (const id of [...plan.runs.keys()].sort()) {
+    const root = find(id);
+    plan.componentOf.set(id, root);
+    const list = plan.components.get(root);
+    if (list) list.push(id);
+    else plan.components.set(root, [id]);
+  }
+}
+
 type EndPlan =
-  | { kind: "ground"; nodeIndex: number }
+  | { kind: "ground"; nodeIndex: number; into?: "tunnel" | "cut" }
   | { kind: "open" }
   | { kind: "junction" | "seam"; parent: string; parentNodeIndex: number; nodeIndex: number };
 
-/** What fixes a run's start or end (設計書 4.3 の 1). */
+/** What fixes a run's start or end (knowledge/road-redesign-plan.md 4.3 の 1). */
 export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const { chain, run } = rp;
   const idx = atStart ? run.from : run.to;
   const isChainEnd = atStart ? idx === 0 : idx === chain.nodes.length - 1;
-  if (!isChainEnd) return { kind: "ground", nodeIndex: idx };
+  if (!isChainEnd) {
+    // The chain goes on at ground level, or below it (a tunnel or cut: the profile meets the ground
+    // at the portal and keeps going down, so its grade is not the terrain's).
+    const wayIndex = atStart
+      ? chain.ways.indexOf(run.ways[0]) - 1
+      : chain.ways.indexOf(run.ways[run.ways.length - 1]) + 1;
+    const next = plan.net.ways.get(chain.ways[wayIndex]);
+    const isBelow = next !== undefined && (next.structure === "tunnel" || next.structure === "cut");
+    return isBelow
+      ? { kind: "ground", nodeIndex: idx, into: next.structure as "tunnel" | "cut" }
+      : { kind: "ground", nodeIndex: idx };
+  }
   if (chain.closed) {
     const first = (plan.chainRuns.get(chain.id) ?? []).find((r) => r.run.from === 0);
     const isSeamEnd = !atStart && first !== undefined && first !== rp;
@@ -452,76 +727,37 @@ function junctionParents(plan: Plan, id: string): string[] {
   return [...deps].sort();
 }
 
-/**
- * Kahn's order over every run: a run after its junction parents and after the decks it crosses
- * over (lower first, so the upper deck rises over a known height). Where that is circular (a ramp
- * that passes under a main line and then joins it), the run whose junction parents are done is
- * taken next and the crossing becomes an upper bound for whichever comes later.
- */
-function rankRuns(plan: Plan): void {
-  const ids = [...plan.runs.keys()].sort();
-  const parents = new Map(ids.map((id) => [id, junctionParents(plan, id)]));
-  const below = new Map<string, Set<string>>(ids.map((id) => [id, new Set()]));
-  for (const c of plan.crossings) below.get(c.upper)?.add(c.lower);
-  const key = (id: string) => {
-    const rp = plan.runs.get(id)!;
-    const layer = Math.min(...rp.run.ways.map((w) => plan.net.ways.get(w)!.layer));
-    return [layer, rp.cls === "ramp" ? 1 : 0] as const;
-  };
-  const before = (a: string, b: string) => {
-    const [la, ra] = key(a);
-    const [lb, rb] = key(b);
-    return la - lb || ra - rb || (a < b ? -1 : a > b ? 1 : 0);
-  };
-  const isRanked = (id: string) => plan.rank.has(id) || !plan.runs.has(id);
-  const parentsDone = (id: string) => parents.get(id)!.every(isRanked);
-  const lowerDone = (id: string) => [...below.get(id)!].every(isRanked);
-  // When stuck, defer a crossing over a ramp rather than over a main line: a ramp under a deck
-  // copes with an upper bound, a main line under a deck that was placed first often does not.
-  const pendingMain = (id: string) =>
-    [...below.get(id)!].filter((l) => !isRanked(l) && plan.runs.get(l)!.cls === "expressway").length;
-  for (;;) {
-    const open = ids.filter((id) => !plan.rank.has(id) && parentsDone(id));
-    if (open.length === 0) break;
-    const ready = open.filter(lowerDone);
-    const pool = ready.length > 0 ? ready : open;
-    const pick = pool.sort((a, b) => pendingMain(a) - pendingMain(b) || before(a, b))[0];
-    plan.rank.set(pick, plan.rank.size);
-  }
-  // Runs in a junction cycle are left unranked; solvePlan reports them.
-}
-
-export function dependencies(plan: Plan, id: string): string[] {
-  const deps = new Set(junctionParents(plan, id));
-  const mine = plan.rank.get(id);
-  if (mine === undefined) return [...deps].sort();
-  for (const c of plan.crossings) {
-    const other = c.upper === id ? c.lower : c.lower === id ? c.upper : null;
-    const isEarlier = other !== null && (plan.rank.get(other) ?? Infinity) < mine;
-    if (isEarlier) deps.add(other);
-  }
-  return [...deps].sort();
-}
-
-/** The needed runs in rank order; runs in a junction cycle (no rank) are returned separately. */
-function solveOrder(plan: Plan): { order: string[]; cyclic: string[] } {
-  const ranked = plan.needed.filter((id) => plan.rank.has(id));
-  ranked.sort((a, b) => plan.rank.get(a)! - plan.rank.get(b)!);
-  return { order: ranked, cyclic: plan.needed.filter((id) => !plan.rank.has(id)) };
-}
-
 export type Solved = {
   rp: RunPlan;
   profile: VerticalProfile;
+  steps: string[];
   /** Bank on the run's samples. */
   bank: Float64Array;
   start: XwEnd;
   end: XwEnd;
   /** [s, top, clearance] of everything the run crosses over. */
   cross: number[];
+  /** [s, top] of roads at ground level under it that it does not clear (crossing_over_or_at_grade). */
+  blocked: number[];
 };
 
-export type CompileResult = { chunks: XwChunk[]; runs: XwRunSummary[]; diagnostics: XwDiagnostic[] };
+export type SolveStats = {
+  components: number;
+  largestRuns: number;
+  largestVariables: number;
+  solves: number;
+  iterations: number;
+  qpMs: number;
+  /** Solves that did not converge (each reported as solver_not_converged). */
+  unconverged: number;
+};
+
+export type CompileResult = {
+  chunks: XwChunk[];
+  runs: XwRunSummary[];
+  diagnostics: XwDiagnostic[];
+  stats: SolveStats;
+};
 
 /** Every z15 DEM pixel tile the solve will read, for the build script to fetch first. */
 export function groundPoints(plan: Plan): Array<[number, number]> {
@@ -530,14 +766,21 @@ export function groundPoints(plan: Plan): Array<[number, number]> {
     const rp = plan.runs.get(id)!;
     const lo = Math.max(0, rp.i0 - 40);
     const hi = Math.min(rp.align.s.length - 1, rp.i1 + 40);
-    for (let i = lo; i <= hi; i += 4) out.push(lonLatAt(rp, i));
+    // Every 1 m sample: the floor reads the ground 2.5 m either side of each constraint station,
+    // and a run that only clips a tile corner between coarser samples would miss that tile.
+    for (let i = lo; i <= hi; i++) out.push(lonLatAt(rp, i));
     out.push(lonLatAt(rp, rp.i1));
   }
   return out;
 }
 
 /** Ground and terrain grade along the chain (which goes on past the run's ends). */
-function terrainAt(rp: RunPlan, ground: GroundSampler, chainSample: number): { z: number; grade: number } {
+function terrainAt(
+  rp: RunPlan,
+  ground: GroundSampler,
+  chainSample: number,
+  V: DesignSpeed,
+): { z: number; grade: number } {
   const n = rp.align.s.length;
   const at = (i: number) => {
     const k = Math.min(n - 1, Math.max(0, i));
@@ -551,30 +794,608 @@ function terrainAt(rp: RunPlan, ground: GroundSampler, chainSample: number): { z
   const grade = ds > 1 ? (b.z - a.z) / ds : 0;
   // The DEM's slope over 80 m, kept within half the 第20条 grade: a road at grade does not climb
   // like the laser ground beside a retaining wall does.
-  const cap = MAX_GRADE.value[rp.V].standard / 2;
+  const cap = MAX_GRADE.value[V].standard / 2;
   return { z: here.z, grade: Math.max(-cap, Math.min(cap, grade)) };
+}
+
+type ObjectPoly = {
+  o: CrossObject;
+  poly: Pick<Poly, "id" | "xy" | "s">;
+  box: [number, number, number, number];
+};
+
+/** The objects whose bounding box meets the run's (the rest cannot cross it). */
+function objectsNear(objects: ObjectPoly[], mine: Pick<Poly, "xy">): ObjectPoly[] {
+  const [x0, y0, x1, y1] = bboxOf(mine);
+  return objects.filter(({ box }) => box[2] >= x0 && box[0] <= x1 && box[3] >= y0 && box[1] <= y1);
+}
+
+function objectPoly(o: CrossObject): ObjectPoly["poly"] {
+  const xy: number[] = [];
+  for (const [lon, lat] of o.pts) xy.push(...CROSS_PLANE.toXY(lon, lat));
+  return { id: `${o.kind}${o.id}`, xy: new Float64Array(xy), s: new Float64Array(o.pts.length) };
+}
+
+/**
+ * Rise within distance d from a start at grade g0, at the standard grade and sag radius of V. Why
+ * the standard and not the 特例 grade: OSM gives no height for the streets, and one that a viaduct
+ * could only clear at the 特例 grade right after touching down is far more often an underpass or a
+ * street over a cut than a real clearance to design for.
+ */
+function climbLimit(V: DesignSpeed, g0: number): (d: number) => number {
+  const g = MAX_GRADE.value[V].standard;
+  const R = VERTICAL_CURVE_RADIUS.value[V].sag;
+  const d1 = Math.max(0, (g - g0) * R);
+  return (d) => (d <= d1 ? g0 * d + (d * d) / (2 * R) : g0 * d1 + (d1 * d1) / (2 * R) + g * (d - d1));
+}
+
+/** The climb of climbLimit must clear a road by this much more to count as reachable. */
+const REACH_MARGIN_M = 0.1;
+
+/** How far from a ground end a viaduct may still be below the standard clearance (it is climbing). */
+export function approachLength(V: DesignSpeed): number {
+  const g = MAX_GRADE.value[V].standard;
+  const r = VERTICAL_CURVE_RADIUS.value[V];
+  return ROAD_CLEAR / g + (g * (r.sag + r.crest)) / 2;
+}
+
+/** A run's part of the joint problem that does not depend on the fallback level. */
+type RunSetup = {
+  rp: RunPlan;
+  stations: Float64Array;
+  target: Float64Array;
+  lower: Float64Array;
+  lowerAtCrossings: Float64Array;
+  upper: Float64Array;
+  /** Fixed start / end (ground and portal ends); junction ends are couplings. */
+  fixed: [RunInput["start"], RunInput["end"]];
+  ends: [EndPlan, EndPlan];
+  cross: number[];
+  blocked: number[];
+};
+
+function setupRun(
+  plan: Plan,
+  rp: RunPlan,
+  ground: GroundSampler,
+  objects: ObjectPoly[],
+  diagnostics: XwDiagnostic[],
+): RunSetup {
+  const id = rp.run.id;
+  const S = rp.length;
+  const n = Math.max(2, Math.ceil(S / GRID_M) + 1);
+  const stations = Float64Array.from({ length: n }, (_, k) => Math.min(S, k * GRID_M));
+  stations[n - 1] = S;
+  const groundAt = stations.map((s) => {
+    const p = poseAt(rp, s);
+    return ground(p.lon, p.lat);
+  });
+  // The highest ground within half a grid step either side: the floor must hold between the 5 m
+  // constraint stations too, and the smoothed DEM still has half-metre bumps over a few metres
+  // (river walls, embankments) that the grid stations alone miss.
+  const groundPeak = stations.map((s, k) => {
+    let top = groundAt[k];
+    for (const d of [-GRID_M / 2, -GRID_M / 4, GRID_M / 4, GRID_M / 2]) {
+      const p = poseAt(rp, Math.min(S, Math.max(0, s + d)));
+      top = Math.max(top, ground(p.lon, p.lat));
+    }
+    return top;
+  });
+  const ends: [EndPlan, EndPlan] = [endPlan(plan, rp, true), endPlan(plan, rp, false)];
+  const fixed: [RunInput["start"], RunInput["end"]] = [{}, {}];
+  const groundZ: Array<number | null> = [null, null];
+  ends.forEach((e, side) => {
+    if (e.kind !== "ground") return;
+    const V = zoneSpeedAt(rp.zones, side === 0 ? 0 : S);
+    const t = terrainAt(rp, ground, rp.align.vertexSample[e.nodeIndex], V);
+    groundZ[side] = t.z;
+    // A portal's grade is the road's own as it goes on down into the tunnel or cut.
+    fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
+  });
+  // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
+  // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
+  // the end itself); a hard floor at the DEM made the ends infeasible by centimetres.
+  const lowerAtCrossings = Float64Array.from(groundAt, (g) => g - 0.25);
+  const cross: number[] = [];
+  const blocked: number[] = [];
+  const mine = runPoly(rp);
+  for (const { o, poly } of objectsNear(objects, mine)) {
+    for (const [sc, , sin] of intersect(mine, poly)) {
+      const p = poseAt(rp, sc);
+      const top = ground(p.lon, p.lat);
+      const clearance = o.kind === "rail" ? RAIL_CLEARANCE.value + GIRDER : ROAD_CLEAR;
+      // A road "at ground" that no grade could clear from the nearby ground end goes over the run
+      // (a street across a cut, untagged in OSM) or meets it at grade: not a clearance to keep,
+      // but recorded for P3 (the deck closes it).
+      const w = Math.min(40, (rp.halfWidth + GROUND_ROAD_HALF_WIDTH.value) / Math.max(sin, 0.25));
+      const reach = (side: number, d: number) => {
+        const z0 = groundZ[side];
+        if (z0 === null) return Infinity;
+        // Climbing away from the end: the end grade, reversed for the far end.
+        const g0 = (fixed[side].grade ?? 0) * (side === 0 ? 1 : -1);
+        return climbLimit(zoneSpeedAt(rp.zones, side === 0 ? 0 : S), g0)(Math.max(0, d)) + z0;
+      };
+      const isUnreachable =
+        Math.min(reach(0, sc - w), reach(1, S - sc - w)) < top + clearance + REACH_MARGIN_M;
+      if (isUnreachable) {
+        diagnostics.push({
+          run: id,
+          kind: "crossing_over_or_at_grade",
+          detail: `${o.kind} ${o.id} at ${sc.toFixed(0)} m cannot be cleared from the ground end; taken as passing over`,
+          allowed: false,
+        });
+        blocked.push(sc, top);
+        continue;
+      }
+      const win = Math.min(40, (rp.halfWidth + GROUND_ROAD_HALF_WIDTH.value) / Math.max(sin, 0.25));
+      for (let k = 0; k < n; k++) {
+        const isInWindow = Math.abs(stations[k] - sc) <= win;
+        if (isInWindow) lowerAtCrossings[k] = Math.max(lowerAtCrossings[k], top + clearance);
+      }
+      cross.push(sc, top, clearance);
+    }
+  }
+  // One grid step shorter than the climb, so the floor also holds between grid stations wherever
+  // the check (checks.checkClearance) expects it.
+  const approach = approachLength(rp.planV) - GRID_M;
+  const lower = Float64Array.from(lowerAtCrossings);
+  const isGroundStart = ends[0].kind === "ground";
+  const isGroundEnd = ends[1].kind === "ground";
+  for (let k = 0; k < n; k++) {
+    const nearGround =
+      (isGroundStart && stations[k] < approach) || (isGroundEnd && S - stations[k] < approach);
+    if (!nearGround) lower[k] = Math.max(lower[k], groundPeak[k] + ROAD_CLEAR);
+  }
+  // Target: the standard underclearance over the ground (averaged over ±60 m). Only crossings and
+  // decks over one another raise it (設計書 4.3 の 1); OSM layer orders them but is no height.
+  const target = stations.map((_, k) => {
+    let sum = 0;
+    let cnt = 0;
+    for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
+      sum += groundAt[j];
+      cnt++;
+    }
+    return sum / cnt + STANDARD_UNDERCLEARANCE.value + GIRDER;
+  });
+  return {
+    rp,
+    stations,
+    target,
+    lower,
+    lowerAtCrossings,
+    upper: stations.map(() => Infinity),
+    fixed,
+    ends,
+    cross,
+    blocked,
+  };
+}
+
+/** The couplings among a component's runs: junctions, crossings and decks over one another. */
+function couplingsOf(plan: Plan, members: Set<string>): Coupling[] {
+  const out: Coupling[] = [];
+  for (const id of [...members].sort()) {
+    const rp = plan.runs.get(id)!;
+    for (const atStart of [true, false]) {
+      const e = endPlan(plan, rp, atStart);
+      const isJoined = (e.kind === "junction" || e.kind === "seam") && members.has(e.parent);
+      if (!isJoined) continue;
+      const pp = plan.runs.get(e.parent)!;
+      const ps = pp.align.s[pp.align.vertexSample[e.parentNodeIndex]] - pp.align.s[pp.i0];
+      out.push({ kind: "junction", child: id, atStart, parent: { run: e.parent, s: ps } });
+    }
+  }
+  for (const c of plan.crossings) {
+    const isInside = members.has(c.upper) && members.has(c.lower);
+    if (!isInside) continue;
+    out.push({
+      kind: "within",
+      a: { run: c.upper, s: c.sUpper },
+      b: { run: c.lower, s: c.sLower },
+      lo: ROAD_CLEAR,
+      hi: Infinity,
+      firm: true,
+    });
+  }
+  for (const p of plan.pairs) {
+    const isInside = members.has(p.a) && members.has(p.b);
+    if (!isInside) continue;
+    const a = { run: p.a, s: p.sa };
+    const b = { run: p.b, s: p.sb };
+    const firm = false;
+    if (p.relation === "same")
+      out.push({ kind: "within", a, b, lo: -SAME_SURFACE_M, hi: SAME_SURFACE_M, firm });
+    else if (p.relation === "above")
+      out.push({ kind: "within", a, b, lo: LEVEL_APART_M, hi: Infinity, firm });
+    else out.push({ kind: "within", a, b, lo: -Infinity, hi: -LEVEL_APART_M, firm });
+  }
+  return out;
+}
+
+type ComponentResult = {
+  solved: Map<string, Solved>;
+  unsolved: Map<string, VerticalAttempt[]>;
+  stats: Omit<SolveStats, "components">;
+};
+
+type LevelSolve = {
+  profiles: Map<string, VerticalProfile>;
+  /** Exact constraints a run fails (a run with any is not solved at this level). */
+  problems: Map<string, string[]>;
+  /** Metres by which a run misses the decks it shares or stands over (soft, summed). */
+  soft: Map<string, number>;
+  isConverged: boolean;
+};
+
+/**
+ * One component through the fallbacks of 設計書 4.3 の 3: solve all its runs jointly, find the
+ * runs whose exact constraints still fail (their own bounds and ends, junctions, the crossings'
+ * clearance), move only those one step down their fallback list, and solve again, until no failing
+ * run has a step left. A ramp that misses a deck it shares (a nose it must leave in time to reach
+ * the ground) also steps down, short of "crossings only" (a lower speed allows a shorter vertical
+ * curve), and goes back to the step where it missed least if stepping down did not help. Main lines
+ * keep their speed for that: their leftovers are stacked carriageways changing over where OSM puts
+ * them too close, which no speed solves.
+ */
+function solveComponent(
+  plan: Plan,
+  ids: string[],
+  ground: GroundSampler,
+  objects: ObjectPoly[],
+  diagnostics: XwDiagnostic[],
+): ComponentResult {
+  const members = new Set(ids);
+  const setups = new Map(
+    ids.map((id) => [id, setupRun(plan, plan.runs.get(id)!, ground, objects, diagnostics)]),
+  );
+  const couplings = couplingsOf(plan, members);
+  const ladders = new Map(
+    ids.map((id) => [id, fallbackPlans(plan.runs.get(id)!.planV, plan.runs.get(id)!.minV)]),
+  );
+  const level = new Map(ids.map((id) => [id, 0]));
+  const attempts = new Map<string, VerticalAttempt[]>(ids.map((id) => [id, []]));
+  /** Per ramp: the soft miss at each step it was solved with, and whether the step was clean. */
+  const history = new Map<string, Array<{ soft: number; clean: boolean }>>(ids.map((id) => [id, []]));
+  const crossingsHere = plan.crossings.filter((c) => members.has(c.upper) && members.has(c.lower));
+  const stats = {
+    largestRuns: ids.length,
+    largestVariables: 0,
+    solves: 0,
+    iterations: 0,
+    qpMs: 0,
+    unconverged: 0,
+  };
+  const unconverged: string[] = [];
+  const isRamp = (id: string) => plan.runs.get(id)!.cls === "ramp";
+
+  const solveAt = (): LevelSolve => {
+    const inputs: RunInput[] = ids.map((id) => {
+      const st = setups.get(id)!;
+      const step = ladders.get(id)![level.get(id)!];
+      return {
+        id,
+        length: st.rp.length,
+        zones: capZones(st.rp.zones, step.cap),
+        special: step.special,
+        stations: st.stations,
+        target: st.target,
+        lower: step.crossingsOnly ? st.lowerAtCrossings : st.lower,
+        upper: st.upper,
+        start: st.fixed[0],
+        end: st.fixed[1],
+      };
+    });
+    const started = performance.now();
+    const res = solveJoint(inputs, couplings);
+    stats.qpMs += performance.now() - started;
+    stats.solves++;
+    stats.iterations += res.iterations;
+    stats.largestVariables = Math.max(stats.largestVariables, res.variables);
+    const isConverged = res.status === "converged";
+    if (!isConverged) {
+      stats.unconverged++;
+      const r = res.residuals;
+      unconverged.push(
+        `solve ${stats.solves} ${res.status} after ${res.iterations} iterations (primal ${r.primal.toExponential(1)}, dual ${r.dual.toExponential(1)}, gap ${r.gap.toExponential(1)})`,
+      );
+    }
+    const { profiles, problems } = res;
+    for (const c of crossingsHere) {
+      const gap =
+        evalProfile(profiles.get(c.upper)!, c.sUpper).z - evalProfile(profiles.get(c.lower)!, c.sLower).z;
+      const isShort = gap < ROAD_CLEAR;
+      if (!isShort) continue;
+      const what = `clearance over ${c.lower} ${gap.toFixed(2)} m < ${ROAD_CLEAR} m at ${Math.round(c.sUpper)} m`;
+      problems.get(c.upper)!.push(what);
+      problems.get(c.lower)!.push(`under ${c.upper}: ${what}`);
+    }
+    const soft = new Map(ids.map((id) => [id, 0]));
+    for (const c of couplings) {
+      if (c.kind !== "within" || c.firm) continue;
+      const d = evalProfile(profiles.get(c.a.run)!, c.a.s).z - evalProfile(profiles.get(c.b.run)!, c.b.s).z;
+      const miss = Math.max(0, c.lo - d, d - c.hi);
+      if (miss <= SOFT_SLACK_M) continue;
+      soft.set(c.a.run, soft.get(c.a.run)! + miss);
+      soft.set(c.b.run, soft.get(c.b.run)! + miss);
+    }
+    for (const id of ids) {
+      const step = ladders.get(id)![level.get(id)!];
+      const worst = problems.get(id)!.join("; ");
+      attempts
+        .get(id)!
+        .push({ V: step.cap, special: step.special, crossingsOnly: step.crossingsOnly, worst });
+      history.get(id)![level.get(id)!] = { soft: soft.get(id)!, clean: worst === "" };
+    }
+    return { profiles, problems, soft, isConverged };
+  };
+
+  let result = solveAt();
+  for (;;) {
+    // An unconverged solve is no verdict on any run: stepping runs down on it would lower speeds
+    // for nothing. Stop and report (solver_not_converged); the exact checks still judge each run.
+    if (!result.isConverged) break;
+    const canStep = (id: string) => {
+      const ladder = ladders.get(id)!;
+      const next = level.get(id)! + 1;
+      const isHard = result.problems.get(id)!.length > 0;
+      if (isHard) return next < ladder.length;
+      const isSoft = result.soft.get(id)! > 0;
+      return isRamp(id) && isSoft && next < ladder.length && !ladder[next].crossingsOnly;
+    };
+    const advance = ids.filter(canStep);
+    if (advance.length === 0) break;
+    for (const id of advance) level.set(id, level.get(id)! + 1);
+    result = solveAt();
+  }
+  // Ramps that stepped down for a shared deck and missed it no less: back to the cleanest step
+  // that missed least (lowest first), then one more solve; a ramp the move breaks keeps its step.
+  const moved = new Map<string, number>();
+  for (const id of ids) {
+    if (!isRamp(id)) continue;
+    const seen = history.get(id)!;
+    let best = level.get(id)!;
+    for (let k = 0; k < seen.length; k++) {
+      const h = seen[k];
+      const isBetter = h !== undefined && h.clean && h.soft < seen[best].soft - 0.05;
+      const isTie = h !== undefined && h.clean && Math.abs(h.soft - seen[best].soft) <= 0.05 && k < best;
+      if (isBetter || isTie) best = k;
+    }
+    if (best === level.get(id)!) continue;
+    moved.set(id, level.get(id)!);
+    level.set(id, best);
+  }
+  if (moved.size > 0) {
+    const tried = solveAt();
+    const broken = [...moved.keys()].filter((id) => tried.problems.get(id)!.length > 0);
+    const isUsable = tried.isConverged && broken.length === 0;
+    if (!isUsable) for (const id of tried.isConverged ? broken : moved.keys()) level.set(id, moved.get(id)!);
+    result = isUsable ? tried : solveAt();
+  }
+  if (unconverged.length > 0) {
+    diagnostics.push({
+      run: ids[0],
+      kind: "solver_not_converged",
+      detail: `component of ${ids.length} runs: ${unconverged.join("; ")}`,
+      allowed: false,
+    });
+  }
+  const { profiles, problems } = result;
+  const banks = banksOf(plan, ids, profiles, setups);
+  const solved = new Map<string, Solved>();
+  const unsolved = new Map<string, VerticalAttempt[]>();
+  for (const id of ids) {
+    const isFailing = problems.get(id)!.length > 0;
+    if (isFailing) {
+      unsolved.set(id, attempts.get(id)!);
+      continue;
+    }
+    const st = setups.get(id)!;
+    const profile = profiles.get(id)!;
+    const ends = st.ends.map((e, side) =>
+      xwEnd(plan, e, side === 0 ? 0 : st.rp.length, profile, profiles, banks),
+    );
+    solved.set(id, {
+      rp: st.rp,
+      profile,
+      steps: ladders.get(id)![level.get(id)!].steps,
+      bank: banks.get(id)!,
+      start: ends[0],
+      end: ends[1],
+      cross: st.cross,
+      blocked: st.blocked,
+    });
+  }
+  return { solved, unsolved, stats };
+}
+
+function xwEnd(
+  plan: Plan,
+  e: EndPlan,
+  s: number,
+  profile: VerticalProfile,
+  profiles: Map<string, VerticalProfile>,
+  banks: Map<string, Float64Array>,
+): XwEnd {
+  if (e.kind === "open") return { kind: "open" };
+  const here = evalProfile(profile, s);
+  if (e.kind === "ground") {
+    const base = {
+      z: roundTo(here.z, 3),
+      grade: roundTo(here.grade, 5),
+      ground: roundTo(here.z, 3),
+      bank: 0,
+    };
+    return e.into ? { kind: "portal", into: e.into, ...base } : { kind: "ground", ...base };
+  }
+  const pp = plan.runs.get(e.parent)!;
+  const ps = pp.align.s[pp.align.vertexSample[e.parentNodeIndex]] - pp.align.s[pp.i0];
+  const parent = profiles.get(e.parent)!;
+  const v = evalProfile(parent, ps);
+  const pBank = banks.get(e.parent)!;
+  const bank = pBank[Math.min(pBank.length - 1, Math.max(0, sampleAt(pp, ps) - pp.i0))];
+  return {
+    kind: e.kind,
+    parent: e.parent,
+    parentS: roundTo(ps, 2),
+    z: roundTo(v.z, 3),
+    grade: roundTo(v.grade, 5),
+    bank: roundTo(bank, 4),
+  };
+}
+
+/**
+ * Superelevation of a component's runs, parents before children (a junction end takes its
+ * parent's bank) and each run after the decks it shares a surface with (it takes their bank there:
+ * the same for a deck going the same way, the opposite sign for one going the other way, so the slab
+ * is one plane). Capped so the composite grade stays within 第25条.
+ */
+function banksOf(
+  plan: Plan,
+  ids: string[],
+  profiles: Map<string, VerticalProfile>,
+  setups: Map<string, RunSetup>,
+): Map<string, Float64Array> {
+  const members = new Set(ids);
+  const parents = new Map(
+    ids.map((id) => [id, junctionParents(plan, id).filter((p) => members.has(p) && p !== id)]),
+  );
+  const done = new Map<string, Float64Array>();
+  const order: string[] = [];
+  for (;;) {
+    const next = ids.find(
+      (id) => !done.has(id) && !order.includes(id) && parents.get(id)!.every((p) => order.includes(p)),
+    );
+    if (next === undefined) break;
+    order.push(next);
+  }
+  for (const id of ids) if (!order.includes(id)) order.push(id);
+  const sameWith = new Map<string, DeckPair[]>();
+  for (const p of plan.pairs) {
+    const isMine = p.relation === "same" && members.has(p.a) && members.has(p.b);
+    if (!isMine) continue;
+    sameWith.set(p.a, [...(sameWith.get(p.a) ?? []), p]);
+  }
+  for (const id of order) {
+    const st = setups.get(id)!;
+    const rp = st.rp;
+    const profile = profiles.get(id)!;
+    const n = rp.i1 - rp.i0 + 1;
+    const sampleS = new Float64Array(n);
+    const kappa = new Float64Array(n);
+    const speeds: DesignSpeed[] = [];
+    for (let i = rp.i0; i <= rp.i1; i++) {
+      sampleS[i - rp.i0] = rp.align.s[i] - rp.align.s[rp.i0];
+      kappa[i - rp.i0] = rp.align.kappa[i];
+      speeds.push(zoneSpeedAt(profile.zones, sampleS[i - rp.i0]));
+    }
+    const room = sampleS.map((sv) => {
+      const g = evalProfile(profile, sv).grade;
+      const limit = compositeLimit(zoneSpeedAt(profile.zones, sv));
+      return Math.sqrt(Math.max(0, limit * limit - g * g)) * 0.995;
+    });
+    const pins = new Float64Array(n).fill(Number.NaN);
+    let transitionV = Math.max(...speeds) as DesignSpeed;
+    for (const p of sameWith.get(id) ?? []) {
+      const other = done.get(p.b);
+      if (!other) continue;
+      const orp = plan.runs.get(p.b)!;
+      const ob = other[Math.min(other.length - 1, Math.max(0, sampleAt(orp, p.sb) - orp.i0))];
+      const k = Math.min(n - 1, Math.max(0, sampleAt(rp, p.sa) - rp.i0));
+      // Pin a short stretch around the pair station (pairs are every 5 m).
+      for (let j = Math.max(0, k - 2); j <= Math.min(n - 1, k + 2); j++) pins[j] = p.cos >= 0 ? ob : -ob;
+      transitionV = Math.max(transitionV, plan.runs.get(p.b)!.planV) as DesignSpeed;
+    }
+    const bankEnd = (side: number): number | null => {
+      const e = st.ends[side];
+      if (e.kind === "ground") return 0;
+      if (e.kind === "open") return null;
+      const pBank = done.get(e.parent);
+      if (!pBank) return null;
+      const pp = plan.runs.get(e.parent)!;
+      const ps = pp.align.s[pp.align.vertexSample[e.parentNodeIndex]] - pp.align.s[pp.i0];
+      return pBank[Math.min(pBank.length - 1, Math.max(0, sampleAt(pp, ps) - pp.i0))];
+    };
+    const bank = superelevation(
+      speeds,
+      kappa,
+      sampleS,
+      { start: bankEnd(0), end: bankEnd(1) },
+      { room, pins, transitionV },
+    );
+    done.set(id, bank);
+  }
+  return done;
 }
 
 export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObject[]): CompileResult {
   const diagnostics = [...plan.diagnostics];
+  const objectPolys = objects.map((o) => {
+    const poly = objectPoly(o);
+    return { o, poly, box: bboxOf(poly) };
+  });
   const solved = new Map<string, Solved>();
   const failed = new Set<string>();
-  const { order, cyclic } = solveOrder(plan);
-  for (const id of cyclic) {
-    diagnostics.push({
-      run: id,
-      kind: "dependency_cycle",
-      detail: "runs wait on each other",
-      allowed: false,
-    });
-    failed.add(id);
+  const neededComponents = [...new Set(plan.needed.map((id) => plan.componentOf.get(id)!))].sort();
+  const stats: SolveStats = {
+    components: 0,
+    largestRuns: 0,
+    largestVariables: 0,
+    solves: 0,
+    iterations: 0,
+    qpMs: 0,
+    unconverged: 0,
+  };
+  for (const cid of neededComponents) {
+    const ids = plan.components.get(cid)!;
+    const res = solveComponent(plan, ids, ground, objectPolys, diagnostics);
+    stats.components++;
+    stats.largestRuns = Math.max(stats.largestRuns, res.stats.largestRuns);
+    stats.largestVariables = Math.max(stats.largestVariables, res.stats.largestVariables);
+    stats.solves += res.stats.solves;
+    stats.iterations += res.stats.iterations;
+    stats.qpMs += res.stats.qpMs;
+    stats.unconverged += res.stats.unconverged;
+    for (const [id, s] of res.solved) solved.set(id, s);
+    for (const [id, attempts] of res.unsolved) {
+      failed.add(id);
+      diagnostics.push({
+        run: id,
+        kind: "vertical_unsolved",
+        detail: attempts
+          .map(
+            (a) =>
+              `V${a.V}${a.special ? "特例" : ""}${a.crossingsOnly ? "交差のみ" : ""}: ${a.worst || "ok"}`,
+          )
+          .join(" | "),
+        allowed: false,
+      });
+    }
   }
-  const objectPolys = objects.map((o) => ({ o, poly: objectPoly(o) }));
-  for (const id of order) {
-    const rp = plan.runs.get(id)!;
-    const result = solveRun(plan, rp, ground, objectPolys, solved, failed, diagnostics);
-    if (result) solved.set(id, result);
-    else failed.add(id);
+  // A run whose junction parent is not in the data would end in the air: left out, and reported.
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const id of [...solved.keys()].sort()) {
+      const s = solved.get(id)!;
+      const lost = [s.start, s.end].find((e) => e.parent !== undefined && !solved.has(e.parent));
+      if (!lost) continue;
+      solved.delete(id);
+      failed.add(id);
+      diagnostics.push({ run: id, kind: "parent_unsolved", detail: `parent ${lost.parent}`, allowed: false });
+      changed = true;
+    }
+  }
+  for (const s of solved.values()) {
+    const isFallback = s.steps[0] !== "standard";
+    // Dropping the floor over open ground (crossings only) breaks T4's clearance away from the
+    // ground ends, so it is a kind of its own that the allowlist does not cover wholesale.
+    const isCrossingsOnly = s.steps.includes("crossingsOnly");
+    if (isFallback)
+      diagnostics.push({
+        run: s.rp.run.id,
+        kind: isCrossingsOnly ? "vertical_crossings_only" : "vertical_fallback",
+        detail: s.steps.join(">") + ` V${Math.max(...s.profile.zones.map((z) => z.V))}`,
+        allowed: false,
+      });
   }
   // Deck-over-deck crossings, recorded on the upper run once both are solved (for T4).
   for (const c of plan.crossings) {
@@ -596,12 +1417,12 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
       cls: s.rp.cls,
       ref: s.rp.ref,
       lengthM: roundTo(s.rp.length, 2),
-      V: s.profile.V,
+      V: Math.max(...s.profile.zones.map((z) => z.V)),
       tagV: s.rp.tagV,
-      planV: s.rp.V,
+      planV: s.rp.planV,
       minRadiusM: roundTo(Math.min(s.rp.minRadius, 1e6), 1),
       maxShiftM: roundTo(s.rp.align.maxShiftM, 3),
-      steps: s.profile.steps,
+      steps: s.steps,
       start: s.start,
       end: s.end,
       chunks: runChunks.map((c) => c.id),
@@ -617,266 +1438,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   }
   // Whether a departure is accepted is the allowlist's alone (with its reason), never the compiler's.
   for (const d of diagnostics) d.allowed = isAllowed(d);
-  return { chunks, runs, diagnostics };
-}
-
-type ObjectPoly = { o: CrossObject; poly: Poly };
-
-function objectPoly(o: CrossObject): Poly {
-  const xy: number[] = [];
-  for (const [lon, lat] of o.pts) xy.push(...CROSS_PLANE.toXY(lon, lat));
-  return { id: `${o.kind}${o.id}`, xy: new Float64Array(xy), s: new Float64Array(o.pts.length) };
-}
-
-/**
- * Rise from a level start within distance d at the standard grade and sag radius of V. Why the
- * standard and not the 特例 grade: OSM gives no height for the streets, and one that a viaduct
- * could only clear at the 特例 grade right after touching down is far more often an underpass or a
- * street over a cut than a real clearance to design for.
- */
-function climbLimit(V: DesignSpeed): (d: number) => number {
-  const g = MAX_GRADE.value[V].standard;
-  const R = VERTICAL_CURVE_RADIUS.value[V].sag;
-  return (d) => (d <= g * R ? (d * d) / (2 * R) : g * d - (g * g * R) / 2);
-}
-
-/** How far from a ground end a viaduct may still be below the standard clearance (it is climbing). */
-export function approachLength(V: DesignSpeed): number {
-  const g = MAX_GRADE.value[V].standard;
-  const r = VERTICAL_CURVE_RADIUS.value[V];
-  return ROAD_CLEAR / g + (g * (r.sag + r.crest)) / 2;
-}
-
-function solveRun(
-  plan: Plan,
-  rp: RunPlan,
-  ground: GroundSampler,
-  objects: ObjectPoly[],
-  solved: Map<string, Solved>,
-  failed: Set<string>,
-  diagnostics: XwDiagnostic[],
-): Solved | null {
-  const id = rp.run.id;
-  const S = rp.length;
-  const n = Math.max(2, Math.ceil(S / GRID_M) + 1);
-  const stations = Float64Array.from({ length: n }, (_, k) => Math.min(S, k * GRID_M));
-  stations[n - 1] = S;
-  const groundAt = stations.map((s) => {
-    const p = poseAt(rp, s);
-    return ground(p.lon, p.lat);
-  });
-  const ends: XwEnd[] = [];
-  const conds: Array<{ z?: number; grade?: number }> = [];
-  const bankEnds: Array<number | null> = [];
-  for (const atStart of [true, false]) {
-    const e = endPlan(plan, rp, atStart);
-    if (e.kind === "open") {
-      ends.push({ kind: "open" });
-      conds.push({});
-      bankEnds.push(null);
-      continue;
-    }
-    if (e.kind === "ground") {
-      const t = terrainAt(rp, ground, rp.align.vertexSample[e.nodeIndex]);
-      ends.push({
-        kind: "ground",
-        z: roundTo(t.z, 3),
-        grade: roundTo(t.grade, 5),
-        ground: roundTo(t.z, 3),
-        bank: 0,
-      });
-      conds.push({ z: t.z, grade: t.grade });
-      bankEnds.push(0);
-      continue;
-    }
-    const parent = solved.get(e.parent);
-    if (!parent) {
-      const why = failed.has(e.parent) ? "parent_unsolved" : "parent_missing";
-      diagnostics.push({ run: id, kind: why, detail: `parent ${e.parent}`, allowed: false });
-      return null;
-    }
-    const pp = parent.rp;
-    const ps = pp.align.s[pp.align.vertexSample[e.parentNodeIndex]] - pp.align.s[pp.i0];
-    const v = evalProfile(parent.profile, ps);
-    const bank = parent.bank[Math.min(parent.bank.length - 1, Math.max(0, sampleAt(pp, ps) - pp.i0))];
-    ends.push({ kind: e.kind, parent: e.parent, parentS: roundTo(ps, 2), z: v.z, grade: v.grade, bank });
-    conds.push({ z: v.z, grade: v.grade });
-    bankEnds.push(bank);
-  }
-  // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
-  // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
-  // the end itself); a hard floor at the DEM made the ends infeasible by centimetres.
-  const base = groundAt.map((g) => g - 0.25);
-  const lowerAtCrossings = Float64Array.from(base);
-  const cross: number[] = [];
-  const applyCrossing = (
-    sc: number,
-    top: number,
-    clearance: number,
-    halfOther: number,
-    sin: number,
-    record = true,
-  ) => {
-    const w = Math.min(40, (rp.halfWidth + halfOther) / Math.max(sin, 0.25));
-    for (let k = 0; k < n; k++) {
-      const isInWindow = Math.abs(stations[k] - sc) <= w;
-      if (isInWindow) lowerAtCrossings[k] = Math.max(lowerAtCrossings[k], top + clearance);
-    }
-    if (record) cross.push(sc, top, clearance);
-  };
-  const mine = runPoly(rp);
-  const reach = climbLimit(rp.V);
-  for (const { o, poly } of objects) {
-    for (const [sc, , sin] of intersect(mine, poly)) {
-      const p = poseAt(rp, sc);
-      const top = ground(p.lon, p.lat);
-      const clearance = o.kind === "rail" ? RAIL_CLEARANCE.value + GIRDER : ROAD_CLEAR;
-      // A road "at ground" that no grade could clear from the nearby ground end goes over the run
-      // (a street across a cut, untagged in OSM) or meets it at grade: not a clearance to keep.
-      const w = Math.min(40, (rp.halfWidth + GROUND_ROAD_HALF_WIDTH.value) / Math.max(sin, 0.25));
-      const fromStart = ends[0].kind === "ground" ? reach(Math.max(0, sc - w)) + ends[0].z! : Infinity;
-      const fromEnd = ends[1].kind === "ground" ? reach(Math.max(0, S - sc - w)) + ends[1].z! : Infinity;
-      const isUnreachable = Math.min(fromStart, fromEnd) < top + clearance;
-      if (isUnreachable) {
-        diagnostics.push({
-          run: id,
-          kind: "crossing_over_or_at_grade",
-          detail: `${o.kind} ${o.id} at ${sc.toFixed(0)} m cannot be cleared from the ground end; taken as passing over`,
-          allowed: false,
-        });
-        continue;
-      }
-      applyCrossing(sc, top, clearance, GROUND_ROAD_HALF_WIDTH.value, sin);
-    }
-  }
-  const upper = stations.map(() => Infinity);
-  for (const c of plan.crossings) {
-    const isUpper = c.upper === id;
-    const isLower = c.lower === id;
-    if (!isUpper && !isLower) continue;
-    const otherId = isUpper ? c.lower : c.upper;
-    const isLater = (plan.rank.get(otherId) ?? Infinity) > (plan.rank.get(id) ?? Infinity);
-    if (isLater) continue; // the other run takes this crossing as its bound
-    const other = solved.get(otherId);
-    if (!other) {
-      diagnostics.push({
-        run: id,
-        kind: "partner_unsolved",
-        detail: `crossing with ${otherId} not checked`,
-        allowed: false,
-      });
-      continue;
-    }
-    const sOther = isUpper ? c.sLower : c.sUpper;
-    const sMine = isUpper ? c.sUpper : c.sLower;
-    // The other deck's extreme under the window, conservatively.
-    let top = -Infinity;
-    let bottom = Infinity;
-    for (let d = -30; d <= 30; d += GRID_M) {
-      const z = evalProfile(other.profile, Math.min(other.rp.length, Math.max(0, sOther + d))).z;
-      top = Math.max(top, z);
-      bottom = Math.min(bottom, z);
-    }
-    if (isUpper) {
-      applyCrossing(sMine, top, ROAD_CLEAR, other.rp.halfWidth, c.sinAngle, false);
-      continue;
-    }
-    const w = Math.min(40, (rp.halfWidth + other.rp.halfWidth) / Math.max(c.sinAngle, 0.25));
-    for (let k = 0; k < n; k++) {
-      const isInWindow = Math.abs(stations[k] - sMine) <= w;
-      if (isInWindow) upper[k] = Math.min(upper[k], bottom - ROAD_CLEAR);
-    }
-  }
-  // One grid step shorter than the climb, so the floor also holds between grid stations wherever
-  // the check (checks.checkClearance) expects it.
-  const approach = approachLength(rp.V) - GRID_M;
-  const lower = Float64Array.from(lowerAtCrossings);
-  const isGroundStart = ends[0].kind === "ground";
-  const isGroundEnd = ends[1].kind === "ground";
-  for (let k = 0; k < n; k++) {
-    const nearGround =
-      (isGroundStart && stations[k] < approach) || (isGroundEnd && S - stations[k] < approach);
-    if (!nearGround) lower[k] = Math.max(lower[k], groundAt[k] + ROAD_CLEAR);
-  }
-  // Target: the standard underclearance over the ground, plus one deck level (clearance + girder)
-  // for every OSM layer above 1, both averaged over ±60 m. The layer only steers the objective:
-  // where a JCT stacks decks, the deck that carries a higher layer aims higher before its ramps
-  // have to climb over the others (a ramp leaving a deck at the standard height could not climb
-  // a whole level before the deck beside it, which made 浜崎橋 JCT unsolvable). Why not use the
-  // layer as a fixed height (設計書 9 章): the constraints still come only from what is crossed,
-  // and a change of layer tag never makes a step.
-  const levels = stations.map((sv) => {
-    const way = plan.net.ways.get(rp.wayAt[sampleAt(rp, sv) - rp.i0])!;
-    return Math.max(0, way.layer - 1) * ROAD_CLEAR;
-  });
-  const target = stations.map((_, k) => {
-    let sum = 0;
-    let cnt = 0;
-    for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
-      sum += groundAt[j] + levels[j];
-      cnt++;
-    }
-    return sum / cnt + STANDARD_UNDERCLEARANCE.value + GIRDER;
-  });
-  const result = solveVertical({
-    length: S,
-    V: rp.V,
-    minV: rp.minV,
-    stations,
-    target,
-    lower,
-    upper,
-    lowerAtCrossings,
-    start: conds[0],
-    end: conds[1],
-  });
-  if (!result.ok) {
-    diagnostics.push({
-      run: id,
-      kind: "vertical_unsolved",
-      detail: result.attempts
-        .map((a) => `V${a.V}${a.special ? "特例" : ""}${a.crossingsOnly ? "交差のみ" : ""}: ${a.worst}`)
-        .join(" | "),
-      allowed: false,
-    });
-    return null;
-  }
-  const profile = result.profile;
-  const isFallback = profile.steps[0] !== "standard";
-  if (isFallback) {
-    diagnostics.push({
-      run: id,
-      kind: "vertical_fallback",
-      detail: profile.steps.join(">") + ` V${profile.V}`,
-      allowed: false,
-    });
-  }
-  // Superelevation on the run's samples, capped so the composite grade stays within 第25条.
-  const sampleS = new Float64Array(rp.i1 - rp.i0 + 1);
-  const kappa = new Float64Array(rp.i1 - rp.i0 + 1);
-  for (let i = rp.i0; i <= rp.i1; i++) {
-    sampleS[i - rp.i0] = rp.align.s[i] - rp.align.s[rp.i0];
-    kappa[i - rp.i0] = rp.align.kappa[i];
-  }
-  const limit = compositeLimit(profile.V);
-  const room = sampleS.map((sv) => {
-    const g = evalProfile(profile, sv).grade;
-    return Math.sqrt(Math.max(0, limit * limit - g * g)) * 0.995;
-  });
-  const bank = superelevation(profile.V, kappa, sampleS, { start: bankEnds[0], end: bankEnds[1] }, room);
-  for (const e of ends) {
-    if (e.z !== undefined) e.z = roundTo(e.z, 3);
-    if (e.grade !== undefined) e.grade = roundTo(e.grade, 5);
-    if (e.bank !== undefined) e.bank = roundTo(e.bank, 4);
-  }
-  return {
-    rp,
-    profile,
-    bank,
-    start: ends[0],
-    end: ends[1],
-    cross,
-  };
+  return { chunks, runs, diagnostics, stats };
 }
 
 /**
@@ -894,17 +1456,98 @@ function headingAt(rp: RunPlan, s: number): number {
   return Math.atan2(latB - latA, (lonB - lonA) * kx);
 }
 
+/** A plan station this close to a knot moves onto it instead of adding one (the plan chord barely changes). */
+const KNOT_SNAP_M = 2.5;
+
+/**
+ * The chunk's stations: the plan stations with every knot added. The ends a and b never move (the
+ * next chunk starts exactly there); an interior plan station within KNOT_SNAP_M of a knot moves onto
+ * it instead of adding one, at most one per knot. Why the ends by value and not by index: once a
+ * knot was appended the last index was no longer b, and b itself got moved onto a knot (gaps of up
+ * to 2.49 m at chunk seams in the full build).
+ */
+export function stationPositions(plan: number[], knots: number[], a: number, b: number): number[] {
+  const out = [...plan];
+  const moved = new Set<number>();
+  for (const knot of knots) {
+    const near = out.findIndex(
+      (sv, i) => sv !== a && sv !== b && !moved.has(i) && Math.abs(sv - knot) < KNOT_SNAP_M,
+    );
+    if (near >= 0) {
+      out[near] = knot;
+      moved.add(near);
+    } else out.push(knot);
+  }
+  return out.sort((p, q) => p - q).filter((v, i, arr) => i === 0 || v - arr[i - 1] > 1e-6);
+}
+
+/** Knots strictly inside (a, b) where the vertical curvature changes (parabola to parabola). */
+function curvatureKnots(p: VerticalProfile, a: number, b: number): number[] {
+  const out: number[] = [];
+  const m = p.z.length - 1;
+  for (let j = 1; j < m; j++) {
+    const s = j * p.h;
+    const isInside = s > a + 0.5 && s < b - 0.5;
+    if (!isInside) continue;
+    const before = (p.g[j] - p.g[j - 1]) / p.h;
+    const after = (p.g[j + 1] - p.g[j]) / p.h;
+    const isChange = Math.abs(after - before) > 1e-6;
+    if (isChange) out.push(s);
+  }
+  return out;
+}
+
 /** Station spacing from the plan curvature: 5 m on tight curves, up to 20 m on straights. */
 function stationStep(kappa: number): number {
   const R = 1 / Math.max(Math.abs(kappa), 1e-6);
   return Math.min(20, Math.max(5, Math.sqrt(8 * R * 0.03)));
 }
 
+/**
+ * A run's stretches over or under other runs' carriageways, from the plan pairs: consecutive pair
+ * stations with one partner and one relation within STRETCH_GAP_M make one stretch (padded by half
+ * the pair spacing).
+ */
+function deckStretches(plan: Plan, id: string): XwDeckStretch[] {
+  const mine = plan.pairs
+    .filter((p) => p.a === id)
+    .sort((p, q) => (p.b < q.b ? -1 : p.b > q.b ? 1 : p.sa - q.sa));
+  const out: XwDeckStretch[] = [];
+  const S = plan.runs.get(id)!.length;
+  for (const p of mine) {
+    const last = out[out.length - 1];
+    const isSame =
+      last !== undefined &&
+      last.with === p.b &&
+      last.relation === p.relation &&
+      p.sa - last.s1 <= STRETCH_GAP_M;
+    if (isSame) last.s1 = Math.min(S, p.sa + GRID_M / 2);
+    else
+      out.push({
+        with: p.b,
+        relation: p.relation,
+        s0: Math.max(0, p.sa - GRID_M / 2),
+        s1: Math.min(S, p.sa + GRID_M / 2),
+      });
+  }
+  return out;
+}
+
+/** Stretches of a run over another deck (where its piers would stand on that deck). */
+function overDeck(plan: Plan, id: string): Array<[number, number]> {
+  return plan.pairs.filter((p) => p.a === id && p.relation === "above").map((p) => [p.sa - 6, p.sa + 6]);
+}
+
+/** Whether s belongs to the chunk [a, b) (the last chunk keeps its end). */
+function within(sv: number, a: number, b: number, isLast: boolean): boolean {
+  return sv >= a && (sv < b || (isLast && sv <= b));
+}
+
 function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectPoly[]): XwChunk[] {
   const { rp, profile } = s;
   const S = rp.length;
   const base = rp.align.s[rp.i0];
-  // Cut points: junction nodes (other chains attach), section changes, the run ends.
+  // Cut points: junction nodes (other chains attach), section changes, speed changes, the run ends.
   const cuts = new Set<number>([0, S]);
   for (let i = rp.run.from + 1; i < rp.run.to; i++) {
     const node = rp.chain.nodes[i];
@@ -916,6 +1559,7 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
     const isSectionChange = prevWay !== null && nextWay !== null && prevWay.lanes !== nextWay.lanes;
     if (isJunction || isSectionChange) cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
   }
+  for (const z of profile.zones) if (z.from > 0) cuts.add(z.from);
   const sortedCuts = [...cuts].sort((a, b) => a - b).filter((v, i, arr) => i === 0 || v - arr[i - 1] > 0.5);
   const bounds: number[] = [0];
   for (let c = 1; c < sortedCuts.length; c++) {
@@ -925,15 +1569,18 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
     for (let k = 1; k <= parts; k++) bounds.push(k === parts ? b : a + ((b - a) * k) / parts);
   }
   bounds[bounds.length - 1] = S;
-  // Piers every PIER_SPACING from the run start, moved off the roads and railways underneath.
+  // Piers every PIER_SPACING from the run start, moved off the roads and railways underneath; none
+  // where the deck stands over another deck (a pier there would come through its carriageway).
   const mine = runPoly(rp);
   const avoid: Array<[number, number]> = [];
-  for (const { poly } of objects) {
+  for (const { poly } of objectsNear(objects, mine)) {
     for (const [sc, , sin] of intersect(mine, poly)) {
       const w = (GROUND_ROAD_HALF_WIDTH.value + 1) / Math.max(sin, 0.25);
       avoid.push([sc - w, sc + w]);
     }
   }
+  const decksBelow = overDeck(plan, rp.run.id);
+  const stretches = deckStretches(plan, rp.run.id);
   const piers: number[] = [];
   const spacing = PIER_SPACING.value;
   for (let k = 1; k * spacing < S - 5; k++) {
@@ -948,6 +1595,8 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
         avoid.some(([a, b]) => at >= a && at <= b) || Math.abs(at - k * spacing) > spacing / 2;
       if (isStillBlocked) continue;
     }
+    const isOverDeck = decksBelow.some(([a, b]) => at >= a && at <= b);
+    if (isOverDeck) continue;
     const p = poseAt(rp, at);
     const g = ground(p.lon, p.lat);
     const z = evalProfile(profile, at).z;
@@ -962,6 +1611,7 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
   for (let k = 0; k + 1 < bounds.length; k++) {
     const a = bounds[k];
     const b = bounds[k + 1];
+    const isLast = k + 2 === bounds.length;
     const st: number[] = [];
     const push = (sv: number) => {
       const p = poseAt(rp, sv);
@@ -974,31 +1624,38 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
         roundTo(v.z, 3),
         roundTo(s.bank[bi], 4),
         roundTo(ground(p.lon, p.lat), 2),
+        roundTo(v.grade, 5),
       );
     };
+    // Stations by the plan curvature, plus every knot where the vertical curvature changes: a
+    // station interval then lies within one parabola, which the Hermite surface reproduces exactly.
+    // Why not plan stations alone: across a knot the cubic overshoots the end grades (5.02 % on a
+    // 5 % section) and the curvature (1.05e-3 against 1/1000).
+    const positions: number[] = [];
     for (let sv = a; sv < b - 2;) {
-      push(sv);
+      positions.push(sv);
       sv += stationStep(poseAt(rp, sv).kappa);
     }
-    push(b);
+    positions.push(b);
+    for (const sv of stationPositions(positions, curvatureKnots(profile, a, b), a, b)) push(sv);
     const section = sec(sampleAt(rp, (a + b) / 2));
+    const V = zoneSpeedAt(profile.zones, (a + b) / 2);
     const chunkPiers: number[] = [];
     for (let i = 0; i < piers.length; i += 2) {
-      const isMine = piers[i] >= a && (piers[i] < b || (k + 2 === bounds.length && piers[i] <= b));
-      if (isMine) chunkPiers.push(roundTo(piers[i], 2), roundTo(piers[i + 1], 2));
+      if (within(piers[i], a, b, isLast)) chunkPiers.push(roundTo(piers[i], 2), roundTo(piers[i + 1], 2));
     }
     const chunkCross: number[] = [];
     for (let i = 0; i < s.cross.length; i += 3) {
       const sc = s.cross[i];
-      const isMine = sc >= a && (sc < b || (k + 2 === bounds.length && sc <= b));
+      if (!within(sc, a, b, isLast)) continue;
       const z = evalProfile(profile, sc).z;
-      if (isMine)
-        chunkCross.push(
-          roundTo(sc, 2),
-          roundTo(s.cross[i + 1], 3),
-          roundTo(s.cross[i + 2], 3),
-          roundTo(z, 3),
-        );
+      chunkCross.push(roundTo(sc, 2), roundTo(s.cross[i + 1], 3), roundTo(s.cross[i + 2], 3), roundTo(z, 3));
+    }
+    const chunkBlocked: number[] = [];
+    for (let i = 0; i < s.blocked.length; i += 2) {
+      const sc = s.blocked[i];
+      if (!within(sc, a, b, isLast)) continue;
+      chunkBlocked.push(roundTo(sc, 2), roundTo(s.blocked[i + 1], 3), roundTo(evalProfile(profile, sc).z, 3));
     }
     chunks.push({
       id: `${rp.run.id}:${k}`,
@@ -1014,9 +1671,9 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       shoulderL: section.shoulderL,
       shoulderR: section.shoulderR,
       basis: section.basis,
-      V: profile.V,
+      V,
       vh: roundTo(profile.h, 3),
-      gmax: profile.gradeLimit,
+      gmax: gradeLimitFor(V, profile.special),
       g0: roundTo(evalProfile(profile, a).grade, 6),
       g1: roundTo(evalProfile(profile, b).grade, 6),
       h0: roundTo(headingAt(rp, a), 6),
@@ -1025,8 +1682,12 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       st,
       piers: chunkPiers,
       cross: chunkCross,
+      blocked: chunkBlocked,
+      decks: stretches
+        .filter((d) => d.s1 > a && d.s0 < b)
+        .map((d) => ({ ...d, s0: roundTo(Math.max(a, d.s0), 2), s1: roundTo(Math.min(b, d.s1), 2) })),
       prev: k > 0 ? `${rp.run.id}:${k - 1}` : null,
-      next: k + 2 < bounds.length ? `${rp.run.id}:${k + 1}` : null,
+      next: isLast ? null : `${rp.run.id}:${k + 1}`,
     });
   }
   return chunks;

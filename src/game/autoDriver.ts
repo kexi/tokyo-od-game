@@ -39,6 +39,7 @@ import {
 } from "./autoTraffic";
 import { laneCentre } from "./drivePath";
 import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
+import { isDrivable as isRoutable } from "../world/roadClass";
 
 export { laneCentre } from "./drivePath";
 export type { DriveObstacle } from "./autoTraffic";
@@ -122,7 +123,7 @@ const SWING_OUT = 14;
 /** Where the car actually is: chassis position, heading (atan2(x, z)) and forward speed (m/s). */
 export type CarPose = { position: Vector3; yaw: number; speed: number };
 
-const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
+const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
 const LATERAL_ACCEL = 2.5; // m/s² round the bends of a street
 
@@ -337,7 +338,8 @@ export class AutoDriver {
     const graph = world.graph;
     const here = this.position;
     const heading = this.heading();
-    const hit = graph.nearest(here, 25, isDrivable);
+    // The deck the car is on when it is up on one, else the street (as nearest always answered).
+    const hit = graph.locate(here, 25, isDrivable);
     if (hit) {
       const facing: 1 | -1 = hit.dir.dot(heading) >= 0 ? 1 : -1;
       const isOnIt = Math.abs(hit.lateral) < hit.seg.line.width / 2 + 0.5;

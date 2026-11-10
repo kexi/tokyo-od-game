@@ -5,6 +5,7 @@ import type { GameClock } from "../world/ruleTime";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 import { log } from "../log";
 import { drivePath, type Corner, type LanePlan } from "./drivePath";
+import { allowsPedestrians, isDrivable as isRoutable } from "../world/roadClass";
 
 /**
  * カーナビ: a legal route over the road graph around the player and turn-by-turn guidance
@@ -175,8 +176,8 @@ const TURN_COST: Record<Turn, number> = {
   uturn: 400,
 };
 
-const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
-const isWalkable = (seg: Segment) => seg.line.kind !== "highway";
+const isDrivable = (seg: Segment) => isRoutable(seg.line, "navigation") && seg.line.width >= 3;
+const isWalkable = (seg: Segment) => allowsPedestrians(seg.line);
 
 /** Who the route is for: cars obey one-way streets, turn bans and closures; walkers do not. */
 export type TravelMode = "car" | "walk";

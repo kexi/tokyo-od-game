@@ -32,6 +32,7 @@ import { isExpresswayClass, parseOrbis, type OrbisEntry, type OrbisSign } from "
 import { dayKey, planPortable, type GameDay, type School } from "./portableOrbis";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import { sharedDraco } from "../render/draco";
+import { isExpressway as isExpresswayRoad } from "./roadClass";
 
 /**
  * 速度違反自動取締装置 (オービス) on the streets: OSM speed cameras (public/data/police.json, built by
@@ -147,7 +148,7 @@ export function planSites(
     const p = frame.toLocal(entry.lat, entry.lon, frame.origin.h).setY(0);
     if (Math.hypot(p.x, p.z) > range) continue;
     const isExpressway = isExpresswayClass(entry.road);
-    const accept = (seg: Segment) => (seg.line.kind === "highway") === isExpressway;
+    const accept = (seg: Segment) => isExpresswayRoad(seg.line) === isExpressway;
     const bearing = entry.bearing === null ? null : bearingVector(entry.bearing);
     const hit = matchRoad(graph, p, MATCH, accept, bearing);
     if (!hit) continue;
@@ -285,7 +286,7 @@ export function planWarnings(
     const points =
       own.length === 0 ? entry.signs : entry.signs.filter((sg) => own.some((site) => isFor(sg, site)));
     const isExpressway = isExpresswayClass(entry.road);
-    const accept = (seg: Segment) => (seg.line.kind === "highway") === isExpressway;
+    const accept = (seg: Segment) => isExpresswayRoad(seg.line) === isExpressway;
     for (const [lon, lat, bearing, before] of points) {
       const p = frame.toLocal(lat, lon, frame.origin.h).setY(0);
       if (Math.hypot(p.x, p.z) > range) continue;

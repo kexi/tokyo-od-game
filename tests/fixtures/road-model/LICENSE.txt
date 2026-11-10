@@ -1,0 +1,5 @@
+fingerprints.json: sums of the road surface buffers and route points that
+tests/roadModelInvariance.test.ts computes from the frozen tiles of ../sign-placement (JARTIC
+regulations and OpenStreetMap turn:lanes; sources and licences in ../sign-placement/LICENSE.txt),
+taken with the code of origin/main 1305f52 (before P2 of the road redesign, knowledge/road-model.md).
+Rewrite only with ROAD_MODEL_UPDATE=1 under the conditions written at the top of that test.
