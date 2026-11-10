@@ -203,6 +203,8 @@ export class Buildings {
   /** Footprints (local XZ rings) of buildings drawn by hero models instead (landmarks). */
   private hidden: Vector3[][] = [];
   private hiddenRings: Array<Array<[number, number]>> = [];
+  /** The lon/lat rings that get collision walls (kept, with hiddenRings, to rebuild on a new frame). */
+  private walledRings: Array<Array<[number, number]>> = [];
   /**
    * The far skyline: the same tileset again, kept to its coarse levels (each ward's largest ~20–80
    * buildings, its towers among them) out to QUALITY.farBuildingRadius, with the simplified façade
@@ -235,20 +237,25 @@ export class Buildings {
   }
 
   /**
-   * Leave out PLATEAU buildings inside these lon/lat rings (a landmark model stands there). Their
-   * triangles are also what the colliders are made of, so the footprints get walls of their own:
-   * without them the car drove straight through 東京駅.
+   * Leave out PLATEAU buildings inside the `cut` lon/lat rings (a landmark model stands there), and
+   * put collision walls on the `walls` rings. The PLATEAU triangles are also what the colliders are
+   * made of, so a hidden building needs walls of its own (without them the car drove straight through
+   * 東京駅). Why two lists, not one: a landmark may hide buildings it must not wall in (a bridge over
+   * the road it replaces) or wall a place where nothing is hidden (landmarkEntry.ts).
    */
-  hideFootprints(rings: Array<Array<[number, number]>>): void {
-    this.hiddenRings = rings;
-    this.hidden = rings.map((r) => r.map(([lon, lat]) => this.frame.toLocal(lat, lon, this.frame.origin.h)));
+  hideFootprints(cut: Array<Array<[number, number]>>, walls: Array<Array<[number, number]>>): void {
+    this.hiddenRings = cut;
+    this.walledRings = walls;
+    const toLocal = (r: Array<[number, number]>) =>
+      r.map(([lon, lat]) => this.frame.toLocal(lat, lon, this.frame.origin.h));
+    this.hidden = cut.map(toLocal);
     if (this.footprintCollider) this.world.removeCollider(this.footprintCollider, false);
     this.footprintCollider = null;
     const vertices: number[] = [];
     const indices: number[] = [];
     // Each edge a wall from well below to well above street level (Tokyo's ground is −5 to 40 m
     // from the frame's origin height); walls only — nothing drives on a landmark's roof.
-    for (const ring of this.hidden)
+    for (const ring of walls.map(toLocal))
       ring.forEach((a, i) => {
         const b = ring[(i + 1) % ring.length];
         const base = vertices.length / 3;
@@ -324,7 +331,8 @@ export class Buildings {
     const matrix = frame.transformFrom(this.frame);
     const rotation = frame.rotationFrom(this.frame);
     this.frame = frame;
-    if (this.hiddenRings.length) this.hideFootprints(this.hiddenRings);
+    const hasFootprints = this.hiddenRings.length > 0 || this.walledRings.length > 0;
+    if (hasFootprints) this.hideFootprints(this.hiddenRings, this.walledRings);
     this.applyFrame();
     if (this.far) this.applyFrameTo(this.far);
     setFacadeOrigin(frame);

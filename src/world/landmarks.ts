@@ -1,48 +1,22 @@
-import { Group, Mesh, type Material, type Object3D, type Scene } from "three";
+import { Group, Mesh, PropertyBinding, type Material, type Object3D, type Scene } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { LocalFrame } from "../geo/frame";
 import { haversineMeters } from "../geo/ellipsoid";
 import { warn } from "../log";
 import { sharedDraco } from "../render/draco";
+import { LandmarkEntrySchema, type LandmarkEntry } from "./landmarkEntry";
+
+export type { LandmarkEntry } from "./landmarkEntry";
 
 /**
- * Hero models of Tokyo's landmarks (scripts/blender/landmarks.py → public/data/landmarks.json):
- * Tokyo Tower, Tokyo Skytree and Tokyo Station at their real places and heights, with their
- * night illumination switched by each operator's published schedule (Skytree's 粋・雅・幟 cycle,
- * Tokyo Tower's ランドマークライト and the Monday/Thursday ダイヤモンドヴェール). Far away only a
+ * Hero models of the landmarks in public/data/landmarks.json (scripts/blender/landmarks.py and the
+ * modules it registers; the list is that file, not this comment), at their real places and heights,
+ * with their night illumination switched by each operator's published schedule. Near, the near node
+ * of the detailed file is drawn (nodes.near; the file may also carry the far node). Far away only a
  * light silhouette model is drawn, in the same haze as the far skyline and ground it stands on
  * (farGround.ts, buildings.ts): its top, in thinner air, stays clear while its foot fades with the
  * streets around it, and lit at night its lights show through the haze (atmosphere.ts LIGHT_FLOOR).
  */
-type Rule = {
-  mode: string;
-  fromDate?: string;
-  toDate?: string;
-  weekdays?: number[];
-  from?: string;
-  to?: string;
-};
-export type LandmarkEntry = {
-  id: string;
-  name: string;
-  model: string;
-  farModel: string;
-  lon: number;
-  lat: number;
-  heading: number;
-  baseHeight: number;
-  farDistance: number;
-  footprint: Array<[number, number]>;
-  plateau?: Array<{ gmlId: string; hide: boolean }>;
-  lightSchedule: {
-    on: string;
-    off: string;
-    rules?: Rule[];
-    cycle?: { modes: string[]; epoch: string };
-    after: string;
-  };
-  lightModes: Array<{ id: string }>;
-};
 type Loaded = {
   entry: LandmarkEntry;
   root: Group;
@@ -70,15 +44,50 @@ const WIDEN_FROM = 15_000;
 export async function fetchLandmarks(): Promise<LandmarkEntry[]> {
   try {
     const res = await fetch(`${import.meta.env.BASE_URL}data/landmarks.json`);
-    return res.ok ? ((await res.json()) as LandmarkEntry[]) : [];
+    if (!res.ok) return [];
+    return parseLandmarks(await res.json());
   } catch {
     return [];
   }
 }
 
-/** Footprints (lon/lat rings) of the PLATEAU buildings the hero models replace. */
-export function replacedFootprints(entries: readonly LandmarkEntry[]): Array<Array<[number, number]>> {
-  return entries.filter((e) => e.plateau?.some((p) => p.hide)).map((e) => e.footprint);
+/**
+ * The entries that match the schema, each checked on its own. Why not the whole file at once: one
+ * malformed entry (a landmark being added) would take every landmark out of the game.
+ */
+export function parseLandmarks(json: unknown): LandmarkEntry[] {
+  if (!Array.isArray(json)) return [];
+  return json.flatMap((raw: unknown, index) => {
+    const parsed = LandmarkEntrySchema.safeParse(raw);
+    if (parsed.success) return [parsed.data];
+    const id = (raw as { id?: unknown } | null)?.id;
+    warn("landmark_entry_invalid", {
+      index,
+      landmarkId: typeof id === "string" ? id : null,
+      error: parsed.error.message,
+    });
+    return [];
+  });
+}
+
+/**
+ * Leaves in `scene` only the node named `name` with its ancestors and descendants. Returns false (and
+ * changes nothing) when there is no such node. GLTFLoader names objects after their nodes, sanitized.
+ */
+export function keepOnlyNode(scene: Object3D, name: string): boolean {
+  const node = scene.getObjectByName(PropertyBinding.sanitizeNodeName(name));
+  if (!node) return false;
+  for (let child: Object3D = node; child !== scene && child.parent; child = child.parent) {
+    const parent: Object3D = child.parent;
+    const others = parent.children.filter((o) => o !== child);
+    for (const other of others) {
+      parent.remove(other);
+      other.traverse((o) => {
+        if (o instanceof Mesh) o.geometry.dispose();
+      });
+    }
+  }
+  return true;
 }
 
 const minutesOf = (hhmm: string) => {
@@ -154,7 +163,7 @@ export class Landmarks {
       if (wantsNear && !l.near && !l.isLoadingNear) void this.loadNear(l);
       if (l.near) l.near.visible = wantsNear;
       if (l.far) l.far.visible = !(wantsNear && l.near) && d < FAR_LIMIT;
-      const widen = Math.max(1, d / WIDEN_FROM);
+      const widen = l.entry.widenFar === false ? 1 : Math.max(1, d / WIDEN_FROM);
       if (l.far) l.far.scale.set(widen, 1, widen);
       const mode = lightMode(l.entry, date, isDark);
       if (mode !== l.mode) {
@@ -198,6 +207,12 @@ export class Landmarks {
     l.isLoadingNear = true;
     const near = await this.loadGltf(l.entry.model, l);
     if (!near) return;
+    // The near file may also carry the far node (landmarks.py exports both into it): drawn together,
+    // the far boxes covered the near model's recesses and walls. Why not hide the far node by its
+    // name: keeping the one named near node also drops anything else a file brings along.
+    const node = l.entry.nodes.near;
+    const isFound = keepOnlyNode(near.scene, node);
+    if (!isFound) warn("landmark_near_node_missing", { path: l.entry.model, node });
     l.near = near.scene;
     l.root.add(near.scene);
     this.applyMode(l);

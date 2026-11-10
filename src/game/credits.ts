@@ -1,6 +1,7 @@
 import type { Source } from "../data/schema";
 import { getLocale, interpolate, t, type MessageKey, type Params } from "../i18n";
 import { ja } from "../i18n/ja";
+import type { LandmarkEntry } from "../world/landmarkEntry";
 import type { RegulationMeta } from "../world/regulations";
 
 export const REPO_URL = "https://github.com/kexi/tokyo-od-game";
@@ -119,7 +120,24 @@ const odbl = (file: string) =>
   });
 const osm = () => text("credits.osm", { osm: link(OSM_COPYRIGHT, "OpenStreetMap contributors") });
 
-export function renderCredits(sources: Source[], regs: RegulationMeta | null = null): string {
+/**
+ * One line per landmark: its name and the attribution its data needs (landmarks.json `sources`, in the
+ * wording the licences ask for, so untranslated). Why not name them in the dictionary as before: every
+ * new landmark meant editing three languages' sentence, and the list went stale.
+ */
+function landmarkSources(landmarks: readonly Pick<LandmarkEntry, "name" | "sources">[]): string {
+  const items = landmarks
+    .filter((l) => (l.sources?.length ?? 0) > 0)
+    .map((l) => `<li>${esc(l.name)} — ${(l.sources ?? []).map(esc).join(" / ")}</li>`)
+    .join("");
+  return items ? `<ul>${items}</ul>` : "";
+}
+
+export function renderCredits(
+  sources: Source[],
+  regs: RegulationMeta | null = null,
+  landmarks: readonly Pick<LandmarkEntry, "name" | "sources">[] = [],
+): string {
   // The dataset's title, holder and licence in the form the Tokyo terms ask for, in every language.
   const opendata = sources
     .filter((s) => !s.id.startsWith("odpt"))
@@ -244,7 +262,11 @@ export function renderCredits(sources: Source[], regs: RegulationMeta | null = n
     blender: link(`${REPO_URL}/tree/main/scripts/blender`, t("credits.link.blender")),
     how: link(`${REPO_URL}/tree/main/assets`, t("credits.link.howMade")),
     ofl: link(OFL_URL, "SIL Open Font License 1.1"),
+  })}
+  ${text("credits.landmarks", {
+    blender: link(`${REPO_URL}/tree/main/scripts/blender`, t("credits.link.blender")),
   })}</p>
+  ${landmarkSources(landmarks)}
 
   <h3>${text("credits.h.estat")}</h3>
   <p>${then(

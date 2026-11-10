@@ -200,9 +200,13 @@ make-cockpit-model:
 
 # ランドマーク 3 体をライトアップ用の発光マテリアル付きで Blender CLI でモデリングし public/models と landmarks.json を書き出す
 make-landmark-models:
-    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_tower.glb
-    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_skytree.glb
-    nix develop .#blender -c blender --background --factory-startup --python scripts/blender/landmarks.py -- public/models/tokyo_station.glb
+    nix develop .#blender -c blender --background --factory-startup --python-exit-code 1 --python scripts/blender/landmarks.py -- public/models/tokyo_tower.glb
+    nix develop .#blender -c blender --background --factory-startup --python-exit-code 1 --python scripts/blender/landmarks.py -- public/models/tokyo_skytree.glb
+    nix develop .#blender -c blender --background --factory-startup --python-exit-code 1 --python scripts/blender/landmarks.py -- public/models/tokyo_station.glb
+
+# landmarks.py の BUILDERS に登録された全ランドマーク（LANDMARK_MODULES のモジュール分を含む）を登録順に作り直し、public/models と landmarks.json を書き出す
+make-all-landmark-models:
+    nix develop .#blender -c blender --background --factory-startup --python-exit-code 1 --python scripts/blender/landmarks.py -- --all
 
 # オービス（門型・柱型）と予告看板を Blender CLI でモデリングし public/models/orbis.glb を書き出す（看板の図柄 assets/orbis/textures も作り直す）
 make-orbis-model:

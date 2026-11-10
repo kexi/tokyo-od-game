@@ -184,6 +184,10 @@ export const LOG_EVENTS = {
   guide_signs_load_failed: failedWith(),
   landmarks_load_failed: failedWith(),
   landmark_model_failed: failedWith({ path: z.string() }),
+  /** A landmarks.json entry that does not match landmarkEntry.ts (left out; the others still load). */
+  landmark_entry_invalid: failedWith({ index: count, landmarkId: z.string().nullable() }),
+  /** The near file has no node named nodes.near: the whole file is shown, the far node with it. */
+  landmark_near_node_missing: warning({ path: z.string(), node: z.string() }),
   mirror_charms_load_failed: failedWith(),
   officer_model_failed: failedWith({ kind: z.string() }),
   orbis_load_failed: failedWith(),

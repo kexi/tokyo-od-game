@@ -1,13 +1,14 @@
 ---
 type: Reference
 title: ランドマークのモデリングとライトアップ（東京タワー・東京スカイツリー・東京駅丸の内駅舎）
-description: Blender CLI で 3 つのランドマークを実寸で手続き生成し、夜間ライトアップを Light_<mode>_<part> の発光マテリアル（KHR_materials_variants 兼用）と遠景 LOD にした手順。寸法の出典と、依頼時の前提（帯 11 本・展望台 150/250 m・ダイヤモンドヴェール 7 段・粋/雅の 2 交互）を一次情報で訂正した記録を含む。東京駅の高さ（軒・ドーム・最高 46.1 m の意味）は 2026-10-05 に訂正し、駅舎の詳細は別文書に移した。
+description: Blender CLI でランドマークを実寸で手続き生成し、夜間ライトアップを Light_<mode>_<part> の発光マテリアル（KHR_materials_variants 兼用）と遠景 LOD にした手順と、ランドマークを足すときの契約（BUILDERS・LANDMARK_MODULES・nodes.near・テストの置き場）。東京タワー・スカイツリー・東京駅の寸法の出典と、依頼時の前提（帯 11 本・展望台 150/250 m・ダイヤモンドヴェール 7 段・粋/雅の 2 交互）を一次情報で訂正した記録を含む。東京駅の高さ（軒・ドーム・最高 46.1 m の意味）は 2026-10-05 に訂正し、駅舎の詳細は別文書に移した。
 tags: [rendering, plateau, licensing]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
-generated: { by: claude-opus-5-5/1m, at: 2026-10-05T04:55:00Z }
+generated: { by: claude-opus-5-5/1m, at: 2026-11-10T12:40:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T15:30:00Z }
+  - { by: claude-opus-5-5, at: 2026-11-10T12:40:00Z }
 sources:
   - id: tt-wiki
     resource: https://ja.wikipedia.org/wiki/東京タワー
@@ -53,15 +54,52 @@ sources:
     resource: scripts/blender/landmarks.py の Cycles プレビュー（各ランドマーク × 昼・各モード × 近景・遠景、M2 Max で 1 体 4〜6 分）
     title: プレビュー確認
     author: claude-opus-5-5/1m
+  - id: foundation
+    resource: >-
+      2026-11-10 の土台 PR（feat/landmark-foundation）の確認。(1) main と変更後の landmarks.py で 3 体を
+      scratchpad に書き出し、6 ファイルの SHA-1 が一致（main のものはコミット済みの glb とも一致）。
+      (2) ヘッドレス Chrome（vite 5191 番、seed 20261110、昼・晴れ）で 3 体の近景を同じカメラから修正前後に撮り比べ、
+      ゲームの scene に近景ファイルの TokyoTower_Near と TokyoTower_Far が両方載っていたこと、修正後は _Near だけになったことを確かめた。
+      (3) `-- --all` で public/ に書き出し直し、landmarks.json と glb に git の差分が出ないことを確かめた。
+      (4) 仮のモジュール（スカイツリーを別 id で作るだけ）を LANDMARK_MODULES に登録し、最上位の `import landmarks` が
+      実行中のモジュールを返すこと、新しい id が末尾に足され、手で 2 番目に動かした後の再ビルドでも位置が保たれること、
+      モジュールの PREVIEW_VIEWS でプレビューが描かれることを確かめて、仮のモジュールと出力を消した。
+      (5) レビュー後の修正で、登録モジュールの近景ファイルのノードが近景だけ（Probe_Near とルート）になること、
+      モジュールの build が例外を出すと `--all` が終了コード 1 で止まること（`--python-exit-code 1` が無いと 0 だった）、
+      既存 3 体の glb 6 ファイルと landmarks.json が引き続きバイト一致することを確かめた。
+    title: ランドマークの土台（二重描画の修正・追加の契約）の確認
+    author: claude-opus-5-5
 ---
 
 # 構成
 
-- `scripts/blender/landmarks.py` 1 本で 3 体を作る。出力ファイル名の basename（`tokyo_tower` / `tokyo_skytree` / `tokyo_station`）で対象を選ぶ。1 回の実行で `public/models/<id>.glb`（近景 `<Name>_Near` と遠景 `<Name>_Far` の 2 ノード）、`public/models/<id>_far.glb`（遠景ノードだけ）を書き、`public/data/landmarks.json` の該当エントリを差し替える（他のエントリは保持）。
+- ランドマークはすべて `scripts/blender/landmarks.py` から作る。出力ファイル名の basename（= `BUILDERS` のキー）で対象を選ぶ。`BUILDERS` には landmarks.py 自身の 3 体（`tokyo_tower` / `tokyo_skytree` / `tokyo_station`）と、`LANDMARK_MODULES` に並べた別モジュールの分が、この順で入る。どのランドマークが在るかの一覧は `public/data/landmarks.json` で、コード・辞書・台帳には棟名を列挙しない。
+- 1 回の実行で `public/models/<id>.glb`（近景ファイル）と `public/models/<id>_far.glb`（遠景ノードだけ）を書き、`public/data/landmarks.json` の同じ id のエントリを**その位置で**差し替える（無い id は末尾に足す。他のエントリは保持）。以前は `BUILDERS` の順に並べ替えていたが、未登録の id が実行順で末尾に並び、実行順でファイルが変わった。[^foundation]
+- `-- --all`（`just make-all-landmark-models`）は `BUILDERS` の順にランドマークごとに Blender を起動し直して全部を作り、最後に landmarks.json を `BUILDERS` の順に並べる（`BUILDERS` に無い id は後ろに元の順で残す）。Blender はスクリプトが例外で止まっても終了コード 0 を返すので、子の起動とレシピには `--python-exit-code 1` を `--python` より前に付けている。
+- `make-landmark-models`（既存 3 体だけ）と `make-all-landmark-models` は併存させている。前者は既存の台帳・手順が名前で参照しているので残し、新しい台帳の行は後者を指す。東京駅は今も landmarks.py の中から helpers（SimpleNamespace）を渡す方式で、`LANDMARK_MODULES` の方式への移行は、既存 3 体の近景ファイルを近景ノードだけにする作業と一緒に別 issue で行う。
+- **近景ファイルのノード**: 近景ファイルは近景ノードだけを持つのが望ましい。`LANDMARK_MODULES` で登録したランドマークはそう書き出す。既存 3 体（`BOTH_NODES_IN_NEAR_FILE`）だけは、glb を変えないために近景・遠景の 2 ノードのまま書き出している（近景ノードだけへの収束は別 issue）。ゲームは landmarks.json の `nodes.near` のノード（とその親・子）だけを残して表示する（`src/world/landmarks.ts` の `keepOnlyNode`）。`nodes` は必須で、landmarks.py が near/far のオブジェクト名から書く。id から名前を推測しない（モジュールは `Sangedatsumon_Near` のように独自の名前を付ける）。見つからなければファイル全体を表示し、`landmark_near_node_missing` を warn で出す。
+- 2026-11-10 まで、ゲームは近景ファイルを丸ごと表示していたので、遠景の箱が近景の上に重なり、凹み・壁・トラスを覆っていた（東京タワーのフットタウンと脚、スカイツリーのトラスが半透明の膜に、東京駅の外壁が縞に写った）。下の落とし穴 1 と同じ現象がゲームでも起きていた。[^foundation]
 - テクスチャは `scripts/textures/landmark_textures.py`（PIL、シード固定、文字・ロゴなし）が `assets/landmarks/textures/` に書く。トラスは「白の部材＋透明」のマスク（alphaMode MASK）で、色はマテリアルの baseColorFactor で付ける。
 - 座標は車のモデルと同じ規約（+Y 上、+Z が heading の向き、+X がその左、メートル、原点は基準点の地面）。ゲームでは `rotation.y = π − heading·π/180` で置く（+Z を方位 heading に向ける式）。
 - 遠景 LOD は 220〜552 三角形の 1〜3 マテリアル。近景は 2,405〜9,880 三角形。いずれも 1 MB 未満（後述の表）。
 - ゲームでは遠景を霧から外していたが、何も無い霧の色の端の上に浮いて見えたので、2026-10-05 から街と同じ霧をかけ、地平までの地面と遠くの街並みの上に立たせた。基部の高さ（landmarks.json の baseHeight）は DEM5A と 0.15 m 以内で合っていた（[遠景](far-skyline.md)）。
+
+## ランドマークを足す手順
+
+1. **モジュールを作る**: `scripts/blender/<module>.py` に `BUILDERS = {id: build}` を置く。`build(L)` は `(root, near_ob, far_ob, pal, meta)` を返す。`L` は landmarks.py のモジュールそのもので、`L.Builder`・`L.Palette`・`L.material`・`L.SOURCES`・`L.model_to_lonlat`・`L.look`・`L.set_mode`・`L.log` などを使う。near/far のオブジェクト名は自由で、landmarks.py がそれを `nodes` に書く（`_Near` / `_Far` で終える名前を勧める）。`main()` は書かない（書き出し・landmarks.json・プレビューは landmarks.py が持つ）。モジュールの最上位で `import landmarks` しても、実行中の landmarks.py が返る（2 回目の実行にならない）。
+2. **登録する**: landmarks.py の `LANDMARK_MODULES`（1 行 1 要素のリスト）にモジュール名を足す。id が既存と重なると止まる。
+3. **プレビュー**: モジュールに `PREVIEW_VIEWS = {id: {view: (eye, target, lens, (w, h)[, shift_y])}}` を置く。プレビューは landmarks.py の `previews()` の 1 系統で、昼と各夜モード × 各ビューを Cycles で描く。`far` で始まり `detail` で終わらないビューは遠景ノードだけを描く。`LANDMARK_PREVIEW_MODES` / `LANDMARK_PREVIEW_VIEWS` で絞り、`LANDMARK_PREVIEW_ENGINE=BLENDER_EEVEE` で裏面を落として描ける（裏返った面が穴に見える）。
+4. **meta（landmarks.json のエントリ）**: 必須は `src/world/landmarkEntry.ts` の `LandmarkEntrySchema`。必要に応じて次を使う。
+   - 隠す（PLATEAU の三角形を切り抜く）と壁（衝突壁）は別に決まる（`hiddenFootprints` / `walledFootprints`）。隠すのは `plateau` に `hide: true` があるときの `footprint` と、常に `extraFootprints`。壁は `solid` が true なら `footprint` と `extraFootprints`、false なら無し、無指定なら隠すときだけ。
+   - `solid: true`: PLATEAU に隠す建物が無くても、足元に衝突壁を作る（国会議事堂など）。`solid: false`: 隠しても壁を作らない（橋。足元の道路を走れるように）。
+   - `extraFootprints: [ring, …]`: 1 体で複数の PLATEAU 建物を置き換える。`footprint` が隠す範囲に合わない（橋の 926 m の外接矩形）ときは、`hide` を付けずに隠す範囲をここに書く。
+   - `widenFar: false`: 遠景を遠さに応じて横に広げない（既定は広げる。細い塔が遠くで消えないための処置で、長く低い橋には合わない）。
+   - `warpAt: [lon, lat]`: ワープ・目的地の着地点（無ければ lon/lat。海の上の橋など）。
+   - `excludeFromWarp: true`: ワープ・目的地の候補に出さない。
+   - `sources`: その模型のデータに要る出典表示（OSM・PLATEAU 等の決まった文言）。出典画面に模型ごとに並ぶので、辞書（`credits.landmarks`）に棟名や出典を足さない。
+   - 知らないフィールドはそのまま残る（loose なスキーマ）ので、棟固有のデータ（橋の床の高さ等）も置ける。棟固有のキーは `landmarkEntry.ts` に足さず、使う側のモジュール（例: `deckLevels.ts`）が自分の zod スキーマで safeParse し、失敗はログのキー `landmarkId` で warn する。キーは `tests/landmarks.test.ts` の `OWN_KEYS` に id ごとに登録する（未登録のキーはテストで落ちる）。
+5. **台帳とレシピ**: モデルの glb を `assets/manifest.yml` に 1 件ずつ登録する（`generator.script` にモジュールと landmarks.py、`recipe` は `make-all-landmark-models`）。`landmark-placements` には件数・棟名を書かない。
+6. **テスト**: `tests/landmarks.test.ts` は全エントリの不変条件（スキーマ、id の一意、参照ファイルの存在、リング 3 点以上、`nodes` のノードがファイルに在る、夜モードの名前）だけを持つ（棟固有のキーの登録簿 `OWN_KEYS` との照合を含む）。棟固有の検査（寸法・高さ・点灯規則・橋の床）はその棟のテストファイル（例: `majorBuildings.test.ts` / `towerArea.test.ts` / `rainbowBridge.test.ts`）に置く。
 
 ## 夜間照明の仕組み
 
@@ -140,7 +178,7 @@ sources:
 
 # 落とし穴
 
-1. **プレビューで近景と遠景のノードを同時に描くと、遠景の不透明な面が近景を覆う**。フットタウンと展望台が真っ黒、トラスが半透明の膜に写り、マテリアルの不具合と誤認した。ゲームと同じく片方ずつ描くようにした。
+1. **プレビューで近景と遠景のノードを同時に描くと、遠景の不透明な面が近景を覆う**。フットタウンと展望台が真っ黒、トラスが半透明の膜に写り、マテリアルの不具合と誤認した。プレビューは片方ずつ描くようにした。ただしゲームは 2026-11-10 まで近景ファイルの 2 ノードを同時に描いていた（上の「構成」）。
 2. **アルベド × ランプ色で発光色を作ると、トーンマッピング後にピンクに写った**（橙の塗装 × ナトリウム = (1.8, 0.08, 0.006) が飽和）。見た目の色（橙の帯は (1.0, 0.34, 0.06)、白の帯は (1.0, 0.60, 0.22)）を直接与えた。
 3. **遠景の透過トラスはミップマップで消えうる**。透明部の RGB を部材と同じ色にし、部材の被覆率を 5 割超にした。遠くでは alpha が平均され、不透明なシルエットとして残る。
 4. **PLATEAU の b3dm を Blender で読むには前処理が要る**。`extensionsRequired` の CESIUM_RTC と EXT_texture_webp で読み込みが止まるので外す。墨田区・港区の LOD2 では、テクスチャ付きプリミティブの `_BATCHID` が Blender の取り込みで消えたため、DracoPy で直接復号した。
@@ -188,3 +226,5 @@ sources:
 [^commons]: 参考写真
 
 [^previews]: プレビュー確認
+
+[^foundation]: ランドマークの土台（二重描画の修正・追加の契約）の確認

@@ -802,12 +802,14 @@ assets:
 
   - id: landmark-placements
     name: ランドマークの配置と点灯予定
-    purpose: 3 つのランドマークの位置・向き・地盤高・遠景に替える距離・置き換える PLATEAU 建物・ライトアップの予定表。
+    purpose: >-
+      ランドマークの一覧と、各ランドマークの位置・向き・地盤高・遠景に替える距離・置き換える PLATEAU 建物・
+      表示する近景ノード・ライトアップの予定表。どのランドマークが在るかはこのファイルが正（台帳には件数・棟名を書かない）。
     kind: data
     files: [public/data/landmarks.json]
     generator:
       script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py]
-      recipe: make-landmark-models
+      recipe: make-all-landmark-models
     made_by: blender-cli
     source: >-
       足元の形は OpenStreetMap（Overpass、2026-10-04）、置き換える建物は PLATEAU の gml_id、

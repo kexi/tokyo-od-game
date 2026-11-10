@@ -175,7 +175,8 @@ import {
   type VehicleInstance,
   type VehicleKind,
 } from "./game/vehicleModels";
-import { fetchLandmarks, Landmarks, replacedFootprints } from "./world/landmarks";
+import { hiddenFootprints, landmarkPlaces, walledFootprints } from "./world/landmarkEntry";
+import { fetchLandmarks, Landmarks } from "./world/landmarks";
 import { formatCount, postSpan, SocialFeed, type SocialPost, type SocialWorld } from "./game/social";
 import type { PraiseKind } from "./game/socialTexts";
 import { WitnessPhones } from "./game/witnessPhones";
@@ -469,10 +470,10 @@ async function main(): Promise<void> {
         );
   terrain.setWater(water);
   const buildings = new Buildings(scene, world, camera, renderer, frame);
-  // Landmarks (東京タワー, スカイツリー, 東京駅) replace their PLATEAU copies: tell the buildings
+  // The landmarks (public/data/landmarks.json) replace their PLATEAU copies: tell the buildings
   // before the first tiles arrive.
   const landmarkEntries = await fetchLandmarks();
-  buildings.hideFootprints(replacedFootprints(landmarkEntries));
+  buildings.hideFootprints(hiddenFootprints(landmarkEntries), walledFootprints(landmarkEntries));
   const landmarks = new Landmarks(
     scene,
     frame,
@@ -1124,12 +1125,7 @@ async function main(): Promise<void> {
       wards.set(p.ward, { lat: w.lat + p.lat, lon: w.lon + p.lon, n: w.n + 1 });
     }
     return [
-      ...landmarkEntries.map((l) => ({
-        name: l.name,
-        kind: i18n.t("warp.kind.landmark"),
-        lat: l.lat,
-        lon: l.lon,
-      })),
+      ...landmarkPlaces(landmarkEntries, i18n.t("warp.kind.landmark")),
       ...[...wards].map(([ward, w]) => ({
         name: ward,
         kind: i18n.t("warp.kind.ward"),
@@ -1246,7 +1242,7 @@ async function main(): Promise<void> {
   });
   input.on("credits", () => {
     void regulationTiles.meta().then((regs) => {
-      $("#credits-body").innerHTML = renderCredits(poiFile?.sources ?? [], regs);
+      $("#credits-body").innerHTML = renderCredits(poiFile?.sources ?? [], regs, landmarkEntries);
       $<HTMLDialogElement>("#credits").showModal();
     });
   });
@@ -4329,7 +4325,7 @@ async function main(): Promise<void> {
   const featuredPlaces = (from: { lat: number; lon: number }): WarpPlace[] => {
     const featured = destinations.filter((d) => d.featured).map(destinationPlace);
     const landmark = i18n.t("warp.kind.landmark");
-    const modelled = landmarkEntries.map((l) => ({ name: l.name, kind: landmark, lat: l.lat, lon: l.lon }));
+    const modelled = landmarkPlaces(landmarkEntries, landmark);
     const spots = pois
       .filter((p) => p.category === "landmark" || p.category === "nightview")
       .map((p) => ({

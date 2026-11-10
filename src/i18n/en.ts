@@ -1232,6 +1232,8 @@ export const en: Messages = {
   "credits.link.howMade": "how they are made",
   "credits.models":
     "The cars, the road signs' plates and posts, and the pedestrians were made for this game with {blender}. The textures (number plates, sign faces, clothes, building facades and more) are generated procedurally too ({how}). The sign faces and colors follow the designs of the Order on Road Signs, Lane Lines and Road Markings. Lettering in Noto Sans JP ({ofl}). Any resemblance to real car models, companies, buildings or registration numbers is unintended.",
+  "credits.landmarks":
+    "The landmarks were also modeled with {blender}. Their shapes, heights and dimensions come from OpenStreetMap, MLIT's PLATEAU 3D city model (used with changes) and the figures published by their owners and designers, and some details were measured on photographs (no photograph is used as an image). No logos, emblems or lettering of the facilities are drawn. The sources of each model:",
   "credits.h.estat": "Town and ward boundaries and population",
   "credits.link.estat": "Portal Site of Official Statistics of Japan (e-Stat)",
   "credits.link.terms": "terms of use",
