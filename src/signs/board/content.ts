@@ -7,8 +7,8 @@ import { z } from "zod";
  * time (G6) pass the same schema.
  *
  * The template is told by the 別表第一 number (`kind`), not by a field of its own: a 108 board keeps
- * the JSON it had before G5 (the key of its drawn face in the layer pool, and the snapshot of
- * scripts/qa/guideBoards.ts). knowledge/sign-system.md「案内標識のレイアウタ（G5）」 has the table.
+ * the JSON it had before G5 (the rows scripts/qa/guideBoards.ts compares with the boards before
+ * G5). The face's key in the layer pool is boardKey, independent of the property order. knowledge/sign-system.md「案内標識のレイアウタ（G5）」 has the table.
  */
 
 /** A place on a board: 日本字, its English (empty: none), and whether it is an expressway's name. */
@@ -170,6 +170,20 @@ export const isRows = (c: BoardContent): c is RowsContent => templateOf(c.kind) 
 export const isExpresswayDiagram = (c: BoardContent): c is ExpresswayDiagramContent =>
   templateOf(c.kind) === "expressway-diagram";
 export const isExit = (c: BoardContent): c is ExitContent => templateOf(c.kind) === "exit";
+
+/**
+ * A board's key in the face layer pool: its JSON with every object's keys sorted, so two equal
+ * contents built with their properties in another order share one face.
+ * Why not JSON.stringify as it is (before the G5 review): its order is the order the properties
+ * were written in, which a planner or a road tile is free to change.
+ */
+export function boardKey(c: BoardContent): string {
+  return JSON.stringify(c, (_key, value: unknown) => {
+    const isRecord = typeof value === "object" && value !== null && !Array.isArray(value);
+    if (!isRecord) return value;
+    return Object.fromEntries(Object.entries(value).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  });
+}
 
 /** Every place a board names (the social feed and the nav read them), in reading order. */
 export function boardNames(c: BoardContent): SignName[] {

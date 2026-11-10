@@ -33,3 +33,25 @@ function layoutByTemplate(c: BoardContent, measure: Measure) {
 export function parseBoardContent(input: unknown) {
   return BoardContentSchema.safeParse(input);
 }
+
+/** Why a board failed the schema: each issue's path (dotted) and message. */
+export type BoardIssue = { path: string; message: string };
+
+/**
+ * The items whose `board` passes the schema, in order; each other one is handed to `onInvalid`
+ * with its issues (the game warns and leaves it out). The boards themselves are kept as they are,
+ * not replaced by zod's output (whose property order is the schema's: the face keys and the
+ * scripts/qa/guideBoards.ts rows would change).
+ */
+export function keepValidBoards<T extends { board: unknown }>(
+  items: readonly T[],
+  onInvalid: (item: T, issues: BoardIssue[]) => void,
+): T[] {
+  return items.filter((item) => {
+    const parsed = parseBoardContent(item.board);
+    if (parsed.success) return true;
+    const issues = parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }));
+    onInvalid(item, issues);
+    return false;
+  });
+}

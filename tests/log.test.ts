@@ -118,6 +118,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   darkroom_grab_failed: { error: "Error: x" },
   guide_fonts_failed: { error: "Error: x" },
   guide_signs_load_failed: { error: "Error: x" },
+  guide_board_invalid: { kind: "105-A", issues: [{ path: "rows", message: "Too small" }] },
   landmarks_load_failed: { error: "Error: x" },
   landmark_model_failed: { path: "models/tokyo_tower.glb", error: "Error: x" },
   landmark_entry_invalid: { index: 3, landmarkId: "rainbow_bridge", error: "footprint: too small" },

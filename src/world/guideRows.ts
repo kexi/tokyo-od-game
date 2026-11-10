@@ -4,6 +4,7 @@ import {
   CONFIRM_ROWS,
   CONFIRM_SPACING,
   DIRECTION_BACKS,
+  DIRECTION_SITE,
   ROAD_DETOUR,
 } from "../signs/boardAssumptions";
 import { GUIDE_PLACES } from "../signs/boardStandards";
@@ -40,7 +41,10 @@ import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
  *
  * Where they stand is declared in ROW_PLACEMENTS:
  * - 105: 交差点の手前 30 m 以内 (別表第一), where the 108 planner found a guide junction but no spot
- *   for its 108の2 within 55–140 m (a street with a side road every 30 m). One row per direction:
+ *   for its 108の2 (tried 35–140 m before the stop line; a street with a side road every 30 m).
+ *   Which junctions get one is the game's rule, not the 命令's (DIRECTION_SITE, the one switch;
+ *   the 命令 puts 108の2 anywhere within 150 m and never says 105 stands in for it). One row per
+ *   direction:
  *   straight on, right, left (図 008), each with one place and its distance.
  * - 106-A: past a junction on a 一般国道 or 主要地方道, on the road carried straight on: the places
  *   ahead on it — the nearest 主要地, then a 重要地 beyond it, and 東京 (基準地, 日本橋) when the road
@@ -60,7 +64,7 @@ export const ROW_PLACEMENTS = {
     measuredFrom: "stop-line",
     tries: DIRECTION_BACKS.value,
     maxBeforeM: GUIDE_PLACES.value.directionDistance.maxBeforeM,
-    where: "a guide junction without a 108の2",
+    where: DIRECTION_SITE.value,
   },
   "106-A": {
     measuredFrom: "junction-centre",
@@ -70,6 +74,19 @@ export const ROW_PLACEMENTS = {
     where: "past a junction on a road of class 0 or 1, straight on",
   },
 } as const;
+
+/**
+ * Whether an approach gets a 105, by the rule DIRECTION_SITE switches (the game's, not the
+ * 命令's): `hasJunctionBoard` is a 108 board at the junction itself (108の2-A and the like) for
+ * the same traffic.
+ */
+export function isDirectionSite(
+  where: (typeof ROW_PLACEMENTS)["105"]["where"],
+  site: { isGuide: boolean; hasJunctionBoard: boolean },
+): boolean {
+  if (where === "none") return false;
+  return site.isGuide && !site.hasJunctionBoard;
+}
 
 /** How far an overhead board reaches over the road from its pole, m (arm 0.55 m + a 4 m board). */
 const OVERHEAD_REACH = 5;
@@ -277,11 +294,14 @@ export function* planRowSteps(input: RowsInput): Generator<void, RowsPlan[]> {
     const mount = mountFor(ap.seg);
     const stop = graph.sample(ap.seg, ap.dir === 1 ? ap.at : ap.seg.length - ap.at).pos;
     const stopToCentre = Math.hypot(stop.x - centre.x, stop.z - centre.z);
-    const isDirectionSite = isGuideJunction(arms) && !hasJunctionBoard(centre, ap.travel);
-    if (isDirectionSite) {
-      const rule = ROW_PLACEMENTS["105"];
-      for (const back of rule.tries) {
-        if (back > rule.maxBeforeM) continue;
+    const rule105 = ROW_PLACEMENTS["105"];
+    const isDirection = isDirectionSite(rule105.where, {
+      isGuide: isGuideJunction(arms),
+      hasJunctionBoard: hasJunctionBoard(centre, ap.travel),
+    });
+    if (isDirection) {
+      for (const back of rule105.tries) {
+        if (back > rule105.maxBeforeM) continue;
         const spot = spotFor(graph, ap, back, signalled, junctionNodes, avoid);
         if (!spot || !isSpaced(spot.pos, spot.travel)) continue;
         const isBlocked =

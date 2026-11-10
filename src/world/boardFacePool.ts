@@ -20,11 +20,17 @@ import { boardPriority } from "./boardPriority";
  *   squarely it faces the eye; a board on another level than the eye (an expressway deck over a
  *   street, G6) after every board on the eye's level.
  * - Drawing: canvases are drawn inside a FrameWork run, a board per step, the run yielding a frame
- *   once 4 ms are spent (FrameWork's budget) — not a fixed three a call as before G5.
+ *   once 4 ms are spent (FrameWork's budget) — not a fixed three a call as before G5. A step is
+ *   `FaceLayerPool.start(1)`: drawBoard records the canvas commands (≈0.4 ms a board), then
+ *   createImageBitmap's synchronous part rasterises and copies the canvas, and that is most of a
+ *   step. The 4 ms cut is between boards, so one board's step is not cut: G5 measured the longest
+ *   slice at 12.5–48.6 ms (knowledge/sign-system.md「BoardFacePool」, the target of 4 ms is not met
+ *   and is tracked there). `stats.stepMs` times every step.
  *
  * Why not a pool per kind of board: the layers are the memory, and one budget can give them to
- * whichever boards are in front of the driver. Why not draw on a worker (OffscreenCanvas): the
- * fonts are the document's FontFaces, which a worker would load again; a board takes 1–5 ms.
+ * whichever boards are in front of the driver. Why not draw on a worker (OffscreenCanvas) yet: the
+ * fonts are the document's FontFaces, which a worker would have to load again, and the cheaper
+ * remedy (a CPU canvas, reused) is tried first; the worker is the next step if that is not enough.
  */
 
 /** m: boards this close get their drawn face (beyond, a 30 cm 漢字 is under 3 px). */
@@ -38,10 +44,12 @@ export const TEXTURE_PX_HIGH = 320;
 export const FACE_LAYERS = 32;
 /** Canvas time per frame before the drawing yields, ms (FrameWork's own default). */
 export const DRAW_BUDGET_MS = 4;
+/** Drawing steps timed into stats.stepMs (a place's settling draws 5–21; a drive keeps going). */
+const STEP_SAMPLES = 256;
 /** The 案内標識 blue (boardStandards.ts GUIDE_COLOURS), the far face. */
 const FAR_FACE: [number, number, number, number] = [0x1d, 0x4f, 0x9c, 255];
 
-/** A board that may be drawn: its key (the content's JSON), layout, where it is and faces. */
+/** A board that may be drawn: its key (boardKey of the content), layout, where it is and faces. */
 export type BoardFace = {
   key: string;
   layout: BoardLayout;
@@ -55,9 +63,19 @@ export type BoardFace = {
 };
 
 export type PoolStats = {
-  /** Faces drawn since the pool was made, and the canvas time they took. */
+  /** Faces drawn since the pool was made. */
   draws: number;
+  /**
+   * drawBoard's time alone: recording the canvas commands, not rasterising them (that happens in
+   * createImageBitmap, inside the step). Not the cost of a board: read `stepMs`.
+   */
   drawMs: number;
+  /**
+   * Each drawing step's whole time (`FaceLayerPool.start(1)`: the draw and createImageBitmap's
+   * synchronous part), ms, in order; the first is the warm-up (the first canvas and context). The
+   * first STEP_SAMPLES only.
+   */
+  stepMs: number[];
   /** The longest FrameWork slice of the drawing (one frame's canvas work), ms. */
   maxSliceMs: number;
   /** Boards asked for last time, and how many of them had their face in. */
@@ -70,7 +88,7 @@ export class BoardFacePool {
   readonly material: SignFaceMaterial;
   private running = false;
   private readonly wanted = new Set<string>();
-  readonly stats: PoolStats = { draws: 0, drawMs: 0, maxSliceMs: 0, wanted: 0, shown: 0 };
+  readonly stats: PoolStats = { draws: 0, drawMs: 0, stepMs: [], maxSliceMs: 0, wanted: 0, shown: 0 };
 
   constructor() {
     this.pool = new FaceLayerPool({
@@ -173,8 +191,11 @@ export class BoardFacePool {
 
   private *drawSteps(): Generator<boolean> {
     for (;;) {
+      const stepStarted = performance.now();
       const started = this.pool.start(1);
       if (started === 0) return;
+      const isSampling = this.stats.stepMs.length < STEP_SAMPLES;
+      if (isSampling) this.stats.stepMs.push(performance.now() - stepStarted);
       yield false;
     }
   }

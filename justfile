@@ -79,7 +79,7 @@ shoot-views name round="" base="http://localhost:5173/tokyo-od-game/" port="":
 check-convergence name:
     pnpm exec tsx scripts/qa/check-convergence.ts {{ name }}
 
-# 案内標識を 5 地点で計画・描画して配置と面の画素を .qa/guide-boards/<label>/ に書き、against を渡せばその label と比べる（108 系が変われば終了コード 1）
+# 案内標識を 5 地点と固定内容（高速道路名・10/15 cm の 108）で計画・描画して配置と面の画素を .qa/guide-boards/<label>/ に書き、against を渡せばその label と比べる（108 系が変われば終了コード 1）
 compare-guide-boards label against="" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/guideBoards.ts --label {{ label }} --base {{ base }} {{ if against != "" { "--against " + against } else { "" } }}
 
