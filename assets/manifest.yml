@@ -834,11 +834,11 @@ assets:
     kind: data
     files: [public/data/landmarks.json]
     generator:
-      script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py]
+      script: [scripts/blender/landmarks.py, scripts/blender/tokyo_station.py, scripts/blender/tower_area.py]
       recipe: make-all-landmark-models
     made_by: blender-cli
     source: >-
-      足元の形は OpenStreetMap（Overpass、2026-10-04）、置き換える建物は PLATEAU の gml_id、
+      足元の形は OpenStreetMap（Overpass、2026-10-04）または PLATEAU LOD1 の外形、置き換える建物は PLATEAU の gml_id、
       点灯の予定は各施設の公式サイトの記述から作った。
     license: [ODbL-1.0, PDL-1.0]
     used_by: [src/world/landmarks.ts]
@@ -955,3 +955,128 @@ assets:
       Web配布物は公式LICENSEのGPL-3.0-or-laterとして扱う。LICENSE.MITは限定されたC runtimeファイルにのみ適用し、Web資産にMITを推定しない。
       ピンイン辞書はpypinyin由来のMIT（NOTICE-G2P.md）。JSローダーにES module exportを追加し、Chinese辞書inflateにgzip magic判定を追加した。
       SOURCE.mdから同一固定commitの対応するソースとビルド手順へアクセスできる。
+
+  # ---------------------------------------------------------------- 東京タワー周辺の建物（scripts/blender/tower_area.py）
+  - id: zojoji-sangedatsumon
+    name: 増上寺 三解脱門
+    purpose: >-
+      日比谷通りに面した増上寺の三門（重要文化財、1622 年、五間三戸二階二重門・入母屋造・本瓦葺、高さ 21 m）と両脇の山廊。
+      反りのある屋根・高欄・花頭窓まで作った近景（約 3,500 三角形）と遠景。夜は境内灯の照り返し程度に淡く光る。
+    kind: model
+    files: [public/models/zojoji_sangedatsumon.glb, public/models/zojoji_sangedatsumon_far.glb]
+    generator:
+      {
+        script: [scripts/blender/tower_area.py, scripts/blender/landmarks.py],
+        recipe: make-all-landmark-models,
+      }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。平面と高さの枠は PLATEAU LOD2（港区 2025 年度、bldg_9cd7634f…）、柱間 21.05 × 9.72 m は
+      Columbia 大学 JAANUS、各部の高さは Wikimedia Commons の写真（Zojo-ji sanmon.jpg）を柱間で縮尺して測った。
+      写真の画素はモデルにもテクスチャにも使っていない。
+    license: [repo, PDL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [tower-area-textures]
+    docs: [knowledge/tokyo-tower-surroundings-blender.md]
+    notes: >-
+      2025-01〜2032-11（予定）は保存修理工事の覆いの中で、模型は工事前の姿。配置は landmark-placements
+      （public/data/landmarks.json、tower_area.py が自分のエントリを書く）。
+
+  - id: zojoji-daiden
+    name: 増上寺 大殿と周辺の堂
+    purpose: >-
+      増上寺の本堂（1974 年再建、二重の入母屋屋根と金の鴟尾、基壇と正面の階段）と、PLATEAU で 1 棟になっている南の堂・会館。
+      近景（約 7,000 三角形）と遠景。夜は淡い照り返し。
+    kind: model
+    files: [public/models/zojoji_daiden.glb, public/models/zojoji_daiden_far.glb]
+    generator:
+      {
+        script: [scripts/blender/tower_area.py, scripts/blender/landmarks.py],
+        recipe: make-all-landmark-models,
+      }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。平面・棟高（T.P. 42.6 m）・周辺の堂の高さは PLATEAU LOD2（bldg_e1565e4f…）、軒と各階の高さは
+      Wikimedia Commons の写真（Zojo-ji Hondo 3.jpg ほか）で人の背丈を縮尺に測った。
+    license: [repo, PDL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [tower-area-textures]
+    docs: [knowledge/tokyo-tower-surroundings-blender.md]
+
+  - id: shiba-park-hotel-south
+    name: 芝公園の高層ホテル（タワーの南）
+    purpose: >-
+      東京タワーの南に建つ 33 階・高さ 104.4 m の高層ホテル（2005 年）。五角形に近い平面、白い方立と青いガラスのカーテンウォール、
+      屋上の白い枠と機械室、航空障害灯。夜は客室の窓が宵と深夜で灯る。施設名・企業名・ロゴは使わず一般名で呼ぶ。
+    kind: model
+    files: [public/models/shiba_park_hotel_south.glb, public/models/shiba_park_hotel_south_far.glb]
+    generator:
+      {
+        script: [scripts/blender/tower_area.py, scripts/blender/landmarks.py],
+        recipe: make-all-landmark-models,
+      }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。平面・屋上高は PLATEAU LOD2（bldg_1867a421…）、階数・高さ 104.40 m は Wikipedia、
+      外壁の見えは Wikimedia Commons の写真で確かめた。
+    license: [repo, PDL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [tower-area-textures]
+    docs: [knowledge/tokyo-tower-surroundings-blender.md]
+
+  - id: shiba-park-hotel-east
+    name: 芝公園のホテル（タワーの東）
+    purpose: >-
+      東京タワーの東、増上寺の北に建つ 1964 年のホテル。11 階・高さ約 38 m の 2 本の板状棟をずらして並べ、中央のコアの上に
+      文字の無い看板箱、低層の基壇と宴会棟。夜は客室の窓が灯る。施設名・企業名・ロゴは使わず一般名で呼ぶ。
+    kind: model
+    files: [public/models/shiba_park_hotel_east.glb, public/models/shiba_park_hotel_east_far.glb]
+    generator:
+      {
+        script: [scripts/blender/tower_area.py, scripts/blender/landmarks.py],
+        recipe: make-all-landmark-models,
+      }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。棟の配置と高さは PLATEAU LOD2（bldg_67ae778f…・bldg_623f21fd…）、外観は Wikimedia Commons の
+      写真で確かめた。
+    license: [repo, PDL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [tower-area-textures]
+    docs: [knowledge/tokyo-tower-surroundings-blender.md]
+    notes: PLATEAU では本館と宴会棟が別の 2 棟なので、landmarks.json の footprint と extraFootprints の 2 つの輪で隠す。
+
+  - id: tower-north-hall
+    name: 東京タワー北の会館
+    purpose: >-
+      東京タワーの正面（北）に建つ 1966 年の会館（地上 6 階・塔屋 3 階、鉄骨鉄筋コンクリート造）。ベージュのプレキャストの腰壁と
+      横連窓、ピロティの 1 階、塔屋とアンテナ。夜は執務室の窓が灯る。団体の名称は使わず一般名で呼ぶ。
+    kind: model
+    files: [public/models/tower_north_hall.glb, public/models/tower_north_hall_far.glb]
+    generator:
+      {
+        script: [scripts/blender/tower_area.py, scripts/blender/landmarks.py],
+        recipe: make-all-landmark-models,
+      }
+    made_by: blender-cli
+    source: >-
+      自作（bpy で手続きモデリング）。平面と高さ（屋上 24.7 m・塔屋 35 m・アンテナ 46 m）は PLATEAU LOD2（bldg_002f53bc…）、
+      階数と構造は Wikipedia、外壁の見えは Wikimedia Commons の写真で確かめた。
+    license: [repo, PDL-1.0]
+    used_by: [src/world/landmarks.ts]
+    inputs: [tower-area-textures]
+    docs: [knowledge/tokyo-tower-surroundings-blender.md]
+
+  - id: tower-area-textures
+    name: 東京タワー周辺の建物のテクスチャ
+    purpose: >-
+      芝公園のホテル 2 棟・タワー北の会館の窓の格子（昼）と夜の点灯マップ（宵・深夜）、増上寺の本瓦葺の屋根。
+      1 枚が何間 × 何階の繰り返しかは scripts/textures/tower_area_textures.py の TILES。
+    kind: texture
+    files: [assets/landmarks/textures/ta_*.jpg]
+    generator: { script: scripts/textures/tower_area_textures.py, recipe: make-textures }
+    made_by: procedural
+    source: 自作（手続き生成、シード固定。写真・フォント・ロゴ・文字なし）
+    license: repo
+    used_by: []
+    docs: [knowledge/tokyo-tower-surroundings-blender.md]
