@@ -12,9 +12,9 @@ import {
 import { MassiveBody, massContactsFor } from "../physics/massContacts";
 import { laden, VEHICLE_SPECS, yawInertia, type MassClass } from "../physics/masses";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
-import type { TrafficControl } from "./trafficControl";
+import type { Approach, TrafficControl } from "./trafficControl";
 import { movementOf } from "../signals/movement";
-import { mayProceed, type Movement } from "../signals/plan";
+import { driverAction, type Movement } from "../signals/plan";
 
 type AiCar = {
   object: Group;
@@ -89,6 +89,9 @@ const holdAfter = (dv: number) => Math.min(20, 2 + 2 * dv);
 const UP = new Vector3(0, 1, 0);
 
 const PARKED_MAX = 16;
+
+/** A signal's stop line (not a 一時停止). */
+const isSignal = (ap: Approach): boolean => ap.kind === "signal";
 
 export class TrafficAI {
   /** Whether a point is in the camera's view (set by the game each frame). */
@@ -554,6 +557,17 @@ export class TrafficAI {
     return movementOf(tIn, tOut);
   }
 
+  /**
+   * A signal's stop line on the road after this one, its distance counted from the car. Why look
+   * past the end of the road: a 単路 crossing's stop line can stand a metre into its segment, and a
+   * car that only saw it on arriving there would be too close to stop for a red.
+   */
+  private signalOnward(graph: RoadGraph, c: AiCar): { approach: Approach; dist: number } | null {
+    const onward = this.peekNext(graph, c);
+    if (!onward || !this.control) return null;
+    return this.control.nextStop(onward.seg, onward.dir, -(c.seg.length - c.s), isSignal);
+  }
+
   /** The road it will take at the end of this one (chosen once, kept until it gets there). */
   private peekNext(graph: RoadGraph, c: AiCar): { seg: Segment; dir: 1 | -1 } | null {
     return this.upcoming(graph, c, 0);
@@ -584,14 +598,19 @@ export class TrafficAI {
    * 施行令 第2条 allows on yellow) and 一時停止, released after a full stop.
    */
   private stopGap(graph: RoadGraph, c: AiCar, dt: number): number {
-    const next = this.control?.nextStop(c.seg, c.dir, c.s);
-    if (!next || !this.control) return Infinity;
+    if (!this.control) return Infinity;
+    const here = this.control.nextStop(c.seg, c.dir, c.s);
+    const next = here ?? this.signalOnward(graph, c);
+    if (!next) return Infinity;
     const { approach, dist } = next;
     if (approach.kind === "signal") {
-      const permission = this.control.permits(approach, this.movementAt(graph, c));
+      // On the next road the turn that matters is one road later: read it as through (the safe
+      // side, an arrow for a turn does not let it go).
+      const movement = here ? this.movementAt(graph, c) : "through";
+      const permission = this.control.permits(approach, movement);
       const canStop = dist > (c.speed * c.speed) / (2 * COMFORT_DECEL);
       // Anything short of `go` (黄, 赤 without an arrow its way, an unconfirmed 転回) stops it when it can.
-      return !mayProceed(permission) && canStop ? dist + STOP_LINE_GAP : Infinity;
+      return driverAction(permission, canStop) === "stop" ? dist + STOP_LINE_GAP : Infinity;
     }
     if (c.served === approach.id) return Infinity;
     const isStanding = dist < 3 && c.speed < 0.2;

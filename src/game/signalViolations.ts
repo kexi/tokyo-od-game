@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import { log } from "../log";
-import { MOVEMENTS, type Movement, type Permission } from "../signals/plan";
+import { MOVEMENTS, crossingVerdict, letsDriverGo, type Movement, type Permission } from "../signals/plan";
 import {
   RedLightJudge,
   type CrossingOutcome,
@@ -26,7 +26,8 @@ type Signals = Pick<TrafficControl, "permits" | "permitsBefore">;
 export function signalCrossing(control: Signals, ap: Approach): SignalCrossing {
   const permissionOf = (m: Movement): Permission => {
     const now = control.permits(ap, m);
-    const isJustOut = now === "stop" && control.permitsBefore(ap, m, ARROW_GRACE_S) === "go";
+    const wasGo = letsDriverGo(control.permitsBefore(ap, m, ARROW_GRACE_S));
+    const isJustOut = crossingVerdict(now) === "booked" && wasGo;
     return isJustOut ? "go" : now;
   };
   return {
@@ -82,7 +83,7 @@ export class SignalViolationCheck {
     for (const o of outcomes) {
       const approachId = o.crossing.approachId;
       if (o.kind === "held") {
-        const allowed = MOVEMENTS.filter((m) => o.crossing.permissions[m] !== "stop");
+        const allowed = MOVEMENTS.filter((m) => crossingVerdict(o.crossing.permissions[m]) !== "booked");
         log("signal_crossing_held", { approachId, allowed });
         continue;
       }

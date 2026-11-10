@@ -2,7 +2,7 @@ import { type BufferGeometry, type Material, Mesh, SRGBColorSpace, TextureLoader
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { UntonemappedBasicMaterial } from "../render/untonemapped";
 import { sharedDraco } from "../render/draco";
-import { PED_HEAD, SIGNAL_HEADS, VEHICLE_HEAD } from "../signals/heads";
+import { PED_HEAD, PUSH_BUTTON_BOX, SIGNAL_HEADS, VEHICLE_HEAD } from "../signals/heads";
 
 /**
  * 信号機 parts modelled in Blender (scripts/blender/signals.py → public/models/signals.glb) and
@@ -32,10 +32,15 @@ export type SignalKit = {
   /** The arrow lens (pointing up; lampLayout's `turn` rotates it), lit like the round lamps. */
   arrowLamp: BufferGeometry;
   pedLamp: BufferGeometry;
+  /** 押ボタン箱 (src/signals/heads.ts PUSH_BUTTON_BOX), on the poles of push-button crossings. */
+  buttonBox: Part;
+  /** Its おまちください lamp: a 1 × 1 m window the game scales to the lamp's size and tints. */
+  waitLamp: BufferGeometry;
   /** Lens materials; per-instance colours light them (white artwork × colour). */
   lens: UntonemappedBasicMaterial;
   pedStop: UntonemappedBasicMaterial;
   pedGo: UntonemappedBasicMaterial;
+  waitLens: UntonemappedBasicMaterial;
 };
 
 let kit: SignalKit | null = null;
@@ -79,8 +84,11 @@ export async function loadSignalModels(): Promise<void> {
     lamp: part("SignalLamp")[0].geometry,
     arrowLamp: part("SignalArrowLamp")[0].geometry,
     pedLamp: part("PedLamp")[0].geometry,
+    buttonBox: part(PUSH_BUTTON_BOX.node),
+    waitLamp: part("PushButtonLamp")[0].geometry,
     lens: lensMaterial(lensMap),
     pedStop: lensMaterial(stopMap),
     pedGo: lensMaterial(goMap),
+    waitLens: lensMaterial(null),
   };
 }

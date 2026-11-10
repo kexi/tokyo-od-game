@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import type { RoadGraph, Segment } from "../world/roads";
-import type { TrafficControl } from "../world/trafficControl";
+import type { Approach, TrafficControl } from "../world/trafficControl";
 import type { Route } from "./navigation";
 
 /**
@@ -140,6 +140,9 @@ export type JunctionAhead = {
   signalled: boolean;
 };
 
+/** A junction's own stop line (not a 単路 crossing's in front of it). */
+const isJunctionLine = (ap: Approach): boolean => ap.site === "junction";
+
 /** Junctions (nodes of three or more streets) on the route between `from` and `to`. */
 export function junctionsAhead(
   route: Route,
@@ -166,7 +169,9 @@ export function junctionsAhead(
     const inDir = pos.clone().sub(before).setY(0).normalize();
     // The stop line of a signal for this approach stands just before the box.
     const travelEnd = route.stepEntry[k - 1] + (at - route.stepStart[k - 1]);
-    const stop = control.nextStop(prev.seg, prev.dir, Math.max(0, travelEnd - 40));
+    // Only the junction's own stop lines: a 単路 crossing's in front of it (nearer) would hide
+    // them, and does not signal the junction itself.
+    const stop = control.nextStop(prev.seg, prev.dir, Math.max(0, travelEnd - 40), isJunctionLine);
     const signalled = stop !== null && stop.approach.kind === "signal" && stop.dist < 45;
     out.push({ at, node, pos, half, inSeg: prev.seg, inDir, others, signalled });
   }

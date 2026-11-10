@@ -9,6 +9,7 @@ import {
   type RegulationDiagnostic,
   type StopLine,
 } from "./regulations";
+import { decodeSignalTags, type SignalRecord } from "../signals/osmTags";
 
 type Point = [number, number, number];
 type WireStop = Omit<StopLine, "seg" | "pos"> & { seg: number; pos: Point };
@@ -35,10 +36,16 @@ export type RoadNetworkInput = { lines: RoadLine[]; regs: RegulationData | null;
 export type RoadNetworkData = {
   graph: RoadGraphSnapshot;
   applied: WireApplied | null;
+  /** The OSM tags of `applied.signals`, index for index (src/signals/osmTags.ts). */
+  signalRecords: SignalRecord[];
   diagnostics: RegulationDiagnostic[];
   computeMs: number;
 };
-export type RoadNetwork = { graph: RoadGraph; applied: AppliedRegulations | null };
+export type RoadNetwork = {
+  graph: RoadGraph;
+  applied: AppliedRegulations | null;
+  signalRecords: SignalRecord[];
+};
 export type RoadNetworkRequest = { id: number; input: RoadNetworkInput };
 export type RoadNetworkReply = { id: number; data: RoadNetworkData } | { id: number; error: string };
 
@@ -52,7 +59,16 @@ export function computeRoadNetwork(input: RoadNetworkInput): RoadNetworkData {
   const graph = new RoadGraph(input.lines, frame);
   const diagnostics: RegulationDiagnostic[] = [];
   const applied = input.regs ? applyRegulations(graph, input.regs, frame, (d) => diagnostics.push(d)) : null;
-  const data = { graph: graph.snapshot(), applied: applied ? packApplied(applied) : null, diagnostics };
+  // Read here from the same records applyRegulations placed, so they stay index for index with
+  // applied.signals. Why not in applyRegulations: AppliedRegulations.signals is positions only and
+  // its other readers (and src/world/regulations.ts) need nothing more.
+  const signalRecords = applied && input.regs ? input.regs.signals.map(signalRecordOf) : [];
+  const data = {
+    graph: graph.snapshot(),
+    applied: applied ? packApplied(applied) : null,
+    signalRecords,
+    diagnostics,
+  };
   return { ...data, computeMs: performance.now() - start };
 }
 
@@ -93,7 +109,7 @@ export function restoreRoadNetwork(data: RoadNetworkData, frame: LocalFrame): Ro
   const graph = RoadGraph.restore(data.graph, frame);
   const a = data.applied;
   const hasNoRegulations = a === null;
-  if (hasNoRegulations) return { graph, applied: null };
+  if (hasNoRegulations) return { graph, applied: null, signalRecords: [] };
   const stops = a.stops.map((s) => ({ ...s, seg: graph.segments[s.seg], pos: vector(s.pos) }));
   return {
     graph,
@@ -118,5 +134,8 @@ export function restoreRoadNetwork(data: RoadNetworkData, frame: LocalFrame): Ro
       laneUse: a.laneUse.map((l) => ({ ...l, seg: graph.segments[l.seg] })),
       hasMarkings: a.hasMarkings,
     },
+    signalRecords: data.signalRecords,
   };
 }
+
+const signalRecordOf = (r: number[]): SignalRecord => ({ lon: r[0], lat: r[1], tags: decodeSignalTags(r) });

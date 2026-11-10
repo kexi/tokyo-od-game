@@ -242,6 +242,9 @@ export const LOG_EVENTS = {
     signals: count,
     /** Controllers whose plan has a 右折矢印 step (src/signals/assign.ts). */
     rightArrows: count.optional(),
+    /** 単路 (mid-block) crossing controllers, and those of them that are push-button (T3). */
+    crossingSignals: count.optional(),
+    pushButtons: count.optional(),
     stops: count,
     crossings: count,
     signs: count,
@@ -330,6 +333,17 @@ export const LOG_EVENTS = {
     reason: z.enum(["backedOut", "reset"]).optional(),
     heldMs: z.number(),
   }),
+  /**
+   * A walker pressed a 単路 crossing's 押ボタン and the call was taken; presses while a call waits
+   * or while the walk is still to come are not logged.
+   */
+  signal_button_pressed: info({ controllerId: z.number() }),
+  /**
+   * 単路 crossings among the OSM records that got no controller, by why (trafficControl.ts): off
+   * the road graph's streets (the tiles reach further), no JARTIC 横断歩道 within reach, next to a
+   * signalled junction, or no room for a stop line.
+   */
+  signal_crossings_skipped: info({ outside: count, noCrosswalk: count, nearJunction: count, noRoom: count }),
   /** Left a junction the way its lane does not allow (the booking follows). */
   lane_turn_disallowed: info({
     lanes: z.array(z.string()),
@@ -490,15 +504,29 @@ export const LOG_EVENTS = {
     vertices: count,
     at: z.array(z.number()),
   }),
+  /** An OSM tile layer came out byte for byte as committed, so it was left alone (scripts/regulations.ts). */
+  osm_layer_unchanged: info({ layer: z.string(), tiles: count }),
   osm_parsed: info({
     police: count,
     orbis: count,
     centres: z.array(z.string()),
     signals: count,
+    /** Signal records kept and what their OSM tags say (scripts/osm-signals.ts, T3). */
+    signalTags: z
+      .object({ kept: count, midBlock: count, pushButton: count, sound: count, crossingOnly: count })
+      .optional(),
     named: count,
     footbridges: count,
     stairs: count,
     turnlanes: count,
+  }),
+  /** The census of OSM signal tags in the 23 wards (scripts/signal-tags.ts). */
+  signal_tags_counted: info({
+    extract: z.string(),
+    nodes: count,
+    byKind: counts,
+    byTag: counts,
+    midBlock: counts,
   }),
   police_written: info({ stations: count, orbis: count, bySource: counts }),
   osm_loaded: info({ bytes: count }),
