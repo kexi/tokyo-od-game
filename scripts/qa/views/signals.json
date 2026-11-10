@@ -1,0 +1,84 @@
+{
+  "name": "signals",
+  "description": "信号機（灯器・矢印・柱）の視点。灯の配列（施行令第3条）、点灯と現示表、取付の高さと向き。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261110,
+    "moment": "2026-11-10T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-10T11:00:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-10T20:00:00+09:00"
+      }
+    ],
+    "hide": ["traffic"]
+  },
+  "sessions": [
+    {
+      "id": "marunouchi-arrow",
+      "start": [35.68043, 139.76424],
+      "views": [
+        {
+          "id": "arrow-driver-30",
+          "camera": "driver",
+          "target": {
+            "signal": {
+              "arrow": true
+            }
+          },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "expect": {
+            "head": "右折矢印付きの横型灯器",
+            "order": "左から青・黄・赤、矢印は赤の下"
+          },
+          "state": {
+            "signalStep": "arrow"
+          }
+        },
+        {
+          "id": "arrow-pedestrian-oblique",
+          "camera": "pedestrian",
+          "target": {
+            "signal": {
+              "arrow": true
+            }
+          },
+          "distanceM": 14,
+          "angleDeg": 35,
+          "fov": 40,
+          "expect": {
+            "head": "右折矢印付きの横型灯器",
+            "mount": "腕木と柱、灯器の下端の高さ"
+          },
+          "state": {
+            "signalStep": "arrow"
+          }
+        },
+        {
+          "id": "arrow-chase-60",
+          "camera": "chase",
+          "target": {
+            "signal": {
+              "arrow": true
+            }
+          },
+          "distanceM": 60,
+          "expect": {
+            "head": "停止線の先の灯器が自車線の上にある"
+          },
+          "state": {
+            "signalStep": "arrow"
+          }
+        }
+      ]
+    }
+  ]
+}
