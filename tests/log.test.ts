@@ -325,6 +325,16 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   expressway_planned: { chains: 700, runs: 600, wanted: 20, needed: 35, crossings: 300 },
   expressway_dem_ready: { tiles: 12, fetched: 0 },
   expressway_objects_read: { roads: 400, rails: 12 },
+  expressway_solved: {
+    components: 1,
+    largestRuns: 54,
+    largestVariables: 3290,
+    solves: 5,
+    iterations: 249,
+    qpMs: 3548,
+    unconverged: 0,
+    durationS: 6.4,
+  },
   expressway_diagnostic: {
     run: "24039738",
     kind: "vertical_fallback",

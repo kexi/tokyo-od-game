@@ -8,8 +8,23 @@ import {
   Vector3,
 } from "three";
 import { PARAPET_HEIGHT, PARAPET_WIDTH } from "../expressway/assumptions";
-import { PIER_STRIDE, STATION_STRIDE, type XwChunk, type XwMeta, type XwTile } from "../expressway/format";
+import {
+  PIER_STRIDE,
+  STATION_STRIDE,
+  XW_VERSION,
+  type XwChunk,
+  type XwMeta,
+  type XwTile,
+} from "../expressway/format";
 import { haversine, tileKey } from "../expressway/geo";
+import {
+  chordDeviation,
+  frameAt,
+  ST,
+  type SurfaceFrame,
+  surfaceAt,
+  surfaceHeight,
+} from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
 import { FrameWork } from "../game/frameWork";
 import { SerialWork } from "../game/serialWork";
@@ -43,6 +58,9 @@ const GIRDER_BOTTOM_SHARE = 0.55;
 const PIER_ALONG = 2.2;
 const PIER_ACROSS_SHARE = 0.4;
 const PIER_FOOT = 0.6;
+/** Largest gap between the Hermite surface and the slab's flat faces between two cross-sections. */
+const SURFACE_TOLERANCE = 0.01;
+const MAX_PIECES = 8;
 
 const ASPHALT = [0.16, 0.16, 0.17];
 const CONCRETE = [0.66, 0.65, 0.61];
@@ -62,24 +80,43 @@ export function* deckArraySteps(
 ): Generator<void, { arrays: DeckArrays; stations: Vector3[]; tangents: Vector3[] }> {
   const n = chunk.st.length / STATION_STRIDE;
   const centre: Vector3[] = [];
-  const ground: number[] = [];
   for (let i = 0; i < n; i++) {
     const o = i * STATION_STRIDE;
-    const lon = chunk.st[o + 1];
-    const lat = chunk.st[o + 2];
-    centre.push(place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, chunk.st[o + 3])));
-    ground.push(place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, chunk.st[o + 5])).y);
+    const lon = chunk.st[o + ST.lon];
+    const lat = chunk.st[o + ST.lat];
+    centre.push(place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, chunk.st[o + ST.z])));
+  }
+  // Cross-sections ("rings") at every station and, inside an interval, as many more as the Hermite
+  // surface needs to stay within SURFACE_TOLERANCE of the slab's straight faces. The plan position
+  // is linear between stations; the elevation is the shared surface (profile.ts), not the chord.
+  const rings: Ring[] = [];
+  for (let i = 0; i < n; i++) {
+    const o = i * STATION_STRIDE;
+    rings.push(ringAt(chunk, place, o, o, 0));
+    const isLast = i === n - 1;
+    if (isLast) break;
+    const q = o + STATION_STRIDE;
+    const h = chunk.st[q + ST.s] - chunk.st[o + ST.s];
+    const deviation = chordDeviation(
+      h,
+      chunk.st[o + ST.grade],
+      chunk.st[q + ST.grade],
+      chunk.st[q + ST.z] - chunk.st[o + ST.z],
+    );
+    const pieces = Math.min(MAX_PIECES, Math.max(1, Math.ceil(Math.sqrt(deviation / SURFACE_TOLERANCE))));
+    for (let k = 1; k < pieces; k++) rings.push(ringAt(chunk, place, o, q, k / pieces));
   }
   yield;
-  const tangents = centre.map((_, i) => {
-    const a = centre[Math.max(0, i - 1)];
-    const b = centre[Math.min(n - 1, i + 1)];
+  const m = rings.length;
+  const tangents = rings.map((_, i) => {
+    const a = rings[Math.max(0, i - 1)].c;
+    const b = rings[Math.min(m - 1, i + 1)].c;
     return new Vector3(b.x - a.x, 0, b.z - a.z).normalize();
   });
   // The ends take the compiled heading, which the neighbouring chunk shares: a one-sided difference
   // here left the deck edges up to 0.31 m apart at seams on curves.
   tangents[0] = headingTangent(chunk, 0, chunk.h0, place);
-  tangents[n - 1] = headingTangent(chunk, n - 1, chunk.h1, place);
+  tangents[m - 1] = headingTangent(chunk, n - 1, chunk.h1, place);
   const hw = carriagewayWidth(chunk) / 2;
   const pw = PARAPET_WIDTH.value;
   const ph = PARAPET_HEIGHT.value;
@@ -87,12 +124,12 @@ export function* deckArraySteps(
   const gw = edge * GIRDER_BOTTOM_SHARE;
   // Cross-section corners [lateral (left +), vertical, colour]; consecutive pairs are faces.
   const section = (i: number) => {
-    const o = i * STATION_STRIDE;
-    const e = bank ? chunk.st[o + 4] : 0;
+    const f = rings[i].frame;
     // The girder never reaches below the ground: near a ground end it shortens into a wall.
-    const clear = centre[i].y - ground[i];
+    const clear = rings[i].c.y - rings[i].groundY;
     const depth = Math.max(SLAB, Math.min(chunk.girder, clear + 0.3));
-    const lift = (u: number) => e * u;
+    // Offsets from the centre of the shared surface contract (profile.ts surfaceHeight).
+    const lift = (u: number) => surfaceHeight(f, u, bank) - f.z;
     return [
       [-hw, lift(-hw)],
       [hw, lift(hw)],
@@ -115,11 +152,11 @@ export function* deckArraySteps(
     // Left of travel: the tangent turned 90° anticlockwise seen from above (+y up, −z north).
     const lx = t.z;
     const lz = -t.x;
-    const c = centre[i];
+    const c = rings[i].c;
     return [c.x + lx * u, c.y + v, c.z + lz * u];
   };
   let prev = section(0);
-  for (let i = 1; i < n; i++) {
+  for (let i = 1; i < m; i++) {
     const cur = section(i);
     for (let k = 0; k + 1 < cur.length; k++) {
       const a = point(i - 1, prev[k][0], prev[k][1]);
@@ -135,11 +172,12 @@ export function* deckArraySteps(
     const checkpoint = i % 16 === 0;
     if (checkpoint) yield;
   }
-  pierTriangles(chunk, place, centre, tangents, pos, col);
+  const stationTangents = rings.flatMap((r, i) => (r.isStation ? [tangents[i]] : []));
+  pierTriangles(chunk, place, stationTangents, pos, col);
   return {
     arrays: { position: new Float32Array(pos), color: new Float32Array(col) },
     stations: centre,
-    tangents,
+    tangents: stationTangents,
   };
 }
 
@@ -152,7 +190,6 @@ export function* deckArraySteps(
 function pierTriangles(
   chunk: XwChunk,
   place: GeoToLocal,
-  stations: Vector3[],
   tangents: Vector3[],
   pos: number[],
   col: number[],
@@ -167,9 +204,10 @@ function pierTriangles(
     const s0 = chunk.st[i * STATION_STRIDE];
     const s1 = chunk.st[(i + 1) * STATION_STRIDE];
     const t = Math.min(1, Math.max(0, (s - s0) / (s1 - s0 || 1)));
-    const c = new Vector3().lerpVectors(stations[i], stations[i + 1], t);
     const lon = chunk.st[i * STATION_STRIDE + 1] * (1 - t) + chunk.st[(i + 1) * STATION_STRIDE + 1] * t;
     const lat = chunk.st[i * STATION_STRIDE + 2] * (1 - t) + chunk.st[(i + 1) * STATION_STRIDE + 2] * t;
+    // On the plan line between the stations, at the height of the Hermite surface there.
+    const c = place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, surfaceAt(chunk.st, s).z));
     const bottom = place.frame.toLocal(lat, lon, place.ellipsoidal(lat, lon, groundTp)).y - PIER_FOOT;
     const top = c.y - chunk.girder + 0.05;
     const isTooShort = top - bottom < 0.5;
@@ -203,6 +241,23 @@ function pierTriangles(
   }
 }
 
+type Ring = { c: Vector3; groundY: number; frame: SurfaceFrame; isStation: boolean };
+
+/** The cross-section at fraction t from station offset o to q (t = 0: the station itself). */
+function ringAt(chunk: XwChunk, place: GeoToLocal, o: number, q: number, t: number): Ring {
+  const st = chunk.st;
+  const s = st[o + ST.s] + (st[q + ST.s] - st[o + ST.s]) * t;
+  // The station itself is read as stored (no interpolation error at the seams between chunks).
+  const f = t === 0 ? frameAt(st, st[o + ST.s]) : frameAt(st, s);
+  const z = t === 0 ? st[o + ST.z] : f.z;
+  return {
+    c: place.frame.toLocal(f.lat, f.lon, place.ellipsoidal(f.lat, f.lon, z)),
+    groundY: place.frame.toLocal(f.lat, f.lon, place.ellipsoidal(f.lat, f.lon, f.ground)).y,
+    frame: { ...f, z },
+    isStation: t === 0,
+  };
+}
+
 /** The local-frame direction of a compiled heading at station i (a short step along it, mapped). */
 function headingTangent(chunk: XwChunk, i: number, heading: number, place: GeoToLocal): Vector3 {
   const o = i * STATION_STRIDE;
@@ -216,6 +271,11 @@ function headingTangent(chunk: XwChunk, i: number, heading: number, place: GeoTo
 }
 
 type Built = { mesh: Mesh; lon: number; lat: number };
+
+/** Whether meta.json is of the format this code reads (format.ts XW_VERSION). */
+export function isSupportedMeta(meta: Pick<XwMeta, "version">): boolean {
+  return meta.version === XW_VERSION;
+}
 
 export class ExpresswayDecks {
   private meta: Promise<XwMeta | null> | null = null;
@@ -276,7 +336,19 @@ export class ExpresswayDecks {
         return null;
       })
       .then((meta) => {
-        if (meta === null) this.meta = null;
+        if (meta === null) {
+          this.meta = null;
+          return null;
+        }
+        // Another format (old tiles in a cache, a half-deployed build) would be read wrongly:
+        // no decks, and not asked again (a version never changes under a running page).
+        if (!isSupportedMeta(meta)) {
+          warn("expressway_tile_failed", {
+            key: "meta",
+            error: `version ${String(meta.version)} ≠ ${XW_VERSION}`,
+          });
+          return null;
+        }
         return meta;
       });
     return this.meta;

@@ -33,6 +33,7 @@ export type XwWay = {
   /** OSM maxspeed, or the default (assumptions.DEFAULT_SPEED). */
   speedKmh: number;
   structure: Structure;
+  /** OSM layer (layerOf): orders decks where they cross or run over one another. */
   layer: number;
 };
 
@@ -62,6 +63,18 @@ export function structureOf(tags: Record<string, string>): Structure {
   return isBridge ? "viaduct" : "ground";
 }
 
+/**
+ * OSM layer, with a bridge that has no layer tag taken as layer 1 (OSM's implied layer for
+ * bridges), so it orders above a ground road and level with other untagged bridges.
+ */
+export function layerOf(tags: Record<string, string>): number {
+  const tagged = Number.parseInt(tags.layer ?? "", 10);
+  const hasLayer = Number.isFinite(tagged);
+  if (hasLayer) return tagged;
+  const isBridge = (tags.bridge ?? "no") !== "no";
+  return isBridge ? 1 : 0;
+}
+
 export function normalizeWay(id: number, nodes: number[], tags: Record<string, string>): XwWay {
   const cls: RoadClass = tags.highway === "motorway_link" ? "ramp" : "expressway";
   const isRamp = cls === "ramp";
@@ -80,7 +93,7 @@ export function normalizeWay(id: number, nodes: number[], tags: Record<string, s
     lanes: lanesTag > 0 ? lanesTag : isRamp ? defaults.ramp : defaults.main,
     speedKmh: speedTag > 0 ? speedTag : isRamp ? speeds.ramp : speeds.main,
     structure: structureOf(tags),
-    layer: Number.parseInt(tags.layer ?? "0", 10) || 0,
+    layer: layerOf(tags),
   };
 }
 

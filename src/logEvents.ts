@@ -543,6 +543,17 @@ export const LOG_EVENTS = {
   expressway_planned: info({ chains: count, runs: count, wanted: count, needed: count, crossings: count }),
   expressway_dem_ready: info({ tiles: count, fetched: count }),
   expressway_objects_read: info({ roads: count, rails: count }),
+  /** The joint vertical QPs (compile.ts solveComponent): components, the largest, solves, time. */
+  expressway_solved: info({
+    components: count,
+    largestRuns: count,
+    largestVariables: count,
+    solves: count,
+    iterations: count,
+    qpMs: count,
+    unconverged: count,
+    durationS: z.number(),
+  }),
   /** A run the compiler could not satisfy, or satisfied only by a fallback (allowed: in the allowlist). */
   expressway_diagnostic: warning({
     run: z.string(),
