@@ -11,8 +11,14 @@ const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/M
 /**
  * Open `url` in a fresh headless Chrome. `preload` is page-side JS run in every document before the
  * page's own scripts (Page.addScriptToEvaluateOnNewDocument): the teaser's virtual clock.
+ * Muted by default (--mute-audio): runs happen on the developer's machine, often several at once,
+ * and the game's engine, sirens and TTS would play out loud. Muting only silences the output device;
+ * Web Audio still runs, so in-page recording of the mix keeps working. Pass `audible: true` to hear it.
  */
-export async function launch(url, { port = 9334, width = 1280, height = 800, preload = null } = {}) {
+export async function launch(
+  url,
+  { port = 9334, width = 1280, height = 800, preload = null, audible = false } = {},
+) {
   // A Chrome left behind on the port (a run that crashed) would answer instead of the new one.
   const isTaken = await fetch(`http://127.0.0.1:${port}/json/version`)
     .then(() => true)
@@ -30,6 +36,7 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
       "--use-angle=metal",
       "--ignore-gpu-blocklist",
       "--autoplay-policy=no-user-gesture-required",
+      ...(audible ? [] : ["--mute-audio"]),
       "about:blank",
     ],
     { stdio: "ignore" },

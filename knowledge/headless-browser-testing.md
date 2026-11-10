@@ -21,7 +21,7 @@ sources:
 
 開発初日の検証で使った手順。[^session]
 
-1. Chrome を `--headless=new --remote-debugging-port=9333 --enable-gpu --use-angle=metal` で起動する。
+1. Chrome を `--headless=new --remote-debugging-port=9333 --enable-gpu --use-angle=metal --mute-audio` で起動する（`--mute-audio` が無いと、開発機でエンジン音・サイレン・読み上げが鳴る。出力装置を黙らせるだけで Web Audio は動く）。
 2. `http://127.0.0.1:9333/json` からページの WebSocket URL を取り、Node の組み込み `WebSocket` で CDP を送る。
 3. `Runtime.evaluate`（`awaitPromise: true`）で状態を読み、`Input.dispatchKeyEvent` でキーを押し、`Page.captureScreenshot` で撮る。
 4. 開発ビルドだけ、`window.__game` に内部オブジェクトと `setDebugCamera`（任意の角度から撮る）を公開している。本番ビルドには入らない。
