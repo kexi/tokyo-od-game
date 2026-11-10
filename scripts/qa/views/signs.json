@@ -1,0 +1,60 @@
+{
+  "name": "signs",
+  "description": "道路標識の実地の視点（板の正面・斜め・運転席）。様式・寸法・取付・補助標識の順。全番号を並べた見本は just render-sign-review（Blender）で撮る。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261110,
+    "moment": "2026-11-10T11:00:00+09:00"
+  },
+  "sessions": [
+    {
+      "id": "marunouchi-note",
+      "start": [35.67363, 139.764],
+      "views": [
+        {
+          "id": "note-front-8",
+          "camera": "pedestrian",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 8,
+          "fov": 35,
+          "expect": {
+            "plate": "本標識の下に補助標識",
+            "order": "補助標識は本標識の直下（設置基準）"
+          }
+        },
+        {
+          "id": "note-oblique-30deg",
+          "camera": "pedestrian",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 10,
+          "angleDeg": 30,
+          "fov": 35,
+          "expect": {
+            "plate": "板と支柱・取付金具の合い"
+          }
+        },
+        {
+          "id": "note-driver-30",
+          "camera": "driver",
+          "target": {
+            "sign": "325の4",
+            "note": true
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "expect": {
+            "readability": "運転席から 30 m で文字が読める"
+          }
+        }
+      ]
+    }
+  ]
+}

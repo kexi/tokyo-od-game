@@ -3,7 +3,8 @@ import type { LawTable, SignGroup } from "./schema";
 
 /**
  * How far the sign definitions get: which 別表第一 numbers have a definition, which are drawn, and
- * which drawn ones the game places (`game.kind`). `just show-sign-coverage` prints it; the
+ * which drawn ones the game places (`game.kind`, or a 補助標識 it hangs under its plates: registry
+ * `aux`). `just show-sign-coverage` prints it; the
  * not-placed list is meant to shrink as placement rules are added, so nothing fails on it.
  */
 export type SignCoverage = {
@@ -24,6 +25,7 @@ export function signCoverage(reg: Registry, law: LawTable): SignCoverage {
   const defIds = new Set(reg.signs.map((s) => s.id));
   const undrawn: SignCoverage["undrawn"] = [];
   const unplaced: SignCoverage["unplaced"] = [];
+  const hung = new Set(reg.aux.map((a) => a.sign));
   let drawn = 0;
   let placed = 0;
   for (const s of reg.signs) {
@@ -34,7 +36,8 @@ export function signCoverage(reg: Registry, law: LawTable): SignCoverage {
       continue;
     }
     drawn += 1;
-    if (s.game === undefined) {
+    const isPlaced = s.game !== undefined || hung.has(s.id);
+    if (!isPlaced) {
       unplaced.push({ id: s.id, group: s.group, name: s.name });
       continue;
     }

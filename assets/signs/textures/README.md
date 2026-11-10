@@ -30,6 +30,9 @@ Tokyo Open Drive の道路標識の図柄です。標識板は `public/models/si
   - 図柄の違いは `_` の後に付けます（`202_left`、`316_8-20`）。
   - 最初の 24 枚は従来の名前のままです（`speed_40`、`no_entry`、`turn_3` など）。
   - 進行方向別通行区分は `327-7_<車線ごとの略号>.png` です（`327-7_lt-t-r` = 左折・直進｜直進｜右折）。
+  - ゲームが通行禁止の標識の下に吊る補助標識（502 日・時間）は `502_h<文言の FNV-1a 8 桁>.png` です（388 枚）。
+    文言は `public/data/regs` の規制時間から `src/signs/auxPlates.ts` が決め、registry.json の `aux` に文言・板と並びます。
+    黒と白だけなので 16 色のパレット PNG で保存します（RGBA の約 1/5）。
 
 ## 再生成
 
@@ -43,7 +46,7 @@ uv run scripts/textures/sign_textures.py render 327の7-A --lanes "left+through,
 uv run scripts/textures/sign_textures.py render 501 --text "この先/200m" -o /tmp/b.png
 ```
 
-Pillow は PEP 723 のメタデータで 12.3.0 に固定しています。PNG のバイト列は Pillow（と同梱の zlib）の版で変わるためで、作り直した 345 枚がコミット済みのものとバイト一致することを確かめています。
+Pillow は PEP 723 のメタデータで 12.3.0 に固定しています。PNG のバイト列は Pillow（と同梱の zlib）の版で変わるためで、作り直した 345 枚がコミット済みのものとバイト一致することを確かめています（G2 で足した補助標識 400 枚を除く）。
 
 ## フォント
 

@@ -2,7 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LocalFrame } from "../src/geo/frame";
-import { applyRegulations, SIGN, type LaneDirection, type RegulationData } from "../src/world/regulations";
+import { auxPlate } from "../src/signs/registry";
+import {
+  applyRegulations,
+  SIGN,
+  type LaneDirection,
+  type PlacedSign,
+  type RegulationData,
+} from "../src/world/regulations";
 import { RoadGraph, type RoadLine } from "../src/world/roads";
 import { readTime } from "../src/world/ruleTime";
 import { design } from "../src/world/signs";
@@ -11,6 +18,12 @@ import { design } from "../src/world/signs";
  * Which signs the game puts up, where, and with which artwork, pinned as a snapshot taken before
  * the game's sign table moved to the sign definitions (G1c, knowledge/sign-system.md). Moving the
  * table must not add, drop, move or re-skin a single sign.
+ *
+ * Updated once on purpose since (G2, knowledge/sign-system.md「G2 のスナップショット更新」): the
+ * 補助標識 under a plate became the 502 日・時間 face drawn ahead of time (number and plate shown,
+ * the wording unchanged but for a line too long for the plate, now broken at 「・」), and the 警戒 plate the game shows (208 学校あり) is drawn at 1.3×, the
+ * smallest enlargement 別表第二 備考一(二)6 allows, instead of 1.25×. No sign was added, dropped
+ * or moved.
  *
  * The inputs are frozen copies of three regs / turnlanes tiles (tests/fixtures/sign-placement, with
  * their sources), so `just fetch-regs` does not rewrite the snapshot.
@@ -87,20 +100,33 @@ function roadsOf(data: RegulationData): RoadLine[] {
 }
 
 const laneKey = (lanes?: LaneDirection[][]) => (lanes ? lanes.map((l) => l.join("+")).join("|") : "");
-/** The artwork of a design, as the game builds it (file, plate, back face, mounting). */
+/** The scale of 規制・指示 plates; only other scales are written, so the rows stay as they were. */
+const USUAL_SCALE = 1.25;
+/** The artwork of a design, as the game builds it (file, plate, back face, mounting, scale). */
 function artOf(d: ReturnType<typeof design>): string {
   if (!d) return "-";
   const extras = [
     d.back ? `back=${d.back}` : "",
     d.parallel ? "parallel" : "",
     d.bothFaces ? "bothFaces" : "",
+    d.scale === USUAL_SCALE ? "" : `scale=${d.scale}`,
   ];
   return [`${d.file}@${d.shape}`, ...extras.filter((e) => e !== "")].join(" ");
 }
 
 const fixed = (v: number) => (Math.abs(v) < 0.005 ? 0 : v).toFixed(2);
 
-/** One line per placed sign: type, value, lanes, artwork, position and facing. */
+/**
+ * The 補助標識 under a placed sign: number, lines (joined by "/") and its plate. The plate comes
+ * from the rule (registry.ts auxPlate, by line count), not from game.json: game.json follows
+ * public/data/regs, and `just fetch-regs` must not change these rows.
+ */
+function auxOf(s: PlacedSign): string {
+  const plates = (s.aux ?? []).map((p) => `${p.sign} ${p.lines.join("/")}@${auxPlate(p) ?? "-"}`);
+  return plates.map((p) => ` | ${p}`).join("");
+}
+
+/** One line per placed sign: type, value, lanes, artwork, position, facing and 補助標識. */
 function placements(tile: string): string[] {
   const data = tileData(tile);
   const [x, y] = tile.split("-").map(Number);
@@ -112,7 +138,7 @@ function placements(tile: string): string[] {
     const art = artOf(design(s.type, s.value, s.lanes));
     const heading = ((Math.atan2(s.travel.x, -s.travel.z) * 180) / Math.PI + 360) % 360;
     const where = `${fixed(s.pos.x)},${fixed(s.pos.z)} ${heading.toFixed(1)}°`;
-    return `${KIND.get(s.type)} ${s.value} ${laneKey(s.lanes)} | ${art} | ${where}${s.note ? ` | ${s.note.replace(/\n/g, "/")}` : ""}`;
+    return `${KIND.get(s.type)} ${s.value} ${laneKey(s.lanes)} | ${art} | ${where}${auxOf(s)}`;
   });
 }
 
