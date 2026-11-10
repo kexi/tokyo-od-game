@@ -88,8 +88,29 @@ const StandSchema = z.strictObject({
   lookAheadM: z.number().positive().default(40),
 });
 
+/**
+ * A pixel probe: a rectangle of the frame (fractions of the width and height, x right and y down)
+ * whose luminance the runner measures in the saved image (pixelProbes.ts): e.g. the road ahead of a
+ * driver's eye. Measured, not judged: the table's metrics turn the numbers into limits.
+ */
+export const ProbeSchema = z.strictObject({
+  name: kebab,
+  rect: z
+    .tuple([
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+    ])
+    .refine(([x0, y0, x1, y1]) => x1 > x0 && y1 > y0, {
+      message: "rect is [x0, y0, x1, y1] with x1 > x0, y1 > y0",
+    }),
+});
+export type Probe = z.infer<typeof ProbeSchema>;
+
 const common = {
   id: kebab,
+  probes: z.array(ProbeSchema).optional(),
   /** Degrees (vertical field of view). Not given: the table's default. */
   fov: z.number().min(5).max(120).optional(),
   /** What the reviewer should see in this frame (copied into the frame's JSON as `expect`). */
@@ -194,6 +215,20 @@ export const RequiredMetricSchema = z
     max: z.number().optional(),
     unit: z.string().optional(),
     note: z.string().optional(),
+    /**
+     * Computed by the runner from a probe (pixelProbes.ts deriveMetrics): the statistic of `probe`
+     * in `view` under `look`, divided by the same under `over` when given (a night / day ratio).
+     * Without it the reviewer measures and reports the metric.
+     */
+    from: z
+      .strictObject({
+        view: kebab,
+        probe: kebab,
+        stat: z.enum(["mean", "p50", "p95", "p99", "contrast"]),
+        look: kebab.optional(),
+        over: kebab.optional(),
+      })
+      .optional(),
   })
   .refine((m) => m.min !== undefined || m.max !== undefined, { message: "a metric needs min or max" });
 export type RequiredMetric = z.infer<typeof RequiredMetricSchema>;
@@ -252,6 +287,25 @@ export const ViewTableSchema = z
       const looks = (s.looks ?? t.defaults.looks ?? []).map((l) => l.id);
       if (new Set(looks).size !== looks.length)
         ctx.addIssue({ code: "custom", message: `duplicate look in ${s.id}` });
+    }
+    // A computed metric must name a probe that exists (a typo would report it missing every round).
+    for (const m of t.metrics) {
+      if (!m.from) continue;
+      const from = m.from;
+      const session = t.sessions.find((s) => s.views.some((v) => v.id === from.view));
+      const view = session?.views.find((v) => v.id === from.view);
+      const hasProbe = view?.probes?.some((p) => p.name === from.probe) ?? false;
+      if (!hasProbe)
+        ctx.addIssue({
+          code: "custom",
+          message: `metric ${m.name}: no probe ${from.probe} in view ${from.view}`,
+        });
+      const looks = (session?.looks ?? t.defaults.looks ?? []).map((l) => l.id);
+      for (const look of [from.look, from.over]) {
+        const isUnknownLook = look !== undefined && !looks.includes(look);
+        if (isUnknownLook)
+          ctx.addIssue({ code: "custom", message: `metric ${m.name}: no look ${look} in ${session?.id}` });
+      }
     }
   });
 export type ViewTable = z.infer<typeof ViewTableSchema>;

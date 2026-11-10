@@ -34,6 +34,9 @@ import {
   updateFacadeClock,
 } from "./facade";
 import { sharedDraco } from "../render/draco";
+import { log } from "../log";
+import { featureCeilings, indexCutPoints, type LocalCutPoint } from "./buildingCut";
+import type { DeckCutGeodetic } from "./deckCuts";
 
 type Model = {
   scene: Object3D;
@@ -273,6 +276,102 @@ export class Buildings {
 
   private footprintCollider: RAPIER.Collider | null = null;
 
+  /** The decks' cut points (deckCuts.ts), geodetic with ellipsoidal heights, for every tile. */
+  private deckCuts: DeckCutGeodetic[] = [];
+  /** deckCuts in the current frame's grid (rebuilt on a new frame or new points). */
+  private deckIndex: ReturnType<typeof indexCutPoints> | null = null;
+
+  private deckIndexNow(): ReturnType<typeof indexCutPoints> {
+    this.deckIndex ??= indexCutPoints(this.deckCuts.map((c) => this.localCut(c)));
+    return this.deckIndex;
+  }
+
+  private localCut(c: DeckCutGeodetic): LocalCutPoint {
+    const v = this.frame.toLocal(c.lat, c.lon, c.h);
+    return { x: v.x, y: v.y, z: v.z, top: this.frame.toLocal(c.lat, c.lon, c.top).y };
+  }
+
+  /**
+   * Cut the PLATEAU buildings that stand into an elevated deck down below its soffit (buildingCut.ts),
+   * in the tiles loaded now and in every tile loaded later. `points` are new cut points (deckCuts.ts)
+   * with ellipsoidal heights. A cut tile's collider is dropped and rebuilt from the cut triangles,
+   * so the car on the deck no longer meets the building (P3 let it pass through instead).
+   */
+  cutAboveDecks(points: readonly DeckCutGeodetic[]): void {
+    if (points.length === 0) return;
+    // A loop, not push(...points): a whole tile's points as arguments can exceed the stack.
+    for (const p of points) this.deckCuts.push(p);
+    this.deckIndex = null;
+    const fresh = indexCutPoints(points.map((c) => this.localCut(c)));
+    let features = 0;
+    let meshes = 0;
+    const toLocal = new Matrix4();
+    for (const model of this.models.values()) {
+      model.scene.updateMatrixWorld(true);
+      let isCut = false;
+      model.scene.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        // localMatrix, not matrixWorld: a tile hidden right now hangs outside the group, its world
+        // matrix the tileset's ECEF (the first version missed those tiles: the crossing at
+        // 24402611:24 stayed).
+        const n = this.cutMesh(o.geometry as BufferGeometry, this.localMatrix(o, toLocal), fresh);
+        if (n === 0) return;
+        features += n;
+        meshes++;
+        isCut = true;
+      });
+      // A tile that had walls gets them back from the cut triangles right here, hidden or not.
+      // Why not drop them for the collider tick to rebuild: the tick builds only visible tiles, so a
+      // hidden one (a parent while its children load, one out of the frustum) would stand wall-less
+      // until shown again (the problem the tick's own comment describes).
+      const hadCollider = model.collider !== null;
+      if (!isCut || !hadCollider) continue;
+      this.removeCollider(model);
+      this.createCollider(model);
+    }
+    log("buildings_cut_above_deck", { reason: "decks", features, meshes, points: points.length });
+  }
+
+  /**
+   * Lower the vertices of the buildings standing into a deck to their ceiling. `toLocal` takes the
+   * geometry's positions to the local frame; the new heights go back through its inverse. Returns
+   * the number of buildings cut.
+   */
+  private cutMesh(
+    geometry: BufferGeometry,
+    toLocal: Matrix4,
+    points: ReturnType<typeof indexCutPoints>,
+  ): number {
+    const ids = geometry.getAttribute("_batchid") ?? geometry.getAttribute("_feature_id_0");
+    // Without feature ids a building cannot be told from its neighbours in the tile: left as it is.
+    if (!ids || points.cells.size === 0) return 0;
+    const pos = geometry.getAttribute("position");
+    const n = pos.count;
+    const x = new Float32Array(n);
+    const y = new Float32Array(n);
+    const z = new Float32Array(n);
+    const v = new Vector3();
+    for (let i = 0; i < n; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(toLocal);
+      x[i] = v.x;
+      y[i] = v.y;
+      z[i] = v.z;
+    }
+    const index = geometry.getIndex();
+    const ceilings = featureCeilings(x, y, z, index ? index.array : null, (i) => ids.getX(i), points);
+    if (ceilings.size === 0) return 0;
+    const back = toLocal.clone().invert();
+    for (let i = 0; i < n; i++) {
+      const ceiling = ceilings.get(ids.getX(i));
+      const isAbove = ceiling !== undefined && y[i] > ceiling;
+      if (!isAbove) continue;
+      v.set(x[i], ceiling, z[i]).applyMatrix4(back);
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    pos.needsUpdate = true;
+    return ceilings.size;
+  }
+
   /**
    * Collapse the triangles whose centre lies inside a hidden footprint (degenerate triangles draw
    * nothing), so the landmark model does not fight the PLATEAU copy of the same building.
@@ -332,6 +431,7 @@ export class Buildings {
     const matrix = frame.transformFrom(this.frame);
     const rotation = frame.rotationFrom(this.frame);
     this.frame = frame;
+    this.deckIndex = null;
     const hasFootprints = this.hiddenRings.length > 0 || this.walledRings.length > 0;
     if (hasFootprints) this.hideFootprints(this.hiddenRings, this.walledRings);
     this.applyFrame();
@@ -466,6 +566,17 @@ export class Buildings {
         const ids = geometry.getAttribute("_batchid") ?? geometry.getAttribute("_feature_id_0");
         addFacadeAttribute(geometry, ecef, ids ? (i) => ids.getX(i) : null);
         if (this.hidden.length) this.cutFootprints(geometry, ecef);
+        if (this.deckCuts.length) {
+          const toLocal = this.frame.ecefToLocal.clone().multiply(o.matrixWorld);
+          const cut = this.cutMesh(geometry, toLocal, this.deckIndexNow());
+          if (cut > 0)
+            log("buildings_cut_above_deck", {
+              reason: "loaded",
+              features: cut,
+              meshes: 1,
+              points: this.deckCuts.length,
+            });
+        }
         // Building shadows double the draw calls; phones skip them (the car still casts one).
         o.castShadow = !QUALITY.isMobile;
         o.receiveShadow = true;
@@ -636,7 +747,7 @@ export class Buildings {
       new Float32Array(vertices),
       new Uint32Array(indices),
     ).setFriction(0.6);
-    // Members of BUILDINGS: a car up on an expressway deck passes through them (Vehicle.setOnDeck).
+    // Members of BUILDINGS: Vehicle.overlapsBuilding asks for them alone.
     model.collider = this.world.createCollider(desc.setCollisionGroups(BUILDING_GROUPS));
   }
 

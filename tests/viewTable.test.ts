@@ -240,6 +240,18 @@ describe("where a view puts the eye", () => {
     expect(p.eye.above).toBeUndefined();
   });
 
+  it("parks the 後方追従 car on the deck, not on the street under it", () => {
+    const path = Array.from({ length: 11 }, (_, i) => ({ x: 0, y: 10 + i * 0.5, z: -i * 10 }));
+    const deck: FoundTarget = { point: path[8], normal: { x: 0, y: 0, z: 1 }, size: 9, path, pathIndex: 8 };
+    const p = placeView(
+      view({ id: "a", camera: "chase", target: { expressway: "1:0" }, distanceM: 25 }),
+      deck,
+      ctx,
+    );
+    expect(p.car?.z).toBeCloseTo(-55, 6);
+    expect(p.car?.surfaceY).toBeCloseTo(10 + 5.5 * 0.5, 6);
+  });
+
   it("extends a deck path straight past its first station", () => {
     const path = [
       { x: 0, y: 0, z: 0 },

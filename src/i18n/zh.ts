@@ -1118,7 +1118,8 @@ export const zh: Messages = {
   "credits.link.plateauSite": "PLATEAU 网站",
   "credits.plateau.source":
     "来源：国土交通省 {site}“3D 城市模型（Project PLATEAU）东京都”（建筑物 LOD1、道路 LOD2 的人行道与安全岛），经加工制作",
-  "credits.plateau.drawn": "（外墙的窗户与颜色、人行道铺装与路缘石高度由游戏绘制。）",
+  "credits.plateau.drawn":
+    "（外墙的窗户与颜色、人行道铺装与路缘石高度由游戏绘制。路面与高架的纹理由游戏程序生成，仅参考了桥梁模型的颜色与尺寸。）",
   "credits.link.plateauPolicy": "PLATEAU 网站政策",
   "credits.plateau.terms":
     "著作权人：东京都及其他各地方公共团体。使用条件：{policy}（《公共数据利用规约》第1.0版，与 CC BY 4.0 兼容）。",

@@ -124,7 +124,7 @@ list-logs n="10":
 check-assets:
     pnpm exec vitest run tests/assetManifest.test.ts
 
-# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両・東京駅丸の内駅舎・東京タワー周辺の建物・主要な建物 4 棟のテクスチャを手続き生成し直す
+# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルトと区画線の摩耗・警察車両・東京駅丸の内駅舎・東京タワー周辺の建物・主要な建物 4 棟・首都高の床版のテクスチャを手続き生成し直す
 make-textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
@@ -144,6 +144,11 @@ make-textures:
     uv run scripts/textures/tokyo_station_textures.py
     uv run scripts/textures/tower_area_textures.py
     uv run scripts/textures/major_building_textures.py
+    just make-expressway-textures
+
+# 首都高の床版の排水性舗装と、壁高欄・床版の側面・箱桁・橋脚の型枠コンクリートのテクスチャを手続き生成し直す（sheet に PNG のパスを渡すと 2×2 の継ぎ目の確認用シートも書く）
+make-expressway-textures sheet="":
+    uv run scripts/textures/expressway_textures.py {{ sheet }}
 
 # 道路標識の図柄を assets/signs/registry.json から作り直し、群ごとのコンタクトシートを書き出す
 make-sign-textures sheet="${TMPDIR:-/tmp}/signs":
@@ -293,6 +298,14 @@ measure-perf label="sample":
 # シーンを固定して従来・改善後の描画CPU時間を交互に各4回計測する（開発サーバーが必要）
 measure-perf-fixed:
     node scripts/qa/perf-fixed-scene.mjs
+
+# 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
+measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
+
+# 入口ランプから C1 内回りへ自車を一定速で走らせ、床版の上で建物と交差した所と止まった所（保持か接触か）を .qa/drive-deck-<label>.json に書く（交差があれば終了コード 1）
+check-deck-drive label="run" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }}
 
 # 交通と雨が動く通常プレイで夜雨の従来・改善後を交互に各4回計測する
 measure-perf-night:

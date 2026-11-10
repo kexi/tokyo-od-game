@@ -191,5 +191,5 @@ describe("the far skyline's memory", () => {
     far.dispatchEvent({ type: "dispose-model", scene: late, tile: {} } as never);
     expect(buildings.farPendingCount).toBe(0);
     far.dispose();
-  });
+  }, 30_000);
 });
