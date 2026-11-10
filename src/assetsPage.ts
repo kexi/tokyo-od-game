@@ -78,7 +78,9 @@ const MAKER_LABEL: Record<Maker, string> = {
 
 const TEXTURES = import.meta.glob<string>("../assets/*/textures/*.{png,jpg}", {
   eager: true,
-  query: "?url",
+  // no-inline: the hundreds of small 補助標識 faces (under Vite's 4 KB assetsInlineLimit) would
+  // otherwise be base64 in this page's chunk.
+  query: "?url&no-inline",
   import: "default",
 });
 const READMES = import.meta.glob<string>("../assets/*/textures/README.md", {

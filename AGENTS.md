@@ -32,7 +32,7 @@
 3. `just make-sign-textures`（図柄を registry.json から描く。既存の PNG がバイト一致のまま変わらないことも `git status` で見る）。
 4. `pnpm exec vitest run tests/signRegistry.test.ts tests/signPlacement.test.ts` と `just check-assets`。
 
-`just fetch-regs` で turn:lanes が変わったら `just rebuild-sign-assets`（レジストリ → 図柄 → どの定義にも無い図柄の削除）。
+`just fetch-regs` で turn:lanes や通行禁止の規制時間（補助標識の文言）が変わったら `just rebuild-sign-assets`（レジストリ → 図柄 → どの定義にも無い図柄の削除）。
 
 ## スクリプト
 

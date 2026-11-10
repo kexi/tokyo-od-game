@@ -35,7 +35,7 @@ make-car-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/car.py -- public/models/car.glb
 
 # 道路標識の板・支柱を Blender CLI でモデリングし public/models/signs.glb を書き出す
-make-sign-model:
+make-sign-model: make-sign-registry
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signs.py -- public/models/signs.glb
 
 # 歩行者を Blender CLI でモデリングし public/models/human.glb を書き出す
@@ -157,7 +157,7 @@ render-sign *args:
 make-sign-registry:
     pnpm exec tsx scripts/signs.ts
 
-# fetch-regs の後に、道路標識のレジストリと図柄を作り直し、どの定義にも無い図柄を消す（車線の版が turn:lanes から決まるため）
+# fetch-regs の後に、道路標識のレジストリと図柄を作り直し、どの定義にも無い図柄を消す（車線の版は turn:lanes、補助標識の文言は規制時間から決まるため）
 rebuild-sign-assets: make-sign-registry
     uv run scripts/textures/sign_textures.py --prune
 

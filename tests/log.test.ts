@@ -296,6 +296,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   signal_heads_written: { file: "assets/signals/heads.json", heads: 5 },
   sign_lanes_unrendered: { lanes: "l-t-t-t-t-t-t-r", count: 8 },
+  sign_aux_undrawn: { sign: "502", lines: ["7:30-9", "土・日・休日を除く"] },
+  sign_faces_below_ground: { faces: 2, posts: 120 },
   osm_read: { nodes: 1, ways: 2, relations: 3, coords: 4 },
   destinations_written: {
     file: "public/data/destinations.json",

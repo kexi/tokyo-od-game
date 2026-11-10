@@ -4,8 +4,9 @@ import { latToTileY, lonToTileX } from "../geo/tiles";
 import { warn, type LogFields } from "../log";
 import { anchors, M_LAT, M_LON, reversed } from "./anchors";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
-import { CLOSURE, MAX_CLOSURE_AREA_KM2, ringAreaKm2, type ClosureKind } from "./closures";
+import { CLOSURE, MAX_CLOSURE_AREA_KM2, readClosureRow, ringAreaKm2, type ClosureKind } from "./closures";
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
+import { auxPlatesFor, type AuxPlate } from "../signs/auxPlates";
 import { SIGN } from "../signs/game";
 
 /**
@@ -260,8 +261,8 @@ export type PlacedSign = {
   seg: Segment;
   s: number; // along-distance on seg (coordinate order)
   dir: 1 | -1; // travel direction relative to seg coordinates
-  /** 補助標識 text under the plate, e.g. "7-8:30\n土・日・休日を除く". */
-  note?: string;
+  /** 補助標識 under the plate (src/signs/auxPlates.ts), e.g. 502 ["7-8:30", "土・日・休日を除く"]. */
+  aux?: AuxPlate[];
   /** 進行方向別通行区分: lanes from the left, e.g. [["left","through"],["right"]]. */
   lanes?: LaneDirection[][];
 };
@@ -378,9 +379,8 @@ export function applyRegulations(
   const closureLines = new LineGrid<Closure>();
   const closureAreas: Array<{ closure: Closure; ring: Vector3[] }> = [];
   for (const r of data.closures) {
-    const { time, next } = readTime(r, 2);
-    const closure = { kind: r[1] as ClosureKind, time };
-    const isArea = r[0] === 3;
+    const { isArea, kind, time, coordsFrom: next } = readClosureRow(r);
+    const closure = { kind, time };
     if (!isArea) {
       closureLines.add(closure, toLocal(frame, r, next));
       continue;
@@ -891,7 +891,7 @@ function placeSigns(
   const isClear = (seg: Segment, s: number, foot: Vector3) =>
     graph.carriagewaysAt(foot, 0.5, seg).length === 0 &&
     !crossings.some((c) => c.seg === seg && Math.abs(c.s - s) < 3.5);
-  const put = (type: number, value: number, seg: Segment, s0: number, dir: 1 | -1, note?: string) => {
+  const put = (type: number, value: number, seg: Segment, s0: number, dir: 1 | -1, aux?: AuxPlate[]) => {
     // Slide along the travel direction, past the junction, until the kerb is clear.
     let s = s0;
     let pos = new Vector3();
@@ -913,7 +913,9 @@ function placeSigns(
       (o) =>
         o.type === type && o.value === value && o.pos.distanceTo(foot) < 15 && o.travel.dot(travel) > 0.7,
     );
-    if (!isDuplicate) placed.push({ type, value, pos: foot, travel, seg, s, dir, note });
+    if (isDuplicate) return;
+    const hasAux = aux !== undefined && aux.length > 0;
+    placed.push({ type, value, pos: foot, travel, seg, s, dir, ...(hasAux ? { aux } : {}) });
   };
   for (const [type, value, lon, lat, heading] of signAnchors(data)) {
     const p = toLocal(frame, [lon, lat])[0];
@@ -949,7 +951,7 @@ function placeSigns(
       [seg.to, -1, seg.length - 3],
     ] as const) {
       const isEntrance = (graph.nodes.get(node) ?? []).some((id) => graph.segments[id].closures.length === 0);
-      if (isEntrance) put(closureSign[closure.kind], 0, seg, s, dir, timeNote(time) ?? undefined);
+      if (isEntrance) put(closureSign[closure.kind], 0, seg, s, dir, auxPlatesFor(closure));
       // 歩行者用道路 for the school run: the ward's 通学路 plate on the same post.
       const isSchoolRun = closure.kind === CLOSURE.pedestrianRoad && timeNote(time) !== null;
       if (isEntrance && isSchoolRun) put(SIGN.schoolRoute, 0, seg, s, dir);

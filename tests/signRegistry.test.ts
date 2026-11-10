@@ -2,11 +2,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatCatalog } from "../src/signs/catalog";
+import { auxDesignFor, type GameTable } from "../src/signs/game";
 import { formatGameTable } from "../src/signs/gameTable";
 import { signCoverage } from "../src/signs/coverage";
 import { layoutJson, PyFloat } from "../src/signs/jsonLayout";
 import { buildRegistry, facesOf, formatRegistry, lanePlate } from "../src/signs/registry";
 import { laneKey as signLaneKey, laneSign } from "../src/signs/lanes";
+import { AUX_TEXT_PLATES, PLATES, plateBoxMm } from "../src/signs/plates";
 import { LANE_KEY, PAINTER_MODULES } from "../src/signs/schema";
 import { assumedLanes, SIGN, type LaneDirection } from "../src/world/regulations";
 import { design } from "../src/world/signs";
@@ -190,8 +192,8 @@ describe("the definitions against 別表第一 (assets/signs/law-table.json)", (
 describe("the definitions against the artwork (assets/signs/textures)", () => {
   const pngs = readdirSync(join(root, "assets/signs/textures")).filter((f) => f.endsWith(".png"));
 
-  it("name only PNGs that exist, and every PNG belongs to a definition", () => {
-    const named = new Set(faces.map((f) => f.file));
+  it("name only PNGs that exist, and every PNG belongs to a definition or a 補助標識 drawn for the game", () => {
+    const named = new Set([...faces.map((f) => f.file), ...registry.aux.map((a) => a.file)]);
     expect([...named].filter((f) => !pngs.includes(f))).toEqual([]);
     expect(pngs.filter((f) => !named.has(f))).toEqual([]);
   });
@@ -254,22 +256,44 @@ describe("the definitions against the artwork (assets/signs/textures)", () => {
 describe("the plates (src/signs/plates.ts)", () => {
   const nodes = glbNodeNames("public/models/signs.glb");
 
-  it("are nodes of public/models/signs.glb", () => {
+  it("are the plate nodes of public/models/signs.glb, all of them (signs.py builds each from the registry)", () => {
     expect(Object.keys(registry.plates).filter((n) => !nodes.has(n))).toEqual([]);
+    const glbPlates = [...nodes].filter((n) => n.startsWith("Plate"));
+    expect(glbPlates.filter((n) => !(n in registry.plates))).toEqual([]);
   });
 
   it("measure what their names say (PlateRect120x90 = 1200 × 900 mm)", () => {
     for (const [name, plate] of Object.entries(registry.plates)) {
       const m = /(\d+)x(\d+)$/.exec(name);
       if (!m) continue;
-      expect(plate.sizeMm, name).toEqual([Number(m[1]) * 10, Number(m[2]) * 10]);
+      expect(plate.boxMm, name).toEqual([Number(m[1]) * 10, Number(m[2]) * 10]);
     }
   });
 
   it("cover the inverted triangle's bounding box, 80 × 69.3 cm (UV 0–1 over the box)", () => {
-    const [w, h] = registry.plates.PlateTriangle.sizeMm;
+    const [w, h] = registry.plates.PlateTriangle.boxMm;
     expect(w).toBe(800);
     expect(h).toBeCloseTo((800 * Math.sqrt(3)) / 2, 0);
+  });
+
+  it("give the 菱形 by its side (45 cm) and its texture box by the diagonal (63.6 cm)", () => {
+    const diamond = registry.plates.PlateDiamond;
+    expect(diamond.shape === "diamond" && diamond.sideMm).toBe(450);
+    expect(diamond.boxMm[0]).toBeCloseTo(450 * Math.SQRT2, 0);
+    expect(diamond.boxMm[0]).toBe(diamond.boxMm[1]);
+  });
+
+  it("box each outline by its bounding box: circle by its diameter, 407 by triangle plus base", () => {
+    expect(plateBoxMm({ shape: "circle", diameterMm: 400 })).toEqual([400, 400]);
+    expect(plateBoxMm({ shape: "pentagon", widthMm: 600, baseMm: 200, cornerMm: 35 })).toEqual([600, 719.6]);
+    expect(plateBoxMm({ shape: "rect", widthMm: 600, heightMm: 220, cornerMm: 30 })).toEqual([600, 220]);
+  });
+
+  it("are square where they say so", () => {
+    for (const [name, p] of Object.entries(registry.plates)) {
+      if (p.shape !== "square") continue;
+      expect(p.widthMm, name).toBe(p.heightMm);
+    }
   });
 
   it("put lane renders on 40 cm per lane × 90 cm, one lane on the 90 cm square", () => {
@@ -498,5 +522,119 @@ describe("layoutJson (the oxfmt layout catalog.py wrote)", () => {
     expect(() => layoutJson([new PyFloat(1e16)])).toThrow(/as Python prints it/);
     expect(() => layoutJson([new PyFloat(5e-5)])).toThrow(/as Python prints it/);
     expect(layoutJson([new PyFloat(0), new PyFloat(1e-4)])).toBe("[0.0, 0.0001]\n");
+  });
+});
+
+/** The 命令's allowance on roads other than 高速道路等, written out here apart from schema.ts ENLARGEMENT. */
+const isAllowed = (group: string, scale: number | null): boolean => {
+  const isWarning = group === "警戒";
+  const isAuxiliary = group === "補助";
+  if (isWarning) return scale !== null && [1, 1.3, 1.6, 2].includes(scale);
+  if (isAuxiliary) return scale === null;
+  return scale !== null && scale >= 0.5 && scale <= 2;
+};
+
+/** The scales the definitions of a group are drawn at. */
+const scalesOf = (group: string) =>
+  new Set(registry.signs.filter((s) => s.group === group).map((s) => s.displayScale));
+
+describe("the scale plates are drawn at (displayScale, 別表第二 備考一(二))", () => {
+  it("is, for every definition, one the 命令 allows its group (規制・指示 1/2〜2 倍, 警戒 1.3・1.6・2 倍)", () => {
+    const outside = registry.signs.filter((s) => !isAllowed(s.group, s.displayScale));
+    expect(outside.map((s) => `${s.id} ${s.group} ${s.displayScale}`)).toEqual([]);
+  });
+
+  it("is 1.25 for 規制・指示, 1.3 for 警戒, and the plate above's for 補助", () => {
+    expect(scalesOf("規制")).toEqual(new Set([1.25]));
+    expect(scalesOf("指示")).toEqual(new Set([1.25]));
+    expect(scalesOf("警戒")).toEqual(new Set([1.3]));
+    expect(scalesOf("補助")).toEqual(new Set([null]));
+  });
+
+  it("reaches the game: design() gives each placed face its definition's scale", () => {
+    expect(design(SIGN.school, 0)?.scale).toBe(1.3);
+    expect(design(SIGN.speed, 40)?.scale).toBe(1.25);
+    expect(design(SIGN.laneArrows, 0, [["left", "through"], ["right"]])?.scale).toBe(1.25);
+    for (const kind of Object.keys(SIGN) as Array<keyof typeof SIGN>) {
+      const d = design(SIGN[kind], 0) ?? design(SIGN[kind], 40) ?? design(SIGN[kind], 1);
+      if (!d) continue;
+      expect(d.scale, kind).toBe(registry.signs.find((s) => s.id === d.id)?.displayScale);
+    }
+  });
+
+  it("refuses a definition drawn at a scale the 命令 does not allow", () => {
+    const warning = {
+      id: "208",
+      name: "学校、幼稚園、保育所等あり",
+      group: "警戒",
+      plate: "PlateDiamond",
+      art: { by: "texture", file: "a.png", paint: { fn: "warning.school" } },
+    };
+    expect(build([{ ...warning, displayScale: 1.25 }])).toThrow(/sign 208: displayScale 1.25 is outside/);
+    expect(build([{ ...warning, displayScale: 1.6 }])).not.toThrow();
+    const regulatory = {
+      id: "301",
+      name: "通行止め",
+      group: "規制",
+      plate: "PlateCircle",
+      art: { by: "texture", file: "b.png", paint: { fn: "regulatory.road_closed" } },
+    };
+    expect(build([{ ...regulatory, displayScale: 2.5 }])).toThrow(/sign 301: displayScale 2.5 is outside/);
+    expect(build([{ ...regulatory, displayScale: 0.5 }])).not.toThrow();
+  });
+});
+
+describe("the 補助標識 drawn for the game's regulations (registry.json aux)", () => {
+  const hours = {
+    id: "502",
+    name: "日・時間",
+    group: "補助",
+    plate: "PlateAux60x22",
+    art: { by: "texture", file: "502.png", paint: { fn: "auxiliary.text_plate", args: { lines: ["8-20"] } } },
+  };
+  const buildAux = (defs: unknown[], aux: unknown[]) => () => buildRegistry(defs, [], law, aux);
+
+  it("are drawn by the number's own painter with their lines, on the 22 / 32 / 44 cm plate by line count", () => {
+    const reg = buildAux(
+      [hours],
+      [
+        { sign: "502", lines: ["7-9"] },
+        { sign: "502", lines: ["日・休日", "10-17", "土を除く"] },
+      ],
+    )();
+    expect(reg.aux.map((a) => [a.plate, a.paint])).toEqual([
+      ["PlateAux60x22", { fn: "auxiliary.text_plate", args: { lines: ["7-9"], h: 220 } }],
+      [
+        "PlateAux60x44",
+        { fn: "auxiliary.text_plate", args: { lines: ["日・休日", "10-17", "土を除く"], h: 440 } },
+      ],
+    ]);
+    expect(reg.aux.every((a) => /^502_h[0-9a-f]{8}\.png$/.test(a.file) && a.colors === 16)).toBe(true);
+  });
+
+  it("are refused for a number that is not a 補助標識 painted from lines, or with no plate for their lines", () => {
+    const regulatory = { ...hours, id: "301", name: "通行止め", group: "規制", plate: "PlateCircle" };
+    expect(buildAux([regulatory], [{ sign: "301", lines: ["7-9"] }])).toThrow(
+      /aux 301 7-9: not a drawn 補助標識/,
+    );
+    expect(buildAux([hours], [{ sign: "502", lines: ["a", "b", "c", "d"] }])).toThrow(/aux #0 lines/);
+    expect(buildAux([hours], [{ sign: "502", lines: [""] }])).toThrow(/aux #0 lines/);
+  });
+
+  it("use the plates text_plate draws for one, two and three lines (auxiliary.py HEIGHTS)", () => {
+    const source = read("scripts/textures/signs/auxiliary.py");
+    const table = /^HEIGHTS = \{"arrow": [\d.]+, 1: ([\d.]+), 2: ([\d.]+), 3: ([\d.]+)\}/m.exec(source);
+    expect(table, "HEIGHTS in auxiliary.py").not.toBeNull();
+    const heights = AUX_TEXT_PLATES.map((p) => plateBoxMm(PLATES[p])[1]);
+    expect(heights).toEqual([1, 2, 3].map((i) => Number(table?.[i])));
+  });
+
+  it("have a PNG each, and the game finds each by its number and lines", () => {
+    const pngs = new Set(readdirSync(join(root, "assets/signs/textures")));
+    expect(registry.aux.length).toBeGreaterThan(100);
+    expect(registry.aux.filter((a) => !pngs.has(a.file)).map((a) => a.file)).toEqual([]);
+    const game = JSON.parse(read("assets/signs/game.json")) as GameTable;
+    for (const a of registry.aux)
+      expect(auxDesignFor(game, a, 1.25)?.file, a.lines.join("/")).toBe(a.file.replace(/\.png$/, ""));
   });
 });
