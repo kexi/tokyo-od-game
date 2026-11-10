@@ -1,12 +1,16 @@
-# Landmarks (東京タワー・東京スカイツリー・東京駅丸の内駅舎) with their night lighting, for TOKYO OPEN DRIVE.
+# Landmarks with their night lighting, for TOKYO OPEN DRIVE: 東京タワー・東京スカイツリー・東京駅丸の内駅舎
+# here, and those of the modules in LANDMARK_MODULES (the full list is public/data/landmarks.json).
 #
-#   nix develop .#blender -c blender --background --factory-startup \
+#   nix develop .#blender -c blender --background --factory-startup --python-exit-code 1 \
 #     --python scripts/blender/landmarks.py -- public/models/<id>.glb [preview-dir]
+#   … --python scripts/blender/landmarks.py -- --all [preview-dir]   (every registered landmark)
 #
-# <id> picks the landmark: tokyo_tower, tokyo_skytree or tokyo_station. One run writes
-# public/models/<id>.glb (detailed node <Name>_Near + far node <Name>_Far), public/models/<id>_far.glb
-# (the far node alone, for the skyline before the detailed file is needed) and updates this
-# landmark's entry in public/data/landmarks.json.
+# <id> picks the landmark: a key of BUILDERS (this file's own, then those of LANDMARK_MODULES). One run
+# writes public/models/<id>.glb (the near node; for this file's three also the far node, see
+# BOTH_NODES_IN_NEAR_FILE — the game shows only nodes.near), public/models/<id>_far.glb (the far node alone, for the
+# skyline before the detailed file is needed) and replaces this landmark's entry in
+# public/data/landmarks.json where it stands (a new id goes at the end). --all runs one Blender per
+# landmark in BUILDERS order. How to add a landmark: knowledge/landmarks-blender.md「ランドマークを足す手順」.
 #
 # Game coordinates (+Y up, metres, origin on the ground at the landmark's reference point, +Z =
 # the landmark's heading, +X = its left), exported with export_yup=False like the vehicle models.
@@ -19,20 +23,29 @@
 #
 # Lattices are a few beams (legs, chords, main diagonals as thin boxes) plus alpha-masked lacing
 # textures (alphaMode MASK) from scripts/textures/landmark_textures.py; no cylinder forests.
+import importlib
 import json
 import math
 import os
+import subprocess
 import sys
 
 import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
+# A landmark module that does `import landmarks` gets this running script, not a second copy of it
+# (which would reset the scene and define a second Builder class). Why not leave modules to import it:
+# Blender runs this file as __main__, so the name "landmarks" is not taken yet.
+sys.modules.setdefault("landmarks", sys.modules[__name__])
+
 ARGS = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OUT = os.path.abspath(ARGS[0]) if ARGS else os.path.join(ROOT, "public", "models", "tokyo_tower.glb")
+IS_ALL = ARGS[:1] == ["--all"]
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
+OUT = os.path.abspath(ARGS[0]) if ARGS and not IS_ALL else os.path.join(ROOT, "public", "models", "tokyo_tower.glb")
 PREVIEW = os.path.abspath(ARGS[1]) if len(ARGS) > 1 else None
-LANDMARK = os.path.splitext(os.path.basename(OUT))[0]
+LANDMARK = "all" if IS_ALL else os.path.splitext(os.path.basename(OUT))[0]
 TEX = os.path.join(ROOT, "assets", "landmarks", "textures")
 JSON_PATH = os.path.join(ROOT, "public", "data", "landmarks.json")
 
@@ -1233,12 +1246,44 @@ def build_tokyo_station():
     return tokyo_station.build(helpers)
 
 
-# ---------------------------------------------------------------------------------------------- export
+# ---------------------------------------------------------------------------------------------- registry
+# Landmark id → build() returning (root, near_ob, far_ob, pal, meta). The order is that of --all and of
+# make-all-landmark-models, and the order new ids take in landmarks.json.
 BUILDERS = {
     "tokyo_tower": build_tokyo_tower,
     "tokyo_skytree": build_tokyo_skytree,
     "tokyo_station": build_tokyo_station,
 }
+
+# Modules beside this file that add landmarks of their own, registered after the ones above in this
+# order. Each module defines
+#   BUILDERS = {id: build(L) -> (root, near_ob, far_ob, pal, meta)}
+#   PREVIEW_VIEWS = {id: {view: (eye, target, lens, (width, height)[, shift_y])}}   (optional)
+# where L is this module (Builder, Palette, material, SOURCES, model_to_lonlat, look, set_mode, log …).
+# Export, the landmarks.json entry and the preview renders stay here, so a module has no main() of its
+# own. Why not one script per module as before: each copied main() drifted (which nodes go in the near
+# file, where the entry lands in landmarks.json, how previews are lit). One module per line.
+LANDMARK_MODULES = []
+
+# The landmarks whose near file also carries the far node (the game shows only nodes.near). Every
+# registered module's near file holds the near node alone. Why not all of them near-only now: these
+# three files would change byte for byte; moving them over is its own change
+# (knowledge/landmarks-blender.md「構成」).
+BOTH_NODES_IN_NEAR_FILE = frozenset(BUILDERS)
+
+
+def register_modules(names):
+    """Adds each module's BUILDERS and PREVIEW_VIEWS to this file's, refusing an id taken twice."""
+    sys.path.insert(0, HERE)
+    this = sys.modules[__name__]
+    for name in names:
+        module = importlib.import_module(name)
+        for landmark_id, build in module.BUILDERS.items():
+            is_taken = landmark_id in BUILDERS
+            if is_taken:
+                raise ValueError(f"landmark id {landmark_id!r} of {name} is already registered")
+            BUILDERS[landmark_id] = lambda build=build: build(this)
+        PREVIEW_VIEWS.update(getattr(module, "PREVIEW_VIEWS", {}))
 
 
 def setup_variants(objects, pal):
@@ -1290,20 +1335,43 @@ def tri_count(ob):
     return sum(len(p.vertices) - 2 for p in ob.data.polygons)
 
 
-def write_json(meta):
+def read_json():
     try:
         with open(JSON_PATH, encoding="utf-8") as f:
-            data = json.load(f)
+            return json.load(f)
     except FileNotFoundError:
-        data = []
-    data = [d for d in data if d.get("id") != meta["id"]]
-    data.append(meta)
-    order = list(BUILDERS)
-    data.sort(key=lambda d: order.index(d["id"]) if d["id"] in order else len(order))
+        return []
+
+
+def save_json(data):
     os.makedirs(os.path.dirname(JSON_PATH), exist_ok=True)
     with open(JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
         f.write("\n")
+
+
+def write_json(meta):
+    """Replaces the entry with meta's id where it stands, or appends meta when the id is new.
+
+    Why not sort by BUILDERS as before: ids from LANDMARK_MODULES (or a module not yet registered on
+    this branch) fell to the end in whatever order the builds ran, so the file changed with the run order.
+    """
+    data = read_json()
+    index = next((i for i, d in enumerate(data) if d.get("id") == meta["id"]), None)
+    is_new = index is None
+    if is_new:
+        data.append(meta)
+    else:
+        data[index] = meta
+    save_json(data)
+
+
+def order_json(order):
+    """Puts the entries in `order` (ids); ids not in it keep their relative order after those."""
+    data = read_json()
+    rank = {landmark_id: i for i, landmark_id in enumerate(order)}
+    data.sort(key=lambda d: rank.get(d.get("id"), len(order)))  # stable: unknown ids keep their order
+    save_json(data)
 
 
 # ---------------------------------------------------------------------------------------------- previews
@@ -1346,7 +1414,9 @@ def previews(objects, pal, views, ground=4000.0):
     cam.data.clip_end = 20000
     SCENE.collection.objects.link(cam)
     SCENE.camera = cam
-    SCENE.render.engine = "CYCLES"
+    # LANDMARK_PREVIEW_ENGINE=BLENDER_EEVEE culls back faces as the game does (materials are single-sided),
+    # so a flipped face shows as a hole; Cycles draws both sides and hides it.
+    SCENE.render.engine = os.environ.get("LANDMARK_PREVIEW_ENGINE", "CYCLES")
     SCENE.cycles.device = "CPU"
     SCENE.cycles.samples = 24
     SCENE.cycles.use_denoising = True
@@ -1413,11 +1483,47 @@ PREVIEW_VIEWS = {
 }
 
 
+def run_all():
+    """One Blender per landmark in BUILDERS order (a fresh scene each), then landmarks.json in that order.
+
+    Why not build them all in this process: every build starts from read_factory_settings and module
+    state (images, palettes) that a second build in the same scene would inherit.
+    """
+    for landmark_id in BUILDERS:
+        out = os.path.join(ROOT, "public", "models", f"{landmark_id}.glb")
+        args = [out, PREVIEW] if PREVIEW else [out]
+        # --python-exit-code 1: Blender ends a script that raised with status 0, which check=True would
+        # take for a success.
+        command = [
+            bpy.app.binary_path,
+            "--background",
+            "--factory-startup",
+            "--python-exit-code",
+            "1",
+            "--python",
+            __file__,
+            "--",
+            *args,
+        ]
+        log("build_started", id=landmark_id)
+        subprocess.run(command, check=True)
+    order_json(list(BUILDERS))
+    log("all_built", ids=list(BUILDERS))
+
+
 def main():
+    register_modules(LANDMARK_MODULES)
+    if IS_ALL:
+        run_all()
+        return
+    is_known = LANDMARK in BUILDERS
+    if not is_known:
+        raise SystemExit(f"unknown landmark {LANDMARK!r}: one of {', '.join(BUILDERS)}")
     root, near_ob, far_ob, pal, meta = BUILDERS[LANDMARK]()
     meshes = [near_ob, far_ob]
     nvar = setup_variants(meshes, pal)
-    export(OUT, [root, *meshes])
+    has_both_nodes = LANDMARK in BOTH_NODES_IN_NEAR_FILE
+    export(OUT, [root, *meshes] if has_both_nodes else [root, near_ob])
     far_path = OUT[: -len(".glb")] + "_far.glb"
     export(far_path, [root, far_ob])
     rel = os.path.relpath(OUT, os.path.join(ROOT, "public")).replace(os.sep, "/")
@@ -1442,8 +1548,14 @@ def main():
         materials=len([m for m in bpy.data.materials if m.name.startswith(("Day_", "Light_"))]),
         variant_mappings=nvar,
     )
-    if PREVIEW:
-        previews(meshes, pal, PREVIEW_VIEWS[LANDMARK])
+    if not PREVIEW:
+        return
+    views = PREVIEW_VIEWS.get(LANDMARK)
+    if not views:
+        log("preview_skipped", reason="no PREVIEW_VIEWS for this landmark")
+        return
+    previews(meshes, pal, views)
 
 
-main()
+if __name__ == "__main__":
+    main()

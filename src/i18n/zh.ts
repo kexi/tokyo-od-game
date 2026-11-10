@@ -1175,6 +1175,8 @@ export const zh: Messages = {
   "credits.link.howMade": "生成方法",
   "credits.models":
     "车辆、道路标志的牌面与立柱以及行人，均为本游戏用 {blender}制作。车牌、标志图案、服装、建筑外墙等纹理也以程序方式生成（{how}）。标志的图案与颜色依据《关于道路标志、车道线及道路标线的命令》的样式。文字以 Noto Sans JP（{ofl}）绘制。与实际车型、企业、建筑或登记号码无关。",
+  "credits.landmarks":
+    "地标的模型同样以 {blender}制作。形状、高度与尺寸依据 OpenStreetMap、国土交通省 PLATEAU 3D 城市模型（经加工使用）以及各设施管理者、设计者公布的数值，部分细节以照片测量确认（未使用照片图像本身）。未绘制设施的标志、徽章或名称文字。各模型的出处如下：",
   "credits.h.estat": "町丁、区的边界与人口",
   "credits.link.estat": "政府统计综合窗口（e-Stat）",
   "credits.link.terms": "使用条款",

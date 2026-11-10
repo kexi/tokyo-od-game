@@ -399,4 +399,19 @@ describe("出典・ライセンス", () => {
     expect(japanese).not.toContain('lang="ja"');
     expect(japanese).toContain("<h3>交通規制（一方通行・規制速度・横断歩道・停止線・一時停止）</h3>");
   });
+
+  it("lists each landmark with the sources its entry names, in their own wording", async () => {
+    const landmarks = [
+      { name: "塔", sources: ["© OpenStreetMap contributors (ODbL 1.0)", "出典：PLATEAU"] },
+      { name: "出典なし" },
+    ];
+    for (const locale of ["ja", "en", "zh"] as const) {
+      inLocale(locale);
+      vi.stubGlobal("location", { href: "https://example.test/game/" });
+      const { renderCredits } = await import("../src/game/credits");
+      const html = renderCredits(sources, regs, landmarks);
+      expect(html, locale).toContain("<li>塔 — © OpenStreetMap contributors (ODbL 1.0) / 出典：PLATEAU</li>");
+      expect(html, locale).not.toContain("出典なし");
+    }
+  });
 });
