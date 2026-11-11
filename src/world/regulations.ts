@@ -8,7 +8,7 @@ import { CLOSURE, MAX_CLOSURE_AREA_KM2, readClosureRow, ringAreaKm2, type Closur
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
 import { auxPlatesFor, type AuxPlate } from "../signs/auxPlates";
 import { SIGN } from "../signs/game";
-import { takesJarticRules } from "./roadClass";
+import { isEnterable, takesJarticRules } from "./roadClass";
 import { resolveSection, streetRoom, type LaneEvidence } from "./laneChange";
 import { ROAD_LANES_COLUMN } from "./roadLanesData";
 import { OSM_ONEWAY_REACH } from "./streetAssumptions";
@@ -644,7 +644,9 @@ function exitDirections(graph: RoadGraph, seg: Segment, dir: 1 | -1): Set<LaneDi
   const inbound = arrivingDir(seg, dir);
   const out = new Set<LaneDirection>();
   for (const next of graph.exits(node, seg.id)) {
-    if (!takesJarticRules(next.line)) continue;
+    // Every road a car can turn into counts, an on-ramp too (isEnterable): the arrows say where
+    // the lanes lead, not which roads JARTIC covers.
+    if (!isEnterable(next.line)) continue;
     const forward = next.from === node;
     const n = next.pts.length;
     const [a, b] = forward ? [next.pts[0], next.pts[1]] : [next.pts[n - 1], next.pts[n - 2]];

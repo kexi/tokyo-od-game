@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import { LocalFrame } from "../geo/frame";
 import type { Geodetic } from "../geo/ellipsoid";
+import { joinExpressway, type XwRoadInput } from "./expresswayRoads";
 import { RoadGraph, type RoadDiagnostic, type RoadGraphSnapshot, type RoadLine } from "./roads";
 import {
   applyRegulations,
@@ -31,7 +32,17 @@ type WireApplied = {
   laneUse: Array<Omit<AppliedRegulations["laneUse"][number], "seg"> & { seg: number }>;
   hasMarkings: boolean;
 };
-export type RoadNetworkInput = { lines: RoadLine[]; regs: RegulationData | null; origin: Geodetic };
+/**
+ * `expressway`: the loaded chunks as lines and their ramps' ground ends (expresswayRoads.ts), joined
+ * into the streets here before the graph is built. Absent without ?expressway: the input and the
+ * reply are as before P3.
+ */
+export type RoadNetworkInput = {
+  lines: RoadLine[];
+  regs: RegulationData | null;
+  origin: Geodetic;
+  expressway?: XwRoadInput;
+};
 export type RoadNetworkData = {
   graph: RoadGraphSnapshot;
   applied: WireApplied | null;
@@ -50,7 +61,9 @@ export function computeRoadNetwork(input: RoadNetworkInput): RoadNetworkData {
   const { lat, lon, h } = input.origin;
   const frame = new LocalFrame(lat, lon, h);
   const diagnostics: RoadNetworkData["diagnostics"] = [];
-  const graph = new RoadGraph(input.lines, frame, (d) => diagnostics.push(d));
+  const report = (d: RoadDiagnostic) => diagnostics.push(d);
+  const lines = input.expressway ? joinExpressway(input.lines, input.expressway, report) : input.lines;
+  const graph = new RoadGraph(lines, frame, report);
   const applied = input.regs ? applyRegulations(graph, input.regs, frame, (d) => diagnostics.push(d)) : null;
   const data = { graph: graph.snapshot(), applied: applied ? packApplied(applied) : null, diagnostics };
   return { ...data, computeMs: performance.now() - start };

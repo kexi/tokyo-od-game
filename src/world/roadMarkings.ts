@@ -143,12 +143,18 @@ export function planMarkings(
   const add = (kind: MarkingKind, offset: number, colour: MarkingColour, isDashed: boolean) =>
     lines.push({ kind, offset, from, to, colour, width: MARKING.lineWidth, dash: isDashed ? dashed : null });
 
-  // The lanes' edge: the carriageway's edge less the 路肩 (構造令 第8条), where laneOfOffset counts from.
-  const edge = laneLeftEdge(seg);
-  for (const side of [-1, 1]) add("edge", side * edge, "white", false);
   const isTwoWay = seg.oneway === 0;
   const lanes = seg.lanes;
-  const median = sectionOf(seg).median;
+  const section = sectionOf(seg);
+  // The lanes' edge: the carriageway's edge less the 路肩 (構造令 第8条), where laneOfOffset counts from.
+  const edge = laneLeftEdge(seg);
+  // A one-way line with its own section (the expressway) has its own right shoulder; a street's
+  // edges mirror each other.
+  const hasOwnRight = !isTwoWay && seg.line.section !== undefined;
+  const rightEdge = hasOwnRight ? w / 2 - section.shoulderR : edge;
+  add("edge", -rightEdge, "white", false);
+  add("edge", edge, "white", false);
+  const median = section.median;
   const hasMedian = isTwoWay && median > 0;
   // A divided road: the 中央帯 parts the directions, each bounded by an edge line along it.
   if (hasMedian) for (const side of [-1, 1]) add("edge", side * (median / 2), "white", false);
@@ -158,7 +164,7 @@ export function planMarkings(
     add("centre", 0, seg.noOvertake ? "yellow" : "white", !seg.noOvertake && !isSolid);
   }
   if (lanes >= 2) {
-    const laneWidth = sectionOf(seg).laneWidth;
+    const laneWidth = section.laneWidth;
     const isBanned = isLaneChangeBanned(seg);
     // From each direction's left edge line inwards; a one-way street's lanes span edge to edge.
     for (let k = 1; k < lanes; k++) {

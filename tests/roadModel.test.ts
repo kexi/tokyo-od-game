@@ -76,6 +76,8 @@ function stacked() {
   const top = graph.segments.find((s) => s.line.level === 1);
   if (!top) throw new Error("no deck");
   top.elev = top.pts.map(() => DECK_Y);
+  // Flat terrain at 0, as the game binds it to the DEM after restoring the graph.
+  graph.ground = () => 0;
   return { graph, top };
 }
 
@@ -196,6 +198,37 @@ describe("layered road graph (level, surfaceY, nearestOnSurface)", () => {
     const { graph } = stacked();
     expect(graph.nearestOnSurface(at(1, 100).setY(DECK_Y / 2), 20)).toBeNull();
     expect(graph.nearestOnSurface(at(1, 100).setY(SURFACE_GATE - 0.01), 20)).not.toBeNull();
+  });
+
+  it("falls back to the street when its terrain is not loaded, counts it, and still prefers a deck it is on", () => {
+    const { graph, top } = stacked();
+    graph.ground = () => null;
+    const street = graph.nearestOnSurface(at(1, 100).setY(0.3), 20);
+    expect(street?.seg.line.level).toBeUndefined();
+    expect(graph.unknownGroundHits).toBe(1);
+    // Up on the deck the deck answers (its height is known), whatever the street below.
+    expect(graph.nearestOnSurface(at(1, 100).setY(DECK_Y + 0.5), 20)?.seg).toBe(top);
+    expect(graph.unknownGroundHits).toBe(1);
+  });
+
+  it("takes a deck only under its carriageway: a road at the same height 30 m aside is not it", () => {
+    const { graph, top } = stacked();
+    // Deck 9.25 m wide: 30 m east at deck height is beside it (and over nothing else).
+    expect(graph.nearestOnSurface(at(30, 100).setY(DECK_Y + 0.5), 40)).toBeNull();
+    expect(graph.nearestOnSurface(at(4.5, 100).setY(DECK_Y + 0.5), 40)?.seg).toBe(top);
+  });
+
+  it("locates the deck for a car up on it and answers exactly as nearest on the ground", () => {
+    const { graph, top } = stacked();
+    expect(graph.locate(at(1, 100).setY(DECK_Y + 0.5), 20)?.seg).toBe(top);
+    for (const [x, y] of [
+      [1, 100],
+      [-20, 3],
+      [60, -1],
+    ] as const) {
+      const p = at(x, y).setY(0.4);
+      expect(graph.locate(p, 30)).toEqual(graph.nearest(p, 30));
+    }
   });
 
   it("reads the deck's own heights and the terrain under ground roads in surfaceY", () => {

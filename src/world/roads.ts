@@ -10,6 +10,7 @@ import {
 } from "./laneChange";
 import { warn } from "../log";
 import {
+  classOf,
   isExpressway,
   isLevelInconsistent,
   isOnGround,
@@ -25,7 +26,9 @@ import { inForce, type GameClock, type RuleTime } from "./ruleTime";
 import type { LogFields } from "../logEvents";
 
 /** A contradiction found in the lines while building the graph (logged, not repaired). */
-export type RoadDiagnostic = { event: "road_level_mismatch"; fields: LogFields<"road_level_mismatch"> };
+export type RoadDiagnostic =
+  | { event: "road_level_mismatch"; fields: LogFields<"road_level_mismatch"> }
+  | { event: "ramp_unattached"; fields: LogFields<"ramp_unattached"> };
 
 /**
  * A road centreline from a vector source, in lon/lat. The fields after `bridge` are optional so
@@ -63,6 +66,13 @@ export type RoadLine = {
   ref?: string;
   /** OSM maxspeed (km/h): the posted limit where JARTIC does not apply (Segment.limit). */
   limit?: number;
+  /**
+   * WGS84 ellipsoidal height (m) of the road surface at each point, where the road is not on the
+   * terrain (the expressway's chunks). The graph turns it into Segment.elev in its own frame, the
+   * same way the deck places its rings (frame.toLocal at that height), so a line built once serves
+   * every origin. Split along with `coords`.
+   */
+  heights?: number[];
 };
 
 export type Segment = {
@@ -156,14 +166,26 @@ export type GroundHeight = (x: number, z: number) => number | null;
 
 /** Vertical gate of nearestOnSurface: farther above or below a road surface is another level. */
 export const SURFACE_GATE = 2.5;
+/**
+ * How far beyond its carriageway's edge a point still counts as on a deck: the parapet (0.5 m) and
+ * a little more. A deck cannot be reached sideways, so a road 30 m off at the same height is not
+ * the one a car is on.
+ */
+export const DECK_REACH = 1;
 
 export class RoadGraph {
   readonly segments: Segment[] = [];
   /**
    * Terrain height for surfaceY on ground roads. Not part of the snapshot (a function does not
-   * survive the structured clone); the game sets it after restoring. 0 until then.
+   * survive the structured clone); the game binds it to the terrain after restoring (main.ts).
+   * Unknown (null) until then, never a made-up 0: see nearestOnSurface.
    */
-  ground: GroundHeight = () => 0;
+  ground: GroundHeight = () => null;
+  /**
+   * How many nearestOnSurface answers fell back to a ground road whose terrain was not loaded
+   * (no height to gate by). The game logs it with the network (road_network_built).
+   */
+  unknownGroundHits = 0;
   readonly nodes = new Map<number, number[]>(); // node id → segment ids
   private readonly nodeIds = new Map<string, number>();
   /** Polyline pieces [segment id, point index] by 32 m cell, for carriageway tests. */
@@ -214,6 +236,11 @@ export class RoadGraph {
       const length = cum[cum.length - 1];
       if (length < 1) continue;
       const id = this.segments.length;
+      // Only lines with heights get the key: GSI segments stay as they were in the snapshot.
+      const heights = line.heights;
+      const elev = heights
+        ? heights.map((h, k) => frame.toLocal(line.coords[k * 2 + 1], line.coords[k * 2], h).y)
+        : null;
       // A street's lanes from its width until the regulations say more (applyRegulations).
       const section = line.section ? undefined : resolveSection(line.width, line.oneway);
       const from = this.node(pointKey(line, 0));
@@ -239,6 +266,7 @@ export class RoadGraph {
         rules: [],
         closures: [],
         closed: false,
+        ...(elev ? { elev } : {}),
       });
       this.link(from, id);
       this.link(to, id);
@@ -335,38 +363,100 @@ export class RoadGraph {
   /**
    * Nearest road whose surface is within SURFACE_GATE of p.y, on any level: the deck a car is on,
    * not the street under it (nor, for a car on the street, the deck over it). The gate is taken
-   * at each segment's horizontally nearest point, and the nearest segment that passes wins.
+   * at each segment's horizontally nearest point, and the nearest segment that passes wins. A deck
+   * (off the ground) also has to be under p: within its carriageway and DECK_REACH.
+   *
+   * Of several decks under p (at a 分合流 the ramp's deck lies on the main line's for tens of
+   * metres), the main line wins, then the higher posted limit, then the nearer centreline
+   * (deckRank). Why not the nearest centreline: a car in the main line's left lane is nearer the
+   * ramp's centre there, and was booked at the ramp's 40 km/h for 3 s at 60 (review of P3).
+   *
+   * Where the terrain under a ground road has not loaded, its height is unknown: such a road is
+   * the answer only when no road of known height passes, and the fallback is counted
+   * (unknownGroundHits). Why not skip it: a car on a street whose DEM tile is late would find no
+   * road at all, and the speed and lane checks would stop without a word.
    */
   nearestOnSurface(
     p: Vector3,
     maxDist: number,
     accept: (seg: Segment) => boolean = () => true,
   ): RoadHit | null {
-    let best: RoadHit | null = null;
-    let bestD = maxDist;
+    let ground: RoadHit | null = null;
+    let groundD = maxDist;
+    let deck: { hit: RoadHit; rank: number } | null = null;
+    let deckD = maxDist;
+    let blind: RoadHit | null = null;
+    let blindD = maxDist;
+    const hitAt = (seg: Segment, on: { s: number; lateral: number }): RoadHit => ({
+      seg,
+      s: on.s,
+      lateral: on.lateral,
+      dir: this.sample(seg, on.s).dir,
+    });
     for (const seg of this.segments) {
       if (!accept(seg)) continue;
       const on = this.nearestOn(seg, p);
-      const isFarther = on.dist >= bestD;
-      if (isFarther) continue;
-      const isOtherLevel = Math.abs(p.y - this.surfaceY(seg, on.s)) > SURFACE_GATE;
+      const isOutOfRange = on.dist >= maxDist;
+      if (isOutOfRange) continue;
+      const isDeck = !isOnGround(seg.line);
+      // A deck's `width` is its carriageway between the parapets (expresswayRoads: sectionWidth).
+      // Why not carriagewayWidth: a deck line without a section would be resolved as a street,
+      // lanes from the width, and come out narrower than the deck a car is on.
+      const isBesideDeck = isDeck && on.dist > seg.line.width / 2 + DECK_REACH;
+      if (isBesideDeck) continue;
+      const y = this.surfaceY(seg, on.s);
+      const isUnknown = y === null;
+      if (isUnknown) {
+        const isNearerBlind = on.dist < blindD;
+        if (!isNearerBlind) continue;
+        blindD = on.dist;
+        blind = hitAt(seg, on);
+        continue;
+      }
+      const isOtherLevel = Math.abs(p.y - y) > SURFACE_GATE;
       if (isOtherLevel) continue;
-      bestD = on.dist;
-      const { dir } = this.sample(seg, on.s);
-      best = { seg, s: on.s, lateral: on.lateral, dir };
+      if (isDeck) {
+        deckD = Math.min(deckD, on.dist);
+        const rank = deckRank(seg, on.dist);
+        const isBetterDeck = deck === null || rank > deck.rank;
+        if (isBetterDeck) deck = { hit: hitAt(seg, on), rank };
+        continue;
+      }
+      const isNearerGround = on.dist < groundD;
+      if (!isNearerGround) continue;
+      groundD = on.dist;
+      ground = hitAt(seg, on);
     }
-    return best;
+    // A deck under p beats a street only when it is nearer (both pass the gate near a ground end).
+    const isOnDeck = deck !== null && deckD <= groundD;
+    if (isOnDeck) return deck!.hit;
+    if (ground || !blind) return ground;
+    this.unknownGroundHits++;
+    return blind;
+  }
+
+  /**
+   * The road a point is on, for the callers that used `nearest` (the car's own checks, the
+   * autopilot's start, the spawn): the deck under p when p is up on one (nearestOnSurface over the
+   * roads off the ground), otherwise exactly what `nearest` answers. Why not nearestOnSurface for
+   * everything: on the ground this keeps the old search (and its ties) to the bit, which the
+   * invariance tests hold the streets to.
+   */
+  locate(p: Vector3, maxDist: number, accept: (seg: Segment) => boolean = () => true): RoadHit | null {
+    const deck = this.nearestOnSurface(p, maxDist, (seg) => !isOnGround(seg.line) && accept(seg));
+    return deck ?? this.nearest(p, maxDist, accept);
   }
 
   /**
    * Road surface height (local y) `s` metres along a segment: the deck's own heights where it has
-   * them (Segment.elev, linear between points), otherwise the terrain under the centreline.
+   * them (Segment.elev, linear between points), otherwise the terrain under the centreline, or
+   * null where the terrain has not loaded.
    */
-  surfaceY(seg: Segment, s: number): number {
+  surfaceY(seg: Segment, s: number): number | null {
     const elev = seg.elev;
     if (!elev) {
       const { pos } = this.sample(seg, s);
-      return this.ground(pos.x, pos.z) ?? 0;
+      return this.ground(pos.x, pos.z);
     }
     const d = Math.min(Math.max(s, 0), seg.length);
     let i = 1;
@@ -462,11 +552,20 @@ export class RoadGraph {
   }
 }
 
+/**
+ * Order of the decks a point is on: a main line over a ramp, then the higher posted limit, then the
+ * nearer centreline (the distance only breaks ties: it is below 100 m by the width gate).
+ */
+function deckRank(seg: Segment, dist: number): number {
+  const isMainLine = classOf(seg.line) === "expressway";
+  return (isMainLine ? 1e6 : 0) + speedLimit(seg) * 1e3 - dist;
+}
+
 /** Nearest-road answer: segment, along-distance, signed lateral (left +) and direction there. */
 export type RoadHit = { seg: Segment; s: number; lateral: number; dir: Vector3 };
 
 // ~1 m: joins lines clipped at vector-tile edges whose quantised end points differ slightly.
-function vertexKey(lon: number, lat: number): string {
+export function vertexKey(lon: number, lat: number): string {
   return `${Math.round(lon * 1e5)}/${Math.round(lat * 1e5)}`;
 }
 
@@ -505,8 +604,12 @@ export function splitAtJunctions(lines: RoadLine[]): RoadLine[] {
     const n = line.coords.length / 2;
     const piece = (a: number, b: number): RoadLine => {
       const coords = line.coords.slice(a * 2, b * 2 + 2);
-      // Copy nodeIds only where the line has them: an absent key keeps GSI lines as they were.
-      return line.nodeIds ? { ...line, coords, nodeIds: line.nodeIds.slice(a, b + 1) } : { ...line, coords };
+      // Copy nodeIds and heights only where the line has them: an absent key keeps GSI lines as
+      // they were.
+      const out: RoadLine = { ...line, coords };
+      if (line.nodeIds) out.nodeIds = line.nodeIds.slice(a, b + 1);
+      if (line.heights) out.heights = line.heights.slice(a, b + 1);
+      return out;
     };
     for (let i = 1; i < n - 1; i++) {
       const isJunction = (uses.get(pointKey(line, i)) ?? 0) > 1;
