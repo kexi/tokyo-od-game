@@ -22,6 +22,7 @@ import {
   PIER_SPACING,
   RAIL_CLEARANCE,
   RAMP_MIN_RADIUS,
+  SHARED_TOUCHDOWN,
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { isAllowed } from "./allowlist";
@@ -199,6 +200,12 @@ export type DeckPair = {
   sb: number;
   relation: "same" | "above" | "below";
   cos: number;
+  /**
+   * Not held a level apart in the QP (no coupling row): two main lines coming down to the same
+   * place, within the climb of their ground ends (`markSharedTouchdowns`). The pair and its relation
+   * stay (the chunks' `decks`, deck_overlap).
+   */
+  untied?: true;
 };
 
 export type Plan = {
@@ -592,6 +599,7 @@ export function planNetwork(
   plan.pairs = classifyPairs(plan);
   const isPruned = options.pruneBelow ?? true;
   if (isPruned) pruneBelow(plan);
+  markSharedTouchdowns(plan);
   groupComponents(plan);
   const chosen = options.wanted?.(plan);
   const wanted = [...runs.values()].filter((rp) => {
@@ -862,6 +870,11 @@ function sharedNodes(a: RunPlan, b: RunPlan): Array<[number, number]> {
   return out;
 }
 
+/** How far along each run from a crossing of a and b their deck pairs take the crossing's order. */
+function crossingReach(ra: RunPlan, rb: RunPlan, sinAngle: number): number {
+  return Math.min(60, (ra.halfWidth + rb.halfWidth) / Math.max(sinAngle, 0.2)) + 10;
+}
+
 /**
  * Decks over or beside one another (overlap.ts on the plan lines), each station pair given its
  * relation (設計書 4.2): near a crossing, the crossing's order (OSM layer); from a nose (a node the
@@ -898,7 +911,7 @@ function classifyPairs(plan: Plan): DeckPair[] {
     const isPortalNeighbour =
       ra.chain.id === rb.chain.id && (ra.run.to === rb.run.from || rb.run.to === ra.run.from);
     if (isPortalNeighbour) continue;
-    const window = (sin: number) => Math.min(60, (ra.halfWidth + rb.halfWidth) / Math.max(sin, 0.2)) + 10;
+    const window = (sin: number) => crossingReach(ra, rb, sin);
     const ordered = plan.crossings.filter(
       (c) => (c.upper === a && c.lower === b) || (c.upper === b && c.lower === a),
     );
@@ -950,6 +963,90 @@ function classifyPairs(plan: Plan): DeckPair[] {
     });
   }
   return out;
+}
+
+/**
+ * A run's ground ends within `reach` of run distance sv: where each touches down. Not a portal of
+ * an elevated run (`into`), nor an end of a below run (it comes up out of a tunnel or cut there).
+ */
+function touchdownsNear(plan: Plan, rp: RunPlan, sv: number, reach: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const atStart of [true, false]) {
+    const e = endPlan(plan, rp, atStart);
+    const isTouchdown = e.kind === "ground" && e.into === undefined && !rp.below;
+    if (!isTouchdown) continue;
+    const isNear = (atStart ? sv : rp.length - sv) <= reach;
+    if (!isNear) continue;
+    const [lon, lat] = lonLatAt(rp, atStart ? rp.i0 : rp.i1);
+    out.push(CROSS_PLANE.toXY(lon, lat));
+  }
+  return out;
+}
+
+/**
+ * Marks the deck pairs (above / below) of two main lines that both come down to the same place
+ * within the climb (approachLength) of the pair: a ground end of each (not a portal) within
+ * approachLength of the pair's station along its own run, the two ends within SHARED_TOUCHDOWN. The
+ * QP gets no row for them (couplingsOf). Why: both touching down there, the standard grade cannot
+ * put a level (clearance + girder) between them, and the rows, held softly, push the lower deck
+ * into the ground as a bundle (41009552 under 668292569, the 都心環状線's two carriageways: the
+ * climb over the road 138 m on fell 0.16 m short, P2.7-3a). Why not one surface instead: before
+ * their ends the two do part in height. Why only main lines: widened to every class, the default
+ * range's ramps (4848889, 4848755) moved by up to 10.5 m; that is S5 / S6's to judge. Why a pair at
+ * an ordered crossing of the two stays tied (within crossingReach, as classifyPairs orders it): one
+ * line really passes over the other there, and the level is the clearance over a road, not a
+ * leftover of OSM's layers (668292569 over 955398790 143 m from their shared touchdown fell to
+ * 2.96 m under the girder untied, the P2.7-3a review). Decided on the plan alone (no DEM, range or
+ * solve), so the same pairs are marked whatever the range (T8). Runs after pruneBelow: an end on a
+ * deferred below run reads as a ground end there, as the solve sees it.
+ */
+function markSharedTouchdowns(plan: Plan): void {
+  for (const p of plan.pairs) {
+    const isLevelApart = p.relation !== "same";
+    if (!isLevelApart) continue;
+    const ra = plan.runs.get(p.a)!;
+    const rb = plan.runs.get(p.b)!;
+    const isMainPair = ra.cls === "expressway" && rb.cls === "expressway";
+    if (!isMainPair) continue;
+    const isAtCrossing = plan.crossings.some((c) => {
+      const isOurs = (c.upper === p.a && c.lower === p.b) || (c.upper === p.b && c.lower === p.a);
+      if (!isOurs) return false;
+      const [ca, cb] = c.upper === p.a ? [c.sUpper, c.sLower] : [c.sLower, c.sUpper];
+      const w = crossingReach(ra, rb, c.sinAngle);
+      return Math.abs(p.sa - ca) <= w && Math.abs(p.sb - cb) <= w;
+    });
+    if (isAtCrossing) continue;
+    const ea = touchdownsNear(plan, ra, p.sa, approachLength(ra.planV));
+    const hasNoTouchdown = ea.length === 0;
+    if (hasNoTouchdown) continue;
+    const eb = touchdownsNear(plan, rb, p.sb, approachLength(rb.planV));
+    const isShared = ea.some(([x, y]) =>
+      eb.some(([u, v]) => Math.hypot(x - u, y - v) <= SHARED_TOUCHDOWN.value),
+    );
+    if (!isShared) continue;
+    p.untied = true;
+  }
+}
+
+/**
+ * The marked pairs (markSharedTouchdowns) among the runs the range needs, per run pair (a < b) with
+ * their station pairs (both directions counted, as plan.pairs lists them) and component.
+ */
+export function untiedPairs(
+  plan: Plan,
+): Array<{ a: string; b: string; component: string; stations: number }> {
+  const needed = new Set(plan.needed);
+  const byKey = new Map<string, { a: string; b: string; component: string; stations: number }>();
+  for (const p of plan.pairs) {
+    const isCounted = p.untied === true && needed.has(p.a) && needed.has(p.b);
+    if (!isCounted) continue;
+    const [a, b] = p.a < p.b ? [p.a, p.b] : [p.b, p.a];
+    const key = `${a}|${b}`;
+    const entry = byKey.get(key) ?? { a, b, component: plan.componentOf.get(a) ?? a, stations: 0 };
+    entry.stations++;
+    byKey.set(key, entry);
+  }
+  return [...byKey.values()].sort((p, q) => (p.a === q.a ? (p.b < q.b ? -1 : 1) : p.a < q.a ? -1 : 1));
 }
 
 /**
@@ -1640,6 +1737,9 @@ function couplingsOf(plan: Plan, members: Set<string>): Coupling[] {
   for (const p of plan.pairs) {
     const isInside = members.has(p.a) && members.has(p.b);
     if (!isInside) continue;
+    // Two main lines coming down to the same place (markSharedTouchdowns): no row to hold them apart.
+    const isUntied = p.untied === true;
+    if (isUntied) continue;
     const a = { run: p.a, s: p.sa };
     const b = { run: p.b, s: p.sb };
     const firm = false;
@@ -1666,6 +1766,11 @@ type ComponentResult = {
   sunk: Map<string, RunProblem>;
   /** The fallback level each run ended at (to start a later pass there). */
   levels: Map<string, number>;
+  /**
+   * The stretches each run's lowered speed covers at that level (`capZones`), carried with the level:
+   * a later pass that started at the level with no windows would lower the whole run (P2.7-3a).
+   */
+  windows: Map<string, Array<[number, number]>>;
   stats: Omit<SolveStats, "components">;
 };
 
@@ -1769,6 +1874,7 @@ function solveComponent(
   start: Map<string, number> = new Map(),
   setupsOf?: (id: string) => RunSetup,
   anchorBanks: AnchorBanks = {},
+  startWindows: Map<string, Array<[number, number]>> = new Map(),
 ): ComponentResult {
   const members = new Set(ids);
   // A block's pieces are cut from their runs' setups, made once per run (setupsOf, solveBlocks).
@@ -1795,7 +1901,12 @@ function solveComponent(
   const level = new Map(ids.map((id) => [id, Math.min(start.get(id) ?? 0, ladders.get(id)!.length - 1)]));
   const isGiven = (id: string) => ladders.get(id)![level.get(id)!].steps.includes("assumedGive");
   const fails = (id: string, problems: RunProblem[]) => isFailing(problems, isGiven(id));
-  const windows = new Map<string, Array<[number, number]>>(ids.map((id) => [id, []]));
+  // The windows come with the level they were opened at (startWindows): without them a run
+  // starting at a lowerSpeed step would take capZones' whole-run cap, a different top speed and
+  // knot spacing than the pass before (41009552 in ship/all, P2.7-3a).
+  const windows = new Map<string, Array<[number, number]>>(
+    ids.map((id) => [id, (startWindows.get(id) ?? []).map(([a, b]): [number, number] => [a, b])]),
+  );
   const attempts = new Map<string, VerticalAttempt[]>(ids.map((id) => [id, []]));
   /** Per ramp: the soft miss at each step it was solved with, and whether the step was clean. */
   const history = new Map<string, Array<{ soft: number; clean: boolean }>>(ids.map((id) => [id, []]));
@@ -1951,8 +2062,13 @@ function solveComponent(
     const isLowering = ladder[next].steps.includes("lowerSpeed");
     if (isLowering) {
       const S = plan.runs.get(id)!.length;
-      for (const s of at)
-        windows.get(id)!.push([Math.max(0, s - LOWER_WINDOW_M), Math.min(S, s + LOWER_WINDOW_M)]);
+      const mine = windows.get(id)!;
+      for (const s of at) {
+        const w: [number, number] = [Math.max(0, s - LOWER_WINDOW_M), Math.min(S, s + LOWER_WINDOW_M)];
+        // The same stretch twice changes nothing in capZones; kept once so what is carried stays short.
+        const isKnown = mine.some(([a, b]) => a === w[0] && b === w[1]);
+        if (!isKnown) mine.push(w);
+      }
     }
     level.set(id, next);
   };
@@ -2086,7 +2202,14 @@ function solveComponent(
       blocked: st.blocked,
     });
   }
-  return { solved, unsolved, sunk, levels: new Map(level), stats };
+  return {
+    solved,
+    unsolved,
+    sunk,
+    levels: new Map(level),
+    windows: new Map([...windows].map(([id, w]) => [id, [...w]])),
+    stats,
+  };
 }
 
 /**
@@ -2139,6 +2262,7 @@ function solveShedding(
     shed: Map<string, VerticalAttempt[]>,
     orphaned: Map<string, string>,
     start: Map<string, number>,
+    startWindows: Map<string, Array<[number, number]>>,
   ): Pass => {
     const local: XwDiagnostic[] = [];
     const res = solveComponent(
@@ -2151,6 +2275,7 @@ function solveShedding(
       start,
       setupsOf,
       anchorBanks,
+      startWindows,
     );
     add(res);
     const failing = [...res.unsolved.keys()];
@@ -2159,7 +2284,7 @@ function solveShedding(
     return { res, local, shed, orphaned, lost: [lost, failing.length + shed.size + orphaned.size] };
   };
   const isFewer = (a: [number, number], b: [number, number]) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
-  let pass = run([...ids], new Map(), new Map(), new Map());
+  let pass = run([...ids], new Map(), new Map(), new Map(), new Map());
   let best = pass;
   for (;;) {
     const failing = new Set(pass.res.unsolved.keys());
@@ -2193,7 +2318,7 @@ function solveShedding(
     }
     const members = ids.filter((id) => !removed.has(id));
     if (members.length === 0) break;
-    pass = run(members, shed, orphaned, pass.res.levels);
+    pass = run(members, shed, orphaned, pass.res.levels, pass.res.windows);
     const isImproved = isFewer(pass.lost, best.lost);
     if (!isImproved) break;
     best = pass;
@@ -2215,6 +2340,7 @@ function solveShedding(
       res.levels,
       setupsOf,
       anchorBanks,
+      res.windows,
     );
     add(back);
     const returned = [...shed.keys(), ...orphaned.keys()].filter((id) => back.solved.has(id));

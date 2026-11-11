@@ -30,6 +30,7 @@ import { type Qp, solveQp } from "../src/expressway/qp";
 import {
   capZones,
   evalProfile,
+  PinMismatchError,
   type RunInput,
   type RunProblem,
   solveJoint,
@@ -558,5 +559,62 @@ describe("本線を失敗したランプに巻き込ませない（solveShedding
 
   it("says what the state it kept fails on (the last word of the attempts)", () => {
     expect(unsolved[0].detail).toMatch(/kept: .*clearance over 30/);
+  });
+
+  it("B's lowered speed stays around the crossing in the pass without the ramp (windows carried, P2.7-3a)", () => {
+    // B steps down to lowerSpeed in the first pass, around x = 840 only; the second pass starts at
+    // that level. Started without the windows it was capped over the whole run (V40 everywhere,
+    // knots 35.1 m apart instead of 51.3 m).
+    const chunks = byRun(result.chunks);
+    const b = chunks.get("30")!;
+    expect(result.diagnostics.find((d) => d.run === "30" && d.kind === "vertical_fallback")?.detail).toMatch(
+      /lowerSpeed/,
+    );
+    expect(new Set(b.map((c) => c.V))).toEqual(new Set([60, 40]));
+    // Within the windows (±150 m) around where B failed, near the crossing at x ≈ 840.
+    const lowered = b.filter((c) => c.V === 40);
+    const from = Math.min(...lowered.map((c) => c.st[0]));
+    const to = Math.max(...lowered.map((c) => c.st[c.st.length - STATION_STRIDE]));
+    expect(from).toBeGreaterThan(600);
+    expect(to).toBeLessThan(1100);
+    expect(to - from).toBeLessThanOrEqual(2 * 150 + 50);
+    // The same knot spacing as A, the same length at V60 and never lowered.
+    const vh = new Set(b.map((c) => c.vh));
+    expect([...vh]).toEqual([chunks.get("10")![0].vh]);
+  });
+});
+
+describe("固定の食い違い（外したランプを戻す解、P2.7-3a）", () => {
+  it("refuses a pinned profile whose knots do not fit the run's layout, instead of solving it afresh", () => {
+    const stations = Float64Array.from({ length: 81 }, (_, k) => k * 5);
+    const base: RunInput = {
+      id: "r",
+      length: 400,
+      zones: [{ from: 0, to: 400, V: 60 }],
+      special: false,
+      stations,
+      target: stations.map(() => 5),
+      lower: stations.map(() => -Infinity),
+      upper: stations.map(() => Infinity),
+      start: { z: 0, grade: 0 },
+      end: { z: 0, grade: 0 },
+    };
+    const solved = solveJoint([base], []).profiles.get("r")!;
+    // Held at its own profile it solves (the knots fit).
+    expect(() => solveJoint([{ ...base, pinned: solved }], [])).not.toThrow();
+    // A lower speed has another knot spacing: the pin no longer fits.
+    const slower: RunInput = { ...base, zones: [{ from: 0, to: 400, V: 40 }], pinned: solved };
+    expect(() => solveJoint([slower], [])).toThrow(PinMismatchError);
+    expect(() => solveJoint([slower], [])).toThrow(/run r: pinned profile has \d+ knots, its layout \d+/);
+  });
+
+  it("the same window twice lowers the same stretch as once (no duplicates are kept)", () => {
+    const zones = [{ from: 0, to: 2000, V: 60 as const }];
+    expect(
+      capZones(zones, 40, [
+        [0, 160],
+        [0, 160],
+      ]),
+    ).toEqual(capZones(zones, 40, [[0, 160]]));
   });
 });
