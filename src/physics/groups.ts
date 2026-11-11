@@ -9,6 +9,20 @@ export const PROP_GROUPS = (PROPS << 16) | 0xffff;
 /** Ground probes: ignore PROPS. */
 export const GROUND_QUERY_GROUPS = (0xffff << 16) | (0xffff & ~PROPS);
 
+// PLATEAU buildings' trimeshes. Some stand across a ramp or a deck the OSM line runs through (the
+// building was drawn before or beside the viaduct in the data); a car on an expressway deck does not
+// collide with them (Vehicle.setOnDeck). Cutting them out of the city is P4's (knowledge/
+// expressway-generation.md).
+const BUILDINGS = 0x0010;
+
+/** A PLATEAU building tile's collider: member of BUILDINGS, interacts with everything. */
+export const BUILDING_GROUPS = (BUILDINGS << 16) | 0xffff;
+
+/** A car up on an expressway deck: everything but the buildings. */
+export const ON_DECK_GROUPS = (0xffff << 16) | (0xffff & ~BUILDINGS);
+/** Everything (Rapier's default). */
+export const ALL_GROUPS = 0xffffffff;
+
 // Solver groups (contact forces only; contacts and collision events still happen). The cars'
 // chassis are members of VEHICLES; the kinematic bodies with a mass (traffic, pedestrians, 路上駐車)
 // leave VEHICLES out, so the solver never treats them as infinitely heavy walls for a car:

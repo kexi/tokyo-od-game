@@ -1,7 +1,8 @@
 import { Vector3 } from "three";
 import { LocalFrame } from "../geo/frame";
 import type { Geodetic } from "../geo/ellipsoid";
-import { RoadGraph, type RoadGraphSnapshot, type RoadLine } from "./roads";
+import { joinExpressway, type XwRoadInput } from "./expresswayRoads";
+import { RoadGraph, type RoadDiagnostic, type RoadGraphSnapshot, type RoadLine } from "./roads";
 import {
   applyRegulations,
   type AppliedRegulations,
@@ -9,6 +10,7 @@ import {
   type RegulationDiagnostic,
   type StopLine,
 } from "./regulations";
+import { decodeSignalTags, type SignalRecord } from "../signals/osmTags";
 
 type Point = [number, number, number];
 type WireStop = Omit<StopLine, "seg" | "pos"> & { seg: number; pos: Point };
@@ -31,14 +33,30 @@ type WireApplied = {
   laneUse: Array<Omit<AppliedRegulations["laneUse"][number], "seg"> & { seg: number }>;
   hasMarkings: boolean;
 };
-export type RoadNetworkInput = { lines: RoadLine[]; regs: RegulationData | null; origin: Geodetic };
+/**
+ * `expressway`: the loaded chunks as lines and their ramps' ground ends (expresswayRoads.ts), joined
+ * into the streets here before the graph is built. Absent without ?expressway: the input and the
+ * reply are as before P3.
+ */
+export type RoadNetworkInput = {
+  lines: RoadLine[];
+  regs: RegulationData | null;
+  origin: Geodetic;
+  expressway?: XwRoadInput;
+};
 export type RoadNetworkData = {
   graph: RoadGraphSnapshot;
   applied: WireApplied | null;
-  diagnostics: RegulationDiagnostic[];
+  /** The OSM tags of `applied.signals`, index for index (src/signals/osmTags.ts). */
+  signalRecords: SignalRecord[];
+  diagnostics: Array<RegulationDiagnostic | RoadDiagnostic>;
   computeMs: number;
 };
-export type RoadNetwork = { graph: RoadGraph; applied: AppliedRegulations | null };
+export type RoadNetwork = {
+  graph: RoadGraph;
+  applied: AppliedRegulations | null;
+  signalRecords: SignalRecord[];
+};
 export type RoadNetworkRequest = { id: number; input: RoadNetworkInput };
 export type RoadNetworkReply = { id: number; data: RoadNetworkData } | { id: number; error: string };
 
@@ -49,10 +67,21 @@ export function computeRoadNetwork(input: RoadNetworkInput): RoadNetworkData {
   const start = performance.now();
   const { lat, lon, h } = input.origin;
   const frame = new LocalFrame(lat, lon, h);
-  const graph = new RoadGraph(input.lines, frame);
-  const diagnostics: RegulationDiagnostic[] = [];
+  const diagnostics: RoadNetworkData["diagnostics"] = [];
+  const report = (d: RoadDiagnostic) => diagnostics.push(d);
+  const lines = input.expressway ? joinExpressway(input.lines, input.expressway, report) : input.lines;
+  const graph = new RoadGraph(lines, frame, report);
   const applied = input.regs ? applyRegulations(graph, input.regs, frame, (d) => diagnostics.push(d)) : null;
-  const data = { graph: graph.snapshot(), applied: applied ? packApplied(applied) : null, diagnostics };
+  // Read here from the same records applyRegulations placed, so they stay index for index with
+  // applied.signals. Why not in applyRegulations: AppliedRegulations.signals is positions only and
+  // its other readers (and src/world/regulations.ts) need nothing more.
+  const signalRecords = applied && input.regs ? input.regs.signals.map(signalRecordOf) : [];
+  const data = {
+    graph: graph.snapshot(),
+    applied: applied ? packApplied(applied) : null,
+    signalRecords,
+    diagnostics,
+  };
   return { ...data, computeMs: performance.now() - start };
 }
 
@@ -93,7 +122,7 @@ export function restoreRoadNetwork(data: RoadNetworkData, frame: LocalFrame): Ro
   const graph = RoadGraph.restore(data.graph, frame);
   const a = data.applied;
   const hasNoRegulations = a === null;
-  if (hasNoRegulations) return { graph, applied: null };
+  if (hasNoRegulations) return { graph, applied: null, signalRecords: [] };
   const stops = a.stops.map((s) => ({ ...s, seg: graph.segments[s.seg], pos: vector(s.pos) }));
   return {
     graph,
@@ -118,5 +147,8 @@ export function restoreRoadNetwork(data: RoadNetworkData, frame: LocalFrame): Ro
       laneUse: a.laneUse.map((l) => ({ ...l, seg: graph.segments[l.seg] })),
       hasMarkings: a.hasMarkings,
     },
+    signalRecords: data.signalRecords,
   };
 }
+
+const signalRecordOf = (r: number[]): SignalRecord => ({ lon: r[0], lat: r[1], tags: decodeSignalTags(r) });

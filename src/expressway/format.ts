@@ -3,8 +3,22 @@
  * (src/world/expresswayDeck.ts). Stations are flat arrays to keep the JSON small.
  */
 
-/** Values per station in `XwChunk.st`: s (m from the run start), lon, lat, z (T.P. m), bank, ground (T.P. m). */
-export const STATION_STRIDE = 6;
+/**
+ * Values per station in `XwChunk.st`: s (m from the run start), lon, lat, z (T.P. m), bank,
+ * ground (T.P. m), grade. Between stations the surface is the cubic Hermite of z and grade
+ * (profile.ts), the plan position linear.
+ */
+export const STATION_STRIDE = 7;
+/** Offsets within a station of `XwChunk.st`: read stations only through these. */
+export const ST = { s: 0, lon: 1, lat: 2, z: 3, bank: 4, ground: 5, grade: 6 } as const;
+/**
+ * Data format version in meta.json. 2: stations of 7 values (grade added, Hermite surface),
+ * `blocked` and `decks` on chunks, `portal` ends. 4 (P7): `street` chunks and runs (a structure's
+ * lower floor), `over` on chunks (a deck built to a landmark's deck levels), `ranges` and
+ * `structures` in meta. 3 is P6's (maxspeed per chunk), kept apart so neither branch reads the
+ * other's data; merging both is 5. The game refuses another version.
+ */
+export const XW_VERSION = 4;
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */
 export const PIER_STRIDE = 2;
 /**
@@ -12,6 +26,12 @@ export const PIER_STRIDE = 2;
  * required (m, building limit + girder), and the road surface there (T.P. m).
  */
 export const CROSS_STRIDE = 4;
+/**
+ * Values per entry in `XwChunk.blocked`: s, the top of a road at ground level under the deck
+ * (T.P. m), and the road surface there (T.P. m). These are the roads near a ground end that the
+ * deck does not clear (`crossing_over_or_at_grade`): P3 closes or reroutes them.
+ */
+export const BLOCKED_STRIDE = 3;
 
 export type XwChunk = {
   /** `<run>:<k>`, stable across builds and ranges. */
@@ -19,20 +39,29 @@ export type XwChunk = {
   run: string;
   chain: string;
   k: number;
-  cls: "expressway" | "ramp";
+  cls: XwClass;
   ref: string | null;
   name: string | null;
   structure: "viaduct";
+  /**
+   * A deck built to a landmark's deck levels (structures.ts), or null: then the chunk has no
+   * girder (`girder` 0) nor piers, its section comes from the level's strips, and the slab goes on
+   * past each 壁高欄 as an apron that is drawn only (no collider: a guideway, a walkway).
+   */
+  over: XwOver | null;
   lanes: number;
   laneWidth: number;
   shoulderL: number;
   shoulderR: number;
   basis: "statute" | "assumption";
-  /** Design speed the alignment was solved for (km/h). */
+  /**
+   * Design speed of this section (km/h): set per stretch of the run (a tight curve lowers it only
+   * around the curve), and chunks are cut where it changes.
+   */
   V: number;
   /** Vertical knot spacing of the run (= the length of every vertical curve). */
   vh: number;
-  /** Grade limit the run was solved with (第20条 standard or 特例). */
+  /** Grade limit of this section (第20条 standard or 特例 for `V`, capped by 第25条). */
   gmax: number;
   /** Grade at the chunk's first and last station (stations alone cannot give it on a curve). */
   g0: number;
@@ -48,34 +77,65 @@ export type XwChunk = {
   st: number[];
   piers: number[];
   cross: number[];
+  blocked: number[];
+  /**
+   * Stretches [s0, s1] of this chunk whose carriageway lies over or under another run's, and how
+   * they stand to it (the compiler's relation: one surface, or a level above / below). P3 reads
+   * these instead of finding the overlaps again at run time.
+   */
+  decks: XwDeckStretch[];
   prev: string | null;
   next: string | null;
 };
 
+/** The road classes in the data: the expressway, its ramps, and a structure's streets. */
+export type XwClass = "expressway" | "ramp" | "street";
+
+export type XwOver = {
+  /** `<landmark>:<level>:<direction>` (structures.ts StructureDeck.id). */
+  deck: string;
+  level: "upper" | "lower";
+  /** Render-only slab beyond the left and right 壁高欄's outer faces (m). */
+  apronL: number;
+  apronR: number;
+};
+
+export type XwDeckStretch = { with: string; relation: "same" | "above" | "below"; s0: number; s1: number };
+
 export type XwTile = { chunks: XwChunk[] };
 
 export type XwEnd = {
-  kind: "ground" | "junction" | "open" | "seam";
+  /**
+   * ground: meets the ground at its grade (the road continues at grade). portal: meets the ground
+   * where the road goes on into a tunnel or cut (`into`), so the grade is left free. junction /
+   * seam: takes another run's value.
+   */
+  kind: "ground" | "portal" | "junction" | "open" | "seam";
+  into?: "tunnel" | "cut";
   /** For a junction or seam: the run whose value was taken, and where on it. */
   parent?: string;
   parentS?: number;
   z?: number;
   grade?: number;
   bank?: number;
-  /** For a ground end: the ground elevation there (T.P. m). */
+  /** For a ground or portal end: the ground elevation there (T.P. m). */
   ground?: number;
 };
 
 export type XwRunSummary = {
   id: string;
   chain: string;
-  cls: "expressway" | "ramp";
+  cls: XwClass;
   ref: string | null;
   lengthM: number;
+  /** Highest design speed along the run (each chunk has its own section's `V`). */
   V: number;
-  /** Speed from OSM maxspeed / default, before the radius check lowered it. */
+  /** Highest speed from OSM maxspeed / default along the run, before the radius check lowered it. */
   tagV: number;
-  /** Speed after the radius check, before a vertical fallback lowered it (sets the climb length). */
+  /**
+   * Highest speed after the radius check, before a vertical fallback lowered it (sets the climb
+   * length from a ground end).
+   */
   planV: number;
   minRadiusM: number;
   maxShiftM: number;
@@ -83,18 +143,38 @@ export type XwRunSummary = {
   start: XwEnd;
   end: XwEnd;
   chunks: string[];
+  /** The structure deck this run carries over a landmark (null for an ordinary run). */
+  structure: XwRunStructure | null;
+};
+
+/** How a run met its structure's deck levels (structures.ts; the build fails beyond the tolerances). */
+export type XwRunStructure = {
+  deck: string;
+  /** s along the run where the pinned stretch (the structure's sRange) starts and ends. */
+  s0: number;
+  s1: number;
+  /** Largest horizontal distance of the OSM line from axis + strip centre (the 3 m rule). */
+  osmM: number;
+  /** Largest distance of the compiled centre line from axis + band centre, and of z from the formula. */
+  planM: number;
+  zM: number;
 };
 
 export type XwDiagnostic = { run: string; kind: string; detail: string; allowed: boolean };
 
 export type XwMeta = {
-  version: 1;
+  version: typeof XW_VERSION;
   zoom: number;
   tiles: string[];
-  range: { name: string; minLon: number; minLat: number; maxLon: number; maxLat: number } | null;
+  /** The named ranges built (empty for --range all). */
+  ranges: Array<{ name: string; minLon: number; minLat: number; maxLon: number; maxLat: number }>;
+  /** Structures whose deck levels were built (landmark id and the version of its deckLevels). */
+  structures: Array<{ id: string; version: number; decks: string[] }>;
   extract: { url: string; timestamp: string | null };
   counts: { runs: number; chunks: number; stations: number; piers: number; crossings: number };
   bytes: number;
+  /** The joint vertical solves (no timings: the file stays byte-stable). */
+  solver: { components: number; solves: number; unconverged: number };
   runs: XwRunSummary[];
   diagnostics: XwDiagnostic[];
 };

@@ -30,6 +30,7 @@ const regs: RegulationData = {
   lanes: [[2, ...lines[0].coords]],
   laneArrows: [],
   turnlanes: [[139.761, 35.68, 90, "left;through|right"]],
+  roadlanes: [],
   signals: [[139.761, 35.68]],
   junctions: [[139.761, 35.68, "交差点", "Junction"]],
   closures: [],

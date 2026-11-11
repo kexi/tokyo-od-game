@@ -5,6 +5,7 @@ import { log, warn } from "../log";
 import type { Environment } from "../world/environment";
 import type { LandmarkEntry } from "../world/landmarkEntry";
 import type { Approach, TrafficControl } from "../world/trafficControl";
+import { MOVEMENTS, crossingVerdict } from "../signals/plan";
 import {
   faceInstances,
   nearestInstance,
@@ -462,6 +463,17 @@ export function createViewHooks(deps: ViewHookDeps) {
     lampState: deps.control.state(ap),
     right: deps.control.permits(ap, "right"),
     through: deps.control.permits(ap, "through"),
+    // T4: every movement's permission and how 信号無視 would read crossing on it, without and after
+    // a 一時停止 (赤の点滅 is booked only without); the walk lights of the step; night or day plan.
+    permits: Object.fromEntries(MOVEMENTS.map((m) => [m, deps.control.permits(ap, m)])),
+    verdicts: Object.fromEntries(
+      MOVEMENTS.map((m) => {
+        const p = deps.control.permits(ap, m);
+        return [m, { moving: crossingVerdict(p, false), afterStop: crossingVerdict(p, true) }];
+      }),
+    ),
+    ped: ap.controller ? { ...ap.controller.step.ped } : null,
+    isNight: ap.controller?.isNight ?? false,
     step: held?.approachId === ap.id ? held.step : null,
     headHeightM: round(point.y - (deps.groundY(point.x, point.z) ?? point.y)),
     stopLine: plain(ap.a.clone().add(ap.b).multiplyScalar(0.5)),
@@ -469,10 +481,13 @@ export function createViewHooks(deps: ViewHookDeps) {
       ? {
           template: ap.controller.plan.plan.template,
           cycleS: ap.controller.plan.cycle,
+          walkers: ap.controller.plan.plan.walkers,
           steps: ap.controller.plan.plan.steps.map((s) => ({
             s: s.s,
             main: s.main[ap.group],
             arrows: s.arrows[ap.group] ?? [],
+            all: s.main,
+            ped: s.ped,
           })),
         }
       : null,
@@ -643,9 +658,22 @@ export function createViewHooks(deps: ViewHookDeps) {
 
   let held: { approachId: number; step: number; clockS: number } | null = null;
   const originalUpdate = deps.control.update.bind(deps.control);
+  let lastSeconds = 0;
   // The game calls control.update(now) every frame; while held, it gets the held clock instead.
-  // Why not a flag on TrafficControl: that file is T3's in this round; this is dev-only.
-  deps.control.update = (seconds: number) => originalUpdate(held ? held.clockS : seconds);
+  // Why not a clock-holding method on TrafficControl: the holding is dev-only and lives with the
+  // other review hooks; TrafficControl only exposes update and the runs it reads.
+  deps.control.update = (seconds: number, replay = false) => {
+    lastSeconds = seconds;
+    originalUpdate(held ? held.clockS : seconds, replay);
+  };
+  // The time of day the night plans read (T4): the game's, unless a view holds one (signals.clock).
+  let clockMinute: number | null = null;
+  let gameMinute: number | null = null;
+  const originalSetTime = deps.control.setTimeOfDay.bind(deps.control);
+  deps.control.setTimeOfDay = (minute: number | null) => {
+    gameMinute = minute;
+    originalSetTime(clockMinute ?? minute);
+  };
 
   const signalsApi = {
     /**
@@ -667,14 +695,40 @@ export function createViewHooks(deps: ViewHookDeps) {
             );
       const isMissing = k < 0 || k >= steps.length;
       if (isMissing) return { error: `approach ${approachId}'s plan has no step ${String(step)}` };
-      const mid = c.plan.starts[k] + steps[k].s / 2;
-      held = { approachId, step: k, clockS: mid - c.offset };
+      // The run says when that step next shows (a ScheduledRun may have moved its offset at a plan
+      // change); a push-button run is held on its own clock, as before.
+      const from = held?.clockS ?? lastSeconds;
+      const clockS =
+        "clockFor" in c.run ? c.run.clockFor(k, from) : c.plan.starts[k] + steps[k].s / 2 - c.offset;
+      held = { approachId, step: k, clockS };
       originalUpdate(held.clockS);
       return { step: k, main: steps[k].main[ap.group], arrows: steps[k].arrows[ap.group] ?? [] };
     },
     release() {
       held = null;
       return true;
+    },
+    /**
+     * Hold the time of day the signals read at `minute` after midnight (null: the game's again), and
+     * run their clock on — up to three minutes, in quarter seconds — so each controller gets into
+     * the plan its night window asks for (a plan changes only at a safe step). Call before `hold`.
+     */
+    clock(minute: number | null, untilChangeOf: number | null = null) {
+      clockMinute = minute;
+      originalSetTime(minute ?? gameMinute);
+      // `untilChangeOf`: stop as soon as that approach's controller changes plan (to shoot the moment
+      // of a change, such as the flash's way out), else run the three minutes.
+      const c = deps.control.approaches.find((a) => a.id === untilChangeOf)?.controller ?? null;
+      const before = c?.plan;
+      let t = held?.clockS ?? lastSeconds;
+      for (let i = 0; i < 720; i++) {
+        originalUpdate((t += 0.25));
+        const hasChanged = c !== null && c.plan !== before;
+        if (hasChanged) break;
+      }
+      // The clock stays where the run got to: going back would read the plan from before the change.
+      if (held) held = { ...held, clockS: t };
+      return { minute, template: c?.plan.plan.template ?? null };
     },
   };
 

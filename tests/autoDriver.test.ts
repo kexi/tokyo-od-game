@@ -57,11 +57,12 @@ describe("self-driving lane positions (第18条・第20条)", () => {
 
   it("puts each lane between the painted 車線境界線 of its direction", () => {
     const s = seg(25, 3);
-    const laneWidth = 12.5 / 3;
+    // 3 lanes a direction need 3 × 3.25 m and a 0.5 m shoulder: the lanes' edge is 0.5 m inside 10.25 m.
+    const edge = 3 * 3.25;
     for (let i = 0; i < 3; i++) {
       const c = laneCentre(s, i);
-      expect(c).toBeLessThan(12.5 - i * laneWidth);
-      expect(c).toBeGreaterThan(12.5 - (i + 1) * laneWidth);
+      expect(c).toBeLessThan(edge - i * 3.25);
+      expect(c).toBeGreaterThan(edge - (i + 1) * 3.25);
     }
   });
 
@@ -70,8 +71,10 @@ describe("self-driving lane positions (第18条・第20条)", () => {
     expect(laneCentre(s, 0)).toBeGreaterThan(laneCentre(s, 2));
   });
 
-  it("keeps the car at least 1.6 m inside the edge, as GSI 幅員 can include the pavement", () => {
-    expect(laneCentre(seg(6, 2), 0)).toBeLessThanOrEqual(3 - 1.6);
+  it("keeps the lane centre inside the 0.5 m shoulder, so the body (0.85 m half width) clears the edge", () => {
+    expect(laneCentre(seg(6, 2), 0)).toBeLessThanOrEqual(3 - 0.5 - 0.85 + 0.3);
+    // Where the 幅員 holds the pavement, the lanes keep 3.25 m and stay off the kerb.
+    expect(laneCentre(seg(30, 2), 0)).toBeCloseTo(2 * 3.25 - 3.25 / 2, 9);
   });
 });
 

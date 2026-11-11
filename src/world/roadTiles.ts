@@ -1,6 +1,7 @@
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { warn } from "../log";
 import { gsiVectorTile } from "./gsiVectorTiles";
+import { kindFromGsi } from "./roadClass";
 import type { RoadLine } from "./roads";
 
 /**
@@ -13,13 +14,6 @@ const ZOOM = 16;
 
 // rnkWidth classes: 0 <3 m, 1 3–5.5 m, 2 5.5–13 m, 3 13–19.5 m, 4 ≥19.5 m (class midpoints).
 const WIDTH_BY_RANK = [2.5, 4.3, 9, 16, 22];
-
-function kindOf(rdCtg: number, motorway: number): RoadLine["kind"] {
-  if (rdCtg === 3 || motorway === 1) return "highway";
-  if (rdCtg === 0) return "national";
-  if (rdCtg === 1) return "prefectural";
-  return "local";
-}
 
 export class RoadTiles {
   private readonly cache = new Map<string, Promise<RoadLine[]>>();
@@ -70,7 +64,7 @@ export class RoadTiles {
             coords,
             width,
             oneway: 0,
-            kind: kindOf(p.rdCtg, p.motorway),
+            kind: kindFromGsi(p.rdCtg, p.motorway),
             bridge: p.ftCode === 2703,
           });
       }

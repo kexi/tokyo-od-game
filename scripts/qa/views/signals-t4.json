@@ -1,0 +1,234 @@
+{
+  "name": "signals-t4",
+  "description": "T4 の信号（歩車分離・点滅・時差式）。渋谷駅前（OSM crossing:scramble）・新橋の点滅信号（traffic_signals=blinker）・新宿一丁目南（夜間点滅式）・秋葉原の時差式（note の 先に／後から）の灯器を、state.signalStep で現示を固定して昼夜に撮る。灯の配列と点灯、歩行者灯、歩行者の動き、各コマの JSON の permits・verdicts を施行令第2条・第3条と照らす。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261111,
+    "moment": "2026-11-10T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-10T11:00:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-10T21:30:00+09:00"
+      }
+    ],
+    "hide": ["traffic"]
+  },
+  "sessions": [
+    {
+      "id": "shibuya-scramble",
+      "start": [35.6594, 139.7006],
+      "views": [
+        {
+          "id": "scramble-a-green",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.65934, 139.70057] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0 },
+          "expect": {
+            "lamps": "群 a の灯器が青（右から赤・黄・青の左端）",
+            "walk": "歩行者灯はすべて赤（歩車分離: 車両の青の間は全歩行者が赤）"
+          }
+        },
+        {
+          "id": "scramble-a-yellow",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.65934, 139.70057] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 1 },
+          "expect": { "lamps": "黄（中央）" }
+        },
+        {
+          "id": "scramble-walk-driver",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.65934, 139.70057] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 6 },
+          "expect": {
+            "lamps": "赤（全方向の車両が赤）",
+            "walk": "全歩行者灯が青、JSON の ped が a・b・x とも go"
+          }
+        },
+        {
+          "id": "scramble-walk-overhead",
+          "camera": "overhead",
+          "target": { "signal": { "near": [35.65934, 139.70057] } },
+          "altitudeM": 55,
+          "pitchDeg": 65,
+          "bearingDeg": 200,
+          "hide": ["traffic"],
+          "state": { "signalStep": 6 },
+          "expect": {
+            "walkers": "歩行者が横断歩道と対角線上（斜め横断）を渡っている",
+            "cars": "停止線を越える車がいない（動く車は隠している）"
+          }
+        },
+        {
+          "id": "scramble-walk-pedestrian",
+          "camera": "pedestrian",
+          "target": { "signal": { "near": [35.6595, 139.70073] } },
+          "distanceM": 16,
+          "angleDeg": 40,
+          "fov": 45,
+          "state": { "signalStep": 7 },
+          "expect": { "walk": "歩行者灯の青が点滅（コマは点灯・消灯のどちらか）、車両は赤" }
+        },
+        {
+          "id": "scramble-b-green",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.6595, 139.70073] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 3 },
+          "expect": { "lamps": "群 b の灯器が青", "walk": "歩行者灯はすべて赤" }
+        }
+      ]
+    },
+    {
+      "id": "shinbashi-blinker",
+      "start": [35.6656, 139.7579],
+      "views": [
+        {
+          "id": "blinker-main-yellow",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.66569, 139.75793] } },
+          "distanceM": 25,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0 },
+          "expect": {
+            "lamps": "黄の点滅（黄の位置だけが点く／消える）",
+            "law": "permits が全移動 go（他の交通に注意して進行）、verdicts は allowed"
+          }
+        },
+        {
+          "id": "blinker-side-red",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.6656, 139.75804] } },
+          "distanceM": 25,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0 },
+          "expect": {
+            "lamps": "赤の点滅（右端の赤だけ）",
+            "law": "permits が stopFirst、verdicts は止まらなければ bookedFlashing（信号無視（点滅））、一時停止の後は allowed"
+          }
+        },
+        {
+          "id": "blinker-pedestrian",
+          "camera": "pedestrian",
+          "target": { "signal": { "near": [35.6656, 139.75804] } },
+          "distanceM": 14,
+          "angleDeg": 35,
+          "fov": 45,
+          "state": { "signalStep": 0 },
+          "expect": { "walk": "歩行者灯は赤・青とも消灯（ped が off）" }
+        }
+      ]
+    },
+    {
+      "id": "shinjuku-night-flash",
+      "start": [35.68809, 139.70989],
+      "views": [
+        {
+          "id": "nightflash-day",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.68809, 139.70989] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0, "signalClock": "12:00" },
+          "expect": { "lamps": "昼は定周期（twoPhase）の青", "plan": "isNight false" }
+        },
+        {
+          "id": "nightflash-night",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.68809, 139.70989] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0, "signalClock": "23:00", "signalClockToChange": true },
+          "expect": {
+            "lamps": "23 時に入った直後の点滅（主道路 黄・従道路 赤の仮定）",
+            "plan": "isNight true、template nightFlash。昼の全赤が 1 秒続いた時点で入る（青の直後ではない）"
+          }
+        },
+        {
+          "id": "nightflash-exit-yellow",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.68809, 139.70989] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0, "signalClock": "07:00", "signalClockToChange": true },
+          "expect": {
+            "lamps": "点滅から出る瞬間: 黄の点滅だった主道路が黄（3 秒）、赤の点滅だった従道路は赤",
+            "plan": "template flashExit、permits は stopIfAble"
+          }
+        },
+        {
+          "id": "nightflash-back-day",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.68809, 139.70989] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0, "signalClock": "07:00" },
+          "expect": { "lamps": "昼の現示表に戻って青（全赤 2 秒のあと）", "plan": "isNight false、twoPhase" }
+        }
+      ]
+    },
+    {
+      "id": "akihabara-staggered",
+      "start": [35.6991, 139.7681],
+      "views": [
+        {
+          "id": "staggered-both-green",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.69916, 139.76814] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 0 },
+          "expect": {
+            "lamps": "先に赤になる方向（群 c）が青",
+            "plate": "灯器の下に「時差式信号」の板"
+          }
+        },
+        {
+          "id": "staggered-first-yellow",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.69916, 139.76814] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 2 },
+          "expect": { "lamps": "群 c が黄（対向の群 a はまだ青: JSON の plan.steps[2].all）" }
+        },
+        {
+          "id": "staggered-later-lag",
+          "camera": "driver",
+          "target": { "signal": { "near": [35.69916, 139.76803] } },
+          "distanceM": 30,
+          "lateralM": 1.5,
+          "state": { "signalStep": 3 },
+          "expect": {
+            "lamps": "後から赤になる方向（群 a）が青、対向 c は赤",
+            "law": "permits.right が go（対向は全移動 stop）、板「時差式信号」"
+          }
+        },
+        {
+          "id": "staggered-plate-pedestrian",
+          "camera": "pedestrian",
+          "target": { "signal": { "near": [35.69916, 139.76803] } },
+          "distanceM": 12,
+          "angleDeg": 25,
+          "fov": 40,
+          "state": { "signalStep": 3 },
+          "expect": { "plate": "「時差式信号」の文字が読める、灯器の下に付いている" }
+        }
+      ]
+    }
+  ]
+}

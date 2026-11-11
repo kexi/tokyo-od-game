@@ -1,6 +1,13 @@
 import { Vector3 } from "three";
 import { log } from "../log";
-import { MOVEMENTS, type Movement, type Permission } from "../signals/plan";
+import {
+  MOVEMENTS,
+  crossingVerdict,
+  isBooked,
+  letsDriverGo,
+  type Movement,
+  type Permission,
+} from "../signals/plan";
 import {
   RedLightJudge,
   type CrossingOutcome,
@@ -23,10 +30,11 @@ type Signals = Pick<TrafficControl, "permits" | "permitsBefore">;
  * also where the movement was `go` just before (ARROW_GRACE_S) and is `stop` now — an arrow that has
  * only just gone out. Why only `go` before: after a yellow (stopIfAble) the red is booked as ever.
  */
-export function signalCrossing(control: Signals, ap: Approach): SignalCrossing {
+export function signalCrossing(control: Signals, ap: Approach, hasStopped = false): SignalCrossing {
   const permissionOf = (m: Movement): Permission => {
     const now = control.permits(ap, m);
-    const isJustOut = now === "stop" && control.permitsBefore(ap, m, ARROW_GRACE_S) === "go";
+    const wasGo = letsDriverGo(control.permitsBefore(ap, m, ARROW_GRACE_S));
+    const isJustOut = crossingVerdict(now) === "booked" && wasGo;
     return isJustOut ? "go" : now;
   };
   return {
@@ -36,8 +44,12 @@ export function signalCrossing(control: Signals, ap: Approach): SignalCrossing {
     tIn: ap.travel,
     node: ap.node,
     exitM: ap.exitM,
+    hasStopped,
   };
 }
+
+/** Which 信号無視 a booking is: 赤色等 (赤・黄), or 点滅 (赤の点滅 without the 一時停止, T4). */
+export type SignalViolationKind = "signal" | "signalFlashing";
 
 /**
  * 信号無視 for the player's car, from the stop lines it crosses: the glue between TrafficControl and
@@ -49,7 +61,7 @@ export class SignalViolationCheck {
 
   constructor(
     private readonly control: Signals,
-    private readonly book: (now: number) => void,
+    private readonly book: (now: number, kind: SignalViolationKind) => void,
   ) {}
 
   /** Whether a crossing under an arrow is waiting for the arm the car leaves by. */
@@ -60,15 +72,24 @@ export class SignalViolationCheck {
   /**
    * One law-check step: the car moved from `prev` to `cur` (facing `forward`), crossing the stop
    * lines `crossed` (TrafficControl.crossed, every kind; only signals are looked at here).
+   * `hasStoppedAt(ap)`: whether the car stood still just short of that line (the 一時停止 that
+   * 赤色の灯火の点滅 asks; the same test as the stop sign's in main.ts).
    */
-  step(crossed: readonly Approach[], prev: Vector3, cur: Vector3, forward: Vector3, now: number): void {
+  step(
+    crossed: readonly Approach[],
+    prev: Vector3,
+    cur: Vector3,
+    forward: Vector3,
+    now: number,
+    hasStoppedAt: (ap: Approach) => boolean = () => false,
+  ): void {
     // The way the car is moving (not facing: it may be reversing), or its nose when it stands.
     const moved = this.travel.copy(cur).sub(prev).setY(0);
     const isMoving = moved.lengthSq() > 0.05 * 0.05;
     const travel = isMoving ? moved.normalize() : moved.copy(forward).setY(0).normalize();
     for (const ap of crossed) {
       if (ap.kind !== "signal") continue;
-      this.settle(this.judge.crossed(signalCrossing(this.control, ap), now, travel), now);
+      this.settle(this.judge.crossed(signalCrossing(this.control, ap, hasStoppedAt(ap)), now, travel), now);
     }
     this.settle(this.judge.update(cur, travel, now), now);
   }
@@ -82,11 +103,13 @@ export class SignalViolationCheck {
     for (const o of outcomes) {
       const approachId = o.crossing.approachId;
       if (o.kind === "held") {
-        const allowed = MOVEMENTS.filter((m) => o.crossing.permissions[m] !== "stop");
+        const allowed = MOVEMENTS.filter(
+          (m) => !isBooked(crossingVerdict(o.crossing.permissions[m], o.crossing.hasStopped)),
+        );
         log("signal_crossing_held", { approachId, allowed });
         continue;
       }
-      if (o.kind === "violation") this.book(now);
+      if (o.kind === "violation") this.book(now, o.flashing ? "signalFlashing" : "signal");
       const isImmediate = o.kind === "violation" && o.movement === null;
       if (isImmediate) continue; // 赤 with no arrow: booked at the line as ever (violation_booked says so)
       log("signal_crossing_resolved", {

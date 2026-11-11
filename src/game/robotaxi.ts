@@ -13,9 +13,11 @@ import {
 import { ADULT_KG } from "../physics/masses";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
 import type { RoadGraph, Segment } from "../world/roads";
+import { laneCentreOffset } from "../world/laneChange";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
 import { progressOn } from "./navigation";
 import type { CarModel } from "./carModel";
+import { isDrivable as isRoutable } from "../world/roadClass";
 
 /**
  * 自動運転タクシー (robotaxi) called from the phone. Level-4 driverless operation (特定自動運行,
@@ -121,7 +123,8 @@ export class RoboTaxi {
     const { pos, dir } = graph.sample(start.seg, start.s);
     const travel = dir.multiplyScalar(start.dir);
     const yaw = Math.atan2(travel.x, travel.z);
-    const left = new Vector3(travel.z, 0, -travel.x).multiplyScalar(start.seg.line.width * 0.25);
+    // The left lane's centre (laneChange.ts), not a quarter of the GSI 幅員 (which may hold the pavement).
+    const left = new Vector3(travel.z, 0, -travel.x).multiplyScalar(laneCentreOffset(start.seg, 0));
     const at = pos.clone().add(left);
     at.y = (this.groundAt(at.x, at.z) ?? pos.y) + RIDE_HEIGHT;
     this.car.setCoasting(true);
@@ -228,7 +231,7 @@ export class RoboTaxi {
   }
 }
 
-const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
+const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 
 const displays = new Map<string, CanvasTexture>();
 const DISPLAY_COLOUR: Record<string, string> = {

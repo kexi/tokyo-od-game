@@ -15,6 +15,8 @@ import type { Pedestrian } from "../world/pedestrians";
 import type { SpatialAudio } from "./spatialAudio";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 import { sharedDraco } from "../render/draco";
+import { log } from "../log";
+import { JUMP_METRES } from "./motion";
 
 export type ResponderKind = "ambulance" | "police";
 export type IncidentEvent =
@@ -46,10 +48,19 @@ type Incident = {
   policeCalled: boolean;
   fled: boolean;
   rescued: boolean;
+  /** Where the player was last frame (null until the first update sees them). */
+  last: Vector3 | null;
+  /**
+   * Since when the player, put down by a jump more than LEAVE_DISTANCE from the scene, has stayed
+   * away: the leaving check and the 119 deadline are held (null: not held).
+   */
+  jumpedAwaySince: number | null;
+  /** Time held so far (ms), left out of the 119 deadline. */
+  heldMs: number;
 };
 
-const REPORT_LIMIT_MS = 60_000; // time to call 119 before it counts as leaving the victim
-const LEAVE_DISTANCE = 80; // metres from the scene
+export const REPORT_LIMIT_MS = 60_000; // time to call 119 before it counts as leaving the victim
+export const LEAVE_DISTANCE = 80; // metres from the scene
 const SPEED: Record<ResponderKind, number> = { ambulance: 11, police: 12 }; // m/s
 const APPROACH: Record<ResponderKind, number> = { ambulance: 260, police: 320 };
 
@@ -222,6 +233,9 @@ export class EmergencyResponse {
       policeCalled: false,
       fled: false,
       rescued: false,
+      last: null,
+      jumpedAwaySince: null,
+      heldMs: 0,
     };
   }
 
@@ -247,7 +261,7 @@ export class EmergencyResponse {
 
   secondsLeft(now: number): number {
     return this.incident
-      ? Math.max(0, Math.ceil((REPORT_LIMIT_MS - (now - this.incident.startedAt)) / 1000))
+      ? Math.max(0, Math.ceil((REPORT_LIMIT_MS - this.elapsed(this.incident, now)) / 1000))
       : 0;
   }
 
@@ -284,6 +298,8 @@ export class EmergencyResponse {
   transform(offset: (p: Vector3) => Vector3): void {
     if (!this.incident) return;
     offset(this.incident.at);
+    // The player moves with the world: last frame's place too, or the re-anchoring is a jump.
+    if (this.incident.last) offset(this.incident.last);
     for (const r of Object.values(this.responders)) {
       for (const p of r.path) offset(p);
       offset(r.root.position);
@@ -309,7 +325,11 @@ export class EmergencyResponse {
     }
 
     const isAway = player.distanceTo(inc.at) > LEAVE_DISTANCE;
-    if (!inc.ambulanceCalled && !inc.fled && (isAway || now - inc.startedAt > REPORT_LIMIT_MS)) {
+    this.followJumps(inc, player, now, isAway);
+    // Away by a jump is not leaving (followJumps): neither the distance nor the deadline counts.
+    const hasLeft = isAway && inc.jumpedAwaySince === null;
+    const isOverdue = this.elapsed(inc, now) > REPORT_LIMIT_MS;
+    if (!inc.ambulanceCalled && !inc.fled && (hasLeft || isOverdue)) {
       // A bystander calls instead; the driver is booked for leaving the victim.
       inc.fled = true;
       this.dispatch("ambulance", null);
@@ -345,12 +365,48 @@ export class EmergencyResponse {
     }
     const pol = this.responders.police;
     const isPoliceDone = pol.arrivedAt !== null && now - pol.arrivedAt > 6000;
-    if (inc.rescued && (isPoliceDone || isAway)) {
+    if (inc.rescued && (isPoliceDone || hasLeft)) {
       const unreported = !inc.policeCalled;
       this.close();
       return unreported ? { type: "notReported" } : { type: "closed" };
     }
     return null;
+  }
+
+  /**
+   * Holds the scene while a jump has put the player away from it, and lets it go once they are
+   * back within LEAVE_DISTANCE (driving back, or another jump). A frame's move longer than
+   * JUMP_METRES (motion.ts) is a jump: 移動, 復帰, a respawn, debug place.
+   *
+   * Why not close the scene on a jump: every jump (warp, respawn, debug place, start) would have to
+   * tell this module, and one missed is the bug again; looking at the moves needs no call site.
+   * Why not count only the distance driven: the scene would then follow the player to wherever
+   * they were put down, and 80 m driven there would book ひき逃げ at a scene they cannot see.
+   */
+  private followJumps(inc: Incident, player: Vector3, now: number, isAway: boolean): void {
+    const last = inc.last;
+    inc.last = player.clone();
+    if (!last) return;
+    const moveM = Math.hypot(player.x - last.x, player.z - last.z);
+    const isJump = moveM > JUMP_METRES;
+    const isHeld = inc.jumpedAwaySince !== null;
+    if (isJump && isAway && !isHeld) {
+      inc.jumpedAwaySince = now;
+      log("incident_jump", { jumpM: Math.round(moveM), awayM: Math.round(player.distanceTo(inc.at)) });
+      return;
+    }
+    const isBack = isHeld && !isAway;
+    if (!isBack || inc.jumpedAwaySince === null) return;
+    const heldMs = now - inc.jumpedAwaySince;
+    inc.heldMs += heldMs;
+    inc.jumpedAwaySince = null;
+    log("incident_resumed", { heldMs: Math.round(heldMs) });
+  }
+
+  /** Time since the accident that counts toward the 119 deadline (the held time left out). */
+  private elapsed(inc: Incident, now: number): number {
+    const heldNow = inc.jumpedAwaySince === null ? 0 : now - inc.jumpedAwaySince;
+    return now - inc.startedAt - inc.heldMs - heldNow;
   }
 
   get chasing(): boolean {
