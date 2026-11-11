@@ -1,5 +1,5 @@
 import { overlapSize } from "./allowlist";
-import type { XwClass, XwDiagnostic, XwRunSummary } from "./format";
+import type { XwClass, XwDiagnostic, XwTileRun } from "./format";
 
 /**
  * The kinds of deck overlap (deck_overlap) the scorecard counts apart (P2.7-1), because each needs
@@ -48,20 +48,40 @@ export function overlapPair(d: XwDiagnostic): OverlapPair | null {
 }
 
 /** Parents (junction or seam) of each run's two ends. */
-function parentsOf(run: Pick<XwRunSummary, "start" | "end">): string[] {
+function parentsOf(run: Pick<XwTileRun, "start" | "end">): string[] {
   return [run.start.parent, run.end.parent].filter((p): p is string => p !== undefined);
 }
 
 /** Whether two runs meet at a junction: one is the other's parent, or they share a parent. */
 export function isJoined(
-  a: Pick<XwRunSummary, "id" | "start" | "end">,
-  b: Pick<XwRunSummary, "id" | "start" | "end">,
+  a: Pick<XwTileRun, "id" | "start" | "end">,
+  b: Pick<XwTileRun, "id" | "start" | "end">,
 ): boolean {
   const pa = parentsOf(a);
   const pb = parentsOf(b);
   const isParent = pa.includes(b.id) || pb.includes(a.id);
   if (isParent) return true;
   return pa.some((p) => pb.includes(p));
+}
+
+/**
+ * The ledger's kind of a deck_overlap pair (P2.7-4): `touchdown` for a pair the plan does not hold a
+ * level apart (compile.ts markSharedTouchdowns, report.json `untied`: two main lines coming down to
+ * the same place, whether to accept or treat as one surface is S5's), else the scorecard's class.
+ * Why not a fifth class of the scorecard: its `overlaps` keep the four kinds of P2.7-1, comparable
+ * with the reports before.
+ */
+export type OverlapKind = OverlapClass | "touchdown";
+
+export function overlapKindOf(
+  pair: Pick<OverlapPair, "maxDzM">,
+  clsA: XwClass,
+  clsB: XwClass,
+  joined: boolean,
+  untied: boolean,
+): OverlapKind {
+  if (untied) return "touchdown";
+  return classifyOverlap(pair, clsA, clsB, joined);
 }
 
 export function classifyOverlap(

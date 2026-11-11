@@ -1,12 +1,16 @@
 ---
 type: Playbook
-title: 高速道路の生成（OSM → 道路構造令の線形 → デッキ、P1・縦断の一括解・P2.6 の全域向けの縦断・P3 の走行・P3.5 の床版の一体化・P7 の構造物上書き・G6 の標識・P9 のトンネルと掘割・P2.7-2 の固定点 block・P2.7-3a の 41009552・P2.7-3 の縦断の目的 v2）
+title: 高速道路の生成（OSM → 道路構造令の線形 → デッキ、P1・縦断の一括解・P2.6 の全域向けの縦断・P3 の走行・P3.5 の床版の一体化・P7 の構造物上書き・G6 の標識・P9 のトンネルと掘割・P2.7-2 の固定点 block・P2.7-3a の 41009552・P2.7-3 の縦断の目的 v2・P2.7-4 の許容の台帳と配信形式 v6）
 description: 首都圏の都市高速を OSM の motorway / motorway_link からビルド時に道路構造令の平面・縦断線形へコンパイルし（src/expressway/、scripts/expressway.ts）、public/data/expressway の ≤300 m チャンクを実行時に床版・壁高欄・箱桁・橋脚へ押し出す（src/world/expresswayDeck.ts、?expressway で有効）。P3 でコライダー（床版と壁高欄の trimesh・橋脚の cuboid）・道路グラフへの統合（端点 ID・ランプ端の接続）・区画線を足し、入口ランプから本線に乗って出口から一般道へ戻る走行を確かめた（多視点レビュー 3 周で収束）。縦断は分合流・交差・床版の重なりでつながる run の連結成分ごとに 1 つの凸 QP（疎な内点法）で解き、高さは交差と重なりの拘束からだけ決める（layer を目標高に使う P1 の逸脱を解消）。設計速度は区間ごと、測点は勾配つきでエルミート補間。試験区間（浜崎橋JCT〜芝公園）は T1〜T7 違反 0、deck_overlap は 4 組・41 測点（理由つき許可）。全域の解けない run、データ量、性能と見た目の確認。P2.6 で縦断の解き方を全域向けに直した（終了判定 gapTol、短い連結路を親 2 本の 3 次エルミート `follow` に、短い run の地表端を帯に、仮定の床は最も低い V でも解けない run の最終段で W_FLOOR の弱い行に、V 下げは失敗位置の ±150 m、閉鎖した run を meta の `closed` に）。全域を計測（解けた run 357 → 702／763）したが出荷条件は満たさず、全域は出荷していない（本線の閉鎖 15、ランプの閉鎖 8.3 %、未許可の重なり 332 組）。試験区間は解き方の変更で高さが最大 1.86 m 動いた。P7 の構造物の固定（ProfilePin）とは main の取り込みで統合した（連結路の 3 次式は固定を持てないので構造物上の run は連結路にしない）。P7 で構造物上書き（structures.ts）。レインボーブリッジの deckLevels に上層・下層の平面（補剛桁の範囲）と縦断（sRange）を固定し、帯の断面・描画だけの apron・橋脚と桁の抑止、3 m 規則でビルド失敗、下層の臨港道路を street として同じコンパイラに（XW_VERSION 4、範囲 rainbow）。P9 でトンネル・掘割（below.ts）。tunnel / cut / layer<0 の区間を below run として地表より下へ解き（土被りの天井は坑口から第20条の勾配で届く所だけ）、高架とは seam で C¹ につなぎ、坑口の記録 portals をタイルに（meta の features に below）。実行時はトンネルの箱（監査路・側壁・天井・照明）と掘割の擁壁をコライダーつきで押し出し、地形（コライダーは穴でクリップ）・一般道・歩道・建物を穴で切り欠き、トンネル内は空と太陽を遮って照明に置き換える（範囲 azabudai・azabudai_exit、XW_VERSION 4 のまま）。 P6 で規制速度をチャンクごとの OSM maxspeed（XW_VERSION 5、グラフの limit は G6 の posted）、範囲 shiodome（汐留の出入口）、W6 の at-grade の辿り直し、自動運転・交通 AI・ナビの解除と走行の確認（芝公園入口→C1 内回り→汐留出口→一般道を走り切った）。P2.7-1 で出荷範囲（`--range ship` で事業者の本線 ∩ 23 区とランプ、scope.ts）と全域スコアカード（`--report`、report.ts で閉鎖の根と道連れ・重なりの類型・地表追従・サイズ・ソルバ・段の時間・抽出の SHA-256）、抽出の固定、`--below all`。ship/pruned 323 run・本線の閉鎖 10・未許可の重なり 175 組・gzip 1.04 MB、pruneBelow なしでも未収束 0（P9 の破綻の記述を訂正）。P2.7-2 で固定点 block（`--partition blocks`、blocks.ts、計測専用・既定は無効でデータ不変）。本線の静かな区間の固定点で片に切り、片の連結成分ごとに solveShedding、固定点の値は seam の組の路線解。ship の A/B で pruned は k=1・1.5 が一括解と同等だが、all ではどの k も本線の閉鎖 14 → 18（41009552 が根に戻る）で未達、k は 2 のまま。既定範囲の all は解く段 130.6 → 13.1 s。P2.7-3 で縦断の目的 v2（`--objective v2`、計測専用・既定は無効でデータ不変）。目標を地表の上側包絡（designGround.ts）+ 標準桁下、地下は下側包絡 − 深さにし、弧ごとの勾配変化に L1（重み 1.5）。ship の強制の無い区間で反転 1.68 → 0.77 回/km（目標 0.8 以下）は届き、短波長相関 0.553 → 0.228・σ 0.696 → 0.433 m（目標 0.15・0.4）は未達。blocks の A/B のやり直しは all で T2 +3 になり k は暫定 1.5 のまま未達。
 tags: [roads, terrain, rendering, testing, licensing]
 status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:compare-expressway-chunks, at: 2026-11-11T15:43:58Z }
+  - { by: process:expressway-build-twice-byte-equal, at: 2026-11-11T15:43:57Z }
+  - { by: process:update-expressway-ledger-twice-byte-equal, at: 2026-11-11T15:06:33Z }
+  - { by: process:measure-expressway-area, at: 2026-11-11T14:59:42Z }
   - { by: process:check-deck-drive, at: 2026-11-11T14:28:19Z }
   - { by: process:vitest, at: 2026-11-11T14:27:00Z }
   - { by: process:headless-chrome-cdp, at: 2026-11-11T12:41:38Z }
@@ -170,7 +174,8 @@ sources:
 | 補間             | `profile.ts`                        | 測点の標高と勾配の三次エルミート（`hermite`・`surfaceAt`）。デッキと P3 の surfaceY が同じ関数を使う                                                                                                                |
 | 片勾配           | `superelevation.ts`                 | e = clamp(V²/127R − f, 0, 10 %) を区間の V で。分合流の端は親の値、同一面の相手の値を `pins` で固定し、変化率を前後のパスで保証                                                                                     |
 | まとめ           | `compile.ts`                        | 範囲に触れる run の連結成分（全域で決める）を丸ごと解き、測点・橋脚・交差・blocked を ≤300 m のチャンク `<run>:<k>` に切る                                                                                          |
-| 出力             | `scripts/expressway.ts`             | z14 タイル、`meta.json`、`LICENSE.txt`。`--out` で別のフォルダへ（全域の試算用）                                                                                                                                    |
+| 出力             | `scripts/expressway.ts`             | v6（P2.7-4）: z14 タイル（チャンク・run の要約・入口）、索引の `meta.json`、記録の `report.json`、`LICENSE.txt`。`ledger.json` は取っておいて戻す。`--out` で別のフォルダへ（全域の試算用）                         |
+| 許容             | `allowlist.ts`・`ledger.ts`         | 類型の規則（run の ID 無し）と、データのフォルダごとの台帳 `ledger.json`（`scripts/expresswayLedger.ts`、P2.7-4）                                                                                                   |
 | 描画             | `src/world/expresswayDeck.ts`       | チャンクごとに 1 回押し出してキャッシュ。測点間はエルミート面から外れる量が 1 cm 以下になるまで断面を足す（最大 8 分割）                                                                                            |
 
 # 縦断線形の解き方（連結成分の一括 QP）
@@ -228,6 +233,8 @@ T10 の内訳は `vertical_fallback` 29・`crossing_over_or_at_grade` 32・`deck
   `deck_overlap` は全域で 232 組（2 回目、未許可）。`ramp_radius` 6 件（R 10.7〜14.5 m）は OSM の線形のままの半径で、平面を ε 以上動かさない決まりから広げず、run ごとに理由つきで許可した（15 m は仮定で法令の下限ではない）。
 
 ## データ量
+
+**v6（P2.7-4）**: meta.json は索引だけ（既定 1,035 B・ship 1,993 B）、run の要約と入口はタイル、診断などは report.json（ゲームは読まない）。下の P2.7-4「大きさ」。以下は v2 の頃の試算。
 
 全域 3.09 MB は目安 1 MB の 3 倍。測点 1 個あたり 76 B（7 値の JSON）。`encode.mts` で試算（試験区間、117,520 B）:
 
@@ -297,7 +304,7 @@ V80 の法令値（e-Gov で確認、`src/law/roadStandards.ts`）:[^egov]
 
 # 実行時（P3: 走れる高速道路、?expressway）
 
-データ（meta.version 2）は変えていない。契約は profile.ts に `surfaceSamples`（面を折れ線で切る位置: 測点と、エルミート面から 1 cm 以内になるまでの分割）を足しただけ。床版・コライダー・グラフの区間がすべてこの位置で切れる。[^p3]
+データ（meta.version 2）は変えていない（v6 で meta は索引になり、run の要約と入口はタイルから読む: P2.7-4）。契約は profile.ts に `surfaceSamples`（面を折れ線で切る位置: 測点と、エルミート面から 1 cm 以内になるまでの分割）を足しただけ。床版・コライダー・グラフの区間がすべてこの位置で切れる。[^p3]
 
 - **コライダー**: チャンクごとの fixed body。床版の上面と壁高欄（内面・天端）の trimesh は描画と同じ頂点、橋脚は cuboid。プレイヤーから 400 m 以内で作り 550 m で外す（refresh は 120 m 動くごと、FrameWork のステップで）。原点移動は `reanchorBody`、古い原点で作ったメッシュから後で body を作るときはその原点からの変換を最初に掛ける。近く（60 m）に body の無いチャンクがあれば車を止め（地形と同じ）、ワープの着地は最後の refresh が着地点で終わるまで待つ（12 s で諦める）。
 - **T11**: 合成の試験区間（`tests/expresswayDrive.test.ts`）で、中心線 0.5 m ごとのコライダーの高さと `surfaceY` の差 ≤ 1 cm、0.5 m 格子のレイに穴なし、チャンク継ぎ目の段差 ≤ 1 mm、原点を移した body でも同じ点に当たる。実データでは入口・出口ランプの中心線で最大 9 mm（曲率の大きいランプで、隣り合う 2 枚の三角形がねじれる分）。**落とし穴**: レイがちょうど三角形の共有辺（リングの位置）を通ると Rapier の trimesh は外すことがある。テストは辺から 1.3 cm ずらして撃つ。**例外（P3.5、2026-11-11 レビュー W4）**: 本線の縁で切られたランプは、中心が本線の面の上か継ぎ目から `MERGE_RAMP` 1 m 以内にある間、`surfaceY`（ランプ自身の高さ）とコライダー（本線の面、または継ぎ目から自分の面へ上る 1 m）が最大 `MERGE_MAX_DZ` 0.15 m 違う（コンパイラの狙いは ≤ 5 cm）。roads.ts の surfaceY の説明にも書いた。
@@ -1166,6 +1173,158 @@ w 2・reach 150 m で 1 回（掃引 1）、同じ構成を QP を保存する s
 5. **blocks の all で T2 +3**（28127108、5.01 %）。測点間のエルミートの行き過ぎで、v1 の T2 2 件と同じ。GRADE_MARGIN の余裕が測点の間で足りない型で、S2 の k=2 の T2 +1 と同じ。掃引・blocks の 13 構成中 9 で 1〜5 件出ており、S5 の前に測点間の余裕を直す。
 6. **blocks × v2 で強制なしの反転が 0.8 を超える**（k = 1.5 で 0.817・0.829）。S5 で両方を有効にするなら固定点の脇の扱いを見直す。
 7. **固定点の路線解と一括解の差が広がる**（p50 0.2 m・最大 3.4 m）。S5 で blocks を使うなら、路線解に分合流の取付きの拘束を入れるか、2 段解を検討する。
+
+# P2.7-4: 許容の台帳と配信形式 v6（2026-11-11）
+
+S4。チャンクの幾何・解・目的には触れず、データのフォルダの入れ物（v6）と、許可・例外の置き場（規則 + 台帳）を作った。中身を埋めたのは既定データだけで、ship と v2 は「台帳を作り直せる」ことを件数で示した（判断はしていない）。[^p274]
+
+## 配信形式 v6
+
+| ファイル       | 読み手                           | 中身                                                                                                                                                                            |
+| -------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `meta.json`    | ゲーム（起動時）・テスト         | 索引だけ: version 6・features・zoom・tiles・ranges・scope・structures・extract・counts・bytes                                                                                   |
+| `<x>-<y>.json` | ゲーム・テスト                   | `chunks`（v5 と同じ内容・同じ順）、`runs`（そのタイルにチャンクを持つ run の `{id, cls, start, end}`、run の ID 順）、`entrances`（地表端がこのタイルにある入口。無ければ省く） |
+| `report.json`  | テスト・道具（ゲームは読まない） | `XwBuildRecord`: run の詳しい要約・diagnostics・closed・solver・`untied`（`plan.untied` の組）・`blocks`（block の run と `dataHash`）。スコアカード（`--report`）とは別物      |
+| `ledger.json`  | テスト・道具・ビルドの `allowed` | 下の「台帳」                                                                                                                                                                    |
+
+- **理由**: ship の meta は 279.5 KB（gzip 38.1 KB、予算 30 KB）で、ゲームが読むのはタイルの一覧と run の両端・クラス・入口だけだった。run の要約を**そのチャンクを持つタイルすべて**に入れるのは、どのタイルから読んでも `roleOf`（床版の一体化の親子）が同じになるように。
+- 実行時（`ExpresswayDecks`）は meta を索引として読み、タイルを読むたびに run の要約と入口を足す（違う要約が来たら `expressway_tile_run_mismatch` で最初のを保つ）。入口は `onEntrances` で案内標識へ渡し直す（main.ts の起動時 1 回の配線をやめた）。`expresswayRoadInput` には読み込み済みのタイルの run を渡す。z14 の 3 × 3 は点から 1.98 km 以上あり、GRAPH_RADIUS 1.3 km + チャンク 300 m の子の run は必ずその中にあるので、v5 の「全 run を一度に渡す」と同じ結果になる（tests/expresswayFormat.test.ts で既定範囲の中心とタイルの角 23 点、往復の順で確かめた）。
+- テストと道具は `scripts/expresswayFiles.ts`（`XW_DATA_DIR` を読むのはここだけ）と純粋な組み立て `src/expressway/files.ts` で読む。書き出しは `packTiles`。`scripts/expressway.ts` は出力先を消す前に `ledger.json` を読んで取っておき、書き出しの後に戻す。
+- `XW_VERSION` 6、`XW_FEATURES` は不変。ゲームは 5 以下を拒否する。
+
+## 台帳
+
+- **規則**（`src/expressway/allowlist.ts`、run の ID 無し）: `*` の 4 種（vertical_fallback・below_open_ground_floor・deck_below_ground・crossing_over_or_at_grade、上限は今のまま）、類型の規則（nose ≤ 0.5 m、portal-open-cut ≤ 150 m、let_go の段差 ≤ 1 mm）、余裕 `CASE_MARGIN`（測点 +2、|Δz|・段差・内側の面 +5 cm、区間の端 ±5 m、半径 −0.5 m、長さ +5 m）。`SAME_SURFACE_ALLOWED_DZ_M` 0.14 は値を変えずに残した。
+- **台帳**（`src/expressway/ledger.ts`、道具 `scripts/expresswayLedger.ts`、`just update-expressway-ledger dir flags`）: 1 件ずつ `key`・`kind`・`run`・`with`・`chunk`・`district`・`block`・`blockHash`・`measured`（生成）、`cap`・`status`・`by`・`reason`・`qa`（判断）、`previous`（判断が外れたときの直前の判断）。先頭に `data`（範囲・scope・目的・抽出の時刻）、`summary`（生成）、`budget`（判断）。時刻は書かない。
+- **類型**: nose（auto）・changeover・parallel-ramp・touchdown（`untied` の組。分類より先に見る）・other・portal-open-cut（auto、坑口から不足区間の遠い端まで）・ramp-radius・layer-ambiguous・seam_step・seam_hole・merge_skipped・let_go（auto）。スコアカードの `overlaps` は P2.7-1 の 4 類型のまま（前の版と比べられるように）。
+- **作り直しの規則**: 追加しかしない（無くなった事例は `gone`、`--prune` で消す）／`blockHash` と実測値が同じなら触らない／変わったら実測値を更新し、`cap` + 余裕の内なら判断を保ち、超えたら `new` に戻して `previous` に残す／auto は条件を満たす間 `accepted`・`by: rule`／`--seed` は別の台帳の判断を key で引き継ぐ（同じ余裕の規則）／`--write-budget` で budget を今の件数に書き換える。2 回続けて実行して差が出ない、入力の順序に依らない（テスト・既定データ・ship で確かめた）。
+- **ラチェット**: `budget` に地区 × 類型の件数、`open` の数、`qa` の無い changeover・parallel-ramp の数、継ぎ目の検査点の数、`*` の 4 種の件数。テストは `budgetOf(summary)` が `budget` と一致することを求める（増えても減っても落ちる）。
+- **ビルドの `allowed`**: 規則か、その台帳で `accepted`・`wontfix` かつ `cap` + 余裕の内（`ledgerVerdict`）。台帳は出力先のもの（取っておいたもの）か `--ledger <path>`。T6 の半径の下限は台帳の ramp-radius の `cap` − 0.5 m（`rampFloorOf`）。
+- **`dataHash`**（S5 の前提「ハッシュを丸めた値から作る」の答え）: block の run（ID 昇順）の書き出したチャンク（k 昇順）の JSON の SHA-256。ファイルの丸めた値から作るので solver の 1e-12 m の揺れでは変わらない。スコアカードの `partition.blocks[].hash`（解のハッシュ）はそのまま残した。既定範囲は 1 成分（1125559318）なので全事例が同じ block。
+
+## 地区（暫定、`src/expressway/districts.ts`）
+
+central（C1・Y・1・2・3・4・10・11・B）、east（5・6・7・9・S1、C2 の箱の外）、yamate（C2 のうち緯度 35.745 未満かつ経度 139.77 未満）、outside（表に無い ref）。本線はチャンクの最も長い ref と中央の点、ref の無い本線・ランプ・street は親をたどる（始点側から）、だめなら最寄りの本線。
+
+- 既定データの run と事例は全部 central。台帳の `ramp-radius:203873831` は必要な成分の run でタイルに書かれていない（点も親も無い）ので、事例の地区は run → 相手 → 同じ block の書き出した run（ID の最初）の順に決める（レビュー S6 の後。初版では outside だった）。
+- ship/pruned・v1（出力 307 run）: central 164 run・229.1 km、east 96・168.4 km、outside 47・116.4 km（ref E1・S5・K1・E4・E6・`E14;14`）、yamate 0（`--below pruned` では山手トンネルの C2 本線が出ない）。スコアカードの planned / closed は central 174 / 10、east 98 / 2、outside 51 / 4。
+- C2 の箱の境にかかる run: 156344609、28127113（どちらも east）。箱は変えていない（yamate の本線が ship に無く、確かめる材料が `--below all` の後になる）。
+
+## 計測（trust signal、2026-11-11 UTC、M2 Max）
+
+### 1. チャンクのバイト一致
+
+`just compare-expressway-chunks <origin/main の public/data/expressway の写し> public/data/expressway`（`scripts/compareExpresswayChunks.ts`、v5・v6 のタイルの `chunks` だけを JSON で比べる）: **268 チャンク中 268 が同じ、違い 0・片方だけ 0**（A の作り直し 14:31Z、B の作り直し、#67 を取り込んだ後の最終の作り直し 15:43Z とも）。
+
+### 2. 決定性
+
+`just make-expressway-data` を 2 回（A の 14:31Z と 14:37Z）: 全ファイル `diff -r` で一致（間で書き換えた LICENSE.txt の説明を除く）。#67 を取り込んだ後の最終のコードでも 2 回（レビュー後、15:43Z 終了）、全ファイル一致。台帳の道具を同じフォルダに 2 回: 既定データでバイト一致（`unchanged` 73/73）、ship/pruned・v1（1,250 件）でもバイト一致。
+
+### 3. 大きさ
+
+|                                    | meta 生 / gzip   | タイル gzip 合計 / 中央値 / 最大 | タイル生 最大 | report.json 生 / gzip | ledger.json 生 / gzip                             |
+| ---------------------------------- | ---------------- | -------------------------------- | ------------- | --------------------- | ------------------------------------------------- |
+| 既定 v5（origin/main）             | 24,186 / 4,241   | 111,440 / 8,723 / 29,015         | 104,834       | —                     | —                                                 |
+| 既定 v6                            | **1,035 / 458**  | 113,904 / 8,867 / 29,687         | 107,758       | 23,458 / 3,891        | 55,981 / 6,883（レビュー後。初版 54,928 / 6,722） |
+| ship/pruned・v1 v5（基準 fixture） | 279,519 / 38,125 | 1,162,883 / 7,961 / 59,084       | 223,377       | —                     | —                                                 |
+| ship/pruned・v1 v6                 | **1,993 / 605**  | 1,199,391 / 8,126 / **60,527**   | **230,582**   | 270,282 / 37,590      | 664,751 / 46,807                                  |
+| ship/pruned・v2 v6                 | 1,993 / 604      | 1,092,618 / 7,212 / 56,991       | 225,451       | 270,000 / 37,587      | 653,528 / 46,195                                  |
+
+- 予算超過（直していない）: ship v1 のタイル **14553-6451** が gzip 60,527 B（予算 60 KB を 527 B 超）・生 230,582 B（200 KB 超）。run の要約は 6,648 B で、超えの主因はもともとのチャンク（v5 で 59,084 / 223,377 B、生は v5 から超過）。v2 では gzip 56,991 B で収まり、生 225,451 B は超える。meta は既定・ship とも 30 KB の予算内。
+
+### 4. 移行の対応表（既定データ、判断はそのまま）
+
+| 移行前                                       | 移行後                                                                                                                                                                                                                                                                                                                          | 根拠                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| allowlist.ts の `*` 4 規則                   | allowlist.ts `RULES`（同じ上限）、台帳 `summary.rules` の件数                                                                                                                                                                                                                                                                   | 文言・上限の移動だけ                 |
+| allowlist.ts の deck_overlap 16 組           | nose 6（by rule: 24402611\|4848762、45019020\|4848740、45019020\|4848755、45021972\|45021976、45021976\|45068172、45554540\|813455519）、changeover 7・parallel-ramp 1・other 1（45177678\|4848755、分合流でつながらない 0.06 m）・touchdown 1（24402611\|45021976）を accepted、`cap` は今の maxStations・maxDzM、理由は今の文 | 16 組とも前後で allowed              |
+| allowlist.ts の ramp_radius 6                | ramp-radius:203873831（cap 13.4 m、既定データにある 1 件）。残り 5 件（203059412 R 11.7 m・203059413 10.7・24039815 14.5・5213291 13.5・761796514 11.6、ship の台帳で判断する分）の run は消し、理由の文は `RAMP_RADIUS_REASON`                                                                                                 |                                      |
+| allowlist.ts の tunnel_cover_short 737538573 | portal-open-cut（auto、坑口から 106.5 m ≤ 150 m）                                                                                                                                                                                                                                                                               |                                      |
+| T10 のインラインの件数 6 種                  | `budget.rules`（vertical_fallback 38・deck_below_ground 1・crossing 30・below_open 0）と `budget.cases`（重なり 16、ramp-radius 1、portal-open-cut 1）                                                                                                                                                                          |                                      |
+| MERGE_MAX_DZ 超の一覧 45 件                  | merge_skipped 45 件 accepted（cap は今の区間・最大 \|Δz\|、理由は今の why）                                                                                                                                                                                                                                                     | 45 件とも key が一致                 |
+| `SEAM_COUNT` 3,646                           | `budget.seamProbes` 3,646                                                                                                                                                                                                                                                                                                       | 下の 5                               |
+| `SEAM_EXCEPTIONS` 3 件・`OPEN_HOLES` 1 件    | seam_step 2 件 open（45019020:40、45068172:1）。4848889:0・813455519:0 の例外と 24402125:0 の穴は事例として出ない                                                                                                                                                                                                               | 下の 5（検査点の置き方の誤りの訂正） |
+| 手放しの点 8 か所                            | let_go 8 件（auto、段差 ≤ 0.3 mm）                                                                                                                                                                                                                                                                                              | 位置が 8 か所とも同じ                |
+| 「台帳に無い組・未使用の項目」のテスト       | 台帳のテスト（new・gone が無い、数え直しと一致、cap + 余裕の内、規則だけで黙って通るものが無い）                                                                                                                                                                                                                                |                                      |
+
+- 判定が変わらない根拠: 既定データの report.json は、旧 allowlist で `allowed` を決めた作り直し（A）と台帳で決めた作り直し（B）でバイト一致（87 件すべて allowed）。旧テストが見ていた条件（組ごとの上限、45 件の区間と \|Δz\|、8 か所の手放し）は台帳のテストがすべて見る。上限は余裕の分だけ広がった（下の逸脱）。
+- 移行前のコード（origin/main eae6f3d）で既定データの全テスト 1,973 件が通ることを確かめてから移した（14:20Z）。
+
+### 5. 継ぎ目のフレームの変更
+
+手書きの 3 地点をやめ、チャンクのあるタイルの中心（既定 9 点）にした。**検査点は 3,646 のまま**、手放しの点 8 か所も同じ。ただし手書きの 3 地点の時の例外と穴はフレームに依っていた。原因は検査点の投影: 平面の位置を高さ 0 で `LocalFrame.toLocal` に掛けていたので、原点から d 離れた点は床版の頂点（楕円体高 h）に対して h·d/R だけずれる（h 60 m・d 1.5 km で 1.4 cm。検査は床版の縁の ±2 mm）。**投影を各点の高さで行うように直した**（`scripts/expresswayPairs.ts` の `Project` に z、パッドで区間の外へ出た点はチャンクの端の高さ）。直した後は手書きの 3 地点とタイルの格子で例外・穴・手放しの点が同じになり、段差の差は 1 mm 前後（float32 と原点の差）。
+
+| 事例                                         | 手書きの 3 地点・高さ 0 の投影（移行前） | タイルの格子・高さつき（移行後）                                                                                                                   |
+| -------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 24402125:0 s 39–81（OPEN_HOLES、原因未特定） | 13 点で面に当たらない                    | **面に当たる**（内側の差 ≤ 6 mm）。穴は投影の誤りだった（縁の −2 mm の検査点が 2 枚の床版の共有辺に乗っていた。±1 mm なら面に当たり段なく続く）    |
+| 4848889:0（段 4.5 mm）                       | 例外                                     | 規則の内                                                                                                                                           |
+| 813455519:0（内側の面 5.5 cm、原因未特定）   | 例外                                     | 規則の内                                                                                                                                           |
+| 45019020:40（18 mm の段）                    | 例外                                     | seam_step open（段 17.9 mm・内側 15.3 cm）                                                                                                         |
+| 45068172:1 s 298.9                           | 規則の内                                 | **seam_step open**（段 4.7 mm、\|Δz\| ≤ 5 cm で 1 mm 規則）。s 297.85・298.35・298.85・299.35 で 36・20.5・4.6・0 mm の段（1 mm の規則に掛かるのは | Δz  | 5 cm 以内の s 298.9 だけ）。手放し s 295.5 の約 3 m 先で、45019020:40 と同じ型（手放しの先の継ぎ目の段）。旧フレームから 1.19 km で、高さ 0 の投影では検査点が半径方向に 8 mm・縁に直角に約 3 mm ずれていた |
+
+### 6. 作り直せることの確認（判断はしない）
+
+既定の台帳で `--seed`（ship の 2 本は `--ledger public/data/expressway/ledger.json` でビルド）。件数は地区 × 類型の全件（括弧内が `new`）。
+
+| 類型            | ship v1 central  | east       | outside  | ship v2 central  | east       | outside  |
+| --------------- | ---------------- | ---------- | -------- | ---------------- | ---------- | -------- |
+| nose（rule）    | 27               | 25         | 4        | 35               | 21         | 3        |
+| changeover      | 14（7）          | 15（15）   | 1（1）   | 14（8）          | 18（18）   | 2（2）   |
+| parallel-ramp   | 45（44）         | 43（43）   | 20（20） | 45（44）         | 41（41）   | 19（19） |
+| touchdown       | 3（2）           | 1（1）     | —        | 3（2）           | 1（1）     | —        |
+| other           | 15（14）         | 12（12）   | 4（4）   | 14（13）         | 11（11）   | 5（5）   |
+| portal-open-cut | 11（9）          | 1          | 3（3）   | 11（9）          | 1          | 3（3）   |
+| ramp-radius     | 2（1）           | —          | —        | 2（1）           | —          | —        |
+| layer-ambiguous | —                | 1（1）     | —        | —                | 1（1）     | —        |
+| seam_step       | 82（80、open 2） | 84（84）   | 37（37） | 82（81、open 1） | 75（75）   | 44（44） |
+| seam_hole       | 9（9）           | 2（2）     | 2（2）   | 8（8）           | 4（4）     | 2（2）   |
+| merge_skipped   | 244（199）       | 192（192） | 92（92） | 249（219）       | 184（184） | 95（95） |
+| let_go          | 104（10）        | 104（10）  | 51（3）  | 97（8）          | 92（7）    | 49（2）  |
+
+- ship v1: 1,250 件、`new` 897（S5 以降の作業量の見積もり）、規則で通る 295（nose 56・portal-open-cut 3・let_go 236）、seed の判断が保たれた 58 件（既定の 58 件すべて）。検査点 64,372。portal-open-cut 15 件の坑口からの長さ: 13・106.5・122.7・230・254.5・341・345・770・1,511.8・1,515・2,185・2,194.9 m と坑口の無い 3 件（150 m 超 9 + 坑口なし 3 = 12 件が listed）。
+- ship v2: 1,231 件、`new` 907、規則 283、seed の判断が保たれた 41・`new` に戻った 11。v1 との差（全件）: nose +3、changeover +4、parallel-ramp −3、other −1、seam_step −2、seam_hole +1、let_go −21、他は同じ。
+- 既定範囲・v2（`--out`）: 79 件、seed の判断が保たれた 54（規則の 19 を含む）、`new` に戻った 11、新しく出た 14（うち `new` 8、規則 6）、無くなった 8（let_go 2・merge_skipped 5・seam_step 1）。`new` の計 19（changeover 1・seam_step 3・merge_skipped 15）が S5 の既定範囲の再 QA の見積もり。`*` の vertical_fallback 38 → 29。
+
+### 7. 基準 fixture（スコアカード版 6）
+
+`tests/fixtures/expresswayScorecard.ship.json` を ship/pruned・v1・components・`--ledger public/data/expressway/ledger.json` で作り直した。旧 fixture（版 5）に対して changed 18・added 43・removed 5。変わった欄は `diagnostics`（deck_overlap・ramp_radius・tunnel_cover_short の allowed / notAllowed）、`overlaps.nose`、`size`（タイル・meta、`byField` の runs・diagnostics・entrances・closed・solver が消え `record` が足された）、足されたのは `districts`・`ledger`。`runs`・`closures`・`violations`・`tracking`・`partition` は同じ（幾何が変わらないため）。
+
+| 「未許可」                                  | 旧い数え方（版 5 の fixture） | 新しい数え方（版 6）                              |
+| ------------------------------------------- | ----------------------------- | ------------------------------------------------- |
+| 重なりの組 / 測点                           | 213 / 2,203                   | **163 / 2,097**                                   |
+| 　nose / parallel-ramp / changeover / other | 50 / 107 / 25 / 31            | 0 / 107 / 25 / 31                                 |
+| ramp_radius allowed / notAllowed            | 2 / 0                         | 1 / 1（旧 allowlist の全域用の 1 件が台帳に無い） |
+| tunnel_cover_short allowed / notAllowed     | 1 / 13                        | 3 / 11（坑口から 150 m 以内の 2 件が規則で通る）  |
+
+## 逸脱
+
+1. **継ぎ目の検査点の投影を直した**（上の 5）。指示は「フレームを替えても同じになることを確かめる」だったが、高さ 0 の投影のままではフレームの位置で結果が動く（例外・穴が出たり消えたりする）ので、検査そのものの誤りとして直した。これで移行前の例外 2 件と穴 1 件が消え、段 1 件（45068172:1）が新しく出た。新しい段は判断の余地が無いので `open`（直す予定の欠陥）で載せた。
+2. **touchdown の 24402611\|45021976 は `open` でなく `accepted`**: 指示 5.2 は既定データの touchdown を `open` としていたが、`open` は `allowed` にならないので移行で判定が変わる（9 節の条件に反する）。C1 の移り変わりの許可（cap 29 測点・6.57 m）のまま、理由に「P2.7-3a で 1 測点だけ行を外した組、許可か同一面かは S5」と足して移した。
+3. **余裕で上限が広がった**: 判定（`allowed`・テスト）は `cap` + 余裕で見るので、旧 allowlist の上限ちょうどより緩い（例: 測点 +2、\|Δz\| +5 cm、半径 −0.5 m）。既定データの判定は変わらない。
+4. **ledger の `by` は `new` で null**（`rule`・`review` のどちらでもない）。`gone` は判断を `previous` に移し `cap` を空にする。
+5. **道具は tsx + `scripts/assetUrlHooks.mjs`**: 継ぎ目の検査は床版の組み立て（`src/world/expresswayDeck.ts`）を使い、それが Vite の `?url` の画像を import するので、tsx に Node のモジュールフックを足して画像を文字列にした。
+6. **スコアカードの `ledger`** はそのビルドが `allowed` に使った台帳の summary（作り直す前のもの、計測用フォルダは `--ledger` の台帳）で、そのビルドの事例の数ではない。ship の事例の数は計測用フォルダの台帳（道具を掛けた後）にある。
+7. **isTestSection の分岐**は `isDefaultBuild`（既定の範囲で作ったデータ）に置き換えた。既定範囲の run 構成と 1 MB の目安の 2 件だけが残る。T1〜T7・T12 などチャンクの検査は地区で `describe.each`（`XW_DISTRICT` で 1 地区）。
+
+8. **nose:24402611|4848762 が規則に移った**: 浜崎橋 JCT の組で、旧 allowlist では固有の理由（HAMAZAKIBASHI_REASON「浜崎橋 JCT で 1 号羽田線への分岐（4848762）のノーズが内回りと同一面、外回りの 1 段上（OSM layer）を同時に求められ、内回りと外回りの移り変わりと重なる。三者の OSM の線が 1.3–8 m に集まり、全部は満たせない」）と上限 6 測点・0.14 m（`SAME_SURFACE_ALLOWED_DZ_M` の根拠）を持っていた。分合流でつながり 0.13 m なので nose の規則（≤ 0.5 m、測点数は縛らない）で通る。`NOSE_REASON` から「1〜2 測点」を外した（ship v1 で規則が通す nose 56 組のうち 14 組が 3〜7 測点、レビュー W3）。`SAME_SURFACE_ALLOWED_DZ_M` 0.14 は値と意味（既定データで受けた同一面の最大）を変えずに残した。
+9. **レビュー（Fable、Approve）の後の修正**: 台帳の道具が report.json の `allowed` を台帳から書き直す（`reallowRecord`、判断の後に作り直しは要らない。`open` は継ぎ目の類型だけ: 診断由来の類型を `open` にすると T10 が落ちる）／実行時の等価のテストを点ごとに新しい `ExpresswayDecks` で読み、`GRAPH_RADIUS_M` 1,300 + 300 + 150 m < z14 タイル（北端 35.87° で約 1,982 m）を定数で縛る／類型ごとの `cap` の必須欄（`CAP_FIELDS`）をテストで求める／ビルドは台帳を出力先を消した直後に戻す（途中で落ちても消えない）／`expressway_ledger_read` の件数を needed の run に絞る／未知の `XW_DISTRICT` は落とす／runs の無いタイルは読み込み失敗として警告する。
+
+## 落とし穴
+
+- 台帳の事例の `measured` は診断の文字列（|Δz| 2 桁）から作る。総当たりの再計算（テスト）とは 1 cm 以内でずれる。
+- 既定範囲は 1 成分なので、どこか 1 か所の変化で全事例の `blockHash` が変わる（規則 2 で触らずに済む事例が無い）。block を細かくするのは S5 の blocks。
+- 道具は事例の key に類型を含む。nose が 0.5 m を超えると key が変わり、旧い key は `gone`・新しい key は `new` になる（判断は引き継がない）。
+
+## 気づいた欠陥（直していない）
+
+1. ship v1 のタイル 14553-6451 が gzip 60 KB・生 200 KB の予算を超える（上の 3）。
+2. （レビュー S6 で直した）台帳の事例の run がタイルに無いと地区が outside になっていた。今は相手か同じ block の run の地区。
+3. 45068172:1 s 298.9 の 4.7 mm の段（新しく見えた、原因未調査）。45019020:40 の 18 mm の段は前から。
+4. 表に無い ref が outside に入る: `E14;14`（複数 ref のタグ）、S5、K 線・E 線。14 号線を表に足すかは地区を確定する時（S6・S7）に。
+5. ship の seam_hole 13 件（v1）・seam_step 200 件余り: 継ぎ目の検査を全域に掛けたのは初めてで、多くは未判断。
+6. スコアカードの `size.ledger` はビルド時に取っておいた台帳の大きさで、道具を掛けた後の大きさではない。
+
+[^p274]: 指示は scratchpad の p27/s4-ledger-v6.md（設計 Fable）。計測のフォルダは .cache/expressway-area/s4-ship-v1・s4-ship-v2・s4-default-v2、スコアカードは .qa/expressway/ の同名。
 
 # 未対応・既知の欠落
 

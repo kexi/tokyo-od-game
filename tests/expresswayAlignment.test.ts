@@ -7,7 +7,8 @@ import {
   VERTICAL_CURVE_LENGTH,
   VERTICAL_CURVE_RADIUS,
 } from "../src/law/roadStandards";
-import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
+import { isAllowed, RULES } from "../src/expressway/allowlist";
+import { ledgerVerdict } from "../src/expressway/ledger";
 import { ASSUMPTIONS, MAX_LATERAL_SHIFT } from "../src/expressway/assumptions";
 import {
   checkChunkJoin,
@@ -408,22 +409,58 @@ describe("床版の上下干渉（deck_overlap）と報告", () => {
     expect(plan.diagnostics.map((d) => d.kind)).toContain("crossing_layer_ambiguous");
   });
 
-  it("only the allowlist (with a reason) can mark a diagnostic allowed, a deck overlap only pair by pair", () => {
+  it("only the rules and the ledger mark a diagnostic allowed, a deck overlap only case by case within its cap", () => {
     expect(isAllowed({ run: "x", kind: "vertical_fallback" })).toBe(true);
     expect(isAllowed({ run: "x", kind: "vertical_unsolved" })).toBe(false);
+    expect(isAllowed({ run: "x", kind: "vertical_crossings_only" })).toBe(false);
     const detail = (b: string, n: number, dz: number) =>
       `with ${b}: ${n} stations, |Δz| 0.10–${dz} m, centre lines 6.1 m apart`;
-    expect(isAllowed({ run: "x", kind: "deck_overlap", detail: detail("y", 3, 2) })).toBe(false);
-    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("45021976", 3, 2) })).toBe(true);
-    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("4853798", 3, 2) })).toBe(false);
-    // A pair is allowed only up to the stations and |Δz| reviewed: more is a new finding.
-    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("45021976", 300, 2) })).toBe(
-      false,
-    );
-    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("4848762", 3, 5) })).toBe(false);
-    expect(isAllowed({ run: "x", kind: "vertical_crossings_only" })).toBe(false);
-    for (const a of ALLOWLIST) expect(a.reason.length).toBeGreaterThan(10);
-    expect(ALLOWLIST.some((a) => a.kind === "deck_overlap" && a.run === "*")).toBe(false);
+    const end = { kind: "open" as const };
+    const main = (id: string) => ({ id, cls: "expressway" as const, start: end, end });
+    const ctx = {
+      runs: new Map(["a", "b", "c"].map((id) => [id, main(id)])),
+      untied: new Set<string>(),
+      mouths: () => [],
+    };
+    const reviewed = {
+      key: "changeover:a|b",
+      kind: "changeover" as const,
+      run: "a",
+      with: "b",
+      chunk: null,
+      district: "central" as const,
+      block: "a",
+      blockHash: "0",
+      measured: { stations: 3, minDzM: 0.1, maxDzM: 2 },
+      cap: { stations: 3, maxDzM: 2 },
+      status: "accepted" as const,
+      by: "review" as const,
+      reason: "test",
+      qa: null,
+      previous: null,
+    };
+    const ledger = {
+      version: 1 as const,
+      data: { ranges: [], scope: null, objective: "v1", extract: null },
+      summary: { cases: {}, open: 0, withoutQa: 0, seamProbes: 0, rules: {} },
+      budget: null,
+      cases: [reviewed],
+    };
+    const verdict = ledgerVerdict(ctx, ledger);
+    // Without the ledger only the rules: no pair passes.
+    expect(isAllowed({ run: "a", kind: "deck_overlap", detail: detail("b", 3, 2) })).toBe(false);
+    expect(isAllowed({ run: "a", kind: "deck_overlap", detail: detail("b", 3, 2) }, verdict)).toBe(true);
+    expect(isAllowed({ run: "b", kind: "deck_overlap", detail: detail("a", 3, 2) }, verdict)).toBe(true);
+    expect(isAllowed({ run: "a", kind: "deck_overlap", detail: detail("c", 3, 2) }, verdict)).toBe(false);
+    // Up to the cap and the margin (stations +2, |Δz| +5 cm): beyond is a new finding.
+    expect(isAllowed({ run: "a", kind: "deck_overlap", detail: detail("b", 5, 2.05) }, verdict)).toBe(true);
+    expect(isAllowed({ run: "a", kind: "deck_overlap", detail: detail("b", 6, 2) }, verdict)).toBe(false);
+    expect(isAllowed({ run: "a", kind: "deck_overlap", detail: detail("b", 3, 2.06) }, verdict)).toBe(false);
+    // An open case is a defect, not accepted.
+    const open = ledgerVerdict(ctx, { ...ledger, cases: [{ ...reviewed, status: "open" as const }] });
+    expect(isAllowed({ run: "a", kind: "deck_overlap", detail: detail("b", 3, 2) }, open)).toBe(false);
+    for (const r of RULES) expect(r.reason.length).toBeGreaterThan(10);
+    expect(RULES.some((r) => r.kind === "deck_overlap")).toBe(false);
   });
 });
 

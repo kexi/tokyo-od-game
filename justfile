@@ -283,6 +283,14 @@ compare-expressway-reports a b flags="":
 compare-expressway-heights a b flags="":
     pnpm exec tsx scripts/compareExpresswayHeights.ts {{ a }} {{ b }} {{ flags }}
 
+# 高速道路の許容の台帳 ledger.json をデータのフォルダから数え直して書き直す（dir は生成先のフォルダかラベル、新しい事例は new・無くなった事例は gone で追加しかしない、flags に --seed <別の台帳> で判断を key で引き継ぐ・--prune で gone を消す・--write-budget で budget を今の件数に書き換える）
+update-expressway-ledger dir="public/data/expressway" flags="":
+    pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayLedger.ts {{ dir }} {{ flags }}
+
+# 高速道路の生成 2 つのチャンクをバイト単位で比べる（a・b はラベルか生成先のフォルダ、v5・v6 どちらのタイルも読む、違うチャンク・片方にしか無いチャンクの数と ID を 1 行の JSON ログに、違いがあれば終了コード 1）
+compare-expressway-chunks a b:
+    pnpm exec tsx scripts/compareExpresswayChunks.ts {{ a }} {{ b }}
+
 # ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just fetch-regs のキャッシュを使う）
 make-destinations:
     pnpm exec tsx scripts/destinations.ts

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAX_GRADE, VERTICAL_CURVE_RADIUS } from "../src/law/roadStandards";
 import { isAllowed } from "../src/expressway/allowlist";
+import { ledgerVerdict, rampFloorOf } from "../src/expressway/ledger";
 import {
   checkClearance,
   checkGrade,
@@ -548,9 +549,40 @@ describe("目的 v2 の勾配変化の重み 2 で破綻した QP（P2.7-3 の�
 });
 
 describe("許可リストの上限つき規則", () => {
-  it("accepts a ramp's OSM radius only down to the reviewed one", () => {
-    expect(isAllowed({ run: "203059413", kind: "ramp_radius", detail: "R=10.7 m < 15 m (V20)" })).toBe(true);
-    expect(isAllowed({ run: "203059413", kind: "ramp_radius", detail: "R=9.0 m < 15 m (V20)" })).toBe(false);
+  it("accepts a ramp's OSM radius only as its ledger case decides, down to the reviewed one less 0.5 m", () => {
+    const d = (r: number) => ({ run: "203059413", kind: "ramp_radius", detail: `R=${r} m < 15 m (V20)` });
+    const ctx = { runs: new Map(), untied: new Set<string>(), mouths: () => [] };
+    const decided = {
+      key: "ramp-radius:203059413",
+      kind: "ramp-radius" as const,
+      run: "203059413",
+      with: null,
+      chunk: null,
+      district: "central" as const,
+      block: "b",
+      blockHash: "0",
+      measured: { minRadiusM: 10.7 },
+      cap: { minRadiusM: 10.7 },
+      status: "accepted" as const,
+      by: "review" as const,
+      reason: "test",
+      qa: null,
+      previous: null,
+    };
+    const ledger = {
+      version: 1 as const,
+      data: { ranges: [], scope: null, objective: "v1", extract: null },
+      summary: { cases: {}, open: 0, withoutQa: 0, seamProbes: 0, rules: {} },
+      budget: null,
+      cases: [decided],
+    };
+    const verdict = ledgerVerdict(ctx, ledger);
+    expect(isAllowed(d(10.7))).toBe(false);
+    expect(isAllowed(d(10.7), verdict)).toBe(true);
+    expect(isAllowed(d(10.2), verdict)).toBe(true);
+    expect(isAllowed(d(10.1), verdict)).toBe(false);
+    expect(rampFloorOf(ledger)("203059413")).toBe(10.2);
+    expect(rampFloorOf(ledger)("x")).toBeUndefined();
   });
 
   it("evalProfile reads a cubic profile as the Hermite of its two ends", () => {

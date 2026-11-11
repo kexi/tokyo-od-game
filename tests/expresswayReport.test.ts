@@ -365,7 +365,11 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
       ),
     ],
     tiles: [{ bytes: 1000, gzipBytes: 200 }],
-    meta: { raw: 500, gzip: 100, byField: { runs: 300 } },
+    meta: { raw: 500, gzip: 100, byField: { tiles: 300 } },
+    record: { raw: 900, gzip: 200 },
+    ledger: null,
+    districts: new Map([["m", "central" as const]]),
+    ledgerSummary: null,
     solver: {
       components: 1,
       largestRuns: 2,
@@ -424,9 +428,17 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
     ]);
   });
 
-  it("version 5: the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
+  it("version 6: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
     const report = buildReport(input());
-    expect(report.version).toBe(5);
+    expect(report.version).toBe(6);
+    expect(report.size.record).toEqual({ raw: 900, gzip: 200 });
+    expect(report.size.ledger).toBeNull();
+    // Every district, the planned runs all counted in one (a run with no district is outside).
+    expect(Object.keys(report.districts!)).toEqual(["central", "east", "yamate", "outside"]);
+    const planned = Object.values(report.districts!).reduce((n, d) => n + d.planned.runs, 0);
+    const tally = report.runs.planned;
+    expect(planned).toBe(tally.main.runs + tally.ramp.runs + tally.street.runs);
+    expect(report.ledger).toBeNull();
     expect(report.objective).toEqual({ kind: "v1", gradeChange: null, reachM: null, targetScale: null });
     const v2 = buildReport({
       ...input(),
