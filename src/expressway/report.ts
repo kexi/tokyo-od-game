@@ -47,6 +47,19 @@ export const ReportSchema = z.strictObject({
     components: count,
     belowRuns: count,
     belowDeferred: count,
+    /**
+     * Deck pairs among the needed runs not held a level apart (compile.ts markSharedTouchdowns): the
+     * station pairs in all, and per run pair (a < b) with its component. Absent in reports before
+     * P2.7-3a (the version is not raised for it).
+     */
+    untied: z
+      .strictObject({
+        stations: count,
+        pairs: z.array(
+          z.strictObject({ a: z.string(), b: z.string(), component: z.string(), stations: count }),
+        ),
+      })
+      .optional(),
   }),
   /** The runs of the range: planned (wanted), written to the tiles, closed (P2.6 `closed`). */
   runs: z.strictObject({ planned: byClass, written: byClass, closed: byClass }),

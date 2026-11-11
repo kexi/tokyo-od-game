@@ -433,6 +433,8 @@ describe("生成済みの高速道路タイル", () => {
       "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）";
     // Merging P2.6 (its solve moves the coupled components by centimetres) added five NOSE entries
     // (45019020:8, 45554540:30 × 813455519, 4848755:3, 4848762:34, 4848889:1) and widened four SHIBAURA ones.
+    // P2.7-3a (the default data moved by the file's 1 mm rounding) took 45554540:32 × 813455519 off: its
+    // one point went from |Δz| 0.1502 to 0.1499 m, now within MERGE_MAX_DZ and drawn as one slab.
     const expected: Array<{ chunk: string; with: string; s: [number, number]; maxDzM: number; why: string }> =
       [
         { chunk: "24402125:0", with: "24402611", s: [82.6, 192.6], maxDzM: 6.81, why: SHIODOME },
@@ -467,7 +469,6 @@ describe("生成済みの高速道路タイル", () => {
         { chunk: "45554540:31", with: "45019020", s: [7519.0, 7522.0], maxDzM: 0.23, why: NOSE },
         { chunk: "45554540:31", with: "813455519", s: [7717.9, 7726.9], maxDzM: 0.65, why: NOSE },
         { chunk: "45554540:32", with: "45021972", s: [7792.9, 7817.4], maxDzM: 3.28, why: SHIBAURA },
-        { chunk: "45554540:32", with: "813455519", s: [7772.4, 7772.4], maxDzM: 0.16, why: NOSE },
         { chunk: "45554540:8", with: "45021972", s: [2022.8, 2055.8], maxDzM: 1.91, why: SHIBAURA },
         { chunk: "45554540:9", with: "45021972", s: [2056.3, 2057.3], maxDzM: 2.03, why: SHIBAURA },
         { chunk: "4848755:3", with: "45019020", s: [862.8, 867.8], maxDzM: 0.29, why: NOSE },

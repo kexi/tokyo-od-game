@@ -267,6 +267,18 @@ export const BLOCK_ANCHOR_SPACING: Assumption<number> = {
     "仮定。長い静かな区間を等分する上限の間隔。block の大きさ（QP の変数）と固定点の数の釣り合いで置いた目安",
 };
 
+/**
+ * How close two main lines' ground ends must be to count as one touchdown: the up and down
+ * carriageways of one road coming down to the same place. Their deck pairs within the climb of
+ * those ends are not held a level apart (compile.ts `markSharedTouchdowns`).
+ */
+export const SHARED_TOUCHDOWN: Assumption<number> = {
+  value: 60,
+  verified: false,
+  reason:
+    "仮定。上下線が同じ地点へ降りるとみなす端どうしの距離。C1 の上下線 41009552・668292569 の低い端（標高 3.56 m と 3.59 m）が同じ場所に降りる形から、車線域 2 本分と OSM の中心線の取り方の揺れを見込んで置いた目安。全域の計画で条件に掛かる 5 組の端どうしの距離は 6.9〜11.3 m で、11.3〜60 m のどの値でも同じ組になる（P2.7-3a のレビューの実測、knowledge/expressway-generation.md）",
+};
+
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
   STANDARD_UNDERCLEARANCE,
@@ -298,4 +310,5 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   BLOCK_QUIET_FACTOR,
   BLOCK_QUIET_MIN,
   BLOCK_ANCHOR_SPACING,
+  SHARED_TOUCHDOWN,
 };

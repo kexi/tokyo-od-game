@@ -879,6 +879,12 @@ export const LOG_EVENTS = {
     crossings: count,
     belowRuns: count,
     belowDeferred: count,
+    /**
+     * Station pairs (plan.pairs entries) of two main lines touching down at the same place, not held a level apart
+     * (compile.ts markSharedTouchdowns): over the whole plan, and among the runs the range needs.
+     */
+    untiedStations: count,
+    untiedStationsNeeded: count,
   }),
   /**
    * The OSM extract read (src/expressway/extract.ts): its replication timestamp against the pinned

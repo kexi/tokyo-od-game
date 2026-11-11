@@ -455,6 +455,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     crossings: 300,
     belowRuns: 40,
     belowDeferred: 12,
+    untiedStations: 30,
+    untiedStationsNeeded: 2,
   },
   expressway_extract_checked: {
     timestamp: "2026-10-03T20:20:50Z",

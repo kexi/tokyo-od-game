@@ -13,6 +13,7 @@ import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
 import { evalProfile } from "../src/expressway/vertical";
+import { touchdownGround, touchdownNet, touchdownRoad } from "./expresswayTouchdown";
 
 // Blocks (P2.7-2, src/expressway/blocks.ts, `--partition blocks`): synthetic networks in a local
 // plane around 芝公園, as tests/expresswayAlignment.test.ts builds them.
@@ -626,5 +627,40 @@ describe("段・速度の区間・ランプ（固定点の両側で違うとき�
     const plan = planNetwork(net, new Set(), null);
     expect(plan.runs.get("20")?.cls).toBe("ramp");
     expect(anchorsOf(plan, 1)).toEqual([]);
+  });
+});
+
+describe("同じ場所へ降りる本線どうしの印は片の計画にも写る（P2.7-3a）", () => {
+  // The net of tests/expresswayTouchdown.test.ts cut at anchors: its pieces keep the marks (blocks.ts
+  // mapPair) and the lower main line solves through --partition blocks as it does as a component.
+  const plan = planNetwork(touchdownNet(), new Set(), null, [], BLOCKS);
+  const part = plan.partition!;
+  const result = solvePlan(plan, touchdownGround, [touchdownRoad()]);
+
+  it("cuts the main lines at anchors and marks the same station pairs on the pieces", () => {
+    expect(part.anchors.length).toBeGreaterThan(0);
+    const onRuns = plan.pairs.filter((p) => p.untied).length;
+    expect(onRuns).toBeGreaterThan(0);
+    expect(part.pieces.pairs.filter((p) => p.untied).length).toBe(onRuns);
+    expect(
+      part.pieces.pairs.filter((p) => p.untied).every((p) => p.a.includes("#") && p.b.includes("#")),
+    ).toBe(true);
+  });
+
+  it("solves both main lines, with the pairs still in the lower's decks", () => {
+    expect(
+      result.diagnostics.filter((d) => ["vertical_unsolved", "parent_unsolved"].includes(d.kind)),
+    ).toEqual([]);
+    expect(result.runs.map((r) => r.id).sort()).toEqual(["2", "5"]);
+    const decks = result.chunks.filter((c) => c.run === "2").flatMap((c) => c.decks ?? []);
+    expect(decks.some((d) => d.with === "5" && d.relation === "below")).toBe(true);
+  });
+
+  it("without the marks on the pieces the lower main line fails there too (the path uses them)", () => {
+    const held = planNetwork(touchdownNet(), new Set(), null, [], BLOCKS);
+    for (const p of held.partition!.pieces.pairs) delete p.untied;
+    const before = solvePlan(held, touchdownGround, [touchdownRoad()]);
+    const failed = before.diagnostics.filter((d) => d.kind === "vertical_unsolved").map((d) => d.run);
+    expect(failed).toEqual(["2"]);
   });
 });
