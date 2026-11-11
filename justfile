@@ -22,9 +22,13 @@ preview-app: build-app
 fetch-data:
     pnpm exec tsx scripts/fetch-data.ts
 
-# JARTIC 交通規制情報と OSM の信号機を取得し public/data/regs・signals を再生成する
+# JARTIC 交通規制情報と OSM の信号機・車線などを取得し public/data/regs・signals・roadlanes 等を再生成する
 fetch-regs:
     pnpm exec tsx scripts/regulations.ts
+
+# OSM の一般道の車線数・幅員・一方通行だけを public/data/roadlanes に再生成する（OSM_FILE=<pbf> で手元の抽出を使う）
+fetch-road-lanes:
+    pnpm exec tsx scripts/regulations.ts roadlanes
 
 # 車のテクスチャ（assets/car/textures）を手続き生成し直す（フォントはコミット固定の Noto Sans JP）
 make-car-textures:
@@ -41,6 +45,14 @@ make-sign-model: make-sign-registry
 # 歩行者を Blender CLI でモデリングし public/models/human.glb を書き出す
 make-human-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/human.py -- public/models/human.glb
+
+# 23 区の OSM 信号ノードのタグ（押ボタン・音響・方向・単路の横断歩道など）を数えて 1 行の JSON ログに出す（OSM は just fetch-regs のキャッシュ）
+count-signal-tags:
+    pnpm exec tsx scripts/signal-tags.ts
+
+# OSM の信号タイル（public/data/signals）を .cache/osm の抽出から作り直す（古いキャッシュもそのまま使い、中身の変わらない他の OSM 層は書き換えない）
+rebuild-signal-tiles:
+    REGS_USE_CACHE=1 pnpm exec tsx scripts/regulations.ts signals
 
 # 信号灯器の型と灯の配置（src/signals）から Blender 用の assets/signals/heads.json を書き出す
 make-signal-layout:

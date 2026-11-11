@@ -1,5 +1,5 @@
 import { movementOf } from "./movement";
-import { MOVEMENTS, type Movement, type Permission } from "./plan";
+import { MOVEMENTS, crossingVerdict, type Movement, type Permission } from "./plan";
 
 /** A horizontal point or direction (x east, z south). */
 type Flat = { x: number; z: number };
@@ -62,7 +62,7 @@ export class RedLightJudge {
   /** The car crossed `crossing`'s stop line into the junction at `now` (ms), moving along `travel`. */
   crossed(crossing: SignalCrossing, now: number, travel: Flat = crossing.tIn): CrossingOutcome[] {
     const out = this.settle(travel, now);
-    const allowed = MOVEMENTS.filter((m) => crossing.permissions[m] !== "stop");
+    const allowed = MOVEMENTS.filter((m) => crossingVerdict(crossing.permissions[m]) !== "booked");
     const isRedEveryWay = allowed.length === 0;
     if (isRedEveryWay) return [...out, { kind: "violation", crossing, movement: null, heldMs: 0 }];
     const isOpenEveryWay = allowed.length === MOVEMENTS.length;
@@ -104,10 +104,10 @@ export class RedLightJudge {
     this.held = null;
     const c = held.crossing;
     const movement = movementOf(c.tIn, travel);
-    const permission = c.permissions[movement];
+    const verdict = crossingVerdict(c.permissions[movement]);
     const heldMs = now - held.since;
-    if (permission === "stop") return [{ kind: "violation", crossing: c, movement, heldMs }];
-    const kind = permission === "unconfirmed" ? "unconfirmed" : "permitted";
+    if (verdict === "booked") return [{ kind: "violation", crossing: c, movement, heldMs }];
+    const kind = verdict === "unconfirmed" ? "unconfirmed" : "permitted";
     return [{ kind, crossing: c, movement, heldMs }];
   }
 

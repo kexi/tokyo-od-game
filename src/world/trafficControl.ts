@@ -23,8 +23,10 @@ import {
   LAMP_COLOURS,
   LENS_Z_M,
   PED_HEAD,
+  PUSH_BUTTON_BOX,
   SIGNAL_HEADS,
   VEHICLE_HEAD,
+  WAIT_LAMP_COLOUR,
   arrowDirection,
   headHang,
   isArrow,
@@ -33,8 +35,25 @@ import {
   type LampColour,
 } from "../signals/heads";
 import { SIGNAL_MOUNTS } from "../signals/mounts";
-import { hasRightArrow, planForJunction } from "../signals/assign";
+import { hasRightArrow, planForCrossing, planForJunction } from "../signals/assign";
+import { UNTAGGED, type SignalRecord } from "../signals/osmTags";
 import {
+  BUTTON_STAND_REACH_M,
+  CROSSING_CLEAR_OF_JUNCTION_M,
+  CROSSING_CLUSTER_M,
+  CROSSING_HEAD_BEYOND_M,
+  CROSSING_MATCH_M,
+  CROSSING_ON_ROAD_M,
+  CROSSING_OWN_CROSSWALK_M,
+  CROSSING_STOP_BACK_M,
+  CROSSING_STOP_RANGE_M,
+  PED_LIGHT_REACH_M,
+  SHARED_POLE_M,
+  SIGNAL_SNAP_M,
+} from "../signals/siting";
+import { log } from "../log";
+import {
+  OnDemandRun,
   cycleTime,
   permits,
   stepAt,
@@ -48,8 +67,11 @@ import {
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { hasRoadside, isEnterable } from "./roadClass";
 
-/** Which of 施行令第2条's three colours a signal's main lamps show (flashing ones by their colour). */
-export type LightState = LampColour;
+/**
+ * What a signal's main lamps show: one of 施行令第2条's three colours, 黄・赤の点滅, or dark. Read by
+ * the HUD and the lamp glow; whether a car may go is `permits`.
+ */
+export type LightState = LampColour | "flashingYellow" | "flashingRed" | "off";
 
 /** A place where traffic on one segment, in one direction, must obey a signal or stop sign. */
 export type Approach = {
@@ -58,11 +80,16 @@ export type Approach = {
   dir: 1 | -1; // travel direction (1 = from → to), the TrafficAI convention
   at: number; // stop position along that travel direction
   kind: "signal" | "stop";
+  /**
+   * What the stop line is short of: a junction (the node at the segment's end; 一時停止 too), or
+   * a 単路 crossing's crosswalk in the segment's middle (`node` is then the crosswalk's middle).
+   */
+  site: "junction" | "crossing";
   controller: Controller | null;
   axis: 0 | 1;
-  /** The plan's signal group the approach's heads belong to ("a" for axis 0, "b" for axis 1). */
+  /** The plan's signal group the approach's heads belong to (the plan's choice, assign.ts). */
   group: GroupId;
-  /** The junction node the approach arrives at. */
+  /** The junction node the approach arrives at (for a 単路 crossing, the crosswalk's middle). */
   node: Vector3;
   /**
    * How far from `node` a car has left the junction: the controller's box plus 20 m, at least 25 m,
@@ -70,6 +97,19 @@ export type Approach = {
    * would read every crossing as through.
    */
   exitM: number;
+  /**
+   * Metres from the stop line on to `node`, along the travel: the rest of the segment at a
+   * junction, to the crosswalk's middle at a 単路 crossing. Why a field: readers that took the
+   * node to be the segment's end (the autopilot's movement) were wrong at a crossing.
+   */
+  toNodeM: number;
+  /**
+   * Where the vehicle head hangs, on the ground under it (signals; null for 一時停止): the lamp
+   * glow (streetLights.ts) reads it rather than working the placement out again.
+   */
+  head: Vector3 | null;
+  /** The centreline point beyond the node the head and its pole are set out from (signals). */
+  headBase: Vector3 | null;
   /** Stop line across the whole carriageway, for crossing tests. */
   a: Vector3;
   b: Vector3;
@@ -82,24 +122,53 @@ export type Approach = {
  * kept from before a rebuild (streetLights.ts holds approaches between its own rebuilds) points at
  * a controller that is no longer updated, so its lamps and permits stay frozen until it is replaced.
  */
-type Controller = { id: number; offset: number; nodes: number[]; plan: CompiledPlan; step: Step };
+type Controller = {
+  id: number;
+  /** A junction's signal, or a 単路 (mid-block) crossing's. */
+  kind: "junction" | "crossing";
+  offset: number;
+  /** The junction nodes (none for a 単路 crossing). */
+  nodes: number[];
+  /** A 単路 crossing's own crosswalks (its walk lights and button serve these only). */
+  crosswalks: Crossing[];
+  plan: CompiledPlan;
+  step: Step;
+  /** The push-button run of an on-demand plan (kept across rebuilds by its key), else null. */
+  demand: OnDemandRun | null;
+  /** For each vehicle group, the walkers who cross its road (the plan's `walkers`). */
+  walkersAcross: Map<GroupId, GroupId>;
+  /** 音響式 by OSM traffic_signals:sound on the controller's own nodes: on, off, or not tagged. */
+  sound: boolean | null;
+};
 
 /** The default plan (src/signals/plan.ts twoPhase), the compiled one assign.ts shares. */
-const TWO_PHASE = planForJunction([]);
+const TWO_PHASE = planForJunction([]).plan;
 /** The default plan's cycle (s). Plans with arrows run longer. */
 export const CYCLE = TWO_PHASE.cycle;
 
-const MAIN_COLOUR: Record<MainAspect, LightState> = {
+const MAIN_LIGHT: Record<MainAspect, LightState> = {
   G: "green",
   Y: "yellow",
   R: "red",
-  FY: "yellow",
-  FR: "red",
-  off: "red",
+  FY: "flashingYellow",
+  FR: "flashingRed",
+  off: "off",
 };
-const groupOfAxis = (axis: 0 | 1): GroupId => (axis === 0 ? "a" : "b");
-/** The walkers who go with `group`'s traffic cross the other group's road. */
-const walkersCrossing = (group: GroupId): GroupId => (group === "a" ? "b" : "a");
+/** The lamp a light shows (null: dark) and whether it blinks. */
+const LAMP_OF: Record<LightState, { colour: LampColour | null; isFlashing: boolean }> = {
+  green: { colour: "green", isFlashing: false },
+  yellow: { colour: "yellow", isFlashing: false },
+  red: { colour: "red", isFlashing: false },
+  flashingYellow: { colour: "yellow", isFlashing: true },
+  flashingRed: { colour: "red", isFlashing: true },
+  off: { colour: null, isFlashing: false },
+};
+/** The lamp colour a light shows, steady or flashing (null when dark): the lamp glow's colour. */
+export const lampColourOf = (light: LightState): LampColour | null => LAMP_OF[light].colour;
+
+/** For each vehicle group of `plan`, the walkers who cross its road. */
+const walkersAcrossOf = (plan: CompiledPlan): Map<GroupId, GroupId> =>
+  new Map(Object.entries(plan.plan.walkers).map(([walkers, w]) => [w.across, walkers]));
 
 /**
  * Main lamps of one axis of the default two-phase plan at `seconds` (compatibility: the plan is
@@ -107,23 +176,24 @@ const walkersCrossing = (group: GroupId): GroupId => (group === "a" ? "b" : "a")
  */
 export function lightState(seconds: number, offset: number, axis: 0 | 1): LightState {
   const step = stepAt(TWO_PHASE, cycleTime(seconds, offset, TWO_PHASE.cycle));
-  return MAIN_COLOUR[step.main[groupOfAxis(axis)]];
+  return MAIN_LIGHT[step.main[axis === 0 ? "a" : "b"]];
 }
 
-const SIGNAL_SNAP = 25; // OSM signal node → GSI junction node (m)
+// Where signals go (the OSM snap, the 単路 crossings' rules): src/signals/siting.ts.
 const CLUSTER = 30; // junction nodes this close share one controller (dual carriageways)
 const BOX_LINK = 35; // links this short between junction nodes are inside one crossing
 const BOX_RADIUS = 50; // …as long as the node is this close to the signalled one
 
 // Heads, their lamps, colours and how they are held up are declared in src/signals
 // (knowledge/signal-system.md); heads are drawn larger than life (the mount's drawScale).
-const LAMP_ON: Record<LightState, Color> = {
+const LAMP_ON: Record<LampColour, Color> = {
   green: new Color(LAMP_COLOURS.vehicle.green),
   yellow: new Color(LAMP_COLOURS.vehicle.yellow),
   red: new Color(LAMP_COLOURS.vehicle.red),
 };
 const LAMP_OFF = new Color(LAMP_COLOURS.off);
 const PED_ON = { stop: new Color(LAMP_COLOURS.pedestrian.red), go: new Color(LAMP_COLOURS.pedestrian.green) };
+const WAIT_ON = new Color(WAIT_LAMP_COLOUR);
 const VEHICLE_MOUNT = SIGNAL_MOUNTS[VEHICLE_HEAD.mount];
 const PED_MOUNT = SIGNAL_MOUNTS[PED_HEAD.mount];
 const SIGNAL_HEIGHT = VEHICLE_MOUNT.centreHeightM;
@@ -141,13 +211,51 @@ export type PedLight = "go" | "flash" | "stop";
  * A 歩行者用灯器 and the accessible signal's speaker on it: where it hangs, the walking direction
  * across the road from its kerb, which end of the crosswalk it is, and the crossing it serves.
  */
-export type PedHead = { seg: Segment; near: Vector3; at: Vector3; across: Vector3; side: 1 | -1 };
+export type PedHead = {
+  seg: Segment;
+  near: Vector3;
+  at: Vector3;
+  across: Vector3;
+  side: 1 | -1;
+  /** Whether its 視覚障害者用付加装置 sounds (OSM traffic_signals:sound, else the game's default: on). */
+  sounds: boolean;
+};
+/**
+ * A 押ボタン箱 on a 単路 crossing's pole: the crossing it calls, the box's centre and the way its
+ * face looks, and where a walker stands to press it.
+ */
+type ButtonBox = {
+  seg: Segment;
+  near: Vector3;
+  at: Vector3;
+  face: Vector3;
+  stand: Vector3;
+  controller: Controller;
+};
 const UP = new Vector3(0, 1, 0);
 
 /**
  * Traffic signals (OSM positions, snapped to junctions) and 一時停止 (JARTIC) for the current
  * road graph: per-approach state for the law checks and the AI, plus their 3D models.
  */
+/** One OSM signal record placed in the local frame, with its tags when the tiles carried them. */
+type TaggedSignal = { pos: Vector3; record: SignalRecord | null };
+/** One way across a 単路 crossing: its segment and direction, stop position and the crosswalk. */
+type CrossingPlace = { seg: Segment; dir: 1 | -1; at: number; centre: Vector3; toNodeM: number };
+/** A 単路 crossing that can have a controller: its OSM records, crosswalks and approaches. */
+type CrossingPlan = {
+  cluster: TaggedSignal[];
+  centre: Vector3;
+  places: CrossingPlace[];
+  crosswalks: Crossing[];
+};
+/** Why 単路 crossings got no controller (the signal_crossings_skipped log). */
+type CrossingSkips = { outside: number; noCrosswalk: number; nearJunction: number; noRoom: number };
+
+/** A lon/lat hash, as the junction offsets use (stable across rebuilds and re-anchoring). */
+const recordHash = (lon: number, lat: number): number =>
+  (Math.imul(Math.round(lon * 1e4), 73856093) ^ Math.imul(Math.round(lat * 1e4), 19349663)) >>> 0;
+
 /** First spot clear of every carriageway (poles stand on the pavement), or null. */
 function clearSpot(graph: RoadGraph, candidates: Vector3[]): Vector3 | null {
   return candidates.find((p) => graph.carriagewaysAt(p, 0.3).length === 0) ?? null;
@@ -165,6 +273,15 @@ export class TrafficControl {
   private arrowOwners: { approach: Approach; dir: ArrowDirection }[] = [];
   private pedLamps: { stop: InstancedMesh; go: InstancedMesh } | null = null;
   private pedOwners: PedHead[] = [];
+  private buttons: ButtonBox[] = [];
+  /** The records with an OSM traffic_signals:sound tag, for the crosswalks' 音響式 (buildModels). */
+  private soundRecords: TaggedSignal[] = [];
+  private waitLamps: InstancedMesh | null = null;
+  /**
+   * Push-button runs by the crossing's key (a hash of its OSM nodes' lon/lat), kept across
+   * rebuilds: a walk under way must not snap back to 赤 when the network is rebuilt round the player.
+   */
+  private readonly demands = new Map<number, OnDemandRun>();
   private plates: Mesh[] = [];
   private readonly platePool = new RoadPlates((p) => {
     p.geometry.dispose();
@@ -179,28 +296,56 @@ export class TrafficControl {
     private readonly world: RAPIER.World,
   ) {}
 
-  rebuild(graph: RoadGraph | null, regs: AppliedRegulations | null): void {
-    for (const _ of this.rebuildSteps(graph, regs)) {
+  rebuild(
+    graph: RoadGraph | null,
+    regs: AppliedRegulations | null,
+    records: readonly SignalRecord[] = [],
+  ): void {
+    for (const _ of this.rebuildSteps(graph, regs, records)) {
       /* synchronous compatibility path */
     }
   }
 
-  rebuildAsync(graph: RoadGraph, regs: AppliedRegulations | null, work: FrameWork): Promise<void> {
-    return work.run(this.rebuildSteps(graph, regs));
+  rebuildAsync(
+    graph: RoadGraph,
+    regs: AppliedRegulations | null,
+    work: FrameWork,
+    records: readonly SignalRecord[] = [],
+  ): Promise<void> {
+    return work.run(this.rebuildSteps(graph, regs, records));
   }
 
-  private *rebuildSteps(graph: RoadGraph | null, regs: AppliedRegulations | null): Generator<void | boolean> {
-    yield* this.setNetwork(graph, regs);
+  private *rebuildSteps(
+    graph: RoadGraph | null,
+    regs: AppliedRegulations | null,
+    records: readonly SignalRecord[],
+  ): Generator<void | boolean> {
+    yield* this.setNetwork(graph, regs, records);
   }
 
-  setNetwork(graph: RoadGraph | null, regs: AppliedRegulations | null): Generator<void | boolean> {
+  /**
+   * The signals and stops of a new network. `records` are the OSM tags of `regs.signals`, index for
+   * index (roadNetworkData.ts); without them every signal is read as before T3 (a junction's).
+   */
+  setNetwork(
+    graph: RoadGraph | null,
+    regs: AppliedRegulations | null,
+    records: readonly SignalRecord[] = [],
+  ): Generator<void | boolean> {
     this.clear(true);
     if (!graph || !regs) {
       this.instances.end();
       this.platePool.end();
+      this.demands.clear();
       return this.modelSteps(null, null);
     }
-    const signalled = this.buildSignals(graph, regs);
+    const tagged = regs.signals.map((pos, i) => ({ pos, record: records[i] ?? null }));
+    this.soundRecords = tagged.filter((t) => (t.record?.tags.sound ?? null) !== null);
+    // The 単路 crossings are planned first: the records of those that get a controller stay out
+    // of the junction snap, the others snap as before T3.
+    const crossings = this.planCrossings(graph, regs, tagged);
+    const signalled = this.buildSignals(graph, regs, tagged, crossings.byCrossing);
+    this.buildCrossingSignals(graph, crossings.plans, crossings.skipped);
     this.buildStops(graph, regs, signalled);
     for (const ap of this.approaches) {
       const list = this.bySegment.get(ap.seg.id) ?? [];
@@ -223,14 +368,16 @@ export class TrafficControl {
   update(seconds: number): void {
     this.time = seconds;
     // One step lookup per controller per frame; state(), permits() and pedLight() read it there.
-    for (const c of this.controllers) c.step = stepAt(c.plan, cycleTime(seconds, c.offset, c.plan.cycle));
+    for (const c of this.controllers)
+      c.step = c.demand
+        ? c.demand.stepAt(seconds)
+        : stepAt(c.plan, cycleTime(seconds, c.offset, c.plan.cycle));
     const lamps = this.lamps;
     if (!lamps) return;
     const blinkOn = Math.floor(seconds * 2) % 2 === 0;
     this.lampOwners.forEach(({ approach, colour }, i) => {
-      const aspect = approach.controller?.step.main[approach.group] ?? "off";
-      const isFlashing = aspect === "FY" || aspect === "FR";
-      const isLit = aspect !== "off" && MAIN_COLOUR[aspect] === colour && (!isFlashing || blinkOn);
+      const lamp = LAMP_OF[this.state(approach)];
+      const isLit = lamp.colour === colour && (!lamp.isFlashing || blinkOn);
       lamps.setColorAt(i, isLit ? LAMP_ON[colour] : LAMP_OFF);
     });
     if (lamps.instanceColor) lamps.instanceColor.needsUpdate = true;
@@ -251,6 +398,13 @@ export class TrafficControl {
       ped.go.setColorAt(i, isGo ? PED_ON.go : LAMP_OFF);
     });
     for (const m of [ped.stop, ped.go]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    const wait = this.waitLamps;
+    if (!wait) return;
+    this.buttons.forEach(({ controller }, i) => {
+      const isWaiting = controller.demand?.isWaiting(seconds) ?? false;
+      wait.setColorAt(i, isWaiting ? WAIT_ON : LAMP_OFF);
+    });
+    if (wait.instanceColor) wait.instanceColor.needsUpdate = true;
   }
 
   /**
@@ -258,7 +412,7 @@ export class TrafficControl {
    * arrows). Whether a car may go is `permits`.
    */
   state(ap: Approach): LightState {
-    return ap.controller ? MAIN_COLOUR[ap.controller.step.main[ap.group]] : "green";
+    return ap.controller ? MAIN_LIGHT[ap.controller.step.main[ap.group] ?? "off"] : "green";
   }
 
   /**
@@ -275,12 +429,21 @@ export class TrafficControl {
   permitsBefore(ap: Approach, movement: Movement, agoS: number): Permission {
     const c = ap.controller;
     if (ap.kind !== "signal" || !c) return "go";
-    return permits(stepAt(c.plan, cycleTime(this.time - agoS, c.offset, c.plan.cycle)), ap.group, movement);
+    const before = c.demand
+      ? c.demand.stepBefore(this.time, agoS)
+      : stepAt(c.plan, cycleTime(this.time - agoS, c.offset, c.plan.cycle));
+    return permits(before, ap.group, movement);
   }
 
   /** How many controllers run a plan with a 右折矢印 (for the network summary log). */
   rightArrowCount(): number {
     return this.controllers.filter((c) => ["a", "b"].some((g) => hasRightArrow(c.plan, g))).length;
+  }
+
+  /** How many 単路 crossing controllers there are, and how many of them are push-button (the log). */
+  crossingCounts(): { crossingSignals: number; pushButtons: number } {
+    const crossings = this.controllers.filter((c) => c.kind === "crossing");
+    return { crossingSignals: crossings.length, pushButtons: crossings.filter((c) => c.demand).length };
   }
 
   /**
@@ -289,26 +452,74 @@ export class TrafficControl {
    * nobody should start across.
    */
   pedLight(seg: Segment, near: Vector3): PedLight | null {
+    const best = this.governing(seg, near);
+    if (!best?.controller) return null;
+    const walkers = best.controller.walkersAcross.get(best.group);
+    return walkers === undefined ? "stop" : (best.controller.step.ped[walkers] ?? "stop");
+  }
+
+  /**
+   * The signal approach on `seg` whose stop line is nearest `near` (within PED_LIGHT_REACH_M), if
+   * any. A 単路 crossing's approaches count only at that crossing's own crosswalks: a junction
+   * corner (or an unsignalled crosswalk) within reach of its stop line is not under its lights.
+   */
+  private governing(seg: Segment, near: Vector3): Approach | null {
     let best: Approach | null = null;
-    let bestD = 30;
+    let bestD = PED_LIGHT_REACH_M;
     for (const ap of this.bySegment.get(seg.id) ?? []) {
       if (ap.kind !== "signal" || !ap.controller) continue;
+      const isOtherCrosswalk =
+        ap.site === "crossing" &&
+        !ap.controller.crosswalks.some(
+          (c) => c.seg === seg && Math.hypot(c.pos.x - near.x, c.pos.z - near.z) < CROSSING_OWN_CROSSWALK_M,
+        );
+      if (isOtherCrosswalk) continue;
       const d = Math.hypot((ap.a.x + ap.b.x) / 2 - near.x, (ap.a.z + ap.b.z) / 2 - near.z);
       if (d < bestD) {
         bestD = d;
         best = ap;
       }
     }
-    if (!best?.controller) return null;
-    return best.controller.step.ped[walkersCrossing(best.group)] ?? "stop";
+    return best;
   }
 
   /**
-   * The pedestrian heads whose walk light is green now (視覚障害者用付加装置 sound only then), for
-   * the crosswalk calls in game/spatialAudio.ts.
+   * The pedestrian heads whose walk light is green now and whose 視覚障害者用付加装置 sounds (OSM
+   * traffic_signals:sound; untagged ones do, as before T3), for the crosswalk calls in
+   * game/spatialAudio.ts.
    */
   forEachWalking(visit: (head: PedHead) => void): void {
-    for (const h of this.pedOwners) if (this.pedLight(h.seg, h.near) === "go") visit(h);
+    for (const h of this.pedOwners) if (h.sounds && this.pedLight(h.seg, h.near) === "go") visit(h);
+  }
+
+  /**
+   * Where a walker about to cross `seg` at `near` from `kerb` stands to press the 押ボタン (the box
+   * on that end's pole), or null when the crossing is not push-button or has no box on that side.
+   */
+  buttonStand(seg: Segment, near: Vector3, kerb: Vector3): Vector3 | null {
+    let best: ButtonBox | null = null;
+    let bestD = BUTTON_STAND_REACH_M;
+    for (const b of this.buttons) {
+      if (b.seg !== seg || b.near.distanceTo(near) > 1) continue;
+      const d = Math.hypot(b.stand.x - kerb.x, b.stand.z - kerb.z);
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    return best?.stand ?? null;
+  }
+
+  /**
+   * A walker pressed the 押ボタン for crossing `seg` at `near`: a call to that crossing's
+   * push-button run (nothing at a crossing that is not push-button). True when it was taken.
+   */
+  pressButton(seg: Segment, near: Vector3): boolean {
+    const c = this.governing(seg, near)?.controller;
+    if (!c?.demand) return false;
+    const isTaken = c.demand.call(this.time);
+    if (isTaken) log("signal_button_pressed", { controllerId: c.id });
+    return isTaken;
   }
 
   /** Whether a pedestrian may start across `seg` at `near` now (null: no signal there). */
@@ -317,11 +528,19 @@ export class TrafficControl {
     return light === null ? null : light === "go";
   }
 
-  /** Next approach on this segment ahead of a car at travel distance `s`. */
-  nextStop(seg: Segment, dir: 1 | -1, s: number): { approach: Approach; dist: number } | null {
+  /**
+   * Next approach on this segment ahead of a car at travel distance `s` (negative: the car is that
+   * far short of the segment, on the one before), of any kind, or only those `accept` takes.
+   */
+  nextStop(
+    seg: Segment,
+    dir: 1 | -1,
+    s: number,
+    accept: (ap: Approach) => boolean = () => true,
+  ): { approach: Approach; dist: number } | null {
     let best: { approach: Approach; dist: number } | null = null;
     for (const ap of this.bySegment.get(seg.id) ?? []) {
-      if (ap.dir !== dir) continue;
+      if (ap.dir !== dir || !accept(ap)) continue;
       const dist = ap.at - s;
       if (dist < -0.5 || (best && dist >= best.dist)) continue;
       best = { approach: ap, dist };
@@ -357,8 +576,13 @@ export class TrafficControl {
     return best;
   }
 
+  /**
+   * How many junction signal controllers there are (the network summary's `signals`, as before
+   * T3; the 単路 crossings are counted apart, crossingCounts).
+   */
   signalCount(): number {
-    return new Set(this.approaches.filter((a) => a.controller).map((a) => a.controller?.id)).size;
+    const junctions = this.approaches.filter((a) => a.controller && a.site === "junction");
+    return new Set(junctions.map((a) => a.controller?.id)).size;
   }
 
   clear(reuse = false): void {
@@ -378,6 +602,8 @@ export class TrafficControl {
     this.controllers = [];
     this.pedLamps = null;
     this.pedOwners = [];
+    this.buttons = [];
+    this.waitLamps = null;
     for (const p of this.plates) {
       this.scene.remove(p);
     }
@@ -397,8 +623,19 @@ export class TrafficControl {
     return (seg.from === node ? seg.pts[0] : seg.pts[seg.pts.length - 1]).clone();
   }
 
-  /** Signals: snap OSM nodes to junctions, cluster them, and create one approach per entry. */
-  private buildSignals(graph: RoadGraph, regs: AppliedRegulations): Set<string> {
+  /**
+   * Signals: snap OSM nodes to junctions, cluster them, and create one approach per entry. Only
+   * highway=traffic_signals records snap (as before T3), and not those `byCrossing` keeps: the
+   * records of the 単路 crossings that get a controller of their own. A 単路 crossing that does not
+   * (no crosswalk to match, say) leaves its signal nodes to snap as before, so no junction signal
+   * the game had before T3 goes missing.
+   */
+  private buildSignals(
+    graph: RoadGraph,
+    regs: AppliedRegulations,
+    tagged: readonly TaggedSignal[],
+    byCrossing: ReadonlySet<TaggedSignal>,
+  ): Set<string> {
     const junctions: { node: number; pos: Vector3 }[] = [];
     for (const [node, ids] of graph.nodes) {
       if (ids.length < 3) continue;
@@ -406,9 +643,14 @@ export class TrafficControl {
       if (pos) junctions.push({ node, pos });
     }
     const signalled = new Set<number>();
-    for (const s of regs.signals) {
+    const soundAt = new Map<number, boolean[]>();
+    for (const t of tagged) {
+      const tags = t.record?.tags ?? UNTAGGED;
+      const isJunctionSignal = tags.junctionCapable && !byCrossing.has(t);
+      if (!isJunctionSignal) continue;
+      const s = t.pos;
       let best: { node: number; pos: Vector3 } | null = null;
-      let bestD = SIGNAL_SNAP;
+      let bestD = SIGNAL_SNAP_M;
       for (const j of junctions) {
         const d = Math.hypot(j.pos.x - s.x, j.pos.z - s.z);
         if (d < bestD) {
@@ -416,7 +658,9 @@ export class TrafficControl {
           best = j;
         }
       }
-      if (best) signalled.add(best.node);
+      if (!best) continue;
+      signalled.add(best.node);
+      if (tags.sound !== null) soundAt.set(best.node, [...(soundAt.get(best.node) ?? []), tags.sound]);
     }
     // Union nearby signalled junctions (divided roads give 2–4 GSI nodes per crossing).
     const list = junctions.filter((j) => signalled.has(j.node));
@@ -448,12 +692,20 @@ export class TrafficControl {
       const r = root(j.node);
       const c = controllers.get(r) ?? {
         id: r,
+        kind: "junction" as const,
         offset: 0,
         nodes: [],
+        crosswalks: [],
         plan: TWO_PHASE,
         step: TWO_PHASE.plan.steps[0],
+        demand: null,
+        walkersAcross: walkersAcrossOf(TWO_PHASE),
+        sound: null,
       };
       c.nodes.push(j.node);
+      // Any node of the junction tagged with sound decides it; "yes" wins over "no".
+      const sounds = soundAt.get(j.node) ?? [];
+      if (sounds.length > 0) c.sound = (c.sound ?? false) || sounds.includes(true);
       controllers.set(r, c);
       hashes.set(c, [...(hashes.get(c) ?? []), nodeHash(j.node)]);
     }
@@ -507,28 +759,208 @@ export class TrafficControl {
       const main = entries.reduce((a, b) => (b.seg.line.width > a.seg.line.width ? b : a));
       const axisOf = (e: (typeof entries)[number]): 0 | 1 =>
         Math.abs(e.bearing.dot(main.bearing)) >= Math.SQRT1_2 ? 0 : 1;
-      const plan = planForJunction(
-        entries.map((e) => ({ group: groupOfAxis(axisOf(e)), lanes: laneUse.get(`${e.seg.id}/${e.dir}`) })),
+      const { plan, groupOf } = planForJunction(
+        entries.map((e) => ({ axis: axisOf(e), lanes: laneUse.get(`${e.seg.id}/${e.dir}`) })),
       );
       c.plan = plan;
+      c.walkersAcross = walkersAcrossOf(plan);
       c.offset = Math.min(...(hashes.get(c) ?? [0]).map((h) => h % c.plan.cycle));
       c.step = stepAt(c.plan, cycleTime(this.time, c.offset, c.plan.cycle));
       this.controllers.push(c);
       const nodes = c.nodes.map((n) => this.nodePos(graph, n)).filter((p): p is Vector3 => p !== null);
-      for (const e of entries) {
+      entries.forEach((e, i) => {
         const fromNode = this.clearance(graph, e.node, e.seg) + 5;
         const jartic = this.jarticStop(regs.stopLines, e.seg, e.dir, fromNode + 15);
         const back = jartic ?? fromNode;
-        if (e.seg.length - back < 1) continue;
-        const ap = this.approach(graph, e.seg, e.dir, e.seg.length - back, "signal", c, axisOf(e));
+        if (e.seg.length - back < 1) return;
+        const ap = this.approach(
+          graph,
+          e.seg,
+          e.dir,
+          e.seg.length - back,
+          "signal",
+          c,
+          axisOf(e),
+          groupOf[i],
+        );
         const box = Math.max(0, ...nodes.map((p) => p.distanceTo(ap.node)));
         const lineM = ap.a.clone().add(ap.b).multiplyScalar(0.5).distanceTo(ap.node);
         ap.exitM = Math.max(25, box + 20, lineM + 10);
+        // Beyond the crossing on the far-left corner: past the widest other road's kerb.
+        const nodePos = this.nodePos(graph, e.node) ?? ap.a;
+        this.setHead(
+          ap,
+          nodePos.clone().addScaledVector(ap.travel, this.clearance(graph, e.node, e.seg) + 1),
+        );
         this.approaches.push(ap);
         taken.add(`${e.seg.id}/${e.dir}`);
-      }
+      });
     }
     return taken;
+  }
+
+  /**
+   * The 単路 (mid-block) crossings that can have a controller (T3), before any junction is
+   * signalled: the OSM crossing records away from any junction, gathered within CROSSING_CLUSTER_M,
+   * each matched to the JARTIC 横断歩道 it controls (one per carriageway of a divided road, on a
+   * segment the records lie on), with a stop line on each way traffic crosses it. Records off the
+   * road graph, with no crosswalk, or with no room for a stop line on the segment are skipped
+   * (counted), not guessed. `byCrossing` is every record a matched crossing keeps from the
+   * junction snap: its own and the plain signal nodes within CROSSING_CLUSTER_M that are away from
+   * any OSM junction (a crossing is often mapped as its crossing node plus a signal node each side).
+   */
+  private planCrossings(
+    graph: RoadGraph,
+    regs: AppliedRegulations,
+    tagged: readonly TaggedSignal[],
+  ): { plans: CrossingPlan[]; byCrossing: Set<TaggedSignal>; skipped: CrossingSkips } {
+    const skipped: CrossingSkips = { outside: 0, noCrosswalk: 0, nearJunction: 0, noRoom: 0 };
+    const byCrossing = new Set<TaggedSignal>();
+    const records = tagged.filter((t) => t.record?.tags.midBlock);
+    if (records.length === 0) return { plans: [], byCrossing, skipped };
+    const clusters: TaggedSignal[][] = [];
+    for (const r of records) {
+      const near = clusters.find((cl) => cl.some((o) => o.pos.distanceTo(r.pos) < CROSSING_CLUSTER_M));
+      if (near) near.push(r);
+      else clusters.push([r]);
+    }
+    const plans: CrossingPlan[] = [];
+    for (const cluster of clusters) {
+      const centre = cluster.reduce((a, t) => a.add(t.pos), new Vector3()).multiplyScalar(1 / cluster.length);
+      // The signal tiles reach further than the road graph: records off its streets are not ours.
+      const isOutside = graph.nearest(centre, CROSSING_MATCH_M) === null;
+      if (isOutside) {
+        skipped.outside++;
+        continue;
+      }
+      // The crosswalk on each segment nearest the cluster's records (a divided road has two).
+      const bySeg = new Map<number, { c: Crossing; d: number }>();
+      for (const c of regs.crossings) {
+        // Roads with no crosswalk or pavement (the expressway, its ramps) get no 単路 crossing.
+        if (!hasRoadside(c.seg.line)) continue;
+        const d = Math.min(...cluster.map((t) => Math.hypot(t.pos.x - c.pos.x, t.pos.z - c.pos.z)));
+        const isCloser = d < CROSSING_MATCH_M && d < (bySeg.get(c.seg.id)?.d ?? Infinity);
+        if (!isCloser) continue;
+        const isOnTheirRoad = cluster.some(
+          (t) => graph.nearest(t.pos, CROSSING_ON_ROAD_M, (s) => s === c.seg) !== null,
+        );
+        if (isOnTheirRoad) bySeg.set(c.seg.id, { c, d });
+      }
+      if (bySeg.size === 0) {
+        skipped.noCrosswalk++;
+        continue;
+      }
+      const places: CrossingPlace[] = [];
+      for (const { c } of bySeg.values()) {
+        const mid = graph.sample(c.seg, c.s).pos.clone();
+        for (const dir of [1, -1] as const) {
+          const isAllowed = c.seg.oneway === 0 || c.seg.oneway === dir;
+          if (!isAllowed) continue;
+          const crossAt = dir === 1 ? c.s : c.seg.length - c.s; // the crosswalk along the travel
+          const back = this.crossingStop(regs.stopLines, c.seg, dir, crossAt) ?? CROSSING_STOP_BACK_M;
+          const at = crossAt - back;
+          if (at < 1) continue;
+          places.push({ seg: c.seg, dir, at, centre: mid, toNodeM: back });
+        }
+      }
+      if (places.length === 0) {
+        skipped.noRoom++;
+        continue;
+      }
+      plans.push({ cluster, centre, places, crosswalks: [...bySeg.values()].map((v) => v.c) });
+      for (const t of cluster) byCrossing.add(t);
+      for (const t of tagged) {
+        const isBeside =
+          (t.record?.tags.awayFromJunction ?? false) &&
+          cluster.some((c) => c.pos.distanceTo(t.pos) < CROSSING_CLUSTER_M);
+        if (isBeside) byCrossing.add(t);
+      }
+    }
+    return { plans, byCrossing, skipped };
+  }
+
+  /**
+   * The 単路 crossings' controllers (planCrossings), but not next to a signalled junction (that
+   * junction's signal governs there). Their plan is pushButton where OSM tags button_operated=yes
+   * (assign.ts planForCrossing).
+   */
+  private buildCrossingSignals(
+    graph: RoadGraph,
+    plans: readonly CrossingPlan[],
+    skipped: CrossingSkips,
+  ): void {
+    const junctionNodes = this.controllers.flatMap((c) =>
+      c.nodes.map((n) => this.nodePos(graph, n)).filter((p): p is Vector3 => p !== null),
+    );
+    const liveKeys = new Set<number>();
+    for (const { cluster, centre, places, crosswalks } of plans) {
+      const isNearJunction = junctionNodes.some((p) => p.distanceTo(centre) < CROSSING_CLEAR_OF_JUNCTION_M);
+      if (isNearJunction) {
+        skipped.nearJunction++;
+        continue;
+      }
+      const tagsOf = cluster.map((t) => t.record?.tags ?? UNTAGGED);
+      const button = tagsOf.some((t) => t.button === true)
+        ? true
+        : tagsOf.some((t) => t.button === false)
+          ? false
+          : null;
+      const sounds = tagsOf.flatMap((t) => (t.sound === null ? [] : [t.sound]));
+      const { plan, groupOf } = planForCrossing({ button }, places.length);
+      // Lon/lat, not local positions: the key and the phase must survive re-anchoring the frame.
+      const key = Math.min(
+        ...cluster.map((t) => recordHash(t.record?.lon ?? t.pos.x, t.record?.lat ?? t.pos.z)),
+      );
+      liveKeys.add(key);
+      const demand = plan.plan.onDemand ? this.demandFor(key, plan) : null;
+      const c: Controller = {
+        id: key,
+        kind: "crossing",
+        offset: key % plan.cycle,
+        nodes: [],
+        crosswalks,
+        plan,
+        step: plan.plan.steps[0],
+        demand,
+        walkersAcross: walkersAcrossOf(plan),
+        sound: sounds.length > 0 ? sounds.includes(true) : null,
+      };
+      c.step = demand ? demand.stepAt(this.time) : stepAt(plan, cycleTime(this.time, c.offset, plan.cycle));
+      this.controllers.push(c);
+      places.forEach((p, i) => {
+        const ap = this.approach(graph, p.seg, p.dir, p.at, "signal", c, 0, groupOf[i]);
+        ap.site = "crossing";
+        ap.node = p.centre;
+        ap.toNodeM = p.toNodeM;
+        ap.exitM = Math.max(25, p.toNodeM + 10);
+        this.setHead(ap, p.centre.clone().addScaledVector(ap.travel, CROSSING_HEAD_BEYOND_M));
+        this.approaches.push(ap);
+      });
+    }
+    for (const key of this.demands.keys()) if (!liveKeys.has(key)) this.demands.delete(key);
+    const isAnySkipped = skipped.outside + skipped.noCrosswalk + skipped.nearJunction + skipped.noRoom > 0;
+    if (isAnySkipped) log("signal_crossings_skipped", skipped);
+  }
+
+  /** The push-button run for the crossing `key`, carried over from the last network when it had one. */
+  private demandFor(key: number, plan: CompiledPlan): OnDemandRun {
+    const kept = this.demands.get(key);
+    if (kept?.compiled === plan) return kept;
+    const run = new OnDemandRun(plan, this.time);
+    this.demands.set(key, run);
+    return run;
+  }
+
+  /** A JARTIC stop line on this approach before its crosswalk at `crossAt` (distance from it), if any. */
+  private crossingStop(lines: StopLine[], seg: Segment, dir: 1 | -1, crossAt: number): number | null {
+    let best: number | null = null;
+    for (const l of lines) {
+      if (l.seg !== seg || l.dir !== dir) continue;
+      const back = crossAt - l.at;
+      const isInRange = back >= CROSSING_STOP_RANGE_M[0] && back <= CROSSING_STOP_RANGE_M[1];
+      if (isInRange && (best === null || back < best)) best = back;
+    }
+    return best;
   }
 
   /** JARTIC stop line on this approach closest to the junction (distance from it), if any. */
@@ -562,6 +994,7 @@ export class TrafficControl {
     kind: Approach["kind"],
     controller: Controller | null,
     axis: 0 | 1,
+    group: GroupId = axis === 0 ? "a" : "b",
   ): Approach {
     const along = dir === 1 ? at : seg.length - at;
     const { pos, dir: d } = graph.sample(seg, along);
@@ -576,13 +1009,27 @@ export class TrafficControl {
       kind,
       controller,
       axis,
-      group: groupOfAxis(axis),
+      group,
+      site: "junction",
       node,
       exitM: 25,
+      toNodeM: seg.length - at,
+      head: null,
+      headBase: null,
       a: pos.clone().add(leftOf(travel, half)),
       b: pos.clone().add(leftOf(travel, -half)),
       travel,
     };
+  }
+
+  /**
+   * Where `ap`'s vehicle head hangs: `base` is the point on the centreline beyond the node the
+   * head and its pole are set out from; the head is 0.35 of the half width to its left (over the
+   * approach's lanes, Japanese practice).
+   */
+  private setHead(ap: Approach, base: Vector3): void {
+    ap.headBase = base;
+    ap.head = base.clone().add(leftOf(ap.travel, (ap.seg.line.width / 2) * 0.35));
   }
 
   /** Distance from a junction node to the kerb line of the widest other road there. */
@@ -613,19 +1060,20 @@ export class TrafficControl {
     const arrowHeads: Object3D["matrix"][] = [];
     const lamps: Object3D["matrix"][] = [];
     const arrowLamps: Object3D["matrix"][] = [];
+    /** The vehicle heads' poles at 単路 crossings (the walk heads share them). */
+    const crossingPoles: Vector3[] = [];
 
     for (const ap of signals) {
       yield;
       // Japanese practice: the head stands beyond the crossing on the far-left corner, hung from
-      // an arm over the lane and facing the stop line; 青・黄・赤 from left to right.
-      const node = ap.dir === 1 ? ap.seg.to : ap.seg.from;
-      const nodePos = this.nodePos(graph, node) ?? ap.a;
-      const far = this.clearance(graph, node, ap.seg) + 1;
+      // an arm over the lane and facing the stop line; 青・黄・赤 from left to right. At a 単路
+      // crossing "beyond the crossing" is just past its crosswalk.
+      // The head's place was set with the approach (setHead), so the lamp glow reads the same one.
+      const headBase = ap.headBase;
+      const head = ap.head;
+      if (!headBase || !head) continue;
       const half = ap.seg.line.width / 2;
-      const corner = nodePos
-        .clone()
-        .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, half + 1.2));
+      const corner = headBase.clone().add(leftOf(ap.travel, half + 1.2));
       // The pole stands on the pavement: in a big junction box the corner by GSI widths can fall
       // in a crossing street's carriageway, so step further on and further out until it is clear.
       const base =
@@ -640,13 +1088,10 @@ export class TrafficControl {
               .add(leftOf(ap.travel, k)),
           ),
         ]) ?? corner;
-      const head = nodePos
-        .clone()
-        .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, half * 0.35));
       const g = ground(base);
       const armY = g + SIGNAL_HEIGHT + HEAD_HANG * HEAD_SCALE;
       poles.push({ pos: base.clone().setY(g), height: armY - g + 0.25 });
+      if (ap.site === "crossing") crossingPoles.push(base.clone().setY(g));
       const toHead = new Vector3(head.x - base.x, 0, head.z - base.z);
       o.position.set(base.x, armY, base.z);
       o.quaternion.setFromUnitVectors(UP, toHead.clone().normalize());
@@ -685,16 +1130,21 @@ export class TrafficControl {
     const pedHeads: Object3D["matrix"][] = [];
     const pedStops: Object3D["matrix"][] = [];
     const pedGos: Object3D["matrix"][] = [];
+    const sound = this.soundRecords;
+    const boxes: Object3D["matrix"][] = [];
+    const waitLamps: Object3D["matrix"][] = [];
     for (const c of crossings) {
       yield;
       if (this.pedLight(c.seg, c.pos) === null) continue;
+      const controller = this.governing(c.seg, c.pos)?.controller ?? null;
+      const sounds = this.soundsAt(c.pos, controller, sound);
       const { dir } = graph.sample(c.seg, c.s);
       for (const side of [1, -1] as const) {
         // Beside the crosswalk (not in it), just behind the kerb — and never in a carriageway:
         // near a junction box the kerb by GSI width can be inside the crossing road.
         const across = leftOf(dir, -side); // from this kerb toward the far one
         const kerb = c.pos.clone().add(leftOf(dir, side * (c.seg.line.width / 2 + 0.9)));
-        const at = clearSpot(graph, [
+        const spot = clearSpot(graph, [
           kerb.clone().addScaledVector(dir, 3.2 * side),
           kerb.clone().addScaledVector(dir, -3.2 * side),
           kerb
@@ -706,9 +1156,16 @@ export class TrafficControl {
             .add(leftOf(dir, side * 1.5))
             .addScaledVector(dir, -3.2 * side),
         ]);
-        if (!at) continue;
+        if (!spot) continue;
+        // At a 単路 crossing the vehicle head's pole stands at this kerb too: the walk head and the
+        // button go on it (共架), not on a second pole beside it.
+        const shared =
+          controller !== null && controller.crosswalks.length > 0
+            ? crossingPoles.find((p) => Math.hypot(p.x - kerb.x, p.z - kerb.z) < SHARED_POLE_M)
+            : undefined;
+        const at = shared ? shared.clone() : spot;
         const g = ground(at);
-        poles.push({ pos: at.clone().setY(g), height: PED_HEIGHT + 0.55 });
+        if (!shared) poles.push({ pos: at.clone().setY(g), height: PED_HEIGHT + 0.55 });
         // Face the people waiting on the far kerb; the head sits 0.3 m out from its pole.
         const yaw = Math.atan2(across.x, across.z);
         const headAt = at.clone().addScaledVector(across, PED_MOUNT.offsetM);
@@ -732,6 +1189,33 @@ export class TrafficControl {
           at: headAt.clone().setY(g + PED_HEIGHT),
           across,
           side,
+          sounds,
+        });
+        if (!controller?.demand) continue;
+        // 押ボタン箱: banded to the same pole (電柱抱込式), facing along the pavement toward the
+        // crosswalk, where the waiting walker stands.
+        const toCrossing = kerb.clone().sub(at).setY(0);
+        const faceDir = toCrossing.lengthSq() > 1e-6 ? toCrossing.normalize() : across.clone();
+        const box = PUSH_BUTTON_BOX;
+        const boxAt = at.clone().addScaledVector(faceDir, box.offsetM);
+        const boxY = g + box.bottomM + box.housing.hM / 2;
+        o.position.set(boxAt.x, boxY, boxAt.z);
+        o.rotation.set(0, Math.atan2(faceDir.x, faceDir.z), 0);
+        o.scale.setScalar(1);
+        o.updateMatrix();
+        boxes.push(o.matrix.clone());
+        o.translateY(box.waitLamp.y);
+        o.translateZ(LENS_Z_M);
+        o.scale.set(box.waitLamp.wM, box.waitLamp.hM, 1);
+        o.updateMatrix();
+        waitLamps.push(o.matrix.clone());
+        this.buttons.push({
+          seg: c.seg,
+          near: c.pos,
+          at: boxAt.clone().setY(boxY),
+          face: faceDir.clone(),
+          stand: boxAt.clone().addScaledVector(faceDir, 0.45).setY(g),
+          controller,
         });
       }
     }
@@ -778,6 +1262,29 @@ export class TrafficControl {
     }
     this.pedLamps = { stop, go };
     yield true;
+    if (boxes.length === 0) return;
+    yield* this.instancedPart(kit.buttonBox, boxes, true);
+    const wait = this.instanced(kit.waitLamp, kit.waitLens, waitLamps, false);
+    for (let i = 0; i < waitLamps.length; i++) wait.setColorAt(i, LAMP_OFF);
+    this.waitLamps = wait;
+    yield true;
+  }
+
+  /**
+   * Whether the 視覚障害者用付加装置 at a crosswalk sounds: the OSM traffic_signals:sound of the
+   * nearest tagged record within CROSSING_MATCH_M of it, else the controller's own nodes' tag, else
+   * on (the rule before T3: every signalled crosswalk sounds in the daytime).
+   */
+  private soundsAt(pos: Vector3, controller: Controller | null, sound: readonly TaggedSignal[]): boolean {
+    let best: boolean | null = null;
+    let bestD = CROSSING_MATCH_M;
+    for (const t of sound) {
+      const d = Math.hypot(t.pos.x - pos.x, t.pos.z - pos.z);
+      if (d >= bestD) continue;
+      bestD = d;
+      best = t.record?.tags.sound ?? null;
+    }
+    return best ?? controller?.sound ?? true;
   }
 
   /**
@@ -788,7 +1295,8 @@ export class TrafficControl {
     if (names.length === 0) return;
     for (const ap of this.approaches) {
       yield;
-      if (ap.kind !== "signal") continue;
+      const isJunctionSignal = ap.kind === "signal" && ap.site === "junction";
+      if (!isJunctionSignal) continue;
       const node = ap.dir === 1 ? ap.seg.to : ap.seg.from;
       const nodePos = this.nodePos(graph, node);
       if (!nodePos) continue;
@@ -801,17 +1309,10 @@ export class TrafficControl {
           best = n;
         }
       }
-      if (!best) continue;
-      const far = this.clearance(graph, node, ap.seg) + 1;
+      if (!best || !ap.headBase || !ap.head) continue;
       const half = ap.seg.line.width / 2;
-      const base = nodePos
-        .clone()
-        .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, half + 1.2));
-      const head = nodePos
-        .clone()
-        .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, half * 0.35));
+      const base = ap.headBase.clone().add(leftOf(ap.travel, half + 1.2));
+      const head = ap.head;
       const toHead = head.clone().sub(base).setY(0);
       const armLen = toHead.length();
       const { name, en } = best;

@@ -14,6 +14,10 @@
 # - SignalLamp: one 300 mm lens disc (UV 0–1 over the disc) for the game to tint and light;
 #   SignalArrowLamp: an arrow pointing up (直進) on the same UV square, turned for left/right;
 #   PedLamp: one 250 mm square lens.
+# - PushButtonBox (歩行者用押ボタン箱, assets/signals/heads.json `buttons`): the box banded to a
+#   pole, its round button and the おまちください window; origin at the box's centre, face z = 0,
+#   the band toward −Z. Empties PushButtonBox_button / PushButtonBox_wait mark the button and lamp.
+#   PushButtonLamp: a 1 × 1 m window (UV 0–1) the game scales to the lamp's size and tints.
 # - SignalPole: tapered steel pole of unit height (the game stretches it along Y);
 #   SignalArm: overhang arm of unit length along +Y (the game turns +Y toward the head).
 # Lens artwork comes from assets/signals/textures (agy); the game swaps textures and colours.
@@ -90,6 +94,12 @@ material("SignalInner", 0x15181B, roughness=0.8)  # visor insides and lamp bezel
 material("Lens", 0xFFFFFF, roughness=0.3)
 material("PedLens", 0xFFFFFF, roughness=0.3)
 material("Pole", 0xA9AEB3, metallic=0.6, roughness=0.45)
+# 押ボタン箱: light grey body (as the common boxes), a dark face panel, a pale yellow button.
+# Colours are assumed (no specification of them was read).
+material("ButtonBody", 0xC9CCCF, metallic=0.1, roughness=0.6)
+material("ButtonFace", 0x2A2D31, roughness=0.7)
+material("ButtonKey", 0xF2E3A0, roughness=0.4)
+material("WaitLens", 0xFFFFFF, roughness=0.3)
 
 
 def new_object(name, bm, mats, smooth=False, sharp_angle=35):
@@ -308,6 +318,45 @@ bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="EAR
 bm.to_mesh(arrow.data)
 bm.free()
 
+
+# ---------------------------------------------------------------- 押ボタン箱（heads.json の buttons）
+def build_button_box(b):
+    """The box: a rounded body, a dark face panel, the round button, the lamp's bezel, the band."""
+    bm = bmesh.new()
+    hs = b["housing"]
+    prism(bm, rounded_rect(hs["wM"], hs["hM"], hs["cornerM"]), -hs["dM"], 0.0, 0)
+    inset = 0.012
+    face = [(x, y) for x, y in rounded_rect(hs["wM"] - 2 * inset, hs["hM"] - 2 * inset, hs["cornerM"] / 2)]
+    bm.faces.new([bm.verts.new((x, y, 0.001)) for x, y in face]).material_index = 1
+    r = b["button"]["diameterM"] / 2
+    # The button stands 8 mm proud of the face (a short cylinder, capped).
+    tube(bm, (0.0, b["button"]["y"], 0.0), (0.0, b["button"]["y"], 0.008), r, 2, segments=20)
+    lw, lh, ly = b["waitLamp"]["wM"], b["waitLamp"]["hM"], b["waitLamp"]["y"]
+    bezel = [
+        (-lw / 2 - 0.006, ly - lh / 2 - 0.006),
+        (lw / 2 + 0.006, ly - lh / 2 - 0.006),
+        (lw / 2 + 0.006, ly + lh / 2 + 0.006),
+        (-lw / 2 - 0.006, ly + lh / 2 + 0.006),
+    ]
+    bm.faces.new([bm.verts.new((x, y, 0.002)) for x, y in bezel]).material_index = 1
+    # The band round the pole (電柱抱込式) behind the box, reaching back to the pole's axis.
+    reach = b["offsetM"] - hs["dM"]
+    box(bm, 0.0, 0.0, -hs["dM"] - reach / 2, hs["wM"] * 0.5, 0.03, reach, 0)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    ob = new_object(b["node"], bm, ["ButtonBody", "ButtonFace", "ButtonKey"])
+    for name, y, z in (("button", b["button"]["y"], 0.008), ("wait", ly, 0.0)):
+        e = bpy.data.objects.new(f"{b['node']}_{name}", None)
+        e.location = (0.0, y, z)
+        e.parent = ob
+        SCENE.collection.objects.link(e)
+    return ob
+
+
+BUTTONS = REG.get("buttons", [])
+for b in BUTTONS:
+    build_button_box(b)
+lens_object("PushButtonLamp", ((-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)), 1.0, "WaitLens")
+
 # ---------------------------------------------------------------- 信号柱・アーム
 bm = bmesh.new()
 segs = 16
@@ -508,5 +557,42 @@ if PREVIEW:
             SCENE.render.filepath = os.path.join(PREVIEW, f"{head['id']}-{view}.png")
             bpy.ops.render.render(write_still=True)
             log("preview", head=head["id"], view=view)
+        for o in shown:
+            o.hide_render = True
+    # 押ボタン箱 on its pole, under the pedestrian head as on a 単路 crossing, its lamp lit; views
+    # as for the heads, plus a walker's eye 1.5 m in front of it.
+    objs = {o.name: o for o in SCENE.objects}
+    ped = HEADS["ped-v2"]
+    ped_mount = REG["mounts"][ped["mount"]]
+    for b in BUTTONS:
+        centre, shown = assemble(ped)
+        box_obj = objs[b["node"]]
+        box_obj.hide_render = False
+        box_centre = Vector((0.0, b["bottomM"] + b["housing"]["hM"] / 2, -ped_mount["offsetM"] + b["offsetM"]))
+        box_obj.matrix_world = Matrix.Translation(box_centre)
+        lw, lh, ly = b["waitLamp"]["wM"], b["waitLamp"]["hM"], b["waitLamp"]["y"]
+        lamp = place(
+            objs["PushButtonLamp"],
+            "Review-wait",
+            Matrix.Translation(box_centre + Vector((0.0, ly, REG["lensZM"]))) @ Matrix.Diagonal((lw, lh, 1, 1)),
+            lit_material("Lit-wait", lin(b["waitColour"])[:3]),
+        )
+        shown += [box_obj, lamp]
+        focus = box_centre
+        views = {}
+        for deg in (0, 30, 60):
+            a = math.radians(deg)
+            views[f"oblique{deg:02d}" if deg else "front"] = (
+                (focus.x + 0.9 * math.sin(a), focus.y + 0.1, focus.z + 0.9 * math.cos(a)),
+                focus,
+            )
+        views["walker"] = ((0.3, 1.6, focus.z + 1.5), focus)
+        views["pole"] = ((1.2, 1.5, 4.5), Vector((0.0, 1.8, 0.0)))
+        views["driver30m"] = ((3.0, 1.2, 30.0), Vector((0.0, 1.8, 0.0)))
+        for view, (eye, target) in views.items():
+            look(cam, eye, target)
+            SCENE.render.filepath = os.path.join(PREVIEW, f"{b['id']}-{view}.png")
+            bpy.ops.render.render(write_still=True)
+            log("preview", head=b["id"], view=view)
         for o in shown:
             o.hide_render = True

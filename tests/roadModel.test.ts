@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { LocalFrame } from "../src/geo/frame";
-import { carriagewayWidth, laneWidth, resolveSection, sectionOf } from "../src/world/laneChange";
+import {
+  carriagewayWidth,
+  laneLeftEdge,
+  laneWidth,
+  resolveSection,
+  sectionOf,
+  streetRoom,
+} from "../src/world/laneChange";
 import { computeRoadNetwork, restoreRoadNetwork } from "../src/world/roadNetworkData";
 import type { RegulationData } from "../src/world/regulations";
 import { RoadGraph, SURFACE_GATE, type RoadLine } from "../src/world/roads";
@@ -24,6 +31,7 @@ const EMPTY_REGS: RegulationData = {
   junctions: [],
   footbridges: [],
   turnlanes: [],
+  roadlanes: [],
 };
 
 // Local frame: x east, z south. These helpers take x east, y north metres.
@@ -278,29 +286,81 @@ describe("layered road graph (level, surfaceY, nearestOnSurface)", () => {
 });
 
 describe("one cross-section for every lane count (resolveSection, sectionOf)", () => {
-  it("takes JARTIC's count first, OSM's next, and the width last, and says which", () => {
-    expect(resolveSection(20, false, { jartic: 2, osm: 3 })).toMatchObject({ lanes: 2, basis: "jartic" });
-    expect(resolveSection(20, false, { osm: 3 })).toMatchObject({ lanes: 3, basis: "osm" });
-    expect(resolveSection(20, false, {})).toMatchObject({ lanes: 1, basis: "width" });
-    expect(resolveSection(20, false, {}, "byWidth")).toMatchObject({ lanes: 3, basis: "width" });
-    expect(resolveSection(20, false, { resolved: 2 }, "byWidth")).toMatchObject({
+  it("takes JARTIC's count first, OSM's next, and one lane last, and says which", () => {
+    const osm = { forward: 3, backward: 3 };
+    expect(resolveSection(26, false, { jartic: 2, osm })).toMatchObject({ lanes: 2, basis: "jartic" });
+    expect(resolveSection(26, false, { osm })).toMatchObject({ lanes: 3, basis: "osm" });
+    expect(resolveSection(26, false, {})).toMatchObject({ lanes: 1, basis: "width" });
+  });
+
+  it("gives one lane wherever neither JARTIC nor OSM gives a count, one-way or not, at any width", () => {
+    for (const width of [2.5, 4.3, 9, 12.9, 13, 16, 22, 30, 70]) {
+      expect(resolveSection(width, false).lanes, `two-way ${width}`).toBe(1);
+      expect(resolveSection(width, true).lanes, `one-way ${width}`).toBe(1);
+    }
+  });
+
+  it("caps the carriageway at lanes × 3.25 m plus 0.5 m shoulders (構造令 第5条・第8条) inside the room", () => {
+    const wide = resolveSection(30, false, { jartic: 2 });
+    expect(wide.carriageway).toBe(2 * 2 * 3.25 + 2 * 0.5);
+    expect(wide.laneWidth).toBe(3.25);
+    expect(wide).toMatchObject({ shoulderL: 0.5, shoulderR: 0.5, median: 0 });
+    // A room narrower than that squeezes the lanes instead.
+    const narrow = resolveSection(12, false, { jartic: 2 });
+    expect(narrow.carriageway).toBe(12);
+    expect(narrow.laneWidth).toBe((12 / 2 - 0.5) / 2);
+    // One-way: the lanes sit between both shoulders.
+    expect(resolveSection(9, true, { jartic: 2 }).laneWidth).toBe(3.25);
+  });
+
+  it("checks every count against one room: the 幅員 less two pavements from 13 m, or OSM's width", () => {
+    expect(streetRoom(12.9, false)).toEqual({ room: 12.9, fitting: 2 });
+    expect(streetRoom(25, false)).toEqual({ room: 18, fitting: 3 });
+    expect(streetRoom(25, false, 25)).toEqual({ room: 25, fitting: 4 });
+    // JARTIC 4 on 25 m does not fit one direction of the 18 m room at 3 m a lane: both directions'.
+    expect(resolveSection(25, false, { jartic: 4 })).toMatchObject({ lanes: 2, basis: "jartic" });
+    // OSM's width is the carriageway's: no pavement taken off it.
+    expect(resolveSection(14, false, { osmWidth: 14, osm: { forward: 2, backward: 2 } })).toMatchObject({
       lanes: 2,
-      basis: "jartic",
+      carriageway: 14,
     });
   });
 
+  it("keeps OSM's lanes by direction along the coords, and lays out the larger count both ways", () => {
+    const section = resolveSection(30, false, { osm: { forward: 3, backward: 2 } });
+    expect(section).toMatchObject({ forward: 3, backward: 2, lanes: 3, basis: "osm" });
+    // One carriageway of a divided road matched only: the other direction is taken alike.
+    expect(resolveSection(30, false, { osm: { forward: 2, backward: 0 } })).toMatchObject({
+      forward: 2,
+      backward: 2,
+    });
+    // A one-way street against its coords has its lanes backward.
+    expect(resolveSection(9, -1, { osm: { forward: 0, backward: 2 } })).toMatchObject({
+      forward: 0,
+      backward: 2,
+      lanes: 2,
+    });
+    // More lanes than the room takes at 2.75 m are cut to what fits.
+    expect(resolveSection(9, false, { osm: { forward: 3, backward: 3 } }).lanes).toBe(1);
+  });
+
   it("reads a JARTIC count too big for one direction as both directions, capped at 2.75 m a lane", () => {
-    expect(resolveSection(14, false, { jartic: 4 }).lanes).toBe(2);
-    expect(resolveSection(14, true, { jartic: 4 }).lanes).toBe(4);
+    expect(resolveSection(12, false, { jartic: 4 }).lanes).toBe(2);
+    expect(resolveSection(12, true, { jartic: 4 }).lanes).toBe(4);
     expect(resolveSection(8, true, { jartic: 4 }).lanes).toBe(2);
   });
 
-  it("assumes 2 to 4 lanes where JARTIC lists the section with the count blank", () => {
-    expect(resolveSection(8, false, { jartic: 0 }).lanes).toBe(2);
+  it("assumes 2 to 4 lanes where JARTIC lists the section with the count blank, never more than fit", () => {
+    expect(resolveSection(12, false, { jartic: 0 }).lanes).toBe(2);
     expect(resolveSection(40, false, { jartic: 0 }).lanes).toBe(4);
+    // 4.3 m two-way holds one lane a direction at 2.75 m: not two of 0.8 m.
+    const narrow = resolveSection(4.3, false, { jartic: 0 });
+    expect(narrow.lanes).toBe(1);
+    expect(narrow.laneWidth).toBeGreaterThan(1);
   });
 
-  it("splits a GSI street's direction evenly, with no shoulders or median (the old lane width)", () => {
+  it("takes a hand-set lane count as an assumption, keeping the recorded 中央帯", () => {
+    expect(resolveSection(12, false, { lanes: 2 }).basis).toBe("assumption");
     const graph = new RoadGraph(
       [
         line(
@@ -308,23 +368,65 @@ describe("one cross-section for every lane count (resolveSection, sectionOf)", (
             [0, 0],
             [0, 100],
           ],
-          { width: 13 },
+          { width: 40 },
+        ),
+      ],
+      frame,
+    );
+    const seg = graph.segments[0];
+    seg.section = resolveSection(40, false, { osm: { forward: 3, backward: 3 }, osmSeparation: 13 });
+    seg.lanes = 3;
+    const median = seg.section.median;
+    expect(median).toBeGreaterThan(0);
+    seg.lanes = 2;
+    expect(sectionOf(seg).median).toBe(median);
+  });
+
+  it("splits a GSI street's direction evenly inside the shoulders of its section", () => {
+    const graph = new RoadGraph(
+      [
+        line(
+          [
+            [0, 0],
+            [0, 100],
+          ],
+          { width: 12 },
         ),
       ],
       frame,
     );
     const seg = graph.segments[0];
     seg.lanes = 2;
+    // 12 m with two lanes a direction: needs 14 m, so the room caps it and the lanes squeeze.
     expect(sectionOf(seg)).toMatchObject({
       lanes: 2,
-      laneWidth: 13 / 2 / 2,
-      shoulderL: 0,
-      shoulderR: 0,
+      laneWidth: (12 / 2 - 0.5) / 2,
+      shoulderL: 0.5,
       median: 0,
     });
+    expect(laneLeftEdge(seg)).toBe(12 / 2 - 0.5);
     seg.oneway = 1;
-    expect(laneWidth(seg)).toBe(13 / 2);
-    expect(carriagewayWidth(seg.line)).toBe(13);
+    expect(laneWidth(seg)).toBe(3.25);
+    expect(carriagewayWidth(seg)).toBe(2 * 3.25 + 1);
+  });
+
+  it("records the section on the segment when the graph is built, and the line keeps its 幅員", () => {
+    const graph = new RoadGraph(
+      [
+        line(
+          [
+            [0, 0],
+            [0, 100],
+          ],
+          { width: 22 },
+        ),
+      ],
+      frame,
+    );
+    const seg = graph.segments[0];
+    expect(seg.section).toMatchObject({ lanes: 1, basis: "width", carriageway: 7.5 });
+    expect(seg.lanes).toBe(1);
+    expect(seg.line.width).toBe(22);
   });
 
   it("takes the shoulders and median of a line's own section off the lanes", () => {

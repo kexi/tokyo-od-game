@@ -2,15 +2,22 @@
 // crosswalks, stop lines, stop signs) and, from OpenStreetMap, traffic signals with their
 // intersection names and footbridges (横断歩道橋), cut into z14 tiles under public/data so the
 // game loads only the area around the player.
-// Run: pnpm exec tsx scripts/regulations.ts [jartic|signals|police]   (the ~40 MB JARTIC zip and
-// the ~520 MB Geofabrik Kanto extract are cached under .cache/jartic and .cache/osm for a week;
-// `jartic` alone takes ~11 s and ~1.5 GB of memory on an M2 Max)
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+// Also from OpenStreetMap: the lanes, width and one-way of the ordinary streets (roadlanes/), which
+// the game matches onto the GSI centrelines for their cross-section (knowledge/road-model.md).
+// Run: pnpm exec tsx scripts/regulations.ts [jartic|signals|police|roadlanes]   (the ~40 MB JARTIC
+// zip and the ~520 MB Geofabrik Kanto extract are cached under .cache/jartic and .cache/osm for a
+// week; `jartic` alone takes ~11 s and ~1.5 GB of memory on an M2 Max). OSM_FILE=<path.osm.pbf>
+// reads an extract already on disk, whatever its age, instead of the cache.
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { MAX_CLOSURE_AREA_KM2 } from "../src/world/closures.ts";
 import { join } from "node:path";
 import { closureUse, M_LAT, M_LON, parseCoords, ruleUse, streamCsv, turnMask } from "./jartic.ts";
-import { readNodeCoords, readTaggedNodes, readWays } from "./osm-pbf.ts";
+import { readNodeCoords, readReplicationTimestamp, readTaggedNodes, readWays } from "./osm-pbf.ts";
+import { ROAD_LANE_HIGHWAYS, wayLanes } from "./roadLanes.ts";
+import { ROAD_LANES_COLUMN, ROAD_LANES_SCHEMA } from "../src/world/roadLanesData.ts";
 import { buildOrbis } from "./orbis.ts";
+import { isKept, readSignalNodes } from "./osm-signals.ts";
+import { encodeSignalRecord } from "../src/signals/osmTags.ts";
 import type { OrbisEntry } from "../src/world/orbisData.ts";
 import { isAllDay as alwaysOn, writeTime, type RuleTime } from "../src/world/ruleTime.ts";
 import { unzip } from "./shapefile.ts";
@@ -53,13 +60,17 @@ type Tile = {
   // 通行禁止: [shape 2 line / 3 area, kind (CLOSURE), TIME…, …coords].
   closures: number[][];
 };
-type SignalTile = number[][]; // [lon, lat]
+// [lon, lat] or [lon, lat, flags, bearing?]: the OSM tags the game keeps (src/signals/osmTags.ts).
+type SignalTile = number[][];
 type JunctionTile = Array<[number, number, string, string]>; // [lon, lat, 交差点名, English name or ""]
 // 横断歩道橋 candidates: [width m (0 = unknown), deck coords, [stair coords from the deck down]…].
 type FootbridgeTile = Array<[number, number[], number[][]]>;
 // Lanes by direction at a junction approach: [lon, lat of the approach end, travel bearing (deg,
 // clockwise from north), turn:lanes value from the left lane, e.g. "left;through|through|right"].
 type TurnLaneTile = Array<[number, number, number, string]>;
+// Street lanes: [forward lanes, backward lanes (0 = not mapped), one-way 1/0, width dm (0 = none),
+// …coords in the forward order] (scripts/roadLanes.ts).
+type RoadLaneTile = number[][];
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6;
 // Line regulations are matched to centrelines within 6 m, so ~1 m precision is plenty and keeps
@@ -322,13 +333,18 @@ async function buildJartic(): Promise<{ tiles: Map<string, Tile>; month: string;
   return { tiles, month: typeD.targetMonth, release: typeD.releaseDay };
 }
 
-/** A download, from the local cache when that is less than a week old. */
+/**
+ * A download, from the local cache when that is less than a week old — or of any age with
+ * REGS_USE_CACHE=1, to rebuild the tiles from the very extract the committed data came from (a
+ * fresh extract moves every OSM layer at once, which buries a change to one of them).
+ */
 async function cachedDownload(url: string, file: string): Promise<Uint8Array> {
   const age = await stat(file).then(
     (st) => Date.now() - st.mtimeMs,
     () => Infinity,
   );
-  if (age < CACHE_MAX_AGE_MS) {
+  const isPinned = process.env.REGS_USE_CACHE === "1" && age < Infinity;
+  if (age < CACHE_MAX_AGE_MS || isPinned) {
     log("cache_hit", { file, ageH: Math.round(age / 3600_000) });
     return new Uint8Array(await readFile(file));
   }
@@ -339,7 +355,17 @@ async function cachedDownload(url: string, file: string): Promise<Uint8Array> {
   return bytes;
 }
 
-const osmExtract = () => cachedDownload(OSM_EXTRACT, OSM_CACHE);
+// Why an override and not a longer cache age: a stale cache is re-downloaded by design (signals and
+// regulations should track the map), but rebuilding one folder must not refresh the others.
+/** The OSM extract's replication time, read with the extract (for the layers' meta.json). */
+let osmExtractTime: string | null = null;
+
+const osmExtract = async () => {
+  const given = process.env.OSM_FILE;
+  const file = given ? new Uint8Array(await readFile(given)) : await cachedDownload(OSM_EXTRACT, OSM_CACHE);
+  osmExtractTime = readReplicationTimestamp(file);
+  return file;
+};
 
 const tileOf = (lon: number, lat: number) => `${tx(lon)}-${ty(lat)}`;
 /**
@@ -377,6 +403,7 @@ type OsmTiles = {
   junctions: Map<string, JunctionTile>;
   footbridges: Map<string, FootbridgeTile>;
   turnlanes: Map<string, TurnLaneTile>;
+  roadlanes: Map<string, RoadLaneTile>;
 };
 
 let places: { hydrants: number[][]; schools: Array<[number, number, number, string]> } | null = null;
@@ -413,12 +440,21 @@ async function buildOsm(): Promise<OsmTiles> {
   const file = await osmExtract();
   const signals = new Map<string, SignalTile>();
   const junctions = new Map<string, JunctionTile>();
-  for (const n of readTaggedNodes(file, (t) => t.highway === "traffic_signals")) {
-    if (!inBbox(n.lon, n.lat)) continue;
-    push(signals, tileOf(n.lon, n.lat), [round(n.lon), round(n.lat)]);
+  const signalNodes = readSignalNodes(file, inBbox);
+  const signalCounts = { kept: 0, midBlock: 0, pushButton: 0, sound: 0, crossingOnly: 0 };
+  for (const s of signalNodes) {
+    if (!isKept(s)) continue;
+    const n = s.node;
+    push(signals, tileOf(n.lon, n.lat), encodeSignalRecord(round(n.lon), round(n.lat), s.facts));
+    signalCounts.kept++;
+    const isMidBlock = s.facts.isCrossing && s.facts.awayFromJunction;
+    if (isMidBlock) signalCounts.midBlock++;
+    if (isMidBlock && s.facts.button === true) signalCounts.pushButton++;
+    if (s.facts.sound !== null) signalCounts.sound++;
+    if (!s.facts.isHighwaySignal) signalCounts.crossingOnly++;
     // 交差点名: OSM puts the name of a signalled junction on its signal node.
     const name = n.tags.name;
-    if (name)
+    if (name && s.facts.isHighwaySignal)
       push(junctions, tileOf(n.lon, n.lat), [round(n.lon), round(n.lat), name, n.tags["name:en"] ?? ""]);
   }
 
@@ -486,6 +522,7 @@ async function buildOsm(): Promise<OsmTiles> {
     at(w.refs, forward);
     at([...w.refs].reverse(), backward);
   }
+  const roadlanes = buildRoadLanes(file);
   police = buildPolice(file);
   // 消火栓 (駐車禁止 within 5 m, 第45条第1項第5号) and schools / kindergartens / nurseries (the 208
   // warning sign and school zones): nodes, and the centres of mapped school grounds.
@@ -515,26 +552,98 @@ async function buildOsm(): Promise<OsmTiles> {
     orbis: police.orbis.length,
     centres: police.centres.map((c) => c[2]),
     signals: [...signals.values()].reduce((a, t) => a + t.length, 0),
+    signalTags: signalCounts,
     named: [...junctions.values()].reduce((a, t) => a + t.length, 0),
     footbridges: kept,
     stairs: stairs.length,
     turnlanes: laneCount,
   });
-  return { signals, junctions, footbridges, turnlanes };
+  return { signals, junctions, footbridges, turnlanes, roadlanes };
 }
 
-const ODBL_NOTICE = `Traffic signal positions in this folder are extracted from OpenStreetMap.
+/** A street way with lanes, width or one-way the game reads. */
+const isLaneStreet = (t: Record<string, string>) =>
+  ROAD_LANE_HIGHWAYS.test(t.highway ?? "") && wayLanes(t) !== null;
+
+/**
+ * Lanes, width and one-way of every street way that maps any of them, cut into the tiles it
+ * touches (coords at ~1 m, as the JARTIC lines: they are matched within metres).
+ */
+function buildRoadLanes(file: Uint8Array): Map<string, RoadLaneTile> {
+  const ways = readWays(file, isLaneStreet);
+  const coords = readNodeCoords(file, new Set(ways.flatMap((w) => w.refs)));
+  const tiles = new Map<string, RoadLaneTile>();
+  const tagged = { lanes: 0, forwardBackward: 0, width: 0, oneway: 0 };
+  let kept = 0;
+  for (const w of ways) {
+    const lanes = wayLanes(w.tags);
+    if (!lanes) continue;
+    const refs = lanes.reversed ? w.refs.toReversed() : w.refs;
+    const line = coarse(refs.flatMap((r) => coords.get(r) ?? []));
+    const isInside = line.length >= 4 && inBbox(line[0], line[1]);
+    if (!isInside) continue;
+    // Column order: src/world/roadLanesData.ts (ROAD_LANES_COLUMN).
+    const row = [lanes.forward, lanes.backward, lanes.oneway, lanes.widthDm, lanes.layer, ...line];
+    for (const key of tilesOf(line)) push(tiles, key, row);
+    kept++;
+    if (w.tags.lanes) tagged.lanes++;
+    if (w.tags["lanes:forward"] || w.tags["lanes:backward"]) tagged.forwardBackward++;
+    if (lanes.widthDm > 0) tagged.width++;
+    if (lanes.oneway) tagged.oneway++;
+  }
+  log("osm_road_lanes", { ways: kept, tiles: tiles.size, ...tagged });
+  return tiles;
+}
+
+const ODBL_NOTICE = `The data in this folder (traffic signals, junction names, footbridges or lanes) is extracted from OpenStreetMap.
 © OpenStreetMap contributors — https://www.openstreetmap.org/copyright
 This database is made available under the Open Database License (ODbL) 1.0:
 https://opendatacommons.org/licenses/odbl/1-0/
 Source extract: ${OSM_EXTRACT} (Geofabrik). Filters within the 23 wards:
-- signals/: node["highway"="traffic_signals"]
-- junctions/: the same nodes' "name" and "name:en" (intersection names)
+- signals/: node["highway"="traffic_signals"], and node["crossing"="traffic_signals"] /
+  node["crossing:signals"="yes"] on a car road that are more than 25 m from a road junction or
+  carry "traffic_signals:sound"; with flags from "crossing", "button_operated",
+  "traffic_signals:sound" and "traffic_signals:direction" (src/signals/osmTags.ts)
+- junctions/: the highway=traffic_signals nodes' "name" and "name:en" (intersection names)
 - footbridges/: way[highway~"footway|path|pedestrian|cycleway"][bridge!="no"] (layer >= 1) and
   the way["highway"="steps"] that share a node with them
 - turnlanes/: way[highway~"trunk|primary|secondary|tertiary|unclassified|residential"] with
   turn:lanes, turn:lanes:forward or turn:lanes:backward, at the end of the way they apply to
+- roadlanes/: way[highway~"trunk|primary|secondary|tertiary|unclassified|residential|living_street"
+  (and their _link)][tunnel!~".+"][layer>=0] with lanes, lanes:forward, lanes:backward or width:
+  lanes per direction, oneway, width and layer (scripts/roadLanes.ts)
 `;
+
+/** Write one OSM folder: its tiles, the licence notice and the tile index. */
+async function writeOsmDir(
+  name: string,
+  tiles: Map<string, unknown[]>,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  const dir = join(ROOT, name);
+  // A layer whose tiles come out the same is left alone (meta and LICENSE too): a rebuild for
+  // one layer should not touch the others.
+  const isUnchanged = await holdsTiles(dir, tiles);
+  if (isUnchanged) {
+    log("osm_layer_unchanged", { layer: name, tiles: tiles.size });
+    return;
+  }
+  // When the extract was cut (its replication time) and when it was downloaded (the file): not
+  // the time of this run, which says nothing about the data.
+  const extract = osmExtractTime;
+  const fetchedAt = await stat(process.env.OSM_FILE ?? OSM_CACHE).then((st) => st.mtime.toISOString());
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dir, { recursive: true });
+  for (const [key, list] of tiles) await writeFile(join(dir, `${key}.json`), JSON.stringify(list));
+  await writeFile(join(dir, "LICENSE.txt"), ODBL_NOTICE);
+  await writeFile(
+    join(dir, "meta.json"),
+    JSON.stringify({ zoom: Z, tiles: [...tiles.keys()], extract, fetchedAt, ...extra }),
+  );
+}
+
+/** meta.json of roadlanes/: the row layout's version, so a stale tile set is told apart. */
+const ROAD_LANES_META = { schema: ROAD_LANES_SCHEMA, columns: Object.keys(ROAD_LANES_COLUMN) };
 
 const only = process.argv[2];
 if (!only || only === "jartic") {
@@ -556,6 +665,8 @@ if (!only || only === "jartic") {
     }),
   );
 }
+// Only roadlanes/, leaving the other OSM folders as they are.
+if (only === "roadlanes") await writeOsmDir("roadlanes", buildRoadLanes(await osmExtract()), ROAD_LANES_META);
 // Only police.json (stations, 試験場, オービス), leaving the OSM tiles as they are.
 if (only === "police") {
   police = buildPolice(await osmExtract());
@@ -570,19 +681,23 @@ if (only === "police") {
     }, {}),
   });
 }
+/** Whether `dir` already holds exactly these tiles, byte for byte, and no others. */
+async function holdsTiles(dir: string, tiles: Map<string, unknown[]>): Promise<boolean> {
+  const names = await readdir(dir).catch(() => null);
+  if (!names) return false;
+  const tileNames = names.filter((f) => /^\d+-\d+\.json$/.test(f));
+  if (tileNames.length !== tiles.size) return false;
+  for (const [key, list] of tiles) {
+    const old = await readFile(join(dir, `${key}.json`), "utf8").catch(() => null);
+    if (old !== JSON.stringify(list)) return false;
+  }
+  return true;
+}
+
 if (!only || only === "signals") {
   const osm = await buildOsm();
-  for (const [name, tiles] of Object.entries(osm) as Array<[string, Map<string, unknown[]>]>) {
-    const dir = join(ROOT, name);
-    await rm(dir, { recursive: true, force: true });
-    await mkdir(dir, { recursive: true });
-    for (const [key, list] of tiles) await writeFile(join(dir, `${key}.json`), JSON.stringify(list));
-    await writeFile(join(dir, "LICENSE.txt"), ODBL_NOTICE);
-    await writeFile(
-      join(dir, "meta.json"),
-      JSON.stringify({ zoom: Z, tiles: [...tiles.keys()], fetchedAt: new Date().toISOString() }),
-    );
-  }
+  for (const [name, tiles] of Object.entries(osm) as Array<[string, Map<string, unknown[]>]>)
+    await writeOsmDir(name, tiles, name === "roadlanes" ? ROAD_LANES_META : {});
   // From OpenStreetMap too (ODbL; the credit line in the game covers it).
   if (police) await writeFile(join(ROOT, "police.json"), JSON.stringify(police));
   if (places) await writeFile(join(ROOT, "places.json"), JSON.stringify(places));

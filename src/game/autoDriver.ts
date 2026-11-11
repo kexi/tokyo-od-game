@@ -6,7 +6,7 @@ import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "..
 import { inForce, type GameClock } from "../world/ruleTime";
 import type { Approach, TrafficControl } from "../world/trafficControl";
 import { movementOf } from "../signals/movement";
-import { mayProceed, type Movement } from "../signals/plan";
+import { driverAction, type Movement } from "../signals/plan";
 import {
   backOffPath,
   HALF_LENGTH,
@@ -522,7 +522,7 @@ export class AutoDriver {
     const k = this.stepIndex(route);
     const st = route.steps[k];
     const travel = route.stepEntry[k] + (this.at - route.stepStart[k]);
-    const next = world.control.nextStop(st.seg, st.dir, travel);
+    const next = world.control.nextStop(st.seg, st.dir, travel) ?? this.signalOnward(route, k, world);
     if (next) {
       const { approach, dist } = next;
       if (approach.kind === "signal") {
@@ -531,7 +531,7 @@ export class AutoDriver {
         // Anything short of go stops it where it can, as traffic-ai.ts does. Why not "red stops it
         // however close": an arrow goes out straight into the all-red with no yellow between
         // (plan.ts), and braking past what the car can do would leave it standing in the box.
-        const mustStop = !mayProceed(permission) && canStop;
+        const mustStop = driverAction(permission, canStop) === "stop";
         if (mustStop && world.isEmergency) this.creep = true;
         else if (mustStop) block = dist;
       } else if (this.served !== approach.id) {
@@ -791,9 +791,10 @@ export class AutoDriver {
       stop !== null &&
       stop.dist < 17 &&
       (stop.approach.kind === "stop" ||
-        !mayProceed(
+        driverAction(
           world.control.permits(stop.approach, this.movementAt(route, stop.approach, stop.dist, at)),
-        ));
+          true,
+        ) === "stop");
     if (isAtStop) return true;
     const isAtJunction = junctionsAhead(route, world.graph, world.control, at - 2, at + 20).length > 0;
     const isAtCrossing = crossingsAhead(route, world.crossings ?? [], at - 2, at + 10).length > 0;
@@ -924,10 +925,27 @@ export class AutoDriver {
    * since an arrow for a turn does not let it go.
    */
   private movementAt(route: Route, approach: Approach, dist: number, at = this.at): Movement {
-    const nodeAt = at + dist + (approach.seg.length - approach.at);
+    const nodeAt = at + dist + approach.toNodeM;
     const outAt = nodeAt + approach.exitM;
     if (outAt > route.length) return "through";
     return movementOf(approach.travel, axisAt(route, outAt).dir);
+  }
+
+  /**
+   * A signal's stop line on the route's next step, its distance counted from the car. Why look past
+   * the end of this step: a 単路 crossing's stop line can stand a metre into its segment, and the
+   * car would otherwise first see it too close to stop for a red.
+   */
+  private signalOnward(
+    route: Route,
+    k: number,
+    world: DriveWorld,
+  ): { approach: Approach; dist: number } | null {
+    const onward = route.steps[k + 1];
+    if (!onward) return null;
+    // The next step's travel distance where the car is now: negative, it is short of that step.
+    const s = route.stepEntry[k + 1] - (route.stepStart[k + 1] - this.at);
+    return world.control.nextStop(onward.seg, onward.dir, s, (ap) => ap.kind === "signal");
   }
 
   /** Step of the route at route distance `at`. */
@@ -1021,6 +1039,10 @@ export class AutoDriver {
 
   /** Point on the route's driven path at route distance `d`. */
   private pathAt(route: Route, d: number): Vector3 {
+    // A route of one point (the car stands on its target): that point. Why a guard and not "never
+    // plan such a route": planRoute returns it legitimately, and indexing points[1] threw.
+    const isSinglePoint = route.points.length < 2;
+    if (isSinglePoint) return route.points[0].clone();
     let i = 1;
     while (i < route.cum.length - 1 && route.cum[i] < d) i++;
     const a = route.points[i - 1];

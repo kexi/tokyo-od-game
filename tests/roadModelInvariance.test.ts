@@ -7,16 +7,15 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AutoDriver, type DriveWorld } from "../src/game/autoDriver";
 import { laneCentre } from "../src/game/drivePath";
 import { planRoute } from "../src/game/navigation";
-import { LocalFrame } from "../src/geo/frame";
 import { steerLimit, WHEELBASE } from "../src/physics/vehicle";
 import { lanesFor } from "../src/world/guidePlan";
 import { laneBand, laneOfOffset, laneWidth } from "../src/world/laneChange";
 import { computeRoadNetwork, restoreRoadNetwork } from "../src/world/roadNetworkData";
-import type { RegulationData } from "../src/world/regulations";
-import { laneOffset, speedLimit, type RoadGraph, type RoadLine, type Segment } from "../src/world/roads";
-import { gameClock, readTime } from "../src/world/ruleTime";
+import { laneOffset, speedLimit, type RoadGraph, type Segment } from "../src/world/roads";
+import { gameClock } from "../src/world/ruleTime";
 import { TrafficAI } from "../src/world/traffic-ai";
 import { TrafficControl } from "../src/world/trafficControl";
+import { PLACES, placeFrame, roadsOf, tileData } from "./roadFixtures";
 
 /**
  * What the road model (RoadGraph, the applied regulations, the painted lines, the routes, the
@@ -24,16 +23,31 @@ import { TrafficControl } from "../src/world/trafficControl";
  * the code from before the road model was split into predicates, sections, MarkingPlan and
  * layered search (P2 of the road redesign, knowledge/road-model.md). P2 must not change any of it.
  *
- * Inputs are the frozen regulation and turn-lane tiles of tests/fixtures/sign-placement (sources
- * in its LICENSE.txt): GSI tiles are served for real-time use, so the roads are the regulation
+ * Updated once on purpose by P8 (one lane policy, carriageway and 路肩, 2026-11-11): every street
+ * gets the lanes its JARTIC 車両通行帯 or OSM lanes (roadlanes-*.json, a new input) give, one lane
+ * otherwise; every count is checked against the room the GSI 幅員 leaves (less two 3.5 m pavements
+ * from 13 m), which also tells a JARTIC total from a count a direction; the carriageway is capped
+ * at lanes × 3.25 m plus 0.5 m 路肩 (構造令 第5条・第8条) in that room; and the edge lines, lane
+ * lines, stop lines and lane centres sit on that section. Against the P2 rows (ac0f603): the lane
+ * count changed on 68 of 333 segments at 丸の内, 44 of 410 at 渋谷 and 58 of 333 at 芝公園 (mostly
+ * 2 → 1 and 3 → 2: JARTIC counts on synthetic widths that now read as totals or do not fit the
+ * room); the paths of 6, 5 and 3 of the 24 routes moved (no route changed its streets or turns,
+ * only its lanes); 3, 4 and 3 of the 6 autopilot drives changed (the same starts drive); the
+ * traffic AI's lane points moved on 188, 200 and 190 segments (the left lane's centre now sits
+ * inside the 0.5 m shoulder). The darwin baseline (fingerprints.json, discrete.json) was retaken
+ * with the P8 code.
+ *
+ * Inputs are the frozen regulation, turn-lane and street-lane tiles of
+ * tests/fixtures/sign-placement (sources in its LICENSE.txt; read by tests/roadFixtures.ts): GSI tiles are served for real-time use, so the roads are the regulation
  * tile's own lines, as in tests/signPlacement.test.ts. Unlike there, each line gets a kind, a
  * width class, a one-way and a 橋 flag from its index, so the expressway ("highway") branches,
  * one-way streets and every GSI width class run.
  *
- * When the snapshot may be updated (`vitest -u` together with ROAD_MODEL_UPDATE=1, which rewrites
- * tests/fixtures/road-model/fingerprints.json): only for a change meant to alter the road model's
- * output (P8's lane and kerb corrections, for one), with the reason in the commit and the rows of
- * before and after diffed; or for a change of how the rows are made (as the rounding below), then
+ * When the snapshot may be updated (`vitest -u` together with ROAD_MODEL_UPDATE=1, on darwin; it
+ * rewrites tests/fixtures/road-model/fingerprints.json and discrete.json too): only for a change
+ * meant to alter the road model's output (as P8 did, above), with the reason in the commit and
+ * the rows of before and after compared; or for a change of how the rows
+ * are made (as the rounding and the platform split below), then
  * taken again from the code before P2 (origin/main 1305f52) and matched by the new code. Delete
  * the test once a later phase replaces these places' pins with tests of its own; a refactor (P2)
  * must never update it to make it pass.
@@ -46,6 +60,16 @@ import { TrafficControl } from "../src/world/trafficControl";
  * and targets sit off segment midpoints, numbers are integers of a step (1e-3 m, 1e-6 for unit
  * vectors and ratios, 1e-9° for lon / lat), and the vertex-sensitive values are compared within a
  * tolerance. The last test nudges every input coordinate by one ulp and requires the same result.
+ *
+ * Which platform compares what: the float digests and fingerprints only on darwin, where the
+ * baseline was taken (Linux x64 differs from macOS arm64 by more than an ulp in Math functions,
+ * and no rounding or tolerance both absorbs that and still sees a change; CI failed on it). On
+ * every platform: the discrete model (segment ends and junctions, one-way, lanes, limits, rule
+ * codes and closures, applied regulations by segment, lane counts, nearest segment ids, meshes by
+ * material, route step lists and turns, which autopilot starts drive), against
+ * tests/fixtures/road-model/discrete.json, with one row per aspect of slack (DISCRETE_SLACK). A
+ * test shakes every Math function by 1e-12 of its result to show those values survive another
+ * platform's maths. The proof that P2 changed nothing is the darwin comparison with 1305f52.
  *
  * Why hashes, not readable rows: the rows run to tens of thousands of lines per place. On a
  * mismatch the rows are written to .qa/road-model/<place>/<aspect>.txt (not in git): run the test
@@ -76,113 +100,6 @@ vi.mock("three", async (importOriginal) => {
 vi.stubGlobal("document", {
   createElement: () => ({ width: 0, height: 0, getContext: () => null }),
 });
-
-const FIXTURES = join(import.meta.dirname, "fixtures", "sign-placement");
-const PLACES = [
-  { name: "丸の内", tile: "14552-6451" },
-  { name: "渋谷", tile: "14549-6452" },
-  { name: "芝公園", tile: "14552-6453" },
-] as const;
-
-function tileData(tile: string): RegulationData {
-  const regs = JSON.parse(readFileSync(join(FIXTURES, `regs-${tile}.json`), "utf8"));
-  const lanesFile = join(FIXTURES, `turnlanes-${tile}.json`);
-  const turnlanes = existsSync(lanesFile) ? JSON.parse(readFileSync(lanesFile, "utf8")) : [];
-  return {
-    speed: [],
-    speedZone: [],
-    oneway: [],
-    crosswalk: [],
-    stopLine: [],
-    stopSign: [],
-    sections: [],
-    turns: [],
-    closures: [],
-    noOvertake: [],
-    lanes: [],
-    noLaneChange: [],
-    laneArrows: [],
-    signals: [],
-    junctions: [],
-    footbridges: [],
-    ...regs,
-    turnlanes,
-  };
-}
-
-const WIDTHS = [2.5, 4.3, 5.5, 9, 13, 16, 22, 9, 6];
-const KINDS: RoadLine["kind"][] = ["local", "national", "prefectural", "local", "narrow"];
-
-/** Metres east / north per degree near Tokyo (enough to tell coincident lines apart). */
-const M_PER_LAT = 110_950;
-const M_PER_LON = 111_320 * Math.cos((35.67 * Math.PI) / 180);
-/** Closer than this to a kept line, a piece of a new line runs along it. */
-const COINCIDENT_M = 1.5;
-
-/** Distance (m) from point (x, y) to the segment a–b, all in metres. */
-function pointToSegment(x: number, y: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 < 1e-9 ? 0 : Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / len2));
-  return Math.hypot(ax + dx * t - x, ay + dy * t - y);
-}
-
-/** Lon / lat to local metres (east, north), up to an offset. */
-const toM = (lon: number, lat: number): [number, number] => [lon * M_PER_LON, lat * M_PER_LAT];
-
-/** Whether any edge midpoint of `coords` lies on one of the kept lines. */
-function overlapsAny(coords: number[], kept: readonly RoadLine[]): boolean {
-  for (let i = 0; i + 3 < coords.length; i += 2) {
-    const [x, y] = toM((coords[i] + coords[i + 2]) / 2, (coords[i + 1] + coords[i + 3]) / 2);
-    for (const line of kept) {
-      const c = line.coords;
-      for (let j = 0; j + 3 < c.length; j += 2) {
-        const [ax, ay] = toM(c[j], c[j + 1]);
-        const [bx, by] = toM(c[j + 2], c[j + 3]);
-        const isOnIt = pointToSegment(x, y, ax, ay, bx, by) < COINCIDENT_M;
-        if (isOnIt) return true;
-      }
-    }
-  }
-  return false;
-}
-
-/** The regulation tile's lines (each once, none along another) as road centrelines, varied by index. */
-function roadsOf(data: RegulationData): RoadLine[] {
-  const coordLists = [
-    ...data.speed.map((r) => r.slice(1)),
-    ...data.oneway.map((r) => r.slice(readTime(r, 0).next)),
-    ...data.sections.map((r) => r.slice(readTime(r, 2).next)),
-    ...data.closures.filter((r) => r[0] === 2).map((r) => r.slice(readTime(r, 2).next)),
-    ...data.noOvertake,
-    ...data.noLaneChange,
-    ...data.lanes.map((r) => r.slice(1)),
-    ...data.laneArrows.map((r) => r.slice(1)),
-  ];
-  const seen = new Set<string>();
-  const lines: RoadLine[] = [];
-  for (const coords of coordLists) {
-    const key = coords.join(",");
-    const isLine = coords.length >= 4 && !seen.has(key);
-    if (!isLine) continue;
-    seen.add(key);
-    // JARTIC lists one road in several records (each direction, overlapping sections). Kept, they
-    // make coincident segments, and which of two equally near ones wins is then decided by the
-    // last bit of a double: different on another machine. Real GSI roads do not coincide.
-    if (overlapsAny(coords, lines)) continue;
-    const i = lines.length;
-    const isExpressway = i % 17 === 5;
-    lines.push({
-      coords,
-      width: WIDTHS[i % WIDTHS.length],
-      oneway: i % 11 === 3 ? 1 : i % 13 === 7 ? -1 : 0,
-      kind: isExpressway ? ("highway" as RoadLine["kind"]) : KINDS[i % KINDS.length],
-      ...(i % 19 === 2 ? { bridge: true } : {}),
-    });
-  }
-  return lines;
-}
 
 const hash = (rows: readonly string[]) =>
   createHash("sha256").update(rows.join("\n")).digest("hex").slice(0, 16);
@@ -243,13 +160,6 @@ function nextDouble(v: number, dir: 1 | -1): number {
   const isTowardsZero = v > 0 !== dir > 0;
   view.setBigInt64(0, bits + (isTowardsZero ? -1n : 1n));
   return view.getFloat64(0);
-}
-
-function placeFrame(tile: string): LocalFrame {
-  const [x, y] = tile.split("-").map(Number);
-  const lon = ((x + 0.5) / 2 ** 14) * 360 - 180;
-  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 0.5)) / 2 ** 14))) * 180) / Math.PI;
-  return new LocalFrame(lat, lon, 40);
 }
 
 /** The worker's reply (graph snapshot and packed regulations), with its Maps as arrays. */
@@ -396,6 +306,7 @@ function routeRows(
   graph: RoadGraph,
   applied: NonNullable<ReturnType<typeof restoreRoadNetwork>["applied"]>,
   prints: Fingerprints,
+  discrete: string[],
 ): string[] {
   const rows: string[] = [];
   const starts = graph.segments.filter((s) => s.line.width >= 5.5 && s.length > 20);
@@ -415,6 +326,7 @@ function routeRows(
     );
     if (!route) {
       rows.push(`${k} ${mode} none`);
+      discrete.push(`${k} ${mode} none`);
       continue;
     }
     const steps = route.steps.map((s) => `${s.seg.id}${s.dir === 1 ? "+" : "-"}`).join(",");
@@ -430,6 +342,10 @@ function routeRows(
     const lanes = route.lanes.map((l) => `${l.lane}/${l.count}`);
     const turns = route.maneuvers.map((m) => `${m.turn}@${r3(m.at)}`).join(",");
     rows.push(`${k} ${mode} ${r3(route.length)} ${steps} ${hash(lanes)} ${turns}`);
+    const turnKinds = route.maneuvers.map((m) => m.turn).join(",");
+    // Lane counts met on the way, not the lane at each point: where a change happens moves with the maths.
+    const laneCounts = [...new Set(route.lanes.map((l) => l.count))].join("/");
+    discrete.push(`${k} ${mode} ${steps} ${laneCounts} ${turnKinds}`);
   }
   return rows;
 }
@@ -504,15 +420,75 @@ function trafficRows(graph: RoadGraph, ai: TrafficAI): string[] {
   });
 }
 
+/** Segments and junctions as counted: ends, one-way, lanes, limits, rule codes, closures; and the nodes. */
+function graphRows(graph: RoadGraph): string[] {
+  const segs = graph.segments.map((seg) =>
+    [
+      seg.id,
+      seg.from,
+      seg.to,
+      seg.pts.length,
+      seg.oneway,
+      seg.lanes,
+      seg.limit ?? "-",
+      seg.limitKind,
+      seg.noOvertake,
+      seg.noLaneChange,
+      seg.rules.map((r) => r.code).join("/"),
+      seg.closures.length,
+      seg.closed,
+    ].join(" "),
+  );
+  const nodes = [...graph.nodes].map(([node, ids]) => `${node}:${ids.join(",")}`);
+  return [...segs, ...nodes];
+}
+
+type Applied = NonNullable<ReturnType<typeof restoreRoadNetwork>["applied"]>;
+
+/** The applied regulations by what they are and which segment carries them. */
+function regulationRows(applied: Applied): string[] {
+  return [
+    `crossings ${applied.crossings.map((c) => c.seg.id).join(",")}`,
+    `signs ${applied.signs.map((s) => `${s.type}/${s.value}@${s.seg.id}`).join(",")}`,
+    `turns ${applied.turnRules.map((r) => r.approach.id).join(",")}`,
+    `stops ${applied.stopLines.map((l) => `${l.seg.id}${l.dir === 1 ? "+" : "-"}`).join(",")}`,
+    `stopSigns ${applied.stopSigns.length} signals ${applied.signals.length}`,
+    `junctions ${applied.junctionNames.map((n) => n.name).join(",")}`,
+    `footbridges ${applied.footbridges.length}`,
+    `laneUse ${applied.laneUse.map((l) => `${l.seg.id}${l.dir === 1 ? "+" : "-"}:${l.lanes.map((x) => x.join("+")).join("|")}`).join(",")}`,
+    `markings ${applied.hasMarkings}`,
+  ];
+}
+
 /**
- * Every row the road model gives at one place, by aspect. `nudge` moves every road coordinate one
- * unit in the last place (alternately up and down): the size of difference the other machine's
- * maths makes, fed in at the start so that it runs through every step.
+ * Lane counts and which lane fixed offsets fall in. Width arithmetic only (+ − × ÷ of input
+ * widths, exact on every machine), no trigonometry.
+ */
+function discreteLaneRows(graph: RoadGraph): string[] {
+  return graph.segments.map((seg) => {
+    const offsets = [-6, -2, 0, 1.5, 3, 7].map((o) => laneOfOffset(seg, o));
+    return `${seg.id} ${seg.lanes} ${lanesFor(seg)} ${speedLimit(seg)} ${offsets.join("/")}`;
+  });
+}
+
+/** The nearest segment to each point of a 40 m grid (ids only). */
+function nearestRows(graph: RoadGraph): string[] {
+  const rows: string[] = [];
+  for (let x = -600; x <= 600; x += 40)
+    for (let z = -600; z <= 600; z += 40)
+      rows.push(`${x},${z} ${graph.nearest(new Vector3(x, 0, z), 30)?.seg.id ?? "-"}`);
+  return rows;
+}
+
+/**
+ * Every row the road model gives at one place, by aspect: `rows` and `prints` hold continuous
+ * values (rounded, or as sums), `discrete` only what is counted or named (see the describe below).
+ * `nudge` moves every road coordinate one unit in the last place (alternately up and down).
  */
 export async function rowsOf(
   tile: string,
   nudge = false,
-): Promise<{ rows: Record<string, string[]>; prints: Fingerprints }> {
+): Promise<{ rows: Record<string, string[]>; prints: Fingerprints; discrete: Record<string, string[]> }> {
   const data = tileData(tile);
   const frame = placeFrame(tile);
   const lines = roadsOf(data).map((l) =>
@@ -541,17 +517,31 @@ export async function rowsOf(
       crossings: applied.crossings,
     };
     const prints: Fingerprints = {};
+    const routesDiscrete: string[] = [];
     const rows = {
       wire: wireRows(wire),
       lanes: laneRows(graph),
       search: searchRows(graph),
       surface: await surfaceRows(graph, applied, control.approaches, prints, "surface"),
       surfaceUnsurveyed: await surfaceRows(unsurveyed.graph, null, [], prints, "surfaceUnsurveyed"),
-      routes: routeRows(graph, applied, prints),
+      routes: routeRows(graph, applied, prints, routesDiscrete),
       autopilot: autopilotRows(graph, drive),
       traffic: trafficRows(graph, new TrafficAI(scene, world, () => 0, control)),
     };
-    return { rows, prints };
+    const discrete = {
+      graph: graphRows(graph),
+      regulations: regulationRows(applied),
+      lanes: discreteLaneRows(graph),
+      search: nearestRows(graph),
+      // Which meshes are drawn, by material. Not their vertex or index counts: those count the
+      // 2.5 m steps of each strip (ceil of a length), which a shake of the maths moves.
+      surface: rows.surface.map((r) => r.split(" ")[0]),
+      surfaceUnsurveyed: rows.surfaceUnsurveyed.map((r) => r.split(" ")[0]),
+      routes: routesDiscrete,
+      // Which starts the autopilot could drive from (the drive itself is continuous).
+      autopilot: rows.autopilot.map((r) => r.split(" ")[0]),
+    };
+    return { rows, prints, discrete };
   } finally {
     world.free();
   }
@@ -612,7 +602,99 @@ function largestShift(a: Fingerprints, b: Fingerprints): number {
 const digestOf = (rows: Record<string, string[]>) =>
   Object.fromEntries(Object.entries(rows).map(([k, v]) => [k, `${v.length} ${hash(v)}`]));
 
-describe("the road model at three places is unchanged by the P2 refactor", () => {
+/**
+ * The platform the float digests and fingerprints were taken on. Why not compare them everywhere:
+ * Linux x64 (CI) gives Math.sin / cos / atan2 … results that differ from macOS arm64 by more than
+ * one ulp, and those differences reach the rounded hashes and move the fingerprints past any
+ * tolerance that would still catch a real change (CI failed twice, 2026-11-10 and -11). Why not
+ * take a second baseline on Linux: there is no Linux to run the code from before P2 on but CI, and
+ * a baseline taken from the new code would prove nothing. So the proof that P2 changes nothing is
+ * the darwin comparison with 1305f52; on other platforms only the discrete values are compared.
+ */
+const isBaselinePlatform = process.platform === "darwin";
+
+/**
+ * How far the shaken maths is off: 1e-12 of each result, about 5,000 ulps (an ulp is 2.2e-16), so
+ * a discrete value that survives it survives another platform's maths, which differ by a few.
+ * Why not 1e-9: the geodetic conversion works on Earth-radius numbers, where 1e-9 is 6 mm, and at
+ * that size a JARTIC closure at 渋谷 whose votes sit on the matching distance flips (measured):
+ * a test of the data's edge cases, not of platform differences.
+ */
+const SHAKE = 1e-12;
+
+/** Math functions whose results differ between platforms' implementations. */
+const MATH_FUNCTIONS = [
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "exp",
+  "log",
+  "pow",
+  "hypot",
+  "cbrt",
+  "log2",
+  "log10",
+  "expm1",
+  "log1p",
+] as const;
+
+/**
+ * Runs `body` with every Math function above returning its result times (1 ± `rel`), the sign
+ * alternating call by call: a stand-in for another platform's maths, much larger than theirs.
+ */
+async function withShakenMath<T>(rel: number, body: () => Promise<T>): Promise<T> {
+  const spies = MATH_FUNCTIONS.map((name) => {
+    const original = Math[name] as (...args: number[]) => number;
+    let call = 0;
+    return vi.spyOn(Math, name).mockImplementation((...args: number[]) => {
+      call++;
+      return original(...args) * (1 + (call % 2 === 0 ? rel : -rel));
+    });
+  });
+  try {
+    return await body();
+  } finally {
+    for (const spy of spies) spy.mockRestore();
+  }
+}
+
+/** Discrete rows taken with the code before P2, on darwin (ROAD_MODEL_UPDATE=1 rewrites them). */
+const DISCRETE_FILE = join(import.meta.dirname, "fixtures", "road-model", "discrete.json");
+
+/**
+ * Rows of one aspect allowed to differ. Why any: the synthetic roads lie on the JARTIC lines they
+ * came from, and where two overlapping records of a closure are almost equally near, which one
+ * collects a segment's votes is decided by the maths' last bits (measured: one segment at 渋谷
+ * flips under any shake, even 1e-12). Such a row can differ on another platform. Why not more: a
+ * real change of the road model changes many rows; one row per aspect is the measured knife-edge.
+ */
+const DISCRETE_SLACK = 1;
+
+/** Aspects whose row counts differ, or that differ in more than DISCRETE_SLACK rows (with the rows). */
+function rowMismatches(got: Record<string, string[]>, want: Record<string, string[]>): string[] {
+  const out: string[] = [];
+  for (const aspect of new Set([...Object.keys(got), ...Object.keys(want)])) {
+    const a = got[aspect] ?? [];
+    const b = want[aspect] ?? [];
+    if (a.length !== b.length) {
+      out.push(`${aspect}: ${a.length} rows vs ${b.length}`);
+      continue;
+    }
+    const differing = a.flatMap((row, i) => (row === b[i] ? [] : [`${row} ≠ ${b[i]}`]));
+    if (differing.length > DISCRETE_SLACK)
+      out.push(`${aspect}: ${differing.length} rows differ: ${differing.slice(0, 3).join(" | ")}`);
+  }
+  return out;
+}
+
+describe("the road model at three places is pinned (unchanged by P2, changed on purpose by P8)", () => {
   const isUpdate = process.env.ROAD_MODEL_UPDATE === "1";
   const stored: Record<string, Fingerprints> =
     isUpdate || !existsSync(PRINTS_FILE) ? {} : JSON.parse(readFileSync(PRINTS_FILE, "utf8"));
@@ -622,50 +704,90 @@ describe("the road model at three places is unchanged by the P2 refactor", () =>
     await RAPIER.init();
   });
 
+  const storedDiscrete: Record<string, Record<string, string[]>> = isUpdate || !existsSync(DISCRETE_FILE)
+    ? {}
+    : JSON.parse(readFileSync(DISCRETE_FILE, "utf8"));
+  const takenDiscrete: Record<string, Record<string, string[]>> = {};
+
   afterAll(() => {
-    if (!isUpdate) return;
+    const isWriting = isUpdate && isBaselinePlatform;
+    if (!isWriting) return;
     mkdirSync(dirname(PRINTS_FILE), { recursive: true });
     writeFileSync(PRINTS_FILE, `${JSON.stringify(taken, null, 1)}\n`);
+    writeFileSync(DISCRETE_FILE, `${JSON.stringify(takenDiscrete, null, 1)}\n`);
   });
 
   for (const place of PLACES) {
-    it(`gives the same graph, regulations, lines, routes, autopilot and traffic lanes at ${place.name}`, async () => {
-      const { rows, prints } = await rowsOf(place.tile);
-      taken[place.name] = prints;
-      expect(rows.wire.length).toBeGreaterThan(200);
-      expect(rows.routes.filter((r) => !r.endsWith("none")).length).toBeGreaterThan(5);
-      expect(rows.autopilot.length).toBe(AUTOPILOT_RUNS + 1);
-      // ROAD_MODEL_ROWS=1 writes the rows even when they match (to diff two machines' rows).
-      const isDumpAsked = process.env.ROAD_MODEL_ROWS === "1";
-      if (isDumpAsked) writeRows(place.name, rows, prints);
-      try {
-        expect({
-          digest: digestOf(rows),
-          surface: rows.surface,
-          routes: rows.routes,
-          autopilot: rows.autopilot,
-        }).toMatchSnapshot();
-        if (!isUpdate) expect(printMismatches(prints, stored[place.name] ?? {})).toEqual([]);
-      } catch (mismatch) {
-        writeRows(place.name, rows, prints);
-        throw mismatch;
-      }
+    it(`keeps the discrete model (counts, links, rules, lanes, step lists) at ${place.name}, on any platform`, async () => {
+      const { discrete } = await rowsOf(place.tile);
+      takenDiscrete[place.name] = discrete;
+      expect(discrete.graph.length).toBeGreaterThan(200);
+      expect(discrete.autopilot).toHaveLength(AUTOPILOT_RUNS + 1);
+      if (isUpdate) return;
+      const want = storedDiscrete[place.name];
+      expect(want, `no discrete rows for ${place.name} in ${DISCRETE_FILE}`).toBeDefined();
+      expect(rowMismatches(discrete, want ?? {})).toEqual([]);
     }, 60_000);
+
+    it.runIf(isBaselinePlatform)(
+      `gives the same graph, regulations, lines, routes, autopilot and traffic lanes at ${place.name} (float digests, darwin)`,
+      async () => {
+        const { rows, prints } = await rowsOf(place.tile);
+        taken[place.name] = prints;
+        expect(rows.wire.length).toBeGreaterThan(200);
+        expect(rows.routes.filter((r) => !r.endsWith("none")).length).toBeGreaterThan(5);
+        expect(rows.autopilot.length).toBe(AUTOPILOT_RUNS + 1);
+        // ROAD_MODEL_ROWS=1 writes the rows even when they match (to diff two machines' rows).
+        const isDumpAsked = process.env.ROAD_MODEL_ROWS === "1";
+        if (isDumpAsked) writeRows(place.name, rows, prints);
+        try {
+          expect({
+            digest: digestOf(rows),
+            surface: rows.surface,
+            routes: rows.routes,
+            autopilot: rows.autopilot,
+          }).toMatchSnapshot();
+          if (!isUpdate) expect(printMismatches(prints, stored[place.name] ?? {})).toEqual([]);
+        } catch (mismatch) {
+          writeRows(place.name, rows, prints);
+          throw mismatch;
+        }
+      },
+      60_000,
+    );
   }
 
-  it("hashes and fingerprints the same when every input coordinate moves one unit in the last place", async () => {
-    const tile = PLACES[0].tile;
-    const nudged = await rowsOf(tile, true);
-    const plain = await rowsOf(tile);
-    try {
-      expect(digestOf(nudged.rows)).toEqual(digestOf(plain.rows));
-      expect(printMismatches(nudged.prints, plain.prints)).toEqual([]);
-    } catch (mismatch) {
-      writeRows("nudged", nudged.rows, nudged.prints);
-      writeRows("plain", plain.rows, plain.prints);
-      throw mismatch;
-    }
-    // Recorded for the tolerance's comment: how far the nudge moved the fingerprints.
-    expect(largestShift(nudged.prints, plain.prints)).toBeLessThan(PRINT_ABS);
-  }, 120_000);
+  for (const place of PLACES) {
+    it(`keeps the discrete model at ${place.name} when every Math function is off by 1e-12 of its result`, async () => {
+      const plain = await rowsOf(place.tile);
+      const shaken = await withShakenMath(SHAKE, () => rowsOf(place.tile));
+      try {
+        expect(rowMismatches(shaken.discrete, plain.discrete)).toEqual([]);
+      } catch (mismatch) {
+        writeRows(`${place.name}-shaken`, shaken.discrete, {});
+        writeRows(`${place.name}-plain`, plain.discrete, {});
+        throw mismatch;
+      }
+    }, 120_000);
+  }
+
+  it.runIf(isBaselinePlatform)(
+    "hashes and fingerprints the same when every input coordinate moves one unit in the last place (darwin)",
+    async () => {
+      const tile = PLACES[0].tile;
+      const nudged = await rowsOf(tile, true);
+      const plain = await rowsOf(tile);
+      try {
+        expect(digestOf(nudged.rows)).toEqual(digestOf(plain.rows));
+        expect(printMismatches(nudged.prints, plain.prints)).toEqual([]);
+      } catch (mismatch) {
+        writeRows("nudged", nudged.rows, nudged.prints);
+        writeRows("plain", plain.rows, plain.prints);
+        throw mismatch;
+      }
+      // Recorded for the tolerance's comment: how far the nudge moved the fingerprints.
+      expect(largestShift(nudged.prints, plain.prints)).toBeLessThan(PRINT_ABS);
+    },
+    120_000,
+  );
 });

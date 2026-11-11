@@ -1,12 +1,16 @@
 ---
 type: Reference
-title: 信号灯器の宣言と施行令第3条の 3 層テスト（T1）、現示表と permits・右折矢印・保留つき信号無視（T2）
-description: 信号灯器の型（横 3 灯・縦 3 灯・矢印段付き・歩行者 2 灯）と取付を src/signals に zod で宣言し、灯の位置を lampLayout(def) の 1 関数から出して Blender（assets/signals/heads.json 経由）とゲームで共用した記録。施行令第3条（横型は右から赤・黄・青、縦型は上から）を定義と実行時の配置（運転者のカメラへの投影）でテストし、glb が lampLayout と同期していること（レンズ位置のノードと heads.json の SHA-256）も検査する。矢印段の配置は第3条ではなく慣行で、一次情報は未確認。寸法の一次情報も未確認のため status は draft。多視点レンダーのレビューは 6 周で収束。T2（2026-11-10）で現示表（Step / SignalPlan、テンプレート twoPhase・twoPhaseWithRightArrow）を宣言し、twoPhase が旧 lightState・歩行者灯と全時刻で一致することをテストで固定、第3条第2項の順序と安全の性質を全テンプレートで検査、施行令第2条の読み方を permits(step, group, movement) の 1 か所にして信号無視・自動運転・交通 AI・歩行者・音響・HUD が通るようにした。右折矢印での転回は、第2条の表には無いが道路交通法施行規則 別表第一の二（右向きの矢印＝「右折し、又は転回することができることとなるもの」）で可と確かめ、permits を原文どおりにした（レビューで訂正、初版は「未確認」）。矢印のあとに黄を出すかは一次情報（警察庁 丁規発第50号）を読めず、保守側（自動運転は止まれる時だけ止まる、矢印消灯から 3 秒は記録しない）にした。信号無視は矢印が出ている間に停止線を越えたら保留し、交差点を出た腕で確定する。右折矢印は OSM turn:lanes の右折専用車線がある接近路の軸に出す仮の規則（23 区で該当 707 接近路、うち信号から 55 m 以内 684）。ヘッドレス Chrome の多視点撮影は 3 周（2・3 周目は新しい指摘なし）。
+title: 信号灯器の宣言と施行令第3条の 3 層テスト（T1）、現示表と permits・右折矢印・保留つき信号無視（T2）、OSM 信号タグの集計と単路の押ボタン式（T3）
+description: 信号灯器の型（横 3 灯・縦 3 灯・矢印段付き・歩行者 2 灯）と取付を src/signals に zod で宣言し、灯の位置を lampLayout(def) の 1 関数から出して Blender（assets/signals/heads.json 経由）とゲームで共用した記録。施行令第3条（横型は右から赤・黄・青、縦型は上から）を定義と実行時の配置（運転者のカメラへの投影）でテストし、glb が lampLayout と同期していること（レンズ位置のノードと heads.json の SHA-256）も検査する。矢印段の配置は第3条ではなく慣行で、一次情報は未確認。寸法の一次情報も未確認のため status は draft。多視点レンダーのレビューは 6 周で収束。T2（2026-11-10）で現示表（Step / SignalPlan、テンプレート twoPhase・twoPhaseWithRightArrow）を宣言し、twoPhase が旧 lightState・歩行者灯と全時刻で一致することをテストで固定、第3条第2項の順序と安全の性質を全テンプレートで検査、施行令第2条の読み方を permits(step, group, movement) の 1 か所にして信号無視・自動運転・交通 AI・歩行者・音響・HUD が通るようにした。右折矢印での転回は、第2条の表には無いが道路交通法施行規則 別表第一の二（右向きの矢印＝「右折し、又は転回することができることとなるもの」）で可と確かめ、permits を原文どおりにした（レビューで訂正、初版は「未確認」）。矢印のあとに黄を出すかは一次情報（警察庁 丁規発第50号）を読めず、保守側（自動運転は止まれる時だけ止まる、矢印消灯から 3 秒は記録しない）にした。信号無視は矢印が出ている間に停止線を越えたら保留し、交差点を出た腕で確定する。右折矢印は OSM turn:lanes の右折専用車線がある接近路の軸に出す仮の規則（23 区で該当 707 接近路、うち信号から 55 m 以内 684）。ヘッドレス Chrome の多視点撮影は 3 周（2・3 周目は新しい指摘なし）。T3（2026-11-10）で T2 の残り W4・W5（driverAction・crossingVerdict の網羅 switch、LightState の点滅・消灯、planForJunction の { plan, groupOf }、現示表の walkers 宣言、conflicts 必須、source を assign が渡す）を挙動不変で片付け、関東 pbf から 23 区の信号ノード 37,491 点のタグを集計した（button_operated 3,188・traffic_signals:sound 2,930・traffic_signals:direction 3,485 など）。信号タイルを [lon, lat] のまま後方互換で [lon, lat, flags, bearing] に拡張し、単路（OSM の車道の交差点節点から 25 m 超）の crossing=traffic_signals 428 点（うち button_operated=yes 37）を単路の横断歩道の信号として出す。押ボタン式は現示表 pushButton（onDemand、歩行者が押した時だけ 黄→全赤→歩行者青→点滅→全赤）、押ボタン箱は岐阜県警の工事共通仕様書（地上 900 mm 以上・高さ 200 mm）に拠り、幅などは仮定。歩行者 AI は箱へ寄って押し、縁石で待つ。音響式は traffic_signals:sound に従う（無ければ従来どおり鳴らす）。多視点（Blender と丸の内の実在の押ボタン式 1 か所のヘッドレス Chrome）は 4 周で収束。
 tags: [assets, traffic-law, testing]
 status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5, at: 2026-11-10T12:50:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T02:30:00Z }
+  - { by: claude-opus-5-5, at: 2026-11-11T02:20:00Z }
+  - { by: process:vitest, at: 2026-11-10T23:40:00Z }
+  - { by: claude-opus-5-5, at: 2026-11-10T23:35:00Z }
   - { by: process:vitest, at: 2026-11-10T12:45:00Z }
   - { by: claude-opus-5-5, at: 2026-11-10T12:40:00Z }
   - { by: process:vitest, at: 2026-11-10T10:35:00Z }
@@ -55,6 +59,26 @@ sources:
   - id: t2-shots
     resource: ヘッドレス Chrome（開発サーバー 5199 番、丸の内二丁目 35.68043, 139.76424 の右折専用車線のある交差点）で、信号の時計を固定して青・黄・赤＋右矢印・全赤・交差の青の各現示を、停止線から 10・30・60 m の運転席・右 9 m の斜め・灯器の 14 m 手前の望遠で、昼と夜に撮影（scratchpad の signals-t2/round1〜3、各コマの JSON に permits の値と矢印の点灯を記録）。3 周目は反対方向の流入路の灯器
     title: 多視点撮影（T2）
+    author: claude-opus-5-5
+  - id: t3-census
+    resource: just count-signal-tags（scripts/signal-tags.ts。.cache/osm の Geofabrik 関東抽出、複製時刻 2026-10-03T20:20:50Z。23 区の外接矩形 35.48–35.84N・139.55–139.93E の highway=traffic_signals と crossing=traffic_signals / crossing:signals=yes の全ノード）
+    title: OSM 信号タグの集計（T3）
+    author: claude-opus-5-5
+  - id: gifu-spec
+    resource: https://www.pref.gifu.lg.jp/uploaded/attachment/357093.pdf （岐阜県警察本部「交通安全施設整備工事共通仕様書（信号機及び交通管制システム工事編）」第5節 押ボタン箱設置工事と「押ボタン箱標準設置姿図」。pdftotext で本文を読んだ）
+    title: 押ボタン箱の取付（電柱抱込式、歩行者用は地上 900 mm 以上、姿図の 200 mm）
+    author: 岐阜県警察本部
+  - id: t3-tests
+    resource: tests/signalCrossing.test.ts（実際の TrafficControl で単路の押ボタン式を作り、制御機・灯器・押ボタン箱の数、押すまで車両青で押すと 黄→全赤→歩行者青→点滅、おまちください灯、再構築をまたいで歩行が続くこと、信号無視・交通 AI・自動運転が permits で止まる、button=no は定周期、traffic_signals:sound=no で鳴らない、タグの無い古いタイルでは何も出ない、歩行者が箱へ寄って押し縁石で待って歩行者青で渡る）・tests/signalPlans.test.ts（pushButton・crossingFixed の第3条第2項と安全、driverAction・crossingVerdict の表、walkers・conflicts の必須、OnDemandRun）・tests/signalTags.test.ts（タイルの符号化と後方互換、コミットしたタイルの全件）・tests/signalHeads.test.ts（押ボタン箱の glb と寸法）
+    title: T3 のテスト
+    author: claude-opus-5-5
+  - id: t3-shots
+    resource: scripts/blender/signals.py の preview（just make-signal-model <dir>、押ボタン箱を柱に付けて正面・斜め 30°・60°・歩行者目線・柱全体・運転席 30 m）と、ヘッドレス Chrome（開発サーバー 5361 番、丸の内の単路の押ボタン式 35.67898, 139.765519、信号の時計を固定して 待機・押した直後・歩行者青・点滅 を 運転席 10/30/60 m・歩行者目線・箱の正面・真上、昼と夜）。scratchpad の t3/blender-r1・t3/shots/round1〜4
+    title: 多視点レビュー（T3）
+    author: claude-opus-5-5
+  - id: t3-compare
+    resource: ヘッドレス Chrome で 3 地点を読み込み、ページ内で道路網（computeRoadNetwork）を作り直して、TrafficControl をタグあり・T3 前の読み方の 2 通りで組み、交差点の制御機の数と節点を比べた（scratchpad の t3/compare.mjs）
+    title: タグありとタグなしの信号交差点の比較
     author: claude-opus-5-5
   - id: arrow-count
     resource: public/data/turnlanes（OSM turn:lanes、1,099 接近路）を集計（scratchpad の t2/count.ts）。right だけの車線を持つ接近路 707、そのうち OSM の信号機から 55 m 以内 684、60 m 格子で数えた交差点の目安 451。丸の内周辺を読み込んだゲームでは信号の制御機 73 のうち 2 が twoPhaseWithRightArrow（road_network_built の rightArrows）
@@ -192,16 +216,120 @@ sources:
 ## T2 の残り
 
 - 矢印の秒数（6 秒は仮定）、矢印のあとの黄の有無（丁規発第50号の本文で確かめる）。
-- **T4 に着手する前に**（レビューの W4・W5、今は直していない）:
+- **T4 に着手する前に**（レビューの W4・W5。**T3 で片付けた**、下の「T3」）:
   - `Permission` の解釈を `plan.ts` の `driverAction(permission, canStop)`（網羅の switch）に一本化する。今は autoDriver・traffic-ai・判定器がそれぞれ `mayProceed` や `"stop"` との比較で読んでいて、`stopFirst` を足すと読み違える。
   - `LightState` に点滅と消灯を足す（今は `FY`→黄・`FR`→赤・`off`→赤に丸めている）。
   - `planForJunction` が `{ plan, groupOf }` を返し、流入路の群を現示表が決める（今は軸 0/1 → a/b を trafficControl が決め打ち）。
   - 歩行者がどの群と一緒に進むかを現示表に宣言する（今は `walkersCrossing` が a↔b を決め打ち）。
   - `conflicts` を必須にする（今は既定が空で、書き忘れると安全の検査が素通りする）。
   - `source` を `assign.ts` が渡す（今はテンプレートが決め打ち）。
-- 夜間点滅・歩車分離・時差式・押ボタン（T4）。赤の点滅を一時停止の判定に載せること（`stopFirst` は型だけで、今は誰も使わない）。
+- 夜間点滅・歩車分離・時差式（T4。単路の押ボタン式は T3 で入れた）。赤の点滅を一時停止の判定に載せること（`stopFirst` は型だけで、今は誰も使わない）。
 - 街灯の灯のにじみ（`streetLights.ts`）は主灯の色だけで、矢印は光らせていない。
 - 交通 AI は大交差点で次の 1 区間しか見ないので、矢印の間に右折できる車が止まることがある（保守側）。
+
+# T3（2026-11-10）: OSM の信号タグ、単路の押ボタン式
+
+## T2 の残り W4・W5（挙動不変）
+
+- `plan.ts` に網羅の switch を 2 つ置き、`Permission` の読み方をそこだけにした。`driverAction(permission, canStop)` → `go`/`stop`（自動運転・交通 AI・HUD・信号無視の猶予の「3 秒前は進めたか」）と `crossingVerdict(permission)` → `booked`/`allowed`/`unconfirmed`（`RedLightJudge`・`signalViolations.ts`）。`mayProceed` は消した。`Permission` を足すと switch の `never` で型検査が落ちる。表はテストで固定し、T2 と同じ値（`go` 以外は止まれる時だけ止まる、記録するのは `stop` だけ）。
+- `LightState` は `green`/`yellow`/`red`/`flashingYellow`/`flashingRed`/`off`。灯の点灯・街灯のにじみ（点滅は色だけ、消灯は 0）・HUD（ja・en・zh の文言と CSS）がそれぞれ扱う。今のテンプレートは点滅・消灯を出さないので見た目は変わらない。
+- `planForJunction(approaches: {axis, lanes}[])` → `{ plan, groupOf }`。流入路の群は現示表の選び手が決め、`trafficControl` は受け取るだけ。
+- 現示表に `walkers`（歩行者の群ごとに `across`＝渡る道路の群、`alongside`＝並んで歩く群）を宣言した。`pedLight` は「その道路の群を渡る歩行者」を `walkers` から引く（`walkersCrossing` の a↔b 決め打ちを削除）。安全の検査も `walkers` を読み、歩行者の青の前後に `MIN_ALL_RED_S` の空きがあることを足した。
+- `conflicts`・`walkers` は必須（既定値なし）。`source` はテンプレートの引数で、`assign.ts` が渡す（twoPhase は `default`、右折矢印は `inferred`、押ボタン式は `osm`）。
+- 確かめ方: 既存の twoPhase 一致（旧式と全時刻）・配置・信号無視のテストが全部そのまま通る（1,168 → 1,215 件、増えた 47 件は T3 の新しいテスト）。
+
+## OSM の信号タグの集計[^t3-census]
+
+23 区の外接矩形で、`highway=traffic_signals` か `crossing=traffic_signals`（`crossing:signals=yes`）のノードは **37,491**。交差点節点は「車道（motorway〜living_street と _link。service は除く）の way の端か途中が 3 本以上集まるノード」。
+
+| 種類 / 位置                                     | 交差点節点 | 25 m 以内 | 25 m 超 | 車道の上に無い |
+| ----------------------------------------------- | ---------: | --------: | ------: | -------------: |
+| `highway=traffic_signals`（crossing なし）      |     13,272 |     4,354 |     774 |            195 |
+| `highway=traffic_signals` + `crossing=…signals` |        732 |       140 |      43 |              6 |
+| 横断歩道のノードだけ（`highway=crossing` など） |        183 |    16,010 |     385 |          1,397 |
+
+| タグ                        | 件数（値ごと）                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `traffic_signals`           | 6,218（signal 5,590・traffic_lights 410・on_demand 146・pedestrian_crossing 39・crossing 9・blinker 7・ほか） |
+| `traffic_signals:direction` | 3,485（forward 2,521・backward 902・both 55・数値など 7）                                                     |
+| `button_operated`           | 3,188（no 2,595・yes 588・night 4・optional 1）                                                               |
+| `traffic_signals:sound`     | 2,930（no 1,954・yes 948・walk 18・locate 10）                                                                |
+| `traffic_signals:vibration` | 2,055（no 1,850・yes 205）                                                                                    |
+| `traffic_signals:countdown` | 88（yes 87・no 1）                                                                                            |
+| `traffic_signals:turn`      | 14                                                                                                            |
+| `crossing:signals`          | 2,830（yes）                                                                                                  |
+| `crossing_ref`              | 705（zebra 672・tiger 19・pedestrian_scramble 6・pelican 5・toucan 3）                                        |
+| `crossing:scramble`         | 6（yes）                                                                                                      |
+
+- **単路の横断歩道の信号**（`crossing` の付いたノードで、車道の上にあり、交差点節点から 25 m 超）: **428**。`button_operated` は yes 37・no 31・無し 360、`traffic_signals:sound` は yes 20・no 33・無し 375、`traffic_signals:direction` は 5 だけ。
+- 規則にしたもの: 単路（形）、`button_operated=yes/no`（押ボタン式か定周期か）、`traffic_signals:sound`（音響式）。件数が少なく規則にしなかったもの: `traffic_signals=blinker`（7、夜間点滅は T4）、`traffic_signals:turn`（14、右折矢印の規則は T2 のまま）、`crossing:scramble`（6、歩車分離は T4 の許可リストで）、`traffic_signals:countdown`（88、残り時間表示は灯器の型が無い）、`traffic_signals:vibration`（ゲームに振動の出し先が無い）。`traffic_signals:direction` は向き（方位）にしてタイルに入れたが、単路の 428 点では 5 点にしか無いので、両方向に灯器を出している（片側だけの信号は T4 の時差式と一緒に扱う）。
+- 交差点の近くの横断歩道のノード 16,010 点はタイルに入れていない（交差点の信号ノードと重なるだけ）。`traffic_signals:sound` の付いたものだけは、横断歩道ごとの音響式のために入れた。
+
+## タイルの形（後方互換）
+
+- `public/data/signals/*.json` の 1 件は `[lon, lat]`（従来どおり。タグの無いもの 14,827 件）、`[lon, lat, flags]`（4,346 件）、`[lon, lat, flags, bearing]`（3,264 件）。合計 22,437 件で、うち 19,516 件は従来の `highway=traffic_signals` で位置と順序は T2 までと同じ（比べて確かめた）、2,921 件が横断歩道のノードだけのもの（単路か音響のタグ付き。`traffic_signals:sound=locate` だけのものはレビュー後に外した）。
+- `flags` のビット（`src/signals/osmTags.ts` `SIGNAL_FLAG`）: 1 交差点節点から 25 m 超・2 crossing=traffic_signals・4 highway=traffic_signals が無い・8/16 button yes/no・32/64 sound yes/no。`bearing` は direction の forward/backward を way の向きから方位（度）にしたもの。
+- `src/world/regulations.ts`（触らない約束）は `[lon, lat]` だけを読むので変えていない。タグは `roadNetworkData.ts` が同じ入力から `signalRecords`（`applied.signals` と同じ順）として作り、`TrafficControl.setNetwork(graph, regs, records)` に渡す。タグの無い呼び出し（テスト・古いタイル）は全部「交差点の信号」として従来どおり読む。
+- 交差点の信号には、`highway=traffic_signals` だけを寄せる（従来どおり）。横断歩道だけのノードは寄せない。単路のまとまりのうち **制御機を作るもの** のレコードと、その 30 m 以内の「交差点から 25 m 超の信号ノード」（単路の横断歩道を「横断歩道のノード＋両側の信号ノード」で描く書き方）も寄せない。制御機を作らない単路（横断歩道が無いなど）の `highway=traffic_signals` は従来どおり寄せる（レビュー W2 で修正。初版は無条件に外し、従来あった交差点の信号が消えうる作りだった）。
+- 再生成: `just rebuild-signal-tiles`（`REGS_USE_CACHE=1 pnpm exec tsx scripts/regulations.ts signals`）。`REGS_USE_CACHE=1` は 1 週間より古い `.cache/osm` もそのまま使う（新しい抽出を落とすと junctions・footbridges・turnlanes・police・places も全部動き、差分が埋もれるため）。タイルの中身がバイト一致の層はディレクトリごと書き換えない（`osm_layer_unchanged`。meta・LICENSE も）。`meta.json` の `extract` は抽出の複製時刻（2026-10-03T20:20:50Z）、`fetchedAt` はキャッシュを落とした時刻（ファイルの更新時刻、2026-10-04T11:10:41Z）。初版は実行時刻を `fetchedAt` に書き、データの時点を誤って示していた（レビュー W3 で修正）。
+
+## 単路の横断歩道の信号
+
+- `TrafficControl.buildCrossingSignals`: 単路のレコードを 30 m でまとめ、各まとまりに JARTIC の横断歩道（15 m 以内、区間ごとに最寄り 1 本。中央分離帯で区間が 2 本なら 2 本）を対応付け、渡る区間の両方向（一方通行は 1 方向）に流入路を作る。停止線は JARTIC の停止線が横断歩道の中心の 2.5〜12 m 手前にあればそれ、無ければ 4 m 手前（仮定）。流入路の `node` は横断歩道の中心、`exitM` は 25 m か停止線＋10 m。
+- 作らない場合（ログ `signal_crossings_skipped`）: 道路網の外（タイルの方が広い）、横断歩道が無い、信号交差点の節点から 30 m 以内（その交差点の信号が受け持つ）、区間に停止線を置く余地が無い。丸の内周辺では単路のまとまり 19 のうち、作ったのは 2（うち押ボタン式 1）、横断歩道なし 10（道路網の外を含む。`outside` を分けたのはこのあと）、交差点の近く 7。
+- 現示表: `pushButton`（`button_operated=yes`、`onDemand`）と `crossingFixed`（no または無し。同じ段の定周期）。段は 車両青（押ボタン式は最短 20 秒の待機）→ 黄 3 → 全赤 2 → 歩行者青 12 → 点滅 5 → 全赤 2、秒数はすべて仮定。群は車両 `v`・歩行者 `p`（`walkers: { p: { across: "v" } }`）。第3条第2項と安全の性質（歩行者の青の前後の空きを含む）は全テンプレートの表に入れてある。
+- **押ボタン式の動き**（`OnDemandRun`）: 待機は段 0。押されると、待機が最短の秒数を過ぎていればその時から 1 回だけ走り、終わると待機に戻る。歩行が始まる前・青の間の押しは「もう応えている」として捨て、点滅・全赤の間の押しは次の回に回す。時計が戻った（リプレイ）ら走りを捨てる。制御機の状態は横断歩道の OSM ノードの経緯度のハッシュで覚え、道路網の再構築をまたいで歩行が途切れない。信号無視の猶予（3 秒前の段）は走りの記録から引く。
+- **灯器**: 両方向とも横断歩道の 3.5 m 先の左に車両用 3 灯横型（交差点と同じアームと高さ）。歩行者用 2 灯は横断歩道の両端。両端の近く（7 m 以内）に車両用の柱があれば、歩行者用灯器と押ボタン箱はその柱に付け（共架）、柱を 2 本並べない（多視点の 1・2 周目の指摘）。
+- **押ボタン箱**[^gifu-spec]: 歩行者用押ボタン箱は柱に電柱抱込式、地上 900 mm 以上（下端を 0.9 m にした）、姿図の 200 mm を箱の高さと読んだ。幅 0.13・奥行き 0.08 m、ボタン径 50 mm、おまちください灯 80 × 26 mm と色は仮定（`verified: false`）。岐阜県の工事仕様であって警視庁・警察庁のものではない。箱は横断歩道の方を向き、押されてから歩行者青までおまちください灯（赤）が点く。
+- **歩行者 AI**（`sidewalks.ts`）: 単路の横断歩道を渡る人（従来どおり 3 割）は、押ボタン式なら先にその端の箱の前へ寄って押し、縁石で待つ。待っている間も押し直す（歩行の前に押した分は捨てられているので、押し直さないと赤のまま待ち続ける）。`TrafficControl.buttonStand`・`pressButton` が窓口で、押しが受け付けられたら `signal_button_pressed` を 1 行書く。
+- **音響式**: 横断歩道から 15 m 以内で `traffic_signals:sound` の付いた最寄りのノードに従い、無ければ制御機のノードのタグ（yes が 1 つでもあれば鳴らす）、それも無ければ従来どおり鳴らす。`forEachWalking` は鳴らさない灯器を飛ばす。
+- **違反・自動運転・交通 AI**[^t3-tests]: 単路の流入路も `permits` を通る（tests/signalCrossing.test.ts で、赤で停止線を越えたら記録、青・黄は記録なし、交通 AI と自動運転は赤で止まる）。下の「レビュー対応」も見ること。
+
+## レビュー対応（2026-11-11、C1・W1〜W4）
+
+- **C1: 「信号の停止線は区間の末端の手前」という暗黙の約束**を単路が破り、読む側の 3 か所が誤っていた。`Approach` に `site`（`junction` / `crossing`）・`toNodeM`（停止線から節点までの進行方向の距離）・`head` / `headBase`（灯器と柱を置く基点）を持たせ、読む側を直した。それぞれ先に再現テストを書いて落ちることを確かめてから直した（tests/signalCrossingSiting.test.ts）。
+  - (a) 街灯のにじみ（`streetLights.ts`）は灯器の位置を区間の末端の節点から計算し直していて、単路の灯器のにじみが 155 m 先の交差点に出ていた。`ap.head` を読むようにし、計算の複製をやめた（交差点では従来の「末端の先 +2.5 m」から灯器の実際の位置「+1 m」に変わる）。
+  - (b) `autoTraffic.ts` `junctionsAhead` が `nextStop` で手前の単路の停止線を拾い、信号交差点を無信号と読んでいた（第36条の譲りに入る）。交差点の停止線（`site === "junction"`）だけを引くようにした。非公開の `Controller` 型を読んでいた箇所（S2）も消えた。
+  - (c) 自動運転（`blockAhead`）と交通 AI（`stopGap`）が今の区間の停止線しか見ず、区間に入って 1 m 先の単路の停止線を見つけた時には止まれない距離だった（10 m/s で 30 m 手前から `Infinity`）。経路（交通 AI は選んだ次の道路）の次の区間の信号の停止線まで先読みする。先読みした信号の移動は直進と読む（保守側）。
+  - 自動運転の節点までの距離は `ap.toNodeM`（`stopToNode` は削除。停止線の中点と節点の直線距離だったので横ずれを含んでいた）。`controller?.kind === "crossing"` の散在は `ap.site` にまとめた。
+- **W1**: 待っている歩行者は、箱へ寄ったかに関係なく毎回押す（押ボタン式でなければ何もしない）。単路の制御機の歩行者灯は自分の横断歩道（中心から 3 m 以内）だけを照らす。初版は 30 m 以内なら交差点の角の横断歩道まで単路の赤にしていた。
+- **W2**: 距離の閾値を `src/signals/siting.ts` の 1 か所にまとめた（25 m の判定は OSM 側と GSI 側の 2 つに分けて名前を付けた）。横断歩道は「単路のレコードが 8 m 以内に載っている区間」のものだけを対応付け、15 m 以内の脇道の横断歩道を拾わない。`scripts/osm-signals.ts` の判定を純関数 `classifySignalNodes` に分け、フィクスチャのテストを足した（tests/osmSignals.test.ts）。
+  - **タグありとタグなしの比較**[^t3-compare]: 同じ道路網で、タグあり（今）と「T3 前と同じ読み方」（`highway=traffic_signals` だけ、タグなし）の信号交差点の制御機を数えた。丸の内（35.67898, 139.765519）85 → 83（失ったもの 2、増えたもの 0、単路 2 うち押ボタン式 1）、新宿（35.6905, 139.7004）67 → 66（失 1・増 0、単路 3）、池袋（35.7295, 139.7109）55 → 55（単路 2）。失った交差点は、OSM では交差点から 25 m 超の単路の信号を、GSI の細い道との節点（25 m 以内）に寄せていたもの。単路の制御機ができた所だけで起きる。
+- **W3**: 上の「再生成」のとおり。
+- **W4**: 単路の横断歩道の対応付けの高速道路の除外は `isMotorwayOnly(seg)`（`trafficControl.ts` のローカルな述語）にした。P2（feat/road-predicates）のマージ時に `!hasRoadside(seg)` に置き換える（コメントに書いた）。既存の `kind === "highway"` は触っていない。
+- **Info**: `letsDriverGo(permission)`（HUD と矢印消灯の猶予）。`signalCount()` は交差点の制御機だけを数える（`road_network_built` の `signals` は T3 前と同じ意味で、単路は `crossingSignals`）。`traffic_signals:sound=locate`（位置を知らせる音だけ、23 区で 10）は音響式の「青の間の誘導音」ではないので、タグ無しとして扱う。クレジットの抽出元を BBBike から Geofabrik の関東抽出に直した（LICENSE と一致）。`src/world/regulations.ts:30` の `signals` の型コメント（`[lon, lat]`）は、触らない約束のため直していない（P2 の担当範囲）。
+- **確かめたこと（ヘッドレス Chrome、丸の内の押ボタン式、夜）**: にじみの光源は単路の灯器 2 つの位置と一致（ずれ 0 m、横断歩道の中心から 6.3 m）、隣の信号交差点（147 m 先）の光源 3 つも灯器の位置と一致。歩行者青の間 20 秒、交通 AI の車は停止線の手前で 1 台待ち、停止線と横断歩道の間を走る車は 0（scratchpad の t3/shots/c1）。自動運転はゲーム内では走らせておらず、単体テストで確かめた。
+
+## 多視点レビュー（T3）[^t3-shots]
+
+| 周  | 見たもの                                                                                                                | 指摘                                                                                           | 直したこと                                              |
+| --- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 1   | Blender: 押ボタン箱（正面・30°・60°・歩行者目線・柱全体・運転席 30 m）。ゲーム: 昼の各現示 × 10/30/60 m・歩行者目線・箱 | 箱・ボタン・灯の配置と点灯は正しい。こちら側の端で車両用の柱と歩行者用の柱が 0.6 m で 2 本並ぶ | 単路では車両用の柱に歩行者用灯器と箱を共架              |
+| 2   | 同じ視点＋真上                                                                                                          | 向こう側の端はまだ柱が 2 本（歩行者用の位置が柱から 7 m 離れ、4.5 m の判定に入らない）         | 共架の判定を「横断歩道の端から 7 m 以内の車両用の柱」に |
+| 3   | 昼と夜（各現示 × 10/30/60 m・歩行者目線・箱・真上）、Blender の出力                                                     | なし                                                                                           | —                                                       |
+| 4   | 最終のコードで昼と夜をもう一度、Blender の preview をもう一度                                                           | なし                                                                                           | —                                                       |
+
+- 撮影の 1 周目は撮影スクリプトの時計の順序の誤り（押す前の待機を後で撮って時計を戻した）で現示がずれた。ゲームの不具合ではないので周の指摘には数えず、撮り直した。撮影ではゲームの歩行者の押しを止めている。
+- 確かめたこと: 待機は車両青・歩行者赤、押した直後は黄でおまちください灯が点き、全赤ののち歩行者青で灯が消え、点滅、車両青に戻る。60 m では灯器は数画素（T2 と同じ。寸法は変えない約束）。夜は箱の灯がはっきり見え、ボタンは暗い。`just show-errors` は 0 件。
+- 残り: 押ボタン箱の「おしてください」の文字や案内板は描いていない。押している手の動きは無い（箱の前に寄って向きを変えるだけ）。
+
+## T3 の残り
+
+- 単路の横断歩道 428 点のうち JARTIC の横断歩道が 15 m 以内にあるのは 328（押ボタン式 37 のうち 25）。無いところは出していない。
+- 交差点の押ボタン（横断歩道のノードの `button_operated=yes` は交差点の近くにも多い）、`button_operated=night`、夜間点滅、時差式、`traffic_signals:direction` の片側だけの信号は T4。
+- 自分（徒歩のプレイヤー）は押ボタンを押せない。
+- 押ボタン式の秒数（最短の待機 20 秒・歩行者青 12 秒など）と押ボタン箱の幅・奥行きの一次情報。
+- 交差点の近くの横断歩道のノードを交差点の信号に足すか（今は `highway=traffic_signals` だけを寄せる。横断歩道のノードだけが付いた交差点は信号が無いまま）。
+
+[^t3-census]: OSM 信号タグの集計（T3）
+
+[^gifu-spec]: 押ボタン箱の取付
+
+[^t3-tests]: T3 のテスト
+
+[^t3-compare]: タグありとタグなしの信号交差点の比較
+
+[^t3-shots]: 多視点レビュー（T3）
 
 [^law-2]: 道路交通法施行令 第2条・第3条第2項
 

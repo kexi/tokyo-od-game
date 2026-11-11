@@ -1,18 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { hasRightTurnLane, planForJunction } from "../src/signals/assign";
+import { hasRightTurnLane, planForCrossing, planForJunction } from "../src/signals/assign";
 import { movementOf } from "../src/signals/movement";
 import {
   MOVEMENTS,
   RIGHT_ARROW_S,
+  CROSSING_TIMING,
+  OnDemandRun,
   SignalPlanSchema,
   compilePlan,
+  crossingFixed,
+  crossingVerdict,
   cycleTime,
+  driverAction,
   orderIssues,
   permits,
+  pushButton,
   safetyIssues,
   stepAt,
   twoPhase,
   twoPhaseWithRightArrow,
+  type Permission,
   type SignalPlan,
   type Step,
 } from "../src/signals/plan";
@@ -55,7 +62,7 @@ const TIMES = (() => {
 })();
 
 describe("twoPhase reproduces the game's two-phase signal (twoPhase 一致)", () => {
-  const plan = compilePlan(twoPhase());
+  const plan = compilePlan(twoPhase("default"));
 
   it("lasts the same 45 s cycle", () => {
     expect(plan.cycle).toBe(LEGACY.CYCLE);
@@ -91,12 +98,27 @@ describe("twoPhase reproduces the game's two-phase signal (twoPhase 一致)", ()
 
 /** Every template as the game can build it, with the default and some other timings. */
 const TEMPLATES: Record<string, SignalPlan> = {
-  twoPhase: twoPhase(),
-  twoPhaseSlow: twoPhase({ green: [40, 30], yellow: 4, allRed: 3, pedFlash: 8 }),
-  rightArrowA: twoPhaseWithRightArrow(["a"]),
-  rightArrowB: twoPhaseWithRightArrow(["b"]),
-  rightArrowAB: twoPhaseWithRightArrow(["a", "b"]),
-  rightArrowLong: twoPhaseWithRightArrow(["a"], { green: [30, 20], yellow: 3, allRed: 2, pedFlash: 6 }, 10),
+  twoPhase: twoPhase("default"),
+  twoPhaseSlow: twoPhase("default", { green: [40, 30], yellow: 4, allRed: 3, pedFlash: 8 }),
+  rightArrowA: twoPhaseWithRightArrow(["a"], "inferred"),
+  rightArrowB: twoPhaseWithRightArrow(["b"], "inferred"),
+  rightArrowAB: twoPhaseWithRightArrow(["a", "b"], "inferred"),
+  rightArrowLong: twoPhaseWithRightArrow(
+    ["a"],
+    "inferred",
+    { green: [30, 20], yellow: 3, allRed: 2, pedFlash: 6 },
+    10,
+  ),
+  pushButton: pushButton("osm"),
+  pushButtonSlow: pushButton("osm", {
+    minGreen: 40,
+    yellow: 4,
+    allRed: 3,
+    walk: 20,
+    pedFlash: 8,
+    clearance: 3,
+  }),
+  crossingFixed: crossingFixed("default"),
 };
 
 describe("施行令第3条第2項: every template shows its signals in the law's order", () => {
@@ -110,8 +132,13 @@ describe("施行令第3条第2項: every template shows its signals in the law's
           const [a, b] = [plan.steps[i], plan.steps[(i + 1) % n]];
           const isChange = a.main[g] !== b.main[g];
           if (isChange) expect(`${a.main[g]}→${b.main[g]}`).toMatch(/^(G→Y|Y→R|R→G)$/);
-          const isPedChange = a.ped[g] !== b.ped[g];
-          if (isPedChange) expect(`${a.ped[g]}→${b.ped[g]}`).toMatch(/^(go→flash|flash→stop|stop→go)$/);
+        }
+      }
+      for (const p of Object.keys(plan.walkers)) {
+        for (let i = 0; i < n; i++) {
+          const [a, b] = [plan.steps[i], plan.steps[(i + 1) % n]];
+          const isPedChange = a.ped[p] !== b.ped[p];
+          if (isPedChange) expect(`${a.ped[p]}→${b.ped[p]}`).toMatch(/^(go→flash|flash→stop|stop→go)$/);
         }
       }
     });
@@ -135,6 +162,8 @@ describe("施行令第3条第2項: every template shows its signals in the law's
     const bad = {
       template: "x",
       source: "default",
+      conflicts: [],
+      walkers: {},
       steps: [
         { s: 5, main: { a: "G" } },
         { s: 5, main: { a: "R" } },
@@ -152,7 +181,13 @@ describe("safety: crossing traffic never moves together and changes are cleared"
   }
 
   it("catches unsafe plans (both groups green, an arrow over green, a 2 s yellow, no all-red)", () => {
-    const base = { template: "x", source: "default" as const, conflicts: [["a", "b"]] as [string, string][] };
+    const base = {
+      template: "x",
+      source: "default" as const,
+      conflicts: [["a", "b"]] as [string, string][],
+      walkers: { a: { across: "b", alongside: "a" }, b: { across: "a", alongside: "b" } },
+      onDemand: false,
+    };
     const s = (
       secs: number,
       a: Step["main"][string],
@@ -211,7 +246,7 @@ describe("safety: crossing traffic never moves together and changes are cleared"
 
 describe("twoPhaseWithRightArrow", () => {
   it("lights the right arrow over red for 6 s straight after group a's yellow, with group b and every walker at red", () => {
-    const plan = compilePlan(twoPhaseWithRightArrow(["a"]));
+    const plan = compilePlan(twoPhaseWithRightArrow(["a"], "inferred"));
     expect(plan.cycle).toBe(CYCLE + RIGHT_ARROW_S);
     const arrowSteps = plan.plan.steps.flatMap((st, i) => ((st.arrows.a?.length ?? 0) > 0 ? [i] : []));
     expect(arrowSteps).toHaveLength(1);
@@ -311,13 +346,164 @@ describe("the 右折矢印 rule (assign.ts)", () => {
   });
 
   it("gives the arrow to the groups with such an approach, and twoPhase elsewhere", () => {
-    expect(planForJunction([{ group: "a" }, { group: "b" }]).plan.template).toBe("twoPhase");
+    const plain = planForJunction([{ axis: 0 }, { axis: 1 }]);
+    expect(plain.plan.plan.template).toBe("twoPhase");
+    expect(plain.plan.plan.source).toBe("default");
+    // The plan names each approach's group: axis 0 (the widest road) is a, axis 1 is b.
+    expect(plain.groupOf).toEqual(["a", "b"]);
     // Controllers of one kind share one compiled plan (no re-parse, no re-compile per rebuild).
-    expect(planForJunction([{ group: "a" }])).toBe(planForJunction([{ group: "b" }]));
-    const plan = planForJunction([{ group: "a", lanes: osm(["through"], ["right"]) }, { group: "b" }]).plan;
+    expect(planForJunction([{ axis: 0 }]).plan).toBe(planForJunction([{ axis: 1 }]).plan);
+    const choice = planForJunction([{ axis: 0, lanes: osm(["through"], ["right"]) }, { axis: 1 }]);
+    const plan = choice.plan.plan;
+    expect(choice.groupOf).toEqual(["a", "b"]);
     expect(plan.template).toBe("twoPhaseWithRightArrow");
     expect(plan.source).toBe("inferred");
     expect(plan.steps.some((s) => s.arrows.a?.includes("right"))).toBe(true);
     expect(plan.steps.some((s) => (s.arrows.b?.length ?? 0) > 0)).toBe(false);
+  });
+});
+
+describe("the 単路 crossing rule (assign.ts planForCrossing)", () => {
+  it("runs pushButton where OSM says button_operated=yes, a fixed cycle where it says no or nothing", () => {
+    const button = planForCrossing({ button: true }, 2);
+    expect(button.plan.plan.template).toBe("pushButton");
+    expect(button.plan.plan.onDemand).toBe(true);
+    expect(button.plan.plan.source).toBe("osm");
+    // Both directions of the road are the one vehicle group the walkers cross.
+    expect(button.groupOf).toEqual(["v", "v"]);
+    expect(button.plan.plan.walkers).toEqual({ p: { across: "v" } });
+    const no = planForCrossing({ button: false }, 1).plan.plan;
+    expect([no.template, no.onDemand, no.source]).toEqual(["crossingFixed", false, "osm"]);
+    const unknown = planForCrossing({ button: null }, 1).plan.plan;
+    expect([unknown.template, unknown.source]).toEqual(["crossingFixed", "default"]);
+  });
+});
+
+describe("driverAction and crossingVerdict: the one reading of each permission", () => {
+  const PERMISSIONS: Permission[] = ["go", "stopIfAble", "stop", "stopFirst", "unconfirmed"];
+
+  it("a driver goes on go, and on anything else stops when it can and goes on when it cannot (as before T3)", () => {
+    const table = Object.fromEntries(
+      PERMISSIONS.map((p) => [p, [driverAction(p, true), driverAction(p, false)]]),
+    );
+    expect(table).toEqual({
+      go: ["go", "go"],
+      stopIfAble: ["stop", "go"],
+      stop: ["stop", "go"],
+      stopFirst: ["stop", "go"],
+      unconfirmed: ["stop", "go"],
+    });
+  });
+
+  it("信号無視 books only 赤 with no arrow its way; 黄 and 赤の点滅 are not booked, a dark signal is unconfirmed", () => {
+    expect(Object.fromEntries(PERMISSIONS.map((p) => [p, crossingVerdict(p)]))).toEqual({
+      go: "allowed",
+      stopIfAble: "allowed",
+      stop: "booked",
+      stopFirst: "allowed",
+      unconfirmed: "unconfirmed",
+    });
+  });
+});
+
+describe("the plan declares its walkers and conflicts (W5)", () => {
+  const steps = twoPhase("default").steps;
+
+  it("rejects a plan without conflicts, without walkers, or with walkers it does not declare", () => {
+    const base = { template: "x", source: "default", steps };
+    expect(SignalPlanSchema.safeParse({ ...base, walkers: twoPhase("default").walkers }).success).toBe(false);
+    expect(SignalPlanSchema.safeParse({ ...base, conflicts: [["a", "b"]] }).success).toBe(false);
+    const undeclared = { ...base, conflicts: [["a", "b"]], walkers: { a: { across: "b" } } };
+    expect(SignalPlanSchema.safeParse(undeclared).success).toBe(false);
+    const unknownGroup = { ...base, conflicts: [], walkers: { a: { across: "x" }, b: { across: "a" } } };
+    expect(SignalPlanSchema.safeParse(unknownGroup).success).toBe(false);
+  });
+
+  it("takes source from its caller", () => {
+    expect(twoPhase("osm").source).toBe("osm");
+    expect(pushButton("default").source).toBe("default");
+  });
+
+  it("catches walkers whose road's traffic moves too soon after their walk (no clearance)", () => {
+    const s = (secs: number, v: "G" | "Y" | "R", p: "go" | "flash" | "stop"): Step => ({
+      s: secs,
+      main: { v },
+      arrows: {},
+      ped: { p },
+    });
+    const noClearance = {
+      template: "x",
+      source: "default" as const,
+      conflicts: [],
+      walkers: { p: { across: "v" } },
+      onDemand: false,
+      steps: [s(20, "G", "stop"), s(3, "Y", "stop"), s(2, "R", "stop"), s(10, "R", "go"), s(5, "R", "flash")],
+    };
+    expect(safetyIssues(noClearance).some((m) => m.includes("walkers p have 0 s clear of v after"))).toBe(
+      true,
+    );
+    const walkOnYellow = {
+      ...noClearance,
+      steps: [s(20, "G", "stop"), s(3, "Y", "go"), s(10, "R", "flash")],
+    };
+    expect(safetyIssues(walkOnYellow).some((m) => m.includes("walkers p cross moving traffic"))).toBe(true);
+  });
+});
+
+describe("pushButton: rests at the vehicles' 青 until a walker calls (押ボタン式)", () => {
+  const plan = compilePlan(pushButton("osm"));
+  const t = CROSSING_TIMING;
+  const look = (run: OnDemandRun, at: number) => {
+    const st = run.stepAt(at);
+    return `${st.main.v}/${st.ped.p}`;
+  };
+
+  it("shows the vehicles 青 and the walkers 赤 for as long as nobody presses", () => {
+    const run = new OnDemandRun(plan, 0);
+    for (let at = 0; at < 600; at += 7) expect(look(run, at)).toBe("G/stop");
+  });
+
+  it("after a press: 黄 → 全赤 → walkers' 青 → its flash → 全赤 → back to 青, in that order and timing", () => {
+    const run = new OnDemandRun(plan, 0);
+    expect(run.call(100)).toBe(true);
+    expect(run.isWaiting(100)).toBe(true);
+    expect(look(run, 100.5)).toBe("Y/stop");
+    expect(look(run, 100 + t.yellow + 0.5)).toBe("R/stop");
+    const walk = 100 + t.yellow + t.allRed;
+    expect(run.isWaiting(walk - 0.1)).toBe(true);
+    expect(look(run, walk + 0.5)).toBe("R/go");
+    expect(run.isWaiting(walk + 0.5)).toBe(false);
+    expect(look(run, walk + t.walk + 0.5)).toBe("R/flash");
+    expect(look(run, walk + t.walk + t.pedFlash + 0.5)).toBe("R/stop");
+    const back = walk + t.walk + t.pedFlash + t.clearance;
+    expect(look(run, back + 0.5)).toBe("G/stop");
+    expect(look(run, back + 300)).toBe("G/stop");
+  });
+
+  it("serves a call only after the vehicles' shortest green, and ignores presses while the walk is still to come", () => {
+    const run = new OnDemandRun(plan, 0);
+    run.call(10);
+    run.stepAt(10.5);
+    expect(run.call(11)).toBe(false); // the walk this run will show serves it
+    const back = 10 + plan.cycle - t.minGreen;
+    expect(run.call(back - 1)).toBe(true); // during the clearance: waits for the next run
+    expect(look(run, back + 1)).toBe("G/stop");
+    expect(look(run, back + t.minGreen - 0.5)).toBe("G/stop");
+    expect(look(run, back + t.minGreen + 0.5)).toBe("Y/stop");
+  });
+
+  it("answers what showed a moment ago (the violation check's grace) without moving the run", () => {
+    const run = new OnDemandRun(plan, 0);
+    run.call(50);
+    run.stepAt(50 + t.yellow + 1);
+    expect(run.stepBefore(50 + t.yellow + 1, 2).main.v).toBe("Y");
+    expect(run.stepBefore(50 + t.yellow + 1, 10).main.v).toBe("G");
+  });
+
+  it("drops the run when the clock goes back (the replay rewinds it)", () => {
+    const run = new OnDemandRun(plan, 0);
+    run.call(100);
+    expect(look(run, 101)).toBe("Y/stop");
+    expect(look(run, 20)).toBe("G/stop");
   });
 });

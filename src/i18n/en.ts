@@ -865,6 +865,9 @@ export const en: Messages = {
   "hud.signal.red": "Red",
   "hud.signal.redRightArrow": "Red + right arrow",
   "hud.signal.redArrows": "Red + arrow",
+  "hud.signal.flashingYellow": "Flashing yellow",
+  "hud.signal.flashingRed": "Flashing red",
+  "hud.signal.off": "Dark",
   "hud.signalAhead": "🚦 {light} · {m} m",
   "hud.stopAhead": "🛑 Stop · {m} m",
   "hud.oneWay": "⬆ One way",
@@ -1205,12 +1208,14 @@ export const en: Messages = {
   "credits.jartic.terms": "Terms: {terms} (compatible with CC BY 4.0).",
   "credits.h.signals": "Traffic signal positions",
   "credits.osm": "© {osm}.",
-  "credits.link.bbbike": "BBBike's Tokyo extract",
+  "credits.link.geofabrikKanto": "Geofabrik's Kanto extract",
   "credits.signals.extract":
-    "OpenStreetMap's {tag} are taken from {bbbike}, matched to the junctions and shown.",
+    "OpenStreetMap's {tag} are taken from {extract}, matched to the junctions and crosswalks and shown.",
   "credits.odbl": "The extracted database is offered under the {odbl} ({file}).",
   "credits.signals.cycle":
     "The signal cycles (the green, yellow and red times and the offsets between junctions) are the game's own and differ from the real signals.",
+  "credits.roadlanes.extract":
+    "The street lane counts and widths (OpenStreetMap's {tags}) are extracted likewise and matched to the GSI road centrelines to lay out the lanes (public/data/roadlanes).",
   "credits.h.guide": "Guide signs (destinations and directions)",
   "credits.h.destinations": "Destinations (stations and places)",
   "credits.h.expressway": "Elevated urban expressways",

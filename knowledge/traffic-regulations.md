@@ -8,6 +8,7 @@ status: stable
 stale_after: 2027-01-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-10-05T03:30:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-10T23:40:00Z }
   - { by: process:vitest, at: 2026-11-10T12:45:00Z }
   - { by: process:vitest, at: 2026-10-05T03:15:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-10-05T03:15:00Z }
@@ -95,6 +96,7 @@ sources:
 - JARTIC の信号機（コード 98）は 15,972 行あるが、有効な座標を持つのは 408 行だけ（他は東京都外の値などダミー）。[^column-census]
 - 代わりに OpenStreetMap の `highway=traffic_signals` を使う。23 区の範囲（35.48–35.84N, 139.55–139.93E）で 13,027 点。BBBike の Tokyo 抽出を自前の PBF リーダ（`scripts/osm-pbf.ts`、dense node の tag だけ読む）で 2 秒で抜き出している。[^osm-extract]
 - 抽出結果は ODbL の派生データベースなので、`public/data/signals/LICENSE.txt` を同梱し、出典画面にも ODbL と書いた（[利用条件](licensing-decisions.md)）。
+- **追記（2026-11-10、T3）**: `public/data/signals` に、交差点節点から 25 m を超える `crossing=traffic_signals`（単路の横断歩道の信号）と `traffic_signals:sound` 付きの横断歩道のノードを足し、`button_operated`・`traffic_signals:sound`・`traffic_signals:direction` をビットと方位で持たせた（`[lon, lat]` は従来どおり先頭。22,437 件、うち従来の 19,516 件は位置と順序が同じ）。`src/world/regulations.ts` は変えず、タグは `roadNetworkData.ts` から `TrafficControl` に渡る。単路の押ボタン式の信号と、タグに従う音響式は [信号灯器と現示表](signal-system.md) の「T3」。23 区の信号タグの件数表もそこにある。
 
 # 道路中心線への対応付け（`src/world/regulations.ts`）
 
@@ -307,7 +309,7 @@ JARTIC の 58（進行方向別通行区分）は警視庁の CSV に 8,603 行�
 
 # まだやっていないこと
 
-歩行者用信号、時差式・感応式の信号。徐行区間（61）は丸の内周辺に無く、ゲーム内では試していない。右折矢印は 2026-11-10 に入れた（OSM の右折専用車線を手がかりにした仮の規則。[信号灯器と現示表](signal-system.md)）。上の 2 行の T2 の検証は単体テスト（tests/redLight.test.ts）で、ゲーム内で運転しては試していない。
+時差式の信号、交差点の押ボタン式（単路の押ボタン式は 2026-11-10 の T3 で入れた。[信号灯器と現示表](signal-system.md)）。徐行区間（61）は丸の内周辺に無く、ゲーム内では試していない。右折矢印は 2026-11-10 に入れた（OSM の右折専用車線を手がかりにした仮の規則。[信号灯器と現示表](signal-system.md)）。上の 2 行の T2 の検証は単体テスト（tests/redLight.test.ts）で、ゲーム内で運転しては試していない。
 
 [^jartic-index]: JARTIC オープンデータ一覧 JSON
 

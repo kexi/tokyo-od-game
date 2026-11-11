@@ -769,12 +769,14 @@ pre.notice {
 }
 
 #reg-ahead[data-state="red"],
+#reg-ahead[data-state="flashingRed"],
 #reg-ahead[data-state="stop"] {
   background: #c62828;
   color: #fff;
 }
 
-#reg-ahead[data-state="yellow"] {
+#reg-ahead[data-state="yellow"],
+#reg-ahead[data-state="flashingYellow"] {
   background: #f9a825;
   color: #1b1b1b;
 }

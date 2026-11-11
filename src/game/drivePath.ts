@@ -1,12 +1,5 @@
 import { Vector3 } from "three";
-import {
-  carriagewayWidth,
-  isLaneChangeBanned,
-  KERB_INSET,
-  laneBand,
-  laneCentreOffset,
-  laneOfOffset,
-} from "../world/laneChange";
+import { isLaneChangeBanned, laneBand, laneCentreOffset, laneOfOffset } from "../world/laneChange";
 import { laneOffset, leftOf, type RoadGraph, type Segment } from "../world/roads";
 import type { LaneHint, Maneuver, Route, Step, Turn } from "./navigation";
 
@@ -28,6 +21,8 @@ import type { LaneHint, Maneuver, Route, Step, Turn } from "./navigation";
 
 /** Tightest turn the car makes at 15 km/h (2.7 m wheelbase, steering lock 0.45 rad there). */
 export const MIN_RADIUS = 6;
+/** Route distance (m) a curve point must lie before the middle to take the entry lane plan. */
+const MID_MARGIN = 1e-6;
 /** 直近の内側: the car's centre passes this far inside the junction centre (half the car + 0.35 m). */
 export const CENTRE_GAP = 1.2;
 /** Before a right turn, the car's centre this far left of the centre line (第34条第2項). */
@@ -231,19 +226,20 @@ export type Corner = { from: number; to: number; kind: CornerKind; radius: numbe
 
 /**
  * Centre of lane `i` (0 = leftmost) left of the centreline, for traffic on this street. Lanes
- * split the carriageway half (two-way) or the whole carriageway (one-way); kept at least 1.6 m
- * inside the edge, since GSI 幅員 can include the pavement.
+ * split the carriageway half (two-way) or the whole carriageway (one-way) inside the shoulders
+ * (laneChange.ts). Why no inset from the kerb any more: the carriageway is the section's, capped
+ * where the GSI 幅員 includes the pavement, so a lane centre never lands on the kerb.
  */
 export function laneCentre(seg: Segment, i: number, count = seg.lanes): number {
   const lanes = Math.max(1, count);
-  const half = carriagewayWidth(seg.line) / 2;
-  const offset = laneCentreOffset(seg, Math.min(i, lanes - 1), lanes);
-  const inside = Math.min(offset, half - KERB_INSET.laneCentre);
-  return seg.oneway === 0 ? Math.max(KERB_INSET.centreLine, inside) : inside;
+  return laneCentreOffset(seg, Math.min(i, lanes - 1), lanes);
 }
 
 const isRightward = (turn: Turn) => turn === "right" || turn === "slightRight" || turn === "uturn";
-// Keeping to one edge of a one-way street without lanes: as far in as the left lane of a two-way one.
+// Keeping to one edge of a one-way street without lanes: as far in as the left lane of a two-way
+// one, 2 m clear of the GSI edge. Why not from the section: a one-way street without lanes is laid
+// out as one lane, narrower than the asphalt it has, and P8 was not to change how such a street is
+// driven (review W4).
 const edgeHug = (seg: Segment) => Math.max(0, Math.min(seg.line.width / 4, seg.line.width / 2 - 2));
 
 /**
@@ -939,7 +935,10 @@ export function drivePath(
       points.push(p);
       outCum.push(d);
       outStep.push(stepAt(d));
-      const plan = d < x.mid ? x.inPlan : x.outPlan;
+      // The point at the curve's middle belongs to the exit. Why the margin: a symmetric curve (a
+      // U-turn) puts a point exactly on the middle, whose side the last bit of a double decided.
+      const isEntryHalf = d < x.mid - MID_MARGIN;
+      const plan = isEntryHalf ? x.inPlan : x.outPlan;
       lanes.push({ ...plan, offset: x.inPlan.offset * (1 - t) + x.outPlan.offset * t, corner: true });
     });
   });
