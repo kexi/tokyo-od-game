@@ -1,5 +1,9 @@
 # Directory Update Log
 
+## 2026-11-11
+
+- **Update**: [車と人の質量・乗員・質量で決まる衝突](vehicle-mass-and-collisions.md) を訂正。「自車が 3 km/h を超えて動いている」と書いていた人身事故の判定が、実際は接近の速さ（歩行者の歩く速さを含む）で見ていて、止まった車に人が歩いて当たると事故・違反になっていたこと、当たる直前の自車の水平の速さ 1 km/h（道路交通法の考え方で「止まっている」に線を置く。第72条・違法駐停車はゲーム上の簡略化）に直したこと、事故の後の瞬間移動でひき逃げになっていたのを、瞬間移動で 80 m の外にいる間は離脱の判定と 119 の期限を保留するように直したこと（`pedestrian_bump`・`incident_jump`・`incident_resumed` のログ、tests/pedestrianAccident.test.ts・tests/massContacts.test.ts）を記録。
+
 ## 2026-11-10
 
 - **Creation**: [道路標識の定義とレジストリ](sign-system.md) を追加（段階 G1a）。src/signs/defs/*.ts を定義の正にし、scripts/signs.ts が assets/signs/registry.json と catalog.json を書く。catalog.json は変換前とバイト一致。別表第一の番号表 assets/signs/law-table.json を e-Gov 法令 API から読む scripts/sign-law-table.ts、突き合わせテスト tests/signRegistry.test.ts（22 件）、`just show-sign-coverage` を記録。e-Gov の表では 125-B の図が -087 で、旧 law_table.py の null と食い違うこと（G1a では旧表のまま）を記録。

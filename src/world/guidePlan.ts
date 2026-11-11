@@ -5,6 +5,7 @@ import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { ArmSpec, BoardContent, JunctionContent, Shield, SignName } from "../signs/board/content";
 import { letterHeight } from "../signs/board/letters";
+import { hasRoadside, isDrivable } from "./roadClass";
 
 /**
  * 案内標識 of the 108 series for the junctions of the road graph: which approaches get one, where
@@ -123,7 +124,7 @@ export function* matchRouteSteps(
   const cos = Math.cos(25 * DEG);
   for (const seg of graph.segments) {
     yield;
-    if (seg.line.kind === "highway") continue;
+    if (!isDrivable(seg.line, "guide")) continue;
     const fractions = seg.length < 20 ? [0.5] : [0.2, 0.5, 0.8];
     const votes = new Map<RouteInfo, number>();
     for (const f of fractions) {
@@ -318,7 +319,7 @@ export function traceRoad(
     let best: { seg: Segment; dir: 1 | -1; score: number } | null = null;
     for (const id of graph.nodes.get(end) ?? []) {
       const c = graph.segments[id];
-      if (c === cur || c.line.kind === "highway") continue;
+      if (c === cur || !isDrivable(c.line, "guide")) continue;
       const cd: 1 | -1 = c.from === end ? 1 : -1;
       const isAllowed = c.oneway === 0 || c.oneway === cd;
       if (!isAllowed) continue;
@@ -391,7 +392,7 @@ export function junctionArms(
     for (const id of graph.nodes.get(node) ?? []) {
       const seg = graph.segments[id];
       const other = seg.from === node ? seg.to : seg.from;
-      if (members.has(other) || seg.line.kind === "highway") continue;
+      if (members.has(other) || !isDrivable(seg.line, "guide")) continue;
       const dir: 1 | -1 = seg.from === node ? 1 : -1;
       const isAllowed = seg.oneway === 0 || seg.oneway === dir;
       if (!isAllowed) continue;
@@ -611,11 +612,12 @@ export function mappedDestination(arm: Arm, dests: GuideDest[]): GuideDest | nul
 
 // ---------------------------------------------------------------- board contents
 
-/** Lanes for this direction: JARTIC's count where it gave one, else from the width (3.25 m). */
+/**
+ * Lanes for this direction: the street's section (laneChange.ts resolveSection: JARTIC, OSM lanes,
+ * the width), the same count the lanes are painted with.
+ */
 export function lanesFor(seg: Segment): number {
-  if (seg.lanes > 1) return seg.lanes;
-  const width = seg.oneway === 0 ? seg.line.width / 2 : seg.line.width;
-  return Math.max(1, Math.round(width / 3.25));
+  return seg.lanes;
 }
 
 /** 漢字 height (cm) by design speed and lanes: src/signs/board/letters.ts (別表第二 備考一(五)2). */
@@ -734,7 +736,7 @@ export function walkBack(
     let best: { seg: Segment; dir: 1 | -1; score: number } | null = null;
     for (const id of graph.nodes.get(node) ?? []) {
       const c = graph.segments[id];
-      if (c === cur || c.line.kind === "highway") continue;
+      if (c === cur || !isDrivable(c.line, "guide")) continue;
       const arrives: 1 | -1 = c.to === node ? 1 : -1;
       const isAllowed = c.oneway === 0 || c.oneway === arrives;
       if (!isAllowed) continue;
@@ -768,7 +770,7 @@ export function spotFor(
   if (!w) return null;
   const own = new Set(ap.nodes);
   const isPastOtherSignal = w.passed.some((n) => signalled.has(n) && !own.has(n));
-  if (isPastOtherSignal || w.seg.line.bridge || w.seg.line.kind === "highway") return null;
+  if (isPastOtherSignal || w.seg.line.bridge || !hasRoadside(w.seg.line)) return null;
   const { pos, dir } = graph.sample(w.seg, w.s);
   const travel = dir.clone().multiplyScalar(w.dir);
   const centreline = pos.clone();

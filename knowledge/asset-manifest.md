@@ -1,11 +1,12 @@
 ---
 type: Reference
 title: アセット台帳（assets/manifest.yml）
-description: ゲームのアセット 44 件を名前・用途・生成方法・出典・ライセンス付きで管理する YAML 台帳と、その検査（vitest）・アセット管理画面での使い方。台帳を作る過程で分かった未使用のアセット 8 件、作成者の記録が無いアスファルト、生成アセットのライセンスが README に無い点も記録する。
+description: ゲームのアセット（作成時 44 件、2026-11-11 は 76 件）を名前・用途・生成方法・出典・ライセンス付きで管理する YAML 台帳と、その検査（vitest）・アセット管理画面での使い方。台帳を作る過程で分かった未使用のアセット 8 件、作成者の記録が無かったアスファルト（P4 で訂正）、生成アセットのライセンスが README に無い点も記録する。
 tags: [assets, licensing, testing]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-10-04T16:50:00Z }
+updated: { by: claude-opus-5-5, at: 2026-11-11T06:00:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T16:45:00Z }
 sources:
@@ -98,6 +99,8 @@ sources:
 
 台帳が持つファイルは 512 本（`public/data/landmarks.json` を含む）。[^inventory]
 
+2026-11-11（P4）の時点では 76 件で、うちテクスチャ 25 件。P4 で `marking-wear-texture`（区画線の摩耗マスク）と `expressway-textures`（首都高の排水性舗装と型枠コンクリート）、作り直した密粒度の PNG 原版を初版の変種から分けた `asphalt-texture-originals`（未使用）の 3 件を足した（[路面と高架のテクスチャ](road-textures.md)）。
+
 ## 未使用（`status: unused`、作成時 8 件、2026-11-10 時点 6 件）
 
 ゲームのどのソースも読み込んでいない。[^usage-grep]
@@ -118,9 +121,10 @@ sources:
 
 ## 記録が無いもの
 
-- **アスファルトのテクスチャの作成者**（`made_by: unknown`）。knowledge にも README にも記録が無い。
+- **アスファルトのテクスチャの作成者**（作成時 `made_by: unknown`）。knowledge にも README にも記録が無い。
+  - 2026-11-11 訂正: P4 で密粒度の石・色・法線を作り直し、確認用シートの scratchpad のパスを消したので、`asphalt-textures` は `made_by: procedural`（Claude Code）にした。初版の作成者が不明なことは台帳の `notes` とスクリプトの docstring に残した。未使用の 3 変種（`asphalt-texture-extras`）は初版のままで `unknown` のまま。作り直した PNG 原版は `asphalt-texture-originals`（`procedural`・未使用）に分けた（[路面と高架のテクスチャ](road-textures.md)）。
   - `scripts/textures/asphalt_textures.py` の確認用シートの既定の出力先に、委譲時のタスク記述から取ったとみられる scratchpad の絶対パスが残っている（コメントは "Default scratchpad path from task description"）。
-  - 車のテクスチャを agy に委譲したときと同じ種類の問題（[Blender CLI でのモデリング](car-model-blender.md)）。直していない。
+  - 車のテクスチャを agy に委譲したときと同じ種類の問題（[Blender CLI でのモデリング](car-model-blender.md)）。P4 で直した（上）。
 - **生成アセットのライセンス**。README の「ライセンス」節はソースコード（MIT）とデータ（各提供元）しか書いていない。
   - 台帳では `repo`（リポジトリの LICENSE）とし、その旨を `licenses.repo.notes` に書いた。
   - 明文化するかはユーザーの判断が要る。

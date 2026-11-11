@@ -79,6 +79,7 @@ import { hash12, valueNoise } from "../render/shaderMath";
 import { PROP_GROUPS } from "../physics/groups";
 import { leftOf, type RoadGraph, type RoadLine, type Segment } from "./roads";
 import type { Approach, LightState } from "./trafficControl";
+import { hasRoadside } from "./roadClass";
 
 /**
  * 道路照明 (street lights) along the streamed road network, and the shading of the street surfaces
@@ -118,10 +119,12 @@ export type LampSpec = {
  * 16 m, or the real width above 19.5 m). The continuous-lighting rules keep the spacing S ≤ 3.5 H
  * and choose the arrangement by width W: one side for W ≤ H, staggered for W ≤ 1.5 H, opposite
  * beyond. Streets under 5.5 m get 防犯灯 (small crime-prevention lights) instead, sparser.
- * 首都高 (elevated) has no deck in the game, so no lights.
+ * Roads without street furniture (hasRoadside: the expressway, decks) get none: their lighting
+ * comes with the deck.
  */
-export function lampSpecFor(width: number, kind: RoadLine["kind"]): LampSpec | null {
-  if (kind === "highway") return null;
+export function lampSpecFor(line: RoadLine): LampSpec | null {
+  if (!hasRoadside(line)) return null;
+  const width = line.width;
   if (width >= 19.5)
     return { name: "arterial", height: 12, spacing: 40, reach: 2.4, arrangement: "opposite", candela: 2400 };
   if (width >= 13)
@@ -243,7 +246,7 @@ export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> 
   const out = new Vector3();
   for (const seg of graph.segments) {
     yield;
-    const spec = lampSpecFor(seg.line.width, seg.line.kind);
+    const spec = lampSpecFor(seg.line);
     if (!spec) continue;
     const half = seg.line.width / 2;
     const middle = graph.sample(seg, seg.length / 2).dir.clone();
@@ -474,7 +477,7 @@ const UNIFORMS = {
   stRain: uniform(0).setGroup(renderGroup),
 };
 
-export type SurfaceKind = "asphalt" | "paint" | "paving" | "concrete";
+export type SurfaceKind = "asphalt" | "porous" | "paint" | "paving" | "concrete";
 
 /**
  * How each surface takes the water (Lagarde 2013, "Water drop 2b"): porous asphalt and concrete
@@ -483,6 +486,9 @@ export type SurfaceKind = "asphalt" | "paint" | "paving" | "concrete";
  */
 const SURFACE: Record<SurfaceKind, { darken: number; wetRough: number; drain: number }> = {
   asphalt: { darken: 0.5, wetRough: 0.32, drain: 0 },
+  // 排水性舗装 (the expressway's surface course): the water runs down through its voids, so it
+  // darkens but holds little standing water and its film stays rough (deckSurface.ts).
+  porous: { darken: 0.55, wetRough: 0.5, drain: 0.38 },
   paint: { darken: 0.8, wetRough: 0.25, drain: 0.04 },
   paving: { darken: 0.62, wetRough: 0.42, drain: 0.32 },
   concrete: { darken: 0.62, wetRough: 0.45, drain: 0.45 },
@@ -568,6 +574,11 @@ export type StreetBase = {
   roughness?: Node<"float">;
   /** Shading normal in view space, read in the normal stage (default: the geometry's). */
   normal?: Node<"vec3">;
+  /**
+   * How much of the rain reaches this fragment, 0–1 (default 1): the deck's soffit and the piers
+   * under it stay dry while its road and 壁高欄 get wet (deckSurface.ts). Scales env.wetness.
+   */
+  exposure?: Node<"float">;
 };
 
 type StreetNodes = Pick<MeshStandardNodeMaterial, "colorNode" | "roughnessNode" | "normalNode">;
@@ -579,7 +590,11 @@ const graphs = new Map<string, StreetNodes>();
  * their own base share one graph (and so one pipeline per kind and setting).
  */
 function streetNodes(kind: SurfaceKind, hasStreet: boolean, mode: WetMode, base: StreetBase): StreetNodes {
-  const isShared = base.color === undefined && base.roughness === undefined && base.normal === undefined;
+  const isShared =
+    base.color === undefined &&
+    base.roughness === undefined &&
+    base.normal === undefined &&
+    base.exposure === undefined;
   const key = `${kind}:${hasStreet}:${mode}`;
   const shared = isShared ? graphs.get(key) : undefined;
   if (shared) return shared;
@@ -611,7 +626,7 @@ function buildStreetNodes(
     const up = normalWorldGeometry.y.toVar();
     stFilm.assign(0);
     stPuddle.assign(0);
-    const w = UNIFORMS.stState.z;
+    const w = base.exposure ? UNIFORMS.stState.z.mul(base.exposure).toVar() : UNIFORMS.stState.z;
     If(w.greaterThan(0), () => {
       if (mode === "simple") {
         stFilm.assign(smoothstepN(WET.filmLo, WET.filmHi, w));
@@ -813,7 +828,7 @@ export class StreetMaterial extends MeshStandardNodeMaterial {
   }
 
   override setupLightingModel(): PhysicalLightingModel {
-    const isCarriageway = this.surface === "asphalt" || this.surface === "paint";
+    const isCarriageway = this.surface === "asphalt" || this.surface === "porous" || this.surface === "paint";
     return new StreetLightingModel(isCarriageway);
   }
 
@@ -886,10 +901,15 @@ const SIGNAL_CANDELA = 400;
 const HEAD_CANDELA = 3000; // a pair of low beams, towards the road ahead
 const TAIL_CANDELA = 40;
 const LENS_GLOW = 10; // lens radiance (× colour) when on: well above 1 for the bloom
+// A flashing lamp glints steadily at its colour (the glint is a soft wash, not the lamp itself);
+// a dark signal adds nothing.
 const SIGNAL_COLOURS: Record<LightState, Color> = {
   green: new Color(0x19e6b4),
   yellow: new Color(0xffc21a),
   red: new Color(0xff2a1a),
+  flashingYellow: new Color(0xffc21a),
+  flashingRed: new Color(0xff2a1a),
+  off: new Color(0x000000),
 };
 const HEAD_COLOUR = new Color(0xfff2d6);
 const TAIL_COLOUR = new Color(0xff1a0d);
@@ -1051,7 +1071,7 @@ export class StreetLights {
       yield true;
     }
     this.metal.castShadow = true;
-    this.heads = this.signalHeads(graph);
+    this.heads = this.signalHeads();
     this.lastDark = -1;
     this.instances.end();
     log("street_lights_placed", {
@@ -1147,22 +1167,16 @@ export class StreetLights {
     if (lens.instanceColor) lens.instanceColor.needsUpdate = true;
   }
 
-  /** Signal heads as trafficControl hangs them: beyond the junction, over the approach's lane. */
-  private signalHeads(graph: RoadGraph): Head[] {
+  /**
+   * Signal heads where trafficControl hangs them (Approach.head: beyond the junction, or just past
+   * a 単路 crossing's crosswalk, over the approach's lane). Why not work the place out here: a
+   * copy of the junction rule put a 単路 crossing's glow at the segment's end, the next junction.
+   */
+  private signalHeads(): Head[] {
     const heads: Head[] = [];
     for (const ap of this.deps.control.approaches) {
-      if (ap.kind !== "signal") continue;
-      const node = ap.dir === 1 ? ap.seg.to : ap.seg.from;
-      const ids = graph.nodes.get(node) ?? [];
-      const first = ids[0] === undefined ? null : graph.segments[ids[0]];
-      if (!first) continue;
-      const nodePos = first.from === node ? first.pts[0] : first.pts[first.pts.length - 1];
-      const widths = ids.filter((id) => id !== ap.seg.id).map((id) => graph.segments[id].line.width);
-      const far = (widths.length ? Math.max(...widths) : ap.seg.line.width) / 2 + 2.5;
-      const at = nodePos
-        .clone()
-        .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, (ap.seg.line.width / 2) * 0.35));
+      const at = ap.head;
+      if (ap.kind !== "signal" || !at) continue;
       const g = this.deps.groundAt(at.x, at.z) ?? 0;
       heads.push({
         x: at.x,

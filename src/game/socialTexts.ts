@@ -119,6 +119,14 @@ export const OPENERS: Record<ViolationKind, readonly LineLike[]> = {
     "{place}、赤信号で止まってた自転車の人もびっくりしてた。信号無視の{car}",
     plain("とっさで撮れなかったけど、{place}で信号無視の車がいた。通る人は気をつけて"),
   ],
+  signalFlashing: [
+    "{place}、赤の点滅で一時停止しないで交差点に入る{car}。横から来た車がクラクション",
+    vid("{time}、{place}の赤点滅。止まらずに突っ込む{color}{car}が映ってた"),
+    "{place}の点滅信号、赤の点滅なのに止まらずに入っていった車がいた",
+    "赤の点滅は一時停止なんだけどな…{place}",
+    "夜の{place}、赤点滅の交差点を{color}{car}がそのまま通過していった",
+    plain("{place}で赤点滅を止まらずに通過する車。夜は気をつけて"),
+  ],
   speed: [
     "{place}で明らかにスピード出しすぎの車。{kmh}キロくらい出てたと思う",
     "制限速度どこいった…{place}",
@@ -376,6 +384,7 @@ export const OPENERS: Record<ViolationKind, readonly LineLike[]> = {
 /** Hashtags by kind: the first goes on every post, one or two of the rest are added. */
 export const TAGS: Record<ViolationKind, readonly string[]> = {
   signal: ["#信号無視", "#危険運転", "#赤信号", "#交差点"],
+  signalFlashing: ["#信号無視", "#赤点滅", "#一時停止", "#交差点"],
   speed: ["#スピード違反", "#危険運転", "#速度超過", "#スピード出しすぎ"],
   pedestrianCrossing: ["#横断歩道", "#歩行者優先", "#危険運転"],
   noEntry: ["#逆走", "#危険運転", "#一方通行"],
@@ -435,6 +444,7 @@ export type ReplyGroup =
   | "pulledOver";
 export const REPLY_GROUP: Record<ViolationKind, ReplyGroup> = {
   signal: "signal",
+  signalFlashing: "signal",
   speed: "speed",
   pedestrianCrossing: "pedestrian",
   slow: "pedestrian",
@@ -853,6 +863,7 @@ export const WEEKDAY_WORDS_IN: Record<Exclude<SocialLang, "ja">, readonly string
  */
 export const KIND_WORDS: Record<ViolationKind, Record<Exclude<SocialLang, "ja">, string>> = {
   signal: { en: "running a red light", zh: "闯红灯" },
+  signalFlashing: { en: "not stopping at a flashing red", zh: "红灯闪烁时未停车" },
   stopSign: { en: "ignoring a stop sign", zh: "不按规定停车" },
   noEntry: { en: "wrong way down a one-way street", zh: "单行道逆行" },
   turnBan: { en: "illegal turn", zh: "违反指定行驶方向" },

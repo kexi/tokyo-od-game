@@ -686,6 +686,7 @@ describe("a 指定方向外進行禁止 that would leave no way on (東京駅丸
     const data = {
       laneArrows: [],
       turnlanes: [],
+      roadlanes: [],
       speed: [],
       speedZone: [],
       oneway: [],

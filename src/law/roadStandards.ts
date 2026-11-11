@@ -138,6 +138,16 @@ export const SHOULDER: Statute<{
   source: "構造令 第8条第2項・第4項",
 };
 
+/**
+ * 第11条第3項: 歩道 width, at least 3.5 m where pedestrian traffic is heavy and 2 m elsewhere
+ * (第1項: a 第四種 road has one on each side). The lane resolver takes 3.5 m off each side of a
+ * wide GSI 幅員 with no other evidence (src/world/laneChange.ts; applying it there is an assumption).
+ */
+export const PAVEMENT_WIDTH: Statute<{ busy: number; other: number }> = {
+  value: { busy: 3.5, other: 2 },
+  source: "構造令 第11条第3項",
+};
+
 /** 第12条: clearance height H for 普通道路 (4.8 m on a 重要物流道路, not applied: not in the data). */
 export const CLEARANCE_HEIGHT: Statute<number> = { value: 4.5, source: "構造令 第12条" };
 
@@ -172,6 +182,54 @@ export const MARKING_DIMENSIONS: Statute<{
   source: "標識令 別表第四（区画線 102・103 の図）",
 };
 
+/** A solid line: width range. */
+type Solid = { width: [number, number] };
+
+/**
+ * 標識令 別表第四 (車道中央線 101) and 別表第六 (中央線 205, はみ出し禁止 規制102, 進路変更禁止
+ * 102の2), read from the figures (e-Gov API v2 attachments S35F03102010003-257・272・275・323・324):
+ * the dashed white centre line of a two-lane road, its solid form where keeping right is to be
+ * shown specially, and the yellow lines of the two 規制標示.
+ */
+export const CENTRE_LINE_DIMENSIONS: Statute<{
+  dashed: Dashed;
+  solid: Solid;
+  noOvertake: Solid;
+  noLaneChange: Solid;
+}> = {
+  value: {
+    dashed: { width: [0.12, 0.15], dash: [3, 10], gapRatio: [1, 1] },
+    solid: { width: [0.15, 0.2] },
+    noOvertake: { width: [0.15, 0.2] },
+    noLaneChange: { width: [0.1, 0.15] },
+  },
+  source: "標識令 別表第四（101）・別表第六（205・規制102・102の2 の図）",
+};
+
+/**
+ * 標識令 別表第六 (道路標示の様式), read from the figures: 横断歩道 (201, attachment
+ * 2JH00000243539: bars ℓ1 = 0.45〜0.50, gaps ℓ2 = 0.45〜0.90; the bars' length across the road is
+ * not dimensioned), 停止線 (203, S35F03102010003-320: 0.30〜0.45 wide, from the centre line to the
+ * left edge) and ◇ 横断歩道又は自転車横断帯あり (210, S35F03102010003-337: 1.5 m across). The
+ * ◇'s line and length are not legible in that 175-pixel scan: they are assumptions
+ * (src/world/streetAssumptions.ts), not here. 別表第六 備考二: the drawn sizes are the standard,
+ * and may be enlarged on roads designed for 60 km/h or more.
+ */
+export const MARKING_SYMBOL_DIMENSIONS: Statute<{
+  crosswalkBar: [number, number];
+  crosswalkGap: [number, number];
+  stopLine: [number, number];
+  diamondWidth: number;
+}> = {
+  value: {
+    crosswalkBar: [0.45, 0.5],
+    crosswalkGap: [0.45, 0.9],
+    stopLine: [0.3, 0.45],
+    diamondWidth: 1.5,
+  },
+  source: "標識令 別表第六（201・203・210 の図）",
+};
+
 /** All entries, for the test that every value names its article. */
 export const ROAD_STANDARDS: Readonly<Record<string, Statute<unknown>>> = {
   DESIGN_SPEED_TYPE2_CLASS2,
@@ -185,9 +243,12 @@ export const ROAD_STANDARDS: Readonly<Record<string, Statute<unknown>>> = {
   LANE_WIDTH,
   MEDIAN_TYPE2_CLASS2,
   SHOULDER,
+  PAVEMENT_WIDTH,
   CLEARANCE_HEIGHT,
   RAMP_EXEMPTION,
   MARKING_DIMENSIONS,
+  CENTRE_LINE_DIMENSIONS,
+  MARKING_SYMBOL_DIMENSIONS,
 };
 
 /** The highest tabled design speed not above `kmh` (a maxspeed of 70 designs as 60). */

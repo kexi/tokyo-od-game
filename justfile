@@ -22,9 +22,13 @@ preview-app: build-app
 fetch-data:
     pnpm exec tsx scripts/fetch-data.ts
 
-# JARTIC 交通規制情報と OSM の信号機を取得し public/data/regs・signals を再生成する
+# JARTIC 交通規制情報と OSM の信号機・車線などを取得し public/data/regs・signals・roadlanes 等を再生成する
 fetch-regs:
     pnpm exec tsx scripts/regulations.ts
+
+# OSM の一般道の車線数・幅員・一方通行だけを public/data/roadlanes に再生成する（OSM_FILE=<pbf> で手元の抽出を使う）
+fetch-road-lanes:
+    pnpm exec tsx scripts/regulations.ts roadlanes
 
 # 車のテクスチャ（assets/car/textures）を手続き生成し直す（フォントはコミット固定の Noto Sans JP）
 make-car-textures:
@@ -41,6 +45,14 @@ make-sign-model: make-sign-registry
 # 歩行者を Blender CLI でモデリングし public/models/human.glb を書き出す
 make-human-model:
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/human.py -- public/models/human.glb
+
+# 23 区の OSM 信号ノードのタグ（押ボタン・音響・方向・単路の横断歩道など）を数えて 1 行の JSON ログに出す（OSM は just fetch-regs のキャッシュ）
+count-signal-tags:
+    pnpm exec tsx scripts/signal-tags.ts
+
+# OSM の信号タイル（public/data/signals）を .cache/osm の抽出から作り直す（古いキャッシュもそのまま使い、中身の変わらない他の OSM 層は書き換えない）
+rebuild-signal-tiles:
+    REGS_USE_CACHE=1 pnpm exec tsx scripts/regulations.ts signals
 
 # 信号灯器の型と灯の配置（src/signals）から Blender 用の assets/signals/heads.json を書き出す
 make-signal-layout:
@@ -129,7 +141,7 @@ list-logs n="10":
 check-assets:
     pnpm exec vitest run tests/assetManifest.test.ts
 
-# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両・東京駅丸の内駅舎・東京タワー周辺の建物・主要な建物 4 棟のテクスチャを手続き生成し直す
+# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルトと区画線の摩耗・警察車両・東京駅丸の内駅舎・東京タワー周辺の建物・主要な建物 4 棟・首都高の床版のテクスチャを手続き生成し直す
 make-textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
@@ -149,6 +161,11 @@ make-textures:
     uv run scripts/textures/tokyo_station_textures.py
     uv run scripts/textures/tower_area_textures.py
     uv run scripts/textures/major_building_textures.py
+    just make-expressway-textures
+
+# 首都高の床版の排水性舗装と、壁高欄・床版の側面・箱桁・橋脚の型枠コンクリートのテクスチャを手続き生成し直す（sheet に PNG のパスを渡すと 2×2 の継ぎ目の確認用シートも書く）
+make-expressway-textures sheet="":
+    uv run scripts/textures/expressway_textures.py {{ sheet }}
 
 # 道路標識の図柄を assets/signs/registry.json から作り直し、群ごとのコンタクトシートを書き出す
 make-sign-textures sheet="${TMPDIR:-/tmp}/signs":
@@ -250,8 +267,8 @@ make-charm-models:
 make-guide-data:
     pnpm exec tsx scripts/guide-signs.ts
 
-# OSM の高速道路（motorway・motorway_link）を道路構造令の平面・縦断線形にコンパイルし public/data/expressway を書き出す（range は hamazakibashi か all、OSM は just fetch-regs のキャッシュ、標高は .cache/gsi-dem）
-make-expressway-data range="hamazakibashi":
+# OSM の高速道路（motorway・motorway_link）と構造物上書きの一般道（レインボーブリッジの下層）を道路構造令の平面・縦断線形にコンパイルし public/data/expressway を書き出す（range は hamazakibashi,rainbow のようにカンマ区切りか all、橋の床の高さは landmarks.json の deckLevels、OSM は just fetch-regs のキャッシュ、標高は .cache/gsi-dem）
+make-expressway-data range="hamazakibashi,rainbow":
     pnpm exec tsx scripts/expressway.ts --range {{ range }}
 
 # ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just fetch-regs のキャッシュを使う）
@@ -298,6 +315,14 @@ measure-perf label="sample":
 # シーンを固定して従来・改善後の描画CPU時間を交互に各4回計測する（開発サーバーが必要）
 measure-perf-fixed:
     node scripts/qa/perf-fixed-scene.mjs
+
+# 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
+measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
+
+# 入口ランプから C1 内回りへ自車を一定速で走らせ、床版の上で建物と交差した所と止まった所（保持か接触か）を .qa/drive-deck-<label>.json に書く（交差があれば終了コード 1）
+check-deck-drive label="run" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }}
 
 # 交通と雨が動く通常プレイで夜雨の従来・改善後を交互に各4回計測する
 measure-perf-night:

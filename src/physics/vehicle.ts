@@ -1,7 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3, type Group, type SpotLight } from "three";
 import { createCarModel, WHEEL_RADIUS, type CarModel, type CarStyle } from "../game/carModel";
-import { VEHICLE_SOLVER_GROUPS } from "./groups";
+import { BUILDING_GROUPS, VEHICLE_SOLVER_GROUPS } from "./groups";
 import { massContactsFor } from "./massContacts";
 import { VEHICLE_SPECS, type MassClass, type VehicleSpec } from "./masses";
 
@@ -26,7 +26,8 @@ export const WHEELBASE = 2.7;
 // up the damping, so the car accelerates by its power and the real air drag (see driveForce).
 const LINEAR_DAMPING = 0.12;
 const ROLLING = 0.77; // m/s², the light brake with no pedal
-const RIDE_HEIGHT = 0.86; // chassis centre above the road at rest
+/** The chassis centre above the road at rest (m). */
+export const RIDE_HEIGHT = 0.86;
 /** Steering lock at a speed (m/s): less at speed keeps highway driving stable. */
 export const steerLimit = (speed: number) => MAX_STEER / (1 + Math.abs(speed) / 18);
 const G = 9.81;
@@ -382,6 +383,50 @@ export class Vehicle {
     );
   }
 
+  /** Whether the chassis box overlaps a PLATEAU building's collider (groups.ts BUILDINGS). */
+  overlapsBuilding(): boolean {
+    let isOverlapping = false;
+    this.world.intersectionsWithShape(
+      this.body.translation(),
+      this.body.rotation(),
+      this.chassis.shape,
+      () => {
+        isOverlapping = true;
+        return false;
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (collider) => collider.collisionGroups() === BUILDING_GROUPS,
+    );
+    return isOverlapping;
+  }
+
+  /**
+   * What the chassis box overlaps right now, by kind (for a stalled car's log): PLATEAU buildings
+   * and every other collider but the car's own (decks, walls, terrain, props).
+   */
+  touching(): { buildings: number; other: number } {
+    const counts = { buildings: 0, other: 0 };
+    this.world.intersectionsWithShape(
+      this.body.translation(),
+      this.body.rotation(),
+      this.chassis.shape,
+      (collider) => {
+        const isBuilding = collider.collisionGroups() === BUILDING_GROUPS;
+        if (isBuilding) counts.buildings++;
+        else counts.other++;
+        return true;
+      },
+      undefined,
+      undefined,
+      undefined,
+      this.body,
+    );
+    return counts;
+  }
+
   syncVisuals(): void {
     const t = this.body.translation();
     const r = this.body.rotation();
@@ -454,6 +499,11 @@ export class Vehicle {
 
   setFrozen(frozen: boolean): void {
     this.body.setEnabled(!frozen);
+  }
+
+  /** Whether the body is disabled (setFrozen), whoever froze it. */
+  isFrozen(): boolean {
+    return !this.body.isEnabled();
   }
 
   dispose(): void {

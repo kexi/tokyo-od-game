@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the sections at three places (frozen tiles of tests/fixtures/sign-placement) > gives the pinned spread of lane counts and their evidence at 丸の内 1`] = `
+{
+  "jartic 1": 66,
+  "jartic 2": 25,
+  "jartic 3": 1,
+  "jartic 5": 4,
+  "osm 1": 15,
+  "osm 2": 1,
+  "width 1": 219,
+  "width 2": 2,
+}
+`;
+
+exports[`the sections at three places (frozen tiles of tests/fixtures/sign-placement) > gives the pinned spread of lane counts and their evidence at 渋谷 1`] = `
+{
+  "jartic 1": 27,
+  "jartic 2": 10,
+  "osm 1": 17,
+  "osm 2": 1,
+  "width 1": 350,
+  "width 2": 4,
+  "width 4": 1,
+}
+`;
+
+exports[`the sections at three places (frozen tiles of tests/fixtures/sign-placement) > gives the pinned spread of lane counts and their evidence at 芝公園 1`] = `
+{
+  "jartic 1": 53,
+  "jartic 2": 15,
+  "jartic 5": 1,
+  "osm 1": 17,
+  "width 1": 239,
+  "width 2": 7,
+  "width 4": 1,
+}
+`;

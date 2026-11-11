@@ -40,7 +40,7 @@ import { design, gatherPosts, mountPost } from "../src/world/signs";
  * commit GSI tiles as fixtures: they are served for real-time use. The positions are thus not the
  * game's, and these roads leave parts of placeSigns unreached:
  * - every road is a two-way "local" street 9 m wide, so the highway branches and a street's own
- *   one-way (line.oneway ≠ 0) never run, and lanesPerDirection always gives 2;
+ *   one-way (line.oneway ≠ 0) never run, and a listed 車両通行帯 always resolves to 2 lanes;
  * - closed, noVehicleCrossing, horn, busPriority, hydrant and school are not placed at the three
  *   places, and crosswalk and stop are placed by TrafficSigns, not placeSigns.
  * The second test covers those types: it pins design() for every type, value and lane pattern.
@@ -77,6 +77,7 @@ function tileData(tile: string): RegulationData {
     signals: [],
     junctions: [],
     footbridges: [],
+    roadlanes: [],
     ...regs,
     turnlanes,
   };

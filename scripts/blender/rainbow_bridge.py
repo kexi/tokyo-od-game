@@ -42,6 +42,7 @@ from rainbow_bridge_spec import (  # noqa: E402  (the dimensions and deck levels
     CABLE_X,
     CHORD_H,
     CHORD_W,
+    FLOOR_BEAM_GAP,
     FOOTING_BOTTOM,
     GIRDER_END,
     HEADING,
@@ -311,11 +312,11 @@ def build_truss(b):
                 b.beam((x, bot[i], za), (x, top[i + 1], zb), 0.7, 0.8, "RB_Truss", n)
         for i, z in enumerate(zs):
             b.beam((x, bot[i], z), (x, top[i], z), 0.6, 0.8, "RB_Truss", n)
-    # floor beams under each floor (their tops 0.25 m below the road surfaces the road side lays) and a
+    # floor beams under each floor (their tops FLOOR_BEAM_GAP below the road surfaces the road side lays) and a
     # Warren lateral bracing in the plane of the bottom chords
     for z in zs:
-        lo = lower_surface(z) - 0.25 - 0.8
-        up = upper_surface(z) - 0.25 - 0.6
+        lo = lower_surface(z) - FLOOR_BEAM_GAP - 0.8
+        up = upper_surface(z) - FLOOR_BEAM_GAP - 0.6
         b.box((0.0, lo, z), (2 * TRUSS_X - CHORD_W, 1.6, 0.6), "RB_Floor")
         b.box((0.0, up, z), (2 * TRUSS_X - CHORD_W, 1.2, 0.6), "RB_Floor")
     for i in range(len(zs) - 1):

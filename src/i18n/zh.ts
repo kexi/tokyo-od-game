@@ -375,6 +375,7 @@ export const zh: Messages = {
   // Violations, laws, sanctions, tickets (traffic.ts, sanctions.ts, violationReview.ts, drivingTips.ts, ticketForm.ts, src/i18n/law.ts)
   // 違反名（traffic.ts の label と日本語が一致するもの。記録は日本語のまま保存し、表示で訳す）
   "violation.label.signal": "闯红灯",
+  "violation.label.signalFlashing": "红灯闪烁时未停车",
   "violation.label.stopSign": "未在停车让行处停车",
   "violation.label.noEntry": "单行道逆行",
   "violation.label.turnBan": "违反指定行驶方向（禁止转向）",
@@ -824,6 +825,9 @@ export const zh: Messages = {
   "hud.signal.red": "红",
   "hud.signal.redRightArrow": "红・右转箭头",
   "hud.signal.redArrows": "红・箭头",
+  "hud.signal.flashingYellow": "黄闪",
+  "hud.signal.flashingRed": "红闪",
+  "hud.signal.off": "熄灭",
   "hud.signalAhead": "🚦 {light}·{m}米",
   "hud.stopAhead": "🛑 停车·{m}米",
   "hud.oneWay": "⬆ 单行道",
@@ -1118,7 +1122,8 @@ export const zh: Messages = {
   "credits.link.plateauSite": "PLATEAU 网站",
   "credits.plateau.source":
     "来源：国土交通省 {site}“3D 城市模型（Project PLATEAU）东京都”（建筑物 LOD1、道路 LOD2 的人行道与安全岛），经加工制作",
-  "credits.plateau.drawn": "（外墙的窗户与颜色、人行道铺装与路缘石高度由游戏绘制。）",
+  "credits.plateau.drawn":
+    "（外墙的窗户与颜色、人行道铺装与路缘石高度由游戏绘制。路面与高架的纹理由游戏程序生成，仅参考了桥梁模型的颜色与尺寸。）",
   "credits.link.plateauPolicy": "PLATEAU 网站政策",
   "credits.plateau.terms":
     "著作权人：东京都及其他各地方公共团体。使用条件：{policy}（《公共数据利用规约》第1.0版，与 CC BY 4.0 兼容）。",
@@ -1151,10 +1156,12 @@ export const zh: Messages = {
   "credits.jartic.terms": "使用条件：{terms}（与 CC BY 4.0 兼容）。",
   "credits.h.signals": "信号灯位置",
   "credits.osm": "© {osm}。",
-  "credits.link.bbbike": "BBBike 的东京提取数据",
-  "credits.signals.extract": "从 {bbbike} 中提取 OpenStreetMap 的 {tag}，与路口对应后显示。",
+  "credits.link.geofabrikKanto": "Geofabrik 的关东提取数据",
+  "credits.signals.extract": "从 {extract} 中提取 OpenStreetMap 的 {tag}，与路口和人行横道对应后显示。",
   "credits.odbl": "提取出的数据库以 {odbl} 提供（{file}）。",
   "credits.signals.cycle": "信号灯的周期（绿、黄、红的时长及各路口间的错开）由游戏设定，与实际信号灯不同。",
+  "credits.roadlanes.extract":
+    "一般道路的车道数与宽度（OpenStreetMap 的 {tags}）同样提取，并与国土地理院的道路中心线对应，用于车道布局（public/data/roadlanes）。",
   "credits.h.guide": "指路标志（方向及方位）",
   "credits.h.destinations": "目的地列表（车站・名胜）",
   "credits.h.expressway": "高架汽车专用道路（城市高速）",
