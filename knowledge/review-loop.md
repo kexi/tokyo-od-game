@@ -193,4 +193,4 @@ Why open の Warning も見る: 新規だけを数えると、直していない
 - T3 のマージ後、信号の private なリストの読み取りを、公開の読み取り口 `TrafficControl.debugHeads()` に置き換える（標識は G4 で `TrafficSigns.debugPlates()` に置き換えた）。`signals.hold` の `update` の差し替えも、TrafficControl に時計を止める開発用の口を設けて置き換える。
 - 遮蔽の判定（手前の建物に隠れていないか）が無い。
 - レインボーブリッジの「歩行者目線」は水面の高さに立っている（岸に置き直す）。
-- 夜・雨の look と現示表の全ステップを使う視点表、数値の探り（文字の画素数・輝度）の自動計測は、P4・G3・T4 で足す。
+- 夜・雨の look と現示表の全ステップを使う視点表、数値の探り（文字の画素数・輝度）の自動計測は、P4・G3・T4 で足す。 2026-11-11: P4 で輝度の自動計測（視点の `probes` と表の `metrics.from`、`scripts/qa/pixelProbes.ts`、`round-NN/metrics.jsonl`）と昼・夕・夜・雨の夜の look を expressway・roads に足した（[路面と高架のテクスチャ](road-textures.md)）。床版の後方追従の自車を床版の高さに置くようにした（`Placement.car.surfaceY`）。

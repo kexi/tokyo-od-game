@@ -351,6 +351,52 @@ export const LOG_EVENTS = {
    */
   expressway_building_crossed: warning({ lat: z.number(), lon: z.number(), xid: z.string().nullable() }),
   /**
+   * The buildings could not be told about new decks' cut points (ExpresswayDecks.announceCuts): those
+   * decks are still built, but buildings standing into them stay whole.
+   */
+  expressway_cuts_failed: failure({ chunks: count, error }),
+  /**
+   * The player's car held (frozen) or let go, with ?expressway: which collider was missing
+   * (terrain, a deck near the car: ExpresswayDecks.isReadyNear) or a warp in progress.
+   */
+  vehicle_hold_changed: info({
+    frozen: z.boolean(),
+    terrainReady: z.boolean(),
+    deckReady: z.boolean(),
+    warping: z.boolean(),
+    lat: z.number(),
+    lon: z.number(),
+  }),
+  /**
+   * The car stood still on a deck for 3 s (main.ts noteDeckStall): held (`frozen`) or touching
+   * something (`touching`: the chassis' overlaps, PLATEAU buildings and everything else).
+   */
+  expressway_car_stalled: warning({
+    lat: z.number(),
+    lon: z.number(),
+    xid: z.string().nullable(),
+    frozen: z.boolean(),
+    deckReady: z.boolean(),
+    /** The car's body disabled by anyone (the hold above, or an arrest's showArrest). */
+    carFrozen: z.boolean(),
+    /** An accident in progress (EmergencyResponse.incident) and a police pursuit after it. */
+    incident: z.boolean(),
+    pursuit: z.boolean(),
+    touching: z.object({ buildings: count, other: count }),
+    stillMs: count,
+  }),
+  /**
+   * PLATEAU buildings cut down below an elevated deck's soffit (buildings.ts cutAboveDecks): at a
+   * tile's load (`loaded`) or when new decks became known (`decks`). `features` buildings in
+   * `meshes` meshes; `points` the deck's cut points tested.
+   */
+  buildings_cut_above_deck: info({
+    reason: z.enum(["loaded", "decks"]),
+    features: count,
+    meshes: count,
+    points: count,
+  }),
+  /**
    * A chunk's deck could not be built (expresswayDeck.ts refresh): it is skipped from then on and
    * no longer holds a car near it.
    */
@@ -396,6 +442,11 @@ export const LOG_EVENTS = {
     maxShortfallAt: z.string().nullable(),
     fell: z.boolean(),
     endsOnDeck: z.boolean(),
+    /**
+     * Why the drive does not count (null: it does): an incident or a pursuit before it started or
+     * when it stopped (the car may have been held by an arrest, not by the deck).
+     */
+    invalid: z.string().nullable(),
   }),
 
   // ---------- driving ----------

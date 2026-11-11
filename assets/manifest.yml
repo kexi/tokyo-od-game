@@ -796,21 +796,54 @@ assets:
       - assets/road/textures/asphalt_normal.jpg
       - assets/road/textures/asphalt_roughness.png
     generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
-    made_by: unknown
-    source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
+    made_by: procedural
+    source: >-
+      自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）。色の目安は PLATEAU 橋梁 LOD2 の
+      航空写真の上面の平均色から読んだ値で、画素は使っていない（knowledge/road-textures.md）
     license: repo
     used_by: [src/world/roadSurface.ts]
+    docs: [knowledge/road-textures.md]
     notes: >-
-      作成者の記録が無い（knowledge にも README にも無い）。スクリプトには委譲時のタスク記述から
-      取ったとみられる scratchpad の絶対パスが確認用シートの既定の出力先として残っている。
+      初版（2026-10）の作成者は記録が無い（knowledge にも README にも無い。車のテクスチャと同じく委譲で作られた
+      とみられる）。2026-11-11 に Claude Code が密粒度の石の密度・色・法線の精度（256 色への量子化をやめた）を
+      作り直し、確認用シートの既定の出力先に残っていた scratchpad のパスを消した（P4）。
+
+  - id: marking-wear-texture
+    name: 区画線の摩耗マスク
+    purpose: >-
+      一般道と首都高の床版の区画線・停止線・横断歩道の摩耗（R）・汚れ（G）・ガラスビーズ（B、未使用）。
+      アスファルトと同じ 4 m の格子と石で作り、すり減った所に下の舗装が見える。タイヤの通る位置で摩耗を強める。
+    kind: texture
+    files: [assets/road/textures/marking_wear.png]
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
+    made_by: procedural
+    source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
+    license: repo
+    used_by: [src/world/roadSurface.ts, src/world/deckSurface.ts]
+    docs: [knowledge/road-textures.md]
+
+  - id: expressway-textures
+    name: 首都高の床版・壁高欄・桁・橋脚のテクスチャ
+    purpose: >-
+      高架の床版の表層の排水性舗装（4 m で 1 タイル）と、壁高欄・床版の側面・箱桁・橋脚の型枠コンクリート
+      （3.6 m で 1 タイル、型枠の目地・セパ穴・まだら、アルファに雨だれ）。色と、法線 x/y・粗さ・マスクを詰めた
+      _nrm の 2 枚ずつ。ワールド座標で敷く（舗装は平面、コンクリートは三平面投影）。
+    kind: texture
+    files: [assets/expressway/textures/*]
+    generator: { script: scripts/textures/expressway_textures.py, recipe: make-expressway-textures }
+    made_by: procedural
+    source: >-
+      自作（手続き生成、外部の画像は使っていない）。色と寸法の目安は PLATEAU 港区 2025 の橋梁 LOD2・LOD3 から
+      読んだ値で、画素と形状は使っていない。事業者の配色・意匠・ロゴは描かない汎用の形（knowledge/road-textures.md）
+    license: repo
+    used_by: [src/world/deckSurface.ts]
+    docs: [knowledge/road-textures.md]
 
   - id: asphalt-texture-extras
     name: アスファルトの未使用バリエーション
-    purpose: 生成スクリプトが一緒に書き出す PNG 原版と、轍・補修跡・排水性舗装のバリエーション。ゲームは読み込んでいない。
+    purpose: 生成スクリプトが一緒に書き出す轍・補修跡・排水性舗装のバリエーション（初版のまま）。ゲームは読み込んでいない。
     kind: texture
     files:
-      - assets/road/textures/asphalt_albedo.png
-      - assets/road/textures/asphalt_normal.png
       - assets/road/textures/asphalt_worn_albedo.*
       - assets/road/textures/asphalt_patch_albedo.*
       - assets/road/textures/asphalt_porous_albedo.*
@@ -820,6 +853,21 @@ assets:
     license: repo
     used_by: []
     status: unused
+
+  - id: asphalt-texture-originals
+    name: 密粒度アスファルトの PNG 原版
+    purpose: 生成スクリプトが JPEG と一緒に書き出す密粒度の色・法線の可逆の原版。ゲームは JPEG を読む。
+    kind: texture
+    files:
+      - assets/road/textures/asphalt_albedo.png
+      - assets/road/textures/asphalt_normal.png
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
+    made_by: procedural
+    source: 自作（2026-11-11 に Claude Code が作り直した密粒度の版。外部の画像は使っていない）
+    license: repo
+    used_by: []
+    status: unused
+    docs: [knowledge/road-textures.md]
 
   - id: orbis-textures
     name: オービスの予告看板の図柄

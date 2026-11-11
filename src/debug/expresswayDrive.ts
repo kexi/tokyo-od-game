@@ -26,6 +26,11 @@ export type ExpresswayDriveDeps = {
   decks: ExpresswayDecks;
   setDrive: (fn: ((dt: number) => DriveInput) | null) => void;
   snapCamera: () => void;
+  /**
+   * Why a drive now would not measure the decks (an accident in progress, a pursuit, a suspended
+   * licence: the game may freeze the car for an arrest), or null.
+   */
+  blocker: () => string | null;
 };
 
 /**
@@ -109,11 +114,15 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
     return pos.add(leftOf(dir, offset));
   };
 
+  /** deps.blocker() when the cruise began (null: nothing in the way). */
+  let startBlocker: string | null = null;
+
   const cruise = (options: { kmh?: number; prefer?: string[]; lane?: number } = {}) => {
     const want = (options.kmh ?? 60) / 3.6;
     const prefer = options.prefer ?? [];
     const lane = options.lane ?? 0;
     samples = [];
+    startBlocker = deps.blocker();
     visited = [];
     prev = null;
     t = 0;
@@ -227,6 +236,8 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       maxShortfallAt: argMax(cruising, (x) => x.target - x.kmh),
       fell,
       endsOnDeck: samples.length > 0 && samples[samples.length - 1].xid !== null,
+      // Not a measurement of the decks when an accident or a pursuit was on at either end.
+      invalid: startBlocker ?? deps.blocker(),
     };
     log("expressway_drive_checked", summary);
     return summary;
@@ -234,6 +245,8 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
 
   return {
     place,
+    /** Why a drive now would not count (read before place(): drive-deck.ts waits it out). */
+    blocker: () => deps.blocker(),
     cruise,
     stop,
     /** The raw samples of the last cruise (for plotting the ride). */

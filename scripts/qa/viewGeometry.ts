@@ -31,8 +31,11 @@ export type Placement = {
   eye: EyeSpot;
   lookAt: Vec3;
   fov: number;
-  /** Where to park the player's car (shown in 後方追従), yaw as the game's (atan2(dx, dz)). */
-  car?: { x: number; z: number; above: number; yaw: number };
+  /**
+   * Where to park the player's car (shown in 後方追従), yaw as the game's (atan2(dx, dz)). `surfaceY`: the
+   * deck it stands on (absolute); without it the page puts the car on the ground there.
+   */
+  car?: { x: number; z: number; above: number; yaw: number; surfaceY?: number };
   /**
    * Where to park the player's car with its headlamps lit (state.headlamps), facing the target. Its
    * body is hidden so it does not block the eye, but shown in 後方追従 (`showBody`).
@@ -163,7 +166,14 @@ export function placeView(
     const lookAt = { ...target.point, y: target.point.y + eyeHeight * 0.5 };
     const car =
       view.camera === "chase" && view.showCar
-        ? { x: anchor.at.x, z: anchor.at.z, above: 0.6, yaw: Math.atan2(anchor.forward.x, anchor.forward.z) }
+        ? {
+            x: anchor.at.x,
+            z: anchor.at.z,
+            above: 0.6,
+            yaw: Math.atan2(anchor.forward.x, anchor.forward.z),
+            // On the deck, not on the street under it (the first chase on a deck parked the car there).
+            surfaceY: anchor.at.y,
+          }
         : undefined;
     return { eye: { x: eye.x, z: eye.z, y: eye.y }, lookAt, fov, car };
   }
