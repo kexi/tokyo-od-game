@@ -79,7 +79,9 @@ import { hash12, valueNoise } from "../render/shaderMath";
 import { PROP_GROUPS } from "../physics/groups";
 import { DECK_REACH, leftOf, type RoadGraph, type RoadLine, type Segment } from "./roads";
 import type { Approach, LightState } from "./trafficControl";
-import { hasRoadside, isOnGround } from "./roadClass";
+import { hasRoadside } from "./roadClass";
+import { DeckOverhead, MAX_MARGIN } from "./deckOverhead";
+import { GIRDER_DEPTH } from "../expressway/assumptions";
 
 /**
  * 道路照明 (street lights) along the streamed road network, and the shading of the street surfaces
@@ -155,24 +157,36 @@ export type LampSite = {
   /** Darkness at which its photocell switches it on (they do not all switch at once). */
   threshold: number;
   /**
-   * The lowest expressway deck surface over the pole or its luminaire (graph frame, m), or null
-   * where no deck passes over it: a lamp under a viaduct that it would stand through is left out
-   * (isUnderDeck).
+   * The expressway surfaces over the pole's foot and over its luminaire (graph frame, m; empty
+   * where none passes over): a lamp under a viaduct is left out (isUnderDeck).
    */
-  deckY: number | null;
+  overhead: Overhead;
 };
 
-/**
- * Past the deck's carriageway (its `width`): the parapet and the slab's edge (DECK_REACH), and the
- * pole's own radius with a little room, so a pole at the deck's edge counts as under it.
- */
-const DECK_OVERHANG = DECK_REACH + 0.5;
-/** A deck this far above the lamp's top leaves it standing: the pole does not reach it. */
-const DECK_CLEARANCE = 1;
+/** The deck surfaces over a lamp's pole foot and over its luminaire (DeckOverhead.surfacesOver). */
+export type Overhead = { foot: number[]; head: number[] };
+const NO_DECK: Overhead = { foot: [], head: [] };
 
 /**
- * Whether a lamp `height` m tall standing on `ground` would pass through the deck at `deckY` (see
- * LampSite.deckY): the deck is above the pole's foot and under its top plus DECK_CLEARANCE.
+ * Past the deck's carriageway (its `width`) for the pole's foot: the parapet and the slab's edge
+ * (DECK_REACH), and the pole's own radius with a little room, so a pole at the deck's edge counts.
+ */
+const FOOT_MARGIN = MAX_MARGIN;
+/**
+ * For the luminaire: the slab's edge only (DECK_REACH). Why not FOOT_MARGIN: a luminaire whose
+ * centre is outside the slab hangs beside the deck, not in it, and was left out for nothing.
+ */
+const HEAD_MARGIN = DECK_REACH;
+
+/**
+ * Whether a lamp `height` m tall standing on `ground` is one the viaduct over it leaves no room
+ * for (see LampSite.overhead):
+ *
+ * - a deck over its foot, at any height over the foot: under a viaduct the road is lit from the
+ *   girders, and a pole that stops under a deck put its luminaire in the box girder or just under
+ *   it (a deck only 1–2.2 m over the lamp's top). Tunnels and cuts below the foot do not count.
+ * - a deck over its luminaire (the pole beside the deck) lower than the lamp's top plus the girder's
+ *   depth (GIRDER_DEPTH): the arm and the luminaire reach into the girder or through the slab.
  *
  * Why not the open-ground test alone (StreetLightDeps.isOpen, a ray down onto the colliders): the
  * decks' colliders are built only near the car and the lamps are settled every 2 s, so whether a
@@ -180,27 +194,11 @@ const DECK_CLEARANCE = 1;
  * order the two streamed in. Its collider then stopped the car from 47 km/h in one step on
  * 24402611:27 (knowledge/expressway-generation.md「床版の走行検査が 24402611:27 で一瞬止まる」).
  */
-export function isUnderDeck(deckY: number | null, ground: number, height: number): boolean {
-  if (deckY === null) return false;
-  const isAboveFoot = deckY > ground - 0.5;
-  const isBelowTop = deckY < ground + height + DECK_CLEARANCE;
-  return isAboveFoot && isBelowTop;
-}
-
-/** The lowest surface of `decks` over (x, z) within their carriageway and DECK_OVERHANG, or null. */
-function deckOver(graph: PlaceGraph, decks: readonly Segment[], x: number, z: number): number | null {
-  const p = new Vector3(x, 0, z);
-  let lowest: number | null = null;
-  for (const seg of decks) {
-    const on = graph.nearestOn(seg, p);
-    const isOver = on.dist < seg.line.width / 2 + DECK_OVERHANG;
-    if (!isOver) continue;
-    const y = graph.surfaceY(seg, on.s);
-    if (y === null) continue;
-    const isLower = lowest === null || y < lowest;
-    if (isLower) lowest = y;
-  }
-  return lowest;
+export function isUnderDeck(overhead: Overhead, ground: number, height: number): boolean {
+  const isFootCovered = overhead.foot.some((y) => y > ground - 0.5);
+  if (isFootCovered) return true;
+  const top = ground + height + GIRDER_DEPTH.value;
+  return overhead.head.some((y) => y > ground - 0.5 && y < top);
 }
 
 /** Pole foot behind the carriageway edge (on the pavement, clear of the kerb). */
@@ -291,8 +289,7 @@ export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> 
   };
   const probe = new Vector3();
   const out = new Vector3();
-  // The decks with their own heights (Segment.elev): a ground road's surfaceY is the terrain.
-  const decks = graph.segments.filter((seg) => !isOnGround(seg.line) && seg.elev !== undefined);
+  const decks = new DeckOverhead(graph);
   for (const seg of graph.segments) {
     yield;
     const spec = lampSpecFor(seg.line);
@@ -313,9 +310,12 @@ export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> 
         const ax = -out.x / (half + SETBACK);
         const az = -out.z / (half + SETBACK);
         // The pole and the luminaire at the end of its arm (over the street under the deck).
-        const foot = deckOver(graph, decks, x, z);
-        const head = deckOver(graph, decks, x + ax * spec.reach, z + az * spec.reach);
-        const deckY = head === null ? foot : foot === null ? head : Math.min(head, foot);
+        const overhead = decks.isEmpty
+          ? NO_DECK
+          : {
+              foot: decks.surfacesOver(x, z, FOOT_MARGIN),
+              head: decks.surfacesOver(x + ax * spec.reach, z + az * spec.reach, HEAD_MARGIN),
+            };
         sites.push({
           x,
           z,
@@ -325,7 +325,7 @@ export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> 
           sodium,
           // Photocells (自動点滅器) differ: switch-on spread over a darkness band.
           threshold: 0.2 + 0.12 * hash2(seg.line.coords[0] * 1e5 + s, seg.line.coords[1] * 1e5 + side),
-          deckY,
+          overhead,
         });
         const k = key(x, z);
         const list = grid.get(k) ?? [];
@@ -1062,7 +1062,10 @@ export class StreetLights {
       point.set(this.xs[i], ground + lamp.spec.height, this.zs[i]).applyMatrix4(matrix);
       this.xs[i] = point.x;
       this.zs[i] = point.z;
-      if (lamp.deckY !== null) lamp.deckY = point.set(lamp.x, lamp.deckY, lamp.z).applyMatrix4(matrix).y;
+      const moveY = (y: number) => point.set(lamp.x, y, lamp.z).applyMatrix4(matrix).y;
+      const hasDeck = lamp.overhead.foot.length > 0 || lamp.overhead.head.length > 0;
+      if (hasDeck)
+        lamp.overhead = { foot: lamp.overhead.foot.map(moveY), head: lamp.overhead.head.map(moveY) };
       point.set(lamp.x, ground, lamp.z).applyMatrix4(matrix);
       lamp.x = point.x;
       lamp.z = point.z;
@@ -1134,7 +1137,10 @@ export class StreetLights {
     log("street_lights_placed", {
       lamps: n,
       sodium: this.lamps.filter((l) => l.sodium).length,
-      underDeck: this.lamps.filter((l) => isUnderDeck(l.deckY, l.ground ?? 0, l.spec.height)).length,
+      // Of the lamps whose ground is known: before the terrain has loaded a lamp's height is a guess.
+      underDeck: this.lamps.filter(
+        (l) => l.ground !== null && isUnderDeck(l.overhead, l.ground, l.spec.height),
+      ).length,
       byClass: Object.fromEntries(
         ["arterial", "main", "street", "residential", "lane"].map((c) => [
           c,
@@ -1164,7 +1170,7 @@ export class StreetLights {
   private place(lamp: Lamp, i: number): void {
     const scale = lamp.spec.height / MODEL_HEIGHT;
     const g = lamp.ground ?? 0;
-    const isGone = lamp.hidden || isUnderDeck(lamp.deckY, g, lamp.spec.height);
+    const isGone = lamp.hidden || isUnderDeck(lamp.overhead, g, lamp.spec.height);
     const o = this.tmp;
     o.position.set(lamp.x, g, lamp.z);
     o.rotation.set(0, Math.atan2(lamp.ax, lamp.az), 0);
