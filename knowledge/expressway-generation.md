@@ -7,6 +7,8 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:check-deck-drive, at: 2026-11-11T21:05:00Z }
+  - { by: process:vitest, at: 2026-11-11T21:00:00Z }
   - { by: process:compare-expressway-chunks, at: 2026-11-11T15:43:58Z }
   - { by: process:expressway-build-twice-byte-equal, at: 2026-11-11T15:43:57Z }
   - { by: process:update-expressway-ledger-twice-byte-equal, at: 2026-11-11T15:06:33Z }
@@ -74,6 +76,10 @@ verified:
   - { by: process:vitest, at: 2026-11-10T11:30:00Z }
   - { by: process:perf-road-streaming, at: 2026-11-10T11:20:00Z }
 sources:
+  - id: deckdrive-lamp
+    resource: src/world/streetLights.ts（LampSite.deckY・isUnderDeck・place）、src/world/traffic-ai.ts（parkedSteps）、tests/streetLightsUnderDeck.test.ts、走行の samples と計装のログ（依頼元 scratchpad の stall/samples-a1〜b3.json・f1〜f6.log・g1〜g3.log、.qa/logs/2026-11-12/、ローカル・git 管理外。2026-11-11T20:32〜20:58Z、vite 5737、ヘッドレス Chrome）
+    title: 床版の走行検査の瞬間停止（高架下の街路灯の柱）の調査と修正
+    author: claude-opus-5-5/1m
   - id: deckdrive-traffic
     resource: src/game/frameClock.ts・src/main.ts の step・tests/frameClock.test.ts、.qa/drive-deck-repro2.json・fix*.json と .qa/probe-deck.ts・probe2〜6.json（ローカル・git 管理外。2026-11-11、vite 5391、ヘッドレス Chrome、traffic.update を包んだ距離と speed·dt の比・自車の近くの AI の位置）
     title: 床版の走行検査の invalid（交通 AI の時間のずれ）の調査と修正
@@ -703,7 +709,7 @@ e-Gov の本文（XML）で確かめた: 第12条の建築限界の高さ H は�
 
 修正後の同じ経路の samples（probe6、12:55〜13:12Z。probe7、13:34〜13:40Z は drive-deck と同じ advance(10) 刻み）では、止まるまでの |dy| > 0.09 m は出発直後の 1 サンプル（0.098〜0.099 m、207111988:0）だけで、0.1 m を超えるのは下の別件の衝突の直後（0.16〜0.23 m、0.2 s）だけだった。
 
-未解明（追っていない）: fix2b と fix3 の `maxShortfallAt` が 24402611:27 だった。shortfall は 52.0〜52.4 km/h で target は 50 km/h 以下なので、そのサンプルの `forwardSpeed` は約 −2 km/h、つまり自車が一瞬**後退**していた（**訂正**: 初版は「ほぼ 0 km/h」と書いていた）。事故・接触のログは無く、probe7 では再現せず（shortfall は :31 の衝突だけ）、当時の drive-deck の結果は samples を残さないので原因は特定していない。
+未解明（追っていない）: fix2b と fix3 の `maxShortfallAt` が 24402611:27 だった。shortfall は 52.0〜52.4 km/h で target は 50 km/h 以下なので、そのサンプルの `forwardSpeed` は約 −2 km/h、つまり自車が一瞬**後退**していた（**訂正**: 初版は「ほぼ 0 km/h」と書いていた）。事故・接触のログは無く、probe7 では再現せず（shortfall は :31 の衝突だけ）、当時の drive-deck の結果は samples を残さないので原因は特定していない。**2026-11-12 訂正**: 原因は高架の下の街路灯の柱（下の「床版の走行検査が 24402611:27 で一瞬止まる」）。
 
 **24402611:31 の s ≈ 33 m で止まる件（レビュー W2 の後の結論）: 床版の既知の制約で、検査の経路を直した**。修正前の走行は毎回、内回りの 24402611:31 の s ≈ 33 m（35.66075 N・139.76057 E）で 48 km/h から一瞬で 0 km/h になっていた（`expressway_car_stalled`）。その縦揺れが max |dy| 0.22〜0.23 m で、0.1 m の目安を超えたのはこのサンプル列だけだった。当たっていたのは汐留出口のランプ 24402125:0 のコライダー（`expressway.built` の body から特定、止まった直後の鼻先 0.05 m）。
 
@@ -723,6 +729,24 @@ e-Gov の本文（XML）で確かめた: 第12条の建築限界の高さ H は�
 | v2c（14:25〜14:28Z） | null    | なし     | 0    | 0       | 0       | なし | 2,107 m | 0.082 m（207111988:2） | 4.7 km/h（207111988:0） | 到達 |
 
 3 本とも max |dy| は 0.1 m の目安の内側。走ったチャンクは 207111988:0〜2 → 24402611:21〜29 → 24402125:0〜2 で、:29 の後は汐留出口へ分かれて 24402611:30・31 を通らない。
+
+## 床版の走行検査が 24402611:27 で一瞬止まる（街路灯の柱、2026-11-12 修正）
+
+**症状**: `just check-deck-drive` の 3 回に 2 回ほど、24402611:27（局所 y 約 7.2 m、車線中心から 0.01〜0.03 m）で 1 サンプルの間に 47 → −2 km/h に落ち（`maxShortfallKmh` 52）、0.7 s ほど 0 km/h の後に加速し直した。dy は変わらない。上の「未解明」の件と同じもの。再現（a1、2026-11-11T20:32〜20:36Z、origin/main 8cb296a、vite 5737）では samples の t 104.79 → 104.88 s の 0.09 s で 47.2 → −2.0 km/h。[^deckdrive-lamp]
+
+**特定**: 自車の車体の `drainCollisionEvents` に、相手のコライダーの形・位置・群・親の剛体を出す一時的な計装を入れて 3 本走らせた（b1〜b3、20:40〜20:45Z）。b1 が 24402611:29 で 47.5 → 25.7 km/h に落ち、その時の相手は**半高 4.85 m・半径 0.11 m の円柱（PROP_GROUPS、1,422 個のコライダーを持つ固定の剛体＝街路灯）**で、中心 y 2.60 m（足元 −2.25 m、頂 7.45 m）に対し車体の中心は y 6.19 m だった。高架の下の一般道の街路灯（高さ 10〜12 m、`streetLights.ts`）の柱が床版を突き抜けていた。:27 と :29 は同じ仕組み（どの柱が残るかで場所が変わる）。
+
+**根本原因**: 街路灯は道路網から置き、建物の中に立った柱を 2 秒ごとの `settle` で隠す。その判定 `isOpen` は上から下へのレイがコライダーに当たる高さを見るので、高架の下の柱は**床版のコライダーが既にあるときだけ**隠れていた。床版のコライダーは自車の近くにだけ作られ（`expressway_decks_built` の collidersBuilt / collidersDropped）、`settle` は壁時計の 2 s ごと・カメラから 220 m 以内なので、床版の上の自車が柱に届く前に「床版のコライダーができた後の settle」が走ったかどうかで、柱が残るかが決まった。時刻がほぼ同じに見えたのは、一定速の cruise で同じ場所に同じ時刻に着くから。速度が負になったのは固定の柱との接触の反発で、柱は細いので衝突の後は `touching()` に何も残らない（S5 の記録が 0 だった理由）。`hitKind` は `pole` と読むが、事故判定は衝突後の速さ（2 km/h）を見るので accident にならなかった（既知の欠陥、直していない）。
+
+**修正**: `src/world/streetLights.ts` の `placeLampSteps` で、灯ごとに柱の足元と灯具（アームの先）の上を通る床版の路面の高さ `deckY`（道路グラフの床版の区間の `elev`、車道の幅の半分 + `DECK_REACH` + 0.5 m 以内の最も低いもの）を記録し、`place` で `isUnderDeck(deckY, 地面, 高さ)`（床版が柱の足元 −0.5 m より上で、頂 + 1 m より下）なら描かず、当たり判定も作らない。数は `street_lights_placed` の `underDeck`。**Why not** `isOpen` の判定を待つ・settle を速くする: 床版のコライダーは自車の近くでしか作られないので、どの間隔でも「柱が先に見つかる」順は残る。道路グラフの床版の高さは道路網と同じ時点にあり、ストリーミングの順に依らない。**Why not** 柱を床版の下まで短くする: 高架下の照明は桁に付けるのが普通で、12 m の柱の途中で切った灯は実在しない形になる。
+
+あわせて、S5 のブランチと同じ直し方で、交通 AI の路上駐車（`TrafficAI.parkedSteps`）を xid を持つ線（首都高のチャンク）に置かないようにした（24402611:29 の駐車の別件）。
+
+**確かめたこと（trust signal）**:
+
+- 修正前（origin/main 8cb296a）: a1・a2（20:32〜20:36Z）・b1〜b3（20:40〜20:45Z、計装つき）の 5 本中 2 本で止まった（a1 が :27 で 52 km/h、b1 が :29 で 24.3 km/h の shortfall）。
+- 修正後: `just check-deck-drive f1〜f6`（2026-11-11T20:46〜20:58Z、vite 5737、ヘッドレス Chrome 3 本並走、M2 Max）の 6 本とも `invalid: null`・`failures: []`、max shortfall 4.8〜4.9 km/h（207111988:0 の出発直後）。計装を外した最終のコードでも g1〜g3（21:01〜21:05Z）の 3 本とも同じく失敗なし（max shortfall 4.7〜4.9 km/h、`street_lights_placed` の `underDeck` は 21〜29 本）。計装のログ（`.qa/logs/2026-11-12/`）では、修正後の 6 本に床版の高さ（y > 1 m）での接触は 1 件も無く、修正前の b1 の柱の 1 件だけだった。
+- 回帰テスト `tests/streetLightsUnderDeck.test.ts`: 高架（路面 7.2 m）の下の 22 m の通りの灯に `deckY` が付き、外の通りには付かない。床版のコライダーが無い（`isOpen` が常に真）ままでも、床版の上の車の高さに柱のコライダーが 1 本も無く、外の通りと 30 m 上の床版の下の通りでは柱が残る。`place` の判定を外すとこのテストが落ちることを確かめた（2026-11-11T21:00Z）。
 
 # P2.7-1: 出荷範囲と全域スコアカード（2026-11-11）
 
