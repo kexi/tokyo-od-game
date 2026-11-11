@@ -22,8 +22,10 @@ import {
   ON_DECK_GROUPS,
   PROP_GROUPS,
 } from "../src/physics/groups";
-import { DeckIndex, planDeckMarkings, type RingSides } from "../src/world/expresswayMarkings";
-import { frameAt } from "../src/expressway/profile";
+import { DeckIndex, type DeckSide, planDeckMarkings, type RingSides } from "../src/world/expresswayMarkings";
+import { chunkRings, MERGE_FULL_DZ, MERGE_MAX_DZ, MERGE_RAMP } from "../src/world/expresswayMerge";
+import { probeGenerated } from "./expresswaySeams";
+import { frameAt, surfaceHeight } from "../src/expressway/profile";
 import { expresswayRoadInput, joinExpressway, type XwRoadInput } from "../src/world/expresswayRoads";
 import { laneCentreOffset, sectionWidth } from "../src/world/laneChange";
 import { computeRoadNetwork, restoreRoadNetwork } from "../src/world/roadNetworkData";
@@ -389,58 +391,461 @@ describe("層つき検索 on the decks: the car on the deck finds the deck, unde
   });
 });
 
-describe("壁高欄 and markings where decks meet (expresswayMarkings.ts)", () => {
-  const { chunks, runs } = section();
-  const byRun = new Map(runs.map((r) => [r.id, r]));
+// Synthetic 分流 for the merge (P3.5): a main line M curving left on a circle of radius 400 m over a
+// crest, in two chunks with stations every 12 m, and a one-lane ramp C that leaves M's centreline at
+// s = 60 and drifts left at 0.12 m per metre, 3 cm above M's surface, with stations every 10 m (its
+// rings never line up with M's).
+const RM = 400;
+const zM = (s: number) => 10 + 0.02 * s - (s * s) / 6000;
+const gM = (s: number) => 0.02 - s / 3000;
+const mAt = (s: number): [number, number] => [RM * Math.sin(s / RM), RM - RM * Math.cos(s / RM)];
+const wOf = (sM: number) => Math.max(0, sM - 60) * 0.12;
+const RAMP_DZ = 0.03;
+/** C's plan point at M's distance sM (M's point moved left by w). */
+const cPlan = (sM: number): [number, number] => {
+  const [x, y] = mAt(sM);
+  const th = sM / RM;
+  return [x - Math.sin(th) * wOf(sM), y + Math.cos(th) * wOf(sM)];
+};
+/** sM at each 0.05 m of sM from 60 to 220, with C's arc length there. */
+const cTable = (() => {
+  const sMs: number[] = [60];
+  const sCs: number[] = [0];
+  for (let sM = 60.05; sM <= 220 + 1e-9; sM += 0.05) {
+    const [ax, ay] = cPlan(sM - 0.05);
+    const [bx, by] = cPlan(sM);
+    sMs.push(sM);
+    sCs.push(sCs[sCs.length - 1] + Math.hypot(bx - ax, by - ay));
+  }
+  return { sMs, sCs };
+})();
+const sMOf = (sC: number) => {
+  const { sMs, sCs } = cTable;
+  let i = 0;
+  while (i < sCs.length - 2 && sCs[i + 1] < sC) i++;
+  const t = (sC - sCs[i]) / (sCs[i + 1] - sCs[i]);
+  return sMs[i] + (sMs[i + 1] - sMs[i]) * t;
+};
+const sCOf = (sM: number) => {
+  const { sMs, sCs } = cTable;
+  const i = Math.min(sMs.length - 2, Math.max(0, Math.floor((sM - 60) / 0.05)));
+  return sCs[i] + ((sCs[i + 1] - sCs[i]) * (sM - sMs[i])) / (sMs[i + 1] - sMs[i]);
+};
 
-  it("drops the walls between two decks of one direction joined at a ramp, keeps them elsewhere", () => {
-    const index = new DeckIndex(byRun);
-    for (const c of chunks) index.add(c);
-    // Near the nose: R 6 m south of A (A on its left): its left wall stands on A, its right not.
-    const [lon, lat] = plane.toLonLat(277.5, -6);
-    const ramp = { half: sectionWidth(chunks[2]) / 2, shoulderL: 1, shoulderR: 0.5 };
-    const sides = index.sides("R", lon, lat, zA(277.5), Math.atan2(40, 150), ramp);
-    expect(sides.left.rail).toBe(false);
-    expect(sides.left.joined).toBe("child");
-    expect(sides.right.rail).toBe(true);
-    // Where R ends on A's centreline both of R's walls stand on A: neither is built.
-    const [lonEnd, latEnd] = plane.toLonLat(299, -0.25);
-    const atEnd = index.sides("R", lonEnd, latEnd, zA(299), Math.atan2(40, 150), ramp);
-    expect([atEnd.left.rail, atEnd.right.rail]).toEqual([false, false]);
-    // Far from A: both walls.
-    const [lon2, lat2] = plane.toLonLat(170, -35);
-    const away = index.sides("R", lon2, lat2, 4, Math.atan2(40, 150), ramp);
-    expect(away.left.rail && away.right.rail).toBe(true);
+function diverge(): { chunks: XwChunk[]; runs: XwRunSummary[]; m: XwChunk[]; c: XwChunk } {
+  const mChunk = (id: string, s0: number, s1: number) => {
+    const ch = chunkOf(id, "M", s0, s1, 12, (s) => [...mAt(s), zM(s), gM(s)]);
+    ch.h0 = s0 / RM;
+    ch.h1 = s1 / RM;
+    ch.g0 = gM(s0);
+    ch.g1 = gM(s1);
+    return ch;
+  };
+  const m0 = mChunk("M:0", 0, 120);
+  const m1 = mChunk("M:1", 120, 300);
+  m0.next = "M:1";
+  m1.prev = "M:0";
+  const lenC = cTable.sCs[cTable.sCs.length - 1];
+  const at = (sC: number): [number, number, number, number] => {
+    const sM = sMOf(Math.min(lenC, sC));
+    const dsM = sMOf(Math.min(lenC, sC + 0.05)) - sMOf(Math.max(0, sC - 0.05));
+    const dsC = Math.min(lenC, sC + 0.05) - Math.max(0, sC - 0.05);
+    return [...cPlan(sM), zM(sM) + RAMP_DZ, (gM(sM) * dsM) / dsC];
+  };
+  const c = chunkOf("C:0", "C", 0, Math.floor(lenC / 10) * 10, 10, at);
+  c.cls = "ramp";
+  c.lanes = 1;
+  c.shoulderL = 1;
+  c.shoulderR = 0.5;
+  const heading = (sM: number) => {
+    const [ax, ay] = cPlan(sM);
+    const [bx, by] = cPlan(sM + 0.05);
+    return Math.atan2(by - ay, bx - ax);
+  };
+  const lastS = c.st[c.st.length - 7];
+  c.h0 = heading(60);
+  c.h1 = heading(sMOf(lastS));
+  // The compiler's stretch: from the nose to where the carriageways (plus 0.5 m) part.
+  const apart = 60 + (4.25 + 2.375 + 0.5) / 0.12;
+  m0.decks = [{ with: "C", relation: "same", s0: 60, s1: Math.min(120, apart) }];
+  c.decks = [{ with: "M", relation: "same", s0: 0, s1: sCOf(apart) }];
+  const summary = (id: string, cls: "expressway" | "ramp", chunks: string[], start: object) =>
+    ({
+      id,
+      chain: id,
+      cls,
+      ref: null,
+      lengthM: 0,
+      V: 60,
+      tagV: cls === "ramp" ? 40 : 60,
+      planV: 60,
+      minRadiusM: 0,
+      maxShiftM: 0,
+      steps: [],
+      start,
+      end: { kind: "ground" },
+      chunks,
+    }) as XwRunSummary;
+  return {
+    chunks: [m0, m1, c],
+    m: [m0, m1],
+    c,
+    runs: [
+      summary("M", "expressway", ["M:0", "M:1"], { kind: "open" }),
+      summary("C", "ramp", ["C:0"], { kind: "junction", parent: "M", parentS: 60 }),
+    ],
+  };
+}
+
+function indexOf(chunks: XwChunk[], runs: XwRunSummary[]): DeckIndex {
+  const index = new DeckIndex(new Map(runs.map((r) => [r.id, r])));
+  for (const c of chunks) index.add(c);
+  return index;
+}
+
+/** Bodies of chunks built with a context (the merged decks). */
+function mergedWorld(chunks: XwChunk[], index: DeckIndex) {
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  worlds.push(world);
+  const out = new Map<string, ReturnType<typeof built>>();
+  for (const c of chunks) {
+    const b = built(c, frame, { index });
+    out.set(c.id, b);
+    createDeckBody(world, b.collider, b.piers, null);
+  }
+  world.step();
+  return { world, built: out };
+}
+
+/** M's centre line in the local frame from its own rings, as (point, left, s) at a share along. */
+function mFrames(m: XwChunk[]) {
+  const rings = m.flatMap((c, i) => chunkRings(c, place(frame)).rings.slice(i === 0 ? 0 : 1));
+  return (s: number) => {
+    let k = 0;
+    while (k < rings.length - 2 && rings[k + 1].frame.s <= s) k++;
+    const a = rings[k];
+    const b = rings[k + 1];
+    const t = (s - a.frame.s) / (b.frame.s - a.frame.s);
+    const c = a.c.clone().lerp(b.c, t);
+    const tan = a.t.clone().lerp(b.t, t).normalize();
+    return { c, left: new Vector3(tan.z, 0, -tan.x), tangent: tan };
+  };
+}
+
+describe("one slab where two decks share a surface (P3.5, expresswayMerge.ts)", () => {
+  const { chunks, runs, m, c } = diverge();
+  const index = indexOf(chunks, runs);
+  const edgeM = sectionWidth(m[0]) / 2 + PARAPET_WIDTH.value;
+  const hwM = sectionWidth(m[0]) / 2;
+  const mAtS = mFrames(m);
+  const isAsphalt = (col: Float32Array, i: number) =>
+    Math.abs(col[i] - 0.16) < 1e-6 && Math.abs(col[i + 2] - 0.17) < 1e-6;
+  /** Offset of a local point left of M's centre line (nearest of M's s, by a fine search). */
+  const offsetFromM = (p: Vector3) => {
+    let best = { d: Infinity, s: 0 };
+    for (let s = 0; s <= 300; s += 0.25) {
+      const d = Math.abs(p.clone().sub(mAtS(s).c).dot(mAtS(s).tangent));
+      if (d < best.d) best = { d, s };
+    }
+    // Then onto the foot (the step along the tangent), so the height and offset are at it.
+    const s = Math.min(300, Math.max(0, best.s + p.clone().sub(mAtS(best.s).c).dot(mAtS(best.s).tangent)));
+    const f = mAtS(s);
+    return { u: p.clone().sub(f.c).dot(f.left), s };
+  };
+
+  it("draws no road of the ramp over the main line's slab: its road ends on M's edge or lies under M's face", () => {
+    const b = built(c, frame, { index });
+    const P = b.arrays.position;
+    let onEdge = 0;
+    let tucked = 0;
+    let outside = 0;
+    for (let i = 0; i < P.length; i += 3) {
+      if (!isAsphalt(b.arrays.color, i)) continue;
+      const p = new Vector3(P[i], P[i + 1], P[i + 2]);
+      const { u, s } = offsetFromM(p);
+      if (u >= edgeM + 0.002) {
+        outside++;
+        continue;
+      }
+      const mY = mAtS(s).c.y;
+      // On M's edge (the seam, within the curve's 2 mm between the edge polyline and the offset
+      // centre line) at M's face, or hidden under it.
+      const isSeam = Math.abs(u - edgeM) <= 0.002 && Math.abs(p.y - mY) <= 0.002;
+      const isUnder = p.y <= mY - 0.01;
+      expect(isSeam || isUnder, `u ${u.toFixed(3)} s ${s} dy ${(p.y - mY).toFixed(3)}`).toBe(true);
+      if (isSeam) onEdge++;
+      else tucked++;
+    }
+    expect(onEdge).toBeGreaterThan(10);
+    expect(onEdge + tucked + outside).toBeGreaterThan(100);
+    expect(outside).toBeGreaterThan(100);
   });
 
-  it("keeps one wall between two carriageways of opposite directions, the one of the run that sorts first", () => {
+  it("gives the ramp no collider face near M's surface over M's carriageway (the overlap is M's face alone)", () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    worlds.push(world);
+    const b = built(c, frame, { index });
+    createDeckBody(world, b.collider, b.piers, null);
+    world.step();
+    let checked = 0;
+    for (let s = 60.3; s < 140; s += 0.7) {
+      const f = mAtS(s);
+      for (let u = -hwM + 0.05; u <= hwM - 0.05; u += 0.5) {
+        const p = f.c.clone().addScaledVector(f.left, u);
+        const hit = down(world, p.x, p.y + 1, p.z);
+        const isNearSurface = hit !== null && hit > p.y - 0.01;
+        expect(isNearSurface, `s ${s.toFixed(1)} u ${u.toFixed(2)}`).toBe(false);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it("meets M's face at the seam with no step over 1 mm, within 1 cm of M's surfaceHeight (T11)", () => {
+    const { world } = mergedWorld(chunks, index);
+    let checked = 0;
+    for (let s = 60.13; s < 140; s += 0.37) {
+      const f = mAtS(s);
+      const inside = f.c.clone().addScaledVector(f.left, edgeM - 0.005);
+      const outside = f.c.clone().addScaledVector(f.left, edgeM + 0.005);
+      const yIn = down(world, inside.x, inside.y + 0.5, inside.z);
+      const yOut = down(world, outside.x, outside.y + 0.5, outside.z);
+      // Beside the seam the ramp is there (its road starts at M's edge) or not yet / no longer.
+      const isRampThere = yOut !== null && Math.abs(yOut - outside.y) < 0.2;
+      if (!isRampThere || yIn === null) continue;
+      expect(Math.abs(yIn - yOut!), `s ${s.toFixed(2)}`).toBeLessThanOrEqual(0.001);
+      // The shared contract: M's Hermite surface (profile.ts surfaceHeight, unbanked) at that s.
+      const fr = frameAt(m[s < 120 ? 0 : 1].st, s);
+      const contract = frame.toLocal(fr.lat, fr.lon, surfaceHeight(fr, edgeM, false) + N).y;
+      expect(Math.abs(yOut! - contract), `s ${s.toFixed(2)}`).toBeLessThanOrEqual(0.01);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it("leaves no hole in a 0.5 m grid over both carriageways and keeps T11 on both centre lines where visible", () => {
+    const { world } = mergedWorld(chunks, index);
+    const rampGraph = graphOf(expresswayRoadInput(chunks, runs, ellipsoidal));
+    for (const seg of rampGraph.segments.filter((x) => x.line.xid)) {
+      const half = sectionWidth(seg.line.section!) / 2;
+      for (let s = 0.25; s < seg.length; s += 0.5) {
+        const { pos, dir } = rampGraph.sample(seg, s);
+        const y = rampGraph.surfaceY(seg, s)!;
+        for (let u = -half + 0.1; u <= half - 0.1; u += 0.5) {
+          const p = pos.clone().add(leftOf(dir, u));
+          expect(down(world, p.x, y + 2, p.z), `${seg.line.xid} s ${s} u ${u}`).not.toBeNull();
+        }
+        // T11 on the centre where the deck's own road is the top there: M everywhere, C once its
+        // centre is past M's slab and the 1 m ramp up from the seam (MERGE_RAMP; under M a car on
+        // C's line is on M's face, ≤ 5 cm off C's surfaceY).
+        const isVisible = seg.line.xid !== "C:0" || offsetFromM(pos).u > edgeM + MERGE_RAMP + 0.05;
+        if (!isVisible) continue;
+        const hit = down(world, pos.x, y + 2, pos.z)!;
+        expect(Math.abs(hit - y), `${seg.line.xid} s ${s}`).toBeLessThanOrEqual(0.01);
+      }
+    }
+  });
+
+  it("stands the walls on the one slab's outer edge: none between the two, the ramp's own once it leaves M", () => {
+    const { built: b } = mergedWorld(chunks, index);
+    const at = (id: string, s: number) => {
+      const r = b.get(id)!;
+      let i = 0;
+      while (i < r.rings.length - 1 && r.rings[i].frame.s < s) i++;
+      return r.sides[i];
+    };
+    // C fully inside M near the nose: neither of C's walls, and M keeps its own.
+    const nose = at("C:0", 5);
+    expect([nose.left.wall, nose.right.wall]).toEqual([null, null]);
+    expect(nose.left.reach + nose.right.reach).toBeLessThanOrEqual(0);
+    expect(at("M:0", 66).left.wall).not.toBeNull();
+    // C half out (w = 6 m at sM = 110): M drops its left wall and runs its road to its slab edge;
+    // C (M on its right) is cut at M's edge with no wall on that side, its left wall stands.
+    const mid = at("M:0", 110);
+    expect(mid.left.wall).toBeNull();
+    expect(mid.left.reach).toBeCloseTo(edgeM, 9);
+    const cMid = at("C:0", sCOf(110));
+    expect(cMid.right.wall).toBeNull();
+    expect(cMid.right.seam).not.toBeNull();
+    expect(cMid.left.wall).not.toBeNull();
+    // Apart (w = 12 m): both decks have both walls.
+    expect(at("M:1", 160).left.wall).not.toBeNull();
+    const away = at("C:0", sCOf(160));
+    expect(away.left.wall && away.right.wall).toBeTruthy();
+  });
+
+  it("joins nothing the compiler did not pair (W7): a deck alongside without a stretch keeps its walls", () => {
+    const unpaired = chunks.map((ch) => ({ ...ch, decks: [] }));
+    const lone = indexOf(unpaired, runs);
+    const b = built(unpaired[2], frame, { index: lone });
+    for (const sd of b.sides) {
+      expect(sd.left.wall && sd.right.wall).toBeTruthy();
+      expect(sd.right.seam).toBeNull();
+    }
+  });
+
+  it("does not make one slab of a pair farther apart in height than MERGE_MAX_DZ (a level changeover)", () => {
+    const { chunks: cs, runs: rs } = diverge();
+    const ramp = cs[2];
+    for (let i = 0; i < ramp.st.length; i += 7) ramp.st[i + 3] += MERGE_MAX_DZ + 0.05;
+    const b = built(ramp, frame, { index: indexOf(cs, rs) });
+    expect(b.sides.every((sd) => sd.left.seam === null && sd.right.seam === null)).toBe(true);
+  });
+
+  it("keeps the ramp's seam on the main line when three decks meet, whatever the order of decks, and meets the main line where its road ends", () => {
+    // B runs the other way 8 m left of M (one slab with M, B's 分離壁 in the middle: "B" sorts
+    // first), and C leaves M to the left into that slab: C's master M stops short of its edge there.
+    const { runs: rs, m: ms, c: ramp } = diverge();
+    const lenB = (300 * (RM - 8)) / RM;
+    const b = chunkOf("B:0", "B", 0, lenB, 10, (sB) => {
+      const sM = 300 - (sB * RM) / (RM - 8);
+      const [x, y] = mAt(sM);
+      const th = sM / RM;
+      return [x - Math.sin(th) * 8, y + Math.cos(th) * 8, zM(sM), (-gM(sM) * RM) / (RM - 8)];
+    });
+    b.h0 = Math.PI + 300 / RM;
+    b.h1 = Math.PI;
+    b.decks = [
+      { with: "M", relation: "same", s0: 0, s1: lenB },
+      { with: "C", relation: "same", s0: 0, s1: lenB },
+    ];
+    ms[0].decks = [...ms[0].decks, { with: "B", relation: "same", s0: 0, s1: 120 }];
+    ms[1].decks = [{ with: "B", relation: "same", s0: 120, s1: 300 }];
+    const forward = [...ramp.decks, { with: "B", relation: "same" as const, s0: 0, s1: 200 }];
+    const open = { kind: "open" };
+    const all = [
+      ...rs,
+      { id: "B", cls: "expressway", start: open, end: open, chunks: ["B:0"] } as unknown as XwRunSummary,
+    ];
+    const sidesWith = (decks: typeof forward) => {
+      const c = { ...ramp, decks };
+      const index = indexOf([...ms, c, b], all);
+      return { c, index, built: built(c, frame, { index }) };
+    };
+    const one = sidesWith(forward);
+    const other = sidesWith(forward.toReversed());
+    const key = (r: ReturnType<typeof built>) =>
+      r.sides.map((sd) => [
+        sd.left.reach.toFixed(4),
+        sd.right.reach.toFixed(4),
+        !!sd.left.seam,
+        !!sd.right.seam,
+      ]);
+    expect(key(other.built)).toEqual(key(one.built));
+    // Where C is half out of M (sM 80–93), its seam is on M's side and at M's road end under B's
+    // wall (the middle of M and B's overlap, 4.0 m left of M's centre), not on M's nominal edge.
+    let checked = 0;
+    one.built.rings.forEach((r, i) => {
+      const sM = sMOf(r.frame.s);
+      const isHalfOut = sM > 80 && sM < 93;
+      if (!isHalfOut) return;
+      const seam = one.built.sides[i].right.seam;
+      expect(seam, `sC ${r.frame.s.toFixed(1)}`).not.toBeNull();
+      const f = mAtS(sM);
+      const u = new Vector3(seam!.x, seam!.y, seam!.z).sub(f.c).dot(f.left);
+      expect(u, `sC ${r.frame.s.toFixed(1)}`).toBeCloseTo(4.0, 1);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("makes one slab of two banked decks the same (片勾配: heights compared on the master's tilted face)", () => {
+    const { chunks: cs, runs: rs, m: ms, c: ramp } = diverge();
+    const BANK = 0.04;
+    for (const ch of ms) for (let i = 0; i < ch.st.length; i += 7) ch.st[i + 4] = BANK;
+    // C on M's tilted face: its centre w metres left of M's stands BANK·w higher, plus 1 cm.
+    for (let i = 0; i < ramp.st.length; i += 7) {
+      const sM = sMOf(ramp.st[i]);
+      ramp.st[i + 3] = zM(sM) + BANK * wOf(sM) + 0.01;
+      ramp.st[i + 4] = BANK;
+    }
+    const index = indexOf(cs, rs);
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    worlds.push(world);
+    for (const ch of cs) {
+      const steps = deckArraySteps(ch, place(frame), true, { index });
+      let r = steps.next();
+      while (!r.done) r = steps.next();
+      if (ch === ramp) expect(r.value.skipped).toEqual([]);
+      createDeckBody(world, r.value.collider, r.value.piers, null);
+    }
+    world.step();
+    let checked = 0;
+    for (let s = 80.13; s < 120; s += 0.73) {
+      const f = mAtS(s);
+      const inside = f.c.clone().addScaledVector(f.left, edgeM - 0.002);
+      const outside = f.c.clone().addScaledVector(f.left, edgeM + 0.002);
+      const yIn = down(world, inside.x, inside.y + 1, inside.z);
+      const yOut = down(world, outside.x, outside.y + 1, outside.z);
+      expect(yIn, `s ${s}`).not.toBeNull();
+      expect(yOut, `s ${s}`).not.toBeNull();
+      expect(Math.abs(yIn! - yOut!), `s ${s.toFixed(2)}`).toBeLessThanOrEqual(0.001);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(40);
+  });
+
+  it("puts one 分離壁 in the middle of two opposite carriageways' overlap, built by the run that sorts first", () => {
+    const east = chunkOf("A:0", "A", 0, 200, 20, (s) => [s, 0, zA(s), gA(s)]);
     const west = chunkOf("B:0", "B", 0, 200, 20, (s) => [200 - s, 8, zA(200 - s), -gA(200 - s)]);
     west.h0 = Math.PI;
     west.h1 = Math.PI;
-    const index = new DeckIndex(byRun);
-    index.add(chunks[0]);
-    index.add(west);
-    const main = { half: sectionWidth(chunks[0]) / 2, shoulderL: 1.25, shoulderR: 0.75 };
-    const [lon, lat] = plane.toLonLat(100, 0);
-    const a = index.sides("A", lon, lat, zA(100), 0, main);
-    const [lonB, latB] = plane.toLonLat(100, 8);
-    const b = index.sides("B", lonB, latB, zA(100), Math.PI, main);
-    expect(a.left.rail).toBe(true);
-    expect(b.left.rail).toBe(false);
+    east.decks = [{ with: "B", relation: "same", s0: 0, s1: 200 }];
+    west.decks = [{ with: "A", relation: "same", s0: 0, s1: 200 }];
+    const open = { kind: "open" };
+    const rs = ["A", "B"].map(
+      (id) =>
+        ({ id, cls: "expressway", start: open, end: open, chunks: [`${id}:0`] }) as unknown as XwRunSummary,
+    );
+    const { world, built: b } = mergedWorld([east, west], indexOf([east, west], rs));
+    expect(b.get("A:0")!.sides[5].left.wall).not.toBeNull();
+    expect(b.get("B:0")!.sides[5].left.wall).toBeNull();
+    // Across at x = 101.3 (off the rings' edges): the road, one wall 1.1 m high, the other road.
+    const [lon, lat] = plane.toLonLat(101.3, 0);
+    const base = frame.toLocal(lat, lon, zA(101.3) + N);
+    const [lon8, lat8] = plane.toLonLat(101.3, 8);
+    const across = frame
+      .toLocal(lat8, lon8, zA(100) + N)
+      .sub(base)
+      .normalize();
+    const high: number[] = [];
+    for (let u = 0.5; u <= 7.5; u += 0.02) {
+      const p = base.clone().addScaledVector(across, u);
+      const y = down(world, p.x, p.y + 3, p.z);
+      expect(y, `u ${u.toFixed(2)}`).not.toBeNull();
+      if (y! > p.y + 0.5) high.push(u);
+    }
+    const runsOfHigh = high.filter((u, i) => i === 0 || u - high[i - 1] > 0.03).length;
+    expect(runsOfHigh).toBe(1);
+    expect((high[0] + high[high.length - 1]) / 2).toBeCloseTo(4, 1);
+    expect(high[high.length - 1] - high[0]).toBeCloseTo(PARAPET_WIDTH.value, 1);
+  });
+});
+
+describe("markings where decks meet (expresswayMarkings.ts)", () => {
+  const { chunks } = section();
+  const open = (half: number): DeckSide => ({
+    joined: null,
+    otherLaneEdge: null,
+    reach: half,
+    wall: { inner: half, outer: half + PARAPET_WIDTH.value },
+    seam: null,
+    seamOf: null,
+    seamWeight: 1,
   });
 
   it("paints edge, lane, branch lines and the 導流帯 within 標識令 別表第四's dimensions", () => {
-    const open = { rail: true, joined: null, otherLaneEdge: null };
-    const ring = (s: number, left: RingSides["left"]): { s: number; sides: RingSides } => ({
+    const half = sectionWidth(chunks[0]) / 2;
+    const ring = (s: number, left: Partial<DeckSide>): { s: number; sides: RingSides } => ({
       s,
-      sides: { left, right: open },
+      sides: { left: { ...open(half), ...left }, right: open(half) },
     });
     // A main line's left side: joined by a ramp whose lanes meet ours from s 40, apart before.
     const parent = planDeckMarkings(chunks[0], [
-      ring(0, open),
-      ring(20, { rail: false, joined: "parent", otherLaneEdge: 6 }),
-      ring(40, { rail: false, joined: "parent", otherLaneEdge: 3 }),
-      ring(60, { rail: false, joined: "parent", otherLaneEdge: 1 }),
+      ring(0, {}),
+      ring(20, { wall: null, reach: half + 0.5, joined: "parent", otherLaneEdge: 6 }),
+      ring(40, { wall: null, reach: half + 0.5, joined: "parent", otherLaneEdge: 3 }),
+      ring(60, { wall: null, reach: half + 0.5, joined: "parent", otherLaneEdge: 1 }),
     ]);
     const lane = parent.lines.filter((l) => l.kind === "lane");
     expect(lane).toHaveLength(1);
@@ -467,21 +872,55 @@ describe("壁高欄 and markings where decks meet (expresswayMarkings.ts)", () =
     expect(branch.dash!.length).toBeLessThanOrEqual(dims.speedChangeEdge.dash[1]);
     expect(branch.dash!.gap / branch.dash!.length).toBeGreaterThanOrEqual(dims.speedChangeEdge.gapRatio[0]);
     expect(branch.dash!.gap / branch.dash!.length).toBeLessThanOrEqual(dims.speedChangeEdge.gapRatio[1]);
-    // The ramp's side: a 導流帯 where the lanes are apart (inside the slab), no edge line where they meet.
-    const child = planDeckMarkings(chunks[2], [
-      ring(0, { rail: false, joined: "child", otherLaneEdge: 4 }),
-      ring(10, { rail: false, joined: "child", otherLaneEdge: 3 }),
-      ring(20, { rail: false, joined: "child", otherLaneEdge: 1 }),
-    ]);
+    // The ramp's side, cut at the main line's edge 0.3 m past its road: a 導流帯 where the lanes are
+    // apart, from its lane edge over the seam to the main line's lane edge; no edge line where they meet.
+    const rampHalf = sectionWidth(chunks[2]) / 2;
+    const seam = { x: 0, y: 0, z: 0 };
+    const cut = (s: number, other: number) => ({
+      s,
+      sides: {
+        left: {
+          ...open(rampHalf),
+          wall: null,
+          reach: rampHalf - 0.3,
+          seam,
+          joined: "child" as const,
+          otherLaneEdge: other,
+        },
+        right: open(rampHalf),
+      },
+    });
+    const child = planDeckMarkings(chunks[2], [cut(0, 4), cut(10, 3), cut(20, 1)]);
     expect(child.zebras).toHaveLength(1);
     const z = child.zebras[0];
-    expect(z.inner[0]).toBeCloseTo(sectionWidth(chunks[2]) / 2 - 1, 9);
-    expect(z.outer[0]).toBeLessThanOrEqual(sectionWidth(chunks[2]) / 2 + PARAPET_WIDTH.value);
+    expect(z.inner[0]).toBeCloseTo(rampHalf - 1, 9);
+    expect(z.outer[0]).toBeCloseTo(4, 9);
     const leftEdges = child.lines.filter((l) => l.kind === "edge" && l.offset > 0);
     expect(leftEdges).toEqual([]);
     // Where its lane runs inside the main line's, the ramp paints nothing (not its far edge either).
     const rightEdge = child.lines.find((l) => l.kind === "edge" && l.offset < 0)!;
     expect(rightEdge.to).toBeCloseTo(15, 9);
+  });
+
+  it("stops a cut deck's lines where they would leave its own road (the master's lines are on its face)", () => {
+    const half = sectionWidth(chunks[0]) / 2;
+    // A two-lane deck cut on its left: its road ends 1 m left of the centre from s 20 to s 40, so
+    // its left edge line (3 m left) and its lane line (0.25 m right) are on and off accordingly.
+    const ring = (s: number, reach: number) => ({
+      s,
+      sides: { left: { ...open(half), wall: null, reach, seam: { x: 0, y: 0, z: 0 } }, right: open(half) },
+    });
+    const plan = planDeckMarkings(chunks[0], [ring(0, half), ring(20, 1), ring(40, -0.5), ring(60, half)]);
+    const leftEdge = plan.lines.filter((l) => l.kind === "edge" && l.offset > 0);
+    expect(leftEdge.map((l) => [l.from, l.to])).toEqual([
+      [0, 10],
+      [50, 60],
+    ]);
+    const lane = plan.lines.filter((l) => l.kind === "lane");
+    expect(lane.map((l) => [l.from, l.to])).toEqual([
+      [0, 30],
+      [50, 60],
+    ]);
   });
 });
 
@@ -621,6 +1060,48 @@ describe("which deck a car is on at a 分合流 (the main line over the ramp lyi
   });
 });
 
+describe("the generated data's merges (P3.5): seams and let-go points probed from the chunks alone", () => {
+  // Where to probe comes from the stations and the Hermite surface (tests/expresswayPairs.ts), not
+  // from the deck builder's rings or sides; heights are rays into all 81 merged chunks at once.
+  const probed = () => probeGenerated();
+
+  it("meets the master's face at every seam a car drives over: ≤ 1 mm where the pair is within 5 cm, never a hole", () => {
+    const { seams, world } = probed();
+    worlds.push(world);
+    // Every 0.5 m of the ramps' "same" stretches whose road lies past the master's slab edge and
+    // within MERGE_MAX_DZ of it: a fixed count, so a probe that stops finding its seam fails here.
+    expect(seams).toHaveLength(1066);
+    const holes = seams.filter((x) => x.step === null).map((x) => `${x.chunk} s ${x.s.toFixed(2)}`);
+    expect(holes).toEqual([]);
+    const steps: string[] = [];
+    for (const x of seams) {
+      // At the master's face up to MERGE_FULL_DZ; sliding to the ramp's own height (≤ the miss,
+      // linear between rings) up to MERGE_MAX_DZ. Same-frame values (one world, one origin).
+      const limit = Math.abs(x.dz) <= MERGE_FULL_DZ ? 0.001 : MERGE_MAX_DZ + 0.001;
+      if (x.step! > limit)
+        steps.push(`${x.chunk} s ${x.s.toFixed(2)} dz ${x.dz.toFixed(3)}: ${x.step!.toFixed(4)} m`);
+      // Inside the seam is the master's own face: within the 1 cm its chords keep to its surface.
+      expect(Math.abs(x.inside!), `${x.chunk} s ${x.s}`).toBeLessThanOrEqual(0.01);
+    }
+    expect(steps).toEqual([]);
+  });
+
+  it("lets go of a pair with no step along travel, at the three places the miss passes MERGE_MAX_DZ", () => {
+    const { cuts, world } = probed();
+    worlds.push(world);
+    // Before P3.5's review these were faces across the road up to 0.15 m high (W1).
+    expect(cuts.map(({ chunk, with: w, s }) => ({ chunk, with: w, s }))).toEqual([
+      { chunk: "207111988:2", with: "24402611", s: 157.5 },
+      { chunk: "4853798:0", with: "45021976", s: 198.5 },
+      { chunk: "4853799:0", with: "24402611", s: 82.3 },
+    ]);
+    for (const c of cuts) {
+      expect(c.alongStep, `${c.chunk} s ${c.s}`).not.toBeNull();
+      expect(c.alongStep!, `${c.chunk} s ${c.s}`).toBeLessThanOrEqual(0.001);
+    }
+  });
+});
+
 describe("T11 against the analytic surface (not only the graph's own heights)", () => {
   const { chunks, runs } = section();
   it("puts surfaceY on A's crest z(s) = 12 − (s − 200)² / 2800 within 1 cm in the frame", () => {
@@ -644,7 +1125,15 @@ describe("T11 against the analytic surface (not only the graph's own heights)", 
 
 describe("markings at the sizes the plan fixes (not read back from the same constants)", () => {
   it("paints the expressway's edge lines 0.20 m and its lane lines 0.15 m wide, dashed 8 m / 12 m", () => {
-    const open = { rail: true, joined: null, otherLaneEdge: null };
+    const open: DeckSide = {
+      joined: null,
+      otherLaneEdge: null,
+      reach: 4.25,
+      wall: { inner: 4.25, outer: 4.75 },
+      seam: null,
+      seamOf: null,
+      seamWeight: 1,
+    };
     const plan = planDeckMarkings(section().chunks[0], [
       { s: 0, sides: { left: open, right: open } },
       { s: 100, sides: { left: open, right: open } },
