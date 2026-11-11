@@ -31,7 +31,8 @@ sources:
 - **P2 完了**: 述語・断面・MarkingPlan・層つき検索、挙動不変（[道路モデル](road-model.md)）。
 - **P3 実装（2026-11-11、レビュー待ち）**: 床版と壁高欄の trimesh・橋脚の cuboid のコライダー（400 m の出し入れ、reanchor、T11 をテスト）、チャンクを level 1 の区間として RoadGraph へ（端点 ID、分合流、ランプ端は GSI の地平部をたどって一般道へ、失敗は ramp_unattached）、`RoadGraph.locate`・nearestOnSurface の W9、W4・W6・CrossSection の一本化、床版の区画線（外側線・車線境界線・分合流の太い破線・導流帯）、EXPRESSWAY_OPEN の map・spawn。入口ランプ → C1 内回り、本線 → 出口 2 本 → 地上を一定速で走らせて落下・跳ね無し、多視点レビュー 3 周で収束（[高速道路の生成](expressway-generation.md) の「実行時」）。逸脱: ランプ端の接続は OSM の共有節点ではなく GSI の高速道路の地平部（データに節点が無い）、床版の上の車は PLATEAU の建物を通り抜ける（貫通の切り抜きは P4）。
 - **P3.5 実装（2026-11-11、レビュー待ち）**: decks の same 区間で、ランプ（子）の床版を本線（親）の床版の縁で切り面を 1 枚に（継ぎ目は親の縁の頂点の折れ線、段差 ≤ 1 mm）、逆向きの並走は 1 枚にして中央に分離壁 1 本。DeckIndex を decks から引き W7 を解消。データ形式は変えない（[高速道路の生成](expressway-generation.md) の「床版の一体化」）。
-- 未着手: P4〜P9（P2.6・P8 は並行中）。
+- **P8 実装（2026-11-11、PR 待ち）**: 一般道の車線一本化・幅員補正・路肩（[道路モデル](road-model.md) の P8）。計画との差: OSM の車線は `public/data/turnlanes` に列を足すのではなく別フォルダ `public/data/roadlanes`（行の形が違い、turn:lanes の無い way も要るため）。幅員推定はやめ、何も載っていない道は 1 車線（レビュー）。歩道の幅 3.5 m（構造令 第11条）は roadStandards.ts、幅員が歩道込みとみなす閾値 13 m などは仮定として `src/world/streetAssumptions.ts`。
+- 未着手: P4〜P7、P9（P2.6 は並行中）。
 
 作成 2026-11-10。対象 `tokyo-od-game`。コードは書かない（実装は Opus が段階的に行う）。
 

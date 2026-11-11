@@ -26,6 +26,7 @@ const M_LAT = 1 / 110_950; // degrees per metre of latitude near Tokyo
 const empty = (): RegulationData => ({
   laneArrows: [],
   turnlanes: [],
+  roadlanes: [],
   speed: [],
   speedZone: [],
   oneway: [],
@@ -296,7 +297,8 @@ describe("signs and lane rules on the road graph", () => {
   });
 
   it("takes yellow centre lines, lane counts and 進路変更禁止 from JARTIC sections", () => {
-    const wide = street(35.68, 22);
+    // 30 m less two 3.5 m pavements (the room, laneChange.ts streetRoom) holds 3 lanes a direction.
+    const wide = street(35.68, 30);
     const plain = street(35.684, 9);
     const graph = new RoadGraph([wide, plain], frame);
     const data = empty();
@@ -310,9 +312,9 @@ describe("signs and lane rules on the road graph", () => {
   });
 
   it("treats a lane count that cannot fit one direction as the total for both", () => {
-    const graph = new RoadGraph([street(35.68, 16)], frame);
+    const graph = new RoadGraph([street(35.68, 12)], frame);
     const data = empty();
-    data.lanes.push([4, 139.76, 35.68, 139.762, 35.68]); // 4 × 3 m > 8 m per direction
+    data.lanes.push([4, 139.76, 35.68, 139.762, 35.68]); // 4 × 3 m > 6 m per direction
     applyRegulations(graph, data, frame);
     expect(graph.segments[0].lanes).toBe(2);
   });

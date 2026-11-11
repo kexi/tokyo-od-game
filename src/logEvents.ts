@@ -247,6 +247,10 @@ export const LOG_EVENTS = {
     signs: count,
   }),
   pavements_built: info({ wards: z.array(z.string()), polygons: count }),
+  /** Street sections after a rebuild: segments by basis, and OSM lanes that differ by direction. */
+  road_sections: info({ segments: count, byBasis: counts, asymmetric: count }),
+  /** Streets whose lanes reach into PLATEAU's pavement (the 幅員 / pavement assumption to check). */
+  pavement_over_lanes: info({ checked: count, under: count }),
   /**
    * Expressway decks built or dropped around the player (expresswayDeck.ts), with their colliders:
    * how many chunks have one, and how many this refresh made and removed.
@@ -395,6 +399,19 @@ export const LOG_EVENTS = {
     energyKj: z.number().optional(),
     otherMassKg: z.number().optional(),
   }),
+  /**
+   * A person and the player's car touched but it was not the driver's accident: the car stood
+   * (game/pedestrianBlow.ts) or the person's Δv was a nudge. `carKmh` is the car's speed into the blow.
+   */
+  pedestrian_bump: info({ carKmh: z.number(), otherDeltaVKmh: z.number() }),
+  /**
+   * A jump (移動, 復帰, debug place) put the player more than 80 m from an open accident scene:
+   * leaving and the 119 deadline are held until they are back within 80 m (game/emergency.ts).
+   * `jumpM` is the jump, `awayM` the distance from the scene after it.
+   */
+  incident_jump: info({ jumpM: z.number(), awayM: z.number() }),
+  /** Back within 80 m of the scene after a jump: the hold ends; `heldMs` is how long it lasted. */
+  incident_resumed: info({ heldMs: z.number() }),
   /**
    * Crossed a signal's stop line while an arrow over red allowed only some movements (`allowed`):
    * the 信号無視 check waits for the arm the car leaves by (src/signals/redLight.ts).
@@ -581,6 +598,15 @@ export const LOG_EVENTS = {
     footbridges: count,
     stairs: count,
     turnlanes: count,
+  }),
+  /** scripts/regulations.ts: street ways with lanes / width kept for public/data/roadlanes. */
+  osm_road_lanes: info({
+    ways: count,
+    tiles: count,
+    lanes: count,
+    forwardBackward: count,
+    width: count,
+    oneway: count,
   }),
   police_written: info({ stations: count, orbis: count, bySource: counts }),
   osm_loaded: info({ bytes: count }),

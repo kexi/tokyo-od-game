@@ -22,9 +22,13 @@ preview-app: build-app
 fetch-data:
     pnpm exec tsx scripts/fetch-data.ts
 
-# JARTIC 交通規制情報と OSM の信号機を取得し public/data/regs・signals を再生成する
+# JARTIC 交通規制情報と OSM の信号機・車線などを取得し public/data/regs・signals・roadlanes 等を再生成する
 fetch-regs:
     pnpm exec tsx scripts/regulations.ts
+
+# OSM の一般道の車線数・幅員・一方通行だけを public/data/roadlanes に再生成する（OSM_FILE=<pbf> で手元の抽出を使う）
+fetch-road-lanes:
+    pnpm exec tsx scripts/regulations.ts roadlanes
 
 # 車のテクスチャ（assets/car/textures）を手続き生成し直す（フォントはコミット固定の Noto Sans JP）
 make-car-textures:
