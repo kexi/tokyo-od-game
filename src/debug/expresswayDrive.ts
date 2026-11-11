@@ -3,6 +3,7 @@ import { type DriveInput, RIDE_HEIGHT, type Vehicle } from "../physics/vehicle";
 import type { ExpresswayDecks } from "../world/expresswayDeck";
 import { laneCentreOffset } from "../world/laneChange";
 import { log } from "../log";
+import type { AutoDriver } from "../game/autoDriver";
 import { leftOf, laneOffset, type RoadGraph, type Segment, speedLimit } from "../world/roads";
 
 /**
@@ -31,6 +32,22 @@ export type ExpresswayDriveDeps = {
    * licence: the game may freeze the car for an arrest), or null.
    */
   blocker: () => string | null;
+  /** The player's autopilot (main.ts), for `route` (P6). */
+  autopilot?: {
+    start: (target: Vector3) => boolean;
+    driver: () => AutoDriver | null;
+    input: () => DriveInput | null;
+    violations: () => ReadonlyArray<{
+      kind: string;
+      at: number;
+      context?: { detail?: string; lat?: number; lon?: number };
+    }>;
+    toLocal: (lat: number, lon: number) => Vector3;
+  };
+  /** The traffic AI on the expressway now (P6). */
+  traffic?: () => { cars: number; onDeck: number; onRamps: number; merged: number; diverged: number };
+  /** Put a traffic car on chunk `xid` at `share` of it, at `kmh` (P6: a main-line car timed to a merge). */
+  placeTraffic?: (xid: string, share: number, kmh: number) => boolean;
 };
 
 /**
@@ -51,6 +68,8 @@ type Sample = {
 
 /** The ride is sampled at most this often (s of game time). */
 const SAMPLE_S = 0.05;
+/** `route` arrived: the car stopped this close to the place it was sent to (m). */
+const ARRIVED_M = 80;
 /** Side acceleration the cruise allows in a bend (m/s², a calm driver). */
 const LATERAL_MS2 = 2.5;
 
@@ -246,14 +265,107 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       invalid: startBlocker ?? deps.blocker(),
     };
     log("expressway_drive_checked", summary);
-    return summary;
+    if (!routed) return summary;
+    const ap = deps.autopilot;
+    const driver = ap?.driver() ?? null;
+    const route = routed.route;
+    const graph = deps.graph();
+    const runOfId = (id: number) => graph?.segments[id]?.line.xid?.split(":")[0] ?? "?";
+    const booked = (ap?.violations() ?? []).slice(routed.violationsFrom);
+    const here = deps.vehicle.position();
+    const target = routed.target();
+    const arrived = Math.hypot(here.x - target.x, here.z - target.z) < ARRIVED_M;
+    const driven = {
+      label,
+      seconds: summary.seconds,
+      distanceM: summary.distanceM,
+      runs: [...new Set(visited.map((x) => x.split(":")[0]))],
+      links: (route?.links ?? []).map((l) => `${l.kind} ${runOfId(l.from)}→${runOfId(l.to)} ${l.side}`),
+      calls: (route?.maneuvers ?? []).flatMap((m) =>
+        m.xw ? [`${m.xw.kind}${m.xw.name ? ` ${m.xw.name}` : ""}`] : [],
+      ),
+      violations: booked.map((v) => {
+        const where = v.context?.lat ? ` @${v.context.lat.toFixed(5)},${v.context.lon?.toFixed(5)}` : "";
+        return `${v.kind}${v.context?.detail ? `: ${v.context.detail}` : ""}${where}`;
+      }),
+      maxAbsDyM: summary.maxAbsDyM,
+      fell: summary.fell,
+      arrived,
+      gaveUp: driver?.gaveUp ?? routed.gaveUp ?? (arrived || driver !== null ? null : "stopped"),
+      yieldedS: Math.round(routed.yieldedS * 10) / 10,
+    };
+    routed = null;
+    log("expressway_route_driven", driven);
+    return { ...summary, ...driven };
   };
+
+  /** The autopilot's route of the last `route` call, and what happened on it. */
+  let routed: {
+    route: AutoDriver["route"];
+    /**
+     * The place asked for, in the frame of the moment it is asked: the world is re-anchored as the
+     * car drives off (the origin moves with it), so a local point taken at the start is somewhere
+     * else by the end.
+     */
+    target: () => Vector3;
+    violationsFrom: number;
+    yieldedS: number;
+    gaveUp: string | null;
+  } | null = null;
+
+  /**
+   * Drive the player's car to (lat, lon) on the game's own autopilot (the navi's route, over the
+   * expressway where it is shorter), sampling the ride as `cruise` does (its sampler, not its
+   * steering); `stop(label)` sums it up and logs expressway_route_driven too. False without a route.
+   */
+  const route = (to: { lat: number; lon: number }): boolean => {
+    const ap = deps.autopilot;
+    if (!ap) return false;
+    const target = ap.toLocal(to.lat, to.lon);
+    const isStarted = ap.start(target);
+    if (!isStarted) return false;
+    // The cruise's per-frame sampler, caught instead of installed (its pedals are not used).
+    let sampler: ((dt: number) => DriveInput) | null = null;
+    const install = deps.setDrive;
+    deps.setDrive = (fn) => (sampler = fn);
+    cruise({});
+    deps.setDrive = install;
+    routed = {
+      route: ap.driver()?.route ?? null,
+      target: () => ap.toLocal(to.lat, to.lon),
+      violationsFrom: ap.violations().length,
+      yieldedS: 0,
+      gaveUp: null,
+    };
+    install((dt) => {
+      sampler?.(dt);
+      const driver = ap.driver();
+      if (routed && driver?.yieldingAtMerge) routed.yieldedS += dt;
+      if (routed && driver?.gaveUp) routed.gaveUp = driver.gaveUp;
+      return ap.input() ?? { throttle: 0, brake: 1, steer: 0, handbrake: false, brakeOnly: true };
+    });
+    return true;
+  };
+
+  /** What the traffic AI does on the expressway now (logged as expressway_traffic_seen). */
+  const traffic = () => {
+    const stats = deps.traffic?.() ?? null;
+    if (stats) log("expressway_traffic_seen", stats);
+    return stats;
+  };
+
+  /** A traffic car on chunk `xid` (debug.expressway.trafficAt): see deps.placeTraffic. */
+  const trafficAt = (xid: string, share = 0.5, kmh = 50): boolean =>
+    deps.placeTraffic?.(xid, share, kmh) ?? false;
 
   return {
     place,
+    trafficAt,
     /** Why a drive now would not count (read before place(): drive-deck.ts waits it out). */
     blocker: () => deps.blocker(),
     cruise,
+    route,
+    traffic,
     stop,
     /** The raw samples of the last cruise (for plotting the ride). */
     samples: () => samples,

@@ -486,6 +486,35 @@ export const LOG_EVENTS = {
      */
     invalid: z.string().nullable(),
   }),
+  /**
+   * The autopilot driven over the expressway by the dev hook (debug.expressway.route, P6): the
+   * ride's numbers as expressway_drive_checked, and what the route took (the runs in order, the
+   * merges and diverges it planned, the navi's expressway calls) and what the law check booked.
+   */
+  expressway_route_driven: info({
+    label: z.string(),
+    seconds: z.number(),
+    distanceM: z.number(),
+    runs: z.array(z.string()),
+    links: z.array(z.string()),
+    calls: z.array(z.string()),
+    violations: z.array(z.string()),
+    maxAbsDyM: z.number(),
+    fell: z.boolean(),
+    arrived: z.boolean(),
+    gaveUp: z.string().nullable(),
+    yieldedS: z.number(),
+  }),
+  /** A call the navi says (in the language in force), whether or not the voice is muted. */
+  nav_spoken: info({ text: z.string() }),
+  /** Traffic AI cars on the expressway at a moment (debug.expressway.traffic, P6). */
+  expressway_traffic_seen: info({
+    cars: count,
+    onDeck: count,
+    onRamps: count,
+    merged: count,
+    diverged: count,
+  }),
 
   // ---------- driving ----------
   trip_started: info({ target: z.string(), distanceM: z.number() }),

@@ -5,7 +5,14 @@ import type { GameClock } from "../world/ruleTime";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 import { log } from "../log";
 import { drivePath, type Corner, type LanePlan } from "./drivePath";
-import { allowsPedestrians, isDrivable as isRoutable } from "../world/roadClass";
+import {
+  allowsPedestrians,
+  classOf,
+  isDrivable as isRoutable,
+  isExpressway,
+  sourceOf,
+} from "../world/roadClass";
+import { branchLink, runOf, type LaneLink } from "../world/laneLinks";
 
 /**
  * カーナビ: a legal route over the road graph around the player and turn-by-turn guidance
@@ -16,8 +23,20 @@ import { allowsPedestrians, isDrivable as isRoutable } from "../world/roadClass"
  */
 export type Turn = "straight" | "slightLeft" | "left" | "slightRight" | "right" | "uturn";
 export type Step = { seg: Segment; dir: 1 | -1 };
+/**
+ * A merge or diverge of the expressway the route takes (laneLinks.ts): its route distance (the
+ * node), and the run the car is on before it (for the lane to take on the way there).
+ */
+export type RouteLink = LaneLink & { at: number; run: string | null; toRun: string | null };
+/**
+ * What an expressway maneuver is (the navi calls it in its own words): onto the expressway from a
+ * street, off it by an exit ramp, or onto another main line at a branch (JCT). `name` is the
+ * ramp's (OSM name, 「芝公園出口」) and `ref` the 路線記号 of the main line it leads to; never the
+ * operator's name (the data has none, network.ts).
+ */
+export type XwManeuver = { kind: "enter" | "exit" | "branch"; name: string | null; ref: string | null };
 /** A turn to announce: route distance of its node, the node, and the travel direction arriving. */
-export type Maneuver = { at: number; turn: Turn; pos: Vector3; node: number; dir: Vector3 };
+export type Maneuver = { at: number; turn: Turn; pos: Vector3; node: number; dir: Vector3; xw?: XwManeuver };
 export type Route = {
   steps: Step[];
   maneuvers: Maneuver[];
@@ -42,6 +61,8 @@ export type Route = {
   length: number;
   /** False when the target lies outside the graph and the route ends at the nearest road. */
   reachesTarget: boolean;
+  /** The expressway's merges and diverges on the way (absent: none, or a route on foot). */
+  links?: RouteLink[];
 };
 
 /** Turn class the law checks use (指定方向外進行禁止 masks): 1 left, 2 straight, 4 right. */
@@ -188,6 +209,9 @@ const tangent = (graph: RoadGraph, st: Step, atEnd: boolean) => {
   return graph.sample(st.seg, s).dir.clone().multiplyScalar(st.dir);
 };
 
+/** Cost per metre of the expressway against a street's 1 (planRoute). */
+const XW_COST = 0.6;
+
 /** Times a car route is planned again round turns its lanes cannot reach (drivePath's `blocked`). */
 const LANE_REPLANS = 8;
 
@@ -308,7 +332,11 @@ export function planRoute(
         const turn = classifyTurn(tIn, tOut);
         // Drivers: narrow streets are slower, prefer the main roads like a real navigator.
         // Walkers: the shortest way, with a little extra for each road to cross.
-        const slow = !isWalk && seg.line.width < 5.5 ? 1.4 : 1;
+        // The expressway (OSM decks and ramps) is quicker than the streets it bypasses: no
+        // signals, 50–60 km/h. Why a factor and not travel time: the streets' costs are lengths
+        // (with their own factors) and a time cost would re-weigh every street route.
+        const isXw = !isWalk && isExpressway(seg.line) && sourceOf(seg.line) === "osm";
+        const slow = isXw ? XW_COST : !isWalk && seg.line.width < 5.5 ? 1.4 : 1;
         const base = cost + (isWalk ? (turn === "straight" ? 0 : 3) : TURN_COST[turn]);
         const through = base + seg.length * slow;
         if (through < (best.get(key(next)) ?? Infinity)) {
@@ -396,12 +424,20 @@ function buildRoute(
       maneuvers.push({ at: stepStart[i], turn, pos: atNode.clone(), node, dir: tIn });
     }
   }
+  const links: RouteLink[] = [];
+  for (let i = 1; i < steps.length; i++) {
+    const link = branchLink(graph.laneLinks, steps[i - 1].seg.id, steps[i].seg.id);
+    if (link)
+      links.push({ ...link, at: stepStart[i], run: runOf(steps[i - 1].seg), toRun: runOf(steps[i].seg) });
+  }
+  addExpresswayManeuvers(graph, steps, stepStart, links, maneuvers);
   return {
     steps,
     maneuvers,
     points,
     cum,
     stepOf,
+    ...(links.length > 0 ? { links } : {}),
     lanes: points.map(() => ({ offset: 0, lane: 0, count: 1, corner: false })),
     corners: [],
     hints: [],
@@ -410,6 +446,76 @@ function buildRoute(
     length: travelled,
     reachesTarget,
   };
+}
+
+const isOsmExpressway = (seg: Segment) => isExpressway(seg.line) && sourceOf(seg.line) === "osm";
+/** Whether the route from step `from` reaches a main line before it leaves the expressway. */
+const leadsToMainLine = (steps: readonly Step[], from: number): boolean => {
+  for (let k = from; k < steps.length; k++) {
+    const seg = steps[k].seg;
+    if (!isOsmExpressway(seg)) return false;
+    if (classOf(seg.line) === "expressway") return true;
+  }
+  return false;
+};
+/** The 路線記号 of the first main line from step `from` on (the one an entrance leads to). */
+const refAhead = (steps: readonly Step[], from: number): string | null =>
+  steps.slice(from).find((st) => st.seg.line.ref !== undefined)?.seg.line.ref ?? null;
+
+/**
+ * The expressway's maneuvers on a route, in order with the turns: where it leaves a street for an
+ * entrance ramp (`enter`), and each diverge it takes, onto an exit ramp (`exit`) or another main line
+ * (`branch`). A diverge is a slight turn to its side; an entrance takes the turn at the street
+ * junction when there is one (the maneuver already there gets the expressway's words).
+ */
+function addExpresswayManeuvers(
+  graph: RoadGraph,
+  steps: readonly Step[],
+  stepStart: readonly number[],
+  links: readonly RouteLink[],
+  maneuvers: Maneuver[],
+): void {
+  const add = (i: number, turn: Turn, xw: XwManeuver) => {
+    const existing = maneuvers.find((m) => Math.abs(m.at - stepStart[i]) < 1e-6);
+    if (existing) {
+      existing.xw = xw;
+      return;
+    }
+    const st = steps[i];
+    const atNode = st.dir === 1 ? st.seg.pts[0] : st.seg.pts[st.seg.pts.length - 1];
+    const node = exitNode(steps[i - 1]);
+    maneuvers.push({
+      at: stepStart[i],
+      turn,
+      pos: atNode.clone(),
+      node,
+      dir: tangent(graph, steps[i - 1], true),
+    });
+    maneuvers[maneuvers.length - 1].xw = xw;
+  };
+  for (let i = 1; i < steps.length; i++) {
+    const isEntering = !isOsmExpressway(steps[i - 1].seg) && isOsmExpressway(steps[i].seg);
+    if (!isEntering) continue;
+    // The entrance ramp's own name: its steps up to the main line (not an exit's further on).
+    const firstMain = steps.findIndex((st, k) => k >= i && classOf(st.seg.line) === "expressway");
+    const rampSteps = steps.slice(i, firstMain < 0 ? undefined : firstMain);
+    const ramp = rampSteps.find((st) => st.seg.line.name !== undefined)?.seg.line.name ?? null;
+    const turn = classifyTurn(tangent(graph, steps[i - 1], true), tangent(graph, steps[i], false));
+    add(i, turn, { kind: "enter", name: ramp, ref: refAhead(steps, i) });
+  }
+  for (const link of links) {
+    if (link.kind !== "diverge") continue;
+    const i = stepStart.findIndex((s, k) => k > 0 && Math.abs(s - link.at) < 1e-6);
+    if (i <= 0) continue;
+    const to = steps[i].seg;
+    // An exit leads off the expressway; a JCT branch onto another main line, by a connecting ramp
+    // or directly: told by where the route goes after it, not by the class of the road it takes.
+    const isExit = !leadsToMainLine(steps, i);
+    const turn: Turn = link.side === "right" ? "slightRight" : "slightLeft";
+    const name = isExit ? (to.line.name ?? null) : null;
+    add(i, turn, { kind: isExit ? "exit" : "branch", name, ref: isExit ? null : refAhead(steps, i) });
+  }
+  maneuvers.sort((a, b) => a.at - b.at);
 }
 
 /** Distance along the route of the point nearest to p, searching around the last known index. */

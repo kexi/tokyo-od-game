@@ -2658,7 +2658,10 @@ function chunkRun(
     // A tunnel's portal inside a below run: a chunk is all tunnel or all cut (P9).
     const isPortal =
       rp.below && prevWay !== null && nextWay !== null && prevWay.structure !== nextWay.structure;
-    if (isJunction || isSectionChange || isPortal) cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
+    // The posted limit (OSM maxspeed) changes at a way boundary: each chunk carries one (P6).
+    const isLimitChange = prevWay !== null && nextWay !== null && prevWay.maxspeedTag !== nextWay.maxspeedTag;
+    if (isJunction || isSectionChange || isPortal || isLimitChange)
+      cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
   }
   for (const z of profile.zones) if (z.from > 0) cuts.add(z.from);
   const o = rp.over;
@@ -2736,8 +2739,9 @@ function chunkRun(
     const isTallEnough = z - GIRDER - g > 1.5;
     if (isTallEnough) piers.push(at, g);
   }
+  const wayAtSample = (sampleIdx: number) => plan.net.ways.get(rp.wayAt[sampleIdx - rp.i0])!;
   const sec = (sampleIdx: number) => {
-    const way = plan.net.ways.get(rp.wayAt[sampleIdx - rp.i0])!;
+    const way = wayAtSample(sampleIdx);
     return sectionFor(way.cls, way.lanes);
   };
   /**
@@ -2821,6 +2825,7 @@ function chunkRun(
     // to 1 cm, so it is looked up 1 cm to that side, and the run's last one at S.
     const sideOf = (p: XwPortal) => (p.from === "tunnel" ? Math.max(0, p.s - 0.01) : Math.min(p.s + 0.01, S));
     const chunkPortals = portals.filter((p) => within(sideOf(p), a, b, isLast));
+    const maxspeed = wayAtSample(sampleAt(rp, (a + b) / 2)).maxspeedTag;
     const V = zoneSpeedAt(profile.zones, (a + b) / 2);
     const chunkPiers: number[] = [];
     for (let i = 0; i < piers.length; i += 2) {
@@ -2856,6 +2861,7 @@ function chunkRun(
       shoulderR: section.shoulderR,
       basis: section.basis,
       V,
+      maxspeed,
       vh: roundTo(profile.h, 3),
       ...(profile.cubic ? { vform: "cubic" as const } : {}),
       gmax: gradeLimitFor(V, profile.special),

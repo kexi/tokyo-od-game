@@ -27,6 +27,11 @@ export type ViolationKind =
   | "seatBelt" // 座席ベルト装着義務違反
   | "keepLeft" // 通行区分違反（右側通行）
   | "speed" // 速度超過
+  | "xwCrossing" // 本線車道横断等禁止違反（転回・後退）
+  | "xwWrongWay" // 通行区分違反（高速道路の逆走）
+  | "xwStopping" // 駐停車違反（高速道路）
+  | "xwMergeObstruct" // 本線車道通行車妨害
+  | "xwRampMethod" // 本線車道出入方法違反
   | "pedestrianCrossing" // 横断歩行者等妨害等
   | "safeDriving" // 安全運転義務違反
   | "injury" // 人身事故の付加点数（軽傷・不注意の程度が重い場合の最小）
@@ -72,10 +77,27 @@ export const STATUTORY_SPEED = { major: 60, residential: 30 } as const;
 /** 違反点数 at which a driver without prior record has the licence suspended (前歴なし). */
 export const SUSPENSION_POINTS = 6;
 
-export function speedViolation(overKmh: number): Violation | null {
+/**
+ * 速度超過 by how far over the limit. On 高速自動車国道等 (the expressway, `onExpressway`) the bands
+ * from 30 km/h over differ (施行令 別表第二 備考・別表第六): 30–35 and 35–40 over are still 反則行為
+ * (3 点、普通車 25,000 円・35,000 円), and the 非反則 6 points start at 40 over instead of 30.
+ */
+export function speedViolation(overKmh: number, onExpressway = false): Violation | null {
   const over = Math.floor(overKmh);
   if (over < 1) return null;
   const article = "道路交通法 第22条（最高速度）";
+  const isExpresswayBand = onExpressway && over >= 30 && over < 40;
+  if (isExpresswayBand)
+    return {
+      kind: "speed",
+      label: `速度超過（${over}km/h超過）`,
+      article,
+      points: 3,
+      fine: over < 35 ? 25000 : 35000,
+    };
+  const nonPenaltyFrom = onExpressway ? 40 : 30;
+  if (over >= nonPenaltyFrom && over < 50)
+    return { kind: "speed", label: `速度超過（${over}km/h超過）`, article, points: 6, fine: null };
   if (over < 15)
     return { kind: "speed", label: `速度超過（${over}km/h超過）`, article, points: 1, fine: 9000 };
   if (over < 20)
@@ -219,6 +241,52 @@ export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
     article: "道路交通法 第17条",
     points: 2,
     fine: 9000,
+  },
+  // 都市高速などの本線車道（ランプを除く）で U ターンした、またはバックした（第75条の5）。施行令 別表第二
+  // 「本線車道横断等禁止違反」2 点、別表第六 普通車 9,000 円。
+  xwCrossing: {
+    kind: "xwCrossing",
+    label: "本線車道横断等禁止違反",
+    article: "道路交通法 第75条の5",
+    points: 2,
+    fine: 9000,
+  },
+  // 高速道路を進行方向と逆に走った（逆走）。左側部分の通行（第17条第4項）の違反で「通行区分違反」、
+  // 別表第二 2 点、別表第六 普通車 9,000 円。
+  xwWrongWay: {
+    kind: "xwWrongWay",
+    label: "通行区分違反（逆走）",
+    article: "道路交通法 第17条第4項",
+    points: 2,
+    fine: 9000,
+  },
+  // 高速道路（本線・ランプ）で、渋滞・危険防止・故障で十分な幅の路肩に寄せた場合などのほかに止まった
+  // （第75条の8第1項）。別表第二 備考で駐停車禁止場所等違反行為に入り「駐停車違反（駐停車禁止場所等）」
+  // 2 点、別表第六 普通車 12,000 円（高齢運転者等専用場所等以外）。
+  xwStopping: {
+    kind: "xwStopping",
+    label: "駐停車違反（駐停車禁止場所等）",
+    article: "道路交通法 第75条の8第1項",
+    points: 2,
+    fine: 12000,
+  },
+  // 合流で本線の車の進行を妨げた（急ブレーキをかけさせた・直前に割り込んだ、第75条の6第1項）。
+  // 別表第二「本線車道通行車妨害」1 点、別表第六 普通車 6,000 円。
+  xwMergeObstruct: {
+    kind: "xwMergeObstruct",
+    label: "本線車道通行車妨害",
+    article: "道路交通法 第75条の6第1項",
+    points: 1,
+    fine: 6000,
+  },
+  // 加速車線を通らずに本線へ入った、または出口の手前から出口側の車線を走らずに出た（第75条の7）。
+  // 別表第二「本線車道出入方法違反」1 点、別表第六 普通車 4,000 円。
+  xwRampMethod: {
+    kind: "xwRampMethod",
+    label: "本線車道出入方法違反",
+    article: "道路交通法 第75条の7",
+    points: 1,
+    fine: 4000,
   },
   pedestrianCrossing: {
     kind: "pedestrianCrossing",

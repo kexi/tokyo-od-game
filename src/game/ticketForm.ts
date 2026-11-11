@@ -137,6 +137,19 @@ const COMMON_VIOLATION_ENTRIES: CommonViolationEntry[] = [
     isMatch: (v) => v.kind === "safeDriving",
   },
   {
+    // 高速自動車国道等の特例（第4章の2）: 本線車道での転回・後退、駐停車、合流の妨害、出入の方法。
+    // 逆走は通行区分違反（第17条）なので「その他」に入る。
+    id: "expressway",
+    code: "12",
+    label: "高速自動車国道等違反",
+    article: "道交法75の5〜75の8",
+    isMatch: (v) =>
+      v.kind === "xwCrossing" ||
+      v.kind === "xwStopping" ||
+      v.kind === "xwMergeObstruct" ||
+      v.kind === "xwRampMethod",
+  },
+  {
     id: "other",
     code: "99",
     label: "その他反則行為",
@@ -159,6 +172,10 @@ const COMMON_VIOLATION_ENTRIES: CommonViolationEntry[] = [
         "parking",
         "parkingNoStop",
         "safeDriving",
+        "xwCrossing",
+        "xwStopping",
+        "xwMergeObstruct",
+        "xwRampMethod",
       ].includes(v.kind);
       return !isHandled;
     },

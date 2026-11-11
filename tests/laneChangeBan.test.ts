@@ -313,3 +313,121 @@ describe("lanes where changing them is prohibited (進路変更禁止, 第26条�
     expect(body).toContain("!isLaneChangeBanned(s)");
   });
 });
+
+describe("合図 for a lane change the route plans (第53条, 施行令 第21条)", () => {
+  it("has the right indicator on for 3 s before the planned move into the right-turn lane crosses the lane line", () => {
+    // No yellow line: the plan moves right about 120 m before the turn, well before the 30 m of the
+    // turn's own 合図. The autopilot follows the eased path, so the car never lags behind the plan.
+    const { graph } = grid();
+    const noSignals = { nextStop: () => null, state: () => "green" } as unknown as TrafficControl;
+    const world: DriveWorld = { graph, control: noSignals, turnRules: [], clock, obstacles: [] };
+    const driver = new AutoDriver();
+    const start = at(-5.25, -380);
+    let yaw = Math.PI;
+    driver.place(start, yaw);
+    expect(driver.plan(world, at(150, 0))).toBe(true);
+    const pos = start.clone();
+    let v = 0;
+    let steer = 0;
+    const dt = 1 / 30;
+    // As main.ts counts a lane change (aligned, over 15 km/h), and across a segment end as well.
+    let rightSince: number | null = null;
+    let held: { seg: Segment; lane: number } | null = null;
+    const changes: Array<{ side: "left" | "right"; rightForS: number }> = [];
+    for (let t = 0; t < 60; t += dt) {
+      const out = driver.update(dt, world, { position: pos, yaw, speed: v });
+      if (out.done) break;
+      rightSince = driver.signal === "right" ? (rightSince ?? t) : null;
+      steer += (out.input.steer * steerLimit(v) - steer) * Math.min(1, dt * 8);
+      v = Math.max(0, v + (out.input.throttle * 4.16 - 0.12 * v - out.input.brake * 7) * dt);
+      yaw += ((v * Math.tan(steer)) / WHEELBASE) * dt;
+      pos.x += Math.sin(yaw) * v * dt;
+      pos.z += Math.cos(yaw) * v * dt;
+      const hit = graph.nearest(pos, 8);
+      const f = new Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const align = hit ? f.dot(hit.dir) : 0;
+      const isCounted = hit !== null && hit.seg.lanes >= 2 && Math.abs(align) > 0.85 && v * 3.6 > 15;
+      // Kept over the side streets' nodes (one lane each), where the nearest road is the side street.
+      if (!hit || !isCounted) continue;
+      const lane = laneOfOffset(hit.seg, hit.lateral * Math.sign(align));
+      const isChange =
+        held !== null &&
+        held.seg.lanes === hit.seg.lanes &&
+        lane !== held.lane &&
+        lane >= 0 &&
+        lane < hit.seg.lanes;
+      if (isChange && held) {
+        const side = lane < held.lane ? "left" : "right";
+        changes.push({ side, rightForS: rightSince === null ? 0 : t - rightSince });
+      }
+      held = { seg: hit.seg, lane };
+    }
+    expect(changes.map((c) => c.side)).toEqual(["right"]);
+    expect(changes[0].rightForS).toBeGreaterThanOrEqual(3);
+  });
+
+  for (const turn of ["right", "left"] as const) {
+    it(`shows only the ${turn} indicator through a ${turn} turn from two lanes into two lanes`, () => {
+      // A crossroads of two 14 m two-way streets, 2 lanes each way. The lanes before the turn and
+      // after it are not one road's: read as a planned lane change they gave the other side's
+      // indicator just before the curve and just after it.
+      const lines = [
+        line(
+          [
+            [0, -400],
+            [0, 0],
+          ],
+          14,
+        ),
+        line(
+          [
+            [0, 0],
+            [0, 200],
+          ],
+          14,
+        ),
+        line(
+          [
+            [0, 0],
+            [300, 0],
+          ],
+          14,
+        ),
+        line(
+          [
+            [-300, 0],
+            [0, 0],
+          ],
+          14,
+        ),
+      ];
+      const graph = new RoadGraph(lines, frame);
+      for (const seg of graph.segments) seg.lanes = 2;
+      const noSignals = { nextStop: () => null, state: () => "green" } as unknown as TrafficControl;
+      const world: DriveWorld = { graph, control: noSignals, turnRules: [], clock, obstacles: [] };
+      const driver = new AutoDriver();
+      const start = at(-5.25, -380);
+      let yaw = Math.PI;
+      driver.place(start, yaw);
+      expect(driver.plan(world, turn === "right" ? at(250, -1.75) : at(-250, 5.25))).toBe(true);
+      expect(driver.route!.maneuvers.map((m) => m.turn)).toEqual([turn]);
+      const pos = start.clone();
+      let v = 0;
+      let steer = 0;
+      const dt = 1 / 30;
+      const shown = new Set<string>();
+      for (let t = 0; t < 90; t += dt) {
+        const out = driver.update(dt, world, { position: pos, yaw, speed: v });
+        if (out.done) break;
+        // Past the 3 s 発進 合図 (right) from the standstill at the start.
+        if (t > 4 && driver.signal) shown.add(driver.signal);
+        steer += (out.input.steer * steerLimit(v) - steer) * Math.min(1, dt * 8);
+        v = Math.max(0, v + (out.input.throttle * 4.16 - 0.12 * v - out.input.brake * 7) * dt);
+        yaw += ((v * Math.tan(steer)) / WHEELBASE) * dt;
+        pos.x += Math.sin(yaw) * v * dt;
+        pos.z += Math.cos(yaw) * v * dt;
+      }
+      expect([...shown]).toEqual([turn]);
+    });
+  }
+});

@@ -112,6 +112,7 @@ import {
 import { carriagewayWidth, isLaneChangeBanned, laneCentreOffset, laneOfOffset } from "./world/laneChange";
 import { lanesUnderPavement, sectionSummary } from "./world/roadMarkings";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
+import { laneChangeSide, laneCountedIn } from "./world/laneLinks";
 import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
@@ -119,6 +120,7 @@ import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl, type Approach, type LightState } from "./world/trafficControl";
 import { letsDriverGo } from "./signals/plan";
 import { SignalViolationCheck } from "./game/signalViolations";
+import { ExpresswayWatch, type OtherVehicle } from "./game/expresswayWatch";
 import { TrafficSigns, loadSignModels, pumpSignFaces } from "./world/signs";
 import { pumpBoardFaces } from "./world/boardFacePool";
 import {
@@ -2315,6 +2317,10 @@ async function main(): Promise<void> {
       stillMs: Math.round(performance.now() - deckStillSince),
     });
   };
+  /** The player's car on the expressway (第4章の2, expresswayWatch.ts). */
+  const expresswayWatch = new ExpresswayWatch();
+  /** When the player's car last crashed (performance.now): a stop just after is 危険防止. */
+  let lastCrashAt = -Infinity;
   let overSince: number | null = null;
   let rightSince: number | null = null;
   let wrongWaySince: number | null = null;
@@ -2947,7 +2953,9 @@ async function main(): Promise<void> {
       const isOver = currentLimit !== null && speed > currentLimit + 1;
       overSince = isOver ? (overSince ?? now) : null;
       if (overSince !== null && currentLimit !== null && now - overSince > 3000) {
-        const v = speedViolation(speed - currentLimit);
+        // On the expressway (高速自動車国道等) 30–40 km/h over is still a 反則行為 (traffic.ts).
+        const isOnExpressway = onRoad !== null && isExpressway(onRoad.seg.line);
+        const v = speedViolation(speed - currentLimit, isOnExpressway);
         // Recorded in Japanese (stored, read by Y and the AI); violationDetail() shows it translated.
         const key =
           currentLimitKind === "sign" ? "violationDetail.speedSign" : "violationDetail.speedStatutory";
@@ -2963,11 +2971,56 @@ async function main(): Promise<void> {
       rightSince = isRightSide ? (rightSince ?? now) : null;
       if (rightSince !== null && now - rightSince > 2000) book(VIOLATIONS.keepLeft, now, 15000);
 
-      // 一方通行 (JARTIC): driving against the permitted direction is 通行禁止違反.
+      // 一方通行 (JARTIC): driving against the permitted direction is 通行禁止違反. Not the OSM
+      // expressway: its 逆走 is 通行区分違反 (expresswayWatch below).
+      const isOsmXw = onRoad !== null && isExpressway(onRoad.seg.line) && sourceOf(onRoad.seg.line) === "osm";
       const isWrongWay =
-        onRoad !== null && onRoad.seg.oneway !== 0 && speed > 5 && align * onRoad.seg.oneway < -0.7;
+        onRoad !== null &&
+        !isOsmXw &&
+        onRoad.seg.oneway !== 0 &&
+        speed > 5 &&
+        align * onRoad.seg.oneway < -0.7;
       wrongWaySince = isWrongWay ? (wrongWaySince ?? now) : null;
       if (wrongWaySince !== null && now - wrongWaySince > 1500) book(VIOLATIONS.noEntry, now, 20000);
+
+      // 道路交通法 第4章の2 on the expressway (expresswayLaw.ts): 転回・後退, 逆走, 駐停車, 通行帯,
+      // and at a merge or an exit 第75条の6・第75条の7.
+      const others: OtherVehicle[] = [];
+      traffic.forEachCar((object, mps, kind) =>
+        others.push({
+          position: object.position,
+          heading: object.rotation.y,
+          speed: mps,
+          half: halfLengthOf(kind),
+        }),
+      );
+      // 法令の規定・警察官の命令 (第75条の8第1項): a signal or a stop line just ahead (a ramp's
+      // ground end at a street), a patrol's roadside stop, the ticket being written.
+      const travelDir: 1 | -1 = onRoad && carForward.dot(onRoad.dir) < 0 ? -1 : 1;
+      const travelS = onRoad ? (travelDir === 1 ? onRoad.s : onRoad.seg.length - onRoad.s) : 0;
+      const stopAhead = onRoad ? control.nextStop(onRoad.seg, travelDir, travelS) : null;
+      const isAtStopLine = stopAhead !== null && stopAhead.dist < 40;
+      const isHeldByPolice = pursuitDirector.stop !== null || pursuitDirector.holdCar || ticket.visible;
+      const xwFindings = expresswayWatch.check({
+        graph: roadGraph,
+        hit: onRoad,
+        car: carPos,
+        forward: carForward,
+        kmh: speed,
+        now,
+        hazard: controls.hazard,
+        others,
+        sinceCrashS: (now - lastCrashAt) / 1000,
+        mustStop: isAtStopLine || isHeldByPolice,
+        accident: emergency.incident !== null,
+        yielding: autopilot?.driver.yieldingAtMerge ?? false,
+        route: nav.route,
+        routeAt: nav.lastAt,
+      });
+      for (const f of xwFindings) {
+        const detail = inJapanese(f.detail.key, f.detail.params ?? {});
+        book(VIOLATIONS[f.kind as Exclude<typeof f.kind, "speed">], now, 20000, detail);
+      }
 
       // 無免許運転: driving at all while the licence is suspended.
       if (law.state.suspended && speed > 5)
@@ -3080,19 +3133,15 @@ async function main(): Promise<void> {
             ),
           );
       }
-      // 合図 for changing lanes on a multi-lane road.
-      if (onRoad && onRoad.seg.lanes >= 2 && Math.abs(align) > 0.85 && speed > 15) {
-        const s = onRoad.seg;
-        // The lanes as painted (laneChange.ts), counted from the left edge line.
-        const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
-        const isSameRoad = laneHeld !== null && laneHeld.seg === s;
-        if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
-          const side = lane < laneHeld.lane ? "left" : "right";
-          if (now - indicatorSeen[side] > 6000)
-            book(VIOLATIONS.signalOmission, now, 15000, inJapanese("violationDetail.laneChangeNoSignal"));
-        }
-        laneHeld = { seg: s, lane };
-      } else laneHeld = null;
+      // 合図 for changing lanes on a multi-lane road (the lane counted as laneCountedIn says).
+      const counted =
+        speed > 15
+          ? laneCountedIn(roadGraph, carPos, carForward, laneHeld, onRoad, carOnDeck, isCarSurface)
+          : null;
+      const changedTo = counted ? laneChangeSide(laneHeld, counted) : null;
+      if (changedTo && now - indicatorSeen[changedTo] > 6000)
+        book(VIOLATIONS.signalOmission, now, 15000, inJapanese("violationDetail.laneChangeNoSignal"));
+      laneHeld = counted;
       // オービス (速度違反自動取締装置): crossing a device's line in the direction and lanes it
       // covers, 30 km/h or more over the limit (40 on an expressway: the 赤切符 range they are set
       // for), fires the camera and its strobe; the notice comes by post after the day ends.
@@ -3218,7 +3267,9 @@ async function main(): Promise<void> {
       // signal showing an arrow over red holds the crossing until the car leaves by an arm
       // (game/signalViolations.ts): only then is it known whether the arrow allowed that movement.
       if (Math.abs(speed) < 3) lastStop = { pos: carPos.clone(), at: now };
-      const isContinuous = lawPrevPos !== null && lawPrevPos.distanceTo(carPos) < 30;
+      // Up on a deck the stop lines under the viaduct are another level's (control.crossed is in
+      // plan): crossing over one is no 信号無視 (P6 review W5: booked on C1 over the 汐留 streets).
+      const isContinuous = lawPrevPos !== null && lawPrevPos.distanceTo(carPos) < 30 && !carOnDeck;
       // The 一時停止 a 止まれ sign and 赤色の灯火の点滅 both ask: stood still near the line just before.
       const hasStoppedAt = (ap: Approach) => {
         const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
@@ -4440,11 +4491,12 @@ async function main(): Promise<void> {
     const seg = far[Math.floor(Math.random() * far.length)];
     return seg && roadGraph ? roadGraph.sample(seg, seg.length / 2).pos.clone() : null;
   };
-  const startAutopilot = () => {
+  /** `to`: a place to drive to (the dev hook debug.expressway.route), else the mission or a cruise. */
+  const startAutopilot = (to?: Vector3) => {
     if (mode !== "car") return toast(i18n.t("toast.autopilotCarOnly"));
     const tw = taxiWorld();
     if (!tw) return toast(i18n.t("toast.roadsLoading"));
-    const mission = missions.current ? field.localPosition(missions.current.target) : null;
+    const mission = to ?? (missions.current ? field.localPosition(missions.current.target) : null);
     const target = mission ?? cruiseTarget();
     if (!target) return toast(i18n.t("toast.noDestination"));
     const driver = new AutoDriver();
@@ -5326,6 +5378,7 @@ async function main(): Promise<void> {
   ) => {
     social.note("crash", env.now().getTime());
     pursuitDirector.onCrash();
+    lastCrashAt = performance.now();
     const careless = book(VIOLATIONS.safeDriving, performance.now(), 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
     if (phone.isInUse(performance.now()) && mode === "car")
@@ -5699,6 +5752,26 @@ async function main(): Promise<void> {
                 : law.state.suspended
                   ? "license-suspended"
                   : null,
+          autopilot: {
+            start: (target) => {
+              startAutopilot(target);
+              return autopilot !== null;
+            },
+            driver: () => autopilot?.driver ?? null,
+            input: () => autopilot?.input ?? null,
+            violations: () => law.state.log,
+            toLocal: (lat, lon) => {
+              const v = frame.toLocal(lat, lon, frame.origin.h);
+              return v.setY(0);
+            },
+          },
+          traffic: () => traffic.expresswayStats(),
+          placeTraffic: (xid, share, kmh) => {
+            const seg = roadGraph?.segments.find((x) => x.line.xid === xid);
+            if (!seg) return false;
+            traffic.placeCar(seg, seg.length * share, kmh / 3.6);
+            return true;
+          },
         })
       : null;
     Object.assign(window, {

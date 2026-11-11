@@ -106,8 +106,9 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
       byExit.set(sign.ref.node!, [...(byExit.get(sign.ref.node!) ?? []), sign]);
       expect(sign.side).toBe("over");
     }
-    // The test section's two exits (芝公園) and 台場出口 on the Rainbow Bridge's approach (P7 range).
-    expect(byExit.size).toBe(3);
+    // The test section's two exits (芝公園), 台場出口 on the Rainbow Bridge's approach (P7 range) and
+    // 汐留出口 (P6's shiodome range).
+    expect(byExit.size).toBe(4);
     for (const list of byExit.values()) {
       const order = list.toSorted((a, b) => a.s - b.s).map((x) => x.id);
       expect(order).toEqual(["110-B", "111-B", "112-B"]);
@@ -562,13 +563,21 @@ describe("planSigns（合成の区間）", () => {
 
   it("stands 323 only where the posted speed changes, the untagged stretch carrying 50", () => {
     const plates = mainSigns.filter((s) => s.id === "323").toSorted((a, b) => a.s - b.s);
-    expect(plates.map((p) => p.plate?.value)).toEqual([50, 60]);
+    // Since P6 the chunks are cut where the tag changes (XW_VERSION 5, x = 1550 here), so the 60's
+    // plate is due right where the right exit's boards stand: it is reported, never forced.
+    expect(plates.map((p) => p.plate?.value)).toEqual([50]);
+    expect(out.unplaced).toContainEqual({
+      run: mainRun.id,
+      id: "323",
+      reason: "no_free_distance:posted_change:60",
+    });
     // No plate after the entrance's merge at x = 1100: the value there is the same.
     const merge = result.runs.find((r) => r.id === "40")!.end.parentS!;
     expect(plates.some((p) => p.s > merge && p.s < merge + 150)).toBe(false);
-    // The change is at the first chunk starting on the 60 way, the plate just past it.
+    // The change is at the first chunk starting on the 60 way: the way's own first point.
     const changed = result.chunks.find((c) => c.run === mainRun.id && out.posted.get(c.id) === 60)!;
-    expect(Math.abs(plates[1].s - changed.st[0])).toBeLessThanOrEqual(30);
+    expect(changed.st[0]).toBeCloseTo(1550, 0);
+    expect(changed.maxspeed).toBe(60);
     for (const c of result.chunks.filter((x) => x.run === mainRun.id && x.st[0] < 800))
       expect(out.posted.get(c.id)).toBe(50);
   });

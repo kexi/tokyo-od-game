@@ -22,6 +22,7 @@ import {
   type RoadSource,
   type RoadStructure,
 } from "./roadClass";
+import { buildLaneLinks, type LaneLink } from "./laneLinks";
 import { inForce, type GameClock, type RuleTime } from "./ruleTime";
 import type { LogFields } from "../logEvents";
 
@@ -64,6 +65,8 @@ export type RoadLine = {
   xid?: string;
   /** 路線記号 (OSM ref, e.g. C1). */
   ref?: string;
+  /** An expressway ramp's own name (OSM name, 「芝公園出口」), never the operator's (network.ts). */
+  name?: string;
   /** OSM maxspeed (km/h): the posted limit where JARTIC does not apply (Segment.limit). */
   limit?: number;
   /**
@@ -159,6 +162,8 @@ export type RoadGraphSnapshot = {
   segments: Array<Omit<Segment, "pts"> & { pts: Array<[number, number, number]> }>;
   nodes: Map<number, number[]>;
   pieces: Map<string, Array<[number, number]>> | null;
+  /** Present only where the expressway is in the graph: a street-only reply stays as it was. */
+  laneLinks?: LaneLink[];
 };
 
 /** Height of the terrain the streets are drawn on at (x, z), or null where it has not loaded. */
@@ -187,6 +192,8 @@ export class RoadGraph {
    */
   unknownGroundHits = 0;
   readonly nodes = new Map<number, number[]>(); // node id → segment ids
+  /** 車線単位の接続 at the expressway's nodes (laneLinks.ts): empty on the streets. */
+  laneLinks: LaneLink[] = [];
   private readonly nodeIds = new Map<string, number>();
   /** Polyline pieces [segment id, point index] by 32 m cell, for carriageway tests. */
   private pieces: Map<string, Array<[number, number]>> | null = null;
@@ -196,6 +203,7 @@ export class RoadGraph {
       segments: this.segments.map((seg) => ({ ...seg, pts: seg.pts.map((p) => [p.x, p.y, p.z]) })),
       nodes: this.nodes,
       pieces: this.pieces,
+      ...(this.laneLinks.length > 0 ? { laneLinks: this.laneLinks } : {}),
     };
   }
 
@@ -206,6 +214,7 @@ export class RoadGraph {
       graph.segments.push({ ...seg, pts: seg.pts.map((p) => new Vector3(...p)) });
     for (const [node, ids] of data.nodes) graph.nodes.set(node, ids);
     graph.pieces = data.pieces;
+    graph.laneLinks = data.laneLinks ?? [];
     return graph;
   }
 
@@ -271,6 +280,8 @@ export class RoadGraph {
       this.link(from, id);
       this.link(to, id);
     }
+    const hasExpressway = this.segments.some((seg) => seg.line.xid !== undefined);
+    if (hasExpressway) this.laneLinks = buildLaneLinks(this);
   }
 
   /**

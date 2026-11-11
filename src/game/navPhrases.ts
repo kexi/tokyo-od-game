@@ -1,7 +1,7 @@
 import { getLocale, t, type MessageKey } from "../i18n";
 import { spokenDistance } from "../i18n/format";
 import { signEnglish } from "../world/guidePlan";
-import type { Turn } from "./navigation";
+import type { Turn, XwManeuver } from "./navigation";
 
 /**
  * The navi's words in the language in force: the panel's turn words and junction names, and the
@@ -98,6 +98,39 @@ export function sayTurn(o: { turn: Turn; name: string | null; distance: number |
     );
   }
   return capitalise(name ? t("nav.say.turnSoon", { name, turn }) : t("nav.say.turnSoonPlain", { turn }));
+}
+
+/**
+ * An expressway maneuver's name on the panel: the ramp's own (「芝公園出口」), else by what it is
+ * and the 路線記号 it leads to (「C1 入口」「分岐」). Never the operator's name (名称層).
+ */
+export function xwLabel(xw: XwManeuver): string {
+  if (xw.name) return xw.name;
+  if (xw.kind === "enter") return xw.ref ? t("nav.xw.entranceRef", { ref: xw.ref }) : t("nav.xw.entrance");
+  if (xw.kind === "branch") return xw.ref ? t("nav.xw.branchRef", { ref: xw.ref }) : t("nav.xw.branch");
+  return t("nav.xw.exit");
+}
+
+/**
+ * The voice for an expressway maneuver, in the navi's way: onto the expressway
+ * (「およそ300メートル先、C1 入口から高速道路に入ります。」), off it (「およそ300メートル先、芝公園出口です。
+ * 左方向です。」) or onto another line at a branch. `distance` null: the last call
+ * (「まもなく、左方向、芝公園出口です。」).
+ */
+export function sayXw(o: { xw: XwManeuver; turn: Turn; distance: number | null }): string {
+  const name = spokenName(xwLabel(o.xw));
+  const turn = t(SAY_KEY[o.turn]);
+  const isCall = o.distance !== null;
+  const dist = spokenDistance(o.distance ?? 0);
+  const key: MessageKey =
+    o.xw.kind === "enter"
+      ? isCall
+        ? "nav.say.xwEnterIn"
+        : "nav.say.xwEnterSoon"
+      : isCall
+        ? "nav.say.xwLeaveIn"
+        : "nav.say.xwLeaveSoon";
+  return capitalise(t(key, { dist, name, turn }));
 }
 
 /** 直進案内 at a named junction: 「この先、…を直進です。」, or 「まもなく、…」 once close. */

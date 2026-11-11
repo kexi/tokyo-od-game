@@ -272,6 +272,109 @@ export const SOCIAL_EN: Readonly<Record<string, string>> = {
   "{place}。シートベルト、近所への買い物でも締めようね":
     "{place}. Buckle up, even for a quick trip to the shops.",
 
+  // ---------- openers and tags: the expressway (expresswayLaw.ts) ----------
+  "高速の本線でUターンしようとしてる車がいた…正気？{place}":
+    "A car tried to U-turn on the expressway main line… seriously? {place}",
+  "高速道路でバックしてる車。後ろから来たらどうするの。{place}":
+    "A car reversing on the expressway. What if someone comes up behind? {place}",
+  "{place}の高架、本線で止まってバックし始めた{color}{car}。怖すぎ":
+    "On the elevated expressway at {place}, a {color} {car} stopped and started reversing. Terrifying.",
+  "高速で転回する車、ドラレコに映ってた。{place}":
+    "My dashcam caught a car turning round on the expressway. {place}",
+  "撮れなかったけど、高速の本線で向きを変えてる車がいた。{place}":
+    "Didn't get it on camera, but a car was turning round on the expressway main line. {place}",
+  "本線でバックして出口に戻ろうとしてる車…出口は次で降りようよ。{place}":
+    "A car reversing on the main line to get back to an exit… just take the next one. {place}",
+  "高速道路を逆走してくる車がいた。本当に怖い。{place}":
+    "A car was coming the wrong way on the expressway. Truly scary. {place}",
+  "{place}の高架で逆走車。ライトが正面から来た":
+    "A wrong-way driver on the elevated expressway at {place}. Headlights coming straight at us.",
+  "逆走車とすれ違った瞬間。{place}": "The moment a wrong-way car passed us. {place}",
+  "{color}{car}が高速を逆向きに走ってた。通報した。{place}":
+    "A {color} {car} was driving the wrong way on the expressway. Reported it. {place}",
+  "高速で逆走の車を見た。{place}を通る人は気をつけて":
+    "Saw a wrong-way driver on the expressway. Careful if you're passing {place}.",
+  "{time}、{place}の高速で逆走車。対向から来るライトが見えて血の気が引いた":
+    "{time}, a wrong-way driver on the expressway at {place}. Saw the headlights coming and went cold.",
+  "高速の本線で車が止まってる…故障でもなさそう。{place}":
+    "A car stopped on the expressway main line… doesn't even look broken down. {place}",
+  "{place}の高架で、渋滞でもないのに停車してる車。追突されるよ":
+    "A car stopped on the elevated expressway at {place}, and no jam either. It'll get rear-ended.",
+  "高速道路で止まるのは本当に危ない。{place}": "Stopping on an expressway is really dangerous. {place}",
+  "ハザードもつけずに高速で止まってる{color}{car}。{place}":
+    "A {color} {car} stopped on the expressway without even its hazards on. {place}",
+  "{place}の高速で停車してる車、ぶつかりそうになった":
+    "Nearly hit a car stopped on the expressway at {place}.",
+  "本線の左に寄せて止まってる車、路肩も狭いのに…{place}":
+    "A car stopped at the left of the main line, and the shoulder is so narrow… {place}",
+  "合流で無理やり入ってきた車、急ブレーキ踏まされた。{place}":
+    "A car forced its way in at the merge and I had to slam on the brakes. {place}",
+  "{place}の合流、本線の車が来てるのに突っ込んでくる{color}{car}":
+    "At the merge at {place}, a {color} {car} barged in with main-line traffic right there.",
+  "合流で割り込まれた瞬間。車間ほとんどなかった。{place}":
+    "The moment I got cut off at the merge. Hardly any gap. {place}",
+  "合流は本線優先ですよ…{place}": "At a merge the main line has priority… {place}",
+  "{place}の合流で強引に入ってきた車がいた。ヒヤッとした":
+    "A car pushed its way in at the merge at {place}. That was close.",
+  "{time}、{place}の合流。加速しないで本線に入ってきて後ろが詰まった":
+    "{time}, the merge at {place}. A car came onto the main line without speeding up and everyone behind bunched up.",
+  "{place}、導流帯をまたいでいきなり本線に入ってきた車":
+    "{place}: a car cut across the zebra area straight onto the main line.",
+  "出口の直前で車線をまたいで飛び込んでいく車。{place}":
+    "A car darting across the lanes right before the exit. {place}",
+  "加速車線を使わずに合流してくる{color}{car}。{place}":
+    "A {color} {car} merging without using the acceleration lane. {place}",
+  "出口はもっと手前から左に寄ろうね。{place}": "Move left well before the exit, please. {place}",
+  "{place}の出口で、急に車線を横切っていった車がいた":
+    "At the exit at {place}, a car suddenly cut across the lanes.",
+  "{color}{car}が出口に向かって2車線いっぺんに横切っていった。{place}":
+    "A {color} {car} cut across two lanes at once for the exit. {place}",
+  "#高速道路": "#Expressway",
+  "#停車": "#Stopped",
+  "#危険": "#Danger",
+  "#合流": "#Merge",
+  "#導流帯": "#ZebraArea",
+  "{place}、本線の真ん中で切り返してる車がいた":
+    "{place}: a car doing a three-point turn in the middle of the main line.",
+  "高速でバックする車、初めて見た。{place}":
+    "First time I've seen a car reversing on the expressway. {place}",
+  "逆走してきた{color}{car}、こっちの車線に来なくてよかった。{place}":
+    "A {color} {car} came the wrong way. Glad it didn't come into my lane. {place}",
+  "高速の逆走車、対向から。{place}": "A wrong-way car on the expressway, coming at us. {place}",
+  "{time}、{place}の高速で停車中の車。後続がみんな避けてた":
+    "{time}, a car standing on the expressway at {place}. Everyone behind had to swerve round it.",
+  "高速の本線で止まる車、ドラレコに映ってた。{place}":
+    "My dashcam caught a car stopping on the expressway main line. {place}",
+  "合流でウインカーと同時に入ってくる{color}{car}。{place}":
+    "A {color} {car} signalled and cut in at the merge at the same moment. {place}",
+  "合流で割り込んできた車。{place}": "A car that cut in at the merge. {place}",
+  "{time}、{place}。出口に直前で飛び込む車にブレーキ":
+    "{time}, {place}. Had to brake for a car diving into the exit at the last moment.",
+  "導流帯を横切って合流する車。{place}": "A car merging across the zebra area. {place}",
+  "本線でUターンなんて、後ろから来たら避けられない":
+    "A U-turn on the main line? Nobody coming up behind could avoid that.",
+  出口を過ぎたら次で降りればいいだけなのに: "Missed the exit? Just take the next one.",
+  "高速で止まってる車への追突、本当に多いらしい":
+    "Apparently rear-ending cars stopped on the expressway is really common.",
+  故障ならハザードと三角表示板だよね: "If it's broken down: hazards and the warning triangle.",
+  高架の上って逃げ場がないから怖い: "Up on the viaduct there's nowhere to escape to. Scary.",
+  "合流は本線優先、これ基本": "At a merge the main line has priority. Basics.",
+  加速車線で速度を合わせてから入ってほしい:
+    "Match the speed in the acceleration lane before you come in, please.",
+  "ファスナー合流でいいのに、急に割り込むから危ない":
+    "Zipper merging would be fine. Cutting in suddenly is what's dangerous.",
+  導流帯をまたぐのも危ないよね: "Crossing the zebra area is dangerous too.",
+  "出口は早めに左へ。ナビも言ってる": "Move left early for the exit. Even the navi says so.",
+  "都心の高架は合流も出口も急だから、余裕をもって走りたい":
+    "The elevated roads downtown have sudden merges and exits. Leave yourself some room.",
+  "高速の逆走、ニュースでもよく見る": "Wrong-way driving on expressways is always on the news.",
+  入口と出口を間違えたのかな: "Maybe they mixed up the entrance and the exit.",
+  "逆走に気づいたら、左に寄せて止まって助けを呼んでほしい":
+    "If you realise you're going the wrong way, pull over to the left, stop and call for help.",
+  "高速で止まる・戻るは命取り": "Stopping or backing up on the expressway can kill.",
+  合流と出口は余裕をもって: "Give yourself room at merges and exits.",
+  高速道路は特に気をつけよう: "Take extra care on the expressway.",
+  高速の逆走は正面衝突のもと: "Wrong-way driving on the expressway means head-on crashes.",
   // ---------- openers: keepLeft ----------
   "対向車線にはみ出して走ってきた車、ぶつかるかと思った。{place}":
     "A car drifted into my lane coming the other way. Thought we were going to collide. {place}",

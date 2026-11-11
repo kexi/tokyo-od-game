@@ -44,7 +44,7 @@ export type XwWay = {
   destination: string | null;
   destinationRef: string | null;
   lanes: number;
-  /** OSM maxspeed, or the default (assumptions.DEFAULT_SPEED). */
+  /** OSM maxspeed, or the default (assumptions.DEFAULT_SPEED): what the design speed starts from. */
   speedKmh: number;
   structure: Structure;
   /** OSM layer (layerOf): orders decks where they cross or run over one another. */

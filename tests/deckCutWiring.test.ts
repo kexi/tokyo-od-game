@@ -66,6 +66,7 @@ function chunk(): XwChunk {
     shoulderR: 0.75,
     basis: "statute",
     V: 60,
+    maxspeed: null,
     vh: 50,
     gmax: 0.05,
     g0: 0,

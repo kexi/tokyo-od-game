@@ -24,6 +24,11 @@ const TIPS: Record<string, MessageKey> = {
   safeDriving: "tips.safeDriving",
   injury: "tips.injury",
   parking: "tips.parking",
+  xwCrossing: "tips.xwCrossing",
+  xwWrongWay: "tips.xwWrongWay",
+  xwStopping: "tips.xwStopping",
+  xwMergeObstruct: "tips.xwMergeObstruct",
+  xwRampMethod: "tips.xwRampMethod",
 };
 
 export function tipFor(kind: string): string {

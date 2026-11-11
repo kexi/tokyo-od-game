@@ -18,12 +18,22 @@ export const RANGES = {
   rainbow: { minLon: 139.7555, minLat: 35.6335, maxLon: 139.779, maxLat: 35.647 },
   azabudai: { minLon: 139.7367, minLat: 35.6596, maxLon: 139.7373, maxLat: 35.6606 },
   azabudai_exit: { minLon: 139.7385, minLat: 35.6644, maxLon: 139.7389, maxLat: 35.6648 },
+  // P6: the 汐留 entrance and exit, so a car can drive street → 芝公園入口 → C1 内回り → 汐留出口 →
+  // street, and 汐留入口 → C1 外回り → 芝公園出口. A box of its own: the one reaching 汐留 from
+  // hamazakibashi would take in the two 1号羽田線 runs (4.1 and 5.6 km) that start at 浜崎橋.
+  shiodome: { minLon: 139.7598, minLat: 35.6598, maxLon: 139.7628, maxLat: 35.6632 },
 } as const satisfies Record<string, Bbox>;
 
 export type RangeName = keyof typeof RANGES;
 
 /** The ranges the data is built for by default (`scripts/expressway.ts` without --range). */
-export const DEFAULT_RANGES: readonly RangeName[] = ["hamazakibashi", "rainbow", "azabudai", "azabudai_exit"];
+export const DEFAULT_RANGES: readonly RangeName[] = [
+  "hamazakibashi",
+  "rainbow",
+  "azabudai",
+  "azabudai_exit",
+  "shiodome",
+];
 
 /**
  * `--range` as the build script reads it: named ranges joined by commas (their runs are built

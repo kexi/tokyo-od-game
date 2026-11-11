@@ -115,8 +115,8 @@ describe("road class (src/world/roadClass.ts)", () => {
     }
   });
 
-  it("opens the OSM expressway to the map and the spawn only (P3), never GSI's own 高速道路 lines", () => {
-    const opened: RouteUse[] = ["spawn", "map"];
+  it("opens the OSM expressway to the navi, the autopilot, the traffic AI, the map and the spawn (P6), not the guide boards, never GSI's own 高速道路 lines", () => {
+    const opened: RouteUse[] = ["navigation", "autopilot", "traffic", "spawn", "map"];
     for (const cls of ["expressway", "ramp"] as const) {
       const deck = line("national", { source: "osm", cls, structure: "viaduct", level: 1 });
       for (const use of USES)

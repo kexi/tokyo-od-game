@@ -60,7 +60,7 @@ import {
   type ViolationRecord,
   violationSpan,
 } from "./traffic";
-import { allowsRoadsideStop } from "../world/roadClass";
+import { allowsRoadsideStop, isOnGround } from "../world/roadClass";
 
 /**
  * Runs the pursuit and what follows it, between the world (main.ts, through PursuitHost) and the
@@ -606,6 +606,10 @@ export class PursuitDirector {
   private setCheckpoint(from: Vector3, forward: Vector3): boolean {
     const graph = this.host.graph();
     if (!graph) return false;
+    // Up on the expressway there is no street ahead to set it on (nearest would answer the street
+    // under the viaduct): none until the car comes down.
+    const isOnDeck = graph.nearestOnSurface(from, 15, (s) => !isOnGround(s.line)) !== null;
+    if (isOnDeck) return false;
     const hit = graph.nearest(from, 40, (s) => allowsRoadsideStop(s.line));
     if (!hit) return false;
     let seg = hit.seg;

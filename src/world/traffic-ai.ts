@@ -15,8 +15,20 @@ import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { Approach, TrafficControl } from "./trafficControl";
 import { movementOf } from "../signals/movement";
 import { driverAction, type Movement } from "../signals/plan";
-import { isDrivable } from "./roadClass";
+import { classOf, isDrivable } from "./roadClass";
 import { laneCentreOffset } from "./laneChange";
+import { branchLink, intoTrunkLane, reachesStreets, runOf, type LaneLink } from "./laneLinks";
+import { mainCarsAt, mergeSpeedCap, taperOf } from "../game/merging";
+
+/** Route distance from a merge or diverge node over which a ramp's lane is tapered into the main line's. */
+const TAPER_REACH = 250;
+/** A lane change needs this much clear behind and ahead in the new lane (m). */
+const LANE_CLEAR_BEHIND = 35;
+const LANE_CLEAR_AHEAD = 8;
+/** One spawn try in this many is on the expressway's decks (when the graph has them). */
+const XW_SPAWN_EVERY = 4;
+/** Before a diverge, the lane it leaves from is taken this far ahead (m, drivePath XW_PREPARE). */
+const DIVERGE_PREPARE = 300;
 
 type AiCar = {
   object: Group;
@@ -55,6 +67,8 @@ type AiCar = {
   decel: number;
   /** Seconds it still stands after being shoved (the driver collects themselves), then drives on. */
   hold: number;
+  /** Its lane on the expressway (0 = leftmost): the left one, or the one a diverge leaves from. */
+  xwLane: number;
 };
 
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
@@ -102,6 +116,19 @@ export class TrafficAI {
   extraObstacles: Vector3[] = [];
   private parked: ParkedCar[] = [];
   private graph: RoadGraph | null = null;
+  /**
+   * The expressway of the graph: segments from which a street can still be reached (a main line
+   * running into a portal is a dead end the AI never enters), and each ramp's merge or diverge.
+   * Null where the graph has no expressway.
+   */
+  private reach: Set<number> | null = null;
+  private rampLinks = new Map<number, LaneLink>();
+  /** The expressway's segments a car may appear on (they lead back to the streets). */
+  private xwSpawn: Segment[] = [];
+  /** Merges and diverges the cars have driven (expresswayStats). */
+  private readonly branches = { merged: 0, diverged: 0 };
+  /** The player's car as last given to update (for the lane changes' look). */
+  private lastPlayer: Vector3 | null = null;
   private serial = 1;
   private readonly tmpPos = new Vector3();
   private readonly tmpDir = new Vector3();
@@ -144,6 +171,17 @@ export class TrafficAI {
     }
     this.cars = kept;
     this.graph = graph;
+    const links = graph?.laneLinks ?? [];
+    this.reach = graph && links.length > 0 ? reachesStreets(graph) : null;
+    const reach = this.reach;
+    this.xwSpawn = reach
+      ? (graph?.segments ?? []).filter((seg) => runOf(seg) !== null && reach.has(seg.id))
+      : [];
+    this.rampLinks = new Map();
+    for (const l of links) {
+      if (l.kind === "merge") this.rampLinks.set(l.from, l);
+      if (l.kind === "diverge") this.rampLinks.set(l.to, l);
+    }
     if (rebuildParked) {
       for (const _ of this.parkedSteps(graph)) {
         /* synchronous compatibility path */
@@ -272,6 +310,7 @@ export class TrafficAI {
   update(dt: number, focus: Vector3, player: Vector3, playerForward: Vector3, playerSpeed: number): void {
     const graph = this.graph;
     if (!graph || graph.segments.length === 0) return;
+    this.lastPlayer = player;
     for (const p of this.parked) this.slideParked(p, dt);
     this.spawn(graph, focus);
     for (let i = this.cars.length - 1; i >= 0; i--) {
@@ -347,14 +386,28 @@ export class TrafficAI {
           : gap < standstill + 18
             ? Math.min(cruise, (gap - standstill) * 0.8)
             : cruise;
-    const turnSafe = this.cornerSpeed(graph, c);
-    c.speed += Math.max(-c.decel * dt, Math.min(c.accel * dt, Math.min(target, turnSafe) - c.speed));
+    const isOnExpressway = runOf(c.seg) !== null;
+    const turnSafe = isOnExpressway ? this.bendSpeed(graph, c) : this.cornerSpeed(graph, c);
+    const merge = isOnExpressway ? this.mergeCap(graph, c, player, playerForward, playerSpeed) : Infinity;
+    const wanted = Math.min(target, turnSafe, merge);
+    c.speed += Math.max(-c.decel * dt, Math.min(c.accel * dt, wanted - c.speed));
+    if (isOnExpressway) {
+      // Over into another lane only when it is clear beside and behind (第26条の2第2項: not making a
+      // car in it brake or swerve); otherwise stay and look again next frame.
+      const wanted = this.expresswayLane(graph, c);
+      const isChange = wanted !== c.xwLane;
+      if (!isChange || this.isLaneClear(graph, c, wanted)) c.xwLane = wanted;
+    }
     const isPlaced = Number.isFinite(c.rear.x);
     if (!isPlaced) c.s += c.speed * dt;
     if (c.s >= c.seg.length) this.advance(graph, c);
 
+    // On a deck the road's own surface (Segment.elev), every frame (it climbs and falls along the
+    // chunk); on the ground the terrain, a few times a second.
+    const deckY = c.seg.elev ? graph.surfaceY(c.seg, c.dir === 1 ? c.s : c.seg.length - c.s) : null;
     c.groundCheck -= dt;
-    if (c.groundCheck <= 0) {
+    if (deckY !== null) c.ground = deckY;
+    else if (c.groundCheck <= 0) {
       c.groundCheck = 0.3;
       c.ground = this.groundAt(pos.x, pos.z) ?? c.ground;
     }
@@ -429,19 +482,92 @@ export class TrafficAI {
 
   /** World pose of a car: lane centre to the left of its travel direction. */
   private pose(graph: RoadGraph, c: AiCar): { pos: Vector3; dir: Vector3 } {
-    return this.lanePoint(graph, c.seg, c.dir, c.s);
+    return this.lanePoint(graph, c.seg, c.dir, c.s, c.xwLane);
   }
 
   /** The lane centre `s` metres along a segment in a travel direction. */
-  private lanePoint(graph: RoadGraph, seg: Segment, dir: 1 | -1, s: number): { pos: Vector3; dir: Vector3 } {
+  private lanePoint(
+    graph: RoadGraph,
+    seg: Segment,
+    dir: 1 | -1,
+    s: number,
+    xwLane = 0,
+  ): { pos: Vector3; dir: Vector3 } {
     const along = dir === 1 ? s : seg.length - s;
     const sample = graph.sample(seg, Math.max(0, Math.min(seg.length, along)), this.tmpPos, this.tmpDir);
     if (dir === -1) sample.dir.negate();
+    const isExpressway = runOf(seg) !== null;
+    if (isExpressway) {
+      // The expressway: in its lane (the left one unless a diverge wants another), and on a ramp
+      // near its merge or diverge in the main line's lane where the ramp runs over it.
+      sample.pos.add(leftOf(sample.dir, laneCentreOffset(seg, Math.min(xwLane, seg.lanes - 1))));
+      const link = this.rampLinks.get(seg.id);
+      const toNode = link?.kind === "merge" ? seg.length - along : along;
+      const isNearLink = link !== undefined && toNode < TAPER_REACH;
+      const pos = isNearLink
+        ? intoTrunkLane(graph, link, sample.pos, graph.surfaceY(seg, along))
+        : sample.pos;
+      return { pos: pos.clone(), dir: sample.dir.clone() };
+    }
     // One lane each way, whatever JARTIC lists: the centre of the left half of a two-way street,
     // the centreline of a one-way one. Why not the listed lanes: the AI does not change lanes yet.
     const lane = laneCentreOffset(seg, 0, 1);
     sample.pos.add(leftOf(sample.dir, lane));
     return { pos: sample.pos.clone(), dir: sample.dir.clone() };
+  }
+
+  /**
+   * The lane to keep on the expressway: the leftmost (第20条第1項), or the one the diverge it
+   * takes next leaves from, within DIVERGE_PREPARE of it.
+   */
+  private expresswayLane(graph: RoadGraph, c: AiCar): number {
+    if (runOf(c.seg) === null) return 0;
+    let ahead = c.seg.length - c.s;
+    let seg = c.seg;
+    for (let k = 0; k < 4 && ahead < DIVERGE_PREPARE; k++) {
+      const next = this.upcoming(graph, c, k);
+      if (!next) break;
+      const link = branchLink(graph.laneLinks, seg.id, next.seg.id);
+      if (link?.kind === "diverge") return link.fromLane;
+      ahead += next.seg.length;
+      seg = next.seg;
+    }
+    return 0;
+  }
+
+  /**
+   * No other car (nor the player) in `lane` of this road from LANE_CLEAR_BEHIND behind the car to
+   * LANE_CLEAR_AHEAD ahead of it: room to move over.
+   */
+  private isLaneClear(graph: RoadGraph, c: AiCar, lane: number): boolean {
+    const here = this.lanePoint(graph, c.seg, c.dir, c.s, lane);
+    const isBlocking = (p: Vector3) => {
+      const dx = p.x - here.pos.x;
+      const dz = p.z - here.pos.z;
+      const along = dx * here.dir.x + dz * here.dir.z;
+      const lateral = Math.abs(dx * here.dir.z - dz * here.dir.x);
+      const isBeside = along > -LANE_CLEAR_BEHIND && along < LANE_CLEAR_AHEAD && lateral < 1.9;
+      return isBeside && Math.abs(p.y - (c.ground + 0.86)) < 3;
+    };
+    const others = this.cars.filter((o) => o !== c).map((o) => o.object.position);
+    return !others.some(isBlocking) && !(this.lastPlayer !== null && isBlocking(this.lastPlayer));
+  }
+
+  /**
+   * 合流 (第75条の6): on a ramp's last stretch before it runs into a main line, the speed that lets
+   * every main-line car (and the player) by that this car would make brake (merging.ts).
+   */
+  private mergeCap(graph: RoadGraph, c: AiCar, player: Vector3, pf: Vector3, ps: number): number {
+    const next = this.peekNext(graph, c);
+    if (!next) return Infinity;
+    const link = branchLink(graph.laneLinks, c.seg.id, next.seg.id);
+    if (link?.kind !== "merge" || link.trunk === null) return Infinity;
+    const others = this.cars
+      .filter((o) => o !== c && runOf(o.seg) !== runOf(c.seg))
+      .map((o) => ({ position: o.object.position, heading: o.yaw, speed: o.speed, half: o.half }));
+    others.push({ position: player, heading: Math.atan2(pf.x, pf.z), speed: ps, half: 2.25 });
+    const cars = mainCarsAt(graph, link, others, link.toLane);
+    return mergeSpeedCap(c.seg.length - c.s, c.speed, cars, taperOf(graph, link)).cap;
   }
 
   /**
@@ -524,6 +650,25 @@ export class TrafficAI {
     return Math.sqrt(atTurn * atTurn + 2 * 2.5 * Math.max(0, left - 3));
   }
 
+  /**
+   * On the expressway: no faster than its curves ahead allow (2.5 m/s² sideways, braking at
+   * 2 m/s²), from the turn of its lane over each 15 m of the next 120 m. Why not cornerSpeed: a
+   * chunk bends in many small kinks along its length, not at its end.
+   */
+  private bendSpeed(graph: RoadGraph, c: AiCar): number {
+    let v = Number.POSITIVE_INFINITY;
+    let before = this.aheadPose(graph, c, 0).dir;
+    for (let d = 15; d <= 120; d += 15) {
+      const after = this.aheadPose(graph, c, d).dir;
+      const turn = Math.acos(Math.max(-1, Math.min(1, before.dot(after))));
+      before = after;
+      if (turn < 1e-3) continue;
+      const vBend = Math.sqrt(2.5 * (15 / turn));
+      v = Math.min(v, Math.sqrt(vBend * vBend + 2 * 2 * Math.max(0, d - 15)));
+    }
+    return v;
+  }
+
   /** The lane centre `metres` ahead of where the car is along its route (into the next road). */
   private ahead(graph: RoadGraph, c: AiCar, metres: number): Vector3 {
     return this.aheadPose(graph, c, metres).pos;
@@ -544,7 +689,8 @@ export class TrafficAI {
       seg = next.seg;
       dir = next.dir;
     }
-    return this.lanePoint(graph, seg, dir, Math.min(s, seg.length));
+    const isSameRun = runOf(seg) !== null && runOf(seg) === runOf(c.seg);
+    return this.lanePoint(graph, seg, dir, Math.min(s, seg.length), isSameRun ? c.xwLane : 0);
   }
 
   /**
@@ -589,6 +735,10 @@ export class TrafficAI {
         return this.lanePoint(graph, seg, dir, 0).dir.dot(arriving) > -0.5;
       });
       if (options.length === 0) return null;
+      // On the expressway, not into a dead end of the loaded decks (a portal, an unjoined end).
+      const reach = this.reach;
+      const onward = reach ? options.filter((seg) => reach.has(seg.id)) : options;
+      if (onward.length > 0) options.splice(0, options.length, ...onward);
       c.serial = (c.serial * 1103515245 + 12345) >>> 0;
       const seg = options[c.serial % options.length];
       c.route.push({ seg, dir: seg.from === endNode ? 1 : -1 });
@@ -657,12 +807,15 @@ export class TrafficAI {
   /** Distance to the nearest obstacle ahead in this lane (other cars, the player). */
   private gapAhead(c: AiCar, pos: Vector3, dir: Vector3, player: Vector3, pf: Vector3, ps: number): number {
     let gap = Infinity;
+    const y = c.ground + 0.86;
     const consider = (p: Vector3, width = 2.2) => {
       const dx = p.x - pos.x;
       const dz = p.z - pos.z;
       const ahead = dx * dir.x + dz * dir.z;
       const lateral = Math.abs(dx * dir.z - dz * dir.x);
-      if (ahead > 0 && lateral < width) gap = Math.min(gap, ahead);
+      // Not a car on the street under a viaduct, nor one on the deck over the street.
+      const isSameLevel = Math.abs(p.y - y) < 3.5 + 0.15 * Math.abs(ahead);
+      if (ahead > 0 && lateral < width && isSameLevel) gap = Math.min(gap, ahead);
     };
     for (const o of this.cars) if (o !== c) consider(o.object.position);
     // Kerbside parked cars only block when they actually sit in this lane.
@@ -674,9 +827,32 @@ export class TrafficAI {
     return gap;
   }
 
+  /** The next car to appear, at a place and a speed (QA: a main-line car timed to a merge). */
+  private placeNext: { seg: Segment; s: number; speed: number } | null = null;
+
+  /**
+   * Put a car on `seg` at `s` (m along its travel) driving at `speed` (m/s), on the next update (QA).
+   * A negative `s` is that far before the segment's start, on the chunks of its run leading into it
+   * (a main-line car timed to a merge starts further back than the trunk chunk is long).
+   */
+  placeCar(seg: Segment, s: number, speed: number): void {
+    const at = this.graph ? backAlongRun(this.graph, seg, s) : { seg, s: Math.max(0, s) };
+    this.placeNext = { ...at, speed };
+  }
+
+  /** The cars on the expressway now, and the merges and diverges driven since the page loaded (QA). */
+  expresswayStats(): { cars: number; onDeck: number; onRamps: number; merged: number; diverged: number } {
+    const onDeck = this.cars.filter((c) => runOf(c.seg) !== null);
+    const onRamps = onDeck.filter((c) => classOf(c.seg.line) === "ramp");
+    return { cars: this.cars.length, onDeck: onDeck.length, onRamps: onRamps.length, ...this.branches };
+  }
+
   private advance(graph: RoadGraph, c: AiCar): void {
     const next = this.peekNext(graph, c);
     if (next) c.route.shift();
+    const link = next ? branchLink(graph.laneLinks, c.seg.id, next.seg.id) : null;
+    if (link?.kind === "merge") this.branches.merged++;
+    if (link?.kind === "diverge") this.branches.diverged++;
     if (!next) {
       // Dead end or one-way trap: stop at the end and leave once nobody is looking. Why not turn
       // round on the spot (as before): a car does not spin 180° in place. Only one kept in view
@@ -697,17 +873,34 @@ export class TrafficAI {
 
   private spawn(graph: RoadGraph, focus: Vector3): void {
     let tries = 0;
-    while (this.cars.length < MAX_CARS && tries < 4) {
+    while ((this.cars.length < MAX_CARS || this.placeNext) && tries < 4) {
       tries++;
       this.serial = (this.serial * 1664525 + 1013904223) >>> 0;
-      const seg = graph.segments[this.serial % graph.segments.length];
+      // A car asked for at a place (the QA hook debug.expressway.trafficAt): there, at its speed.
+      const placed = this.placeNext;
+      this.placeNext = null;
+      // One try in XW_SPAWN_EVERY on the expressway's decks (those that lead back to the streets):
+      // drawn from all the segments, a few dozen chunks among two thousand streets would hardly
+      // ever get a car. Without the expressway in the graph the draw is the streets' as before.
+      const isXwTry = this.xwSpawn.length > 0 && (this.serial >>> 12) % XW_SPAWN_EVERY === 0;
+      const seg =
+        placed?.seg ??
+        (isXwTry
+          ? this.xwSpawn[(this.serial >>> 3) % this.xwSpawn.length]
+          : graph.segments[this.serial % graph.segments.length]);
       const isCarRoad = seg.line.width >= 4 && isDrivable(seg.line, "traffic");
       if (!isCarRoad) continue;
-      const s = (((this.serial >>> 8) % 1000) / 1000) * seg.length;
+      // A placed car goes where it is asked: the decks it is put on for a merge may not reach the
+      // streets yet while the chunks beyond them are not loaded (it then waits at the end, unseen).
+      const isDeadEnd = !placed && this.reach !== null && runOf(seg) !== null && !this.reach.has(seg.id);
+      if (isDeadEnd) continue;
+      const s = placed?.s ?? (((this.serial >>> 8) % 1000) / 1000) * seg.length;
       const { pos } = graph.sample(seg, s);
+      const deckY = seg.elev ? graph.surfaceY(seg, s) : null;
       const d = pos.distanceTo(focus);
       // Appear only where the camera is not looking (open-world spawning), so cars never pop in.
-      if (d > SPAWN_RADIUS || d < 60 || this.isSeen(pos)) continue;
+      const isHidden = d <= SPAWN_RADIUS && d >= 60 && !this.isSeen(pos);
+      if (!placed && !isHidden) continue;
       const dir: 1 | -1 = seg.oneway === -1 ? -1 : seg.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
       // Tokyo's mix: route buses and trucks on the wider roads, motorbikes anywhere.
       const roll = (this.serial >>> 4) % 100;
@@ -734,12 +927,13 @@ export class TrafficAI {
         seg,
         dir,
         s: dir === 1 ? s : seg.length - s,
-        speed: 5,
+        // Into the flow of the expressway at its pace (it has no junction to start from).
+        speed: placed?.speed ?? (deckY !== null ? (speedLimit(seg) / 3.6) * 0.7 : 5),
         taxi,
         vehicle,
         half: vehicle ? vehicle.length / 2 : 2.25,
         body: null,
-        ground: this.groundAt(pos.x, pos.z) ?? 0,
+        ground: deckY ?? this.groundAt(pos.x, pos.z) ?? 0,
         groundCheck: 0,
         serial: this.serial,
         served: -1,
@@ -753,6 +947,7 @@ export class TrafficAI {
         front: (vehicle?.wheels ?? []).filter((w) => FRONT_WHEEL.test(w.name)),
         route: [],
         deadEnd: 0,
+        xwLane: 0,
         ...this.massOf(kind && vehicle ? kind : taxi ? "jpnTaxi" : "sedan", vehicle, this.serial),
       });
       for (const w of this.cars.at(-1)?.front ?? []) w.rotation.order = "YXZ";
@@ -800,4 +995,31 @@ function hashCoords(coords: number[]): number {
     h = Math.imul(h, 16777619) >>> 0;
   }
   return h;
+}
+
+/**
+ * Where `s` m along `seg`'s travel lies when `s` is negative: walked back over the one-way chunks of
+ * the same run, each arriving where the next one leaves, until it falls inside one (or the run
+ * starts: there).
+ */
+export function backAlongRun(graph: RoadGraph, seg: Segment, s: number): { seg: Segment; s: number } {
+  const run = runOf(seg);
+  const startOf = (x: Segment) => (x.oneway === -1 ? x.to : x.from);
+  const endOf = (x: Segment) => (x.oneway === -1 ? x.from : x.to);
+  let cur = seg;
+  let at = s;
+  const seen = new Set<number>([cur.id]);
+  while (at < 0) {
+    const isOnRun = run !== null && cur.oneway !== 0;
+    if (!isOnRun) return { seg: cur, s: 0 };
+    const node = startOf(cur);
+    const prev = graph.segments.find(
+      (p) => p.oneway !== 0 && endOf(p) === node && runOf(p) === run && !seen.has(p.id),
+    );
+    if (!prev) return { seg: cur, s: 0 };
+    seen.add(prev.id);
+    cur = prev;
+    at += prev.length;
+  }
+  return { seg: cur, s: Math.min(at, cur.length) };
 }
