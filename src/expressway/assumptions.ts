@@ -18,7 +18,8 @@ export const GIRDER_DEPTH: Assumption<number> = {
 export const STANDARD_UNDERCLEARANCE: Assumption<number> = {
   value: 6.5,
   verified: false,
-  reason: "未確認。建築限界 4.5 m（第12条）に余裕を足した値。首都高の実際の桁下高の分布は調べていない",
+  reason:
+    "未確認。建築限界 4.5 m（第12条）に余裕を足した値。都市高速（実在の都市高速道路）の実際の桁下高の分布は調べていない",
 };
 
 /**

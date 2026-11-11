@@ -1,0 +1,654 @@
+{
+  "name": "expressway-signs",
+  "description": "G6（道路再設計 P5）: 都市高速の板と設置。首都高の試験区間（浜崎橋〜芝公園）の床版の上の 110-B・111-B・112-B・108の2-C を運転席から 300/150/60 m、113-B・116の4・323・325 を 60 m、一般道の 103-A・104 を運転席から、昼と夜。標識令 別表第二の様式（色・構成・路線記号の形）と別表第一の位置（距離・車線の上方・左側の路端）、取付（門型の脚・壁高欄添架・建築限界 4.7 m）を照合する。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261111,
+    "params": {
+      "expressway": ""
+    },
+    "moment": "2026-11-11T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-11T11:00:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-11T21:00:00+09:00"
+      }
+    ],
+    "hide": ["traffic"]
+  },
+  "metrics": [
+    {
+      "name": "face-drawn-near",
+      "min": 1,
+      "note": "板（plate でない対象）のコマで target.facts.layer > 0 の割合。1 = すべて描いた面"
+    },
+    {
+      "name": "overhead-bottom",
+      "min": 4.7,
+      "unit": "m",
+      "note": "門型・桁添架の板の下端の床版からの高さ（data の resolveMount、tests/expresswaySigns.test.ts でも検査）"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "shibakoen-exit20",
+      "start": [35.6552, 139.7415],
+      "views": [
+        {
+          "id": "110-b-0-driver-300",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "110-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 300,
+          "lateralM": -1.8,
+          "fov": 18,
+          "expect": {
+            "style": "緑地白字・白縁、出口番号は白地緑字の札、「出口 500m」（図 030 の構成）",
+            "mount": "門型、脚は壁高欄の上、下端 4.7 m 以上",
+            "readability": "300 m で緑の板と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "110-b-0-driver-150",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "110-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 150,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字・白縁、出口番号は白地緑字の札、「出口 500m」（図 030 の構成）",
+            "mount": "門型、脚は壁高欄の上、下端 4.7 m 以上",
+            "readability": "150 m で地名・出口番号が読める"
+          }
+        },
+        {
+          "id": "110-b-0-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "110-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字・白縁、出口番号は白地緑字の札、「出口 500m」（図 030 の構成）",
+            "mount": "門型、脚は壁高欄の上、下端 4.7 m 以上",
+            "readability": "60 m で英字まで読める"
+          }
+        },
+        {
+          "id": "111-b-0-driver-300",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "111-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 300,
+          "lateralM": -1.8,
+          "fov": 18,
+          "expect": {
+            "style": "緑地白字、下向き矢印・出口番号の札・「出口 300m EXIT」（図 029）",
+            "mount": "門型、板は出口の車線の上",
+            "readability": "300 m で緑の板と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "111-b-0-driver-150",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "111-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 150,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、下向き矢印・出口番号の札・「出口 300m EXIT」（図 029）",
+            "mount": "門型、板は出口の車線の上",
+            "readability": "150 m で地名・出口番号が読める"
+          }
+        },
+        {
+          "id": "111-b-0-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "111-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、下向き矢印・出口番号の札・「出口 300m EXIT」（図 029）",
+            "mount": "門型、板は出口の車線の上",
+            "readability": "60 m で英字まで読める"
+          }
+        },
+        {
+          "id": "112-b-0-driver-300",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "112-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 300,
+          "lateralM": -1.8,
+          "fov": 18,
+          "expect": {
+            "style": "緑地白字、地名・「出口」・斜めの矢印・出口番号（図 031）",
+            "mount": "門型（上に床版があれば桁添架）",
+            "readability": "300 m で緑の板と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "112-b-0-driver-150",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "112-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 150,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、地名・「出口」・斜めの矢印・出口番号（図 031）",
+            "mount": "門型（上に床版があれば桁添架）",
+            "readability": "150 m で地名・出口番号が読める"
+          }
+        },
+        {
+          "id": "112-b-0-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "112-B",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、地名・「出口」・斜めの矢印・出口番号（図 031）",
+            "mount": "門型（上に床版があれば桁添架）",
+            "readability": "60 m で英字まで読める"
+          }
+        },
+        {
+          "id": "113-b-0-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "113-B",
+              "run": "4853799",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "出口 EXIT・斜めの矢印・出口番号と地名（図 033）",
+            "mount": "ノーズの壁高欄添架、本線から見える"
+          }
+        },
+        {
+          "id": "116no4-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "116の4",
+              "run": "24402611",
+              "index": 1
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 15,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地、白い正方形に黒い受話器、「非常電話」（図 046）",
+            "mount": "左の壁高欄添架"
+          }
+        },
+        {
+          "id": "323-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "323",
+              "run": "207111988",
+              "index": 0
+            }
+          },
+          "distanceM": 40,
+          "lateralM": -1.8,
+          "fov": 20,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "最高速度の円板（赤縁・青字）",
+            "mount": "左の壁高欄、下端は壁高欄の上 10 cm 以上"
+          }
+        }
+      ]
+    },
+    {
+      "id": "hamazakibashi-c1",
+      "start": [35.6531, 139.7535],
+      "views": [
+        {
+          "id": "110-b-1-driver-300",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "110-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 300,
+          "lateralM": -1.8,
+          "fov": 18,
+          "expect": {
+            "style": "緑地白字・白縁、出口番号は白地緑字の札、「出口 500m」（図 030 の構成）",
+            "mount": "門型、脚は壁高欄の上、下端 4.7 m 以上",
+            "readability": "300 m で緑の板と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "110-b-1-driver-150",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "110-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 150,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字・白縁、出口番号は白地緑字の札、「出口 500m」（図 030 の構成）",
+            "mount": "門型、脚は壁高欄の上、下端 4.7 m 以上",
+            "readability": "150 m で地名・出口番号が読める"
+          }
+        },
+        {
+          "id": "110-b-1-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "110-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字・白縁、出口番号は白地緑字の札、「出口 500m」（図 030 の構成）",
+            "mount": "門型、脚は壁高欄の上、下端 4.7 m 以上",
+            "readability": "60 m で英字まで読める"
+          }
+        },
+        {
+          "id": "111-b-1-driver-300",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "111-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 300,
+          "lateralM": -1.8,
+          "fov": 18,
+          "expect": {
+            "style": "緑地白字、下向き矢印・出口番号の札・「出口 300m EXIT」（図 029）",
+            "mount": "門型、板は出口の車線の上",
+            "readability": "300 m で緑の板と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "111-b-1-driver-150",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "111-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 150,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、下向き矢印・出口番号の札・「出口 300m EXIT」（図 029）",
+            "mount": "門型、板は出口の車線の上",
+            "readability": "150 m で地名・出口番号が読める"
+          }
+        },
+        {
+          "id": "111-b-1-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "111-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、下向き矢印・出口番号の札・「出口 300m EXIT」（図 029）",
+            "mount": "門型、板は出口の車線の上",
+            "readability": "60 m で英字まで読める"
+          }
+        },
+        {
+          "id": "112-b-1-driver-300",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "112-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 300,
+          "lateralM": -1.8,
+          "fov": 18,
+          "expect": {
+            "style": "緑地白字、地名・「出口」・斜めの矢印・出口番号（図 031）",
+            "mount": "門型（上に床版があれば桁添架）",
+            "readability": "300 m で緑の板と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "112-b-1-driver-150",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "112-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 150,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、地名・「出口」・斜めの矢印・出口番号（図 031）",
+            "mount": "門型（上に床版があれば桁添架）",
+            "readability": "150 m で地名・出口番号が読める"
+          }
+        },
+        {
+          "id": "112-b-1-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "112-B",
+              "run": "45021976",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地白字、地名・「出口」・斜めの矢印・出口番号（図 031）",
+            "mount": "門型（上に床版があれば桁添架）",
+            "readability": "60 m で英字まで読める"
+          }
+        },
+        {
+          "id": "108no2-c-0-driver-300",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "108の2-C",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 300,
+          "lateralM": -1.8,
+          "fov": 18,
+          "expect": {
+            "style": "緑地の分岐図、路線記号は 118の3 の枠（白枠・緑地）、事業者の盾形なし",
+            "mount": "門型",
+            "readability": "300 m で緑の板と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "108no2-c-0-driver-150",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "108の2-C",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 150,
+          "lateralM": -1.8,
+          "fov": 25,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地の分岐図、路線記号は 118の3 の枠（白枠・緑地）、事業者の盾形なし",
+            "mount": "門型",
+            "readability": "150 m で地名・出口番号が読める"
+          }
+        },
+        {
+          "id": "108no2-c-0-driver-60",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "108の2-C",
+              "run": "24402611",
+              "index": 0
+            }
+          },
+          "distanceM": 60,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "緑地の分岐図、路線記号は 118の3 の枠（白枠・緑地）、事業者の盾形なし",
+            "mount": "門型",
+            "readability": "60 m で英字まで読める"
+          }
+        },
+        {
+          "id": "325-driver-30",
+          "camera": "driver",
+          "target": {
+            "deckSign": {
+              "id": "325",
+              "run": "207111988",
+              "index": 0
+            }
+          },
+          "distanceM": 30,
+          "lateralM": -1.8,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "style": "自動車専用の円板（青地・白い自動車）",
+            "mount": "入口ランプの始まり、左の壁高欄"
+          }
+        }
+      ]
+    },
+    {
+      "id": "shibakoen-entrance",
+      "start": [35.6534, 139.7499],
+      "views": [
+        {
+          "id": "103a-driver-30",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "103",
+              "near": [35.65342, 139.75005]
+            }
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "expect": {
+            "style": "上段 白地緑字（都市高速・路線記号 C1・入口名）、下段 緑地白字（方面・矢印・入口）（図 005・006）",
+            "mount": "路側式（2 本柱）、左側の路端"
+          }
+        },
+        {
+          "id": "104-driver-30",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "104",
+              "near": [35.65342, 139.75005]
+            }
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 35,
+          "expect": {
+            "style": "104 入口の予告: 「入口 60m」など（facts の距離）",
+            "mount": "路側式、左側の路端"
+          }
+        }
+      ]
+    }
+  ]
+}

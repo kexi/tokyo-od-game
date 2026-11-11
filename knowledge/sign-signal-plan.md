@@ -24,6 +24,7 @@ sources:
 - **完了**: G1a（defs と catalog.json のバイト一致）・G1b（Pillow が registry を読む、PNG 346 枚のバイト一致）・G1c（ゲームの対応をレジストリへ）は [標識システム](sign-system.md)、T1（灯器の宣言と第3条テスト）・T2（現示表・permits・右折矢印）は [信号システム](signal-system.md)。
 - 都市高速の表示名は架空の「都市高速」（[道路再設計の方針](road-redesign-plan.md)）。
 - 未着手: G2〜G4、Q1、T3・T4。
+- **G6 実装（2026-11-11、レビュー待ち）**: 都市高速の板と設置（[標識システム](sign-system.md)「都市高速の板と設置（G6）」）。逸脱: 116の4・116の6 は Pillow ではなく Canvas（BoardFacePool に乗せる）、多視点レビューの視点表は expressway.json ではなく expressway-signs.json に分けた。
 
 作成 2026-11-10。対象 `tokyo-od-game`。コードは書かない（実装は Opus が段階的に行う）。道路再設計（[道路再設計の方針](road-redesign-plan.md) 4.8・8 章 P5）と対で読む。
 

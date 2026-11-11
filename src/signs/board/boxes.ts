@@ -76,6 +76,19 @@ export type TextBox = {
 
 export type RuleBox = { type: "rule"; from: Point; to: Point; width: number; colour: Colour };
 
+/**
+ * A fixed figure in a box (cm): the 非常電話's receiver on its white square (図 046), the
+ * 非常駐車帯's road with the bay (図 048). Drawn as paths in the box's own proportions.
+ */
+export type PictogramBox = {
+  type: "pictogram";
+  figure: "phone" | "bay";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export type BoxNode =
   | BackgroundBox
   | FieldBox
@@ -84,7 +97,8 @@ export type BoxNode =
   | ShieldBox
   | StreetBox
   | TextBox
-  | RuleBox;
+  | RuleBox
+  | PictogramBox;
 
 /** A board laid out: its size (cm) and what to draw, in order. */
 export type BoardLayout = {

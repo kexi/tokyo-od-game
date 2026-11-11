@@ -264,7 +264,18 @@ function mountFrame(post: Pick<PostMount, "pos" | "travel">, ground: number): Ma
  * pole it shares), the faces look at traffic travelling along `travel`, and `designs` gives the
  * artwork of each of `mount.faces` (same index).
  */
-export type PostMount = { pos: Vector3; travel: Vector3; mount: ResolvedMount; designs: Design[] };
+export type PostMount = {
+  pos: Vector3;
+  travel: Vector3;
+  mount: ResolvedMount;
+  designs: Design[];
+  /**
+   * A post on an expressway deck (G6): the height its frame stands at (the deck's road surface,
+   * local y) instead of the ground under it, and the side it is on (−1: the right 壁高欄, the
+   * mount's +x then points left of travel, toward the carriageway).
+   */
+  deck?: { baseY: number; side: 1 | -1 };
+};
 
 /** Size of a face as drawn, m: the plate's texture box (plates.ts) at the design's scale. */
 function drawnSize(d: Design): { width: number; height: number } {
@@ -440,6 +451,42 @@ export function gatherPosts(graph: RoadGraph, regs: AppliedRegulations, approach
 type HiddenCounts = { single: number; doubleFirst: number; doubleSecond: number; doubleWhole: number };
 
 /**
+ * Once a frame (main.ts): the plate pools' decodes started and a few faces uploaded, for every
+ * TrafficSigns at once. Nothing before the pools exist (the first instance with faces makes them).
+ */
+export function pumpSignFaces(): void {
+  if (!signFaces) return;
+  const { small, large } = signFaces;
+  small.start();
+  large.start();
+  small.pump(UPLOADS_PER_FRAME);
+  large.pump(UPLOADS_PER_FRAME);
+}
+
+type PlateWant = Map<string, { source: { url: string }; priority: number }>;
+/**
+ * Each TrafficSigns instance's wanted artworks (the streets' and the expressway decks'): the plate
+ * pools are shared, so each asks for its own and the pools get the union (an artwork both want
+ * takes the nearer priority). Why not a pool per instance: the layers are the memory budget.
+ */
+const plateWants = new Map<TrafficSigns, { small: PlateWant; large: PlateWant }>();
+function mergedPlateWants(): { small: PlateWant; large: PlateWant } {
+  const small: PlateWant = new Map();
+  const large: PlateWant = new Map();
+  for (const w of plateWants.values()) {
+    for (const [target, from] of [
+      [small, w.small],
+      [large, w.large],
+    ] as const)
+      for (const [file, want] of from) {
+        const known = target.get(file);
+        if (!known || want.priority < known.priority) target.set(file, want);
+      }
+  }
+  return { small, large };
+}
+
+/**
  * 道路標識 posts where JARTIC puts them (sections' starts and repeats, junction approaches,
  * one-way exits, 一時停止), plus 横断歩道 signs at crossings without signals. Plates, posts and
  * brackets come from scripts/blender/signs.py; artwork from scripts/textures/sign_textures.py.
@@ -611,14 +658,14 @@ export class TrafficSigns {
     if (changed) log("sign_columns_hidden", { ...this.hiddenCounts, posts: this.posts.length });
   }
 
-  /** Every frame: decodes started, a few faces uploaded, and the layers re-read when one moved in. */
+  /**
+   * Every frame: the layers re-read when a face moved in. The pools themselves are pumped once a
+   * frame by pumpSignFaces (main.ts), not by each instance: the street's and the decks' TrafficSigns
+   * share them, and two pumps a frame doubled the uploads (G6 review W3).
+   */
   private pumpFaces(): void {
     if (this.faceMeshes.length === 0) return;
     const { small, large } = faces();
-    small.start();
-    large.start();
-    small.pump(UPLOADS_PER_FRAME);
-    large.pump(UPLOADS_PER_FRAME);
     const isChanged = small.version !== this.layerVersions[0] || large.version !== this.layerVersions[1];
     if (isChanged) this.applyLayers();
   }
@@ -655,9 +702,12 @@ export class TrafficSigns {
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     let dropped = 0;
     for (const [n, post] of posts.entries()) {
-      const ground = this.groundAt(post.pos.x, post.pos.z) ?? 0;
+      const ground = post.deck?.baseY ?? this.groundAt(post.pos.x, post.pos.z) ?? 0;
       const frame = mountFrame(post, ground);
       const { mount } = post;
+      // The right 壁高欄's mount is the left one mirrored across: positions only, the parts keep
+      // their own winding (a mirrored matrix would turn the faces inside out).
+      const xs = post.deck?.side ?? 1;
       dropped += mount.dropped;
       for (const [i, f] of mount.faces.entries()) {
         const d = post.designs[i];
@@ -674,7 +724,7 @@ export class TrafficSigns {
           pushFace({ ...d, file: d.back }, at(local(f.x - f.standoff, f.z, -Math.PI / 2)));
           continue;
         }
-        const front = at(local(f.x, f.z + f.standoff, 0));
+        const front = at(local(xs * f.x, f.z + f.standoff, 0));
         pushFace(d, front);
         if (d.bothFaces) {
           pushFace(d, at(local(f.x, f.z - f.standoff, Math.PI)));
@@ -689,7 +739,7 @@ export class TrafficSigns {
           continue;
         }
         const local = new Matrix4().compose(
-          new Vector3(m.x, m.y, m.z),
+          new Vector3(xs * m.x, m.y, m.z),
           new Quaternion().setFromEuler(new Euler(m.pitch, 0, 0)),
           new Vector3(m.sx, m.sy, m.sz),
         );
@@ -757,8 +807,16 @@ export class TrafficSigns {
    * nearest face). A face not yet in shows the transparent stand-in.
    */
   private wantFaces(focus: Vector3 | null): void {
-    if (this.faceMeshes.length === 0) return;
     const { small, large } = faces();
+    if (this.faceMeshes.length === 0) {
+      // Nothing standing: this instance asks for nothing (its last request must not linger).
+      const hadWants = plateWants.delete(this);
+      if (!hadWants) return;
+      const merged = mergedPlateWants();
+      small.want(merged.small);
+      large.want(merged.large);
+      return;
+    }
     const nearest = new Map<string, { d: number; large: boolean }>();
     for (const { files, items, large: isLarge } of this.faceMeshes) {
       for (const [i, file] of files.entries()) {
@@ -779,8 +837,34 @@ export class TrafficSigns {
           .filter(([, n]) => n.large === isLarge)
           .map(([file, n]) => [file, { source: { url: artworkUrl(file) }, priority: n.d }]),
       );
-    small.want(want(false));
-    large.want(want(true));
+    plateWants.set(this, { small: want(false), large: want(true) });
+    const merged = mergedPlateWants();
+    small.want(merged.small);
+    large.want(merged.large);
+  }
+
+  /**
+   * Plates on an expressway deck (G6: 323 最高速度・325 自動車専用 on the 壁高欄), already mounted
+   * (src/world/expresswaySigns.ts resolves them): stood at their deck's height, in place of what
+   * this instance stood before. The street instance keeps its own; the plate pools take both.
+   */
+  standDeckPosts(mounted: readonly PostMount[]): void {
+    this.clear(true);
+    if (!kit) {
+      this.instances.end();
+      return;
+    }
+    const posts: Post[] = mounted.map((m) => ({
+      ...m,
+      plates: m.designs,
+      auxOf: m.designs.map(() => []),
+      columns: [{ refs: [], colliders: [], feet: [], hidden: false }],
+      hidden: false,
+    }));
+    for (const _ of this.build(posts, kit)) {
+      /* a few posts: built at once */
+    }
+    this.instances.end();
   }
 
   /** Writes each face instance's layer (its artwork's, or 0 until it is in). */

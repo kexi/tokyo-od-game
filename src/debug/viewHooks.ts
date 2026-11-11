@@ -1,4 +1,5 @@
 import { Box3, Matrix4, Mesh, Vector3, type Object3D, type PerspectiveCamera, type Scene } from "three";
+import type { DeckSignView } from "../world/expresswaySigns";
 import { STATION_STRIDE, type XwChunk, type XwMeta, type XwTile } from "../expressway/format";
 import type { LocalFrame } from "../geo/frame";
 import { log, warn } from "../log";
@@ -42,7 +43,7 @@ type LatLon = [number, number];
 
 /** What a view can aim at, in the local frame at the time it is read. */
 export type ViewTarget = {
-  kind: "landmark" | "sign" | "guide" | "signal" | "expressway" | "point";
+  kind: "landmark" | "sign" | "guide" | "signal" | "expressway" | "deckSign" | "point";
   id: string;
   name?: string;
   point: Vec3;
@@ -72,6 +73,7 @@ export type TargetQuery =
   | { signal: { near?: LatLon; arrow?: boolean; index?: number } }
   | { guide: { kind?: string; near?: LatLon; index?: number } }
   | { expressway: string; share?: number }
+  | { deckSign: { id: string; run: string; index?: number } }
   | { point: { lat: number; lon: number; h: number; ref?: HeightRef } };
 
 export type FindFailure = {
@@ -118,6 +120,8 @@ export type ViewHookDeps = {
   signs: unknown;
   /** The 案内標識 (GuideSigns.debugTargets, public). */
   guide: { debugTargets(): GuideTargetView[] } | null;
+  /** The signs on the expressway decks (ExpresswaySigns.debugTargets, G6), null without ?expressway. */
+  deckSigns?: { debugTargets(): DeckSignView[] } | null;
   control: TrafficControl;
   env: Environment;
   baseUrl: string;
@@ -607,6 +611,78 @@ export function createViewHooks(deps: ViewHookDeps) {
   };
 
   /** Ids of the chunks within `radiusM` of a point (nearest first), for a view table to pick. */
+  /**
+   * A sign on a deck (G6): the `index`-th of its number in the data (run, then distance), its face as
+   * standing now, and the deck's stations of its run up to it as the path the driver camera rides.
+   */
+  const deckSign = async (id: string, run: string, index = 0): Promise<Found> => {
+    const chunks = await loadChunks();
+    const all = chunks
+      .filter((c) => c.run === run)
+      .flatMap((c) => (c.signs ?? []).filter((s) => s.id === id).map((s) => ({ c, s })))
+      .toSorted((a, b) => a.s.s - b.s.s);
+    const found = all[index];
+    if (!found)
+      return fail("unknown-id", `no deck sign ${id} #${index} on run ${run} in public/data/expressway`);
+    const standing = deps.deckSigns
+      ?.debugTargets()
+      .find((t) => t.chunk === found.c.id && t.id === id && Math.abs(t.s - found.s.s) < 0.01);
+    if (!standing)
+      return fail(
+        "not-drawn",
+        `deck sign ${id} at ${found.c.id} s ${found.s.s} is not standing (?expressway, within 900 m?)`,
+      );
+    const runChunks = chunks.filter((c) => c.run === found.c.run).toSorted((a, b) => a.k - b.k);
+    const path: Vector3[] = [];
+    let pathIndex = 0;
+    for (const c of runChunks)
+      for (let o = 0; o + STATION_STRIDE <= c.st.length; o += STATION_STRIDE) {
+        const s = c.st[o];
+        const isRepeat = path.length > 0 && o === 0;
+        if (isRepeat) continue;
+        const [lon, lat, deck] = [c.st[o + 1], c.st[o + 2], c.st[o + 3]];
+        path.push(deps.frame().toLocal(lat, lon, deps.ellipsoidal(lat, lon, deck)));
+        if (s <= found.s.s) pathIndex = path.length - 1;
+      }
+    const pos = standing.pos;
+    const isPlate = standing.normal.lengthSq() === 0;
+    const ahead = path[Math.min(path.length - 1, pathIndex + 1)]
+      .clone()
+      .sub(path[Math.max(0, pathIndex - 1)])
+      .setY(0)
+      .normalize();
+    return {
+      ok: true,
+      target: {
+        kind: "deckSign",
+        id,
+        point: plain(pos),
+        normal: plain(isPlate ? ahead.clone().negate() : standing.normal),
+        size: Math.max(standing.width, standing.height),
+        box: boxAround(pos, { x: standing.width / 2, y: standing.height / 2, z: standing.width / 2 }),
+        path: path.map(plain),
+        pathIndex,
+        geo: geoOf(pos),
+        distanceM: fromCar(pos),
+        isDrawn: true,
+        facts: {
+          chunk: found.c.id,
+          s: found.s.s,
+          mount: found.s.mount,
+          side: found.s.side,
+          level: found.s.level,
+          beforeM: found.s.ref.beforeM,
+          widthM: round(standing.width),
+          heightM: round(standing.height),
+          bottomAboveDeckM: Number.isFinite(standing.bottomM) ? round(standing.bottomM) : null,
+          layer: standing.layer,
+          names: standing.names,
+          plate: found.s.plate ?? null,
+        },
+      },
+    };
+  };
+
   const expresswayChunks = async (lat: number, lon: number, radiusM = 800) => {
     const chunks = await loadChunks();
     const here = flatOf([lat, lon]);
@@ -672,6 +748,7 @@ export function createViewHooks(deps: ViewHookDeps) {
         return r.ok ? pick(r.value, index, `guide ${spec.guide.kind ?? "*"}`) : fail(r.reason, r.detail);
       }
       if ("expressway" in spec) return await expressway(spec.expressway, spec.share);
+      if ("deckSign" in spec) return await deckSign(spec.deckSign.id, spec.deckSign.run, spec.deckSign.index);
       return point(spec.point);
     } catch (error) {
       return fail("renamed", `lookup threw: ${String(error)}`);

@@ -118,7 +118,8 @@ import { RoadTiles } from "./world/roadTiles";
 import { TrafficControl, type Approach, type LightState } from "./world/trafficControl";
 import { letsDriverGo } from "./signals/plan";
 import { SignalViolationCheck } from "./game/signalViolations";
-import { TrafficSigns, loadSignModels } from "./world/signs";
+import { TrafficSigns, loadSignModels, pumpSignFaces } from "./world/signs";
+import { pumpBoardFaces } from "./world/boardFacePool";
 import {
   bindSignFaceRenderer,
   debugSignFaces,
@@ -126,6 +127,7 @@ import {
   updateSignLamps,
 } from "./world/signFaces";
 import { GuideSigns } from "./world/guideSigns";
+import { ExpresswaySigns } from "./world/expresswaySigns";
 import { boardNames } from "./signs/board/content";
 import { createHuman, disposeHuman, loadHumanModels } from "./world/human";
 import { loadFacadeTextures } from "./world/facade";
@@ -623,6 +625,19 @@ async function main(): Promise<void> {
     world,
     (x, z, g) => isOpenGround(x, z, g),
   );
+  // The 都市高速's signs on the decks (G6, ?expressway only): guide boards on gantries, girders and
+  // 壁高欄, and the 323・325 plates through a TrafficSigns of their own (its posts stand at the
+  // deck's height). The 103・104 before the entrances stand with the street's guide signs.
+  const deckPlates = expressway
+    ? new TrafficSigns(
+        scene,
+        (x, z) => groundY(x, z),
+        world,
+        () => true,
+      )
+    : null;
+  const expresswaySigns = expressway && deckPlates ? new ExpresswaySigns(scene, deckPlates) : null;
+  if (expressway) void expressway.entrances().then((list) => guideSigns.setEntrances(list));
   const speedometer = new Speedometer($("#hud-speed"));
   const nav = new NavGuide($("#nav"), () => audio.muted);
   const ribbon = new RouteArrows(scene, (x, z) => groundY(x, z));
@@ -1147,6 +1162,8 @@ async function main(): Promise<void> {
           if (expressway) anchorStage("expressway", () => expressway.setFrame(next));
           roadSurface.reanchor(m);
           signs.reanchor(m, q);
+          deckPlates?.reanchor(m, q);
+          expresswaySigns?.reanchor();
           guideSigns.reanchor(m, q, network.graph);
           streetLights.reanchor(m, q);
           furniture.reanchor(m, q);
@@ -2159,6 +2176,8 @@ async function main(): Promise<void> {
   let lastDeckCheck = 0;
   /** Up on an expressway deck (over a river it is not adrift). */
   let carOnDeck = false;
+  /** The deck level the car is on (0: the streets), for the boards' priority (BoardFacePool). */
+  let carDeckLevel = 0;
   /** 20 m cells already logged as a building crossed by a deck (expressway_building_crossed). */
   const crossedCells = new Set<string>();
   const noteBuildingCrossed = (p: Vector3) => {
@@ -2499,6 +2518,8 @@ async function main(): Promise<void> {
         buildings.update(focus, now);
         if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
           refreshRoads(geo.lat, geo.lon);
+        pumpSignFaces();
+        pumpBoardFaces();
         signs.update(focus, now);
         guideSigns.update(focus, now, camera.position);
       }
@@ -2702,7 +2723,11 @@ async function main(): Promise<void> {
     if (expressway && roadGraph && isInCar && now - lastDeckCheck > 100) {
       lastDeckCheck = now;
       // 15 m: the width gate (half the carriageway + 1 m) decides; a 4-lane deck is over 7 m wide.
-      carOnDeck = roadGraph.nearestOnSurface(carPos, 15, (seg) => seg.line.xid !== undefined) !== null;
+      const deckHit = roadGraph.nearestOnSurface(carPos, 15, (seg) => seg.line.xid !== undefined);
+      carOnDeck = deckHit !== null;
+      // The level of the deck under the car, as the deck signs carry theirs (deckLevel.ts).
+      carDeckLevel =
+        deckHit?.seg.line.xid !== undefined ? expressway.levelAt(deckHit.seg.line.xid, geo.lat, geo.lon) : 0;
       const isThroughBuilding = carOnDeck && vehicle.overlapsBuilding();
       if (isThroughBuilding) noteBuildingCrossed(carPos);
       noteDeckStall(carPos, speed, isDeckReady);
@@ -2753,8 +2778,25 @@ async function main(): Promise<void> {
     // The game's clock for the plans that change at night (夜間点滅, 夜間の押ボタン).
     control.setTimeOfDay(env.displayHour(geo.lat, geo.lon) * 60);
     control.update(now / 1000);
+    // The shared face pools, once a frame for all their users (the streets' and the decks').
+    pumpSignFaces();
+    pumpBoardFaces();
     signs.update(focus, now);
-    guideSigns.update(focus, now, camera.position);
+    // The boards are weighed from the camera, on the deck's level when the car is up on one.
+    const eyeLevel = carOnDeck ? carDeckLevel : 0;
+    guideSigns.update(focus, now, camera.position, eyeLevel);
+    if (expressway && expresswaySigns) {
+      expresswaySigns.update(
+        (lat, lon, radius) => expressway.signChunksNear(lat, lon, radius),
+        expressway.place(),
+        expressway.tileVersion,
+        geo,
+        now,
+        camera.position,
+        eyeLevel,
+      );
+      deckPlates?.update(focus, now);
+    }
     orbis.update(now);
     // カーナビ to the mission target, along legal streets.
     const navTarget = missions.current ? field.localPosition(missions.current.target) : null;
@@ -5528,6 +5570,7 @@ async function main(): Promise<void> {
       landmarks: landmarkEntries,
       signs,
       guide: guideSigns,
+      deckSigns: expresswaySigns,
       control,
       env,
       baseUrl: import.meta.env.BASE_URL,

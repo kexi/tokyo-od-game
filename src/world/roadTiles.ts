@@ -50,7 +50,7 @@ export class RoadTiles {
       const f = layer.feature(i);
       const p = f.properties as Record<string, number>;
       const isCentreline = Math.floor(p.ftCode / 100) === 27;
-      // Elevated roads (首都高 etc.) have no drivable surface in the game yet.
+      // Elevated roads (the 都市高速 etc.) have no drivable surface in the game yet.
       const isGround = (p.lvOrder ?? 0) === 0;
       if (!isCentreline || !isGround || f.type !== 2) continue;
       const width = p.Width && p.Width > 0 ? p.Width : (WIDTH_BY_RANK[p.rnkWidth] ?? 4.3);

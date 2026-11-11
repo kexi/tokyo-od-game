@@ -110,14 +110,19 @@ describe("法令値と仮定の集約（knowledge/road-redesign-plan.md 3.4）",
 });
 
 describe("入力の正規化（knowledge/road-redesign-plan.md 4.1）", () => {
-  it("drops names carrying the operator and keeps entrance names, ref and destination", () => {
+  it("strips the operator off route names and keeps entrance names, ref, destination and maxspeed", () => {
     const w = normalizeWay(1, [1, 2], {
       highway: "motorway",
       name: "首都高速都心環状線",
+      "name:en": "Shuto Expressway Inner Circular Route",
       ref: "C1",
       destination: "銀座",
     });
-    expect(w.name).toBeNull();
+    expect(w.name).toBe("都心環状線");
+    expect(w.nameEn).toBe("Inner Circular Route");
+    expect(w.maxspeedTag).toBeNull();
+    expect(normalizeWay(3, [1, 2], { highway: "motorway", maxspeed: "50" }).maxspeedTag).toBe(50);
+    expect(normalizeWay(4, [1, 2], { highway: "motorway", name: "首都高" }).name).toBeNull();
     expect(w.ref).toBe("C1");
     expect(w.destination).toBe("銀座");
     expect(normalizeWay(2, [1, 2], { highway: "motorway_link", name: "宝町出口" }).name).toBe("宝町出口");

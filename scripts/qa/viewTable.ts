@@ -72,6 +72,19 @@ export const TargetSchema = z.union([
     /** Where on the chunk, 0 (first station) – 1 (last). */
     share: z.number().min(0).max(1).default(0.5),
   }),
+  z.strictObject({
+    /**
+     * A sign on an expressway deck (G6, public/data/expressway `signs`): by 別表第一 number on a run
+     * (its id is the first OSM way's, stable across builds and ranges), the `index`-th along it;
+     * the driver camera rides the deck behind it. Why not a global index: a sign added on another
+     * run shifted every view after it (G6 review S9).
+     */
+    deckSign: z.strictObject({
+      id: z.string().min(1),
+      run: z.string().min(1),
+      index: z.number().int().nonnegative().default(0),
+    }),
+  }),
   z.strictObject({ point: GeoPointSchema }),
 ]);
 export type TargetSpec = z.infer<typeof TargetSchema>;

@@ -184,7 +184,7 @@ export function expresswayRoadInput(
         oneway: end === "start" ? 1 : -1,
         width: sectionWidth(chunk),
         section: chunkSection(chunk),
-        limit: run.tagV,
+        limit: chunk.posted ?? run.tagV,
       });
     }
   }
@@ -207,7 +207,9 @@ function lineOf(chunk: XwChunk, run: XwRunSummary, points: Point[], ellipsoidal:
     section,
     xid: chunk.id,
     ...(chunk.ref ? { ref: chunk.ref } : {}),
-    limit: run.tagV,
+    // The posted speed (signPlan.ts, the 323 plates' value) where the tiles carry it; P3's tagV
+    // (the highest tagged speed of the run) before G6. P6 is to fold this into its own rules.
+    limit: chunk.posted ?? run.tagV,
     heights: points.map((p) => ellipsoidal(p.lat, p.lon, p.z)),
   };
 }

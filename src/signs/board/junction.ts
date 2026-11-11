@@ -2,6 +2,8 @@ import type { BoxNode, Colour, Measure, Point } from "./boxes";
 import type { ArmSpec, SignName } from "./content";
 import { jpFont, MEASURE_K, NAME_H, nameWidth, spacedName } from "./fonts";
 import { inArrowHeight, romanHeight } from "./letters";
+import { ROUTE_FRAME_ASPECT } from "./routeSymbol";
+import { ROUTE_SYMBOL_ON_ARM } from "../expresswaySignAssumptions";
 
 /**
  * `junction-diagram` (108-A・108の2-A・108の3・108の4, and on green 108の2-C〜E): the arms of the
@@ -31,6 +33,14 @@ export type JunctionInput = {
 };
 
 const SHIELD = (h: number) => 1.15 * h; // 国道番号・都道府県道番号 on the arms
+/**
+ * A route symbol on an arm of 108の2-C〜E (G5 review W6): its frame ROUTE_SYMBOL_ON_ARM of the
+ * 日本字 high, inside the 1.6 times 備考一(五)6 allows a 経由路線 (the size is the frame's height over
+ * the drawer's frame aspect).
+ */
+const ROUTE_SHIELD = (h: number) => (ROUTE_SYMBOL_ON_ARM.value * h) / ROUTE_FRAME_ASPECT;
+const shieldSize = (kind: ArmSpec["shields"][number]["kind"], h: number) =>
+  kind === "route" ? ROUTE_SHIELD(h) : SHIELD(h);
 
 /** Direction of an arm on the board for its angle (+ left): up is straight on. */
 export const armVector = (angle: number) => ({
@@ -125,14 +135,15 @@ export function layoutJunction(
       const isStraight = t.arm.angle === 0;
       const [ux, uy] = isStraight ? [1, 0] : [t.dx, t.dy];
       t.arm.shields.forEach((shield, i) => {
-        const off = (i - (n - 1) / 2) * SHIELD(h) * 1.05;
+        const size = shieldSize(shield.kind, h);
+        const off = (i - (n - 1) / 2) * size * 1.05;
         marks.push({
           arm: t.arm,
           kind: "shield",
           x: mx + ux * off,
           y: my + uy * off,
-          w: SHIELD(h),
-          h: SHIELD(h),
+          w: size,
+          h: size,
           shield,
         });
       });

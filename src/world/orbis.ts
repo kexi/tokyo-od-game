@@ -134,7 +134,7 @@ export function lanesFor(seg: Segment): { lanes: number; laneEdge: number; laneW
 
 /**
  * Where each device stands on the current road graph, and which way it looks. Elevated devices
- * (首都高 viaducts) and those with no matching road are left out; expressway devices only match
+ * (the 都市高速 viaducts) and those with no matching road are left out; expressway devices only match
  * expressway segments and street devices only streets. The enforced direction is OSM's when known,
  * else a JARTIC one-way, else the side of the road the device stands at (left-hand traffic), else
  * both directions.

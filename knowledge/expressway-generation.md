@@ -1,6 +1,6 @@
 ---
 type: Playbook
-title: 高速道路の生成（OSM → 道路構造令の線形 → デッキ、P1・縦断の一括解・P2.6 の全域向けの縦断・P3 の走行・P3.5 の床版の一体化・P7 の構造物上書き）
+title: 高速道路の生成（OSM → 道路構造令の線形 → デッキ、P1・縦断の一括解・P2.6 の全域向けの縦断・P3 の走行・P3.5 の床版の一体化・P7 の構造物上書き・G6 の標識）
 description: 首都圏の都市高速を OSM の motorway / motorway_link からビルド時に道路構造令の平面・縦断線形へコンパイルし（src/expressway/、scripts/expressway.ts）、public/data/expressway の ≤300 m チャンクを実行時に床版・壁高欄・箱桁・橋脚へ押し出す（src/world/expresswayDeck.ts、?expressway で有効）。P3 でコライダー（床版と壁高欄の trimesh・橋脚の cuboid）・道路グラフへの統合（端点 ID・ランプ端の接続）・区画線を足し、入口ランプから本線に乗って出口から一般道へ戻る走行を確かめた（多視点レビュー 3 周で収束）。縦断は分合流・交差・床版の重なりでつながる run の連結成分ごとに 1 つの凸 QP（疎な内点法）で解き、高さは交差と重なりの拘束からだけ決める（layer を目標高に使う P1 の逸脱を解消）。設計速度は区間ごと、測点は勾配つきでエルミート補間。試験区間（浜崎橋JCT〜芝公園）は T1〜T7 違反 0、deck_overlap は 4 組・41 測点（理由つき許可）。全域の解けない run、データ量、性能と見た目の確認。P2.6 で縦断の解き方を全域向けに直した（終了判定 gapTol、短い連結路を親 2 本の 3 次エルミート `follow` に、短い run の地表端を帯に、仮定の床は最も低い V でも解けない run の最終段で W_FLOOR の弱い行に、V 下げは失敗位置の ±150 m、閉鎖した run を meta の `closed` に）。全域を計測（解けた run 357 → 702／763）したが出荷条件は満たさず、全域は出荷していない（本線の閉鎖 15、ランプの閉鎖 8.3 %、未許可の重なり 332 組）。試験区間は解き方の変更で高さが最大 1.86 m 動いた。P7 の構造物の固定（ProfilePin）とは main の取り込みで統合した（連結路の 3 次式は固定を持てないので構造物上の run は連結路にしない）。P7 で構造物上書き（structures.ts）。レインボーブリッジの deckLevels に上層・下層の平面（補剛桁の範囲）と縦断（sRange）を固定し、帯の断面・描画だけの apron・橋脚と桁の抑止、3 m 規則でビルド失敗、下層の臨港道路を street として同じコンパイラに（XW_VERSION 4、範囲 rainbow）。
 tags: [roads, terrain, rendering, testing, licensing]
 status: draft
@@ -9,6 +9,7 @@ generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00Z }
 verified:
   - { by: process:vitest, at: 2026-11-11T10:00:00Z }
   - { by: process:make-expressway-data, at: 2026-11-11T09:50:00Z }
+  - { by: process:vitest, at: 2026-11-11T08:30:00Z }
   - { by: process:vitest, at: 2026-11-11T06:10:00Z }
   - { by: process:headless-chrome-cdp, at: 2026-11-11T05:55:00Z }
   - { by: process:shoot-views, at: 2026-11-11T06:20:00Z }
@@ -438,6 +439,18 @@ P2.6（#52）は P3・P3.5・P7 より前に分かれたので、main を取り�
 - **形式**: P2.6 の任意フィールド（チャンクの `vform`、meta の `closed`）は読む側が要らないので `XW_VERSION` は 4 のまま。`XwClosed.cls` は street も取りうる。データテストは `meta.range` から `meta.ranges` に合わせた。
 
 結果（trust signal、2026-11-11）: run 15・チャンク 247・測点 4,237・タイル 9 枚 359,968 B、未解決 0・閉鎖 0、最終解は全部収束。レインボーブリッジの 4 枚の床版はビルドの検査を通った（`expressway_structure_built` の zM 0.5〜3.3 mm、planM 6 mm）。T10 は crossing_over_or_at_grade 34・deck_below_ground 1・deck_overlap 13・ramp_radius 1・vertical_fallback 37（P2.6 の 32/1/4/1/35 と P7 の 34/0/11/1/31 を合わせたものに近い）。P2.6 の解き方で連結した成分が数 cm 動いたので、重なりの許可を 3 件変えた: 45021972×4848762 を 15 測点・6.33 m → 16 測点・6.46 m に広げ、芝浦の入口ランプ 4848755 のノーズ（45019020 と 45177678、どちらも 2 測点・≤ 0.06 m）を NOSE_REASON の類型として足した。床版の一体化を外れる所（MERGE_MAX_DZ 超）は 5 件増え（どれもノーズで 0.33 m 以下）、芝浦の 4 件の上限を 0.06〜0.08 m、C1 の 45021976:10 とノーズの 45019020:38 を 0.01 m 広げた。継ぎ目の数は 3,423 → 3,409、手放す所は 6 か所のまま（4848755 と 4848889 の位置が数 m 動いた）。
+
+# 標識（G6 = P5、2026-11-11）
+
+設置点と内容はコンパイラの後段 `src/expressway/signPlan.ts`（`planSigns`）がビルド時に決め、各チャンクの `signs`（`XwSign`: 番号・s・路面の z・level・側・取付・BoardContent か規制の板・桁・何のための標識か）と `meta.json` の `entrances`（入口ランプの地表端・名前・路線）に書く。規則・件数・取付は [標識システム](sign-system.md)「都市高速の板と設置（G6）」。
+
+- **データ形式**: 欄の追加だけ（すべて任意の欄）。作った時点では XW_VERSION 2 のまま、P7（版 4）・P2.6（版 4 のまま）と合わせた後も 4 のまま（古い読み手は欄を無視し、ゲームは欄があるときだけ読む）。版 5 は P6（版 3）と P7 を合わせるときに取っておく（format.ts の注記）。データは統合したコンパイラで再生成した。
+- **compile.ts の追加**: `CompileResult.features`（run ごとの OSM の節点と way を run の距離で。ファイルには書かない）。出口名と出口番号は motorway_junction の節点、最高速度は way の maxspeed（`XwWay.maxspeedTag`、タグが無ければ null）から読む。
+- **network.ts の変化**: 事業者名を含む名前を捨てるのをやめ、名称層 `routeName` で前置きを外す（`name`・新しい `nameEn`）。試験区間のチャンクの `name` が null から「都心環状線」「1号羽田線」に変わった。測点・橋脚・交差・decks はすべて同じ（81 チャンクを比べて差 0）。
+- **scripts/expressway.ts**: `emergency=phone` と非常駐車帯（`highway=emergency_bay` / `emergency=emergency_bay`）の節点を読む。ログ `expressway_signs_planned`・`expressway_sign_unplaced`。LICENSE.txt に節点の取り込みを追記した。
+- **掲示速度 `XwChunk.posted`**（G6 レビュー W4）: チャンクごとの最高速度（km/h）。323 の板と道路グラフの limit が同じ値を読む（`expresswayRoads.ts` は `chunk.posted ?? run.tagV`）。規則は [標識システム](sign-system.md) の「G6 レビューへの対応」。P6（法規）と合流するときに P6 の規則へ一本化する。
+- 試験区間の結果: 31 枚、unplaced 2（116の4 が他の標識と 20 m 以内）。
+- **P7・P2.6 との統合（2026-11-11）**: 範囲が `hamazakibashi,rainbow` になり 69 枚（323 10・325 2・116の4 42・108の2-C 3・110-B〜113-B 各 3、unplaced 11）。台場出口（4848762）の 110-B〜112-B が加わった。構造物の street（臨港道路）は都市高速ではないので標識を置かず（323・116の4・116の6 とも）、`posted` はコンパイラの tagV（OSM の maxspeed、無ければ street の既定）のまま。統合前の計画は法定 60 を当てて道路グラフの limit を 40 から 60 に変えていた（tests/expresswayStructures.test.ts が検出）。測点・橋脚・交差・decks は main のデータと差 0（247 チャンクを比べ、違うのは signs・posted・name だけ）。2 回の生成でバイト一致。テストは、橋の上の左路肩 4.8 m で左車線の中心が床版の中心線から 0.1 m になる 111-B と、親と同じ掲示速度で分岐する本線（45021972、323 不要）に合わせた。
 
 # 未対応・既知の欠落
 

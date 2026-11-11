@@ -1018,7 +1018,7 @@ assets:
 
   - id: guide-charset
     name: 案内標識に出る文字の一覧
-    purpose: 案内標識の板に出うる文字（表示地名・交差点名・通称名・OSM の行き先）。guide-fonts のサブセットの範囲になる。
+    purpose: 案内標識の板に出うる文字（表示地名・交差点名・通称名・OSM の行き先、都市高速の板の固定の語「非常電話」「非常駐車帯」「都市高速」など）。guide-fonts のサブセットの範囲になる。
     kind: data
     files: [assets/signs/guide/charset.txt]
     generator: { script: scripts/guide-signs.ts, recipe: make-guide-data }
@@ -1027,7 +1027,11 @@ assets:
     license: repo
     used_by: []
     docs: [knowledge/road-markings-and-signs.md]
-    notes: 文字の一覧だけで、地名や位置は入っていない。データを作り直したら guide-fonts も作り直す。
+    notes: >-
+      文字の一覧だけで、地名や位置は入っていない。データを作り直したら guide-fonts も作り直す。
+      G6（2026-11-11）で guide-signs.ts の固定の文字に都市高速の板の語を足し、無かった「非」を加えた
+      （PBF からの全体の作り直しはせず、同じ規則で 1 字だけ足して並べ直した。tests/expresswaySigns.test.ts が
+      都市高速の板の文字がすべてここにあることを検査する）。
 
   # ---------------------------------------------------------------- フォント
   - id: noto-sans-jp
@@ -1060,7 +1064,7 @@ assets:
       Google Fonts の google/fonts コミット 295d98a の Noto Sans JP と Overpass を SHA-256 で照合して取得し、
       fontTools でウェイト 700 に固定して guide-charset の文字に切り出したもの（名前テーブルの著作権・ライセンス表記は残す）
     license: OFL-1.1
-    used_by: [src/world/guideArt.ts]
+    used_by: [src/world/guideArt.ts, src/world/expresswaySigns.ts]
     inputs: [noto-sans-jp, overpass, guide-charset]
     docs: [knowledge/road-markings-and-signs.md]
     notes: OFL の予約フォント名（Noto Sans JP の 'Source'）は使っていない。ゲームでは GuideJP / GuideLatin の名前で読み込む。

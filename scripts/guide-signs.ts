@@ -539,7 +539,8 @@ async function main(): Promise<void> {
     }),
   );
   // Characters every board may need: digits, Latin for "m", the kana of この先, then the data.
-  const base = "0123456789m．・ー〜この先通り街道大";
+  // The 都市高速's fixed words too (G6: 116の4 非常電話, 116の6 非常駐車帯, the operator, 出口・入口).
+  const base = "0123456789m．・ー〜この先通り街道大非常電話駐車帯出口入口都市高速";
   const sorted = [
     ...new Set([...base, ...[...chars].filter((c) => c.trim() && c.charCodeAt(0) > 0x7f)]),
   ].sort();

@@ -19,6 +19,8 @@
 - 外部から取り込むフォントなどは、取得元 URL を commit 固定にして SHA-256 を台帳の `remote` に記録する。
 - 出典とライセンスは台帳に書き、ゲーム内の出典表示（`src/game/credits.ts`）にも載せる。
 - 実在の団体・企業・人物のロゴ、紋章、名称、Google のストリートビュー・地図の画像は使わない。
+  - 例外（都市高速、G6）: 出入口・JCT の名前、路線名（「都心環状線」「1号羽田線」）と路線記号（標識令 118の3 の枠の形。事業者独自の盾形は描かない）は実在のものを使う。事業者名は架空の「都市高速」（i18n キー `guide.operator`、ロゴなし）。
+  - 都市高速の名前はすべて名称層 `src/game/roadNames.ts` を通す。実在の事業者名を綴ってよいのはこのファイルだけで、`tests/roadNames.test.ts` が src と `public/data` を検査する。`public/data/expressway` には事業者名を入れない。`public/data` の routes・junctions・police.json は OSM・警察のデータの実名を保持し、表示時に名称層の `displayPlace` で「都市高速」へ置き換える（テストの許可リストに理由つきで載せる）。
 - 一覧は `just open-assets`（アセット管理画面 `assets.html`）で確認できる。
 
 ## 道路標識の追加
@@ -55,4 +57,4 @@
 ## 高速道路データ
 
 - 高架の高速道路は `just make-expressway-data`（`scripts/expressway.ts`）で OSM から道路構造令の線形にコンパイルし、`public/data/expressway` に書く。法令値は `src/law/roadStandards.ts`（条文つき）、法令に無い仮定は `src/expressway/assumptions.ts`（未確認と明記）に分け、混ぜない。生成後は `pnpm exec vitest run tests/expresswayData.test.ts` で T1〜T10 を確かめる。詳細は [knowledge/expressway-generation.md](knowledge/expressway-generation.md)。
-- 事業者の実名（首都高など）はデータとゲームの表示に入れない（ゲームでは架空名「都市高速」。テストが `public/data/expressway` を検査する）。
+- 事業者の実名（首都高など）は `public/data/expressway` とゲームの表示に入れない（ゲームでは架空名「都市高速」）。routes・junctions・police.json は実名を保持し表示時に置換する（`tests/roadNames.test.ts`）。

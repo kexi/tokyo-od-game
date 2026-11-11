@@ -142,7 +142,7 @@ export function speedLimit(seg: Segment): number {
  * ordinary roads. GSI data has no centre-line flag, so ≥5.5 m carriageways stand in for it.
  */
 export function estimatedLimit(line: RoadLine): number {
-  // 首都高 is a 自動車専用道路, not a 高速自動車国道 (100 km/h, 施行令 第27条), so the ordinary 60 km/h
+  // The 都市高速 is a 自動車専用道路, not a 高速自動車国道 (100 km/h, 施行令 第27条), so the ordinary 60 km/h
   // applies wherever no limit is posted.
   if (isExpressway(line)) return 60;
   return line.width >= 5.5 ? 60 : 30;

@@ -7,6 +7,7 @@ import type {
   BackgroundBox,
   BoardLayout,
   BoxNode,
+  PictogramBox,
   Colour,
   FieldBox,
   JunctionArrowsBox,
@@ -16,6 +17,7 @@ import type {
 import type { BoardContent } from "../signs/board/content";
 import { JP, LATIN, jpFont, latinFont } from "../signs/board/fonts";
 import { layoutBoard } from "../signs/board/layout";
+import { ROUTE_FRAME_ASPECT } from "../signs/board/routeSymbol";
 
 /**
  * The layouter's last step: a board's boxes (src/signs/board/, in cm) drawn on a canvas. Only this
@@ -162,7 +164,7 @@ function drawPrefecturalShield(ctx: Ctx, cx: number, cy: number, size: number, n
  */
 function drawRouteSymbol(ctx: Ctx, cx: number, cy: number, size: number, number: string): void {
   const w = size * Math.max(1, 0.45 + 0.32 * number.length);
-  const h = size * 0.78;
+  const h = size * ROUTE_FRAME_ASPECT;
   ctx.fillStyle = WHITE;
   roundRect(ctx, cx - w / 2, cy - h / 2, w, h, h * 0.22);
   ctx.fill();
@@ -302,6 +304,60 @@ function drawText(ctx: Ctx, t: TextBox, k: number): void {
   else fitText(ctx, t.text, t.x * k, t.y * k, t.maxW * k);
 }
 
+/**
+ * The fixed figures of 116の4 (図 046: a black receiver on a white square) and 116の6 (図 048: the
+ * carriageway in white, a dashed lane line, and the bay cut into its left edge), drawn as paths in
+ * the box's proportions read off the figures.
+ */
+function drawPictogram(ctx: Ctx, p: PictogramBox, k: number): void {
+  const x = p.x * k;
+  const y = p.y * k;
+  const w = p.w * k;
+  const h = p.h * k;
+  if (p.figure === "phone") {
+    const side = Math.min(w, h);
+    const sx = x + (w - side) / 2;
+    const sy = y + (h - side) / 2;
+    ctx.fillStyle = WHITE;
+    ctx.fillRect(sx, sy, side, side);
+    // The receiver: a thick arc from the ear piece (top left) to the mouth piece (bottom right).
+    ctx.strokeStyle = "#111111";
+    ctx.lineCap = "round";
+    ctx.lineWidth = side * 0.17;
+    ctx.beginPath();
+    ctx.arc(sx + side * 0.62, sy + side * 0.38, side * 0.32, Math.PI * 0.62, Math.PI * 1.32);
+    ctx.stroke();
+    ctx.fillStyle = "#111111";
+    const pad = (cx: number, cy: number, a: number) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(a);
+      roundRect(ctx, -side * 0.16, -side * 0.1, side * 0.32, side * 0.2, side * 0.06);
+      ctx.fill();
+      ctx.restore();
+    };
+    pad(sx + side * 0.36, sy + side * 0.18, -0.55);
+    pad(sx + side * 0.6, sy + side * 0.74, 0.35);
+    return;
+  }
+  // 116の6: two white edge strips, a dashed centre line, the bay on the left a third of the way.
+  ctx.fillStyle = WHITE;
+  const road = w * 0.62;
+  const left = x + (w - road) / 2 + w * 0.05;
+  const strip = w * 0.06;
+  ctx.fillRect(left, y, strip, h);
+  ctx.fillRect(left + road - strip, y, strip, h);
+  const dash = h / 7;
+  for (let d = 0; d < 7; d += 2) ctx.fillRect(left + road / 2 - strip / 2, y + d * dash, strip, dash);
+  ctx.beginPath();
+  ctx.moveTo(left, y + h * 0.3);
+  ctx.lineTo(left - w * 0.16, y + h * 0.38);
+  ctx.lineTo(left - w * 0.16, y + h * 0.62);
+  ctx.lineTo(left, y + h * 0.7);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function drawNode(ctx: Ctx, node: BoxNode, W: number, H: number, k: number): void {
   switch (node.type) {
     case "background":
@@ -324,6 +380,8 @@ function drawNode(ctx: Ctx, node: BoxNode, W: number, H: number, k: number): voi
       ctx.lineTo(node.to.x * k, node.to.y * k);
       ctx.stroke();
       return;
+    case "pictogram":
+      return drawPictogram(ctx, node, k);
     case "shield": {
       const { shield } = node;
       if (shield.kind === "national")

@@ -1312,9 +1312,9 @@ export const CHATTER: readonly ChatterTemplate[] = [
   c("cat", "animal", "猫、こたつから出てこない", { picture: "cat", seasons: ["winter"] }),
   c("cat", "animal", "夜の運動会が始まった", { picture: "cat", hours: [22, 2] }),
 
-  c("commute", "traffic", "首都高、今日もそこそこ混んでる", { hours: [7, 20] }),
+  c("commute", "traffic", "都市高速、今日もそこそこ混んでる", { hours: [7, 20] }),
   c("commute", "tip", "車間距離をとるだけで、ブレーキを踏む回数がぜんぜん違う"),
-  c("commute", "commute", "雨の日の首都高、みんな車間とってて偉い", { sky: "rain", days: "weekday" }),
+  c("commute", "commute", "雨の日の都市高速、みんな車間とってて偉い", { sky: "rain", days: "weekday" }),
   c("commute", "commute", "金曜の夕方はどこも混む。のんびり帰ります", { dow: [5], hours: [16, 20] }),
   c("commute", "commute", "月曜の朝はなぜか流れがいい気がする", { dow: [1], hours: [6, 10] }),
   c("commute", "police", "白バイが流してた。こういう日はみんな制限速度ぴったり", { cue: "shirobai" }),
@@ -1720,7 +1720,7 @@ export const CHATTER: readonly ChatterTemplate[] = [
   // --- the small hours ---
   c("nightshift", "work", "夜の病棟は静か。ナースコールが鳴らない夜はありがたい", { hours: [0, 5] }),
   c("nightshift", "food", "夜勤の休憩におにぎり。具は鮭", { hours: [0, 5] }),
-  c("nightshift", "night", "見回り中。ビルの窓から見える首都高の明かりがきれい", {
+  c("nightshift", "night", "見回り中。ビルの窓から見える都市高速の明かりがきれい", {
     hours: [22, 5],
     picture: "nightCity",
   }),
