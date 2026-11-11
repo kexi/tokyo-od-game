@@ -1,6 +1,6 @@
 {
  "version": 3,
- "label": "ship-pruned-baseline",
+ "label": "ab2-ship-pruned",
  "range": "ship",
  "below": "pruned",
  "extract": {
@@ -15,7 +15,42 @@
   "runs": 822,
   "components": 210,
   "belowRuns": 57,
-  "belowDeferred": 88
+  "belowDeferred": 88,
+  "untied": {
+   "stations": 131,
+   "pairs": [
+    {
+     "a": "1304769699",
+     "b": "45554543",
+     "component": "1068230495",
+     "stations": 2
+    },
+    {
+     "a": "1545539825",
+     "b": "668292569",
+     "component": "1023819782",
+     "stations": 46
+    },
+    {
+     "a": "24402611",
+     "b": "45021976",
+     "component": "1125559318",
+     "stations": 1
+    },
+    {
+     "a": "41009552",
+     "b": "668292569",
+     "component": "1023819782",
+     "stations": 60
+    },
+    {
+     "a": "668292569",
+     "b": "955398790",
+     "component": "1023819782",
+     "stations": 22
+    }
+   ]
+  }
  },
  "runs": {
   "planned": {
@@ -34,12 +69,12 @@
   },
   "written": {
    "main": {
-    "runs": 74,
-    "km": 375.842
+    "runs": 80,
+    "km": 413.754
    },
    "ramp": {
-    "runs": 191,
-    "km": 81.19
+    "runs": 225,
+    "km": 93.454
    },
    "street": {
     "runs": 2,
@@ -48,12 +83,12 @@
   },
   "closed": {
    "main": {
-    "runs": 10,
-    "km": 39.268
+    "runs": 4,
+    "km": 1.355
    },
    "ramp": {
-    "runs": 46,
-    "km": 15.821
+    "runs": 12,
+    "km": 3.558
    },
    "street": {
     "runs": 0,
@@ -415,19 +450,19 @@
   "deckMismatch": []
  },
  "closures": {
-  "roots": 15,
+  "roots": 14,
   "dragged": {
-   "runs": 41,
-   "km": 47.716
+   "runs": 2,
+   "km": 0.42
   },
   "draggedByClass": {
    "main": {
-    "runs": 5,
-    "km": 35.033
+    "runs": 0,
+    "km": 0
    },
    "ramp": {
-    "runs": 36,
-    "km": 12.683
+    "runs": 2,
+    "km": 0.42
    },
    "street": {
     "runs": 0,
@@ -435,16 +470,6 @@
    }
   },
   "list": [
-   {
-    "run": "41009552",
-    "cls": "expressway",
-    "lengthKm": 2.88,
-    "inRange": true,
-    "dragged": {
-     "runs": 39,
-     "km": 47.296
-    }
-   },
    {
     "run": "27536961",
     "cls": "ramp",
@@ -589,7 +614,7 @@
  },
  "diagnostics": {
   "below_open_ground_floor": {
-   "allowed": 4,
+   "allowed": 3,
    "notAllowed": 0
   },
   "crossing_layer_ambiguous": {
@@ -597,20 +622,20 @@
    "notAllowed": 2
   },
   "crossing_over_or_at_grade": {
-   "allowed": 107,
+   "allowed": 105,
    "notAllowed": 0
   },
   "deck_below_ground": {
-   "allowed": 10,
+   "allowed": 11,
    "notAllowed": 0
   },
   "deck_overlap": {
    "allowed": 16,
-   "notAllowed": 175
+   "notAllowed": 213
   },
   "parent_unsolved": {
    "allowed": 0,
-   "notAllowed": 41
+   "notAllowed": 2
   },
   "ramp_radius": {
    "allowed": 2,
@@ -621,38 +646,38 @@
    "notAllowed": 13
   },
   "vertical_fallback": {
-   "allowed": 185,
+   "allowed": 215,
    "notAllowed": 0
   },
   "vertical_unsolved": {
    "allowed": 0,
-   "notAllowed": 15
+   "notAllowed": 14
   }
  },
  "overlaps": {
   "nose": {
-   "pairs": 47,
-   "stations": 93,
-   "notAllowedPairs": 41,
-   "notAllowedStations": 79
+   "pairs": 56,
+   "stations": 120,
+   "notAllowedPairs": 50,
+   "notAllowedStations": 106
   },
   "parallel-ramp": {
-   "pairs": 89,
-   "stations": 1041,
-   "notAllowedPairs": 88,
-   "notAllowedStations": 1030
+   "pairs": 108,
+   "stations": 1173,
+   "notAllowedPairs": 107,
+   "notAllowedStations": 1162
   },
   "changeover": {
-   "pairs": 29,
-   "stations": 632,
-   "notAllowedPairs": 21,
-   "notAllowedStations": 502
+   "pairs": 33,
+   "stations": 696,
+   "notAllowedPairs": 25,
+   "notAllowedStations": 566
   },
   "other": {
-   "pairs": 26,
-   "stations": 310,
-   "notAllowedPairs": 25,
-   "notAllowedStations": 308
+   "pairs": 32,
+   "stations": 371,
+   "notAllowedPairs": 31,
+   "notAllowedStations": 369
   }
  },
  "overlapPairs": [
@@ -778,12 +803,42 @@
   },
   {
    "a": "1051967540",
+   "b": "157249374",
+   "kind": "nose",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 0.16,
+   "maxDzM": 0.2,
+   "allowed": false
+  },
+  {
+   "a": "1051967540",
    "b": "157249377",
    "kind": "other",
    "joined": true,
    "stations": 12,
    "minDzM": 0.8,
    "maxDzM": 6.64,
+   "allowed": false
+  },
+  {
+   "a": "1051967540",
+   "b": "263330207",
+   "kind": "nose",
+   "joined": true,
+   "stations": 7,
+   "minDzM": 0.06,
+   "maxDzM": 0.28,
+   "allowed": false
+  },
+  {
+   "a": "1051967540",
+   "b": "28188273",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 3,
+   "minDzM": 6.37,
+   "maxDzM": 6.53,
    "allowed": false
   },
   {
@@ -867,13 +922,73 @@
    "allowed": false
   },
   {
+   "a": "1421966435",
+   "b": "181579895",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "1421966435",
+   "b": "182465957",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 13,
+   "minDzM": 0.07,
+   "maxDzM": 6.68,
+   "allowed": false
+  },
+  {
+   "a": "1421966435",
+   "b": "203035373",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 14,
+   "minDzM": 0.05,
+   "maxDzM": 6.54,
+   "allowed": false
+  },
+  {
+   "a": "1421966435",
+   "b": "23681223",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 4,
+   "minDzM": 0.05,
+   "maxDzM": 6.61,
+   "allowed": false
+  },
+  {
+   "a": "1421966435",
+   "b": "41009552",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.1,
+   "maxDzM": 0.1,
+   "allowed": false
+  },
+  {
    "a": "1467911980",
    "b": "199152228",
    "kind": "parallel-ramp",
    "joined": false,
-   "stations": 4,
-   "minDzM": 5.56,
-   "maxDzM": 6.5,
+   "stations": 3,
+   "minDzM": 6.06,
+   "maxDzM": 6.62,
+   "allowed": false
+  },
+  {
+   "a": "1467911980",
+   "b": "203832852",
+   "kind": "other",
+   "joined": false,
+   "stations": 6,
+   "minDzM": 0.05,
+   "maxDzM": 0.06,
    "allowed": false
   },
   {
@@ -882,8 +997,8 @@
    "kind": "parallel-ramp",
    "joined": true,
    "stations": 11,
-   "minDzM": 0.15,
-   "maxDzM": 1.67,
+   "minDzM": 0.12,
+   "maxDzM": 1.69,
    "allowed": false
   },
   {
@@ -914,6 +1029,16 @@
    "stations": 3,
    "minDzM": 1.68,
    "maxDzM": 2.02,
+   "allowed": false
+  },
+  {
+   "a": "1545539825",
+   "b": "668292569",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 14,
+   "minDzM": 0.07,
+   "maxDzM": 2.06,
    "allowed": false
   },
   {
@@ -954,6 +1079,26 @@
    "stations": 16,
    "minDzM": 0.06,
    "maxDzM": 2.64,
+   "allowed": false
+  },
+  {
+   "a": "157249373",
+   "b": "44804206",
+   "kind": "other",
+   "joined": true,
+   "stations": 24,
+   "minDzM": 0.41,
+   "maxDzM": 6.69,
+   "allowed": false
+  },
+  {
+   "a": "157249374",
+   "b": "28188273",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 0.05,
+   "maxDzM": 1.63,
    "allowed": false
   },
   {
@@ -1057,6 +1202,16 @@
    "allowed": false
   },
   {
+   "a": "176046420",
+   "b": "41009552",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.65,
+   "maxDzM": 6.65,
+   "allowed": false
+  },
+  {
    "a": "182465950",
    "b": "28127113",
    "kind": "parallel-ramp",
@@ -1141,9 +1296,29 @@
    "b": "203832852",
    "kind": "parallel-ramp",
    "joined": true,
-   "stations": 17,
-   "minDzM": 0.06,
-   "maxDzM": 6.58,
+   "stations": 15,
+   "minDzM": 0.1,
+   "maxDzM": 6.66,
+   "allowed": false
+  },
+  {
+   "a": "199311832",
+   "b": "373216429",
+   "kind": "other",
+   "joined": false,
+   "stations": 12,
+   "minDzM": 2.45,
+   "maxDzM": 6.56,
+   "allowed": false
+  },
+  {
+   "a": "199311832",
+   "b": "41520088",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 12,
+   "minDzM": 0.09,
+   "maxDzM": 6.01,
    "allowed": false
   },
   {
@@ -1171,9 +1346,9 @@
    "b": "203832852",
    "kind": "parallel-ramp",
    "joined": true,
-   "stations": 9,
-   "minDzM": 0.08,
-   "maxDzM": 2.56,
+   "stations": 7,
+   "minDzM": 0.19,
+   "maxDzM": 2.95,
    "allowed": false
   },
   {
@@ -1192,8 +1367,8 @@
    "kind": "nose",
    "joined": true,
    "stations": 1,
-   "minDzM": 0.17,
-   "maxDzM": 0.17,
+   "minDzM": 0.18,
+   "maxDzM": 0.18,
    "allowed": false
   },
   {
@@ -1201,9 +1376,9 @@
    "b": "227213874",
    "kind": "parallel-ramp",
    "joined": true,
-   "stations": 15,
+   "stations": 14,
    "minDzM": 0.05,
-   "maxDzM": 6.5,
+   "maxDzM": 6.51,
    "allowed": false
   },
   {
@@ -1221,9 +1396,19 @@
    "b": "756785282",
    "kind": "parallel-ramp",
    "joined": true,
-   "stations": 9,
-   "minDzM": 0.32,
+   "stations": 11,
+   "minDzM": 0.05,
    "maxDzM": 1.99,
+   "allowed": false
+  },
+  {
+   "a": "203832852",
+   "b": "78334075",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.19,
+   "maxDzM": 0.19,
    "allowed": false
   },
   {
@@ -1334,6 +1519,26 @@
    "stations": 2,
    "minDzM": 0.05,
    "maxDzM": 0.05,
+   "allowed": false
+  },
+  {
+   "a": "23681223",
+   "b": "390426203",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.41,
+   "maxDzM": 6.64,
+   "allowed": false
+  },
+  {
+   "a": "23681223",
+   "b": "390426216",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.16,
+   "maxDzM": 0.16,
    "allowed": false
   },
   {
@@ -1577,6 +1782,16 @@
    "allowed": false
   },
   {
+   "a": "27536428",
+   "b": "41009552",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 0.07,
+   "maxDzM": 1.27,
+   "allowed": false
+  },
+  {
    "a": "27536960",
    "b": "28368866",
    "kind": "nose",
@@ -1654,6 +1869,76 @@
    "stations": 14,
    "minDzM": 0.05,
    "maxDzM": 6.21,
+   "allowed": false
+  },
+  {
+   "a": "28188273",
+   "b": "28188274",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 4,
+   "minDzM": 3.8,
+   "maxDzM": 5.78,
+   "allowed": false
+  },
+  {
+   "a": "28188273",
+   "b": "378275643",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.66,
+   "maxDzM": 6.67,
+   "allowed": false
+  },
+  {
+   "a": "28188273",
+   "b": "44351599",
+   "kind": "nose",
+   "joined": true,
+   "stations": 7,
+   "minDzM": 0.05,
+   "maxDzM": 0.26,
+   "allowed": false
+  },
+  {
+   "a": "28188273",
+   "b": "44803854",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 16,
+   "minDzM": 0.69,
+   "maxDzM": 6.49,
+   "allowed": false
+  },
+  {
+   "a": "28188273",
+   "b": "44804029",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.54,
+   "maxDzM": 6.67,
+   "allowed": false
+  },
+  {
+   "a": "28188273",
+   "b": "44804206",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 0.05,
+   "maxDzM": 5.91,
+   "allowed": false
+  },
+  {
+   "a": "28188273",
+   "b": "44804208",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.7,
+   "maxDzM": 6.7,
    "allowed": false
   },
   {
@@ -1771,9 +2056,9 @@
    "b": "45661183",
    "kind": "changeover",
    "joined": false,
-   "stations": 19,
-   "minDzM": 0.08,
-   "maxDzM": 6.29,
+   "stations": 24,
+   "minDzM": 0.05,
+   "maxDzM": 6.42,
    "allowed": false
   },
   {
@@ -1807,6 +2092,16 @@
    "allowed": false
   },
   {
+   "a": "373216429",
+   "b": "41520089",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 12,
+   "minDzM": 0.08,
+   "maxDzM": 5.39,
+   "allowed": false
+  },
+  {
    "a": "376509518",
    "b": "888066410",
    "kind": "other",
@@ -1831,9 +2126,19 @@
    "b": "45661183",
    "kind": "parallel-ramp",
    "joined": true,
-   "stations": 19,
-   "minDzM": 0.08,
-   "maxDzM": 6.67,
+   "stations": 11,
+   "minDzM": 0.06,
+   "maxDzM": 6.58,
+   "allowed": false
+  },
+  {
+   "a": "384979839",
+   "b": "41520088",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 14,
+   "minDzM": 0.19,
+   "maxDzM": 6.23,
    "allowed": false
   },
   {
@@ -1867,13 +2172,33 @@
    "allowed": false
   },
   {
-   "a": "41520089",
+   "a": "41009552",
    "b": "668292569",
-   "kind": "nose",
-   "joined": true,
-   "stations": 2,
+   "kind": "changeover",
+   "joined": false,
+   "stations": 25,
    "minDzM": 0.05,
-   "maxDzM": 0.06,
+   "maxDzM": 4.06,
+   "allowed": false
+  },
+  {
+   "a": "41009552",
+   "b": "955398790",
+   "kind": "other",
+   "joined": false,
+   "stations": 7,
+   "minDzM": 0.08,
+   "maxDzM": 0.26,
+   "allowed": false
+  },
+  {
+   "a": "41520089",
+   "b": "44804643",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.66,
+   "maxDzM": 6.66,
    "allowed": false
   },
   {
@@ -2087,6 +2412,16 @@
    "allowed": false
   },
   {
+   "a": "44506762",
+   "b": "920238368",
+   "kind": "other",
+   "joined": false,
+   "stations": 10,
+   "minDzM": 0.06,
+   "maxDzM": 0.28,
+   "allowed": false
+  },
+  {
    "a": "44803854",
    "b": "44804029",
    "kind": "nose",
@@ -2103,6 +2438,16 @@
    "joined": true,
    "stations": 1,
    "minDzM": 0.1,
+   "maxDzM": 0.1,
+   "allowed": false
+  },
+  {
+   "a": "44803854",
+   "b": "44804643",
+   "kind": "nose",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 0.07,
    "maxDzM": 0.1,
    "allowed": false
   },
@@ -2148,6 +2493,16 @@
   },
   {
    "a": "44804029",
+   "b": "44804206",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 25,
+   "minDzM": 0.16,
+   "maxDzM": 6.5,
+   "allowed": false
+  },
+  {
+   "a": "44804029",
    "b": "44804208",
    "kind": "nose",
    "joined": true,
@@ -2164,6 +2519,16 @@
    "stations": 18,
    "minDzM": 0.05,
    "maxDzM": 5.14,
+   "allowed": false
+  },
+  {
+   "a": "44804643",
+   "b": "668292569",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.42,
+   "maxDzM": 6.64,
    "allowed": false
   },
   {
@@ -2381,8 +2746,8 @@
    "b": "5219578",
    "kind": "parallel-ramp",
    "joined": true,
-   "stations": 24,
-   "minDzM": 0.1,
+   "stations": 29,
+   "minDzM": 0.07,
    "maxDzM": 6.65,
    "allowed": false
   },
@@ -2467,6 +2832,16 @@
    "allowed": false
   },
   {
+   "a": "59583397",
+   "b": "920238368",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 11,
+   "minDzM": 0.07,
+   "maxDzM": 6.24,
+   "allowed": false
+  },
+  {
    "a": "60942197",
    "b": "60942200",
    "kind": "other",
@@ -2479,11 +2854,41 @@
   {
    "a": "668292569",
    "b": "955398790",
-   "kind": "changeover",
+   "kind": "other",
    "joined": false,
    "stations": 2,
-   "minDzM": 0.6,
-   "maxDzM": 0.63,
+   "minDzM": 0.47,
+   "maxDzM": 0.49,
+   "allowed": false
+  },
+  {
+   "a": "687744436",
+   "b": "79449031",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.07,
+   "maxDzM": 0.07,
+   "allowed": false
+  },
+  {
+   "a": "71365235",
+   "b": "920238368",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 0.05,
+   "maxDzM": 1.09,
+   "allowed": false
+  },
+  {
+   "a": "751177037",
+   "b": "920238368",
+   "kind": "nose",
+   "joined": true,
+   "stations": 4,
+   "minDzM": 0.05,
+   "maxDzM": 0.05,
    "allowed": false
   },
   {
@@ -2607,36 +3012,36 @@
   }
  },
  "tracking": {
-  "runs": 46,
-  "km": 316.14,
-  "correlation": 0.8806,
-  "slope": 0.9354,
-  "shortWaveCorrelation": 0.39,
-  "shortWaveStdM": 1.0067,
-  "reversalsPerKm": 2.2965
+  "runs": 51,
+  "km": 350.53,
+  "correlation": 0.8842,
+  "slope": 0.9436,
+  "shortWaveCorrelation": 0.373,
+  "shortWaveStdM": 0.9976,
+  "reversalsPerKm": 2.2423
  },
  "size": {
-  "tiles": 115,
+  "tiles": 116,
   "raw": {
-   "total": 3632757,
-   "median": 25768,
-   "p90": 69376,
-   "max": 132474
+   "total": 4074277,
+   "median": 26514,
+   "p90": 73655,
+   "max": 223377
   },
   "gzip": {
-   "total": 1043175,
-   "median": 7163,
-   "p90": 19635,
-   "max": 34777
+   "total": 1162883,
+   "median": 7961,
+   "p90": 20306,
+   "max": 59084
   },
   "meta": {
-   "raw": 257776,
-   "gzip": 35012,
+   "raw": 279519,
+   "gzip": 38125,
    "byField": {
     "version": 1,
     "features": 9,
     "zoom": 2,
-    "tiles": 1496,
+    "tiles": 1509,
     "ranges": 2,
     "scope": 6,
     "structures": 173,
@@ -2644,10 +3049,10 @@
     "counts": 74,
     "bytes": 7,
     "solver": 46,
-    "runs": 132656,
-    "closed": 4582,
-    "diagnostics": 104847,
-    "entrances": 13609
+    "runs": 151947,
+    "closed": 1329,
+    "diagnostics": 108889,
+    "entrances": 15259
    }
   }
  },
@@ -2656,7 +3061,7 @@
   "largestRuns": 271,
   "largestVariables": 17744,
   "solves": 106,
-  "iterations": 3637,
+  "iterations": 3642,
   "unconverged": 0
  },
  "partition": {
@@ -2685,15 +3090,15 @@
     "id": "1022519232",
     "runs": 65,
     "pieces": 65,
-    "variables": 4880,
-    "hash": "b2b289cb3d6fafe342a86234c3867eef1207062ccfcdb204df945bfcfbe119c8"
+    "variables": 4062,
+    "hash": "db9a234dd8d6917b83cbc615246f5f19f661cd3a18c8ee2a179e228dd696ec45"
    },
    {
     "id": "1023819782",
     "runs": 271,
     "pieces": 271,
     "variables": 17744,
-    "hash": "4e19a89dd47fd559bd6158fabba0b320be7973ceef66eb05d11bf9157a677d6b"
+    "hash": "c7267b23c74b982b14c8044bcbd1c1ef73c4d89869695988f632e6f5dab75234"
    },
    {
     "id": "1055111045",
@@ -2714,14 +3119,14 @@
     "runs": 3,
     "pieces": 3,
     "variables": 28,
-    "hash": "205a301cce208e5b50de23c4843488b5e188fb7d1ec3598ff37e8bc9da5c1ec7"
+    "hash": "248a1ab6aeca7b9538733d2fc98278c94504e8fce5772243cbb47ef23e806126"
    },
    {
     "id": "1125559318",
     "runs": 57,
     "pieces": 57,
     "variables": 3658,
-    "hash": "1f513e44310267e38d35de91f0b535f6bcb08126c8b9ef706a883310320af71d"
+    "hash": "5dfc8d6935850c15606a0c2464fc8fbc03216329f549c4428d1f878767caae7a"
    },
    {
     "id": "133037880",
@@ -2734,8 +3139,8 @@
     "id": "1467911980",
     "runs": 17,
     "pieces": 17,
-    "variables": 1426,
-    "hash": "2392de1a1d041327c3ae84cfa0a2635f5639d1eb9512b2d3718cd8bf79b533d5"
+    "variables": 1072,
+    "hash": "bb3782be10750c2b56776cf5e058481c5481ec439b5dfa449d3afeab10046951"
    },
    {
     "id": "1483413151",
