@@ -675,7 +675,8 @@ async function main(): Promise<void> {
       )
     : null;
   const expresswaySigns = expressway && deckPlates ? new ExpresswaySigns(scene, deckPlates) : null;
-  if (expressway) void expressway.entrances().then((list) => guideSigns.setEntrances(list));
+  // The entrances come with the tiles (format 6): the plan of the 103・104 is redone as they do.
+  expressway?.onEntrances((list) => guideSigns.setEntrances(list));
   const speedometer = new Speedometer($("#hud-speed"));
   const nav = new NavGuide($("#nav"), () => audio.muted);
   const ribbon = new RouteArrows(scene, (x, z) => groundY(x, z));

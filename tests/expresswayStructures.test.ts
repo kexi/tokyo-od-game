@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import { checkGrade, checkPlan, checkSuperelevation, checkVerticalCurves } from "../src/expressway/checks";
 import { majorityClass, planNetwork, solvePlan } from "../src/expressway/compile";
-import { STATION_STRIDE, type XwChunk, type XwMeta, type XwTile } from "../src/expressway/format";
+import { STATION_STRIDE, type XwChunk, type XwTile } from "../src/expressway/format";
 import { type Network, normalizeNode, normalizeStreetWay, normalizeWay } from "../src/expressway/network";
 import { frameAt, surfaceAt } from "../src/expressway/profile";
 import { DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges";
@@ -232,10 +233,9 @@ describe("structure overrides in the compiler (設計書 4.6)", () => {
 
 // The generated data (just make-expressway-data: hamazakibashi,rainbow).
 const DIR = join(ROOT, "public", "data", "expressway");
-const meta = JSON.parse(readFileSync(join(DIR, "meta.json"), "utf8")) as XwMeta;
-const chunks = readdirSync(DIR)
-  .filter((f) => /^\d+-\d+\.json$/.test(f))
-  .flatMap((f) => (JSON.parse(readFileSync(join(DIR, f), "utf8")) as XwTile).chunks);
+// v6: the runs, diagnostics and entrances come from report.json and the tiles (scripts/expresswayFiles.ts).
+const meta = readExpresswayFiles(DIR);
+const chunks = meta.chunks;
 const byRun = new Map<string, XwChunk[]>();
 for (const c of chunks)
   byRun.set(
@@ -247,7 +247,7 @@ describe("the generated Rainbow Bridge decks", () => {
   const decks = meta.runs.filter((r) => r.structure !== null);
 
   it("builds the four carriageways of both floors, each within its tolerances", () => {
-    expect(meta.structures).toEqual([
+    expect(meta.meta.structures).toEqual([
       {
         id: "rainbow_bridge",
         version: levels.version,

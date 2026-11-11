@@ -1,5 +1,5 @@
 import { BRANCH_LINE, LANE_LINE_DASH, ZEBRA } from "../expressway/assumptions";
-import type { XwChunk, XwRunSummary } from "../expressway/format";
+import type { XwChunk, XwTileRun } from "../expressway/format";
 import { MARKING_DIMENSIONS } from "../law/roadStandards";
 import { sectionWidth } from "./laneChange";
 import type { MarkingColour } from "./roadMarkings";
@@ -76,9 +76,9 @@ export type DeckSide = {
 
 export type RingSides = { left: DeckSide; right: DeckSide };
 
-/** Which run ends on which (meta.json's run ends): the 分合流 between two runs. */
+/** Which run ends on which (the tiles' run ends): the 分合流 between two runs. */
 export function roleOf(
-  runs: ReadonlyMap<string, XwRunSummary>,
+  runs: ReadonlyMap<string, Pick<XwTileRun, "start" | "end">>,
   mine: string,
   other: string,
 ): "child" | "parent" | "peer" {
@@ -101,7 +101,7 @@ export class DeckIndex {
   private readonly byRun = new Map<string, XwChunk[]>();
   private readonly added = new Set<string>();
 
-  constructor(readonly runs: ReadonlyMap<string, XwRunSummary>) {}
+  constructor(readonly runs: ReadonlyMap<string, XwTileRun>) {}
 
   add(chunk: XwChunk): void {
     if (this.added.has(chunk.id)) return;

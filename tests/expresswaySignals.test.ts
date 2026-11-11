@@ -1,8 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Vector3 } from "three";
 import { describe, expect, it } from "vitest";
-import type { XwMeta, XwTile } from "../src/expressway/format";
+import { DEFAULT_DATA_DIR, readExpresswayFiles } from "../scripts/expresswayFiles";
 import { AutoDriver, type DriveWorld } from "../src/game/autoDriver";
 import { LocalFrame } from "../src/geo/frame";
 import { steerLimit, WHEELBASE } from "../src/physics/vehicle";
@@ -15,15 +13,11 @@ import type { TrafficControl } from "../src/world/trafficControl";
 // The generated test section (public/data/expressway): the autopilot driven by wheel and pedals
 // (the physics car's limits, as tests/drivePath.test.ts) through every merge and diverge, 350 m
 // before to 350 m after, with the 合図不履行 check of main.ts looking five times a second.
-const dir = join(import.meta.dirname, "..", "public", "data", "expressway");
-const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as XwMeta;
-const chunks = readdirSync(dir)
-  .filter((f) => /^\d+-\d+\.json$/.test(f))
-  .flatMap((f) => (JSON.parse(readFileSync(join(dir, f), "utf8")) as XwTile).chunks);
+const { chunks, runs } = readExpresswayFiles(DEFAULT_DATA_DIR);
 const graph = new RoadGraph(
   joinExpressway(
     [],
-    expresswayRoadInput(chunks, meta.runs, (_a, _b, h) => h + 36.9),
+    expresswayRoadInput(chunks, runs, (_a, _b, h) => h + 36.9),
     () => {},
   ),
   new LocalFrame(35.6537, 139.7508, 40),

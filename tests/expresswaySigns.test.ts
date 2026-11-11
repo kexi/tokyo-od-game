@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import { planNetwork, solvePlan } from "../src/expressway/compile";
-import type { XwChunk, XwMeta, XwSign, XwTile } from "../src/expressway/format";
+import type { XwChunk, XwSign } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
 import { frameAt } from "../src/expressway/profile";
@@ -36,10 +37,9 @@ import { rankBoards } from "../src/world/boardPriority";
 
 const ROOT = join(import.meta.dirname, "..");
 const DIR = join(ROOT, "public", "data", "expressway");
-const meta = JSON.parse(readFileSync(join(DIR, "meta.json"), "utf8")) as XwMeta;
-const chunks: XwChunk[] = readdirSync(DIR)
-  .filter((f) => /^\d+-\d+\.json$/.test(f))
-  .flatMap((f) => (JSON.parse(readFileSync(join(DIR, f), "utf8")) as XwTile).chunks);
+// v6: the runs, diagnostics and entrances come from report.json and the tiles (scripts/expresswayFiles.ts).
+const meta = readExpresswayFiles(DIR);
+const chunks = meta.chunks;
 const signs: Array<{ chunk: XwChunk; sign: XwSign }> = chunks.flatMap((chunk) =>
   (chunk.signs ?? []).map((sign) => ({ chunk, sign })),
 );

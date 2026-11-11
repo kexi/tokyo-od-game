@@ -182,15 +182,16 @@ describe("面の契約（profile.ts frameAt・surfaceHeight、デッキと P3 �
   });
 
   it("the game refuses tiles of another format version", () => {
-    expect(isSupportedMeta({ version: 5 })).toBe(true);
-    // 2 is P3's, 3 was P6's alone (maxspeed per chunk), 4 P7's (no maxspeed): 5 carries both.
-    for (const v of [1, 2, 3, 4])
-      expect(isSupportedMeta({ version: v } as unknown as { version: 5 })).toBe(false);
+    expect(isSupportedMeta({ version: 6 })).toBe(true);
+    // 2 is P3's, 3 was P6's alone (maxspeed per chunk), 4 P7's (no maxspeed), 5 both with the runs,
+    // diagnostics and entrances in meta.json: 6 (P2.7-4) moved those to the tiles and report.json.
+    for (const v of [1, 2, 3, 4, 5])
+      expect(isSupportedMeta({ version: v } as unknown as { version: 6 })).toBe(false);
   });
 
   it("reads files of its version with no features and with P9's (below), and refuses a feature it does not know", () => {
-    expect(isSupportedMeta({ version: 5 })).toBe(true);
-    expect(isSupportedMeta({ version: 5, features: ["below"] })).toBe(true);
-    expect(isSupportedMeta({ version: 5, features: ["below", "lanes"] })).toBe(false);
+    expect(isSupportedMeta({ version: 6 })).toBe(true);
+    expect(isSupportedMeta({ version: 6, features: ["below"] })).toBe(true);
+    expect(isSupportedMeta({ version: 6, features: ["below", "lanes"] })).toBe(false);
   });
 });

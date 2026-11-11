@@ -21,8 +21,8 @@ import {
   type XwChunk,
   type XwEntrance,
   type XwMeta,
-  type XwRunSummary,
   type XwTile,
+  type XwTileRun,
 } from "../expressway/format";
 import { haversine, tileKey } from "../expressway/geo";
 import { deckLevelAt, nearestOnChunk } from "../expressway/deckLevel";
@@ -96,7 +96,7 @@ export const HOLD_MAX_MS = 5000;
 const SLICE_BUDGET_MS = 4;
 const MOVE_BEFORE_UPDATE_M = 120;
 /** Road-graph lines for the chunks this close to the network's centre (its tiles are ~1.8 km). */
-const GRAPH_RADIUS_M = 1300;
+export const GRAPH_RADIUS_M = 1300;
 /** Thickness of the deck slab (exported for the structure fit test: it rests on a bridge's floor beams). */
 export const SLAB = 0.35;
 /** The box girder's bottom flange as a share of the deck width. */
@@ -825,7 +825,11 @@ export function createDeckBody(
 
 export class ExpresswayDecks {
   private meta: Promise<XwMeta | null> | null = null;
-  private runs: ReadonlyMap<string, XwRunSummary> = new Map();
+  /** The run summaries of the tiles read so far (v6: each tile carries those of its chunks' runs). */
+  private readonly runs = new Map<string, XwTileRun>();
+  /** The entrances of the tiles read so far, by run (v6: each in the tile of its ground end). */
+  private readonly entranceByRun = new Map<string, XwEntrance>();
+  private readonly entranceListeners: Array<(entrances: XwEntrance[]) => void> = [];
   private readonly tiles = new Map<string, Promise<XwTile | null>>();
   /** Chunks of the tiles read so far, by id (what the graph and the neighbour tests see). */
   private readonly known = new Map<string, XwChunk>();
@@ -833,7 +837,7 @@ export class ExpresswayDecks {
   private readonly mouths = new Map<string, number[]>();
   /** Told of every tunnel and cut chunk read (groundCuts.ts cuts the terrain over it). */
   private readonly boreListeners: Array<(chunk: XwChunk) => void> = [];
-  private index: DeckIndex = new DeckIndex(new Map());
+  private readonly index: DeckIndex = new DeckIndex(this.runs);
   private readonly built = new Map<string, Built>();
   private readonly colliderHandles = new Set<number>();
   /** Chunks whose deck failed to build: not tried again, and they hold no car. */
@@ -918,10 +922,19 @@ export class ExpresswayDecks {
     return { frame: this.frame, ellipsoidal: this.ellipsoidal };
   }
 
-  /** The entrances in meta.json (for the 103・104 on the streets), empty without data. */
-  async entrances(): Promise<XwEntrance[]> {
-    const meta = await this.loadMeta();
-    return meta?.entrances ?? [];
+  /** The entrances of the tiles read so far (for the 103・104 on the streets), by run. */
+  entrances(): XwEntrance[] {
+    return [...this.entranceByRun.values()].sort((a, b) => (a.run < b.run ? -1 : a.run > b.run ? 1 : 0));
+  }
+
+  /**
+   * Call `fn` with the entrances now and again whenever a tile read adds some (v6: they come with
+   * the tiles, not with meta.json at start-up). Why not once at start: the tiles of a far entrance
+   * are read only when the car nears it.
+   */
+  onEntrances(fn: (entrances: XwEntrance[]) => void): void {
+    this.entranceListeners.push(fn);
+    fn(this.entrances());
   }
 
   /** How many chunks are drawn (for checks). */
@@ -1054,7 +1067,7 @@ export class ExpresswayDecks {
     const chunks = (await this.chunksAround(meta, lat, lon)).filter(
       (c) => distanceTo(c, lon, lat) <= GRAPH_RADIUS_M,
     );
-    return expresswayRoadInput(chunks, meta.runs, this.ellipsoidal);
+    return expresswayRoadInput(chunks, [...this.runs.values()], this.ellipsoidal);
   }
 
   private loadMeta(): Promise<XwMeta | null> {
@@ -1080,8 +1093,6 @@ export class ExpresswayDecks {
           this.hasNoData = true;
           return null;
         }
-        this.runs = new Map(meta.runs.map((r) => [r.id, r]));
-        this.index = new DeckIndex(this.runs);
         this.hasNoData = false;
         return meta;
       });
@@ -1093,6 +1104,13 @@ export class ExpresswayDecks {
     if (!p) {
       p = fetch(`${this.base}data/expressway/${key}.json`)
         .then((r) => (r.ok ? (r.json() as Promise<XwTile>) : null))
+        .then((tile) => {
+          // Format 6 promises the runs in every tile: a tile without them (an older file in a
+          // cache) would leave its chunks without ends, so it is a failed read.
+          const isBroken = tile !== null && !Array.isArray(tile.runs);
+          if (isBroken) throw new Error("tile without runs (format 6)");
+          return tile;
+        })
         .catch((error: unknown) => {
           warn("expressway_tile_failed", { key, error: String(error) });
           return null;
@@ -1101,6 +1119,8 @@ export class ExpresswayDecks {
           // A failure is not remembered: the next refresh asks again (a dropped connection is not
           // a missing tile; meta.json says which tiles exist).
           if (tile === null) this.tiles.delete(key);
+          // Runs before chunks: the index answers roleOf from them as soon as a chunk is in.
+          if (tile) this.addRuns(key, tile);
           const fresh: XwChunk[] = [];
           for (const c of tile?.chunks ?? []) {
             if (!this.known.has(c.id)) fresh.push(c);
@@ -1117,6 +1137,32 @@ export class ExpresswayDecks {
       this.tiles.set(key, p);
     }
     return p;
+  }
+
+  /**
+   * A tile's run summaries and entrances into what is known. A run already known from another tile
+   * keeps its first summary (a differing one is a broken build: warned, not used). The entrance
+   * listeners hear of new entrances.
+   */
+  private addRuns(key: string, tile: XwTile): void {
+    for (const r of tile.runs) {
+      const known = this.runs.get(r.id);
+      if (!known) {
+        this.runs.set(r.id, r);
+        continue;
+      }
+      const isSame = JSON.stringify(known) === JSON.stringify(r);
+      if (!isSame) warn("expressway_tile_run_mismatch", { key, run: r.id });
+    }
+    let added = 0;
+    for (const e of tile.entrances ?? []) {
+      if (this.entranceByRun.has(e.run)) continue;
+      this.entranceByRun.set(e.run, e);
+      added++;
+    }
+    if (added === 0) return;
+    const list = this.entrances();
+    for (const fn of this.entranceListeners) fn(list);
   }
 
   /**

@@ -95,11 +95,8 @@ describe("the decks tell the buildings where to cut (ExpresswayDecks.onCutPoints
     extract: { url: "", timestamp: null },
     counts: { runs: 1, chunks: 1, stations: 21, piers: 0, crossings: 0 },
     bytes: 0,
-    solver: { components: 0, solves: 0, unconverged: 0 },
-    runs: [],
-    diagnostics: [],
   } as unknown as XwMeta;
-  const tile: XwTile = { chunks: [c] };
+  const tile: XwTile = { chunks: [c], runs: [] };
   beforeAll(() => {
     vi.stubGlobal("fetch", async (url: string) => {
       const name = String(url).split("/").pop()!.replace(".json", "");

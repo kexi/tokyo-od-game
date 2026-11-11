@@ -22,9 +22,13 @@ export const ST = { s: 0, lon: 1, lat: 2, z: 3, bank: 4, ground: 5, grade: 6 } a
  * their `portals`, `seam` ends) need a reader: they are named in meta's `features` (XW_FEATURES)
  * and a reader refuses a feature it does not know. 5 (P6 with P7): `maxspeed` on every chunk
  * (the raw OSM tag, chunks cut where it changes; the graph's limit is still `posted`, which G6's
- * carry rules derive from the same tags). The game refuses another version.
+ * carry rules derive from the same tags). 6 (P2.7-4): meta.json is an index only (its size grows
+ * with the tiles, not with the runs); the run summaries the game reads (`XwTileRun`) and the
+ * entrances go into the tiles, and the build's record (the full run summaries, diagnostics, closed
+ * runs, the solver, the blocks) into report.json (`XwBuildRecord`), which the game never reads. The
+ * chunks are as in 5. The game refuses another version.
  */
-export const XW_VERSION = 5;
+export const XW_VERSION = 6;
 
 /**
  * Optional parts of the format a file may use within its version (meta.json `features`). "below"
@@ -193,7 +197,19 @@ export type XwPortal = { s: number; from: XwStructure; to: XwStructure };
 
 export type XwDeckStretch = { with: string; relation: "same" | "above" | "below"; s0: number; s1: number };
 
-export type XwTile = { chunks: XwChunk[] };
+/**
+ * A z14 tile `<x>-<y>.json`: its chunks (each filed under its middle station), the run summaries
+ * the game reads for every run with a chunk here (repeated in each such tile, so the 分合流 roles
+ * — expresswayMarkings.ts roleOf — come out the same whichever tile is read first), and the
+ * entrances whose ground end lies in it (left out where there are none). Runs and entrances by id.
+ */
+export type XwTile = { chunks: XwChunk[]; runs: XwTileRun[]; entrances?: XwEntrance[] };
+
+/**
+ * What the game reads of a run (v6): its class and its two ends (the 分合流 points inserted into
+ * the parent's line, the ground ends, roleOf). The full summary is in report.json.
+ */
+export type XwTileRun = Pick<XwRunSummary, "id" | "cls" | "start" | "end">;
 
 export type XwEnd = {
   /**
@@ -260,6 +276,10 @@ export type XwDiagnostic = { run: string; kind: string; detail: string; allowed:
  */
 export type XwClosed = { run: string; chain: string; cls: XwClass; reason: string };
 
+/**
+ * meta.json (v6): the index the game reads at start-up, sized by the tiles alone. What each tile
+ * holds is in the tile, what the build found is in report.json (XwBuildRecord).
+ */
 export type XwMeta = {
   version: typeof XW_VERSION;
   /** The optional parts of the format the files use (XW_FEATURES); absent in P7's files. */
@@ -270,27 +290,50 @@ export type XwMeta = {
   ranges: Array<{ name: string; minLon: number; minLat: number; maxLon: number; maxLat: number }>;
   /**
    * "ship" for --range ship (P2.7-1, src/expressway/scope.ts: the urban expressway over the 23
-   * wards). Optional, absent from the default build's file, so the version stays: no reader needs it.
+   * wards). Optional, absent from the default build's file.
    */
   scope?: "ship";
   /** Structures whose deck levels were built (landmark id and the version of its deckLevels). */
   structures: Array<{ id: string; version: number; decks: string[] }>;
   extract: { url: string; timestamp: string | null };
   counts: { runs: number; chunks: number; stations: number; piers: number; crossings: number };
+  /** Bytes of the tile files (not meta.json, report.json nor ledger.json). */
   bytes: number;
+};
+
+/** report.json's own version (XwBuildRecord). */
+export const XW_RECORD_VERSION = 1;
+
+/**
+ * report.json (v6): what the build found, for the tests and the tools (scripts/expresswayLedger.ts,
+ * the data tests); the game never reads it. Not the scorecard (`--report`, report.ts ReportSchema,
+ * written outside the data folder with timings): this one sits in the data folder, byte-stable.
+ */
+export type XwBuildRecord = {
+  version: typeof XW_RECORD_VERSION;
+  /** The vertical objective the decks were solved with (compile.ts Objective kind). */
+  objective: "v1" | "v2";
   /** The joint vertical solves (no timings: the file stays byte-stable). */
   solver: { components: number; solves: number; unconverged: number };
   runs: XwRunSummary[];
-  /** Runs of the range left out of the tiles, closed (optional: absent in files before P2.6). */
-  closed?: XwClosed[];
+  /** Runs of the range left out of the tiles, closed. */
+  closed: XwClosed[];
   diagnostics: XwDiagnostic[];
   /**
-   * The entrances (G6): where each entrance ramp leaves the street (its ground end), its real name
-   * and route, for the 103・104 the game stands on the street side at run time. Optional like
-   * `XwChunk.signs` (no version step).
+   * Run pairs among the needed runs not held a level apart (compile.ts markSharedTouchdowns,
+   * P2.7-3a), a < b: their overlaps are the ledger's `touchdown` kind.
    */
-  entrances?: XwEntrance[];
+  untied: Array<{ a: string; b: string; stations: number }>;
+  /**
+   * The blocks solved (a component each for --partition components) with their written runs and
+   * `dataHash`: SHA-256 of the JSON of those runs' chunks as written (run id, then k, ascending).
+   * Made from the rounded values in the files, so a solver's 1e-12 m wobble leaves it alone. Not the
+   * scorecard's solution hash (`partition.blocks[].hash`, of the solver's unrounded solution).
+   */
+  blocks: XwBlockRecord[];
 };
+
+export type XwBlockRecord = { id: string; runs: string[]; dataHash: string };
 
 export type XwEntrance = {
   /** The entrance ramp's run. */
