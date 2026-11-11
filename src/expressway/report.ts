@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { XwChunk, XwClass, XwClosed, XwDiagnostic, XwRunSummary } from "./format";
 import { classifyOverlap, isJoined, OVERLAP_CLASSES, type OverlapClass, overlapPair } from "./overlapClass";
 import { hermite, ST } from "./profile";
-import { STATION_STRIDE } from "./format";
+import { CROSS_STRIDE, STATION_STRIDE } from "./format";
 import { PROPERTIES, type Property, type Violations } from "./violations";
 
 /**
@@ -22,18 +22,47 @@ const extentTally = z.strictObject({ inKm: km, outKm: km, operatedKm: km, otherK
 const cls = z.enum(["expressway", "ramp", "street"]);
 
 /**
- * 3 (P2.7-2): `partition`, how the needed runs were split and solved. A version-2 report (no
- * partition) still parses, so a scorecard can be compared with one written before.
+ * 3 (P2.7-2): `partition`, how the needed runs were split and solved. 4 (P2.7-3): `objective` and,
+ * in `tracking`, the stretches nothing forces (`free`, `forcedKm`), the deck's height over the
+ * ground and the main lines below ground. 5 (P2.7-3 review): `tracking.junction` (the free stretches
+ * near a junction, apart), the short waves' regression slope in `free` and `junction`, and the km of
+ * viaduct over 15 and 20 m above the ground (`height.over15Km` / `over20Km`). Reports of versions
+ * 2–4 (without them) still parse, so a scorecard can be compared with one written before.
  */
-export const REPORT_VERSION = 3;
+export const REPORT_VERSION = 5;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 
+/**
+ * Short-wave statistics over a set of tracked stretches: km, correlation and σ of the deck's short
+ * waves, their regression slope on the ground's (version 5: metres of deck per metre of ground; a
+ * report of version 4 has none), reversals per km.
+ */
+const stretchTally = z.strictObject({
+  km,
+  shortWaveCorrelation: z.number().nullable(),
+  shortWaveStdM: z.number().nonnegative().nullable(),
+  shortWaveSlope: z.number().nullable().optional(),
+  reversalsPerKm: z.number().nonnegative().nullable(),
+});
+
 export const ReportSchema = z.strictObject({
-  version: z.union([z.literal(2), z.literal(REPORT_VERSION)]),
+  version: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(REPORT_VERSION)]),
   label: z.string(),
   range: z.string(),
   below: z.enum(["pruned", "all"]),
+  /**
+   * The vertical objective (compile.ts Objective) and v2's weights (null for v1). Absent from a
+   * report before version 4 (v1 then).
+   */
+  objective: z
+    .strictObject({
+      kind: z.enum(["v1", "v2"]),
+      gradeChange: z.number().nullable(),
+      reachM: z.strictObject({ viaduct: z.number(), below: z.number() }).nullable(),
+      targetScale: z.number().nullable(),
+    })
+    .optional(),
   extract: z.strictObject({
     url: z.string(),
     timestamp: z.string().nullable(),
@@ -139,6 +168,40 @@ export const ReportSchema = z.strictObject({
     shortWaveCorrelation: z.number().nullable(),
     shortWaveStdM: z.number().nonnegative().nullable(),
     reversalsPerKm: z.number().nonnegative().nullable(),
+    /**
+     * The same three over the stretches nothing forces (freeStretches): more than TRACK_FREE_M from
+     * the run's ends, from a deck over or under another and from a crossing whose top stands
+     * TRACK_FORCING_RISE_M over the ground, the reversals counted per free stretch. Absent before
+     * version 4, as are the fields after it.
+     */
+    free: stretchTally.optional(),
+    /**
+     * The free stretches within TRACK_JUNCTION_M of a junction on the run (where another written run
+     * leaves or joins it), apart: they stay in `free` too (P2.7-3 review, the coordinator's call: the
+     * ramp's C¹ and its nose bend the main line there, which the definition of forcing leaves free).
+     */
+    junction: stretchTally.optional(),
+    /** The tracked km that are forced (the rest of `km`). */
+    forcedKm: km.optional(),
+    /** Deck less the ground at the tracked samples: median and 95th percentile (nearest rank). */
+    height: z
+      .strictObject({
+        medianM: z.number().nullable(),
+        p95M: z.number().nullable(),
+        /** Version 5: km of every written run's viaduct chunks standing over 15 / 20 m above the ground. */
+        over15Km: km.optional(),
+        over20Km: km.optional(),
+      })
+      .optional(),
+    /** The main lines below ground (belowTrackingOf). */
+    below: z
+      .strictObject({
+        runs: count,
+        km,
+        shortWaveStdM: z.number().nonnegative().nullable(),
+        reversalsPerKm: z.number().nonnegative().nullable(),
+      })
+      .optional(),
   }),
   size: z.strictObject({
     tiles: count,
@@ -207,6 +270,10 @@ export type ReportInput = {
   label: string;
   range: string;
   below: "pruned" | "all";
+  /** The vertical objective (compile.ts Objective); v1 when absent. */
+  objective?:
+    | { kind: "v1" }
+    | { kind: "v2"; gradeChange: number; reachM: { viaduct: number; below: number }; targetScale: number };
   extract: Report["extract"];
   plan: Report["plan"];
   planned: PlannedRun[];
@@ -411,15 +478,21 @@ export const TRACK_WINDOW_M = 500;
 export const TRACK_HYSTERESIS = 0.002;
 /** Runs shorter than this keep too little after the ends are left out to say anything. */
 export const TRACK_MIN_RUN_M = 2 * TRACK_END_M + 200;
+/** A sample this near (run distance) to what forces the deck is forced (P2.7-3). */
+export const TRACK_FREE_M = 300;
+/** A crossing forces the deck where its top stands this much over the ground there (a deck below). */
+export const TRACK_FORCING_RISE_M = 2;
+/** A free sample this near (run distance) to a junction on its run counts in `junction` too. */
+export const TRACK_JUNCTION_M = 300;
 
 type Sample = { z: number; grade: number; ground: number };
 
 /** A run's surface every TRACK_STEP_M from its stations (Hermite z and grade, ground linear). */
-function resample(st: number[]): Sample[] {
+function resample(st: number[]): Array<Sample & { s: number }> {
   const n = st.length / STATION_STRIDE;
   const at = (i: number, k: number) => st[i * STATION_STRIDE + k];
   const length = at(n - 1, ST.s) - at(0, ST.s);
-  const out: Sample[] = [];
+  const out: Array<Sample & { s: number }> = [];
   let i = 0;
   for (let s = at(0, ST.s); s <= at(0, ST.s) + length + 1e-9; s += TRACK_STEP_M) {
     while (i < n - 2 && at(i + 1, ST.s) < s) i++;
@@ -428,9 +501,53 @@ function resample(st: number[]): Sample[] {
     const p = hermite(s0, at(i, ST.z), at(i, ST.grade), s1, at(i + 1, ST.z), at(i + 1, ST.grade), s);
     const t = s1 > s0 ? Math.min(1, Math.max(0, (s - s0) / (s1 - s0))) : 0;
     const ground = at(i, ST.ground) + (at(i + 1, ST.ground) - at(i, ST.ground)) * t;
-    out.push({ z: p.z, grade: p.grade, ground });
+    out.push({ s, z: p.z, grade: p.grade, ground });
   }
   return out;
+}
+
+/**
+ * What forces a run's deck, as run-distance intervals, from its tiles alone (P2.7-3): its two ends,
+ * its deck stretches over or under another run (`above` / `below`; one surface with another,
+ * `same`, does not force a height), and its crossings whose top stands TRACK_FORCING_RISE_M or more
+ * over the ground there (a deck below: a road at ground needs only the floor the open ground asks
+ * for anyway). Why from the tiles and not the compiler's couplings: the scorecard reads the output
+ * only, so a report says the same of the same files whoever built them.
+ */
+export function forcingOf(list: XwChunk[]): Array<[number, number]> {
+  const st: number[] = [];
+  for (const c of list) st.push(...(st.length === 0 ? c.st : c.st.slice(STATION_STRIDE)));
+  const n = st.length / STATION_STRIDE;
+  const at = (i: number, k: number) => st[i * STATION_STRIDE + k];
+  const groundAt = (s: number) => {
+    let i = 0;
+    while (i < n - 2 && at(i + 1, ST.s) < s) i++;
+    const s0 = at(i, ST.s);
+    const s1 = at(i + 1, ST.s);
+    const t = s1 > s0 ? Math.min(1, Math.max(0, (s - s0) / (s1 - s0))) : 0;
+    return at(i, ST.ground) + (at(i + 1, ST.ground) - at(i, ST.ground)) * t;
+  };
+  const out: Array<[number, number]> = [
+    [at(0, ST.s), at(0, ST.s)],
+    [at(n - 1, ST.s), at(n - 1, ST.s)],
+  ];
+  for (const c of list) {
+    for (const d of c.decks) {
+      const isLevelled = d.relation !== "same";
+      if (isLevelled) out.push([d.s0, d.s1]);
+    }
+    for (let i = 0; i < c.cross.length; i += CROSS_STRIDE) {
+      const s = c.cross[i];
+      const isHigh = c.cross[i + 1] >= groundAt(s) + TRACK_FORCING_RISE_M;
+      if (isHigh) out.push([s, s]);
+    }
+  }
+  return out;
+}
+
+/** Whether run distance s is more than TRACK_FREE_M from every forcing interval. */
+function isFreeAt(forcing: Array<[number, number]>, s: number): boolean {
+  return forcing.every(([a, b]) => s < a - TRACK_FREE_M || s > b + TRACK_FREE_M);
 }
 
 /** Centred moving average over ±half samples (fewer at the ends). */
@@ -495,6 +612,77 @@ class Pearson {
 }
 
 /**
+ * Short waves over a set of stretches (free, or free near a junction): the pooled correlation, σ and
+ * slope of the deck's less its moving average on the ground's, and the reversals counted within
+ * each stretch (`close` ends one: a reversal is not counted across a gap).
+ */
+class Stretches {
+  private readonly short = new Pearson();
+  private sq = 0;
+  private samples = 0;
+  private flips = 0;
+  private m = 0;
+  private grades: number[] = [];
+
+  add(dz: number, dg: number, grade: number): void {
+    this.short.add(dz, dg);
+    this.sq += dz * dz;
+    this.samples++;
+    this.grades.push(grade);
+  }
+
+  close(): void {
+    const hasLength = this.grades.length > 1;
+    if (hasLength) {
+      this.flips += reversals(this.grades);
+      this.m += (this.grades.length - 1) * TRACK_STEP_M;
+    }
+    this.grades = [];
+  }
+
+  get lengthM(): number {
+    return this.m;
+  }
+
+  tally(): z.infer<typeof stretchTally> {
+    const hasAny = this.samples > 0 && this.m > 0;
+    return {
+      km: round(this.m / 1000, 3),
+      shortWaveCorrelation: hasAny ? this.short.value() : null,
+      shortWaveStdM: hasAny ? round(Math.sqrt(this.sq / this.samples), 4) : null,
+      shortWaveSlope: hasAny ? this.short.slope() : null,
+      reversalsPerKm: hasAny ? round(this.flips / (this.m / 1000), 4) : null,
+    };
+  }
+}
+
+/** Where other written runs leave or join each run (its run distance), from their junction ends. */
+function junctionsOf(runs: XwRunSummary[]): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  for (const r of runs)
+    for (const e of [r.start, r.end]) {
+      const isJunction = e.kind === "junction" && e.parent !== undefined && e.parentS !== undefined;
+      if (!isJunction) continue;
+      out.set(e.parent!, [...(out.get(e.parent!) ?? []), e.parentS!]);
+    }
+  return out;
+}
+
+/** Km of every written run's viaduct chunks whose surface stands over `above` m on the ground. */
+function viaductOver(chunks: XwChunk[], above: number): number {
+  let m = 0;
+  for (const c of chunks) {
+    const isViaduct = c.structure === "viaduct";
+    if (!isViaduct) continue;
+    for (let i = 0; i + STATION_STRIDE < c.st.length; i += STATION_STRIDE) {
+      const isHigh = c.st[i + ST.z] - c.st[i + ST.ground] > above;
+      if (isHigh) m += c.st[i + STATION_STRIDE + ST.s] - c.st[i + ST.s];
+    }
+  }
+  return round(m / 1000, 3);
+}
+
+/**
  * How the elevated main lines follow the ground, over the main-line runs of viaduct chunks only (no
  * tunnel, cut or structure deck) of at least TRACK_MIN_RUN_M: each resampled every 10 m, its first
  * and last 300 m left out (the climbs from a ground end and the junctions), then
@@ -521,6 +709,10 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
   let flips = 0;
   let lengthM = 0;
   let used = 0;
+  const free = new Stretches();
+  const nearJunction = new Stretches();
+  const junctions = junctionsOf(runs);
+  const heights: number[] = [];
   const half = Math.round(TRACK_WINDOW_M / 2 / TRACK_STEP_M);
   const skip = Math.round(TRACK_END_M / TRACK_STEP_M);
   for (const run of runs) {
@@ -547,6 +739,8 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
     lengthM += (kept.length - 1) * TRACK_STEP_M;
     const mz = kept.reduce((n, p) => n + p.z, 0) / kept.length;
     const mg = kept.reduce((n, p) => n + p.ground, 0) / kept.length;
+    const forcing = forcingOf(list);
+    const mine = junctions.get(run.id) ?? [];
     kept.forEach((p, k) => {
       const i = k + skip;
       const dz = p.z - zAvg[i];
@@ -554,9 +748,27 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
       short.add(dz, p.ground - gAvg[i]);
       shortSq += dz * dz;
       samples++;
+      heights.push(p.z - p.ground);
+      const isFree = isFreeAt(forcing, p.s);
+      if (!isFree) {
+        free.close();
+        nearJunction.close();
+        return;
+      }
+      free.add(dz, p.ground - gAvg[i], p.grade);
+      const isNearJunction = mine.some((s) => Math.abs(p.s - s) <= TRACK_JUNCTION_M);
+      if (!isNearJunction) {
+        nearJunction.close();
+        return;
+      }
+      nearJunction.add(dz, p.ground - gAvg[i], p.grade);
     });
+    free.close();
+    nearJunction.close();
     flips += reversals(kept.map((p) => p.grade));
   }
+  const below = belowTrackingOf(chunksOf, runs);
+  const over = { over15Km: viaductOver(chunks, 15), over20Km: viaductOver(chunks, 20) };
   const isEmpty = samples === 0;
   if (isEmpty)
     return {
@@ -567,7 +779,13 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
       shortWaveCorrelation: null,
       shortWaveStdM: null,
       reversalsPerKm: null,
+      free: free.tally(),
+      junction: nearJunction.tally(),
+      forcedKm: 0,
+      height: { medianM: null, p95M: null, ...over },
+      below,
     };
+  const sortedHeights = [...heights].sort((a, b) => a - b);
   return {
     runs: used,
     km: round(lengthM / 1000, 3),
@@ -576,6 +794,78 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
     shortWaveCorrelation: short.value(),
     shortWaveStdM: round(Math.sqrt(shortSq / samples), 4),
     reversalsPerKm: round(flips / (lengthM / 1000), 4),
+    free: free.tally(),
+    junction: nearJunction.tally(),
+    forcedKm: round(Math.max(0, lengthM - free.lengthM) / 1000, 3),
+    height: {
+      medianM: round(percentile(sortedHeights, 0.5), 3),
+      p95M: round(percentile(sortedHeights, 0.95), 3),
+      ...over,
+    },
+    below,
+  };
+}
+
+/**
+ * The main lines below ground (P2.7-3 4.4): main-line runs every chunk of which is a tunnel or a cut
+ * (no structure deck), of at least TRACK_MIN_RUN_M, resampled and trimmed as trackingOf does: the
+ * RMS of the road less its 500 m moving average, and the grade reversals per km. Null where none.
+ */
+function belowTrackingOf(
+  chunksOf: Map<string, XwChunk[]>,
+  runs: XwRunSummary[],
+): NonNullable<Report["tracking"]["below"]> {
+  const half = Math.round(TRACK_WINDOW_M / 2 / TRACK_STEP_M);
+  const skip = Math.round(TRACK_END_M / TRACK_STEP_M);
+  let sq = 0;
+  let samples = 0;
+  let flips = 0;
+  let lengthM = 0;
+  let used = 0;
+  for (const run of runs) {
+    const isMain = run.cls === "expressway" && run.structure === null;
+    const list = [...(chunksOf.get(run.id) ?? [])].sort((a, b) => a.k - b.k);
+    const isBelow = list.length > 0 && list.every((c) => c.structure !== "viaduct" && c.over === null);
+    const isLong = run.lengthM >= TRACK_MIN_RUN_M;
+    if (!isMain || !isBelow || !isLong) continue;
+    const st: number[] = [];
+    for (const c of list) st.push(...(st.length === 0 ? c.st : c.st.slice(STATION_STRIDE)));
+    const all = resample(st);
+    const zAvg = movingAverage(
+      all.map((p) => p.z),
+      half,
+    );
+    const kept = all.slice(skip, all.length - skip);
+    const isTooShort = kept.length < 2;
+    if (isTooShort) continue;
+    used++;
+    lengthM += (kept.length - 1) * TRACK_STEP_M;
+    kept.forEach((p, k) => {
+      const dz = p.z - zAvg[k + skip];
+      sq += dz * dz;
+      samples++;
+    });
+    flips += reversals(kept.map((p) => p.grade));
+  }
+  const isEmpty = samples === 0;
+  if (isEmpty) return { runs: 0, km: 0, shortWaveStdM: null, reversalsPerKm: null };
+  return {
+    runs: used,
+    km: round(lengthM / 1000, 3),
+    shortWaveStdM: round(Math.sqrt(sq / samples), 4),
+    reversalsPerKm: round(flips / (lengthM / 1000), 4),
+  };
+}
+
+/** The objective as the scorecard writes it (v2's weights null for v1). */
+function objectiveOf(objective: ReportInput["objective"]): NonNullable<Report["objective"]> {
+  const isV2 = objective !== undefined && objective.kind === "v2";
+  if (!isV2) return { kind: "v1", gradeChange: null, reachM: null, targetScale: null };
+  return {
+    kind: "v2",
+    gradeChange: objective.gradeChange,
+    reachM: { ...objective.reachM },
+    targetScale: objective.targetScale,
   };
 }
 
@@ -626,6 +916,7 @@ export function buildReport(input: ReportInput): Report {
     label: input.label,
     range: input.range,
     below: input.below,
+    objective: objectiveOf(input.objective),
     extract: input.extract,
     plan: input.plan,
     runs: {
@@ -708,4 +999,31 @@ export function blockChanges(
     added: [...hb.keys()].filter((id) => !ha.has(id)),
     removed: [...ha.keys()].filter((id) => !hb.has(id)),
   };
+}
+
+/** The objective with its weights as a label (a report before version 4 is v1). */
+export function objectiveLabel(r: Pick<Report, "objective">): string {
+  const o = r.objective;
+  const isV2 = o !== undefined && o.kind === "v2";
+  if (!isV2) return "v1";
+  return `v2(w ${o.gradeChange}, reach ${o.reachM?.viaduct}/${o.reachM?.below}, target ×${o.targetScale})`;
+}
+
+/**
+ * Two reports of builds whose differences are not the compiler's alone (another range, --below
+ * mode, extract or objective with its weights): what each was, for expressway_reports_unlike, or
+ * null when they are alike.
+ */
+export function buildsUnlike(
+  a: Pick<Report, "range" | "below" | "extract" | "objective">,
+  b: Pick<Report, "range" | "below" | "extract" | "objective">,
+): { a: string; b: string } | null {
+  const isOther =
+    a.range !== b.range ||
+    a.below !== b.below ||
+    a.extract.sha256 !== b.extract.sha256 ||
+    objectiveLabel(a) !== objectiveLabel(b);
+  if (!isOther) return null;
+  const label = (r: typeof a) => `${r.range}/${r.below}/${r.extract.timestamp}/${objectiveLabel(r)}`;
+  return { a: label(a), b: label(b) };
 }

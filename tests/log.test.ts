@@ -471,6 +471,13 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     sha256: "0".repeat(64),
   },
   expressway_scope_chosen: { main: 86, ramps: 263, belowRuns: 18, prunedBelow: true },
+  expressway_objective_chosen: {
+    objective: "v2",
+    gradeChange: 1,
+    reachM: 150,
+    reachBelowM: 300,
+    targetScale: 1,
+  },
   expressway_report_written: {
     file: ".qa/expressway/ship.report.json",
     plannedRuns: 349,

@@ -1,8 +1,14 @@
 {
- "version": 3,
- "label": "ab2-ship-pruned",
+ "version": 5,
+ "label": "s3r-v1-baseline",
  "range": "ship",
  "below": "pruned",
+ "objective": {
+  "kind": "v1",
+  "gradeChange": null,
+  "reachM": null,
+  "targetScale": null
+ },
  "extract": {
   "url": "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf",
   "timestamp": "2026-10-03T20:20:50Z",
@@ -3018,7 +3024,34 @@
   "slope": 0.9436,
   "shortWaveCorrelation": 0.373,
   "shortWaveStdM": 0.9976,
-  "reversalsPerKm": 2.2423
+  "reversalsPerKm": 2.2423,
+  "free": {
+   "km": 235.06,
+   "shortWaveCorrelation": 0.5531,
+   "shortWaveStdM": 0.696,
+   "shortWaveSlope": 0.3966,
+   "reversalsPerKm": 1.6804
+  },
+  "junction": {
+   "km": 61.98,
+   "shortWaveCorrelation": 0.5397,
+   "shortWaveStdM": 0.8718,
+   "shortWaveSlope": 0.4362,
+   "reversalsPerKm": 2.1136
+  },
+  "forcedKm": 115.47,
+  "height": {
+   "medianM": 8.765,
+   "p95M": 14.53,
+   "over15Km": 34.671,
+   "over20Km": 12.923
+  },
+  "below": {
+   "runs": 6,
+   "km": 9.64,
+   "shortWaveStdM": 0.8001,
+   "reversalsPerKm": 1.2448
+  }
  },
  "size": {
   "tiles": 116,

@@ -11,11 +11,14 @@ import { PROPERTIES, type Violations } from "../src/expressway/violations";
 import {
   blockChanges,
   buildReport,
+  buildsUnlike,
+  objectiveLabel,
   flattenReport,
   danglingOf,
   deckMismatchOf,
   overlapPairsOf,
   closuresOf,
+  forcingOf,
   overlapsOf,
   ReportSchema,
   reversals,
@@ -71,6 +74,8 @@ function chunkOf(
     structure: "viaduct",
     over: null,
     st,
+    decks: [],
+    cross: [],
   } as unknown as XwChunk;
 }
 
@@ -207,6 +212,13 @@ describe("地表への追従（report.ts trackingOf）", () => {
   });
 
   it("leaves out ramps and runs too short to keep anything past their ends", () => {
+    const none = {
+      km: 0,
+      shortWaveCorrelation: null,
+      shortWaveStdM: null,
+      shortWaveSlope: null,
+      reversalsPerKm: null,
+    };
     const chunks = [
       chunkOf("1", 700, wave, waveGrade, wave),
       { ...chunkOf("2", L, wave, waveGrade, wave), cls: "ramp" },
@@ -220,7 +232,94 @@ describe("地表への追従（report.ts trackingOf）", () => {
       shortWaveCorrelation: null,
       shortWaveStdM: null,
       reversalsPerKm: null,
+      free: none,
+      junction: none,
+      forcedKm: 0,
+      // The 700 m run is a viaduct 8 m over the ground (the wave less nothing): none over 15 m.
+      height: { medianM: null, p95M: null, over15Km: 0, over20Km: 0 },
+      below: { runs: 0, km: 0, shortWaveStdM: null, reversalsPerKm: null },
     });
+  });
+
+  it("free: the decks over or under another, the crossings standing 2 m over the ground and the ends forced, one surface not", () => {
+    const c = {
+      ...chunkOf("1", L, (s) => wave(s) + 8, waveGrade, wave),
+      decks: [
+        { with: "7", relation: "above", s0: 2000, s1: 2100 },
+        { with: "8", relation: "same", s0: 4000, s1: 4500 },
+      ],
+      // A deck below at 3,500 m (its top 6 m over the ground) and a street at ground at 4,200 m.
+      cross: [3500, wave(3500) + 6, 6.7, wave(3500) + 14, 4200, wave(4200), 6.7, wave(4200) + 8],
+    } as XwChunk;
+    expect(forcingOf([c])).toEqual([
+      [0, 0],
+      [L, L],
+      [2000, 2100],
+      [3500, 3500],
+    ]);
+    const t = trackingOf([c], [run("1", "expressway", L)]);
+    // Tracked 300–5,700 m (5.4 km); forced within 300 m of 0, 6,000, 2,000–2,100 and 3,500 m: free
+    // are 310–1,690, 2,410–3,190 and 3,810–5,690 m (the same surface over 4,000–4,500 m stays free).
+    expect(t.free!.km).toBeCloseTo(1.38 + 0.78 + 1.88, 3);
+    expect(t.forcedKm).toBeCloseTo(5.4 - t.free!.km, 3);
+    expect(t.free!.shortWaveCorrelation).toBeGreaterThan(0.99);
+    // Crests and sags at 500 and 1,500 (310–1,690), 2,500 (2,410–3,190), 4,500 and 5,500
+    // (3,810–5,690): counted inside their free stretch; 3,500 m falls in a forced gap.
+    expect(t.free!.reversalsPerKm).toBeCloseTo(5 / t.free!.km, 3);
+    expect(t.reversalsPerKm).toBeCloseTo(6 / 5.4, 3);
+    // 8 m over the ground everywhere.
+    expect(t.height!.medianM).toBeCloseTo(8, 3);
+    expect(t.height!.p95M).toBeCloseTo(8, 3);
+    // It rises metre for metre with the ground's short waves too.
+    expect(t.free!.shortWaveSlope).toBeCloseTo(1, 2);
+    // No run joins it: nothing near a junction.
+    expect(t.junction!.km).toBe(0);
+  });
+
+  it("junction: the free stretches within 300 m of where another run leaves, apart and still in free", () => {
+    const c = chunkOf("1", L, (s) => wave(s) + 8, waveGrade, wave);
+    const alone = trackingOf([c], [run("1", "expressway", L)]);
+    // A ramp leaves at 1,000 m: 700–1,300 m is near it.
+    const t = trackingOf([c], [run("1", "expressway", L), run("9", "ramp", 400, "1")]);
+    expect(t.junction!.km).toBeCloseTo(0, 6);
+    const leaving = {
+      ...run("9", "ramp", 400),
+      start: { kind: "junction" as const, parent: "1", parentS: 1000 },
+    };
+    const near = trackingOf([c], [run("1", "expressway", L), leaving]);
+    expect(near.junction!.km).toBeCloseTo(0.6, 3);
+    // The sag at 1,500 m is past 1,300 m, the crest at 500 m before 700 m: no reversal near it.
+    expect(near.junction!.reversalsPerKm).toBe(0);
+    expect(near.free).toEqual(alone.free);
+  });
+
+  it("heights: the km of viaduct over 15 m and over 20 m above the ground, every written run", () => {
+    const high = {
+      ...chunkOf(
+        "3",
+        1000,
+        () => 19,
+        () => 0,
+        () => 3,
+      ),
+      cls: "ramp",
+    } as XwChunk;
+    const t = trackingOf([high], [run("3", "ramp", 1000)]);
+    expect(t.height!.over15Km).toBeCloseTo(1, 6);
+    expect(t.height!.over20Km).toBe(0);
+  });
+
+  it("below: the main lines all in tunnels or cuts, their short waves and reversals apart from the viaducts'", () => {
+    const tunnel = {
+      ...chunkOf("5", L, (s) => wave(s) - 20, waveGrade, wave),
+      structure: "tunnel",
+    } as XwChunk;
+    const t = trackingOf([tunnel], [run("5", "expressway", L)]);
+    expect(t.runs).toBe(0);
+    expect(t.below!.runs).toBe(1);
+    expect(t.below!.km).toBeCloseTo(5.4, 3);
+    expect(t.below!.reversalsPerKm).toBeCloseTo(6 / 5.4, 3);
+    expect(t.below!.shortWaveStdM).toBeGreaterThan(0.3);
   });
 
   it("counts a grade's sign change only past the hysteresis", () => {
@@ -325,9 +424,81 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
     ]);
   });
 
+  it("version 5: the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
+    const report = buildReport(input());
+    expect(report.version).toBe(5);
+    expect(report.objective).toEqual({ kind: "v1", gradeChange: null, reachM: null, targetScale: null });
+    const v2 = buildReport({
+      ...input(),
+      objective: { kind: "v2", gradeChange: 1, reachM: { viaduct: 150, below: 300 }, targetScale: 0.5 },
+    });
+    expect(v2.objective).toEqual({
+      kind: "v2",
+      gradeChange: 1,
+      reachM: { viaduct: 150, below: 300 },
+      targetScale: 0.5,
+    });
+    const { objective: _o, ...three } = report;
+    const { free: _f, junction: _j, forcedKm: _k, height: _h, below: _b, ...tracking } = report.tracking;
+    const parsed = ReportSchema.parse({ ...three, tracking, version: 3 });
+    expect(parsed.objective).toBeUndefined();
+    expect(parsed.tracking.free).toBeUndefined();
+  });
+
+  it("compares a version-3 report with a version-4 one as the new fields added and nothing else", () => {
+    const report = buildReport({ ...input(), withoutTimings: true });
+    const { objective: _o, ...three } = report;
+    const { free: _f, junction: _j, forcedKm: _k, height: _h, below: _b, ...tracking } = report.tracking;
+    const before = flattenReport(ReportSchema.parse({ ...three, tracking, version: 3 }));
+    const after = flattenReport(report);
+    const added = [...after.keys()].filter((k) => !before.has(k));
+    const changed = [...before.keys()].filter((k) => k !== "version" && before.get(k) !== after.get(k));
+    expect(changed).toEqual([]);
+    expect([...before.keys()].every((k) => after.has(k))).toBe(true);
+    const isNew = (k: string) =>
+      [
+        "tracking.free.",
+        "tracking.junction.",
+        "tracking.forcedKm",
+        "tracking.height.",
+        "tracking.below.",
+      ].some((p) => k.startsWith(p));
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.every(isNew)).toBe(true);
+  });
+
+  it("a version-4 report (no junction, slope nor heights over 15 / 20 m) still parses", () => {
+    const report = buildReport(input());
+    const { junction: _j, ...tracking } = report.tracking;
+    const { shortWaveSlope: _s, ...free } = tracking.free!;
+    const { over15Km: _a, over20Km: _b, ...height } = tracking.height!;
+    const four = ReportSchema.parse({ ...report, version: 4, tracking: { ...tracking, free, height } });
+    expect(four.tracking.junction).toBeUndefined();
+  });
+
+  it("warns of builds unlike in range, below, extract or objective with its weights", () => {
+    const report = buildReport(input());
+    const v2 = (w: number) =>
+      buildReport({
+        ...input(),
+        objective: { kind: "v2", gradeChange: w, reachM: { viaduct: 150, below: 300 }, targetScale: 1 },
+      });
+    expect(buildsUnlike(report, report)).toBeNull();
+    expect(buildsUnlike(v2(1.5), v2(1.5))).toBeNull();
+    expect(buildsUnlike(report, v2(1.5))).toEqual({
+      a: `ship/pruned/${EXPECTED_EXTRACT_TIMESTAMP}/v1`,
+      b: `ship/pruned/${EXPECTED_EXTRACT_TIMESTAMP}/v2(w 1.5, reach 150/300, target ×1)`,
+    });
+    expect(buildsUnlike(v2(1.5), v2(2))).not.toBeNull();
+    // A report before version 4 has no objective: v1.
+    const { objective: _o, ...old } = report;
+    expect(objectiveLabel({ objective: undefined })).toBe("v1");
+    expect(buildsUnlike(old, report)).toBeNull();
+    expect(buildsUnlike(report, { ...report, below: "all" })).not.toBeNull();
+  });
+
   it("version 3: the partition with its anchor count and largest block, and a version-2 report still parses", () => {
     const report = buildReport(input());
-    expect(report.version).toBe(3);
     expect(report.partition!.anchorCount).toBe(2);
     expect(report.partition!.largest).toEqual({ id: "1#0", runs: 2, pieces: 2, variables: 40 });
     const { partition: _, ...old } = report;

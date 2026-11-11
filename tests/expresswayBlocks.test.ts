@@ -4,8 +4,10 @@ import {
   BlockTooLargeError,
   type CompileResult,
   type CrossObject,
+  OBJECTIVE_V2,
   type PlanOptions,
   planNetwork,
+  type SolveOptions,
   solvePlan,
   solveRoutes,
 } from "../src/expressway/compile";
@@ -94,9 +96,15 @@ function twoJunctions(length = 10000) {
 
 const BLOCKS: PlanOptions = { partition: "blocks" };
 
-function build(net: Network, options: PlanOptions = BLOCKS, objects: CrossObject[] = [], g = ground) {
+function build(
+  net: Network,
+  options: PlanOptions = BLOCKS,
+  objects: CrossObject[] = [],
+  g = ground,
+  solve: SolveOptions = {},
+) {
   const plan = planNetwork(net, new Set(), null, [], options);
-  return { plan, result: solvePlan(plan, g, objects) };
+  return { plan, result: solvePlan(plan, g, objects, solve) };
 }
 
 const written = (r: CompileResult) => JSON.stringify({ chunks: r.chunks, runs: r.runs, closed: r.closed });
@@ -292,6 +300,101 @@ describe("片の一貫性（I2）と縫い目（I3）", () => {
     const bounds = (r: CompileResult) =>
       chunksOf(r, "10").map((c) => [c.id, c.st[0], c.st[c.st.length - STATION_STRIDE]]);
     expect(bounds(result)).toEqual(bounds(whole));
+  });
+});
+
+describe("目的 v2 でも片の一貫性（I2）と縫い目（I3）（P2.7-3）", () => {
+  // The I2/I3 network above, solved with objective v2: the route solution and the blocks read the
+  // same target (the run's envelope, cut per piece) and the same grade-change rows. What v2 aims at
+  // is read over the same ground with a 200 m wave of 1 m on it (`wavy`); I2 itself is not, as
+  // there the open ground's floor fails the route solution's standard step by 0.20 m near 2,577 m
+  // (v1 too) and the blocks step down to the 特例 grade, which the route solution never takes.
+  const wavy = (lon: number, lat: number) =>
+    ground(lon, lat) + Math.sin((2 * Math.PI * plane.toXY(lon, lat)[0]) / 200);
+  const net = mainLine(8000);
+  const objects = [
+    street(1, 1200, -300, 1200, 300),
+    street(2, 4100, -300, 4100, 300),
+    street(3, 6900, -300, 6900, 300),
+  ];
+  const v2 = { objective: OBJECTIVE_V2 };
+  const { plan, result } = build(net, BLOCKS, objects, ground, v2);
+  const onWaves = build(net, BLOCKS, objects, wavy, v2).result;
+  const part = plan.partition!;
+  const pieces = part.piecesOf.get("10")!;
+  /**
+   * The deck's mean height over the crests of the short wave (the rolling ground + 1 m) at the
+   * stations 1 km or more from both ends: v2's target is the upper envelope + 8.7 m.
+   */
+  const overCrests = (r: CompileResult) => {
+    const inner = stations(chunksOf(r, "10")).filter((st) => st.s >= 1000 && st.s <= 7000);
+    // The line runs east along y = 0 from x = 0, so a station at s stands at x = s.
+    const rise = inner.map((st) => {
+      const [lon, lat] = plane.toLonLat(st.s, 0);
+      return st.z - (ground(lon, lat) + 1);
+    });
+    return rise.reduce((a, v) => a + v, 0) / rise.length;
+  };
+
+  it("stands on the crests of the short wave: the deck's mean height over them is the 8.7 m of the target", () => {
+    const v1 = build(net, BLOCKS, objects, wavy).result;
+    expect(overCrests(onWaves)).toBeGreaterThan(8.4);
+    expect(overCrests(onWaves)).toBeLessThan(9.3);
+    // v1 aims at the mean ground (+ 8.7 m), held up by the floor (the peaks + 6.7 m) only.
+    expect(overCrests(v1)).toBeLessThan(8.3);
+  });
+
+  it("the L1 rows reach the pieces: without them (weight 0) the blocks solve otherwise", () => {
+    const none = build(net, BLOCKS, objects, wavy, { objective: { ...OBJECTIVE_V2, gradeChange: 0 } }).result;
+    expect(written(none)).not.toBe(written(onWaves));
+  });
+
+  it("I2: the pieces solved block by block are v2's route solution (1 mm, 3e-5 grade, 1e-4 bank)", () => {
+    expect(pieces.length).toBe(3);
+    expect(result.closed).toEqual([]);
+    const [route] = solveRoutes(plan, ground, objects, v2);
+    const rp = plan.runs.get("10")!;
+    let worst = { z: 0, grade: 0, bank: 0 };
+    for (const st of stations(chunksOf(result, "10"))) {
+      let p = pieces[0];
+      for (const q of pieces) if (q.a <= st.s) p = q;
+      const v = evalProfile(route.profiles.get(p.id)!, st.s - p.a);
+      const pr = part.pieces.runs.get(p.id)!;
+      const base = rp.align.s[rp.i0];
+      let i = pr.i0;
+      while (i < pr.i1 && rp.align.s[i + 1] - base <= st.s) i++;
+      const bank = route.banks.get(p.id)![i - pr.i0];
+      worst = {
+        z: Math.max(worst.z, Math.abs(v.z - st.z)),
+        grade: Math.max(worst.grade, Math.abs(v.grade - st.grade)),
+        bank: Math.max(worst.bank, Math.abs(bank - st.bank)),
+      };
+    }
+    expect(worst.z).toBeLessThanOrEqual(1e-3 + 5e-4);
+    // The grade within 3e-5, not v1's 1.5e-5: the L1 rows make the profile nearly straight between
+    // a few turns whose places the objective barely fixes, so the two solves, each to the QP's
+    // accuracy, put a turn a little apart (2.0e-5 at W_GRADE_CHANGE 1.5, 250 m from an anchor;
+    // 0.8e-5 at 1 and 0.9e-5 at 2, P2.7-3). The elevation stays within the tiles' millimetre.
+    expect(worst.grade).toBeLessThanOrEqual(3e-5);
+    expect(worst.bank).toBeLessThanOrEqual(1e-4 + 5e-5);
+  });
+
+  it("the objective reaches the route solution: v2's differs from v1's", () => {
+    const [v1Route] = solveRoutes(plan, ground, objects);
+    const [v2Route] = solveRoutes(plan, ground, objects, v2);
+    const id = pieces[1].id;
+    const a = v1Route.profiles.get(id)!.z;
+    const b = v2Route.profiles.get(id)!.z;
+    expect(Math.max(...a.map((z, j) => Math.abs(z - b[j])))).toBeGreaterThan(0.01);
+  });
+
+  it("I3: z, grade and bank meet exactly at every anchor with v2 too", () => {
+    expect(result.partition.joins.dz).toBeLessThan(1e-9);
+    expect(result.partition.joins.dGrade).toBeLessThan(1e-12);
+    expect(result.partition.joins.dBank).toBe(0);
+    const at = stations(chunksOf(result, "10")).map((st) => st.s);
+    for (const a of result.partition.anchors) expect(at.some((s) => Math.abs(s - a.s) < 0.01)).toBe(true);
+    expect(result.stats.unconverged).toBe(0);
   });
 });
 
