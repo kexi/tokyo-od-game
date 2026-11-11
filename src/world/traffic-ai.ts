@@ -203,7 +203,10 @@ export class TrafficAI {
     for (const seg of graph?.segments ?? []) {
       if (kept.length >= PARKED_MAX) break;
       yield;
-      const isSideStreet = seg.line.width >= 4 && seg.line.width < 13 && seg.length > 25;
+      // Not on an expressway chunk (a line with an xid): a 4–13 m wide ramp or deck is no side
+      // street, and a car parked there stood in the lane of 24402611:29.
+      const isDeck = seg.line.xid !== undefined;
+      const isSideStreet = !isDeck && seg.line.width >= 4 && seg.line.width < 13 && seg.length > 25;
       const h = hashCoords(seg.line.coords);
       if (!isSideStreet || h % 6 !== 0) continue;
       const key = `${seg.line.width}/${seg.line.coords.join(",")}`;
