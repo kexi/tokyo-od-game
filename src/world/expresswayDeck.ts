@@ -1,11 +1,10 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
   BufferGeometry,
-  DoubleSide,
   Float32BufferAttribute,
+  type Material,
   type Matrix4,
   Mesh,
-  MeshStandardMaterial,
   type Quaternion,
   type Scene,
   Vector3,
@@ -26,8 +25,10 @@ import { carriagewayWidth } from "../expressway/section";
 import { FrameWork } from "../game/frameWork";
 import { SerialWork } from "../game/serialWork";
 import type { LocalFrame } from "../geo/frame";
-import { log, warn } from "../log";
+import { error, log, warn } from "../log";
 import { reanchorBody } from "../physics/reanchor";
+import { type DeckCutGeodetic, deckCutPoints } from "./deckCuts";
+import { createDeckMaterial, DECK_COLOURS, deckSurfaceAttribute } from "./deckSurface";
 import {
   dashWindows,
   DeckIndex,
@@ -99,13 +100,19 @@ const PIER_FOOT = 0.6;
 /** Paint stands this far over the slab (no z-fighting at a few hundred metres). */
 const PAINT_LIFT = 0.012;
 
-const ASPHALT = [0.16, 0.16, 0.17];
-const CONCRETE = [0.66, 0.65, 0.61];
-const SOFFIT = [0.48, 0.47, 0.44];
-const PIER = [0.62, 0.61, 0.57];
-const PAINT_WHITE = [0.86, 0.86, 0.84];
-const PAINT_YELLOW = [0.85, 0.64, 0.1];
-/** A structure deck's apron (guideway, walkway): paler than the asphalt, darker than the parapet. */
+// The flat colours say which surface a face is; deckSurface.ts textures each from them.
+const {
+  asphalt: ASPHALT,
+  concrete: CONCRETE,
+  soffit: SOFFIT,
+  pier: PIER,
+  paintWhite: PAINT_WHITE,
+  paintYellow: PAINT_YELLOW,
+} = DECK_COLOURS;
+/**
+ * A structure deck's apron (guideway, walkway): paler than the asphalt, darker than the parapet.
+ * Not in DECK_COLOURS: deckSurface.ts textures it as its nearest entry, the soffit's concrete.
+ */
 const APRON = [0.42, 0.42, 0.41];
 
 export type DeckArrays = { position: Float32Array; color: Float32Array };
@@ -735,14 +742,8 @@ export class ExpresswayDecks {
   /** meta.json answered with nothing usable: no decks will come. */
   private hasNoData = false;
   private readonly work = new SerialWork();
-  // Double-sided like the bridge decks in water.ts: the faces wind outward, but a deck seen from
-  // under its overhang must never show a hole if one face is turned the wrong way.
-  private readonly material = new MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.92,
-    metalness: 0,
-    side: DoubleSide,
-  });
+  /** Shared by every chunk's mesh, made at the first one (the textures load only with decks). */
+  private material: Material | null = null;
   private centre: { lat: number; lon: number } | null = null;
   /** The centre of the last refresh that finished (every collider in reach of it built). */
   private settled: { lat: number; lon: number } | null = null;
@@ -915,15 +916,45 @@ export class ExpresswayDecks {
           // A failure is not remembered: the next refresh asks again (a dropped connection is not
           // a missing tile; meta.json says which tiles exist).
           if (tile === null) this.tiles.delete(key);
+          const fresh: XwChunk[] = [];
           for (const c of tile?.chunks ?? []) {
+            if (!this.known.has(c.id)) fresh.push(c);
             this.known.set(c.id, c);
             this.index.add(c);
           }
+          this.announceCuts(fresh);
           return tile;
         });
       this.tiles.set(key, p);
     }
     return p;
+  }
+
+  /**
+   * Called with the cut points (deckCuts.ts, ellipsoidal heights) of every chunk as its tile is
+   * read: main.ts hands them to the buildings, which cut what stands into the decks (P4).
+   */
+  onCutPoints: ((points: DeckCutGeodetic[]) => void) | null = null;
+  // Set it before the first update(): the tiles read before it is set are not announced again.
+
+  private announceCuts(chunks: readonly XwChunk[]): void {
+    const listener = this.onCutPoints;
+    if (!listener || chunks.length === 0) return;
+    // Isolated: this runs inside loadTile's promise, and a throw here would leave a rejected
+    // promise in this.tiles, so the tile's decks would never be built.
+    try {
+      const points = chunks.flatMap((c) =>
+        deckCutPoints(c).map((p) => ({
+          lat: p.lat,
+          lon: p.lon,
+          h: this.ellipsoidal(p.lat, p.lon, p.soffitTp),
+          top: this.ellipsoidal(p.lat, p.lon, p.roadTp),
+        })),
+      );
+      listener(points);
+    } catch (failure) {
+      error("expressway_cuts_failed", { chunks: chunks.length, error: String(failure) });
+    }
   }
 
   /** The listed tiles of the 3 × 3 around a point (z14, ~2 km: every deck near it is in one). */
@@ -1073,8 +1104,13 @@ export class ExpresswayDecks {
     const g = new BufferGeometry();
     g.setAttribute("position", new Float32BufferAttribute(result.arrays.position, 3));
     g.setAttribute("color", new Float32BufferAttribute(result.arrays.color, 3));
+    g.setAttribute(
+      "aDeck",
+      new Float32BufferAttribute(deckSurfaceAttribute(result.arrays.position, result.arrays.color), 3),
+    );
     g.computeVertexNormals();
     g.computeBoundingSphere();
+    this.material ??= createDeckMaterial();
     const mesh = new Mesh(g, this.material);
     mesh.name = `expressway-${chunk.id}`;
     mesh.castShadow = true;

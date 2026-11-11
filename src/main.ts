@@ -486,6 +486,9 @@ async function main(): Promise<void> {
         );
   terrain.setWater(water);
   const buildings = new Buildings(scene, world, camera, renderer, frame);
+  // PLATEAU buildings that stand into a deck are cut down below its soffit as its tile is read.
+  // Set here, before the first expressway.update() in the frame loop: no tile is read before it.
+  if (expressway) expressway.onCutPoints = (points) => buildings.cutAboveDecks(points);
   // The landmarks (public/data/landmarks.json) replace their PLATEAU copies: tell the buildings
   // before the first tiles arrive.
   const landmarkEntries = await fetchLandmarks();
@@ -2154,6 +2157,41 @@ async function main(): Promise<void> {
       xid: hit?.seg.line.xid ?? null,
     });
   };
+  /** Since when the car has stood still on a deck (null: moving or off a deck); logged once. */
+  let deckStillSince: number | null = null;
+  let isStallLogged = false;
+  /**
+   * A car standing still on a deck for STALL_MS: whether it is held (frozen: a deck's collider not
+   * yet built, isReadyNear) or touching something (the chassis' overlaps by kind), for the stops
+   * seen at the 207111988:2 merge (knowledge/road-textures.md).
+   */
+  const noteDeckStall = (p: Vector3, kmh: number, deckReady: boolean) => {
+    const STALL_MS = 3000;
+    const isStill = carOnDeck && kmh < 1;
+    if (!isStill) {
+      deckStillSince = null;
+      isStallLogged = false;
+      return;
+    }
+    deckStillSince ??= performance.now();
+    const isLong = performance.now() - deckStillSince > STALL_MS;
+    if (!isLong || isStallLogged) return;
+    isStallLogged = true;
+    const g = frame.toGeodetic(p);
+    const hit = roadGraph?.nearestOnSurface(p, 15, (seg) => seg.line.xid !== undefined) ?? null;
+    warn("expressway_car_stalled", {
+      lat: Number(g.lat.toFixed(6)),
+      lon: Number(g.lon.toFixed(6)),
+      xid: hit?.seg.line.xid ?? null,
+      frozen,
+      deckReady,
+      carFrozen: vehicle.isFrozen(),
+      incident: emergency.incident !== null,
+      pursuit: emergency.pursuit !== null,
+      touching: vehicle.touching(),
+      stillMs: Math.round(performance.now() - deckStillSince),
+    });
+  };
   let overSince: number | null = null;
   let rightSince: number | null = null;
   let wrongWaySince: number | null = null;
@@ -2613,21 +2651,33 @@ async function main(): Promise<void> {
     // Never simulate the car over ground whose collider has not been built yet (nor next to an
     // expressway deck whose collider is still to come: a car on it would fall through).
     const isDeckReady = expressway?.isReadyNear(geo.lat, geo.lon) ?? true;
-    const hasGround = terrain.hasColliderAt(geo.lat, geo.lon) && isDeckReady && !warping;
+    const isTerrainReady = terrain.hasColliderAt(geo.lat, geo.lon);
+    const hasGround = isTerrainReady && isDeckReady && !warping;
     if (hasGround === frozen) {
       frozen = !hasGround;
       vehicle.setFrozen(frozen);
+      // Why the car is held or let go, with ?expressway (a car stopping on a deck: held by the
+      // missing collider, or touching something; expressway_car_stalled says which).
+      if (expressway)
+        log("vehicle_hold_changed", {
+          frozen,
+          terrainReady: isTerrainReady,
+          deckReady: isDeckReady,
+          warping: warping !== null,
+          lat: Number(geo.lat.toFixed(6)),
+          lon: Number(geo.lon.toFixed(6)),
+        });
     }
-    // Up on an expressway deck the car passes through the PLATEAU buildings some ramps run into
-    // (Vehicle.setOnDeck); asked of the graph ten times a second.
+    // Up on an expressway deck (asked of the graph ten times a second). The PLATEAU buildings
+    // standing into a deck are cut below it (Buildings.cutAboveDecks), so the car meets none there;
+    // one it still overlaps is logged (a cut that missed, once per 20 m).
     if (expressway && roadGraph && isInCar && now - lastDeckCheck > 100) {
       lastDeckCheck = now;
       // 15 m: the width gate (half the carriageway + 1 m) decides; a 4-lane deck is over 7 m wide.
       carOnDeck = roadGraph.nearestOnSurface(carPos, 15, (seg) => seg.line.xid !== undefined) !== null;
-      vehicle.setOnDeck(carOnDeck);
-      // Where the car passes through a building on a deck: the list P4 cuts out (once per 20 m).
       const isThroughBuilding = carOnDeck && vehicle.overlapsBuilding();
       if (isThroughBuilding) noteBuildingCrossed(carPos);
+      noteDeckStall(carPos, speed, isDeckReady);
     }
     const gy = groundY(carPos.x, carPos.z);
     if (gy !== null && carPos.y < gy - 6) respawnHere();
@@ -5473,6 +5523,15 @@ async function main(): Promise<void> {
           decks: expressway,
           setDrive: (fn) => (debugDrive = fn),
           snapCamera: () => chase.snap(),
+          // A drive with an accident or a pursuit on does not count: an arrest freezes the car.
+          blocker: () =>
+            emergency.incident !== null
+              ? "incident"
+              : emergency.pursuit !== null
+                ? "pursuit"
+                : law.state.suspended
+                  ? "license-suspended"
+                  : null,
         })
       : null;
     Object.assign(window, {

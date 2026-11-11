@@ -477,7 +477,7 @@ const UNIFORMS = {
   stRain: uniform(0).setGroup(renderGroup),
 };
 
-export type SurfaceKind = "asphalt" | "paint" | "paving" | "concrete";
+export type SurfaceKind = "asphalt" | "porous" | "paint" | "paving" | "concrete";
 
 /**
  * How each surface takes the water (Lagarde 2013, "Water drop 2b"): porous asphalt and concrete
@@ -486,6 +486,9 @@ export type SurfaceKind = "asphalt" | "paint" | "paving" | "concrete";
  */
 const SURFACE: Record<SurfaceKind, { darken: number; wetRough: number; drain: number }> = {
   asphalt: { darken: 0.5, wetRough: 0.32, drain: 0 },
+  // 排水性舗装 (the expressway's surface course): the water runs down through its voids, so it
+  // darkens but holds little standing water and its film stays rough (deckSurface.ts).
+  porous: { darken: 0.55, wetRough: 0.5, drain: 0.38 },
   paint: { darken: 0.8, wetRough: 0.25, drain: 0.04 },
   paving: { darken: 0.62, wetRough: 0.42, drain: 0.32 },
   concrete: { darken: 0.62, wetRough: 0.45, drain: 0.45 },
@@ -571,6 +574,11 @@ export type StreetBase = {
   roughness?: Node<"float">;
   /** Shading normal in view space, read in the normal stage (default: the geometry's). */
   normal?: Node<"vec3">;
+  /**
+   * How much of the rain reaches this fragment, 0–1 (default 1): the deck's soffit and the piers
+   * under it stay dry while its road and 壁高欄 get wet (deckSurface.ts). Scales env.wetness.
+   */
+  exposure?: Node<"float">;
 };
 
 type StreetNodes = Pick<MeshStandardNodeMaterial, "colorNode" | "roughnessNode" | "normalNode">;
@@ -582,7 +590,11 @@ const graphs = new Map<string, StreetNodes>();
  * their own base share one graph (and so one pipeline per kind and setting).
  */
 function streetNodes(kind: SurfaceKind, hasStreet: boolean, mode: WetMode, base: StreetBase): StreetNodes {
-  const isShared = base.color === undefined && base.roughness === undefined && base.normal === undefined;
+  const isShared =
+    base.color === undefined &&
+    base.roughness === undefined &&
+    base.normal === undefined &&
+    base.exposure === undefined;
   const key = `${kind}:${hasStreet}:${mode}`;
   const shared = isShared ? graphs.get(key) : undefined;
   if (shared) return shared;
@@ -614,7 +626,7 @@ function buildStreetNodes(
     const up = normalWorldGeometry.y.toVar();
     stFilm.assign(0);
     stPuddle.assign(0);
-    const w = UNIFORMS.stState.z;
+    const w = base.exposure ? UNIFORMS.stState.z.mul(base.exposure).toVar() : UNIFORMS.stState.z;
     If(w.greaterThan(0), () => {
       if (mode === "simple") {
         stFilm.assign(smoothstepN(WET.filmLo, WET.filmHi, w));
@@ -816,7 +828,7 @@ export class StreetMaterial extends MeshStandardNodeMaterial {
   }
 
   override setupLightingModel(): PhysicalLightingModel {
-    const isCarriageway = this.surface === "asphalt" || this.surface === "paint";
+    const isCarriageway = this.surface === "asphalt" || this.surface === "porous" || this.surface === "paint";
     return new StreetLightingModel(isCarriageway);
   }
 
