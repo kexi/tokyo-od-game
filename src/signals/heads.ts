@@ -261,3 +261,46 @@ export const SIGNAL_HEADS = Object.fromEntries(
  */
 export const VEHICLE_HEAD = SIGNAL_HEADS["vehicle-h3"];
 export const PED_HEAD = SIGNAL_HEADS["ped-v2"];
+
+/**
+ * 押ボタン箱 (the pedestrian push-button box) on a 単路 crossing's pole: a box with a round button
+ * and a small おまちください lamp over it that lights between a press and the walk.
+ *
+ * Sources: the 岐阜県警察 交通安全施設整備工事共通仕様書（信号機及び交通管制システム工事編）, 第5節
+ * 押ボタン箱設置工事 — fitted round the pole with a band (電柱抱込式), the pedestrian box at least
+ * 900 mm above the ground, and 200 mm against the box on its 標準設置姿図 (read as its height).
+ * That is one prefecture's works standard, not Tokyo's or 警察庁's. The width, depth, button and
+ * lamp sizes are assumptions (no drawing with them was found): `verified: false`.
+ */
+export const PushButtonBoxDefSchema = z.strictObject({
+  id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
+  /** The housing's node in signals.glb (its lamp and button centres are `<node>_wait`, `<node>_button`). */
+  node: z.string().regex(/^[A-Za-z0-9]+$/),
+  name: z.string().min(1),
+  /** Box size: width across its face, height, depth from the face back to the pole band. */
+  housing: z.strictObject({ wM: metres, hM: metres, dM: metres, cornerM: metres }),
+  /** The button: diameter and its centre's height on the face (from the box's centre). */
+  button: z.strictObject({ diameterM: metres, y: z.number() }),
+  /** The おまちください lamp: a lit window, its size and centre height on the face. */
+  waitLamp: z.strictObject({ wM: metres, hM: metres, y: z.number() }),
+  /** The box's bottom above the pavement (the 900 mm 以上 of the Gifu standard, at its minimum). */
+  bottomM: metres,
+  /** How far the face stands out from the pole's axis (the pole's radius, the band and the box). */
+  offsetM: metres,
+  verified: z.boolean(),
+});
+export type PushButtonBoxDef = z.output<typeof PushButtonBoxDefSchema>;
+
+export const PUSH_BUTTON_BOX = PushButtonBoxDefSchema.parse({
+  id: "ped-button",
+  node: "PushButtonBox",
+  name: "歩行者用押ボタン箱",
+  housing: { wM: 0.13, hM: 0.2, dM: 0.08, cornerM: 0.012 },
+  button: { diameterM: 0.05, y: -0.035 },
+  waitLamp: { wM: 0.08, hM: 0.026, y: 0.055 },
+  bottomM: 0.9,
+  offsetM: 0.22,
+  verified: false,
+});
+/** The おまちください lamp's lit colour (assumed red, as the common boxes show; not from a standard). */
+export const WAIT_LAMP_COLOUR = 0xff3a24;

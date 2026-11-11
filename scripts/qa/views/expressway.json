@@ -1,6 +1,6 @@
 {
   "name": "expressway",
-  "description": "?expressway の試験区間（浜崎橋〜芝公園、public/data/expressway）の視点。床版・壁高欄・橋脚の幾何、縦断の折れ、地面との合い（P1）、P3 の走行面（区画線・ランプの合流と出口の分流・高架下・C1 の並走部・夜）。",
+  "description": "?expressway の試験区間（浜崎橋〜芝公園、public/data/expressway）の視点。P1 の幾何、P3 の走行面（区画線・合流・分流・高架下・C1 の並走部）、P4 のテクスチャ（排水性舗装・型枠コンクリート・区画線の摩耗）を昼・夕・夜・雨の夜で、建物の切り抜き 3 か所と俯瞰は昼だけ。P7 のレインボーブリッジ（構造物上書き: 上層の 11 号台場線と下層の臨港道路の床版、橋のモデルの主塔・トラスとの合い）。",
   "defaults": {
     "time": "day",
     "weather": "clear",
@@ -16,8 +16,19 @@
         "moment": "2026-11-10T11:00:00+09:00"
       },
       {
+        "id": "dusk",
+        "time": "evening",
+        "moment": "2026-11-10T16:40:00+09:00"
+      },
+      {
         "id": "night",
         "time": "night",
+        "moment": "2026-11-10T20:00:00+09:00"
+      },
+      {
+        "id": "rain-night",
+        "time": "night",
+        "weather": "rain",
         "moment": "2026-11-10T20:00:00+09:00"
       }
     ],
@@ -40,22 +51,34 @@
           "expect": {
             "deck": "片側 2 車線の床版、両側の壁高欄",
             "grade": "折れや段差がない",
-            "markings": "外側線（白実線 0.20 m、路肩の内側）と車線境界線（白破線 8 m／12 m）が床版の上にある"
-          }
+            "markings": "外側線（白実線 0.20 m、路肩の内側）と車線境界線（白破線 8 m／12 m）が床版の上にある",
+            "texture": "排水性舗装の粗い目、4 m の繰り返し・継ぎ目・モアレが見えない。区画線はかすれが少しあり、舗装より明るい"
+          },
+          "probes": [
+            {
+              "name": "road",
+              "rect": [0.3, 0.72, 0.7, 0.98]
+            }
+          ]
         },
         {
-          "id": "deck-overhead",
-          "camera": "overhead",
+          "id": "deck-chase",
+          "camera": "chase",
           "target": {
             "expressway": "24402611:14",
-            "share": 0.5
+            "share": 0.6
           },
-          "altitudeM": 220,
-          "pitchDeg": 75,
-          "angleDeg": 90,
-          "fov": 50,
+          "distanceM": 25,
+          "fov": 55,
+          "probes": [
+            {
+              "name": "road",
+              "rect": [0.36, 0.58, 0.64, 0.68]
+            }
+          ],
           "expect": {
-            "deck": "床版の幅と線形、橋脚の並び"
+            "car": "自車が床版の車線の中にいる",
+            "night": "夜は前照灯が床版の舗装と区画線を照らす（床版の道路照明はまだ無い）"
           }
         },
         {
@@ -80,7 +103,61 @@
           "fov": 60,
           "expect": {
             "deck": "高架下から見上げた桁と橋脚",
-            "piers": "脚が地面に立ち、車道の上に無い"
+            "piers": "脚が地面に立ち、車道の上に無い",
+            "texture": "桁と橋脚に型枠の目地・セパ穴・上端からの雨だれ。下面は濡れない（雨の夜）"
+          },
+          "probes": [
+            {
+              "name": "girder",
+              "rect": [0.4, 0.25, 0.6, 0.45]
+            }
+          ]
+        },
+        {
+          "id": "deck-side",
+          "camera": "free",
+          "eye": {
+            "lat": 35.65335,
+            "lon": 139.75105,
+            "h": 8,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.653642,
+            "lon": 139.751258,
+            "h": 14,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402611:14",
+            "share": 0.5
+          },
+          "fov": 55,
+          "probes": [
+            {
+              "name": "parapet",
+              "rect": [0.42, 0.42, 0.58, 0.52]
+            }
+          ],
+          "expect": {
+            "texture": "壁高欄と床版の側面のコンクリート（目地・雨だれ）、桁の側面。継ぎ目や伸びが無い",
+            "buildings": "建物が床版を貫いていない"
+          }
+        },
+        {
+          "id": "deck-oblique",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:14",
+            "share": 0.5
+          },
+          "altitudeM": 120,
+          "pitchDeg": 35,
+          "angleDeg": 60,
+          "fov": 50,
+          "expect": {
+            "texture": "斜め上空から: 舗装の繰り返しが格子に見えない、明るさのむら（マクロの変化）が自然",
+            "buildings": "床版の上に建物の壁や屋根が出ていない"
           }
         },
         {
@@ -95,23 +172,8 @@
           "expect": {
             "merge": "芝公園入口のランプが本線（C1 内回り）へ合流する。合流側の壁高欄は本線の車線域に立たない",
             "markings": "本線側の外側線が分合流部の太い破線（幅 0.45 m・線長 3 m）になり、ランプ側に導流帯（ゼブラ）",
-            "surface": "ランプと本線の床版の段差が見えない"
-          }
-        },
-        {
-          "id": "merge-overhead",
-          "camera": "overhead",
-          "target": {
-            "expressway": "207111988:2",
-            "share": 0.85
-          },
-          "altitudeM": 90,
-          "pitchDeg": 80,
-          "angleDeg": 0,
-          "fov": 50,
-          "expect": {
-            "merge": "ランプの床版が本線の床版に重なる部分で壁高欄が切れ、外側を囲む壁高欄は続く",
-            "markings": "太い破線と導流帯の位置が床版の重なりと合う"
+            "surface": "ランプと本線の床版の段差が見えない",
+            "texture": "ランプと本線の舗装の模様が継ぎ目で揃う（ワールド座標）"
           }
         },
         {
@@ -126,38 +188,6 @@
           "expect": {
             "diverge": "C1 外回りから芝公園出口が分かれる。分流側の壁高欄が本線の車線域に立たない",
             "markings": "分流部の太い破線、ノーズ手前の導流帯"
-          }
-        },
-        {
-          "id": "diverge-inner-overhead",
-          "camera": "overhead",
-          "target": {
-            "expressway": "4853799:0",
-            "share": 0.1
-          },
-          "altitudeM": 90,
-          "pitchDeg": 80,
-          "angleDeg": 0,
-          "fov": 50,
-          "expect": {
-            "diverge": "C1 内回りから出口ランプが分かれる。床版が一枚につながり、穴や重なった壁が無い"
-          }
-        },
-        {
-          "id": "diverge-outer-overhead",
-          "camera": "overhead",
-          "target": {
-            "expressway": "4853798:0",
-            "share": 0.3
-          },
-          "altitudeM": 70,
-          "pitchDeg": 80,
-          "angleDeg": 0,
-          "fov": 50,
-          "expect": {
-            "diverge": "C1 外回りから芝公園出口が分かれる（P3.5 の一体化）。床版が一枚で、本線の縁でランプの床版が切れ、継ぎ目に段差・隙間・ちらつきが無い",
-            "markings": "本線の外側線が分流の範囲で太い破線になり、導流帯がランプの車線端から本線の車線端まで。区画線が二重にならない",
-            "walls": "壁高欄は一枚の床版の外周だけ。本線とランプの間に壁が残らない"
           }
         },
         {
@@ -201,6 +231,392 @@
           }
         }
       ]
+    },
+    {
+      "id": "geometry",
+      "start": [35.6537, 139.7508],
+      "looks": [
+        {
+          "id": "day",
+          "time": "day",
+          "moment": "2026-11-10T11:00:00+09:00"
+        }
+      ],
+      "views": [
+        {
+          "id": "deck-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:14",
+            "share": 0.5
+          },
+          "altitudeM": 220,
+          "pitchDeg": 75,
+          "angleDeg": 90,
+          "fov": 50,
+          "expect": {
+            "deck": "床版の幅と線形、橋脚の並び"
+          }
+        },
+        {
+          "id": "merge-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "207111988:2",
+            "share": 0.85
+          },
+          "altitudeM": 90,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "merge": "ランプの床版が本線の床版に重なる部分で壁高欄が切れ、外側を囲む壁高欄は続く",
+            "markings": "太い破線と導流帯の位置が床版の重なりと合う"
+          }
+        },
+        {
+          "id": "diverge-inner-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "4853799:0",
+            "share": 0.1
+          },
+          "altitudeM": 90,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "diverge": "C1 内回りから出口ランプが分かれる。床版が一枚につながり、穴や重なった壁が無い"
+          }
+        },
+        {
+          "id": "diverge-outer-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "4853798:0",
+            "share": 0.3
+          },
+          "altitudeM": 70,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "diverge": "C1 外回りから芝公園出口が分かれる（P3.5 の一体化）。床版が一枚で、本線の縁でランプの床版が切れ、継ぎ目に段差・隙間・ちらつきが無い",
+            "markings": "本線の外側線が分流の範囲で太い破線になり、導流帯がランプの車線端から本線の車線端まで。区画線が二重にならない",
+            "walls": "壁高欄は一枚の床版の外周だけ。本線とランプの間に壁が残らない"
+          }
+        },
+        {
+          "id": "crossing-ramp",
+          "camera": "free",
+          "eye": {
+            "lat": 35.6529,
+            "lon": 139.74992,
+            "h": 55,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.6535,
+            "lon": 139.75022,
+            "h": 15,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "207111988:0",
+            "share": 0.5
+          },
+          "fov": 55,
+          "expect": {
+            "buildings": "P3 で床版を貫いていた PLATEAU の建物が、床版の上で切り抜かれている（床版の下の部分は残る）"
+          }
+        },
+        {
+          "id": "crossing-c1-19",
+          "camera": "free",
+          "eye": {
+            "lat": 35.65275,
+            "lon": 139.75282,
+            "h": 55,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.65335,
+            "lon": 139.75312,
+            "h": 15,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402611:19",
+            "share": 0.5
+          },
+          "fov": 55,
+          "expect": {
+            "buildings": "P3 で床版を貫いていた PLATEAU の建物が、床版の上で切り抜かれている（床版の下の部分は残る）"
+          }
+        },
+        {
+          "id": "crossing-c1-24",
+          "camera": "free",
+          "eye": {
+            "lat": 35.65525,
+            "lon": 139.75978,
+            "h": 55,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.65585,
+            "lon": 139.76008,
+            "h": 15,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402611:24",
+            "share": 0.5
+          },
+          "fov": 55,
+          "expect": {
+            "buildings": "P3 で床版を貫いていた PLATEAU の建物が、床版の上で切り抜かれている（床版の下の部分は残る）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rainbow",
+      "start": [35.6391198, 139.7560316],
+      "views": [
+        {
+          "id": "rb-upper-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "4848762:21",
+            "share": 0.3
+          },
+          "distanceM": 60,
+          "fov": 60,
+          "expect": {
+            "deck": "上層（11 号台場線、芝浦→台場）。片側 2 車線（3.5 m）、外側の路肩と余裕幅、中央分離帯に背中合わせの壁高欄",
+            "structure": "主塔の脚とケーブルが壁高欄の外に立ち、車線に入らない。床版の下にトラスの上弦が見える（床版が浮かない）",
+            "grade": "縦断が凸の放物線で折れない"
+          }
+        },
+        {
+          "id": "rb-lower-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45177681:7",
+            "share": 0.3
+          },
+          "distanceM": 60,
+          "fov": 60,
+          "expect": {
+            "deck": "下層の臨港道路（芝浦→台場）。片側 2 車線（3.25 m）、柵の位置の壁高欄",
+            "structure": "トラスの斜材・垂直材が床版の外（歩道の外）にあり、車線に入らない。上層の床版が頭上を覆う",
+            "aprons": "壁の外は軌道（中央）と遊歩道（外側）の床版で、穴が無い"
+          }
+        },
+        {
+          "id": "rb-shibaura-ground",
+          "camera": "free",
+          "eye": {
+            "lat": 35.63912,
+            "lon": 139.75603,
+            "h": 1.6,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.637512,
+            "lon": 139.76,
+            "h": 55,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "4848762:7",
+            "share": 0.5
+          },
+          "fov": 60,
+          "expect": {
+            "approach": "芝浦側の取付け高架がアンカレイジへ上って橋につながり、段差や折れが無い",
+            "anchorage": "上層の床版がアンカレイジのケーブル室を貫いていない（OSM の線は芝浦側でアンカレイジの上を曲がる）"
+          }
+        },
+        {
+          "id": "rb-odaiba-beach",
+          "camera": "free",
+          "eye": {
+            "lat": 35.6318,
+            "lon": 139.7738,
+            "h": 2.5,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.636573,
+            "lon": 139.76316,
+            "h": 50,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "4848762:23",
+            "share": 0.5
+          },
+          "fov": 50,
+          "expect": {
+            "bridge": "台場の海浜公園から見た全景。2 層の床版がトラスの上弦の上（上層）と内側（下層）に収まる",
+            "piers": "径間とアンカレイジの範囲に道路側の橋脚が立たない"
+          }
+        },
+        {
+          "id": "rb-side",
+          "camera": "free",
+          "eye": {
+            "lat": 35.633387,
+            "lon": 139.761637,
+            "h": 30,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.636573,
+            "lon": 139.76316,
+            "h": 52,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "4848762:22",
+            "share": 0.5
+          },
+          "fov": 55,
+          "expect": {
+            "profile": "真横から。上層・下層の床版の縦断がトラスの弦と平行な凸の放物線で、床版がトラスから浮く・めり込む所が無い",
+            "girder": "橋の範囲に道路側の箱桁が描かれない"
+          }
+        },
+        {
+          "id": "rb-truss-close",
+          "camera": "free",
+          "eye": {
+            "lat": 35.636558,
+            "lon": 139.761372,
+            "h": 50,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.637061,
+            "lon": 139.761612,
+            "h": 55,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "45177678:7",
+            "share": 0.1
+          },
+          "fov": 50,
+          "expect": {
+            "fit": "南西側の水面上からトラス越しに下層を見る。下層の床版・歩道の縁がトラスの主構（±14.5 m）の内側に収まり、上層の床版が上弦の上に載る"
+          }
+        },
+        {
+          "id": "rb-shibaura-anchorage",
+          "camera": "free",
+          "eye": {
+            "lat": 35.637512,
+            "lon": 139.757435,
+            "h": 75,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.638015,
+            "lon": 139.758744,
+            "h": 55,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "45019020:26",
+            "share": 0.5
+          },
+          "fov": 55,
+          "expect": {
+            "anchorage": "芝浦のアンカレイジの上で上層の床版が曲がり始める所。床版とケーブル室・桁受けの取り合い",
+            "taper": "橋の断面（13.3 m）から取付けの断面へ 4 段で戻る所の壁高欄の段"
+          }
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "name": "deck-road-luma-day",
+      "from": {
+        "view": "deck-driver-40",
+        "probe": "road",
+        "stat": "mean",
+        "look": "day"
+      },
+      "min": 45,
+      "max": 170,
+      "unit": "luma",
+      "note": "クリップ検出用（白飛び・真っ黒の検出で、見た目の良し悪しではない）。下限 45 は sRGB の輝度で暗部が潰れ始める目安、上限 170 は舗装（アルベド 0.1 前後）が昼の露出で白飛びに近い目安。値 100 前後"
+    },
+    {
+      "name": "deck-road-night-over-day",
+      "from": {
+        "view": "deck-chase",
+        "probe": "road",
+        "stat": "mean",
+        "look": "night",
+        "over": "day"
+      },
+      "min": 0.03,
+      "max": 0.6,
+      "note": "クリップ検出用。後方追従（前照灯あり）の自車の前の舗装の夜 / 昼の平均輝度。下限 0.03 は前照灯が当たっていない（真っ黒）ことの検出で、0 周目の自車を隠した運転席の 0.025 を下回る値として置いた。上限 0.6 は夜が昼並みに明るい（照明の誤り）ことの検出。根拠は法令ではなく画素の目安"
+    },
+    {
+      "name": "deck-marking-contrast-day",
+      "from": {
+        "view": "deck-driver-40",
+        "probe": "road",
+        "stat": "contrast",
+        "look": "day"
+      },
+      "min": 0.25,
+      "note": "クリップ検出用。昼の運転席の路面の (p99 − p50) / p50。区画線が舗装に埋もれたこと（線が消えた・舗装が白飛び）の検出で、下限 0.25 は線と舗装の輝度差が 25 % を切ると目で線が拾いにくくなる目安"
+    },
+    {
+      "name": "deck-rain-night-over-day",
+      "from": {
+        "view": "deck-driver-40",
+        "probe": "road",
+        "stat": "mean",
+        "look": "rain-night",
+        "over": "day"
+      },
+      "min": 0.02,
+      "max": 0.35,
+      "note": "クリップ検出用。雨の夜の舗装（映り込みを含む）の昼に対する比。上限 0.35 は濡れの映り込みが白飛びして昼に近づくことの検出、下限 0.02 は真っ黒の検出"
+    },
+    {
+      "name": "girder-night-over-day",
+      "from": {
+        "view": "deck-below",
+        "probe": "girder",
+        "stat": "mean",
+        "look": "night",
+        "over": "day"
+      },
+      "min": 0.01,
+      "max": 0.7,
+      "note": "クリップ検出用。高架下の桁の夜 / 昼の輝度の比（0.01〜0.7: 真っ黒・昼並みの検出）"
+    },
+    {
+      "name": "parapet-luma-day",
+      "from": {
+        "view": "deck-side",
+        "probe": "parapet",
+        "stat": "mean",
+        "look": "day"
+      },
+      "min": 60,
+      "max": 230,
+      "unit": "luma",
+      "note": "クリップ検出用。昼の横から見た壁高欄・床版の側面の平均輝度（60〜230: 暗すぎ・白飛びの検出）。矩形の上に背景が少し入る"
     }
   ]
 }

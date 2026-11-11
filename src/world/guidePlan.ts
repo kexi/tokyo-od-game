@@ -7,7 +7,6 @@ import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { ArmSpec, BoardContent, JunctionContent, Shield, SignName } from "../signs/board/content";
 import { letterHeight } from "../signs/board/letters";
 import { hasRoadside, isDrivable } from "./roadClass";
-import { carriagewayWidth, resolveSection } from "./laneChange";
 
 /**
  * 案内標識 of the 108 series for the junctions of the road graph: which approaches get one, where
@@ -611,10 +610,12 @@ export function mappedDestination(arm: Arm, dests: GuideDest[]): GuideDest | nul
 
 // ---------------------------------------------------------------- board contents
 
-/** Lanes for this direction: JARTIC's count where it gave one, else from the width (3.25 m). */
+/**
+ * Lanes for this direction: the street's section (laneChange.ts resolveSection: JARTIC, OSM lanes,
+ * the width), the same count the lanes are painted with.
+ */
 export function lanesFor(seg: Segment): number {
-  const evidence = { resolved: seg.lanes };
-  return resolveSection(carriagewayWidth(seg.line), seg.oneway !== 0, evidence, "byWidth").lanes;
+  return seg.lanes;
 }
 
 /** 漢字 height (cm) by design speed and lanes: src/signs/board/letters.ts (別表第二 備考一(五)2). */

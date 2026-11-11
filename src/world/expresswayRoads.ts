@@ -1,8 +1,8 @@
-import { STATION_STRIDE, type XwChunk, type XwRunSummary } from "../expressway/format";
+import { STATION_STRIDE, type XwChunk, type XwClass, type XwRunSummary } from "../expressway/format";
 import { planeAt } from "../expressway/geo";
 import { frameAt, ST, surfaceSamples } from "../expressway/profile";
 import { type CrossSection, sectionWidth } from "./laneChange";
-import { isExpressway, OSM_EXPRESSWAY_KIND, sourceOf, usesGroundSurface } from "./roadClass";
+import { isExpressway, OSM_EXPRESSWAY_KIND, type RoadKind, sourceOf, usesGroundSurface } from "./roadClass";
 import { type RoadDiagnostic, type RoadLine, vertexKey } from "./roads";
 
 /**
@@ -27,6 +27,11 @@ import { type RoadDiagnostic, type RoadLine, vertexKey } from "./roads";
  * (`ramp_unattached`): routes cannot use it. Why not OSM's node shared with the street (設計書
  * 4.5): the data has no such node; the at-grade end of a link is not compiled (it is no viaduct).
  *
+ * A structure's street (P7, the 臨港道路 on the Rainbow Bridge's lower floor: cls `street`) is a
+ * street on a viaduct: its line is a local road (no 歩道, no roadside, its own OSM limit), and its
+ * ground ends join the nearest GSI street the same way, without the at-grade walk (that follows GSI
+ * 高速道路 lines, which a street has none of).
+ *
  * Why the page and not the worker builds the lines: the heights need the geoid (dem.ellipsoidal),
  * which lives on the page; the lines are frame-free, so one set serves every origin and rebuild.
  */
@@ -40,9 +45,11 @@ const VERTEX_CLEARANCE_M = 1;
 /** A ramp end this close to the edge of the loaded streets is left for the next area. */
 const EXTENT_MARGIN_M = 60;
 
-/** The ground end of a ramp, to be joined to a street in the worker. */
+/** The ground end of a ramp (or a structure's street), to be joined to a street in the worker. */
 export type XwGroundEnd = {
   run: string;
+  /** ramp: try GSI's at-grade part first; street: straight to the nearest street. */
+  cls: Exclude<XwClass, "expressway">;
   end: "start" | "end";
   node: string;
   lon: number;
@@ -57,6 +64,12 @@ export type XwGroundEnd = {
 };
 
 export type XwRoadInput = { lines: RoadLine[]; ends: XwGroundEnd[] };
+
+/**
+ * The road kind a chunk's line carries: the expressway's for its main lines and ramps, a local road
+ * for a structure's street (GSI's 一般道 kind for a 臨港道路; mapRank draws it among the streets).
+ */
+const kindOf = (cls: XwClass): RoadKind => (cls === "street" ? "local" : OSM_EXPRESSWAY_KIND);
 
 export type Ellipsoidal = (lat: number, lon: number, orthometric: number) => number;
 
@@ -156,11 +169,13 @@ export function expresswayRoadInput(
     lines.push(lineOf(chunk, run, points, ellipsoidal));
     for (const end of ["start", "end"] as const) {
       const isRunEnd = end === "start" ? chunk.prev === null : chunk.next === null;
-      const isGroundRamp = isRunEnd && run.cls === "ramp" && run[end].kind === "ground";
-      if (!isGroundRamp) continue;
+      const joinsStreet = run.cls === "ramp" || run.cls === "street";
+      const isGroundEnd = isRunEnd && joinsStreet && run[end].kind === "ground";
+      if (!isGroundEnd) continue;
       const p = end === "start" ? points[0] : points[points.length - 1];
       ends.push({
         run: run.id,
+        cls: run.cls === "street" ? "street" : "ramp",
         end,
         node: p.id,
         lon: p.lon,
@@ -183,7 +198,7 @@ function lineOf(chunk: XwChunk, run: XwRunSummary, points: Point[], ellipsoidal:
     coords: points.flatMap((p) => [p.lon, p.lat]),
     width: sectionWidth(section),
     oneway: 1,
-    kind: OSM_EXPRESSWAY_KIND,
+    kind: kindOf(chunk.cls),
     source: "osm",
     cls: chunk.cls,
     structure: "viaduct",
@@ -281,9 +296,9 @@ export function joinExpressway(
       coords: pairs,
       width: end.width,
       oneway: 1,
-      kind: OSM_EXPRESSWAY_KIND,
+      kind: kindOf(end.cls),
       source: "osm",
-      cls: "ramp",
+      cls: end.cls,
       // On the ground: its height is the terrain's (no heights), like a street's.
       structure: "ground",
       level: 0,
@@ -319,7 +334,7 @@ export function joinExpressway(
     if (!isLoaded) continue;
     // First the ramp's own at-grade part, which GSI draws as a 高速道路 line from the deck's end to
     // the street (OSM's continuation of the link is not compiled: it is not a viaduct).
-    const atGrade = traceAtGrade(replaced, streetKeys, xy, px, py);
+    const atGrade = end.cls === "ramp" ? traceAtGrade(replaced, streetKeys, xy, px, py) : null;
     if (atGrade) {
       extra.push(connector(end, atGrade));
       continue;

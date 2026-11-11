@@ -11,8 +11,11 @@ import { routeName } from "../game/roadNames";
  */
 
 export type Structure = "viaduct" | "ground" | "tunnel" | "cut";
-/** The road classes an OSM motorway / motorway_link compiles to (roadClass.ts has the street too). */
-export type RoadClass = Exclude<AnyRoadClass, "street">;
+/**
+ * The road classes the compiler builds: OSM motorway / motorway_link, and the streets a structure
+ * override names (structures.ts: the 臨港道路 on the Rainbow Bridge's lower floor, 設計書 4.6).
+ */
+export type RoadClass = AnyRoadClass;
 
 export type XwNode = {
   id: number;
@@ -105,6 +108,30 @@ export function normalizeWay(id: number, nodes: number[], tags: Record<string, s
     destinationRef: clean(tags["destination:ref"]),
     lanes: lanesTag > 0 ? lanesTag : isRamp ? defaults.ramp : defaults.main,
     speedKmh: speedTag > 0 ? speedTag : isRamp ? speeds.ramp : speeds.main,
+    structure: structureOf(tags),
+    layer: layerOf(tags),
+  };
+}
+
+/**
+ * A street way named by a structure override (structures.ts STRUCTURE_SPECS): compiled with a
+ * street's section and speeds, never as a motorway. Its name is kept as it is (no operator there).
+ */
+export function normalizeStreetWay(id: number, nodes: number[], tags: Record<string, string>): XwWay {
+  const lanesTag = Number.parseInt(tags.lanes ?? "", 10);
+  const speedTag = Number.parseInt(tags.maxspeed ?? "", 10);
+  return {
+    id,
+    nodes,
+    cls: "street",
+    ref: clean(tags.ref),
+    name: clean(tags.name),
+    nameEn: clean(tags["name:en"]),
+    maxspeedTag: speedTagOf(tags.maxspeed),
+    destination: null,
+    destinationRef: null,
+    lanes: lanesTag > 0 ? lanesTag : DEFAULT_LANES.value.street,
+    speedKmh: speedTag > 0 ? speedTag : DEFAULT_SPEED.value.street,
     structure: structureOf(tags),
     layer: layerOf(tags),
   };

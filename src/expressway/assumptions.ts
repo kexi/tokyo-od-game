@@ -80,16 +80,18 @@ export const MAX_LATERAL_SHIFT: Assumption<number> = {
 };
 
 /** Lanes and design speed when OSM has no lanes / maxspeed. */
-export const DEFAULT_LANES: Assumption<{ main: number; ramp: number }> = {
-  value: { main: 2, ramp: 1 },
+export const DEFAULT_LANES: Assumption<{ main: number; ramp: number; street: number }> = {
+  value: { main: 2, ramp: 1, street: 2 },
   verified: false,
-  reason: "knowledge/road-redesign-plan.md 4.1 の既定。OSM の lanes が無い way の実態は調べていない",
+  reason:
+    "knowledge/road-redesign-plan.md 4.1 の既定。OSM の lanes が無い way の実態は調べていない。street は構造物上書きで指名した臨港道路（P7）で、橋の上の way が lanes=2 なので取付けも 2",
 };
 
-export const DEFAULT_SPEED: Assumption<{ main: number; ramp: number }> = {
-  value: { main: 60, ramp: 40 },
+export const DEFAULT_SPEED: Assumption<{ main: number; ramp: number; street: number }> = {
+  value: { main: 60, ramp: 40, street: 40 },
   verified: false,
-  reason: "knowledge/road-redesign-plan.md 4.1 の既定（法定速度 60、ランプは 40）",
+  reason:
+    "knowledge/road-redesign-plan.md 4.1 の既定（法定速度 60、ランプは 40）。street（P7 の臨港道路）は芝浦のループの way が maxspeed=40 なので橋の上も 40 と置いた（橋の上の規制速度は確かめていない）",
 };
 
 /** Lane width, shoulders and design speed table used for ramps (statute frees them: 28条4項). */

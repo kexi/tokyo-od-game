@@ -12,9 +12,9 @@ import {
 import { MassiveBody, massContactsFor } from "../physics/massContacts";
 import { laden, VEHICLE_SPECS, yawInertia, type MassClass } from "../physics/masses";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
-import type { TrafficControl } from "./trafficControl";
+import type { Approach, TrafficControl } from "./trafficControl";
 import { movementOf } from "../signals/movement";
-import { mayProceed, type Movement } from "../signals/plan";
+import { driverAction, type Movement } from "../signals/plan";
 import { isDrivable } from "./roadClass";
 import { laneCentreOffset } from "./laneChange";
 
@@ -90,6 +90,9 @@ const holdAfter = (dv: number) => Math.min(20, 2 + 2 * dv);
 const UP = new Vector3(0, 1, 0);
 
 const PARKED_MAX = 16;
+
+/** A signal's stop line (not a 一時停止). */
+const isSignal = (ap: Approach): boolean => ap.kind === "signal";
 
 export class TrafficAI {
   /** Whether a point is in the camera's view (set by the game each frame). */
@@ -557,6 +560,17 @@ export class TrafficAI {
     return movementOf(tIn, tOut);
   }
 
+  /**
+   * A signal's stop line on the road after this one, its distance counted from the car. Why look
+   * past the end of the road: a 単路 crossing's stop line can stand a metre into its segment, and a
+   * car that only saw it on arriving there would be too close to stop for a red.
+   */
+  private signalOnward(graph: RoadGraph, c: AiCar): { approach: Approach; dist: number } | null {
+    const onward = this.peekNext(graph, c);
+    if (!onward || !this.control) return null;
+    return this.control.nextStop(onward.seg, onward.dir, -(c.seg.length - c.s), isSignal);
+  }
+
   /** The road it will take at the end of this one (chosen once, kept until it gets there). */
   private peekNext(graph: RoadGraph, c: AiCar): { seg: Segment; dir: 1 | -1 } | null {
     return this.upcoming(graph, c, 0);
@@ -584,27 +598,60 @@ export class TrafficAI {
 
   /**
    * Virtual obstacle at the next stop line: red/yellow signals (unless too close to stop, as
-   * 施行令 第2条 allows on yellow) and 一時停止, released after a full stop.
+   * 施行令 第2条 allows on yellow), and 一時停止 and 赤色の灯火の点滅 (施行令第2条: 停止位置において
+   * 一時停止), released after a full stop.
    */
   private stopGap(graph: RoadGraph, c: AiCar, dt: number): number {
-    const next = this.control?.nextStop(c.seg, c.dir, c.s);
-    if (!next || !this.control) return Infinity;
+    if (!this.control) return Infinity;
+    const here = this.control.nextStop(c.seg, c.dir, c.s);
+    const next = here ?? this.signalOnward(graph, c);
+    if (!next) return Infinity;
     const { approach, dist } = next;
     if (approach.kind === "signal") {
-      const permission = this.control.permits(approach, this.movementAt(graph, c));
+      // On the next road the turn that matters is one road later: read it as through (the safe
+      // side, an arrow for a turn does not let it go).
+      const movement = here ? this.movementAt(graph, c) : "through";
+      const permission = this.control.permits(approach, movement);
       const canStop = dist > (c.speed * c.speed) / (2 * COMFORT_DECEL);
-      // Anything short of `go` (黄, 赤 without an arrow its way, an unconfirmed 転回) stops it when it can.
-      return !mayProceed(permission) && canStop ? dist + STOP_LINE_GAP : Infinity;
+      // Anything short of `go` (黄, 赤 without an arrow its way, an unconfirmed 転回) stops it when it
+      // can; 赤の点滅 (fullStop) stops it at the line and then lets it on, as a 一時停止 sign does (below).
+      const action = driverAction(permission, canStop);
+      if (action === "go") return Infinity;
+      if (action === "stop") return dist + STOP_LINE_GAP;
     }
     if (c.served === approach.id) return Infinity;
     const isStanding = dist < 3 && c.speed < 0.2;
     c.waited = isStanding ? c.waited + dt : 0;
-    if (c.waited > 1.2) {
+    // After the stop, on only when no crossing traffic is coming into the junction — at 赤の点滅 the
+    // crossing road usually flashes 黄 (it goes on with care and does not stop), as the autopilot's
+    // mustYield waits for it. A stop sign keeps its old rule (the stop, then on).
+    const isYielding =
+      approach.kind === "signal" && this.isCrossingTrafficComing(graph, c, approach.node, approach.travel);
+    if (c.waited > 1.2 && !isYielding) {
       c.served = approach.id;
       c.waited = 0;
       return Infinity;
     }
     return dist + STOP_LINE_GAP;
+  }
+
+  /**
+   * Whether another car is driving into the junction at `node` across `travel` (within 35 m of it,
+   * moving, heading toward it, more than 45° off this car's way): the traffic a car at 赤の点滅 lets by.
+   */
+  private isCrossingTrafficComing(graph: RoadGraph, c: AiCar, node: Vector3, travel: Vector3): boolean {
+    return this.cars.some((o) => {
+      if (o === c || o.speed < 1.5) return false;
+      const pos = o.object.position;
+      const dx = node.x - pos.x;
+      const dz = node.z - pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 35 || d < 1) return false;
+      const dir = this.lanePoint(graph, o.seg, o.dir, o.s).dir;
+      const isComing = (dx * dir.x + dz * dir.z) / d > 0.5;
+      const isAcross = Math.abs(dir.x * travel.x + dir.z * travel.z) < Math.SQRT1_2;
+      return isComing && isAcross;
+    });
   }
 
   /** Distance to the nearest obstacle ahead in this lane (other cars, the player). */

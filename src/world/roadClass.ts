@@ -90,9 +90,11 @@ export const hasRoadside = (line: RoadLine): boolean => isStreet(line) && isOnGr
 
 /**
  * JARTIC 交通規制 are matched onto it. JARTIC covers the 警視庁 street rules; on the expressway the
- * limits come from OSM, and a viaduct over a street must not take that street's rules.
+ * limits come from OSM, and a viaduct over a street must not take that street's rules. On the
+ * ground only: a street on a viaduct (P7's 臨港道路 on the Rainbow Bridge, compiled from OSM with its
+ * own maxspeed) passes over streets whose rules it would otherwise pick up by position.
  */
-export const takesJarticRules = (line: RoadLine): boolean => isStreet(line);
+export const takesJarticRules = (line: RoadLine): boolean => isStreet(line) && isOnGround(line);
 
 /**
  * Drawn as a street on the terrain (asphalt, lines, bridges over water) and stood on by cars at
@@ -123,6 +125,22 @@ const EXPRESSWAY_OPEN: Readonly<Record<RouteUse, boolean>> = {
   guide: false,
 };
 
+/**
+ * Which uses may take a street on a deck (P7's 臨港道路 on the Rainbow Bridge's lower floor). Like
+ * the expressway until P6: the car may drive it (the player, the steady-speed hook) and be put back
+ * on it, and the map draws it; the navi, the autopilot and the traffic AI do not route over it yet.
+ * Why not open with the streets: it joins the expressway's ramps (台場出口) on a deck, where those
+ * would follow it into decks they are not opened to, and its merges wait for LaneLink as theirs do.
+ */
+const DECK_STREET_OPEN: Readonly<Record<RouteUse, boolean>> = {
+  navigation: false,
+  autopilot: false,
+  traffic: false,
+  spawn: true,
+  map: true,
+  guide: false,
+};
+
 /** Carried so a car can drive it now: tunnels and cuttings have no floor, walls or roof until P9. */
 const isOpenStructure = (line: RoadLine): boolean => {
   const structure = structureOf(line);
@@ -136,7 +154,7 @@ const isOpenStructure = (line: RoadLine): boolean => {
  */
 export function isDrivable(line: RoadLine, use: RouteUse): boolean {
   if (!isOpenStructure(line)) return false;
-  if (isStreet(line)) return true;
+  if (isStreet(line)) return isOnGround(line) || DECK_STREET_OPEN[use];
   const isGsiExpressway = sourceOf(line) === "gsi";
   if (isGsiExpressway) return false;
   return EXPRESSWAY_OPEN[use];

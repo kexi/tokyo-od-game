@@ -17,6 +17,7 @@ import { log, warn } from "../../src/log";
 import type { Found, TargetQuery, ViewTarget } from "../../src/debug/viewHooks";
 import { launch, type Browser } from "./browser.mjs";
 import { writeContactSheet } from "./contactSheet.ts";
+import { deriveMetrics, probePixels, probeStats, type ProbeRecord, type ProbeStats } from "./pixelProbes.ts";
 import { freePort } from "./ports.ts";
 import { nextRound, type RunRecord } from "./runRecord.ts";
 import { CENTRED_WITHIN, offCentre, placeView, type Vec3 } from "./viewGeometry.ts";
@@ -30,6 +31,7 @@ import {
   shotKey,
   shotKeys,
   type Load,
+  type Probe,
   type View,
 } from "./viewTable.ts";
 
@@ -165,6 +167,7 @@ const kindOf = (v: View) => (v.target ? (Object.keys(v.target)[0] as string) : n
 
 type Shot = Record<string, unknown> & { image: string; shot: string };
 const shots: Shot[] = [];
+const probeRecords: ProbeRecord[] = [];
 const failed: RunRecord["failed"] = [];
 
 for (const load of loadsOf(table)) {
@@ -256,6 +259,44 @@ for (const load of loadsOf(table)) {
     );
     await b.close();
   }
+}
+
+/**
+ * The luminance statistics of each probe's rectangle in the saved frame. How: the page decodes the
+ * JPEG (the image the reviewers see, after its compression) into a 2D canvas and returns every
+ * second pixel's luma of each rectangle; the statistics are pixelProbes.ts's.
+ */
+async function measureProbes(
+  b: Browser,
+  file: string,
+  probes: readonly Probe[],
+): Promise<Record<string, ProbeStats | null>> {
+  const data = readFileSync(file).toString("base64");
+  const rects = probes.map((p) => probePixels(p, table.defaults.width, table.defaults.height));
+  const lumas = await evaluateWithin<number[][]>(
+    b,
+    `(async () => {
+    const picture = new Image();
+    picture.src = "data:image/jpeg;base64,${data}";
+    await picture.decode();
+    const c = document.createElement("canvas");
+    c.width = picture.width;
+    c.height = picture.height;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(picture, 0, 0);
+    return ${JSON.stringify(rects)}.map((r) => {
+      const d = g.getImageData(r.x, r.y, r.w, r.h).data;
+      const out = [];
+      for (let y = 0; y < r.h; y += 2)
+        for (let x = 0; x < r.w; x += 2) {
+          const i = (y * r.w + x) * 4;
+          out.push(0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]);
+        }
+      return out;
+    });
+  })()`,
+  );
+  return Object.fromEntries(probes.map((p, i) => [p.name, probeStats(lumas[i] ?? [])]));
 }
 
 /** Finds the target, waiting a little only for what is still being built or loaded. */
@@ -361,7 +402,14 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
   const spec = view.target as TargetQuery | undefined;
   const start = load.session.start;
   const found = spec ? await findTarget(b, spec, start) : null;
-  // A held 現示 (or the clock running again for views that hold none).
+  // The signals' time of day (night plans), then a held 現示 (or the clock running again).
+  const clock = view.state?.signalClock;
+  const minute = clock ? Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3)) : null;
+  const untilChangeOf = view.state?.signalClockToChange && found ? Number(found.facts.approachId) : null;
+  await evaluateWithin(
+    b,
+    `__game.debug.signals.clock(${JSON.stringify(minute)}, ${JSON.stringify(untilChangeOf)})`,
+  );
   const step = view.state?.signalStep;
   if (step !== undefined && found) {
     const held = await evaluateWithin<{ error?: string }>(
@@ -397,7 +445,7 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     const lampCar = ${JSON.stringify(placement.lampCar ?? null)};
     const car = lampCar ?? ${JSON.stringify(placement.car ?? null)};
     if (car) {
-      const ground = G.groundY(car.x, car.z) ?? G.vehicle.position().y;
+      const ground = car.surfaceY ?? G.groundY(car.x, car.z) ?? G.vehicle.position().y;
       G.vehicle.teleport(G.vehicle.position().set(car.x, ground + car.above, car.z), car.yaw);
     } else {
       // Stopped where it is (hidden): a rolling car would move the streaming centre and its speed.
@@ -436,6 +484,8 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
   const aim = spec ? await findTarget(b, spec, start) : null;
   const image = `${key}.jpg`;
   await b.screenshot(join(out, image), 85);
+  const probes = view.probes?.length ? await measureProbes(b, join(out, image), view.probes) : null;
+  if (probes) probeRecords.push({ shot: key, view: view.id, look: look.look, probes });
   let projection: Record<string, unknown> | null = null;
   if (aim) {
     const p = await evaluateWithin<{ ndc: { x: number; y: number }; isInView: boolean; distanceM: number }>(
@@ -482,6 +532,7 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     projection,
     scene,
     settled,
+    probes,
     expect: view.expect ?? null,
   };
   writeFileSync(join(out, `${key}.json`), `${JSON.stringify(record, null, 2)}\n`);
@@ -501,6 +552,10 @@ writeFileSync(
   join(out, "run.json"),
   `${JSON.stringify({ ...run, tableFile: basename(tableFile), base }, null, 2)}\n`,
 );
+// The computed metrics as review lines: copied into round-NN.jsonl by the reviewer (the runner does
+// not write the review file, which holds the reviewers' own lines).
+const metricLines = deriveMetrics(table.metrics, probeRecords, round);
+writeFileSync(join(out, "metrics.jsonl"), metricLines.map((l) => `${JSON.stringify(l)}\n`).join(""));
 const sheet =
   shots.length > 0 ? await writeContactSheet(out, { title: `${table.name} round ${round}` }) : null;
 const reviews = join(ROOT, ".qa", "reviews", table.name);

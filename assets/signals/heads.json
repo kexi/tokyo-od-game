@@ -346,5 +346,31 @@
       ],
       "hangM": 0.64
     }
+  ],
+  "buttons": [
+    {
+      "id": "ped-button",
+      "node": "PushButtonBox",
+      "name": "歩行者用押ボタン箱",
+      "housing": {
+        "wM": 0.13,
+        "hM": 0.2,
+        "dM": 0.08,
+        "cornerM": 0.012
+      },
+      "button": {
+        "diameterM": 0.05,
+        "y": -0.035
+      },
+      "waitLamp": {
+        "wM": 0.08,
+        "hM": 0.026,
+        "y": 0.055
+      },
+      "bottomM": 0.9,
+      "offsetM": 0.22,
+      "verified": false,
+      "waitColour": 16726564
+    }
   ]
 }

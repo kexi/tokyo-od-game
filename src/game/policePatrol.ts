@@ -4,6 +4,7 @@ import { OFFICER_KG, RIDER_KG } from "../physics/masses";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
 import { createVehicle, setBeacons, type VehicleInstance } from "./vehicleModels";
 import type { RoadGraph, Segment } from "../world/roads";
+import { laneCentreOffset } from "../world/laneChange";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
 import type { ViolationRecord } from "./traffic";
 import { allowsRoadsideStop } from "../world/roadClass";
@@ -132,7 +133,8 @@ export class PolicePatrol {
     const dir: 1 | -1 = seg.oneway !== 0 ? (seg.oneway as 1 | -1) : Math.random() < 0.5 ? 1 : -1;
     const { pos, dir: d } = graph.sample(seg, seg.length / 2);
     const travel = d.multiplyScalar(dir);
-    const at = pos.add(new Vector3(travel.z, 0, -travel.x).multiplyScalar(seg.line.width * 0.25));
+    // The left lane's centre (laneChange.ts), not a quarter of the GSI 幅員 (which may hold the pavement).
+    const at = pos.add(new Vector3(travel.z, 0, -travel.x).multiplyScalar(laneCentreOffset(seg, 0)));
     at.y = (this.groundAt(at.x, at.z) ?? at.y) + RIDE_HEIGHT;
     this.car.setCoasting(true);
     this.car.teleport(at, Math.atan2(travel.x, travel.z));

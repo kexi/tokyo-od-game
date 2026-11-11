@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { SAME_SURFACE_ALLOWED_DZ_M } from "../expressway/allowlist";
 import { PARAPET_WIDTH } from "../expressway/assumptions";
-import { STATION_STRIDE, type XwChunk } from "../expressway/format";
+import { STATION_STRIDE, type XwChunk, type XwClass, type XwRunSummary } from "../expressway/format";
 import { SAME_SURFACE_M } from "../expressway/overlap";
 import { frameAt, ST, type SurfaceFrame, surfaceHeight, surfaceSamples } from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
@@ -222,11 +222,22 @@ export function openSide(own: Pick<ChunkRings, "hw" | "edge">): DeckSide {
   };
 }
 
-/** Rank of a deck among same-direction peers: the main line is the master over a ramp, then by id. */
-function outranks(index: DeckIndex, a: string, b: string): boolean {
-  const ca = index.runs.get(a)?.cls ?? "ramp";
-  const cb = index.runs.get(b)?.cls ?? "ramp";
-  if (ca !== cb) return ca === "expressway";
+/** Order of the classes as masters: the main line, then a structure's street, then a ramp. */
+const CLASS_RANK: Readonly<Record<XwClass, number>> = { expressway: 0, street: 1, ramp: 2 };
+
+/**
+ * Rank of a deck among same-direction peers: by class (CLASS_RANK), then by id; a total order, so
+ * of two decks exactly one outranks the other. Why not "the main line, else neither" (P3.5): with a
+ * street (P7) a street and a ramp each took the other for its master (45177678 × 4848755).
+ */
+export function outranks(
+  runs: ReadonlyMap<string, Pick<XwRunSummary, "cls">>,
+  a: string,
+  b: string,
+): boolean {
+  const ra = CLASS_RANK[runs.get(a)?.cls ?? "ramp"];
+  const rb = CLASS_RANK[runs.get(b)?.cls ?? "ramp"];
+  if (ra !== rb) return ra < rb;
   return a < b;
 }
 
@@ -274,7 +285,13 @@ export class DeckMerge {
         ? out[out.length - 1]
         : { rings: [], owner: [], edge: [], laneL: [], laneR: [], bank: r.bank };
       if (!isNext) out.push(line);
-      const from = isNext ? 1 : 0;
+      // The seam ring is shared, so it is kept once; but where the section changes there (a 4-lane
+      // master narrowing to 2 lanes at a split) it is kept twice, with each chunk's edge, so the edge
+      // polyline steps square at the seam. Why not once: the edge then slanted from the wide to the
+      // narrow width over the next ring interval, a cut deck met that slant instead of the narrow
+      // edge, and a sliver between them was left uncovered (813455519:0 s 4.6–6.6 under 45554540).
+      const isSameEdge = isNext && Math.abs(line.edge[line.edge.length - 1] - r.edge) < 1e-6;
+      const from = isNext && isSameEdge ? 1 : 0;
       for (let i = from; i < r.rings.length; i++) {
         line.rings.push(r.rings[i]);
         line.owner.push(r);
@@ -438,6 +455,11 @@ export class DeckMerge {
           if (!isMaster) this.letGo(out, own, p.lo, p.hi, sign);
           continue;
         }
+        // A master whose own road is closed here (tucked under its own master, as 1号羽田線's end is
+        // under C1 at 浜崎橋) shows no face to meet: the pair is left to the decks that do show.
+        // Why not cut at its edge anyway: the seam would hang over nothing (holes at 813455519:0).
+        const isHidden = isMaster && depth === 0 && this.isMasterClosed(p.foot);
+        if (isHidden) continue;
         const shortfall = isMaster && depth === 0 ? this.masterShortfall(p.foot, ring) : 0;
         this.joinSameWay(out, own, ring, { ...p, sign, isMaster, shortfall });
         continue;
@@ -465,6 +487,15 @@ export class DeckMerge {
       };
     }
     return out;
+  }
+
+  /** Whether a master's road is closed at the foot: nothing of it shows (tucked under its own master). */
+  private isMasterClosed(foot: Foot): boolean {
+    const { line, k, tau } = foot;
+    const master = line.owner[tau < 0.5 ? k : k + 1];
+    const at = ringBetween(line.rings[k], line.rings[k + 1], tau, false);
+    const sd = this.sides(master, at, 1);
+    return sd.left.reach + sd.right.reach <= 1e-3;
   }
 
   /**
@@ -623,5 +654,5 @@ function outranksAsMaster(index: DeckIndex, run: string, other: string): boolean
   const role = roleOf(index.runs, run, other);
   if (role === "child") return true;
   if (role === "parent") return false;
-  return outranks(index, other, run);
+  return outranks(index.runs, other, run);
 }

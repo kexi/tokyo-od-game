@@ -145,7 +145,9 @@ for (const photo of PHOTOS) {
       await game.b.screenshot(join(OUT, `${photo.name}-${take}.png`));
       await game.pump(30);
     }
-    // A pedestrian under the car where it was put books an accident (its stamp is on the picture).
+    // An accident open while it was shot (its stamp is on the picture). A pedestrian who walks into
+    // the car standing where it was put is no longer one (game/pedestrianBlow.ts): only a car still
+    // moving as it settled can book it.
     const hasAccident = Boolean(await game.ev("window.__game.emergency.active"));
     const pick = args[`pick-${photo.name}`] ?? String(photo.pick);
     copyFileSync(join(OUT, `${photo.name}-${pick}.png`), join(OUT, `${photo.name}-raw.png`));
