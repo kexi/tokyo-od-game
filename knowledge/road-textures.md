@@ -132,7 +132,7 @@ P3 と同じ経路（入口ランプ 207111988:0 の s 5 % から C1 内回り�
 
 再発防止: `just check-deck-drive`（`scripts/qa/drive-deck.ts`）は、`place()` の前に事故・追跡・免許停止が無いことを待って確かめ（`__game.debug.expressway.blocker()`）、走行中に `accident`・`violation_cited`・`story_begin`（arrest）が出た走行を`invalid`（理由つき）として結果の JSON に書き、成功に数えない（終了コード 2）。走行フックの `expressway_drive_checked` にも `invalid` を足し、`expressway_car_stalled` には、車体を止めたのが誰か（`carFrozen` と床版待ちの `frozen`、`incident`・`pursuit`）を出す。
 
-**2026-11-11 追記**: P6 の後、この検査が毎回「交通 AI の車と事故」で invalid になった。原因は床版ではなく、rAF と `__game.advance` の 2 つがフレームを進めるときに dt が負になり、交通 AI の時間だけが約 1.26 倍で進んで自車に後ろから追突したこと（`src/game/frameClock.ts` で直した。[高速道路の生成](expressway-generation.md)「床版の走行検査が交通 AI の車と事故で invalid」）。
+**2026-11-11 追記**: P6 の後、この検査が毎回「交通 AI の車と事故」で invalid になった。原因は床版ではなく、rAF と `__game.advance` の 2 つがフレームを進めるときに dt が負になり、交通 AI の時間だけが約 1.26 倍で進んで自車に後ろから追突したこと（`src/game/frameClock.ts` で直した。あわせて経路を内回りの先ではなく汐留出口へ降りて一般道に出るまでにし、停止・落下・大きな減速・終点に届かないことも失敗（終了 1）にした。[高速道路の生成](expressway-generation.md)「床版の走行検査が交通 AI の車と事故で invalid」）。
 
 v1 の切り残しの原因: 床版を知った時点で読み込み済みのタイルを切るとき、`o.matrixWorld` を局所座標への変換に使っていた。描画から外れているタイルはグループの下に無く、world 行列が tileset の ECEF のままなので、点の検査が何も当たらなかった（コライダーは隠れたタイルにも残る）。`Buildings.localMatrix`（同じ問題でコライダーと球を直した既存の関数）に替えた。
 

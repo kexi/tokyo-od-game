@@ -332,7 +332,7 @@ measure-perf-fixed:
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
 
-# 入口ランプから C1 内回りへ自車を一定速で走らせ、床版の上で建物と交差した所と止まった所（保持か接触か）を .qa/drive-deck-<label>.json に書く（交差があれば終了コード 1）
+# 入口ランプから C1 内回り・汐留出口へ自車を一定速で走らせ、床版の上の建物との交差・停止・落下・大きな減速と終点への到達を .qa/drive-deck-<label>.json に書く（失敗は終了コード 1、invalid は 2）
 check-deck-drive label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }}
 

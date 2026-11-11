@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { frameStep, MAX_FRAME_S } from "../src/game/frameClock";
+import { clockStep, MAX_FRAME_S } from "../src/game/frameClock";
 
 /**
  * The frames of a QA run: `__game.advance` steps at performance.now() while requestAnimationFrame
@@ -26,14 +28,14 @@ function run(calls: number[], start: number) {
   let last = start;
   const steps: number[] = [];
   for (const now of calls) {
-    const next = frameStep(now, last);
+    const next = clockStep(now, last);
     steps.push(next.dt);
     last = next.last;
   }
   return { steps, last };
 }
 
-describe("frameStep: the game's frame time step from two callers (rAF and advance)", () => {
+describe("clockStep: the game's frame time step from two callers (rAF and advance)", () => {
   it("never steps back in time: a rAF frame stamped before the last advance step takes 0 s", () => {
     const { steps } = run(interleaved(), 1000);
     expect(Math.min(...steps)).toBe(0);
@@ -53,8 +55,26 @@ describe("frameStep: the game's frame time step from two callers (rAF and advanc
   });
 
   it("caps a stall at MAX_FRAME_S, and counts the next frame from the stalled one's time", () => {
-    const stalled = frameStep(3000, 1000);
+    const stalled = clockStep(3000, 1000);
     expect(stalled).toEqual({ dt: MAX_FRAME_S, last: 3000 });
-    expect(frameStep(3016, stalled.last).dt).toBeCloseTo(0.016, 9);
+    expect(clockStep(3016, stalled.last).dt).toBeCloseTo(0.016, 9);
+  });
+});
+
+describe("main.ts step: the frame's clock comes from clockStep (source check)", () => {
+  const main = readFileSync(join(import.meta.dirname, "..", "src", "main.ts"), "utf8");
+  const start = main.indexOf("const step = (stamp: number) => {");
+  const head = main.slice(start, start + 600);
+
+  it("takes the frame's stamp, and its dt and its time (now) only from clockStep", () => {
+    expect(start).toBeGreaterThan(0);
+    expect(head).toMatch(/const clock = clockStep\(stamp, last\);/);
+    expect(head).toMatch(/const dt = clock\.dt;/);
+    expect(head).toMatch(/const now = clock\.last;/);
+    expect(head).toMatch(/last = clock\.last;/);
+  });
+
+  it("works out no dt from a stamp itself anywhere in main.ts (rAF after advance made it negative)", () => {
+    expect(main).not.toMatch(/\((?:now|stamp) - last\) \/ 1000/);
   });
 });

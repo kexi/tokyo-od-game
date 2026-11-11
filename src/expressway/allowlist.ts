@@ -212,7 +212,7 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     with: "24402611",
     maxStations: 21,
     maxDzM: 6.62,
-    reason: `汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 1.1–1.7 m しか離れずに並走する。${SHIODOME_REASON}`,
+    reason: `汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。${SHIODOME_REASON}`,
   },
   {
     run: "45021976",
