@@ -12,6 +12,7 @@ import {
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
 import { GIRDER_DEPTH, MAX_LATERAL_SHIFT, OPEN_GROUND_FLOOR, RAMP_MIN_RADIUS } from "./assumptions";
+import { ceilingAt } from "./below";
 import { approachLength } from "./compile";
 import { CROSS_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwRunSummary } from "./format";
 import { haversine } from "./geo";
@@ -291,6 +292,9 @@ export function checkClearance(c: XwChunk, run: XwRunSummary, climbs?: Climbs, o
     const isShort = z - top < clearance;
     if (isShort) out.push(`${c.id}: clearance ${(z - top).toFixed(2)} < ${clearance} at s=${s}`);
   }
+  // A tunnel or cut has nothing to clear under it: its ceiling under the ground is checkCover's.
+  const isBelow = c.structure === "tunnel" || c.structure === "cut";
+  if (isBelow) return out;
   const approach = approachLength(run.planV as DesignSpeed);
   const isAtGround = (kind: string) => kind === "ground" || kind === "portal";
   const low = climbs ?? { start: isAtGround(run.start.kind), end: isAtGround(run.end.kind) };
@@ -301,6 +305,32 @@ export function checkClearance(c: XwChunk, run: XwRunSummary, climbs?: Climbs, o
     // over open ground by (the caller takes it from an allowed diagnostic; 0 holds it exactly).
     const isLow = p.z - p.ground < OPEN_OVER_GROUND - openShortM;
     if (isLow) out.push(`${c.id}: ${(p.z - p.ground).toFixed(2)} m over ground at s=${p.s}`);
+  }
+  return out;
+}
+
+/**
+ * T12 (P9): a tunnel chunk keeps its box and cover under the ground, a cut chunk stays under the
+ * ground within CUT_TOLERANCE_M, wherever the descent from the run's two portals (its first and
+ * last station, at the ground) can reach that depth (below.ts: the compiler imposes no more).
+ * `ends` are the elevations of the run's first and last stations; the descent is at the run's
+ * planned speed (`planV`), as the compiler set the ceilings before any fallback.
+ */
+export function checkCover(
+  c: XwChunk,
+  run: Pick<XwRunSummary, "lengthM" | "planV">,
+  ends: { z0: number; z1: number },
+): string[] {
+  const isBelow = c.structure === "tunnel" || c.structure === "cut";
+  if (!isBelow) return [];
+  const structure = c.structure as "tunnel" | "cut";
+  const out: string[] = [];
+  for (const p of stationsOf(c)) {
+    const top = ceilingAt(structure, p.ground, p.s, run.lengthM, ends, run.planV as DesignSpeed);
+    if (top === null) continue;
+    // 1 cm for the ground's rounding in the files (the compiler holds the lowest ground near the station).
+    const isAbove = p.z > top + 0.01;
+    if (isAbove) out.push(`${c.id}: ${c.structure} road ${p.z} above ${top.toFixed(2)} at s=${p.s}`);
   }
   return out;
 }

@@ -141,10 +141,16 @@ const DECK_STREET_OPEN: Readonly<Record<RouteUse, boolean>> = {
   guide: false,
 };
 
-/** Carried so a car can drive it now: tunnels and cuttings have no floor, walls or roof until P9. */
+/**
+ * Carried so a car can drive it now: the ground, a viaduct, and the expressway's tunnels and cuts
+ * (P9: expresswayBore.ts gives them a floor, walls and a roof with colliders). GSI's own tunnel
+ * lines have none of that.
+ */
 const isOpenStructure = (line: RoadLine): boolean => {
   const structure = structureOf(line);
-  return structure === "ground" || structure === "viaduct";
+  const isCarried = structure === "ground" || structure === "viaduct";
+  const isBuiltBelow = (structure === "tunnel" || structure === "cut") && sourceOf(line) === "osm";
+  return isCarried || isBuiltBelow;
 };
 
 /**

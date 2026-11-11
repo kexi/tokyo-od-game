@@ -69,6 +69,12 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     reason:
       "OSM に高さの無い「地上」の道路が地表端の近くにあり、標準勾配では越えられない。掘割の上を渡る道か地下道とみなし、タイルの blocked に記録した（P3 で通行止め・迂回を決める）",
   },
+  {
+    run: "737538573",
+    kind: "tunnel_cover_short",
+    reason:
+      "都心環状線外回りの麻布台のトンネル（P9）の北の坑口は斜面に開き、坑口の手前で地表が 3 m 余り下がる。坑口から第20条の標準勾配（V50 で 6 %、坑口を上り勾配で出る最悪の場合から）では、箱の高さと最小の土被り（TUNNEL_DEPTH_M）まで下りきれない。坑口の近くは箱の頂版が地表より上に出る開削部として扱い、地形を切り欠いて坑門で見せる（expresswayBore.ts）",
+  },
   { run: "203059412", kind: "ramp_radius", minRadiusM: 11.7, reason: `R 11.7 m。${RAMP_RADIUS_REASON}` },
   { run: "203059413", kind: "ramp_radius", minRadiusM: 10.7, reason: `R 10.7 m。${RAMP_RADIUS_REASON}` },
   {
@@ -80,6 +86,15 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
   { run: "24039815", kind: "ramp_radius", minRadiusM: 14.5, reason: `R 14.5 m。${RAMP_RADIUS_REASON}` },
   { run: "5213291", kind: "ramp_radius", minRadiusM: 13.5, reason: `R 13.5 m。${RAMP_RADIUS_REASON}` },
   { run: "761796514", kind: "ramp_radius", minRadiusM: 11.6, reason: `R 11.6 m。${RAMP_RADIUS_REASON}` },
+  {
+    run: "24402611",
+    kind: "deck_overlap",
+    with: "895902565",
+    maxStations: 38,
+    maxDzM: 5.56,
+    reason:
+      "麻布台のトンネル（P9）の北の坑口を出た外回り（895902565、OSM layer 2）が地表から上り始める区間で、内回り（199311749、layer 3）の中心線が 7.9 m 横を通る。車線域の幅の和より近く、坑口で地表に接する外回りは 1 段（4.5 m + 桁高）の差まで上がりきれない。P9 で外回りがファイルに入って初めて出た組（坑口の高さは P7 の portal と同じ地表）",
+  },
   {
     run: "24402611",
     kind: "deck_overlap",

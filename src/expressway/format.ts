@@ -18,9 +18,21 @@ export const ST = { s: 0, lon: 1, lat: 2, z: 3, bank: 4, ground: 5, grade: 6 } a
  * `structures` in meta. 3 is P6's (maxspeed per chunk), kept apart so neither branch reads the
  * other's data; merging both is 5. P2.6's optional `vform` (chunks) and `closed` (meta) need no
  * reader, so they stay within 4, as do G6's optional `signs` and `posted` (chunks) and `entrances`
- * (meta): the game reads them only where present. The game refuses another version.
+ * (meta): the game reads them only where present. P9's tunnels and cuts (`tunnel` / `cut` chunks,
+ * their `portals`, `seam` ends) need a reader: they are named in meta's `features` (XW_FEATURES)
+ * and a reader refuses a feature it does not know. The game refuses another version.
  */
 export const XW_VERSION = 4;
+
+/**
+ * Optional parts of the format a file may use within its version (meta.json `features`). "below"
+ * (P9): `tunnel` / `cut` chunks, their `portals`, and `seam` ends between runs. A reader refuses a
+ * file naming a feature it does not know (expresswayDeck.ts isSupportedMeta), so P9's data cannot be
+ * read as plain P7 data by a newer reader that lacks P9. Why not version 5 now: P6 (3) and P7 (4)
+ * are merged into 5 when the branches meet; until then the version stays P7's.
+ */
+export const XW_FEATURES = ["below"] as const;
+export type XwFeature = (typeof XW_FEATURES)[number];
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */
 export const PIER_STRIDE = 2;
 /**
@@ -44,7 +56,17 @@ export type XwChunk = {
   cls: XwClass;
   ref: string | null;
   name: string | null;
-  structure: "viaduct";
+  /**
+   * What carries the chunk: a viaduct (the deck, girder and piers), or below the ground (P9) a
+   * tunnel (floor, walls, walkways and roof) or a cut (floor and retaining walls up to the ground).
+   * A below chunk has no girder (`girder` 0), piers, crossings nor blocked roads.
+   */
+  structure: "viaduct" | "tunnel" | "cut";
+  /**
+   * Where the road passes from one structure to the next inside this chunk (P9): the portals of a
+   * tunnel or cut. Left out when there are none (every viaduct chunk), so P7's chunks are unchanged.
+   */
+  portals?: XwPortal[];
   /**
    * A deck built to a landmark's deck levels (structures.ts), or null: then the chunk has no
    * girder (`girder` 0) nor piers, its section comes from the level's strips, and the slab goes on
@@ -152,6 +174,15 @@ export type XwOver = {
   apronR: number;
 };
 
+/** What carries the road on either side of a portal ("ground": at grade, not compiled). */
+export type XwStructure = "viaduct" | "ground" | "tunnel" | "cut";
+
+/**
+ * A portal (P9): at run distance s the road passes from `from` to `to` (the travel direction). At a
+ * below run's first and last station `from` / `to` is what comes before and after it.
+ */
+export type XwPortal = { s: number; from: XwStructure; to: XwStructure };
+
 export type XwDeckStretch = { with: string; relation: "same" | "above" | "below"; s0: number; s1: number };
 
 export type XwTile = { chunks: XwChunk[] };
@@ -223,6 +254,8 @@ export type XwClosed = { run: string; chain: string; cls: XwClass; reason: strin
 
 export type XwMeta = {
   version: typeof XW_VERSION;
+  /** The optional parts of the format the files use (XW_FEATURES); absent in P7's files. */
+  features?: string[];
   zoom: number;
   tiles: string[];
   /** The named ranges built (empty for --range all). */

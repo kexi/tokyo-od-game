@@ -255,6 +255,11 @@ export type Run = {
   from: number;
   to: number;
   elevated: boolean;
+  /**
+   * A tunnel or cut (P9): the road runs below the ground between portals. Neither elevated nor at
+   * grade; compiled when it runs on from an elevated run (compile.ts belowEnds).
+   */
+  below: boolean;
   /** Ground-looking ways (no tags) that were taken as part of the viaduct around them. */
   filledWays: number[];
 };
@@ -272,7 +277,11 @@ function wayLength(net: Network, w: XwWay): number {
   return len;
 }
 
-/** Cut a chain into runs where it changes between elevated (viaduct) and not. */
+/**
+ * Cut a chain into runs where it changes between elevated (viaduct), below the ground (tunnel or
+ * cut, one run for both: the portal between them is inside the run, compile.ts cuts chunks there)
+ * and at grade.
+ */
 export function splitRuns(net: Network, chain: Chain): Run[] {
   const elevated = chain.ways.map((id) => net.ways.get(id)!.structure === "viaduct");
   const filled = new Set<number>();
@@ -294,10 +303,15 @@ export function splitRuns(net: Network, chain: Chain): Run[] {
     }
     i = Math.max(i, j - 1);
   }
+  const isBelow = (i: number) => {
+    const structure = net.ways.get(chain.ways[i])!.structure;
+    return !elevated[i] && (structure === "tunnel" || structure === "cut");
+  };
+  const kindAt = (i: number) => (elevated[i] ? "elevated" : isBelow(i) ? "below" : "ground");
   const runs: Run[] = [];
   let start = 0;
   for (let i = 1; i <= chain.ways.length; i++) {
-    const isBoundary = i === chain.ways.length || elevated[i] !== elevated[start];
+    const isBoundary = i === chain.ways.length || kindAt(i) !== kindAt(start);
     if (!isBoundary) continue;
     const ways = chain.ways.slice(start, i);
     const lastWay = net.ways.get(ways[ways.length - 1])!;
@@ -308,6 +322,7 @@ export function splitRuns(net: Network, chain: Chain): Run[] {
       from: chain.wayStarts[start],
       to: chain.wayStarts[i - 1] + lastWay.nodes.length - 1,
       elevated: elevated[start],
+      below: isBelow(start),
       filledWays: ways.filter((w) => filled.has(w)),
     });
     start = i;

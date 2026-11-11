@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkChunkJoin,
   checkClearance,
+  checkCover,
   climbingEnds,
   checkGrade,
   checkGroundEnd,
@@ -24,6 +25,8 @@ import { tileKey } from "../src/expressway/geo";
 import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
 import { OPERATOR_WORDS } from "../src/expressway/network";
 import { MERGE_MAX_DZ } from "../src/world/expresswayMerge";
+import { TUNNEL_DEPTH_M } from "../src/expressway/below";
+import { surfaceAt } from "../src/expressway/profile";
 import { pairPoints } from "./expresswayPairs";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
@@ -98,6 +101,8 @@ function overlapsByBruteForce() {
     }
   }
   const out = new Map<string, { stations: number; maxDz: number; at: Array<[string, number]> }>();
+  // Runs of one chain are one road (a viaduct and the tunnel it goes on into, P9): not decks.
+  const chainOf = new Map(chunks.map((c) => [c.run, c.chain]));
   for (const [a, pa] of lines) {
     for (const p of pa) {
       const near = new Map<string, number[]>();
@@ -105,7 +110,8 @@ function overlapsByBruteForce() {
         for (let dy = -1; dy <= 1; dy++)
           for (const [run, i] of cells.get(`${Math.floor(p.x / CELL) + dx},${Math.floor(p.y / CELL) + dy}`) ??
             [])
-            if (run !== a) near.set(run, [...(near.get(run) ?? []), i]);
+            if (run !== a && chainOf.get(run) !== chainOf.get(a))
+              near.set(run, [...(near.get(run) ?? []), i]);
       for (const [b, segs] of near) {
         const pb = lines.get(b)!;
         let best = { d: Infinity, z: 0, hw: 0 };
@@ -153,7 +159,12 @@ describe("生成済みの高速道路タイル", () => {
   it.runIf(isTestSection)(
     "builds the test section (都心環状線 both ways, the 芝公園 entrance and exit) and the Rainbow Bridge's (11号台場線, the 臨港道路 below)",
     () => {
-      expect(meta.ranges.map((r) => r.name)).toEqual(["hamazakibashi", "rainbow"]);
+      expect(meta.ranges.map((r) => r.name)).toEqual([
+        "hamazakibashi",
+        "rainbow",
+        "azabudai",
+        "azabudai_exit",
+      ]);
       const refs = new Set(meta.runs.filter((r) => r.cls === "expressway").map((r) => r.ref));
       expect(refs.has("C1")).toBe(true);
       expect(refs.has("11")).toBe(true);
@@ -236,6 +247,70 @@ describe("生成済みの高速道路タイル", () => {
     expect(chunks.flatMap(checkSuperelevation)).toEqual([]);
   });
 
+  it("T12 (P9): every tunnel keeps its box and cover under the ground, every cut stays under it, wherever a portal's descent reaches", () => {
+    const problems: string[] = [];
+    for (const r of meta.runs) {
+      const list = byRun.get(r.id)!;
+      const first = list[0].st;
+      const last = list[list.length - 1].st;
+      const ends = { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
+      for (const c of list) problems.push(...checkCover(c, r, ends));
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it("P9: piers stand over a buried tunnel as over any ground; only an open cut or a portal's hole under a viaduct takes them away", () => {
+    // 都心環状線内回り (24402611) crosses over the 麻布台 tunnel between s ≈ 870 and 1620 m. Counted as
+    // a deck below, the tunnel had taken all 15 of its piers there (review of P9, C2).
+    const piersOf = (run: string) =>
+      byRun
+        .get(run)!
+        .flatMap((c) => Array.from({ length: c.piers.length / 2 }, (_, i) => c.piers[i * 2]))
+        .sort((a, b) => a - b);
+    const longestGap = (ps: number[], from: number, to: number) => {
+      const inside = ps.filter((s) => s >= from && s <= to);
+      let gap = 0;
+      for (let i = 1; i < inside.length; i++) gap = Math.max(gap, inside[i] - inside[i - 1]);
+      return { count: inside.length, gap };
+    };
+    const over = longestGap(piersOf("24402611"), 700, 1800);
+    expect(over.count).toBeGreaterThanOrEqual(10);
+    expect(over.gap).toBeLessThanOrEqual(90);
+    // The whole run's longest stretch without a pier: s 1404–2275, where it stands over other decks (the
+    // C1 changeover) and the tunnel's open stretches; before P9 it was 1505–2275 (770 m).
+    expect(longestGap(piersOf("24402611"), 0, Infinity).gap).toBeLessThanOrEqual(875);
+  });
+
+  it("P9: 都心環状線外回りの麻布台の掘割とトンネル is one run seamed to the viaducts either side, with its portals", () => {
+    const run = runs.get("737538573")!;
+    expect(run.ref).toBe("C1");
+    expect(run.start).toMatchObject({ kind: "seam", parent: "45021976" });
+    expect(run.end).toMatchObject({ kind: "seam", parent: "895902565" });
+    // The viaduct before it still ends at its portal on the ground, as in P7's data.
+    expect(runs.get("45021976")!.end).toMatchObject({ kind: "portal", into: "cut" });
+    const list = byRun.get("737538573")!;
+    expect(list.map((c) => c.structure)).toEqual(["cut", "tunnel", "tunnel"]);
+    const portals = list.flatMap((c) => c.portals ?? []);
+    expect(portals.map((p) => `${p.from}>${p.to}`)).toEqual(["viaduct>cut", "cut>tunnel", "tunnel>viaduct"]);
+    expect(portals[0].s).toBe(0);
+    expect(portals[2].s).toBeCloseTo(run.lengthM, 2);
+    for (const c of list) {
+      expect(c.girder).toBe(0);
+      expect(c.piers).toEqual([]);
+      expect(c.cross).toEqual([]);
+      expect(c.blocked).toEqual([]);
+    }
+    // No viaduct chunk carries portals (the field is left out there).
+    expect(chunks.filter((c) => c.structure === "viaduct" && c.portals !== undefined)).toEqual([]);
+    // Deep in the tunnel the road is more than the box and cover under the ground.
+    const depths = list.flatMap((c) => {
+      const out: number[] = [];
+      for (let i = 0; i < c.st.length; i += STATION_STRIDE) out.push(c.st[i + 5] - c.st[i + 3]);
+      return out;
+    });
+    expect(Math.max(...depths)).toBeGreaterThan(TUNNEL_DEPTH_M);
+  });
+
   it("uses every allowlist entry for a run in the files: an entry no diagnostic meets is stale", () => {
     // Entries for runs outside these files are for --range all (ramp_radius of runs elsewhere), and
     // so are the "*" rules of P2.6's last give step on the assumed floors: whether a range has a run
@@ -269,11 +344,12 @@ describe("生成済みの高速道路タイル", () => {
     for (const d of meta.diagnostics) counts[d.kind] = (counts[d.kind] ?? 0) + 1;
     expect(counts).toMatchInlineSnapshot(`
       {
-        "crossing_over_or_at_grade": 34,
+        "crossing_over_or_at_grade": 30,
         "deck_below_ground": 1,
-        "deck_overlap": 13,
+        "deck_overlap": 14,
         "ramp_radius": 1,
-        "vertical_fallback": 37,
+        "tunnel_cover_short": 1,
+        "vertical_fallback": 38,
       }
     `);
   });
@@ -336,11 +412,18 @@ describe("生成済みの高速道路タイル", () => {
       "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）";
     const DAIBA = "台場側で 11 号台場線の上下線が二層から並列へ移る区間（OSM layer 4 / 3）";
     const NOSE = "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）";
+    // The azabudai ranges' (P9): the viaduct the tunnel comes out onto, first written there.
+    const TANIMACHI =
+      "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）";
     // Merging P2.6 (its solve moves the coupled components by centimetres) added five NOSE entries
     // (45019020:8, 45554540:30 × 813455519, 4848755:3, 4848762:34, 4848889:1) and widened four SHIBAURA ones.
     const expected: Array<{ chunk: string; with: string; s: [number, number]; maxDzM: number; why: string }> =
       [
         { chunk: "24402611:14", with: "45021976", s: [2237.4, 2309.4], maxDzM: 3.64, why: C1 },
+        { chunk: "24402611:0", with: "895902565", s: [0.1, 59.1], maxDzM: 0.74, why: TANIMACHI },
+        { chunk: "24402611:1", with: "895902565", s: [353.0, 437.0], maxDzM: 3.53, why: TANIMACHI },
+        { chunk: "895902565:4", with: "24402611", s: [502.1, 588.6], maxDzM: 3.74, why: TANIMACHI },
+        { chunk: "895902565:5", with: "24402611", s: [882.5, 943.0], maxDzM: 0.74, why: TANIMACHI },
         { chunk: "45021976:16", with: "24402611", s: [2754.0, 2799.5], maxDzM: 1.18, why: C1 },
         { chunk: "45021976:17", with: "24402611", s: [2799.9, 2824.9], maxDzM: 3.49, why: C1 },
         { chunk: "24402611:20", with: "45021976", s: [3740.1, 3816.1], maxDzM: 3.76, why: C1 },
@@ -392,6 +475,8 @@ describe("生成済みの高速道路タイル", () => {
 
   it("says which format it is (meta.version 4) and that every joint solve converged", () => {
     expect(meta.version).toBe(4);
+    // P9's tunnels and cuts are named, so a reader without them refuses the files (isSupportedMeta).
+    expect(meta.features).toEqual(["below"]);
     expect(meta.solver.unconverged).toBe(0);
     expect(meta.solver.solves).toBeGreaterThan(0);
     expect(meta.diagnostics.filter((d) => d.kind === "solver_not_converged")).toEqual([]);
@@ -401,9 +486,16 @@ describe("生成済みの高速道路タイル", () => {
     const blocked: string[] = [];
     for (const c of chunks) {
       for (let i = 0; i < c.blocked.length; i += BLOCKED_STRIDE) {
-        const [s, top, z] = c.blocked.slice(i, i + BLOCKED_STRIDE);
-        // The deck there is below the clearance over the road (else it would be a crossing).
-        expect(z - top).toBeLessThan(4.5 + c.girder);
+        const [s, top] = c.blocked.slice(i, i + BLOCKED_STRIDE);
+        // Somewhere over the road's width the deck is below the clearance (else it would be a
+        // crossing): the lowest surface within 40 m along (the widest window the compiler takes).
+        const list = byRun.get(c.run)!;
+        let low = Infinity;
+        for (let sv = s - 40; sv <= s + 40; sv += 1) {
+          const holder = list.find((k) => sv >= k.st[0] && sv <= k.st[k.st.length - STATION_STRIDE]);
+          if (holder) low = Math.min(low, surfaceAt(holder.st, sv).z);
+        }
+        expect(low - top).toBeLessThan(4.5 + c.girder);
         blocked.push(`${c.run}@${Math.round(s)}`);
       }
     }

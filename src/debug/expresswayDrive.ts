@@ -142,9 +142,15 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       // The route's own deck first (in `prefer`'s order), then whatever the car is on: at a diverge
       // the game's locate answers the main line over the ramp (deckRank), and following that the
       // car would never leave it.
-      const own = prefer
+      // A hit clamped to its segment's end is the run the car has just left (or not reached yet):
+      // where one run seams into the next (a viaduct into a tunnel, P9) the other run's hit inside
+      // its segment is the surface under the car. Measured against the clamped one, a 6 % grade made
+      // a 0.2–0.3 m "bump" for a few metres past every seam.
+      const hits = prefer
         .map((run) => graph?.nearestOnSurface(p, 15, (seg) => seg.line.xid?.split(":")[0] === run) ?? null)
-        .find((h) => h !== null);
+        .filter((h) => h !== null);
+      const isInside = (h: (typeof hits)[number]) => h.s > 0.01 && h.s < h.seg.length - 0.01;
+      const own = hits.find(isInside) ?? hits[0];
       const hit = own ?? graph?.locate(p, 15, anySurface) ?? null;
       const xid = hit?.seg.line.xid ?? null;
       if (xid && visited[visited.length - 1] !== xid) visited.push(xid);

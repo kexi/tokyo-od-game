@@ -376,13 +376,19 @@ describe("床版の上下干渉（deck_overlap）と報告", () => {
       const [lon, lat] = plane.toLonLat(i * 10, y);
       st.push(i * 10, lon, lat, z, 0, GROUND, 0);
     }
-    return { ...template(), id: `${run}:0`, run, k: 0, st };
+    return { ...template(), id: `${run}:0`, run, chain: `c${run}`, k: 0, st };
   };
 
   it("finds two decks 3.3 m apart whose heights differ by more than 5 cm but less than a level", () => {
     const found = deckOverlaps([deck("a", 0, 20), deck("b", 3.3, 15.5)]);
     expect(found).toHaveLength(1);
     expect(found[0].maxDzM).toBeCloseTo(4.5, 6);
+  });
+
+  it("does not count two runs of one chain (a viaduct and the tunnel it goes on into, P9) as decks over each other", () => {
+    const a = deck("a", 0, 20);
+    const b = { ...deck("b", 3.3, 15.5), chain: a.chain };
+    expect(deckOverlaps([a, b])).toEqual([]);
   });
 
   it("accepts one surface (≤ 5 cm), a whole level apart (≥ 4.5 m + girder), and decks clear of each other", () => {

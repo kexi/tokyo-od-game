@@ -186,4 +186,10 @@ describe("面の契約（profile.ts frameAt・surfaceHeight、デッキと P3 �
     for (const v of [1, 2, 3])
       expect(isSupportedMeta({ version: v } as unknown as { version: 4 })).toBe(false);
   });
+
+  it("reads P7's files (no features) and P9's (below), and refuses a feature it does not know", () => {
+    expect(isSupportedMeta({ version: 4 })).toBe(true);
+    expect(isSupportedMeta({ version: 4, features: ["below"] })).toBe(true);
+    expect(isSupportedMeta({ version: 4, features: ["below", "maxspeed"] })).toBe(false);
+  });
 });

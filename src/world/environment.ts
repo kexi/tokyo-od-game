@@ -1,4 +1,5 @@
 import {
+  AmbientLight,
   BufferAttribute,
   BufferGeometry,
   DirectionalLight,
@@ -83,9 +84,21 @@ const REFLECTIONS = {
  * (e.g. "朝" = sun 9° above the eastern horizon) rather than fixed clock hours, so they look
  * right in every season.
  */
+/** Share of the sun, the sky light and the environment map a tunnel shuts out at full shelter. */
+const SHELTER_SKY_CUT = 0.92;
+/** The tunnel lamps' light at full shelter (AmbientLight intensity). */
+const TUNNEL_LIGHT = 1.1;
+
 export class Environment {
   readonly sun = new DirectionalLight(0xffffff, 2.5);
   private readonly hemi = new HemisphereLight(0xbfd9ff, 0x4a4036, 0.9);
+  /**
+   * A tunnel's lighting (P9): the warm, even light of its lamps, on while the camera is inside one
+   * (`shelter`). Why not a point light per lamp: dozens of lights per tunnel in a forward renderer.
+   */
+  private readonly tunnelLight = new AmbientLight(0xffe2b8, 0);
+  /** How far the camera is shut in from the sky, 0 (outside) – 1 (deep in a tunnel). */
+  private shelter = 0;
   /** Preetham's sky with clouds, in TSL with Tokyo's additions (skyShader.ts). */
   private readonly sky = new TokyoSky();
   /** The night glow, stars, blue hour, rain deck and horizon haze added to the sky (skyShader.ts). */
@@ -155,7 +168,7 @@ export class Environment {
     cam.far = 1500;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.6;
-    scene.add(this.sun, this.sun.target, this.hemi);
+    scene.add(this.sun, this.sun.target, this.hemi, this.tunnelLight);
 
     const positions = new Float32Array(RAIN_DROPS * 6);
     for (let i = 0; i < RAIN_DROPS; i++) {
@@ -367,8 +380,24 @@ export class Environment {
       ? MathUtils.lerp(0.06, MathUtils.lerp(0.5, 0.35, cloud), day) + golden * 0.1
       : light.envIntensity;
 
-    this.rain.visible = raining;
+    // In a tunnel (P9) neither the sun nor the sky reaches the road: they fade with the shelter
+    // and the lamps' light takes over, by day and by night. No rain falls there either.
+    const open = 1 - SHELTER_SKY_CUT * this.shelter;
+    this.sun.intensity *= open;
+    this.hemi.intensity *= open;
+    this.scene.environmentIntensity *= open;
+    this.tunnelLight.intensity = TUNNEL_LIGHT * this.shelter;
+
+    this.rain.visible = raining && this.shelter < 0.5;
     if (raining) this.animateRain(dt, camera);
+  }
+
+  /**
+   * How far the camera is shut in from the sky (P9): 0 outside, 1 deep in a tunnel (main.ts eases it
+   * in over the first metres from a portal, as the eye adapts at a tunnel's entrance zone).
+   */
+  setShelter(shelter: number): void {
+    this.shelter = MathUtils.clamp(shelter, 0, 1);
   }
 
   /**
