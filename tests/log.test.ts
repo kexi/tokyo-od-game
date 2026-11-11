@@ -176,6 +176,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   street_lights_placed: {
     lamps: 600,
     sodium: 40,
+    underDeck: 12,
     byClass: { arterial: 100, main: 200, street: 150, residential: 100, lane: 50 },
     signals: 80,
     durationMs: 22,
