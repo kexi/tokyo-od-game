@@ -1,6 +1,7 @@
 import type { LocalFrame } from "../geo/frame";
 import { log, newSpan, warn, type Span } from "../log";
 import type { RegulationData } from "./regulations";
+import type { XwRoadInput } from "./expresswayRoads";
 import type { RoadLine } from "./roads";
 import {
   computeRoadNetwork,
@@ -40,13 +41,21 @@ export class RoadNetworkBuilder {
     this.ready();
   }
 
-  build(lines: RoadLine[], regs: RegulationData | null, frame: LocalFrame): Promise<RoadNetwork | null> {
+  build(
+    lines: RoadLine[],
+    regs: RegulationData | null,
+    frame: LocalFrame,
+    expressway: XwRoadInput | null = null,
+  ): Promise<RoadNetwork | null> {
     if (this.disposed) return Promise.reject(new Error("road builder disposed"));
     this.invalidate();
     return new Promise((resolve, reject) => {
       this.queued = {
         id: ++this.serial,
-        input: { lines, regs, origin: frame.origin },
+        // Without ?expressway the key is absent, so the message is as before P3.
+        input: expressway
+          ? { lines, regs, origin: frame.origin, expressway }
+          : { lines, regs, origin: frame.origin },
         frame,
         span: newSpan("roads"),
         start: performance.now(),

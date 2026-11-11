@@ -1,4 +1,5 @@
 import RAPIER from "@dimforge/rapier3d-compat";
+import { BUILDING_GROUPS } from "../physics/groups";
 import { reanchorCollider } from "../physics/reanchor";
 import { TilesRenderer } from "3d-tiles-renderer";
 import {
@@ -635,7 +636,8 @@ export class Buildings {
       new Float32Array(vertices),
       new Uint32Array(indices),
     ).setFriction(0.6);
-    model.collider = this.world.createCollider(desc);
+    // Members of BUILDINGS: a car up on an expressway deck passes through them (Vehicle.setOnDeck).
+    model.collider = this.world.createCollider(desc.setCollisionGroups(BUILDING_GROUPS));
   }
 
   private removeCollider(model: Model): void {

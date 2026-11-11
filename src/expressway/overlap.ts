@@ -1,23 +1,117 @@
 import { CLEARANCE_HEIGHT } from "../law/roadStandards";
-import { GIRDER_DEPTH, PARAPET_WIDTH } from "./assumptions";
+import { GIRDER_DEPTH } from "./assumptions";
 import { STATION_STRIDE, type XwChunk } from "./format";
+import { hermite, ST } from "./profile";
 import { carriagewayWidth } from "./section";
 
 /**
- * Decks whose plan bands overlap (knowledge/road-redesign-plan.md 4.2 「同じ層の車線域が重ならないことを検査」): where the
- * deck of one run lies over (or under) the deck of another, the two must either be one surface
- * (|Δz| ≤ 5 cm, a nose or merged carriageways) or be a whole level apart (|Δz| ≥ clearance + girder).
- * Anything between is a deck sunk into the side of another or a girder over a carriageway. P1
- * detects and records them (compile.ts → `deck_overlap`); separating them is P3's.
+ * Carriageways whose plan bands overlap (knowledge/road-redesign-plan.md 4.2 「同じ層の車線域が重ならないことを検査」): where
+ * the 車線域 (lanes and shoulders, inside the parapets) of one run lies over (or under) another's,
+ * the two must either be one surface (|Δz| ≤ 5 cm: a nose, or carriageways side by side on one
+ * slab) or be a whole level apart (|Δz| ≥ clearance + girder). Anything between is a deck sunk into
+ * the side of another or a girder over a carriageway. Why the carriageway and not the whole deck
+ * (P1 counted the 0.5 m parapets too): two decks whose parapets alone overlap stand side by side
+ * within OSM's ±1.5 m, which is what the design asks to check.
  *
- * Why without OSM layers: the rule holds whatever the tags say, so the data test can recompute it
- * from the tiles alone.
+ * `planOverlaps` finds the station pairs on the compiler's plan lines (before any height is known),
+ * which compile.ts turns into couplings of the joint vertical QP. `deckOverlaps` recomputes the
+ * violations from the tiles alone (without OSM layers: the rule holds whatever the tags say), for
+ * the data test and the `deck_overlap` diagnostic.
  */
+
+export const SAME_SURFACE_M = 0.05;
+export const LEVEL_APART_M = CLEARANCE_HEIGHT.value + GIRDER_DEPTH.value;
+const CELL_M = 25;
+
+/** A run's plan line in one metric plane: points every few metres with the carriageway half width. */
+export type PlanLine = { id: string; x: Float64Array; y: Float64Array; s: Float64Array; hw: Float64Array };
+
+/** Station `ia` of run a (at sa) lies over the deck of b, whose centre line is nearest at sb. */
+export type PlanPair = {
+  a: string;
+  ia: number;
+  sa: number;
+  b: string;
+  sb: number;
+  dist: number;
+  /** Cosine between the two directions of travel (−1: side by side the other way). */
+  cos: number;
+};
+
+type Seg = { line: number; i: number };
+
+function segmentGrid(lines: PlanLine[]): Map<string, Seg[]> {
+  const grid = new Map<string, Seg[]>();
+  lines.forEach((ln, line) => {
+    for (let i = 0; i + 1 < ln.x.length; i++) {
+      const keys = new Set([
+        `${Math.floor(ln.x[i] / CELL_M)},${Math.floor(ln.y[i] / CELL_M)}`,
+        `${Math.floor(ln.x[i + 1] / CELL_M)},${Math.floor(ln.y[i + 1] / CELL_M)}`,
+      ]);
+      for (const k of keys) {
+        const list = grid.get(k);
+        if (list) list.push({ line, i });
+        else grid.set(k, [{ line, i }]);
+      }
+    }
+  });
+  return grid;
+}
+
+/**
+ * Every point of every line that lies within the other line's deck (centre distance below the sum
+ * of the half widths plus `margin`), with the nearest point on the other's centre line. Both
+ * directions are listed (a over b and b over a), so a crossing's footprint is covered from both
+ * sides. Lines must be in one plane; the grid assumes half widths under 12 m.
+ */
+export function planOverlaps(lines: PlanLine[], margin = 0.5): PlanPair[] {
+  const grid = segmentGrid(lines);
+  const out: PlanPair[] = [];
+  lines.forEach((a, la) => {
+    for (let ia = 0; ia < a.x.length; ia++) {
+      const px = a.x[ia];
+      const py = a.y[ia];
+      const cx = Math.floor(px / CELL_M);
+      const cy = Math.floor(py / CELL_M);
+      const best = new Map<number, { d: number; sb: number; hw: number; ex: number; ey: number }>();
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (const { line, i } of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
+            if (line === la) continue;
+            const b = lines[line];
+            const ex = b.x[i + 1] - b.x[i];
+            const ey = b.y[i + 1] - b.y[i];
+            const len2 = ex * ex + ey * ey || 1;
+            const t = Math.min(1, Math.max(0, ((px - b.x[i]) * ex + (py - b.y[i]) * ey) / len2));
+            const d = Math.hypot(px - (b.x[i] + ex * t), py - (b.y[i] + ey * t));
+            const prev = best.get(line);
+            const isNearer = !prev || d < prev.d;
+            if (!isNearer) continue;
+            const sb = b.s[i] + (b.s[i + 1] - b.s[i]) * t;
+            const hw = b.hw[i] + (b.hw[i + 1] - b.hw[i]) * t;
+            best.set(line, { d, sb, hw, ex, ey });
+          }
+        }
+      }
+      const j = Math.min(ia + 1, a.x.length - 1);
+      const k = Math.max(ia - 1, 0);
+      const tx = a.x[j] - a.x[k];
+      const ty = a.y[j] - a.y[k];
+      for (const [line, q] of [...best.entries()].sort((p, r) => p[0] - r[0])) {
+        const isOver = q.d < a.hw[ia] + q.hw + margin;
+        if (!isOver) continue;
+        const cos = (tx * q.ex + ty * q.ey) / (Math.hypot(tx, ty) * Math.hypot(q.ex, q.ey) || 1);
+        out.push({ a: a.id, ia, sa: a.s[ia], b: lines[line].id, sb: q.sb, dist: q.d, cos });
+      }
+    }
+  });
+  return out;
+}
 
 export type Overlap = {
   a: string;
   b: string;
-  /** Stations of `a` over or under `b`'s deck with a forbidden height difference. */
+  /** Stations of either over the other's deck with a forbidden height difference. */
   stations: number;
   minDzM: number;
   maxDzM: number;
@@ -25,18 +119,14 @@ export type Overlap = {
   minGapM: number;
 };
 
-export const SAME_SURFACE_M = 0.05;
-const LEVEL_APART_M = CLEARANCE_HEIGHT.value + GIRDER_DEPTH.value;
-const CELL_M = 25;
+/** One run's stations from its chunks, in a plane around the data (metres). */
+type Pt = { x: number; y: number; s: number; z: number; g: number; hw: number };
 
-type Pt = { x: number; y: number; z: number; hw: number };
-
-/** Every run's stations as one polyline in a plane around the data (metres). */
 function polylines(chunks: XwChunk[]): Map<string, Pt[]> {
   let lat0 = 0;
   let n = 0;
   for (const c of chunks) {
-    lat0 += c.st[2];
+    lat0 += c.st[ST.lat];
     n++;
   }
   lat0 = n > 0 ? lat0 / n : 35.68;
@@ -49,10 +139,17 @@ function polylines(chunks: XwChunk[]): Map<string, Pt[]> {
     list.sort((p, q) => p.k - q.k);
     const pts: Pt[] = [];
     for (const c of list) {
-      const hw = carriagewayWidth(c) / 2 + PARAPET_WIDTH.value;
+      const hw = carriagewayWidth(c) / 2;
       const first = pts.length === 0 ? 0 : STATION_STRIDE;
       for (let i = first; i < c.st.length; i += STATION_STRIDE) {
-        pts.push({ x: c.st[i + 1] * kx, y: c.st[i + 2] * ky, z: c.st[i + 3], hw });
+        pts.push({
+          x: c.st[i + ST.lon] * kx,
+          y: c.st[i + ST.lat] * ky,
+          s: c.st[i + ST.s],
+          z: c.st[i + ST.z],
+          g: c.st[i + ST.grade],
+          hw,
+        });
       }
     }
     out.set(run, pts);
@@ -60,66 +157,51 @@ function polylines(chunks: XwChunk[]): Map<string, Pt[]> {
   return out;
 }
 
+/**
+ * Pairs of runs with stations over the other's deck at a height difference that is neither one
+ * surface nor a level apart. The other deck's height is the Hermite surface (profile.ts) at the
+ * nearest point of its centre line, so a straight chord between its stations does not fake a step.
+ */
 export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
   const lines = polylines(chunks);
-  const cell = (x: number, y: number) => `${Math.floor(x / CELL_M)},${Math.floor(y / CELL_M)}`;
-  const grid = new Map<string, Array<{ run: string; i: number }>>();
-  for (const [run, pts] of lines) {
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const keys = new Set([cell(pts[i].x, pts[i].y), cell(pts[i + 1].x, pts[i + 1].y)]);
-      for (const k of keys) grid.set(k, [...(grid.get(k) ?? []), { run, i }]);
-    }
-  }
-  const found = new Map<string, Overlap>();
   const runs = [...lines.keys()].sort();
-  for (const a of runs) {
-    for (const p of lines.get(a)!) {
-      const cx = Math.floor(p.x / CELL_M);
-      const cy = Math.floor(p.y / CELL_M);
-      // The nearest point of each other run's deck around this station.
-      const best = new Map<string, { d: number; z: number; hw: number }>();
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (const { run: b, i } of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
-            const isOther = b > a;
-            if (!isOther) continue;
-            const q0 = lines.get(b)![i];
-            const q1 = lines.get(b)![i + 1];
-            const ex = q1.x - q0.x;
-            const ey = q1.y - q0.y;
-            const len2 = ex * ex + ey * ey || 1;
-            const t = ((p.x - q0.x) * ex + (p.y - q0.y) * ey) / len2;
-            const isBeside = t >= 0 && t <= 1;
-            if (!isBeside) continue;
-            const d = Math.hypot(p.x - (q0.x + ex * t), p.y - (q0.y + ey * t));
-            const prev = best.get(b);
-            const isNearer = !prev || d < prev.d;
-            if (isNearer) best.set(b, { d, z: q0.z + (q1.z - q0.z) * t, hw: q0.hw });
-          }
-        }
-      }
-      for (const [b, q] of best) {
-        const isOverlapping = q.d < p.hw + q.hw;
-        if (!isOverlapping) continue;
-        const dz = p.z - q.z;
-        const isAllowed = Math.abs(dz) <= SAME_SURFACE_M || Math.abs(dz) >= LEVEL_APART_M;
-        if (isAllowed) continue;
-        const key = `${a}|${b}`;
-        const o = found.get(key) ?? {
-          a,
-          b,
-          stations: 0,
-          minDzM: Infinity,
-          maxDzM: -Infinity,
-          minGapM: Infinity,
-        };
-        o.stations++;
-        o.minDzM = Math.min(o.minDzM, Math.abs(dz));
-        o.maxDzM = Math.max(o.maxDzM, Math.abs(dz));
-        o.minGapM = Math.min(o.minGapM, q.d);
-        found.set(key, o);
-      }
+  const planLines: PlanLine[] = runs.map((id) => {
+    const pts = lines.get(id)!;
+    return {
+      id,
+      x: Float64Array.from(pts, (p) => p.x),
+      y: Float64Array.from(pts, (p) => p.y),
+      s: Float64Array.from(pts, (p) => p.s),
+      hw: Float64Array.from(pts, (p) => p.hw),
+    };
+  });
+  const surface = (id: string, s: number) => {
+    const pts = lines.get(id)!;
+    let lo = 0;
+    let hi = pts.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (pts[mid].s <= s) lo = mid;
+      else hi = mid;
     }
+    const p = pts[lo];
+    const q = pts[Math.min(lo + 1, pts.length - 1)];
+    return hermite(p.s, p.z, p.g, q.s, q.z, q.g, s).z;
+  };
+  const found = new Map<string, Overlap>();
+  for (const pair of planOverlaps(planLines, 0)) {
+    const za = lines.get(pair.a)![pair.ia].z;
+    const dz = za - surface(pair.b, pair.sb);
+    const isAllowed = Math.abs(dz) <= SAME_SURFACE_M || Math.abs(dz) >= LEVEL_APART_M;
+    if (isAllowed) continue;
+    const [a, b] = pair.a < pair.b ? [pair.a, pair.b] : [pair.b, pair.a];
+    const key = `${a}|${b}`;
+    const o = found.get(key) ?? { a, b, stations: 0, minDzM: Infinity, maxDzM: -Infinity, minGapM: Infinity };
+    o.stations++;
+    o.minDzM = Math.min(o.minDzM, Math.abs(dz));
+    o.maxDzM = Math.max(o.maxDzM, Math.abs(dz));
+    o.minGapM = Math.min(o.minGapM, pair.dist);
+    found.set(key, o);
   }
   return [...found.values()].sort((p, q) => (p.a + p.b < q.a + q.b ? -1 : 1));
 }

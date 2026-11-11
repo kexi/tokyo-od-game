@@ -6,6 +6,7 @@ import {
   classOf,
   hasRoadside,
   isDrivable,
+  isEnterable,
   isExpressway,
   isLevelInconsistent,
   isOnGround,
@@ -111,8 +112,37 @@ describe("road class (src/world/roadClass.ts)", () => {
       expect(takesJarticRules(deck)).toBe(false);
       expect(allowsRoadsideStop(deck)).toBe(false);
       expect(usesGroundSurface(deck)).toBe(false);
-      for (const use of USES) expect(isDrivable(deck, use)).toBe(false);
     }
+  });
+
+  it("opens the OSM expressway to the map and the spawn only (P3), never GSI's own 高速道路 lines", () => {
+    const opened: RouteUse[] = ["spawn", "map"];
+    for (const cls of ["expressway", "ramp"] as const) {
+      const deck = line("national", { source: "osm", cls, structure: "viaduct", level: 1 });
+      for (const use of USES)
+        expect([cls, use, isDrivable(deck, use)]).toEqual([cls, use, opened.includes(use)]);
+      expect(isDrivable(deck, "guide")).toBe(false);
+      expect(isEnterable(deck)).toBe(true);
+    }
+    const gsi = line("highway");
+    for (const use of [...USES, "guide" as const]) expect(isDrivable(gsi, use)).toBe(false);
+    expect(isEnterable(gsi)).toBe(false);
+  });
+
+  it("closes tunnels and cuttings to every use until P9 gives them a floor", () => {
+    for (const structure of ["tunnel", "cut"] as const) {
+      const street = line("local", { structure, level: -1 });
+      const xw = line("national", { source: "osm", cls: "expressway", structure, level: -1 });
+      for (const use of USES) {
+        expect(isDrivable(street, use)).toBe(false);
+        expect(isDrivable(xw, use)).toBe(false);
+      }
+      expect(isEnterable(street)).toBe(false);
+    }
+  });
+
+  it("lets every ground street be a junction's approach or exit, as hasRoadside did", () => {
+    for (const kind of KINDS) expect(isEnterable(line(kind))).toBe(hasRoadside(line(kind)));
   });
 
   it("calls a line on the ground only at level 0 and carried by the ground, and flags contradictions", () => {

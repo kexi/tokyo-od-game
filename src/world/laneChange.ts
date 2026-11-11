@@ -39,6 +39,17 @@ export type CrossSection = {
 };
 
 /**
+ * Width of a carriageway built from its section: the lanes, both shoulders and the median. The
+ * expressway's deck is this wide between its parapets (src/expressway/section.ts re-exports it),
+ * and an expressway line's `width` is this.
+ */
+export function sectionWidth(
+  s: Pick<CrossSection, "lanes" | "laneWidth" | "shoulderL" | "shoulderR"> & { median?: number },
+): number {
+  return s.lanes * s.laneWidth + s.shoulderL + s.shoulderR + (s.median ?? 0);
+}
+
+/**
  * 道路構造令 values a street is laid out with: 第四種 (都市部の一般道, 第3条) 第一級 lanes of
  * 3.25 m (第5条第4項) and 0.5 m shoulders both sides (第8条第2項・第4項). Why 第一級 for every street
  * and not 第二級・第三級 (3.0 m): the class follows the planned traffic, which no data gives; the

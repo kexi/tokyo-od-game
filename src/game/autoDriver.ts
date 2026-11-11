@@ -338,7 +338,8 @@ export class AutoDriver {
     const graph = world.graph;
     const here = this.position;
     const heading = this.heading();
-    const hit = graph.nearest(here, 25, isDrivable);
+    // The deck the car is on when it is up on one, else the street (as nearest always answered).
+    const hit = graph.locate(here, 25, isDrivable);
     if (hit) {
       const facing: 1 | -1 = hit.dir.dot(heading) >= 0 ? 1 : -1;
       const isOnIt = Math.abs(hit.lateral) < hit.seg.line.width / 2 + 0.5;

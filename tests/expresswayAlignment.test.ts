@@ -17,12 +17,14 @@ import {
   checkJunction,
   checkPlan,
   checkSuperelevation,
+  checkSurface,
   checkVerticalCurves,
 } from "../src/expressway/checks";
-import { type CrossObject, planNetwork, solvePlan } from "../src/expressway/compile";
-import type { XwChunk } from "../src/expressway/format";
+import { type CrossObject, planNetwork, solvePlan, stationPositions } from "../src/expressway/compile";
+import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { deckOverlaps } from "../src/expressway/overlap";
+import { hermite, surfaceAt } from "../src/expressway/profile";
 import { alignPlan } from "../src/expressway/horizontal";
 import { type Network, normalizeNode, normalizeWay, structureOf } from "../src/expressway/network";
 import { superelevation, targetSuperelevation } from "../src/expressway/superelevation";
@@ -163,7 +165,7 @@ describe("平面線形（knowledge/road-redesign-plan.md 4.2, T6）", () => {
     }
   });
 
-  it("lowers the design speed where the radius on site is below 第15条 for the tagged speed", () => {
+  it("lowers the design speed only around a curve whose radius is below 第15条 for the tagged speed", () => {
     // A 90° bend of radius 80 m: below 100 m (V50), at least 60 m (V40).
     const pts: Array<[number, number]> = [];
     for (let i = 0; i <= 10; i++) pts.push([-200 + i * 20, 0]);
@@ -176,7 +178,19 @@ describe("平面線形（knowledge/road-redesign-plan.md 4.2, T6）", () => {
     const planned = planNetwork(net, new Set(), null);
     const run = planned.runs.get("1")!;
     expect(run.tagV).toBe(60);
-    expect(run.V).toBe(40);
+    // 設計速度は区間ごと: the curve (R 80 m: ≥ 60 m for V40, < 100 m for V50) and its 第18条
+    // transitions are 40, the straights either side keep the tagged 60.
+    const at = (s: number) => run.zones.find((z) => s >= z.from && s <= z.to)!.V;
+    const curveMid = 200 + (80 * Math.PI) / 4;
+    expect(at(curveMid)).toBe(40);
+    expect(at(10)).toBe(60);
+    expect(at(run.length - 10)).toBe(60);
+    // The 40 stretch covers the curve plus at least the 第18条 length of V60 on both sides.
+    const slow = run.zones.find((z) => z.V === 40)!;
+    // (The plan smoothing rounds the arc's ends over ~25 m, so the tight part starts 25 m in.)
+    const arc = [200 + 25, 200 + (80 * Math.PI) / 2 - 25];
+    expect(slow.from).toBeLessThanOrEqual(arc[0] - TRANSITION_LENGTH.value[60] + 1);
+    expect(slow.to).toBeGreaterThanOrEqual(arc[1] + TRANSITION_LENGTH.value[60] - 1);
   });
 });
 
@@ -203,7 +217,7 @@ describe("縦断線形（knowledge/road-redesign-plan.md 4.3）", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const p = r.profile;
-    expect(p.steps).toEqual(["standard"]);
+    expect(r.steps).toEqual(["standard"]);
     expect(evalProfile(p, 0).z).toBeCloseTo(0, 6);
     expect(evalProfile(p, 300).z).toBeCloseTo(7, 4);
     expect(evalProfile(p, 150).z).toBeGreaterThan(3);
@@ -233,7 +247,7 @@ describe("縦断線形（knowledge/road-redesign-plan.md 4.3）", () => {
   it("falls back to the 特例 grade only when the standard grade cannot make it", () => {
     const r = solveVertical(step(200));
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.profile.steps).toEqual(["specialGrade"]);
+    if (r.ok) expect(r.steps).toEqual(["specialGrade"]);
   });
 });
 
@@ -286,7 +300,7 @@ describe("合成した高架とランプのコンパイル（T1〜T5, T7）", ()
   it("cuts chunks at the junction node and at most every 300 m, with ids <run>:<k>", () => {
     const main = chunks.get("10")!;
     for (const c of main) {
-      const length = c.st[c.st.length - 6] - c.st[0];
+      const length = c.st[c.st.length - STATION_STRIDE] - c.st[0];
       expect(length).toBeLessThanOrEqual(300 + 1e-6);
       expect(c.id).toBe(`10:${c.k}`);
     }
@@ -320,8 +334,11 @@ describe("片勾配（knowledge/road-redesign-plan.md 4.3 の 4, T7）", () => {
 describe("決定性と範囲（T8）", () => {
   it("compiling twice gives byte-identical output", () => {
     const { net, street } = mainAndRamp();
-    const a = JSON.stringify(compile(net, [street]).result);
-    const b = JSON.stringify(compile(mainAndRamp().net, [street]).result);
+    // What is written (chunks, run summaries, diagnostics); `stats` carries timings for the log.
+    const written = ({ chunks, runs, diagnostics }: ReturnType<typeof solvePlan>) =>
+      JSON.stringify({ chunks, runs, diagnostics });
+    const a = written(compile(net, [street]).result);
+    const b = written(compile(mainAndRamp().net, [street]).result);
     expect(a).toBe(b);
   });
 
@@ -352,7 +369,7 @@ describe("床版の上下干渉（deck_overlap）と報告", () => {
     const st: number[] = [];
     for (let i = 0; i <= 20; i++) {
       const [lon, lat] = plane.toLonLat(i * 10, y);
-      st.push(i * 10, lon, lat, z, 0, GROUND);
+      st.push(i * 10, lon, lat, z, 0, GROUND, 0);
     }
     return { ...template(), id: `${run}:0`, run, k: 0, st };
   };
@@ -380,9 +397,302 @@ describe("床版の上下干渉（deck_overlap）と報告", () => {
     expect(plan.diagnostics.map((d) => d.kind)).toContain("crossing_layer_ambiguous");
   });
 
-  it("only the allowlist (with a reason) can mark a diagnostic allowed", () => {
-    expect(isAllowed({ run: "x", kind: "deck_overlap" })).toBe(true);
+  it("only the allowlist (with a reason) can mark a diagnostic allowed, a deck overlap only pair by pair", () => {
+    expect(isAllowed({ run: "x", kind: "vertical_fallback" })).toBe(true);
     expect(isAllowed({ run: "x", kind: "vertical_unsolved" })).toBe(false);
+    const detail = (b: string, n: number, dz: number) =>
+      `with ${b}: ${n} stations, |Δz| 0.10–${dz} m, centre lines 6.1 m apart`;
+    expect(isAllowed({ run: "x", kind: "deck_overlap", detail: detail("y", 3, 2) })).toBe(false);
+    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("45021976", 3, 2) })).toBe(true);
+    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("4853798", 3, 2) })).toBe(false);
+    // A pair is allowed only up to the stations and |Δz| reviewed: more is a new finding.
+    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("45021976", 300, 2) })).toBe(
+      false,
+    );
+    expect(isAllowed({ run: "24402611", kind: "deck_overlap", detail: detail("4848762", 3, 5) })).toBe(false);
+    expect(isAllowed({ run: "x", kind: "vertical_crossings_only" })).toBe(false);
     for (const a of ALLOWLIST) expect(a.reason.length).toBeGreaterThan(10);
+    expect(ALLOWLIST.some((a) => a.kind === "deck_overlap" && a.run === "*")).toBe(false);
+  });
+});
+
+/** The run's stations as plan points (m) with the chunk data, in order along the run. */
+function stationsAlong(chunks: XwChunk[]) {
+  const out: Array<{ x: number; y: number; s: number; z: number; bank: number; grade: number }> = [];
+  for (const c of [...chunks].sort((a, b) => a.k - b.k)) {
+    for (let i = out.length === 0 ? 0 : STATION_STRIDE; i < c.st.length; i += STATION_STRIDE) {
+      const [x, y] = plane.toXY(c.st[i + 1], c.st[i + 2]);
+      out.push({ x, y, s: c.st[i], z: c.st[i + 3], bank: c.st[i + 4], grade: c.st[i + 6] });
+    }
+  }
+  return out;
+}
+
+/** Surface height and bank of a run at the point of its centre line nearest (x, y). */
+function nearestOn(chunks: XwChunk[], x: number, y: number) {
+  const pts = stationsAlong(chunks);
+  let best = { d: Infinity, z: 0, bank: 0 };
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[i + 1];
+    const ex = q.x - p.x;
+    const ey = q.y - p.y;
+    const t = Math.min(1, Math.max(0, ((x - p.x) * ex + (y - p.y) * ey) / (ex * ex + ey * ey)));
+    const d = Math.hypot(x - p.x - ex * t, y - p.y - ey * t);
+    if (d >= best.d) continue;
+    const s = p.s + (q.s - p.s) * t;
+    const c = chunks.find((k) => s >= k.st[0] && s <= k.st[k.st.length - STATION_STRIDE])!;
+    best = { d, z: surfaceAt(c.st, s).z, bank: p.bank + (q.bank - p.bank) * t };
+  }
+  return best;
+}
+
+/** Carriageway (車線域) half widths recomputed from 第5・8条 (main) and the ramp assumption. */
+const LANE_HALF = { main: (2 * 3.25 + 1.25 + 0.75) / 2, ramp: (3.25 + 1.0 + 0.5) / 2 };
+const LEVEL = 4.5 + 2.2;
+
+function checkAll(result: ReturnType<typeof solvePlan>) {
+  const runs = new Map(result.runs.map((r) => [r.id, r]));
+  const problems: string[] = [];
+  for (const c of result.chunks) {
+    const run = runs.get(c.run)!;
+    problems.push(...checkGrade(c, run), ...checkVerticalCurves(c), ...checkSurface(c));
+    problems.push(...checkClearance(c, run), ...checkSuperelevation(c), ...checkPlan(c, run).problems);
+  }
+  return problems;
+}
+
+describe("連結した run を 1 つの QP で解く（設計書 4.3、縦断の一括解）", () => {
+  // A ramp leaves the main line at x = 800 and crosses over a parallel viaduct 30 m north only ~70 m
+  // after its deck parts from the main line's: neither can stay at the standard height. Solved run
+  // by run (P1: the lower deck first at its standard height, then the main line, then the ramp),
+  // the ramp could not climb a level in time.
+  function rampOverParallel() {
+    const main = line(0, 0, 2000, 0);
+    const mainIds = main.map((_, i) => 1000 + i);
+    const other = line(2000, 30, 0, 30);
+    const otherIds = other.map((_, i) => 3000 + i);
+    const rampPts: Array<[number, number]> = [[800, 0], [850, 8], ...line(900, 38, 1150, 190), [1300, 280]];
+    const rampIds = [mainIds[16], ...rampPts.slice(1).map((_, i) => 2000 + i)];
+    return network([
+      { id: 10, pts: main, nodeIds: mainIds, tags: viaduct },
+      { id: 30, pts: other, nodeIds: otherIds, tags: viaduct },
+      {
+        id: 20,
+        pts: rampPts,
+        nodeIds: rampIds,
+        tags: { highway: "motorway_link", bridge: "yes", layer: "2" },
+      },
+    ]);
+  }
+  const { plan, result } = compile(rampOverParallel());
+  const chunks = byRun(result.chunks);
+
+  it("groups the three runs into one problem (junction + deck over deck) and solves all of them", () => {
+    expect(plan.components.get(plan.componentOf.get("20")!)!.sort()).toEqual(["10", "20", "30"]);
+    expect(result.runs.map((r) => r.id).sort()).toEqual(["10", "20", "30"]);
+    expect(result.diagnostics.filter((d) => !d.allowed)).toEqual([]);
+    expect(checkAll(result)).toEqual([]);
+  });
+
+  it("the ramp clears the parallel deck by a level where it crosses it, recomputed from the tiles", () => {
+    const ramp = stationsAlong(chunks.get("20")!);
+    const over = ramp.filter((p) => Math.abs(p.y - 30) < LANE_HALF.ramp + LANE_HALF.main);
+    expect(over.length).toBeGreaterThan(0);
+    for (const p of over)
+      expect(p.z - nearestOn(chunks.get("30")!, p.x, p.y).z).toBeGreaterThanOrEqual(LEVEL - 0.002);
+    expect(deckOverlaps(result.chunks)).toEqual([]);
+  });
+
+  it("moves the coupled decks off their standard height where the ramp needs it (not the ramp alone)", () => {
+    const standard = GROUND + 6.5 + 2.2;
+    const mainAtNose = nearestOn(chunks.get("10")!, 800, 0).z;
+    const otherAtCrossing = nearestOn(chunks.get("30")!, 880, 30).z;
+    // Together they open a gap that their standard heights (equal) would not give.
+    expect(mainAtNose - otherAtCrossing).toBeGreaterThan(2);
+    expect(Math.max(mainAtNose - standard, standard - otherAtCrossing)).toBeGreaterThan(1);
+  });
+});
+
+describe("床版の重なり: 同一面と 1 段離し（設計書 4.2）", () => {
+  // Two carriageways the opposite way round a 160 m curve (V60), centre lines 4 m apart: their
+  // decks overlap. On one OSM layer they must be one surface (|Δz| ≤ 5 cm, one cross slope).
+  function sideBySide(gap: number) {
+    const arc = (r: number) =>
+      Array.from({ length: 13 }, (_, i) => {
+        const t = (i / 12) * (Math.PI / 2);
+        return [400 + r * Math.sin(t), 160 - r * Math.cos(t)] as [number, number];
+      });
+    const a: Array<[number, number]> = [
+      ...line(0, 0, 400, 0).slice(0, -1),
+      ...arc(160),
+      ...line(560, 160, 560, 600).slice(1),
+    ];
+    const b: Array<[number, number]> = [
+      ...line(560 + gap, 600, 560 + gap, 160).slice(0, -1),
+      ...arc(160 + gap).reverse(),
+      ...line(400, -gap, 0, -gap).slice(1),
+    ];
+    return network([
+      { id: 1, pts: a, nodeIds: a.map((_, i) => 100 + i), tags: viaduct },
+      { id: 2, pts: b, nodeIds: b.map((_, i) => 500 + i), tags: viaduct },
+    ]);
+  }
+
+  it("same layer: one surface wherever the decks overlap, with one cross slope (opposite banks)", () => {
+    const { result } = compile(sideBySide(4));
+    expect(result.diagnostics.filter((d) => !d.allowed)).toEqual([]);
+    expect(checkAll(result)).toEqual([]);
+    const chunks = byRun(result.chunks);
+    let compared = 0;
+    let banked = 0;
+    for (const p of stationsAlong(chunks.get("1")!)) {
+      const q = nearestOn(chunks.get("2")!, p.x, p.y);
+      const isOver = q.d < 2 * LANE_HALF.main;
+      if (!isOver) continue;
+      compared++;
+      expect(Math.abs(p.z - q.z)).toBeLessThanOrEqual(0.05);
+      // Opposite directions: one slab tilts one way, so the banks (per direction) have opposite signs.
+      expect(Math.abs(p.bank + q.bank)).toBeLessThanOrEqual(0.002);
+      if (Math.abs(p.bank) > 0.01) banked++;
+    }
+    expect(compared).toBeGreaterThan(50);
+    expect(banked).toBeGreaterThan(5);
+    expect(deckOverlaps(result.chunks)).toEqual([]);
+  });
+
+  it("different layers: the upper deck a whole level (4.5 m + girder) over the lower one", () => {
+    // The upper carriageway swings out at both ends so each can still meet the ground.
+    const lower = line(1600, 0, 0, 0);
+    const upper: Array<[number, number]> = [
+      [0, 90],
+      [300, 90],
+      ...line(650, 3, 950, 3),
+      [1300, 90],
+      [1600, 90],
+    ];
+    const net = network([
+      { id: 1, pts: upper, nodeIds: upper.map((_, i) => 100 + i), tags: { ...viaduct, layer: "2" } },
+      { id: 2, pts: lower, nodeIds: lower.map((_, i) => 500 + i), tags: { ...viaduct, layer: "1" } },
+    ]);
+    const { result } = compile(net);
+    expect(result.diagnostics.filter((d) => !d.allowed)).toEqual([]);
+    expect(checkAll(result)).toEqual([]);
+    const chunks = byRun(result.chunks);
+    const over = stationsAlong(chunks.get("1")!).filter(
+      (p) => nearestOn(chunks.get("2")!, p.x, p.y).d < 2 * LANE_HALF.main,
+    );
+    expect(over.length).toBeGreaterThan(20);
+    for (const p of over)
+      expect(p.z - nearestOn(chunks.get("2")!, p.x, p.y).z).toBeGreaterThanOrEqual(LEVEL - 0.002);
+    expect(deckOverlaps(result.chunks)).toEqual([]);
+  });
+});
+
+describe("分合流のノーズ（ノーズから分離までは親と同一面）", () => {
+  const { net, street } = mainAndRamp();
+  const { result } = compile(net, [street]);
+  const chunks = byRun(result.chunks);
+
+  it("the ramp's deck stays on the main line's surface (height and bank) until it is clear of it", () => {
+    const ramp = stationsAlong(chunks.get("20")!);
+    const onMain = ramp.filter(
+      (p) => nearestOn(chunks.get("10")!, p.x, p.y).d < LANE_HALF.main + LANE_HALF.ramp,
+    );
+    expect(onMain.length).toBeGreaterThanOrEqual(2);
+    for (const p of onMain) {
+      const q = nearestOn(chunks.get("10")!, p.x, p.y);
+      expect(Math.abs(p.z - q.z)).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(p.bank - q.bank)).toBeLessThanOrEqual(0.002);
+    }
+    expect(deckOverlaps(result.chunks)).toEqual([]);
+  });
+});
+
+describe("エルミート補間（測点の勾配、P3 の surfaceY と共有）", () => {
+  it("reproduces a parabola exactly between two stations (value and grade)", () => {
+    const z = (s: number) => 2 + 0.03 * s - (s * s) / 900;
+    const g = (s: number) => 0.03 - (2 * s) / 900;
+    for (const s of [10, 13.7, 22, 30]) {
+      const p = hermite(10, z(10), g(10), 30, z(30), g(30), s);
+      expect(p.z).toBeCloseTo(z(s), 12);
+      expect(p.grade).toBeCloseTo(g(s), 12);
+    }
+  });
+
+  it("is C¹ across every station of a compiled run, chunk seams included (no step, no kink)", () => {
+    const { net, street } = mainAndRamp();
+    const { result } = compile(net, [street]);
+    const at = (st: number[], i: number) => st.slice(i * STATION_STRIDE, (i + 1) * STATION_STRIDE);
+    for (const list of byRun(result.chunks).values()) {
+      const sorted = [...list].sort((a, b) => a.k - b.k);
+      for (let k = 0; k < sorted.length; k++) {
+        const st = sorted[k].st;
+        const n = st.length / STATION_STRIDE;
+        for (let i = 1; i + 1 < n; i++) {
+          const [sa, , , za, , , ga] = at(st, i - 1);
+          const [s, , , z, , , g] = at(st, i);
+          const [sb, , , zb, , , gb] = at(st, i + 1);
+          const left = hermite(sa, za, ga, s, z, g, s - 1e-6);
+          const right = hermite(s, z, g, sb, zb, gb, s + 1e-6);
+          expect(Math.abs(left.z - right.z)).toBeLessThan(1e-5);
+          expect(Math.abs(left.grade - right.grade)).toBeLessThan(1e-4);
+        }
+        const next = sorted[k + 1];
+        if (!next) continue;
+        // The seam: the next chunk starts with the same station, elevation and grade.
+        expect(next.st[3]).toBe(st[st.length - STATION_STRIDE + 3]);
+        expect(next.st[6]).toBe(st[st.length - STATION_STRIDE + 6]);
+      }
+    }
+  });
+
+  it("each station's grade agrees with its neighbours' elevations (recomputed from z alone)", () => {
+    const { net, street } = mainAndRamp();
+    const { result } = compile(net, [street]);
+    for (const c of result.chunks) {
+      // The derivative of a curve lies between its two neighbouring chord slopes, up to how much
+      // the curvature may change inside them (1/R凸 + 1/R凹 of 第22条 for the section's speed)
+      // times the spacing / 8, plus the rounding of z (1 mm) and of the grade.
+      const r = VERTICAL_CURVE_RADIUS.value[c.V as 60];
+      const st = c.st;
+      for (let i = STATION_STRIDE; i + STATION_STRIDE < st.length; i += STATION_STRIDE) {
+        const h1 = st[i] - st[i - STATION_STRIDE];
+        const h2 = st[i + STATION_STRIDE] - st[i];
+        const left = (st[i + 3] - st[i - STATION_STRIDE + 3]) / h1;
+        const right = (st[i + STATION_STRIDE + 3] - st[i + 3]) / h2;
+        const tol = ((h1 + h2) / 8) * (1 / r.crest + 1 / r.sag) + 0.002 / Math.min(h1, h2) + 1e-5;
+        const grade = st[i + 6];
+        expect(grade).toBeGreaterThanOrEqual(Math.min(left, right) - tol);
+        expect(grade).toBeLessThanOrEqual(Math.max(left, right) + tol);
+      }
+    }
+  });
+});
+
+describe("チャンクの測点の位置（節点と端）", () => {
+  it("never moves the chunk's ends and puts a station on every knot, even one right by an end", () => {
+    // A knot (30) added first used to shift the end's index, so the end (100) was moved onto the
+    // knot at 99: a gap at the seam with the next chunk, which starts at exactly 100.
+    const plan = [0, 20, 40, 60, 80, 100];
+    const out = stationPositions(plan, [30, 99, 61], 0, 100);
+    expect(out[0]).toBe(0);
+    expect(out[out.length - 1]).toBe(100);
+    for (const knot of [30, 99, 61]) expect(out).toContain(knot);
+    // A plan station within 2.5 m of a knot moves onto it instead of doubling up (60 → 61).
+    expect(out).not.toContain(60);
+    expect(out).toEqual([...out].sort((a, b) => a - b));
+  });
+
+  it("keeps the seams of a compiled run exact: each chunk starts where the previous one ends", () => {
+    const { net, street } = mainAndRamp();
+    const { result } = compile(net, [street]);
+    for (const list of byRun(result.chunks).values()) {
+      const sorted = [...list].sort((a, b) => a.k - b.k);
+      for (let k = 1; k < sorted.length; k++) {
+        const prev = sorted[k - 1].st;
+        expect(sorted[k].st.slice(0, 4)).toEqual(prev.slice(prev.length - STATION_STRIDE, prev.length - 3));
+      }
+    }
   });
 });
