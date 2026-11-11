@@ -4,7 +4,7 @@ import type { XwDiagnostic } from "./format";
 /**
  * What the compiler reports and the project accepts, each with why. Only this list decides a
  * diagnostic's `allowed` (compile.ts sets it from here; the compiler itself never does), and
- * tests/expresswayData.test.ts fails on anything it does not cover (設計書 4.4 T10), while the
+ * tests/expresswayData.test.ts fails on anything it does not cover (knowledge/road-redesign-plan.md 4.4 T10), while the
  * counts per kind are a reviewed snapshot. `run: "*"` covers the kind everywhere; `with` narrows a
  * deck_overlap entry to one pair (the diagnostic's detail starts "with <run>:").
  */
@@ -31,12 +31,25 @@ const C1_CHANGEOVER_REASON =
 const HAMAZAKIBASHI_REASON =
   "浜崎橋 JCT で 1 号羽田線への分岐（4848762）のノーズが内回りと同一面、外回りの 1 段上（OSM layer）を同時に求められ、内回りと外回りの移り変わりと重なる。三者の OSM の線が 1.3–8 m に集まり、全部は満たせない";
 
+/**
+ * The largest same-surface miss the list accepts (浜崎橋 JCT, 24402611 × 4848762). The game makes
+ * one slab of a pair only within this (expresswayMerge.ts MERGE_MAX_DZ is derived from it): what the
+ * project accepts as one surface is what is drawn as one.
+ */
+export const SAME_SURFACE_ALLOWED_DZ_M = 0.14;
+
+const SHIBAURA_REASON =
+  "芝浦 JCT で 11 号台場線と 1 号羽田線の上下線が二層・立体交差から並列へ移る区間（OSM layer 2〜4 の移り変わり）。P7 の rainbow 範囲で初めてファイルに出た run で、構造物上書きなし（--no-structures）でも同じ組・ほぼ同じ大きさで出る。中心線の間隔（6.4〜8.4 m）が車線域の幅の和より狭く、移り変わりの高さの差がどこに置いても重なりの中に入る";
+
+const NOSE_REASON =
+  "分合流のノーズで、同一面（5 cm 以内）の帯をわずかに外れる 1〜2 測点（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）";
+
 export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
   {
     run: "*",
     kind: "vertical_fallback",
     reason:
-      "特例値の勾配・下げた設計速度はどちらも第20条・第13条の範囲内（設計書 4.3 の 3 の順に試した結果）。地表の床を外す「交差のみ」は別の kind（vertical_crossings_only）で、ここには含まない",
+      "特例値の勾配・下げた設計速度はどちらも第20条・第13条の範囲内（knowledge/road-redesign-plan.md 4.3 の 3 の順に試した結果）。地表の床を外す「交差のみ」は別の kind（vertical_crossings_only）で、ここには含まない",
   },
   {
     run: "*",
@@ -80,7 +93,7 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     kind: "deck_overlap",
     with: "4848762",
     maxStations: 6,
-    maxDzM: 0.14,
+    maxDzM: SAME_SURFACE_ALLOWED_DZ_M,
     reason: HAMAZAKIBASHI_REASON,
   },
   {
@@ -98,6 +111,80 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     maxStations: 2,
     maxDzM: 1.9,
     reason: `羽田線から外回りへ入る連結路（813455519）が外回りへ合流する終点で内回りの車線域に 2 測点かかる。${C1_CHANGEOVER_REASON}`,
+  },
+  {
+    run: "45019020",
+    kind: "deck_overlap",
+    with: "45554540",
+    maxStations: 13,
+    maxDzM: 6.38,
+    reason: SHIBAURA_REASON,
+  },
+  {
+    run: "45019020",
+    kind: "deck_overlap",
+    with: "4848762",
+    maxStations: 10,
+    maxDzM: 4.12,
+    reason: SHIBAURA_REASON,
+  },
+  {
+    run: "45021972",
+    kind: "deck_overlap",
+    with: "45554540",
+    maxStations: 16,
+    maxDzM: 6.64,
+    reason: SHIBAURA_REASON,
+  },
+  {
+    run: "45021972",
+    kind: "deck_overlap",
+    with: "4848762",
+    maxStations: 16,
+    maxDzM: 6.46,
+    // P7 alone: 15 stations, 6.33 m. P2.6's solve (gapTol, the end bands) moves the coupled
+    // component by centimetres, which puts one more station in and 13 cm more on the changeover.
+    reason: `${SHIBAURA_REASON}（P2.6 との統合で 15 測点・6.33 m から 16 測点・6.46 m）`,
+  },
+  {
+    run: "45021972",
+    kind: "deck_overlap",
+    with: "45021976",
+    maxStations: 1,
+    maxDzM: 0.11,
+    reason: `浜崎橋 JCT で 1 号羽田線（45021972）が C1 外回りから分かれる所。${NOSE_REASON}`,
+  },
+  {
+    run: "45554540",
+    kind: "deck_overlap",
+    with: "813455519",
+    maxStations: 2,
+    maxDzM: 0.24,
+    reason: `浜崎橋 JCT で 1 号羽田線（45554540）が羽田線から C1 への連結路と分かれる所。${NOSE_REASON}`,
+  },
+  {
+    run: "45019020",
+    kind: "deck_overlap",
+    with: "4848740",
+    maxStations: 1,
+    maxDzM: 0.32,
+    reason: `芝浦 JCT の連結路（4848740）が 11 号台場線の上り（45019020）に合流する所。${NOSE_REASON}`,
+  },
+  {
+    run: "45019020",
+    kind: "deck_overlap",
+    with: "4848755",
+    maxStations: 2,
+    maxDzM: 0.06,
+    reason: `芝浦の入口ランプ（4848755）が 11 号台場線の上り（45019020）に合流する所（P2.6 との統合で出た）。${NOSE_REASON}`,
+  },
+  {
+    run: "45177678",
+    kind: "deck_overlap",
+    with: "4848755",
+    maxStations: 2,
+    maxDzM: 0.06,
+    reason: `芝浦の入口ランプ（4848755）の地表端が臨港道路（45177678、street）の地表端と同じ面で並ぶ所（P2.6 との統合で出た）。${NOSE_REASON}`,
   },
 ];
 

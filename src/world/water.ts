@@ -60,6 +60,7 @@ import {
   type LevelSamples,
   type WaterPolygon,
 } from "./waterGeometry";
+import { usesGroundSurface } from "./roadClass";
 
 /** Raster resolution per z16 tile (~497 m): ~1 m on desktop, ~2 m on phones. */
 const RASTER = QUALITY.isMobile ? 256 : 512;
@@ -346,7 +347,7 @@ export class WaterLayer implements GroundWater {
     const spans: Span[] = [];
     const grid = new Map<number, number[]>();
     for (const seg of graph.segments) {
-      if (seg.line.kind === "highway") continue;
+      if (!usesGroundSurface(seg.line)) continue;
       for (const span of this.spansOf(graph, seg)) this.addSpan(span, graph, spans, grid);
       yield;
     }
@@ -483,7 +484,7 @@ export class WaterLayer implements GroundWater {
         let bestDot = 0.7;
         for (const id of graph.nodes.get(node) ?? []) {
           const cand = graph.segments[id];
-          if (cand === cur || cand.line.kind === "highway") continue;
+          if (cand === cur || !usesGroundSurface(cand.line)) continue;
           const d = leavingDir(cand, node).dot(arriving);
           if (d > bestDot) {
             bestDot = d;

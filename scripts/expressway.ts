@@ -1,13 +1,19 @@
-// Build-time expressway compiler (設計書 4): OSM motorway / motorway_link from the Geofabrik Kanto
+// Build-time expressway compiler (knowledge/road-redesign-plan.md 4): OSM motorway / motorway_link from the Geofabrik Kanto
 // extract → plan and vertical alignment within 道路構造令 (src/expressway/) → public/data/expressway/
 // <x>-<y>.json (z14 tiles of ≤ 300 m chunks) and meta.json. The ground constraints read GSI DEM
 // tiles exactly as the game does (scripts/demTiles.ts), cached under .cache/gsi-dem.
-// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi|all] [--pbf <path>] [--out <dir>]
+// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow|all] [--pbf <path>] [--out <dir>]
+// (--range takes one or more named ranges joined by commas; the default is DEFAULT_RANGES.)
+// Structure overrides (src/expressway/structures.ts): the deck levels of the landmarks in
+// public/data/landmarks.json (レインボーブリッジ) pin the decks they carry, and the street ways they
+// name are compiled too. Build order: landmarks (just make-all-landmark-models) → this script.
 // (--out writes somewhere else than public/data/expressway, e.g. to measure --range all.)
 // (the OSM extract is the one just fetch-regs caches in .cache/osm; it is downloaded if missing).
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { compareChunks, RANGES, type RangeName } from "../src/expressway/ranges.ts";
+import { compareChunks, DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
+import { STRUCTURE_SPECS, type Structure, structureFrom } from "../src/expressway/structures.ts";
+import { deckLevelsOf, DECK_LEVELS_VERSION } from "../src/world/deckLevels.ts";
 import {
   type Bbox,
   type CrossObject,
@@ -27,6 +33,7 @@ import { tileKey } from "../src/expressway/geo.ts";
 import {
   type Network,
   normalizeNode,
+  normalizeStreetWay,
   normalizeWay,
   type XwNode,
   type XwWay,
@@ -39,6 +46,7 @@ import {
   readReplicationTimestamp,
   readTaggedNodes,
   readWays,
+  readWaysById,
 } from "./osm-pbf.ts";
 
 const started = performance.now();
@@ -76,10 +84,28 @@ async function extract(path: string): Promise<Uint8Array> {
 const inBox = (b: Bbox, lon: number, lat: number) =>
   lon >= b.minLon && lon <= b.maxLon && lat >= b.minLat && lat <= b.maxLat;
 
-const rangeName = (arg("range") ?? "hamazakibashi") as RangeName | "all";
-const range = rangeName === "all" ? null : RANGES[rangeName];
-if (rangeName !== "all" && !range)
-  throw new Error(`unknown --range ${rangeName} (${Object.keys(RANGES).join(", ")}, all)`);
+const rangeArg = arg("range") ?? DEFAULT_RANGES.join(",");
+const { names: rangeNames, boxes: ranges } = parseRanges(arg("range"));
+
+// 0. Structures: the deck levels the landmark build wrote. Without them the bridge is compiled as an
+// ordinary viaduct (warned), never pinned to numbers that do not parse.
+const LANDMARKS = join(import.meta.dirname, "..", "public", "data", "landmarks.json");
+const landmarkEntries = JSON.parse(await readFile(LANDMARKS, "utf8")) as Array<{
+  id: string;
+  deckLevels?: unknown;
+}>;
+const structures: Structure[] = [];
+// --no-structures builds without them (to compare a bridge pinned to its levels with the plain viaduct).
+const useStructures = !process.argv.includes("--no-structures");
+for (const spec of useStructures ? STRUCTURE_SPECS : []) {
+  const entry = landmarkEntries.find((e) => e.id === spec.landmark);
+  const levels = entry ? deckLevelsOf(entry) : null;
+  if (!levels) {
+    warn("expressway_structure_missing", { landmarkId: spec.landmark, hasEntry: entry !== undefined });
+    continue;
+  }
+  structures.push(structureFrom(spec, levels));
+}
 const pbfPath = arg("pbf") ?? OSM_CACHE;
 const OUT = arg("out") ?? OUT_DEFAULT;
 const file = await extract(pbfPath);
@@ -116,6 +142,20 @@ for (const w of allWays) {
   if (universeIds.has(w.id)) continue;
   for (const r of [w.refs[0], w.refs[w.refs.length - 1]]) if (nodes.has(r)) outsideNodes.add(r);
 }
+// The streets a structure names (its lower floor): read by id, compiled as `street` decks.
+const streetIds = new Set(structures.flatMap((st) => st.streetWays));
+const streetWays = streetIds.size > 0 ? readWaysById(file, streetIds) : [];
+const missingStreets = [...streetIds].filter((id) => !streetWays.some((w) => w.id === id));
+if (missingStreets.length > 0)
+  throw new Error(`structure street ways not in the extract: ${missingStreets.join(", ")}`);
+const streetCoords = readNodeCoords(file, new Set(streetWays.flatMap((w) => w.refs)));
+for (const w of streetWays) {
+  ways.set(w.id, normalizeStreetWay(w.id, w.refs, w.tags));
+  for (const r of w.refs) {
+    const [lon, lat] = streetCoords.get(r)!;
+    nodes.set(r, nodes.get(r) ?? normalizeNode(r, lon, lat, {}));
+  }
+}
 const net: Network = { ways, nodes };
 log("expressway_osm_read", {
   ways: allWays.length,
@@ -125,7 +165,7 @@ log("expressway_osm_read", {
 });
 
 // 2. Plan alignment and what the range depends on.
-const plan = planNetwork(net, outsideNodes, range);
+const plan = planNetwork(net, outsideNodes, ranges, structures);
 log("expressway_planned", {
   chains: plan.chains.size,
   runs: plan.runs.size,
@@ -217,7 +257,12 @@ const meta: XwMeta = {
   version: XW_VERSION,
   zoom: Z,
   tiles: tileKeys,
-  range: range ? { name: rangeName, ...range } : null,
+  ranges: rangeNames.map((name) => ({ name, ...RANGES[name] })),
+  structures: structures.map((st) => ({
+    id: st.id,
+    version: DECK_LEVELS_VERSION,
+    decks: st.decks.map((d) => d.id),
+  })),
   extract: { url: OSM_EXTRACT, timestamp },
   counts: {
     runs: result.runs.length,
@@ -246,7 +291,9 @@ This database, including the road surface elevations, is made available under th
 License (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/1-0/
 Source extract: ${OSM_EXTRACT} (Geofabrik), replication timestamp ${timestamp ?? "unknown"}.
 Filters: way["highway"~"^(motorway|motorway_link)$"] within ${JSON.stringify(UNIVERSE)}, and the
-node["highway"="motorway_junction"] on them (name, ref). Names that carry the operator's name are
+node["highway"="motorway_junction"] on them (name, ref), and the street ways a structure names
+(src/expressway/structures.ts: way ${[...streetIds].sort((a, b) => a - b).join(", ")}, the
+Rainbow Bridge's lower floor and its approaches). Names that carry the operator's name are
 dropped. Roads and railways at ground level under the viaducts (way["highway"] / way["railway"]
 without bridge, tunnel or layer) are read as clearance constraints only and are not in this folder.
 Method: scripts/expressway.ts (plan smoothing within 1.5 m of the OSM line, vertical alignment
@@ -261,8 +308,13 @@ used by the game to stop girders and piers at the ground.
 `,
 );
 for (const d of meta.diagnostics) warn("expressway_diagnostic", d);
+for (const r of meta.runs) {
+  if (!r.structure) continue;
+  const { deck, osmM, planM, zM } = r.structure;
+  log("expressway_structure_built", { deck, run: r.id, osmM, planM, zM });
+}
 log("expressway_written", {
-  range: rangeName,
+  range: rangeArg,
   tiles: tileKeys.length,
   runs: result.runs.length,
   chunks: result.chunks.length,

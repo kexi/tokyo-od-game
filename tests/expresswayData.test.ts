@@ -23,9 +23,11 @@ import {
 import { tileKey } from "../src/expressway/geo";
 import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
 import { OPERATOR_WORDS } from "../src/expressway/network";
+import { MERGE_MAX_DZ } from "../src/world/expresswayMerge";
+import { pairPoints } from "./expresswayPairs";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
-// checked against 設計書 4.4 T1〜T7 and T10, and the conditions for shipping the whole ward area
+// checked against knowledge/road-redesign-plan.md 4.4 T1〜T7 and T10, and the conditions for shipping the whole ward area
 // (knowledge/expressway-generation.md). XW_DATA_DIR points it at another output (a --range all
 // build written with --out) to judge that before it is shipped.
 const DIR = process.env.XW_DATA_DIR ?? join(import.meta.dirname, "..", "public", "data", "expressway");
@@ -39,8 +41,8 @@ const runs = new Map(meta.runs.map((r) => [r.id, r]));
 const byRun = new Map<string, XwChunk[]>();
 for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
 for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
-const isTestSection = meta.range?.name === "hamazakibashi";
-const isWholeArea = meta.range === null;
+const isTestSection = meta.ranges.some((r) => r.name === "hamazakibashi");
+const isWholeArea = meta.ranges.length === 0;
 /** The tightest radius the allowlist accepts on a ramp (ramp_radius with minRadiusM), for T6. */
 const rampFloor = (run: string) =>
   ALLOWLIST.find((a) => a.kind === "ramp_radius" && a.run === run && a.minRadiusM !== undefined)?.minRadiusM;
@@ -149,12 +151,14 @@ describe("生成済みの高速道路タイル", () => {
   });
 
   it.runIf(isTestSection)(
-    "builds the test section: 都心環状線 both ways and the 芝公園 entrance and exit",
+    "builds the test section (都心環状線 both ways, the 芝公園 entrance and exit) and the Rainbow Bridge's (11号台場線, the 臨港道路 below)",
     () => {
-      expect(meta.range?.name).toBe("hamazakibashi");
+      expect(meta.ranges.map((r) => r.name)).toEqual(["hamazakibashi", "rainbow"]);
       const refs = new Set(meta.runs.filter((r) => r.cls === "expressway").map((r) => r.ref));
       expect(refs.has("C1")).toBe(true);
+      expect(refs.has("11")).toBe(true);
       expect(meta.runs.filter((r) => r.cls === "ramp").length).toBeGreaterThanOrEqual(2);
+      expect(meta.runs.filter((r) => r.cls === "street").length).toBe(2);
     },
   );
 
@@ -232,6 +236,27 @@ describe("生成済みの高速道路タイル", () => {
     expect(chunks.flatMap(checkSuperelevation)).toEqual([]);
   });
 
+  it("uses every allowlist entry for a run in the files: an entry no diagnostic meets is stale", () => {
+    // Entries for runs outside these files are for --range all (ramp_radius of runs elsewhere), and
+    // so are the "*" rules of P2.6's last give step on the assumed floors: whether a range has a run
+    // that falls through to that step is not this file's to say (the test section has none over open
+    // ground).
+    const GIVE_STEP_KINDS = new Set(["below_open_ground_floor", "deck_below_ground"]);
+    const stale = ALLOWLIST.filter((a) => {
+      const isGiveRule = a.run === "*" && GIVE_STEP_KINDS.has(a.kind);
+      if (isGiveRule) return false;
+      const isHere = a.run === "*" || runs.has(a.run);
+      if (!isHere) return false;
+      return !meta.diagnostics.some(
+        (d) =>
+          (a.run === "*" || d.run === a.run) &&
+          d.kind === a.kind &&
+          (a.with === undefined || d.detail.startsWith(`with ${a.with}:`)),
+      );
+    });
+    expect(stale.map((a) => `${a.run} ${a.kind} ${a.with ?? ""}`)).toEqual([]);
+  });
+
   it("T10: nothing outside the allowlist is left, and the counts of what is reported stay as reviewed", () => {
     // allowed comes from src/expressway/allowlist.ts (with reasons), recomputed here too.
     expect(meta.diagnostics.filter((d) => !d.allowed || !isAllowed(d))).toEqual([]);
@@ -244,11 +269,11 @@ describe("生成済みの高速道路タイル", () => {
     for (const d of meta.diagnostics) counts[d.kind] = (counts[d.kind] ?? 0) + 1;
     expect(counts).toMatchInlineSnapshot(`
       {
-        "crossing_over_or_at_grade": 32,
+        "crossing_over_or_at_grade": 34,
         "deck_below_ground": 1,
-        "deck_overlap": 4,
+        "deck_overlap": 13,
         "ramp_radius": 1,
-        "vertical_fallback": 35,
+        "vertical_fallback": 37,
       }
     `);
   });
@@ -285,8 +310,88 @@ describe("生成済みの高速道路タイル", () => {
       for (const [run, s] of o.at) expect(covered(run, s), `${run}@${s}`).toBe(true);
   });
 
-  it("says which format it is (meta.version 2) and that every joint solve converged", () => {
-    expect(meta.version).toBe(2);
+  it("lists where a same-surface stretch misses by more than the game makes one slab (MERGE_MAX_DZ), each with why", () => {
+    // Unpadded "same" stretches only, every 0.5 m, against the other run's Hermite surface at the
+    // nearest point of its centre line (tests/expresswayPairs.ts): the deck builder leaves these
+    // apart and logs expressway_merge_skipped. A new entry, or a larger miss, fails here.
+    const known = new Set(chunks.map((c) => c.run));
+    const found = new Map<string, { chunk: string; with: string; s0: number; s1: number; maxDzM: number }>();
+    for (const p of pairPoints(chunks)) {
+      const isApart = known.has(p.with) && Math.abs(p.dz) > MERGE_MAX_DZ;
+      if (!isApart) continue;
+      const key = `${p.chunk.id}|${p.with}`;
+      const g = found.get(key) ?? { chunk: p.chunk.id, with: p.with, s0: p.s, s1: p.s, maxDzM: 0 };
+      g.s0 = Math.min(g.s0, p.s);
+      g.s1 = Math.max(g.s1, p.s);
+      g.maxDzM = Math.max(g.maxDzM, Math.abs(p.dz));
+      found.set(key, g);
+    }
+    const C1 =
+      "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）";
+    const JCT = "浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端";
+    const DROP =
+      "出口ランプが本線の床版の縁から離れる最後の数 m で、地表へ下り始める（車線域はもう重ならない）";
+    // The rainbow range's (P7): runs that were first written there.
+    const SHIBAURA =
+      "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）";
+    const DAIBA = "台場側で 11 号台場線の上下線が二層から並列へ移る区間（OSM layer 4 / 3）";
+    const NOSE = "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）";
+    // Merging P2.6 (its solve moves the coupled components by centimetres) added five NOSE entries
+    // (45019020:8, 45554540:30 × 813455519, 4848755:3, 4848762:34, 4848889:1) and widened four SHIBAURA ones.
+    const expected: Array<{ chunk: string; with: string; s: [number, number]; maxDzM: number; why: string }> =
+      [
+        { chunk: "24402611:14", with: "45021976", s: [2237.4, 2309.4], maxDzM: 3.64, why: C1 },
+        { chunk: "45021976:16", with: "24402611", s: [2754.0, 2799.5], maxDzM: 1.18, why: C1 },
+        { chunk: "45021976:17", with: "24402611", s: [2799.9, 2824.9], maxDzM: 3.49, why: C1 },
+        { chunk: "24402611:20", with: "45021976", s: [3740.1, 3816.1], maxDzM: 3.76, why: C1 },
+        { chunk: "24402611:20", with: "4848762", s: [3806.8, 3814.8], maxDzM: 0.52, why: JCT },
+        { chunk: "24402611:20", with: "813455519", s: [3791.8, 3806.3], maxDzM: 2.64, why: `${C1}。${JCT}` },
+        { chunk: "45021976:10", with: "24402611", s: [1241.8, 1263.8], maxDzM: 4.18, why: C1 },
+        { chunk: "45021976:11", with: "24402611", s: [1264.3, 1321.8], maxDzM: 1.89, why: C1 },
+        { chunk: "45021976:11", with: "813455519", s: [1267.3, 1271.3], maxDzM: 0.37, why: JCT },
+        { chunk: "45021976:14", with: "4853798", s: [2132, 2136], maxDzM: 0.39, why: DROP },
+        { chunk: "4853798:0", with: "45021976", s: [198.6, 202.1], maxDzM: 0.37, why: DROP },
+        { chunk: "813455519:1", with: "24402611", s: [306.7, 316.7], maxDzM: 2.89, why: `${C1}。${JCT}` },
+        { chunk: "45019020:36", with: "4848740", s: [3534.2, 3537.2], maxDzM: 0.33, why: NOSE },
+        { chunk: "45019020:38", with: "4848740", s: [3814.0, 3814.0], maxDzM: 0.17, why: NOSE },
+        { chunk: "45019020:39", with: "45554540", s: [4044.4, 4078.9], maxDzM: 3.74, why: SHIBAURA },
+        { chunk: "45019020:4", with: "4848762", s: [842.1, 892.1], maxDzM: 3.48, why: DAIBA },
+        { chunk: "45019020:8", with: "4848755", s: [1817.4, 1823.4], maxDzM: 0.33, why: NOSE },
+        { chunk: "45019020:9", with: "4848755", s: [1992.8, 1996.8], maxDzM: 0.36, why: NOSE },
+        { chunk: "45021972:1", with: "45554540", s: [332.5, 357.0], maxDzM: 3.28, why: SHIBAURA },
+        { chunk: "45021972:2", with: "4848762", s: [587.5, 654.0], maxDzM: 1.79, why: SHIBAURA },
+        { chunk: "45021972:22", with: "45554540", s: [6101.9, 6135.4], maxDzM: 1.94, why: SHIBAURA },
+        { chunk: "45021976:6", with: "45021972", s: [767.3, 769.8], maxDzM: 0.25, why: NOSE },
+        { chunk: "45177681:14", with: "4848889", s: [3300.5, 3302.0], maxDzM: 0.27, why: NOSE },
+        { chunk: "45554540:27", with: "45019020", s: [7252.6, 7266.1], maxDzM: 3.1, why: SHIBAURA },
+        { chunk: "45554540:28", with: "45019020", s: [7266.6, 7282.6], maxDzM: 1.34, why: SHIBAURA },
+        { chunk: "45554540:29", with: "45019020", s: [7519.0, 7522.0], maxDzM: 0.23, why: NOSE },
+        { chunk: "45554540:29", with: "813455519", s: [7717.9, 7726.9], maxDzM: 0.67, why: NOSE },
+        { chunk: "45554540:30", with: "45021972", s: [7792.9, 7817.4], maxDzM: 3.28, why: SHIBAURA },
+        { chunk: "45554540:30", with: "813455519", s: [7772.4, 7772.4], maxDzM: 0.16, why: NOSE },
+        { chunk: "45554540:8", with: "45021972", s: [2022.9, 2057.4], maxDzM: 2.06, why: SHIBAURA },
+        { chunk: "4848755:3", with: "45019020", s: [862.8, 867.8], maxDzM: 0.29, why: NOSE },
+        { chunk: "4848762:1", with: "45021972", s: [482.5, 483.5], maxDzM: 2.11, why: SHIBAURA },
+        { chunk: "4848762:2", with: "45021972", s: [484.0, 553.0], maxDzM: 1.98, why: SHIBAURA },
+        { chunk: "4848762:33", with: "4848889", s: [2823.0, 2828.0], maxDzM: 0.43, why: NOSE },
+        { chunk: "4848762:34", with: "4848889", s: [2994.5, 2997.5], maxDzM: 0.25, why: NOSE },
+        { chunk: "4848889:1", with: "4848762", s: [161.0, 162.0], maxDzM: 0.19, why: NOSE },
+        { chunk: "4848762:38", with: "45019020", s: [3932.4, 3982.4], maxDzM: 3.37, why: SHIBAURA },
+      ];
+    const got = [...found.values()];
+    expect(got.map((g) => `${g.chunk}|${g.with}`).toSorted()).toEqual(
+      expected.map((e) => `${e.chunk}|${e.with}`).toSorted(),
+    );
+    for (const e of expected) {
+      const g = found.get(`${e.chunk}|${e.with}`)!;
+      expect(g.s0, e.chunk).toBeCloseTo(e.s[0], 0);
+      expect(g.s1, e.chunk).toBeCloseTo(e.s[1], 0);
+      expect(g.maxDzM, `${e.chunk} × ${e.with}: ${e.why}`).toBeLessThanOrEqual(e.maxDzM);
+    }
+  });
+
+  it("says which format it is (meta.version 4) and that every joint solve converged", () => {
+    expect(meta.version).toBe(4);
     expect(meta.solver.unconverged).toBe(0);
     expect(meta.solver.solves).toBeGreaterThan(0);
     expect(meta.diagnostics.filter((d) => d.kind === "solver_not_converged")).toEqual([]);

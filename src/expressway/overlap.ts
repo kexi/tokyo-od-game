@@ -5,7 +5,7 @@ import { hermite, ST } from "./profile";
 import { carriagewayWidth } from "./section";
 
 /**
- * Carriageways whose plan bands overlap (設計書 4.2 「同じ層の車線域が重ならないことを検査」): where
+ * Carriageways whose plan bands overlap (knowledge/road-redesign-plan.md 4.2 「同じ層の車線域が重ならないことを検査」): where
  * the 車線域 (lanes and shoulders, inside the parapets) of one run lies over (or under) another's,
  * the two must either be one surface (|Δz| ≤ 5 cm: a nose, or carriageways side by side on one
  * slab) or be a whole level apart (|Δz| ≥ clearance + girder). Anything between is a deck sunk into

@@ -29,10 +29,13 @@ import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.pn
 import { FrameWork } from "../game/frameWork";
 import { roadGeometrySteps } from "./roadGeometrySteps";
 import { updateRoadGeometry } from "./roadGeometry";
+import { laneCentreOffset, laneLeftEdge, laneWidth as laneWidthOf, sectionOf } from "./laneChange";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
+import { MARKING, planCrosswalk, planMarkings, planStopLine, type MarkingBar } from "./roadMarkings";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { StreetMaterial, type StreetBase } from "./streetLights";
 import type { Approach } from "./trafficControl";
+import { usesGroundSurface } from "./roadClass";
 
 const STEP = 2.5; // metres between cross-sections; dense enough to hug the terrain mesh
 // Wide carriageways are also split across their width: a single quad spanning 30 m sits
@@ -41,8 +44,6 @@ const STEP = 2.5; // metres between cross-sections; dense enough to hug the terr
 const ACROSS = 2.5;
 const LIFT = 0.1; // asphalt above the terrain surface the collider and renderer share
 const PAINT = 0.025; // markings above the asphalt
-const LINE = 0.15; // 区画線 width (MLIT 区画線の設置基準: 0.10–0.20 m)
-const DASH = 5; // dashed 中央線 / 車線境界線 in urban areas: 5 m painted, 5 m gap (same standard)
 
 /**
  * `st`: per vertex the street cross-section for the wet shading (streetLights.ts): lateral offset
@@ -217,12 +218,11 @@ function arrowMaterial(set: readonly LaneDirection[]): StreetMaterial {
 }
 
 /**
- * Streets from GSI road centrelines with markings that follow 道路標識、区画線及び道路標示に関する
- * 命令 and JARTIC data: 車道外側線; 中央線 on two-way carriageways ≥5.5 m (yellow where JARTIC has
- * はみ出し禁止, otherwise white — solid for 4+ lanes or ≥6 m per direction, else dashed);
- * 車線境界線 where JARTIC lists 車両通行帯 (yellow where 進路変更禁止); 横断歩道 at JARTIC
- * positions with ◇ ahead of crossings without signals; 停止線; yellow 最高速度 numerals by the
- * speed signs. Junction crossings are synthesised only where the area has no JARTIC data.
+ * Streets from GSI road centrelines, draped on the terrain, with the markings MarkingPlan
+ * (roadMarkings.ts) decides: 車道外側線, 中央線, 車線境界線, 横断歩道 and 停止線 (at JARTIC positions,
+ * or synthesised at junction ends where the area has no JARTIC data). Drawn here as well: ◇ ahead
+ * of crossings without signals, yellow 最高速度 numerals by the speed signs and the 進行方向別通行区分
+ * arrows (標示, not 区画線: not in the plan yet).
  */
 export class RoadSurface {
   private readonly meshes = new Map<StreetMaterial, Mesh>();
@@ -272,10 +272,6 @@ export class RoadSurface {
     const yellows: Builder = { pos: [], idx: [], st: [] };
     const digits = new Map<number, Builder>();
     const arrows = new Map<string, { set: LaneDirection[]; b: Builder }>();
-    const junction = (node: number) => (graph.nodes.get(node)?.length ?? 0) >= 3;
-    // Distance from a junction node to the kerb line of the widest crossing road.
-    const clearance = (node: number) =>
-      Math.max(...(graph.nodes.get(node) ?? []).map((id) => graph.segments[id].line.width)) / 2 + 1.5;
     // Longitudinal lines stop at crosswalks.
     const gaps = new Map<Segment, Array<[number, number]>>();
     for (const c of regs?.crossings ?? []) {
@@ -286,7 +282,7 @@ export class RoadSurface {
     // …and where the street runs through another road's carriageway: big junctions are several
     // GSI nodes joined by short links, so the node-based cuts above miss most of the box.
     for (const seg of graph.segments) {
-      if (seg.line.kind === "highway") continue;
+      if (!usesGroundSurface(seg.line)) continue;
       const list = gaps.get(seg) ?? [];
       let start: number | null = null;
       for (let s = 0; s <= seg.length + 1.5; s += 1.5) {
@@ -307,41 +303,17 @@ export class RoadSurface {
     }
 
     for (const seg of graph.segments) {
-      if (seg.line.kind === "highway") continue;
-      const w = seg.line.width;
-      // Markings stop behind the crosswalk and stop line at each junction end.
-      const startCut = junction(seg.from) ? Math.min(seg.length / 2, clearance(seg.from) + 6) : 0;
-      const endCut = junction(seg.to) ? Math.min(seg.length / 2, clearance(seg.to) + 6) : 0;
-      yield* this.ribbon(road, graph, seg, 0, seg.length, 0, w, 0);
-      // 車道中央線 is for carriageways of 5.5 m or more (命令 別表第三).
-      const isMarked = w >= 5.5 && seg.length - startCut - endCut > 4;
-      if (!isMarked) continue;
-      const s0 = startCut;
-      const s1 = seg.length - endCut;
+      if (!usesGroundSurface(seg.line)) continue;
+      // Asphalt to the GSI 幅員's edge: where it includes the pavement, PLATEAU's pavements sit on
+      // top (pavements.ts); the lanes and their lines take the carriageway inside it.
+      yield* this.ribbon(road, graph, seg, 0, seg.length, 0, seg.line.width, 0);
+      const plan = planMarkings(graph, seg, regs);
       const cut = gaps.get(seg) ?? [];
-      const line = (b: Builder, offset: number, dashed: boolean) =>
-        this.longitudinal(b, graph, seg, s0, s1, offset, dashed, cut);
-      // 車道外側線 on both sides.
-      for (const side of [-1, 1]) yield* line(whites, side * (w / 2 - 0.4), false);
-      const isTwoWay = seg.oneway === 0;
-      const lanes = seg.lanes;
-      if (isTwoWay) {
-        const isSolid = lanes >= 2 || w / 2 >= 6;
-        yield* line(seg.noOvertake ? yellows : whites, 0, !seg.noOvertake && !isSolid);
+      for (const l of plan.lines) {
+        const b = l.colour === "yellow" ? yellows : whites;
+        yield* this.longitudinal(b, graph, seg, l.from, l.to, l.offset, l.width, l.dash, cut);
       }
-      // 車線境界線 between the lanes of each direction.
-      if (lanes >= 2) {
-        const span = isTwoWay ? w / 2 : w;
-        const laneWidth = span / lanes;
-        for (let k = 1; k < lanes; k++) {
-          const offsets = isTwoWay ? [k * laneWidth, -k * laneWidth] : [-w / 2 + k * laneWidth];
-          for (const o of offsets) yield* line(seg.noLaneChange ? yellows : whites, o, !seg.noLaneChange);
-        }
-      }
-      // Without JARTIC data, synthesise 横断歩道 + 停止線 at junction ends.
-      if (isSurveyed) continue;
-      if (junction(seg.from)) yield* this.crossing(whites, graph, seg, clearance(seg.from) + 2, 1);
-      if (junction(seg.to)) yield* this.crossing(whites, graph, seg, seg.length - clearance(seg.to) - 2, -1);
+      yield* this.bars(whites, graph, seg, plan.bars);
     }
     if (regs && isSurveyed) yield* this.surveyed(whites, digits, graph, regs, approaches);
     if (regs) yield* this.laneArrows(arrows, graph, regs, approaches);
@@ -411,24 +383,32 @@ export class RoadSurface {
     s0: number,
     s1: number,
     offset: number,
-    dashed: boolean,
+    width: number,
+    dash: { length: number; gap: number } | null,
     cut: Array<[number, number]>,
   ): Generator<void> {
     const pieces: Array<[number, number]> = [];
-    if (dashed) for (let s = s0; s + 1 < s1; s += 2 * DASH) pieces.push([s, Math.min(s + DASH, s1)]);
+    if (dash)
+      for (let s = s0; s + 1 < s1; s += dash.length + dash.gap)
+        pieces.push([s, Math.min(s + dash.length, s1)]);
     else pieces.push([s0, s1]);
     for (let [a, z] of pieces) {
       for (const [c0, c1] of cut) {
         const isInside = a >= c0 && z <= c1;
         if (isInside) a = z;
         else if (a < c0 && z > c1) {
-          yield* this.ribbon(b, graph, seg, a, c0, offset, LINE, PAINT);
+          yield* this.ribbon(b, graph, seg, a, c0, offset, width, PAINT);
           a = c1;
         } else if (a < c1 && z > c1) a = c1;
         else if (a < c0 && z > c0) z = c0;
       }
-      yield* this.ribbon(b, graph, seg, a, z, offset, LINE, PAINT);
+      yield* this.ribbon(b, graph, seg, a, z, offset, width, PAINT);
     }
+  }
+
+  /** Painted strips across the street (停止線, 横断歩道 bars) from the plan. */
+  private *bars(b: Builder, graph: RoadGraph, seg: Segment, bars: readonly MarkingBar[]): Generator<void> {
+    for (const bar of bars) yield* this.ribbon(b, graph, seg, bar.from, bar.to, bar.offset, bar.width, PAINT);
   }
 
   /** A strip `width` wide, centred `offset` metres left of the centreline, from s0 to s1. */
@@ -467,13 +447,15 @@ export class RoadSurface {
         }
       }
     }
-    // Lanes of a two-way street are counted out from the centreline, of a one-way from its edge.
+    // Lanes of a two-way street are counted out from the centreline, of a one-way from its right
+    // edge line; the gutter (puddles) runs along the asphalt's edge.
     const isTwoWay = seg.oneway === 0;
-    const laneWidth = (isTwoWay ? seg.line.width / 2 : seg.line.width) / seg.lanes;
-    const laneOrigin = isTwoWay ? 0 : -seg.line.width / 2;
+    const half = seg.line.width / 2;
+    const laneWidth = sectionOf(seg).laneWidth;
+    const laneOrigin = isTwoWay ? 0 : -laneLeftEdge(seg);
     for (let i = 0; i <= n; i++)
       for (let k = 0; k <= cols; k++)
-        b.st.push(offset + width / 2 - (width * k) / cols, seg.line.width / 2, laneWidth, laneOrigin);
+        b.st.push(offset + width / 2 - (width * k) / cols, half, laneWidth, laneOrigin);
     const row = cols + 1;
     for (let i = 0; i < n; i++) {
       for (let k = 0; k < cols; k++) {
@@ -495,12 +477,7 @@ export class RoadSurface {
     const signalStops = approaches.filter((a) => a.kind === "signal");
     for (const c of regs.crossings) {
       yield;
-      const w = c.seg.line.width;
-      // 横断歩道 (201): 0.45 m bars with 0.45 m gaps across the carriageway, 4 m wide.
-      const bars = Math.max(1, Math.floor((w - 0.6) / 0.9));
-      const first = -((bars - 1) * 0.9) / 2;
-      for (let i = 0; i < bars; i++)
-        yield* this.ribbon(b, graph, c.seg, c.s - 2, c.s + 2, first + i * 0.9, 0.45, PAINT);
+      yield* this.bars(b, graph, c.seg, planCrosswalk(c.seg, c.s));
       // 横断歩道又は自転車横断帯あり (210): ◇ about 30 m and 50 m ahead of crossings without signals.
       const isSignalled = signalStops.some(
         (a) => a.a.clone().add(a.b).multiplyScalar(0.5).distanceTo(c.pos) < 30,
@@ -509,7 +486,7 @@ export class RoadSurface {
       for (const dir of [1, -1] as const) {
         const oneway = c.seg.oneway;
         if (oneway !== 0 && oneway !== dir) continue;
-        const lane = oneway === 0 ? dir * (w / 4) : 0;
+        const lane = oneway === 0 ? dir * laneCentreOffset(c.seg, 0, 1) : 0;
         for (const back of [30, 50]) {
           const s = c.s - dir * back;
           if (s < 3 || s > c.seg.length - 3) continue;
@@ -525,12 +502,8 @@ export class RoadSurface {
       if (!isPainted) lines.push({ seg: ap.seg, dir: ap.dir, at: ap.at });
     }
     for (const l of lines) {
-      const w = l.seg.line.width;
       const s = l.dir === 1 ? l.at : l.seg.length - l.at;
-      // Keep-left: the line covers the left half of its travel direction on two-way roads.
-      const lane = l.seg.oneway === 0 ? l.dir * (w / 4) : 0;
-      const span = l.seg.oneway === 0 ? w / 2 - 0.4 : w - 0.8;
-      yield* this.ribbon(b, graph, l.seg, s - 0.225, s + 0.225, lane, span, PAINT);
+      yield* this.bars(b, graph, l.seg, [planStopLine(l.seg, s, l.dir)]);
     }
     // 最高速度 numerals in each lane a few metres past the speed sign.
     for (const sign of regs.signs) {
@@ -538,9 +511,7 @@ export class RoadSurface {
       if (sign.type !== SIGN.speed) continue;
       const seg = sign.seg;
       const lanes = seg.lanes;
-      const isTwoWay = seg.oneway === 0;
-      const span = isTwoWay ? seg.line.width / 2 : seg.line.width;
-      const laneWidth = span / lanes;
+      const laneWidth = laneWidthOf(seg, lanes);
       if (laneWidth < 2.2) continue; // too narrow for numerals
       const s0 = sign.s + sign.dir * 6;
       const s1 = s0 + sign.dir * 5;
@@ -550,8 +521,7 @@ export class RoadSurface {
       digits.set(sign.value, builder);
       for (let k = 0; k < lanes; k++) {
         // Lane centres measured left of the travel direction from the kerb side inwards.
-        const fromKerb = isTwoWay ? span - (k + 0.5) * laneWidth : seg.line.width / 2 - (k + 0.5) * laneWidth;
-        const offset = sign.dir * fromKerb;
+        const offset = sign.dir * laneCentreOffset(seg, k, lanes);
         const width = Math.min(laneWidth - 0.6, 1.8);
         // u runs from the driver's left to right; v from near to far along the travel direction.
         const u: [number, number] = sign.dir === 1 ? [0, 1] : [1, 0];
@@ -574,9 +544,7 @@ export class RoadSurface {
       yield;
       const seg = use.seg;
       const n = use.lanes.length;
-      const isTwoWay = seg.oneway === 0;
-      const span = isTwoWay ? seg.line.width / 2 : seg.line.width;
-      const laneWidth = span / n;
+      const laneWidth = laneWidthOf(seg, n);
       if (laneWidth < 2.2) continue;
       const stop = approaches.find((a) => a.seg === seg && a.dir === use.dir);
       // Travel distance of the stop line along the approach; without one, near the junction.
@@ -592,10 +560,7 @@ export class RoadSurface {
           const key = [...set].sort().join(",");
           const entry = arrows.get(key) ?? { set, b: { pos: [], idx: [], uv: [], st: [] } };
           arrows.set(key, entry);
-          const fromKerb = isTwoWay
-            ? span - (k + 0.5) * laneWidth
-            : seg.line.width / 2 - (k + 0.5) * laneWidth;
-          const offset = use.dir * fromKerb;
+          const offset = use.dir * laneCentreOffset(seg, k, n);
           const width = Math.min(laneWidth - 0.8, 1.4);
           const u: [number, number] = use.dir === 1 ? [0, 1] : [1, 0];
           yield* this.ribbon(entry.b, graph, seg, a, z, offset, width, PAINT, { u, flip: use.dir === -1 });
@@ -604,7 +569,11 @@ export class RoadSurface {
     }
   }
 
-  /** ◇ outline (210) centred at s, `offset` left of the centreline: 3 m long, 1.5 m wide. */
+  /**
+   * ◇ (210) centred at s, `offset` left of the centreline: one outline MARKING.diamondWidth across
+   * (outer edge). Why not the two outlines of 別表第六's figure: the inner line is most likely the
+   * figure's own outline of the painted band, not a second band (review W8).
+   */
   private *diamond(b: Builder, graph: RoadGraph, seg: Segment, s: number, offset: number): Generator<void> {
     const { pos, dir } = graph.sample(seg, s);
     const corner = (along: number, across: number) =>
@@ -612,8 +581,11 @@ export class RoadSurface {
         .clone()
         .addScaledVector(dir, along)
         .add(leftOf(dir, offset + across));
-    const pts = [corner(1.5, 0), corner(0, 0.75), corner(-1.5, 0), corner(0, -0.75)];
-    for (let i = 0; i < 4; i++) yield* this.stripe(b, pts[i], pts[(i + 1) % 4], LINE);
+    const line = MARKING.diamondLine;
+    const across = (MARKING.diamondWidth - line) / 2;
+    const along = across * (MARKING.diamondLength / MARKING.diamondWidth);
+    const pts = [corner(along, 0), corner(0, across), corner(-along, 0), corner(0, -across)];
+    for (let i = 0; i < 4; i++) yield* this.stripe(b, pts[i], pts[(i + 1) % 4], line);
   }
 
   /** Straight painted stripe between two points, draped on the surface. */
@@ -631,26 +603,5 @@ export class RoadSurface {
     }
     b.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
     yield;
-  }
-
-  /**
-   * Zebra crossing (bars run along the road) plus a stop line on the approach lane.
-   * `side` is +1 when the junction is at s = 0 (segment start), −1 when it is at the end.
-   */
-  private *crossing(b: Builder, graph: RoadGraph, seg: Segment, at: number, side: 1 | -1): Generator<void> {
-    if (at < 4 || at > seg.length - 4) return;
-    const w = seg.line.width;
-    const depth = 4;
-    const bars = Math.max(1, Math.floor((w - 0.6) / 0.9));
-    const first = -((bars - 1) * 0.9) / 2;
-    for (let i = 0; i < bars; i++) {
-      yield* this.ribbon(b, graph, seg, at - depth / 2, at + depth / 2, first + i * 0.9, 0.45, PAINT);
-    }
-    // 停止線 before the crosswalk, across the half whose traffic heads into the junction. That
-    // traffic moves along −side·d, so its left (keep-left) half is −side · left(d).
-    const stopAt = at + side * (depth / 2 + 2);
-    const lane = seg.oneway === 0 ? -side * (w / 4) : 0;
-    const span = seg.oneway === 0 ? w / 2 - 0.4 : w - 0.8;
-    yield* this.ribbon(b, graph, seg, stopAt - 0.225, stopAt + 0.225, lane, span, PAINT);
   }
 }

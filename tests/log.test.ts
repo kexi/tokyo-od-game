@@ -1,5 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { sourceFiles } from "./sourceCode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   error,
@@ -158,6 +157,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     signs: 210,
   },
   pavements_built: { wards: ["千代田区"], polygons: 812 },
+  road_sections: { segments: 1189, byBasis: { jartic: 415, osm: 180, width: 594 }, asymmetric: 12 },
+  pavement_over_lanes: { checked: 900, under: 40 },
   frame_recentered: { lat: 35.68124, lon: 139.76712 },
   guide_signs_placed: { signs: 12, advance: 3, overhead: 5, routed: 9, mapped: 40, durationMs: 18 },
   street_lights_placed: {
@@ -174,13 +175,53 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   closure_area_implausible: { areaKm2: 317.2, maxKm2: 5, kind: 1, at: [139.65, 35.64] },
   closures_implausible_share: { closed: 300, streets: 900, maxShare: 0.2 },
+  road_level_mismatch: { count: 1, examples: [{ level: 1, structure: "ground", xid: "c1:0" }] },
+  ramp_unattached: { run: "207111988", end: "start", reachM: 15 },
+  road_surface_unknown: { hits: 3, segments: 900 },
+  expressway_graph_joined: { segments: 60, chunks: 58, rampEndsJoined: 3 },
+  expressway_building_crossed: { lat: 35.65342, lon: 139.75022, xid: "207111988:0" },
+  expressway_chunk_failed: { chunk: "24402611:3", error: "TypeError: x" },
+  expressway_hold_expired: { chunks: ["24402611:3"], heldMs: 5000 },
+  expressway_merge_skipped: {
+    chunk: "4853798:0",
+    with: "45021976",
+    reason: "level_apart",
+    s0: 198.2,
+    s1: 202.2,
+    maxDzM: 0.21,
+  },
+  expressway_drive_checked: {
+    label: "entry",
+    seconds: 40,
+    distanceM: 650,
+    chunks: ["207111988:0", "24402611:20"],
+    frames: 2400,
+    deckFrames: 2300,
+    maxAbsDyM: 0.08,
+    maxAbsVyMs: 0.4,
+    rmsAyMs2: 0.6,
+    maxAbsAyMs2: 4.2,
+    maxShortfallKmh: 2.5,
+    maxLaneOffM: 0.4,
+    maxDyAt: "24402611:20",
+    maxLaneOffAt: "207111988:0",
+    maxShortfallAt: null,
+    fell: false,
+    endsOnDeck: true,
+  },
   trip_started: { target: "東京タワー", distanceM: 2400 },
   destination_set: { name: "浅草寺", distanceKm: 5.1 },
   poi_collected: { poiId: 12, category: "library", ward: "千代田区" },
   accident: { kind: "pedestrian", speedKmh: 32 },
+  pedestrian_bump: { carKmh: 0.2, otherDeltaVKmh: 4.8 },
+  incident_jump: { jumpM: 1200, awayM: 1236 },
+  incident_resumed: { heldMs: 42000 },
   lane_turn_disallowed: { lanes: ["left", "straight+right"], lane: 0, turn: "right", source: "osm" },
   signal_crossing_held: { approachId: 12, allowed: ["right", "uturn"] },
   signal_crossing_resolved: { approachId: 12, outcome: "violation", movement: "through", heldMs: 2400 },
+  signal_button_pressed: { controllerId: 3812043211 },
+  signal_plan_switched: { controllerId: 42, template: "nightFlash", isNight: true },
+  signal_crossings_skipped: { outside: 6, noCrosswalk: 2, nearJunction: 1, noRoom: 0 },
   route_lane_blocked: { turns: 1, attempt: 0, replanned: true },
   autopilot_on: { cruising: true, routeM: 1200 },
   autopilot_off: {},
@@ -278,6 +319,22 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     stairs: 800,
     turnlanes: 2000,
   },
+  signal_tags_counted: {
+    extract: "2026-10-03T20:20:50Z",
+    nodes: 37000,
+    byKind: { "signal/atJunction": 13000 },
+    byTag: { "button_operated=yes": 588 },
+    midBlock: { nodes: 400 },
+  },
+  osm_layer_unchanged: { layer: "junctions", tiles: 380 },
+  osm_road_lanes: {
+    ways: 40000,
+    tiles: 120,
+    lanes: 30000,
+    forwardBackward: 5000,
+    width: 3000,
+    oneway: 12000,
+  },
   police_written: { stations: 102, orbis: 25, bySource: { osm: 25 } },
   osm_loaded: { bytes: 400_000_000 },
   ways_read: { roads: 1000, dests: 300, nodes: 90000 },
@@ -319,8 +376,14 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     chunks: 40,
     built: 12,
     dropped: 3,
+    colliders: 9,
+    collidersBuilt: 4,
+    collidersDropped: 1,
     cpuMs: 30.5,
     maxSliceMs: 3.9,
+    sliceP50Ms: 1.2,
+    sliceP90Ms: 3.1,
+    bodyMsMax: 0.8,
     durationMs: 420,
   },
   expressway_osm_read: { ways: 13000, universeWays: 1900, nodes: 110000, junctions: 900 },
@@ -343,8 +406,16 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     detail: "specialGrade V60",
     allowed: true,
   },
+  expressway_structure_missing: { landmarkId: "rainbow_bridge", hasEntry: true },
+  expressway_structure_built: {
+    deck: "rainbow_bridge:upper:forward",
+    run: "4848762",
+    osmM: 1.621,
+    planM: 0.0064,
+    zM: 0.0032,
+  },
   expressway_written: {
-    range: "hamazakibashi",
+    range: "hamazakibashi,rainbow",
     tiles: 2,
     runs: 20,
     chunks: 40,
@@ -615,23 +686,8 @@ describe("the ring of recent lines (LogRing)", () => {
 
 // ---------- the sources ----------
 
-const ROOT = join(import.meta.dirname, "..");
-
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return sources(path);
-    return name.endsWith(".ts") && !name.endsWith(".d.ts") ? [path] : [];
-  });
-}
-
-const FILES = [...sources(join(ROOT, "src")), ...sources(join(ROOT, "scripts"))].map((p) => ({
-  path: relative(ROOT, p),
-  // Comments out (a `console.log` in a doc comment is not a call).
-  code: readFileSync(p, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1"),
-}));
+// Comments out (a `console.log` in a doc comment is not a call).
+const FILES = sourceFiles("src", "scripts");
 
 describe("the call sites (src/ and scripts/)", () => {
   it("write through the logger, not console.* (only the logger's own sink may)", () => {

@@ -18,6 +18,7 @@ import { towardEye } from "../render/renderer";
 import { SIGN, type PlacedSign } from "./regulations";
 import { KERB } from "./pavements";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { hasRoadside } from "./roadClass";
 
 /**
  * Things along Tokyo's streets that matter to a driver, from OpenStreetMap (public/data/places.json):
@@ -131,7 +132,7 @@ export class StreetFurniture {
       return [];
     }
     const signs: PlacedSign[] = [];
-    const isStreet = (s: Segment) => s.line.kind !== "highway" && s.line.width >= 4;
+    const isStreet = (s: Segment) => hasRoadside(s.line) && s.line.width >= 4;
     for (const [lon, lat, type] of places.hydrants) {
       yield;
       const p = frame.toLocal(lat, lon, frame.origin.h).setY(0);

@@ -2,7 +2,7 @@ import { ST, STATION_STRIDE } from "./format";
 
 /**
  * The road surface between stations: cubic Hermite interpolation of the elevation from the two
- * stations' elevations and grades (設計書 4.4 T11: the deck and the collider read the same curve).
+ * stations' elevations and grades (knowledge/road-redesign-plan.md 4.4 T11: the deck and the collider read the same curve).
  * The compiled profile is a chain of parabolas, which a cubic Hermite reproduces exactly on any
  * interval inside one parabola; across a knot it stays C¹ (no kink) and within millimetres.
  *
@@ -123,4 +123,37 @@ export function chordDeviation(h: number, g0: number, g1: number, dz: number): n
     worst = Math.max(worst, Math.abs(d));
   }
   return worst;
+}
+
+/** Largest gap between the Hermite surface and the straight pieces drawn between its samples. */
+export const SURFACE_TOLERANCE_M = 0.01;
+/** Most pieces one station interval is cut into (the tightest vertical curves need ~6). */
+export const SURFACE_MAX_PIECES = 8;
+
+/**
+ * Where the surface of a chunk is sampled for anything drawn or driven on it as straight pieces:
+ * every station (t = 0, read as stored) and, inside an interval, as many more as the Hermite cubic
+ * needs to stay within SURFACE_TOLERANCE_M of the chords. The deck (expresswayDeck.ts), its
+ * collider and the road graph's segments (expresswayRoads.ts) all cut at these, so a car's
+ * surfaceY between two graph points is the collider's face between the same two rings (knowledge/road-redesign-plan.md 4.4
+ * T11). `i` is the station interval, `t` the fraction into it.
+ */
+export function surfaceSamples(st: ArrayLike<number>): Array<{ i: number; t: number; s: number }> {
+  const n = st.length / STATION_STRIDE;
+  const out: Array<{ i: number; t: number; s: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const o = i * STATION_STRIDE;
+    out.push({ i, t: 0, s: st[o + ST.s] });
+    const isLast = i === n - 1;
+    if (isLast) break;
+    const q = o + STATION_STRIDE;
+    const h = st[q + ST.s] - st[o + ST.s];
+    const deviation = chordDeviation(h, st[o + ST.grade], st[q + ST.grade], st[q + ST.z] - st[o + ST.z]);
+    const pieces = Math.min(
+      SURFACE_MAX_PIECES,
+      Math.max(1, Math.ceil(Math.sqrt(deviation / SURFACE_TOLERANCE_M))),
+    );
+    for (let k = 1; k < pieces; k++) out.push({ i, t: k / pieces, s: st[o + ST.s] + h * (k / pieces) });
+  }
+  return out;
 }

@@ -1,7 +1,7 @@
 import { MAX_LATERAL_SHIFT } from "./assumptions";
 
 /**
- * Plan alignment (設計書 4.2): the OSM polyline resampled every ~1 m and smoothed so that the rate
+ * Plan alignment (knowledge/road-redesign-plan.md 4.2): the OSM polyline resampled every ~1 m and smoothed so that the rate
  * of change of curvature (the third difference) is as small as possible while no point moves more
  * than ε (MAX_LATERAL_SHIFT) from the OSM line. Curvature then varies almost linearly with arc
  * length, which is what a clothoid transition does. Junction nodes are anchors and stay exactly on
@@ -9,13 +9,21 @@ import { MAX_LATERAL_SHIFT } from "./assumptions";
  *
  * Why not fit clothoid/arc elements: OSM vertices wobble and the element split would jump between
  * builds; a bounded smoothing gives the same drivable line and the station output does not change
- * if exact elements are fitted later (設計書 9 章).
+ * if exact elements are fitted later (knowledge/road-redesign-plan.md 9 章).
  */
 
 export type PlanInput = {
   /** Polyline vertices in a local plane (metres), and which of them are anchors. */
   xy: ReadonlyArray<readonly [number, number]>;
   anchors: ReadonlySet<number>;
+  /**
+   * Structure overrides (structures.ts): where a sample at (x, y) on the OSM line must lie exactly
+   * (a bridge deck's line), or null where it is free. The caller decides by position (the sample's
+   * place along the structure's axis), so one pin serves the whole chain. Pinned samples are held like
+   * anchors and their distance from OSM is reported apart (`pinnedShiftM`): the structure's own
+   * tolerance (3 m) applies there, not ε.
+   */
+  pin?: (x: number, y: number) => [number, number] | null;
 };
 
 export type PlanAlignment = {
@@ -33,6 +41,10 @@ export type PlanAlignment = {
   maxShiftM: number;
   /** Samples the last-resort projection had to pull back onto the ε circle (reported, not hidden). */
   clamped: number;
+  /** Whether each sample is pinned by a structure override (PlanInput.pin). */
+  pinned: Uint8Array;
+  /** Largest distance between a pinned sample and the OSM line (0 without pins). */
+  pinnedShiftM: number;
 };
 
 const SAMPLE_M = 1;
@@ -169,22 +181,37 @@ export function alignPlan(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): 
   const n = pts.length / 2;
   const weights = new Float64Array(n).fill(1);
   for (const a of anchorSamples) weights[a] = ANCHOR_WEIGHT;
+  // The line the smoothing pulls towards: OSM, except at pinned samples (a structure's deck line).
+  const target = Float64Array.from(pts);
+  const pinned = new Uint8Array(n);
+  if (input.pin) {
+    for (let i = 0; i < n; i++) {
+      const p = input.pin(pts[2 * i], pts[2 * i + 1]);
+      if (p === null) continue;
+      target[2 * i] = p[0];
+      target[2 * i + 1] = p[1];
+      weights[i] = ANCHOR_WEIGHT;
+      pinned[i] = 1;
+    }
+  }
   const alpha = (SMOOTH_SCALE_M / SAMPLE_M) ** 6;
-  let xy = smooth(pts, weights, alpha);
+  let xy = smooth(target, weights, alpha);
   // Raise the pull towards the OSM line where the shift exceeds ε, until none does.
   for (let iter = 0; iter < 40; iter++) {
     let worst = 0;
     for (let i = 0; i < n; i++) {
+      if (pinned[i]) continue;
       const d = Math.hypot(xy[2 * i] - pts[2 * i], xy[2 * i + 1] - pts[2 * i + 1]);
       worst = Math.max(worst, d);
       const isOver = d > epsilon * 0.97;
       if (isOver) weights[i] *= 4 * (d / epsilon) ** 2;
     }
     if (worst <= epsilon * 0.97) break;
-    xy = smooth(pts, weights, alpha);
+    xy = smooth(target, weights, alpha);
   }
   let clamped = 0;
   for (let i = 0; i < n; i++) {
+    if (pinned[i]) continue;
     let dx = xy[2 * i] - pts[2 * i];
     let dy = xy[2 * i + 1] - pts[2 * i + 1];
     const d = Math.hypot(dx, dy);
@@ -199,14 +226,34 @@ export function alignPlan(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): 
     }
   }
   for (const a of anchorSamples) {
-    xy[2 * a] = pts[2 * a];
-    xy[2 * a + 1] = pts[2 * a + 1];
+    xy[2 * a] = target[2 * a];
+    xy[2 * a + 1] = target[2 * a + 1];
+  }
+  // Pinned samples exactly on the structure's line (the smoothing holds them to ~1e-6 m).
+  for (let i = 0; i < n; i++) {
+    if (!pinned[i]) continue;
+    xy[2 * i] = target[2 * i];
+    xy[2 * i + 1] = target[2 * i + 1];
   }
   let maxShift = 0;
-  for (let i = 0; i < n; i++)
-    maxShift = Math.max(maxShift, Math.hypot(xy[2 * i] - pts[2 * i], xy[2 * i + 1] - pts[2 * i + 1]));
+  let pinnedShift = 0;
+  for (let i = 0; i < n; i++) {
+    const d = Math.hypot(xy[2 * i] - pts[2 * i], xy[2 * i + 1] - pts[2 * i + 1]);
+    if (pinned[i]) pinnedShift = Math.max(pinnedShift, d);
+    else maxShift = Math.max(maxShift, d);
+  }
   const s = new Float64Array(n);
   for (let i = 1; i < n; i++)
     s[i] = s[i - 1] + Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
-  return { xy, original: pts, s, kappa: curvatureOf(xy, s), vertexSample, maxShiftM: maxShift, clamped };
+  return {
+    xy,
+    original: pts,
+    s,
+    kappa: curvatureOf(xy, s),
+    vertexSample,
+    maxShiftM: maxShift,
+    clamped,
+    pinned,
+    pinnedShiftM: pinnedShift,
+  };
 }

@@ -99,6 +99,7 @@ import { Terrain } from "./world/terrain";
 import { TokyoTide } from "./world/tide";
 import { WaterLayer } from "./world/water";
 import { ExpresswayDecks } from "./world/expresswayDeck";
+import type { XwRoadInput } from "./world/expresswayRoads";
 import { Pedestrians, type Pedestrian } from "./world/pedestrians";
 import {
   RegulationTiles,
@@ -107,13 +108,15 @@ import {
   type LaneUse,
   type RegulationData,
 } from "./world/regulations";
-import { isLaneChangeBanned, laneOfOffset } from "./world/laneChange";
-import { leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
+import { carriagewayWidth, isLaneChangeBanned, laneCentreOffset, laneOfOffset } from "./world/laneChange";
+import { lanesUnderPavement, sectionSummary } from "./world/roadMarkings";
+import { laneOffset, leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
 import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
-import { TrafficControl } from "./world/trafficControl";
+import { TrafficControl, type Approach, type LightState } from "./world/trafficControl";
+import { letsDriverGo } from "./signals/plan";
 import { SignalViolationCheck } from "./game/signalViolations";
 import { TrafficSigns, loadSignModels } from "./world/signs";
 import { GuideSigns } from "./world/guideSigns";
@@ -190,11 +193,21 @@ import { frameStats, longFramesDuring, perf, round, watchFrames } from "./game/p
 import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
+import { judgePedestrianBlow } from "./game/pedestrianBlow";
+import { JUMP_METRES, STANDING_KMH } from "./game/motion";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
+import { classOf, isDrivable, isExpressway, sourceOf, usesGroundSurface } from "./world/roadClass";
 
-const LIGHT_KEY = { green: "hud.signal.green", yellow: "hud.signal.yellow", red: "hud.signal.red" } as const;
+const LIGHT_KEY = {
+  green: "hud.signal.green",
+  yellow: "hud.signal.yellow",
+  red: "hud.signal.red",
+  flashingYellow: "hud.signal.flashingYellow",
+  flashingRed: "hud.signal.flashingRed",
+  off: "hud.signal.off",
+} as const satisfies Record<LightState, string>;
 /** What the car hit (`name` fills the pedestrian's). */
 const ACCIDENT_KEY = {
   pedestrian: "accident.pedestrian",
@@ -456,14 +469,16 @@ async function main(): Promise<void> {
   const terrain = new Terrain(scene, world, dem, renderer, frame);
   // Rivers, canals and the bay: their surface replaces the ground there, bridges get decks.
   const water = new WaterLayer(scene, world, dem, new TokyoTide(), frame);
-  // Expressway decks (P1: drawn only, no colliders, the road graph unchanged) behind ?expressway;
-  // ?expressway=bank also tilts them by the compiled superelevation.
+  // Expressway decks behind ?expressway (P3: drivable, with colliders near the car and their chunks
+  // in the road graph); ?expressway=bank also tilts them by the compiled superelevation. Without
+  // the flag nothing of it runs and the streets are as before.
   const expresswayFlag = new URLSearchParams(location.search).get("expressway");
   const expressway =
     expresswayFlag === null
       ? null
       : new ExpresswayDecks(
           scene,
+          world,
           (lat, lon, h) => dem.ellipsoidal(lat, lon, h),
           frame,
           import.meta.env.BASE_URL,
@@ -573,7 +588,7 @@ async function main(): Promise<void> {
     // Travel along the road in the direction closest to the stop-to-stop heading.
     const fwd = new Vector3(Math.sin(heading), 0, Math.cos(heading));
     const dir = hit.dir.clone().multiplyScalar(fwd.dot(hit.dir) >= 0 ? 1 : -1);
-    const lane = hit.seg.oneway === 0 ? hit.seg.line.width / 4 : 0;
+    const lane = laneOffset(hit.seg);
     const centre = p.clone().add(new Vector3(-hit.dir.z * hit.lateral, 0, hit.dir.x * hit.lateral));
     return { pos: centre.add(leftOf(dir, lane)), heading: Math.atan2(dir.x, dir.z) };
   };
@@ -615,6 +630,8 @@ async function main(): Promise<void> {
   );
   let roadLines: RoadLine[] = [];
   let roadRegs: RegulationData | null = null;
+  /** The expressway chunks of the same area as graph lines (?expressway only), frame-free. */
+  let roadExpressway: XwRoadInput | null = null;
   let roadApplied: AppliedRegulations | null = null;
   let roadGraph: RoadGraph | null = null;
   let roadCenter = { lat: 0, lon: 0 };
@@ -665,7 +682,7 @@ async function main(): Promise<void> {
       if (roadGraph) void buildRoadNetwork();
     })
     .catch(() => undefined);
-  const installRoadNetwork = async ({ graph, applied }: RoadNetwork) => {
+  const installRoadNetwork = async ({ graph, applied, signalRecords }: RoadNetwork) => {
     const started = performance.now();
     const work = new FrameWork();
     const stagesMs: Record<string, number> = {};
@@ -689,13 +706,24 @@ async function main(): Promise<void> {
             return g !== null && isOpenGround(x, z, g);
           },
           (x, z) => pavements.contains(x, z),
+          {
+            stand: (seg, near, kerb) => control.buttonStand(seg, near, kerb),
+            press: (seg, near) => void control.pressButton(seg, near),
+          },
+          (near, needS) => control.mayCrossDiagonal(near, needS),
         ),
       );
     roadApplied = applied;
     graph.setClock(gameClockNow());
+    // surfaceY on ground roads reads the terrain (bridges: their decks), unknown where not loaded.
+    graph.ground = (x, z) => groundY(x, z);
+    const replaced = roadGraph;
+    if (replaced && replaced.unknownGroundHits > 0)
+      warn("road_surface_unknown", { hits: replaced.unknownGroundHits, segments: replaced.segments.length });
     roadGraph = graph;
+    if (expressway) logExpresswayGraph(graph);
     const models = work.measure(() => {
-      const steps = control.setNetwork(graph, applied);
+      const steps = control.setNetwork(graph, applied, signalRecords);
       traffic.setGraph(graph, false);
       setPedestrianNetwork();
       return steps;
@@ -750,16 +778,20 @@ async function main(): Promise<void> {
       posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
       signals: control.signalCount(),
       rightArrows: control.rightArrowCount(),
+      signalPlans: control.planCounts(),
+      droppedRightArrows: control.droppedArrowCount(),
+      ...control.crossingCounts(),
       stops: control.approaches.filter((a) => a.kind === "stop").length,
       crossings: applied?.crossings.length ?? 0,
       signs: applied?.signs.length ?? 0,
     });
+    log("road_sections", sectionSummary(graph));
   };
   const buildRoadNetwork = async () => {
     const revision = ++roadRevision;
     const requestedFrame = frame;
     try {
-      const network = await roadBuilder.build(roadLines, roadRegs, requestedFrame);
+      const network = await roadBuilder.build(roadLines, roadRegs, requestedFrame, roadExpressway);
       return await roadUpdates.run(async () => {
         // Worker restoration and the logical swap otherwise share one frame with the game's render.
         await new FrameWork().yield();
@@ -781,12 +813,18 @@ async function main(): Promise<void> {
     roadBuilder.invalidate();
     roadCenter = { lat, lon };
     // The water of the same tiles too: the decks of the bridges are built with the streets.
-    void Promise.all([roadTiles.around(lat, lon), regulationTiles.around(lat, lon), water.around(lat, lon)])
-      .then(([lines, regs]) => {
+    void Promise.all([
+      roadTiles.around(lat, lon),
+      regulationTiles.around(lat, lon),
+      expressway ? expressway.roadInput(lat, lon) : Promise.resolve(null),
+      water.around(lat, lon),
+    ])
+      .then(([lines, regs, xw]) => {
         const isStale = load !== roadLoadSerial;
         if (isStale) return;
         roadLines = lines;
         roadRegs = regs;
+        roadExpressway = xw;
         roadDataCenter = { lat, lon };
         return buildRoadNetwork();
       })
@@ -806,6 +844,11 @@ async function main(): Promise<void> {
           await pavements.rebuildAsync(polys, frame, new FrameWork());
           pedestrians.pavementsChanged();
           log("pavements_built", { wards, polygons: polys.length });
+          if (roadGraph)
+            log(
+              "pavement_over_lanes",
+              lanesUnderPavement(roadGraph, (x, z) => pavements.contains(x, z)),
+            );
         }),
       )
       .catch((error: unknown) => warn("road_network_failed", { error: String(error) }));
@@ -817,13 +860,55 @@ async function main(): Promise<void> {
   for (const p of pois) wardTotals.set(p.ward, (wardTotals.get(p.ward) ?? 0) + 1);
 
   // ---------- helpers bound to the current frame ----------
-  const groundY = (x: number, z: number): number | null => {
+  /**
+   * Height of what stands under (x, z): a bridge deck over water, else the terrain. With `nearY`
+   * (the height of a car or a person there), an expressway deck at or below nearY + 0.5 m and above
+   * the terrain answers instead (knowledge/road-redesign-plan.md 3.2: the nearest surface below).
+   * Why not always: the street under a viaduct is what traffic, signs and lamps stand on.
+   */
+  const groundY = (x: number, z: number, nearY?: number): number | null => {
     // On a bridge the ground is its deck: the DEM there is the riverbed.
     const deck = water.deckAt(x, z);
     if (deck !== null) return deck;
     const g = frame.toGeodetic(new Vector3(x, 0, z));
     const h = dem.heightAt(g.lat, g.lon);
-    return h === null ? null : frame.toLocal(g.lat, g.lon, h).y;
+    const terrainY = h === null ? null : frame.toLocal(g.lat, g.lon, h).y;
+    const isAboveGround = nearY !== undefined && expressway !== null;
+    if (!isAboveGround) return terrainY;
+    const xw = expressway.surfaceBelow(x, nearY + 0.5, z);
+    const isOnDeck = xw !== null && (terrainY === null || xw > terrainY + 0.2);
+    return isOnDeck ? xw : terrainY;
+  };
+  /**
+   * A road the player's car may be on for the checks (speed, lanes, 一方通行): a street drawn on
+   * the ground, or an expressway deck whose collider is built (P3), or a ramp's ground connector.
+   */
+  const isCarSurface = (seg: Segment) => {
+    const xid = seg.line.xid;
+    if (xid !== undefined) return expressway?.isSolid(xid) ?? false;
+    const isOsmRamp = isExpressway(seg.line) && sourceOf(seg.line) === "osm";
+    return isOsmRamp || usesGroundSurface(seg.line);
+  };
+  /** What the graph made of the expressway: chunks, and the ramp ends joined to a street. */
+  const logExpresswayGraph = (graph: RoadGraph) => {
+    const chunks = graph.segments.filter((s) => s.line.xid !== undefined);
+    const ends = new Set<number>();
+    for (const seg of chunks) {
+      const isRamp = classOf(seg.line) === "ramp";
+      if (!isRamp) continue;
+      for (const node of [seg.from, seg.to]) {
+        const meetsStreet = (graph.nodes.get(node) ?? []).some((id) => {
+          const other = graph.segments[id].line;
+          return other.xid === undefined;
+        });
+        if (meetsStreet) ends.add(node);
+      }
+    }
+    log("expressway_graph_joined", {
+      segments: chunks.length,
+      chunks: new Set(chunks.map((s) => s.line.xid)).size,
+      rampEndsJoined: ends.size,
+    });
   };
 
   // Fixed colliders only (terrain + buildings): cars, buses and pedestrians are not "ground".
@@ -888,10 +973,28 @@ async function main(): Promise<void> {
     const graph = roadGraph;
     if (!graph) return false;
     const car = vehicle.position();
-    const isStreet = (seg: Segment) =>
-      seg.line.kind !== "highway" && seg.line.width >= 5.5 && seg.length > 30 && !seg.closed;
-    const isLane = (seg: Segment) =>
-      seg.line.kind !== "highway" && seg.line.width >= 4 && seg.length > 20 && !seg.closed;
+    // Streets on the ground only: a ramp's ground connector is no place to put a car (spawn is open
+    // to the expressway for the decks, below).
+    const isGroundRoad = (seg: Segment) =>
+      isDrivable(seg.line, "spawn") && !isExpressway(seg.line) && !seg.closed;
+    const isStreet = (seg: Segment) => isGroundRoad(seg) && seg.line.width >= 5.5 && seg.length > 30;
+    const isLane = (seg: Segment) => isGroundRoad(seg) && seg.line.width >= 4 && seg.length > 20;
+    // A car up on an expressway deck (with its collider) goes back into the deck's left lane, the
+    // way it runs: the street under it is another level (RoadGraph.locate).
+    const isDeck = (seg: Segment) =>
+      seg.line.xid !== undefined && isCarSurface(seg) && isDrivable(seg.line, "spawn") && !seg.closed;
+    const deckHit = graph.nearestOnSurface(car, 10, isDeck);
+    if (deckHit) {
+      const seg = deckHit.seg;
+      const s = Math.min(seg.length - 2, Math.max(2, deckHit.s));
+      const { pos, dir } = graph.sample(seg, s);
+      const y = graph.surfaceY(seg, s);
+      if (y === null) return false;
+      const at = pos.add(leftOf(dir, laneCentreOffset(seg, 0))).setY(y + 0.9);
+      vehicle.teleport(at, Math.atan2(dir.x, dir.z));
+      chase.snap();
+      return true;
+    }
     // Wider and wider until a street turns up: a place chosen in 移動 or on the start screen (a
     // park, the palace, a ward's middle, a tower) can be far from one; a narrow lane only if no
     // street is near at all.
@@ -973,6 +1076,10 @@ async function main(): Promise<void> {
 
   const respawnHere = () => {
     const p = vehicle.position();
+    // Up on a deck (R pressed there, stuck against a wall): back into its left lane. Why first: open
+    // ground is looked for under the deck, which would drop the car onto the street below.
+    const isOnDeckNow = carOnDeck && placeOnStreet();
+    if (isOnDeckNow) return;
     buildings.buildCollidersNear(p);
     vehicle.teleport(findOpenGround(p.x, p.z), carYaw(vehicle.quaternion()));
     // Back on the nearest street, as after a start or 移動 (open ground where it was, if none).
@@ -992,7 +1099,7 @@ async function main(): Promise<void> {
     const g = frame.toGeodetic(pos);
     const next = new LocalFrame(g.lat, g.lon, dem.heightAt(g.lat, g.lon) ?? g.h);
     return roadBuilder
-      .build(roadLines, roadRegs, next)
+      .build(roadLines, roadRegs, next, roadExpressway)
       .then((network) =>
         roadUpdates.run(async () => {
           await new FrameWork().yield();
@@ -1106,7 +1213,11 @@ async function main(): Promise<void> {
     const isRecentering = recentering !== null || Math.hypot(pos.x, pos.z) > 1;
     if (isRecentering) return;
     const g = frame.toGeodetic(new Vector3());
-    const isGroundReady = terrain.hasColliderAt(g.lat, g.lon);
+    // The decks around the landing place too (knowledge/road-redesign-plan.md 4.5): open ground is
+    // looked for by rays through the fixed colliders, so a deck still to come would not be seen.
+    // Not forever: a deck tile that fails to load must not hold the warp (as the town's 12 s).
+    const areDecksReady = (expressway?.isSettledAt(g.lat, g.lon) ?? true) || now - warping.since > 12000;
+    const isGroundReady = terrain.hasColliderAt(g.lat, g.lon) && areDecksReady;
     const isTownReady = buildings.loadProgress() > 0.95 || now - warping.since > 12000;
     if (!isGroundReady || !isTownReady) return;
     buildings.buildCollidersNear(new Vector3());
@@ -1597,7 +1708,7 @@ async function main(): Promise<void> {
       );
       c.rotation.set(0, pa.yaw + Math.atan2(Math.sin(pb.yaw - pa.yaw), Math.cos(pb.yaw - pa.yaw)) * k, 0);
     }
-    control.update(r.t / 1000);
+    control.update(r.t / 1000, true);
     const marks = r.marks.map((v) => v.at);
     // 違反の理由: from 2.5 s before each violation to 4 s after, what it was and why.
     const near = r.marks.find((m) => r.t > m.at - 2500 && r.t < m.at + 4000);
@@ -1968,7 +2079,8 @@ async function main(): Promise<void> {
       // Right-hand drive: the driver's door is on the car's right (chassis −X when facing +Z).
       const q = vehicle.quaternion();
       const at = vehicle.position().add(new Vector3(-1.6, 0, 0.3).applyQuaternion(q));
-      at.y = groundY(at.x, at.z) ?? at.y - 0.8;
+      // Up on a deck the door opens onto the deck, not the street under it.
+      at.y = groundY(at.x, at.z, vehicle.position().y) ?? at.y - 0.8;
       walker.enter(at, carYaw(q));
       vehicle.setParked(true);
       mode = "foot";
@@ -2011,6 +2123,7 @@ async function main(): Promise<void> {
 
   // Dev-only hook so automated checks can frame the car from arbitrary angles.
   let debugCamera: ((cam: PerspectiveCamera, car: Vector3) => void) | null = null;
+  let debugDrive: ((dt: number) => DriveInput) | null = null;
 
   // ---------- main loop ----------
   let state: "loading" | "ready" | "playing" = "loading";
@@ -2023,6 +2136,24 @@ async function main(): Promise<void> {
   let appliedNight = -1;
   const events = new RAPIER.EventQueue(true);
   let lastLawCheck = 0;
+  let lastDeckCheck = 0;
+  /** Up on an expressway deck (over a river it is not adrift). */
+  let carOnDeck = false;
+  /** 20 m cells already logged as a building crossed by a deck (expressway_building_crossed). */
+  const crossedCells = new Set<string>();
+  const noteBuildingCrossed = (p: Vector3) => {
+    const g = frame.toGeodetic(p);
+    const cell = `${Math.round(g.lat * 5000)},${Math.round(g.lon * 4000)}`;
+    const isLogged = crossedCells.has(cell);
+    if (isLogged) return;
+    crossedCells.add(cell);
+    const hit = roadGraph?.nearestOnSurface(p, 15, (seg) => seg.line.xid !== undefined) ?? null;
+    warn("expressway_building_crossed", {
+      lat: Number(g.lat.toFixed(6)),
+      lon: Number(g.lon.toFixed(6)),
+      xid: hit?.seg.line.xid ?? null,
+    });
+  };
   let overSince: number | null = null;
   let rightSince: number | null = null;
   let wrongWaySince: number | null = null;
@@ -2050,7 +2181,7 @@ async function main(): Promise<void> {
   // Where and when the car last stood still, for 一時停止 (stop before the line, then go).
   let lastStop: { pos: Vector3; at: number } | null = null;
   // 信号無視 with arrows: a crossing under an arrow waits for the arm the car leaves by.
-  const signalCheck = new SignalViolationCheck(control, (now) => book(VIOLATIONS.signal, now, 10000));
+  const signalCheck = new SignalViolationCheck(control, (now, kind) => book(VIOLATIONS[kind], now, 10000));
   let lastClockSync = 0;
   let currentLimit: number | null = null;
   let currentLimitKind: "sign" | "zone" | "statutory" | null = null;
@@ -2074,6 +2205,11 @@ async function main(): Promise<void> {
   const contactCooldown = new Map<number, number>();
   /** A person hit is one accident, however many steps the blow takes to part them. */
   const pedestrianCooldown = new WeakMap<Pedestrian, number>();
+  /**
+   * When each person's next pedestrian_bump may be logged. Why not pedestrianCooldown: that one
+   * holds off the next accident, and a bump must not delay the booking of a real hit after it.
+   */
+  const bumpLogCooldown = new WeakMap<Pedestrian, number>();
   const loadStart = performance.now();
   let lastBrainStatus = brain.status;
   const startButton = $<HTMLButtonElement>("#start");
@@ -2351,10 +2487,11 @@ async function main(): Promise<void> {
     const isOverride = Math.abs(manual.throttle) > 0.2 || manual.brake > 0.2 || Math.abs(manual.steer) > 0.3;
     if (autopilot && isOverride) stopAutopilot(i18n.t("toast.autopilotOverride"));
     // With the engine off the accelerator does nothing (E starts it again).
-    const pedals = autopilot ? autopilot.input : manual;
+    // A dev hook may drive (debug.expressway.cruise): steady speed over the decks for the checks.
+    const pedals = debugDrive ? debugDrive(dt) : autopilot ? autopilot.input : manual;
     if (isInCar) controls.autoOperate(autoContext(manual.throttle), dt);
-    const isHeld = controls.autoHold && !autopilot;
-    const powered = controls.engineOn || autopilot ? pedals : { ...pedals, throttle: 0 };
+    const isHeld = controls.autoHold && !autopilot && !debugDrive;
+    const powered = controls.engineOn || autopilot || debugDrive ? pedals : { ...pedals, throttle: 0 };
     // At the roadside stop and through the story the car stays where it stopped.
     const drive = pursuitDirector.holdCar
       ? { ...powered, throttle: 0, brake: 0, handbrake: true }
@@ -2401,17 +2538,25 @@ async function main(): Promise<void> {
       if (!isPlayersCar || !isPerson) continue;
       const isCoolingDown = (pedestrianCooldown.get(ped) ?? 0) > performance.now();
       if (isCoolingDown) continue;
-      const kmh = Math.abs(vehicle.speedKmh());
-      const carKmh = Math.max(kmh, (blow.impact.closing + blow.impact.dvCar) * 3.6);
-      const victimKmh = blow.impact.dvOther * 3.6;
-      // Someone walking into a car that stands is their own bump.
-      const isAccident = carKmh > 3 && victimKmh > 3;
-      if (!isAccident) continue;
+      // Someone walking into a car that stands is their own bump (pedestrianBlow.ts: the car's own
+      // speed going into the blow decides; the closing speed only says, by the person's Δv, how
+      // hard they were hit).
+      const judged = judgePedestrianBlow(blow.impact);
+      if (!judged.isAccident) {
+        const isBumpLogged = (bumpLogCooldown.get(ped) ?? 0) > performance.now();
+        if (isBumpLogged) continue;
+        bumpLogCooldown.set(ped, performance.now() + 3000);
+        log("pedestrian_bump", {
+          carKmh: Math.round(judged.carKmh * 10) / 10,
+          otherDeltaVKmh: Math.round(judged.victimKmh * 10) / 10,
+        });
+        continue;
+      }
       pedestrianCooldown.set(ped, performance.now() + 3000);
       input.pad.contact("impact", blow.impact.dvCar + 1);
       pedestrians.knockDown(ped);
       emergency.start(ped, performance.now());
-      onAccident("pedestrian", carKmh, ped.profile.name, blow.impact);
+      onAccident("pedestrian", judged.carKmh, ped.profile.name, blow.impact);
     }
     events.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
@@ -2458,25 +2603,42 @@ async function main(): Promise<void> {
     // Today's distance at the wheel (re-anchoring and respawns jump; ignore those).
     if (isInCar && odometerAt) {
       const step = Math.hypot(carPos.x - odometerAt.x, carPos.z - odometerAt.z);
-      if (step < 10) todayMetres += step;
+      if (step < JUMP_METRES) todayMetres += step;
     }
     odometerAt = isInCar ? carPos.clone() : null;
     const focus = focusPos();
     const geo = frame.toGeodetic(focus);
     const speed = isOnFoot ? walker.speed * 3.6 : isInTaxi && taxi ? taxi.speed * 3.6 : vehicle.speedKmh();
 
-    // Never simulate the car over ground whose collider has not been built yet.
-    const hasGround = terrain.hasColliderAt(geo.lat, geo.lon) && !warping;
+    // Never simulate the car over ground whose collider has not been built yet (nor next to an
+    // expressway deck whose collider is still to come: a car on it would fall through).
+    const isDeckReady = expressway?.isReadyNear(geo.lat, geo.lon) ?? true;
+    const hasGround = terrain.hasColliderAt(geo.lat, geo.lon) && isDeckReady && !warping;
     if (hasGround === frozen) {
       frozen = !hasGround;
       vehicle.setFrozen(frozen);
+    }
+    // Up on an expressway deck the car passes through the PLATEAU buildings some ramps run into
+    // (Vehicle.setOnDeck); asked of the graph ten times a second.
+    if (expressway && roadGraph && isInCar && now - lastDeckCheck > 100) {
+      lastDeckCheck = now;
+      // 15 m: the width gate (half the carriageway + 1 m) decides; a 4-lane deck is over 7 m wide.
+      carOnDeck = roadGraph.nearestOnSurface(carPos, 15, (seg) => seg.line.xid !== undefined) !== null;
+      vehicle.setOnDeck(carOnDeck);
+      // Where the car passes through a building on a deck: the list P4 cuts out (once per 20 m).
+      const isThroughBuilding = carOnDeck && vehicle.overlapsBuilding();
+      if (isThroughBuilding) noteBuildingCrossed(carPos);
     }
     const gy = groundY(carPos.x, carPos.z);
     if (gy !== null && carPos.y < gy - 6) respawnHere();
     // In the water, off the streets and bridges (a channel too narrow to lose its ground collider
     // holds the car up over the drawn water): back on the bank after a moment.
     const isAdrift =
-      isInCar && !frozen && water.isAdrift(carPos) && !roadGraph?.carriagewaysAt(carPos, 1).length;
+      isInCar &&
+      !frozen &&
+      !carOnDeck &&
+      water.isAdrift(carPos) &&
+      !roadGraph?.carriagewaysAt(carPos, 1).length;
     adriftSince = isAdrift ? (adriftSince ?? now) : null;
     if (adriftSince !== null && now - adriftSince > 1500) {
       adriftSince = null;
@@ -2510,6 +2672,8 @@ async function main(): Promise<void> {
     if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
       refreshRoads(geo.lat, geo.lon);
     expressway?.update(geo.lat, geo.lon);
+    // The game's clock for the plans that change at night (夜間点滅, 夜間の押ボタン).
+    control.setTimeOfDay(env.displayHour(geo.lat, geo.lon) * 60);
     control.update(now / 1000);
     signs.update(focus, now);
     guideSigns.update(focus, now);
@@ -2560,8 +2724,11 @@ async function main(): Promise<void> {
     const isDriving = isInCar && !frozen && !law.state.suspended;
     if (isDriving && roadGraph && now - lastLawCheck > 200) {
       lastLawCheck = now;
-      // The car drives at ground level: elevated 首都高 overhead is not the road it is on.
-      const hit = roadGraph.nearest(carPos, 30, isSurfaceStreet);
+      // The road under the car on its own level (RoadGraph.locate): up on a deck it is the deck, and
+      // under one the street, never the viaduct overhead.
+      const hit = carOnDeck
+        ? roadGraph.locate(carPos, 30, isCarSurface)
+        : roadGraph.nearest(carPos, 30, isCarSurface);
       const onRoad = hit && Math.abs(hit.lateral) < hit.seg.line.width / 2 + 1.5 ? hit : null;
       currentLimit = onRoad ? speedLimit(onRoad.seg) : null;
       currentLimitKind = onRoad ? onRoad.seg.limitKind : null;
@@ -2705,8 +2872,8 @@ async function main(): Promise<void> {
       // 合図 for changing lanes on a multi-lane road.
       if (onRoad && onRoad.seg.lanes >= 2 && Math.abs(align) > 0.85 && speed > 15) {
         const s = onRoad.seg;
-        const span = s.oneway === 0 ? s.line.width / 2 : s.line.width;
-        const lane = Math.floor((s.line.width / 2 - onRoad.lateral * Math.sign(align)) / (span / s.lanes));
+        // The lanes as painted (laneChange.ts), counted from the left edge line.
+        const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
         const isSameRoad = laneHeld !== null && laneHeld.seg === s;
         if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
           const side = lane < laneHeld.lane ? "left" : "right";
@@ -2807,9 +2974,7 @@ async function main(): Promise<void> {
       // getting ready to turn right, not for driving along.
       if (onRoad && onRoad.seg.lanes >= 2 && onRoad.seg.oneway === 0 && speed > 10 && Math.abs(align) > 0.8) {
         const s = onRoad.seg;
-        const leftOfTravel = onRoad.lateral * Math.sign(align);
-        const laneWidth = s.line.width / 2 / s.lanes;
-        const lane = Math.floor((s.line.width / 2 - leftOfTravel) / laneWidth);
+        const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
         const turnAhead = nav.route?.maneuvers.find((m) => m.at > nav.lastAt);
         const isPreparingRight =
           turnAhead !== undefined && turnAhead.at - nav.lastAt < 150 && /right|uturn/i.test(turnAhead.turn);
@@ -2843,13 +3008,16 @@ async function main(): Promise<void> {
       // (game/signalViolations.ts): only then is it known whether the arrow allowed that movement.
       if (Math.abs(speed) < 3) lastStop = { pos: carPos.clone(), at: now };
       const isContinuous = lawPrevPos !== null && lawPrevPos.distanceTo(carPos) < 30;
+      // The 一時停止 a 止まれ sign and 赤色の灯火の点滅 both ask: stood still near the line just before.
+      const hasStoppedAt = (ap: Approach) => {
+        const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
+        return lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
+      };
       if (lawPrevPos && isContinuous) {
         const crossed = control.crossed(lawPrevPos, carPos);
-        signalCheck.step(crossed, lawPrevPos, carPos, carForward, now);
+        signalCheck.step(crossed, lawPrevPos, carPos, carForward, now, hasStoppedAt);
         for (const ap of crossed) {
-          const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
-          const hasStopped =
-            lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
+          const hasStopped = hasStoppedAt(ap);
           if (ap.kind === "stop" && !hasStopped) book(VIOLATIONS.stopSign, now, 10000);
           if (ap.kind === "stop" && hasStopped) praise("fullStop");
         }
@@ -2872,7 +3040,10 @@ async function main(): Promise<void> {
     // 放置駐車 and the 駐車監視員 patrol. 警視庁: regardless of how long it has stood, a car left on
     // a street where parking is prohibited, with the driver away and unable to drive it at once,
     // gets a 放置車両確認標章 — the patrol only has to come by.
-    const carHit = roadGraph ? roadGraph.nearest(carPos, 15, isSurfaceStreet) : null;
+    // On a deck the street below is not where the car stands: no 監視員 there (第75条の8 is P6's).
+    // carOnDeck: the 10 Hz deck check (no second search of every segment each frame).
+    const isUpOnDeck = carOnDeck;
+    const carHit = roadGraph && !isUpOnDeck ? roadGraph.nearest(carPos, 15, isSurfaceStreet) : null;
     const isOnCarriageway = carHit !== null && Math.abs(carHit.lateral) < carHit.seg.line.width / 2;
     const place = isOnCarriageway && carHit ? parkingPlace(carHit) : null;
     // Riding a taxi away from the car leaves it just as abandoned as walking off.
@@ -2907,7 +3078,7 @@ async function main(): Promise<void> {
       book(VIOLATIONS.phone, now, 30000);
     }
     // Tokyo's environmental ordinance: switch the engine off when stopped for a while.
-    const isStoppedInCar = isInCar && Math.abs(speed) < 1 && drive.throttle === 0;
+    const isStoppedInCar = isInCar && Math.abs(speed) < STANDING_KMH && drive.throttle === 0;
     stoppedSince = isStoppedInCar ? (stoppedSince ?? now) : null;
     const isEngineOff = !isInCar || (stoppedSince !== null && now - stoppedSince > 20000);
     if (isEngineOff && isInCar) announceIdlingStop();
@@ -3795,7 +3966,7 @@ async function main(): Promise<void> {
       log("patrol_lost", { unitKind: p.kind, violationIds: lostIds });
     }
   };
-  const isSurfaceStreet = (seg: Segment) => seg.line.kind !== "highway";
+  const isSurfaceStreet = (seg: Segment) => usesGroundSurface(seg.line);
   // ---------- 追跡とその後（pursuitDirector.ts・pursuitScene.ts） ----------
   const pursuitScene = new PursuitScene(scene, $("#hud"));
   i18n.onLocaleChange(() => pursuitScene.relabel());
@@ -3811,14 +3982,13 @@ async function main(): Promise<void> {
     const fwd = headingVector(vehicle.quaternion());
     const sgn = fwd.dot(hit.dir) >= 0 ? 1 : -1;
     const travel = hit.dir.clone().multiplyScalar(sgn);
-    // The kerb: PLATEAU paving where there is some, else the carriageway's edge (GSI 幅員).
+    // The kerb: PLATEAU paving where it comes first, else the carriageway's edge (the section's,
+    // carriagewayWidth). Why not the GSI 幅員's edge: where it includes the pavement, a car 3 m
+    // from the paint would have read as tucked in to the kerb.
     const paved = kerbLeft(p, travel, hit.seg.line.width / 2 + 1, (x, z) => pavements.contains(x, z));
-    const edge = hit.seg.line.width / 2 - hit.lateral * sgn;
+    const edge = carriagewayWidth(hit.seg) / 2 - hit.lateral * sgn;
     const kerbGap = Math.max(0, Math.min(paved, edge) - 0.92);
-    const span = hit.seg.oneway === 0 ? hit.seg.line.width / 2 : hit.seg.line.width;
-    const lane = Math.floor(
-      (hit.seg.line.width / 2 - hit.lateral * sgn) / (span / Math.max(1, hit.seg.lanes)),
-    );
+    const lane = laneOfOffset(hit.seg, hit.lateral * sgn);
     return { junction, crossing, noStopping: posted, kerbGap, rightLane: hit.seg.lanes >= 2 && lane > 0 };
   };
   /**
@@ -4048,7 +4218,7 @@ async function main(): Promise<void> {
     if (!roadGraph) return null;
     const here = vehicle.position();
     const far = roadGraph.segments.filter((seg) => {
-      if (seg.line.kind === "highway" || seg.line.width < 5.5 || seg.closed) return false;
+      if (!isDrivable(seg.line, "autopilot") || seg.line.width < 5.5 || seg.closed) return false;
       const d = roadGraph?.sample(seg, seg.length / 2).pos.distanceTo(here) ?? 0;
       return d > 600 && d < 1200;
     });
@@ -4931,7 +5101,7 @@ async function main(): Promise<void> {
     const carKg = vehicle.massKg;
     const e = restitution(closing, body.kind);
     const { dv1, dv2, energy } = centralImpact(carKg, body.mass, closing, e);
-    return { closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
+    return { closing, carSpeed: closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
   };
   const onAccident = (
     kind: "pedestrian" | "vehicle" | "building" | "pole",
@@ -5019,7 +5189,9 @@ async function main(): Promise<void> {
     const isRedAhead = ahead !== null && control.state(ahead.approach) === "red";
     const arrowWays =
       ahead && isRedAhead
-        ? (["left", "through", "right"] as const).filter((m) => control.permits(ahead.approach, m) === "go")
+        ? (["left", "through", "right"] as const).filter((m) =>
+            letsDriverGo(control.permits(ahead.approach, m)),
+          )
         : [];
     const isRightArrowOnly = arrowWays.length === 1 && arrowWays[0] === "right";
     const lightKey = !ahead
@@ -5292,6 +5464,17 @@ async function main(): Promise<void> {
         buildingsProgress: buildings.loadProgress(),
       }),
     });
+    // Steady-speed drives over the expressway decks (src/debug/expresswayDrive.ts), ?expressway only.
+    const { createExpresswayHooks } = await import("./debug/expresswayDrive");
+    const expresswayHooks = expressway
+      ? createExpresswayHooks({
+          graph: () => roadGraph,
+          vehicle,
+          decks: expressway,
+          setDrive: (fn) => (debugDrive = fn),
+          snapCamera: () => chase.snap(),
+        })
+      : null;
     Object.assign(window, {
       __game: {
         scene,
@@ -5363,6 +5546,7 @@ async function main(): Promise<void> {
           targets: viewHooks.targets,
           signals: viewHooks.signals,
           settled: viewHooks.settled,
+          expressway: expresswayHooks,
         },
         getPursuit: () => pursuitDirector,
         social,

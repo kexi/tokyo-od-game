@@ -8,6 +8,10 @@ import { CLOSURE, MAX_CLOSURE_AREA_KM2, readClosureRow, ringAreaKm2, type Closur
 import { inForce, readTime, timeNote, type GameClock, type RuleTime } from "./ruleTime";
 import { auxPlatesFor, type AuxPlate } from "../signs/auxPlates";
 import { SIGN } from "../signs/game";
+import { isEnterable, takesJarticRules } from "./roadClass";
+import { resolveSection, streetRoom, type LaneEvidence } from "./laneChange";
+import { ROAD_LANES_COLUMN } from "./roadLanesData";
+import { OSM_ONEWAY_REACH } from "./streetAssumptions";
 
 /**
  * Traffic regulations for the area around the player, as tiled by scripts/regulations.ts:
@@ -35,6 +39,11 @@ export type RegulationData = {
   footbridges: Array<[number, number[], number[][]]>;
   /** OSM: turn:lanes at junction approaches, [lon, lat, bearing°, "left;through|through|right"]. */
   turnlanes: Array<[number, number, number, string]>;
+  /**
+   * OSM: street lanes, [forward, backward (0 = not mapped), one-way 1/0, width dm (0 = none),
+   * …coords in the forward order] (scripts/roadLanes.ts).
+   */
+  roadlanes: number[][];
 };
 
 /** A direction a lane may take at the junction (OSM turn:lanes vocabulary). */
@@ -88,6 +97,7 @@ const empty = (): RegulationData => ({
   junctions: [],
   footbridges: [],
   turnlanes: [],
+  roadlanes: [],
 });
 
 export type RegulationMeta = { targetMonth: string; releaseDay: string; fetchedAt: string; url: string };
@@ -106,7 +116,7 @@ export class RegulationTiles {
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         keys.add(`${Math.floor((cx + dx) / shift)}-${Math.floor((cy + dy) / shift)}`);
-    const osmDirs = ["signals", "junctions", "footbridges", "turnlanes"] as const;
+    const osmDirs = ["signals", "junctions", "footbridges", "turnlanes", "roadlanes"] as const;
     const [regIndex, ...osmIndex] = await Promise.all([
       this.tileIndex("regs"),
       ...osmDirs.map((d) => this.tileIndex(d)),
@@ -129,7 +139,7 @@ export class RegulationTiles {
         if (regIndex.has(key)) {
           const t = (await this.json(`regs/${key}.json`)) as Omit<
             RegulationData,
-            "signals" | "junctions" | "footbridges" | "turnlanes"
+            "signals" | "junctions" | "footbridges" | "turnlanes" | "roadlanes"
           > | null;
           if (t) for (const k of Object.keys(t) as (keyof typeof t)[]) add(out[k], t[k]);
         }
@@ -350,7 +360,7 @@ type ReportDiagnostic = (diagnostic: RegulationDiagnostic) => void;
 const reportDiagnostic: ReportDiagnostic = ({ event, fields }) => warn(event, fields);
 
 function warnIfDistrictClosed(graph: RoadGraph, report: ReportDiagnostic): void {
-  const streets = graph.segments.filter((s) => s.line.kind !== "highway");
+  const streets = graph.segments.filter((s) => takesJarticRules(s.line));
   const closed = streets.filter((s) => s.closures.length > 0).length;
   const isImplausible = closed >= 200 && closed > streets.length * CLOSED_SHARE_WARN;
   if (!isImplausible) return;
@@ -411,6 +421,10 @@ export function applyRegulations(
   for (const r of data.noLaneChange) noLaneChange.add(true, toLocal(frame, r));
   const laneLines = new LineGrid<number>();
   for (const r of data.lanes) laneLines.add(r[0], toLocal(frame, r, 1));
+  // Street index, shared by the OSM lane matcher (mutual nearest) and the point features below.
+  const segs = new LineGrid<Segment>();
+  for (const seg of graph.segments) if (takesJarticRules(seg.line)) segs.add(seg, seg.pts);
+  const osmLanes = osmLaneMatcher(graph, data, frame, segs);
   const sectionGrids = new Map<number, LineGrid<RuleTime>>();
   for (const r of data.sections) {
     const { time, next } = readTime(r, 2);
@@ -422,15 +436,18 @@ export function applyRegulations(
   const pos = new Vector3();
   const dir = new Vector3();
   for (const seg of graph.segments) {
+    // Only what JARTIC decides is reset: a line outside it (the expressway) keeps the limit and
+    // lanes its own data gave the segment (RoadGraph: OSM maxspeed, line.section).
+    if (!takesJarticRules(seg.line)) continue;
+    // Back to what the line itself says (GSI lines: no limit, one lane), then JARTIC on top.
     seg.onewayRule = null;
-    seg.limit = null;
-    seg.limitKind = "statutory";
+    seg.limit = seg.line.limit ?? null;
+    seg.limitKind = seg.line.limit === undefined ? "statutory" : "sign";
     seg.noOvertake = false;
     seg.noLaneChange = false;
-    seg.lanes = 1;
+    seg.lanes = seg.line.section?.lanes ?? 1;
     seg.rules = [];
     seg.closures = [];
-    if (seg.line.kind === "highway") continue;
     const fractions = seg.length < 20 ? [0.5] : [0.2, 0.5, 0.8];
     let votes = 0;
     let rule: RuleTime | null = null;
@@ -441,8 +458,11 @@ export function applyRegulations(
     let laneCount = 0;
     const ruleVotes = new Map<number, { n: number; time: RuleTime }>();
     const closureVotes = new Map<Closure, number>();
+    // The sample points, kept for the OSM lane matcher (which votes at the same points).
+    const samples: LaneSample[] = [];
     for (const f of fractions) {
       graph.sample(seg, seg.length * f, pos, dir);
+      samples.push({ x: pos.x, z: pos.z, dx: dir.x, dz: dir.z });
       const isParallel = (dx: number, dz: number) => Math.abs(dx * dir.x + dz * dir.z) > PARALLEL;
       const ow = oneways.nearest(pos.x, pos.z, MATCH_DIST, isParallel);
       if (ow) {
@@ -484,7 +504,17 @@ export function applyRegulations(
     for (const [closure, n] of closureVotes) if (n >= majority) seg.closures.push(closure);
     seg.noOvertake = overtakeVotes >= majority;
     seg.noLaneChange = laneChangeVotes >= majority;
-    if (laneVotes >= majority) seg.lanes = lanesPerDirection(seg, laneCount);
+    // A line with its own section keeps its lanes: the section is the stronger evidence (P7's 臨港道路).
+    const hasSection = seg.line.section !== undefined;
+    if (!hasSection) {
+      const evidence: LaneEvidence = {
+        ...osmLanes(seg, samples),
+        jartic: laneVotes >= majority ? laneCount : null,
+      };
+      const section = streetSectionOf(seg, evidence);
+      seg.section = section;
+      seg.lanes = section.lanes;
+    }
     for (const [code, v] of ruleVotes) if (v.n >= majority) seg.rules.push({ code, time: v.time });
     const posted = [...limitVotes].filter(([, n]) => n >= majority).toSorted((a, b) => b[1] - a[1])[0];
     if (posted) {
@@ -505,8 +535,6 @@ export function applyRegulations(
   warnIfDistrictClosed(graph, report);
 
   // Segment index for the point features.
-  const segs = new LineGrid<Segment>();
-  for (const seg of graph.segments) if (seg.line.kind !== "highway") segs.add(seg, seg.pts);
   const resolveStopLine = (p: Vector3): StopLine | null => {
     const hit = segs.nearest(p.x, p.z, 10);
     if (!hit) return null;
@@ -616,7 +644,9 @@ function exitDirections(graph: RoadGraph, seg: Segment, dir: 1 | -1): Set<LaneDi
   const inbound = arrivingDir(seg, dir);
   const out = new Set<LaneDirection>();
   for (const next of graph.exits(node, seg.id)) {
-    if (next.line.kind === "highway") continue;
+    // Every road a car can turn into counts, an on-ramp too (isEnterable): the arrows say where
+    // the lanes lead, not which roads JARTIC covers.
+    if (!isEnterable(next.line)) continue;
     const forward = next.from === node;
     const n = next.pts.length;
     const [a, b] = forward ? [next.pts[0], next.pts[1]] : [next.pts[n - 1], next.pts[n - 2]];
@@ -661,7 +691,7 @@ function resolveLaneUse(
     const heading = new Vector3(Math.sin(rad), 0, -Math.cos(rad));
     let best: { seg: Segment; dir: 1 | -1; d: number } | null = null;
     for (const seg of graph.segments) {
-      if (seg.line.kind === "highway") continue;
+      if (!takesJarticRules(seg.line)) continue;
       for (const dir of [1, -1] as const) {
         const end = dir === 1 ? seg.pts[seg.pts.length - 1] : seg.pts[0];
         const d = end.distanceTo(p);
@@ -700,7 +730,7 @@ function resolveLaneUse(
             ? 1
             : -1;
     if (out.has(key(seg, dir))) continue;
-    const n = r[0] > 0 ? Math.min(r[0], 5) : seg.lanes;
+    const n = Math.min(r[0] > 0 ? r[0] : seg.lanes, 5);
     if (n < 2) continue;
     const exits = exitDirections(graph, seg, dir);
     if (exits.size < 2) continue;
@@ -711,16 +741,184 @@ function resolveLaneUse(
 }
 
 /**
- * 車両通行帯 lanes per direction. JARTIC's count is often blank; when it is given and cannot fit
- * one direction of the carriageway at ≥3 m per lane, it is the total for both directions.
+ * A street's section from the evidence (resolveSection: JARTIC 車両通行帯, whose count is often blank
+ * and, when it cannot fit one direction at ≥3 m a lane, is the total for both; then OSM lanes; then
+ * the GSI 幅員). The one-way here is the rule's, not the clock's: lanes do not change with the time
+ * of day.
  */
-function lanesPerDirection(seg: Segment, count: number): number {
-  const isOneWay = (seg.onewayRule?.dir ?? seg.line.oneway) !== 0;
-  const span = isOneWay ? seg.line.width : seg.line.width / 2;
-  const estimate = Math.min(4, Math.max(2, Math.round(span / 3.25)));
-  if (!count) return estimate;
-  const perDirection = !isOneWay && count * 3 > span + 1 ? Math.ceil(count / 2) : count;
-  return Math.max(1, Math.min(perDirection, Math.floor(span / 2.75)));
+function streetSectionOf(seg: Segment, evidence: LaneEvidence) {
+  return resolveSection(seg.line.width, seg.onewayRule?.dir ?? seg.line.oneway, evidence);
+}
+
+/** One more vote for `value` (a count of 0 is no vote). */
+const vote = (map: Map<number, number>, value: number) => {
+  if (value > 0) map.set(value, (map.get(value) ?? 0) + 1);
+};
+
+/** A point the regulation pass sampled on a segment, with the segment's direction there. */
+type LaneSample = { x: number; z: number; dx: number; dz: number };
+
+/** An OSM way's lanes as matched: forward / backward along the way, one-way, width (m), OSM layer. */
+type OsmWayLanes = { forward: number; backward: number; oneway: boolean; width: number; layer: number };
+/** LineGrid.nearest looks no farther than its cell (25 m): the widest reach asked of it. */
+const GRID_REACH = 25;
+
+/**
+ * Whether a lon/lat line (from coordinate `from` of a row) has a point within `margin` m of the
+ * graph's extent, tested in degrees so that far rows are skipped before any frame conversion.
+ */
+function nearGraph(
+  graph: RoadGraph,
+  frame: LocalFrame,
+  margin: number,
+): (row: number[], from: number) => boolean {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const seg of graph.segments)
+    for (const p of seg.pts) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minZ = Math.min(minZ, p.z);
+      maxZ = Math.max(maxZ, p.z);
+    }
+  const isEmpty = minX > maxX;
+  if (isEmpty) return () => false;
+  const sw = frame.toGeodetic(new Vector3(minX - margin, 0, maxZ + margin));
+  const ne = frame.toGeodetic(new Vector3(maxX + margin, 0, minZ - margin));
+  return (row, from) => {
+    for (let i = from; i + 1 < row.length; i += 2) {
+      const isInside = row[i] >= sw.lon && row[i] <= ne.lon && row[i + 1] >= sw.lat && row[i + 1] <= ne.lat;
+      if (isInside) return true;
+    }
+    return false;
+  };
+}
+
+/**
+ * Matches the OSM street ways of `roadlanes` onto the segments, as the JARTIC lines are (votes at
+ * 20/50/80 % of the segment, parallel within 25°). A way carrying both directions lies on the
+ * centreline, so within MATCH_DIST as JARTIC's lines; a one-way way (one carriageway of a divided
+ * road) may lie a quarter of the width off, so within half the 幅員 plus OSM_ONEWAY_REACH. Two
+ * guards against the parallel street a few metres away: the way's point must have this segment as
+ * its nearest parallel GSI centreline (mutual nearest), and its lanes must fit the room the 幅員
+ * leaves (streetRoom, the same room the section is laid out in). A bridge way (layer > 0) is taken
+ * only onto a GSI 橋. A way running against the segment gives its backward lanes as the segment's
+ * forward ones; a one-way way gives only the direction it runs. Returns the evidence for
+ * resolveSection.
+ */
+function osmLaneMatcher(
+  graph: RoadGraph,
+  data: RegulationData,
+  frame: LocalFrame,
+  streets: LineGrid<Segment>,
+): (
+  seg: Segment,
+  samples: readonly LaneSample[],
+) => Pick<LaneEvidence, "osm" | "osmWidth" | "osmSeparation"> {
+  const none = { osm: null, osmWidth: null, osmSeparation: null };
+  // No street lanes in the area: no grids to build (the regulation pass runs on every rebuild).
+  const hasData = data.roadlanes.length > 0;
+  if (!hasData) return () => none;
+  const C = ROAD_LANES_COLUMN;
+  const ways = new LineGrid<OsmWayLanes>();
+  // Only the ways near the graph: the z14 tiles reach far beyond the 3×3 z16 roads, and turning
+  // every vertex into the local frame was most of the matcher's cost (review perf).
+  const isNear = nearGraph(graph, frame, GRID_REACH);
+  for (const r of data.roadlanes) {
+    if (!isNear(r, C.coords)) continue;
+    const lanes = {
+      forward: r[C.forward],
+      backward: r[C.backward],
+      oneway: r[C.oneway] === 1,
+      width: r[C.widthDm] / 10,
+      layer: r[C.layer],
+    };
+    ways.add(lanes, toLocal(frame, r, C.coords));
+  }
+  return (seg, samples) => {
+    const reach = Math.min(GRID_REACH, seg.line.width / 2 + OSM_ONEWAY_REACH.value);
+    const isBridge = seg.line.bridge === true;
+    const mutual = new Map<OsmWayLanes, boolean>();
+    const votes = { forward: new Map<number, number>(), backward: new Map<number, number>() };
+    const widths = new Map<number, number>();
+    // A divided road: the gap between its two one-way carriageways' ways, by sample (dm).
+    const separations: number[] = [];
+    const travel = seg.onewayRule?.dir ?? seg.line.oneway;
+    const isOneWay = travel !== 0;
+    const { fitting } = streetRoom(seg.line.width, travel);
+    for (const { x, z, dx: ax, dz: az } of samples) {
+      // Each way along the segment and each against it: a divided road has one of each.
+      const carriageways: Array<{ x: number; z: number }> = [];
+      for (const sense of [1, -1] as const) {
+        const isAligned = (dx: number, dz: number) => sense * (dx * ax + dz * az) > PARALLEL;
+        // One query to the reach of a one-way carriageway; a two-way way that far off is another road.
+        // Why not a query per kind: two scans of the grid per sample were most of the matcher's time.
+        const hit = ways.nearest(x, z, reach, isAligned);
+        if (!hit) continue;
+        const isTooFarForTwoWay = !hit.owner.oneway && hit.dist > MATCH_DIST;
+        if (isTooFarForTwoWay) continue;
+        const isOnItsLevel = hit.owner.layer === 0 || (hit.owner.layer > 0 && isBridge);
+        if (!isOnItsLevel) continue;
+        // The point of the way nearest the sample; its nearest parallel street must be this one.
+        const wx = x - hit.lateral * hit.dz;
+        const wz = z + hit.lateral * hit.dx;
+        // Asked once per way and segment: the 3 samples of one way give the same answer.
+        let isMutual = mutual.get(hit.owner);
+        if (isMutual === undefined) {
+          const isParallel = (dx: number, dz: number) => Math.abs(dx * hit.dx + dz * hit.dz) > PARALLEL;
+          isMutual = streets.nearest(wx, wz, reach, isParallel)?.owner === seg;
+          mutual.set(hit.owner, isMutual);
+        }
+        if (!isMutual) continue;
+        const way = hit.owner;
+        // Lanes along the segment and against it: a one-way way gives only the side it runs on.
+        const along = way.oneway ? (sense === 1 ? way.forward : 0) : sense === 1 ? way.forward : way.backward;
+        const against = way.oneway
+          ? sense === 1
+            ? 0
+            : way.forward
+          : sense === 1
+            ? way.backward
+            : way.forward;
+        const fits = Math.max(along, against) <= fitting;
+        if (!fits) continue;
+        vote(votes.forward, along);
+        vote(votes.backward, against);
+        // OSM width is the way's carriageway: the segment's whole one only when the way carries
+        // both directions, or the segment is one-way too.
+        const isWhole = !way.oneway || isOneWay;
+        if (isWhole) vote(widths, Math.round(way.width * 10));
+        if (way.oneway) carriageways.push({ x: wx, z: wz });
+      }
+      // Across the segment (its normal), how far apart the two carriageways run.
+      const isDivided = carriageways.length === 2 && !isOneWay;
+      if (isDivided) {
+        const [a, b] = carriageways;
+        separations.push(Math.abs((a.x - b.x) * -az + (a.z - b.z) * ax));
+      }
+    }
+    const majority = Math.ceil(samples.length / 2);
+    const winner = (map: Map<number, number>) => {
+      const best = [...map]
+        .filter(([, n]) => n >= majority)
+        .toSorted((a, b) => b[1] - a[1] || b[0] - a[0])[0];
+      return best?.[0] ?? 0;
+    };
+    const forward = winner(votes.forward);
+    const backward = winner(votes.backward);
+    const width = winner(widths) / 10;
+    const isSeparated = separations.length >= majority;
+    const separation = isSeparated ? separations.toSorted((a, b) => a - b)[separations.length >> 1] : 0;
+    const isMatched = forward + backward > 0 || width > 0;
+    if (!isMatched) return none;
+    return {
+      osm: forward + backward > 0 ? { forward, backward } : null,
+      osmWidth: width || null,
+      osmSeparation: separation || null,
+    };
+  };
 }
 
 /**

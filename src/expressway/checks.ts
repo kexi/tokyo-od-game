@@ -18,7 +18,7 @@ import { haversine } from "./geo";
 import { surfaceAt } from "./profile";
 
 /**
- * The properties of 設計書 4.4 checked on compiled chunks, as the data test reads them from the
+ * The properties of knowledge/road-redesign-plan.md 4.4 checked on compiled chunks, as the data test reads them from the
  * tiles: T1 grade, T2 vertical curves, T3 continuity, T4 clearance, T5 meeting the ground, T6 plan,
  * T7 superelevation. Each returns the violations it found ("<chunk>: what"), empty when it holds.
  * The tolerances are the rounding of the files (z to 1 mm, s to 1 cm, lon/lat to 1e-7°). Limits are
@@ -89,7 +89,8 @@ function angleDiff(a: number, b: number): number {
  */
 export function checkGrade(c: XwChunk, run: XwRunSummary): string[] {
   const out: string[] = [];
-  const speeds = c.cls === "ramp" ? RAMP_SPEEDS : MAIN_SPEEDS;
+  // A street (第四種, 第13条) goes down to 20 km/h like a ramp.
+  const speeds = c.cls === "expressway" ? MAIN_SPEEDS : RAMP_SPEEDS;
   const isPossibleSpeed = speeds.includes(c.V) && c.V <= designSpeedAtMost(run.tagV) && c.V <= run.V;
   if (!isPossibleSpeed) out.push(`${c.id}: design speed ${c.V} not allowed for ${c.cls} tagged ${run.tagV}`);
   const tabled = MAX_GRADE.value[V(c)];
@@ -251,7 +252,8 @@ export type Climbs = { start: boolean; end: boolean };
 /**
  * A run's low ends from the run summaries alone: a ground end or portal, or a junction (or seam) on
  * a parent within the climb (approachLength of the parent) from one of the parent's own low ends,
- * recursively. Without the parent's summary only ground ends count.
+ * recursively, or a junction on a structure's street (cls "street"). Without the parent's summary
+ * only ground ends count.
  */
 export function climbingEnds(run: XwRunSummary, runs: ReadonlyMap<string, XwRunSummary>): Climbs {
   const isLow = (r: XwRunSummary, atStart: boolean, seen: Set<string>): boolean => {
@@ -262,6 +264,9 @@ export function climbingEnds(run: XwRunSummary, runs: ReadonlyMap<string, XwRunS
     const key = `${r.id}:${atStart}`;
     const isUnknown = parent === undefined || e.parentS === undefined || seen.has(key);
     if (isUnknown) return false;
+    // A ramp ending on a structure's street comes down with it (compile.ts isLowEnd).
+    const isOnStreet = e.kind === "junction" && parent.cls === "street";
+    if (isOnStreet) return true;
     seen.add(key);
     const climb = approachLength(parent.planV as DesignSpeed);
     const isNearStart = e.parentS! < climb && isLow(parent, true, seen);
@@ -378,7 +383,7 @@ export function checkSuperelevation(c: XwChunk): string[] {
   const out: string[] = [];
   const st = stationsOf(c);
   const L = TRANSITION_LENGTH.value[V(c)];
-  const maxE = MAX_SUPERELEVATION.value.type1to3;
+  const maxE = c.cls === "street" ? MAX_SUPERELEVATION.value.type4 : MAX_SUPERELEVATION.value.type1to3;
   const composite = COMPOSITE_GRADE.value[V(c)];
   for (let i = 0; i < st.length; i++) {
     const isTooBanked = Math.abs(st[i].bank) > maxE + 1e-4;

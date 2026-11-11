@@ -56,6 +56,7 @@ import {
   type TravelMode,
   type Turn,
 } from "./navigation";
+import { allowsPedestrians, isDrivable as isRoutable } from "../world/roadClass";
 
 /** Arrow glyph per turn: a path in a 48×48 box pointing up = straight on. */
 export const TURN_ARROWS: Record<Turn, string> = {
@@ -116,8 +117,8 @@ const NO_ROUTES: ReadonlyMap<number, RouteInfo> = new Map();
 // Fixed empties: prepare() compares its inputs by identity, a fresh [] per frame would redo it.
 const NO_APPROACHES: readonly ApproachLike[] = [];
 const NO_ORBIS: readonly OrbisLike[] = [];
-const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
-const isWalkable = (seg: Segment) => seg.line.kind !== "highway";
+const isDrivable = (seg: Segment) => isRoutable(seg.line, "navigation") && seg.line.width >= 3;
+const isWalkable = (seg: Segment) => allowsPedestrians(seg.line);
 const keyOf = (pos: Vector3) => `${Math.round(pos.x)},${Math.round(pos.z)}`;
 const setText = (el: Element | null, text: string) => {
   if (el && el.textContent !== text) el.textContent = text;

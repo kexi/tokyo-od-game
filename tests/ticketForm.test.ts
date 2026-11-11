@@ -38,6 +38,22 @@ describe("ticketForm", () => {
     expect(html).toContain("道路交通法 第7条");
   });
 
+  it("names the 信号無視 row 信号無視（点滅） when only a 赤の点滅 was booked (施行令 別表第六 names them apart)", () => {
+    const flashing: ViolationRecord = {
+      kind: "signalFlashing",
+      label: "信号無視（点滅）",
+      article: "道路交通法 第7条",
+      points: 2,
+      fine: 7000,
+      at: 1000,
+      status: "caught",
+    };
+    const html = renderTicketHtml({ violations: [flashing] });
+    expect(html).toMatch(/chk-label">信号無視（点滅）</);
+    expect(html).not.toMatch(/chk-label">信号無視（赤色等）</);
+    expect(html).toContain("¥7,000");
+  });
+
   it("renders red ticket for non-fine criminal offenses", () => {
     const violations: ViolationRecord[] = [
       {
