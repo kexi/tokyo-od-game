@@ -86,6 +86,7 @@ export type XwDetailKey =
   | "violationDetail.xwStoppingRamp"
   | "violationDetail.xwRightLane"
   | "violationDetail.xwMergeObstruct"
+  | "violationDetail.xwMergeCutIn"
   | "violationDetail.xwMergeNoAccel"
   | "violationDetail.xwExitLate";
 
@@ -305,11 +306,19 @@ export function judgeMerge(m: MergeSituation): XwFinding[] {
   const out: XwFinding[] = [];
   const worst = m.followers.reduce((a, f) => Math.max(a, brakeNeeded(m.speed, f)), 0);
   const isObstructing = worst >= MERGE_LAW.hardBrakeMs2;
-  if (isObstructing) {
-    const brake = Number.isFinite(worst) ? Math.round(worst * 10) / 10 : "∞";
+  // Cut in inside a follower's reaction distance: no deceleration figure to give (brakeNeeded is
+  // ∞), the ticket names the gap instead. Why not "∞ m/s²": it read as a measured value.
+  const isCutIn = isObstructing && !Number.isFinite(worst);
+  if (isCutIn) {
+    const gap = Math.max(0, Math.min(...m.followers.map((f) => f.gapM)));
     out.push({
       kind: "xwMergeObstruct",
-      detail: { key: "violationDetail.xwMergeObstruct", params: { brake } },
+      detail: { key: "violationDetail.xwMergeCutIn", params: { gap: Math.round(gap * 10) / 10 } },
+    });
+  } else if (isObstructing) {
+    out.push({
+      kind: "xwMergeObstruct",
+      detail: { key: "violationDetail.xwMergeObstruct", params: { brake: Math.round(worst * 10) / 10 } },
     });
   }
   const isOverZebra = m.rampGapM > MERGE_LAW.zebraGapM;

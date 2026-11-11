@@ -273,7 +273,10 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
     const runOfId = (id: number) => graph?.segments[id]?.line.xid?.split(":")[0] ?? "?";
     const booked = (ap?.violations() ?? []).slice(routed.violationsFrom);
     const here = deps.vehicle.position();
-    const arrived = Math.hypot(here.x - routed.target.x, here.z - routed.target.z) < ARRIVED_M;
+    // The place asked for in today's frame: the world is re-anchored as the car drives off (the
+    // origin moves with it), so the local point taken at the start is somewhere else by now.
+    const target = ap?.toLocal(routed.to.lat, routed.to.lon) ?? routed.target;
+    const arrived = Math.hypot(here.x - target.x, here.z - target.z) < ARRIVED_M;
     const driven = {
       label,
       seconds: summary.seconds,
@@ -302,6 +305,7 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
   let routed: {
     route: AutoDriver["route"];
     target: Vector3;
+    to: { lat: number; lon: number };
     violationsFrom: number;
     yieldedS: number;
     gaveUp: string | null;
@@ -327,6 +331,7 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
     routed = {
       route: ap.driver()?.route ?? null,
       target,
+      to,
       violationsFrom: ap.violations().length,
       yieldedS: 0,
       gaveUp: null,

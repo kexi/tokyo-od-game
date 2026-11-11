@@ -935,6 +935,7 @@ export const en: Messages = {
   "violationDetail.xwStoppingRamp": "Stopped on an expressway ramp without a reason that allows it",
   "violationDetail.xwRightLane": "Kept to the rightmost of {lanes} lanes on the main line without overtaking",
   "violationDetail.xwMergeObstruct": "Merged so that a main-line car had to brake hard ({brake} m/s²)",
+  "violationDetail.xwMergeCutIn": "Merged right in front of a main-line car ({gap} m gap)",
   "violationDetail.xwMergeNoAccel":
     "Cut across the zebra area ({gap} m short of the main lanes) instead of using the acceleration lane",
   "violationDetail.xwExitLate":

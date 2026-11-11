@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { laneCentreOffset, laneOfOffset } from "./laneChange";
 import { sourceOf } from "./roadClass";
-import type { RoadGraph, Segment } from "./roads";
+import type { RoadGraph, RoadHit, Segment } from "./roads";
 
 /**
  * 車線単位の接続 (LaneLink, knowledge/road-redesign-plan.md 3.1) on the expressway: at each node
@@ -306,4 +306,37 @@ export function reachesStreets(graph: RoadGraph): Set<number> {
     }
   }
   return ok;
+}
+
+/** The lane a car was counted in (the 合図 check of a lane change). */
+export type HeldLane = { seg: Segment; lane: number };
+
+/**
+ * The lane a car is in for the 合図 check of a lane change (第53条, main.ts): on `onRoad`, the road
+ * under it, as painted, counted from the left edge line; null where no lanes are counted (one lane,
+ * or not along the road). Up on a deck it is counted on the run the car was keeping to while it is
+ * still within that run's deck: where another line's deck lies over it (the 1号 beside C1 at
+ * 浜崎橋 JCT) locate may answer that run, whose centreline closes in on the car's, and the lane
+ * "changed" with the frame, not the car. Why not skip the merge zones: a real change there needs
+ * 合図 too.
+ */
+export function laneCountedIn(
+  graph: RoadGraph,
+  p: Vector3,
+  forward: Vector3,
+  held: HeldLane | null,
+  onRoad: RoadHit | null,
+  onDeck: boolean,
+  accept: (seg: Segment) => boolean,
+): HeldLane | null {
+  const heldRun = onDeck && held ? runOf(held.seg) : null;
+  const onHeldRun =
+    heldRun === null ? null : graph.locate(p, 8, (seg) => accept(seg) && runOf(seg) === heldRun);
+  const isOnHeldRun = onHeldRun !== null && Math.abs(onHeldRun.lateral) < onHeldRun.seg.line.width / 2;
+  const road = isOnHeldRun ? onHeldRun : onRoad;
+  if (!road || road.seg.lanes < 2) return null;
+  const align = forward.dot(road.dir);
+  const isAlong = Math.abs(align) > 0.85;
+  if (!isAlong) return null;
+  return { seg: road.seg, lane: laneOfOffset(road.seg, road.lateral * Math.sign(align)) };
 }

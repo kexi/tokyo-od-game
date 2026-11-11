@@ -933,6 +933,7 @@ export const ja = {
   "violationDetail.xwStoppingRamp": "高速道路の連結路で、やむを得ない理由なく停止した",
   "violationDetail.xwRightLane": "片側 {lanes} 車線の本線で、追越しのとき以外も右端の車線を走り続けた",
   "violationDetail.xwMergeObstruct": "合流で本線の車に急ブレーキ（{brake} m/s²）をかけさせた",
+  "violationDetail.xwMergeCutIn": "合流で本線の車のすぐ前（車間 {gap} m）に入った",
   "violationDetail.xwMergeNoAccel":
     "加速車線を通らず、導流帯（本線の車線まで {gap} m）を横切って本線に入った",
   "violationDetail.xwExitLate":

@@ -169,7 +169,11 @@ describe("第75条の6 合流での進行妨害", () => {
 
   it("books cutting in inside the follower's reaction distance even at its speed", () => {
     expect(brakeNeeded(v, { gapM: 8, speed: v })).toBe(Infinity);
-    expect(judgeMerge({ speed: v, followers: [{ gapM: 8, speed: v }], rampGapM: 0 })).toHaveLength(1);
+    const found = judgeMerge({ speed: v, followers: [{ gapM: 8, speed: v }], rampGapM: 0 });
+    // The ticket names the gap: there is no deceleration figure (not "∞ m/s²").
+    expect(found.map((f) => [f.kind, f.detail.key, f.detail.params])).toEqual([
+      ["xwMergeObstruct", "violationDetail.xwMergeCutIn", { gap: 8 }],
+    ]);
   });
 
   it("does not book a merge into a gap the follower closes gently, nor ahead of a slower car", () => {

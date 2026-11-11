@@ -16,6 +16,7 @@ import { laneCentreOffset } from "../src/world/laneChange";
 import { intoTrunkLane, reachesStreets, runOf } from "../src/world/laneLinks";
 import { RoadGraph, type RoadLine } from "../src/world/roads";
 import { gameClock } from "../src/world/ruleTime";
+import { backAlongRun } from "../src/world/traffic-ai";
 import type { TrafficControl } from "../src/world/trafficControl";
 
 // The synthetic section of tests/expresswayDrive.test.ts, rebuilt here: a two-lane main line A going
@@ -183,6 +184,19 @@ describe("車線単位の接続 (LaneLink) at a merge", () => {
     ]);
   });
 
+  it("places a car further back than the trunk chunk is long on the run's earlier chunk (QA placeCar)", () => {
+    const m = graph.laneLinks.find((l) => l.kind === "merge")!;
+    const trunk = graph.segments[m.trunk!];
+    const before = graph.segments.find((x) => x.line.xid === "A:0" && x.to === trunk.from)!;
+    expect(backAlongRun(graph, trunk, 30)).toEqual({ seg: trunk, s: 30 });
+    const back = backAlongRun(graph, trunk, -50);
+    expect(back.seg).toBe(before);
+    expect(back.s).toBeCloseTo(before.length - 50, 6);
+    // Past the run's start: at its start, never off the deck's open end.
+    const first = backAlongRun(graph, trunk, -1e4);
+    expect([first.seg.line.xid, first.s]).toEqual(["A:0", 0]);
+  });
+
   it("knows the main line's open end is a dead end: the AI never enters it, the streets stay reachable", () => {
     const reach = reachesStreets(graph);
     for (const seg of graph.segments) {
@@ -314,7 +328,10 @@ describe("the autopilot drives street → ramp → main line and merges behind t
   };
 
   /** Kinematic run (the physics car's limits, as tests/drivePath.test.ts) with a main-line car. */
-  function run(other: { from: number; speed: number } | null) {
+  function run(
+    other: { from: number; speed: number } | null,
+    isPavement?: (x: number, z: number) => boolean,
+  ) {
     const driver = new AutoDriver();
     const pos = local(140 - 1.6, -170, 3 + N);
     let yaw = Math.PI; // north (−z)
@@ -353,11 +370,21 @@ describe("the autopilot drives street → ramp → main line and merges behind t
         clock,
         obstacles: [],
         vehicles: [...vehicles, self],
+        isPavement,
       };
     };
     if (!driver.plan(world(0), local(390, 0, zA(390) + N))) throw new Error("no route");
     const dt = 1 / 30;
-    const track: Array<{ t: number; x: number; y: number; otherX: number; yielding: boolean }> = [];
+    const track: Array<{
+      t: number;
+      x: number;
+      y: number;
+      otherX: number;
+      yielding: boolean;
+      signal: "left" | "right" | null;
+      manoeuvring: boolean;
+      kmh: number;
+    }> = [];
     for (let t = 0; t < 120; t += dt) {
       const out = driver.update(dt, world(t), { position: pos, yaw, speed: v });
       if (out.done || out.gaveUp) break;
@@ -377,6 +404,9 @@ describe("the autopilot drives street → ramp → main line and merges behind t
         y: ly,
         otherX: other ? other.from + other.speed * t : -1e6,
         yielding: driver.yieldingAtMerge,
+        signal: driver.signal,
+        manoeuvring: driver.activity === "manoeuvre",
+        kmh: v * 3.6,
       });
     }
     return { track, driver };
@@ -387,6 +417,31 @@ describe("the autopilot drives street → ramp → main line and merges behind t
     const merged = track.find((p) => p.x > 310);
     expect(merged, "reached A past the merge").toBeDefined();
     for (const p of track.filter((q) => q.x > 280 && q.x < 330)) expect(p.y).toBeLessThan(0.5);
+  });
+
+  it("keeps its pace through the merge node with nobody about: no 徐行 as at a junction with a priority road", () => {
+    const { track } = run(null);
+    const atNode = track.filter((p) => p.x > 270 && p.x < 320);
+    expect(atNode.length).toBeGreaterThan(0);
+    const slowest = Math.min(...atNode.map((p) => p.kmh));
+    expect(slowest, "km/h through the taper and the node").toBeGreaterThan(30);
+  });
+
+  it("drives on along the deck over the street's pavements below: no lane change, no 合図, no 切り返し", () => {
+    // PLATEAU paving is a plan (x, z) test: here a pavement lies under the whole main line past
+    // the merge, as the street's footways under the viaduct before 浜崎橋 JCT (24402611:24) do.
+    const underDeck = (x: number, z: number) => {
+      const [ax, ay] = onA(new Vector3(x, 0, z));
+      return ax > 320 && Math.abs(ay) < 8;
+    };
+    const { track } = run(null, underDeck);
+    const beyond = track.filter((p) => p.x > 325 && p.x < 380);
+    expect(beyond.length, "drove along the deck past the merge").toBeGreaterThan(0);
+    for (const p of beyond) {
+      expect(p.manoeuvring, `t ${p.t.toFixed(1)}`).toBe(false);
+      expect(p.signal, `t ${p.t.toFixed(1)}`).toBeNull();
+      expect(p.y, `t ${p.t.toFixed(1)}: in the right lane`).toBeLessThan(0.5);
+    }
   });
 
   it("gives way to a main-line car arriving with it and comes in behind it, never alongside", () => {

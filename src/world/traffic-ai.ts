@@ -830,9 +830,14 @@ export class TrafficAI {
   /** The next car to appear, at a place and a speed (QA: a main-line car timed to a merge). */
   private placeNext: { seg: Segment; s: number; speed: number } | null = null;
 
-  /** Put a car on `seg` at `s` (m along its travel) driving at `speed` (m/s), on the next update (QA). */
+  /**
+   * Put a car on `seg` at `s` (m along its travel) driving at `speed` (m/s), on the next update (QA).
+   * A negative `s` is that far before the segment's start, on the chunks of its run leading into it
+   * (a main-line car timed to a merge starts further back than the trunk chunk is long).
+   */
   placeCar(seg: Segment, s: number, speed: number): void {
-    this.placeNext = { seg, s, speed };
+    const at = this.graph ? backAlongRun(this.graph, seg, s) : { seg, s: Math.max(0, s) };
+    this.placeNext = { ...at, speed };
   }
 
   /** The cars on the expressway now, and the merges and diverges driven since the page loaded (QA). */
@@ -885,7 +890,9 @@ export class TrafficAI {
           : graph.segments[this.serial % graph.segments.length]);
       const isCarRoad = seg.line.width >= 4 && isDrivable(seg.line, "traffic");
       if (!isCarRoad) continue;
-      const isDeadEnd = this.reach !== null && runOf(seg) !== null && !this.reach.has(seg.id);
+      // A placed car goes where it is asked: the decks it is put on for a merge may not reach the
+      // streets yet while the chunks beyond them are not loaded (it then waits at the end, unseen).
+      const isDeadEnd = !placed && this.reach !== null && runOf(seg) !== null && !this.reach.has(seg.id);
       if (isDeadEnd) continue;
       const s = placed?.s ?? (((this.serial >>> 8) % 1000) / 1000) * seg.length;
       const { pos } = graph.sample(seg, s);
@@ -988,4 +995,31 @@ function hashCoords(coords: number[]): number {
     h = Math.imul(h, 16777619) >>> 0;
   }
   return h;
+}
+
+/**
+ * Where `s` m along `seg`'s travel lies when `s` is negative: walked back over the one-way chunks of
+ * the same run, each arriving where the next one leaves, until it falls inside one (or the run
+ * starts: there).
+ */
+export function backAlongRun(graph: RoadGraph, seg: Segment, s: number): { seg: Segment; s: number } {
+  const run = runOf(seg);
+  const startOf = (x: Segment) => (x.oneway === -1 ? x.to : x.from);
+  const endOf = (x: Segment) => (x.oneway === -1 ? x.from : x.to);
+  let cur = seg;
+  let at = s;
+  const seen = new Set<number>([cur.id]);
+  while (at < 0) {
+    const isOnRun = run !== null && cur.oneway !== 0;
+    if (!isOnRun) return { seg: cur, s: 0 };
+    const node = startOf(cur);
+    const prev = graph.segments.find(
+      (p) => p.oneway !== 0 && endOf(p) === node && runOf(p) === run && !seen.has(p.id),
+    );
+    if (!prev) return { seg: cur, s: 0 };
+    seen.add(prev.id);
+    cur = prev;
+    at += prev.length;
+  }
+  return { seg: cur, s: Math.min(at, cur.length) };
 }

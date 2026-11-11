@@ -889,6 +889,7 @@ export const zh: Messages = {
   "violationDetail.xwStoppingRamp": "在高速公路匝道上无正当理由停车",
   "violationDetail.xwRightLane": "在单向 {lanes} 车道的主线上，非超车时一直占用最右侧车道",
   "violationDetail.xwMergeObstruct": "汇入时迫使主线车辆紧急制动（{brake} m/s²）",
+  "violationDetail.xwMergeCutIn": "汇入时切入主线车辆正前方（车距 {gap} 米）",
   "violationDetail.xwMergeNoAccel": "未经加速车道，横穿导流区（距主线车道 {gap} m）驶入主线",
   "violationDetail.xwExitLate": "在出口前 {metres} m 时不在出口侧车道，跨越 {lanes} 条车道驶入出口",
   "violationDetail.orbis": "被超速自动抓拍装置（Orbis）拍下：{kmh} km/h（限速 {limit} km/h）",

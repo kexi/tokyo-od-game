@@ -112,6 +112,7 @@ import {
 import { carriagewayWidth, isLaneChangeBanned, laneCentreOffset, laneOfOffset } from "./world/laneChange";
 import { lanesUnderPavement, sectionSummary } from "./world/roadMarkings";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
+import { laneCountedIn } from "./world/laneLinks";
 import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
@@ -3132,11 +3133,13 @@ async function main(): Promise<void> {
             ),
           );
       }
-      // 合図 for changing lanes on a multi-lane road.
-      if (onRoad && onRoad.seg.lanes >= 2 && Math.abs(align) > 0.85 && speed > 15) {
-        const s = onRoad.seg;
-        // The lanes as painted (laneChange.ts), counted from the left edge line.
-        const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
+      // 合図 for changing lanes on a multi-lane road (the lane counted as laneCountedIn says).
+      const counted =
+        speed > 15
+          ? laneCountedIn(roadGraph, carPos, carForward, laneHeld, onRoad, carOnDeck, isCarSurface)
+          : null;
+      if (counted) {
+        const { seg: s, lane } = counted;
         const isSameRoad = laneHeld !== null && laneHeld.seg === s;
         if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
           const side = lane < laneHeld.lane ? "left" : "right";

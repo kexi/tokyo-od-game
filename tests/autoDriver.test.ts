@@ -79,6 +79,24 @@ describe("self-driving lane positions (第18条・第20条)", () => {
 });
 
 describe("self-driving by wheel and pedals", () => {
+  it("waits on its path where no carriageway is found under it, without a 切り返し (the 汐留出口's foot)", () => {
+    // The ramp's at-grade connector meets the street's line metres off its end: standing at the
+    // red there, carriagewaysAt finds neither. On the path the route was planned along, the car is
+    // on the road; the manoeuvre it started crept over the stop line on red (信号無視).
+    const graph = new RoadGraph(lShape(), frame);
+    const blind = Object.assign(Object.create(graph) as RoadGraph, { carriagewaysAt: () => [] });
+    const world = worldOf(blind);
+    const driver = new AutoDriver();
+    const start = at(1.5, 5);
+    driver.place(start, Math.PI);
+    expect(driver.plan(world, at(120, 200))).toBe(true);
+    const lane = driver.route!.points[0].clone();
+    for (let t = 0; t < 2; t += 1 / 30) {
+      driver.update(1 / 30, world, { position: lane, yaw: Math.PI, speed: 0 });
+      expect(driver.activity, `t ${t.toFixed(2)}`).toBe("drive");
+    }
+  });
+
   it("follows the street round a right turn and stops at the destination", () => {
     const graph = new RoadGraph(lShape(), frame);
     const driver = new AutoDriver();

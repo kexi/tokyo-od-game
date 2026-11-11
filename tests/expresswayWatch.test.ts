@@ -8,7 +8,7 @@ import { planRoute, type Route } from "../src/game/navigation";
 import { LocalFrame } from "../src/geo/frame";
 import { expresswayRoadInput, joinExpressway } from "../src/world/expresswayRoads";
 import { laneCentreOffset } from "../src/world/laneChange";
-import { runOf } from "../src/world/laneLinks";
+import { laneCountedIn, runOf, type HeldLane } from "../src/world/laneLinks";
 import { leftOf, RoadGraph, type Segment } from "../src/world/roads";
 import { gameClock } from "../src/world/ruleTime";
 
@@ -132,7 +132,8 @@ describe("ExpresswayWatch on the generated data: the entrances (第75条の6・�
         const on = graph.nearestOn(trunk, p);
         return on.dist < 15 ? [carBehind(trunk, link.toLane, Math.max(0, on.s - 6 - 4.5), KMH + 30)] : [];
       };
-      expect(drive(route, { others })).toContain("xwMergeObstruct:violationDetail.xwMergeObstruct");
+      // 6 m behind is inside its reaction distance: booked as cutting in, with the gap.
+      expect(drive(route, { others })).toContain("xwMergeObstruct:violationDetail.xwMergeCutIn");
     });
   }
 
@@ -186,5 +187,34 @@ describe("ExpresswayWatch on the generated data: the exits and the JCT (第75条
       return q;
     };
     expect(drive(route, { move })).toContain("xwRampMethod:violationDetail.xwExitLate");
+  });
+});
+
+describe("the lane counted for 合図 (第53条) where another line's deck lies over the car's (浜崎橋 JCT)", () => {
+  /** The lane changes main.ts would count along `route` (laneCountedIn, held from one look to the next). */
+  function laneChanges(route: Route, preferHeldRun: boolean): string[] {
+    const changes: string[] = [];
+    let held: HeldLane | null = null;
+    const total = pathLength(route);
+    for (let d = 0; d < total - 1; d += (KMH / 3.6) * STEP_S) {
+      const { p, dir } = pointOn(route, d);
+      const hit = graph.locate(p, 30);
+      const onRoad = hit && Math.abs(hit.lateral) < hit.seg.line.width / 2 + 1.5 ? hit : null;
+      const counted = laneCountedIn(graph, p, dir, preferHeldRun ? held : null, onRoad, true, () => true);
+      const isChange = counted && held && held.seg === counted.seg && held.lane !== counted.lane;
+      const isLane = counted !== null && counted.lane >= 0 && counted.lane < counted.seg.lanes;
+      if (isChange && isLane) changes.push(`${counted.seg.line.xid} ${held!.lane}→${counted.lane}`);
+      held = counted;
+    }
+    return changes;
+  }
+
+  it("counts no lane change for keeping C1 外回り's left lane past where the 1号's deck runs beside it", () => {
+    // 汐留入口 → 外回り, through 45021976:6–7 where locate answers 45021972:0 (the 1号羽田線 deck).
+    const route = routeFrom("45021976:4", 0.5, "45021976:8", 0.5);
+    expect(route.steps.map((s) => runOf(s.seg))).not.toContain("45021972");
+    expect(laneChanges(route, true)).toEqual([]);
+    // Counted on whichever deck locate answers, the frame's lanes slide under the car.
+    expect(laneChanges(route, false).some((c) => c.startsWith("45021972:0"))).toBe(true);
   });
 });
