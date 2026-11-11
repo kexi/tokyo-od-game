@@ -7,6 +7,9 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:check-deck-drive, at: 2026-11-11T13:31:00Z }
+  - { by: process:headless-chrome-cdp, at: 2026-11-11T12:41:38Z }
+  - { by: process:vitest, at: 2026-11-11T12:42:29Z }
   - { by: process:make-expressway-data, at: 2026-11-11T09:54:56Z }
   - { by: process:vitest, at: 2026-11-11T09:55:50Z }
   - { by: process:expressway-build-twice-byte-equal, at: 2026-11-11T09:07:51Z }
@@ -50,6 +53,9 @@ verified:
   - { by: process:vitest, at: 2026-11-10T11:30:00Z }
   - { by: process:perf-road-streaming, at: 2026-11-10T11:20:00Z }
 sources:
+  - id: deckdrive-traffic
+    resource: src/game/frameClock.ts・src/main.ts の step・tests/frameClock.test.ts、.qa/drive-deck-repro2.json・fix*.json と .qa/probe-deck.ts・probe2〜6.json（ローカル・git 管理外。2026-11-11、vite 5391、ヘッドレス Chrome、traffic.update を包んだ距離と speed·dt の比・自車の近くの AI の位置）
+    title: 床版の走行検査の invalid（交通 AI の時間のずれ）の調査と修正
   - id: p271
     resource: src/expressway/scope.ts（出荷範囲）・report.ts（スコアカード）・overlapClass.ts（重なりの類型）・extract.ts（抽出の固定）、scripts/expressway.ts（--range ship・--below・--report・--accept-extract）、scripts/compareExpresswayReports.ts、tests/expresswayScope.test.ts・expresswayReport.test.ts。計測は .qa/expressway/{ship-pruned-1,ship-pruned-2,ship-all-1,ship-all-2,all-pruned}.report.json と logs/、生成物は .cache/expressway-area/（ローカル・git 管理外、2026-11-11）。設計時の探査は依頼元 scratchpad の p27/（universe.mts・probe.log・u2-pruned.json・u3-allbelow.json）、レビューの探査は review-p271/（scope.mts・scope2.mts・scope3.mts・scope.json）。基準のスコアカードは tests/fixtures/expresswayScorecard.ship.json
     title: P2.7-1 の出荷範囲とスコアカード
@@ -636,6 +642,38 @@ e-Gov の本文（XML）で確かめた: 第12条の建築限界の高さ H は�
 `traffic.update` を包んで時間を測った（芝公園、昼、ヘッドレス Chrome、30 s、?expressway の有り・無しを各 1 回、依頼元 scratchpad の p6/trafficperf.mjs）。台数は上限の 34 台で同じ。traffic.update の中央値 0.3 ms・p95 0.4 ms・最大 1.1 ms（有り、床版の上 1〜3 台）、0.2 / 0.3 / 1.1 ms（無し）。フレームの中央値はどちらも 50 ms（ヘッドレスの描画が律速）、p95 は 66.7 / 50.1 ms、最長 83.4 / 66.8 ms。各 1 回で、フレームの差は 1 フレームの刻み以内で読めない。`just measure-perf-fixed` は鏡の A/B 用の固定シーンで交通を止めるため使っていない。台数の上限（QUALITY.maxAiCars）は変えていない。
 
 [^p6-drive]: 依頼元 scratchpad の p6/route.mjs と routes-r4〜r8.json・routes-d1〜d12.json・routes-e1〜e3.json（2026-11-11、ヘッドレス Chrome、?expressway）
+
+## 床版の走行検査が交通 AI の車と事故で invalid（P6 の後、2026-11-11 修正）
+
+**症状**: P6（#63）の後、`just check-deck-drive` が毎回 `invalid: "accident during the drive"` になった（`accident` の kind `vehicle`・自車 47 km/h・相手 1,481 kg、crossed 0）。origin/main（d00bf35）の既定データでも再現した（repro2、2026-11-11T12:16〜12:21Z）。
+
+**経緯（ログと交通 AI の観測から）**: 事故の相手は、自車の**後ろ**から同じ車線 0 を来た床版の上の交通 AI の車だった。AI の `speed` は 40 km/h（自車 47 km/h より遅い）なのに、実際には約 51 km/h で進み、後ろ 25 m から 3 m まで詰めて追突した（24402611:28〜29、35.659 N・139.759 E 付近）。`traffic.update` を包んで測ると、床版の上の AI の全台で「動いた距離 / Σ speed·dt」が 1.26 だった（probe3、21 台以上）。AI は `gapAhead` で自車を避けるが、自車の速さが AI の速さ +2 m/s を超えると「離れていく」とみなして避けない（`isPlayerFleeing`）ので、ぶつかるまで減速しなかった。
+
+**根本原因**: フレームを進める呼び出しが 2 つある。requestAnimationFrame の `tick(now)` と、QA の `__game.advance` が呼ぶ `step(performance.now())`。rAF の `now` はフレームの開始時刻（コールバックが走る前）なので、advance の直後の rAF フレームは前のフレームより前の時刻を持ち、`dt = Math.min(0.05, (now - last) / 1000)` が**負**になった（ヘッドレスで advance 中も rAF は動き続ける。観測では −0.006〜−0.022 s）。物理は accumulator に負の dt を足して時間を返すので合計は壁時計どおりだが、交通 AI は dt ≤ 0 のフレームで車を動かさない（`drive` が早期リターン）ので、正の半分だけを積み、AI の時間が約 1.26 倍で進んだ。
+
+- P6 の前は床版の上に AI の車が出なかったので、検査の車と同じ車線を走る AI がおらず、この時間のずれは表に出なかった（P6 で「出現の 4 回に 1 回を高速道路の区間に」した）。
+- 実際のプレイ（rAF だけ）では `now` は単調なので起きない。advance を使う QA の走行（drive-deck・route.mjs・多視点レビュー）で起きる。
+
+**修正**: `src/game/frameClock.ts` の `frameStep(now, last)` に切り出し、前の時刻より前のフレームは dt 0 で、時計を戻さない（`main.ts` の `step`）。**Why not** 検査中は交通 AI を止める・検査経路から外す: AI が床版の上を走るのは P6 の仕様で、検査はその状態の床版を測るべき。原因は検査の設計ではなく時間の基準のずれで、止めればこのずれ（advance を使う全 QA に効く）が隠れる。事故判定（`isAccident`）と drive-deck の invalid の扱いは変えていない。
+
+**確かめたこと（trust signal）**:
+
+- 修正後、床版の上の AI の「動いた距離 / Σ speed·dt」は 0.99〜1.00（probe5、2026-11-11T12:39〜12:41Z、38 台）。
+- `just check-deck-drive`（vite 5391、ヘッドレス Chrome、M2 Max。他のエージェントの重いビルドと並走）: fix1（12:42〜12:48Z）`invalid: null`・accident 0・crossed 0・落下なし・1,804 m。2 本目以降は下の表（fix2 の 1 本目は終盤にヘッドレス Chrome の接続が切れて結果が出なかった。ページのログに事故は無い）。
+- 回帰テスト: `tests/frameClock.test.ts`（rAF と advance が交互に呼ぶ時刻の列で、dt が負にならず、全フレームの dt の和と dt > 0 のフレームの和が壁時計に一致する。修正前の式では負の dt が出て 2 つの和が食い違う）。
+
+| 走行                   | invalid  | 事故 | crossed | 落下 | 距離    | max \|dy\|（位置）     |
+| ---------------------- | -------- | ---- | ------- | ---- | ------- | ---------------------- |
+| repro2（修正前）       | accident | 4 回 | 0       | なし | 1,803 m | 0.230 m（24402611:31） |
+| fix1                   | null     | 0    | 0       | なし | 1,804 m | 0.226 m（24402611:31） |
+| fix2b（13:18〜13:23Z） | null     | 0    | 0       | なし | 1,804 m | 0.219 m（24402611:31） |
+| fix3（13:26〜13:31Z）  | null     | 0    | 0       | なし | 1,804 m | 0.230 m（24402611:31） |
+
+修正後の同じ経路の samples（probe6、12:55〜13:12Z。probe7、13:34〜13:40Z は drive-deck と同じ advance(10) 刻み）では、止まるまでの |dy| > 0.09 m は出発直後の 1 サンプル（0.098〜0.099 m、207111988:0）だけで、0.1 m を超えるのは下の別件の衝突の直後（0.16〜0.23 m、0.2 s）だけだった。
+
+未解明（追っていない）: fix2b と fix3 の `maxShortfallAt` が 24402611:27（52 km/h、自車が一瞬ほぼ 0 km/h の 1 サンプル）だった。事故・接触のログは無く、probe7 では再現せず（shortfall は :31 の衝突だけ）、drive-deck の結果は samples を残さないので原因は特定していない。
+
+**別件（直していない）: 汐留出口の分流の鼻に正面から当たって止まる**。走行は毎回 24402611:31 の s ≈ 33 m（35.66075 N・139.76057 E）で 48 km/h から一瞬で 0 km/h になり（`expressway_car_stalled`、touching は 0 だが止まった直後の車の鼻先 0.05 m に固定の trimesh）、その衝突の縦揺れが max |dy| 0.226 m（0.1 m の目安を超える唯一のサンプル列）になる。当たっているのは**汐留出口のランプ 24402125:0 のコライダー**（`expressway.built` の body から特定）。cruise は内回り（`prefer: 24402611`）の車線 0 を走るが、汐留出口は車線 0 から左へ分かれるので、車線 0 の先にランプの壁高欄（分流の鼻）が立っている。床版の地物の衝突は `hitKind` が `ground` と読むので `accident` にはならない。P6 の前のデータは 24402611:29 で終わっていて、この分流まで届かなかった。P2.7-3a・床版の組み立て（P3.5、`OPEN_HOLES` の 24402125:0 と同じ所）側の確認事項として残す。検査の cruise を分流の手前で車線 1 へ移すか、経路の終わりを分流の手前にするかは、その確認の後に決める。
 
 # P2.7-1: 出荷範囲と全域スコアカード（2026-11-11）
 

@@ -48,6 +48,7 @@ import { NpcBrain } from "./ai/llm";
 import { Voice } from "./ai/tts";
 import type { Surroundings } from "./ai/dialogue";
 import { GameAudio } from "./game/audio";
+import { frameStep } from "./game/frameClock";
 import { FrameWork } from "./game/frameWork";
 import { SerialWork } from "./game/serialWork";
 import { ConversationController } from "./game/conversation";
@@ -2552,8 +2553,10 @@ async function main(): Promise<void> {
   };
 
   const step = (now: number) => {
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
+    // rAF and advance() both drive frames: a frame behind the last one takes no time (frameClock.ts).
+    const clock = frameStep(now, last);
+    const dt = clock.dt;
+    last = clock.last;
 
     if (state !== "playing") {
       terrain.update(spawn.lat, spawn.lon);
