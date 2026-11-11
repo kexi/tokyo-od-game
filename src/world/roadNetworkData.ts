@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { LocalFrame } from "../geo/frame";
 import type { Geodetic } from "../geo/ellipsoid";
-import { RoadGraph, type RoadGraphSnapshot, type RoadLine } from "./roads";
+import { RoadGraph, type RoadDiagnostic, type RoadGraphSnapshot, type RoadLine } from "./roads";
 import {
   applyRegulations,
   type AppliedRegulations,
@@ -38,7 +38,7 @@ export type RoadNetworkData = {
   applied: WireApplied | null;
   /** The OSM tags of `applied.signals`, index for index (src/signals/osmTags.ts). */
   signalRecords: SignalRecord[];
-  diagnostics: RegulationDiagnostic[];
+  diagnostics: Array<RegulationDiagnostic | RoadDiagnostic>;
   computeMs: number;
 };
 export type RoadNetwork = {
@@ -56,8 +56,8 @@ export function computeRoadNetwork(input: RoadNetworkInput): RoadNetworkData {
   const start = performance.now();
   const { lat, lon, h } = input.origin;
   const frame = new LocalFrame(lat, lon, h);
-  const graph = new RoadGraph(input.lines, frame);
-  const diagnostics: RegulationDiagnostic[] = [];
+  const diagnostics: RoadNetworkData["diagnostics"] = [];
+  const graph = new RoadGraph(input.lines, frame, (d) => diagnostics.push(d));
   const applied = input.regs ? applyRegulations(graph, input.regs, frame, (d) => diagnostics.push(d)) : null;
   // Read here from the same records applyRegulations placed, so they stay index for index with
   // applied.signals. Why not in applyRegulations: AppliedRegulations.signals is positions only and

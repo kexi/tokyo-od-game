@@ -4,6 +4,7 @@ import type { RouteInfo } from "../world/guidePlan";
 import type { RoadGraph, Segment } from "../world/roads";
 import { endNode, junctionLabel, nodePos, travelDir, type NamedPoint } from "./navAhead";
 import { axisAt, classifyTurn, type Route, type Step, type Turn } from "./navigation";
+import { isDrivable } from "../world/roadClass";
 
 /**
  * 直進案内 and the order of what the nav panel shows next.
@@ -74,7 +75,7 @@ function crossesMainRoad(
     for (const id of graph.nodes.get(node) ?? []) {
       const seg = graph.segments[id];
       const other = seg.from === node ? seg.to : seg.from;
-      const isInside = members.has(other) || seg.line.kind === "highway";
+      const isInside = members.has(other) || !isDrivable(seg.line, "navigation");
       if (isInside) continue;
       const away = travelDir(graph, seg, seg.from === node ? 1 : -1, false);
       const isAlongRoute = Math.abs(away.dot(arrive)) > CROSSING_COS;
@@ -99,7 +100,7 @@ function isUnclearStraight(
   for (const id of graph.nodes.get(node) ?? []) {
     const seg = graph.segments[id];
     const isRouteStreet = seg === arrive.seg || seg === leave.seg;
-    if (isRouteStreet || seg.line.kind === "highway" || seg.length < BOX_LINK) continue;
+    if (isRouteStreet || !isDrivable(seg.line, "navigation") || seg.length < BOX_LINK) continue;
     const dir: 1 | -1 = seg.from === node ? 1 : -1;
     const isAgainstOneway = seg.oneway !== 0 && seg.oneway !== dir;
     if (isAgainstOneway) continue;

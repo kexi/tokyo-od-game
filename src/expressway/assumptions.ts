@@ -67,27 +67,28 @@ export const SIDE_FRICTION: Assumption<number> = {
 export const RAMP_MIN_RADIUS: Assumption<number> = {
   value: 15,
   verified: false,
-  reason: "設計書の判断（走行できる下限）。法令値ではない（第15条の V20 の値と同じ）",
+  reason:
+    "knowledge/road-redesign-plan.mdの判断（走行できる下限）。法令値ではない（第15条の V20 の値と同じ）",
 };
 
 /** How far the smoothed centre line may move away from the OSM line. */
 export const MAX_LATERAL_SHIFT: Assumption<number> = {
   value: 1.5,
   verified: false,
-  reason: "設計書の判断。OSM の位置精度と車線幅の半分未満という目安",
+  reason: "knowledge/road-redesign-plan.mdの判断。OSM の位置精度と車線幅の半分未満という目安",
 };
 
 /** Lanes and design speed when OSM has no lanes / maxspeed. */
 export const DEFAULT_LANES: Assumption<{ main: number; ramp: number }> = {
   value: { main: 2, ramp: 1 },
   verified: false,
-  reason: "設計書 4.1 の既定。OSM の lanes が無い way の実態は調べていない",
+  reason: "knowledge/road-redesign-plan.md 4.1 の既定。OSM の lanes が無い way の実態は調べていない",
 };
 
 export const DEFAULT_SPEED: Assumption<{ main: number; ramp: number }> = {
   value: { main: 60, ramp: 40 },
   verified: false,
-  reason: "設計書 4.1 の既定（法定速度 60、ランプは 40）",
+  reason: "knowledge/road-redesign-plan.md 4.1 の既定（法定速度 60、ランプは 40）",
 };
 
 /** Lane width, shoulders and design speed table used for ramps (statute frees them: 28条4項). */

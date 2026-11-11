@@ -39,6 +39,7 @@ import {
 } from "./autoTraffic";
 import { laneCentre } from "./drivePath";
 import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
+import { isDrivable as isRoutable } from "../world/roadClass";
 
 export { laneCentre } from "./drivePath";
 export type { DriveObstacle } from "./autoTraffic";
@@ -122,7 +123,7 @@ const SWING_OUT = 14;
 /** Where the car actually is: chassis position, heading (atan2(x, z)) and forward speed (m/s). */
 export type CarPose = { position: Vector3; yaw: number; speed: number };
 
-const isDrivable = (seg: Segment) => seg.line.kind !== "highway" && seg.line.width >= 3;
+const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
 const LATERAL_ACCEL = 2.5; // m/s² round the bends of a street
 
@@ -1037,6 +1038,10 @@ export class AutoDriver {
 
   /** Point on the route's driven path at route distance `d`. */
   private pathAt(route: Route, d: number): Vector3 {
+    // A route of one point (the car stands on its target): that point. Why a guard and not "never
+    // plan such a route": planRoute returns it legitimately, and indexing points[1] threw.
+    const isSinglePoint = route.points.length < 2;
+    if (isSinglePoint) return route.points[0].clone();
     let i = 1;
     while (i < route.cum.length - 1 && route.cum[i] < d) i++;
     const a = route.points[i - 1];

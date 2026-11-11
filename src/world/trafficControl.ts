@@ -65,6 +65,7 @@ import {
   type Step,
 } from "../signals/plan";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { hasRoadside } from "./roadClass";
 
 /**
  * What a signal's main lamps show: one of 施行令第2条's three colours, 黄・赤の点滅, or dark. Read by
@@ -727,7 +728,7 @@ export class TrafficControl {
         const node = queue.pop() as number;
         for (const id of graph.nodes.get(node) ?? []) {
           const seg = graph.segments[id];
-          if (seg.length > BOX_LINK || seg.line.kind === "highway") continue;
+          if (seg.length > BOX_LINK || !hasRoadside(seg.line)) continue;
           const other = seg.from === node ? seg.to : seg.from;
           if (claimed.has(other) || (graph.nodes.get(other)?.length ?? 0) < 3) continue;
           const at = this.nodePos(graph, other);
@@ -751,7 +752,7 @@ export class TrafficControl {
           if (members.has(other)) continue; // internal link between the controller's nodes
           const dir: 1 | -1 = seg.to === node ? 1 : -1;
           const isAllowed = seg.oneway === 0 || seg.oneway === dir;
-          if (!isAllowed || seg.line.kind === "highway") continue;
+          if (!isAllowed || !hasRoadside(seg.line)) continue;
           // Travel direction arriving at the node.
           const { dir: d } = graph.sample(seg, dir === 1 ? seg.length - 0.5 : 0.5);
           const bearing = d.clone().multiplyScalar(dir);

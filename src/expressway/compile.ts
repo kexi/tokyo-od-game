@@ -27,7 +27,7 @@ import { compositeLimit, superelevation } from "./superelevation";
 import { evalProfile, solveVertical, type VerticalProfile } from "./vertical";
 
 /**
- * The expressway compiler (設計書 4): chains → plan alignment → which runs a range needs → vertical
+ * The expressway compiler (knowledge/road-redesign-plan.md 4): chains → plan alignment → which runs a range needs → vertical
  * alignment in dependency order (a ramp after its main line, an upper deck after what it crosses) →
  * superelevation → stations, piers and ≤ 300 m chunks with stable ids. Pure: the build script gives
  * it the OSM network, the ground (DEM) and the roads and railways underneath.
@@ -140,7 +140,7 @@ function runSpeed(
   const tagV = designSpeedAtMost(tag);
   const floor: DesignSpeed = isRamp ? 20 : 40;
   let V: DesignSpeed = tagV;
-  // 設計書 4.2: the radius on site cannot move, so a radius below R_min(V) lowers V.
+  // knowledge/road-redesign-plan.md 4.2: the radius on site cannot move, so a radius below R_min(V) lowers V.
   for (;;) {
     const fits = minRadius >= CURVE_RADIUS.value[V].standard;
     const lower = lowerDesignSpeed(V);
@@ -407,7 +407,7 @@ type EndPlan =
   | { kind: "open" }
   | { kind: "junction" | "seam"; parent: string; parentNodeIndex: number; nodeIndex: number };
 
-/** What fixes a run's start or end (設計書 4.3 の 1). */
+/** What fixes a run's start or end (knowledge/road-redesign-plan.md 4.3 の 1). */
 export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const { chain, run } = rp;
   const idx = atStart ? run.from : run.to;
@@ -803,7 +803,7 @@ function solveRun(
   // where a JCT stacks decks, the deck that carries a higher layer aims higher before its ramps
   // have to climb over the others (a ramp leaving a deck at the standard height could not climb
   // a whole level before the deck beside it, which made 浜崎橋 JCT unsolvable). Why not use the
-  // layer as a fixed height (設計書 9 章): the constraints still come only from what is crossed,
+  // layer as a fixed height (knowledge/road-redesign-plan.md 9 章): the constraints still come only from what is crossed,
   // and a change of layer tag never makes a step.
   const levels = stations.map((sv) => {
     const way = plan.net.ways.get(rp.wayAt[sampleAt(rp, sv) - rp.i0])!;

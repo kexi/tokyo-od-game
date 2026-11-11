@@ -1,5 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { sourceFiles } from "./sourceCode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   error,
@@ -158,6 +157,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     signs: 210,
   },
   pavements_built: { wards: ["千代田区"], polygons: 812 },
+  road_sections: { segments: 1189, byBasis: { jartic: 415, osm: 180, width: 594 }, asymmetric: 12 },
+  pavement_over_lanes: { checked: 900, under: 40 },
   frame_recentered: { lat: 35.68124, lon: 139.76712 },
   guide_signs_placed: { signs: 12, advance: 3, overhead: 5, routed: 9, mapped: 40, durationMs: 18 },
   street_lights_placed: {
@@ -174,10 +175,14 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   closure_area_implausible: { areaKm2: 317.2, maxKm2: 5, kind: 1, at: [139.65, 35.64] },
   closures_implausible_share: { closed: 300, streets: 900, maxShare: 0.2 },
+  road_level_mismatch: { count: 1, examples: [{ level: 1, structure: "ground", xid: "c1:0" }] },
   trip_started: { target: "東京タワー", distanceM: 2400 },
   destination_set: { name: "浅草寺", distanceKm: 5.1 },
   poi_collected: { poiId: 12, category: "library", ward: "千代田区" },
   accident: { kind: "pedestrian", speedKmh: 32 },
+  pedestrian_bump: { carKmh: 0.2, otherDeltaVKmh: 4.8 },
+  incident_jump: { jumpM: 1200, awayM: 1236 },
+  incident_resumed: { heldMs: 42000 },
   lane_turn_disallowed: { lanes: ["left", "straight+right"], lane: 0, turn: "right", source: "osm" },
   signal_crossing_held: { approachId: 12, allowed: ["right", "uturn"] },
   signal_crossing_resolved: { approachId: 12, outcome: "violation", movement: "through", heldMs: 2400 },
@@ -288,6 +293,14 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     midBlock: { nodes: 400 },
   },
   osm_layer_unchanged: { layer: "junctions", tiles: 380 },
+  osm_road_lanes: {
+    ways: 40000,
+    tiles: 120,
+    lanes: 30000,
+    forwardBackward: 5000,
+    width: 3000,
+    oneway: 12000,
+  },
   police_written: { stations: 102, orbis: 25, bySource: { osm: 25 } },
   osm_loaded: { bytes: 400_000_000 },
   ways_read: { roads: 1000, dests: 300, nodes: 90000 },
@@ -613,23 +626,8 @@ describe("the ring of recent lines (LogRing)", () => {
 
 // ---------- the sources ----------
 
-const ROOT = join(import.meta.dirname, "..");
-
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return sources(path);
-    return name.endsWith(".ts") && !name.endsWith(".d.ts") ? [path] : [];
-  });
-}
-
-const FILES = [...sources(join(ROOT, "src")), ...sources(join(ROOT, "scripts"))].map((p) => ({
-  path: relative(ROOT, p),
-  // Comments out (a `console.log` in a doc comment is not a call).
-  code: readFileSync(p, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1"),
-}));
+// Comments out (a `console.log` in a doc comment is not a call).
+const FILES = sourceFiles("src", "scripts");
 
 describe("the call sites (src/ and scripts/)", () => {
   it("write through the logger, not console.* (only the logger's own sink may)", () => {

@@ -14,7 +14,7 @@ verified:
   - { by: process:perf-road-streaming, at: 2026-11-10T11:20:00Z }
 sources:
   - id: design
-    resource: 道路再設計 方針（ADR 風、2026-11-10、依頼元の scratchpad/road-redesign.md）4.1〜4.5・4.7・8 章 P1・9 章
+    resource: knowledge/road-redesign-plan.md（道路再設計の方針、2026-11-10）4.1〜4.5・4.7・8 章 P1・9 章
     title: 設計書
   - id: code
     resource: src/expressway/（network・horizontal・vertical・qp・superelevation・section・compile・checks・format・ranges・allowlist）、scripts/expressway.ts、scripts/demTiles.ts、scripts/png.ts、src/world/expresswayDeck.ts、src/main.ts（?expressway）

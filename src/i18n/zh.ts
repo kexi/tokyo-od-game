@@ -1158,6 +1158,8 @@ export const zh: Messages = {
   "credits.signals.extract": "从 {extract} 中提取 OpenStreetMap 的 {tag}，与路口和人行横道对应后显示。",
   "credits.odbl": "提取出的数据库以 {odbl} 提供（{file}）。",
   "credits.signals.cycle": "信号灯的周期（绿、黄、红的时长及各路口间的错开）由游戏设定，与实际信号灯不同。",
+  "credits.roadlanes.extract":
+    "一般道路的车道数与宽度（OpenStreetMap 的 {tags}）同样提取，并与国土地理院的道路中心线对应，用于车道布局（public/data/roadlanes）。",
   "credits.h.guide": "指路标志（方向及方位）",
   "credits.h.destinations": "目的地列表（车站・名胜）",
   "credits.h.expressway": "高架汽车专用道路（城市高速）",

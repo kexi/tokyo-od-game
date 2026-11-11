@@ -1,7 +1,7 @@
 import { MAX_LATERAL_SHIFT } from "./assumptions";
 
 /**
- * Plan alignment (設計書 4.2): the OSM polyline resampled every ~1 m and smoothed so that the rate
+ * Plan alignment (knowledge/road-redesign-plan.md 4.2): the OSM polyline resampled every ~1 m and smoothed so that the rate
  * of change of curvature (the third difference) is as small as possible while no point moves more
  * than ε (MAX_LATERAL_SHIFT) from the OSM line. Curvature then varies almost linearly with arc
  * length, which is what a clothoid transition does. Junction nodes are anchors and stay exactly on
@@ -9,7 +9,7 @@ import { MAX_LATERAL_SHIFT } from "./assumptions";
  *
  * Why not fit clothoid/arc elements: OSM vertices wobble and the element split would jump between
  * builds; a bounded smoothing gives the same drivable line and the station output does not change
- * if exact elements are fitted later (設計書 9 章).
+ * if exact elements are fitted later (knowledge/road-redesign-plan.md 9 章).
  */
 
 export type PlanInput = {

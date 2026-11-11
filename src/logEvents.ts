@@ -250,6 +250,10 @@ export const LOG_EVENTS = {
     signs: count,
   }),
   pavements_built: info({ wards: z.array(z.string()), polygons: count }),
+  /** Street sections after a rebuild: segments by basis, and OSM lanes that differ by direction. */
+  road_sections: info({ segments: count, byBasis: counts, asymmetric: count }),
+  /** Streets whose lanes reach into PLATEAU's pavement (the 幅員 / pavement assumption to check). */
+  pavement_over_lanes: info({ checked: count, under: count }),
   /** Expressway decks (render only, P1) built or dropped around the player (expresswayDeck.ts). */
   expressway_decks_built: info({
     chunks: count,
@@ -302,6 +306,16 @@ export const LOG_EVENTS = {
     at: z.array(z.number()),
   }),
   closures_implausible_share: warning({ closed: count, streets: count, maxShare: z.number() }),
+  /**
+   * Road lines whose level and structure contradict (a ground line off level 0, a viaduct at or
+   * below it; roadClass.ts isLevelInconsistent): kept as given, the data needs fixing.
+   */
+  road_level_mismatch: warning({
+    count,
+    examples: z.array(
+      z.strictObject({ level: z.number(), structure: z.string(), xid: z.string().nullable() }),
+    ),
+  }),
 
   // ---------- driving ----------
   trip_started: info({ target: z.string(), distanceM: z.number() }),
@@ -316,6 +330,19 @@ export const LOG_EVENTS = {
     energyKj: z.number().optional(),
     otherMassKg: z.number().optional(),
   }),
+  /**
+   * A person and the player's car touched but it was not the driver's accident: the car stood
+   * (game/pedestrianBlow.ts) or the person's Δv was a nudge. `carKmh` is the car's speed into the blow.
+   */
+  pedestrian_bump: info({ carKmh: z.number(), otherDeltaVKmh: z.number() }),
+  /**
+   * A jump (移動, 復帰, debug place) put the player more than 80 m from an open accident scene:
+   * leaving and the 119 deadline are held until they are back within 80 m (game/emergency.ts).
+   * `jumpM` is the jump, `awayM` the distance from the scene after it.
+   */
+  incident_jump: info({ jumpM: z.number(), awayM: z.number() }),
+  /** Back within 80 m of the scene after a jump: the hold ends; `heldMs` is how long it lasted. */
+  incident_resumed: info({ heldMs: z.number() }),
   /**
    * Crossed a signal's stop line while an arrow over red allowed only some movements (`allowed`):
    * the 信号無視 check waits for the arm the car leaves by (src/signals/redLight.ts).
@@ -528,6 +555,15 @@ export const LOG_EVENTS = {
     byTag: counts,
     midBlock: counts,
   }),
+  /** scripts/regulations.ts: street ways with lanes / width kept for public/data/roadlanes. */
+  osm_road_lanes: info({
+    ways: count,
+    tiles: count,
+    lanes: count,
+    forwardBackward: count,
+    width: count,
+    oneway: count,
+  }),
   police_written: info({ stations: count, orbis: count, bySource: counts }),
   osm_loaded: info({ bytes: count }),
   ways_read: info({ roads: count, dests: count, nodes: count }),
@@ -570,7 +606,7 @@ export const LOG_EVENTS = {
   station_page_unreadable: info({ code: z.string(), name: z.string() }),
   levels_missing: info({ day: z.string() }),
   water_levels_written: info({ file: z.string(), gauges: count, tidal: count, bay: z.unknown() }),
-  // scripts/expressway.ts (the expressway compiler, 設計書 4)
+  // scripts/expressway.ts (the expressway compiler, knowledge/road-redesign-plan.md 4)
   expressway_osm_read: info({ ways: count, universeWays: count, nodes: count, junctions: count }),
   expressway_planned: info({ chains: count, runs: count, wanted: count, needed: count, crossings: count }),
   expressway_dem_ready: info({ tiles: count, fetched: count }),
