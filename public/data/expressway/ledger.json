@@ -1,0 +1,1838 @@
+{
+ "version": 1,
+ "data": {
+  "ranges": [
+   "hamazakibashi",
+   "rainbow",
+   "azabudai",
+   "azabudai_exit",
+   "shiodome"
+  ],
+  "scope": null,
+  "objective": "v1",
+  "extract": "2026-10-03T20:20:50Z"
+ },
+ "summary": {
+  "cases": {
+   "central": {
+    "nose": {
+     "accepted": 6
+    },
+    "changeover": {
+     "accepted": 7
+    },
+    "parallel-ramp": {
+     "accepted": 1
+    },
+    "touchdown": {
+     "accepted": 1
+    },
+    "other": {
+     "accepted": 1
+    },
+    "portal-open-cut": {
+     "accepted": 1
+    },
+    "ramp-radius": {
+     "accepted": 1
+    },
+    "seam_step": {
+     "open": 2
+    },
+    "merge_skipped": {
+     "accepted": 45
+    },
+    "let_go": {
+     "accepted": 8
+    }
+   }
+  },
+  "open": 2,
+  "withoutQa": 7,
+  "seamProbes": 3646,
+  "rules": {
+   "vertical_fallback": 38,
+   "below_open_ground_floor": 0,
+   "deck_below_ground": 1,
+   "crossing_over_or_at_grade": 30
+  }
+ },
+ "budget": {
+  "cases": {
+   "central": {
+    "nose": 6,
+    "changeover": 7,
+    "parallel-ramp": 1,
+    "touchdown": 1,
+    "other": 1,
+    "portal-open-cut": 1,
+    "ramp-radius": 1,
+    "seam_step": 2,
+    "merge_skipped": 45,
+    "let_go": 8
+   }
+  },
+  "open": 2,
+  "withoutQa": 7,
+  "seamProbes": 3646,
+  "rules": {
+   "vertical_fallback": 38,
+   "below_open_ground_floor": 0,
+   "deck_below_ground": 1,
+   "crossing_over_or_at_grade": 30
+  }
+ },
+ "cases": [
+  {
+   "key": "changeover:24402611|813455519",
+   "kind": "changeover",
+   "run": "24402611",
+   "with": "813455519",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 2,
+    "minDzM": 1.84,
+    "maxDzM": 1.89
+   },
+   "cap": {
+    "stations": 2,
+    "maxDzM": 1.9
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "羽田線から外回りへ入る連結路（813455519）が外回りへ合流する終点で内回りの車線域に 2 測点かかる。都心環状線の内回り・外回りが二層（OSM layer 3 / 2）から並列（同じ layer）に移る区間。OSM の中心線の間隔（6–8.6 m）が車線域の幅の和（8.5 m）より狭く、移り変わりの高さの差（0–6.7 m）がどこに置いても重なりの中に入る",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "changeover:24402611|895902565",
+   "kind": "changeover",
+   "run": "24402611",
+   "with": "895902565",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 38,
+    "minDzM": 0.05,
+    "maxDzM": 5.49
+   },
+   "cap": {
+    "stations": 38,
+    "maxDzM": 5.56
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "麻布台のトンネル（P9）の北の坑口を出た外回り（895902565、OSM layer 2）が地表から上り始める区間で、内回り（199311749、layer 3）の中心線が 7.9 m 横を通る。車線域の幅の和より近く、坑口で地表に接する外回りは 1 段（4.5 m + 桁高）の差まで上がりきれない。P9 で外回りがファイルに入って初めて出た組（坑口の高さは P7 の portal と同じ地表）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "changeover:45019020|45554540",
+   "kind": "changeover",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 12,
+    "minDzM": 0.06,
+    "maxDzM": 6.37
+   },
+   "cap": {
+    "stations": 13,
+    "maxDzM": 6.38
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "芝浦 JCT で 11 号台場線と 1 号羽田線の上下線が二層・立体交差から並列へ移る区間（OSM layer 2〜4 の移り変わり）。P7 の rainbow 範囲で初めてファイルに出た run で、構造物上書きなし（--no-structures）でも同じ組・ほぼ同じ大きさで出る。中心線の間隔（6.4〜8.4 m）が車線域の幅の和より狭く、移り変わりの高さの差がどこに置いても重なりの中に入る",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "changeover:45019020|4848762",
+   "kind": "changeover",
+   "run": "45019020",
+   "with": "4848762",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 9,
+    "minDzM": 0.5,
+    "maxDzM": 4.12
+   },
+   "cap": {
+    "stations": 10,
+    "maxDzM": 4.12
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "芝浦 JCT で 11 号台場線と 1 号羽田線の上下線が二層・立体交差から並列へ移る区間（OSM layer 2〜4 の移り変わり）。P7 の rainbow 範囲で初めてファイルに出た run で、構造物上書きなし（--no-structures）でも同じ組・ほぼ同じ大きさで出る。中心線の間隔（6.4〜8.4 m）が車線域の幅の和より狭く、移り変わりの高さの差がどこに置いても重なりの中に入る",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "changeover:45021972|45554540",
+   "kind": "changeover",
+   "run": "45021972",
+   "with": "45554540",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 20,
+    "minDzM": 0.06,
+    "maxDzM": 6.64
+   },
+   "cap": {
+    "stations": 20,
+    "maxDzM": 6.64
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "芝浦 JCT で 11 号台場線と 1 号羽田線の上下線が二層・立体交差から並列へ移る区間（OSM layer 2〜4 の移り変わり）。P7 の rainbow 範囲で初めてファイルに出た run で、構造物上書きなし（--no-structures）でも同じ組・ほぼ同じ大きさで出る。中心線の間隔（6.4〜8.4 m）が車線域の幅の和より狭く、移り変わりの高さの差がどこに置いても重なりの中に入る",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "changeover:45021972|4848762",
+   "kind": "changeover",
+   "run": "45021972",
+   "with": "4848762",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 16,
+    "minDzM": 0.05,
+    "maxDzM": 6.46
+   },
+   "cap": {
+    "stations": 16,
+    "maxDzM": 6.46
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "芝浦 JCT で 11 号台場線と 1 号羽田線の上下線が二層・立体交差から並列へ移る区間（OSM layer 2〜4 の移り変わり）。P7 の rainbow 範囲で初めてファイルに出た run で、構造物上書きなし（--no-structures）でも同じ組・ほぼ同じ大きさで出る。中心線の間隔（6.4〜8.4 m）が車線域の幅の和より狭く、移り変わりの高さの差がどこに置いても重なりの中に入る（P2.6 との統合で 15 測点・6.33 m から 16 測点・6.46 m）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "changeover:45021976|4848762",
+   "kind": "changeover",
+   "run": "45021976",
+   "with": "4848762",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 4,
+    "minDzM": 3.97,
+    "maxDzM": 6.42
+   },
+   "cap": {
+    "stations": 4,
+    "maxDzM": 6.42
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "浜崎橋 JCT で 1 号羽田線への分岐（4848762）のノーズが内回りと同一面、外回りの 1 段上（OSM layer）を同時に求められ、内回りと外回りの移り変わりと重なる。三者の OSM の線が 1.3–8 m に集まり、全部は満たせない",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:207111988:2|24402611|0",
+   "kind": "let_go",
+   "run": "207111988",
+   "with": "24402611",
+   "chunk": "207111988:2",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 157.5,
+    "alongStepM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:24402125:0|24402611|0",
+   "kind": "let_go",
+   "run": "24402125",
+   "with": "24402611",
+   "chunk": "24402125:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 82.5,
+    "alongStepM": 0.0001
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:45019020:40|45554540|0",
+   "kind": "let_go",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:40",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 4079.3,
+    "alongStepM": 0.0001
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:45068172:1|45021976|0",
+   "kind": "let_go",
+   "run": "45068172",
+   "with": "45021976",
+   "chunk": "45068172:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 295.5,
+    "alongStepM": 0.0001
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:4848755:3|45019020|0",
+   "kind": "let_go",
+   "run": "4848755",
+   "with": "45019020",
+   "chunk": "4848755:3",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 868.2,
+    "alongStepM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:4848889:1|4848762|0",
+   "kind": "let_go",
+   "run": "4848889",
+   "with": "4848762",
+   "chunk": "4848889:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 160.6,
+    "alongStepM": 0.0002
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:4853798:0|45021976|0",
+   "kind": "let_go",
+   "run": "4853798",
+   "with": "45021976",
+   "chunk": "4853798:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 198.5,
+    "alongStepM": 0.0003
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:4853799:0|24402611|0",
+   "kind": "let_go",
+   "run": "4853799",
+   "with": "24402611",
+   "chunk": "4853799:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "s": 82.3,
+    "alongStepM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402125:0|24402611",
+   "kind": "merge_skipped",
+   "run": "24402125",
+   "with": "24402611",
+   "chunk": "24402125:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 6.808,
+    "s0": 82.6,
+    "s1": 192.6
+   },
+   "cap": {
+    "maxDzM": 6.81,
+    "s0": 82.6,
+    "s1": 192.6
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:0|895902565",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "895902565",
+   "chunk": "24402611:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.739,
+    "s0": 0.1,
+    "s1": 59.1
+   },
+   "cap": {
+    "maxDzM": 0.74,
+    "s0": 0.1,
+    "s1": 59.1
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:16|45021976",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "45021976",
+   "chunk": "24402611:16",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.632,
+    "s0": 2237.4,
+    "s1": 2309.4
+   },
+   "cap": {
+    "maxDzM": 3.64,
+    "s0": 2237.4,
+    "s1": 2309.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:1|895902565",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "895902565",
+   "chunk": "24402611:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.53,
+    "s0": 353,
+    "s1": 437
+   },
+   "cap": {
+    "maxDzM": 3.53,
+    "s0": 353,
+    "s1": 437
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:22|45021976",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "45021976",
+   "chunk": "24402611:22",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.752,
+    "s0": 3740.1,
+    "s1": 3816.1
+   },
+   "cap": {
+    "maxDzM": 3.76,
+    "s0": 3740.1,
+    "s1": 3816.1
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:22|4848762",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "4848762",
+   "chunk": "24402611:22",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.516,
+    "s0": 3806.8,
+    "s1": 3814.8
+   },
+   "cap": {
+    "maxDzM": 0.52,
+    "s0": 3806.8,
+    "s1": 3814.8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:22|813455519",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "813455519",
+   "chunk": "24402611:22",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 2.638,
+    "s0": 3791.8,
+    "s1": 3806.3
+   },
+   "cap": {
+    "maxDzM": 2.64,
+    "s0": 3791.8,
+    "s1": 3806.2
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）。浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:31|24402125",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "24402125",
+   "chunk": "24402611:31",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 6.747,
+    "s0": 4939.7,
+    "s1": 5042.7
+   },
+   "cap": {
+    "maxDzM": 6.75,
+    "s0": 4939.7,
+    "s1": 5042.7
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45019020:36|4848740",
+   "kind": "merge_skipped",
+   "run": "45019020",
+   "with": "4848740",
+   "chunk": "45019020:36",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.318,
+    "s0": 3534.2,
+    "s1": 3537.2
+   },
+   "cap": {
+    "maxDzM": 0.32,
+    "s0": 3534.2,
+    "s1": 3537.2
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45019020:38|4848740",
+   "kind": "merge_skipped",
+   "run": "45019020",
+   "with": "4848740",
+   "chunk": "45019020:38",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.162,
+    "s0": 3814,
+    "s1": 3814
+   },
+   "cap": {
+    "maxDzM": 0.17,
+    "s0": 3814,
+    "s1": 3814
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45019020:40|45554540",
+   "kind": "merge_skipped",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:40",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.729,
+    "s0": 4044.4,
+    "s1": 4078.9
+   },
+   "cap": {
+    "maxDzM": 3.73,
+    "s0": 4044.4,
+    "s1": 4078.9
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45019020:4|4848762",
+   "kind": "merge_skipped",
+   "run": "45019020",
+   "with": "4848762",
+   "chunk": "45019020:4",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.468,
+    "s0": 842.1,
+    "s1": 892.1
+   },
+   "cap": {
+    "maxDzM": 3.47,
+    "s0": 842.1,
+    "s1": 892.1
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "台場側で 11 号台場線の上下線が二層から並列へ移る区間（OSM layer 4 / 3）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45019020:8|4848755",
+   "kind": "merge_skipped",
+   "run": "45019020",
+   "with": "4848755",
+   "chunk": "45019020:8",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.323,
+    "s0": 1817.4,
+    "s1": 1823.4
+   },
+   "cap": {
+    "maxDzM": 0.33,
+    "s0": 1817.4,
+    "s1": 1823.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45019020:9|4848755",
+   "kind": "merge_skipped",
+   "run": "45019020",
+   "with": "4848755",
+   "chunk": "45019020:9",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.354,
+    "s0": 1992.8,
+    "s1": 1996.8
+   },
+   "cap": {
+    "maxDzM": 0.36,
+    "s0": 1992.8,
+    "s1": 1996.8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021972:1|45554540",
+   "kind": "merge_skipped",
+   "run": "45021972",
+   "with": "45554540",
+   "chunk": "45021972:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.275,
+    "s0": 332.5,
+    "s1": 333.5
+   },
+   "cap": {
+    "maxDzM": 3.28,
+    "s0": 332.5,
+    "s1": 333.5
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021972:24|45554540",
+   "kind": "merge_skipped",
+   "run": "45021972",
+   "with": "45554540",
+   "chunk": "45021972:24",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 1.933,
+    "s0": 6101.9,
+    "s1": 6135.4
+   },
+   "cap": {
+    "maxDzM": 1.94,
+    "s0": 6101.9,
+    "s1": 6135.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021972:2|45554540",
+   "kind": "merge_skipped",
+   "run": "45021972",
+   "with": "45554540",
+   "chunk": "45021972:2",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.069,
+    "s0": 334,
+    "s1": 357
+   },
+   "cap": {
+    "maxDzM": 3.07,
+    "s0": 334,
+    "s1": 357
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021972:3|4848762",
+   "kind": "merge_skipped",
+   "run": "45021972",
+   "with": "4848762",
+   "chunk": "45021972:3",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 1.784,
+    "s0": 587.5,
+    "s1": 654
+   },
+   "cap": {
+    "maxDzM": 1.79,
+    "s0": 587.5,
+    "s1": 654
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:0|45068172",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "45068172",
+   "chunk": "45021976:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.121,
+    "s0": 72.7,
+    "s1": 102.2
+   },
+   "cap": {
+    "maxDzM": 3.13,
+    "s0": 72.7,
+    "s1": 102.2
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:10|24402611",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "24402611",
+   "chunk": "45021976:10",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 4.17,
+    "s0": 1241.8,
+    "s1": 1263.8
+   },
+   "cap": {
+    "maxDzM": 4.18,
+    "s0": 1241.8,
+    "s1": 1263.8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:11|24402611",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "24402611",
+   "chunk": "45021976:11",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 1.883,
+    "s0": 1264.3,
+    "s1": 1321.8
+   },
+   "cap": {
+    "maxDzM": 1.89,
+    "s0": 1264.3,
+    "s1": 1321.8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:11|813455519",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "813455519",
+   "chunk": "45021976:11",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.37,
+    "s0": 1267.3,
+    "s1": 1271.3
+   },
+   "cap": {
+    "maxDzM": 0.37,
+    "s0": 1267.3,
+    "s1": 1271.3
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:14|4853798",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "4853798",
+   "chunk": "45021976:14",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.389,
+    "s0": 2132,
+    "s1": 2136
+   },
+   "cap": {
+    "maxDzM": 0.39,
+    "s0": 2132,
+    "s1": 2136
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "出口ランプが本線の床版の縁から離れる最後の数 m で、地表へ下り始める（車線域はもう重ならない）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:16|24402611",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "24402611",
+   "chunk": "45021976:16",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 1.17,
+    "s0": 2754.5,
+    "s1": 2799.5
+   },
+   "cap": {
+    "maxDzM": 1.17,
+    "s0": 2754.5,
+    "s1": 2799.5
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:17|24402611",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "24402611",
+   "chunk": "45021976:17",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.476,
+    "s0": 2799.9,
+    "s1": 2824.9
+   },
+   "cap": {
+    "maxDzM": 3.48,
+    "s0": 2799.9,
+    "s1": 2824.9
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:6|45021972",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "45021972",
+   "chunk": "45021976:6",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.237,
+    "s0": 767.3,
+    "s1": 769.8
+   },
+   "cap": {
+    "maxDzM": 0.24,
+    "s0": 767.3,
+    "s1": 769.8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45068172:1|45021976",
+   "kind": "merge_skipped",
+   "run": "45068172",
+   "with": "45021976",
+   "chunk": "45068172:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 2.931,
+    "s0": 267.4,
+    "s1": 295.4
+   },
+   "cap": {
+    "maxDzM": 2.94,
+    "s0": 267.4,
+    "s1": 295.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45177681:14|4848889",
+   "kind": "merge_skipped",
+   "run": "45177681",
+   "with": "4848889",
+   "chunk": "45177681:14",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.248,
+    "s0": 3300.5,
+    "s1": 3302
+   },
+   "cap": {
+    "maxDzM": 0.25,
+    "s0": 3300.5,
+    "s1": 3302
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:29|45019020",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "45019020",
+   "chunk": "45554540:29",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.088,
+    "s0": 7252.6,
+    "s1": 7282.6
+   },
+   "cap": {
+    "maxDzM": 3.09,
+    "s0": 7252.6,
+    "s1": 7282.6
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:31|45019020",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "45019020",
+   "chunk": "45554540:31",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.222,
+    "s0": 7519,
+    "s1": 7522
+   },
+   "cap": {
+    "maxDzM": 0.23,
+    "s0": 7519,
+    "s1": 7522
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:31|813455519",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "813455519",
+   "chunk": "45554540:31",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.65,
+    "s0": 7717.9,
+    "s1": 7726.9
+   },
+   "cap": {
+    "maxDzM": 0.65,
+    "s0": 7717.9,
+    "s1": 7726.9
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:32|45021972",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "45021972",
+   "chunk": "45554540:32",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.273,
+    "s0": 7792.9,
+    "s1": 7817.4
+   },
+   "cap": {
+    "maxDzM": 3.28,
+    "s0": 7792.9,
+    "s1": 7817.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:8|45021972",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "45021972",
+   "chunk": "45554540:8",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 1.905,
+    "s0": 2022.8,
+    "s1": 2055.8
+   },
+   "cap": {
+    "maxDzM": 1.91,
+    "s0": 2022.8,
+    "s1": 2055.8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:9|45021972",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "45021972",
+   "chunk": "45554540:9",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 2.029,
+    "s0": 2056.3,
+    "s1": 2057.3
+   },
+   "cap": {
+    "maxDzM": 2.03,
+    "s0": 2056.3,
+    "s1": 2057.3
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4848755:3|45019020",
+   "kind": "merge_skipped",
+   "run": "4848755",
+   "with": "45019020",
+   "chunk": "4848755:3",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.288,
+    "s0": 862.8,
+    "s1": 867.8
+   },
+   "cap": {
+    "maxDzM": 0.29,
+    "s0": 862.8,
+    "s1": 867.8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4848762:1|45021972",
+   "kind": "merge_skipped",
+   "run": "4848762",
+   "with": "45021972",
+   "chunk": "4848762:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 2.104,
+    "s0": 482.5,
+    "s1": 483.5
+   },
+   "cap": {
+    "maxDzM": 2.11,
+    "s0": 482.5,
+    "s1": 483.5
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4848762:2|45021972",
+   "kind": "merge_skipped",
+   "run": "4848762",
+   "with": "45021972",
+   "chunk": "4848762:2",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 1.975,
+    "s0": 484,
+    "s1": 553
+   },
+   "cap": {
+    "maxDzM": 1.98,
+    "s0": 484,
+    "s1": 553
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4848762:33|4848889",
+   "kind": "merge_skipped",
+   "run": "4848762",
+   "with": "4848889",
+   "chunk": "4848762:33",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.417,
+    "s0": 2823,
+    "s1": 2828
+   },
+   "cap": {
+    "maxDzM": 0.42,
+    "s0": 2823,
+    "s1": 2828
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4848762:34|4848889",
+   "kind": "merge_skipped",
+   "run": "4848762",
+   "with": "4848889",
+   "chunk": "4848762:34",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.246,
+    "s0": 2994.5,
+    "s1": 2997.5
+   },
+   "cap": {
+    "maxDzM": 0.25,
+    "s0": 2994.5,
+    "s1": 2997.5
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4848762:38|45019020",
+   "kind": "merge_skipped",
+   "run": "4848762",
+   "with": "45019020",
+   "chunk": "4848762:38",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.356,
+    "s0": 3932.4,
+    "s1": 3982.4
+   },
+   "cap": {
+    "maxDzM": 3.36,
+    "s0": 3932.4,
+    "s1": 3982.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4848889:1|4848762",
+   "kind": "merge_skipped",
+   "run": "4848889",
+   "with": "4848762",
+   "chunk": "4848889:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.189,
+    "s0": 161,
+    "s1": 162
+   },
+   "cap": {
+    "maxDzM": 0.19,
+    "s0": 161,
+    "s1": 162
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:4853798:0|45021976",
+   "kind": "merge_skipped",
+   "run": "4853798",
+   "with": "45021976",
+   "chunk": "4853798:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.362,
+    "s0": 198.6,
+    "s1": 202.1
+   },
+   "cap": {
+    "maxDzM": 0.37,
+    "s0": 198.6,
+    "s1": 202.1
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "出口ランプが本線の床版の縁から離れる最後の数 m で、地表へ下り始める（車線域はもう重ならない）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:813455519:1|24402611",
+   "kind": "merge_skipped",
+   "run": "813455519",
+   "with": "24402611",
+   "chunk": "813455519:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 2.889,
+    "s0": 306.7,
+    "s1": 316.7
+   },
+   "cap": {
+    "maxDzM": 2.89,
+    "s0": 306.7,
+    "s1": 316.7
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）。浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:895902565:4|24402611",
+   "kind": "merge_skipped",
+   "run": "895902565",
+   "with": "24402611",
+   "chunk": "895902565:4",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 3.732,
+    "s0": 502.1,
+    "s1": 588.6
+   },
+   "cap": {
+    "maxDzM": 3.74,
+    "s0": 502.1,
+    "s1": 588.6
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:895902565:5|24402611",
+   "kind": "merge_skipped",
+   "run": "895902565",
+   "with": "24402611",
+   "chunk": "895902565:5",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "maxDzM": 0.739,
+    "s0": 882.5,
+    "s1": 943
+   },
+   "cap": {
+    "maxDzM": 0.74,
+    "s0": 882.5,
+    "s1": 943
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "nose:24402611|4848762",
+   "kind": "nose",
+   "run": "24402611",
+   "with": "4848762",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 6,
+    "minDzM": 0.05,
+    "maxDzM": 0.13
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "nose:45019020|4848740",
+   "kind": "nose",
+   "run": "45019020",
+   "with": "4848740",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 1,
+    "minDzM": 0.32,
+    "maxDzM": 0.32
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "nose:45019020|4848755",
+   "kind": "nose",
+   "run": "45019020",
+   "with": "4848755",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 2,
+    "minDzM": 0.05,
+    "maxDzM": 0.06
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "nose:45021972|45021976",
+   "kind": "nose",
+   "run": "45021972",
+   "with": "45021976",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 1,
+    "minDzM": 0.11,
+    "maxDzM": 0.11
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "nose:45021976|45068172",
+   "kind": "nose",
+   "run": "45021976",
+   "with": "45068172",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 2,
+    "minDzM": 0.21,
+    "maxDzM": 0.27
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "nose:45554540|813455519",
+   "kind": "nose",
+   "run": "45554540",
+   "with": "813455519",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 2,
+    "minDzM": 0.06,
+    "maxDzM": 0.24
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "other:45177678|4848755",
+   "kind": "other",
+   "run": "45177678",
+   "with": "4848755",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 2,
+    "minDzM": 0.06,
+    "maxDzM": 0.06
+   },
+   "cap": {
+    "stations": 2,
+    "maxDzM": 0.06
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "芝浦の入口ランプ（4848755）の地表端が臨港道路（45177678、street）の地表端と同じ面で並ぶ所（P2.6 との統合で出た）。分合流のノーズで、同一面（5 cm 以内）の帯をわずかに外れる 1〜2 測点（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "parallel-ramp:24402125|24402611",
+   "kind": "parallel-ramp",
+   "run": "24402125",
+   "with": "24402611",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 11,
+    "minDzM": 0.06,
+    "maxDzM": 6.62
+   },
+   "cap": {
+    "stations": 21,
+    "maxDzM": 6.62
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。本線のこの先の掘割はこの範囲のデータに無く（P9 が通したのは麻布台のトンネル）、run の地表端で終わるので、経路と交通 AI は入らない（laneLinks.ts reachesStreets）",
+   "qa": "expressway/shiodome-diverge-overhead",
+   "previous": null
+  },
+  {
+   "key": "portal-open-cut:737538573",
+   "kind": "portal-open-cut",
+   "run": "737538573",
+   "with": null,
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 23,
+    "s0": 490,
+    "s1": 596,
+    "lengthM": 106.5
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "坑口が斜面に開き、坑口の手前で地表が下がる所。坑口から第20条の標準勾配では箱の高さと最小の土被り（TUNNEL_DEPTH_M）まで下りきれない。坑口から続く不足の区間（PORTAL_OPEN_CUT_MAX_M 以内）は箱の頂版が地表より上に出る開削部として扱い、地形を切り欠いて坑門で見せる（expresswayBore.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ramp-radius:203873831",
+   "kind": "ramp-radius",
+   "run": "203873831",
+   "with": null,
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "minRadiusM": 13.4
+   },
+   "cap": {
+    "minRadiusM": 13.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "R 13.4 m（試験区間の C1 と同じ成分で解く連結路）。OSM の線形のままの半径。平面は OSM から 1.5 m 以内に留める（MAX_LATERAL_SHIFT）ので広げられない。下限 15 m は設計書の仮定（RAMP_MIN_RADIUS）で、連結路は第28条第4項で第15条の適用外。走れるかは P3 の走行で確かめる",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "seam_step:45019020:40|45554540|0",
+   "kind": "seam_step",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:40",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "probes": 2,
+    "s0": 4079.4,
+    "s1": 4082.4,
+    "stepM": 0.0179,
+    "insideM": 0.1526
+   },
+   "cap": {
+    "s0": 4079,
+    "s1": 4083,
+    "stepM": 0.019,
+    "insideM": 0.16
+   },
+   "status": "open",
+   "by": "review",
+   "reason": "芝浦 JCT で 11 号台場線の上りが 1 号羽田線（45554540）に重なる区間の手放し（let-go、s 4079.3）の上の 1 点と、その先の継ぎ目（s 4082.4、|Δz| 4.4 cm）の 18 mm の段。P6 のチャンクの切り直しで出た。床版の一体化（P3.5）の側で直す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "seam_step:45068172:1|45021976|0",
+   "kind": "seam_step",
+   "run": "45068172",
+   "with": "45021976",
+   "chunk": "45068172:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "probes": 1,
+    "s0": 298.9,
+    "s1": 298.9,
+    "stepM": 0.0047,
+    "insideM": 0.0055
+   },
+   "cap": {
+    "probes": 1,
+    "s0": 298.9,
+    "s1": 298.9,
+    "stepM": 0.0047,
+    "insideM": 0.0055
+   },
+   "status": "open",
+   "by": "review",
+   "reason": "汐留入口が外回りへ合流する所で、手放し（s 295.5）の約 3 m 先の継ぎ目の段（s 297.85・298.35・298.85・299.35 で 36・20.5・4.6・0 mm。|Δz| 5 cm 以内の 1 mm の規則に掛かるのは s 298.9 の 1 点、4.7 mm）。45019020:40（手放しの先の継ぎ目の段）と同じ型。P2.7-4 で検査点を各点の高さで置くように直して見えた（高さ 0 の投影では、旧フレームから 1.19 km のこの点で検査点が半径方向に 8 mm、床版の縁に直角に約 3 mm ずれていた）。床版の一体化（P3.5）の側で直す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "touchdown:24402611|45021976",
+   "kind": "touchdown",
+   "run": "24402611",
+   "with": "45021976",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "measured": {
+    "stations": 29,
+    "minDzM": 0.05,
+    "maxDzM": 6.56
+   },
+   "cap": {
+    "stations": 29,
+    "maxDzM": 6.57
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "都心環状線の内回り・外回りが二層（OSM layer 3 / 2）から並列（同じ layer）に移る区間。OSM の中心線の間隔（6–8.6 m）が車線域の幅の和（8.5 m）より狭く、移り変わりの高さの差（0–6.7 m）がどこに置いても重なりの中に入る。P2.7-3a で 1 測点だけ 1 段離しの行を外した組（plan.untied、touchdown）。許可のまま移し、許可か同一面扱いかは S5 で決める",
+   "qa": "expressway/c1-parallel",
+   "previous": null
+  }
+ ]
+}

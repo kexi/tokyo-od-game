@@ -1,6 +1,6 @@
 {
- "version": 5,
- "label": "s3r-v1-baseline",
+ "version": 6,
+ "label": "s4-ship-v1",
  "range": "ship",
  "below": "pruned",
  "objective": {
@@ -636,20 +636,20 @@
    "notAllowed": 0
   },
   "deck_overlap": {
-   "allowed": 16,
-   "notAllowed": 213
+   "allowed": 66,
+   "notAllowed": 163
   },
   "parent_unsolved": {
    "allowed": 0,
    "notAllowed": 2
   },
   "ramp_radius": {
-   "allowed": 2,
-   "notAllowed": 0
+   "allowed": 1,
+   "notAllowed": 1
   },
   "tunnel_cover_short": {
-   "allowed": 1,
-   "notAllowed": 13
+   "allowed": 3,
+   "notAllowed": 11
   },
   "vertical_fallback": {
    "allowed": 215,
@@ -664,8 +664,8 @@
   "nose": {
    "pairs": 56,
    "stations": 120,
-   "notAllowedPairs": 50,
-   "notAllowedStations": 106
+   "notAllowedPairs": 0,
+   "notAllowedStations": 0
   },
   "parallel-ramp": {
    "pairs": 108,
@@ -755,7 +755,7 @@
    "stations": 2,
    "minDzM": 0.11,
    "maxDzM": 0.19,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967534",
@@ -765,7 +765,7 @@
    "stations": 1,
    "minDzM": 0.07,
    "maxDzM": 0.07,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967534",
@@ -785,7 +785,7 @@
    "stations": 1,
    "minDzM": 0.07,
    "maxDzM": 0.07,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967534",
@@ -795,7 +795,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967540",
@@ -805,7 +805,7 @@
    "stations": 5,
    "minDzM": 0.07,
    "maxDzM": 0.26,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967540",
@@ -815,7 +815,7 @@
    "stations": 3,
    "minDzM": 0.16,
    "maxDzM": 0.2,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967540",
@@ -835,7 +835,7 @@
    "stations": 7,
    "minDzM": 0.06,
    "maxDzM": 0.28,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967540",
@@ -855,7 +855,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1051967540",
@@ -905,7 +905,7 @@
    "stations": 3,
    "minDzM": 0.07,
    "maxDzM": 0.33,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1328383029",
@@ -925,7 +925,7 @@
    "stations": 1,
    "minDzM": 0.07,
    "maxDzM": 0.07,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1421966435",
@@ -935,7 +935,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1421966435",
@@ -975,7 +975,7 @@
    "stations": 1,
    "minDzM": 0.1,
    "maxDzM": 0.1,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1467911980",
@@ -1015,7 +1015,7 @@
    "stations": 1,
    "minDzM": 0.18,
    "maxDzM": 0.18,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "1483413151",
@@ -1205,7 +1205,7 @@
    "stations": 3,
    "minDzM": 0.06,
    "maxDzM": 0.31,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "176046420",
@@ -1235,7 +1235,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "182527890",
@@ -1375,7 +1375,7 @@
    "stations": 1,
    "minDzM": 0.18,
    "maxDzM": 0.18,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "203832852",
@@ -1395,7 +1395,7 @@
    "stations": 1,
    "minDzM": 0.08,
    "maxDzM": 0.08,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "203832852",
@@ -1415,7 +1415,7 @@
    "stations": 1,
    "minDzM": 0.19,
    "maxDzM": 0.19,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "205725085",
@@ -1435,7 +1435,7 @@
    "stations": 1,
    "minDzM": 0.14,
    "maxDzM": 0.14,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "207646122",
@@ -1445,7 +1445,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "207659109",
@@ -1515,7 +1515,7 @@
    "stations": 2,
    "minDzM": 0.05,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "23273634",
@@ -1525,7 +1525,7 @@
    "stations": 2,
    "minDzM": 0.05,
    "maxDzM": 0.05,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "23681223",
@@ -1545,7 +1545,7 @@
    "stations": 1,
    "minDzM": 0.16,
    "maxDzM": 0.16,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "23681223",
@@ -1555,7 +1555,7 @@
    "stations": 2,
    "minDzM": 0.05,
    "maxDzM": 0.05,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "24039713",
@@ -1585,7 +1585,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "24336502",
@@ -1595,7 +1595,7 @@
    "stations": 1,
    "minDzM": 0.05,
    "maxDzM": 0.05,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "24402018",
@@ -1635,7 +1635,7 @@
    "stations": 1,
    "minDzM": 0.13,
    "maxDzM": 0.13,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "24402611",
@@ -1685,7 +1685,7 @@
    "stations": 2,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "250488080",
@@ -1745,7 +1745,7 @@
    "stations": 4,
    "minDzM": 0.05,
    "maxDzM": 0.24,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "27155261",
@@ -1805,7 +1805,7 @@
    "stations": 3,
    "minDzM": 0.05,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "28127113",
@@ -1865,7 +1865,7 @@
    "stations": 1,
    "minDzM": 0.11,
    "maxDzM": 0.11,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "28188269",
@@ -1905,7 +1905,7 @@
    "stations": 7,
    "minDzM": 0.05,
    "maxDzM": 0.26,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "28188273",
@@ -1955,7 +1955,7 @@
    "stations": 2,
    "minDzM": 0.05,
    "maxDzM": 0.26,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "28195148",
@@ -1975,7 +1975,7 @@
    "stations": 2,
    "minDzM": 0.11,
    "maxDzM": 0.11,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "28368866",
@@ -2095,7 +2095,7 @@
    "stations": 7,
    "minDzM": 0.07,
    "maxDzM": 0.31,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "373216429",
@@ -2265,7 +2265,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44179919",
@@ -2295,7 +2295,7 @@
    "stations": 5,
    "minDzM": 0.06,
    "maxDzM": 0.15,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44179919",
@@ -2365,7 +2365,7 @@
    "stations": 1,
    "minDzM": 0.07,
    "maxDzM": 0.07,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44351599",
@@ -2385,7 +2385,7 @@
    "stations": 1,
    "minDzM": 0.06,
    "maxDzM": 0.06,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44506762",
@@ -2435,7 +2435,7 @@
    "stations": 1,
    "minDzM": 0.1,
    "maxDzM": 0.1,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44803854",
@@ -2445,7 +2445,7 @@
    "stations": 1,
    "minDzM": 0.1,
    "maxDzM": 0.1,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44803854",
@@ -2455,7 +2455,7 @@
    "stations": 3,
    "minDzM": 0.07,
    "maxDzM": 0.1,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44803854",
@@ -2515,7 +2515,7 @@
    "stations": 1,
    "minDzM": 0.34,
    "maxDzM": 0.34,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "44804029",
@@ -2685,7 +2685,7 @@
    "stations": 1,
    "minDzM": 0.09,
    "maxDzM": 0.09,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "45177678",
@@ -2785,7 +2785,7 @@
    "stations": 2,
    "minDzM": 0.06,
    "maxDzM": 0.09,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "4854235",
@@ -2815,7 +2815,7 @@
    "stations": 1,
    "minDzM": 0.12,
    "maxDzM": 0.12,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "4857053",
@@ -2875,7 +2875,7 @@
    "stations": 1,
    "minDzM": 0.07,
    "maxDzM": 0.07,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "71365235",
@@ -2895,7 +2895,7 @@
    "stations": 4,
    "minDzM": 0.05,
    "maxDzM": 0.05,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "760596454",
@@ -2935,7 +2935,7 @@
    "stations": 6,
    "minDzM": 0.06,
    "maxDzM": 0.11,
-   "allowed": false
+   "allowed": true
   },
   {
    "a": "888066405",
@@ -2975,7 +2975,7 @@
    "stations": 2,
    "minDzM": 0.06,
    "maxDzM": 0.07,
-   "allowed": false
+   "allowed": true
   }
  ],
  "violations": {
@@ -3056,20 +3056,20 @@
  "size": {
   "tiles": 116,
   "raw": {
-   "total": 4074277,
-   "median": 26514,
-   "p90": 73655,
-   "max": 223377
+   "total": 4212932,
+   "median": 27936,
+   "p90": 75617,
+   "max": 230582
   },
   "gzip": {
-   "total": 1162883,
-   "median": 7961,
-   "p90": 20306,
-   "max": 59084
+   "total": 1199391,
+   "median": 8126,
+   "p90": 20710,
+   "max": 60527
   },
   "meta": {
-   "raw": 279519,
-   "gzip": 38125,
+   "raw": 1993,
+   "gzip": 605,
    "byField": {
     "version": 1,
     "features": 9,
@@ -3080,14 +3080,14 @@
     "structures": 173,
     "extract": 106,
     "counts": 74,
-    "bytes": 7,
-    "solver": 46,
-    "runs": 151947,
-    "closed": 1329,
-    "diagnostics": 108889,
-    "entrances": 15259
+    "bytes": 7
    }
-  }
+  },
+  "record": {
+   "raw": 270282,
+   "gzip": 37590
+  },
+  "ledger": null
  },
  "solver": {
   "components": 20,
@@ -3260,5 +3260,110 @@
     "hash": "3b1b48c2ec032765659c14989c9cf8f911c46f3fac913a51ff56ffd9d56283bc"
    }
   ]
+ },
+ "districts": {
+  "central": {
+   "planned": {
+    "runs": 174,
+    "km": 232.467
+   },
+   "written": {
+    "runs": 164,
+    "km": 229.145
+   },
+   "closed": {
+    "runs": 10,
+    "km": 3.322
+   }
+  },
+  "east": {
+   "planned": {
+    "runs": 98,
+    "km": 168.728
+   },
+   "written": {
+    "runs": 96,
+    "km": 168.401
+   },
+   "closed": {
+    "runs": 2,
+    "km": 0.326
+   }
+  },
+  "yamate": {
+   "planned": {
+    "runs": 0,
+    "km": 0
+   },
+   "written": {
+    "runs": 0,
+    "km": 0
+   },
+   "closed": {
+    "runs": 0,
+    "km": 0
+   }
+  },
+  "outside": {
+   "planned": {
+    "runs": 51,
+    "km": 117.664
+   },
+   "written": {
+    "runs": 47,
+    "km": 116.399
+   },
+   "closed": {
+    "runs": 4,
+    "km": 1.265
+   }
+  }
+ },
+ "ledger": {
+  "cases": {
+   "central": {
+    "nose": {
+     "accepted": 6
+    },
+    "changeover": {
+     "accepted": 7
+    },
+    "parallel-ramp": {
+     "accepted": 1
+    },
+    "touchdown": {
+     "accepted": 1
+    },
+    "other": {
+     "accepted": 1
+    },
+    "portal-open-cut": {
+     "accepted": 1
+    },
+    "seam_step": {
+     "open": 2
+    },
+    "merge_skipped": {
+     "accepted": 45
+    },
+    "let_go": {
+     "accepted": 8
+    }
+   },
+   "outside": {
+    "ramp-radius": {
+     "accepted": 1
+    }
+   }
+  },
+  "open": 2,
+  "withoutQa": 7,
+  "seamProbes": 3646,
+  "rules": {
+   "vertical_fallback": 38,
+   "below_open_ground_floor": 0,
+   "deck_below_ground": 1,
+   "crossing_over_or_at_grade": 30
+  }
  }
 }

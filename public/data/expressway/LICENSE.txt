@@ -20,3 +20,9 @@ product of GSI. The files also carry the ground elevation under each station and
 value of a station, the second of a pier): 地理院の標高タイルを平滑化（5×5 中央値と 3×3 の重み付き平均）
 した値を加工して含む — processed (smoothed) GSI elevation-tile values, offered under the same ODbL,
 used by the game to stop girders and piers at the ground.
+Files: <x>-<y>.json are z14 tiles (the chunks, the summaries of their runs, the entrances whose
+street end lies in the tile); meta.json is the index of the tiles. report.json is the build's record
+(the full run summaries, the diagnostics, the closed runs, the solver's counts and a SHA-256 of each
+solved block's chunks) and ledger.json the project's ledger of accepted departures (each case counted
+from these files, with the review's decision and reason): both are derived from the same data, under
+the same licence, for the project's tests and tools; the game reads neither.
