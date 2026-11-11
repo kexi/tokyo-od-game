@@ -252,13 +252,6 @@ type CrossingPlan = {
 /** Why 単路 crossings got no controller (the signal_crossings_skipped log). */
 type CrossingSkips = { outside: number; noCrosswalk: number; nearJunction: number; noRoom: number };
 
-/**
- * Roads with no crosswalk or pavement (the expressway). Why a local predicate: P2
- * (feat/road-predicates) replaces `kind === "highway"` with its `hasRoadside`; at that merge this
- * becomes `!hasRoadside(seg)` in one place.
- */
-const isMotorwayOnly = (seg: Segment): boolean => seg.line.kind === "highway";
-
 /** A lon/lat hash, as the junction offsets use (stable across rebuilds and re-anchoring). */
 const recordHash = (lon: number, lat: number): number =>
   (Math.imul(Math.round(lon * 1e4), 73856093) ^ Math.imul(Math.round(lat * 1e4), 19349663)) >>> 0;
@@ -843,7 +836,8 @@ export class TrafficControl {
       // The crosswalk on each segment nearest the cluster's records (a divided road has two).
       const bySeg = new Map<number, { c: Crossing; d: number }>();
       for (const c of regs.crossings) {
-        if (isMotorwayOnly(c.seg)) continue;
+        // Roads with no crosswalk or pavement (the expressway, its ramps) get no 単路 crossing.
+        if (!hasRoadside(c.seg.line)) continue;
         const d = Math.min(...cluster.map((t) => Math.hypot(t.pos.x - c.pos.x, t.pos.z - c.pos.z)));
         const isCloser = d < CROSSING_MATCH_M && d < (bySeg.get(c.seg.id)?.d ?? Infinity);
         if (!isCloser) continue;
