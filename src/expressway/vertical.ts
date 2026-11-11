@@ -493,11 +493,24 @@ export function solveJoint(runs: RunInput[], couplings: Coupling[]): JointResult
   };
 }
 
+/** A run held at an earlier profile (`pinned`) whose knots no longer fit its layout. */
+export class PinMismatchError extends Error {
+  constructor(run: string, pinned: number | "cubic", knots: number) {
+    super(`run ${run}: pinned profile has ${pinned} knots, its layout ${knots}`);
+    this.name = "PinMismatchError";
+  }
+}
+
 /** A parabola chain's own rows: continuity, the statute's grade and curvature, its ground ends. */
 function addArcRows(qp: QpBuilder, L: Layout): void {
   const { m, h, input } = L;
   const pin = input.pinned;
   const isPinnable = pin !== undefined && !pin.cubic && pin.z.length === m + 1;
+  // A pin that does not fit the layout used to be dropped without a word, the run solved afresh
+  // under runs held where they were. Why not keep that: the pass that puts shed ramps back promises
+  // the solved runs stay put, and a silent re-solve broke it unseen (P2.7-3a). It stops the build.
+  const isMisfit = pin !== undefined && !isPinnable;
+  if (isMisfit) throw new PinMismatchError(input.id, pin.cubic ? "cubic" : pin.z.length, m + 1);
   if (isPinnable) {
     // Its knots as they are and nothing else: the profile was judged already, and its own limits as
     // hard rows (with the QP's margins) could contradict the pin by the last fraction of a percent.

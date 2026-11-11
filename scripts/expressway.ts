@@ -46,6 +46,7 @@ import {
   type CrossObject,
   groundPoints,
   planNetwork,
+  untiedPairs,
   solvePlan,
 } from "../src/expressway/compile.ts";
 import {
@@ -310,6 +311,7 @@ if (part) {
     neededRuns: part.neededRuns.length,
   });
 }
+const untied = untiedPairs(plan);
 log("expressway_planned", {
   chains: plan.chains.size,
   runs: plan.runs.size,
@@ -318,6 +320,8 @@ log("expressway_planned", {
   crossings: plan.crossings.length,
   belowRuns: [...plan.runs.values()].filter((r) => r.below).length,
   belowDeferred: plan.belowDeferred.length,
+  untiedStations: plan.pairs.filter((p) => p.untied).length,
+  untiedStationsNeeded: untied.reduce((n, p) => n + p.stations, 0),
 });
 endStage("plan");
 
@@ -543,6 +547,7 @@ if (reportPath) {
       components: plan.components.size,
       belowRuns: [...plan.runs.values()].filter((r) => r.below).length,
       belowDeferred: plan.belowDeferred.length,
+      untied: { stations: untied.reduce((n, p) => n + p.stations, 0), pairs: untied },
     },
     planned,
     extent: scopeExtent(plan, plan.wanted, inWards),
