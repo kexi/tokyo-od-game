@@ -223,11 +223,12 @@ export function renderCredits(
   <h3>${text("credits.h.signals")}</h3>
   <p>${osm()}
   ${text("credits.signals.extract", {
-    tag: "<code>highway=traffic_signals</code>",
-    bbbike: link("https://download.bbbike.org/osm/bbbike/Tokyo/", t("credits.link.bbbike")),
+    tag: "<code>highway=traffic_signals</code>, <code>crossing=traffic_signals</code> (<code>button_operated</code>, <code>traffic_signals:sound</code>, <code>traffic_signals:direction</code>)",
+    extract: link("https://download.geofabrik.de/asia/japan/kanto.html", t("credits.link.geofabrikKanto")),
   })}
   ${odbl(odblUrl)}
-  ${text("credits.signals.cycle")}</p>
+  ${text("credits.signals.cycle")}
+  ${text("credits.roadlanes.extract", { tags: "<code>lanes</code>・<code>width</code>" })}</p>
 
   <h3>${text("credits.h.guide")}</h3>
   <p>${osm()}

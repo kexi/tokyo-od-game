@@ -23,7 +23,7 @@ const EXIT_SETS: ReadonlyArray<ReadonlyArray<"left" | "through" | "right">> = [
   ["right"],
 ];
 
-/** Lane counts the game assumes a pattern for (regulations.ts lanesPerDirection stays within). */
+/** Lane counts the game assumes a pattern for (regulations.ts resolveLaneUse caps the count at 5). */
 const MAX_ASSUMED_LANES = 6;
 
 /** 専用・優先 lanes on 327の4 / 327の5, after 図 162–164 (the 路線バス等 and 自転車 marks). */

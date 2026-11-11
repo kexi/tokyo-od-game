@@ -1,5 +1,5 @@
 import { movementOf } from "./movement";
-import { MOVEMENTS, type Movement, type Permission } from "./plan";
+import { MOVEMENTS, crossingVerdict, isBooked, type Movement, type Permission } from "./plan";
 
 /** A horizontal point or direction (x east, z south). */
 type Flat = { x: number; z: number };
@@ -18,12 +18,24 @@ export type SignalCrossing = {
   node: Flat;
   /** How far from `node` the car has left the junction (its box plus a margin), metres. */
   exitM: number;
+  /**
+   * Whether the car stood still just short of the line before crossing it: what 赤色の灯火の点滅
+   * asks (一時停止). Optional: false when absent.
+   */
+  hasStopped?: boolean;
 };
 
 /** How a crossing came out. `held` says whether it waited for the exit arm. */
 export type CrossingOutcome =
   | { kind: "held"; crossing: SignalCrossing }
-  | { kind: "violation"; crossing: SignalCrossing; movement: Movement | null; heldMs: number }
+  | {
+      kind: "violation";
+      crossing: SignalCrossing;
+      movement: Movement | null;
+      heldMs: number;
+      /** 信号無視（点滅）: crossed 赤色の灯火の点滅 without the 一時停止 (else 信号無視（赤色等）). */
+      flashing: boolean;
+    }
   | { kind: "permitted" | "unconfirmed"; crossing: SignalCrossing; movement: Movement; heldMs: number }
   | {
       kind: "dropped";
@@ -39,7 +51,8 @@ const OPPOSITE_SIDE_M = 1;
 
 /**
  * 信号無視 judged with arrows (design 5.4). At the stop line:
- * - every movement at `stop` (赤, no arrow): a violation there and then, as before arrows;
+ * - every movement at `stop` (赤, no arrow): a violation there and then, as before arrows; so is
+ *   赤色の灯火の点滅 (`stopFirst`) crossed without the 一時停止 first (信号無視（点滅）, T4);
  * - no movement at `stop` (青, 黄): nothing — 黄 is not booked, as before (the driver may have been
  *   too close to stop safely, which 第2条 allows and the game cannot tell);
  * - some movements allowed and others not (an arrow over 赤): **held**, and judged by the arm the
@@ -62,9 +75,12 @@ export class RedLightJudge {
   /** The car crossed `crossing`'s stop line into the junction at `now` (ms), moving along `travel`. */
   crossed(crossing: SignalCrossing, now: number, travel: Flat = crossing.tIn): CrossingOutcome[] {
     const out = this.settle(travel, now);
-    const allowed = MOVEMENTS.filter((m) => crossing.permissions[m] !== "stop");
+    const verdicts = MOVEMENTS.map((m) => crossingVerdict(crossing.permissions[m], crossing.hasStopped));
+    const allowed = MOVEMENTS.filter((_, i) => !isBooked(verdicts[i]));
     const isRedEveryWay = allowed.length === 0;
-    if (isRedEveryWay) return [...out, { kind: "violation", crossing, movement: null, heldMs: 0 }];
+    // 赤の点滅 every way and no 一時停止: 信号無視（点滅）; any plain 赤 makes it 赤色等.
+    const flashing = verdicts.every((v) => v === "bookedFlashing");
+    if (isRedEveryWay) return [...out, { kind: "violation", crossing, movement: null, heldMs: 0, flashing }];
     const isOpenEveryWay = allowed.length === MOVEMENTS.length;
     if (isOpenEveryWay) return out;
     this.held = { crossing, since: now };
@@ -104,10 +120,11 @@ export class RedLightJudge {
     this.held = null;
     const c = held.crossing;
     const movement = movementOf(c.tIn, travel);
-    const permission = c.permissions[movement];
+    const verdict = crossingVerdict(c.permissions[movement], c.hasStopped);
     const heldMs = now - held.since;
-    if (permission === "stop") return [{ kind: "violation", crossing: c, movement, heldMs }];
-    const kind = permission === "unconfirmed" ? "unconfirmed" : "permitted";
+    if (isBooked(verdict))
+      return [{ kind: "violation", crossing: c, movement, heldMs, flashing: verdict === "bookedFlashing" }];
+    const kind = verdict === "unconfirmed" ? "unconfirmed" : "permitted";
     return [{ kind, crossing: c, movement, heldMs }];
   }
 

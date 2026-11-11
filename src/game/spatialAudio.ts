@@ -51,8 +51,17 @@ export type SirenKind = "ambulance" | "police" | "rotor";
 export type VoiceStyle = "voice" | "loudspeaker";
 /** One car for the traffic hum: its scene object (identity and pose), speed (m/s), model kind. */
 export type CarVisitor = (object: Object3D, speed: number, kind: string | null) => void;
-/** A 歩行者用灯器 whose accessible signal is sounding: the speaker, walking direction, which end. */
-export type WalkSpeaker = { readonly at: Vector3; readonly across: Vector3; readonly side: 1 | -1 };
+/**
+ * A 歩行者用灯器 whose accessible signal is sounding: the speaker, walking direction, which end, and
+ * the call when the signal fixes it (歩車分離: every crosswalk walks at once, so one bird for all;
+ * else null and the walking direction picks it, birdFor).
+ */
+export type WalkSpeaker = {
+  readonly at: Vector3;
+  readonly across: Vector3;
+  readonly side: 1 | -1;
+  readonly bird?: Bird | null;
+};
 
 // Positional sources at once. Each HRTF panner convolves on the audio thread, and past a dozen
 // the extra ones would be faint cars nobody picks out.
@@ -881,7 +890,7 @@ export class SpatialAudio {
 
   private bindCaller(k: Caller, s: WalkSpeaker): void {
     k.key = s;
-    k.bird = birdFor(s.across);
+    k.bird = s.bird ?? birdFor(s.across);
     k.side = s.side;
     k.nextAt = 0;
     k.emitter.place(PLACE.crosswalk, LEVEL.crosswalk);

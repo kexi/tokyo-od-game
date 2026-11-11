@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import type { RoadGraph, Segment } from "../world/roads";
 import type { Route } from "./navigation";
 import { TURN_ARROWS } from "./navGuide";
+import { isExpressway, mapRank } from "../world/roadClass";
 
 /**
  * カーナビ on the cockpit's centre display: a heading-up map of the streets around the car drawn
@@ -27,8 +28,8 @@ type Palette = {
   road: string;
   nationalCasing: string;
   national: string;
-  highwayCasing: string;
-  highway: string;
+  expresswayCasing: string;
+  expressway: string;
   panel: string;
   text: string;
 };
@@ -40,8 +41,8 @@ const DAY: Palette = {
   road: "#ffffff",
   nationalCasing: "#d6a83a",
   national: "#ffe28a",
-  highwayCasing: "#4f9a58",
-  highway: "#8fd39a",
+  expresswayCasing: "#4f9a58",
+  expressway: "#8fd39a",
   panel: "rgba(18,24,34,0.88)",
   text: "#ffffff",
 };
@@ -53,8 +54,8 @@ const NIGHT: Palette = {
   road: "#4a5568",
   nationalCasing: "#3e3216",
   national: "#8a7232",
-  highwayCasing: "#163a22",
-  highway: "#2f6b42",
+  expresswayCasing: "#163a22",
+  expressway: "#2f6b42",
   panel: "rgba(6,10,16,0.9)",
   text: "#e8edf5",
 };
@@ -136,16 +137,14 @@ export class CarNavi {
       if (!isFar) near.push(seg);
     }
     const style = (seg: Segment): [string, string] => {
-      if (seg.line.kind === "highway") return [pal.highwayCasing, pal.highway];
+      if (isExpressway(seg.line)) return [pal.expresswayCasing, pal.expressway];
       if (seg.line.kind === "national") return [pal.nationalCasing, pal.national];
       return [pal.casing, pal.road];
     };
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     // Casings first so crossing streets read as joined, minor roads under major ones.
-    const order = (seg: Segment) =>
-      ({ narrow: 0, local: 1, prefectural: 2, national: 3, highway: 4 })[seg.line.kind];
-    near.sort((a, b) => order(a) - order(b));
+    near.sort((a, b) => mapRank(a.line) - mapRank(b.line));
     for (const pass of [0, 1] as const) {
       for (const seg of near) {
         const widthPx = Math.max(2, seg.line.width / mPerPx);

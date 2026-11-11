@@ -4,8 +4,10 @@ import { OFFICER_KG, RIDER_KG } from "../physics/masses";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
 import { createVehicle, setBeacons, type VehicleInstance } from "./vehicleModels";
 import type { RoadGraph, Segment } from "../world/roads";
+import { laneCentreOffset } from "../world/laneChange";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
 import type { ViolationRecord } from "./traffic";
+import { allowsRoadsideStop } from "../world/roadClass";
 
 /**
  * 巡回中のパトカー. Violations only count once the police see them (現認): a patrol that sees one
@@ -121,7 +123,8 @@ export class PolicePatrol {
   /** Put the patrol on a street 250–450 m from `near`, cruising. */
   spawn(graph: RoadGraph, world: DriveWorld, near: Vector3): boolean {
     const streets = graph.segments.filter((seg) => {
-      if (seg.line.kind === "highway" || seg.line.width < 5.5 || seg.length < 40 || seg.closed) return false;
+      if (!allowsRoadsideStop(seg.line) || seg.line.width < 5.5 || seg.length < 40 || seg.closed)
+        return false;
       const d = graph.sample(seg, seg.length / 2).pos.distanceTo(near);
       return d > 250 && d < 450;
     });
@@ -130,7 +133,8 @@ export class PolicePatrol {
     const dir: 1 | -1 = seg.oneway !== 0 ? (seg.oneway as 1 | -1) : Math.random() < 0.5 ? 1 : -1;
     const { pos, dir: d } = graph.sample(seg, seg.length / 2);
     const travel = d.multiplyScalar(dir);
-    const at = pos.add(new Vector3(travel.z, 0, -travel.x).multiplyScalar(seg.line.width * 0.25));
+    // The left lane's centre (laneChange.ts), not a quarter of the GSI 幅員 (which may hold the pavement).
+    const at = pos.add(new Vector3(travel.z, 0, -travel.x).multiplyScalar(laneCentreOffset(seg, 0)));
     at.y = (this.groundAt(at.x, at.z) ?? at.y) + RIDE_HEIGHT;
     this.car.setCoasting(true);
     this.car.teleport(at, Math.atan2(travel.x, travel.z));
@@ -302,7 +306,7 @@ export class PolicePatrol {
     const graph = world.graph;
     const here = this.car.position();
     const streets = graph.segments.filter((seg) => {
-      if (seg.line.kind === "highway" || seg.line.width < 5.5 || seg.closed) return false;
+      if (!allowsRoadsideStop(seg.line) || seg.line.width < 5.5 || seg.closed) return false;
       const p = graph.sample(seg, seg.length / 2).pos;
       const d = p.distanceTo(here);
       return d > 300 && d < 900 && p.distanceTo(near) < 900;

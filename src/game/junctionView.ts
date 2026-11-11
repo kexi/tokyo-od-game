@@ -2,6 +2,7 @@ import { Vector3 } from "three";
 import type { RoadGraph } from "../world/roads";
 import { fitCanvas } from "./navMap";
 import type { Maneuver, Route } from "./navigation";
+import { isDrivable } from "../world/roadClass";
 
 /**
  * 交差点拡大図 like Japanese car navigation: the real streets round the next turn drawn from the
@@ -52,7 +53,7 @@ export function drawJunction(
 
   // Streets near the junction, widest first so narrow ones draw on top of them at the corners.
   const near = graph.segments
-    .filter((seg) => seg.line.kind !== "highway" && seg.pts.some((p) => p.distanceTo(centre) < VIEW_M * 1.5))
+    .filter((seg) => isDrivable(seg.line, "map") && seg.pts.some((p) => p.distanceTo(centre) < VIEW_M * 1.5))
     .toSorted((a, b) => b.line.width - a.line.width);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";

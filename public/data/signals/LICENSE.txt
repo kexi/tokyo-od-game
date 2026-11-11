@@ -3,8 +3,11 @@ Traffic signal positions in this folder are extracted from OpenStreetMap.
 This database is made available under the Open Database License (ODbL) 1.0:
 https://opendatacommons.org/licenses/odbl/1-0/
 Source extract: https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf (Geofabrik). Filters within the 23 wards:
-- signals/: node["highway"="traffic_signals"]
-- junctions/: the same nodes' "name" and "name:en" (intersection names)
+- signals/: node["highway"="traffic_signals"], and node["crossing"="traffic_signals"] /
+  node["crossing:signals"="yes"] on a car road that are more than 25 m from a road junction or
+  carry "traffic_signals:sound"; with flags from "crossing", "button_operated",
+  "traffic_signals:sound" and "traffic_signals:direction" (src/signals/osmTags.ts)
+- junctions/: the highway=traffic_signals nodes' "name" and "name:en" (intersection names)
 - footbridges/: way[highway~"footway|path|pedestrian|cycleway"][bridge!="no"] (layer >= 1) and
   the way["highway"="steps"] that share a node with them
 - turnlanes/: way[highway~"trunk|primary|secondary|tertiary|unclassified|residential"] with

@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import type { Crossing } from "./regulations";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { allowsPedestrians } from "./roadClass";
 
 /**
  * Where pedestrians walk: along the streets of the road graph on the pavement beside the
@@ -25,23 +26,46 @@ type Leg = {
   /** Index of the far kerb: before heading there, wait until crossing is allowed. */
   crossTo: number;
   crossSeg: Segment | null;
+  /** 歩車分離's 斜め横断: the crossing goes corner to opposite corner on the diagonal's walk light. */
+  diagonal?: boolean;
+  /** Index of the 押ボタン箱 the walker goes to first and presses (-1: none on this crossing). */
+  pressAt: number;
   next: Omit<Walk, "leg">;
 };
 
 type Arm = { seg: Segment; leaves: boolean; dir: Vector3 };
-type MouthCrossing = { points: Vector3[]; seg: Segment };
+type MouthCrossing = { points: Vector3[]; seg: Segment | null; diagonal?: boolean };
 
 export type Step = { target: Vector3; waiting: boolean; face: Vector3 | null; crossing: boolean };
 
 /** Signal lookup: null where no signal governs the spot (see TrafficControl.mayCross). */
 export type CrossingSignal = (seg: Segment, near: Vector3) => boolean | null;
+/**
+ * The 押ボタン of push-button crossings (TrafficControl.buttonStand / pressButton): where a walker
+ * crossing `seg` at `near` from `kerb` stands to press it (null: no button), and the press.
+ */
+export type CrossingButton = {
+  stand(seg: Segment, near: Vector3, kerb: Vector3): Vector3 | null;
+  press(seg: Segment, near: Vector3): void;
+};
+const NO_BUTTONS: CrossingButton = { stand: () => null, press: () => undefined };
+/**
+ * 歩車分離 (TrafficControl.mayCrossDiagonal): whether a walker may start along the diagonal of the
+ * scramble junction near `near` now; null where no scramble signal governs.
+ */
+export type DiagonalSignal = (near: Vector3, needS?: number) => boolean | null;
+const NO_DIAGONAL: DiagonalSignal = () => null;
 export type Car = { pos: Vector3; speed: number; forward: Vector3 };
 
 const NARROW = 5.5;
+/** A walker's pace when the caller gives none (m/s): the usual figure for planning crossings. */
+const WALK_MPS = 1.3;
 const hash = (a: number, b: number) => (((a * 73856093) ^ (b * 19349663)) >>> 0) / 4294967296;
 
 export class SidewalkNetwork {
   private readonly lateralCache = new Map<string, number>();
+  /** The pace of the walker being moved (advance's caller says it): how long a diagonal takes. */
+  private speedMps = WALK_MPS;
   private serial = 0;
 
   constructor(
@@ -50,6 +74,8 @@ export class SidewalkNetwork {
     private readonly mayCross: CrossingSignal,
     private readonly isOpen: (x: number, z: number) => boolean,
     private readonly isPavement: (x: number, z: number) => boolean = () => false,
+    private readonly buttons: CrossingButton = NO_BUTTONS,
+    private readonly diagonal: DiagonalSignal = NO_DIAGONAL,
   ) {}
 
   forgetLaterals(): void {
@@ -84,7 +110,8 @@ export class SidewalkNetwork {
   }
 
   /** Moves a walker on by `dist` metres and returns where they should be. */
-  advance(w: Walk, dist: number, id: number, car: Car, current: Vector3): Step {
+  advance(w: Walk, dist: number, id: number, car: Car, current: Vector3, speedMps = WALK_MPS): Step {
+    this.speedMps = speedMps;
     if (w.leg) return this.followLeg(w, current, car);
     const from = w.s;
     w.s += w.dir * dist;
@@ -145,12 +172,17 @@ export class SidewalkNetwork {
       const a = this.point(c.seg, c.s, w.side, half + 0.4);
       const b = this.point(c.seg, c.s, side, half + 0.4);
       const next = { seg: w.seg, dir: w.dir, side, s: c.s, lateral: this.lateralFor(w.seg, side, id) };
+      // At a push-button crossing, to the box on this end's pole first, then to the kerb.
+      const stand = this.buttons.stand(c.seg, c.pos, a);
+      const before = stand ? [stand] : [];
       w.leg = {
-        points: [a, b, this.point(w.seg, c.s, side, next.lateral)],
+        points: [...before, a, b, this.point(w.seg, c.s, side, next.lateral)],
         i: 0,
-        crossTo: 1,
+        crossTo: before.length + 1,
         crossSeg: c.seg,
+        diagonal: false,
         next,
+        pressAt: stand ? 0 : -1,
       };
       return true;
     }
@@ -180,9 +212,19 @@ export class SidewalkNetwork {
       this.onto(w, n, other, id, null);
       return;
     }
+    // 歩車分離: some go corner to opposite corner on the diagonal (斜め横断) — across N and the arm
+    // after it in one walk — and walk on along that arm's far side.
+    const after = this.neighbour(arms, n, side);
+    const isScramble = arms.length >= 4 && after !== a && this.diagonal(this.nodePos(node)) !== null;
+    const isDiagonal = isScramble && roll < 0.6;
+    if (isDiagonal) {
+      const from = this.mouth(n, other).points[0];
+      const to = this.mouth(after, other).points[1];
+      this.onto(w, after, side, id, { points: [from, to], seg: null, diagonal: true });
+      return;
+    }
     if (roll < 0.8) {
       // Cross N, then walk on along its far side or round onto the arm after it.
-      const after = this.neighbour(arms, n, side);
       const crossing = this.mouth(n, other);
       if (hash(id, this.serial * 5) < 0.5 || after === a) this.onto(w, n, side, id, crossing);
       else this.onto(w, after, other, id, crossing);
@@ -208,6 +250,14 @@ export class SidewalkNetwork {
       if (start !== null && (hits < 2 || l - start >= 3)) return start + Math.min(1.2, (l - start) / 2);
     }
     return null;
+  }
+
+  /** Where a graph node is (the end of one of its segments). */
+  private nodePos(node: number): Vector3 {
+    const id = this.graph.nodes.get(node)?.[0];
+    if (id === undefined) return new Vector3();
+    const seg = this.graph.segments[id];
+    return (seg.from === node ? seg.pts[0] : seg.pts[seg.pts.length - 1]).clone();
   }
 
   /** Where a street's pavement ends at a junction: the kerb line of the crossing roads. */
@@ -285,7 +335,15 @@ export class SidewalkNetwork {
     const next = { seg, dir: (arm.leaves ? 1 : -1) as 1 | -1, side: segSide, s, lateral };
     const start = this.point(seg, s, segSide, lateral);
     if (crossing) {
-      w.leg = { points: [...crossing.points, start], i: 0, crossTo: 1, crossSeg: crossing.seg, next };
+      w.leg = {
+        points: [...crossing.points, start],
+        i: 0,
+        crossTo: 1,
+        crossSeg: crossing.seg,
+        diagonal: crossing.diagonal ?? false,
+        next,
+        pressAt: -1,
+      };
       return;
     }
     // Round the corner on the pavement: via a point pushed out from the junction, not a chord
@@ -299,17 +357,37 @@ export class SidewalkNetwork {
     if (out.lengthSq() > 0.05) {
       points.unshift(centre.clone().add(out.normalize().multiplyScalar(Math.max(a.length(), b.length()))));
     }
-    w.leg = { points, i: 0, crossTo: -1, crossSeg: null, next };
+    w.leg = { points, i: 0, crossTo: -1, crossSeg: null, diagonal: false, next, pressAt: -1 };
   }
 
   private followLeg(w: Walk, current: Vector3, car: Car): Step {
     const leg = w.leg as Leg;
     const target = leg.points[leg.i];
     const isThere = Math.hypot(target.x - current.x, target.z - current.z) < 0.35;
+    const crossMid = () => {
+      const kerb = leg.points[leg.crossTo - 1];
+      return kerb.clone().add(leg.points[leg.crossTo]).multiplyScalar(0.5);
+    };
+    const hasButton = leg.pressAt >= 0 && leg.crossSeg !== null;
+    if (isThere && hasButton && leg.i === leg.pressAt && leg.crossSeg)
+      this.buttons.press(leg.crossSeg, crossMid());
+    const isAtDiagonalKerb = isThere && leg.diagonal && leg.i + 1 === leg.crossTo;
+    const diagonalM = leg.crossTo > 0 ? leg.points[leg.crossTo - 1].distanceTo(leg.points[leg.crossTo]) : 0;
+    const needS = diagonalM / Math.max(0.3, this.speedMps);
+    if (isAtDiagonalKerb && !this.mayGoDiagonal(crossMid(), car, needS)) {
+      return { target, waiting: true, face: leg.points[leg.crossTo], crossing: false };
+    }
     if (isThere && leg.i + 1 === leg.crossTo && leg.crossSeg) {
       const far = leg.points[leg.crossTo];
-      const mid = target.clone().add(far).multiplyScalar(0.5);
-      if (!this.mayGo(leg.crossSeg, mid, car)) return { target, waiting: true, face: far, crossing: false };
+      const mid = crossMid();
+      if (!this.mayGo(leg.crossSeg, mid, car)) {
+        // Pressed while waiting, whatever the leg: a press made while the last walk was still to
+        // come was already served, and a walker who came without a box on their path (a box on
+        // the other side of the pole, a leg begun before the network was rebuilt) would otherwise
+        // wait at 赤 for good. A press at a crossing that is not push-button does nothing.
+        this.buttons.press(leg.crossSeg, mid);
+        return { target, waiting: true, face: far, crossing: false };
+      }
     }
     if (isThere) {
       leg.i++;
@@ -327,10 +405,22 @@ export class SidewalkNetwork {
     return { target: leg.points[leg.i], waiting: false, face: null, crossing: leg.i === leg.crossTo };
   }
 
+  /** The diagonal's walk light at a scramble junction; dark or gone, as at an unsignalled crossing. */
+  private mayGoDiagonal(mid: Vector3, car: Car, needS: number): boolean {
+    const signal = this.diagonal(mid, needS);
+    if (signal !== null) return signal;
+    return this.isCarClear(mid, car);
+  }
+
   /** Green for walkers at a signal; elsewhere, only when the player's car is not bearing down. */
   private mayGo(seg: Segment, mid: Vector3, car: Car): boolean {
     const signal = this.mayCross(seg, mid);
     if (signal !== null) return signal;
+    return this.isCarClear(mid, car);
+  }
+
+  /** Whether the player's car is not bearing down on `mid`. */
+  private isCarClear(mid: Vector3, car: Car): boolean {
     const to = mid.clone().sub(car.pos).setY(0);
     const isComing =
       car.speed > 2 && to.length() < 12 + car.speed * 2.5 && to.normalize().dot(car.forward) > 0.5;
@@ -338,4 +428,4 @@ export class SidewalkNetwork {
   }
 }
 
-const isWalkable = (seg: Segment) => seg.line.kind !== "highway";
+const isWalkable = (seg: Segment) => allowsPedestrians(seg.line);

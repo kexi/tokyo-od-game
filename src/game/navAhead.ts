@@ -3,6 +3,7 @@ import type { RouteInfo } from "../world/guidePlan";
 import type { RoadGraph, Segment } from "../world/roads";
 import type { Route, TravelMode } from "./navigation";
 import { junctionName } from "./navPhrases";
+import { isDrivable } from "../world/roadClass";
 
 /**
  * The way ahead of the player as stretches of streets, for what the nav panel tells about it
@@ -97,7 +98,7 @@ export function roadAhead(
     let best: { seg: Segment; dir: 1 | -1; score: number } | null = null;
     for (const id of graph.nodes.get(end) ?? []) {
       const next = graph.segments[id];
-      if (next === seg || next.line.kind === "highway") continue;
+      if (next === seg || !isDrivable(next.line, "navigation")) continue;
       const nextDir: 1 | -1 = next.from === end ? 1 : -1;
       const isAgainstOneway = opts.mode === "car" && next.oneway !== 0 && next.oneway !== nextDir;
       if (isAgainstOneway) continue;

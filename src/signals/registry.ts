@@ -1,4 +1,14 @@
-import { HANGER_M, LAMP_COLOURS, LENS_Z_M, SIGNAL_HEADS, headHang, housingLayout, lampLayout } from "./heads";
+import {
+  HANGER_M,
+  LAMP_COLOURS,
+  LENS_Z_M,
+  PUSH_BUTTON_BOX,
+  SIGNAL_HEADS,
+  WAIT_LAMP_COLOUR,
+  headHang,
+  housingLayout,
+  lampLayout,
+} from "./heads";
 import { SIGNAL_MOUNTS } from "./mounts";
 
 /** Path of the registry the Blender script reads (repo-relative). */
@@ -7,7 +17,8 @@ export const SIGNAL_REGISTRY_PATH = "assets/signals/heads.json";
 /**
  * What scripts/blender/signals.py needs to model every head: each definition with its lamp and
  * housing layout already worked out, so the model's lenses sit where the game lights them, plus
- * the mounts, lit colours and lens offset its review renders share with the game.
+ * the mounts, lit colours and lens offset its review renders share with the game, and the
+ * 押ボタン箱 of the 単路 crossings.
  * Why JSON and not Python constants: Blender's Python cannot import TypeScript, and the lamp
  * spacing used to be written twice (LAMP_GAP in signals.py and in the game), kept equal by hand.
  */
@@ -25,5 +36,6 @@ export function signalRegistry() {
       housings: housingLayout(def),
       hangM: headHang(def),
     })),
+    buttons: [{ ...PUSH_BUTTON_BOX, waitColour: WAIT_LAMP_COLOUR }],
   };
 }
