@@ -3,6 +3,8 @@ import type { LocalFrame } from "../geo/frame";
 import { LineGrid } from "./regulations";
 import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
+import type { ArmSpec, BoardContent, JunctionContent, Shield, SignName } from "../signs/board/content";
+import { letterHeight } from "../signs/board/letters";
 import { hasRoadside, isDrivable } from "./roadClass";
 
 /**
@@ -17,6 +19,9 @@ import { hasRoadside, isDrivable } from "./roadClass";
  * their 国道番号. The places come from the 表示地名 (重要地・主要地・一般地) by the road's class:
  * straight on, the nearest 重要地 and 主要地 of a 主要幹線道路 (left the farther or more important,
  * right the nearer); to the side, one name by the crossing road's class.
+ *
+ * The board's content is a BoardContent (src/signs/board/content.ts, the layouter's first step).
+ * 105・106 are planned after these by guideRows.ts, from the same junctions.
  */
 
 /** 0 一般国道 (主要幹線道路), 1 主要地方道 (幹線道路), 2 一般都道府県道 (補助幹線道路), 3 other streets. */
@@ -30,24 +35,18 @@ export type RouteTile = { roads: RouteRoad[]; dests: RouteDest[]; names: RouteNa
 /** public/data/guide-places.json rows: [name, English, rank, lon, lat, "N1,P301"]. */
 export type PlaceRow = [string, string, number, number, number, string];
 
-/** rank 1 重要地, 2 主要地, 3 一般地 (a named junction on the road), 4 a ward (一般地 of the last resort). */
+/**
+ * rank 0 基準地 (東京, at 日本橋: only the 106 name it), 1 重要地, 2 主要地, 3 一般地 (a named junction on the
+ * road), 4 a ward (一般地 of the last resort).
+ */
 export type GuidePlace = { ja: string; en: string; rank: number; pos: Vector3; routes: Set<string> };
 export type GuideName = { ja: string; en: string; pos: Vector3 };
 export type GuideDest = { pos: Vector3; heading: Vector3; names: string[]; en: string[]; ref: string };
 
-export type SignName = { ja: string; en: string; expressway: boolean };
-export type Shield = { kind: "national" | "prefectural"; number: string };
-/** One arm of the arrow diagram: angle in degrees from straight on, + to the left. */
-export type ArmSpec = { angle: number; names: SignName[]; shields: Shield[]; street: string | null };
-export type BoardKind = "108-A" | "108の2-A" | "108の3" | "108の4";
-export type BoardSpec = {
-  kind: BoardKind;
-  arms: ArmSpec[];
-  /** 予告: metres to the junction, rounded as printed ("300m"); null at the junction. */
-  distance: number | null;
-  /** Height of the Japanese letters (cm). */
-  letter: number;
-};
+export type { ArmSpec, Shield, SignName };
+/** A 108 board's content (the junction-diagram template). */
+export type BoardSpec = JunctionContent;
+export type BoardKind = BoardSpec["kind"];
 export type JunctionShape =
   | "straight"
   | "cross"
@@ -59,14 +58,15 @@ export type JunctionShape =
   | "right-bend"
   | "multi";
 
-export type GuidePlan = {
-  board: BoardSpec;
+/** A placed board: the 108 series (planGuideSteps) and, with B = BoardContent, 105・106 too. */
+export type GuidePlan<B extends BoardContent = BoardSpec> = {
+  board: B;
   shape: JunctionShape;
   /** Foot of the pole (y = 0), on the kerb left of the traffic it faces. */
   pos: Vector3;
   travel: Vector3;
   mount: "overhead" | "roadside";
-  /** Metres along the road from the sign to the junction centre. */
+  /** Metres along the road from the sign to the junction centre (negative: past it, 106). */
   before: number;
   centre: Vector3;
   seg: Segment;
@@ -90,8 +90,8 @@ const MIN_PLACE = 300; // a place this close is "here", not a direction
 // a station (rank 3, 一般地) only within 3 km.
 const MAX_PLACE = 12000;
 const MAX_STATION = 3000;
-const MIN_SPACING = 30; // two guide signs for the same traffic stand at least this far apart
-const KERB_GAP = GUIDE_POLE_KERB.value; // pole axis behind the kerb line (src/signs/mountAssumptions.ts)
+export const MIN_SPACING = 30; // two guide signs for the same traffic stand at least this far apart
+export const KERB_GAP = GUIDE_POLE_KERB.value; // pole axis behind the kerb line (src/signs/mountAssumptions.ts)
 
 // ---------------------------------------------------------------- data on the graph
 
@@ -272,7 +272,7 @@ export function classifyShape(angles: number[]): JunctionShape {
   return "straight";
 }
 
-const nodePos = (graph: RoadGraph, node: number): Vector3 | null => {
+export const nodePos = (graph: RoadGraph, node: number): Vector3 | null => {
   const id = graph.nodes.get(node)?.[0];
   if (id === undefined) return null;
   const seg = graph.segments[id];
@@ -347,7 +347,7 @@ export function traceAt(trace: Trace, along: number): Vector3 {
 }
 
 /** Distance from p to the trace and how far along it the nearest point is. */
-function onTrace(trace: Trace, p: Vector3): { dist: number; along: number } {
+export function onTrace(trace: Trace, p: Vector3): { dist: number; along: number } {
   let best = { dist: Infinity, along: 0 };
   let acc = 0;
   for (let i = 1; i < trace.pts.length; i++) {
@@ -620,17 +620,8 @@ export function lanesFor(seg: Segment): number {
   return seg.lanes;
 }
 
-/**
- * 漢字 height (cm) by design speed and lanes: 国土交通省「案内標識の文字の大きさ」 (別表第二 備考一(五)2
- * with its 1.5× enlargement): 片側2車線以上 15 / 30 / 30 cm for ≤30, 40–60, ≥70 km/h, 片側1車線 10 / 20 / 30.
- * ローマ字 is half (the art module).
- */
-export function letterHeight(designSpeed: number, lanes: number): number {
-  const isWide = lanes >= 2;
-  if (designSpeed <= 30) return isWide ? 15 : 10;
-  if (designSpeed < 70) return isWide ? 30 : 20;
-  return 30;
-}
+/** 漢字 height (cm) by design speed and lanes: src/signs/board/letters.ts (別表第二 備考一(五)2). */
+export { letterHeight };
 
 /** 予告 distance as printed: to the nearest 50 m, at least 100 m. */
 export function printedDistance(metres: number): number {
@@ -660,10 +651,10 @@ export function refShields(ref: string): Shield[] {
 }
 
 /** A 通称名 the 108の3 / 108の4 box can show (国道 show their number instead, 設置基準 3-2-1). */
-const streetOf = (route: RouteInfo | null): string | null =>
+export const streetOf = (route: RouteInfo | null): string | null =>
   route && route.cls > 0 && /(通り|街道|大通|新道)$/.test(route.name) ? route.name : null;
 
-function signName(ja: string, en: string, places: GuidePlace[], names: GuideName[]): SignName {
+export function signName(ja: string, en: string, places: GuidePlace[], names: GuideName[]): SignName {
   const known = en || places.find((p) => p.ja === ja)?.en || names.find((n) => n.ja === ja)?.en || "";
   return { ja, en: signEnglish(ja, known), expressway: isExpresswayName(ja) };
 }
@@ -801,14 +792,43 @@ export function planGuideSigns(input: PlanInput): GuidePlan[] {
   return result.value;
 }
 
-export function* planGuideSteps(input: PlanInput): Generator<void, GuidePlan[]> {
-  const { graph, routes } = input;
+/** Where the graph's junctions are (nodes of three roads or more): signs keep 12 m from them. */
+export function junctionNodesOf(graph: RoadGraph): Vector3[] {
   const junctionNodes: Vector3[] = [];
   for (const [node, ids] of graph.nodes) {
     if (ids.length < 3) continue;
     const p = nodePos(graph, node);
     if (p) junctionNodes.push(p);
   }
+  return junctionNodes;
+}
+
+/**
+ * 片持式 over the road where the approach has two lanes or more each way or is 9 m wide or more,
+ * else 路側式 (the 108 series since 2026-10-05; 105・106 follow the same rule).
+ */
+export function mountFor(seg: Segment): GuidePlan["mount"] {
+  const isWide = lanesFor(seg) >= 2 || seg.line.width >= 9;
+  return isWide ? "overhead" : "roadside";
+}
+
+/** The junction's centre: the mean of its nodes (null when none is on the graph). */
+export function junctionCentre(graph: RoadGraph, nodes: number[]): Vector3 | null {
+  const at = nodes.map((n) => nodePos(graph, n)).filter((p): p is Vector3 => p !== null);
+  if (at.length === 0) return null;
+  return at.reduce((a, p) => a.add(p), new Vector3()).multiplyScalar(1 / at.length);
+}
+
+/**
+ * Whether the arms make a guide junction: a numbered or named road crosses here (local side
+ * streets get no 108).
+ */
+export const isGuideJunction = (arms: Arm[]) =>
+  arms.some((a) => Math.abs(a.angle) >= 30 && (a.cls <= 2 || streetOf(a.route) !== null));
+
+export function* planGuideSteps(input: PlanInput): Generator<void, GuidePlan[]> {
+  const { graph, routes } = input;
+  const junctionNodes = junctionNodesOf(graph);
   const signalled = new Set(input.approaches.flatMap((a) => a.nodes));
   const plans: GuidePlan[] = [];
   const avoid = [...input.avoid];
@@ -822,18 +842,14 @@ export function* planGuideSteps(input: PlanInput): Generator<void, GuidePlan[]> 
     const approachCls = roadClass(ap.seg, routes);
     const isArterial = approachCls <= 2 && ap.seg.line.width >= 7;
     if (!isArterial) continue;
-    const nodes = ap.nodes.map((n) => nodePos(graph, n)).filter((p): p is Vector3 => p !== null);
-    if (nodes.length === 0) continue;
-    const centre = nodes.reduce((a, p) => a.add(p), new Vector3()).multiplyScalar(1 / nodes.length);
+    const centre = junctionCentre(graph, ap.nodes);
+    if (!centre) continue;
     const arms = junctionArms(graph, ap, routes, centre);
-    const turning = arms.filter((a) => Math.abs(a.angle) >= 30);
-    // A guide junction: a numbered or named road crosses here (local side streets get none).
-    const isGuideJunction = turning.some((a) => a.cls <= 2 || streetOf(a.route) !== null);
-    if (!isGuideJunction) continue;
+    if (!isGuideJunction(arms)) continue;
     const lanes = lanesFor(ap.seg);
     const design = Math.max(40, speedLimit(ap.seg));
     const letter = letterHeight(design, lanes);
-    const mount: GuidePlan["mount"] = lanes >= 2 || ap.seg.line.width >= 9 ? "overhead" : "roadside";
+    const mount = mountFor(ap.seg);
     const shape = classifyShape(arms.map((a) => a.angle));
     const stop = graph.sample(ap.seg, ap.dir === 1 ? ap.at : ap.seg.length - ap.at).pos;
     const stopToCentre = Math.hypot(stop.x - centre.x, stop.z - centre.z);

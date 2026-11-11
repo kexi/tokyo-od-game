@@ -59,6 +59,14 @@ export const TargetSchema = z.union([
     }),
   }),
   z.strictObject({
+    guide: z.strictObject({
+      /** 別表第一 number or its prefix (108の2-A, 106-A, 105); none: any 案内標識. */
+      kind: z.string().min(1).optional(),
+      near: latLon.optional(),
+      index: z.number().int().nonnegative().default(0),
+    }),
+  }),
+  z.strictObject({
     /** A chunk id of public/data/expressway (`<run>:<k>`). */
     expressway: z.string().min(1),
     /** Where on the chunk, 0 (first station) – 1 (last). */
