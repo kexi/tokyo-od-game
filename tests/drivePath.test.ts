@@ -28,6 +28,9 @@ const line = (pts: Array<[number, number]>, width = 8, oneway: RoadLine["oneway"
   kind: "local",
 });
 const clock = gameClock(2026, 10, 1, 600);
+// The left lane's centre on the 8 m two-way test street: a 7.5 m carriageway (one 3.25 m lane a
+// direction inside 0.5 m shoulders, 構造令 第5条・第8条), so 3.25 / 2 + 0 from the centre line.
+const LEFT_LANE = (7.5 / 2 - 0.5) / 2;
 const NORTH = new Vector3(0, 0, -1);
 const EAST = new Vector3(1, 0, 0);
 const WEST = new Vector3(-1, 0, 0);
@@ -234,10 +237,13 @@ describe("the path of a route through a junction", () => {
       CENTRE_HUG,
       1,
     );
-    expect(leftOfLine(route.points[route.cum.findIndex((c) => c >= 20)], at(0, 0), NORTH)).toBeCloseTo(2, 1);
-    // After the turn: the left lane of the far side, 2 m north of the east arm's centreline.
+    expect(leftOfLine(route.points[route.cum.findIndex((c) => c >= 20)], at(0, 0), NORTH)).toBeCloseTo(
+      LEFT_LANE,
+      1,
+    );
+    // After the turn: the left lane of the far side, north of the east arm's centreline.
     expect(leftOfLine(route.points[route.cum.findIndex((c) => c >= 140)], at(0, 100), EAST)).toBeCloseTo(
-      2,
+      LEFT_LANE,
       1,
     );
     expect(route.corners.map((c) => c.kind)).toEqual(["right"]);
@@ -247,11 +253,12 @@ describe("the path of a route through a junction", () => {
     const route = plan(new RoadGraph(cross(), frame), [0, 10], NORTH, [-80, 100]);
     const o = at(0, 100);
     for (const p of route.points) {
-      // Left of both centre lines all the way: no corner cut across the oncoming lanes.
+      // Left of both centre lines all the way: no corner cut across the oncoming lanes (the body's
+      // half width is 0.85 m).
       const isNear = p.distanceTo(o) < 30;
       if (!isNear) continue;
-      expect(leftOfLine(p, o, NORTH)).toBeGreaterThan(1.9);
-      expect(leftOfLine(p, o, WEST)).toBeGreaterThan(1.9);
+      expect(leftOfLine(p, o, NORTH)).toBeGreaterThan(LEFT_LANE - 0.1);
+      expect(leftOfLine(p, o, WEST)).toBeGreaterThan(LEFT_LANE - 0.1);
     }
     const [corner] = route.corners;
     expect(corner.kind).toBe("left");
@@ -296,7 +303,7 @@ describe("the path of a route through a junction", () => {
     expect(leftOfLine(at(0, 100), near.p, near.dir)).toBeGreaterThan(0);
     const exit = dirOf(60);
     const after = route.points[route.cum.findIndex((c) => c >= 140)];
-    expect(leftOfLine(after, at(0, 100), exit)).toBeCloseTo(2, 1);
+    expect(leftOfLine(after, at(0, 100), exit)).toBeCloseTo(LEFT_LANE, 1);
   });
 
   it("keeps to the centre of a narrow street without a centre line, and turns wide enough to drive", () => {

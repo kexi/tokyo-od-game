@@ -108,8 +108,9 @@ import {
   type LaneUse,
   type RegulationData,
 } from "./world/regulations";
-import { isLaneChangeBanned, laneCentreOffset, laneOfOffset } from "./world/laneChange";
-import { leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
+import { carriagewayWidth, isLaneChangeBanned, laneCentreOffset, laneOfOffset } from "./world/laneChange";
+import { lanesUnderPavement, sectionSummary } from "./world/roadMarkings";
+import { laneOffset, leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
 import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
@@ -191,6 +192,8 @@ import { frameStats, longFramesDuring, perf, round, watchFrames } from "./game/p
 import { adviceFor } from "./game/drivingTips";
 import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
+import { judgePedestrianBlow } from "./game/pedestrianBlow";
+import { JUMP_METRES, STANDING_KMH } from "./game/motion";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
@@ -577,7 +580,7 @@ async function main(): Promise<void> {
     // Travel along the road in the direction closest to the stop-to-stop heading.
     const fwd = new Vector3(Math.sin(heading), 0, Math.cos(heading));
     const dir = hit.dir.clone().multiplyScalar(fwd.dot(hit.dir) >= 0 ? 1 : -1);
-    const lane = hit.seg.oneway === 0 ? hit.seg.line.width / 4 : 0;
+    const lane = laneOffset(hit.seg);
     const centre = p.clone().add(new Vector3(-hit.dir.z * hit.lateral, 0, hit.dir.x * hit.lateral));
     return { pos: centre.add(leftOf(dir, lane)), heading: Math.atan2(dir.x, dir.z) };
   };
@@ -766,6 +769,7 @@ async function main(): Promise<void> {
       crossings: applied?.crossings.length ?? 0,
       signs: applied?.signs.length ?? 0,
     });
+    log("road_sections", sectionSummary(graph));
   };
   const buildRoadNetwork = async () => {
     const revision = ++roadRevision;
@@ -824,6 +828,11 @@ async function main(): Promise<void> {
           await pavements.rebuildAsync(polys, frame, new FrameWork());
           pedestrians.pavementsChanged();
           log("pavements_built", { wards, polygons: polys.length });
+          if (roadGraph)
+            log(
+              "pavement_over_lanes",
+              lanesUnderPavement(roadGraph, (x, z) => pavements.contains(x, z)),
+            );
         }),
       )
       .catch((error: unknown) => warn("road_network_failed", { error: String(error) }));
@@ -2180,6 +2189,11 @@ async function main(): Promise<void> {
   const contactCooldown = new Map<number, number>();
   /** A person hit is one accident, however many steps the blow takes to part them. */
   const pedestrianCooldown = new WeakMap<Pedestrian, number>();
+  /**
+   * When each person's next pedestrian_bump may be logged. Why not pedestrianCooldown: that one
+   * holds off the next accident, and a bump must not delay the booking of a real hit after it.
+   */
+  const bumpLogCooldown = new WeakMap<Pedestrian, number>();
   const loadStart = performance.now();
   let lastBrainStatus = brain.status;
   const startButton = $<HTMLButtonElement>("#start");
@@ -2508,17 +2522,25 @@ async function main(): Promise<void> {
       if (!isPlayersCar || !isPerson) continue;
       const isCoolingDown = (pedestrianCooldown.get(ped) ?? 0) > performance.now();
       if (isCoolingDown) continue;
-      const kmh = Math.abs(vehicle.speedKmh());
-      const carKmh = Math.max(kmh, (blow.impact.closing + blow.impact.dvCar) * 3.6);
-      const victimKmh = blow.impact.dvOther * 3.6;
-      // Someone walking into a car that stands is their own bump.
-      const isAccident = carKmh > 3 && victimKmh > 3;
-      if (!isAccident) continue;
+      // Someone walking into a car that stands is their own bump (pedestrianBlow.ts: the car's own
+      // speed going into the blow decides; the closing speed only says, by the person's Δv, how
+      // hard they were hit).
+      const judged = judgePedestrianBlow(blow.impact);
+      if (!judged.isAccident) {
+        const isBumpLogged = (bumpLogCooldown.get(ped) ?? 0) > performance.now();
+        if (isBumpLogged) continue;
+        bumpLogCooldown.set(ped, performance.now() + 3000);
+        log("pedestrian_bump", {
+          carKmh: Math.round(judged.carKmh * 10) / 10,
+          otherDeltaVKmh: Math.round(judged.victimKmh * 10) / 10,
+        });
+        continue;
+      }
       pedestrianCooldown.set(ped, performance.now() + 3000);
       input.pad.contact("impact", blow.impact.dvCar + 1);
       pedestrians.knockDown(ped);
       emergency.start(ped, performance.now());
-      onAccident("pedestrian", carKmh, ped.profile.name, blow.impact);
+      onAccident("pedestrian", judged.carKmh, ped.profile.name, blow.impact);
     }
     events.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
@@ -2565,7 +2587,7 @@ async function main(): Promise<void> {
     // Today's distance at the wheel (re-anchoring and respawns jump; ignore those).
     if (isInCar && odometerAt) {
       const step = Math.hypot(carPos.x - odometerAt.x, carPos.z - odometerAt.z);
-      if (step < 10) todayMetres += step;
+      if (step < JUMP_METRES) todayMetres += step;
     }
     odometerAt = isInCar ? carPos.clone() : null;
     const focus = focusPos();
@@ -2832,7 +2854,7 @@ async function main(): Promise<void> {
       // 合図 for changing lanes on a multi-lane road.
       if (onRoad && onRoad.seg.lanes >= 2 && Math.abs(align) > 0.85 && speed > 15) {
         const s = onRoad.seg;
-        // As the lines are painted (laneChange.ts): from the lanes' left edge, inside the shoulder.
+        // The lanes as painted (laneChange.ts), counted from the left edge line.
         const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
         const isSameRoad = laneHeld !== null && laneHeld.seg === s;
         if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
@@ -2934,9 +2956,7 @@ async function main(): Promise<void> {
       // getting ready to turn right, not for driving along.
       if (onRoad && onRoad.seg.lanes >= 2 && onRoad.seg.oneway === 0 && speed > 10 && Math.abs(align) > 0.8) {
         const s = onRoad.seg;
-        const leftOfTravel = onRoad.lateral * Math.sign(align);
-        const laneWidth = s.line.width / 2 / s.lanes;
-        const lane = Math.floor((s.line.width / 2 - leftOfTravel) / laneWidth);
+        const lane = laneOfOffset(s, onRoad.lateral * Math.sign(align));
         const turnAhead = nav.route?.maneuvers.find((m) => m.at > nav.lastAt);
         const isPreparingRight =
           turnAhead !== undefined && turnAhead.at - nav.lastAt < 150 && /right|uturn/i.test(turnAhead.turn);
@@ -3037,7 +3057,7 @@ async function main(): Promise<void> {
       book(VIOLATIONS.phone, now, 30000);
     }
     // Tokyo's environmental ordinance: switch the engine off when stopped for a while.
-    const isStoppedInCar = isInCar && Math.abs(speed) < 1 && drive.throttle === 0;
+    const isStoppedInCar = isInCar && Math.abs(speed) < STANDING_KMH && drive.throttle === 0;
     stoppedSince = isStoppedInCar ? (stoppedSince ?? now) : null;
     const isEngineOff = !isInCar || (stoppedSince !== null && now - stoppedSince > 20000);
     if (isEngineOff && isInCar) announceIdlingStop();
@@ -3941,14 +3961,13 @@ async function main(): Promise<void> {
     const fwd = headingVector(vehicle.quaternion());
     const sgn = fwd.dot(hit.dir) >= 0 ? 1 : -1;
     const travel = hit.dir.clone().multiplyScalar(sgn);
-    // The kerb: PLATEAU paving where there is some, else the carriageway's edge (GSI 幅員).
+    // The kerb: PLATEAU paving where it comes first, else the carriageway's edge (the section's,
+    // carriagewayWidth). Why not the GSI 幅員's edge: where it includes the pavement, a car 3 m
+    // from the paint would have read as tucked in to the kerb.
     const paved = kerbLeft(p, travel, hit.seg.line.width / 2 + 1, (x, z) => pavements.contains(x, z));
-    const edge = hit.seg.line.width / 2 - hit.lateral * sgn;
+    const edge = carriagewayWidth(hit.seg) / 2 - hit.lateral * sgn;
     const kerbGap = Math.max(0, Math.min(paved, edge) - 0.92);
-    const span = hit.seg.oneway === 0 ? hit.seg.line.width / 2 : hit.seg.line.width;
-    const lane = Math.floor(
-      (hit.seg.line.width / 2 - hit.lateral * sgn) / (span / Math.max(1, hit.seg.lanes)),
-    );
+    const lane = laneOfOffset(hit.seg, hit.lateral * sgn);
     return { junction, crossing, noStopping: posted, kerbGap, rightLane: hit.seg.lanes >= 2 && lane > 0 };
   };
   /**
@@ -5061,7 +5080,7 @@ async function main(): Promise<void> {
     const carKg = vehicle.massKg;
     const e = restitution(closing, body.kind);
     const { dv1, dv2, energy } = centralImpact(carKg, body.mass, closing, e);
-    return { closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
+    return { closing, carSpeed: closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
   };
   const onAccident = (
     kind: "pedestrian" | "vehicle" | "building" | "pole",

@@ -1,7 +1,13 @@
 import { Vector3 } from "three";
 import type { LocalFrame } from "../geo/frame";
 import type { ClosureKind } from "./closures";
-import { carriagewayWidth, KERB_INSET, laneCentreOffset, type CrossSection } from "./laneChange";
+import {
+  carriagewayWidth,
+  laneCentreOffset,
+  resolveSection,
+  type CrossSection,
+  type StreetSection,
+} from "./laneChange";
 import { warn } from "../log";
 import {
   classOf,
@@ -32,7 +38,7 @@ export type RoadDiagnostic =
  */
 export type RoadLine = {
   coords: number[]; // [lon0, lat0, lon1, lat1, …]
-  width: number; // carriageway width estimate (m); derived from `section` where there is one
+  width: number; // GSI 幅員 (m), 道路縁 to 道路縁 (may include the pavement); the 車道 is carriagewayWidth
   oneway: 0 | 1 | -1; // 1: along coords, -1: against, 0: both ways
   /** 行政区分 from GSI (rdCtg); what the road is for is `cls`. */
   kind: RoadKind;
@@ -88,8 +94,14 @@ export type Segment = {
   noOvertake: boolean;
   /** 進路変更禁止 (JARTIC): yellow lane lines. */
   noLaneChange: boolean;
-  /** Lanes per direction: 1 unless JARTIC lists a 車両通行帯 for the section. */
+  /** Lanes per direction (the street's section: JARTIC, OSM or the width; laneChange.ts). */
   lanes: number;
+  /**
+   * A street's cross-section both ways and its 車道 width (resolveSection), from the width when the
+   * graph is built and from JARTIC and OSM once the regulations apply. Absent on a line with its own
+   * section (the expressway) and on segments written by hand (streetSection derives one).
+   */
+  section?: StreetSection;
   /** JARTIC sections on this segment: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行. */
   rules: Array<{ code: number; time: RuleTime }>;
   /** JARTIC 通行禁止 (車両通行止め, 歩行者用道路 …) on this segment, and whether one applies now. */
@@ -102,14 +114,21 @@ export type Segment = {
   elev?: number[];
 };
 
+/** Carriageway below which no 車道中央線 is painted (命令 別表第三): the car drives the middle. */
+const CENTRE_LINE_FROM = 5.5;
+
 /**
- * Centre of the left-hand lane from the centreline. GSI 幅員 sometimes includes the pavement, so
- * a quarter of the width can land on the kerb; stay at least 2 m inside the edge.
+ * Centre of the left-hand half of a two-way street, from the centreline: keeping left (第18条)
+ * inside the edge line. 0 on a one-way street, and on a street too narrow for a centre line, where
+ * cars keep to the middle as before P8. Why not keep left there too: it is not what P8 set out to
+ * change, and on a 4.3 m street it put 50 more turn curves over the un-rounded kerb corners (review
+ * W4). The carriageway is the section's, so no inset from the kerb is needed on top.
  */
 export function laneOffset(seg: Segment | undefined): number {
   if (!seg || seg.oneway !== 0) return 0;
-  const half = carriagewayWidth(seg.line) / 2;
-  return Math.max(0, Math.min(laneCentreOffset(seg, 0, 1), half - KERB_INSET.keepLeft));
+  const hasCentreLine = carriagewayWidth(seg) >= CENTRE_LINE_FROM;
+  if (!hasCentreLine) return 0;
+  return Math.max(0, laneCentreOffset(seg, 0, 1));
 }
 
 /** Speed limit in force on a segment: posted (JARTIC) when known, statutory otherwise. */
@@ -222,6 +241,8 @@ export class RoadGraph {
       const elev = heights
         ? heights.map((h, k) => frame.toLocal(line.coords[k * 2 + 1], line.coords[k * 2], h).y)
         : null;
+      // A street's lanes from its width until the regulations say more (applyRegulations).
+      const section = line.section ? undefined : resolveSection(line.width, line.oneway);
       const from = this.node(pointKey(line, 0));
       const to = this.node(pointKey(line, line.coords.length / 2 - 1));
       this.segments.push({
@@ -240,7 +261,8 @@ export class RoadGraph {
         limitKind: line.limit === undefined ? "statutory" : "sign",
         noOvertake: false,
         noLaneChange: false,
-        lanes: line.section?.lanes ?? 1,
+        lanes: line.section?.lanes ?? section?.lanes ?? 1,
+        ...(section ? { section } : {}),
         rules: [],
         closures: [],
         closed: false,
@@ -377,7 +399,10 @@ export class RoadGraph {
       const isOutOfRange = on.dist >= maxDist;
       if (isOutOfRange) continue;
       const isDeck = !isOnGround(seg.line);
-      const isBesideDeck = isDeck && on.dist > carriagewayWidth(seg.line) / 2 + DECK_REACH;
+      // A deck's `width` is its carriageway between the parapets (expresswayRoads: sectionWidth).
+      // Why not carriagewayWidth: a deck line without a section would be resolved as a street,
+      // lanes from the width, and come out narrower than the deck a car is on.
+      const isBesideDeck = isDeck && on.dist > seg.line.width / 2 + DECK_REACH;
       if (isBesideDeck) continue;
       const y = this.surfaceY(seg, on.s);
       const isUnknown = y === null;

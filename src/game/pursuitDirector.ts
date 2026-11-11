@@ -6,6 +6,7 @@ import { inJapanese } from "../i18n/reverse";
 import { log, newSpan, type Span } from "../log";
 import type { RoadGraph } from "../world/roads";
 import { leftOf } from "../world/roads";
+import { carriagewayWidth } from "../world/laneChange";
 import { storyPanels, StoryPlayer, type StoryFacts, type StoryKind } from "./arrestStory";
 import type { DriveWorld } from "./autoDriver";
 import type { Assist } from "./carControls";
@@ -637,9 +638,10 @@ export class PursuitDirector {
         // The half the car drives in: from the centreline to the left kerb on a two-way street,
         // the whole width (from its right edge) on a one-way one.
         const isOneWay = seg.oneway !== 0;
-        const travelHalf = isOneWay ? seg.line.width : seg.line.width / 2;
+        const carriageway = carriagewayWidth(seg);
+        const travelHalf = isOneWay ? carriageway : carriageway / 2;
         const centre = isOneWay
-          ? sample.pos.clone().add(leftOf(along, -seg.line.width / 2))
+          ? sample.pos.clone().add(leftOf(along, -carriageway / 2))
           : sample.pos.clone();
         this.host.scene.checkpoint.place(
           centre,

@@ -29,7 +29,7 @@ import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.pn
 import { FrameWork } from "../game/frameWork";
 import { roadGeometrySteps } from "./roadGeometrySteps";
 import { updateRoadGeometry } from "./roadGeometry";
-import { carriagewayWidth, laneCentreOffset, laneWidth as laneWidthOf, sectionOf } from "./laneChange";
+import { laneCentreOffset, laneLeftEdge, laneWidth as laneWidthOf, sectionOf } from "./laneChange";
 import { SIGN, type AppliedRegulations, type LaneDirection } from "./regulations";
 import { MARKING, planCrosswalk, planMarkings, planStopLine, type MarkingBar } from "./roadMarkings";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
@@ -304,7 +304,9 @@ export class RoadSurface {
 
     for (const seg of graph.segments) {
       if (!usesGroundSurface(seg.line)) continue;
-      yield* this.ribbon(road, graph, seg, 0, seg.length, 0, carriagewayWidth(seg.line), 0);
+      // Asphalt to the GSI 幅員's edge: where it includes the pavement, PLATEAU's pavements sit on
+      // top (pavements.ts); the lanes and their lines take the carriageway inside it.
+      yield* this.ribbon(road, graph, seg, 0, seg.length, 0, seg.line.width, 0);
       const plan = planMarkings(graph, seg, regs);
       const cut = gaps.get(seg) ?? [];
       for (const l of plan.lines) {
@@ -445,11 +447,12 @@ export class RoadSurface {
         }
       }
     }
-    // Lanes of a two-way street are counted out from the centreline, of a one-way from its edge.
+    // Lanes of a two-way street are counted out from the centreline, of a one-way from its right
+    // edge line; the gutter (puddles) runs along the asphalt's edge.
     const isTwoWay = seg.oneway === 0;
-    const half = carriagewayWidth(seg.line) / 2;
+    const half = seg.line.width / 2;
     const laneWidth = sectionOf(seg).laneWidth;
-    const laneOrigin = isTwoWay ? 0 : -half;
+    const laneOrigin = isTwoWay ? 0 : -laneLeftEdge(seg);
     for (let i = 0; i <= n; i++)
       for (let k = 0; k <= cols; k++)
         b.st.push(offset + width / 2 - (width * k) / cols, half, laneWidth, laneOrigin);
@@ -474,7 +477,6 @@ export class RoadSurface {
     const signalStops = approaches.filter((a) => a.kind === "signal");
     for (const c of regs.crossings) {
       yield;
-      const w = carriagewayWidth(c.seg.line);
       yield* this.bars(b, graph, c.seg, planCrosswalk(c.seg, c.s));
       // 横断歩道又は自転車横断帯あり (210): ◇ about 30 m and 50 m ahead of crossings without signals.
       const isSignalled = signalStops.some(
@@ -484,7 +486,7 @@ export class RoadSurface {
       for (const dir of [1, -1] as const) {
         const oneway = c.seg.oneway;
         if (oneway !== 0 && oneway !== dir) continue;
-        const lane = oneway === 0 ? dir * (w / 4) : 0;
+        const lane = oneway === 0 ? dir * laneCentreOffset(c.seg, 0, 1) : 0;
         for (const back of [30, 50]) {
           const s = c.s - dir * back;
           if (s < 3 || s > c.seg.length - 3) continue;
@@ -567,7 +569,11 @@ export class RoadSurface {
     }
   }
 
-  /** ◇ outline (210) centred at s, `offset` left of the centreline: 3 m long, 1.5 m wide. */
+  /**
+   * ◇ (210) centred at s, `offset` left of the centreline: one outline MARKING.diamondWidth across
+   * (outer edge). Why not the two outlines of 別表第六's figure: the inner line is most likely the
+   * figure's own outline of the painted band, not a second band (review W8).
+   */
   private *diamond(b: Builder, graph: RoadGraph, seg: Segment, s: number, offset: number): Generator<void> {
     const { pos, dir } = graph.sample(seg, s);
     const corner = (along: number, across: number) =>
@@ -575,8 +581,11 @@ export class RoadSurface {
         .clone()
         .addScaledVector(dir, along)
         .add(leftOf(dir, offset + across));
-    const pts = [corner(1.5, 0), corner(0, 0.75), corner(-1.5, 0), corner(0, -0.75)];
-    for (let i = 0; i < 4; i++) yield* this.stripe(b, pts[i], pts[(i + 1) % 4], MARKING.lineWidth);
+    const line = MARKING.diamondLine;
+    const across = (MARKING.diamondWidth - line) / 2;
+    const along = across * (MARKING.diamondLength / MARKING.diamondWidth);
+    const pts = [corner(along, 0), corner(0, across), corner(-along, 0), corner(0, -across)];
+    for (let i = 0; i < 4; i++) yield* this.stripe(b, pts[i], pts[(i + 1) % 4], line);
   }
 
   /** Straight painted stripe between two points, draped on the surface. */

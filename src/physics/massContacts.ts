@@ -23,6 +23,11 @@ import { MASSIVE_SOLVER_GROUPS } from "./groups";
 export type Impact = {
   /** Closing speed along the normal at the contact point (m/s). */
   closing: number;
+  /**
+   * The car's own speed on the ground plane going into the blow (m/s, any direction: a skid
+   * counts), before this exchange changed it.
+   */
+  carSpeed: number;
   /** Velocity change of the car and of the other (m/s). */
   dvCar: number;
   dvOther: number;
@@ -46,7 +51,15 @@ export class MassiveBody {
   /** Set when a car pushed it: the owner moves it by its velocity until it has stopped. */
   shoved = false;
   /** The latest impact (fields reused) and the step it happened at (−1: never). */
-  readonly impact: Impact = { closing: 0, dvCar: 0, dvOther: 0, energy: 0, carKg: 0, otherKg: 0 };
+  readonly impact: Impact = {
+    closing: 0,
+    carSpeed: 0,
+    dvCar: 0,
+    dvOther: 0,
+    energy: 0,
+    carKg: 0,
+    otherKg: 0,
+  };
   impactStep = -1;
   /** Whose body this is (a Pedestrian, a traffic car): what a blow reports back to the game. */
   owner: unknown = null;
@@ -292,6 +305,7 @@ export class MassContacts {
     const nz = this.normal.z / len;
     const com = car.body.worldCom();
     const v = car.body.linvel();
+    const carSpeed = Math.hypot(v.x, v.z);
     const wy = car.body.angvel().y;
     const ax = this.point.x - com.x;
     const az = this.point.z - com.z;
@@ -335,6 +349,7 @@ export class MassContacts {
     const reduced = 1 / k;
     const im = other.impact;
     im.closing = closing;
+    im.carSpeed = carSpeed;
     im.dvCar = j / carKg;
     im.dvOther = j / other.mass;
     im.energy = 0.5 * reduced * closing * closing * (1 - e * e);
