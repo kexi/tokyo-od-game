@@ -349,6 +349,15 @@ export const ja = {
   "nav.say.turnInPlain": "およそ{dist}先、{turn}です。",
   "nav.say.turnSoon": "まもなく、{name}を{turn}です。",
   "nav.say.turnSoonPlain": "まもなく、{turn}です。",
+  "nav.xw.entrance": "高速入口",
+  "nav.xw.entranceRef": "{ref} 入口",
+  "nav.xw.exit": "出口",
+  "nav.xw.branch": "分岐",
+  "nav.xw.branchRef": "{ref} 方面",
+  "nav.say.xwEnterIn": "およそ{dist}先、{name}から高速道路に入ります。",
+  "nav.say.xwEnterSoon": "まもなく、{name}から高速道路に入ります。",
+  "nav.say.xwLeaveIn": "およそ{dist}先、{name}です。{turn}です。",
+  "nav.say.xwLeaveSoon": "まもなく、{turn}、{name}です。",
   "nav.say.straightAhead": "この先、{name}を直進です。",
   "nav.say.straightSoon": "まもなく、{name}を直進です。",
   "nav.say.lane": "{lane}を走行してください。",
@@ -424,6 +433,11 @@ export const ja = {
   "violation.label.negligentInjury": "過失運転致傷",
   "violation.label.obstruction": "公務執行妨害",
   "violation.label.propertyDamage": "器物損壊（警察車両）",
+  "violation.label.xwCrossing": "本線車道横断等禁止違反",
+  "violation.label.xwWrongWay": "通行区分違反（逆走）",
+  "violation.label.xwStopping": "駐停車違反（駐停車禁止場所等）",
+  "violation.label.xwMergeObstruct": "本線車道通行車妨害",
+  "violation.label.xwRampMethod": "本線車道出入方法違反",
   // 値の入る違反名（speedViolation・injuryViolation・chargeOwner が作る形）
   "violation.pattern.speed": "速度超過（{over}km/h超過）",
   "violation.pattern.injury": "人身事故・付加点数（{injury}）",
@@ -521,6 +535,14 @@ export const ja = {
   "tips.laneChange":
     "黄色の車線境界線は進路変更禁止です。交差点の手前では早めに、白い破線のうちに車線を選びましょう。",
   "tips.laneUse": "片側 2 車線以上の道路では、追越しや右折の準備のとき以外は左側の車線を走りましょう。",
+  "tips.xwCrossing": "高速道路の本線では U ターンもバックもできません。行き過ぎたら次の出口で降りましょう。",
+  "tips.xwWrongWay":
+    "高速道路の逆走は正面衝突のもとです。入口と出口を確かめ、気づいたら左に寄せて止まり、助けを呼びましょう。",
+  "tips.xwStopping":
+    "高速道路では渋滞や故障のとき以外は止まれません。故障したらハザードをつけ、十分な幅の路肩に寄せましょう。",
+  "tips.xwMergeObstruct":
+    "合流は本線の車が優先です。加速車線で速度を合わせ、本線の車の後ろの空いた所に入りましょう。",
+  "tips.xwRampMethod": "本線へは加速車線から入り、出口へは手前から出口側の車線を走って出ましょう。",
   "tips.laneDirection":
     "路面の矢印が、その車線から進める方向です。ナビのレーン案内を見て、手前で車線を選びましょう。",
   "tips.phone": "走行中はスマホを手に持たないこと。操作は安全な場所に止めてからにしましょう。",
@@ -904,6 +926,17 @@ export const ja = {
   "violationDetail.turnLeftNoSignal": "左折の合図を出さずに曲がった",
   "violationDetail.turnRightNoSignal": "右折の合図を出さずに曲がった",
   "violationDetail.laneChangeNoSignal": "合図を出さずに車線を変更した",
+  "violationDetail.xwUturn": "高速道路の本線車道で転回した",
+  "violationDetail.xwReverse": "高速道路の本線車道で後退した",
+  "violationDetail.xwWrongWay": "高速道路を進行方向と逆に走行した",
+  "violationDetail.xwStoppingMain": "高速道路の本線車道で、やむを得ない理由なく停止した",
+  "violationDetail.xwStoppingRamp": "高速道路の連結路で、やむを得ない理由なく停止した",
+  "violationDetail.xwRightLane": "片側 {lanes} 車線の本線で、追越しのとき以外も右端の車線を走り続けた",
+  "violationDetail.xwMergeObstruct": "合流で本線の車に急ブレーキ（{brake} m/s²）をかけさせた",
+  "violationDetail.xwMergeNoAccel":
+    "加速車線を通らず、導流帯（本線の車線まで {gap} m）を横切って本線に入った",
+  "violationDetail.xwExitLate":
+    "出口の {metres} m 手前で出口側の車線になく、{lanes} 車線をまたいで出口へ入った",
   "violationDetail.orbis": "速度違反自動取締装置（オービス）で撮影: {kmh} km/h（制限 {limit} km/h）",
   "violationDetail.orbisPortable":
     "可搬式の速度違反自動取締装置（可搬式オービス）で撮影: {kmh} km/h（制限 {limit} km/h）",

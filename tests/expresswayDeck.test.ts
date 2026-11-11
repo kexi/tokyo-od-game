@@ -33,6 +33,7 @@ function chunk(): XwChunk {
     shoulderR: 0.75,
     basis: "statute",
     V: 60,
+    maxspeed: null,
     vh: 50,
     gmax: 0.05,
     g0: 0.02,
@@ -181,15 +182,15 @@ describe("面の契約（profile.ts frameAt・surfaceHeight、デッキと P3 �
   });
 
   it("the game refuses tiles of another format version", () => {
-    expect(isSupportedMeta({ version: 4 })).toBe(true);
-    // 2 is P3's, 3 is P6's (maxspeed per chunk): neither carries the structure decks.
-    for (const v of [1, 2, 3])
-      expect(isSupportedMeta({ version: v } as unknown as { version: 4 })).toBe(false);
+    expect(isSupportedMeta({ version: 5 })).toBe(true);
+    // 2 is P3's, 3 was P6's alone (maxspeed per chunk), 4 P7's (no maxspeed): 5 carries both.
+    for (const v of [1, 2, 3, 4])
+      expect(isSupportedMeta({ version: v } as unknown as { version: 5 })).toBe(false);
   });
 
-  it("reads P7's files (no features) and P9's (below), and refuses a feature it does not know", () => {
-    expect(isSupportedMeta({ version: 4 })).toBe(true);
-    expect(isSupportedMeta({ version: 4, features: ["below"] })).toBe(true);
-    expect(isSupportedMeta({ version: 4, features: ["below", "maxspeed"] })).toBe(false);
+  it("reads files of its version with no features and with P9's (below), and refuses a feature it does not know", () => {
+    expect(isSupportedMeta({ version: 5 })).toBe(true);
+    expect(isSupportedMeta({ version: 5, features: ["below"] })).toBe(true);
+    expect(isSupportedMeta({ version: 5, features: ["below", "lanes"] })).toBe(false);
   });
 });

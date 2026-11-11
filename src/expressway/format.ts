@@ -20,16 +20,18 @@ export const ST = { s: 0, lon: 1, lat: 2, z: 3, bank: 4, ground: 5, grade: 6 } a
  * reader, so they stay within 4, as do G6's optional `signs` and `posted` (chunks) and `entrances`
  * (meta): the game reads them only where present. P9's tunnels and cuts (`tunnel` / `cut` chunks,
  * their `portals`, `seam` ends) need a reader: they are named in meta's `features` (XW_FEATURES)
- * and a reader refuses a feature it does not know. The game refuses another version.
+ * and a reader refuses a feature it does not know. 5 (P6 with P7): `maxspeed` on every chunk
+ * (the raw OSM tag, chunks cut where it changes; the graph's limit is still `posted`, which G6's
+ * carry rules derive from the same tags). The game refuses another version.
  */
-export const XW_VERSION = 4;
+export const XW_VERSION = 5;
 
 /**
  * Optional parts of the format a file may use within its version (meta.json `features`). "below"
  * (P9): `tunnel` / `cut` chunks, their `portals`, and `seam` ends between runs. A reader refuses a
  * file naming a feature it does not know (expresswayDeck.ts isSupportedMeta), so P9's data cannot be
- * read as plain P7 data by a newer reader that lacks P9. Why not version 5 now: P6 (3) and P7 (4)
- * are merged into 5 when the branches meet; until then the version stays P7's.
+ * read as plain P7 data by a newer reader that lacks P9. P6 (3) and P7 (4) met in 5, which
+ * keeps the feature list.
  */
 export const XW_FEATURES = ["below"] as const;
 export type XwFeature = (typeof XW_FEATURES)[number];
@@ -83,6 +85,12 @@ export type XwChunk = {
    * around the curve), and chunks are cut where it changes.
    */
   V: number;
+  /**
+   * OSM maxspeed as tagged on the way this chunk lies on (km/h), or null where the way has none.
+   * Chunks are cut where it changes. The graph's limit is `posted` (G6's carry rules over the same
+   * tags), this only where a file has no `posted`. Not the design speed `V`.
+   */
+  maxspeed: number | null;
   /** Vertical knot spacing of the run (= the length of every vertical curve). */
   vh: number;
   /**

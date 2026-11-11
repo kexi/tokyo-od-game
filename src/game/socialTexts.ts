@@ -266,6 +266,57 @@ export const OPENERS: Record<ViolationKind, readonly LineLike[]> = {
     "ベルトなしでぶつかったら…考えたくない。{place}",
     "{place}。シートベルト、近所への買い物でも締めようね",
   ],
+  // 高速道路の 5 種（expresswayLaw.ts）。事業者名は出さない（名称層、tests/socialBanned.ts）。
+  xwCrossing: [
+    "{place}、本線の真ん中で切り返してる車がいた",
+    plain("高速でバックする車、初めて見た。{place}"),
+    "高速の本線でUターンしようとしてる車がいた…正気？{place}",
+    "本線でバックして出口に戻ろうとしてる車…出口は次で降りようよ。{place}",
+    "高速道路でバックしてる車。後ろから来たらどうするの。{place}",
+    "{place}の高架、本線で止まってバックし始めた{color}{car}。怖すぎ",
+    vid("高速で転回する車、ドラレコに映ってた。{place}"),
+    plain("撮れなかったけど、高速の本線で向きを変えてる車がいた。{place}"),
+  ],
+  xwWrongWay: [
+    "逆走してきた{color}{car}、こっちの車線に来なくてよかった。{place}",
+    shot("高速の逆走車、対向から。{place}"),
+    "高速道路を逆走してくる車がいた。本当に怖い。{place}",
+    "{time}、{place}の高速で逆走車。対向から来るライトが見えて血の気が引いた",
+    "{place}の高架で逆走車。ライトが正面から来た",
+    vid("逆走車とすれ違った瞬間。{place}"),
+    "{color}{car}が高速を逆向きに走ってた。通報した。{place}",
+    plain("高速で逆走の車を見た。{place}を通る人は気をつけて"),
+  ],
+  xwStopping: [
+    "{time}、{place}の高速で停車中の車。後続がみんな避けてた",
+    vid("高速の本線で止まる車、ドラレコに映ってた。{place}"),
+    "高速の本線で車が止まってる…故障でもなさそう。{place}",
+    "本線の左に寄せて止まってる車、路肩も狭いのに…{place}",
+    "{place}の高架で、渋滞でもないのに停車してる車。追突されるよ",
+    "高速道路で止まるのは本当に危ない。{place}",
+    shot("ハザードもつけずに高速で止まってる{color}{car}。{place}"),
+    plain("{place}の高速で停車してる車、ぶつかりそうになった"),
+  ],
+  xwMergeObstruct: [
+    "合流でウインカーと同時に入ってくる{color}{car}。{place}",
+    shot("合流で割り込んできた車。{place}"),
+    "合流で無理やり入ってきた車、急ブレーキ踏まされた。{place}",
+    "{time}、{place}の合流。加速しないで本線に入ってきて後ろが詰まった",
+    "{place}の合流、本線の車が来てるのに突っ込んでくる{color}{car}",
+    vid("合流で割り込まれた瞬間。車間ほとんどなかった。{place}"),
+    "合流は本線優先ですよ…{place}",
+    plain("{place}の合流で強引に入ってきた車がいた。ヒヤッとした"),
+  ],
+  xwRampMethod: [
+    "{time}、{place}。出口に直前で飛び込む車にブレーキ",
+    vid("導流帯を横切って合流する車。{place}"),
+    "{place}、導流帯をまたいでいきなり本線に入ってきた車",
+    "{color}{car}が出口に向かって2車線いっぺんに横切っていった。{place}",
+    "出口の直前で車線をまたいで飛び込んでいく車。{place}",
+    "加速車線を使わずに合流してくる{color}{car}。{place}",
+    "出口はもっと手前から左に寄ろうね。{place}",
+    plain("{place}の出口で、急に車線を横切っていった車がいた"),
+  ],
   keepLeft: [
     "対向車線にはみ出して走ってきた車、ぶつかるかと思った。{place}",
     "センターラインはみ出してくる車、正面から来て本当に怖かった。{place}",
@@ -402,6 +453,11 @@ export const TAGS: Record<ViolationKind, readonly string[]> = {
   hornMisuse: ["#クラクション", "#交通マナー"],
   seatBelt: ["#シートベルト", "#交通安全"],
   keepLeft: ["#はみ出し", "#危険運転", "#センターライン"],
+  xwCrossing: ["#高速道路", "#Uターン", "#危険運転"],
+  xwWrongWay: ["#逆走", "#高速道路", "#拡散希望"],
+  xwStopping: ["#高速道路", "#停車", "#危険"],
+  xwMergeObstruct: ["#合流", "#割り込み", "#高速道路"],
+  xwRampMethod: ["#合流", "#導流帯", "#高速道路"],
   safeDriving: ["#事故", "#前方不注意", "#交通情報"],
   injury: ["#事故", "#拡散希望", "#人身事故"],
   hitAndRun: ["#ひき逃げ", "#拡散希望", "#情報求む"],
@@ -440,6 +496,8 @@ export type ReplyGroup =
   | "stop"
   | "manner"
   | "parking"
+  // The expressway's own rules (第75条の5〜第75条の8, expresswayLaw.ts).
+  | "expressway"
   // A car pulled over by the police (SocialFeed.postStop): not one of the violation kinds.
   | "pulledOver";
 export const REPLY_GROUP: Record<ViolationKind, ReplyGroup> = {
@@ -457,7 +515,12 @@ export const REPLY_GROUP: Record<ViolationKind, ReplyGroup> = {
   ignoredStop: "flee",
   noEntry: "wrongWay",
   keepLeft: "wrongWay",
+  xwWrongWay: "wrongWay",
+  xwCrossing: "expressway",
   uturn: "wrongWay",
+  xwMergeObstruct: "expressway",
+  xwRampMethod: "expressway",
+  xwStopping: "expressway",
   turnBan: "wrongWay",
   laneChange: "lane",
   laneUse: "lane",
@@ -625,6 +688,9 @@ export const REPLIES: Record<ReplyGroup | "common", readonly LineLike[]> = {
     "うっかりでも、気づいたらすぐ止まってほしい",
     only(["turnBan"], "曲がれない時間帯、標識の下に小さく書いてあるんだよね"),
     only(["keepLeft"], "駐車車両を避けたあと戻らない車、けっこういる"),
+    only(["xwWrongWay"], "高速の逆走、ニュースでもよく見る"),
+    only(["xwWrongWay"], "入口と出口を間違えたのかな"),
+    only(["xwWrongWay"], "逆走に気づいたら、左に寄せて止まって助けを呼んでほしい"),
   ],
   lane: [
     only(["signalOmission"], "ウインカー出さない車、多すぎ"),
@@ -663,6 +729,19 @@ export const REPLIES: Record<ReplyGroup | "common", readonly LineLike[]> = {
     "ちょっとしたことだけど、事故のもとになる",
     "これくらいなら…と思ったけど、やっぱりダメか",
     "自分もうっかりしないように気をつけよう",
+  ],
+  expressway: [
+    only(["xwCrossing"], "本線でUターンなんて、後ろから来たら避けられない"),
+    only(["xwCrossing"], "出口を過ぎたら次で降りればいいだけなのに"),
+    only(["xwStopping"], "高速で止まってる車への追突、本当に多いらしい"),
+    only(["xwStopping"], "故障ならハザードと三角表示板だよね"),
+    only(["xwStopping", "xwCrossing"], "高架の上って逃げ場がないから怖い"),
+    only(["xwMergeObstruct"], "合流は本線優先、これ基本"),
+    only(["xwMergeObstruct", "xwRampMethod"], "加速車線で速度を合わせてから入ってほしい"),
+    only(["xwMergeObstruct"], "ファスナー合流でいいのに、急に割り込むから危ない"),
+    only(["xwRampMethod"], "導流帯をまたぐのも危ないよね"),
+    only(["xwRampMethod"], "出口は早めに左へ。ナビも言ってる"),
+    "都心の高架は合流も出口も急だから、余裕をもって走りたい",
   ],
   parking: [
     "路駐のせいで見通し悪くなるんだよね",
@@ -713,6 +792,7 @@ export const QUOTES: Record<ReplyGroup | "common", readonly LineLike[]> = {
   pulledOver: ["{place}で取り締まり中。安全運転で", "止められてる車を見ると、自分の運転を見直す"],
   wrongWay: [
     only(["noEntry", "keepLeft"], "逆走・はみ出しは正面衝突のもと"),
+    only(["xwWrongWay"], "高速の逆走は正面衝突のもと"),
     "{place}付近の人は気をつけて",
     only(["turnBan", "uturn"], "標識は最後まで読もう"),
   ],
@@ -724,6 +804,11 @@ export const QUOTES: Record<ReplyGroup | "common", readonly LineLike[]> = {
   stop: ["止まれは止まれ", "一時停止、完全に止まろう"],
   manner: ["ちょっとしたマナーが事故を防ぐ", only(["noLights"], "ライトは早めに")],
   parking: ["路駐は迷惑のもと", "{place}付近、通行注意"],
+  expressway: [
+    only(["xwCrossing", "xwStopping"], "高速で止まる・戻るは命取り"),
+    only(["xwMergeObstruct", "xwRampMethod"], "合流と出口は余裕をもって"),
+    "高速道路は特に気をつけよう",
+  ],
 };
 
 /** The poster answering a reply under their own post. */
@@ -757,6 +842,7 @@ export const ANSWERS: Record<ReplyGroup | "common", readonly LineLike[]> = {
   stop: ["止まったように見えて、実は止まってないんですよね"],
   manner: ["悪気はなかったのかもしれないけど"],
   parking: ["しばらくしたら監視員さんが来てました"],
+  expressway: ["後ろの車がうまく避けてくれました"],
 };
 
 /**
@@ -879,6 +965,11 @@ export const KIND_WORDS: Record<ViolationKind, Record<Exclude<SocialLang, "ja">,
   hornMisuse: { en: "needless honking", zh: "乱按喇叭" },
   seatBelt: { en: "no seat belt", zh: "未系安全带" },
   keepLeft: { en: "driving on the wrong side", zh: "逆向行驶" },
+  xwCrossing: { en: "a U-turn or reversing on the expressway", zh: "在高速公路上掉头或倒车" },
+  xwWrongWay: { en: "driving the wrong way on the expressway", zh: "在高速公路上逆行" },
+  xwStopping: { en: "stopping on the expressway", zh: "在高速公路上违规停车" },
+  xwMergeObstruct: { en: "cutting off traffic at a merge", zh: "汇入主线时妨碍主线车辆" },
+  xwRampMethod: { en: "entering or leaving the expressway the wrong way", zh: "违规驶入或驶出高速主线" },
   speed: { en: "speeding", zh: "超速" },
   pedestrianCrossing: { en: "not stopping for pedestrians", zh: "不礼让行人" },
   safeDriving: { en: "careless driving", zh: "违反安全驾驶义务" },

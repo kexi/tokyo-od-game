@@ -337,6 +337,15 @@ export const en: Messages = {
   "nav.say.turnInPlain": "In {dist}, {turn}.",
   "nav.say.turnSoon": "{turn} just ahead, at {name}.",
   "nav.say.turnSoonPlain": "{turn} ahead.",
+  "nav.xw.entrance": "Expressway entrance",
+  "nav.xw.entranceRef": "{ref} entrance",
+  "nav.xw.exit": "Exit",
+  "nav.xw.branch": "Junction",
+  "nav.xw.branchRef": "toward {ref}",
+  "nav.say.xwEnterIn": "In {dist}, take {name} onto the expressway.",
+  "nav.say.xwEnterSoon": "Take {name} onto the expressway ahead.",
+  "nav.say.xwLeaveIn": "In {dist}, {turn} for {name}.",
+  "nav.say.xwLeaveSoon": "{turn} for {name} ahead.",
   "nav.say.straightAhead": "Up ahead, continue straight at {name}.",
   "nav.say.straightSoon": "Continue straight at {name}.",
   "nav.say.lane": "Use the {lane}.",
@@ -412,6 +421,11 @@ export const en: Messages = {
   "violation.label.negligentInjury": "Negligent driving causing injury",
   "violation.label.obstruction": "Obstructing officers in the performance of duty",
   "violation.label.propertyDamage": "Damaging property (a police vehicle)",
+  "violation.label.xwCrossing": "U-turning or reversing on an expressway main line",
+  "violation.label.xwWrongWay": "Driving the wrong way (expressway)",
+  "violation.label.xwStopping": "Stopping where stopping is banned (expressway)",
+  "violation.label.xwMergeObstruct": "Obstructing main-line traffic at a merge",
+  "violation.label.xwRampMethod": "Entering or leaving the main line improperly",
   // 値の入る違反名（speedViolation・injuryViolation・chargeOwner が作る形）
   "violation.pattern.speed": "Speeding ({over} km/h over)",
   "violation.pattern.injury": "Injury accident, additional points ({injury})",
@@ -510,6 +524,16 @@ export const en: Messages = {
     "A yellow lane line means no lane changes. Pick your lane early before a junction, while the line is still dashed white.",
   "tips.laneUse":
     "On roads with two or more lanes each way, stay in the left lane unless you're overtaking or getting ready to turn right.",
+  "tips.xwCrossing":
+    "No U-turns and no reversing on an expressway main line: if you miss your exit, take the next one.",
+  "tips.xwWrongWay":
+    "Driving the wrong way on an expressway causes head-on crashes. Check the signs at entrances and exits; if it happens, pull over to the left, stop and call for help.",
+  "tips.xwStopping":
+    "Do not stop on an expressway except in a jam or a breakdown. Broken down, put the hazards on and pull onto a shoulder wide enough for the car.",
+  "tips.xwMergeObstruct":
+    "At a merge the main line has priority: match its speed in the acceleration lane and slot into a gap behind a car.",
+  "tips.xwRampMethod":
+    "Join the main line from the acceleration lane, and move into the exit lane well before the exit.",
   "tips.laneDirection":
     "The arrows on the road show where each lane may go. Watch the navi's lane guide and pick your lane in good time.",
   "tips.phone": "Never hold your phone while driving. Pull over somewhere safe before using it.",
@@ -904,6 +928,17 @@ export const en: Messages = {
   "violationDetail.turnLeftNoSignal": "Turned left without signaling",
   "violationDetail.turnRightNoSignal": "Turned right without signaling",
   "violationDetail.laneChangeNoSignal": "Changed lanes without signaling",
+  "violationDetail.xwUturn": "Turned round on the main line of the expressway",
+  "violationDetail.xwReverse": "Reversed on the main line of the expressway",
+  "violationDetail.xwWrongWay": "Drove against the traffic on the expressway",
+  "violationDetail.xwStoppingMain": "Stopped on the expressway's main line without a reason that allows it",
+  "violationDetail.xwStoppingRamp": "Stopped on an expressway ramp without a reason that allows it",
+  "violationDetail.xwRightLane": "Kept to the rightmost of {lanes} lanes on the main line without overtaking",
+  "violationDetail.xwMergeObstruct": "Merged so that a main-line car had to brake hard ({brake} m/s²)",
+  "violationDetail.xwMergeNoAccel":
+    "Cut across the zebra area ({gap} m short of the main lanes) instead of using the acceleration lane",
+  "violationDetail.xwExitLate":
+    "Was not in the exit lane {metres} m before the exit and cut across {lanes} lane(s) into it",
   "violationDetail.orbis": "Photographed by a speed camera (Orbis): {kmh} km/h (limit {limit} km/h)",
   "violationDetail.orbisPortable":
     "Photographed by a portable speed camera (portable Orbis): {kmh} km/h (limit {limit} km/h)",

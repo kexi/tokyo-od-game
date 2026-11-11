@@ -110,16 +110,17 @@ export const usesGroundSurface = (line: RoadLine): boolean => isStreet(line) && 
 export type RouteUse = "navigation" | "autopilot" | "traffic" | "spawn" | "map" | "guide";
 
 /**
- * Which uses may take the OSM expressway (P3: the decks have colliders and the chunks are in the
- * graph). The map draws it and a car on a deck may be put back on it (spawn); the navi, the
- * autopilot and the traffic AI wait for merges and LaneLink (P6). Opening one is a change here, not
- * at its call sites. Why not one flag: the navi can route over a ramp long before the traffic AI
- * can merge.
+ * Which uses may take the OSM expressway. P3 opened the map and spawn (the decks have colliders
+ * and the chunks are in the graph); P6 the navi, the autopilot and the traffic AI, with the lane
+ * links of the merges and diverges (laneLinks.ts) and the yielding at a merge (merging.ts). The
+ * guide boards' route numbers stay off it: a 国道・都道 number does not belong on a ramp. Opening
+ * one is a change here, not at its call sites. Why not one flag: the navi could route over a ramp
+ * long before the traffic AI could merge.
  */
 const EXPRESSWAY_OPEN: Readonly<Record<RouteUse, boolean>> = {
-  navigation: false,
-  autopilot: false,
-  traffic: false,
+  navigation: true,
+  autopilot: true,
+  traffic: true,
   spawn: true,
   map: true,
   guide: false,
@@ -183,6 +184,15 @@ export function isEnterable(line: RoadLine): boolean {
  * now: 駐停車 there is banned (道路交通法 第75条の8) except in emergencies.
  */
 export const allowsRoadsideStop = (line: RoadLine): boolean => isStreet(line);
+
+/**
+ * A street the local patrol (所轄のパトカー・白バイ) appears on and cruises to: a street on the
+ * ground it may drive. Not the expressway, which the game gives no patrol of its own (高速隊); a
+ * chase may still follow the player onto it (the autopilot's routes). Why not allowsRoadsideStop
+ * (as before P6): that says where a car may pull over, not where a patrol drives.
+ */
+export const isPatrolStreet = (line: RoadLine): boolean =>
+  isStreet(line) && isOnGround(line) && isDrivable(line, "autopilot");
 
 /**
  * Rank of a road for drawing order on the in-car map: narrow streets under wide ones, the

@@ -1,6 +1,6 @@
 {
   "name": "expressway",
-  "description": "?expressway の試験区間（浜崎橋〜芝公園、public/data/expressway）の視点。P1 の幾何、P3 の走行面（区画線・合流・分流・高架下・C1 の並走部）、P4 のテクスチャ（排水性舗装・型枠コンクリート・区画線の摩耗）を昼・夕・夜・雨の夜で、建物の切り抜き 3 か所と俯瞰は昼だけ。P7 のレインボーブリッジ（構造物上書き: 上層の 11 号台場線と下層の臨港道路の床版、橋のモデルの主塔・トラスとの合い）。",
+  "description": "?expressway の試験区間（浜崎橋〜芝公園、public/data/expressway）の視点。P1 の幾何、P3 の走行面（区画線・合流・分流・高架下・C1 の並走部）、P4 のテクスチャ（排水性舗装・型枠コンクリート・区画線の摩耗）を昼・夕・夜・雨の夜で、建物の切り抜き 3 か所と俯瞰は昼だけ。P7 のレインボーブリッジ（構造物上書き: 上層の 11 号台場線と下層の臨港道路の床版、橋のモデルの主塔・トラスとの合い）。P6 で汐留の入口・出口（合流の運転席・俯瞰、分流）を足した。",
   "defaults": {
     "time": "day",
     "weather": "clear",
@@ -536,6 +536,72 @@
           "expect": {
             "anchorage": "芝浦のアンカレイジの上で上層の床版が曲がり始める所。床版とケーブル室・桁受けの取り合い",
             "taper": "橋の断面（13.3 m）から取付けの断面へ 4 段で戻る所の壁高欄の段"
+          }
+        }
+      ]
+    },
+    {
+      "id": "shiodome",
+      "start": [35.6612, 139.7612],
+      "views": [
+        {
+          "id": "shiodome-merge-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45068172:1",
+            "share": 0.75
+          },
+          "distanceM": 45,
+          "fov": 60,
+          "expect": {
+            "merge": "汐留入口のランプが本線（C1 外回り）へ左から合流する。ランプの車線が本線の左車線へ寄って一つになり、段差や壁の切れ端が車線に無い",
+            "markings": "合流部は太い破線、本線の外側線はランプの側で途切れる"
+          }
+        },
+        {
+          "id": "shiodome-merge-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "45068172:1",
+            "share": 0.85
+          },
+          "altitudeM": 90,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "merge": "ランプの床版が本線の床版に並んで重なり（同一面）、加速の区間が本線の左車線に沿う",
+            "deck": "床版どうしの貫通（片方が斜めに潜る）は、許可した重なり（allowlist の汐留）の範囲だけ"
+          }
+        },
+        {
+          "id": "shiodome-diverge-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "24402125:0",
+            "share": 0.1
+          },
+          "distanceM": 45,
+          "fov": 60,
+          "expect": {
+            "diverge": "内回りの左車線から汐留出口のランプが左へ分かれる。分流部の太い破線、ノーズの導流帯",
+            "walls": "分流部の車線上に壁高欄の切れ端が立たない"
+          }
+        },
+        {
+          "id": "shiodome-diverge-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402125:0",
+            "share": 0.3
+          },
+          "altitudeM": 110,
+          "pitchDeg": 80,
+          "angleDeg": 0,
+          "fov": 55,
+          "expect": {
+            "diverge": "出口のランプが本線から離れていく。本線は坑口（地表）へ下り、ランプは高架のまま",
+            "deck": "床版どうしの重なりは許可した範囲（allowlist の汐留、最大 |Δz| 6.6 m）"
           }
         }
       ]

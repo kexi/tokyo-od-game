@@ -60,7 +60,8 @@ export type XwGroundEnd = {
   oneway: 1 | -1;
   width: number;
   section: CrossSection;
-  limit: number;
+  /** The posted limit of the deck's end chunk (OSM maxspeed), absent where none is tagged. */
+  limit?: number;
 };
 
 export type XwRoadInput = { lines: RoadLine[]; ends: XwGroundEnd[] };
@@ -168,7 +169,7 @@ export function expresswayRoadInput(
       }
       points.splice(k, 0, { s: j.s, lon: f.lon, lat: f.lat, z: f.z, id: j.id });
     }
-    lines.push(lineOf(chunk, run, points, ellipsoidal));
+    lines.push(lineOf(chunk, points, ellipsoidal));
     for (const end of ["start", "end"] as const) {
       const isRunEnd = end === "start" ? chunk.prev === null : chunk.next === null;
       const joinsStreet = run.cls === "ramp" || run.cls === "street";
@@ -186,7 +187,7 @@ export function expresswayRoadInput(
         oneway: end === "start" ? 1 : -1,
         width: sectionWidth(chunk),
         section: chunkSection(chunk),
-        limit: chunk.posted ?? run.tagV,
+        ...limitOf(chunk),
       });
     }
   }
@@ -194,7 +195,19 @@ export function expresswayRoadInput(
   return { lines, ends };
 }
 
-function lineOf(chunk: XwChunk, run: XwRunSummary, points: Point[], ellipsoidal: Ellipsoidal): RoadLine {
+/**
+ * The limit a chunk's line carries (limitKind "sign"): the posted speed (G6 signPlan.ts postedOf,
+ * the 323 plates' value: the OSM maxspeed of the way, an untagged way carrying the value before it,
+ * a run starting untagged at the statute's 60), else the chunk's own tag (data without signs), else
+ * none: the segment takes the statutory 60 km/h (roads.ts estimatedLimit). Why not the run's design
+ * speed (P3's tagV, W5): it is what the alignment was built for, not what is posted.
+ */
+function limitOf(chunk: XwChunk): { limit?: number } {
+  const limit = chunk.posted ?? chunk.maxspeed ?? null;
+  return limit === null ? {} : { limit };
+}
+
+function lineOf(chunk: XwChunk, points: Point[], ellipsoidal: Ellipsoidal): RoadLine {
   const section = chunkSection(chunk);
   return {
     coords: points.flatMap((p) => [p.lon, p.lat]),
@@ -210,9 +223,8 @@ function lineOf(chunk: XwChunk, run: XwRunSummary, points: Point[], ellipsoidal:
     section,
     xid: chunk.id,
     ...(chunk.ref ? { ref: chunk.ref } : {}),
-    // The posted speed (signPlan.ts, the 323 plates' value) where the tiles carry it; P3's tagV
-    // (the highest tagged speed of the run) before G6. P6 is to fold this into its own rules.
-    limit: chunk.posted ?? run.tagV,
+    ...(chunk.name ? { name: chunk.name } : {}),
+    ...limitOf(chunk),
     heights: points.map((p) => ellipsoidal(p.lat, p.lon, p.z)),
   };
 }
@@ -281,7 +293,7 @@ export function joinExpressway(
     return false;
   };
   const out: RoadLine[] = streets.filter((l) => !isReplaced(l));
-  const replaced = streets.filter(isReplaced);
+  const gsiExpressway = streets.filter((l) => isExpressway(l) && sourceOf(l) === "gsi");
   const streetKeys = new Set<string>();
   for (const line of out) {
     if (!usesGroundSurface(line)) continue;
@@ -307,7 +319,7 @@ export function joinExpressway(
       level: 0,
       nodeIds: isEntry ? ids.toReversed() : ids,
       section: end.section,
-      limit: end.limit,
+      ...(end.limit === undefined ? {} : { limit: end.limit }),
     };
   };
   // The streets' extent (the GSI tiles around the network's centre): a ramp end outside it is not
@@ -337,7 +349,10 @@ export function joinExpressway(
     if (!isLoaded) continue;
     // First the ramp's own at-grade part, which GSI draws as a 高速道路 line from the deck's end to
     // the street (OSM's continuation of the link is not compiled: it is not a viaduct).
-    const atGrade = end.cls === "ramp" ? traceAtGrade(replaced, streetKeys, xy, px, py) : null;
+    // Walked over every GSI 高速道路 line, the ones kept too (P6, W6): the at-grade part can run on
+    // more than REPLACE_REACH_M from any chunk, and when the decks loaded are fewer than the streets
+    // (another centre) the lines near the ramp's foot were not among the replaced ones.
+    const atGrade = end.cls === "ramp" ? traceAtGrade(gsiExpressway, streetKeys, xy, px, py) : null;
     if (atGrade) {
       extra.push(connector(end, atGrade));
       continue;

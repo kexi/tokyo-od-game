@@ -157,19 +157,32 @@ describe("生成済みの高速道路タイル", () => {
   });
 
   it.runIf(isTestSection)(
-    "builds the test section (都心環状線 both ways, the 芝公園 entrance and exit) and the Rainbow Bridge's (11号台場線, the 臨港道路 below)",
+    "builds the test section (都心環状線 both ways, the 芝公園 and 汐留 entrances and exits) and the Rainbow Bridge's (11号台場線, the 臨港道路 below)",
     () => {
       expect(meta.ranges.map((r) => r.name)).toEqual([
         "hamazakibashi",
         "rainbow",
         "azabudai",
         "azabudai_exit",
+        "shiodome",
       ]);
       const refs = new Set(meta.runs.filter((r) => r.cls === "expressway").map((r) => r.ref));
       expect(refs.has("C1")).toBe(true);
       expect(refs.has("11")).toBe(true);
       expect(meta.runs.filter((r) => r.cls === "ramp").length).toBeGreaterThanOrEqual(2);
       expect(meta.runs.filter((r) => r.cls === "street").length).toBe(2);
+    },
+  );
+
+  it.runIf(isTestSection)(
+    "has a posted limit on every chunk, and the raw maxspeed only where a way is tagged (XW_VERSION 5)",
+    () => {
+      for (const c of chunks) {
+        expect(c.posted, c.id).toBeGreaterThan(0);
+        expect(c.maxspeed === null || c.maxspeed > 0, c.id).toBe(true);
+        // Where the way is tagged the plate shows the tag (G6 postedOf carries only untagged ways).
+        if (c.maxspeed !== null && c.cls !== "street") expect(c.posted, c.id).toBe(c.maxspeed);
+      }
     },
   );
 
@@ -346,7 +359,7 @@ describe("生成済みの高速道路タイル", () => {
       {
         "crossing_over_or_at_grade": 30,
         "deck_below_ground": 1,
-        "deck_overlap": 14,
+        "deck_overlap": 16,
         "ramp_radius": 1,
         "tunnel_cover_short": 1,
         "vertical_fallback": 38,
@@ -412,6 +425,9 @@ describe("生成済みの高速道路タイル", () => {
       "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）";
     const DAIBA = "台場側で 11 号台場線の上下線が二層から並列へ移る区間（OSM layer 4 / 3）";
     const NOSE = "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）";
+    // The shiodome range's (P6): 汐留の出入口が掘割へ下る本線と並走する所（allowlist.ts SHIODOME_REASON）.
+    const SHIODOME =
+      "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）";
     // The azabudai ranges' (P9): the viaduct the tunnel comes out onto, first written there.
     const TANIMACHI =
       "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）";
@@ -419,47 +435,52 @@ describe("生成済みの高速道路タイル", () => {
     // (45019020:8, 45554540:30 × 813455519, 4848755:3, 4848762:34, 4848889:1) and widened four SHIBAURA ones.
     const expected: Array<{ chunk: string; with: string; s: [number, number]; maxDzM: number; why: string }> =
       [
-        { chunk: "24402611:14", with: "45021976", s: [2237.4, 2309.4], maxDzM: 3.64, why: C1 },
+        { chunk: "24402125:0", with: "24402611", s: [82.6, 192.6], maxDzM: 6.81, why: SHIODOME },
         { chunk: "24402611:0", with: "895902565", s: [0.1, 59.1], maxDzM: 0.74, why: TANIMACHI },
         { chunk: "24402611:1", with: "895902565", s: [353.0, 437.0], maxDzM: 3.53, why: TANIMACHI },
-        { chunk: "895902565:4", with: "24402611", s: [502.1, 588.6], maxDzM: 3.74, why: TANIMACHI },
-        { chunk: "895902565:5", with: "24402611", s: [882.5, 943.0], maxDzM: 0.74, why: TANIMACHI },
-        { chunk: "45021976:16", with: "24402611", s: [2754.0, 2799.5], maxDzM: 1.18, why: C1 },
-        { chunk: "45021976:17", with: "24402611", s: [2799.9, 2824.9], maxDzM: 3.49, why: C1 },
-        { chunk: "24402611:20", with: "45021976", s: [3740.1, 3816.1], maxDzM: 3.76, why: C1 },
-        { chunk: "24402611:20", with: "4848762", s: [3806.8, 3814.8], maxDzM: 0.52, why: JCT },
-        { chunk: "24402611:20", with: "813455519", s: [3791.8, 3806.3], maxDzM: 2.64, why: `${C1}。${JCT}` },
+        { chunk: "24402611:16", with: "45021976", s: [2237.4, 2309.4], maxDzM: 3.64, why: C1 },
+        { chunk: "24402611:22", with: "45021976", s: [3740.1, 3816.1], maxDzM: 3.76, why: C1 },
+        { chunk: "24402611:22", with: "4848762", s: [3806.8, 3814.8], maxDzM: 0.52, why: JCT },
+        { chunk: "24402611:22", with: "813455519", s: [3791.8, 3806.2], maxDzM: 2.64, why: `${C1}。${JCT}` },
+        { chunk: "24402611:31", with: "24402125", s: [4939.7, 5042.7], maxDzM: 6.75, why: SHIODOME },
+        { chunk: "45019020:36", with: "4848740", s: [3534.2, 3537.2], maxDzM: 0.32, why: NOSE },
+        { chunk: "45019020:38", with: "4848740", s: [3814.0, 3814.0], maxDzM: 0.17, why: NOSE },
+        { chunk: "45019020:4", with: "4848762", s: [842.1, 892.1], maxDzM: 3.47, why: DAIBA },
+        { chunk: "45019020:40", with: "45554540", s: [4044.4, 4078.9], maxDzM: 3.73, why: SHIBAURA },
+        { chunk: "45019020:8", with: "4848755", s: [1817.4, 1823.4], maxDzM: 0.33, why: NOSE },
+        { chunk: "45019020:9", with: "4848755", s: [1992.8, 1996.8], maxDzM: 0.36, why: NOSE },
+        { chunk: "45021972:1", with: "45554540", s: [332.5, 333.5], maxDzM: 3.28, why: SHIBAURA },
+        { chunk: "45021972:2", with: "45554540", s: [334.0, 357.0], maxDzM: 3.07, why: SHIBAURA },
+        { chunk: "45021972:24", with: "45554540", s: [6101.9, 6135.4], maxDzM: 1.94, why: SHIBAURA },
+        { chunk: "45021972:3", with: "4848762", s: [587.5, 654.0], maxDzM: 1.79, why: SHIBAURA },
+        { chunk: "45021976:0", with: "45068172", s: [72.7, 102.2], maxDzM: 3.13, why: SHIODOME },
         { chunk: "45021976:10", with: "24402611", s: [1241.8, 1263.8], maxDzM: 4.18, why: C1 },
         { chunk: "45021976:11", with: "24402611", s: [1264.3, 1321.8], maxDzM: 1.89, why: C1 },
         { chunk: "45021976:11", with: "813455519", s: [1267.3, 1271.3], maxDzM: 0.37, why: JCT },
-        { chunk: "45021976:14", with: "4853798", s: [2132, 2136], maxDzM: 0.39, why: DROP },
-        { chunk: "4853798:0", with: "45021976", s: [198.6, 202.1], maxDzM: 0.37, why: DROP },
-        { chunk: "813455519:1", with: "24402611", s: [306.7, 316.7], maxDzM: 2.89, why: `${C1}。${JCT}` },
-        { chunk: "45019020:36", with: "4848740", s: [3534.2, 3537.2], maxDzM: 0.33, why: NOSE },
-        { chunk: "45019020:38", with: "4848740", s: [3814.0, 3814.0], maxDzM: 0.17, why: NOSE },
-        { chunk: "45019020:39", with: "45554540", s: [4044.4, 4078.9], maxDzM: 3.74, why: SHIBAURA },
-        { chunk: "45019020:4", with: "4848762", s: [842.1, 892.1], maxDzM: 3.48, why: DAIBA },
-        { chunk: "45019020:8", with: "4848755", s: [1817.4, 1823.4], maxDzM: 0.33, why: NOSE },
-        { chunk: "45019020:9", with: "4848755", s: [1992.8, 1996.8], maxDzM: 0.36, why: NOSE },
-        { chunk: "45021972:1", with: "45554540", s: [332.5, 357.0], maxDzM: 3.28, why: SHIBAURA },
-        { chunk: "45021972:2", with: "4848762", s: [587.5, 654.0], maxDzM: 1.79, why: SHIBAURA },
-        { chunk: "45021972:22", with: "45554540", s: [6101.9, 6135.4], maxDzM: 1.94, why: SHIBAURA },
-        { chunk: "45021976:6", with: "45021972", s: [767.3, 769.8], maxDzM: 0.25, why: NOSE },
-        { chunk: "45177681:14", with: "4848889", s: [3300.5, 3302.0], maxDzM: 0.27, why: NOSE },
-        { chunk: "45554540:27", with: "45019020", s: [7252.6, 7266.1], maxDzM: 3.1, why: SHIBAURA },
-        { chunk: "45554540:28", with: "45019020", s: [7266.6, 7282.6], maxDzM: 1.34, why: SHIBAURA },
-        { chunk: "45554540:29", with: "45019020", s: [7519.0, 7522.0], maxDzM: 0.23, why: NOSE },
-        { chunk: "45554540:29", with: "813455519", s: [7717.9, 7726.9], maxDzM: 0.67, why: NOSE },
-        { chunk: "45554540:30", with: "45021972", s: [7792.9, 7817.4], maxDzM: 3.28, why: SHIBAURA },
-        { chunk: "45554540:30", with: "813455519", s: [7772.4, 7772.4], maxDzM: 0.16, why: NOSE },
-        { chunk: "45554540:8", with: "45021972", s: [2022.9, 2057.4], maxDzM: 2.06, why: SHIBAURA },
+        { chunk: "45021976:14", with: "4853798", s: [2132.0, 2136.0], maxDzM: 0.39, why: DROP },
+        { chunk: "45021976:16", with: "24402611", s: [2754.5, 2799.5], maxDzM: 1.17, why: C1 },
+        { chunk: "45021976:17", with: "24402611", s: [2799.9, 2824.9], maxDzM: 3.48, why: C1 },
+        { chunk: "45021976:6", with: "45021972", s: [767.3, 769.8], maxDzM: 0.24, why: NOSE },
+        { chunk: "45068172:1", with: "45021976", s: [267.4, 295.4], maxDzM: 2.94, why: SHIODOME },
+        { chunk: "45177681:14", with: "4848889", s: [3300.5, 3302.0], maxDzM: 0.25, why: NOSE },
+        { chunk: "45554540:29", with: "45019020", s: [7252.6, 7282.6], maxDzM: 3.09, why: SHIBAURA },
+        { chunk: "45554540:31", with: "45019020", s: [7519.0, 7522.0], maxDzM: 0.23, why: NOSE },
+        { chunk: "45554540:31", with: "813455519", s: [7717.9, 7726.9], maxDzM: 0.65, why: NOSE },
+        { chunk: "45554540:32", with: "45021972", s: [7792.9, 7817.4], maxDzM: 3.28, why: SHIBAURA },
+        { chunk: "45554540:32", with: "813455519", s: [7772.4, 7772.4], maxDzM: 0.16, why: NOSE },
+        { chunk: "45554540:8", with: "45021972", s: [2022.8, 2055.8], maxDzM: 1.91, why: SHIBAURA },
+        { chunk: "45554540:9", with: "45021972", s: [2056.3, 2057.3], maxDzM: 2.03, why: SHIBAURA },
         { chunk: "4848755:3", with: "45019020", s: [862.8, 867.8], maxDzM: 0.29, why: NOSE },
         { chunk: "4848762:1", with: "45021972", s: [482.5, 483.5], maxDzM: 2.11, why: SHIBAURA },
         { chunk: "4848762:2", with: "45021972", s: [484.0, 553.0], maxDzM: 1.98, why: SHIBAURA },
-        { chunk: "4848762:33", with: "4848889", s: [2823.0, 2828.0], maxDzM: 0.43, why: NOSE },
+        { chunk: "4848762:33", with: "4848889", s: [2823.0, 2828.0], maxDzM: 0.42, why: NOSE },
         { chunk: "4848762:34", with: "4848889", s: [2994.5, 2997.5], maxDzM: 0.25, why: NOSE },
+        { chunk: "4848762:38", with: "45019020", s: [3932.4, 3982.4], maxDzM: 3.36, why: SHIBAURA },
         { chunk: "4848889:1", with: "4848762", s: [161.0, 162.0], maxDzM: 0.19, why: NOSE },
-        { chunk: "4848762:38", with: "45019020", s: [3932.4, 3982.4], maxDzM: 3.37, why: SHIBAURA },
+        { chunk: "4853798:0", with: "45021976", s: [198.6, 202.1], maxDzM: 0.37, why: DROP },
+        { chunk: "813455519:1", with: "24402611", s: [306.7, 316.7], maxDzM: 2.89, why: `${C1}。${JCT}` },
+        { chunk: "895902565:4", with: "24402611", s: [502.1, 588.6], maxDzM: 3.74, why: TANIMACHI },
+        { chunk: "895902565:5", with: "24402611", s: [882.5, 943.0], maxDzM: 0.74, why: TANIMACHI },
       ];
     const got = [...found.values()];
     expect(got.map((g) => `${g.chunk}|${g.with}`).toSorted()).toEqual(
@@ -473,8 +494,8 @@ describe("生成済みの高速道路タイル", () => {
     }
   });
 
-  it("says which format it is (meta.version 4) and that every joint solve converged", () => {
-    expect(meta.version).toBe(4);
+  it("says which format it is (meta.version 5) and that every joint solve converged", () => {
+    expect(meta.version).toBe(5);
     // P9's tunnels and cuts are named, so a reader without them refuses the files (isSupportedMeta).
     expect(meta.features).toEqual(["below"]);
     expect(meta.solver.unconverged).toBe(0);

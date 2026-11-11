@@ -43,6 +43,7 @@ function chunkOf(structure: "tunnel" | "cut", ground: number, portals?: XwPortal
     shoulderR: 0.75,
     basis: "statute",
     V: 60,
+    maxspeed: null,
     vh: 50,
     gmax: 0.05,
     g0: 0,

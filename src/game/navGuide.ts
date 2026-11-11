@@ -1,3 +1,4 @@
+import { log } from "../log";
 import type { Voice } from "../ai/tts";
 import type { Vector3 } from "three";
 import { getLocale, t } from "../i18n";
@@ -22,7 +23,16 @@ import {
   type Notice,
   type OrbisLike,
 } from "./navNotices";
-import { joinSpoken, sayLane, sayStraight, sayTurn, turnPhrase, turnWord } from "./navPhrases";
+import {
+  joinSpoken,
+  sayLane,
+  sayStraight,
+  sayTurn,
+  sayXw,
+  turnPhrase,
+  turnWord,
+  xwLabel,
+} from "./navPhrases";
 import {
   CLOSE_RANGE,
   nextGuidance,
@@ -351,7 +361,8 @@ export class NavGuide {
     this.offSince = null;
     this.hint = 0;
     const isUsable = this.mode === "walk" ? isWalkable : isDrivable;
-    const hit = graph.nearest(car, 30, isUsable);
+    // On its own level (RoadGraph.locate): up on a deck the deck, not the street under it.
+    const hit = this.mode === "walk" ? graph.nearest(car, 30, isUsable) : this.locateCar(graph, car);
     if (!hit) {
       this.route = null;
       return;
@@ -384,14 +395,32 @@ export class NavGuide {
     this.prepared = inputs;
     const ctx = { approaches: this.approaches, names: this.names, routes: this.routes };
     this.straights = this.mode === "car" ? straightGuides(graph, route, ctx) : [];
-    this.turnNames = route.maneuvers.map((m) => junctionLabel(this.names, m.pos));
+    // An expressway maneuver goes by its ramp or line (「芝公園出口」), not the junction near it.
+    this.turnNames = route.maneuvers.map((m) => (m.xw ? xwLabel(m.xw) : junctionLabel(this.names, m.pos)));
+  }
+
+  /**
+   * The road a car is on, on its own level (RoadGraph.locate), the route's own deck first: where
+   * two decks overlap (分合流) locate can answer the other run for a look, and planning from it put
+   * the route on the wrong one (P6 review W4).
+   */
+  private locateCar(graph: RoadGraph, car: Vector3) {
+    const route = this.route;
+    const isSameGraph = route !== null && this.graph === graph;
+    if (isSameGraph && route) {
+      const own = new Set(route.steps.map((st) => st.seg));
+      const onRoute = graph.nearestOnSurface(car, 15, (seg) => own.has(seg) && seg.line.xid !== undefined);
+      if (onRoute) return onRoute;
+    }
+    return graph.locate(car, 30, isDrivable);
   }
 
   /** The street the player is on (searched a few times a second, projected every frame). */
   private locate(graph: RoadGraph, car: Vector3, forward: Vector3, now: number) {
     const isStale = now - this.located.at > LOCATE_EVERY || this.located.graph !== graph;
     if (isStale) {
-      const hit = graph.nearest(car, 30, this.mode === "walk" ? isWalkable : isDrivable);
+      const isWalk = this.mode === "walk";
+      const hit = isWalk ? graph.nearest(car, 30, isWalkable) : this.locateCar(graph, car);
       const dir: 1 | -1 = hit && hit.dir.dot(forward) < 0 ? -1 : 1;
       this.located = { at: now, graph, hit: hit ? { seg: hit.seg, s: hit.s, dir } : null };
       return this.located.hit;
@@ -610,17 +639,22 @@ export class NavGuide {
       ? CALLS.find((c) => d <= c)
       : CALLS.find((c) => d <= c && d > c - 60 && !this.called.has(`${key}:${c}`));
     const intro = this.intro;
+    // The expressway's entrances, exits and branches in their own words (navPhrases.ts sayXw).
+    const say = (distance: number | null) =>
+      next.xw
+        ? sayXw({ xw: next.xw, turn: next.turn, distance })
+        : sayTurn({ turn: next.turn, name, distance });
     this.intro = null;
     if (d < SOON + 15 && !this.called.has(`${key}:soon`)) {
       this.called.add(`${key}:soon`);
       for (const c of CALLS) this.called.add(`${key}:${c}`);
-      this.guide(joinSpoken([sayTurn({ turn: next.turn, name, distance: null }), laneWords]), now, intro);
+      this.guide(joinSpoken([say(null), laneWords]), now, intro);
       return true;
     }
     if (call !== undefined) {
       for (const c of CALLS) if (c >= call) this.called.add(`${key}:${c}`);
       const spoken = d < call - 20 ? d : call;
-      this.guide(joinSpoken([sayTurn({ turn: next.turn, name, distance: spoken }), laneWords]), now, intro);
+      this.guide(joinSpoken([say(spoken), laneWords]), now, intro);
       return true;
     }
     if (intro) {
@@ -816,7 +850,10 @@ export class NavGuide {
     const compared = intro && !intro.isReplan ? text : core;
     const isRepeat = compared === this.lastSaid.text && performance.now() - this.lastSaid.at < 10_000;
     this.lastSaid = { text: compared, at: performance.now() };
-    if (!text || isRepeat || this.isMuted()) return;
+    if (!text || isRepeat) return;
+    // What the navi says, in the language in force, for the QA runs to read (muted or not).
+    log("nav_spoken", { text });
+    if (this.isMuted()) return;
     const hasOnDeviceVoice = this.voice?.enabled === true;
     if (hasOnDeviceVoice) {
       this.voice?.speak(text);

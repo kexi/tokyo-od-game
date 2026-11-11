@@ -39,7 +39,19 @@ import {
 } from "./autoTraffic";
 import { laneCentre } from "./drivePath";
 import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
-import { isDrivable as isRoutable } from "../world/roadClass";
+import { isDrivable as isRoutable, isOnGround } from "../world/roadClass";
+import { runOf } from "../world/laneLinks";
+import { bendSpeedAhead, mainCarsAt, mergeSpeedCap, taperOf } from "./merging";
+
+/**
+ * Another road user on the same level as `from`: not a car on the street under a viaduct, nor one
+ * up on the deck over the street (they are metres apart in height and never meet). The allowance
+ * grows with the distance, for a street's own slope.
+ */
+const isSameLevel = (from: Vector3, p: Vector3) => {
+  const d = Math.hypot(p.x - from.x, p.z - from.z);
+  return Math.abs(p.y - from.y) < 3 + 0.15 * d;
+};
 
 export { laneCentre } from "./drivePath";
 export type { DriveObstacle } from "./autoTraffic";
@@ -125,6 +137,8 @@ export type CarPose = { position: Vector3; yaw: number; speed: number };
 
 const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
+/** 合流の合図: this far before the merge node (the taper starts ~25 m before it; 3 s at 50 km/h more). */
+const MERGE_SIGNAL_M = 70;
 const LATERAL_ACCEL = 2.5; // m/s² round the bends of a street
 
 const KERB_CLEARANCE = 1.4; // car centre from the kerb: half the width plus a margin
@@ -242,6 +256,8 @@ export class AutoDriver {
   private hasSignalledOff = false;
   /** Bumper gap to the vehicle in front (m), from the last look. */
   private frontGap = Infinity;
+  /** Giving way at a merge (第75条の6), from the last look: slowing or waiting at the ramp's end. */
+  yieldingAtMerge = false;
 
   get remaining(): number {
     return this.route ? this.route.length - this.at : 0;
@@ -505,8 +521,13 @@ export class AutoDriver {
       const vCorner = isTurn ? TURN_SPEED : Math.max(TURN_SPEED, Math.sqrt(LATERAL_ACCEL * c.radius));
       v = Math.min(v, Math.sqrt(vCorner * vCorner + 2 * 2.5 * Math.max(0, c.from - this.at)));
     }
-    // Turns without a curve of their own (a corner too cramped to round).
-    const next = route.maneuvers.find((m) => m.at > this.at - 2);
+    // The expressway's curves (its chunks bend in many small kinks, no corner of drivePath's): no
+    // faster than its radius allows, slowing in time.
+    const isOnExpressway = runOf(seg) !== null;
+    if (isOnExpressway) v = Math.min(v, bendSpeedAhead(route, this.at));
+    // Turns without a curve of their own (a corner too cramped to round). Not the expressway's
+    // merges and exits: they are slight, and their curve is the ramp's (bendSpeedAhead).
+    const next = route.maneuvers.find((m) => m.at > this.at - 2 && !m.xw);
     const isRounded = next !== undefined && route.corners.some((c) => c.from <= next.at && next.at <= c.to);
     if (next && !isRounded) {
       const d = Math.max(0, next.at - this.at - 6);
@@ -555,7 +576,7 @@ export class AutoDriver {
       const dx = o.x - this.position.x;
       const dz = o.z - this.position.z;
       const isItself = dx * dx + dz * dz < 1;
-      if (isItself) continue;
+      if (isItself || !isSameLevel(this.position, o)) continue;
       const ahead = dx * dir.x + dz * dir.z;
       const lateral = Math.abs(dx * dir.z - dz * dir.x);
       if (ahead > 0.5 && ahead < 40 && lateral < 1.7) block = Math.min(block, ahead - 2.4);
@@ -590,7 +611,7 @@ export class AutoDriver {
       const dz = o.position.z - this.position.z;
       const d2 = dx * dx + dz * dz;
       const isItself = d2 < 1;
-      if (isItself || d2 > 240 * 240) return;
+      if (isItself || d2 > 240 * 240 || !isSameLevel(this.position, o.position)) return;
       const place = placeOnRoute(route, o.position, from, to, Math.max(1, this.hint - 15));
       if (!place || place.dist > 12) return;
       const h = o.heading;
@@ -643,11 +664,41 @@ export class AutoDriver {
       cap = Math.min(cap, followSpeed(gap - standstill));
     }
     cap = Math.min(cap, this.junctions(route, world, vehicles));
+    cap = Math.min(cap, this.merge(route, world));
     // Road users on this street (not on one alongside, within the 12 m the look takes in).
     const width = route.steps[this.stepIndex(route)].seg.line.width;
     const onStreet = seen.filter((s) => Math.abs(s.lateral) < width);
     this.passing(route, world, verdict, onStreet, dt);
     if (this.pass && this.pass.phase !== "signal") cap = Math.min(cap, PASS_TOP);
+    return cap;
+  }
+
+  /**
+   * 合流 (第75条の6): on a ramp's last MERGE_LOOK_M before it runs into a main line, the speed
+   * that lets every main-line vehicle by that the car would otherwise make brake (merging.ts), down
+   * to waiting at the end of the ramp. Sets `yieldingAtMerge` for the law check (a stop to give
+   * way is no 駐停車).
+   */
+  private merge(route: Route, world: DriveWorld): number {
+    this.yieldingAtMerge = false;
+    const k = this.stepIndex(route);
+    const run = runOf(route.steps[k].seg);
+    const link = route.links?.find((l) => l.kind === "merge" && l.run === run && l.at > this.at - 1);
+    if (!link || link.trunk === null) return Infinity;
+    const toMerge = link.at - this.at;
+    // Not the car itself (the world's vehicles include the player's car, which this may drive).
+    const isItself = (o: DriveObstacle) => o.position.distanceToSquared(this.position) < 1;
+    const others = (world.vehicles ?? [])
+      .filter((o) => o.kind === "vehicle" && o.heading !== undefined && !isItself(o))
+      .map((o) => ({
+        position: o.position,
+        heading: o.heading!,
+        speed: o.speed ?? 0,
+        half: o.halfLength ?? 2.25,
+      }));
+    const cars = mainCarsAt(world.graph, link, others, link.toLane);
+    const { cap, yielding } = mergeSpeedCap(toMerge, this.speed, cars, taperOf(world.graph, link));
+    this.yieldingAtMerge = yielding;
     return cap;
   }
 
@@ -1015,6 +1066,12 @@ export class AutoDriver {
             ? "left"
             : "right"
           : null);
+    // 合流 is a 進路変更 (第53条): the indicator toward the main line from MERGE_SIGNAL_M before the
+    // node (a ramp on the main line's left moves right into it) until past it.
+    const merging = route.links?.find(
+      (l) => l.kind === "merge" && l.at - this.at < MERGE_SIGNAL_M && this.at - l.at < 15,
+    );
+    if (merging && !cornerSide) this.signal = merging.side === "left" ? "right" : "left";
     // A pass: right from 3 s before pulling out until beside the line, left from 3 s before going back.
     const pass = this.pass;
     if (pass) {
@@ -1066,13 +1123,17 @@ export class AutoDriver {
   private offLane(route: Route, world: DriveWorld, off: number): Why | null {
     const pos = this.position;
     const isOnPavement = world.isPavement?.(pos.x, pos.z) ?? false;
-    const isOffRoad = world.graph.carriagewaysAt(pos, 1).length === 0;
+    // On a deck there is no street under the car (carriagewaysAt has the ground only): the deck is
+    // its road. Asked only when slow (a search of every segment).
+    const isOffRoad = () =>
+      world.graph.carriagewaysAt(pos, 1).length === 0 &&
+      world.graph.nearestOnSurface(pos, 15, (seg) => !isOnGround(seg.line)) === null;
     const d = this.pathAt(route, Math.min(route.length, this.at + 1)).sub(
       this.pathAt(route, Math.max(0, this.at - 1)),
     );
     const yawError = d.lengthSq() > 1e-6 ? Math.abs(wrap(Math.atan2(d.x, d.z) - this.yaw)) : 0;
     const isSlow = Math.abs(this.speed) < 3;
-    const isLost = isOnPavement || off > OFF_LANE || (isSlow && (isOffRoad || yawError > MISALIGNED));
+    const isLost = isOnPavement || off > OFF_LANE || (isSlow && (yawError > MISALIGNED || isOffRoad()));
     if (isLost) return "align";
     const uturn = route.corners.find((c) => c.kind === "uturn" && c.from - this.at < 5 && c.to > this.at);
     return uturn ? "uturn" : null;

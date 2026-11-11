@@ -1,7 +1,8 @@
 import { Vector3 } from "three";
 import { isLaneChangeBanned, laneBand, laneCentreOffset, laneOfOffset } from "../world/laneChange";
 import { laneOffset, leftOf, type RoadGraph, type Segment } from "../world/roads";
-import type { LaneHint, Maneuver, Route, Step, Turn } from "./navigation";
+import { intoTrunkLane, runOf } from "../world/laneLinks";
+import type { LaneHint, Maneuver, Route, RouteLink, Step, Turn } from "./navigation";
 
 /**
  * The way a car drives a route, for the navigation to show and the autopilot to follow: in its
@@ -29,6 +30,16 @@ export const CENTRE_GAP = 1.2;
 export const CENTRE_HUG = 1.2;
 /** Lanes for a turn are taken this far before it (第34条: あらかじめその前から). */
 export const LANE_PREPARE = 120;
+/**
+ * On the expressway, the lane an exit or a branch leaves from is taken this far before it
+ * (第75条の7第2項). Why farther than LANE_PREPARE: at 60 km/h a lane change takes 3 s (50 m)
+ * and the 出口予告 boards stand 500 m and 1 km before (標識令 別表第一 案内標識 110-B).
+ */
+export const XW_PREPARE = 400;
+/** After a merge from the right, the car keeps the lane it came into this far, then keeps left. */
+export const XW_MERGE_KEEP = 150;
+/** Route distance before and after a merge or diverge over which the ramp's taper is driven in the main lane. */
+const XW_TAPER_REACH = 250;
 // Moving over within the lane happens with the 合図, 30 m before the turn (施行令 第21条).
 const HUG_BEFORE = 30;
 // Lateral metres per metre of travel while changing lanes (a 3 m lane over 30 m).
@@ -256,19 +267,34 @@ export function laneFor(
   hints: readonly LaneHint[],
   maneuvers: readonly Maneuver[],
   forced: number | null = null,
+  links: readonly RouteLink[] = [],
 ): Omit<LanePlan, "corner"> {
   const seg = step.seg;
   let count = Math.max(1, seg.lanes);
   const next = maneuvers.find((m) => m.at > d);
   const toTurn = next ? next.at - d : Infinity;
   const hint = hints.find((h) => h.seg === seg && h.dir === step.dir && h.at > d && h.at - d < LANE_PREPARE);
+  const run = runOf(seg);
+  // The expressway: before a diverge the lane it leaves from (第75条の7第2項: あらかじめその前から),
+  // after a merge the lane it came into for a while (then back to the left, 第20条第1項).
+  const diverge =
+    run === null
+      ? undefined
+      : links.find((l) => l.kind === "diverge" && l.run === run && l.at > d && l.at - d < XW_PREPARE);
+  const merged =
+    run === null
+      ? undefined
+      : links.find((l) => l.kind === "merge" && l.toRun === run && l.at <= d && d - l.at < XW_MERGE_KEEP);
   let lane = 0;
   if (hint) {
     const ok = hint.ok.flatMap((v, i) => (v ? [i] : []));
     lane = isRightward(hint.take) ? ok[ok.length - 1] : ok[0];
     count = hint.lanes.length;
-  } else if (next && toTurn < LANE_PREPARE && isRightward(next.turn)) lane = count - 1;
+  } else if (diverge) lane = diverge.fromLane;
+  else if (merged) lane = merged.toLane;
+  else if (next && !next.xw && toTurn < LANE_PREPARE && isRightward(next.turn)) lane = count - 1;
   if (forced !== null) lane = Math.max(0, Math.min(forced, count - 1));
+  lane = Math.min(lane, count - 1);
   let offset = count > 1 ? laneCentre(seg, lane, count) : laneOffset(seg);
   const isHugging = next !== undefined && toTurn < HUG_BEFORE && count === 1;
   const isRightTurn = next?.turn === "right" || next?.turn === "uturn";
@@ -490,8 +516,9 @@ function planLanes(
   startLane: number,
 ): { forced: Array<number | null>; blocked: number[] } {
   const { points: axis, cum, stepOf, steps, maneuvers } = route;
+  const links = route.links ?? [];
   const n = axis.length;
-  const want = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers));
+  const want = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, null, links));
   const forced: Array<number | null> = axis.map(() => null);
   forced[0] = startLane;
   const isHeld = axis.map(() => false);
@@ -505,9 +532,9 @@ function planLanes(
     if (isContinued) last.b = j;
     else holds.push({ a: j, b: j });
   }
-  const laneAt = (j: number) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j]).lane;
+  const laneAt = (j: number) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j], links).lane;
   const offsetAt = (j: number, lane: number) =>
-    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, lane).offset;
+    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, lane, links).offset;
   const indexFrom = (d: number) => {
     let j = 0;
     while (j < n - 1 && cum[j] < d) j++;
@@ -614,13 +641,14 @@ export function drivePath(
   startLane = 0,
 ): DrivePath {
   const { points: axis, cum, stepOf, steps, maneuvers } = route;
+  const links = route.links ?? [];
   // Lane plan at every centreline point, held across 進路変更禁止 stretches (planLanes).
   const { forced, blocked } = planLanes(route, hints, startLane);
-  const plain = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j]));
+  const plain = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j], links));
   const bands = laneBands(route, plain);
   const raw = plain.map((plan, j) => ({ ...plan, offset: inBand(bands[j], plan.offset) }));
   const planAt = (j: number, d: number) => {
-    const plan = laneFor(d, steps[stepOf[j]], hints, maneuvers, forced[j]);
+    const plan = laneFor(d, steps[stepOf[j]], hints, maneuvers, forced[j], links);
     return { ...plan, offset: inBand(bands[j], plan.offset) };
   };
   /** The centreline sample at or before route distance d. */
@@ -825,7 +853,7 @@ export function drivePath(
           // The band of the sample the arc point lies after, or of the next one where that is the
           // previous street's.
           const jb = stepOf[j0] === k || j0 + 1 >= axis.length ? j0 : j0 + 1;
-          const plan = laneFor(d, steps[k], hints, maneuvers, forced[jb]);
+          const plan = laneFor(d, steps[k], hints, maneuvers, forced[jb], links);
           // The rounded centreline is off the street's own (inside the bend), and the check
           // measures from the street's: the band moves by as much.
           const band = bands[jb];
@@ -949,5 +977,39 @@ export function drivePath(
     radius: c.path.radius,
     inside: c.path.inside,
   }));
+  taperIntoMainLane(graph, route, links, points, outCum, outStep);
   return { points, cum: outCum, stepOf: outStep, lanes, corners, blocked };
+}
+
+/**
+ * The ramp's points near each merge and diverge moved into the main line's outermost lane where
+ * the ramp's lane runs over its carriageway (laneLinks.ts intoTrunkLane): the car comes into the
+ * main line along its left lane (第75条の6・第75条の7) instead of following the ramp's centreline,
+ * which OSM ends on the main line's centreline. In place.
+ */
+function taperIntoMainLane(
+  graph: RoadGraph,
+  route: Route,
+  links: readonly RouteLink[],
+  points: Vector3[],
+  cum: readonly number[],
+  stepOf: readonly number[],
+): void {
+  for (const link of links) {
+    const rampRun = link.kind === "merge" ? link.run : link.toRun;
+    if (rampRun === null) continue;
+    // Past a merge's node the main line's own points too, while the plan keeps the merge lane: the
+    // lane easing starts from the ramp's offset (another centreline) and would cut back across.
+    const afterMerge = link.kind === "merge" ? { ...link, trunk: link.to } : null;
+    for (let i = 0; i < points.length; i++) {
+      const isNear = Math.abs(cum[i] - link.at) < XW_TAPER_REACH;
+      if (!isNear) continue;
+      const seg = route.steps[stepOf[i]].seg;
+      const isOnRamp = runOf(seg) === rampRun;
+      const isJustMerged = afterMerge !== null && seg.id === link.to && cum[i] - link.at < XW_MERGE_KEEP;
+      if (!isOnRamp && !isJustMerged) continue;
+      const y = graph.surfaceY(seg, graph.nearestOn(seg, points[i]).s);
+      points[i] = intoTrunkLane(graph, isJustMerged ? afterMerge : link, points[i], y);
+    }
+  }
 }

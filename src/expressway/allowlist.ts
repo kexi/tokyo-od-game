@@ -44,6 +44,9 @@ const SHIBAURA_REASON =
 const NOSE_REASON =
   "分合流のノーズで、同一面（5 cm 以内）の帯をわずかに外れる 1〜2 測点（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）";
 
+const SHIODOME_REASON =
+  "本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。本線のこの先の掘割はこの範囲のデータに無く（P9 が通したのは麻布台のトンネル）、run の地表端で終わるので、経路と交通 AI は入らない（laneLinks.ts reachesStreets）";
+
 export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
   {
     run: "*",
@@ -147,7 +150,9 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     run: "45021972",
     kind: "deck_overlap",
     with: "45554540",
-    maxStations: 16,
+    // P6 cuts chunks where the OSM maxspeed changes (XW_VERSION 5): the stations at the new cuts
+    // add 4 to the same stretch (16 → 20), the largest |Δz| unchanged.
+    maxStations: 20,
     maxDzM: 6.64,
     reason: SHIBAURA_REASON,
   },
@@ -200,6 +205,22 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     maxStations: 2,
     maxDzM: 0.06,
     reason: `芝浦の入口ランプ（4848755）の地表端が臨港道路（45177678、street）の地表端と同じ面で並ぶ所（P2.6 との統合で出た）。${NOSE_REASON}`,
+  },
+  {
+    run: "24402125",
+    kind: "deck_overlap",
+    with: "24402611",
+    maxStations: 21,
+    maxDzM: 6.62,
+    reason: `汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 1.1–1.7 m しか離れずに並走する。${SHIODOME_REASON}`,
+  },
+  {
+    run: "45021976",
+    kind: "deck_overlap",
+    with: "45068172",
+    maxStations: 13,
+    maxDzM: 3.68,
+    reason: `汐留入口（45068172、P6 で範囲に足した）が外回りへ合流する手前の 110 m を、OSM の中心線が外回りから 1.1 m ほどで並走する。${SHIODOME_REASON}`,
   },
 ];
 
