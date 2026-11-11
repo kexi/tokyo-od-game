@@ -1,13 +1,10 @@
 import { reanchorBody } from "../physics/reanchor";
 import {
-  CanvasTexture,
   Euler,
   InstancedMesh,
   Matrix4,
   Mesh,
-  MeshStandardMaterial,
   Quaternion,
-  SRGBColorSpace,
   Vector3,
   type BufferGeometry,
   type Material,
@@ -41,6 +38,9 @@ import { MEMBER_NODES, resolveMount, type MemberRole } from "../signs/mount";
 import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
 import { RoadInstances } from "./roadInstances";
 import { FrameWork } from "../game/frameWork";
+import { FaceLayerPool } from "./signFaces";
+import { attachFaceLayers, SignFaceMaterial } from "./signFaceMaterial";
+import { BASE_GLOW } from "../signs/retroAssumptions";
 
 /**
  * 案内標識 108 series on the streets around the player: planned by guidePlan.ts from the road
@@ -48,10 +48,14 @@ import { FrameWork } from "../game/frameWork";
  * (public/data/guide-places.json); poles, arms and boards from scripts/blender/guide_signs.py;
  * faces drawn by guideArt.ts.
  *
- * Cost: every part is one InstancedMesh, and the board faces too, with a plain blue far face;
- * only the nearest boards (≤ NEAR_COUNT within NEAR_RANGE) get their own drawn texture, kept in a
- * cache across rebuilds. Why not a texture per board for all of them: 100 boards at 512 px are
- * ~110 MB of GPU memory with mipmaps, and beyond ~400 m the letters are a few pixels high anyway.
+ * Cost: every part is one InstancedMesh, and the board faces too: one SignFaceMaterial
+ * (signFaceMaterial.ts) over a FaceLayerPool of drawn faces (signFaces.ts), each board's layer an
+ * instance attribute. Only the nearest boards (≤ NEAR_COUNT within NEAR_RANGE) show their drawn
+ * face; the rest show layer 0, the plain blue far face. The pool keeps CACHE_LIMIT faces across
+ * rebuilds (the least recently wanted goes first). Why not a texture per board for all of them:
+ * 100 boards at 512 px are ~110 MB of GPU memory with mipmaps, and beyond ~400 m the letters are a
+ * few pixels high anyway. Why not a Mesh and material per near board (before G3): 24 more draw
+ * calls and materials, and the faces could not share the plates' headlamp return.
  */
 
 const ROUTE_ZOOM = 14;
@@ -60,7 +64,12 @@ const NEAR_RANGE = 400; // m: boards this close get their drawn face (beyond, le
 const NEAR_COUNT = 24;
 const DRAWS_PER_UPDATE = 3; // canvas draws per update (a board takes a few ms)
 const TEXTURE_PX = 512; // 280 cm → 1.8 px/cm: a 30 cm 漢字 is 55 px
-const CACHE_LIMIT = 32; // ≈ 35 MB of faces with their mipmaps
+// Layers are 512 × 320: the boards are about 1.6 times as wide as tall (the canvas is stretched to
+// it; the face's UVs cover the board either way). 33 layers with mipmaps: 28.8 MB.
+const TEXTURE_PX_HIGH = 320;
+const CACHE_LIMIT = 32; // drawn faces kept, + layer 0 (the far face)
+/** The 案内標識 blue (guideArt.ts BLUE), the far face as the plain far material drew it. */
+const FAR_FACE: [number, number, number, number] = [0x1d, 0x4f, 0x9c, 255];
 // Heights, the 3° lean and the gap to the pole: src/signs/mount.ts (片持式 cantilever-f, 路側式
 // double-post on the pavement, 2.5 m).
 
@@ -85,7 +94,8 @@ type Sign = {
   refs: Array<[InstancedMesh, number]>;
   faceIndex: number;
   colliders: RAPIER.Collider[];
-  near: Mesh | null;
+  /** Showing its drawn face (one of the nearest). */
+  isNear: boolean;
   hidden: boolean;
 };
 
@@ -93,29 +103,24 @@ type Sign = {
 const at = (p: Vector3, rotY: number, scale: Vector3, pitch = 0) =>
   new Matrix4().compose(p, new Quaternion().setFromEuler(new Euler(pitch, rotY, 0, "YXZ")), scale);
 
-const farMaterial = new MeshStandardMaterial({ color: 0x1d4f9c, roughness: 0.45 });
-const textures = new Map<string, CanvasTexture>();
-
-/** Faces drawn once per content, newest last (Map order), the oldest dropped past the limit. */
-function faceTexture(key: string, layout: BoardLayout): CanvasTexture {
-  const hit = textures.get(key);
-  if (hit) {
-    textures.delete(key);
-    textures.set(key, hit);
-    return hit;
-  }
-  const texture = new CanvasTexture(drawBoard(layout, TEXTURE_PX));
-  texture.colorSpace = SRGBColorSpace;
-  texture.flipY = false; // glTF UV convention: v runs down the image
-  texture.anisotropy = 8;
-  textures.set(key, texture);
-  while (textures.size > CACHE_LIMIT) {
-    const oldest = textures.keys().next().value;
-    if (oldest === undefined) break;
-    textures.get(oldest)?.dispose();
-    textures.delete(oldest);
-  }
-  return texture;
+type Faces = { pool: FaceLayerPool; material: SignFaceMaterial };
+let guideFaces: Faces | null = null;
+/** Made on first use (the pool needs the renderer, bound by main.ts). */
+function faces(): Faces {
+  if (guideFaces) return guideFaces;
+  const pool = new FaceLayerPool({
+    name: "guide",
+    size: TEXTURE_PX,
+    height: TEXTURE_PX_HIGH,
+    layers: CACHE_LIMIT + 1,
+    anisotropy: 8,
+    standIn: FAR_FACE,
+  });
+  guideFaces = {
+    pool,
+    material: new SignFaceMaterial({ small: pool.texture, baseGlow: BASE_GLOW.value.guide }),
+  };
+  return guideFaces;
 }
 
 export class GuideSigns {
@@ -125,8 +130,10 @@ export class GuideSigns {
   private places: PlaceRow[] | null = null;
   private meshes: InstancedMesh[] = [];
   private readonly instances = new RoadInstances();
-  private nearPool: Mesh[] = [];
   private faces: InstancedMesh | null = null;
+  /** The board face geometry with this class's `faceLayer` instance attribute. */
+  private faceGeometry: BufferGeometry | null = null;
+  private layerVersion = -1;
   private body: RAPIER.RigidBody | null = null;
   private readonly tiles = new Map<string, Promise<RouteTile | null>>();
   /**
@@ -323,7 +330,6 @@ export class GuideSigns {
       sign.plan.travel.applyQuaternion(rotation);
       sign.board.premultiply(matrix);
       for (const foot of sign.feet) foot.applyMatrix4(matrix);
-      sign.near?.applyMatrix4(matrix);
     }
     if (this.roadInfo) {
       this.roadInfo.graph = graph;
@@ -340,11 +346,6 @@ export class GuideSigns {
     }
     this.meshes = [];
     this.faces = null;
-    for (const s of this.signs) if (s.near) this.dropNear(s);
-    if (!reuse) {
-      for (const m of this.nearPool) (m.material as Material).dispose();
-      this.nearPool = [];
-    }
     this.signs = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
@@ -352,30 +353,34 @@ export class GuideSigns {
 
   /**
    * Drawn faces for the nearest boards, the far face for the rest; and, every 2 s, signs near the
-   * player that stand inside a building (GSI 幅員 wider than the street) are hidden.
+   * player that stand inside a building (GSI 幅員 wider than the street) are hidden. The pool
+   * uploads a couple of faces a frame; the boards are asked for every 500 ms, at most
+   * DRAWS_PER_UPDATE new canvases each time (a board takes a few ms to draw).
    */
   update(focus: Vector3, now: number): void {
-    if (now - this.lastUpdate < 500 || !this.faces) return;
+    if (!this.faces) return;
+    const { pool } = faces();
+    pool.pump();
+    if (pool.version !== this.layerVersion) this.applyLayers();
+    if (now - this.lastUpdate < 500) return;
     this.lastUpdate = now;
     const byDistance = this.signs
       .filter((s) => !s.hidden)
       .map((s) => ({ s, d: Math.hypot(s.plan.pos.x - focus.x, s.plan.pos.z - focus.z) }))
       .toSorted((a, b) => a.d - b.d);
-    const wanted = new Set(
-      byDistance
-        .filter((e) => e.d < NEAR_RANGE)
-        .slice(0, NEAR_COUNT)
-        .map((e) => e.s),
+    const wanted = byDistance.filter((e) => e.d < NEAR_RANGE).slice(0, NEAR_COUNT);
+    const isNear = new Set(wanted.map((e) => e.s));
+    for (const s of this.signs) s.isNear = isNear.has(s);
+    pool.want(
+      new Map(
+        wanted.map(({ s, d }) => [
+          s.key,
+          { source: { draw: () => drawBoard(s.layout, TEXTURE_PX) }, priority: d },
+        ]),
+      ),
     );
-    for (const s of this.signs) if (s.near && !wanted.has(s)) this.dropNear(s);
-    let draws = 0;
-    for (const s of wanted) {
-      if (s.near) continue;
-      const isCached = textures.has(s.key);
-      if (!isCached && draws >= DRAWS_PER_UPDATE) continue;
-      if (!isCached) draws++;
-      this.makeNear(s);
-    }
+    pool.start(DRAWS_PER_UPDATE);
+    this.applyLayers();
     if (now - this.lastCheck < 2000) return;
     this.lastCheck = now;
     for (const s of this.signs) {
@@ -388,43 +393,15 @@ export class GuideSigns {
     }
   }
 
-  private makeNear(s: Sign): void {
-    const mesh =
-      this.nearPool.pop() ??
-      new Mesh(
-        this.kit?.face,
-        new MeshStandardMaterial({
-          map: faceTexture(s.key, s.layout),
-          // Retroreflective sheeting, as the other signs: a little self-illumination at night.
-          emissive: 0xffffff,
-          emissiveIntensity: 0.16,
-          roughness: 0.45,
-        }),
-      );
-    const material = mesh.material as MeshStandardMaterial;
-    material.map = faceTexture(s.key, s.layout);
-    material.emissiveMap = material.map;
-    mesh.matrixAutoUpdate = false;
-    mesh.matrix.copy(s.board);
-    mesh.castShadow = true;
-    this.scene.add(mesh);
-    s.near = mesh;
-    this.setFace(s, false);
-  }
-
-  private dropNear(s: Sign): void {
-    if (!s.near) return;
-    this.scene.remove(s.near);
-    this.nearPool.push(s.near);
-    s.near = null;
-    if (!s.hidden) this.setFace(s, true);
-  }
-
-  private setFace(s: Sign, visible: boolean): void {
-    const faces = this.faces;
-    if (!faces) return;
-    faces.setMatrixAt(s.faceIndex, visible ? s.board : new Matrix4().makeScale(0, 0, 0));
-    faces.instanceMatrix.needsUpdate = true;
+  /** Each board's layer: its drawn face when it is near and the face is in, else the far face (0). */
+  private applyLayers(): void {
+    const mesh = this.faces;
+    if (!mesh) return;
+    const { pool } = faces();
+    const attribute = attachFaceLayers(mesh);
+    for (const s of this.signs) attribute.setX(s.faceIndex, s.isNear ? pool.layerOf(s.key) : 0);
+    attribute.needsUpdate = true;
+    this.layerVersion = pool.version;
   }
 
   private hide(s: Sign): void {
@@ -434,7 +411,7 @@ export class GuideSigns {
       mesh.setMatrixAt(i, zero);
       mesh.instanceMatrix.needsUpdate = true;
     }
-    if (s.near) this.dropNear(s);
+    s.isNear = false;
     for (const c of s.colliders) this.world.removeCollider(c, false);
     s.colliders = [];
   }
@@ -476,7 +453,7 @@ export class GuideSigns {
         refs: [],
         faceIndex: index,
         colliders: [],
-        near: null,
+        isNear: false,
         hidden: false,
       };
       const add = (list: Matrix4[], m: Matrix4) => {
@@ -531,8 +508,14 @@ export class GuideSigns {
       add(boards, sign.board);
       return sign;
     });
-    const instanced = (geometry: BufferGeometry, material: Material, list: Matrix4[], shadow = true) => {
-      const mesh = this.instances.take(geometry, material, list.length);
+    const instanced = (
+      geometry: BufferGeometry,
+      material: Material,
+      list: Matrix4[],
+      shadow = true,
+      prepare?: (mesh: InstancedMesh) => void,
+    ) => {
+      const mesh = this.instances.take(geometry, material, list.length, prepare);
       mesh.count = list.length;
       list.forEach((m, i) => mesh.setMatrixAt(i, m));
       mesh.frustumCulled = false; // instances span the whole area
@@ -561,7 +544,14 @@ export class GuideSigns {
       yield true;
     }
     instanced(k.back.geometry, k.back.material, boards);
-    this.faces = instanced(k.face, farMaterial, boards, false);
+    // A clone of the face for the instance attribute (the glb's geometry stays as loaded).
+    this.faceGeometry ??= k.face.clone();
+    // attachFaceLayers gives the mesh its `faceLayer` as it is taken, before it can be drawn.
+    this.faces = instanced(this.faceGeometry, faces().material, boards, false, attachFaceLayers);
+    // The review hooks and the perf probe tell the faces by this (as the plates' faceKeys).
+    this.faces.userData.guideFaces = true;
+    this.layerVersion = -1;
+    this.applyLayers();
     yield true;
   }
 }

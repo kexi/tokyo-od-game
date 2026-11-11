@@ -4,10 +4,7 @@ import {
   type InstancedMesh,
   Matrix4,
   Mesh,
-  MeshStandardMaterial,
   Quaternion,
-  SRGBColorSpace,
-  TextureLoader,
   Vector3,
   type BufferGeometry,
   type Material,
@@ -39,6 +36,9 @@ import { log, warn } from "../log";
 import { leftOf, type RoadGraph } from "./roads";
 import type { Approach, SignalPole } from "./trafficControl";
 import { sharedDraco } from "../render/draco";
+import { FaceLayerPool } from "./signFaces";
+import { attachFaceLayers, SignFaceMaterial } from "./signFaceMaterial";
+import { BASE_GLOW } from "../signs/retroAssumptions";
 
 // Sign artwork drawn by scripts/textures/sign_textures.py (道路標識、区画線及び道路標示に関する命令
 // 別表第二); Vite bundles each PNG with a content hash.
@@ -137,27 +137,74 @@ export async function loadSignModels(): Promise<void> {
   };
 }
 
-const faces = new Map<string, MeshStandardMaterial>();
-const textureLoader = new TextureLoader();
-function faceMaterial(file: string): MeshStandardMaterial {
-  let m = faces.get(file);
-  if (m) return m;
-  const map = textureLoader.load(artworkUrl(file));
-  map.colorSpace = SRGBColorSpace;
-  map.flipY = false; // glTF UV convention: v runs down the image, as GLTFLoader's own textures
-  map.anisotropy = 4;
-  // Retroreflective sheeting: a little self-illumination keeps plates legible at night.
-  m = new MeshStandardMaterial({
-    map,
-    emissiveMap: map,
-    emissive: 0xffffff,
-    emissiveIntensity: 0.18,
-    roughness: 0.45,
+/**
+ * The plates' faces: two FaceLayerPools (signFaces.ts) under one SignFaceMaterial. The artwork
+ * (512–1024 px PNGs) is resampled into 256 px layers, and into 512 px layers for the 90 cm boards
+ * (327 series, drawn at 1024 px): at 10 m a 75 cm plate is ~110 px high on a 720 px screen.
+ * 104 + 17 layers (layer 0 of each is the stand-in) are 36.4 + 23.8 MB with mipmaps; with the
+ * 案内標識's 28.8 MB, 89.0 MB of faces,
+ * inside the design's 96 MB. A rebuild at 丸の内 wanted 37 plates and 16 boards (the 327の7 lane
+ * patterns: 8 layers were short).
+ * Why 256 and not the PNGs' 512: 128 layers of 512 would be 179 MB alone.
+ */
+const SMALL_LAYERS = 104;
+const LARGE_LAYERS = 17;
+/** A plate this wide or high (mm) takes a large layer: the 90 cm boards. */
+const LARGE_PLATE_MM = 900;
+/** Faces uploaded per frame, per pool (the decodes run off the main thread). */
+const UPLOADS_PER_FRAME = 2;
+
+type Faces = { small: FaceLayerPool; large: FaceLayerPool; material: SignFaceMaterial };
+let signFaces: Faces | null = null;
+/** Made on first use: the pools need the renderer (bound by main.ts); tests never build faces. */
+function faces(): Faces {
+  if (signFaces) return signFaces;
+  const transparent: [number, number, number, number] = [0, 0, 0, 0];
+  const small = new FaceLayerPool({
+    name: "plates",
+    size: 256,
+    layers: SMALL_LAYERS,
+    anisotropy: 4,
+    standIn: transparent,
+  });
+  const large = new FaceLayerPool({
+    name: "boards",
+    size: 512,
+    layers: LARGE_LAYERS,
+    anisotropy: 4,
+    standIn: transparent,
+  });
+  const material = new SignFaceMaterial({
+    small: small.texture,
+    large: { texture: large.texture, base: SMALL_LAYERS },
+    baseGlow: BASE_GLOW.value.plates,
     alphaTest: 0.5,
   });
-  faces.set(file, m);
-  return m;
+  signFaces = { small, large, material };
+  return signFaces;
 }
+
+const isLargePlate = (shape: Shape): boolean => {
+  const plate = PLATES[shape as keyof typeof PLATES] as (typeof PLATES)[keyof typeof PLATES] | undefined;
+  return plate !== undefined && Math.max(...plateBoxMm(plate)) >= LARGE_PLATE_MM;
+};
+
+/** The face geometry of each plate shape (its mesh's `faceLayer` is attachFaceLayers'). */
+const faceGeometries = new Map<Shape, BufferGeometry>();
+function faceGeometry(shape: Shape, face: BufferGeometry): BufferGeometry {
+  let g = faceGeometries.get(shape);
+  if (g) return g;
+  // A clone: the attribute is this shape's alone, the glb's geometry stays as loaded.
+  g = face.clone();
+  faceGeometries.set(shape, g);
+  return g;
+}
+
+/**
+ * The face mesh of one plate shape: the artwork each instance shows, the item it draws (its post's
+ * foot ranks the artwork by distance; a hidden column's faces do not count) and its pool.
+ */
+type FaceMesh = { mesh: InstancedMesh; files: string[]; items: Item[]; large: boolean };
 
 /**
  * One column of a post as it stands: the instances drawing it and its colliders (to hide them
@@ -406,6 +453,10 @@ export class TrafficSigns {
   private lastCheck = 0;
   private hiddenCounts: HiddenCounts = { single: 0, doubleFirst: 0, doubleSecond: 0, doubleWhole: 0 };
   private readonly reportedRoles = new Set<MemberRole>();
+  private faceMeshes: FaceMesh[] = [];
+  /** The pools' versions the face layers were last written for. */
+  private layerVersions: [number, number] = [-1, -1];
+  private lastFocus: Vector3 | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -498,6 +549,8 @@ export class TrafficSigns {
 
   reanchor(matrix: Matrix4, rotation: Quaternion): void {
     this.instances.reanchor(matrix);
+    // The focus the faces were last ranked from moves with the frame (the next rank reads it).
+    this.lastFocus?.applyMatrix4(matrix);
     for (const post of this.posts) {
       post.pos.applyMatrix4(matrix);
       post.travel.applyQuaternion(rotation);
@@ -514,6 +567,7 @@ export class TrafficSigns {
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
     this.posts = [];
+    this.faceMeshes = [];
     this.hiddenCounts = { single: 0, doubleFirst: 0, doubleSecond: 0, doubleWhole: 0 };
   }
 
@@ -527,8 +581,11 @@ export class TrafficSigns {
    * kerb, and hiding the post with it took the first column (often 一時停止) away too (review W1).
    */
   update(focus: Vector3, now: number): void {
+    this.pumpFaces();
     if (now - this.lastCheck < 2000) return;
     this.lastCheck = now;
+    this.lastFocus = focus.clone();
+    this.wantFaces(focus);
     const hide = new Matrix4().makeScale(0, 0, 0);
     let changed = false;
     for (const post of this.posts) {
@@ -554,6 +611,18 @@ export class TrafficSigns {
     if (changed) log("sign_columns_hidden", { ...this.hiddenCounts, posts: this.posts.length });
   }
 
+  /** Every frame: decodes started, a few faces uploaded, and the layers re-read when one moved in. */
+  private pumpFaces(): void {
+    if (this.faceMeshes.length === 0) return;
+    const { small, large } = faces();
+    small.start();
+    large.start();
+    small.pump(UPLOADS_PER_FRAME);
+    large.pump(UPLOADS_PER_FRAME);
+    const isChanged = small.version !== this.layerVersions[0] || large.version !== this.layerVersions[1];
+    if (isChanged) this.applyLayers();
+  }
+
   private countHidden(post: Post, column: number): void {
     const isDouble = post.columns.length > 1;
     if (!isDouble) {
@@ -567,7 +636,8 @@ export class TrafficSigns {
   }
 
   private *build(posts: Post[], k: Kit): Generator<void | boolean> {
-    const byFile = new Map<string, { d: Design; items: Item[] }>();
+    // Faces by plate shape (one mesh each, any artwork), backs by shape, members by role.
+    const facesByShape = new Map<Shape, { items: Item[]; files: string[] }>();
     const byShape = new Map<Shape, Item[]>();
     const byRole = new Map<MemberRole, Item[]>();
     const push = <K>(map: Map<K, Item[]>, key: K, item: Item) => {
@@ -575,10 +645,11 @@ export class TrafficSigns {
       list.push(item);
       map.set(key, list);
     };
-    const faceItem = (key: Design) => {
-      const entry = byFile.get(key.file) ?? { d: key, items: [] };
-      byFile.set(key.file, entry);
-      return entry.items;
+    const pushFace = (d: Design, item: Item) => {
+      const entry = facesByShape.get(d.shape) ?? { items: [], files: [] };
+      facesByShape.set(d.shape, entry);
+      entry.items.push(item);
+      entry.files.push(d.file);
     };
     // Posts are solid: one fixed body carries a thin cylinder per foot (60.5 mm steel pipe).
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
@@ -599,14 +670,14 @@ export class TrafficSigns {
         const at = (m: Matrix4): Item => ({ post, column: f.column, matrix: frame.clone().multiply(m) });
         if (f.parallel && d.back) {
           // Face the carriageway (+x) and, back to back, the pavement.
-          faceItem(d).push(at(local(f.x + f.standoff, f.z, Math.PI / 2)));
-          faceItem({ ...d, file: d.back }).push(at(local(f.x - f.standoff, f.z, -Math.PI / 2)));
+          pushFace(d, at(local(f.x + f.standoff, f.z, Math.PI / 2)));
+          pushFace({ ...d, file: d.back }, at(local(f.x - f.standoff, f.z, -Math.PI / 2)));
           continue;
         }
         const front = at(local(f.x, f.z + f.standoff, 0));
-        faceItem(d).push(front);
+        pushFace(d, front);
         if (d.bothFaces) {
-          faceItem(d).push(at(local(f.x, f.z - f.standoff, Math.PI)));
+          pushFace(d, at(local(f.x, f.z - f.standoff, Math.PI)));
           continue;
         }
         push(byShape, d.shape, front);
@@ -643,9 +714,18 @@ export class TrafficSigns {
       shared: posts.filter((p) => p.mount.kind === "signal-share").length,
       faces: posts.reduce((n, p) => n + p.mount.faces.length, 0),
     });
-    for (const { d, items } of byFile.values()) {
-      const plate = k.plate(d.shape);
-      if (plate) this.instanced(plate.face, faceMaterial(d.file), items).userData.key = d.file;
+    const { material } = faces();
+    this.faceMeshes = [];
+    for (const [shape, { items, files }] of facesByShape) {
+      const plate = k.plate(shape);
+      if (!plate) continue;
+      // attachFaceLayers gives the mesh its `faceLayer` as it is taken, before it can be drawn.
+      const mesh = this.instanced(faceGeometry(shape, plate.face), material, items, true, attachFaceLayers);
+      // The review hooks read which artwork each instance shows (src/debug/privateViews.ts).
+      mesh.userData.faceKeys = files;
+      const face = { mesh, files, items, large: isLargePlate(shape) };
+      this.faceMeshes.push(face);
+      this.writeLayers(face);
       yield true;
     }
     for (const [shape, items] of byShape) {
@@ -662,6 +742,66 @@ export class TrafficSigns {
       yield true;
     }
     this.posts = posts;
+    this.wantFaces(this.lastFocus);
+    this.applyLayers();
+    log("sign_faces_built", {
+      pool: "plates",
+      artworks: new Set(this.faceMeshes.flatMap((f) => f.files)).size,
+      meshes: this.faceMeshes.length,
+      instances: this.faceMeshes.reduce((n, f) => n + f.files.length, 0),
+    });
+  }
+
+  /**
+   * Asks the pools for the artworks standing now, nearest to `focus` first (each artwork by its
+   * nearest face). A face not yet in shows the transparent stand-in.
+   */
+  private wantFaces(focus: Vector3 | null): void {
+    if (this.faceMeshes.length === 0) return;
+    const { small, large } = faces();
+    const nearest = new Map<string, { d: number; large: boolean }>();
+    for (const { files, items, large: isLarge } of this.faceMeshes) {
+      for (const [i, file] of files.entries()) {
+        // The post's foot, not the instance matrix: a hidden column's matrix is all zeros (its
+        // position the origin, which would rank it nearest).
+        const { post, column } = items[i];
+        const isHidden = post.columns[column]?.hidden === true;
+        if (isHidden) continue;
+        const d = focus ? Math.hypot(post.pos.x - focus.x, post.pos.z - focus.z) : 0;
+        const known = nearest.get(file);
+        const isNearer = !known || d < known.d;
+        if (isNearer) nearest.set(file, { d, large: isLarge });
+      }
+    }
+    const want = (isLarge: boolean) =>
+      new Map(
+        [...nearest]
+          .filter(([, n]) => n.large === isLarge)
+          .map(([file, n]) => [file, { source: { url: artworkUrl(file) }, priority: n.d }]),
+      );
+    small.want(want(false));
+    large.want(want(true));
+  }
+
+  /** Writes each face instance's layer (its artwork's, or 0 until it is in). */
+  private applyLayers(): void {
+    const { small, large } = faces();
+    for (const face of this.faceMeshes) this.writeLayers(face);
+    this.layerVersions = [small.version, large.version];
+  }
+
+  private writeLayers({ mesh, files, large: isLarge }: FaceMesh): void {
+    const { small, large } = faces();
+    const attribute = attachFaceLayers(mesh);
+    for (const [i, file] of files.entries()) {
+      const layer = isLarge
+        ? large.has(file)
+          ? SMALL_LAYERS + large.layerOf(file)
+          : 0
+        : small.layerOf(file);
+      attribute.setX(i, layer);
+    }
+    attribute.needsUpdate = true;
   }
 
   /** Logs a member role with no signs.glb part (a guide_signs.glb role on a sign post), once per role. */
@@ -677,8 +817,9 @@ export class TrafficSigns {
     material: Material,
     items: Item[],
     castShadow = true,
+    prepare?: (mesh: InstancedMesh) => void,
   ): InstancedMesh {
-    const mesh = this.instances.take(geometry, material, items.length);
+    const mesh = this.instances.take(geometry, material, items.length, prepare);
     items.forEach(({ post, column, matrix }, i) => {
       mesh.setMatrixAt(i, matrix);
       post.columns[column]?.refs.push([mesh, i]);

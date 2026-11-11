@@ -16,12 +16,12 @@ const ROOT = join(import.meta.dirname, "..");
 const source = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 describe("the fields the review hooks read", () => {
-  it("are still declared in world/signs.ts (debugPlates() and the PostDebug fields, the face meshes' userData.key)", () => {
+  it("are still declared in world/signs.ts (debugPlates() and the PostDebug fields, the face meshes' userData.faceKeys)", () => {
     const signs = source("src/world/signs.ts");
     expect(signs).toMatch(new RegExp(`\\n  ${READ_FIELDS.signs.method}\\(\\): PostDebug\\[\\]`));
     const post = /export type PostDebug = \{([\s\S]*?)\n\};/.exec(signs)?.[1] ?? "";
     for (const f of READ_FIELDS.signs.item) expect(post).toMatch(new RegExp(`\\n  ${f}: `));
-    expect(signs).toMatch(/userData\.key = d\.file/);
+    expect(signs).toMatch(/userData\.faceKeys = files/);
     const design = /export type Design = \{([\s\S]*?)\n\};/.exec(source("src/signs/game.ts"))?.[1] ?? "";
     for (const f of READ_FIELDS.signs.plate) expect(design).toMatch(new RegExp(`\\n  ${f}\\??: `));
     const aux = /export type AuxPlate = \{([^}]*)\}/.exec(source("src/signs/auxPlates.ts"))?.[1] ?? "";
@@ -109,7 +109,7 @@ function faces(key: string, plates: Array<[Vector3, number]>) {
     o.updateMatrix();
     mesh.setMatrixAt(i, o.matrix);
   });
-  mesh.userData.key = key;
+  mesh.userData.faceKeys = plates.map(() => key);
   return mesh;
 }
 
@@ -127,7 +127,18 @@ describe("finding a post's drawn plate", () => {
     expect(list[0].normal.z).toBeCloseTo(0, 6);
   });
 
-  it("ignores meshes that are not sign faces (no userData.key)", () => {
+  it("splits one plate shape's mesh into its artworks by userData.faceKeys (G3: any artwork per mesh)", () => {
+    const mesh = faces("323", [
+      [new Vector3(1, 2.6, 0), 0],
+      [new Vector3(5, 2.6, 0), 0],
+    ]);
+    mesh.userData.faceKeys = ["323", "no_entry"];
+    const byFile = faceInstances([mesh]);
+    expect(byFile.get("323")?.map((f) => f.pos.x)).toEqual([1]);
+    expect(byFile.get("no_entry")?.map((f) => f.pos.x)).toEqual([5]);
+  });
+
+  it("ignores meshes that are not sign faces (no userData.faceKeys)", () => {
     const plain = new InstancedMesh(new BoxGeometry(), new MeshBasicMaterial(), 1);
     expect(faceInstances([plain]).size).toBe(0);
   });

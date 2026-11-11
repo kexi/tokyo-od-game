@@ -382,6 +382,11 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   sign_mounts_resolved: { posts: 120, double: 4, shared: 9, faces: 150 },
   sign_columns_hidden: { single: 3, doubleFirst: 0, doubleSecond: 2, doubleWhole: 0, posts: 120 },
   sign_member_unloaded: { role: "boardPost", glb: "guide_signs", node: "GuidePost" },
+  sign_face_pool_ready: { pool: "small", size: 256, layers: 112, backend: "webgpu", mb: 39.1 },
+  sign_face_upload_fallback: { pool: "plates", reason: "backend.device is missing" },
+  sign_face_layers_short: { pool: "small", wanted: 130, capacity: 111 },
+  sign_face_load_failed: { pool: "large", key: "327-4", error: "TypeError: Failed to fetch" },
+  sign_faces_built: { pool: "plates", artworks: 41, meshes: 14, instances: 3252 },
   osm_read: { nodes: 1, ways: 2, relations: 3, coords: 4 },
   destinations_written: {
     file: "public/data/destinations.json",

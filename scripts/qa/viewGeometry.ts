@@ -36,6 +36,11 @@ export type Placement = {
    * deck it stands on (absolute); without it the page puts the car on the ground there.
    */
   car?: { x: number; z: number; above: number; yaw: number; surfaceY?: number };
+  /**
+   * Where to park the player's car with its headlamps lit (state.headlamps), facing the target. Its
+   * body is hidden so it does not block the eye, but shown in 後方追従 (`showBody`).
+   */
+  lampCar?: { x: number; z: number; above: number; yaw: number; beam: "low" | "high"; showBody: boolean };
 };
 
 const DEG = Math.PI / 180;
@@ -182,7 +187,40 @@ export function placeView(
     view.camera === "chase" && view.showCar
       ? { x: anchor.x, z: anchor.z, above: 0.6, yaw: Math.atan2(toTarget.x, toTarget.z) }
       : undefined;
-  return { eye: { x: stand.x, z: stand.z, above: eyeHeight }, lookAt: target.point, fov, car };
+  const lamps = view.state?.headlamps;
+  // 後方追従: the lit car is the one the camera follows (at `anchor`), the eye behind it.
+  const isChase = view.camera === "chase";
+  const lampCar = lamps
+    ? { ...lampCarOf(view, target, ctx.car, lamps, isChase ? anchor : stand, distance), showBody: isChase }
+    : undefined;
+  return { eye: { x: stand.x, z: stand.z, above: eyeHeight }, lookAt: target.point, fov, car, lampCar };
+}
+
+/**
+ * The lit car of state.headlamps: at `stand` (under the eye, or the followed car) unless the lamps give their own distance,
+ * angle or offset, then on the target's facing as an eye would stand there; yaw towards the target.
+ */
+function lampCarOf(
+  view: { angleDeg?: number; bearingDeg?: number; lateralM: number },
+  target: FoundTarget,
+  fallback: Vec3,
+  lamps: { beam: "low" | "high"; distanceM?: number; angleDeg?: number; lateralM?: number; turnDeg: number },
+  stand: Vec3,
+  distance: number,
+): Omit<NonNullable<Placement["lampCar"]>, "showBody"> {
+  const isOwnSpot =
+    lamps.distanceM !== undefined || lamps.angleDeg !== undefined || lamps.lateralM !== undefined;
+  const at = isOwnSpot
+    ? (() => {
+        const bearing = eyeBearing({ angleDeg: lamps.angleDeg ?? view.angleDeg }, target, fallback);
+        const out = bearingVector(bearing);
+        const side = rightOf({ x: -out.x, y: 0, z: -out.z });
+        return add(add(target.point, out, lamps.distanceM ?? distance), side, lamps.lateralM ?? 0);
+      })()
+    : stand;
+  // The game's yaw is atan2(dx, dz); turning left (towards the car's +X) adds to it.
+  const yaw = Math.atan2(target.point.x - at.x, target.point.z - at.z) + lamps.turnDeg * DEG;
+  return { x: at.x, z: at.z, above: 0.6, yaw, beam: lamps.beam };
 }
 
 /**

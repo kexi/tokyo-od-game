@@ -1,13 +1,14 @@
 ---
 type: Reference
 title: 道路標識の定義とレジストリ（src/signs）
-description: 道路標識の定義を src/signs/defs/*.ts（zod）の 1 か所にまとめ、assets/signs/registry.json と従来の catalog.json を scripts/signs.ts で書き出す仕組み（段階 G1a）。Pillow の図柄生成が registry.json の paint（描く関数と引数）と規則で導いた車線の版 141 件を読んで 345 枚をバイト一致で作り直すこと（G1b、Pillow 12.3.0 固定）。ゲームの標識種別の対応（旧 BY_ID・design() の switch）を定義の game へ移し、assets/signs/game.json で渡す仕組みと、配置が変わらないことを 3 地点のスナップショットで確かめた方法（G1c）。catalog.json からの機械変換の手順、バイト一致による無損失の確認、標識令 別表第一の番号表（law-table.json）を e-Gov から読む方法、定義・図柄・ゲームの対応・番号表の突き合わせテスト、未描画・未配置の一覧（just show-sign-coverage）、e-Gov と旧表で 125-B の図が食い違った件を記録する。 G2 で、板を src/signs/plates.ts の形ごとの寸法から作り（signs.glb はバイト一致）、表示の倍率を番号ごとの displayScale（警戒 1.3 倍、命令の範囲をテスト）にし、補助標識を Canvas の文字から 502 の図柄（public/data/regs の規制時間から導いた 388 枚、曜日群ごとに 1 枚）に替えた。 G4 で、取付 7 種（単柱・複柱・片持 F・門型・壁高欄添架・桁添架・信号柱共架）を src/signs/mount.ts に zod で宣言し、純関数 resolveMount が板の位置・高さと単位部材を決めるようにした（下端は交通規制基準 第2章 3 の歩道上 2.5 m・最低 1.8 m、片持・門型 5.0 m・最低 4.7 m。本板 3 枚の柱は 2 本に振り分け、信号柱の 6 m 以内の標識は共架）。
+description: 道路標識の定義を src/signs/defs/*.ts（zod）の 1 か所にまとめ、assets/signs/registry.json と従来の catalog.json を scripts/signs.ts で書き出す仕組み（段階 G1a）。Pillow の図柄生成が registry.json の paint（描く関数と引数）と規則で導いた車線の版 141 件を読んで 345 枚をバイト一致で作り直すこと（G1b、Pillow 12.3.0 固定）。ゲームの標識種別の対応（旧 BY_ID・design() の switch）を定義の game へ移し、assets/signs/game.json で渡す仕組みと、配置が変わらないことを 3 地点のスナップショットで確かめた方法（G1c）。catalog.json からの機械変換の手順、バイト一致による無損失の確認、標識令 別表第一の番号表（law-table.json）を e-Gov から読む方法、定義・図柄・ゲームの対応・番号表の突き合わせテスト、未描画・未配置の一覧（just show-sign-coverage）、e-Gov と旧表で 125-B の図が食い違った件を記録する。 G2 で、板を src/signs/plates.ts の形ごとの寸法から作り（signs.glb はバイト一致）、表示の倍率を番号ごとの displayScale（警戒 1.3 倍、命令の範囲をテスト）にし、補助標識を Canvas の文字から 502 の図柄（public/data/regs の規制時間から導いた 388 枚、曜日群ごとに 1 枚）に替えた。 G4 で、取付 7 種（単柱・複柱・片持 F・門型・壁高欄添架・桁添架・信号柱共架）を src/signs/mount.ts に zod で宣言し、純関数 resolveMount が板の位置・高さと単位部材を決めるようにした（下端は交通規制基準 第2章 3 の歩道上 2.5 m・最低 1.8 m、片持・門型 5.0 m・最低 4.7 m。本板 3 枚の柱は 2 本に振り分け、信号柱の 6 m 以内の標識は共架）。 G3 で、面の材質を SignFaceMaterial 1 つにし（図柄は配列テクスチャの層をインスタンス属性で選ぶ、描画呼び出しは板の形の数、three r186 の WebGPU で層だけの更新と層ごとの mip を PoC で確認、面のテクスチャ 89 MB）、自車の前照灯の再帰反射（表2-2-29 の R_A、配光 × 距離 × 入射角 × 観測角 × 色 × 濡れ）を放射に足した。
 tags: [assets, traffic-law, testing]
 status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5, at: 2026-11-10T10:30:00Z }
-updated: { by: claude-opus-5-5, at: 2026-11-11T01:30:00Z }
+updated: { by: claude-opus-5-5, at: 2026-11-11T05:30:00Z }
 verified:
+  - { by: claude-opus-5-5, at: 2026-11-11T03:20:00Z }
   - { by: claude-opus-5-5, at: 2026-11-11T01:20:00Z }
   - { by: claude-opus-5-5, at: 2026-11-10T10:25:00Z }
   - { by: claude-opus-5-5, at: 2026-11-10T13:20:00Z }
@@ -147,6 +148,28 @@ sources:
       丸の内 35.68075,139.76345・大手町 35.6858,139.7645・神田 35.6913,139.7670 の単柱・2 本柱・共架を同じ 4 視点で撮影
       （g4/shoot.mjs）。4 周、3・4 周目は新規指摘 0。ログの warn/error は tide_table_failed（通信）1 件だけ
     title: 多視点レビューの収束ループ（G4）
+    author: claude-opus-5-5
+  - id: g3-sheeting-ra
+    resource: https://www.mlit.go.jp/tec/r08dobokukoujikyoutsuusiyousyo/honbun02_syo02_setsu12.html
+    title: 国土交通省 土木工事共通仕様書（令和8年度）2-2-12-1 表2-2-28・2-2-29 反射シートの反射性能（試験は JIS Z 9117、2026-11-11 取得）
+  - id: g3-poc
+    resource: >-
+      一時ページ（DataArrayTexture 256²×112・512²×33、InstancedMesh 4 枚に faceLayer）をヘッドレス Chrome の WebGPU で描き、
+      addLayerUpdate(2) の前後で 4 枚の色を読んで層 2 だけ変わることを確認。更新 10 回の中央値で GPU 完了まで three の経路
+      57.4 / 20.5 ms、copyExternalImageToTexture + LayerMipmapper 1.6 / 1.1 ms（scratchpad の g3/poc.mjs）
+    title: 配列テクスチャの層更新の PoC（G3）
+    author: claude-opus-5-5
+  - id: g3-measure
+    resource: >-
+      scratchpad の g3/measure.mjs（丸の内 35.67363,139.764、seed 20261110、昼・夜、settled の後 8 s、30 フレームの描画呼び出しの
+      増分、10 s の rAF 間隔、面のメッシュと面のテクスチャの数え上げ）を G3 前（e678b3b）と後で 1 回ずつ。負荷平均 6〜10
+    title: 描画呼び出し・面のテクスチャ・フレーム時間の前後（G3）
+    author: claude-opus-5-5
+  - id: g3-review
+    resource: >-
+      just shoot-views signs（33 コマ、vite 5347 番）を 4 周、.qa/reviews/signs/round-01〜04.jsonl、just check-convergence signs が
+      round 4 で converged。レビュー対応の後、後方追従の夜のコマを足した 36 コマで 4・5 周目（4 周目は撮り直し）が converged。昼の色差は scratchpad の g3/compare.py（CIE76、中央 120 px）で G3 前の同じ表（g3base）と比較
+    title: 多視点レビューの収束ループ（G3）
     author: claude-opus-5-5
 ---
 
@@ -382,6 +405,73 @@ sources:
 - **門型（I4）**: 脚の基点 `legBaseM`（高架の床・壁高欄の上に立てる）を足した。どの板も梁の中央に合わせる（低い板が梁から外れていた）。
 - **レビューの口**: `TrafficSigns.debugPlates()`（公開の読み取り口、`PostDebug`）を足し、src/debug/privateViews.ts は private の `posts` を読むのをやめた。`window.__game.signs` は外した（main は createViewHooks に signs を渡している）。`scripts/blender/sign_review.py` は消えた `PLATE_OFFSET` ではなく、`scripts/qa/signMounts.ts` が resolveMount で解いた `.qa/signs/mounts.json` の部材で組む（`just render-sign-review`、369 面・1,107 枚を確認）。`just shoot-views signs` は 3 コマ・失敗 0。
 - **部材を既存の glb に足した理由（I7）**: 設計 4 章は `sign_supports.glb` を新しく作る案だった。規制標識の柱の部材は signs.glb、門型の部材は guide_signs.glb に足した。標識と案内標識はそれぞれ 1 つの glb を読み込んでいて、部材のためにもう 1 つ読み込む往復とノードの対応表を増やさないため。既存のノードはバイト一致のまま。
+
+## SignFaceMaterial（G3）
+
+### 方式: 配列テクスチャの層（PoC で決めた）
+
+- 標識の面の材質は `SignFaceMaterial`（`src/world/signFaceMaterial.ts`、TSL の MeshStandardNodeMaterial）の 1 種類。図柄は配列テクスチャ（`DataArrayTexture`）の層で、インスタンス属性 `faceLayer` で選ぶ。InstancedMesh は**板の形ごとに 1 つ**（丸の内で 53 図柄・13 メッシュ。以前は図柄ごとに 1 つ）。
+- 層の管理は `FaceLayerPool`（`src/world/signFaces.ts`）。層 0 は代役（規制標識は透明で面を捨てる、案内標識は遠景の青 #1d4f9c）。割り当ての規則は three にも fetch にも触れない `FaceLayerSlots`（`src/world/faceLayerSlots.ts`、`tests/faceLayerSlots.test.ts`）にある。
+  - デコードするのは優先度（距離）の上位「容量」件だけで、デコード中・配置待ち・失敗のバックオフ中（2 s から倍々、最大 60 s）のものは始めない。足りないときは `sign_face_layers_short`（警告、欲しい数と容量、同じ数では 1 回）で、遠い面は層 0 のまま、デコードもしない。
+  - 配置は空き → いちばん長く欲しがられていない層 → 優先度の低い層の順。追い出された面はその時点から層 0。
+  - **訂正（レビュー C1）**: 最初の版は欠けた面をすべて毎フレームデコードし、配置で捨てていた。容量 2・要求 3 で 100 フレームにデコード 102 回・アップロード 2 回、読み込みに失敗した面は毎フレーム再試行して `sign_face_load_failed` が流れ続けた。いまは丸の内で plates 37・boards 16・guide 8 のデコード数とアップロード数が一致する（`__game.debug.signFaces().pools`）。
+  - デコードは `createImageBitmap`（リサイズ込み、メインスレッドの外）、アップロードは 1 フレーム 2 層まで。図柄は PNG を 1 枚ずつ fetch する（設計の「4096 px のシートに詰めて升を写す」はしていない。Vite が 1 枚ずつハッシュ付きで配る）。
+- 大きさ: 規制・警戒・指示・補助標識 256²×104 層（36.4 MB、mip 込み）、90 cm の板（327 系、PNG が 1024 px のもの、`LARGE_PLATE_MM = 900`）512²×17 層（23.8 MB）、案内標識 512×320×33 層（28.8 MB）。合計 **89.0 MB**（設計 6 章の目標 96 MB 以下）。設計の 256²×128 と 512²×32 から変えた理由: 丸の内の 1 回の再構築で大きい板が 16 種類あり 8 層では足りなかった（`sign_face_layers_short` が出た）。案内標識の板は横長なので 512×320 にして減らした。
+- **PoC（three 0.186.1、WebGPU、ヘッドレス Chrome・M2 Max）**: `DataArrayTexture.addLayerUpdate(2)` で層 2 だけを書き換えると、その層だけが変わり他の層は元のまま（WebGPUTextureUtils.updateTexture が layerUpdates の層だけ writeTexture する）。ただし three は更新のたびに**全層の mip を作り直す**（WebGPUTexturePassUtils.generateMipmaps は mip 段 × 層数のパス）。256²×112 層で 1 回 GPU 完了まで 54〜57 ms、512²×33 層で 20 ms。そこで WebGPU では three を通さず、`copyExternalImageToTexture` でその層の mip 0 に写し、その層だけの mip を自前のパス（`src/render/layerMips.ts` `LayerMipmapper`、sRGB のビューで線形の平均）で作る。1 層 CPU 0.1 ms・GPU 完了まで 1.1〜1.6 ms（何もしないフレームは 0.6〜1.1 ms）。初回の全体アップロードの後は CPU 側の配列（29〜34 MB）を手放す。WebGL 2 のバックエンドでは three の addLayerUpdate を使う（全層の glGenerateMipmap）。
+- three の内部に触る所は `src/render/layerUpload.ts` の 1 か所（`backend.isWebGPUBackend`・`backend.device`・`backend.get(texture).texture`、usage に COPY_DST・TEXTURE_BINDING・RENDER_ATTACHMENT があること、層の数と mip 段、image.data を空にしてよい条件）。どれかが合わなければ `three-fallback`（three の遅い経路、正しくは描ける）にして `sign_face_upload_fallback` を警告し、`sign_face_pool_ready` の backend にもそう書く（"webgl2" と誤って出さない）。**WebGL 2 のバックエンドは実機で確かめていない。**
+- `faceLayer` は面のメッシュを作る（`RoadInstances.take` の `prepare`）ときに `attachFaceLayers`（signFaceMaterial.ts）が付ける。描かれる前に付いていないと、パイプラインが属性を 0 の定数で固める（レビュー 2 周目、three は「attribute not found」を 1 回警告するだけ）。
+- アトラスにしなかった理由: PoC が通ったため（設計 9 章の切り替え条件に当たらない）。アトラスは升の境界で mip がにじみ、余白と UV の作り直しが要る。
+- 案内標識（`src/world/guideSigns.ts`）も同じ材質に寄せた: 近い 24 枚の板ごとの Mesh と MeshStandardMaterial をやめ、全部の板を 1 つの InstancedMesh にして、近い板は描いた面の層、それ以外は層 0（遠景の青）にする。予算（近い 24 枚・保持 32 面・1 回 3 枚まで描く）は同じ。面の影はやめた（裏板の影が同じ形で落ちる）。
+
+### 再帰反射
+
+`src/signs/retroreflection.ts` の `retroWhite()` が式で、シェーダーは同じ式を TSL で写す（`tests/signRetro.test.ts`）。自車の前照灯 2 灯それぞれについて、白のシートの輝度 L = R_A(α, β) · I(h, v) / max(d, 3 m)² を足す。
+
+- R_A は国土交通省 土木工事共通仕様書（令和8年度）表2-2-29 カプセルレンズ型反射シートの反射性能（試験は JIS Z 9117）を一次情報として使った（JIS Z 9117 の本体の表は有料で読めていない）。白 250（観測角 0.2°・入射角 5°）を 1 とし、観測角は exp(−2.2 (α − 0.2°))（0.33° で 0.72、2° で 0.02 に合う）、入射角は (cos β / cos 5°)^3.3（30° 0.60・40° 0.44 に合う）。表の 9 行すべてに 1.35 倍以内（テスト）。2° を超える観測角・40° を超える入射角は表に無く、同じ形で延ばした仮定。
+- 色係数: 図柄の線形の明度がそのまま表の色/白の比に合う（赤 0.160 対 0.18、青 0.081 対 0.08、黄 0.688 対 0.68、緑 0.196 対 0.18、案内の青 0.083 対 0.08。12 % 以内、テスト）ので、放射に図柄の色を掛けるだけにした。
+- 配光 I（仮定、`LAMP`）: すれ違い用は対向側で水平の 0.6° 下にカットオフ、左へ 15° で水平の 1° 上まで上がる（左側通行の上向き）、下 15,000 cd・上 400 cd。走行用は中心 30,000 cd。保安基準 第32条は確認距離（40 m・100 m）しか定めないので、形は ECE R112 を借りた目安。
+- 放射 = 図柄の色 × (下駄 + 0.3 · L/(L + 5) × 点灯 × 暗さ × 濡れ)。上限 0.3（`RETRO_MAX`）は、夜の下駄 0.05 と露出 0.8 を合わせて露出後 0.28 で、ブルームの膝（0.55 × 0.65 = 0.36）より下に置いた値。濡れは env.wetness で 1 → 0.6（設計の仮定）。暗さは env.nightFactor（P9 のトンネルはここに暗さを渡せばよい）。
+- 下駄（以前の一律の emissive 0.18）は昼は 0.18 のまま（昼の見えを変えない）、夜は 0.28 倍（0.05）に下げた。前照灯の外の標識は暗くなる。
+- **観測点（決定 2026-11-11）**: ゲームの主カメラは、運転席視点でも後方追従でも**運転者の目**（cockpit.glb の DriverEye、無ければ `DRIVER_EYE` の仮定）から測る。通行人の写真・ミラーなど別のカメラ、歩いているとき、レビューで置いた後方追従以外のカメラは、そのカメラの位置から測る（光らない）。仕組み: uniform `observer` を描画ごと（`onRenderUpdate`）にそのカメラから決める（`setSignObserver`）。
+  - Why not 描画カメラ（物理的にはこちら）: 後方追従のカメラは 6 m 後ろ・2.6 m 上で、板は前照灯の軸から 3〜5° 外れ、ロービーム 30 m で 0.001 になる（レビューの計算）。夜の標識が G3 前より暗く遊びにくい。追従カメラは運転者の目の代わり。
+  - 後方追従の夜のコマ（chase-lamps-low-30）で放射 0.214、前照灯の外の標識（一方通行）も下駄 0.05 で読めることを確かめた。
+- **前照灯の鏡面を外した**: 前照灯の SpotLight が目のすぐ下にあると、粗さ 0.45 の GGX の山が目に向き、板が白く飛んだ（レビュー 2 周目）。面の照明モデル `SignFaceLightingModel` は**自車の前照灯だけ**（`markPlayerHeadlamps` が建物より前に印を付ける）を拡散だけで受ける（戻りは放射が描く）。ほかの SpotLight（パトカーの探照灯）と太陽の鏡面はそのまま。
+- 値（いずれも式の値、乾いた路面）:
+  - テストの場面（板は車の左 3.5 m・高さ 2.9 m、目は車の中）: ロービーム 30 m で白 7.75 cd/m²・放射 0.182。
+  - 視点表の場面（丸の内の 325の4、目は車の前照灯の 2 m 後ろ）: ロービーム 30 m で 4.22・0.137、60 m で 11.9・0.211、ハイビーム 30 m で 82・0.283、斜め 60° で 0.024、前照灯の外（45° 振る）0.003、目が前照灯から 12 m・45° 離れると 0.003、後方追従（運転者の目）30 m で 12.4・0.214。
+- 仮定は `src/signs/retroAssumptions.ts`（`Assumption`、`verified: false` と理由。暗さ `DARK_ADAPT`、下駄 `BASE_GLOW`・`NIGHT_BASE`、運転者の目 `DRIVER_EYE` も）、表は `src/signs/retroStandards.ts`（`Specification`: 法令ではなく仕様書なので `Statute` と呼ばない）。`RA_PEAK` は表の 0.2°・5° の行から導く。上限 0.3 がブルームの膝より下であることは、skyLight の夜の露出と bloom の閾値・膝から計算するテストで守る。
+- **表2-2-29 の数値は WebFetch の要約で読んだもので、PDF・JIS Z 9117 本体と 1 行ずつ照合していない**（同じ表の 2.0° の行が封入レンズ型と同じ値なのも未確認）。
+- 設計との違い: `retro: "internal"`（内照式の一定発光）は未実装（ゲームに内照式の標識が無い）。下駄は設計の「街灯の明るさに連動」ではなく nightFactor 連動（街灯の光は路面の uniform だけで、板に届いていないため）。
+
+### 計測（2026-11-11、丸の内 35.67363,139.764、1280×720、ヘッドレス Chrome、負荷平均 6〜10）
+
+計測の手順（スクリプトはリポジトリに入れていない。同じことをするには）: 開発サーバーを空いたポートで立て、`?seed=20261110&start=35.67363,139.764&time=day|night&weather=clear` を browser.mjs で開き、`__game.start()`、`__game.debug.settled()` が 2 回続けて真になってから 8 s 待つ。シーンを辿って面のメッシュ（G3 後は `material.isSignFace`、G3 前は `userData.key` と案内標識の CanvasTexture の Mesh・遠景の青の InstancedMesh）を数え、テクスチャの幅 × 高さ × 4 × 4/3 を足す（G3 後は `__game.debug.signFaces().pools[].bytes`）。描画呼び出しは 30 フレームの `renderer.info.render.drawCalls` の増分の中央値、フレーム時間は 10 s の rAF 間隔。
+
+| 項目                                       | G3 前                                           | G3 後                                           |
+| ------------------------------------------ | ----------------------------------------------- | ----------------------------------------------- |
+| 面のメッシュ（描画呼び出し、1 パスあたり） | 62（規制 53・案内の近い板 8・遠景 1）           | 14（規制 13・案内 1）                           |
+| 面のテクスチャ（mip 込み）                 | 124.2 MB（読み込んだ図柄 53 と案内の面）        | 89.0 MB（固定）                                 |
+| フレーム全体の描画呼び出し（中央値）       | 昼 1,689・夜 1,522                              | 昼 1,609・夜 1,456                              |
+| フレーム時間 中央値 / p95 / 最大           | 昼 28.8 / 33.2 / 41.8、夜 28.3 / 35.3 / 46.9 ms | 昼 26.2 / 29.6 / 41.9、夜 24.5 / 28.4 / 35.3 ms |
+
+- フレーム時間は混んだマシン（他のエージェントの作業）で 1 回ずつ測った値で、差は繰り返しのばらつきと同じくらい。悪くはなっていない、までしか言えない。renderer.info の texturesSize（全体）は建物の読み込みの進み方で 100 MB 動き、比べられなかった。
+- 層 1 枚の更新は上の PoC の値（CPU 0.1 ms）。1 フレーム 2 層まで。
+
+### 昼の見えの不変
+
+色差の求め方: 2 つの周の同名の JPEG を sRGB → CIE Lab（D65）に直し、画素ごとの ΔE*ab（CIE76）の、画面の中央 120 px 四方（対象の板）の平均をとる（Pillow と numpy の数行、scratchpad の g3/compare.py）。
+
+前照灯を点けない昼のコマ（note-front-8・note-oblique-30deg・note-driver-30）を G3 の前（`.qa/views/g3base/round-01`）と後で撮り、中央 120 px 四方（対象の板）の CIE76 色差の平均は 0.57〜1.35、同じ G3 後どうし（3 周目と 4 周目）は 0.27〜0.49（JPEG とシーンの揺れ）。256 px の層への縮小の分が 1 ほど増えた。8 m の正面の切り出しを並べて目で見ても違いは分からない。
+
+### 多視点レビュー（G3、収束ループ）
+
+視点表 `scripts/qa/views/signs.json` に昼・夜・雨の夜の looks と、運転席 10・30・60 m、ハイビーム 30 m、斜め 30°・60°、前照灯の外、前照灯から目が離れた視点（通行人の写真・ミラーの代わり）を足した（11 視点 × 3 = 33 コマ）。視点表の `state.headlamps`（`beam`・`distanceM`・`angleDeg`・`lateralM`・`turnDeg`）で自車を置いて灯を点け、車体は隠す。各コマの JSON の `scene.retroAtTarget` に、対象の板での放射（`retroWhite` で計算）を書く。数値の探り 4 つ（昼の色差・夜のロービーム 30 m・観測角の大きい目・前照灯の外）。
+
+- 1 周目: ハイビームが効かない（かんたん操作が毎フレーム戻す）→ 撮影側で assist を real に。
+- 2 周目: ハイビームで板が白く飛ぶ → SpotLight の鏡面を外した。周の合間の撮り直しで、面がすべて代役（白い板の本体）になる Critical を見つけた: 面のメッシュをシーンに入れてから `faceLayer` を付けていたため、その間に組まれたパイプラインが属性を 0 の定数で固めた（three は「attribute not found」を 1 回警告するだけ）。同じ同期の区間で属性を書くようにした。読み込みの最初のコマが前照灯の視点だと車がスタート地点に戻される（開始 15 s の placeOnStreet）→ 撮影側で 16 s 待つ。
+- 3・4 周目: 新規 0、`just check-convergence signs` が converged。残した Info: 観測角の大きい目でも、30 m 先のハイビームの拡散光だけで板が運転席の見えに近い明るさになる（carModel.ts の SpotLight 160 cd・decay 1.1 は 30 m で照度 3.8 と太陽 2.8 より強い。材質の外）。
+- **数値の探りの読み方**: `retro-*` は**式の値**（各コマの JSON の `scene.retroAtTarget`、`retroWhite` で計算。シェーダーは同じ式を写しているが、画素は見ていない）。画素から測るのは `plate-luminance-ratio-night`: 夜のロービーム 30 m と前照灯の外の、板の中心 5×5 px の相対輝度（JPEG をページで復号、`projection.plateLuminance`）の比。
+- レビュー（Fable、Changes Requested）への対応の後、後方追従の夜のコマを足して（12 視点 × 3 = 36 コマ）回し直した。視点表が変わったので、撮影は最後の完全な周（3 周目）の次として 4 周目を撮り直した（以前の 4 周目の画像は消え、記録 round-04.jsonl は書き直した）。4・5 周目は新規 0 で converged。5 周目の値: 昼の色差 1.38、retro-low-30 0.137、観測角の大きい目 0.003、前照灯の外 0.003、**板の輝度比 22.8（0.581 / 0.0255）**、後方追従 0.214。
 
 # catalog.json からの変換（G1a、1 回だけ）
 
