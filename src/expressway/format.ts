@@ -17,7 +17,8 @@ export const ST = { s: 0, lon: 1, lat: 2, z: 3, bank: 4, ground: 5, grade: 6 } a
  * lower floor), `over` on chunks (a deck built to a landmark's deck levels), `ranges` and
  * `structures` in meta. 3 is P6's (maxspeed per chunk), kept apart so neither branch reads the
  * other's data; merging both is 5. P2.6's optional `vform` (chunks) and `closed` (meta) need no
- * reader, so they stay within 4. The game refuses another version.
+ * reader, so they stay within 4, as do G6's optional `signs` and `posted` (chunks) and `entrances`
+ * (meta): the game reads them only where present. The game refuses another version.
  */
 export const XW_VERSION = 4;
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */

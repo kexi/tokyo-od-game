@@ -106,7 +106,8 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
       byExit.set(sign.ref.node!, [...(byExit.get(sign.ref.node!) ?? []), sign]);
       expect(sign.side).toBe("over");
     }
-    expect(byExit.size).toBe(2);
+    // The test section's two exits (芝公園) and 台場出口 on the Rainbow Bridge's approach (P7 range).
+    expect(byExit.size).toBe(3);
     for (const list of byExit.values()) {
       const order = list.toSorted((a, b) => a.s - b.s).map((x) => x.id);
       expect(order).toEqual(["110-B", "111-B", "112-B"]);
@@ -208,8 +209,17 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
       const dm = deckMount(chunk, sign, [sizeOf(sign)]);
       const x = dm.placement.kind === "gantry" ? (dm.placement.boards[0].x ?? 0) : 0;
       const lateral = dm.u - x;
-      if (sign.id === "111-B") expect(Math.abs(lateral)).toBeGreaterThan(1);
-      else expect(Math.abs(lateral)).toBeLessThan(1e-6);
+      if (sign.id !== "111-B") {
+        expect(Math.abs(lateral)).toBeLessThan(1e-6);
+        continue;
+      }
+      // Over the centre of the exit's lane, measured from its edge of the carriageway. Why not "more
+      // than 1 m off the centre": on the Rainbow Bridge the left shoulder is 4.8 m and the right 1.5 m
+      // (P7's band section), so the left lane's centre lies 0.1 m from the deck's centreline.
+      const hw = carriagewayWidth({ ...chunk, median: 0 }) / 2;
+      const isLeft = sign.lane === "left";
+      const fromEdge = (isLeft ? chunk.shoulderL : chunk.shoulderR) + chunk.laneWidth / 2;
+      expect(Math.abs(lateral), `${chunk.id}:${sign.s}`).toBeCloseTo(Math.abs(hw - fromEdge), 6);
     }
   });
 
@@ -219,11 +229,24 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
       expect(at, e.run).toBeDefined();
       expect(at!.sign.s).toBeLessThan(30);
     }
-    for (const r of meta.runs.filter((r) => r.cls === "expressway"))
+    // Every main line that starts on its own, or branches off at another speed than its parent's,
+    // announces its speed. A branch that carries its parent's (POSTED_SPEED_CARRY: 45021972 off C1
+    // in the P7 range) continues the same limit and needs no plate at its start.
+    const postedAt = (run: string, s: number) =>
+      chunks.find(
+        (c) => c.run === run && c.st[0] <= s + 1e-6 && s <= c.st[c.st.length - STATION_STRIDE] + 1e-6,
+      )?.posted;
+    for (const r of meta.runs.filter((r) => r.cls === "expressway")) {
+      const own = chunks.find((c) => c.run === r.id && c.k === 0)?.posted;
+      const isBranch = r.start.kind === "junction" && r.start.parent !== undefined;
+      const isCarried = isBranch && postedAt(r.start.parent!, r.start.parentS ?? 0) === own;
+      const hasChange = chunks.some((c) => c.run === r.id && c.k > 0 && c.posted !== own);
+      if (isCarried && !hasChange) continue;
       expect(
         signs.some((x) => x.chunk.run === r.id && x.sign.id === "323"),
         r.id,
       ).toBe(true);
+    }
   });
 
   it("shows on every 323 the posted speed the graph enforces (XwChunk.posted), and has it on every chunk", () => {

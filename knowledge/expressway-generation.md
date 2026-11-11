@@ -444,12 +444,13 @@ P2.6（#52）は P3・P3.5・P7 より前に分かれたので、main を取り�
 
 設置点と内容はコンパイラの後段 `src/expressway/signPlan.ts`（`planSigns`）がビルド時に決め、各チャンクの `signs`（`XwSign`: 番号・s・路面の z・level・側・取付・BoardContent か規制の板・桁・何のための標識か）と `meta.json` の `entrances`（入口ランプの地表端・名前・路線）に書く。規則・件数・取付は [標識システム](sign-system.md)「都市高速の板と設置（G6）」。
 
-- **データ形式**: 欄の追加だけで XW_VERSION は 2 のまま（古い読み手は欄を無視し、ゲームは欄があるときだけ読む）。P6 が版 3 にする予定と衝突しない（衝突したら版 3 の側に `signs` を載せる）。
+- **データ形式**: 欄の追加だけ（すべて任意の欄）。作った時点では XW_VERSION 2 のまま、P7（版 4）・P2.6（版 4 のまま）と合わせた後も 4 のまま（古い読み手は欄を無視し、ゲームは欄があるときだけ読む）。版 5 は P6（版 3）と P7 を合わせるときに取っておく（format.ts の注記）。データは統合したコンパイラで再生成した。
 - **compile.ts の追加**: `CompileResult.features`（run ごとの OSM の節点と way を run の距離で。ファイルには書かない）。出口名と出口番号は motorway_junction の節点、最高速度は way の maxspeed（`XwWay.maxspeedTag`、タグが無ければ null）から読む。
 - **network.ts の変化**: 事業者名を含む名前を捨てるのをやめ、名称層 `routeName` で前置きを外す（`name`・新しい `nameEn`）。試験区間のチャンクの `name` が null から「都心環状線」「1号羽田線」に変わった。測点・橋脚・交差・decks はすべて同じ（81 チャンクを比べて差 0）。
 - **scripts/expressway.ts**: `emergency=phone` と非常駐車帯（`highway=emergency_bay` / `emergency=emergency_bay`）の節点を読む。ログ `expressway_signs_planned`・`expressway_sign_unplaced`。LICENSE.txt に節点の取り込みを追記した。
 - **掲示速度 `XwChunk.posted`**（G6 レビュー W4）: チャンクごとの最高速度（km/h）。323 の板と道路グラフの limit が同じ値を読む（`expresswayRoads.ts` は `chunk.posted ?? run.tagV`）。規則は [標識システム](sign-system.md) の「G6 レビューへの対応」。P6（法規）と合流するときに P6 の規則へ一本化する。
 - 試験区間の結果: 31 枚、unplaced 2（116の4 が他の標識と 20 m 以内）。
+- **P7・P2.6 との統合（2026-11-11）**: 範囲が `hamazakibashi,rainbow` になり 69 枚（323 10・325 2・116の4 42・108の2-C 3・110-B〜113-B 各 3、unplaced 11）。台場出口（4848762）の 110-B〜112-B が加わった。構造物の street（臨港道路）は都市高速ではないので標識を置かず（323・116の4・116の6 とも）、`posted` はコンパイラの tagV（OSM の maxspeed、無ければ street の既定）のまま。統合前の計画は法定 60 を当てて道路グラフの limit を 40 から 60 に変えていた（tests/expresswayStructures.test.ts が検出）。測点・橋脚・交差・decks は main のデータと差 0（247 チャンクを比べ、違うのは signs・posted・name だけ）。2 回の生成でバイト一致。テストは、橋の上の左路肩 4.8 m で左車線の中心が床版の中心線から 0.1 m になる 111-B と、親と同じ掲示速度で分岐する本線（45021972、323 不要）に合わせた。
 
 # 未対応・既知の欠落
 

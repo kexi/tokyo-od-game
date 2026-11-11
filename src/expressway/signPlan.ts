@@ -124,7 +124,10 @@ class Planner {
       const isEntrance = run.summary.cls === "ramp" && (start.kind === "ground" || start.kind === "portal");
       if (isEntrance) this.entrance(run);
     }
-    for (const id of ids) this.speeds(this.runs.get(id)!);
+    // A structure's street (P7: the 臨港道路 on the Rainbow Bridge's lower floor) is no 都市高速:
+    // it keeps its own limit (postedOf) and gets none of these boards or plates.
+    const isExpressway = (id: string) => this.runs.get(id)!.summary.cls !== "street";
+    for (const id of ids) if (isExpressway(id)) this.speeds(this.runs.get(id)!);
     for (const p of this.input.phones) this.beside(p, "116の4", "phone");
     for (const p of this.input.bays) this.beside(p, "116の6", "phone");
   }
@@ -360,6 +363,15 @@ class Planner {
   private postedOf(run: Run): number[] {
     const cached = this.posted.get(run.summary.id);
     if (cached) return cached;
+    // A structure's street keeps the limit the compiler gave it (its OSM maxspeed, else the street
+    // default): the carry rules below are for the 都市高速's ramps and main lines. Why not the
+    // statute's 60 like an untagged expressway way: the street had 40 before this planner existed.
+    const isStreet = run.summary.cls === "street";
+    if (isStreet) {
+      const own = run.chunks.map(() => run.summary.tagV);
+      this.posted.set(run.summary.id, own);
+      return own;
+    }
     // Guard against a cycle of branches (none in the data): the statute until the value is known.
     this.posted.set(
       run.summary.id,
@@ -472,6 +484,7 @@ class Planner {
   private beside(p: SignPoint, id: "116の4" | "116の6", kind: "phone"): void {
     let best: { run: Run; s: number; lateral: number } | null = null;
     for (const run of this.runs.values()) {
+      if (run.summary.cls === "street") continue;
       for (const c of run.chunks) {
         const near = nearestOnChunk(c, p.lon, p.lat);
         const isCloser =
