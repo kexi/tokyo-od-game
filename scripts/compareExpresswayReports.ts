@@ -8,10 +8,11 @@
 // --check: exit 1 when anything but the timings differs, 0 when the two are the same.
 // P2.7-2: a version-2 report (no `partition`) still reads, its partition rows then being additions;
 // anchors are keyed by run@s and blocks by id, and the blocks' solution hashes are summed up in one
-// line (how many changed, and which).
+// line (how many changed, and which). P2.7-3: builds of another objective (v1 / v2 or v2's weights)
+// are warned about too.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { blockChanges, flattenReport, ReportSchema } from "../src/expressway/report.ts";
+import { blockChanges, buildsUnlike, flattenReport, ReportSchema } from "../src/expressway/report.ts";
 import { log, warn } from "../src/log.ts";
 
 const pathOf = (arg: string) => {
@@ -62,12 +63,9 @@ const table = rows.filter((r) => r.change !== "same").map(cell);
 const widths = header.map((h, i) => Math.max(h.length, ...table.map((r) => r[i].length)));
 const line = (r: string[]) =>
   r.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i]))).join("  ");
-const isOtherBuild = a.range !== b.range || a.below !== b.below || a.extract.sha256 !== b.extract.sha256;
-if (isOtherBuild)
-  warn("expressway_reports_unlike", {
-    a: `${a.range}/${a.below}/${a.extract.timestamp}`,
-    b: `${b.range}/${b.below}/${b.extract.timestamp}`,
-  });
+const unlike = buildsUnlike(a, b);
+const isUnlike = unlike !== null;
+if (isUnlike) warn("expressway_reports_unlike", unlike);
 process.stdout.write(
   [
     line(header),

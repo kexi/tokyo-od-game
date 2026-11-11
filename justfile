@@ -271,7 +271,7 @@ make-guide-data:
 make-expressway-data range="hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} {{ flags }}
 
-# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5 など）
+# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5、縦断目的 v2 の計測なら --objective v2 --grade-change 1 --reach 150 など）
 measure-expressway-area label range="ship" below="pruned" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} --below {{ below }} --out .cache/expressway-area/{{ label }} --label {{ label }} --report .qa/expressway/{{ label }}.report.json {{ flags }}
 

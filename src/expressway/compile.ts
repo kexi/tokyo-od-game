@@ -26,9 +26,10 @@ import {
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { isAllowed } from "./allowlist";
-import { BLOCK_QUIET_FACTOR } from "./assumptions";
+import { BLOCK_QUIET_FACTOR, DESIGN_GROUND_REACH } from "./assumptions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import { belowStructure, ceilingAt, depthFor, isBelowCompiled, isHoleAt, portalsOf } from "./below";
+import { envelope } from "./designGround";
 import {
   STATION_STRIDE,
   type XwChunk,
@@ -75,9 +76,50 @@ import {
   solveJoint,
   type VerticalAttempt,
   type VerticalProfile,
+  W_GRADE_CHANGE,
   type Zone,
   zoneSpeedAt,
 } from "./vertical";
+
+/**
+ * The vertical objective (P2.7-3, S3). v1 (the default): the target is the standard underclearance
+ * over the ground averaged over ±60 m, and only W_SMOOTH's square resists a grade change. v2
+ * (measuring only, `--objective v2`): the target stands on the design ground line (designGround.ts,
+ * the upper envelope over a viaduct, the lower one under a tunnel or cut, `reachM` either side), and
+ * every arc's grade change also costs `gradeChange` in L1 (vertical.ts W_GRADE_CHANGE); the target's
+ * own weight is W_TARGET × `targetScale`. The ends and the floors and ceilings are the same in both.
+ */
+export type Objective =
+  | { kind: "v1" }
+  | { kind: "v2"; gradeChange: number; reachM: { viaduct: number; below: number }; targetScale: number };
+
+export type ObjectiveV2 = Extract<Objective, { kind: "v2" }>;
+
+export const OBJECTIVE_V1: Objective = { kind: "v1" };
+
+/** v2 at its assumed weights (vertical.ts W_GRADE_CHANGE, assumptions.DESIGN_GROUND_REACH). */
+export const OBJECTIVE_V2: ObjectiveV2 = {
+  kind: "v2",
+  gradeChange: W_GRADE_CHANGE,
+  reachM: { ...DESIGN_GROUND_REACH.value },
+  targetScale: 1,
+};
+
+/** A setup's objective weights as a run input's fields (none for v1). */
+function inputWeights(
+  st: Pick<RunSetup, "gradeChange" | "targetScale">,
+): Pick<RunInput, "gradeChange" | "targetScale"> {
+  return {
+    ...(st.gradeChange === undefined ? {} : { gradeChange: st.gradeChange }),
+    ...(st.targetScale === undefined ? {} : { targetScale: st.targetScale }),
+  };
+}
+
+/** The objective's weights a run's inputs carry (none for v1, so its inputs stay as they were). */
+function objectiveWeights(objective: Objective): Pick<RunSetup, "gradeChange" | "targetScale"> {
+  if (objective.kind === "v1") return {};
+  return { gradeChange: objective.gradeChange, targetScale: objective.targetScale };
+}
 
 /**
  * The expressway compiler (knowledge/road-redesign-plan.md 4): chains → plan alignment and design speed per stretch → the
@@ -1457,6 +1499,9 @@ type RunSetup = {
   groundZ: [number | null, number | null];
   cross: number[];
   blocked: BlockedRoad[];
+  /** Objective v2's weights (RunInput.gradeChange / targetScale), absent for v1. */
+  gradeChange?: number;
+  targetScale?: number;
 };
 
 function setupRun(
@@ -1465,6 +1510,7 @@ function setupRun(
   ground: GroundSampler,
   objects: ObjectPoly[],
   diagnostics: XwDiagnostic[],
+  objective: Objective,
 ): RunSetup {
   const id = rp.run.id;
   const S = rp.length;
@@ -1503,7 +1549,8 @@ function setupRun(
     if (isShort) fixed[side] = { z: t.z, band: GROUND_END_BAND.value };
     else fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
   });
-  if (rp.below) return setupBelow(rp, stations, groundAt, ends, fixed, groundZ, ground, diagnostics);
+  if (rp.below)
+    return setupBelow(rp, stations, groundAt, ends, fixed, groundZ, ground, diagnostics, objective);
   // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
   // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
   // the end itself); a hard floor at the DEM made the ends infeasible by centimetres.
@@ -1564,17 +1611,24 @@ function setupRun(
     lowerOpen[k] = groundPeak[k] + OPEN_OVER_GROUND;
     lower[k] = Math.max(lower[k], lowerOpen[k]);
   }
-  // Target: the standard underclearance over the ground (averaged over ±60 m). Only crossings and
-  // decks over one another raise it (設計書 4.3 の 1); OSM layer orders them but is no height.
-  const target = stations.map((_, k) => {
-    let sum = 0;
-    let cnt = 0;
-    for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
-      sum += groundAt[j];
-      cnt++;
-    }
-    return sum / cnt + STANDARD_UNDERCLEARANCE.value + GIRDER;
-  });
+  // Target: the standard underclearance over the ground (v1: averaged over ±60 m). Only crossings and
+  // decks over one another raise it (設計書 4.3 の 1); OSM layer orders them but is no height. v2
+  // stands it on the upper envelope of the peaks, never under them: the open-ground floor (the peak
+  // + 6.7 m) then no longer lifts the deck over every bump, only crossings, decks and ends bend it.
+  const isV2 = objective.kind === "v2";
+  const target = isV2
+    ? envelope(groundPeak, objective.reachM.viaduct, "upper", GRID_M).map(
+        (e) => e + STANDARD_UNDERCLEARANCE.value + GIRDER,
+      )
+    : stations.map((_, k) => {
+        let sum = 0;
+        let cnt = 0;
+        for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
+          sum += groundAt[j];
+          cnt++;
+        }
+        return sum / cnt + STANDARD_UNDERCLEARANCE.value + GIRDER;
+      });
   return {
     rp,
     stations,
@@ -1589,6 +1643,7 @@ function setupRun(
     groundZ,
     cross,
     blocked,
+    ...objectiveWeights(objective),
   };
 }
 
@@ -1615,6 +1670,7 @@ function setupBelow(
   groundZ: [number | null, number | null],
   ground: GroundSampler,
   diagnostics: XwDiagnostic[],
+  objective: Objective,
 ): RunSetup {
   const S = rp.length;
   const n = stations.length;
@@ -1661,15 +1717,20 @@ function setupBelow(
   // cut alone at the clearance under a street bridged over it (4.5 m + girder), as real 掘割 are dug.
   const hasTunnel = rp.tunnelAt.includes(1);
   const targetDepth = hasTunnel ? depthFor("tunnel") : ROAD_CLEAR;
-  const target = stations.map((_, k) => {
-    let sum = 0;
-    let cnt = 0;
-    for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
-      sum += groundAt[j];
-      cnt++;
-    }
-    return sum / cnt - targetDepth;
-  });
+  // v2: under the lower envelope of the ground across the box, never above it, so the ceiling
+  // (the lowest ground − the depth) no longer pushes the road down under every hollow.
+  const isV2 = objective.kind === "v2";
+  const target = isV2
+    ? envelope(groundLow, objective.reachM.below, "lower", GRID_M).map((e) => e - targetDepth)
+    : stations.map((_, k) => {
+        let sum = 0;
+        let cnt = 0;
+        for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
+          sum += groundAt[j];
+          cnt++;
+        }
+        return sum / cnt - targetDepth;
+      });
   const none = new Float64Array(n).fill(-Infinity);
   return {
     rp,
@@ -1685,6 +1746,7 @@ function setupBelow(
     groundZ,
     cross: [],
     blocked: [],
+    ...objectiveWeights(objective),
   };
 }
 
@@ -1870,6 +1932,7 @@ function solveComponent(
   ground: GroundSampler,
   objects: ObjectPoly[],
   diagnostics: XwDiagnostic[],
+  objective: Objective,
   pins: Map<string, VerticalProfile> = new Map(),
   start: Map<string, number> = new Map(),
   setupsOf?: (id: string) => RunSetup,
@@ -1881,7 +1944,7 @@ function solveComponent(
   const setups = new Map(
     ids.map((id) => [
       id,
-      setupsOf ? setupsOf(id) : setupRun(plan, plan.runs.get(id)!, ground, objects, diagnostics),
+      setupsOf ? setupsOf(id) : setupRun(plan, plan.runs.get(id)!, ground, objects, diagnostics, objective),
     ]),
   );
   const couplings = couplingsOf(plan, members);
@@ -1960,6 +2023,7 @@ function solveComponent(
         // structure, and vertical.ts refuses a connector with pins.
         ...(follow ? { follow } : { pins: profilePins(st.rp) }),
         ...(plan.pieceRuns?.has(id) ? { textOffset: plan.pieceRuns.get(id)!.a } : {}),
+        ...inputWeights(st),
       };
     });
     const started = performance.now();
@@ -2229,6 +2293,7 @@ function solveShedding(
   ground: GroundSampler,
   objects: ObjectPoly[],
   diagnostics: XwDiagnostic[],
+  objective: Objective,
   setupsOf?: (id: string) => RunSetup,
   anchorBanks: AnchorBanks = {},
 ): ComponentResult & { orphaned: Map<string, string> } {
@@ -2271,6 +2336,7 @@ function solveShedding(
       ground,
       objects,
       local,
+      objective,
       new Map(),
       start,
       setupsOf,
@@ -2336,6 +2402,7 @@ function solveShedding(
       ground,
       objects,
       local,
+      objective,
       pins,
       res.levels,
       setupsOf,
@@ -2557,6 +2624,8 @@ export type PartitionResult = {
 export type SolveOptions = {
   /** I7's limit on a block's first QP (blocks.ts BLOCK_MAX_VARIABLES); for tests. */
   maxBlockVariables?: number;
+  /** The vertical objective (P2.7-3); v1 when absent. */
+  objective?: Objective;
 };
 
 /** A block's first QP over BLOCK_MAX_VARIABLES (I7): the build stops, naming the block and its runs. */
@@ -2640,7 +2709,16 @@ export function solvePlan(
   };
   const { heightAt, blockHeightAt, partition } = plan.partition
     ? solveBlocks(plan, plan.partition, ground, objectPolys, diagnostics, solved, failed, stats, options)
-    : solveComponents(plan, ground, objectPolys, diagnostics, solved, failed, stats);
+    : solveComponents(
+        plan,
+        ground,
+        objectPolys,
+        diagnostics,
+        solved,
+        failed,
+        stats,
+        options.objective ?? OBJECTIVE_V1,
+      );
   // A run whose junction parent is not in the data would end in the air: left out, and reported.
   for (let changed = true; changed;) {
     changed = false;
@@ -2767,12 +2845,13 @@ function solveComponents(
   solved: Map<string, Solved>,
   failed: Set<string>,
   stats: SolveStats,
+  objective: Objective,
 ): Solving {
   const neededComponents = [...new Set(plan.needed.map((id) => plan.componentOf.get(id)!))].sort();
   const blocks: BlockSummary[] = [];
   for (const cid of neededComponents) {
     const ids = plan.components.get(cid)!;
-    const res = solveShedding(plan, ids, ground, objectPolys, diagnostics);
+    const res = solveShedding(plan, ids, ground, objectPolys, diagnostics, objective);
     for (const [id, parent] of res.orphaned) {
       failed.add(id);
       diagnostics.push({ run: id, kind: "parent_unsolved", detail: `parent ${parent}`, allowed: false });
@@ -2899,6 +2978,7 @@ function pieceSetup(
     groundZ: [isFirst ? run.groundZ[0] : null, isLast ? run.groundZ[1] : null],
     cross: [],
     blocked: [],
+    ...inputWeights(run),
   };
 }
 
@@ -2959,6 +3039,7 @@ function solveRoute(part: BlockPartition, group: string[], setups: Map<string, R
       start: st.fixed[0],
       end: st.fixed[1],
       pins: profilePins(st.rp),
+      ...inputWeights(st),
     };
   });
   const couplings: Coupling[] = [];
@@ -3013,8 +3094,36 @@ function anchorBankAt(
   };
 }
 
+/**
+ * Each needed run's constraint stations and the target its setup aims at under `objective` (the
+ * tests of P2.7-3 read where v1 and v2 put it). Why a function of its own and not the RunSetup: the
+ * setup carries the floors and couplings' inputs too, which no caller outside should lean on.
+ */
+export function runTargets(
+  plan: Plan,
+  ground: GroundSampler,
+  objects: CrossObject[],
+  objective: Objective,
+): Map<string, { stations: Float64Array; target: Float64Array }> {
+  const objectPolys = objects.map((o) => {
+    const poly = objectPoly(o);
+    return { o, poly, box: bboxOf(poly) };
+  });
+  const out = new Map<string, { stations: Float64Array; target: Float64Array }>();
+  for (const id of plan.needed) {
+    const st = setupRun(plan, plan.runs.get(id)!, ground, objectPolys, [], objective);
+    out.set(id, { stations: st.stations, target: st.target });
+  }
+  return out;
+}
+
 /** The route solutions of the seam groups the needed blocks' anchors are on (I2's test reads them). */
-export function solveRoutes(plan: Plan, ground: GroundSampler, objects: CrossObject[]): RouteSolution[] {
+export function solveRoutes(
+  plan: Plan,
+  ground: GroundSampler,
+  objects: CrossObject[],
+  options: SolveOptions = {},
+): RouteSolution[] {
   const part = plan.partition;
   if (!part) return [];
   const objectPolys = objects.map((o) => {
@@ -3022,7 +3131,10 @@ export function solveRoutes(plan: Plan, ground: GroundSampler, objects: CrossObj
     return { o, poly, box: bboxOf(poly) };
   });
   const setups = new Map(
-    plan.needed.map((id) => [id, setupRun(plan, plan.runs.get(id)!, ground, objectPolys, [])]),
+    plan.needed.map((id) => [
+      id,
+      setupRun(plan, plan.runs.get(id)!, ground, objectPolys, [], options.objective ?? OBJECTIVE_V1),
+    ]),
   );
   return part.routeGroups.map((group) => solveRoute(part, group, setups));
 }
@@ -3113,6 +3225,7 @@ function solveBlocks(
 ): Solving {
   const pp = part.pieces;
   const limit = options.maxBlockVariables ?? BLOCK_MAX_VARIABLES;
+  const objective = options.objective ?? OBJECTIVE_V1;
   const runOf = (id: string) => part.pieceInfo.get(id)!.run;
   const inBlocks = new Set(part.neededBlocks.flatMap((b) => pp.components.get(b)!));
   const blockRuns = new Set([...inBlocks].map(runOf));
@@ -3121,7 +3234,7 @@ function solveBlocks(
   const unwritten: XwDiagnostic[] = [];
   for (const id of plan.needed) {
     const into = blockRuns.has(id) ? diagnostics : unwritten;
-    setups.set(id, setupRun(plan, plan.runs.get(id)!, ground, objectPolys, into));
+    setups.set(id, setupRun(plan, plan.runs.get(id)!, ground, objectPolys, into, objective));
   }
   const values = new Map<string, AnchorValue>();
   let routeSolves = 0;
@@ -3171,7 +3284,7 @@ function solveBlocks(
     const isTooLarge = variables > limit;
     if (isTooLarge) throw new BlockTooLargeError(bid, variables, [...new Set(ids.map(runOf))].sort(), limit);
     const local: XwDiagnostic[] = [];
-    const res = solveShedding(pp, ids, ground, objectPolys, local, setupOf, anchorBanks);
+    const res = solveShedding(pp, ids, ground, objectPolys, local, objective, setupOf, anchorBanks);
     for (const d of local) diagnostics.push({ ...d, run: runOf(d.run) });
     stats.components++;
     stats.largestRuns = Math.max(stats.largestRuns, res.stats.largestRuns);

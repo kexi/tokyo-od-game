@@ -901,6 +901,14 @@ export const LOG_EVENTS = {
   expressway_extract_pinned: info({ file: z.string(), timestamp: z.string().nullable(), sha256: z.string() }),
   /** --range ship (src/expressway/scope.ts): the main lines and ramps of the shipped scope. */
   expressway_scope_chosen: info({ main: count, ramps: count, belowRuns: count, prunedBelow: z.boolean() }),
+  /** The vertical objective of a build (P2.7-3, compile.ts Objective); v2's weights null for v1. */
+  expressway_objective_chosen: info({
+    objective: z.enum(["v1", "v2"]),
+    gradeChange: z.number().nullable(),
+    reachM: z.number().nullable(),
+    reachBelowM: z.number().nullable(),
+    targetScale: z.number().nullable(),
+  }),
   /** The scorecard of a build (src/expressway/report.ts), written outside the data folder. */
   expressway_report_written: info({
     file: z.string(),

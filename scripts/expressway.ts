@@ -23,6 +23,10 @@
 // by block (src/expressway/blocks.ts; measuring only, like --below all it needs --out), with
 // --quiet-factor <k> the anchors' margin (assumptions.BLOCK_QUIET_FACTOR by default). The default,
 // --partition components, solves each component in one QP as before.
+// P2.7-3: --objective v2 aims the decks at the design ground line and charges grade changes in L1
+// (compile.ts Objective; measuring only, it needs --out), with --grade-change <w> (vertical.ts
+// W_GRADE_CHANGE), --reach <m> and --reach-below <m> (assumptions.DESIGN_GROUND_REACH) and
+// --target-scale <k> (W_TARGET × k). The default, --objective v1, is the objective as before.
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -45,6 +49,9 @@ import {
   type Bbox,
   type CrossObject,
   groundPoints,
+  OBJECTIVE_V1,
+  OBJECTIVE_V2,
+  type Objective,
   planNetwork,
   untiedPairs,
   solvePlan,
@@ -165,6 +172,38 @@ const quietFactor = Number(arg("quiet-factor") ?? BLOCK_QUIET_FACTOR.value);
 const isBlocksDefault = partitionMode === "blocks" && arg("out") === undefined;
 if (isBlocksDefault)
   throw new Error("--partition blocks is for measuring: give --out (just measure-expressway-area)");
+const objectiveArg = arg("objective") ?? "v1";
+const isObjectiveKind = objectiveArg === "v1" || objectiveArg === "v2";
+if (!isObjectiveKind) throw new Error(`unknown --objective ${objectiveArg} (v1, v2)`);
+const V2_FLAGS = ["grade-change", "reach", "reach-below", "target-scale"];
+const v2Flags = V2_FLAGS.filter((name) => arg(name) !== undefined);
+const isV1WithV2Flags = objectiveArg === "v1" && v2Flags.length > 0;
+if (isV1WithV2Flags) throw new Error(`--${v2Flags[0]} is for --objective v2`);
+/** A v2 weight from its flag, or the assumed one; a flag that is no positive number stops the build. */
+const v2Number = (name: string, fallback: number) => {
+  const text = arg(name);
+  if (text === undefined) return fallback;
+  const value = Number(text);
+  const isPositive = Number.isFinite(value) && value > 0;
+  if (!isPositive) throw new Error(`--${name} ${text}: not a positive number`);
+  return value;
+};
+const objective: Objective =
+  objectiveArg === "v1"
+    ? OBJECTIVE_V1
+    : {
+        kind: "v2",
+        gradeChange: v2Number("grade-change", OBJECTIVE_V2.gradeChange),
+        reachM: {
+          viaduct: v2Number("reach", OBJECTIVE_V2.reachM.viaduct),
+          below: v2Number("reach-below", OBJECTIVE_V2.reachM.below),
+        },
+        targetScale: v2Number("target-scale", OBJECTIVE_V2.targetScale),
+      };
+// v2 moves the decks (P2.7-3 measures by how much; S5 turns it on): never into the shipped folder.
+const isV2Default = objective.kind === "v2" && arg("out") === undefined;
+if (isV2Default)
+  throw new Error("--objective v2 is for measuring: give --out (just measure-expressway-area)");
 const stagesMs: Record<string, number> = {};
 let stageStarted = performance.now();
 /** Time since the last stage ended, booked to `name` (the scorecard's stagesMs). */
@@ -373,7 +412,14 @@ endStage("objects");
 
 // 5. Solve and write.
 const solveStarted = performance.now();
-const result = solvePlan(plan, (lon, lat) => dem.heightAt(lon, lat), objects);
+log("expressway_objective_chosen", {
+  objective: objective.kind,
+  gradeChange: objective.kind === "v2" ? objective.gradeChange : null,
+  reachM: objective.kind === "v2" ? objective.reachM.viaduct : null,
+  reachBelowM: objective.kind === "v2" ? objective.reachM.below : null,
+  targetScale: objective.kind === "v2" ? objective.targetScale : null,
+});
+const result = solvePlan(plan, (lon, lat) => dem.heightAt(lon, lat), objects, { objective });
 log("expressway_solved", {
   ...result.stats,
   qpMs: Math.round(result.stats.qpMs),
@@ -534,6 +580,7 @@ if (reportPath) {
     label: arg("label") ?? basename(OUT),
     range: rangeArg,
     below,
+    objective,
     extract: {
       url: OSM_EXTRACT,
       timestamp,
