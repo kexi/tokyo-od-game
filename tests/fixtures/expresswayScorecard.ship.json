@@ -1,6 +1,6 @@
 {
- "version": 2,
- "label": "ship-pruned-1",
+ "version": 3,
+ "label": "ship-pruned-baseline",
  "range": "ship",
  "below": "pruned",
  "extract": {
@@ -2658,5 +2658,169 @@
   "solves": 106,
   "iterations": 3637,
   "unconverged": 0
+ },
+ "partition": {
+  "mode": "components",
+  "quietFactor": null,
+  "quietMinM": null,
+  "anchorCount": 0,
+  "anchors": [],
+  "pieces": 491,
+  "neededBlocks": 20,
+  "largest": {
+   "id": "1023819782",
+   "runs": 271,
+   "pieces": 271,
+   "variables": 17744
+  },
+  "routeSolves": 0,
+  "anchorsNearProblems": 0,
+  "joins": {
+   "dz": 0,
+   "dGrade": 0,
+   "dBank": 0
+  },
+  "blocks": [
+   {
+    "id": "1022519232",
+    "runs": 65,
+    "pieces": 65,
+    "variables": 4880,
+    "hash": "b2b289cb3d6fafe342a86234c3867eef1207062ccfcdb204df945bfcfbe119c8"
+   },
+   {
+    "id": "1023819782",
+    "runs": 271,
+    "pieces": 271,
+    "variables": 17744,
+    "hash": "4e19a89dd47fd559bd6158fabba0b320be7973ceef66eb05d11bf9157a677d6b"
+   },
+   {
+    "id": "1055111045",
+    "runs": 14,
+    "pieces": 14,
+    "variables": 740,
+    "hash": "f96c8d507b70c33fe45ca8f92f321c4238a3b8e096da5679a68a8588e1def66a"
+   },
+   {
+    "id": "1068219936",
+    "runs": 11,
+    "pieces": 11,
+    "variables": 542,
+    "hash": "329b7a940bb15b8669b30bad5dd150456a687a43d00189b160ac0410b8d406a9"
+   },
+   {
+    "id": "1068230495",
+    "runs": 3,
+    "pieces": 3,
+    "variables": 28,
+    "hash": "205a301cce208e5b50de23c4843488b5e188fb7d1ec3598ff37e8bc9da5c1ec7"
+   },
+   {
+    "id": "1125559318",
+    "runs": 57,
+    "pieces": 57,
+    "variables": 3658,
+    "hash": "1f513e44310267e38d35de91f0b535f6bcb08126c8b9ef706a883310320af71d"
+   },
+   {
+    "id": "133037880",
+    "runs": 4,
+    "pieces": 4,
+    "variables": 70,
+    "hash": "9d37c567865e59084fd6d49f07fe20e3ec0055bcbbe76504a25b797c7148c03e"
+   },
+   {
+    "id": "1467911980",
+    "runs": 17,
+    "pieces": 17,
+    "variables": 1426,
+    "hash": "2392de1a1d041327c3ae84cfa0a2635f5639d1eb9512b2d3718cd8bf79b533d5"
+   },
+   {
+    "id": "1483413151",
+    "runs": 23,
+    "pieces": 23,
+    "variables": 1348,
+    "hash": "a4395daf6a666b6c62d4b99f32345dd84d448edd4c3ee679fe8d811abcdf5648"
+   },
+   {
+    "id": "165913323",
+    "runs": 3,
+    "pieces": 3,
+    "variables": 80,
+    "hash": "8c3c2ef4526f54ec697f5f79ae477f4ec16f84a909c656f4d1e950959346e851"
+   },
+   {
+    "id": "165913324",
+    "runs": 5,
+    "pieces": 5,
+    "variables": 168,
+    "hash": "7c7b7b0e164229a4509ed8948429bfa667645b113bc8cc3ac4fdc65e37d520e1"
+   },
+   {
+    "id": "23604979",
+    "runs": 4,
+    "pieces": 4,
+    "variables": 154,
+    "hash": "6ceafdd1455a35b64e3ed9ed3fb8e1292e460c377bae70b42f76dfc127e705db"
+   },
+   {
+    "id": "23974979",
+    "runs": 5,
+    "pieces": 5,
+    "variables": 166,
+    "hash": "e1e3eb7423b3ad3887ef3f26b15271820722c9a82ae3cd3028e6c78e2522c059"
+   },
+   {
+    "id": "26350735",
+    "runs": 3,
+    "pieces": 3,
+    "variables": 136,
+    "hash": "ab0b2f0244d9cce723143eb28f5aefd2990dd6fe40ed11e975b97bdae46b0ed1"
+   },
+   {
+    "id": "405795844",
+    "runs": 1,
+    "pieces": 1,
+    "variables": 74,
+    "hash": "9b03c5c6979e22e2f168d7302e235a75f5bacaaa00baee52287fcec5c1a749ae"
+   },
+   {
+    "id": "42751503",
+    "runs": 1,
+    "pieces": 1,
+    "variables": 8,
+    "hash": "5439babdf5423e2ba6989fd6e54163752e652ff4e119023add83bcd1e2edcd75"
+   },
+   {
+    "id": "42751507",
+    "runs": 1,
+    "pieces": 1,
+    "variables": 8,
+    "hash": "1424e62137b05256cb80e55219e5c95e59ec683bc0cd02722c199d6b3f763823"
+   },
+   {
+    "id": "4854085",
+    "runs": 1,
+    "pieces": 1,
+    "variables": 76,
+    "hash": "cb331052bf994484bce5e7dbd4a37cb8b51f0602c94584bbccbe65ef7d9d1d0d"
+   },
+   {
+    "id": "5170834",
+    "runs": 1,
+    "pieces": 1,
+    "variables": 48,
+    "hash": "36b034ee8376baf5336566351389c1fc6f53222a8c6a1e1999eb8e211a300e33"
+   },
+   {
+    "id": "678761500",
+    "runs": 1,
+    "pieces": 1,
+    "variables": 50,
+    "hash": "3b1b48c2ec032765659c14989c9cf8f911c46f3fac913a51ff56ffd9d56283bc"
+   }
+  ]
  }
 }

@@ -19,6 +19,15 @@ import { z } from "zod";
  * a renamed or misspelt field, which is what goes wrong at call sites.
  */
 
+/** |Δz| over a set of stations (scripts/compareExpresswayHeights.ts): how many, percentiles, max (m). */
+const heightSpread = z.strictObject({
+  stations: z.number().int().nonnegative(),
+  p50: z.number().nonnegative(),
+  p90: z.number().nonnegative(),
+  p99: z.number().nonnegative(),
+  max: z.number().nonnegative(),
+});
+
 const info = <S extends z.ZodRawShape>(shape: S) => ({
   level: "info" as const,
   fields: z.strictObject(shape),
@@ -908,6 +917,42 @@ export const LOG_EVENTS = {
     removed: count,
     runsAdded: count,
     runsRemoved: count,
+    /** Blocks (report partition) whose solution hash differs, and those on one side only. */
+    blocksChanged: count,
+    blocksAdded: count,
+    blocksRemoved: count,
+  }),
+  /**
+   * --partition blocks (src/expressway/blocks.ts, P2.7-2): k and the least quiet margin, anchors and
+   * pieces of the whole plan, the blocks the range needs, the route groups and the needed runs.
+   */
+  expressway_blocks_planned: info({
+    quietFactor: z.number(),
+    quietMinM: z.number(),
+    anchors: count,
+    pieces: count,
+    blocks: count,
+    neededBlocks: count,
+    routeGroups: count,
+    neededRuns: count,
+  }),
+  /**
+   * Two builds' heights compared (scripts/compareExpresswayHeights.ts): |Δz| of b's stations against
+   * a's Hermite surface, over the runs in both, near the anchors of b's report (±Q) and elsewhere,
+   * and the runs that moved most.
+   */
+  expressway_heights_compared: info({
+    a: z.string(),
+    b: z.string(),
+    runs: count,
+    onlyA: count,
+    onlyB: count,
+    all: heightSpread,
+    nearAnchors: heightSpread,
+    elsewhere: heightSpread,
+    top: z.array(
+      z.strictObject({ run: z.string(), maxDzM: z.number(), s: z.number(), nearAnchor: z.boolean() }),
+    ),
   }),
   /** Two scorecards of another range, --below mode or extract: their differences are not the compiler's. */
   expressway_reports_unlike: warning({ a: z.string(), b: z.string() }),

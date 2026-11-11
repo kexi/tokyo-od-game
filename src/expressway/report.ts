@@ -21,10 +21,16 @@ const spread = z.strictObject({ total: count, median: count, p90: count, max: co
 const extentTally = z.strictObject({ inKm: km, outKm: km, operatedKm: km, otherKm: km });
 const cls = z.enum(["expressway", "ramp", "street"]);
 
-export const REPORT_VERSION = 2;
+/**
+ * 3 (P2.7-2): `partition`, how the needed runs were split and solved. A version-2 report (no
+ * partition) still parses, so a scorecard can be compared with one written before.
+ */
+export const REPORT_VERSION = 3;
+
+const blockSize = { runs: count, pieces: count, variables: count };
 
 export const ReportSchema = z.strictObject({
-  version: z.literal(REPORT_VERSION),
+  version: z.union([z.literal(2), z.literal(REPORT_VERSION)]),
   label: z.string(),
   range: z.string(),
   below: z.enum(["pruned", "all"]),
@@ -135,6 +141,46 @@ export const ReportSchema = z.strictObject({
     iterations: count,
     unconverged: count,
   }),
+  /**
+   * How the needed runs were split (P2.7-2): `components` (each component one block, no anchor) or
+   * `blocks` (main lines cut at anchors, blocks.ts) with k and the least quiet margin, the anchors
+   * (run, run distance, their Q, the route solution's elevation and grade, the blocks either side),
+   * the pieces and blocks solved, the largest block, the route solutions, the anchors with a
+   * problem of their route solution within Q, and every block's size and solution hash (SHA-256 of
+   * compile.ts canonicalOf). Absent from a version-2 report.
+   */
+  partition: z
+    .strictObject({
+      mode: z.enum(["components", "blocks"]),
+      quietFactor: z.number().nullable(),
+      quietMinM: z.number().nullable(),
+      anchorCount: count,
+      anchors: z.array(
+        z.strictObject({
+          run: z.string(),
+          s: z.number(),
+          q: z.number(),
+          z: z.number(),
+          grade: z.number(),
+          blocks: z.tuple([z.string(), z.string()]),
+        }),
+      ),
+      pieces: count,
+      neededBlocks: count,
+      largest: z.strictObject({ id: z.string(), ...blockSize }).nullable(),
+      routeSolves: count,
+      anchorsNearProblems: count,
+      /** The largest step between the two pieces at an anchor (I3; 0 by construction). */
+      joins: z.strictObject({
+        dz: z.number().nonnegative(),
+        dGrade: z.number().nonnegative(),
+        dBank: z.number().nonnegative(),
+      }),
+      blocks: z.array(
+        z.strictObject({ id: z.string(), ...blockSize, hash: z.string().regex(/^[0-9a-f]{64}$/) }),
+      ),
+    })
+    .optional(),
   /** Wall-clock times (the only part that differs between two builds of the same input). */
   timings: z.strictObject({ qpMs: count, stagesMs: z.record(z.string(), count) }).optional(),
 });
@@ -164,6 +210,8 @@ export type ReportInput = {
   tiles: Array<{ bytes: number; gzipBytes: number }>;
   meta: { raw: number; gzip: number; byField: Record<string, number> };
   solver: Report["solver"] & { qpMs: number };
+  /** The partition without what buildReport derives (the anchor count, the largest block). */
+  partition: Omit<NonNullable<Report["partition"]>, "anchorCount" | "largest">;
   stagesMs: Record<string, number>;
   /** Leave the timings out (the baseline fixture). */
   withoutTimings?: boolean;
@@ -518,6 +566,41 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
   };
 }
 
+/** The partition with its anchor count and largest block (most variables, then the smallest id). */
+export function partitionOf(p: ReportInput["partition"]): NonNullable<Report["partition"]> {
+  let largest: NonNullable<Report["partition"]>["largest"] = null;
+  for (const b of p.blocks) {
+    const isLarger = largest === null || b.variables > largest.variables;
+    if (isLarger) largest = { id: b.id, runs: b.runs, pieces: b.pieces, variables: b.variables };
+  }
+  const {
+    mode,
+    quietFactor,
+    quietMinM,
+    anchors,
+    pieces,
+    neededBlocks,
+    routeSolves,
+    anchorsNearProblems,
+    joins,
+    blocks,
+  } = p;
+  return {
+    mode,
+    quietFactor,
+    quietMinM,
+    anchorCount: anchors.length,
+    anchors,
+    pieces,
+    neededBlocks,
+    largest,
+    routeSolves,
+    anchorsNearProblems,
+    joins,
+    blocks,
+  };
+}
+
 export function buildReport(input: ReportInput): Report {
   const wanted = input.planned.filter((p) => p.wanted);
   const inRange = new Set(wanted.map((p) => p.id));
@@ -557,6 +640,7 @@ export function buildReport(input: ReportInput): Report {
       meta: input.meta,
     },
     solver,
+    partition: partitionOf(input.partition),
     ...(input.withoutTimings
       ? {}
       : {
@@ -567,4 +651,48 @@ export function buildReport(input: ReportInput): Report {
         }),
   };
   return ReportSchema.parse(report);
+}
+
+/**
+ * The numbers of a report by dotted path (scripts/compareExpresswayReports.ts): lists keyed by their
+ * block id (partition blocks), run and distance (anchors), run (closures) or pair (overlaps).
+ */
+export function flattenReport(report: Report): Map<string, number> {
+  const out = new Map<string, number>();
+  const walk = (value: unknown, prefix: string) => {
+    if (typeof value === "number") {
+      out.set(prefix, value);
+      return;
+    }
+    const isList = Array.isArray(value);
+    if (isList) {
+      value.forEach((item, i) => {
+        const o = item as { id?: string; run?: string; s?: number; a?: string; b?: string };
+        const isAnchor = o.run !== undefined && typeof o.s === "number";
+        const key =
+          o.id ?? (isAnchor ? `${o.run}@${o.s}` : o.run) ?? (o.a !== undefined ? `${o.a}|${o.b}` : String(i));
+        walk(item, `${prefix}[${key}]`);
+      });
+      return;
+    }
+    const isObject = value !== null && typeof value === "object";
+    if (!isObject) return;
+    for (const [k, v] of Object.entries(value)) walk(v, prefix === "" ? k : `${prefix}.${k}`);
+  };
+  walk(report, "");
+  return out;
+}
+
+/** Blocks whose solution hash differs between two reports (same id), and those on one side only. */
+export function blockChanges(
+  a: Report,
+  b: Report,
+): { changed: string[]; added: string[]; removed: string[] } {
+  const ha = new Map((a.partition?.blocks ?? []).map((x) => [x.id, x.hash]));
+  const hb = new Map((b.partition?.blocks ?? []).map((x) => [x.id, x.hash]));
+  return {
+    changed: [...hb.keys()].filter((id) => ha.has(id) && ha.get(id) !== hb.get(id)),
+    added: [...hb.keys()].filter((id) => !ha.has(id)),
+    removed: [...ha.keys()].filter((id) => !hb.has(id)),
+  };
 }

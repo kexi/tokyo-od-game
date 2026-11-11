@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-fable/design, at: 2026-11-10T09:00:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T09:12:42Z }
   - { by: process:vitest, at: 2026-11-11T07:00:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-11-10T14:30:00Z }
   - { by: process:headless-chrome-cdp, at: 2026-11-11T01:48:00Z }
@@ -37,6 +38,7 @@ sources:
 - **P8 実装（2026-11-11、PR 待ち）**: 一般道の車線一本化・幅員補正・路肩（[道路モデル](road-model.md) の P8）。計画との差: OSM の車線は `public/data/turnlanes` に列を足すのではなく別フォルダ `public/data/roadlanes`（行の形が違い、turn:lanes の無い way も要るため）。幅員推定はやめ、何も載っていない道は 1 車線（レビュー）。歩道の幅 3.5 m（構造令 第11条）は roadStandards.ts、幅員が歩道込みとみなす閾値 13 m などは仮定として `src/world/streetAssumptions.ts`。
 - **P9 実装（2026-11-11、レビュー待ち）**: トンネル・掘割（`src/expressway/below.ts`、`src/world/expresswayBore.ts`・`groundCuts.ts`）。OSM の tunnel / covered / cutting / layer<0 を below run として地表より下へ解き（土被りの天井は坑口から第20条の勾配で届く所だけ、高架とは seam で C¹）、坑口を `portals` に。トンネルの箱（監査路・側壁・天井・照明）と掘割の擁壁をコライダーつきで押し出し、地形・一般道・歩道・建物を穴で切り欠き、トンネル内は空と太陽を遮って照明に置き換える。試験区間には無いので近傍の都心環状線外回りの麻布台（掘割 109 m + トンネル 488 m）を範囲 azabudai・azabudai_exit に。XW_VERSION 4 のまま。**逸脱**: 地下の分合流と、成分をまたぐ長い地下区間（山手トンネル等）は見送り（全域の計画で 57 本を残し 88 本を見送る。解いたのは範囲に入る麻布台の 1 本）。記録は [高速道路の生成](expressway-generation.md) の「トンネルと掘割（P9）」。
 - **P2.7-1 実装（2026-11-11、PR 待ち）**: P2.7「都市高速を全域に広げる」の第 1 段階。データと解は変えず、出荷範囲（`--range ship`: 事業者の本線 ∩ 23 区とそこからランプだけでたどれるランプ、`src/expressway/scope.ts`）、全域スコアカード（`--report`、`src/expressway/report.ts`）、抽出の固定（`extract.ts`）、計測専用の `--below all`、`just measure-expressway-area`・`compare-expressway-reports`。ship/pruned は 323 run（区外へ本線 99 km 伸びる）・本線の閉鎖 10・ランプの閉鎖 19.4 %・未許可の重なり 175 組・T2 2 件と T12 1 件・gzip 1.04 MB。pruneBelow なしでも未収束 0 で、P9 の「破綻」の記述を訂正。後段 S2〜S7・R1〜R3 はこのスコアカードで合否を判定する（[高速道路の生成](expressway-generation.md) の「P2.7-1」）。
+- **P2.7-2 実装（2026-11-11、PR 待ち）**: 固定点 block（S2）。`--partition blocks`（計測専用、既定 components はデータ・解とも不変）で本線の静かな区間に固定点を置き、片の連結成分（block）ごとに既存の solveShedding を回す（`src/expressway/blocks.ts`、固定点の値は seam の組の路線解）。ship の A/B（スコアカード版 3 の partition）で pruned は k=1・1.5 が一括解と同等、all はどの k も本線の閉鎖 14 → 18 で **未達**（41009552 による、k によらない。`BLOCK_QUIET_FACTOR` は暫定 1.5、最終決定は 41009552 の修正と S3 の後の A/B で）。既定範囲の `--below all` は必要 run 382 → 66・解く段 130.6 → 13.1 s。次の手の順序: 41009552 を直す → S3 → A/B を 1 回やり直す（2 段解は今はやらない。S2 の利得は S5・S7 以降の `--below all` の既定範囲）。**S5（有効化）の前提**: 子の閉鎖と交差の記録が範囲で変わる（親の連鎖と交差の下の run は全片を必要 block に含める案）、I4 が固定点つき本線の入力に成り立たない（固定点の値を丸めて持つか、ハッシュを丸めた値から作るかを決める）（[高速道路の生成](expressway-generation.md) の「P2.7-2」）。
 - 未着手: P4・P6（P2.6・P4・P6 は並行中）。
 
 作成 2026-11-10。対象 `tokyo-od-game`。コードは書かない（実装は Opus が段階的に行う）。

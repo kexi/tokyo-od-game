@@ -43,8 +43,12 @@ import { QpBuilder, type QpStatus, solveQp } from "./qp";
 /**
  * An end fixed by the ground. `band`: the elevation may be anywhere within ±band of z (a short run,
  * whose grade there is then free within the statute); else z exactly, and the grade if given.
+ * `hard`: a block's anchor (compile.ts blocks: the value of the route solution on both sides of it),
+ * z as a hard equality and the grade by a heavy square, both then set exactly by finish. Why not the
+ * W_END rows of a ground end: those give way to a clearance by design, and an anchor that gave way
+ * would leave a step between the two pieces.
  */
-export type EndCondition = { z?: number; grade?: number; band?: number };
+export type EndCondition = { z?: number; grade?: number; band?: number; hard?: boolean };
 export type Zone = { from: number; to: number; V: DesignSpeed };
 /**
  * A stretch [from, to] of the run whose profile is given (a structure override, structures.ts).
@@ -104,13 +108,21 @@ export type RunInput = {
   follow?: { start: Ref; end: Ref };
   /** Stretches pinned to a structure's profile (empty for an ordinary run). */
   pins?: ProfilePin[];
+  /**
+   * Run distance of this input's s = 0 in the problems' texts ("at N m"): a piece of a run cut at
+   * anchors (compile.ts blocks) reports where on its run, as the diagnostics name runs. Absent: 0.
+   */
+  textOffset?: number;
 };
 
 export type Ref = { run: string; s: number };
 
 export type Coupling =
-  /** The child's end takes the parent's elevation and grade at parent.s. */
-  | { kind: "junction"; child: string; atStart: boolean; parent: Ref }
+  /**
+   * The child's end takes the parent's elevation and grade at parent.s. `hard`: as hard equalities
+   * (a piece following the one before it across an anchor in a route solution, compile.ts).
+   */
+  | { kind: "junction"; child: string; atStart: boolean; parent: Ref; hard?: boolean }
   /**
    * lo ≤ z(a) − z(b) ≤ hi. `firm`: a clearance that decides whether a run is solved (a crossing);
    * otherwise a preference between overlapping decks (one surface or a level apart) that gives way
@@ -250,11 +262,20 @@ function speedsWithin(zones: Zone[], a: number, b: number): DesignSpeed[] {
   return out.length > 0 ? out : [zones[zones.length - 1].V];
 }
 
+/**
+ * Knot intervals of a run's parabola chain: as many as fit the 第22条 minimum curve length of its
+ * highest design speed (at least one). A cubic connector has one.
+ */
+export function knotIntervals(length: number, zones: Zone[], isConnector: boolean): number {
+  const maxV = Math.max(...zones.map((z) => z.V)) as DesignSpeed;
+  return isConnector ? 1 : Math.max(1, Math.floor(length / VERTICAL_CURVE_LENGTH.value[maxV]));
+}
+
 function layoutOf(input: RunInput, off: number): Layout {
   const S = input.length;
   const maxV = Math.max(...input.zones.map((z) => z.V)) as DesignSpeed;
   const minLength = VERTICAL_CURVE_LENGTH.value[maxV];
-  const m = input.follow ? 1 : Math.max(1, Math.floor(S / minLength));
+  const m = knotIntervals(S, input.zones, input.follow !== undefined);
   const h = S / m;
   const gradeLimit: number[] = [];
   for (let j = 0; j <= m; j++) {
@@ -442,8 +463,9 @@ export function solveJoint(runs: RunInput[], couplings: Coupling[]): JointResult
       // A cubic connector meets its parents by construction.
       if (!child || !parent || child.follow) continue;
       const j = c.atStart ? 0 : child.m;
-      qp.addRow(merge([[Zi(child, j), 1], ...zRow(parent, c.parent.s, -1)]), 0, 0, W_END);
-      qp.addRow(merge([[Di(child, j), 1], ...gradeRow(parent, c.parent.s, -child.h)]), 0, 0, W_END);
+      const weight = c.hard ? Infinity : W_END;
+      qp.addRow(merge([[Zi(child, j), 1], ...zRow(parent, c.parent.s, -1)]), 0, 0, weight);
+      qp.addRow(merge([[Di(child, j), 1], ...gradeRow(parent, c.parent.s, -child.h)]), 0, 0, weight);
       continue;
     }
     const a = layouts.get(c.a.run);
@@ -508,7 +530,12 @@ function addArcRows(qp: QpBuilder, L: Layout): void {
       0,
       0,
     );
+  // A hard end (an anchor) gives its knot's grade: no limit row there. Why not keep it: the value
+  // comes from a finished profile, which may stand a hair past GRADE_MARGIN of the limit (within the
+  // statute); with both hard, ship/pruned had blocks with no solution at all (NaN, P2.7-2).
+  const isGiven = (j: number) => (j === 0 && input.start.hard) || (j === m && input.end.hard);
   for (let j = 0; j <= m; j++) {
+    if (isGiven(j)) continue;
     const gMax = L.gradeLimit[j] * h * GRADE_MARGIN;
     qp.addRow([[Di(L, j), 1]], -gMax, gMax);
   }
@@ -524,6 +551,14 @@ function addArcRows(qp: QpBuilder, L: Layout): void {
   }
   const { start, end } = input;
   const endRow = (j: number, e: EndCondition) => {
+    if (e.hard) {
+      qp.addRow([[Zi(L, j), 1]], e.z!, e.z!);
+      // The grade by a heavy square (W_PIN), not a second hard row: with both hard, 1 of the 195
+      // block solves of ship/pruned broke down (NaN after 35 iterations, P2.7-2) and converged in 31
+      // with this; finish then sets the knot's grade to the anchor's exactly (C¹ by construction).
+      qp.addSquare([[Di(L, j), 1]], e.grade! * h, W_PIN);
+      return;
+    }
     if (e.z !== undefined) {
       const band = e.band === undefined ? 0 : Math.max(0, e.band - BAND_MARGIN);
       qp.addRow([[Zi(L, j), 1]], e.z - band, e.z + band, W_END);
@@ -745,6 +780,12 @@ function arcProfile(
 }
 
 /** 第20条 on every knot and 第22条 on every arc of a parabola chain. */
+/** "N" of "at N m": a distance of the input rounded to the metre, on its run (textOffset). */
+function metreOf(input: RunInput, s: number): number {
+  const off = input.textOffset;
+  return off === undefined ? Math.round(s) : Math.round(s + off);
+}
+
 function checkArcs(L: Layout, profile: VerticalProfile): RunProblem[] {
   const { m, h } = L;
   const out: RunProblem[] = [];
@@ -756,7 +797,7 @@ function checkArcs(L: Layout, profile: VerticalProfile): RunProblem[] {
         basis: "law",
         s: j * h,
         by: over,
-        text: `grade ${(profile.g[j] * 100).toFixed(2)}% > ${(L.gradeLimit[j] * 100).toFixed(1)}% at ${Math.round(j * h)} m`,
+        text: `grade ${(profile.g[j] * 100).toFixed(2)}% > ${(L.gradeLimit[j] * 100).toFixed(1)}% at ${metreOf(L.input, j * h)} m`,
       });
   }
   for (let j = 0; j < m; j++) {
@@ -779,7 +820,7 @@ function checkArcs(L: Layout, profile: VerticalProfile): RunProblem[] {
             basis: "law",
             s: (j + 0.5) * h,
             by: Math.abs(k),
-            text: `vertical curve R=${Math.round(1 / Math.abs(k))} at ${Math.round(j * h)} m`,
+            text: `vertical curve R=${Math.round(1 / Math.abs(k))} at ${metreOf(L.input, j * h)} m`,
           },
     );
   }
@@ -791,7 +832,7 @@ function checkArcs(L: Layout, profile: VerticalProfile): RunProblem[] {
         basis: "coupling",
         s: j * h,
         by: miss,
-        text: `structure profile off by ${miss.toFixed(3)} m at ${Math.round(j * h)} m`,
+        text: `structure profile off by ${miss.toFixed(3)} m at ${metreOf(L.input, j * h)} m`,
       });
   }
   return out;
@@ -871,7 +912,7 @@ function checkBounds(input: RunInput, profile: VerticalProfile): RunProblem[] {
   }
   const out: RunProblem[] = [];
   const { law, floor, sunk, ceiling } = worst;
-  const at = (p: { s: number }) => Math.round(p.s);
+  const at = (p: { s: number }) => metreOf(input, p.s);
   if (law.by > 1e-6)
     out.push({
       what: "crossing",

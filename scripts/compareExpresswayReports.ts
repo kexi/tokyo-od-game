@@ -6,35 +6,18 @@
 // Run: pnpm exec tsx scripts/compareExpresswayReports.ts <a> <b> [--check]
 // (just compare-expressway-reports a b; a label without a slash means .qa/expressway/<label>.report.json).
 // --check: exit 1 when anything but the timings differs, 0 when the two are the same.
+// P2.7-2: a version-2 report (no `partition`) still reads, its partition rows then being additions;
+// anchors are keyed by run@s and blocks by id, and the blocks' solution hashes are summed up in one
+// line (how many changed, and which).
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ReportSchema } from "../src/expressway/report.ts";
+import { blockChanges, flattenReport, ReportSchema } from "../src/expressway/report.ts";
 import { log, warn } from "../src/log.ts";
 
 const pathOf = (arg: string) => {
   const isLabel = !arg.includes("/") && !arg.endsWith(".json");
   return isLabel ? join(import.meta.dirname, "..", ".qa", "expressway", `${arg}.report.json`) : arg;
 };
-
-/** Numbers of a report by dotted path; lists keyed by their run (closures) or pair (overlaps). */
-function flatten(value: unknown, prefix: string, out: Map<string, number>): void {
-  if (typeof value === "number") {
-    out.set(prefix, value);
-    return;
-  }
-  const isList = Array.isArray(value);
-  if (isList) {
-    value.forEach((item, i) => {
-      const o = item as { run?: string; a?: string; b?: string };
-      const key = o.run ?? (o.a !== undefined ? `${o.a}|${o.b}` : String(i));
-      flatten(item, `${prefix}[${key}]`, out);
-    });
-    return;
-  }
-  const isObject = value !== null && typeof value === "object";
-  if (!isObject) return;
-  for (const [k, v] of Object.entries(value)) flatten(v, prefix === "" ? k : `${prefix}.${k}`, out);
-}
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const isCheck = process.argv.includes("--check");
@@ -44,10 +27,8 @@ if (isMissing) throw new Error("usage: compareExpresswayReports.ts <a> <b> [--ch
 const [a, b] = await Promise.all(
   [aArg, bArg].map(async (p) => ReportSchema.parse(JSON.parse(await readFile(pathOf(p), "utf8")))),
 );
-const fa = new Map<string, number>();
-const fb = new Map<string, number>();
-flatten(a, "", fa);
-flatten(b, "", fb);
+const fa = flattenReport(a);
+const fb = flattenReport(b);
 const isTiming = (k: string) => k.startsWith("timings.");
 const keys = [...new Set([...fa.keys(), ...fb.keys()])].filter((k) => k !== "version");
 const fmt = (v: number | undefined) => (v === undefined ? "—" : String(Math.round(v * 1e4) / 1e4));
@@ -70,6 +51,7 @@ const wantedA = new Set(a.scope.wanted);
 const wantedB = new Set(b.scope.wanted);
 const runsAdded = [...wantedB].filter((id) => !wantedA.has(id));
 const runsRemoved = [...wantedA].filter((id) => !wantedB.has(id));
+const { changed: blocksChanged, added: blocksAdded, removed: blocksRemoved } = blockChanges(a, b);
 const cell = (r: Row) => {
   const delta = r.va !== undefined && r.vb !== undefined ? fmt(r.vb - r.va) : "";
   const note = r.change === "same" ? "" : r.change;
@@ -91,12 +73,21 @@ process.stdout.write(
     line(header),
     line(widths.map((w) => "-".repeat(w))),
     ...table.map(line),
+    `blocks: ${blocksChanged.length} changed ${blocksChanged.slice(0, 20).join(" ")} / +${blocksAdded.length} ${blocksAdded.slice(0, 20).join(" ")} / −${blocksRemoved.length} ${blocksRemoved.slice(0, 20).join(" ")}`,
     `runs of the range: +${runsAdded.length} ${runsAdded.slice(0, 20).join(" ")} / −${runsRemoved.length} ${runsRemoved.slice(0, 20).join(" ")}`,
     `extract: ${a.extract.timestamp} ${a.extract.sha256.slice(0, 12)} / ${b.extract.timestamp} ${b.extract.sha256.slice(0, 12)}`,
   ].join("\n") + "\n",
 );
 const count = (c: Row["change"]) => rows.filter((r) => r.change === c).length;
-const changed = count("changed") + count("added") + count("removed") + runsAdded.length + runsRemoved.length;
+const changed =
+  count("changed") +
+  count("added") +
+  count("removed") +
+  runsAdded.length +
+  runsRemoved.length +
+  blocksChanged.length +
+  blocksAdded.length +
+  blocksRemoved.length;
 log("expressway_reports_compared", {
   a: a.label,
   b: b.label,
@@ -106,6 +97,9 @@ log("expressway_reports_compared", {
   removed: count("removed"),
   runsAdded: runsAdded.length,
   runsRemoved: runsRemoved.length,
+  blocksChanged: blocksChanged.length,
+  blocksAdded: blocksAdded.length,
+  blocksRemoved: blocksRemoved.length,
 });
 const isDifferent = changed > 0;
 if (isCheck && isDifferent) process.exitCode = 1;
