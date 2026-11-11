@@ -1,7 +1,8 @@
 # 標識の見本（多視点レビュー、knowledge/review-loop.md）: every sign the game has artwork for, one
 # render each — its plate from public/models/signs.glb's own geometry with the face texture, the
-# post and the bracket behind it — seen square on and turned 30° and 60°, so a reviewer checks the
-# shape, the artwork's fit on the plate (UV), the size and the mounting apart from the game's
+# post, rail and band behind it as the game mounts it (resolveMount, via .qa/signs/mounts.json
+# written by scripts/qa/signMounts.ts) — seen square on and turned 30° and 60°, so a reviewer
+# checks the shape, the artwork's fit on the plate (UV), the size and the mounting apart from the game's
 # shaders. Runs after signs.py in the same Blender session (it builds the plates; this one only
 # copies them):
 #
@@ -19,7 +20,6 @@
 import json
 import math
 import os
-import re
 
 import bpy
 from mathutils import Matrix, Vector
@@ -29,7 +29,6 @@ OUT = os.path.abspath(os.environ.get("SIGN_REVIEW_OUT", os.path.join(ROOT, ".qa"
 ANGLES = [float(a) for a in os.environ.get("SIGN_REVIEW_ANGLES", "0,30,60").split(",")]
 TEX = os.path.join(ROOT, "assets", "signs", "textures")
 REGISTRY = os.path.join(ROOT, "assets", "signs", "registry.json")
-SIGNS_TS = os.path.join(ROOT, "src", "world", "signs.ts")
 SIZE_PX = 360
 
 
@@ -37,16 +36,13 @@ def log(event, **fields):
     print(json.dumps({"event": event, **fields}, ensure_ascii=False), flush=True)
 
 
-def game_constant(name):
-    """A number constant of world/signs.ts (`const NAME = 0.05;`), read rather than copied."""
-    m = re.search(rf"^const {name} = ([0-9.]+);", open(SIGNS_TS, encoding="utf-8").read(), re.M)
-    if not m:
-        raise SystemExit(f"sign_review.py: const {name} not found in {SIGNS_TS} (renamed?)")
-    return float(m.group(1))
-
-
-# The plate face stands this far in front of the post axis, as the game mounts it.
-PLATE_OFFSET = game_constant("PLATE_OFFSET")
+# How each plate is mounted (post, cap, rail, band from signs.glb's unit members), resolved by the
+# game's resolveMount and written by scripts/qa/signMounts.ts relative to the plate's face centre.
+# Read rather than copied, so the review shows what the game draws (missing: run it first).
+MOUNTS_JSON = os.path.join(OUT, "mounts.json")
+if not os.path.exists(MOUNTS_JSON):
+    raise SystemExit(f"sign_review.py: {MOUNTS_JSON} is missing (pnpm exec tsx scripts/qa/signMounts.ts {OUT})")
+MOUNTS = json.load(open(MOUNTS_JSON, encoding="utf-8"))
 
 SCENE = bpy.context.scene
 # Drawn: the faces with their textures, nothing else of signs.py's scene.
@@ -80,8 +76,6 @@ for sign in registry["signs"]:
         entries.append({"sign": meta, "key": key, "texture": texture})
 
 face_material = bpy.data.materials["SignFace"]
-post_src = bpy.data.objects["Post"]
-bracket_src = bpy.data.objects["Bracket"]
 
 SCENE.render.engine = "BLENDER_WORKBENCH"
 SCENE.display.shading.light = "STUDIO"
@@ -116,16 +110,18 @@ for e in entries:
     images[path] = images.get(path) or bpy.data.images.load(path)
     mat.node_tree.nodes["Image Texture"].image = images[path]
     plate.data.materials[0] = mat
-    post = post_src.copy()
-    bracket = bracket_src.copy()
-    for ob in (post, bracket):
-        SCENE.collection.objects.link(ob)
+    # The members the game puts behind this plate (signs.py modelled them in this session; game
+    # coordinates are Blender's here, as signs.py builds in Y-up).
+    parts = []
+    for m in MOUNTS.get(node, {}).get("members", []):
+        part = bpy.data.objects[m["node"]].copy()
+        SCENE.collection.objects.link(part)
+        part.location = tuple(m["at"])
+        part.scale = tuple(m["scale"])
+        parts.append(part)
     w, h = sign["size_mm"] or [600, 600]
     half = max(w, h) / 2000
-    # The post's top a little above the plate (world/signs.ts POST_TOP + 0.45 m over the top plate).
-    post.location = (0.0, -3.2 + half + 0.2, -PLATE_OFFSET)
-    bracket.location = (0.0, 0.0, 0.0)
-    for ob in (plate, post, bracket):
+    for ob in (plate, *parts):
         ob.hide_render = False
     name = sign["id"] + (f"~{key}" if key else "")
     for angle in ANGLES:
@@ -157,7 +153,7 @@ for e in entries:
                 "image": os.path.relpath(file, OUT),
             }
         )
-    for ob in (plate, post, bracket):
+    for ob in (plate, *parts):
         bpy.data.objects.remove(ob)
 
 with open(os.path.join(OUT, "index.json"), "w", encoding="utf-8") as f:

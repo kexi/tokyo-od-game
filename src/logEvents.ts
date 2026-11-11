@@ -715,6 +715,8 @@ export const LOG_EVENTS = {
   sign_law_table_written: info({ file: z.string(), revision: z.string(), signs: count }),
   /** scripts/signs.ts: the sign definitions written out as registry.json, game.json and catalog.json. */
   sign_registry_written: info({ files: z.array(z.string()), signs: count, drawn: count, lanes: count }),
+  /** scripts/qa/signMounts.ts: each plate's mounting for the sign review (.qa/signs/mounts.json). */
+  sign_mounts_written: info({ file: z.string(), plates: count }),
   /** scripts/signals.ts wrote the signal-head registry signals.py models from. */
   signal_heads_written: info({ file: z.string(), heads: count }),
   /**
@@ -725,8 +727,27 @@ export const LOG_EVENTS = {
   sign_lanes_unrendered: warning({ lanes: z.string(), count }),
   /** A 補助標識 whose wording has no face drawn ahead of time (registry.json older than public/data/regs); left off. */
   sign_aux_undrawn: warning({ sign: z.string(), lines: z.array(z.string()) }),
-  /** Faces of sign posts left off because their stack would reach below the ground (src/signs/stack.ts; G4). */
-  sign_faces_below_ground: warning({ faces: count, posts: count }),
+  /**
+   * Faces of sign posts left off because their mount had no room for them (src/signs/mount.ts:
+   * more than two columns of plates, or a 補助標識 that would hang under the lowest allowed edge).
+   */
+  sign_faces_unmounted: warning({ faces: count, posts: count }),
+  /** src/world/signs.ts: posts stood on a rebuild, how many on two posts or on a signal pole, and their faces. */
+  sign_mounts_resolved: info({ posts: count, double: count, shared: count, faces: count }),
+  /**
+   * src/world/signs.ts: columns of sign posts hidden inside buildings since the last rebuild, by
+   * what they belonged to (a single post; the first or second column of a double post, and how many
+   * double posts lost both). Logged when an update hides one.
+   */
+  sign_columns_hidden: info({
+    single: count,
+    doubleFirst: count,
+    doubleSecond: count,
+    doubleWhole: count,
+    posts: count,
+  }),
+  /** A mount member role with no part in signs.glb (src/signs/mount.ts MEMBER_NODES), left undrawn; once per role. */
+  sign_member_unloaded: warning({ role: z.string(), glb: z.string(), node: z.string() }),
   osm_read: info({ nodes: count, ways: count, relations: count, coords: count }),
   destinations_written: info({
     file: z.string(),

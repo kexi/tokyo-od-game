@@ -34,9 +34,11 @@ import {
   type RouteTile,
 } from "./guidePlan";
 import type { AppliedRegulations } from "./regulations";
-import { leftOf, type RoadGraph } from "./roads";
+import type { RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
 import { sharedDraco } from "../render/draco";
+import { MEMBER_NODES, resolveMount, type MemberRole } from "../signs/mount";
+import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
 import { RoadInstances } from "./roadInstances";
 import { FrameWork } from "../game/frameWork";
 
@@ -59,10 +61,8 @@ const NEAR_COUNT = 24;
 const DRAWS_PER_UPDATE = 3; // canvas draws per update (a board takes a few ms)
 const TEXTURE_PX = 512; // 280 cm → 1.8 px/cm: a 30 cm 漢字 is 55 px
 const CACHE_LIMIT = 32; // ≈ 35 MB of faces with their mipmaps
-const OVERHEAD_BOTTOM = 5.0; // 道路標識設置基準: 片持式の標示板の設置高さ 5.0 m 標準 (≥ 4.7 m)
-const ROADSIDE_BOTTOM = 2.5; // 路側式 on a pavement without a furniture strip: 2.5 m or more
-const TILT = 3; // ° the overhead boards lean forward (国土交通省 Q&A: 通常約3°)
-const BOARD_GAP = 0.55; // m from the pole's surface to the board's inner edge
+// Heights, the 3° lean and the gap to the pole: src/signs/mount.ts (片持式 cantilever-f, 路側式
+// double-post on the pavement, 2.5 m).
 
 type Part = { geometry: BufferGeometry; material: Material };
 type Kit = {
@@ -72,11 +72,6 @@ type Kit = {
   post: Part[];
   face: BufferGeometry;
   back: Part;
-  poleHeight: number;
-  poleRadius: number;
-  armRadius: number;
-  postRadius: number;
-  railOffset: number;
 };
 
 type Sign = {
@@ -180,7 +175,8 @@ export class GuideSigns {
     const face = board.find((p) => p.material.name === "GuideFace");
     const back = board.find((p) => p.material.name === "GuideBack");
     if (!face || !back) throw new Error("guide_signs.glb: GuideBoard lacks its face or back");
-    const extras = gltf.scene.getObjectByName("GuideSigns")?.userData ?? {};
+    // The part sizes the layout uses are src/signs/mountAssumptions.ts MEMBER_SIZES (checked against
+    // guide_signs.py by tests/signMount.test.ts), not the glb's extras.
     this.kit = {
       pole: part("GuidePole"),
       arm: part("GuideArm"),
@@ -188,11 +184,6 @@ export class GuideSigns {
       post: part("GuidePost"),
       face: face.geometry,
       back,
-      poleHeight: Number(extras.poleHeight ?? 7.6),
-      poleRadius: Number(extras.poleRadius ?? 0.134),
-      armRadius: Number(extras.armRadius ?? 0.07),
-      postRadius: Number(extras.postRadius ?? 0.045),
-      railOffset: Number(extras.railOffset ?? 0.043),
     };
   }
 
@@ -455,6 +446,19 @@ export class GuideSigns {
     const posts: Matrix4[] = [];
     const boards: Matrix4[] = [];
     const owners: Array<{ list: Matrix4[]; sign: number }> = [];
+    // The guide_signs.glb roles this class draws (src/signs/mount.ts MEMBER_NODES).
+    const lists: Partial<Record<MemberRole, Matrix4[]>> = {
+      pole: poles,
+      arm: arms,
+      flange: flanges,
+      boardPost: posts,
+    };
+    const reported = new Set<MemberRole>();
+    const reportUnloadedRole = (role: MemberRole) => {
+      if (reported.has(role)) return;
+      reported.add(role);
+      warn("sign_member_unloaded", { role, glb: MEMBER_NODES[role].glb, node: MEMBER_NODES[role].node });
+    };
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     this.signs = this.plans.map((plan, index) => {
       const layout = layoutBoard(plan.board);
@@ -463,7 +467,6 @@ export class GuideSigns {
       const ground = this.groundAt(plan.pos.x, plan.pos.z) ?? 0;
       const facing = plan.travel.clone().negate(); // the face looks at the oncoming traffic
       const yaw = Math.atan2(facing.x, facing.z);
-      const across = leftOf(plan.travel, -1); // from the kerb toward the carriageway
       const sign: Sign = {
         plan,
         layout,
@@ -480,54 +483,51 @@ export class GuideSigns {
         list.push(m);
         owners.push({ list, sign: index });
       };
-      if (plan.mount === "overhead") {
-        const bottom = OVERHEAD_BOTTOM;
-        const poleTop = bottom + h + 0.3;
-        const base = new Vector3(plan.pos.x, ground, plan.pos.z);
-        add(poles, at(base, yaw, new Vector3(1, poleTop / k.poleHeight, 1)));
-        const offset = k.poleRadius + BOARD_GAP + w / 2;
-        // Arms run from the pole across the road, just behind the board.
-        const behind = k.armRadius + 0.02;
-        for (const f of [0.25, 0.75]) {
-          const y = ground + bottom + h * f;
-          const armBase = new Vector3(plan.pos.x, y, plan.pos.z).addScaledVector(facing, -behind);
-          const armYaw = Math.atan2(-across.z, across.x); // local +X along `across`
-          add(arms, at(armBase, armYaw, new Vector3(offset + w / 2 - 0.15, 1, 1)));
-          add(flanges, at(new Vector3(plan.pos.x, y, plan.pos.z), armYaw, new Vector3(1, 1, 1)));
+      // The mount's frame (src/signs/mount.ts): +x across toward the carriageway, +z toward the
+      // oncoming traffic; turning by the facing's yaw maps local +x onto `across`.
+      const frame = at(new Vector3(plan.pos.x, ground, plan.pos.z), yaw, new Vector3(1, 1, 1));
+      const local = (x: number, y: number, z: number, scale: Vector3, pitch = 0) =>
+        frame.clone().multiply(at(new Vector3(x, y, z), 0, scale, pitch));
+      // 片持式 over the road; 路側式 (a road administrator's sign: 道路標識設置基準) on two posts over
+      // the pavement, the board 25 cm behind the kerb.
+      const mount =
+        plan.mount === "overhead"
+          ? resolveMount({ kind: "cantilever-f", board: { width: w, height: h } })
+          : resolveMount({
+              kind: "double-post",
+              site: "pavement",
+              authority: "road",
+              support: "guide",
+              kerbM: GUIDE_POLE_KERB.value,
+              plates: [{ width: w, height: h, twoSided: true }],
+            });
+      for (const m of mount.members) {
+        const list = lists[m.role];
+        if (!list) {
+          reportUnloadedRole(m.role);
+          continue;
         }
-        const centre = new Vector3(plan.pos.x, ground + bottom + h / 2, plan.pos.z)
-          .addScaledVector(across, offset)
-          .addScaledVector(facing, k.railOffset - behind + k.armRadius);
-        // Leaning forward: the face's normal points TILT° down toward the drivers.
-        sign.board = at(centre, yaw, new Vector3(w, h, 1), (TILT * Math.PI) / 180);
-        const collider = RAPIER.ColliderDesc.cylinder(poleTop / 2, k.poleRadius)
-          .setTranslation(plan.pos.x, ground + poleTop / 2, plan.pos.z)
+        // A post reaches from its own ground to the board's top (the frame stands on `ground`).
+        const p = new Vector3(m.x, 0, m.z).applyMatrix4(frame);
+        const lift = m.role === "boardPost" ? ground - (this.groundAt(p.x, p.z) ?? ground) : 0;
+        add(list, local(m.x, m.y - lift, m.z, new Vector3(m.sx, m.sy + lift, m.sz)));
+      }
+      sign.feet = [];
+      for (const foot of mount.feet) {
+        const p = new Vector3(foot.x, 0, foot.z).applyMatrix4(frame);
+        const pg = this.groundAt(p.x, p.z) ?? ground;
+        sign.feet.push(p.clone().setY(0));
+        const height = foot.height + (ground - pg);
+        const collider = RAPIER.ColliderDesc.cylinder(height / 2, foot.radius)
+          .setTranslation(p.x, pg + height / 2, p.z)
           .setCollisionGroups(PROP_GROUPS);
         sign.colliders.push(this.world.createCollider(collider, this.body ?? undefined));
-      } else {
-        // 路側式: two posts on the pavement, the board over the pavement beside the kerb.
-        const bottom = ROADSIDE_BOTTOM;
-        const toPavement = across.clone().negate();
-        const inner = 0.25 - 0.9; // board edge 25 cm behind the kerb (the pole spot is 0.9 m behind)
-        const mid = new Vector3(plan.pos.x, ground, plan.pos.z).addScaledVector(toPavement, inner + w / 2);
-        const postTop = bottom + h;
-        sign.feet = [];
-        for (const f of [-0.28, 0.28]) {
-          const p = mid.clone().addScaledVector(toPavement, f * w);
-          const pg = this.groundAt(p.x, p.z) ?? ground;
-          sign.feet.push(p.clone().setY(0));
-          add(posts, at(new Vector3(p.x, pg, p.z), yaw, new Vector3(1, postTop + (ground - pg), 1)));
-          const collider = RAPIER.ColliderDesc.cylinder(postTop / 2, k.postRadius)
-            .setTranslation(p.x, pg + postTop / 2, p.z)
-            .setCollisionGroups(PROP_GROUPS);
-          sign.colliders.push(this.world.createCollider(collider, this.body ?? undefined));
-        }
-        const centre = mid
-          .clone()
-          .setY(ground + bottom + h / 2)
-          .addScaledVector(facing, k.postRadius + 0.05);
-        sign.board = at(centre, yaw, new Vector3(w, h, 1));
       }
+      const [f] = mount.faces;
+      // Leaning forward when overhead: the face's normal points TILT_DEG down toward the drivers.
+      sign.board = f
+        ? local(f.x, f.y, f.z + f.standoff, new Vector3(w, h, 1), f.pitch)
+        : new Matrix4().makeScale(0, 0, 0);
       add(boards, sign.board);
       return sign;
     });

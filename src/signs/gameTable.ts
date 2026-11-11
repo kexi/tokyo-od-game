@@ -54,6 +54,8 @@ function entryOf(reg: Registry, defs: ResolvedSign[]): GameKindEntry {
   }
   if (game?.mount === "parallel") out.parallel = true;
   if (game?.bothFaces) out.bothFaces = true;
+  if (game?.kerbSide) out.kerbSide = true;
+  if (game?.fixedPlace) out.fixedPlace = true;
   return out;
 }
 
