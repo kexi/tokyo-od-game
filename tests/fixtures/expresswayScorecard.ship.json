@@ -1,0 +1,2662 @@
+{
+ "version": 2,
+ "label": "ship-pruned-1",
+ "range": "ship",
+ "below": "pruned",
+ "extract": {
+  "url": "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf",
+  "timestamp": "2026-10-03T20:20:50Z",
+  "expected": "2026-10-03T20:20:50Z",
+  "accepted": false,
+  "sha256": "777236f6b77647b3ba034176981cc5cb0d3b1ce8677ddfd8de211602ad578ec3"
+ },
+ "plan": {
+  "chains": 774,
+  "runs": 822,
+  "components": 210,
+  "belowRuns": 57,
+  "belowDeferred": 88
+ },
+ "runs": {
+  "planned": {
+   "main": {
+    "runs": 84,
+    "km": 415.11
+   },
+   "ramp": {
+    "runs": 237,
+    "km": 97.011
+   },
+   "street": {
+    "runs": 2,
+    "km": 6.737
+   }
+  },
+  "written": {
+   "main": {
+    "runs": 74,
+    "km": 375.842
+   },
+   "ramp": {
+    "runs": 191,
+    "km": 81.19
+   },
+   "street": {
+    "runs": 2,
+    "km": 6.737
+   }
+  },
+  "closed": {
+   "main": {
+    "runs": 10,
+    "km": 39.268
+   },
+   "ramp": {
+    "runs": 46,
+    "km": 15.821
+   },
+   "street": {
+    "runs": 0,
+    "km": 0
+   }
+  }
+ },
+ "scope": {
+  "wanted": [
+   "1023819782",
+   "1023819783",
+   "1023900994",
+   "1023901365",
+   "1051967534",
+   "1051967540",
+   "1068219936",
+   "1068230495",
+   "1125559318",
+   "117219089",
+   "1199150827",
+   "128005859",
+   "128005862",
+   "1304022054",
+   "1304769699",
+   "1304773040",
+   "1328383029",
+   "133037880",
+   "1421966435",
+   "144808915",
+   "1453508542",
+   "1453841098",
+   "1467911980",
+   "1483413151",
+   "1483413152",
+   "151175279",
+   "1545539825",
+   "154971210",
+   "155035409",
+   "156280206",
+   "156280225",
+   "156280228",
+   "156344609",
+   "157249373",
+   "157249374",
+   "157249376",
+   "157249377",
+   "157249384",
+   "157537728",
+   "157807836",
+   "157807837",
+   "157812805",
+   "157812879",
+   "161135375",
+   "165913323",
+   "165913324",
+   "165913326",
+   "172358461",
+   "172358487",
+   "176046420",
+   "181579895",
+   "181579921",
+   "182465950",
+   "182465954",
+   "182465957",
+   "182527890",
+   "182527893",
+   "182527896",
+   "182530080",
+   "184293856",
+   "199069190",
+   "199069198",
+   "199152228",
+   "199311832",
+   "201106515",
+   "201106520",
+   "201278188",
+   "202801662",
+   "202801663",
+   "202805893",
+   "202809278",
+   "202903723",
+   "202905132",
+   "203035371",
+   "203035373",
+   "203035380",
+   "203832852",
+   "203873831",
+   "205725085",
+   "207111988",
+   "207535710",
+   "207646122",
+   "207659109",
+   "220549211",
+   "22694126",
+   "227213866",
+   "227213874",
+   "227213875",
+   "23273634",
+   "23604979",
+   "23681223",
+   "23974979",
+   "24039713",
+   "24039815",
+   "24040126",
+   "24336502",
+   "24372960",
+   "24402018",
+   "24402125",
+   "24402611",
+   "24636451",
+   "24895040",
+   "250488077",
+   "250488078",
+   "250488080",
+   "250490201",
+   "263330207",
+   "26956960",
+   "26957083",
+   "27155261",
+   "27155734",
+   "27514398",
+   "27536428",
+   "27536429",
+   "27536960",
+   "27536961",
+   "28126647",
+   "28127113",
+   "28127450",
+   "28127732",
+   "28188172",
+   "28188173",
+   "28188269",
+   "28188270",
+   "28188273",
+   "28188274",
+   "28195148",
+   "28368866",
+   "28973646",
+   "28993448",
+   "292083252",
+   "31090753",
+   "311740421",
+   "311740424",
+   "315702527",
+   "316240492",
+   "316360292",
+   "32404414",
+   "32898373",
+   "331692345",
+   "331692346",
+   "35266568",
+   "36990037",
+   "373216429",
+   "376509518",
+   "37793430",
+   "37793432",
+   "378126420",
+   "378275643",
+   "382210314",
+   "382676575",
+   "383230329",
+   "383231003",
+   "383231005",
+   "383231007",
+   "384979839",
+   "387256795",
+   "390422109",
+   "390426203",
+   "390426209",
+   "390426216",
+   "390426219",
+   "396767726",
+   "397724496",
+   "397724497",
+   "405795844",
+   "40971846",
+   "40971852",
+   "41009552",
+   "41520088",
+   "41520089",
+   "41568401",
+   "41568463",
+   "421488198",
+   "422023166",
+   "422023169",
+   "422023172",
+   "424475191",
+   "424475194",
+   "42751503",
+   "42751507",
+   "438474207",
+   "43992332",
+   "44129625",
+   "44179919",
+   "44351599",
+   "44422825",
+   "44506762",
+   "44803854",
+   "44804029",
+   "44804206",
+   "44804208",
+   "44804643",
+   "44882519",
+   "44882522",
+   "44882717",
+   "45019020",
+   "45019021",
+   "45019022",
+   "45019024",
+   "45021972",
+   "45021976",
+   "45068172",
+   "45177678",
+   "45177681",
+   "45248411",
+   "45332351",
+   "45392984",
+   "45554540",
+   "45554543",
+   "45661183",
+   "45683112",
+   "45683113",
+   "461218969",
+   "461218970",
+   "464736088",
+   "46876339",
+   "46876436",
+   "4847519",
+   "4848740",
+   "4848755",
+   "4848762",
+   "4848885",
+   "4848889",
+   "4848898",
+   "4853666",
+   "4853798",
+   "4853799",
+   "4853804",
+   "4853805",
+   "4854085",
+   "4854099",
+   "4854234",
+   "4854235",
+   "4857045",
+   "4857048",
+   "4857053",
+   "4857835",
+   "4857853",
+   "491244288",
+   "5170834",
+   "5171105",
+   "5171343",
+   "5171344",
+   "5171346",
+   "5204786",
+   "5213545",
+   "5213546",
+   "5219301",
+   "5219302",
+   "5219577",
+   "5219578",
+   "53541951",
+   "535517130",
+   "55555911",
+   "563799388",
+   "563799389",
+   "58868493",
+   "59583397",
+   "60867229",
+   "60867235",
+   "60867241",
+   "60942183",
+   "60942197",
+   "60942200",
+   "62004309",
+   "62004313",
+   "633246083",
+   "668292569",
+   "67152889",
+   "678761500",
+   "680568025",
+   "687744436",
+   "71365233",
+   "71365235",
+   "71488887",
+   "71488890",
+   "71488892",
+   "71502421",
+   "737538573",
+   "751177037",
+   "751177038",
+   "751177044",
+   "751177055",
+   "756785282",
+   "760583395",
+   "760596454",
+   "766719786",
+   "766721148",
+   "780869432",
+   "780870438",
+   "782031627",
+   "78334075",
+   "78334077",
+   "78334079",
+   "79449031",
+   "800275737",
+   "80581128",
+   "809140339",
+   "813455519",
+   "813455521",
+   "820335271",
+   "84619191",
+   "878618792",
+   "888066403",
+   "888066405",
+   "888066408",
+   "888066410",
+   "888066413",
+   "891243451",
+   "891243453",
+   "891481217",
+   "893332472",
+   "893332474",
+   "895902565",
+   "901966166",
+   "902298628",
+   "906610080",
+   "906610083",
+   "920238368",
+   "92243922",
+   "93325434",
+   "955398790"
+  ],
+  "extent": {
+   "main": {
+    "inKm": 315.937,
+    "outKm": 99.226,
+    "operatedKm": 403.728,
+    "otherKm": 11.436
+   },
+   "ramp": {
+    "inKm": 93.875,
+    "outKm": 3.205,
+    "operatedKm": 24.084,
+    "otherKm": 72.997
+   },
+   "street": {
+    "inKm": 2.409,
+    "outKm": 4.329,
+    "operatedKm": 0,
+    "otherKm": 6.738
+   }
+  },
+  "rampsOutside": {
+   "runs": 140,
+   "km": 70.866
+  },
+  "dangling": [],
+  "deckMismatch": []
+ },
+ "closures": {
+  "roots": 15,
+  "dragged": {
+   "runs": 41,
+   "km": 47.716
+  },
+  "draggedByClass": {
+   "main": {
+    "runs": 5,
+    "km": 35.033
+   },
+   "ramp": {
+    "runs": 36,
+    "km": 12.683
+   },
+   "street": {
+    "runs": 0,
+    "km": 0
+   }
+  },
+  "list": [
+   {
+    "run": "41009552",
+    "cls": "expressway",
+    "lengthKm": 2.88,
+    "inRange": true,
+    "dragged": {
+     "runs": 39,
+     "km": 47.296
+    }
+   },
+   {
+    "run": "27536961",
+    "cls": "ramp",
+    "lengthKm": 0.726,
+    "inRange": true,
+    "dragged": {
+     "runs": 1,
+     "km": 0.338
+    }
+   },
+   {
+    "run": "156280228",
+    "cls": "ramp",
+    "lengthKm": 0.245,
+    "inRange": true,
+    "dragged": {
+     "runs": 1,
+     "km": 0.082
+    }
+   },
+   {
+    "run": "133037880",
+    "cls": "ramp",
+    "lengthKm": 0.111,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "24372960",
+    "cls": "expressway",
+    "lengthKm": 0.411,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "250488077",
+    "cls": "ramp",
+    "lengthKm": 0.312,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "250488078",
+    "cls": "ramp",
+    "lengthKm": 0.04,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "27155734",
+    "cls": "ramp",
+    "lengthKm": 0.132,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "27536429",
+    "cls": "expressway",
+    "lengthKm": 0.438,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "42751503",
+    "cls": "expressway",
+    "lengthKm": 0.253,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "42751507",
+    "cls": "expressway",
+    "lengthKm": 0.253,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "60942183",
+    "cls": "ramp",
+    "lengthKm": 0.532,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "78334077",
+    "cls": "ramp",
+    "lengthKm": 0.346,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "80581128",
+    "cls": "ramp",
+    "lengthKm": 0.382,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   {
+    "run": "84619191",
+    "cls": "ramp",
+    "lengthKm": 0.314,
+    "inRange": true,
+    "dragged": {
+     "runs": 0,
+     "km": 0
+    }
+   }
+  ]
+ },
+ "diagnostics": {
+  "below_open_ground_floor": {
+   "allowed": 4,
+   "notAllowed": 0
+  },
+  "crossing_layer_ambiguous": {
+   "allowed": 0,
+   "notAllowed": 2
+  },
+  "crossing_over_or_at_grade": {
+   "allowed": 107,
+   "notAllowed": 0
+  },
+  "deck_below_ground": {
+   "allowed": 10,
+   "notAllowed": 0
+  },
+  "deck_overlap": {
+   "allowed": 16,
+   "notAllowed": 175
+  },
+  "parent_unsolved": {
+   "allowed": 0,
+   "notAllowed": 41
+  },
+  "ramp_radius": {
+   "allowed": 2,
+   "notAllowed": 0
+  },
+  "tunnel_cover_short": {
+   "allowed": 1,
+   "notAllowed": 13
+  },
+  "vertical_fallback": {
+   "allowed": 185,
+   "notAllowed": 0
+  },
+  "vertical_unsolved": {
+   "allowed": 0,
+   "notAllowed": 15
+  }
+ },
+ "overlaps": {
+  "nose": {
+   "pairs": 47,
+   "stations": 93,
+   "notAllowedPairs": 41,
+   "notAllowedStations": 79
+  },
+  "parallel-ramp": {
+   "pairs": 89,
+   "stations": 1041,
+   "notAllowedPairs": 88,
+   "notAllowedStations": 1030
+  },
+  "changeover": {
+   "pairs": 29,
+   "stations": 632,
+   "notAllowedPairs": 21,
+   "notAllowedStations": 502
+  },
+  "other": {
+   "pairs": 26,
+   "stations": 310,
+   "notAllowedPairs": 25,
+   "notAllowedStations": 308
+  }
+ },
+ "overlapPairs": [
+  {
+   "a": "1023819782",
+   "b": "1023819783",
+   "kind": "other",
+   "joined": true,
+   "stations": 12,
+   "minDzM": 0.05,
+   "maxDzM": 4.22,
+   "allowed": false
+  },
+  {
+   "a": "1023819782",
+   "b": "67152889",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 11,
+   "minDzM": 0.36,
+   "maxDzM": 5.98,
+   "allowed": false
+  },
+  {
+   "a": "1023900994",
+   "b": "44179919",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 56,
+   "minDzM": 0.05,
+   "maxDzM": 6.64,
+   "allowed": false
+  },
+  {
+   "a": "1023900994",
+   "b": "44351599",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 21,
+   "minDzM": 0.1,
+   "maxDzM": 6.66,
+   "allowed": false
+  },
+  {
+   "a": "1023900994",
+   "b": "800275737",
+   "kind": "other",
+   "joined": true,
+   "stations": 42,
+   "minDzM": 0.09,
+   "maxDzM": 6.58,
+   "allowed": false
+  },
+  {
+   "a": "1023901365",
+   "b": "44351599",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 13,
+   "minDzM": 0.1,
+   "maxDzM": 6.67,
+   "allowed": false
+  },
+  {
+   "a": "1051967534",
+   "b": "1051967540",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.11,
+   "maxDzM": 0.19,
+   "allowed": false
+  },
+  {
+   "a": "1051967534",
+   "b": "157249376",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.07,
+   "maxDzM": 0.07,
+   "allowed": false
+  },
+  {
+   "a": "1051967534",
+   "b": "157249384",
+   "kind": "other",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 0.44,
+   "maxDzM": 1.72,
+   "allowed": false
+  },
+  {
+   "a": "1051967534",
+   "b": "378275643",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.07,
+   "maxDzM": 0.07,
+   "allowed": false
+  },
+  {
+   "a": "1051967534",
+   "b": "396767726",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "1051967540",
+   "b": "157249373",
+   "kind": "nose",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 0.07,
+   "maxDzM": 0.26,
+   "allowed": false
+  },
+  {
+   "a": "1051967540",
+   "b": "157249377",
+   "kind": "other",
+   "joined": true,
+   "stations": 12,
+   "minDzM": 0.8,
+   "maxDzM": 6.64,
+   "allowed": false
+  },
+  {
+   "a": "1051967540",
+   "b": "378275643",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "1051967540",
+   "b": "44803854",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.65,
+   "maxDzM": 6.65,
+   "allowed": false
+  },
+  {
+   "a": "1068219936",
+   "b": "5171343",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 30,
+   "minDzM": 0.07,
+   "maxDzM": 5.38,
+   "allowed": false
+  },
+  {
+   "a": "1199150827",
+   "b": "60942200",
+   "kind": "other",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.65,
+   "maxDzM": 6.67,
+   "allowed": false
+  },
+  {
+   "a": "1304773040",
+   "b": "5171343",
+   "kind": "other",
+   "joined": false,
+   "stations": 15,
+   "minDzM": 0.05,
+   "maxDzM": 0.14,
+   "allowed": false
+  },
+  {
+   "a": "1304773040",
+   "b": "5171344",
+   "kind": "nose",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 0.07,
+   "maxDzM": 0.33,
+   "allowed": false
+  },
+  {
+   "a": "1328383029",
+   "b": "45332351",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 8,
+   "minDzM": 0.06,
+   "maxDzM": 0.55,
+   "allowed": false
+  },
+  {
+   "a": "1328383029",
+   "b": "4848898",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.07,
+   "maxDzM": 0.07,
+   "allowed": false
+  },
+  {
+   "a": "1467911980",
+   "b": "199152228",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 4,
+   "minDzM": 5.56,
+   "maxDzM": 6.5,
+   "allowed": false
+  },
+  {
+   "a": "1467911980",
+   "b": "382210314",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 11,
+   "minDzM": 0.15,
+   "maxDzM": 1.67,
+   "allowed": false
+  },
+  {
+   "a": "1483413151",
+   "b": "1483413152",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.18,
+   "maxDzM": 0.18,
+   "allowed": false
+  },
+  {
+   "a": "1483413151",
+   "b": "387256795",
+   "kind": "other",
+   "joined": false,
+   "stations": 7,
+   "minDzM": 0.05,
+   "maxDzM": 1.8,
+   "allowed": false
+  },
+  {
+   "a": "151175279",
+   "b": "4854234",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 3,
+   "minDzM": 1.68,
+   "maxDzM": 2.02,
+   "allowed": false
+  },
+  {
+   "a": "156344609",
+   "b": "182465950",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.7,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "156344609",
+   "b": "22694126",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 11,
+   "minDzM": 3.89,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "156344609",
+   "b": "28127113",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 108,
+   "minDzM": 0.08,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "157249373",
+   "b": "44804029",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 16,
+   "minDzM": 0.06,
+   "maxDzM": 2.64,
+   "allowed": false
+  },
+  {
+   "a": "157249376",
+   "b": "378275643",
+   "kind": "other",
+   "joined": false,
+   "stations": 24,
+   "minDzM": 0.29,
+   "maxDzM": 6.46,
+   "allowed": false
+  },
+  {
+   "a": "157249384",
+   "b": "44803854",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 14,
+   "minDzM": 0.08,
+   "maxDzM": 6.41,
+   "allowed": false
+  },
+  {
+   "a": "157249384",
+   "b": "4854234",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 2.88,
+   "maxDzM": 6.47,
+   "allowed": false
+  },
+  {
+   "a": "157537728",
+   "b": "44351599",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 3,
+   "minDzM": 6.24,
+   "maxDzM": 6.25,
+   "allowed": false
+  },
+  {
+   "a": "157537728",
+   "b": "888066403",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 13,
+   "minDzM": 0.08,
+   "maxDzM": 5.56,
+   "allowed": false
+  },
+  {
+   "a": "157812879",
+   "b": "44803854",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 17,
+   "minDzM": 0.12,
+   "maxDzM": 6.66,
+   "allowed": false
+  },
+  {
+   "a": "165913323",
+   "b": "24040126",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 5,
+   "minDzM": 0.07,
+   "maxDzM": 1.09,
+   "allowed": false
+  },
+  {
+   "a": "165913324",
+   "b": "165913326",
+   "kind": "other",
+   "joined": false,
+   "stations": 15,
+   "minDzM": 0.06,
+   "maxDzM": 0.48,
+   "allowed": false
+  },
+  {
+   "a": "165913324",
+   "b": "26957083",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 10,
+   "minDzM": 0.07,
+   "maxDzM": 1.05,
+   "allowed": false
+  },
+  {
+   "a": "165913326",
+   "b": "421488198",
+   "kind": "nose",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 0.06,
+   "maxDzM": 0.31,
+   "allowed": false
+  },
+  {
+   "a": "182465950",
+   "b": "28127113",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 15,
+   "minDzM": 0.07,
+   "maxDzM": 6.65,
+   "allowed": false
+  },
+  {
+   "a": "182465954",
+   "b": "23681223",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "182527890",
+   "b": "28195148",
+   "kind": "other",
+   "joined": false,
+   "stations": 6,
+   "minDzM": 1.9,
+   "maxDzM": 6.51,
+   "allowed": false
+  },
+  {
+   "a": "182527893",
+   "b": "182527896",
+   "kind": "other",
+   "joined": false,
+   "stations": 41,
+   "minDzM": 5.45,
+   "maxDzM": 6.69,
+   "allowed": false
+  },
+  {
+   "a": "182527893",
+   "b": "22694126",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 29,
+   "minDzM": 2.5,
+   "maxDzM": 5.48,
+   "allowed": false
+  },
+  {
+   "a": "182527896",
+   "b": "22694126",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 41,
+   "minDzM": 0.06,
+   "maxDzM": 6.18,
+   "allowed": false
+  },
+  {
+   "a": "199069190",
+   "b": "316360292",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 8,
+   "minDzM": 0.08,
+   "maxDzM": 2.08,
+   "allowed": false
+  },
+  {
+   "a": "199069198",
+   "b": "22694126",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 19,
+   "minDzM": 0.06,
+   "maxDzM": 6.61,
+   "allowed": false
+  },
+  {
+   "a": "199152228",
+   "b": "203832852",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 17,
+   "minDzM": 0.06,
+   "maxDzM": 6.58,
+   "allowed": false
+  },
+  {
+   "a": "199311832",
+   "b": "41520089",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 15,
+   "minDzM": 0.16,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "201106520",
+   "b": "22694126",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 3.17,
+   "maxDzM": 6.62,
+   "allowed": false
+  },
+  {
+   "a": "201278188",
+   "b": "203832852",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 0.08,
+   "maxDzM": 2.56,
+   "allowed": false
+  },
+  {
+   "a": "202805893",
+   "b": "45019024",
+   "kind": "other",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 0.13,
+   "maxDzM": 0.13,
+   "allowed": false
+  },
+  {
+   "a": "202903723",
+   "b": "41520089",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.17,
+   "maxDzM": 0.17,
+   "allowed": false
+  },
+  {
+   "a": "203832852",
+   "b": "227213874",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 15,
+   "minDzM": 0.05,
+   "maxDzM": 6.5,
+   "allowed": false
+  },
+  {
+   "a": "203832852",
+   "b": "311740421",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.08,
+   "maxDzM": 0.08,
+   "allowed": false
+  },
+  {
+   "a": "203832852",
+   "b": "756785282",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 0.32,
+   "maxDzM": 1.99,
+   "allowed": false
+  },
+  {
+   "a": "205725085",
+   "b": "44179919",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 16,
+   "minDzM": 0.05,
+   "maxDzM": 6.68,
+   "allowed": false
+  },
+  {
+   "a": "207535710",
+   "b": "45248411",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.14,
+   "maxDzM": 0.14,
+   "allowed": false
+  },
+  {
+   "a": "207646122",
+   "b": "24039713",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "207659109",
+   "b": "45021972",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 5.18,
+   "maxDzM": 6.64,
+   "allowed": false
+  },
+  {
+   "a": "22694126",
+   "b": "28127113",
+   "kind": "changeover",
+   "joined": true,
+   "stations": 15,
+   "minDzM": 0.23,
+   "maxDzM": 6.4,
+   "allowed": false
+  },
+  {
+   "a": "22694126",
+   "b": "28195148",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 14,
+   "minDzM": 0.06,
+   "maxDzM": 6.42,
+   "allowed": false
+  },
+  {
+   "a": "22694126",
+   "b": "316360292",
+   "kind": "other",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "22694126",
+   "b": "438474207",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 16,
+   "minDzM": 0.07,
+   "maxDzM": 6.54,
+   "allowed": false
+  },
+  {
+   "a": "22694126",
+   "b": "461218970",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 42,
+   "minDzM": 0.05,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "23273634",
+   "b": "45021976",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.05,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "23273634",
+   "b": "737538573",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.05,
+   "maxDzM": 0.05,
+   "allowed": false
+  },
+  {
+   "a": "23681223",
+   "b": "668292569",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.05,
+   "maxDzM": 0.05,
+   "allowed": false
+  },
+  {
+   "a": "24039713",
+   "b": "422023169",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 6,
+   "minDzM": 0.05,
+   "maxDzM": 1.71,
+   "allowed": false
+  },
+  {
+   "a": "24039713",
+   "b": "45248411",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 32,
+   "minDzM": 0.05,
+   "maxDzM": 5.33,
+   "allowed": false
+  },
+  {
+   "a": "24039713",
+   "b": "4853804",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "24336502",
+   "b": "45332351",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.05,
+   "maxDzM": 0.05,
+   "allowed": false
+  },
+  {
+   "a": "24402018",
+   "b": "24402611",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 17,
+   "minDzM": 0.18,
+   "maxDzM": 6.65,
+   "allowed": false
+  },
+  {
+   "a": "24402125",
+   "b": "24402611",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 11,
+   "minDzM": 0.06,
+   "maxDzM": 6.62,
+   "allowed": true
+  },
+  {
+   "a": "24402611",
+   "b": "45021976",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 29,
+   "minDzM": 0.05,
+   "maxDzM": 6.56,
+   "allowed": true
+  },
+  {
+   "a": "24402611",
+   "b": "45332351",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.13,
+   "maxDzM": 0.13,
+   "allowed": false
+  },
+  {
+   "a": "24402611",
+   "b": "4848762",
+   "kind": "nose",
+   "joined": true,
+   "stations": 6,
+   "minDzM": 0.05,
+   "maxDzM": 0.13,
+   "allowed": true
+  },
+  {
+   "a": "24402611",
+   "b": "813455519",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 1.84,
+   "maxDzM": 1.89,
+   "allowed": true
+  },
+  {
+   "a": "24402611",
+   "b": "895902565",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 38,
+   "minDzM": 0.05,
+   "maxDzM": 5.49,
+   "allowed": true
+  },
+  {
+   "a": "24636451",
+   "b": "27514398",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 21,
+   "minDzM": 0.09,
+   "maxDzM": 2.83,
+   "allowed": false
+  },
+  {
+   "a": "24636451",
+   "b": "45392984",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "250488080",
+   "b": "43992332",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 10,
+   "minDzM": 0.27,
+   "maxDzM": 2.6,
+   "allowed": false
+  },
+  {
+   "a": "250488080",
+   "b": "67152889",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 7,
+   "minDzM": 6.47,
+   "maxDzM": 6.65,
+   "allowed": false
+  },
+  {
+   "a": "250490201",
+   "b": "43992332",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 13,
+   "minDzM": 5.58,
+   "maxDzM": 6.62,
+   "allowed": false
+  },
+  {
+   "a": "26956960",
+   "b": "27155261",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 0.07,
+   "maxDzM": 4.48,
+   "allowed": false
+  },
+  {
+   "a": "26956960",
+   "b": "760596454",
+   "kind": "other",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 0.08,
+   "maxDzM": 0.13,
+   "allowed": false
+  },
+  {
+   "a": "26956960",
+   "b": "78334079",
+   "kind": "nose",
+   "joined": true,
+   "stations": 4,
+   "minDzM": 0.05,
+   "maxDzM": 0.24,
+   "allowed": false
+  },
+  {
+   "a": "27155261",
+   "b": "28368866",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 23,
+   "minDzM": 0.06,
+   "maxDzM": 1.04,
+   "allowed": false
+  },
+  {
+   "a": "27155261",
+   "b": "387256795",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 16,
+   "minDzM": 0.09,
+   "maxDzM": 6.67,
+   "allowed": false
+  },
+  {
+   "a": "27155261",
+   "b": "424475194",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 13,
+   "minDzM": 0.26,
+   "maxDzM": 6.5,
+   "allowed": false
+  },
+  {
+   "a": "27155261",
+   "b": "760596454",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.62,
+   "maxDzM": 6.66,
+   "allowed": false
+  },
+  {
+   "a": "27536960",
+   "b": "28368866",
+   "kind": "nose",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 0.05,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "28127113",
+   "b": "461218970",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 12,
+   "minDzM": 6.66,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "28127450",
+   "b": "28188172",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 5.66,
+   "maxDzM": 5.69,
+   "allowed": false
+  },
+  {
+   "a": "28127450",
+   "b": "780870438",
+   "kind": "changeover",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 5.55,
+   "maxDzM": 5.69,
+   "allowed": false
+  },
+  {
+   "a": "28127732",
+   "b": "44351599",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 15,
+   "minDzM": 0.17,
+   "maxDzM": 6.67,
+   "allowed": false
+  },
+  {
+   "a": "28188172",
+   "b": "44803854",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 3,
+   "minDzM": 5.66,
+   "maxDzM": 6.39,
+   "allowed": false
+  },
+  {
+   "a": "28188172",
+   "b": "780870438",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.11,
+   "maxDzM": 0.11,
+   "allowed": false
+  },
+  {
+   "a": "28188269",
+   "b": "44351599",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 14,
+   "minDzM": 0.05,
+   "maxDzM": 6.21,
+   "allowed": false
+  },
+  {
+   "a": "28188274",
+   "b": "44803854",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.05,
+   "maxDzM": 0.26,
+   "allowed": false
+  },
+  {
+   "a": "28195148",
+   "b": "461218970",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 2.85,
+   "maxDzM": 6.68,
+   "allowed": false
+  },
+  {
+   "a": "28368866",
+   "b": "424475191",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.11,
+   "maxDzM": 0.11,
+   "allowed": false
+  },
+  {
+   "a": "28368866",
+   "b": "760596454",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.61,
+   "maxDzM": 6.61,
+   "allowed": false
+  },
+  {
+   "a": "28368866",
+   "b": "893332474",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 17,
+   "minDzM": 0.07,
+   "maxDzM": 6.59,
+   "allowed": false
+  },
+  {
+   "a": "28993448",
+   "b": "78334079",
+   "kind": "other",
+   "joined": false,
+   "stations": 25,
+   "minDzM": 0.05,
+   "maxDzM": 5.85,
+   "allowed": false
+  },
+  {
+   "a": "31090753",
+   "b": "43992332",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 10,
+   "minDzM": 0.6,
+   "maxDzM": 6.59,
+   "allowed": false
+  },
+  {
+   "a": "31090753",
+   "b": "67152889",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 12,
+   "minDzM": 0.54,
+   "maxDzM": 6.51,
+   "allowed": false
+  },
+  {
+   "a": "315702527",
+   "b": "45021972",
+   "kind": "other",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 0.08,
+   "maxDzM": 0.08,
+   "allowed": false
+  },
+  {
+   "a": "316240492",
+   "b": "387256795",
+   "kind": "other",
+   "joined": true,
+   "stations": 10,
+   "minDzM": 0.11,
+   "maxDzM": 3.12,
+   "allowed": false
+  },
+  {
+   "a": "32404414",
+   "b": "37793432",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 16,
+   "minDzM": 0.1,
+   "maxDzM": 5.67,
+   "allowed": false
+  },
+  {
+   "a": "32404414",
+   "b": "45661183",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 19,
+   "minDzM": 0.08,
+   "maxDzM": 6.29,
+   "allowed": false
+  },
+  {
+   "a": "32404414",
+   "b": "5219577",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 12,
+   "minDzM": 0.13,
+   "maxDzM": 6.55,
+   "allowed": false
+  },
+  {
+   "a": "32898373",
+   "b": "888066405",
+   "kind": "other",
+   "joined": false,
+   "stations": 7,
+   "minDzM": 0.06,
+   "maxDzM": 0.31,
+   "allowed": false
+  },
+  {
+   "a": "32898373",
+   "b": "906610080",
+   "kind": "nose",
+   "joined": true,
+   "stations": 7,
+   "minDzM": 0.07,
+   "maxDzM": 0.31,
+   "allowed": false
+  },
+  {
+   "a": "376509518",
+   "b": "888066410",
+   "kind": "other",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 0.23,
+   "maxDzM": 6.63,
+   "allowed": false
+  },
+  {
+   "a": "376509518",
+   "b": "888066413",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 10,
+   "minDzM": 1.33,
+   "maxDzM": 6.49,
+   "allowed": false
+  },
+  {
+   "a": "37793430",
+   "b": "45661183",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 19,
+   "minDzM": 0.08,
+   "maxDzM": 6.67,
+   "allowed": false
+  },
+  {
+   "a": "390422109",
+   "b": "44803854",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 6,
+   "minDzM": 0.08,
+   "maxDzM": 0.88,
+   "allowed": false
+  },
+  {
+   "a": "397724496",
+   "b": "44351599",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 16,
+   "minDzM": 0.14,
+   "maxDzM": 6.35,
+   "allowed": false
+  },
+  {
+   "a": "40971846",
+   "b": "888066405",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 0.12,
+   "maxDzM": 1.76,
+   "allowed": false
+  },
+  {
+   "a": "41520089",
+   "b": "668292569",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.05,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "422023172",
+   "b": "45248411",
+   "kind": "changeover",
+   "joined": true,
+   "stations": 16,
+   "minDzM": 0.05,
+   "maxDzM": 6.36,
+   "allowed": false
+  },
+  {
+   "a": "43992332",
+   "b": "60942200",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 5,
+   "minDzM": 5.54,
+   "maxDzM": 6.59,
+   "allowed": false
+  },
+  {
+   "a": "43992332",
+   "b": "67152889",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 63,
+   "minDzM": 0.05,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "44129625",
+   "b": "46876339",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 4,
+   "minDzM": 0.12,
+   "maxDzM": 1.63,
+   "allowed": false
+  },
+  {
+   "a": "44179919",
+   "b": "44351599",
+   "kind": "other",
+   "joined": false,
+   "stations": 4,
+   "minDzM": 0.06,
+   "maxDzM": 0.13,
+   "allowed": false
+  },
+  {
+   "a": "44179919",
+   "b": "44803854",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "44179919",
+   "b": "491244288",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 17,
+   "minDzM": 0.05,
+   "maxDzM": 6.58,
+   "allowed": false
+  },
+  {
+   "a": "44179919",
+   "b": "563799389",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 13,
+   "minDzM": 0.06,
+   "maxDzM": 5.93,
+   "allowed": false
+  },
+  {
+   "a": "44179919",
+   "b": "62004313",
+   "kind": "nose",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 0.06,
+   "maxDzM": 0.15,
+   "allowed": false
+  },
+  {
+   "a": "44179919",
+   "b": "800275737",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 39,
+   "minDzM": 0.1,
+   "maxDzM": 6.57,
+   "allowed": false
+  },
+  {
+   "a": "44351599",
+   "b": "563799388",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 14,
+   "minDzM": 0.08,
+   "maxDzM": 6.53,
+   "allowed": false
+  },
+  {
+   "a": "44351599",
+   "b": "563799389",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.03,
+   "maxDzM": 6.07,
+   "allowed": false
+  },
+  {
+   "a": "44351599",
+   "b": "58868493",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 7,
+   "minDzM": 0.06,
+   "maxDzM": 0.89,
+   "allowed": false
+  },
+  {
+   "a": "44351599",
+   "b": "60867229",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 12,
+   "minDzM": 0.09,
+   "maxDzM": 6.68,
+   "allowed": false
+  },
+  {
+   "a": "44351599",
+   "b": "633246083",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 11,
+   "minDzM": 0.05,
+   "maxDzM": 6.66,
+   "allowed": false
+  },
+  {
+   "a": "44351599",
+   "b": "67152889",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.07,
+   "maxDzM": 0.07,
+   "allowed": false
+  },
+  {
+   "a": "44351599",
+   "b": "751177055",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.7,
+   "maxDzM": 6.7,
+   "allowed": false
+  },
+  {
+   "a": "44506762",
+   "b": "44803854",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": false
+  },
+  {
+   "a": "44506762",
+   "b": "71488887",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 6,
+   "minDzM": 2.51,
+   "maxDzM": 6.54,
+   "allowed": false
+  },
+  {
+   "a": "44506762",
+   "b": "751177044",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 4,
+   "minDzM": 3.91,
+   "maxDzM": 5.87,
+   "allowed": false
+  },
+  {
+   "a": "44506762",
+   "b": "901966166",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 4,
+   "minDzM": 0.12,
+   "maxDzM": 6.66,
+   "allowed": false
+  },
+  {
+   "a": "44803854",
+   "b": "44804029",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.1,
+   "maxDzM": 0.1,
+   "allowed": false
+  },
+  {
+   "a": "44803854",
+   "b": "44804208",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.1,
+   "maxDzM": 0.1,
+   "allowed": false
+  },
+  {
+   "a": "44803854",
+   "b": "4854234",
+   "kind": "changeover",
+   "joined": true,
+   "stations": 21,
+   "minDzM": 0.05,
+   "maxDzM": 6.6,
+   "allowed": false
+  },
+  {
+   "a": "44803854",
+   "b": "60867241",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 21,
+   "minDzM": 0.05,
+   "maxDzM": 4.42,
+   "allowed": false
+  },
+  {
+   "a": "44803854",
+   "b": "62004313",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 14,
+   "minDzM": 0.06,
+   "maxDzM": 5.36,
+   "allowed": false
+  },
+  {
+   "a": "44803854",
+   "b": "780870438",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 69,
+   "minDzM": 0.05,
+   "maxDzM": 6.4,
+   "allowed": false
+  },
+  {
+   "a": "44804029",
+   "b": "44804208",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.34,
+   "maxDzM": 0.34,
+   "allowed": false
+  },
+  {
+   "a": "44804029",
+   "b": "4854234",
+   "kind": "changeover",
+   "joined": true,
+   "stations": 18,
+   "minDzM": 0.05,
+   "maxDzM": 5.14,
+   "allowed": false
+  },
+  {
+   "a": "44882717",
+   "b": "888066413",
+   "kind": "changeover",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 0.05,
+   "maxDzM": 1.3,
+   "allowed": false
+  },
+  {
+   "a": "45019020",
+   "b": "45554540",
+   "kind": "changeover",
+   "joined": true,
+   "stations": 12,
+   "minDzM": 0.06,
+   "maxDzM": 6.37,
+   "allowed": true
+  },
+  {
+   "a": "45019020",
+   "b": "4848740",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.32,
+   "maxDzM": 0.32,
+   "allowed": true
+  },
+  {
+   "a": "45019020",
+   "b": "4848755",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.05,
+   "maxDzM": 0.06,
+   "allowed": true
+  },
+  {
+   "a": "45019020",
+   "b": "4848762",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 9,
+   "minDzM": 0.5,
+   "maxDzM": 4.12,
+   "allowed": true
+  },
+  {
+   "a": "45019021",
+   "b": "45019022",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 11,
+   "minDzM": 0.13,
+   "maxDzM": 5.78,
+   "allowed": false
+  },
+  {
+   "a": "45019021",
+   "b": "4848762",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.69,
+   "maxDzM": 6.69,
+   "allowed": false
+  },
+  {
+   "a": "45021972",
+   "b": "45021976",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.11,
+   "maxDzM": 0.11,
+   "allowed": true
+  },
+  {
+   "a": "45021972",
+   "b": "45554540",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 20,
+   "minDzM": 0.06,
+   "maxDzM": 6.64,
+   "allowed": true
+  },
+  {
+   "a": "45021972",
+   "b": "4848762",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 16,
+   "minDzM": 0.05,
+   "maxDzM": 6.46,
+   "allowed": true
+  },
+  {
+   "a": "45021972",
+   "b": "5219302",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 6,
+   "minDzM": 4.62,
+   "maxDzM": 6.56,
+   "allowed": false
+  },
+  {
+   "a": "45021972",
+   "b": "813455521",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 6,
+   "minDzM": 0.08,
+   "maxDzM": 0.69,
+   "allowed": false
+  },
+  {
+   "a": "45021976",
+   "b": "45068172",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.21,
+   "maxDzM": 0.27,
+   "allowed": true
+  },
+  {
+   "a": "45021976",
+   "b": "4848762",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 4,
+   "minDzM": 3.97,
+   "maxDzM": 6.42,
+   "allowed": true
+  },
+  {
+   "a": "45021976",
+   "b": "4853805",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.09,
+   "maxDzM": 0.09,
+   "allowed": false
+  },
+  {
+   "a": "45177678",
+   "b": "4848755",
+   "kind": "other",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 0.06,
+   "maxDzM": 0.06,
+   "allowed": true
+  },
+  {
+   "a": "45332351",
+   "b": "4848898",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 3,
+   "minDzM": 5.44,
+   "maxDzM": 6.19,
+   "allowed": false
+  },
+  {
+   "a": "45554540",
+   "b": "4848885",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 9,
+   "minDzM": 0.78,
+   "maxDzM": 6.35,
+   "allowed": false
+  },
+  {
+   "a": "45554540",
+   "b": "4853666",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 7,
+   "minDzM": 2.44,
+   "maxDzM": 6.48,
+   "allowed": false
+  },
+  {
+   "a": "45554540",
+   "b": "5219301",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 3.82,
+   "maxDzM": 6.59,
+   "allowed": false
+  },
+  {
+   "a": "45554540",
+   "b": "813455519",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.06,
+   "maxDzM": 0.24,
+   "allowed": true
+  },
+  {
+   "a": "45661183",
+   "b": "5219578",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 24,
+   "minDzM": 0.1,
+   "maxDzM": 6.65,
+   "allowed": false
+  },
+  {
+   "a": "45683112",
+   "b": "5171105",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 9,
+   "minDzM": 0.11,
+   "maxDzM": 6.09,
+   "allowed": false
+  },
+  {
+   "a": "45683113",
+   "b": "5171346",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 5,
+   "minDzM": 0.05,
+   "maxDzM": 0.83,
+   "allowed": false
+  },
+  {
+   "a": "461218970",
+   "b": "535517130",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.06,
+   "maxDzM": 0.09,
+   "allowed": false
+  },
+  {
+   "a": "4854235",
+   "b": "888066405",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.68,
+   "maxDzM": 6.68,
+   "allowed": false
+  },
+  {
+   "a": "4857048",
+   "b": "888066413",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 11,
+   "minDzM": 0.07,
+   "maxDzM": 5.62,
+   "allowed": false
+  },
+  {
+   "a": "4857053",
+   "b": "888066413",
+   "kind": "nose",
+   "joined": true,
+   "stations": 1,
+   "minDzM": 0.12,
+   "maxDzM": 0.12,
+   "allowed": false
+  },
+  {
+   "a": "4857053",
+   "b": "906610083",
+   "kind": "other",
+   "joined": true,
+   "stations": 12,
+   "minDzM": 0.06,
+   "maxDzM": 0.75,
+   "allowed": false
+  },
+  {
+   "a": "53541951",
+   "b": "780869432",
+   "kind": "other",
+   "joined": false,
+   "stations": 22,
+   "minDzM": 0.06,
+   "maxDzM": 6.42,
+   "allowed": false
+  },
+  {
+   "a": "60942197",
+   "b": "60942200",
+   "kind": "other",
+   "joined": true,
+   "stations": 24,
+   "minDzM": 5.11,
+   "maxDzM": 6.57,
+   "allowed": false
+  },
+  {
+   "a": "668292569",
+   "b": "955398790",
+   "kind": "changeover",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 0.6,
+   "maxDzM": 0.63,
+   "allowed": false
+  },
+  {
+   "a": "760596454",
+   "b": "78334079",
+   "kind": "other",
+   "joined": false,
+   "stations": 2,
+   "minDzM": 6.37,
+   "maxDzM": 6.43,
+   "allowed": false
+  },
+  {
+   "a": "809140339",
+   "b": "888066410",
+   "kind": "other",
+   "joined": true,
+   "stations": 8,
+   "minDzM": 0.22,
+   "maxDzM": 6.58,
+   "allowed": false
+  },
+  {
+   "a": "809140339",
+   "b": "888066413",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 11,
+   "minDzM": 0.43,
+   "maxDzM": 6.4,
+   "allowed": false
+  },
+  {
+   "a": "888066405",
+   "b": "906610080",
+   "kind": "nose",
+   "joined": true,
+   "stations": 6,
+   "minDzM": 0.06,
+   "maxDzM": 0.11,
+   "allowed": false
+  },
+  {
+   "a": "888066405",
+   "b": "906610083",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 1,
+   "minDzM": 6.66,
+   "maxDzM": 6.66,
+   "allowed": false
+  },
+  {
+   "a": "888066410",
+   "b": "888066413",
+   "kind": "parallel-ramp",
+   "joined": true,
+   "stations": 17,
+   "minDzM": 3.04,
+   "maxDzM": 5.51,
+   "allowed": false
+  },
+  {
+   "a": "888066413",
+   "b": "906610083",
+   "kind": "parallel-ramp",
+   "joined": false,
+   "stations": 8,
+   "minDzM": 0.81,
+   "maxDzM": 1.21,
+   "allowed": false
+  },
+  {
+   "a": "891243451",
+   "b": "891243453",
+   "kind": "nose",
+   "joined": true,
+   "stations": 2,
+   "minDzM": 0.06,
+   "maxDzM": 0.07,
+   "allowed": false
+  }
+ ],
+ "violations": {
+  "T1": {
+   "count": 0,
+   "first": []
+  },
+  "T2": {
+   "count": 2,
+   "first": [
+    "24636451:0: surface grade 5.01% at s=152",
+    "45248411:23: surface grade 5.01% at s=5507"
+   ]
+  },
+  "T3": {
+   "count": 0,
+   "first": []
+  },
+  "T4": {
+   "count": 0,
+   "first": []
+  },
+  "T5": {
+   "count": 0,
+   "first": []
+  },
+  "T6": {
+   "count": 0,
+   "first": []
+  },
+  "T7": {
+   "count": 0,
+   "first": []
+  },
+  "T12": {
+   "count": 1,
+   "first": [
+    "5213545:0: tunnel road -6.096 above -6.12 at s=113.75"
+   ]
+  }
+ },
+ "tracking": {
+  "runs": 46,
+  "km": 316.14,
+  "correlation": 0.8806,
+  "slope": 0.9354,
+  "shortWaveCorrelation": 0.39,
+  "shortWaveStdM": 1.0067,
+  "reversalsPerKm": 2.2965
+ },
+ "size": {
+  "tiles": 115,
+  "raw": {
+   "total": 3632757,
+   "median": 25768,
+   "p90": 69376,
+   "max": 132474
+  },
+  "gzip": {
+   "total": 1043175,
+   "median": 7163,
+   "p90": 19635,
+   "max": 34777
+  },
+  "meta": {
+   "raw": 257776,
+   "gzip": 35012,
+   "byField": {
+    "version": 1,
+    "features": 9,
+    "zoom": 2,
+    "tiles": 1496,
+    "ranges": 2,
+    "scope": 6,
+    "structures": 173,
+    "extract": 106,
+    "counts": 74,
+    "bytes": 7,
+    "solver": 46,
+    "runs": 132656,
+    "closed": 4582,
+    "diagnostics": 104847,
+    "entrances": 13609
+   }
+  }
+ },
+ "solver": {
+  "components": 20,
+  "largestRuns": 271,
+  "largestVariables": 17744,
+  "solves": 106,
+  "iterations": 3637,
+  "unconverged": 0
+ }
+}

@@ -150,7 +150,7 @@ type RunOver = {
   osm: OsmMismatch;
 };
 
-type RunPlan = {
+export type RunPlan = {
   run: Run;
   chain: Chain;
   plane: Plane;
@@ -466,12 +466,24 @@ function runOver(
   };
 }
 
+/**
+ * How planNetwork picks what to build, beyond the boxes. `wanted`: the runs of the range, chosen
+ * from the whole plan (scope.ts shipRuns for --range ship) instead of the boxes. `pruneBelow`:
+ * false compiles every below run, even those joining two components (--below all, to measure only:
+ * the defaults move by it, P2.7-1).
+ */
+export type PlanOptions = {
+  wanted?: (plan: Plan) => ReadonlySet<string>;
+  pruneBelow?: boolean;
+};
+
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
 export function planNetwork(
   net: Network,
   outsideNodes: Set<number>,
   range: Bbox | readonly Bbox[] | null,
   structures: readonly Structure[] = [],
+  options: PlanOptions = {},
 ): Plan {
   const ranges: readonly Bbox[] | null =
     range === null ? null : Array.isArray(range) ? range : [range as Bbox];
@@ -553,9 +565,12 @@ export function planNetwork(
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
   plan.pairs = classifyPairs(plan);
-  pruneBelow(plan);
+  const isPruned = options.pruneBelow ?? true;
+  if (isPruned) pruneBelow(plan);
   groupComponents(plan);
+  const chosen = options.wanted?.(plan);
   const wanted = [...runs.values()].filter((rp) => {
+    if (chosen) return chosen.has(rp.run.id);
     if (!ranges) return true;
     for (let i = rp.i0; i <= rp.i1; i += 5) {
       const [lon, lat] = lonLatAt(rp, i);
@@ -908,10 +923,12 @@ function classifyPairs(plan: Plan): DeckPair[] {
  * Below runs that would join two components (P9): deferred, so a tunnel never makes one joint QP of
  * what was two. A below run is kept when every run it couples to — the viaducts it seams into, the
  * runs crossing it or over it, the ramps joining it — is in one component of the network without
- * below runs, and none of them is itself below. Why: compiled freely the 107 below runs of the
- * universe merged the test section's component of 56 runs into one of 381 (33,276 variables) whose
- * QP broke down (non-finite steps) and moved the test section's decks by up to 0.9 m. Decided on the
- * whole universe, so the same runs are kept whatever the range (T8).
+ * below runs, and none of them is itself below. Why: compiled freely the universe's below runs
+ * merge the test section's component into one of 382 runs (29,694 variables) that moves the default
+ * range's decks by up to 3.2 m (P2.7-1, `--below all`, measured). P9 also saw that QP break down
+ * (non-finite steps); at P2.7-1 it converged every time (P2.6's gapTol is the likely cure), so the
+ * pruning now stands for the decks it keeps still, not for convergence. Decided on the whole
+ * universe, so the same runs are kept whatever the range (T8).
  */
 function pruneBelow(plan: Plan): void {
   const isBelow = (id: string) => plan.runs.get(id)!.below;

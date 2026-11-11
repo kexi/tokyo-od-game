@@ -57,4 +57,5 @@
 ## 高速道路データ
 
 - 高架の高速道路は `just make-expressway-data`（`scripts/expressway.ts`）で OSM から道路構造令の線形にコンパイルし、`public/data/expressway` に書く。法令値は `src/law/roadStandards.ts`（条文つき）、法令に無い仮定は `src/expressway/assumptions.ts`（未確認と明記）に分け、混ぜない。生成後は `pnpm exec vitest run tests/expresswayData.test.ts` で T1〜T10 を確かめる。詳細は [knowledge/expressway-generation.md](knowledge/expressway-generation.md)。
+- 全域・出荷範囲の計測は `just measure-expressway-area <label> [range] [below] [flags]`（既定 ship・pruned。`public/data` は触らず `.cache/expressway-area/<label>/` に生成し、スコアカードを `.qa/expressway/<label>.report.json` に書く）、前後の比較は `just compare-expressway-reports <a> <b>`。OSM の抽出は `src/expressway/extract.ts` の時刻・SHA-256 に固定し、`.cache/osm/kanto-<時刻>.osm.pbf` の写しを読む（`just fetch-regs` が更新する kanto-latest とは別。違えば flags に `--accept-extract`）。基準のスコアカード `tests/fixtures/expresswayScorecard.ship.json` は出荷範囲かコンパイラを変えたら `--baseline` で作り直す。
 - 事業者の実名（首都高など）は `public/data/expressway` とゲームの表示に入れない（ゲームでは架空名「都市高速」）。routes・junctions・police.json は実名を保持し表示時に置換する（`tests/roadNames.test.ts`）。

@@ -871,6 +871,46 @@ export const LOG_EVENTS = {
     belowRuns: count,
     belowDeferred: count,
   }),
+  /**
+   * The OSM extract read (src/expressway/extract.ts): its replication timestamp against the pinned
+   * one, its SHA-256, and whether a mismatch was let through by --accept-extract.
+   */
+  expressway_extract_checked: info({
+    timestamp: z.string().nullable(),
+    expected: z.string(),
+    sha256: z.string(),
+    pinned: z.boolean(),
+    accepted: z.boolean(),
+  }),
+  /** The pinned extract copied from kanto-latest (extract.ts), once, while that was still it. */
+  expressway_extract_pinned: info({ file: z.string(), timestamp: z.string().nullable(), sha256: z.string() }),
+  /** --range ship (src/expressway/scope.ts): the main lines and ramps of the shipped scope. */
+  expressway_scope_chosen: info({ main: count, ramps: count, belowRuns: count, prunedBelow: z.boolean() }),
+  /** The scorecard of a build (src/expressway/report.ts), written outside the data folder. */
+  expressway_report_written: info({
+    file: z.string(),
+    plannedRuns: count,
+    writtenRuns: count,
+    closedRuns: count,
+    unconverged: count,
+    bytes: count,
+  }),
+  /**
+   * Two scorecards compared (scripts/compareExpresswayReports.ts): numbers listed, changed (timings
+   * never), on one side only, and runs of the range added or removed.
+   */
+  expressway_reports_compared: info({
+    a: z.string(),
+    b: z.string(),
+    fields: count,
+    changed: count,
+    added: count,
+    removed: count,
+    runsAdded: count,
+    runsRemoved: count,
+  }),
+  /** Two scorecards of another range, --below mode or extract: their differences are not the compiler's. */
+  expressway_reports_unlike: warning({ a: z.string(), b: z.string() }),
   expressway_dem_ready: info({ tiles: count, fetched: count }),
   expressway_objects_read: info({ roads: count, rails: count }),
   /** The joint vertical QPs (compile.ts solveComponent): components, the largest, solves, time. */

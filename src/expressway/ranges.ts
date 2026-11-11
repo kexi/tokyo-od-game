@@ -37,15 +37,22 @@ export const DEFAULT_RANGES: readonly RangeName[] = [
 
 /**
  * `--range` as the build script reads it: named ranges joined by commas (their runs are built
- * together), `all` for the whole universe (boxes null), the defaults when absent.
+ * together), `all` for the whole universe (boxes null), `ship` for the shipped scope (boxes null,
+ * scope "ship": the urban expressway over the 23 wards and the ramps hanging from it, scope.ts),
+ * the defaults when absent.
  */
-export function parseRanges(arg: string | undefined): { names: RangeName[]; boxes: Bbox[] | null } {
+export function parseRanges(arg: string | undefined): {
+  names: RangeName[];
+  boxes: Bbox[] | null;
+  scope?: "ship";
+} {
   const value = arg ?? DEFAULT_RANGES.join(",");
   if (value === "all") return { names: [], boxes: null };
+  if (value === "ship") return { names: [], boxes: null, scope: "ship" };
   const names = value.split(",");
   for (const name of names) {
     const isKnown = name in RANGES;
-    if (!isKnown) throw new Error(`unknown --range ${name} (${Object.keys(RANGES).join(", ")}, all)`);
+    if (!isKnown) throw new Error(`unknown --range ${name} (${Object.keys(RANGES).join(", ")}, all, ship)`);
   }
   const known = names as RangeName[];
   return { names: known, boxes: known.map((n) => RANGES[n]) };

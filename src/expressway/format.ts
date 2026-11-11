@@ -266,8 +266,13 @@ export type XwMeta = {
   features?: string[];
   zoom: number;
   tiles: string[];
-  /** The named ranges built (empty for --range all). */
+  /** The named ranges built (empty for --range all and --range ship). */
   ranges: Array<{ name: string; minLon: number; minLat: number; maxLon: number; maxLat: number }>;
+  /**
+   * "ship" for --range ship (P2.7-1, src/expressway/scope.ts: the urban expressway over the 23
+   * wards). Optional, absent from the default build's file, so the version stays: no reader needs it.
+   */
+  scope?: "ship";
   /** Structures whose deck levels were built (landmark id and the version of its deckLevels). */
   structures: Array<{ id: string; version: number; decks: string[] }>;
   extract: { url: string; timestamp: string | null };

@@ -2,15 +2,36 @@
 // extract → plan and vertical alignment within 道路構造令 (src/expressway/) → public/data/expressway/
 // <x>-<y>.json (z14 tiles of ≤ 300 m chunks) and meta.json. The ground constraints read GSI DEM
 // tiles exactly as the game does (scripts/demTiles.ts), cached under .cache/gsi-dem.
-// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow,azabudai|all] [--pbf <path>] [--out <dir>]
+// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow,azabudai|all|ship] [--below pruned|all]
+//   [--pbf <path>] [--out <dir>] [--report <path> [--label <name>] [--baseline <path>]] [--accept-extract]
 // (--range takes one or more named ranges joined by commas; the default is DEFAULT_RANGES.)
 // Structure overrides (src/expressway/structures.ts): the deck levels of the landmarks in
 // public/data/landmarks.json (レインボーブリッジ) pin the decks they carry, and the street ways they
 // name are compiled too. Build order: landmarks (just make-all-landmark-models) → this script.
 // (--out writes somewhere else than public/data/expressway, e.g. to measure --range all.)
 // (the OSM extract is the one just fetch-regs caches in .cache/osm; it is downloaded if missing).
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+// P2.7-1: --range ship builds the shipped scope (src/expressway/scope.ts: the urban expressway over
+// the 23 wards and its ramps); --below all compiles every tunnel and cut (no pruneBelow, to measure
+// only); --report <path> writes the scorecard (src/expressway/report.ts) there, outside the data
+// folder (it has timings), with --label naming it; --baseline <path> also writes it without the
+// timings (the committed tests/fixtures/expresswayScorecard.ship.json). The extract is pinned
+// (src/expressway/extract.ts): the build reads .cache/osm/kanto-<timestamp>.osm.pbf, copied once
+// from kanto-latest.osm.pbf while that is still the pinned extract; another extract stops the
+// build unless --accept-extract is given.
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { gzipSync } from "node:zlib";
+import { AreaIndex, type AreaFile } from "../src/geo/areas.ts";
+import {
+  checkExtract,
+  EXPECTED_EXTRACT_SHA256,
+  EXPECTED_EXTRACT_TIMESTAMP,
+  pinnedExtractName,
+} from "../src/expressway/extract.ts";
+import { violationsOf } from "../src/expressway/violations.ts";
+import { buildReport, type PlannedRun } from "../src/expressway/report.ts";
+import { scopeExtent, shipRuns } from "../src/expressway/scope.ts";
 import { compareChunks, DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
 import { STRUCTURE_SPECS, type Structure, structureFrom } from "../src/expressway/structures.ts";
 import { deckLevelsOf, DECK_LEVELS_VERSION } from "../src/world/deckLevels.ts";
@@ -54,7 +75,11 @@ import {
 const started = performance.now();
 const OUT_DEFAULT = join(import.meta.dirname, "..", "public", "data", "expressway");
 const OSM_EXTRACT = "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf";
-const OSM_CACHE = join(import.meta.dirname, "..", ".cache", "osm", "kanto-latest.osm.pbf");
+const OSM_DIR = join(import.meta.dirname, "..", ".cache", "osm");
+/** What just fetch-regs keeps fresh (re-downloaded in place once a week old): never read directly. */
+const OSM_LATEST = join(OSM_DIR, "kanto-latest.osm.pbf");
+/** The pinned copy the expressway is built from (extract.ts). */
+const OSM_PINNED = join(OSM_DIR, pinnedExtractName());
 const USER_AGENT = "tokyo-od-game-databuild/0.1 (+https://github.com/kexi/tokyo-od-game)";
 const Z = 14;
 /**
@@ -68,26 +93,70 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-async function extract(path: string): Promise<Uint8Array> {
-  const isCached = await stat(path).then(
+const hasFile = (path: string) =>
+  stat(path).then(
     (s) => s.size > 0,
     () => false,
   );
-  if (!isCached) {
-    log("download", { url: OSM_EXTRACT });
-    const res = await fetch(OSM_EXTRACT, { headers: { "User-Agent": USER_AGENT } });
-    if (!res.ok) throw new Error(`${OSM_EXTRACT}: HTTP ${res.status}`);
-    await mkdir(join(path, ".."), { recursive: true });
-    await writeFile(path, new Uint8Array(await res.arrayBuffer()));
+
+async function download(path: string): Promise<void> {
+  log("download", { url: OSM_EXTRACT });
+  const res = await fetch(OSM_EXTRACT, { headers: { "User-Agent": USER_AGENT } });
+  if (!res.ok) throw new Error(`${OSM_EXTRACT}: HTTP ${res.status}`);
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, new Uint8Array(await res.arrayBuffer()));
+}
+
+const sha256Of = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+
+/**
+ * The extract to build from: --pbf as given; else the pinned copy, made from kanto-latest (downloaded
+ * if missing) when that is still the pinned extract (timestamp and SHA-256). With --accept-extract
+ * and no pinned copy, kanto-latest itself. Why copy and not link: fetch-regs rewrites kanto-latest
+ * in place, which a link would follow. kanto-latest is never removed (worktrees share .cache/osm).
+ */
+async function extract(given: string | undefined, accept: boolean): Promise<Uint8Array> {
+  if (given) return new Uint8Array(await readFile(given));
+  if (await hasFile(OSM_PINNED)) return new Uint8Array(await readFile(OSM_PINNED));
+  if (!(await hasFile(OSM_LATEST))) await download(OSM_LATEST);
+  const latest = new Uint8Array(await readFile(OSM_LATEST));
+  const timestamp = readReplicationTimestamp(latest);
+  const isPinned = timestamp === EXPECTED_EXTRACT_TIMESTAMP && sha256Of(latest) === EXPECTED_EXTRACT_SHA256;
+  if (!isPinned) {
+    const check = checkExtract(timestamp, accept, sha256Of(latest));
+    if (!check.ok) throw new Error(`${check.reason} (no ${OSM_PINNED})`);
+    return latest;
   }
-  return new Uint8Array(await readFile(path));
+  const partial = `${OSM_PINNED}.partial`;
+  await copyFile(OSM_LATEST, partial);
+  await rename(partial, OSM_PINNED);
+  log("expressway_extract_pinned", { file: OSM_PINNED, timestamp, sha256: EXPECTED_EXTRACT_SHA256 });
+  return latest;
 }
 
 const inBox = (b: Bbox, lon: number, lat: number) =>
   lon >= b.minLon && lon <= b.maxLon && lat >= b.minLat && lat <= b.maxLat;
 
 const rangeArg = arg("range") ?? DEFAULT_RANGES.join(",");
-const { names: rangeNames, boxes: ranges } = parseRanges(arg("range"));
+const { names: rangeNames, boxes: ranges, scope } = parseRanges(arg("range"));
+const belowArg = arg("below") ?? "pruned";
+const isBelowMode = belowArg === "pruned" || belowArg === "all";
+if (!isBelowMode) throw new Error(`unknown --below ${belowArg} (pruned, all)`);
+const below = belowArg as "pruned" | "all";
+const reportPath = arg("report");
+const baselinePath = arg("baseline");
+// --below all moves the default decks (P2.7-1): measuring only, never into the shipped folder.
+const isUnprunedDefault = below === "all" && arg("out") === undefined;
+if (isUnprunedDefault)
+  throw new Error("--below all is for measuring: give --out (just measure-expressway-area)");
+const stagesMs: Record<string, number> = {};
+let stageStarted = performance.now();
+/** Time since the last stage ended, booked to `name` (the scorecard's stagesMs). */
+const endStage = (name: string) => {
+  const now = performance.now();
+  stagesMs[name] = now - stageStarted;
+  stageStarted = now;
+};
 
 // 0. Structures: the deck levels the landmark build wrote. Without them the bridge is compiled as an
 // ordinary viaduct (warned), never pinned to numbers that do not parse.
@@ -108,10 +177,21 @@ for (const spec of useStructures ? STRUCTURE_SPECS : []) {
   }
   structures.push(structureFrom(spec, levels));
 }
-const pbfPath = arg("pbf") ?? OSM_CACHE;
 const OUT = arg("out") ?? OUT_DEFAULT;
-const file = await extract(pbfPath);
+const acceptExtract = process.argv.includes("--accept-extract");
+const file = await extract(arg("pbf"), acceptExtract);
 const timestamp = readReplicationTimestamp(file);
+const sha256 = sha256Of(file);
+const extractCheck = checkExtract(timestamp, acceptExtract, sha256);
+log("expressway_extract_checked", {
+  timestamp,
+  expected: EXPECTED_EXTRACT_TIMESTAMP,
+  sha256,
+  pinned: timestamp === EXPECTED_EXTRACT_TIMESTAMP && sha256 === EXPECTED_EXTRACT_SHA256,
+  accepted: acceptExtract,
+});
+if (!extractCheck.ok) throw new Error(extractCheck.reason);
+endStage("extract");
 
 // 1. Motorways of the region, and those of the universe.
 const isMotorway = (t: Record<string, string>) => t.highway === "motorway" || t.highway === "motorway_link";
@@ -172,8 +252,34 @@ log("expressway_osm_read", {
   junctions: [...nodes.values()].filter((n) => n.junctionName !== null || n.junctionRef !== null).length,
 });
 
-// 2. Plan alignment and what the range depends on.
-const plan = planNetwork(net, outsideNodes, ranges, structures);
+endStage("osm");
+
+// 2. Plan alignment and what the range depends on. --range ship picks the runs by scope.ts from
+// the whole plan; the 23 wards are the e-Stat town polygons the game uses (public/data/areas.json).
+const isShip = scope === "ship";
+const hasWards = isShip || reportPath !== undefined;
+const areas = hasWards
+  ? new AreaIndex(
+      JSON.parse(
+        await readFile(join(import.meta.dirname, "..", "public", "data", "areas.json"), "utf8"),
+      ) as AreaFile,
+    )
+  : null;
+const inWards = (lon: number, lat: number) => areas?.lookup(lat, lon) != null;
+const plan = planNetwork(net, outsideNodes, ranges, structures, {
+  pruneBelow: below === "pruned",
+  ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
+});
+// Asked again of the finished plan (the same set: shipRuns is pure), for the log and the scorecard.
+const chosenShip = isShip ? shipRuns(plan, inWards) : null;
+if (chosenShip !== null) {
+  log("expressway_scope_chosen", {
+    main: chosenShip.main.size,
+    ramps: chosenShip.ramps.size,
+    belowRuns: [...chosenShip.all].filter((id) => plan.runs.get(id)!.below).length,
+    prunedBelow: below === "pruned",
+  });
+}
 log("expressway_planned", {
   chains: plan.chains.size,
   runs: plan.runs.size,
@@ -183,12 +289,14 @@ log("expressway_planned", {
   belowRuns: [...plan.runs.values()].filter((r) => r.below).length,
   belowDeferred: plan.belowDeferred.length,
 });
+endStage("plan");
 
 // 3. The ground under the needed runs.
 const dem = new BuildDem();
 const points = groundPoints(plan);
 const demTiles = await dem.prefetch(points);
 log("expressway_dem_ready", { tiles: demTiles, fetched: dem.fetched });
+endStage("dem");
 
 // 4. Roads and railways at ground level under the needed runs (z16 cells around their stations).
 const cellKey = (lon: number, lat: number) => tileKey(lon, lat, 16);
@@ -227,6 +335,7 @@ log("expressway_objects_read", {
   roads: objects.filter((o) => o.kind === "road").length,
   rails: objects.filter((o) => o.kind === "rail").length,
 });
+endStage("objects");
 
 // 5. Solve and write.
 const solveStarted = performance.now();
@@ -236,6 +345,7 @@ log("expressway_solved", {
   qpMs: Math.round(result.stats.qpMs),
   durationS: Math.round((performance.now() - solveStarted) / 100) / 10,
 });
+endStage("solve");
 // 6. Signs (G6): where each stands on the decks and what it says; the entrances for 103・104.
 const signPlan = planSigns({
   chunks: result.chunks,
@@ -263,6 +373,7 @@ log("expressway_signs_planned", {
   unplaced: signPlan.unplaced.length,
 });
 for (const u of signPlan.unplaced) warn("expressway_sign_unplaced", u);
+endStage("signs");
 const tiles = new Map<string, XwTile>();
 for (const chunk of result.chunks) {
   const mid = Math.floor(chunk.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
@@ -275,11 +386,16 @@ await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 let bytes = 0;
 const tileKeys = [...tiles.keys()].sort();
+const tileSizes: Array<{ bytes: number; gzipBytes: number }> = [];
 for (const key of tileKeys) {
   const tile = tiles.get(key)!;
   tile.chunks.sort(compareChunks);
   const text = JSON.stringify(tile);
-  bytes += Buffer.byteLength(text);
+  const size = Buffer.byteLength(text);
+  bytes += size;
+  // Why gzip only with --report: the scorecard's budget is the size served compressed, and the
+  // default build, which writes no report, need not spend the time.
+  tileSizes.push({ bytes: size, gzipBytes: reportPath ? gzipSync(text).length : 0 });
   await writeFile(join(OUT, `${key}.json`), text);
 }
 const UNSOLVED = [
@@ -296,6 +412,7 @@ const meta: XwMeta = {
   zoom: Z,
   tiles: tileKeys,
   ranges: rangeNames.map((name) => ({ name, ...RANGES[name] })),
+  ...(isShip ? { scope: "ship" as const } : {}),
   structures: structures.map((st) => ({
     id: st.id,
     version: DECK_LEVELS_VERSION,
@@ -320,7 +437,8 @@ const meta: XwMeta = {
   diagnostics: result.diagnostics.filter((d) => plan.needed.includes(d.run)),
   entrances: signPlan.entrances,
 };
-await writeFile(join(OUT, "meta.json"), JSON.stringify(meta));
+const metaText = JSON.stringify(meta);
+await writeFile(join(OUT, "meta.json"), metaText);
 await writeFile(
   join(OUT, "LICENSE.txt"),
   `Expressway centrelines, lanes, ref and entrance/exit names in this folder are extracted from
@@ -366,3 +484,79 @@ log("expressway_written", {
   closedRamps: result.closed.filter((c) => c.cls === "ramp").length,
   durationS: Math.round((performance.now() - started) / 100) / 10,
 });
+endStage("write");
+
+// 7. The scorecard (P2.7-1): the runs the plan made for the range and the components it needs.
+if (reportPath) {
+  const planned: PlannedRun[] = plan.needed.map((id) => {
+    const rp = plan.runs.get(id)!;
+    return { id, cls: rp.cls, lengthM: rp.length, below: rp.below, wanted: plan.wanted.has(id) };
+  });
+  const byField = Object.fromEntries(
+    Object.entries(meta).map(([k, v]) => [k, Buffer.byteLength(JSON.stringify(v) ?? "")]),
+  );
+  const lengthOf = (ids: Iterable<string>) => [...ids].reduce((n, id) => n + plan.runs.get(id)!.length, 0);
+  const reportInput = {
+    label: arg("label") ?? basename(OUT),
+    range: rangeArg,
+    below,
+    extract: {
+      url: OSM_EXTRACT,
+      timestamp,
+      expected: EXPECTED_EXTRACT_TIMESTAMP,
+      accepted: acceptExtract,
+      sha256,
+    },
+    plan: {
+      chains: plan.chains.size,
+      runs: plan.runs.size,
+      components: plan.components.size,
+      belowRuns: [...plan.runs.values()].filter((r) => r.below).length,
+      belowDeferred: plan.belowDeferred.length,
+    },
+    planned,
+    extent: scopeExtent(plan, plan.wanted, inWards),
+    rampsOutside: chosenShip
+      ? {
+          runs: chosenShip.rampsOutside.size,
+          km: Math.round(lengthOf(chosenShip.rampsOutside)) / 1000,
+        }
+      : null,
+    violations: violationsOf(meta, result.chunks),
+    structureDecks: meta.structures.flatMap((st) => st.decks),
+    runs: result.runs,
+    closed: result.closed,
+    diagnostics: result.diagnostics,
+    chunks: result.chunks,
+    tiles: tileSizes,
+    meta: { raw: Buffer.byteLength(metaText), gzip: gzipSync(metaText).length, byField },
+    solver: {
+      components: result.stats.components,
+      largestRuns: result.stats.largestRuns,
+      largestVariables: result.stats.largestVariables,
+      solves: result.stats.solves,
+      iterations: result.stats.iterations,
+      unconverged: result.stats.unconverged,
+      qpMs: result.stats.qpMs,
+    },
+    stagesMs,
+  };
+  const report = buildReport(reportInput);
+  await mkdir(dirname(reportPath), { recursive: true });
+  const reportText = JSON.stringify(report, null, 1) + "\n";
+  await writeFile(reportPath, reportText);
+  if (baselinePath) {
+    await mkdir(dirname(baselinePath), { recursive: true });
+    const baseline = buildReport({ ...reportInput, withoutTimings: true });
+    await writeFile(baselinePath, JSON.stringify(baseline, null, 1) + "\n");
+  }
+  const plannedTally = report.runs.planned;
+  log("expressway_report_written", {
+    file: reportPath,
+    plannedRuns: plannedTally.main.runs + plannedTally.ramp.runs + plannedTally.street.runs,
+    writtenRuns: result.runs.length,
+    closedRuns: result.closed.length,
+    unconverged: result.stats.unconverged,
+    bytes: Buffer.byteLength(reportText),
+  });
+}
