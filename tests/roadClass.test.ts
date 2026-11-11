@@ -129,13 +129,14 @@ describe("road class (src/world/roadClass.ts)", () => {
     expect(isEnterable(gsi)).toBe(false);
   });
 
-  it("closes tunnels and cuttings to every use until P9 gives them a floor", () => {
+  it("opens the expressway's tunnels and cuts like its viaducts (P9 builds their floor, walls and roof); GSI's tunnels stay closed", () => {
     for (const structure of ["tunnel", "cut"] as const) {
       const street = line("local", { structure, level: -1 });
       const xw = line("national", { source: "osm", cls: "expressway", structure, level: -1 });
+      const deck = line("national", { source: "osm", cls: "expressway", structure: "viaduct", level: 1 });
       for (const use of USES) {
         expect(isDrivable(street, use)).toBe(false);
-        expect(isDrivable(xw, use)).toBe(false);
+        expect(isDrivable(xw, use)).toBe(isDrivable(deck, use));
       }
       expect(isEnterable(street)).toBe(false);
     }

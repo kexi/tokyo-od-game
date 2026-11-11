@@ -110,7 +110,9 @@ export function expresswayRoadInput(
   for (const r of runs) {
     for (const end of ["start", "end"] as const) {
       const e = r[end];
-      const isJunction = e.kind === "junction" && e.parent !== undefined && e.parentS !== undefined;
+      // A seam (P9: a viaduct going on into a tunnel or cut) joins like a junction at the parent's end.
+      const isJunction =
+        (e.kind === "junction" || e.kind === "seam") && e.parent !== undefined && e.parentS !== undefined;
       if (!isJunction) continue;
       const id = end === "start" ? startId(r.id) : endId(r.id);
       const parentS = e.parentS!;
@@ -201,8 +203,9 @@ function lineOf(chunk: XwChunk, run: XwRunSummary, points: Point[], ellipsoidal:
     kind: kindOf(chunk.cls),
     source: "osm",
     cls: chunk.cls,
-    structure: "viaduct",
-    level: 1,
+    structure: chunk.structure,
+    // Below the ground (P9) a level down, as roadClass.levelOf counts tunnels.
+    level: chunk.structure === "viaduct" ? 1 : -1,
     nodeIds: points.map((p) => p.id),
     section,
     xid: chunk.id,

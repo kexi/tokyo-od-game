@@ -1,0 +1,150 @@
+{
+  "name": "expressway-tunnels",
+  "description": "?expressway のトンネルと掘割（P9）。都心環状線外回りの麻布台（飯倉〜谷町）: 高架から掘割へ下りる南の坑口、掘割の擁壁と地形の切り欠き、トンネルの断面（監査路・側壁・天井・照明）、斜面に開く北の坑口と坑門、その先の高架。昼と夜。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261111,
+    "params": {
+      "expressway": ""
+    },
+    "moment": "2026-11-11T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-11T11:00:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-11T20:00:00+09:00"
+      }
+    ],
+    "hide": ["traffic"]
+  },
+  "sessions": [
+    {
+      "id": "azabudai",
+      "start": [35.6592, 139.7366],
+      "views": [
+        {
+          "id": "south-portal-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "737538573:0",
+            "share": 1
+          },
+          "distanceM": 70,
+          "fov": 55,
+          "expect": {
+            "portal": "掘割の中ほどから: 両側の擁壁の間を路面が下り、奥にトンネルの坑門（坑口の枠）が見える。頭上は内回りの高架",
+            "terrain": "掘割の上に地面（航空写真）が被らない。擁壁の天端が地表より少し上にある"
+          }
+        },
+        {
+          "id": "cut-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "737538573:0",
+            "share": 0.9
+          },
+          "distanceM": 30,
+          "fov": 60,
+          "expect": {
+            "cut": "掘割の擁壁が地表より上まで立ち、上に一般道の路面・歩道が被らない",
+            "portal": "坑門と、その奥のトンネルの照明"
+          }
+        },
+        {
+          "id": "cut-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "737538573:0",
+            "share": 0.6
+          },
+          "altitudeM": 70,
+          "pitchDeg": 60,
+          "angleDeg": 150,
+          "fov": 55,
+          "expect": {
+            "cut": "掘割の上から: 両側の擁壁の間に路面と区画線、地形が擁壁の外側で切れている",
+            "portal": "掘割の奥でトンネルの坑門が地面の下へ入る"
+          }
+        },
+        {
+          "id": "south-portal-outside",
+          "camera": "overhead",
+          "target": {
+            "expressway": "737538573:1",
+            "share": 0
+          },
+          "altitudeM": 30,
+          "pitchDeg": 30,
+          "bearingDeg": 210,
+          "fov": 60,
+          "expect": {
+            "portal": "掘割の外の地上から南の坑口を見る: 坑門の上に地表、掘割の擁壁の天端",
+            "terrain": "切り欠きの縁に地面の穴・浮きが無い"
+          }
+        },
+        {
+          "id": "tunnel-inside",
+          "camera": "driver",
+          "target": {
+            "expressway": "737538573:1",
+            "share": 0.7
+          },
+          "distanceM": 50,
+          "fov": 60,
+          "expect": {
+            "section": "片側 2 車線、両側に一段高い監査路、側壁、天井。天井の両端に照明が並ぶ",
+            "light": "空・太陽の光が入らず、照明の光で路面と側壁が見える（昼も夜も同じ明るさ）"
+          }
+        },
+        {
+          "id": "tunnel-toward-exit",
+          "camera": "driver",
+          "target": {
+            "expressway": "737538573:2",
+            "share": 1
+          },
+          "distanceM": 120,
+          "fov": 55,
+          "expect": {
+            "exit": "上り勾配の先に北の坑口が明るく開く。路面・壁に継ぎ目の段差が無い"
+          }
+        },
+        {
+          "id": "north-portal-outside",
+          "camera": "overhead",
+          "target": {
+            "expressway": "737538573:2",
+            "share": 1
+          },
+          "altitudeM": 30,
+          "pitchDeg": 30,
+          "bearingDeg": 25,
+          "fov": 60,
+          "expect": {
+            "portal": "斜面に開く北の坑口: 坑門が地表まで立ち、トンネルの箱が地面から出て高架へ続く",
+            "terrain": "坑口の周りの地形が切り欠かれ、箱の頂版が地表から出る所が見える（坑口付近は土被りが足りない: tunnel_cover_short）"
+          }
+        },
+        {
+          "id": "north-exit-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "895902565:0",
+            "share": 0.3
+          },
+          "distanceM": 60,
+          "fov": 55,
+          "expect": {
+            "exit": "トンネルを出た高架: 側壁から壁高欄へ続き、路面の高さ・区画線が途切れない"
+          }
+        }
+      ]
+    }
+  ]
+}

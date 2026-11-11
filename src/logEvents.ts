@@ -262,6 +262,9 @@ export const LOG_EVENTS = {
     signs: count,
   }),
   pavements_built: info({ wards: z.array(z.string()), polygons: count }),
+  /** P9: streets and pavements laid again round expressway holes (cuts, tunnel portals) read later. */
+  ground_cuts_relaid: info({ holes: count, pavements: count }),
+  ground_cuts_relay_failed: warning({ error: z.string() }),
   /** Street sections after a rebuild: segments by basis, and OSM lanes that differ by direction. */
   road_sections: info({ segments: count, byBasis: counts, asymmetric: count }),
   /** Streets whose lanes reach into PLATEAU's pavement (the 幅員 / pavement assumption to check). */
@@ -829,7 +832,16 @@ export const LOG_EVENTS = {
   water_levels_written: info({ file: z.string(), gauges: count, tidal: count, bay: z.unknown() }),
   // scripts/expressway.ts (the expressway compiler, knowledge/road-redesign-plan.md 4)
   expressway_osm_read: info({ ways: count, universeWays: count, nodes: count, junctions: count }),
-  expressway_planned: info({ chains: count, runs: count, wanted: count, needed: count, crossings: count }),
+  /** belowRuns: tunnels and cuts compiled (P9); belowDeferred: those left for later (below.ts). */
+  expressway_planned: info({
+    chains: count,
+    runs: count,
+    wanted: count,
+    needed: count,
+    crossings: count,
+    belowRuns: count,
+    belowDeferred: count,
+  }),
   expressway_dem_ready: info({ tiles: count, fetched: count }),
   expressway_objects_read: info({ roads: count, rails: count }),
   /** The joint vertical QPs (compile.ts solveComponent): components, the largest, solves, time. */

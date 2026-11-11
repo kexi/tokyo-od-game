@@ -25,6 +25,7 @@ import {
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { isAllowed } from "./allowlist";
+import { belowStructure, ceilingAt, depthFor, isBelowCompiled, isHoleAt, portalsOf } from "./below";
 import {
   STATION_STRIDE,
   type XwChunk,
@@ -33,7 +34,9 @@ import {
   type XwDiagnostic,
   type XwEnd,
   type XwOver,
+  type XwPortal,
   type XwRunStructure,
+  type XwStructure,
   type XwRunSummary,
 } from "./format";
 import { planeAt, type Plane, roundTo } from "./geo";
@@ -177,6 +180,10 @@ type RunPlan = {
   halfWidth: number;
   /** The structure deck this run carries, if any. */
   over: RunOver | null;
+  /** A tunnel or cut (P9): the road goes below the ground between its portals (below.ts). */
+  below: boolean;
+  /** Per sample: 1 inside a tunnel way, 0 elsewhere (a cut, or any sample of an elevated run). */
+  tunnelAt: Uint8Array;
 };
 
 type Crossing = { upper: string; lower: string; sUpper: number; sLower: number; sinAngle: number };
@@ -207,9 +214,11 @@ export type Plan = {
   componentOf: Map<string, string>;
   diagnostics: XwDiagnostic[];
   outsideNodes: Set<number>;
-  /** Chains through each node, and the elevated runs of each chain. */
+  /** Chains through each node, and the compiled runs of each chain (elevated and below). */
   nodeChains: Map<number, string[]>;
   chainRuns: Map<string, RunPlan[]>;
+  /** Below runs not compiled (a junction under the ground or the universe's edge: below.ts). */
+  belowDeferred: string[];
 };
 
 const priority = (net: Network, c: Chain) => {
@@ -392,7 +401,10 @@ function chainPin(
 }
 
 /** The structure part of a run whose chain is pinned: where along the run its stretches lie. */
-function runOver(rp: Omit<RunPlan, "over">, found: NonNullable<ReturnType<typeof chainPin>>): RunOver | null {
+function runOver(
+  rp: Omit<RunPlan, "over" | "below" | "tunnelAt">,
+  found: NonNullable<ReturnType<typeof chainPin>>,
+): RunOver | null {
   const { st, deck } = found;
   const base = rp.align.s[rp.i0];
   const n = rp.i1 - rp.i0 + 1;
@@ -470,6 +482,7 @@ export function planNetwork(
   }
   const runs = new Map<string, RunPlan>();
   const diagnostics: XwDiagnostic[] = [];
+  const belowDeferred: string[] = [];
   for (const chain of [...chains.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const chainRuns = splitRuns(net, chain);
     if (!chainRuns.some((r) => r.elevated)) continue;
@@ -488,8 +501,12 @@ export function planNetwork(
     const found = chainPin(net, chain, plane, structures);
     const align = alignPlan(found ? { xy, anchors, pin: found.pin } : { xy, anchors });
     for (const run of chainRuns) {
-      if (!run.elevated) continue;
-      const rp = runPlan(net, chain, plane, align, run, found);
+      const isBelow = isBelowCompiled(chain, run, nodeChains, outsideNodes);
+      const isDeferred = run.below && !isBelow;
+      if (isDeferred) belowDeferred.push(run.id);
+      const isCompiled = run.elevated || isBelow;
+      if (!isCompiled) continue;
+      const rp = runPlan(net, chain, plane, align, run, isBelow ? null : found);
       runs.set(run.id, rp);
       checkRadius(rp, diagnostics);
       const isClamped = align.clamped > 0;
@@ -531,10 +548,12 @@ export function planNetwork(
     outsideNodes,
     nodeChains,
     chainRuns: new Map(),
+    belowDeferred,
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
   plan.pairs = classifyPairs(plan);
+  pruneBelow(plan);
   groupComponents(plan);
   const wanted = [...runs.values()].filter((rp) => {
     if (!ranges) return true;
@@ -605,7 +624,7 @@ function runPlan(
     }
   }
   const firstWay = net.ways.get(run.ways[0])!;
-  const rp: Omit<RunPlan, "over"> = {
+  const rp: Omit<RunPlan, "over" | "below" | "tunnelAt"> = {
     run,
     chain,
     plane,
@@ -626,7 +645,8 @@ function runPlan(
     laneHalfAt,
     halfWidth,
   };
-  return { ...rp, over: found ? runOver(rp, found) : null };
+  const tunnelAt = Uint8Array.from(wayAt, (w) => (run.below && belowStructure(net, w) === "tunnel" ? 1 : 0));
+  return { ...rp, over: found ? runOver(rp, found) : null, below: run.below, tunnelAt };
 }
 
 /**
@@ -825,6 +845,11 @@ function classifyPairs(plan: Plan): DeckPair[] {
     const [a, b] = key.split("|");
     const ra = plan.runs.get(a)!;
     const rb = plan.runs.get(b)!;
+    // A viaduct and the tunnel or cut it goes on into are one road through the portal (a seam), not
+    // two decks over one another: no pairs (the runtime would cut one at the other's edge).
+    const isPortalNeighbour =
+      ra.chain.id === rb.chain.id && (ra.run.to === rb.run.from || rb.run.to === ra.run.from);
+    if (isPortalNeighbour) continue;
     const window = (sin: number) => Math.min(60, (ra.halfWidth + rb.halfWidth) / Math.max(sin, 0.2)) + 10;
     const ordered = plan.crossings.filter(
       (c) => (c.upper === a && c.lower === b) || (c.upper === b && c.lower === a),
@@ -879,6 +904,81 @@ function classifyPairs(plan: Plan): DeckPair[] {
   return out;
 }
 
+/**
+ * Below runs that would join two components (P9): deferred, so a tunnel never makes one joint QP of
+ * what was two. A below run is kept when every run it couples to — the viaducts it seams into, the
+ * runs crossing it or over it, the ramps joining it — is in one component of the network without
+ * below runs, and none of them is itself below. Why: compiled freely the 107 below runs of the
+ * universe merged the test section's component of 56 runs into one of 381 (33,276 variables) whose
+ * QP broke down (non-finite steps) and moved the test section's decks by up to 0.9 m. Decided on the
+ * whole universe, so the same runs are kept whatever the range (T8).
+ */
+function pruneBelow(plan: Plan): void {
+  const isBelow = (id: string) => plan.runs.get(id)!.below;
+  const root = new Map<string, string>();
+  for (const id of plan.runs.keys()) root.set(id, id);
+  const find = (a: string): string => {
+    let r = a;
+    while (root.get(r) !== r) r = root.get(r)!;
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const touchesBelow = isBelow(a) || isBelow(b);
+    if (touchesBelow) return;
+    const ra = find(a);
+    const rb = find(b);
+    const isApart = ra !== rb;
+    // The smaller id is the root, as in groupComponents.
+    if (isApart) root.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
+  };
+  const partners = new Map<string, Set<string>>();
+  const touch = (a: string, b: string) => {
+    for (const [x, y] of [
+      [a, b],
+      [b, a],
+    ]) {
+      if (!isBelow(x)) continue;
+      const set = partners.get(x) ?? new Set<string>();
+      set.add(y);
+      partners.set(x, set);
+    }
+  };
+  for (const id of plan.runs.keys())
+    for (const p of junctionParents(plan, id)) {
+      union(id, p);
+      touch(id, p);
+    }
+  for (const c of [...plan.crossings, ...plan.ambiguous]) {
+    union(c.upper, c.lower);
+    touch(c.upper, c.lower);
+  }
+  for (const p of plan.pairs) {
+    union(p.a, p.b);
+    touch(p.a, p.b);
+  }
+  const dropped = new Set<string>();
+  for (const id of [...plan.runs.keys()].sort()) {
+    if (!isBelow(id)) continue;
+    const list = [...(partners.get(id) ?? [])];
+    const groups = new Set(list.map(find));
+    const isBridging = groups.size > 1 || list.some(isBelow);
+    if (isBridging) dropped.add(id);
+  }
+  if (dropped.size === 0) return;
+  for (const id of dropped) {
+    const rp = plan.runs.get(id)!;
+    plan.runs.delete(id);
+    const list = plan.chainRuns.get(rp.chain.id)!.filter((r) => r !== rp);
+    plan.chainRuns.set(rp.chain.id, list);
+    plan.belowDeferred.push(id);
+  }
+  plan.belowDeferred.sort();
+  const isKept = (a: string, b: string) => !dropped.has(a) && !dropped.has(b);
+  plan.crossings = plan.crossings.filter((c) => isKept(c.upper, c.lower));
+  plan.ambiguous = plan.ambiguous.filter((c) => isKept(c.upper, c.lower));
+  plan.pairs = plan.pairs.filter((p) => isKept(p.a, p.b));
+}
+
 /** Union of runs joined at junctions, crossing each other or over one another's decks. */
 function groupComponents(plan: Plan): void {
   const parent = new Map<string, string>();
@@ -931,6 +1031,13 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
       ? chain.ways.indexOf(run.ways[0]) - 1
       : chain.ways.indexOf(run.ways[run.ways.length - 1]) + 1;
     const next = plan.net.ways.get(chain.ways[wayIndex]);
+    // A below run going on into a viaduct takes the viaduct's portal (its elevation, which is the
+    // ground's, and its grade) as a seam: one profile through the portal, C¹ (P9).
+    const neighbour = rp.below
+      ? (plan.chainRuns.get(chain.id) ?? []).find((r) => r !== rp && r.run.from <= idx && idx <= r.run.to)
+      : undefined;
+    if (neighbour) return { kind: "seam", parent: neighbour.run.id, parentNodeIndex: idx, nodeIndex: idx };
+    if (rp.below) return { kind: "ground", nodeIndex: idx };
     const isBelow = next !== undefined && (next.structure === "tunnel" || next.structure === "cut");
     return isBelow
       ? { kind: "ground", nodeIndex: idx, into: next.structure as "tunnel" | "cut" }
@@ -1019,9 +1126,16 @@ export type Solved = {
   end: XwEnd;
   /** [s, top, clearance] of everything the run crosses over. */
   cross: number[];
-  /** [s, top] of roads at ground level under it that it does not clear (crossing_over_or_at_grade). */
-  blocked: number[];
+  /** Roads at ground level under it that it does not clear (crossing_over_or_at_grade). */
+  blocked: BlockedRoad[];
 };
+
+/**
+ * A road at ground level a deck is taken not to clear: where (s, the window either side the road's
+ * width takes along the deck), its top, the clearance it would need, and the diagnostic reporting it
+ * (removed by identity if the solved deck clears it after all).
+ */
+type BlockedRoad = { s: number; halfWindow: number; top: number; need: number; diagnostic: XwDiagnostic };
 
 export type SolveStats = {
   components: number;
@@ -1178,7 +1292,7 @@ type RunSetup = {
   /** The DEM ground at each ground or portal end (null for the others). */
   groundZ: [number | null, number | null];
   cross: number[];
-  blocked: number[];
+  blocked: BlockedRoad[];
 };
 
 function setupRun(
@@ -1225,13 +1339,14 @@ function setupRun(
     if (isShort) fixed[side] = { z: t.z, band: GROUND_END_BAND.value };
     else fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
   });
+  if (rp.below) return setupBelow(rp, stations, groundAt, ends, fixed, groundZ, ground, diagnostics);
   // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
   // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
   // the end itself); a hard floor at the DEM made the ends infeasible by centimetres.
   const lowerAtCrossings = Float64Array.from(groundAt, (g) => g - DEM_SINK_FLOOR.value);
   const lowerLaw = new Float64Array(n).fill(-Infinity);
   const cross: number[] = [];
-  const blocked: number[] = [];
+  const blocked: BlockedRoad[] = [];
   const mine = runPoly(rp);
   for (const { o, poly } of objectsNear(objects, mine)) {
     for (const [sc, , sin] of intersect(mine, poly)) {
@@ -1252,13 +1367,14 @@ function setupRun(
       const isUnreachable =
         Math.min(reach(0, sc - w), reach(1, S - sc - w)) < top + clearance + REACH_MARGIN_M;
       if (isUnreachable) {
-        diagnostics.push({
+        const diagnostic: XwDiagnostic = {
           run: id,
           kind: "crossing_over_or_at_grade",
           detail: `${o.kind} ${o.id} at ${sc.toFixed(0)} m cannot be cleared from the ground end; taken as passing over`,
           allowed: false,
-        });
-        blocked.push(sc, top);
+        };
+        diagnostics.push(diagnostic);
+        blocked.push({ s: sc, halfWindow: w, top, need: clearance, diagnostic });
         continue;
       }
       const win = Math.min(40, (rp.halfWidth + GROUND_ROAD_HALF_WIDTH.value) / Math.max(sin, 0.25));
@@ -1309,6 +1425,102 @@ function setupRun(
     groundZ,
     cross,
     blocked,
+  };
+}
+
+/** The structure (tunnel or cut) of a below run at run distance s. */
+function belowAt(rp: RunPlan, s: number): "tunnel" | "cut" {
+  const k = Math.min(rp.wayAt.length - 1, Math.max(0, sampleAt(rp, s) - rp.i0));
+  return rp.tunnelAt[k] === 1 ? "tunnel" : "cut";
+}
+
+/**
+ * A tunnel or cut (P9, below.ts): no floor over the ground and nothing it must clear underneath;
+ * instead a ceiling under the ground (the tunnel's box and cover, the cut's tolerance) wherever the
+ * descent from both portals reaches it (below.ts ceilingAt), and a target by what the run holds (a
+ * tunnel's depth, or a street bridge's clearance for a cut alone). Crossings and decks over it are couplings (couplingsOf) as on a
+ * viaduct. Stations whose ceiling is out of reach are reported once per run (tunnel_cover_short)
+ * and left free: the box's roof shows above the ground there, as at a real portal's cut-and-cover.
+ */
+function setupBelow(
+  rp: RunPlan,
+  stations: Float64Array,
+  groundAt: Float64Array,
+  ends: [EndPlan, EndPlan],
+  fixed: [RunInput["start"], RunInput["end"]],
+  groundZ: [number | null, number | null],
+  ground: GroundSampler,
+  diagnostics: XwDiagnostic[],
+): RunSetup {
+  const S = rp.length;
+  const n = stations.length;
+  // The lowest ground across the box and half a grid step along: the roof must stay under it.
+  const groundLow = stations.map((sv, k) => {
+    let low = groundAt[k];
+    for (const d of [-GRID_M / 2, GRID_M / 2]) {
+      const q = poseAt(rp, Math.min(S, Math.max(0, sv + d)));
+      low = Math.min(low, ground(q.lon, q.lat));
+    }
+    return low;
+  });
+  const portalZ = [groundAt[0], groundAt[n - 1]];
+  const upper = new Float64Array(n).fill(Infinity);
+  let short = 0;
+  let shortFrom = Infinity;
+  let shortTo = -Infinity;
+  for (let k = 0; k < n; k++) {
+    const sv = stations[k];
+    const structure = belowAt(rp, sv);
+    // The run's highest planned speed (its strictest grade and radius), as checks.checkCover reads it
+    // from the summary: a fallback that lowers the speed later does not move the ceilings.
+    const top = ceilingAt(structure, groundLow[k], sv, S, { z0: portalZ[0], z1: portalZ[1] }, rp.planV);
+    const isImposed = top !== null;
+    if (isImposed) {
+      upper[k] = top;
+      continue;
+    }
+    const isTunnel = structure === "tunnel";
+    if (!isTunnel) continue;
+    short++;
+    shortFrom = Math.min(shortFrom, sv);
+    shortTo = Math.max(shortTo, sv);
+  }
+  const isShortOfCover = short > 0;
+  if (isShortOfCover)
+    diagnostics.push({
+      run: rp.run.id,
+      kind: "tunnel_cover_short",
+      detail: `${short} stations at ${shortFrom.toFixed(0)}–${shortTo.toFixed(0)} m cannot reach the box and cover from a portal at the 第20条 grade`,
+      allowed: false,
+    });
+  // A run with a tunnel aims at the tunnel's depth all along (its cut goes down towards the box); a
+  // cut alone at the clearance under a street bridged over it (4.5 m + girder), as real 掘割 are dug.
+  const hasTunnel = rp.tunnelAt.includes(1);
+  const targetDepth = hasTunnel ? depthFor("tunnel") : ROAD_CLEAR;
+  const target = stations.map((_, k) => {
+    let sum = 0;
+    let cnt = 0;
+    for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
+      sum += groundAt[j];
+      cnt++;
+    }
+    return sum / cnt - targetDepth;
+  });
+  const none = new Float64Array(n).fill(-Infinity);
+  return {
+    rp,
+    stations,
+    target,
+    lower: none,
+    lowerAtCrossings: none,
+    lowerLaw: none,
+    lowerOpen: none,
+    upper,
+    fixed,
+    ends,
+    groundZ,
+    cross: [],
+    blocked: [],
   };
 }
 
@@ -1427,7 +1639,8 @@ function connectorsOf(plan: Plan, ids: string[]): Map<string, { start: Ref; end:
   for (const id of ids) {
     const rp = plan.runs.get(id)!;
     // A run on a structure keeps its knots: the structure's profile is pinned to them (profilePins).
-    const isCandidate = rp.cls === "ramp" && isShortRun(rp) && !rp.over;
+    // A tunnel or cut keeps its knots too: its ceilings under the ground are rows on them (P9).
+    const isCandidate = rp.cls === "ramp" && isShortRun(rp) && !rp.over && !rp.below;
     if (!isCandidate) continue;
     const refs = [true, false].map((atStart): Ref | null => {
       const e = endPlan(plan, rp, atStart);
@@ -2140,6 +2353,27 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
         allowed: false,
       });
   }
+  // A road taken as blocked from the climb a ground end allows, which the solved deck clears after
+  // all (the joint QP lifted it for another coupling: a deck over it, a seam out of a tunnel, P9), is
+  // a crossing like any other: kept for T4 with its clearance, and no longer reported or closed.
+  // Cleared means over the whole width the road takes along the deck (its lowest point there), not
+  // only at the crossing's centre line.
+  const cleared = new Set<XwDiagnostic>();
+  for (const s of solved.values()) {
+    const kept: BlockedRoad[] = [];
+    for (const b of s.blocked) {
+      const isClear =
+        lowestOver(s.profile, b.s - b.halfWindow, b.s + b.halfWindow, s.rp.length) - b.top >= b.need;
+      if (!isClear) {
+        kept.push(b);
+        continue;
+      }
+      s.cross.push(b.s, b.top, b.need);
+      cleared.add(b.diagnostic);
+    }
+    s.blocked = kept;
+  }
+  for (let i = diagnostics.length - 1; i >= 0; i--) if (cleared.has(diagnostics[i])) diagnostics.splice(i, 1);
   // Deck-over-deck crossings, recorded on the upper run once both are solved (for T4).
   for (const c of plan.crossings) {
     const up = solved.get(c.upper);
@@ -2161,7 +2395,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
     }
     if (!s) continue;
     features[id] = runFeatures(s.rp);
-    const runChunks = chunkRun(plan, s, ground, objectPolys);
+    const runChunks = chunkRun(plan, s, ground, objectPolys, solved);
     const structure = over ? structureCheck(over, runChunks) : null;
     chunks.push(...runChunks);
     runs.push({
@@ -2332,9 +2566,68 @@ function deckStretches(plan: Plan, id: string): XwDeckStretch[] {
   return out;
 }
 
-/** Stretches of a run over another deck (where its piers would stand on that deck). */
-function overDeck(plan: Plan, id: string): Array<[number, number]> {
-  return plan.pairs.filter((p) => p.a === id && p.relation === "above").map((p) => [p.sa - 6, p.sa + 6]);
+/**
+ * Stretches of a run over another deck (where its piers would stand on that deck). Over a tunnel or
+ * cut (P9) only where the road below is open to the sky: a cut, or a tunnel whose ground is cut away
+ * at a portal (expresswayBore.ts isHoleAt's rule). Over a buried tunnel a pier stands on the ground
+ * above its roof, as over any other ground. Why: counted as a deck, the tunnel under 都心環状線内回り
+ * took its 15 piers over 750 m (24402611:5–7).
+ */
+function overDeck(
+  plan: Plan,
+  id: string,
+  solved: ReadonlyMap<string, Solved>,
+  ground: GroundSampler,
+): Array<[number, number]> {
+  const isOpenBelow = (p: DeckPair) => {
+    const lower = plan.runs.get(p.b)!;
+    if (!lower.below) return true;
+    if (belowAt(lower, p.sb) === "cut") return true;
+    const done = solved.get(p.b);
+    if (!done) return false;
+    const pose = poseAt(lower, p.sb);
+    return isHoleAt("tunnel", evalProfile(done.profile, p.sb).z, ground(pose.lon, pose.lat));
+  };
+  return plan.pairs
+    .filter((p) => p.a === id && p.relation === "above" && isOpenBelow(p))
+    .map((p) => [p.sa - 6, p.sa + 6]);
+}
+
+/**
+ * A below run's portals (below.ts portalsOf): before its start and after its end a viaduct (a seam)
+ * or the ground, and every change between tunnel and cut at a way boundary inside it.
+ */
+function belowPortals(plan: Plan, s: Solved): XwPortal[] {
+  const { rp } = s;
+  const base = rp.align.s[rp.i0];
+  const outside = (e: XwEnd): XwStructure => (e.kind === "seam" ? "viaduct" : "ground");
+  const boundaries: Array<{ s: number; from: "tunnel" | "cut"; to: "tunnel" | "cut" }> = [];
+  for (let w = 1; w < rp.run.ways.length; w++) {
+    const wayIndex = rp.chain.ways.indexOf(rp.run.ways[w]);
+    const node = rp.chain.wayStarts[wayIndex];
+    boundaries.push({
+      s: roundTo(rp.align.s[rp.align.vertexSample[node]] - base, 2),
+      from: belowStructure(plan.net, rp.run.ways[w - 1]),
+      to: belowStructure(plan.net, rp.run.ways[w]),
+    });
+  }
+  return portalsOf(
+    roundTo(rp.length, 2),
+    outside(s.start),
+    outside(s.end),
+    boundaries,
+    belowStructure(plan.net, rp.run.ways[0]),
+    belowStructure(plan.net, rp.run.ways[rp.run.ways.length - 1]),
+  );
+}
+
+/** The lowest elevation of a profile over [a, b] (clamped to the run), every metre and at b. */
+function lowestOver(profile: VerticalProfile, a: number, b: number, length: number): number {
+  const lo = Math.max(0, a);
+  const hi = Math.min(length, b);
+  let low = evalProfile(profile, hi).z;
+  for (let sv = lo; sv < hi; sv += 1) low = Math.min(low, evalProfile(profile, sv).z);
+  return low;
 }
 
 /** Whether s belongs to the chunk [a, b) (the last chunk keeps its end). */
@@ -2342,7 +2635,13 @@ function within(sv: number, a: number, b: number, isLast: boolean): boolean {
   return sv >= a && (sv < b || (isLast && sv <= b));
 }
 
-function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectPoly[]): XwChunk[] {
+function chunkRun(
+  plan: Plan,
+  s: Solved,
+  ground: GroundSampler,
+  objects: ObjectPoly[],
+  solved: ReadonlyMap<string, Solved>,
+): XwChunk[] {
   const { rp, profile } = s;
   const S = rp.length;
   const base = rp.align.s[rp.i0];
@@ -2356,7 +2655,10 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
     const prevWay = isWayStart ? plan.net.ways.get(rp.chain.ways[wayIndex - 1])! : null;
     const nextWay = isWayStart ? plan.net.ways.get(rp.chain.ways[wayIndex])! : null;
     const isSectionChange = prevWay !== null && nextWay !== null && prevWay.lanes !== nextWay.lanes;
-    if (isJunction || isSectionChange) cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
+    // A tunnel's portal inside a below run: a chunk is all tunnel or all cut (P9).
+    const isPortal =
+      rp.below && prevWay !== null && nextWay !== null && prevWay.structure !== nextWay.structure;
+    if (isJunction || isSectionChange || isPortal) cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
   }
   for (const z of profile.zones) if (z.from > 0) cuts.add(z.from);
   const o = rp.over;
@@ -2405,11 +2707,13 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       avoid.push([sc - w, sc + w]);
     }
   }
-  const decksBelow = overDeck(plan, rp.run.id);
+  const decksBelow = overDeck(plan, rp.run.id, solved, ground);
   const stretches = deckStretches(plan, rp.run.id);
   const piers: number[] = [];
   const spacing = PIER_SPACING.value;
-  for (let k = 1; k * spacing < S - 5; k++) {
+  // A tunnel or cut stands on the ground: no piers.
+  const pierCount = rp.below ? 0 : Math.ceil(S / spacing);
+  for (let k = 1; k < pierCount && k * spacing < S - 5; k++) {
     let at = k * spacing;
     const hit = avoid.find(([a, b]) => at >= a && at <= b);
     if (hit) {
@@ -2478,6 +2782,7 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       girder,
     };
   };
+  const portals = rp.below ? belowPortals(plan, s) : [];
   const chunks: XwChunk[] = [];
   for (let k = 0; k + 1 < bounds.length; k++) {
     const a = bounds[k];
@@ -2508,7 +2813,14 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       positions.push(sv);
     positions.push(b);
     for (const sv of stationPositions(positions, curvatureKnots(profile, a, b), a, b)) push(sv);
-    const { section, over, girder } = sectionAt(a, b);
+    const { section, over, girder: deckGirder } = sectionAt(a, b);
+    const structure = rp.below ? belowAt(rp, (a + b) / 2) : "viaduct";
+    const girder = rp.below ? 0 : deckGirder;
+    // A portal on a chunk boundary belongs to the tunnel's chunk (which draws its 坑門): the one after
+    // it going in, the one before it coming out; otherwise to the chunk after it. The s are rounded
+    // to 1 cm, so it is looked up 1 cm to that side, and the run's last one at S.
+    const sideOf = (p: XwPortal) => (p.from === "tunnel" ? Math.max(0, p.s - 0.01) : Math.min(p.s + 0.01, S));
+    const chunkPortals = portals.filter((p) => within(sideOf(p), a, b, isLast));
     const V = zoneSpeedAt(profile.zones, (a + b) / 2);
     const chunkPiers: number[] = [];
     for (let i = 0; i < piers.length; i += 2) {
@@ -2522,10 +2834,10 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       chunkCross.push(roundTo(sc, 2), roundTo(s.cross[i + 1], 3), roundTo(s.cross[i + 2], 3), roundTo(z, 3));
     }
     const chunkBlocked: number[] = [];
-    for (let i = 0; i < s.blocked.length; i += 2) {
-      const sc = s.blocked[i];
+    for (const road of s.blocked) {
+      const sc = road.s;
       if (!within(sc, a, b, isLast)) continue;
-      chunkBlocked.push(roundTo(sc, 2), roundTo(s.blocked[i + 1], 3), roundTo(evalProfile(profile, sc).z, 3));
+      chunkBlocked.push(roundTo(sc, 2), roundTo(road.top, 3), roundTo(evalProfile(profile, sc).z, 3));
     }
     chunks.push({
       id: `${rp.run.id}:${k}`,
@@ -2535,7 +2847,8 @@ function chunkRun(plan: Plan, s: Solved, ground: GroundSampler, objects: ObjectP
       cls: rp.cls,
       ref: rp.ref,
       name: rp.name,
-      structure: "viaduct",
+      structure,
+      ...(chunkPortals.length > 0 ? { portals: chunkPortals } : {}),
       over,
       lanes: section.lanes,
       laneWidth: section.laneWidth,

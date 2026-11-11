@@ -29,8 +29,10 @@ import { geodeticToEcef } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import type { DemStore } from "./dem";
+import type { CutTest } from "./groundCuts";
 import { FarGround, type TileRect } from "./farGround";
 import { TerrainHeight } from "./terrainHeight";
+import { colliderTriangles, type CutGridTest, type GridTest } from "./terrainCut";
 
 type Chunk = {
   x: number;
@@ -48,6 +50,8 @@ type Chunk = {
   waterMask: Uint8Array | null;
   waterSize: number;
   waterVersion: number;
+  /** The expressway's cut-out (GroundWater.cutTest) on the chunk's grid (terrainCut.ts), or null. */
+  cutTest: CutGridTest | null;
 };
 
 /**
@@ -60,6 +64,12 @@ export type GroundWater = {
   versionAt(x: number, y: number): number;
   /** Water over the z15 chunk (rows north first, 0–255 = share of the pixel) or null when it has none. */
   maskAt(x: number, y: number): { data: Uint8Array; size: number } | null;
+  /**
+   * Ground taken away for the expressway's cuts and tunnel portals (P9, groundCuts.ts), already in
+   * `maskAt`: the exact test of a point of the z15 chunk (u east, v south, 0–1), or null when none
+   * reaches it. The collider is clipped to it (terrainCut.ts), not only thinned like water's.
+   */
+  cutTest?(x: number, y: number): CutTest | null;
 };
 
 /** No water: one dry texel, filtered like the masks that replace it (they share the sampler). */
@@ -319,6 +329,7 @@ export class Terrain {
       waterMask: null,
       waterSize: 0,
       waterVersion: -1,
+      cutTest: null,
     };
     this.placeMesh(chunk);
     this.scene.add(mesh);
@@ -345,40 +356,29 @@ export class Terrain {
     }
     const index = chunk.mesh.geometry.getIndex();
     if (!index) return;
+    const mesh = colliderTriangles(verts, index.array, S, this.wetTest(chunk), chunk.cutTest);
     const desc = RAPIER.ColliderDesc.trimesh(
-      verts,
-      this.dryTriangles(chunk, index.array),
+      mesh.vertices,
+      mesh.indices,
       RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES,
     ).setFriction(1.0);
     chunk.collider = this.world.createCollider(desc);
   }
 
   /**
-   * The chunk's triangles minus those lying wholly on water (all three corners and the middle):
-   * the riverbed of the DEM is not ground to drive on. Triangles reaching a bank stay, so the
-   * shore and streams narrower than the grid (~15 m) keep their ground.
+   * Whether a grid point of the chunk is on water (the mask's share ≥ 50 %), or null without water.
+   * The riverbed of the DEM is not ground to drive on (terrainCut.ts keeps the triangles reaching a
+   * bank).
    */
-  private dryTriangles(chunk: Chunk, index: ArrayLike<number>): Uint32Array {
+  private wetTest(chunk: Chunk): GridTest | null {
     const mask = chunk.waterMask;
-    if (!mask) return new Uint32Array(index);
+    if (!mask) return null;
     const size = chunk.waterSize;
-    const isWet = (i: number, j: number) => {
+    return (i, j) => {
       const px = Math.min(size - 1, Math.floor((i / S) * size));
       const py = Math.min(size - 1, Math.floor((j / S) * size));
       return mask[py * size + px] >= 128;
     };
-    const kept: number[] = [];
-    for (let t = 0; t + 2 < index.length; t += 3) {
-      const corners = [index[t], index[t + 1], index[t + 2]].map((k) => [
-        k % (S + 1),
-        Math.floor(k / (S + 1)),
-      ]);
-      const ci = (corners[0][0] + corners[1][0] + corners[2][0]) / 3;
-      const cj = (corners[0][1] + corners[1][1] + corners[2][1]) / 3;
-      const isOnWater = corners.every(([i, j]) => isWet(i, j)) && isWet(ci, cj);
-      if (!isOnWater) kept.push(index[t], index[t + 1], index[t + 2]);
-    }
-    return new Uint32Array(kept);
   }
 
   private applyWater(chunk: Chunk, version: number): void {
@@ -387,6 +387,12 @@ export class Terrain {
     if (chunk.water.value !== NO_WATER) chunk.water.value.dispose();
     chunk.waterMask = mask?.data ?? null;
     chunk.waterSize = mask?.size ?? 0;
+    const cut = this.water?.cutTest?.(chunk.x, chunk.y) ?? null;
+    chunk.cutTest = cut
+      ? Object.assign((i: number, j: number) => cut(i / S, j / S), {
+          near: (i0: number, j0: number, i1: number, j1: number) => cut.near(i0 / S, j0 / S, i1 / S, j1 / S),
+        })
+      : null;
     if (mask) {
       const maskTexture = new DataTexture(mask.data, mask.size, mask.size, RedFormat);
       maskTexture.magFilter = LinearFilter;

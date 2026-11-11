@@ -388,13 +388,55 @@ export class Buildings {
       lx[i] = m[0] * x + m[4] * y + m[8] * z + m[12];
       lz[i] = m[2] * x + m[6] * y + m[10] * z + m[14];
     }
-    const boxes = this.hidden.map((ring) => {
+    this.collapseInside(geometry, lx, lz, this.hidden);
+  }
+
+  /**
+   * Leave out what stands in more rings (lon/lat) on the buildings already loaded as well as those
+   * still to come: the expressway's cuts and tunnel portals (P9, groundCuts.ts), which arrive with
+   * their tiles after the buildings may have loaded. No walls, and the landmark walls' collider is not
+   * made again (a cut has its own retaining walls).
+   */
+  addHiddenRings(rings: Array<Array<[number, number]>>): void {
+    if (rings.length === 0) return;
+    const local = rings.map((r) => r.map(([lon, lat]) => this.frame.toLocal(lat, lon, this.frame.origin.h)));
+    this.hiddenRings = [...this.hiddenRings, ...rings];
+    this.hidden = [...this.hidden, ...local];
+    const v = new Vector3();
+    for (const { scene } of this.models.values()) {
+      scene.updateMatrixWorld(true);
+      scene.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        const geometry = o.geometry as BufferGeometry;
+        const pos = geometry.getAttribute("position");
+        const lx = new Float32Array(pos.count);
+        const lz = new Float32Array(pos.count);
+        // Attached to the group, world matrices are in the local frame already.
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+          lx[i] = v.x;
+          lz[i] = v.z;
+        }
+        this.collapseInside(geometry, lx, lz, local);
+      });
+    }
+  }
+
+  /** Collapse the triangles whose centre (lx, lz per vertex) lies inside one of `rings`. */
+  private collapseInside(
+    geometry: BufferGeometry,
+    lx: Float32Array,
+    lz: Float32Array,
+    rings: Vector3[][],
+  ): void {
+    if (rings.length === 0) return;
+    const boxes = rings.map((ring) => {
       const xs = ring.map((p) => p.x);
       const zs = ring.map((p) => p.z);
       return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
     });
     const inside = (x: number, z: number) =>
-      this.hidden.some((ring, k) => {
+      rings.some((ring, k) => {
         const [x0, x1, z0, z1] = boxes[k];
         if (x < x0 || x > x1 || z < z0 || z > z1) return false;
         let isIn = false;
@@ -406,7 +448,7 @@ export class Buildings {
         return isIn;
       });
     const index = geometry.getIndex();
-    const tris = index ? index.count / 3 : n / 3;
+    const tris = index ? index.count / 3 : lx.length / 3;
     let cut = 0;
     for (let t = 0; t < tris; t++) {
       const [a, b, c] = index

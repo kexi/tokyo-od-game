@@ -2,7 +2,7 @@
 // extract → plan and vertical alignment within 道路構造令 (src/expressway/) → public/data/expressway/
 // <x>-<y>.json (z14 tiles of ≤ 300 m chunks) and meta.json. The ground constraints read GSI DEM
 // tiles exactly as the game does (scripts/demTiles.ts), cached under .cache/gsi-dem.
-// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow|all] [--pbf <path>] [--out <dir>]
+// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow,azabudai|all] [--pbf <path>] [--out <dir>]
 // (--range takes one or more named ranges joined by commas; the default is DEFAULT_RANGES.)
 // Structure overrides (src/expressway/structures.ts): the deck levels of the landmarks in
 // public/data/landmarks.json (レインボーブリッジ) pin the decks they carry, and the street ways they
@@ -26,6 +26,7 @@ import {
   PIER_STRIDE,
   STATION_STRIDE,
   type XwMeta,
+  XW_FEATURES,
   XW_VERSION,
   type XwTile,
 } from "../src/expressway/format.ts";
@@ -179,6 +180,8 @@ log("expressway_planned", {
   wanted: plan.wanted.size,
   needed: plan.needed.length,
   crossings: plan.crossings.length,
+  belowRuns: [...plan.runs.values()].filter((r) => r.below).length,
+  belowDeferred: plan.belowDeferred.length,
 });
 
 // 3. The ground under the needed runs.
@@ -289,6 +292,7 @@ const UNSOLVED = [
 const isUnsolved = (kind: string) => UNSOLVED.includes(kind);
 const meta: XwMeta = {
   version: XW_VERSION,
+  features: [...XW_FEATURES],
   zoom: Z,
   tiles: tileKeys,
   ranges: rangeNames.map((name) => ({ name, ...RANGES[name] })),

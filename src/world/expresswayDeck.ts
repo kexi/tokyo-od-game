@@ -2,17 +2,21 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import {
   BufferGeometry,
   Float32BufferAttribute,
+  DoubleSide,
   type Material,
   type Matrix4,
   Mesh,
+  MeshBasicMaterial,
   type Quaternion,
   type Scene,
   Vector3,
 } from "three";
-import { PARAPET_HEIGHT, PARAPET_WIDTH, ZEBRA } from "../expressway/assumptions";
+import { PARAPET_HEIGHT, PARAPET_WIDTH, TUNNEL_WALKWAY, ZEBRA } from "../expressway/assumptions";
+import { TUNNEL_INNER_HEIGHT_M } from "../expressway/below";
 import {
   PIER_STRIDE,
   STATION_STRIDE,
+  XW_FEATURES,
   XW_VERSION,
   type XwChunk,
   type XwEntrance,
@@ -22,7 +26,7 @@ import {
 } from "../expressway/format";
 import { haversine, tileKey } from "../expressway/geo";
 import { deckLevelAt, nearestOnChunk } from "../expressway/deckLevel";
-import { ST, surfaceAt } from "../expressway/profile";
+import { frameAt, ST, surfaceAt } from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
 import { FrameWork } from "../game/frameWork";
 import { SerialWork } from "../game/serialWork";
@@ -56,6 +60,7 @@ import {
   ringPoint,
 } from "./expresswayMerge";
 import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expresswayRoads";
+import { BORE_FACES, boreLoop, headwallQuads, lampQuads } from "./expresswayBore";
 
 /**
  * Expressway decks from public/data/expressway (knowledge/road-redesign-plan.md 4.5). Each ≤ 300 m
@@ -167,6 +172,8 @@ export function* deckArraySteps(
     sides: RingSides[];
     /** Stretches of a "same" pair left apart (expressway_merge_skipped). */
     skipped: MergeSkip[];
+    /** A tunnel's ceiling lamps (P9): positions of unlit triangles drawn bright, empty elsewhere. */
+    lamps: Float32Array;
   }
 > {
   const n = chunk.st.length / STATION_STRIDE;
@@ -196,7 +203,22 @@ export function* deckArraySteps(
   const m = rings.length;
   const gw = own.edge * GIRDER_BOTTOM_SHARE;
   const ph = PARAPET_HEIGHT.value;
-  const corners = (i: number): Corners => {
+  // Below the ground (P9) the section is a tunnel's box or a cut's walls (expresswayBore.ts) along
+  // the same rings: no merging (no deck shares a surface with one in the data), no girder.
+  const bore = chunk.structure === "tunnel" || chunk.structure === "cut" ? chunk.structure : null;
+  const boreCorners = (i: number): Corners => {
+    const r = rings[i];
+    return boreLoop(
+      bore!,
+      own.hw,
+      (u, v) => ringPoint(r, u, v).toArray(),
+      (u) => liftAt(r, u, bank),
+      r.groundY - r.c.y,
+    );
+  };
+  const faceOf = (k: number) =>
+    bore ? BORE_FACES[bore][k] : { colour: faceColour(k), solid: SOLID_FACES.has(k) };
+  const deckCorners = (i: number): Corners => {
     const r = rings[i];
     const sd = sides[i];
     const lift = (u: number) => liftAt(r, u, bank);
@@ -265,6 +287,7 @@ export function* deckArraySteps(
     loop.push(loop[0]);
     return loop;
   };
+  const corners = bore ? boreCorners : deckCorners;
   const pos: number[] = [];
   const col: number[] = [];
   const solid: number[] = [];
@@ -278,8 +301,9 @@ export function* deckArraySteps(
       const b = prev[k + 1];
       const c = cur[k + 1];
       const d = cur[k];
-      const colour = faceColour(k);
-      const isSolid = SOLID_FACES.has(k);
+      const face = faceOf(k);
+      const colour = face.colour;
+      const isSolid = face.solid;
       // Faces wind so their front is outward for a loop drawn left → right over the top.
       for (const tri of [
         [a, d, c],
@@ -296,6 +320,9 @@ export function* deckArraySteps(
     if (checkpoint) yield;
   }
   apronTriangles(chunk, own.edge, rings, bank, pos, col);
+  const lamps: number[] = [];
+  const isTunnel = bore === "tunnel";
+  if (isTunnel) tunnelExtras(chunk, own.hw, rings, bank, pos, col, solid, lamps);
   const marks = planDeckMarkings(
     chunk,
     rings.map((r, i) => ({ s: r.frame.s, sides: sides[i] })),
@@ -315,7 +342,71 @@ export function* deckArraySteps(
     rings,
     sides,
     skipped: merge?.skipped.get(chunk.id) ?? [],
+    lamps: new Float32Array(lamps),
   };
+}
+
+/** Headwall concrete (the 坑門), as BORE_COLOURS.retaining. */
+const HEADWALL = [0.6, 0.59, 0.55];
+
+/**
+ * The parts of a tunnel chunk beyond its extruded section (P9): each portal's 坑門 (drawn and solid)
+ * and the ceiling lamps (`lamps`, drawn by the caller unlit). The ground beside a cut keeps its own
+ * collider up to the hole (terrainCut.ts clips the terrain's triangles); an apron of our own at the
+ * ring's ground (the first version) stepped against the DEM's plane and is gone.
+ */
+function tunnelExtras(
+  chunk: XwChunk,
+  hw: number,
+  rings: DeckRing[],
+  bank: boolean,
+  pos: number[],
+  col: number[],
+  solid: number[],
+  lamps: number[],
+): void {
+  const pushQuad = (q: number[][], colour: number[] | null, into: number[] | null) => {
+    for (const tri of [
+      [q[0], q[1], q[2]],
+      [q[0], q[2], q[3]],
+    ]) {
+      if (colour) {
+        for (const p of tri) pos.push(p[0], p[1], p[2]);
+        for (let v = 0; v < 3; v++) col.push(...colour);
+      }
+      if (into) for (const p of tri) into.push(p[0], p[1], p[2]);
+    }
+  };
+  const ss = rings.map((r) => r.frame.s);
+  /** The ring interval holding s (bisection) and the share of it. */
+  const ringAt = (s: number) => {
+    let lo = 0;
+    let hi = ss.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      const isBefore = ss[mid] <= s;
+      if (isBefore) lo = mid;
+      else hi = mid;
+    }
+    const i = Math.min(lo, ss.length - 2);
+    const t = Math.min(1, Math.max(0, (s - ss[i]) / (ss[i + 1] - ss[i] || 1)));
+    return { i, t };
+  };
+  const pointAt = (s: number, u: number, v: number) => {
+    const { i, t } = ringAt(s);
+    const a = ringPoint(rings[i], u, liftAt(rings[i], u, bank) + v);
+    const b = ringPoint(rings[i + 1], u, liftAt(rings[i + 1], u, bank) + v);
+    return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t];
+  };
+  for (const portal of chunk.portals ?? []) {
+    const isMouth = (portal.from === "tunnel") !== (portal.to === "tunnel");
+    if (!isMouth) continue;
+    const atEnd = Math.abs(portal.s - ss[ss.length - 1]) < Math.abs(portal.s - ss[0]);
+    const r = rings[atEnd ? rings.length - 1 : 0];
+    const at = (u: number, v: number) => ringPoint(r, u, v).toArray();
+    for (const q of headwallQuads(hw, at, r.groundY - r.c.y)) pushQuad(q, HEADWALL, solid);
+  }
+  for (const q of lampQuads(hw, ss[0], ss[ss.length - 1], pointAt)) pushQuad(q, null, lamps);
 }
 
 /**
@@ -693,9 +784,14 @@ type Built = {
   body: RAPIER.RigidBody | null;
 };
 
-/** Whether meta.json is of the format this code reads (format.ts XW_VERSION). */
-export function isSupportedMeta(meta: Pick<XwMeta, "version">): boolean {
-  return meta.version === XW_VERSION;
+/**
+ * Whether meta.json is of the format this code reads: its version (format.ts XW_VERSION) and only
+ * features it knows (XW_FEATURES).
+ */
+export function isSupportedMeta(meta: Pick<XwMeta, "version" | "features">): boolean {
+  const known: readonly string[] = XW_FEATURES;
+  const hasOnlyKnown = (meta.features ?? []).every((f) => known.includes(f));
+  return meta.version === XW_VERSION && hasOnlyKnown;
 }
 
 /** The fixed body of a chunk: its trimesh and pier cuboids, placed in the current frame. */
@@ -733,6 +829,10 @@ export class ExpresswayDecks {
   private readonly tiles = new Map<string, Promise<XwTile | null>>();
   /** Chunks of the tiles read so far, by id (what the graph and the neighbour tests see). */
   private readonly known = new Map<string, XwChunk>();
+  /** Tunnel mouths per run (tunnelAt), dropped when a tile adds chunks. */
+  private readonly mouths = new Map<string, number[]>();
+  /** Told of every tunnel and cut chunk read (groundCuts.ts cuts the terrain over it). */
+  private readonly boreListeners: Array<(chunk: XwChunk) => void> = [];
   private index: DeckIndex = new DeckIndex(new Map());
   private readonly built = new Map<string, Built>();
   private readonly colliderHandles = new Set<number>();
@@ -746,6 +846,8 @@ export class ExpresswayDecks {
   private readonly work = new SerialWork();
   /** Shared by every chunk's mesh, made at the first one (the textures load only with decks). */
   private material: Material | null = null;
+  /** Tunnel lamps (P9): warm white, unlit, double-sided (seen from below). */
+  private readonly lampMaterial = new MeshBasicMaterial({ color: 0xfff1d6, side: DoubleSide });
   private centre: { lat: number; lon: number } | null = null;
   /** The centre of the last refresh that finished (every collider in reach of it built). */
   private settled: { lat: number; lon: number } | null = null;
@@ -823,6 +925,49 @@ export class ExpresswayDecks {
   }
 
   /** How many chunks are drawn (for checks). */
+  /** Call `fn` with every tunnel and cut chunk read, those read already first (P9). */
+  onBore(fn: (chunk: XwChunk) => void): void {
+    this.boreListeners.push(fn);
+    for (const c of this.known.values()) if (c.structure !== "viaduct") fn(c);
+  }
+
+  /**
+   * The tunnel a point is inside (under its roof, between its walls: lon/lat and the ellipsoidal
+   * height), or null: the chunk and how far the point is along the road from the run's nearest
+   * tunnel mouth (m). The environment shuts out the sky by it (main.ts). From the stations, not the
+   * mesh: a chunk's geometry is in the frame it was built in.
+   */
+  tunnelAt(lat: number, lon: number, height: number): { chunk: string; depthM: number } | null {
+    for (const b of this.built.values()) {
+      const c = b.chunk;
+      if (c.structure !== "tunnel") continue;
+      const isFar = haversine(lon, lat, b.lon, b.lat) > 400;
+      if (isFar) continue;
+      const hit = tunnelPoint(c, lat, lon, height, this.ellipsoidal);
+      if (hit === null) continue;
+      let depthM = Infinity;
+      for (const m of this.mouthsOf(c.run)) depthM = Math.min(depthM, Math.abs(hit - m));
+      return { chunk: c.id, depthM };
+    }
+    return null;
+  }
+
+  /** The run distances of a run's tunnel mouths (from the chunks read), kept per run. */
+  private mouthsOf(run: string): number[] {
+    const cached = this.mouths.get(run);
+    if (cached) return cached;
+    const out: number[] = [];
+    for (const k of this.known.values()) {
+      if (k.run !== run) continue;
+      for (const p of k.portals ?? []) {
+        const isMouth = (p.from === "tunnel") !== (p.to === "tunnel");
+        if (isMouth) out.push(p.s);
+      }
+    }
+    this.mouths.set(run, out);
+    return out;
+  }
+
   chunkCount(): number {
     return this.built.size;
   }
@@ -930,7 +1075,7 @@ export class ExpresswayDecks {
         if (!isSupportedMeta(meta)) {
           warn("expressway_tile_failed", {
             key: "meta",
-            error: `version ${String(meta.version)} ≠ ${XW_VERSION}`,
+            error: `version ${String(meta.version)} ≠ ${XW_VERSION} or features ${JSON.stringify(meta.features ?? [])}`,
           });
           this.hasNoData = true;
           return null;
@@ -961,7 +1106,10 @@ export class ExpresswayDecks {
             if (!this.known.has(c.id)) fresh.push(c);
             this.known.set(c.id, c);
             this.index.add(c);
+            const isBelow = c.structure !== "viaduct";
+            if (isBelow) for (const fn of this.boreListeners) fn(c);
           }
+          this.mouths.clear();
           if (tile) this.tileVersion++;
           this.announceCuts(fresh);
           return tile;
@@ -984,7 +1132,10 @@ export class ExpresswayDecks {
     // Isolated: this runs inside loadTile's promise, and a throw here would leave a rejected
     // promise in this.tiles, so the tile's decks would never be built.
     try {
-      const points = chunks.flatMap((c) =>
+      // Over a tunnel or cut (P9) nothing is cut down: the buildings above a tunnel stand on the
+      // ground, and those in its holes are left out by groundCuts.ts (main.ts).
+      const decks = chunks.filter((c) => c.structure === "viaduct");
+      const points = decks.flatMap((c) =>
         deckCutPoints(c).map((p) => ({
           lat: p.lat,
           lon: p.lon,
@@ -1139,7 +1290,7 @@ export class ExpresswayDecks {
 
   private publish(
     chunk: XwChunk,
-    result: { arrays: DeckArrays; collider: ColliderArrays; piers: PierBox[] },
+    result: { arrays: DeckArrays; collider: ColliderArrays; piers: PierBox[]; lamps?: Float32Array },
     frame: LocalFrame,
   ): Built {
     const g = new BufferGeometry();
@@ -1156,6 +1307,17 @@ export class ExpresswayDecks {
     mesh.name = `expressway-${chunk.id}`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    // A tunnel's lamps: unlit, so they glow by day and by night alike; a child of the deck, so they
+    // move with it on a change of origin.
+    const hasLamps = (result.lamps?.length ?? 0) > 0;
+    if (hasLamps) {
+      const lg = new BufferGeometry();
+      lg.setAttribute("position", new Float32BufferAttribute(result.lamps!, 3));
+      lg.computeBoundingSphere();
+      const lamps = new Mesh(lg, this.lampMaterial);
+      lamps.name = `expressway-lamps-${chunk.id}`;
+      mesh.add(lamps);
+    }
     this.scene.add(mesh);
     const mid = Math.floor(chunk.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
     return {
@@ -1194,7 +1356,47 @@ export class ExpresswayDecks {
     this.removeBody(b);
     this.scene.remove(b.mesh);
     b.mesh.geometry.dispose();
+    for (const child of b.mesh.children) if (child instanceof Mesh) child.geometry.dispose();
   }
+}
+
+/**
+ * Run distance of a point inside a tunnel chunk (within its walls and under its roof), or null when
+ * the point is outside it: projected onto the centre line between stations, the road's height there
+ * the Hermite surface (profile.ts). Why not the nearest station: stations lie up to ~21 m apart in a
+ * straight tunnel, and the shelter (main.ts) stepped from one to the next (8 → 45 % of the sun at
+ * s = 563 m, review of P9).
+ */
+export function tunnelPoint(
+  c: XwChunk,
+  lat: number,
+  lon: number,
+  height: number,
+  ellipsoidal: Ellipsoidal,
+): number | null {
+  const kx = 111320 * Math.cos((lat * Math.PI) / 180);
+  const ky = 110574;
+  const n = c.st.length / STATION_STRIDE;
+  let best: { d: number; s: number } | null = null;
+  for (let k = 0; k + 1 < n; k++) {
+    const a = k * STATION_STRIDE;
+    const b = a + STATION_STRIDE;
+    const ax = (c.st[a + ST.lon] - lon) * kx;
+    const ay = (c.st[a + ST.lat] - lat) * ky;
+    const ex = (c.st[b + ST.lon] - c.st[a + ST.lon]) * kx;
+    const ey = (c.st[b + ST.lat] - c.st[a + ST.lat]) * ky;
+    const t = Math.min(1, Math.max(0, -(ax * ex + ay * ey) / (ex * ex + ey * ey || 1)));
+    const d = Math.hypot(ax + ex * t, ay + ey * t);
+    const isCloser = best === null || d < best.d;
+    if (isCloser) best = { d, s: c.st[a + ST.s] + (c.st[b + ST.s] - c.st[a + ST.s]) * t };
+  }
+  const half = carriagewayWidth(c) / 2 + TUNNEL_WALKWAY.value.width;
+  const isBetweenWalls = best !== null && best.d <= half;
+  if (!isBetweenWalls) return null;
+  const f = frameAt(c.st, best!.s);
+  const road = ellipsoidal(f.lat, f.lon, f.z);
+  const isUnderRoof = height > road - 1 && height < road + TUNNEL_INNER_HEIGHT_M;
+  return isUnderRoof ? best!.s : null;
 }
 
 /** The q-quantile of slice lengths (ms, one decimal), 0 without any. */

@@ -188,8 +188,13 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
     const q = pts[Math.min(lo + 1, pts.length - 1)];
     return hermite(p.s, p.z, p.g, q.s, q.z, q.g, s).z;
   };
+  // A run and the tunnel or cut it goes on into (P9) are one road through a portal (the same chain):
+  // near the portal each is over the other's carriageway, at the other's height plus its grade.
+  const chainOf = new Map(chunks.map((c) => [c.run, c.chain]));
   const found = new Map<string, Overlap>();
   for (const pair of planOverlaps(planLines, 0)) {
+    const isSameRoad = chainOf.get(pair.a) === chainOf.get(pair.b);
+    if (isSameRoad) continue;
     const za = lines.get(pair.a)![pair.ia].z;
     const dz = za - surface(pair.b, pair.sb);
     const isAllowed = Math.abs(dz) <= SAME_SURFACE_M || Math.abs(dz) >= LEVEL_APART_M;

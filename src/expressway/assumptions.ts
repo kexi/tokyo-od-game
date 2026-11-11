@@ -185,6 +185,59 @@ export const ZEBRA: Assumption<{ outline: number; stripe: number; pitch: number 
   reason: "未確認。別表の例示図から転記していない。見た目の目安",
 };
 
+/**
+ * Room above a tunnel's clearance for the lamps, signs and jet fans hung there: the inner height is
+ * 第12条's H plus this (below.ts TUNNEL_INNER_HEIGHT_M). 第34条 asks for lighting, ventilation and
+ * emergency facilities "where needed" and fixes no height.
+ */
+export const TUNNEL_EQUIPMENT_ROOM: Assumption<number> = {
+  value: 0.8,
+  verified: false,
+  reason:
+    "未確認。建築限界 H 4.5 m（第12条、e-Gov で確認）の上に照明・標識・換気設備を吊る余裕。都市高速の開削トンネルの内空高（H + この値 = 5.3 m）は調べていない",
+};
+
+/**
+ * Depth of the tunnel box's roof (頂版) and the least soil over it: the compiler keeps the road at
+ * least TUNNEL_INNER_HEIGHT + roof + cover below the ground wherever it can reach that depth from a
+ * portal at the 第20条 grade.
+ */
+export const TUNNEL_ROOF: Assumption<{ slab: number; cover: number }> = {
+  value: { slab: 0.8, cover: 0.5 },
+  verified: false,
+  reason:
+    "未確認。開削の箱型トンネルの頂版厚 0.6〜1.0 m 程度と、坑口付近の最小の土被りの目安。都市高速の実際の土被りは調べていない（道路の下の埋設物の深さで決まることが多い）",
+};
+
+/**
+ * The raised inspection walkway (監査路・監視員通路) along each tunnel wall: width and curb height. It
+ * stands outside the shoulder, so the clearance (第12条) is not narrowed by it.
+ */
+export const TUNNEL_WALKWAY: Assumption<{ width: number; curb: number }> = {
+  value: { width: 0.75, curb: 0.25 },
+  verified: false,
+  reason: "未確認。トンネルの監査路の幅 0.75 m・縁石高 0.25 m 程度という一般的な目安。基準書は確かめていない",
+};
+
+/**
+ * The retaining walls of a cut (掘割の擁壁): how far they rise above the ground at the road's edge
+ * (a parapet against falling in), and their thickness.
+ */
+export const CUT_WALL: Assumption<{ above: number; thickness: number }> = {
+  value: { above: 0.4, thickness: 0.5 },
+  verified: false,
+  reason:
+    "未確認。擁壁の天端を地表から立ち上げた転落防止の高さと壁厚の目安。地表は DEM（平滑化）なので、ずれを隠す分も含む",
+};
+
+/** Spacing and length of the lamps along a tunnel's ceiling (two rows, one at each wall). */
+export const TUNNEL_LAMPS: Assumption<{ pitch: number; length: number }> = {
+  value: { pitch: 6, length: 1.5 },
+  verified: false,
+  reason:
+    "未確認。トンネル照明の基本照明の灯具間隔の目安。第34条第2項は照明施設を求めるが輝度・間隔は令に無い（トンネル照明の基準書は確かめていない）",
+};
+
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
   STANDARD_UNDERCLEARANCE,
@@ -208,4 +261,9 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   LANE_LINE_DASH,
   BRANCH_LINE,
   ZEBRA,
+  TUNNEL_EQUIPMENT_ROOM,
+  TUNNEL_ROOF,
+  TUNNEL_WALKWAY,
+  CUT_WALL,
+  TUNNEL_LAMPS,
 };

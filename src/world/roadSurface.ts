@@ -294,6 +294,11 @@ function arrowMaterial(set: readonly LaneDirection[]): StreetMaterial {
  */
 export class RoadSurface {
   private readonly meshes = new Map<StreetMaterial, Mesh>();
+  /**
+   * Whether the ground at a local (x, z) is cut away for the expressway (P9, groundCuts.ts): a
+   * triangle whose middle is there is left out, so a street drawn over a cut does not lid it.
+   */
+  cutAt: ((x: number, z: number) => boolean) | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -394,6 +399,7 @@ export class RoadSurface {
     for (const { set, b } of arrows.values()) parts.push([b, arrowMaterial(set), 2]);
     const prepared: SurfacePart[] = [];
     for (const [b, mat, order] of parts) {
+      if (this.cutAt) b.idx = dropCut(b.pos, b.idx, this.cutAt);
       if (b.idx.length === 0) continue;
       const g = new BufferGeometry();
       g.setAttribute("position", new BufferAttribute(new Float32Array(b.pos), 3));
@@ -672,4 +678,16 @@ export class RoadSurface {
     b.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
     yield;
   }
+}
+
+/** The triangles of an index list whose middle is not cut away (`cut(x, z)`). */
+function dropCut(pos: readonly number[], idx: number[], cut: (x: number, z: number) => boolean): number[] {
+  const kept: number[] = [];
+  for (let t = 0; t + 2 < idx.length; t += 3) {
+    const [a, b, c] = [idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3];
+    const x = (pos[a] + pos[b] + pos[c]) / 3;
+    const z = (pos[a + 2] + pos[b + 2] + pos[c + 2]) / 3;
+    if (!cut(x, z)) kept.push(idx[t], idx[t + 1], idx[t + 2]);
+  }
+  return kept;
 }

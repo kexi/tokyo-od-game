@@ -75,7 +75,7 @@ import { rapierClearance } from "./game/autoRecovery";
 import { halfLengthOf } from "./game/autoTraffic";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
-import { KERB, Pavements, PavementTiles } from "./world/pavements";
+import { KERB, type PavementPolygon, Pavements, PavementTiles } from "./world/pavements";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
 import { Input, keyFor, LOOK_KEYS } from "./game/input";
@@ -99,6 +99,7 @@ import { Terrain } from "./world/terrain";
 import { TokyoTide } from "./world/tide";
 import { WaterLayer } from "./world/water";
 import { ExpresswayDecks } from "./world/expresswayDeck";
+import { GroundCuts } from "./world/groundCuts";
 import type { XwRoadInput } from "./world/expresswayRoads";
 import { Pedestrians, type Pedestrian } from "./world/pedestrians";
 import {
@@ -495,7 +496,24 @@ async function main(): Promise<void> {
           import.meta.env.BASE_URL,
           expresswayFlag === "bank",
         );
-  terrain.setWater(water);
+  // The terrain's cut-outs: the water's, and over the expressway's cuts and tunnel portals (P9).
+  const groundCuts = new GroundCuts(water);
+  expressway?.onBore((chunk) => groundCuts.addChunk(chunk));
+  terrain.setWater(groundCuts);
+  /**
+   * How far the camera is shut in by a tunnel (P9): 0 outside, rising to 1 over the first 40 m from
+   * the mouth (the entrance zone, where daylight still reaches in). Why the camera and not the car:
+   * a chase camera behind the car at the mouth still sees the sky.
+   */
+  /** The shelter as the eye takes it (eased towards tunnelShelter's), and how fast it follows. */
+  let shelter = 0;
+  const SHELTER_TAU_S = 0.35;
+  const tunnelShelter = (p: Vector3): number => {
+    if (!expressway) return 0;
+    const g = frame.toGeodetic(p);
+    const hit = expressway.tunnelAt(g.lat, g.lon, g.h);
+    return hit ? Math.min(1, hit.depthM / 40) : 0;
+  };
   const buildings = new Buildings(scene, world, camera, renderer, frame);
   // PLATEAU buildings that stand into a deck are cut down below its soffit as its tile is read.
   // Set here, before the first expressway.update() in the frame loop: no tile is read before it.
@@ -503,7 +521,24 @@ async function main(): Promise<void> {
   // The landmarks (public/data/landmarks.json) replace their PLATEAU copies: tell the buildings
   // before the first tiles arrive.
   const landmarkEntries = await fetchLandmarks();
-  buildings.hideFootprints(hiddenFootprints(landmarkEntries), walledFootprints(landmarkEntries));
+  const landmarkHidden = hiddenFootprints(landmarkEntries);
+  const landmarkWalls = walledFootprints(landmarkEntries);
+  buildings.hideFootprints(landmarkHidden, landmarkWalls);
+  // PLATEAU buildings standing in the expressway's cuts and portals (P9) are left out too, on the
+  // models already loaded as well (not walled: the cut's retaining walls are its own). The chunks of
+  // a tile arrive together: their holes go to the buildings once per batch.
+  let holesSent = 0;
+  let isHideQueued = false;
+  expressway?.onBore(() => {
+    if (isHideQueued) return;
+    isHideQueued = true;
+    setTimeout(() => {
+      isHideQueued = false;
+      const rings = groundCuts.ringsLonLat();
+      buildings.addHiddenRings(rings.slice(holesSent));
+      holesSent = rings.length;
+    }, 0);
+  });
   const landmarks = new Landmarks(
     scene,
     frame,
@@ -658,6 +693,12 @@ async function main(): Promise<void> {
     scene,
     (x, z) => water.deckAt(x, z) ?? terrain.surfaceAt(x, z) ?? groundY(x, z),
   );
+  // Streets are not drawn over the ground taken away for the expressway's cuts (P9).
+  roadSurface.cutAt = (x, z) => {
+    if (groundCuts.isEmpty()) return false;
+    const g = frame.toGeodetic(new Vector3(x, 0, z));
+    return groundCuts.containsLonLat(g.lon, g.lat);
+  };
   let roadLines: RoadLine[] = [];
   let roadRegs: RegulationData | null = null;
   /** The expressway chunks of the same area as graph lines (?expressway only), frame-free. */
@@ -671,6 +712,46 @@ async function main(): Promise<void> {
   let roadLoadSerial = 0;
   const roadBuilder = new RoadNetworkBuilder();
   const roadUpdates = new SerialWork();
+  /** How far from the streets' load centre a new hole is taken to lie in the area laid (3 × 3 z16 tiles). */
+  const RELAY_REACH_M = 1500;
+  /** The pavements last read (PLATEAU), kept to be laid again when a cut-out arrives (P9). */
+  let lastPavements: PavementPolygon[] | null = null;
+  const pavementsOffCuts = (polys: PavementPolygon[]) =>
+    polys.filter((p) => !p.rings.some((ring) => groundCuts.touchesLonLat(ring)));
+  // A tunnel or cut read after the streets and pavements were laid (P9): lay them again round its
+  // hole, once for every batch of chunks (the tiles read together arrive in one task), and only when
+  // a hole lies in the area laid. While the streets are loading, their own install cuts the holes.
+  let isRelayQueued = false;
+  let relayedHoles = 0;
+  expressway?.onBore(() => {
+    if (isRelayQueued) return;
+    isRelayQueued = true;
+    setTimeout(() => {
+      isRelayQueued = false;
+      const holes = groundCuts.ringsLonLat();
+      const fresh = holes.slice(relayedHoles);
+      relayedHoles = holes.length;
+      const isInLaidArea = fresh.some((ring) =>
+        ring.some(([lon, lat]) => haversineMeters(lat, lon, roadCenter.lat, roadCenter.lon) <= RELAY_REACH_M),
+      );
+      if (!isInLaidArea || roadsLoading) return;
+      void roadUpdates
+        .run(async () => {
+          if (lastPavements) {
+            await pavements.rebuildAsync(pavementsOffCuts(lastPavements), frame, new FrameWork());
+            pedestrians.pavementsChanged();
+          }
+          const graph = roadGraph;
+          if (graph) {
+            const work = new FrameWork();
+            const parts = await roadSurface.prepare(graph, roadApplied, control.approaches, work);
+            await work.run(roadSurface.installSteps(parts), true);
+          }
+          log("ground_cuts_relaid", { holes: fresh.length, pavements: lastPavements?.length ?? 0 });
+        })
+        .catch((error: unknown) => warn("ground_cuts_relay_failed", { error: String(error) }));
+    }, 0);
+  });
   roadBuilder.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoads");
   roadBuilder.warm();
   /** The moment regulations are judged at: the game's date and time in Japan (曜日・祝日). */
@@ -876,7 +957,9 @@ async function main(): Promise<void> {
         roadUpdates.run(async () => {
           const isStale = load !== roadLoadSerial;
           if (isStale) return;
-          await pavements.rebuildAsync(polys, frame, new FrameWork());
+          // A pavement reaching into a cut (P9) is left out: its kerb and collider would lid the cut.
+          lastPavements = polys;
+          await pavements.rebuildAsync(pavementsOffCuts(polys), frame, new FrameWork());
           pedestrians.pavementsChanged();
           log("pavements_built", { wards, polygons: polys.length });
           if (roadGraph)
@@ -897,9 +980,10 @@ async function main(): Promise<void> {
   // ---------- helpers bound to the current frame ----------
   /**
    * Height of what stands under (x, z): a bridge deck over water, else the terrain. With `nearY`
-   * (the height of a car or a person there), an expressway deck at or below nearY + 0.5 m and above
-   * the terrain answers instead (knowledge/road-redesign-plan.md 3.2: the nearest surface below).
-   * Why not always: the street under a viaduct is what traffic, signs and lamps stand on.
+   * (the height of a car or a person there), the nearest surface at or below nearY + 0.5 m answers
+   * (knowledge/road-redesign-plan.md 3.2): an expressway deck above the terrain, or the floor of a
+   * tunnel or cut under it (P9: there the terrain is over the head). Why not always: the street
+   * under a viaduct, and the ground over a tunnel, are what traffic, signs and lamps stand on.
    */
   const groundY = (x: number, z: number, nearY?: number): number | null => {
     // On a bridge the ground is its deck: the DEM there is the riverbed.
@@ -911,7 +995,10 @@ async function main(): Promise<void> {
     const isAboveGround = nearY !== undefined && expressway !== null;
     if (!isAboveGround) return terrainY;
     const xw = expressway.surfaceBelow(x, nearY + 0.5, z);
-    const isOnDeck = xw !== null && (terrainY === null || xw > terrainY + 0.2);
+    if (xw === null) return terrainY;
+    const isTerrainBelow = terrainY !== null && terrainY <= nearY + 0.5;
+    if (!isTerrainBelow) return xw;
+    const isOnDeck = xw > terrainY + 0.2;
     return isOnDeck ? xw : terrainY;
   };
   /**
@@ -2733,7 +2820,10 @@ async function main(): Promise<void> {
       noteDeckStall(carPos, speed, isDeckReady);
     }
     const gy = groundY(carPos.x, carPos.z);
-    if (gy !== null && carPos.y < gy - 6) respawnHere();
+    // Fallen through the ground: put back. Not on a deck: in a tunnel or cut (P9) the road is more
+    // than 6 m under the ground over it, and the car was put back at every frame at the portal.
+    const isUnderground = gy !== null && carPos.y < gy - 6 && !carOnDeck;
+    if (isUnderground) respawnHere();
     // In the water, off the streets and bridges (a channel too narrow to lose its ground collider
     // holds the car up over the drawn water): back on the bank after a moment.
     const isAdrift =
@@ -2748,7 +2838,8 @@ async function main(): Promise<void> {
       respawnHere();
       toast(i18n.t("toast.fellInRiver"), "#4dd2ff");
     }
-    const footGround = isOnFoot ? groundY(focus.x, focus.z) : null;
+    // Under the walker: in a tunnel or cut (P9) or on a deck, its floor, not the ground over it.
+    const footGround = isOnFoot ? groundY(focus.x, focus.z, focus.y) : null;
     // Fallen in the water (the riverbed is not ground): back up on the nearest bank.
     const isFallen = footGround !== null && focus.y < footGround - 4;
     if (isFallen)
@@ -3316,6 +3407,10 @@ async function main(): Promise<void> {
       windowOpen: isInCar && conversation.active !== null,
       rainMmH: env.rainMmH(),
     });
+    // Eased (time constant SHELTER_TAU_S): a camera crossing a portal, or snapped by a cut of the
+    // chase camera, does not switch the sky off in one frame.
+    shelter += (tunnelShelter(camera.position) - shelter) * (1 - Math.exp(-dt / SHELTER_TAU_S));
+    env.setShelter(shelter);
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
     water.update(dt, env);
     streetLights.update(dt, camera, env, now);
