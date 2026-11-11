@@ -13,7 +13,14 @@ import {
   checkVerticalCurves,
   climbingEnds,
 } from "../src/expressway/checks";
-import { type GroundSampler, isBetter, isFailing, planNetwork, solvePlan } from "../src/expressway/compile";
+import {
+  type GroundSampler,
+  isBetter,
+  isFailing,
+  OBJECTIVE_V2,
+  planNetwork,
+  solvePlan,
+} from "../src/expressway/compile";
 import {
   DEM_SINK_FLOOR,
   DEM_SINK_GIVE,
@@ -460,6 +467,86 @@ describe("内点法の終了判定（13 件の数値破綻の再現）", () => {
   });
 });
 
+describe("目的 v2 の勾配変化の重み 2 で破綻した QP（P2.7-3 の掃引）", () => {
+  // ship/pruned with --objective v2 --grade-change 2 --reach 150 (2026-11-11): the component of
+  // 11 runs round the tunnel 5213545 broke down 3 times (saved from solveJoint as it was built, by a
+  // scratch copy of the compiler). Kept to show why that weight was not taken.
+  const raw = JSON.parse(
+    readFileSync(join(import.meta.dirname, "fixtures", "expresswayQpObjectiveV2.json"), "utf8"),
+  );
+  const qp = (): Qp => ({
+    n: raw.n,
+    P: new Map<number, number>(raw.P),
+    q: Float64Array.from(raw.q),
+    rows: raw.rows,
+    l: Float64Array.from(raw.l.map(Number)),
+    u: Float64Array.from(raw.u.map(Number)),
+    w: Float64Array.from(raw.w.map(Number)),
+  });
+  /** The grade-change L1 rows: [0, 0] at weight 2 on (−1, +1) of two knots' grade variables. */
+  const gradeChangeRows = (p: Qp) =>
+    p.rows
+      .map((_, r) => r)
+      .filter((r) => {
+        const row = p.rows[r];
+        const isPair = row.length === 2 && row[0][1] === -1 && row[1][1] === 1;
+        return isPair && p.w[r] === 2 && p.l[r] === 0 && p.u[r] === 0;
+      });
+
+  it("breaks down as it did in the build: the step goes NaN after the pivots are regularised", () => {
+    const r = solveQp(qp());
+    expect(r.status).toBe("broken");
+    expect(r.regularised).toBeGreaterThan(0);
+  });
+
+  /** The QP with every grade-change row at weight w. */
+  const at = (w: number) => {
+    const p = qp();
+    for (const r of gradeChangeRows(p)) p.w[r] = w;
+    return p;
+  };
+
+  it("not an edge in the weight: it breaks at scattered weights, and one ulp turns it either way", () => {
+    // Over 500 weights in 1–3 this QP broke at 13 (1.356, nine in 1.828–1.996, 2, 2.385…), none of
+    // 100 in 1.4–1.6 (the review's scan, P2.7-3): a knife edge of the end test, not a size.
+    for (const w of [1.8, 2.2, 4]) {
+      const res = solveQp(at(w));
+      expect(res.status, `w ${w}`).toBe("converged");
+      expect(res.regularised).toBe(0);
+    }
+    expect(solveQp(at(2 - 2 ** -52)).status).toBe("broken");
+    expect(solveQp(at(2 + 2 ** -51)).status).toBe("converged");
+  });
+
+  it("not the row beside the curvature row as such: the same penalty on the row × 2 (weight 1) converges", () => {
+    const p = qp();
+    const rows = new Set(gradeChangeRows(p));
+    expect(rows.size).toBe(260);
+    for (const r of rows) p.w[r] = 1;
+    const scaled = p.rows.map((row, r) =>
+      rows.has(r) ? row.map(([c, v]): [number, number] => [c, 2 * v]) : row,
+    );
+    expect(solveQp({ ...p, rows: scaled }).status).toBe("converged");
+  });
+
+  it("the end test: the gap is met while the dual residual stands just over 1e-6, and pushing on breaks it", () => {
+    // At the iteration the mean λs first falls under 1e-7 the dual residual is 1.34e-6; a dual
+    // tolerance of 1.5e-6 would stop there, converged.
+    const r = solveQp(qp(), { dualTol: 1.5e-6 });
+    expect(r.status).toBe("converged");
+    expect(r.dualResidual).toBeGreaterThan(1e-6);
+    expect(r.gap).toBeLessThan(1e-7);
+  });
+
+  it("solved again at dualTol 1e-5 only when it did not converge, it converges (the way out S5 is to take)", () => {
+    // A second solve only for the solves that fail leaves every converged one as it was (v1, I1);
+    // the review's scan rescued all 13 failures this way. Not done here: qp.ts is not changed in S3.
+    const first = solveQp(qp());
+    expect(first.status).toBe("broken");
+    expect(solveQp(qp(), { dualTol: 1e-5 }).status).toBe("converged");
+  });
+});
+
 describe("許可リストの上限つき規則", () => {
   it("accepts a ramp's OSM radius only down to the reviewed one", () => {
     expect(isAllowed({ run: "203059413", kind: "ramp_radius", detail: "R=10.7 m < 15 m (V20)" })).toBe(true);
@@ -581,6 +668,15 @@ describe("本線を失敗したランプに巻き込ませない（solveShedding
     // The same knot spacing as A, the same length at V60 and never lowered.
     const vh = new Set(b.map((c) => c.vh));
     expect([...vh]).toEqual([chunks.get("10")![0].vh]);
+  });
+
+  it("with objective v2 too: every pass and the solve that puts the ramp back read v2 (P2.7-3)", () => {
+    // The same network sheds the ramp and tries it back around the solved main lines; each of those
+    // solves sets the runs up anew, so each needs the objective (it has no default).
+    const v2 = solvePlan(planNetwork(net, new Set(), null), flat, [], { objective: OBJECTIVE_V2 });
+    expect(v2.closed.map((c) => [c.run, c.cls])).toEqual([["20", "ramp"]]);
+    expect(v2.runs.map((r) => r.id).sort()).toEqual(["10", "30"]);
+    expect(v2.stats.solves).toBeGreaterThan(2);
   });
 });
 

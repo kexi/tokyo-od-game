@@ -113,6 +113,13 @@ export type RunInput = {
    * anchors (compile.ts blocks) reports where on its run, as the diagnostics name runs. Absent: 0.
    */
   textOffset?: number;
+  /**
+   * Objective v2 (P2.7-3): the L1 weight per metre of each arc's grade change (the next knot's grade
+   * less this one's, times the knot spacing), on top of W_SMOOTH's square. Absent: none (v1).
+   */
+  gradeChange?: number;
+  /** Objective v2: W_TARGET times this (absent: W_TARGET itself, v1). */
+  targetScale?: number;
 };
 
 export type Ref = { run: string; s: number };
@@ -216,6 +223,18 @@ const BAND_MARGIN = 0.01;
 /** Objective weights: staying near the target per station, and a smooth grade per arc. */
 const W_TARGET = 0.004;
 const W_SMOOTH = 0.5;
+/**
+ * Objective v2 (P2.7-3): the L1 weight of an arc's grade change (RunInput.gradeChange), per metre of
+ * (g[j+1] − g[j]) · h. The compiler passes it only when `--objective v2` asks (compile.ts Objective).
+ * 1.5 from the P2.7-3 sweep over ship/pruned (knowledge/expressway-generation.md「P2.7-3」): the
+ * fewest reversals with every solve converged. Why not 2: a component of 11 runs broke down there
+ * (tests/fixtures/expresswayQpObjectiveV2.json). That is no edge past 1.5 but the interior point's
+ * end test: over 500 weights in 1–3 that QP breaks at 13 (about 2–3 %, scattered, 2 and 2 − 1 ulp
+ * broken, 2 + 1 ulp converging) and at none of 100 in 1.4–1.6, so 1.5 can break too elsewhere. A
+ * second solve at a looser dual tolerance, only for a solve that did not converge, rescues all 13
+ * and leaves every converged solve as it is: a premise of S5 (qp.ts is not changed here).
+ */
+export const W_GRADE_CHANGE = 1.5;
 /**
  * L1 weights, in order of what gives way first: overlapping decks' relation and noses (5), then an
  * assumed floor (50), then the statute's clearance (crossings: 200, 40× a pair), then an end or a
@@ -441,9 +460,11 @@ export function solveJoint(runs: RunInput[], couplings: Coupling[]): JointResult
     if (L.follow) addCubicRows(qp, L);
     else addArcRows(qp, L);
     const { input } = L;
+    // Why not W_TARGET × (targetScale ?? 1): v1 keeps the very weight it had, not a product.
+    const targetWeight = input.targetScale === undefined ? W_TARGET : W_TARGET * input.targetScale;
     for (let k = 0; k < input.stations.length; k++) {
       const row = merge(zRow(L, input.stations[k]));
-      if (!L.follow) qp.addSquare(row, input.target[k], W_TARGET);
+      if (!L.follow) qp.addSquare(row, input.target[k], targetWeight);
       // At the give step the statute's floor (a crossing) and the assumed one are separate rows, so
       // the assumed floor gives way first (W_FLOOR < W_BOUND); before it, one row as in P2.5.
       const law = input.lowerLaw && input.assumedGive ? input.lowerLaw[k] : input.lower[k];
@@ -552,6 +573,7 @@ function addArcRows(qp: QpBuilder, L: Layout): void {
     const gMax = L.gradeLimit[j] * h * GRADE_MARGIN;
     qp.addRow([[Di(L, j), 1]], -gMax, gMax);
   }
+  const hasGradeChange = input.gradeChange !== undefined && input.gradeChange > 0;
   for (let j = 0; j < m; j++) {
     const lo = L.isShort ? 0 : (-(h * h) / L.crest[j]) * CURVE_MARGIN;
     const hi = L.isShort ? 0 : ((h * h) / L.sag[j]) * CURVE_MARGIN;
@@ -561,6 +583,16 @@ function addArcRows(qp: QpBuilder, L: Layout): void {
     ];
     qp.addRow(diff, lo, hi);
     qp.addSquare(diff, 0, W_SMOOTH);
+    // Objective v2: the grade change in L1 too. Summed over the arcs it is the grade's total
+    // variation: a climb that is needed costs the same however it is shaped, and what it takes out
+    // is the grade going one way and back (a reversal over a bump of the target). The row is h · Δg
+    // (metres), so for the same Δg it weighs more where the knots stand further apart (higher V).
+    // Why not a heavier W_SMOOTH instead: a square spreads a turn over many arcs (each small change
+    // is cheap) and keeps the back-and-forth small rather than gone. Not on a short run (its
+    // curvature is already held at 0) nor between two knots a structure fixes (nothing to choose).
+    const isFixedArc = L.pinned.has(j) && L.pinned.has(j + 1);
+    const isWeighed = hasGradeChange && !L.isShort && !isFixedArc;
+    if (isWeighed) qp.addRow(diff, 0, 0, input.gradeChange!);
   }
   const { start, end } = input;
   const endRow = (j: number, e: EndCondition) => {

@@ -279,6 +279,18 @@ export const SHARED_TOUCHDOWN: Assumption<number> = {
     "仮定。上下線が同じ地点へ降りるとみなす端どうしの距離。C1 の上下線 41009552・668292569 の低い端（標高 3.56 m と 3.59 m）が同じ場所に降りる形から、車線域 2 本分と OSM の中心線の取り方の揺れを見込んで置いた目安。全域の計画で条件に掛かる 5 組の端どうしの距離は 6.9〜11.3 m で、11.3〜60 m のどの値でも同じ組になる（P2.7-3a のレビューの実測、knowledge/expressway-generation.md）",
 };
 
+/**
+ * How far either side the design ground line (designGround.ts `envelope`) takes the ground's
+ * extreme and then its mean, for the objective-v2 target (P2.7-3): over a viaduct the upper
+ * envelope of the ground, under it (a tunnel or cut) the lower one.
+ */
+export const DESIGN_GROUND_REACH: Assumption<{ viaduct: number; below: number }> = {
+  value: { viaduct: 150, below: 300 },
+  verified: false,
+  reason:
+    "仮定。波長が 2 × reach 以下の地表の起伏（DEM の凸凹、川の護岸、盛土）を目標から落とす長さ。高架は登坂長（V60 で約 200 m）より短い 150 m で、それより長い起伏には沿う。地下は土被りを取るので短い起伏に沿う理由が無く、倍の 300 m。設計の試作（ship/pruned、2026-11-11）の値。P2.7-3 の掃引（ship/pruned）では高架 250 m で強制なしの短波長相関が 0.240 → 0.197 に下がるが（勾配変化の重み 1）、床版の地表からの高さの中央値が v1 より 1.07 m 上がり（合否 +1.0 m 以内）、200 m は未収束が 3 回出たので 150 m のまま（knowledge/expressway-generation.md「P2.7-3」）",
+};
+
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
   STANDARD_UNDERCLEARANCE,
@@ -311,4 +323,5 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   BLOCK_QUIET_MIN,
   BLOCK_ANCHOR_SPACING,
   SHARED_TOUCHDOWN,
+  DESIGN_GROUND_REACH,
 };
