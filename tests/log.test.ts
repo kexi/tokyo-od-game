@@ -206,6 +206,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   lane_turn_disallowed: { lanes: ["left", "straight+right"], lane: 0, turn: "right", source: "osm" },
   signal_crossing_held: { approachId: 12, allowed: ["right", "uturn"] },
   signal_crossing_resolved: { approachId: 12, outcome: "violation", movement: "through", heldMs: 2400 },
+  signal_button_pressed: { controllerId: 3812043211 },
+  signal_crossings_skipped: { outside: 6, noCrosswalk: 2, nearJunction: 1, noRoom: 0 },
   route_lane_blocked: { turns: 1, attempt: 0, replanned: true },
   autopilot_on: { cruising: true, routeM: 1200 },
   autopilot_off: {},
@@ -303,6 +305,14 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     stairs: 800,
     turnlanes: 2000,
   },
+  signal_tags_counted: {
+    extract: "2026-10-03T20:20:50Z",
+    nodes: 37000,
+    byKind: { "signal/atJunction": 13000 },
+    byTag: { "button_operated=yes": 588 },
+    midBlock: { nodes: 400 },
+  },
+  osm_layer_unchanged: { layer: "junctions", tiles: 380 },
   osm_road_lanes: {
     ways: 40000,
     tiles: 120,

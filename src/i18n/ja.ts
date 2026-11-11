@@ -865,6 +865,9 @@ export const ja = {
   "hud.signal.red": "赤",
   "hud.signal.redRightArrow": "赤・右折矢印",
   "hud.signal.redArrows": "赤・矢印",
+  "hud.signal.flashingYellow": "黄の点滅",
+  "hud.signal.flashingRed": "赤の点滅",
+  "hud.signal.off": "消灯",
   "hud.signalAhead": "🚦 {light}・{m}m",
   "hud.stopAhead": "🛑 止まれ・{m}m",
   "hud.oneWay": "⬆ 一方通行",
@@ -1197,9 +1200,9 @@ export const ja = {
   "credits.jartic.terms": "利用条件：{terms}（CC BY 4.0 互換）。",
   "credits.h.signals": "信号機の位置",
   "credits.osm": "© {osm}。",
-  "credits.link.bbbike": "BBBike の東京抽出",
+  "credits.link.geofabrikKanto": "Geofabrik の関東抽出",
   "credits.signals.extract":
-    "OpenStreetMap の {tag} を {bbbike} から取り出し、交差点に対応付けて表示しています。",
+    "OpenStreetMap の {tag} を {extract} から取り出し、交差点と横断歩道に対応付けて表示しています。",
   "credits.odbl": "抽出したデータベースは {odbl} で提供します（{file}）。",
   "credits.signals.cycle":
     "信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。",

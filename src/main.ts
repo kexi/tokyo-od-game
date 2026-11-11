@@ -115,7 +115,8 @@ import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
-import { TrafficControl } from "./world/trafficControl";
+import { TrafficControl, type LightState } from "./world/trafficControl";
+import { letsDriverGo } from "./signals/plan";
 import { SignalViolationCheck } from "./game/signalViolations";
 import { TrafficSigns, loadSignModels } from "./world/signs";
 import { GuideSigns } from "./world/guideSigns";
@@ -199,7 +200,14 @@ import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
 import { classOf, isDrivable, isExpressway, sourceOf, usesGroundSurface } from "./world/roadClass";
 
-const LIGHT_KEY = { green: "hud.signal.green", yellow: "hud.signal.yellow", red: "hud.signal.red" } as const;
+const LIGHT_KEY = {
+  green: "hud.signal.green",
+  yellow: "hud.signal.yellow",
+  red: "hud.signal.red",
+  flashingYellow: "hud.signal.flashingYellow",
+  flashingRed: "hud.signal.flashingRed",
+  off: "hud.signal.off",
+} as const satisfies Record<LightState, string>;
 /** What the car hit (`name` fills the pedestrian's). */
 const ACCIDENT_KEY = {
   pedestrian: "accident.pedestrian",
@@ -674,7 +682,7 @@ async function main(): Promise<void> {
       if (roadGraph) void buildRoadNetwork();
     })
     .catch(() => undefined);
-  const installRoadNetwork = async ({ graph, applied }: RoadNetwork) => {
+  const installRoadNetwork = async ({ graph, applied, signalRecords }: RoadNetwork) => {
     const started = performance.now();
     const work = new FrameWork();
     const stagesMs: Record<string, number> = {};
@@ -698,6 +706,10 @@ async function main(): Promise<void> {
             return g !== null && isOpenGround(x, z, g);
           },
           (x, z) => pavements.contains(x, z),
+          {
+            stand: (seg, near, kerb) => control.buttonStand(seg, near, kerb),
+            press: (seg, near) => void control.pressButton(seg, near),
+          },
         ),
       );
     roadApplied = applied;
@@ -710,7 +722,7 @@ async function main(): Promise<void> {
     roadGraph = graph;
     if (expressway) logExpresswayGraph(graph);
     const models = work.measure(() => {
-      const steps = control.setNetwork(graph, applied);
+      const steps = control.setNetwork(graph, applied, signalRecords);
       traffic.setGraph(graph, false);
       setPedestrianNetwork();
       return steps;
@@ -765,6 +777,7 @@ async function main(): Promise<void> {
       posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
       signals: control.signalCount(),
       rightArrows: control.rightArrowCount(),
+      ...control.crossingCounts(),
       stops: control.approaches.filter((a) => a.kind === "stop").length,
       crossings: applied?.crossings.length ?? 0,
       signs: applied?.signs.length ?? 0,
@@ -5168,7 +5181,9 @@ async function main(): Promise<void> {
     const isRedAhead = ahead !== null && control.state(ahead.approach) === "red";
     const arrowWays =
       ahead && isRedAhead
-        ? (["left", "through", "right"] as const).filter((m) => control.permits(ahead.approach, m) === "go")
+        ? (["left", "through", "right"] as const).filter((m) =>
+            letsDriverGo(control.permits(ahead.approach, m)),
+          )
         : [];
     const isRightArrowOnly = arrowWays.length === 1 && arrowWays[0] === "right";
     const lightKey = !ahead
