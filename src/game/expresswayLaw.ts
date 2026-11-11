@@ -310,7 +310,9 @@ export function judgeMerge(m: MergeSituation): XwFinding[] {
   // ∞), the ticket names the gap instead. Why not "∞ m/s²": it read as a measured value.
   const isCutIn = isObstructing && !Number.isFinite(worst);
   if (isCutIn) {
-    const gap = Math.max(0, Math.min(...m.followers.map((f) => f.gapM)));
+    // The gap of the follower it cut in front of (the one with no deceleration figure).
+    const cutOff = m.followers.filter((f) => !Number.isFinite(brakeNeeded(m.speed, f)));
+    const gap = Math.max(0, Math.min(...cutOff.map((f) => f.gapM)));
     out.push({
       kind: "xwMergeObstruct",
       detail: { key: "violationDetail.xwMergeCutIn", params: { gap: Math.round(gap * 10) / 10 } },

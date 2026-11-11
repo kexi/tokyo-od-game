@@ -4,7 +4,7 @@ import { Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import type { XwChunk, XwMeta, XwRunSummary, XwTile } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
-import { AutoDriver, type DriveWorld } from "../src/game/autoDriver";
+import { AutoDriver, isDeckOnlyNode, type DriveWorld } from "../src/game/autoDriver";
 import { laneFor } from "../src/game/drivePath";
 import { judgeMerge } from "../src/game/expresswayLaw";
 import { mergeSpeedCap, taperOf } from "../src/game/merging";
@@ -159,6 +159,16 @@ function graphOf(): RoadGraph {
 const onA = (p: Vector3): [number, number] => {
   const g = frame.toGeodetic(p);
   return plane.toXY(g.lon, g.lat);
+};
+
+const underDeck = (x: number, z: number) => {
+  const [ax, ay] = onA(new Vector3(x, 0, z));
+  return ax > 320 && Math.abs(ay) < 8;
+};
+
+const underLeftLane = (x: number, z: number) => {
+  const [ax, ay] = onA(new Vector3(x, 0, z));
+  return ax > 40 && ax < 200 && ay > 0 && ay < 8;
 };
 
 describe("車線単位の接続 (LaneLink) at a merge", () => {
@@ -419,6 +429,17 @@ describe("the autopilot drives street → ramp → main line and merges behind t
     for (const p of track.filter((q) => q.x > 280 && q.x < 330)) expect(p.y).toBeLessThan(0.5);
   });
 
+  it("counts a node of decks only as no junction, and a deck's end at a street as one", () => {
+    const a0 = graph.segments.find((s) => s.line.xid === "A:0")!;
+    const a1 = graph.segments.find((s) => s.line.xid === "A:1")!;
+    const ramp = graph.segments.find((s) => s.line.xid === "R:0")!;
+    const ground = graph.segments.find((s) => runOf(s) === null)!;
+    expect(isDeckOnlyNode({ inSeg: ramp, others: [a0, a1] })).toBe(true);
+    // Any road at the node that is no deck makes it a 交差点 (the 第36条 and 第50条 checks apply).
+    expect(isDeckOnlyNode({ inSeg: ramp, others: [a1, ground] })).toBe(false);
+    expect(isDeckOnlyNode({ inSeg: ground, others: [ramp] })).toBe(false);
+  });
+
   it("keeps its pace through the merge node with nobody about: no 徐行 as at a junction with a priority road", () => {
     const { track } = run(null);
     const atNode = track.filter((p) => p.x > 270 && p.x < 320);
@@ -430,10 +451,6 @@ describe("the autopilot drives street → ramp → main line and merges behind t
   it("drives on along the deck over the street's pavements below: no lane change, no 合図, no 切り返し", () => {
     // PLATEAU paving is a plan (x, z) test: here a pavement lies under the whole main line past
     // the merge, as the street's footways under the viaduct before 浜崎橋 JCT (24402611:24) do.
-    const underDeck = (x: number, z: number) => {
-      const [ax, ay] = onA(new Vector3(x, 0, z));
-      return ax > 320 && Math.abs(ay) < 8;
-    };
     const { track } = run(null, underDeck);
     const beyond = track.filter((p) => p.x > 325 && p.x < 380);
     expect(beyond.length, "drove along the deck past the merge").toBeGreaterThan(0);
@@ -441,6 +458,52 @@ describe("the autopilot drives street → ramp → main line and merges behind t
       expect(p.manoeuvring, `t ${p.t.toFixed(1)}`).toBe(false);
       expect(p.signal, `t ${p.t.toFixed(1)}`).toBeNull();
       expect(p.y, `t ${p.t.toFixed(1)}: in the right lane`).toBeLessThan(0.5);
+    }
+  });
+
+  it("keeps the deck's left lane over a pavement below it: no move to the right lane, no 合図", () => {
+    // The lane choice (onPavement) and the kerb (keepLeftOffset) read the paving too: under lane 0
+    // and beyond its left edge, a street's footway would push the car into lane 1.
+    const lane0 = laneCentreOffset(
+      graph.segments.find((s) => s.line.xid === "A:0")!,
+      0,
+    );
+    const pos = local(20, lane0, zA(20) + N + 0.86);
+    let yaw = Math.PI / 2; // east, along A
+    const driver = new AutoDriver();
+    driver.place(pos, yaw);
+    const world: DriveWorld = {
+      graph,
+      control: noSignals,
+      turnRules: [],
+      clock,
+      obstacles: [],
+      isPavement: underLeftLane,
+    };
+    expect(driver.plan(world, local(190, lane0, zA(190) + N))).toBe(true);
+    let v = 0;
+    let steer = 0;
+    const dt = 1 / 30;
+    const seen: Array<{ x: number; y: number; signal: string | null }> = [];
+    for (let t = 0; t < 40; t += dt) {
+      const out = driver.update(dt, world, { position: pos, yaw, speed: v });
+      if (out.done) break;
+      steer += (out.input.steer * steerLimit(v) - steer) * Math.min(1, dt * 8);
+      v = Math.max(0, v + (out.input.throttle * 4.16 - 0.12 * v - out.input.brake * 7) * dt);
+      yaw += ((v * Math.tan(steer)) / WHEELBASE) * dt;
+      pos.x += Math.sin(yaw) * v * dt;
+      pos.z += Math.cos(yaw) * v * dt;
+      const hit = graph.locate(pos, 15);
+      const y = hit ? graph.surfaceY(hit.seg, hit.s) : null;
+      if (y !== null) pos.y = y + 0.86;
+      const [x, ly] = onA(pos);
+      if (t > 4) seen.push({ x, y: ly, signal: driver.signal });
+    }
+    const overPavement = seen.filter((p) => p.x > 50 && p.x < 180);
+    expect(overPavement.length).toBeGreaterThan(0);
+    for (const p of overPavement) {
+      expect(Math.abs(p.y - lane0), `x ${p.x.toFixed(0)}: on lane 0's centre`).toBeLessThan(0.3);
+      expect(p.signal, `x ${p.x.toFixed(0)}`).toBeNull();
     }
   });
 

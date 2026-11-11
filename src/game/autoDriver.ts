@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import { steerLimit, WHEELBASE, type DriveInput } from "../physics/vehicle";
-import { isLaneChangeBanned, laneOfPoint } from "../world/laneChange";
+import { isLaneChangeBanned, laneOfOffset, laneOfPoint } from "../world/laneChange";
 import type { LaneUse, TurnRule } from "../world/regulations";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
 import { inForce, type GameClock } from "../world/ruleTime";
@@ -37,7 +37,7 @@ import {
   type Seen,
   type Verdict,
 } from "./autoTraffic";
-import { laneCentre, type LanePlan } from "./drivePath";
+import { laneCentre } from "./drivePath";
 import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
 import { isDrivable as isRoutable, isOnGround } from "../world/roadClass";
 import { runOf } from "../world/laneLinks";
@@ -64,6 +64,23 @@ export function pavementUnder(
   isPavement: ((x: number, z: number) => boolean) | undefined,
 ): ((x: number, z: number) => boolean) | undefined {
   return isOnGround(seg.line) ? isPavement : undefined;
+}
+
+/**
+ * A node where every road is an expressway deck (a merge, a diverge, a seam): no 交差点. The merge
+ * has its own rule (第75条の6, AutoDriver.merge). As a junction the main line was a priority road
+ * crossing the ramp and the car slowed to 徐行 at every entrance's node with nobody about. A deck's
+ * end joined straight to a street (another road at the node is no deck) stays a junction.
+ */
+export function isDeckOnlyNode(j: Pick<JunctionAhead, "inSeg" | "others">): boolean {
+  return isDeckSeg(j.inSeg) && j.others.every(isDeckSeg);
+}
+
+const isDeckSeg = (seg: Segment) => runOf(seg) !== null;
+
+/** junctionsAhead without the nodes of the decks (isDeckOnlyNode). */
+function streetJunctionsAhead(route: Route, world: DriveWorld, from: number, to: number): JunctionAhead[] {
+  return junctionsAhead(route, world.graph, world.control, from, to).filter((j) => !isDeckOnlyNode(j));
 }
 
 export { laneCentre } from "./drivePath";
@@ -125,12 +142,8 @@ const HOLD: DriveInput = { throttle: 0, brake: 1, steer: 0, handbrake: false, br
 const DEG = Math.PI / 180;
 /** Off its lane: further than this from the path, or turned further than MISALIGNED from it. */
 const OFF_LANE = 4.5;
-/**
- * On its path within this (m): on the road the route was planned along, whatever the carriageway
- * lookup says (the ramp's at-grade connector meets the street's line metres off its end, where
- * neither covers the car: it stood at the red there and 切り返し'd forward over the stop line).
- */
-const ON_PATH = 1.5;
+/** Beyond a road's half width a car still counts as on it (m), as carriagewaysAt's margin in offLane. */
+const ROAD_MARGIN = 1;
 const MISALIGNED = 50 * DEG;
 /** Stuck this many times without getting 25 m on: give up. */
 const MAX_ATTEMPTS = 3;
@@ -280,13 +293,14 @@ export class AutoDriver {
   /** Giving way at a merge (第75条の6), from the last look: slowing or waiting at the ramp's end. */
   yieldingAtMerge = false;
   /**
-   * QA only (debug.expressway.cruise / route.mjs): merge without looking at the main line, to see
-   * the law check book 第75条の6. Why not a mock in a test only: the booking in game goes through
-   * the traffic AI's cars and the deck's real taper, which no unit test has.
+   * QA only: merge without looking at the main line, to see the law check book 第75条の6. Nothing
+   * in src sets it; a QA script sets it from the console on the autopilot's driver
+   * (`__game.getAutopilot().driver`). Why not a mock in a test only: the booking in game goes
+   * through the traffic AI's cars and the deck's real taper, which no unit test has.
    */
   ignoresMergeTraffic = false;
-  /** Why the last "align" manoeuvre was started (QA: route.mjs reads it with the manoeuvre). */
-  lostWhy: "pavement" | "offLane" | "misaligned" | "offRoad" | null = null;
+  /** Why the car was off its lane at the last look (null: on it). Read by QA scripts from the console. */
+  lostWhy: LostWhy | null = null;
 
   get remaining(): number {
     return this.route ? this.route.length - this.at : 0;
@@ -744,7 +758,7 @@ export class AutoDriver {
         speed: this.speed,
         chain,
         others,
-        junctions: junctionsAhead(route, world.graph, world.control, ahead.from, ahead.to),
+        junctions: streetJunctionsAhead(route, world, ahead.from, ahead.to),
         crossings: crossingsAhead(route, world.crossings ?? [], ahead.from, ahead.to),
         route,
         laneOffset: plan.offset,
@@ -882,7 +896,7 @@ export class AutoDriver {
           true,
         ) !== "go");
     if (isAtStop) return true;
-    const isAtJunction = junctionsAhead(route, world.graph, world.control, at - 2, at + 20).length > 0;
+    const isAtJunction = streetJunctionsAhead(route, world, at - 2, at + 20).length > 0;
     const isAtCrossing = crossingsAhead(route, world.crossings ?? [], at - 2, at + 10).length > 0;
     return isAtJunction || isAtCrossing;
   }
@@ -904,14 +918,7 @@ export class AutoDriver {
       cap = Math.min(cap, Math.sqrt(2 * BRAKE * 0.7 * Math.max(0, d)));
     };
     const zones: Array<{ start: number; end: number }> = [];
-    // Not the expressway's merges and diverges (every road at the node a deck): no 交差点, the merge
-    // has its own rule (第75条の6, merge()). As a junction the main line was a priority road
-    // crossing it, and the car slowed to 徐行 at every entrance's node with nobody about.
-    const isExpresswayNode = (j: JunctionAhead) =>
-      runOf(j.inSeg) !== null && j.others.every((seg) => runOf(seg) !== null);
-    const list = junctionsAhead(route, world.graph, world.control, this.at - 30, this.at + 70).filter(
-      (j) => !isExpresswayNode(j),
-    );
+    const list = streetJunctionsAhead(route, world, this.at - 30, this.at + 70);
     for (const j of list) zones.push({ start: j.at - j.half, end: j.at + j.half });
     for (const c of crossingsAhead(route, world.crossings ?? [], this.at - 10, this.at + 70))
       zones.push({ start: c - 2, end: c + 2 });
@@ -1001,7 +1008,7 @@ export class AutoDriver {
 
   /** At a 一時停止: the junction just ahead has crossing traffic to let by. */
   private mustYield(route: Route, world: DriveWorld, all: boolean): boolean {
-    const j = junctionsAhead(route, world.graph, world.control, this.at, this.at + 25)[0];
+    const j = streetJunctionsAhead(route, world, this.at, this.at + 25)[0];
     return j ? this.crossing(j, world, all).must : false;
   }
 
@@ -1048,6 +1055,78 @@ export class AutoDriver {
     return k;
   }
 
+  /** 合図 through a turn's curve: its side. */
+  private cornerSignal(route: Route): "left" | "right" | null {
+    const corner = route.corners.find((c) => c.from <= this.at && this.at < c.to);
+    if (corner?.kind === "left") return "left";
+    if (corner?.kind === "right" || corner?.kind === "uturn") return "right";
+    return null;
+  }
+
+  /**
+   * 合図 outside a turn's curve, the first that applies: from 30 m before a turn (施行令 第21条), while
+   * the car is moving across to its target lane (gap: target minus where it is, left +), and for a
+   * lane change the path itself plans (plannedLaneChange). The turn comes first: the move into the
+   * turn's lane and out of it after the turn read as a change to the other side.
+   */
+  private laneSignal(route: Route, world: DriveWorld, gap: number): "left" | "right" | null {
+    const next = route.maneuvers.find((m) => m.at > this.at);
+    const isTurnAhead = next !== undefined && next.at - this.at < SIGNAL_BEFORE && next.turn !== "straight";
+    if (isTurnAhead) return next.turn === "left" || next.turn === "slightLeft" ? "left" : "right";
+    const isMovingAcross = Math.abs(gap) > 0.3;
+    if (isMovingAcross) return gap > 0 ? "left" : "right";
+    return this.plannedLaneChange(route, world);
+  }
+
+  /**
+   * 進路変更 the path itself plans (a lane for a diverge, back to the left after a merge, an approach
+   * lane): the side to signal from 3 s (at least 30 m) before the path crosses a lane line until the
+   * crossing is over (施行令 第21条: 進路変更が終わるまで). The lanes are counted as main.ts counts
+   * them (laneOfOffset on the street under the path, from its left edge line), on the step the car
+   * is on: a lane index of the plan is no lane line (2 → 4 lanes at 浜崎橋 JCT keep the index 0 and
+   * move a lane). Null where a turn, a merge or a diverge lies in the window: they have their own
+   * 合図 (the curve, the 30 m, the merge's), and the lanes on either side of them are not one road's.
+   * Why not the gap between the car and its target alone: the target is the path's eased offset,
+   * which the car keeps up with, so a planned change never opened a gap and went unsignalled.
+   */
+  private plannedLaneChange(route: Route, world: DriveWorld): "left" | "right" | null {
+    let from = Math.max(0, this.at - LANE_CROSSING_M);
+    let to = Math.min(route.length, this.at + Math.max(SIGNAL_BEFORE, 3 * Math.abs(this.speed)));
+    const isIn = (at: number) => at > from && at < to;
+    const isTurnInWindow =
+      route.corners.some((c) => c.to > from && c.from < to) ||
+      route.maneuvers.some((m) => m.turn !== "straight" && isIn(m.at));
+    if (isTurnInWindow) return null;
+    // A merge's or a diverge's node cuts the window: the lanes beyond it are another road's.
+    for (const l of route.links ?? []) {
+      if (!isIn(l.at)) continue;
+      if (l.at <= this.at) from = l.at + 0.5;
+      else to = l.at - 0.5;
+    }
+    const k = this.stepIndex(route);
+    const step = route.steps[k];
+    if (step.seg.lanes < 2) return null;
+    // A point on another step: its offset from that step's centreline, read on this step's lanes.
+    // Steps meet at a shared node, so the centrelines meet there: where the lanes drop from 4 to 2
+    // the move happens just past the seam and is still a crossing of this chunk's lane line. Why
+    // not this step's centreline extended: on a curve the path is metres off its tangent 40 m on.
+    const laneAtD = (d: number) => {
+      let i = 0;
+      while (i < route.stepStart.length - 1 && route.stepStart[i + 1] <= d) i++;
+      const on = route.steps[i];
+      const p = this.pathAt(route, d);
+      const lane = laneOfOffset(step.seg, world.graph.nearestOn(on.seg, p).lateral * on.dir);
+      return lane >= 0 && lane < step.seg.lanes ? lane : null;
+    };
+    const here = laneAtD(this.at);
+    if (here === null) return null;
+    const ahead = laneAtD(to);
+    if (ahead !== null && ahead !== here) return ahead > here ? "right" : "left";
+    const behind = laneAtD(from);
+    if (behind !== null && behind !== here) return here > behind ? "right" : "left";
+    return null;
+  }
+
   /**
    * The wheel: the lane the route plans (eased across over a few seconds; one off PLATEAU paving,
    * clear of the kerb, never across a yellow line), 合図, then pure pursuit — steer along the arc
@@ -1055,24 +1134,6 @@ export class AutoDriver {
    * differs from the planned one. Through a corner it follows the curve itself. Passing a blockage
    * shifts the lane to the right by what the pass needs.
    */
-  /**
-   * 進路変更 the path itself plans (a lane for a diverge, back to the left after a merge, an approach
-   * lane): the side to signal from 3 s (at least 30 m) before the planned lane changes until the
-   * eased crossing is over (施行令 第21条: 進路変更が終わるまで). Why not the gap between the car and
-   * its target alone: the target is the path's eased offset, which the car keeps up with, so a
-   * planned change never opened a gap and went unsignalled (合図不履行 on the outer loop).
-   */
-  private plannedLaneChange(route: Route, plan: LanePlan): "left" | "right" | null {
-    const ahead = Math.max(SIGNAL_BEFORE, 3 * Math.abs(this.speed));
-    const from = laneAt(route, Math.max(0, this.at - LANE_CROSSING_M), this.hint);
-    const to = laneAt(route, Math.min(route.length, this.at + ahead), this.hint);
-    const isSameLanes = from.count === plan.count && to.count === plan.count && plan.count > 1;
-    const isCurve = plan.corner || from.corner || to.corner;
-    const isChange = isSameLanes && !isCurve && from.lane !== to.lane;
-    if (!isChange) return null;
-    return to.lane > from.lane ? "right" : "left";
-  }
-
   private steerFor(route: Route, dt: number, world: DriveWorld): number {
     const k = this.stepIndex(route);
     const seg = route.steps[k].seg;
@@ -1101,36 +1162,19 @@ export class AutoDriver {
     const rate = Math.max(this.pass ? 1.5 : 0.8, Math.abs(this.speed) * pace) * dt;
     const gap = plan.corner ? 0 : target - this.lateral;
     this.lateral = plan.corner ? target : this.lateral + Math.max(-rate, Math.min(rate, gap));
-    // 合図: through a turn's curve, while moving across lanes, and from 30 m before a turn.
-    const next = route.maneuvers.find((m) => m.at > this.at);
-    const isTurning = next && next.at - this.at < SIGNAL_BEFORE && next.turn !== "straight";
-    const corner = route.corners.find((c) => c.from <= this.at && this.at < c.to);
-    const cornerSide =
-      corner?.kind === "left"
-        ? "left"
-        : corner?.kind === "right" || corner?.kind === "uturn"
-          ? "right"
-          : null;
-    const planned = this.plannedLaneChange(route, plan);
-    this.signal =
-      cornerSide ??
-      (Math.abs(gap) > 0.3
-        ? gap > 0
-          ? "left"
-          : "right"
-        : planned
-          ? planned
-          : isTurning
-            ? next.turn === "left" || next.turn === "slightLeft"
-              ? "left"
-              : "right"
-            : null);
+    const cornerSide = this.cornerSignal(route);
+    this.signal = cornerSide ?? this.laneSignal(route, world, gap);
     // 合流 is a 進路変更 (第53条): the indicator toward the main line from MERGE_SIGNAL_M before the
     // node (a ramp on the main line's left moves right into it) until past it.
     const merging = route.links?.find(
       (l) => l.kind === "merge" && l.at - this.at < MERGE_SIGNAL_M && this.at - l.at < 15,
     );
-    if (merging && !cornerSide) this.signal = merging.side === "left" ? "right" : "left";
+    // Past the node, a move across that is still under way shows its own side: where the ramp's
+    // lane runs on as another lane of a wider main line (2 → 4 at 浜崎橋 JCT) the path moves the
+    // other way just past the node, and the merge's side would have been the wrong one.
+    const isMovingOnPastNode = merging !== undefined && this.at > merging.at && this.signal !== null;
+    if (merging && !cornerSide && !isMovingOnPastNode)
+      this.signal = merging.side === "left" ? "right" : "left";
     // A pass: right from 3 s before pulling out until beside the line, left from 3 s before going back.
     const pass = this.pass;
     if (pass) {
@@ -1181,12 +1225,13 @@ export class AutoDriver {
    */
   private offLane(route: Route, world: DriveWorld, off: number): Why | null {
     const pos = this.position;
-    const seg = route.steps[this.stepIndex(route)].seg;
-    const isOnPavement = pavementUnder(seg, world.isPavement)?.(pos.x, pos.z) ?? false;
+    const stepSeg = route.steps[this.stepIndex(route)].seg;
+    const isOnPavement = pavementUnder(stepSeg, world.isPavement)?.(pos.x, pos.z) ?? false;
     // On a deck there is no street under the car (carriagewaysAt has the ground only): the deck is
     // its road. Asked only when slow (a search of every segment).
     const isOffRoad = () =>
-      world.graph.carriagewaysAt(pos, 1).length === 0 &&
+      world.graph.carriagewaysAt(pos, ROAD_MARGIN).length === 0 &&
+      !this.isOnRouteRoad(world, route, pos.x, pos.z, ROAD_MARGIN) &&
       world.graph.nearestOnSurface(pos, 15, (seg) => !isOnGround(seg.line)) === null;
     const d = this.pathAt(route, Math.min(route.length, this.at + 1)).sub(
       this.pathAt(route, Math.max(0, this.at - 1)),
@@ -1195,14 +1240,30 @@ export class AutoDriver {
     const isSlow = Math.abs(this.speed) < 3;
     const isMisaligned = isSlow && yawError > MISALIGNED;
     const isOff = off > OFF_LANE;
-    const isOnPath = off < ON_PATH;
-    const isLost = isOnPavement || isOff || isMisaligned || (isSlow && !isOnPath && isOffRoad());
-    if (isLost) {
-      this.lostWhy = isOnPavement ? "pavement" : isOff ? "offLane" : isMisaligned ? "misaligned" : "offRoad";
-      return "align";
-    }
+    this.lostWhy = lostReason({ isOnPavement, isOff, isMisaligned, isOffRoad: () => isSlow && isOffRoad() });
+    if (this.lostWhy) return "align";
     const uturn = route.corners.find((c) => c.kind === "uturn" && c.from - this.at < 5 && c.to > this.at);
     return uturn ? "uturn" : null;
+  }
+
+  /**
+   * Whether (x, z) is on a ground road the route runs along near the car (its step and the two
+   * either side), within `margin` of its half width. The ramps' at-grade connectors are such roads,
+   * and carriagewaysAt does not index them (usesGroundSurface: streets only): standing on one at the
+   * red of 汐留出口's foot, the car counted as off every road and 切り返し'd over the stop line. Why
+   * not index the connectors in carriagewaysAt: its callers (pedestrians, kerbs, the traffic AI's
+   * placing) read it as "a street", and a connector is a ramp.
+   */
+  private isOnRouteRoad(world: DriveWorld, route: Route, x: number, z: number, margin: number): boolean {
+    const k = this.stepIndex(route);
+    const p = new Vector3(x, 0, z);
+    for (let i = Math.max(0, k - 2); i <= Math.min(route.steps.length - 1, k + 2); i++) {
+      const seg = route.steps[i].seg;
+      if (!isOnGround(seg.line)) continue;
+      const isOnIt = world.graph.nearestOn(seg, p).dist < seg.line.width / 2 + margin;
+      if (isOnIt) return true;
+    }
+    return false;
   }
 
   /**
@@ -1233,9 +1294,12 @@ export class AutoDriver {
   private area(world: DriveWorld): ManoeuvreArea {
     const here = this.position;
     const probe = new Vector3();
+    const route = this.route;
     const onRoad = (x: number, z: number) => {
       const isPaved = world.isPavement?.(x, z) ?? false;
-      return !isPaved && world.graph.carriagewaysAt(probe.set(x, 0, z), 0.3).length > 0;
+      if (isPaved) return false;
+      const isStreet = world.graph.carriagewaysAt(probe.set(x, 0, z), 0.3).length > 0;
+      return isStreet || (route !== null && this.isOnRouteRoad(world, route, x, z, 0.3));
     };
     const startsOnRoad = onRoad(here.x, here.z);
     const near = this.near(world);
@@ -1435,6 +1499,22 @@ export class AutoDriver {
 }
 
 /** 合図 for a manoeuvre: the way it turns (a 転回 always right, 施行令 第21条), or the way it moves over. */
+type LostWhy = "pavement" | "offLane" | "misaligned" | "offRoad";
+
+/** The first reason a car is off its lane (offLane), in the order they are asked. */
+function lostReason(c: {
+  isOnPavement: boolean;
+  isOff: boolean;
+  isMisaligned: boolean;
+  isOffRoad: () => boolean;
+}): LostWhy | null {
+  if (c.isOnPavement) return "pavement";
+  if (c.isOff) return "offLane";
+  if (c.isMisaligned) return "misaligned";
+  if (c.isOffRoad()) return "offRoad";
+  return null;
+}
+
 function sideOf(path: readonly PathPose[], start: Pose): "left" | "right" | null {
   const end = path[path.length - 1];
   const turned = wrap(end.yaw - start.yaw);

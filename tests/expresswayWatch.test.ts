@@ -190,25 +190,25 @@ describe("ExpresswayWatch on the generated data: the exits and the JCT (第75条
   });
 });
 
-describe("the lane counted for 合図 (第53条) where another line's deck lies over the car's (浜崎橋 JCT)", () => {
-  /** The lane changes main.ts would count along `route` (laneCountedIn, held from one look to the next). */
-  function laneChanges(route: Route, preferHeldRun: boolean): string[] {
-    const changes: string[] = [];
-    let held: HeldLane | null = null;
-    const total = pathLength(route);
-    for (let d = 0; d < total - 1; d += (KMH / 3.6) * STEP_S) {
-      const { p, dir } = pointOn(route, d);
-      const hit = graph.locate(p, 30);
-      const onRoad = hit && Math.abs(hit.lateral) < hit.seg.line.width / 2 + 1.5 ? hit : null;
-      const counted = laneCountedIn(graph, p, dir, preferHeldRun ? held : null, onRoad, true, () => true);
-      const isChange = counted && held && held.seg === counted.seg && held.lane !== counted.lane;
-      const isLane = counted !== null && counted.lane >= 0 && counted.lane < counted.seg.lanes;
-      if (isChange && isLane) changes.push(`${counted.seg.line.xid} ${held!.lane}→${counted.lane}`);
-      held = counted;
-    }
-    return changes;
+/** The lane changes main.ts would count along `route` (laneCountedIn, held from one look to the next). */
+function laneChanges(route: Route, preferHeldRun: boolean): string[] {
+  const changes: string[] = [];
+  let held: HeldLane | null = null;
+  const total = pathLength(route);
+  for (let d = 0; d < total - 1; d += (KMH / 3.6) * STEP_S) {
+    const { p, dir: along } = pointOn(route, d);
+    const hit = graph.locate(p, 30);
+    const onRoad = hit && Math.abs(hit.lateral) < hit.seg.line.width / 2 + 1.5 ? hit : null;
+    const counted = laneCountedIn(graph, p, along, preferHeldRun ? held : null, onRoad, true, () => true);
+    const isChange = counted && held && held.seg === counted.seg && held.lane !== counted.lane;
+    const isLane = counted !== null && counted.lane >= 0 && counted.lane < counted.seg.lanes;
+    if (isChange && isLane) changes.push(`${counted.seg.line.xid} ${held!.lane}→${counted.lane}`);
+    held = counted;
   }
+  return changes;
+}
 
+describe("the lane counted for 合図 (第53条) where another line's deck lies over the car's (浜崎橋 JCT)", () => {
   it("counts no lane change for keeping C1 外回り's left lane past where the 1号's deck runs beside it", () => {
     // 汐留入口 → 外回り, through 45021976:6–7 where locate answers 45021972:0 (the 1号羽田線 deck).
     const route = routeFrom("45021976:4", 0.5, "45021976:8", 0.5);
@@ -216,5 +216,28 @@ describe("the lane counted for 合図 (第53条) where another line's deck lies 
     expect(laneChanges(route, true)).toEqual([]);
     // Counted on whichever deck locate answers, the frame's lanes slide under the car.
     expect(laneChanges(route, false).some((c) => c.startsWith("45021972:0"))).toBe(true);
+  });
+
+  it("counts on the road under the car once it is off the held run's deck (an exit leaving the main line)", () => {
+    // 芝公園出口 (4853798) leaving C1 外回り: a point on the exit's deck that the main line's run is
+    // still found from (within 8 m) but whose deck it is past the edge of.
+    const exit = segOf("4853798:0");
+    const held: HeldLane = { seg: segOf("45021976:13"), lane: 0 };
+    const run = runOf(held.seg);
+    let found: { p: Vector3; dir: Vector3; s: number } | null = null;
+    for (let s = 0; s < exit.length && !found; s += 0.5) {
+      const { pos, dir: along } = graph.sample(exit, s);
+      pos.y = (graph.surfaceY(exit, s) ?? 0) + 0.86;
+      const main = graph.locate(pos, 8, (seg) => runOf(seg) === run);
+      const isPastEdge = main !== null && Math.abs(main.lateral) > main.seg.line.width / 2 + 0.5;
+      if (isPastEdge) found = { p: pos, dir: along, s };
+    }
+    expect(found, "a point on the exit past the main line's edge").not.toBeNull();
+    const onRoad = { seg: exit, s: found!.s, lateral: 0, dir: found!.dir };
+    const counted = laneCountedIn(graph, found!.p, found!.dir, held, onRoad, true, () => true);
+    // The exit has one lane, so nothing is counted there. Counted on the main line, the move off it
+    // would have read as a change across its lanes.
+    expect(exit.lanes).toBe(1);
+    expect(counted).toBeNull();
   });
 });

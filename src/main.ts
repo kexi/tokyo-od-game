@@ -112,7 +112,7 @@ import {
 import { carriagewayWidth, isLaneChangeBanned, laneCentreOffset, laneOfOffset } from "./world/laneChange";
 import { lanesUnderPavement, sectionSummary } from "./world/roadMarkings";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
-import { laneCountedIn } from "./world/laneLinks";
+import { laneChangeSide, laneCountedIn } from "./world/laneLinks";
 import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
@@ -3138,16 +3138,10 @@ async function main(): Promise<void> {
         speed > 15
           ? laneCountedIn(roadGraph, carPos, carForward, laneHeld, onRoad, carOnDeck, isCarSurface)
           : null;
-      if (counted) {
-        const { seg: s, lane } = counted;
-        const isSameRoad = laneHeld !== null && laneHeld.seg === s;
-        if (isSameRoad && laneHeld && lane !== laneHeld.lane && lane >= 0 && lane < s.lanes) {
-          const side = lane < laneHeld.lane ? "left" : "right";
-          if (now - indicatorSeen[side] > 6000)
-            book(VIOLATIONS.signalOmission, now, 15000, inJapanese("violationDetail.laneChangeNoSignal"));
-        }
-        laneHeld = { seg: s, lane };
-      } else laneHeld = null;
+      const changedTo = counted ? laneChangeSide(laneHeld, counted) : null;
+      if (changedTo && now - indicatorSeen[changedTo] > 6000)
+        book(VIOLATIONS.signalOmission, now, 15000, inJapanese("violationDetail.laneChangeNoSignal"));
+      laneHeld = counted;
       // オービス (速度違反自動取締装置): crossing a device's line in the direction and lanes it
       // covers, 30 km/h or more over the limit (40 on an expressway: the 赤切符 range they are set
       // for), fires the camera and its strobe; the notice comes by post after the day ends.

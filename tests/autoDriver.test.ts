@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { LocalFrame } from "../src/geo/frame";
 import { AutoDriver, laneCentre, type DriveWorld } from "../src/game/autoDriver";
 import { steerLimit, WHEELBASE, type DriveInput } from "../src/physics/vehicle";
+import { OSM_EXPRESSWAY_KIND } from "../src/world/roadClass";
 import { RoadGraph, type RoadLine, type Segment } from "../src/world/roads";
 import { gameClock } from "../src/world/ruleTime";
 import type { TrafficControl } from "../src/world/trafficControl";
@@ -79,22 +80,44 @@ describe("self-driving lane positions (第18条・第20条)", () => {
 });
 
 describe("self-driving by wheel and pedals", () => {
-  it("waits on its path where no carriageway is found under it, without a 切り返し (the 汐留出口's foot)", () => {
-    // The ramp's at-grade connector meets the street's line metres off its end: standing at the
-    // red there, carriagewaysAt finds neither. On the path the route was planned along, the car is
-    // on the road; the manoeuvre it started crept over the stop line on red (信号無視).
-    const graph = new RoadGraph(lShape(), frame);
-    const blind = Object.assign(Object.create(graph) as RoadGraph, { carriagewaysAt: () => [] });
-    const world = worldOf(blind);
-    const driver = new AutoDriver();
-    const start = at(1.5, 5);
-    driver.place(start, Math.PI);
-    expect(driver.plan(world, at(120, 200))).toBe(true);
-    const lane = driver.route!.points[0].clone();
-    for (let t = 0; t < 2; t += 1 / 30) {
-      driver.update(1 / 30, world, { position: lane, yaw: Math.PI, speed: 0 });
-      expect(driver.activity, `t ${t.toFixed(2)}`).toBe("drive");
-    }
+  describe("standing still on a ramp's at-grade connector (汐留出口's foot, at the red)", () => {
+    // An off-ramp's ground connector (OSM, 4 m) running south down to a street. carriagewaysAt
+    // indexes the streets only (usesGroundSurface), so on the connector it finds nothing: the car
+    // counted as off every road and 切り返し'd forward over the stop line (信号無視).
+    const connector: RoadLine = {
+      ...road(0, 150, 0, 0, 4),
+      oneway: 1,
+      kind: OSM_EXPRESSWAY_KIND,
+      source: "osm",
+      cls: "ramp",
+      structure: "ground",
+      level: 0,
+    };
+    const graph = new RoadGraph([road(-200, 0, 0, 0, 10), road(0, 0, 200, 0, 10), connector], frame);
+    const ramp = graph.segments.find((seg) => seg.line.cls === "ramp")!;
+    /** Standing `side` m left of the connector's centreline at y = 100, facing down it. */
+    const standAt = (side: number) => {
+      const { pos, dir } = graph.sample(ramp, 50);
+      const start = pos.clone().add(new Vector3(dir.z, 0, -dir.x).multiplyScalar(side));
+      const yaw = Math.atan2(dir.x, dir.z);
+      const driver = new AutoDriver();
+      driver.place(start, yaw);
+      expect(driver.plan(worldOf(graph), at(-150, 0))).toBe(true);
+      for (let t = 0; t < 1; t += 1 / 30)
+        driver.update(1 / 30, worldOf(graph), { position: start, yaw, speed: 0 });
+      return { activity: driver.activity, lostWhy: driver.lostWhy };
+    };
+
+    it("counts the connector the route runs along as road, up to 1 m past its half width", () => {
+      expect(standAt(0)).toEqual({ activity: "drive", lostWhy: null });
+      expect(standAt(2.9)).toEqual({ activity: "drive", lostWhy: null });
+      expect(standAt(-2.9)).toEqual({ activity: "drive", lostWhy: null });
+    });
+
+    it("still aligns a slow car standing off every road beside its path", () => {
+      expect(standAt(3.1)).toEqual({ activity: "manoeuvre", lostWhy: "offRoad" });
+      expect(standAt(-3.1)).toEqual({ activity: "manoeuvre", lostWhy: "offRoad" });
+    });
   });
 
   it("follows the street round a right turn and stops at the destination", () => {

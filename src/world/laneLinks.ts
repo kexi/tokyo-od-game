@@ -317,8 +317,11 @@ export type HeldLane = { seg: Segment; lane: number };
  * or not along the road). Up on a deck it is counted on the run the car was keeping to while it is
  * still within that run's deck: where another line's deck lies over it (the 1号 beside C1 at
  * 浜崎橋 JCT) locate may answer that run, whose centreline closes in on the car's, and the lane
- * "changed" with the frame, not the car. Why not skip the merge zones: a real change there needs
- * 合図 too.
+ * "changed" with the frame, not the car. Not at the end of a ramp or a main line that merges: once
+ * locate answers the road it runs into (the merge's trunk or the road on past the node) the car is
+ * counted there, as it is going into that road's lanes (counted on the ramp, the move into the
+ * main line read as a change across the ramp's own lanes, 45554540:33 → 24402611:26). Why not skip
+ * the merge and diverge zones: a real change there needs 合図 too.
  */
 export function laneCountedIn(
   graph: RoadGraph,
@@ -329,14 +332,34 @@ export function laneCountedIn(
   onDeck: boolean,
   accept: (seg: Segment) => boolean,
 ): HeldLane | null {
-  const heldRun = onDeck && held ? runOf(held.seg) : null;
+  const isIntoMerged =
+    held !== null &&
+    onRoad !== null &&
+    graph.laneLinks.some(
+      (l) =>
+        l.kind === "merge" && l.from === held.seg.id && (l.to === onRoad.seg.id || l.trunk === onRoad.seg.id),
+    );
+  const heldRun = onDeck && held && !isIntoMerged ? runOf(held.seg) : null;
   const onHeldRun =
     heldRun === null ? null : graph.locate(p, 8, (seg) => accept(seg) && runOf(seg) === heldRun);
-  const isOnHeldRun = onHeldRun !== null && Math.abs(onHeldRun.lateral) < onHeldRun.seg.line.width / 2;
-  const road = isOnHeldRun ? onHeldRun : onRoad;
+  const isWithinHeldDeck = onHeldRun !== null && Math.abs(onHeldRun.lateral) < onHeldRun.seg.line.width / 2;
+  const road = isWithinHeldDeck ? onHeldRun : onRoad;
   if (!road || road.seg.lanes < 2) return null;
   const align = forward.dot(road.dir);
   const isAlong = Math.abs(align) > 0.85;
   if (!isAlong) return null;
   return { seg: road.seg, lane: laneOfOffset(road.seg, road.lateral * Math.sign(align)) };
+}
+
+/**
+ * The side of a lane change between two looks (laneCountedIn), or null: on the same segment, from one
+ * of its lanes to another. Coming in from outside its lanes (a ramp's taper, a branch whose
+ * centreline runs off the car's) crosses no lane line: the merge and the diverge have their own
+ * 合図 and law (第75条の6・7), as the 進路変更禁止 check counts (laneChangeBan.test.ts).
+ */
+export function laneChangeSide(held: HeldLane | null, now: HeldLane): "left" | "right" | null {
+  if (!held || held.seg !== now.seg || held.lane === now.lane) return null;
+  const isLane = (lane: number) => lane >= 0 && lane < now.seg.lanes;
+  if (!isLane(held.lane) || !isLane(now.lane)) return null;
+  return now.lane < held.lane ? "left" : "right";
 }
