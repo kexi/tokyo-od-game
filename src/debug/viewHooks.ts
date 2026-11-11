@@ -4,6 +4,7 @@ import type { LocalFrame } from "../geo/frame";
 import { log, warn } from "../log";
 import type { Environment } from "../world/environment";
 import type { LandmarkEntry } from "../world/landmarkEntry";
+import type { GuideTargetView } from "../world/guideSigns";
 import type { Approach, TrafficControl } from "../world/trafficControl";
 import { MOVEMENTS, crossingVerdict } from "../signals/plan";
 import {
@@ -41,7 +42,7 @@ type LatLon = [number, number];
 
 /** What a view can aim at, in the local frame at the time it is read. */
 export type ViewTarget = {
-  kind: "landmark" | "sign" | "signal" | "expressway" | "point";
+  kind: "landmark" | "sign" | "guide" | "signal" | "expressway" | "point";
   id: string;
   name?: string;
   point: Vec3;
@@ -69,6 +70,7 @@ export type TargetQuery =
   | { landmark: string; heightShare?: number }
   | { sign: string; note?: boolean | string; near?: LatLon; index?: number }
   | { signal: { near?: LatLon; arrow?: boolean; index?: number } }
+  | { guide: { kind?: string; near?: LatLon; index?: number } }
   | { expressway: string; share?: number }
   | { point: { lat: number; lon: number; h: number; ref?: HeightRef } };
 
@@ -114,6 +116,8 @@ export type ViewHookDeps = {
   landmarks: readonly LandmarkEntry[];
   /** TrafficSigns (its private posts are read through privateViews.ts). */
   signs: unknown;
+  /** The 案内標識 (GuideSigns.debugTargets, public). */
+  guide: { debugTargets(): GuideTargetView[] } | null;
   control: TrafficControl;
   env: Environment;
   baseUrl: string;
@@ -371,8 +375,10 @@ export function createViewHooks(deps: ViewHookDeps) {
       post.plates.forEach((plate, level) => {
         if (!isWanted(post, plate.id)) return;
         const drawn = nearestInstance(faces.get(plate.file) ?? [], post.pos, post.travel);
+        // Undrawn (the face not built yet): where the mount put it, or G2's 2.6 m − 1 m a level.
+        const mounted = post.plateHeights?.[level] ?? 2.6 - level;
         const point =
-          drawn?.pos ?? post.pos.clone().setY((deps.groundY(post.pos.x, post.pos.z) ?? 0) + 2.6 - level);
+          drawn?.pos ?? post.pos.clone().setY((deps.groundY(post.pos.x, post.pos.z) ?? 0) + mounted);
         const normal = drawn?.normal ?? post.travel.clone().negate();
         // The plate's drawing scale by number (G2: 警戒 1.3 倍 …) widens its box.
         const half = 0.45 * (plate.scale ?? 1);
@@ -401,6 +407,43 @@ export function createViewHooks(deps: ViewHookDeps) {
         });
       });
     }
+    const sorted = found
+      .toSorted((a, b) => flatDistance(a.point, from) - flatDistance(b.point, from))
+      .slice(0, q.limit ?? 20);
+    return { ok: true as const, value: sorted };
+  };
+
+  /**
+   * 案内標識 faces standing now, nearest `near` first; `kind` filters by number ("106-A") or its
+   * prefix ("105"). The point is the face's centre, the normal its front (from the face's matrix).
+   */
+  const guides = (q: { kind?: string; near?: Vec3; limit?: number } = {}) => {
+    const all = deps.guide?.debugTargets() ?? null;
+    if (!all) return { ok: false as const, reason: "not-built" as const, detail: "no guide signs" };
+    const from = q.near ?? plain(deps.carPosition());
+    const found: ViewTarget[] = all
+      .filter((g) => !g.hidden && (q.kind === undefined || g.kind.startsWith(q.kind)))
+      .map((g) => ({
+        kind: "guide" as const,
+        id: g.kind,
+        point: plain(g.pos),
+        normal: plain(g.normal),
+        size: Math.max(g.width, g.height),
+        box: boxAround(g.pos, { x: g.width / 2, y: g.height / 2, z: g.width / 2 }),
+        geo: geoOf(g.pos),
+        distanceM: fromCar(g.pos),
+        isDrawn: true,
+        facts: {
+          widthM: round(g.width),
+          heightM: round(g.height),
+          letterCm: g.letterCm,
+          mount: g.mount,
+          beforeM: round(g.before, 1),
+          bottomM: round(g.bottomM),
+          layer: g.layer,
+          names: g.names,
+        },
+      }));
     const sorted = found
       .toSorted((a, b) => flatDistance(a.point, from) - flatDistance(b.point, from))
       .slice(0, q.limit ?? 20);
@@ -622,6 +665,12 @@ export function createViewHooks(deps: ViewHookDeps) {
           ? pick(r.value, index, spec.signal.arrow ? "right-arrow signal" : "signal")
           : fail(r.reason, r.detail);
       }
+      if ("guide" in spec) {
+        const index = spec.guide.index ?? 0;
+        const near = plain(flatOf(spec.guide.near ?? start));
+        const r = guides({ kind: spec.guide.kind, near, limit: index + 1 });
+        return r.ok ? pick(r.value, index, `guide ${spec.guide.kind ?? "*"}`) : fail(r.reason, r.detail);
+      }
       if ("expressway" in spec) return await expressway(spec.expressway, spec.share);
       return point(spec.point);
     } catch (error) {
@@ -637,6 +686,10 @@ export function createViewHooks(deps: ViewHookDeps) {
       signs: brief(posts),
       signals: lamps.ok ? { ok: true, count: lamps.value.lampOwners.length } : brief(lamps),
       landmarks: { ok: deps.landmarks.length > 0, count: deps.landmarks.length },
+      guides: {
+        ok: (deps.guide?.debugTargets().length ?? 0) > 0,
+        count: deps.guide?.debugTargets().length ?? 0,
+      },
     };
   };
 

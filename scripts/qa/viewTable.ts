@@ -59,6 +59,14 @@ export const TargetSchema = z.union([
     }),
   }),
   z.strictObject({
+    guide: z.strictObject({
+      /** 別表第一 number or its prefix (108の2-A, 106-A, 105); none: any 案内標識. */
+      kind: z.string().min(1).optional(),
+      near: latLon.optional(),
+      index: z.number().int().nonnegative().default(0),
+    }),
+  }),
+  z.strictObject({
     /** A chunk id of public/data/expressway (`<run>:<k>`). */
     expressway: z.string().min(1),
     /** Where on the chunk, 0 (first station) – 1 (last). */
@@ -72,6 +80,23 @@ export type TargetSpec = z.infer<typeof TargetSchema>;
 export const StateSchema = z.strictObject({
   signalStep: z
     .union([z.number().int().nonnegative(), z.enum(["green", "yellow", "red", "arrow"])])
+    .optional(),
+  headlamps: z
+    .strictObject({
+      /** ロービーム (すれ違い用) or ハイビーム (走行用). */
+      beam: z.enum(["low", "high"]),
+      /**
+       * Where the player's car stands, lamps lit, facing the target: m from the target along its
+       * facing, turned by `angleDeg`, `lateralM` to the right. Not given: right under the view's eye
+       * (the driver's own lamps). Given apart from the eye, the plate is lit from where the eye is
+       * not: a large observation angle (a passer-by's photo, a mirror).
+       */
+      distanceM: z.number().positive().optional(),
+      angleDeg: z.number().min(-180).max(180).optional(),
+      lateralM: z.number().optional(),
+      /** Degrees the car is turned left (+) from facing the target: the plate out of the beam. */
+      turnDeg: z.number().min(-180).max(180).default(0),
+    })
     .optional(),
   /**
    * The time of day the signals read ("HH:MM", T4: the night plans — 夜間点滅, 夜間の押ボタン), held
@@ -101,8 +126,29 @@ const StandSchema = z.strictObject({
   lookAheadM: z.number().positive().default(40),
 });
 
+/**
+ * A pixel probe: a rectangle of the frame (fractions of the width and height, x right and y down)
+ * whose luminance the runner measures in the saved image (pixelProbes.ts): e.g. the road ahead of a
+ * driver's eye. Measured, not judged: the table's metrics turn the numbers into limits.
+ */
+export const ProbeSchema = z.strictObject({
+  name: kebab,
+  rect: z
+    .tuple([
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+    ])
+    .refine(([x0, y0, x1, y1]) => x1 > x0 && y1 > y0, {
+      message: "rect is [x0, y0, x1, y1] with x1 > x0, y1 > y0",
+    }),
+});
+export type Probe = z.infer<typeof ProbeSchema>;
+
 const common = {
   id: kebab,
+  probes: z.array(ProbeSchema).optional(),
   /** Degrees (vertical field of view). Not given: the table's default. */
   fov: z.number().min(5).max(120).optional(),
   /** What the reviewer should see in this frame (copied into the frame's JSON as `expect`). */
@@ -177,6 +223,13 @@ export const ViewSchema = z
     const isSignalTarget = v.target !== undefined && "signal" in v.target;
     if (isSignalHeld && !isSignalTarget)
       ctx.addIssue({ code: "custom", message: `view ${v.id}: state.signalStep needs a signal target` });
+    const isLampLit = v.state?.headlamps !== undefined;
+    const isFacingView = v.camera !== "overhead" && v.camera !== "free" && v.target !== undefined;
+    if (isLampLit && !isFacingView)
+      ctx.addIssue({
+        code: "custom",
+        message: `view ${v.id}: state.headlamps needs a target in front of the eye`,
+      });
   });
 export type View = z.infer<typeof ViewSchema>;
 
@@ -207,6 +260,20 @@ export const RequiredMetricSchema = z
     max: z.number().optional(),
     unit: z.string().optional(),
     note: z.string().optional(),
+    /**
+     * Computed by the runner from a probe (pixelProbes.ts deriveMetrics): the statistic of `probe`
+     * in `view` under `look`, divided by the same under `over` when given (a night / day ratio).
+     * Without it the reviewer measures and reports the metric.
+     */
+    from: z
+      .strictObject({
+        view: kebab,
+        probe: kebab,
+        stat: z.enum(["mean", "p50", "p95", "p99", "contrast"]),
+        look: kebab.optional(),
+        over: kebab.optional(),
+      })
+      .optional(),
   })
   .refine((m) => m.min !== undefined || m.max !== undefined, { message: "a metric needs min or max" });
 export type RequiredMetric = z.infer<typeof RequiredMetricSchema>;
@@ -265,6 +332,25 @@ export const ViewTableSchema = z
       const looks = (s.looks ?? t.defaults.looks ?? []).map((l) => l.id);
       if (new Set(looks).size !== looks.length)
         ctx.addIssue({ code: "custom", message: `duplicate look in ${s.id}` });
+    }
+    // A computed metric must name a probe that exists (a typo would report it missing every round).
+    for (const m of t.metrics) {
+      if (!m.from) continue;
+      const from = m.from;
+      const session = t.sessions.find((s) => s.views.some((v) => v.id === from.view));
+      const view = session?.views.find((v) => v.id === from.view);
+      const hasProbe = view?.probes?.some((p) => p.name === from.probe) ?? false;
+      if (!hasProbe)
+        ctx.addIssue({
+          code: "custom",
+          message: `metric ${m.name}: no probe ${from.probe} in view ${from.view}`,
+        });
+      const looks = (session?.looks ?? t.defaults.looks ?? []).map((l) => l.id);
+      for (const look of [from.look, from.over]) {
+        const isUnknownLook = look !== undefined && !looks.includes(look);
+        if (isUnknownLook)
+          ctx.addIssue({ code: "custom", message: `metric ${m.name}: no look ${look} in ${session?.id}` });
+      }
     }
   });
 export type ViewTable = z.infer<typeof ViewTableSchema>;

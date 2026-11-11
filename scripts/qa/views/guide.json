@@ -1,0 +1,257 @@
+{
+  "name": "guide",
+  "description": "案内標識（G5 のレイアウタ）の実地の視点。108 系（junction-diagram）・105（rows、方向ごとの行）・106-A（rows、確認標識）を正面・斜め 30°・運転席 30/60/150 m・夜のロービームで撮り、標識令 別表第二の様式（色・文字の大きさ・矢印・配置）と照合する。板の面は BoardFacePool の層（各コマの JSON の target.facts.layer が 0 なら遠景の青のまま）。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261110,
+    "moment": "2026-11-10T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-10T11:00:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-10T22:00:00+09:00"
+      }
+    ],
+    "hide": ["traffic"]
+  },
+  "metrics": [
+    {
+      "name": "face-drawn-near",
+      "min": 1,
+      "note": "対象の板が描いた面の層を表示しているコマの割合（各コマの JSON の target.facts.layer > 0 のコマ数 ÷ 全コマ数）。1 = すべてのコマで描けている"
+    },
+    {
+      "name": "letter-px-driver-30",
+      "min": 8,
+      "unit": "px",
+      "note": "運転席 30 m（fov 40、720 px）で漢字の高さ（facts.letterCm）が何 px に写るか: letterCm/100 ÷ (2 × 30 × tan 20°) × 720。30 cm の字で 9.9 px。太字の漢字の画が潰れない 8 px 以上を下限にする（1 周目の撮影で 9.9 px の字が読めることを確かめた値）"
+    },
+    {
+      "name": "pool-usage",
+      "max": 1,
+      "note": "BoardFacePool（guide）の層の使用率 used / capacity（scene.signFaces.pools の guide）。1 を超えない（予算 32 面）"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "marunouchi-108",
+      "start": [35.68075, 139.76345],
+      "views": [
+        {
+          "id": "junction-front-20",
+          "camera": "pedestrian",
+          "target": {
+            "guide": {
+              "kind": "108の2-A"
+            }
+          },
+          "distanceM": 20,
+          "fov": 35,
+          "expect": {
+            "style": "青地・白字・白縁、矢印は根元から交差点へ（図 018）。地名の英字は日本字の 1/2",
+            "letters": "文字の高さは facts.letterCm（設計速度と車線数、備考一(五)2・Q&A4）"
+          }
+        },
+        {
+          "id": "junction-oblique-30deg",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "108の2-A"
+            }
+          },
+          "distanceM": 30,
+          "angleDeg": 30,
+          "fov": 40,
+          "expect": {
+            "mount": "片持式の柱・腕と板の合い、3° 前傾"
+          }
+        },
+        {
+          "id": "junction-driver-30",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "108の2-A"
+            }
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "readability": "30 m で地名が読める",
+            "night": "ロービームで板が光る（白飛びしない）"
+          }
+        },
+        {
+          "id": "junction-driver-60",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "108の2-A"
+            }
+          },
+          "distanceM": 60,
+          "lateralM": 2.5,
+          "fov": 30,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "readability": "60 m で地名と矢印の形が分かる"
+          }
+        },
+        {
+          "id": "junction-driver-150",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "108の2-A"
+            }
+          },
+          "distanceM": 150,
+          "lateralM": 2.5,
+          "fov": 20,
+          "expect": {
+            "readability": "150 m で板の青と矢印の形が分かる（層は描いた面）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "hibiya-105",
+      "start": [35.67567, 139.76279],
+      "views": [
+        {
+          "id": "direction-front-15",
+          "camera": "pedestrian",
+          "target": {
+            "guide": {
+              "kind": "105"
+            }
+          },
+          "distanceM": 15,
+          "fov": 35,
+          "expect": {
+            "style": "105: 行ごとに方面・矢印・距離、行の間に白線。右向きの行は矢印が右・距離が左（図 008）",
+            "letters": "距離の数字は日本字の 0.8、km は 0.4"
+          }
+        },
+        {
+          "id": "direction-driver-30",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "105"
+            }
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "place": "交差点の手前 30 m 以内（facts.beforeM − 停止線から交差点の中心まで）"
+          }
+        },
+        {
+          "id": "direction-driver-60",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "105"
+            }
+          },
+          "distanceM": 60,
+          "lateralM": 2.5,
+          "fov": 30,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "readability": "60 m で矢印の向きが分かる"
+          }
+        }
+      ]
+    },
+    {
+      "id": "kasumigaseki-106",
+      "start": [35.67317, 139.74451],
+      "views": [
+        {
+          "id": "confirm-front-15",
+          "camera": "pedestrian",
+          "target": {
+            "guide": {
+              "kind": "106-A"
+            }
+          },
+          "distanceM": 15,
+          "fov": 35,
+          "expect": {
+            "style": "106-A: 左に 1 本の上向き矢印、遠い地名が上（図 011「日本橋 10km」の上下）",
+            "colour": "一般道は青地白字（備考一(三)1(12)）"
+          }
+        },
+        {
+          "id": "confirm-driver-30",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "106-A"
+            }
+          },
+          "distanceM": 30,
+          "lateralM": 2.5,
+          "fov": 40,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "place": "交差点の先（facts.beforeM が負）、直進の路線上"
+          }
+        },
+        {
+          "id": "confirm-driver-60",
+          "camera": "driver",
+          "target": {
+            "guide": {
+              "kind": "106-A"
+            }
+          },
+          "distanceM": 60,
+          "lateralM": 2.5,
+          "fov": 30,
+          "state": {
+            "headlamps": {
+              "beam": "low"
+            }
+          },
+          "expect": {
+            "readability": "60 m で地名と距離が読める"
+          }
+        }
+      ]
+    }
+  ]
+}

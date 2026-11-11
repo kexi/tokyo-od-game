@@ -15,7 +15,17 @@ export class RoadInstances {
     for (const { mesh } of this.entries) mesh.applyMatrix4(matrix);
   }
 
-  take(geometry: BufferGeometry, material: Material, count: number): InstancedMesh {
+  /**
+   * A mesh of `geometry` and `material` for `count` instances. `prepare` runs on it before it is
+   * returned, made or reused (the sign faces give it their per-instance attribute there, before
+   * anything can draw it).
+   */
+  take(
+    geometry: BufferGeometry,
+    material: Material,
+    count: number,
+    prepare?: (mesh: InstancedMesh) => void,
+  ): InstancedMesh {
     let entry = this.entries.find(
       (e) => !e.used && e.mesh.geometry === geometry && e.mesh.material === material,
     );
@@ -42,6 +52,7 @@ export class RoadInstances {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.boundingBox = null;
     mesh.boundingSphere = null;
+    prepare?.(mesh);
     return mesh;
   }
 

@@ -1,13 +1,10 @@
 import { reanchorBody } from "../physics/reanchor";
 import {
-  CanvasTexture,
   Euler,
   InstancedMesh,
   Matrix4,
   Mesh,
-  MeshStandardMaterial,
   Quaternion,
-  SRGBColorSpace,
   Vector3,
   type BufferGeometry,
   type Material,
@@ -19,7 +16,12 @@ import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX } from "../geo/tiles";
 import { log, warn } from "../log";
 import { PROP_GROUPS } from "../physics/groups";
-import { drawBoard, layoutBoard, loadGuideFonts, type BoardLayout } from "./guideArt";
+import { drawBoard, layoutGuideBoard, loadGuideFonts } from "./guideArt";
+import type { BoardLayout } from "../signs/board/boxes";
+import { boardKey, boardNames, type BoardContent } from "../signs/board/content";
+import { keepValidBoards } from "../signs/board/layout";
+import { BoardFacePool, TEXTURE_PX, type BoardFace } from "./boardFacePool";
+import { planRowSteps, type SignalArm } from "./guideRows";
 import {
   localDests,
   localPlaces,
@@ -34,35 +36,35 @@ import {
   type RouteTile,
 } from "./guidePlan";
 import type { AppliedRegulations } from "./regulations";
-import { leftOf, type RoadGraph } from "./roads";
+import type { RoadGraph } from "./roads";
 import type { Approach } from "./trafficControl";
 import { sharedDraco } from "../render/draco";
+import { MEMBER_NODES, resolveMount, type MemberRole } from "../signs/mount";
+import { GUIDE_POLE_KERB } from "../signs/mountAssumptions";
 import { RoadInstances } from "./roadInstances";
 import { FrameWork } from "../game/frameWork";
+import { attachFaceLayers } from "./signFaceMaterial";
 
 /**
- * 案内標識 108 series on the streets around the player: planned by guidePlan.ts from the road
- * graph, the OSM route numbers and destinations (public/data/routes) and the 表示地名
- * (public/data/guide-places.json); poles, arms and boards from scripts/blender/guide_signs.py;
- * faces drawn by guideArt.ts.
+ * 案内標識 on the streets around the player: the 108 series planned by guidePlan.ts and the 105・106
+ * by guideRows.ts from the road graph, the OSM route numbers and destinations (public/data/routes)
+ * and the 表示地名 (public/data/guide-places.json); poles, arms and boards from
+ * scripts/blender/guide_signs.py; faces laid out by src/signs/board/ and drawn by guideArt.ts.
  *
- * Cost: every part is one InstancedMesh, and the board faces too, with a plain blue far face;
- * only the nearest boards (≤ NEAR_COUNT within NEAR_RANGE) get their own drawn texture, kept in a
- * cache across rebuilds. Why not a texture per board for all of them: 100 boards at 512 px are
- * ~110 MB of GPU memory with mipmaps, and beyond ~400 m the letters are a few pixels high anyway.
+ * Cost: every part is one InstancedMesh, and the board faces too: one SignFaceMaterial
+ * (signFaceMaterial.ts) over the BoardFacePool (boardFacePool.ts), each board's layer an instance
+ * attribute. Only the most wanted boards (apparent size × facing, ≤ NEAR_COUNT within NEAR_RANGE)
+ * show their drawn face; the rest show layer 0, the plain blue far face. The pool keeps 32 faces
+ * across rebuilds (the least recently wanted goes first). Why not a texture per board for all of
+ * them: 100 boards at 512 px are ~110 MB of GPU memory with mipmaps, and beyond ~400 m the letters
+ * are a few pixels high anyway. Why not a Mesh and material per near board (before G3): 24 more
+ * draw calls and materials, and the faces could not share the plates' headlamp return.
  */
 
 const ROUTE_ZOOM = 14;
 const ROAD_ZOOM = 16;
-const NEAR_RANGE = 400; // m: boards this close get their drawn face (beyond, letters are < 3 px)
-const NEAR_COUNT = 24;
-const DRAWS_PER_UPDATE = 3; // canvas draws per update (a board takes a few ms)
-const TEXTURE_PX = 512; // 280 cm → 1.8 px/cm: a 30 cm 漢字 is 55 px
-const CACHE_LIMIT = 32; // ≈ 35 MB of faces with their mipmaps
-const OVERHEAD_BOTTOM = 5.0; // 道路標識設置基準: 片持式の標示板の設置高さ 5.0 m 標準 (≥ 4.7 m)
-const ROADSIDE_BOTTOM = 2.5; // 路側式 on a pavement without a furniture strip: 2.5 m or more
-const TILT = 3; // ° the overhead boards lean forward (国土交通省 Q&A: 通常約3°)
-const BOARD_GAP = 0.55; // m from the pole's surface to the board's inner edge
+// Heights, the 3° lean and the gap to the pole: src/signs/mount.ts (片持式 cantilever-f, 路側式
+// double-post on the pavement, 2.5 m).
 
 type Part = { geometry: BufferGeometry; material: Material };
 type Kit = {
@@ -72,15 +74,30 @@ type Kit = {
   post: Part[];
   face: BufferGeometry;
   back: Part;
-  poleHeight: number;
-  poleRadius: number;
-  armRadius: number;
-  postRadius: number;
-  railOffset: number;
 };
 
+/** A board as the review hooks see it (GuideSigns.debugTargets). */
+export type GuideTargetView = {
+  kind: string;
+  pos: Vector3;
+  normal: Vector3;
+  width: number;
+  height: number;
+  letterCm: number;
+  mount: "overhead" | "roadside";
+  before: number;
+  bottomM: number;
+  hidden: boolean;
+  /** The layer it shows (0: the plain far face). */
+  layer: number;
+  names: string[];
+};
+
+/** A placed board of any number (108 from guidePlan.ts, 105・106 from guideRows.ts). */
+type Placed = GuidePlan<BoardContent>;
+
 type Sign = {
-  plan: GuidePlan;
+  plan: Placed;
   layout: BoardLayout;
   key: string;
   /** Board centre and orientation (the face's matrix), for the near face mesh. */
@@ -90,7 +107,8 @@ type Sign = {
   refs: Array<[InstancedMesh, number]>;
   faceIndex: number;
   colliders: RAPIER.Collider[];
-  near: Mesh | null;
+  /** Showing its drawn face (one of the nearest). */
+  isNear: boolean;
   hidden: boolean;
 };
 
@@ -98,40 +116,24 @@ type Sign = {
 const at = (p: Vector3, rotY: number, scale: Vector3, pitch = 0) =>
   new Matrix4().compose(p, new Quaternion().setFromEuler(new Euler(pitch, rotY, 0, "YXZ")), scale);
 
-const farMaterial = new MeshStandardMaterial({ color: 0x1d4f9c, roughness: 0.45 });
-const textures = new Map<string, CanvasTexture>();
-
-/** Faces drawn once per content, newest last (Map order), the oldest dropped past the limit. */
-function faceTexture(key: string, layout: BoardLayout): CanvasTexture {
-  const hit = textures.get(key);
-  if (hit) {
-    textures.delete(key);
-    textures.set(key, hit);
-    return hit;
-  }
-  const texture = new CanvasTexture(drawBoard(layout, TEXTURE_PX));
-  texture.colorSpace = SRGBColorSpace;
-  texture.flipY = false; // glTF UV convention: v runs down the image
-  texture.anisotropy = 8;
-  textures.set(key, texture);
-  while (textures.size > CACHE_LIMIT) {
-    const oldest = textures.keys().next().value;
-    if (oldest === undefined) break;
-    textures.get(oldest)?.dispose();
-    textures.delete(oldest);
-  }
-  return texture;
+let boardFaces: BoardFacePool | null = null;
+/** Made on first use (the pool's uploads need the renderer, bound by main.ts). */
+function faces(): BoardFacePool {
+  boardFaces ??= new BoardFacePool();
+  return boardFaces;
 }
 
 export class GuideSigns {
-  plans: GuidePlan[] = [];
+  plans: Placed[] = [];
   private signs: Sign[] = [];
   private kit: Kit | null = null;
   private places: PlaceRow[] | null = null;
   private meshes: InstancedMesh[] = [];
   private readonly instances = new RoadInstances();
-  private nearPool: Mesh[] = [];
   private faces: InstancedMesh | null = null;
+  /** The board face geometry with this class's `faceLayer` instance attribute. */
+  private faceGeometry: BufferGeometry | null = null;
+  private layerVersion = -1;
   private body: RAPIER.RigidBody | null = null;
   private readonly tiles = new Map<string, Promise<RouteTile | null>>();
   /**
@@ -180,7 +182,8 @@ export class GuideSigns {
     const face = board.find((p) => p.material.name === "GuideFace");
     const back = board.find((p) => p.material.name === "GuideBack");
     if (!face || !back) throw new Error("guide_signs.glb: GuideBoard lacks its face or back");
-    const extras = gltf.scene.getObjectByName("GuideSigns")?.userData ?? {};
+    // The part sizes the layout uses are src/signs/mountAssumptions.ts MEMBER_SIZES (checked against
+    // guide_signs.py by tests/signMount.test.ts), not the glb's extras.
     this.kit = {
       pole: part("GuidePole"),
       arm: part("GuideArm"),
@@ -188,11 +191,6 @@ export class GuideSigns {
       post: part("GuidePost"),
       face: face.geometry,
       back,
-      poleHeight: Number(extras.poleHeight ?? 7.6),
-      poleRadius: Number(extras.poleRadius ?? 0.134),
-      armRadius: Number(extras.armRadius ?? 0.07),
-      postRadius: Number(extras.postRadius ?? 0.045),
-      railOffset: Number(extras.railOffset ?? 0.043),
     };
   }
 
@@ -260,6 +258,7 @@ export class GuideSigns {
     centre: { lat: number; lon: number },
     avoid: Vector3[],
     work = new FrameWork(),
+    signalArms: SignalArm[] = [],
   ): Promise<void> {
     const generation = ++this.generation;
     this.clear(true);
@@ -291,23 +290,28 @@ export class GuideSigns {
       const places: GuidePlace[] = localPlaces(this.places, frame);
       const crossings = (regs?.crossings ?? []).map((c) => c.pos);
       const started = performance.now();
-      this.plans = await work.run(
-        planGuideSteps({
-          graph,
-          approaches: guideApproaches,
-          routes,
-          places,
-          names,
-          dests: localDests(data.dests, frame),
-          avoid: [...avoid, ...crossings],
-        }),
-      );
+      const planInput = {
+        graph,
+        approaches: guideApproaches,
+        routes,
+        places,
+        names,
+        dests: localDests(data.dests, frame),
+        avoid: [...avoid, ...crossings],
+      };
+      const junctionBoards = await work.run(planGuideSteps(planInput));
+      await work.yield();
+      // 105・106 after every 108: the 108 boards keep the places they had before G5.
+      const rowBoards = await work.run(planRowSteps({ ...planInput, placed: junctionBoards, signalArms }));
+      this.plans = [...junctionBoards, ...rowBoards];
       await work.yield();
       await work.run(this.build(this.kit));
       this.instances.end();
       log("guide_signs_placed", {
         signs: this.plans.length,
-        advance: this.plans.filter((p) => p.board.distance !== null).length,
+        advance: junctionBoards.filter((p) => p.board.distance !== null).length,
+        direction: rowBoards.filter((p) => p.board.kind.startsWith("105")).length,
+        confirm: rowBoards.filter((p) => p.board.kind === "106-A").length,
         overhead: this.plans.filter((p) => p.mount === "overhead").length,
         routed: routes.size,
         mapped: data.dests.length,
@@ -318,6 +322,50 @@ export class GuideSigns {
 
   count(): number {
     return this.signs.length;
+  }
+
+  /**
+   * Dev (scripts/qa/guideBoards.ts, the review): each plan's face drawn now at the layer's width,
+   * and the pool's budget and use.
+   */
+  /**
+   * Dev (the review's `guide` targets, src/debug/viewHooks.ts): every standing board's face as
+   * drawn now — its centre and normal from the face's instance matrix, size, number, mount, the
+   * layer it shows and the height of its lower edge.
+   */
+  debugTargets(): GuideTargetView[] {
+    const pool = faces();
+    return this.signs.map((s) => {
+      const pos = new Vector3().setFromMatrixPosition(s.board);
+      const normal = new Vector3(0, 0, 1).transformDirection(s.board).setY(0).normalize();
+      const ground = this.groundAt(s.plan.pos.x, s.plan.pos.z) ?? 0;
+      const h = s.layout.height / 100;
+      return {
+        kind: s.plan.board.kind,
+        pos,
+        normal,
+        width: s.layout.width / 100,
+        height: h,
+        letterCm: s.plan.board.letter,
+        mount: s.plan.mount,
+        before: s.plan.before,
+        bottomM: pos.y - h / 2 - ground,
+        hidden: s.hidden,
+        layer: s.isNear ? pool.layerOf(s.key) : 0,
+        names: boardNames(s.plan.board).map((n) => n.ja),
+      };
+    });
+  }
+
+  debugBoards() {
+    const pool = faces();
+    return {
+      plans: this.plans,
+      draw: (i: number) => drawBoard(layoutGuideBoard(this.plans[i].board), TEXTURE_PX),
+      layout: (i: number) => layoutGuideBoard(this.plans[i].board),
+      usage: pool.usage(),
+      stats: { ...pool.stats, stepMs: [...pool.stats.stepMs] },
+    };
   }
 
   reanchor(matrix: Matrix4, rotation: Quaternion, graph: RoadGraph): void {
@@ -332,7 +380,6 @@ export class GuideSigns {
       sign.plan.travel.applyQuaternion(rotation);
       sign.board.premultiply(matrix);
       for (const foot of sign.feet) foot.applyMatrix4(matrix);
-      sign.near?.applyMatrix4(matrix);
     }
     if (this.roadInfo) {
       this.roadInfo.graph = graph;
@@ -349,42 +396,34 @@ export class GuideSigns {
     }
     this.meshes = [];
     this.faces = null;
-    for (const s of this.signs) if (s.near) this.dropNear(s);
-    if (!reuse) {
-      for (const m of this.nearPool) (m.material as Material).dispose();
-      this.nearPool = [];
-    }
     this.signs = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;
   }
 
   /**
-   * Drawn faces for the nearest boards, the far face for the rest; and, every 2 s, signs near the
-   * player that stand inside a building (GSI 幅員 wider than the street) are hidden.
+   * Drawn faces for the most wanted boards, the far face for the rest; and, every 2 s, signs near
+   * the player that stand inside a building (GSI 幅員 wider than the street) are hidden. The pool
+   * uploads a couple of faces a frame and draws a board per FrameWork step, yielding once 4 ms are
+   * spent (one board's step can take longer: boardFacePool.ts); the boards are
+   * asked for every 500 ms, weighed as seen from `eye` (the camera: what is on the screen; the
+   * building check stays round `focus`, the player).
    */
-  update(focus: Vector3, now: number): void {
-    if (now - this.lastUpdate < 500 || !this.faces) return;
+  update(focus: Vector3, now: number, eye: Vector3 = focus): void {
+    if (!this.faces) return;
+    const pool = faces();
+    pool.frame();
+    if (pool.version !== this.layerVersion) this.applyLayers();
+    if (now - this.lastUpdate < 500) return;
     this.lastUpdate = now;
-    const byDistance = this.signs
-      .filter((s) => !s.hidden)
-      .map((s) => ({ s, d: Math.hypot(s.plan.pos.x - focus.x, s.plan.pos.z - focus.z) }))
-      .toSorted((a, b) => a.d - b.d);
-    const wanted = new Set(
-      byDistance
-        .filter((e) => e.d < NEAR_RANGE)
-        .slice(0, NEAR_COUNT)
-        .map((e) => e.s),
-    );
-    for (const s of this.signs) if (s.near && !wanted.has(s)) this.dropNear(s);
-    let draws = 0;
-    for (const s of wanted) {
-      if (s.near) continue;
-      const isCached = textures.has(s.key);
-      if (!isCached && draws >= DRAWS_PER_UPDATE) continue;
-      if (!isCached) draws++;
-      this.makeNear(s);
+    const boards: BoardFace[] = [];
+    for (const s of this.signs) {
+      if (s.hidden) continue;
+      boards.push(this.faceOf(s));
     }
+    const wanted = pool.want(boards, eye);
+    for (const s of this.signs) s.isNear = !s.hidden && wanted.has(s.key);
+    this.applyLayers();
     if (now - this.lastCheck < 2000) return;
     this.lastCheck = now;
     for (const s of this.signs) {
@@ -397,43 +436,28 @@ export class GuideSigns {
     }
   }
 
-  private makeNear(s: Sign): void {
-    const mesh =
-      this.nearPool.pop() ??
-      new Mesh(
-        this.kit?.face,
-        new MeshStandardMaterial({
-          map: faceTexture(s.key, s.layout),
-          // Retroreflective sheeting, as the other signs: a little self-illumination at night.
-          emissive: 0xffffff,
-          emissiveIntensity: 0.16,
-          roughness: 0.45,
-        }),
-      );
-    const material = mesh.material as MeshStandardMaterial;
-    material.map = faceTexture(s.key, s.layout);
-    material.emissiveMap = material.map;
-    mesh.matrixAutoUpdate = false;
-    mesh.matrix.copy(s.board);
-    mesh.castShadow = true;
-    this.scene.add(mesh);
-    s.near = mesh;
-    this.setFace(s, false);
+  /** A sign as the pool weighs it: the face's centre and normal, its width. */
+  private faceOf(s: Sign): BoardFace {
+    const pos = new Vector3().setFromMatrixPosition(s.board);
+    return {
+      key: s.key,
+      layout: s.layout,
+      pos,
+      normal: s.plan.travel.clone().negate(),
+      width: s.layout.width / 100,
+      level: 0,
+    };
   }
 
-  private dropNear(s: Sign): void {
-    if (!s.near) return;
-    this.scene.remove(s.near);
-    this.nearPool.push(s.near);
-    s.near = null;
-    if (!s.hidden) this.setFace(s, true);
-  }
-
-  private setFace(s: Sign, visible: boolean): void {
-    const faces = this.faces;
-    if (!faces) return;
-    faces.setMatrixAt(s.faceIndex, visible ? s.board : new Matrix4().makeScale(0, 0, 0));
-    faces.instanceMatrix.needsUpdate = true;
+  /** Each board's layer: its drawn face when it is near and the face is in, else the far face (0). */
+  private applyLayers(): void {
+    const mesh = this.faces;
+    if (!mesh) return;
+    const pool = faces();
+    const attribute = attachFaceLayers(mesh);
+    for (const s of this.signs) attribute.setX(s.faceIndex, s.isNear ? pool.layerOf(s.key) : 0);
+    attribute.needsUpdate = true;
+    this.layerVersion = pool.version;
   }
 
   private hide(s: Sign): void {
@@ -443,7 +467,7 @@ export class GuideSigns {
       mesh.setMatrixAt(i, zero);
       mesh.instanceMatrix.needsUpdate = true;
     }
-    if (s.near) this.dropNear(s);
+    s.isNear = false;
     for (const c of s.colliders) this.world.removeCollider(c, false);
     s.colliders = [];
   }
@@ -455,84 +479,104 @@ export class GuideSigns {
     const posts: Matrix4[] = [];
     const boards: Matrix4[] = [];
     const owners: Array<{ list: Matrix4[]; sign: number }> = [];
+    // The guide_signs.glb roles this class draws (src/signs/mount.ts MEMBER_NODES).
+    const lists: Partial<Record<MemberRole, Matrix4[]>> = {
+      pole: poles,
+      arm: arms,
+      flange: flanges,
+      boardPost: posts,
+    };
+    const reported = new Set<MemberRole>();
+    const reportUnloadedRole = (role: MemberRole) => {
+      if (reported.has(role)) return;
+      reported.add(role);
+      warn("sign_member_unloaded", { role, glb: MEMBER_NODES[role].glb, node: MEMBER_NODES[role].node });
+    };
+    // The boundary between the planners and the boards: a content that fails the schema is not
+    // stood up (and the log says why), so the layout and the drawing only see checked contents.
+    this.plans = keepValidBoards(this.plans, (plan, issues) =>
+      warn("guide_board_invalid", { kind: String(plan.board.kind), issues }),
+    );
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     this.signs = this.plans.map((plan, index) => {
-      const layout = layoutBoard(plan.board);
+      const layout = layoutGuideBoard(plan.board);
       const w = layout.width / 100;
       const h = layout.height / 100;
       const ground = this.groundAt(plan.pos.x, plan.pos.z) ?? 0;
       const facing = plan.travel.clone().negate(); // the face looks at the oncoming traffic
       const yaw = Math.atan2(facing.x, facing.z);
-      const across = leftOf(plan.travel, -1); // from the kerb toward the carriageway
       const sign: Sign = {
         plan,
         layout,
-        key: JSON.stringify(plan.board),
+        key: boardKey(plan.board),
         board: new Matrix4(),
         feet: [plan.pos.clone()],
         refs: [],
         faceIndex: index,
         colliders: [],
-        near: null,
+        isNear: false,
         hidden: false,
       };
       const add = (list: Matrix4[], m: Matrix4) => {
         list.push(m);
         owners.push({ list, sign: index });
       };
-      if (plan.mount === "overhead") {
-        const bottom = OVERHEAD_BOTTOM;
-        const poleTop = bottom + h + 0.3;
-        const base = new Vector3(plan.pos.x, ground, plan.pos.z);
-        add(poles, at(base, yaw, new Vector3(1, poleTop / k.poleHeight, 1)));
-        const offset = k.poleRadius + BOARD_GAP + w / 2;
-        // Arms run from the pole across the road, just behind the board.
-        const behind = k.armRadius + 0.02;
-        for (const f of [0.25, 0.75]) {
-          const y = ground + bottom + h * f;
-          const armBase = new Vector3(plan.pos.x, y, plan.pos.z).addScaledVector(facing, -behind);
-          const armYaw = Math.atan2(-across.z, across.x); // local +X along `across`
-          add(arms, at(armBase, armYaw, new Vector3(offset + w / 2 - 0.15, 1, 1)));
-          add(flanges, at(new Vector3(plan.pos.x, y, plan.pos.z), armYaw, new Vector3(1, 1, 1)));
+      // The mount's frame (src/signs/mount.ts): +x across toward the carriageway, +z toward the
+      // oncoming traffic; turning by the facing's yaw maps local +x onto `across`.
+      const frame = at(new Vector3(plan.pos.x, ground, plan.pos.z), yaw, new Vector3(1, 1, 1));
+      const local = (x: number, y: number, z: number, scale: Vector3, pitch = 0) =>
+        frame.clone().multiply(at(new Vector3(x, y, z), 0, scale, pitch));
+      // 片持式 over the road; 路側式 (a road administrator's sign: 道路標識設置基準) on two posts over
+      // the pavement, the board 25 cm behind the kerb.
+      const mount =
+        plan.mount === "overhead"
+          ? resolveMount({ kind: "cantilever-f", board: { width: w, height: h } })
+          : resolveMount({
+              kind: "double-post",
+              site: "pavement",
+              authority: "road",
+              support: "guide",
+              kerbM: GUIDE_POLE_KERB.value,
+              plates: [{ width: w, height: h, twoSided: true }],
+            });
+      for (const m of mount.members) {
+        const list = lists[m.role];
+        if (!list) {
+          reportUnloadedRole(m.role);
+          continue;
         }
-        const centre = new Vector3(plan.pos.x, ground + bottom + h / 2, plan.pos.z)
-          .addScaledVector(across, offset)
-          .addScaledVector(facing, k.railOffset - behind + k.armRadius);
-        // Leaning forward: the face's normal points TILT° down toward the drivers.
-        sign.board = at(centre, yaw, new Vector3(w, h, 1), (TILT * Math.PI) / 180);
-        const collider = RAPIER.ColliderDesc.cylinder(poleTop / 2, k.poleRadius)
-          .setTranslation(plan.pos.x, ground + poleTop / 2, plan.pos.z)
+        // A post reaches from its own ground to the board's top (the frame stands on `ground`).
+        const p = new Vector3(m.x, 0, m.z).applyMatrix4(frame);
+        const lift = m.role === "boardPost" ? ground - (this.groundAt(p.x, p.z) ?? ground) : 0;
+        add(list, local(m.x, m.y - lift, m.z, new Vector3(m.sx, m.sy + lift, m.sz)));
+      }
+      sign.feet = [];
+      for (const foot of mount.feet) {
+        const p = new Vector3(foot.x, 0, foot.z).applyMatrix4(frame);
+        const pg = this.groundAt(p.x, p.z) ?? ground;
+        sign.feet.push(p.clone().setY(0));
+        const height = foot.height + (ground - pg);
+        const collider = RAPIER.ColliderDesc.cylinder(height / 2, foot.radius)
+          .setTranslation(p.x, pg + height / 2, p.z)
           .setCollisionGroups(PROP_GROUPS);
         sign.colliders.push(this.world.createCollider(collider, this.body ?? undefined));
-      } else {
-        // 路側式: two posts on the pavement, the board over the pavement beside the kerb.
-        const bottom = ROADSIDE_BOTTOM;
-        const toPavement = across.clone().negate();
-        const inner = 0.25 - 0.9; // board edge 25 cm behind the kerb (the pole spot is 0.9 m behind)
-        const mid = new Vector3(plan.pos.x, ground, plan.pos.z).addScaledVector(toPavement, inner + w / 2);
-        const postTop = bottom + h;
-        sign.feet = [];
-        for (const f of [-0.28, 0.28]) {
-          const p = mid.clone().addScaledVector(toPavement, f * w);
-          const pg = this.groundAt(p.x, p.z) ?? ground;
-          sign.feet.push(p.clone().setY(0));
-          add(posts, at(new Vector3(p.x, pg, p.z), yaw, new Vector3(1, postTop + (ground - pg), 1)));
-          const collider = RAPIER.ColliderDesc.cylinder(postTop / 2, k.postRadius)
-            .setTranslation(p.x, pg + postTop / 2, p.z)
-            .setCollisionGroups(PROP_GROUPS);
-          sign.colliders.push(this.world.createCollider(collider, this.body ?? undefined));
-        }
-        const centre = mid
-          .clone()
-          .setY(ground + bottom + h / 2)
-          .addScaledVector(facing, k.postRadius + 0.05);
-        sign.board = at(centre, yaw, new Vector3(w, h, 1));
       }
+      const [f] = mount.faces;
+      // Leaning forward when overhead: the face's normal points TILT_DEG down toward the drivers.
+      sign.board = f
+        ? local(f.x, f.y, f.z + f.standoff, new Vector3(w, h, 1), f.pitch)
+        : new Matrix4().makeScale(0, 0, 0);
       add(boards, sign.board);
       return sign;
     });
-    const instanced = (geometry: BufferGeometry, material: Material, list: Matrix4[], shadow = true) => {
-      const mesh = this.instances.take(geometry, material, list.length);
+    const instanced = (
+      geometry: BufferGeometry,
+      material: Material,
+      list: Matrix4[],
+      shadow = true,
+      prepare?: (mesh: InstancedMesh) => void,
+    ) => {
+      const mesh = this.instances.take(geometry, material, list.length, prepare);
       mesh.count = list.length;
       list.forEach((m, i) => mesh.setMatrixAt(i, m));
       mesh.frustumCulled = false; // instances span the whole area
@@ -561,7 +605,14 @@ export class GuideSigns {
       yield true;
     }
     instanced(k.back.geometry, k.back.material, boards);
-    this.faces = instanced(k.face, farMaterial, boards, false);
+    // A clone of the face for the instance attribute (the glb's geometry stays as loaded).
+    this.faceGeometry ??= k.face.clone();
+    // attachFaceLayers gives the mesh its `faceLayer` as it is taken, before it can be drawn.
+    this.faces = instanced(this.faceGeometry, faces().material, boards, false, attachFaceLayers);
+    // The review hooks and the perf probe tell the faces by this (as the plates' faceKeys).
+    this.faces.userData.guideFaces = true;
+    this.layerVersion = -1;
+    this.applyLayers();
     yield true;
   }
 }

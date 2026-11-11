@@ -1,11 +1,34 @@
 {
   "name": "roads",
-  "description": "一般道の視点（区画線・道路標示・停止線・横断歩道・歩道の幾何）。地点と向きで立つ運転席・後方追従と、交差点の真上からの俯瞰。",
+  "description": "一般道の視点（区画線・道路標示・停止線・横断歩道・歩道の幾何、P4 の舗装と区画線の摩耗）を昼・夕・夜・雨の夜で。地点と向きで立つ運転席・後方追従・歩行者目線と、交差点の真上からの俯瞰。",
   "defaults": {
     "time": "day",
     "weather": "clear",
     "seed": 20261110,
-    "moment": "2026-11-10T11:00:00+09:00"
+    "moment": "2026-11-10T11:00:00+09:00",
+    "looks": [
+      {
+        "id": "day",
+        "time": "day",
+        "moment": "2026-11-10T11:00:00+09:00"
+      },
+      {
+        "id": "dusk",
+        "time": "evening",
+        "moment": "2026-11-10T16:40:00+09:00"
+      },
+      {
+        "id": "night",
+        "time": "night",
+        "moment": "2026-11-10T20:00:00+09:00"
+      },
+      {
+        "id": "rain-night",
+        "time": "night",
+        "weather": "rain",
+        "moment": "2026-11-10T20:00:00+09:00"
+      }
+    ]
   },
   "sessions": [
     {
@@ -23,8 +46,15 @@
           },
           "expect": {
             "markings": "停止線・横断歩道・進行方向別通行区分の矢印",
-            "lanes": "左折直進・右折・右折"
-          }
+            "lanes": "左折直進・右折・右折",
+            "texture": "密粒度舗装、轍（タイヤの通る所がわずかに暗い）、路肩の明るい帯、4 m の繰り返し・モアレが無い"
+          },
+          "probes": [
+            {
+              "name": "road",
+              "rect": [0.3, 0.72, 0.7, 0.98]
+            }
+          ]
         },
         {
           "id": "junction-chase",
@@ -53,10 +83,82 @@
           "altitudeM": 90,
           "pitchDeg": 90,
           "expect": {
-            "geometry": "交差点内に区画線が無い、横断歩道と停止線の位置"
+            "geometry": "交差点内に区画線が無い、横断歩道と停止線の位置",
+            "texture": "真上から: 舗装の繰り返しが格子に見えない、停止線・横断歩道のかすれがタイヤの通る位置に寄る"
+          }
+        },
+        {
+          "id": "crosswalk-pedestrian",
+          "camera": "pedestrian",
+          "at": {
+            "lat": 35.68043,
+            "lon": 139.76424,
+            "headingDeg": 284,
+            "lookAheadM": 14
+          },
+          "probes": [
+            {
+              "name": "road",
+              "rect": [0.25, 0.6, 0.75, 0.95]
+            }
+          ],
+          "expect": {
+            "texture": "歩行者目線の近景: 舗装の骨材、区画線の摩耗とかすれ、継ぎ目が無い"
           }
         }
       ]
+    }
+  ],
+  "metrics": [
+    {
+      "name": "street-road-luma-day",
+      "from": {
+        "view": "junction-driver",
+        "probe": "road",
+        "stat": "mean",
+        "look": "day"
+      },
+      "min": 45,
+      "max": 170,
+      "unit": "luma",
+      "note": "クリップ検出用。昼の一般道の舗装の平均輝度（45〜170、床版と同じ目安）"
+    },
+    {
+      "name": "street-road-night-over-day",
+      "from": {
+        "view": "junction-driver",
+        "probe": "road",
+        "stat": "mean",
+        "look": "night",
+        "over": "day"
+      },
+      "min": 0.03,
+      "max": 0.6,
+      "note": "クリップ検出用。街灯の下の夜と昼の舗装の平均輝度の比（0.03〜0.6: 真っ黒・昼並みの検出）"
+    },
+    {
+      "name": "street-marking-contrast-day",
+      "from": {
+        "view": "crosswalk-pedestrian",
+        "probe": "road",
+        "stat": "contrast",
+        "look": "day"
+      },
+      "min": 0.25,
+      "note": "クリップ検出用。昼の歩行者目線の横断歩道・停止線と舗装の対比 (p99 − p50) / p50（下限 0.25、床版と同じ目安）"
+    },
+    {
+      "name": "street-rain-over-dry-night",
+      "from": {
+        "view": "junction-driver",
+        "probe": "road",
+        "stat": "p50",
+        "look": "rain-night",
+        "over": "night"
+      },
+      "min": 0.5,
+      "max": 1.8,
+      "note": "クリップ検出用。雨の夜と晴れの夜の舗装の中央値の比（0.5〜1.8: 濡れで真っ黒、映り込みの白飛びの検出）。街灯の下の濡れた舗装は映り込みで明るくなる。雨の夜 / 昼の平均は映り込みの筋で昼を超えるので使わない"
     }
   ]
 }

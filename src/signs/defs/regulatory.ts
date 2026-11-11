@@ -761,7 +761,7 @@ export const REGULATORY = group("規制", [
     name: "一時停止",
     plate: "PlateTriangle",
     art: { by: "texture", file: "stop.png", paint: { fn: "sign_textures.draw_stop" } },
-    game: { kind: "stop" },
+    game: { kind: "stop", fixedPlace: true },
   },
   {
     id: "330-B",

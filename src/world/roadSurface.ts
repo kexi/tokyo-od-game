@@ -12,20 +12,33 @@ import {
   type Scene,
 } from "three";
 import {
+  abs,
+  attribute,
   cameraViewMatrix,
+  clamp,
   cross,
   dot,
+  float,
+  fract,
   materialColor,
   materialRoughness,
+  max,
+  mix,
   normalize,
   normalView,
   positionWorld,
+  select,
+  smoothstep,
   texture,
+  vec3,
   vec4,
 } from "three/tsl";
+import type { Node } from "three/webgpu";
 import asphaltAlbedoUrl from "../../assets/road/textures/asphalt_albedo.jpg?url";
 import asphaltNormalUrl from "../../assets/road/textures/asphalt_normal.jpg?url";
 import asphaltRoughnessUrl from "../../assets/road/textures/asphalt_roughness.png?url";
+import markingWearUrl from "../../assets/road/textures/marking_wear.png?url";
+import { valueNoise } from "../render/shaderMath";
 import { FrameWork } from "../game/frameWork";
 import { roadGeometrySteps } from "./roadGeometrySteps";
 import { updateRoadGeometry } from "./roadGeometry";
@@ -63,6 +76,46 @@ const asphaltMap = (url: string, isColour: boolean): Texture => {
   if (isColour) t.colorSpace = SRGBColorSpace;
   return t;
 };
+const asphaltAlbedo = asphaltMap(asphaltAlbedoUrl, true);
+const asphaltBumps = asphaltMap(asphaltNormalUrl, false);
+const asphaltRough = asphaltMap(asphaltRoughnessUrl, false);
+// marking_wear.png: on the asphalt's grid and stones; R wear, G grime (B, the glass beads, unused).
+const markingWear = asphaltMap(markingWearUrl, false);
+const worldUv = positionWorld.xz.div(ASPHALT_TILE);
+/** `aStreet` (streetLights.ts): lateral offset (left +), half width, lane width, lane origin. */
+const aStreet = attribute<"vec4">("aStreet", "vec4");
+
+/**
+ * Where tyres run, 0–1: ±0.85 m from each lane's centre, the band the wet shading puts its ruts in
+ * (streetLights.ts hollow). 0 off the cross-section (the ◇ stripes carry no lane).
+ */
+function wheelPaths(): Node<"float"> {
+  const laneWidth = max(aStreet.z, 1);
+  const fromCentre = abs(fract(aStreet.x.sub(aStreet.w).div(laneWidth)).sub(0.5)).mul(laneWidth);
+  const band = smoothstep(0.15, 0.45, abs(fromCentre.sub(0.85))).oneMinus();
+  return select(aStreet.y.greaterThan(0.5), band, float(0));
+}
+
+/**
+ * The asphalt's colour with what does not repeat every 4 m: a 30–250 m variation, the wheel paths
+ * darker (rubber, polished stones) and the last 0.6 m by the kerb (路肩) lighter with dust, as
+ * seen on Tokyo's streets. Shared by the asphalt and the worn paint over it.
+ */
+function asphaltColour(): Node<"vec3"> {
+  const macro = valueNoise(positionWorld.xz.mul(0.033))
+    .mul(0.6)
+    .add(valueNoise(positionWorld.xz.mul(0.0041).add(7)).mul(0.4))
+    .sub(0.5)
+    .mul(0.14)
+    .add(1);
+  const kerb = select(
+    aStreet.y.greaterThan(0.5),
+    smoothstep(aStreet.y.sub(0.6), aStreet.y.sub(0.1), abs(aStreet.x)),
+    float(0),
+  );
+  const shade = macro.mul(wheelPaths().mul(-0.07).add(1)).mul(kerb.mul(0.08).add(1));
+  return texture(asphaltAlbedo, worldUv).rgb.mul(shade);
+}
 
 /**
  * The asphalt's maps in world XZ, as the WebGL version laid them (its vertex shader set the map
@@ -70,20 +123,33 @@ const asphaltMap = (url: string, isColour: boolean): Texture => {
  * world +x, v along +z; built here in view space from the geometry normal (the normal stage).
  */
 function asphaltBase(): StreetBase {
-  const worldUv = positionWorld.xz.div(ASPHALT_TILE);
-  const albedo = asphaltMap(asphaltAlbedoUrl, true);
-  const bumps = asphaltMap(asphaltNormalUrl, false);
-  const rough = asphaltMap(asphaltRoughnessUrl, false);
   const n = normalView;
   const east = cameraViewMatrix.mul(vec4(1, 0, 0, 0)).xyz;
   const t = normalize(east.sub(n.mul(dot(n, east))));
   const b = cross(t, n);
-  const bump = texture(bumps, worldUv).xyz.mul(2).sub(1);
+  const bump = texture(asphaltBumps, worldUv).xyz.mul(2).sub(1);
   return {
     // The colour (no map on this material, so a vec3) times the albedo map, as map_fragment did.
-    color: vec4(materialColor, 1).mul(texture(albedo, worldUv)),
-    roughness: materialRoughness.mul(texture(rough, worldUv).g),
+    color: vec4(materialColor, 1).mul(vec4(asphaltColour(), 1)),
+    // Tyres polish the wheel paths a little.
+    roughness: materialRoughness.mul(texture(asphaltRough, worldUv).g).mul(wheelPaths().mul(-0.08).add(1)),
     normal: normalize(t.mul(bump.x).add(b.mul(bump.y)).add(n.mul(bump.z))),
+  };
+}
+
+/**
+ * Painted lines and bars worn to the asphalt under them: the mask's wear, three times as much in
+ * the wheel paths (stop lines and crosswalk bars wear there first; lane lines lie between them),
+ * and dust in the paint's texture. Why not a texture per marking: the lines are geometry from the
+ * MarkingPlan (knowledge/road-redesign-plan.md 9), and one world-space mask serves them all.
+ */
+function paintBase(): StreetBase {
+  const mask = texture(markingWear, worldUv);
+  const wear = clamp(mask.r.mul(wheelPaths().mul(2).add(0.35)), 0, 0.85);
+  const paint = vec3(materialColor as unknown as Node<"vec3">).mul(mask.g.mul(-0.12).add(1.04));
+  return {
+    color: vec4(mix(paint, asphaltColour(), wear), 1),
+    roughness: mix(materialRoughness, texture(asphaltRough, worldUv).g, wear),
   };
 }
 const asphalt = new StreetMaterial("asphalt", {
@@ -96,6 +162,7 @@ const asphalt = new StreetMaterial("asphalt", {
 // Paint gets wet and lies in the same puddles as the asphalt under it.
 const white = new StreetMaterial("paint", {
   hasStreet: true,
+  base: paintBase(),
   color: 0xf2f2ee,
   roughness: 0.7,
   emissive: 0x222222,
@@ -104,6 +171,7 @@ const white = new StreetMaterial("paint", {
 const YELLOW = 0xf2b705;
 const yellow = new StreetMaterial("paint", {
   hasStreet: true,
+  base: paintBase(),
   color: YELLOW,
   roughness: 0.7,
   emissive: 0x221800,

@@ -476,7 +476,7 @@ describe("a broken definition", () => {
         { ...crossing("311-A", {}), art: valuedArt(1) },
         { ...crossing("311-B", { bothFaces: true }), art: valuedArt(2) },
       ]),
-    ).toThrow(/game turn: its definitions differ in mount, back or bothFaces/);
+    ).toThrow(/game turn: its definitions differ in mount, back, bothFaces, kerbSide or fixedPlace/);
   });
 
   it("is refused when a face has no painter, a lane render has one, or a face is drawn over nothing", () => {

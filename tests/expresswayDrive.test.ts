@@ -15,13 +15,7 @@ import {
   type GeoToLocal,
   HOLD_MAX_MS,
 } from "../src/world/expresswayDeck";
-import {
-  ALL_GROUPS,
-  BUILDING_GROUPS,
-  GROUND_QUERY_GROUPS,
-  ON_DECK_GROUPS,
-  PROP_GROUPS,
-} from "../src/physics/groups";
+import { ALL_GROUPS, BUILDING_GROUPS, GROUND_QUERY_GROUPS, PROP_GROUPS } from "../src/physics/groups";
 import { DeckIndex, type DeckSide, planDeckMarkings, type RingSides } from "../src/world/expresswayMarkings";
 import { chunkRings, MERGE_FULL_DZ, MERGE_MAX_DZ, MERGE_RAMP } from "../src/world/expresswayMerge";
 import { probeGenerated } from "./expresswaySeams";
@@ -1183,15 +1177,12 @@ describe("markings at the sizes the plan fixes (not read back from the same cons
   });
 });
 
-describe("collision groups: buildings stay solid for everyone but a car on a deck", () => {
-  it("lets every default collider, ground probe and prop meet a building, and the on-deck car none", () => {
+describe("collision groups: buildings stay solid for everyone, a car on a deck included (P4 cuts them)", () => {
+  it("lets every default collider, ground probe and prop meet a building", () => {
     const meets = (a: number, b: number) =>
       ((a >>> 16) & b & 0xffff) !== 0 && ((b >>> 16) & a & 0xffff) !== 0;
     for (const other of [ALL_GROUPS, GROUND_QUERY_GROUPS, PROP_GROUPS])
       expect(meets(BUILDING_GROUPS, other)).toBe(true);
-    expect(meets(BUILDING_GROUPS, ON_DECK_GROUPS)).toBe(false);
-    // On a deck the car still meets the decks, the terrain and the props.
-    for (const other of [ALL_GROUPS, PROP_GROUPS]) expect(meets(ON_DECK_GROUPS, other)).toBe(true);
   });
 });
 

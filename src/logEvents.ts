@@ -187,6 +187,14 @@ export const LOG_EVENTS = {
   darkroom_grab_failed: failedWith(),
   guide_fonts_failed: failedWith(),
   guide_signs_load_failed: failedWith(),
+  /**
+   * src/world/guideSigns.ts: a planned 案内標識 whose content fails BoardContentSchema
+   * (src/signs/board/content.ts); it is not stood up.
+   */
+  guide_board_invalid: warning({
+    kind: z.string(),
+    issues: z.array(z.object({ path: z.string(), message: z.string() })),
+  }),
   landmarks_load_failed: failedWith(),
   landmark_model_failed: failedWith({ path: z.string() }),
   /** A landmark's deckLevels that do not match src/world/deckLevels.ts (the roads ignore them). */
@@ -286,6 +294,10 @@ export const LOG_EVENTS = {
   guide_signs_placed: info({
     signs: count,
     advance: count,
+    /** 105-A〜C 方面、方向及び距離 (src/world/guideRows.ts). */
+    direction: count,
+    /** 106-A 方面及び距離 (確認標識). */
+    confirm: count,
     overhead: count,
     routed: count,
     mapped: count,
@@ -351,6 +363,52 @@ export const LOG_EVENTS = {
    */
   expressway_building_crossed: warning({ lat: z.number(), lon: z.number(), xid: z.string().nullable() }),
   /**
+   * The buildings could not be told about new decks' cut points (ExpresswayDecks.announceCuts): those
+   * decks are still built, but buildings standing into them stay whole.
+   */
+  expressway_cuts_failed: failure({ chunks: count, error }),
+  /**
+   * The player's car held (frozen) or let go, with ?expressway: which collider was missing
+   * (terrain, a deck near the car: ExpresswayDecks.isReadyNear) or a warp in progress.
+   */
+  vehicle_hold_changed: info({
+    frozen: z.boolean(),
+    terrainReady: z.boolean(),
+    deckReady: z.boolean(),
+    warping: z.boolean(),
+    lat: z.number(),
+    lon: z.number(),
+  }),
+  /**
+   * The car stood still on a deck for 3 s (main.ts noteDeckStall): held (`frozen`) or touching
+   * something (`touching`: the chassis' overlaps, PLATEAU buildings and everything else).
+   */
+  expressway_car_stalled: warning({
+    lat: z.number(),
+    lon: z.number(),
+    xid: z.string().nullable(),
+    frozen: z.boolean(),
+    deckReady: z.boolean(),
+    /** The car's body disabled by anyone (the hold above, or an arrest's showArrest). */
+    carFrozen: z.boolean(),
+    /** An accident in progress (EmergencyResponse.incident) and a police pursuit after it. */
+    incident: z.boolean(),
+    pursuit: z.boolean(),
+    touching: z.object({ buildings: count, other: count }),
+    stillMs: count,
+  }),
+  /**
+   * PLATEAU buildings cut down below an elevated deck's soffit (buildings.ts cutAboveDecks): at a
+   * tile's load (`loaded`) or when new decks became known (`decks`). `features` buildings in
+   * `meshes` meshes; `points` the deck's cut points tested.
+   */
+  buildings_cut_above_deck: info({
+    reason: z.enum(["loaded", "decks"]),
+    features: count,
+    meshes: count,
+    points: count,
+  }),
+  /**
    * A chunk's deck could not be built (expresswayDeck.ts refresh): it is skipped from then on and
    * no longer holds a car near it.
    */
@@ -396,6 +454,11 @@ export const LOG_EVENTS = {
     maxShortfallAt: z.string().nullable(),
     fell: z.boolean(),
     endsOnDeck: z.boolean(),
+    /**
+     * Why the drive does not count (null: it does): an incident or a pursuit before it started or
+     * when it stopped (the car may have been held by an arrest, not by the deck).
+     */
+    invalid: z.string().nullable(),
   }),
 
   // ---------- driving ----------
@@ -664,6 +727,8 @@ export const LOG_EVENTS = {
   sign_law_table_written: info({ file: z.string(), revision: z.string(), signs: count }),
   /** scripts/signs.ts: the sign definitions written out as registry.json, game.json and catalog.json. */
   sign_registry_written: info({ files: z.array(z.string()), signs: count, drawn: count, lanes: count }),
+  /** scripts/qa/signMounts.ts: each plate's mounting for the sign review (.qa/signs/mounts.json). */
+  sign_mounts_written: info({ file: z.string(), plates: count }),
   /** scripts/signals.ts wrote the signal-head registry signals.py models from. */
   signal_heads_written: info({ file: z.string(), heads: count }),
   /**
@@ -674,8 +739,55 @@ export const LOG_EVENTS = {
   sign_lanes_unrendered: warning({ lanes: z.string(), count }),
   /** A 補助標識 whose wording has no face drawn ahead of time (registry.json older than public/data/regs); left off. */
   sign_aux_undrawn: warning({ sign: z.string(), lines: z.array(z.string()) }),
-  /** Faces of sign posts left off because their stack would reach below the ground (src/signs/stack.ts; G4). */
-  sign_faces_below_ground: warning({ faces: count, posts: count }),
+  /**
+   * Faces of sign posts left off because their mount had no room for them (src/signs/mount.ts:
+   * more than two columns of plates, or a 補助標識 that would hang under the lowest allowed edge).
+   */
+  sign_faces_unmounted: warning({ faces: count, posts: count }),
+  /** src/world/signs.ts: posts stood on a rebuild, how many on two posts or on a signal pole, and their faces. */
+  sign_mounts_resolved: info({ posts: count, double: count, shared: count, faces: count }),
+  /**
+   * src/world/signs.ts: columns of sign posts hidden inside buildings since the last rebuild, by
+   * what they belonged to (a single post; the first or second column of a double post, and how many
+   * double posts lost both). Logged when an update hides one.
+   */
+  sign_columns_hidden: info({
+    single: count,
+    doubleFirst: count,
+    doubleSecond: count,
+    doubleWhole: count,
+    posts: count,
+  }),
+  /** A mount member role with no part in signs.glb (src/signs/mount.ts MEMBER_NODES), left undrawn; once per role. */
+  sign_member_unloaded: warning({ role: z.string(), glb: z.string(), node: z.string() }),
+  /**
+   * src/world/signFaces.ts: an array texture of sign faces is on the GPU (its layer size, layer
+   * count, backend and MB with mipmaps).
+   */
+  sign_face_pool_ready: info({
+    pool: z.string(),
+    size: count,
+    layers: count,
+    backend: z.enum(["webgpu", "webgl2", "three-fallback"]),
+    mb: z.number(),
+  }),
+  /**
+   * src/render/layerUpload.ts: on WebGPU, three's internals were not what the direct layer upload
+   * expects (a three update), so the layers go through three's slow path (every layer's mips redrawn).
+   */
+  sign_face_upload_fallback: warning({ pool: z.string(), reason: z.string() }),
+  /**
+   * src/world/signFaces.ts: more faces wanted than a pool has layers; the furthest show the stand-in
+   * (layer 0). Once per wanted-set size.
+   */
+  sign_face_layers_short: warning({ pool: z.string(), wanted: count, capacity: count }),
+  /** src/world/signFaces.ts: a face's picture could not be decoded (it keeps the stand-in). */
+  sign_face_load_failed: warning({ pool: z.string(), key: z.string(), error: z.string() }),
+  /**
+   * src/world/signs.ts / guideSigns.ts: the faces of a rebuild by pool: distinct artworks wanted,
+   * layers in use, and the face meshes (draw calls) they need.
+   */
+  sign_faces_built: info({ pool: z.string(), artworks: count, meshes: count, instances: count }),
   osm_read: info({ nodes: count, ways: count, relations: count, coords: count }),
   destinations_written: info({
     file: z.string(),
@@ -768,6 +880,26 @@ export const LOG_EVENTS = {
   views_shot_failed: failedWith({ viewTable: z.string(), viewId: z.string() }),
   /** Every view of a table is shot; the contact sheet and the review template are written. */
   views_done: info({ viewTable: z.string(), round: count, shots: count, failed: count, outDir: z.string() }),
+  /** scripts/qa/guideBoards.ts: one place's 案内標識 plans and drawn faces written. */
+  guide_boards_dumped: info({
+    place: z.string(),
+    plans: count,
+    durationMs: z.number(),
+    /**
+     * The BoardFacePool's drawing steps while the place settled (G5 on): how many, the first two
+     * (the warm-up) and the rest's median and longest, ms; and FrameWork's longest slice. Absent
+     * before G5 and for the fixed boards.
+     */
+    steps: count.optional(),
+    warmupStepMs: z.array(z.number()).optional(),
+    steadyMedianStepMs: z.number().optional(),
+    steadyMaxStepMs: z.number().optional(),
+    maxSliceMs: z.number().optional(),
+  }),
+  /** scripts/qa/guideBoards.ts: a place has no dump under the label compared against. */
+  guide_boards_no_baseline: warning({ place: z.string(), against: z.string() }),
+  /** scripts/qa/guideBoards.ts: placements and faces compared with an earlier label (changes: 108 series). */
+  guide_boards_compared: info({ label: z.string(), against: z.string(), changed: count }),
   /** A review round compared with the one before (scripts/qa/reviewLoop.ts). */
   review_round_checked: info({
     viewTable: z.string(),

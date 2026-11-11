@@ -119,7 +119,14 @@ import { TrafficControl, type Approach, type LightState } from "./world/trafficC
 import { letsDriverGo } from "./signals/plan";
 import { SignalViolationCheck } from "./game/signalViolations";
 import { TrafficSigns, loadSignModels } from "./world/signs";
+import {
+  bindSignFaceRenderer,
+  debugSignFaces,
+  markPlayerHeadlamps,
+  updateSignLamps,
+} from "./world/signFaces";
 import { GuideSigns } from "./world/guideSigns";
+import { boardNames } from "./signs/board/content";
 import { createHuman, disposeHuman, loadHumanModels } from "./world/human";
 import { loadFacadeTextures } from "./world/facade";
 import { TrafficAI } from "./world/traffic-ai";
@@ -430,6 +437,8 @@ async function main(): Promise<void> {
     GRAPHICS.settings,
     QUALITY,
   );
+  // The sign faces' array textures are written on the GPU directly (world/signFaces.ts).
+  bindSignFaceRenderer(renderer);
   // The frame is drawn into one HDR target and tone-mapped once (render/frame.ts).
   const composer = new FrameComposer(renderer);
   const scene = new Scene();
@@ -486,6 +495,9 @@ async function main(): Promise<void> {
         );
   terrain.setWater(water);
   const buildings = new Buildings(scene, world, camera, renderer, frame);
+  // PLATEAU buildings that stand into a deck are cut down below its soffit as its tile is read.
+  // Set here, before the first expressway.update() in the frame loop: no tile is read before it.
+  if (expressway) expressway.onCutPoints = (points) => buildings.cutAboveDecks(points);
   // The landmarks (public/data/landmarks.json) replace their PLATEAU copies: tell the buildings
   // before the first tiles arrive.
   const landmarkEntries = await fetchLandmarks();
@@ -501,6 +513,9 @@ async function main(): Promise<void> {
   drawShadowsOf(env.sun);
   const vehicle = new Vehicle(world);
   cockpit.attach(vehicle.object);
+  // Before any sign face is built: only these lamps lose the faces' glossy lobe (world/signFaces.ts).
+  markPlayerHeadlamps(vehicle.headlights);
+  const signEye = new Vector3();
   mirrorCharms.attach(vehicle.object, cockpit.root);
   const carNavi = new CarNavi();
   const blur = new MotionBlur();
@@ -750,7 +765,11 @@ async function main(): Promise<void> {
       true,
     );
     if (applied) applied.signs.push(...furnitureSigns);
-    await measure("signs", () => signs.rebuildAsync(graph, applied, control.approaches, work), true);
+    await measure(
+      "signs",
+      () => signs.rebuildAsync(graph, applied, control.approaches, control.signalPoles, work),
+      true,
+    );
     await measure(
       "guideSigns",
       () =>
@@ -762,6 +781,7 @@ async function main(): Promise<void> {
           roadDataCenter,
           signs.postPositions(),
           work,
+          control.signalPoles,
         ),
       true,
     );
@@ -2154,6 +2174,41 @@ async function main(): Promise<void> {
       xid: hit?.seg.line.xid ?? null,
     });
   };
+  /** Since when the car has stood still on a deck (null: moving or off a deck); logged once. */
+  let deckStillSince: number | null = null;
+  let isStallLogged = false;
+  /**
+   * A car standing still on a deck for STALL_MS: whether it is held (frozen: a deck's collider not
+   * yet built, isReadyNear) or touching something (the chassis' overlaps by kind), for the stops
+   * seen at the 207111988:2 merge (knowledge/road-textures.md).
+   */
+  const noteDeckStall = (p: Vector3, kmh: number, deckReady: boolean) => {
+    const STALL_MS = 3000;
+    const isStill = carOnDeck && kmh < 1;
+    if (!isStill) {
+      deckStillSince = null;
+      isStallLogged = false;
+      return;
+    }
+    deckStillSince ??= performance.now();
+    const isLong = performance.now() - deckStillSince > STALL_MS;
+    if (!isLong || isStallLogged) return;
+    isStallLogged = true;
+    const g = frame.toGeodetic(p);
+    const hit = roadGraph?.nearestOnSurface(p, 15, (seg) => seg.line.xid !== undefined) ?? null;
+    warn("expressway_car_stalled", {
+      lat: Number(g.lat.toFixed(6)),
+      lon: Number(g.lon.toFixed(6)),
+      xid: hit?.seg.line.xid ?? null,
+      frozen,
+      deckReady,
+      carFrozen: vehicle.isFrozen(),
+      incident: emergency.incident !== null,
+      pursuit: emergency.pursuit !== null,
+      touching: vehicle.touching(),
+      stillMs: Math.round(performance.now() - deckStillSince),
+    });
+  };
   let overSince: number | null = null;
   let rightSince: number | null = null;
   let wrongWaySince: number | null = null;
@@ -2422,6 +2477,17 @@ async function main(): Promise<void> {
       return;
     }
 
+    // What the sign faces send back of the player's lamps, and the driver's eye the game camera
+    // sees them from (world/signFaces.ts). Before the replay's branch, which returns early.
+    updateSignLamps(vehicle.headlights, {
+      highBeam: controls.highBeam,
+      darkness: env.nightFactor,
+      wetness: env.wetness,
+      camera,
+      inCar: mode === "car",
+      driverEye: cockpit.driverEye(signEye),
+    });
+
     if (replay) {
       playReplay(dt);
       // The sky of the replay's moment; a saved violation may be elsewhere in Tokyo, so the
@@ -2434,7 +2500,7 @@ async function main(): Promise<void> {
         if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
           refreshRoads(geo.lat, geo.lon);
         signs.update(focus, now);
-        guideSigns.update(focus, now);
+        guideSigns.update(focus, now, camera.position);
       }
       env.update(dt, focus, camera.position, geo.lat, geo.lon);
       water.update(dt, env);
@@ -2613,21 +2679,33 @@ async function main(): Promise<void> {
     // Never simulate the car over ground whose collider has not been built yet (nor next to an
     // expressway deck whose collider is still to come: a car on it would fall through).
     const isDeckReady = expressway?.isReadyNear(geo.lat, geo.lon) ?? true;
-    const hasGround = terrain.hasColliderAt(geo.lat, geo.lon) && isDeckReady && !warping;
+    const isTerrainReady = terrain.hasColliderAt(geo.lat, geo.lon);
+    const hasGround = isTerrainReady && isDeckReady && !warping;
     if (hasGround === frozen) {
       frozen = !hasGround;
       vehicle.setFrozen(frozen);
+      // Why the car is held or let go, with ?expressway (a car stopping on a deck: held by the
+      // missing collider, or touching something; expressway_car_stalled says which).
+      if (expressway)
+        log("vehicle_hold_changed", {
+          frozen,
+          terrainReady: isTerrainReady,
+          deckReady: isDeckReady,
+          warping: warping !== null,
+          lat: Number(geo.lat.toFixed(6)),
+          lon: Number(geo.lon.toFixed(6)),
+        });
     }
-    // Up on an expressway deck the car passes through the PLATEAU buildings some ramps run into
-    // (Vehicle.setOnDeck); asked of the graph ten times a second.
+    // Up on an expressway deck (asked of the graph ten times a second). The PLATEAU buildings
+    // standing into a deck are cut below it (Buildings.cutAboveDecks), so the car meets none there;
+    // one it still overlaps is logged (a cut that missed, once per 20 m).
     if (expressway && roadGraph && isInCar && now - lastDeckCheck > 100) {
       lastDeckCheck = now;
       // 15 m: the width gate (half the carriageway + 1 m) decides; a 4-lane deck is over 7 m wide.
       carOnDeck = roadGraph.nearestOnSurface(carPos, 15, (seg) => seg.line.xid !== undefined) !== null;
-      vehicle.setOnDeck(carOnDeck);
-      // Where the car passes through a building on a deck: the list P4 cuts out (once per 20 m).
       const isThroughBuilding = carOnDeck && vehicle.overlapsBuilding();
       if (isThroughBuilding) noteBuildingCrossed(carPos);
+      noteDeckStall(carPos, speed, isDeckReady);
     }
     const gy = groundY(carPos.x, carPos.z);
     if (gy !== null && carPos.y < gy - 6) respawnHere();
@@ -2676,7 +2754,7 @@ async function main(): Promise<void> {
     control.setTimeOfDay(env.displayHour(geo.lat, geo.lon) * 60);
     control.update(now / 1000);
     signs.update(focus, now);
-    guideSigns.update(focus, now);
+    guideSigns.update(focus, now, camera.position);
     orbis.update(now);
     // カーナビ to the mission target, along legal streets.
     const navTarget = missions.current ? field.localPosition(missions.current.target) : null;
@@ -3575,7 +3653,7 @@ async function main(): Promise<void> {
     const river = water.riverNear(lat, lon, 1500);
     const signs = guideSigns.plans
       .filter((p) => Math.hypot(p.pos.x - focus.x, p.pos.z - focus.z) < 400)
-      .flatMap((p) => p.board.arms.flatMap((a) => a.names))
+      .flatMap((p) => boardNames(p.board))
       .filter((n, i, all) => all.findIndex((m) => m.ja === n.ja) === i)
       .slice(0, 6)
       .map(({ ja, en }) => ({ ja, en }));
@@ -5449,6 +5527,7 @@ async function main(): Promise<void> {
       carPosition: () => vehicle.position(),
       landmarks: landmarkEntries,
       signs,
+      guide: guideSigns,
       control,
       env,
       baseUrl: import.meta.env.BASE_URL,
@@ -5473,6 +5552,15 @@ async function main(): Promise<void> {
           decks: expressway,
           setDrive: (fn) => (debugDrive = fn),
           snapCamera: () => chase.snap(),
+          // A drive with an accident or a pursuit on does not count: an arrest freezes the car.
+          blocker: () =>
+            emergency.incident !== null
+              ? "incident"
+              : emergency.pursuit !== null
+                ? "pursuit"
+                : law.state.suspended
+                  ? "license-suspended"
+                  : null,
         })
       : null;
     Object.assign(window, {
@@ -5489,6 +5577,8 @@ async function main(): Promise<void> {
         water,
         buildings,
         vehicle,
+        // The light switch and beam (the review's state.headlamps sets them: scripts/qa/views.ts).
+        controls,
         audio,
         dem,
         field,
@@ -5540,6 +5630,8 @@ async function main(): Promise<void> {
           gameNow: () => env.now().getTime(),
           pursuit: debugPursuit,
           perf: debugPerf,
+          // The sign face pools (layers in use, MB) and the lamps the faces return (G3).
+          signFaces: debugSignFaces,
           // The last 2,000 log lines: logs.query({ event: /^pursuit_/ }), logs.chain("vio-…"), logs.jsonl().
           logs: recentLogs,
           camera: viewHooks.camera,

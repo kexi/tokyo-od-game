@@ -17,9 +17,12 @@ import { log, warn } from "../../src/log";
 import type { Found, TargetQuery, ViewTarget } from "../../src/debug/viewHooks";
 import { launch, type Browser } from "./browser.mjs";
 import { writeContactSheet } from "./contactSheet.ts";
+import { deriveMetrics, probePixels, probeStats, type ProbeRecord, type ProbeStats } from "./pixelProbes.ts";
 import { freePort } from "./ports.ts";
 import { nextRound, type RunRecord } from "./runRecord.ts";
 import { CENTRED_WITHIN, offCentre, placeView, type Vec3 } from "./viewGeometry.ts";
+import { WET_RETRO } from "../../src/signs/retroAssumptions";
+import { retroEmission, retroWhite } from "../../src/signs/retroreflection";
 import {
   loadLook,
   loadsOf,
@@ -28,10 +31,16 @@ import {
   shotKey,
   shotKeys,
   type Load,
+  type Probe,
   type View,
 } from "./viewTable.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
+/** How long after the start the game may still move the car onto a street (main.ts, 15 s) and a margin. */
+const STREET_SPAWN_MS = 16_000;
+/** Half the side of the box read round the plate's centre, px (a 75 cm plate at 60 m is ~8 px). */
+const PLATE_BOX_HALF = 2;
+
 const argv = process.argv.slice(2);
 const flag = (name: string) => {
   const i = argv.indexOf(`--${name}`);
@@ -158,6 +167,7 @@ const kindOf = (v: View) => (v.target ? (Object.keys(v.target)[0] as string) : n
 
 type Shot = Record<string, unknown> & { image: string; shot: string };
 const shots: Shot[] = [];
+const probeRecords: ProbeRecord[] = [];
 const failed: RunRecord["failed"] = [];
 
 for (const load of loadsOf(table)) {
@@ -181,6 +191,7 @@ for (const load of loadsOf(table)) {
     const isReady = await until<boolean>(b, "window.__game?.getState() === 'ready'", 180, 1000);
     if (!isReady) throw new Error(`page not ready: ${url}`);
     await evaluateWithin(b, "window.__game.start()");
+    const startedAt = Date.now();
     await evaluateWithin(b, CLEAN_FRAME);
     await evaluateWithin(
       b,
@@ -188,6 +199,11 @@ for (const load of loadsOf(table)) {
     );
     const first = await settle(b, table.defaults.settleTimeoutS);
     if (!first.isSettled) throw new Error(`the world did not settle: ${JSON.stringify(first)}`);
+    // For 15 s after the start the game moves the waiting car onto the nearest street
+    // (main.ts placeOnStreet): a lit car (state.headlamps) put down before then was moved back.
+    const streetSpawnLeft = STREET_SPAWN_MS - (Date.now() - startedAt);
+    const isLitLoad = views.some((v) => v.state?.headlamps !== undefined);
+    if (isLitLoad && streetSpawnLeft > 0) await b.sleep(streetSpawnLeft);
     // Each target kind the views need must be readable before any view is tried: one clear cause
     // (not built, renamed) instead of every view failing alike.
     const needed = new Set(
@@ -245,6 +261,44 @@ for (const load of loadsOf(table)) {
   }
 }
 
+/**
+ * The luminance statistics of each probe's rectangle in the saved frame. How: the page decodes the
+ * JPEG (the image the reviewers see, after its compression) into a 2D canvas and returns every
+ * second pixel's luma of each rectangle; the statistics are pixelProbes.ts's.
+ */
+async function measureProbes(
+  b: Browser,
+  file: string,
+  probes: readonly Probe[],
+): Promise<Record<string, ProbeStats | null>> {
+  const data = readFileSync(file).toString("base64");
+  const rects = probes.map((p) => probePixels(p, table.defaults.width, table.defaults.height));
+  const lumas = await evaluateWithin<number[][]>(
+    b,
+    `(async () => {
+    const picture = new Image();
+    picture.src = "data:image/jpeg;base64,${data}";
+    await picture.decode();
+    const c = document.createElement("canvas");
+    c.width = picture.width;
+    c.height = picture.height;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(picture, 0, 0);
+    return ${JSON.stringify(rects)}.map((r) => {
+      const d = g.getImageData(r.x, r.y, r.w, r.h).data;
+      const out = [];
+      for (let y = 0; y < r.h; y += 2)
+        for (let x = 0; x < r.w; x += 2) {
+          const i = (y * r.w + x) * 4;
+          out.push(0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]);
+        }
+      return out;
+    });
+  })()`,
+  );
+  return Object.fromEntries(probes.map((p, i) => [p.name, probeStats(lumas[i] ?? [])]));
+}
+
 /** Finds the target, waiting a little only for what is still being built or loaded. */
 async function findTarget(b: Browser, spec: TargetQuery, start: [number, number]): Promise<ViewTarget> {
   let last: Found | null = null;
@@ -260,6 +314,86 @@ async function findTarget(b: Browser, spec: TargetQuery, start: [number, number]
   }
   const why = last && !last.ok ? `${last.reason}: ${last.detail}` : "no answer";
   throw new Error(`target ${JSON.stringify(spec)}: ${why}`);
+}
+
+type SceneLamps = {
+  signFaces?: {
+    lamps?: {
+      on: boolean;
+      high: boolean;
+      gain: number;
+      positions: Vec3[];
+      forward: Vec3;
+      up: Vec3;
+      eye?: Vec3 | null;
+    };
+  } | null;
+  eye?: Vec3;
+  wetness?: number;
+};
+
+/**
+ * What the sign face material adds over the albedo at the target plate's centre, by the model it
+ * copies (src/signs/retroreflection.ts): white luminance (cd/m²) and the emission with the frame's
+ * gain (lamps lit × darkness × wet). The reviewer compares it with the picture; null for a target
+ * that is not a sign.
+ */
+function retroAt(aim: ViewTarget | null, scene: unknown) {
+  const s = scene as SceneLamps;
+  const lamps = s.signFaces?.lamps;
+  // A 案内標識 face returns the lamps as a plate does (one SignFaceMaterial).
+  const isSign = (aim?.kind === "sign" || aim?.kind === "guide") && aim.normal !== null;
+  if (!aim || !isSign || !aim.normal || !lamps || !s.eye) return null;
+  const L = retroWhite(
+    { ...lamps, beam: lamps.high ? "high" : "low" },
+    aim.point,
+    aim.normal,
+    lamps.eye ?? s.eye,
+  );
+  const dryEmission = retroEmission(L, 0);
+  const wet = 1 + (WET_RETRO.value - 1) * (s.wetness ?? 0);
+  // gain already holds the wet factor (signFaces.ts): the dry emission × gain is what is drawn.
+  return {
+    whiteCdM2: Math.round(L * 100) / 100,
+    emission: Math.round(dryEmission * lamps.gain * 1000) / 1000,
+    dryEmission: Math.round(dryEmission * 1000) / 1000,
+    wetFactor: Math.round(wet * 100) / 100,
+    lit: lamps.on,
+  };
+}
+
+/**
+ * The mean relative luminance (linear, 0–1) of the picture round the plate's centre: measured from
+ * the shot itself, so it checks what the shader drew, not the model's value (retroAtTarget). The
+ * JPEG is decoded by the page (the scripts carry no image decoder).
+ */
+async function plateLuminance(
+  b: Browser,
+  file: string,
+  ndc: { x: number; y: number },
+): Promise<number | null> {
+  const data = readFileSync(file).toString("base64");
+  return evaluateWithin<number | null>(
+    b,
+    `(async () => {
+      const img = new Image();
+      img.src = "data:image/jpeg;base64,${data}";
+      await img.decode();
+      const c = new OffscreenCanvas(img.width, img.height);
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      const x = Math.round(((${ndc.x} + 1) / 2) * img.width);
+      const y = Math.round(((1 - ${ndc.y}) / 2) * img.height);
+      const h = ${PLATE_BOX_HALF};
+      const isInside = x - h >= 0 && y - h >= 0 && x + h < img.width && y + h < img.height;
+      if (!isInside) return null;
+      const px = g.getImageData(x - h, y - h, 2 * h + 1, 2 * h + 1).data;
+      const lin = (v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+      let sum = 0;
+      for (let i = 0; i < px.length; i += 4) sum += 0.2126 * lin(px[i]) + 0.7152 * lin(px[i + 1]) + 0.0722 * lin(px[i + 2]);
+      return Math.round((sum / (px.length / 4)) * 10000) / 10000;
+    })()`,
+  );
 }
 
 async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof loadLook>): Promise<Shot> {
@@ -307,16 +441,37 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     b,
     `(() => {
     const G = __game;
-    const car = ${JSON.stringify(placement.car ?? null)};
+    const lampCar = ${JSON.stringify(placement.lampCar ?? null)};
+    const car = lampCar ?? ${JSON.stringify(placement.car ?? null)};
     if (car) {
-      const ground = G.groundY(car.x, car.z) ?? G.vehicle.position().y;
+      const ground = car.surfaceY ?? G.groundY(car.x, car.z) ?? G.vehicle.position().y;
       G.vehicle.teleport(G.vehicle.position().set(car.x, ground + car.above, car.z), car.yaw);
     } else {
       // Stopped where it is (hidden): a rolling car would move the streaming centre and its speed.
       G.vehicle.teleport(G.vehicle.position(), G.vehicle.yaw());
     }
     G.vehicle.setFrozen(true);
+    // The model (and the headlamps on it) follows the body at once, not on the next step.
+    G.vehicle.syncVisuals();
+    G.vehicle.object.updateMatrixWorld(true);
     G.vehicle.object.visible = !!car;
+    // A lit car (state.headlamps): its lamps on, its body hidden mesh by mesh (hiding the root
+    // would take the SpotLights out of the scene too). The next view shows the body again.
+    G.vehicle.object.traverse((o) => {
+      if (!o.isMesh) return;
+      const isQaHidden = o.userData.qaHidden === true;
+      if (isQaHidden) { o.visible = true; o.userData.qaHidden = false; }
+      if (lampCar && !lampCar.showBody && o.visible) { o.visible = false; o.userData.qaHidden = true; }
+    });
+    // かんたん操作 (assist "easy") sets the lights to auto and the low beam every frame: the beam
+    // a view asks for holds only with the switches the player's own ("real").
+    G.controls.assist = lampCar ? "real" : "easy";
+    G.controls.lights = lampCar ? "on" : "auto";
+    G.controls.highBeam = lampCar?.beam === "high";
+    // Whose eye sees the faces' return: 後方追従 stands in for the driver (the game's rule for its
+    // own camera, world/signFaceMaterial.ts); any other placed view is a camera of its own (a
+    // passer-by, a photo), seen from where it stands.
+    G.debug.signFaces?.().setObserver(${JSON.stringify(view.camera === "chase" ? "driver" : "camera")});
     return G.debug.camera.place({ eye: ${JSON.stringify(placement.eye)}, target: ${JSON.stringify(placement.lookAt)}, fov: ${placement.fov}, hide: ${JSON.stringify(hide)} });
   })()`,
   );
@@ -328,6 +483,8 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
   const aim = spec ? await findTarget(b, spec, start) : null;
   const image = `${key}.jpg`;
   await b.screenshot(join(out, image), 85);
+  const probes = view.probes?.length ? await measureProbes(b, join(out, image), view.probes) : null;
+  if (probes) probeRecords.push({ shot: key, view: view.id, look: look.look, probes });
   let projection: Record<string, unknown> | null = null;
   if (aim) {
     const p = await evaluateWithin<{ ndc: { x: number; y: number }; isInView: boolean; distanceM: number }>(
@@ -340,6 +497,8 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     );
     const off = offCentre(p.ndc);
     projection = { ...p, offCentre: off, isCentred: p.isInView && off <= CENTRED_WITHIN, ...box };
+    const isPlate = (aim.kind === "sign" || aim.kind === "guide") && p.isInView;
+    if (isPlate) projection.plateLuminance = await plateLuminance(b, join(out, image), p.ndc);
   }
   const scene = await evaluateWithin(
     b,
@@ -348,9 +507,14 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     timeMode: G.env.timeMode, weather: G.env.weather, raining: G.env.isRaining(),
     nightFactor: Math.round(G.env.nightFactor * 100) / 100, sunElevationDeg: Math.round(G.env.sunElevation * 10) / 10,
     gameTime: G.env.now().toISOString(),
+    wetness: Math.round(G.env.wetness * 100) / 100,
+    eye: (() => { const p = G.camera.position; return { x: p.x, y: p.y, z: p.z }; })(),
+    signFaces: G.debug.signFaces?.() ?? null,
   }; })()`,
   );
-  const signInfo = aim?.kind === "sign" ? (catalog.get(aim.id) ?? null) : null;
+  const retro = retroAt(aim, scene);
+  if (retro) (scene as Record<string, unknown>).retroAtTarget = retro;
+  const signInfo = aim?.kind === "sign" || aim?.kind === "guide" ? (catalog.get(aim.id) ?? null) : null;
   const record: Shot = {
     image,
     shot: key,
@@ -364,6 +528,7 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     projection,
     scene,
     settled,
+    probes,
     expect: view.expect ?? null,
   };
   writeFileSync(join(out, `${key}.json`), `${JSON.stringify(record, null, 2)}\n`);
@@ -383,6 +548,10 @@ writeFileSync(
   join(out, "run.json"),
   `${JSON.stringify({ ...run, tableFile: basename(tableFile), base }, null, 2)}\n`,
 );
+// The computed metrics as review lines: copied into round-NN.jsonl by the reviewer (the runner does
+// not write the review file, which holds the reviewers' own lines).
+const metricLines = deriveMetrics(table.metrics, probeRecords, round);
+writeFileSync(join(out, "metrics.jsonl"), metricLines.map((l) => `${JSON.stringify(l)}\n`).join(""));
 const sheet =
   shots.length > 0 ? await writeContactSheet(out, { title: `${table.name} round ${round}` }) : null;
 const reviews = join(ROOT, ".qa", "reviews", table.name);

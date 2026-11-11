@@ -1,23 +1,23 @@
 import { InstancedMesh, Matrix4, Vector3, type Object3D } from "three";
 
 /**
- * How the review hooks (viewHooks.ts) read what TrafficSigns and TrafficControl keep private: the
- * sign posts with their plates and 補助標識, and the signal lamps with the approach each belongs to.
+ * How the review hooks (viewHooks.ts) read the sign posts (through TrafficSigns.debugPlates(), a
+ * public read-only view since G4) and what TrafficControl keeps private: the signal lamps with the
+ * approach each belongs to.
  * Each reader checks the shape it relies on and says why it cannot read (`not-built`: the list is
  * there but empty; `renamed`: a field it reads is gone or of another type), instead of a TypeError
  * deep in a lookup that the shooting script would only see as "target not found".
  *
- * Why not public accessors: world/signs.ts and world/trafficControl.ts are being reworked in
- * parallel (G2, T3). Once merged they get TrafficSigns.debugPlates() / TrafficControl.debugHeads()
- * and these readers go (knowledge/review-loop.md, 残課題). READ_FIELDS names every field read, and
+ * Why the lamps are still read privately: TrafficControl gets debugHeads() after T3
+ * (knowledge/review-loop.md, 残課題). READ_FIELDS names every field read, and
  * tests/viewHooks.test.ts checks that those sources still declare them.
  */
 
 export const READ_FIELDS = {
-  /** world/signs.ts: TrafficSigns.posts (type Post) and the face meshes' userData.key. */
+  /** world/signs.ts: TrafficSigns.debugPlates() (type PostDebug) and the face meshes' userData.faceKeys. */
   signs: {
-    list: "posts",
-    item: ["pos", "travel", "plates", "auxOf", "hidden"],
+    method: "debugPlates",
+    item: ["pos", "travel", "plates", "auxOf", "hidden", "plateHeights"],
     plate: ["id", "file", "parallel"],
     /** src/signs/auxPlates.ts AuxPlate: a 補助標識 hung under a plate (G2). */
     aux: ["sign", "lines"],
@@ -36,6 +36,8 @@ export type PostView = {
   /** The 補助標識 of each plate (same index as `plates`), drawn as faces right under it. */
   auxOf: Array<Array<{ sign: string; lines: string[] }>>;
   hidden: boolean;
+  /** Each plate's centre above the ground as mounted (null: left off), when the source gives it. */
+  plateHeights?: Array<number | null>;
 };
 
 /** A post's 補助標識 as texts (their lines joined), all plates' together. */
@@ -55,10 +57,12 @@ const isVec = (v: unknown): v is Vector3 =>
 const renamed = (detail: string): Unreadable => ({ ok: false, reason: "renamed", detail });
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-/** TrafficSigns' posts, checked field by field (the first post and its first plate stand for all). */
+/** TrafficSigns' posts from debugPlates(), checked field by field (the first post and plate stand for all). */
 export function readPosts(signs: unknown): Readable<PostView[]> | Unreadable {
-  const posts = (signs as Record<string, unknown> | null)?.[READ_FIELDS.signs.list];
-  if (!Array.isArray(posts)) return renamed("TrafficSigns.posts is not an array");
+  const view = (signs as Record<string, unknown> | null)?.[READ_FIELDS.signs.method];
+  if (typeof view !== "function") return renamed("TrafficSigns.debugPlates() is gone");
+  const posts: unknown = view.call(signs);
+  if (!Array.isArray(posts)) return renamed("TrafficSigns.debugPlates() did not return an array");
   if (posts.length === 0) return { ok: false, reason: "not-built", detail: "no sign posts yet" };
   const p = posts[0] as Record<string, unknown>;
   if (!isVec(p.pos) || !isVec(p.travel)) return renamed("Post.pos / Post.travel is not a vector");
@@ -93,16 +97,23 @@ export function readLamps(control: unknown): Readable<LampView> | Unreadable {
 
 export type FaceInstance = { pos: Vector3; normal: Vector3 };
 
-/** Sign face instances drawn now, by artwork file: position and the plate's facing (its local +Z). */
+/**
+ * Sign face instances drawn now, by artwork file: position and the plate's facing (its local +Z).
+ * A face mesh holds one plate shape with any artwork (G3, SignFaceMaterial): `userData.faceKeys`
+ * names the artwork of each instance.
+ */
 export function faceInstances(children: readonly Object3D[]): Map<string, FaceInstance[]> {
   const byFile = new Map<string, FaceInstance[]>();
   const m = new Matrix4();
   for (const o of children) {
-    const key: unknown = o.userData.key;
-    const isFace = o instanceof InstancedMesh && typeof key === "string";
+    const keys: unknown = o.userData.faceKeys;
+    const isFace = o instanceof InstancedMesh && Array.isArray(keys);
     if (!isFace) continue;
-    const list = byFile.get(key) ?? [];
     for (let i = 0; i < o.count; i++) {
+      const key: unknown = keys[i];
+      if (typeof key !== "string") continue;
+      const list = byFile.get(key) ?? [];
+      byFile.set(key, list);
       o.getMatrixAt(i, m);
       const z = new Vector3().setFromMatrixColumn(m, 2);
       // A hidden plate (its post inside a building) is scaled to nothing.
@@ -110,7 +121,6 @@ export function faceInstances(children: readonly Object3D[]): Map<string, FaceIn
       if (isHidden) continue;
       list.push({ pos: new Vector3().setFromMatrixPosition(m), normal: z.setY(0).normalize() });
     }
-    byFile.set(key, list);
   }
   return byFile;
 }

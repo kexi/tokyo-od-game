@@ -77,6 +77,7 @@ sources:
 - 対象（`target`）: `{ landmark, heightShare }`、`{ sign: 番号 | "*", note, near, index }`、`{ signal: { near, arrow, index } }`、`{ expressway: チャンク id, share }`、`{ point }`。床版を対象にした運転席・後方追従は、目を中心線に沿って戻した床版の上に置く（勾配で浮かない）。
 - 視点の id は表全体で一意（指摘がコマを名前で指すため）。コマの名前は `<session>--<view>`、look があれば `<session>.<look>--<view>`。
 - look: `defaults.moment`（必須。ISO 8601 の日時で太陽と空を固定 = 季節と時刻）・`time`・`weather`・`seed`。`looks: [{id, time, weather, moment, seed}]` を `defaults` か session に書くと行列になる。`moment` は太陽・空・雨だけを固定し、ゲームの時計（時間帯の規制、ランドマークのライトアップの予定表）は `time` から進む。
+- 前照灯: `state.headlamps: { beam: "low" | "high", distanceM?, angleDeg?, lateralM?, turnDeg }` で自車を対象の前に置いて灯を点ける（車体は隠し、SpotLight は残す）。何も書かなければ目の下、書けばそこ（目から離せば観測角が大きい）。`turnDeg` で車を振って板を配光の外に出す。かんたん操作は毎フレーム灯を戻すので、その間は assist を real にする。開始から 15 s は車が道路へ移されるので、前照灯の視点がある読み込みは 16 s 待ってから置く（G3、[道路標識](sign-system.md)）。各コマの JSON の `scene.retroAtTarget` が対象の板の再帰反射の値。
 - 状態: `state.signalStep`（信号が対象の視点だけ）で現示を止める。番号か、その接近路の群で `green`・`yellow`・`red` になる最初のステップ、`arrow` は矢印が点く最初のステップ。T4（歩車分離・時差式）の現示表の全ステップを撮るときの足場。`state.signalClock: "HH:MM"`（T4）は信号が読む時刻（夜の現示表: 夜間点滅・夜間の押ボタン）を空とは別に止める（フック `signals.clock(minute, approachId?)` が時刻を固定し、制御機が変更できる時点で切り替わるまで信号の時計だけを進める。`state.signalClockToChange: true` なら対象の制御機の現示表が変わった瞬間で止め、その時点の段を撮る）。
 - `hide: ["traffic", "pedestrians"]`（defaults・session・視点）で、動く車と歩行者をその間だけ隠す（駐車車両は残る）。
 - `metrics: [{name, min, max}]`: 毎周の報告を必須にする数値の探り。
@@ -98,7 +99,7 @@ sources:
 
 ## private なフィールドの読み方（暫定）
 
-TrafficSigns の `posts`（Post の `pos`・`travel`・`plates`・`auxOf`・`hidden`、板の `id`・`file`・`scale`、補助標識の `sign`・`lines`。G2（#45）で `notes` の文字列から `auxOf` の描画済みの板に変わり、改名の検査がそれを捕まえた）と TrafficControl の `lamps`・`lampOwners`・`arrowLamps`・`arrowOwners` は private。並行して作り替えている（G2・T3）ため、公開の口は足していない。`src/debug/privateViews.ts` が形を一つずつ確かめて読み、合わなければ `renamed`、空なら `not-built` を返す。TypeError が「対象が見つからない」に紛れることはない。読むフィールドの名前は `READ_FIELDS` に集め、`tests/viewHooks.test.ts` が signs.ts・trafficControl.ts・signs/game.ts の宣言にまだあることを確かめる。
+標識の柱は G4（2026-11-11）から公開の読み取り口 `TrafficSigns.debugPlates()`（`PostDebug` の `pos`・`travel`・`plates`・`auxOf`・`hidden`・`plateHeights`、板の `id`・`file`・`scale`、補助標識の `sign`・`lines`）で読む。それまでは private の `posts` を読んでいた（G2（#45）で `notes` の文字列から `auxOf` に変わったのを改名の検査が捕まえた）。TrafficControl の `lamps`・`lampOwners`・`arrowLamps`・`arrowOwners` は private のまま。並行して作り替えている（T3）ため、公開の口は足していない。`src/debug/privateViews.ts` が形を一つずつ確かめて読み、合わなければ `renamed`、空なら `not-built` を返す。TypeError が「対象が見つからない」に紛れることはない。読むフィールドの名前は `READ_FIELDS` に集め、`tests/viewHooks.test.ts` が signs.ts・trafficControl.ts・signs/game.ts の宣言にまだあることを確かめる。
 
 # 各コマの JSON
 
@@ -133,7 +134,7 @@ TrafficSigns の `posts`（Post の `pos`・`travel`・`plates`・`auxOf`・`hid
 - 板を共用する番号（317 → 316）の図柄
 - 327の7-A の車線の版
 
-それぞれの板のノードに図柄を貼り、支柱と金具を付けて正面・30°・60° で描く（Workbench）。板の寸法は registry.json の `plates`、図の URL は `law.figureUrl` から取る。板と支柱の前後のずれは src/world/signs.ts の `PLATE_OFFSET` を読む。複写しないので、ゲームの値が変われば見本も変わる（無ければ止まる）。
+それぞれの板のノードに図柄を貼り、支柱と金具を付けて正面・30°・60° で描く（Workbench）。板の寸法は registry.json の `plates`、図の URL は `law.figureUrl` から取る。支柱・笠・レール・バンドは、`scripts/qa/signMounts.ts` がゲームの `resolveMount`（src/signs/mount.ts）で板ごとに解いた部材を `.qa/signs/mounts.json` に書き、signs.glb の単位部材（`SignPostUnit` ほか）で組む（G4 の 2026-11-11 から。それまでは signs.ts の `PLATE_OFFSET` を読み、G4 で消えて止まった）。複写しないので、ゲームの取付が変われば見本も変わる（mounts.json が無ければ止まる）。
 
 出力は `.qa/signs/<角度>/<番号>[~<変種>].png`、`index.json`、`sheet-<角度>.jpg`（番号・名前・寸法の見出し付き）。369 面 × 3 角度が数分で描ける。[^q1-sign-review]
 
@@ -189,7 +190,7 @@ Why open の Warning も見る: 新規だけを数えると、直していない
 
 # 残課題
 
-- G2・T3 のマージ後、private なリストの読み取りを、公開の読み取り口 `TrafficSigns.debugPlates()` / `TrafficControl.debugHeads()` に置き換える。`signals.hold` の `update` の差し替えも、TrafficControl に時計を止める開発用の口を設けて置き換える。
+- T3 のマージ後、信号の private なリストの読み取りを、公開の読み取り口 `TrafficControl.debugHeads()` に置き換える（標識は G4 で `TrafficSigns.debugPlates()` に置き換えた）。`signals.hold` の `update` の差し替えも、TrafficControl に時計を止める開発用の口を設けて置き換える。
 - 遮蔽の判定（手前の建物に隠れていないか）が無い。
 - レインボーブリッジの「歩行者目線」は水面の高さに立っている（岸に置き直す）。
-- 夜・雨の look と現示表の全ステップを使う視点表、数値の探り（文字の画素数・輝度）の自動計測は、P4・G3・T4 で足す。
+- 夜・雨の look と現示表の全ステップを使う視点表、数値の探り（文字の画素数・輝度）の自動計測は、P4・G3・T4 で足す。 2026-11-11: P4 で輝度の自動計測（視点の `probes` と表の `metrics.from`、`scripts/qa/pixelProbes.ts`、`round-NN/metrics.jsonl`）と昼・夕・夜・雨の夜の look を expressway・roads に足した（[路面と高架のテクスチャ](road-textures.md)）。床版の後方追従の自車を床版の高さに置くようにした（`Placement.car.surfaceY`）。

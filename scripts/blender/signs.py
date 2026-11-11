@@ -12,6 +12,9 @@
 # (PlateCircle, PlateRect120x90 …) and are fixed: the game and the definitions look plates up by
 # them. Why not draw every plate here as before: the sizes were then written twice (here and in the
 # definitions), and the texture boxes in a third place. Posts are 60.5 mm galvanised steel pipe.
+# The mounts (G4, src/signs/mount.ts) are built from unit members: SignPostUnit (1 m of pipe),
+# SignPostCap, SignRail (1 m along X), SignBand, SignalBand (on the φ260 signal pole),
+# BarrierBracket (on a 壁高欄) and GirderHanger (1 m along Y); the game stretches or repeats them.
 import json
 import math
 import os
@@ -31,6 +34,11 @@ THICK = 0.004  # aluminium plate with a rolled edge
 RIM = 0.012  # rolled edge depth behind the face
 POST_R = 0.03025
 POST_H = 3.2
+# The 車両用 signal pole a SignalBand clamps (src/world/trafficControl.ts POLE_RADIUS; the
+# signal model's pole is scaled to it). tests/signMount.test.ts keeps both equal to mount.ts.
+SIGNAL_POLE_R = 0.13
+# From a plate's face to the axis of the post behind it (src/signs/mount.ts: postRadius + 0.02).
+POST_STANDOFF = POST_R + 0.02
 
 
 def log(event, **fields):
@@ -258,6 +266,154 @@ def bracket(name):
 post("Post")
 bracket("Bracket")
 
+
+# ---------------------------------------------------------------- unit members (G4)
+# The game builds every mount from these (src/signs/mount.ts resolveMount places them, stretched
+# along their unit axis). Post and Bracket above stay for compatibility; the game no longer uses
+# them. Why not stretch Bracket to each plate: its U-band would stretch with the rail, and the
+# 40 cm rail stuck out past the 30 cm 通学路 plate (knowledge/sign-system.md, G2 残課題).
+
+
+def add_box(bm, cx, cy, cz, sx, sy, sz):
+    vs = [
+        bm.verts.new((cx + dx * sx / 2, cy + dy * sy / 2, cz + dz * sz / 2))
+        for dx, dy, dz in [
+            (-1, -1, -1),
+            (1, -1, -1),
+            (1, 1, -1),
+            (-1, 1, -1),
+            (-1, -1, 1),
+            (1, -1, 1),
+            (1, 1, 1),
+            (-1, 1, 1),
+        ]
+    ]
+    for f in [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (2, 3, 7, 6), (1, 2, 6, 5), (0, 4, 7, 3)]:
+        bm.faces.new([vs[i] for i in f])
+
+
+def band(bm, radius, axis_z, half_height, arc=math.pi, segs=10):
+    """A strap of `radius` round a vertical axis at z = axis_z, over `arc` from the face side's back."""
+    prev = None
+    for i in range(segs + 1):
+        a = arc * i / segs + (math.pi - arc) / 2
+        x, z = radius * math.cos(a), axis_z - radius * math.sin(a)
+        cur = [bm.verts.new((x, y, z)) for y in (-half_height, half_height)]
+        if prev:
+            bm.faces.new((prev[0], cur[0], cur[1], prev[1]))
+        prev = cur
+
+
+def post_unit(name):
+    """60.5 mm pipe from y = 0 to 1, open ends: the game scales it in Y to the post's height."""
+    bm = bmesh.new()
+    segs = 12
+    rings = [
+        [
+            bm.verts.new((POST_R * math.cos(2 * math.pi * i / segs), y, POST_R * math.sin(2 * math.pi * i / segs)))
+            for i in range(segs)
+        ]
+        for y in (0.0, 1.0)
+    ]
+    for i in range(segs):
+        j = (i + 1) % segs
+        bm.faces.new((rings[0][i], rings[0][j], rings[1][j], rings[1][i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_object(name, bm, ["Post"], smooth=True, sharp_angle=60)
+
+
+def post_cap(name):
+    """The domed cap sitting on a post's top (origin at the pipe's end)."""
+    bm = bmesh.new()
+    segs = 12
+    ring = [
+        bm.verts.new((POST_R * math.cos(2 * math.pi * i / segs), 0.0, POST_R * math.sin(2 * math.pi * i / segs)))
+        for i in range(segs)
+    ]
+    tip = bm.verts.new((0.0, 0.02, 0.0))
+    for i in range(segs):
+        bm.faces.new((ring[i], ring[(i + 1) % segs], tip))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_object(name, bm, ["Post"], smooth=True, sharp_angle=60)
+
+
+def rail(name):
+    """The horizontal rail riveted to a plate's back (plate face at z = 0), 1 m along X, centred."""
+    bm = bmesh.new()
+    add_box(bm, 0.0, 0.0, -0.018, 1.0, 0.04, 0.012)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_object(name, bm, ["Bracket"])
+
+
+def post_band(name):
+    """Saddle and U-band joining a plate's rail to a 60.5 mm post (axis at z = −POST_STANDOFF)."""
+    bm = bmesh.new()
+    add_box(bm, 0.0, 0.0, -0.035, 0.05, 0.05, 0.025)
+    band(bm, POST_R + 0.006, -POST_STANDOFF, 0.018)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_object(name, bm, ["Bracket"])
+
+
+def signal_band(name):
+    """Two-piece band round the signal pole (axis at z = −(SIGNAL_POLE_R + 0.05)) and the saddle
+    from the plate's rail to the pole's surface, with the bolt lugs either side."""
+    bm = bmesh.new()
+    axis = -(SIGNAL_POLE_R + 0.05)
+    band(bm, SIGNAL_POLE_R + 0.006, axis, 0.022, arc=2 * math.pi, segs=24)
+    add_box(bm, 0.0, 0.0, -0.037, 0.06, 0.05, 0.026)  # saddle: rail back (−0.024) to the pole (−0.05)
+    for sx in (-1, 1):
+        add_box(bm, sx * (SIGNAL_POLE_R + 0.025), 0.0, axis, 0.035, 0.044, 0.012)  # bolt lugs
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_object(name, bm, ["Bracket"], smooth=True, sharp_angle=50)
+
+
+def barrier_bracket(name):
+    """Clamp on a 壁高欄's top (origin at the top's centre): base plate, socket for the 60.5 mm
+    post, and two anchor bolts. Sized for a parapet 0.25 m wide or more."""
+    bm = bmesh.new()
+    add_box(bm, 0.0, 0.012, 0.0, 0.24, 0.024, 0.22)
+    segs = 12
+    rings = [
+        [
+            bm.verts.new(
+                (
+                    (POST_R + 0.008) * math.cos(2 * math.pi * i / segs),
+                    y,
+                    (POST_R + 0.008) * math.sin(2 * math.pi * i / segs),
+                )
+            )
+            for i in range(segs)
+        ]
+        for y in (0.024, 0.16)
+    ]
+    for i in range(segs):
+        j = (i + 1) % segs
+        bm.faces.new((rings[0][i], rings[0][j], rings[1][j], rings[1][i]))
+    for sx in (-1, 1):
+        add_box(bm, sx * 0.08, 0.04, 0.0, 0.03, 0.03, 0.03)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_object(name, bm, ["Bracket"])
+
+
+def girder_hanger(name):
+    """A channel bolted to a girder's face (z = 0) holding a board's back at z = 0.06; 1 m along Y,
+    centred, scaled to the board's height."""
+    bm = bmesh.new()
+    add_box(bm, 0.0, 0.0, 0.03, 0.075, 1.0, 0.04)
+    for y in (-0.45, 0.45):
+        add_box(bm, 0.0, y, 0.006, 0.16, 0.08, 0.012)  # bolt plates on the girder
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_object(name, bm, ["Bracket"])
+
+
+post_unit("SignPostUnit")
+post_cap("SignPostCap")
+rail("SignRail")
+post_band("SignBand")
+signal_band("SignalBand")
+barrier_bracket("BarrierBracket")
+girder_hanger("GirderHanger")
+
 for ob in list(SCENE.objects):
     ob.select_set(False)
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -307,7 +463,7 @@ if PREVIEW:
         ob.data.materials[0] = face
     for ob in list(SCENE.objects):
         is_original = "." not in ob.name  # copies are named PlateCircle.001 …
-        if is_original and (ob.name.startswith("Plate") or ob.name in ("Post", "Bracket")):
+        if is_original and ob.type == "MESH":
             ob.hide_render = True
     world = bpy.data.worlds.new("World")
     world.use_nodes = True

@@ -82,7 +82,10 @@ assets:
 
   - id: sign-plates
     name: 道路標識の板と支柱
-    purpose: 実寸の標識板（円・逆三角・正方形・一方通行など）と支柱・取付金具。図柄は実行時に sign-textures を貼る。
+    purpose: >-
+      実寸の標識板（円・逆三角・正方形・一方通行など）と、取付の単位部材（1 m の支柱 SignPostUnit・笠 SignPostCap・
+      1 m のレール SignRail・U バンド SignBand・信号柱の共架バンド SignalBand・壁高欄の金具 BarrierBracket・桁の吊り金具
+      GirderHanger）。図柄は実行時に sign-textures を貼り、部材は src/signs/mount.ts の resolveMount が伸ばす・並べる。
     kind: model
     files: [public/models/signs.glb]
     generator: { script: scripts/blender/signs.py, recipe: make-sign-model }
@@ -97,6 +100,9 @@ assets:
     notes: >-
       G2 から板を src/signs/plates.ts の宣言から作る（それまでは signs.py に寸法を直書き）。移したあとの出力が
       移す前の signs.glb とバイト一致することを確かめた（knowledge/sign-system.md）。ノード名は互換のため固定。
+      G4 で単位部材のノードを末尾に足した。既存のノード（板・Post・Bracket）は符号化済みの頂点までバイト一致のまま
+      （Post・Bracket はゲームでは使わなくなったが互換のため残す）。部材の径は仮定（mount.ts の MEMBER_SIZES、
+      tests/signMount.test.ts が signs.py の定数と照合）。
 
   - id: human
     name: 歩行者
@@ -506,7 +512,9 @@ assets:
 
   - id: guide-sign-model
     name: 案内標識の支柱・腕・標示板
-    purpose: 方面及び方向（108 系）の案内標識を立てる片持式（F 形）の支柱と腕、路側式の支柱、1 × 1 m の標示板。ゲームが標識ごとに伸縮してインスタンス描画する。
+    purpose: >-
+      方面及び方向（108 系）の案内標識を立てる片持式（F 形）の支柱と腕、路側式の支柱、1 × 1 m の標示板と、門型の脚
+      （GantryLeg・GantryFoot）と梁の 1 m の節（GantryTruss）。ゲームが標識ごとに伸縮・反復してインスタンス描画する。
     kind: model
     files: [public/models/guide_signs.glb]
     generator: { script: scripts/blender/guide_signs.py, recipe: make-guide-sign-model }
@@ -514,8 +522,11 @@ assets:
     source: 自作（bpy で手続きモデリング。寸法は道路標識設置基準の設置高さと一般的な F 形柱の鋼管径。外部の 3D 素材・写真は使っていない）
     license: repo
     used_by: [src/world/guideSigns.ts]
-    docs: [knowledge/road-markings-and-signs.md]
-    notes: 板の面（GuideFace）は実行時に src/world/guideArt.ts が標識ごとに描く。腕（GuideArm）と板は長さ 1 で、ゲームが伸ばす。
+    docs: [knowledge/road-markings-and-signs.md, knowledge/sign-system.md]
+    notes: >-
+      板の面（GuideFace）は実行時に src/world/guideArt.ts が標識ごとに描く。腕（GuideArm）と板は長さ 1 で、ゲームが伸ばす。
+      配置は G4 から src/signs/mount.ts の resolveMount（片持式 cantilever-f・路側式 double-post）。門型の部材は G6（都市高速）
+      まで使わない。既存のノードは G4 の前とバイト一致。
 
   - id: mirror-charms
     name: ミラーの飾り（ぬいぐるみ・お守り）
@@ -550,6 +561,8 @@ assets:
     purpose: >-
       別表第一の番号ごとの道路標識の図柄 345 枚と、ゲームが通行禁止の標識の下に吊る補助標識 502 日・時間の図柄 388 枚
       （502_h<文言のハッシュ>.png、16 色のパレット PNG）。実行時に sign-plates の板へ貼る（どの番号がどのファイルかは sign-registry）。
+      G3 から、置いた図柄だけを配列テクスチャの層（256 px、90 cm の板は 512 px）に縮めて載せ、SignFaceMaterial が層を選ぶ
+      （src/world/signFaces.ts）。
     kind: texture
     files: [assets/signs/textures/*.png]
     generator: { script: scripts/textures/sign_textures.py, recipe: make-sign-textures }
@@ -783,21 +796,54 @@ assets:
       - assets/road/textures/asphalt_normal.jpg
       - assets/road/textures/asphalt_roughness.png
     generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
-    made_by: unknown
-    source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
+    made_by: procedural
+    source: >-
+      自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）。色の目安は PLATEAU 橋梁 LOD2 の
+      航空写真の上面の平均色から読んだ値で、画素は使っていない（knowledge/road-textures.md）
     license: repo
     used_by: [src/world/roadSurface.ts]
+    docs: [knowledge/road-textures.md]
     notes: >-
-      作成者の記録が無い（knowledge にも README にも無い）。スクリプトには委譲時のタスク記述から
-      取ったとみられる scratchpad の絶対パスが確認用シートの既定の出力先として残っている。
+      初版（2026-10）の作成者は記録が無い（knowledge にも README にも無い。車のテクスチャと同じく委譲で作られた
+      とみられる）。2026-11-11 に Claude Code が密粒度の石の密度・色・法線の精度（256 色への量子化をやめた）を
+      作り直し、確認用シートの既定の出力先に残っていた scratchpad のパスを消した（P4）。
+
+  - id: marking-wear-texture
+    name: 区画線の摩耗マスク
+    purpose: >-
+      一般道と首都高の床版の区画線・停止線・横断歩道の摩耗（R）・汚れ（G）・ガラスビーズ（B、未使用）。
+      アスファルトと同じ 4 m の格子と石で作り、すり減った所に下の舗装が見える。タイヤの通る位置で摩耗を強める。
+    kind: texture
+    files: [assets/road/textures/marking_wear.png]
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
+    made_by: procedural
+    source: 自作（リポジトリ内のスクリプトで手続き生成、外部の画像は使っていない）
+    license: repo
+    used_by: [src/world/roadSurface.ts, src/world/deckSurface.ts]
+    docs: [knowledge/road-textures.md]
+
+  - id: expressway-textures
+    name: 首都高の床版・壁高欄・桁・橋脚のテクスチャ
+    purpose: >-
+      高架の床版の表層の排水性舗装（4 m で 1 タイル）と、壁高欄・床版の側面・箱桁・橋脚の型枠コンクリート
+      （3.6 m で 1 タイル、型枠の目地・セパ穴・まだら、アルファに雨だれ）。色と、法線 x/y・粗さ・マスクを詰めた
+      _nrm の 2 枚ずつ。ワールド座標で敷く（舗装は平面、コンクリートは三平面投影）。
+    kind: texture
+    files: [assets/expressway/textures/*]
+    generator: { script: scripts/textures/expressway_textures.py, recipe: make-expressway-textures }
+    made_by: procedural
+    source: >-
+      自作（手続き生成、外部の画像は使っていない）。色と寸法の目安は PLATEAU 港区 2025 の橋梁 LOD2・LOD3 から
+      読んだ値で、画素と形状は使っていない。事業者の配色・意匠・ロゴは描かない汎用の形（knowledge/road-textures.md）
+    license: repo
+    used_by: [src/world/deckSurface.ts]
+    docs: [knowledge/road-textures.md]
 
   - id: asphalt-texture-extras
     name: アスファルトの未使用バリエーション
-    purpose: 生成スクリプトが一緒に書き出す PNG 原版と、轍・補修跡・排水性舗装のバリエーション。ゲームは読み込んでいない。
+    purpose: 生成スクリプトが一緒に書き出す轍・補修跡・排水性舗装のバリエーション（初版のまま）。ゲームは読み込んでいない。
     kind: texture
     files:
-      - assets/road/textures/asphalt_albedo.png
-      - assets/road/textures/asphalt_normal.png
       - assets/road/textures/asphalt_worn_albedo.*
       - assets/road/textures/asphalt_patch_albedo.*
       - assets/road/textures/asphalt_porous_albedo.*
@@ -807,6 +853,21 @@ assets:
     license: repo
     used_by: []
     status: unused
+
+  - id: asphalt-texture-originals
+    name: 密粒度アスファルトの PNG 原版
+    purpose: 生成スクリプトが JPEG と一緒に書き出す密粒度の色・法線の可逆の原版。ゲームは JPEG を読む。
+    kind: texture
+    files:
+      - assets/road/textures/asphalt_albedo.png
+      - assets/road/textures/asphalt_normal.png
+    generator: { script: scripts/textures/asphalt_textures.py, recipe: make-textures }
+    made_by: procedural
+    source: 自作（2026-11-11 に Claude Code が作り直した密粒度の版。外部の画像は使っていない）
+    license: repo
+    used_by: []
+    status: unused
+    docs: [knowledge/road-textures.md]
 
   - id: orbis-textures
     name: オービスの予告看板の図柄

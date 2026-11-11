@@ -76,7 +76,7 @@ export const INSTRUCTION = group("指示", [
       ],
     },
     note: "現行の様式は青の五角形に白の記号（図 191）。旧 crosswalk.png（青の正方形に白の三角）は様式外として variants に残す",
-    game: { kind: "crosswalk", bothFaces: true },
+    game: { kind: "crosswalk", bothFaces: true, kerbSide: true, fixedPlace: true },
   },
   {
     id: "407-B",

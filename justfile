@@ -91,8 +91,13 @@ shoot-views name round="" base="http://localhost:5173/tokyo-od-game/" port="":
 check-convergence name:
     pnpm exec tsx scripts/qa/check-convergence.ts {{ name }}
 
+# 案内標識を 5 地点と固定内容（高速道路名・10/15 cm の 108）で計画・描画して配置と面の画素を .qa/guide-boards/<label>/ に書き、against を渡せばその label と比べる（108 系が変われば終了コード 1）
+compare-guide-boards label against="" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/guideBoards.ts --label {{ label }} --base {{ base }} {{ if against != "" { "--against " + against } else { "" } }}
+
 # 標識の見本: 図柄のある全番号を signs.glb の板・支柱に貼って正面・30°・60° で描き .qa/signs/ に番号ごとの画像と角度ごとのシートを書く（Blender は nix の別シェル）
 render-sign-review:
+    pnpm exec tsx scripts/qa/signMounts.ts .qa/signs
     nix develop .#blender -c blender --background --factory-startup --python scripts/blender/signs.py --python scripts/blender/sign_review.py -- .qa/signs/signs.glb
     pnpm exec tsx scripts/qa/signSheet.ts .qa/signs
 
@@ -136,7 +141,7 @@ list-logs n="10":
 check-assets:
     pnpm exec vitest run tests/assetManifest.test.ts
 
-# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルト・警察車両・東京駅丸の内駅舎・東京タワー周辺の建物・主要な建物 4 棟のテクスチャを手続き生成し直す
+# 道路標識・歩行者・建物外壁・信号機・救急車・バス・トラック・バイク・警察官・ベビーカー・自転車・車内・ランドマーク・アスファルトと区画線の摩耗・警察車両・東京駅丸の内駅舎・東京タワー周辺の建物・主要な建物 4 棟・首都高の床版のテクスチャを手続き生成し直す
 make-textures:
     uv run scripts/textures/sign_textures.py
     uv run scripts/textures/human_textures.py
@@ -156,6 +161,11 @@ make-textures:
     uv run scripts/textures/tokyo_station_textures.py
     uv run scripts/textures/tower_area_textures.py
     uv run scripts/textures/major_building_textures.py
+    just make-expressway-textures
+
+# 首都高の床版の排水性舗装と、壁高欄・床版の側面・箱桁・橋脚の型枠コンクリートのテクスチャを手続き生成し直す（sheet に PNG のパスを渡すと 2×2 の継ぎ目の確認用シートも書く）
+make-expressway-textures sheet="":
+    uv run scripts/textures/expressway_textures.py {{ sheet }}
 
 # 道路標識の図柄を assets/signs/registry.json から作り直し、群ごとのコンタクトシートを書き出す
 make-sign-textures sheet="${TMPDIR:-/tmp}/signs":
@@ -305,6 +315,14 @@ measure-perf label="sample":
 # シーンを固定して従来・改善後の描画CPU時間を交互に各4回計測する（開発サーバーが必要）
 measure-perf-fixed:
     node scripts/qa/perf-fixed-scene.mjs
+
+# 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
+measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
+
+# 入口ランプから C1 内回りへ自車を一定速で走らせ、床版の上で建物と交差した所と止まった所（保持か接触か）を .qa/drive-deck-<label>.json に書く（交差があれば終了コード 1）
+check-deck-drive label="run" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }}
 
 # 交通と雨が動く通常プレイで夜雨の従来・改善後を交互に各4回計測する
 measure-perf-night:

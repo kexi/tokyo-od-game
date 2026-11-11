@@ -72,6 +72,10 @@ export type GameKindEntry = {
   parallel?: true;
   /** Back-to-back copies of the face, one per direction (横断歩道). */
   bothFaces?: true;
+  /** On the column by the carriageway when a post is split (横断歩道). */
+  kerbSide?: true;
+  /** Never hung on a signal pole (一時停止, 横断歩道). */
+  fixedPlace?: true;
 };
 
 /** assets/signs/game.json. `aux`: the 補助標識 faces by auxPlates.ts auxKey. */
@@ -85,6 +89,7 @@ export type GameTable = {
  * `shape` the plate node, `scale` how much larger than 図示 it is drawn (within 別表第二
  * 備考一(二), src/signs/schema.ts ENLARGEMENT). `bothFaces`: back-to-back copies; `parallel`: along
  * the street with `back` as the other face (道路標識設置基準 3-1-4: 平行又は斜め 0°〜45°).
+ * `kerbSide` / `fixedPlace`: how src/signs/mount.ts may move it (schema.ts game).
  */
 export type Design = {
   id: string;
@@ -94,6 +99,8 @@ export type Design = {
   bothFaces?: boolean;
   parallel?: boolean;
   back?: string;
+  kerbSide?: boolean;
+  fixedPlace?: boolean;
 };
 
 const KIND_OF = new Map<number, GameSignKind>(
@@ -133,6 +140,8 @@ export function designFor(
     ...(entry.back ? { back: entry.back.file } : {}),
     ...(entry.parallel ? { parallel: true } : {}),
     ...(entry.bothFaces ? { bothFaces: true } : {}),
+    ...(entry.kerbSide ? { kerbSide: true } : {}),
+    ...(entry.fixedPlace ? { fixedPlace: true } : {}),
   };
 }
 

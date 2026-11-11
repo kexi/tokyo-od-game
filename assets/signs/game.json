@@ -1170,7 +1170,8 @@
           "plate": "PlateTriangle",
           "scale": 1.25
         }
-      ]
+      ],
+      "fixedPlace": true
     },
     "noPedestrianCrossing": {
       "pick": "default",
@@ -1204,7 +1205,9 @@
           "scale": 1.25
         }
       ],
-      "bothFaces": true
+      "bothFaces": true,
+      "kerbSide": true,
+      "fixedPlace": true
     },
     "hydrant": {
       "pick": "default",

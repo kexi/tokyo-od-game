@@ -1,7 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3, type Group, type SpotLight } from "three";
 import { createCarModel, WHEEL_RADIUS, type CarModel, type CarStyle } from "../game/carModel";
-import { ALL_GROUPS, BUILDING_GROUPS, ON_DECK_GROUPS, VEHICLE_SOLVER_GROUPS } from "./groups";
+import { BUILDING_GROUPS, VEHICLE_SOLVER_GROUPS } from "./groups";
 import { massContactsFor } from "./massContacts";
 import { VEHICLE_SPECS, type MassClass, type VehicleSpec } from "./masses";
 
@@ -380,26 +380,7 @@ export class Vehicle {
     this.controller.updateVehicle(
       dt,
       RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      this.isOnDeck ? ON_DECK_GROUPS : undefined,
     );
-  }
-
-  private isOnDeck = false;
-
-  /**
-   * Up on an expressway deck (main.ts asks the road graph): the chassis and the wheels pass through
-   * PLATEAU buildings (groups.ts BUILDINGS), which in places stand across a ramp the data runs
-   * through. Why not cut the buildings: that is P4's work on the city's tiles; on the deck the
-   * parapets already keep the car in, so nothing it should meet is lost.
-   */
-  setOnDeck(onDeck: boolean): void {
-    // Off the deck the buildings are solid again only once the chassis is clear of them: turned
-    // back on inside a wall, the solver would fling the car out (P4 cuts the buildings instead).
-    const isStillInside = !onDeck && this.isOnDeck && this.overlapsBuilding();
-    const ignores = onDeck || isStillInside;
-    if (ignores === this.isOnDeck) return;
-    this.isOnDeck = ignores;
-    this.chassis.setCollisionGroups(ignores ? ON_DECK_GROUPS : ALL_GROUPS);
   }
 
   /** Whether the chassis box overlaps a PLATEAU building's collider (groups.ts BUILDINGS). */
@@ -420,6 +401,30 @@ export class Vehicle {
       (collider) => collider.collisionGroups() === BUILDING_GROUPS,
     );
     return isOverlapping;
+  }
+
+  /**
+   * What the chassis box overlaps right now, by kind (for a stalled car's log): PLATEAU buildings
+   * and every other collider but the car's own (decks, walls, terrain, props).
+   */
+  touching(): { buildings: number; other: number } {
+    const counts = { buildings: 0, other: 0 };
+    this.world.intersectionsWithShape(
+      this.body.translation(),
+      this.body.rotation(),
+      this.chassis.shape,
+      (collider) => {
+        const isBuilding = collider.collisionGroups() === BUILDING_GROUPS;
+        if (isBuilding) counts.buildings++;
+        else counts.other++;
+        return true;
+      },
+      undefined,
+      undefined,
+      undefined,
+      this.body,
+    );
+    return counts;
   }
 
   syncVisuals(): void {
@@ -494,6 +499,11 @@ export class Vehicle {
 
   setFrozen(frozen: boolean): void {
     this.body.setEnabled(!frozen);
+  }
+
+  /** Whether the body is disabled (setFrozen), whoever froze it. */
+  isFrozen(): boolean {
+    return !this.body.isEnabled();
   }
 
   dispose(): void {

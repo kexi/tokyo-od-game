@@ -10,17 +10,25 @@
 """Procedural asphalt road texture generator for Tokyo Open Drive.
 
 Generates tileable asphalt textures for Japanese city streets:
-1. asphalt_albedo.png: Standard Japanese dense-graded asphalt (密粒度アスファルト, ~#3a3d42).
+1. asphalt_albedo.png/.jpg: dense-graded asphalt (密粒度アスファルト 13), colour from the PLATEAU
+   reading in knowledge/road-textures.md (not its pixels).
 2. asphalt_roughness.png: PBR roughness map (greyscale).
-3. asphalt_normal.png: Tangent-space normal map (OpenGL format, +Y up).
+3. asphalt_normal.png/.jpg: Tangent-space normal map (OpenGL format, +Y up).
 4. asphalt_worn_albedo.png: Worn lane with wheel-path tracks (slightly darker & smoother).
 5. asphalt_patch_albedo.png: Road with rectangular maintenance patches and crack sealant lines.
 6. asphalt_porous_albedo.png: Arterial porous drainage asphalt (排水性舗装, lighter & coarser).
+7. marking_wear.png: the paint's wear (R), grime (G) and glass-bead glints (B) on the same 4 m grid
+   and the same stones as 1, so worn paint shows the stones of the asphalt under it.
 
 Resolution: 1024x1024 px.
 Texel scale: 1024 px = 4.0 m (approx. 3.9 mm/px).
-All textures are seamlessly tileable in both X (U) and Y (V) directions.
+All textures are seamlessly tileable in both X (U) and Y (V) directions (checked before writing).
 Lane direction runs vertically (along Y/V axis, road length).
+
+Authorship: the first version (2026-10) has no record of who wrote it (knowledge/asset-manifest.md;
+probably delegated like the car textures). The dense-graded set, the normal map's precision and
+marking_wear were redone procedurally by Claude Code on 2026-11-11 (P4, knowledge/road-textures.md);
+variants 4–6 are the first version's, unchanged.
 
 Usage:
     uv run scripts/textures/asphalt_textures.py
@@ -32,10 +40,10 @@ from __future__ import annotations
 import random
 import sys
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 from PIL import Image, ImageDraw
+from texture_noise import check_seamless, fft_noise, normal_xy, rgb_image, stones, to_byte
 
 # Deterministic seed for reproducible procedural generation
 SEED = 42
@@ -211,52 +219,74 @@ def generate_base_asphalt_layers(
     }
 
 
+# The dense-graded surface (knowledge/road-textures.md「密粒度」): a 13 mm grading is mostly
+# 2.5–13 mm stones (0.6–3.3 px here) in a dark mastic; aged by sun and traffic the binder greys
+# and the stone faces show. Mean colour DENSE_RGB (sRGB) from the PLATEAU reading.
+DENSE_RGB = (88.0, 88.0, 86.0)
+DENSE_SEED = 1311
+
+
+def dense_layers(size: int = TEXTURE_SIZE) -> dict[str, np.ndarray]:
+    """Height, stone mask and tone fields of the dense-graded surface (shared with marking_wear)."""
+    big_h, big_t = stones(size, 26000, 2.4, DENSE_SEED)
+    mid_h, mid_t = stones(size, 60000, 1.5, DENSE_SEED + 1)
+    fine_h, fine_t = stones(size, 110000, 0.9, DENSE_SEED + 2)
+    stone_h = np.maximum(np.maximum(big_h, mid_h * 0.85), fine_h * 0.7)
+    tone = np.where(big_h >= mid_h, big_t, mid_t)
+    tone = np.where(fine_h * 0.7 > np.maximum(big_h, mid_h * 0.85), fine_t, tone)
+    macro = fft_noise(size, 2.4, DENSE_SEED + 3)
+    meso = fft_noise(size, 1.6, DENSE_SEED + 4)
+    micro = fft_noise(size, 0.8, DENSE_SEED + 5)
+    binder = 0.18 + (meso - 0.5) * 0.12 + (micro - 0.5) * 0.08
+    height = np.maximum(stone_h * 0.9, binder)
+    return {"height": height, "stone": stone_h, "tone": tone, "macro": macro, "meso": meso, "micro": micro}
+
+
 def generate_asphalt_standard(size: int = TEXTURE_SIZE) -> tuple[Image.Image, Image.Image, Image.Image]:
-    """Generate dense-graded asphalt: (albedo, roughness, normal).
+    """Dense-graded asphalt: (albedo, roughness, normal).
 
-    Target look: Japanese 密粒度アスファルト (sRGB average ~#3a3d42 / (58, 61, 66)).
+    How: grey binder with its own low-contrast mottling, stone faces 15–30 % lighter by their
+    tone, voids between stones darker. The macro noise is kept weak (±4 %): stronger blotches are
+    what made the 4 m repeat visible from the driver's seat (the shader adds its own, unrepeating,
+    variation at 30–200 m, src/world/roadSurface.ts).
     """
-    layers = generate_base_asphalt_layers(size=size, is_porous=False, seed=SEED)
+    f = dense_layers(size)
+    base = 1.0 + (f["macro"] - 0.5) * 0.08 + (f["meso"] - 0.5) * 0.10 + (f["micro"] - 0.5) * 0.10
+    isStone = f["stone"] > 0.12
+    stone_lift = np.where(isStone, 0.22 + (f["tone"] - 1.0) * 0.5, 0.0) * np.sqrt(np.clip(f["stone"], 0, 1))
+    void = np.clip(0.16 - f["height"], 0.0, 0.16) / 0.16
+    shade = base * (1.0 + stone_lift) * (1.0 - void * 0.5)
+    # Normalise so the tile's mean is DENSE_RGB exactly (the reading, not the noise, sets it).
+    shade = shade / shade.mean()
+    r, g, b = (shade * c for c in DENSE_RGB)
+    albedo = rgb_image(r, g, b)
+    # Rough everywhere (0.85–0.95), stone tops a little smoother (polished by tyres).
+    rough = np.clip(0.93 - f["stone"] * 0.10 + (f["meso"] - 0.5) * 0.06, 0.0, 1.0)
+    roughness = Image.fromarray(to_byte(rough * 255), mode="L")
+    nx, ny, nz = normal_xy(f["height"], 3.0)
+    normal = rgb_image((nx * 0.5 + 0.5) * 255, (ny * 0.5 + 0.5) * 255, (nz * 0.5 + 0.5) * 255)
+    return albedo, roughness, normal
 
-    # Base bitumen color (RGB float [0, 255])
-    # Bitumen matrix: dark grey with subtle cool tint (52, 55, 59)
-    # Exposed aggregates: lighter grey speckles (75, 78, 83) modulated by c_agg
-    base_r = 52.0 + (layers["macro"] - 0.5) * 10.0 + (layers["meso"] - 0.5) * 8.0
-    base_g = 55.0 + (layers["macro"] - 0.5) * 10.0 + (layers["meso"] - 0.5) * 8.0
-    base_b = 60.0 + (layers["macro"] - 0.5) * 11.0 + (layers["meso"] - 0.5) * 9.0
 
-    # Aggregate blending
-    agg_mask = layers["agg_height"] > 0.08
-    agg_brightness = np.clip(layers["agg_color"] * (layers["agg_height"] ** 0.5), 0.0, 1.5)
+def generate_marking_wear(size: int = TEXTURE_SIZE) -> Image.Image:
+    """The paint's wear on the dense-graded surface's grid (1024 px = 4 m, same stones).
 
-    r = np.where(agg_mask, base_r + agg_brightness * 32.0, base_r)
-    g = np.where(agg_mask, base_g + agg_brightness * 33.0, base_g)
-    b = np.where(agg_mask, base_b + agg_brightness * 34.0, base_b)
-
-    # Add fine surface grit
-    r += (layers["micro"] - 0.5) * 10.0
-    g += (layers["micro"] - 0.5) * 10.0
-    b += (layers["micro"] - 0.5) * 10.0
-
-    # Subtle oil stain darkening
-    stain = layers["stains"]
-    r *= 1.0 - stain * 0.18
-    g *= 1.0 - stain * 0.18
-    b *= 1.0 - stain * 0.18
-
-    # Albedo image
-    albedo_arr = np.clip(np.stack([r, g, b], axis=-1), 0, 255).astype(np.uint8)
-    albedo_img = Image.fromarray(albedo_arr, mode="RGB")
-
-    # Roughness map: Asphalt is generally rough (~0.85-0.95), aggregate tips ~0.75, oil stains smoother (~0.4-0.6)
-    roughness = 0.90 - layers["agg_height"] * 0.12 + (layers["meso"] - 0.5) * 0.08 - layers["stains"] * 0.35
-    roughness = np.clip(roughness * 255.0, 0, 255).astype(np.uint8)
-    roughness_img = Image.fromarray(roughness, mode="L")
-
-    # Normal map
-    normal_img = compute_periodic_normal_map(layers["height"], strength=3.2)
-
-    return albedo_img, roughness_img, normal_img
+    R wear 0–1: the paint is first worn off the stone tops (abrasion), then in patches; the shader
+    scales it by where tyres run (src/world/roadSurface.ts) and shows the asphalt through.
+    G grime 0–1: dust in the paint's texture, darker in the hollows between stones.
+    B glints 0–1: the glass beads (路面標示用ガラスビーズ) that make the paint retroreflective.
+    """
+    f = dense_layers(size)
+    patches = fft_noise(size, 2.0, DENSE_SEED + 20)
+    scuffs = fft_noise(size, 1.2, DENSE_SEED + 21, aspect=(1.0, 0.35))
+    tops = np.clip((f["stone"] - 0.55) / 0.35, 0.0, 1.0)
+    patchy = np.clip((patches - 0.55) * 3.0, 0, 1)
+    scuffed = np.clip((scuffs - 0.6) * 2.5, 0, 1)
+    wear = np.clip(tops * 0.7 + patchy * 0.8 + scuffed * 0.4, 0, 1)
+    grime = np.clip(np.clip((0.3 - f["height"]) / 0.3, 0, 1) * 0.6 + (f["meso"] - 0.5) * 0.4 + 0.2, 0, 1)
+    rng = np.random.default_rng(DENSE_SEED + 22)
+    beads = (rng.random((size, size)) > 0.985).astype(np.float32) * (1.0 - wear)
+    return rgb_image(wear * 255, grime * 255, beads * 255)
 
 
 def generate_asphalt_worn(size: int = TEXTURE_SIZE) -> Image.Image:
@@ -517,66 +547,50 @@ def create_contact_sheet(
 # -----------------------------------------------------------------------------
 # Main Entry Point
 # -----------------------------------------------------------------------------
-GENERATORS: list[tuple[str, Callable[[], Image.Image]]] = []
-
-
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     print("Generating Japanese asphalt textures (1024x1024, 4m per tile)...")
 
-    # 1. Standard asphalt maps
     albedo_std, roughness_std, normal_std = generate_asphalt_standard(TEXTURE_SIZE)
-
-    # 2. Variants
-    worn_std = generate_asphalt_worn(TEXTURE_SIZE)
-    patch_std = generate_asphalt_patch(TEXTURE_SIZE)
-    porous_std = generate_asphalt_porous(TEXTURE_SIZE)
-
     texture_map: dict[str, Image.Image] = {
         "asphalt_albedo.png": albedo_std,
         "asphalt_roughness.png": roughness_std,
         "asphalt_normal.png": normal_std,
-        "asphalt_worn_albedo.png": worn_std,
-        "asphalt_patch_albedo.png": patch_std,
-        "asphalt_porous_albedo.png": porous_std,
+        "asphalt_worn_albedo.png": generate_asphalt_worn(TEXTURE_SIZE),
+        "asphalt_patch_albedo.png": generate_asphalt_patch(TEXTURE_SIZE),
+        "asphalt_porous_albedo.png": generate_asphalt_porous(TEXTURE_SIZE),
+        "marking_wear.png": generate_marking_wear(TEXTURE_SIZE),
     }
+    # The patch variant's repairs are drawn inside the tile, but its border is plain asphalt: all
+    # of them must wrap.
+    for filename, img in texture_map.items():
+        check_seamless(filename, img)
 
-    # Save PNGs and JPG alternatives
+    # Only the colour and normal maps get a JPEG; marking_wear is data (wear/grime/glints), kept
+    # lossless. Why not quantise the normal map (the first version did, to 256 colours): its
+    # banding drew contour lines on the asphalt under a low sun.
+    has_jpeg = {
+        "asphalt_albedo.png",
+        "asphalt_normal.png",
+        "asphalt_worn_albedo.png",
+        "asphalt_patch_albedo.png",
+        "asphalt_porous_albedo.png",
+    }
     for filename, img in texture_map.items():
         out_path = OUTPUT_DIR / filename
-        # Save optimized PNG (quantize normal map to 256 colors to stay well under 1.5MB)
-        if filename == "asphalt_normal.png":
-            save_img = img.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-        else:
-            save_img = img
+        img.save(out_path, format="PNG", optimize=True)
+        print(f"  - {filename:26s}: {out_path.stat().st_size / 1024:7.1f} KB")
+        if filename not in has_jpeg:
+            continue
+        jpg_path = OUTPUT_DIR / filename.replace(".png", ".jpg")
+        img.save(jpg_path, format="JPEG", quality=92, optimize=True)
+        print(f"    (alt: {jpg_path.name:20s}: {jpg_path.stat().st_size / 1024:7.1f} KB)")
 
-        save_img.save(out_path, format="PNG", optimize=True)
-        size_kb = out_path.stat().st_size / 1024
-        print(f"  - {filename:26s}: {size_kb:7.1f} KB")
-
-        # Also save high quality JPG alternative if RGB
-        if img.mode == "RGB":
-            jpg_filename = filename.replace(".png", ".jpg")
-            jpg_path = OUTPUT_DIR / jpg_filename
-            img.save(jpg_path, format="JPEG", quality=92, optimize=True)
-            jpg_size_kb = jpg_path.stat().st_size / 1024
-            print(f"    (alt: {jpg_filename:20s}: {jpg_size_kb:7.1f} KB)")
-
-    # Generate contact sheet if specified or default scratchpad path
-    contact_sheet_target = None
+    # The contact sheet only when asked for (the first version wrote it to a scratchpad path left
+    # over from the task that made it).
     if len(sys.argv) > 1:
-        contact_sheet_target = Path(sys.argv[1]).resolve()
-    else:
-        # Default scratchpad path from task description
-        scratchpad_dir = Path(
-            "/private/tmp/claude-501/-Users-kei-tmp-tokyo-od-game/056ebd68-d5c5-4652-8d55-550dca8ed173/scratchpad/asphalt"
-        )
-        if scratchpad_dir.exists():
-            contact_sheet_target = scratchpad_dir / "asphalt_contact_sheet.png"
-
-    if contact_sheet_target:
-        create_contact_sheet(texture_map, contact_sheet_target)
+        create_contact_sheet(texture_map, Path(sys.argv[1]).resolve())
 
 
 if __name__ == "__main__":

@@ -16,6 +16,9 @@
 #               UV 0–1 over the face) on two vertical channel rails behind it (z < 0); scaled in
 #               X and Y to the board. The face texture is drawn per sign at runtime.
 #   GuidePost   路側式の支柱: 鋼管 φ89.1 mm from y = 0 to 1 with a cap, scaled in Y.
+#   GantryLeg   門型の脚: 鋼管 φ318.5 mm from y = 0 to 1, scaled in Y; GantryFoot its base plate.
+#   GantryTruss 門型の梁の 1 節: 1 m along X, 0.8 m square; the game repeats it across the span
+#               (src/signs/mount.ts resolveGantry). Used from G6 (都市高速).
 #
 # Sizes: 道路標識設置基準 (片持式・門型式 の標示板の設置高さ 5.0 m 標準, 4.7 m 以上) and the usual
 # F-pole steel (φ267.4 / φ139.8 mm, STK400 galvanised). Board 2.8 × 2.2 m at 30 cm letters
@@ -38,6 +41,11 @@ POLE_R = 0.2674 / 2
 POLE_H = 7.6
 ARM_R = 0.1398 / 2
 POST_R = 0.0891 / 2
+# 門型 (G4): φ318.5 mm legs and a 0.8 m square truss of φ114.3 chords, in 1 m bays. Usual sizes,
+# not a standard's (src/signs/mount.ts MEMBER_SIZES, verified: false).
+LEG_R = 0.3185 / 2
+TRUSS_D = 0.8
+CHORD_R = 0.1143 / 2
 BOARD_T = 0.003  # aluminium sheet
 RAIL_W = 0.075  # channel rails behind the board
 RAIL_D = 0.04
@@ -207,6 +215,68 @@ bm = bmesh.new()
 tube(bm, "y", POST_R, 0.0, 1.0, segs=12, cap0=False, cap1=True)
 finish(bm)
 new_object("GuidePost", bm, ["GuideSteel"], smooth=True, sharp_angle=60)
+
+# ---------------------------------------------------------------- 門型 (gantry), G4
+
+
+def strut(bm, p0, p1, r, segs=8, mat=0, caps=False):
+    """A pipe of radius r from p0 to p1 (any direction), open ends unless `caps`."""
+    a, b = Vector(p0), Vector(p1)
+    axis = (b - a).normalized()
+    helper = Vector((0.0, 1.0, 0.0)) if abs(axis.y) < 0.9 else Vector((1.0, 0.0, 0.0))
+    u = axis.cross(helper).normalized()
+    v = axis.cross(u)
+    rings = []
+    for c in (a, b):
+        rings.append(
+            [
+                bm.verts.new(c + (u * math.cos(2 * math.pi * i / segs) + v * math.sin(2 * math.pi * i / segs)) * r)
+                for i in range(segs)
+            ]
+        )
+    for i in range(segs):
+        j = (i + 1) % segs
+        bm.faces.new((rings[0][i], rings[0][j], rings[1][j], rings[1][i])).material_index = mat
+    if caps:
+        bm.faces.new(list(reversed(rings[0]))).material_index = mat
+        bm.faces.new(rings[1]).material_index = mat
+
+
+# Leg: φ318.5 pipe from y = 0 to 1, scaled in Y to the truss's top.
+bm = bmesh.new()
+tube(bm, "y", LEG_R, 0.0, 1.0, segs=20, cap0=False, cap1=True)
+finish(bm)
+new_object("GantryLeg", bm, ["GuideSteel"], smooth=True, sharp_angle=50)
+
+# Foot: base plate, anchor-nut covers and ribs, as the F pole's (not scaled).
+bm = bmesh.new()
+box(bm, 0.0, 0.0175, 0.0, 0.72, 0.035, 0.72, mat=1)
+for sx in (-1, 1):
+    for sz in (-1, 1):
+        tube(bm, "y", 0.04, 0.035, 0.12, segs=8, cap1=True, mat=1, centre=(sx * 0.27, 0.0, sz * 0.27))
+for ang in range(0, 360, 90):
+    c, s = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+    rx, rz = (LEG_R + 0.07) * c, (LEG_R + 0.07) * s
+    is_along_x = abs(s) < 0.5
+    box(bm, rx, 0.19, rz, 0.14 if is_along_x else 0.014, 0.3, 0.014 if is_along_x else 0.14)
+finish(bm)
+new_object("GantryFoot", bm, ["GuideSteel", "GuideBolt"], smooth=True, sharp_angle=50)
+
+# Truss bay: 1 m along X from x = 0, a TRUSS_D square about y = z = 0. Four chords, the frame at
+# x = 0 (the next bay closes this one) and a diagonal in each face, so bays repeat without gaps.
+# Why not one long truss scaled to the span: the diagonals would lean with the scale.
+bm = bmesh.new()
+h = TRUSS_D / 2 - CHORD_R
+corners = [(-h, -h), (h, -h), (h, h), (-h, h)]  # (y, z)
+for y, z in corners:
+    # Capped: the end bays' chords stop at the legs' axes and would show open past the legs.
+    strut(bm, (0.0, y, z), (1.0, y, z), CHORD_R, segs=10, caps=True)
+for k in range(4):
+    (y0, z0), (y1, z1) = corners[k], corners[(k + 1) % 4]
+    strut(bm, (0.0, y0, z0), (0.0, y1, z1), CHORD_R * 0.6)  # frame
+    strut(bm, (0.0, y0, z0), (1.0, y1, z1), CHORD_R * 0.5)  # diagonal
+finish(bm)
+new_object("GantryTruss", bm, ["GuideSteel"], smooth=True, sharp_angle=50)
 
 # The game reads the dimensions it lays the parts out with from the root's extras.
 root = bpy.data.objects.new("GuideSigns", None)

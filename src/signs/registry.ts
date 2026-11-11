@@ -209,8 +209,19 @@ function gameProblems(signs: SignDef[], renders: LaneRender[]): string[] {
     const picks = new Set(defs.map((s) => s.game?.pick ?? "default"));
     if (picks.size > 1) problems.push(`game ${kind}: its definitions pick faces in different ways`);
     // game.json keeps one mounting per type, so every definition of the type must agree on it.
-    const mounts = new Set(defs.map((s) => JSON.stringify([s.game?.mount, s.game?.back, s.game?.bothFaces])));
-    if (mounts.size > 1) problems.push(`game ${kind}: its definitions differ in mount, back or bothFaces`);
+    const mounts = new Set(
+      defs.map((s) =>
+        JSON.stringify([
+          s.game?.mount,
+          s.game?.back,
+          s.game?.bothFaces,
+          s.game?.kerbSide,
+          s.game?.fixedPlace,
+        ]),
+      ),
+    );
+    if (mounts.size > 1)
+      problems.push(`game ${kind}: its definitions differ in mount, back, bothFaces, kerbSide or fixedPlace`);
     const pick = [...picks][0];
     const isAmbiguous = pick === "default" && defs.length > 1;
     if (isAmbiguous)

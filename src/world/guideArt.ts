@@ -1,28 +1,43 @@
 import jpFontUrl from "../../assets/signs/guide/guide-jp.woff2?url";
 import latinFontUrl from "../../assets/signs/guide/guide-latin.woff2?url";
 import { warn } from "../log";
-import type { ArmSpec, BoardSpec, Shield, SignName } from "./guidePlan";
+import { GUIDE_COLOURS, IN_ARROW_RATIO } from "../signs/boardStandards";
+import type {
+  ArrowBox,
+  BackgroundBox,
+  BoardLayout,
+  BoxNode,
+  Colour,
+  FieldBox,
+  JunctionArrowsBox,
+  Measure,
+  TextBox,
+} from "../signs/board/boxes";
+import type { BoardContent } from "../signs/board/content";
+import { JP, LATIN, jpFont, latinFont } from "../signs/board/fonts";
+import { layoutBoard } from "../signs/board/layout";
 
 /**
- * Board faces of the 108 series drawn on a canvas (別表第二 図 016–024, 229, 230):
- * white letters, arrows and rim on blue (備考一(三)1(13)), the junction's arms as arrows from a stem
- * rising from the bottom, the place names at the arrow heads with their English underneath at half
- * the height (備考一(五)2), 国道番号 shields (118-A, the inverted "onigiri") and 都道府県道番号
- * hexagons (118の2-A) on the arms, 通称名 in white boxes with blue letters (108の3・4, 備考一(三)1(14),
- * 0.6 of the letter height, 備考一(五)3), 高速道路 names on green (備考一(三)1(13) ただし書) and, on the
- * 予告, the distance under the stem (図 016).
+ * The layouter's last step: a board's boxes (src/signs/board/, in cm) drawn on a canvas. Only this
+ * module touches the DOM: it loads the board fonts, measures text for the layout with the canvas's
+ * own measureText, and draws each box in order.
+ *
+ * The drawing of the 108 boxes (rim, arrows, shields, 通称名 boxes, names, distance) is the code that
+ * drew them before G5, line for line at the same canvas scale, so their pixels are unchanged
+ * (scripts/qa/guideBoards.ts compares every board of five places).
  *
  * Fonts: Noto Sans JP and Overpass subset by scripts/textures/guide_fonts.py and shipped with
  * the game; the system's gothic stands in until they load (or if they fail to).
  */
 
-const BLUE = "#1d4f9c"; // the junction-name plates' blue (trafficControl.ts): one 案内標識 blue
-const WHITE = "#ffffff";
-const GREEN = "#0a7d4f";
-const JP = `GuideJP, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif`;
-const LATIN = `GuideLatin, "Helvetica Neue", Arial, sans-serif`;
-// Overpass's capital height is 0.70 em: the font size that makes capitals half the 漢字.
-const LATIN_CAP = 0.7;
+const PAINT: Record<Colour, string> = {
+  blue: GUIDE_COLOURS.value.blue,
+  green: GUIDE_COLOURS.value.green,
+  white: GUIDE_COLOURS.value.white,
+};
+const BLUE = PAINT.blue;
+const WHITE = PAINT.white;
+const GREEN = PAINT.green;
 
 let fonts: Promise<void> | null = null;
 
@@ -46,30 +61,6 @@ export function loadGuideFonts(): Promise<void> {
 }
 
 type Ctx = CanvasRenderingContext2D;
-type Box = { x: number; y: number; w: number; h: number };
-type NameBox = { names: SignName[]; box: Box; stack: boolean };
-/** A shield or a 通称名 box on an arm, centred at (x, y), all in cm. */
-type Mark = {
-  arm: ArmSpec;
-  kind: "shield" | "street";
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  shield?: Shield;
-};
-
-/** Board size and where everything goes, in centimetres from the top-left corner. */
-export type BoardLayout = {
-  spec: BoardSpec;
-  width: number;
-  height: number;
-  junction: { x: number; y: number };
-  stemBottom: number;
-  tips: Array<{ arm: ArmSpec; x: number; y: number; dx: number; dy: number }>;
-  marks: Mark[];
-  labels: NameBox[];
-};
 
 const measureCanvas = (() => {
   let c: Ctx | null = null;
@@ -79,187 +70,15 @@ const measureCanvas = (() => {
   };
 })();
 
-const jpFont = (cm: number, k: number) => `700 ${Math.round(cm * k)}px ${JP}`;
-const latinFont = (cm: number, k: number) => `700 ${Math.round((cm / LATIN_CAP) * k)}px ${LATIN}`;
-
-/** Width (cm) of a name block: the wider of its Japanese and its English (half height). */
-function nameWidth(ctx: Ctx, n: SignName, h: number): number {
-  const k = 4; // measure at 4 px/cm
-  ctx.font = jpFont(h, k);
-  const jp = ctx.measureText(spacedName(n)).width / k;
-  ctx.font = latinFont(h / 2, k);
-  const en = n.en ? ctx.measureText(n.en).width / k : 0;
-  return Math.max(jp, en) + (n.expressway ? 0.5 * h : 0);
-}
-
-// Two-character names are spaced out as on the real boards (「上 馬」「大 森」, 図 016).
-const spacedName = (n: SignName) => (n.ja.length === 2 && !n.expressway ? `${n.ja[0]} ${n.ja[1]}` : n.ja);
-
-const NAME_H = (h: number) => 1.75 * h; // 漢字, a gap, the English line
-const SHIELD = (h: number) => 1.15 * h; // 国道番号・都道府県道番号 on the arms
-const HEAD_L = (h: number) => 0.62 * h;
-
-/** Direction of an arm on the board for its angle (+ left): up is straight on. */
-const armVector = (angle: number) => ({
-  dx: -Math.sin((angle * Math.PI) / 180),
-  dy: -Math.cos((angle * Math.PI) / 180),
-});
-
-const overlap = (a: Box, b: Box) =>
-  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
-  Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-
-/**
- * Lay a board out: the standard 280 × 220 cm (交差点) or 280 × 240 cm (予告) at 30 cm letters
- * (国土交通省 Q&A), scaled with the letter height and widened when the names need it (備考一(二)).
- * Arrows first, then the shields and 通称名 boxes half way along them, then each arm's names at the
- * first of a few spots (over the arm, beside its head, under it) that clears what is drawn already.
- */
-export function layoutBoard(spec: BoardSpec): BoardLayout {
+/** The layout's text measure: the canvas's measureText in the board fonts. */
+export const canvasMeasure: Measure = (font, text) => {
   const ctx = measureCanvas();
-  const h = spec.letter;
-  const m = 0.42 * h; // margin inside the rim
-  const isAdvance = spec.distance !== null;
-  const height = ((isAdvance ? 240 : 220) * h) / 30;
-  const named = spec.arms.filter((a) => a.names.length > 0);
-  const blockWidth = (a: ArmSpec, stack: boolean) => {
-    const ws = a.names.map((n) => nameWidth(ctx, n, h));
-    return stack ? Math.max(...ws) : ws.reduce((sum, w) => sum + w, 0) + (ws.length - 1) * 0.9 * h;
-  };
-  const straight = named.find((a) => a.angle === 0);
-  const sideNeed = Math.max(
-    0,
-    ...named.filter((a) => a.angle !== 0).map((a) => blockWidth(a, true) + 0.6 * h),
-  );
-  const topNeed = straight ? blockWidth(straight, false) : 0;
-  let width = Math.max((280 * h) / 30, 2 * (sideNeed + m), topNeed + 2 * m + 0.4 * h);
-  width = Math.min(width, (420 * h) / 30); // a board stays a board: longer names condense
-  const jx = width / 2;
-  const top = m;
-  const stacks = Math.max(1, ...named.filter((a) => a.angle !== 0).map((a) => a.names.length));
-  const tipY = top + NAME_H(h) + 0.25 * h;
-  const stemBottom = height - m - (isAdvance ? 1.15 * h : 0);
-  const jy = Math.max(tipY + 2.4 * h, Math.min(stemBottom - 1.6 * h, top + stacks * NAME_H(h) + 1.1 * h));
+  ctx.font = font;
+  return ctx.measureText(text).width;
+};
 
-  const tips: BoardLayout["tips"] = spec.arms.map((arm) => {
-    const { dx, dy } = armVector(arm.angle);
-    const a = Math.abs(arm.angle);
-    const len =
-      a === 0
-        ? jy - tipY
-        : a === 90
-          ? jx - m - 0.15 * h
-          : a === 45
-            ? 0.78 * Math.min((jx - m - 0.3 * h) / Math.SQRT1_2, (jy - tipY) / Math.SQRT1_2)
-            : 0.8 * Math.min((jx - m) / Math.SQRT1_2, (stemBottom - jy) / Math.SQRT1_2);
-    return { arm, x: jx + dx * len, y: jy + dy * len, dx, dy };
-  });
-
-  // Obstacles: the stem and every arm (as a chain of small boxes), then the marks.
-  const taken: Box[] = [];
-  const pad = 0.12 * h;
-  const shaftBox = (x0: number, y0: number, x1: number, y1: number) => {
-    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (0.5 * h)));
-    for (let i = 0; i <= steps; i++) {
-      const x = x0 + ((x1 - x0) * i) / steps;
-      const y = y0 + ((y1 - y0) * i) / steps;
-      taken.push({ x: x - 0.4 * h, y: y - 0.4 * h, w: 0.8 * h, h: 0.8 * h });
-    }
-  };
-  shaftBox(jx, jy, jx, stemBottom);
-  for (const t of tips) shaftBox(jx, jy, t.x, t.y);
-
-  const marks: Mark[] = [];
-  for (const t of tips) {
-    const len = Math.hypot(t.x - jx, t.y - jy);
-    // Street boxes half way out; shields nearer the junction, leaving the outer part to the names.
-    const along = len * (t.arm.street ? 0.5 : 0.42);
-    const mx = jx + t.dx * along;
-    const my = jy + t.dy * along;
-    if (t.arm.street) {
-      ctx.font = jpFont(0.6 * h, 4);
-      const room = Math.max(2 * h, len - HEAD_L(h) - 0.5 * h);
-      const w = Math.min(ctx.measureText(t.arm.street).width / 4 + 0.9 * h, room);
-      marks.push({ arm: t.arm, kind: "street", x: mx, y: my, w, h: 0.9 * h });
-    } else {
-      const n = t.arm.shields.length;
-      // Side by side along a side arm; across the shaft on the straight one (図 229).
-      const isStraight = t.arm.angle === 0;
-      const [ux, uy] = isStraight ? [1, 0] : [t.dx, t.dy];
-      t.arm.shields.forEach((shield, i) => {
-        const off = (i - (n - 1) / 2) * SHIELD(h) * 1.05;
-        marks.push({
-          arm: t.arm,
-          kind: "shield",
-          x: mx + ux * off,
-          y: my + uy * off,
-          w: SHIELD(h),
-          h: SHIELD(h),
-          shield,
-        });
-      });
-    }
-  }
-  for (const mk of marks) taken.push({ x: mk.x - mk.w / 2, y: mk.y - mk.h / 2, w: mk.w, h: mk.h });
-
-  const labels: NameBox[] = [];
-  const clampBox = (b: Box): Box => ({
-    ...b,
-    x: Math.max(m, Math.min(width - m - b.w, b.x)),
-    y: Math.max(m, Math.min(height - m - b.h, b.y)),
-  });
-  const order = tips.toSorted((a, b) => Math.abs(a.arm.angle) - Math.abs(b.arm.angle));
-  for (const t of order) {
-    const arm = t.arm;
-    if (arm.names.length === 0) continue;
-    const stack = arm.angle !== 0;
-    const a = Math.abs(arm.angle);
-    const side = arm.angle > 0 ? -1 : 1; // −1: the left half
-    // Side names keep off the stem; straight-on names may span the board.
-    const maxW = a === 0 ? width - 2 * m : jx - m - 0.55 * h;
-    const w = Math.min(blockWidth(arm, stack), maxW);
-    const bh = (stack ? arm.names.length : 1) * NAME_H(h);
-    const outerCx = side < 0 ? m + (jx - m - 0.4 * h) / 2 : width - m - (jx - m - 0.4 * h) / 2;
-    // Over a side arm, clear of the shields riding on it.
-    const hasMarks = marks.some((mk) => mk.arm === arm);
-    const above = jy - (hasMarks ? SHIELD(h) / 2 + 0.2 * h : 0.55 * h) - bh;
-    const candidates: Box[] =
-      a === 0
-        ? [{ x: jx - w / 2, y: top, w, h: bh }]
-        : a === 90
-          ? [
-              { x: outerCx - w / 2, y: above, w, h: bh },
-              { x: side < 0 ? jx - 0.55 * h - w : jx + 0.55 * h, y: above, w, h: bh },
-              { x: outerCx - w / 2, y: jy + (hasMarks ? SHIELD(h) / 2 + 0.15 * h : 0.5 * h), w, h: bh },
-            ]
-          : a === 45
-            ? [
-                { x: t.x - w / 2, y: t.y - 0.35 * h - bh, w, h: bh },
-                { x: side < 0 ? t.x - 0.4 * h - w : t.x + 0.4 * h, y: t.y - bh / 2, w, h: bh },
-                { x: side < 0 ? t.x - 0.4 * h - w : t.x + 0.4 * h, y: t.y + 0.3 * h, w, h: bh },
-              ]
-            : [
-                { x: t.x - w / 2, y: t.y + 0.35 * h, w, h: bh },
-                { x: side < 0 ? t.x - 0.4 * h - w : t.x + 0.4 * h, y: t.y - bh / 2, w, h: bh },
-              ];
-    // The first spot that is (nearly) clear, in the order real boards use; else the least covered.
-    let best: { box: Box; cost: number } | null = null;
-    for (const c of candidates.map(clampBox)) {
-      const padded = { x: c.x - pad, y: c.y - pad, w: c.w + 2 * pad, h: c.h + 2 * pad };
-      const cost = taken.reduce((sum, o) => sum + overlap(padded, o), 0);
-      const isClear = cost < 0.06 * c.w * c.h;
-      if (isClear) {
-        best = { box: c, cost };
-        break;
-      }
-      if (!best || cost < best.cost - 1e-6) best = { box: c, cost };
-    }
-    if (!best) continue;
-    taken.push(best.box);
-    labels.push({ names: arm.names, box: best.box, stack });
-  }
-  return { spec, width, height, junction: { x: jx, y: jy }, stemBottom, tips, marks, labels };
-}
+/** A board's content laid out with the canvas's measure (the fonts should be loaded first). */
+export const layoutGuideBoard = (content: BoardContent): BoardLayout => layoutBoard(content, canvasMeasure);
 
 /** Text that fits `maxW` (canvas px), condensed horizontally down to 70 % before it overflows. */
 function fitText(ctx: Ctx, text: string, x: number, y: number, maxW: number): void {
@@ -336,9 +155,31 @@ function drawPrefecturalShield(ctx: Ctx, cx: number, cy: number, size: number, n
   fitText(ctx, number, cx, cy + s * 0.02, size * 0.8);
 }
 
+/**
+ * An expressway's route symbol in the form of 118の3 高速道路番号: a rounded rectangle, white rim,
+ * green field, white figures. Why not the operator's own shield (a circle, a hexagon): those are the
+ * operator's marks, which the game does not draw (AGENTS.md).
+ */
+function drawRouteSymbol(ctx: Ctx, cx: number, cy: number, size: number, number: string): void {
+  const w = size * Math.max(1, 0.45 + 0.32 * number.length);
+  const h = size * 0.78;
+  ctx.fillStyle = WHITE;
+  roundRect(ctx, cx - w / 2, cy - h / 2, w, h, h * 0.22);
+  ctx.fill();
+  const rim = Math.max(1, size * 0.07);
+  ctx.fillStyle = GREEN;
+  roundRect(ctx, cx - w / 2 + rim, cy - h / 2 + rim, w - 2 * rim, h - 2 * rim, h * 0.18);
+  ctx.fill();
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${Math.round(h * 0.62)}px ${LATIN}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  fitText(ctx, number, cx, cy + h * 0.02, w - 3 * rim);
+}
+
 /** 通称名 box on an arm: white, pointed ends, blue letters 0.6 of the letter height. */
 function drawStreetBox(ctx: Ctx, name: string, cx: number, cy: number, letterPx: number, maxW: number): void {
-  ctx.font = `700 ${Math.round(letterPx * 0.6)}px ${JP}`;
+  ctx.font = `700 ${Math.round(letterPx * IN_ARROW_RATIO.value)}px ${JP}`;
   const textW = Math.min(ctx.measureText(name).width, maxW - letterPx * 0.9);
   const w = textW + letterPx * 0.9;
   const h = letterPx * 0.9;
@@ -370,79 +211,34 @@ function drawStreetBox(ctx: Ctx, name: string, cx: number, cy: number, letterPx:
   fitText(ctx, name, cx, cy + letterPx * 0.02, textW);
 }
 
-function drawNames(ctx: Ctx, label: NameBox, h: number, k: number): void {
-  const { box, names, stack } = label;
-  const natural = names.map((n) => nameWidth(ctx, n, h));
-  // Side by side, the names share the box (condensed alike when they do not fit).
-  const gap = 0.9 * h;
-  const total = natural.reduce((sum, w) => sum + w, 0) + (names.length - 1) * gap;
-  const squeeze = stack
-    ? 1
-    : Math.min(1, (box.w - (names.length - 1) * gap) / Math.max(1e-6, total - (names.length - 1) * gap));
-  const widths = natural.map((w) => (stack ? Math.min(w, box.w) : w * squeeze));
-  const used = widths.reduce((sum, w) => sum + w, 0) + (names.length - 1) * gap;
-  let x = box.x + (stack ? 0 : (box.w - used) / 2);
-  names.forEach((n, i) => {
-    const w = widths[i];
-    const bx = stack ? box.x + (box.w - w) / 2 : x;
-    const by = stack ? box.y + i * NAME_H(h) : box.y;
-    const cx = (bx + w / 2) * k;
-    const inner = (w - (n.expressway ? 0.5 * h : 0)) * k;
-    if (n.expressway) {
-      // 高速道路等の名称: white 区分線 round a green field.
-      ctx.fillStyle = GREEN;
-      roundRect(ctx, bx * k, (by - 0.08 * h) * k, w * k, NAME_H(h) * 0.98 * k, 0.12 * h * k);
-      ctx.fill();
-      ctx.strokeStyle = WHITE;
-      ctx.lineWidth = Math.max(1, (h / 20) * k);
-      ctx.stroke();
-    }
-    ctx.fillStyle = WHITE;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.font = jpFont(h, k);
-    fitText(ctx, spacedName(n), cx, (by + 0.02 * h) * k, inner);
-    if (n.en) {
-      ctx.font = latinFont(h / 2, k);
-      fitText(ctx, n.en, cx, (by + 1.1 * h) * k, inner);
-    }
-    if (!stack) x += w + gap;
-  });
-}
-
-/** Draw the board on a canvas `px` wide (the height follows the board's proportions). */
-export function drawBoard(layout: BoardLayout, px: number): HTMLCanvasElement {
-  const k = px / layout.width;
-  const canvas = document.createElement("canvas");
-  canvas.width = px;
-  canvas.height = Math.round(layout.height * k);
-  const ctx = canvas.getContext("2d") as Ctx;
-  const h = layout.spec.letter;
-  const W = layout.width * k;
-  const H = layout.height * k;
-  // White rim (縁, at least 1/20 of the letter height) round the blue field.
+/** White rim (縁, at least 1/20 of the letter height) round the field. */
+function drawBackground(ctx: Ctx, b: BackgroundBox, W: number, H: number, k: number): void {
+  const h = b.letter;
   ctx.fillStyle = WHITE;
   roundRect(ctx, 0, 0, W, H, 0.35 * h * k);
   ctx.fill();
   const rim = Math.max(2, (h / 14) * k);
-  ctx.fillStyle = BLUE;
+  ctx.fillStyle = PAINT[b.field];
   roundRect(ctx, rim, rim, W - 2 * rim, H - 2 * rim, 0.3 * h * k);
   ctx.fill();
+}
 
-  const { x: jx, y: jy } = layout.junction;
+function drawJunctionArrows(ctx: Ctx, a: JunctionArrowsBox, k: number): void {
+  const h = a.letter;
+  const { x: jx, y: jy } = a.junction;
   const shaft = 0.3 * h * k;
   const headW = 0.82 * h * k;
-  const headL = HEAD_L(h) * k;
-  ctx.strokeStyle = WHITE;
-  ctx.fillStyle = WHITE;
+  const headL = 0.62 * h * k;
+  ctx.strokeStyle = PAINT[a.colour];
+  ctx.fillStyle = PAINT[a.colour];
   ctx.lineWidth = shaft;
   ctx.lineCap = "butt";
   // Stem from the bottom to the junction (a little past it, so the arms join cleanly).
   ctx.beginPath();
-  ctx.moveTo(jx * k, layout.stemBottom * k);
+  ctx.moveTo(jx * k, a.stemBottom * k);
   ctx.lineTo(jx * k, jy * k - shaft / 2);
   ctx.stroke();
-  for (const t of layout.tips) {
+  for (const t of a.tips) {
     const ex = t.x * k - t.dx * headL;
     const ey = t.y * k - t.dy * headL;
     ctx.beginPath();
@@ -459,21 +255,110 @@ export function drawBoard(layout: BoardLayout, px: number): HTMLCanvasElement {
     ctx.closePath();
     ctx.fill();
   }
-  // Shields and 通称名 boxes on the arms, half way out.
-  for (const mk of layout.marks) {
-    if (mk.kind === "street" && mk.arm.street)
-      drawStreetBox(ctx, mk.arm.street, mk.x * k, mk.y * k, h * k, mk.w * k);
-    else if (mk.shield?.kind === "national")
-      drawNationalShield(ctx, mk.x * k, mk.y * k, mk.w * k, mk.shield.number);
-    else if (mk.shield) drawPrefecturalShield(ctx, mk.x * k, mk.y * k, mk.w * k, mk.shield.number);
+}
+
+function drawArrow(ctx: Ctx, a: ArrowBox, k: number): void {
+  const len = Math.hypot(a.tip.x - a.tail.x, a.tip.y - a.tail.y);
+  if (len <= 0) return;
+  const dx = (a.tip.x - a.tail.x) / len;
+  const dy = (a.tip.y - a.tail.y) / len;
+  const ex = (a.tip.x - dx * a.headL) * k;
+  const ey = (a.tip.y - dy * a.headL) * k;
+  ctx.strokeStyle = PAINT[a.colour];
+  ctx.fillStyle = PAINT[a.colour];
+  ctx.lineWidth = a.shaft * k;
+  ctx.lineCap = "butt";
+  ctx.beginPath();
+  ctx.moveTo(a.tail.x * k, a.tail.y * k);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+  const nx = -dy;
+  const ny = dx;
+  const half = (a.headW * k) / 2;
+  ctx.beginPath();
+  ctx.moveTo(a.tip.x * k, a.tip.y * k);
+  ctx.lineTo(ex + nx * half, ey + ny * half);
+  ctx.lineTo(ex - nx * half, ey - ny * half);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawField(ctx: Ctx, f: FieldBox, k: number): void {
+  ctx.fillStyle = PAINT[f.fill];
+  roundRect(ctx, f.x * k, f.y * k, f.w * k, f.h * k, f.radius * k);
+  ctx.fill();
+  if (!f.stroke) return;
+  ctx.strokeStyle = PAINT[f.stroke.colour];
+  ctx.lineWidth = Math.max(1, f.stroke.width * k);
+  ctx.stroke();
+}
+
+function drawText(ctx: Ctx, t: TextBox, k: number): void {
+  ctx.fillStyle = PAINT[t.colour];
+  ctx.textAlign = t.align;
+  ctx.textBaseline = t.baseline;
+  ctx.font = t.font === "jp" ? jpFont(t.cm, k) : latinFont(t.cm, k);
+  if (t.maxW === null) ctx.fillText(t.text, t.x * k, t.y * k);
+  else fitText(ctx, t.text, t.x * k, t.y * k, t.maxW * k);
+}
+
+function drawNode(ctx: Ctx, node: BoxNode, W: number, H: number, k: number): void {
+  switch (node.type) {
+    case "background":
+      return drawBackground(ctx, node, W, H, k);
+    case "junction-arrows":
+      return drawJunctionArrows(ctx, node, k);
+    case "arrow":
+      return drawArrow(ctx, node, k);
+    case "field":
+      return drawField(ctx, node, k);
+    case "text":
+      return drawText(ctx, node, k);
+    case "street":
+      return drawStreetBox(ctx, node.text, node.x * k, node.y * k, node.letter * k, node.w * k);
+    case "rule":
+      ctx.strokeStyle = PAINT[node.colour];
+      ctx.lineWidth = Math.max(1, node.width * k);
+      ctx.beginPath();
+      ctx.moveTo(node.from.x * k, node.from.y * k);
+      ctx.lineTo(node.to.x * k, node.to.y * k);
+      ctx.stroke();
+      return;
+    case "shield": {
+      const { shield } = node;
+      if (shield.kind === "national")
+        return drawNationalShield(ctx, node.x * k, node.y * k, node.size * k, shield.number);
+      if (shield.kind === "prefectural")
+        return drawPrefecturalShield(ctx, node.x * k, node.y * k, node.size * k, shield.number);
+      return drawRouteSymbol(ctx, node.x * k, node.y * k, node.size * k, shield.number);
+    }
   }
-  for (const label of layout.labels) drawNames(ctx, label, h, k);
-  if (layout.spec.distance !== null) {
-    ctx.fillStyle = WHITE;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.font = latinFont(0.38 * h, k);
-    ctx.fillText(`${layout.spec.distance}m`, jx * k, (layout.stemBottom + 0.2 * h) * k);
-  }
+}
+
+/**
+ * The one canvas every board is drawn on, with a CPU-backed context (willReadFrequently): the
+ * commands rasterise as they are drawn, and createImageBitmap copies memory instead of reading the
+ * GPU canvas back (knowledge/sign-system.md「BoardFacePool」 has the measurement).
+ * Why not a fresh canvas per board (G5): a canvas and its context per board, and a GPU read back in
+ * every createImageBitmap.
+ */
+let boardCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Draw a laid-out board on a canvas `px` wide (the height follows the board's proportions). The
+ * canvas is shared: the next call redraws it, so take its pixels (createImageBitmap, getImageData,
+ * toDataURL) before drawing another board.
+ */
+export function drawBoard(layout: BoardLayout, px: number): HTMLCanvasElement {
+  const k = px / layout.width;
+  boardCanvas ??= document.createElement("canvas");
+  const canvas = boardCanvas;
+  // Setting the size clears the pixels and resets the context's state, even when it is the same.
+  canvas.width = px;
+  canvas.height = Math.round(layout.height * k);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }) as Ctx;
+  const W = layout.width * k;
+  const H = layout.height * k;
+  for (const node of layout.nodes) drawNode(ctx, node, W, H, k);
   return canvas;
 }

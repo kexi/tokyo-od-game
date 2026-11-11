@@ -386,6 +386,12 @@ main の 7 コミット（案内標識・車と運転席の寸法・空と光と
 - **パイプラインは描き先のフォーマットとサンプル数ごと。** compileAsync は呼んだときのレンダーターゲットで作るので、フレームのターゲットを結んでから呼ぶ。ミラーと写真も同じ `sceneTarget` にして共有させた。
 - ついでに直した: 準備完了の後も毎フレーム「読み込み中… 100%」に戻っていた表示。
 
+# three を上げるときに見ること
+
+- 標識の面の配列テクスチャ（`src/render/layerUpload.ts`）は three の内部に触る: `renderer.backend.isWebGPUBackend`・`.device`・`.get(texture).texture`（`initTexture` の後の GPUTexture）、その usage（COPY_DST・TEXTURE_BINDING・RENDER_ATTACHMENT）・層の数・mip 段、`needsUpdate` を立てなければ `image.data` を読み直さないこと。合わなければ `sign_face_upload_fallback` が警告し、`sign_face_pool_ready` の backend が `three-fallback` になる（描けるが更新のたびに全層の mip を作り直して 20〜57 ms）。上げたら夜の多視点レビュー（`just shoot-views signs`）でこの 2 つのログが出ないことを見る。
+- 面の照明モデル（`src/world/signFaceMaterial.ts` `SignFaceLightingModel`）は `PhysicalLightingModel.direct` の入力の `lightNode.light` を読む（自車の前照灯の印）。名前が変わると前照灯の鏡面が戻り、ハイビームで板が白く飛ぶ。
+- 面の観測点の uniform は `onRenderUpdate` の `frame.camera` を読む。
+
 # 落とし穴
 
 - **`three` と `three/webgpu` の混在**: r186 では両方が `build/three.core.js` を import するので、コアのクラスは 1 つ（`three/addons` のローダーが `three` を読んでも問題ない）。ただし **同名で別物** がある: `PMREMGenerator`（`three` は WebGL 用）、`Sky`（GLSL）と `SkyMesh`（TSL）。レンダラー・node material・RenderTarget まわりは `three/webgpu`、TSL は `three/tsl` から。

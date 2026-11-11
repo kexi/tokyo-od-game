@@ -96,6 +96,13 @@ describe("the view table schema", () => {
     expect(t.sessions[0].views[0].state).toEqual({ signalStep: 2 });
   });
 
+  it("lights the headlamps only for a view standing in front of a target", () => {
+    const overhead = { id: "a", camera: "overhead", target: { sign: "323" }, altitudeM: 50, pitchDeg: 60 };
+    expect(() => parseViewTable(withViews([{ ...overhead, state: { headlamps: { beam: "low" } } }]))).toThrow(
+      /needs a target in front of the eye/,
+    );
+  });
+
   it("requires a limit on a table's required metric", () => {
     expect(() => parseViewTable(withViews([drive("a")], { metrics: [{ name: "px" }] }))).toThrow(
       /min or max/,
@@ -158,6 +165,46 @@ describe("where a view puts the eye", () => {
     expect(p.eye.z).toBeCloseTo(30, 6);
     expect(p.eye.above).toBe(1.2);
     expect(p.lookAt).toEqual(plate.point);
+  });
+
+  it("parks the lit car of state.headlamps under the eye, facing the plate (the driver's own lamps)", () => {
+    const p = placeView(
+      view({
+        id: "a",
+        camera: "driver",
+        target: { sign: "323" },
+        distanceM: 30,
+        state: { headlamps: { beam: "high" } },
+      }),
+      plate,
+      ctx,
+    );
+    expect(p.lampCar).toMatchObject({ beam: "high", above: 0.6 });
+    expect(p.lampCar?.x).toBeCloseTo(p.eye.x, 6);
+    expect(p.lampCar?.z).toBeCloseTo(p.eye.z, 6);
+    // From z = 30 to the plate at the origin is −Z: the game's yaw atan2(dx, dz) is π.
+    expect(Math.abs(p.lampCar?.yaw ?? 0)).toBeCloseTo(Math.PI, 6);
+  });
+
+  it("parks it apart from the eye when the lamps give their own distance (a large observation angle), turned by turnDeg", () => {
+    const p = placeView(
+      view({
+        id: "a",
+        camera: "pedestrian",
+        target: { sign: "323" },
+        distanceM: 12,
+        angleDeg: 45,
+        state: { headlamps: { beam: "low", distanceM: 30, angleDeg: 0, turnDeg: 20 } },
+      }),
+      plate,
+      ctx,
+    );
+    expect(p.lampCar?.x).toBeCloseTo(0, 6);
+    expect(p.lampCar?.z).toBeCloseTo(30, 6);
+    expect(near({ x: p.eye.x, y: 0, z: p.eye.z }, { x: p.lampCar?.x ?? 0, y: 0, z: p.lampCar?.z ?? 0 })).toBe(
+      false,
+    );
+    expect(p.lampCar?.yaw).toBeCloseTo(-Math.PI + (20 * Math.PI) / 180, 6);
   });
 
   it("turns round the target by angleDeg (clockwise from above) and steps aside by lateralM", () => {
@@ -238,6 +285,18 @@ describe("where a view puts the eye", () => {
     expect(p.eye.z).toBeCloseTo(-45, 6);
     expect(p.eye.y).toBeCloseTo(10 + 4.5 * 0.5 + 1.2, 6);
     expect(p.eye.above).toBeUndefined();
+  });
+
+  it("parks the 後方追従 car on the deck, not on the street under it", () => {
+    const path = Array.from({ length: 11 }, (_, i) => ({ x: 0, y: 10 + i * 0.5, z: -i * 10 }));
+    const deck: FoundTarget = { point: path[8], normal: { x: 0, y: 0, z: 1 }, size: 9, path, pathIndex: 8 };
+    const p = placeView(
+      view({ id: "a", camera: "chase", target: { expressway: "1:0" }, distanceM: 25 }),
+      deck,
+      ctx,
+    );
+    expect(p.car?.z).toBeCloseTo(-55, 6);
+    expect(p.car?.surfaceY).toBeCloseTo(10 + 5.5 * 0.5, 6);
   });
 
   it("extends a deck path straight past its first station", () => {

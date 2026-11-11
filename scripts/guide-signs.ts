@@ -34,7 +34,7 @@ const ty = (lat: number) => {
 
 /**
  * 表示地名 (MLIT list, 平成30年6月末): 東京都 23 区 and the neighbours the 23 wards' arterials lead
- * to. rank 1 重要地, 2 主要地 (基準地 東京 appears only on 確認標識 106, not on 108). English:
+ * to. rank 1 重要地, 2 主要地; 基準地 東京 (rank 0, at 日本橋) appears only on 確認標識 106. English:
  * Hepburn without macrons and with "n" before b/m/p, as 別表第二's own figures write 日本橋
  * "Nihonbashi" and 上馬 "Kamiuma"; names ending in 橋・門・坂 are area names here, romanised whole.
  */
@@ -460,6 +460,12 @@ async function main(): Promise<void> {
     places.push([ja, en, rank, round5(hit.at[0]), round5(hit.at[1]), near(hit.at)]);
     addChars(ja);
   }
+  // 基準地 東京 (rank 0): only the 106 確認標識 name it (src/world/guideRows.ts). Its distance is
+  // counted to the 日本国道路元標 on 日本橋, so it stands where 日本橋 does. Why not locate() it: OSM
+  // has no junction called 「東京」, and a place node of that name is the whole metropolis.
+  const nihonbashi = places.find((p) => p[0] === "日本橋");
+  if (nihonbashi) places.unshift(["東京", "Tokyo", 0, nihonbashi[3], nihonbashi[4], nihonbashi[5]]);
+  addChars("東京");
   for (const [ja, en] of WARDS) {
     // 「練馬区役所本庁舎」 and the like: the name starts with the office's.
     const isOffice = (name: string | undefined) => (name ?? "").startsWith(`${ja}役所`);
