@@ -77,9 +77,11 @@ import { FrameWork } from "../game/frameWork";
 import { RoadInstances } from "./roadInstances";
 import { hash12, valueNoise } from "../render/shaderMath";
 import { PROP_GROUPS } from "../physics/groups";
-import { leftOf, type RoadGraph, type RoadLine, type Segment } from "./roads";
+import { DECK_REACH, leftOf, type RoadGraph, type RoadLine, type Segment } from "./roads";
 import type { Approach, LightState } from "./trafficControl";
 import { hasRoadside } from "./roadClass";
+import { DeckOverhead, MAX_MARGIN } from "./deckOverhead";
+import { GIRDER_DEPTH } from "../expressway/assumptions";
 
 /**
  * 道路照明 (street lights) along the streamed road network, and the shading of the street surfaces
@@ -154,7 +156,50 @@ export type LampSite = {
   sodium: boolean;
   /** Darkness at which its photocell switches it on (they do not all switch at once). */
   threshold: number;
+  /**
+   * The expressway surfaces over the pole's foot and over its luminaire (graph frame, m; empty
+   * where none passes over): a lamp under a viaduct is left out (isUnderDeck).
+   */
+  overhead: Overhead;
 };
+
+/** The deck surfaces over a lamp's pole foot and over its luminaire (DeckOverhead.surfacesOver). */
+export type Overhead = { foot: number[]; head: number[] };
+const NO_DECK: Overhead = { foot: [], head: [] };
+
+/**
+ * Past the deck's carriageway (its `width`) for the pole's foot: the parapet and the slab's edge
+ * (DECK_REACH), and the pole's own radius with a little room, so a pole at the deck's edge counts.
+ */
+const FOOT_MARGIN = MAX_MARGIN;
+/**
+ * For the luminaire: the slab's edge only (DECK_REACH). Why not FOOT_MARGIN: a luminaire whose
+ * centre is outside the slab hangs beside the deck, not in it, and was left out for nothing.
+ */
+const HEAD_MARGIN = DECK_REACH;
+
+/**
+ * Whether a lamp `height` m tall standing on `ground` is one the viaduct over it leaves no room
+ * for (see LampSite.overhead):
+ *
+ * - a deck over its foot, at any height over the foot: under a viaduct the road is lit from the
+ *   girders, and a pole that stops under a deck put its luminaire in the box girder or just under
+ *   it (a deck only 1–2.2 m over the lamp's top). Tunnels and cuts below the foot do not count.
+ * - a deck over its luminaire (the pole beside the deck) lower than the lamp's top plus the girder's
+ *   depth (GIRDER_DEPTH): the arm and the luminaire reach into the girder or through the slab.
+ *
+ * Why not the open-ground test alone (StreetLightDeps.isOpen, a ray down onto the colliders): the
+ * decks' colliders are built only near the car and the lamps are settled every 2 s, so whether a
+ * lamp under a viaduct was hidden before the car on the deck reached its pole depended on the
+ * order the two streamed in. Its collider then stopped the car from 47 km/h in one step on
+ * 24402611:27 (knowledge/expressway-generation.md「床版の走行検査が 24402611:27 で一瞬止まる」).
+ */
+export function isUnderDeck(overhead: Overhead, ground: number, height: number): boolean {
+  const isFootCovered = overhead.foot.some((y) => y > ground - 0.5);
+  if (isFootCovered) return true;
+  const top = ground + height + GIRDER_DEPTH.value;
+  return overhead.head.some((y) => y > ground - 0.5 && y < top);
+}
 
 /** Pole foot behind the carriageway edge (on the pavement, clear of the kerb). */
 const SETBACK = 0.6;
@@ -211,7 +256,7 @@ function isSodium(seg: Segment): boolean {
   return hash2(lon / 0.004, lat / 0.004) < 0.25;
 }
 
-type PlaceGraph = Pick<RoadGraph, "segments" | "sample" | "carriagewaysAt">;
+type PlaceGraph = Pick<RoadGraph, "segments" | "sample" | "carriagewaysAt" | "nearestOn" | "surfaceY">;
 
 /**
  * Lamps for every surface street: stations per side by the lighting class, each pole just behind
@@ -244,6 +289,7 @@ export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> 
   };
   const probe = new Vector3();
   const out = new Vector3();
+  const decks = new DeckOverhead(graph);
   for (const seg of graph.segments) {
     yield;
     const spec = lampSpecFor(seg.line);
@@ -261,15 +307,25 @@ export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> 
         if (graph.carriagewaysAt(probe, 0.3).length > 0) continue;
         if (isCrowded(x, z, spec.spacing * 0.4)) continue;
         const id = sites.length;
+        const ax = -out.x / (half + SETBACK);
+        const az = -out.z / (half + SETBACK);
+        // The pole and the luminaire at the end of its arm (over the street under the deck).
+        const overhead = decks.isEmpty
+          ? NO_DECK
+          : {
+              foot: decks.surfacesOver(x, z, FOOT_MARGIN),
+              head: decks.surfacesOver(x + ax * spec.reach, z + az * spec.reach, HEAD_MARGIN),
+            };
         sites.push({
           x,
           z,
-          ax: -out.x / (half + SETBACK),
-          az: -out.z / (half + SETBACK),
+          ax,
+          az,
           spec,
           sodium,
           // Photocells (自動点滅器) differ: switch-on spread over a darkness band.
           threshold: 0.2 + 0.12 * hash2(seg.line.coords[0] * 1e5 + s, seg.line.coords[1] * 1e5 + side),
+          overhead,
         });
         const k = key(x, z);
         const list = grid.get(k) ?? [];
@@ -1006,6 +1062,10 @@ export class StreetLights {
       point.set(this.xs[i], ground + lamp.spec.height, this.zs[i]).applyMatrix4(matrix);
       this.xs[i] = point.x;
       this.zs[i] = point.z;
+      const moveY = (y: number) => point.set(lamp.x, y, lamp.z).applyMatrix4(matrix).y;
+      const hasDeck = lamp.overhead.foot.length > 0 || lamp.overhead.head.length > 0;
+      if (hasDeck)
+        lamp.overhead = { foot: lamp.overhead.foot.map(moveY), head: lamp.overhead.head.map(moveY) };
       point.set(lamp.x, ground, lamp.z).applyMatrix4(matrix);
       lamp.x = point.x;
       lamp.z = point.z;
@@ -1077,6 +1137,10 @@ export class StreetLights {
     log("street_lights_placed", {
       lamps: n,
       sodium: this.lamps.filter((l) => l.sodium).length,
+      // Of the lamps whose ground is known: before the terrain has loaded a lamp's height is a guess.
+      underDeck: this.lamps.filter(
+        (l) => l.ground !== null && isUnderDeck(l.overhead, l.ground, l.spec.height),
+      ).length,
       byClass: Object.fromEntries(
         ["arterial", "main", "street", "residential", "lane"].map((c) => [
           c,
@@ -1106,10 +1170,11 @@ export class StreetLights {
   private place(lamp: Lamp, i: number): void {
     const scale = lamp.spec.height / MODEL_HEIGHT;
     const g = lamp.ground ?? 0;
+    const isGone = lamp.hidden || isUnderDeck(lamp.overhead, g, lamp.spec.height);
     const o = this.tmp;
     o.position.set(lamp.x, g, lamp.z);
     o.rotation.set(0, Math.atan2(lamp.ax, lamp.az), 0);
-    o.scale.setScalar(lamp.hidden ? 0 : scale);
+    o.scale.setScalar(isGone ? 0 : scale);
     o.updateMatrix();
     this.metal?.setMatrixAt(i, o.matrix);
     this.lens?.setMatrixAt(i, o.matrix);
@@ -1119,10 +1184,10 @@ export class StreetLights {
     const out = (MODEL_REACH + 0.2) * scale;
     this.xs[i] = lamp.x + lamp.ax * out;
     this.zs[i] = lamp.z + lamp.az * out;
-    this.live[i] = lamp.hidden || lamp.ground === null ? 0 : 1;
+    this.live[i] = isGone || lamp.ground === null ? 0 : 1;
     if (lamp.collider) this.world.removeCollider(lamp.collider, false);
     lamp.collider = null;
-    if (lamp.hidden || !this.body) return;
+    if (isGone || !this.body) return;
     const h = lamp.spec.height - 0.3 * scale;
     lamp.collider = this.world.createCollider(
       RAPIER.ColliderDesc.cylinder(h / 2, 0.11 * scale)

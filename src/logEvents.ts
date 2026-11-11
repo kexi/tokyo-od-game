@@ -346,6 +346,8 @@ export const LOG_EVENTS = {
   street_lights_placed: info({
     lamps: count,
     sodium: count,
+    /** Lamps left out because an expressway deck passes through their height (isUnderDeck). */
+    underDeck: count,
     byClass: counts,
     signals: count,
     durationMs: z.number(),

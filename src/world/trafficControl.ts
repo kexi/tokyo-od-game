@@ -78,6 +78,7 @@ import {
 } from "../signals/plan";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { hasRoadside, isEnterable } from "./roadClass";
+import { DeckOverhead, MAX_MARGIN, poleReachesDeck } from "./deckOverhead";
 
 /**
  * What a signal's main lamps show: one of 施行令第2条's three colours, 黄・赤の点滅, or dark. Read by
@@ -1485,8 +1486,17 @@ export class TrafficControl {
       return o.matrix.clone();
     });
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const decks = new DeckOverhead(graph);
     for (const { pos, height } of poles) {
       yield;
+      // A pole whose top reaches an expressway deck over it gets no collider: a car on the deck
+      // would stop on it (deckOverhead.ts). Why only the collider, not the pole: the signal stands
+      // for its junction (hiding it would change the control); a pole drawn into a girder is left
+      // as a look to fix with the junction (knowledge/street-lighting-and-wet-roads.md).
+      const isIntoDeck =
+        !decks.isEmpty &&
+        poleReachesDeck(decks.surfacesOver(pos.x, pos.z, MAX_MARGIN), pos.y, pos.y + height);
+      if (isIntoDeck) continue;
       this.world.createCollider(
         RAPIER.ColliderDesc.cylinder(height / 2, POLE_RADIUS)
           .setTranslation(pos.x, pos.y + height / 2, pos.z)
