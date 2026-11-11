@@ -237,6 +237,11 @@ export const LOG_EVENTS = {
   water_tile_failed: failedWith({ key: z.string() }),
   /** public/data/expressway (meta.json or a tile) could not be loaded: no decks there. */
   expressway_tile_failed: failedWith({ key: z.string() }),
+  /**
+   * Two tiles carry different summaries of one run (format 6 repeats a run's summary in every tile
+   * with a chunk of it): the first read is kept. A broken build, never expected.
+   */
+  expressway_tile_run_mismatch: warning({ key: z.string(), run: z.string() }),
 
   // ---------- the world as built ----------
   road_network_prepared: info({
@@ -968,6 +973,43 @@ export const LOG_EVENTS = {
       z.strictObject({ run: z.string(), maxDzM: z.number(), s: z.number(), nearAnchor: z.boolean() }),
     ),
   }),
+  /**
+   * Two data folders' chunks compared byte for byte (scripts/compareExpresswayChunks.ts, P2.7-4):
+   * the chunks of either, those only in one, and the ids (sorted, the first 50) of those that differ.
+   */
+  expressway_chunks_compared: info({
+    a: z.string(),
+    b: z.string(),
+    chunksA: count,
+    chunksB: count,
+    same: count,
+    differ: count,
+    onlyA: count,
+    onlyB: count,
+    differIds: z.array(z.string()),
+    onlyAIds: z.array(z.string()),
+    onlyBIds: z.array(z.string()),
+  }),
+  /**
+   * A data folder's ledger written again (scripts/expresswayLedger.ts, P2.7-4): the cases, those new
+   * to it, left as they were, sent back to `new` (with a previous decision), per status, accepted by
+   * a rule, the seam probes, whether it has a budget, its bytes, the diagnostics re-allowed.
+   */
+  expressway_ledger_updated: info({
+    dir: z.string(),
+    seed: z.string().nullable(),
+    cases: count,
+    added: count,
+    unchanged: count,
+    reopened: count,
+    statuses: z.strictObject({ new: count, accepted: count, open: count, wontfix: count, gone: count }),
+    byRule: count,
+    seamProbes: count,
+    budget: z.boolean(),
+    bytes: count,
+    /** report.json diagnostics whose `allowed` the new ledger turned (the file rewritten when > 0). */
+    reallowed: count,
+  }),
   /** Two scorecards of another range, --below mode or extract: their differences are not the compiler's. */
   expressway_reports_unlike: warning({ a: z.string(), b: z.string() }),
   expressway_dem_ready: info({ tiles: count, fetched: count }),
@@ -1011,6 +1053,16 @@ export const LOG_EVENTS = {
     osmM: z.number(),
     planM: z.number(),
     zM: z.number(),
+  }),
+  /**
+   * The ledger a build decides `allowed` with (P2.7-4): the file (the output folder's as kept, or
+   * --ledger; null: none, the rules alone), its cases, and the diagnostics allowed and not.
+   */
+  expressway_ledger_read: info({
+    file: z.string().nullable(),
+    cases: count,
+    allowed: count,
+    notAllowed: count,
   }),
   expressway_written: info({
     range: z.string(),

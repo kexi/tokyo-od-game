@@ -2,7 +2,7 @@
 // extract → plan and vertical alignment within 道路構造令 (src/expressway/) → public/data/expressway/
 // <x>-<y>.json (z14 tiles of ≤ 300 m chunks) and meta.json. The ground constraints read GSI DEM
 // tiles exactly as the game does (scripts/demTiles.ts), cached under .cache/gsi-dem.
-// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow,azabudai|all|ship] [--below pruned|all]
+// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow,azabudai|all|ship] [--below pruned|all] [--ledger <path>]
 //   [--partition components|blocks [--quiet-factor <k>]]
 //   [--pbf <path>] [--out <dir>] [--report <path> [--label <name>] [--baseline <path>]] [--accept-extract]
 // (--range takes one or more named ranges joined by commas; the default is DEFAULT_RANGES.)
@@ -27,6 +27,11 @@
 // (compile.ts Objective; measuring only, it needs --out), with --grade-change <w> (vertical.ts
 // W_GRADE_CHANGE), --reach <m> and --reach-below <m> (assumptions.DESIGN_GROUND_REACH) and
 // --target-scale <k> (W_TARGET × k). The default, --objective v1, is the objective as before.
+// P2.7-4 (format 6): meta.json is the tiles' index; each tile carries its chunks, the summaries of
+// their runs and the entrances whose street end lies in it; report.json the build's record (runs,
+// diagnostics, closed runs, the solver, the blocks with the dataHash of their chunks). A diagnostic
+// is allowed by the rules (allowlist.ts) or by the ledger (ledger.json of the output folder, kept
+// across the rebuild, or --ledger <path>), which scripts/expresswayLedger.ts writes.
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -39,14 +44,19 @@ import {
   pinnedExtractName,
 } from "../src/expressway/extract.ts";
 import { violationsOf } from "../src/expressway/violations.ts";
+import { isAllowed } from "../src/expressway/allowlist.ts";
+import { caseContextOf, type Ledger, ledgerVerdict, rampFloorOf } from "../src/expressway/ledger.ts";
 import { BLOCK_QUIET_FACTOR } from "../src/expressway/assumptions.ts";
 import { buildReport, type PlannedRun } from "../src/expressway/report.ts";
 import { scopeExtent, shipRuns } from "../src/expressway/scope.ts";
-import { compareChunks, DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
+import { DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
+import { packTiles } from "../src/expressway/files.ts";
+import { assignDistricts, type District, districtRunsOf } from "../src/expressway/districts.ts";
 import { STRUCTURE_SPECS, type Structure, structureFrom } from "../src/expressway/structures.ts";
 import { deckLevelsOf, DECK_LEVELS_VERSION } from "../src/world/deckLevels.ts";
 import {
   type Bbox,
+  type BlockSummary,
   type CrossObject,
   groundPoints,
   OBJECTIVE_V1,
@@ -60,10 +70,13 @@ import {
   CROSS_STRIDE,
   PIER_STRIDE,
   STATION_STRIDE,
+  type XwBlockRecord,
+  type XwBuildRecord,
+  type XwChunk,
   type XwMeta,
   XW_FEATURES,
+  XW_RECORD_VERSION,
   XW_VERSION,
-  type XwTile,
 } from "../src/expressway/format.ts";
 import { tileKey } from "../src/expressway/geo.ts";
 import { planSigns } from "../src/expressway/signPlan.ts";
@@ -122,6 +135,24 @@ async function download(path: string): Promise<void> {
 }
 
 const sha256Of = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+
+/** Raw and gzip bytes of a file's text (the scorecard's size). */
+const sizeOf = (text: string) => ({ raw: Buffer.byteLength(text), gzip: gzipSync(text).length });
+
+/**
+ * report.json's blocks (P2.7-4 5.5): each block's runs and the SHA-256 of the JSON of their chunks
+ * as written (run id, then k), so the ledger can tell a block that did not change from one that did.
+ * Why not the solver's hash: it is of the unrounded solution, which a 1e-12 m wobble changes.
+ */
+function blockRecords(blocks: ReadonlyArray<BlockSummary>, chunks: ReadonlyArray<XwChunk>): XwBlockRecord[] {
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  return blocks.map((b) => {
+    const written = b.members.flatMap((run) => (byRun.get(run) ?? []).toSorted((x, y) => x.k - y.k));
+    const text = JSON.stringify(written);
+    return { id: b.id, runs: b.members, dataHash: sha256Of(new TextEncoder().encode(text)) };
+  });
+}
 
 /**
  * The extract to build from: --pbf as given; else the pinned copy, made from kanto-latest (downloaded
@@ -454,22 +485,33 @@ log("expressway_signs_planned", {
 });
 for (const u of signPlan.unplaced) warn("expressway_sign_unplaced", u);
 endStage("signs");
-const tiles = new Map<string, XwTile>();
-for (const chunk of result.chunks) {
-  const mid = Math.floor(chunk.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
-  const key = tileKey(chunk.st[mid + 1], chunk.st[mid + 2], Z);
-  const tile = tiles.get(key) ?? { chunks: [] };
-  tile.chunks.push(chunk);
-  tiles.set(key, tile);
-}
+const tiles = packTiles(result.chunks, result.runs, signPlan.entrances, Z);
+// The ledger (P2.7-4) mixes what the tool counts with what a review decided: a rebuild must not
+// lose it, so it is read before the folder is cleared and written back right after.
+const keptLedger = await readFile(join(OUT, "ledger.json"), "utf8").catch(() => null);
+// Whether a departure is accepted (P2.7-4 5.8): the rules, or the folder's ledger (--ledger: another
+// folder's, e.g. the default data's for a measuring build) where it decided the case within its cap.
+const ledgerPath = arg("ledger");
+const ledgerText = ledgerPath ? await readFile(ledgerPath, "utf8") : keptLedger;
+const ledger = ledgerText === null ? null : (JSON.parse(ledgerText) as Ledger);
+const caseContext = caseContextOf(result.runs, untied, result.chunks);
+const verdict = ledgerVerdict(caseContext, ledger);
+for (const d of result.diagnostics) d.allowed = isAllowed(d, verdict);
+log("expressway_ledger_read", {
+  file: ledgerPath ?? (keptLedger === null ? null : join(OUT, "ledger.json")),
+  cases: ledger?.cases.length ?? 0,
+  allowed: result.diagnostics.filter((d) => d.allowed && plan.needed.includes(d.run)).length,
+  notAllowed: result.diagnostics.filter((d) => !d.allowed && plan.needed.includes(d.run)).length,
+});
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
+// Back at once, before anything else is written: a build that fails half-way must not lose it.
+if (keptLedger !== null) await writeFile(join(OUT, "ledger.json"), keptLedger);
 let bytes = 0;
-const tileKeys = [...tiles.keys()].sort();
+const tileKeys = [...tiles.keys()];
 const tileSizes: Array<{ bytes: number; gzipBytes: number }> = [];
 for (const key of tileKeys) {
   const tile = tiles.get(key)!;
-  tile.chunks.sort(compareChunks);
   const text = JSON.stringify(tile);
   const size = Buffer.byteLength(text);
   bytes += size;
@@ -507,6 +549,12 @@ const meta: XwMeta = {
     crossings: result.chunks.reduce((n, c) => n + c.cross.length / CROSS_STRIDE, 0),
   },
   bytes,
+};
+const metaText = JSON.stringify(meta);
+await writeFile(join(OUT, "meta.json"), metaText);
+const record: XwBuildRecord = {
+  version: XW_RECORD_VERSION,
+  objective: objective.kind,
   solver: {
     components: result.stats.components,
     solves: result.stats.solves,
@@ -515,10 +563,11 @@ const meta: XwMeta = {
   runs: result.runs,
   closed: result.closed,
   diagnostics: result.diagnostics.filter((d) => plan.needed.includes(d.run)),
-  entrances: signPlan.entrances,
+  untied: untied.map(({ a, b, stations }) => ({ a, b, stations })),
+  blocks: blockRecords(result.partition.blocks, result.chunks),
 };
-const metaText = JSON.stringify(meta);
-await writeFile(join(OUT, "meta.json"), metaText);
+const recordText = JSON.stringify(record);
+await writeFile(join(OUT, "report.json"), recordText);
 await writeFile(
   join(OUT, "LICENSE.txt"),
   `Expressway centrelines, lanes, ref and entrance/exit names in this folder are extracted from
@@ -543,10 +592,16 @@ product of GSI. The files also carry the ground elevation under each station and
 value of a station, the second of a pier): 地理院の標高タイルを平滑化（5×5 中央値と 3×3 の重み付き平均）
 した値を加工して含む — processed (smoothed) GSI elevation-tile values, offered under the same ODbL,
 used by the game to stop girders and piers at the ground.
+Files: <x>-<y>.json are z14 tiles (the chunks, the summaries of their runs, the entrances whose
+street end lies in the tile); meta.json is the index of the tiles. report.json is the build's record
+(the full run summaries, the diagnostics, the closed runs, the solver's counts and a SHA-256 of each
+solved block's chunks) and ledger.json the project's ledger of accepted departures (each case counted
+from these files, with the review's decision and reason): both are derived from the same data, under
+the same licence, for the project's tests and tools; the game reads neither.
 `,
 );
-for (const d of meta.diagnostics) warn("expressway_diagnostic", d);
-for (const r of meta.runs) {
+for (const d of record.diagnostics) warn("expressway_diagnostic", d);
+for (const r of record.runs) {
   if (!r.structure) continue;
   const { deck, osmM, planM, zM } = r.structure;
   log("expressway_structure_built", { deck, run: r.id, osmM, planM, zM });
@@ -558,13 +613,34 @@ log("expressway_written", {
   chunks: result.chunks.length,
   stations: meta.counts.stations,
   bytes,
-  diagnostics: meta.diagnostics.length,
-  unsolved: meta.diagnostics.filter((d) => isUnsolved(d.kind)).length,
+  diagnostics: record.diagnostics.length,
+  unsolved: record.diagnostics.filter((d) => isUnsolved(d.kind)).length,
   closedMain: result.closed.filter((c) => c.cls === "expressway").length,
   closedRamps: result.closed.filter((c) => c.cls === "ramp").length,
   durationS: Math.round((performance.now() - started) / 100) / 10,
 });
 endStage("write");
+
+/**
+ * Every planned run's district (districts.ts): a written run from its chunks and ends, one not
+ * written from the plan's ref and line (no parents: a closed ramp falls to the nearest main line).
+ */
+function plannedDistricts(): Map<string, District> {
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of result.chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  const written = districtRunsOf(result.runs, byRun);
+  const isWritten = new Set(written.map((r) => r.id));
+  const unwritten = plan.needed
+    .filter((id) => !isWritten.has(id))
+    .map((id) => {
+      const rp = plan.runs.get(id)!;
+      const points: Array<[number, number]> = [];
+      for (let i = 0; i < rp.align.xy.length; i += 2 * 50)
+        points.push(rp.plane.toLonLat(rp.align.xy[i], rp.align.xy[i + 1]));
+      return { id, cls: rp.cls, ref: rp.ref, parents: [], points };
+    });
+  return assignDistricts([...written, ...unwritten]);
+}
 
 // 7. The scorecard (P2.7-1): the runs the plan made for the range and the components it needs.
 if (reportPath) {
@@ -604,7 +680,7 @@ if (reportPath) {
           km: Math.round(lengthOf(chosenShip.rampsOutside)) / 1000,
         }
       : null,
-    violations: violationsOf(meta, result.chunks),
+    violations: violationsOf(record, result.chunks, rampFloorOf(ledger)),
     structureDecks: meta.structures.flatMap((st) => st.decks),
     runs: result.runs,
     closed: result.closed,
@@ -612,6 +688,8 @@ if (reportPath) {
     chunks: result.chunks,
     tiles: tileSizes,
     meta: { raw: Buffer.byteLength(metaText), gzip: gzipSync(metaText).length, byField },
+    record: sizeOf(recordText),
+    ledger: keptLedger === null ? null : sizeOf(keptLedger),
     solver: {
       components: result.stats.components,
       largestRuns: result.stats.largestRuns,
@@ -623,12 +701,14 @@ if (reportPath) {
     },
     partition: {
       ...result.partition,
-      blocks: result.partition.blocks.map(({ canonical, ...b }) => ({
+      blocks: result.partition.blocks.map(({ canonical, members: _members, ...b }) => ({
         ...b,
         hash: sha256Of(new TextEncoder().encode(canonical)),
       })),
     },
     stagesMs,
+    districts: plannedDistricts(),
+    ledgerSummary: ledger?.summary ?? null,
   };
   const report = buildReport(reportInput);
   await mkdir(dirname(reportPath), { recursive: true });

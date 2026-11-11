@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import {
   checkChunkJoin,
   checkClearance,
@@ -14,41 +15,57 @@ import {
   checkSurface,
   checkVerticalCurves,
 } from "../src/expressway/checks";
-import {
-  BLOCKED_STRIDE,
-  STATION_STRIDE,
-  type XwChunk,
-  type XwMeta,
-  type XwTile,
-} from "../src/expressway/format";
+import { BLOCKED_STRIDE, STATION_STRIDE } from "../src/expressway/format";
 import { tileKey } from "../src/expressway/geo";
-import { ALLOWLIST, isAllowed } from "../src/expressway/allowlist";
+import { isAllowed } from "../src/expressway/allowlist";
+import { assignDistricts, DISTRICTS, districtRunsOf } from "../src/expressway/districts";
+import { caseContextOf, ledgerVerdict, rampFloorOf, withinCap } from "../src/expressway/ledger";
+import { NOSE_MAX_DZ_M } from "../src/expressway/overlapClass";
+import { DEFAULT_RANGES } from "../src/expressway/ranges";
 import { OPERATOR_WORDS } from "../src/expressway/network";
-import { MERGE_MAX_DZ } from "../src/world/expresswayMerge";
 import { TUNNEL_DEPTH_M } from "../src/expressway/below";
 import { surfaceAt } from "../src/expressway/profile";
-import { pairPoints } from "./expresswayPairs";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
 // checked against knowledge/road-redesign-plan.md 4.4 T1〜T7 and T10, and the conditions for shipping the whole ward area
 // (knowledge/expressway-generation.md). XW_DATA_DIR points it at another output (a --range all
 // build written with --out) to judge that before it is shipped.
-const DIR = process.env.XW_DATA_DIR ?? join(import.meta.dirname, "..", "public", "data", "expressway");
-const meta = JSON.parse(readFileSync(join(DIR, "meta.json"), "utf8")) as XwMeta;
+// v6 (P2.7-4): the tiles, report.json and the ledger through the one reader (scripts/expresswayFiles.ts).
+const files = readExpresswayFiles();
+const DIR = files.dir;
+const meta = files.meta;
+const record = files.record;
 const tileFiles = readdirSync(DIR).filter((f) => /^\d+-\d+\.json$/.test(f));
-const tiles = new Map(
-  tileFiles.map((f) => [f.replace(".json", ""), JSON.parse(readFileSync(join(DIR, f), "utf8")) as XwTile]),
-);
-const chunks = [...tiles.values()].flatMap((t) => t.chunks);
-const runs = new Map(meta.runs.map((r) => [r.id, r]));
-const byRun = new Map<string, XwChunk[]>();
-for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
-for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
-const isTestSection = meta.ranges.some((r) => r.name === "hamazakibashi");
+const { tiles, chunks, byRun } = files;
+const runs = files.runById;
+/** The default build (just make-expressway-data): the expectations about its own runs hold only there. */
+const isDefaultBuild = meta.ranges.map((r) => r.name).join(",") === DEFAULT_RANGES.join(",");
 const isWholeArea = meta.ranges.length === 0;
-/** The tightest radius the allowlist accepts on a ramp (ramp_radius with minRadiusM), for T6. */
-const rampFloor = (run: string) =>
-  ALLOWLIST.find((a) => a.kind === "ramp_radius" && a.run === run && a.minRadiusM !== undefined)?.minRadiusM;
+/** The ledger's verdict on what the rules do not take (the build's `allowed` recomputed). */
+const verdict = ledgerVerdict(caseContextOf(files.runs, record.untied, chunks), files.ledger);
+/** The tightest radius the ledger accepts on a ramp (its ramp-radius case), for T6. */
+const rampFloor = rampFloorOf(files.ledger);
+/** The ledger's overlap case of a pair (any overlap kind), by "a|b" (a < b). */
+const OVERLAP_KINDS = ["nose", "changeover", "parallel-ramp", "touchdown", "other"];
+const overlapCase = (pair: string) =>
+  files.ledger?.cases.find(
+    (c) => OVERLAP_KINDS.includes(c.kind) && `${c.run}|${c.with}` === pair && c.status !== "gone",
+  );
+/**
+ * Districts (src/expressway/districts.ts) with runs in the files; XW_DISTRICT keeps one. The
+ * per-chunk checks run per district, so a failure names where it is and one district can be judged
+ * apart.
+ */
+const districtOf = assignDistricts(districtRunsOf(files.runs, byRun));
+// A misspelt XW_DISTRICT would run no district at all and pass: stop instead.
+const isUnknownDistrict =
+  process.env.XW_DISTRICT !== undefined &&
+  !(DISTRICTS as readonly string[]).includes(process.env.XW_DISTRICT);
+if (isUnknownDistrict)
+  throw new Error(`XW_DISTRICT ${process.env.XW_DISTRICT}: not one of ${DISTRICTS.join(", ")}`);
+const DISTRICT_LIST = DISTRICTS.filter((d) => [...districtOf.values()].includes(d)).filter(
+  (d) => process.env.XW_DISTRICT === undefined || process.env.XW_DISTRICT === d,
+);
 
 // Overlaps recomputed here by brute force, without overlap.ts (the compiler's own detector):
 // every station of a run against every segment of every other run, the other's height the cubic
@@ -156,7 +173,7 @@ describe("生成済みの高速道路タイル", () => {
     expect(meta.counts.chunks).toBe(chunks.length);
   });
 
-  it.runIf(isTestSection)(
+  it.runIf(isDefaultBuild)(
     "builds the test section (都心環状線 both ways, the 芝公園 and 汐留 entrances and exits) and the Rainbow Bridge's (11号台場線, the 臨港道路 below)",
     () => {
       expect(meta.ranges.map((r) => r.name)).toEqual([
@@ -166,110 +183,21 @@ describe("生成済みの高速道路タイル", () => {
         "azabudai_exit",
         "shiodome",
       ]);
-      const refs = new Set(meta.runs.filter((r) => r.cls === "expressway").map((r) => r.ref));
+      const refs = new Set(record.runs.filter((r) => r.cls === "expressway").map((r) => r.ref));
       expect(refs.has("C1")).toBe(true);
       expect(refs.has("11")).toBe(true);
-      expect(meta.runs.filter((r) => r.cls === "ramp").length).toBeGreaterThanOrEqual(2);
-      expect(meta.runs.filter((r) => r.cls === "street").length).toBe(2);
+      expect(record.runs.filter((r) => r.cls === "ramp").length).toBeGreaterThanOrEqual(2);
+      expect(record.runs.filter((r) => r.cls === "street").length).toBe(2);
     },
   );
 
-  it.runIf(isTestSection)(
-    "has a posted limit on every chunk, and the raw maxspeed only where a way is tagged (XW_VERSION 5)",
-    () => {
-      for (const c of chunks) {
-        expect(c.posted, c.id).toBeGreaterThan(0);
-        expect(c.maxspeed === null || c.maxspeed > 0, c.id).toBe(true);
-        // Where the way is tagged the plate shows the tag (G6 postedOf carries only untagged ways).
-        if (c.maxspeed !== null && c.cls !== "street") expect(c.posted, c.id).toBe(c.maxspeed);
-      }
-    },
-  );
-
-  it("every run of the range is in the files with all its chunks", () => {
-    for (const r of meta.runs) expect(byRun.get(r.id)?.map((c) => c.id)).toEqual(r.chunks);
-  });
-
-  it("T1・T2: grades within 第20条 and vertical curves within 第22条 on every chunk, between stations too (the Hermite surface)", () => {
-    expect(chunks.flatMap((c) => checkGrade(c, runs.get(c.run)!))).toEqual([]);
-    expect(chunks.flatMap(checkVerticalCurves)).toEqual([]);
-    expect(chunks.flatMap(checkSurface)).toEqual([]);
-  });
-
-  it("design speed is per section: a run's chunks may differ, each within the run's highest and its tag", () => {
-    for (const r of meta.runs) {
-      const speeds = byRun.get(r.id)!.map((c) => c.V);
-      expect(Math.max(...speeds)).toBe(r.V);
-      expect(r.V).toBeLessThanOrEqual(r.tagV);
+  it("has a posted limit on every chunk, and the raw maxspeed only where a way is tagged (XW_VERSION 5)", () => {
+    for (const c of chunks) {
+      expect(c.posted, c.id).toBeGreaterThan(0);
+      expect(c.maxspeed === null || c.maxspeed > 0, c.id).toBe(true);
+      // Where the way is tagged the plate shows the tag (G6 postedOf carries only untagged ways).
+      if (c.maxspeed !== null && c.cls !== "street") expect(c.posted, c.id).toBe(c.maxspeed);
     }
-  });
-
-  it("T3: chunks join exactly within a run, and runs join their parent at a junction in height, grade and bank", () => {
-    const problems: string[] = [];
-    for (const list of byRun.values())
-      for (let i = 1; i < list.length; i++) problems.push(...checkChunkJoin(list[i - 1], list[i]));
-    for (const r of meta.runs) {
-      const list = byRun.get(r.id)!;
-      for (const [atStart, end] of [
-        [true, r.start],
-        [false, r.end],
-      ] as const) {
-        const isJoined = end.kind === "junction" || end.kind === "seam";
-        const parent = isJoined ? byRun.get(end.parent!) : undefined;
-        if (!parent) continue; // the parent is outside the range: not in these files
-        problems.push(
-          ...checkJunction(atStart ? list[0] : list[list.length - 1], atStart, end.grade!, parent),
-        );
-      }
-    }
-    expect(problems).toEqual([]);
-  });
-
-  it("T4: every crossing is cleared by 4.5 m + girder, and the ground everywhere outside the climbs from low ends", () => {
-    // Low ends recomputed from the run summaries (a ground end, or a junction on a parent still
-    // climbing from one), not taken from the compiler.
-    const climbs = (id: string) => climbingEnds(runs.get(id)!, runs);
-    // A run may miss the assumed standard floor over open ground only by what its allowed
-    // below_open_ground_floor diagnostic says (bounded by the allowlist); the crossings exactly.
-    const openShort = (id: string) => {
-      const d = meta.diagnostics.find(
-        (x) => x.run === id && x.kind === "below_open_ground_floor" && isAllowed(x),
-      );
-      return d ? Number(/^([\d.]+) m under/.exec(d.detail)![1]) + 0.01 : 0;
-    };
-    expect(
-      chunks.flatMap((c) => checkClearance(c, runs.get(c.run)!, climbs(c.run), openShort(c.run))),
-    ).toEqual([]);
-    expect(meta.counts.crossings).toBeGreaterThan(0);
-  });
-
-  it("T5: ground ends meet the DEM ground within 5 cm at its grade", () => {
-    const problems: string[] = [];
-    for (const r of meta.runs) {
-      const list = byRun.get(r.id)!;
-      problems.push(...checkGroundEnd(list[0], r, true), ...checkGroundEnd(list[list.length - 1], r, false));
-    }
-    expect(problems).toEqual([]);
-  });
-
-  it("T6: no kink, radius at least the floor for the assigned speed, within 1.5 m of OSM", () => {
-    expect(chunks.flatMap((c) => checkPlan(c, runs.get(c.run)!, rampFloor(c.run)).problems)).toEqual([]);
-  });
-
-  it("T7: superelevation within 第16条, run in over 第18条's length, composite grade within 第25条", () => {
-    expect(chunks.flatMap(checkSuperelevation)).toEqual([]);
-  });
-
-  it("T12 (P9): every tunnel keeps its box and cover under the ground, every cut stays under it, wherever a portal's descent reaches", () => {
-    const problems: string[] = [];
-    for (const r of meta.runs) {
-      const list = byRun.get(r.id)!;
-      const first = list[0].st;
-      const last = list[list.length - 1].st;
-      const ends = { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
-      for (const c of list) problems.push(...checkCover(c, r, ends));
-    }
-    expect(problems).toEqual([]);
   });
 
   it("P9: piers stand over a buried tunnel as over any ground; only an open cut or a portal's hole under a viaduct takes them away", () => {
@@ -324,64 +252,31 @@ describe("生成済みの高速道路タイル", () => {
     expect(Math.max(...depths)).toBeGreaterThan(TUNNEL_DEPTH_M);
   });
 
-  it("uses every allowlist entry for a run in the files: an entry no diagnostic meets is stale", () => {
-    // Entries for runs outside these files are for --range all (ramp_radius of runs elsewhere), and
-    // so are the "*" rules of P2.6's last give step on the assumed floors: whether a range has a run
-    // that falls through to that step is not this file's to say (the test section has none over open
-    // ground).
-    const GIVE_STEP_KINDS = new Set(["below_open_ground_floor", "deck_below_ground"]);
-    const stale = ALLOWLIST.filter((a) => {
-      const isGiveRule = a.run === "*" && GIVE_STEP_KINDS.has(a.kind);
-      if (isGiveRule) return false;
-      const isHere = a.run === "*" || runs.has(a.run);
-      if (!isHere) return false;
-      return !meta.diagnostics.some(
-        (d) =>
-          (a.run === "*" || d.run === a.run) &&
-          d.kind === a.kind &&
-          (a.with === undefined || d.detail.startsWith(`with ${a.with}:`)),
-      );
-    });
-    expect(stale.map((a) => `${a.run} ${a.kind} ${a.with ?? ""}`)).toEqual([]);
-  });
-
-  it("T10: nothing outside the allowlist is left, and the counts of what is reported stay as reviewed", () => {
-    // allowed comes from src/expressway/allowlist.ts (with reasons), recomputed here too.
-    expect(meta.diagnostics.filter((d) => !d.allowed || !isAllowed(d))).toEqual([]);
+  it("T10: nothing the rules and the ledger do not accept is left (the counts per kind are the ledger's budget)", () => {
+    // allowed comes from src/expressway/allowlist.ts's rules and the folder's ledger, recomputed here too.
+    expect(record.diagnostics.filter((d) => !d.allowed || !isAllowed(d, verdict))).toEqual([]);
     const unsolved = ["vertical_unsolved", "parent_unsolved", "parent_missing"];
-    expect(meta.diagnostics.filter((d) => unsolved.includes(d.kind))).toEqual([]);
+    expect(record.diagnostics.filter((d) => unsolved.includes(d.kind))).toEqual([]);
   });
 
-  it.runIf(isTestSection)("T10 (test section): the counts of what is reported stay as reviewed", () => {
-    const counts: Record<string, number> = {};
-    for (const d of meta.diagnostics) counts[d.kind] = (counts[d.kind] ?? 0) + 1;
-    expect(counts).toMatchInlineSnapshot(`
-      {
-        "crossing_over_or_at_grade": 30,
-        "deck_below_ground": 1,
-        "deck_overlap": 16,
-        "ramp_radius": 1,
-        "tunnel_cover_short": 1,
-        "vertical_fallback": 38,
-      }
-    `);
-  });
-
-  it("deck_overlap: carriageways over one another are one surface or a level apart; the rest are the reported pairs, within their allowlist limits", () => {
+  it("deck_overlap: carriageways over one another are one surface or a level apart; the rest are the reported pairs, each a ledger case within its cap", () => {
     const reported = new Map(
-      meta.diagnostics
+      record.diagnostics
         .filter((d) => d.kind === "deck_overlap")
         .map((d) => [[d.run, /^with (\S+):/.exec(d.detail)![1]].sort().join("|"), d] as const),
     );
     expect([...brute.keys()].sort()).toEqual([...reported.keys()].sort());
     for (const [key, o] of brute) {
-      const [a, b] = key.split("|");
-      const entry = ALLOWLIST.find(
-        (e) => e.kind === "deck_overlap" && [e.run, e.with].sort().join("|") === [a, b].join("|"),
+      const c = overlapCase(key);
+      expect(c, key).toBeDefined();
+      // A nose passes by its rule (≤ NOSE_MAX_DZ_M); a reviewed pair within its cap and margin.
+      const isNose = c!.kind === "nose";
+      if (isNose) expect(o.maxDz, key).toBeLessThanOrEqual(NOSE_MAX_DZ_M + 0.005);
+      if (isNose) continue;
+      expect(c!.cap, key).not.toBeNull();
+      expect(withinCap({ stations: o.stations, maxDzM: Math.max(0, o.maxDz - 0.005) }, c!.cap!), key).toBe(
+        true,
       );
-      expect(entry, key).toBeDefined();
-      expect(o.stations).toBeLessThanOrEqual(entry!.maxStations!);
-      expect(o.maxDz).toBeLessThanOrEqual(entry!.maxDzM! + 0.005);
     }
   });
 
@@ -399,109 +294,13 @@ describe("生成済みの高速道路タイル", () => {
       for (const [run, s] of o.at) expect(covered(run, s), `${run}@${s}`).toBe(true);
   });
 
-  it("lists where a same-surface stretch misses by more than the game makes one slab (MERGE_MAX_DZ), each with why", () => {
-    // Unpadded "same" stretches only, every 0.5 m, against the other run's Hermite surface at the
-    // nearest point of its centre line (tests/expresswayPairs.ts): the deck builder leaves these
-    // apart and logs expressway_merge_skipped. A new entry, or a larger miss, fails here.
-    const known = new Set(chunks.map((c) => c.run));
-    const found = new Map<string, { chunk: string; with: string; s0: number; s1: number; maxDzM: number }>();
-    for (const p of pairPoints(chunks)) {
-      const isApart = known.has(p.with) && Math.abs(p.dz) > MERGE_MAX_DZ;
-      if (!isApart) continue;
-      const key = `${p.chunk.id}|${p.with}`;
-      const g = found.get(key) ?? { chunk: p.chunk.id, with: p.with, s0: p.s, s1: p.s, maxDzM: 0 };
-      g.s0 = Math.min(g.s0, p.s);
-      g.s1 = Math.max(g.s1, p.s);
-      g.maxDzM = Math.max(g.maxDzM, Math.abs(p.dz));
-      found.set(key, g);
-    }
-    const C1 =
-      "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）";
-    const JCT = "浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端";
-    const DROP =
-      "出口ランプが本線の床版の縁から離れる最後の数 m で、地表へ下り始める（車線域はもう重ならない）";
-    // The rainbow range's (P7): runs that were first written there.
-    const SHIBAURA =
-      "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）";
-    const DAIBA = "台場側で 11 号台場線の上下線が二層から並列へ移る区間（OSM layer 4 / 3）";
-    const NOSE = "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）";
-    // The shiodome range's (P6): 汐留の出入口が掘割へ下る本線と並走する所（allowlist.ts SHIODOME_REASON）.
-    const SHIODOME =
-      "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）";
-    // The azabudai ranges' (P9): the viaduct the tunnel comes out onto, first written there.
-    const TANIMACHI =
-      "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）";
-    // Merging P2.6 (its solve moves the coupled components by centimetres) added five NOSE entries
-    // (45019020:8, 45554540:30 × 813455519, 4848755:3, 4848762:34, 4848889:1) and widened four SHIBAURA ones.
-    // P2.7-3a (the default data moved by the file's 1 mm rounding) took 45554540:32 × 813455519 off: its
-    // one point went from |Δz| 0.1502 to 0.1499 m, now within MERGE_MAX_DZ and drawn as one slab.
-    const expected: Array<{ chunk: string; with: string; s: [number, number]; maxDzM: number; why: string }> =
-      [
-        { chunk: "24402125:0", with: "24402611", s: [82.6, 192.6], maxDzM: 6.81, why: SHIODOME },
-        { chunk: "24402611:0", with: "895902565", s: [0.1, 59.1], maxDzM: 0.74, why: TANIMACHI },
-        { chunk: "24402611:1", with: "895902565", s: [353.0, 437.0], maxDzM: 3.53, why: TANIMACHI },
-        { chunk: "24402611:16", with: "45021976", s: [2237.4, 2309.4], maxDzM: 3.64, why: C1 },
-        { chunk: "24402611:22", with: "45021976", s: [3740.1, 3816.1], maxDzM: 3.76, why: C1 },
-        { chunk: "24402611:22", with: "4848762", s: [3806.8, 3814.8], maxDzM: 0.52, why: JCT },
-        { chunk: "24402611:22", with: "813455519", s: [3791.8, 3806.2], maxDzM: 2.64, why: `${C1}。${JCT}` },
-        { chunk: "24402611:31", with: "24402125", s: [4939.7, 5042.7], maxDzM: 6.75, why: SHIODOME },
-        { chunk: "45019020:36", with: "4848740", s: [3534.2, 3537.2], maxDzM: 0.32, why: NOSE },
-        { chunk: "45019020:38", with: "4848740", s: [3814.0, 3814.0], maxDzM: 0.17, why: NOSE },
-        { chunk: "45019020:4", with: "4848762", s: [842.1, 892.1], maxDzM: 3.47, why: DAIBA },
-        { chunk: "45019020:40", with: "45554540", s: [4044.4, 4078.9], maxDzM: 3.73, why: SHIBAURA },
-        { chunk: "45019020:8", with: "4848755", s: [1817.4, 1823.4], maxDzM: 0.33, why: NOSE },
-        { chunk: "45019020:9", with: "4848755", s: [1992.8, 1996.8], maxDzM: 0.36, why: NOSE },
-        { chunk: "45021972:1", with: "45554540", s: [332.5, 333.5], maxDzM: 3.28, why: SHIBAURA },
-        { chunk: "45021972:2", with: "45554540", s: [334.0, 357.0], maxDzM: 3.07, why: SHIBAURA },
-        { chunk: "45021972:24", with: "45554540", s: [6101.9, 6135.4], maxDzM: 1.94, why: SHIBAURA },
-        { chunk: "45021972:3", with: "4848762", s: [587.5, 654.0], maxDzM: 1.79, why: SHIBAURA },
-        { chunk: "45021976:0", with: "45068172", s: [72.7, 102.2], maxDzM: 3.13, why: SHIODOME },
-        { chunk: "45021976:10", with: "24402611", s: [1241.8, 1263.8], maxDzM: 4.18, why: C1 },
-        { chunk: "45021976:11", with: "24402611", s: [1264.3, 1321.8], maxDzM: 1.89, why: C1 },
-        { chunk: "45021976:11", with: "813455519", s: [1267.3, 1271.3], maxDzM: 0.37, why: JCT },
-        { chunk: "45021976:14", with: "4853798", s: [2132.0, 2136.0], maxDzM: 0.39, why: DROP },
-        { chunk: "45021976:16", with: "24402611", s: [2754.5, 2799.5], maxDzM: 1.17, why: C1 },
-        { chunk: "45021976:17", with: "24402611", s: [2799.9, 2824.9], maxDzM: 3.48, why: C1 },
-        { chunk: "45021976:6", with: "45021972", s: [767.3, 769.8], maxDzM: 0.24, why: NOSE },
-        { chunk: "45068172:1", with: "45021976", s: [267.4, 295.4], maxDzM: 2.94, why: SHIODOME },
-        { chunk: "45177681:14", with: "4848889", s: [3300.5, 3302.0], maxDzM: 0.25, why: NOSE },
-        { chunk: "45554540:29", with: "45019020", s: [7252.6, 7282.6], maxDzM: 3.09, why: SHIBAURA },
-        { chunk: "45554540:31", with: "45019020", s: [7519.0, 7522.0], maxDzM: 0.23, why: NOSE },
-        { chunk: "45554540:31", with: "813455519", s: [7717.9, 7726.9], maxDzM: 0.65, why: NOSE },
-        { chunk: "45554540:32", with: "45021972", s: [7792.9, 7817.4], maxDzM: 3.28, why: SHIBAURA },
-        { chunk: "45554540:8", with: "45021972", s: [2022.8, 2055.8], maxDzM: 1.91, why: SHIBAURA },
-        { chunk: "45554540:9", with: "45021972", s: [2056.3, 2057.3], maxDzM: 2.03, why: SHIBAURA },
-        { chunk: "4848755:3", with: "45019020", s: [862.8, 867.8], maxDzM: 0.29, why: NOSE },
-        { chunk: "4848762:1", with: "45021972", s: [482.5, 483.5], maxDzM: 2.11, why: SHIBAURA },
-        { chunk: "4848762:2", with: "45021972", s: [484.0, 553.0], maxDzM: 1.98, why: SHIBAURA },
-        { chunk: "4848762:33", with: "4848889", s: [2823.0, 2828.0], maxDzM: 0.42, why: NOSE },
-        { chunk: "4848762:34", with: "4848889", s: [2994.5, 2997.5], maxDzM: 0.25, why: NOSE },
-        { chunk: "4848762:38", with: "45019020", s: [3932.4, 3982.4], maxDzM: 3.36, why: SHIBAURA },
-        { chunk: "4848889:1", with: "4848762", s: [161.0, 162.0], maxDzM: 0.19, why: NOSE },
-        { chunk: "4853798:0", with: "45021976", s: [198.6, 202.1], maxDzM: 0.37, why: DROP },
-        { chunk: "813455519:1", with: "24402611", s: [306.7, 316.7], maxDzM: 2.89, why: `${C1}。${JCT}` },
-        { chunk: "895902565:4", with: "24402611", s: [502.1, 588.6], maxDzM: 3.74, why: TANIMACHI },
-        { chunk: "895902565:5", with: "24402611", s: [882.5, 943.0], maxDzM: 0.74, why: TANIMACHI },
-      ];
-    const got = [...found.values()];
-    expect(got.map((g) => `${g.chunk}|${g.with}`).toSorted()).toEqual(
-      expected.map((e) => `${e.chunk}|${e.with}`).toSorted(),
-    );
-    for (const e of expected) {
-      const g = found.get(`${e.chunk}|${e.with}`)!;
-      expect(g.s0, e.chunk).toBeCloseTo(e.s[0], 0);
-      expect(g.s1, e.chunk).toBeCloseTo(e.s[1], 0);
-      expect(g.maxDzM, `${e.chunk} × ${e.with}: ${e.why}`).toBeLessThanOrEqual(e.maxDzM);
-    }
-  });
-
-  it("says which format it is (meta.version 5) and that every joint solve converged", () => {
-    expect(meta.version).toBe(5);
+  it("says which format it is (meta.version 6) and that every joint solve converged", () => {
+    expect(meta.version).toBe(6);
     // P9's tunnels and cuts are named, so a reader without them refuses the files (isSupportedMeta).
     expect(meta.features).toEqual(["below"]);
-    expect(meta.solver.unconverged).toBe(0);
-    expect(meta.solver.solves).toBeGreaterThan(0);
-    expect(meta.diagnostics.filter((d) => d.kind === "solver_not_converged")).toEqual([]);
+    expect(record.solver.unconverged).toBe(0);
+    expect(record.solver.solves).toBeGreaterThan(0);
+    expect(record.diagnostics.filter((d) => d.kind === "solver_not_converged")).toEqual([]);
   });
 
   it("records the roads at ground level a low deck does not clear (blocked), one per crossing_over_or_at_grade of a run in the files", () => {
@@ -521,14 +320,14 @@ describe("生成済みの高速道路タイル", () => {
         blocked.push(`${c.run}@${Math.round(s)}`);
       }
     }
-    const reported = meta.diagnostics
+    const reported = record.diagnostics
       .filter((d) => d.kind === "crossing_over_or_at_grade" && runs.has(d.run))
       .map((d) => `${d.run}@${/ at (\d+) m/.exec(d.detail)![1]}`);
     expect(blocked.sort()).toEqual(reported.sort());
   });
 
   it("tells a portal (the road goes on into a tunnel or cut) from a touchdown at grade", () => {
-    for (const r of meta.runs) {
+    for (const r of record.runs) {
       for (const e of [r.start, r.end]) {
         const isPortal = e.kind === "portal";
         if (isPortal) expect(["tunnel", "cut"]).toContain(e.into);
@@ -541,46 +340,138 @@ describe("生成済みの高速道路タイル", () => {
     const text = [
       ...tileFiles.map((f) => readFileSync(join(DIR, f), "utf8")),
       readFileSync(join(DIR, "meta.json"), "utf8"),
+      readFileSync(join(DIR, "report.json"), "utf8"),
+      ...(existsSync(join(DIR, "ledger.json")) ? [readFileSync(join(DIR, "ledger.json"), "utf8")] : []),
     ].join("\n");
     for (const w of OPERATOR_WORDS) expect(text.toLowerCase()).not.toContain(w.toLowerCase());
   });
 
-  it("stays small: the whole data set is recorded in meta.json, and under 1 MB for the test section", () => {
+  it("stays small: the tiles' bytes are recorded in meta.json, and under 1 MB for the default build", () => {
     const total = tileFiles.reduce((n, f) => n + readFileSync(join(DIR, f)).length, 0);
     expect(meta.bytes).toBe(total);
-    if (isTestSection) expect(total).toBeLessThan(1_000_000);
+    if (isDefaultBuild) expect(total).toBeLessThan(1_000_000);
+  });
+});
+
+describe.each(DISTRICT_LIST)("生成済みの高速道路タイル（地区 %s）", (district) => {
+  const dRuns = record.runs.filter((r) => districtOf.get(r.id) === district);
+  const dChunks = chunks.filter((c) => districtOf.get(c.run) === district);
+
+  it("every run of the range is in the files with all its chunks", () => {
+    for (const r of dRuns) expect(byRun.get(r.id)?.map((c) => c.id)).toEqual(r.chunks);
+  });
+
+  it("T1・T2: grades within 第20条 and vertical curves within 第22条 on every chunk, between stations too (the Hermite surface)", () => {
+    expect(dChunks.flatMap((c) => checkGrade(c, runs.get(c.run)!))).toEqual([]);
+    expect(dChunks.flatMap(checkVerticalCurves)).toEqual([]);
+    expect(dChunks.flatMap(checkSurface)).toEqual([]);
+  });
+
+  it("design speed is per section: a run's chunks may differ, each within the run's highest and its tag", () => {
+    for (const r of dRuns) {
+      const speeds = byRun.get(r.id)!.map((c) => c.V);
+      expect(Math.max(...speeds)).toBe(r.V);
+      expect(r.V).toBeLessThanOrEqual(r.tagV);
+    }
+  });
+
+  it("T3: chunks join exactly within a run, and runs join their parent at a junction in height, grade and bank", () => {
+    const problems: string[] = [];
+    for (const list of dRuns.map((r) => byRun.get(r.id)!))
+      for (let i = 1; i < list.length; i++) problems.push(...checkChunkJoin(list[i - 1], list[i]));
+    for (const r of dRuns) {
+      const list = byRun.get(r.id)!;
+      for (const [atStart, end] of [
+        [true, r.start],
+        [false, r.end],
+      ] as const) {
+        const isJoined = end.kind === "junction" || end.kind === "seam";
+        const parent = isJoined ? byRun.get(end.parent!) : undefined;
+        if (!parent) continue; // the parent is outside the range: not in these files
+        problems.push(
+          ...checkJunction(atStart ? list[0] : list[list.length - 1], atStart, end.grade!, parent),
+        );
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it("T4: every crossing is cleared by 4.5 m + girder, and the ground everywhere outside the climbs from low ends", () => {
+    // Low ends recomputed from the run summaries (a ground end, or a junction on a parent still
+    // climbing from one), not taken from the compiler.
+    const climbs = (id: string) => climbingEnds(runs.get(id)!, runs);
+    // A run may miss the assumed standard floor over open ground only by what its allowed
+    // below_open_ground_floor diagnostic says (bounded by the allowlist); the crossings exactly.
+    const openShort = (id: string) => {
+      const d = record.diagnostics.find(
+        (x) => x.run === id && x.kind === "below_open_ground_floor" && isAllowed(x),
+      );
+      return d ? Number(/^([\d.]+) m under/.exec(d.detail)![1]) + 0.01 : 0;
+    };
+    expect(
+      dChunks.flatMap((c) => checkClearance(c, runs.get(c.run)!, climbs(c.run), openShort(c.run))),
+    ).toEqual([]);
+    expect(meta.counts.crossings).toBeGreaterThan(0);
+  });
+
+  it("T5: ground ends meet the DEM ground within 5 cm at its grade", () => {
+    const problems: string[] = [];
+    for (const r of dRuns) {
+      const list = byRun.get(r.id)!;
+      problems.push(...checkGroundEnd(list[0], r, true), ...checkGroundEnd(list[list.length - 1], r, false));
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it("T6: no kink, radius at least the floor for the assigned speed, within 1.5 m of OSM", () => {
+    expect(dChunks.flatMap((c) => checkPlan(c, runs.get(c.run)!, rampFloor(c.run)).problems)).toEqual([]);
+  });
+
+  it("T7: superelevation within 第16条, run in over 第18条's length, composite grade within 第25条", () => {
+    expect(dChunks.flatMap(checkSuperelevation)).toEqual([]);
+  });
+
+  it("T12 (P9): every tunnel keeps its box and cover under the ground, every cut stays under it, wherever a portal's descent reaches", () => {
+    const problems: string[] = [];
+    for (const r of dRuns) {
+      const list = byRun.get(r.id)!;
+      const first = list[0].st;
+      const last = list[list.length - 1].st;
+      const ends = { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
+      for (const c of list) problems.push(...checkCover(c, r, ends));
+    }
+    expect(problems).toEqual([]);
   });
 });
 
 // The conditions for shipping the whole ward area (P2.5 review), each recomputed from the files.
 describe.runIf(isWholeArea)("全域の出荷条件（--range all の出力）", () => {
-  const closed = meta.closed ?? [];
+  const closed = record.closed;
 
   it("no main line is left out, and every run end hangs from a run that is in the files", () => {
     expect(closed.filter((c) => c.cls === "expressway")).toEqual([]);
     const missing: string[] = [];
-    for (const r of meta.runs)
+    for (const r of record.runs)
       for (const e of [r.start, r.end])
         if (e.parent !== undefined && !byRun.has(e.parent)) missing.push(`${r.id} → ${e.parent}`);
     expect(missing).toEqual([]);
   });
 
   it("ramps left out are at most 5 %, each closed with its reason and not in the tiles", () => {
-    const rampsIn = meta.runs.filter((r) => r.cls === "ramp").length;
+    const rampsIn = record.runs.filter((r) => r.cls === "ramp").length;
     const rampsOut = closed.filter((c) => c.cls === "ramp");
     expect(rampsOut.length / (rampsIn + rampsOut.length)).toBeLessThanOrEqual(0.05);
     for (const c of rampsOut) {
       expect(byRun.has(c.run)).toBe(false);
-      expect(meta.diagnostics.some((d) => d.run === c.run && d.kind === c.reason)).toBe(true);
+      expect(record.diagnostics.some((d) => d.run === c.run && d.kind === c.reason)).toBe(true);
     }
   });
 
-  it("no overlap of carriageways outside the allowlist (recomputed by the grid above)", () => {
+  it("no overlap of carriageways the ledger does not accept (recomputed by the grid above)", () => {
     const unallowed = [...brute.keys()].filter((key) => {
-      const [a, b] = key.split("|");
-      return !ALLOWLIST.some(
-        (e) => e.kind === "deck_overlap" && [e.run, e.with].sort().join("|") === key && a !== b,
-      );
+      const c = overlapCase(key);
+      const isAccepted = c !== undefined && (c.status === "accepted" || c.status === "wontfix");
+      return !isAccepted;
     });
     expect(unallowed).toEqual([]);
   });

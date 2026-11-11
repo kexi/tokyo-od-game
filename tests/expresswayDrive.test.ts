@@ -1,11 +1,13 @@
 import RAPIER from "@dimforge/rapier3d-compat";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Scene, Vector3 } from "three";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { PARAPET_WIDTH } from "../src/expressway/assumptions";
-import type { XwChunk, XwMeta, XwRunSummary, XwTile } from "../src/expressway/format";
-import { planeAt, tileKey } from "../src/expressway/geo";
+import { XW_VERSION, type XwChunk, type XwMeta, type XwRunSummary } from "../src/expressway/format";
+import { packTiles } from "../src/expressway/files";
+import { DEFAULT_DATA_DIR, readExpresswayFiles } from "../scripts/expresswayFiles";
+import { LET_GO_MAX_STEP_M } from "../src/expressway/allowlist";
+import { seamCases, withinCap } from "../src/expressway/ledger";
+import { planeAt } from "../src/expressway/geo";
 import { LocalFrame } from "../src/geo/frame";
 import { MARKING_DIMENSIONS } from "../src/law/roadStandards";
 import {
@@ -18,7 +20,7 @@ import {
 import { ALL_GROUPS, BUILDING_GROUPS, GROUND_QUERY_GROUPS, PROP_GROUPS } from "../src/physics/groups";
 import { DeckIndex, type DeckSide, planDeckMarkings, type RingSides } from "../src/world/expresswayMarkings";
 import { chunkRings, MERGE_FULL_DZ, MERGE_MAX_DZ, MERGE_RAMP } from "../src/world/expresswayMerge";
-import { probeGenerated } from "./expresswaySeams";
+import { framesOf, probeGenerated } from "../scripts/expresswaySeams";
 import { frameAt, surfaceHeight } from "../src/expressway/profile";
 import { expresswayRoadInput, joinExpressway, type XwRoadInput } from "../src/world/expresswayRoads";
 import { laneCentreOffset, sectionWidth } from "../src/world/laneChange";
@@ -1043,13 +1045,9 @@ describe("which deck a car is on at a 分合流 (the main line over the ramp lyi
   // than a main line posted at 50, and on the stretch where its lane lies over the main line's
   // carriageway (the 加速・減速車線) the car is on the main line and takes its limit.
   it("never puts a car at a main line's lane centre of the generated data on a deck with a lower limit than its own", () => {
-    const dir = join(import.meta.dirname, "..", "public", "data", "expressway");
-    const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as XwMeta;
-    const real = readdirSync(dir)
-      .filter((f) => /^\d+-\d+\.json$/.test(f))
-      .flatMap((f) => (JSON.parse(readFileSync(join(dir, f), "utf8")) as XwTile).chunks);
+    const { chunks: real, runs: realRuns } = readExpresswayFiles(DEFAULT_DATA_DIR);
     const g = new RoadGraph(
-      joinExpressway([], expresswayRoadInput(real, meta.runs, ellipsoidal), () => {}),
+      joinExpressway([], expresswayRoadInput(real, realRuns, ellipsoidal), () => {}),
       new LocalFrame(35.6537, 139.7508, 40),
     );
     let checked = 0;
@@ -1075,114 +1073,53 @@ describe("which deck a car is on at a 分合流 (the main line over the ramp lyi
   }, 120_000);
 });
 
-/** Probed seams of the generated data (every 0.5 m of the same stretches): fixed, see the test. */
-const SEAM_COUNT = 3646;
-
 describe("the generated data's merges (P3.5): seams and let-go points probed from the chunks alone", () => {
-  // Where to probe comes from the stations and the Hermite surface (tests/expresswayPairs.ts), not
+  // Where to probe comes from the stations and the Hermite surface (scripts/expresswayPairs.ts), not
   // from the deck builder's rings or sides; heights are rays into every merged chunk (each probed in
-  // its nearest frame, expresswaySeams.ts AREAS). Only the lists of known exceptions are narrowed,
-  // each with why and the stretch (s) it holds for; a seam without a face is listed apart
-  // (OPEN_HOLES), never as a step.
-  const probed = () => probeGenerated();
-  /**
-   * Seams off the 1 mm rule: the largest step and inside-face miss seen, why, and the stretch of the
-   * chunk it holds for (absent: the whole chunk, as these were reviewed in P3.5 and P7).
-   */
-  const SEAM_EXCEPTIONS: Record<string, { step: number; inside: number; why: string; s?: [number, number] }> =
-    {
-      "45019020:40": {
-        // P6 cuts the run where its maxspeed changes (XW_VERSION 5): the let-go point (s 4079.3, the
-        // old 45019020:39) and the overlap's seams fell into one chunk, and one seam there (s 4082.4,
-        // |Δz| 4.4 cm) steps 18 mm (3.5 mm before the recut). Open for the deck builder (P3.5).
-        step: 0.019,
-        inside: 0.16,
-        s: [4079, 4083],
-        why: "芝浦 JCT で 11 号台場線の上りが 1 号羽田線（45554540）に重なる区間の手放し（let-go、s 4079.3）の上の 1 点と、その先の継ぎ目（s 4082.4、|Δz| 4.4 cm）の 18 mm の段。P6 のチャンクの切り直しで出た",
-      },
-      "4848889:0": {
-        step: 0.0045,
-        inside: 0.01,
-        why: "台場出口が 11 号台場線の下りから分かれるノーズ（|Δz| 3〜5 cm）で 1〜4 mm の段",
-      },
-      "813455519:0": {
-        step: 0.001,
-        inside: 0.06,
-        why: "浜崎橋 JCT で 1 号羽田線（45554540）が 4 車線から 2 車線に分かれた直後（断面 7.5 → 4.25 m の継ぎ目の先）。継ぎ目の内側の面がマスターの中心の高さから最大 5.5 cm 外れる（原因は未特定、knowledge の残課題）",
-      },
-    };
+  // the frame of the nearest tile centre, scripts/expresswaySeams.ts). What is off the rules is the
+  // data folder's ledger (P2.7-4): seam_step / seam_hole cases with their cap, let_go by its rule.
+  // The folder is the tests' (XW_DATA_DIR, else public/data/expressway).
+  const generated = readExpresswayFiles();
+  const probed = () =>
+    probeGenerated(generated.chunks, generated.runs, framesOf(generated.tiles, generated.meta.zoom));
+  const ledgerCases = (kinds: string[]) =>
+    new Map(
+      (generated.ledger?.cases ?? [])
+        .filter((c) => kinds.includes(c.kind) && c.status !== "gone")
+        .map((c) => [c.key, c]),
+    );
 
-  /**
-   * Seams where the probe finds no face of the master at its height (none at all, or only one metres
-   * down: s 71 meets the main line's 2.1 m below): open defects of the merged decks,
-   * listed so a new one fails, not accepted for good. 汐留出口 (P6's shiodome range): what the probe
-   * sees is that the pair is within MERGE_MAX_DZ there and no ray meets the master's slab. Why is
-   * not established (the deck builder's cut of the master where the main line drops away is a
-   * guess). The P6 drives over it (routes-r4, r5) did not fall; that the ramp's own slab carries the
-   * car there is not shown.
-   */
-  const OPEN_HOLES: ReadonlyArray<{ chunk: string; s: [number, number]; why: string }> = [
-    {
-      chunk: "24402125:0",
-      s: [39, 81],
-      why: "汐留出口が内回りから分かれる所（同一面の帯の中でマスターの面にレイが当たらない。原因は未特定）",
-    },
-  ];
-
-  it("meets the master's face at every seam a car drives over: ≤ 1 mm where the pair is within 5 cm, and no hole but the listed open ones", () => {
-    const { seams, worlds: ws } = probed();
+  it("meets the master's face at every seam a car drives over: ≤ 1 mm where the pair is within 5 cm; what is not is a ledger case within its cap", () => {
+    const { seams, cuts, worlds: ws } = probed();
     worlds.push(...ws);
     // Every 0.5 m of the ramps' "same" stretches whose road lies past the master's slab edge and
-    // within MERGE_MAX_DZ of it, in both ranges: a fixed count, so a probe that stops finding its seam fails.
-    expect(seams).toHaveLength(SEAM_COUNT);
-    const isOpenHole = (x: { chunk: string; s: number }) =>
-      OPEN_HOLES.some((h) => h.chunk === x.chunk && x.s >= h.s[0] && x.s <= h.s[1]);
-    const holes = seams
-      .filter((x) => x.step === null && !isOpenHole(x))
-      .map((x) => `${x.chunk} s ${x.s.toFixed(2)}`);
-    expect(holes).toEqual([]);
-    const off: string[] = [];
-    for (const x of seams) {
-      // In an open hole's stretch the ray can also meet a face metres down (s 71: the main line's,
-      // 2.1 m below): that is the same defect, not a step.
-      if (x.step === null || isOpenHole(x)) continue;
-      const listed = SEAM_EXCEPTIONS[x.chunk];
-      const isInStretch = listed !== undefined && (!listed.s || (x.s >= listed.s[0] && x.s <= listed.s[1]));
-      const known = isInStretch ? listed : undefined;
-      // At the master's face up to MERGE_FULL_DZ; sliding to the ramp's own height (≤ the miss,
-      // linear between rings) up to MERGE_MAX_DZ. Same-frame values (one world per frame).
-      const limit = Math.abs(x.dz) <= MERGE_FULL_DZ ? 0.001 : MERGE_MAX_DZ + 0.001;
-      const stepLimit = Math.max(limit, known?.step ?? 0);
-      if (x.step! > stepLimit)
-        off.push(`${x.chunk} s ${x.s.toFixed(2)} dz ${x.dz.toFixed(3)}: step ${x.step!.toFixed(4)} m`);
-      // Inside the seam is the master's own face: within the 1 cm its chords keep to its surface.
-      const insideLimit = known?.inside ?? 0.01;
-      if (Math.abs(x.inside!) > insideLimit + 1e-4)
-        off.push(`${x.chunk} s ${x.s.toFixed(2)}: inside ${x.inside!.toFixed(4)} m`);
+    // within MERGE_MAX_DZ of it: the count the ledger's budget fixes, so a probe that stops finding
+    // its seam fails.
+    expect(generated.ledger?.budget?.seamProbes).toBe(seams.length);
+    const found = seamCases(seams, cuts, [], { fullDz: MERGE_FULL_DZ, maxDz: MERGE_MAX_DZ }).filter(
+      (c) => c.kind === "seam_step" || c.kind === "seam_hole",
+    );
+    const listed = ledgerCases(["seam_step", "seam_hole"]);
+    expect(found.map((c) => c.key).sort()).toEqual([...listed.keys()].sort());
+    for (const c of found) {
+      const entry = listed.get(c.key)!;
+      expect(entry.cap, c.key).not.toBeNull();
+      expect(withinCap(c.measured, entry.cap!), `${c.key} ${JSON.stringify(c.measured)}`).toBe(true);
     }
-    expect(off).toEqual([]);
-    // Three worlds of every chunk near each frame: tens of seconds on a busy machine.
+    // A world per tile with chunks, each with every chunk near it: tens of seconds on a busy machine.
   }, 120_000);
 
-  it("lets go of a pair with no step along travel, at the eight places the miss passes MERGE_MAX_DZ", () => {
-    const { cuts, worlds: ws } = probed();
+  it("lets go of a pair with no step along travel (the rule's 1 mm), at the places the ledger lists", () => {
+    const { seams, cuts, worlds: ws } = probed();
     worlds.push(...ws);
-    // Before P3.5's review these were faces across the road up to 0.15 m high (W1). The last three
-    // are the rainbow range's (芝浦 JCT, 台場入口, 台場出口).
-    expect(cuts.map(({ chunk, with: w, s }) => ({ chunk, with: w, s }))).toEqual([
-      // P6's shiodome range: 汐留出口 and 汐留入口.
-      { chunk: "24402125:0", with: "24402611", s: 82.5 },
-      { chunk: "45068172:1", with: "45021976", s: 295.5 },
-      { chunk: "207111988:2", with: "24402611", s: 157.5 },
-      { chunk: "4853798:0", with: "45021976", s: 198.5 },
-      { chunk: "4853799:0", with: "24402611", s: 82.3 },
-      { chunk: "45019020:40", with: "45554540", s: 4079.3 },
-      { chunk: "4848755:3", with: "45019020", s: 868.2 },
-      { chunk: "4848889:1", with: "4848762", s: 160.6 },
-    ]);
+    // Before P3.5's review these were faces across the road up to 0.15 m high (W1).
+    const found = seamCases(seams, cuts, [], { fullDz: MERGE_FULL_DZ, maxDz: MERGE_MAX_DZ }).filter(
+      (c) => c.kind === "let_go",
+    );
+    expect(found.map((c) => c.key).sort()).toEqual([...ledgerCases(["let_go"]).keys()].sort());
     for (const c of cuts) {
       expect(c.alongStep, `${c.chunk} s ${c.s}`).not.toBeNull();
-      expect(c.alongStep!, `${c.chunk} s ${c.s}`).toBeLessThanOrEqual(0.001);
+      expect(c.alongStep!, `${c.chunk} s ${c.s}`).toBeLessThanOrEqual(LET_GO_MAX_STEP_M);
     }
   }, 120_000);
 });
@@ -1241,24 +1178,17 @@ describe("collision groups: buildings stay solid for everyone, a car on a deck i
 
 describe("ExpresswayDecks lifecycle (colliders 400 m / 550 m, the hold and the warp's wait)", () => {
   const { chunks, runs } = section();
+  const tiles = packTiles(chunks, runs, [], 14);
   const meta: XwMeta = {
-    version: 5,
+    version: XW_VERSION,
     zoom: 14,
-    tiles: [...new Set(chunks.map((c) => tileKey(c.st[1], c.st[2], 14)))],
+    tiles: [...tiles.keys()],
     ranges: [],
     structures: [],
     extract: { url: "", timestamp: null },
     counts: { runs: 2, chunks: 3, stations: 0, piers: 0, crossings: 0 },
     bytes: 0,
-    solver: { components: 0, solves: 0, unconverged: 0 },
-    runs,
-    diagnostics: [],
   };
-  const tiles = new Map<string, XwTile>();
-  for (const c of chunks) {
-    const key = tileKey(c.st[1], c.st[2], 14);
-    tiles.set(key, { chunks: [...(tiles.get(key)?.chunks ?? []), c] });
-  }
   beforeAll(() => {
     vi.stubGlobal("fetch", async (url: string) => {
       const name = String(url).split("/").pop()!.replace(".json", "");

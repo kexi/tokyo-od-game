@@ -4,6 +4,8 @@ import { classifyOverlap, isJoined, OVERLAP_CLASSES, type OverlapClass, overlapP
 import { hermite, ST } from "./profile";
 import { CROSS_STRIDE, STATION_STRIDE } from "./format";
 import { PROPERTIES, type Property, type Violations } from "./violations";
+import { type District, DISTRICTS } from "./districts";
+import type { LedgerSummary } from "./ledger";
 
 /**
  * The scorecard of one expressway build (P2.7-1, `scripts/expressway.ts --report`): what the later
@@ -27,11 +29,15 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * ground and the main lines below ground. 5 (P2.7-3 review): `tracking.junction` (the free stretches
  * near a junction, apart), the short waves' regression slope in `free` and `junction`, and the km of
  * viaduct over 15 and 20 m above the ground (`height.over15Km` / `over20Km`). Reports of versions
- * 2–4 (without them) still parse, so a scorecard can be compared with one written before.
+ * 2–4 (without them) still parse, so a scorecard can be compared with one written before. 6 (P2.7-4):
+ * `size.record` and `size.ledger` (report.json and ledger.json of the data folder; meta.json is the
+ * v6 index), `districts` (runs, km, written and closed per district, districts.ts) and `ledger` (the
+ * ledger's summary, null without one). Version 5 reports still parse.
  */
-export const REPORT_VERSION = 5;
+export const REPORT_VERSION = 6;
 
 const blockSize = { runs: count, pieces: count, variables: count };
+const fileSize = z.strictObject({ raw: count, gzip: count });
 
 /**
  * Short-wave statistics over a set of tracked stretches: km, correlation and σ of the deck's short
@@ -47,7 +53,7 @@ const stretchTally = z.strictObject({
 });
 
 export const ReportSchema = z.strictObject({
-  version: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(REPORT_VERSION)]),
+  version: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(REPORT_VERSION)]),
   label: z.string(),
   range: z.string(),
   below: z.enum(["pruned", "all"]),
@@ -208,6 +214,10 @@ export const ReportSchema = z.strictObject({
     raw: spread,
     gzip: spread,
     meta: z.strictObject({ raw: count, gzip: count, byField: z.record(z.string(), count) }),
+    /** report.json of the data folder (v6; absent before). */
+    record: fileSize.optional(),
+    /** ledger.json of the data folder as the build kept it (null: none there yet; absent before v6). */
+    ledger: fileSize.nullable().optional(),
   }),
   solver: z.strictObject({
     components: count,
@@ -257,6 +267,28 @@ export const ReportSchema = z.strictObject({
       ),
     })
     .optional(),
+  /**
+   * Per district (districts.ts, provisional; version 6): the runs and km planned for the range,
+   * written to the tiles and closed. A planned run that is not written takes its ref and position
+   * from the plan (it has no chunks).
+   */
+  districts: z
+    .record(z.enum(DISTRICTS), z.strictObject({ planned: tally, written: tally, closed: tally }))
+    .optional(),
+  /**
+   * The summary (ledger.ts LedgerSummary) of the ledger the build decided `allowed` with (the
+   * folder's as kept, or --ledger), null without one (version 6).
+   */
+  ledger: z
+    .strictObject({
+      cases: z.record(z.string(), z.record(z.string(), z.record(z.string(), count))),
+      open: count,
+      withoutQa: count,
+      seamProbes: count,
+      rules: z.record(z.string(), count),
+    })
+    .nullable()
+    .optional(),
   /** Wall-clock times (the only part that differs between two builds of the same input). */
   timings: z.strictObject({ qpMs: count, stagesMs: z.record(z.string(), count) }).optional(),
 });
@@ -289,10 +321,16 @@ export type ReportInput = {
   chunks: XwChunk[];
   tiles: Array<{ bytes: number; gzipBytes: number }>;
   meta: { raw: number; gzip: number; byField: Record<string, number> };
+  record: { raw: number; gzip: number };
+  ledger: { raw: number; gzip: number } | null;
   solver: Report["solver"] & { qpMs: number };
   /** The partition without what buildReport derives (the anchor count, the largest block). */
   partition: Omit<NonNullable<Report["partition"]>, "anchorCount" | "largest">;
   stagesMs: Record<string, number>;
+  /** Each planned run's district (districts.ts). */
+  districts: ReadonlyMap<string, District>;
+  /** The summary of the ledger that decided `allowed`, null without one. */
+  ledgerSummary: LedgerSummary | null;
   /** Leave the timings out (the baseline fixture). */
   withoutTimings?: boolean;
 };
@@ -904,6 +942,38 @@ export function partitionOf(p: ReportInput["partition"]): NonNullable<Report["pa
   };
 }
 
+/** Planned, written and closed runs per district (every district, zero where none). */
+export function districtsOf(
+  input: Pick<ReportInput, "planned" | "runs" | "closed" | "districts">,
+): NonNullable<Report["districts"]> {
+  const wanted = input.planned.filter((p) => p.wanted);
+  const lengthOf = new Map(input.planned.map((p) => [p.id, p.lengthM]));
+  const closed = new Set(input.closed.map((c) => c.run));
+  const written = new Set(input.runs.map((r) => r.id));
+  const out = Object.fromEntries(
+    DISTRICTS.map((d) => [
+      d,
+      { planned: { runs: 0, km: 0 }, written: { runs: 0, km: 0 }, closed: { runs: 0, km: 0 } },
+    ]),
+  ) as NonNullable<Report["districts"]>;
+  for (const p of wanted) {
+    const t = out[input.districts.get(p.id) ?? "outside"];
+    const runKm = (lengthOf.get(p.id) ?? 0) / 1000;
+    t.planned.runs++;
+    t.planned.km += runKm;
+    if (written.has(p.id)) {
+      t.written.runs++;
+      t.written.km += runKm;
+    }
+    if (closed.has(p.id)) {
+      t.closed.runs++;
+      t.closed.km += runKm;
+    }
+  }
+  for (const t of Object.values(out)) for (const x of [t.planned, t.written, t.closed]) x.km = round(x.km, 3);
+  return out;
+}
+
 export function buildReport(input: ReportInput): Report {
   const wanted = input.planned.filter((p) => p.wanted);
   const inRange = new Set(wanted.map((p) => p.id));
@@ -942,9 +1012,13 @@ export function buildReport(input: ReportInput): Report {
       raw: spreadOf(input.tiles.map((t) => t.bytes)),
       gzip: spreadOf(input.tiles.map((t) => t.gzipBytes)),
       meta: input.meta,
+      record: input.record,
+      ledger: input.ledger,
     },
     solver,
     partition: partitionOf(input.partition),
+    districts: districtsOf(input),
+    ledger: input.ledgerSummary,
     ...(input.withoutTimings
       ? {}
       : {

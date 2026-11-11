@@ -1,4 +1,4 @@
-import { STATION_STRIDE, type XwChunk, type XwClass, type XwRunSummary } from "../expressway/format";
+import { STATION_STRIDE, type XwChunk, type XwClass, type XwTileRun } from "../expressway/format";
 import { planeAt } from "../expressway/geo";
 import { frameAt, ST, surfaceSamples } from "../expressway/profile";
 import { type CrossSection, sectionWidth } from "./laneChange";
@@ -95,12 +95,12 @@ export function chunkSection(chunk: XwChunk): CrossSection {
 type Point = { s: number; lon: number; lat: number; z: number; id: string };
 
 /**
- * Lines for the loaded chunks. `runs` is meta.json's run list (ends and posted speeds); a chunk
- * whose run is missing from it is skipped.
+ * Lines for the loaded chunks. `runs` is the run summaries of the tiles read (v6: each tile carries
+ * those of its chunks' runs: class and ends); a chunk whose run is missing from it is skipped.
  */
 export function expresswayRoadInput(
   chunks: readonly XwChunk[],
-  runs: readonly XwRunSummary[],
+  runs: readonly XwTileRun[],
   ellipsoidal: Ellipsoidal,
 ): XwRoadInput {
   const byRun = new Map(runs.map((r) => [r.id, r]));

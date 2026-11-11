@@ -1,4 +1,4 @@
-import { ALLOWLIST, isAllowed } from "./allowlist";
+import { isAllowed } from "./allowlist";
 import {
   checkChunkJoin,
   checkClearance,
@@ -12,14 +12,14 @@ import {
   checkVerticalCurves,
   climbingEnds,
 } from "./checks";
-import { STATION_STRIDE, type XwChunk, type XwMeta } from "./format";
+import { STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
 
 /**
  * The checks of knowledge/road-redesign-plan.md 4.4 over built files, counted per property, as the
  * data test (tests/expresswayData.test.ts) runs them: T1 grade, T2 vertical curves and the Hermite
  * surface between stations, T3 joins (within a run and at a junction whose parent is in the files),
  * T4 clearance (the climbs from low ends and the allowed open-ground miss excepted), T5 ground ends,
- * T6 plan (the allowed ramp radii), T7 superelevation, T12 tunnel cover. The scorecard carries the
+ * T6 plan (the ramp radii the ledger accepts: `rampFloor`, ledger.ts rampFloorOf), T7 superelevation, T12 tunnel cover. The scorecard carries the
  * counts (P2.7-1: 「T1〜T7 違反 0」 is a shipping condition) and the first violations of each.
  * Why not the data test alone: it stops at the first property that fails and only on one folder.
  */
@@ -31,15 +31,16 @@ export type Violations = Record<Property, { count: number; first: string[] }>;
 /** How many of each property's violations the scorecard lists. */
 const FIRST = 5;
 
-export function violationsOf(meta: Pick<XwMeta, "runs" | "diagnostics">, chunks: XwChunk[]): Violations {
+export function violationsOf(
+  meta: { runs: readonly XwRunSummary[]; diagnostics: readonly XwDiagnostic[] },
+  chunks: XwChunk[],
+  rampFloor: (run: string) => number | undefined = () => undefined,
+): Violations {
   const runs = new Map(meta.runs.map((r) => [r.id, r]));
   const byRun = new Map<string, XwChunk[]>();
   for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
   for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
   const found = Object.fromEntries(PROPERTIES.map((p) => [p, [] as string[]])) as Record<Property, string[]>;
-  const rampFloor = (run: string) =>
-    ALLOWLIST.find((a) => a.kind === "ramp_radius" && a.run === run && a.minRadiusM !== undefined)
-      ?.minRadiusM;
   const openShort = (id: string) => {
     const d = meta.diagnostics.find(
       (x) => x.run === id && x.kind === "below_open_ground_floor" && isAllowed(x),

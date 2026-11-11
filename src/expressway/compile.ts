@@ -139,7 +139,7 @@ export type CrossObject = { kind: "road" | "rail"; id: number; pts: Array<[numbe
 const CLOSING_KINDS = ["vertical_unsolved", "parent_unsolved"];
 
 const GRID_M = 5;
-const MAX_CHUNK_M = 300;
+export const MAX_CHUNK_M = 300;
 const GIRDER = GIRDER_DEPTH.value;
 const ROAD_CLEAR = CLEARANCE_HEIGHT.value + GIRDER;
 /** The deck over open ground: the assumed floor under the girder plus the girder. */
@@ -2597,8 +2597,18 @@ export function evalRun(s: Pick<Solved, "pieces">, sv: number): { z: number; gra
 /** Where a run is solved: its elevation at run distance s, or null (not solved there, or closed). */
 type HeightAt = (run: string, s: number) => { z: number; grade: number } | null;
 
-/** A block (a component for `components`) as the scorecard lists it; `canonical` is hashed by the script. */
-export type BlockSummary = { id: string; pieces: number; runs: number; variables: number; canonical: string };
+/**
+ * A block (a component for `components`) as the scorecard lists it; `canonical` is hashed by the
+ * script. `members`: the run ids it has pieces of, sorted (report.json's blocks, P2.7-4).
+ */
+export type BlockSummary = {
+  id: string;
+  pieces: number;
+  runs: number;
+  variables: number;
+  canonical: string;
+  members: string[];
+};
 
 /** How the needed runs were split and solved (the scorecard's `partition`). */
 export type PartitionResult = {
@@ -2880,6 +2890,7 @@ function solveComponents(
       runs: ids.length,
       variables: res.stats.largestVariables,
       canonical: canonicalOf(ids, (id) => [0, plan.runs.get(id)!.length], res),
+      members: [...ids].sort(),
     });
   }
   const heightAt: HeightAt = (run, s) => {
@@ -3308,6 +3319,7 @@ function solveBlocks(
       runs: new Set(ids.map(runOf)).size,
       variables: res.stats.largestVariables,
       canonical: canonicalOf(ids, range, res),
+      members: [...new Set(ids.map(runOf))].sort(),
     });
   }
   for (const run of [...blockRuns].sort()) {

@@ -1,46 +1,57 @@
 import RAPIER from "@dimforge/rapier3d-compat";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Vector3 } from "three";
-import { STATION_STRIDE, type XwChunk, type XwMeta, type XwTile } from "../src/expressway/format";
-import { frameAt } from "../src/expressway/profile";
-import { LocalFrame } from "../src/geo/frame";
-import { createDeckBody, deckArraySteps } from "../src/world/expresswayDeck";
-import { DeckIndex, MERGE_PAD_M, roleOf } from "../src/world/expresswayMarkings";
-import { MERGE_MAX_DZ, seamWeight } from "../src/world/expresswayMerge";
-import { type PairPoint, pairPoints, type Project } from "./expresswayPairs";
+import { STATION_STRIDE, type XwChunk, type XwTileRun } from "../src/expressway/format.ts";
+import { frameAt } from "../src/expressway/profile.ts";
+import { LocalFrame } from "../src/geo/frame.ts";
+import { createDeckBody, deckArraySteps } from "../src/world/expresswayDeck.ts";
+import { DeckIndex, MERGE_PAD_M, roleOf } from "../src/world/expresswayMarkings.ts";
+import { MERGE_MAX_DZ, seamWeight } from "../src/world/expresswayMerge.ts";
+import { type PairPoint, pairPoints, type Project } from "./expresswayPairs.ts";
 
 /**
- * The generated data's merged decks probed by rays where the chunks alone say the seams and the
- * let-go points are (expresswayPairs.ts), for tests/expresswayDrive.test.ts. Needs RAPIER.init().
+ * The merged decks of a data folder probed by rays where the chunks alone say the seams and the
+ * let-go points are (expresswayPairs.ts): for the data tests (tests/expresswayDrive.test.ts,
+ * tests/expresswayLedger.test.ts) and the ledger tool (scripts/expresswayLedger.ts), which count the
+ * seam cases from them. Needs RAPIER.init().
  */
 
 const N = 36.9;
-
-export function loadGenerated(): { meta: XwMeta; chunks: XwChunk[] } {
-  const dir = join(import.meta.dirname, "..", "public", "data", "expressway");
-  const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as XwMeta;
-  const chunks = readdirSync(dir)
-    .filter((f) => /^\d+-\d+\.json$/.test(f))
-    .flatMap((f) => (JSON.parse(readFileSync(join(dir, f), "utf8")) as XwTile).chunks);
-  return { meta, chunks };
-}
 
 /**
  * Frames the probes run in, each over the chunks nearest to it: the colliders are float32, and
  * 4 km from a frame's origin a vertex rounds by ~0.25 mm, enough to read a millimetre step where
  * the data has none. Every chunk is probed in its nearest frame; each frame's world holds every
- * chunk within WORLD_REACH_M (so a pair's master is always there).
+ * chunk within WORLD_REACH_M (so a pair's master is always there). The frames are the centres of
+ * the tiles that hold chunks (P2.7-4: before, three points written by hand for the test section).
  */
-const AREAS: ReadonlyArray<{ lat: number; lon: number }> = [
-  { lat: 35.6537, lon: 139.7508 }, // 芝公園・浜崎橋
-  { lat: 35.6435, lon: 139.7575 }, // 芝浦
-  { lat: 35.6345, lon: 139.7715 }, // 台場
-];
 const WORLD_REACH_M = 3000;
+
+export type ProbeFrame = { lat: number; lon: number };
+
+/** The centre of a z<zoom> tile <x>-<y>. */
+export function tileCentre(key: string, zoom: number): ProbeFrame {
+  const [x, y] = key.split("-").map(Number);
+  const n = 2 ** zoom;
+  const lon = ((x + 0.5) / n) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 0.5)) / n))) * 180) / Math.PI;
+  return { lat, lon };
+}
+
+/** The probe frames of a folder: the centres of its tiles that hold chunks, in key order. */
+export function framesOf(
+  tiles: ReadonlyMap<string, { chunks: readonly XwChunk[] }>,
+  zoom: number,
+): ProbeFrame[] {
+  return [...tiles]
+    .filter(([, t]) => t.chunks.length > 0)
+    .map(([key]) => key)
+    .sort()
+    .map((key) => tileCentre(key, zoom));
+}
 
 export type SeamProbe = {
   chunk: string;
+  with: string;
   s: number;
   dz: number;
   step: number | null;
@@ -51,27 +62,32 @@ export type LetGo = { chunk: string; with: string; s: number; alongStep: number 
 
 /**
  * Every chunk merged (the DeckIndex always over all of them), and the probes of every seam and
- * let-go point, each in its nearest frame (AREAS).
+ * let-go point, each in its nearest frame.
  */
-export function probeGenerated(): { seams: SeamProbe[]; cuts: LetGo[]; worlds: RAPIER.World[] } {
-  const { meta, chunks } = loadGenerated();
-  const runs = new Map(meta.runs.map((r) => [r.id, r]));
+export function probeGenerated(
+  chunks: readonly XwChunk[],
+  tileRuns: readonly XwTileRun[],
+  frames: readonly ProbeFrame[],
+): { seams: SeamProbe[]; cuts: LetGo[]; worlds: RAPIER.World[] } {
+  const runs = new Map(tileRuns.map((r) => [r.id, r]));
   const index = new DeckIndex(runs);
   for (const c of chunks) index.add(c);
-  const distanceTo = (c: XwChunk, a: { lat: number; lon: number }) => {
+  const distanceTo = (c: XwChunk, a: ProbeFrame) => {
     const m = Math.floor(c.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
     const kx = 111_320 * Math.cos((a.lat * Math.PI) / 180);
     return Math.hypot((c.st[m + 1] - a.lon) * kx, (c.st[m + 2] - a.lat) * 110_574);
   };
   const nearest = (c: XwChunk) =>
-    AREAS.reduce((best, a, i) => (distanceTo(c, a) < distanceTo(c, AREAS[best]) ? i : best), 0);
+    frames.reduce((best, a, i) => (distanceTo(c, a) < distanceTo(c, frames[best]) ? i : best), 0);
   const seams: SeamProbe[] = [];
   const cuts: LetGo[] = [];
   const worlds: RAPIER.World[] = [];
-  AREAS.forEach((area, k) => {
+  frames.forEach((area, k) => {
+    const own = new Set(chunks.filter((c) => nearest(c) === k).map((c) => c.id));
+    const hasOwn = own.size > 0;
+    if (!hasOwn) return;
     const frame = new LocalFrame(area.lat, area.lon, 40);
     const near = chunks.filter((c) => distanceTo(c, area) < WORLD_REACH_M);
-    const own = new Set(chunks.filter((c) => nearest(c) === k).map((c) => c.id));
     const res = probeIn(frame, near, own, runs, index);
     seams.push(...res.seams);
     cuts.push(...res.cuts);
@@ -80,11 +96,35 @@ export function probeGenerated(): { seams: SeamProbe[]; cuts: LetGo[]; worlds: R
   return { seams, cuts, worlds };
 }
 
+/**
+ * Where a same-surface stretch misses by more than the game makes one slab (MERGE_MAX_DZ): per chunk
+ * and partner, the stretch and the largest |Δz| (unpadded "same" stretches every 0.5 m, against the
+ * other run's surface at the nearest point of its centre line). The deck builder leaves these apart
+ * and logs expressway_merge_skipped.
+ */
+export function mergeMisses(
+  chunks: readonly XwChunk[],
+): Array<{ chunk: string; with: string; s0: number; s1: number; maxDzM: number }> {
+  const known = new Set(chunks.map((c) => c.run));
+  const found = new Map<string, { chunk: string; with: string; s0: number; s1: number; maxDzM: number }>();
+  for (const p of pairPoints(chunks)) {
+    const isApart = known.has(p.with) && Math.abs(p.dz) > MERGE_MAX_DZ;
+    if (!isApart) continue;
+    const key = `${p.chunk.id}|${p.with}`;
+    const g = found.get(key) ?? { chunk: p.chunk.id, with: p.with, s0: p.s, s1: p.s, maxDzM: 0 };
+    g.s0 = Math.min(g.s0, p.s);
+    g.s1 = Math.max(g.s1, p.s);
+    g.maxDzM = Math.max(g.maxDzM, Math.abs(p.dz));
+    found.set(key, g);
+  }
+  return [...found.values()];
+}
+
 function probeIn(
   FRAME: LocalFrame,
   chunks: XwChunk[],
   own: ReadonlySet<string>,
-  runs: Map<string, XwMeta["runs"][number]>,
+  runs: Map<string, XwTileRun>,
   index: DeckIndex,
 ): { seams: SeamProbe[]; cuts: LetGo[]; world: RAPIER.World } {
   const place = { frame: FRAME, ellipsoidal: (_a: number, _b: number, h: number) => h + N };
@@ -96,9 +136,10 @@ function probeIn(
     createDeckBody(world, r.value.collider, r.value.piers, null);
   }
   world.step();
-  // Plan metres in the game's own frame (east, north = −z), heights at the master's foot.
-  const project: Project = (lon, lat) => {
-    const p = FRAME.toLocal(lat, lon, 0);
+  // Plan metres in the game's own frame (east, north = −z), each point at its own height (the
+  // decks' vertices are; at height 0 a point 1.5 km from the origin would sit 1.4 cm off them).
+  const project: Project = (lon, lat, z) => {
+    const p = FRAME.toLocal(lat, lon, z + N);
     return [p.x, -p.z];
   };
   /** A plan point at the local height of the master's surface at its foot (rays start 0.5 m above). */
@@ -136,6 +177,7 @@ function probeIn(
     const master = at(0).y;
     seams.push({
       chunk: p.chunk.id,
+      with: p.with,
       s: p.s,
       dz: p.dz,
       step,

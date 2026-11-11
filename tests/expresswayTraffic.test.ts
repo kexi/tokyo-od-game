@@ -1,8 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Vector3 } from "three";
 import { describe, expect, it } from "vitest";
-import type { XwChunk, XwMeta, XwRunSummary, XwTile } from "../src/expressway/format";
+import type { XwChunk, XwRunSummary } from "../src/expressway/format";
+import { DEFAULT_DATA_DIR, readExpresswayFiles } from "../scripts/expresswayFiles";
 import { planeAt } from "../src/expressway/geo";
 import { AutoDriver, isDeckOnlyNode, type DriveWorld } from "../src/game/autoDriver";
 import { laneFor } from "../src/game/drivePath";
@@ -567,13 +566,9 @@ describe("W6: a ramp's foot joined along GSI's at-grade line however far it runs
 });
 
 describe("the generated test section (public/data/expressway): its merges and diverges", () => {
-  const dir = join(import.meta.dirname, "..", "public", "data", "expressway");
-  const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as XwMeta;
-  const chunks = readdirSync(dir)
-    .filter((f) => /^\d+-\d+\.json$/.test(f))
-    .flatMap((f) => (JSON.parse(readFileSync(join(dir, f), "utf8")) as XwTile).chunks);
+  const { chunks, runs } = readExpresswayFiles(DEFAULT_DATA_DIR);
   const graph = new RoadGraph(
-    joinExpressway([], expresswayRoadInput(chunks, meta.runs, ellipsoidal), () => {}),
+    joinExpressway([], expresswayRoadInput(chunks, runs, ellipsoidal), () => {}),
     new LocalFrame(35.6537, 139.7508, 40),
   );
   const run = (id: number) => runOf(graph.segments[id]);

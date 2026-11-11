@@ -1,8 +1,8 @@
-import { PARAPET_WIDTH } from "../src/expressway/assumptions";
-import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
-import { planeAt } from "../src/expressway/geo";
-import { frameAt, ST } from "../src/expressway/profile";
-import { carriagewayWidth } from "../src/expressway/section";
+import { PARAPET_WIDTH } from "../src/expressway/assumptions.ts";
+import { STATION_STRIDE, type XwChunk } from "../src/expressway/format.ts";
+import { planeAt } from "../src/expressway/geo.ts";
+import { frameAt, ST } from "../src/expressway/profile.ts";
+import { carriagewayWidth } from "../src/expressway/section.ts";
 
 /**
  * Points of the generated data where the compiler made two runs one surface (decks "same"), read
@@ -11,8 +11,12 @@ import { carriagewayWidth } from "../src/expressway/section";
  * use this check the merged decks (expresswayMerge.ts), so where they probe must not come from it.
  */
 
-/** Plan coordinates (east, north metres) of a point. */
-export type Project = (lon: number, lat: number) => [number, number];
+/**
+ * Plan coordinates (east, north metres) of a point at road height z (T.P. m). A local tangent frame
+ * needs z: away from its origin the plan position of a point moves with its height (h · d / R, 1.4 cm
+ * for 60 m at 1.5 km), more than the seam probes' 2 mm either side of a slab edge.
+ */
+export type Project = (lon: number, lat: number, z: number) => [number, number];
 
 const PLANE = planeAt(139.75, 35.65);
 
@@ -42,12 +46,16 @@ function stationsOf(chunks: readonly XwChunk[], project: Project): Station[] {
   const out: Station[] = [];
   for (const c of chunks.toSorted((a, b) => a.k - b.k)) {
     for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
-      const [x, y] = project(c.st[i + ST.lon], c.st[i + ST.lat]);
+      const [x, y] = project(c.st[i + ST.lon], c.st[i + ST.lat], c.st[i + ST.z]);
       out.push({ chunk: c, s: c.st[i + ST.s], x, y });
     }
   }
   return out;
 }
+
+/** The road height of a chunk at s, s held within the chunk (a padded stretch reaches past its ends). */
+const heightIn = (c: XwChunk, s: number) =>
+  frameAt(c.st, Math.min(Math.max(s, c.st[0]), c.st[c.st.length - STATION_STRIDE])).z;
 
 const slabHalf = (c: XwChunk) => carriagewayWidth(c) / 2 + PARAPET_WIDTH.value;
 
@@ -72,7 +80,7 @@ export function pairPoints(
       // Off the stretch's ends and its stations by a few centimetres.
       for (let s = d.s0 + 0.13; s < d.s1; s += step) {
         const f = frameAt(c.st, s);
-        const [x, y] = project(f.lon, f.lat);
+        const [x, y] = project(f.lon, f.lat, heightIn(c, s));
         let best: (PairPoint["other"] & { dist: number }) | null = null;
         for (let k = 0; k + 1 < line.length; k++) {
           const a = line[k];
@@ -102,7 +110,11 @@ export function pairPoints(
         if (!best) continue;
         best.z = frameAt(best.chunk.st, best.s).z;
         const h = frameAt(c.st, Math.min(s + 0.5, c.st[c.st.length - STATION_STRIDE]));
-        const [hx, hy] = project(h.lon, h.lat);
+        const [hx, hy] = project(
+          h.lon,
+          h.lat,
+          heightIn(c, Math.min(s + 0.5, c.st[c.st.length - STATION_STRIDE])),
+        );
         const isSameWay = (hx - x) * best.dx + (hy - y) * best.dy > 0;
         // Left of the other's travel: its direction turned 90° anticlockwise.
         const offset = (x - best.x) * -best.dy + (y - best.y) * best.dx;
