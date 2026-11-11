@@ -7,6 +7,10 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:check-deck-drive, at: 2026-11-11T14:28:19Z }
+  - { by: process:vitest, at: 2026-11-11T14:27:00Z }
+  - { by: process:headless-chrome-cdp, at: 2026-11-11T12:41:38Z }
+  - { by: process:vitest, at: 2026-11-11T12:42:29Z }
   - { by: claude-fable/review-p273, at: 2026-11-11T13:43:24Z }
   - { by: process:mutation-tests, at: 2026-11-11T13:55:59Z }
   - { by: process:qp-weight-scan, at: 2026-11-11T14:01:50Z }
@@ -66,6 +70,9 @@ verified:
   - { by: process:vitest, at: 2026-11-10T11:30:00Z }
   - { by: process:perf-road-streaming, at: 2026-11-10T11:20:00Z }
 sources:
+  - id: deckdrive-traffic
+    resource: src/game/frameClock.ts・src/main.ts の step・tests/frameClock.test.ts、.qa/drive-deck-repro2.json・fix*.json と .qa/probe-deck.ts・probe2〜6.json（ローカル・git 管理外。2026-11-11、vite 5391、ヘッドレス Chrome、traffic.update を包んだ距離と speed·dt の比・自車の近くの AI の位置）
+    title: 床版の走行検査の invalid（交通 AI の時間のずれ）の調査と修正
   - id: p273
     resource: src/expressway/designGround.ts（envelope）、compile.ts（Objective・setupRun・setupBelow の v2 の目標、RunSetup の重み）、vertical.ts（RunInput.gradeChange・targetScale、W_GRADE_CHANGE）、report.ts（版 4、forcingOf・free・height・below）、assumptions.ts（DESIGN_GROUND_REACH）、scripts/expressway.ts（--objective）、tests/expresswayDesignGround.test.ts・tests/expresswayObjective.test.ts・tests/expresswayBlocks.test.ts・tests/expresswayReport.test.ts・tests/expresswayFallbacks.test.ts（tests/fixtures/expresswayQpObjectiveV2.json）、計測は .qa/expressway/s3-*（s3-runs.jsonl、s3-heights-*.json、ローカル・git 管理外）、設計の指示と試作は依頼元 scratchpad の p27/s3-objective.md・p27/v2/
     title: P2.7-3 の縦断の目的 v2
@@ -596,7 +603,7 @@ e-Gov の本文（XML）で確かめた: 第12条の建築限界の高さ H は�
 # P6: 法規・経路・自動運転・交通 AI（2026-11-11）
 
 - **W5 規制速度（XW_VERSION 5）**: コンパイラがチャンクごとに OSM の `maxspeed` の生の値（`XwChunk.maxspeed`、無ければ null）を出し、way の境目で値が変わればチャンクを切る。グラフの limit は G6 の `posted`（signPlan.ts postedOf: 同じタグに、無い way は前の値を引き継ぐ・run の始まりは法定 60 の規則）で、`posted` の無いファイルだけ `maxspeed`、どちらも無ければ法定 60（limitKind "statutory"）。設計速度 `V` とは分けた。P6 単独では版 3、P7（版 4）との統合で 5（v2〜v4 は読み込みで拒否、テストあり）。P7 の street（臨港道路）は postedOf が自分の値を返すので、法定 60 も高速の判定もかからない（`isExpressway` が false）。
-- **範囲 `shiodome`**: 一般道 → 芝公園入口 → C1 内回り → 出口 → 一般道を走れるよう、汐留入口（45068172）・汐留出口（24402125）の箱を既定の範囲に足した（P9 と合わせて `hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome`）。hamazakibashi の箱を広げなかったのは、汐留まで届く箱が浜崎橋から出る 1 号羽田線の 2 run（4.1 km・5.6 km）も取り込むため。汐留の 2 本は本線が築地川の掘割の坑口へ下る区間で、OSM の中心線が本線から 1.1–1.7 m で並走し、車線域が重なったまま高さが離れる（最大 6.6 m）。allowlist に理由つきで許可した（SHIODOME_REASON）。本線のその先は坑口で行き止まりで、経路と交通 AI は入らない（laneLinks.ts `reachesStreets`）。見た目の貫通は P9（掘割）と床版の一体化の課題として残る。チャンクの切り方が変わったので、芝浦の 45021972 × 45554540 の重なりの測点数が 16 → 20（|Δz| は同じ）になり、上限を直した。
+- **範囲 `shiodome`**: 一般道 → 芝公園入口 → C1 内回り → 出口 → 一般道を走れるよう、汐留入口（45068172）・汐留出口（24402125）の箱を既定の範囲に足した（P9 と合わせて `hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome`）。hamazakibashi の箱を広げなかったのは、汐留まで届く箱が浜崎橋から出る 1 号羽田線の 2 run（4.1 km・5.6 km）も取り込むため。汐留の 2 本は本線が築地川の掘割の坑口へ下る区間で、OSM の中心線が本線から 0 m（ノーズ）〜最大 8.4 m しか離れずに並走し（二つの車線域の幅の半分の和、壁高欄まで約 9 m に届かない。**訂正**: 初版と allowlist.ts の理由文は「1.1–1.7 m」と書いていたが、データの station から測ると 24402125:0 の s 20 m で 1.7 m、s 60 m で 4.8 m、s 140〜156 m で 8.4 m）、車線域が重なったまま高さが離れる（最大 6.6 m）。allowlist に理由つきで許可した（SHIODOME_REASON）。本線のその先は坑口で行き止まりで、経路と交通 AI は入らない（laneLinks.ts `reachesStreets`）。見た目の貫通は P9（掘割）と床版の一体化の課題として残る。チャンクの切り方が変わったので、芝浦の 45021972 × 45554540 の重なりの測点数が 16 → 20（|Δz| は同じ）になり、上限を直した。
 - 生成は 2 回でバイト一致（P9 との統合後: 9 タイル・19 run・268 チャンク・4,459 測点・409,595 B、未解決 0、`features: ["below"]` を残して版 5）。汐留の先（築地川の掘割）はこの範囲のデータに無く、内回りは地表端で終わる（P9 が通したのは麻布台のトンネル）。経路と交通 AI はそこへ入らない。
 - **レビュー（2026-11-11、Changes Requested）の後の修正**:
   - 合流の判定は、車線番号が本線の車線に入った瞬間に行う（road-traffic-law.md）。分流は枝に 30 m とどまってから判定する。
@@ -658,6 +665,57 @@ e-Gov の本文（XML）で確かめた: 第12条の建築限界の高さ H は�
 `traffic.update` を包んで時間を測った（芝公園、昼、ヘッドレス Chrome、30 s、?expressway の有り・無しを各 1 回、依頼元 scratchpad の p6/trafficperf.mjs）。台数は上限の 34 台で同じ。traffic.update の中央値 0.3 ms・p95 0.4 ms・最大 1.1 ms（有り、床版の上 1〜3 台）、0.2 / 0.3 / 1.1 ms（無し）。フレームの中央値はどちらも 50 ms（ヘッドレスの描画が律速）、p95 は 66.7 / 50.1 ms、最長 83.4 / 66.8 ms。各 1 回で、フレームの差は 1 フレームの刻み以内で読めない。`just measure-perf-fixed` は鏡の A/B 用の固定シーンで交通を止めるため使っていない。台数の上限（QUALITY.maxAiCars）は変えていない。
 
 [^p6-drive]: 依頼元 scratchpad の p6/route.mjs と routes-r4〜r8.json・routes-d1〜d12.json・routes-e1〜e3.json（2026-11-11、ヘッドレス Chrome、?expressway）
+
+## 床版の走行検査が交通 AI の車と事故で invalid（P6 の後、2026-11-11 修正）
+
+**症状**: P6（#63）の後、`just check-deck-drive` が毎回 `invalid: "accident during the drive"` になった（`accident` の kind `vehicle`・自車 47 km/h・相手 1,481 kg、crossed 0）。origin/main（d00bf35）の既定データでも再現した（repro2、2026-11-11T12:16〜12:21Z）。
+
+**経緯（ログと交通 AI の観測から）**: 事故の相手は、自車の**後ろ**から同じ車線 0 を来た床版の上の交通 AI の車だった。AI の `speed` は 40 km/h（自車 47 km/h より遅い）なのに、実際には約 51 km/h で進み、後ろ 25 m から 3 m まで詰めて追突した（24402611:28〜29、35.659 N・139.759 E 付近）。`traffic.update` を包んで測ると、床版の上の AI の全台で「動いた距離 / Σ speed·dt」が 1.26 だった（probe3、21 台以上）。AI は `gapAhead` で自車を避けるが、自車の速さが AI の速さ +2 m/s を超えると「離れていく」とみなして避けない（`isPlayerFleeing`）ので、ぶつかるまで減速しなかった。
+
+**根本原因**: フレームを進める呼び出しが 2 つある。requestAnimationFrame の `tick(now)` と、QA の `__game.advance` が呼ぶ `step(performance.now())`。rAF の `now` はフレームの開始時刻（コールバックが走る前）なので、advance の直後の rAF フレームは前のフレームより前の時刻を持ち、`dt = Math.min(0.05, (now - last) / 1000)` が**負**になった（ヘッドレスで advance 中も rAF は動き続ける。観測では −0.006〜−0.022 s）。物理は accumulator に負の dt を足して時間を返すので合計は壁時計どおりだが、交通 AI は dt ≤ 0 のフレームで車を動かさない（`drive` が早期リターン）ので、正の半分だけを積み、AI の時間が約 1.26 倍で進んだ。
+
+- P6 の前は床版の上に AI の車が出なかったので、検査の車と同じ車線を走る AI がおらず、この時間のずれは表に出なかった（P6 で「出現の 4 回に 1 回を高速道路の区間に」した）。
+- 実際のプレイ（rAF だけ）では `now` は単調なので起きない。`__game.advance` を呼ぶのは `scripts/qa/drive.mjs`（79・83・89 行）と `scripts/qa/drive-deck.ts` だけで、影響を受けたのはこの 2 本。P6 の route.mjs（`b.sleep` で待つだけ）と多視点レビューの `scripts/qa/views.ts` は advance を呼ばないので影響を受けていない（**訂正**: 初版は「advance を使う QA の走行（drive-deck・route.mjs・多視点レビュー）」と書いていた）。
+
+**修正**: `src/game/frameClock.ts` の `clockStep(stamp, last)` に切り出し、前の時刻より前のフレームは dt 0 で、時計を戻さない。`main.ts` の `step` は rAF・advance の時刻を `stamp` で受け、そのフレームの時刻 `now` には `clockStep` の返す `last` を使う（後段の `control.update(now / 1000)`・法規のタイマー・各種のクールダウンにも古い時刻が渡らない。レビュー S1）。名前は `charmRig.ts` の `frameStep` と衝突しないよう `clockStep` にした（S2）。tests/frameClock.test.ts は main.ts の配線もソースで検査する（S3）。**Why not** 検査中は交通 AI を止める・検査経路から外す: AI が床版の上を走るのは P6 の仕様で、検査はその状態の床版を測るべき。原因は検査の設計ではなく時間の基準のずれで、止めればこのずれ（advance を使う QA に効く）が隠れる。事故判定（`isAccident`）と drive-deck の invalid の扱いは変えていない。
+
+**確かめたこと（trust signal）**:
+
+- 修正後、床版の上の AI の「動いた距離 / Σ speed·dt」は 0.99〜1.00（probe5、2026-11-11T12:39〜12:41Z、38 台）。
+- `just check-deck-drive`（vite 5391、ヘッドレス Chrome、M2 Max。他のエージェントの重いビルドと並走）: fix1（12:42〜12:48Z）`invalid: null`・accident 0・crossed 0・落下なし・1,804 m。2 本目以降は下の表（fix2 の 1 本目は終盤にヘッドレス Chrome の接続が切れて結果が出なかった。ページのログに事故は無い）。
+- 回帰テスト: `tests/frameClock.test.ts`（rAF と advance が交互に呼ぶ時刻の列で、dt が負にならず、全フレームの dt の和と dt > 0 のフレームの和が壁時計に一致する。修正前の式では負の dt が出て 2 つの和が食い違う）。
+
+| 走行                                         | invalid  | 事故 | crossed | 落下 | 距離    | max \|dy\|（位置）     |
+| -------------------------------------------- | -------- | ---- | ------- | ---- | ------- | ---------------------- |
+| repro2（修正前）                             | accident | 4 回 | 0       | なし | 1,803 m | 0.230 m（24402611:31） |
+| fix1                                         | null     | 0    | 0       | なし | 1,804 m | 0.226 m（24402611:31） |
+| fix2b（13:18〜13:23Z）                       | null     | 0    | 0       | なし | 1,804 m | 0.219 m（24402611:31） |
+| fix3（13:26〜13:31Z）                        | null     | 0    | 0       | なし | 1,804 m | 0.230 m（24402611:31） |
+| merged1（#66 を取り込んだ後、13:46〜13:51Z） | null     | 0    | 0       | なし | 1,803 m | 0.227 m（24402611:31） |
+| merged2（同、13:53〜13:58Z）                 | null     | 0    | 0       | なし | 1,803 m | 0.227 m（24402611:31） |
+
+修正後の同じ経路の samples（probe6、12:55〜13:12Z。probe7、13:34〜13:40Z は drive-deck と同じ advance(10) 刻み）では、止まるまでの |dy| > 0.09 m は出発直後の 1 サンプル（0.098〜0.099 m、207111988:0）だけで、0.1 m を超えるのは下の別件の衝突の直後（0.16〜0.23 m、0.2 s）だけだった。
+
+未解明（追っていない）: fix2b と fix3 の `maxShortfallAt` が 24402611:27 だった。shortfall は 52.0〜52.4 km/h で target は 50 km/h 以下なので、そのサンプルの `forwardSpeed` は約 −2 km/h、つまり自車が一瞬**後退**していた（**訂正**: 初版は「ほぼ 0 km/h」と書いていた）。事故・接触のログは無く、probe7 では再現せず（shortfall は :31 の衝突だけ）、当時の drive-deck の結果は samples を残さないので原因は特定していない。
+
+**24402611:31 の s ≈ 33 m で止まる件（レビュー W2 の後の結論）: 床版の既知の制約で、検査の経路を直した**。修正前の走行は毎回、内回りの 24402611:31 の s ≈ 33 m（35.66075 N・139.76057 E）で 48 km/h から一瞬で 0 km/h になっていた（`expressway_car_stalled`）。その縦揺れが max |dy| 0.22〜0.23 m で、0.1 m の目安を超えたのはこのサンプル列だけだった。当たっていたのは汐留出口のランプ 24402125:0 のコライダー（`expressway.built` の body から特定、止まった直後の鼻先 0.05 m）。
+
+- 原因は床版の組み立ての仕様。汐留出口が内回りから分かれた後、二つの床版は |Δz| が `MERGE_MAX_DZ`（0.15 m）を超える s 31〜33 m で手放される。そこから先は `expresswayMerge.ts` 450〜456 行の `level_apart` の扱いで、子＝汐留出口のランプが自分の壁高欄を立てる。その右の壁が、本線の車線 0 の中 +1.7〜+2.2 m に入る（手放しの s と壁の位置はレビューの計測）。中心線の間隔は最大 8.4 m で、二つの車線域の幅の半分の和（約 9 m）に届かない。
+- この区間は SHIODOME_REASON（`allowlist.ts` 47〜48 行、許可の行は 209〜216 行）と上の「範囲 `shiodome`」の項（本線のこの先は経路と交通 AI が入らない）で許可済みの重なり。本線の先は築地川の掘割の坑口へ下る地表端で、このデータの範囲には無い。
+- P6 の前のデータは 24402611:29 で終わっていたので、検査の車はここまで届かなかった。床版の衝突は `hitKind` が `ground` と読むので accident にはならず、drive-deck は停止を `stalled` に書くだけで成功（終了 0）にしていた（レビュー S5）。
+- **検査経路の修正**: drive-deck の cruise の `prefer` を `207111988 → 24402125 → 24402611` にし、分流で汐留出口へ降りて、ランプの地表端で一般道（接続線）に出た所で走行を終える。P6 の自動運転で落下なし・max |dy| 0.096 m だった経路。**Why not** cruise を 24402611:30 の手前で終える: 本線の車線 0 のまま止めるだけで、汐留出口の分流・高さが離れる区間（`level_apart` の手放し）・ランプの地表端を測らなくなる。
+- **失敗の条件（S5）**: `scripts/qa/deckDriveVerdict.ts` で、次のどれかを失敗（終了 1）にする。建物の貫通、`expressway_car_stalled`、落下、cruise の目標速度からの落ち込み 15 km/h 超（`MAX_SHORTFALL_KMH`）、終点（ランプの地表端）に届かない。テストは tests/deckDriveVerdict.test.ts。
+- **残る課題（床版側）**: プレイヤーが手動で内回りの車線 0 を直進すると、同じ壁に当たる。掘割のデータ（築地川）を入れて本線を先へつなぐことと、床版の一体化（分流の後も同じ面の間は壁を立てない）の課題として残す。
+
+修正後の経路での走行（vite 5391、ヘッドレス Chrome、M2 Max）:
+
+| 走行                 | invalid | failures | 事故 | crossed | stalled | 落下 | 距離    | max \|dy\|（位置）     | max shortfall（位置）   | 終点 |
+| -------------------- | ------- | -------- | ---- | ------- | ------- | ---- | ------- | ---------------------- | ----------------------- | ---- |
+| v2a（14:17〜14:21Z） | null    | なし     | 0    | 0       | 0       | なし | 2,116 m | 0.082 m（207111988:2） | 4.8 km/h（207111988:0） | 到達 |
+| v2b（14:21〜14:25Z） | null    | なし     | 0    | 0       | 0       | なし | 2,115 m | 0.082 m（207111988:2） | 4.8 km/h（207111988:0） | 到達 |
+| v2c（14:25〜14:28Z） | null    | なし     | 0    | 0       | 0       | なし | 2,107 m | 0.082 m（207111988:2） | 4.7 km/h（207111988:0） | 到達 |
+
+3 本とも max |dy| は 0.1 m の目安の内側。走ったチャンクは 207111988:0〜2 → 24402611:21〜29 → 24402125:0〜2 で、:29 の後は汐留出口へ分かれて 24402611:30・31 を通らない。
 
 # P2.7-1: 出荷範囲と全域スコアカード（2026-11-11）
 

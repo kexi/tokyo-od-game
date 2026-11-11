@@ -48,6 +48,7 @@ import { NpcBrain } from "./ai/llm";
 import { Voice } from "./ai/tts";
 import type { Surroundings } from "./ai/dialogue";
 import { GameAudio } from "./game/audio";
+import { clockStep } from "./game/frameClock";
 import { FrameWork } from "./game/frameWork";
 import { SerialWork } from "./game/serialWork";
 import { ConversationController } from "./game/conversation";
@@ -2551,9 +2552,14 @@ async function main(): Promise<void> {
     composer.present();
   };
 
-  const step = (now: number) => {
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
+  const step = (stamp: number) => {
+    // rAF and advance() both drive frames: a frame stamped behind the last one takes no time and
+    // keeps the last one's time (frameClock.ts), so everything after this sees a clock that never
+    // runs back (control.update, the law's timers, the cooldowns).
+    const clock = clockStep(stamp, last);
+    const dt = clock.dt;
+    const now = clock.last;
+    last = clock.last;
 
     if (state !== "playing") {
       terrain.update(spawn.lat, spawn.lon);
