@@ -10,6 +10,7 @@ import type { ReplayClip } from "./replayClip";
  */
 export type ViolationKind =
   | "signal" // 信号無視（赤色等）
+  | "signalFlashing" // 信号無視（点滅）
   | "stopSign" // 指定場所一時不停止等
   | "noEntry" // 通行禁止違反（一方通行の逆走）
   | "turnBan" // 通行禁止違反（指定方向外進行禁止）
@@ -90,6 +91,16 @@ export function speedViolation(overKmh: number): Violation | null {
 
 export const VIOLATIONS: Record<Exclude<ViolationKind, "speed">, Violation> = {
   signal: { kind: "signal", label: "信号無視（赤色等）", article: "道路交通法 第7条", points: 2, fine: 9000 },
+  // 赤色の灯火の点滅で停止位置に一時停止しなかった（施行令第2条）。施行令 別表第六 備考 17 の
+  // 「信号無視（点滅）」（法第7条違反のうち赤色・黄色の灯火に係るもの以外）: 普通車 7,000 円（同表 十七）、
+  // 別表第二 の「信号無視」2 点（赤色等と同じ欄）。
+  signalFlashing: {
+    kind: "signalFlashing",
+    label: "信号無視（点滅）",
+    article: "道路交通法 第7条",
+    points: 2,
+    fine: 7000,
+  },
   // 「止まれ」の標識（JARTIC 一時停止）がある停止線の直前で停止しなかった。
   stopSign: {
     kind: "stopSign",

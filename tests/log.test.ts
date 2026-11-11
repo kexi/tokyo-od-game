@@ -215,6 +215,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   signal_crossing_held: { approachId: 12, allowed: ["right", "uturn"] },
   signal_crossing_resolved: { approachId: 12, outcome: "violation", movement: "through", heldMs: 2400 },
   signal_button_pressed: { controllerId: 3812043211 },
+  signal_plan_switched: { controllerId: 42, template: "nightFlash", isNight: true },
   signal_crossings_skipped: { outside: 6, noCrosswalk: 2, nearJunction: 1, noRoom: 0 },
   route_lane_blocked: { turns: 1, attempt: 0, replanned: true },
   autopilot_on: { cruising: true, routeM: 1200 },

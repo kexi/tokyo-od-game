@@ -115,7 +115,7 @@ import { RoadNetworkBuilder } from "./world/roadNetworkBuilder";
 import type { RoadNetwork } from "./world/roadNetworkData";
 import { RoadSurface } from "./world/roadSurface";
 import { RoadTiles } from "./world/roadTiles";
-import { TrafficControl, type LightState } from "./world/trafficControl";
+import { TrafficControl, type Approach, type LightState } from "./world/trafficControl";
 import { letsDriverGo } from "./signals/plan";
 import { SignalViolationCheck } from "./game/signalViolations";
 import { TrafficSigns, loadSignModels } from "./world/signs";
@@ -710,6 +710,7 @@ async function main(): Promise<void> {
             stand: (seg, near, kerb) => control.buttonStand(seg, near, kerb),
             press: (seg, near) => void control.pressButton(seg, near),
           },
+          (near, needS) => control.mayCrossDiagonal(near, needS),
         ),
       );
     roadApplied = applied;
@@ -777,6 +778,8 @@ async function main(): Promise<void> {
       posted: graph.segments.filter((s) => s.limitKind !== "statutory").length,
       signals: control.signalCount(),
       rightArrows: control.rightArrowCount(),
+      signalPlans: control.planCounts(),
+      droppedRightArrows: control.droppedArrowCount(),
       ...control.crossingCounts(),
       stops: control.approaches.filter((a) => a.kind === "stop").length,
       crossings: applied?.crossings.length ?? 0,
@@ -1705,7 +1708,7 @@ async function main(): Promise<void> {
       );
       c.rotation.set(0, pa.yaw + Math.atan2(Math.sin(pb.yaw - pa.yaw), Math.cos(pb.yaw - pa.yaw)) * k, 0);
     }
-    control.update(r.t / 1000);
+    control.update(r.t / 1000, true);
     const marks = r.marks.map((v) => v.at);
     // 違反の理由: from 2.5 s before each violation to 4 s after, what it was and why.
     const near = r.marks.find((m) => r.t > m.at - 2500 && r.t < m.at + 4000);
@@ -2178,7 +2181,7 @@ async function main(): Promise<void> {
   // Where and when the car last stood still, for 一時停止 (stop before the line, then go).
   let lastStop: { pos: Vector3; at: number } | null = null;
   // 信号無視 with arrows: a crossing under an arrow waits for the arm the car leaves by.
-  const signalCheck = new SignalViolationCheck(control, (now) => book(VIOLATIONS.signal, now, 10000));
+  const signalCheck = new SignalViolationCheck(control, (now, kind) => book(VIOLATIONS[kind], now, 10000));
   let lastClockSync = 0;
   let currentLimit: number | null = null;
   let currentLimitKind: "sign" | "zone" | "statutory" | null = null;
@@ -2669,6 +2672,8 @@ async function main(): Promise<void> {
     if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
       refreshRoads(geo.lat, geo.lon);
     expressway?.update(geo.lat, geo.lon);
+    // The game's clock for the plans that change at night (夜間点滅, 夜間の押ボタン).
+    control.setTimeOfDay(env.displayHour(geo.lat, geo.lon) * 60);
     control.update(now / 1000);
     signs.update(focus, now);
     guideSigns.update(focus, now);
@@ -3003,13 +3008,16 @@ async function main(): Promise<void> {
       // (game/signalViolations.ts): only then is it known whether the arrow allowed that movement.
       if (Math.abs(speed) < 3) lastStop = { pos: carPos.clone(), at: now };
       const isContinuous = lawPrevPos !== null && lawPrevPos.distanceTo(carPos) < 30;
+      // The 一時停止 a 止まれ sign and 赤色の灯火の点滅 both ask: stood still near the line just before.
+      const hasStoppedAt = (ap: Approach) => {
+        const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
+        return lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
+      };
       if (lawPrevPos && isContinuous) {
         const crossed = control.crossed(lawPrevPos, carPos);
-        signalCheck.step(crossed, lawPrevPos, carPos, carForward, now);
+        signalCheck.step(crossed, lawPrevPos, carPos, carForward, now, hasStoppedAt);
         for (const ap of crossed) {
-          const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
-          const hasStopped =
-            lastStop !== null && now - lastStop.at < 15000 && lastStop.pos.distanceTo(mid) < 12;
+          const hasStopped = hasStoppedAt(ap);
           if (ap.kind === "stop" && !hasStopped) book(VIOLATIONS.stopSign, now, 10000);
           if (ap.kind === "stop" && hasStopped) praise("fullStop");
         }

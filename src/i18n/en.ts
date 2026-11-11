@@ -384,6 +384,7 @@ export const en: Messages = {
   // Violations, laws, sanctions, tickets (traffic.ts, sanctions.ts, violationReview.ts, drivingTips.ts, ticketForm.ts, src/i18n/law.ts)
   // 違反名（traffic.ts の label と日本語が一致するもの。記録は日本語のまま保存し、表示で訳す）
   "violation.label.signal": "Running a red light",
+  "violation.label.signalFlashing": "Not stopping at a flashing red light",
   "violation.label.stopSign": "Failing to stop at a stop sign",
   "violation.label.noEntry": "Wrong way down a one-way street",
   "violation.label.turnBan": "Prohibited turn (against the direction sign)",

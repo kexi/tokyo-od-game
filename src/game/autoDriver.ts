@@ -525,19 +525,24 @@ export class AutoDriver {
     const next = world.control.nextStop(st.seg, st.dir, travel) ?? this.signalOnward(route, k, world);
     if (next) {
       const { approach, dist } = next;
-      if (approach.kind === "signal") {
-        const permission = world.control.permits(approach, this.movementAt(route, approach, dist));
-        const canStop = dist > (this.speed * this.speed) / (2 * BRAKE);
-        // Anything short of go stops it where it can, as traffic-ai.ts does. Why not "red stops it
-        // however close": an arrow goes out straight into the all-red with no yellow between
-        // (plan.ts), and braking past what the car can do would leave it standing in the box.
-        const mustStop = driverAction(permission, canStop) === "stop";
-        if (mustStop && world.isEmergency) this.creep = true;
-        else if (mustStop) block = dist;
-      } else if (this.served !== approach.id) {
+      const canStop = dist > (this.speed * this.speed) / (2 * BRAKE);
+      // A signal: anything short of go stops it where it can, as traffic-ai.ts does. Why not "red
+      // stops it however close": an arrow goes out straight into the all-red with no yellow between
+      // (plan.ts), and braking past what the car can do would leave it standing in the box. 赤の点滅
+      // (fullStop) is a 一時停止 at the line, then on: the stop sign's logic below.
+      const action =
+        approach.kind === "signal"
+          ? driverAction(world.control.permits(approach, this.movementAt(route, approach, dist)), canStop)
+          : "fullStop";
+      const mustStop = action === "stop";
+      const isFullStopDue = action === "fullStop" && this.served !== approach.id;
+      if (mustStop && world.isEmergency) this.creep = true;
+      else if (mustStop) block = dist;
+      else if (isFullStopDue) {
         const isStanding = dist < STOP_GAP + 0.6 && this.speed < 0.1;
         this.waited = isStanding ? this.waited + dt : 0;
-        // 第43条: after the full stop, on only when nobody on the crossing road has to be let by.
+        // 第43条 (and 赤の点滅 the same way): after the full stop, on only when nobody on the crossing
+        // road has to be let by.
         const isClearToGo = this.waited > 1.5 && !this.mustYield(route, world, true);
         if (isClearToGo) {
           this.served = approach.id;
@@ -794,7 +799,7 @@ export class AutoDriver {
         driverAction(
           world.control.permits(stop.approach, this.movementAt(route, stop.approach, stop.dist, at)),
           true,
-        ) === "stop");
+        ) !== "go");
     if (isAtStop) return true;
     const isAtJunction = junctionsAhead(route, world.graph, world.control, at - 2, at + 20).length > 0;
     const isAtCrossing = crossingsAhead(route, world.crossings ?? [], at - 2, at + 10).length > 0;

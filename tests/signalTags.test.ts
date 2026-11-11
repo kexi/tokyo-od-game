@@ -84,11 +84,22 @@ describe("signal records in public/data/signals (src/signals/osmTags.ts)", () =>
     expect(records.length).toBeGreaterThan(19_000);
     let midBlock = 0;
     for (const r of records) {
-      expect(r.length === 2 || r.length === 3 || r.length === 4).toBe(true);
+      expect([2, 3, 4, 6]).toContain(r.length);
       const tags = decodeSignalTags(r);
-      // A crossing-only node is kept only when it is 単路 or tells the crosswalk's sound.
+      // A crossing-only node is kept only when it is 単路, tells the crosswalk's sound, has a button
+      // or says something of the plan (T4).
       const isCrossingOnly = !tags.junctionCapable;
-      if (isCrossingOnly) expect(tags.midBlock || tags.sound !== null).toBe(true);
+      const p = tags.phase;
+      const saysOfPlan =
+        tags.button === true ||
+        p.scramble ||
+        p.buttonNight ||
+        p.flash !== null ||
+        p.staggered !== null ||
+        p.flashHint !== null;
+      if (isCrossingOnly) expect(tags.midBlock || tags.sound !== null || saysOfPlan).toBe(true);
+      // Six numbers only for a flashing window, which is minutes of the day.
+      if (r.length === 6) expect(p.flashWindow?.every((m) => m >= 0 && m < 1440)).toBe(true);
       if (tags.midBlock) midBlock++;
     }
     expect(midBlock).toBeGreaterThan(300);

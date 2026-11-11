@@ -35,8 +35,17 @@ import {
   type LampColour,
 } from "../signals/heads";
 import { SIGNAL_MOUNTS } from "../signals/mounts";
-import { hasRightArrow, planForCrossing, planForJunction } from "../signals/assign";
-import { UNTAGGED, type SignalRecord } from "../signals/osmTags";
+import {
+  groupsOf,
+  hasRightArrow,
+  junctionFacts,
+  planForCrossing,
+  planForJunction,
+  saysOfPlan,
+  type NightPlan,
+} from "../signals/assign";
+import { ScheduledRun } from "../signals/run";
+import { UNTAGGED, type SignalRecord, type SignalTags } from "../signals/osmTags";
 import {
   BUTTON_STAND_REACH_M,
   CROSSING_CLEAR_OF_JUNCTION_M,
@@ -54,7 +63,9 @@ import {
 import { log } from "../log";
 import {
   OnDemandRun,
+  crossedBy,
   cycleTime,
+  isDiagonal,
   permits,
   stepAt,
   type CompiledPlan,
@@ -131,12 +142,27 @@ type Controller = {
   nodes: number[];
   /** A 単路 crossing's own crosswalks (its walk lights and button serve these only). */
   crosswalks: Crossing[];
+  /** The plan running now: `day`, or `night`'s plan inside its window (T4). */
   plan: CompiledPlan;
+  /** The plan outside any night window. */
+  day: CompiledPlan;
+  /** The plan inside a window of the day (夜間点滅, 夜間の押ボタン), or null. */
+  night: NightPlan | null;
+  /** Whether the night plan (or its way out) runs now (refreshed by update). */
+  isNight: boolean;
   step: Step;
-  /** The push-button run of an on-demand plan (kept across rebuilds by its key), else null. */
-  demand: OnDemandRun | null;
-  /** For each vehicle group, the walkers who cross its road (the plan's `walkers`). */
+  /**
+   * How the plan runs in time: a push button (OnDemandRun, a 単路 crossing's), or the clock with
+   * the day's windows and the junction's walk buttons (ScheduledRun). Kept across rebuilds by the
+   * controller's lon/lat key (TrafficControl.runs).
+   */
+  run: OnDemandRun | ScheduledRun;
+  /** For each vehicle group, the walkers who cross its road (the plan's `walkers`, not diagonal). */
   walkersAcross: Map<GroupId, GroupId>;
+  /** The running plan's diagonal walkers (歩車分離), or null. */
+  diagonal: GroupId | null;
+  /** Middle of the controller's nodes (a 単路 crossing: its crosswalk). */
+  centre: Vector3;
   /** 音響式 by OSM traffic_signals:sound on the controller's own nodes: on, off, or not tagged. */
   sound: boolean | null;
 };
@@ -166,9 +192,19 @@ const LAMP_OF: Record<LightState, { colour: LampColour | null; isFlashing: boole
 /** The lamp colour a light shows, steady or flashing (null when dark): the lamp glow's colour. */
 export const lampColourOf = (light: LightState): LampColour | null => LAMP_OF[light].colour;
 
-/** For each vehicle group of `plan`, the walkers who cross its road. */
+/**
+ * For each vehicle group of `plan`, the walkers who cross its road at its crosswalks (diagonal
+ * walkers have no crosswalk of their own: diagonalOf).
+ */
 const walkersAcrossOf = (plan: CompiledPlan): Map<GroupId, GroupId> =>
-  new Map(Object.entries(plan.plan.walkers).map(([walkers, w]) => [w.across, walkers]));
+  new Map(
+    Object.entries(plan.plan.walkers)
+      .filter(([, w]) => !isDiagonal(w))
+      .flatMap(([walkers, w]) => crossedBy(w).map((g) => [g, walkers] as const)),
+  );
+/** The diagonal walkers (歩車分離's 斜め横断) of `plan`, or null. */
+const diagonalOf = (plan: CompiledPlan): GroupId | null =>
+  Object.entries(plan.plan.walkers).find(([, w]) => isDiagonal(w))?.[0] ?? null;
 
 /**
  * Main lamps of one axis of the default two-phase plan at `seconds` (compatibility: the plan is
@@ -205,8 +241,11 @@ const PED_HEIGHT = PED_MOUNT.centreHeightM; // pedestrian head centre above the 
 const PED_LAMPS = lampLayout(PED_HEAD);
 const POLE_RADIUS = 0.13;
 
-/** Walk phase for people crossing a street: go, flashing go (no new starters), or stop. */
-export type PedLight = "go" | "flash" | "stop";
+/**
+ * Walk phase for people crossing a street: go, flashing go (no new starters), stop, or dark (the
+ * vehicle lamps flash; walkers then cross with care as at an unsignalled crosswalk, 施行令第2条).
+ */
+export type PedLight = "go" | "flash" | "stop" | "off";
 /**
  * A 歩行者用灯器 and the accessible signal's speaker on it: where it hangs, the walking direction
  * across the road from its kerb, which end of the crosswalk it is, and the crossing it serves.
@@ -219,6 +258,11 @@ export type PedHead = {
   side: 1 | -1;
   /** Whether its 視覚障害者用付加装置 sounds (OSM traffic_signals:sound, else the game's default: on). */
   sounds: boolean;
+  /**
+   * The call it makes at a 歩車分離 junction, where every crosswalk walks at once: one bird for all
+   * (spatialAudio otherwise picks it by the walking direction). Null elsewhere.
+   */
+  bird: "piyo" | null;
 };
 /**
  * A 押ボタン箱 on a 単路 crossing's pole: the crossing it calls, the box's centre and the way its
@@ -231,6 +275,8 @@ type ButtonBox = {
   face: Vector3;
   stand: Vector3;
   controller: Controller;
+  /** The walkers it calls (a 単路 crossing's run has one walk, so any group calls it). */
+  walkers: GroupId;
 };
 const UP = new Vector3(0, 1, 0);
 
@@ -278,10 +324,14 @@ export class TrafficControl {
   private soundRecords: TaggedSignal[] = [];
   private waitLamps: InstancedMesh | null = null;
   /**
-   * Push-button runs by the crossing's key (a hash of its OSM nodes' lon/lat), kept across
-   * rebuilds: a walk under way must not snap back to 赤 when the network is rebuilt round the player.
+   * Every controller's run by its key (`x:` and a hash of a 単路 crossing's OSM nodes' lon/lat, `j:`
+   * and the smallest node hash of a junction), kept across rebuilds: a walk under way must not snap
+   * back to 赤, nor a night plan restart mid-change, when the network is rebuilt round the player.
+   * The one place controller state outlives a rebuild.
    */
-  private readonly demands = new Map<number, OnDemandRun>();
+  private readonly runs = new Map<string, OnDemandRun | ScheduledRun>();
+  /** Right-turn arrows the junctions' templates dropped (scramble, 時差式), for the summary log. */
+  private droppedArrows = 0;
   private plates: Mesh[] = [];
   private readonly platePool = new RoadPlates((p) => {
     p.geometry.dispose();
@@ -289,6 +339,8 @@ export class TrafficControl {
   });
   private body: RAPIER.RigidBody | null = null;
   private time = 0;
+  /** The game's time of day in minutes after midnight (night windows), or null: daytime. */
+  private minute: number | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -336,7 +388,7 @@ export class TrafficControl {
     if (!graph || !regs) {
       this.instances.end();
       this.platePool.end();
-      this.demands.clear();
+      this.runs.clear();
       return this.modelSteps(null, null);
     }
     const tagged = regs.signals.map((pos, i) => ({ pos, record: records[i] ?? null }));
@@ -364,14 +416,26 @@ export class TrafficControl {
     this.platePool.end();
   }
 
-  /** Advance signal phases (seconds) and repaint lamps. */
-  update(seconds: number): void {
+  /**
+   * The game's time of day (minutes after midnight) for the plans that change at night (夜間点滅,
+   * 夜間の押ボタン). Null: treated as daytime. Read at the next update.
+   */
+  setTimeOfDay(minute: number | null): void {
+    this.minute = minute;
+  }
+
+  /**
+   * Advance signal phases (seconds) and repaint lamps. `replay`: the clock is the replay's, which
+   * jumps about; the runs are read at that time (what showed then, from their history) and not moved
+   * on, so no plan changes and no push-button run starts in a replay.
+   */
+  update(seconds: number, replay = false): void {
     this.time = seconds;
     // One step lookup per controller per frame; state(), permits() and pedLight() read it there.
-    for (const c of this.controllers)
-      c.step = c.demand
-        ? c.demand.stepAt(seconds)
-        : stepAt(c.plan, cycleTime(seconds, c.offset, c.plan.cycle));
+    for (const c of this.controllers) {
+      if (!replay) this.advanceRun(c, seconds);
+      this.refresh(c, seconds);
+    }
     const lamps = this.lamps;
     if (!lamps) return;
     const blinkOn = Math.floor(seconds * 2) % 2 === 0;
@@ -400,11 +464,33 @@ export class TrafficControl {
     for (const m of [ped.stop, ped.go]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
     const wait = this.waitLamps;
     if (!wait) return;
-    this.buttons.forEach(({ controller }, i) => {
-      const isWaiting = controller.demand?.isWaiting(seconds) ?? false;
+    this.buttons.forEach(({ controller, walkers }, i) => {
+      const isWaiting = controller.run.isWaiting(walkers, seconds);
       wait.setColorAt(i, isWaiting ? WAIT_ON : LAMP_OFF);
     });
     if (wait.instanceColor) wait.instanceColor.needsUpdate = true;
+  }
+
+  /**
+   * Move `c`'s run on to `seconds` (a push-button run moves itself on when read). A ScheduledRun
+   * changes plans here only, at the moments plan.ts allows (run.ts).
+   */
+  private advanceRun(c: Controller, seconds: number): void {
+    if (!(c.run instanceof ScheduledRun)) return;
+    const template = c.run.advance(seconds, this.minute);
+    if (template === null) return;
+    log("signal_plan_switched", { controllerId: c.id, template, isNight: c.run.isNightAt(seconds) });
+  }
+
+  /** `c`'s step, plan, walkers and night flag at `seconds`, as its run shows them. */
+  private refresh(c: Controller, seconds: number): void {
+    c.step = c.run.stepAt(seconds);
+    const plan = c.run instanceof ScheduledRun ? c.run.planAt(seconds) : c.plan;
+    c.isNight = c.run instanceof ScheduledRun && c.run.isNightAt(seconds);
+    if (plan === c.plan) return;
+    c.plan = plan;
+    c.walkersAcross = walkersAcrossOf(plan);
+    c.diagonal = diagonalOf(plan);
   }
 
   /**
@@ -429,21 +515,42 @@ export class TrafficControl {
   permitsBefore(ap: Approach, movement: Movement, agoS: number): Permission {
     const c = ap.controller;
     if (ap.kind !== "signal" || !c) return "go";
-    const before = c.demand
-      ? c.demand.stepBefore(this.time, agoS)
-      : stepAt(c.plan, cycleTime(this.time - agoS, c.offset, c.plan.cycle));
+    // From what the run showed then (a plan change in between is read as it was).
+    const before = c.run.stepBefore(this.time, agoS);
     return permits(before, ap.group, movement);
   }
 
   /** How many controllers run a plan with a 右折矢印 (for the network summary log). */
   rightArrowCount(): number {
-    return this.controllers.filter((c) => ["a", "b"].some((g) => hasRightArrow(c.plan, g))).length;
+    return this.controllers.filter((c) => groupsOf(c.day).some((g) => hasRightArrow(c.day, g))).length;
+  }
+
+  /**
+   * Junction controllers by day plan template, and by night plan (`night:<template>`), for the
+   * network summary log (T4).
+   */
+  planCounts(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const c of this.controllers) {
+      if (c.kind !== "junction") continue;
+      out[c.day.plan.template] = (out[c.day.plan.template] ?? 0) + 1;
+      if (!c.night) continue;
+      const key = `night:${c.night.plan.plan.template}`;
+      out[key] = (out[key] ?? 0) + 1;
+    }
+    return out;
   }
 
   /** How many 単路 crossing controllers there are, and how many of them are push-button (the log). */
   crossingCounts(): { crossingSignals: number; pushButtons: number } {
     const crossings = this.controllers.filter((c) => c.kind === "crossing");
-    return { crossingSignals: crossings.length, pushButtons: crossings.filter((c) => c.demand).length };
+    const pushButtons = crossings.filter((c) => c.run instanceof OnDemandRun).length;
+    return { crossingSignals: crossings.length, pushButtons };
+  }
+
+  /** Right-turn arrows the junctions' templates dropped in the last build (scramble, 時差式; T4). */
+  droppedArrowCount(): number {
+    return this.droppedArrows;
   }
 
   /**
@@ -456,6 +563,31 @@ export class TrafficControl {
     if (!best?.controller) return null;
     const walkers = best.controller.walkersAcross.get(best.group);
     return walkers === undefined ? "stop" : (best.controller.step.ped[walkers] ?? "stop");
+  }
+
+  /**
+   * The walk light of the diagonal (歩車分離's 斜め横断) at the junction whose middle is nearest
+   * `near` (within PED_LIGHT_REACH_M), or null where no scramble signal governs.
+   */
+  diagonalLight(near: Vector3): PedLight | null {
+    const best = this.diagonalController(near);
+    if (!best?.diagonal) return null;
+    return best.step.ped[best.diagonal] ?? "stop";
+  }
+
+  /** The scramble controller whose middle is nearest `near` (within PED_LIGHT_REACH_M), or null. */
+  private diagonalController(near: Vector3): Controller | null {
+    let best: Controller | null = null;
+    let bestD = PED_LIGHT_REACH_M;
+    for (const c of this.controllers) {
+      if (c.diagonal === null) continue;
+      const d = Math.hypot(c.centre.x - near.x, c.centre.z - near.z);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
   }
 
   /**
@@ -515,17 +647,39 @@ export class TrafficControl {
    * push-button run (nothing at a crossing that is not push-button). True when it was taken.
    */
   pressButton(seg: Segment, near: Vector3): boolean {
-    const c = this.governing(seg, near)?.controller;
-    if (!c?.demand) return false;
-    const isTaken = c.demand.call(this.time);
+    const ap = this.governing(seg, near);
+    const c = ap?.controller;
+    if (!ap || !c) return false;
+    const walkers = c.walkersAcross.get(ap.group);
+    const isTaken = walkers !== undefined && c.run.call(walkers, this.time);
     if (isTaken) log("signal_button_pressed", { controllerId: c.id });
     return isTaken;
   }
 
-  /** Whether a pedestrian may start across `seg` at `near` now (null: no signal there). */
+  /**
+   * Whether a pedestrian may start across `seg` at `near` now (null: no signal there, or its walk
+   * lamps are dark while the vehicle lamps flash — then they cross as at an unsignalled crosswalk).
+   */
   mayCross(seg: Segment, near: Vector3): boolean | null {
     const light = this.pedLight(seg, near);
-    return light === null ? null : light === "go";
+    const isUnsignalled = light === null || light === "off";
+    return isUnsignalled ? null : light === "go";
+  }
+
+  /**
+   * Whether a pedestrian may start along the diagonal at the scramble junction near `near` now with
+   * `needS` seconds of walking ahead (null: no scramble signal there, or its walk lamps are dark).
+   */
+  mayCrossDiagonal(near: Vector3, needS = 0): boolean | null {
+    const light = this.diagonalLight(near);
+    const isUnsignalled = light === null || light === "off";
+    if (isUnsignalled) return null;
+    if (light !== "go") return false;
+    // Only with the walk left (青 and its flash) to get across: the traffic AI does not watch for
+    // walkers, so one still on the diagonal at the vehicles' 青 would be in their way.
+    const c = this.diagonalController(near);
+    const left = c?.diagonal && c.run instanceof ScheduledRun ? c.run.walkLeftS(c.diagonal, this.time) : 0;
+    return left >= needS;
   }
 
   /**
@@ -690,16 +844,21 @@ export class TrafficControl {
     const hashes = new Map<Controller, number[]>();
     for (const j of list) {
       const r = root(j.node);
-      const c = controllers.get(r) ?? {
+      const c: Controller = controllers.get(r) ?? {
         id: r,
         kind: "junction" as const,
         offset: 0,
         nodes: [],
         crosswalks: [],
         plan: TWO_PHASE,
+        day: TWO_PHASE,
+        night: null,
+        isNight: false,
         step: TWO_PHASE.plan.steps[0],
-        demand: null,
+        run: new ScheduledRun(TWO_PHASE, null, 0, null),
         walkersAcross: walkersAcrossOf(TWO_PHASE),
+        diagonal: null,
+        centre: new Vector3(),
         sound: null,
       };
       c.nodes.push(j.node);
@@ -735,6 +894,13 @@ export class TrafficControl {
 
     const taken = new Set<string>();
     const laneUse = new Map(regs.laneUse.map((u) => [`${u.seg.id}/${u.dir}`, u]));
+    // The records that say something of a junction's plan (T4): any node near it, crossing nodes
+    // too (OSM puts 歩車分離 and the buttons on the crosswalks), but not a 単路 crossing's own.
+    const planRecords = tagged.filter(
+      (t) => !byCrossing.has(t) && t.record !== null && saysOfPlan(t.record.tags),
+    );
+    this.droppedArrows = 0;
+    const liveKeys = new Set<string>();
     for (const c of controllers.values()) {
       const members = new Set(c.nodes);
       const entries: { seg: Segment; node: number; dir: 1 | -1; bearing: Vector3 }[] = [];
@@ -759,15 +925,31 @@ export class TrafficControl {
       const main = entries.reduce((a, b) => (b.seg.line.width > a.seg.line.width ? b : a));
       const axisOf = (e: (typeof entries)[number]): 0 | 1 =>
         Math.abs(e.bearing.dot(main.bearing)) >= Math.SQRT1_2 ? 0 : 1;
-      const { plan, groupOf } = planForJunction(
-        entries.map((e) => ({ axis: axisOf(e), lanes: laneUse.get(`${e.seg.id}/${e.dir}`) })),
-      );
-      c.plan = plan;
-      c.walkersAcross = walkersAcrossOf(plan);
-      c.offset = Math.min(...(hashes.get(c) ?? [0]).map((h) => h % c.plan.cycle));
-      c.step = stepAt(c.plan, cycleTime(this.time, c.offset, c.plan.cycle));
-      this.controllers.push(c);
       const nodes = c.nodes.map((n) => this.nodePos(graph, n)).filter((p): p is Vector3 => p !== null);
+      const { plan, groupOf, night, droppedArrows } = planForJunction(
+        entries.map((e) => ({
+          axis: axisOf(e),
+          lanes: laneUse.get(`${e.seg.id}/${e.dir}`),
+          bearingDeg: compassOf(e.bearing),
+        })),
+        junctionFacts(tagsNear(planRecords, nodes)),
+      );
+      this.droppedArrows += droppedArrows;
+      c.day = plan;
+      c.night = night;
+      const hash = Math.min(...(hashes.get(c) ?? [0]));
+      c.offset = Math.min(...(hashes.get(c) ?? [0]).map((h) => h % plan.cycle));
+      c.centre = nodes
+        .reduce((a, p) => a.add(p), new Vector3())
+        .multiplyScalar(1 / Math.max(1, nodes.length));
+      const key = `j:${hash}`;
+      liveKeys.add(key);
+      const kept = this.runs.get(key);
+      const isKept = kept instanceof ScheduledRun && kept.isFor(plan, night);
+      c.run = isKept ? kept : new ScheduledRun(plan, night, c.offset, this.minute);
+      this.runs.set(key, c.run);
+      this.refresh(c, this.time);
+      this.controllers.push(c);
       entries.forEach((e, i) => {
         const fromNode = this.clearance(graph, e.node, e.seg) + 5;
         const jartic = this.jarticStop(regs.stopLines, e.seg, e.dir, fromNode + 15);
@@ -796,6 +978,7 @@ export class TrafficControl {
         taken.add(`${e.seg.id}/${e.dir}`);
       });
     }
+    for (const key of this.runs.keys()) if (key.startsWith("j:") && !liveKeys.has(key)) this.runs.delete(key);
     return taken;
   }
 
@@ -912,7 +1095,7 @@ export class TrafficControl {
         ...cluster.map((t) => recordHash(t.record?.lon ?? t.pos.x, t.record?.lat ?? t.pos.z)),
       );
       liveKeys.add(key);
-      const demand = plan.plan.onDemand ? this.demandFor(key, plan) : null;
+      const run = this.crossingRun(key, plan);
       const c: Controller = {
         id: key,
         kind: "crossing",
@@ -920,12 +1103,18 @@ export class TrafficControl {
         nodes: [],
         crosswalks,
         plan,
+        day: plan,
+        night: null,
+        isNight: false,
         step: plan.plan.steps[0],
-        demand,
+        run,
         walkersAcross: walkersAcrossOf(plan),
+        diagonal: null,
+        centre,
         sound: sounds.length > 0 ? sounds.includes(true) : null,
       };
-      c.step = demand ? demand.stepAt(this.time) : stepAt(plan, cycleTime(this.time, c.offset, plan.cycle));
+      if (run instanceof ScheduledRun) c.run = this.keptCrossingRun(key, plan, c.offset);
+      this.refresh(c, this.time);
       this.controllers.push(c);
       places.forEach((p, i) => {
         const ap = this.approach(graph, p.seg, p.dir, p.at, "signal", c, 0, groupOf[i]);
@@ -937,17 +1126,31 @@ export class TrafficControl {
         this.approaches.push(ap);
       });
     }
-    for (const key of this.demands.keys()) if (!liveKeys.has(key)) this.demands.delete(key);
+    for (const key of this.runs.keys())
+      if (key.startsWith("x:") && !liveKeys.has(Number(key.slice(2)))) this.runs.delete(key);
     const isAnySkipped = skipped.outside + skipped.noCrosswalk + skipped.nearJunction + skipped.noRoom > 0;
     if (isAnySkipped) log("signal_crossings_skipped", skipped);
   }
 
-  /** The push-button run for the crossing `key`, carried over from the last network when it had one. */
-  private demandFor(key: number, plan: CompiledPlan): OnDemandRun {
-    const kept = this.demands.get(key);
-    if (kept?.compiled === plan) return kept;
+  /**
+   * The run of the 単路 crossing `key`: its push-button run carried over from the last network when it
+   * had one; a fixed cycle is a ScheduledRun made by keptCrossingRun once the offset is known.
+   */
+  private crossingRun(key: number, plan: CompiledPlan): OnDemandRun | ScheduledRun {
+    if (!plan.plan.onDemand) return new ScheduledRun(plan, null, 0, null);
+    const kept = this.runs.get(`x:${key}`);
+    if (kept instanceof OnDemandRun && kept.compiled === plan) return kept;
     const run = new OnDemandRun(plan, this.time);
-    this.demands.set(key, run);
+    this.runs.set(`x:${key}`, run);
+    return run;
+  }
+
+  /** A 単路 crossing's fixed-cycle run at `offset`, carried over when the plan is the same. */
+  private keptCrossingRun(key: number, plan: CompiledPlan, offset: number): ScheduledRun {
+    const kept = this.runs.get(`x:${key}`);
+    if (kept instanceof ScheduledRun && kept.isFor(plan, null)) return kept;
+    const run = new ScheduledRun(plan, null, offset, null);
+    this.runs.set(`x:${key}`, run);
     return run;
   }
 
@@ -1044,7 +1247,7 @@ export class TrafficControl {
 
   /** The head over `ap`: with the right-arrow row when its group's plan ever lights a right arrow. */
   private headFor(ap: Approach) {
-    const isArrowGroup = ap.controller !== null && hasRightArrow(ap.controller.plan, ap.group);
+    const isArrowGroup = ap.controller !== null && hasRightArrow(ap.controller.day, ap.group);
     return isArrowGroup ? RIGHT_ARROW_HEAD : VEHICLE_HEAD;
   }
 
@@ -1062,6 +1265,8 @@ export class TrafficControl {
     const arrowLamps: Object3D["matrix"][] = [];
     /** The vehicle heads' poles at 単路 crossings (the walk heads share them). */
     const crossingPoles: Vector3[] = [];
+    /** Where the 「時差式信号」 plates hang (under the heads of a 時差式 road), facing the driver. */
+    const staggeredPlates: { at: Vector3; yaw: number }[] = [];
 
     for (const ap of signals) {
       yield;
@@ -1105,6 +1310,10 @@ export class TrafficControl {
       o.updateMatrix();
       const def = this.headFor(ap);
       (def === RIGHT_ARROW_HEAD ? arrowHeads : heads).push(o.matrix.clone());
+      if (isStaggeredRoad(ap)) {
+        const below = (def.housing.hM / 2 + STAGGERED_PLATE.gapM + STAGGERED_PLATE.hM / 2) * HEAD_SCALE;
+        staggeredPlates.push({ at: new Vector3(head.x, g + SIGNAL_HEIGHT - below, head.z), yaw });
+      }
       for (const { lamp, x, y, turn } of lampLayout(def)) {
         o.position.set(head.x, g + SIGNAL_HEIGHT, head.z);
         o.rotation.set(0, yaw, 0);
@@ -1136,8 +1345,12 @@ export class TrafficControl {
     for (const c of crossings) {
       yield;
       if (this.pedLight(c.seg, c.pos) === null) continue;
-      const controller = this.governing(c.seg, c.pos)?.controller ?? null;
+      const governing = this.governing(c.seg, c.pos);
+      const controller = governing?.controller ?? null;
       const sounds = this.soundsAt(c.pos, controller, sound);
+      const isScramble = controller !== null && diagonalOf(controller.day) !== null;
+      const calledWalkers = governing ? (controller?.walkersAcross.get(governing.group) ?? null) : null;
+      const hasWalkButton = controller !== null && hasWalkButtons(controller);
       const { dir } = graph.sample(c.seg, c.s);
       for (const side of [1, -1] as const) {
         // Beside the crosswalk (not in it), just behind the kerb — and never in a carriageway:
@@ -1190,8 +1403,10 @@ export class TrafficControl {
           across,
           side,
           sounds,
+          bird: isScramble ? "piyo" : null,
         });
-        if (!controller?.demand) continue;
+        const hasBox = controller?.run instanceof OnDemandRun || hasWalkButton;
+        if (!controller || !hasBox) continue;
         // 押ボタン箱: banded to the same pole (電柱抱込式), facing along the pavement toward the
         // crosswalk, where the waiting walker stands.
         const toCrossing = kerb.clone().sub(at).setY(0);
@@ -1216,8 +1431,17 @@ export class TrafficControl {
           face: faceDir.clone(),
           stand: boxAt.clone().addScaledVector(faceDir, 0.45).setY(g),
           controller,
+          walkers: calledWalkers ?? "p",
         });
       }
+    }
+
+    for (const { at, yaw } of staggeredPlates) {
+      const plate = this.platePool.take(STAGGERED_PLATE.text, staggeredPlate);
+      plate.position.copy(at);
+      plate.rotation.y = yaw;
+      this.scene.add(plate);
+      this.plates.push(plate);
     }
 
     // Poles: the unit pole stretched to height; solid for cars and people (not ground probes).
@@ -1360,6 +1584,68 @@ export class TrafficControl {
     this.meshes.push(mesh);
     return mesh;
   }
+}
+
+/** Whether `ap`'s heads face a 時差式 road (its group is one of an `opposing` pair). */
+const isStaggeredRoad = (ap: Approach): boolean =>
+  ap.site === "junction" &&
+  (ap.controller?.day.plan.opposing.some(([g, h]) => g === ap.group || h === ap.group) ?? false);
+
+/**
+ * The 「時差式信号」 plate under a 時差式 road's heads. Not a 補助標識 of 標識令 別表第一 (no 時差式 there:
+ * assets/signs/law-table.json), so it is not in the sign registry: a plate the 公安委員会 hangs with
+ * the signal, drawn as commonly seen — black 「時差式信号」 on white with a black border. The wording,
+ * colours and size (0.9 × 0.3 m) are unconfirmed; no standard for it was read.
+ */
+const STAGGERED_PLATE = { text: "時差式信号", wM: 0.9, hM: 0.3, gapM: 0.08 } as const;
+
+function staggeredPlate(): Mesh {
+  let entry = plateTextures.get(STAGGERED_PLATE.text);
+  if (!entry) {
+    const h = 120;
+    const w = Math.round((h * STAGGERED_PLATE.wM) / STAGGERED_PLATE.hM);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "#111111";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(6, 6, w - 12, h - 12);
+    ctx.fillStyle = "#111111";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `bold 74px "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif`;
+    ctx.fillText(STAGGERED_PLATE.text, w / 2, h / 2 + 2, w - 40);
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.anisotropy = 4;
+    entry = { texture, aspect: w / h };
+    plateTextures.set(STAGGERED_PLATE.text, entry);
+  }
+  const face = new MeshStandardMaterial({ map: entry.texture, roughness: 0.5 });
+  // BoxGeometry face order: +x, −x, +y, −y, +z (the face toward the driver), −z.
+  const mesh = new Mesh(
+    new BoxGeometry(STAGGERED_PLATE.wM * HEAD_SCALE, STAGGERED_PLATE.hM * HEAD_SCALE, 0.03),
+    [plateBack, plateBack, plateBack, plateBack, face, plateBack],
+  );
+  mesh.castShadow = true;
+  return mesh;
+}
+
+/** Whether `c` has walk buttons in either of its plans (a junction's 押ボタン, all day or at night). */
+const hasWalkButtons = (c: Controller): boolean =>
+  c.day.plan.onCall.length > 0 || (c.night?.plan.plan.onCall.length ?? 0) > 0;
+
+/** Compass bearing (degrees from north, clockwise) of a ground direction (x east, z south). */
+const compassOf = (d: Vector3): number => ((Math.atan2(d.x, -d.z) * 180) / Math.PI + 360) % 360;
+
+/** The tags of the records within SIGNAL_SNAP_M of a junction's nodes (assign.ts junctionFacts reads them). */
+function tagsNear(records: readonly TaggedSignal[], nodes: readonly Vector3[]): SignalTags[] {
+  return records
+    .filter((t) => nodes.some((n) => Math.hypot(n.x - t.pos.x, n.z - t.pos.z) < SIGNAL_SNAP_M))
+    .flatMap((t) => (t.record ? [t.record.tags] : []));
 }
 
 const cross = (ox: number, oz: number, ux: number, uz: number, vx: number, vz: number) =>
