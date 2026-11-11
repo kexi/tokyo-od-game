@@ -11,7 +11,7 @@ import {
   Vector2,
   Vector3,
 } from "three";
-import type { XwChunk, XwMeta, XwTile } from "../src/expressway/format";
+import { XW_VERSION, type XwChunk, type XwMeta, type XwTile } from "../src/expressway/format";
 import { planeAt, tileKey } from "../src/expressway/geo";
 import { LocalFrame } from "../src/geo/frame";
 import { Buildings } from "../src/world/buildings";
@@ -59,6 +59,7 @@ function chunk(): XwChunk {
     ref: "C1",
     name: null,
     structure: "viaduct",
+    over: null,
     lanes: 2,
     laneWidth: 3.25,
     shoulderL: 1.25,
@@ -86,7 +87,7 @@ describe("the decks tell the buildings where to cut (ExpresswayDecks.onCutPoints
   const c = chunk();
   const key = tileKey(c.st[1], c.st[2], 14);
   const meta = {
-    version: 2,
+    version: XW_VERSION,
     zoom: 14,
     tiles: [key],
     range: null,

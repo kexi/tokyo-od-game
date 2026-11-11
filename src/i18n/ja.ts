@@ -396,6 +396,7 @@ export const ja = {
   // 違反・法令・行政処分・切符（traffic.ts・sanctions.ts・violationReview.ts・drivingTips.ts・ticketForm.ts・src/i18n/law.ts）
   // 違反名（traffic.ts の label と日本語が一致するもの。記録は日本語のまま保存し、表示で訳す）
   "violation.label.signal": "信号無視（赤色等）",
+  "violation.label.signalFlashing": "信号無視（点滅）",
   "violation.label.stopSign": "指定場所一時不停止等",
   "violation.label.noEntry": "通行禁止違反（一方通行）",
   "violation.label.turnBan": "通行禁止違反（指定方向外進行禁止）",
@@ -865,6 +866,9 @@ export const ja = {
   "hud.signal.red": "赤",
   "hud.signal.redRightArrow": "赤・右折矢印",
   "hud.signal.redArrows": "赤・矢印",
+  "hud.signal.flashingYellow": "黄の点滅",
+  "hud.signal.flashingRed": "赤の点滅",
+  "hud.signal.off": "消灯",
   "hud.signalAhead": "🚦 {light}・{m}m",
   "hud.stopAhead": "🛑 止まれ・{m}m",
   "hud.oneWay": "⬆ 一方通行",
@@ -1198,12 +1202,14 @@ export const ja = {
   "credits.jartic.terms": "利用条件：{terms}（CC BY 4.0 互換）。",
   "credits.h.signals": "信号機の位置",
   "credits.osm": "© {osm}。",
-  "credits.link.bbbike": "BBBike の東京抽出",
+  "credits.link.geofabrikKanto": "Geofabrik の関東抽出",
   "credits.signals.extract":
-    "OpenStreetMap の {tag} を {bbbike} から取り出し、交差点に対応付けて表示しています。",
+    "OpenStreetMap の {tag} を {extract} から取り出し、交差点と横断歩道に対応付けて表示しています。",
   "credits.odbl": "抽出したデータベースは {odbl} で提供します（{file}）。",
   "credits.signals.cycle":
     "信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。",
+  "credits.roadlanes.extract":
+    "一般道の車線数と幅（OpenStreetMap の {tags}）も同じく取り出し、地理院の道路中心線に対応付けて車線の配置に使っています（public/data/roadlanes）。",
   "credits.h.guide": "案内標識（方面及び方向）",
   "credits.h.destinations": "目的地の一覧（駅・名所）",
   "credits.h.expressway": "高架の自動車専用道路（都市高速）",

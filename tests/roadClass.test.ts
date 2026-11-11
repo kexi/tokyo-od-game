@@ -169,7 +169,16 @@ describe("road class (src/world/roadClass.ts)", () => {
     expect(usesGroundSurface(upper)).toBe(false);
     expect(allowsPedestrians(upper)).toBe(false);
     expect(hasRoadside(upper)).toBe(false);
-    expect(isDrivable(upper, "navigation")).toBe(true);
+    // Its limit is its own (OSM maxspeed), not the rules of the streets it passes over.
+    expect(takesJarticRules(upper)).toBe(false);
+    // Closed to the navi, the autopilot and the traffic AI until P6 opens the decks; drawn on the
+    // map and a car may be put back on it (spawn).
+    for (const use of ["navigation", "autopilot", "traffic", "guide"] as const)
+      expect(isDrivable(upper, use), use).toBe(false);
+    for (const use of ["spawn", "map"] as const) expect(isDrivable(upper, use), use).toBe(true);
+    // The same street on the ground stays open to every route.
+    const ground = line("local", { source: "osm", cls: "street", structure: "ground", level: 0 });
+    expect(isDrivable(ground, "navigation")).toBe(true);
     expect(usesGroundSurface(line("local", { structure: "tunnel" }))).toBe(false);
   });
 });

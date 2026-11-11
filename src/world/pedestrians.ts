@@ -442,7 +442,7 @@ export class Pedestrians {
     const network = this.network;
     if (p.state === "walk" && network) p.walk ??= network.attach(pos, p.profile.id);
     if (p.state === "walk" && network && p.walk) {
-      const step = network.advance(p.walk, speed * dt, p.profile.id, this.car, pos);
+      const step = network.advance(p.walk, speed * dt, p.profile.id, this.car, pos, speed);
       const dx = step.target.x - pos.x;
       const dz = step.target.z - pos.z;
       const gap = Math.hypot(dx, dz);

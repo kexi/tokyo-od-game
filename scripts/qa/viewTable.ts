@@ -73,6 +73,19 @@ export const StateSchema = z.strictObject({
   signalStep: z
     .union([z.number().int().nonnegative(), z.enum(["green", "yellow", "red", "arrow"])])
     .optional(),
+  /**
+   * The time of day the signals read ("HH:MM", T4: the night plans — 夜間点滅, 夜間の押ボタン), held
+   * apart from the look's sky; without it, the game's clock.
+   */
+  signalClock: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .optional(),
+  /**
+   * With signalClock: run the signals' clock only until the target's controller changes plan (the
+   * moment of a change: into the night flash, or its way out), then hold the step there.
+   */
+  signalClockToChange: z.boolean().optional(),
 });
 export type ViewState = z.infer<typeof StateSchema>;
 

@@ -901,10 +901,15 @@ const SIGNAL_CANDELA = 400;
 const HEAD_CANDELA = 3000; // a pair of low beams, towards the road ahead
 const TAIL_CANDELA = 40;
 const LENS_GLOW = 10; // lens radiance (× colour) when on: well above 1 for the bloom
+// A flashing lamp glints steadily at its colour (the glint is a soft wash, not the lamp itself);
+// a dark signal adds nothing.
 const SIGNAL_COLOURS: Record<LightState, Color> = {
   green: new Color(0x19e6b4),
   yellow: new Color(0xffc21a),
   red: new Color(0xff2a1a),
+  flashingYellow: new Color(0xffc21a),
+  flashingRed: new Color(0xff2a1a),
+  off: new Color(0x000000),
 };
 const HEAD_COLOUR = new Color(0xfff2d6);
 const TAIL_COLOUR = new Color(0xff1a0d);
@@ -1066,7 +1071,7 @@ export class StreetLights {
       yield true;
     }
     this.metal.castShadow = true;
-    this.heads = this.signalHeads(graph);
+    this.heads = this.signalHeads();
     this.lastDark = -1;
     this.instances.end();
     log("street_lights_placed", {
@@ -1162,22 +1167,16 @@ export class StreetLights {
     if (lens.instanceColor) lens.instanceColor.needsUpdate = true;
   }
 
-  /** Signal heads as trafficControl hangs them: beyond the junction, over the approach's lane. */
-  private signalHeads(graph: RoadGraph): Head[] {
+  /**
+   * Signal heads where trafficControl hangs them (Approach.head: beyond the junction, or just past
+   * a 単路 crossing's crosswalk, over the approach's lane). Why not work the place out here: a
+   * copy of the junction rule put a 単路 crossing's glow at the segment's end, the next junction.
+   */
+  private signalHeads(): Head[] {
     const heads: Head[] = [];
     for (const ap of this.deps.control.approaches) {
-      if (ap.kind !== "signal") continue;
-      const node = ap.dir === 1 ? ap.seg.to : ap.seg.from;
-      const ids = graph.nodes.get(node) ?? [];
-      const first = ids[0] === undefined ? null : graph.segments[ids[0]];
-      if (!first) continue;
-      const nodePos = first.from === node ? first.pts[0] : first.pts[first.pts.length - 1];
-      const widths = ids.filter((id) => id !== ap.seg.id).map((id) => graph.segments[id].line.width);
-      const far = (widths.length ? Math.max(...widths) : ap.seg.line.width) / 2 + 2.5;
-      const at = nodePos
-        .clone()
-        .addScaledVector(ap.travel, far)
-        .add(leftOf(ap.travel, (ap.seg.line.width / 2) * 0.35));
+      const at = ap.head;
+      if (ap.kind !== "signal" || !at) continue;
       const g = this.deps.groundAt(at.x, at.z) ?? 0;
       heads.push({
         x: at.x,

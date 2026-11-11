@@ -26,6 +26,7 @@ function chunk(): XwChunk {
     ref: "C1",
     name: null,
     structure: "viaduct",
+    over: null,
     lanes: 2,
     laneWidth: 3.25,
     shoulderL: 1.25,
@@ -180,7 +181,9 @@ describe("面の契約（profile.ts frameAt・surfaceHeight、デッキと P3 �
   });
 
   it("the game refuses tiles of another format version", () => {
-    expect(isSupportedMeta({ version: 2 })).toBe(true);
-    expect(isSupportedMeta({ version: 1 } as unknown as { version: 2 })).toBe(false);
+    expect(isSupportedMeta({ version: 4 })).toBe(true);
+    // 2 is P3's, 3 is P6's (maxspeed per chunk): neither carries the structure decks.
+    for (const v of [1, 2, 3])
+      expect(isSupportedMeta({ version: v } as unknown as { version: 4 })).toBe(false);
   });
 });

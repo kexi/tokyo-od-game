@@ -308,7 +308,14 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
   const spec = view.target as TargetQuery | undefined;
   const start = load.session.start;
   const found = spec ? await findTarget(b, spec, start) : null;
-  // A held 現示 (or the clock running again for views that hold none).
+  // The signals' time of day (night plans), then a held 現示 (or the clock running again).
+  const clock = view.state?.signalClock;
+  const minute = clock ? Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3)) : null;
+  const untilChangeOf = view.state?.signalClockToChange && found ? Number(found.facts.approachId) : null;
+  await evaluateWithin(
+    b,
+    `__game.debug.signals.clock(${JSON.stringify(minute)}, ${JSON.stringify(untilChangeOf)})`,
+  );
   const step = view.state?.signalStep;
   if (step !== undefined && found) {
     const held = await evaluateWithin<{ error?: string }>(

@@ -2,7 +2,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Vector3 } from "three";
-import type { XwChunk, XwMeta, XwTile } from "../src/expressway/format";
+import { STATION_STRIDE, type XwChunk, type XwMeta, type XwTile } from "../src/expressway/format";
 import { frameAt } from "../src/expressway/profile";
 import { LocalFrame } from "../src/geo/frame";
 import { createDeckBody, deckArraySteps } from "../src/world/expresswayDeck";
@@ -16,7 +16,6 @@ import { type PairPoint, pairPoints, type Project } from "./expresswayPairs";
  */
 
 const N = 36.9;
-const FRAME = new LocalFrame(35.6537, 139.7508, 40);
 
 export function loadGenerated(): { meta: XwMeta; chunks: XwChunk[] } {
   const dir = join(import.meta.dirname, "..", "public", "data", "expressway");
@@ -26,6 +25,19 @@ export function loadGenerated(): { meta: XwMeta; chunks: XwChunk[] } {
     .flatMap((f) => (JSON.parse(readFileSync(join(dir, f), "utf8")) as XwTile).chunks);
   return { meta, chunks };
 }
+
+/**
+ * Frames the probes run in, each over the chunks nearest to it: the colliders are float32, and
+ * 4 km from a frame's origin a vertex rounds by ~0.25 mm, enough to read a millimetre step where
+ * the data has none. Every chunk is probed in its nearest frame; each frame's world holds every
+ * chunk within WORLD_REACH_M (so a pair's master is always there).
+ */
+const AREAS: ReadonlyArray<{ lat: number; lon: number }> = [
+  { lat: 35.6537, lon: 139.7508 }, // 芝公園・浜崎橋
+  { lat: 35.6435, lon: 139.7575 }, // 芝浦
+  { lat: 35.6345, lon: 139.7715 }, // 台場
+];
+const WORLD_REACH_M = 3000;
 
 export type SeamProbe = {
   chunk: string;
@@ -37,12 +49,44 @@ export type SeamProbe = {
 };
 export type LetGo = { chunk: string; with: string; s: number; alongStep: number | null };
 
-/** All chunks merged in one world, and the probes. */
-export function probeGenerated(): { seams: SeamProbe[]; cuts: LetGo[]; world: RAPIER.World } {
+/**
+ * Every chunk merged (the DeckIndex always over all of them), and the probes of every seam and
+ * let-go point, each in its nearest frame (AREAS).
+ */
+export function probeGenerated(): { seams: SeamProbe[]; cuts: LetGo[]; worlds: RAPIER.World[] } {
   const { meta, chunks } = loadGenerated();
   const runs = new Map(meta.runs.map((r) => [r.id, r]));
   const index = new DeckIndex(runs);
   for (const c of chunks) index.add(c);
+  const distanceTo = (c: XwChunk, a: { lat: number; lon: number }) => {
+    const m = Math.floor(c.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
+    const kx = 111_320 * Math.cos((a.lat * Math.PI) / 180);
+    return Math.hypot((c.st[m + 1] - a.lon) * kx, (c.st[m + 2] - a.lat) * 110_574);
+  };
+  const nearest = (c: XwChunk) =>
+    AREAS.reduce((best, a, i) => (distanceTo(c, a) < distanceTo(c, AREAS[best]) ? i : best), 0);
+  const seams: SeamProbe[] = [];
+  const cuts: LetGo[] = [];
+  const worlds: RAPIER.World[] = [];
+  AREAS.forEach((area, k) => {
+    const frame = new LocalFrame(area.lat, area.lon, 40);
+    const near = chunks.filter((c) => distanceTo(c, area) < WORLD_REACH_M);
+    const own = new Set(chunks.filter((c) => nearest(c) === k).map((c) => c.id));
+    const res = probeIn(frame, near, own, runs, index);
+    seams.push(...res.seams);
+    cuts.push(...res.cuts);
+    worlds.push(res.world);
+  });
+  return { seams, cuts, worlds };
+}
+
+function probeIn(
+  FRAME: LocalFrame,
+  chunks: XwChunk[],
+  own: ReadonlySet<string>,
+  runs: Map<string, XwMeta["runs"][number]>,
+  index: DeckIndex,
+): { seams: SeamProbe[]; cuts: LetGo[]; world: RAPIER.World } {
   const place = { frame: FRAME, ellipsoidal: (_a: number, _b: number, h: number) => h + N };
   const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
   for (const c of chunks) {
@@ -72,7 +116,9 @@ export function probeGenerated(): { seams: SeamProbe[]; cuts: LetGo[]; world: RA
   };
   const known = new Set(chunks.map((c) => c.run));
   const isCut = (p: PairPoint) => p.isSameWay && roleOf(runs, p.chunk.run, p.with) === "child";
-  const all = pairPoints(chunks, 0.5, project).filter((p) => known.has(p.with) && isCut(p));
+  const all = pairPoints(chunks, 0.5, project).filter(
+    (p) => own.has(p.chunk.id) && known.has(p.with) && isCut(p),
+  );
   const seams: SeamProbe[] = [];
   for (const p of all) {
     const sign = p.offset >= 0 ? 1 : -1;
@@ -106,7 +152,9 @@ export function probeGenerated(): { seams: SeamProbe[]; cuts: LetGo[]; world: RA
     })),
     0.25,
     project,
-  ).filter((p) => known.has(p.with) && isCut(p) && Math.abs(p.offset) - p.edge < p.otherEdge);
+  ).filter(
+    (p) => own.has(p.chunk.id) && known.has(p.with) && isCut(p) && Math.abs(p.offset) - p.edge < p.otherEdge,
+  );
   const cuts: LetGo[] = [];
   for (let i = 1; i < padded.length; i++) {
     const a = padded[i - 1];

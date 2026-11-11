@@ -34,6 +34,23 @@ import { QpBuilder, type QpStatus, solveQp } from "./qp";
 
 export type EndCondition = { z?: number; grade?: number };
 export type Zone = { from: number; to: number; V: DesignSpeed };
+/**
+ * A stretch [from, to] of the run whose profile is given (a structure override, structures.ts).
+ * Inside `exact` (where `at` is a parabola of s: the bridge's straight girder) every knot takes the
+ * elevation and grade of `at` as hard equalities; the arc rows z(s + h) − z(s) = h (z′(s) + z′(s + h))
+ * / 2 then hold exactly (the trapezoid rule is exact for a quadratic). Over the rest of [from, to]
+ * (the anchorages, where the deck may turn off the axis and `at` is only nearly a parabola) every
+ * PIN_GRID_M station is drawn to `at` by a heavy square, so the arcs follow it as closely as
+ * parabolic arcs can. Why not hard rows there too: with the elevations at every knot the arcs are
+ * over-determined, and a near-parabola makes the equalities inconsistent (no solution); pinning the
+ * elevations alone carries the grade from knot to knot with an error that alternates and grows.
+ */
+export type ProfilePin = {
+  from: number;
+  to: number;
+  exact: [number, number];
+  at: (s: number) => { z: number; grade: number };
+};
 
 export type RunInput = {
   id: string;
@@ -50,6 +67,8 @@ export type RunInput = {
   /** Ends fixed by the ground (a junction end is a `Coupling`). */
   start: EndCondition;
   end: EndCondition;
+  /** Stretches pinned to a structure's profile (empty for an ordinary run). */
+  pins?: ProfilePin[];
 };
 
 export type Ref = { run: string; s: number };
@@ -131,6 +150,12 @@ const W_SMOOTH = 0.5;
 const W_PAIR = 5;
 const W_BOUND = 200;
 const W_END = 2000;
+/**
+ * A structure's profile off its exact stretch (ProfilePin): a square per PIN_GRID_M station, heavy
+ * enough that a centimetre off costs more than every other row near it (W_END's metre is 2000).
+ */
+const W_PIN = 1e5;
+const PIN_GRID_M = 5;
 
 type Layout = {
   input: RunInput;
@@ -143,6 +168,8 @@ type Layout = {
   gradeLimit: number[];
   crest: number[];
   sag: number[];
+  /** Knots pinned by a structure: elevation and grade. */
+  pinned: Map<number, { z: number; grade: number }>;
 };
 
 function speedsWithin(zones: Zone[], a: number, b: number): DesignSpeed[] {
@@ -168,7 +195,15 @@ function layoutOf(input: RunInput, off: number): Layout {
     crest.push(VERTICAL_CURVE_RADIUS.value[top].crest);
     sag.push(VERTICAL_CURVE_RADIUS.value[top].sag);
   }
-  return { input, off, m, h, isShort: S < minLength, maxV, minLength, gradeLimit, crest, sag };
+  // Knots on a pin's exact stretch take the structure's elevation and grade.
+  const pinned = new Map<number, { z: number; grade: number }>();
+  for (const pin of input.pins ?? []) {
+    for (let j = 0; j <= m; j++) {
+      const isExact = j * h >= pin.exact[0] - 1e-6 && j * h <= pin.exact[1] + 1e-6;
+      if (isExact) pinned.set(j, pin.at(j * h));
+    }
+  }
+  return { input, off, m, h, isShort: S < minLength, maxV, minLength, gradeLimit, crest, sag, pinned };
 }
 
 const Zi = (L: Layout, j: number) => L.off + j;
@@ -270,6 +305,18 @@ export function solveJoint(runs: RunInput[], couplings: Coupling[]): JointResult
       if (isBounded)
         qp.addRow(row, Number.isFinite(lo) ? lo : -Infinity, Number.isFinite(hi) ? hi : Infinity, W_BOUND);
     }
+    // A structure's profile is a hard equality: the deck must meet the model's floor beams.
+    for (const [j, v] of L.pinned) {
+      qp.addRow([[Zi(L, j), 1]], v.z, v.z);
+      qp.addRow([[Di(L, j), 1]], v.grade * h, v.grade * h);
+    }
+    for (const pin of input.pins ?? []) {
+      const n = Math.max(1, Math.ceil((pin.to - pin.from) / PIN_GRID_M));
+      for (let k = 0; k <= n; k++) {
+        const sv = pin.from + ((pin.to - pin.from) * k) / n;
+        qp.addSquare(zRow(L, sv), pin.at(sv).z, W_PIN);
+      }
+    }
     const { start, end } = input;
     if (start.z !== undefined) qp.addRow([[Zi(L, 0), 1]], start.z, start.z, W_END);
     if (start.grade !== undefined) qp.addRow([[Di(L, 0), 1]], start.grade * h, start.grade * h, W_END);
@@ -354,15 +401,9 @@ function finish(
     const s1 = pinned(false);
     if (s0.grade !== undefined) d[0] = s0.grade * h;
     if (s1.grade !== undefined) d[m] = s1.grade * h;
-    const z = [s0.z ?? x[Zi(L, 0)]];
-    for (let j = 0; j < m; j++) z.push(z[j] + (d[j] + d[j + 1]) / 2);
+    for (const [j, v] of L.pinned) d[j] = v.grade * h;
+    const z = reconstruct(L, d, s0.z ?? L.pinned.get(0)?.z ?? x[Zi(L, 0)], s1.z);
     const isPinnedEnd = s1.z !== undefined;
-    if (isPinnedEnd && m > 1) {
-      // Spread the last centimetres of end-elevation error over the interior grades.
-      const delta = (s1.z! - z[m]) / (m - 1);
-      for (let j = 1; j < m; j++) d[j] += delta;
-      for (let j = 0; j < m; j++) z[j + 1] = z[j] + (d[j] + d[j + 1]) / 2;
-    }
     const profile: VerticalProfile = {
       h,
       z,
@@ -412,6 +453,10 @@ function finish(
     }
     if (worstBound > 1e-6)
       out.push(`clearance short by ${worstBound.toFixed(2)} m at ${Math.round(worstAt)} m`);
+    for (const [j, v] of L.pinned) {
+      const miss = Math.abs(profile.z[j] - v.z) + Math.abs(profile.g[j] - v.grade) * h;
+      if (miss > 1e-3) out.push(`structure profile off by ${miss.toFixed(3)} m at ${Math.round(j * h)} m`);
+    }
     const endMiss = isPinnedEnd ? Math.abs(z[m] - s1.z!) : 0;
     if (endMiss > 1e-3) out.push(`end elevation off by ${endMiss.toFixed(3)} m`);
     const startMiss = s0.z !== undefined ? Math.abs(z[0] - s0.z) : 0;
@@ -419,6 +464,45 @@ function finish(
     problems.set(id, out);
   }
   return { profiles, problems };
+}
+
+/**
+ * Knot elevations from the knot grades (z_{j+1} = z_j + (d_j + d_{j+1}) / 2), held at the knots whose
+ * elevation is fixed (the start, a structure's pinned knots, a pinned end): between two fixed knots
+ * the last centimetres of error are spread over the free interior grades (none of a pinned knot's).
+ * Without pins this is P1's rule: the end's error spread over every interior grade.
+ */
+function reconstruct(L: Layout, d: number[], z0: number, zEnd: number | undefined): number[] {
+  const { m } = L;
+  const fixed = new Map<number, number>([[0, z0]]);
+  for (const [j, v] of L.pinned) if (j > 0) fixed.set(j, v.z);
+  const isPinnedEnd = zEnd !== undefined && m > 1;
+  if (isPinnedEnd && !fixed.has(m)) fixed.set(m, zEnd);
+  const anchors = [...fixed.keys()].sort((a, b) => a - b);
+  const z = Array.from({ length: m + 1 }, () => 0);
+  z[0] = z0;
+  const integrate = (from: number, to: number) => {
+    for (let j = from; j < to; j++) z[j + 1] = z[j] + (d[j] + d[j + 1]) / 2;
+  };
+  for (let k = 0; k < anchors.length; k++) {
+    const a = anchors[k];
+    const b = k + 1 < anchors.length ? anchors[k + 1] : null;
+    z[a] = fixed.get(a)!;
+    if (b === null) {
+      integrate(a, m);
+      break;
+    }
+    integrate(a, b);
+    const free: number[] = [];
+    for (let j = a + 1; j < b; j++) if (!L.pinned.has(j)) free.push(j);
+    const hasRoom = free.length > 0;
+    if (hasRoom) {
+      const delta = (fixed.get(b)! - z[b]) / free.length;
+      for (const j of free) d[j] += delta;
+      integrate(a, b);
+    }
+  }
+  return z;
 }
 
 export type FallbackStep = "standard" | "specialGrade" | "lowerSpeed" | "crossingsOnly";

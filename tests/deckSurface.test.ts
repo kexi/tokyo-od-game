@@ -25,6 +25,7 @@ function chunk(): XwChunk {
     ref: "C1",
     name: null,
     structure: "viaduct",
+    over: null,
     lanes: 2,
     laneWidth: 3.25,
     shoulderL: 1.25,

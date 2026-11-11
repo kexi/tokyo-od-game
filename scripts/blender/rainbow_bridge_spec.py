@@ -51,6 +51,7 @@ HOUSING_X = (15.5, ANCHOR_HALF)  # the two cable housings at the outer sides (OS
 HOUSING_TOP = 58.0  # their top at the face toward the tower: level with the upper deck railing (photos)
 STRUT_LOW = (27.0, 31.0)  # lower strut between the legs (OSM pylon part 27–31 m; night photo)
 INNER = TRUSS_X - CHORD_W / 2  # 14.0: inner face of the chords
+FLOOR_BEAM_GAP = 0.25  # floor beams stop this far under each road surface: the road side's slab rests there
 BARRIER_FACE = 13.8  # inner face of the outer barriers on both floors (barriers stand on the chords)
 WARP_AT = (139.7560316, 35.6391198)  # なぎさ通り on Shibaura (OSM way 1030669190), ~300 m from the anchorage
 

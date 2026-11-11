@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   PED_HEAD,
+  PUSH_BUTTON_BOX,
   SIGNAL_HEADS,
   SignalHeadDefSchema,
   VEHICLE_HEAD,
@@ -234,7 +235,39 @@ describe("public/models/signals.glb in step with lampLayout", () => {
   );
 
   it("has the lens and support parts the game builds heads from", () => {
-    for (const name of ["SignalLamp", "SignalArrowLamp", "PedLamp", "SignalPole", "SignalArm"])
+    for (const name of [
+      "SignalLamp",
+      "SignalArrowLamp",
+      "PedLamp",
+      "SignalPole",
+      "SignalArm",
+      "PushButtonLamp",
+    ])
       expect(byName.get(name)?.mesh, name).toBeDefined();
+  });
+
+  it("models the 押ボタン箱 with its button and おまちください lamp where PUSH_BUTTON_BOX puts them", () => {
+    const box = byName.get(PUSH_BUTTON_BOX.node);
+    expect(box?.mesh).toBeDefined();
+    expect(box?.rotation).toBeUndefined();
+    const marks = new Map((box?.children ?? []).map((i) => [nodes[i].name, nodes[i].translation ?? []]));
+    expect(marks.get(`${PUSH_BUTTON_BOX.node}_button`)?.[1]).toBeCloseTo(PUSH_BUTTON_BOX.button.y, 5);
+    expect(marks.get(`${PUSH_BUTTON_BOX.node}_wait`)?.[1]).toBeCloseTo(PUSH_BUTTON_BOX.waitLamp.y, 5);
+  });
+});
+
+describe("the 押ボタン箱 (one prefecture's works standard; the rest assumed)", () => {
+  it("stands at the 岐阜県警 standard's 900 mm 以上 and is 200 mm tall, with its lamp above the button inside the face", () => {
+    const b = PUSH_BUTTON_BOX;
+    expect(b.bottomM).toBeGreaterThanOrEqual(0.9);
+    expect(b.housing.hM).toBe(0.2);
+    expect(b.verified).toBe(false);
+    expect(b.waitLamp.y).toBeGreaterThan(b.button.y);
+    const top = b.housing.hM / 2;
+    expect(b.waitLamp.y + b.waitLamp.hM / 2).toBeLessThan(top);
+    expect(b.button.y - b.button.diameterM / 2).toBeGreaterThan(-top);
+    expect(b.waitLamp.wM).toBeLessThan(b.housing.wM);
+    // The face clears the pole (radius 0.135 m at its foot) by the box's depth.
+    expect(b.offsetM - b.housing.dM).toBeGreaterThanOrEqual(0.135);
   });
 });

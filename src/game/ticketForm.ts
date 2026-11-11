@@ -48,6 +48,8 @@ interface CommonViolationEntry {
   label: string;
   article: string;
   isMatch: (v: ViolationRecord) => boolean;
+  /** The row's name for the records it matched, where it depends on them (else `label`). */
+  labelFor?: (matched: readonly ViolationRecord[]) => string;
 }
 
 const COMMON_VIOLATION_ENTRIES: CommonViolationEntry[] = [
@@ -63,7 +65,13 @@ const COMMON_VIOLATION_ENTRIES: CommonViolationEntry[] = [
     code: "02",
     label: "信号無視（赤色等）",
     article: "道交法7",
-    isMatch: (v) => v.kind === "signal",
+    // 信号無視（点滅） is the same article and row; the row is named for what was booked (施行令
+    // 別表第六 names the two apart). How a real 告知書 prints the 点滅 case was not checked.
+    isMatch: (v) => v.kind === "signal" || v.kind === "signalFlashing",
+    labelFor: (matched) => {
+      const isFlashingOnly = matched.length > 0 && matched.every((v) => v.kind === "signalFlashing");
+      return isFlashingOnly ? "信号無視（点滅）" : "信号無視（赤色等）";
+    },
   },
   {
     id: "stopSign",
@@ -234,7 +242,9 @@ export function renderTicketHtml(data: TicketData): string {
 
   // チェックボックス欄の生成
   const checklistHtml = COMMON_VIOLATION_ENTRIES.map((entry) => {
-    const isChecked = violations.some((v) => entry.isMatch(v));
+    const matched = violations.filter((v) => entry.isMatch(v));
+    const isChecked = matched.length > 0;
+    const label = entry.labelFor?.(matched) ?? entry.label;
     const checkMark = isChecked ? "☑" : "□";
     const highlightClass = isChecked ? "item-checked" : "";
     let extraNote = "";
@@ -246,7 +256,7 @@ export function renderTicketHtml(data: TicketData): string {
       <div class="chk-item ${highlightClass}">
         <span class="chk-code">${entry.code}</span>
         <span class="chk-box">${checkMark}</span>
-        <span class="chk-label">${entry.label}</span>
+        <span class="chk-label">${label}</span>
         <span class="chk-art">(${entry.article})</span>${extraNote}
       </div>
     `;

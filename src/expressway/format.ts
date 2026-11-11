@@ -13,9 +13,12 @@ export const STATION_STRIDE = 7;
 export const ST = { s: 0, lon: 1, lat: 2, z: 3, bank: 4, ground: 5, grade: 6 } as const;
 /**
  * Data format version in meta.json. 2: stations of 7 values (grade added, Hermite surface),
- * `blocked` and `decks` on chunks, `portal` ends. The game refuses another version.
+ * `blocked` and `decks` on chunks, `portal` ends. 4 (P7): `street` chunks and runs (a structure's
+ * lower floor), `over` on chunks (a deck built to a landmark's deck levels), `ranges` and
+ * `structures` in meta. 3 is P6's (maxspeed per chunk), kept apart so neither branch reads the
+ * other's data; merging both is 5. The game refuses another version.
  */
-export const XW_VERSION = 2;
+export const XW_VERSION = 4;
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */
 export const PIER_STRIDE = 2;
 /**
@@ -36,10 +39,16 @@ export type XwChunk = {
   run: string;
   chain: string;
   k: number;
-  cls: "expressway" | "ramp";
+  cls: XwClass;
   ref: string | null;
   name: string | null;
   structure: "viaduct";
+  /**
+   * A deck built to a landmark's deck levels (structures.ts), or null: then the chunk has no
+   * girder (`girder` 0) nor piers, its section comes from the level's strips, and the slab goes on
+   * past each 壁高欄 as an apron that is drawn only (no collider: a guideway, a walkway).
+   */
+  over: XwOver | null;
   lanes: number;
   laneWidth: number;
   shoulderL: number;
@@ -79,6 +88,18 @@ export type XwChunk = {
   next: string | null;
 };
 
+/** The road classes in the data: the expressway, its ramps, and a structure's streets. */
+export type XwClass = "expressway" | "ramp" | "street";
+
+export type XwOver = {
+  /** `<landmark>:<level>:<direction>` (structures.ts StructureDeck.id). */
+  deck: string;
+  level: "upper" | "lower";
+  /** Render-only slab beyond the left and right 壁高欄's outer faces (m). */
+  apronL: number;
+  apronR: number;
+};
+
 export type XwDeckStretch = { with: string; relation: "same" | "above" | "below"; s0: number; s1: number };
 
 export type XwTile = { chunks: XwChunk[] };
@@ -104,7 +125,7 @@ export type XwEnd = {
 export type XwRunSummary = {
   id: string;
   chain: string;
-  cls: "expressway" | "ramp";
+  cls: XwClass;
   ref: string | null;
   lengthM: number;
   /** Highest design speed along the run (each chunk has its own section's `V`). */
@@ -122,6 +143,21 @@ export type XwRunSummary = {
   start: XwEnd;
   end: XwEnd;
   chunks: string[];
+  /** The structure deck this run carries over a landmark (null for an ordinary run). */
+  structure: XwRunStructure | null;
+};
+
+/** How a run met its structure's deck levels (structures.ts; the build fails beyond the tolerances). */
+export type XwRunStructure = {
+  deck: string;
+  /** s along the run where the pinned stretch (the structure's sRange) starts and ends. */
+  s0: number;
+  s1: number;
+  /** Largest horizontal distance of the OSM line from axis + strip centre (the 3 m rule). */
+  osmM: number;
+  /** Largest distance of the compiled centre line from axis + band centre, and of z from the formula. */
+  planM: number;
+  zM: number;
 };
 
 export type XwDiagnostic = { run: string; kind: string; detail: string; allowed: boolean };
@@ -130,7 +166,10 @@ export type XwMeta = {
   version: typeof XW_VERSION;
   zoom: number;
   tiles: string[];
-  range: { name: string; minLon: number; minLat: number; maxLon: number; maxLat: number } | null;
+  /** The named ranges built (empty for --range all). */
+  ranges: Array<{ name: string; minLon: number; minLat: number; maxLon: number; maxLat: number }>;
+  /** Structures whose deck levels were built (landmark id and the version of its deckLevels). */
+  structures: Array<{ id: string; version: number; decks: string[] }>;
   extract: { url: string; timestamp: string | null };
   counts: { runs: number; chunks: number; stations: number; piers: number; crossings: number };
   bytes: number;
