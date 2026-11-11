@@ -3,6 +3,7 @@
 // <x>-<y>.json (z14 tiles of ≤ 300 m chunks) and meta.json. The ground constraints read GSI DEM
 // tiles exactly as the game does (scripts/demTiles.ts), cached under .cache/gsi-dem.
 // Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi,rainbow,azabudai|all|ship] [--below pruned|all]
+//   [--partition components|blocks [--quiet-factor <k>]]
 //   [--pbf <path>] [--out <dir>] [--report <path> [--label <name>] [--baseline <path>]] [--accept-extract]
 // (--range takes one or more named ranges joined by commas; the default is DEFAULT_RANGES.)
 // Structure overrides (src/expressway/structures.ts): the deck levels of the landmarks in
@@ -18,6 +19,10 @@
 // (src/expressway/extract.ts): the build reads .cache/osm/kanto-<timestamp>.osm.pbf, copied once
 // from kanto-latest.osm.pbf while that is still the pinned extract; another extract stops the
 // build unless --accept-extract is given.
+// P2.7-2: --partition blocks cuts the main lines at anchors in their quiet stretches and solves block
+// by block (src/expressway/blocks.ts; measuring only, like --below all it needs --out), with
+// --quiet-factor <k> the anchors' margin (assumptions.BLOCK_QUIET_FACTOR by default). The default,
+// --partition components, solves each component in one QP as before.
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -30,6 +35,7 @@ import {
   pinnedExtractName,
 } from "../src/expressway/extract.ts";
 import { violationsOf } from "../src/expressway/violations.ts";
+import { BLOCK_QUIET_FACTOR } from "../src/expressway/assumptions.ts";
 import { buildReport, type PlannedRun } from "../src/expressway/report.ts";
 import { scopeExtent, shipRuns } from "../src/expressway/scope.ts";
 import { compareChunks, DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
@@ -149,6 +155,15 @@ const baselinePath = arg("baseline");
 const isUnprunedDefault = below === "all" && arg("out") === undefined;
 if (isUnprunedDefault)
   throw new Error("--below all is for measuring: give --out (just measure-expressway-area)");
+const partitionArg = arg("partition") ?? "components";
+const isPartitionMode = partitionArg === "components" || partitionArg === "blocks";
+if (!isPartitionMode) throw new Error(`unknown --partition ${partitionArg} (components, blocks)`);
+const partitionMode = partitionArg as "components" | "blocks";
+const quietFactor = Number(arg("quiet-factor") ?? BLOCK_QUIET_FACTOR.value);
+// Blocks move the decks (P2.7-2 measures by how much): never into the shipped folder.
+const isBlocksDefault = partitionMode === "blocks" && arg("out") === undefined;
+if (isBlocksDefault)
+  throw new Error("--partition blocks is for measuring: give --out (just measure-expressway-area)");
 const stagesMs: Record<string, number> = {};
 let stageStarted = performance.now();
 /** Time since the last stage ended, booked to `name` (the scorecard's stagesMs). */
@@ -268,6 +283,8 @@ const areas = hasWards
 const inWards = (lon: number, lat: number) => areas?.lookup(lat, lon) != null;
 const plan = planNetwork(net, outsideNodes, ranges, structures, {
   pruneBelow: below === "pruned",
+  partition: partitionMode,
+  quietFactor,
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 });
 // Asked again of the finished plan (the same set: shipRuns is pure), for the log and the scorecard.
@@ -278,6 +295,19 @@ if (chosenShip !== null) {
     ramps: chosenShip.ramps.size,
     belowRuns: [...chosenShip.all].filter((id) => plan.runs.get(id)!.below).length,
     prunedBelow: below === "pruned",
+  });
+}
+const part = plan.partition;
+if (part) {
+  log("expressway_blocks_planned", {
+    quietFactor: part.quietFactor,
+    quietMinM: part.quietMinM,
+    anchors: part.anchors.length,
+    pieces: part.pieces.runs.size,
+    blocks: part.pieces.components.size,
+    neededBlocks: part.neededBlocks.length,
+    routeGroups: part.routeGroups.length,
+    neededRuns: part.neededRuns.length,
   });
 }
 log("expressway_planned", {
@@ -538,6 +568,13 @@ if (reportPath) {
       iterations: result.stats.iterations,
       unconverged: result.stats.unconverged,
       qpMs: result.stats.qpMs,
+    },
+    partition: {
+      ...result.partition,
+      blocks: result.partition.blocks.map(({ canonical, ...b }) => ({
+        ...b,
+        hash: sha256Of(new TextEncoder().encode(canonical)),
+      })),
     },
     stagesMs,
   };

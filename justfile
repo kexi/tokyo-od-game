@@ -271,13 +271,17 @@ make-guide-data:
 make-expressway-data range="hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} {{ flags }}
 
-# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json など）
+# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5 など）
 measure-expressway-area label range="ship" below="pruned" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} --below {{ below }} --out .cache/expressway-area/{{ label }} --label {{ label }} --report .qa/expressway/{{ label }}.report.json {{ flags }}
 
 # 高速道路のスコアカード 2 つの差分表を出す（a・b はラベルか .report.json のパス、時間の欄は差に数えない、flags に --check で時間以外が違えば終了コード 1）
 compare-expressway-reports a b flags="":
     pnpm exec tsx scripts/compareExpresswayReports.ts {{ a }} {{ b }} {{ flags }}
+
+# 高速道路の生成 2 つの高さを比べる（a・b はラベルか生成先のフォルダ、b の測点を a の路面と比べた |Δz| の分布・固定点の ±Q とそれ以外・大きく動いた run を 1 行の JSON ログに、flags に --report <b のスコアカード>）
+compare-expressway-heights a b flags="":
+    pnpm exec tsx scripts/compareExpresswayHeights.ts {{ a }} {{ b }} {{ flags }}
 
 # ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just fetch-regs のキャッシュを使う）
 make-destinations:

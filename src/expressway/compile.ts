@@ -25,6 +25,8 @@ import {
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { isAllowed } from "./allowlist";
+import { BLOCK_QUIET_FACTOR } from "./assumptions";
+import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import { belowStructure, ceilingAt, depthFor, isBelowCompiled, isHoleAt, portalsOf } from "./below";
 import {
   STATION_STRIDE,
@@ -64,6 +66,7 @@ import {
   evalProfile,
   fallbackPlans,
   gradeLimitFor,
+  knotIntervals,
   type ProfilePin,
   type Ref,
   type RunInput,
@@ -186,7 +189,7 @@ export type RunPlan = {
   tunnelAt: Uint8Array;
 };
 
-type Crossing = { upper: string; lower: string; sUpper: number; sLower: number; sinAngle: number };
+export type Crossing = { upper: string; lower: string; sUpper: number; sLower: number; sinAngle: number };
 
 /** How station `sa` of run a stands to b's deck at sb: one surface, or a level above / below it. */
 export type DeckPair = {
@@ -219,6 +222,18 @@ export type Plan = {
   chainRuns: Map<string, RunPlan[]>;
   /** Below runs not compiled (a junction under the ground or the universe's edge: below.ts). */
   belowDeferred: string[];
+  /**
+   * The ends of each run, given instead of found from the chains: a piece plan (blocks.ts), whose
+   * pieces share their run's chain indices, so endPlan's search by index would mix them up.
+   */
+  ends?: Map<string, [EndPlan, EndPlan]>;
+  /** `--partition blocks` (blocks.ts): the anchors, the pieces and the blocks; absent for components. */
+  partition?: BlockPartition;
+  /**
+   * A piece plan's pieces: the run each is cut from and where it starts on it, so what is written
+   * (the problems' texts) names runs and run distances, never a piece (blocks.ts).
+   */
+  pieceRuns?: Map<string, { run: string; a: number }>;
 };
 
 const priority = (net: Network, c: Chain) => {
@@ -475,6 +490,16 @@ function runOver(
 export type PlanOptions = {
   wanted?: (plan: Plan) => ReadonlySet<string>;
   pruneBelow?: boolean;
+  /**
+   * `blocks` cuts the main lines at anchors and solves block by block (P2.7-2, blocks.ts, measuring
+   * only); `components` (the default) solves each component in one QP, as before.
+   */
+  partition?: "components" | "blocks";
+  /** k of the anchors' quiet margin (assumptions.BLOCK_QUIET_FACTOR by default). */
+  quietFactor?: number;
+  /** For tests: the least quiet margin and the anchors' spacing (assumptions by default). */
+  quietMin?: number;
+  anchorSpacing?: number;
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -586,6 +611,14 @@ export function planNetwork(
   for (const id of plan.wanted)
     for (const m of plan.components.get(plan.componentOf.get(id)!)!) needed.add(m);
   plan.needed = [...needed].sort();
+  const isBlocks = options.partition === "blocks";
+  if (isBlocks) {
+    plan.partition = partitionOf(plan, options.quietFactor ?? BLOCK_QUIET_FACTOR.value, {
+      ...(options.quietMin !== undefined ? { quietMin: options.quietMin } : {}),
+      ...(options.anchorSpacing !== undefined ? { spacing: options.anchorSpacing } : {}),
+    });
+    plan.needed = plan.partition.neededRuns;
+  }
   return plan;
 }
 
@@ -997,7 +1030,7 @@ function pruneBelow(plan: Plan): void {
 }
 
 /** Union of runs joined at junctions, crossing each other or over one another's decks. */
-function groupComponents(plan: Plan): void {
+export function groupComponents(plan: Plan): void {
   const parent = new Map<string, string>();
   for (const id of plan.runs.keys()) parent.set(id, id);
   const find = (a: string): string => {
@@ -1031,13 +1064,17 @@ function groupComponents(plan: Plan): void {
   }
 }
 
-type EndPlan =
+/** `anchor`: a piece's end at an anchor of its run (blocks.ts), at run distance s. */
+export type EndPlan =
   | { kind: "ground"; nodeIndex: number; into?: "tunnel" | "cut" }
   | { kind: "open" }
-  | { kind: "junction" | "seam"; parent: string; parentNodeIndex: number; nodeIndex: number };
+  | { kind: "junction" | "seam"; parent: string; parentNodeIndex: number; nodeIndex: number }
+  | { kind: "anchor"; run: string; s: number };
 
 /** What fixes a run's start or end (knowledge/road-redesign-plan.md 4.3 の 1). */
 export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
+  const given = plan.ends?.get(rp.run.id);
+  if (given) return given[atStart ? 0 : 1];
   const { chain, run } = rp;
   const idx = atStart ? run.from : run.to;
   const isChainEnd = atStart ? idx === 0 : idx === chain.nodes.length - 1;
@@ -1100,7 +1137,7 @@ function junctionParents(plan: Plan, id: string): string[] {
 }
 
 /** Run distance of a chain node on a run. */
-function nodeS(rp: RunPlan, nodeIndex: number): number {
+export function nodeS(rp: RunPlan, nodeIndex: number): number {
   return rp.align.s[rp.align.vertexSample[nodeIndex]] - rp.align.s[rp.i0];
 }
 
@@ -1133,9 +1170,20 @@ function isLowEnd(plan: Plan, rp: RunPlan, atStart: boolean, seen = new Set<stri
   return isNearStart || (pp.length - ps < climb && isLowEnd(plan, pp, false, seen));
 }
 
+/** A run's profile over [a, b] of its run distance (the whole run, or a piece of it: blocks.ts). */
+export type ProfilePiece = { a: number; b: number; profile: VerticalProfile };
+
 export type Solved = {
   rp: RunPlan;
+  /** The profile of the first piece (of the whole run when it is one piece). */
   profile: VerticalProfile;
+  /**
+   * The run's profile as its pieces in order: one for a component's run (a = 0), one per piece of a
+   * run cut at anchors (blocks.ts). Read through evalRun, never by evalProfile on `profile`.
+   */
+  pieces: ProfilePiece[];
+  /** The design-speed zones over the whole run (the pieces' zones put end to end). */
+  zones: Zone[];
   steps: string[];
   /** Bank on the run's samples. */
   bank: Float64Array;
@@ -1174,6 +1222,8 @@ export type CompileResult = {
   stats: SolveStats;
   /** What lies along each written run, for the sign planner (signPlan.ts); not written to files. */
   features: Record<string, RunFeatures>;
+  /** How the runs were split and solved (components or blocks), for the scorecard; not written. */
+  partition: PartitionResult;
 };
 
 /**
@@ -1717,10 +1767,16 @@ function solveComponent(
   diagnostics: XwDiagnostic[],
   pins: Map<string, VerticalProfile> = new Map(),
   start: Map<string, number> = new Map(),
+  setupsOf?: (id: string) => RunSetup,
+  anchorBanks: AnchorBanks = {},
 ): ComponentResult {
   const members = new Set(ids);
+  // A block's pieces are cut from their runs' setups, made once per run (setupsOf, solveBlocks).
   const setups = new Map(
-    ids.map((id) => [id, setupRun(plan, plan.runs.get(id)!, ground, objects, diagnostics)]),
+    ids.map((id) => [
+      id,
+      setupsOf ? setupsOf(id) : setupRun(plan, plan.runs.get(id)!, ground, objects, diagnostics),
+    ]),
   );
   const couplings = couplingsOf(plan, members);
   const connectors = connectorsOf(plan, ids);
@@ -1744,6 +1800,11 @@ function solveComponent(
   /** Per ramp: the soft miss at each step it was solved with, and whether the step was clean. */
   const history = new Map<string, Array<{ soft: number; clean: boolean }>>(ids.map((id) => [id, []]));
   const crossingsHere = plan.crossings.filter((c) => members.has(c.upper) && members.has(c.lower));
+  /** A piece's point on its run (the run itself for a component's run): what the texts name. */
+  const onRun = (id: string, s: number) => {
+    const piece = plan.pieceRuns?.get(id);
+    return piece ? { run: piece.run, s: s + piece.a } : { run: id, s };
+  };
   const stats = {
     largestRuns: ids.length,
     largestVariables: 0,
@@ -1787,6 +1848,7 @@ function solveComponent(
         // A cubic connector has no knots of its own to pin; connectorsOf never picks a run on a
         // structure, and vertical.ts refuses a connector with pins.
         ...(follow ? { follow } : { pins: profilePins(st.rp) }),
+        ...(plan.pieceRuns?.has(id) ? { textOffset: plan.pieceRuns.get(id)!.a } : {}),
       };
     });
     const started = performance.now();
@@ -1809,7 +1871,9 @@ function solveComponent(
         evalProfile(profiles.get(c.upper)!, c.sUpper).z - evalProfile(profiles.get(c.lower)!, c.sLower).z;
       const isShort = gap < ROAD_CLEAR;
       if (!isShort) continue;
-      const what = `clearance over ${c.lower} ${gap.toFixed(2)} m < ${ROAD_CLEAR} m at ${Math.round(c.sUpper)} m`;
+      const lower = onRun(c.lower, c.sLower);
+      const upper = onRun(c.upper, c.sUpper);
+      const what = `clearance over ${lower.run} ${gap.toFixed(2)} m < ${ROAD_CLEAR} m at ${Math.round(upper.s)} m`;
       const by = ROAD_CLEAR - gap;
       problems.get(c.upper)!.push({
         what: "crossing",
@@ -1824,7 +1888,7 @@ function solveComponent(
         basis: "law",
         s: c.sLower,
         by,
-        text: `under ${c.upper}: ${what}`,
+        text: `under ${upper.run}: ${what}`,
         partner: { run: c.upper, s: c.sUpper },
       });
     }
@@ -1981,7 +2045,7 @@ function solveComponent(
     });
   }
   const { profiles, problems } = result;
-  const banks = banksOf(plan, ids, profiles, setups);
+  const banks = banksOf(plan, ids, profiles, setups, anchorBanks);
   const solved = new Map<string, Solved>();
   const unsolved = new Map<string, VerticalAttempt[]>();
   const sunk = new Map<string, RunProblem>();
@@ -2012,6 +2076,8 @@ function solveComponent(
     solved.set(id, {
       rp: st.rp,
       profile,
+      pieces: [{ a: 0, b: st.rp.length, profile }],
+      zones: profile.zones,
       steps: ladders.get(id)![level.get(id)!].steps,
       bank: banks.get(id)!,
       start: ends[0],
@@ -2040,6 +2106,8 @@ function solveShedding(
   ground: GroundSampler,
   objects: ObjectPoly[],
   diagnostics: XwDiagnostic[],
+  setupsOf?: (id: string) => RunSetup,
+  anchorBanks: AnchorBanks = {},
 ): ComponentResult & { orphaned: Map<string, string> } {
   const component = new Set(ids);
   const stats = {
@@ -2073,7 +2141,17 @@ function solveShedding(
     start: Map<string, number>,
   ): Pass => {
     const local: XwDiagnostic[] = [];
-    const res = solveComponent(plan, members, ground, objects, local, new Map(), start);
+    const res = solveComponent(
+      plan,
+      members,
+      ground,
+      objects,
+      local,
+      new Map(),
+      start,
+      setupsOf,
+      anchorBanks,
+    );
     add(res);
     const failing = [...res.unsolved.keys()];
     const mains = failing.filter(isMain).length;
@@ -2127,7 +2205,17 @@ function solveShedding(
     // Put the shed runs back around everything solved, held where it is.
     const pins = new Map([...res.solved].map(([id, s]) => [id, s.profile]));
     const local: XwDiagnostic[] = [];
-    const back = solveComponent(plan, [...ids], ground, objects, local, pins, res.levels);
+    const back = solveComponent(
+      plan,
+      [...ids],
+      ground,
+      objects,
+      local,
+      pins,
+      res.levels,
+      setupsOf,
+      anchorBanks,
+    );
     add(back);
     const returned = [...shed.keys(), ...orphaned.keys()].filter((id) => back.solved.has(id));
     const isWorth = returned.length > 0 && [...res.solved.keys()].every((id) => back.solved.has(id));
@@ -2173,7 +2261,8 @@ function xwEnd(
   banks: Map<string, Float64Array>,
   groundZ: number | null,
 ): XwEnd {
-  if (e.kind === "open") return { kind: "open" };
+  // A piece's end at an anchor is no end of the run: the run's ends are written once it is stitched.
+  if (e.kind === "open" || e.kind === "anchor") return { kind: "open" };
   const here = evalProfile(profile, s);
   if (e.kind === "ground") {
     // `ground` is the DEM where the run meets it (T5 measures the deck against it), not the deck.
@@ -2202,6 +2291,15 @@ function xwEnd(
 }
 
 /**
+ * How banksOf treats the anchors of pieces (blocks.ts): `after` orders a piece after the one before
+ * its anchor, `bankAt` gives the bank at a piece's anchor end (null: free), from what is done.
+ */
+type AnchorBanks = {
+  after?: Map<string, string[]>;
+  bankAt?: (id: string, side: number, done: Map<string, Float64Array>) => number | null;
+};
+
+/**
  * Superelevation of a component's runs, parents before children (a junction end takes its
  * parent's bank) and each run after the decks it shares a surface with (it takes their bank there:
  * the same for a deck going the same way, the opposite sign for one going the other way, so the slab
@@ -2212,10 +2310,16 @@ function banksOf(
   ids: string[],
   profiles: Map<string, VerticalProfile>,
   setups: Map<string, RunSetup>,
+  anchors: AnchorBanks = {},
 ): Map<string, Float64Array> {
   const members = new Set(ids);
   const parents = new Map(
-    ids.map((id) => [id, junctionParents(plan, id).filter((p) => members.has(p) && p !== id)]),
+    ids.map((id) => [
+      id,
+      [...junctionParents(plan, id), ...(anchors.after?.get(id) ?? [])].filter(
+        (p) => members.has(p) && p !== id,
+      ),
+    ]),
   );
   const done = new Map<string, Float64Array>();
   const order: string[] = [];
@@ -2269,6 +2373,7 @@ function banksOf(
       const e = st.ends[side];
       if (e.kind === "ground") return 0;
       if (e.kind === "open") return null;
+      if (e.kind === "anchor") return anchors.bankAt?.(id, side, done) ?? null;
       const pBank = done.get(e.parent);
       if (!pBank) return null;
       const pp = plan.runs.get(e.parent)!;
@@ -2287,7 +2392,110 @@ function banksOf(
   return done;
 }
 
-export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObject[]): CompileResult {
+/** Elevation and grade on a solved run at run distance sv, from the piece holding sv. */
+export function evalRun(s: Pick<Solved, "pieces">, sv: number): { z: number; grade: number } {
+  const isWhole = s.pieces.length === 1;
+  if (isWhole) return evalProfile(s.pieces[0].profile, sv);
+  let p = s.pieces[0];
+  for (const q of s.pieces) if (q.a <= sv) p = q;
+  return evalProfile(p.profile, sv - p.a);
+}
+
+/** Where a run is solved: its elevation at run distance s, or null (not solved there, or closed). */
+type HeightAt = (run: string, s: number) => { z: number; grade: number } | null;
+
+/** A block (a component for `components`) as the scorecard lists it; `canonical` is hashed by the script. */
+export type BlockSummary = { id: string; pieces: number; runs: number; variables: number; canonical: string };
+
+/** How the needed runs were split and solved (the scorecard's `partition`). */
+export type PartitionResult = {
+  mode: "components" | "blocks";
+  quietFactor: number | null;
+  quietMinM: number | null;
+  /** The anchors of the runs the blocks solve: the route solution's value there, the blocks beside it. */
+  anchors: Array<{ run: string; s: number; q: number; z: number; grade: number; blocks: [string, string] }>;
+  /** Pieces of the needed blocks (runs, for components). */
+  pieces: number;
+  neededBlocks: number;
+  routeSolves: number;
+  /** Anchors with a problem of their route solution (RunProblem) within Q of them. */
+  anchorsNearProblems: number;
+  /**
+   * The largest step at an anchor between the two pieces beside it, both solved (I3): elevation,
+   * grade and bank. Zero for components.
+   */
+  joins: { dz: number; dGrade: number; dBank: number };
+  blocks: BlockSummary[];
+};
+
+export type SolveOptions = {
+  /** I7's limit on a block's first QP (blocks.ts BLOCK_MAX_VARIABLES); for tests. */
+  maxBlockVariables?: number;
+};
+
+/** A block's first QP over BLOCK_MAX_VARIABLES (I7): the build stops, naming the block and its runs. */
+export class BlockTooLargeError extends Error {
+  constructor(block: string, variables: number, runs: string[], limit: number) {
+    super(`block ${block}: ${variables} variables > ${limit} (runs ${runs.join(", ")})`);
+    this.name = "BlockTooLargeError";
+  }
+}
+
+/** A route solution that did not converge: the anchors would have no value, so the build stops. */
+export class RouteUnsolvedError extends Error {
+  constructor(group: string[], status: string) {
+    super(`route solution of ${group.join(", ")}: ${status}`);
+    this.name = "RouteUnsolvedError";
+  }
+}
+
+/** The attempts of an unsolved run, as vertical_unsolved reports them. */
+function attemptsText(attempts: VerticalAttempt[]): string {
+  return attempts
+    .map((a) => `V${a.V}${a.special ? "特例" : ""}${a.crossingsOnly ? "交差のみ" : ""}: ${a.worst || "ok"}`)
+    .join(" | ");
+}
+
+/**
+ * The canonical text of a block's solution (hashed by the build script, P2.7-2 4.6): its pieces by
+ * id, each with its range, knot spacing, knot elevations and grades (JSON's doubles) and steps, or
+ * how it failed.
+ */
+function canonicalOf(
+  ids: string[],
+  range: (id: string) => [number, number],
+  res: { solved: Map<string, Solved>; unsolved: Map<string, unknown>; orphaned: Map<string, string> },
+): string {
+  return [...ids]
+    .sort()
+    .map((id) => {
+      const head = `${id} ${JSON.stringify(range(id))}`;
+      const s = res.solved.get(id);
+      if (!s) return `${head} ${res.orphaned.has(id) ? "orphaned" : "unsolved"}`;
+      const p = s.profile;
+      return `${head} h=${JSON.stringify(p.h)}${p.cubic ? " cubic" : ""} z=${JSON.stringify(p.z)} g=${JSON.stringify(p.g)} ${s.steps.join(">")}`;
+    })
+    .join("\n");
+}
+
+/** Variables of a block's first QP: two per knot of every run that is not a cubic connector. */
+function blockVariables(plan: Plan, ids: string[]): number {
+  const connectors = connectorsOf(plan, ids);
+  let n = 0;
+  for (const id of ids) {
+    if (connectors.has(id)) continue;
+    const rp = plan.runs.get(id)!;
+    n += 2 * (knotIntervals(rp.length, rp.zones, false) + 1);
+  }
+  return n;
+}
+
+export function solvePlan(
+  plan: Plan,
+  ground: GroundSampler,
+  objects: CrossObject[],
+  options: SolveOptions = {},
+): CompileResult {
   const diagnostics = [...plan.diagnostics];
   const objectPolys = objects.map((o) => {
     const poly = objectPoly(o);
@@ -2295,7 +2503,6 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   });
   const solved = new Map<string, Solved>();
   const failed = new Set<string>();
-  const neededComponents = [...new Set(plan.needed.map((id) => plan.componentOf.get(id)!))].sort();
   const stats: SolveStats = {
     components: 0,
     largestRuns: 0,
@@ -2305,54 +2512,17 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
     qpMs: 0,
     unconverged: 0,
   };
-  for (const cid of neededComponents) {
-    const ids = plan.components.get(cid)!;
-    const res = solveShedding(plan, ids, ground, objectPolys, diagnostics);
-    for (const [id, parent] of res.orphaned) {
-      failed.add(id);
-      diagnostics.push({ run: id, kind: "parent_unsolved", detail: `parent ${parent}`, allowed: false });
-    }
-    stats.components++;
-    stats.largestRuns = Math.max(stats.largestRuns, res.stats.largestRuns);
-    stats.largestVariables = Math.max(stats.largestVariables, res.stats.largestVariables);
-    stats.solves += res.stats.solves;
-    stats.iterations += res.stats.iterations;
-    stats.qpMs += res.stats.qpMs;
-    stats.unconverged += res.stats.unconverged;
-    for (const [id, s] of res.solved) solved.set(id, s);
-    for (const [key, p] of res.sunk) {
-      const run = key.split("|")[0];
-      const isSunk = p.what === "sunk";
-      diagnostics.push({
-        run,
-        kind: isSunk ? "deck_below_ground" : "below_open_ground_floor",
-        detail: isSunk
-          ? `${p.by.toFixed(2)} m under the assumed floor (DEM − ${DEM_SINK_FLOOR.value} m) at ${Math.round(p.s)} m, near a low end`
-          : `${p.by.toFixed(2)} m under the open-ground floor (${OPEN_OVER_GROUND} m) at ${Math.round(p.s)} m`,
-        allowed: false,
-      });
-    }
-    for (const [id, attempts] of res.unsolved) {
-      failed.add(id);
-      diagnostics.push({
-        run: id,
-        kind: "vertical_unsolved",
-        detail: attempts
-          .map(
-            (a) =>
-              `V${a.V}${a.special ? "特例" : ""}${a.crossingsOnly ? "交差のみ" : ""}: ${a.worst || "ok"}`,
-          )
-          .join(" | "),
-        allowed: false,
-      });
-    }
-  }
+  const { heightAt, blockHeightAt, partition } = plan.partition
+    ? solveBlocks(plan, plan.partition, ground, objectPolys, diagnostics, solved, failed, stats, options)
+    : solveComponents(plan, ground, objectPolys, diagnostics, solved, failed, stats);
   // A run whose junction parent is not in the data would end in the air: left out, and reported.
   for (let changed = true; changed;) {
     changed = false;
     for (const id of [...solved.keys()].sort()) {
       const s = solved.get(id)!;
-      const lost = [s.start, s.end].find((e) => e.parent !== undefined && !solved.has(e.parent));
+      const lost = [s.start, s.end].find(
+        (e) => e.parent !== undefined && heightAt(e.parent, e.parentS ?? 0) === null,
+      );
       if (!lost) continue;
       solved.delete(id);
       failed.add(id);
@@ -2366,7 +2536,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
       diagnostics.push({
         run: s.rp.run.id,
         kind: "vertical_fallback",
-        detail: s.steps.join(">") + ` V${Math.max(...s.profile.zones.map((z) => z.V))}`,
+        detail: s.steps.join(">") + ` V${Math.max(...s.zones.map((z) => z.V))}`,
         allowed: false,
       });
   }
@@ -2379,8 +2549,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
   for (const s of solved.values()) {
     const kept: BlockedRoad[] = [];
     for (const b of s.blocked) {
-      const isClear =
-        lowestOver(s.profile, b.s - b.halfWindow, b.s + b.halfWindow, s.rp.length) - b.top >= b.need;
+      const isClear = lowestOver(s, b.s - b.halfWindow, b.s + b.halfWindow, s.rp.length) - b.top >= b.need;
       if (!isClear) {
         kept.push(b);
         continue;
@@ -2391,12 +2560,13 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
     s.blocked = kept;
   }
   for (let i = diagnostics.length - 1; i >= 0; i--) if (cleared.has(diagnostics[i])) diagnostics.splice(i, 1);
-  // Deck-over-deck crossings, recorded on the upper run once both are solved (for T4).
+  // Deck-over-deck crossings, recorded on the upper run once both are solved (for T4). The lower one
+  // is read where it is solved (with blocks, the piece holding the crossing, in the upper's block).
   for (const c of plan.crossings) {
     const up = solved.get(c.upper);
-    const low = solved.get(c.lower);
+    const low = blockHeightAt(c.lower, c.sLower);
     if (!up || !low) continue;
-    up.cross.push(c.sUpper, evalProfile(low.profile, c.sLower).z, ROAD_CLEAR);
+    up.cross.push(c.sUpper, low.z, ROAD_CLEAR);
   }
   const chunks: XwChunk[] = [];
   const runs: XwRunSummary[] = [];
@@ -2412,7 +2582,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
     }
     if (!s) continue;
     features[id] = runFeatures(s.rp);
-    const runChunks = chunkRun(plan, s, ground, objectPolys, solved);
+    const runChunks = chunkRun(plan, s, ground, objectPolys, blockHeightAt);
     const structure = over ? structureCheck(over, runChunks) : null;
     chunks.push(...runChunks);
     runs.push({
@@ -2421,7 +2591,7 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
       cls: s.rp.cls,
       ref: s.rp.ref,
       lengthM: roundTo(s.rp.length, 2),
-      V: Math.max(...s.profile.zones.map((z) => z.V)),
+      V: Math.max(...s.zones.map((z) => z.V)),
       tagV: s.rp.tagV,
       planV: s.rp.planV,
       minRadiusM: roundTo(Math.min(s.rp.minRadius, 1e6), 1),
@@ -2450,7 +2620,555 @@ export function solvePlan(plan: Plan, ground: GroundSampler, objects: CrossObjec
     const rp = plan.runs.get(id)!;
     closed.push({ run: id, chain: rp.chain.id, cls: rp.cls, reason: why?.kind ?? "vertical_unsolved" });
   }
-  return { chunks, runs, closed, diagnostics, stats, features };
+  return { chunks, runs, closed, diagnostics, stats, features, partition };
+}
+
+/**
+ * `heightAt`: where a run stands, for the runs hanging from it (null once it is closed anywhere).
+ * `blockHeightAt`: where a run stands as the block of the point solved it, for what is written
+ * over it (crossings, piers over a deck): with blocks, a piece's own block decides, not whether
+ * some other piece of its run, in a block another range may not solve, failed (T8). For
+ * components the two are the same.
+ */
+type Solving = { heightAt: HeightAt; blockHeightAt: HeightAt; partition: PartitionResult };
+
+/** Each needed component in one QP through solveShedding (the default, `components`). */
+function solveComponents(
+  plan: Plan,
+  ground: GroundSampler,
+  objectPolys: ObjectPoly[],
+  diagnostics: XwDiagnostic[],
+  solved: Map<string, Solved>,
+  failed: Set<string>,
+  stats: SolveStats,
+): Solving {
+  const neededComponents = [...new Set(plan.needed.map((id) => plan.componentOf.get(id)!))].sort();
+  const blocks: BlockSummary[] = [];
+  for (const cid of neededComponents) {
+    const ids = plan.components.get(cid)!;
+    const res = solveShedding(plan, ids, ground, objectPolys, diagnostics);
+    for (const [id, parent] of res.orphaned) {
+      failed.add(id);
+      diagnostics.push({ run: id, kind: "parent_unsolved", detail: `parent ${parent}`, allowed: false });
+    }
+    stats.components++;
+    stats.largestRuns = Math.max(stats.largestRuns, res.stats.largestRuns);
+    stats.largestVariables = Math.max(stats.largestVariables, res.stats.largestVariables);
+    stats.solves += res.stats.solves;
+    stats.iterations += res.stats.iterations;
+    stats.qpMs += res.stats.qpMs;
+    stats.unconverged += res.stats.unconverged;
+    for (const [id, s] of res.solved) solved.set(id, s);
+    for (const [key, p] of res.sunk) diagnostics.push(sunkDiagnostic(key.split("|")[0], p, p.s));
+    for (const [id, attempts] of res.unsolved) {
+      failed.add(id);
+      diagnostics.push({
+        run: id,
+        kind: "vertical_unsolved",
+        detail: attemptsText(attempts),
+        allowed: false,
+      });
+    }
+    blocks.push({
+      id: cid,
+      pieces: ids.length,
+      runs: ids.length,
+      variables: res.stats.largestVariables,
+      canonical: canonicalOf(ids, (id) => [0, plan.runs.get(id)!.length], res),
+    });
+  }
+  const heightAt: HeightAt = (run, s) => {
+    const done = solved.get(run);
+    return done ? evalRun(done, s) : null;
+  };
+  return {
+    heightAt,
+    blockHeightAt: heightAt,
+    partition: {
+      mode: "components",
+      quietFactor: null,
+      quietMinM: null,
+      anchors: [],
+      pieces: plan.needed.length,
+      neededBlocks: neededComponents.length,
+      routeSolves: 0,
+      anchorsNearProblems: 0,
+      joins: { dz: 0, dGrade: 0, dBank: 0 },
+      blocks,
+    },
+  };
+}
+
+/** The diagnostic of a solved run's worst miss of an assumed floor, at run distance s. */
+function sunkDiagnostic(run: string, p: RunProblem, s: number): XwDiagnostic {
+  const isSunk = p.what === "sunk";
+  return {
+    run,
+    kind: isSunk ? "deck_below_ground" : "below_open_ground_floor",
+    detail: isSunk
+      ? `${p.by.toFixed(2)} m under the assumed floor (DEM − ${DEM_SINK_FLOOR.value} m) at ${Math.round(s)} m, near a low end`
+      : `${p.by.toFixed(2)} m under the open-ground floor (${OPEN_OVER_GROUND} m) at ${Math.round(s)} m`,
+    allowed: false,
+  };
+}
+
+/** An anchor's value from the route solution: both pieces beside it are held to it. */
+type AnchorValue = { z: number; grade: number; bank: number };
+
+/**
+ * A piece's part of its run's setup (blocks.ts): the run's stations inside the piece, moved to start
+ * at 0, and one station at each anchor end (target interpolated, no floor or ceiling there: the
+ * anchor holds it). The run's ends keep their own conditions; an anchor end takes `anchorEnd`. Why
+ * cut the run's setup and not set the piece up on its own: the floors near low ends, the climbs and
+ * the ±60 m target average are the run's (a piece set up alone would see a low end at its anchor),
+ * and the setup's diagnostics give run distances.
+ */
+function pieceSetup(
+  run: RunSetup,
+  rp: RunPlan,
+  info: PieceInfo,
+  isLast: boolean,
+  ends: [EndPlan, EndPlan],
+  anchorEnd: (side: 0 | 1) => RunInput["start"],
+): RunSetup {
+  const isFirst = info.k === 0;
+  const isWhole = isFirst && isLast;
+  if (isWhole) return { ...run, ends };
+  const n = run.stations.length;
+  const TOL = 1e-6;
+  const find = (sv: number) => {
+    for (let k = 0; k < n; k++) if (Math.abs(run.stations[k] - sv) <= TOL) return k;
+    return -1;
+  };
+  const targetAt = (sv: number) => {
+    let k = 0;
+    while (k < n - 2 && run.stations[k + 1] < sv) k++;
+    const s0 = run.stations[k];
+    const s1 = run.stations[k + 1];
+    const t = (sv - s0) / (s1 - s0 || 1);
+    return run.target[k] + (run.target[k + 1] - run.target[k]) * t;
+  };
+  const b = isLast ? run.rp.length : info.b;
+  const rows: Array<{ s: number; k: number }> = [{ s: info.a, k: isFirst ? 0 : find(info.a) }];
+  for (let k = 0; k < n; k++) {
+    const sv = run.stations[k];
+    const isInside = sv > info.a + TOL && sv < b - TOL;
+    if (isInside) rows.push({ s: sv, k });
+  }
+  rows.push({ s: b, k: isLast ? n - 1 : find(b) });
+  const last = rows.length - 1;
+  const pick = (from: Float64Array, fill: number) =>
+    Float64Array.from(rows, (r) => (r.k >= 0 ? from[r.k] : fill));
+  return {
+    rp,
+    stations: Float64Array.from(rows, (r, i) => (i === 0 ? 0 : i === last ? rp.length : r.s - info.a)),
+    target: Float64Array.from(rows, (r) => (r.k >= 0 ? run.target[r.k] : targetAt(r.s))),
+    lower: pick(run.lower, -Infinity),
+    lowerAtCrossings: pick(run.lowerAtCrossings, -Infinity),
+    lowerLaw: pick(run.lowerLaw, -Infinity),
+    lowerOpen: pick(run.lowerOpen, -Infinity),
+    upper: pick(run.upper, Infinity),
+    fixed: [isFirst ? run.fixed[0] : anchorEnd(0), isLast ? run.fixed[1] : anchorEnd(1)],
+    ends,
+    groundZ: [isFirst ? run.groundZ[0] : null, isLast ? run.groundZ[1] : null],
+    cross: [],
+    blocked: [],
+  };
+}
+
+/** One seam group's route solution (P2.7-2 4.4): profiles and banks of its pieces, and the anchors' values. */
+export type RouteSolution = {
+  group: string[];
+  profiles: Map<string, VerticalProfile>;
+  banks: Map<string, Float64Array>;
+  /** By the piece after each anchor. */
+  values: Map<string, AnchorValue>;
+  problems: Map<string, RunProblem[]>;
+  qpMs: number;
+};
+
+/**
+ * The route solution of a seam group (runs end to end in one chain, not cut by the ground): its
+ * pieces in one solveJoint, joined only by the seams and, at each anchor, the piece after it
+ * following the one before it (hard). Standard step; the runs' own floors, the statute's crossings,
+ * ground ends and structure pins, but no junction, crossing or deck pair with another run. On the
+ * pieces' own knots, so each piece's part of it is a feasible point of that piece's problem in its
+ * block, and the objective splits at the anchors (I2). The anchor's value is the piece before it at
+ * its end after finish, in full double precision. Banks in two passes: the first follows the piece
+ * before each anchor to get the value, the second holds both sides at it, as the blocks do.
+ */
+function solveRoute(part: BlockPartition, group: string[], setups: Map<string, RunSetup>): RouteSolution {
+  const pp = part.pieces;
+  const ids = group.flatMap((run) => part.piecesOf.get(run)!.map((p) => p.id));
+  const members = new Set(ids);
+  const prevOf = new Map<string, string>();
+  for (const run of group) {
+    const list = part.piecesOf.get(run)!;
+    for (let k = 1; k < list.length; k++) prevOf.set(list[k].id, list[k - 1].id);
+  }
+  const setupOf = new Map<string, RunSetup>();
+  for (const id of ids) {
+    const info = part.pieceInfo.get(id)!;
+    const isLast = info.k === part.piecesOf.get(info.run)!.length - 1;
+    const ends = pp.ends!.get(id)!;
+    setupOf.set(
+      id,
+      pieceSetup(setups.get(info.run)!, pp.runs.get(id)!, info, isLast, ends, () => ({})),
+    );
+  }
+  const inputs: RunInput[] = ids.map((id) => {
+    const st = setupOf.get(id)!;
+    return {
+      id,
+      length: st.rp.length,
+      zones: st.rp.zones,
+      special: false,
+      stations: st.stations,
+      target: st.target,
+      lower: st.lower,
+      lowerLaw: st.lowerLaw,
+      lowerOpen: st.lowerOpen,
+      assumedGive: false,
+      upper: st.upper,
+      start: st.fixed[0],
+      end: st.fixed[1],
+      pins: profilePins(st.rp),
+    };
+  });
+  const couplings: Coupling[] = [];
+  for (const id of [...ids].sort()) {
+    pp.ends!.get(id)!.forEach((e, side) => {
+      const isSeam = e.kind === "seam" && members.has(e.parent);
+      if (!isSeam) return;
+      const parent = { run: e.parent, s: nodeS(pp.runs.get(e.parent)!, e.parentNodeIndex) };
+      couplings.push({ kind: "junction", child: id, atStart: side === 0, parent });
+    });
+    const prev = prevOf.get(id);
+    if (prev === undefined) continue;
+    const parent = { run: prev, s: pp.runs.get(prev)!.length };
+    couplings.push({ kind: "junction", child: id, atStart: true, parent, hard: true });
+  }
+  const started = performance.now();
+  const res = solveJoint(inputs, couplings);
+  const qpMs = performance.now() - started;
+  const isConverged = res.status === "converged";
+  if (!isConverged) throw new RouteUnsolvedError(group, `${res.status} after ${res.iterations} iterations`);
+  const values = new Map<string, AnchorValue>();
+  for (const [id, prev] of prevOf) {
+    const v = evalProfile(res.profiles.get(prev)!, pp.runs.get(prev)!.length);
+    values.set(id, { z: v.z, grade: v.grade, bank: 0 });
+  }
+  const after = new Map([...prevOf].map(([id, prev]) => [id, [prev]]));
+  const followed = banksOf(pp, ids, res.profiles, setupOf, {
+    after,
+    bankAt: (id, side, done) => {
+      const prev = side === 0 ? prevOf.get(id) : undefined;
+      const bank = prev === undefined ? undefined : done.get(prev);
+      return bank === undefined ? null : bank[bank.length - 1];
+    },
+  });
+  for (const [id, prev] of prevOf) {
+    const bank = followed.get(prev)!;
+    values.get(id)!.bank = bank[bank.length - 1];
+  }
+  const banks = banksOf(pp, ids, res.profiles, setupOf, { bankAt: anchorBankAt(part, values) });
+  return { group, profiles: res.profiles, banks, values, problems: res.problems, qpMs };
+}
+
+/** The bank at a piece's anchor end: the anchor's value (both pieces beside it hold it). */
+function anchorBankAt(
+  part: BlockPartition,
+  values: Map<string, AnchorValue>,
+): (id: string, side: number) => number | null {
+  return (id, side) => {
+    const info = part.pieceInfo.get(id)!;
+    const after = side === 0 ? id : part.piecesOf.get(info.run)![info.k + 1]?.id;
+    return after === undefined ? null : (values.get(after)?.bank ?? null);
+  };
+}
+
+/** The route solutions of the seam groups the needed blocks' anchors are on (I2's test reads them). */
+export function solveRoutes(plan: Plan, ground: GroundSampler, objects: CrossObject[]): RouteSolution[] {
+  const part = plan.partition;
+  if (!part) return [];
+  const objectPolys = objects.map((o) => {
+    const poly = objectPoly(o);
+    return { o, poly, box: bboxOf(poly) };
+  });
+  const setups = new Map(
+    plan.needed.map((id) => [id, setupRun(plan, plan.runs.get(id)!, ground, objectPolys, [])]),
+  );
+  return part.routeGroups.map((group) => solveRoute(part, group, setups));
+}
+
+/** A run's end as written: a piece's end moved back onto the runs (the parent's run, run distance). */
+function runEnd(plan: Plan, rp: RunPlan, atStart: boolean, end: XwEnd): XwEnd {
+  const isJoined = end.parent !== undefined;
+  if (!isJoined) return end;
+  const e = endPlan(plan, rp, atStart);
+  const isParent = e.kind === "junction" || e.kind === "seam";
+  if (!isParent) return end;
+  return {
+    ...end,
+    parent: e.parent,
+    parentS: roundTo(nodeS(plan.runs.get(e.parent)!, e.parentNodeIndex), 2),
+  };
+}
+
+/**
+ * A run put back together from its solved pieces: the profile as the pieces in order, the zones end
+ * to end (one zone across an anchor with the same speed on both sides), the bank sample by sample
+ * (the anchor's sample once), the steps of the piece that went furthest down its ladder, its ends,
+ * and its crossings and blocked roads (run distances, from the run's setup).
+ */
+function stitch(
+  plan: Plan,
+  rp: RunPlan,
+  list: PieceInfo[],
+  parts: Solved[],
+  levels: number[],
+  setup: RunSetup,
+): Solved {
+  const pieces = parts.map((p, k) => ({ a: list[k].a, b: list[k].b, profile: p.profile }));
+  const zones: Zone[] = [];
+  parts.forEach((p, k) => {
+    for (const z of p.profile.zones) {
+      const last = zones[zones.length - 1];
+      const isSame = last !== undefined && last.V === z.V;
+      if (isSame) last.to = z.to + list[k].a;
+      else zones.push({ from: z.from + list[k].a, to: z.to + list[k].a, V: z.V });
+    }
+  });
+  zones[0].from = 0;
+  zones[zones.length - 1].to = rp.length;
+  const bank = new Float64Array(rp.i1 - rp.i0 + 1);
+  let at = 0;
+  parts.forEach((p, k) => {
+    const from = k === 0 ? 0 : 1;
+    bank.set(p.bank.subarray(from), at);
+    at += p.bank.length - from;
+  });
+  let deepest = 0;
+  levels.forEach((l, k) => {
+    if (l > levels[deepest]) deepest = k;
+  });
+  return {
+    rp,
+    profile: parts[0].profile,
+    pieces,
+    zones,
+    steps: parts[deepest].steps,
+    bank,
+    start: runEnd(plan, rp, true, parts[0].start),
+    end: runEnd(plan, rp, false, parts[parts.length - 1].end),
+    cross: [...setup.cross],
+    blocked: [...setup.blocked],
+  };
+}
+
+/**
+ * `--partition blocks` (P2.7-2): each run set up once (its diagnostics once, in id order), the route
+ * solutions for the anchors' values, then each needed block in id order through the same
+ * solveShedding as a component, its pieces cut from their runs' setups and held at the anchors. A
+ * run is closed when any of its pieces is (one vertical_unsolved, each failed piece's attempts with
+ * its range), and written once all its pieces are solved, put back together (stitch). The blocks of
+ * other runs are left as they are: a run hanging from a closed one is closed by solvePlan's chain.
+ */
+function solveBlocks(
+  plan: Plan,
+  part: BlockPartition,
+  ground: GroundSampler,
+  objectPolys: ObjectPoly[],
+  diagnostics: XwDiagnostic[],
+  solved: Map<string, Solved>,
+  failed: Set<string>,
+  stats: SolveStats,
+  options: SolveOptions,
+): Solving {
+  const pp = part.pieces;
+  const limit = options.maxBlockVariables ?? BLOCK_MAX_VARIABLES;
+  const runOf = (id: string) => part.pieceInfo.get(id)!.run;
+  const inBlocks = new Set(part.neededBlocks.flatMap((b) => pp.components.get(b)!));
+  const blockRuns = new Set([...inBlocks].map(runOf));
+  const setups = new Map<string, RunSetup>();
+  // A run only a route solution needs is not written: its setup's diagnostics are not the build's.
+  const unwritten: XwDiagnostic[] = [];
+  for (const id of plan.needed) {
+    const into = blockRuns.has(id) ? diagnostics : unwritten;
+    setups.set(id, setupRun(plan, plan.runs.get(id)!, ground, objectPolys, into));
+  }
+  const values = new Map<string, AnchorValue>();
+  let routeSolves = 0;
+  let near = 0;
+  for (const group of part.routeGroups) {
+    const route = solveRoute(part, group, setups);
+    routeSolves++;
+    stats.qpMs += route.qpMs;
+    for (const [id, v] of route.values) values.set(id, v);
+    for (const a of part.anchors) {
+      // The same anchors as the scorecard lists (those of runs the blocks solve).
+      const isListed = group.includes(a.run) && blockRuns.has(a.run);
+      if (!isListed) continue;
+      const isNear = part.piecesOf
+        .get(a.run)!
+        .some((p) => (route.problems.get(p.id) ?? []).some((q) => Math.abs(p.a + q.s - a.s) <= a.q));
+      if (isNear) near++;
+    }
+  }
+  const pieceSetups = new Map<string, RunSetup>();
+  const setupOf = (id: string): RunSetup => {
+    const cached = pieceSetups.get(id);
+    if (cached) return cached;
+    const info = part.pieceInfo.get(id)!;
+    const list = part.piecesOf.get(info.run)!;
+    const isLast = info.k === list.length - 1;
+    const anchorEnd = (side: 0 | 1): RunInput["start"] => {
+      const after = side === 0 ? id : list[info.k + 1].id;
+      const v = values.get(after)!;
+      return { z: v.z, grade: v.grade, hard: true };
+    };
+    const ends = pp.ends!.get(id)!;
+    const st = pieceSetup(setups.get(info.run)!, pp.runs.get(id)!, info, isLast, ends, anchorEnd);
+    pieceSetups.set(id, st);
+    return st;
+  };
+  const pieceSolved = new Map<string, Solved>();
+  const pieceUnsolved = new Map<string, VerticalAttempt[]>();
+  const orphanOf = new Map<string, string>();
+  const pieceLevel = new Map<string, number>();
+  const pieceSunk = new Map<string, RunProblem>();
+  const blocks: BlockSummary[] = [];
+  const anchorBanks: AnchorBanks = { bankAt: anchorBankAt(part, values) };
+  for (const bid of part.neededBlocks) {
+    const ids = pp.components.get(bid)!;
+    const variables = blockVariables(pp, ids);
+    const isTooLarge = variables > limit;
+    if (isTooLarge) throw new BlockTooLargeError(bid, variables, [...new Set(ids.map(runOf))].sort(), limit);
+    const local: XwDiagnostic[] = [];
+    const res = solveShedding(pp, ids, ground, objectPolys, local, setupOf, anchorBanks);
+    for (const d of local) diagnostics.push({ ...d, run: runOf(d.run) });
+    stats.components++;
+    stats.largestRuns = Math.max(stats.largestRuns, res.stats.largestRuns);
+    stats.largestVariables = Math.max(stats.largestVariables, res.stats.largestVariables);
+    stats.solves += res.stats.solves;
+    stats.iterations += res.stats.iterations;
+    stats.qpMs += res.stats.qpMs;
+    stats.unconverged += res.stats.unconverged;
+    for (const [id, s] of res.solved) pieceSolved.set(id, s);
+    for (const [id, a] of res.unsolved) pieceUnsolved.set(id, a);
+    for (const [id, parent] of res.orphaned) orphanOf.set(id, parent);
+    for (const [id, l] of res.levels) pieceLevel.set(id, l);
+    for (const [key, p] of res.sunk) pieceSunk.set(key, p);
+    const range = (id: string): [number, number] => {
+      const info = part.pieceInfo.get(id)!;
+      return [info.a, info.b];
+    };
+    blocks.push({
+      id: bid,
+      pieces: ids.length,
+      runs: new Set(ids.map(runOf)).size,
+      variables: res.stats.largestVariables,
+      canonical: canonicalOf(ids, range, res),
+    });
+  }
+  for (const run of [...blockRuns].sort()) {
+    const list = part.piecesOf.get(run)!;
+    const tried = list.filter((p) => inBlocks.has(p.id));
+    const isCut = list.length > 1;
+    const lost = tried.filter((p) => pieceUnsolved.has(p.id));
+    if (lost.length > 0) {
+      failed.add(run);
+      const range = (p: PieceInfo) => (isCut ? `[${p.a.toFixed(0)}–${p.b.toFixed(0)} m] ` : "");
+      diagnostics.push({
+        run,
+        kind: "vertical_unsolved",
+        detail: lost.map((p) => range(p) + attemptsText(pieceUnsolved.get(p.id)!)).join(" || "),
+        allowed: false,
+      });
+      continue;
+    }
+    const orphan = tried.find((p) => orphanOf.has(p.id));
+    if (orphan) {
+      failed.add(run);
+      const parent = runOf(orphanOf.get(orphan.id)!);
+      diagnostics.push({ run, kind: "parent_unsolved", detail: `parent ${parent}`, allowed: false });
+      continue;
+    }
+    for (const what of ["sunk", "floor"] as const) {
+      let worst: { p: RunProblem; s: number } | null = null;
+      for (const piece of tried) {
+        const p = pieceSunk.get(`${piece.id}|${what}`);
+        const isWorse = p !== undefined && (worst === null || p.by > worst.p.by);
+        if (isWorse) worst = { p, s: piece.a + p.s };
+      }
+      if (worst) diagnostics.push(sunkDiagnostic(run, worst.p, worst.s));
+    }
+    const isWhole = tried.length === list.length;
+    if (!isWhole) continue;
+    const parts = list.map((p) => pieceSolved.get(p.id)!);
+    const levels = list.map((p) => pieceLevel.get(p.id) ?? 0);
+    solved.set(run, stitch(plan, plan.runs.get(run)!, list, parts, levels, setups.get(run)!));
+  }
+  const heightAt: HeightAt = (run, s) => {
+    const whole = solved.get(run);
+    if (whole) return evalRun(whole, s);
+    const isClosed = failed.has(run);
+    const list = part.piecesOf.get(run);
+    if (isClosed || !list) return null;
+    const p = pieceAt(list, s);
+    const done = pieceSolved.get(p.id);
+    return done ? evalProfile(done.profile, s - p.a) : null;
+  };
+  const blockHeightAt: HeightAt = (run, s) => {
+    const list = part.piecesOf.get(run);
+    if (!list) return null;
+    const p = pieceAt(list, s);
+    const done = pieceSolved.get(p.id);
+    return done ? evalProfile(done.profile, s - p.a) : null;
+  };
+  const joins = { dz: 0, dGrade: 0, dBank: 0 };
+  for (const a of part.anchors) {
+    const list = part.piecesOf.get(a.run)!;
+    const left = pieceSolved.get(list[a.k].id);
+    const right = pieceSolved.get(list[a.k + 1].id);
+    if (!left || !right) continue;
+    const l = evalProfile(left.profile, left.rp.length);
+    const r = evalProfile(right.profile, 0);
+    joins.dz = Math.max(joins.dz, Math.abs(l.z - r.z));
+    joins.dGrade = Math.max(joins.dGrade, Math.abs(l.grade - r.grade));
+    joins.dBank = Math.max(joins.dBank, Math.abs(left.bank[left.bank.length - 1] - right.bank[0]));
+  }
+  const blockOf = (run: string, k: number) => pp.componentOf.get(part.piecesOf.get(run)![k].id)!;
+  const anchors = part.anchors
+    .filter((a) => blockRuns.has(a.run))
+    .map((a) => {
+      const after = part.piecesOf.get(a.run)![a.k + 1].id;
+      const v = values.get(after)!;
+      return {
+        run: a.run,
+        s: roundTo(a.s, 2),
+        q: roundTo(a.q, 1),
+        z: roundTo(v.z, 3),
+        grade: roundTo(v.grade, 5),
+        blocks: [blockOf(a.run, a.k), blockOf(a.run, a.k + 1)] as [string, string],
+      };
+    });
+  return {
+    heightAt,
+    blockHeightAt,
+    partition: {
+      mode: "blocks",
+      quietFactor: part.quietFactor,
+      quietMinM: part.quietMinM,
+      anchors,
+      pieces: inBlocks.size,
+      neededBlocks: part.neededBlocks.length,
+      routeSolves,
+      anchorsNearProblems: near,
+      joins,
+      blocks,
+    },
+  };
 }
 
 /**
@@ -2531,6 +3249,38 @@ export function stationPositions(plan: number[], knots: number[], a: number, b: 
   return out.sort((p, q) => p - q).filter((v, i, arr) => i === 0 || v - arr[i - 1] > 1e-6);
 }
 
+/**
+ * Knots of a solved run strictly inside (a, b) (run distances): each piece's own, and every anchor
+ * between two pieces (a station there, as at a knot: the curvature may change on it).
+ */
+function runKnots(s: Solved, a: number, b: number): number[] {
+  const isWhole = s.pieces.length === 1;
+  if (isWhole) return curvatureKnots(s.profile, a, b);
+  const out: number[] = [];
+  s.pieces.forEach((p, k) => {
+    const isOverlapping = p.b > a && p.a < b;
+    if (!isOverlapping) return;
+    for (const knot of curvatureKnots(p.profile, a - p.a, b - p.a)) out.push(knot + p.a);
+    const isAnchorInside = k > 0 && p.a > a + 0.5 && p.a < b - 0.5;
+    if (isAnchorInside) out.push(p.a);
+  });
+  return out.sort((p, q) => p - q);
+}
+
+/** The knot spacing a chunk over [a, b] reports: the smallest of the pieces it lies on. */
+function knotSpacingOver(s: Solved, a: number, b: number): number {
+  const isWhole = s.pieces.length === 1;
+  if (isWhole) return s.profile.h;
+  return Math.min(...s.pieces.filter((p) => p.b > a && p.a < b).map((p) => p.profile.h));
+}
+
+/** Whether the 特例 grade holds at run distance sv (the piece holding it). */
+function isSpecialAt(s: Solved, sv: number): boolean {
+  let p = s.pieces[0];
+  for (const q of s.pieces) if (q.a <= sv) p = q;
+  return p.profile.special;
+}
+
 /** Knots strictly inside (a, b) where the vertical curvature changes (parabola to parabola). */
 function curvatureKnots(p: VerticalProfile, a: number, b: number): number[] {
   const out: number[] = [];
@@ -2593,17 +3343,17 @@ function deckStretches(plan: Plan, id: string): XwDeckStretch[] {
 function overDeck(
   plan: Plan,
   id: string,
-  solved: ReadonlyMap<string, Solved>,
+  heightAt: HeightAt,
   ground: GroundSampler,
 ): Array<[number, number]> {
   const isOpenBelow = (p: DeckPair) => {
     const lower = plan.runs.get(p.b)!;
     if (!lower.below) return true;
     if (belowAt(lower, p.sb) === "cut") return true;
-    const done = solved.get(p.b);
+    const done = heightAt(p.b, p.sb);
     if (!done) return false;
     const pose = poseAt(lower, p.sb);
-    return isHoleAt("tunnel", evalProfile(done.profile, p.sb).z, ground(pose.lon, pose.lat));
+    return isHoleAt("tunnel", done.z, ground(pose.lon, pose.lat));
   };
   return plan.pairs
     .filter((p) => p.a === id && p.relation === "above" && isOpenBelow(p))
@@ -2638,12 +3388,12 @@ function belowPortals(plan: Plan, s: Solved): XwPortal[] {
   );
 }
 
-/** The lowest elevation of a profile over [a, b] (clamped to the run), every metre and at b. */
-function lowestOver(profile: VerticalProfile, a: number, b: number, length: number): number {
+/** The lowest elevation of a solved run over [a, b] (clamped to the run), every metre and at b. */
+function lowestOver(s: Solved, a: number, b: number, length: number): number {
   const lo = Math.max(0, a);
   const hi = Math.min(length, b);
-  let low = evalProfile(profile, hi).z;
-  for (let sv = lo; sv < hi; sv += 1) low = Math.min(low, evalProfile(profile, sv).z);
+  let low = evalRun(s, hi).z;
+  for (let sv = lo; sv < hi; sv += 1) low = Math.min(low, evalRun(s, sv).z);
   return low;
 }
 
@@ -2657,9 +3407,9 @@ function chunkRun(
   s: Solved,
   ground: GroundSampler,
   objects: ObjectPoly[],
-  solved: ReadonlyMap<string, Solved>,
+  heightAt: HeightAt,
 ): XwChunk[] {
-  const { rp, profile } = s;
+  const { rp } = s;
   const S = rp.length;
   const base = rp.align.s[rp.i0];
   // Cut points: junction nodes (other chains attach), section changes, speed changes, the run ends.
@@ -2680,7 +3430,13 @@ function chunkRun(
     if (isJunction || isSectionChange || isPortal || isLimitChange)
       cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
   }
-  for (const z of profile.zones) if (z.from > 0) cuts.add(z.from);
+  for (const z of s.zones) if (z.from > 0) cuts.add(z.from);
+  // An anchor (blocks.ts) is no cut of its own, so the chunk ids stay; only where the pieces beside
+  // it differ in the 特例 grade (a chunk has one gmax). A speed change there is a zone's boundary.
+  for (let k = 1; k < s.pieces.length; k++) {
+    const isApart = s.pieces[k].profile.special !== s.pieces[k - 1].profile.special;
+    if (isApart) cuts.add(s.pieces[k].a);
+  }
   const o = rp.over;
   if (o) {
     // The girder's ends, sRange's (no girder inside), and the taper's steps (each step one section).
@@ -2727,7 +3483,7 @@ function chunkRun(
       avoid.push([sc - w, sc + w]);
     }
   }
-  const decksBelow = overDeck(plan, rp.run.id, solved, ground);
+  const decksBelow = overDeck(plan, rp.run.id, heightAt, ground);
   const stretches = deckStretches(plan, rp.run.id);
   const piers: number[] = [];
   const spacing = PIER_SPACING.value;
@@ -2752,7 +3508,7 @@ function chunkRun(
     if (isCarried) continue;
     const p = poseAt(rp, at);
     const g = ground(p.lon, p.lat);
-    const z = evalProfile(profile, at).z;
+    const z = evalRun(s, at).z;
     const isTallEnough = z - GIRDER - g > 1.5;
     if (isTallEnough) piers.push(at, g);
   }
@@ -2812,7 +3568,7 @@ function chunkRun(
     const st: number[] = [];
     const push = (sv: number) => {
       const p = poseAt(rp, sv);
-      const v = evalProfile(profile, sv);
+      const v = evalRun(s, sv);
       const bi = Math.min(s.bank.length - 1, Math.max(0, sampleAt(rp, sv) - rp.i0));
       st.push(
         roundTo(sv, 2),
@@ -2833,7 +3589,7 @@ function chunkRun(
     for (let sv = a + stationStep(poseAt(rp, a).kappa); sv < b - 2; sv += stationStep(poseAt(rp, sv).kappa))
       positions.push(sv);
     positions.push(b);
-    for (const sv of stationPositions(positions, curvatureKnots(profile, a, b), a, b)) push(sv);
+    for (const sv of stationPositions(positions, runKnots(s, a, b), a, b)) push(sv);
     const { section, over, girder: deckGirder } = sectionAt(a, b);
     const structure = rp.below ? belowAt(rp, (a + b) / 2) : "viaduct";
     const girder = rp.below ? 0 : deckGirder;
@@ -2843,7 +3599,7 @@ function chunkRun(
     const sideOf = (p: XwPortal) => (p.from === "tunnel" ? Math.max(0, p.s - 0.01) : Math.min(p.s + 0.01, S));
     const chunkPortals = portals.filter((p) => within(sideOf(p), a, b, isLast));
     const maxspeed = wayAtSample(sampleAt(rp, (a + b) / 2)).maxspeedTag;
-    const V = zoneSpeedAt(profile.zones, (a + b) / 2);
+    const V = zoneSpeedAt(s.zones, (a + b) / 2);
     const chunkPiers: number[] = [];
     for (let i = 0; i < piers.length; i += 2) {
       if (within(piers[i], a, b, isLast)) chunkPiers.push(roundTo(piers[i], 2), roundTo(piers[i + 1], 2));
@@ -2852,14 +3608,14 @@ function chunkRun(
     for (let i = 0; i < s.cross.length; i += 3) {
       const sc = s.cross[i];
       if (!within(sc, a, b, isLast)) continue;
-      const z = evalProfile(profile, sc).z;
+      const z = evalRun(s, sc).z;
       chunkCross.push(roundTo(sc, 2), roundTo(s.cross[i + 1], 3), roundTo(s.cross[i + 2], 3), roundTo(z, 3));
     }
     const chunkBlocked: number[] = [];
     for (const road of s.blocked) {
       const sc = road.s;
       if (!within(sc, a, b, isLast)) continue;
-      chunkBlocked.push(roundTo(sc, 2), roundTo(road.top, 3), roundTo(evalProfile(profile, sc).z, 3));
+      chunkBlocked.push(roundTo(sc, 2), roundTo(road.top, 3), roundTo(evalRun(s, sc).z, 3));
     }
     chunks.push({
       id: `${rp.run.id}:${k}`,
@@ -2879,11 +3635,11 @@ function chunkRun(
       basis: section.basis,
       V,
       maxspeed,
-      vh: roundTo(profile.h, 3),
-      ...(profile.cubic ? { vform: "cubic" as const } : {}),
-      gmax: gradeLimitFor(V, profile.special),
-      g0: roundTo(evalProfile(profile, a).grade, 6),
-      g1: roundTo(evalProfile(profile, b).grade, 6),
+      vh: roundTo(knotSpacingOver(s, a, b), 3),
+      ...(s.pieces.length === 1 && s.profile.cubic ? { vform: "cubic" as const } : {}),
+      gmax: gradeLimitFor(V, isSpecialAt(s, (a + b) / 2)),
+      g0: roundTo(evalRun(s, a).grade, 6),
+      g1: roundTo(evalRun(s, b).grade, 6),
       h0: roundTo(headingAt(rp, a), 6),
       h1: roundTo(headingAt(rp, b), 6),
       girder,

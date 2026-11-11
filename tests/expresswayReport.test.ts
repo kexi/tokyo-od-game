@@ -9,7 +9,9 @@ import type { XwChunk, XwClass, XwDiagnostic, XwEnd, XwRunSummary } from "../src
 import { classifyOverlap, isJoined, overlapPair } from "../src/expressway/overlapClass";
 import { PROPERTIES, type Violations } from "../src/expressway/violations";
 import {
+  blockChanges,
   buildReport,
+  flattenReport,
   danglingOf,
   deckMismatchOf,
   overlapPairsOf,
@@ -274,6 +276,24 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
       unconverged: 0,
       qpMs: 1.4,
     },
+    partition: {
+      mode: "blocks",
+      quietFactor: 1.5,
+      quietMinM: 300,
+      anchors: [
+        { run: "1", s: 600, q: 300, z: 16, grade: 0.01, blocks: ["1#0", "1#1"] },
+        { run: "1", s: 900, q: 300, z: 19, grade: 0.01, blocks: ["1#1", "1#2"] },
+      ],
+      pieces: 4,
+      neededBlocks: 2,
+      routeSolves: 1,
+      anchorsNearProblems: 0,
+      joins: { dz: 0, dGrade: 0, dBank: 0 },
+      blocks: [
+        { id: "1#0", pieces: 2, runs: 2, variables: 40, hash: "1".repeat(64) },
+        { id: "1#1", pieces: 1, runs: 1, variables: 24, hash: "2".repeat(64) },
+      ],
+    },
     stagesMs: { plan: 12.6 },
   });
 
@@ -303,6 +323,47 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
     expect(deckMismatchOf([carried], [deck, "bridge:lower:forward"])).toEqual([
       "listed, not carried: bridge:lower:forward",
     ]);
+  });
+
+  it("version 3: the partition with its anchor count and largest block, and a version-2 report still parses", () => {
+    const report = buildReport(input());
+    expect(report.version).toBe(3);
+    expect(report.partition!.anchorCount).toBe(2);
+    expect(report.partition!.largest).toEqual({ id: "1#0", runs: 2, pieces: 2, variables: 40 });
+    const { partition: _, ...old } = report;
+    expect(ReportSchema.parse({ ...old, version: 2 }).partition).toBeUndefined();
+  });
+
+  it("compares a version-2 report with a version-3 one as the partition added and nothing else", () => {
+    const report = buildReport({ ...input(), withoutTimings: true });
+    const { partition: _, ...old } = report;
+    const before = flattenReport(ReportSchema.parse({ ...old, version: 2 }));
+    const after = flattenReport(report);
+    const added = [...after.keys()].filter((k) => !before.has(k));
+    const changed = [...before.keys()].filter((k) => k !== "version" && before.get(k) !== after.get(k));
+    expect(changed).toEqual([]);
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.every((k) => k.startsWith("partition."))).toBe(true);
+    // Two anchors on one run keep a row each (keyed run@s), blocks by id.
+    expect(added).toContain("partition.anchors[1@600].z");
+    expect(added).toContain("partition.anchors[1@900].z");
+    expect(added).toContain("partition.blocks[1#1].variables");
+  });
+
+  it("sums the blocks up by their solution hash: changed, and on one side only", () => {
+    const a = buildReport(input());
+    const b = buildReport({
+      ...input(),
+      partition: {
+        ...input().partition,
+        blocks: [
+          { id: "1#0", pieces: 2, runs: 2, variables: 40, hash: "3".repeat(64) },
+          { id: "1#2", pieces: 1, runs: 1, variables: 24, hash: "2".repeat(64) },
+        ],
+      },
+    });
+    expect(blockChanges(a, b)).toEqual({ changed: ["1#0"], added: ["1#2"], removed: ["1#1"] });
+    expect(blockChanges(a, a)).toEqual({ changed: [], added: [], removed: [] });
   });
 
   it("lists every overlap pair with its kind, whether joined, and its smallest and largest |Δz|", () => {

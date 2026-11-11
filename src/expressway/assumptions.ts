@@ -238,6 +238,35 @@ export const TUNNEL_LAMPS: Assumption<{ pitch: number; length: number }> = {
     "未確認。トンネル照明の基本照明の灯具間隔の目安。第34条第2項は照明施設を求めるが輝度・間隔は令に無い（トンネル照明の基準書は確かめていない）",
 };
 
+/**
+ * Blocks (P2.7-2, blocks.ts, `--partition blocks`): an anchor splits a main line only in a quiet
+ * stretch, at least Q = max(BLOCK_QUIET_MIN, k × approachLength) from anything that couples the
+ * run to another (junctions, crossings, decks over or beside it, a structure, a portal, a speed
+ * change). k is this factor; below 1 the climb from a low end could be cut in two.
+ */
+export const BLOCK_QUIET_FACTOR: Assumption<number> = {
+  value: 1.5,
+  verified: false,
+  reason:
+    "仮定。登坂長（approachLength）の何倍を静かな区間の片側に取るか。1 未満は受け付けない。S2 の A/B（knowledge/expressway-generation.md「P2.7-2」、2026-11-11）では pruned で k = 1・1.5 が全項目可、all はどの k でも本線の閉鎖 14 → 18 で否（k によらない）、k = 2 は両方で T2 +1。余裕のある 1.5 を暫定とし、41009552 の修正と S3 の後の A/B で決め直す",
+};
+
+/** The least quiet margin Q either side of an anchor, whatever the design speed. */
+export const BLOCK_QUIET_MIN: Assumption<number> = {
+  value: 300,
+  verified: false,
+  reason:
+    "仮定。低速（V40〜60）の登坂長は 150〜200 m で、その 1 倍では固定点の脇に縦断曲線 1〜2 本分しか残らないので置いた下限",
+};
+
+/** The longest stretch between two anchors of a long quiet stretch (more anchors, equally spaced). */
+export const BLOCK_ANCHOR_SPACING: Assumption<number> = {
+  value: 3000,
+  verified: false,
+  reason:
+    "仮定。長い静かな区間を等分する上限の間隔。block の大きさ（QP の変数）と固定点の数の釣り合いで置いた目安",
+};
+
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
   STANDARD_UNDERCLEARANCE,
@@ -266,4 +295,7 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   TUNNEL_WALKWAY,
   CUT_WALL,
   TUNNEL_LAMPS,
+  BLOCK_QUIET_FACTOR,
+  BLOCK_QUIET_MIN,
+  BLOCK_ANCHOR_SPACING,
 };
