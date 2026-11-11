@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-fable/design, at: 2026-11-10T09:00:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-11T07:00:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-11-10T14:30:00Z }
   - { by: process:headless-chrome-cdp, at: 2026-11-11T01:48:00Z }
 sources:
@@ -31,8 +32,9 @@ sources:
 - **P2 完了**: 述語・断面・MarkingPlan・層つき検索、挙動不変（[道路モデル](road-model.md)）。
 - **P3 実装（2026-11-11、レビュー待ち）**: 床版と壁高欄の trimesh・橋脚の cuboid のコライダー（400 m の出し入れ、reanchor、T11 をテスト）、チャンクを level 1 の区間として RoadGraph へ（端点 ID、分合流、ランプ端は GSI の地平部をたどって一般道へ、失敗は ramp_unattached）、`RoadGraph.locate`・nearestOnSurface の W9、W4・W6・CrossSection の一本化、床版の区画線（外側線・車線境界線・分合流の太い破線・導流帯）、EXPRESSWAY_OPEN の map・spawn。入口ランプ → C1 内回り、本線 → 出口 2 本 → 地上を一定速で走らせて落下・跳ね無し、多視点レビュー 3 周で収束（[高速道路の生成](expressway-generation.md) の「実行時」）。逸脱: ランプ端の接続は OSM の共有節点ではなく GSI の高速道路の地平部（データに節点が無い）、床版の上の車は PLATEAU の建物を通り抜ける（貫通の切り抜きは P4）。
 - **P3.5 実装（2026-11-11、レビュー待ち）**: decks の same 区間で、ランプ（子）の床版を本線（親）の床版の縁で切り面を 1 枚に（継ぎ目は親の縁の頂点の折れ線、段差 ≤ 1 mm）、逆向きの並走は 1 枚にして中央に分離壁 1 本。DeckIndex を decks から引き W7 を解消。データ形式は変えない（[高速道路の生成](expressway-generation.md) の「床版の一体化」）。
+- **P7 実装（2026-11-11、レビュー待ち）**: 構造物上書き `structureOverrides`（`src/expressway/structures.ts`）。landmarks.json の deckLevels を読み、レインボーブリッジの補剛桁の範囲で上層（11 号台場線）・下層（臨港道路）の平面を「軸 + 帯の中心」へ、sRange の縦断を式へ固定（桁の上は硬い等式、アンカレイジの上は重い二乗）、床版・壁高欄・コライダーは帯から（走れない軌道・遊歩道は描画だけの apron）、pierFreeRange の橋脚と桁を抑止。3 m 規則（桁の上）を超えたらビルド失敗。下層の臨港道路は指名した OSM way を `street`（第四種）として同じコンパイラに通し、両端は GSI の一般道へ。範囲 `rainbow` を足し既定で試験区間と一緒に出力（XW_VERSION 4、3 は P6 用に空けた）。走行・多視点の記録と逸脱は [高速道路の生成](expressway-generation.md) の「構造物上書き（P7）」。**逸脱**: 3 m 規則と平面の固定は sRange でなく補剛桁の範囲（芝浦のアンカレイジで OSM の上層が曲がるため）、縦断の等式はアンカレイジの上では重い二乗（曲がった所では式が距離の放物線にならず等式が矛盾する）。レビュー（Changes Requested）の後: 全チャンクでの継ぎ目検査と浜崎橋の穴の修正、高架上の street は P6 まで navigation・autopilot・traffic に閉じる（決定）。
 - **P8 実装（2026-11-11、PR 待ち）**: 一般道の車線一本化・幅員補正・路肩（[道路モデル](road-model.md) の P8）。計画との差: OSM の車線は `public/data/turnlanes` に列を足すのではなく別フォルダ `public/data/roadlanes`（行の形が違い、turn:lanes の無い way も要るため）。幅員推定はやめ、何も載っていない道は 1 車線（レビュー）。歩道の幅 3.5 m（構造令 第11条）は roadStandards.ts、幅員が歩道込みとみなす閾値 13 m などは仮定として `src/world/streetAssumptions.ts`。
-- 未着手: P4〜P7、P9（P2.6 は並行中）。
+- 未着手: P4〜P6・P9（P2.6・P4・P6 は並行中）。
 
 作成 2026-11-10。対象 `tokyo-od-game`。コードは書かない（実装は Opus が段階的に行う）。
 

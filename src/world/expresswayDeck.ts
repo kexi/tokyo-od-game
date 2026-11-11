@@ -89,7 +89,8 @@ const SLICE_BUDGET_MS = 4;
 const MOVE_BEFORE_UPDATE_M = 120;
 /** Road-graph lines for the chunks this close to the network's centre (its tiles are ~1.8 km). */
 const GRAPH_RADIUS_M = 1300;
-const SLAB = 0.35;
+/** Thickness of the deck slab (exported for the structure fit test: it rests on a bridge's floor beams). */
+export const SLAB = 0.35;
 /** The box girder's bottom flange as a share of the deck width. */
 const GIRDER_BOTTOM_SHARE = 0.55;
 const PIER_ALONG = 2.2;
@@ -104,6 +105,8 @@ const SOFFIT = [0.48, 0.47, 0.44];
 const PIER = [0.62, 0.61, 0.57];
 const PAINT_WHITE = [0.86, 0.86, 0.84];
 const PAINT_YELLOW = [0.85, 0.64, 0.1];
+/** A structure deck's apron (guideway, walkway): paler than the asphalt, darker than the parapet. */
+const APRON = [0.42, 0.42, 0.41];
 
 export type DeckArrays = { position: Float32Array; color: Float32Array };
 /** Triangles of the slab's top and the 壁高欄 (local frame of the build), for the trimesh. */
@@ -283,6 +286,7 @@ export function* deckArraySteps(
     const checkpoint = i % 16 === 0;
     if (checkpoint) yield;
   }
+  apronTriangles(chunk, own.edge, rings, bank, pos, col);
   const marks = planDeckMarkings(
     chunk,
     rings.map((r, i) => ({ s: r.frame.s, sides: sides[i] })),
@@ -303,6 +307,63 @@ export function* deckArraySteps(
     sides,
     skipped: merge?.skipped.get(chunk.id) ?? [],
   };
+}
+
+/**
+ * A structure deck's aprons (format.ts XwOver): the slab going on beyond each 壁高欄's outer face
+ * over what a car may not use (the guideway between the two roads, the walkways outside), at the
+ * road's level, with its outer edge and underside. Drawn only: nothing of it goes into the
+ * collider, so a car is kept on its carriageway by the 壁高欄 (the fence strips of the levels).
+ * Why not a section with more corners: the 15-corner loop numbers its faces (SOLID_FACES), and an
+ * apron is not a face any car meets.
+ */
+function apronTriangles(
+  chunk: XwChunk,
+  edge: number,
+  rings: DeckRing[],
+  bank: boolean,
+  pos: number[],
+  col: number[],
+): void {
+  const over = chunk.over;
+  if (!over) return;
+  for (const [sign, width] of [
+    [1, over.apronL],
+    [-1, over.apronR],
+  ] as const) {
+    const hasApron = width > 1e-3;
+    if (!hasApron) continue;
+    const u0 = sign * edge;
+    const u1 = sign * (edge + width);
+    // Top (u0 → u1), outer edge, underside (u1 → u0): a loop like the section's, left to right.
+    const loop = (r: DeckRing): number[][] => {
+      const top = (u: number) => liftAt(r, u, bank);
+      const pts = [
+        ringPoint(r, u0, top(u0)),
+        ringPoint(r, u1, top(u1)),
+        ringPoint(r, u1, top(u1) - SLAB),
+        ringPoint(r, u0, top(u0) - SLAB),
+      ].map((v) => v.toArray());
+      return sign > 0 ? pts : pts.toReversed();
+    };
+    let prev = loop(rings[0]);
+    for (let i = 1; i < rings.length; i++) {
+      const cur = loop(rings[i]);
+      for (let k = 0; k < 3; k++) {
+        const colour = k === 0 ? APRON : CONCRETE;
+        for (const tri of [
+          [prev[k], cur[k], cur[k + 1]],
+          [prev[k], cur[k + 1], prev[k + 1]],
+        ]) {
+          const isDegenerate = triangleArea2(tri[0], tri[1], tri[2]) < 1e-8;
+          if (isDegenerate) continue;
+          for (const p of tri) pos.push(p[0], p[1], p[2]);
+          for (let v = 0; v < 3; v++) col.push(...colour);
+        }
+      }
+      prev = cur;
+    }
+  }
 }
 
 /** Twice the area of a triangle (the length of its edges' cross product). */

@@ -15,6 +15,8 @@ export type { CrossSection };
 export type XwSection = CrossSection & { basis: "statute" | "assumption" };
 
 export function sectionFor(cls: RoadClass, lanes: number): XwSection {
+  const isStreet = cls === "street";
+  if (isStreet) return streetSection(lanes);
   const isRamp = cls === "ramp";
   if (isRamp) return { lanes, ...RAMP_SECTION.value, median: 0, basis: "assumption" };
   return {
@@ -22,6 +24,21 @@ export function sectionFor(cls: RoadClass, lanes: number): XwSection {
     laneWidth: LANE_WIDTH.value.type2class2,
     shoulderL: SHOULDER.value.type2Left,
     shoulderR: SHOULDER.value.type2Right,
+    median: 0,
+    basis: "statute",
+  };
+}
+
+/**
+ * A street compiled by a structure override (structures.ts, the 臨港道路): 第四種第1級 lanes
+ * (第5条第4項) and shoulders (第8条). Off the structure only: on it the deck levels' strips decide.
+ */
+export function streetSection(lanes: number): XwSection {
+  return {
+    lanes,
+    laneWidth: LANE_WIDTH.value.type4class1,
+    shoulderL: SHOULDER.value.type4Left,
+    shoulderR: SHOULDER.value.type4Right,
     median: 0,
     basis: "statute",
   };

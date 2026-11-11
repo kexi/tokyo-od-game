@@ -73,7 +73,8 @@ function angleDiff(a: number, b: number): number {
  */
 export function checkGrade(c: XwChunk, run: XwRunSummary): string[] {
   const out: string[] = [];
-  const speeds = c.cls === "ramp" ? RAMP_SPEEDS : MAIN_SPEEDS;
+  // A street (第四種, 第13条) goes down to 20 km/h like a ramp.
+  const speeds = c.cls === "expressway" ? MAIN_SPEEDS : RAMP_SPEEDS;
   const isPossibleSpeed = speeds.includes(c.V) && c.V <= designSpeedAtMost(run.tagV) && c.V <= run.V;
   if (!isPossibleSpeed) out.push(`${c.id}: design speed ${c.V} not allowed for ${c.cls} tagged ${run.tagV}`);
   const tabled = MAX_GRADE.value[V(c)];
@@ -322,7 +323,7 @@ export function checkSuperelevation(c: XwChunk): string[] {
   const out: string[] = [];
   const st = stationsOf(c);
   const L = TRANSITION_LENGTH.value[V(c)];
-  const maxE = MAX_SUPERELEVATION.value.type1to3;
+  const maxE = c.cls === "street" ? MAX_SUPERELEVATION.value.type4 : MAX_SUPERELEVATION.value.type1to3;
   const composite = COMPOSITE_GRADE.value[V(c)];
   for (let i = 0; i < st.length; i++) {
     const isTooBanked = Math.abs(st[i].bank) > maxE + 1e-4;
