@@ -267,9 +267,17 @@ make-charm-models:
 make-guide-data:
     pnpm exec tsx scripts/guide-signs.ts
 
-# OSM の高速道路（motorway・motorway_link）と構造物上書きの一般道（レインボーブリッジの下層）を道路構造令の平面・縦断線形にコンパイルし public/data/expressway を書き出す（range は hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome のようにカンマ区切りか all、橋の床の高さは landmarks.json の deckLevels、OSM は just fetch-regs のキャッシュ、標高は .cache/gsi-dem）
-make-expressway-data range="hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome":
-    pnpm exec tsx scripts/expressway.ts --range {{ range }}
+# OSM の高速道路（motorway・motorway_link）と構造物上書きの一般道（レインボーブリッジの下層）を道路構造令の平面・縦断線形にコンパイルし public/data/expressway を書き出す（range は hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome のようにカンマ区切りか all、橋の床の高さは landmarks.json の deckLevels、OSM は just fetch-regs のキャッシュから写した固定の抽出 .cache/osm/kanto-<時刻>.osm.pbf、別の抽出で作るなら flags に --accept-extract、標高は .cache/gsi-dem）
+make-expressway-data range="hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome" flags="":
+    pnpm exec tsx scripts/expressway.ts --range {{ range }} {{ flags }}
+
+# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json など）
+measure-expressway-area label range="ship" below="pruned" flags="":
+    pnpm exec tsx scripts/expressway.ts --range {{ range }} --below {{ below }} --out .cache/expressway-area/{{ label }} --label {{ label }} --report .qa/expressway/{{ label }}.report.json {{ flags }}
+
+# 高速道路のスコアカード 2 つの差分表を出す（a・b はラベルか .report.json のパス、時間の欄は差に数えない、flags に --check で時間以外が違えば終了コード 1）
+compare-expressway-reports a b flags="":
+    pnpm exec tsx scripts/compareExpresswayReports.ts {{ a }} {{ b }} {{ flags }}
 
 # ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just fetch-regs のキャッシュを使う）
 make-destinations:

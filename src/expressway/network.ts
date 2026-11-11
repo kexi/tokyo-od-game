@@ -1,7 +1,7 @@
 import { DEFAULT_LANES, DEFAULT_SPEED } from "./assumptions";
 import type { RoadClass as AnyRoadClass } from "../world/roadClass";
 import { haversine } from "./geo";
-import { routeName } from "../game/roadNames";
+import { hasOperatorWord, routeName } from "../game/roadNames";
 
 /**
  * OSM motorway / motorway_link ways normalised into the compiler's input (knowledge/road-redesign-plan.md 4.1), then joined
@@ -49,6 +49,12 @@ export type XwWay = {
   structure: Structure;
   /** OSM layer (layerOf): orders decks where they cross or run over one another. */
   layer: number;
+  /**
+   * The way belongs to the urban expressway (its OSM name or operator names the real operator,
+   * roadNames.ts hasOperatorWord): what the shipped scope (scope.ts) is cut to. Never written to a
+   * file: the files carry no word of the operator, only the routes that pass the name layer.
+   */
+  operated: boolean;
 };
 
 export type Network = { ways: Map<number, XwWay>; nodes: Map<number, XwNode> };
@@ -110,7 +116,19 @@ export function normalizeWay(id: number, nodes: number[], tags: Record<string, s
     speedKmh: speedTag > 0 ? speedTag : isRamp ? speeds.ramp : speeds.main,
     structure: structureOf(tags),
     layer: layerOf(tags),
+    operated: isOperated(tags),
   };
+}
+
+/**
+ * Whether OSM names the real operator on the way, in its name or its operator tag. Why not
+ * `network` too: in the pinned extract (extract.ts) no motorway way names the operator in
+ * `network` alone (0 of 13,478; 1,115 do in name or operator), and a ramp without either tag is
+ * reached through its main line anyway (scope.ts).
+ */
+function isOperated(tags: Record<string, string>): boolean {
+  const texts = [tags.name, tags.operator];
+  return texts.some((t) => t !== undefined && hasOperatorWord(t));
 }
 
 /**
@@ -134,6 +152,7 @@ export function normalizeStreetWay(id: number, nodes: number[], tags: Record<str
     speedKmh: speedTag > 0 ? speedTag : DEFAULT_SPEED.value.street,
     structure: structureOf(tags),
     layer: layerOf(tags),
+    operated: false,
   };
 }
 
