@@ -6,6 +6,7 @@ import { inJapanese } from "../i18n/reverse";
 import { log, newSpan, type Span } from "../log";
 import type { RoadGraph } from "../world/roads";
 import { leftOf } from "../world/roads";
+import { carriagewayWidth } from "../world/laneChange";
 import { storyPanels, StoryPlayer, type StoryFacts, type StoryKind } from "./arrestStory";
 import type { DriveWorld } from "./autoDriver";
 import type { Assist } from "./carControls";
@@ -59,6 +60,7 @@ import {
   type ViolationRecord,
   violationSpan,
 } from "./traffic";
+import { allowsRoadsideStop } from "../world/roadClass";
 
 /**
  * Runs the pursuit and what follows it, between the world (main.ts, through PursuitHost) and the
@@ -604,7 +606,7 @@ export class PursuitDirector {
   private setCheckpoint(from: Vector3, forward: Vector3): boolean {
     const graph = this.host.graph();
     if (!graph) return false;
-    const hit = graph.nearest(from, 40, (s) => s.line.kind !== "highway");
+    const hit = graph.nearest(from, 40, (s) => allowsRoadsideStop(s.line));
     if (!hit) return false;
     let seg = hit.seg;
     let dir: 1 | -1 = hit.dir.dot(forward) >= 0 ? 1 : -1;
@@ -614,7 +616,7 @@ export class PursuitDirector {
       const into = graph.sample(seg, dir === 1 ? seg.length : 0).dir.multiplyScalar(dir);
       const exits = graph
         .exits(node, seg.id)
-        .filter((x) => x.line.kind !== "highway" && x.line.width >= 4 && !x.closed);
+        .filter((x) => allowsRoadsideStop(x.line) && x.line.width >= 4 && !x.closed);
       if (exits.length === 0) return false;
       // The straightest way on.
       const scored = exits.map((x) => {
@@ -636,9 +638,10 @@ export class PursuitDirector {
         // The half the car drives in: from the centreline to the left kerb on a two-way street,
         // the whole width (from its right edge) on a one-way one.
         const isOneWay = seg.oneway !== 0;
-        const travelHalf = isOneWay ? seg.line.width : seg.line.width / 2;
+        const carriageway = carriagewayWidth(seg);
+        const travelHalf = isOneWay ? carriageway : carriageway / 2;
         const centre = isOneWay
-          ? sample.pos.clone().add(leftOf(along, -seg.line.width / 2))
+          ? sample.pos.clone().add(leftOf(along, -carriageway / 2))
           : sample.pos.clone();
         this.host.scene.checkpoint.place(
           centre,

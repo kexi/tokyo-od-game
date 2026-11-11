@@ -13,6 +13,7 @@ const M_LON = 1 / 90_400; // degrees per metre of longitude near Tokyo
 const empty = (): RegulationData => ({
   laneArrows: [],
   turnlanes: [],
+  roadlanes: [],
   speed: [],
   speedZone: [],
   oneway: [],

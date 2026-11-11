@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import type { RoadGraph, Segment } from "../world/roads";
 import type { Approach, TrafficControl } from "../world/trafficControl";
+import { carriagewayWidth } from "../world/laneChange";
 import type { Route } from "./navigation";
 
 /**
@@ -295,7 +296,7 @@ export function passPlan(args: {
   if (isCorner) return { why: "corner" };
   // The body's right edge after the shift must stay on the carriageway (a margin to the kerb).
   const rightEdge = args.laneOffset + shift - OWN_WIDTH_HALF;
-  if (rightEdge < -seg.line.width / 2 + 0.3) return { why: "width" };
+  if (rightEdge < -carriagewayWidth(seg) / 2 + 0.3) return { why: "width" };
   // Band we sweep while beside the line: our centre at `shift` from the path.
   const lo = shift - OWN_WIDTH_HALF - OTHER_WIDTH_HALF - 0.3;
   const hi = shift + OWN_WIDTH_HALF + OTHER_WIDTH_HALF + 0.3;

@@ -76,6 +76,7 @@ import {
   type Step,
 } from "../signals/plan";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { hasRoadside, isEnterable } from "./roadClass";
 
 /**
  * What a signal's main lamps show: one of 施行令第2条's three colours, 黄・赤の点滅, or dark. Read by
@@ -296,13 +297,6 @@ type CrossingPlan = {
 };
 /** Why 単路 crossings got no controller (the signal_crossings_skipped log). */
 type CrossingSkips = { outside: number; noCrosswalk: number; nearJunction: number; noRoom: number };
-
-/**
- * Roads with no crosswalk or pavement (the expressway). Why a local predicate: P2
- * (feat/road-predicates) replaces `kind === "highway"` with its `hasRoadside`; at that merge this
- * becomes `!hasRoadside(seg)` in one place.
- */
-const isMotorwayOnly = (seg: Segment): boolean => seg.line.kind === "highway";
 
 /** A lon/lat hash, as the junction offsets use (stable across rebuilds and re-anchoring). */
 const recordHash = (lon: number, lat: number): number =>
@@ -886,7 +880,7 @@ export class TrafficControl {
         const node = queue.pop() as number;
         for (const id of graph.nodes.get(node) ?? []) {
           const seg = graph.segments[id];
-          if (seg.length > BOX_LINK || seg.line.kind === "highway") continue;
+          if (seg.length > BOX_LINK || !hasRoadside(seg.line)) continue;
           const other = seg.from === node ? seg.to : seg.from;
           if (claimed.has(other) || (graph.nodes.get(other)?.length ?? 0) < 3) continue;
           const at = this.nodePos(graph, other);
@@ -917,7 +911,9 @@ export class TrafficControl {
           if (members.has(other)) continue; // internal link between the controller's nodes
           const dir: 1 | -1 = seg.to === node ? 1 : -1;
           const isAllowed = seg.oneway === 0 || seg.oneway === dir;
-          if (!isAllowed || seg.line.kind === "highway") continue;
+          // An off-ramp arriving at the street is an approach too (isEnterable): it faces the signal
+          // though nothing of the street's furniture stands on it.
+          if (!isAllowed || !isEnterable(seg.line)) continue;
           // Travel direction arriving at the node.
           const { dir: d } = graph.sample(seg, dir === 1 ? seg.length - 0.5 : 0.5);
           const bearing = d.clone().multiplyScalar(dir);
@@ -1023,7 +1019,8 @@ export class TrafficControl {
       // The crosswalk on each segment nearest the cluster's records (a divided road has two).
       const bySeg = new Map<number, { c: Crossing; d: number }>();
       for (const c of regs.crossings) {
-        if (isMotorwayOnly(c.seg)) continue;
+        // Roads with no crosswalk or pavement (the expressway, its ramps) get no 単路 crossing.
+        if (!hasRoadside(c.seg.line)) continue;
         const d = Math.min(...cluster.map((t) => Math.hypot(t.pos.x - c.pos.x, t.pos.z - c.pos.z)));
         const isCloser = d < CROSSING_MATCH_M && d < (bySeg.get(c.seg.id)?.d ?? Infinity);
         if (!isCloser) continue;

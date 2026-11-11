@@ -4,6 +4,8 @@ export class FrameWork {
   maxSliceMs = 0;
   cpuMs = 0;
   yields = 0;
+  /** The length of every slice handed back so far (ms), for a log's distribution. */
+  readonly slices: number[] = [];
 
   constructor(
     private readonly budgetMs = 4,
@@ -20,9 +22,15 @@ export class FrameWork {
 
   async yield(): Promise<void> {
     this.maxSliceMs = Math.max(this.maxSliceMs, this.sliceMs);
+    this.slices.push(this.sliceMs);
     this.yields++;
     await this.nextFrame();
     this.sliceMs = 0;
+  }
+
+  /** CPU used in the current slice so far (ms). */
+  spentMs(): number {
+    return this.sliceMs;
   }
 
   measure<T>(work: () => T): T {

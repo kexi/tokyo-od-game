@@ -1,40 +1,36 @@
 import { LANE_WIDTH, SHOULDER } from "../law/roadStandards";
+import { type CrossSection, sectionWidth } from "../world/laneChange";
 import { PARAPET_WIDTH, RAMP_SECTION } from "./assumptions";
 import type { RoadClass } from "./network";
 
 /**
- * Cross-section of an expressway chunk (設計書 3.1 CrossSection, the part P1 needs). A main line is
- * 第二種第二級 (都心部の自動車専用道路): lanes of 第5条第4項, shoulders of 第8条. A ramp is freed
- * from those articles (第28条第4項) and takes assumptions.RAMP_SECTION.
+ * Cross-section of an expressway chunk (knowledge/road-redesign-plan.md 3.1 CrossSection). The type
+ * is the one laneChange.ts defines for every road (one definition: the deck, the graph's segments
+ * and the lane arithmetic read the same fields). A main line is 第二種第二級 (都心部の自動車専用道路):
+ * lanes of 第5条第4項, shoulders of 第8条, no median (each direction is its own run and deck). A
+ * ramp is freed from those articles (第28条第4項) and takes assumptions.RAMP_SECTION.
  */
-export type CrossSection = {
-  lanes: number;
-  laneWidth: number;
-  shoulderL: number;
-  shoulderR: number;
-  basis: "statute" | "assumption";
-};
+export type { CrossSection };
+/** An expressway section rests on the statute or on an assumption, never on JARTIC or a width. */
+export type XwSection = CrossSection & { basis: "statute" | "assumption" };
 
-export function sectionFor(cls: RoadClass, lanes: number): CrossSection {
+export function sectionFor(cls: RoadClass, lanes: number): XwSection {
   const isRamp = cls === "ramp";
-  if (isRamp) return { lanes, ...RAMP_SECTION.value, basis: "assumption" };
+  if (isRamp) return { lanes, ...RAMP_SECTION.value, median: 0, basis: "assumption" };
   return {
     lanes,
     laneWidth: LANE_WIDTH.value.type2class2,
     shoulderL: SHOULDER.value.type2Left,
     shoulderR: SHOULDER.value.type2Right,
+    median: 0,
     basis: "statute",
   };
 }
 
-/** Carriageway width between the parapets' inner faces. */
-export function carriagewayWidth(
-  s: Pick<CrossSection, "lanes" | "laneWidth" | "shoulderL" | "shoulderR">,
-): number {
-  return s.lanes * s.laneWidth + s.shoulderL + s.shoulderR;
-}
+/** Carriageway width between the parapets' inner faces (laneChange.sectionWidth). */
+export const carriagewayWidth = sectionWidth;
 
 /** Full deck width including both parapets. */
-export function deckWidth(s: Pick<CrossSection, "lanes" | "laneWidth" | "shoulderL" | "shoulderR">): number {
-  return carriagewayWidth(s) + 2 * PARAPET_WIDTH.value;
+export function deckWidth(s: Parameters<typeof sectionWidth>[0]): number {
+  return sectionWidth(s) + 2 * PARAPET_WIDTH.value;
 }

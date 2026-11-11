@@ -13,7 +13,9 @@ vi.mock("../src/game/carModel", () => ({
 
 import { injuryViolation } from "../src/game/traffic";
 import { centralImpact, MassiveBody, massContactsFor, restitution } from "../src/physics/massContacts";
-import { ADULT_KG, laden, VEHICLE_SPECS, yawInertia } from "../src/physics/masses";
+import { ADULT_KG, laden, type MassClass, VEHICLE_SPECS, yawInertia } from "../src/physics/masses";
+import { judgePedestrianBlow } from "../src/game/pedestrianBlow";
+import { STANDING_KMH } from "../src/game/motion";
 import { Vehicle } from "../src/physics/vehicle";
 
 beforeAll(async () => {
@@ -162,6 +164,84 @@ describe("collisions by both masses (massContacts.ts)", () => {
 
   it("still reports the contact as a collision event (the solver groups only drop the forces)", () => {
     expect(crash(20, parked(1350, 4.3, 1.84, 1.2)).started).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A person walking at `walkKmh` along −Z into the player's vehicle standing on its brakes (at a red
+ * light), the game's way round as in crash(); the blows massContacts reported to the game.
+ */
+function walkInto(massClass: MassClass, walkKmh: number) {
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.timestep = DT;
+  world.createCollider(RAPIER.ColliderDesc.cuboid(500, 0.5, 500).setTranslation(0, -0.5, 0));
+  const contacts = massContactsFor(world);
+  const car = new Vehicle(world, {}, massClass);
+  car.setOccupants([{ seat: "driver", kg: ADULT_KG }]);
+  car.teleport(new Vector3(0, 0.9, 0), 0);
+  const held = { throttle: 0, brake: 1, steer: 0, handbrake: false, brakeOnly: true };
+  for (let i = 0; i < 90; i++) {
+    car.update(DT, held);
+    world.step();
+  }
+  const target = pedestrian(60)(world);
+  target.body.setTranslation({ x: 0, y: 0.9, z: 4 }, true);
+  const walk = walkKmh / 3.6;
+  target.mass.setMotion(0, 4, 0, -walk, 0);
+  contacts.add(target.collider, target.mass);
+  const blows: ReturnType<typeof contacts.takeBlows> = [];
+  for (let t = 0; t < 3; t += DT) {
+    car.update(DT, held);
+    world.step();
+    contacts.afterStep(DT);
+    blows.push(...contacts.takeBlows());
+    const m = target.mass;
+    const p = target.body.translation();
+    // Walking on (Pedestrians.update) until the car shoves them, then carried by the shove.
+    const vx = m.shoved ? m.vx : 0;
+    const vz = m.shoved ? m.vz : -walk;
+    if (m.shoved) m.slow(DT);
+    target.body.setNextKinematicTranslation({ x: p.x + vx * DT, y: p.y, z: p.z + vz * DT });
+    m.setMotion(p.x + vx * DT, p.z + vz * DT, vx, vz, 0);
+  }
+  return blows;
+}
+
+describe("whether a blow with a person is the driver's accident (pedestrianBlow.ts)", () => {
+  // What it guarantees: a person walking into the player's standing vehicle is not booked as the
+  // driver's accident (it was, from the closing speed), whatever its mass; a moving one still is.
+  it.each([
+    ["the player's car", "playerCar" as const],
+    // Light enough that the shove shows in its speed after the step (what speedKmh() would read).
+    ["a 243 kg motorbike with its rider", "motorbike" as const],
+  ])("is not an accident when a person walks into %s standing at a light", (_, massClass) => {
+    const blows = walkInto(massClass, 5);
+    expect(blows.length).toBeGreaterThan(0);
+    for (const blow of blows) {
+      const judged = judgePedestrianBlow(blow.impact);
+      // The blow itself is real (they bounce off at about their walking pace)…
+      expect(blow.impact.closing * 3.6).toBeGreaterThan(3);
+      // …but the car stood going into it.
+      expect(judged.carKmh).toBeLessThan(STANDING_KMH);
+      expect(judged.isAccident).toBe(false);
+    }
+  });
+
+  it("is an accident when the moving car knocks a person down, booked at the car's own speed", () => {
+    const { contacts } = crash(30, pedestrian(60), 0.5);
+    const [blow] = contacts.takeBlows();
+    expect(blow).toBeDefined();
+    const judged = judgePedestrianBlow(blow.impact);
+    expect(judged.isAccident).toBe(true);
+    // Coasted from 30 km/h to the person 6 m on; not the closing speed plus the car's Δv.
+    expect(judged.carKmh).toBeGreaterThan(25);
+    expect(judged.carKmh).toBeLessThanOrEqual(30);
+    expect(judged.victimKmh).toBeGreaterThan(20);
+  });
+
+  it("is an accident when a creeping car (above 1 km/h) touches a person: only a standstill is theirs", () => {
+    const judged = judgePedestrianBlow({ carSpeed: 2 / 3.6, dvOther: 5 / 3.6 });
+    expect(judged.isAccident).toBe(true);
   });
 });
 

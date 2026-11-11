@@ -243,6 +243,8 @@ describe("placement on a crossing of a 国道 and a 都道", () => {
     ],
     frame,
   );
+  // Two lanes a direction, as JARTIC or OSM gives an arterial (the width alone gives one, P8).
+  for (const seg of graph.segments) seg.lanes = 2;
   const west = graph.segments[0];
   const centreNode = west.to;
   const approach: GuideApproach = {

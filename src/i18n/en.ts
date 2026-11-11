@@ -1215,6 +1215,8 @@ export const en: Messages = {
   "credits.odbl": "The extracted database is offered under the {odbl} ({file}).",
   "credits.signals.cycle":
     "The signal cycles (the green, yellow and red times and the offsets between junctions) are the game's own and differ from the real signals.",
+  "credits.roadlanes.extract":
+    "The street lane counts and widths (OpenStreetMap's {tags}) are extracted likewise and matched to the GSI road centrelines to lay out the lanes (public/data/roadlanes).",
   "credits.h.guide": "Guide signs (destinations and directions)",
   "credits.h.destinations": "Destinations (stations and places)",
   "credits.h.expressway": "Elevated urban expressways",

@@ -1,8 +1,9 @@
-// Build-time expressway compiler (設計書 4): OSM motorway / motorway_link from the Geofabrik Kanto
+// Build-time expressway compiler (knowledge/road-redesign-plan.md 4): OSM motorway / motorway_link from the Geofabrik Kanto
 // extract → plan and vertical alignment within 道路構造令 (src/expressway/) → public/data/expressway/
 // <x>-<y>.json (z14 tiles of ≤ 300 m chunks) and meta.json. The ground constraints read GSI DEM
 // tiles exactly as the game does (scripts/demTiles.ts), cached under .cache/gsi-dem.
-// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi|all] [--pbf <path>]
+// Run: pnpm exec tsx scripts/expressway.ts [--range hamazakibashi|all] [--pbf <path>] [--out <dir>]
+// (--out writes somewhere else than public/data/expressway, e.g. to measure --range all.)
 // (the OSM extract is the one just fetch-regs caches in .cache/osm; it is downloaded if missing).
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -19,6 +20,7 @@ import {
   PIER_STRIDE,
   STATION_STRIDE,
   type XwMeta,
+  XW_VERSION,
   type XwTile,
 } from "../src/expressway/format.ts";
 import { tileKey } from "../src/expressway/geo.ts";
@@ -40,7 +42,7 @@ import {
 } from "./osm-pbf.ts";
 
 const started = performance.now();
-const OUT = join(import.meta.dirname, "..", "public", "data", "expressway");
+const OUT_DEFAULT = join(import.meta.dirname, "..", "public", "data", "expressway");
 const OSM_EXTRACT = "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf";
 const OSM_CACHE = join(import.meta.dirname, "..", ".cache", "osm", "kanto-latest.osm.pbf");
 const USER_AGENT = "tokyo-od-game-databuild/0.1 (+https://github.com/kexi/tokyo-od-game)";
@@ -79,6 +81,7 @@ const range = rangeName === "all" ? null : RANGES[rangeName];
 if (rangeName !== "all" && !range)
   throw new Error(`unknown --range ${rangeName} (${Object.keys(RANGES).join(", ")}, all)`);
 const pbfPath = arg("pbf") ?? OSM_CACHE;
+const OUT = arg("out") ?? OUT_DEFAULT;
 const file = await extract(pbfPath);
 const timestamp = readReplicationTimestamp(file);
 
@@ -176,7 +179,13 @@ log("expressway_objects_read", {
 });
 
 // 5. Solve and write.
+const solveStarted = performance.now();
 const result = solvePlan(plan, (lon, lat) => dem.heightAt(lon, lat), objects);
+log("expressway_solved", {
+  ...result.stats,
+  qpMs: Math.round(result.stats.qpMs),
+  durationS: Math.round((performance.now() - solveStarted) / 100) / 10,
+});
 const tiles = new Map<string, XwTile>();
 for (const chunk of result.chunks) {
   const mid = Math.floor(chunk.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
@@ -205,7 +214,7 @@ const UNSOLVED = [
 ];
 const isUnsolved = (kind: string) => UNSOLVED.includes(kind);
 const meta: XwMeta = {
-  version: 1,
+  version: XW_VERSION,
   zoom: Z,
   tiles: tileKeys,
   range: range ? { name: rangeName, ...range } : null,
@@ -218,6 +227,11 @@ const meta: XwMeta = {
     crossings: result.chunks.reduce((n, c) => n + c.cross.length / CROSS_STRIDE, 0),
   },
   bytes,
+  solver: {
+    components: result.stats.components,
+    solves: result.stats.solves,
+    unconverged: result.stats.unconverged,
+  },
   runs: result.runs,
   diagnostics: result.diagnostics.filter((d) => plan.needed.includes(d.run)),
 };

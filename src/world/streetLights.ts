@@ -79,6 +79,7 @@ import { hash12, valueNoise } from "../render/shaderMath";
 import { PROP_GROUPS } from "../physics/groups";
 import { leftOf, type RoadGraph, type RoadLine, type Segment } from "./roads";
 import type { Approach, LightState } from "./trafficControl";
+import { hasRoadside } from "./roadClass";
 
 /**
  * 道路照明 (street lights) along the streamed road network, and the shading of the street surfaces
@@ -118,10 +119,12 @@ export type LampSpec = {
  * 16 m, or the real width above 19.5 m). The continuous-lighting rules keep the spacing S ≤ 3.5 H
  * and choose the arrangement by width W: one side for W ≤ H, staggered for W ≤ 1.5 H, opposite
  * beyond. Streets under 5.5 m get 防犯灯 (small crime-prevention lights) instead, sparser.
- * 首都高 (elevated) has no deck in the game, so no lights.
+ * Roads without street furniture (hasRoadside: the expressway, decks) get none: their lighting
+ * comes with the deck.
  */
-export function lampSpecFor(width: number, kind: RoadLine["kind"]): LampSpec | null {
-  if (kind === "highway") return null;
+export function lampSpecFor(line: RoadLine): LampSpec | null {
+  if (!hasRoadside(line)) return null;
+  const width = line.width;
   if (width >= 19.5)
     return { name: "arterial", height: 12, spacing: 40, reach: 2.4, arrangement: "opposite", candela: 2400 };
   if (width >= 13)
@@ -243,7 +246,7 @@ export function* placeLampSteps(graph: PlaceGraph): Generator<void, LampSite[]> 
   const out = new Vector3();
   for (const seg of graph.segments) {
     yield;
-    const spec = lampSpecFor(seg.line.width, seg.line.kind);
+    const spec = lampSpecFor(seg.line);
     if (!spec) continue;
     const half = seg.line.width / 2;
     const middle = graph.sample(seg, seg.length / 2).dir.clone();

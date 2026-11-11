@@ -20,6 +20,7 @@ import {
   type Scene,
 } from "three";
 import { RoadInstances } from "./roadInstances";
+import { laneLeftEdge, laneWidth as laneWidthOf } from "./laneChange";
 import { type Node, SpriteNodeMaterial } from "three/webgpu";
 import { materialColor, materialOpacity, sRGBTransferEOTF, sRGBTransferOETF, vec4 } from "three/tsl";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -32,6 +33,7 @@ import { isExpresswayClass, parseOrbis, type OrbisEntry, type OrbisSign } from "
 import { dayKey, planPortable, type GameDay, type School } from "./portableOrbis";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import { sharedDraco } from "../render/draco";
+import { isExpressway as isExpresswayRoad } from "./roadClass";
 
 /**
  * 速度違反自動取締装置 (オービス) on the streets: OSM speed cameras (public/data/police.json, built by
@@ -46,7 +48,6 @@ import { sharedDraco } from "../render/draco";
 const RANGE = 1300; // m from the frame origin: the road graph's reach
 const MATCH = 30; // a device further than this from any matching road is not placed
 const SIGN_MATCH = 25;
-const LANE_W = 3.25; // lane width when only the carriageway width is known
 const SPEED_OVER = 30; // 一般道: the 赤切符 range fixed cameras are set for
 const SPEED_OVER_EXPRESSWAY = 40;
 const COOLDOWN_MS = 15000;
@@ -66,8 +67,10 @@ export type OrbisSite = {
   /** Fixed gantry or pole (OSM), or a 可搬式 unit the game set up for the day. */
   kind: "gantry" | "pole" | "portable";
   lanes: number;
-  /** Lateral (left of travel) of the kerb the lanes are counted from, and their width. */
+  /** Lateral (left of travel) of the kerb, where the poles stand (the GSI 幅員's edge). */
   kerb: number;
+  /** Lateral of the left edge line the lanes are counted from, and their width (laneChange.ts). */
+  laneEdge: number;
   laneWidth: number;
   expressway: boolean;
   /** Limit and the excess that fires the camera (km/h). */
@@ -119,13 +122,14 @@ function matchRoad(
   return best;
 }
 
-/** Lanes the travel direction has on a segment: from OSM, JARTIC 車両通行帯, or the width. */
-export function lanesFor(seg: Segment, mapped: number): { lanes: number; span: number } {
-  const span = seg.oneway !== 0 ? seg.line.width : seg.line.width / 2;
-  // Never narrower than 2.5 m a lane, whatever the source says (GSI widths are coarse).
-  const fit = Math.max(1, Math.floor(span / 2.5));
-  const given = mapped > 0 ? mapped : seg.lanes > 1 ? seg.lanes : Math.round(span / LANE_W);
-  return { lanes: Math.min(Math.max(1, given), fit, 6), span };
+/**
+ * The lanes a device covers on a segment: the street's own (laneChange.ts resolveSection: JARTIC,
+ * OSM lanes, the width), so the gantry's lane boxes sit over the painted lanes. Why not the lanes
+ * OSM maps on the camera's way (OrbisEntry.lanes) any more: the segment's section already took
+ * OSM's lanes for the way, and a second count put a box over a painted line (road-model.md).
+ */
+export function lanesFor(seg: Segment): { lanes: number; laneEdge: number; laneWidth: number } {
+  return { lanes: seg.lanes, laneEdge: laneLeftEdge(seg), laneWidth: laneWidthOf(seg) };
 }
 
 /**
@@ -147,7 +151,7 @@ export function planSites(
     const p = frame.toLocal(entry.lat, entry.lon, frame.origin.h).setY(0);
     if (Math.hypot(p.x, p.z) > range) continue;
     const isExpressway = isExpresswayClass(entry.road);
-    const accept = (seg: Segment) => (seg.line.kind === "highway") === isExpressway;
+    const accept = (seg: Segment) => isExpresswayRoad(seg.line) === isExpressway;
     const bearing = entry.bearing === null ? null : bearingVector(entry.bearing);
     const hit = matchRoad(graph, p, MATCH, accept, bearing);
     if (!hit) continue;
@@ -160,7 +164,7 @@ export function planSites(
           ? [hit.lateral > 0 ? 1 : -1]
           : [1, -1];
     for (const dir of dirs) {
-      const { lanes, span } = lanesFor(seg, entry.lanes);
+      const { lanes, laneEdge, laneWidth } = lanesFor(seg);
       const s = clearSpot(graph, seg, hit.s, dir);
       const { pos, dir: along } = graph.sample(seg, s);
       sites.push({
@@ -173,7 +177,8 @@ export function planSites(
         kind: lanes >= 2 ? "gantry" : "pole",
         lanes,
         kerb: seg.line.width / 2,
-        laneWidth: span / lanes,
+        laneEdge,
+        laneWidth,
         expressway: isExpressway,
         limit: speedLimit(seg),
         threshold: isExpressway ? SPEED_OVER_EXPRESSWAY : SPEED_OVER,
@@ -285,7 +290,7 @@ export function planWarnings(
     const points =
       own.length === 0 ? entry.signs : entry.signs.filter((sg) => own.some((site) => isFor(sg, site)));
     const isExpressway = isExpresswayClass(entry.road);
-    const accept = (seg: Segment) => (seg.line.kind === "highway") === isExpressway;
+    const accept = (seg: Segment) => isExpresswayRoad(seg.line) === isExpressway;
     for (const [lon, lat, bearing, before] of points) {
       const p = frame.toLocal(lat, lon, frame.origin.h).setY(0);
       if (Math.hypot(p.x, p.z) > range) continue;
@@ -321,7 +326,7 @@ export function crossing(site: OrbisSite, prev: Vector3, cur: Vector3): number |
   const qz = prev.z + mz * f - site.line.z;
   const left = leftOf(site.travel, 1);
   const lateral = qx * left.x + qz * left.z;
-  const fromKerb = site.kerb - lateral;
+  const fromKerb = site.laneEdge - lateral;
   const isCovered = fromKerb >= -0.5 && fromKerb <= site.lanes * site.laneWidth + 0.3;
   if (!isCovered) return null;
   return Math.min(site.lanes - 1, Math.max(0, Math.floor(fromKerb / site.laneWidth)));
@@ -338,7 +343,7 @@ export function photographs(site: OrbisSite, prev: Vector3, cur: Vector3, kmh: n
 }
 
 /** Lateral (left of travel) of lane k's centre. */
-const laneCentre = (site: OrbisSite, k: number) => site.kerb - (k + 0.5) * site.laneWidth;
+const laneCentre = (site: OrbisSite, k: number) => site.laneEdge - (k + 0.5) * site.laneWidth;
 
 type Part = Array<{ geometry: BufferGeometry; material: Material }>;
 type Kit = {
@@ -688,7 +693,7 @@ export class OrbisDevices {
         poles.push({ pos: base, height: 7.1, radius: 0.2 });
         // Across to half a metre past the last lane; a second pole on a one-way carriageway's far
         // kerb when the span is long (on a two-way road the far side is the oncoming traffic).
-        const far = site.kerb - site.lanes * site.laneWidth - 0.5;
+        const far = site.laneEdge - site.lanes * site.laneWidth - 0.5;
         const length = site.kerb + 1 - far;
         const beamAt = base.clone().setY(base.y + k.beamY);
         lists.beam.push(basis(site.travel, beamAt, length));

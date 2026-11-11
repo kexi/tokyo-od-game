@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import type { Crossing } from "./regulations";
 import { leftOf, type RoadGraph, type Segment } from "./roads";
+import { allowsPedestrians } from "./roadClass";
 
 /**
  * Where pedestrians walk: along the streets of the road graph on the pavement beside the
@@ -427,4 +428,4 @@ export class SidewalkNetwork {
   }
 }
 
-const isWalkable = (seg: Segment) => seg.line.kind !== "highway";
+const isWalkable = (seg: Segment) => allowsPedestrians(seg.line);

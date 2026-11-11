@@ -1,0 +1,8 @@
+fingerprints.json: sums of the road surface buffers and route points, and discrete.json: the
+discrete road model (segments and junctions, regulations by segment, lane counts, nearest segment
+ids, meshes by material, route step lists, autopilot starts), that tests/roadModelInvariance.test.ts
+computes from the frozen tiles of ../sign-placement (JARTIC regulations and OpenStreetMap
+turn:lanes; sources and licences in ../sign-placement/LICENSE.txt). Taken on macOS with the code
+from before P2 of the road redesign (origin/main 1305f52, and again at cbfaa73 after main moved on:
+both identical), knowledge/road-model.md. Rewrite only with ROAD_MODEL_UPDATE=1 on darwin, under
+the conditions written at the top of that test.

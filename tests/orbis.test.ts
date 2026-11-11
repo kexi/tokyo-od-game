@@ -45,11 +45,18 @@ const device = (east: number, north: number, extra: Partial<OrbisEntry> = {}): O
   ...extra,
 });
 
-/** Graph of a 3 km street in 500 m segments joined end to end, its limit posted at 50 km/h. */
-function longStreet(width = 14): RoadGraph {
+/**
+ * Graph of a 3 km street in 500 m segments joined end to end, its limit posted at 50 km/h and its
+ * lanes set as JARTIC or OSM would give them (two a direction by default: 3.25 m lanes inside a
+ * 0.5 m shoulder on the 14 m street, so lane 0 is 3.25–6.5 m and lane 1 0–3.25 m left of travel).
+ */
+function longStreet(width = 14, lanes = 2): RoadGraph {
   const lines = [0, 500, 1000, 1500, 2000, 2500].map((x) => street(x, x + 500, width));
   const g = new RoadGraph(lines, frame);
-  for (const seg of g.segments) seg.limit = 50;
+  for (const seg of g.segments) {
+    seg.limit = 50;
+    seg.lanes = lanes;
+  }
   return g;
 }
 
@@ -62,13 +69,14 @@ const pass = (site: OrbisSite, z: number, from = -3, to = 3): [Vector3, Vector3]
 ];
 
 describe("orbis placement", () => {
-  it("faces the OSM bearing and stands a gantry over two or more lanes, a pole over one", () => {
+  it("faces the OSM bearing and stands a gantry over two or more of the street's lanes, a pole over one", () => {
     const g = longStreet();
     const [gantry] = planSites(g, [device(2000, 0)], frame, 5000);
     expect(gantry.travel.x).toBeCloseTo(1);
     expect(gantry.kind).toBe("gantry");
     expect(gantry.lanes).toBe(2);
-    const [pole] = planSites(g, [device(2000, 0, { lanes: 1, bearing: 270 })], frame, 5000);
+    // The street's lanes decide, not the count OSM maps on the camera (the section took OSM's already).
+    const [pole] = planSites(longStreet(14, 1), [device(2000, 0, { lanes: 2, bearing: 270 })], frame, 5000);
     expect(pole.travel.x).toBeCloseTo(-1);
     expect(pole.kind).toBe("pole");
   });
@@ -100,7 +108,7 @@ describe("orbis detection", () => {
   const [site] = planSites(g, [device(2000, 0)], frame, 5000);
 
   it("fires only for the enforced direction", () => {
-    const [a, b] = pass(site, -5.25);
+    const [a, b] = pass(site, -4.875);
     expect(crossing(site, a, b)).not.toBeNull();
     expect(crossing(site, b, a)).toBeNull();
     // Not crossing the line (both points before it).
@@ -108,15 +116,15 @@ describe("orbis detection", () => {
   });
 
   it("knows the lane it covers: kerb lane 0, the next lane 1, nothing on the oncoming half", () => {
-    // Half width 7 m, two lanes of 3.5 m on the left of travel (north for eastbound).
-    expect(crossing(site, ...pass(site, -5.25))).toBe(0);
-    expect(crossing(site, ...pass(site, -1.75))).toBe(1);
+    // Two lanes of 3.25 m inside the 0.5 m shoulder on the left of travel (north for eastbound).
+    expect(crossing(site, ...pass(site, -4.875))).toBe(0);
+    expect(crossing(site, ...pass(site, -1.625))).toBe(1);
     expect(crossing(site, ...pass(site, 2))).toBeNull();
     expect(crossing(site, ...pass(site, -9))).toBeNull();
   });
 
   it("photographs 30 km/h or more over the limit on a street (limit 50 here), 40 on an expressway", () => {
-    const [a, b] = pass(site, -5.25);
+    const [a, b] = pass(site, -4.875);
     expect(site.limit).toBe(50);
     expect(photographs(site, a, b, 79)).toBeNull();
     expect(photographs(site, a, b, 80)).toBe(0);

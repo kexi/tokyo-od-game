@@ -1207,6 +1207,8 @@ export const ja = {
   "credits.odbl": "抽出したデータベースは {odbl} で提供します（{file}）。",
   "credits.signals.cycle":
     "信号の表示サイクル（青・黄・赤の時間と交差点ごとのずれ）はゲーム側の設定で、実際の信号とは異なります。",
+  "credits.roadlanes.extract":
+    "一般道の車線数と幅（OpenStreetMap の {tags}）も同じく取り出し、地理院の道路中心線に対応付けて車線の配置に使っています（public/data/roadlanes）。",
   "credits.h.guide": "案内標識（方面及び方向）",
   "credits.h.destinations": "目的地の一覧（駅・名所）",
   "credits.h.expressway": "高架の自動車専用道路（都市高速）",
