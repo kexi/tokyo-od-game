@@ -1,3 +1,4 @@
+import { DEM_SINK_GIVE, OPEN_FLOOR_GIVE, OPEN_GROUND_FLOOR } from "./assumptions";
 import type { XwDiagnostic } from "./format";
 
 /**
@@ -14,6 +15,10 @@ export type AllowEntry = {
   /** For a deck_overlap: the most stations and the largest |Δz| (m) accepted; more fails T10. */
   maxStations?: number;
   maxDzM?: number;
+  /** For a ramp_radius: the tightest radius (m) accepted on that ramp (T6 checks the plan against it). */
+  minRadiusM?: number;
+  /** For a miss of an assumed floor (detail "<m> m under …"): the most accepted. */
+  maxShortM?: number;
   reason: string;
 };
 
@@ -48,20 +53,33 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
   },
   {
     run: "*",
+    kind: "below_open_ground_floor",
+    maxShortM: OPEN_FLOOR_GIVE.value,
+    reason: `最も低い設計速度でも解けない run だけ（最終段）。${OPEN_GROUND_FLOOR.reason}。${OPEN_FLOOR_GIVE.reason}。OSM の道路は交差として 4.5 m を満たす`,
+  },
+  {
+    run: "*",
+    kind: "deck_below_ground",
+    maxShortM: DEM_SINK_GIVE.value,
+    reason: `最も低い設計速度でも解けない run の、低い端の近くだけ（最終段）。${DEM_SINK_GIVE.reason}`,
+  },
+  {
+    run: "*",
     kind: "crossing_over_or_at_grade",
     reason:
       "OSM に高さの無い「地上」の道路が地表端の近くにあり、標準勾配では越えられない。掘割の上を渡る道か地下道とみなし、タイルの blocked に記録した（P3 で通行止め・迂回を決める）",
   },
-  { run: "203059412", kind: "ramp_radius", reason: `R 11.7 m。${RAMP_RADIUS_REASON}` },
-  { run: "203059413", kind: "ramp_radius", reason: `R 10.7 m。${RAMP_RADIUS_REASON}` },
+  { run: "203059412", kind: "ramp_radius", minRadiusM: 11.7, reason: `R 11.7 m。${RAMP_RADIUS_REASON}` },
+  { run: "203059413", kind: "ramp_radius", minRadiusM: 10.7, reason: `R 10.7 m。${RAMP_RADIUS_REASON}` },
   {
     run: "203873831",
     kind: "ramp_radius",
+    minRadiusM: 13.4,
     reason: `R 13.4 m（試験区間の C1 と同じ成分で解く連結路）。${RAMP_RADIUS_REASON}`,
   },
-  { run: "24039815", kind: "ramp_radius", reason: `R 14.5 m。${RAMP_RADIUS_REASON}` },
-  { run: "5213291", kind: "ramp_radius", reason: `R 13.5 m。${RAMP_RADIUS_REASON}` },
-  { run: "761796514", kind: "ramp_radius", reason: `R 11.6 m。${RAMP_RADIUS_REASON}` },
+  { run: "24039815", kind: "ramp_radius", minRadiusM: 14.5, reason: `R 14.5 m。${RAMP_RADIUS_REASON}` },
+  { run: "5213291", kind: "ramp_radius", minRadiusM: 13.5, reason: `R 13.5 m。${RAMP_RADIUS_REASON}` },
+  { run: "761796514", kind: "ramp_radius", minRadiusM: 11.6, reason: `R 11.6 m。${RAMP_RADIUS_REASON}` },
   {
     run: "24402611",
     kind: "deck_overlap",
@@ -122,9 +140,11 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     run: "45021972",
     kind: "deck_overlap",
     with: "4848762",
-    maxStations: 15,
-    maxDzM: 6.33,
-    reason: SHIBAURA_REASON,
+    maxStations: 16,
+    maxDzM: 6.46,
+    // P7 alone: 15 stations, 6.33 m. P2.6's solve (gapTol, the end bands) moves the coupled
+    // component by centimetres, which puts one more station in and 13 cm more on the changeover.
+    reason: `${SHIBAURA_REASON}（P2.6 との統合で 15 測点・6.33 m から 16 測点・6.46 m）`,
   },
   {
     run: "45021972",
@@ -150,6 +170,22 @@ export const ALLOWLIST: ReadonlyArray<AllowEntry> = [
     maxDzM: 0.32,
     reason: `芝浦 JCT の連結路（4848740）が 11 号台場線の上り（45019020）に合流する所。${NOSE_REASON}`,
   },
+  {
+    run: "45019020",
+    kind: "deck_overlap",
+    with: "4848755",
+    maxStations: 2,
+    maxDzM: 0.06,
+    reason: `芝浦の入口ランプ（4848755）が 11 号台場線の上り（45019020）に合流する所（P2.6 との統合で出た）。${NOSE_REASON}`,
+  },
+  {
+    run: "45177678",
+    kind: "deck_overlap",
+    with: "4848755",
+    maxStations: 2,
+    maxDzM: 0.06,
+    reason: `芝浦の入口ランプ（4848755）の地表端が臨港道路（45177678、street）の地表端と同じ面で並ぶ所（P2.6 との統合で出た）。${NOSE_REASON}`,
+  },
 ];
 
 /** Stations and largest |Δz| from a deck_overlap detail ("with b: N stations, |Δz| lo–hi m, …"). */
@@ -163,6 +199,12 @@ export function isAllowed(d: Pick<XwDiagnostic, "run" | "kind"> & { detail?: str
     const isRun = a.run === "*" || a.run === d.run;
     const isPair = a.with === undefined || (d.detail ?? "").startsWith(`with ${a.with}:`);
     if (!isRun || a.kind !== d.kind || !isPair) return false;
+    const radius = /R=([\d.]+) m/.exec(d.detail ?? "");
+    const isRadiusLimited = a.minRadiusM !== undefined;
+    if (isRadiusLimited) return radius !== null && Number(radius[1]) >= a.minRadiusM!;
+    const short = /^([\d.]+) m under/.exec(d.detail ?? "");
+    const isShortLimited = a.maxShortM !== undefined;
+    if (isShortLimited) return short !== null && Number(short[1]) <= a.maxShortM!;
     const hasLimit = a.maxStations !== undefined || a.maxDzM !== undefined;
     if (!hasLimit) return true;
     const size = overlapSize(d.detail ?? "");

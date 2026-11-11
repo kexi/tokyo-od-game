@@ -1,8 +1,9 @@
 import {
-  CLEARANCE_HEIGHT,
   COMPOSITE_GRADE,
   CURVE_RADIUS,
   type DesignSpeed,
+  DESIGN_SPEED_TYPE2_CLASS1,
+  DESIGN_SPEED_TYPE2_CLASS2,
   designSpeedAtMost,
   MAX_GRADE,
   MAX_SUPERELEVATION,
@@ -10,7 +11,7 @@ import {
   VERTICAL_CURVE_LENGTH,
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
-import { GIRDER_DEPTH, MAX_LATERAL_SHIFT, RAMP_MIN_RADIUS } from "./assumptions";
+import { GIRDER_DEPTH, MAX_LATERAL_SHIFT, OPEN_GROUND_FLOOR, RAMP_MIN_RADIUS } from "./assumptions";
 import { approachLength } from "./compile";
 import { CROSS_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwRunSummary } from "./format";
 import { haversine } from "./geo";
@@ -51,9 +52,24 @@ export function stationsOf(c: XwChunk): Station[] {
 }
 
 const V = (c: XwChunk) => c.V as DesignSpeed;
-const ROAD_CLEAR = CLEARANCE_HEIGHT.value + GIRDER_DEPTH.value;
-const MAIN_SPEEDS: readonly number[] = [60, 50, 40];
-const RAMP_SPEEDS: readonly number[] = [60, 50, 40, 30, 20];
+/** The assumed floor over open ground (assumptions.OPEN_GROUND_FLOOR) plus the girder. */
+const OPEN_OVER_GROUND = OPEN_GROUND_FLOOR.value + GIRDER_DEPTH.value;
+/**
+ * 第13条 for the main line: 第二種第一級 (80, or 60) and 第二種第二級 (60, or 50 / 40), which a 第一級
+ * road may be classed down to where unavoidable (第3条第2項ただし書). Whether a section may be 80 at
+ * all is its tag's to say (checkGrade: not above the tagged speed). Why 80 now: 湾岸線 and the other
+ * roads tagged 80 outside the 都心部 are 第二種第一級, and P2.5 rejected all 58 of their runs.
+ */
+const MAIN_SPEEDS: readonly number[] = [
+  ...new Set([
+    DESIGN_SPEED_TYPE2_CLASS1.value.standard,
+    ...DESIGN_SPEED_TYPE2_CLASS1.value.special,
+    DESIGN_SPEED_TYPE2_CLASS2.value.standard,
+    ...DESIGN_SPEED_TYPE2_CLASS2.value.special,
+  ]),
+];
+/** A 連結路 is free of 第13条 (第28条第4項): any tabled speed up to its tag (a JCT link tagged 80 too). */
+const RAMP_SPEEDS: readonly number[] = [80, 60, 50, 40, 30, 20];
 
 function chordHeading(a: Station, b: Station): number {
   const kx = Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
@@ -105,12 +121,18 @@ export function checkGrade(c: XwChunk, run: XwRunSummary): string[] {
 /**
  * T2: the second divided difference over station triples at least 20 m apart lies within
  * −1/R凸 … 1/R凹 of 第22条第2項, and every vertical curve (one knot interval) is at least as long as
- * 第22条第3項 asks.
+ * 第22条第3項 asks. A cubic connector (`vform: "cubic"`, a short 連結路 following its two parents) has
+ * no minimum length: 第22条 does not bind a 連結路 (第28条第4項), and its curvature is still held to
+ * the radii here and on the surface (checkSurface). Nor has a straight chunk (one grade throughout).
  */
 export function checkVerticalCurves(c: XwChunk): string[] {
   const out: string[] = [];
   const r = VERTICAL_CURVE_RADIUS.value[V(c)];
-  const isShortCurve = c.vh < VERTICAL_CURVE_LENGTH.value[V(c)] - 1e-6;
+  const isExemptConnector = c.vform === "cubic" && c.cls === "ramp";
+  // A run shorter than one curve length is a single straight grade (no grade change, so no vertical
+  // curve for 第22条第3項 to bind): only one whose grade does change is too short.
+  const isStraight = Math.abs(c.g1 - c.g0) <= 2e-5;
+  const isShortCurve = !isExemptConnector && !isStraight && c.vh < VERTICAL_CURVE_LENGTH.value[V(c)] - 1e-6;
   if (isShortCurve) out.push(`${c.id}: vertical curve length ${c.vh} m`);
   const st = stationsOf(c);
   for (let i = 0; i < st.length; i++) {
@@ -224,12 +246,43 @@ export function checkJunction(child: XwChunk, atStart: boolean, grade: number, p
   return [`${child.id}: no parent station at the junction`];
 }
 
+/** Which ends of a run are low enough for the deck to be still climbing (T4 leaves that out). */
+export type Climbs = { start: boolean; end: boolean };
+
+/**
+ * A run's low ends from the run summaries alone: a ground end or portal, or a junction (or seam) on
+ * a parent within the climb (approachLength of the parent) from one of the parent's own low ends,
+ * recursively, or a junction on a structure's street (cls "street"). Without the parent's summary
+ * only ground ends count.
+ */
+export function climbingEnds(run: XwRunSummary, runs: ReadonlyMap<string, XwRunSummary>): Climbs {
+  const isLow = (r: XwRunSummary, atStart: boolean, seen: Set<string>): boolean => {
+    const e = atStart ? r.start : r.end;
+    const isAtGround = e.kind === "ground" || e.kind === "portal";
+    if (isAtGround) return true;
+    const parent = e.parent === undefined ? undefined : runs.get(e.parent);
+    const key = `${r.id}:${atStart}`;
+    const isUnknown = parent === undefined || e.parentS === undefined || seen.has(key);
+    if (isUnknown) return false;
+    // A ramp ending on a structure's street comes down with it (compile.ts isLowEnd).
+    const isOnStreet = e.kind === "junction" && parent.cls === "street";
+    if (isOnStreet) return true;
+    seen.add(key);
+    const climb = approachLength(parent.planV as DesignSpeed);
+    const isNearStart = e.parentS! < climb && isLow(parent, true, seen);
+    return isNearStart || (parent.lengthM - e.parentS! < climb && isLow(parent, false, seen));
+  };
+  return { start: isLow(run, true, new Set()), end: isLow(run, false, new Set()) };
+}
+
 /**
  * T4: over everything recorded as crossed, the surface is at least clearance + girder above it; and
- * everywhere outside the climb from a ground end, at least that above the ground (and so above
- * water, whose DEM is the shore or 0). Decks over or beside other decks: overlap.ts.
+ * everywhere outside the climb from a low end (`climbs`, climbingEnds; by default the ground and
+ * portal ends only), at least that above the ground (and so above water, whose DEM is the shore or
+ * 0), less `openShortM` where the allowlist accepts that miss of the assumed floor (W2). Decks over
+ * or beside other decks: overlap.ts.
  */
-export function checkClearance(c: XwChunk, run: XwRunSummary): string[] {
+export function checkClearance(c: XwChunk, run: XwRunSummary, climbs?: Climbs, openShortM = 0): string[] {
   const out: string[] = [];
   for (let i = 0; i < c.cross.length; i += CROSS_STRIDE) {
     const [s, top, clearance, z] = c.cross.slice(i, i + CROSS_STRIDE);
@@ -240,12 +293,13 @@ export function checkClearance(c: XwChunk, run: XwRunSummary): string[] {
   }
   const approach = approachLength(run.planV as DesignSpeed);
   const isAtGround = (kind: string) => kind === "ground" || kind === "portal";
+  const low = climbs ?? { start: isAtGround(run.start.kind), end: isAtGround(run.end.kind) };
   for (const p of stationsOf(c)) {
-    const isClimbing =
-      (isAtGround(run.start.kind) && p.s < approach) ||
-      (isAtGround(run.end.kind) && run.lengthM - p.s < approach);
+    const isClimbing = (low.start && p.s < approach) || (low.end && run.lengthM - p.s < approach);
     if (isClimbing) continue;
-    const isLow = p.z - p.ground < ROAD_CLEAR;
+    // `openShortM`: what the run's below_open_ground_floor diagnostic says it misses the assumed floor
+    // over open ground by (the caller takes it from an allowed diagnostic; 0 holds it exactly).
+    const isLow = p.z - p.ground < OPEN_OVER_GROUND - openShortM;
     if (isLow) out.push(`${c.id}: ${(p.z - p.ground).toFixed(2)} m over ground at s=${p.s}`);
   }
   return out;
@@ -289,15 +343,21 @@ function planCurvature(a: Station, b: Station, c: Station): number {
 
 /**
  * T6: no kink (curvature over 10 m chords never above 1 / the radius floor), the radius at least
- * the floor (第15条 特例 for the run's V; assumptions.RAMP_MIN_RADIUS for a ramp), and the shift
- * from OSM within ε as the compiler measured it on its arrays (the OSM line is not in the tiles).
- * The rate of change of curvature is reported as the largest seen (no statute).
+ * the floor (第15条 特例 for the run's V; assumptions.RAMP_MIN_RADIUS for a ramp, or `rampFloor` where
+ * the allowlist accepts a tighter OSM radius on that ramp, ramp_radius with minRadiusM), and the
+ * shift from OSM within ε as the compiler measured it on its arrays (the OSM line is not in the
+ * tiles). The rate of change of curvature is reported as the largest seen (no statute).
  */
-export function checkPlan(c: XwChunk, run: XwRunSummary): { problems: string[]; maxDkappa: number } {
+export function checkPlan(
+  c: XwChunk,
+  run: XwRunSummary,
+  rampFloor?: number,
+): { problems: string[]; maxDkappa: number } {
   const out: string[] = [];
   const isShifted = run.maxShiftM > MAX_LATERAL_SHIFT.value + 1e-6;
   if (isShifted) out.push(`${c.id}: shift ${run.maxShiftM} m`);
-  const floor = c.cls === "ramp" ? RAMP_MIN_RADIUS.value : CURVE_RADIUS.value[V(c)].special;
+  const rampLimit = Math.min(RAMP_MIN_RADIUS.value, rampFloor ?? Infinity);
+  const floor = c.cls === "ramp" ? rampLimit : CURVE_RADIUS.value[V(c)].special;
   const st = stationsOf(c);
   let prev: { s: number; k: number } | null = null;
   let maxDkappa = 0;

@@ -849,6 +849,9 @@ export const LOG_EVENTS = {
     bytes: count,
     diagnostics: count,
     unsolved: count,
+    /** Runs of the range left out of the tiles (meta.closed), main lines and ramps. */
+    closedMain: count,
+    closedRamps: count,
     durationS: z.number(),
   }),
 

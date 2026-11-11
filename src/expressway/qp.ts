@@ -15,10 +15,19 @@ import { SparseLdl } from "./sparse";
  * Why not ADMM (OSQP's splitting, tried first): on the joint vertical problems (a 70 km component of
  * 54 runs, ~3,000 variables and ~30,000 rows, almost an LP: the objective is weak next to the
  * clearances) it used up 40,000 iterations without converging; the interior point took 40–60
- * factorisations on the same components. It is not immune to conditioning: in the full build 13 of
- * 640 solves broke down (non-finite steps), so the result carries a `status` and the caller reports
- * anything but "converged". Pivots of the wrong sign are regularised and each solve is refined
- * (sparse.ts). Why not a dense Cholesky (P1): 3,000³ flops per solve.
+ * factorisations on the same components. Why not a dense Cholesky (P1): 3,000³ flops per solve.
+ *
+ * Conditioning (the 13 of 619 full-build solves that broke down in P2.5): every one had already met
+ * the primal (≤ 4e-11) and dual (≤ 1e-6) tolerances and stood at a mean complementarity λs of
+ * 2.5e-9–1e-7, short of the old absolute 1e-9. Pushing on, the scaling D = λ/s spread over 29 orders
+ * (2e-13 … 2e16), the reduced matrix lost its quasi-definite signs in double precision (34–261
+ * pivots regularised in the last factorisation) and the next step was NaN. The gap is now asked to
+ * 1e-7 per pair (`gapTol`): in the units of the objective that is under 0.03 over the largest
+ * component, i.e. millimetres on the weakest (deck pair) rows, and all 13 then converge in 19–73
+ * iterations with no pivot regularised. Why not clip D or raise the regularisation instead: both
+ * change the Newton direction near the solution and only move where it stalls. The result still
+ * carries a `status` and the caller reports anything but "converged"; wrong-sign pivots are still
+ * regularised and each solve refined (sparse.ts) as a guard.
  */
 
 export type Qp = {
@@ -117,8 +126,11 @@ const PIVOT_DELTA = 1e-12;
 const TINY = 1e-300;
 const STEP_FRACTION = 0.99;
 
-/** Stop when the residuals are below tol (primal, relative to the bounds; gap) and dualTol (relative to q). */
-export type QpOptions = { maxIter?: number; tol?: number; dualTol?: number };
+/**
+ * Stop when the primal residual is below tol (relative to the bounds), the dual below dualTol
+ * (relative to q) and the mean complementarity below gapTol (see the top of the file for why 1e-7).
+ */
+export type QpOptions = { maxIter?: number; tol?: number; dualTol?: number; gapTol?: number };
 
 /**
  * The QP's constraints as the interior point sees them: hard equalities (with a multiplier each)
@@ -149,6 +161,7 @@ class Structure {
   private readonly diagonal: Float64Array;
   private readonly offdiag: Float64Array;
   private readonly rowD: Float64Array;
+  private readonly shift: Float64Array;
   /** Sign each pivot must have: + for x, − for the equality multipliers (quasi-definite). */
   private readonly signs: Int8Array;
 
@@ -245,6 +258,12 @@ class Structure {
     this.rowD = new Float64Array(m);
     this.signs = new Int8Array(N).fill(1);
     for (let k = n; k < N; k++) this.signs[k] = -1;
+    // ±δ on the diagonal of the factor only (quasi-definite), refined away in each solve. Why not in
+    // the matrix itself (P2.5): the equalities were then met only to δ·|y|, and a component whose
+    // runs were all held at a profile (large multipliers) stalled at a primal residual of 6e-8.
+    this.shift = new Float64Array(N);
+    for (const s of this.xDiag) this.shift[-1 - s] = DELTA_X;
+    for (const s of this.yDiag) this.shift[-1 - s] = -DELTA_Y;
   }
 
   private add(slot: number, v: number): void {
@@ -257,8 +276,6 @@ class Structure {
     const { rowStart, val } = this;
     this.diagonal.fill(0);
     this.offdiag.fill(0);
-    for (const s of this.xDiag) this.add(s, DELTA_X);
-    for (const s of this.yDiag) this.add(s, -DELTA_Y);
     for (let k = 0; k < this.pv.length; k++) this.add(this.pSlots[k], this.pv[k]);
     this.rowD.fill(0);
     for (let k = 0; k < D.length; k++) this.rowD[this.sideRow[k]] += D[k];
@@ -270,7 +287,7 @@ class Structure {
     }
     for (const r of this.eqRows)
       for (let a = rowStart[r]; a < rowStart[r + 1]; a++) this.add(this.eqSlot[a], val[a]);
-    this.ldl.factor(this.diagonal, this.offdiag, this.signs, PIVOT_DELTA);
+    this.ldl.factor(this.diagonal, this.offdiag, this.signs, PIVOT_DELTA, this.shift);
   }
 
   dot(r: number, v: Float64Array): number {
@@ -290,6 +307,7 @@ export function solveQp(qp: Qp, options: QpOptions = {}): QpResult {
   const maxIter = options.maxIter ?? 150;
   const tol = options.tol ?? 1e-9;
   const dualTol = options.dualTol ?? 1e-6;
+  const gapTol = options.gapTol ?? 1e-7;
   const S = new Structure(qp);
   const { n, q, l } = qp;
   const { eqRows, sideRow, sideSig, sideBeta, sideW } = S;
@@ -406,7 +424,7 @@ export function solveQp(qp: Qp, options: QpOptions = {}): QpResult {
       break;
     }
     last.set(x);
-    const isDone = primal <= tol * betaMax && dual <= dualTol * qMax && gapNow <= tol;
+    const isDone = primal <= tol * betaMax && dual <= dualTol * qMax && gapNow <= gapTol;
     if (isDone) {
       status = "converged";
       break;
