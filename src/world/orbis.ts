@@ -34,6 +34,7 @@ import { dayKey, planPortable, type GameDay, type School } from "./portableOrbis
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import { sharedDraco } from "../render/draco";
 import { isExpressway as isExpresswayRoad } from "./roadClass";
+import { DeckOverhead, MAX_MARGIN, poleReachesDeck } from "./deckOverhead";
 
 /**
  * 速度違反自動取締装置 (オービス) on the streets: OSM speed cameras (public/data/police.json, built by
@@ -762,7 +763,16 @@ export class OrbisDevices {
     // Poles are solid for cars and people (not for ground probes), as the signal poles are.
     if (poles.length === 0) return;
     this.body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const decks = this.last ? new DeckOverhead(this.last.graph) : null;
     for (const { pos, height, radius } of poles) {
+      // A pole whose top reaches an expressway deck over it gets no collider: a car on the deck
+      // would stop on it (deckOverhead.ts). Why only the collider: the camera and its 予告看板 are
+      // part of the law's record (orbis_placed) and keep their places.
+      const isIntoDeck =
+        decks !== null &&
+        !decks.isEmpty &&
+        poleReachesDeck(decks.surfacesOver(pos.x, pos.z, MAX_MARGIN), pos.y, pos.y + height);
+      if (isIntoDeck) continue;
       this.world.createCollider(
         RAPIER.ColliderDesc.cylinder(height / 2, radius)
           .setTranslation(pos.x, pos.y + height / 2, pos.z)
