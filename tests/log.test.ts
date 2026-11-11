@@ -472,6 +472,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     bytes: 200000,
     diagnostics: 3,
     unsolved: 0,
+    closedMain: 0,
+    closedRamps: 0,
     durationS: 60,
   },
   debug_camera_placed: { lat: 35.68043, lon: 139.76424, fovDeg: 50, isGroundReady: true },

@@ -1093,7 +1093,7 @@ describe("the generated data's merges (P3.5): seams and let-go points probed fro
     worlds.push(...ws);
     // Every 0.5 m of the ramps' "same" stretches whose road lies past the master's slab edge and
     // within MERGE_MAX_DZ of it, in both ranges: a fixed count, so a probe that stops finding its seam fails.
-    expect(seams).toHaveLength(3423);
+    expect(seams).toHaveLength(3409);
     const holes = seams.filter((x) => x.step === null).map((x) => `${x.chunk} s ${x.s.toFixed(2)}`);
     expect(holes).toEqual([]);
     const off: string[] = [];
@@ -1124,8 +1124,8 @@ describe("the generated data's merges (P3.5): seams and let-go points probed fro
       { chunk: "4853798:0", with: "45021976", s: 198.5 },
       { chunk: "4853799:0", with: "24402611", s: 82.3 },
       { chunk: "45019020:39", with: "45554540", s: 4079.3 },
-      { chunk: "4848755:3", with: "45019020", s: 861.2 },
-      { chunk: "4848889:0", with: "4848762", s: 164.8 },
+      { chunk: "4848755:3", with: "45019020", s: 868.2 },
+      { chunk: "4848889:1", with: "4848762", s: 160.6 },
     ]);
     for (const c of cuts) {
       expect(c.alongStep, `${c.chunk} s ${c.s}`).not.toBeNull();

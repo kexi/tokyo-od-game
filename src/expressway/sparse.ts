@@ -104,12 +104,21 @@ export class SparseLdl {
    * have (+1 for the x block, −1 for the equality block of a quasi-definite matrix): a pivot of the
    * wrong sign or below `delta` in size is replaced by sign · delta (static regularisation, as
    * QDLDL/OSQP do), counted in `regularised`, and `solve` refines against the unregularised matrix.
+   * `shift` (by elimination position) is added to the diagonal of the factor alone, the same way.
    */
-  factor(diagonal: Float64Array, offdiag: Float64Array, signs?: Int8Array, delta = 1e-9): void {
+  factor(
+    diagonal: Float64Array,
+    offdiag: Float64Array,
+    signs?: Int8Array,
+    delta = 1e-9,
+    shift?: Float64Array,
+  ): void {
     const { n, vals, diag } = this;
     this.origDiag.set(diagonal);
     this.origVals.set(offdiag);
     diag.set(diagonal);
+    // A static regularisation of the factor only: `solve` refines against the matrix without it.
+    if (shift) for (let k = 0; k < n; k++) diag[k] += shift[k];
     vals.set(offdiag);
     this.regularised = 0;
     for (let k = 0; k < n; k++) {
