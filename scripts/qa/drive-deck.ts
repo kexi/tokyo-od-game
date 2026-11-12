@@ -83,7 +83,8 @@ async function open(start: string): Promise<{ b: Browser; url: string; before: s
   let before: string | null = null;
   for (let i = 0; i < 30; i++) {
     before = await b.evaluate<string | null>("__game.debug.expressway.blocker()");
-    if (before === null) break;
+    const isClear = before === null;
+    if (isClear) break;
     await b.sleep(1000);
   }
   return { b, url, before };
@@ -95,10 +96,13 @@ function invalidOf(
   blocked: string | null | undefined,
   during: (e: string) => string[],
 ) {
-  if (before !== null) return `blocked before the drive: ${before}`;
+  const wasBlocked = before !== null;
+  if (wasBlocked) return `blocked before the drive: ${before}`;
   if (blocked) return `blocked: ${blocked}`;
-  if (during("accident").length > 0) return "accident during the drive";
-  if (during("violation_cited").length > 0) return "violation cited during the drive";
+  const hadAccident = during("accident").length > 0;
+  if (hadAccident) return "accident during the drive";
+  const wasCited = during("violation_cited").length > 0;
+  if (wasCited) return "violation cited during the drive";
   const isArrested = during("story_begin").some((l) => l.includes(`"kind":"arrest"`));
   if (isArrested) return "arrest during the drive";
   return null;
@@ -120,7 +124,8 @@ async function driveCruise(r: CruiseRoute) {
     let reachedEnd = false;
     let worst: unknown = null;
     let summary: (DeckDriveRide & Record<string, unknown> & { invalid: string | null }) | null = null;
-    if (before === null) {
+    const isClear = before === null;
+    if (isClear) {
       const until = untilIn(b);
       const place = `__game.debug.expressway.place(${JSON.stringify(from.xid)}, ${from.share}, 0)`;
       await until(place, 60);
@@ -200,7 +205,8 @@ async function driveAuto(r: AutoRoute) {
     let summary: (AutoDriveRide & Record<string, unknown> & { invalid: string | null }) | null = null;
     let placed: unknown = null;
     let worst: unknown = null;
-    if (before === null) {
+    const isClear = before === null;
+    if (isClear) {
       // On the street connector at the foot of the entrance ramp, facing it (P6's drive).
       placed = await b.evaluate(`(() => {
         const G = window.__game; const g = G.getRoadGraph();
@@ -221,7 +227,8 @@ async function driveAuto(r: AutoRoute) {
         for (let t = 0; t < r.seconds; t++) {
           await b.evaluate("__game.advance(1)");
           const isDriving = await b.evaluate<boolean>("!!window.__game.getAutopilot()");
-          if (!isDriving && t > 3) break;
+          const hasStopped = !isDriving && t > 3;
+          if (hasStopped) break;
         }
       }
       summary = await b.evaluate(`__game.debug.expressway.stop(${JSON.stringify(r.id)})`);
@@ -266,7 +273,8 @@ const WORST = `(() => {
     .map((x) => ({ t: +x.t.toFixed(2), xid: x.xid, kmh: Math.round(x.kmh), target: Math.round(x.target), dy: +x.dy.toFixed(3), off: +x.off.toFixed(2), vy: +x.vy.toFixed(2), at: +x.at.toFixed(2), len: +x.len.toFixed(2) }));
   let a = 0, d = -1;
   xs.forEach((x, i) => {
-    if (x.target - x.kmh > xs[a].target - xs[a].kmh) a = i;
+    const isShorter = x.target - x.kmh > xs[a].target - xs[a].kmh;
+    if (isShorter) a = i;
     const isDeck = x.xid !== null && Number.isFinite(x.dy);
     const isWorse = d < 0 || Math.abs(x.dy) > Math.abs(xs[d].dy);
     if (isDeck && isWorse) d = i;
@@ -287,7 +295,8 @@ for (const r of routes) {
   for (let i = 0; i < tries; i++) {
     result = r.kind === "cruise" ? await driveCruise(r) : await driveAuto(r);
     attempts.push({ invalid: result.invalid });
-    if (result.invalid === null) break;
+    const counts = result.invalid === null;
+    if (counts) break;
   }
   const out = { label, ...result!, attempts };
   const file = outDir
@@ -320,7 +329,8 @@ for (const r of routes) {
   );
   // 2: the run does not count (invalid), whatever it measured; 1: the decks failed the drive.
   const isFailed = out.failures.length > 0;
-  if (out.invalid !== null) exit = Math.max(exit, 2);
+  const isInvalid = out.invalid !== null;
+  if (isInvalid) exit = Math.max(exit, 2);
   else if (isFailed) exit = Math.max(exit, 1);
 }
 process.exitCode = exit;

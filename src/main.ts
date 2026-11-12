@@ -1222,13 +1222,15 @@ async function main(): Promise<void> {
   const respawnHere = (reason: "underground" | "adrift" | "reset" | "retrained") => {
     const p = vehicle.position();
     const geo = frame.toGeodetic(p);
-    warn("car_respawned", {
-      reason,
+    const where = {
       lat: Number(geo.lat.toFixed(6)),
       lon: Number(geo.lon.toFixed(6)),
       onDeck: carOnDeck,
       kmh: Math.round(vehicle.speedKmh() * 10) / 10,
-    });
+    };
+    const isAsked = reason === "reset" || reason === "retrained";
+    if (isAsked) log("car_put_back", { reason, ...where });
+    else warn("car_respawned", { reason, ...where });
     // Up on a deck (R pressed there, stuck against a wall): back into its left lane. Why first: open
     // ground is looked for under the deck, which would drop the car onto the street below.
     const isOnDeckNow = carOnDeck && placeOnStreet();
@@ -5768,6 +5770,7 @@ async function main(): Promise<void> {
         buildingsProgress: buildings.loadProgress(),
         terrainComplete: terrain.isSquareComplete(),
         farPending: buildings.farPendingCount,
+        farProgress: buildings.farLoadProgress(),
       }),
     });
     // Steady-speed drives over the expressway decks (src/debug/expresswayDrive.ts), ?expressway only.

@@ -244,7 +244,8 @@ export class Terrain {
   isSquareComplete(): boolean {
     const c = this.centre;
     const q = this.square;
-    if (!c || !q) return false;
+    const isUnbuilt = !c || !q;
+    if (isUnbuilt) return false;
     return (
       q.x0 <= c.x - RENDER_RADIUS &&
       q.x1 >= c.x + RENDER_RADIUS + 1 &&

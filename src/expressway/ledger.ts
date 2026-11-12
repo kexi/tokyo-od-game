@@ -489,7 +489,7 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   seam_hole: ["s0", "s1"],
   merge_skipped: ["maxDzM", "s0", "s1"],
   let_go: ["s", "alongStepM"],
-  "high-deck": ["heightM", "spanM"],
+  "high-deck": ["heightM", "spanM", "s0", "s1"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */
@@ -739,7 +739,10 @@ export function budgetOf(summary: LedgerSummary): LedgerBudget {
   };
 }
 
-/** Whether the summary's km over 15 and 20 m stay within the budget's caps (none in the budget: within). */
+/**
+ * The districts whose km over 15 or 20 m exceed the budget's caps, one problem each (empty: within).
+ * A district measured but with no cap in the budget is a problem too: a new district must get one.
+ */
 export function withinHeightBudget(summary: LedgerSummary, budget: LedgerBudget): string[] {
   const out: string[] = [];
   for (const [d, v] of Object.entries(summary.heightKm ?? {})) {

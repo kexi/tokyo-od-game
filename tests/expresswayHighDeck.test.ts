@@ -96,8 +96,14 @@ describe("high-deck の判定（highDeckStretches）", () => {
 });
 
 describe("high-deck の台帳（cap と余裕）", () => {
-  it("needs the height and the length in its cap", () => {
-    expect(CAP_FIELDS["high-deck"]).toEqual(["heightM", "spanM"]);
+  it("needs the height, the length and where the stretch lies in its cap (PR #71 review)", () => {
+    expect(CAP_FIELDS["high-deck"]).toEqual(["heightM", "spanM", "s0", "s1"]);
+  });
+
+  it("does not keep a decision for a stretch that moved along the run past the edge margin", () => {
+    const cap = { s0: 1000, s1: 1120, heightM: 24, spanM: 120 };
+    expect(withinCap({ s0: 1000, s1: 1120, heightM: 24, spanM: 120 }, cap)).toBe(true);
+    expect(withinCap({ s0: 600, s1: 720, heightM: 24, spanM: 120 }, cap)).toBe(false);
   });
 
   it("keeps a decision while the height grows at most 0.5 m and the length 20 m (HIGH_DECK_MARGIN)", () => {
@@ -142,12 +148,12 @@ describe("15・20 m 超の km のラチェット（budget.heightKm）", () => {
     ]);
   });
 
+  it("writes its stations in the layout of the format (7 numbers each)", () => {
+    expect(STATION_STRIDE).toBe(7);
+  });
   it("leaves a summary without heightKm (a ledger before P2.7-5) as it was", () => {
     const summary = summaryOf([], 0, {});
     expect("heightKm" in summary).toBe(false);
     expect("heightKm" in budgetOf(summary)).toBe(false);
   });
 });
-
-// Unused import guard: the stride is the station layout run() writes.
-expect(STATION_STRIDE).toBe(7);

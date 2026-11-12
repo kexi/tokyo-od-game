@@ -559,7 +559,7 @@ describe("目的 v2 の勾配変化の重み 2 で破綻した QP（P2.7-3 の�
     expect([...out.result.x]).toEqual([...solveQp(qp(), { dualTol: RETRY_DUAL_TOL }).x]);
   });
 
-  it("every one of the 13 broken weights of the review's scan converges through solveRetrying", () => {
+  it("the broken weights of the review's scan (2 and 2 − 1 ulp) converge through solveRetrying", () => {
     // The weights the review found broken (P2.7-3「未収束」): 1.356, 2, 2 − 1 ulp and the like.
     for (const w of [2, 2 - 2 ** -52]) {
       const p = at(w);

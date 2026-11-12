@@ -143,6 +143,8 @@ export type ViewHookDeps = {
     terrainComplete?: boolean;
     /** Far skyline tiles still waiting to be prepared (absent: not asked). */
     farPending?: number;
+    /** 0..1 progress of the far skyline's tile requests (absent: not asked). */
+    farProgress?: number;
   };
 };
 
@@ -171,9 +173,10 @@ function brief(r: { ok: true; value: { length: number } } | { ok: false; reason:
 
 /**
  * Whether the world round the view has streamed in: roads, buildings, and (P2.7-5) the near
- * terrain's whole square and the far skyline's prepared tiles. Before those two the far ground
- * showed through a cut's hole as a band in 麻布台's box, and the first view of a load had no
- * buildings beside the deck.
+ * terrain's whole square and the far skyline, loaded and prepared. Before those the first view of a
+ * load could have no buildings beside the deck; a shot was taken with far tiles still to prepare
+ * (the far ground was first blamed for 麻布台's band; it was the pavements, see groundCuts.CutRelay).
+ * Why the far progress too (PR #71 review): farPending counts only tiles already loaded.
  */
 export function isWorldSettled(s: ReturnType<ViewHookDeps["loadState"]>): boolean {
   return (
@@ -181,7 +184,8 @@ export function isWorldSettled(s: ReturnType<ViewHookDeps["loadState"]>): boolea
     s.hasRoads &&
     s.buildingsProgress >= 0.999 &&
     (s.terrainComplete ?? true) &&
-    (s.farPending ?? 0) === 0
+    (s.farPending ?? 0) === 0 &&
+    (s.farProgress ?? 1) >= 0.999
   );
 }
 

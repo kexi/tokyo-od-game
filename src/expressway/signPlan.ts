@@ -261,7 +261,8 @@ class Planner {
       if (above) sign.girder = above;
       if (lane) sign.lane = lane;
       const divider = above ? null : this.dividerAt(run, s);
-      if (divider !== null) sign.divider = divider;
+      const hasDivider = divider !== null;
+      if (hasDivider) sign.divider = divider;
       // Under a deck only a 112-B hangs on its girder, and only when the board then clears 4.7 m
       // (resolveMount on the board's size: the height of a layout does not depend on the font).
       const fits =
@@ -584,13 +585,6 @@ class Planner {
   }
 
   /**
-   * The deck over the run at s, if any, measured: every piece of another run's centre line whose
-   * deck (half its width, and the board's half span of ours) reaches over this point, more than
-   * OVER_GAP_M above the road here. Its girder's underside and depth in metres above this road
-   * (girder-mount). Geometry, not the compiler's `decks`: a deck crossing over at an angle has no
-   * `decks` stretch on the run under it (G6 review W5).
-   */
-  /**
    * Where the dividing wall stands (m from the centre line, + left) when the run shares one slab
    * with an opposite carriageway at s (decks `same`): the middle of the two carriageways' overlap,
    * as expresswayMerge.ts puts the wall (P3.5). Null where there is no such partner.
@@ -600,7 +594,8 @@ class Planner {
     const partners = c.decks
       .filter((d) => d.relation === "same" && s >= d.s0 && s <= d.s1)
       .map((d) => d.with);
-    if (partners.length === 0) return null;
+    const hasNoPartner = partners.length === 0;
+    if (hasNoPartner) return null;
     const here = frameAt(c.st, s);
     const plane = planeAt(here.lon, here.lat);
     const ahead = frameAt(c.st, Math.min(s + 2, c.st[c.st.length - STATION_STRIDE]));
@@ -608,7 +603,8 @@ class Planner {
     const [ax, ay] = plane.toXY(behind.lon, behind.lat);
     const [bx, by] = plane.toXY(ahead.lon, ahead.lat);
     const len = Math.hypot(bx - ax, by - ay);
-    if (len < 1e-6) return null;
+    const isDegenerate = len < 1e-6;
+    if (isDegenerate) return null;
     const fx = (bx - ax) / len;
     const fy = (by - ay) / len;
     const hw = carriagewayWidth({ ...c, median: 0 }) / 2;
@@ -651,6 +647,13 @@ class Planner {
     return null;
   }
 
+  /**
+   * The deck over the run at s, if any, measured: every piece of another run's centre line whose
+   * deck (half its width, and the board's half span of ours) reaches over this point, more than
+   * OVER_GAP_M above the road here. Its girder's underside and depth in metres above this road
+   * (girder-mount). Geometry, not the compiler's `decks`: a deck crossing over at an angle has no
+   * `decks` stretch on the run under it (G6 review W5).
+   */
   private deckAbove(run: Run, s: number): { bottomM: number; depthM: number } | null {
     const c = chunkAt(run, s);
     const here = frameAt(c.st, s);

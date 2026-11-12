@@ -203,6 +203,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     lon: 139.7502,
   },
   car_respawned: { reason: "adrift", lat: 35.6555, lon: 139.7603, onDeck: false, kmh: 47.4 },
+  car_put_back: { reason: "reset", lat: 35.6555, lon: 139.7603, onDeck: true, kmh: 0 },
   expressway_car_stalled: {
     lat: 35.6536,
     lon: 139.7508,

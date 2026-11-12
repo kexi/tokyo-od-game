@@ -682,5 +682,3 @@ export class RoadSurface {
     yield;
   }
 }
-
-/** The triangles of an index list whose middle is not cut away (`cut(x, z)`). */

@@ -183,6 +183,9 @@ describe("isWorldSettled: what a view waits for (P2.7-5)", () => {
     expect(isWorldSettled({ ...ready, terrainComplete: true, farPending: 0 })).toBe(true);
     expect(isWorldSettled({ ...ready, terrainComplete: false, farPending: 0 })).toBe(false);
     expect(isWorldSettled({ ...ready, terrainComplete: true, farPending: 2 })).toBe(false);
+    // Far tiles still being requested: none waits to be prepared yet, but the skyline is not in.
+    expect(isWorldSettled({ ...ready, terrainComplete: true, farPending: 0, farProgress: 0.6 })).toBe(false);
+    expect(isWorldSettled({ ...ready, terrainComplete: true, farPending: 0, farProgress: 1 })).toBe(true);
     expect(isWorldSettled({ ...ready, isRoadsLoading: true })).toBe(false);
   });
 });

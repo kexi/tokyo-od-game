@@ -215,7 +215,8 @@ export function* deckArraySteps(
       const p = ringPoint(r, side * (own.hw + d), 0);
       const g = place.frame.toGeodetic(p);
       const h = groundAt(g.lat, g.lon);
-      if (h === null) continue;
+      const isUnknown = h === null;
+      if (isUnknown) continue;
       best = Math.max(best, place.frame.toLocal(g.lat, g.lon, h).y - r.c.y);
     }
     return Number.isFinite(best) ? best : null;
