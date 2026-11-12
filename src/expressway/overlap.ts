@@ -3,6 +3,7 @@ import { GIRDER_DEPTH } from "./assumptions";
 import { STATION_STRIDE, type XwChunk } from "./format";
 import { hermite, ST } from "./profile";
 import { carriagewayWidth } from "./section";
+import { levelApartOver } from "./heightStructures";
 
 /**
  * Carriageways whose plan bands overlap (knowledge/road-redesign-plan.md 4.2 「同じ層の車線域が重ならないことを検査」): where
@@ -120,7 +121,8 @@ export type Overlap = {
 };
 
 /** One run's stations from its chunks, in a plane around the data (metres). */
-type Pt = { x: number; y: number; s: number; z: number; g: number; hw: number };
+/** `gd`: the chunk's girder (P2.7-6: a height build's viaduct may take a thinner one). */
+type Pt = { x: number; y: number; s: number; z: number; g: number; hw: number; gd: number };
 
 function polylines(chunks: XwChunk[]): Map<string, Pt[]> {
   let lat0 = 0;
@@ -149,6 +151,7 @@ function polylines(chunks: XwChunk[]): Map<string, Pt[]> {
           z: c.st[i + ST.z],
           g: c.st[i + ST.grade],
           hw,
+          gd: c.girder,
         });
       }
     }
@@ -175,6 +178,17 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
       hw: Float64Array.from(pts, (p) => p.hw),
     };
   });
+  const nearest = (id: string, s: number) => {
+    const pts = lines.get(id)!;
+    let lo = 0;
+    let hi = pts.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (pts[mid].s <= s) lo = mid;
+      else hi = mid;
+    }
+    return pts[lo];
+  };
   const surface = (id: string, s: number) => {
     const pts = lines.get(id)!;
     let lo = 0;
@@ -195,9 +209,12 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
   for (const pair of planOverlaps(planLines, 0)) {
     const isSameRoad = chainOf.get(pair.a) === chainOf.get(pair.b);
     if (isSameRoad) continue;
-    const za = lines.get(pair.a)![pair.ia].z;
-    const dz = za - surface(pair.b, pair.sb);
-    const isAllowed = Math.abs(dz) <= SAME_SURFACE_M || Math.abs(dz) >= LEVEL_APART_M;
+    const pa = lines.get(pair.a)![pair.ia];
+    const dz = pa.z - surface(pair.b, pair.sb);
+    // A level apart over the upper deck's own girder (heightStructures.levelApartOver: the standard one
+    // where its chunk has none or the standard), so a thinner girder (P2.7-6) counts as it is drawn.
+    const upperGirder = dz >= 0 ? pa.gd : nearest(pair.b, pair.sb).gd;
+    const isAllowed = Math.abs(dz) <= SAME_SURFACE_M || Math.abs(dz) >= levelApartOver(upperGirder);
     if (isAllowed) continue;
     const [a, b] = pair.a < pair.b ? [pair.a, pair.b] : [pair.b, pair.a];
     const key = `${a}|${b}`;

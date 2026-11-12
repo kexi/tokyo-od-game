@@ -12,7 +12,7 @@ import {
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
 import { GIRDER_DEPTH, MAX_LATERAL_SHIFT, OPEN_GROUND_FLOOR, RAMP_MIN_RADIUS } from "./assumptions";
-import { ceilingAt } from "./below";
+import { ceilingAt, isCoverStretchTooShort } from "./below";
 import { approachLength } from "./compile";
 import { CROSS_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwRunSummary } from "./format";
 import { haversine } from "./geo";
@@ -283,7 +283,14 @@ export function climbingEnds(run: XwRunSummary, runs: ReadonlyMap<string, XwRunS
  * 0), less `openShortM` where the allowlist accepts that miss of the assumed floor (W2). Decks over
  * or beside other decks: overlap.ts.
  */
-export function checkClearance(c: XwChunk, run: XwRunSummary, climbs?: Climbs, openShortM = 0): string[] {
+export function checkClearance(
+  c: XwChunk,
+  run: XwRunSummary,
+  climbs?: Climbs,
+  openShortM = 0,
+  /** A height build (P2.7-6): the assumed open-ground floor is no judgement (T13 judges the structure). */
+  isHeight = false,
+): string[] {
   const out: string[] = [];
   for (let i = 0; i < c.cross.length; i += CROSS_STRIDE) {
     const [s, top, clearance, z] = c.cross.slice(i, i + CROSS_STRIDE);
@@ -292,9 +299,10 @@ export function checkClearance(c: XwChunk, run: XwRunSummary, climbs?: Climbs, o
     const isShort = z - top < clearance;
     if (isShort) out.push(`${c.id}: clearance ${(z - top).toFixed(2)} < ${clearance} at s=${s}`);
   }
-  // A tunnel or cut has nothing to clear under it: its ceiling under the ground is checkCover's.
-  const isBelow = c.structure === "tunnel" || c.structure === "cut";
-  if (isBelow) return out;
+  // A tunnel or cut has nothing to clear under it: its ceiling under the ground is checkCover's. An
+  // embankment (a height build, P2.7-6) is under the open-ground floor by what it is (T13 judges it).
+  const isOnGround = c.structure === "tunnel" || c.structure === "cut" || c.structure === "embankment";
+  if (isOnGround || isHeight) return out;
   const approach = approachLength(run.planV as DesignSpeed);
   const isAtGround = (kind: string) => kind === "ground" || kind === "portal";
   const low = climbs ?? { start: isAtGround(run.start.kind), end: isAtGround(run.end.kind) };
@@ -320,12 +328,23 @@ export function checkCover(
   c: XwChunk,
   run: Pick<XwRunSummary, "lengthM" | "planV">,
   ends: { z0: number; z1: number },
+  /** A height build's tunnel reached over less than a vertical curve (below.ts isCoverStretchTooShort): no ceiling. */
+  isTunnelFree = false,
 ): string[] {
   const isBelow = c.structure === "tunnel" || c.structure === "cut";
   if (!isBelow) return [];
-  const structure = c.structure as "tunnel" | "cut";
   const out: string[] = [];
+  // A tunnel's mouth onto a cut inside the run (its 坑門, on the tunnel's chunk): the box ends there,
+  // so the station is the cut's, as the compiler holds it (its grid station past the way's end is
+  // the cut's). Why: 24402540:3's mouth at s 1114.46 under the moat's edge was read as tunnel (2.9 m
+  // over the box's ceiling) though the box ended there.
+  const mouths = (c.portals ?? [])
+    .filter((p) => (p.from === "tunnel" && p.to === "cut") || (p.from === "cut" && p.to === "tunnel"))
+    .map((p) => p.s);
   for (const p of stationsOf(c)) {
+    const isMouth = mouths.some((s) => Math.abs(s - p.s) <= 0.011);
+    const structure = isMouth ? "cut" : (c.structure as "tunnel" | "cut");
+    if (structure === "tunnel" && isTunnelFree) continue;
     const top = ceilingAt(structure, p.ground, p.s, run.lengthM, ends, run.planV as DesignSpeed);
     if (top === null) continue;
     // 1 cm for the ground's rounding in the files (the compiler holds the lowest ground near the station).
@@ -431,4 +450,25 @@ export function checkSuperelevation(c: XwChunk): string[] {
       out.push(`${c.id}: composite grade ${(Math.hypot(g, e) * 100).toFixed(2)}% at s=${st[i].s}`);
   }
   return out;
+}
+
+/**
+ * Whether a height build's run keeps no tunnel ceiling (below.ts isCoverStretchTooShort, P2.7-6): its
+ * tunnel stations the descent reaches (checkCover's rule, the files' stations) span less than one
+ * vertical curve. T12 then judges only its cut stations.
+ */
+export function isTunnelFreeRun(
+  list: readonly XwChunk[],
+  run: Pick<XwRunSummary, "lengthM" | "planV">,
+  ends: { z0: number; z1: number },
+): boolean {
+  const reached: number[] = [];
+  for (const c of list) {
+    if (c.structure !== "tunnel") continue;
+    for (const p of stationsOf(c)) {
+      const top = ceilingAt("tunnel", p.ground, p.s, run.lengthM, ends, run.planV as DesignSpeed);
+      if (top !== null) reached.push(p.s);
+    }
+  }
+  return isCoverStretchTooShort(reached, run.planV as DesignSpeed);
 }

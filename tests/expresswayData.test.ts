@@ -70,11 +70,12 @@ const DISTRICT_LIST = DISTRICTS.filter((d) => [...districtOf.values()].includes(
 // Overlaps recomputed here by brute force, without overlap.ts (the compiler's own detector):
 // every station of a run against every segment of every other run, the other's height the cubic
 // Hermite through its two stations, the bands the carriageways recomputed from 第5・8条 / the ramp
-// assumption (lanes × lane width + shoulders).
+// assumption (lanes × lane width + shoulders), a level apart over the upper deck's own girder (its
+// chunk's, 2.2 m where it has none: P2.7-6's thinner girders).
 function overlapsByBruteForce() {
   const kx = 111320 * Math.cos((35.65 * Math.PI) / 180);
   const ky = 110574;
-  type P = { x: number; y: number; s: number; z: number; g: number; hw: number };
+  type P = { x: number; y: number; s: number; z: number; g: number; hw: number; gd: number };
   const lines = new Map<string, P[]>();
   for (const [run, list] of byRun) {
     const pts: P[] = [];
@@ -88,6 +89,7 @@ function overlapsByBruteForce() {
           z: c.st[i + 3],
           g: c.st[i + 6],
           hw,
+          gd: c.girder > 0 ? Math.min(c.girder, 2.2) : 2.2,
         });
     }
     lines.set(run, pts);
@@ -131,7 +133,7 @@ function overlapsByBruteForce() {
               near.set(run, [...(near.get(run) ?? []), i]);
       for (const [b, segs] of near) {
         const pb = lines.get(b)!;
-        let best = { d: Infinity, z: 0, hw: 0 };
+        let best = { d: Infinity, z: 0, hw: 0, gd: 2.2 };
         for (const i of new Set(segs)) {
           const q0 = pb[i];
           const q1 = pb[i + 1];
@@ -139,12 +141,13 @@ function overlapsByBruteForce() {
           const ey = q1.y - q0.y;
           const t = Math.min(1, Math.max(0, ((p.x - q0.x) * ex + (p.y - q0.y) * ey) / (ex * ex + ey * ey)));
           const d = Math.hypot(p.x - q0.x - ex * t, p.y - q0.y - ey * t);
-          if (d < best.d) best = { d, z: cubic(q0, q1, q0.s + (q1.s - q0.s) * t), hw: q0.hw };
+          if (d < best.d) best = { d, z: cubic(q0, q1, q0.s + (q1.s - q0.s) * t), hw: q0.hw, gd: q0.gd };
         }
         const isOver = best.d < p.hw + best.hw;
         if (!isOver) continue;
         const dz = Math.abs(p.z - best.z);
-        const isBad = dz > 0.05 && dz < 4.5 + 2.2;
+        const upperGirder = p.z >= best.z ? p.gd : best.gd;
+        const isBad = dz > 0.05 && dz < 4.5 + upperGirder;
         if (!isBad) continue;
         const key = [a, b].sort().join("|");
         const o = out.get(key) ?? { stations: 0, maxDz: 0, at: [] };

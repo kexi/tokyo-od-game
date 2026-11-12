@@ -201,7 +201,11 @@ export function* deckArraySteps(
     : { rings: own.rings, sides: baseSides, closing: new Set<number>() };
   yield;
   const m = rings.length;
-  const gw = own.edge * GIRDER_BOTTOM_SHARE;
+  // An embankment (P2.7-6, a height build) is walled from the slab's edges down to the ground: the
+  // girder's bottom as wide as the deck. Why not a box of its own: the same loop of faces then keeps
+  // its colours, the merging and the markings as a viaduct's.
+  const isEmbankment = chunk.structure === "embankment";
+  const gw = isEmbankment ? own.edge : own.edge * GIRDER_BOTTOM_SHARE;
   const ph = PARAPET_HEIGHT.value;
   // Below the ground (P9) the section is a tunnel's box or a cut's walls (expresswayBore.ts) along
   // the same rings: no merging (no deck shares a surface with one in the data), no girder.
@@ -236,6 +240,20 @@ export function* deckArraySteps(
       sides,
     );
   };
+  /** An embankment wall's foot on one side (+1 left): the lowest terrain along its face, less 0.3 m. */
+  const footOf = (r: (typeof rings)[number], side: 1 | -1): number | null => {
+    const groundAt = place.groundAt;
+    if (!groundAt) return null;
+    let low = Infinity;
+    for (const d of [0, 0.5]) {
+      const p = ringPoint(r, side * (own.edge + d), 0);
+      const g = place.frame.toGeodetic(p);
+      const h = groundAt(g.lat, g.lon);
+      if (h === null) continue;
+      low = Math.min(low, place.frame.toLocal(g.lat, g.lon, h).y - r.c.y);
+    }
+    return Number.isFinite(low) ? Math.min(-SLAB, low - 0.3) : null;
+  };
   const faceOf = (k: number) =>
     bore ? BORE_FACES[bore][k] : { colour: faceColour(k), solid: SOLID_FACES.has(k) };
   const deckCorners = (i: number): Corners => {
@@ -245,7 +263,9 @@ export function* deckArraySteps(
     const at = (u: number, v: number) => ringPoint(r, u, v).toArray();
     // The girder never reaches below the ground: near a ground end it shortens into a wall.
     const clear = r.c.y - r.groundY;
-    const depth = Math.max(SLAB, Math.min(chunk.girder, clear + 0.3));
+    const depth = isEmbankment
+      ? Math.max(SLAB, clear + 0.3)
+      : Math.max(SLAB, Math.min(chunk.girder, clear + 0.3));
     let lo = -sd.right.reach;
     let hi = sd.left.reach;
     const seamL = sd.left.seam ? [sd.left.seam.x, sd.left.seam.y, sd.left.seam.z] : null;
@@ -304,7 +324,10 @@ export function* deckArraySteps(
     const side = (sign: 1 | -1, s: DeckSide, end: number[], endU: number): Corners => {
       const w = s.wall;
       const slabBottom = at(sign * own.edge, lift(sign * own.edge) - SLAB);
-      const girder = at(sign * gw, -depth);
+      // An embankment's wall stands on the terrain at its own side (review W4: from the centre line's
+      // ground it floated 3.0 m on the low side and was buried 3.17 m on the high one).
+      const foot = isEmbankment ? footOf(r, sign) : null;
+      const girder = at(sign * gw, foot ?? -depth);
       if (!w) return [end, end, end, at(endU, lift(endU) - SLAB), slabBottom, girder];
       // A wall whose road does not run up to it stands partly on the master's slab: its inner face
       // starts below the road, so the master's face (up to MERGE_MAX_DZ lower) meets it.
@@ -361,6 +384,9 @@ export function* deckArraySteps(
     if (checkpoint) yield;
   }
   apronTriangles(chunk, own.edge, rings, bank, pos, col);
+  // An embankment's ends are closed (review W9): a viaduct's girder shows its box, an embankment
+  // would show its hollow inside where it meets a viaduct or the ground. Both windings (drawn only).
+  if (isEmbankment) for (const loop of [sections[0], sections[sections.length - 1]]) capLoop(loop, pos, col);
   const lamps: number[] = [];
   const isTunnel = bore === "tunnel";
   if (isTunnel) tunnelExtras(chunk, own.hw, rings, bank, pos, col, solid, lamps);
@@ -389,6 +415,28 @@ export function* deckArraySteps(
 
 /** Headwall concrete (the 坑門), as BORE_COLOURS.retaining. */
 const HEADWALL = [0.6, 0.59, 0.55];
+
+/**
+ * Close a section loop with a fan from its centre, both windings (an embankment's end face, P2.7-6).
+ * Why a fan: the loop is star-shaped about its centre (the road over the walls and their feet).
+ */
+function capLoop(loop: Corners, pos: number[], col: number[]): void {
+  const n = loop.length - 1;
+  const c = [0, 1, 2].map((k) => loop.slice(0, n).reduce((sum, p) => sum + p[k], 0) / n);
+  for (let i = 0; i < n; i++) {
+    const a = loop[i];
+    const b = loop[i + 1];
+    const isDegenerate = triangleArea2(c, a, b) < 1e-8;
+    if (isDegenerate) continue;
+    for (const tri of [
+      [c, a, b],
+      [c, b, a],
+    ]) {
+      for (const p of tri) pos.push(p[0], p[1], p[2]);
+      for (let v = 0; v < 3; v++) col.push(...HEADWALL);
+    }
+  }
+}
 
 /**
  * The parts of a tunnel chunk beyond its extruded section (P9): each portal's 坑門 (drawn and solid)
@@ -900,6 +948,15 @@ type Built = {
 };
 
 /**
+ * Whether a chunk is below the ground (P9's tunnel or cut, or a height build's cut in a viaduct-tagged
+ * run): the bore's section, the terrain's hole and the cut-outs. Why not `structure !== "viaduct"` as
+ * before: an embankment (P2.7-6) is neither, and is drawn as a deck.
+ */
+export function isBore(c: Pick<XwChunk, "structure">): boolean {
+  return c.structure === "tunnel" || c.structure === "cut";
+}
+
+/**
  * Whether meta.json is of the format this code reads: its version (format.ts XW_VERSION) and only
  * features it knows (XW_FEATURES).
  */
@@ -1058,7 +1115,7 @@ export class ExpresswayDecks {
   /** Call `fn` with every tunnel and cut chunk read, those read already first (P9). */
   onBore(fn: (chunk: XwChunk) => void): void {
     this.boreListeners.push(fn);
-    for (const c of this.known.values()) if (c.structure !== "viaduct") fn(c);
+    for (const c of this.known.values()) if (isBore(c)) fn(c);
   }
 
   /**
@@ -1243,8 +1300,7 @@ export class ExpresswayDecks {
             if (!this.known.has(c.id)) fresh.push(c);
             this.known.set(c.id, c);
             this.index.add(c);
-            const isBelow = c.structure !== "viaduct";
-            if (isBelow) for (const fn of this.boreListeners) fn(c);
+            if (isBore(c)) for (const fn of this.boreListeners) fn(c);
           }
           this.mouths.clear();
           if (tile) this.tileVersion++;
@@ -1297,7 +1353,7 @@ export class ExpresswayDecks {
     try {
       // Over a tunnel or cut (P9) nothing is cut down: the buildings above a tunnel stand on the
       // ground, and those in its holes are left out by groundCuts.ts (main.ts).
-      const decks = chunks.filter((c) => c.structure === "viaduct");
+      const decks = chunks.filter((c) => c.structure === "viaduct" || c.structure === "embankment");
       const points = decks.flatMap((c) =>
         deckCutPoints(c).map((p) => ({
           lat: p.lat,

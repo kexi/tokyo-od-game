@@ -216,9 +216,11 @@ function lineOf(chunk: XwChunk, points: Point[], ellipsoidal: Ellipsoidal): Road
     kind: kindOf(chunk.cls),
     source: "osm",
     cls: chunk.cls,
-    structure: chunk.structure,
+    // An embankment (P2.7-6, a height build) is a deck on walls over the ground: a viaduct's level to
+    // the graph. Why not a structure of its own: nothing in the graph treats it otherwise.
+    structure: chunk.structure === "embankment" ? "viaduct" : chunk.structure,
     // Below the ground (P9) a level down, as roadClass.levelOf counts tunnels.
-    level: chunk.structure === "viaduct" ? 1 : -1,
+    level: chunk.structure === "viaduct" || chunk.structure === "embankment" ? 1 : -1,
     nodeIds: points.map((p) => p.id),
     section,
     xid: chunk.id,

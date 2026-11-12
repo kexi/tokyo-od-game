@@ -9,7 +9,13 @@ import { planeAt } from "../src/expressway/geo";
 import { carriagewayWidth } from "../src/expressway/section";
 import { LocalFrame } from "../src/geo/frame";
 import { latToTileY, lonToTileX } from "../src/geo/tiles";
-import { createDeckBody, deckArraySteps, type GeoToLocal, tunnelPoint } from "../src/world/expresswayDeck";
+import {
+  createDeckBody,
+  deckArraySteps,
+  type GeoToLocal,
+  isSupportedMeta,
+  tunnelPoint,
+} from "../src/world/expresswayDeck";
 import { BORE_FACES, boreHoles, boreLoop } from "../src/world/expresswayBore";
 import { CutRelay, dropCut, GroundCuts } from "../src/world/groundCuts";
 
@@ -22,7 +28,7 @@ const frame = new LocalFrame(35.65, 139.751, 40);
 const place: GeoToLocal = { frame, ellipsoidal: (_lat, _lon, h) => h + N };
 const ROAD = 10;
 
-function chunkOf(structure: "tunnel" | "cut", ground: number, portals?: XwPortal[]): XwChunk {
+function chunkOf(structure: XwChunk["structure"], ground: number, portals?: XwPortal[], girder = 0): XwChunk {
   const st: number[] = [];
   for (let s = 0; s <= 100; s += 10) {
     const [lon, lat] = plane.toLonLat(100 + s, 0);
@@ -52,7 +58,7 @@ function chunkOf(structure: "tunnel" | "cut", ground: number, portals?: XwPortal
     g1: 0,
     h0: 0,
     h1: 0,
-    girder: 0,
+    girder,
     st,
     piers: [],
     cross: [],
@@ -201,6 +207,86 @@ describe("掘割の断面（P9）", () => {
     }
     const up = cast(world, { x: c.x, y: c.y + 1, z: c.z }, { x: 0, y: 1, z: 0 });
     expect(up).toBeNull();
+  });
+});
+
+describe("構造を高さから決めたチャンク（P2.7-6 PR 1、--structures height）", () => {
+  const ground = 6;
+  const lowest = (chunk: XwChunk) => {
+    const pos = built(chunk).arrays.position;
+    let low = Infinity;
+    for (let i = 1; i < pos.length; i += 3) low = Math.min(low, pos[i]);
+    return low;
+  };
+  const groundY = frame.toLocal(...geo(50), ground + N).y;
+  const roadY = centreAt(50).y;
+
+  it("an embankment is walled from the slab's edges down past the ground, where a viaduct's girder stops at its depth", () => {
+    // The road 4 m over the ground: the girder (2.2 m) does not reach it, the embankment's walls do.
+    expect(lowest(chunkOf("viaduct", ground, undefined, 2.2))).toBeCloseTo(roadY - 2.2, 1);
+    expect(Math.abs(lowest(chunkOf("embankment", ground, undefined, 2.2)) - (groundY - 0.3))).toBeLessThan(
+      0.05,
+    );
+    const pos = built(chunkOf("embankment", ground, undefined, 2.2)).arrays.position;
+    // The wall's foot is as wide as the slab: a corner at the deck's edge at the ground.
+    const edge = HW + 0.5;
+    let widest = 0;
+    const c = centreAt(50);
+    for (let i = 0; i < pos.length; i += 3) {
+      const isFoot = Math.abs(pos[i + 1] - (groundY - 0.3)) < 0.1;
+      if (isFoot) widest = Math.max(widest, Math.abs(pos[i + 2] - c.z));
+    }
+    expect(widest).toBeGreaterThan(edge - 0.05);
+  });
+
+  it("an embankment's ends are closed and each wall stands on the terrain at its own side (review W4・W9)", () => {
+    const emb = chunkOf("embankment", ground, undefined, 2.2);
+    const via = chunkOf("viaduct", ground, undefined, 2.2);
+    // Two end faces more than the same section drawn as a viaduct (whose girder stops above the ground).
+    const caps = built(emb).arrays.position.length - built({ ...via, girder: 4.3 }).arrays.position.length;
+    expect(caps).toBeGreaterThan(0);
+    // Terrain 2 m higher on the left (north) than on the right: the left foot stands 2 m higher.
+    const sloped: GeoToLocal = {
+      ...place,
+      groundAt: (lat, lon) => {
+        const [, y] = plane.toXY(lon, lat);
+        return ground + (y > 0 ? 1 : -1);
+      },
+    };
+    const steps = deckArraySteps(emb, sloped);
+    let r = steps.next();
+    while (!r.done) r = steps.next();
+    const pos = r.value.arrays.position;
+    const c = centreAt(50);
+    let left = Infinity;
+    let right = Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      const side = pos[i + 2] - c.z;
+      if (side < -HW) left = Math.min(left, pos[i + 1]);
+      if (side > HW) right = Math.min(right, pos[i + 1]);
+    }
+    expect(Math.abs(right - left)).toBeGreaterThan(1.5);
+  });
+
+  it("a cut in a viaduct-tagged run (a portal from its embankment) has its floor, walls and terrain hole as a below run's", () => {
+    const portal: XwPortal[] = [{ s: 0, from: "embankment", to: "cut" }];
+    const chunk = chunkOf("cut", 15, portal);
+    const world = worldWith(chunk);
+    const c = centreAt(47.013);
+    const down = cast(world, { x: c.x, y: c.y + 1, z: c.z }, { x: 0, y: -1, z: 0 });
+    expect(Math.abs(down! - 1)).toBeLessThan(0.01);
+    const side = cast(world, { x: c.x, y: c.y + 1, z: c.z }, { x: 0, y: 0, z: -1 });
+    expect(Math.abs(side! - HW)).toBeLessThan(0.02);
+    const toTile = (lon: number, lat: number): [number, number] => [lonToTileX(lon, 16), latToTileY(lat, 16)];
+    expect(boreHoles(chunk, toTile)).toHaveLength(1);
+    // An embankment has none: it is drawn as a deck.
+    expect(boreHoles(chunkOf("embankment", 6, undefined, 2.2), toTile)).toEqual([]);
+  });
+
+  it("the format names the structures by height as a feature: a reader knowing it reads them, an unknown one is refused", () => {
+    expect(isSupportedMeta({ version: 6, features: ["below", "height-structures"] })).toBe(true);
+    expect(isSupportedMeta({ version: 6, features: ["below"] })).toBe(true);
+    expect(isSupportedMeta({ version: 6, features: ["below", "height-structures", "later"] })).toBe(false);
   });
 });
 

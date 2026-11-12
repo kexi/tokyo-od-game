@@ -1,4 +1,10 @@
-import { CLEARANCE_HEIGHT, type DesignSpeed, MAX_GRADE, VERTICAL_CURVE_RADIUS } from "../law/roadStandards";
+import {
+  CLEARANCE_HEIGHT,
+  type DesignSpeed,
+  MAX_GRADE,
+  VERTICAL_CURVE_LENGTH,
+  VERTICAL_CURVE_RADIUS,
+} from "../law/roadStandards";
 import { CUT_WALL, TUNNEL_EQUIPMENT_ROOM, TUNNEL_ROOF } from "./assumptions";
 import type { XwPortal, XwStructure } from "./format";
 import type { Chain, Network, Run } from "./network";
@@ -104,6 +110,22 @@ export function ceilingAt(
     { d: length - s, z: ends.z1 },
   ]);
   return isImposed ? top : null;
+}
+
+/**
+ * A height build's rule for a shallow, short tunnel (P2.7-6 PR 1 4.2 の 6): where the tunnel stations
+ * whose ceiling the descent reaches (`ceilingAt`) span less than one 第22条 vertical curve length at
+ * V, no tunnel station keeps its ceiling. The descent's reach is judged station by station from each
+ * portal alone, and a road cannot bend down into so short a stretch and back (湾岸線 near 空港中央:
+ * three of 52 stations reached, missed by 0.32–0.42 m at every fallback). Its box then stands at the
+ * ground as an open cut (tunnel_cover_short, the ledger's portal-open-cut). The compiler (setupBelow)
+ * and T12 (checks.checkCoverRun) both ask this, over their own stations.
+ */
+export function isCoverStretchTooShort(imposedTunnelS: readonly number[], V: DesignSpeed): boolean {
+  const isNone = imposedTunnelS.length === 0;
+  if (isNone) return false;
+  const extent = Math.max(...imposedTunnelS) - Math.min(...imposedTunnelS);
+  return extent < VERTICAL_CURVE_LENGTH.value[V];
 }
 
 /** The structure of a below run's way: tunnel or cut. */
