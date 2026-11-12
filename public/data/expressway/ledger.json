@@ -37,7 +37,7 @@
      "accepted": 1
     },
     "seam_step": {
-     "open": 4
+     "accepted": 1
     },
     "merge_skipped": {
      "accepted": 45
@@ -47,7 +47,7 @@
     }
    }
   },
-  "open": 4,
+  "open": 0,
   "withoutQa": 6,
   "seamProbes": 3641,
   "rules": {
@@ -73,12 +73,12 @@
     "other": 1,
     "portal-open-cut": 1,
     "ramp-radius": 1,
-    "seam_step": 4,
+    "seam_step": 1,
     "merge_skipped": 45,
     "let_go": 10
    }
   },
-  "open": 4,
+  "open": 0,
   "withoutQa": 6,
   "seamProbes": 3641,
   "rules": {
@@ -394,7 +394,7 @@
    "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "s": 867.2,
-    "alongStepM": 0.0001
+    "alongStepM": 0
    },
    "cap": null,
    "status": "accepted",
@@ -1860,103 +1860,19 @@
     "probes": 1,
     "s0": 82.6,
     "s1": 82.6,
-    "stepM": 0,
-    "insideM": 0.158
+    "stepM": 0.1604,
+    "insideM": 0.0033
    },
    "cap": {
     "s0": 82.6,
     "s1": 82.6,
-    "stepM": 0,
-    "insideM": 0.158
+    "stepM": 0.1604,
+    "insideM": 0.0033
    },
-   "status": "open",
+   "status": "accepted",
    "by": "review",
-   "reason": "段 0.0 mm（20 mm 以下）、内側の面 15.8 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
+   "reason": "手放しの点（s 82.66）の 3 cm 手前の 1 測点。データの |Δz| 148.9 mm（MERGE_MAX_DZ の 1.1 mm 内）で継ぎ目は自分の面にあり（seamWeight ≈ 0）、床版は弦の上にあり（汐留出口がデータの面の 8.1 mm 上、内回りが 3.3 mm 下）面どうしが 160.4 mm 離れるため段 160.4 mm（規則 151 mm を 9.4 mm 超える）。内側の面は 3.3 mm（S6 PR 5 の前は 15.8 cm）。手放しの点で継ぎ目が自分の面に戻ること（let_go の 1 mm）と、この帯で段を 151 mm 以下にすることは、床版がデータの面から最大 1 cm 離れる限り両立しない（S6 PR 5 の記録）",
    "qa": "expressway/seam-24402125-0",
-   "previous": null
-  },
-  {
-   "key": "seam_step:45019020:40|45554540|0",
-   "kind": "seam_step",
-   "run": "45019020",
-   "with": "45554540",
-   "chunk": "45019020:40",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "probes": 2,
-    "s0": 4083.4,
-    "s1": 4083.9,
-    "stepM": 0.0035,
-    "insideM": 0.0043
-   },
-   "cap": {
-    "s0": 4083.4,
-    "s1": 4083.9,
-    "stepM": 0.0035,
-    "insideM": 0.0043
-   },
-   "status": "open",
-   "by": "review",
-   "reason": "段 3.5 mm（20 mm 以下）、内側の面 0.4 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
-   "qa": "expressway/seam-45019020-40",
-   "previous": null
-  },
-  {
-   "key": "seam_step:45019020:41|45554540|0",
-   "kind": "seam_step",
-   "run": "45019020",
-   "with": "45554540",
-   "chunk": "45019020:41",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "probes": 1,
-    "s0": 4110.7,
-    "s1": 4110.7,
-    "stepM": 0.0029,
-    "insideM": 0.0032
-   },
-   "cap": {
-    "s0": 4110.7,
-    "s1": 4110.7,
-    "stepM": 0.0029,
-    "insideM": 0.0032
-   },
-   "status": "open",
-   "by": "review",
-   "reason": "段 2.9 mm（20 mm 以下）、内側の面 0.3 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
-   "qa": "expressway/seam-45019020-40",
-   "previous": null
-  },
-  {
-   "key": "seam_step:4848889:0|4848762|0",
-   "kind": "seam_step",
-   "run": "4848889",
-   "with": "4848762",
-   "chunk": "4848889:0",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "probes": 1,
-    "s0": 156.1,
-    "s1": 156.1,
-    "stepM": 0.0028,
-    "insideM": 0.0005
-   },
-   "cap": {
-    "s0": 156.1,
-    "s1": 156.1,
-    "stepM": 0.0028,
-    "insideM": 0.0005
-   },
-   "status": "open",
-   "by": "review",
-   "reason": "段 2.8 mm（20 mm 以下）、内側の面 0.1 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
-   "qa": "expressway/seam-4848889-0",
    "previous": null
   },
   {
