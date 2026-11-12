@@ -271,7 +271,7 @@ make-guide-data:
 make-expressway-data range="hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} {{ flags }}
 
-# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5、縦断目的 v2 の計測なら --objective v2 --grade-change 1 --reach 150 など）
+# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5、縦断の目的は既定 v2 で重みの掃引なら --grade-change 1 --reach 150、比較用の旧い目的なら --objective v1 など）
 measure-expressway-area label range="ship" below="pruned" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} --below {{ below }} --out .cache/expressway-area/{{ label }} --label {{ label }} --report .qa/expressway/{{ label }}.report.json {{ flags }}
 
@@ -340,9 +340,9 @@ measure-perf-fixed:
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
 
-# 入口ランプから C1 内回り・汐留出口へ自車を一定速で走らせ、床版の上の建物との交差・停止・落下・大きな減速と終点への到達を .qa/drive-deck-<label>.json に書く（失敗は終了コード 1、invalid は 2）
-check-deck-drive label="run" base="http://localhost:5173/tokyo-od-game/":
-    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }}
+# 床版の走行の経路表 scripts/qa/deckRoutes.ts の経路（省くと入口ランプから C1 内回り・汐留出口への一定速、all で全経路）を走らせ、建物との交差・停止・落下・|dy|・大きな減速・終点への到達（自動運転は到着と違反）を .qa/drive-deck-<label>[-<route>].json に書く（out を渡せばそのフォルダに <route>.json、失敗は終了コード 1、invalid は 2）
+check-deck-drive label="run" route="" base="http://localhost:5173/tokyo-od-game/" out="":
+    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }} {{ if route != "" { "--route " + route } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }}
 
 # 交通と雨が動く通常プレイで夜雨の従来・改善後を交互に各4回計測する
 measure-perf-night:
