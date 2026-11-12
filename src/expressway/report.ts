@@ -226,6 +226,8 @@ export const ReportSchema = z.strictObject({
     solves: count,
     iterations: count,
     unconverged: count,
+    /** Solves solved again after a first try that did not converge (P2.7-5; the version is not raised, absent before). */
+    retried: count.optional(),
   }),
   /**
    * How the needed runs were split (P2.7-2): `components` (each component one block, no anchor) or
@@ -286,6 +288,8 @@ export const ReportSchema = z.strictObject({
       withoutQa: count,
       seamProbes: count,
       rules: z.record(z.string(), count),
+      /** The km over 15 and 20 m per district (P2.7-5; absent from a ledger before it). */
+      heightKm: z.record(z.string(), z.strictObject({ over15Km: km, over20Km: km })).optional(),
     })
     .nullable()
     .optional(),
@@ -584,7 +588,7 @@ export function forcingOf(list: XwChunk[]): Array<[number, number]> {
 }
 
 /** Whether run distance s is more than TRACK_FREE_M from every forcing interval. */
-function isFreeAt(forcing: Array<[number, number]>, s: number): boolean {
+export function isFreeAt(forcing: Array<[number, number]>, s: number): boolean {
   return forcing.every(([a, b]) => s < a - TRACK_FREE_M || s > b + TRACK_FREE_M);
 }
 
@@ -707,7 +711,7 @@ function junctionsOf(runs: XwRunSummary[]): Map<string, number[]> {
 }
 
 /** Km of every written run's viaduct chunks whose surface stands over `above` m on the ground. */
-function viaductOver(chunks: XwChunk[], above: number): number {
+export function viaductOver(chunks: readonly XwChunk[], above: number): number {
   let m = 0;
   for (const c of chunks) {
     const isViaduct = c.structure === "viaduct";

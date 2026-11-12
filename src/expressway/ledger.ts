@@ -1,5 +1,7 @@
 import {
   CASE_MARGIN,
+  HEIGHT_KM_STEP,
+  HIGH_DECK_MARGIN,
   isAllowed,
   type CaseVerdict,
   isRuleAllowed,
@@ -11,6 +13,7 @@ import {
   RULE_KINDS,
 } from "./allowlist";
 import { type District, DISTRICTS } from "./districts";
+import type { HeightKm } from "./highDeck";
 import type { XwBlockRecord, XwBuildRecord, XwChunk, XwDiagnostic, XwTileRun } from "./format";
 import { isJoined, overlapKindOf, overlapPair } from "./overlapClass";
 
@@ -31,7 +34,8 @@ export const LEDGER_VERSION = 1;
  * PORTAL_OPEN_CUT_MAX_M). ramp-radius (ramp_radius), layer-ambiguous (crossing_layer_ambiguous).
  * The merged decks' (scripts/expresswaySeams.ts): seam_step (a step or a face miss at a seam),
  * seam_hole (no face at a seam), merge_skipped (a same-surface stretch over MERGE_MAX_DZ, drawn
- * apart), let_go (where a merged pair lets go, by rule within LET_GO_MAX_STEP_M).
+ * apart), let_go (where a merged pair lets go, by rule within LET_GO_MAX_STEP_M). high-deck (P2.7-5):
+ * a free viaduct stretch over HIGH_DECK_ABOVE_M for HIGH_DECK_MIN_M or more (src/expressway/highDeck.ts).
  */
 export const CASE_KINDS = [
   "nose",
@@ -46,6 +50,7 @@ export const CASE_KINDS = [
   "seam_hole",
   "merge_skipped",
   "let_go",
+  "high-deck",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
@@ -69,6 +74,8 @@ export const MEASURES = [
   "alongStepM",
   "minRadiusM",
   "lengthM",
+  "heightM",
+  "spanM",
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
@@ -113,6 +120,8 @@ export type LedgerSummary = {
   seamProbes: number;
   /** The diagnostics the `*` rules accept, per kind (allowlist.ts RULES). */
   rules: Record<string, number>;
+  /** The km of viaduct over 15 and 20 m per district (P2.7-5; absent from a ledger before it). */
+  heightKm?: HeightKm;
 };
 
 /** What a review fixes (the ratchet): the summary's counts without the status split, gone left out. */
@@ -122,6 +131,12 @@ export type LedgerBudget = {
   withoutQa: number;
   seamProbes: number;
   rules: Record<string, number>;
+  /**
+   * Caps on the km over 15 and 20 m per district (P2.7-5 4.3): the summary's rounded up to
+   * HEIGHT_KM_STEP. Unlike the counts the test asks for at most these, not the same (the km wobble
+   * from build to build).
+   */
+  heightKm?: HeightKm;
 };
 
 export type Ledger = {
@@ -431,7 +446,8 @@ export function ruleReason(kind: CaseKind): string | null {
 
 /**
  * Whether a measure stays within a decided cap and CASE_MARGIN: counts +2, |Δz|, steps and face
- * misses +5 cm, a stretch's start −5 m and end +5 m, a point ±5 m, a radius −0.5 m, a length +5 m.
+ * misses +5 cm, a stretch's start −5 m and end +5 m, a point ±5 m, a radius −0.5 m, a length +5 m,
+ * a high deck's height +0.5 m and length +20 m (HIGH_DECK_MARGIN).
  * A measure the cap names but the case lacks is out (the case changed shape).
  */
 export function withinCap(measured: Measured, cap: Measured): boolean {
@@ -450,6 +466,8 @@ export function withinCap(measured: Measured, cap: Measured): boolean {
     if (k === "s" && Math.abs(m - c) > edgeM) return false;
     if (k === "minRadiusM" && m < c - radiusM - 1e-9) return false;
     if (k === "lengthM" && m > c + edgeM) return false;
+    if (k === "heightM" && m > c + HIGH_DECK_MARGIN.heightM + 1e-9) return false;
+    if (k === "spanM" && m > c + HIGH_DECK_MARGIN.spanM + 1e-9) return false;
   }
   return true;
 }
@@ -471,6 +489,7 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   seam_hole: ["s0", "s1"],
   merge_skipped: ["maxDzM", "s0", "s1"],
   let_go: ["s", "alongStepM"],
+  "high-deck": ["heightM", "spanM"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */
@@ -577,6 +596,8 @@ export type UpdateOptions = {
   found: ReadonlyArray<FoundCase & { district: District; block: string; blockHash: string }>;
   seamProbes: number;
   rules: Record<string, number>;
+  /** The km of viaduct over 15 and 20 m per district (highDeck.ts heightKmOf). */
+  heightKm?: HeightKm;
   /** Drop the gone cases instead of keeping them. */
   prune?: boolean;
   /** Another folder's ledger to take decisions from by key (a folder with no ledger yet). */
@@ -647,7 +668,7 @@ export function updateLedger(prev: Ledger | null, opts: UpdateOptions): Ledger {
     );
   }
   cases.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  const summary = summaryOf(cases, opts.seamProbes, opts.rules);
+  const summary = summaryOf(cases, opts.seamProbes, opts.rules, opts.heightKm);
   const budget = opts.writeBudget ? budgetOf(summary) : (prev?.budget ?? null);
   return { version: LEDGER_VERSION, data: opts.data, summary, budget, cases };
 }
@@ -657,6 +678,7 @@ export function summaryOf(
   cases: readonly LedgerCase[],
   seamProbes: number,
   rules: Record<string, number>,
+  heightKm?: HeightKm,
 ): LedgerSummary {
   const tally: LedgerSummary["cases"] = {};
   for (const district of DISTRICTS) {
@@ -680,8 +702,12 @@ export function summaryOf(
     withoutQa: live.filter((c) => isQaKind(c) && c.qa === null).length,
     seamProbes,
     rules: Object.fromEntries(RULE_KINDS.map((k) => [k, rules[k] ?? 0])),
+    ...(heightKm === undefined ? {} : { heightKm }),
   };
 }
+
+/** A km rounded up to HEIGHT_KM_STEP (the budget's cap: room for a rebuild's wobble, none for a trend). */
+export const capKm = (km: number) => round(Math.ceil(round(km / HEIGHT_KM_STEP, 9)) * HEIGHT_KM_STEP, 3);
 
 /** The summary as a budget states it (gone cases left out, the statuses summed). */
 export function budgetOf(summary: LedgerSummary): LedgerBudget {
@@ -694,13 +720,41 @@ export function budgetOf(summary: LedgerSummary): LedgerBudget {
       (cases[district] ??= {})[kind] = n;
     }
   }
+  const heightKm =
+    summary.heightKm === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(summary.heightKm).map(([d, v]) => [
+            d,
+            { over15Km: capKm(v.over15Km), over20Km: capKm(v.over20Km) },
+          ]),
+        );
   return {
     cases,
     open: summary.open,
     withoutQa: summary.withoutQa,
     seamProbes: summary.seamProbes,
     rules: summary.rules,
+    ...(heightKm === undefined ? {} : { heightKm }),
   };
+}
+
+/** Whether the summary's km over 15 and 20 m stay within the budget's caps (none in the budget: within). */
+export function withinHeightBudget(summary: LedgerSummary, budget: LedgerBudget): string[] {
+  const out: string[] = [];
+  for (const [d, v] of Object.entries(summary.heightKm ?? {})) {
+    const cap = budget.heightKm?.[d as District];
+    const isUncapped = cap === undefined;
+    if (isUncapped) {
+      out.push(`${d}: no cap in the budget`);
+      continue;
+    }
+    const isOver15 = v.over15Km > cap.over15Km;
+    if (isOver15) out.push(`${d}: over 15 m ${v.over15Km} km > ${cap.over15Km}`);
+    const isOver20 = v.over20Km > cap.over20Km;
+    if (isOver20) out.push(`${d}: over 20 m ${v.over20Km} km > ${cap.over20Km}`);
+  }
+  return out;
 }
 
 /**

@@ -425,6 +425,18 @@ export const LOG_EVENTS = {
    * The car stood still on a deck for 3 s (main.ts noteDeckStall): held (`frozen`) or touching
    * something (`touching`: the chassis' overlaps, PLATEAU buildings and everything else).
    */
+  /**
+   * The player's car put back (main.ts respawnHere): fallen under the ground, adrift in the water,
+   * the reset key or a retraining (P2.7-5: a car on a deck over a river was put back at 47 km/h).
+   * `onDeck` whether the deck check had it on a deck then.
+   */
+  car_respawned: warning({
+    reason: z.enum(["underground", "adrift", "reset", "retrained"]),
+    lat: z.number(),
+    lon: z.number(),
+    onDeck: z.boolean(),
+    kmh: z.number(),
+  }),
   expressway_car_stalled: warning({
     lat: z.number(),
     lon: z.number(),
@@ -923,6 +935,7 @@ export const LOG_EVENTS = {
     writtenRuns: count,
     closedRuns: count,
     unconverged: count,
+    retried: count,
     bytes: count,
   }),
   /**
@@ -1025,6 +1038,8 @@ export const LOG_EVENTS = {
     iterations: count,
     qpMs: count,
     unconverged: count,
+    /** Solves solved again at a looser dual tolerance after a first try that did not converge. */
+    retried: count,
     durationS: z.number(),
   }),
   /** A run the compiler could not satisfy, or satisfied only by a fallback (allowed: in the allowlist). */

@@ -202,6 +202,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     lat: 35.6535,
     lon: 139.7502,
   },
+  car_respawned: { reason: "adrift", lat: 35.6555, lon: 139.7603, onDeck: false, kmh: 47.4 },
   expressway_car_stalled: {
     lat: 35.6536,
     lon: 139.7508,
@@ -486,6 +487,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     writtenRuns: 300,
     closedRuns: 49,
     unconverged: 0,
+    retried: 0,
     bytes: 20000,
   },
   expressway_reports_compared: {
@@ -566,6 +568,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     iterations: 249,
     qpMs: 3548,
     unconverged: 0,
+    retried: 0,
     durationS: 6.4,
   },
   expressway_diagnostic: {
