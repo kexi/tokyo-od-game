@@ -19,7 +19,13 @@ import {
 } from "../src/world/expresswayDeck";
 import { ALL_GROUPS, BUILDING_GROUPS, GROUND_QUERY_GROUPS, PROP_GROUPS } from "../src/physics/groups";
 import { DeckIndex, type DeckSide, planDeckMarkings, type RingSides } from "../src/world/expresswayMarkings";
-import { chunkRings, MERGE_FULL_DZ, MERGE_MAX_DZ, MERGE_RAMP } from "../src/world/expresswayMerge";
+import {
+  chunkRings,
+  MERGE_FULL_DZ,
+  MERGE_MAX_DZ,
+  MERGE_RAMP,
+  MERGE_SKIRT,
+} from "../src/world/expresswayMerge";
 import { framesOf, probeGenerated } from "../scripts/expresswaySeams";
 import { frameAt, surfaceHeight } from "../src/expressway/profile";
 import { expresswayRoadInput, joinExpressway, type XwRoadInput } from "../src/world/expresswayRoads";
@@ -444,7 +450,16 @@ const sCOf = (sM: number) => {
   return sCs[i] + ((sCs[i + 1] - sCs[i]) * (sM - sMs[i])) / (sMs[i + 1] - sMs[i]);
 };
 
-function diverge(): { chunks: XwChunk[]; runs: XwRunSummary[]; m: XwChunk[]; c: XwChunk } {
+/**
+ * The 分流 above; `rise` moves C off M's surface by its extra height and grade at C's distance (0 for
+ * the one slab of P3.5).
+ */
+function diverge(rise: (sC: number) => [number, number] = () => [0, 0]): {
+  chunks: XwChunk[];
+  runs: XwRunSummary[];
+  m: XwChunk[];
+  c: XwChunk;
+} {
   const mChunk = (id: string, s0: number, s1: number) => {
     const ch = chunkOf(id, "M", s0, s1, 12, (s) => [...mAt(s), zM(s), gM(s)]);
     ch.h0 = s0 / RM;
@@ -462,7 +477,8 @@ function diverge(): { chunks: XwChunk[]; runs: XwRunSummary[]; m: XwChunk[]; c: 
     const sM = sMOf(Math.min(lenC, sC));
     const dsM = sMOf(Math.min(lenC, sC + 0.05)) - sMOf(Math.max(0, sC - 0.05));
     const dsC = Math.min(lenC, sC + 0.05) - Math.max(0, sC - 0.05);
-    return [...cPlan(sM), zM(sM) + RAMP_DZ, (gM(sM) * dsM) / dsC];
+    const [dz, dg] = rise(sC);
+    return [...cPlan(sM), zM(sM) + RAMP_DZ + dz, (gM(sM) * dsM) / dsC + dg];
   };
   const c = chunkOf("C:0", "C", 0, Math.floor(lenC / 10) * 10, 10, at);
   c.cls = "ramp";
@@ -832,6 +848,161 @@ describe("one slab where two decks share a surface (P3.5, expresswayMerge.ts)", 
     expect(runsOfHigh).toBe(1);
     expect((high[0] + high[high.length - 1]) / 2).toBeCloseTo(4, 1);
     expect(high[high.length - 1] - high[0]).toBeCloseTo(PARAPET_WIDTH.value, 1);
+  });
+});
+
+/**
+ * Points of a merged chunk's visible road (between −right.reach and left.reach of two consecutive
+ * rings, at τ ¼ ½ ¾, every 0.25 m, 0.25 m in from both ends) that no triangle of its own collider
+ * covers within 0.3 m of the centre's height. The visible road comes from the builder's sides; the
+ * cover from the collider's triangles alone (Rapier is not asked, so a ray along an edge cannot slip).
+ */
+function roadMisses(chunk: XwChunk, f: LocalFrame, index: DeckIndex): Array<{ s: number; u: number }> {
+  const { rings, sides, collider } = built(chunk, f, { index });
+  const P = collider.position;
+  const covers = (X: number, Z: number, y0: number) => {
+    for (let i = 0; i < P.length; i += 9) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = P.subarray(i, i + 9);
+      const isOutside =
+        X < Math.min(ax, bx, cx) ||
+        X > Math.max(ax, bx, cx) ||
+        Z < Math.min(az, bz, cz) ||
+        Z > Math.max(az, bz, cz);
+      if (isOutside) continue;
+      const d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+      if (Math.abs(d) < 1e-9) continue;
+      const l1 = ((bz - cz) * (X - cx) + (cx - bx) * (Z - cz)) / d;
+      const l2 = ((cz - az) * (X - cx) + (ax - cx) * (Z - cz)) / d;
+      const l3 = 1 - l1 - l2;
+      const isIn = l1 >= -1e-6 && l2 >= -1e-6 && l3 >= -1e-6;
+      if (isIn && Math.abs(l1 * ay + l2 * by + l3 * cy - y0) <= 0.3) return true;
+    }
+    return false;
+  };
+  const out: Array<{ s: number; u: number }> = [];
+  for (let i = 0; i + 1 < rings.length; i++) {
+    const a = rings[i];
+    const b = rings[i + 1];
+    const isTiny = Math.hypot(b.c.x - a.c.x, b.c.z - a.c.z) < 0.2;
+    if (isTiny) continue;
+    for (const tau of [0.25, 0.5, 0.75]) {
+      const lo = -(sides[i].right.reach * (1 - tau) + sides[i + 1].right.reach * tau);
+      const hi = sides[i].left.reach * (1 - tau) + sides[i + 1].left.reach * tau;
+      const c = a.c.clone().lerp(b.c, tau);
+      const t = a.t.clone().lerp(b.t, tau).normalize();
+      for (let u = lo + 0.25; u <= hi - 0.25; u += 0.25) {
+        const isCovered = covers(c.x + t.z * u, c.z - t.x * u, c.y);
+        if (!isCovered) out.push({ s: a.frame.s + (b.frame.s - a.frame.s) * tau, u });
+      }
+    }
+  }
+  return out;
+}
+
+describe("the visible road of a merged deck has a collider face everywhere (review of PR 5, C1)", () => {
+  // Before the fix a ring whose road was a metre wide could be taken for a sliver (the share of the
+  // climb rounded to 0.9999…): its road ended at the climb's end and the rest became the strip face
+  // beside it, drawn concrete and with no collider (145 points of the default data, 2,686 of ship).
+  it("covers the 分流's road (C at 3 cm and leaving M's height) with C's own collider", () => {
+    for (const net of [
+      diverge(),
+      diverge((sC) => (sC < 30 ? [0.06, 0] : [0.06 - 0.018 * (sC - 30), -0.018])),
+    ]) {
+      const index = indexOf(net.chunks, net.runs);
+      expect(roadMisses(net.c, frame, index)).toEqual([]);
+    }
+  });
+
+  it("covers every merged chunk's road of the generated data", () => {
+    const g = readExpresswayFiles();
+    const index = new DeckIndex(new Map(g.runs.map((r) => [r.id, r])));
+    for (const c of g.chunks) index.add(c);
+    const frames = framesOf(g.tiles, g.meta.zoom);
+    const misses: string[] = [];
+    for (const c of g.chunks) {
+      const isBore = c.structure === "tunnel" || c.structure === "cut";
+      const isMerged = c.decks.some((d) => d.relation === "same");
+      if (isBore || !isMerged) continue;
+      const m = Math.floor(c.st.length / 14) * 7;
+      const near = frames.reduce((best, a) =>
+        Math.hypot(c.st[m + 1] - a.lon, c.st[m + 2] - a.lat) <
+        Math.hypot(c.st[m + 1] - best.lon, c.st[m + 2] - best.lat)
+          ? a
+          : best,
+      );
+      const miss = roadMisses(c, new LocalFrame(near.lat, near.lon, 40), index);
+      if (miss.length > 0) misses.push(`${c.id} ×${miss.length} s ${miss[0].s.toFixed(1)}`);
+    }
+    expect(misses).toEqual([]);
+  }, 120_000);
+
+  it("ends a sliver of road (< MERGE_RAMP) by its 壁高欄 below its own surface, within the wall's skirt", () => {
+    // C at 4.5 cm above M comes out from under M's edge: its road is first a sliver between the
+    // seam and its own wall. The sliver keeps a full ramp's slope from the seam, so its end lies
+    // below C's surface by less than the skirt the wall's inner face reaches down to.
+    const net = diverge(() => [0.015, 0]);
+    const index = indexOf(net.chunks, net.runs);
+    const { rings, sides } = built(net.c, frame, { index });
+    const { world } = mergedWorld([net.c], index);
+    let checked = 0;
+    rings.forEach((r, i) => {
+      const sd = sides[i];
+      const width = sd.left.reach + sd.right.reach;
+      const isSliver = sd.right.seam !== null && sd.left.wall !== null && width > 0.05 && width < MERGE_RAMP;
+      if (!isSliver) return;
+      // 1 cm in from the road's end, beside the wall.
+      const u = sd.left.reach - 0.01;
+      const y = down(world, r.c.x + r.t.z * u, r.c.y + 0.05, r.c.z - r.t.x * u);
+      const at = `s ${r.frame.s.toFixed(2)} width ${width.toFixed(3)}`;
+      expect(y, at).not.toBeNull();
+      // Short of C's surface by at least half of what a full ramp from the seam (4.5 cm below)
+      // still has to climb there; a climb across the sliver would end within millimetres of it.
+      const remaining = (RAMP_DZ + 0.015) * (1 - width / MERGE_RAMP);
+      expect(y!, at).toBeLessThan(r.c.y - remaining / 2);
+      expect(y!, at).toBeGreaterThan(r.c.y - MERGE_SKIRT);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(0);
+  });
+});
+
+describe("a seam sliding off the master's face inside one ring interval (S6 PR 5, the let-go point's neighbours)", () => {
+  // C stands 9 cm above M up to sC 30 (its road reaches past M's edge from sC ≈ 24), then leaves M's
+  // height by 1.8 cm per metre: through M's level at sC 35 and 15 cm below it at sC 43.3, where the
+  // pair lets go. C's stations are 10 m apart, so the stretch at M's face (sC 32.2–37.8), both slides
+  // and the let-go point lie inside the intervals 30–40 and 40–50, where the deck builder has no
+  // ring of its own. Probed as the ledger probes the generated data (scripts/expresswaySeams.ts:
+  // stations and the Hermite surfaces, rays into the merged decks).
+  const rise = (sC: number): [number, number] => (sC < 30 ? [0.06, 0] : [0.06 - 0.018 * (sC - 30), -0.018]);
+  const net = diverge(rise);
+  // The frame the other tests build in (its origin).
+  const frames = [{ lat: 35.65, lon: 139.751 }];
+  const probe = () => {
+    const out = probeGenerated(net.chunks, net.runs as never, frames);
+    worlds.push(...out.worlds);
+    return out;
+  };
+
+  it("meets M's face within 1 mm wherever the data has the pair within 5 cm, and slides within MERGE_MAX_DZ elsewhere", () => {
+    const { seams, cuts } = probe();
+    const atFace = seams.filter((p) => Math.abs(p.dz) <= MERGE_FULL_DZ);
+    const sliding = seams.filter((p) => Math.abs(p.dz) > MERGE_FULL_DZ);
+    // Both kinds are probed: the stretch at the face and the slides on either side of it.
+    expect(atFace.length).toBeGreaterThan(8);
+    expect(sliding.length).toBeGreaterThan(8);
+    const off = seamCases(seams, cuts, [], { fullDz: MERGE_FULL_DZ, maxDz: MERGE_MAX_DZ }).filter(
+      (c) => c.kind === "seam_step" || c.kind === "seam_hole",
+    );
+    expect(off.map((c) => `${c.key} ${JSON.stringify(c.measured)}`)).toEqual([]);
+  });
+
+  it("lets go with no step along travel (LET_GO_MAX_STEP_M) inside the interval", () => {
+    const { cuts } = probe();
+    expect(cuts.length).toBe(1);
+    expect(cuts[0].s).toBeGreaterThan(40);
+    expect(cuts[0].s).toBeLessThan(50);
+    expect(cuts[0].alongStep).not.toBeNull();
+    expect(cuts[0].alongStep!).toBeLessThanOrEqual(LET_GO_MAX_STEP_M);
   });
 });
 
