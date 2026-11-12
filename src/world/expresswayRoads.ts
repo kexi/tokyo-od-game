@@ -1,8 +1,9 @@
 import { STATION_STRIDE, type XwChunk, type XwClass, type XwTileRun } from "../expressway/format";
 import { planeAt } from "../expressway/geo";
 import { frameAt, ST, surfaceSamples } from "../expressway/profile";
-import { PARAPET_WIDTH } from "../expressway/assumptions";
+import { GIRDER_DEPTH, PARAPET_WIDTH } from "../expressway/assumptions";
 import { carriagewayWidth } from "../expressway/section";
+import { clearsOnThinGirder } from "../expressway/heightStructures";
 import { CLEARANCE_HEIGHT } from "../law/roadStandards";
 import { type CrossSection, sectionWidth } from "./laneChange";
 import { isExpressway, OSM_EXPRESSWAY_KIND, type RoadKind, sourceOf, usesGroundSurface } from "./roadClass";
@@ -56,13 +57,14 @@ const SITE_CELL_M = 50;
 /** A cut street stops this far short of the site's slab edge (m). */
 const SITE_CLEARANCE_M = 1;
 /**
- * A deck whose soffit (road less its girder) stands this far over the ground could pass over the
- * street (siteCrossings `under`: the compiler should have made it a viaduct there): the clearance
- * of 構造令 第12条. Why not the reduced 3 m of 第12条ただし書: it is for the lowest class of road
- * alone, none in the data (roadStandards.ts), and the soffit, not the road, is what a car passes
- * under (re-review W-B).
+ * What a deck must stand over the ground to pass over a street (siteCrossings `under`: the compiler
+ * should have made it a viaduct there): 構造令 第12条's clearance and the standard girder, judged as
+ * the compiler's R3 judges a crossing's window (heightStructures.ts clearsOnThinGirder: a girder
+ * thinned to GIRDER_MIN). Why not the reduced 3 m of 第12条ただし書: it is for the lowest class of
+ * road alone, none in the data (roadStandards.ts), and the soffit, not the road, is what a car
+ * passes under (re-review W-B, S-b).
  */
-const SITE_UNDER_M = CLEARANCE_HEIGHT.value;
+const SITE_UNDER_NEED_M = CLEARANCE_HEIGHT.value + GIRDER_DEPTH.value;
 
 /** The ground end of a ramp (or a structure's street), to be joined to a street in the worker. */
 export type XwGroundEnd = {
@@ -95,8 +97,6 @@ export type XwSite = {
   s: number[];
   z: number[];
   ground: number[];
-  /** The girder under its slab (format.ts XwChunk.girder), m. */
-  girder: number;
   halfWidth: number;
   ends: number[];
 };
@@ -264,7 +264,6 @@ function siteOf(chunk: XwChunk, run: XwTileRun): XwSite | null {
     s,
     z,
     ground,
-    girder: chunk.girder,
     halfWidth: carriagewayWidth(chunk) / 2 + PARAPET_WIDTH.value,
     ends,
   };
@@ -534,10 +533,10 @@ const isGsiStreet = (street: RoadLine) =>
  * Every crossing of a GSI street's centre line with a site's (an embankment's or a cut's) and what
  * cutAtSites makes of it. Kept: within SITE_END_REACH_M of the run's ground, portal or open end (that
  * is the ramp's own street, RAMP_REACH_M), or at less than SITE_CROSSING_MIN_DEG (a ramp in a
- * street's median: its lanes go by on either side). The rest are taken out, `under` where the deck's
- * soffit stands SITE_UNDER_M or more over the ground (the street could pass under it: a viaduct the
- * compiler did not make, told apart for the probe; taken out all the same, as its walls stop a car
- * there: re-review W-B). Each site's segments are filed in a grid first (review W6: all against all
+ * street's median: its lanes go by on either side). The rest are taken out, `under` where the deck
+ * stands over the ground by SITE_UNDER_NEED_M on a thinned girder (the street could pass under it: a
+ * viaduct the compiler did not make, told apart for the probe; taken out all the same, as its walls
+ * stop a car there: re-review W-B). Each site's segments are filed in a grid first (review W6: all against all
  * made joinExpressway 28 → ~500 ms).
  */
 export function siteCrossings(
@@ -602,7 +601,7 @@ export function siteCrossings(
         const overGroundM = lerp(site.z) - lerp(site.ground);
         const isAtEnd = site.ends.some((e) => Math.abs(e - siteS) <= SITE_END_REACH_M);
         const isAlong = hit.sin < minSin;
-        const isUnder = overGroundM - site.girder >= SITE_UNDER_M;
+        const isUnder = clearsOnThinGirder(lerp(site.z), lerp(site.ground), SITE_UNDER_NEED_M);
         const kind = isAtEnd ? "end" : isAlong ? "along" : isUnder ? "under" : "cut";
         // Across the slab and its clearance at this angle, and the street's own half width beside it.
         const reachM =

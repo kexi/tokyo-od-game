@@ -324,10 +324,13 @@ export function probeWalls(
       const side = sign > 0 ? ("left" as const) : ("right" as const);
       for (const d of WALL_PROBE_M) {
         const p = pointAt(s, sign * (edge + d));
-        // In another deck's hole (a deck alongside, or a same-surface partner where there is no wall)
-        // nothing of the terrain meets a wall; the mask's 2 m pixels fray its edge, so the exact test too.
+        // In another deck's hole, or on another deck at this level (a deck alongside, a same-surface
+        // partner where there is no wall), nothing of the terrain meets this wall: that deck's own
+        // walls and hole stand there. The mask's 2 m pixels fray a hole's edge, so the exact test too.
         const isCut = holes !== null && (holes.isDrawnCut(p.lon, p.lat) || holes.isExactCut(p.lon, p.lat));
-        if (isCut) continue;
+        const [px, py] = plane.toXY(p.lon, p.lat);
+        const isBesideOther = onOther(px, py, p.road);
+        if (isCut || isBesideOther) continue;
         const y = groundAt(p.lat, p.lon) - p.road;
         const at = { chunk: chunk.id, s, side, lat: p.lat, lon: p.lon };
         if (y > top) hits.push({ ...at, overM: y - top, kind: "top" });

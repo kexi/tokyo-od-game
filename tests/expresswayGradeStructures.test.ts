@@ -355,8 +355,8 @@ describe("盛土・掘割を途中で横切る一般道（expresswayRoads.ts cut
     expect(join([chunkOf("viaduct", 2)], runOf("seam"), [streetAt(150, 90)]).streets).toHaveLength(1);
   });
 
-  it("under a deck whose soffit clears the street by the statute's 4.5 m it is told apart as `under` and taken out all the same (its walls stop a car: re-review W-B)", () => {
-    // Road 7 m over the ground, girder 2.2 m: the soffit 4.8 m over it. At 3 m it is an ordinary cut.
+  it("under a deck that clears the street by the statute's 4.5 m on a girder thinned as the compiler's R3 thins it, it is told apart as `under` and taken out all the same (its walls stop a car: re-review W-B)", () => {
+    // Road 7 m over the ground: 4.5 m + a 1.7 m girder clear. At 3 m it is an ordinary cut.
     const high = join([chunkOf("embankment", ROAD - 7)], runOf("seam"), [streetAt(150, 90)]);
     expect(high.streets).toHaveLength(2);
     expect(high.reports.map((r) => (r.fields as { kind: string }).kind)).toEqual(["under"]);
