@@ -24,9 +24,10 @@ import {
   RAMP_MIN_RADIUS,
   SHARED_TOUCHDOWN,
   COMPANIONS,
+  RAMP_SHIFT,
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
-import { isAllowed } from "./allowlist";
+import { isAllowed, SAME_SURFACE_ALLOWED_DZ_M } from "./allowlist";
 import { BLOCK_QUIET_FACTOR, DESIGN_GROUND_REACH, HEIGHT_STRUCTURES } from "./assumptions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
@@ -72,7 +73,15 @@ import {
   splitRuns,
   wayLength,
 } from "./network";
-import { deckOverlaps, LEVEL_APART_M, type PlanLine, planOverlaps, SAME_SURFACE_M } from "./overlap";
+import {
+  deckOverlaps,
+  LEVEL_APART_M,
+  pairStations,
+  type PlanLine,
+  planOverlaps,
+  SAME_SURFACE_M,
+} from "./overlap";
+import { isJoined, NOSE_MAX_DZ_M } from "./overlapClass";
 import { carriagewayWidth, deckWidth, sectionFor, type XwSection } from "./section";
 import {
   assertOsmMatches,
@@ -87,6 +96,7 @@ import {
   StructureMismatchError,
   toAxis,
 } from "./structures";
+import { surfaceAt } from "./profile";
 import { compositeLimit, superelevation } from "./superelevation";
 import {
   capZones,
@@ -335,6 +345,13 @@ export type Plan = {
    * height softly at this weight. Absent: none, as before.
    */
   companions?: { weight: number; list: Companion[] };
+  /**
+   * `--nose-surface overlap` (S6 PR 4): two runs that meet at a node (a junction) are one surface
+   * wherever their carriageways overlap (classifyPairs), not only from the nose on. Absent: as before.
+   */
+  noseSurface?: "overlap";
+  /** `--ramp-shift <m>` (S6 PR 4): the cap of the moves (rampShiftOffsets), carried to the run summaries. */
+  rampShiftCapM?: number;
 };
 
 /**
@@ -622,6 +639,15 @@ export type PlanOptions = {
   touchdown?: "mains" | "all";
   /** The weight of the companions' rows (Plan.companions); none by default. Needs `components`. */
   companionWeight?: number;
+  /**
+   * `--ramp-shift` (S6 PR 4): per chain, the metres each of its resampled samples moves off the OSM
+   * line (horizontal.ts PlanInput.offset), from a first solve (rampShiftOffsets). None by default.
+   */
+  rampOffsets?: ReadonlyMap<string, Float64Array>;
+  /** The cap the offsets were made to (`--ramp-shift <m>`), for the run summaries and T6 (Plan.rampShiftCapM). */
+  rampShiftCapM?: number;
+  /** `--nose-surface overlap` (S6 PR 4, Plan.noseSurface); `nose` (from the nose on) by default. */
+  noseSurface?: "nose" | "overlap";
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -664,7 +690,13 @@ export function planNetwork(
       return plane.toXY(node.lon, node.lat);
     });
     const found = chainPin(net, chain, plane, structures);
-    const align = alignPlan(found ? { xy, anchors, pin: found.pin } : { xy, anchors });
+    const offset = options.rampOffsets?.get(chain.id);
+    const align = alignPlan({
+      xy,
+      anchors,
+      ...(found ? { pin: found.pin } : {}),
+      ...(offset ? { offset } : {}),
+    });
     for (const run of chainRuns) {
       const isBelow = isBelowCompiled(chain, run, nodeChains, outsideNodes);
       const isDeferred = run.below && !isBelow;
@@ -734,6 +766,8 @@ export function planNetwork(
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),
+    ...(options.noseSurface === "overlap" ? { noseSurface: "overlap" as const } : {}),
+    ...(options.rampShiftCapM !== undefined ? { rampShiftCapM: options.rampShiftCapM } : {}),
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
@@ -1154,6 +1188,12 @@ function classifyPairs(plan: Plan): DeckPair[] {
     };
     list.sort((p, q) => p.sa - q.sa);
     const nose = new Uint8Array(list.length);
+    // `--nose-surface overlap` (S6 PR 4): a pair that meets at a node is one surface all along its
+    // overlap (an ordered crossing of the two still takes the crossing's order, below). Why not as
+    // P2.6 tried it, with a heavier row: that left about 50 more runs unsolved; this keeps the row's
+    // weight and only widens where it holds.
+    const isOneSurface = plan.noseSurface === "overlap" && sharedNodes(ra, rb).length > 0;
+    if (isOneSurface) nose.fill(1);
     for (const [na] of sharedNodes(ra, rb)) {
       let start = -1;
       for (let i = 0; i < list.length; i++) {
@@ -3426,6 +3466,407 @@ function blockVariables(plan: Plan, ids: string[]): number {
   return n;
 }
 
+/** A run's summary fields for its shifted samples (`--ramp-shift`): their farthest from OSM and the cap, or nothing. */
+function rampShiftOf(plan: Plan, rp: RunPlan): { rampShiftM?: number; rampShiftCapM?: number } {
+  const a = rp.align;
+  let worst = 0;
+  for (let i = rp.i0; i <= rp.i1; i++) {
+    if (!a.shifted[i]) continue;
+    worst = Math.max(
+      worst,
+      Math.hypot(a.xy[2 * i] - a.original[2 * i], a.xy[2 * i + 1] - a.original[2 * i + 1]),
+    );
+  }
+  const isShifted = worst > 0 && plan.rampShiftCapM !== undefined;
+  return isShifted ? { rampShiftM: roundTo(worst, 3), rampShiftCapM: plan.rampShiftCapM } : {};
+}
+
+/**
+ * The |Δz| over which the runtime gives up merging two decks into one (src/world/expresswayMerge.ts
+ * MERGE_MAX_DZ, the same sum; that module is the runtime's, not the compiler's): a station of a pair
+ * past it is a merge_skipped stretch.
+ */
+const MERGE_GIVEN_UP_DZ_M = SAME_SURFACE_ALLOWED_DZ_M + 0.01;
+
+/** Stations of a ramp's target this far apart along it are two stretches. */
+const SHIFT_STRETCH_GAP_M = 25;
+
+/** A ramp's ask to move one stretch (rampShiftOffsets): its samples (tapers included), side and weights. */
+export type ShiftRequest = {
+  i0: number;
+  i1: number;
+  sign: 1 | -1;
+  amount: number;
+  /** Each sample's weight from the ramp's first sample (`base`) on. */
+  w: Float64Array;
+  base: number;
+};
+
+/**
+ * The stations of a pair of a ramp and the main line it meets (a junction of the two or a parent they
+ * share, overlapClass.isJoined) that a shift is for (PR 4 review W3): over the other's deck neither
+ * one surface nor a level apart and not a nose the rules pass (a joined pair within NOSE_MAX_DZ_M all
+ * along), or past MERGE_GIVEN_UP_DZ_M (a merge the runtime gives up: 汐留入口's wedge). Per run pair
+ * (ramp|main), the ramp's run distances.
+ */
+function shiftTargets(
+  plan: Plan,
+  solved: CompileResult,
+): Map<string, { ramp: string; main: string; s: number[] }> {
+  const summaries = new Map(solved.runs.map((r) => [r.id, r]));
+  const byPair = new Map<
+    string,
+    { ramp: string; main: string; stations: Array<{ s: number; dz: number; levelApart: number }> }
+  >();
+  for (const p of pairStations(solved.chunks)) {
+    const [ra, rb] = [plan.runs.get(p.a), plan.runs.get(p.b)];
+    const [sa, sb] = [summaries.get(p.a), summaries.get(p.b)];
+    const isKnown = ra !== undefined && rb !== undefined && sa !== undefined && sb !== undefined;
+    if (!isKnown) continue;
+    const isRampMain =
+      (ra.cls === "ramp" && rb.cls === "expressway") || (ra.cls === "expressway" && rb.cls === "ramp");
+    const isMet = isRampMain && isJoined(sa, sb);
+    if (!isMet) continue;
+    const [ramp, main, s] = ra.cls === "ramp" ? [p.a, p.b, p.sa] : [p.b, p.a, p.sb];
+    const key = `${ramp}|${main}`;
+    const entry = byPair.get(key) ?? { ramp, main, stations: [] };
+    entry.stations.push({ s, dz: Math.abs(p.dz), levelApart: p.levelApart });
+    byPair.set(key, entry);
+  }
+  const out = new Map<string, { ramp: string; main: string; s: number[] }>();
+  for (const [key, e] of byPair) {
+    const isForbidden = (x: { dz: number; levelApart: number }) =>
+      x.dz > SAME_SURFACE_M && x.dz < x.levelApart;
+    const forbidden = e.stations.filter(isForbidden);
+    const isNose = forbidden.every((x) => x.dz <= NOSE_MAX_DZ_M);
+    const targets = forbidden.filter((x) => !isNose || x.dz > MERGE_GIVEN_UP_DZ_M);
+    const isNone = targets.length === 0;
+    if (isNone) continue;
+    out.set(key, { ramp: e.ramp, main: e.main, s: targets.map((x) => x.s).sort((a, b) => a - b) });
+  }
+  return out;
+}
+
+/**
+ * `--ramp-shift <m>` (S6 PR 4 案 A), from a first solve of the whole components (every needed run, so
+ * the same whatever the range: PR 4 review C1): per chain, the metres to move each sample of a ramp
+ * off its OSM line (horizontal.ts PlanInput.offset, left normal positive) where it lies over the main
+ * line it meets at a height difference the rules do not pass or the runtime cannot merge
+ * (shiftTargets). Per stretch of those stations (SHIFT_STRETCH_GAP_M apart at most), the ramp moves
+ * away from the main line by what parts their carriageways (both half widths and planOverlaps' 0.5 m,
+ * less the centre lines' distance as solved, the stretch's most), at most `maxM`, and no farther than
+ * the room on that side (PR 4 review W1: a third deck not a level apart from it, a road or railway at
+ * the ground it did not lie over, each by both half widths and 0.5 m), easing in and out over
+ * RAMP_SHIFT.taperM and to 0 within that of a node held on OSM (a junction or a run's end). Left
+ * unmoved (PR 4 review W2, C2): a stretch over which the main line is on both sides (the two cross),
+ * one whose most under the tapers is under RAMP_SHIFT.minReach of the amount (it would only stay
+ * over, one surface the longer), and two asks on one chain for opposite sides that overlap (31090753
+ * between two main lines was pushed across 67152889's centre line). Why not the main line: it carries
+ * the through traffic and its other ramps.
+ */
+export function rampShiftOffsets(
+  plan: Plan,
+  first: CompileResult,
+  objects: readonly CrossObject[],
+  maxM: number,
+): Map<string, Float64Array> {
+  const { taperM, minReach } = RAMP_SHIFT.value;
+  const polys = new Map<string, Poly>();
+  const polyOf = (id: string) => {
+    const known = polys.get(id);
+    if (known) return known;
+    const p = runPoly(plan.runs.get(id)!);
+    polys.set(id, p);
+    return p;
+  };
+  const chunksOf = new Map<string, XwChunk[]>();
+  for (const c of first.chunks) chunksOf.set(c.run, [...(chunksOf.get(c.run) ?? []), c]);
+  const zOf = (run: string, s: number): number | null => {
+    const c = (chunksOf.get(run) ?? []).find(
+      (k) => s >= k.st[0] - 1e-6 && s <= k.st[k.st.length - STATION_STRIDE] + 1e-6,
+    );
+    return c ? surfaceAt(c.st, s).z : null;
+  };
+  // The nearest point of a polyline to (x, y): distance, half width there, the point and its run distance.
+  const nearestOn = (p: Poly, x: number, y: number) => {
+    let best = { d: Infinity, hw: 0, px: 0, py: 0, s: 0 };
+    for (let i = 0; i + 1 < p.s.length; i++) {
+      const [x0, y0, x1, y1] = [p.xy[2 * i], p.xy[2 * i + 1], p.xy[2 * i + 2], p.xy[2 * i + 3]];
+      const ex = x1 - x0;
+      const ey = y1 - y0;
+      const t = Math.min(1, Math.max(0, ((x - x0) * ex + (y - y0) * ey) / (ex * ex + ey * ey || 1)));
+      const px = x0 + ex * t;
+      const py = y0 + ey * t;
+      const d = Math.hypot(x - px, y - py);
+      if (d < best.d)
+        best = {
+          d,
+          hw: p.hw[i] + (p.hw[i + 1] - p.hw[i]) * t,
+          px,
+          py,
+          s: p.s[i] + (p.s[i + 1] - p.s[i]) * t,
+        };
+    }
+    return best;
+  };
+  // What could stand in a moved ramp's way: the written decks and the roads and railways at the ground.
+  const CELL = 50;
+  const grid = new Map<string, Set<string>>();
+  const put = (key: string, x: number, y: number) => {
+    const c = `${Math.floor(x / CELL)},${Math.floor(y / CELL)}`;
+    grid.set(c, (grid.get(c) ?? new Set()).add(key));
+  };
+  const written = [...new Set(first.chunks.map((c) => c.run))].filter((id) => plan.runs.has(id)).sort();
+  for (const id of written) {
+    const p = polyOf(id);
+    for (let i = 0; i < p.s.length; i++) put(`run:${id}`, p.xy[2 * i], p.xy[2 * i + 1]);
+  }
+  const objectPolys = new Map<string, { xy: Array<[number, number]> }>();
+  for (const o of objects) {
+    const xy = o.pts.map(([lon, lat]) => CROSS_PLANE.toXY(lon, lat) as [number, number]);
+    const key = `${o.kind}:${o.id}`;
+    objectPolys.set(key, { xy });
+    for (let i = 0; i + 1 < xy.length; i++) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(xy[i + 1][0] - xy[i][0], xy[i + 1][1] - xy[i][1]) / 20));
+      for (let k = 0; k <= steps; k++)
+        put(
+          key,
+          xy[i][0] + ((xy[i + 1][0] - xy[i][0]) * k) / steps,
+          xy[i][1] + ((xy[i + 1][1] - xy[i][1]) * k) / steps,
+        );
+    }
+  }
+  const near = (x: number, y: number) => {
+    const out = new Set<string>();
+    const cx = Math.floor(x / CELL);
+    const cy = Math.floor(y / CELL);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++) for (const k of grid.get(`${cx + dx},${cy + dy}`) ?? []) out.add(k);
+    return [...out].sort();
+  };
+  const nearestOnLine = (xy: Array<[number, number]>, x: number, y: number) => {
+    let best = { d: Infinity, px: 0, py: 0 };
+    for (let i = 0; i + 1 < xy.length; i++) {
+      const [x0, y0] = xy[i];
+      const [x1, y1] = xy[i + 1];
+      const ex = x1 - x0;
+      const ey = y1 - y0;
+      const t = Math.min(1, Math.max(0, ((x - x0) * ex + (y - y0) * ey) / (ex * ex + ey * ey || 1)));
+      const d = Math.hypot(x - (x0 + ex * t), y - (y0 + ey * t));
+      if (d < best.d) best = { d, px: x0 + ex * t, py: y0 + ey * t };
+    }
+    return best;
+  };
+  const requests = new Map<string, ShiftRequest[]>();
+  for (const [, t] of [...shiftTargets(plan, first)].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const ramp = plan.runs.get(t.ramp)!;
+    const mainPoly = polyOf(t.main);
+    const chainS = ramp.align.s;
+    const base = chainS[ramp.i0];
+    const anchors: number[] = [];
+    ramp.chain.nodes.forEach((node, j) => {
+      const isHeld = (plan.nodeChains.get(node)?.length ?? 0) > 1 || j === ramp.run.from || j === ramp.run.to;
+      if (isHeld) anchors.push(ramp.align.vertexSample[j]);
+    });
+    const anchorWeight = (i: number) => {
+      let w = 1;
+      for (const k of anchors) {
+        const off = Math.abs(chainS[i] - chainS[k]);
+        const isNear = off < taperM;
+        if (isNear) w *= (1 - Math.cos((Math.PI * off) / taperM)) / 2;
+      }
+      return w;
+    };
+    const stretches: Array<[number, number]> = [];
+    for (const s of t.s) {
+      const last = stretches[stretches.length - 1];
+      const isApart = last === undefined || s - last[1] > SHIFT_STRETCH_GAP_M;
+      if (isApart) stretches.push([s, s]);
+      else last[1] = s;
+    }
+    for (const [s0, s1] of stretches) {
+      let need = 0;
+      const signs = new Set<number>();
+      let reach = 0;
+      for (let i = sampleAt(ramp, s0); i <= sampleAt(ramp, s1); i++) {
+        const [lon, lat] = lonLatAt(ramp, i);
+        const [x, y] = CROSS_PLANE.toXY(lon, lat);
+        const m = nearestOn(mainPoly, x, y);
+        need = Math.max(need, ramp.laneHalfAt[i - ramp.i0] + m.hw + 0.5 - m.d);
+        reach = Math.max(reach, anchorWeight(i));
+        const a = Math.max(ramp.i0, i - 3);
+        const b = Math.min(ramp.i1, i + 3);
+        const [ax, ay] = CROSS_PLANE.toXY(...lonLatAt(ramp, a));
+        const [bx, by] = CROSS_PLANE.toXY(...lonLatAt(ramp, b));
+        const leftward = -(by - ay) * (m.px - x) + (bx - ax) * (m.py - y);
+        signs.add(leftward > 0 ? -1 : 1);
+      }
+      const isCrossing = signs.size > 1;
+      const isTooLittle = reach < minReach;
+      const isNotNeeded = need <= 0;
+      if (isCrossing || isTooLittle || isNotNeeded) continue;
+      const sign = [...signs][0] as 1 | -1;
+      // The samples the ask covers (tapers included) and each one's weight.
+      let i0 = ramp.i1;
+      let i1 = ramp.i0;
+      const w = new Float64Array(ramp.i1 - ramp.i0 + 1);
+      for (let i = ramp.i0; i <= ramp.i1; i++) {
+        const s = chainS[i] - base;
+        const outside = s < s0 ? s0 - s : s > s1 ? s - s1 : 0;
+        if (outside >= taperM) continue;
+        w[i - ramp.i0] = ((1 + Math.cos((Math.PI * outside) / taperM)) / 2) * anchorWeight(i);
+        i0 = Math.min(i0, i);
+        i1 = Math.max(i1, i);
+      }
+      // The room on that side: what the moved ramp would come over that it does not lie over now.
+      let room = Infinity;
+      for (let i = i0; i <= i1; i++) {
+        const wi = w[i - ramp.i0];
+        if (wi <= 1e-6) continue;
+        const [lon, lat] = lonLatAt(ramp, i);
+        const [x, y] = CROSS_PLANE.toXY(lon, lat);
+        const a = Math.max(ramp.i0, i - 3);
+        const b = Math.min(ramp.i1, i + 3);
+        const [ax, ay] = CROSS_PLANE.toXY(...lonLatAt(ramp, a));
+        const [bx, by] = CROSS_PLANE.toXY(...lonLatAt(ramp, b));
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const nx = (-(by - ay) / len) * sign;
+        const ny = ((bx - ax) / len) * sign;
+        const hwR = ramp.laneHalfAt[i - ramp.i0];
+        const zR = zOf(ramp.run.id, chainS[i] - base);
+        for (const key of near(x, y)) {
+          const isOwn = key === `run:${t.ramp}` || key === `run:${t.main}`;
+          if (isOwn) continue;
+          const isRun = key.startsWith("run:");
+          let d0: number;
+          let qx: number;
+          let qy: number;
+          let half: number;
+          if (isRun) {
+            const other = key.slice(4);
+            const m = nearestOn(polyOf(other), x, y);
+            const zO = zOf(other, m.s);
+            const isLevelApart = zR !== null && zO !== null && Math.abs(zR - zO) >= LEVEL_APART_M;
+            if (isLevelApart) continue;
+            [d0, qx, qy, half] = [m.d, m.px, m.py, m.hw];
+          } else {
+            const m = nearestOnLine(objectPolys.get(key)!.xy, x, y);
+            [d0, qx, qy, half] = [m.d, m.px, m.py, GROUND_ROAD_HALF_WIDTH.value];
+          }
+          const clear = hwR + half + 0.5;
+          const isOverAlready = d0 <= clear;
+          const isOnThatSide = (qx - x) * nx + (qy - y) * ny > 0;
+          if (isOverAlready || !isOnThatSide) continue;
+          room = Math.min(room, (d0 - clear) / wi);
+        }
+      }
+      const amount = Math.min(maxM, need, room);
+      const isWorthIt = amount > 0.1;
+      if (!isWorthIt) continue;
+      const list = requests.get(ramp.chain.id) ?? [];
+      list.push({ i0, i1, sign, amount, w, base: ramp.i0 });
+      requests.set(ramp.chain.id, list);
+    }
+  }
+  const out = new Map<string, Float64Array>();
+  for (const [chainId, list] of [...requests].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const anyRun = [...plan.runs.values()].find((rp) => rp.chain.id === chainId)!;
+    const offsets = composeShiftRequests(list, anyRun.align.s.length);
+    if (offsets) out.set(chainId, offsets);
+  }
+  return out;
+}
+
+/**
+ * One chain's asks as its offsets (rampShiftOffsets): two asks for opposite sides over common samples
+ * are both left out (PR 4 review C2: a ramp between two main lines), the rest taken at the larger
+ * |offset| per sample. Null when none is left.
+ */
+export function composeShiftRequests(list: readonly ShiftRequest[], samples: number): Float64Array | null {
+  const isConflicted = (r: ShiftRequest) =>
+    list.some((q) => q !== r && q.sign !== r.sign && q.i0 <= r.i1 && r.i0 <= q.i1);
+  const kept = list.filter((r) => !isConflicted(r));
+  if (kept.length === 0) return null;
+  const offsets = new Float64Array(samples);
+  for (const r of kept) {
+    for (let i = r.i0; i <= r.i1; i++) {
+      const v = r.sign * r.amount * r.w[i - r.base];
+      if (Math.abs(v) > Math.abs(offsets[i])) offsets[i] = v;
+    }
+  }
+  return offsets;
+}
+
+/**
+ * How many stations of a ramp a shift is for (shiftTargets), per ramp, in a solve: what solveWithRampShift
+ * compares after the shift.
+ */
+function targetsPerRamp(plan: Plan, solved: CompileResult): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of shiftTargets(plan, solved).values()) out.set(t.ramp, (out.get(t.ramp) ?? 0) + t.s.length);
+  return out;
+}
+
+/** The deck pairs of a run neither one surface nor a level apart in a solve, by partner. */
+function forbiddenPartners(solved: CompileResult, run: string): Set<string> {
+  const out = new Set<string>();
+  for (const o of deckOverlaps(solved.chunks)) {
+    if (o.a === run) out.add(o.b);
+    if (o.b === run) out.add(o.a);
+  }
+  return out;
+}
+
+/**
+ * `--ramp-shift` (S6 PR 4 案 A) end to end, decided on the whole components (every needed run written,
+ * whatever the range, PR 4 review C1): solve once, move the ramps (rampShiftOffsets), plan and solve
+ * again, and keep a chain's move only if none of its ramps comes out worse (PR 4 review C2): more of
+ * its stations a shift is for, a new partner neither one surface nor a level apart, or its main line
+ * on a later step of the fallback. The chains that came out worse are planned without their move and
+ * the network is solved for the range from that last plan. `prepare` runs before each solve (the DEM
+ * for a plan's new samples).
+ */
+export async function solveWithRampShift(
+  planOf: (rampOffsets: ReadonlyMap<string, Float64Array>) => Plan,
+  ground: GroundSampler,
+  objects: CrossObject[],
+  maxM: number,
+  options: SolveOptions = {},
+  prepare: (plan: Plan) => Promise<void> = async () => {},
+): Promise<{ plan: Plan; result: CompileResult; moved: string[]; dropped: string[] }> {
+  const whole = (p: Plan): Plan => ({ ...p, wanted: new Set(p.needed) });
+  const plan0 = planOf(new Map());
+  await prepare(plan0);
+  const first = solvePlan(whole(plan0), ground, objects, options);
+  const offsets = rampShiftOffsets(plan0, first, objects, maxM);
+  const plan1 = planOf(offsets);
+  await prepare(plan1);
+  const second = solvePlan(whole(plan1), ground, objects, options);
+  const before = targetsPerRamp(plan0, first);
+  const after = targetsPerRamp(plan1, second);
+  const stepsOf = (r: CompileResult) => new Map(r.runs.map((x) => [x.id, x.steps.length]));
+  const [steps0, steps1] = [stepsOf(first), stepsOf(second)];
+  const dropped: string[] = [];
+  for (const chainId of [...offsets.keys()].sort()) {
+    const ramps = [...plan1.runs.values()].filter((rp) => rp.chain.id === chainId && rp.cls === "ramp");
+    const isWorse = ramps.some((rp) => {
+      const id = rp.run.id;
+      const isMoreTargets = (after.get(id) ?? 0) > (before.get(id) ?? 0);
+      const was = forbiddenPartners(first, id);
+      const isNewPartner = [...forbiddenPartners(second, id)].some((p) => !was.has(p));
+      const mains = [...shiftTargets(plan0, first).values()].filter((t) => t.ramp === id).map((t) => t.main);
+      const isMainLater = mains.some((m) => (steps1.get(m) ?? 0) > (steps0.get(m) ?? 0));
+      return isMoreTargets || isNewPartner || isMainLater;
+    });
+    if (isWorse) dropped.push(chainId);
+  }
+  const kept = new Map([...offsets].filter(([chainId]) => !dropped.includes(chainId)));
+  const plan = planOf(kept);
+  await prepare(plan);
+  const result = solvePlan(plan, ground, objects, options);
+  return { plan, result, moved: [...kept.keys()].sort(), dropped };
+}
+
 export function solvePlan(
   given: Plan,
   ground: GroundSampler,
@@ -3555,6 +3996,7 @@ export function solvePlan(
       planV: s.rp.planV,
       minRadiusM: roundTo(Math.min(s.rp.minRadius, 1e6), 1),
       maxShiftM: roundTo(s.rp.align.maxShiftM, 3),
+      ...rampShiftOf(plan, s.rp),
       steps: s.steps,
       start: s.start,
       end: s.end,

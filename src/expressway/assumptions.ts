@@ -280,6 +280,19 @@ export const SHARED_TOUCHDOWN: Assumption<number> = {
 };
 
 /**
+ * `--ramp-shift` (S6 PR 4 案 A, compile.ts rampShiftOffsets): how far a ramp may move off its OSM line
+ * where it lies over the main line it meets apart in height (the flag's default, maxM), over what it
+ * eases in and out (taperM), and the least of the most a stretch can reach under the tapers for it to
+ * be moved at all (minReach, of the amount asked).
+ */
+export const RAMP_SHIFT: Assumption<{ maxM: number; taperM: number; minReach: number }> = {
+  value: { maxM: 3, taperM: 40, minReach: 0.5 },
+  verified: false,
+  reason:
+    "仮定。OSM の連結路の中心線は本線の中心線に寄って描かれがちで（汐留型の 52 組で間隔の中央値 5.3 m、離れきるのに 8〜11 m）、3 m は ship の計測（S6 PR 4、3・5・8 m を比べて条件を満たす最小）で決めた値。動かすのは平面だけで、建物との干渉はコンパイラでは分からない（PLATEAU を読まない）ので、3 m を超えて動いた run は視点で確かめる。40 m は 3 m を余弦で出し入れして曲率が約 1/ 1,000 に収まる長さ（π²·3 / (2·40²) ≈ 0.009）。0.5 は、端や節点への先細りで要る量の半分も届かない区間は動かしても重なりが残るだけ（同一面の区間が膨らむ）という見立て",
+};
+
+/**
  * Two main lines running beside each other (S6 PR 3, compile.ts findCompanions): carriageways apart
  * by at most gapM for minLengthM or more on one OSM layer, held within dzM of one height every stepM
  * along the first (by id), softly, but for the climb (approachLength) at either end of the stretch.
@@ -376,5 +389,6 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   BLOCK_ANCHOR_SPACING,
   SHARED_TOUCHDOWN,
   COMPANIONS,
+  RAMP_SHIFT,
   DESIGN_GROUND_REACH,
 };

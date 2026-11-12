@@ -258,6 +258,13 @@ export type XwRunSummary = {
   planV: number;
   minRadiusM: number;
   maxShiftM: number;
+  /**
+   * `--ramp-shift` (S6 PR 4): how far the run's line lies off OSM where it was moved off a main line
+   * (horizontal.ts `rampShiftM`, over the run's own samples). Absent where nothing moved.
+   */
+  rampShiftM?: number;
+  /** The cap the run was moved to (`--ramp-shift <m>`), with `rampShiftM`: T6 holds the move within it and ε. */
+  rampShiftCapM?: number;
   steps: string[];
   start: XwEnd;
   end: XwEnd;

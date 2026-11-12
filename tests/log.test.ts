@@ -504,6 +504,13 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     blocksAdded: 0,
     blocksRemoved: 0,
   },
+  expressway_ramps_shifted: { maxM: 3, chains: 52, dropped: ["c123"] },
+  expressway_overlap_shapes: {
+    label: "p4-base-pruned",
+    byKind: { "parallel-ramp": { joinedFromSame: { pairs: 56, stations: 666 } } },
+    joinedStations: 757,
+    tracked: { base: "p4-base-pruned", pairs: 56, stillNotAllowed: 25 },
+  },
   expressway_blocks_planned: {
     quietFactor: 1.5,
     quietMinM: 300,

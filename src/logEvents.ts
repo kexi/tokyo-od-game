@@ -968,6 +968,23 @@ export const LOG_EVENTS = {
     blocksRemoved: count,
   }),
   /**
+   * `--ramp-shift` (S6 PR 4 案 A, compile.ts solveWithRampShift): the cap, how many chains kept their
+   * move, and the chains whose move was dropped for making a ramp worse.
+   */
+  expressway_ramps_shifted: info({ maxM: z.number(), chains: count, dropped: z.array(z.string()) }),
+  /**
+   * A build's not-allowed overlaps in S6's five shapes (scripts/expresswayOverlapShapes.ts), per kind
+   * (parallel-ramp, changeover, other, nose): the pairs and their stations of each shape; the stations
+   * of the parallel-ramp pairs joined; and with a base build, its parallel-ramp pairs joined from one
+   * surface followed into this one (how many are still not allowed).
+   */
+  expressway_overlap_shapes: info({
+    label: z.string(),
+    byKind: z.record(z.string(), z.record(z.string(), z.strictObject({ pairs: count, stations: count }))),
+    joinedStations: count,
+    tracked: z.strictObject({ base: z.string(), pairs: count, stillNotAllowed: count }).nullable(),
+  }),
+  /**
    * --partition blocks (src/expressway/blocks.ts, P2.7-2): k and the least quiet margin, anchors and
    * pieces of the whole plan, the blocks the range needs, the route groups and the needed runs.
    */

@@ -35,6 +35,13 @@ describe("出荷フォルダに書いてよい生成（scripts/expressway.ts、P
       shippedFolderRefusal({ ...plain, hasOut: true, isTouchdownAll: true, isCompanions: true }),
     ).toBeNull();
   });
+  it("stops --ramp-shift and --nose-surface overlap without --out (S6 PR 4)", () => {
+    expect(shippedFolderRefusal({ ...plain, isRampShift: true })).toMatch(/^--ramp-shift/);
+    expect(shippedFolderRefusal({ ...plain, isNoseOverlap: true })).toMatch(/^--nose-surface overlap/);
+    expect(
+      shippedFolderRefusal({ ...plain, hasOut: true, isRampShift: true, isNoseOverlap: true }),
+    ).toBeNull();
+  });
   it("lets every measuring flag through with --out", () => {
     const all: BuildFlags = {
       hasOut: true,

@@ -170,11 +170,15 @@ function polylines(chunks: XwChunk[]): Map<string, Pt[]> {
 }
 
 /**
- * Pairs of runs with stations over the other's deck at a height difference that is neither one
- * surface nor a level apart. The other deck's height is the Hermite surface (profile.ts) at the
- * nearest point of its centre line, so a straight chord between its stations does not fake a step.
+ * Every station of a run over another run's deck (not of its own chain): its run distance, the other's
+ * nearest run distance, the centre lines' distance, the height difference to the other's Hermite
+ * surface, and the level apart over the upper deck's girder there. deckOverlaps keeps the stations
+ * neither one surface nor a level apart; S6 PR 4 also reads the ones that are (where a pair starts on
+ * one surface and parts).
  */
-export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
+export function pairStations(
+  chunks: XwChunk[],
+): Array<{ a: string; sa: number; b: string; sb: number; dist: number; dz: number; levelApart: number }> {
   const lines = polylines(chunks);
   const runs = [...lines.keys()].sort();
   const planLines: PlanLine[] = runs.map((id) => {
@@ -214,8 +218,7 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
   // A run and the tunnel or cut it goes on into (P9) are one road through a portal (the same chain):
   // near the portal each is over the other's carriageway, at the other's height plus its grade.
   const chainOf = new Map(chunks.map((c) => [c.run, c.chain]));
-  const found = new Map<string, Overlap>();
-  const stationsAt = new Map<string, Map<string, number[]>>();
+  const out: ReturnType<typeof pairStations> = [];
   for (const pair of planOverlaps(planLines, 0)) {
     const isSameRoad = chainOf.get(pair.a) === chainOf.get(pair.b);
     if (isSameRoad) continue;
@@ -224,7 +227,30 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
     // A level apart over the upper deck's own girder (heightStructures.levelApartOver: the standard one
     // where its chunk has none or the standard), so a thinner girder (P2.7-6) counts as it is drawn.
     const upperGirder = dz >= 0 ? pa.gd : nearest(pair.b, pair.sb).gd;
-    const isAllowed = Math.abs(dz) <= SAME_SURFACE_M || Math.abs(dz) >= levelApartOver(upperGirder);
+    out.push({
+      a: pair.a,
+      sa: pa.s,
+      b: pair.b,
+      sb: pair.sb,
+      dist: pair.dist,
+      dz,
+      levelApart: levelApartOver(upperGirder),
+    });
+  }
+  return out;
+}
+
+/**
+ * Pairs of runs with stations over the other's deck at a height difference that is neither one
+ * surface nor a level apart. The other deck's height is the Hermite surface (profile.ts) at the
+ * nearest point of its centre line, so a straight chord between its stations does not fake a step.
+ */
+export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
+  const found = new Map<string, Overlap>();
+  const stationsAt = new Map<string, Map<string, number[]>>();
+  for (const pair of pairStations(chunks)) {
+    const { dz } = pair;
+    const isAllowed = Math.abs(dz) <= SAME_SURFACE_M || Math.abs(dz) >= pair.levelApart;
     if (isAllowed) continue;
     const [a, b] = pair.a < pair.b ? [pair.a, pair.b] : [pair.b, pair.a];
     const key = `${a}|${b}`;
@@ -239,7 +265,7 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
     };
     const at = stationsAt.get(key) ?? new Map<string, number[]>();
     for (const [run, s] of [
-      [pair.a, pa.s],
+      [pair.a, pair.sa],
       [pair.b, pair.sb],
     ] as const)
       at.set(run, [...(at.get(run) ?? []), s]);

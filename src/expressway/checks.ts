@@ -432,6 +432,11 @@ export function checkPlan(
   const out: string[] = [];
   const isShifted = run.maxShiftM > MAX_LATERAL_SHIFT.value + 1e-6;
   if (isShifted) out.push(`${c.id}: shift ${run.maxShiftM} m`);
+  // A ramp moved off its main line (`--ramp-shift`, S6 PR 4) within the cap it was moved to and ε.
+  const isOverMoved =
+    run.rampShiftM !== undefined &&
+    run.rampShiftM > (run.rampShiftCapM ?? 0) + MAX_LATERAL_SHIFT.value + 1e-3;
+  if (isOverMoved) out.push(`${c.id}: moved ${run.rampShiftM} m off OSM (cap ${run.rampShiftCapM} m)`);
   const rampLimit = Math.min(RAMP_MIN_RADIUS.value, rampFloor ?? Infinity);
   const floor = c.cls === "ramp" ? rampLimit : CURVE_RADIUS.value[V(c)].special;
   const st = stationsOf(c);
