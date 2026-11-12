@@ -17,6 +17,8 @@ import {
 } from "../src/expressway/ledger.ts";
 import { STATION_STRIDE } from "../src/expressway/format.ts";
 import { heightKmOf, type HeightKm, highDeckStretches } from "../src/expressway/highDeck.ts";
+import { lowViaductStretches, openGroundStretches } from "../src/expressway/heightStructures.ts";
+import { GIRDER_DEPTH } from "../src/expressway/assumptions.ts";
 import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge.ts";
 import { framesOf, mergeMisses, probeGenerated } from "./expresswaySeams.ts";
 
@@ -46,6 +48,67 @@ function highDeckCases(byRun: ReadonlyMap<string, XwFiles["chunks"]>): FoundCase
         measured: { s0: h.s0, s1: h.s1, heightM: h.heightM, spanM: h.spanM },
       });
     });
+  }
+  return out;
+}
+
+/**
+ * A height build's cases (P2.7-6 PR 1): each embankment and cut stretch of a viaduct-tagged run
+ * (numbered along the run, as high-deck) and each viaduct chunk on a girder thinner than GIRDER_DEPTH.
+ * A build by the tags has none.
+ */
+function structureCases(
+  byRun: ReadonlyMap<string, XwFiles["chunks"]>,
+  runs: XwFiles["runs"],
+  isHeight: boolean,
+): FoundCase[] {
+  // Only a height build's summaries say which runs are below runs (`below`); otherwise by the chunks.
+  const below = new Set(runs.filter((r) => r.below === true).map((r) => r.id));
+  // A build by the tags has none (its viaducts low near their ends are no low-viaduct: nothing was classified).
+  if (!isHeight) return [];
+  const isBelow = (run: string) => below.has(run);
+  const out: FoundCase[] = [];
+  for (const run of [...byRun.keys()].sort()) {
+    const list = byRun.get(run)!;
+    const numbered = { cut: 0, embankment: 0 };
+    for (const h of openGroundStretches(list, isBelow(run))) {
+      const kind = h.structure === "cut" ? "cut-stretch" : "embankment-stretch";
+      const measured =
+        h.structure === "cut"
+          ? { s0: h.s0, s1: h.s1, lengthM: h.lengthM, depthM: h.depthM }
+          : { s0: h.s0, s1: h.s1, lengthM: h.lengthM };
+      out.push({
+        key: `${kind}:${run}|${numbered[h.structure]++}`,
+        kind,
+        run,
+        with: null,
+        chunk: h.chunk,
+        measured,
+      });
+    }
+    lowViaductStretches(list, isBelow(run)).forEach((h, i) => {
+      out.push({
+        key: `low-viaduct:${run}|${i}`,
+        kind: "low-viaduct",
+        run,
+        with: null,
+        chunk: h.chunk,
+        measured: { s0: h.s0, s1: h.s1, lengthM: h.lengthM, heightM: h.lowM },
+      });
+    });
+    for (const c of list) {
+      const isThin =
+        c.structure === "viaduct" && c.over === null && c.girder > 0 && c.girder < GIRDER_DEPTH.value;
+      if (!isThin) continue;
+      out.push({
+        key: `thin-girder:${c.id}`,
+        kind: "thin-girder",
+        run,
+        with: null,
+        chunk: c.id,
+        measured: { s0: c.st[0], s1: c.st[c.st.length - STATION_STRIDE], girderM: c.girder },
+      });
+    }
   }
   return out;
 }
@@ -83,7 +146,12 @@ export async function countCases(files: XwFiles): Promise<Counted> {
   });
   for (const w of probed.worlds) w.free();
   const districts = assignDistricts(districtRunsOf(files.runs, files.byRun));
-  const found = [...fromDiagnostics, ...fromDecks, ...highDeckCases(files.byRun)].map((c) => {
+  const found = [
+    ...fromDiagnostics,
+    ...fromDecks,
+    ...highDeckCases(files.byRun),
+    ...structureCases(files.byRun, files.runs, (files.meta.features ?? []).includes("height-structures")),
+  ].map((c) => {
     const runs = c.with === null ? [c.run] : [c.run, c.with];
     return { ...c, district: caseDistrict(runs, districts, files), ...blocksOf(files.record.blocks, runs) };
   });

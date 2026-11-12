@@ -6,6 +6,8 @@ import { CROSS_STRIDE, STATION_STRIDE } from "./format";
 import { PROPERTIES, type Property, type Violations } from "./violations";
 import { type District, DISTRICTS } from "./districts";
 import type { LedgerSummary } from "./ledger";
+import { GIRDER_DEPTH } from "./assumptions";
+import { lowViaductStretches, openGroundStretches } from "./heightStructures";
 
 /**
  * The scorecard of one expressway build (P2.7-1, `scripts/expressway.ts --report`): what the later
@@ -20,6 +22,8 @@ const km = z.number().nonnegative();
 const tally = z.strictObject({ runs: count, km });
 const byClass = z.strictObject({ main: tally, ramp: tally, street: tally });
 const spread = z.strictObject({ total: count, median: count, p90: count, max: count });
+/** A spread of lengths or depths in metres (P2.7-6 structures). */
+const metres = z.strictObject({ median: km, p90: km, max: km });
 const extentTally = z.strictObject({ inKm: km, outKm: km, operatedKm: km, otherKm: km });
 const cls = z.enum(["expressway", "ramp", "street"]);
 
@@ -158,12 +162,33 @@ export const ReportSchema = z.strictObject({
       allowed: z.boolean(),
     }),
   ),
-  /** The data test's properties over the files (violations.ts): count and the first few of each. */
+  /**
+   * The data test's properties over the files (violations.ts): count and the first few of each. T13
+   * (P2.7-6) is absent from a scorecard before it.
+   */
   violations: z.strictObject(
     Object.fromEntries(
-      PROPERTIES.map((p) => [p, z.strictObject({ count, first: z.array(z.string()) })]),
+      PROPERTIES.map((p) => {
+        const entry = z.strictObject({ count, first: z.array(z.string()) });
+        return [p, p === "T13" ? entry.optional() : entry];
+      }),
     ) as Record<Property, z.ZodObject<{ count: typeof count; first: z.ZodArray<z.ZodString> }>>,
   ),
+  /**
+   * A height build's structures (P2.7-6 PR 1, heightStructures.ts): the embankment and cut stretches of
+   * the viaduct-tagged runs written (count, km, the spread of their lengths and, for a cut, depths),
+   * the chunks with a thinner girder, and the km per district. Absent from a build by the tags.
+   */
+  structures: z
+    .strictObject({
+      embankment: z.strictObject({ stretches: count, km, lengthM: metres }),
+      cut: z.strictObject({ stretches: count, km, lengthM: metres, depthM: metres }),
+      thinGirder: z.strictObject({ chunks: count, km, minM: z.number().nonnegative().nullable() }),
+      /** Viaducts under the viaduct's height kept in the air (review W3, the ledger's low-viaduct). */
+      lowViaduct: z.strictObject({ stretches: count, km }).optional(),
+      byDistrict: z.record(z.string(), z.strictObject({ embankmentKm: km, cutKm: km, thinGirders: count })),
+    })
+    .optional(),
   /** How the elevated main lines follow the ground (trackingOf). */
   tracking: z.strictObject({
     runs: count,
@@ -337,6 +362,8 @@ export type ReportInput = {
   ledgerSummary: LedgerSummary | null;
   /** Leave the timings out (the baseline fixture). */
   withoutTimings?: boolean;
+  /** A height build (`--structures height`, P2.7-6): the scorecard's `structures`. */
+  heightStructures?: boolean;
 };
 
 const round = (v: number, digits: number) => {
@@ -367,6 +394,80 @@ function percentile(sorted: number[], p: number): number {
   if (isEmpty) return 0;
   const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1));
   return sorted[i];
+}
+
+/** Median, p90 and largest of metres (0 when there are none), to the centimetre. */
+function metresOf(values: number[]): { median: number; p90: number; max: number } {
+  const sorted = [...values].sort((a, b) => a - b);
+  const r = (v: number) => Math.round(v * 100) / 100;
+  return {
+    median: r(percentile(sorted, 0.5)),
+    p90: r(percentile(sorted, 0.9)),
+    max: r(sorted[sorted.length - 1] ?? 0),
+  };
+}
+
+/** A height build's structures (P2.7-6 PR 1) over the written chunks: Report["structures"]. */
+export function structuresOf(
+  chunks: readonly XwChunk[],
+  districts: ReadonlyMap<string, District>,
+  runs: readonly XwRunSummary[] = [],
+): NonNullable<Report["structures"]> {
+  const below = new Set(runs.filter((r) => r.below === true).map((r) => r.id));
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  const stretches = [...byRun.keys()].sort().flatMap((run) =>
+    openGroundStretches(
+      byRun.get(run)!.toSorted((a, b) => a.k - b.k),
+      below.has(run),
+    ),
+  );
+  const lows = [...byRun.keys()].sort().flatMap((run) =>
+    lowViaductStretches(
+      byRun.get(run)!.toSorted((a, b) => a.k - b.k),
+      below.has(run),
+    ),
+  );
+  const embankments = stretches.filter((h) => h.structure === "embankment");
+  const cuts = stretches.filter((h) => h.structure === "cut");
+  const kmOf = (list: typeof stretches) => Math.round(list.reduce((n, h) => n + h.lengthM, 0)) / 1000;
+  const thin = chunks.filter(
+    (c) => c.structure === "viaduct" && c.over === null && c.girder > 0 && c.girder < GIRDER_DEPTH.value,
+  );
+  const lengthOfChunk = (c: XwChunk) => c.st[c.st.length - STATION_STRIDE] - c.st[0];
+  const byDistrict: NonNullable<Report["structures"]>["byDistrict"] = {};
+  const tallyOf = (run: string) => {
+    const d = districts.get(run) ?? "outside";
+    byDistrict[d] ??= { embankmentKm: 0, cutKm: 0, thinGirders: 0 };
+    return byDistrict[d];
+  };
+  for (const h of embankments) tallyOf(h.run).embankmentKm += h.lengthM / 1000;
+  for (const h of cuts) tallyOf(h.run).cutKm += h.lengthM / 1000;
+  for (const c of thin) tallyOf(c.run).thinGirders++;
+  for (const t of Object.values(byDistrict)) {
+    t.embankmentKm = round(t.embankmentKm, 3);
+    t.cutKm = round(t.cutKm, 3);
+  }
+  return {
+    embankment: {
+      stretches: embankments.length,
+      km: kmOf(embankments),
+      lengthM: metresOf(embankments.map((h) => h.lengthM)),
+    },
+    cut: {
+      stretches: cuts.length,
+      km: kmOf(cuts),
+      lengthM: metresOf(cuts.map((h) => h.lengthM)),
+      depthM: metresOf(cuts.map((h) => h.depthM)),
+    },
+    lowViaduct: { stretches: lows.length, km: Math.round(lows.reduce((n, h) => n + h.lengthM, 0)) / 1000 },
+    thinGirder: {
+      chunks: thin.length,
+      km: Math.round(thin.reduce((n, c) => n + lengthOfChunk(c), 0)) / 1000,
+      minM: thin.length > 0 ? Math.min(...thin.map((c) => c.girder)) : null,
+    },
+    byDistrict: Object.fromEntries(Object.entries(byDistrict).sort(([a], [b]) => (a < b ? -1 : 1))),
+  };
 }
 
 export function spreadOf(values: number[]): Report["size"]["raw"] {
@@ -760,7 +861,12 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
   for (const run of runs) {
     const isMain = run.cls === "expressway" && run.structure === null;
     const list = (chunksOf.get(run.id) ?? []).sort((a, b) => a.k - b.k);
-    const isViaduct = list.length > 0 && list.every((c) => c.structure === "viaduct" && c.over === null);
+    // A height build's viaduct-tagged run (P2.7-6) counts as before with its embankments and cuts: a
+    // run of only tunnels and cuts by its tags (P9) has no viaduct or embankment chunk.
+    const isViaduct =
+      list.length > 0 &&
+      list.every((c) => c.over === null && c.structure !== "tunnel") &&
+      list.some((c) => c.structure === "viaduct" || c.structure === "embankment");
     const isLong = run.lengthM >= TRACK_MIN_RUN_M;
     if (!isMain || !isViaduct || !isLong) continue;
     const st: number[] = [];
@@ -1010,6 +1116,9 @@ export function buildReport(input: ReportInput): Report {
     overlaps: overlapsOf(rangeDiagnostics, input.runs),
     overlapPairs: overlapPairsOf(rangeDiagnostics, input.runs),
     violations: input.violations,
+    ...(input.heightStructures
+      ? { structures: structuresOf(input.chunks, input.districts, input.runs) }
+      : {}),
     tracking: trackingOf(input.chunks, input.runs),
     size: {
       tiles: input.tiles.length,

@@ -291,8 +291,42 @@ export const DESIGN_GROUND_REACH: Assumption<{ viaduct: number; below: number }>
     "仮定。波長が 2 × reach 以下の地表の起伏（DEM の凸凹、川の護岸、盛土）を目標から落とす長さ。高架は登坂長（V60 で約 200 m）より短い 150 m で、それより長い起伏には沿う。地下は土被りを取るので短い起伏に沿う理由が無く、倍の 300 m。設計の試作（ship/pruned、2026-11-11）の値。P2.7-3 の掃引（ship/pruned）では高架 250 m で強制なしの短波長相関が 0.240 → 0.197 に下がるが（勾配変化の重み 1）、床版の地表からの高さの中央値が v1 より 1.07 m 上がり（合否 +1.0 m 以内）、200 m は未収束が 3 回出たので 150 m のまま（knowledge/expressway-generation.md「P2.7-3」）",
 };
 
+/**
+ * The thinnest girder a deck may take where it crosses a road, a railway or another deck and the
+ * clearance (第12条 + GIRDER_DEPTH) is short by no more than the difference (P2.7-6 PR 1, `--structures
+ * height`): the chunk's `girder` is then the clearance's surplus, at least this. The QP still aims at
+ * GIRDER_DEPTH; only the judgement and the drawing take the thinner girder.
+ */
+export const GIRDER_MIN: Assumption<number> = {
+  value: 1.7,
+  verified: false,
+  reason:
+    "仮定。都市高架の鋼箱桁・鋼床版の桁高の下限の目安（1.5〜2.0 m 程度）から置いた。GIRDER_DEPTH 2.2 m との差 0.5 m は、ship の重なりで「1 段にあと少し」の 25 組のうち 22 組（最小 |Δz| 6.2 m 以上）が受かる量（設計の数え直し、P2.7-6 の指示 0.3 節）。実際の桁高の分布は調べていない",
+};
+
+/**
+ * How a viaduct-tagged run's stretch is drawn once its solved height decides the structure (P2.7-6
+ * PR 1, `--structures height`): a cut where the road is under the ground, an embankment (retaining
+ * walls to the ground, no piers) where it is over the ground but under the open-ground floor, and a
+ * viaduct above. `smoothM`: shorter stretches of one class merge into their neighbours (no flicker of
+ * chunks). `cut` / `embankment`: the longest (and for a cut the deepest) stretch a rule accepts without
+ * a review (the ledger's cut-stretch / embankment-stretch); longer ones are listed.
+ */
+export const HEIGHT_STRUCTURES: Assumption<{
+  smoothM: number;
+  cut: { depthM: number; lengthM: number };
+  embankment: { lengthM: number };
+}> = {
+  value: { smoothM: 20, cut: { depthM: 3, lengthM: 150 }, embankment: { lengthM: 500 } },
+  verified: false,
+  reason:
+    "仮定（P2.7-6 の指示 4.2 の初期値）。掘割は坑口へ下りる取付け（代官町、坑口の手前で地表より 0.9〜2.5 m 低い）を、盛土は低いまま走るランプ（護国寺・新宿出口、600 m 前後）の半分ほどを規則で通す長さとして置いた。20 m は一つのチャンクに満たない出入りをならす長さ。ship の分布は knowledge/expressway-generation.md「P2.7-6」",
+};
+
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
+  GIRDER_MIN,
+  HEIGHT_STRUCTURES,
   STANDARD_UNDERCLEARANCE,
   OPEN_GROUND_FLOOR,
   OPEN_FLOOR_GIVE,

@@ -120,6 +120,13 @@ export type RunInput = {
   gradeChange?: number;
   /** Objective v2: W_TARGET times this (absent: W_TARGET itself, v1). */
   targetScale?: number;
+  /**
+   * A height build (P2.7-6 PR 1): how far a station may miss `lowerLaw` and be marked `give: "girder"`
+   * (a thinner girder takes it), and the stations whose `lowerLaw` is a road near a low end (1: marked
+   * `give: "near"` when missed). The rows are the same; only the problems say more. Absent: none.
+   */
+  lawGive?: number;
+  lawNear?: Uint8Array;
 };
 
 export type Ref = { run: string; s: number };
@@ -415,6 +422,12 @@ export type RunProblem = {
   text: string;
   /** The other run of a coupling it misses (a crossing), and where on it. */
   partner?: Ref;
+  /**
+   * A miss of the statute's clearance that a height build (P2.7-6 PR 1, compile.ts isFailing) does not
+   * count against the run: `girder`, short by no more than a thinner girder takes (RunInput.lawGive);
+   * `near`, a road within the climb of a low end (RunInput.lawNear), blocked once solved.
+   */
+  give?: "girder" | "near";
 };
 
 export type JointResult = {
@@ -959,6 +972,7 @@ function checkCubic(L: Layout, profile: VerticalProfile): RunProblem[] {
 function checkBounds(input: RunInput, profile: VerticalProfile): RunProblem[] {
   const worst = {
     law: { by: 0, s: 0 },
+    lawNear: { by: 0, s: 0 },
     floor: { by: 0, s: 0 },
     sunk: { by: 0, s: 0 },
     ceiling: { by: 0, s: 0 },
@@ -972,7 +986,8 @@ function checkBounds(input: RunInput, profile: VerticalProfile): RunProblem[] {
     note("ceiling", zs - input.upper[k], s);
     const lawShort = (input.lowerLaw ? input.lowerLaw[k] : input.lower[k]) - zs;
     if (lawShort > 1e-6) {
-      note("law", lawShort, s);
+      const isNear = input.lawNear !== undefined && input.lawNear[k] === 1;
+      note(isNear ? "lawNear" : "law", lawShort, s);
       continue;
     }
     const openShort = (input.lowerOpen ? input.lowerOpen[k] : -Infinity) - zs;
@@ -983,14 +998,25 @@ function checkBounds(input: RunInput, profile: VerticalProfile): RunProblem[] {
     note("sunk", input.lower[k] - zs, s);
   }
   const out: RunProblem[] = [];
-  const { law, floor, sunk, ceiling } = worst;
+  const { law, lawNear, floor, sunk, ceiling } = worst;
   const at = (p: { s: number }) => metreOf(input, p.s);
+  const isGirderGive = (by: number) => input.lawGive !== undefined && by <= input.lawGive + 1e-9;
   if (law.by > 1e-6)
     out.push({
       what: "crossing",
       basis: "law",
       ...law,
       text: `clearance short by ${law.by.toFixed(2)} m at ${at(law)} m`,
+      ...(isGirderGive(law.by) ? { give: "girder" as const } : {}),
+    });
+  // Why the near ones apart: only the worst of each kind is kept, and a far miss must not hide behind one.
+  if (lawNear.by > 1e-6)
+    out.push({
+      what: "crossing",
+      basis: "law",
+      ...lawNear,
+      text: `clearance short by ${lawNear.by.toFixed(2)} m at ${at(lawNear)} m near a low end`,
+      give: "near",
     });
   if (floor.by > 1e-6)
     out.push({
