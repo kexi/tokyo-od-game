@@ -12,7 +12,7 @@ import {
   Vector3,
 } from "three";
 import { PARAPET_HEIGHT, PARAPET_WIDTH, TUNNEL_WALKWAY, ZEBRA } from "../expressway/assumptions";
-import { TUNNEL_INNER_HEIGHT_M } from "../expressway/below";
+import { cutWallHeight, TUNNEL_INNER_HEIGHT_M } from "../expressway/below";
 import {
   PIER_STRIDE,
   STATION_STRIDE,
@@ -34,6 +34,7 @@ import type { LocalFrame } from "../geo/frame";
 import { error, log, warn } from "../log";
 import { reanchorBody } from "../physics/reanchor";
 import { type DeckCutGeodetic, deckCutPoints } from "./deckCuts";
+import { meshOf } from "./terrainSurface";
 import { createDeckMaterial, DECK_COLOURS, deckSurfaceAttribute } from "./deckSurface";
 import {
   dashWindows,
@@ -60,7 +61,21 @@ import {
   ringPoint,
 } from "./expresswayMerge";
 import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expresswayRoads";
-import { BORE_FACES, boreLoop, CUT_WALL_GROUND_REACH, headwallQuads, lampQuads } from "./expresswayBore";
+import {
+  BORE_FACES,
+  boreLoop,
+  CUT_WALL_GROUND_REACH,
+  cutsGround,
+  DECK_SLAB_M,
+  EMBANKMENT_APRON_M,
+  EMBANKMENT_FOOT_M,
+  EMBANKMENT_SAMPLE_M,
+  EMBANKMENT_SIDE_REACH,
+  embankmentBounds,
+  otherDeckFootprint,
+  headwallQuads,
+  lampQuads,
+} from "./expresswayBore";
 
 /**
  * Expressway decks from public/data/expressway (knowledge/road-redesign-plan.md 4.5). Each ≤ 300 m
@@ -98,7 +113,7 @@ const MOVE_BEFORE_UPDATE_M = 120;
 /** Road-graph lines for the chunks this close to the network's centre (its tiles are ~1.8 km). */
 export const GRAPH_RADIUS_M = 1300;
 /** Thickness of the deck slab (exported for the structure fit test: it rests on a bridge's floor beams). */
-export const SLAB = 0.35;
+export const SLAB = DECK_SLAB_M;
 /** The box girder's bottom flange as a share of the deck width. */
 const GIRDER_BOTTOM_SHARE = 0.55;
 const PIER_ALONG = 2.2;
@@ -146,6 +161,14 @@ const ROAD_FACES = new Set([0, 1]);
 /** The faces a car meets: the road and both 壁高欄 (a car on a deck alongside meets the outer face). */
 const SOLID_FACES = new Set([0, 1, 3, 4, 5, 11, 12, 13]);
 const SOFFIT_FACE = 8;
+/**
+ * An embankment's (P2.7-6) faces a car meets: the deck's and both walls from the slab down to the
+ * ground (7 and 9, a viaduct's girder webs), as a cut's retaining walls are (R6 b). Its end faces
+ * under the slab are solid too (embankmentCap: a car under the viaduct it meets runs into one).
+ * Why not the soffit: with the walls and the ends solid nothing reaches inside.
+ */
+const EMBANKMENT_SOLID_FACES = new Set([...SOLID_FACES, 7, 9]);
+export { EMBANKMENT_APRON_M };
 const faceColour = (k: number) => (ROAD_FACES.has(k) ? ASPHALT : k === SOFFIT_FACE ? SOFFIT : CONCRETE);
 
 /**
@@ -205,6 +228,10 @@ export function* deckArraySteps(
   // girder's bottom as wide as the deck. Why not a box of its own: the same loop of faces then keeps
   // its colours, the merging and the markings as a viaduct's.
   const isEmbankment = chunk.structure === "embankment";
+  // An embankment's walls meet the drawn terrain (the mesh, terrainAt), a cut's the DEM it reads
+  // (groundAt, P2.7-5, kept as it was). Why not the DEM for both: the mesh's 15.5 m triangles stand
+  // up to 1.6 m off it, over a retaining wall's top or under a wall's foot (review of PR 7b, W3).
+  const terrainAt = place.terrainAt ?? place.groundAt;
   const gw = isEmbankment ? own.edge : own.edge * GIRDER_BOTTOM_SHARE;
   const ph = PARAPET_HEIGHT.value;
   // Below the ground (P9) the section is a tunnel's box or a cut's walls (expresswayBore.ts) along
@@ -240,32 +267,97 @@ export function* deckArraySteps(
       sides,
     );
   };
-  /** An embankment wall's foot on one side (+1 left): the lowest terrain along its face, less 0.3 m. */
-  const footOf = (r: (typeof rings)[number], side: 1 | -1): number | null => {
-    const groundAt = place.groundAt;
-    if (!groundAt) return null;
-    let low = Infinity;
-    for (const d of [0, 0.5]) {
-      const p = ringPoint(r, side * (own.edge + d), 0);
-      const g = place.frame.toGeodetic(p);
-      const h = groundAt(g.lat, g.lon);
-      if (h === null) continue;
-      low = Math.min(low, place.frame.toLocal(g.lat, g.lon, h).y - r.c.y);
-    }
-    return Number.isFinite(low) ? Math.min(-SLAB, low - 0.3) : null;
+  /** The drawn terrain at a local point, relative to a road height (local y), or null where unknown. */
+  const readAt = (point: Vector3, roadY: number): number | null => {
+    if (!terrainAt) return null;
+    const g = place.frame.toGeodetic(point);
+    const h = terrainAt(g.lat, g.lon);
+    return h === null ? null : place.frame.toLocal(g.lat, g.lon, h).y - roadY;
   };
+  /**
+   * The terrain an embankment's wall meets on each side (+1 left), per ring, relative to the ring's
+   * centre (embankmentBounds): read at EMBANKMENT_SIDE_REACH past the slab's edge at the ring and
+   * every EMBANKMENT_SAMPLE_M to the next ring. Without a terrain (or where it is not loaded) the
+   * station's own ground. Null for any other structure.
+   */
+  const bankOf = (side: 1 | -1): Array<{ low: number; high: number }> | null => {
+    if (!isEmbankment) return null;
+    const atRing = rings.map((r) => {
+      const ys = readsKnown(
+        EMBANKMENT_SIDE_REACH.map((d) => readAt(ringPoint(r, side * (own.edge + d), 0), r.c.y)),
+      );
+      return ys.length > 0 ? ys : [r.groundY - r.c.y];
+    });
+    const between = rings.slice(0, -1).map((a, i) => {
+      const b = rings[i + 1];
+      const count = Math.ceil(a.c.distanceTo(b.c) / EMBANKMENT_SAMPLE_M) - 1;
+      const ys: Array<number | null> = [];
+      for (let k = 1; k <= count; k++) {
+        const t = k / (count + 1);
+        for (const d of EMBANKMENT_SIDE_REACH) {
+          const u = side * (own.edge + d);
+          const point = ringPoint(a, u, 0).lerp(ringPoint(b, u, 0), t);
+          ys.push(readAt(point, a.c.y + (b.c.y - a.c.y) * t));
+        }
+      }
+      return readsKnown(ys);
+    });
+    return embankmentBounds(atRing, between);
+  };
+  // An embankment's sides each read the terrain at every ring and between (and the decks beside,
+  // below): a slice after each. Nothing else reads them, so nothing else yields here.
+  const bankLeft = bankOf(1);
+  if (isEmbankment) yield;
+  const banks = { left: bankLeft, right: bankOf(-1) };
+  if (isEmbankment) yield;
+  /**
+   * Whether a local point lies on another chunk's deck or in its hole (within its slab's half width
+   * and HOLE_NEIGHBOUR_M of its centre line): beside a deck alongside, the terrain read there is the
+   * mesh in that deck's hole, and a strip there would stand in its carriageway (review of PR 7b
+   * re-review W-A: up to 2.83 m over the partner's road, 24039751:0 | 24402609:0).
+   */
+  const onOtherDeck = otherDeckTest(chunk, place, context);
+  /**
+   * Per ring and side, whether the embankment's wall there stands at its own slab's edge with open
+   * ground beside it (no other deck at its level at `reach`): the wall rises to the terrain only where
+   * the ground it reads is open (else the parapet: re-review S-1), the apron lies only where its far
+   * edge is too.
+   */
+  const openOf = (sign: 1 | -1, reach: readonly number[]): boolean[] =>
+    rings.map((r, i) => {
+      if (!isEmbankment) return false;
+      const wall = sides[i][sign > 0 ? "left" : "right"].wall;
+      const isOwnEdge = wall !== null && Math.abs(wall.outer - own.edge) < 1e-3;
+      if (!isOwnEdge) return false;
+      return reach.every((d) => !onOtherDeck(ringPoint(r, sign * (own.edge + d), 0), r.frame.z));
+    });
+  // The wall rises where the ground it reads is open; the apron lies where all of its width is.
+  const apronReach = [...EMBANKMENT_SIDE_REACH, EMBANKMENT_APRON_M];
+  const wallLeft = openOf(1, EMBANKMENT_SIDE_REACH);
+  const apronLeft = openOf(1, apronReach);
+  if (isEmbankment) yield;
+  const open = { left: wallLeft, right: openOf(-1, EMBANKMENT_SIDE_REACH) };
+  const apronOpen = { left: apronLeft, right: openOf(-1, apronReach) };
+  if (isEmbankment) yield;
+  /** The drawn terrain's height (local y) at offset u of a ring, or null where it is not known. */
+  const terrainY = (r: (typeof rings)[number], u: number): number | null => {
+    if (!terrainAt) return null;
+    const g = place.frame.toGeodetic(ringPoint(r, u, 0));
+    const h = terrainAt(g.lat, g.lon);
+    return h === null ? null : place.frame.toLocal(g.lat, g.lon, h).y;
+  };
+  const solidFaces = isEmbankment ? EMBANKMENT_SOLID_FACES : SOLID_FACES;
   const faceOf = (k: number) =>
-    bore ? BORE_FACES[bore][k] : { colour: faceColour(k), solid: SOLID_FACES.has(k) };
+    bore ? BORE_FACES[bore][k] : { colour: faceColour(k), solid: solidFaces.has(k) };
   const deckCorners = (i: number): Corners => {
     const r = rings[i];
     const sd = sides[i];
     const lift = (u: number) => liftAt(r, u, bank);
     const at = (u: number, v: number) => ringPoint(r, u, v).toArray();
-    // The girder never reaches below the ground: near a ground end it shortens into a wall.
+    // The girder never reaches below the ground: near a ground end it shortens into a wall. (An
+    // embankment's walls take their feet from the terrain at each side instead: bankOf.)
     const clear = r.c.y - r.groundY;
-    const depth = isEmbankment
-      ? Math.max(SLAB, clear + 0.3)
-      : Math.max(SLAB, Math.min(chunk.girder, clear + 0.3));
+    const depth = Math.max(SLAB, Math.min(chunk.girder, clear + 0.3));
     let lo = -sd.right.reach;
     let hi = sd.left.reach;
     const seamL = sd.left.seam ? [sd.left.seam.x, sd.left.seam.y, sd.left.seam.z] : null;
@@ -325,9 +417,11 @@ export function* deckArraySteps(
       const w = s.wall;
       const slabBottom = at(sign * own.edge, lift(sign * own.edge) - SLAB);
       // An embankment's wall stands on the terrain at its own side (review W4: from the centre line's
-      // ground it floated 3.0 m on the low side and was buried 3.17 m on the high one).
-      const foot = isEmbankment ? footOf(r, sign) : null;
-      const girder = at(sign * gw, foot ?? -depth);
+      // ground it floated 3.0 m on the low side and was buried 3.17 m on the high one), its foot
+      // EMBANKMENT_FOOT_M under the lowest of it.
+      const terrain = (sign > 0 ? banks.left : banks.right)?.[i] ?? null;
+      const foot = terrain ? Math.min(-SLAB, terrain.low - EMBANKMENT_FOOT_M) : -depth;
+      const girder = at(sign * gw, foot);
       if (!w) return [end, end, end, at(endU, lift(endU) - SLAB), slabBottom, girder];
       // A wall whose road does not run up to it stands partly on the master's slab: its inner face
       // starts below the road, so the master's face (up to MERGE_MAX_DZ lower) meets it.
@@ -336,10 +430,17 @@ export function* deckArraySteps(
       const isAtWall = !isClosed && Math.abs(sign * endU - w.inner) < 1e-6 && isOnOwn;
       const inner = sign * w.inner;
       const outer = sign * w.outer;
+      // Where the terrain beside an embankment stands over its road (R1, W4's high side, W5: an
+      // embankment under the ground), its 壁高欄 rises into a cut's retaining wall, to the ground
+      // and CUT_WALL.above over it (cutWallHeight); the parapet's height where the ground is lower.
+      // Why not switch the side to a cut's section: the loop's faces (merging, markings, colliders)
+      // are the deck's, and a parapet is that wall at its lowest.
+      const isOpenBeside = (sign > 0 ? open.left : open.right)[i];
+      const rise = terrain && isOpenBeside ? cutWallHeight(lift(inner), terrain.high, ph) : ph;
       return [
         at(inner, lift(inner) - (isAtWall ? 0 : MERGE_SKIRT)),
-        at(inner, lift(inner) + ph),
-        at(outer, lift(outer) + ph),
+        at(inner, lift(inner) + rise),
+        at(outer, lift(outer) + rise),
         at(outer, lift(outer) - SLAB),
         slabBottom,
         girder,
@@ -385,8 +486,10 @@ export function* deckArraySteps(
   }
   apronTriangles(chunk, own.edge, rings, bank, pos, col);
   // An embankment's ends are closed (review W9): a viaduct's girder shows its box, an embankment
-  // would show its hollow inside where it meets a viaduct or the ground. Both windings (drawn only).
-  if (isEmbankment) for (const loop of [sections[0], sections[sections.length - 1]]) capLoop(loop, pos, col);
+  // would show its hollow inside where it meets a viaduct or the ground. Both windings, solid.
+  if (isEmbankment)
+    for (const loop of [sections[0], sections[sections.length - 1]]) embankmentCap(loop, pos, col, solid);
+  if (isEmbankment) embankmentAprons(rings, apronOpen, own.edge, terrainY, solid);
   const lamps: number[] = [];
   const isTunnel = bore === "tunnel";
   if (isTunnel) tunnelExtras(chunk, own.hw, rings, bank, pos, col, solid, lamps);
@@ -413,19 +516,26 @@ export function* deckArraySteps(
   };
 }
 
+/** The reads that came back (a terrain not loaded there gives null). */
+const readsKnown = (ys: Array<number | null>) => ys.filter((y): y is number => y !== null);
+
 /** Headwall concrete (the 坑門), as BORE_COLOURS.retaining. */
 const HEADWALL = [0.6, 0.59, 0.55];
 
 /**
- * Close a section loop with a fan from its centre, both windings (an embankment's end face, P2.7-6).
- * Why a fan: the loop is star-shaped about its centre (the road over the walls and their feet).
+ * An embankment's end face (P2.7-6): the section under its slab, from the slab's underside at each
+ * edge down to the walls' feet (loop corners 6–11, SECTION_FACES), as a fan from their centre, both
+ * windings, drawn and solid. Why not the whole loop as before: its centre was pulled up by a
+ * retaining wall's top, and the fan stood over the road at the chunk's end (review of PR 7b, W1:
+ * 24039751:0 s 118, 0.40 m by the wall); the road, the parapets' and the walls' ends are a
+ * viaduct's, open.
  */
-function capLoop(loop: Corners, pos: number[], col: number[]): void {
-  const n = loop.length - 1;
-  const c = [0, 1, 2].map((k) => loop.slice(0, n).reduce((sum, p) => sum + p[k], 0) / n);
-  for (let i = 0; i < n; i++) {
-    const a = loop[i];
-    const b = loop[i + 1];
+function embankmentCap(loop: Corners, pos: number[], col: number[], solid: number[]): void {
+  const under = loop.slice(6, 12);
+  const c = [0, 1, 2].map((k) => under.reduce((sum, p) => sum + p[k], 0) / under.length);
+  for (let i = 0; i < under.length; i++) {
+    const a = under[i];
+    const b = under[(i + 1) % under.length];
     const isDegenerate = triangleArea2(c, a, b) < 1e-8;
     if (isDegenerate) continue;
     for (const tri of [
@@ -434,8 +544,94 @@ function capLoop(loop: Corners, pos: number[], col: number[]): void {
     ]) {
       for (const p of tri) pos.push(p[0], p[1], p[2]);
       for (let v = 0; v < 3; v++) col.push(...HEADWALL);
+      for (const p of tri) solid.push(p[0], p[1], p[2]);
     }
   }
+}
+
+/**
+ * Collider-only strips on the drawn terrain beside an embankment's walls (EMBANKMENT_APRON_M from
+ * the slab's edge), between consecutive rings where that side is open (`open`: its wall at its own
+ * edge, no other deck beside), the terrain read every EMBANKMENT_SAMPLE_M between them as the walls
+ * read it (a strip straight from ring to ring stood up to 3.37 m off the drawn terrain: re-review
+ * W-A). Why not lift the terrain's own collider back: it is clipped to the hole by pieces of ~1 m
+ * (terrainCut.ts), and the embankment knows where its wall stands.
+ */
+function embankmentAprons(
+  rings: DeckRing[],
+  open: { left: boolean[]; right: boolean[] },
+  edge: number,
+  terrainY: (r: DeckRing, u: number) => number | null,
+  solid: number[],
+): void {
+  for (const sign of [1, -1] as const) {
+    const isOpen = sign > 0 ? open.left : open.right;
+    const u0 = sign * edge;
+    const u1 = sign * (edge + EMBANKMENT_APRON_M);
+    for (let i = 0; i + 1 < rings.length; i++) {
+      const isBothOpen = isOpen[i] && isOpen[i + 1];
+      if (!isBothOpen) continue;
+      const a = rings[i];
+      const b = rings[i + 1];
+      const count = Math.ceil(a.c.distanceTo(b.c) / EMBANKMENT_SAMPLE_M);
+      let prev: number[][] | null = null;
+      for (let k = 0; k <= count; k++) {
+        const t = k / count;
+        const inner = ringPoint(a, u0, 0).lerp(ringPoint(b, u0, 0), t);
+        const outer = ringPoint(a, u1, 0).lerp(ringPoint(b, u1, 0), t);
+        const y0 = terrainAtPoint(a, b, t, u0, terrainY);
+        const y1 = terrainAtPoint(a, b, t, u1, terrainY);
+        const isKnown = y0 !== null && y1 !== null;
+        if (!isKnown) {
+          prev = null;
+          continue;
+        }
+        const cur = [
+          [inner.x, y0, inner.z],
+          [outer.x, y1, outer.z],
+        ];
+        if (prev)
+          for (const tri of [
+            [prev[0], prev[1], cur[1]],
+            [prev[0], cur[1], cur[0]],
+          ])
+            for (const p of tri) solid.push(p[0], p[1], p[2]);
+        prev = cur;
+      }
+    }
+  }
+}
+
+/** The drawn terrain (local y) at share t from ring a to b at offset u, through a ring between them. */
+function terrainAtPoint(
+  a: DeckRing,
+  b: DeckRing,
+  t: number,
+  u: number,
+  terrainY: (r: DeckRing, u: number) => number | null,
+): number | null {
+  const isAtRing = t === 0 || t === 1;
+  if (isAtRing) return terrainY(t === 0 ? a : b, u);
+  return terrainY(ringBetween(a, b, t, false), u);
+}
+
+/**
+ * A test of whether a local point lies on another run's loaded deck or in its hole
+ * (expresswayBore.ts otherDeckFootprint, in the frame's x/z); always false without a context (no
+ * other decks known) and for anything but an embankment (nothing else asks).
+ */
+function otherDeckTest(
+  chunk: XwChunk,
+  place: GeoToLocal,
+  context: DeckContext | null,
+): (p: Vector3, roadTp: number) => boolean {
+  if (!context || chunk.structure !== "embankment") return () => false;
+  const candidates = [...context.index.runs.keys()].flatMap((run) => context.index.chunksOf(run));
+  const test = otherDeckFootprint(chunk, candidates, (lon, lat) => {
+    const p = place.frame.toLocal(lat, lon, 0);
+    return [p.x, p.z];
+  });
+  return (p, roadTp) => test(p.x, p.z, roadTp);
 }
 
 /**
@@ -1007,7 +1203,7 @@ export class ExpresswayDecks {
   private readonly known = new Map<string, XwChunk>();
   /** Tunnel mouths per run (tunnelAt), dropped when a tile adds chunks. */
   private readonly mouths = new Map<string, number[]>();
-  /** Told of every tunnel and cut chunk read (groundCuts.ts cuts the terrain over it). */
+  /** Told of every chunk read that cuts the ground: tunnel, cut, embankment (groundCuts.ts cuts the terrain over it). */
   private readonly boreListeners: Array<(chunk: XwChunk) => void> = [];
   private readonly index: DeckIndex = new DeckIndex(this.runs);
   private readonly built = new Map<string, Built>();
@@ -1040,7 +1236,11 @@ export class ExpresswayDecks {
     private readonly groundAt?: (lat: number, lon: number) => number | null,
   ) {
     this.frame = frame;
+    this.terrainAt = groundAt ? meshOf(groundAt) : undefined;
   }
+
+  /** The drawn terrain (its mesh) over groundAt's DEM: an embankment's walls meet it (PR 7b). */
+  private readonly terrainAt: ((lat: number, lon: number) => number | null) | undefined;
 
   /** Bring the decks around a point in (and drop far ones); cheap to call every frame. */
   update(lat: number, lon: number): void {
@@ -1093,7 +1293,12 @@ export class ExpresswayDecks {
 
   /** Where a deck's lon/lat/T.P. height is in the current frame (the decks' own transform). */
   place(): GeoToLocal {
-    return { frame: this.frame, ellipsoidal: this.ellipsoidal, groundAt: this.groundAt };
+    return {
+      frame: this.frame,
+      ellipsoidal: this.ellipsoidal,
+      groundAt: this.groundAt,
+      terrainAt: this.terrainAt,
+    };
   }
 
   /** The entrances of the tiles read so far (for the 103・104 on the streets), by run. */
@@ -1111,11 +1316,14 @@ export class ExpresswayDecks {
     fn(this.entrances());
   }
 
-  /** How many chunks are drawn (for checks). */
-  /** Call `fn` with every tunnel and cut chunk read, those read already first (P9). */
+  /**
+   * Call `fn` with every chunk read that cuts the ground (expresswayBore.ts cutsGround: tunnel and
+   * cut, P9, and embankment, P2.7-6 PR 7b), those read already first. The name is P9's: the
+   * listeners (terrain, buildings, streets, lamps) treat an embankment's hole as a cut's.
+   */
   onBore(fn: (chunk: XwChunk) => void): void {
     this.boreListeners.push(fn);
-    for (const c of this.known.values()) if (isBore(c)) fn(c);
+    for (const c of this.known.values()) if (cutsGround(c)) fn(c);
   }
 
   /**
@@ -1155,6 +1363,7 @@ export class ExpresswayDecks {
     return out;
   }
 
+  /** How many chunks are drawn (for checks). */
   chunkCount(): number {
     return this.built.size;
   }
@@ -1300,7 +1509,7 @@ export class ExpresswayDecks {
             if (!this.known.has(c.id)) fresh.push(c);
             this.known.set(c.id, c);
             this.index.add(c);
-            if (isBore(c)) for (const fn of this.boreListeners) fn(c);
+            if (cutsGround(c)) for (const fn of this.boreListeners) fn(c);
           }
           this.mouths.clear();
           if (tile) this.tileVersion++;
@@ -1447,7 +1656,12 @@ export class ExpresswayDecks {
       // The player has moved on and a newer refresh is queued: stop here, it builds what is near now.
       if (isSuperseded()) break;
       const frame = this.frame;
-      const place = { frame, ellipsoidal: this.ellipsoidal, groundAt: this.groundAt };
+      const place = {
+        frame,
+        ellipsoidal: this.ellipsoidal,
+        groundAt: this.groundAt,
+        terrainAt: this.terrainAt,
+      };
       // One chunk that fails (bad data, a bug) must not stop the others nor hold the car: it is
       // left out from then on, with one warning.
       try {

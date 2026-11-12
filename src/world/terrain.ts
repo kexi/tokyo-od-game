@@ -524,24 +524,4 @@ export function builtSquare(
   return { x0: cx - reach, y0: cy - reach, x1: cx + reach + 1, y1: cy + reach + 1 };
 }
 
-/**
- * Height (T.P. m) of the drawn ground at a point: the chunks' grid triangles (TERRAIN_SEGMENTS per
- * z15 tile, ~15 m), which is what a wall must meet, rather than the 5 m DEM between grid points.
- */
-export function meshHeightAt(dem: DemStore, lat: number, lon: number): number {
-  const gi = lonToTileX(lon, TERRAIN_ZOOM) * S;
-  const gj = latToTileY(lat, TERRAIN_ZOOM) * S;
-  const i0 = Math.floor(gi);
-  const j0 = Math.floor(gj);
-  const u = gi - i0;
-  const v = gj - j0;
-  const h = (i: number, j: number) => dem.sampleGlobal((i / S) * 256, (j / S) * 256);
-  // Each cell is split along its b–c diagonal (see buildChunk): corner a = (i, j) on one side.
-  const isNearA = u + v <= 1;
-  if (isNearA) {
-    const a = h(i0, j0);
-    return a + u * (h(i0 + 1, j0) - a) + v * (h(i0, j0 + 1) - a);
-  }
-  const d = h(i0 + 1, j0 + 1);
-  return d + (1 - u) * (h(i0, j0 + 1) - d) + (1 - v) * (h(i0 + 1, j0) - d);
-}
+export { meshHeightAt } from "./terrainSurface";

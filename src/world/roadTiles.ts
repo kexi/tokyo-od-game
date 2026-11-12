@@ -1,3 +1,4 @@
+import type { VectorTile } from "@mapbox/vector-tile";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { warn } from "../log";
 import { gsiVectorTile } from "./gsiVectorTiles";
@@ -10,7 +11,8 @@ import type { RoadLine } from "./roads";
  * 道路種別 rdCtg, 幅員区分 rnkWidth, 幅員 Width (m, when known) and 階層 lvOrder (0 = ground).
  * The tiles come through the shared cache, which the water layer reads too.
  */
-const ZOOM = 16;
+export const ROAD_TILE_ZOOM = 16;
+const ZOOM = ROAD_TILE_ZOOM;
 
 // rnkWidth classes: 0 <3 m, 1 3–5.5 m, 2 5.5–13 m, 3 13–19.5 m, 4 ≥19.5 m (class midpoints).
 const WIDTH_BY_RANK = [2.5, 4.3, 9, 16, 22];
@@ -43,32 +45,41 @@ export class RoadTiles {
 
   private async fetchTile(x: number, y: number): Promise<RoadLine[]> {
     const tile = await gsiVectorTile(ZOOM, x, y);
-    const layer = tile?.layers.road;
-    if (!layer) return [];
-    const lines: RoadLine[] = [];
-    for (let i = 0; i < layer.length; i++) {
-      const f = layer.feature(i);
-      const p = f.properties as Record<string, number>;
-      const isCentreline = Math.floor(p.ftCode / 100) === 27;
-      // Elevated roads (the 都市高速 etc.) have no drivable surface in the game yet.
-      const isGround = (p.lvOrder ?? 0) === 0;
-      if (!isCentreline || !isGround || f.type !== 2) continue;
-      const width = p.Width && p.Width > 0 ? p.Width : (WIDTH_BY_RANK[p.rnkWidth] ?? 4.3);
-      for (const ring of f.loadGeometry()) {
-        const coords: number[] = [];
-        for (const pt of ring) {
-          coords.push(tileXToLon(x + pt.x / layer.extent, ZOOM), tileYToLat(y + pt.y / layer.extent, ZOOM));
-        }
-        if (coords.length >= 4)
-          lines.push({
-            coords,
-            width,
-            oneway: 0,
-            kind: kindFromGsi(p.rdCtg, p.motorway),
-            bridge: p.ftCode === 2703,
-          });
-      }
-    }
-    return lines;
+    return tile ? roadLinesOfTile(tile, x, y) : [];
   }
+}
+
+/**
+ * The ground-level centrelines of one decoded z16 tile (x, y). Exported for the build-time terrain
+ * probe (scripts/expresswayTerrainProbe.ts), which reads the same streets the game lays.
+ */
+export function roadLinesOfTile(tile: VectorTile, x: number, y: number): RoadLine[] {
+  const layer = tile.layers.road;
+  if (!layer) return [];
+  const lines: RoadLine[] = [];
+  for (let i = 0; i < layer.length; i++) {
+    const f = layer.feature(i);
+    const p = f.properties as Record<string, number>;
+    const isCentreline = Math.floor(p.ftCode / 100) === 27;
+    // Elevated roads (the 都市高速 etc.) have no drivable surface in the game yet.
+    const isGround = (p.lvOrder ?? 0) === 0;
+    if (!isCentreline || !isGround || f.type !== 2) continue;
+    const width = p.Width && p.Width > 0 ? p.Width : (WIDTH_BY_RANK[p.rnkWidth] ?? 4.3);
+    for (const ring of f.loadGeometry()) {
+      const coords: number[] = [];
+      for (const pt of ring) {
+        coords.push(tileXToLon(x + pt.x / layer.extent, ZOOM), tileYToLat(y + pt.y / layer.extent, ZOOM));
+      }
+      if (coords.length >= 4)
+        lines.push({
+          coords,
+          width,
+          oneway: 0,
+          kind: kindFromGsi(p.rdCtg, p.motorway),
+          bridge: p.ftCode === 2703,
+          ...(p.ftCode === 2704 ? { tunnel: true } : {}),
+        });
+    }
+  }
+  return lines;
 }

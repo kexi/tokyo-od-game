@@ -279,8 +279,10 @@ describe("構造を高さから決めたチャンク（P2.7-6 PR 1、--structure
     expect(Math.abs(side! - HW)).toBeLessThan(0.02);
     const toTile = (lon: number, lat: number): [number, number] => [lonToTileX(lon, 16), latToTileY(lat, 16)];
     expect(boreHoles(chunk, toTile)).toHaveLength(1);
-    // An embankment has none: it is drawn as a deck.
-    expect(boreHoles(chunkOf("embankment", 6, undefined, 2.2), toTile)).toEqual([]);
+    // An embankment is drawn as a deck, and since P2.7-6 PR 7b cuts the ground under its slab too
+    // (tests/expresswayGradeStructures.test.ts); a viaduct does not.
+    expect(boreHoles(chunkOf("embankment", 6, undefined, 2.2), toTile)).toHaveLength(1);
+    expect(boreHoles(chunkOf("viaduct", 6, undefined, 2.2), toTile)).toEqual([]);
   });
 
   it("the format names the structures by height as a feature: a reader knowing it reads them, an unknown one is refused", () => {

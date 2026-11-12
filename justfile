@@ -295,6 +295,10 @@ update-expressway-ledger dir="public/data/expressway" flags="":
 compare-expressway-chunks a b:
     pnpm exec tsx scripts/compareExpresswayChunks.ts {{ a }} {{ b }}
 
+# 高速道路の盛土・掘割・地平 run の車道の上に地形（ゲームと同じ地形の高さ、穴を反映）や一般道の路面が出る点を数える（dir はラベルか生成先のフォルダ、1 m × 0.5 m ごと、路面 − 2 cm より高い点の数と多いチャンクを 1 行の JSON ログに、1 点でもあれば終了コード 1、flags に --no-streets）
+check-expressway-terrain dir="public/data/expressway" flags="":
+    pnpm exec tsx scripts/expresswayTerrainProbe.ts {{ dir }} {{ flags }}
+
 # ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just fetch-regs のキャッシュを使う）
 make-destinations:
     pnpm exec tsx scripts/destinations.ts

@@ -1,6 +1,9 @@
 import { STATION_STRIDE, type XwChunk, type XwClass, type XwTileRun } from "../expressway/format";
 import { planeAt } from "../expressway/geo";
 import { frameAt, ST, surfaceSamples } from "../expressway/profile";
+import { PARAPET_WIDTH } from "../expressway/assumptions";
+import { carriagewayWidth } from "../expressway/section";
+import { CLEARANCE_HEIGHT } from "../law/roadStandards";
 import { type CrossSection, sectionWidth } from "./laneChange";
 import { isExpressway, OSM_EXPRESSWAY_KIND, type RoadKind, sourceOf, usesGroundSurface } from "./roadClass";
 import { type RoadDiagnostic, type RoadLine, vertexKey } from "./roads";
@@ -44,6 +47,22 @@ const REPLACE_REACH_M = 40;
 const VERTEX_CLEARANCE_M = 1;
 /** A ramp end this close to the edge of the loaded streets is left for the next area. */
 const EXTENT_MARGIN_M = 60;
+/** A street crossing a site within this of where its run meets the ground is that end's street, not cut. */
+const SITE_END_REACH_M = RAMP_REACH_M;
+/** A street meeting a site at less than this angle runs along it (a ramp in its median), not across. */
+const SITE_CROSSING_MIN_DEG = 30;
+/** The grid siteCrossings files the sites' segments in (m). */
+const SITE_CELL_M = 50;
+/** A cut street stops this far short of the site's slab edge (m). */
+const SITE_CLEARANCE_M = 1;
+/**
+ * A deck whose soffit (road less its girder) stands this far over the ground could pass over the
+ * street (siteCrossings `under`: the compiler should have made it a viaduct there): the clearance
+ * of 構造令 第12条. Why not the reduced 3 m of 第12条ただし書: it is for the lowest class of road
+ * alone, none in the data (roadStandards.ts), and the soffit, not the road, is what a car passes
+ * under (re-review W-B).
+ */
+const SITE_UNDER_M = CLEARANCE_HEIGHT.value;
 
 /** The ground end of a ramp (or a structure's street), to be joined to a street in the worker. */
 export type XwGroundEnd = {
@@ -64,7 +83,26 @@ export type XwGroundEnd = {
   limit?: number;
 };
 
-export type XwRoadInput = { lines: RoadLine[]; ends: XwGroundEnd[] };
+/**
+ * The ground an embankment or a cut chunk takes at grade (P2.7-6 PR 7b): its centre line (stations,
+ * lon/lat pairs and their run distances), half its slab's width, and the run distances of its run's
+ * ground, portal and open ends within it (a street crossing there is where the road meets the ground).
+ */
+export type XwSite = {
+  chunk: string;
+  coords: number[];
+  /** Per station: run distance, road and centre line's ground (T.P. m). */
+  s: number[];
+  z: number[];
+  ground: number[];
+  /** The girder under its slab (format.ts XwChunk.girder), m. */
+  girder: number;
+  halfWidth: number;
+  ends: number[];
+};
+
+/** `sites` (PR 7b) is absent in an input made before it, or of decks without an embankment or cut. */
+export type XwRoadInput = { lines: RoadLine[]; ends: XwGroundEnd[]; sites?: XwSite[] };
 
 /**
  * The road kind a chunk's line carries: the expressway's for its main lines and ramps, a local road
@@ -134,9 +172,12 @@ export function expresswayRoadInput(
   }
   const lines: RoadLine[] = [];
   const ends: XwGroundEnd[] = [];
+  const sites: XwSite[] = [];
   for (const chunk of chunks) {
     const run = byRun.get(chunk.run);
     if (!run) continue;
+    const site = siteOf(chunk, run);
+    if (site) sites.push(site);
     const n = chunk.st.length / STATION_STRIDE;
     const s0 = chunk.st[0];
     const s1 = chunk.st[(n - 1) * STATION_STRIDE];
@@ -192,7 +233,41 @@ export function expresswayRoadInput(
     }
   }
   // A junction whose parent chunk is not loaded leaves the child's end open (a dead end in the graph).
-  return { lines, ends };
+  return sites.length > 0 ? { lines, ends, sites } : { lines, ends };
+}
+
+/** A run's end where the road meets the ground, an untraced tunnel or the range's edge. */
+const meetsGround = (kind: string) => kind === "ground" || kind === "portal" || kind === "open";
+
+/** The ground an embankment or cut chunk takes (XwSite), null for a viaduct or tunnel. */
+function siteOf(chunk: XwChunk, run: XwTileRun): XwSite | null {
+  const isAtGrade = chunk.structure === "embankment" || chunk.structure === "cut";
+  if (!isAtGrade) return null;
+  const n = chunk.st.length / STATION_STRIDE;
+  const coords: number[] = [];
+  const s: number[] = [];
+  const z: number[] = [];
+  const ground: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const o = i * STATION_STRIDE;
+    coords.push(chunk.st[o + ST.lon], chunk.st[o + ST.lat]);
+    s.push(chunk.st[o + ST.s]);
+    z.push(chunk.st[o + ST.z]);
+    ground.push(chunk.st[o + ST.ground]);
+  }
+  const ends: number[] = [];
+  if (chunk.prev === null && meetsGround(run.start.kind)) ends.push(s[0]);
+  if (chunk.next === null && meetsGround(run.end.kind)) ends.push(s[n - 1]);
+  return {
+    chunk: chunk.id,
+    coords,
+    s,
+    z,
+    ground,
+    girder: chunk.girder,
+    halfWidth: carriagewayWidth(chunk) / 2 + PARAPET_WIDTH.value,
+    ends,
+  };
 }
 
 /**
@@ -294,7 +369,12 @@ export function joinExpressway(
       if (isNearChunk(line.coords[i], line.coords[i + 1])) return true;
     return false;
   };
-  const out: RoadLine[] = streets.filter((l) => !isReplaced(l));
+  const out: RoadLine[] = cutAtSites(
+    streets.filter((l) => !isReplaced(l)),
+    xw.sites ?? [],
+    xy,
+    report,
+  );
   const gsiExpressway = streets.filter((l) => isExpressway(l) && sourceOf(l) === "gsi");
   const streetKeys = new Set<string>();
   for (const line of out) {
@@ -402,6 +482,269 @@ export function joinExpressway(
     extra.push(joined);
   }
   return [...out, ...xw.lines, ...extra];
+}
+
+/** How a GSI street meets a site (siteCrossings): taken out, or kept and why. */
+export type SiteCrossing = {
+  /** The street's index in the list given. */
+  street: number;
+  chunk: string;
+  /** Run distance on the site's chunk, and where (lat, lon). */
+  s: number;
+  at: [number, number];
+  angleDeg: number;
+  widthM: number;
+  /** The road over the centre line's ground there (m). */
+  overGroundM: number;
+  /**
+   * cut: crosses at grade; under: the deck's soffit clears it (a viaduct the compiler did not make);
+   * both are taken out. end: by the run's ground end; along: runs along it; both kept.
+   */
+  kind: "cut" | "end" | "along" | "under";
+  /** GSI marks the street as in a tunnel (ftCode 2704): an underpass the game does not draw. */
+  tunnel: boolean;
+  /** The street's arc length at the crossing and how far either side is taken out (cut only). */
+  atM: number;
+  reachM: number;
+};
+
+/** The SITE_CELL_M cell of a plane coordinate. */
+const cellOf = (v: number) => Math.floor(v / SITE_CELL_M);
+
+/** A box [x0, y0, x1, y1] round some plane points, widened by m. */
+function boxOfPoints(pts: ReadonlyArray<[number, number]>, m: number): [number, number, number, number] {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of pts) {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return [x0 - m, y0 - m, x1 + m, y1 + m];
+}
+
+/** Whether cutAtSites takes a crossing out (at grade, or under a deck the compiler left low). */
+const isTakenOut = (c: SiteCrossing): c is SiteCrossing & { kind: "cut" | "under" } =>
+  c.kind === "cut" || c.kind === "under";
+
+const isGsiStreet = (street: RoadLine) =>
+  sourceOf(street) === "gsi" && !isExpressway(street) && street.nodeIds === undefined;
+
+/**
+ * Every crossing of a GSI street's centre line with a site's (an embankment's or a cut's) and what
+ * cutAtSites makes of it. Kept: within SITE_END_REACH_M of the run's ground, portal or open end (that
+ * is the ramp's own street, RAMP_REACH_M), or at less than SITE_CROSSING_MIN_DEG (a ramp in a
+ * street's median: its lanes go by on either side). The rest are taken out, `under` where the deck's
+ * soffit stands SITE_UNDER_M or more over the ground (the street could pass under it: a viaduct the
+ * compiler did not make, told apart for the probe; taken out all the same, as its walls stop a car
+ * there: re-review W-B). Each site's segments are filed in a grid first (review W6: all against all
+ * made joinExpressway 28 → ~500 ms).
+ */
+export function siteCrossings(
+  streets: readonly RoadLine[],
+  sites: readonly XwSite[],
+  xy: (lon: number, lat: number) => [number, number],
+): SiteCrossing[] {
+  if (sites.length === 0) return [];
+  const siteXY = sites.map((site) => {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i + 1 < site.coords.length; i += 2) pts.push(xy(site.coords[i], site.coords[i + 1]));
+    return pts;
+  });
+  // The sites' segments by SITE_CELL_M cell of their boxes: a street segment tests only those of
+  // the cells it spans.
+  const cells = new Map<string, Array<[number, number]>>();
+  for (let k = 0; k < siteXY.length; k++) {
+    const line = siteXY[k];
+    for (let j = 0; j + 1 < line.length; j++) {
+      const [x0, y0, x1, y1] = boxOfPoints([line[j], line[j + 1]], 0);
+      for (let cx = cellOf(x0); cx <= cellOf(x1); cx++)
+        for (let cy = cellOf(y0); cy <= cellOf(y1); cy++) {
+          const key = `${cx},${cy}`;
+          cells.set(key, [...(cells.get(key) ?? []), [k, j]]);
+        }
+    }
+  }
+  const minSin = Math.sin((SITE_CROSSING_MIN_DEG * Math.PI) / 180);
+  const out: SiteCrossing[] = [];
+  for (let index = 0; index < streets.length; index++) {
+    const street = streets[index];
+    if (!isGsiStreet(street)) continue;
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i + 1 < street.coords.length; i += 2)
+      pts.push(xy(street.coords[i], street.coords[i + 1]));
+    let along: number[] | null = null;
+    const crossed: number[] = [];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x0, y0, x1, y1] = boxOfPoints([pts[i], pts[i + 1]], 0);
+      const pairs = new Set<string>();
+      for (let cx = cellOf(x0); cx <= cellOf(x1); cx++)
+        for (let cy = cellOf(y0); cy <= cellOf(y1); cy++)
+          for (const [k, j] of cells.get(`${cx},${cy}`) ?? []) pairs.add(`${k}|${j}`);
+      for (const pair of [...pairs].toSorted()) {
+        const [k, j] = pair.split("|").map(Number);
+        const site = sites[k];
+        const line = siteXY[k];
+        const hit = crossingOf(line[j], line[j + 1], pts[i], pts[i + 1]);
+        if (!hit) continue;
+        if (!along) {
+          along = [0];
+          for (let q = 1; q < pts.length; q++)
+            along.push(along[q - 1] + Math.hypot(pts[q][0] - pts[q - 1][0], pts[q][1] - pts[q - 1][1]));
+        }
+        const atM = along[i] + (along[i + 1] - along[i]) * hit.u;
+        // A crossing through a station meets the segments either side of it: one crossing.
+        const isSeen = crossed.some((c) => Math.abs(c - atM) < 0.5);
+        if (isSeen) continue;
+        crossed.push(atM);
+        const lerp = (v: readonly number[]) => v[j] + (v[j + 1] - v[j]) * hit.t;
+        const siteS = lerp(site.s);
+        const overGroundM = lerp(site.z) - lerp(site.ground);
+        const isAtEnd = site.ends.some((e) => Math.abs(e - siteS) <= SITE_END_REACH_M);
+        const isAlong = hit.sin < minSin;
+        const isUnder = overGroundM - site.girder >= SITE_UNDER_M;
+        const kind = isAtEnd ? "end" : isAlong ? "along" : isUnder ? "under" : "cut";
+        // Across the slab and its clearance at this angle, and the street's own half width beside it.
+        const reachM =
+          (site.halfWidth + SITE_CLEARANCE_M) / hit.sin + street.width / 2 / Math.tan(Math.asin(hit.sin));
+        out.push({
+          street: index,
+          chunk: site.chunk,
+          s: Math.round(siteS * 10) / 10,
+          at: [
+            Math.round(
+              (street.coords[i * 2 + 1] + (street.coords[i * 2 + 3] - street.coords[i * 2 + 1]) * hit.u) *
+                1e6,
+            ) / 1e6,
+            Math.round(
+              (street.coords[i * 2] + (street.coords[i * 2 + 2] - street.coords[i * 2]) * hit.u) * 1e6,
+            ) / 1e6,
+          ],
+          angleDeg: Math.round((Math.asin(hit.sin) * 180) / Math.PI),
+          widthM: street.width,
+          overGroundM: Math.round(overGroundM * 100) / 100,
+          kind,
+          tunnel: street.tunnel === true,
+          atM,
+          reachM,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The GSI streets with the stretch taken out where one crosses an embankment or a cut at grade
+ * (XwSite, P2.7-6 PR 7b; which crossings: siteCrossings): from SITE_CLEARANCE_M short of the slab's
+ * edge on one side to as far past the other, so neither the street's surface nor its graph runs
+ * through the walls (a car following it met them, or the hole the ground is cut away in). Each cut
+ * is reported (`street_cut_at_expressway`). Why not a bridge or an underpass: which a crossing is,
+ * is for the compiler to decide (R), and until it does a dead end on each side is what a car can
+ * drive without passing through a wall.
+ */
+function cutAtSites(
+  streets: RoadLine[],
+  sites: readonly XwSite[],
+  xy: (lon: number, lat: number) => [number, number],
+  report: (diagnostic: RoadDiagnostic) => void,
+): RoadLine[] {
+  const cuts = siteCrossings(streets, sites, xy).filter(isTakenOut);
+  if (cuts.length === 0) return streets;
+  const gapsOf = new Map<number, Array<[number, number]>>();
+  for (const c of cuts) {
+    gapsOf.set(c.street, [...(gapsOf.get(c.street) ?? []), [c.atM - c.reachM, c.atM + c.reachM]]);
+    report({
+      event: "street_cut_at_expressway",
+      fields: {
+        chunk: c.chunk,
+        s: c.s,
+        at: c.at,
+        lengthM: Math.round(2 * c.reachM * 10) / 10,
+        angleDeg: c.angleDeg,
+        widthM: c.widthM,
+        overGroundM: c.overGroundM,
+        kind: c.kind,
+        tunnel: c.tunnel,
+      },
+    });
+  }
+  const out: RoadLine[] = [];
+  for (let index = 0; index < streets.length; index++) {
+    const gaps = gapsOf.get(index);
+    if (!gaps) {
+      out.push(streets[index]);
+      continue;
+    }
+    const street = streets[index];
+    const along = [0];
+    for (let i = 2; i + 1 < street.coords.length; i += 2) {
+      const [ax, ay] = xy(street.coords[i - 2], street.coords[i - 1]);
+      const [bx, by] = xy(street.coords[i], street.coords[i + 1]);
+      along.push(along[along.length - 1] + Math.hypot(bx - ax, by - ay));
+    }
+    out.push(...piecesOutside(street, along, gaps));
+  }
+  return out;
+}
+
+/** Where segment a–b crosses segment p–q (shares t along a–b, u along p–q) and the sine of the angle between them. */
+function crossingOf(
+  a: [number, number],
+  b: [number, number],
+  p: [number, number],
+  q: [number, number],
+): { t: number; u: number; sin: number } | null {
+  const ex = b[0] - a[0];
+  const ey = b[1] - a[1];
+  const fx = q[0] - p[0];
+  const fy = q[1] - p[1];
+  const d = ex * fy - ey * fx;
+  const lengths = Math.hypot(ex, ey) * Math.hypot(fx, fy);
+  const isParallel = lengths < 1e-9 || Math.abs(d) < 1e-9 * lengths;
+  if (isParallel) return null;
+  const t = ((p[0] - a[0]) * fy - (p[1] - a[1]) * fx) / d;
+  const u = ((p[0] - a[0]) * ey - (p[1] - a[1]) * ex) / d;
+  const isOn = t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  return isOn ? { t, u, sin: Math.abs(d) / lengths } : null;
+}
+
+/** A street's pieces outside some stretches of its arc length (each piece ≥ 1 m, the graph's least). */
+function piecesOutside(
+  street: RoadLine,
+  along: readonly number[],
+  gaps: ReadonlyArray<[number, number]>,
+): RoadLine[] {
+  const total = along[along.length - 1];
+  const merged = gaps.toSorted((a, b) => a[0] - b[0]);
+  const kept: Array<[number, number]> = [];
+  let from = 0;
+  for (const [g0, g1] of merged) {
+    if (g0 > from) kept.push([from, g0]);
+    from = Math.max(from, g1);
+  }
+  if (from < total) kept.push([from, total]);
+  const pointAt = (l: number): [number, number] => {
+    let i = 0;
+    while (i + 2 < along.length && along[i + 1] < l) i++;
+    const share = (l - along[i]) / (along[i + 1] - along[i] || 1);
+    const k = i * 2;
+    return [
+      street.coords[k] + (street.coords[k + 2] - street.coords[k]) * share,
+      street.coords[k + 1] + (street.coords[k + 3] - street.coords[k + 1]) * share,
+    ];
+  };
+  const out: RoadLine[] = [];
+  for (const [l0, l1] of kept) {
+    const isTooShort = l1 - l0 < 1;
+    if (isTooShort) continue;
+    const coords = [...pointAt(l0)];
+    for (let i = 0; i < along.length; i++)
+      if (along[i] > l0 && along[i] < l1) coords.push(street.coords[i * 2], street.coords[i * 2 + 1]);
+    coords.push(...pointAt(l1));
+    out.push({ ...street, coords });
+  }
+  return out;
 }
 
 /** [lon, lat] pairs in the other order. */

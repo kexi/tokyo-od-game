@@ -181,12 +181,15 @@ export class GroundCuts implements GroundWater {
     const isFresh = cached !== undefined && cached.version === version;
     if (isFresh) return { data: cached!.data, size: SIZE };
     const k = 2 ** (WATER_ZOOM - TERRAIN_ZOOM);
-    // One polygon at a time, the larger share kept: the raster is even–odd, and two stretches that
-    // overlap on a curve would cancel where they overlap.
+    // One polygon at a time: the raster is even–odd, and two stretches that overlap on a curve would
+    // cancel where they overlap. The shares added (up to all of a pixel), not the larger kept: two chunks' holes meet edge to
+    // edge at their shared station, and with the larger the pixels on that line kept half each, so
+    // the terrain showed through as a seam across the road (P2.7-6 PR 7b, the terrain probe: every
+    // point over a road there was on such a line). Where two overlap the sum only cuts a little more.
     const data = new Uint8Array(SIZE * SIZE);
     for (const poly of polys) {
       const one = coverage([poly], x * k, y * k, k, SIZE);
-      for (let i = 0; i < one.length; i++) if (one[i] > data[i]) data[i] = one[i];
+      for (let i = 0; i < one.length; i++) data[i] = Math.min(255, data[i] + one[i]);
     }
     this.cache.set(key, { version, data });
     return { data, size: SIZE };
