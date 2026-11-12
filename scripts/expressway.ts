@@ -968,6 +968,9 @@ function groundSummary(): NonNullable<Report["ground"]> {
     crossingsBlocked: blocked.length,
     crossingsBlockedMiddle: blocked.filter(isMiddle).length,
     betweenTunnels: [...(plan.betweenTunnels ?? [])].sort(),
+    ...(plan.belowJunctions
+      ? { belowJunctions: plan.belowJunctions.map(({ chains: _chains, ...j }) => j) }
+      : {}),
     ...(plan.ground === "compile" ? { settings: groundSettings() } : {}),
     offGround: {
       p95M: Math.round(p95 * 100) / 100,

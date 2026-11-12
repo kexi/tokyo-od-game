@@ -219,6 +219,22 @@ export const ReportSchema = z.strictObject({
       belowUnwritten: z.strictObject({ count, km }),
       /** The stretches at grade left out as the open part between two tunnels (Plan.betweenTunnels). */
       betweenTunnels: z.array(z.string()),
+      /**
+       * S6 PR 7c0 (compile.ts dropBelowJunctions): a below run's junctions with a run at grade, left to
+       * S7 — per pair the run at grade and the below run taken out (id, km), the node inside the parent
+       * or at its end, and whether the range reaches it. Of the whole plan; present in a pruned build
+       * with runs at grade, absent before 7c0.
+       */
+      belowJunctions: z
+        .array(
+          z.strictObject({
+            ground: z.strictObject({ id: z.string(), km }),
+            below: z.strictObject({ id: z.string(), km }),
+            node: z.enum(["inside", "end"]),
+            inRange: z.boolean(),
+          }),
+        )
+        .optional(),
       /** How far the runs at grade stand off the ground under them: |z − ground| at their stations. */
       /** The runs at grade's target weight and band as built (S6 PR 7a); absent before it. */
       settings: z.strictObject({ targetScale: z.number().positive(), bandM: m }).optional(),

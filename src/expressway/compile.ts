@@ -350,6 +350,11 @@ export type Plan = {
   /** The stretches at grade left out as the open part between two tunnels (S7's). */
   betweenTunnels?: string[];
   /**
+   * S6 PR 7c0 (dropBelowJunctions): the junctions of a below run with a run at grade, left out to S7 —
+   * the runs at grade not compiled for it and the below runs dropped, each with its length (km).
+   */
+  belowJunctions?: BelowJunction[];
+  /**
    * `--touchdown all` (S6 PR 3): markSharedTouchdowns lets go the pairs of every class, not only two
    * main lines'. Absent: main lines only, as before.
    */
@@ -376,6 +381,23 @@ export type Plan = {
   groundBandM?: number;
   /** S6 PR 7a2's sweep (`--low-span-soffit`): absent, LOW_SPAN_SOFFIT_MIN. */
   lowSpanSoffitM?: number;
+};
+
+/** A run named with its length (km, to the metre). */
+export type RunKm = { id: string; km: number };
+
+/**
+ * One junction of a below run with a run at grade, left to S7 (dropBelowJunctions): the two runs, the
+ * node inside the parent or at its end, and whether the range reaches it (a run of the range on the
+ * chain of either; set once the range is known, the rule itself does not look at it).
+ */
+export type BelowJunction = {
+  ground: RunKm;
+  below: RunKm;
+  node: "inside" | "end";
+  inRange: boolean;
+  /** The chains of the run at grade and of the below run (for inRange; not written). */
+  chains: [string, string];
 };
 
 /**
@@ -834,6 +856,8 @@ export function planNetwork(
     return false;
   });
   plan.wanted = new Set(wanted.map((r) => r.run.id));
+  const wantedChains = new Set([...plan.wanted].map((id) => plan.runs.get(id)!.chain.id));
+  for (const j of plan.belowJunctions ?? []) j.inRange = j.chains.some((c) => wantedChains.has(c));
   // A run at grade a wanted run hangs from (a seam, a junction) is wanted too (S6 PR 2): the ranges
   // pick runs by their own ways, and one outside them left its children in the air (dangling).
   // A run so added brings its own parents too, of any kind (4848757 in the default range hung from a
@@ -1538,6 +1562,7 @@ export function untiedPairs(
  * universe, so the same runs are kept whatever the range (T8).
  */
 function pruneBelow(plan: Plan): void {
+  dropBelowJunctions(plan);
   const isBelow = (id: string) => plan.runs.get(id)!.below;
   const root = new Map<string, string>();
   for (const id of plan.runs.keys()) root.set(id, id);
@@ -1594,15 +1619,98 @@ function pruneBelow(plan: Plan): void {
     if (isBridging) dropped.add(id);
   }
   if (dropped.size === 0) return;
-  for (const id of dropped) {
+  removeRuns(plan, dropped);
+  plan.belowDeferred.push(...dropped);
+  plan.belowDeferred.sort();
+}
+
+/**
+ * A below run joined at a junction by a run at grade (either one the parent) is dropped to S7, and so
+ * is the run at grade: the junction under the ground has been S7's since P9 (below.ts isBelowCompiled,
+ * and pruneBelow dropping the bridging ones), and the runs at grade let it through (S6 PR 7c0). The
+ * child 4848757:0 (a ramp at grade, an embankment under the ground) leaves the 東京港トンネル's cut
+ * 4854085 over a same pair, and the runtime left a seam_hole at s 45.1–122.1 (7c). The run at grade
+ * is left out as with `--ground skip`: the viaduct or below run beside it ends at the ground there.
+ * Why not count the junction as one more partner in pruneBelow's test: a ramp at grade in the cut's
+ * own component would not make it bridging, and the junction would be written. Why not drop only the
+ * below run: the run at grade's end would be a ground end in the cut's floor, a road out of nowhere.
+ * Decided on the plan alone (endPlan: no DEM, range or solve), so the same runs go whatever the range.
+ */
+function dropBelowJunctions(plan: Plan): void {
+  const isGroundBuild = plan.ground === "compile";
+  if (!isGroundBuild) return;
+  const found: BelowJunction[] = [];
+  const kmOf = (rp: RunPlan): RunKm => ({ id: rp.run.id, km: Math.round(rp.length) / 1000 });
+  // Again until none is left (review S1): taking a run out hands its nodes to the next run of its
+  // chain, so a child at grade that hung from a run at grade taken out may hang from a below run next.
+  for (;;) {
+    const pass = belowJunctionsOf(plan);
+    const isNone = pass.length === 0;
+    if (isNone) break;
+    const ids = new Set<string>();
+    for (const j of pass) {
+      ids.add(j.ground.run.id).add(j.below.run.id);
+      found.push({
+        ground: kmOf(j.ground),
+        below: kmOf(j.below),
+        node: j.node,
+        inRange: false,
+        chains: [j.ground.chain.id, j.below.chain.id],
+      });
+    }
+    removeRuns(plan, ids);
+    for (const j of pass) plan.belowDeferred.push(j.below.run.id);
+  }
+  plan.belowDeferred.sort();
+  plan.belowJunctions = found.sort((a, b) =>
+    a.ground.id !== b.ground.id ? (a.ground.id < b.ground.id ? -1 : 1) : a.below.id < b.below.id ? -1 : 1,
+  );
+}
+
+/**
+ * The junctions of a below run with a run at grade in the plan as it stands, each pair once: which is
+ * which, and whether the node is inside the parent or at its end. At its end (where its chain goes on
+ * in the next run) endPlan takes the run that comes first along the chain, so a ramp at grade leaving
+ * where a cut ends hangs from the cut (5170992 at the end of 5170834): counted as under the ground too.
+ * Why not as a junction on the run at grade beyond: that changes how endPlan picks a parent, not to be
+ * widened before 7c (the coordinator's W1; S7 decides the nodes at the ends).
+ */
+function belowJunctionsOf(plan: Plan): Array<{ ground: RunPlan; below: RunPlan; node: "inside" | "end" }> {
+  const out: Array<{ ground: RunPlan; below: RunPlan; node: "inside" | "end" }> = [];
+  const seen = new Set<string>();
+  for (const id of [...plan.runs.keys()].sort()) {
+    const rp = plan.runs.get(id)!;
+    for (const atStart of [true, false]) {
+      const e = endPlan(plan, rp, atStart);
+      const isJunction = e.kind === "junction";
+      if (!isJunction) continue;
+      const parent = plan.runs.get(e.parent)!;
+      const isGroundOnBelow = rp.ground && parent.below;
+      // Not met today (a below run ending at a junction is deferred: isBelowCompiled), kept so the rule
+      // does not hang on that.
+      const isBelowOnGround = rp.below && parent.ground;
+      const isUnder = isGroundOnBelow || isBelowOnGround;
+      if (!isUnder) continue;
+      const [ground, below] = isGroundOnBelow ? [rp, parent] : [parent, rp];
+      const key = `${ground.run.id}|${below.run.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const isAtEnd = e.parentNodeIndex === parent.run.from || e.parentNodeIndex === parent.run.to;
+      out.push({ ground, below, node: isAtEnd ? "end" : "inside" });
+    }
+  }
+  return out;
+}
+
+/** Takes runs out of the plan: the runs, their chains' runs and every crossing and deck pair of theirs. */
+function removeRuns(plan: Plan, ids: ReadonlySet<string>): void {
+  for (const id of ids) {
     const rp = plan.runs.get(id)!;
     plan.runs.delete(id);
     const list = plan.chainRuns.get(rp.chain.id)!.filter((r) => r !== rp);
     plan.chainRuns.set(rp.chain.id, list);
-    plan.belowDeferred.push(id);
   }
-  plan.belowDeferred.sort();
-  const isKept = (a: string, b: string) => !dropped.has(a) && !dropped.has(b);
+  const isKept = (a: string, b: string) => !ids.has(a) && !ids.has(b);
   plan.crossings = plan.crossings.filter((c) => isKept(c.upper, c.lower));
   plan.ambiguous = plan.ambiguous.filter((c) => isKept(c.upper, c.lower));
   plan.pairs = plan.pairs.filter((p) => isKept(p.a, p.b));

@@ -6,6 +6,7 @@ import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
 import { surfaceAt } from "../src/expressway/profile";
+import { danglingOf } from "../src/expressway/report";
 import { violationsOf } from "../src/expressway/violations";
 
 // S6 PR 2 (`--ground compile`): a chain's stretch at grade becomes a run of its own, seamed (C¹) to the
@@ -432,5 +433,183 @@ describe("地平 run（合成網: 高架 → 地平 600 m → 高架）", () => 
 
   it("needs the structures by height", () => {
     expect(() => planNetwork(net, new Set(), null, [], { ground: "compile" })).toThrow(/structures: height/);
+  });
+});
+
+// S6 PR 7c0: a junction under the ground is S7's. A ramp at grade leaving a cut (the 東京港トンネル's
+// 4854085 and its ramp 4848757 in the default range) is not written, nor is the cut; a run at grade
+// that only seams to a below run is written as before.
+describe("地下・掘割の分合流（PR 7c0: S7 まで出力しない）", () => {
+  const cut = { highway: "motorway", cutting: "yes", layer: "-1", lanes: "2", maxspeed: "60", ref: "C1" };
+  const main = () =>
+    network([
+      { id: 81, x0: 0, x1: 500, tags: bridge },
+      { id: 82, x0: 500, x1: 800, tags: atGrade },
+      { id: 83, x0: 800, x1: 1600, tags: cut },
+      { id: 84, x0: 1600, x1: 1900, tags: atGrade },
+      { id: 85, x0: 1900, x1: 2400, tags: bridge },
+    ]);
+  const link = { highway: "motorway_link", oneway: "yes" };
+  const linkBridge = { ...link, bridge: "yes", layer: "1" };
+  const linkCut = { ...link, cutting: "yes", layer: "-1" };
+  /** Adds ways along new nodes (an existing node id keeps its place): [way id, tags, node ids]. */
+  const addWays = (
+    net: Network,
+    nodes: Array<[number, number, number]>,
+    ways: Array<[number, Record<string, string>, number[]]>,
+  ) => {
+    for (const [id, x, y] of nodes) {
+      const [lon, lat] = plane.toLonLat(x, y);
+      net.nodes.set(id, normalizeNode(id, lon, lat, {}));
+    }
+    for (const [id, tags, ids] of ways) net.ways.set(id, normalizeWay(id, ids, tags));
+    return net;
+  };
+  /** A ramp leaving the main line at node `from`: 86 at grade, then 87 on a viaduct. */
+  const withRamp = (from = 101200, x0 = 1200) =>
+    addWays(
+      main(),
+      [
+        [200001, x0 + 50, -15],
+        [200002, x0 + 100, -40],
+        [200003, x0 + 150, -80],
+        [200004, x0 + 200, -130],
+        [200005, x0 + 250, -190],
+        [200006, x0 + 300, -260],
+        [200007, x0 + 350, -340],
+      ],
+      [
+        [86, link, [from, 200001, 200002, 200003, 200004]],
+        [87, linkBridge, [200004, 200005, 200006, 200007]],
+      ],
+    );
+  const compile = { ...options, ground: "compile" as const };
+  /** What the rule records, without the range (the same whatever it is). */
+  const ruled = (plan: { belowJunctions?: Array<{ ground: unknown; below: unknown; node: unknown }> }) =>
+    plan.belowJunctions?.map(({ ground, below, node }) => ({ ground, below, node }));
+  /** No written end hangs at a junction from a below run (or a run at grade from a below one). */
+  const junctionsUnder = (res: ReturnType<typeof solvePlan>, plan: ReturnType<typeof planNetwork>) =>
+    res.runs.flatMap((r) =>
+      [r.start, r.end]
+        .filter((e) => e.kind === "junction" && plan.runs.get(e.parent!)?.below === true)
+        .map((e) => `${r.id} → ${e.parent}`),
+    );
+
+  it("writes neither the cut nor the ramp at grade; the ramp's viaduct ends at the ground there, and nothing dangles", () => {
+    const plan = planNetwork(withRamp(), new Set(), null, [], compile);
+    expect(plan.runs.has("83")).toBe(false);
+    expect(plan.runs.has("86")).toBe(false);
+    expect(plan.belowDeferred).toContain("83");
+    expect(ruled(plan)).toEqual([
+      { ground: { id: "86", km: expect.any(Number) }, below: { id: "83", km: 0.8 }, node: "inside" },
+    ]);
+    expect(plan.belowJunctions![0].inRange).toBe(true);
+    const res = solvePlan(plan, () => 3, []);
+    expect(res.runs.map((r) => r.id).sort()).toEqual(["81", "82", "84", "85", "87"]);
+    const runs = new Map(res.runs.map((r) => [r.id, r]));
+    expect(runs.get("87")!.start.kind).toBe("ground");
+    // The runs at grade beside the cut end at its portal, as the viaducts did with skip.
+    expect(runs.get("82")!.end.kind).toBe("portal");
+    expect(runs.get("84")!.start.kind).toBe("portal");
+    expect(danglingOf(res.runs)).toEqual([]);
+    expect(junctionsUnder(res, plan)).toEqual([]);
+  });
+
+  it("counts a ramp at grade leaving at the node where the cut ends as under the ground too (W1: the run first along the chain is its parent)", () => {
+    // x 1600: the cut 83 ends and the run at grade 84 begins; endPlan takes 83, the first along the chain.
+    const plan = planNetwork(withRamp(101600, 1600), new Set(), null, [], compile);
+    expect(ruled(plan)).toEqual([
+      { ground: { id: "86", km: expect.any(Number) }, below: { id: "83", km: 0.8 }, node: "end" },
+    ]);
+    const res = solvePlan(plan, () => 3, []);
+    expect(res.runs.map((r) => r.id).sort()).toEqual(["81", "82", "84", "85", "87"]);
+    expect(danglingOf(res.runs)).toEqual([]);
+    expect(junctionsUnder(res, plan)).toEqual([]);
+  });
+
+  it("takes out again until no junction under the ground is left (S1: a child handed on to a below run)", () => {
+    // Ramp R: 104 at grade leaves the cut 83, then its own cut 105 from P and a viaduct 106. Ramp X
+    // (107 at grade, 108 viaduct) leaves R at P, where 104 ends and 105 begins: it hangs from 104 first,
+    // and from the cut 105 once 104 is taken out.
+    const net = addWays(
+      main(),
+      [
+        [300001, 1250, -15],
+        [300002, 1300, -40],
+        [300003, 1350, -80],
+        [300004, 1400, -130],
+        [300005, 1450, -190],
+        [300006, 1500, -260],
+        [300007, 1550, -340],
+        [300008, 1600, -430],
+        [300011, 1350, -200],
+        [300012, 1300, -260],
+        [300013, 1250, -330],
+        [300014, 1200, -400],
+      ],
+      [
+        [104, link, [101200, 300001, 300002, 300003, 300004]],
+        [105, linkCut, [300004, 300005, 300006]],
+        [106, linkBridge, [300006, 300007, 300008]],
+        [107, link, [300004, 300011, 300012]],
+        [108, linkBridge, [300012, 300013, 300014]],
+      ],
+    );
+    const plan = planNetwork(net, new Set(), null, [], compile);
+    expect(ruled(plan)).toEqual([
+      { ground: { id: "104", km: expect.any(Number) }, below: { id: "83", km: 0.8 }, node: "inside" },
+      {
+        ground: { id: "107", km: expect.any(Number) },
+        below: { id: "105", km: expect.any(Number) },
+        node: "end",
+      },
+    ]);
+    for (const id of ["83", "104", "105", "107"]) expect(plan.runs.has(id), id).toBe(false);
+    const res = solvePlan(plan, () => 3, []);
+    expect(res.runs.map((r) => r.id).sort()).toEqual(["106", "108", "81", "82", "84", "85"]);
+    const runs = new Map(res.runs.map((r) => [r.id, r]));
+    // 106 comes out of the cut taken out (its portal), 108 off the ramp at grade taken out.
+    expect(runs.get("106")!.start.kind).toBe("portal");
+    expect(runs.get("108")!.start.kind).toBe("ground");
+    expect(danglingOf(res.runs)).toEqual([]);
+    expect(junctionsUnder(res, plan)).toEqual([]);
+  });
+
+  it("decides it on the plan alone: the same runs go, and the runs both write have the same heights and ends, whatever the range (S2)", () => {
+    const [lonA, latA] = plane.toLonLat(-10, -10);
+    const [lonB, latB] = plane.toLonLat(300, 10);
+    const box = { minLon: lonA, minLat: latA, maxLon: lonB, maxLat: latB };
+    const ranged = planNetwork(withRamp(), new Set(), box, [], compile);
+    const whole = planNetwork(withRamp(), new Set(), null, [], compile);
+    expect(ruled(ranged)).toEqual(ruled(whole));
+    expect([...ranged.runs.keys()].sort()).toEqual([...whole.runs.keys()].sort());
+    const a = solvePlan(ranged, () => 3, []);
+    const b = solvePlan(whole, () => 3, []);
+    const common = a.runs.map((r) => r.id).filter((id) => b.runs.some((r) => r.id === id));
+    expect(common.length).toBeGreaterThan(0);
+    for (const id of common) {
+      const ra = a.runs.find((r) => r.id === id)!;
+      const rb = b.runs.find((r) => r.id === id)!;
+      expect([ra.start.kind, ra.end.kind], id).toEqual([rb.start.kind, rb.end.kind]);
+      const ca = byRun(a.chunks).get(id)!;
+      const cb = byRun(b.chunks).get(id)!;
+      expect(
+        ca.map((c) => [...c.st]),
+        id,
+      ).toEqual(cb.map((c) => [...c.st]));
+    }
+  });
+
+  it("still writes a cut that only seams to runs at grade, and the runs at grade beside it", () => {
+    const plan = planNetwork(main(), new Set(), null, [], compile);
+    expect(plan.belowJunctions).toEqual([]);
+    const res = solvePlan(plan, () => 3, []);
+    expect(res.runs.map((r) => r.id).sort()).toEqual(["81", "82", "83", "84", "85"]);
+    expect(res.runs.find((r) => r.id === "83")!.start).toMatchObject({ kind: "seam", parent: "82" });
+  });
+
+  it("leaves a build without runs at grade as it was (skip: no rule, no record)", () => {
+    const plan = planNetwork(withRamp(), new Set(), null, [], options);
+    expect(plan.belowJunctions).toBeUndefined();
   });
 });
