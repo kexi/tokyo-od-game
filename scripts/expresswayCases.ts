@@ -67,9 +67,29 @@ function structureCases(
   // A build by the tags has none (its viaducts low near their ends are no low-viaduct: nothing was classified).
   if (!isHeight) return [];
   const isBelow = (run: string) => below.has(run);
+  const atGrade = new Set(runs.filter((r) => r.ground === true).map((r) => r.id));
   const out: FoundCase[] = [];
   for (const run of [...byRun.keys()].sort()) {
     const list = byRun.get(run)!;
+    // A run at grade (S6 PR 2) is cuts and embankments by what it is: one case, how far it stands off
+    // the ground, by rule within its band (review W6: as the viaducts' stretches 97 were listed).
+    const isAtGrade = atGrade.has(run);
+    if (isAtGrade) {
+      let off = 0;
+      for (const c of list)
+        for (let i = 0; i < c.st.length; i += STATION_STRIDE)
+          off = Math.max(off, Math.abs(c.st[i + 3] - c.st[i + 5]));
+      const last = list[list.length - 1];
+      out.push({
+        key: `ground-stretch:${run}`,
+        kind: "ground-stretch",
+        run,
+        with: null,
+        chunk: list[0].id,
+        measured: { lengthM: last.st[last.st.length - STATION_STRIDE], heightM: Math.round(off * 100) / 100 },
+      });
+      continue;
+    }
     const numbered = { cut: 0, embankment: 0 };
     for (const h of openGroundStretches(list, isBelow(run))) {
       const kind = h.structure === "cut" ? "cut-stretch" : "embankment-stretch";

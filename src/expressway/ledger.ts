@@ -14,8 +14,9 @@ import {
   CUT_STRETCH_REASON,
   EMBANKMENT_STRETCH_REASON,
   THIN_GIRDER_REASON,
+  GROUND_STRETCH_REASON,
 } from "./allowlist";
-import { GIRDER_MIN } from "./assumptions";
+import { GIRDER_MIN, HEIGHT_STRUCTURES } from "./assumptions";
 import { isOpenGroundRuled } from "./heightStructures";
 import { type District, DISTRICTS } from "./districts";
 import type { HeightKm } from "./highDeck";
@@ -65,6 +66,7 @@ export const CASE_KINDS = [
   "embankment-stretch",
   "thin-girder",
   "low-viaduct",
+  "ground-stretch",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
@@ -76,6 +78,7 @@ export const AUTO_KINDS: readonly CaseKind[] = [
   "cut-stretch",
   "embankment-stretch",
   "thin-girder",
+  "ground-stretch",
 ];
 
 export const STATUSES = ["new", "accepted", "open", "wontfix", "gone"] as const;
@@ -468,6 +471,10 @@ export function isAutoAccepted(c: Pick<FoundCase, "kind" | "measured">): boolean
     );
   if (c.kind === "thin-girder")
     return c.measured.girderM !== undefined && c.measured.girderM >= GIRDER_MIN.value - 1e-9;
+  if (c.kind === "ground-stretch")
+    return (
+      c.measured.heightM !== undefined && c.measured.heightM <= HEIGHT_STRUCTURES.value.ground.bandM + 1e-9
+    );
   return false;
 }
 
@@ -479,6 +486,7 @@ export function ruleReason(kind: CaseKind): string | null {
   if (kind === "cut-stretch") return CUT_STRETCH_REASON;
   if (kind === "embankment-stretch") return EMBANKMENT_STRETCH_REASON;
   if (kind === "thin-girder") return THIN_GIRDER_REASON;
+  if (kind === "ground-stretch") return GROUND_STRETCH_REASON;
   return null;
 }
 
@@ -534,6 +542,7 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   "embankment-stretch": ["lengthM", "depthM", "s0", "s1"],
   "thin-girder": ["girderM"],
   "low-viaduct": ["lengthM", "s0", "s1"],
+  "ground-stretch": ["heightM"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */

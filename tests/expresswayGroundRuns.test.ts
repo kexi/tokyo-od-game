@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
 import { checkJunction } from "../src/expressway/checks";
-import { planNetwork, solvePlan } from "../src/expressway/compile";
+import { mainLineHoles, planNetwork, solvePlan } from "../src/expressway/compile";
 import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
@@ -222,22 +222,155 @@ describe("地平 run（合成網: 高架 → 地平 600 m → 高架）", () => 
     expect(checkJunction(last, false, ramp.end.grade!, chunks.get("2")!)).toEqual([]);
   });
 
-  it("leaves out a stretch at grade between two tunnels (the open part of a tunnel, 赤坂)", () => {
+  it("leaves out a stretch at grade between two tunnels shorter than a vertical curve (赤坂), and compiles a longer one (W4)", () => {
     const tunnel = { highway: "motorway", tunnel: "yes", layer: "-1", lanes: "2", maxspeed: "60", ref: "C1" };
-    const between = network([
-      { id: 11, x0: 0, x1: 500, tags: bridge },
-      { id: 12, x0: 500, x1: 800, tags: tunnel },
-      { id: 13, x0: 800, x1: 850, tags: atGrade },
-      { id: 14, x0: 850, x1: 1150, tags: tunnel },
-      { id: 15, x0: 1150, x1: 1650, tags: bridge },
+    const between = (len: number) =>
+      network([
+        { id: 11, x0: 0, x1: 500, tags: bridge },
+        { id: 12, x0: 500, x1: 800, tags: tunnel },
+        { id: 13, x0: 800, x1: 800 + len, tags: atGrade },
+        { id: 14, x0: 800 + len, x1: 1100 + len, tags: tunnel },
+        { id: 15, x0: 1100 + len, x1: 1600 + len, tags: bridge },
+      ]);
+    const planOf = (len: number) =>
+      planNetwork(between(len), new Set(), null, [], { ...options, ground: "compile", pruneBelow: false });
+    const short = planOf(35);
+    expect(short.runs.has("13")).toBe(false);
+    expect(short.betweenTunnels).toEqual(["13"]);
+    expect(short.runs.has("12")).toBe(true);
+    const long = planOf(600);
+    expect(long.runs.has("13")).toBe(true);
+    expect(long.betweenTunnels).toEqual([]);
+  });
+
+  it("keeps a tunnel between two runs at grade, as skip keeps it between its ground ends (C1)", () => {
+    const tunnel = { highway: "motorway", tunnel: "yes", layer: "-1", lanes: "2", maxspeed: "60", ref: "C1" };
+    const net2 = network([
+      { id: 21, x0: 0, x1: 500, tags: bridge },
+      { id: 22, x0: 500, x1: 900, tags: atGrade },
+      { id: 23, x0: 900, x1: 1300, tags: tunnel },
+      { id: 24, x0: 1300, x1: 1700, tags: atGrade },
+      { id: 25, x0: 1700, x1: 2200, tags: bridge },
     ]);
-    const plan = planNetwork(between, new Set(), null, [], {
-      ...options,
-      ground: "compile",
-      pruneBelow: false,
-    });
-    expect(plan.runs.has("13")).toBe(false);
-    expect(plan.runs.has("12")).toBe(true);
+    const skipPlan = planNetwork(net2, new Set(), null, [], options);
+    const compilePlan = planNetwork(net2, new Set(), null, [], { ...options, ground: "compile" });
+    expect(skipPlan.runs.has("23")).toBe(true);
+    expect(compilePlan.runs.has("23")).toBe(true);
+    expect(compilePlan.belowDeferred).not.toContain("23");
+    const res = solvePlan(compilePlan, () => 3, []);
+    expect(res.runs.map((r) => r.id).sort()).toEqual(["21", "22", "23", "24", "25"]);
+    expect(res.runs.find((r) => r.id === "23")!.start).toMatchObject({ kind: "seam", parent: "22" });
+  });
+
+  it("an isolated mound or hollow moves the road at grade by 0.2 m at most (W2: the median, not the envelopes' mean)", () => {
+    const net3 = network([
+      { id: 31, x0: 0, x1: 1000, tags: bridge },
+      { id: 32, x0: 1000, x1: 2200, tags: atGrade },
+      { id: 33, x0: 2200, x1: 3200, tags: bridge },
+    ]);
+    // The road over level ground, the climbs to the viaducts included: the bump's effect is the difference.
+    const roadOf = (ground: (lon: number, lat: number) => number) => {
+      const res = solvePlan(
+        planNetwork(net3, new Set(), null, [], { ...options, ground: "compile" }),
+        ground,
+        [],
+      );
+      const list = byRun(res.chunks).get("32")!;
+      const last = list[list.length - 1];
+      const zs: number[] = [];
+      for (let s = 0; s <= last.st[last.st.length - STATION_STRIDE]; s += 1) {
+        const c = list.find((k) => k.st[k.st.length - STATION_STRIDE] >= s) ?? last;
+        zs.push(surfaceAt(c.st, s).z);
+      }
+      return zs;
+    };
+    const level = roadOf(() => 3);
+    for (const sign of [1, -1]) {
+      // 3 m high (or deep), 40 m wide, in the middle of the run at grade.
+      const bumped = roadOf((lon, lat) => 3 + (Math.abs(xOf(lon, lat) - 1600) < 20 ? sign * 3 : 0));
+      const worst = Math.max(...bumped.map((z, s) => Math.abs(z - level[s])));
+      expect(worst, `sign ${sign}`).toBeLessThanOrEqual(0.2);
+    }
+  });
+
+  it("on a curve the seam's end sections meet square (W1: the heading across the runs)", async () => {
+    const { checkSeamHeading } = await import("../src/expressway/checks");
+    // A quarter circle of R 300 m with the stretch at grade on it.
+    const R = 300;
+    const curve: Network = { ways: new Map(), nodes: new Map() };
+    // Degrees along the arc: viaduct 0–40°, at grade 40–60° (157 m, the seams inside the curve), viaduct 60–90°.
+    const ways: Array<[number, number, number, Record<string, string>]> = [
+      [41, 0, 40, bridge],
+      [42, 40, 60, atGrade],
+      [43, 60, 90, bridge],
+    ];
+    for (const [id, d0, d1, tags] of ways) {
+      const ids: number[] = [];
+      for (let d = d0; d <= d1; d += 2) {
+        const t = (d / 180) * Math.PI;
+        const nid = 300000 + d;
+        ids.push(nid);
+        const [lon, lat] = plane.toLonLat(R * Math.sin(t), R - R * Math.cos(t));
+        curve.nodes.set(nid, normalizeNode(nid, lon, lat, {}));
+      }
+      curve.ways.set(id, normalizeWay(id, ids, tags));
+    }
+    const res = solvePlan(
+      planNetwork(curve, new Set(), null, [], { ...options, ground: "compile" }),
+      () => 3,
+      [],
+    );
+    const chunks = byRun(res.chunks);
+    const runs = new Map(res.runs.map((r) => [r.id, r]));
+    const v1 = chunks.get("41")!;
+    expect(runs.get("41")!.end).toMatchObject({ kind: "seam", parent: "42" });
+    expect(
+      checkSeamHeading(v1[v1.length - 1], false, runs.get("41")!.end.parentS!, chunks.get("42")!),
+    ).toEqual([]);
+    expect(
+      checkSeamHeading(chunks.get("43")![0], true, runs.get("43")!.start.parentS!, chunks.get("42")!),
+    ).toEqual([]);
+  });
+
+  it("counts the stretch at grade between written viaducts a hole with skip, none with compile (mainLineHoles)", () => {
+    const skipPlan = planNetwork(net, new Set(), null, [], options);
+    const holes = mainLineHoles(skipPlan, new Set(skip.runs.map((r) => r.id)));
+    expect(holes.holes).toEqual({ count: 1, km: 0.6 });
+    expect(holes.belowUnwritten).toEqual({ count: 0, km: 0 });
+    const compilePlan = planNetwork(net, new Set(), null, [], { ...options, ground: "compile" });
+    const none = mainLineHoles(compilePlan, new Set(compiled.runs.map((r) => r.id)));
+    expect(none.holes).toEqual({ count: 0, km: 0 });
+  });
+
+  it("counts a tunnel of a written main line left unwritten (C1's scorecard line)", () => {
+    const tunnel = { highway: "motorway", tunnel: "yes", layer: "-1", lanes: "2", maxspeed: "60", ref: "C1" };
+    const net4 = network([
+      { id: 51, x0: 0, x1: 500, tags: bridge },
+      { id: 52, x0: 500, x1: 900, tags: tunnel },
+    ]);
+    const plan = planNetwork(net4, new Set(), null, [], options);
+    const tally = mainLineHoles(plan, new Set(["51"]));
+    expect(tally.belowUnwritten).toEqual({ count: 1, km: 0.4 });
+  });
+
+  it("a chain ending at a run at grade ends there at the ground, and writes the bank it has there (W11)", () => {
+    const net5 = network([
+      { id: 61, x0: 0, x1: 800, tags: bridge },
+      { id: 62, x0: 800, x1: 1400, tags: atGrade },
+    ]);
+    const res = solvePlan(
+      planNetwork(net5, new Set(), null, [], { ...options, ground: "compile" }),
+      bumpy,
+      [],
+    );
+    const run = res.runs.find((r) => r.id === "62")!;
+    expect(run.ground).toBe(true);
+    expect(run.start).toMatchObject({ kind: "open" });
+    expect(run.end.kind).toBe("ground");
+    const list = byRun(res.chunks).get("62")!;
+    const last = list[list.length - 1];
+    const bank = last.st[last.st.length - STATION_STRIDE + 4];
+    expect(Math.abs(run.end.bank! - bank)).toBeLessThanOrEqual(1e-4);
   });
 
   it("superelevation, strictly: a pinned bank is cut to what the grade leaves (第25条) and the run-ins stay within 第18条", async () => {

@@ -24,6 +24,10 @@ describe("出荷フォルダに書いてよい生成（scripts/expressway.ts、P
     expect(shippedFolderRefusal({ ...plain, isHeight: true })).toMatch(/--structures height/);
     expect(shippedFolderRefusal({ ...plain, hasOut: true, isHeight: true })).toBeNull();
   });
+  it("stops --ground compile without --out, ahead of --structures height it needs (S6 PR 2)", () => {
+    expect(shippedFolderRefusal({ ...plain, isGround: true, isHeight: true })).toMatch(/^--ground compile/);
+    expect(shippedFolderRefusal({ ...plain, hasOut: true, isGround: true, isHeight: true })).toBeNull();
+  });
   it("lets every measuring flag through with --out", () => {
     const all: BuildFlags = {
       hasOut: true,

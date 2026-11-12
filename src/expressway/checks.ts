@@ -249,6 +249,28 @@ export function checkJunction(child: XwChunk, atStart: boolean, grade: number, p
   return [`${child.id}: no parent station at the junction`];
 }
 
+/**
+ * T3 at a seam (S6 PR 2): the child's end section is square with the parent's chunk boundary there,
+ * its heading (h0 at its start, h1 at its end) the parent chunk's at that station within 1e-3 rad.
+ */
+export function checkSeamHeading(
+  child: XwChunk,
+  atStart: boolean,
+  parentS: number,
+  parent: XwChunk[],
+): string[] {
+  const heading = atStart ? child.h0 : child.h1;
+  for (const p of parent) {
+    const s0 = p.st[0];
+    const s1 = p.st[p.st.length - STATION_STRIDE];
+    const at = Math.abs(s0 - parentS) <= 0.011 ? p.h0 : Math.abs(s1 - parentS) <= 0.011 ? p.h1 : null;
+    if (at === null) continue;
+    const isTurned = angleDiff(at, heading) > 1e-3;
+    return isTurned ? [`${child.id}: seam heading ${heading} / ${at}`] : [];
+  }
+  return [`${child.id}: no parent chunk boundary at the seam (s ${parentS})`];
+}
+
 /** Which ends of a run are low enough for the deck to be still climbing (T4 leaves that out). */
 export type Climbs = { start: boolean; end: boolean };
 

@@ -37,10 +37,11 @@ import {
   isHoleAt,
   portalsOf,
 } from "./below";
-import { envelope } from "./designGround";
+import { envelope, movingMedian } from "./designGround";
 import {
   GIRDER_GIVE_M,
   girderFor,
+  HEIGHT_DEAD_BAND_M,
   heightClassAt,
   type HeightClass,
   type HeightStretch,
@@ -321,6 +322,8 @@ export type Plan = {
   structures?: "height";
   /** `--ground compile` (S6 PR 2): the runs at grade of a chain with a compiled run are compiled too. */
   ground?: "compile";
+  /** The stretches at grade left out as the open part between two tunnels (S7's). */
+  betweenTunnels?: string[];
 };
 
 const priority = (net: Network, c: Chain) => {
@@ -616,6 +619,7 @@ export function planNetwork(
   const runs = new Map<string, RunPlan>();
   const diagnostics: XwDiagnostic[] = [];
   const belowDeferred: string[] = [];
+  const betweenTunnels: string[] = [];
   for (const chain of [...chains.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const chainRuns = splitRuns(net, chain);
     if (!chainRuns.some((r) => r.elevated)) continue;
@@ -642,9 +646,16 @@ export function planNetwork(
       // 816254799 and 816254802, 35 m each between the tunnels 24636426 and 816254800 (and 24636427's
       // pair), unsolved at every step (end elevation off by 3.6 m and 0.92 m). Left out, as with skip
       // (the tunnels end there at the ground, as before; S7 takes the open part with the tunnels).
+      // Only one shorter than a vertical curve at its tagged speed (第22条): a longer stretch is a road at
+      // grade between two tunnels (678697941, 1,723 m, review W4) and is compiled.
       const k = chainRuns.indexOf(run);
       const isBelowRun = (r: Run | undefined) => r !== undefined && r.below;
-      const isBetweenTunnels = isBelowRun(chainRuns[k - 1]) && isBelowRun(chainRuns[k + 1]);
+      const firstWay = net.ways.get(run.ways[0])!;
+      const curve = VERTICAL_CURVE_LENGTH.value[designSpeedAtMost(firstWay.maxspeedTag ?? 60)];
+      const runLength = run.ways.reduce((n, w) => n + wayLength(net, net.ways.get(w)!), 0);
+      const isBetweenTunnels =
+        isBelowRun(chainRuns[k - 1]) && isBelowRun(chainRuns[k + 1]) && runLength < curve;
+      if (isGroundMode && isBetweenTunnels) betweenTunnels.push(run.id);
       const isGround = isGroundMode && !run.elevated && !run.below && !isBetweenTunnels;
       const isCompiled = run.elevated || isBelow || isGround;
       if (!isCompiled) continue;
@@ -691,6 +702,7 @@ export function planNetwork(
     nodeChains,
     chainRuns: new Map(),
     belowDeferred,
+    ...(isGroundMode ? { betweenTunnels } : {}),
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
   };
@@ -836,12 +848,20 @@ export type HoleTally = { count: number; km: number };
 export function mainLineHoles(
   plan: Plan,
   written: ReadonlySet<string>,
-): { holes: HoleTally; besideBelow: HoleTally; atChainEnd: HoleTally; outsideRange: HoleTally } {
+): {
+  holes: HoleTally;
+  besideBelow: HoleTally;
+  atChainEnd: HoleTally;
+  outsideRange: HoleTally;
+  belowUnwritten: HoleTally;
+} {
   const out = {
     holes: { count: 0, km: 0 },
     besideBelow: { count: 0, km: 0 },
     atChainEnd: { count: 0, km: 0 },
     outsideRange: { count: 0, km: 0 },
+    // The tunnels and cuts of those chains not written (deferred or pruned: S7's), review C1.
+    belowUnwritten: { count: 0, km: 0 },
   };
   for (const chain of [...plan.chains.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const isMainWritten = (plan.chainRuns.get(chain.id) ?? []).some(
@@ -850,9 +870,14 @@ export function mainLineHoles(
     if (!isMainWritten) continue;
     const runs = splitRuns(plan.net, chain);
     runs.forEach((run, i) => {
+      const km = run.ways.reduce((n, w) => n + wayLength(plan.net, plan.net.ways.get(w)!), 0) / 1000;
+      const isLostBelow = run.below && !written.has(run.id);
+      if (isLostBelow) {
+        out.belowUnwritten.count++;
+        out.belowUnwritten.km += km;
+      }
       const isAtGrade = !run.elevated && !run.below;
       if (!isAtGrade || written.has(run.id)) return;
-      const km = run.ways.reduce((n, w) => n + wayLength(plan.net, plan.net.ways.get(w)!), 0) / 1000;
       const isBesideBelow = [runs[i - 1], runs[i + 1]].some(
         // Any tunnel or cut beside it, written or not: between two the stretch is the tunnel's open part (S7).
         (r) => r !== undefined && r.below,
@@ -1255,6 +1280,11 @@ function pruneBelow(plan: Plan): void {
       [b, a],
     ]) {
       if (!isBelow(x)) continue;
+      // A run at grade it seams to is the road going on, as the ground end it was without runs at grade
+      // (review C1): counted, two of them put the tunnel between two components and it was dropped
+      // (35266568 C1 770 m, 5170834 B 1,674 m, 5213545・5213546 1号 in ship/pruned).
+      const isGroundSeam = plan.runs.get(y)?.ground === true && plan.ground === "compile";
+      if (isGroundSeam) continue;
       const set = partners.get(x) ?? new Set<string>();
       set.add(y);
       partners.set(x, set);
@@ -1836,7 +1866,7 @@ function setupRun(
 
 /**
  * A run at grade (S6 PR 2, `--ground compile`): no floor or ceiling over the ground; the target is the
- * design ground line's middle (designGround.ts `mid`, the ground's long waves without its short ones),
+ * moving median of the ground under its centre line (designGround.ts `movingMedian`, ±150 m: the long waves without the bumps),
  * and a band of ±HEIGHT_STRUCTURES.ground.bandM about it a soft row (RunInput.bandLo / bandHi). The DEM
  * itself only fixes the ground ends. Why not the DEM in the band: it is rough (walls, embankments, the
  * smoothing's half-metre bumps), and the road would take every one (the user's 「PLATEAU（DEM）は凸凹
@@ -1857,7 +1887,7 @@ function setupGround(
 ): RunSetup {
   const n = stations.length;
   const reach = objective.kind === "v2" ? objective.reachM.viaduct : DESIGN_GROUND_REACH.value.viaduct;
-  const target = envelope(groundAt, reach, "mid", GRID_M);
+  const target = movingMedian(groundAt, reach, GRID_M);
   const band = HEIGHT_STRUCTURES.value.ground.bandM;
   const blocked: BlockedRoad[] = [];
   const mine = runPoly(rp);
@@ -2691,7 +2721,7 @@ function solveComponent(
     const st = setups.get(id)!;
     const profile = profiles.get(id)!;
     const ends = st.ends.map((e, side) =>
-      xwEnd(plan, e, side === 0 ? 0 : st.rp.length, profile, profiles, banks, st.groundZ[side]),
+      xwEnd(plan, e, side === 0 ? 0 : st.rp.length, profile, profiles, banks, st.groundZ[side], st.rp),
     );
     solved.set(id, {
       rp: st.rp,
@@ -2896,7 +2926,10 @@ function xwEnd(
   profiles: Map<string, VerticalProfile>,
   banks: Map<string, Float64Array>,
   groundZ: number | null,
+  rp?: RunPlan,
 ): XwEnd {
+  // With runs at grade the banks are read at the very s, as the stations are (chunkRun's bankAt).
+  const isGroundBuild = plan.ground === "compile";
   // A piece's end at an anchor is no end of the run: the run's ends are written once it is stitched.
   if (e.kind === "open" || e.kind === "anchor") return { kind: "open" };
   const here = evalProfile(profile, s);
@@ -2906,7 +2939,12 @@ function xwEnd(
       z: roundTo(here.z, 3),
       grade: roundTo(here.grade, 5),
       ground: roundTo(groundZ ?? here.z, 3),
-      bank: 0,
+      // A run at grade's ground end is not held level (banksOf): its own bank there (review W11:
+      // 157812961 wrote 0 and banked 9.47 %).
+      bank:
+        isGroundBuild && rp?.ground && banks.has(rp.run.id)
+          ? roundTo(bankAt(rp, banks.get(rp.run.id)!, s), 4)
+          : 0,
     };
     return e.into ? { kind: "portal", into: e.into, ...base } : { kind: "ground", ...base };
   }
@@ -2915,7 +2953,9 @@ function xwEnd(
   const parent = profiles.get(e.parent)!;
   const v = evalProfile(parent, ps);
   const pBank = banks.get(e.parent)!;
-  const bank = pBank[Math.min(pBank.length - 1, Math.max(0, sampleAt(pp, ps) - pp.i0))];
+  const bank = isGroundBuild
+    ? bankAt(pp, pBank, ps)
+    : pBank[Math.min(pBank.length - 1, Math.max(0, sampleAt(pp, ps) - pp.i0))];
   return {
     kind: e.kind,
     parent: e.parent,
@@ -3017,8 +3057,8 @@ function banksOf(
       if (!pBank) return null;
       const pp = plan.runs.get(e.parent)!;
       const ps = pp.align.s[pp.align.vertexSample[e.parentNodeIndex]] - pp.align.s[pp.i0];
-      // At the parent's last station the last sample, as chunkRun writes it there (runs at grade only).
-      // At the parent's own s, as chunkRun writes its station there (runs at grade only).
+      // With runs at grade, interpolated at the parent's own s as chunkRun writes its station there, so the
+      // child's pinned end and the parent's station agree; without them the sample before, as before.
       return plan.ground === "compile"
         ? bankAt(pp, pBank, ps)
         : pBank[Math.min(pBank.length - 1, Math.max(0, sampleAt(pp, ps) - pp.i0))];
@@ -3938,10 +3978,15 @@ function structureCheck(o: RunOver, chunks: XwChunk[]): XwRunStructure {
  * Plan heading at run distance s (radians, anticlockwise from east), from the smoothed samples
  * ±3 m around it: both chunks at a seam get the same value, so their end cross-sections match.
  */
-function headingAt(rp: RunPlan, s: number): number {
-  const i = sampleAt(rp, s);
-  const a = Math.max(rp.i0, i - 3);
-  const b = Math.min(rp.i1, i + 3);
+function headingAt(rp: RunPlan, s: number, isAcross = false): number {
+  // `isAcross` (runs at grade, S6 PR 2): the chain's samples past the run's ends too, and the run's last
+  // sample at its end, so both runs at a seam take the same samples (review W1: up to 0.237 rad apart
+  // where a seam lies in a curve, each cut at its own end).
+  const isEnd = isAcross && s >= rp.length - 1e-9;
+  const i = isEnd ? rp.i1 : sampleAt(rp, s);
+  const last = rp.align.s.length - 1;
+  const a = isAcross ? Math.max(0, i - 3) : Math.max(rp.i0, i - 3);
+  const b = isAcross ? Math.min(last, i + 3) : Math.min(rp.i1, i + 3);
   const xy = rp.align.xy;
   const [lonA, latA] = rp.plane.toLonLat(xy[2 * a], xy[2 * a + 1]);
   const [lonB, latB] = rp.plane.toLonLat(xy[2 * b], xy[2 * b + 1]);
@@ -4530,6 +4575,37 @@ function chunkRun(
   // Why not plan stations alone: across a knot the cubic overshoots the end grades (5.02 % on a
   // 5 % section) and the curvature (1.05e-3 against 1/1000).
   // The start always, even of a chunk under 2 m (a short speed zone): one station is no chunk.
+  /**
+   * A run at grade's stations where the ground between two stations is not their line within the dead
+   * band (heightStructures HEIGHT_DEAD_BAND_M): its structure is the ground's every metre, and T13
+   * reads the ground linear between the files' stations. Why: at a tunnel's mouth the DEM stands up at
+   * the portal (4853045 at s 0, 2.5 m over the road, the ground fallen by s 3), and 20 m of line from
+   * it read as an 18 m cut the compiler never saw. Kept as knots are (never left out as crowding).
+   */
+  const groundKnots = (a: number, b: number, knots: number[]): number[] => {
+    const groundOf = (sv: number) => {
+      const p = poseAt(rp, sv);
+      return ground(p.lon, p.lat);
+    };
+    const added: number[] = [];
+    let marks = [a, b, ...knots].sort((p, q) => p - q);
+    for (let pass = 0; pass < 32; pass++) {
+      let worst = { at: -1, off: HEIGHT_DEAD_BAND_M };
+      for (let i = 0; i + 1 < marks.length; i++) {
+        const [p, q] = [marks[i], marks[i + 1]];
+        const [gp, gq] = [groundOf(p), groundOf(q)];
+        for (let sv = Math.ceil(p + 1); sv < q - 1; sv += 1) {
+          const off = Math.abs(groundOf(sv) - (gp + ((gq - gp) * (sv - p)) / (q - p)));
+          if (off > worst.off) worst = { at: sv, off };
+        }
+      }
+      const isDone = worst.at < 0;
+      if (isDone) break;
+      added.push(worst.at);
+      marks = [...marks, worst.at].sort((p, q) => p - q);
+    }
+    return added;
+  };
   const chunkStations: number[][] = [];
   for (let k = 0; k + 1 < bounds.length; k++) {
     const a = bounds[k];
@@ -4538,7 +4614,10 @@ function chunkRun(
     for (let sv = a + stationStep(poseAt(rp, a).kappa); sv < b - 2; sv += stationStep(poseAt(rp, sv).kappa))
       positions.push(sv);
     positions.push(b);
-    chunkStations.push(stationPositions(positions, runKnots(s, a, b), a, b));
+    const knots = runKnots(s, a, b);
+    chunkStations.push(
+      stationPositions(positions, rp.ground ? [...knots, ...groundKnots(a, b, knots)] : knots, a, b),
+    );
   }
   // Each station's digits (STATION_DIGITS): the finest an interval beside it needs, a chunk's end
   // over both chunks so the next chunk starts with the very same values (T3).
@@ -4657,8 +4736,8 @@ function chunkRun(
       gmax: gradeLimitFor(V, isSpecialAt(s, (a + b) / 2)),
       g0: roundTo(evalRun(s, a).grade, 6),
       g1: roundTo(evalRun(s, b).grade, 6),
-      h0: roundTo(headingAt(rp, a), 6),
-      h1: roundTo(headingAt(rp, b), 6),
+      h0: roundTo(headingAt(rp, a, plan.ground === "compile"), 6),
+      h1: roundTo(headingAt(rp, b, plan.ground === "compile"), 6),
       girder,
       st,
       piers: chunkPiers,

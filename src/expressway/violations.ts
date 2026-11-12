@@ -12,6 +12,7 @@ import {
   checkVerticalCurves,
   climbingEnds,
   isTunnelFreeRun,
+  checkSeamHeading,
 } from "./checks";
 import { STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
 import { checkHeightStructures } from "./heightStructures";
@@ -50,9 +51,9 @@ export function violationsOf(
     const m = d.kind === "ramp_radius" ? /R=([\d.]+) m/.exec(d.detail) : null;
     if (m) reported.set(d.run, Number(m[1]) - CASE_MARGIN.radiusM);
   }
-  const decided = rampFloor;
-  rampFloor = (run) => decided(run) ?? reported.get(run);
+  const floorOf = (run: string) => rampFloor(run) ?? reported.get(run);
   const runs = new Map(meta.runs.map((r) => [r.id, r]));
+  const isGroundBuild = meta.runs.some((r) => r.ground === true);
   const byRun = new Map<string, XwChunk[]>();
   for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
   for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
@@ -77,14 +78,16 @@ export function violationsOf(
         isHeight && run.structure === null,
       ),
     );
-    found.T6.push(...checkPlan(c, run, rampFloor(c.run)).problems);
+    found.T6.push(...checkPlan(c, run, floorOf(c.run)).problems);
     found.T7.push(...checkSuperelevation(c));
   }
   for (const r of meta.runs) {
     const list = byRun.get(r.id);
     if (!list) continue;
     for (let i = 1; i < list.length; i++)
-      found.T3.push(...checkChunkJoin(list[i - 1], list[i], rampFloor(r.id)));
+      // The ramp's floor for T3's heading only in a height build: a build by the tags keeps T3 as it was
+      // (review W9: a decided ramp-radius would have eased its heading too).
+      found.T3.push(...checkChunkJoin(list[i - 1], list[i], isHeight ? floorOf(r.id) : undefined));
     for (const [atStart, end] of [
       [true, r.start],
       [false, r.end],
@@ -93,6 +96,13 @@ export function violationsOf(
       const parent = isJoined ? byRun.get(end.parent!) : undefined;
       if (!parent) continue;
       found.T3.push(...checkJunction(atStart ? list[0] : list[list.length - 1], atStart, end.grade!, parent));
+      // A seam is one road going on (S6 PR 2): its end sections meet square, the same heading both sides
+      // (review W1). Only with runs at grade, where every seam's heading is read across the runs.
+      const isSeamChecked = isGroundBuild && end.kind === "seam";
+      if (isSeamChecked)
+        found.T3.push(
+          ...checkSeamHeading(atStart ? list[0] : list[list.length - 1], atStart, end.parentS!, parent),
+        );
     }
     found.T5.push(...checkGroundEnd(list[0], r, true), ...checkGroundEnd(list[list.length - 1], r, false));
     const first = list[0].st;
@@ -105,8 +115,9 @@ export function violationsOf(
       ? { z0: first[5], z1: last[last.length - STATION_STRIDE + 5] }
       : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
     const isTunnelFree = isHeight && isTunnelFreeRun(list, r, ends);
-    // A height build's cuts that are no below run by their tags (a viaduct's, a run at grade's) are T13's.
-    const isJudgedCover = !isHeight || r.below === true;
+    // A run at grade's cuts are T13's (its road is within a band of the ground, no ceiling). A viaduct
+    // -tagged run's cuts keep T12 (review W10): they are deeper than the dead band by what they are.
+    const isJudgedCover = !(isHeight && r.ground === true);
     if (isJudgedCover) for (const c of list) found.T12.push(...checkCover(c, r, ends, isTunnelFree));
     if (isHeight) found.T13.push(...checkHeightStructures(list, r.below === true, r.ground === true));
   }
