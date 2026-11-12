@@ -342,6 +342,19 @@ export const GIRDER_MIN: Assumption<number> = {
 };
 
 /**
+ * The lowest soffit (the deck's lowest surface over a blocked road's window, less GIRDER_MIN, over the
+ * road's ground) at which a height build spans a road it cannot clear by 4.5 m instead of standing an
+ * embankment on it (S6 PR 7a2, the low spans). The road stays blocked and the shortfall is listed in
+ * the ledger (low-clearance).
+ */
+export const LOW_SPAN_SOFFIT_MIN: Assumption<number> = {
+  value: 2.5,
+  verified: false,
+  reason:
+    "仮定（S6 PR 7a2）。根拠はゲーム: 乗用車級（パトカー 1.77 m、src/game/vehicleModels.ts）が余裕を持って抜けられ、橋として描いて壁よりましと言える下限。窓の最低点（PR 1 の C1 の測り方）で測る。8 t トラック 2.78 m・バス 3.10 m・10 t トラック 3.79 m は、下面がそれ未満の所で桁を抜ける。これは合格ではなく、台帳の low-clearance に載せて R で直す不足。道路構造令第12条ただし書の 3 m・4 m（低い級の道路で大型車がごく少なく迂回路がある場合）は、幅 30 m の道には当たらずデータでも確かめられないので流用しない。2.5 m は構造令が歩道・自転車道に置く高さと同じ数だが、適合の根拠にはしない",
+};
+
+/**
  * How a viaduct-tagged run's stretch is drawn once its solved height decides the structure (P2.7-6
  * PR 1, `--structures height`): a cut where the road is under the ground, an embankment (retaining
  * walls to the ground, no piers) where it is over the ground but under the open-ground floor, and a

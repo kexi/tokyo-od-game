@@ -25,6 +25,8 @@ export type BuildFlags = {
   isNoseOverlap?: boolean;
   /** --hold-mains on (S6 PR 6: a main line off its own line near a junction is the ramp's miss). */
   isHoldMains?: boolean;
+  /** --low-span-soffit (S6 PR 7a2: the low spans' least soffit, a sweep). */
+  isLowSpanSweep?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
@@ -47,6 +49,7 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   if (f.isTouchdownAll) return `--touchdown all is for measuring until it is the default: ${MEASURE}`;
   if (f.isCompanions) return `--companions on is for measuring until it is the default: ${MEASURE}`;
   if (f.isGround) return `--ground compile is for measuring until it is the default: ${MEASURE}`;
+  if (f.isLowSpanSweep) return `--low-span-soffit is for a sweep of the low spans: ${MEASURE}`;
   if (f.isHeight) return `--structures height is for measuring until it is the default: ${MEASURE}`;
   return null;
 }

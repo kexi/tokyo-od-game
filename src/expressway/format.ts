@@ -134,6 +134,12 @@ export type XwChunk = {
   crossWindows?: number[];
   blocked: number[];
   /**
+   * A height build's low spans (S6 PR 7a2): per `blocked` entry, the half window the deck spans over
+   * it though short of 4.5 m (0 where it is not spanned low). Only on a chunk holding one; optional, so
+   * the format version does not change.
+   */
+  blockedWindows?: number[];
+  /**
    * Stretches [s0, s1] of this chunk whose carriageway lies over or under another run's, and how
    * they stand to it (the compiler's relation: one surface, or a level above / below). P3 reads
    * these instead of finding the overlaps again at run time.

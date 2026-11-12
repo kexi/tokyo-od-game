@@ -627,3 +627,42 @@ describe("GSI のトンネルの道（roadTiles.ts roadLinesOfTile、PR 7b の 3
     ]);
   });
 });
+
+describe("低い径間の両側の盛土（P2.7-6 PR 7a2、実行時は変えない）", () => {
+  // Embankment x 100–200, a low span (viaduct on the thinnest girder) x 200–300, embankment 300–400,
+  // the road 4.5 m over the ground there (a soffit of 2.8 m): the compiler's low span.
+  const ground = ROAD - 4.5;
+  const chunks = [
+    chunkOf("embankment", ground, { id: "B:0", k: 0, next: "B:1" }, 100),
+    chunkOf("viaduct", ground, { id: "B:1", k: 1, prev: "B:0", next: "B:2", girder: 1.7 }, 200),
+    chunkOf("embankment", ground, { id: "B:2", k: 2, prev: "B:1" }, 300),
+  ];
+  const world = () => {
+    const w = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    worlds.push(w);
+    for (const c of chunks) {
+      const b = built(c);
+      createDeckBody(w, b.collider, b.piers, null);
+    }
+    w.step();
+    return w;
+  };
+  const under = (x: number) => {
+    const [lon, lat] = plane.toLonLat(x, 0);
+    return frame.toLocal(lat, lon, ground + 1 + N);
+  };
+
+  it("a wide street under the span is kept whole (not cut at the site)", () => {
+    expect(join(chunks, runOf("seam"), [streetAt(250, 90, 30)]).streets).toHaveLength(1);
+  });
+
+  it("nothing stands across the street under the span, and the embankments either side close with a solid end face", () => {
+    const w = world();
+    const mid = under(250);
+    // Along the street (north to south, 1 m over its ground) under the span: no collider within 60 m.
+    expect(cast(w, { x: mid.x, y: mid.y, z: mid.z - 20 }, { x: 0, y: 0, z: 1 })).toBeNull();
+    // Along the run under the span, west and east: each embankment's end face 50 m off.
+    expect(Math.abs(cast(w, mid, { x: -1, y: 0, z: 0 })! - 50)).toBeLessThan(0.3);
+    expect(Math.abs(cast(w, mid, { x: 1, y: 0, z: 0 })! - 50)).toBeLessThan(0.3);
+  });
+});

@@ -274,6 +274,14 @@ if (isWeightBad) throw new Error(`--companion-weight must be > 0`);
 const isCompanions = companionsArg === "on";
 const isCompanionsInBlocks = isCompanions && partitionMode === "blocks";
 if (isCompanionsInBlocks) throw new Error("--companions on needs --partition components");
+// S6 PR 7a2: --low-span-soffit <m>, the low spans' lowest soffit (LOW_SPAN_SOFFIT_MIN), for a sweep
+// (measuring only, with --out; 99 turns the rule off). Only with --structures height.
+const lowSpanArg = arg("low-span-soffit");
+const lowSpanSoffitM = lowSpanArg === undefined ? null : Number(lowSpanArg);
+const isLowSpanBad = lowSpanSoffitM !== null && !(lowSpanSoffitM > 0);
+if (isLowSpanBad) throw new Error("--low-span-soffit must be > 0 (m)");
+const isLowSpanWithoutHeight = lowSpanSoffitM !== null && structuresMode !== "height";
+if (isLowSpanWithoutHeight) throw new Error("--low-span-soffit needs --structures height");
 // S6 PR 4: --ramp-shift <m> moves a ramp off the main line it meets where the two overlap apart in height
 // (案 A, from a first solve, by m at most); --nose-surface overlap holds two runs that meet at a node one
 // surface wherever they overlap (案 B).
@@ -310,6 +318,7 @@ const refusal = shippedFolderRefusal({
   isRampShift: rampShiftM !== null,
   isNoseOverlap: noseMode === "overlap",
   isHoldMains: holdMode === "on",
+  isLowSpanSweep: lowSpanSoffitM !== null,
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -442,6 +451,7 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
     ? { groundTargetScale: v2Number("ground-target-scale", 1) }
     : {}),
   ...(arg("ground-band") !== undefined ? { groundBandM: v2Number("ground-band", 1.5) } : {}),
+  ...(lowSpanSoffitM !== null ? { lowSpanSoffitM } : {}),
   ...(isCompanions ? { companionWeight } : {}),
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 };
