@@ -391,6 +391,25 @@ describe("地平 run（合成網: 高架 → 地平 600 m → 高架）", () => 
     expect(bank[n - 1]).toBe(0);
   });
 
+  it("superelevation, strictly: a pin beside an end held to its parent's bank runs in to it, away from 0 if need be (895902565:7, PR 3)", async () => {
+    const { superelevation } = await import("../src/expressway/superelevation");
+    const { MAX_SUPERELEVATION, TRANSITION_LENGTH } = await import("../src/law/roadStandards");
+    // A straight 50 m sampled every 5.5 m or so; the end held at 0.0146, a pin of 0.0029 one sample short.
+    const s = Float64Array.from([0, 6, 12, 18, 24, 30, 36, 42, 47.5, 53]);
+    const n = s.length;
+    const kappa = new Float64Array(n);
+    const room = new Float64Array(n).fill(0.1);
+    const pins = new Float64Array(n).fill(Number.NaN);
+    pins[n - 2] = 0.0029;
+    const bank = superelevation(60, kappa, s, { start: 0, end: 0.0146 }, { room, pins, strict: true });
+    const rate = MAX_SUPERELEVATION.value.type1to3 / TRANSITION_LENGTH.value[60];
+    for (let i = 1; i < n; i++)
+      expect(Math.abs(bank[i] - bank[i - 1]) / (s[i] - s[i - 1]), `s ${s[i]}`).toBeLessThanOrEqual(
+        rate + 1e-9,
+      );
+    expect(bank[n - 1]).toBe(0.0146);
+  });
+
   it("moves a structure's boundary off a tight curve: to the nearest knot outside it, else to its nearer end, within 20 m (T3, 60942193:1)", async () => {
     const { offTightCurve } = await import("../src/expressway/compile");
     // A ramp sampled every metre over 100 m, on a curve of R 15 m (its floor) from 40 to 70 m.

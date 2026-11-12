@@ -105,10 +105,23 @@ export const MEASURES = [
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
+/**
+ * Who decided a case: a rule, a review, or (a merge_skipped, S6 PR 3) the key of the two runs' overlap
+ * case it follows (`followPairs`).
+ */
+export type DecidedBy = "rule" | "review" | `${PairKind}:${string}` | null;
+
+/** The overlap cases a merge_skipped of the same two runs follows. */
+export const PAIR_KINDS = ["changeover", "parallel-ramp", "other", "touchdown"] as const;
+type PairKind = (typeof PAIR_KINDS)[number];
+
+/** Whether a case's decision is an overlap case's, followed (S6 PR 3). */
+const isPairBy = (by: DecidedBy): boolean => by !== null && by !== "rule" && by !== "review";
+
 /** A decision as a review wrote it (kept in `previous` when the case leaves its cap). */
 export type Decision = {
   status: CaseStatus;
-  by: "rule" | "review" | null;
+  by: DecidedBy;
   cap: Measured | null;
   reason: string | null;
   qa: string | null;
@@ -128,7 +141,7 @@ export type LedgerCase = {
   measured: Measured;
   cap: Measured | null;
   status: CaseStatus;
-  by: "rule" | "review" | null;
+  by: DecidedBy;
   reason: string | null;
   /** The view that shows it (`<view table>/<view id>`, scripts/qa/views) or a drive's id. */
   qa: string | null;
@@ -635,6 +648,9 @@ const NEW: Decision = { status: "new", by: null, cap: null, reason: null, qa: nu
  * carry (the rule decides again); `new` stays `new`.
  */
 function carry(decision: Decision, measured: Measured): { decision: Decision; previous: Decision | null } {
+  // A followed overlap case decides again each count (followPairs), as a rule does, and leaves no previous.
+  const isFollowed = isPairBy(decision.by);
+  if (isFollowed) return { decision: { ...NEW, qa: decision.qa }, previous: null };
   const isUndecided = decision.status === "new" || decision.by === "rule";
   if (isUndecided)
     return { decision: { ...NEW, qa: decision.qa }, previous: decision.by === "rule" ? decision : null };
@@ -657,6 +673,11 @@ export type UpdateOptions = {
   seed?: Ledger | null;
   /** Write the budget from this summary (a review tightening or loosening the ratchet). */
   writeBudget?: boolean;
+  /**
+   * Where each pair of runs ("a|b", a < b) overlaps with a forbidden height difference, per run (run
+   * distances, overlap.ts deckOverlaps' spans: stretches): what a merge_skipped follows (followPairs).
+   */
+  pairSpans?: PairSpans;
 };
 
 /**
@@ -721,9 +742,72 @@ export function updateLedger(prev: Ledger | null, opts: UpdateOptions): Ledger {
     );
   }
   cases.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  followPairs(cases, opts.pairSpans ?? new Map());
   const summary = summaryOf(cases, opts.seamProbes, opts.rules, opts.heightKm);
   const budget = opts.writeBudget ? budgetOf(summary) : (prev?.budget ?? null);
   return { version: LEDGER_VERSION, data: opts.data, summary, budget, cases };
+}
+
+/** Each run pair's ("a|b", a < b) overlap stretches per run (overlap.ts deckOverlaps' spans). */
+export type PairSpans = ReadonlyMap<
+  string,
+  Readonly<Record<string, ReadonlyArray<readonly [number, number]>>>
+>;
+
+/** How far a merge_skipped's stretch may reach past its pair's overlap and still be inside it (m). */
+const FOLLOW_MARGIN_M = STRETCH_GAP_M;
+
+/**
+ * A merge_skipped no review decided (S6 PR 3), accepted with the overlap case of the same two runs
+ * (changeover, parallel-ramp, other, touchdown) when that case is accepted (or wontfix) and the
+ * stretch lies within the pair's overlap on its run (FOLLOW_MARGIN_M either way): `by` is that case's
+ * key. Decided anew each count; one no longer followed is `new` again. Why only the undecided: a
+ * review's decision stays the review's (the shipped data's 45 decided merge_skipped are left as they
+ * are). Why fold them at all: the same two decks apart in height make both cases, and ship had about
+ * 500 merge_skipped to judge one by one beside their pairs.
+ */
+function followPairs(cases: LedgerCase[], spans: PairSpans): void {
+  const byKey = new Map(cases.map((c) => [c.key, c]));
+  cases.forEach((c, i) => {
+    const isMerge = c.kind === "merge_skipped" && c.with !== null;
+    if (!isMerge) return;
+    const isFollowed = isPairBy(c.by);
+    // One a review decided and that left its cap (`new`, the review's decision in previous) is the
+    // review's to see again, not the pair's (PR 3 review W3).
+    const isLeftReview = c.status === "new" && c.previous?.by === "review";
+    const isOpenToFollow = (c.status === "new" && !isLeftReview) || isFollowed;
+    if (!isOpenToFollow) return;
+    const [a, b] = c.run < c.with! ? [c.run, c.with!] : [c.with!, c.run];
+    const stretches = spans.get(`${a}|${b}`)?.[c.run] ?? [];
+    const s0 = c.measured.s0;
+    const s1 = c.measured.s1;
+    const isInside =
+      s0 !== undefined &&
+      s1 !== undefined &&
+      stretches.some(([p, q]) => s0 >= p - FOLLOW_MARGIN_M && s1 <= q + FOLLOW_MARGIN_M);
+    // Within what the pair's review saw: a merge as far apart as its cap (or a rule's pair, no cap).
+    const isWithinCap = (p: LedgerCase) => {
+      const cap = p.cap?.maxDzM;
+      const dz = c.measured.maxDzM;
+      return cap === undefined || dz === undefined || dz <= cap + CASE_MARGIN.dzM;
+    };
+    const pair = isInside
+      ? PAIR_KINDS.map((k) => byKey.get(`${k}:${a}|${b}`)).find(
+          (p) => p !== undefined && (p.status === "accepted" || p.status === "wontfix") && isWithinCap(p),
+        )
+      : undefined;
+    if (pair !== undefined) {
+      cases[i] = {
+        ...c,
+        status: "accepted",
+        by: pair.key as DecidedBy,
+        cap: null,
+        reason: `組の事例 ${pair.key} に従う（同じ 2 本の重なりの区間の内、S6 PR 3）`,
+      };
+      return;
+    }
+    if (isFollowed) cases[i] = { ...c, status: "new", by: null, cap: null, reason: null };
+  });
 }
 
 /** The tool's counts over the cases. */

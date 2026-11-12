@@ -118,7 +118,10 @@ export function superelevation(
     for (let i = 0; i < n; i++) if (!pinned[i]) bank[i] = Math.max(-room[i], Math.min(room[i], bank[i]));
   if (options.strict && room) {
     // The composite grade over every sample, the ends' and the pins' included; then the run-ins again
-    // from what the cuts left, until a pass changes nothing (each pass only moves a bank towards 0).
+    // from what the cuts left, until a pass changes nothing (or 50 passes). A bank moves to its
+    // neighbour's run-in either way, within its room: an end held to its parent's bank (T3) runs in
+    // from the samples beside it, a pin among them included. Why not towards 0 only (as PR 2 had it):
+    // a pin at 0.0029 beside 895902565's end held at 0.0146 stayed, 2.13‰/m over 5.5 m (T7, PR 3).
     // An end held to its parent's bank stays (T3): the parent's own bank kept its room there.
     const isHeld = (i: number) => (i === 0 && ends.start !== null) || (i === n - 1 && ends.end !== null);
     for (let i = 0; i < n; i++) if (!isHeld(i)) bank[i] = Math.max(-room[i], Math.min(room[i], bank[i]));
@@ -127,7 +130,7 @@ export function superelevation(
       for (let i = 1; i < n; i++) {
         const d = rate * (s[i] - s[i - 1]);
         const v = Math.max(bank[i - 1] - d, Math.min(bank[i - 1] + d, bank[i]));
-        const toward = Math.abs(v) < Math.abs(bank[i]) ? v : bank[i];
+        const toward = Math.max(-room[i], Math.min(room[i], v));
         if (toward !== bank[i] && !isHeld(i)) {
           bank[i] = toward;
           moved = true;
@@ -136,7 +139,7 @@ export function superelevation(
       for (let i = n - 2; i >= 0; i--) {
         const d = rate * (s[i + 1] - s[i]);
         const v = Math.max(bank[i + 1] - d, Math.min(bank[i + 1] + d, bank[i]));
-        const toward = Math.abs(v) < Math.abs(bank[i]) ? v : bank[i];
+        const toward = Math.max(-room[i], Math.min(room[i], v));
         if (toward !== bank[i] && !isHeld(i)) {
           bank[i] = toward;
           moved = true;

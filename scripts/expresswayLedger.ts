@@ -48,6 +48,7 @@ const ledger = updateLedger(files.ledger, {
   seamProbes: counted.seamProbes,
   rules: counted.rules,
   heightKm: counted.heightKm,
+  pairSpans: counted.pairSpans,
   prune: has("prune"),
   seed,
   writeBudget: has("write-budget"),

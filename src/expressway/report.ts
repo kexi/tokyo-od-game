@@ -190,13 +190,20 @@ export const ReportSchema = z.strictObject({
       atChainEnd: z.strictObject({ count, km }),
       outsideRange: z.strictObject({ count, km }),
       crossingsBlocked: count,
-      /** Of them, those away from the run's ends (more than its climb from both): crossed mid-run. */
+      /** Of them, those more than 1 m from both of the run's ends (its end nodes): crossed mid-run. */
       crossingsBlockedMiddle: count,
       belowUnwritten: z.strictObject({ count, km }),
       /** The stretches at grade left out as the open part between two tunnels (Plan.betweenTunnels). */
       betweenTunnels: z.array(z.string()),
       /** How far the runs at grade stand off the ground under them: |z − ground| at their stations. */
       offGround: z.strictObject({ p95M: km, maxM: km, over3mRuns: count }),
+      /**
+       * The ends the viaducts and below runs seam onto (S6 PR 3): how far the run at grade stands off
+       * the band's centre there (the ground's median within 150 m of the end), the ends past the band
+       * (HEIGHT_STRUCTURES.ground.bandM) and the worst.
+       * Absent in reports before PR 3.
+       */
+      openEnds: z.strictObject({ count, overBand: count, maxM: km }).optional(),
       tracking: z.strictObject({
         runs: count,
         km,
@@ -205,6 +212,22 @@ export const ReportSchema = z.strictObject({
         shortWaveStdM: z.number().nonnegative().nullable(),
         reversalsPerKm: z.number().nonnegative().nullable(),
       }),
+    })
+    .optional(),
+  /**
+   * Main lines held to one height beside each other (S6 PR 3, `--companions on`, compile.ts
+   * findCompanions): the run pairs and station pairs among the runs written, the km along the first,
+   * and |Δz| at those stations as solved (p50, p90, max, and the station pairs past COMPANIONS.dzM); the
+   * station pairs themselves go to <report>.companions.json beside the scorecard.
+   * Absent without the flag.
+   */
+  companions: z
+    .strictObject({
+      weight: z.number().positive(),
+      pairs: count,
+      stations: count,
+      km,
+      dz: z.strictObject({ p50M: km, p90M: km, maxM: km, overDz: count }),
     })
     .optional(),
   /**
@@ -399,6 +422,8 @@ export type ReportInput = {
   heightStructures?: boolean;
   /** The runs at grade (S6 PR 2): Report["ground"], made by the build script; null or absent without them. */
   ground?: NonNullable<Report["ground"]> | null;
+  /** The companions (S6 PR 3): Report["companions"], made by the build script; null or absent without them. */
+  companions?: NonNullable<Report["companions"]> | null;
 };
 
 const round = (v: number, digits: number) => {
@@ -1162,6 +1187,7 @@ export function buildReport(input: ReportInput): Report {
       ? { structures: structuresOf(input.chunks, input.districts, input.runs) }
       : {}),
     ...(input.ground ? { ground: input.ground } : {}),
+    ...(input.companions ? { companions: input.companions } : {}),
     tracking: trackingOf(input.chunks, input.runs),
     size: {
       tiles: input.tiles.length,

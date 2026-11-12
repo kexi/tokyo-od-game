@@ -280,6 +280,18 @@ export const SHARED_TOUCHDOWN: Assumption<number> = {
 };
 
 /**
+ * Two main lines running beside each other (S6 PR 3, compile.ts findCompanions): carriageways apart
+ * by at most gapM for minLengthM or more on one OSM layer, held within dzM of one height every stepM
+ * along the first (by id), softly, but for the climb (approachLength) at either end of the stretch.
+ */
+export const COMPANIONS: Assumption<{ gapM: number; dzM: number; minLengthM: number; stepM: number }> = {
+  value: { gapM: 4, dzM: 0.3, minLengthM: 200, stepM: 25 },
+  verified: false,
+  reason:
+    "仮定。並走する上下線は同じ構造（一つの橋脚の上の 2 枚の床版など）とみなす。車線域の間 4 m は中央分離帯と路肩の幅の目安、0.3 m は 2 枚の床版の高さの差として目に付かない目安、200 m は分合流の取付けより長く並ぶもの（S5 の記録: 45021976 と 24402611 が並走しながら 0.6 → 4.7 m 離れた）。25 m は QP の行の間隔（測点 20 m の倍に近い粗さ）。行の重み（--companion-weight）の実効の強さは、1 m あたり 重み ÷ stepM（重み 1 で 0.04 / m、床版の重なりの W_PAIR 5 は 20 m の測点ごと）。区間の両端から climb の内は行にしない（並走の始まりと終わりでは片方が分合流や交差へ向けて離れていく。PR 3 のレビューで、0.3 m を超えた 80 測点中 46 が端から 150 m 以内）。どれも実測で確かめていない",
+};
+
+/**
  * How far either side the design ground line (designGround.ts `envelope`) takes the ground's
  * extreme and then its mean, for the objective-v2 target (P2.7-3): over a viaduct the upper
  * envelope of the ground, under it (a tunnel or cut) the lower one.
@@ -363,5 +375,6 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   BLOCK_QUIET_MIN,
   BLOCK_ANCHOR_SPACING,
   SHARED_TOUCHDOWN,
+  COMPANIONS,
   DESIGN_GROUND_REACH,
 };
