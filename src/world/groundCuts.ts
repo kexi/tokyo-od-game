@@ -241,3 +241,43 @@ export function dropCut(
   }
   return kept;
 }
+
+type Ring = Array<[number, number]>;
+
+/**
+ * When the streets and pavements are laid again round new holes (main.ts): the holes not laid round
+ * yet, and those that came while the streets were loading, held until the load is done. Why held:
+ * the pavements of that load come on their own and may already be built without the hole, and the
+ * relay used to be skipped then and never run, so a PLATEAU 歩道 kept its kerb inside 麻布台's box
+ * as a pale slab (P2.7-5; the view shooter's --pick found an unnamed Mesh 4.5 m off, no vertex colour).
+ */
+export class CutRelay {
+  private relayed = 0;
+  private pending: Ring[] = [];
+
+  /**
+   * The holes to lay round now, given every hole so far, whether one of them lies in the area laid
+   * and whether the streets are loading; null when there is nothing to lay (or it waits for the load).
+   */
+  take(
+    holes: readonly Ring[],
+    isInArea: (rings: readonly Ring[]) => boolean,
+    isLoading: boolean,
+  ): Ring[] | null {
+    const fresh = [...this.pending, ...holes.slice(this.relayed)];
+    this.relayed = holes.length;
+    this.pending = [];
+    const isNothing = fresh.length === 0 || !isInArea(fresh);
+    if (isNothing) return null;
+    if (isLoading) {
+      this.pending = fresh;
+      return null;
+    }
+    return fresh;
+  }
+
+  /** Whether holes wait for the load to finish. */
+  get hasPending(): boolean {
+    return this.pending.length > 0;
+  }
+}

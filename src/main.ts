@@ -100,7 +100,7 @@ import { Terrain } from "./world/terrain";
 import { TokyoTide } from "./world/tide";
 import { WaterLayer } from "./world/water";
 import { ExpresswayDecks } from "./world/expresswayDeck";
-import { GroundCuts } from "./world/groundCuts";
+import { CutRelay, GroundCuts } from "./world/groundCuts";
 import type { XwRoadInput } from "./world/expresswayRoads";
 import { Pedestrians, type Pedestrian } from "./world/pedestrians";
 import {
@@ -727,36 +727,43 @@ async function main(): Promise<void> {
   // hole, once for every batch of chunks (the tiles read together arrive in one task), and only when
   // a hole lies in the area laid. While the streets are loading, their own install cuts the holes.
   let isRelayQueued = false;
-  let relayedHoles = 0;
+  const cutRelay = new CutRelay();
+  const relayCuts = () => {
+    // The street lamps standing in a new hole go at once, wherever the camera is (P2.7-5).
+    streetLights.hideInCuts();
+    const fresh = cutRelay.take(
+      groundCuts.ringsLonLat(),
+      (rings) =>
+        rings.some((ring) =>
+          ring.some(
+            ([lon, lat]) => haversineMeters(lat, lon, roadCenter.lat, roadCenter.lon) <= RELAY_REACH_M,
+          ),
+        ),
+      roadsLoading,
+    );
+    if (!fresh) return;
+    void roadUpdates
+      .run(async () => {
+        if (lastPavements) {
+          await pavements.rebuildAsync(pavementsOffCuts(lastPavements), frame, new FrameWork());
+          pedestrians.pavementsChanged();
+        }
+        const graph = roadGraph;
+        if (graph) {
+          const work = new FrameWork();
+          const parts = await roadSurface.prepare(graph, roadApplied, control.approaches, work);
+          await work.run(roadSurface.installSteps(parts), true);
+        }
+        log("ground_cuts_relaid", { holes: fresh.length, pavements: lastPavements?.length ?? 0 });
+      })
+      .catch((error: unknown) => warn("ground_cuts_relay_failed", { error: String(error) }));
+  };
   expressway?.onBore(() => {
     if (isRelayQueued) return;
     isRelayQueued = true;
     setTimeout(() => {
       isRelayQueued = false;
-      const holes = groundCuts.ringsLonLat();
-      const fresh = holes.slice(relayedHoles);
-      relayedHoles = holes.length;
-      // The street lamps standing in a new hole go at once, wherever the camera is (P2.7-5).
-      streetLights.hideInCuts();
-      const isInLaidArea = fresh.some((ring) =>
-        ring.some(([lon, lat]) => haversineMeters(lat, lon, roadCenter.lat, roadCenter.lon) <= RELAY_REACH_M),
-      );
-      if (!isInLaidArea || roadsLoading) return;
-      void roadUpdates
-        .run(async () => {
-          if (lastPavements) {
-            await pavements.rebuildAsync(pavementsOffCuts(lastPavements), frame, new FrameWork());
-            pedestrians.pavementsChanged();
-          }
-          const graph = roadGraph;
-          if (graph) {
-            const work = new FrameWork();
-            const parts = await roadSurface.prepare(graph, roadApplied, control.approaches, work);
-            await work.run(roadSurface.installSteps(parts), true);
-          }
-          log("ground_cuts_relaid", { holes: fresh.length, pavements: lastPavements?.length ?? 0 });
-        })
-        .catch((error: unknown) => warn("ground_cuts_relay_failed", { error: String(error) }));
+      relayCuts();
     }, 0);
   });
   roadBuilder.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoads");
@@ -961,6 +968,9 @@ async function main(): Promise<void> {
       .finally(() => {
         const isCurrent = load === roadLoadSerial;
         if (isCurrent) roadsLoading = false;
+        // Holes that came during the load: lay the pavements and streets round them now.
+        const hasPending = isCurrent && cutRelay.hasPending;
+        if (hasPending) relayCuts();
       });
     // PLATEAU pavements come separately (larger tiles, only some wards): never hold up the roads.
     const wards = areas?.wardsIn(lon - 0.012, lat - 0.01, lon + 0.012, lat + 0.01) ?? [];

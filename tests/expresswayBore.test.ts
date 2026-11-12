@@ -1,4 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
+import { Vector3 } from "three";
+import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { CUT_WALL, TUNNEL_WALKWAY } from "../src/expressway/assumptions";
 import { TUNNEL_INNER_HEIGHT_M } from "../src/expressway/below";
@@ -9,7 +11,7 @@ import { LocalFrame } from "../src/geo/frame";
 import { latToTileY, lonToTileX } from "../src/geo/tiles";
 import { createDeckBody, deckArraySteps, type GeoToLocal, tunnelPoint } from "../src/world/expresswayDeck";
 import { BORE_FACES, boreHoles, boreLoop } from "../src/world/expresswayBore";
-import { dropCut, GroundCuts } from "../src/world/groundCuts";
+import { CutRelay, dropCut, GroundCuts } from "../src/world/groundCuts";
 
 beforeAll(() => RAPIER.init());
 
@@ -285,3 +287,192 @@ describe("一般道の路面を穴で切る（roadSurface.ts dropCut、P2.7-5）
     expect(kept).toEqual([3, 4, 5]);
   });
 });
+
+describe("穴の後から一般道・歩道を敷き直す時（CutRelay、P2.7-5）", () => {
+  const ring = (x: number): Array<[number, number]> => [
+    [x, 0],
+    [x + 1, 0],
+    [x, 1],
+  ];
+  const near = () => true;
+  it("lays round a hole that came after the streets at once", () => {
+    const relay = new CutRelay();
+    expect(relay.take([ring(0)], near, false)).toEqual([ring(0)]);
+    expect(relay.take([ring(0)], near, false)).toBeNull();
+  });
+  it("holds a hole that came while the streets were loading and lays round it when they are done (the slab in the box)", () => {
+    const relay = new CutRelay();
+    expect(relay.take([ring(0)], near, true)).toBeNull();
+    expect(relay.hasPending).toBe(true);
+    // Another hole during the same load joins it.
+    expect(relay.take([ring(0), ring(5)], near, true)).toBeNull();
+    expect(relay.take([ring(0), ring(5)], near, false)).toEqual([ring(0), ring(5)]);
+    expect(relay.hasPending).toBe(false);
+  });
+  it("does nothing for holes outside the area laid", () => {
+    const relay = new CutRelay();
+    expect(relay.take([ring(0)], () => false, false)).toBeNull();
+    expect(relay.hasPending).toBe(false);
+  });
+});
+
+describe("麻布台の箱（737538573:2 s 515–596 の掘割）の中に一般道・歩道の面が無い（実データ、P2.7-5）", () => {
+  const files = readExpresswayFiles();
+  const box = files.chunks.find((c) => c.id === "737538573:2")!;
+  const half = carriagewayWidth(box) / 2;
+  const frame = new LocalFrame(box.st[2], box.st[1], 0);
+  /** Points on the road under the box every 2 m along and 1 m across: where a ray from the camera lands. */
+  const samples: Array<[number, number]> = [];
+  for (let i = 0; i + 7 < box.st.length; i += 7) {
+    const [lon0, lat0, lon1, lat1] = [box.st[i + 1], box.st[i + 2], box.st[i + 8], box.st[i + 9]];
+    const plane = planeAt(lon0, lat0);
+    const [dx, dy] = plane.toXY(lon1, lat1);
+    const len = Math.hypot(dx, dy);
+    for (let f = 0; f < len; f += 2) {
+      const s = box.st[i] + f;
+      // s 490–513 has the ground over the box's roof (no hole: a 歩道 there lies on the ground above).
+      const isInBox = s >= 515 && s <= 596;
+      if (!isInBox) continue;
+      for (let w = -half + 0.5; w <= half - 0.5; w += 1)
+        samples.push(plane.toLonLat((dx / len) * f - (dy / len) * w, (dy / len) * f + (dx / len) * w));
+    }
+  }
+  /** A PLATEAU 歩道 over the whole box (a lon/lat ring) and a street's triangles across it (local x, z). */
+  const lons = samples.map(([lon]) => lon);
+  const lats = samples.map(([, lat]) => lat);
+  const M = 1e-4;
+  const [w, e, so, n] = [
+    Math.min(...lons) - M,
+    Math.max(...lons) + M,
+    Math.min(...lats) - M,
+    Math.max(...lats) + M,
+  ];
+  const pavement = [w, so, e, so, e, n, w, n];
+  const corners = [
+    [w, so],
+    [e, so],
+    [e, n],
+    [w, n],
+  ].map(([lon, lat]) => frame.toLocal(lat, lon, 0));
+  const street: number[] = [];
+  const idx: number[] = [];
+  const STEPS = 40;
+  for (let b = 0; b <= STEPS; b++)
+    for (let a = 0; a <= STEPS; a++) {
+      const [u, v] = [a / STEPS, b / STEPS];
+      const at = (k: "x" | "z") =>
+        (1 - v) * ((1 - u) * corners[0][k] + u * corners[1][k]) +
+        v * ((1 - u) * corners[3][k] + u * corners[2][k]);
+      street.push(at("x"), 0, at("z"));
+    }
+  for (let b = 0; b < STEPS; b++)
+    for (let a = 0; a < STEPS; a++) {
+      const k = b * (STEPS + 1) + a;
+      idx.push(k, k + 1, k + STEPS + 1, k + 1, k + STEPS + 2, k + STEPS + 1);
+    }
+  /** Lay the pavement and the street round the holes as main.ts does (pavementsOffCuts, roadSurface's dropCut). */
+  const lay = (cuts: GroundCuts) => {
+    const cutAt = (x: number, z: number) => {
+      const g = frame.toGeodetic(new Vector3(x, 0, z));
+      return cuts.containsLonLat(g.lon, g.lat);
+    };
+    return {
+      pavements: cuts.touchesLonLat(pavement) ? [] : [pavement],
+      triangles: cuts.isEmpty() ? idx : dropCut(street, idx, cutAt),
+    };
+  };
+  /** How many of the box's samples a ray down finds a pavement or street face at. */
+  const facesInBox = (laid: ReturnType<typeof lay>) =>
+    samples.filter(([lon, lat]) => {
+      const isOnPavement = laid.pavements.some((p) => isInRing(p, lon, lat));
+      const p = frame.toLocal(lat, lon, 0);
+      return isOnPavement || isOnTriangle(street, laid.triangles, p.x, p.z);
+    }).length;
+
+  it("the box's open cut is a hole all over the samples", () => {
+    const cuts = new GroundCuts(null);
+    cuts.addChunk(box);
+    expect(samples.length).toBeGreaterThan(250);
+    expect(samples.every(([lon, lat]) => cuts.containsLonLat(lon, lat))).toBe(true);
+  });
+  it("the hole read before the streets: nothing is laid in the box", () => {
+    const cuts = new GroundCuts(null);
+    cuts.addChunk(box);
+    expect(facesInBox(lay(cuts))).toBe(0);
+  });
+  it("the hole read while the streets were loading, the pavements already built: held, laid round after the load, nothing in the box", () => {
+    const cuts = new GroundCuts(null);
+    const relay = new CutRelay();
+    expect(facesInBox(lay(cuts))).toBe(samples.length);
+    cuts.addChunk(box);
+    expect(relay.take(cuts.ringsLonLat(), () => true, true)).toBeNull();
+    expect(relay.take(cuts.ringsLonLat(), () => true, false)).toHaveLength(1);
+    expect(facesInBox(lay(cuts))).toBe(0);
+  });
+  /**
+   * The two PLATEAU 交通島 (港区 LOD2 AuxiliaryTrafficArea, 島) over the box, as read on 2026-11-12: the
+   * "pole and arm" of tunnel-toward-exit and the pale band of north-exit-driver were the kerb and top
+   * of the first, laid inside the box (the view shooter's --pick: `pavements`, 61–94 m, s 530–575).
+   */
+  const ISLANDS = [
+    [
+      139.7385282, 35.6635884, 139.7385231, 35.6635874, 139.7385188, 35.6635886, 139.7385163, 35.6635912,
+      139.7385154, 35.6635947, 139.7385163, 35.6636005, 139.7385183, 35.6636108, 139.7385212, 35.6636244,
+      139.7385226, 35.6636269, 139.7385253, 35.6636292, 139.7385287, 35.6636303, 139.7385317, 35.6636307,
+      139.7385359, 35.6636291, 139.7385387, 35.6636258, 139.7385391, 35.6636239, 139.7385368, 35.6636143,
+      139.7385336, 35.663603, 139.7385327, 35.6635944, 139.7385312, 35.6635908,
+    ],
+    [
+      139.7387017, 35.6647973, 139.7386619, 35.6646288, 139.738594, 35.6643372, 139.7384737, 35.6638098,
+      139.7384723, 35.6638115, 139.7384693, 35.6638171, 139.7384673, 35.6638226, 139.7384665, 35.6638289,
+      139.7384658, 35.6638348, 139.7384675, 35.6638412, 139.7384702, 35.6638546, 139.738477, 35.6638849,
+      139.7384854, 35.6639206, 139.7385035, 35.6639957, 139.7385154, 35.664048, 139.7385322, 35.6641218,
+      139.7385409, 35.6641605, 139.738554, 35.6642179, 139.7385685, 35.6642797, 139.7385767, 35.6643177,
+      139.7385919, 35.6643821, 139.7386031, 35.6644478, 139.7386113, 35.6644988, 139.7386183, 35.6645346,
+      139.7386205, 35.6645488, 139.7386295, 35.6645994, 139.7386426, 35.6646692, 139.7386539, 35.6647396,
+      139.7386654, 35.664802,
+    ],
+  ];
+  it("the PLATEAU 交通島 over the box stand in it before the hole and are left out once it is laid round, whatever the order", () => {
+    const inBox = (rings: number[][]) =>
+      samples.filter(([lon, lat]) => rings.some((r) => isInRing(r, lon, lat))).length;
+    const relay = new CutRelay();
+    const cuts = new GroundCuts(null);
+    const before = ISLANDS.filter((r) => !cuts.touchesLonLat(r));
+    expect(inBox(before)).toBeGreaterThan(0);
+    // The hole comes while the streets load, the islands already built: held, then laid round.
+    cuts.addChunk(box);
+    expect(relay.take(cuts.ringsLonLat(), () => true, true)).toBeNull();
+    expect(relay.take(cuts.ringsLonLat(), () => true, false)).toHaveLength(1);
+    const after = ISLANDS.filter((r) => !cuts.touchesLonLat(r));
+    expect(after).toHaveLength(0);
+    expect(inBox(after)).toBe(0);
+  });
+  it("the hole read after the streets: laid round at once, nothing in the box", () => {
+    const cuts = new GroundCuts(null);
+    const relay = new CutRelay();
+    expect(facesInBox(lay(cuts))).toBe(samples.length);
+    cuts.addChunk(box);
+    expect(relay.take(cuts.ringsLonLat(), () => true, false)).toHaveLength(1);
+    expect(facesInBox(lay(cuts))).toBe(0);
+  });
+});
+
+function isInRing(ring: readonly number[], x: number, y: number): boolean {
+  let inside = false;
+  const n = ring.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, yi, xj, yj] = [ring[i * 2], ring[i * 2 + 1], ring[j * 2], ring[j * 2 + 1]];
+    const isCrossing = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (isCrossing) inside = !inside;
+  }
+  return inside;
+}
+
+function isOnTriangle(pos: readonly number[], idx: readonly number[], x: number, z: number): boolean {
+  for (let t = 0; t + 2 < idx.length; t += 3) {
+    const [a, b, c] = [idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3];
+    if (isInRing([pos[a], pos[a + 2], pos[b], pos[b + 2], pos[c], pos[c + 2]], x, z)) return true;
+  }
+  return false;
+}

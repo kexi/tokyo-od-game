@@ -355,6 +355,8 @@ export class Pavements {
         mesh.scale.set(1, 1, 1);
         mesh.receiveShadow = true;
         mesh.renderOrder = 3;
+        // Named for a pick of the view shooter (scripts/qa/views.ts --pick) to tell it from the streets.
+        mesh.name = "pavements";
         this.scene.add(mesh);
         this.meshes.push(mesh);
         yield true;

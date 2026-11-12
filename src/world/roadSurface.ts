@@ -418,6 +418,8 @@ export class RoadSurface {
     const used = new Set<StreetMaterial>();
     for (const { geometry: g, material: mat, order } of parts) {
       const mesh = this.meshes.get(mat) ?? new Mesh(new BufferGeometry(), mat);
+      // Named for a pick of the view shooter (scripts/qa/views.ts --pick) to tell it from the kerbs.
+      mesh.name = "road-surface";
       mesh.geometry = updateRoadGeometry(mesh.geometry, g);
       mesh.position.set(0, 0, 0);
       mesh.quaternion.identity();
