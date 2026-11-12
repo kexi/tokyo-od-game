@@ -33,6 +33,12 @@ export class GroundCuts implements GroundWater {
   private readonly versions = new Map<string, number>();
   private readonly cache = new Map<string, { version: number; data: Uint8Array }>();
   private readonly seen = new Set<string>();
+  /**
+   * Every hole in the order it came: `ringsLonLat` lists them so, and CutRelay takes the new ones
+   * from its end. Why not the z15 map's order: a later hole in an earlier key landed mid-list and
+   * the relay skipped it (PR #71 review W2).
+   */
+  private readonly arrivals: WaterPolygon[] = [];
 
   constructor(private readonly water: GroundWater | null) {}
 
@@ -43,6 +49,7 @@ export class GroundCuts implements GroundWater {
     const polys = boreHoles(chunk, (lon, lat) => [lonToTileX(lon, WATER_ZOOM), latToTileY(lat, WATER_ZOOM)]);
     const k = 2 ** (WATER_ZOOM - TERRAIN_ZOOM);
     for (const poly of polys) {
+      this.arrivals.push(poly);
       const ring = poly[0];
       let x0 = Infinity;
       let y0 = Infinity;
@@ -64,19 +71,14 @@ export class GroundCuts implements GroundWater {
     }
   }
 
-  /** Every hole as a lon/lat ring (the buildings leave out what stands in one). */
+  /** Every hole as a lon/lat ring, in the order they came (the buildings leave out what stands in one). */
   ringsLonLat(): Array<Array<[number, number]>> {
-    const seen = new Set<WaterPolygon>();
     const out: Array<Array<[number, number]>> = [];
-    for (const polys of this.holes.values()) {
-      for (const poly of polys) {
-        if (seen.has(poly)) continue;
-        seen.add(poly);
-        const ring: Array<[number, number]> = [];
-        for (let i = 0; i + 1 < poly[0].length; i += 2)
-          ring.push([tileXToLon(poly[0][i], WATER_ZOOM), tileYToLat(poly[0][i + 1], WATER_ZOOM)]);
-        out.push(ring);
-      }
+    for (const poly of this.arrivals) {
+      const ring: Array<[number, number]> = [];
+      for (let i = 0; i + 1 < poly[0].length; i += 2)
+        ring.push([tileXToLon(poly[0][i], WATER_ZOOM), tileYToLat(poly[0][i + 1], WATER_ZOOM)]);
+      out.push(ring);
     }
     return out;
   }

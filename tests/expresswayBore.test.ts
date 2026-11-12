@@ -448,6 +448,27 @@ describe("麻布台の箱（737538573:2 s 515–596 の掘割）の中に一般�
     expect(after).toHaveLength(0);
     expect(inBox(after)).toBe(0);
   });
+  it("lays round a later hole in a z15 tile that already had one, after a hole elsewhere (PR #71 review W2)", () => {
+    const south = files.chunks.find((c) => c.id === "737538573:0")!;
+    // A copy of the box 3 km east: another z15 tile, outside the area laid round 麻布台.
+    const far = { ...box, id: "far:0", st: box.st.map((v, i) => (i % 7 === 1 ? v + 0.033 : v)) };
+    const isNear = (rings: readonly Array<[number, number]>[]) =>
+      rings.some((r) => r.some(([lon]) => Math.abs(lon - 139.7385) < 0.015));
+    const cuts = new GroundCuts(null);
+    const relay = new CutRelay();
+    cuts.addChunk(south);
+    cuts.addChunk(far);
+    expect(relay.take(cuts.ringsLonLat(), isNear, false)).toHaveLength(2);
+    cuts.addChunk(box);
+    const fresh = relay.take(cuts.ringsLonLat(), isNear, false);
+    expect(fresh).toHaveLength(1);
+    const boxRing = (() => {
+      const own = new GroundCuts(null);
+      own.addChunk(box);
+      return own.ringsLonLat()[0];
+    })();
+    expect(fresh![0]).toEqual(boxRing);
+  });
   it("the hole read after the streets: laid round at once, nothing in the box", () => {
     const cuts = new GroundCuts(null);
     const relay = new CutRelay();
