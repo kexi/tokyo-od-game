@@ -29,7 +29,13 @@ import {
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { atGradeCrossingDetail, isAllowed, SAME_SURFACE_ALLOWED_DZ_M } from "./allowlist";
-import { BLOCK_QUIET_FACTOR, DESIGN_GROUND_REACH, HEIGHT_STRUCTURES } from "./assumptions";
+import {
+  BLOCK_QUIET_FACTOR,
+  DESIGN_GROUND_REACH,
+  GIRDER_MIN,
+  HEIGHT_STRUCTURES,
+  LOW_SPAN_SOFFIT_MIN,
+} from "./assumptions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
   belowStructure,
@@ -51,6 +57,7 @@ import {
   heightStretches,
   afterSpanning,
   clearsOnThinGirder,
+  isLowSpanWindow,
   isWindowOver,
   sameKept,
   forceViaduct,
@@ -367,6 +374,8 @@ export type Plan = {
   /** The N2 sweep's (PlanOptions.groundTargetScale / groundBandM): absent, the assumptions'. */
   groundTargetScale?: number;
   groundBandM?: number;
+  /** S6 PR 7a2's sweep (`--low-span-soffit`): absent, LOW_SPAN_SOFFIT_MIN. */
+  lowSpanSoffitM?: number;
 };
 
 /**
@@ -669,6 +678,8 @@ export type PlanOptions = {
   groundTargetScale?: number;
   /** `--ground-band <m>` (S6 PR 7a, N2 sweep): the runs at grade's band (HEIGHT_STRUCTURES.ground.bandM). */
   groundBandM?: number;
+  /** The low spans' lowest soffit (S6 PR 7a2 sweep, `--low-span-soffit`): absent, LOW_SPAN_SOFFIT_MIN. */
+  lowSpanSoffitM?: number;
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -792,6 +803,7 @@ export function planNetwork(
     ...(options.holdMains === "on" ? { holdMains: "on" as const } : {}),
     ...(options.groundTargetScale !== undefined ? { groundTargetScale: options.groundTargetScale } : {}),
     ...(options.groundBandM !== undefined ? { groundBandM: options.groundBandM } : {}),
+    ...(options.lowSpanSoffitM !== undefined ? { lowSpanSoffitM: options.lowSpanSoffitM } : {}),
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
@@ -1780,6 +1792,8 @@ export type Solved = {
   blocked: BlockedRoad[];
   /** A height build: the run's stretches by structure (heightStructures.ts); absent for the tags' structures. */
   structures?: HeightStretch[];
+  /** A height build's low spans (S6 PR 7a2): the windows spanned over blocked roads, merged. */
+  lowSpans?: Array<[number, number]>;
 };
 
 /**
@@ -1787,7 +1801,15 @@ export type Solved = {
  * width takes along the deck), its top, the clearance it would need, and the diagnostic reporting it
  * (removed by identity if the solved deck clears it after all).
  */
-type BlockedRoad = { s: number; halfWindow: number; top: number; need: number; diagnostic: XwDiagnostic };
+type BlockedRoad = {
+  s: number;
+  halfWindow: number;
+  top: number;
+  need: number;
+  diagnostic: XwDiagnostic;
+  /** Spanned low (S6 PR 7a2): the soffit over the window, the deck's lowest less GIRDER_MIN over top. */
+  lowSoffit?: number;
+};
 
 export type SolveStats = {
   components: number;
@@ -4100,7 +4122,12 @@ export function solvePlan(
     s.blocked = kept;
   }
   for (let i = diagnostics.length - 1; i >= 0; i--) if (cleared.has(diagnostics[i])) diagnostics.splice(i, 1);
-  const heightRules: HeightRuleTally = { spanned: 0, sameApart: 0, unanchored: 0 };
+  const heightRules: HeightRuleTally = {
+    spanned: 0,
+    sameApart: 0,
+    unanchored: 0,
+    lowSpans: { roads: 0, spans: 0, minSoffitM: null },
+  };
   if (isHeight)
     for (const s of solved.values()) structuresByHeight(plan, s, ground, diagnostics, solved, heightRules);
   // Deck-over-deck crossings, recorded on the upper run once both are solved (for T4). The lower one
@@ -5083,7 +5110,13 @@ function lowestOver(s: Solved, a: number, b: number, length: number): number {
 }
 
 /** What the height build's rules of S6 PR 7a changed (R3, R4, R5), for the scorecard. */
-export type HeightRuleTally = { spanned: number; sameApart: number; unanchored: number };
+export type HeightRuleTally = {
+  spanned: number;
+  sameApart: number;
+  unanchored: number;
+  /** S6 PR 7a2: blocked roads spanned low, the spans they make, and the lowest soffit. */
+  lowSpans: { roads: number; spans: number; minSoffitM: number | null };
+};
 
 /**
  * A height build (P2.7-6 PR 1): a viaduct-tagged run's stretches by structure, from its solved profile
@@ -5215,6 +5248,74 @@ function structuresByHeight(
   });
   s.cross = [...kept, ...s.cross.slice(3 * info.length)];
   s.crossInfo = keptInfo;
+  spanLow(plan, s, samples, groundEnds, tally);
+}
+
+/** Windows this far apart or less along the run are one low span (S6 PR 7a2). */
+const LOW_SPAN_JOIN_M = 5;
+
+/**
+ * The low spans (S6 PR 7a2), after R3 and afterSpanning: a blocked road (not a railway) under a
+ * viaduct-tagged run whose window the deck stands over at its lowest by LOW_SPAN_SOFFIT_MIN or more
+ * over the thinnest girder, where the window meets an embankment and no cut, is spanned: the window is
+ * viaduct (windows within LOW_SPAN_JOIN_M one span), the leftovers ruled again (afterSpanning). The
+ * road stays blocked (T4 reads `cross` alone) and its shortfall from 4.5 m is the ledger's
+ * low-clearance. Why not raise the deck to 4.5 m: the solve is untouched here (R's work, from the
+ * ledger's list). Why no cut: a cut is level with the road, nothing to span.
+ */
+function spanLow(
+  plan: Plan,
+  s: Solved,
+  samples: ReadonlyArray<{ s: number; z: number; ground: number }>,
+  groundEnds: readonly [boolean, boolean],
+  tally: HeightRuleTally,
+): void {
+  const { rp } = s;
+  const isAtGrade = rp.ground;
+  if (isAtGrade || !s.structures) return;
+  const S = rp.length;
+  const least = plan.lowSpanSoffitM ?? LOW_SPAN_SOFFIT_MIN.value;
+  const stretches = s.structures;
+  const windows: Array<[number, number]> = [];
+  for (const road of s.blocked) {
+    // A railway is not spanned low (its clearance is the rail's, and no train passes under 4.5 m).
+    const isRail = road.diagnostic.detail.startsWith("rail ");
+    if (isRail) continue;
+    const a = Math.max(0, road.s - road.halfWindow);
+    const b = Math.min(S, road.s + road.halfWindow);
+    const soffit = lowestOver(s, a, b, S) - GIRDER_MIN.value - road.top;
+    if (!isLowSpanWindow(stretches, a, b, soffit, least)) continue;
+
+    road.lowSoffit = soffit;
+    road.diagnostic.detail += `; spanned low (soffit ${soffit.toFixed(2)} m)`;
+    windows.push([a, b]);
+  }
+  if (windows.length === 0) return;
+  windows.sort((x, y) => x[0] - y[0]);
+  const merged: Array<[number, number]> = [];
+  for (const w of windows) {
+    const last = merged[merged.length - 1];
+    const isJoined = last !== undefined && w[0] - last[1] <= LOW_SPAN_JOIN_M;
+    if (isJoined) last[1] = Math.max(last[1], w[1]);
+    else merged.push([w[0], w[1]]);
+  }
+  // Each span's ends clear of the junction nodes (chunk cuts of their own; clearOfNodes, T3).
+  const nodes = junctionNodesOf(plan, rp);
+  for (const w of merged) [w[0], w[1]] = clearOfNodes(w, nodes, S);
+  s.lowSpans = merged;
+  s.structures = afterSpanning(
+    forceViaduct(stretches, merged),
+    samples,
+    HEIGHT_STRUCTURES.value.smoothM,
+    S,
+    groundEnds,
+  );
+  const soffits = s.blocked.flatMap((b) => (b.lowSoffit === undefined ? [] : [b.lowSoffit]));
+  tally.lowSpans.roads += soffits.length;
+  tally.lowSpans.spans += merged.length;
+  const least0 = Math.min(...soffits);
+  const lowest = Math.round(Math.min(least0, tally.lowSpans.minSoffitM ?? Infinity) * 100) / 100;
+  tally.lowSpans.minSoffitM = lowest;
 }
 
 /** A curve is tight where its radius is under this times the run's floor radius. */
@@ -5364,6 +5465,10 @@ function chunkRun(
       avoid.push([sc - w, sc + w]);
     }
   }
+  // A low span's window (S6 PR 7a2) holds no pier, as a crossing's road does not: the road takes the
+  // whole window under the deck. Why the window and not the road's width alone (the objects above):
+  // the window is what the span was judged over, wider by the run's own half width.
+  for (const w of s.lowSpans ?? []) avoid.push([w[0] - 1, w[1] + 1]);
   const decksBelow = overDeck(plan, rp.run.id, heightAt, ground);
   const stretches = deckStretches(plan, rp.run.id);
   const piers: number[] = [];
@@ -5488,6 +5593,10 @@ function chunkRun(
       const isAbove = dz > 0;
       if (isAbove) surpluses.push(dz - CLEARANCE_HEIGHT.value);
     }
+    // A low span (S6 PR 7a2) takes the thinnest girder on every chunk its window touches: the road
+    // under it is short of 4.5 m already, so no girder deeper than it must be.
+    const isLowSpan = (s.lowSpans ?? []).some(([wa, wb]) => wb >= a && wa <= b);
+    if (isLowSpan) return Math.min(standard, GIRDER_MIN.value);
     const thin = girderFor(surpluses);
     const isThin = thin < standard;
     // Down to the centimetre, so the clearance written (less the girder saved) never exceeds what is there.
@@ -5635,11 +5744,15 @@ function chunkRun(
     // Only a height build writes the windows (a build by the tags keeps its files byte for byte).
     const isWindowed = plan.structures === "height" && chunkWindows.length > 0;
     const chunkBlocked: number[] = [];
+    const chunkBlockedWindows: number[] = [];
     for (const road of s.blocked) {
       const sc = road.s;
       if (!within(sc, a, b, isLast)) continue;
       chunkBlocked.push(roundTo(sc, 2), roundTo(road.top, 3), roundTo(evalRun(s, sc).z, 3));
+      chunkBlockedWindows.push(road.lowSoffit === undefined ? 0 : roundTo(road.halfWindow, 2));
     }
+    // Only a chunk holding a low span writes the windows (S6 PR 7a2; the rest keep their files).
+    const hasLowSpan = chunkBlockedWindows.some((w) => w > 0);
     chunks.push({
       id: `${rp.run.id}:${k}`,
       run: rp.run.id,
@@ -5671,6 +5784,7 @@ function chunkRun(
       cross: chunkCross,
       ...(isWindowed ? { crossWindows: chunkWindows } : {}),
       blocked: chunkBlocked,
+      ...(hasLowSpan ? { blockedWindows: chunkBlockedWindows } : {}),
       decks: stretches
         .filter((d) => d.s1 > a && d.s0 < b)
         .map((d) => ({ ...d, s0: roundTo(Math.max(a, d.s0), 2), s1: roundTo(Math.min(b, d.s1), 2) })),
@@ -5738,4 +5852,47 @@ function groundApproaches(plan: Plan, rp: RunPlan): [number, number] {
     return isForced ? GROUND_APPROACH_END_M : 0;
   };
   return [ofEnd(true), ofEnd(false)];
+}
+
+/** A run's junction nodes inside it (other chains attach there: chunkRun cuts its chunks there), run distances. */
+function junctionNodesOf(plan: Plan, rp: RunPlan): number[] {
+  const base = rp.align.s[rp.i0];
+  const out: number[] = [];
+  for (let i = rp.run.from + 1; i < rp.run.to; i++) {
+    const isJunction = (plan.nodeChains.get(rp.chain.nodes[i])?.length ?? 0) > 1;
+    if (isJunction) out.push(rp.align.s[rp.align.vertexSample[i]] - base);
+  }
+  return out;
+}
+
+/**
+ * A low span's window [a, b] moved out so neither end is within MIN_STATION_GAP_M of a junction node
+ * (S6 PR 7a2): an end just short of a node goes to it, one just past a node inside the window goes that
+ * gap clear of it, again until none moves. Why: an end 0.52 m short of 888066405's junction at s 123.77
+ * left a chunk too short to hold the junction's station (T3, 40971846:2); two nodes 4 m apart (121 and
+ * 125 under a window from 124) moved the end to 121.99, 0.99 m from the first, in one pass (review S1).
+ * Outwards only: the window stays spanned. Pure.
+ */
+export function clearOfNodes(
+  w: readonly [number, number],
+  nodes: readonly number[],
+  length: number,
+): [number, number] {
+  let [a, b] = w;
+  for (let pass = 0; pass <= nodes.length; pass++) {
+    const [a0, b0] = [a, b];
+    for (const j of nodes) {
+      const isJustInsideStart = j > a && j - a < MIN_STATION_GAP_M;
+      const isJustBeforeStart = j <= a && a - j < MIN_STATION_GAP_M;
+      if (isJustBeforeStart) a = j;
+      else if (isJustInsideStart) a = Math.max(0, j - MIN_STATION_GAP_M - 0.01);
+      const isJustInsideEnd = j < b && b - j < MIN_STATION_GAP_M;
+      const isJustAfterEnd = j >= b && j - b < MIN_STATION_GAP_M;
+      if (isJustAfterEnd) b = j;
+      else if (isJustInsideEnd) b = Math.min(length, j + MIN_STATION_GAP_M + 0.01);
+    }
+    const isSettled = a === a0 && b === b0;
+    if (isSettled) break;
+  }
+  return [a, b];
 }

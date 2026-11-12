@@ -302,7 +302,17 @@ export const ReportSchema = z.strictObject({
        * over an embankment or cut (R3), same-surface stations apart past the merge (R5), embankments
        * off a non-ground end drawn as viaducts (R4). Absent before them.
        */
-      rules: z.strictObject({ spanned: count, sameApart: count, unanchored: count }).optional(),
+      rules: z
+        .strictObject({
+          spanned: count,
+          sameApart: count,
+          unanchored: count,
+          /** S6 PR 7a2: blocked roads spanned low, the spans, the lowest soffit (m). Absent before it. */
+          lowSpans: z
+            .strictObject({ roads: count, spans: count, minSoffitM: z.number().nullable() })
+            .optional(),
+        })
+        .optional(),
     })
     .optional(),
   /** How the elevated main lines follow the ground (trackingOf). */
@@ -481,7 +491,12 @@ export type ReportInput = {
   /** A height build (`--structures height`, P2.7-6): the scorecard's `structures`. */
   heightStructures?: boolean;
   /** The height build's rule tally (CompileResult.heightRules), into `structures.rules`. */
-  heightRules?: { spanned: number; sameApart: number; unanchored: number };
+  heightRules?: {
+    spanned: number;
+    sameApart: number;
+    unanchored: number;
+    lowSpans?: { roads: number; spans: number; minSoffitM: number | null };
+  };
   /** The runs at grade (S6 PR 2): Report["ground"], made by the build script; null or absent without them. */
   ground?: NonNullable<Report["ground"]> | null;
   /** The companions (S6 PR 3): Report["companions"], made by the build script; null or absent without them. */

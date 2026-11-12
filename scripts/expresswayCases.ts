@@ -21,6 +21,8 @@ import { deckOverlaps } from "../src/expressway/overlap.ts";
 import { heightKmOf, type HeightKm, highDeckStretches } from "../src/expressway/highDeck.ts";
 import { lowViaductStretches, openGroundStretches } from "../src/expressway/heightStructures.ts";
 import { GIRDER_DEPTH } from "../src/expressway/assumptions.ts";
+import { CLEARANCE_HEIGHT } from "../src/law/roadStandards.ts";
+import { surfaceAt } from "../src/expressway/profile.ts";
 import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge.ts";
 import { framesOf, mergeMisses, probeGenerated } from "./expresswaySeams.ts";
 
@@ -144,6 +146,67 @@ export function structureCases(
       });
     });
     out.push(...thinGirderCases(run, list));
+    out.push(...lowClearanceCases(run, list, diagnostics));
+  }
+  return out;
+}
+
+/**
+ * A viaduct-tagged run's blocked roads (not railways) under a viaduct chunk, one low-clearance case
+ * each (S6 PR 7a2), always listed: the soffit over the road and how short of 4.5 m that is. The soffit
+ * is the lowest surface over the window (the low span's `blockedWindows`; a road not spanned low has
+ * none written, so its value is the one at the road's centre) less the girder of the viaduct chunk
+ * there, over the road's ground, read as the compiler's lowestOver reads it: every metre from the
+ * window's start and its end itself, a station on a chunk boundary read on the viaduct side. The key
+ * has the road's s (a road may cross the run twice: 27155261 × 717866762). The road's id from its run's
+ * crossing_over_or_at_grade (the diagnostic's s in whole metres).
+ */
+function lowClearanceCases(
+  run: string,
+  list: XwFiles["chunks"],
+  diagnostics: XwFiles["diagnostics"],
+): FoundCase[] {
+  const out: FoundCase[] = [];
+  const onDeckAt = (sv: number) =>
+    list.find(
+      (c) =>
+        c.structure === "viaduct" && sv >= c.st[0] - 1e-6 && sv <= c.st[c.st.length - STATION_STRIDE] + 1e-6,
+    );
+  for (const c of list) {
+    const isOnDeck = c.structure === "viaduct" && c.over === null;
+    if (!isOnDeck) continue;
+    const halves = c.blockedWindows ?? [];
+    for (let i = 0; i < c.blocked.length; i += 3) {
+      const [sc, top] = c.blocked.slice(i, i + 3);
+      const half = halves[i / 3] ?? 0;
+      const reported = diagnostics.find((d) => {
+        const m =
+          d.run === run && d.kind === "crossing_over_or_at_grade" ? / at (\d+) m/.exec(d.detail) : null;
+        return m !== null && Math.abs(Number(m[1]) - sc) <= 1;
+      });
+      const road = reported ? /^road (\d+) /.exec(reported.detail) : null;
+      if (road === null) continue;
+      // The window cut at the run's ends, as lowestOver cuts it.
+      const last = list[list.length - 1];
+      const from = Math.max(list[0].st[0], sc - half);
+      const to = Math.min(last.st[last.st.length - STATION_STRIDE], sc + half);
+      const at = [to];
+      for (let sv = from; sv < to - 1e-9; sv += 1) at.push(sv);
+      let soffit = Infinity;
+      for (const sv of at) {
+        const deck = onDeckAt(sv) ?? c;
+        soffit = Math.min(soffit, surfaceAt(deck.st, sv).z - deck.girder - top);
+      }
+      const soffitM = Math.round(soffit * 100) / 100;
+      out.push({
+        key: `low-clearance:${run}|road ${road[1]}|${Math.round(sc)}`,
+        kind: "low-clearance",
+        run,
+        with: null,
+        chunk: c.id,
+        measured: { s: sc, soffitM, shortM: Math.round((CLEARANCE_HEIGHT.value - soffitM) * 100) / 100 },
+      });
+    }
   }
   return out;
 }

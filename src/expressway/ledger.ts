@@ -69,6 +69,7 @@ export const CASE_KINDS = [
   "low-viaduct",
   "ground-stretch",
   "ground-crossing",
+  "low-clearance",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
@@ -108,6 +109,8 @@ export const MEASURES = [
   "innerP95M",
   "innerMedianM",
   "approachMaxM",
+  "soffitM",
+  "shortM",
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
@@ -550,7 +553,8 @@ export function withinCap(measured: Measured, cap: Measured): boolean {
       k === "insideM" ||
       k === "alongStepM" ||
       k === "innerP95M" ||
-      k === "approachMaxM";
+      k === "approachMaxM" ||
+      k === "shortM";
     if (isMiss && m > c + dzM + 1e-9) return false;
     if (k === "s0" && m < c - edgeM) return false;
     if (k === "s1" && m > c + edgeM) return false;
@@ -590,6 +594,7 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   "low-viaduct": ["lengthM", "s0", "s1"],
   "ground-stretch": ["innerP95M", "innerMedianM", "approachMaxM"],
   "ground-crossing": ["s"],
+  "low-clearance": ["shortM"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */

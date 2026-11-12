@@ -4,9 +4,18 @@ import {
   GIRDER_DEPTH,
   GIRDER_MIN,
   HEIGHT_STRUCTURES,
+  LOW_SPAN_SOFFIT_MIN,
   OPEN_GROUND_FLOOR,
 } from "./assumptions";
-import { CROSS_STRIDE, PIER_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwPortal } from "./format";
+import {
+  BLOCKED_STRIDE,
+  CROSS_STRIDE,
+  PIER_STRIDE,
+  ST,
+  STATION_STRIDE,
+  type XwChunk,
+  type XwPortal,
+} from "./format";
 import { surfaceAt } from "./profile";
 
 /**
@@ -394,6 +403,8 @@ export function checkHeightStructures(
     }
     return out;
   });
+  // A low span's window over a blocked road (S6 PR 7a2, `blockedWindows`) is spanned too.
+  windows.push(...lowSpanWindows(list));
   const isIn = (spans: Array<[number, number]>, s: number) => spans.some(([a, b]) => s >= a && s <= b);
   // Every metre's height over the ground, in k order.
   const pts: Array<{ s: number; over: number; k: number; first: boolean }> = [];
@@ -415,7 +426,11 @@ export function checkHeightStructures(
   const floating = new Uint8Array(pts.length);
   // Over another deck a station is the viaduct's whatever its height, so it ends a stretch (as the
   // compiler's classes do: 780870438:0's deck over 28127318 at its seam, 1.5 m up).
-  const isLowAt = (q: number) => pts[q].over < viaductFrom + T13_TOLERANCE_M && !isIn(above, pts[q].s);
+  // A spanned window ends one too (S6 PR 7a2): the compiler rules the pieces left beside a window apart
+  // (afterSpanning). Read through the window, a piece 3 m up on its far side would make one stretch
+  // with the embankment on its low side that reaches the ground, and be judged an embankment.
+  const isLowAt = (q: number) =>
+    pts[q].over < viaductFrom + T13_TOLERANCE_M && !isIn(above, pts[q].s) && !isIn(windows, pts[q].s);
   for (let i = 0; i < pts.length;) {
     if (!isLowAt(i)) {
       i++;
@@ -484,6 +499,7 @@ export function checkHeightStructures(
     if (!hasPortal) out.push(`${c.id}: no portal ${before.structure}>${c.structure} at s=${s0}`);
   });
   close();
+  out.push(...checkLowSpans(list));
   // R4 (review W3): each stretch of embankment chunks, its lowest metre over the ground, and whether it
   // holds to an end that meets the ground.
   const S = pts.length > 0 ? pts[pts.length - 1].s : 0;
@@ -624,4 +640,80 @@ export function sameKept(
 /** Whether a crossing's window (centre sc, ±half) reaches a chunk's [a, b] (R6 (c): it takes the thin girder). */
 export function isWindowOver(sc: number, half: number, a: number, b: number): boolean {
   return sc + half >= a && sc - half <= b;
+}
+
+/** The low spans' windows of a run's chunks (S6 PR 7a2): [s − half, s + half] per spanned blocked road. */
+export function lowSpanWindows(list: readonly XwChunk[]): Array<[number, number]> {
+  return list.flatMap((c) => {
+    const out: Array<[number, number]> = [];
+    const halves = c.blockedWindows ?? [];
+    for (let i = 0; i < c.blocked.length; i += BLOCKED_STRIDE) {
+      const half = halves[i / BLOCKED_STRIDE] ?? 0;
+      if (half > 0) out.push([c.blocked[i] - half, c.blocked[i] + half]);
+    }
+    return out;
+  });
+}
+
+/**
+ * T13 over the low spans (S6 PR 7a2), from the files alone: every metre of a spanned window is on a
+ * viaduct chunk on the thinnest girder, its soffit (the surface less that chunk's girder over the road)
+ * LOW_SPAN_SOFFIT_MIN or more, and no pier stands in the window. 2 cm for the files' rounding.
+ */
+export function checkLowSpans(list: readonly XwChunk[]): string[] {
+  const out: string[] = [];
+  // A station on a chunk boundary is read on the spanning chunk's side (the window starts there).
+  const holds = (c: XwChunk, sv: number) =>
+    sv >= c.st[0] - 1e-9 && sv <= c.st[c.st.length - STATION_STRIDE] + 1e-9;
+  const chunkAt = (sv: number) =>
+    list.find((c) => c.structure === "viaduct" && holds(c, sv)) ?? list.find((c) => holds(c, sv));
+  const piers = list.flatMap((c) => {
+    const ps: number[] = [];
+    for (let i = 0; i < c.piers.length; i += PIER_STRIDE) ps.push(c.piers[i]);
+    return ps;
+  });
+  for (const c of list) {
+    const halves = c.blockedWindows ?? [];
+    for (let i = 0; i < c.blocked.length; i += BLOCKED_STRIDE) {
+      const half = halves[i / BLOCKED_STRIDE] ?? 0;
+      if (half <= 0) continue;
+      const [sc, top] = c.blocked.slice(i, i + BLOCKED_STRIDE);
+      const label = `${c.id}: the low span over the road at s=${sc}`;
+      const pier = piers.find((p) => Math.abs(p - sc) <= half);
+      if (pier !== undefined) out.push(`${label} has a pier at s=${pier}`);
+      for (let sv = Math.ceil(sc - half); sv <= sc + half + 1e-9; sv += 1) {
+        const at = chunkAt(sv);
+        if (at === undefined) continue;
+        const isSpanned = at.structure === "viaduct" && at.girder <= GIRDER_MIN.value + 1e-9;
+        if (!isSpanned) {
+          out.push(`${label} is on ${at.id}'s ${at.structure} (girder ${at.girder}) at s=${sv}`);
+          break;
+        }
+        const soffit = surfaceAt(at.st, sv).z - at.girder - top;
+        const isLow = soffit < LOW_SPAN_SOFFIT_MIN.value - 0.02;
+        if (isLow) {
+          out.push(`${label} is ${soffit.toFixed(2)} m over it at s=${sv}`);
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * S6 PR 7a2: whether a blocked road's window [a, b] is spanned low: its soffit (the deck's lowest over
+ * it less GIRDER_MIN, over the road) `least` or more, and the window on an embankment and no cut (a cut
+ * is level with the road: nothing to span).
+ */
+export function isLowSpanWindow(
+  stretches: readonly HeightStretch[],
+  a: number,
+  b: number,
+  soffit: number,
+  least: number,
+): boolean {
+  const touches = (cls: HeightClass) => stretches.some((h) => h.structure === cls && h.s1 > a && h.s0 < b);
+  const isHighEnough = soffit >= least;
+  return isHighEnough && touches("embankment") && !touches("cut");
 }
