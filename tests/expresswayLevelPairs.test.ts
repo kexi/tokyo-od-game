@@ -203,6 +203,123 @@ describe("地平 run への seam の端は地表端と同じく越えられな�
   });
 });
 
+describe("地平 run への seam の端の届きは地表端と同じ（再レビュー N2）", () => {
+  it("is never more pessimistic than the same viaduct ending at the ground: what that clears from its end, the seam does too", () => {
+    const P = planeAt(139.75, 35.65);
+    const n: Network = { ways: new Map(), nodes: new Map() };
+    const xs = [0, 200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000];
+    xs.forEach((x) => {
+      const [lon, lat] = P.toLonLat(x, 0);
+      n.nodes.set(6000 + x, normalizeNode(6000 + x, lon, lat, {}));
+    });
+    const tags = { highway: "motorway", lanes: "2", maxspeed: "60", oneway: "yes" };
+    n.ways.set(
+      1,
+      normalizeWay(
+        1,
+        [0, 200, 400, 600, 800, 1000].map((x) => 6000 + x),
+        { ...tags, bridge: "yes", layer: "1" },
+      ),
+    );
+    n.ways.set(
+      2,
+      normalizeWay(
+        2,
+        [1000, 1200, 1400, 1600, 1800, 2000].map((x) => 6000 + x),
+        tags,
+      ),
+    );
+    // The ground rises 3 % going west from the viaduct's end (x 1000): the end's grade is the terrain's.
+    const ground = (lon: number, lat: number) => {
+      const x = P.toXY(lon, lat)[0];
+      return 3 + 0.03 * Math.max(0, 1000 - x);
+    };
+    const outcome = (opts: Parameters<typeof planNetwork>[4], d: number) => {
+      const [lon0, lat0] = P.toLonLat(1000 - d, -40);
+      const [lon1, lat1] = P.toLonLat(1000 - d, 40);
+      const road = {
+        kind: "road" as const,
+        id: 88,
+        pts: [[lon0, lat0] as [number, number], [lon1, lat1] as [number, number]],
+      };
+      const res = solvePlan(planNetwork(n, new Set(), null, [], opts), ground, [road]);
+      const diag = res.diagnostics.find((x) => x.run === "1" && x.kind === "crossing_over_or_at_grade");
+      return /cannot be cleared from the ground end/.test(diag?.detail ?? "");
+    };
+    const results: boolean[] = [];
+    for (let d = 60; d <= 420; d += 20) {
+      const atGround = outcome({ structures: "height" }, d);
+      const atSeam = outcome({ structures: "height", ground: "compile" }, d);
+      // Unreachable from the seam only where it is from the ground end too (the station's DEM at grade 0
+      // was not: 41009552's road 97671455). The run at grade's open end may stand a little higher in
+      // its band, so a road the ground end cannot clear the solved deck may still clear (no blocking).
+      const isMorePessimistic = atSeam && !atGround;
+      expect(isMorePessimistic, `d ${d}`).toBe(false);
+      results.push(atGround);
+    }
+    // Some near ones cannot be cleared, the far ones can: the distances span the reach.
+    expect(results.some((x) => x)).toBe(true);
+    expect(results.some((x) => !x)).toBe(true);
+  });
+});
+
+describe("並走の先細りは高さが離れる端だけ（再レビュー N1）", () => {
+  const heldOf = (plan: Plan) => plan.companions!.list.filter((c) => c.held !== false);
+  it("holds every station of a stretch whose ends only part sideways (275 m, as 24402611|45021976)", () => {
+    // The north line comes within 2.5 m of the south one from x 400 to 675 only (11 m apart), 30 m off elsewhere.
+    const plan = planNetwork(
+      pairNet([
+        { id: 1, y: 0, x0: -200, x1: 1200 },
+        { id: 2, y: 0, yAt: (x) => (x >= 400 && x <= 675 ? 11 : 30), x0: -200, x1: 1200, reversed: true },
+      ]),
+      new Set(),
+      null,
+      [],
+      { companionWeight: 1 },
+    );
+    const list = plan.companions!.list;
+    expect(list.length).toBeGreaterThan(0);
+    expect(heldOf(plan)).toEqual(list);
+  });
+
+  it("drops the rows within the climb of an end where the next station is a level apart, never the whole stretch", () => {
+    // Beside each other on layer 1 up to x 700, then the north line on layer 2 (a level apart).
+    const plan = planNetwork(
+      twoLines({ north: { layer: (x) => (x >= 700 ? "2" : "1") } }),
+      new Set(),
+      null,
+      [],
+      { companionWeight: 1 },
+    );
+    const south = runsOf(plan, 1)[0];
+    const xOfC = (c: { a: string; sa: number; sb: number }) => -200 + (c.a === south ? c.sa : c.sb);
+    const list = plan.companions!.list;
+    const dropped = list.filter((c) => c.held === false);
+    expect(dropped.length).toBeGreaterThan(0);
+    // Only near the layer's end (x 700) and near x −200, where both lines come down (ground ends): none
+    // in between.
+    const climb = approachLength(60);
+    const lastX = Math.max(...list.map(xOfC));
+    for (const c of dropped) {
+      const x = xOfC(c);
+      const isNearAnEnd = x >= lastX - climb - 1 || x <= -200 + climb + 1;
+      expect(isNearAnEnd, `x ${x}`).toBe(true);
+    }
+    expect(dropped.some((c) => xOfC(c) > 300)).toBe(true);
+    expect(heldOf(plan).length).toBeGreaterThan(0);
+    // A short one between two level-apart ends keeps its middle third.
+    const short = planNetwork(
+      twoLines({ north: { layer: (x) => (x >= 300 && x < 600 ? "1" : "2") } }),
+      new Set(),
+      null,
+      [],
+      { companionWeight: 1 },
+    );
+    expect(heldOf(short).length).toBeGreaterThan(0);
+    expect(short.companions!.list.some((c) => c.held === false)).toBe(true);
+  });
+});
+
 // Two main lines 11 m apart between centre lines (2.5 m between their carriageways, each 4.25 m to
 // its edge), 1 km beside each other on layer 1, the north one over a 6 m mound 200 m wide.
 const plane = planeAt(139.75, 35.65);

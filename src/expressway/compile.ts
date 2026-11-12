@@ -341,7 +341,14 @@ export type Plan = {
  * Two main lines beside each other at one height (S6 PR 3, findCompanions): station sa of a with
  * station sb of b, every COMPANIONS.stepM along a.
  */
-export type Companion = { a: string; sa: number; b: string; sb: number };
+export type Companion = {
+  a: string;
+  sa: number;
+  b: string;
+  sb: number;
+  /** false: within the climb of an end where the two part in height, no row (findCompanions). */
+  held?: false;
+};
 
 const priority = (net: Network, c: Chain) => {
   const isRamp = net.ways.get(c.ways[0])!.cls !== "expressway";
@@ -1278,8 +1285,13 @@ function markSharedTouchdowns(plan: Plan): void {
  * the nearest point of each other main line b whose carriageway is apart from a's (no deck pair: those
  * are one surface or a level apart already) by at most gapM, on the same OSM layer, and not within the
  * reach of an ordered crossing of the two; such stations in a row (no step missed) over minLengthM or
- * more make the pair companions there, but for the climb (approachLength, the slower's) at either end
- * of the stretch. Which way each runs does not matter. Below runs are left out:
+ * more make the pair companions there. A station gets a row (`held`) but within the climb
+ * (approachLength, the slower's) of an end where the stretch ends because the two part in height
+ * there: the next station a level apart (another layer) or one of them coming down (a touchdown,
+ * touchdownsNear); at most a third of the stretch from each end, so no stretch is left without rows.
+ * Why only there (PR 3 re-review N1): dropped at every end, a stretch under about 390 m had no row at
+ * all (24402611|45021976, 275 m beside each other, stayed 4.95 m apart). Which way each runs does not
+ * matter. Below runs are left out:
  * a tunnel's companion in another component would join what pruneBelow keeps apart. Two runs of one
  * chain are one road (a seam), not two. Decided on the plan alone (T8: whatever the range or the
  * order of the ways).
@@ -1325,17 +1337,32 @@ function findCompanions(plan: Plan): Companion[] {
     const pa = polys.get(a)!;
     // Per partner, the stations in a row so far.
     const rows = new Map<string, Companion[]>();
-    const flush = (b: string) => {
+    // Why each partner's row now open began: a level apart (another layer) just before, or apart.
+    const startedBy = new Map<string, "layer" | "apart">();
+    const lastWhy = new Map<string, "layer" | "apart">();
+    const flush = (b: string, endWhy: "layer" | "apart" = "apart") => {
       const list = rows.get(b) ?? [];
       rows.delete(b);
+      const startWhy = startedBy.get(b) ?? "apart";
+      startedBy.delete(b);
       const isLong = list.length > 0 && list[list.length - 1].sa - list[0].sa >= minLengthM;
       if (!isLong) return;
-      // Not within the climb of either end of the stretch (PR 3 review): there one of the two parts
-      // for a junction or a crossing, and 46 of the 80 stations past dzM lay within 150 m of an end.
-      const climb = approachLength(Math.min(ra.planV, plan.runs.get(b)!.planV) as DesignSpeed);
-      const first = list[0].sa;
-      const last = list[list.length - 1].sa;
-      out.push(...list.filter((c) => c.sa - first >= climb && last - c.sa >= climb));
+      const rb = plan.runs.get(b)!;
+      const climb = approachLength(Math.min(ra.planV, rb.planV) as DesignSpeed);
+      const first = list[0];
+      const last = list[list.length - 1];
+      const length = last.sa - first.sa;
+      // Where one of the two comes down by the stretch's end (within two steps of it).
+      const isTouchdownAt = (c: Companion) =>
+        touchdownsNear(plan, ra, c.sa, 2 * stepM).length > 0 ||
+        touchdownsNear(plan, rb, c.sb, 2 * stepM).length > 0;
+      const taper = Math.min(climb, length / 3);
+      const startTaper = startWhy === "layer" || isTouchdownAt(first) ? taper : 0;
+      const endTaper = endWhy === "layer" || isTouchdownAt(last) ? taper : 0;
+      for (const c of list) {
+        const isHeld = c.sa - first.sa >= startTaper && last.sa - c.sa >= endTaper;
+        out.push(isHeld ? c : { ...c, held: false });
+      }
     };
     for (let s = 0; s <= ra.length + 1e-9; s += stepM) {
       const q = pointAt(pa, s);
@@ -1366,6 +1393,7 @@ function findCompanions(plan: Plan): Companion[] {
             });
           }
       for (const b of rows.keys()) if (!best.has(b)) flush(b);
+      for (const b of lastWhy.keys()) if (!best.has(b)) lastWhy.set(b, "apart");
       for (const [b, m] of [...best.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1))) {
         const rb = plan.runs.get(b)!;
         const gap = m.d - q.hw - m.hw;
@@ -1381,9 +1409,13 @@ function findCompanions(plan: Plan): Companion[] {
         });
         const isCompanion = isBeside && isSameLayer && !isAtCrossing;
         if (!isCompanion) {
-          flush(b);
+          const why = isSameLayer ? "apart" : "layer";
+          flush(b, why);
+          lastWhy.set(b, why);
           continue;
         }
+        const isNew = !rows.has(b);
+        if (isNew) startedBy.set(b, lastWhy.get(b) ?? "apart");
         rows.set(b, [...(rows.get(b) ?? []), { a, sa: roundTo(s, 2), b, sb: roundTo(m.sb, 2) }]);
       }
     }
@@ -1524,7 +1556,7 @@ export function groupComponents(plan: Plan): void {
   for (const c of plan.crossings) union(c.upper, c.lower);
   for (const p of plan.pairs) union(p.a, p.b);
   // Companions are one QP's rows too (S6 PR 3): two main lines beside each other solve together.
-  for (const c of plan.companions?.list ?? []) union(c.a, c.b);
+  for (const c of plan.companions?.list ?? []) if (c.held !== false) union(c.a, c.b);
   for (const id of [...plan.runs.keys()].sort()) {
     const root = find(id);
     plan.componentOf.set(id, root);
@@ -1946,11 +1978,17 @@ function setupRun(
   // road no grade clears from there gets no row, as at a ground end. Why: given a row (W_BOUND), the
   // roads 17 and 29 m from 41009552's start outweighed the band that holds the run at grade's open end
   // (W_FLOOR) and lifted both 5.27 m off the ground. Only for this reach: the end is no ground end.
-  const seamGroundZ: [number | null, number | null] = [0, 1].map((side) => {
+  // The terrain there as at a ground end (terrainAt's height and grade, none for a short run). Why not
+  // the station's DEM at grade 0 (PR 3 re-review N2): more pessimistic than the ground end it stands
+  // for, it blocked roads the tags' build cleared (41009552's road 97671455 at s 138, 6.74 m clear).
+  const seamTerrain: Array<{ z: number; grade: number } | null> = [0, 1].map((side) => {
     const e = ends[side];
     const isOnGroundRun = e.kind === "seam" && plan.runs.get(e.parent)?.ground === true;
-    return isOnGroundRun ? groundAt[side === 0 ? 0 : n - 1] : null;
-  }) as [number | null, number | null];
+    if (!isOnGroundRun) return null;
+    const V = zoneSpeedAt(rp.zones, side === 0 ? 0 : S);
+    const t = terrainAt(rp, ground, rp.align.vertexSample[e.nodeIndex], V);
+    return { z: t.z, grade: isShort ? 0 : t.grade };
+  });
   for (const { o, poly } of objectsNear(objects, mine)) {
     for (const [sc, , sin] of intersect(mine, poly)) {
       const p = poseAt(rp, sc);
@@ -1961,10 +1999,11 @@ function setupRun(
       // but recorded for P3 (the deck closes it).
       const w = Math.min(40, (rp.halfWidth + GROUND_ROAD_HALF_WIDTH.value) / Math.max(sin, 0.25));
       const reach = (side: number, d: number) => {
-        const z0 = groundZ[side] ?? seamGroundZ[side];
+        const z0 = groundZ[side] ?? seamTerrain[side]?.z ?? null;
         if (z0 === null) return Infinity;
         // Climbing away from the end: the end grade, reversed for the far end.
-        const g0 = (fixed[side].grade ?? 0) * (side === 0 ? 1 : -1);
+        const endGrade = groundZ[side] !== null ? fixed[side].grade : seamTerrain[side]?.grade;
+        const g0 = (endGrade ?? 0) * (side === 0 ? 1 : -1);
         return climbLimit(zoneSpeedAt(rp.zones, side === 0 ? 0 : S), g0)(Math.max(0, d)) + z0;
       };
       const isUnreachable =
@@ -2399,7 +2438,7 @@ function couplingsOf(plan: Plan, members: Set<string>): Coupling[] {
   }
   // Main lines beside each other (S6 PR 3): within COMPANIONS.dzM of one height, at the plan's weight.
   for (const c of plan.companions?.list ?? []) {
-    const isInside = members.has(c.a) && members.has(c.b);
+    const isInside = members.has(c.a) && members.has(c.b) && c.held !== false;
     if (!isInside) continue;
     const dz = COMPANIONS.value.dzM;
     out.push({
@@ -3114,7 +3153,7 @@ function couplingGraph(plan: Plan, members: Set<string>): Map<string, Set<string
   for (const id of members) for (const p of junctionParents(plan, id)) link(id, p);
   for (const c of plan.crossings) link(c.upper, c.lower);
   for (const p of plan.pairs) link(p.a, p.b);
-  for (const c of plan.companions?.list ?? []) link(c.a, c.b);
+  for (const c of plan.companions?.list ?? []) if (c.held !== false) link(c.a, c.b);
   return out;
 }
 

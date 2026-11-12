@@ -24,6 +24,13 @@ const byClass = z.strictObject({ main: tally, ramp: tally, street: tally });
 const spread = z.strictObject({ total: count, median: count, p90: count, max: count });
 /** A spread of lengths or depths in metres (P2.7-6 structures). */
 const metres = z.strictObject({ median: km, p90: km, max: km });
+/** The companions' station pairs (S6 PR 3): how many, the km along the first, |Δz| as solved. */
+const companionTally = {
+  pairs: count,
+  stations: count,
+  km,
+  dz: z.strictObject({ p50M: km, p90M: km, maxM: km, overDz: count }),
+};
 const extentTally = z.strictObject({ inKm: km, outKm: km, operatedKm: km, otherKm: km });
 const cls = z.enum(["expressway", "ramp", "street"]);
 
@@ -218,16 +225,15 @@ export const ReportSchema = z.strictObject({
    * Main lines held to one height beside each other (S6 PR 3, `--companions on`, compile.ts
    * findCompanions): the run pairs and station pairs among the runs written, the km along the first,
    * and |Δz| at those stations as solved (p50, p90, max, and the station pairs past COMPANIONS.dzM); the
-   * station pairs themselves go to <report>.companions.json beside the scorecard.
+   * station pairs themselves go to <report>.companions.json beside the scorecard ([a, sa, b, sb, held]).
+   * The whole beside each other first, then `held`: those with a row (not in a tapered end).
    * Absent without the flag.
    */
   companions: z
     .strictObject({
       weight: z.number().positive(),
-      pairs: count,
-      stations: count,
-      km,
-      dz: z.strictObject({ p50M: km, p90M: km, maxM: km, overDz: count }),
+      ...companionTally,
+      held: z.strictObject(companionTally),
     })
     .optional(),
   /**

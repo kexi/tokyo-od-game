@@ -681,13 +681,13 @@ function zOf(run: string, s: number): number | null {
   return c ? surfaceAt(c.st, s).z : null;
 }
 
-/**
- * The ends of the runs at grade that a viaduct or below run seams onto (`open`, S6 PR 3): how far the
- * road stands off the ground there, past the band, and the worst.
- */
 /** The reach of the band's centre about an open end (compile.ts setupGround's movingMedian, ±150 m). */
 const OPEN_END_REACH_M = 150;
 
+/**
+ * The ends of the runs at grade that a viaduct or below run seams onto (`open`, S6 PR 3): how far the
+ * road stands off the band's centre there, past the band, and the worst.
+ */
 function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Report["ground"]>["openEnds"]> {
   const band = HEIGHT_STRUCTURES.value.ground.bandM;
   const offs: number[] = [];
@@ -722,43 +722,39 @@ function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Rep
   };
 }
 
-/**
- * The scorecard's `companions` (S6 PR 3): the station pairs among the written runs and |Δz| there as
- * solved.
- */
 /** The companions' station pairs on runs written both (the ones the scorecard measures). */
 function companionPairsWritten(): NonNullable<typeof plan.companions>["list"] {
   return plan.companions!.list.filter((c) => zOf(c.a, c.sa) !== null && zOf(c.b, c.sb) !== null);
 }
 
+/**
+ * The scorecard's `companions` (S6 PR 3): the station pairs among the written runs and |Δz| there as
+ * solved, all of them and those with a row.
+ */
 function companionsSummary(): NonNullable<Report["companions"]> {
   const { weight } = plan.companions!;
-  const dz: number[] = [];
-  const pairs = new Set<string>();
-  let km = 0;
   const step = COMPANIONS.value.stepM;
-  for (const c of companionPairsWritten()) {
-    const za = zOf(c.a, c.sa)!;
-    const zb = zOf(c.b, c.sb)!;
-    pairs.add(`${c.a}|${c.b}`);
-    dz.push(Math.abs(za - zb));
-    km += step / 1000;
-  }
-  dz.sort((a, b) => a - b);
-  const at = (q: number) => (dz.length === 0 ? 0 : dz[Math.min(dz.length - 1, Math.ceil(q * dz.length) - 1)]);
   const r2 = (v: number) => Math.round(v * 100) / 100;
-  return {
-    weight,
-    pairs: pairs.size,
-    stations: dz.length,
-    km: Math.round(km * 1000) / 1000,
-    dz: {
-      p50M: r2(at(0.5)),
-      p90M: r2(at(0.9)),
-      maxM: r2(dz[dz.length - 1] ?? 0),
-      overDz: dz.filter((d) => d > COMPANIONS.value.dzM + 1e-9).length,
-    },
+  // Every station pair beside each other, and those with a row (the tapered ends have none): the bar
+  // (p90 ≤ 0.5 m) is the whole's (PR 3 re-review N1: the held ones alone read 0.29 m, the whole 0.55 m).
+  const tally = (list: ReturnType<typeof companionPairsWritten>) => {
+    const dz = list.map((c) => Math.abs(zOf(c.a, c.sa)! - zOf(c.b, c.sb)!)).sort((a, b) => a - b);
+    const at = (q: number) =>
+      dz.length === 0 ? 0 : dz[Math.min(dz.length - 1, Math.ceil(q * dz.length) - 1)];
+    return {
+      pairs: new Set(list.map((c) => `${c.a}|${c.b}`)).size,
+      stations: dz.length,
+      km: Math.round(((dz.length * step) / 1000) * 1000) / 1000,
+      dz: {
+        p50M: r2(at(0.5)),
+        p90M: r2(at(0.9)),
+        maxM: r2(dz[dz.length - 1] ?? 0),
+        overDz: dz.filter((d) => d > COMPANIONS.value.dzM + 1e-9).length,
+      },
+    };
   };
+  const all = companionPairsWritten();
+  return { weight, ...tally(all), held: tally(all.filter((c) => c.held !== false)) };
 }
 
 /**
@@ -924,7 +920,7 @@ if (reportPath) {
   await writeFile(reportPath, reportText);
   // The companions' station pairs (about 120 KB in ship) beside the scorecard, not in it (PR 3 review).
   if (plan.companions) {
-    const pairs = companionPairsWritten().map((c) => [c.a, c.sa, c.b, c.sb]);
+    const pairs = companionPairsWritten().map((c) => [c.a, c.sa, c.b, c.sb, c.held === false ? 0 : 1]);
     await writeFile(
       reportPath.replace(/(\.report)?\.json$/, "") + ".companions.json",
       JSON.stringify(pairs) + "\n",
