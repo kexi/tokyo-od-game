@@ -74,6 +74,8 @@ import {
   mainLineHoles,
   planNetwork,
   untiedPairs,
+  solveWithRampShift,
+  type CompileResult,
   solvePlan,
 } from "../src/expressway/compile.ts";
 import {
@@ -262,6 +264,19 @@ if (isWeightBad) throw new Error(`--companion-weight must be > 0`);
 const isCompanions = companionsArg === "on";
 const isCompanionsInBlocks = isCompanions && partitionMode === "blocks";
 if (isCompanionsInBlocks) throw new Error("--companions on needs --partition components");
+// S6 PR 4: --ramp-shift <m> moves a ramp off the main line it meets where the two overlap apart in height
+// (案 A, from a first solve, by m at most); --nose-surface overlap holds two runs that meet at a node one
+// surface wherever they overlap (案 B).
+const rampShiftArg = arg("ramp-shift");
+const rampShiftM = rampShiftArg === undefined ? null : Number(rampShiftArg);
+const isRampShiftBad = rampShiftM !== null && !(rampShiftM > 0);
+if (isRampShiftBad) throw new Error(`--ramp-shift must be > 0 (m)`);
+const noseArg = arg("nose-surface") ?? "nose";
+const isNoseArg = noseArg === "nose" || noseArg === "overlap";
+if (!isNoseArg) throw new Error(`unknown --nose-surface ${noseArg} (nose, overlap)`);
+const noseMode = noseArg as "nose" | "overlap";
+const isRampShiftInBlocks = rampShiftM !== null && partitionMode === "blocks";
+if (isRampShiftInBlocks) throw new Error("--ramp-shift needs --partition components");
 // --below all (P2.7-1), blocks (P2.7-2), v1, a sweep of the v2 weights and the structures by height
 // (P2.7-6) move the decks: measuring only, never into the shipped folder.
 const refusal = shippedFolderRefusal({
@@ -274,6 +289,8 @@ const refusal = shippedFolderRefusal({
   isGround: groundMode === "compile",
   isTouchdownAll: touchdownMode === "all",
   isCompanions,
+  isRampShift: rampShiftM !== null,
+  isNoseOverlap: noseMode === "overlap",
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -393,18 +410,21 @@ const areas = hasWards
     )
   : null;
 const inWards = (lon: number, lat: number) => areas?.lookup(lat, lon) != null;
-const plan = planNetwork(net, outsideNodes, ranges, structures, {
+const planOptions: Parameters<typeof planNetwork>[4] = {
   pruneBelow: below === "pruned",
   partition: partitionMode,
   quietFactor,
   structures: structuresMode,
   ground: groundMode,
   touchdown: touchdownMode,
+  noseSurface: noseMode,
   ...(isCompanions ? { companionWeight } : {}),
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
-});
+};
+// Planned again with the ramps moved (--ramp-shift) once the first solve says where.
+let plan = planNetwork(net, outsideNodes, ranges, structures, planOptions);
 // Asked again of the finished plan (the same set: shipRuns is pure), for the log and the scorecard.
-const chosenShip = isShip ? shipRuns(plan, inWards) : null;
+let chosenShip = isShip ? shipRuns(plan, inWards) : null;
 if (chosenShip !== null) {
   log("expressway_scope_chosen", {
     main: chosenShip.main.size,
@@ -426,7 +446,7 @@ if (part) {
     neededRuns: part.neededRuns.length,
   });
 }
-const untied = untiedPairs(plan);
+let untied = untiedPairs(plan);
 log("expressway_planned", {
   chains: plan.chains.size,
   runs: plan.runs.size,
@@ -495,7 +515,38 @@ log("expressway_objective_chosen", {
   reachBelowM: objective.kind === "v2" ? objective.reachM.below : null,
   targetScale: objective.kind === "v2" ? objective.targetScale : null,
 });
-const result = solvePlan(plan, (lon, lat) => dem.heightAt(lon, lat), objects, { objective });
+const heightAt = (lon: number, lat: number) => dem.heightAt(lon, lat);
+let result: CompileResult;
+if (rampShiftM === null) result = solvePlan(plan, heightAt, objects, { objective });
+else {
+  // 案 A end to end (compile.ts solveWithRampShift): solved on the whole components, the ramps moved, solved
+  // again, the moves that made a ramp worse dropped, and the range solved from the last plan.
+  const shifted = await solveWithRampShift(
+    (rampOffsets) =>
+      planNetwork(net, outsideNodes, ranges, structures, {
+        ...planOptions,
+        rampOffsets,
+        rampShiftCapM: rampShiftM,
+      }),
+    heightAt,
+    objects,
+    rampShiftM,
+    { objective },
+    async (p) => {
+      await dem.prefetch(groundPoints(p));
+    },
+  );
+  plan = shifted.plan;
+  result = shifted.result;
+  // The scope and the let-go pairs of the plan the data comes from (PR 4 review W4).
+  chosenShip = isShip ? shipRuns(plan, inWards) : null;
+  untied = untiedPairs(plan);
+  log("expressway_ramps_shifted", {
+    maxM: rampShiftM,
+    chains: shifted.moved.length,
+    dropped: shifted.dropped,
+  });
+}
 log("expressway_solved", {
   ...result.stats,
   qpMs: Math.round(result.stats.qpMs),

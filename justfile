@@ -283,6 +283,10 @@ compare-expressway-reports a b flags="":
 compare-expressway-heights a b flags="":
     pnpm exec tsx scripts/compareExpresswayHeights.ts {{ a }} {{ b }} {{ flags }}
 
+# 高速道路の計測ラベルの未許可の重なりを S6 の 5 区分（つながる / つながらない × 同一面から / 途中、1 段にあと少し）で種類ごとに数え、1 行の JSON ログに出す（base に基準のラベルを渡すと、基準の「つながる・同一面から」の組がまだ未許可かを追う）
+count-overlap-shapes label base="":
+    pnpm exec tsx scripts/expresswayOverlapShapes.ts {{ label }} {{ base }}
+
 # 高速道路の許容の台帳 ledger.json をデータのフォルダから数え直して書き直す（dir は生成先のフォルダかラベル、新しい事例は new・無くなった事例は gone で追加しかしない、flags に --seed <別の台帳> で判断を key で引き継ぐ・--prune で gone を消す・--write-budget で budget を今の件数に書き換える）
 update-expressway-ledger dir="public/data/expressway" flags="":
     pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayLedger.ts {{ dir }} {{ flags }}

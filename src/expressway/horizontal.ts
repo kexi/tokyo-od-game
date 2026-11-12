@@ -24,6 +24,16 @@ export type PlanInput = {
    * tolerance (3 m) applies there, not ε.
    */
   pin?: (x: number, y: number) => [number, number] | null;
+  /**
+   * `--ramp-shift` (S6 PR 4): per resampled sample (as `original` comes out), metres to move the line
+   * the smoothing pulls towards off the OSM line, along the OSM line's left normal (negative: to the
+   * right). Such samples are held within ε of that shifted line, not of OSM, and are reported apart
+   * (`shifted`; compile.ts rampShiftOf gives a run's farthest). The target is corrected by what the
+   * smoothing gave back (twice), so the line moves by about the offset, not by up to ε less or more
+   * (PR 4 review W3: a 0.06 m request moved 1.5 m when ε was added to it). 0 at an anchor (it stays
+   * on its node); a pinned sample stays pinned.
+   */
+  offset?: Float64Array;
 };
 
 export type PlanAlignment = {
@@ -45,6 +55,8 @@ export type PlanAlignment = {
   pinned: Uint8Array;
   /** Largest distance between a pinned sample and the OSM line (0 without pins). */
   pinnedShiftM: number;
+  /** Whether each sample is shifted (PlanInput.offset; never a pinned one). */
+  shifted: Uint8Array;
 };
 
 const SAMPLE_M = 1;
@@ -184,6 +196,27 @@ export function alignPlan(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): 
   // The line the smoothing pulls towards: OSM, except at pinned samples (a structure's deck line).
   const target = Float64Array.from(pts);
   const pinned = new Uint8Array(n);
+  // Shifted samples (PlanInput.offset): the target moves off OSM along its left normal (±3 samples).
+  const shifted = new Uint8Array(n);
+  const offset = input.offset;
+  // The OSM line's left normal at each shifted sample (±3 samples).
+  const normal = new Float64Array(2 * n);
+  if (offset) {
+    for (let i = 0; i < n; i++) {
+      const isShifted = Math.abs(offset[i] ?? 0) > 1e-9;
+      if (!isShifted) continue;
+      const a = Math.max(0, i - 3);
+      const b = Math.min(n - 1, i + 3);
+      const tx = pts[2 * b] - pts[2 * a];
+      const ty = pts[2 * b + 1] - pts[2 * a + 1];
+      const len = Math.hypot(tx, ty) || 1;
+      normal[2 * i] = -ty / len;
+      normal[2 * i + 1] = tx / len;
+      target[2 * i] = pts[2 * i] + normal[2 * i] * offset[i];
+      target[2 * i + 1] = pts[2 * i + 1] + normal[2 * i + 1] * offset[i];
+      shifted[i] = 1;
+    }
+  }
   if (input.pin) {
     for (let i = 0; i < n; i++) {
       const p = input.pin(pts[2 * i], pts[2 * i + 1]);
@@ -192,36 +225,60 @@ export function alignPlan(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): 
       target[2 * i + 1] = p[1];
       weights[i] = ANCHOR_WEIGHT;
       pinned[i] = 1;
+      shifted[i] = 0;
     }
   }
   const alpha = (SMOOTH_SCALE_M / SAMPLE_M) ** 6;
-  let xy = smooth(target, weights, alpha);
-  // Raise the pull towards the OSM line where the shift exceeds ε, until none does.
-  for (let iter = 0; iter < 40; iter++) {
-    let worst = 0;
-    for (let i = 0; i < n; i++) {
-      if (pinned[i]) continue;
-      const d = Math.hypot(xy[2 * i] - pts[2 * i], xy[2 * i + 1] - pts[2 * i + 1]);
-      worst = Math.max(worst, d);
-      const isOver = d > epsilon * 0.97;
-      if (isOver) weights[i] *= 4 * (d / epsilon) ** 2;
+  const base = Float64Array.from(weights);
+  // Raise the pull towards the line held to (OSM, or its shifted target) where the shift exceeds ε,
+  // until none does.
+  const fit = () => {
+    weights.set(base);
+    let line = smooth(target, weights, alpha);
+    for (let iter = 0; iter < 40; iter++) {
+      let worst = 0;
+      for (let i = 0; i < n; i++) {
+        if (pinned[i]) continue;
+        const d = Math.hypot(line[2 * i] - target[2 * i], line[2 * i + 1] - target[2 * i + 1]);
+        worst = Math.max(worst, d);
+        const isOver = d > epsilon * 0.97;
+        if (isOver) weights[i] *= 4 * (d / epsilon) ** 2;
+      }
+      if (worst <= epsilon * 0.97) break;
+      line = smooth(target, weights, alpha);
     }
-    if (worst <= epsilon * 0.97) break;
-    xy = smooth(target, weights, alpha);
+    return line;
+  };
+  let xy = fit();
+  // The shifted samples moved by what the smoothing left of the offset: the target takes what it gave
+  // back (along the normal, only where it fell short), and the line is fitted again.
+  const isCorrected = offset !== undefined && shifted.some((v) => v === 1);
+  for (let pass = 0; isCorrected && pass < 2; pass++) {
+    for (let i = 0; i < n; i++) {
+      if (!shifted[i]) continue;
+      const got =
+        (xy[2 * i] - pts[2 * i]) * normal[2 * i] + (xy[2 * i + 1] - pts[2 * i + 1]) * normal[2 * i + 1];
+      const want = offset[i];
+      const isShort = Math.sign(got) !== Math.sign(want) || Math.abs(got) < Math.abs(want);
+      if (!isShort) continue;
+      target[2 * i] += normal[2 * i] * (want - got);
+      target[2 * i + 1] += normal[2 * i + 1] * (want - got);
+    }
+    xy = fit();
   }
   let clamped = 0;
   for (let i = 0; i < n; i++) {
     if (pinned[i]) continue;
-    let dx = xy[2 * i] - pts[2 * i];
-    let dy = xy[2 * i + 1] - pts[2 * i + 1];
+    let dx = xy[2 * i] - target[2 * i];
+    let dy = xy[2 * i + 1] - target[2 * i + 1];
     const d = Math.hypot(dx, dy);
     // Last resort: pull a stubborn sample back onto the ε circle (a tiny kink, never seen so far).
     const isOver = d > epsilon;
     if (isOver) {
       dx *= epsilon / d;
       dy *= epsilon / d;
-      xy[2 * i] = pts[2 * i] + dx;
-      xy[2 * i + 1] = pts[2 * i + 1] + dy;
+      xy[2 * i] = target[2 * i] + dx;
+      xy[2 * i + 1] = target[2 * i + 1] + dy;
       clamped++;
     }
   }
@@ -240,7 +297,7 @@ export function alignPlan(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): 
   for (let i = 0; i < n; i++) {
     const d = Math.hypot(xy[2 * i] - pts[2 * i], xy[2 * i + 1] - pts[2 * i + 1]);
     if (pinned[i]) pinnedShift = Math.max(pinnedShift, d);
-    else maxShift = Math.max(maxShift, d);
+    else if (!shifted[i]) maxShift = Math.max(maxShift, d);
   }
   const s = new Float64Array(n);
   for (let i = 1; i < n; i++)
@@ -255,5 +312,6 @@ export function alignPlan(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): 
     clamped,
     pinned,
     pinnedShiftM: pinnedShift,
+    shifted,
   };
 }

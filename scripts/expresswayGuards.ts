@@ -19,6 +19,10 @@ export type BuildFlags = {
   isTouchdownAll?: boolean;
   /** --companions on (S6 PR 3: main lines beside each other held to one height). */
   isCompanions?: boolean;
+  /** --ramp-shift (S6 PR 4 案 A: ramps moved off the main lines they overlap). */
+  isRampShift?: boolean;
+  /** --nose-surface overlap (S6 PR 4 案 B: one surface wherever two runs that meet overlap). */
+  isNoseOverlap?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
@@ -35,6 +39,8 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   if (f.isV1) return `--objective v1 is for comparing: ${MEASURE}`;
   const isSweep = f.v2Flags.length > 0;
   if (isSweep) return `--${f.v2Flags[0]} is for a sweep of the v2 weights: ${MEASURE}`;
+  if (f.isRampShift) return `--ramp-shift is for measuring until it is the default: ${MEASURE}`;
+  if (f.isNoseOverlap) return `--nose-surface overlap is for measuring until it is the default: ${MEASURE}`;
   if (f.isTouchdownAll) return `--touchdown all is for measuring until it is the default: ${MEASURE}`;
   if (f.isCompanions) return `--companions on is for measuring until it is the default: ${MEASURE}`;
   if (f.isGround) return `--ground compile is for measuring until it is the default: ${MEASURE}`;
