@@ -189,7 +189,7 @@ export function checkSurface(c: XwChunk): string[] {
  * T3 within a run: consecutive chunks share their boundary station exactly, its grade and bank, and
  * the heading their end cross-sections are squared to (which agrees with the first chord).
  */
-export function checkChunkJoin(a: XwChunk, b: XwChunk): string[] {
+export function checkChunkJoin(a: XwChunk, b: XwChunk, rampFloor?: number): string[] {
   const out: string[] = [];
   const last = a.st.slice(-STATION_STRIDE);
   const first = b.st.slice(0, STATION_STRIDE);
@@ -208,7 +208,9 @@ export function checkChunkJoin(a: XwChunk, b: XwChunk): string[] {
   const chord = chordHeading(bst[0], bst[1]);
   // A chord of length L on a curve of radius R leaves the tangent by L / 2R; the tightest R the run
   // may have bounds it, plus 0.5° for the rounding.
-  const floor = b.cls === "ramp" ? RAMP_MIN_RADIUS.value : CURVE_RADIUS.value[V(b)].special;
+  // A ramp whose OSM radius the ledger accepts (ramp-radius, rampFloor) is held to that, as T6 holds it.
+  const rampLimit = Math.min(RAMP_MIN_RADIUS.value, rampFloor ?? Infinity);
+  const floor = b.cls === "ramp" ? rampLimit : CURVE_RADIUS.value[V(b)].special;
   const allowed = (bst[1].s - bst[0].s) / (2 * floor) + (0.5 * Math.PI) / 180;
   const isOffLine = angleDiff(chord, b.h0) > allowed;
   if (isOffLine) out.push(`${b.id}: start heading ${b.h0} vs stations ${chord.toFixed(4)}`);
@@ -264,6 +266,9 @@ export function climbingEnds(run: XwRunSummary, runs: ReadonlyMap<string, XwRunS
     const parent = e.parent === undefined ? undefined : runs.get(e.parent);
     const key = `${r.id}:${atStart}`;
     const isUnknown = parent === undefined || e.parentS === undefined || seen.has(key);
+    // On a run at grade (S6 PR 2) the end is at the ground.
+    const isOnGroundRun = parent?.ground === true;
+    if (isOnGroundRun) return true;
     if (isUnknown) return false;
     // A ramp ending on a structure's street comes down with it (compile.ts isLowEnd).
     const isOnStreet = e.kind === "junction" && parent.cls === "street";

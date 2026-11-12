@@ -531,7 +531,7 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   let_go: ["s", "alongStepM"],
   "high-deck": ["heightM", "spanM", "s0", "s1"],
   "cut-stretch": ["lengthM", "depthM", "s0", "s1"],
-  "embankment-stretch": ["lengthM", "s0", "s1"],
+  "embankment-stretch": ["lengthM", "depthM", "s0", "s1"],
   "thin-girder": ["girderM"],
   "low-viaduct": ["lengthM", "s0", "s1"],
 };

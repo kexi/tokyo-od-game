@@ -33,6 +33,13 @@ export type BankOptions = {
   pins?: Float64Array;
   /** Design speed whose 第18条 length sets the run-in (default: the highest of `V`). */
   transitionV?: DesignSpeed;
+  /**
+   * Hold 第25条 over the pins too (another deck's bank is cut to what the grade here leaves), and run
+   * the run-in passes and the room's cut again until neither moves: the room's last cut no longer
+   * steepens a run-in it was not part of (S6 PR 2: the short ramps at grade, 11.63 % composite and
+   * 2.90‰/m run-ins). Absent: as before, so the files of a build without runs at grade stay as they were.
+   */
+  strict?: boolean;
 };
 
 /**
@@ -109,6 +116,35 @@ export function superelevation(
   // The pinned values are another deck's (or the parent's) bank: they stay as they are.
   if (room)
     for (let i = 0; i < n; i++) if (!pinned[i]) bank[i] = Math.max(-room[i], Math.min(room[i], bank[i]));
+  if (options.strict && room) {
+    // The composite grade over every sample, the ends' and the pins' included; then the run-ins again
+    // from what the cuts left, until a pass changes nothing (each pass only moves a bank towards 0).
+    // An end held to its parent's bank stays (T3): the parent's own bank kept its room there.
+    const isHeld = (i: number) => (i === 0 && ends.start !== null) || (i === n - 1 && ends.end !== null);
+    for (let i = 0; i < n; i++) if (!isHeld(i)) bank[i] = Math.max(-room[i], Math.min(room[i], bank[i]));
+    for (let pass = 0; pass < 50; pass++) {
+      let moved = false;
+      for (let i = 1; i < n; i++) {
+        const d = rate * (s[i] - s[i - 1]);
+        const v = Math.max(bank[i - 1] - d, Math.min(bank[i - 1] + d, bank[i]));
+        const toward = Math.abs(v) < Math.abs(bank[i]) ? v : bank[i];
+        if (toward !== bank[i] && !isHeld(i)) {
+          bank[i] = toward;
+          moved = true;
+        }
+      }
+      for (let i = n - 2; i >= 0; i--) {
+        const d = rate * (s[i + 1] - s[i]);
+        const v = Math.max(bank[i + 1] - d, Math.min(bank[i + 1] + d, bank[i]));
+        const toward = Math.abs(v) < Math.abs(bank[i]) ? v : bank[i];
+        if (toward !== bank[i] && !isHeld(i)) {
+          bank[i] = toward;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+  }
   return bank;
 }
 

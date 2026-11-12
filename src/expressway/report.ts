@@ -179,6 +179,31 @@ export const ReportSchema = z.strictObject({
    * the viaduct-tagged runs written (count, km, the spread of their lengths and, for a cut, depths),
    * the chunks with a thinner girder, and the km per district. Absent from a build by the tags.
    */
+  /**
+   * The runs at grade (S6 PR 2, `--ground compile`): written (runs, km), the main line's holes left
+   * (compile.ts mainLineHoles: elsewhere, beside an unwritten below run, at a chain's end), the roads
+   * that cross them (blocked), and how their main lines of 800 m or more follow the ground (trackingOf
+   * over them). Absent without the flag.
+   */
+  ground: z
+    .strictObject({
+      runs: count,
+      km,
+      holes: z.strictObject({ count, km }),
+      besideBelow: z.strictObject({ count, km }),
+      atChainEnd: z.strictObject({ count, km }),
+      outsideRange: z.strictObject({ count, km }),
+      crossingsBlocked: count,
+      tracking: z.strictObject({
+        runs: count,
+        km,
+        correlation: z.number().nullable(),
+        shortWaveCorrelation: z.number().nullable(),
+        shortWaveStdM: z.number().nonnegative().nullable(),
+        reversalsPerKm: z.number().nonnegative().nullable(),
+      }),
+    })
+    .optional(),
   structures: z
     .strictObject({
       embankment: z.strictObject({ stretches: count, km, lengthM: metres }),
@@ -364,6 +389,8 @@ export type ReportInput = {
   withoutTimings?: boolean;
   /** A height build (`--structures height`, P2.7-6): the scorecard's `structures`. */
   heightStructures?: boolean;
+  /** The runs at grade (S6 PR 2): Report["ground"], made by the build script; null or absent without them. */
+  ground?: NonNullable<Report["ground"]> | null;
 };
 
 const round = (v: number, digits: number) => {
@@ -1119,6 +1146,7 @@ export function buildReport(input: ReportInput): Report {
     ...(input.heightStructures
       ? { structures: structuresOf(input.chunks, input.districts, input.runs) }
       : {}),
+    ...(input.ground ? { ground: input.ground } : {}),
     tracking: trackingOf(input.chunks, input.runs),
     size: {
       tiles: input.tiles.length,

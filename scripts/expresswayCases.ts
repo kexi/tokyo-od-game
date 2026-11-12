@@ -73,10 +73,8 @@ function structureCases(
     const numbered = { cut: 0, embankment: 0 };
     for (const h of openGroundStretches(list, isBelow(run))) {
       const kind = h.structure === "cut" ? "cut-stretch" : "embankment-stretch";
-      const measured =
-        h.structure === "cut"
-          ? { s0: h.s0, s1: h.s1, lengthM: h.lengthM, depthM: h.depthM }
-          : { s0: h.s0, s1: h.s1, lengthM: h.lengthM };
+      // Both with their depth under the ground (R1: an embankment under it past the band is listed).
+      const measured = { s0: h.s0, s1: h.s1, lengthM: h.lengthM, depthM: h.depthM };
       out.push({
         key: `${kind}:${run}|${numbered[h.structure]++}`,
         kind,

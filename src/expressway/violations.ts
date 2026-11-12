@@ -1,4 +1,4 @@
-import { isAllowed } from "./allowlist";
+import { CASE_MARGIN, isAllowed } from "./allowlist";
 import {
   checkChunkJoin,
   checkClearance,
@@ -40,6 +40,18 @@ export function violationsOf(
   /** The files name "height-structures" (P2.7-6): T13 judges the structures; else it has nothing to judge. */
   isHeight = false,
 ): Violations {
+  // A height build's ramp under the assumed radius is a ledger case (ramp-radius, listed `new` until a
+  // review decides it) as soon as it is reported (ramp_radius), so T6 and T3 hold it to its own OSM
+  // radius as they hold a decided one (less CASE_MARGIN): counted once, in the ledger. Why only there:
+  // the runs at grade (S6 PR 2) bring OSM's tight ramp ends (R 7.8 m) in, and a build by the tags keeps
+  // the scorecard it had.
+  const reported = new Map<string, number>();
+  for (const d of isHeight ? meta.diagnostics : []) {
+    const m = d.kind === "ramp_radius" ? /R=([\d.]+) m/.exec(d.detail) : null;
+    if (m) reported.set(d.run, Number(m[1]) - CASE_MARGIN.radiusM);
+  }
+  const decided = rampFloor;
+  rampFloor = (run) => decided(run) ?? reported.get(run);
   const runs = new Map(meta.runs.map((r) => [r.id, r]));
   const byRun = new Map<string, XwChunk[]>();
   for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
@@ -71,7 +83,8 @@ export function violationsOf(
   for (const r of meta.runs) {
     const list = byRun.get(r.id);
     if (!list) continue;
-    for (let i = 1; i < list.length; i++) found.T3.push(...checkChunkJoin(list[i - 1], list[i]));
+    for (let i = 1; i < list.length; i++)
+      found.T3.push(...checkChunkJoin(list[i - 1], list[i], rampFloor(r.id)));
     for (const [atStart, end] of [
       [true, r.start],
       [false, r.end],
@@ -84,10 +97,18 @@ export function violationsOf(
     found.T5.push(...checkGroundEnd(list[0], r, true), ...checkGroundEnd(list[list.length - 1], r, false));
     const first = list[0].st;
     const last = list[list.length - 1].st;
-    const ends = { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
+    // The descent from the portals starts at the ground there, as the compiler's (setupBelow's portalZ).
+    // Why only in a height build: there a below run may seam to a run at grade (S6 PR 2) whose road
+    // stands up to its band off the ground, and the road's height read as the portal's put ceilings
+    // where the compiler had none (23594607, 21 in ship/all). A build by the tags keeps the road's.
+    const ends = isHeight
+      ? { z0: first[5], z1: last[last.length - STATION_STRIDE + 5] }
+      : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
     const isTunnelFree = isHeight && isTunnelFreeRun(list, r, ends);
-    for (const c of list) found.T12.push(...checkCover(c, r, ends, isTunnelFree));
-    if (isHeight) found.T13.push(...checkHeightStructures(list, r.below === true));
+    // A height build's cuts that are no below run by their tags (a viaduct's, a run at grade's) are T13's.
+    const isJudgedCover = !isHeight || r.below === true;
+    if (isJudgedCover) for (const c of list) found.T12.push(...checkCover(c, r, ends, isTunnelFree));
+    if (isHeight) found.T13.push(...checkHeightStructures(list, r.below === true, r.ground === true));
   }
   return Object.fromEntries(
     PROPERTIES.map((p) => [p, { count: found[p].length, first: found[p].slice(0, FIRST) }]),
