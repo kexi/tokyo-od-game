@@ -132,8 +132,15 @@ class CoarseTilesPlugin {
 /** What preparing a far tile's meshes needs from the buildings (the landmarks' cut-outs). */
 export type FarTileHost = {
   cut(geometry: BufferGeometry, ecef: Float32Array): void;
-  /** Cut what stands into an elevated deck (P2.7-5); `toEcef` the mesh's matrix to the tileset's ECEF. */
-  cutDecks?(geometry: BufferGeometry, toEcef: Matrix4): void;
+  /**
+   * The mesh's matrix to the tileset's ECEF, whether or not the renderer has its tile under the far
+   * group right now (a tile made active that frame hangs there already, its world matrix then local:
+   * taken as ECEF it put the cut and the façade heights ~6,370 km off, PR #71 review). Without it,
+   * the world matrix (a detached tile, as in the tests).
+   */
+  toEcef?(o: Object3D, into: Matrix4): Matrix4;
+  /** Cut what stands into an elevated deck (P2.7-5). */
+  cutDecks?(geometry: BufferGeometry, o: Object3D): void;
 };
 
 /**
@@ -146,19 +153,21 @@ export function prepareFarTile(scene: Object3D, host: FarTileHost): void {
   Object.assign(scene, { batchTable: null, featureTable: null });
   scene.updateMatrixWorld(true);
   const v = new Vector3();
+  const toEcef = new Matrix4();
   scene.traverse((o) => {
     if (!(o instanceof Mesh)) return;
     const geometry = o.geometry as BufferGeometry;
     const pos = geometry.getAttribute("position");
     const ecef = new Float32Array(pos.count * 3);
+    const m = host.toEcef ? host.toEcef(o, toEcef) : toEcef.copy(o.matrixWorld);
     for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      v.fromBufferAttribute(pos, i).applyMatrix4(m);
       ecef.set([v.x, v.y, v.z], i * 3);
     }
     const ids = geometry.getAttribute("_batchid") ?? geometry.getAttribute("_feature_id_0");
     addFacadeAttribute(geometry, ecef, ids ? (i) => ids.getX(i) : null);
     host.cut(geometry, ecef);
-    host.cutDecks?.(geometry, o.matrixWorld);
+    host.cutDecks?.(geometry, o);
     o.castShadow = false;
     o.receiveShadow = false;
     const own = o.material as Material;
@@ -345,7 +354,8 @@ export class Buildings {
       scene.traverse((o) => {
         if (!(o instanceof Mesh)) return;
         const n = this.cutMesh(o.geometry as BufferGeometry, this.localMatrix(o, toLocal), fresh);
-        if (n === 0) return;
+        const isUncut = n === 0;
+        if (isUncut) return;
         features += n;
         meshes++;
       });
@@ -596,6 +606,11 @@ export class Buildings {
     return this.tiles.loadProgress;
   }
 
+  /** 0..1 progress of the far skyline's tile requests (1 before it is made: nothing to wait for). */
+  farLoadProgress(): number {
+    return this.far?.loadProgress ?? 1;
+  }
+
   private createTiles(): void {
     const tiles = new TilesRenderer(PLATEAU_TILESET);
     tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader: this.draco }));
@@ -737,9 +752,11 @@ export class Buildings {
       // The far skyline draws a building the near town has not loaded yet (an overhead view, the
       // town's edge): its roof over a deck must come down as the near copy's does (P2.7-5: a roof
       // over 24402611:26 at 6.8 m above the road, which the gantry 110-B stood through).
-      cutDecks: (geometry, toEcef) => {
-        if (this.deckCuts.length === 0) return;
-        this.cutMesh(geometry, this.frame.ecefToLocal.clone().multiply(toEcef), this.deckIndexNow());
+      toEcef: (o, into) => into.multiplyMatrices(this.frame.localToEcef, this.localMatrix(o, new Matrix4())),
+      cutDecks: (geometry, o) => {
+        const hasNoDecks = this.deckCuts.length === 0;
+        if (hasNoDecks) return;
+        this.cutMesh(geometry, this.localMatrix(o, new Matrix4()), this.deckIndexNow());
       },
     };
     while (this.farPending.length > 0) {

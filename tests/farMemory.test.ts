@@ -134,18 +134,84 @@ describe("the far skyline's memory", () => {
     expect(sharedDisposals).toBe(0);
   });
 
-  it("hands each far mesh to the decks' cut with its matrix to the tileset's ECEF (P2.7-5: a far roof over 24402611:26)", () => {
+  it("hands each far mesh to the decks' cut as the mesh itself, and its ECEF matrix from the host when there is one (P2.7-5)", () => {
     const tile = fakeTile();
     const mesh = tile.children[0] as Mesh;
-    const seen: Array<{ geometry: unknown; elements: number[] }> = [];
+    const seen: Array<{ geometry: unknown; o: unknown }> = [];
+    const asked: unknown[] = [];
     prepareFarTile(tile, {
       cut: () => undefined,
-      cutDecks: (geometry, toEcef) => seen.push({ geometry, elements: [...toEcef.elements] }),
+      toEcef: (o, into) => {
+        asked.push(o);
+        return into.copy(o.matrixWorld);
+      },
+      cutDecks: (geometry, o) => seen.push({ geometry, o }),
     });
-    expect(seen).toHaveLength(1);
-    expect(seen[0].geometry).toBe(mesh.geometry);
-    expect(seen[0].elements).toEqual([...mesh.matrixWorld.elements]);
+    expect(seen).toEqual([{ geometry: mesh.geometry, o: mesh }]);
+    expect(asked).toEqual([mesh]);
     mesh.geometry.dispose();
+  });
+
+  /**
+   * A far tile prepared while detached (its world matrix the tileset's ECEF) and one the renderer
+   * made active before it was prepared (under the far group, its world matrix already local): the
+   * roof standing into a deck comes down below the soffit in both (PR #71 review W1: the second was
+   * taken through ecefToLocal twice and cut nothing, ~6,370 km off).
+   */
+  it.each([
+    ["detached", false],
+    ["under the far group", true],
+  ])("cuts the roof of a far tile over a deck when %s", async (_name, isUnderGroup) => {
+    const frame = new LocalFrame(35.75, 139.586, 40);
+    const buildings = new Buildings(
+      new Scene(),
+      {} as never,
+      new PerspectiveCamera(60, 1, 0.5, 40000),
+      { getSize: (v: Vector2) => v.set(1280, 720) },
+      frame,
+    );
+    const host = buildings as unknown as {
+      createFarTiles(): ReturnType<typeof createFarTiles>;
+      prepareFarTiles(): void;
+      far: ReturnType<typeof createFarTiles> | null;
+    };
+    const far = host.createFarTiles();
+    host.far = far;
+    await flush();
+    // A soffit 10 m up over the local origin (the deck's top 11 m).
+    const soffit = frame.toGeodetic(new Vector3(0, 10, 0));
+    const top = frame.toGeodetic(new Vector3(0, 11, 0));
+    buildings.cutAboveDecks([{ lat: soffit.lat, lon: soffit.lon, h: soffit.h, top: top.h }]);
+    // One building, 20 m square, from the ground to a 30 m roof, its vertices in the tileset's ECEF.
+    const local = [
+      [-10, 30, -10],
+      [10, 30, -10],
+      [10, 30, 10],
+      [-10, 30, 10],
+      [-10, 0, -10],
+      [10, 0, 10],
+    ];
+    const p = new Float32Array(local.length * 3);
+    local.forEach(([x, y, z], i) => {
+      const e = new Vector3(x, y, z).applyMatrix4(frame.localToEcef);
+      p.set([e.x, e.y, e.z], i * 3);
+    });
+    const g = new BufferGeometry();
+    g.setAttribute("position", new BufferAttribute(p, 3));
+    g.setAttribute("_batchid", new BufferAttribute(new Float32Array(local.length), 1));
+    g.setIndex([0, 2, 1, 0, 3, 2, 4, 5, 0]);
+    const scene = new Group();
+    scene.add(new Mesh(g, new MeshBasicMaterial()));
+    far.dispatchEvent({ type: "load-model", scene, tile: {}, url: "" } as never);
+    if (isUnderGroup) far.group.add(scene);
+    host.prepareFarTiles();
+    const pos = g.getAttribute("position");
+    const roof = [0, 1, 2, 3].map(
+      (i) => new Vector3().fromBufferAttribute(pos, i).applyMatrix4(frame.ecefToLocal).y,
+    );
+    for (const y of roof) expect(y).toBeLessThanOrEqual(10);
+    for (const y of roof) expect(y).toBeGreaterThan(9);
+    far.dispose();
   });
 
   it("has no plugin that disposes the shown material, and a bounded LRU", () => {
