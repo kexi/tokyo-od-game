@@ -127,6 +127,13 @@ export type RunInput = {
    */
   lawGive?: number;
   lawNear?: Uint8Array;
+  /**
+   * A run at grade (S6 PR 2): per station a band bandLo ≤ z ≤ bandHi about the design ground line, a
+   * soft row at W_FLOOR (it gives way to the clearances, ends and junctions) and no exact constraint:
+   * missing it is no problem of the run. Absent: none.
+   */
+  bandLo?: Float64Array;
+  bandHi?: Float64Array;
 };
 
 export type Ref = { run: string; s: number };
@@ -514,6 +521,8 @@ export function solveJoint(runs: RunInput[], couplings: Coupling[]): JointResult
         qp.addRow(row, hasLaw ? law + BOUND_MARGIN : -Infinity, hasCeiling ? hi : Infinity, W_BOUND);
       const isAssumedAbove = Number.isFinite(input.lower[k]) && (!hasLaw || input.lower[k] > law + 1e-9);
       if (isAssumedAbove) qp.addRow(row, input.lower[k] + BOUND_MARGIN, Infinity, W_FLOOR);
+      const hasBand = input.bandLo !== undefined && input.bandHi !== undefined;
+      if (hasBand) qp.addRow(row, input.bandLo![k], input.bandHi![k], W_FLOOR);
     }
   }
   for (const c of couplings) {

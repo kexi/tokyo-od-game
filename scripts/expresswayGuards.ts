@@ -13,6 +13,8 @@ export type BuildFlags = {
   v2Flags: readonly string[];
   /** --structures height (P2.7-6 PR 1: the structures from the solved height, behind a flag until PR 7). */
   isHeight?: boolean;
+  /** --ground compile (S6 PR 2: the runs at grade, behind a flag until PR 7). */
+  isGround?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
@@ -29,6 +31,7 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   if (f.isV1) return `--objective v1 is for comparing: ${MEASURE}`;
   const isSweep = f.v2Flags.length > 0;
   if (isSweep) return `--${f.v2Flags[0]} is for a sweep of the v2 weights: ${MEASURE}`;
+  if (f.isGround) return `--ground compile is for measuring until it is the default: ${MEASURE}`;
   if (f.isHeight) return `--structures height is for measuring until it is the default: ${MEASURE}`;
   return null;
 }

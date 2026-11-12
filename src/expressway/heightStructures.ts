@@ -34,15 +34,18 @@ export const VIADUCT_OVER_GROUND_M = OPEN_GROUND_FLOOR.value + GIRDER_DEPTH.valu
  * deep or less (PR 1 review C2), and the DEM's bumps made embankments in the air (W3).
  */
 export const HEIGHT_DEAD_BAND_M = DEM_SINK_FLOOR.value;
-/** A cut from here down (the road over the ground at its centre line, m). */
-export const CUT_BELOW_M = -HEIGHT_DEAD_BAND_M;
+/**
+ * A cut from here down (the road over the ground at its centre line, m): past the floor the solve
+ * gives (DEM_SINK_FLOOR), only a run that gave up its floor goes this deep (PR 1 re-review R2).
+ */
+export const CUT_BELOW_M = -HEIGHT_STRUCTURES.value.cut.fromM;
 /** A viaduct from here up. */
 export const VIADUCT_FROM_M = VIADUCT_OVER_GROUND_M - HEIGHT_DEAD_BAND_M;
 
 /** A station's class from its road surface z and the ground under its centre line (T.P. m). */
-export function heightClassOf(z: number, ground: number): HeightClass {
+export function heightClassOf(z: number, ground: number, cutBelow = CUT_BELOW_M): HeightClass {
   const over = z - ground;
-  const isUnder = over < CUT_BELOW_M;
+  const isUnder = over < cutBelow;
   if (isUnder) return "cut";
   const isLow = over < VIADUCT_FROM_M;
   if (isLow) return "embankment";
@@ -69,6 +72,11 @@ export type StretchContext = {
   above?: ReadonlyArray<readonly [number, number]>;
   same?: ReadonlyArray<readonly [number, number]>;
   length?: number;
+  /**
+   * A ground run's cut threshold (S6 PR 2): under the ground + HEIGHT_STRUCTURES.ground.cutBelowM it is
+   * a cut (the terrain cut away and walls), above it an embankment; CUT_BELOW_M otherwise.
+   */
+  cutBelow?: number;
 };
 
 /** An embankment reaches the ground when its lowest point is under this over the ground (review W3). */
@@ -97,7 +105,7 @@ export function heightStretches(
   const length = ctx.length ?? samples[samples.length - 1].s;
   const classOf = (p: { s: number; z: number; ground: number }): HeightClass => {
     if (isIn(ctx.above, p.s)) return "viaduct";
-    const cls = heightClassOf(p.z, p.ground);
+    const cls = heightClassOf(p.z, p.ground, ctx.cutBelow);
     const isSameCut = cls === "cut" && isIn(ctx.same, p.s);
     return isSameCut ? "embankment" : cls;
   };
@@ -135,18 +143,26 @@ export function heightStretches(
     let k = -1;
     // A cut neither merges nor takes in its neighbour: an embankment of a few metres beside a cut
     // turned the cut longer than the road is under the ground (27155734's ground end).
-    const isTaker = (h: HeightStretch | undefined) => h !== undefined && h.structure !== "cut";
+    // A cut shorter than HEIGHT_STRUCTURES.cut.minLengthM is a bump's and merges as the others (R2).
+    const isFirmCut = (h: HeightStretch) =>
+      h.structure === "cut" && h.s1 - h.s0 >= HEIGHT_STRUCTURES.value.cut.minLengthM;
+    // Between two cuts a short stretch has no taker but them, and takes the longer cut's class:
+    // a 1 m embankment between two cuts of a ramp at grade (169674665:3) was a chunk of its own.
+    const isWedged = (i: number) =>
+      out[i - 1]?.structure === "cut" && out[i + 1]?.structure === "cut" && out[i].structure !== "cut";
+    const isTaker = (h: HeightStretch | undefined, i?: number) =>
+      h !== undefined && (h.structure !== "cut" || (i !== undefined && isWedged(i)));
     for (let i = 0; i < out.length; i++) {
       const len = out[i].s1 - out[i].s0;
-      const hasTaker = isTaker(out[i - 1]) || isTaker(out[i + 1]);
-      const isShort = len < smoothM && out[i].structure !== "cut" && hasTaker;
+      const hasTaker = isTaker(out[i - 1], i) || isTaker(out[i + 1], i);
+      const isShort = len < smoothM && !isFirmCut(out[i]) && hasTaker;
       const isShorter = k < 0 || len < out[k].s1 - out[k].s0;
       if (isShort && isShorter) k = i;
     }
     if (k < 0) break;
     const before = out[k - 1];
     const after = out[k + 1];
-    const lenOf = (h: HeightStretch | undefined) => (isTaker(h) ? h!.s1 - h!.s0 : -1);
+    const lenOf = (h: HeightStretch | undefined) => (isTaker(h, k) ? h!.s1 - h!.s0 : -1);
     const into = lenOf(before) >= lenOf(after) ? before! : after!;
     if (into === before) before.s1 = out[k].s1;
     else after.s0 = out[k].s0;
@@ -221,6 +237,8 @@ export function openGroundStretches(list: readonly XwChunk[], isBelow?: boolean)
     if (!isOpen) continue;
     const s0 = c.st[0];
     const s1 = c.st[c.st.length - STATION_STRIDE];
+    // How deep under the ground at its centre line: a cut's, and an embankment's too (a same-surface
+    // stretch kept as one, PR 1 re-review R1).
     let depth = 0;
     for (let i = 0; i < c.st.length; i += STATION_STRIDE)
       depth = Math.max(depth, c.st[i + ST.ground] - c.st[i + ST.z]);
@@ -240,7 +258,7 @@ export function openGroundStretches(list: readonly XwChunk[], isBelow?: boolean)
       s0,
       s1,
       lengthM: Math.round((s1 - s0) * 100) / 100,
-      depthM: c.structure === "cut" ? Math.round(depth * 100) / 100 : 0,
+      depthM: Math.round(depth * 100) / 100,
     });
   }
   return out;
@@ -292,7 +310,8 @@ export function lowViaductStretches(
  */
 export function isOpenGroundRuled(h: Pick<OpenGroundStretch, "structure" | "lengthM" | "depthM">): boolean {
   const { cut, embankment } = HEIGHT_STRUCTURES.value;
-  if (h.structure === "embankment") return h.lengthM <= embankment.lengthM;
+  // An embankment under the ground past the dead band is listed (R1: same-surface stretches 2.77 m down).
+  if (h.structure === "embankment") return h.lengthM <= embankment.lengthM && h.depthM <= HEIGHT_DEAD_BAND_M;
   return h.lengthM <= cut.lengthM && h.depthM <= cut.depthM;
 }
 
@@ -328,7 +347,11 @@ const T13_TOLERANCE_M = 0.02;
  * later one starts with a portal from the one before. `isBelowRun`: a below run (P9's tunnels and cuts by
  * their tags) is not judged here. Returns the violations ("<chunk>: what").
  */
-export function checkHeightStructures(list: readonly XwChunk[], isBelow?: boolean): string[] {
+export function checkHeightStructures(
+  list: readonly XwChunk[],
+  isBelow?: boolean,
+  isGround = false,
+): string[] {
   const out: string[] = [];
   const isEmpty = list.length === 0;
   if (isEmpty) return out;
@@ -358,6 +381,7 @@ export function checkHeightStructures(list: readonly XwChunk[], isBelow?: boolea
     above: deckSpans(list, "above"),
     same: deckSpans(list, "same"),
     length: samples[samples.length - 1].s,
+    ...(isGround ? { cutBelow: HEIGHT_STRUCTURES.value.ground.cutBelowM } : {}),
   };
   const variants = [0, T13_TOLERANCE_M, -T13_TOLERANCE_M].map((d) =>
     heightStretches(

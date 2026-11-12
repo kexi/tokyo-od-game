@@ -175,6 +175,39 @@ export const ReportSchema = z.strictObject({
     ) as Record<Property, z.ZodObject<{ count: typeof count; first: z.ZodArray<z.ZodString> }>>,
   ),
   /**
+   * The runs at grade (S6 PR 2, `--ground compile`): written (runs, km), the main line's holes left
+   * (compile.ts mainLineHoles: elsewhere, beside an unwritten below run, at a chain's end), the roads
+   * that cross them (blocked), and how their main lines of 800 m or more follow the ground (trackingOf
+   * over them). In every height build (with skip no run at grade is written, so the holes compare);
+   * absent from a build by the tags.
+   */
+  ground: z
+    .strictObject({
+      runs: count,
+      km,
+      holes: z.strictObject({ count, km }),
+      besideBelow: z.strictObject({ count, km }),
+      atChainEnd: z.strictObject({ count, km }),
+      outsideRange: z.strictObject({ count, km }),
+      crossingsBlocked: count,
+      /** Of them, those away from the run's ends (more than its climb from both): crossed mid-run. */
+      crossingsBlockedMiddle: count,
+      belowUnwritten: z.strictObject({ count, km }),
+      /** The stretches at grade left out as the open part between two tunnels (Plan.betweenTunnels). */
+      betweenTunnels: z.array(z.string()),
+      /** How far the runs at grade stand off the ground under them: |z − ground| at their stations. */
+      offGround: z.strictObject({ p95M: km, maxM: km, over3mRuns: count }),
+      tracking: z.strictObject({
+        runs: count,
+        km,
+        correlation: z.number().nullable(),
+        shortWaveCorrelation: z.number().nullable(),
+        shortWaveStdM: z.number().nonnegative().nullable(),
+        reversalsPerKm: z.number().nonnegative().nullable(),
+      }),
+    })
+    .optional(),
+  /**
    * A height build's structures (P2.7-6 PR 1, heightStructures.ts): the embankment and cut stretches of
    * the viaduct-tagged runs written (count, km, the spread of their lengths and, for a cut, depths),
    * the chunks with a thinner girder, and the km per district. Absent from a build by the tags.
@@ -364,6 +397,8 @@ export type ReportInput = {
   withoutTimings?: boolean;
   /** A height build (`--structures height`, P2.7-6): the scorecard's `structures`. */
   heightStructures?: boolean;
+  /** The runs at grade (S6 PR 2): Report["ground"], made by the build script; null or absent without them. */
+  ground?: NonNullable<Report["ground"]> | null;
 };
 
 const round = (v: number, digits: number) => {
@@ -842,7 +877,11 @@ export function viaductOver(chunks: readonly XwChunk[], above: number): number {
  * the second is, presumably, the design's 相関: the design gave 0.38 without its formula, and this
  * function gives 0.372 on the same all/pruned output. Null where no run qualifies.
  */
-export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tracking"] {
+export function trackingOf(
+  chunks: XwChunk[],
+  runs: XwRunSummary[],
+  kind: "viaduct" | "ground" = "viaduct",
+): Report["tracking"] {
   const chunksOf = new Map<string, XwChunk[]>();
   for (const c of chunks) chunksOf.set(c.run, [...(chunksOf.get(c.run) ?? []), c]);
   const whole = new Pearson();
@@ -859,7 +898,10 @@ export function trackingOf(chunks: XwChunk[], runs: XwRunSummary[]): Report["tra
   const half = Math.round(TRACK_WINDOW_M / 2 / TRACK_STEP_M);
   const skip = Math.round(TRACK_END_M / TRACK_STEP_M);
   for (const run of runs) {
-    const isMain = run.cls === "expressway" && run.structure === null;
+    // The viaducts or the runs at grade (S6 PR 2), never both: counted together, the viaducts' free km
+    // fell 235 → 195 and their reversals 0.766 → 0.427 by the runs at grade alone (review W8).
+    const isKind = (run.ground === true) === (kind === "ground");
+    const isMain = run.cls === "expressway" && run.structure === null && isKind;
     const list = (chunksOf.get(run.id) ?? []).sort((a, b) => a.k - b.k);
     // A height build's viaduct-tagged run (P2.7-6) counts as before with its embankments and cuts: a
     // run of only tunnels and cuts by its tags (P9) has no viaduct or embankment chunk.
@@ -1119,6 +1161,7 @@ export function buildReport(input: ReportInput): Report {
     ...(input.heightStructures
       ? { structures: structuresOf(input.chunks, input.districts, input.runs) }
       : {}),
+    ...(input.ground ? { ground: input.ground } : {}),
     tracking: trackingOf(input.chunks, input.runs),
     size: {
       tiles: input.tiles.length,

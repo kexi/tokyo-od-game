@@ -314,13 +314,19 @@ export const GIRDER_MIN: Assumption<number> = {
  */
 export const HEIGHT_STRUCTURES: Assumption<{
   smoothM: number;
-  cut: { depthM: number; lengthM: number };
+  cut: { depthM: number; lengthM: number; fromM: number; minLengthM: number };
   embankment: { lengthM: number };
+  ground: { cutBelowM: number; bandM: number };
 }> = {
-  value: { smoothM: 20, cut: { depthM: 3, lengthM: 150 }, embankment: { lengthM: 500 } },
+  value: {
+    smoothM: 20,
+    cut: { depthM: 3, lengthM: 150, fromM: 0.5, minLengthM: 10 },
+    embankment: { lengthM: 500 },
+    ground: { cutBelowM: 0.3, bandM: 1.5 },
+  },
   verified: false,
   reason:
-    "仮定（P2.7-6 の指示 4.2 の初期値）。掘割は坑口へ下りる取付け（代官町、坑口の手前で地表より 0.9〜2.5 m 低い）を、盛土は低いまま走るランプ（護国寺・新宿出口、600 m 前後）の半分ほどを規則で通す長さとして置いた。20 m は一つのチャンクに満たない出入りをならす長さ。ship の分布は knowledge/expressway-generation.md「P2.7-6」",
+    "仮定（P2.7-6 の指示 4.2・5.1 の初期値）。掘割は坑口へ下りる取付け（代官町、坑口の手前で地表より 0.9〜2.5 m 低い）を、盛土は低いまま走るランプ（護国寺・新宿出口、600 m 前後）の半分ほどを規則で通す長さとして置いた。20 m は一つのチャンクに満たない出入りをならす長さ。高架タグの run の掘割は中心線の地表より fromM（0.5 m、DEM に沈まない床 0.25 m を譲った run だけが越える深さ）を超えて下から、minLengthM（10 m）未満の掘割はならす（PR 1 の再レビュー R2: 床と同じ 0.25 m では高さ由来の掘割 11 区間中 9 区間が深さ 0.22〜0.27 m・長さ 1〜16 m の切れ端）。地平 run（S6 PR 2）は地表 + cutBelowM（0.3 m）より低い所が掘割、設計地盤線から ±bandM（1.5 m）の帯。ship の分布は knowledge/expressway-generation.md「P2.7-6」",
 };
 
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {

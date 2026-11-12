@@ -286,7 +286,7 @@ export type Run = {
 /** Untagged pieces shorter than this between two viaduct ways are tagging gaps, not ground. */
 const GAP_FILL_M = 80;
 
-function wayLength(net: Network, w: XwWay): number {
+export function wayLength(net: Network, w: XwWay): number {
   let len = 0;
   for (let i = 1; i < w.nodes.length; i++) {
     const a = net.nodes.get(w.nodes[i - 1])!;

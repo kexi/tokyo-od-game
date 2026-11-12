@@ -81,3 +81,26 @@ export function envelope(
   const lower = envelope(values, reach, "lower", step);
   return upper.map((u, k) => (u + lower[k]) / 2);
 }
+
+/**
+ * The median of the values within ±reach (fewer at the ends), on the same even grid: the design ground
+ * line of a run at grade (S6 PR 2). Why not `mid` (the mean of the upper and lower envelopes): each
+ * envelope takes an isolated bump whole, so a 3 m, 40 m wide mound lifted the road 1.20 m and still
+ * 0.65 m 200 m off (PR 2 review W2); the median takes no bump narrower than the window's half, and a
+ * periodic wave's median is its middle.
+ */
+export function movingMedian(values: ArrayLike<number>, reach: number, step = 5): Float64Array {
+  const r = halfWindow(reach, step);
+  const n = values.length;
+  const out = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const lo = Math.max(0, k - r);
+    const hi = Math.min(n - 1, k + r);
+    const w: number[] = [];
+    for (let j = lo; j <= hi; j++) w.push(values[j]);
+    w.sort((a, b) => a - b);
+    const m = w.length >> 1;
+    out[k] = w.length % 2 === 1 ? w[m] : (w[m - 1] + w[m]) / 2;
+  }
+  return out;
+}

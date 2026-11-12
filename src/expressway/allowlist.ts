@@ -73,6 +73,10 @@ export const CUT_STRETCH_REASON =
 export const EMBANKMENT_STRETCH_REASON =
   "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す";
 
+/** Why a run at grade passes by rule (`ground-stretch`, S6 PR 2). */
+export const GROUND_STRETCH_REASON =
+  "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed";
+
 /** Why a thinner girder passes by rule (`thin-girder`, P2.7-6 PR 1). */
 export const THIN_GIRDER_REASON =
   "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）";

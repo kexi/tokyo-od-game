@@ -269,6 +269,8 @@ export type XwRunSummary = {
    * all cut too. Absent elsewhere.
    */
   below?: true;
+  /** A run at grade (S6 PR 2, `--ground compile`), in a height build only. */
+  ground?: true;
 };
 
 /** How a run met its structure's deck levels (structures.ts; the build fails beyond the tolerances). */

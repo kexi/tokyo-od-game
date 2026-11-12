@@ -8,6 +8,7 @@ import {
   checkHeightStructures,
   GIRDER_GIVE_M,
   girderFor,
+  CUT_BELOW_M,
   EMBANKMENT_REACH_M,
   HEIGHT_DEAD_BAND_M,
   heightClassOf,
@@ -67,12 +68,14 @@ const byRun = (chunks: XwChunk[]) => {
 const closedOf = (r: ReturnType<typeof solvePlan>) => r.closed.map((c) => c.run);
 
 describe("区分の規則（heightStructures.ts）", () => {
-  it("a road more than the dead band under the ground is a cut, under the viaduct's height less the band an embankment, above it a viaduct", () => {
+  it("a road more than 0.5 m under the ground is a cut (R2), under the viaduct's height less the band an embankment, above it a viaduct", () => {
     expect(VIADUCT_OVER_GROUND_M).toBeCloseTo(4.5 + GIRDER_DEPTH.value, 9);
     expect(HEIGHT_DEAD_BAND_M).toBe(0.25);
     // A ground end sitting in the DEM within the band is no cut (review C2).
     expect(heightClassOf(2.8, 3)).toBe("embankment");
-    expect(heightClassOf(2.74, 3)).toBe("cut");
+    expect(heightClassOf(2.6, 3)).toBe("embankment");
+    expect(heightClassOf(2.49, 3)).toBe("cut");
+    expect(CUT_BELOW_M).toBe(-0.5);
     expect(heightClassOf(3 + VIADUCT_OVER_GROUND_M - 0.2, 3)).toBe("viaduct");
     expect(heightClassOf(3 + VIADUCT_OVER_GROUND_M - 0.26, 3)).toBe("embankment");
   });
@@ -91,9 +94,11 @@ describe("区分の規則（heightStructures.ts）", () => {
     expect(heightStretches(dip, undefined, { same: [[100, 300]] }).map((h) => h.structure)).toEqual([
       "embankment",
     ]);
-    // A cut of 5 m is kept (it is deeper than the band).
-    const pit = line((s) => (s >= 200 && s < 205 ? 2 : 20));
+    // A cut of 12 m is kept (R2's least length 10 m); one of 5 m is a bump and merges away.
+    const pit = line((s) => (s >= 200 && s < 212 ? 2 : 20));
     expect(heightStretches(pit).map((h) => h.structure)).toEqual(["viaduct", "cut", "viaduct"]);
+    const dent = line((s) => (s >= 200 && s < 205 ? 2 : 20));
+    expect(heightStretches(dent).map((h) => h.structure)).toEqual(["viaduct"]);
     // 4–6 m over the ground in the middle, never under 3 m, off both ends: a viaduct in the air.
     const air = line((s) => (s >= 100 && s <= 300 ? 3 + 4 + Math.sin(s / 20) : 20));
     expect(heightStretches(air).map((h) => h.structure)).toEqual(["viaduct"]);
@@ -101,6 +106,9 @@ describe("区分の規則（heightStructures.ts）", () => {
     const reach = line((s) => (s >= 100 && s <= 300 ? (s === 200 ? 4 : 7) : 20));
     expect(heightStretches(reach).map((h) => h.structure)).toEqual(["viaduct", "embankment", "viaduct"]);
     expect(EMBANKMENT_REACH_M).toBe(3);
+    // A metre of embankment wedged between two cuts takes the cuts' class (169674665:3).
+    const wedge = line((s) => (s >= 200 && s <= 201 ? 3 : 1));
+    expect(heightStretches(wedge).map((h) => h.structure)).toEqual(["cut"]);
   });
 
   it("merges a stretch shorter than the smoothing length into its longer neighbour, whatever its class", () => {
@@ -126,6 +134,12 @@ describe("区分の規則（heightStructures.ts）", () => {
     expect(isOpenGroundRuled({ structure: "cut", lengthM: 50, depthM: 3.1 })).toBe(false);
     expect(isOpenGroundRuled({ structure: "embankment", lengthM: 500, depthM: 0 })).toBe(true);
     expect(isOpenGroundRuled({ structure: "embankment", lengthM: 501, depthM: 0 })).toBe(false);
+    // R1: an embankment under the ground past the dead band (a same-surface stretch) is listed.
+    expect(isOpenGroundRuled({ structure: "embankment", lengthM: 100, depthM: 0.25 })).toBe(true);
+    expect(isOpenGroundRuled({ structure: "embankment", lengthM: 100, depthM: 0.3 })).toBe(false);
+    expect(isAutoAccepted({ kind: "embankment-stretch", measured: { lengthM: 100, depthM: 2.77 } })).toBe(
+      false,
+    );
     expect(isAutoAccepted({ kind: "cut-stretch", measured: { lengthM: 80, depthM: 2.5 } })).toBe(true);
     expect(isAutoAccepted({ kind: "cut-stretch", measured: { lengthM: 80, depthM: 3.5 } })).toBe(false);
     expect(isAutoAccepted({ kind: "embankment-stretch", measured: { lengthM: 600 } })).toBe(false);

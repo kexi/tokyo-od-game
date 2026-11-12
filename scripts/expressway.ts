@@ -51,7 +51,7 @@ import { violationsOf } from "../src/expressway/violations.ts";
 import { isAllowed } from "../src/expressway/allowlist.ts";
 import { caseContextOf, type Ledger, ledgerVerdict, rampFloorOf } from "../src/expressway/ledger.ts";
 import { BLOCK_QUIET_FACTOR } from "../src/expressway/assumptions.ts";
-import { buildReport, type PlannedRun } from "../src/expressway/report.ts";
+import { buildReport, type PlannedRun, type Report, trackingOf } from "../src/expressway/report.ts";
 import { scopeExtent, shipRuns } from "../src/expressway/scope.ts";
 import { DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
 import { packTiles } from "../src/expressway/files.ts";
@@ -66,6 +66,7 @@ import {
   OBJECTIVE_V1,
   OBJECTIVE_V2,
   type Objective,
+  mainLineHoles,
   planNetwork,
   untiedPairs,
   solvePlan,
@@ -234,6 +235,13 @@ const structuresArg = arg("structures") ?? "tags";
 const isStructuresMode = structuresArg === "tags" || structuresArg === "height";
 if (!isStructuresMode) throw new Error(`unknown --structures ${structuresArg} (tags, height)`);
 const structuresMode = structuresArg as "tags" | "height";
+// S6 PR 2: --ground compile compiles the runs at grade of a chain with a compiled run (needs --structures height).
+const groundArg = arg("ground") ?? "skip";
+const isGroundModeArg = groundArg === "skip" || groundArg === "compile";
+if (!isGroundModeArg) throw new Error(`unknown --ground ${groundArg} (skip, compile)`);
+const groundMode = groundArg as "skip" | "compile";
+const isGroundWithoutHeight = groundMode === "compile" && structuresMode !== "height";
+if (isGroundWithoutHeight) throw new Error("--ground compile needs --structures height");
 // --below all (P2.7-1), blocks (P2.7-2), v1, a sweep of the v2 weights and the structures by height
 // (P2.7-6) move the decks: measuring only, never into the shipped folder.
 const refusal = shippedFolderRefusal({
@@ -243,6 +251,7 @@ const refusal = shippedFolderRefusal({
   isV1: objective.kind === "v1",
   v2Flags,
   isHeight: structuresMode === "height",
+  isGround: groundMode === "compile",
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -367,6 +376,7 @@ const plan = planNetwork(net, outsideNodes, ranges, structures, {
   partition: partitionMode,
   quietFactor,
   structures: structuresMode,
+  ground: groundMode,
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 });
 // Asked again of the finished plan (the same set: shipRuns is pure), for the log and the scorecard.
@@ -636,6 +646,68 @@ log("expressway_written", {
 endStage("write");
 
 /**
+ * The scorecard's `ground` (any height build, skip or compile, so the holes compare): the runs at grade
+ * written, the main line's holes, the roads blocked across them, how far they stand off the ground, and
+ * how their main lines follow it (trackingOf over them alone).
+ */
+function groundSummary(): NonNullable<Report["ground"]> {
+  const groundRuns = result.runs.filter((r) => r.ground === true);
+  const ids = new Set(groundRuns.map((r) => r.id));
+  const written = new Set(result.runs.map((r) => r.id));
+  const tracked = trackingOf(
+    result.chunks.filter((c) => ids.has(c.run)),
+    groundRuns,
+    "ground",
+  );
+  const blocked = result.diagnostics.filter(
+    (d) =>
+      ids.has(d.run) && d.kind === "crossing_over_or_at_grade" && /crosses the road at grade/.test(d.detail),
+  );
+  // Crossed on the run, not at its end node (most are a street at a ramp's end, where it meets the
+  // street network): those the game must carry over or under (PR 7).
+  const isMiddle = (d: (typeof blocked)[number]) => {
+    const r = groundRuns.find((x) => x.id === d.run)!;
+    const s = Number(/ at ([\d.]+) m/.exec(d.detail)?.[1] ?? 0);
+    return s > 1 && r.lengthM - s > 1;
+  };
+  const off: number[] = [];
+  let over3 = 0;
+  for (const r of groundRuns) {
+    let worst = 0;
+    for (const c of result.chunks.filter((k) => k.run === r.id))
+      for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
+        const d = Math.abs(c.st[i + 3] - c.st[i + 5]);
+        off.push(d);
+        worst = Math.max(worst, d);
+      }
+    if (worst > 3) over3++;
+  }
+  off.sort((a, b) => a - b);
+  const p95 = off.length > 0 ? off[Math.min(off.length - 1, Math.ceil(0.95 * off.length) - 1)] : 0;
+  return {
+    runs: groundRuns.length,
+    km: Math.round(groundRuns.reduce((n, r) => n + r.lengthM, 0)) / 1000,
+    ...mainLineHoles(plan, written),
+    crossingsBlocked: blocked.length,
+    crossingsBlockedMiddle: blocked.filter(isMiddle).length,
+    betweenTunnels: [...(plan.betweenTunnels ?? [])].sort(),
+    offGround: {
+      p95M: Math.round(p95 * 100) / 100,
+      maxM: Math.round((off[off.length - 1] ?? 0) * 100) / 100,
+      over3mRuns: over3,
+    },
+    tracking: {
+      runs: tracked.runs,
+      km: tracked.km,
+      correlation: tracked.correlation,
+      shortWaveCorrelation: tracked.shortWaveCorrelation,
+      shortWaveStdM: tracked.shortWaveStdM,
+      reversalsPerKm: tracked.reversalsPerKm,
+    },
+  };
+}
+
+/**
  * Every planned run's district (districts.ts): a written run from its chunks and ends, one not
  * written from the plan's ref and line (no parents: a closed ramp falls to the nearest main line).
  */
@@ -725,6 +797,8 @@ if (reportPath) {
     districts: plannedDistricts(),
     ledgerSummary: ledger?.summary ?? null,
     heightStructures: structuresMode === "height",
+    // With the structures by height, skip or compile, so the holes compare; tags builds as before.
+    ground: structuresMode === "height" ? groundSummary() : null,
   };
   const report = buildReport(reportInput);
   await mkdir(dirname(reportPath), { recursive: true });

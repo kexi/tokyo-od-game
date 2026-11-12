@@ -189,7 +189,7 @@ export function checkSurface(c: XwChunk): string[] {
  * T3 within a run: consecutive chunks share their boundary station exactly, its grade and bank, and
  * the heading their end cross-sections are squared to (which agrees with the first chord).
  */
-export function checkChunkJoin(a: XwChunk, b: XwChunk): string[] {
+export function checkChunkJoin(a: XwChunk, b: XwChunk, rampFloor?: number): string[] {
   const out: string[] = [];
   const last = a.st.slice(-STATION_STRIDE);
   const first = b.st.slice(0, STATION_STRIDE);
@@ -208,7 +208,9 @@ export function checkChunkJoin(a: XwChunk, b: XwChunk): string[] {
   const chord = chordHeading(bst[0], bst[1]);
   // A chord of length L on a curve of radius R leaves the tangent by L / 2R; the tightest R the run
   // may have bounds it, plus 0.5° for the rounding.
-  const floor = b.cls === "ramp" ? RAMP_MIN_RADIUS.value : CURVE_RADIUS.value[V(b)].special;
+  // A ramp whose OSM radius the ledger accepts (ramp-radius, rampFloor) is held to that, as T6 holds it.
+  const rampLimit = Math.min(RAMP_MIN_RADIUS.value, rampFloor ?? Infinity);
+  const floor = b.cls === "ramp" ? rampLimit : CURVE_RADIUS.value[V(b)].special;
   const allowed = (bst[1].s - bst[0].s) / (2 * floor) + (0.5 * Math.PI) / 180;
   const isOffLine = angleDiff(chord, b.h0) > allowed;
   if (isOffLine) out.push(`${b.id}: start heading ${b.h0} vs stations ${chord.toFixed(4)}`);
@@ -247,6 +249,28 @@ export function checkJunction(child: XwChunk, atStart: boolean, grade: number, p
   return [`${child.id}: no parent station at the junction`];
 }
 
+/**
+ * T3 at a seam (S6 PR 2): the child's end section is square with the parent's chunk boundary there,
+ * its heading (h0 at its start, h1 at its end) the parent chunk's at that station within 1e-3 rad.
+ */
+export function checkSeamHeading(
+  child: XwChunk,
+  atStart: boolean,
+  parentS: number,
+  parent: XwChunk[],
+): string[] {
+  const heading = atStart ? child.h0 : child.h1;
+  for (const p of parent) {
+    const s0 = p.st[0];
+    const s1 = p.st[p.st.length - STATION_STRIDE];
+    const at = Math.abs(s0 - parentS) <= 0.011 ? p.h0 : Math.abs(s1 - parentS) <= 0.011 ? p.h1 : null;
+    if (at === null) continue;
+    const isTurned = angleDiff(at, heading) > 1e-3;
+    return isTurned ? [`${child.id}: seam heading ${heading} / ${at}`] : [];
+  }
+  return [`${child.id}: no parent chunk boundary at the seam (s ${parentS})`];
+}
+
 /** Which ends of a run are low enough for the deck to be still climbing (T4 leaves that out). */
 export type Climbs = { start: boolean; end: boolean };
 
@@ -264,6 +288,9 @@ export function climbingEnds(run: XwRunSummary, runs: ReadonlyMap<string, XwRunS
     const parent = e.parent === undefined ? undefined : runs.get(e.parent);
     const key = `${r.id}:${atStart}`;
     const isUnknown = parent === undefined || e.parentS === undefined || seen.has(key);
+    // On a run at grade (S6 PR 2) the end is at the ground.
+    const isOnGroundRun = parent?.ground === true;
+    if (isOnGroundRun) return true;
     if (isUnknown) return false;
     // A ramp ending on a structure's street comes down with it (compile.ts isLowEnd).
     const isOnStreet = e.kind === "junction" && parent.cls === "street";
