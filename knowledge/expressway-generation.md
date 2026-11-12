@@ -2796,6 +2796,36 @@ f71-pruned の脚が 45° を超える足（4 本）:
 
 [^p276-7c1]: 指示は scratchpad の p27/s6-pr7c-feet.md の 8・9 節、p27/review7c1/（レビューの境界の再現 f1-edge.mts、turns-back.md、near-foot.mts）（設計 Fable）。計測のスクリプトと出力は scratchpad の p27/feet7c1/（feetscan.mts・route-trace.mts・foot-trace.mts・foot-contacts.mts・street-drive.mts・drive3.sh と各 .jsonl・.txt）、計測フォルダは .cache/expressway-area/f71-gen2・f71-pruned、走行の記録は .qa/drive-deck-f71-*.json（ローカル、git 管理外）。新しいデータでの走行はデータを一時的に public/data/expressway に置き 7c の deckRoutes.ts で走らせ、済んでから両方を main に戻した（git status で差分なし）。
 
+# P2.7-6 PR 7c: 網をつなぐ（既定の切り替え、途中の記録、2026-11-13）
+
+7c は 7c0（地下・掘割の分合流は S7 まで出さない）のマージを待っている。ここには、それまでに決めて入れたものを記録する。
+
+## 既定の切り替え（scripts/expressway.ts・expresswayGuards.ts）
+
+- 既定は `--structures height`・`--ground compile`・`--touchdown all`・`--companions on`（重み 1）。
+- 逆の値（tags・skip・mains・off）と `--companion-weight` は `--out` 必須。
+- `--ground`・`--touchdown`・`--companions` の既定は `--structures` に従う。`--structures tags`（+ `--out`）だけで 7c の前の生成になる。理由は、height 以外で `--ground compile` だとエラーで止まるのと、旧データと全ファイルで比べられるようにするため。
+- 入口の条件は満たした（p7c-gen1、2 回の生成がバイト一致、7a2 の採ったフラグの生成と全ファイル一致）:
+  - 低い径間 6 本、wideCuts は 405795846 だけ、streetsUnder 0、violations 0、探りは 0。
+  - 405795846:0 s 145.6 の街路（幅 16 m、GSI でトンネル）は、両側が道路網でつながっていて迂回は 2.37 km（.qa/detour.mts、GSI の道路網を半径 1.5 km で読んだ）。7c0 でこの run が消える見込み。
+
+## seam_step の滑る帯の規則（ユーザーの承認、PR 5 の (A)）
+
+- **規則**（allowlist.ts `SEAM_SLIDE_*`、ledger.ts `isSlidingSeamStep`）: 1〜2 測点（0.5 m 以内）で、データの |Δz| が MERGE_FULL_DZ 0.05 m 超 MERGE_MAX_DZ 0.15 m 以下、段 ≤ 0.17 m（MERGE_MAX_DZ + 弦の許容 0.01 m × 2）、内側の面 ≤ 0.01 m なら規則で通す。
+- 判定に要るので、seam_step の measured にデータの |Δz| の範囲（minDzM・maxDzM）を足した。足す前に測った case は規則で通らない。
+- 止める条件「20 mm 超」は、その帯の規則が許す段からの超過で読む。一体の継ぎ目は今までどおり絶対値で読む。「open 2 件まで」は、規則で通らない seam_step で数える。
+- **数**（ship/pruned、p7c-pruned の同じタイルで旧コードと新コードを比べた）:
+  - seam_step は new 69 → new 44・規則 25。設計の見込み 13 件前後は、PR 5 の (A) を数えた時点の数え方。
+  - 規則に移った 25 件は、どれも 1 測点で、|Δz| 0.1416〜0.149 m、段 0.1512〜0.161 m、内側 0〜8.5 mm。規則は本数に合わせて狭めない（コーディネータの判断）。
+  - 残る 44 件は (A2)（段 0・内側 0.15 m 前後）、長い区間（4847519・906610080・1483413151 など）、一体の継ぎ目の段。
+  - 既定範囲では、7c の生成で止めた 4 件（24402125:0|24402611、45019020:40|45554540、45554540:34|24402611、4853798:1|45021976）がすべて規則の内。
+- **台帳の道具**: 規則が review の判断を引き継ぐときは、元の判断を `previous` に残す（ledger.ts updateLedger）。public の台帳の seam_step:24402125:0|24402611|0 は by rule になり、元の review の理由（手放しの点の 3 cm 手前の 1 測点、段 160.4 mm）と cap は `previous` に、qa は `expressway/seam-24402125-0` のまま残る。
+
+## 作り直す前の走行（p7c-before）
+
+- 9 経路すべて合格（落下・停止・交差 0）。max |dy| は 0.073〜0.115 m（daiba-exit が最大）。
+- 1 回目の `all` は 8 経路目（daiba-exit）で `__game is not defined` で止まった。単独で走らせ直すと再現しない。そのころ同じ worktree の src/expressway を編集していて、開発サーバー（vite）が読み直したのが原因と見ている（確かめてはいない）。
+
 # 未対応・既知の欠落
 
 - R1（7c1 から）: `roads.ts deckRank` の見直し（ランプが下の本線の `SURFACE_GATE` 2.5 m の内を通る所で locate が本線を答える、24402125:2 と 45068170:0）。ランプの足の先の地上部を OSM から取る（GSI と OSM の街路が 13〜15 m ずれる足）。F1 (a) の拡張（足の軸を先で横切る GSI 高速道路の線）。上の「P2.7-6 PR 7c1」。

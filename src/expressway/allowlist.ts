@@ -162,3 +162,23 @@ export function parseAtGradeCrossing(
   if (m === null) return null;
   return { kind: m[1] as "road" | "rail", id: Number(m[2]), s: Number(m[3]) };
 }
+
+/**
+ * A seam_step a rule takes (S6 PR 7c, PR 5's (A), the user's approval): the one or two probes (within
+ * SEAM_SLIDE_SPAN_M) of a sliding band, where the pair stands MERGE_FULL_DZ to MERGE_MAX_DZ apart in
+ * the data and the seam slides from the master's face to the cut deck's own height. There the step
+ * is the band's by design up to MERGE_MAX_DZ; the deck's chords off the Hermite surface (1 cm each)
+ * add up to twice SEAM_CHORD_M, and the inside face stays within SEAM_CHORD_M. Why not wider: a
+ * longer stretch, or an inside face past 1 cm, is (A2), (B) or (C), still a review's.
+ */
+export const SEAM_CHORD_M = 0.01;
+export const SEAM_SLIDE_SPAN_M = 0.5;
+export const SEAM_SLIDE_MAX_PROBES = 2;
+/** The data's |Δz| up to which a pair is one surface (overlap.ts SAME_SURFACE_M, the runtime's MERGE_FULL_DZ). */
+export const SEAM_FULL_DZ_M = 0.05;
+/** The data's |Δz| up to which the runtime merges a pair (expresswayMerge.ts MERGE_MAX_DZ). */
+export const SEAM_SLIDE_MAX_DZ_M = SAME_SURFACE_ALLOWED_DZ_M + 0.01;
+
+/** Why such a seam_step passes by rule. */
+export const SEAM_SLIDE_REASON =
+  "一体化を手放す点の滑る帯（データの |Δz| が MERGE_FULL_DZ 0.05 m 超 MERGE_MAX_DZ 0.15 m 以下）の 1〜2 測点（0.5 m 以内）で、段が MERGE_MAX_DZ + 床版の弦の許容 × 2（0.17 m）以下、内側の面が弦の許容（0.01 m）以下。帯の段は設計どおりで、弦（Hermite から最大 1 cm）の分だけ測点によって出る（PR 5 の (A)、S6 PR 7c でユーザーの承認のもと規則に）";

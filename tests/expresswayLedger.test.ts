@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { isAllowed, RULES } from "../src/expressway/allowlist";
+import { isAllowed, RULES, SEAM_FULL_DZ_M, SEAM_SLIDE_MAX_DZ_M } from "../src/expressway/allowlist";
+import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge";
 import { assignDistricts, districtOfRef, type DistrictRun, YAMATE_BOX } from "../src/expressway/districts";
 import {
   AUTO_KINDS,
@@ -12,6 +13,7 @@ import {
   caseOfDiagnostic,
   type FoundCase,
   isAutoAccepted,
+  isSlidingSeamStep,
   type Ledger,
   type LedgerCase,
   ledgerVerdict,
@@ -187,6 +189,18 @@ describe("the ledger tool's rules (updateLedger)", () => {
   const a = found("changeover:a|b", { stations: 10, minDzM: 0.1, maxDzM: 3 });
   const first = update(null, [a]);
   const decided = decide(first, a.key, { cap: { stations: 10, maxDzM: 3 } });
+
+  it("keeps a review's decision in previous when a rule takes the case over (S6 PR 7c), and keeps it there on the next count", () => {
+    const old = { probes: 1, s0: 82.6, s1: 82.6, stepM: 0.1604, insideM: 0.0033 };
+    const step = found("seam_step:r:0|m|0", old, "h1", "seam_step");
+    const reviewed = decide(update(null, [step]), step.key, { cap: old, qa: "expressway/seam" });
+    const now = found("seam_step:r:0|m|0", { ...old, minDzM: 0.1489, maxDzM: 0.1489 }, "h2", "seam_step");
+    const ruled = update(reviewed, [now]);
+    const [c] = ruled.cases;
+    expect([c.status, c.by, c.qa]).toEqual(["accepted", "rule", "expressway/seam"]);
+    expect(c.previous).toMatchObject({ by: "review", reason: "reviewed here", cap: old });
+    expect(update(ruled, [now]).cases[0].previous).toEqual(c.previous);
+  });
 
   it("adds a new case as new, and a rule's case as accepted by the rule", () => {
     expect(first.cases.map((c) => [c.key, c.status, c.by])).toEqual([["changeover:a|b", "new", null]]);
@@ -376,13 +390,66 @@ describe("the kinds of case", () => {
     );
     expect(cases.map((c) => [c.key, JSON.stringify(orderMeasured(c.measured))])).toEqual([
       ["seam_hole:r:0|m|0", JSON.stringify({ probes: 2, s0: 1, s1: 2 })],
-      ["seam_step:r:0|m|0", JSON.stringify({ probes: 2, s0: 20, s1: 20.5, stepM: 0.004, insideM: 0 })],
-      ["seam_step:r:0|m|1", JSON.stringify({ probes: 1, s0: 60, s1: 60, stepM: 0.0005, insideM: 0.02 })],
+      [
+        "seam_step:r:0|m|0",
+        JSON.stringify({ probes: 2, minDzM: 0.01, maxDzM: 0.01, s0: 20, s1: 20.5, stepM: 0.004, insideM: 0 }),
+      ],
+      [
+        "seam_step:r:0|m|1",
+        JSON.stringify({
+          probes: 1,
+          minDzM: 0.01,
+          maxDzM: 0.01,
+          s0: 60,
+          s1: 60,
+          stepM: 0.0005,
+          insideM: 0.02,
+        }),
+      ],
       ["merge_skipped:r:0|m", JSON.stringify({ maxDzM: 0.3, s0: 100, s1: 120 })],
       ["let_go:r:0|m|0", JSON.stringify({ s: 70, alongStepM: 0.0004 })],
       ["let_go:r:0|m|1", JSON.stringify({ s: 90, alongStepM: 0.01 })],
     ]);
     expect(cases.filter((c) => c.kind === "let_go").map(isAutoAccepted)).toEqual([true, false]);
+  });
+
+  it("takes a sliding band's one or two probes by rule (PR 5's (A), S6 PR 7c); (A2), a seam meant to be one surface, and a longer or deeper stretch stay a review's", () => {
+    const at = (s: number, step: number, inside: number, dz: number) => ({
+      chunk: "r:0",
+      with: "m",
+      s,
+      dz,
+      step,
+      inside,
+    });
+    const limits = { fullDz: 0.05, maxDz: 0.15 };
+    const steps = (probes: ReturnType<typeof at>[]) =>
+      seamCases(probes, [], [], limits).filter((c) => c.kind === "seam_step");
+    // (A): one probe where the pair lets go, 0.149 m apart in the data, a 0.157 m step, 5 mm inside.
+    const [a] = steps([at(10, 0.157, 0.005, 0.149)]);
+    expect(isAutoAccepted(a)).toBe(true);
+    expect(isSlidingSeamStep(a.measured)).toBe(true);
+    // Two probes 0.5 m apart, still the band's.
+    expect(isAutoAccepted(steps([at(10, 0.16, 0.004, 0.12), at(10.5, 0.158, 0.006, 0.14)])[0])).toBe(true);
+    // (A2): no step, the inside face 0.15 m off: not the rule's.
+    expect(isAutoAccepted(steps([at(10, 0, 0.15, 0.148)])[0])).toBe(false);
+    // A seam meant to be one surface (within MERGE_FULL_DZ): any step over 1 mm is a review's.
+    expect(isAutoAccepted(steps([at(10, 0.004, 0, 0.03)])[0])).toBe(false);
+    // Past the chords' allowance (0.17 m), or three probes, or past MERGE_MAX_DZ in the data.
+    expect(isAutoAccepted(steps([at(10, 0.171, 0.005, 0.149)])[0])).toBe(false);
+    expect(
+      isAutoAccepted(
+        steps([at(10, 0.16, 0.005, 0.12), at(10.5, 0.16, 0.005, 0.12), at(11, 0.16, 0.005, 0.12)])[0],
+      ),
+    ).toBe(false);
+    expect(isAutoAccepted(steps([at(10, 0.16, 0.005, 0.151)])[0])).toBe(false);
+    // A case measured before PR 7c (no data |Δz|) is not taken.
+    expect(isSlidingSeamStep({ probes: 1, s0: 10, s1: 10, stepM: 0.157, insideM: 0.005 })).toBe(false);
+  });
+
+  it("the rule's |Δz| bounds are the runtime's merge (MERGE_FULL_DZ, MERGE_MAX_DZ)", () => {
+    expect(SEAM_FULL_DZ_M).toBe(MERGE_FULL_DZ);
+    expect(SEAM_SLIDE_MAX_DZ_M).toBe(MERGE_MAX_DZ);
   });
 });
 

@@ -7,6 +7,12 @@ import {
   isRuleAllowed,
   LET_GO_MAX_STEP_M,
   LET_GO_REASON,
+  SEAM_CHORD_M,
+  SEAM_FULL_DZ_M,
+  SEAM_SLIDE_MAX_DZ_M,
+  SEAM_SLIDE_MAX_PROBES,
+  SEAM_SLIDE_REASON,
+  SEAM_SLIDE_SPAN_M,
   NOSE_REASON,
   PORTAL_OPEN_CUT_MAX_M,
   PORTAL_OPEN_CUT_REASON,
@@ -88,6 +94,7 @@ export type CaseKind = (typeof CASE_KINDS)[number];
 /** The kinds a rule accepts without a review while within its condition (`by: "rule"`). */
 export const AUTO_KINDS: readonly CaseKind[] = [
   "nose",
+  "seam_step",
   "portal-open-cut",
   "let_go",
   "cut-stretch",
@@ -466,6 +473,7 @@ export function seamCases(
   const off = probes.filter((p) => p.step !== null && !inHole(p) && isOff(p));
   for (const st of stretches(off)) {
     const pair = `${st[0].chunk}|${st[0].with}`;
+    const dz = st.map((p) => Math.abs(p.dz));
     out.push({
       key: `seam_step:${pair}|${nextIndex(`seam_step:${pair}`)}`,
       kind: "seam_step",
@@ -474,6 +482,9 @@ export function seamCases(
       chunk: st[0].chunk,
       measured: {
         probes: st.length,
+        // The data's |Δz| over the stretch (S6 PR 7c: whether it lies in a sliding band, the rule).
+        minDzM: round(Math.min(...dz), 4),
+        maxDzM: round(Math.max(...dz), 4),
         s0: round(st[0].s, 1),
         s1: round(st[st.length - 1].s, 1),
         stepM: round(Math.max(...st.map((p) => p.step!)), 4),
@@ -524,6 +535,7 @@ export const GROUND_INNER_MEDIAN_M = 0.5;
 /** Whether a rule accepts the case without a review (the kind's condition holds). */
 export function isAutoAccepted(c: Pick<FoundCase, "kind" | "measured">): boolean {
   if (c.kind === "nose") return true;
+  if (c.kind === "seam_step") return isSlidingSeamStep(c.measured);
   if (c.kind === "portal-open-cut")
     return c.measured.lengthM !== undefined && c.measured.lengthM <= PORTAL_OPEN_CUT_MAX_M;
   if (c.kind === "let_go")
@@ -563,9 +575,33 @@ export function isAutoAccepted(c: Pick<FoundCase, "kind" | "measured">): boolean
   return false;
 }
 
+/**
+ * S6 PR 7c: a seam_step in a sliding band, by rule (allowlist.ts SEAM_SLIDE_REASON): one or two probes
+ * within SEAM_SLIDE_SPAN_M, all with the data's |Δz| over SEAM_FULL_DZ_M and up to SEAM_SLIDE_MAX_DZ_M,
+ * the step within SEAM_SLIDE_MAX_DZ_M + 2 × SEAM_CHORD_M and the inside face within SEAM_CHORD_M. A case
+ * measured before (no minDzM) is not taken.
+ */
+export function isSlidingSeamStep(m: Measured): boolean {
+  const { probes, minDzM, maxDzM, s0, s1, stepM, insideM } = m;
+  const isMeasured =
+    probes !== undefined &&
+    minDzM !== undefined &&
+    maxDzM !== undefined &&
+    s0 !== undefined &&
+    s1 !== undefined &&
+    stepM !== undefined &&
+    insideM !== undefined;
+  if (!isMeasured) return false;
+  const isShort = probes <= SEAM_SLIDE_MAX_PROBES && s1 - s0 <= SEAM_SLIDE_SPAN_M + 1e-9;
+  const isSliding = minDzM > SEAM_FULL_DZ_M && maxDzM <= SEAM_SLIDE_MAX_DZ_M + 1e-9;
+  const isWithin = stepM <= SEAM_SLIDE_MAX_DZ_M + 2 * SEAM_CHORD_M + 1e-9 && insideM <= SEAM_CHORD_M + 1e-9;
+  return isShort && isSliding && isWithin;
+}
+
 /** The rule's reason for a case it accepts. */
 export function ruleReason(kind: CaseKind): string | null {
   if (kind === "nose") return NOSE_REASON;
+  if (kind === "seam_step") return SEAM_SLIDE_REASON;
   if (kind === "portal-open-cut") return PORTAL_OPEN_CUT_REASON;
   if (kind === "let_go") return LET_GO_REASON;
   if (kind === "cut-stretch") return CUT_STRETCH_REASON;
@@ -790,7 +826,11 @@ export function updateLedger(prev: Ledger | null, opts: UpdateOptions): Ledger {
         reason: ruleReason(f.kind),
         qa: was?.qa ?? seed.get(f.key)?.qa ?? null,
       };
-      cases.push(caseOf(f, rule, null));
+      // A review's decision a rule now takes over is kept in `previous` (S6 PR 7c: the sliding seams'
+      // rule took 24402125:0|24402611, decided by a review before): its reason stays in the ledger.
+      const isReviewed =
+        was !== undefined && was.status !== "gone" && was.status !== "new" && was.by !== "rule";
+      cases.push(caseOf(f, rule, isReviewed ? decisionOf(was) : (was?.previous ?? null)));
       continue;
     }
     const isLive = was !== undefined && was.status !== "gone";

@@ -27,19 +27,21 @@
 // (compile.ts Objective), with --grade-change <w> (vertical.ts W_GRADE_CHANGE), --reach <m> and
 // --reach-below <m> (assumptions.DESIGN_GROUND_REACH) and --target-scale <k> (W_TARGET × k).
 // P2.7-5 made v2 the default; --objective v1 (the objective before it) is for comparing and needs --out.
-// P2.7-6 (S6), each measuring only and needing --out until PR 7: --structures height (the structures from
-// the solved height), --ground compile (the runs at grade, needs height), --touchdown all (every class's
-// pairs coming down to the same place let go) and --companions on [--companion-weight <w>] (main lines
-// beside each other held to one height; the station pairs go to <report>.companions.json); S6 PR 4's
-// --ramp-shift <m> and --nose-surface overlap and PR 6's --hold-mains on (measured, see knowledge).
+// P2.7-6 (S6), the default since S6 PR 7c: --structures height (the structures from the solved height),
+// --ground compile (the runs at grade, needs height), --touchdown all (every class's pairs coming down
+// to the same place let go) and --companions on at --companion-weight 1 (main lines beside each other
+// held to one height; the station pairs go to <report>.companions.json). The values before them
+// (tags, skip, mains, off) and another weight are for comparing and need --out; `--structures tags`
+// alone is the build before PR 7c. S6 PR 4's --ramp-shift <m> and --nose-surface overlap and PR 6's
+// --hold-mains on stay measuring only (see knowledge).
 // P2.7-4 (format 6): meta.json is the tiles' index; each tile carries its chunks, the summaries of
 // their runs and the entrances whose street end lies in it; report.json the build's record (runs,
 // diagnostics, closed runs, the solver, the blocks with the dataHash of their chunks). A diagnostic
 // is allowed by the rules (allowlist.ts) or by the ledger (ledger.json of the output folder, kept
 // across the rebuild, or --ledger <path>), which scripts/expresswayLedger.ts writes.
-// P2.7-6 PR 1: --structures height (measuring only, needs --out) draws a viaduct-tagged run's stretches
+// P2.7-6 PR 1: --structures height (the default since S6 PR 7c) draws a viaduct-tagged run's stretches
 // as viaduct, embankment or cut from its solved height (src/expressway/heightStructures.ts) and names
-// "height-structures" in meta's features; --structures tags (the default) leaves the files as before.
+// "height-structures" in meta's features; --structures tags (comparing, --out) draws them by the tags.
 import { shippedFolderRefusal } from "./expresswayGuards";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -248,25 +250,31 @@ const objective: Objective =
         targetScale: v2Number("target-scale", OBJECTIVE_V2.targetScale),
       };
 // P2.7-6 PR 1: --structures height draws a viaduct-tagged run's stretches as viaduct, embankment or
-// cut from its solved height (src/expressway/heightStructures.ts); tags (the default) as before.
-const structuresArg = arg("structures") ?? "tags";
+// cut from its solved height (src/expressway/heightStructures.ts), the default since S6 PR 7c; tags
+// (the structures by OSM's tags, as before) is for comparing (--out).
+const structuresArg = arg("structures") ?? "height";
 const isStructuresMode = structuresArg === "tags" || structuresArg === "height";
 if (!isStructuresMode) throw new Error(`unknown --structures ${structuresArg} (tags, height)`);
 const structuresMode = structuresArg as "tags" | "height";
-// S6 PR 2: --ground compile compiles the runs at grade of a chain with a compiled run (needs --structures height).
-const groundArg = arg("ground") ?? "skip";
+// S6 PR 2: --ground compile compiles the runs at grade of a chain with a compiled run (needs --structures
+// height), the default since S6 PR 7c; skip is for comparing (--out).
+// Why the defaults follow --structures: `--structures tags` alone is the build before S6 PR 7c (no runs at
+// grade, mains, companions off), so it compares with the old shipped data file for file.
+const isHeightDefault = structuresMode === "height";
+const groundArg = arg("ground") ?? (isHeightDefault ? "compile" : "skip");
 const isGroundModeArg = groundArg === "skip" || groundArg === "compile";
 if (!isGroundModeArg) throw new Error(`unknown --ground ${groundArg} (skip, compile)`);
 const groundMode = groundArg as "skip" | "compile";
 const isGroundWithoutHeight = groundMode === "compile" && structuresMode !== "height";
 if (isGroundWithoutHeight) throw new Error("--ground compile needs --structures height");
 // S6 PR 3: --touchdown all lets go the pairs of every class coming down to the same place; --companions on
-// holds main lines running beside each other to one height at --companion-weight (1 by default).
-const touchdownArg = arg("touchdown") ?? "mains";
+// holds main lines running beside each other to one height at --companion-weight (1 by default). Both
+// the default since S6 PR 7c; mains, off and another weight are for comparing (--out).
+const touchdownArg = arg("touchdown") ?? (isHeightDefault ? "all" : "mains");
 const isTouchdownArg = touchdownArg === "mains" || touchdownArg === "all";
 if (!isTouchdownArg) throw new Error(`unknown --touchdown ${touchdownArg} (mains, all)`);
 const touchdownMode = touchdownArg as "mains" | "all";
-const companionsArg = arg("companions") ?? "off";
+const companionsArg = arg("companions") ?? (isHeightDefault ? "on" : "off");
 const isCompanionsArg = companionsArg === "off" || companionsArg === "on";
 if (!isCompanionsArg) throw new Error(`unknown --companions ${companionsArg} (off, on)`);
 const companionWeight = Number(arg("companion-weight") ?? "1");
@@ -312,10 +320,11 @@ const refusal = shippedFolderRefusal({
   isBlocks: partitionMode === "blocks",
   isV1: objective.kind === "v1",
   v2Flags,
-  isHeight: structuresMode === "height",
-  isGround: groundMode === "compile",
-  isTouchdownAll: touchdownMode === "all",
-  isCompanions,
+  isTags: structuresMode === "tags",
+  isGroundSkip: groundMode === "skip",
+  isTouchdownMains: touchdownMode === "mains",
+  isCompanionsOff: !isCompanions,
+  isCompanionWeight: arg("companion-weight") !== undefined,
   isRampShift: rampShiftM !== null,
   isNoseOverlap: noseMode === "overlap",
   isHoldMains: holdMode === "on",
