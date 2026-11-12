@@ -1350,6 +1350,8 @@ export type SolveStats = {
   qpMs: number;
   /** Solves that did not converge (each reported as solver_not_converged). */
   unconverged: number;
+  /** Solves whose first try did not converge, solved again (vertical.ts RETRY_DUAL_TOL). */
+  retried: number;
 };
 
 export type CompileResult = {
@@ -1986,6 +1988,7 @@ function solveComponent(
     iterations: 0,
     qpMs: 0,
     unconverged: 0,
+    retried: 0,
   };
   const unconverged: string[] = [];
   const isRamp = (id: string) => plan.runs.get(id)!.cls === "ramp";
@@ -2032,6 +2035,7 @@ function solveComponent(
     stats.solves++;
     stats.iterations += res.iterations;
     stats.largestVariables = Math.max(stats.largestVariables, res.variables);
+    if (res.retried) stats.retried++;
     const isConverged = res.status === "converged";
     if (!isConverged) {
       stats.unconverged++;
@@ -2305,6 +2309,7 @@ function solveShedding(
     iterations: 0,
     qpMs: 0,
     unconverged: 0,
+    retried: 0,
   };
   const add = (res: ComponentResult) => {
     stats.largestVariables = Math.max(stats.largestVariables, res.stats.largestVariables);
@@ -2312,6 +2317,7 @@ function solveShedding(
     stats.iterations += res.stats.iterations;
     stats.qpMs += res.stats.qpMs;
     stats.unconverged += res.stats.unconverged;
+    stats.retried += res.stats.retried;
   };
   const isMain = (id: string) => plan.runs.get(id)!.cls !== "ramp";
   const neighbours = couplingGraph(plan, component);
@@ -2716,6 +2722,7 @@ export function solvePlan(
     iterations: 0,
     qpMs: 0,
     unconverged: 0,
+    retried: 0,
   };
   const { heightAt, blockHeightAt, partition } = plan.partition
     ? solveBlocks(plan, plan.partition, ground, objectPolys, diagnostics, solved, failed, stats, options)
@@ -2873,6 +2880,7 @@ function solveComponents(
     stats.iterations += res.stats.iterations;
     stats.qpMs += res.stats.qpMs;
     stats.unconverged += res.stats.unconverged;
+    stats.retried += res.stats.retried;
     for (const [id, s] of res.solved) solved.set(id, s);
     for (const [key, p] of res.sunk) diagnostics.push(sunkDiagnostic(key.split("|")[0], p, p.s));
     for (const [id, attempts] of res.unsolved) {
@@ -3304,6 +3312,7 @@ function solveBlocks(
     stats.iterations += res.stats.iterations;
     stats.qpMs += res.stats.qpMs;
     stats.unconverged += res.stats.unconverged;
+    stats.retried += res.stats.retried;
     for (const [id, s] of res.solved) pieceSolved.set(id, s);
     for (const [id, a] of res.unsolved) pieceUnsolved.set(id, a);
     for (const [id, parent] of res.orphaned) orphanOf.set(id, parent);
@@ -3497,7 +3506,65 @@ export function stationPositions(plan: number[], knots: number[], a: number, b: 
       moved.add(near);
     } else out.push(knot);
   }
-  return out.sort((p, q) => p - q).filter((v, i, arr) => i === 0 || v - arr[i - 1] > 1e-6);
+  // A plan station this close to a station that must stay (the ends, a knot) only shortens the
+  // interval beside it, where the file's rounding weighs most on the surface's grade (P2.7-5 4.2).
+  const kept = [a, b, ...knots];
+  const isNeeded = (sv: number) => kept.includes(sv);
+  const isCrowding = (sv: number) => !isNeeded(sv) && kept.some((k) => Math.abs(sv - k) < MIN_STATION_GAP_M);
+  return out
+    .filter((sv) => !isCrowding(sv))
+    .sort((p, q) => p - q)
+    .filter((v, i, arr) => i === 0 || v - arr[i - 1] > 1e-6);
+}
+
+/**
+ * A plan station closer than this to a station that must stay (a chunk's end, a knot) is left out
+ * (P2.7-5 4.2). The plan chord then spans up to the step plus this (8 m on the tightest curves,
+ * where the step is 5 m: the sagitta 3 cm grows to 8 cm), as KNOT_SNAP_M's move already allowed.
+ */
+export const MIN_STATION_GAP_M = 3;
+
+/**
+ * How a station is written: z to 3 decimals at the station's own run distance, as before (`atS`
+ * false), or, where an interval beside it is short and its grade near the limit, z (and the grade)
+ * taken at the run distance as written (1 cm) and z to 4 or 5 decimals. Why: the surface between
+ * two stations is the Hermite of their written s, z and grade (profile.ts), whose grade inside the
+ * interval moves by 1.5× the chord's error; z to 1 mm and s to 1 cm over a 2–4 m interval at
+ * 4.975 % (GRADE_MARGIN × 5 %) wrote a chord of 5.000 % and a surface of 5.0125 % (T2 over the 5 %
+ * limit, P2.7-3: 45248411:23, 24636451:0, 28127108:37). Taken at the written s, the chord carries
+ * no error of s at all, and z's digits make the rest small.
+ * Why not s to more digits instead: a junction's end (parentS, 1 cm) must find the parent's chunk
+ * end at its s (expresswayRoads.ts joins them within 1 mm), and 4848762:33 at 2831.362 lost its
+ * diverge to 4848889 (P2.7-5). Why not finer digits everywhere: every tile grows for intervals that
+ * have the headroom anyway; nor a lower GRADE_MARGIN: it moves every run's solution and can close a
+ * climb that just fits; nor a chunk boundary moved onto a knot beside it: which knots change the
+ * curvature is the solution's to say, so the chunks would no longer be the same whichever way a run
+ * is solved (blocks' I3, tests/expresswayBlocks.test.ts) and a rebuild could move their ids.
+ */
+export const STATION_DIGITS: ReadonlyArray<{ z: number; atS: boolean }> = [
+  { z: 3, atS: false },
+  { z: 4, atS: true },
+  { z: 5, atS: true },
+];
+
+/**
+ * The digits an interval of length h needs: the first of STATION_DIGITS whose worst chord error
+ * (z rounded at both ends, and s too unless z is taken at the written s, at grade g), times the
+ * Hermite's 1.5, takes at most half of the headroom between the steeper end's grade and the limit
+ * (checkSurface's 2e-5 included). With no headroom (an interval across a knot within 0.5 m of an
+ * end) the finest.
+ */
+export function stationDigitsFor(h: number, g0: number, g1: number, limit: number): number {
+  const g = Math.max(Math.abs(g0), Math.abs(g1));
+  const headroom = limit + 2e-5 - g;
+  for (let d = 0; d < STATION_DIGITS.length; d++) {
+    const { z, atS } = STATION_DIGITS[d];
+    const sError = atS ? 0 : g * 1e-2;
+    const chordError = (10 ** -z + sError) / Math.max(h, 1e-6);
+    const isEnough = 1.5 * chordError <= headroom / 2;
+    if (isEnough) return d;
+  }
+  return STATION_DIGITS.length - 1;
 }
 
 /**
@@ -3811,6 +3878,41 @@ function chunkRun(
     };
   };
   const portals = rp.below ? belowPortals(plan, s) : [];
+  // Stations by the plan curvature, plus every knot where the vertical curvature changes: a
+  // station interval then lies within one parabola, which the Hermite surface reproduces exactly.
+  // Why not plan stations alone: across a knot the cubic overshoots the end grades (5.02 % on a
+  // 5 % section) and the curvature (1.05e-3 against 1/1000).
+  // The start always, even of a chunk under 2 m (a short speed zone): one station is no chunk.
+  const chunkStations: number[][] = [];
+  for (let k = 0; k + 1 < bounds.length; k++) {
+    const a = bounds[k];
+    const b = bounds[k + 1];
+    const positions: number[] = [a];
+    for (let sv = a + stationStep(poseAt(rp, a).kappa); sv < b - 2; sv += stationStep(poseAt(rp, sv).kappa))
+      positions.push(sv);
+    positions.push(b);
+    chunkStations.push(stationPositions(positions, runKnots(s, a, b), a, b));
+  }
+  // Each station's digits (STATION_DIGITS): the finest an interval beside it needs, a chunk's end
+  // over both chunks so the next chunk starts with the very same values (T3).
+  const digitsAt = new Map<number, number>();
+  const need = (sv: number, d: number) => digitsAt.set(sv, Math.max(digitsAt.get(sv) ?? 0, d));
+  chunkStations.forEach((list, k) => {
+    const limit = gradeLimitFor(
+      zoneSpeedAt(s.zones, (bounds[k] + bounds[k + 1]) / 2),
+      isSpecialAt(s, (bounds[k] + bounds[k + 1]) / 2),
+    );
+    for (let i = 0; i + 1 < list.length; i++) {
+      const d = stationDigitsFor(
+        list[i + 1] - list[i],
+        evalRun(s, list[i]).grade,
+        evalRun(s, list[i + 1]).grade,
+        limit,
+      );
+      need(list[i], d);
+      need(list[i + 1], d);
+    }
+  });
   const chunks: XwChunk[] = [];
   for (let k = 0; k + 1 < bounds.length; k++) {
     const a = bounds[k];
@@ -3819,28 +3921,21 @@ function chunkRun(
     const st: number[] = [];
     const push = (sv: number) => {
       const p = poseAt(rp, sv);
-      const v = evalRun(s, sv);
+      const digits = STATION_DIGITS[digitsAt.get(sv) ?? 0];
+      const written = roundTo(sv, 2);
+      const v = evalRun(s, digits.atS ? written : sv);
       const bi = Math.min(s.bank.length - 1, Math.max(0, sampleAt(rp, sv) - rp.i0));
       st.push(
-        roundTo(sv, 2),
+        written,
         roundTo(p.lon, 7),
         roundTo(p.lat, 7),
-        roundTo(v.z, 3),
+        roundTo(v.z, digits.z),
         roundTo(s.bank[bi], 4),
         roundTo(ground(p.lon, p.lat), 2),
         roundTo(v.grade, 5),
       );
     };
-    // Stations by the plan curvature, plus every knot where the vertical curvature changes: a
-    // station interval then lies within one parabola, which the Hermite surface reproduces exactly.
-    // Why not plan stations alone: across a knot the cubic overshoots the end grades (5.02 % on a
-    // 5 % section) and the curvature (1.05e-3 against 1/1000).
-    // The start always, even of a chunk under 2 m (a short speed zone): one station is no chunk.
-    const positions: number[] = [a];
-    for (let sv = a + stationStep(poseAt(rp, a).kappa); sv < b - 2; sv += stationStep(poseAt(rp, sv).kappa))
-      positions.push(sv);
-    positions.push(b);
-    for (const sv of stationPositions(positions, runKnots(s, a, b), a, b)) push(sv);
+    for (const sv of chunkStations[k]) push(sv);
     const { section, over, girder: deckGirder } = sectionAt(a, b);
     const structure = rp.below ? belowAt(rp, (a + b) / 2) : "viaduct";
     const girder = rp.below ? 0 : deckGirder;

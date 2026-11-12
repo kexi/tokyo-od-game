@@ -7,7 +7,7 @@ import {
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
 import { hermite } from "./profile";
-import { QpBuilder, type QpStatus, solveQp } from "./qp";
+import { type Qp, QpBuilder, type QpResult, type QpStatus, solveQp } from "./qp";
 
 /**
  * Vertical alignment (knowledge/road-redesign-plan.md 4.3). Each run's profile is a chain of equal parabolic arcs: knots
@@ -232,7 +232,7 @@ const W_SMOOTH = 0.5;
  * end test: over 500 weights in 1–3 that QP breaks at 13 (about 2–3 %, scattered, 2 and 2 − 1 ulp
  * broken, 2 + 1 ulp converging) and at none of 100 in 1.4–1.6, so 1.5 can break too elsewhere. A
  * second solve at a looser dual tolerance, only for a solve that did not converge, rescues all 13
- * and leaves every converged solve as it is: a premise of S5 (qp.ts is not changed here).
+ * and leaves every converged solve as it is (RETRY_DUAL_TOL, solveJoint; P2.7-5).
  */
 export const W_GRADE_CHANGE = 1.5;
 /**
@@ -428,7 +428,33 @@ export type JointResult = {
   /** The solver's verdict (qp.ts); anything but "converged" means the profiles are not a solution. */
   status: QpStatus;
   residuals: { primal: number; dual: number; gap: number };
+  /** The first solve did not converge and was solved again at RETRY_DUAL_TOL (P2.7-5 4.1). */
+  retried: boolean;
 };
+
+/**
+ * The dual tolerance of the second solve, only for a QP whose first solve did not converge (qp.ts
+ * keeps 1e-6). The interior point broke down past where it should have stopped: at 32 iterations the
+ * gap met gapTol and the primal residual was 1.6e-12, but the dual 1.34e-6 stood a hair over 1e-6;
+ * pushed on, D spread to 6e-15–1e17 and the 37th iteration was NaN (knowledge/expressway-generation.md
+ * 「P2.7-3」の「未収束」). Over 500 weights of the saved QP 13 broke so, and at 1e-5 all 13 converge.
+ * Why not 1e-5 for every solve: a solve that converged would stop earlier and move every deck (v1
+ * included) by the solver's last digits; a retry leaves those bit for bit as they are. Why not a
+ * looser gapTol or more regularisation: not the type seen (another type is saved and reported).
+ */
+export const RETRY_DUAL_TOL = 1e-5;
+
+/**
+ * solveQp, and only if that did not converge a second solve at RETRY_DUAL_TOL (the converged first
+ * solve is returned as it is). `iterations` counts both solves.
+ */
+export function solveRetrying(qp: Qp): { result: QpResult; retried: boolean; iterations: number } {
+  const first = solveQp(qp);
+  const isConverged = first.status === "converged";
+  if (isConverged) return { result: first, retried: false, iterations: first.iterations };
+  const second = solveQp(qp, { dualTol: RETRY_DUAL_TOL });
+  return { result: second, retried: true, iterations: first.iterations + second.iterations };
+}
 
 const byId = (a: RunInput, b: RunInput) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
@@ -501,16 +527,17 @@ export function solveJoint(runs: RunInput[], couplings: Coupling[]): JointResult
     qp.addRow(row, lo, hi, weight);
   }
   const built = qp.build();
-  const res = solveQp(built);
+  const { result: res, retried, iterations } = solveRetrying(built);
   const { profiles, problems } = finish(layouts, couplings, res.x);
   return {
     profiles,
     problems,
     variables: built.n,
     rows: built.rows.length,
-    iterations: res.iterations,
+    iterations,
     status: res.status,
     residuals: { primal: res.primalResidual, dual: res.dualResidual, gap: res.gap },
+    retried,
   };
 }
 
