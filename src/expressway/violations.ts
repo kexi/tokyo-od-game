@@ -2,6 +2,7 @@ import { CASE_MARGIN, isAllowed } from "./allowlist";
 import {
   checkChunkJoin,
   checkClearance,
+  checkClearanceWindows,
   checkCover,
   checkGrade,
   checkGroundEnd,
@@ -46,11 +47,7 @@ export function violationsOf(
   // radius as they hold a decided one (less CASE_MARGIN): counted once, in the ledger. Why only there:
   // the runs at grade (S6 PR 2) bring OSM's tight ramp ends (R 7.8 m) in, and a build by the tags keeps
   // the scorecard it had.
-  const reported = new Map<string, number>();
-  for (const d of isHeight ? meta.diagnostics : []) {
-    const m = d.kind === "ramp_radius" ? /R=([\d.]+) m/.exec(d.detail) : null;
-    if (m) reported.set(d.run, Number(m[1]) - CASE_MARGIN.radiusM);
-  }
+  const reported = reportedRampFloors(isHeight ? meta.diagnostics : []);
   const floorOf = (run: string) => rampFloor(run) ?? reported.get(run);
   const runs = new Map(meta.runs.map((r) => [r.id, r]));
   const isGroundBuild = meta.runs.some((r) => r.ground === true);
@@ -119,9 +116,37 @@ export function violationsOf(
     // -tagged run's cuts keep T12 (review W10): they are deeper than the dead band by what they are.
     const isJudgedCover = !(isHeight && r.ground === true);
     if (isJudgedCover) for (const c of list) found.T12.push(...checkCover(c, r, ends, isTunnelFree));
-    if (isHeight) found.T13.push(...checkHeightStructures(list, r.below === true, r.ground === true));
+    if (isHeight)
+      found.T13.push(
+        ...checkHeightStructures(list, r.below === true, r.ground === true, groundEndsOf(r, runs)),
+      );
+    if (isHeight) found.T4.push(...checkClearanceWindows(list));
   }
   return Object.fromEntries(
     PROPERTIES.map((p) => [p, { count: found[p].length, first: found[p].slice(0, FIRST) }]),
   ) as Violations;
+}
+
+/**
+ * The ramps' floors their ramp_radius diagnostics state (OSM's radius less CASE_MARGIN), by run: what
+ * a height build holds T3 and T6 to before a review decides the case (violationsOf; the data test
+ * reads the same, S6 PR 7a review W7).
+ */
+export function reportedRampFloors(diagnostics: readonly XwDiagnostic[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const d of diagnostics) {
+    const m = d.kind === "ramp_radius" ? /R=([\d.]+) m/.exec(d.detail) : null;
+    if (m) out.set(d.run, Number(m[1]) - CASE_MARGIN.radiusM);
+  }
+  return out;
+}
+
+/**
+ * Which of a run's ends meet the ground (R4, T13): a ground end or portal, or a seam onto a run at
+ * grade, from the run summaries (violationsOf and the data test read the same, review W9).
+ */
+export function groundEndsOf(r: XwRunSummary, runs: ReadonlyMap<string, XwRunSummary>): [boolean, boolean] {
+  const meetsGround = (e: XwRunSummary["start"]) =>
+    e.kind === "ground" || e.kind === "portal" || (e.kind === "seam" && runs.get(e.parent!)?.ground === true);
+  return [meetsGround(r.start), meetsGround(r.end)];
 }

@@ -138,3 +138,27 @@ export function isAllowed(
   if (!verdict) return false;
   return verdict({ run: d.run, kind: d.kind, detail: d.detail ?? "", allowed: false });
 }
+
+/** Why a road or railway crossing a run at grade at its end node passes by rule (`ground-crossing`, S6 PR 7a). */
+export const GROUND_CROSSING_REASON =
+  "地平 run を平面で横切る道路・鉄道のうち、run の端の節点（端から 1 m 以内）のもの。ランプの端で一般道の網に接する所で、渡す・くぐる構造は要らないので規則で通す。途中を横切るものは listed（PR 7 で越える・くぐる形を決める）";
+
+/**
+ * The detail of a road or railway crossing a run at grade (compile.ts setupGround), and its reading
+ * back (the ledger's ground-crossing, scripts/expresswayCases.ts): one place for the text both sides
+ * rely on (S6 PR 7a review W8).
+ */
+export function atGradeCrossingDetail(kind: "road" | "rail", id: number, s: number): string {
+  return `${kind} ${id} at ${s.toFixed(0)} m crosses the road at grade; taken as passing over or under`;
+}
+
+/** What atGradeCrossingDetail wrote, or null for any other detail. */
+export function parseAtGradeCrossing(
+  detail: string,
+): { kind: "road" | "rail"; id: number; s: number } | null {
+  const m = /^(road|rail) (\d+) at (\d+) m crosses the road at grade; taken as passing over or under$/.exec(
+    detail,
+  );
+  if (m === null) return null;
+  return { kind: m[1] as "road" | "rail", id: Number(m[2]), s: Number(m[3]) };
+}

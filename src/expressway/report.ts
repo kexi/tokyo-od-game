@@ -19,11 +19,25 @@ import { lowViaductStretches, openGroundStretches } from "./heightStructures";
 
 const count = z.number().int().nonnegative();
 const km = z.number().nonnegative();
+/** A length or height in metres (non-negative). */
+const m = z.number().nonnegative();
 const tally = z.strictObject({ runs: count, km });
 const byClass = z.strictObject({ main: tally, ramp: tally, street: tally });
 const spread = z.strictObject({ total: count, median: count, p90: count, max: count });
 /** A spread of lengths or depths in metres (P2.7-6 structures). */
 const metres = z.strictObject({ median: km, p90: km, max: km });
+/** The runs at grade's inside off a line (S6 PR 7a, N2): per run medians and the stations' spread. */
+const innerTally = {
+  runs: count,
+  km,
+  over03: count,
+  over075: count,
+  above: count,
+  below: count,
+  p5M: z.number(),
+  p50M: z.number(),
+  p95M: z.number(),
+};
 /** The companions' station pairs (S6 PR 3): how many, the km along the first, |Δz| as solved. */
 const companionTally = {
   pairs: count,
@@ -197,20 +211,54 @@ export const ReportSchema = z.strictObject({
       atChainEnd: z.strictObject({ count, km }),
       outsideRange: z.strictObject({ count, km }),
       crossingsBlocked: count,
-      /** Of them, those more than 1 m from both of the run's ends (its end nodes): crossed mid-run. */
+      /**
+       * Of them, those whose s (the diagnostic's, in whole metres) is more than 1 m from both ends of the
+       * run: crossed mid-run, each a ground-crossing case listed in the ledger (S6 PR 7a).
+       */
       crossingsBlockedMiddle: count,
       belowUnwritten: z.strictObject({ count, km }),
       /** The stretches at grade left out as the open part between two tunnels (Plan.betweenTunnels). */
       betweenTunnels: z.array(z.string()),
       /** How far the runs at grade stand off the ground under them: |z − ground| at their stations. */
-      offGround: z.strictObject({ p95M: km, maxM: km, over3mRuns: count }),
+      /** The runs at grade's target weight and band as built (S6 PR 7a); absent before it. */
+      settings: z.strictObject({ targetScale: z.number().positive(), bandM: m }).optional(),
+      offGround: z.strictObject({ p95M: m, maxM: m, over3mRuns: count }),
       /**
        * The ends the viaducts and below runs seam onto (S6 PR 3): how far the run at grade stands off
        * the band's centre there (the ground's median within 150 m of the end), the ends past the band
        * (HEIGHT_STRUCTURES.ground.bandM) and the worst.
        * Absent in reports before PR 3.
        */
-      openEnds: z.strictObject({ count, overBand: count, maxM: km }).optional(),
+      openEnds: z
+        .strictObject({
+          count,
+          overBand: count,
+          maxM: m,
+          /**
+           * S6 PR 7a (4.3): the ends past HEIGHT_STRUCTURES.ground.approachMaxM (the ledger's approach
+           * rule), by what is beyond the end: the child climbs to a viaduct (the road above the line) or
+           * is low, comes down to a portal or stands over it (a below child below or above the line),
+           * or no child is written. Absent before PR 7a.
+           */
+          overApproach: count.optional(),
+          byCause: z
+            .strictObject({
+              climbToViaduct: count,
+              downToPortal: count,
+              overPortal: count,
+              childLow: count,
+              childUnwritten: count,
+            })
+            .optional(),
+        })
+        .optional(),
+      /**
+       * N2 (S6 PR 7a): the runs at grade with 100 m or more inside after 100 m off each end, each run's
+       * median of (road − target line) there: the runs and km, how many past 0.3 and 0.75 m (and of
+       * those above and below), and the stations' p5, p50 and p95; `vsGround` the same of (road − the
+       * stations' ground). Absent in reports before PR 7a.
+       */
+      inner: z.strictObject({ ...innerTally, vsGround: z.strictObject(innerTally) }).optional(),
       tracking: z.strictObject({
         runs: count,
         km,
@@ -249,6 +297,12 @@ export const ReportSchema = z.strictObject({
       /** Viaducts under the viaduct's height kept in the air (review W3, the ledger's low-viaduct). */
       lowViaduct: z.strictObject({ stretches: count, km }).optional(),
       byDistrict: z.record(z.string(), z.strictObject({ embankmentKm: km, cutKm: km, thinGirders: count })),
+      /**
+       * What S6 PR 7a's rules changed (compile.ts HeightRuleTally): crossings' windows spanned as viaduct
+       * over an embankment or cut (R3), same-surface stations apart past the merge (R5), embankments
+       * off a non-ground end drawn as viaducts (R4). Absent before them.
+       */
+      rules: z.strictObject({ spanned: count, sameApart: count, unanchored: count }).optional(),
     })
     .optional(),
   /** How the elevated main lines follow the ground (trackingOf). */
@@ -426,6 +480,8 @@ export type ReportInput = {
   withoutTimings?: boolean;
   /** A height build (`--structures height`, P2.7-6): the scorecard's `structures`. */
   heightStructures?: boolean;
+  /** The height build's rule tally (CompileResult.heightRules), into `structures.rules`. */
+  heightRules?: { spanned: number; sameApart: number; unanchored: number };
   /** The runs at grade (S6 PR 2): Report["ground"], made by the build script; null or absent without them. */
   ground?: NonNullable<Report["ground"]> | null;
   /** The companions (S6 PR 3): Report["companions"], made by the build script; null or absent without them. */
@@ -1190,7 +1246,12 @@ export function buildReport(input: ReportInput): Report {
     overlapPairs: overlapPairsOf(rangeDiagnostics, input.runs),
     violations: input.violations,
     ...(input.heightStructures
-      ? { structures: structuresOf(input.chunks, input.districts, input.runs) }
+      ? {
+          structures: {
+            ...structuresOf(input.chunks, input.districts, input.runs),
+            ...(input.heightRules ? { rules: input.heightRules } : {}),
+          },
+        }
       : {}),
     ...(input.ground ? { ground: input.ground } : {}),
     ...(input.companions ? { companions: input.companions } : {}),

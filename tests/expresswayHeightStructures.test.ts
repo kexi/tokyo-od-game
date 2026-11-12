@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { GIRDER_DEPTH, GIRDER_MIN, HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
-import { checkClearance, checkCover, isTunnelFreeRun } from "../src/expressway/checks";
+import {
+  checkClearance,
+  checkClearanceWindows,
+  checkCover,
+  checkSeamHeading,
+  isTunnelFreeRun,
+} from "../src/expressway/checks";
+import { trackingOf } from "../src/expressway/report";
 import { isFailing, planNetwork, solvePlan, windowsToWiden } from "../src/expressway/compile";
 import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import {
+  afterSpanning,
   checkHeightStructures,
+  clearsOnThinGirder,
+  isWindowOver,
+  sameKept,
+  forceViaduct,
   GIRDER_GIVE_M,
   girderFor,
   CUT_BELOW_M,
@@ -19,6 +31,8 @@ import {
   VIADUCT_OVER_GROUND_M,
 } from "../src/expressway/heightStructures";
 import { isAutoAccepted } from "../src/expressway/ledger";
+import { atGradeCrossingDetail, parseAtGradeCrossing } from "../src/expressway/allowlist";
+import { structureCases } from "../scripts/expresswayCases";
 import { deckOverlaps } from "../src/expressway/overlap";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
 import type { RunProblem } from "../src/expressway/vertical";
@@ -554,7 +568,8 @@ describe("交差の窓で余裕を測る（review C1・W1、合成網）", () =>
       const b = c.st.slice((i + 1) * STATION_STRIDE, (i + 1) * STATION_STRIDE + 7);
       return a[3] + ((b[3] - a[3]) * (s - a[0])) / (b[0] - a[0]);
     };
-    let seen = 0;
+    let crossed = 0;
+    let blocked = 0;
     for (const c of list) {
       for (let i = 0; i < c.cross.length; i += 4) {
         const [s, top, need] = c.cross.slice(i, i + 4);
@@ -562,11 +577,12 @@ describe("交差の窓で余裕を測る（review C1・W1、合成網）", () =>
         for (let sv = s - half + 2; sv <= s + half - 2; sv += 1) low = Math.min(low, zAt(sv));
         expect(c.structure).toBe("viaduct");
         expect(low - top).toBeGreaterThanOrEqual(need - 0.05);
-        seen++;
+        crossed++;
       }
-      seen += c.blocked.length / 3;
+      blocked += c.blocked.length / 3;
     }
-    expect(seen).toBe(1);
+    // Counted apart (R6 (e)): one road, kept as crossed and cleared over its window, none blocked.
+    expect([crossed, blocked]).toEqual([1, 0]);
     const v = violationsOf(
       { runs: height.runs, diagnostics: height.diagnostics },
       height.chunks,
@@ -575,5 +591,291 @@ describe("交差の窓で余裕を測る（review C1・W1、合成網）", () =>
     );
     expect(v.T4.count).toBe(0);
     expect(v.T13.count).toBe(0);
+  });
+});
+
+/**
+ * R3 (S6 PR 7a): a deck coming down to its ground end at s = 400 over level ground (T.P. 3 m), a road
+ * crossing it at s = 200 whose window is 10 m either side. The deck is 6.6 m over the ground at the
+ * road and falls 5 % from s = 203: by its height alone an embankment from 206, inside the window,
+ * though it clears the road over the window on the thinnest girder (4.5 m + 1.7 m).
+ */
+describe("交差の窓は高架（R3、forceViaduct・T13）", () => {
+  const z = (s: number) => (s <= 203 ? 9.6 : 9.6 - 0.05 * (s - 203));
+  const deck = (s: number) => Math.max(3, z(s));
+  const samples = Array.from({ length: 401 }, (_, s) => ({ s, z: deck(s), ground: 3 }));
+
+  it("by its height the embankment starts 6 m from the road; spanned, it starts at the window's end and T13 finds nothing", () => {
+    const byHeight = heightStretches(samples, undefined, { length: 400 });
+    expect(byHeight.map((h) => h.structure)).toEqual(["viaduct", "embankment"]);
+    expect(byHeight[1].s0).toBeGreaterThan(205);
+    expect(byHeight[1].s0).toBeLessThan(207);
+    // The deck clears the road over the window on the thinnest girder.
+    let low = Infinity;
+    for (let s = 190; s <= 210; s++) low = Math.min(low, deck(s));
+    expect(low - 3).toBeGreaterThanOrEqual(4.5 + GIRDER_MIN.value - 0.001);
+    const spanned = forceViaduct(byHeight, [[190, 210]]);
+    expect(spanned.map((h) => [h.structure, h.s0])).toEqual([
+      ["viaduct", 0],
+      ["embankment", 210],
+    ]);
+    const list = [
+      lineChunk("R", 0, "viaduct", 0, 210, deck, () => 3, { cross: [200, 3, 6.7, 0] }),
+      lineChunk("R", 1, "embankment", 210, 190, deck, () => 3, {
+        portals: [{ s: 210, from: "viaduct", to: "embankment" }],
+      }),
+    ];
+    expect(checkHeightStructures(list, false)).toEqual([]);
+    // With no crossing a viaduct 30 m past where it comes down is found.
+    const far = [
+      lineChunk("R", 0, "viaduct", 0, 240, deck, () => 3),
+      lineChunk("R", 1, "embankment", 240, 160, deck, () => 3, {
+        portals: [{ s: 240, from: "viaduct", to: "embankment" }],
+      }),
+    ];
+    expect(checkHeightStructures(far, false).join()).toMatch(/not of its structure/);
+  });
+
+  it("a window over a viaduct is left; one over an embankment or a cut splits it, and neighbours of one structure merge", () => {
+    const list = [
+      { s0: 0, s1: 100, structure: "embankment" as const },
+      { s0: 100, s1: 300, structure: "viaduct" as const },
+      { s0: 300, s1: 500, structure: "cut" as const },
+    ];
+    expect(forceViaduct(list, [[150, 160]])).toEqual(list);
+    expect(
+      forceViaduct(list, [
+        [90, 110],
+        [350, 360],
+      ]),
+    ).toEqual([
+      { s0: 0, s1: 90, structure: "embankment" },
+      { s0: 90, s1: 300, structure: "viaduct" },
+      { s0: 300, s1: 350, structure: "cut" },
+      { s0: 350, s1: 360, structure: "viaduct" },
+      { s0: 360, s1: 500, structure: "cut" },
+    ]);
+  });
+});
+
+describe("T13 は区分の規則を呼ばずに読む（R6 (a)）", () => {
+  it("a viaduct chunk that is an embankment by the assumptions' thresholds is found, whatever a classifier with other thresholds drew", () => {
+    // 2–4 m over the ground for 200 m mid-run, 2 m at its lowest: an embankment that reaches the ground
+    // by the thresholds, a viaduct in the air to a classifier whose reach was 1.5 m lower.
+    const deck = (s: number) => (s < 100 || s > 300 ? 15 : 3 + 2 + Math.abs(s - 200) / 50);
+    const list = [lineChunk("R", 0, "viaduct", 0, 400, deck, () => 3)];
+    const wrong = heightStretches(
+      Array.from({ length: 401 }, (_, s) => ({ s, z: deck(s) + 1.5, ground: 3 })),
+      undefined,
+      { length: 400 },
+    );
+    expect(wrong.map((h) => h.structure)).toEqual(["viaduct"]);
+    expect(checkHeightStructures(list, false).join()).toMatch(/not of its structure/);
+  });
+});
+
+describe("T4 は交差の窓を 1 m ごとにそのチャンクの桁で見る（R6 (c)・(d)）", () => {
+  it("a window over a chunk boundary fails where the next chunk keeps the standard girder, and passes once it is thin too", () => {
+    // 6.25 m over the road throughout: clear on the 1.7 m girder (4.5 + 1.7), not on the 2.2 m one.
+    const deck = () => 9.25;
+    const centre = lineChunk("R", 0, "viaduct", 0, 200, deck, () => 3, {
+      girder: GIRDER_MIN.value,
+      cross: [195, 3, 4.5 + GIRDER_MIN.value, 9.25],
+      crossWindows: [10],
+    });
+    const standard = lineChunk("R", 1, "viaduct", 200, 200, deck, () => 3, { girder: GIRDER_DEPTH.value });
+    expect(checkClearanceWindows([centre, standard]).join()).toMatch(/window of the crossing at s=195/);
+    const thin = { ...standard, girder: GIRDER_MIN.value };
+    expect(checkClearanceWindows([centre, thin])).toEqual([]);
+    // A build by the tags writes no windows: nothing to check.
+    expect(checkClearanceWindows([{ ...centre, crossWindows: undefined }, standard])).toEqual([]);
+  });
+});
+
+describe("T3 の seam の向き（checkSeamHeading の違反側）と trackingOf の kind", () => {
+  it("a child turned more than 1e-3 rad off its parent's chunk boundary at the seam fails; square, or no boundary there, as written", () => {
+    const flat = () => 3;
+    const parent = [lineChunk("P", 0, "embankment", 0, 100, () => 3, flat, { h0: 0, h1: 0.5 })];
+    const square = lineChunk("C", 0, "viaduct", 100, 100, () => 9, flat, { h0: 0.5 });
+    expect(checkSeamHeading(square, true, 100, parent)).toEqual([]);
+    const turned = { ...square, h0: 0.5 + 2e-3 };
+    expect(checkSeamHeading(turned, true, 100, parent).join()).toMatch(/seam heading/);
+    expect(checkSeamHeading(square, true, 50, parent).join()).toMatch(/no parent chunk boundary/);
+  });
+
+  it("trackingOf reads the viaducts by default and the runs at grade with kind ground", () => {
+    const flat = () => 3;
+    const deck = lineChunk("V", 0, "viaduct", 0, 1000, (s) => 12 + Math.sin(s / 100), flat);
+    const atGrade = lineChunk("G", 0, "embankment", 0, 1000, (s) => 3 + 0.1 * Math.sin(s / 100), flat);
+    const run = (id: string, ground?: true) => ({
+      id,
+      chain: id,
+      cls: "expressway" as const,
+      ref: null,
+      lengthM: 1000,
+      V: 60,
+      tagV: 60,
+      planV: 60,
+      minRadiusM: 1e6,
+      maxShiftM: 0,
+      steps: [],
+      start: { kind: "open" as const },
+      end: { kind: "open" as const },
+      chunks: [`${id}:0`],
+      structure: null,
+      ...(ground ? { ground } : {}),
+    });
+    const runs = [run("V"), run("G", true)];
+    const viaducts = trackingOf([deck, atGrade], runs);
+    const grounds = trackingOf([deck, atGrade], runs, "ground");
+    expect(viaducts.runs).toBe(1);
+    expect(grounds.runs).toBe(1);
+    expect(grounds.km).toBe(viaducts.km);
+  });
+});
+
+describe("R4・R5・窓の後のならし（S6 PR 7a のレビュー W2・W3・W8）", () => {
+  const line = (z: (s: number) => number) =>
+    Array.from({ length: 401 }, (_, s) => ({ s, z: z(s), ground: 3 }));
+
+  it("R4: an embankment 3 m or more up holds to an end only where that end meets the ground", () => {
+    // 4–5 m over the ground from the start to s 150, then a viaduct.
+    const samples = line((s) => (s <= 150 ? 7 + s / 150 : 20));
+    expect(heightStretches(samples, undefined, { length: 400 }).map((h) => h.structure)).toEqual([
+      "embankment",
+      "viaduct",
+    ]);
+    const unanchored = { count: 0 };
+    const off = heightStretches(samples, undefined, { length: 400, groundEnds: [false, true], unanchored });
+    expect(off.map((h) => h.structure)).toEqual(["viaduct"]);
+    expect(unanchored.count).toBe(1);
+    // Reaching the ground (2 m at its lowest) it stays an embankment whatever the end.
+    const low = line((s) => (s <= 150 ? 5 + s / 50 : 20));
+    expect(heightStretches(low, undefined, { length: 400, groundEnds: [false, true] })[0].structure).toBe(
+      "embankment",
+    );
+  });
+
+  it("R5: a same-surface span loses the metres where the pair stands apart", () => {
+    expect(sameKept([[0, 100]], [[40.5, 45.5]])).toEqual([
+      [0, 40],
+      [46, 100],
+    ]);
+    expect(sameKept([[0, 100]], [])).toEqual([[0, 100]]);
+  });
+
+  it("R3: a window is spanned where the deck at its lowest clears on the thinnest girder; a window reaches every chunk it touches", () => {
+    expect(clearsOnThinGirder(3 + 4.5 + GIRDER_MIN.value + 0.001, 3, 4.5 + GIRDER_DEPTH.value)).toBe(true);
+    expect(clearsOnThinGirder(3 + 4.5 + GIRDER_MIN.value - 0.01, 3, 4.5 + GIRDER_DEPTH.value)).toBe(false);
+    expect(isWindowOver(195, 10, 200, 400)).toBe(true);
+    expect(isWindowOver(185, 10, 200, 400)).toBe(false);
+  });
+
+  it("after the windows: a piece shorter than the smoothing between viaducts, or one in the air, is a viaduct", () => {
+    // A 9.5 m embankment left between a window (viaduct to 100) and the viaduct from 109.5, 6.2 m up.
+    const samples = line((s) => (s > 100 && s < 109.5 ? 9.2 : 20));
+    const list = [
+      { s0: 0, s1: 100, structure: "viaduct" as const },
+      { s0: 100, s1: 109.5, structure: "embankment" as const },
+      { s0: 109.5, s1: 400, structure: "viaduct" as const },
+    ];
+    expect(afterSpanning(list, samples, 20, 400)).toEqual([{ s0: 0, s1: 400, structure: "viaduct" }]);
+    // 30 m long and down to the ground: kept.
+    const reaching = line((s) => (s > 100 && s < 130 ? 4 : 20));
+    const kept = [
+      { s0: 0, s1: 100, structure: "viaduct" as const },
+      { s0: 100, s1: 130, structure: "embankment" as const },
+      { s0: 130, s1: 400, structure: "viaduct" as const },
+    ];
+    expect(afterSpanning(kept, reaching, 20, 400)).toEqual(kept);
+  });
+
+  it("T13 finds an embankment chunk 3 m or more up that holds to no end meeting the ground (R4)", () => {
+    const flat = () => 3;
+    const list = [
+      lineChunk("R", 0, "embankment", 0, 100, () => 7.5, flat),
+      lineChunk("R", 1, "viaduct", 100, 200, () => 15, flat, {
+        portals: [{ s: 100, from: "embankment", to: "viaduct" }],
+      }),
+    ];
+    expect(checkHeightStructures(list, false, false, [true, true])).toEqual([]);
+    expect(checkHeightStructures(list, false, false, [false, true]).join()).toMatch(/off the ground/);
+  });
+
+  it("T4: a window on an embankment chunk is a violation (the whole window is spanned, review W6)", () => {
+    const flat = () => 3;
+    const deck = () => 9.25;
+    const centre = lineChunk("R", 0, "viaduct", 0, 200, deck, flat, {
+      girder: GIRDER_MIN.value,
+      cross: [195, 3, 4.5 + GIRDER_MIN.value, 9.25],
+      crossWindows: [10],
+    });
+    const bank = lineChunk("R", 1, "embankment", 200, 200, deck, flat, { girder: 0 });
+    expect(checkClearanceWindows([centre, bank]).join()).toMatch(/on R:1's embankment/);
+  });
+});
+
+describe("ground-crossing の数え方（structureCases、S6 PR 7a のレビュー W8）", () => {
+  it("reads the compiler's own detail back, and lists one case per road or railway crossing a run at grade", () => {
+    const detail = atGradeCrossingDetail("road", 123, 45.4);
+    expect(parseAtGradeCrossing(detail)).toEqual({ kind: "road", id: 123, s: 45 });
+    expect(
+      parseAtGradeCrossing("road 123 at 45 m cannot be cleared from the ground end; taken as passing over"),
+    ).toBe(null);
+    const chunk = lineChunk(
+      "G",
+      0,
+      "embankment",
+      0,
+      300,
+      () => 3,
+      () => 3,
+      { girder: 0 },
+    );
+    const run = {
+      id: "G",
+      chain: "G",
+      cls: "expressway" as const,
+      ref: null,
+      lengthM: 300,
+      V: 60,
+      tagV: 60,
+      planV: 60,
+      minRadiusM: 1e6,
+      maxShiftM: 0,
+      steps: [],
+      start: { kind: "open" as const },
+      end: { kind: "open" as const },
+      chunks: ["G:0"],
+      structure: null,
+      ground: true as const,
+      groundFit: {
+        approachM: [0, 0] as [number, number],
+        innerP95M: 0.2,
+        innerMedianM: 0.1,
+        approachMaxM: 0,
+      },
+    };
+    const diagnostics = [
+      {
+        run: "G",
+        kind: "crossing_over_or_at_grade" as const,
+        detail: atGradeCrossingDetail("road", 7, 0),
+        allowed: false,
+      },
+      {
+        run: "G",
+        kind: "crossing_over_or_at_grade" as const,
+        detail: atGradeCrossingDetail("rail", 8, 120),
+        allowed: false,
+      },
+    ];
+    const cases = structureCases(new Map([["G", [chunk]]]), [run], true, diagnostics);
+    expect(cases.map((c) => c.key)).toEqual([
+      "ground-stretch:G",
+      "ground-crossing:G|road 7",
+      "ground-crossing:G|rail 8",
+    ]);
+    expect(cases.map((c) => isAutoAccepted(c))).toEqual([true, true, false]);
   });
 });

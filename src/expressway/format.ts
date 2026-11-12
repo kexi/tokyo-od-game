@@ -126,6 +126,12 @@ export type XwChunk = {
   st: number[];
   piers: number[];
   cross: number[];
+  /**
+   * A height build's half window of each `cross` entry along the deck (m, S6 PR 7a R6 (d)): the width
+   * the road takes under it, which T4 checks every metre over with the girder of the chunk there.
+   * Optional, so the format version does not change; absent in a build by the tags.
+   */
+  crossWindows?: number[];
   blocked: number[];
   /**
    * Stretches [s0, s1] of this chunk whose carriageway lies over or under another run's, and how
@@ -278,6 +284,20 @@ export type XwRunSummary = {
   below?: true;
   /** A run at grade (S6 PR 2, `--ground compile`), in a height build only. */
   ground?: true;
+  /**
+   * A run at grade's road against its target line (S6 PR 7a, compile.ts groundFitOf): the inside's
+   * |road − line| p95 and (road − line) median, and the largest |road − line| over its approaches (from
+   * a seam 150 m, from a ground end, portal or junction 100 m). The ledger's ground-stretch reads it.
+   * Absent elsewhere and before PR 7a.
+   */
+  groundFit?: XwGroundFit;
+};
+
+export type XwGroundFit = {
+  approachM: [number, number];
+  innerP95M: number | null;
+  innerMedianM: number | null;
+  approachMaxM: number;
 };
 
 /** How a run met its structure's deck levels (structures.ts; the build fails beyond the tolerances). */
@@ -347,6 +367,11 @@ export type XwBuildRecord = {
     /** Solves solved again after a first try that did not converge (P2.7-5; absent when none). */
     retried?: number;
   };
+  /**
+   * The runs at grade's target weight and band as built (S6 PR 7a: HEIGHT_STRUCTURES.ground or the
+   * sweep's `--ground-target-scale` / `--ground-band`), only with `--ground compile`.
+   */
+  ground?: { targetScale: number; bandM: number };
   runs: XwRunSummary[];
   /** Runs of the range left out of the tiles, closed. */
   closed: XwClosed[];

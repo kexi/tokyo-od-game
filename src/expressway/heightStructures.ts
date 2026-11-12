@@ -6,7 +6,7 @@ import {
   HEIGHT_STRUCTURES,
   OPEN_GROUND_FLOOR,
 } from "./assumptions";
-import { PIER_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwPortal } from "./format";
+import { CROSS_STRIDE, PIER_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwPortal } from "./format";
 import { surfaceAt } from "./profile";
 
 /**
@@ -77,6 +77,14 @@ export type StretchContext = {
    * a cut (the terrain cut away and walls), above it an embankment; CUT_BELOW_M otherwise.
    */
   cutBelow?: number;
+  /**
+   * Which of the run's ends meet the ground (S6 PR 7a, R4): a ground end, a portal, or a seam onto a run
+   * at grade. An embankment 3 m or more up holds to an end only where it meets the ground there; both
+   * when absent (the tags' build, PR 1's rule: any end).
+   */
+  groundEnds?: readonly [boolean, boolean];
+  /** Counts the embankments made viaducts because the end they hold to does not meet the ground (R4). */
+  unanchored?: { count: number };
 };
 
 /** An embankment reaches the ground when its lowest point is under this over the ground (review W3). */
@@ -170,8 +178,11 @@ export function heightStretches(
     join();
   }
   for (const h of out) {
-    const isFloating =
-      h.structure === "embankment" && h.low >= EMBANKMENT_REACH_M && h.s0 > 1e-6 && h.s1 < length - 1e-6;
+    const [startGround, endGround] = ctx.groundEnds ?? [true, true];
+    const isAnchored = (h.s0 <= 1e-6 && startGround) || (h.s1 >= length - 1e-6 && endGround);
+    const isFloating = h.structure === "embankment" && h.low >= EMBANKMENT_REACH_M && !isAnchored;
+    const isAtEnd = h.s0 <= 1e-6 || h.s1 >= length - 1e-6;
+    if (isFloating && isAtEnd && ctx.unanchored) ctx.unanchored.count++;
     if (isFloating) h.structure = "viaduct";
   }
   join();
@@ -338,6 +349,8 @@ export function deckSpans(list: readonly XwChunk[], relation: "above" | "same"):
 
 /** The rounding of the files T13 allows at a threshold (z 1 mm, ground 1 cm). */
 const T13_TOLERANCE_M = 0.02;
+/** The widest half window a crossing takes along the deck (compile.ts: 40 m at most). */
+const T13_CROSS_WINDOW_M = 40;
 
 /**
  * T13 (P2.7-6 PR 1): a height build's viaduct-tagged run, from its chunks alone (k order). Every station
@@ -351,45 +364,87 @@ export function checkHeightStructures(
   list: readonly XwChunk[],
   isBelow?: boolean,
   isGround = false,
+  /**
+   * Which of the run's ends meet the ground (a ground end, a portal, a seam onto a run at grade: the
+   * run summaries'), for R4: an embankment chunk stretch EMBANKMENT_REACH_M or more up throughout that
+   * holds to neither is a deck in the air. Absent: both (the rule before R4).
+   */
+  groundEnds: readonly [boolean, boolean] = [true, true],
 ): string[] {
   const out: string[] = [];
   const isEmpty = list.length === 0;
   if (isEmpty) return out;
   if (!isClassified(list, isBelow)) return out;
   const smooth = HEIGHT_STRUCTURES.value.smoothM;
-  // The stretches the compiler's rules give over the files' stations (the decks, the dead bands, the
-  // smoothing, the embankments in the air), at the rounding either way.
-  // Every metre, as the compiler classifies: the surface (profile.ts) and the ground linear between
-  // stations. Why not the stations alone: 20 m apart, a 5 m deck "above" took a whole station's
-  // share and was no longer merged away (45021976:0 in the review's rebuild).
-  const samples: Array<{ s: number; z: number; ground: number }> = [];
-  for (const c of list) {
+  // Independent of the compiler's classifier (S6 PR 7a, R6 (a): it called heightStretches, the same
+  // rules recomputed): from the files' values and the assumptions' thresholds alone, every metre the
+  // classes a station may be, and a run of stations its chunk's structure is not over smoothM or
+  // more is a violation. Every metre: the surface (profile.ts) and the ground linear between stations.
+  const cutBelow = isGround ? HEIGHT_STRUCTURES.value.ground.cutBelowM : -HEIGHT_STRUCTURES.value.cut.fromM;
+  const viaductFrom = VIADUCT_OVER_GROUND_M - DEM_SINK_FLOOR.value;
+  const above = deckSpans(list, "above");
+  const same = deckSpans(list, "same");
+  // A road or railway the deck crosses (`cross`) over its window (the chunk's `crossWindows`, review W6;
+  // T13_CROSS_WINDOW_M, the widest, where the files carry none): the window is spanned (R3).
+  const windows = list.flatMap((c) => {
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < c.cross.length; i += CROSS_STRIDE) {
+      const half = c.crossWindows?.[i / CROSS_STRIDE] ?? T13_CROSS_WINDOW_M;
+      out.push([c.cross[i] - half, c.cross[i] + half]);
+    }
+    return out;
+  });
+  const isIn = (spans: Array<[number, number]>, s: number) => spans.some(([a, b]) => s >= a && s <= b);
+  // Every metre's height over the ground, in k order.
+  const pts: Array<{ s: number; over: number; k: number; first: boolean }> = [];
+  list.forEach((c, k) => {
     const a = c.st[0];
     const b = c.st[c.st.length - STATION_STRIDE];
-    for (let s = samples.length === 0 ? a : Math.ceil(a); s <= b + 1e-9; s += 1) {
+    for (let s = k === 0 ? a : Math.ceil(a); s <= b + 1e-9; s += 1) {
       let i = 0;
       while (i + 2 * STATION_STRIDE <= c.st.length && c.st[i + STATION_STRIDE] < s) i += STATION_STRIDE;
-      const g0 = c.st[i + ST.ground];
-      const g1 = c.st[Math.min(i + STATION_STRIDE, c.st.length - STATION_STRIDE) + ST.ground];
-      const s0 = c.st[i];
-      const s1 = c.st[Math.min(i + STATION_STRIDE, c.st.length - STATION_STRIDE)];
-      const t = s1 > s0 ? (s - s0) / (s1 - s0) : 0;
-      samples.push({ s, z: surfaceAt(c.st, s).z, ground: g0 + (g1 - g0) * t });
+      const j = Math.min(i + STATION_STRIDE, c.st.length - STATION_STRIDE);
+      const t = c.st[j] > c.st[i] ? (s - c.st[i]) / (c.st[j] - c.st[i]) : 0;
+      const g = c.st[i + ST.ground] + (c.st[j + ST.ground] - c.st[i + ST.ground]) * t;
+      pts.push({ s, over: surfaceAt(c.st, s).z - g, k, first: s - a < 1 });
     }
+  });
+  // A stretch under the viaduct's height that never comes within EMBANKMENT_REACH_M of the ground may
+  // be drawn as a viaduct (the floating embankment). Why by stretch and not by station: a station 3 m
+  // up on an embankment that reaches the ground elsewhere is the embankment's.
+  const floating = new Uint8Array(pts.length);
+  // Over another deck a station is the viaduct's whatever its height, so it ends a stretch (as the
+  // compiler's classes do: 780870438:0's deck over 28127318 at its seam, 1.5 m up).
+  const isLowAt = (q: number) => pts[q].over < viaductFrom + T13_TOLERANCE_M && !isIn(above, pts[q].s);
+  for (let i = 0; i < pts.length;) {
+    if (!isLowAt(i)) {
+      i++;
+      continue;
+    }
+    let j = i;
+    let low = Infinity;
+    while (j < pts.length && isLowAt(j)) low = Math.min(low, pts[j++].over);
+    const isFloating = low >= EMBANKMENT_REACH_M - T13_TOLERANCE_M;
+    if (isFloating) floating.fill(1, i, j);
+    i = j;
   }
-  const ctx: StretchContext = {
-    above: deckSpans(list, "above"),
-    same: deckSpans(list, "same"),
-    length: samples[samples.length - 1].s,
-    ...(isGround ? { cutBelow: HEIGHT_STRUCTURES.value.ground.cutBelowM } : {}),
+  const allowed = (s: number, over: number, isFloating: boolean): Set<HeightClass> => {
+    const isAbove = isIn(above, s);
+    if (isAbove) return new Set(["viaduct"]);
+    const out = new Set<HeightClass>();
+    const isLowest = over < cutBelow + T13_TOLERANCE_M;
+    const isLow = over < viaductFrom + T13_TOLERANCE_M;
+    const isHigh = over >= viaductFrom - T13_TOLERANCE_M;
+    // Sharing a surface, no cut; but a station apart from its partner by more than the runtime merges
+    // is classed by its height (R5), which the tiles do not carry: either.
+    if (isLowest) out.add("cut");
+    if (isLowest && isIn(same, s)) out.add("embankment");
+    if (isLow && over >= cutBelow - T13_TOLERANCE_M) out.add("embankment");
+    // A crossing's window is spanned (R3).
+    const isWindow = isIn(windows, s);
+    if (isHigh || isFloating || isWindow) out.add("viaduct");
+    return out;
   };
-  const variants = [0, T13_TOLERANCE_M, -T13_TOLERANCE_M].map((d) =>
-    heightStretches(
-      samples.map((p) => ({ ...p, z: p.z + d })),
-      smooth,
-      ctx,
-    ),
-  );
   let open: { chunk: string; s0: number; s1: number } | null = null;
   const close = () => {
     const isLong = open !== null && open.s1 - open.s0 >= smooth + 1;
@@ -401,21 +456,19 @@ export function checkHeightStructures(
   };
   list.forEach((c, k) => {
     const structure = c.structure as HeightClass;
-    const n = c.st.length / STATION_STRIDE;
-    for (let i = 0; i < n; i++) {
-      const o = i * STATION_STRIDE;
-      const s = c.st[o + ST.s];
-      const near = variants.map((v) => heightClassAt(v, s));
-      // A chunk's first station is also the last of the one before (either may hold it).
-      const prev = k > 0 && i === 0 ? (list[k - 1].structure as HeightClass) : null;
-      const isOf = near.includes(structure) || (prev !== null && near.includes(prev));
+    pts.forEach((p, q) => {
+      if (p.k !== k) return;
+      const may = allowed(p.s, p.over, floating[q] === 1);
+      // A chunk's first metre is also the last of the one before (either may hold it).
+      const prev = k > 0 && p.first ? (list[k - 1].structure as HeightClass) : null;
+      const isOf = may.has(structure) || (prev !== null && may.has(prev));
       if (isOf) {
         close();
-        continue;
+        return;
       }
-      if (open === null) open = { chunk: c.id, s0: s, s1: s };
-      open.s1 = s;
-    }
+      if (open === null) open = { chunk: c.id, s0: p.s, s1: p.s };
+      open.s1 = p.s;
+    });
     const isOpenGround = c.structure === "embankment" || c.structure === "cut";
     if (isOpenGround && c.piers.length > 0)
       out.push(`${c.id}: ${c.piers.length / PIER_STRIDE} piers on an ${c.structure}`);
@@ -431,5 +484,144 @@ export function checkHeightStructures(
     if (!hasPortal) out.push(`${c.id}: no portal ${before.structure}>${c.structure} at s=${s0}`);
   });
   close();
+  // R4 (review W3): each stretch of embankment chunks, its lowest metre over the ground, and whether it
+  // holds to an end that meets the ground.
+  const S = pts.length > 0 ? pts[pts.length - 1].s : 0;
+  for (let i = 0; i < pts.length;) {
+    const isBank = (q: number) => list[pts[q].k].structure === "embankment";
+    if (!isBank(i)) {
+      i++;
+      continue;
+    }
+    let j = i;
+    let low = Infinity;
+    while (j < pts.length && isBank(j)) low = Math.min(low, pts[j++].over);
+    const s0 = pts[i].s;
+    const s1 = pts[j - 1].s;
+    const isAnchored = (s0 <= pts[0].s + 1 && groundEnds[0]) || (s1 >= S - 1 && groundEnds[1]);
+    const isInAir = low >= EMBANKMENT_REACH_M + T13_TOLERANCE_M && !isAnchored;
+    if (isInAir)
+      out.push(
+        `${list[pts[i].k].id}: an embankment at ${s0}–${s1} m stands ${low.toFixed(2)} m or more up, off the ground`,
+      );
+    i = j;
+  }
   return out;
+}
+
+/**
+ * The stretches with each window ([a, b], run distances) made viaduct (S6 PR 7a, R3: a crossing whose
+ * window the deck clears over the thinnest girder is spanned, the embankment or cut starting at the
+ * window's end), split where a window cuts a stretch and merged where two of one structure meet.
+ */
+export function forceViaduct(
+  list: readonly HeightStretch[],
+  windows: ReadonlyArray<readonly [number, number]>,
+): HeightStretch[] {
+  let out: HeightStretch[] = list.map((h) => ({ ...h }));
+  for (const [a, b] of windows) {
+    const next: HeightStretch[] = [];
+    for (const h of out) {
+      const isApart = h.s1 <= a || h.s0 >= b || h.structure === "viaduct";
+      if (isApart) {
+        next.push(h);
+        continue;
+      }
+      if (h.s0 < a) next.push({ s0: h.s0, s1: a, structure: h.structure });
+      next.push({ s0: Math.max(h.s0, a), s1: Math.min(h.s1, b), structure: "viaduct" });
+      if (h.s1 > b) next.push({ s0: b, s1: h.s1, structure: h.structure });
+    }
+    out = next;
+  }
+  const merged: HeightStretch[] = [];
+  for (const h of out) {
+    const last = merged[merged.length - 1];
+    const isSame = last !== undefined && last.structure === h.structure && Math.abs(last.s1 - h.s0) < 1e-9;
+    if (isSame) last.s1 = h.s1;
+    else merged.push({ ...h });
+  }
+  return merged;
+}
+
+/**
+ * The stretches after forceViaduct (S6 PR 7a review W2), its leftovers ruled as heightStretches rules
+ * them: an embankment shorter than `smoothM` between two viaducts (or a viaduct and the run's end) is
+ * a viaduct, and an embankment whose lowest point stands EMBANKMENT_REACH_M or more over the ground and
+ * that holds to no end meeting the ground (`groundEnds`) is a viaduct. Why again: a window cut an
+ * embankment into pieces the classing had not seen (32404414:71, 9.48 m long and 6.13–6.46 m up, was
+ * left an embankment in the air). Cuts are left: under the ground they are the road's.
+ */
+export function afterSpanning(
+  list: readonly HeightStretch[],
+  samples: ReadonlyArray<{ s: number; z: number; ground: number }>,
+  smoothM: number,
+  length: number,
+  groundEnds: readonly [boolean, boolean] = [true, true],
+): HeightStretch[] {
+  const out = list.map((h) => ({ ...h }));
+  const lowOf = (h: HeightStretch) => {
+    let low = Infinity;
+    for (const p of samples)
+      if (p.s >= h.s0 - 1e-9 && p.s <= h.s1 + 1e-9) low = Math.min(low, p.z - p.ground);
+    return low;
+  };
+  out.forEach((h, i) => {
+    const isEmbankment = h.structure === "embankment";
+    if (!isEmbankment) return;
+    const atStart = h.s0 <= 1e-6;
+    const atEnd = h.s1 >= length - 1e-6;
+    const isSpannedBefore = atStart || out[i - 1]?.structure === "viaduct";
+    const isSpannedAfter = atEnd || out[i + 1]?.structure === "viaduct";
+    const isShortBetween = h.s1 - h.s0 < smoothM && isSpannedBefore && isSpannedAfter && !(atStart && atEnd);
+    const isAnchored = (atStart && groundEnds[0]) || (atEnd && groundEnds[1]);
+    const isFloating = lowOf(h) >= EMBANKMENT_REACH_M && !isAnchored;
+    if (isShortBetween || isFloating) h.structure = "viaduct";
+  });
+  const merged: HeightStretch[] = [];
+  for (const h of out) {
+    const last = merged[merged.length - 1];
+    const isSame = last !== undefined && last.structure === h.structure;
+    if (isSame) last.s1 = h.s1;
+    else merged.push({ ...h });
+  }
+  return merged;
+}
+
+/**
+ * R3 (S6 PR 7a): whether a deck at its lowest over a crossing's window (`lowest`, T.P. m) clears what
+ * it crosses (`top`) by its clearance with the girder (`need`) less what a girder thinner down to
+ * GIRDER_MIN gives. Such a window is spanned (forceViaduct).
+ */
+export function clearsOnThinGirder(lowest: number, top: number, need: number): boolean {
+  return lowest - top >= need - GIRDER_GIVE_M;
+}
+
+/**
+ * R5 (S6 PR 7a): the same-surface spans less the stretches (`apart`, open intervals) where the pair
+ * stands apart past the merge, metre by metre: what is left is one slab, the rest classed by height.
+ */
+export function sameKept(
+  spans: ReadonlyArray<readonly [number, number]>,
+  apart: ReadonlyArray<readonly [number, number]>,
+): Array<[number, number]> {
+  const isApartAt = (sv: number) => apart.some(([a, b]) => sv > a && sv < b);
+  return spans.flatMap(([a, b]): Array<[number, number]> => {
+    const out: Array<[number, number]> = [];
+    let from: number | null = null;
+    for (let sv = a; sv <= b + 1e-9; sv += 1) {
+      const isKept = !isApartAt(sv);
+      if (isKept && from === null) from = sv;
+      if (!isKept && from !== null) {
+        out.push([from, sv - 1]);
+        from = null;
+      }
+    }
+    if (from !== null) out.push([from, b]);
+    return out;
+  });
+}
+
+/** Whether a crossing's window (centre sc, ±half) reaches a chunk's [a, b] (R6 (c): it takes the thin girder). */
+export function isWindowOver(sc: number, half: number, a: number, b: number): boolean {
+  return sc + half >= a && sc - half <= b;
 }

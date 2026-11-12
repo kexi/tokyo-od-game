@@ -504,3 +504,49 @@ export function isTunnelFreeRun(
   }
   return isCoverStretchTooShort(reached, run.planV as DesignSpeed);
 }
+
+/**
+ * T4 over a crossing's window (S6 PR 7a, R6 (d)): in a height build every metre of the width a road
+ * takes under the deck (`crossWindows`) clears it by 第12条's H plus the girder of the chunk at that
+ * metre, whichever of the run's chunks (k order) holds it. H is the written clearance less the
+ * centre chunk's girder (the standard where it is not thinner). Why every metre and each chunk's own
+ * girder: a window over a chunk boundary was read at its centre with the centre chunk's thin girder,
+ * and the next chunk's standard girder hung into the road (R6 (c)). 2 cm for the files' rounding.
+ */
+export function checkClearanceWindows(list: readonly XwChunk[]): string[] {
+  const out: string[] = [];
+  const girderOf = (c: XwChunk) =>
+    c.girder > 0 && c.girder < GIRDER_DEPTH.value ? c.girder : GIRDER_DEPTH.value;
+  const chunkAt = (sv: number) =>
+    list.find((c) => sv >= c.st[0] - 1e-9 && sv <= c.st[c.st.length - STATION_STRIDE] + 1e-9);
+  for (const c of list) {
+    const windows = c.crossWindows;
+    if (!windows) continue;
+    for (let i = 0; i < c.cross.length; i += CROSS_STRIDE) {
+      const [sc, top, clearance] = c.cross.slice(i, i + CROSS_STRIDE);
+      const half = windows[i / CROSS_STRIDE] ?? 0;
+      const H = clearance - girderOf(c);
+      let worst: { s: number; short: number } | null = null;
+      for (let sv = Math.ceil(sc - half); sv <= sc + half + 1e-9; sv += 1) {
+        const at = chunkAt(sv);
+        if (at === undefined) continue;
+        // The whole window is spanned (R3, review W6): an embankment or cut in it stands on the road.
+        const isOnDeck = at.structure === "viaduct";
+        if (!isOnDeck) {
+          out.push(
+            `${c.id}: the window of the crossing at s=${sc} is on ${at.id}'s ${at.structure} at s=${sv}`,
+          );
+          break;
+        }
+        const short = H + girderOf(at) - (surfaceAt(at.st, sv).z - top);
+        const isWorse = short > 0.02 && (worst === null || short > worst.short);
+        if (isWorse) worst = { s: sv, short };
+      }
+      if (worst !== null)
+        out.push(
+          `${c.id}: the window of the crossing at s=${sc} is ${worst.short.toFixed(2)} m short at s=${worst.s}`,
+        );
+    }
+  }
+  return out;
+}

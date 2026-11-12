@@ -28,7 +28,7 @@ import {
   HOLD_MAINS,
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
-import { isAllowed, SAME_SURFACE_ALLOWED_DZ_M } from "./allowlist";
+import { atGradeCrossingDetail, isAllowed, SAME_SURFACE_ALLOWED_DZ_M } from "./allowlist";
 import { BLOCK_QUIET_FACTOR, DESIGN_GROUND_REACH, HEIGHT_STRUCTURES } from "./assumptions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
@@ -40,7 +40,7 @@ import {
   isHoleAt,
   portalsOf,
 } from "./below";
-import { envelope, movingMedian } from "./designGround";
+import { envelope, groundTarget } from "./designGround";
 import {
   GIRDER_GIVE_M,
   girderFor,
@@ -49,6 +49,11 @@ import {
   type HeightClass,
   type HeightStretch,
   heightStretches,
+  afterSpanning,
+  clearsOnThinGirder,
+  isWindowOver,
+  sameKept,
+  forceViaduct,
 } from "./heightStructures";
 import {
   STATION_STRIDE,
@@ -61,6 +66,7 @@ import {
   type XwPortal,
   type XwRunStructure,
   type XwStructure,
+  type XwGroundFit,
   type XwRunSummary,
 } from "./format";
 import { planeAt, type Plane, roundTo } from "./geo";
@@ -358,6 +364,9 @@ export type Plan = {
    * ramp's soft miss (solveComponent, HOLD_MAINS). Absent: as before.
    */
   holdMains?: "on";
+  /** The N2 sweep's (PlanOptions.groundTargetScale / groundBandM): absent, the assumptions'. */
+  groundTargetScale?: number;
+  groundBandM?: number;
 };
 
 /**
@@ -656,6 +665,10 @@ export type PlanOptions = {
   noseSurface?: "nose" | "overlap";
   /** `--hold-mains on` (S6 PR 6, Plan.holdMains); `off` by default. Needs `components`. */
   holdMains?: "off" | "on";
+  /** `--ground-target-scale <k>` (S6 PR 7a, N2 sweep): the runs at grade's target weight × k. */
+  groundTargetScale?: number;
+  /** `--ground-band <m>` (S6 PR 7a, N2 sweep): the runs at grade's band (HEIGHT_STRUCTURES.ground.bandM). */
+  groundBandM?: number;
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -777,6 +790,8 @@ export function planNetwork(
     ...(options.noseSurface === "overlap" ? { noseSurface: "overlap" as const } : {}),
     ...(options.rampShiftCapM !== undefined ? { rampShiftCapM: options.rampShiftCapM } : {}),
     ...(options.holdMains === "on" ? { holdMains: "on" as const } : {}),
+    ...(options.groundTargetScale !== undefined ? { groundTargetScale: options.groundTargetScale } : {}),
+    ...(options.groundBandM !== undefined ? { groundBandM: options.groundBandM } : {}),
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
@@ -1798,6 +1813,13 @@ export type CompileResult = {
   features: Record<string, RunFeatures>;
   /** How the runs were split and solved (components or blocks), for the scorecard; not written. */
   partition: PartitionResult;
+  /**
+   * The written runs at grade's targets at their grid stations (groundTargetOf, S6 PR 7a), for the
+   * scorecard (the band's centre); not written.
+   */
+  groundTargets: Map<string, { stations: Float64Array; ground: Float64Array; target: Float64Array }>;
+  /** A height build's tally of the PR 7a rules (structuresByHeight); not written. */
+  heightRules?: HeightRuleTally;
 };
 
 /**
@@ -1959,9 +1981,8 @@ function setupRun(
 ): RunSetup {
   const id = rp.run.id;
   const S = rp.length;
-  const n = Math.max(2, Math.ceil(S / GRID_M) + 1);
-  const stations = Float64Array.from({ length: n }, (_, k) => Math.min(S, k * GRID_M));
-  stations[n - 1] = S;
+  const stations = gridStations(S);
+  const n = stations.length;
   const groundAt = stations.map((s) => {
     const p = poseAt(rp, s);
     return ground(p.lon, p.lat);
@@ -1995,7 +2016,7 @@ function setupRun(
     else fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
   });
   if (rp.ground)
-    return setupGround(rp, stations, groundAt, ends, fixed, groundZ, ground, objects, diagnostics, objective);
+    return setupGround(plan, rp, stations, ends, fixed, groundZ, ground, objects, diagnostics, objective);
   if (rp.below)
     return setupBelow(
       rp,
@@ -2137,9 +2158,50 @@ function setupRun(
   };
 }
 
+/** A run's grid stations: every GRID_M from 0, and its length last (two at least). */
+export function gridStations(S: number): Float64Array {
+  const n = Math.max(2, Math.ceil(S / GRID_M) + 1);
+  const stations = Float64Array.from({ length: n }, (_, k) => Math.min(S, k * GRID_M));
+  stations[n - 1] = S;
+  return stations;
+}
+
+/**
+ * A run at grade's target at its grid stations (S6 PR 7a, N1, designGround.ts groundTarget): the
+ * repeated-median line of its own ground within ±reach at every station, pooled with the ground of
+ * each run at grade it shares a surface with (review C2, the plan's same pairs: one slab, one line).
+ * Why the plan's pairs and not the written runs': the partner is in the same component, so the line
+ * is the same in every range that has the run (T8). Also what the scorecard measures the runs at
+ * grade from (CompileResult.groundTargets).
+ */
+export function groundTargetOf(
+  plan: Plan,
+  rp: RunPlan,
+  ground: GroundSampler,
+  reach: number,
+): { stations: Float64Array; ground: Float64Array; target: Float64Array } {
+  const stations = gridStations(rp.length);
+  const groundAt = stations.map((s) => {
+    const p = poseAt(rp, s);
+    return ground(p.lon, p.lat);
+  });
+  // The partner's own stations (the pairs found from its side, `a`), placed on this run by `sb`. Why
+  // from its side: then each of the two pools is both runs' own stations, the same set, and the two
+  // lines agree; from this run's side the partner was sampled where this run stands instead.
+  const partner = plan.pairs
+    .filter((p) => p.b === rp.run.id && p.relation === "same" && plan.runs.get(p.a)?.ground === true)
+    .map((p) => {
+      const q = poseAt(plan.runs.get(p.a)!, p.sa);
+      return { s: p.sb, z: ground(q.lon, q.lat) };
+    })
+    .sort((x, y) => x.s - y.s);
+  const pooled = { s: partner.map((p) => p.s), z: partner.map((p) => p.z) };
+  return { stations, ground: groundAt, target: groundTarget(groundAt, stations, reach, pooled) };
+}
+
 /**
  * A run at grade (S6 PR 2, `--ground compile`): no floor or ceiling over the ground; the target is the
- * moving median of the ground under its centre line (designGround.ts `movingMedian`, ±150 m: the long waves without the bumps),
+ * line of its ground without the bumps (groundTargetOf: a repeated-median line over ±150 m at every station),
  * and a band of ±HEIGHT_STRUCTURES.ground.bandM about it a soft row (RunInput.bandLo / bandHi). The DEM
  * itself only fixes the ground ends. Why not the DEM in the band: it is rough (walls, embankments, the
  * smoothing's half-metre bumps), and the road would take every one (the user's 「PLATEAU（DEM）は凸凹
@@ -2147,9 +2209,9 @@ function setupRun(
  * crossing, so each goes over or under it, and OSM gives it no height.
  */
 function setupGround(
+  plan: Plan,
   rp: RunPlan,
   stations: Float64Array,
-  groundAt: Float64Array,
   ends: [EndPlan, EndPlan],
   fixed: [RunInput["start"], RunInput["end"]],
   groundZ: [number | null, number | null],
@@ -2160,8 +2222,22 @@ function setupGround(
 ): RunSetup {
   const n = stations.length;
   const reach = objective.kind === "v2" ? objective.reachM.viaduct : DESIGN_GROUND_REACH.value.viaduct;
-  const target = movingMedian(groundAt, reach, GRID_M);
-  const band = HEIGHT_STRUCTURES.value.ground.bandM;
+  const { target } = groundTargetOf(plan, rp, ground, reach);
+  const band = plan.groundBandM ?? HEIGHT_STRUCTURES.value.ground.bandM;
+  // A ground end's grade from the target line's first or last 20 m, not the DEM's two points 40 m
+  // either side (terrainAt): a 3 m bump 5–45 m from the end tilted that by 2.5 % and the road by
+  // 0.6 m (S6 PR 7a review C1). Its height stays the DEM's at the end (T5).
+  const along = Math.min(n - 1, Math.round(20 / GRID_M));
+  const lineGrade = (side: number) =>
+    side === 0
+      ? (target[along] - target[0]) / Math.max(1e-6, stations[along] - stations[0])
+      : (target[n - 1] - target[n - 1 - along]) / Math.max(1e-6, stations[n - 1] - stations[n - 1 - along]);
+  const ownFixed = fixed.map((f, side) => {
+    const isGraded = ends[side].kind === "ground" && f.grade !== undefined;
+    if (!isGraded) return f;
+    const cap = MAX_GRADE.value[zoneSpeedAt(rp.zones, side === 0 ? 0 : rp.length)].standard / 2;
+    return { ...f, grade: Math.max(-cap, Math.min(cap, lineGrade(side))) };
+  }) as [RunInput["start"], RunInput["end"]];
   const blocked: BlockedRoad[] = [];
   const mine = runPoly(rp);
   for (const { o, poly } of objectsNear(objects, mine)) {
@@ -2173,7 +2249,7 @@ function setupGround(
       const diagnostic: XwDiagnostic = {
         run: rp.run.id,
         kind: "crossing_over_or_at_grade",
-        detail: `${o.kind} ${o.id} at ${sc.toFixed(0)} m crosses the road at grade; taken as passing over or under`,
+        detail: atGradeCrossingDetail(o.kind, o.id, sc),
         allowed: false,
       };
       diagnostics.push(diagnostic);
@@ -2190,7 +2266,7 @@ function setupGround(
     lowerLaw: none,
     lowerOpen: none,
     upper: new Float64Array(n).fill(Infinity),
-    fixed,
+    fixed: ownFixed,
     ends,
     groundZ,
     cross: [],
@@ -2199,6 +2275,15 @@ function setupGround(
     bandLo: target.map((t) => t - band),
     bandHi: target.map((t) => t + band),
     ...objectiveWeights(objective),
+    // N2 (S6 PR 7a): the target weight of the runs at grade alone, k times (HEIGHT_STRUCTURES.ground
+    // .targetScale, or the sweep's `--ground-target-scale`). Why not a narrower band instead: the band
+    // bounds the road, the weight holds it to the line inside; the sweep met the conditions by weight.
+    ...(objective.kind === "v2"
+      ? {
+          targetScale:
+            objective.targetScale * (plan.groundTargetScale ?? HEIGHT_STRUCTURES.value.ground.targetScale),
+        }
+      : {}),
   };
 }
 
@@ -4015,7 +4100,9 @@ export function solvePlan(
     s.blocked = kept;
   }
   for (let i = diagnostics.length - 1; i >= 0; i--) if (cleared.has(diagnostics[i])) diagnostics.splice(i, 1);
-  if (isHeight) for (const s of solved.values()) structuresByHeight(plan, s, ground, diagnostics);
+  const heightRules: HeightRuleTally = { spanned: 0, sameApart: 0, unanchored: 0 };
+  if (isHeight)
+    for (const s of solved.values()) structuresByHeight(plan, s, ground, diagnostics, solved, heightRules);
   // Deck-over-deck crossings, recorded on the upper run once both are solved (for T4). The lower one
   // is read where it is solved (with blocks, the piece holding the crossing, in the upper's block).
   for (const c of plan.crossings) {
@@ -4081,7 +4168,40 @@ export function solvePlan(
     const rp = plan.runs.get(id)!;
     closed.push({ run: id, chain: rp.chain.id, cls: rp.cls, reason: why?.kind ?? "vertical_unsolved" });
   }
-  return { chunks, runs, closed, diagnostics, stats, features, partition };
+  // The runs at grade's targets (S6 PR 7a: what the scorecard's openEnds and inner measure from).
+  const objectiveOf = options.objective ?? OBJECTIVE_V1;
+  const reachOf = objectiveOf.kind === "v2" ? objectiveOf.reachM.viaduct : DESIGN_GROUND_REACH.value.viaduct;
+  const groundTargets = new Map<
+    string,
+    { stations: Float64Array; ground: Float64Array; target: Float64Array }
+  >();
+  for (const r of runs) {
+    const rp = plan.runs.get(r.id);
+    const isAtGrade = rp?.ground === true;
+    if (!isAtGrade) continue;
+    const line = groundTargetOf(plan, rp, ground, reachOf);
+    groundTargets.set(r.id, line);
+    // The fit the ledger's ground-stretch judges (S6 PR 7a, 4.3), on the run's summary.
+    const s = solved.get(r.id);
+    if (s === undefined) continue;
+    r.groundFit = groundFitOf(
+      line.stations,
+      line.target,
+      (sv) => evalRun(s, sv).z,
+      groundApproaches(plan, rp),
+    );
+  }
+  return {
+    chunks,
+    runs,
+    closed,
+    diagnostics,
+    stats,
+    features,
+    partition,
+    groundTargets,
+    ...(isHeight ? { heightRules } : {}),
+  };
 }
 
 /**
@@ -4962,6 +5082,9 @@ function lowestOver(s: Solved, a: number, b: number, length: number): number {
   return low;
 }
 
+/** What the height build's rules of S6 PR 7a changed (R3, R4, R5), for the scorecard. */
+export type HeightRuleTally = { spanned: number; sameApart: number; unanchored: number };
+
 /**
  * A height build (P2.7-6 PR 1): a viaduct-tagged run's stretches by structure, from its solved profile
  * against the ground under its centre line every metre (heightStructures.ts), and the roads and
@@ -4970,8 +5093,18 @@ function lowestOver(s: Solved, a: number, b: number, length: number): number {
  * blocked, each reported as crossing_over_or_at_grade. Runs before the decks it crosses over are
  * appended to `cross` (only roads and railways are in it then). A below run, or one carrying a
  * structure's deck (its girder, sRange and tapers are the structure's), keeps its tags' structures.
+ * S6 PR 7a: a crossing's window the deck clears on the thinnest girder is spanned (R3) and its
+ * leftovers ruled again (afterSpanning), an embankment in the air holds only to an end meeting the
+ * ground (R4), and a same-surface station apart past the merge is classed by its height (R5).
  */
-function structuresByHeight(plan: Plan, s: Solved, ground: GroundSampler, diagnostics: XwDiagnostic[]): void {
+function structuresByHeight(
+  plan: Plan,
+  s: Solved,
+  ground: GroundSampler,
+  diagnostics: XwDiagnostic[],
+  solved: ReadonlyMap<string, Solved>,
+  tally: HeightRuleTally,
+): void {
   const { rp } = s;
   const isTagged = rp.below || rp.over !== null;
   if (isTagged) return;
@@ -4987,15 +5120,66 @@ function structuresByHeight(plan: Plan, s: Solved, ground: GroundSampler, diagno
   const decks = deckStretches(plan, rp.run.id);
   const spans = (relation: "above" | "same") =>
     decks.filter((d) => d.relation === relation).map((d): [number, number] => [d.s0, d.s1]);
-  const stretches = heightStretches(samples, undefined, {
+  // R5 (S6 PR 7a): a station of a same-surface pair more than MERGE_GIVEN_UP_DZ_M from its partner is
+  // not one slab with it (the runtime does not merge it either) and is classed by its height. Why not
+  // the whole stretch: a pair that parts in height at one end is one slab at the other.
+  const apart: Array<[number, number]> = [];
+  for (const p of plan.pairs) {
+    const isMine = p.a === rp.run.id && p.relation === "same";
+    if (!isMine) continue;
+    const other = solved.get(p.b);
+    if (other === undefined) continue;
+    const isApart = Math.abs(evalRun(s, p.sa).z - evalRun(other, p.sb).z) > MERGE_GIVEN_UP_DZ_M;
+    if (!isApart) continue;
+    apart.push([p.sa - GRID_M / 2, p.sa + GRID_M / 2]);
+    tally.sameApart++;
+  }
+  const same = sameKept(spans("same"), apart);
+  // R4 (S6 PR 7a): an embankment 3 m or more up holds to an end only where the run meets the ground
+  // there: a ground end, a portal, or a seam onto a run at grade. Why: at a junction or a seam onto a
+  // viaduct the deck goes on in the air, and the embankment ending there was a deck in the air.
+  const groundEnds = ([true, false] as const).map((atStart) => {
+    const e = endPlan(plan, rp, atStart);
+    const isSeamOnGround = e.kind === "seam" && plan.runs.get(e.parent)?.ground === true;
+    return e.kind === "ground" || isSeamOnGround;
+  }) as [boolean, boolean];
+  const ctxOf = (ends?: readonly [boolean, boolean]) => ({
     above: spans("above"),
-    same: spans("same"),
+    same,
     length: S,
+    ...(ends ? { groundEnds: ends } : {}),
     // A run at grade is a cut wherever the ground is not well under it (S6 PR 2 5.1 の 5).
     ...(rp.ground ? { cutBelow: HEIGHT_STRUCTURES.value.ground.cutBelowM } : {}),
   });
-  s.structures = stretches;
+  const unanchored = { count: 0 };
+  const classified = heightStretches(samples, undefined, { ...ctxOf(groundEnds), unanchored });
+  tally.unanchored += unanchored.count;
   const info = s.crossInfo ?? [];
+  // R3 (S6 PR 7a): a crossing whose window the solved deck clears at its lowest over the thinnest
+  // girder is spanned: the window is viaduct and an embankment or cut starts at its end. Why: classed
+  // by the height alone, an embankment's end within the window blocked roads the deck cleared (the
+  // default range's 4 newly blocked under PR 1, ship's 7). One the deck does not clear stays blocked.
+  const cleared: Array<[number, number]> = [];
+  info.forEach((c, i) => {
+    const [sc, top, need] = s.cross.slice(3 * i, 3 * i + 3);
+    const a = Math.max(0, sc - c.halfWindow);
+    const b = Math.min(S, sc + c.halfWindow);
+    const isCleared = clearsOnThinGirder(lowestOver(s, a, b, S), top, need);
+    if (isCleared) cleared.push([a, b]);
+  });
+  const isSpanning = (w: [number, number]) =>
+    classified.some((h) => h.structure !== "viaduct" && h.s1 > w[0] && h.s0 < w[1]);
+  tally.spanned += cleared.filter(isSpanning).length;
+  // The leftovers of the windows ruled again (review W2): short pieces between viaducts and pieces in
+  // the air become viaducts.
+  const stretches = afterSpanning(
+    forceViaduct(classified, cleared),
+    samples,
+    HEIGHT_STRUCTURES.value.smoothM,
+    S,
+    groundEnds,
+  );
+  s.structures = stretches;
   const kept: number[] = [];
   const keptInfo: CrossInfo[] = [];
   info.forEach((c, i) => {
@@ -5280,11 +5464,13 @@ function chunkRun(
     const surpluses: number[] = [];
     for (let i = 0; i < s.cross.length; i += 3) {
       const sc = s.cross[i];
-      const isHere = sc >= a && sc <= b;
+      const info = s.crossInfo?.[i / 3];
+      // Every chunk the window touches, not only the one holding its centre (S6 PR 7a, R6 (c)): the
+      // road takes the whole window under the deck, so a chunk over its edge needs the thin girder too.
+      const isHere = isWindowOver(sc, info?.halfWindow ?? 0, a, b);
       if (!isHere) continue;
       // A road or railway over the width it takes along the deck (its lowest point there), as the
       // judgement that let it pass (structuresByHeight); a deck under it at the crossing's point.
-      const info = s.crossInfo?.[i / 3];
       const z = info ? lowestOver(s, sc - info.halfWindow, sc + info.halfWindow, S) : evalRun(s, sc).z;
       surpluses.push(z - s.cross[i + 1] - (s.cross[i + 2] - GIRDER));
     }
@@ -5431,6 +5617,7 @@ function chunkRun(
       if (within(piers[i], a, b, isLast)) chunkPiers.push(roundTo(piers[i], 2), roundTo(piers[i + 1], 2));
     }
     const chunkCross: number[] = [];
+    const chunkWindows: number[] = [];
     // The clearance written is what the chunk's girder needs (T4): less where it is thinner.
     const thinner = girder > 0 && girder < GIRDER ? GIRDER - girder : 0;
     for (let i = 0; i < s.cross.length; i += 3) {
@@ -5443,7 +5630,10 @@ function chunkRun(
         roundTo(s.cross[i + 2] - thinner, 3),
         roundTo(z, 3),
       );
+      chunkWindows.push(roundTo(s.crossInfo?.[i / 3]?.halfWindow ?? 0, 2));
     }
+    // Only a height build writes the windows (a build by the tags keeps its files byte for byte).
+    const isWindowed = plan.structures === "height" && chunkWindows.length > 0;
     const chunkBlocked: number[] = [];
     for (const road of s.blocked) {
       const sc = road.s;
@@ -5479,6 +5669,7 @@ function chunkRun(
       st,
       piers: chunkPiers,
       cross: chunkCross,
+      ...(isWindowed ? { crossWindows: chunkWindows } : {}),
       blocked: chunkBlocked,
       decks: stretches
         .filter((d) => d.s1 > a && d.s0 < b)
@@ -5488,4 +5679,63 @@ function chunkRun(
     });
   }
   return chunks;
+}
+
+/** The approach from a seam (the climb of the run going on in the air, at most this). */
+export const GROUND_APPROACH_SEAM_M = 150;
+/** The approach from a ground end, a portal or a junction. */
+export const GROUND_APPROACH_END_M = 100;
+
+/**
+ * A run at grade's road against its target line (S6 PR 7a, 4.3): the grid stations within
+ * `approachM` of either end are the approaches (where a seam, portal or junction forces the road off
+ * the line), the rest the inside. Pure.
+ */
+export function groundFitOf(
+  stations: ArrayLike<number>,
+  target: ArrayLike<number>,
+  zAt: (s: number) => number,
+  approachM: readonly [number, number],
+): XwGroundFit {
+  const n = stations.length;
+  const S = stations[n - 1];
+  const inside: number[] = [];
+  let approachMax = 0;
+  for (let k = 0; k < n; k++) {
+    const s = stations[k];
+    const off = zAt(s) - target[k];
+    const isApproach = s < approachM[0] || S - s < approachM[1];
+    if (isApproach) approachMax = Math.max(approachMax, Math.abs(off));
+    else inside.push(off);
+  }
+  const isEmpty = inside.length === 0;
+  const sorted = inside.toSorted((a, b) => a - b);
+  const abs = inside.map(Math.abs).toSorted((a, b) => a - b);
+  const at = (list: number[], q: number) => list[Math.min(list.length - 1, Math.floor(q * list.length))];
+  return {
+    approachM: [approachM[0], approachM[1]],
+    innerP95M: isEmpty ? null : roundTo(at(abs, 0.95), 2),
+    innerMedianM: isEmpty ? null : roundTo(at(sorted, 0.5), 2),
+    approachMaxM: roundTo(approachMax, 2),
+  };
+}
+
+/**
+ * A run at grade's approach at each end, from the plan alone (review W4: from the written runs it
+ * depended on the range, 6 of the 15 runs at grade common to the default range and ship differed): the
+ * chain going on into a viaduct (a seam whose child climbs) or the run a seam child of one, 150 m; into
+ * a tunnel or cut (a portal), a ground end or a junction, 100 m; the chain's open end, none.
+ */
+function groundApproaches(plan: Plan, rp: RunPlan): [number, number] {
+  const runs = splitRuns(plan.net, rp.chain);
+  const k = runs.findIndex((r) => r.id === rp.run.id);
+  const ofEnd = (atStart: boolean): number => {
+    const next = runs[atStart ? k - 1 : k + 1];
+    const e = endPlan(plan, rp, atStart);
+    const isClimb = e.kind === "seam" || next?.elevated === true;
+    if (isClimb) return GROUND_APPROACH_SEAM_M;
+    const isForced = next?.below === true || e.kind === "ground" || e.kind === "junction";
+    return isForced ? GROUND_APPROACH_END_M : 0;
+  };
+  return [ofEnd(true), ofEnd(false)];
 }
