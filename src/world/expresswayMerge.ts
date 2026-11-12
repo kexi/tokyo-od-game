@@ -3,7 +3,14 @@ import { SAME_SURFACE_ALLOWED_DZ_M } from "../expressway/allowlist";
 import { PARAPET_WIDTH } from "../expressway/assumptions";
 import { STATION_STRIDE, type XwChunk, type XwClass, type XwRunSummary } from "../expressway/format";
 import { SAME_SURFACE_M } from "../expressway/overlap";
-import { frameAt, ST, type SurfaceFrame, surfaceHeight, surfaceSamples } from "../expressway/profile";
+import {
+  frameAt,
+  ST,
+  surfaceAt,
+  type SurfaceFrame,
+  surfaceHeight,
+  surfaceSamples,
+} from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
 import type { LocalFrame } from "../geo/frame";
 import { type DeckIndex, type DeckSide, type RingSides, roleOf } from "./expresswayMarkings";
@@ -421,13 +428,22 @@ export class DeckMerge {
     const isOverlapping = lo.u < own.edge && hi.u > -own.edge;
     if (!isOverlapping) return null;
     // Heights compared where this deck's centre is: the other's face there (its centre plus its
-    // bank × the offset of this centre in its own frame), against this centre.
+    // bank × the offset of this centre in its own frame), against this centre. Both centres are
+    // read from the compiled surfaces (the Hermite of each chunk at the ring's s and at the foot's).
+    // Why not the meshes' centres (ring.c.y, foot.point.y): those lie on the chords between rings,
+    // up to 1 cm off each surface, so the miss read from them was 1–16 mm off the data's; the seam
+    // then left the master's face (seamWeight) and let go up to 0.6 m away from where the data's
+    // |Δz| crosses MERGE_FULL_DZ and MERGE_MAX_DZ, and stood 3–4 mm off that face where the data
+    // has the pair within 5 cm (S6 PR 5: 45019020:40・:41, 4848889:0), or let go where the data
+    // still has it within MERGE_MAX_DZ (24402125:0, a 15.8 cm face over the master's edge).
     const { line, k, tau } = foot;
     const r = line.rings[k];
     const q = line.rings[k + 1];
     const theirU = (ring.c.x - foot.point.x) * foot.tangent.z - (ring.c.z - foot.point.z) * foot.tangent.x;
     const theirLift = liftAt(r, theirU, line.bank) * (1 - tau) + liftAt(q, theirU, line.bank) * tau;
-    const dz = foot.point.y + theirLift - ring.c.y;
+    const footS = r.frame.s + (q.frame.s - r.frame.s) * tau;
+    const theirChunk = chunkHolding(line.owner[k].chunk, line.owner[k + 1].chunk, footS);
+    const dz = compiledZ(theirChunk, footS) + theirLift - compiledZ(own.chunk, ring.frame.s);
     return { other, foot, d, lo, hi, dz, isSameWay: foot.tangent.dot(ring.t) > 0 };
   }
 
@@ -497,8 +513,8 @@ export class DeckMerge {
   /** Whether a master's road is closed at the foot: nothing of it shows (tucked under its own master). */
   private isMasterClosed(foot: Foot): boolean {
     const { line, k, tau } = foot;
-    const master = line.owner[tau < 0.5 ? k : k + 1];
     const at = ringBetween(line.rings[k], line.rings[k + 1], tau, false);
+    const master = ownerHolding(line, k, at.frame.s);
     const sd = this.sides(master, at, 1);
     return sd.left.reach + sd.right.reach <= 1e-3;
   }
@@ -511,8 +527,8 @@ export class DeckMerge {
    */
   private masterShortfall(foot: Foot, ring: DeckRing): number {
     const { line, k, tau } = foot;
-    const master = line.owner[tau < 0.5 ? k : k + 1];
     const at = ringBetween(line.rings[k], line.rings[k + 1], tau, false);
+    const master = ownerHolding(line, k, at.frame.s);
     const sd = this.sides(master, at, 1);
     const u = (ring.c.x - at.c.x) * at.t.z - (ring.c.z - at.c.z) * at.t.x;
     const side = u >= 0 ? sd.left : sd.right;
@@ -620,10 +636,46 @@ export type MergeSkip = {
   maxDzM: number;
 };
 
-/** How far the seam stands at the master's face (1) or at the cut deck's own height (0). */
+/** A chunk's compiled surface height (T.P. m) at run distance s, s held within the chunk. */
+function compiledZ(chunk: XwChunk, s: number): number {
+  const st = chunk.st;
+  const held = Math.min(Math.max(s, st[ST.s]), st[st.length - STATION_STRIDE + ST.s]);
+  return surfaceAt(st, held).z;
+}
+
+/**
+ * The chunk rings of a line's segment k (its two rings' owners) whose stations hold s. Why not by
+ * τ < 0.5 (P3.5): at a chunk seam that picked the chunk whose stations end short of s, and its
+ * compiled height (compiledZ holds s at the chunk's end) was up to 0.29 m off (0.48 m in ship;
+ * review of PR 5, W1).
+ */
+function ownerHolding(line: Line, k: number, s: number): ChunkRings {
+  const a = line.owner[k];
+  const b = line.owner[k + 1];
+  return chunkHolding(a.chunk, b.chunk, s) === a.chunk ? a : b;
+}
+
+/** Of the chunks of a segment's two rings (one, or two at a chunk seam), the one whose stations hold s. */
+function chunkHolding(a: XwChunk, b: XwChunk, s: number): XwChunk {
+  const isSame = a === b;
+  if (isSame) return a;
+  const end = a.st[a.st.length - STATION_STRIDE + ST.s];
+  return s <= end ? a : b;
+}
+
+/**
+ * How far the seam stands at the master's face (1) or at the cut deck's own height (0): a smoothstep
+ * of the miss between MERGE_FULL_DZ and MERGE_MAX_DZ, flat at both ends. Why not linear (P3.5): at the
+ * let-go point the seam then leaves the cut deck's own height at full slope, (MERGE_MAX_DZ / 0.1 m) ×
+ * the change of the miss; with rings 0.1 m apart there (expresswayDeck.ts LET_GO_RINGS_M, then every 0.1 m) 6 let-go
+ * points of ship still climbed 1.1–2.8 mm over 4 cm along travel (LET_GO_MAX_STEP_M 1 mm), 1 with it.
+ * The seam probes' `expected` ((1 − w)·|Δz| of the data, scripts/expresswaySeams.ts) is not the mesh's
+ * step: between rings the seam is linear in s, and the decks lie on chords up to 1 cm off the data.
+ */
 export function seamWeight(dz: number): number {
   const miss = Math.abs(dz);
-  return Math.min(1, Math.max(0, (MERGE_MAX_DZ - miss) / (MERGE_MAX_DZ - MERGE_FULL_DZ)));
+  const x = Math.min(1, Math.max(0, (MERGE_MAX_DZ - miss) / (MERGE_MAX_DZ - MERGE_FULL_DZ)));
+  return x * x * (3 - 2 * x);
 }
 
 /** A ring on the straight piece between two rings (the slab's face there, unchanged). */

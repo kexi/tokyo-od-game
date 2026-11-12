@@ -264,19 +264,38 @@ export function* deckArraySteps(
       hi = u;
       road = [point, point, point];
     } else {
-      const right = seamR ?? at(lo, lift(lo));
-      const left = seamL ?? at(hi, lift(hi));
+      let right = seamR ?? at(lo, lift(lo));
+      let left = seamL ?? at(hi, lift(hi));
       // From a seam the road climbs (or drops) to its own surface over MERGE_RAMP, then runs on it.
       // Without one the middle corner is the right end: one face across, as before P3.5. Why not a
       // corner at the centre always: a ray exactly along that edge may slip between its triangles
       // (Rapier's trimesh), and on an ordinary deck every car and test drives along the centre.
+      // Where less than MERGE_RAMP of the road shows (a sliver by the 壁高欄 as the cut deck goes
+      // under the master, or closes) the climb keeps a full ramp's slope and the road ends short of
+      // its own surface, its end under the wall's skirt. Why not climb across the sliver: the whole
+      // miss then stood within centimetres of the seam, a kerb by the master's edge (up to 50 mm off
+      // its face 2 mm past it, 4854234:29 s 6385–6388 under 44803854; 2 mm along 438474207:0).
+      // Short by the road's width, not by the share (u − from) / MERGE_RAMP, which rounds to
+      // 0.9999… at a full metre (review of PR 5, C1: the rest of the road then became the strip face,
+      // no collider). Only where a 壁高欄 stands at that end to hide the road's end under its skirt.
+      const isNarrow = hi - lo < MERGE_RAMP - 1e-9;
+      const climb = (seam: number[], u: number, from: number) => {
+        const share = Math.min(1, Math.abs(u - from) / MERGE_RAMP);
+        const p = at(u, lift(u));
+        p[1] = seam[1] + (p[1] - seam[1]) * share;
+        return p;
+      };
       let middle = right;
       if (seamR && !seamL) {
         const u = Math.min(hi, lo + MERGE_RAMP);
-        middle = at(u, lift(u));
+        const isShort = isNarrow && sd.left.wall !== null;
+        middle = isShort ? climb(seamR, u, lo) : at(u, lift(u));
+        if (isShort) left = middle;
       } else if (seamL && !seamR) {
         const u = Math.max(lo, hi - MERGE_RAMP);
-        middle = at(u, lift(u));
+        const isShort = isNarrow && sd.right.wall !== null;
+        middle = isShort ? climb(seamL, u, hi) : at(u, lift(u));
+        if (isShort) right = middle;
       } else if (seamL && seamR) {
         middle = right.map((v, k) => (v + left[k]) / 2);
       }
@@ -289,7 +308,9 @@ export function* deckArraySteps(
       if (!w) return [end, end, end, at(endU, lift(endU) - SLAB), slabBottom, girder];
       // A wall whose road does not run up to it stands partly on the master's slab: its inner face
       // starts below the road, so the master's face (up to MERGE_MAX_DZ lower) meets it.
-      const isAtWall = !isClosed && Math.abs(sign * endU - w.inner) < 1e-6;
+      // So does one whose road ends short of its own surface there (a sliver's climb, above).
+      const isOnOwn = Math.abs(end[1] - at(endU, lift(endU))[1]) < 1e-6;
+      const isAtWall = !isClosed && Math.abs(sign * endU - w.inner) < 1e-6 && isOnOwn;
       const inner = sign * w.inner;
       const outer = sign * w.outer;
       return [
@@ -497,9 +518,29 @@ function triangleArea2(a: number[], b: number[], c: number[]): number {
   return Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
 }
 
+/**
+ * Where a ring interval with a sliding seam is checked for the master's face (refineRings), m: the
+ * pair may pass through one level inside it. Why not finer: each is a sides() (the feet on every
+ * partner); 1 m finds a stretch at the face a metre long.
+ */
+const SLIDE_PROBE_M = 1;
+/**
+ * Beside a let-go point, rings at these distances on the side where the seam slides, m. The seam
+ * is linear between rings and seamWeight is not: with the next ring metres away the seam left the
+ * cut deck's own height at the chord's slope, and 0.3 m onto its road the 4 cm along travel past
+ * the let-go climbed up to 2.5 mm (LET_GO_MAX_STEP_M 1 mm; ship: 205725085:0 1.7 mm, 633246083:0
+ * 2.3 mm). Closer near the point, so a ring interval ending a few centimetres past it still has
+ * some (the rings stop at the interval's end; its end ring is one). Why only there: rings every
+ * 0.1 m wherever a seam slides made the merged build of the default data 2.9 times as long
+ * (208 → 604 ms in Node), for nothing the probes see.
+ */
+const LET_GO_RINGS_M = [0.02, 0.05, 0.1, 0.2, 0.3, 0.5];
+
 /** Whether some of a ring's road shows (its two ends do not meet). */
 const isOpen = (sd: RingSides) => sd.left.reach + sd.right.reach > 1e-3;
 const hasSeam = (sd: RingSides) => sd.left.seam !== null || sd.right.seam !== null;
+/** Whether a seam of a ring stands off the master's face (sliding to the cut deck's own height). */
+const isSliding = (sd: RingSides) => [sd.left, sd.right].some((s) => s.seam !== null && s.seamWeight < 1);
 
 /**
  * More rings where decks are made one (expresswayMerge.ts), between two rings of the chunk:
@@ -548,13 +589,17 @@ function* refineRings(
     type Extra = { tau: number; ring: DeckRing; sides: RingSides; isClosing: boolean };
     const extra: Extra[] = [];
     const sidesAt = (tau: number) => merge.sides(own, ringBetween(a, b, tau, false));
-    /** The last τ where `holds` is as at a and the first where it is as at b. */
-    const bisect = (holds: (sd: RingSides) => boolean) => {
-      let lo = 0;
-      let hi = 1;
-      let atLo = sa;
-      let atHi = sb;
-      const want = holds(sa);
+    /** The last τ where `holds` is as at `from` and the first where it is as at `to` (a and b by default). */
+    const bisect = (
+      holds: (sd: RingSides) => boolean,
+      from: { tau: number; sides: RingSides } = { tau: 0, sides: sa },
+      to: { tau: number; sides: RingSides } = { tau: 1, sides: sb },
+    ) => {
+      let lo = from.tau;
+      let hi = to.tau;
+      let atLo = from.sides;
+      let atHi = to.sides;
+      const want = holds(from.sides);
       for (let k = 0; k < 12; k++) {
         const mid = (lo + hi) / 2;
         const sd = sidesAt(mid);
@@ -592,15 +637,6 @@ function* refineRings(
     }
     for (const key of ["left", "right"] as const) {
       const hasWall = (sd: RingSides) => sd[key].wall !== null;
-      // Where the seam starts sliding off the master's face (seamWeight leaves 1): one ring
-      // there, so the stretch at the face is exact and only the sliding stretch is linear.
-      const isExact = (sd: RingSides) => sd[key].seam === null || sd[key].seamWeight >= 1;
-      const slides = isExact(sa) !== isExact(sb);
-      if (slides) {
-        const { lo, atLo, hi, atHi } = bisect(isExact);
-        const [tau, sd] = isExact(atLo) ? [lo, atLo] : [hi, atHi];
-        extra.push({ tau, ring: ringBetween(a, b, tau, false), sides: sd, isClosing: false });
-      }
       const switches = hasWall(sa) !== hasWall(sb);
       if (!switches) continue;
       const { lo, hi, atLo, atHi } = bisect(hasWall);
@@ -609,6 +645,65 @@ function* refineRings(
       // Both at one place: the faces between them are the wall's square end.
       extra.push({ tau: tau - 1e-9, ring, sides: atLo, isClosing: false });
       extra.push({ tau: tau + 1e-9, ring, sides: atHi, isClosing: false });
+    }
+    // Where the seam starts sliding off the master's face (seamWeight leaves 1): one ring there,
+    // so the stretch at the face is exact and only the sliding stretch is linear. Looked for between
+    // every two rings of the interval so far, not only a and b. Why not a and b alone: where a seam
+    // starts inside the interval (a pair coming within MERGE_MAX_DZ at a wall's end) both ends were
+    // exact, no ring was put where it reaches the face, and the seam stood 2–4 mm off it for metres
+    // (45019020:40 s 4083–4084). Where the seam is sliding at either end, the interval is also
+    // sampled every SLIDE_PROBE_M: the pair may pass through one level inside it (the cut deck
+    // crossing the master's height), at the face in the middle and sliding at both ends, with no
+    // flip between a and b to find (205725085:0 s 87.6–90.1 under 44179919, 21 mm off the face).
+    const slidesHere = [sa, sb, ...extra.map((x) => x.sides)].some(isSliding);
+    const len = Math.sqrt(len2);
+    const count = slidesHere ? Math.ceil(len / SLIDE_PROBE_M) - 1 : 0;
+    const samples: Extra[] = [];
+    for (let j = 1; j <= count; j++) {
+      const tau = j / (count + 1);
+      samples.push({ tau, ring: ringBetween(a, b, tau, false), sides: sidesAt(tau), isClosing: false });
+    }
+    // A slice after the samples: an interval of a 浜崎橋-sized JCT costs ~10 sides() (review of PR 5).
+    if (count > 0) yield;
+    // Beside each let-go point (a wall's end where the seam on one side starts or stops), rings
+    // where that side's seam slides. Per side: a deck with seams on both sides may let go of one.
+    for (const key of ["left", "right"] as const) {
+      const hasIt = (sd: RingSides) => sd[key].seam !== null;
+      const pairs = extra.filter((x, k) => {
+        const next = extra[k + 1];
+        const isPair = next !== undefined && next.ring === x.ring;
+        return isPair && hasIt(x.sides) !== hasIt(next.sides);
+      });
+      for (const x of pairs) {
+        const k = extra.indexOf(x);
+        const [from, dir] = hasIt(x.sides) ? [x, -1] : [extra[k + 1], 1];
+        for (const d of LET_GO_RINGS_M) {
+          const tau = from.tau + (dir * d) / Math.max(len, 1e-6);
+          const isInside = tau > 1e-4 && tau < 1 - 1e-4;
+          if (!isInside) break;
+          const ring = ringBetween(a, b, tau, false);
+          const sd = merge.sides(own, ring);
+          const isSlidingHere = sd[key].seam !== null && sd[key].seamWeight < 1;
+          if (!isSlidingHere) break;
+          extra.push({ tau, ring, sides: sd, isClosing: false });
+        }
+      }
+    }
+    const marks = [
+      { tau: 0, sides: sa },
+      ...[...extra, ...samples].toSorted((p, q) => p.tau - q.tau),
+      { tau: 1, sides: sb },
+    ];
+    for (const key of ["left", "right"] as const) {
+      const isExact = (sd: RingSides) => sd[key].seam === null || sd[key].seamWeight >= 1;
+      for (let j = 0; j + 1 < marks.length; j++) {
+        const slides = isExact(marks[j].sides) !== isExact(marks[j + 1].sides);
+        const isApart = marks[j + 1].tau - marks[j].tau > 1e-6;
+        if (!slides || !isApart) continue;
+        const { lo, atLo, hi, atHi } = bisect(isExact, marks[j], marks[j + 1]);
+        const [tau, sd] = isExact(atLo) ? [lo, atLo] : [hi, atHi];
+        extra.push({ tau, ring: ringBetween(a, b, tau, false), sides: sd, isClosing: false });
+      }
     }
     let last = -1;
     for (const x of extra.toSorted((p, q) => p.tau - q.tau)) {
