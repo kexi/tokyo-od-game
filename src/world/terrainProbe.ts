@@ -12,7 +12,7 @@ import {
   EMBANKMENT_SAMPLE_M,
   EMBANKMENT_SIDE_REACH,
   embankmentBounds,
-  otherDeckFootprint,
+  otherDecksAt,
 } from "./expresswayBore";
 import type { GroundCuts } from "./groundCuts";
 import { CUT_SUBDIVISIONS } from "./terrainCut";
@@ -285,13 +285,13 @@ export function probeWalls(
     const p = pointAt(s, u);
     return groundAt(p.lat, p.lon) - p.road;
   };
-  const onOther = otherDeckFootprint(chunk, others, plane.toXY);
-  /** Whether a side is open at s as the deck reads it (expresswayDeck.ts openOf): no other deck beside. */
+  const decksAt = otherDecksAt(chunk, others, plane.toXY);
+  /** Whether a side is open at s as the deck reads it (expresswayDeck.ts openOf): some of its ground is left. */
   const isOpenAt = (s: number, sign: 1 | -1) =>
-    EMBANKMENT_SIDE_REACH.every((d) => {
+    EMBANKMENT_SIDE_REACH.some((d) => {
       const p = pointAt(s, sign * (edge + d));
       const [x, y] = plane.toXY(p.lon, p.lat);
-      return !onOther(x, y, p.road);
+      return !decksAt(x, y).some((deck) => deck.cutsGround);
     });
   /** Each ring's foot and top on one side, as the deck takes them (embankmentBounds). */
   const wallsOf = (sign: 1 | -1) => {
@@ -324,13 +324,11 @@ export function probeWalls(
       const side = sign > 0 ? ("left" as const) : ("right" as const);
       for (const d of WALL_PROBE_M) {
         const p = pointAt(s, sign * (edge + d));
-        // In another deck's hole, or on another deck at this level (a deck alongside, a same-surface
-        // partner where there is no wall), nothing of the terrain meets this wall: that deck's own
-        // walls and hole stand there. The mask's 2 m pixels fray a hole's edge, so the exact test too.
+        // In a hole (another deck's beside, where the wall stays a parapet) no terrain is drawn to
+        // meet the wall; elsewhere it is read, on the closed sides too (7b2). The mask's 2 m pixels
+        // fray a hole's edge, so the exact test too.
         const isCut = holes !== null && (holes.isDrawnCut(p.lon, p.lat) || holes.isExactCut(p.lon, p.lat));
-        const [px, py] = plane.toXY(p.lon, p.lat);
-        const isBesideOther = onOther(px, py, p.road);
-        if (isCut || isBesideOther) continue;
+        if (isCut) continue;
         const y = groundAt(p.lat, p.lon) - p.road;
         const at = { chunk: chunk.id, s, side, lat: p.lat, lon: p.lon };
         if (y > top) hits.push({ ...at, overM: y - top, kind: "top" });

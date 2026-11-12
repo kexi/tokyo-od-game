@@ -382,12 +382,12 @@ describe("盛土・掘割を途中で横切る一般道（expresswayRoads.ts cut
   });
 });
 
-/** Two embankments of two runs 10 m apart (B north, C south): B's right side lies on C's slab. */
+/** Two embankments of two runs 9.1 m apart (B north, C south): their slabs overlap, B's right side lies on C's. */
 const pair = () => {
   const north = chunkOf("embankment", 6, { id: "B:0" });
   const south = chunkOf("embankment", 6, { id: "C:0", run: "C", chain: "C" });
   for (let k = 0; k * 7 < south.st.length; k++) {
-    const [lon, lat] = plane.toLonLat(100 + k * 10, -10);
+    const [lon, lat] = plane.toLonLat(100 + k * 10, -9.1);
     south.st[k * 7 + 1] = lon;
     south.st[k * 7 + 2] = lat;
   }
@@ -412,7 +412,7 @@ describe("並走する盛土の脇（PR 7b の再レビュー W-A・S-1）", () 
     while (!r.done) r = steps.next();
     const pos = r.value.collider.position;
     const c = centreAt(50);
-    const southZ = c.z + 10;
+    const southZ = c.z + 9.1;
     for (let k = 0; k < pos.length; k += 3) {
       const isOverC = Math.abs(pos[k + 2] - southZ) < HW && pos[k + 1] > c.y + 0.05;
       expect(isOverC).toBe(false);
@@ -468,6 +468,70 @@ describe("盛土の端面・足元・地形の読み方（PR 7b のレビュー 
       const hit = cast(world, { x: m.x, y: m.y + 20, z: m.z + EDGE + d }, { x: 0, y: -1, z: 0 });
       expect(Math.abs(m.y + 20 - hit! - yOf(6))).toBeLessThan(0.02);
     }
+  });
+});
+
+/** B (an embankment) with C beside it `apart` m south (9.6: C's slab edge 0.1 m past B's, 9.6 − 2 × 4.75). */
+const beside = (structure: XwChunk["structure"], ground: number, apart = 9.6) => {
+  const b = chunkOf("embankment", 6, { id: "B:0" });
+  const c = chunkOf(structure, ground, { id: "C:0", run: "C", chain: "C" });
+  for (let k = 0; k * 7 < c.st.length; k++) {
+    const [lon, lat] = plane.toLonLat(100 + k * 10, -apart);
+    c.st[k * 7 + 1] = lon;
+    c.st[k * 7 + 2] = lat;
+  }
+  const index = new DeckIndex(
+    new Map<string, XwTileRun>([
+      ["B", runOf("seam")],
+      ["C", { ...runOf("seam"), id: "C" }],
+    ]),
+  );
+  index.add(b);
+  index.add(c);
+  // The drawn ground 2 m over both roads (a wall rises to it where it is drawn).
+  const at: GeoToLocal = { ...place, groundAt: () => ROAD + 2 + N, terrainAt: () => ROAD + 2 + N };
+  const steps = deckArraySteps(b, at, false, { index });
+  let r = steps.next();
+  while (!r.done) r = steps.next();
+  return r.value.collider;
+};
+
+/** How high B's right wall stands over its road at s 50.37 (a ray down just inside it). */
+const rightTop = (collider: ReturnType<typeof beside>) => {
+  const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+  worlds.push(world);
+  createDeckBody(world, collider, [], null);
+  world.step();
+  const m = centreAt(50.37);
+  return 20 - cast(world, { x: m.x, y: m.y + 20, z: m.z + HW + 0.25 }, { x: 0, y: -1, z: 0 })!;
+};
+
+describe("開いた側の 2 つの判定（7b2）", () => {
+  it("beside a viaduct or a tunnel under its cover (the ground there is drawn) the wall rises; beside an embankment (its hole) it stays a parapet", () => {
+    expect(rightTop(beside("viaduct", 2))).toBeCloseTo(2 + CUT_WALL.value.above, 1);
+    expect(rightTop(beside("tunnel", 30))).toBeCloseTo(2 + CUT_WALL.value.above, 1);
+    expect(rightTop(beside("embankment", 6))).toBeCloseTo(PARAPET_HEIGHT.value, 1);
+  });
+
+  it("no apron lies under another deck whose road is within a metre over the drawn ground (it would stand in its carriageway)", () => {
+    // The drawn ground at ROAD + 2, C's road at ROAD: C stands under it, the apron must not lie there.
+    const collider = beside("viaduct", 2).position;
+    const c = centreAt(50);
+    for (let k = 0; k < collider.length; k += 3) {
+      const isUnderC = Math.abs(collider[k + 2] - (c.z + 9.6)) < HW - 0.01;
+      expect(isUnderC).toBe(false);
+    }
+  });
+});
+
+describe("帯の遠い縁だけが隣の床版に入る間隔（7b2 のレビュー）", () => {
+  it("11 m apart (the slab's edge and 0.5 m out open, 1.5 m out on C's slab): the wall rises and no apron lies", () => {
+    const collider = beside("embankment", 6, 11);
+    expect(rightTop(collider)).toBeCloseTo(2 + CUT_WALL.value.above, 1);
+    // The apron would be the only collider past the wall's outer face on that side.
+    const c = centreAt(50);
+    const pos = collider.position;
+    for (let k = 0; k < pos.length; k += 3) expect(pos[k + 2] - c.z > EDGE + 0.05).toBe(false);
   });
 });
 

@@ -72,7 +72,8 @@ import {
   EMBANKMENT_SAMPLE_M,
   EMBANKMENT_SIDE_REACH,
   embankmentBounds,
-  otherDeckFootprint,
+  type DeckBeside,
+  otherDecksAt,
   headwallQuads,
   lampQuads,
 } from "./expresswayBore";
@@ -310,34 +311,56 @@ export function* deckArraySteps(
   if (isEmbankment) yield;
   const banks = { left: bankLeft, right: bankOf(-1) };
   if (isEmbankment) yield;
+  /** The decks of other runs over a local point (expresswayBore.ts otherDecksAt). */
+  const decksAt = otherDeckTest(chunk, place, context);
+  /** Whether a local point has the ground taken away by another deck (nothing drawn there to meet). */
+  const isTakenAway = (p: Vector3) => decksAt(p).some((d) => d.cutsGround);
   /**
-   * Whether a local point lies on another chunk's deck or in its hole (within its slab's half width
-   * and HOLE_NEIGHBOUR_M of its centre line): beside a deck alongside, the terrain read there is the
-   * mesh in that deck's hole, and a strip there would stand in its carriageway (review of PR 7b
-   * re-review W-A: up to 2.83 m over the partner's road, 24039751:0 | 24402609:0).
+   * Whether an apron may lie at a local point: no other deck takes the ground away there, nor has its
+   * road within APRON_ROAD_CLEAR_M over the drawn ground (the apron would stand in its carriageway:
+   * review of PR 7b re-review W-A, 24039751:0 | 24402609:0). A viaduct over it or a tunnel under its
+   * cover leaves room.
    */
-  const onOtherDeck = otherDeckTest(chunk, place, context);
+  const isApronFree = (p: Vector3) => {
+    const decks = decksAt(p);
+    if (decks.length === 0) return true;
+    if (decks.some((d) => d.cutsGround) || !terrainAt) return false;
+    const g = place.frame.toGeodetic(p);
+    const ground = terrainAt(g.lat, g.lon);
+    if (ground === null) return false;
+    return decks.every((d) => place.ellipsoidal(g.lat, g.lon, d.road) - ground >= APRON_ROAD_CLEAR_M);
+  };
   /**
-   * Per ring and side, whether the embankment's wall there stands at its own slab's edge with open
-   * ground beside it (no other deck at its level at `reach`): the wall rises to the terrain only where
-   * the ground it reads is open (else the parapet: re-review S-1), the apron lies only where its far
-   * edge is too.
+   * Per ring and side, whether the embankment's wall there stands at its own slab's edge and the
+   * ground beside it (at `reach`, any or all of it) passes `isFree`: the wall rises to the terrain
+   * where some of that ground is left (else the parapet: re-review S-1, there is none to meet), the apron lies
+   * where `isApronFree` holds out to its far edge (7b2: two rules, where one level test before
+   * closed 4848757:0 beside 4854085's covered tunnel and let aprons into decks near the ground).
    */
-  const openOf = (sign: 1 | -1, reach: readonly number[]): boolean[] =>
+  const openOf = (
+    sign: 1 | -1,
+    reach: readonly number[],
+    isFree: (p: Vector3) => boolean,
+    isAll: boolean,
+  ): boolean[] =>
     rings.map((r, i) => {
       if (!isEmbankment) return false;
       const wall = sides[i][sign > 0 ? "left" : "right"].wall;
       const isOwnEdge = wall !== null && Math.abs(wall.outer - own.edge) < 1e-3;
       if (!isOwnEdge) return false;
-      return reach.every((d) => !onOtherDeck(ringPoint(r, sign * (own.edge + d), 0), r.frame.z));
+      const free = (d: number) => isFree(ringPoint(r, sign * (own.edge + d), 0));
+      return isAll ? reach.every(free) : reach.some(free);
     });
-  // The wall rises where the ground it reads is open; the apron lies where all of its width is.
+  const isGroundThere = (p: Vector3) => !isTakenAway(p);
   const apronReach = [...EMBANKMENT_SIDE_REACH, EMBANKMENT_APRON_M];
-  const wallLeft = openOf(1, EMBANKMENT_SIDE_REACH);
-  const apronLeft = openOf(1, apronReach);
+  // The wall rises where any of the ground it reads is drawn (a deck alongside whose hole's margin
+  // reaches the slab's edge leaves the ground half a metre out: 4848757:0 s 38〜42); the apron lies
+  // where all of its width is free.
+  const wallLeft = openOf(1, EMBANKMENT_SIDE_REACH, isGroundThere, false);
+  const apronLeft = openOf(1, apronReach, isApronFree, true);
   if (isEmbankment) yield;
-  const open = { left: wallLeft, right: openOf(-1, EMBANKMENT_SIDE_REACH) };
-  const apronOpen = { left: apronLeft, right: openOf(-1, apronReach) };
+  const open = { left: wallLeft, right: openOf(-1, EMBANKMENT_SIDE_REACH, isGroundThere, false) };
+  const apronOpen = { left: apronLeft, right: openOf(-1, apronReach, isApronFree, true) };
   if (isEmbankment) yield;
   /** The drawn terrain's height (local y) at offset u of a ring, or null where it is not known. */
   const terrainY = (r: (typeof rings)[number], u: number): number | null => {
@@ -616,23 +639,26 @@ function terrainAtPoint(
 }
 
 /**
- * A test of whether a local point lies on another run's loaded deck or in its hole
- * (expresswayBore.ts otherDeckFootprint, in the frame's x/z); always false without a context (no
- * other decks known) and for anything but an embankment (nothing else asks).
+ * The decks of other runs over a local point (expresswayBore.ts otherDecksAt, in the frame's x/z);
+ * none without a context (no other decks known) and for anything but an embankment (nothing else
+ * asks).
  */
 function otherDeckTest(
   chunk: XwChunk,
   place: GeoToLocal,
   context: DeckContext | null,
-): (p: Vector3, roadTp: number) => boolean {
-  if (!context || chunk.structure !== "embankment") return () => false;
+): (p: Vector3) => DeckBeside[] {
+  if (!context || chunk.structure !== "embankment") return () => [];
   const candidates = [...context.index.runs.keys()].flatMap((run) => context.index.chunksOf(run));
-  const test = otherDeckFootprint(chunk, candidates, (lon, lat) => {
+  const at = otherDecksAt(chunk, candidates, (lon, lat) => {
     const p = place.frame.toLocal(lat, lon, 0);
     return [p.x, p.z];
   });
-  return (p, roadTp) => test(p.x, p.z, roadTp);
+  return (p) => at(p.x, p.z);
 }
+
+/** An apron lies only where another deck's road beside it stands this far over the drawn ground (m). */
+const APRON_ROAD_CLEAR_M = 1;
 
 /**
  * The parts of a tunnel chunk beyond its extruded section (P9): each portal's 坑門 (drawn and solid)
