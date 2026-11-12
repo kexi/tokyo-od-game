@@ -30,7 +30,8 @@
 // P2.7-6 (S6), each measuring only and needing --out until PR 7: --structures height (the structures from
 // the solved height), --ground compile (the runs at grade, needs height), --touchdown all (every class's
 // pairs coming down to the same place let go) and --companions on [--companion-weight <w>] (main lines
-// beside each other held to one height; the station pairs go to <report>.companions.json).
+// beside each other held to one height; the station pairs go to <report>.companions.json); S6 PR 4's
+// --ramp-shift <m> and --nose-surface overlap and PR 6's --hold-mains on (measured, see knowledge).
 // P2.7-4 (format 6): meta.json is the tiles' index; each tile carries its chunks, the summaries of
 // their runs and the entrances whose street end lies in it; report.json the build's record (runs,
 // diagnostics, closed runs, the solver, the blocks with the dataHash of their chunks). A diagnostic
@@ -277,6 +278,14 @@ if (!isNoseArg) throw new Error(`unknown --nose-surface ${noseArg} (nose, overla
 const noseMode = noseArg as "nose" | "overlap";
 const isRampShiftInBlocks = rampShiftM !== null && partitionMode === "blocks";
 if (isRampShiftInBlocks) throw new Error("--ramp-shift needs --partition components");
+// S6 PR 6: --hold-mains on counts a main line off its own line near a ramp's junction as the ramp's soft
+// miss (the ramp steps on before the main line gives way).
+const holdArg = arg("hold-mains") ?? "off";
+const isHoldArg = holdArg === "off" || holdArg === "on";
+if (!isHoldArg) throw new Error(`unknown --hold-mains ${holdArg} (off, on)`);
+const holdMode = holdArg as "off" | "on";
+const isHoldInBlocks = holdMode === "on" && partitionMode === "blocks";
+if (isHoldInBlocks) throw new Error("--hold-mains on needs --partition components");
 // --below all (P2.7-1), blocks (P2.7-2), v1, a sweep of the v2 weights and the structures by height
 // (P2.7-6) move the decks: measuring only, never into the shipped folder.
 const refusal = shippedFolderRefusal({
@@ -291,6 +300,7 @@ const refusal = shippedFolderRefusal({
   isCompanions,
   isRampShift: rampShiftM !== null,
   isNoseOverlap: noseMode === "overlap",
+  isHoldMains: holdMode === "on",
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -418,6 +428,7 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   ground: groundMode,
   touchdown: touchdownMode,
   noseSurface: noseMode,
+  holdMains: holdMode,
   ...(isCompanions ? { companionWeight } : {}),
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 };

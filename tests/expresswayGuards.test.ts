@@ -42,6 +42,10 @@ describe("出荷フォルダに書いてよい生成（scripts/expressway.ts、P
       shippedFolderRefusal({ ...plain, hasOut: true, isRampShift: true, isNoseOverlap: true }),
     ).toBeNull();
   });
+  it("stops --hold-mains on without --out (S6 PR 6)", () => {
+    expect(shippedFolderRefusal({ ...plain, isHoldMains: true })).toMatch(/^--hold-mains on/);
+    expect(shippedFolderRefusal({ ...plain, hasOut: true, isHoldMains: true })).toBeNull();
+  });
   it("lets every measuring flag through with --out", () => {
     const all: BuildFlags = {
       hasOut: true,

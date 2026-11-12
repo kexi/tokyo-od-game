@@ -280,6 +280,18 @@ export const SHARED_TOUCHDOWN: Assumption<number> = {
 };
 
 /**
+ * `--hold-mains on` (S6 PR 6, compile.ts solveComponent): within reachM of where a ramp joins a main
+ * line, the main line off its own line (solved alone) by more than slackM, sampled every stepM, counts
+ * as the ramp's soft miss (the ramp steps on before the main line gives way).
+ */
+export const HOLD_MAINS: Assumption<{ reachM: number; slackM: number; stepM: number }> = {
+  value: { reachM: 300, slackM: 0.05, stepM: 20 },
+  verified: false,
+  reason:
+    "仮定。300 m はスコアカードの分合流 ±300 m の σ と同じ範囲、5 cm は同一面（SAME_SURFACE_M）と同じ目に付かない差、20 m は測点の間隔。本線が譲った分をランプの外れとして数えるだけで、本線の縦断そのものには行を足さない（S6 の設計 9 節）",
+};
+
+/**
  * `--ramp-shift` (S6 PR 4 案 A, compile.ts rampShiftOffsets): how far a ramp may move off its OSM line
  * where it lies over the main line it meets apart in height (the flag's default, maxM), over what it
  * eases in and out (taperM), and the least of the most a stretch can reach under the tapers for it to
@@ -289,7 +301,7 @@ export const RAMP_SHIFT: Assumption<{ maxM: number; taperM: number; minReach: nu
   value: { maxM: 3, taperM: 40, minReach: 0.5 },
   verified: false,
   reason:
-    "仮定。OSM の連結路の中心線は本線の中心線に寄って描かれがちで（汐留型の 52 組で間隔の中央値 5.3 m、離れきるのに 8〜11 m）、3 m は ship の計測（S6 PR 4、3・5・8 m を比べて条件を満たす最小）で決めた値。動かすのは平面だけで、建物との干渉はコンパイラでは分からない（PLATEAU を読まない）ので、3 m を超えて動いた run は視点で確かめる。40 m は 3 m を余弦で出し入れして曲率が約 1/ 1,000 に収まる長さ（π²·3 / (2·40²) ≈ 0.009）。0.5 は、端や節点への先細りで要る量の半分も届かない区間は動かしても重なりが残るだけ（同一面の区間が膨らむ）という見立て",
+    "仮定。OSM の連結路の中心線は本線の中心線に寄って描かれがちで（汐留型の 52 組で間隔の中央値 5.3 m、離れきるのに 8〜11 m）、3 m は計測用の既定値で、採っていない（ship で 3・5 m を測り、どちらも条件に届かなかった: knowledge「P2.7-6 PR 4」）。動かすのは平面だけで、建物との干渉はコンパイラでは分からない（PLATEAU を読まない）ので、3 m を超えて動いた run は視点で確かめる。40 m は 3 m を余弦で出し入れして加わる曲率が 0.009 /m（半径約 108 m）に収まる長さ（π²·3 / (2·40²)）。0.5 は、端や節点への先細りで要る量の半分も届かない区間は動かしても重なりが残るだけ（同一面の区間が膨らむ）という見立て",
 };
 
 /**
@@ -390,5 +402,6 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   SHARED_TOUCHDOWN,
   COMPANIONS,
   RAMP_SHIFT,
+  HOLD_MAINS,
   DESIGN_GROUND_REACH,
 };
