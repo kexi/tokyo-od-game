@@ -251,13 +251,7 @@ export function embankmentBounds(
 
 /** Beyond a deck's slab edge, how far its hole may reach (a cut's walls and margin). */
 const HOLE_NEIGHBOUR_M = 0.3;
-/**
- * A deck whose road stands this far over or under the point's (T.P. m) is not beside it but over
- * or under it (a viaduct above, a tunnel under its cover): the ground beside is still open
- * (re-review S-a: 4848757:0 under a viaduct, a wall left at the parapet with the ground over it).
- */
-const LEVEL_APART_M = 3;
-/** A run's own end in otherDeckFootprint: points within this of its end station along it are off it (m). */
+/** A run's own end in otherDecksAt: points within this of its end station along it are off it (m). */
 const SQUARE_END_M = 0.5;
 /** Other chunks with a station box within this of a chunk's (degrees, ~60 m) are its neighbours. */
 const NEIGHBOUR_REACH_DEG = 0.0006;
@@ -279,27 +273,35 @@ function stationBox(c: XwChunk): [number, number, number, number] {
   return box;
 }
 
+/** Another run's deck over a point (otherDecksAt): whether it cuts the ground there, and its road (T.P. m). */
+export type DeckBeside = { cutsGround: boolean; road: number };
+
 /**
- * A test of whether a plane point (`toXY`'s units, metres) lies on the deck or in the hole of a
- * chunk of another run near `chunk` (among `candidates`): within its slab's half width +
- * HOLE_NEIGHBOUR_M of its centre line, its road within LEVEL_APART_M of `z` (T.P., the asking road). Shared by expresswayDeck.ts (whether an embankment's side is
- * open: its wall rises and its apron lies only there) and the terrain probe. A run's own end is
- * square (a deck ends square there): past the first station of a run's first chunk or the last of
- * its last the point is off it. Why not round there as a centre line's distance does: at a seam to
- * another run the embankment's last ring was taken as on the next run's deck and its wall fell to
- * the parapet beside ground 2.5 m over it (1059139534:17 s 2304.1 before 4854085's portal: review
- * of PR 7b, W-C).
+ * The decks of other runs near `chunk` (among `candidates`) over a plane point (`toXY`'s units,
+ * metres): within a deck's slab half width + HOLE_NEIGHBOUR_M of its centre line, each with whether
+ * it cuts the ground there (an embankment, a cut, a tunnel near its mouth: isHoleAt) and its road.
+ * Shared by expresswayDeck.ts and the terrain probe: an embankment's wall stays a parapet only where
+ * such a deck takes the ground away beside it (there is nothing drawn to meet), its apron lies only
+ * where no deck does nor has its road near the ground (7b2: a viaduct over it or a tunnel under its
+ * cover leaves the ground drawn; the 3 m level rule before it closed 4848757:0 beside 4854085's
+ * covered tunnel and missed decks near the ground on ship).
+ *
+ * A run's own end is square (a deck ends square there): past the first station of a run's first
+ * chunk or the last of its last the point is off it. Why not round there as a centre line's distance
+ * does: at a seam to another run the embankment's last ring was taken as on the next run's deck and
+ * its wall fell to the parapet beside ground 2.5 m over it (1059139534:17 s 2304.1 before 4854085's
+ * portal: review of PR 7b, W-C).
  */
-export function otherDeckFootprint(
+export function otherDecksAt(
   chunk: XwChunk,
   candidates: Iterable<XwChunk>,
   toXY: (lon: number, lat: number) => [number, number],
-): (x: number, y: number, z: number) => boolean {
+): (x: number, y: number) => DeckBeside[] {
   const [x0, y0, x1, y1] = stationBox(chunk);
   const r = NEIGHBOUR_REACH_DEG;
   const others: Array<{
+    c: XwChunk;
     pts: Array<[number, number]>;
-    zs: number[];
     half: number;
     isStart: boolean;
     isEnd: boolean;
@@ -311,16 +313,13 @@ export function otherDeckFootprint(
     const isNear = cx1 >= x0 - r && cx0 <= x1 + r && cy1 >= y0 - r && cy0 <= y1 + r;
     if (!isNear) continue;
     const pts: Array<[number, number]> = [];
-    const zs: number[] = [];
-    for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
-      pts.push(toXY(c.st[i + ST.lon], c.st[i + ST.lat]));
-      zs.push(c.st[i + ST.z]);
-    }
+    for (let i = 0; i < c.st.length; i += STATION_STRIDE) pts.push(toXY(c.st[i + ST.lon], c.st[i + ST.lat]));
     const half = carriagewayWidth(c) / 2 + PARAPET_WIDTH.value + HOLE_NEIGHBOUR_M;
-    others.push({ pts, zs, half, isStart: c.prev === null, isEnd: c.next === null });
+    others.push({ c, pts, half, isStart: c.prev === null, isEnd: c.next === null });
   }
-  return (x, y, z) =>
-    others.some(({ pts, zs, half, isStart, isEnd }) => {
+  return (x, y) => {
+    const out: DeckBeside[] = [];
+    for (const { c, pts, half, isStart, isEnd } of others) {
       for (let i = 0; i + 1 < pts.length; i++) {
         const [ax, ay] = pts[i];
         const [bx, by] = pts[i + 1];
@@ -336,11 +335,19 @@ export function otherDeckFootprint(
         if (isBeforeStart || isPastEnd) continue;
         const t = Math.min(1, Math.max(0, raw));
         const isOn = Math.hypot(ax + ex * t - x, ay + ey * t - y) <= half;
-        const isLevel = Math.abs(zs[i] + (zs[i + 1] - zs[i]) * t - z) < LEVEL_APART_M;
-        if (isOn && isLevel) return true;
+        if (!isOn) continue;
+        const at = (k: number) =>
+          c.st[i * STATION_STRIDE + k] +
+          (c.st[(i + 1) * STATION_STRIDE + k] - c.st[i * STATION_STRIDE + k]) * t;
+        const roadZ = at(ST.z);
+        const isTunnelMouth = c.structure === "tunnel" && isHoleAt("tunnel", roadZ, at(ST.ground));
+        const cuts = c.structure === "embankment" || c.structure === "cut" || isTunnelMouth;
+        out.push({ cutsGround: cuts, road: roadZ });
+        break;
       }
-      return false;
-    });
+    }
+    return out;
+  };
 }
 
 /** Margin of the terrain's cut-out past the walls (the terrain's triangles are ~15 m). */
