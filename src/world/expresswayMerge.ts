@@ -51,6 +51,11 @@ export type GeoToLocal = {
    * cut's retaining walls reach it at their own positions (P2.7-5). Absent: the station's ground only.
    */
   groundAt?: (lat: number, lon: number) => number | null;
+  /**
+   * The drawn terrain's ellipsoidal height (its mesh: terrainSurface.ts meshOf), where known: an
+   * embankment's walls meet it (P2.7-6 PR 7b). Absent: groundAt.
+   */
+  terrainAt?: (lat: number, lon: number) => number | null;
 };
 
 /** A cross-section of a deck in the local frame: the centre, its direction along the deck, the surface there. */

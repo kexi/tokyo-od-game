@@ -50,13 +50,14 @@ import { leftOf, type RoadGraph, type Segment } from "./roads";
 import { StreetMaterial, type StreetBase } from "./streetLights";
 import type { Approach } from "./trafficControl";
 import { usesGroundSurface } from "./roadClass";
+import { STREET_LIFT_M } from "./terrainSurface";
 
 const STEP = 2.5; // metres between cross-sections; dense enough to hug the terrain mesh
 // Wide carriageways are also split across their width: a single quad spanning 30 m sits
 // tens of centimetres off the terrain in the middle, burying markings and letting the ground
 // photo show through.
 const ACROSS = 2.5;
-const LIFT = 0.1; // asphalt above the terrain surface the collider and renderer share
+const LIFT = STREET_LIFT_M;
 const PAINT = 0.025; // markings above the asphalt
 
 /**

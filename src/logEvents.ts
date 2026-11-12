@@ -390,6 +390,23 @@ export const LOG_EVENTS = {
    */
   ramp_unattached: warning({ run: z.string(), end: z.enum(["start", "end"]), reachM: z.number() }),
   /**
+   * A GSI street taken out where it crosses an expressway embankment or cut at grade (expresswayRoads.ts
+   * cutAtSites, P2.7-6 PR 7b): the chunk and run distance it crosses at, where, how much of the street
+   * was taken out, the angle and the street's width. A dead end on each side until the compiler makes
+   * the crossing a bridge or an underpass.
+   */
+  street_cut_at_expressway: warning({
+    chunk: z.string(),
+    s: z.number(),
+    at: latLon,
+    lengthM: z.number().nonnegative(),
+    angleDeg: z.number(),
+    widthM: z.number(),
+    overGroundM: z.number(),
+    kind: z.enum(["cut", "under"]),
+    tunnel: z.boolean(),
+  }),
+  /**
    * A road network was replaced after `hits` nearestOnSurface answers fell back to a ground road
    * whose terrain had not loaded (no height to gate by, roads.ts).
    */
@@ -1032,6 +1049,99 @@ export const LOG_EVENTS = {
     differIds: z.array(z.string()),
     onlyAIds: z.array(z.string()),
     onlyBIds: z.array(z.string()),
+  }),
+  /**
+   * The terrain and the streets probed over the carriageway of a data folder's embankments, cuts and
+   * at-grade runs (scripts/expresswayTerrainProbe.ts, P2.7-6 PR 7b): the points where the drawn
+   * terrain (or only its collider) or a street's asphalt stands over the road less 2 cm, the worst
+   * overM, and the chunks with the most such points (each with its worst point).
+   */
+  expressway_terrain_probed: info({
+    dir: z.string(),
+    chunks: count,
+    structures: counts,
+    points: count,
+    terrainOut: count,
+    drawnOut: count,
+    colliderOut: count,
+    streetOut: count,
+    endTerrainOut: count,
+    endStreetOut: count,
+    maxOverM: z.number().nonnegative(),
+    streetMaxOverM: z.number().nonnegative(),
+    terrainChunks: z.array(
+      z.strictObject({
+        chunk: z.string(),
+        structure: z.string(),
+        points: count,
+        maxOverM: z.number(),
+        s: z.number(),
+        lat: z.number(),
+        lon: z.number(),
+      }),
+    ),
+    streetChunks: z.array(
+      z.strictObject({
+        chunk: z.string(),
+        structure: z.string(),
+        points: count,
+        maxOverM: z.number(),
+        s: z.number(),
+        lat: z.number(),
+        lon: z.number(),
+      }),
+    ),
+    endChunks: z.array(
+      z.strictObject({
+        chunk: z.string(),
+        structure: z.string(),
+        points: count,
+        maxOverM: z.number(),
+        s: z.number(),
+        lat: z.number(),
+        lon: z.number(),
+      }),
+    ),
+    wallTopOut: count,
+    wallFootOut: count,
+    wallMaxOverM: z.number().nonnegative(),
+    wallChunks: z.array(
+      z.strictObject({
+        chunk: z.string(),
+        points: count,
+        maxOverM: z.number(),
+        s: z.number(),
+        kind: z.string(),
+      }),
+    ),
+    streetCrossings: counts,
+    wideCuts: count,
+    streetCuts: z.array(
+      z.strictObject({
+        chunk: z.string(),
+        s: z.number(),
+        widthM: z.number(),
+        angleDeg: z.number(),
+        overGroundM: z.number(),
+        tunnel: z.boolean(),
+        lat: z.number(),
+        lon: z.number(),
+      }),
+    ),
+    streetsUnder: z.array(
+      z.strictObject({
+        chunk: z.string(),
+        s: z.number(),
+        widthM: z.number(),
+        angleDeg: z.number(),
+        overGroundM: z.number(),
+        tunnel: z.boolean(),
+        lat: z.number(),
+        lon: z.number(),
+      }),
+    ),
+    streetTiles: count,
+    durationMs: count,
   }),
   /**
    * A data folder's ledger written again (scripts/expresswayLedger.ts, P2.7-4): the cases, those new

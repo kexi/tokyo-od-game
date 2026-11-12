@@ -29,7 +29,8 @@ import type { LogFields } from "../logEvents";
 /** A contradiction found in the lines while building the graph (logged, not repaired). */
 export type RoadDiagnostic =
   | { event: "road_level_mismatch"; fields: LogFields<"road_level_mismatch"> }
-  | { event: "ramp_unattached"; fields: LogFields<"ramp_unattached"> };
+  | { event: "ramp_unattached"; fields: LogFields<"ramp_unattached"> }
+  | { event: "street_cut_at_expressway"; fields: LogFields<"street_cut_at_expressway"> };
 
 /**
  * A road centreline from a vector source, in lon/lat. The fields after `bridge` are optional so
@@ -45,6 +46,8 @@ export type RoadLine = {
   kind: RoadKind;
   /** 橋 (GSI ftCode 2703 at ground level): where the street crosses water it is on a deck. */
   bridge?: boolean;
+  /** GSI ftCode 2704 (トンネル内の道路) at ground level: drawn on the ground like any street (P2.7-6 PR 7b). */
+  tunnel?: boolean;
   source?: RoadSource;
   cls?: RoadClass;
   structure?: RoadStructure;
