@@ -9,14 +9,14 @@
    "shiodome"
   ],
   "scope": null,
-  "objective": "v1",
+  "objective": "v2",
   "extract": "2026-10-03T20:20:50Z"
  },
  "summary": {
   "cases": {
    "central": {
     "nose": {
-     "accepted": 6
+     "accepted": 8
     },
     "changeover": {
      "accepted": 7
@@ -37,49 +37,61 @@
      "accepted": 1
     },
     "seam_step": {
-     "open": 2
+     "open": 4
     },
     "merge_skipped": {
      "accepted": 45
     },
     "let_go": {
-     "accepted": 8
+     "accepted": 10
     }
    }
   },
-  "open": 2,
-  "withoutQa": 7,
-  "seamProbes": 3646,
+  "open": 4,
+  "withoutQa": 6,
+  "seamProbes": 3641,
   "rules": {
-   "vertical_fallback": 38,
+   "vertical_fallback": 29,
    "below_open_ground_floor": 0,
    "deck_below_ground": 1,
    "crossing_over_or_at_grade": 30
+  },
+  "heightKm": {
+   "central": {
+    "over15Km": 13.335,
+    "over20Km": 9.369
+   }
   }
  },
  "budget": {
   "cases": {
    "central": {
-    "nose": 6,
+    "nose": 8,
     "changeover": 7,
     "parallel-ramp": 1,
     "touchdown": 1,
     "other": 1,
     "portal-open-cut": 1,
     "ramp-radius": 1,
-    "seam_step": 2,
+    "seam_step": 4,
     "merge_skipped": 45,
-    "let_go": 8
+    "let_go": 10
    }
   },
-  "open": 2,
-  "withoutQa": 7,
-  "seamProbes": 3646,
+  "open": 4,
+  "withoutQa": 6,
+  "seamProbes": 3641,
   "rules": {
-   "vertical_fallback": 38,
+   "vertical_fallback": 29,
    "below_open_ground_floor": 0,
    "deck_below_ground": 1,
    "crossing_over_or_at_grade": 30
+  },
+  "heightKm": {
+   "central": {
+    "over15Km": 13.5,
+    "over20Km": 9.5
+   }
   }
  },
  "cases": [
@@ -91,20 +103,20 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 2,
-    "minDzM": 1.84,
-    "maxDzM": 1.89
+    "minDzM": 1.94,
+    "maxDzM": 2
    },
    "cap": {
     "stations": 2,
-    "maxDzM": 1.9
+    "maxDzM": 2
    },
    "status": "accepted",
    "by": "review",
-   "reason": "羽田線から外回りへ入る連結路（813455519）が外回りへ合流する終点で内回りの車線域に 2 測点かかる。都心環状線の内回り・外回りが二層（OSM layer 3 / 2）から並列（同じ layer）に移る区間。OSM の中心線の間隔（6–8.6 m）が車線域の幅の和（8.5 m）より狭く、移り変わりの高さの差（0–6.7 m）がどこに置いても重なりの中に入る",
-   "qa": null,
+   "reason": "二層 ⇔ 並列の移り変わり。v2 で v1 の cap {\"stations\":2,\"maxDzM\":1.9} から 2 測点・|Δz| 1.94–2 m。俯瞰で v1 に受けた形より悪くないことを確かめる",
+   "qa": "expressway/changeover-c1-813455519",
    "previous": null
   },
   {
@@ -115,11 +127,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 38,
-    "minDzM": 0.05,
-    "maxDzM": 5.49
+    "stations": 37,
+    "minDzM": 0.06,
+    "maxDzM": 5.51
    },
    "cap": {
     "stations": 38,
@@ -139,11 +151,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 12,
-    "minDzM": 0.06,
-    "maxDzM": 6.37
+    "stations": 13,
+    "minDzM": 0.05,
+    "maxDzM": 6.39
    },
    "cap": {
     "stations": 13,
@@ -163,11 +175,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 9,
-    "minDzM": 0.5,
-    "maxDzM": 4.12
+    "minDzM": 0.52,
+    "maxDzM": 4.14
    },
    "cap": {
     "stations": 10,
@@ -187,11 +199,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 20,
-    "minDzM": 0.06,
-    "maxDzM": 6.64
+    "stations": 17,
+    "minDzM": 0.05,
+    "maxDzM": 6.63
    },
    "cap": {
     "stations": 20,
@@ -211,11 +223,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 16,
-    "minDzM": 0.05,
-    "maxDzM": 6.46
+    "stations": 15,
+    "minDzM": 0.06,
+    "maxDzM": 6.2
    },
    "cap": {
     "stations": 16,
@@ -235,11 +247,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 4,
-    "minDzM": 3.97,
-    "maxDzM": 6.42
+    "minDzM": 4.05,
+    "maxDzM": 6.43
    },
    "cap": {
     "stations": 4,
@@ -259,9 +271,9 @@
    "chunk": "207111988:2",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 157.5,
+    "s": 157.3,
     "alongStepM": 0
    },
    "cap": null,
@@ -279,9 +291,9 @@
    "chunk": "24402125:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 82.5,
+    "s": 82.8,
     "alongStepM": 0.0001
    },
    "cap": null,
@@ -299,10 +311,30 @@
    "chunk": "45019020:40",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 4079.3,
+    "s": 4080,
     "alongStepM": 0.0001
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:45021972:1|45021976|0",
+   "kind": "let_go",
+   "run": "45021972",
+   "with": "45021976",
+   "chunk": "45021972:1",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "s": 169.5,
+    "alongStepM": 0
    },
    "cap": null,
    "status": "accepted",
@@ -319,10 +351,30 @@
    "chunk": "45068172:1",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 295.5,
-    "alongStepM": 0.0001
+    "s": 296.2,
+    "alongStepM": 0.0003
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:45554540:33|24402611|0",
+   "kind": "let_go",
+   "run": "45554540",
+   "with": "24402611",
+   "chunk": "45554540:33",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "s": 7984.7,
+    "alongStepM": 0
    },
    "cap": null,
    "status": "accepted",
@@ -339,10 +391,10 @@
    "chunk": "4848755:3",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 868.2,
-    "alongStepM": 0
+    "s": 867.2,
+    "alongStepM": 0.0001
    },
    "cap": null,
    "status": "accepted",
@@ -352,17 +404,17 @@
    "previous": null
   },
   {
-   "key": "let_go:4848889:1|4848762|0",
+   "key": "let_go:4848889:0|4848762|0",
    "kind": "let_go",
    "run": "4848889",
    "with": "4848762",
-   "chunk": "4848889:1",
+   "chunk": "4848889:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 160.6,
-    "alongStepM": 0.0002
+    "s": 167,
+    "alongStepM": 0
    },
    "cap": null,
    "status": "accepted",
@@ -379,10 +431,10 @@
    "chunk": "4853798:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 198.5,
-    "alongStepM": 0.0003
+    "s": 197.5,
+    "alongStepM": 0
    },
    "cap": null,
    "status": "accepted",
@@ -392,17 +444,17 @@
    "previous": null
   },
   {
-   "key": "let_go:4853799:0|24402611|0",
+   "key": "let_go:813455519:0|45554540|0",
    "kind": "let_go",
-   "run": "4853799",
-   "with": "24402611",
-   "chunk": "4853799:0",
+   "run": "813455519",
+   "with": "45554540",
+   "chunk": "813455519:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "s": 82.3,
-    "alongStepM": 0
+    "s": 41.8,
+    "alongStepM": 0.0001
    },
    "cap": null,
    "status": "accepted",
@@ -419,9 +471,9 @@
    "chunk": "24402125:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 6.808,
+    "maxDzM": 6.81,
     "s0": 82.6,
     "s1": 192.6
    },
@@ -444,11 +496,11 @@
    "chunk": "24402611:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "maxDzM": 0.739,
     "s0": 0.1,
-    "s1": 59.1
+    "s1": 59.6
    },
    "cap": {
     "maxDzM": 0.74,
@@ -469,11 +521,11 @@
    "chunk": "24402611:16",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.632,
+    "maxDzM": 3.637,
     "s0": 2237.4,
-    "s1": 2309.4
+    "s1": 2284.9
    },
    "cap": {
     "maxDzM": 3.64,
@@ -494,10 +546,10 @@
    "chunk": "24402611:1",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.53,
-    "s0": 353,
+    "maxDzM": 3.562,
+    "s0": 355,
     "s1": 437
    },
    "cap": {
@@ -519,21 +571,21 @@
    "chunk": "24402611:22",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.752,
-    "s0": 3740.1,
+    "maxDzM": 3.84,
+    "s0": 3736.6,
     "s1": 3816.1
    },
    "cap": {
-    "maxDzM": 3.76,
-    "s0": 3740.1,
+    "maxDzM": 3.84,
+    "s0": 3736.6,
     "s1": 3816.1
    },
    "status": "accepted",
    "by": "review",
-   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:24402611:22|45021976、cap {\"maxDzM\":3.76,\"s0\":3740.1,\"s1\":3816.1}）の |Δz| が v2 で 3.84 m に動いただけ（区間 3736.6–3816.1 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/changeover-c1-813455519",
    "previous": null
   },
   {
@@ -544,9 +596,9 @@
    "chunk": "24402611:22",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.516,
+    "maxDzM": 0.542,
     "s0": 3806.8,
     "s1": 3814.8
    },
@@ -569,21 +621,71 @@
    "chunk": "24402611:22",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 2.638,
+    "maxDzM": 2.748,
     "s0": 3791.8,
     "s1": 3806.3
    },
    "cap": {
-    "maxDzM": 2.64,
+    "maxDzM": 2.748,
     "s0": 3791.8,
-    "s1": 3806.2
+    "s1": 3806.3
    },
    "status": "accepted",
    "by": "review",
-   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）。浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:24402611:22|813455519、cap {\"maxDzM\":2.64,\"s0\":3791.8,\"s1\":3806.2}）の |Δz| が v2 で 2.748 m に動いただけ（区間 3791.8–3806.3 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-813455519-1",
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:24|45554540",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "45554540",
+   "chunk": "24402611:24",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "maxDzM": 0.174,
+    "s0": 4100.1,
+    "s1": 4101.1
+   },
+   "cap": {
+    "maxDzM": 0.174,
+    "s0": 4100.1,
+    "s1": 4101.1
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "v1 に無い新しい組（|Δz| 0.174 m、4100.1–4101.1 m、長さ 1.0 m）。MERGE_MAX_DZ を僅かに超えて描き分けた分合流のノーズの端。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-45554540-33",
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24402611:29|24402125",
+   "kind": "merge_skipped",
+   "run": "24402611",
+   "with": "24402125",
+   "chunk": "24402611:29",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "maxDzM": 0.17,
+    "s0": 4849.8,
+    "s1": 4850.3
+   },
+   "cap": {
+    "maxDzM": 0.17,
+    "s0": 4849.8,
+    "s1": 4850.3
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留出口 24402125 の起点の 7 m 手前の 0.5 m（s 4849.8–4850.3）。起点で固定したランプの高さと下る本線の差（v1 0.145 → v2 0.170 m）が MERGE_MAX_DZ を僅かに超えて描き分けた所で、ランプの床版はまだ始まっていない（P2.7-5 round-01 のレビュー）",
+   "qa": "expressway/merge-24402611-29",
    "previous": null
   },
   {
@@ -594,7 +696,7 @@
    "chunk": "24402611:31",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "maxDzM": 6.747,
     "s0": 4939.7,
@@ -619,41 +721,16 @@
    "chunk": "45019020:36",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.318,
+    "maxDzM": 0.206,
     "s0": 3534.2,
-    "s1": 3537.2
+    "s1": 3535.7
    },
    "cap": {
     "maxDzM": 0.32,
     "s0": 3534.2,
     "s1": 3537.2
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:45019020:38|4848740",
-   "kind": "merge_skipped",
-   "run": "45019020",
-   "with": "4848740",
-   "chunk": "45019020:38",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
-   "measured": {
-    "maxDzM": 0.162,
-    "s0": 3814,
-    "s1": 3814
-   },
-   "cap": {
-    "maxDzM": 0.17,
-    "s0": 3814,
-    "s1": 3814
    },
    "status": "accepted",
    "by": "review",
@@ -669,11 +746,11 @@
    "chunk": "45019020:40",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.729,
+    "maxDzM": 3.757,
     "s0": 4044.4,
-    "s1": 4078.9
+    "s1": 4079.9
    },
    "cap": {
     "maxDzM": 3.73,
@@ -694,11 +771,11 @@
    "chunk": "45019020:4",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.468,
+    "maxDzM": 3.497,
     "s0": 842.1,
-    "s1": 892.1
+    "s1": 893.6
    },
    "cap": {
     "maxDzM": 3.47,
@@ -719,11 +796,11 @@
    "chunk": "45019020:8",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.323,
+    "maxDzM": 0.259,
     "s0": 1817.4,
-    "s1": 1823.4
+    "s1": 1821.9
    },
    "cap": {
     "maxDzM": 0.33,
@@ -744,9 +821,9 @@
    "chunk": "45019020:9",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.354,
+    "maxDzM": 0.355,
     "s0": 1992.8,
     "s1": 1996.8
    },
@@ -769,9 +846,9 @@
    "chunk": "45021972:1",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.275,
+    "maxDzM": 3.2,
     "s0": 332.5,
     "s1": 333.5
    },
@@ -794,11 +871,11 @@
    "chunk": "45021972:24",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 1.933,
+    "maxDzM": 1.372,
     "s0": 6101.9,
-    "s1": 6135.4
+    "s1": 6130.9
    },
    "cap": {
     "maxDzM": 1.94,
@@ -819,11 +896,11 @@
    "chunk": "45021972:2",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.069,
+    "maxDzM": 3.001,
     "s0": 334,
-    "s1": 357
+    "s1": 355
    },
    "cap": {
     "maxDzM": 3.07,
@@ -844,21 +921,21 @@
    "chunk": "45021972:3",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 1.784,
+    "maxDzM": 1.872,
     "s0": 587.5,
     "s1": 654
    },
    "cap": {
-    "maxDzM": 1.79,
+    "maxDzM": 1.872,
     "s0": 587.5,
     "s1": 654
    },
    "status": "accepted",
    "by": "review",
-   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021972:3|4848762、cap {\"maxDzM\":1.79,\"s0\":587.5,\"s1\":654}）の |Δz| が v2 で 1.872 m に動いただけ（区間 587.5–654 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/changeover-1-4848762",
    "previous": null
   },
   {
@@ -869,11 +946,11 @@
    "chunk": "45021976:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.121,
+    "maxDzM": 3.16,
     "s0": 72.7,
-    "s1": 102.2
+    "s1": 102.7
    },
    "cap": {
     "maxDzM": 3.13,
@@ -894,21 +971,21 @@
    "chunk": "45021976:10",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 4.17,
+    "maxDzM": 4.247,
     "s0": 1241.8,
     "s1": 1263.8
    },
    "cap": {
-    "maxDzM": 4.18,
+    "maxDzM": 4.247,
     "s0": 1241.8,
     "s1": 1263.8
    },
    "status": "accepted",
    "by": "review",
-   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:10|24402611、cap {\"maxDzM\":4.18,\"s0\":1241.8,\"s1\":1263.8}）の |Δz| が v2 で 4.247 m に動いただけ（区間 1241.8–1263.8 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/changeover-c1outer-4848762",
    "previous": null
   },
   {
@@ -919,21 +996,21 @@
    "chunk": "45021976:11",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 1.883,
+    "maxDzM": 1.993,
     "s0": 1264.3,
-    "s1": 1321.8
+    "s1": 1325.3
    },
    "cap": {
-    "maxDzM": 1.89,
+    "maxDzM": 1.993,
     "s0": 1264.3,
-    "s1": 1321.8
+    "s1": 1325.3
    },
    "status": "accepted",
    "by": "review",
-   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:11|24402611、cap {\"maxDzM\":1.89,\"s0\":1264.3,\"s1\":1321.8}）の |Δz| が v2 で 1.993 m に動いただけ（区間 1264.3–1325.3 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-45021976-11",
    "previous": null
   },
   {
@@ -944,9 +1021,9 @@
    "chunk": "45021976:11",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.37,
+    "maxDzM": 0.34,
     "s0": 1267.3,
     "s1": 1271.3
    },
@@ -969,21 +1046,21 @@
    "chunk": "45021976:14",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.389,
-    "s0": 2132,
+    "maxDzM": 0.445,
+    "s0": 2131,
     "s1": 2136
    },
    "cap": {
-    "maxDzM": 0.39,
-    "s0": 2132,
+    "maxDzM": 0.445,
+    "s0": 2131,
     "s1": 2136
    },
    "status": "accepted",
    "by": "review",
-   "reason": "出口ランプが本線の床版の縁から離れる最後の数 m で、地表へ下り始める（車線域はもう重ならない）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:14|4853798、cap {\"maxDzM\":0.39,\"s0\":2132,\"s1\":2136}）の |Δz| が v2 で 0.445 m に動いただけ（区間 2131–2136 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-45021976-14",
    "previous": null
   },
   {
@@ -994,21 +1071,21 @@
    "chunk": "45021976:16",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 1.17,
-    "s0": 2754.5,
+    "maxDzM": 1.221,
+    "s0": 2779,
     "s1": 2799.5
    },
    "cap": {
-    "maxDzM": 1.17,
-    "s0": 2754.5,
+    "maxDzM": 1.221,
+    "s0": 2779,
     "s1": 2799.5
    },
    "status": "accepted",
    "by": "review",
-   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:16|24402611、cap {\"maxDzM\":1.17,\"s0\":2754.5,\"s1\":2799.5}）の |Δz| が v2 で 1.221 m に動いただけ（区間 2779–2799.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-45021976-16",
    "previous": null
   },
   {
@@ -1019,9 +1096,9 @@
    "chunk": "45021976:17",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.476,
+    "maxDzM": 3.483,
     "s0": 2799.9,
     "s1": 2824.9
    },
@@ -1037,31 +1114,6 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:45021976:6|45021972",
-   "kind": "merge_skipped",
-   "run": "45021976",
-   "with": "45021972",
-   "chunk": "45021976:6",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
-   "measured": {
-    "maxDzM": 0.237,
-    "s0": 767.3,
-    "s1": 769.8
-   },
-   "cap": {
-    "maxDzM": 0.24,
-    "s0": 767.3,
-    "s1": 769.8
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
-   "qa": null,
-   "previous": null
-  },
-  {
    "key": "merge_skipped:45068172:1|45021976",
    "kind": "merge_skipped",
    "run": "45068172",
@@ -1069,11 +1121,11 @@
    "chunk": "45068172:1",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 2.931,
+    "maxDzM": 2.97,
     "s0": 267.4,
-    "s1": 295.4
+    "s1": 295.9
    },
    "cap": {
     "maxDzM": 2.94,
@@ -1094,9 +1146,9 @@
    "chunk": "45177681:14",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.248,
+    "maxDzM": 0.264,
     "s0": 3300.5,
     "s1": 3302
    },
@@ -1119,11 +1171,11 @@
    "chunk": "45554540:29",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.088,
+    "maxDzM": 3.12,
     "s0": 7252.6,
-    "s1": 7282.6
+    "s1": 7283.6
    },
    "cap": {
     "maxDzM": 3.09,
@@ -1137,31 +1189,6 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:45554540:31|45019020",
-   "kind": "merge_skipped",
-   "run": "45554540",
-   "with": "45019020",
-   "chunk": "45554540:31",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
-   "measured": {
-    "maxDzM": 0.222,
-    "s0": 7519,
-    "s1": 7522
-   },
-   "cap": {
-    "maxDzM": 0.23,
-    "s0": 7519,
-    "s1": 7522
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
-   "qa": null,
-   "previous": null
-  },
-  {
    "key": "merge_skipped:45554540:31|813455519",
    "kind": "merge_skipped",
    "run": "45554540",
@@ -1169,9 +1196,9 @@
    "chunk": "45554540:31",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.65,
+    "maxDzM": 0.573,
     "s0": 7717.9,
     "s1": 7726.9
    },
@@ -1194,10 +1221,10 @@
    "chunk": "45554540:32",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.273,
-    "s0": 7792.9,
+    "maxDzM": 3.198,
+    "s0": 7794.9,
     "s1": 7817.4
    },
    "cap": {
@@ -1212,6 +1239,56 @@
    "previous": null
   },
   {
+   "key": "merge_skipped:45554540:32|813455519",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "813455519",
+   "chunk": "45554540:32",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "maxDzM": 0.161,
+    "s0": 7772.4,
+    "s1": 7772.4
+   },
+   "cap": {
+    "maxDzM": 0.161,
+    "s0": 7772.4,
+    "s1": 7772.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線 45554540 から 813455519 への分流の終わりで 2 枚が離れる 1 点（s 7772.4、中心間 9.1 m、|Δz| 0.161 m）。v1 の 45554540:31|813455519 は s 7717.9–7726.9 に残る別の事例（P2.7-5 round-01 のレビュー）",
+   "qa": "expressway/merge-45554540-32",
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:33|24402611",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "24402611",
+   "chunk": "45554540:33",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "maxDzM": 0.206,
+    "s0": 7982.6,
+    "s1": 7984.6
+   },
+   "cap": {
+    "maxDzM": 0.206,
+    "s0": 7982.6,
+    "s1": 7984.6
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "v1 に無い新しい組（|Δz| 0.206 m、7982.6–7984.6 m、長さ 2.0 m）。MERGE_MAX_DZ を僅かに超えて描き分けた分合流のノーズの端。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-45554540-33",
+   "previous": null
+  },
+  {
    "key": "merge_skipped:45554540:8|45021972",
    "kind": "merge_skipped",
    "run": "45554540",
@@ -1219,10 +1296,10 @@
    "chunk": "45554540:8",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 1.905,
-    "s0": 2022.8,
+    "maxDzM": 1.35,
+    "s0": 2027.3,
     "s1": 2055.8
    },
    "cap": {
@@ -1244,9 +1321,9 @@
    "chunk": "45554540:9",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 2.029,
+    "maxDzM": 1.451,
     "s0": 2056.3,
     "s1": 2057.3
    },
@@ -1269,11 +1346,11 @@
    "chunk": "4848755:3",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.288,
+    "maxDzM": 0.235,
     "s0": 862.8,
-    "s1": 867.8
+    "s1": 866.8
    },
    "cap": {
     "maxDzM": 0.29,
@@ -1294,21 +1371,21 @@
    "chunk": "4848762:1",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 2.104,
+    "maxDzM": 2.18,
     "s0": 482.5,
     "s1": 483.5
    },
    "cap": {
-    "maxDzM": 2.11,
+    "maxDzM": 2.18,
     "s0": 482.5,
     "s1": 483.5
    },
    "status": "accepted",
    "by": "review",
-   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:4848762:1|45021972、cap {\"maxDzM\":2.11,\"s0\":482.5,\"s1\":483.5}）の |Δz| が v2 で 2.18 m に動いただけ（区間 482.5–483.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-4848762-1",
    "previous": null
   },
   {
@@ -1319,21 +1396,21 @@
    "chunk": "4848762:2",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 1.975,
+    "maxDzM": 2.057,
     "s0": 484,
-    "s1": 553
+    "s1": 552.5
    },
    "cap": {
-    "maxDzM": 1.98,
+    "maxDzM": 2.057,
     "s0": 484,
-    "s1": 553
+    "s1": 552.5
    },
    "status": "accepted",
    "by": "review",
-   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:4848762:2|45021972、cap {\"maxDzM\":1.98,\"s0\":484,\"s1\":553}）の |Δz| が v2 で 2.057 m に動いただけ（区間 484–552.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-4848762-1",
    "previous": null
   },
   {
@@ -1344,7 +1421,7 @@
    "chunk": "4848762:33",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "maxDzM": 0.417,
     "s0": 2823,
@@ -1362,31 +1439,6 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:4848762:34|4848889",
-   "kind": "merge_skipped",
-   "run": "4848762",
-   "with": "4848889",
-   "chunk": "4848762:34",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
-   "measured": {
-    "maxDzM": 0.246,
-    "s0": 2994.5,
-    "s1": 2997.5
-   },
-   "cap": {
-    "maxDzM": 0.25,
-    "s0": 2994.5,
-    "s1": 2997.5
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
-   "qa": null,
-   "previous": null
-  },
-  {
    "key": "merge_skipped:4848762:38|45019020",
    "kind": "merge_skipped",
    "run": "4848762",
@@ -1394,10 +1446,10 @@
    "chunk": "4848762:38",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.356,
-    "s0": 3932.4,
+    "maxDzM": 3.384,
+    "s0": 3931.4,
     "s1": 3982.4
    },
    "cap": {
@@ -1412,31 +1464,6 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:4848889:1|4848762",
-   "kind": "merge_skipped",
-   "run": "4848889",
-   "with": "4848762",
-   "chunk": "4848889:1",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
-   "measured": {
-    "maxDzM": 0.189,
-    "s0": 161,
-    "s1": 162
-   },
-   "cap": {
-    "maxDzM": 0.19,
-    "s0": 161,
-    "s1": 162
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
-   "qa": null,
-   "previous": null
-  },
-  {
    "key": "merge_skipped:4853798:0|45021976",
    "kind": "merge_skipped",
    "run": "4853798",
@@ -1444,10 +1471,10 @@
    "chunk": "4853798:0",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 0.362,
-    "s0": 198.6,
+    "maxDzM": 0.415,
+    "s0": 197.6,
     "s1": 202.1
    },
    "cap": {
@@ -1462,6 +1489,31 @@
    "previous": null
   },
   {
+   "key": "merge_skipped:813455519:0|45554540",
+   "kind": "merge_skipped",
+   "run": "813455519",
+   "with": "45554540",
+   "chunk": "813455519:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "maxDzM": 0.171,
+    "s0": 42.1,
+    "s1": 42.6
+   },
+   "cap": {
+    "maxDzM": 0.171,
+    "s0": 42.1,
+    "s1": 42.6
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "11（merge_skipped:45554540:32|813455519）の相手側。813455519 の s 42.1–42.6、中心間 9.2–9.4 m、|Δz| 0.171 m（P2.7-5 round-01 のレビュー）",
+   "qa": "expressway/merge-45554540-32",
+   "previous": null
+  },
+  {
    "key": "merge_skipped:813455519:1|24402611",
    "kind": "merge_skipped",
    "run": "813455519",
@@ -1469,21 +1521,21 @@
    "chunk": "813455519:1",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 2.889,
+    "maxDzM": 2.99,
     "s0": 306.7,
     "s1": 316.7
    },
    "cap": {
-    "maxDzM": 2.89,
+    "maxDzM": 2.99,
     "s0": 306.7,
     "s1": 316.7
    },
    "status": "accepted",
    "by": "review",
-   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）。浜崎橋 JCT（allowlist.ts HAMAZAKIBASHI_REASON）。羽田線への分岐・羽田線からの連結路の端",
-   "qa": null,
+   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:813455519:1|24402611、cap {\"maxDzM\":2.89,\"s0\":306.7,\"s1\":316.7}）の |Δz| が v2 で 2.99 m に動いただけ（区間 306.7–316.7 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "qa": "expressway/merge-813455519-1",
    "previous": null
   },
   {
@@ -1494,11 +1546,11 @@
    "chunk": "895902565:4",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "maxDzM": 3.732,
+    "maxDzM": 3.764,
     "s0": 502.1,
-    "s1": 588.6
+    "s1": 586.6
    },
    "cap": {
     "maxDzM": 3.74,
@@ -1519,7 +1571,7 @@
    "chunk": "895902565:5",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "maxDzM": 0.739,
     "s0": 882.5,
@@ -1537,6 +1589,27 @@
    "previous": null
   },
   {
+   "key": "nose:24402611|45554540",
+   "kind": "nose",
+   "run": "24402611",
+   "with": "45554540",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "stations": 1,
+    "minDzM": 0.08,
+    "maxDzM": 0.08
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
    "key": "nose:24402611|4848762",
    "kind": "nose",
    "run": "24402611",
@@ -1544,11 +1617,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 6,
-    "minDzM": 0.05,
-    "maxDzM": 0.13
+    "stations": 5,
+    "minDzM": 0.06,
+    "maxDzM": 0.12
    },
    "cap": null,
    "status": "accepted",
@@ -1565,11 +1638,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 1,
-    "minDzM": 0.32,
-    "maxDzM": 0.32
+    "minDzM": 0.21,
+    "maxDzM": 0.21
    },
    "cap": null,
    "status": "accepted",
@@ -1586,10 +1659,10 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 2,
-    "minDzM": 0.05,
+    "stations": 1,
+    "minDzM": 0.06,
     "maxDzM": 0.06
    },
    "cap": null,
@@ -1607,11 +1680,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 1,
-    "minDzM": 0.11,
-    "maxDzM": 0.11
+    "minDzM": 0.05,
+    "maxDzM": 0.05
    },
    "cap": null,
    "status": "accepted",
@@ -1628,11 +1701,32 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 2,
-    "minDzM": 0.21,
-    "maxDzM": 0.27
+    "minDzM": 0.24,
+    "maxDzM": 0.3
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "nose:45021976|813455519",
+   "kind": "nose",
+   "run": "45021976",
+   "with": "813455519",
+   "chunk": null,
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "stations": 1,
+    "minDzM": 0.05,
+    "maxDzM": 0.05
    },
    "cap": null,
    "status": "accepted",
@@ -1649,11 +1743,11 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 2,
-    "minDzM": 0.06,
-    "maxDzM": 0.24
+    "stations": 5,
+    "minDzM": 0.05,
+    "maxDzM": 0.22
    },
    "cap": null,
    "status": "accepted",
@@ -1670,10 +1764,10 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 2,
-    "minDzM": 0.06,
+    "stations": 3,
+    "minDzM": 0.05,
     "maxDzM": 0.06
    },
    "cap": {
@@ -1694,7 +1788,7 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 11,
     "minDzM": 0.06,
@@ -1718,7 +1812,7 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "stations": 23,
     "s0": 490,
@@ -1740,7 +1834,7 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "minRadiusM": 13.4
    },
@@ -1754,6 +1848,34 @@
    "previous": null
   },
   {
+   "key": "seam_step:24402125:0|24402611|0",
+   "kind": "seam_step",
+   "run": "24402125",
+   "with": "24402611",
+   "chunk": "24402125:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "probes": 1,
+    "s0": 82.6,
+    "s1": 82.6,
+    "stepM": 0,
+    "insideM": 0.158
+   },
+   "cap": {
+    "s0": 82.6,
+    "s1": 82.6,
+    "stepM": 0,
+    "insideM": 0.158
+   },
+   "status": "open",
+   "by": "review",
+   "reason": "段 0.0 mm（20 mm 以下）、内側の面 15.8 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
+   "qa": "expressway/seam-24402125-0",
+   "previous": null
+  },
+  {
    "key": "seam_step:45019020:40|45554540|0",
    "kind": "seam_step",
    "run": "45019020",
@@ -1761,53 +1883,80 @@
    "chunk": "45019020:40",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "probes": 2,
-    "s0": 4079.4,
-    "s1": 4082.4,
-    "stepM": 0.0179,
-    "insideM": 0.1526
+    "s0": 4083.4,
+    "s1": 4083.9,
+    "stepM": 0.0035,
+    "insideM": 0.0043
    },
    "cap": {
-    "s0": 4079,
-    "s1": 4083,
-    "stepM": 0.019,
-    "insideM": 0.16
+    "s0": 4083.4,
+    "s1": 4083.9,
+    "stepM": 0.0035,
+    "insideM": 0.0043
    },
    "status": "open",
    "by": "review",
-   "reason": "芝浦 JCT で 11 号台場線の上りが 1 号羽田線（45554540）に重なる区間の手放し（let-go、s 4079.3）の上の 1 点と、その先の継ぎ目（s 4082.4、|Δz| 4.4 cm）の 18 mm の段。P6 のチャンクの切り直しで出た。床版の一体化（P3.5）の側で直す",
-   "qa": null,
+   "reason": "段 3.5 mm（20 mm 以下）、内側の面 0.4 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
+   "qa": "expressway/seam-45019020-40",
    "previous": null
   },
   {
-   "key": "seam_step:45068172:1|45021976|0",
+   "key": "seam_step:45019020:41|45554540|0",
    "kind": "seam_step",
-   "run": "45068172",
-   "with": "45021976",
-   "chunk": "45068172:1",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:41",
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
     "probes": 1,
-    "s0": 298.9,
-    "s1": 298.9,
-    "stepM": 0.0047,
-    "insideM": 0.0055
+    "s0": 4110.7,
+    "s1": 4110.7,
+    "stepM": 0.0029,
+    "insideM": 0.0032
    },
    "cap": {
-    "probes": 1,
-    "s0": 298.9,
-    "s1": 298.9,
-    "stepM": 0.0047,
-    "insideM": 0.0055
+    "s0": 4110.7,
+    "s1": 4110.7,
+    "stepM": 0.0029,
+    "insideM": 0.0032
    },
    "status": "open",
    "by": "review",
-   "reason": "汐留入口が外回りへ合流する所で、手放し（s 295.5）の約 3 m 先の継ぎ目の段（s 297.85・298.35・298.85・299.35 で 36・20.5・4.6・0 mm。|Δz| 5 cm 以内の 1 mm の規則に掛かるのは s 298.9 の 1 点、4.7 mm）。45019020:40（手放しの先の継ぎ目の段）と同じ型。P2.7-4 で検査点を各点の高さで置くように直して見えた（高さ 0 の投影では、旧フレームから 1.19 km のこの点で検査点が半径方向に 8 mm、床版の縁に直角に約 3 mm ずれていた）。床版の一体化（P3.5）の側で直す",
-   "qa": null,
+   "reason": "段 2.9 mm（20 mm 以下）、内側の面 0.3 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
+   "qa": "expressway/seam-45019020-40",
+   "previous": null
+  },
+  {
+   "key": "seam_step:4848889:0|4848762|0",
+   "kind": "seam_step",
+   "run": "4848889",
+   "with": "4848762",
+   "chunk": "4848889:0",
+   "district": "central",
+   "block": "1125559318",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "measured": {
+    "probes": 1,
+    "s0": 156.1,
+    "s1": 156.1,
+    "stepM": 0.0028,
+    "insideM": 0.0005
+   },
+   "cap": {
+    "s0": 156.1,
+    "s1": 156.1,
+    "stepM": 0.0028,
+    "insideM": 0.0005
+   },
+   "status": "open",
+   "by": "review",
+   "reason": "段 2.8 mm（20 mm 以下）、内側の面 0.1 cm。走行がその上を落下・停止なく通れば open（継ぎ目の段の原因は S6 の実行時の一体化の修正）",
+   "qa": "expressway/seam-4848889-0",
    "previous": null
   },
   {
@@ -1818,10 +1967,10 @@
    "chunk": null,
    "district": "central",
    "block": "1125559318",
-   "blockHash": "6c5d70207947680d9e1a1d4e6cd86b12a21efc29d551f0ed1b2cad472a2ef0ef",
+   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
    "measured": {
-    "stations": 29,
-    "minDzM": 0.05,
+    "stations": 28,
+    "minDzM": 0.08,
     "maxDzM": 6.56
    },
    "cap": {

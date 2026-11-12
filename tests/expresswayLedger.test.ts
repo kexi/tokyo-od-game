@@ -20,6 +20,7 @@ import {
   summaryOf,
   updateLedger,
   withinCap,
+  withinHeightBudget,
 } from "../src/expressway/ledger";
 import { overlapKindOf } from "../src/expressway/overlapClass";
 import { type Counted, countCases } from "../scripts/expresswayCases";
@@ -109,8 +110,17 @@ describe("the data folder's ledger", () => {
   });
 
   it("states the counts it has (summary) and they are the budget the review wrote (the ratchet: more or fewer fails)", () => {
-    expect(ledger!.summary).toEqual(summaryOf(ledger!.cases, counted.seamProbes, counted.rules));
-    expect(budgetOf(ledger!.summary)).toEqual(ledger!.budget);
+    expect(ledger!.summary).toEqual(
+      summaryOf(ledger!.cases, counted.seamProbes, counted.rules, counted.heightKm),
+    );
+    const { heightKm: _caps, ...counts } = ledger!.budget!;
+    const { heightKm: _now, ...expected } = budgetOf(ledger!.summary);
+    expect(expected).toEqual(counts);
+  });
+
+  it("keeps the km of viaduct over 15 and 20 m per district at most the budget's caps (P2.7-5: not equal, they wobble)", () => {
+    expect(ledger!.budget!.heightKm, "--write-budget writes the caps").toBeDefined();
+    expect(withinHeightBudget(ledger!.summary, ledger!.budget!)).toEqual([]);
   });
 
   it("points each qa at a view that exists (<view table>/<view id>)", () => {

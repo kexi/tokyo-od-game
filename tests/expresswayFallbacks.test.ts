@@ -34,14 +34,16 @@ import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
 import { hermite } from "../src/expressway/profile";
-import { type Qp, solveQp } from "../src/expressway/qp";
+import { type Qp, QpBuilder, solveQp } from "../src/expressway/qp";
 import {
   capZones,
   evalProfile,
   PinMismatchError,
+  RETRY_DUAL_TOL,
   type RunInput,
   type RunProblem,
   solveJoint,
+  solveRetrying,
 } from "../src/expressway/vertical";
 
 // The P2.6 models for the whole ward area (knowledge/expressway-generation.md): short runs meeting
@@ -541,10 +543,90 @@ describe("目的 v2 の勾配変化の重み 2 で破綻した QP（P2.7-3 の�
 
   it("solved again at dualTol 1e-5 only when it did not converge, it converges (the way out S5 is to take)", () => {
     // A second solve only for the solves that fail leaves every converged one as it was (v1, I1);
-    // the review's scan rescued all 13 failures this way. Not done here: qp.ts is not changed in S3.
+    // the review's scan rescued all 13 failures this way.
     const first = solveQp(qp());
     expect(first.status).toBe("broken");
     expect(solveQp(qp(), { dualTol: 1e-5 }).status).toBe("converged");
+  });
+
+  it("solveJoint's solve (solveRetrying) retries it once at RETRY_DUAL_TOL and returns the converged second solve", () => {
+    expect(RETRY_DUAL_TOL).toBe(1e-5);
+    const out = solveRetrying(qp());
+    expect(out.retried).toBe(true);
+    expect(out.result.status).toBe("converged");
+    const first = solveQp(qp());
+    expect(out.iterations).toBe(first.iterations + out.result.iterations);
+    expect([...out.result.x]).toEqual([...solveQp(qp(), { dualTol: RETRY_DUAL_TOL }).x]);
+  });
+
+  it("the broken weights of the review's scan (2 and 2 − 1 ulp) converge through solveRetrying", () => {
+    // The weights the review found broken (P2.7-3「未収束」): 1.356, 2, 2 − 1 ulp and the like.
+    for (const w of [2, 2 - 2 ** -52]) {
+      const p = at(w);
+      expect(solveQp(p).status, `w ${w} first`).toBe("broken");
+      const out = solveRetrying(at(w));
+      expect(out.retried, `w ${w}`).toBe(true);
+      expect(out.result.status, `w ${w}`).toBe("converged");
+    }
+  });
+});
+
+describe("非収束時だけの解き直し（P2.7-5 4.1）", () => {
+  const stall = JSON.parse(
+    readFileSync(join(import.meta.dirname, "fixtures", "expresswayQpStall.json"), "utf8"),
+  );
+  const stallQp = (): Qp => ({
+    n: stall.n,
+    P: new Map<number, number>(stall.P),
+    q: Float64Array.from(stall.q),
+    rows: stall.rows,
+    l: Float64Array.from(stall.l.map(Number)),
+    u: Float64Array.from(stall.u.map(Number)),
+    w: Float64Array.from(stall.w.map(Number)),
+  });
+
+  it("a QP that converges at the first solve is not solved again: the very same result, bit for bit", () => {
+    const plain = solveQp(stallQp());
+    expect(plain.status).toBe("converged");
+    const out = solveRetrying(stallQp());
+    expect(out.retried).toBe(false);
+    expect(out.iterations).toBe(plain.iterations);
+    expect(out.result.status).toBe("converged");
+    expect([...out.result.x]).toEqual([...plain.x]);
+    expect(out.result.dualResidual).toBe(plain.dualResidual);
+  });
+
+  it("a QP with no solution stays unconverged after the retry (reported, not hidden)", () => {
+    const b = new QpBuilder();
+    const o = b.addVars(2);
+    b.addRow([[o, 1]], 0, 0);
+    b.addRow([[o, 1]], 1, 1);
+    b.addSquare([[o + 1, 1]], 0, 1);
+    const out = solveRetrying(b.build());
+    expect(out.retried).toBe(true);
+    expect(out.result.status).not.toBe("converged");
+  });
+
+  const run = (endZ: number): RunInput => ({
+    id: "a",
+    length: 100,
+    zones: [{ from: 0, to: 100, V: 60 }],
+    special: false,
+    stations: Float64Array.from([0, 50, 100]),
+    target: Float64Array.from([0, 0, 0]),
+    lower: Float64Array.from([-Infinity, -Infinity, -Infinity]),
+    upper: Float64Array.from([Infinity, Infinity, Infinity]),
+    start: { hard: true, z: 0, grade: 0 },
+    end: { hard: true, z: endZ, grade: 0 },
+  });
+
+  it("solveJoint says whether it retried: not for a run that solves, yes for one that cannot (60 m in 100 m)", () => {
+    const ok = solveJoint([run(1)], []);
+    expect(ok.status).toBe("converged");
+    expect(ok.retried).toBe(false);
+    const impossible = solveJoint([run(60)], []);
+    expect(impossible.retried).toBe(true);
+    expect(impossible.status).not.toBe("converged");
   });
 });
 

@@ -38,21 +38,29 @@ export type DeckMount = {
  */
 export function deckMount(
   chunk: Pick<XwChunk, "lanes" | "laneWidth" | "shoulderL" | "shoulderR">,
-  sign: Pick<XwSign, "mount" | "side" | "girder" | "lane">,
+  sign: Pick<XwSign, "mount" | "side" | "girder" | "lane" | "divider">,
   plates: ReadonlyArray<{ width: number; height: number }>,
 ): DeckMount {
   const hw = carriagewayWidth({ ...chunk, median: 0 }) / 2;
   const pw = PARAPET_WIDTH.value;
   if (sign.mount === "gantry") {
     const r = MEMBER_SIZES.value.gantryLegRadius;
-    const legAxis = hw + pw / 2;
-    const u = legAxis - LEG_CLEAR.value - r;
-    const clearWidthM = 2 * u;
+    // Each leg's axis (+ left): on its 壁高欄's centre line, the median side's on the dividing wall
+    // where the carriageway shares a slab with the opposite one (sign.divider). Why not keep it on
+    // its own 壁高欄: there is none there, and 4.5 m off the centre line it stood 0.4–1.2 m inside
+    // the opposite carriageway (P2.7-5 round-01, 6 gantries round 浜崎橋).
+    const hasDivider = sign.divider !== undefined;
+    const leftAxis = hasDivider && sign.divider! > 0 ? sign.divider! : hw + pw / 2;
+    const rightAxis = hasDivider && sign.divider! < 0 ? sign.divider! : -(hw + pw / 2);
+    const inset = LEG_CLEAR.value + r;
+    const u = leftAxis - inset;
+    const clearWidthM = u - (rightAxis + inset);
     const board = plates[0];
     // Over the exit's lane (111-B), but never past a leg: a board wider than the lane's offset
     // allows is moved toward the centre until it clears the legs (resolveGantry's rule).
-    const reach = clearWidthM / 2 + LEG_CLEAR.value - board.width / 2;
-    const laneAt = Math.max(-reach, Math.min(reach, laneCentreFor(chunk, sign, hw)));
+    const hi = u + LEG_CLEAR.value - board.width / 2;
+    const lo = u - clearWidthM - LEG_CLEAR.value + board.width / 2;
+    const laneAt = Math.max(lo, Math.min(hi, laneCentreFor(chunk, sign, hw)));
     return {
       placement: {
         kind: "gantry",

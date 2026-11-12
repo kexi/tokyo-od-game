@@ -100,7 +100,7 @@ import { Terrain } from "./world/terrain";
 import { TokyoTide } from "./world/tide";
 import { WaterLayer } from "./world/water";
 import { ExpresswayDecks } from "./world/expresswayDeck";
-import { GroundCuts } from "./world/groundCuts";
+import { CutRelay, GroundCuts } from "./world/groundCuts";
 import type { XwRoadInput } from "./world/expresswayRoads";
 import { Pedestrians, type Pedestrian } from "./world/pedestrians";
 import {
@@ -498,6 +498,7 @@ async function main(): Promise<void> {
           frame,
           import.meta.env.BASE_URL,
           expresswayFlag === "bank",
+          (lat, lon) => dem.heightAt(lat, lon),
         );
   // The terrain's cut-outs: the water's, and over the expressway's cuts and tunnel portals (P9).
   const groundCuts = new GroundCuts(water);
@@ -726,34 +727,43 @@ async function main(): Promise<void> {
   // hole, once for every batch of chunks (the tiles read together arrive in one task), and only when
   // a hole lies in the area laid. While the streets are loading, their own install cuts the holes.
   let isRelayQueued = false;
-  let relayedHoles = 0;
+  const cutRelay = new CutRelay();
+  const relayCuts = () => {
+    // The street lamps standing in a new hole go at once, wherever the camera is (P2.7-5).
+    streetLights.hideInCuts();
+    const fresh = cutRelay.take(
+      groundCuts.ringsLonLat(),
+      (rings) =>
+        rings.some((ring) =>
+          ring.some(
+            ([lon, lat]) => haversineMeters(lat, lon, roadCenter.lat, roadCenter.lon) <= RELAY_REACH_M,
+          ),
+        ),
+      roadsLoading,
+    );
+    if (!fresh) return;
+    void roadUpdates
+      .run(async () => {
+        if (lastPavements) {
+          await pavements.rebuildAsync(pavementsOffCuts(lastPavements), frame, new FrameWork());
+          pedestrians.pavementsChanged();
+        }
+        const graph = roadGraph;
+        if (graph) {
+          const work = new FrameWork();
+          const parts = await roadSurface.prepare(graph, roadApplied, control.approaches, work);
+          await work.run(roadSurface.installSteps(parts), true);
+        }
+        log("ground_cuts_relaid", { holes: fresh.length, pavements: lastPavements?.length ?? 0 });
+      })
+      .catch((error: unknown) => warn("ground_cuts_relay_failed", { error: String(error) }));
+  };
   expressway?.onBore(() => {
     if (isRelayQueued) return;
     isRelayQueued = true;
     setTimeout(() => {
       isRelayQueued = false;
-      const holes = groundCuts.ringsLonLat();
-      const fresh = holes.slice(relayedHoles);
-      relayedHoles = holes.length;
-      const isInLaidArea = fresh.some((ring) =>
-        ring.some(([lon, lat]) => haversineMeters(lat, lon, roadCenter.lat, roadCenter.lon) <= RELAY_REACH_M),
-      );
-      if (!isInLaidArea || roadsLoading) return;
-      void roadUpdates
-        .run(async () => {
-          if (lastPavements) {
-            await pavements.rebuildAsync(pavementsOffCuts(lastPavements), frame, new FrameWork());
-            pedestrians.pavementsChanged();
-          }
-          const graph = roadGraph;
-          if (graph) {
-            const work = new FrameWork();
-            const parts = await roadSurface.prepare(graph, roadApplied, control.approaches, work);
-            await work.run(roadSurface.installSteps(parts), true);
-          }
-          log("ground_cuts_relaid", { holes: fresh.length, pavements: lastPavements?.length ?? 0 });
-        })
-        .catch((error: unknown) => warn("ground_cuts_relay_failed", { error: String(error) }));
+      relayCuts();
     }, 0);
   });
   roadBuilder.inline = import.meta.env.DEV && new URLSearchParams(location.search).has("inlineRoads");
@@ -773,6 +783,12 @@ async function main(): Promise<void> {
       return g === null ? null : g + (pavements.contains(x, z) ? KERB : 0);
     },
     isOpen: (x, z, g) => isOpenGround(x, z, g),
+    isCut: (x, z) => {
+      const isNone = groundCuts.isEmpty();
+      if (isNone) return false;
+      const g = frame.toGeodetic(new Vector3(x, 0, z));
+      return groundCuts.containsLonLat(g.lon, g.lat);
+    },
     control,
     traffic,
     player: vehicle,
@@ -952,6 +968,9 @@ async function main(): Promise<void> {
       .finally(() => {
         const isCurrent = load === roadLoadSerial;
         if (isCurrent) roadsLoading = false;
+        // Holes that came during the load: lay the pavements and streets round them now.
+        const hasPending = isCurrent && cutRelay.hasPending;
+        if (hasPending) relayCuts();
       });
     // PLATEAU pavements come separately (larger tiles, only some wards): never hold up the roads.
     const wards = areas?.wardsIn(lon - 0.012, lat - 0.01, lon + 0.012, lat + 0.01) ?? [];
@@ -1200,8 +1219,18 @@ async function main(): Promise<void> {
   let streetSpawnSince = 0;
   let adriftSince: number | null = null;
 
-  const respawnHere = () => {
+  const respawnHere = (reason: "underground" | "adrift" | "reset" | "retrained") => {
     const p = vehicle.position();
+    const geo = frame.toGeodetic(p);
+    const where = {
+      lat: Number(geo.lat.toFixed(6)),
+      lon: Number(geo.lon.toFixed(6)),
+      onDeck: carOnDeck,
+      kmh: Math.round(vehicle.speedKmh() * 10) / 10,
+    };
+    const isAsked = reason === "reset" || reason === "retrained";
+    if (isAsked) log("car_put_back", { reason, ...where });
+    else warn("car_respawned", { reason, ...where });
     // Up on a deck (R pressed there, stuck against a wall): back into its left lane. Why first: open
     // ground is looked for under the deck, which would drop the car onto the street below.
     const isOnDeckNow = carOnDeck && placeOnStreet();
@@ -1462,7 +1491,7 @@ async function main(): Promise<void> {
   // 復帰 (R) puts the car on the nearest street: not while the police are dealing with it.
   input.on("reset", () => {
     if (enforcing()) return toast(i18n.t("toast.enforcingBusy"), "#ff6b6b");
-    respawnHere();
+    respawnHere("reset");
   });
   input.on("help", () => $<HTMLDialogElement>("#help").showModal());
   // タイトルへ: the title screen is the page's own start screen, so going back is a fresh load (what
@@ -2836,7 +2865,7 @@ async function main(): Promise<void> {
     // Fallen through the ground: put back. Not on a deck: in a tunnel or cut (P9) the road is more
     // than 6 m under the ground over it, and the car was put back at every frame at the portal.
     const isUnderground = gy !== null && carPos.y < gy - 6 && !carOnDeck;
-    if (isUnderground) respawnHere();
+    if (isUnderground) respawnHere("underground");
     // In the water, off the streets and bridges (a channel too narrow to lose its ground collider
     // holds the car up over the drawn water): back on the bank after a moment.
     const isAdrift =
@@ -2848,7 +2877,7 @@ async function main(): Promise<void> {
     adriftSince = isAdrift ? (adriftSince ?? now) : null;
     if (adriftSince !== null && now - adriftSince > 1500) {
       adriftSince = null;
-      respawnHere();
+      respawnHere("adrift");
       toast(i18n.t("toast.fellInRiver"), "#4dd2ff");
     }
     // Under the walker: in a tunnel or cut (P9) or on a deck, its floor, not the ground over it.
@@ -5306,7 +5335,7 @@ async function main(): Promise<void> {
     law.reset();
     $("#suspended").hidden = true;
     vehicle.setFrozen(false);
-    respawnHere();
+    respawnHere("retrained");
     toast(i18n.t("toast.retrained"), "#7dff9a");
   });
 
@@ -5739,6 +5768,9 @@ async function main(): Promise<void> {
         isRoadsLoading: roadsLoading,
         hasRoads: roadGraph !== null,
         buildingsProgress: buildings.loadProgress(),
+        terrainComplete: terrain.isSquareComplete(),
+        farPending: buildings.farPendingCount,
+        farProgress: buildings.farLoadProgress(),
       }),
     });
     // Steady-speed drives over the expressway decks (src/debug/expresswayDrive.ts), ?expressway only.
@@ -5773,6 +5805,26 @@ async function main(): Promise<void> {
             },
           },
           traffic: () => traffic.expresswayStats(),
+          toGeodetic: (p) => {
+            const g = frame.toGeodetic(p);
+            return { lat: Number(g.lat.toFixed(6)), lon: Number(g.lon.toFixed(6)) };
+          },
+          nearCars: () => {
+            const p = vehicle.position();
+            const yaw = vehicle.yaw();
+            const out: Array<{ ahead: number; side: number; up: number; mps: number }> = [];
+            traffic.forEachCar((o, mps) => {
+              const dx = o.position.x - p.x;
+              const dz = o.position.z - p.z;
+              const isNear = Math.hypot(dx, dz) < 30;
+              if (!isNear) return;
+              const ahead = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+              const side = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+              const r = (v: number) => Math.round(v * 10) / 10;
+              out.push({ ahead: r(ahead), side: r(side), up: r(o.position.y - p.y), mps: r(mps) });
+            });
+            return out;
+          },
           placeTraffic: (xid, share, kmh) => {
             const seg = roadGraph?.segments.find((x) => x.line.xid === xid);
             if (!seg) return false;

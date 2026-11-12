@@ -2,7 +2,8 @@
 // the ledger test (tests/expresswayLedger.test.ts) both count them: the diagnostics' (deck overlaps,
 // tunnel cover, ramp radii, ambiguous crossings, src/expressway/ledger.ts caseOfDiagnostic) and the
 // merged decks' (seams, holes, stretches drawn apart, let-go points, scripts/expresswaySeams.ts),
-// each with its district (src/expressway/districts.ts) and its blocks' dataHash (report.json).
+// each with its district (src/expressway/districts.ts) and its blocks' dataHash (report.json); and the
+// height budget's (P2.7-5): the high-deck stretches and the km over 15 and 20 m (src/expressway/highDeck.ts).
 import RAPIER from "@dimforge/rapier3d-compat";
 import { assignDistricts, type District, districtRunsOf } from "../src/expressway/districts.ts";
 import type { XwFiles } from "../src/expressway/files.ts";
@@ -14,6 +15,8 @@ import {
   ruleCounts,
   seamCases,
 } from "../src/expressway/ledger.ts";
+import { STATION_STRIDE } from "../src/expressway/format.ts";
+import { heightKmOf, type HeightKm, highDeckStretches } from "../src/expressway/highDeck.ts";
 import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge.ts";
 import { framesOf, mergeMisses, probeGenerated } from "./expresswaySeams.ts";
 
@@ -24,7 +27,28 @@ export type Counted = {
   seamProbes: number;
   rules: Record<string, number>;
   districts: Map<string, District>;
+  heightKm: HeightKm;
 };
+
+/** The high-deck cases of the written runs (one per stretch, numbered along the run). */
+function highDeckCases(byRun: ReadonlyMap<string, XwFiles["chunks"]>): FoundCase[] {
+  const out: FoundCase[] = [];
+  for (const run of [...byRun.keys()].sort()) {
+    highDeckStretches(byRun.get(run)!).forEach((h, i) => {
+      out.push({
+        key: `high-deck:${run}|${i}`,
+        kind: "high-deck",
+        run,
+        with: null,
+        chunk:
+          byRun.get(run)!.find((c) => c.st[0] <= h.s0 && c.st[c.st.length - STATION_STRIDE] >= h.s0)?.id ??
+          null,
+        measured: { s0: h.s0, s1: h.s1, heightM: h.heightM, spanM: h.spanM },
+      });
+    });
+  }
+  return out;
+}
 
 /**
  * A case's district: its run's, else its partner's, else that of a written run of the same block
@@ -59,9 +83,16 @@ export async function countCases(files: XwFiles): Promise<Counted> {
   });
   for (const w of probed.worlds) w.free();
   const districts = assignDistricts(districtRunsOf(files.runs, files.byRun));
-  const found = [...fromDiagnostics, ...fromDecks].map((c) => {
+  const found = [...fromDiagnostics, ...fromDecks, ...highDeckCases(files.byRun)].map((c) => {
     const runs = c.with === null ? [c.run] : [c.run, c.with];
     return { ...c, district: caseDistrict(runs, districts, files), ...blocksOf(files.record.blocks, runs) };
   });
-  return { found, seamProbes: probed.seams.length, rules: ruleCounts(files.diagnostics), districts };
+  const heightKm = heightKmOf(files.byRun, (run) => districts.get(run) ?? "outside");
+  return {
+    found,
+    seamProbes: probed.seams.length,
+    rules: ruleCounts(files.diagnostics),
+    districts,
+    heightKm,
+  };
 }

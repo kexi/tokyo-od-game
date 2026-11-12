@@ -46,6 +46,16 @@ const flag = (name: string) => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 ? argv[i + 1] : undefined;
 };
+/**
+ * --pick x,y[;x,y…]: what each shot shows at those pixels of its 1280×720 frame (a ray from the
+ * camera: the meshes hit nearest first, their names and parents, the face's vertex colour, an
+ * instance's index), written into the shot's JSON as scene.picks (P2.7-5: to tell what a shape in
+ * a frame is before mending it). Not meant for a review round: use it with --only and --out.
+ */
+const picks: Array<[number, number]> = (flag("pick") ?? "")
+  .split(";")
+  .filter((p) => p !== "")
+  .map((p) => p.split(",").map(Number) as [number, number]);
 const tableArg = argv.find((a, i) => !a.startsWith("--") && !argv[i - 1]?.startsWith("--"));
 if (!tableArg)
   throw new Error(
@@ -513,6 +523,7 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
     signFaces: G.debug.signFaces?.() ?? null,
   }; })()`,
   );
+  if (picks.length > 0) (scene as Record<string, unknown>).picks = await pickAt(b, picks);
   const retro = retroAt(aim, scene);
   if (retro) (scene as Record<string, unknown>).retroAtTarget = retro;
   const signInfo =
@@ -618,3 +629,29 @@ log("views_done", {
 });
 if (failed.length > 0) process.exitCode = 1;
 clearInterval(keepAlive);
+
+/** The meshes under each pixel (see --pick), nearest first, from the page's own camera. */
+async function pickAt(b: Awaited<ReturnType<typeof launch>>, at: Array<[number, number]>): Promise<unknown> {
+  return evaluateWithin(
+    b,
+    `(async () => {
+    const src = await (await fetch(new URL("src/main.ts", location.href))).text();
+    const i = src.indexOf("deps/three.js?v=");
+    const T = await import(new URL("node_modules/.vite/" + src.slice(i, i + 24), location.href).href);
+    const G = __game;
+    return ${JSON.stringify(at)}.map(([x, y]) => {
+      const rc = new T.Raycaster();
+      rc.layers.enableAll();
+      rc.setFromCamera(new T.Vector2((x / 1280) * 2 - 1, -((y / 720) * 2 - 1)), G.camera);
+      const hits = rc.intersectObjects(G.scene.children, true).slice(0, 6).map((hit) => {
+        const names = [];
+        for (let o = hit.object; o && names.length < 5; o = o.parent) names.push((o.name || o.type) + (o.visible ? "" : "(hidden)"));
+        const col = hit.object.geometry?.attributes?.color;
+        const colour = col && hit.face ? [col.getX(hit.face.a), col.getY(hit.face.a), col.getZ(hit.face.a)].map((v) => Math.round(v * 100) / 100) : null;
+        return { distance: Math.round(hit.distance * 100) / 100, names: names.join("<"), colour, instance: hit.instanceId ?? null, material: hit.object.material?.type ?? null };
+      });
+      return { x, y, hits };
+    });
+  })()`,
+  );
+}

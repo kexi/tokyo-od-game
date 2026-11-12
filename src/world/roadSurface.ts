@@ -11,6 +11,7 @@ import {
   type Matrix4,
   type Scene,
 } from "three";
+import { dropCut } from "./groundCuts";
 import {
   abs,
   attribute,
@@ -417,6 +418,8 @@ export class RoadSurface {
     const used = new Set<StreetMaterial>();
     for (const { geometry: g, material: mat, order } of parts) {
       const mesh = this.meshes.get(mat) ?? new Mesh(new BufferGeometry(), mat);
+      // Named for a pick of the view shooter (scripts/qa/views.ts --pick) to tell it from the kerbs.
+      mesh.name = "road-surface";
       mesh.geometry = updateRoadGeometry(mesh.geometry, g);
       mesh.position.set(0, 0, 0);
       mesh.quaternion.identity();
@@ -678,16 +681,4 @@ export class RoadSurface {
     b.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
     yield;
   }
-}
-
-/** The triangles of an index list whose middle is not cut away (`cut(x, z)`). */
-function dropCut(pos: readonly number[], idx: number[], cut: (x: number, z: number) => boolean): number[] {
-  const kept: number[] = [];
-  for (let t = 0; t + 2 < idx.length; t += 3) {
-    const [a, b, c] = [idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3];
-    const x = (pos[a] + pos[b] + pos[c]) / 3;
-    const z = (pos[a + 2] + pos[b + 2] + pos[c + 2]) / 3;
-    if (!cut(x, z)) kept.push(idx[t], idx[t + 1], idx[t + 2]);
-  }
-  return kept;
 }

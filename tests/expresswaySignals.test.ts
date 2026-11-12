@@ -104,7 +104,11 @@ const branches = graph.laneLinks.filter(
     l.kind !== "through" &&
     all.findIndex((o) => o.kind === l.kind && o.from === l.from && o.to === l.to) === i &&
     // 4848889 → 45177681 has no route on in the loaded section (its road on is not in the file).
-    graph.segments[l.from].line.xid !== "4848889:4",
+    // By run, not by chunk id: v2 (P2.7-5) wrote 4848889 in 4 chunks, so its last is :3, not :4.
+    !(
+      graph.segments[l.from].line.xid?.startsWith("4848889:") &&
+      graph.segments[l.to].line.xid?.startsWith("45177681:")
+    ),
 );
 
 describe("合図 (第53条) through every merge and diverge of the generated data", () => {

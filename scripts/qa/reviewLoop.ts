@@ -88,6 +88,8 @@ export type Round = {
   metrics: Metric[];
   /** The round's shoot was complete (run.json); unknown (undefined) counts as complete in tests. */
   isShootComplete?: boolean;
+  /** The shots this round took (its run.json); absent: the context's (the table's now). */
+  shots?: readonly string[];
 };
 
 /**
@@ -199,7 +201,7 @@ function step(state: State, r: Round, ctx: ReviewContext | undefined): RoundDiff
         metricProblems.push({ name, problem: "outside", value: m.value, min: m.min, max: m.max });
   }
   const covered = new Set(r.reviews.flatMap((v) => v.views));
-  const unreviewed = (ctx?.shots ?? []).filter((s) => !covered.has(s));
+  const unreviewed = (r.shots ?? ctx?.shots ?? []).filter((s) => !covered.has(s));
   const isShootComplete = r.isShootComplete ?? true;
   const newBlocking = fresh.filter((f) => BLOCKING.has(f.severity)).length;
   state.open = open;

@@ -39,6 +39,11 @@ export type GeoToLocal = {
   frame: LocalFrame;
   /** WGS84 ellipsoidal height of an orthometric (T.P.) one at a point. */
   ellipsoidal: Ellipsoidal;
+  /**
+   * The terrain's ellipsoidal height at a point (the DEM the ground is drawn from), where known: a
+   * cut's retaining walls reach it at their own positions (P2.7-5). Absent: the station's ground only.
+   */
+  groundAt?: (lat: number, lon: number) => number | null;
 };
 
 /** A cross-section of a deck in the local frame: the centre, its direction along the deck, the surface there. */

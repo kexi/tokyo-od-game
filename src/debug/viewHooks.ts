@@ -135,7 +135,17 @@ export type ViewHookDeps = {
   /** The objects of each kind a view may hide. */
   hideables: Record<HideKind, () => Object3D[]>;
   /** Whether the world around has been built: roads, buildings (PLATEAU tiles). */
-  loadState: () => { isRoadsLoading: boolean; hasRoads: boolean; buildingsProgress: number };
+  loadState: () => {
+    isRoadsLoading: boolean;
+    hasRoads: boolean;
+    buildingsProgress: number;
+    /** The near terrain's whole square round the car is drawn (absent: not asked). */
+    terrainComplete?: boolean;
+    /** Far skyline tiles still waiting to be prepared (absent: not asked). */
+    farPending?: number;
+    /** 0..1 progress of the far skyline's tile requests (absent: not asked). */
+    farProgress?: number;
+  };
 };
 
 const plain = (v: Vector3): Vec3 => ({ x: v.x, y: v.y, z: v.z });
@@ -159,6 +169,24 @@ function pick(list: ViewTarget[], index: number, what: string): Found {
 /** A reader's result as health() reports it. */
 function brief(r: { ok: true; value: { length: number } } | { ok: false; reason: string; detail: string }) {
   return r.ok ? { ok: true, count: r.value.length } : { ok: false, reason: r.reason, detail: r.detail };
+}
+
+/**
+ * Whether the world round the view has streamed in: roads, buildings, and (P2.7-5) the near
+ * terrain's whole square and the far skyline, loaded and prepared. Before those the first view of a
+ * load could have no buildings beside the deck; a shot was taken with far tiles still to prepare
+ * (the far ground was first blamed for 麻布台's band; it was the pavements, see groundCuts.CutRelay).
+ * Why the far progress too (PR #71 review): farPending counts only tiles already loaded.
+ */
+export function isWorldSettled(s: ReturnType<ViewHookDeps["loadState"]>): boolean {
+  return (
+    !s.isRoadsLoading &&
+    s.hasRoads &&
+    s.buildingsProgress >= 0.999 &&
+    (s.terrainComplete ?? true) &&
+    (s.farPending ?? 0) === 0 &&
+    (s.farProgress ?? 1) >= 0.999
+  );
 }
 
 export function createViewHooks(deps: ViewHookDeps) {
@@ -863,7 +891,7 @@ export function createViewHooks(deps: ViewHookDeps) {
   /** Whether the world around has finished streaming in (the runner waits for this, not a clock). */
   const settled = () => {
     const s = deps.loadState();
-    const isSettled = !s.isRoadsLoading && s.hasRoads && s.buildingsProgress >= 0.999;
+    const isSettled = isWorldSettled(s);
     return { isSettled, ...s, buildingsProgress: round(s.buildingsProgress, 3) };
   };
 

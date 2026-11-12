@@ -946,6 +946,12 @@ export type StreetLightDeps = {
   groundAt: (x: number, z: number) => number | null;
   /** False where a building stands over (x, z) (GSI 幅員 wider than the street). */
   isOpen: (x: number, z: number, groundY: number) => boolean;
+  /**
+   * True inside the terrain's cut-outs over a cut or a tunnel portal (groundCuts.ts, P9): the
+   * ground there is the box's or the walls', so a street lamp on the ground would stand inside the
+   * tunnel (P2.7-5: one stood in 麻布台's box at night). Absent: none.
+   */
+  isCut?: (x: number, z: number) => boolean;
   control: { approaches: Approach[]; state(ap: Approach): LightState };
   traffic: { forEachCar(visit: (object: Object3D, speed: number, kind: string | null) => void): void };
   /** The player's car: its tail lamps glint behind it while its lights are on. */
@@ -1019,6 +1025,27 @@ export class StreetLights {
 
   get count(): number {
     return this.lamps.length;
+  }
+
+  /**
+   * Hide every lamp inside a cut's hole now (a hole that arrived after the lamps: expressway.onBore),
+   * whatever its distance from the camera. Returns how many it hid.
+   */
+  hideInCuts(): number {
+    let hidden = 0;
+    this.lamps.forEach((lamp, i) => {
+      const isNewlyCut = !lamp.hidden && (this.deps.isCut?.(lamp.x, lamp.z) ?? false);
+      if (!isNewlyCut) return;
+      lamp.hidden = true;
+      this.place(lamp, i);
+      hidden++;
+    });
+    return hidden;
+  }
+
+  /** Lamps hidden (inside a building or a cut's hole), for tests and the console. */
+  get hiddenCount(): number {
+    return this.lamps.filter((l) => l.hidden).length;
   }
 
   update(dt: number, camera: Camera, env: EnvLike, now: number): void {
@@ -1105,10 +1132,12 @@ export class StreetLights {
     }
     const t0 = performance.now();
     const sites = yield* placeLampSteps(graph);
+    // A lamp in a cut's hole is hidden from the start, wherever the camera is (settle only looks
+    // within 220 m every 2 s: a view shot far off showed one standing in 麻布台's box, P2.7-5).
     this.lamps = sites.map((s) => ({
       ...s,
       ground: this.deps.groundAt(s.x, s.z),
-      hidden: false,
+      hidden: this.deps.isCut?.(s.x, s.z) ?? false,
       collider: null,
     }));
     const n = this.lamps.length;
@@ -1206,8 +1235,9 @@ export class StreetLights {
       if (lamp.hidden || Math.hypot(lamp.x - focus.x, lamp.z - focus.z) > 350) return;
       const g = this.deps.groundAt(lamp.x, lamp.z);
       if (g === null) return;
-      const isInside =
-        Math.hypot(lamp.x - focus.x, lamp.z - focus.z) < 220 && !this.deps.isOpen(lamp.x, lamp.z, g);
+      const isNear = Math.hypot(lamp.x - focus.x, lamp.z - focus.z) < 220;
+      const isInCut = this.deps.isCut?.(lamp.x, lamp.z) ?? false;
+      const isInside = isNear && (isInCut || !this.deps.isOpen(lamp.x, lamp.z, g));
       const hasMoved = lamp.ground === null || Math.abs(g - lamp.ground) > 0.05;
       if (!isInside && !hasMoved) return;
       lamp.ground = g;

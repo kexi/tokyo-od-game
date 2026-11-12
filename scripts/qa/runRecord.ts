@@ -40,3 +40,27 @@ export function nextRound(runs: ReadonlyMap<number, unknown>, expected: readonly
   const isLastComplete = isCompleteRun(runs.get(last), expected);
   return isLastComplete ? last + 1 : last;
 }
+
+/**
+ * The shot keys a round is checked against: those its own run.json took, else (no record, or one
+ * that does not parse) the table's now. Why not the table's now for every round: a view taken out
+ * of the table later (P2.7-5: daiba.day--seam-4848755-3) made the rounds that shot and reviewed it
+ * unreadable, and check-convergence stopped on them.
+ */
+export function roundShots(run: unknown, table: readonly string[]): readonly string[] {
+  const parsed = RunRecordSchema.safeParse(run);
+  return parsed.success ? parsed.data.shots : table;
+}
+
+/**
+ * How check-convergence reads a round: the shots it is checked against (`roundShots`: a view taken
+ * out later stays readable) and whether its shoot counts as complete, judged against the table's
+ * shots now. Why the table's now for that: a view added to the table and not yet shot let the round
+ * converge while views.ts would shoot it again under the same number (PR #71 review W4).
+ */
+export function roundRead(
+  run: unknown,
+  table: readonly string[],
+): { shots: readonly string[]; isShootComplete: boolean } {
+  return { shots: roundShots(run, table), isShootComplete: isCompleteRun(run, table) };
+}

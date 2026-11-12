@@ -33,6 +33,12 @@ export class GroundCuts implements GroundWater {
   private readonly versions = new Map<string, number>();
   private readonly cache = new Map<string, { version: number; data: Uint8Array }>();
   private readonly seen = new Set<string>();
+  /**
+   * Every hole in the order it came: `ringsLonLat` lists them so, and CutRelay takes the new ones
+   * from its end. Why not the z15 map's order: a later hole in an earlier key landed mid-list and
+   * the relay skipped it (PR #71 review W2).
+   */
+  private readonly arrivals: WaterPolygon[] = [];
 
   constructor(private readonly water: GroundWater | null) {}
 
@@ -43,6 +49,7 @@ export class GroundCuts implements GroundWater {
     const polys = boreHoles(chunk, (lon, lat) => [lonToTileX(lon, WATER_ZOOM), latToTileY(lat, WATER_ZOOM)]);
     const k = 2 ** (WATER_ZOOM - TERRAIN_ZOOM);
     for (const poly of polys) {
+      this.arrivals.push(poly);
       const ring = poly[0];
       let x0 = Infinity;
       let y0 = Infinity;
@@ -64,19 +71,14 @@ export class GroundCuts implements GroundWater {
     }
   }
 
-  /** Every hole as a lon/lat ring (the buildings leave out what stands in one). */
+  /** Every hole as a lon/lat ring, in the order they came (the buildings leave out what stands in one). */
   ringsLonLat(): Array<Array<[number, number]>> {
-    const seen = new Set<WaterPolygon>();
     const out: Array<Array<[number, number]>> = [];
-    for (const polys of this.holes.values()) {
-      for (const poly of polys) {
-        if (seen.has(poly)) continue;
-        seen.add(poly);
-        const ring: Array<[number, number]> = [];
-        for (let i = 0; i + 1 < poly[0].length; i += 2)
-          ring.push([tileXToLon(poly[0][i], WATER_ZOOM), tileYToLat(poly[0][i + 1], WATER_ZOOM)]);
-        out.push(ring);
-      }
+    for (const poly of this.arrivals) {
+      const ring: Array<[number, number]> = [];
+      for (let i = 0; i + 1 < poly[0].length; i += 2)
+        ring.push([tileXToLon(poly[0][i], WATER_ZOOM), tileYToLat(poly[0][i + 1], WATER_ZOOM)]);
+      out.push(ring);
     }
     return out;
   }
@@ -219,4 +221,65 @@ function boxOf(ring: readonly number[]): [number, number, number, number] {
     y1 = Math.max(y1, ring[i + 1]);
   }
   return [x0, y0, x1, y1];
+}
+
+/** The road triangles (indices into `pos`, x y z per vertex) left once those in a hole are dropped. */
+export function dropCut(
+  pos: readonly number[],
+  idx: number[],
+  cut: (x: number, z: number) => boolean,
+): number[] {
+  const kept: number[] = [];
+  for (let t = 0; t + 2 < idx.length; t += 3) {
+    const [a, b, c] = [idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3];
+    const x = (pos[a] + pos[b] + pos[c]) / 3;
+    const z = (pos[a + 2] + pos[b + 2] + pos[c + 2]) / 3;
+    // Any corner in the hole as well as the centre: a long road triangle with its centre outside
+    // reached into the cut as a wedge through the retaining wall (P2.7-5, 麻布台's south portal).
+    // Why not clip at the outline: the walls stand over the hole's edge, so a triangle short of it
+    // leaves no gap to see; a clip of every road triangle against every ring costs far more.
+    const isCut = cut(x, z) || cut(pos[a], pos[a + 2]) || cut(pos[b], pos[b + 2]) || cut(pos[c], pos[c + 2]);
+    if (!isCut) kept.push(idx[t], idx[t + 1], idx[t + 2]);
+  }
+  return kept;
+}
+
+type Ring = Array<[number, number]>;
+
+/**
+ * When the streets and pavements are laid again round new holes (main.ts): the holes not laid round
+ * yet, and those that came while the streets were loading, held until the load is done. Why held:
+ * the pavements of that load come on their own and may already be built without the hole, and the
+ * relay used to be skipped then and never run, so a PLATEAU 歩道 kept its kerb inside 麻布台's box
+ * as a pale slab (P2.7-5; the view shooter's --pick found an unnamed Mesh 4.5 m off, no vertex colour).
+ */
+export class CutRelay {
+  private relayed = 0;
+  private pending: Ring[] = [];
+
+  /**
+   * The holes to lay round now, given every hole so far, whether one of them lies in the area laid
+   * and whether the streets are loading; null when there is nothing to lay (or it waits for the load).
+   */
+  take(
+    holes: readonly Ring[],
+    isInArea: (rings: readonly Ring[]) => boolean,
+    isLoading: boolean,
+  ): Ring[] | null {
+    const fresh = [...this.pending, ...holes.slice(this.relayed)];
+    this.relayed = holes.length;
+    this.pending = [];
+    const isNothing = fresh.length === 0 || !isInArea(fresh);
+    if (isNothing) return null;
+    if (isLoading) {
+      this.pending = fresh;
+      return null;
+    }
+    return fresh;
+  }
+
+  /** Whether holes wait for the load to finish. */
+  get hasPending(): boolean {
+    return this.pending.length > 0;
+  }
 }

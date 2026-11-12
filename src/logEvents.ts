@@ -422,6 +422,29 @@ export const LOG_EVENTS = {
     lon: z.number(),
   }),
   /**
+   * The player's car put back by the game itself (main.ts respawnHere): fallen under the ground or
+   * adrift in the water (P2.7-5: a car on a deck over a river was put back at 47 km/h). `onDeck`
+   * whether the deck check had it on a deck then. A warning: something let the car fall or drift.
+   */
+  car_respawned: warning({
+    reason: z.enum(["underground", "adrift"]),
+    lat: z.number(),
+    lon: z.number(),
+    onDeck: z.boolean(),
+    kmh: z.number(),
+  }),
+  /**
+   * The car put back on request: the reset key or a retraining. Info, not a warning: nothing went
+   * wrong (PR #71 review). Same fields as car_respawned.
+   */
+  car_put_back: info({
+    reason: z.enum(["reset", "retrained"]),
+    lat: z.number(),
+    lon: z.number(),
+    onDeck: z.boolean(),
+    kmh: z.number(),
+  }),
+  /**
    * The car stood still on a deck for 3 s (main.ts noteDeckStall): held (`frozen`) or touching
    * something (`touching`: the chassis' overlaps, PLATEAU buildings and everything else).
    */
@@ -923,6 +946,7 @@ export const LOG_EVENTS = {
     writtenRuns: count,
     closedRuns: count,
     unconverged: count,
+    retried: count,
     bytes: count,
   }),
   /**
@@ -1025,6 +1049,8 @@ export const LOG_EVENTS = {
     iterations: count,
     qpMs: count,
     unconverged: count,
+    /** Solves solved again at a looser dual tolerance after a first try that did not converge. */
+    retried: count,
     durationS: z.number(),
   }),
   /** A run the compiler could not satisfy, or satisfied only by a fallback (allowed: in the allowlist). */

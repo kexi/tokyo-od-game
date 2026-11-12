@@ -171,6 +171,12 @@ export type XwSign = {
   girder?: { bottomM: number; depthM: number };
   /** 111-B: the side of the exit's lane it hangs over. */
   lane?: "left" | "right";
+  /**
+   * A gantry over a carriageway that shares one slab with the opposite one (decks `same`, P3.5's
+   * dividing wall at the middle of their overlap): that wall's lateral offset from the centre line
+   * (m, + left), where the median-side leg stands (P2.7-5). Absent: both legs on the 壁高欄.
+   */
+  divider?: number;
   ref: { kind: "exit" | "jct" | "entrance" | "phone" | "run"; node: number | null; beforeM: number };
 };
 
@@ -314,7 +320,13 @@ export type XwBuildRecord = {
   /** The vertical objective the decks were solved with (compile.ts Objective kind). */
   objective: "v1" | "v2";
   /** The joint vertical solves (no timings: the file stays byte-stable). */
-  solver: { components: number; solves: number; unconverged: number };
+  solver: {
+    components: number;
+    solves: number;
+    unconverged: number;
+    /** Solves solved again after a first try that did not converge (P2.7-5; absent when none). */
+    retried?: number;
+  };
   runs: XwRunSummary[];
   /** Runs of the range left out of the tiles, closed. */
   closed: XwClosed[];

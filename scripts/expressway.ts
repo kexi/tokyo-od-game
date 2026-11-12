@@ -24,14 +24,15 @@
 // --quiet-factor <k> the anchors' margin (assumptions.BLOCK_QUIET_FACTOR by default). The default,
 // --partition components, solves each component in one QP as before.
 // P2.7-3: --objective v2 aims the decks at the design ground line and charges grade changes in L1
-// (compile.ts Objective; measuring only, it needs --out), with --grade-change <w> (vertical.ts
-// W_GRADE_CHANGE), --reach <m> and --reach-below <m> (assumptions.DESIGN_GROUND_REACH) and
-// --target-scale <k> (W_TARGET × k). The default, --objective v1, is the objective as before.
+// (compile.ts Objective), with --grade-change <w> (vertical.ts W_GRADE_CHANGE), --reach <m> and
+// --reach-below <m> (assumptions.DESIGN_GROUND_REACH) and --target-scale <k> (W_TARGET × k).
+// P2.7-5 made v2 the default; --objective v1 (the objective before it) is for comparing and needs --out.
 // P2.7-4 (format 6): meta.json is the tiles' index; each tile carries its chunks, the summaries of
 // their runs and the entrances whose street end lies in it; report.json the build's record (runs,
 // diagnostics, closed runs, the solver, the blocks with the dataHash of their chunks). A diagnostic
 // is allowed by the rules (allowlist.ts) or by the ledger (ledger.json of the output folder, kept
 // across the rebuild, or --ledger <path>), which scripts/expresswayLedger.ts writes.
+import { shippedFolderRefusal } from "./expresswayGuards";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -190,20 +191,13 @@ if (!isBelowMode) throw new Error(`unknown --below ${belowArg} (pruned, all)`);
 const below = belowArg as "pruned" | "all";
 const reportPath = arg("report");
 const baselinePath = arg("baseline");
-// --below all moves the default decks (P2.7-1): measuring only, never into the shipped folder.
-const isUnprunedDefault = below === "all" && arg("out") === undefined;
-if (isUnprunedDefault)
-  throw new Error("--below all is for measuring: give --out (just measure-expressway-area)");
 const partitionArg = arg("partition") ?? "components";
 const isPartitionMode = partitionArg === "components" || partitionArg === "blocks";
 if (!isPartitionMode) throw new Error(`unknown --partition ${partitionArg} (components, blocks)`);
 const partitionMode = partitionArg as "components" | "blocks";
 const quietFactor = Number(arg("quiet-factor") ?? BLOCK_QUIET_FACTOR.value);
-// Blocks move the decks (P2.7-2 measures by how much): never into the shipped folder.
-const isBlocksDefault = partitionMode === "blocks" && arg("out") === undefined;
-if (isBlocksDefault)
-  throw new Error("--partition blocks is for measuring: give --out (just measure-expressway-area)");
-const objectiveArg = arg("objective") ?? "v1";
+// P2.7-5: v2 is the default (the decks do not follow the DEM's bumps); v1 stays to compare against.
+const objectiveArg = arg("objective") ?? "v2";
 const isObjectiveKind = objectiveArg === "v1" || objectiveArg === "v2";
 if (!isObjectiveKind) throw new Error(`unknown --objective ${objectiveArg} (v1, v2)`);
 const V2_FLAGS = ["grade-change", "reach", "reach-below", "target-scale"];
@@ -231,10 +225,16 @@ const objective: Objective =
         },
         targetScale: v2Number("target-scale", OBJECTIVE_V2.targetScale),
       };
-// v2 moves the decks (P2.7-3 measures by how much; S5 turns it on): never into the shipped folder.
-const isV2Default = objective.kind === "v2" && arg("out") === undefined;
-if (isV2Default)
-  throw new Error("--objective v2 is for measuring: give --out (just measure-expressway-area)");
+// --below all (P2.7-1), blocks (P2.7-2), v1 and a sweep of the v2 weights move the decks: measuring
+// only, never into the shipped folder.
+const refusal = shippedFolderRefusal({
+  hasOut: arg("out") !== undefined,
+  isBelowAll: below === "all",
+  isBlocks: partitionMode === "blocks",
+  isV1: objective.kind === "v1",
+  v2Flags,
+});
+if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
 let stageStarted = performance.now();
 /** Time since the last stage ended, booked to `name` (the scorecard's stagesMs). */
@@ -559,6 +559,8 @@ const record: XwBuildRecord = {
     components: result.stats.components,
     solves: result.stats.solves,
     unconverged: result.stats.unconverged,
+    // Only when a solve was retried: a build with none keeps report.json byte for byte as before.
+    ...(result.stats.retried > 0 ? { retried: result.stats.retried } : {}),
   },
   runs: result.runs,
   closed: result.closed,
@@ -697,6 +699,7 @@ if (reportPath) {
       solves: result.stats.solves,
       iterations: result.stats.iterations,
       unconverged: result.stats.unconverged,
+      retried: result.stats.retried,
       qpMs: result.stats.qpMs,
     },
     partition: {
@@ -726,6 +729,7 @@ if (reportPath) {
     writtenRuns: result.runs.length,
     closedRuns: result.closed.length,
     unconverged: result.stats.unconverged,
+    retried: result.stats.retried,
     bytes: Buffer.byteLength(reportText),
   });
 }

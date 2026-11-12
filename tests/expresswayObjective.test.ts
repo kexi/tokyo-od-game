@@ -457,7 +457,11 @@ describe("I1: v1 は変わらない（P2.7-3）", () => {
   });
 });
 
-/** See「I1」above: printed by the same build on origin/main 19968b3. */
-const I1_SHA256 = "623eae639d8b14d10b56b4b91f3921780e2a0cc3caec6f7ef1a8cef0c049e635";
-const I1_TUNNEL_SHA256 = "50b330fffdc9f61ba2c3e2415e4087ea687abda8fd86ad5783796a25d91ba144";
-const I1_BLOCKS_SHA256 = "63f84f6b8b13ea47a175e50233ce1febf19dba9c6e1db54b587c7f5c39c14240";
+/**
+ * See「I1」above: printed by the same build on origin/main 19968b3 (623eae63…, 50b330ff…, 63f84f6b…),
+ * reprinted at P2.7-5 4.2, which writes the stations differently (MIN_STATION_GAP_M, STATION_DIGITS)
+ * and leaves the solution as it was (the heights move under 1 mm).
+ */
+const I1_SHA256 = "29bded64d36c7148a6a9f095514b8f37475fa4434c19d0b4b4b9d3c54ec3705d";
+const I1_TUNNEL_SHA256 = "ba6990d379e7f3cace245377f0c0b0366b1bf793dd470021ac36d7b96068f6c8";
+const I1_BLOCKS_SHA256 = "584ff72aa77cbc214724f8efb17d307ea6f7479266bb65027449830f7b2ccd06";

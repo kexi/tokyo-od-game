@@ -76,6 +76,21 @@ export const RAMP_RADIUS_REASON =
  */
 export const CASE_MARGIN = { stations: 2, dzM: 0.05, edgeM: 5, radiusM: 0.5 } as const;
 
+/**
+ * high-deck (P2.7-5 4.3): a viaduct, off a structure's deck and in a stretch nothing forces
+ * (report.ts forcingOf), standing more than HIGH_DECK_ABOVE_M over the ground for HIGH_DECK_MIN_M
+ * or more. Objective v2 crosses a valley at one grade instead of following the DEM down and up, so
+ * such decks are right where a real valley, river or cutting lies (a review confirms it by a view).
+ * Why not a ceiling over the ground for every deck: a deck across a valley is high and right
+ * (203832852 / 1467911980 over 渋谷's valley are nearer the real road under v2).
+ */
+export const HIGH_DECK_ABOVE_M = 20;
+export const HIGH_DECK_MIN_M = 50;
+/** How far a high-deck case may grow past its cap and keep the decision: its height +0.5 m, its length +20 m. */
+export const HIGH_DECK_MARGIN = { heightM: 0.5, spanM: 20 } as const;
+/** The ratchet's step for the km of viaduct over 15 and 20 m (budget.heightKm): a cap rounded up to it. */
+export const HEIGHT_KM_STEP = 0.5;
+
 /** Stations and largest |Δz| from a deck_overlap detail ("with b: N stations, |Δz| lo–hi m, …"). */
 export function overlapSize(detail: string): { stations: number; maxDzM: number } | null {
   const m = /: (\d+) stations, \|Δz\| [\d.]+–([\d.]+) m/.exec(detail);
