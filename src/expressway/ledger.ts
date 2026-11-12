@@ -14,6 +14,7 @@ import {
   CUT_STRETCH_REASON,
   EMBANKMENT_STRETCH_REASON,
   THIN_GIRDER_REASON,
+  GROUND_CROSSING_REASON,
   GROUND_STRETCH_REASON,
 } from "./allowlist";
 import { GIRDER_MIN, HEIGHT_STRUCTURES } from "./assumptions";
@@ -67,6 +68,7 @@ export const CASE_KINDS = [
   "thin-girder",
   "low-viaduct",
   "ground-stretch",
+  "ground-crossing",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
@@ -79,6 +81,7 @@ export const AUTO_KINDS: readonly CaseKind[] = [
   "embankment-stretch",
   "thin-girder",
   "ground-stretch",
+  "ground-crossing",
 ];
 
 export const STATUSES = ["new", "accepted", "open", "wontfix", "gone"] as const;
@@ -102,6 +105,9 @@ export const MEASURES = [
   "spanM",
   "depthM",
   "girderM",
+  "innerP95M",
+  "innerMedianM",
+  "approachMaxM",
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
@@ -465,6 +471,9 @@ export function seamCases(
   return out;
 }
 
+/** A run at grade's inside passes by rule with its median off the target line by this at most (S6 PR 7a, 4.3). */
+export const GROUND_INNER_MEDIAN_M = 0.5;
+
 /** Whether a rule accepts the case without a review (the kind's condition holds). */
 export function isAutoAccepted(c: Pick<FoundCase, "kind" | "measured">): boolean {
   if (c.kind === "nose") return true;
@@ -484,10 +493,26 @@ export function isAutoAccepted(c: Pick<FoundCase, "kind" | "measured">): boolean
     );
   if (c.kind === "thin-girder")
     return c.measured.girderM !== undefined && c.measured.girderM >= GIRDER_MIN.value - 1e-9;
-  if (c.kind === "ground-stretch")
-    return (
-      c.measured.heightM !== undefined && c.measured.heightM <= HEIGHT_STRUCTURES.value.ground.bandM + 1e-9
-    );
+  // At the run's end node (1 m or less from either end) a street meets the road where its ramp ends:
+  // the junction with the street network, no crossing to carry (S6 PR 7a, 4.7).
+  if (c.kind === "ground-crossing") {
+    const { s, lengthM } = c.measured;
+    const isMeasured = s !== undefined && lengthM !== undefined;
+    return isMeasured && (s <= 1 + 1e-9 || lengthM - s <= 1 + 1e-9);
+  }
+  // S6 PR 7a (4.3): measured from the target line, the inside within the band at its p95 and its
+  // median within GROUND_INNER_MEDIAN_M, the approaches within the approach cap. A run with no inside
+  // (all approach) is judged by its approaches alone.
+  if (c.kind === "ground-stretch") {
+    const { innerP95M, innerMedianM, approachMaxM } = c.measured;
+    const isMeasured = approachMaxM !== undefined;
+    if (!isMeasured) return false;
+    const ground = HEIGHT_STRUCTURES.value.ground;
+    const isInsideIn =
+      (innerP95M === undefined || innerP95M <= ground.bandM + 1e-9) &&
+      (innerMedianM === undefined || Math.abs(innerMedianM) <= GROUND_INNER_MEDIAN_M + 1e-9);
+    return isInsideIn && approachMaxM <= ground.approachMaxM + 1e-9;
+  }
   return false;
 }
 
@@ -500,6 +525,7 @@ export function ruleReason(kind: CaseKind): string | null {
   if (kind === "embankment-stretch") return EMBANKMENT_STRETCH_REASON;
   if (kind === "thin-girder") return THIN_GIRDER_REASON;
   if (kind === "ground-stretch") return GROUND_STRETCH_REASON;
+  if (kind === "ground-crossing") return GROUND_CROSSING_REASON;
   return null;
 }
 
@@ -518,7 +544,13 @@ export function withinCap(measured: Measured, cap: Measured): boolean {
     if (m === undefined) return false;
     const isCount = k === "stations" || k === "probes";
     if (isCount && m > c + stations) return false;
-    const isMiss = k === "maxDzM" || k === "stepM" || k === "insideM" || k === "alongStepM";
+    const isMiss =
+      k === "maxDzM" ||
+      k === "stepM" ||
+      k === "insideM" ||
+      k === "alongStepM" ||
+      k === "innerP95M" ||
+      k === "approachMaxM";
     if (isMiss && m > c + dzM + 1e-9) return false;
     if (k === "s0" && m < c - edgeM) return false;
     if (k === "s1" && m > c + edgeM) return false;
@@ -529,6 +561,7 @@ export function withinCap(measured: Measured, cap: Measured): boolean {
     if (k === "spanM" && m > c + HIGH_DECK_MARGIN.spanM + 1e-9) return false;
     if (k === "depthM" && m > c + dzM + 1e-9) return false;
     if (k === "girderM" && m < c - dzM - 1e-9) return false;
+    if (k === "innerMedianM" && Math.abs(m) > Math.abs(c) + dzM + 1e-9) return false;
   }
   return true;
 }
@@ -555,7 +588,8 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   "embankment-stretch": ["lengthM", "depthM", "s0", "s1"],
   "thin-girder": ["girderM"],
   "low-viaduct": ["lengthM", "s0", "s1"],
-  "ground-stretch": ["heightM"],
+  "ground-stretch": ["innerP95M", "innerMedianM", "approachMaxM"],
+  "ground-crossing": ["s"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */

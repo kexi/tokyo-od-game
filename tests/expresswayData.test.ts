@@ -5,6 +5,7 @@ import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import {
   checkChunkJoin,
   checkClearance,
+  checkClearanceWindows,
   checkCover,
   climbingEnds,
   checkGrade,
@@ -12,8 +13,10 @@ import {
   checkJunction,
   checkPlan,
   checkSuperelevation,
+  checkSeamHeading,
   checkSurface,
   checkVerticalCurves,
+  isTunnelFreeRun,
 } from "../src/expressway/checks";
 import { BLOCKED_STRIDE, STATION_STRIDE } from "../src/expressway/format";
 import { tileKey } from "../src/expressway/geo";
@@ -25,6 +28,12 @@ import { DEFAULT_RANGES } from "../src/expressway/ranges";
 import { OPERATOR_WORDS } from "../src/expressway/network";
 import { TUNNEL_DEPTH_M } from "../src/expressway/below";
 import { surfaceAt } from "../src/expressway/profile";
+import { groundEndsOf, reportedRampFloors } from "../src/expressway/violations";
+import {
+  checkHeightStructures,
+  EMBANKMENT_REACH_M,
+  lowViaductStretches,
+} from "../src/expressway/heightStructures";
 
 // Every generated tile under public/data/expressway (scripts/expressway.ts, just make-expressway-data),
 // checked against knowledge/road-redesign-plan.md 4.4 T1〜T7 and T10, and the conditions for shipping the whole ward area
@@ -41,10 +50,16 @@ const runs = files.runById;
 /** The default build (just make-expressway-data): the expectations about its own runs hold only there. */
 const isDefaultBuild = meta.ranges.map((r) => r.name).join(",") === DEFAULT_RANGES.join(",");
 const isWholeArea = meta.ranges.length === 0;
+/** A height build (P2.7-6, meta's features) and one with runs at grade (S6 PR 2): the checks as violationsOf's. */
+const isHeightBuild = (meta.features ?? []).includes("height-structures");
+const isGroundBuild = files.runs.some((r) => r.ground === true);
+/** The ramps' floors as violationsOf holds them: the ledger's, and in a height build the reported ones too. */
+const reportedFloor = reportedRampFloors(isHeightBuild ? files.diagnostics : []);
+const rampFloor = (run: string) => ledgerFloor(run) ?? reportedFloor.get(run);
 /** The ledger's verdict on what the rules do not take (the build's `allowed` recomputed). */
 const verdict = ledgerVerdict(caseContextOf(files.runs, record.untied, chunks), files.ledger);
 /** The tightest radius the ledger accepts on a ramp (its ramp-radius case), for T6. */
-const rampFloor = rampFloorOf(files.ledger);
+const ledgerFloor = rampFloorOf(files.ledger);
 /** The ledger's overlap case of a pair (any overlap kind), by "a|b" (a < b). */
 const OVERLAP_KINDS = ["nose", "changeover", "parallel-ramp", "touchdown", "other"];
 const overlapCase = (pair: string) =>
@@ -244,8 +259,13 @@ describe("生成済みの高速道路タイル", () => {
       expect(c.cross).toEqual([]);
       expect(c.blocked).toEqual([]);
     }
-    // No viaduct chunk carries portals (the field is left out there).
-    expect(chunks.filter((c) => c.structure === "viaduct" && c.portals !== undefined)).toEqual([]);
+    // No viaduct chunk carries a tunnel's portals (the field is left out there). A height build's
+    // viaduct chunk may start at an embankment or a cut it comes up from (PR 1's portals, review W7).
+    const isOwnPortal = (p: { from: string; to: string }) =>
+      isHeightBuild && (p.from === "embankment" || p.from === "cut");
+    expect(
+      chunks.filter((c) => c.structure === "viaduct" && (c.portals ?? []).some((p) => !isOwnPortal(p))),
+    ).toEqual([]);
     // Deep in the tunnel the road is more than the box and cover under the ground.
     const depths = list.flatMap((c) => {
       const out: number[] = [];
@@ -307,7 +327,7 @@ describe("生成済みの高速道路タイル", () => {
   });
 
   it("records the roads at ground level a low deck does not clear (blocked), one per crossing_over_or_at_grade of a run in the files", () => {
-    const blocked: string[] = [];
+    const blocked: Array<{ run: string; s: number }> = [];
     for (const c of chunks) {
       for (let i = 0; i < c.blocked.length; i += BLOCKED_STRIDE) {
         const [s, top] = c.blocked.slice(i, i + BLOCKED_STRIDE);
@@ -315,18 +335,32 @@ describe("生成済みの高速道路タイル", () => {
         // crossing): the lowest surface within 40 m along (the widest window the compiler takes).
         const list = byRun.get(c.run)!;
         let low = Infinity;
+        let isUnderOpenGround = false;
         for (let sv = s - 40; sv <= s + 40; sv += 1) {
           const holder = list.find((k) => sv >= k.st[0] && sv <= k.st[k.st.length - STATION_STRIDE]);
           if (holder) low = Math.min(low, surfaceAt(holder.st, sv).z);
+          if (holder && holder.structure !== "viaduct") isUnderOpenGround = true;
         }
-        expect(low - top).toBeLessThan(4.5 + c.girder);
-        blocked.push(`${c.run}@${Math.round(s)}`);
+        // A height build blocks a road under an embankment or a cut (or across a run at grade) whatever
+        // the height: no deck spans it (S6 PR 7a review W7).
+        const isByStructure = isHeightBuild && isUnderOpenGround;
+        if (!isByStructure) expect(low - top).toBeLessThan(4.5 + c.girder);
+        blocked.push({ run: c.run, s });
       }
     }
     const reported = record.diagnostics
       .filter((d) => d.kind === "crossing_over_or_at_grade" && runs.has(d.run))
-      .map((d) => `${d.run}@${/ at (\d+) m/.exec(d.detail)![1]}`);
-    expect(blocked.sort()).toEqual(reported.sort());
+      .map((d) => ({ run: d.run, s: Number(/ at (\d+) m/.exec(d.detail)![1]) }));
+    // One diagnostic per blocked road; the diagnostic's s is in whole metres (toFixed), so within 1 m
+    // (27155261's road at 127.5 m read 127 there and 128 rounded).
+    const unmatched = blocked.filter((b) => {
+      const k = reported.findIndex((r) => r.run === b.run && Math.abs(r.s - b.s) <= 1);
+      if (k < 0) return true;
+      reported.splice(k, 1);
+      return false;
+    });
+    expect(unmatched).toEqual([]);
+    expect(reported).toEqual([]);
   });
 
   it("tells a portal (the road goes on into a tunnel or cut) from a touchdown at grade", () => {
@@ -380,8 +414,13 @@ describe.each(DISTRICT_LIST)("生成済みの高速道路タイル（地区 %s�
 
   it("T3: chunks join exactly within a run, and runs join their parent at a junction in height, grade and bank", () => {
     const problems: string[] = [];
-    for (const list of dRuns.map((r) => byRun.get(r.id)!))
-      for (let i = 1; i < list.length; i++) problems.push(...checkChunkJoin(list[i - 1], list[i]));
+    // As violationsOf (T3): a height build holds a ramp's heading to the ledger's floor (review W9 of
+    // PR 1), and with runs at grade every seam's heading is read across the runs (S6 PR 7a review W7).
+    for (const r of dRuns) {
+      const list = byRun.get(r.id)!;
+      const floor = isHeightBuild ? rampFloor(r.id) : undefined;
+      for (let i = 1; i < list.length; i++) problems.push(...checkChunkJoin(list[i - 1], list[i], floor));
+    }
     for (const r of dRuns) {
       const list = byRun.get(r.id)!;
       for (const [atStart, end] of [
@@ -394,6 +433,11 @@ describe.each(DISTRICT_LIST)("生成済みの高速道路タイル（地区 %s�
         problems.push(
           ...checkJunction(atStart ? list[0] : list[list.length - 1], atStart, end.grade!, parent),
         );
+        const isSeamChecked = isGroundBuild && end.kind === "seam";
+        if (isSeamChecked)
+          problems.push(
+            ...checkSeamHeading(atStart ? list[0] : list[list.length - 1], atStart, end.parentS!, parent),
+          );
       }
     }
     expect(problems).toEqual([]);
@@ -440,8 +484,15 @@ describe.each(DISTRICT_LIST)("生成済みの高速道路タイル（地区 %s�
       const list = byRun.get(r.id)!;
       const first = list[0].st;
       const last = list[list.length - 1].st;
-      const ends = { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
-      for (const c of list) problems.push(...checkCover(c, r, ends));
+      // As violationsOf (T12, review W7): a height build starts the descent at the portals' ground and
+      // keeps no ceiling where the tunnel is too short for one; a run at grade's cuts are T13's.
+      const ends = isHeightBuild
+        ? { z0: first[5], z1: last[last.length - STATION_STRIDE + 5] }
+        : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
+      const isJudged = !(isHeightBuild && r.ground === true);
+      if (!isJudged) continue;
+      const isTunnelFree = isHeightBuild && isTunnelFreeRun(list, r, ends);
+      for (const c of list) problems.push(...checkCover(c, r, ends, isTunnelFree));
     }
     expect(problems).toEqual([]);
   });
@@ -477,5 +528,65 @@ describe.runIf(isWholeArea)("全域の出荷条件（--range all の出力）", 
       return !isAccepted;
     });
     expect(unallowed).toEqual([]);
+  });
+});
+
+// A height build's own checks (S6 PR 7a, 4.7): only where meta's features name "height-structures"
+// (the default data does not yet; XW_DATA_DIR at a measurement folder runs them).
+describe.runIf(isHeightBuild)("高さで決めた構造（height-structures のある生成だけ）", () => {
+  it("T13: every run's chunks are of their structure by the thresholds alone (the checker independent of the compiler's classes)", () => {
+    const found = files.runs.flatMap((r) =>
+      checkHeightStructures(
+        byRun.get(r.id) ?? [],
+        r.below === true,
+        r.ground === true,
+        groundEndsOf(r, runs),
+      ),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("a run with a tunnel chunk says it is a below run (its summary's below), and no other run has one", () => {
+    const wrong = files.runs.filter((r) => {
+      const hasTunnel = (byRun.get(r.id) ?? []).some((c) => c.structure === "tunnel");
+      return hasTunnel && r.below !== true;
+    });
+    expect(wrong.map((r) => r.id)).toEqual([]);
+  });
+
+  it("an embankment or cut has no piers and crosses nothing; a viaduct low over the ground stays EMBANKMENT_REACH_M up (low-viaduct)", () => {
+    const bad = chunks.filter(
+      (c) =>
+        (c.structure === "embankment" || c.structure === "cut") && (c.piers.length > 0 || c.cross.length > 0),
+    );
+    expect(bad.map((c) => c.id)).toEqual([]);
+    const sunk = files.runs.flatMap((r) =>
+      lowViaductStretches(byRun.get(r.id) ?? [], r.below === true).filter(
+        (h) => h.lowM < EMBANKMENT_REACH_M - 0.02,
+      ),
+    );
+    expect(sunk).toEqual([]);
+  });
+
+  it("blocked roads: under an embankment or cut, or with a crossing_over_or_at_grade of their run; every kept crossing's window is cleared on the girders there (T4, R6 (d))", () => {
+    const reported = new Set(
+      files.diagnostics.filter((d) => d.kind === "crossing_over_or_at_grade").map((d) => d.run),
+    );
+    const unexplained = chunks.filter((c) => c.blocked.length > 0 && !reported.has(c.run));
+    expect(unexplained.map((c) => c.id)).toEqual([]);
+    const short = files.runs.flatMap((r) => checkClearanceWindows(byRun.get(r.id) ?? []));
+    expect(short).toEqual([]);
+  });
+
+  it("the main lines at grade leave no hole: every run's end hangs from a written run or is a ground end, portal or open end", () => {
+    const written = new Set(files.runs.map((r) => r.id));
+    const hanging = files.runs
+      .filter((r) => r.ground === true && r.cls !== "ramp")
+      .flatMap((r) =>
+        [r.start, r.end].filter(
+          (e) => (e.kind === "seam" || e.kind === "junction") && !written.has(e.parent!),
+        ),
+      );
+    expect(hanging).toEqual([]);
   });
 });

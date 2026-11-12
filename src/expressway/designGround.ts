@@ -104,3 +104,110 @@ export function movingMedian(values: ArrayLike<number>, reach: number, step = 5)
   }
   return out;
 }
+
+/** Points closer than this along the run give no slope to the repeated median (half the 5 m grid). */
+const SLOPE_MIN_DX_M = 2.5;
+
+/** The median of a list (sorted in place). */
+function medianOf(list: number[]): number {
+  list.sort((a, b) => a - b);
+  const m = list.length >> 1;
+  return list.length % 2 === 1 ? list[m] : (list[m - 1] + list[m]) / 2;
+}
+
+/**
+ * Siegel's repeated-median line through (xs, ys): the slope the median over i of the median over j of
+ * the pairs' slopes, the intercept the median of what is left. Why not least squares or Theil–Sen
+ * (S6 PR 7a review C1): a 3 m mound 40 m wide near an end is a quarter of a 150 m window, which moved
+ * the least-squares line by over a metre; the repeated median holds until half the points are off.
+ */
+export function repeatedMedianLine(xs: readonly number[], ys: readonly number[]): { a: number; b: number } {
+  const n = xs.length;
+  const isPoint = n < 2;
+  if (isPoint) return { a: ys[0] ?? 0, b: 0 };
+  const perPoint: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const slopes: number[] = [];
+    for (let j = 0; j < n; j++) {
+      const dx = xs[j] - xs[i];
+      // Two points under SLOPE_MIN_DX_M apart give no slope (review C2): a partner's ground pooled at
+      // micrometres from this run's own station made a slope of ±10⁵ from each pair, all of one sign
+      // where one run stood higher, and tilted the line (0.0016 against 0.0029 on the same points).
+      const isApart = Math.abs(dx) >= SLOPE_MIN_DX_M;
+      if (isApart) slopes.push((ys[j] - ys[i]) / dx);
+    }
+    if (slopes.length > 0) perPoint.push(medianOf(slopes));
+  }
+  const b = perPoint.length > 0 ? medianOf(perPoint) : 0;
+  const a = medianOf(ys.map((y, i) => y - b * xs[i]));
+  return { a, b };
+}
+
+/**
+ * The target of a run at grade (S6 PR 7a, N1): at each grid station, the repeated-median line through
+ * the ground under the run's own centre line within ±reach of it (the window cut short at the run's
+ * ends), taken at the station: the median of the ground less the window's robust slope. Inside the
+ * run on level ground that is the moving median; on a slope it does not lag, and at an end the window
+ * is one-sided (reach long) with no change of method. Why not the moving median at the ends (PR 2
+ * re-review N1): on a 3 % slope it lags by half the window's rise (3.75 m at a seam downhill). Why a
+ * robust line and not least squares nor a narrowed centred window (review C1): both took a 3 m × 40 m
+ * bump 25–60 m from the end by up to 2.3 m; the repeated median holds until half the window is off.
+ * Why the line inside too and not the median there: one rule has no seam at reach, and on ±0.4 m
+ * waves of 44 m over a 2 % slope its steps between grid stations were 0.16 m against the median's
+ * 0.38 m (0.08 against 0.18 m off the slope). Why the run's own ground alone (review W1, the
+ * coordinator's 案 1): beyond a run at grade the chain is a viaduct or a below run, whose ground is not
+ * the road's (920238350 sank 6 m to a viaduct's ground). Pure.
+ */
+export function groundTarget(
+  values: ArrayLike<number>,
+  stations: ArrayLike<number>,
+  reach: number,
+  /**
+   * The ground of a run at grade sharing a surface with this one (S6 PR 7a review C2), at the stations
+   * of this run they stand beside (`s`, this run's distance), pooled into the windows: the two decks of
+   * one slab take one line. Ascending in s.
+   */
+  partner: { s: ArrayLike<number>; z: ArrayLike<number> } = { s: [], z: [] },
+): Float64Array {
+  const n = values.length;
+  const m = partner.s.length;
+  const out = new Float64Array(n);
+  let lo = 0;
+  let hi = 0;
+  let plo = 0;
+  let phi = -1;
+  const S = stations[n - 1];
+  for (let k = 0; k < n; k++) {
+    const s = stations[k];
+    while (lo < n && stations[lo] < s - reach - 1e-9) lo++;
+    while (hi + 1 < n && stations[hi + 1] <= s + reach + 1e-9) hi++;
+    // The partner's samples within this run's window (the window cut at this run's ends).
+    const from = Math.max(0, s - reach);
+    const to = Math.min(S, s + reach);
+    // Within half a grid step past the window: the partner's end station may stand a hair beyond this
+    // run's (its length measured along its own line).
+    while (plo < m && partner.s[plo] < from - SLOPE_MIN_DX_M) plo++;
+    while (phi + 1 < m && partner.s[phi + 1] <= to + SLOPE_MIN_DX_M) phi++;
+    const ys: number[] = [];
+    const xs: number[] = [];
+    for (let j = lo; j <= hi; j++) {
+      // The grid's last station may repeat its length (gridStations): one sample, not two.
+      const isRepeat = j > 0 && stations[j] - stations[j - 1] < 1e-6;
+      if (isRepeat) continue;
+      xs.push(stations[j] - s);
+      ys.push(values[j]);
+    }
+    for (let j = plo; j <= phi; j++) {
+      xs.push(partner.s[j] - s);
+      ys.push(partner.z[j]);
+    }
+    // At the station x = 0, so the line's value there is its intercept. Held within the window's
+    // ground (review C2): on a short run the slope of 20 rough samples carried the line out past
+    // them (276 stations of ship, up to 2.17 m at 372483373).
+    const line = repeatedMedianLine(xs, ys).a;
+    const low = Math.min(...ys);
+    const high = Math.max(...ys);
+    out[k] = Math.max(low, Math.min(high, line));
+  }
+  return out;
+}

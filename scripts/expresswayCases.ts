@@ -5,6 +5,7 @@
 // each with its district (src/expressway/districts.ts) and its blocks' dataHash (report.json); and the
 // height budget's (P2.7-5): the high-deck stretches and the km over 15 and 20 m (src/expressway/highDeck.ts).
 import RAPIER from "@dimforge/rapier3d-compat";
+import { parseAtGradeCrossing } from "../src/expressway/allowlist.ts";
 import { assignDistricts, type District, districtRunsOf } from "../src/expressway/districts.ts";
 import type { XwFiles } from "../src/expressway/files.ts";
 import {
@@ -60,10 +61,11 @@ function highDeckCases(byRun: ReadonlyMap<string, XwFiles["chunks"]>): FoundCase
  * (numbered along the run, as high-deck) and each viaduct chunk on a girder thinner than GIRDER_DEPTH.
  * A build by the tags has none.
  */
-function structureCases(
+export function structureCases(
   byRun: ReadonlyMap<string, XwFiles["chunks"]>,
   runs: XwFiles["runs"],
   isHeight: boolean,
+  diagnostics: XwFiles["diagnostics"] = [],
 ): FoundCase[] {
   // Only a height build's summaries say which runs are below runs (`below`); otherwise by the chunks.
   const below = new Set(runs.filter((r) => r.below === true).map((r) => r.id));
@@ -78,19 +80,43 @@ function structureCases(
     // the ground, by rule within its band (review W6: as the viaducts' stretches 97 were listed).
     const isAtGrade = atGrade.has(run);
     if (isAtGrade) {
-      let off = 0;
-      for (const c of list)
-        for (let i = 0; i < c.st.length; i += STATION_STRIDE)
-          off = Math.max(off, Math.abs(c.st[i + 3] - c.st[i + 5]));
       const last = list[list.length - 1];
+      const lengthM = last.st[last.st.length - STATION_STRIDE];
+      // Measured from the target line (S6 PR 7a, 4.3: the run's summary's groundFit, the compiler's).
+      const fit = runs.find((r) => r.id === run)?.groundFit;
       out.push({
         key: `ground-stretch:${run}`,
         kind: "ground-stretch",
         run,
         with: null,
         chunk: list[0].id,
-        measured: { lengthM: last.st[last.st.length - STATION_STRIDE], heightM: Math.round(off * 100) / 100 },
+        measured: {
+          lengthM,
+          ...(fit?.innerP95M != null ? { innerP95M: fit.innerP95M } : {}),
+          ...(fit?.innerMedianM != null ? { innerMedianM: fit.innerMedianM } : {}),
+          ...(fit ? { approachMaxM: fit.approachMaxM } : {}),
+        },
       });
+      // Each road or railway crossing it at grade (S6 PR 7a, 4.7), keyed by the run and the other's id.
+      for (const d of diagnostics) {
+        const isCrossing = d.run === run && d.kind === "crossing_over_or_at_grade";
+        const m = isCrossing ? parseAtGradeCrossing(d.detail) : null;
+        if (m === null) continue;
+        const s = m.s;
+        out.push({
+          key: `ground-crossing:${run}|${m.kind} ${m.id}`,
+          kind: "ground-crossing",
+          run,
+          with: null,
+          chunk: list.find((c) => c.st[c.st.length - STATION_STRIDE] >= s)?.id ?? last.id,
+          measured: { s, lengthM },
+        });
+      }
+      // A viaduct chunk on a thinner girder is listed as on any run (review: 2 runs at grade in ship
+      // have viaduct chunks, where the band let the road stand a viaduct's height over the ground).
+      // Why no cut-, embankment-stretch or low-viaduct: the run's height against its line is the
+      // ground-stretch case above, which judges the whole run.
+      out.push(...thinGirderCases(run, list));
       continue;
     }
     const numbered = { cut: 0, embankment: 0 };
@@ -117,21 +143,25 @@ function structureCases(
         measured: { s0: h.s0, s1: h.s1, lengthM: h.lengthM, heightM: h.lowM },
       });
     });
-    for (const c of list) {
-      const isThin =
-        c.structure === "viaduct" && c.over === null && c.girder > 0 && c.girder < GIRDER_DEPTH.value;
-      if (!isThin) continue;
-      out.push({
-        key: `thin-girder:${c.id}`,
-        kind: "thin-girder",
-        run,
-        with: null,
-        chunk: c.id,
-        measured: { s0: c.st[0], s1: c.st[c.st.length - STATION_STRIDE], girderM: c.girder },
-      });
-    }
+    out.push(...thinGirderCases(run, list));
   }
   return out;
+}
+
+/** A run's viaduct chunks on a girder thinner than GIRDER_DEPTH, one thin-girder case each. */
+function thinGirderCases(run: string, list: XwFiles["chunks"]): FoundCase[] {
+  return list
+    .filter(
+      (c) => c.structure === "viaduct" && c.over === null && c.girder > 0 && c.girder < GIRDER_DEPTH.value,
+    )
+    .map((c) => ({
+      key: `thin-girder:${c.id}`,
+      kind: "thin-girder" as const,
+      run,
+      with: null,
+      chunk: c.id,
+      measured: { s0: c.st[0], s1: c.st[c.st.length - STATION_STRIDE], girderM: c.girder },
+    }));
 }
 
 /**
@@ -171,7 +201,12 @@ export async function countCases(files: XwFiles): Promise<Counted> {
     ...fromDiagnostics,
     ...fromDecks,
     ...highDeckCases(files.byRun),
-    ...structureCases(files.byRun, files.runs, (files.meta.features ?? []).includes("height-structures")),
+    ...structureCases(
+      files.byRun,
+      files.runs,
+      (files.meta.features ?? []).includes("height-structures"),
+      files.diagnostics,
+    ),
   ].map((c) => {
     const runs = c.with === null ? [c.run] : [c.run, c.with];
     return { ...c, district: caseDistrict(runs, districts, files), ...blocksOf(files.record.blocks, runs) };

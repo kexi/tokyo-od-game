@@ -212,7 +212,16 @@ const quietFactor = Number(arg("quiet-factor") ?? BLOCK_QUIET_FACTOR.value);
 const objectiveArg = arg("objective") ?? "v2";
 const isObjectiveKind = objectiveArg === "v1" || objectiveArg === "v2";
 if (!isObjectiveKind) throw new Error(`unknown --objective ${objectiveArg} (v1, v2)`);
-const V2_FLAGS = ["grade-change", "reach", "reach-below", "target-scale"];
+// S6 PR 7a: --ground-target-scale <k> (the runs at grade's target weight × k) and --ground-band <m> (their
+// band) sweep N2 like the v2 weights: measuring only.
+const V2_FLAGS = [
+  "grade-change",
+  "reach",
+  "reach-below",
+  "target-scale",
+  "ground-target-scale",
+  "ground-band",
+];
 const v2Flags = V2_FLAGS.filter((name) => arg(name) !== undefined);
 const isV1WithV2Flags = objectiveArg === "v1" && v2Flags.length > 0;
 if (isV1WithV2Flags) throw new Error(`--${v2Flags[0]} is for --objective v2`);
@@ -429,6 +438,10 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   touchdown: touchdownMode,
   noseSurface: noseMode,
   holdMains: holdMode,
+  ...(arg("ground-target-scale") !== undefined
+    ? { groundTargetScale: v2Number("ground-target-scale", 1) }
+    : {}),
+  ...(arg("ground-band") !== undefined ? { groundBandM: v2Number("ground-band", 1.5) } : {}),
   ...(isCompanions ? { companionWeight } : {}),
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 };
@@ -670,6 +683,7 @@ const record: XwBuildRecord = {
     // Only when a solve was retried: a build with none keeps report.json byte for byte as before.
     ...(result.stats.retried > 0 ? { retried: result.stats.retried } : {}),
   },
+  ...(plan.ground === "compile" ? { ground: groundSettings() } : {}),
   runs: result.runs,
   closed: result.closed,
   diagnostics: result.diagnostics.filter((d) => plan.needed.includes(d.run)),
@@ -743,45 +757,116 @@ function zOf(run: string, s: number): number | null {
   return c ? surfaceAt(c.st, s).z : null;
 }
 
-/** The reach of the band's centre about an open end (compile.ts setupGround's movingMedian, ±150 m). */
-const OPEN_END_REACH_M = 150;
-
 /**
  * The ends of the runs at grade that a viaduct or below run seams onto (`open`, S6 PR 3): how far the
  * road stands off the band's centre there, past the band, and the worst.
  */
 function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Report["ground"]>["openEnds"]> {
   const band = HEIGHT_STRUCTURES.value.ground.bandM;
+  // S6 PR 7a (4.3): the ends past the approach cap (the ledger's rule), by what is beyond them.
+  const cap = HEIGHT_STRUCTURES.value.ground.approachMaxM;
+  const byCause = { climbToViaduct: 0, downToPortal: 0, overPortal: 0, childLow: 0, childUnwritten: 0 };
   const offs: number[] = [];
   for (const r of groundRuns) {
     const list = result.chunks.filter((c) => c.run === r.id).sort((a, b) => a.k - b.k);
     const isEmpty = list.length === 0;
     if (isEmpty) continue;
-    // Off the band's centre (the ground's moving median, ±150 m as setupGround's), not the DEM at the
-    // end alone (PR 3 review): the stations' ground within that reach of the end.
-    const stations: Array<{ s: number; z: number; g: number }> = [];
-    for (const c of list)
-      for (let i = 0; i < c.st.length; i += STATION_STRIDE)
-        stations.push({ s: c.st[i], z: c.st[i + 3], g: c.st[i + 5] });
-    const L = stations[stations.length - 1].s;
-    const offAt = (atStart: boolean) => {
-      const end = atStart ? stations[0] : stations[stations.length - 1];
-      const near = stations
-        .filter((p) => (atStart ? p.s : L - p.s) <= OPEN_END_REACH_M)
-        .map((p) => p.g)
-        .sort((a, b) => a - b);
-      const m = near.length >> 1;
-      const median = near.length % 2 === 1 ? near[m] : (near[m - 1] + near[m]) / 2;
-      return Math.abs(end.z - median);
-    };
-    if (r.start.kind === "open") offs.push(offAt(true));
-    if (r.end.kind === "open") offs.push(offAt(false));
+    // Off the band's centre: the target line at the end (compile.ts groundTargetOf, S6 PR 7a), not the
+    // DEM at the end alone (PR 3 review).
+    const line = result.groundTargets.get(r.id);
+    if (!line) continue;
+    const first = list[0].st;
+    const last = list[list.length - 1].st;
+    const signedAt = (atStart: boolean) =>
+      atStart
+        ? first[3] - line.target[0]
+        : last[last.length - STATION_STRIDE + 3] - line.target[line.target.length - 1];
+    for (const atStart of [true, false]) {
+      const e = atStart ? r.start : r.end;
+      if (e.kind !== "open") continue;
+      const off = signedAt(atStart);
+      offs.push(Math.abs(off));
+      const isOver = Math.abs(off) > cap + 1e-9;
+      if (!isOver) continue;
+      // The run seamed onto this end (the open end's child), as the ledger's approach reads it.
+      const at = atStart ? 0 : r.lengthM;
+      const child = result.runs.find((x) =>
+        [x.start, x.end].some(
+          (q) => q.kind === "seam" && q.parent === r.id && Math.abs((q.parentS ?? -1) - at) <= 1,
+        ),
+      );
+      const isAbove = off > 0;
+      const cause =
+        child === undefined
+          ? "childUnwritten"
+          : child.below === true
+            ? isAbove
+              ? "overPortal"
+              : "downToPortal"
+            : isAbove
+              ? "climbToViaduct"
+              : "childLow";
+      byCause[cause]++;
+    }
   }
   return {
     count: offs.length,
     overBand: offs.filter((d) => d > band + 1e-9).length,
     maxM: Math.round(Math.max(0, ...offs) * 100) / 100,
+    overApproach: offs.filter((d) => d > cap + 1e-9).length,
+    byCause,
   };
+}
+
+/** Off each end this far, a run at grade's inside (S6 PR 7a, N2: the scorecard's ground.inner). */
+const INNER_OFF_END_M = 100;
+
+/**
+ * The scorecard's `ground.inner` (S6 PR 7a, N2): the runs at grade with INNER_OFF_END_M or more inside
+ * after that much off each end; per run the median of (road − target line), and of (road − the
+ * stations' ground) for `vsGround`.
+ */
+function innerOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Report["ground"]>["inner"]> {
+  const tally = (pick: (z: number, target: number, ground: number) => number) => {
+    const medians: number[] = [];
+    const all: number[] = [];
+    let km = 0;
+    for (const r of groundRuns) {
+      const line = result.groundTargets.get(r.id);
+      if (!line) continue;
+      const L = line.stations[line.stations.length - 1];
+      const isLong = L - 2 * INNER_OFF_END_M >= INNER_OFF_END_M;
+      if (!isLong) continue;
+      const offs: number[] = [];
+      line.stations.forEach((s, k) => {
+        const isInside = s >= INNER_OFF_END_M && L - s >= INNER_OFF_END_M;
+        const z = isInside ? zOf(r.id, s) : null;
+        if (z !== null) offs.push(pick(z, line.target[k], line.ground[k]));
+      });
+      if (offs.length === 0) continue;
+      offs.sort((a, b) => a - b);
+      medians.push(offs[offs.length >> 1]);
+      all.push(...offs);
+      km += (L - 2 * INNER_OFF_END_M) / 1000;
+    }
+    all.sort((a, b) => a - b);
+    const q = (p: number) =>
+      all.length === 0 ? 0 : all[Math.min(all.length - 1, Math.floor(p * all.length))];
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const over = (m: number) => medians.filter((v) => Math.abs(v) > m);
+    return {
+      runs: medians.length,
+      km: Math.round(km * 1000) / 1000,
+      over03: over(0.3).length,
+      over075: over(0.75).length,
+      above: over(0.3).filter((v) => v > 0).length,
+      below: over(0.3).filter((v) => v < 0).length,
+      p5M: r2(q(0.05)),
+      p50M: r2(q(0.5)),
+      p95M: r2(q(0.95)),
+    };
+  };
+  return { ...tally((z, t) => z - t), vsGround: tally((z, _t, g) => z - g) };
 }
 
 /** The companions' station pairs on runs written both (the ones the scorecard measures). */
@@ -817,6 +902,14 @@ function companionsSummary(): NonNullable<Report["companions"]> {
   };
   const all = companionPairsWritten();
   return { weight, ...tally(all), held: tally(all.filter((c) => c.held !== false)) };
+}
+
+/** The runs at grade's target weight and band as built (S6 PR 7a, the record's and scorecard's). */
+function groundSettings(): { targetScale: number; bandM: number } {
+  return {
+    targetScale: plan.groundTargetScale ?? HEIGHT_STRUCTURES.value.ground.targetScale,
+    bandM: plan.groundBandM ?? HEIGHT_STRUCTURES.value.ground.bandM,
+  };
 }
 
 /**
@@ -865,12 +958,14 @@ function groundSummary(): NonNullable<Report["ground"]> {
     crossingsBlocked: blocked.length,
     crossingsBlockedMiddle: blocked.filter(isMiddle).length,
     betweenTunnels: [...(plan.betweenTunnels ?? [])].sort(),
+    ...(plan.ground === "compile" ? { settings: groundSettings() } : {}),
     offGround: {
       p95M: Math.round(p95 * 100) / 100,
       maxM: Math.round((off[off.length - 1] ?? 0) * 100) / 100,
       over3mRuns: over3,
     },
     openEnds: openEndsOf(groundRuns),
+    inner: innerOf(groundRuns),
     tracking: {
       runs: tracked.runs,
       km: tracked.km,
@@ -972,6 +1067,7 @@ if (reportPath) {
     districts: plannedDistricts(),
     ledgerSummary: ledger?.summary ?? null,
     heightStructures: structuresMode === "height",
+    ...(result.heightRules ? { heightRules: result.heightRules } : {}),
     // With the structures by height, skip or compile, so the holes compare; tags builds as before.
     ground: structuresMode === "height" ? groundSummary() : null,
     companions: plan.companions ? companionsSummary() : null,
