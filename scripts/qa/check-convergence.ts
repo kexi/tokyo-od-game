@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { log } from "../../src/log";
 import { diffRecord, judge, parseRound, type ReviewContext } from "./reviewLoop.ts";
 import { parseViewTable, shotKeys } from "./viewTable.ts";
-import { isCompleteRun, roundShots } from "./runRecord.ts";
+import { roundRead } from "./runRecord.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const [table, ...rest] = process.argv.slice(2);
@@ -38,10 +38,10 @@ const rounds = readdirSync(reviewsDir)
     const n = Number(m[1]);
     const runFile = join(viewsDir, `round-${m[1]}`, "run.json");
     const run: unknown = existsSync(runFile) ? JSON.parse(readFileSync(runFile, "utf8")) : null;
-    // Each round against the shots it took (a view taken out of the table later stays readable).
-    const shots = roundShots(run, ctx.shots);
+    // Each round against the shots it took, complete only if it took every shot of the table now.
+    const { shots, isShootComplete } = roundRead(run, ctx.shots);
     const round = parseRound(n, readFileSync(join(reviewsDir, m[0]), "utf8"), { ...ctx, shots });
-    return { ...round, shots, isShootComplete: isCompleteRun(run, shots) };
+    return { ...round, shots, isShootComplete };
   });
 const verdict = judge(rounds, ctx);
 for (const d of verdict.diffs) {

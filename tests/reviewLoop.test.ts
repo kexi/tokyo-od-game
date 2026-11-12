@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { judge, parseRound, type ReviewContext, type Round } from "../scripts/qa/reviewLoop";
-import { isCompleteRun, nextRound, roundShots } from "../scripts/qa/runRecord";
+import { isCompleteRun, nextRound, roundRead, roundShots } from "../scripts/qa/runRecord";
 
 // Two shots in the table; every round's reviewer covers both unless a test says otherwise.
 const SHOTS = ["s--a", "s--b"];
@@ -253,6 +253,21 @@ describe("a round read against the shots it took (P2.7-5: a view taken out of th
     );
     expect(verdict.diffs[0].unreviewed).toEqual([]);
     expect(verdict.diffs[0].isShootComplete).toBe(true);
+  });
+
+  it("does not count a round whose shoot lacks a view added to the table since, though it reads its review (PR #71 W4)", () => {
+    // The table has s--a and s--b now; the shoot took s--a only (s--b added after it).
+    const partial = run({ shots: ["s--a"] });
+    const read = roundRead(partial, SHOTS);
+    expect(read.shots).toEqual(["s--a"]);
+    expect(read.isShootComplete).toBe(false);
+    expect(nextRound(new Map([[1, partial]]), SHOTS)).toBe(1);
+    const r1 = parseRound(1, review(1, ["s--a"]), { ...CTX, shots: read.shots });
+    const verdict = judge([{ ...r1, ...read }], CTX);
+    expect(verdict.diffs[0].isQuiet).toBe(false);
+    expect(verdict.verdict).not.toBe("converged");
+    // A view taken out since (the shoot took more than the table has now) still counts.
+    expect(roundRead(run({ shots: [...SHOTS, "s--old"] }), SHOTS).isShootComplete).toBe(true);
   });
 
   it("falls back to the table's shots without a record", () => {

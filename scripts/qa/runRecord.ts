@@ -51,3 +51,16 @@ export function roundShots(run: unknown, table: readonly string[]): readonly str
   const parsed = RunRecordSchema.safeParse(run);
   return parsed.success ? parsed.data.shots : table;
 }
+
+/**
+ * How check-convergence reads a round: the shots it is checked against (`roundShots`: a view taken
+ * out later stays readable) and whether its shoot counts as complete, judged against the table's
+ * shots now. Why the table's now for that: a view added to the table and not yet shot let the round
+ * converge while views.ts would shoot it again under the same number (PR #71 review W4).
+ */
+export function roundRead(
+  run: unknown,
+  table: readonly string[],
+): { shots: readonly string[]; isShootComplete: boolean } {
+  return { shots: roundShots(run, table), isShootComplete: isCompleteRun(run, table) };
+}
