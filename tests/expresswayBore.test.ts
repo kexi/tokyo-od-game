@@ -9,7 +9,7 @@ import { LocalFrame } from "../src/geo/frame";
 import { latToTileY, lonToTileX } from "../src/geo/tiles";
 import { createDeckBody, deckArraySteps, type GeoToLocal, tunnelPoint } from "../src/world/expresswayDeck";
 import { BORE_FACES, boreHoles, boreLoop } from "../src/world/expresswayBore";
-import { GroundCuts } from "../src/world/groundCuts";
+import { dropCut, GroundCuts } from "../src/world/groundCuts";
 
 beforeAll(() => RAPIER.init());
 
@@ -108,6 +108,22 @@ describe("トンネルの断面（expresswayBore.ts、P9）", () => {
       expect(loop[2][0]).toBe(HW);
     }
     expect(carriagewayWidth(chunk) / 2).toBe(HW);
+  });
+
+  it("raises each cut wall to the ground at its own side where that is higher than over the centre (P2.7-5)", () => {
+    const at = (u: number, v: number) => [u, v, 0];
+    const above = CUT_WALL.value.above;
+    const top = (loop: number[][], side: 1 | -1) =>
+      Math.max(...loop.filter((p) => Math.sign(p[0]) === side).map((p) => p[1]));
+    // The centre's ground 5 m over the road; the street on the right 5.6 m, the left lower (4 m).
+    const loop = boreLoop("cut", HW, at, () => 0, 5, { left: 4, right: 5.6 });
+    expect(top(loop, -1)).toBeCloseTo(5.6 + above, 9);
+    // Never lower than over the centre: the lower side keeps the centre's height.
+    expect(top(loop, 1)).toBeCloseTo(5 + above, 9);
+    // Without the sides, both from the centre as before.
+    const plain = boreLoop("cut", HW, at, () => 0, 5);
+    expect(top(plain, -1)).toBeCloseTo(5 + above, 9);
+    expect(top(plain, 1)).toBeCloseTo(5 + above, 9);
   });
 
   it("the collider has the floor at the road (T11, ≤ 1 cm), the ceiling at the inner height and the walls past the walkways", () => {
@@ -258,5 +274,14 @@ describe("トンネルの中の判定（tunnelPoint、P9）", () => {
     // 3 m left of the centre: still inside (walls at 5 m), at the same distance along.
     const [lon, lat] = plane.toLonLat(145, 3);
     expect(tunnelPoint(chunk, lat, lon, ROAD + N + 1.5, ellipsoidal)).toBeCloseTo(45, 1);
+  });
+});
+
+describe("一般道の路面を穴で切る（roadSurface.ts dropCut、P2.7-5）", () => {
+  it("drops a road triangle with any corner in the hole, not only its centre (the wedge through the wall)", () => {
+    // The hole: x > 10. A long triangle reaching 2 m into it with its centre outside, one wholly out.
+    const pos = [0, 0, 0, 12, 0, 1, 0, 0, 2, -5, 0, 0, -1, 0, 0, -5, 0, 1];
+    const kept = dropCut(pos, [0, 1, 2, 3, 4, 5], (x) => x > 10);
+    expect(kept).toEqual([3, 4, 5]);
   });
 });

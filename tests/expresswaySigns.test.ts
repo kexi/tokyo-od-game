@@ -33,6 +33,7 @@ import { BOARD_RANGES } from "../src/signs/expresswaySignStandards";
 import { enlargementFor } from "../src/signs/schema";
 import { resolveMount } from "../src/signs/mount";
 import { boardSizeM, deckMount } from "../src/signs/deckMount";
+import { MEMBER_SIZES } from "../src/signs/mountAssumptions";
 import { rankBoards } from "../src/world/boardPriority";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -168,12 +169,79 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
       if (sign.mount === "gantry")
         for (const foot of mount.feet) {
           const lateral = dm.u - foot.x;
+          // The median side's leg of a carriageway sharing a slab with the opposite one stands on
+          // the dividing wall (P2.7-5), not on a 壁高欄 of its own (there is none there).
+          const isOnDivider = sign.divider !== undefined && Math.sign(lateral) === Math.sign(sign.divider);
+          if (isOnDivider) {
+            expect(Math.abs(lateral - sign.divider!), `${sign.id}@${chunk.id}:${sign.s}`).toBeLessThanOrEqual(
+              PARAPET_WIDTH.value / 2,
+            );
+            continue;
+          }
           expect(Math.abs(lateral)).toBeGreaterThan(hw);
           expect(Math.abs(lateral)).toBeLessThanOrEqual(hw + PARAPET_WIDTH.value);
         }
       if (sign.mount === "barrier-mount")
         for (const f of mount.faces) expect(f.x + f.width / 2).toBeLessThanOrEqual(1e-6);
     }
+  });
+
+  it("stands a gantry's median leg in the middle of the overlap with the opposite carriageway, never inside it (P2.7-5)", () => {
+    let seen = 0;
+    for (const { chunk, sign } of signs) {
+      if (sign.mount !== "gantry") continue;
+      const partners = chunk.decks.filter((d) => d.relation === "same" && sign.s >= d.s0 && sign.s <= d.s1);
+      if (partners.length === 0) continue;
+      const here = frameAt(chunk.st, sign.s);
+      const plane = planeAt(here.lon, here.lat);
+      const a = frameAt(chunk.st, Math.max(chunk.st[0], sign.s - 2));
+      const b = frameAt(chunk.st, Math.min(chunk.st[chunk.st.length - STATION_STRIDE], sign.s + 2));
+      const [ax, ay] = plane.toXY(a.lon, a.lat);
+      const [bx, by] = plane.toXY(b.lon, b.lat);
+      const len = Math.hypot(bx - ax, by - ay);
+      const [lx, ly] = [-(by - ay) / len, (bx - ax) / len];
+      const hw = carriagewayWidth({ ...chunk, median: 0 }) / 2;
+      const dm = deckMount(chunk, sign, [sizeOf(sign)]);
+      for (const p of partners) {
+        // The partner's centre line nearest the sign, and its direction.
+        let best = { d: Infinity, along: 0, hw: 0, cx: 0, cy: 0 };
+        for (const oc of chunks.filter((c) => c.run === p.with))
+          for (let i = 0; i + STATION_STRIDE < oc.st.length; i += STATION_STRIDE) {
+            const j = i + STATION_STRIDE;
+            const [px, py] = plane.toXY(oc.st[i + 1], oc.st[i + 2]);
+            const [qx, qy] = plane.toXY(oc.st[j + 1], oc.st[j + 2]);
+            const l2 = (qx - px) ** 2 + (qy - py) ** 2;
+            const t = l2 > 0 ? Math.min(1, Math.max(0, (-px * (qx - px) - py * (qy - py)) / l2)) : 0;
+            const [cx, cy] = [px + (qx - px) * t, py + (qy - py) * t];
+            const d = Math.hypot(cx, cy);
+            if (d >= best.d) continue;
+            const l = Math.sqrt(l2) || 1;
+            const along = (((qx - px) / l) * (bx - ax) + ((qy - py) / l) * (by - ay)) / len;
+            best = { d, along, hw: carriagewayWidth({ ...oc, median: 0 }) / 2, cx, cy };
+          }
+        const isOpposite = best.along < 0;
+        const partnerSide = lx * best.cx + ly * best.cy;
+        const isWide = hw + best.hw + PARAPET_WIDTH.value - Math.abs(partnerSide) >= 0;
+        if (!isOpposite || !isWide) continue;
+        expect(sign.divider, `${sign.id}@${chunk.id}:${sign.s} with ${p.with}`).toBeDefined();
+        const mount = resolveMount(dm.placement);
+        for (const foot of mount.feet) {
+          const lateral = dm.u - foot.x;
+          const isMedianSide = Math.sign(lateral) === Math.sign(partnerSide);
+          if (!isMedianSide) continue;
+          const [fx, fy] = [lx * lateral, ly * lateral];
+          const toPartner = Math.hypot(fx - best.cx, fy - best.cy);
+          // In the middle of the overlap: as far into the partner's carriageway as into its own.
+          expect(
+            Math.abs(Math.abs(lateral) - hw - (toPartner - best.hw)),
+            `${sign.id}@${chunk.id}:${sign.s} leg ${lateral.toFixed(2)} m, ${toPartner.toFixed(2)} m from ${p.with}`,
+          ).toBeLessThanOrEqual(0.3);
+          seen++;
+        }
+      }
+    }
+    // The six gantries round 浜崎橋 of round-01 at least.
+    expect(seen).toBeGreaterThanOrEqual(6);
   });
 
   it("leaves room between a gantry's top and any deck over it (measured from the stations)", () => {
@@ -220,7 +288,16 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
       const hw = carriagewayWidth({ ...chunk, median: 0 }) / 2;
       const isLeft = sign.lane === "left";
       const fromEdge = (isLeft ? chunk.shoulderL : chunk.shoulderR) + chunk.laneWidth / 2;
-      expect(Math.abs(lateral), `${chunk.id}:${sign.s}`).toBeCloseTo(Math.abs(hw - fromEdge), 6);
+      // Where the median leg stands on the dividing wall on the lane's side (P2.7-5), the board
+      // keeps clear of it: as near the lane's centre as the leg lets it (resolveGantry's rule).
+      const isTowardDivider = sign.divider !== undefined && Math.sign(sign.divider) === (isLeft ? 1 : -1);
+      const byLeg = isTowardDivider
+        ? Math.abs(sign.divider!) - MEMBER_SIZES.value.gantryLegRadius - sizeOf(sign).width / 2
+        : Infinity;
+      expect(Math.abs(lateral), `${chunk.id}:${sign.s}`).toBeCloseTo(
+        Math.min(Math.abs(hw - fromEdge), byLeg),
+        6,
+      );
     }
   });
 

@@ -55,3 +55,38 @@ it("keeps drawing at night while the lamp list is being replaced between frames"
     world.free();
   }
 });
+
+it("hides the lamps inside a cut's or a portal's hole wherever the camera is, at build and when a hole comes later (P2.7-5)", () => {
+  const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+  let holeEast = false;
+  const lights = new StreetLights(new Scene(), world, {
+    groundAt: () => 0,
+    isOpen: () => true,
+    isCut: (x) => holeEast && x > 0,
+    control: { approaches: [], state: () => "green" },
+    traffic: { forEachCar: () => {} },
+    player: { object: new Object3D(), headlights: [] },
+  });
+  const graph = new RoadGraph(
+    [{ coords: [139.759, 35.68, 139.761, 35.68], width: 9, kind: "local", oneway: 0 }],
+    new LocalFrame(35.68, 139.76, 40),
+  );
+  try {
+    // The hole arrives after the lamps: hideInCuts takes the east ones, with no camera near.
+    lights.rebuild(graph);
+    expect(lights.count).toBeGreaterThan(1);
+    expect(lights.hiddenCount).toBe(0);
+    holeEast = true;
+    const hidden = lights.hideInCuts();
+    expect(hidden).toBeGreaterThan(0);
+    expect(lights.hiddenCount).toBe(hidden);
+    expect(lights.hiddenCount).toBeLessThan(lights.count);
+    expect(lights.hideInCuts()).toBe(0);
+    // The hole already there: the same lamps are hidden as they are built.
+    lights.rebuild(graph);
+    expect(lights.hiddenCount).toBe(hidden);
+  } finally {
+    lights.rebuild(null);
+    world.free();
+  }
+});

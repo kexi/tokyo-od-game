@@ -179,6 +179,7 @@ export class Terrain {
   update(lat: number, lon: number): void {
     const cx = Math.floor(lonToTileX(lon, TERRAIN_ZOOM));
     const cy = Math.floor(latToTileY(lat, TERRAIN_ZOOM));
+    this.centre = { x: cx, y: cy };
 
     const wanted: Array<{ x: number; y: number; ring: number }> = [];
     for (let dy = -RENDER_RADIUS; dy <= RENDER_RADIUS; dy++) {
@@ -230,6 +231,26 @@ export class Terrain {
     this.square = builtSquare(cx, cy, RENDER_RADIUS, (x, y) => this.chunks.has(`${x}/${y}`));
     this.showSquare(this.square);
     this.far.update(lat, lon, this.square);
+  }
+
+  /** The z15 chunk the last update centred on. */
+  private centre: { x: number; y: number } | null = null;
+
+  /**
+   * Whether the drawn square is the whole RENDER_RADIUS around the last centre: until it is, the far
+   * ground shows through the near terrain's place (and through a cut's hole, which the far ground
+   * is not cut by: P2.7-5's band in 麻布台's box, shot before the chunks round the camera came in).
+   */
+  isSquareComplete(): boolean {
+    const c = this.centre;
+    const q = this.square;
+    if (!c || !q) return false;
+    return (
+      q.x0 <= c.x - RENDER_RADIUS &&
+      q.x1 >= c.x + RENDER_RADIUS + 1 &&
+      q.y0 <= c.y - RENDER_RADIUS &&
+      q.y1 >= c.y + RENDER_RADIUS + 1
+    );
   }
 
   /** The square of z15 chunks drawn around the player (the far ground leaves it out), or null. */

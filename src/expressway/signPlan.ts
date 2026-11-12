@@ -260,6 +260,8 @@ class Planner {
       };
       if (above) sign.girder = above;
       if (lane) sign.lane = lane;
+      const divider = above ? null : this.dividerAt(run, s);
+      if (divider !== null) sign.divider = divider;
       // Under a deck only a 112-B hangs on its girder, and only when the board then clears 4.7 m
       // (resolveMount on the board's size: the height of a layout does not depend on the font).
       const fits =
@@ -588,6 +590,67 @@ class Planner {
    * (girder-mount). Geometry, not the compiler's `decks`: a deck crossing over at an angle has no
    * `decks` stretch on the run under it (G6 review W5).
    */
+  /**
+   * Where the dividing wall stands (m from the centre line, + left) when the run shares one slab
+   * with an opposite carriageway at s (decks `same`): the middle of the two carriageways' overlap,
+   * as expresswayMerge.ts puts the wall (P3.5). Null where there is no such partner.
+   */
+  private dividerAt(run: Run, s: number): number | null {
+    const c = chunkAt(run, s);
+    const partners = c.decks
+      .filter((d) => d.relation === "same" && s >= d.s0 && s <= d.s1)
+      .map((d) => d.with);
+    if (partners.length === 0) return null;
+    const here = frameAt(c.st, s);
+    const plane = planeAt(here.lon, here.lat);
+    const ahead = frameAt(c.st, Math.min(s + 2, c.st[c.st.length - STATION_STRIDE]));
+    const behind = frameAt(c.st, Math.max(s - 2, c.st[0]));
+    const [ax, ay] = plane.toXY(behind.lon, behind.lat);
+    const [bx, by] = plane.toXY(ahead.lon, ahead.lat);
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 1e-6) return null;
+    const fx = (bx - ax) / len;
+    const fy = (by - ay) / len;
+    const hw = carriagewayWidth({ ...c, median: 0 }) / 2;
+    for (const id of [...partners].sort()) {
+      const other = this.runs.get(id);
+      if (!other) continue;
+      let best: { d: number; along: number; side: number; hw: number } | null = null;
+      for (const oc of other.chunks)
+        for (let i = 0; i + STATION_STRIDE < oc.st.length; i += STATION_STRIDE) {
+          const j = i + STATION_STRIDE;
+          const [px, py] = plane.toXY(oc.st[i + 1], oc.st[i + 2]);
+          const [qx, qy] = plane.toXY(oc.st[j + 1], oc.st[j + 2]);
+          const l2 = (qx - px) ** 2 + (qy - py) ** 2;
+          const t = l2 > 0 ? Math.min(1, Math.max(0, (-px * (qx - px) - py * (qy - py)) / l2)) : 0;
+          const cx = px + (qx - px) * t;
+          const cy = py + (qy - py) * t;
+          const d = Math.hypot(cx, cy);
+          const isCloser = best === null || d < best.d;
+          if (!isCloser) continue;
+          const l = Math.sqrt(l2) || 1;
+          best = {
+            d,
+            along: ((qx - px) / l) * fx + ((qy - py) / l) * fy,
+            side: -fy * cx + fx * cy,
+            hw: carriagewayWidth({ ...oc, median: 0 }) / 2,
+          };
+        }
+      const isOpposite = best !== null && best.along < 0;
+      if (!isOpposite) continue;
+      // As expresswayMerge.ts: the decks' outer faces (parapets included) overlap by a wall's
+      // width or more, and the wall is the middle of that overlap.
+      const pw = PARAPET_WIDTH.value;
+      const far = Math.abs(best!.side);
+      const footOverlap = hw + pw - (far - best!.hw - pw);
+      const isWide = footOverlap >= pw;
+      if (!isWide) continue;
+      const middle = (hw + pw + (far - best!.hw - pw)) / 2;
+      return roundTo(Math.sign(best!.side) * middle, 3);
+    }
+    return null;
+  }
+
   private deckAbove(run: Run, s: number): { bottomM: number; depthM: number } | null {
     const c = chunkAt(run, s);
     const here = frameAt(c.st, s);

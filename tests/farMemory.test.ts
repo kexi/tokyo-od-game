@@ -134,6 +134,20 @@ describe("the far skyline's memory", () => {
     expect(sharedDisposals).toBe(0);
   });
 
+  it("hands each far mesh to the decks' cut with its matrix to the tileset's ECEF (P2.7-5: a far roof over 24402611:26)", () => {
+    const tile = fakeTile();
+    const mesh = tile.children[0] as Mesh;
+    const seen: Array<{ geometry: unknown; elements: number[] }> = [];
+    prepareFarTile(tile, {
+      cut: () => undefined,
+      cutDecks: (geometry, toEcef) => seen.push({ geometry, elements: [...toEcef.elements] }),
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0].geometry).toBe(mesh.geometry);
+    expect(seen[0].elements).toEqual([...mesh.matrixWorld.elements]);
+    mesh.geometry.dispose();
+  });
+
   it("has no plugin that disposes the shown material, and a bounded LRU", () => {
     const tiles = createFarTiles(
       "https://example.invalid/tileset.json",

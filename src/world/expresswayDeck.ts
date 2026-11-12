@@ -60,7 +60,7 @@ import {
   ringPoint,
 } from "./expresswayMerge";
 import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expresswayRoads";
-import { BORE_FACES, boreLoop, headwallQuads, lampQuads } from "./expresswayBore";
+import { BORE_FACES, boreLoop, CUT_WALL_GROUND_REACH, headwallQuads, lampQuads } from "./expresswayBore";
 
 /**
  * Expressway decks from public/data/expressway (knowledge/road-redesign-plan.md 4.5). Each ≤ 300 m
@@ -206,14 +206,33 @@ export function* deckArraySteps(
   // Below the ground (P9) the section is a tunnel's box or a cut's walls (expresswayBore.ts) along
   // the same rings: no merging (no deck shares a surface with one in the data), no girder.
   const bore = chunk.structure === "tunnel" || chunk.structure === "cut" ? chunk.structure : null;
+  /** The terrain's highest point over a cut wall's reach on one side (+1 left), relative to the ring's centre. */
+  const sideGround = (r: (typeof rings)[number], side: 1 | -1): number | null => {
+    const groundAt = place.groundAt;
+    if (!groundAt) return null;
+    let best = -Infinity;
+    for (const d of CUT_WALL_GROUND_REACH) {
+      const p = ringPoint(r, side * (own.hw + d), 0);
+      const g = place.frame.toGeodetic(p);
+      const h = groundAt(g.lat, g.lon);
+      if (h === null) continue;
+      best = Math.max(best, place.frame.toLocal(g.lat, g.lon, h).y - r.c.y);
+    }
+    return Number.isFinite(best) ? best : null;
+  };
   const boreCorners = (i: number): Corners => {
     const r = rings[i];
+    const isCut = bore === "cut";
+    const left = isCut ? sideGround(r, 1) : null;
+    const right = isCut ? sideGround(r, -1) : null;
+    const sides = left === null || right === null ? null : { left, right };
     return boreLoop(
       bore!,
       own.hw,
       (u, v) => ringPoint(r, u, v).toArray(),
       (u) => liftAt(r, u, bank),
       r.groundY - r.c.y,
+      sides,
     );
   };
   const faceOf = (k: number) =>
@@ -864,6 +883,8 @@ export class ExpresswayDecks {
     frame: LocalFrame,
     private readonly base: string,
     private readonly bank = false,
+    /** The terrain's ellipsoidal height (DemStore.heightAt): a cut's walls reach it at their sides. */
+    private readonly groundAt?: (lat: number, lon: number) => number | null,
   ) {
     this.frame = frame;
   }
@@ -919,7 +940,7 @@ export class ExpresswayDecks {
 
   /** Where a deck's lon/lat/T.P. height is in the current frame (the decks' own transform). */
   place(): GeoToLocal {
-    return { frame: this.frame, ellipsoidal: this.ellipsoidal };
+    return { frame: this.frame, ellipsoidal: this.ellipsoidal, groundAt: this.groundAt };
   }
 
   /** The entrances of the tiles read so far (for the 103・104 on the streets), by run. */
@@ -1274,7 +1295,7 @@ export class ExpresswayDecks {
       // The player has moved on and a newer refresh is queued: stop here, it builds what is near now.
       if (isSuperseded()) break;
       const frame = this.frame;
-      const place = { frame, ellipsoidal: this.ellipsoidal };
+      const place = { frame, ellipsoidal: this.ellipsoidal, groundAt: this.groundAt };
       // One chunk that fails (bad data, a bug) must not stop the others nor hold the car: it is
       // left out from then on, with one warning.
       try {

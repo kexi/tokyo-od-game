@@ -203,7 +203,11 @@ export class TrafficAI {
     for (const seg of graph?.segments ?? []) {
       if (kept.length >= PARKED_MAX) break;
       yield;
-      const isSideStreet = seg.line.width >= 4 && seg.line.width < 13 && seg.length > 25;
+      // Never on an expressway's deck or ramp (a chunk of 2 lanes is 9.5 m wide, a "side street" by
+      // width): a car parked there stood in 内回り's lane 0 at 24402611:29, at the deck's height where
+      // a bridge's deck was taken for the ground (P2.7-5: a drive's 47 → 28 km/h there, no accident).
+      const isExpresswayLine = seg.line.xid !== undefined;
+      const isSideStreet = !isExpresswayLine && seg.line.width >= 4 && seg.line.width < 13 && seg.length > 25;
       const h = hashCoords(seg.line.coords);
       if (!isSideStreet || h % 6 !== 0) continue;
       const key = `${seg.line.width}/${seg.line.coords.join(",")}`;

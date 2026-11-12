@@ -130,7 +130,11 @@ class CoarseTilesPlugin {
 }
 
 /** What preparing a far tile's meshes needs from the buildings (the landmarks' cut-outs). */
-export type FarTileHost = { cut(geometry: BufferGeometry, ecef: Float32Array): void };
+export type FarTileHost = {
+  cut(geometry: BufferGeometry, ecef: Float32Array): void;
+  /** Cut what stands into an elevated deck (P2.7-5); `toEcef` the mesh's matrix to the tileset's ECEF. */
+  cutDecks?(geometry: BufferGeometry, toEcef: Matrix4): void;
+};
 
 /**
  * Turn a far tile's meshes into the far skyline's: façade attribute, landmark cut-outs, the shared
@@ -154,6 +158,7 @@ export function prepareFarTile(scene: Object3D, host: FarTileHost): void {
     const ids = geometry.getAttribute("_batchid") ?? geometry.getAttribute("_feature_id_0");
     addFacadeAttribute(geometry, ecef, ids ? (i) => ids.getX(i) : null);
     host.cut(geometry, ecef);
+    host.cutDecks?.(geometry, o.matrixWorld);
     o.castShadow = false;
     o.receiveShadow = false;
     const own = o.material as Material;
@@ -221,6 +226,8 @@ export class Buildings {
   farLoadedCount = 0;
   /** Far tiles loaded but not yet prepared (hidden until then, a few milliseconds a frame). */
   private readonly farPending: Object3D[] = [];
+  /** Every far tile loaded and not yet disposed (prepared or pending): new decks cut them too. */
+  private readonly farScenes = new Set<Object3D>();
   /** False until the far façade's pipeline is built (asynchronously, before any far tile shows). */
   private isFarCompiled = false;
 
@@ -328,6 +335,20 @@ export class Buildings {
       if (!isCut || !hadCollider) continue;
       this.removeCollider(model);
       this.createCollider(model);
+    }
+    // The far skyline's tiles already prepared (a pending one is cut as it is prepared). Why not
+    // leave them: where the near town has not loaded a building the far copy is what is drawn.
+    for (const scene of this.farScenes) {
+      const isPending = this.farPending.includes(scene);
+      if (isPending) continue;
+      scene.updateMatrixWorld(true);
+      scene.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        const n = this.cutMesh(o.geometry as BufferGeometry, this.localMatrix(o, toLocal), fresh);
+        if (n === 0) return;
+        features += n;
+        meshes++;
+      });
     }
     log("buildings_cut_above_deck", { reason: "decks", features, meshes, points: points.length });
   }
@@ -672,10 +693,12 @@ export class Buildings {
       // Prepared later, within a frame budget: several tiles can land in one frame.
       scene.visible = false;
       this.farPending.push(scene);
+      this.farScenes.add(scene);
     });
     tiles.addEventListener("dispose-model", ({ scene }) => {
       const at = this.farPending.indexOf(scene);
       if (at >= 0) this.farPending.splice(at, 1);
+      this.farScenes.delete(scene);
     });
     this.scene.add(tiles.group);
     this.applyFrameTo(tiles);
@@ -711,6 +734,13 @@ export class Buildings {
       cut: (geometry, ecef) => {
         if (this.hidden.length) this.cutFootprints(geometry, ecef);
       },
+      // The far skyline draws a building the near town has not loaded yet (an overhead view, the
+      // town's edge): its roof over a deck must come down as the near copy's does (P2.7-5: a roof
+      // over 24402611:26 at 6.8 m above the road, which the gantry 110-B stood through).
+      cutDecks: (geometry, toEcef) => {
+        if (this.deckCuts.length === 0) return;
+        this.cutMesh(geometry, this.frame.ecefToLocal.clone().multiply(toEcef), this.deckIndexNow());
+      },
     };
     while (this.farPending.length > 0) {
       const scene = this.farPending.shift() as Object3D;
@@ -740,8 +770,9 @@ export class Buildings {
    */
   private localMatrix(o: Object3D, into: Matrix4): Matrix4 {
     let up: Object3D | null = o;
-    while (up && up !== this.tiles.group) up = up.parent;
-    const isUnderGroup = up === this.tiles.group;
+    const groups = [this.tiles.group, this.far?.group];
+    while (up && !groups.includes(up as typeof this.tiles.group)) up = up.parent;
+    const isUnderGroup = up !== null;
     return isUnderGroup
       ? into.copy(o.matrixWorld)
       : into.multiplyMatrices(this.frame.ecefToLocal, o.matrixWorld);

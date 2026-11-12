@@ -26,6 +26,8 @@ const ROOF = TUNNEL_ROOF.value.slab;
 const WALK = TUNNEL_WALKWAY.value.width;
 const CURB = TUNNEL_WALKWAY.value.curb;
 const WALL = CUT_WALL.value.thickness;
+/** Where across a cut a wall's own ground is taken (m past its inner face): the face, the outer face and the hole's edge beyond. */
+export const CUT_WALL_GROUND_REACH = [0, WALL, WALL + 1] as const;
 /** Thickness of a tunnel's side walls (the box's outer shell). */
 const TUNNEL_WALL = 0.6;
 /** Floor slab under the road (as the deck's SLAB). */
@@ -101,12 +103,18 @@ export function boreLoop(
   at: (u: number, v: number) => number[],
   lift: (u: number) => number,
   groundV: number,
+  sides: { left: number; right: number } | null = null,
 ): number[][] {
   const lL = lift(hw);
   const lR = lift(-hw);
   if (structure === "cut") {
-    const hL = cutWallHeight(lL, groundV, PARAPET_HEIGHT.value);
-    const hR = cutWallHeight(lR, groundV, PARAPET_HEIGHT.value);
+    // Each wall to the ground at its own side where that is higher than over the centre (P2.7-5:
+    // the street on 麻布台's east side stood over the wall's top, a strip of sky under it). Why not
+    // the centre's ground for both, as before: it is one DEM point, and the ground falls across.
+    const gL = Math.max(groundV, sides?.left ?? -Infinity);
+    const gR = Math.max(groundV, sides?.right ?? -Infinity);
+    const hL = cutWallHeight(lL, gL, PARAPET_HEIGHT.value);
+    const hR = cutWallHeight(lR, gR, PARAPET_HEIGHT.value);
     return [
       at(-hw, lR),
       at(-hw, lR),

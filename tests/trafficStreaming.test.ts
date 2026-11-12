@@ -77,3 +77,19 @@ it("gives rendering a turn for each newly parked car while keeping every publish
     world.free();
   }
 });
+
+it("never parks a car on an expressway chunk, however narrow (P2.7-5: one stood in 内回り's lane 0)", () => {
+  const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+  const traffic = new TrafficAI(new Scene(), world, () => 0);
+  try {
+    // The same lines as decks (a chunk id each): 6 m wide would be a side street by width alone.
+    const decks = lines.map((l, i) => ({ ...l, xid: `1:${i}` }));
+    traffic.setGraph(new RoadGraph(decks, frame));
+    expect(traffic.parkedPoses()).toEqual([]);
+    traffic.setGraph(new RoadGraph(lines, frame));
+    expect(traffic.parkedPoses().length).toBeGreaterThan(0);
+  } finally {
+    traffic.setGraph(null);
+    world.free();
+  }
+});

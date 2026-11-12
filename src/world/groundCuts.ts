@@ -220,3 +220,24 @@ function boxOf(ring: readonly number[]): [number, number, number, number] {
   }
   return [x0, y0, x1, y1];
 }
+
+/** The road triangles (indices into `pos`, x y z per vertex) left once those in a hole are dropped. */
+export function dropCut(
+  pos: readonly number[],
+  idx: number[],
+  cut: (x: number, z: number) => boolean,
+): number[] {
+  const kept: number[] = [];
+  for (let t = 0; t + 2 < idx.length; t += 3) {
+    const [a, b, c] = [idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3];
+    const x = (pos[a] + pos[b] + pos[c]) / 3;
+    const z = (pos[a + 2] + pos[b + 2] + pos[c + 2]) / 3;
+    // Any corner in the hole as well as the centre: a long road triangle with its centre outside
+    // reached into the cut as a wedge through the retaining wall (P2.7-5, 麻布台's south portal).
+    // Why not clip at the outline: the walls stand over the hole's edge, so a triangle short of it
+    // leaves no gap to see; a clip of every road triangle against every ring costs far more.
+    const isCut = cut(x, z) || cut(pos[a], pos[a + 2]) || cut(pos[b], pos[b + 2]) || cut(pos[c], pos[c + 2]);
+    if (!isCut) kept.push(idx[t], idx[t + 1], idx[t + 2]);
+  }
+  return kept;
+}
