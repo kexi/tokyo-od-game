@@ -7,6 +7,10 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:check-deck-drive, at: 2026-11-12T06:41:10Z }
+  - { by: process:vitest, at: 2026-11-12T06:08:56Z }
+  - { by: process:update-expressway-ledger-twice-byte-equal, at: 2026-11-12T06:08:10Z }
+  - { by: claude-fable/review-p276-5-round-02, at: 2026-11-12T06:00:00Z }
   - { by: process:check-deck-drive, at: 2026-11-12T05:52:43Z }
   - { by: process:shoot-views, at: 2026-11-12T05:58:20Z }
   - { by: process:vitest, at: 2026-11-12T05:21:28Z }
@@ -1719,6 +1723,7 @@ S6「網をつなぐ」の PR 5。既定データの seam_step open 4 件（2440
 - 視点は expressway 表の継ぎ目の俯瞰（seam-*、merge/diverge の overhead、shiodome の overhead、changeover-1-4848762）と分合流の運転席（merge-driver・diverge-outer・shiodome-merge-driver・shiodome-diverge-driver）だけを `--only --out .qa/views/p5-seams` で 1 周（34 コマ、失敗 0、04:48 UTC）。round-01 の Fable のレビューは Changes Requested（C1 のコンクリート色の三角形 5 視点、seam-24402125-0 の対象が画面外）。直した後、seam-24402125-0 を高さ 25 m・65° の俯瞰に作り直し、同じ 34 コマを撮り直した（下）。
 
 - レビュー対応の後: `just check-deck-drive p5-seams-r2 all`（2026-11-12T05:52:43Z に終了）9 経路とも合格・invalid なし・1 回目で通過（max |dy| 0.073〜0.116 m、最大は daiba-exit の 4848889:3、自動運転 2 経路は到着・違反 0）。同じ 34 コマを `--out .qa/views/p5-seams-r2` で撮り直した（失敗 0、seam-24402125-0 は 4 つの look とも対象が画面内）。Fable の再レビューは Approve（round-01 の Critical 5 件は画素一致で fixed、seam-24402125-0 も fixed）。
+- #72（PR 1）を取り込んだ後: 台帳の道具を 2 回でバイト一致（取り込み前と同じ台帳、06:08 UTC）、全テスト 161 files / 2,124 passed、`just check-deck-drive p5-seams-merge all`（06:41 UTC に終了）9 経路とも合格・1 回目で通過（max |dy| 0.073〜0.115 m、自動運転 2 経路は到着・違反 0）。
 - **記録だけ（原因未確認）**: 再レビューの Info `geometry.day--diverge-outer-overhead` で、地上の案内標識の板が消えて写った。この PR は標識を触っていない。
 
 [^p276-5]: 指示は scratchpad の p27/s6-network.md の 8 節（設計 Fable）。追跡のスクリプトは .cache/p5/trace.mts・perf.mts、ship の台帳は .cache/expressway-area/p5-ship-before・p5-ship の ledger.json（ローカル、git 管理外）。
