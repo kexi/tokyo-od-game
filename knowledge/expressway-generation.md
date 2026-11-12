@@ -1482,6 +1482,15 @@ round-04（2026-11-12 08:58〜09:55 JST）: 撮影は 3 表 205 コマで失敗 
 
 round-05（2026-11-12 10:45〜11:10 JST、tunnels だけ）: 修正後の確認撮影（`--out .cache/s5/vt-r5-fixed`、周番号に入れない）で、トンネルの中の 6 視点（昼夜）は --pick の当たりに `pavements`・`road-surface` が 0。外から見る視点の当たりは、掘割の上を渡る街路（箱の屋根の上）と穴の外の街路。round-05 は 22 コマで失敗 0、azabudai-tunnel の走行は合格（max \|dy\| 0.088、drops 0）。
 
+## PR #71 のコードレビューで直したもの（2026-11-12）
+
+- **W1 遠景のタイルの行列の二重変換**: 遠景のタイルの準備（`prepareFarTiles`）は、読み込み後のフレームでまとめて行う。3d-tiles-renderer は update の中で `setTileActive` がタイルを遠景のグループの下に付け、その後に準備が走るので、その周に active になったタイルは準備の時点で既にグループの下にあり、ワールド行列はローカルになっている。それを ECEF として `ecefToLocal` をもう一度掛けていた（レビューの実測で準備 38 枚中 12 枚、cutMesh 39 回中 12 回が平行移動 1e6 m 超で、切り下げが効かない）。準備はメッシュ自体を host に渡し、`localMatrix`（グループの下かどうかを見る）でローカル行列を、その逆で ECEF 行列を取る（`FarTileHost.toEcef`・`cutDecks(geometry, o)`）。同じ前提だった遠景のファサードの高さ（`addFacadeAttribute`）とランドマークの穴（`cutFootprints`）もこの ECEF 行列を使う（PR より前からの同じ型）。近景のタイルは load-model の中で準備し、そのときはまだグループに付いていないので影響しない。テストは、切り離した状態とグループの下の両方で、床版の上の屋根の頂点が下がることを見る（`tests/farMemory.test.ts`。直す前のコードではグループの下の方が落ちる）。
+- **W2 穴の並び**: `GroundCuts.ringsLonLat()` は z15 のキーの順に並べていたので、既に穴のある z15 の中に後から来た穴が列の途中に入り、`CutRelay` の「末尾が新しい穴」という前提が崩れて敷き直しが飛んだ（:0 → 遠い穴 → :2 の順）。穴を届いた順に持つ（`arrivals`）。
+- **W3 掃引の重みで出荷データを上書きできた**: v2 の重みのフラグ（`--grade-change`・`--reach`・`--reach-below`・`--target-scale`）は、`--out` なしでは止める。`--below all`・blocks・v1 と合わせて `scripts/expresswayGuards.ts` の `shippedFolderRefusal` にまとめた。
+- **W4 撮っていない視点があっても収束と判定した**: 収束判定の「撮影が揃っている」は、その周の run.json ではなく今の視点表の全コマで見る（`runRecord.roundRead`）。外した視点の許容は、読む対象のコマ（`roundShots`）だけに使う。
+- 他: high-deck の cap に s0・s1 を入れた。`settled()` は遠景の読み込みの進み（`farProgress`）も待つ。R キーと retrained の置き直しは info の `car_put_back` に分けた（`car_respawned` は地下・漂流の warning だけ）。コメントの置き違い 3 か所と、テストの題・it の外の expect を直した。
+- **残るテストの穴**: `tests/expresswayBore.test.ts` は `CutRelay` そのものを検査するが、main.ts の配線（道路の読み込みの `.finally` で保留があれば `relayCuts` を呼ぶ）は縛っていない。配線を外すと帯が戻るが、テストは通る。
+
 ## 記録だけ（S6 へ）
 
 - **外回り 895902565 の坑口の先の起伏**（round-04 のレビュー）: s 72 のクレスト 26.23 m → s 419 のサグ 18.40 m → s 566 のクレスト 22.33 m（146 m で +3.9 m、最大 +4.7 %）→ s 913 のサグ 9.65 m。v1 も同じ測点・ほぼ同じ高さで、内回りと同じ面に並ぶ s 485〜565 の拘束による。
