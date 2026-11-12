@@ -32,6 +32,7 @@
 // diagnostics, closed runs, the solver, the blocks with the dataHash of their chunks). A diagnostic
 // is allowed by the rules (allowlist.ts) or by the ledger (ledger.json of the output folder, kept
 // across the rebuild, or --ledger <path>), which scripts/expresswayLedger.ts writes.
+import { shippedFolderRefusal } from "./expresswayGuards";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -190,19 +191,11 @@ if (!isBelowMode) throw new Error(`unknown --below ${belowArg} (pruned, all)`);
 const below = belowArg as "pruned" | "all";
 const reportPath = arg("report");
 const baselinePath = arg("baseline");
-// --below all moves the default decks (P2.7-1): measuring only, never into the shipped folder.
-const isUnprunedDefault = below === "all" && arg("out") === undefined;
-if (isUnprunedDefault)
-  throw new Error("--below all is for measuring: give --out (just measure-expressway-area)");
 const partitionArg = arg("partition") ?? "components";
 const isPartitionMode = partitionArg === "components" || partitionArg === "blocks";
 if (!isPartitionMode) throw new Error(`unknown --partition ${partitionArg} (components, blocks)`);
 const partitionMode = partitionArg as "components" | "blocks";
 const quietFactor = Number(arg("quiet-factor") ?? BLOCK_QUIET_FACTOR.value);
-// Blocks move the decks (P2.7-2 measures by how much): never into the shipped folder.
-const isBlocksDefault = partitionMode === "blocks" && arg("out") === undefined;
-if (isBlocksDefault)
-  throw new Error("--partition blocks is for measuring: give --out (just measure-expressway-area)");
 // P2.7-5: v2 is the default (the decks do not follow the DEM's bumps); v1 stays to compare against.
 const objectiveArg = arg("objective") ?? "v2";
 const isObjectiveKind = objectiveArg === "v1" || objectiveArg === "v2";
@@ -232,10 +225,16 @@ const objective: Objective =
         },
         targetScale: v2Number("target-scale", OBJECTIVE_V2.targetScale),
       };
-// v1 is the objective before P2.7-5, kept to compare against: never into the shipped folder.
-const isV1Default = objective.kind === "v1" && arg("out") === undefined;
-if (isV1Default)
-  throw new Error("--objective v1 is for comparing: give --out (just measure-expressway-area)");
+// --below all (P2.7-1), blocks (P2.7-2), v1 and a sweep of the v2 weights move the decks: measuring
+// only, never into the shipped folder.
+const refusal = shippedFolderRefusal({
+  hasOut: arg("out") !== undefined,
+  isBelowAll: below === "all",
+  isBlocks: partitionMode === "blocks",
+  isV1: objective.kind === "v1",
+  v2Flags,
+});
+if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
 let stageStarted = performance.now();
 /** Time since the last stage ended, booked to `name` (the scorecard's stagesMs). */
