@@ -81,6 +81,20 @@ describe("the data folder's ledger", () => {
         expect(isAutoAccepted(c), c.key).toBe(true);
         continue;
       }
+      // A merge_skipped that follows its pair (S6 PR 3 followPairs): the pair's case is there and
+      // accepted (or wontfix), the stretch within the pair's overlap, and no cap of its own.
+      const isFollowing = c.by !== null && c.by !== "review";
+      if (isFollowing) {
+        const pair = live().find((p) => p.key === c.by);
+        expect(c.kind, c.key).toBe("merge_skipped");
+        expect(["accepted", "wontfix"], c.key).toContain(pair?.status);
+        expect(c.cap, c.key).toBeNull();
+        const [a, b] = c.run < c.with! ? [c.run, c.with!] : [c.with!, c.run];
+        const stretches = counted.pairSpans.get(`${a}|${b}`)?.[c.run] ?? [];
+        const isInside = stretches.some(([p, q]) => c.measured.s0! >= p - 5 && c.measured.s1! <= q + 5);
+        expect(isInside, c.key).toBe(true);
+        continue;
+      }
       expect(["accepted", "open", "wontfix"], c.key).toContain(c.status);
       expect(c.cap, c.key).not.toBeNull();
       // A cap must bound what its kind measures (a cap of {} would accept anything).
@@ -415,5 +429,72 @@ describe("districts (provisional, districts.ts)", () => {
     if (!isDefault) return;
     expect([...new Set(counted.districts.values())]).toEqual(["central"]);
     expect([...new Set(counted.found.map((c) => c.district))]).toEqual(["central"]);
+  });
+});
+
+describe("merge_skipped は同じ 2 本の重なりの事例に従う（S6 PR 3 followPairs）", () => {
+  const pair = found("changeover:a|b", { stations: 10, minDzM: 0.1, maxDzM: 3 });
+  const merge = (s0: number, s1: number) =>
+    found("merge_skipped:a:0|b", { s0, s1, maxDzM: 0.4 }, "h1", "merge_skipped");
+  const stretch = (p: number, q: number): [number, number] => [p, q];
+  // Two overlaps of the pair on a, far apart (review W2): 100–300 and 2000–2100.
+  const spans = new Map([["a|b", { a: [stretch(100, 300), stretch(2000, 2100)], b: [stretch(50, 250)] }]]);
+  const accepted = (list: ReturnType<typeof found>[]) =>
+    decide(update(null, list, { pairSpans: spans }), pair.key, { cap: { stations: 10, maxDzM: 3 } });
+
+  it("is accepted with the pair's key as `by` while the pair is accepted and it lies within the overlap", () => {
+    const l = update(accepted([pair, merge(120, 280)]), [pair, merge(120, 280)], { pairSpans: spans });
+    const m = l.cases.find((c) => c.kind === "merge_skipped")!;
+    expect([m.status, m.by]).toEqual(["accepted", pair.key]);
+    expect(m.previous).toBeNull();
+  });
+
+  it("stays new while the pair is new or open", () => {
+    const l = update(null, [pair, merge(120, 280)], { pairSpans: spans });
+    expect(l.cases.find((c) => c.kind === "merge_skipped")!.status).toBe("new");
+    const open = decide(l, pair.key, { status: "open", by: "review" });
+    const again = update(open, [pair, merge(120, 280)], { pairSpans: spans });
+    expect(again.cases.find((c) => c.kind === "merge_skipped")!.status).toBe("new");
+  });
+
+  it("goes back to new once its stretch leaves the overlap", () => {
+    const followed = update(accepted([pair, merge(120, 280)]), [pair, merge(120, 280)], { pairSpans: spans });
+    const moved = update(followed, [pair, merge(120, 320)], { pairSpans: spans });
+    const m = moved.cases.find((c) => c.kind === "merge_skipped")!;
+    expect([m.status, m.by, m.previous]).toEqual(["new", null, null]);
+  });
+
+  it("leaves a merge_skipped a review decided as the review decided it", () => {
+    const first = update(null, [pair, merge(120, 280)], { pairSpans: spans });
+    const reviewed = decide(first, "merge_skipped:a:0|b", { status: "wontfix", cap: { maxDzM: 0.5 } });
+    const l = update(reviewed, [pair, merge(120, 280)], { pairSpans: spans });
+    const m = l.cases.find((c) => c.kind === "merge_skipped")!;
+    expect([m.status, m.by]).toEqual(["wontfix", "review"]);
+  });
+
+  it("follows within one of the pair's stretches, not between two far apart (review W2)", () => {
+    const inSecond = update(accepted([pair, merge(2010, 2090)]), [pair, merge(2010, 2090)], {
+      pairSpans: spans,
+    });
+    expect(inSecond.cases.find((c) => c.kind === "merge_skipped")!.status).toBe("accepted");
+    const between = update(accepted([pair, merge(400, 1900)]), [pair, merge(400, 1900)], {
+      pairSpans: spans,
+    });
+    expect(between.cases.find((c) => c.kind === "merge_skipped")!.status).toBe("new");
+  });
+
+  it("does not follow a merge_skipped that left its review's cap: it stays new for the review (review W3)", () => {
+    const first = update(accepted([pair, merge(120, 280)]), [pair, merge(120, 280)], { pairSpans: spans });
+    const reviewed = decide(first, "merge_skipped:a:0|b", { cap: { maxDzM: 0.45, s0: 120, s1: 280 } });
+    const past = found("merge_skipped:a:0|b", { s0: 120, s1: 280, maxDzM: 0.6 }, "h2", "merge_skipped");
+    const l = update(reviewed, [pair, past], { pairSpans: spans });
+    const m = l.cases.find((c) => c.kind === "merge_skipped")!;
+    expect([m.status, m.by, m.previous?.by]).toEqual(["new", null, "review"]);
+  });
+
+  it("does not follow past the pair's cap |Δz| (and its margin)", () => {
+    const wide = found("merge_skipped:a:0|b", { s0: 120, s1: 280, maxDzM: 3.2 }, "h1", "merge_skipped");
+    const l = update(accepted([pair, wide]), [pair, wide], { pairSpans: spans });
+    expect(l.cases.find((c) => c.kind === "merge_skipped")!.status).toBe("new");
   });
 });

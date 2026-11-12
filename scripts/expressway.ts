@@ -27,6 +27,10 @@
 // (compile.ts Objective), with --grade-change <w> (vertical.ts W_GRADE_CHANGE), --reach <m> and
 // --reach-below <m> (assumptions.DESIGN_GROUND_REACH) and --target-scale <k> (W_TARGET × k).
 // P2.7-5 made v2 the default; --objective v1 (the objective before it) is for comparing and needs --out.
+// P2.7-6 (S6), each measuring only and needing --out until PR 7: --structures height (the structures from
+// the solved height), --ground compile (the runs at grade, needs height), --touchdown all (every class's
+// pairs coming down to the same place let go) and --companions on [--companion-weight <w>] (main lines
+// beside each other held to one height; the station pairs go to <report>.companions.json).
 // P2.7-4 (format 6): meta.json is the tiles' index; each tile carries its chunks, the summaries of
 // their runs and the entrances whose street end lies in it; report.json the build's record (runs,
 // diagnostics, closed runs, the solver, the blocks with the dataHash of their chunks). A diagnostic
@@ -50,7 +54,8 @@ import {
 import { violationsOf } from "../src/expressway/violations.ts";
 import { isAllowed } from "../src/expressway/allowlist.ts";
 import { caseContextOf, type Ledger, ledgerVerdict, rampFloorOf } from "../src/expressway/ledger.ts";
-import { BLOCK_QUIET_FACTOR } from "../src/expressway/assumptions.ts";
+import { BLOCK_QUIET_FACTOR, COMPANIONS, HEIGHT_STRUCTURES } from "../src/expressway/assumptions.ts";
+import { surfaceAt } from "../src/expressway/profile.ts";
 import { buildReport, type PlannedRun, type Report, trackingOf } from "../src/expressway/report.ts";
 import { scopeExtent, shipRuns } from "../src/expressway/scope.ts";
 import { DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
@@ -242,6 +247,21 @@ if (!isGroundModeArg) throw new Error(`unknown --ground ${groundArg} (skip, comp
 const groundMode = groundArg as "skip" | "compile";
 const isGroundWithoutHeight = groundMode === "compile" && structuresMode !== "height";
 if (isGroundWithoutHeight) throw new Error("--ground compile needs --structures height");
+// S6 PR 3: --touchdown all lets go the pairs of every class coming down to the same place; --companions on
+// holds main lines running beside each other to one height at --companion-weight (1 by default).
+const touchdownArg = arg("touchdown") ?? "mains";
+const isTouchdownArg = touchdownArg === "mains" || touchdownArg === "all";
+if (!isTouchdownArg) throw new Error(`unknown --touchdown ${touchdownArg} (mains, all)`);
+const touchdownMode = touchdownArg as "mains" | "all";
+const companionsArg = arg("companions") ?? "off";
+const isCompanionsArg = companionsArg === "off" || companionsArg === "on";
+if (!isCompanionsArg) throw new Error(`unknown --companions ${companionsArg} (off, on)`);
+const companionWeight = Number(arg("companion-weight") ?? "1");
+const isWeightBad = !(companionWeight > 0);
+if (isWeightBad) throw new Error(`--companion-weight must be > 0`);
+const isCompanions = companionsArg === "on";
+const isCompanionsInBlocks = isCompanions && partitionMode === "blocks";
+if (isCompanionsInBlocks) throw new Error("--companions on needs --partition components");
 // --below all (P2.7-1), blocks (P2.7-2), v1, a sweep of the v2 weights and the structures by height
 // (P2.7-6) move the decks: measuring only, never into the shipped folder.
 const refusal = shippedFolderRefusal({
@@ -252,6 +272,8 @@ const refusal = shippedFolderRefusal({
   v2Flags,
   isHeight: structuresMode === "height",
   isGround: groundMode === "compile",
+  isTouchdownAll: touchdownMode === "all",
+  isCompanions,
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -377,6 +399,8 @@ const plan = planNetwork(net, outsideNodes, ranges, structures, {
   quietFactor,
   structures: structuresMode,
   ground: groundMode,
+  touchdown: touchdownMode,
+  ...(isCompanions ? { companionWeight } : {}),
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 });
 // Asked again of the finished plan (the same set: shipRuns is pure), for the log and the scorecard.
@@ -645,6 +669,94 @@ log("expressway_written", {
 });
 endStage("write");
 
+/** A written run's surface at run distance s (the chunk holding s), or null when not written. */
+let chunksByRun: Map<string, typeof result.chunks> | null = null;
+function zOf(run: string, s: number): number | null {
+  if (chunksByRun === null) {
+    chunksByRun = new Map();
+    for (const c of result.chunks) chunksByRun.set(c.run, [...(chunksByRun.get(c.run) ?? []), c]);
+  }
+  const list = chunksByRun.get(run) ?? [];
+  const c = list.find((k) => s >= k.st[0] - 1e-6 && s <= k.st[k.st.length - STATION_STRIDE] + 1e-6);
+  return c ? surfaceAt(c.st, s).z : null;
+}
+
+/** The reach of the band's centre about an open end (compile.ts setupGround's movingMedian, ±150 m). */
+const OPEN_END_REACH_M = 150;
+
+/**
+ * The ends of the runs at grade that a viaduct or below run seams onto (`open`, S6 PR 3): how far the
+ * road stands off the band's centre there, past the band, and the worst.
+ */
+function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Report["ground"]>["openEnds"]> {
+  const band = HEIGHT_STRUCTURES.value.ground.bandM;
+  const offs: number[] = [];
+  for (const r of groundRuns) {
+    const list = result.chunks.filter((c) => c.run === r.id).sort((a, b) => a.k - b.k);
+    const isEmpty = list.length === 0;
+    if (isEmpty) continue;
+    // Off the band's centre (the ground's moving median, ±150 m as setupGround's), not the DEM at the
+    // end alone (PR 3 review): the stations' ground within that reach of the end.
+    const stations: Array<{ s: number; z: number; g: number }> = [];
+    for (const c of list)
+      for (let i = 0; i < c.st.length; i += STATION_STRIDE)
+        stations.push({ s: c.st[i], z: c.st[i + 3], g: c.st[i + 5] });
+    const L = stations[stations.length - 1].s;
+    const offAt = (atStart: boolean) => {
+      const end = atStart ? stations[0] : stations[stations.length - 1];
+      const near = stations
+        .filter((p) => (atStart ? p.s : L - p.s) <= OPEN_END_REACH_M)
+        .map((p) => p.g)
+        .sort((a, b) => a - b);
+      const m = near.length >> 1;
+      const median = near.length % 2 === 1 ? near[m] : (near[m - 1] + near[m]) / 2;
+      return Math.abs(end.z - median);
+    };
+    if (r.start.kind === "open") offs.push(offAt(true));
+    if (r.end.kind === "open") offs.push(offAt(false));
+  }
+  return {
+    count: offs.length,
+    overBand: offs.filter((d) => d > band + 1e-9).length,
+    maxM: Math.round(Math.max(0, ...offs) * 100) / 100,
+  };
+}
+
+/** The companions' station pairs on runs written both (the ones the scorecard measures). */
+function companionPairsWritten(): NonNullable<typeof plan.companions>["list"] {
+  return plan.companions!.list.filter((c) => zOf(c.a, c.sa) !== null && zOf(c.b, c.sb) !== null);
+}
+
+/**
+ * The scorecard's `companions` (S6 PR 3): the station pairs among the written runs and |Δz| there as
+ * solved, all of them and those with a row.
+ */
+function companionsSummary(): NonNullable<Report["companions"]> {
+  const { weight } = plan.companions!;
+  const step = COMPANIONS.value.stepM;
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  // Every station pair beside each other, and those with a row (the tapered ends have none): the bar
+  // (p90 ≤ 0.5 m) is the whole's (PR 3 re-review N1: the held ones alone read 0.29 m, the whole 0.55 m).
+  const tally = (list: ReturnType<typeof companionPairsWritten>) => {
+    const dz = list.map((c) => Math.abs(zOf(c.a, c.sa)! - zOf(c.b, c.sb)!)).sort((a, b) => a - b);
+    const at = (q: number) =>
+      dz.length === 0 ? 0 : dz[Math.min(dz.length - 1, Math.ceil(q * dz.length) - 1)];
+    return {
+      pairs: new Set(list.map((c) => `${c.a}|${c.b}`)).size,
+      stations: dz.length,
+      km: Math.round(((dz.length * step) / 1000) * 1000) / 1000,
+      dz: {
+        p50M: r2(at(0.5)),
+        p90M: r2(at(0.9)),
+        maxM: r2(dz[dz.length - 1] ?? 0),
+        overDz: dz.filter((d) => d > COMPANIONS.value.dzM + 1e-9).length,
+      },
+    };
+  };
+  const all = companionPairsWritten();
+  return { weight, ...tally(all), held: tally(all.filter((c) => c.held !== false)) };
+}
+
 /**
  * The scorecard's `ground` (any height build, skip or compile, so the holes compare): the runs at grade
  * written, the main line's holes, the roads blocked across them, how far they stand off the ground, and
@@ -696,6 +808,7 @@ function groundSummary(): NonNullable<Report["ground"]> {
       maxM: Math.round((off[off.length - 1] ?? 0) * 100) / 100,
       over3mRuns: over3,
     },
+    openEnds: openEndsOf(groundRuns),
     tracking: {
       runs: tracked.runs,
       km: tracked.km,
@@ -799,11 +912,20 @@ if (reportPath) {
     heightStructures: structuresMode === "height",
     // With the structures by height, skip or compile, so the holes compare; tags builds as before.
     ground: structuresMode === "height" ? groundSummary() : null,
+    companions: plan.companions ? companionsSummary() : null,
   };
   const report = buildReport(reportInput);
   await mkdir(dirname(reportPath), { recursive: true });
   const reportText = JSON.stringify(report, null, 1) + "\n";
   await writeFile(reportPath, reportText);
+  // The companions' station pairs (about 120 KB in ship) beside the scorecard, not in it (PR 3 review).
+  if (plan.companions) {
+    const pairs = companionPairsWritten().map((c) => [c.a, c.sa, c.b, c.sb, c.held === false ? 0 : 1]);
+    await writeFile(
+      reportPath.replace(/(\.report)?\.json$/, "") + ".companions.json",
+      JSON.stringify(pairs) + "\n",
+    );
+  }
   if (baselinePath) {
     await mkdir(dirname(baselinePath), { recursive: true });
     const baseline = buildReport({ ...reportInput, withoutTimings: true });

@@ -28,6 +28,13 @@ describe("出荷フォルダに書いてよい生成（scripts/expressway.ts、P
     expect(shippedFolderRefusal({ ...plain, isGround: true, isHeight: true })).toMatch(/^--ground compile/);
     expect(shippedFolderRefusal({ ...plain, hasOut: true, isGround: true, isHeight: true })).toBeNull();
   });
+  it("stops --touchdown all and --companions on without --out (S6 PR 3)", () => {
+    expect(shippedFolderRefusal({ ...plain, isTouchdownAll: true })).toMatch(/^--touchdown all/);
+    expect(shippedFolderRefusal({ ...plain, isCompanions: true })).toMatch(/^--companions on/);
+    expect(
+      shippedFolderRefusal({ ...plain, hasOut: true, isTouchdownAll: true, isCompanions: true }),
+    ).toBeNull();
+  });
   it("lets every measuring flag through with --out", () => {
     const all: BuildFlags = {
       hasOut: true,

@@ -16,6 +16,7 @@ import {
   seamCases,
 } from "../src/expressway/ledger.ts";
 import { STATION_STRIDE } from "../src/expressway/format.ts";
+import { deckOverlaps } from "../src/expressway/overlap.ts";
 import { heightKmOf, type HeightKm, highDeckStretches } from "../src/expressway/highDeck.ts";
 import { lowViaductStretches, openGroundStretches } from "../src/expressway/heightStructures.ts";
 import { GIRDER_DEPTH } from "../src/expressway/assumptions.ts";
@@ -30,6 +31,8 @@ export type Counted = {
   rules: Record<string, number>;
   districts: Map<string, District>;
   heightKm: HeightKm;
+  /** Each overlapping pair's stretch per run (overlap.ts deckOverlaps): what a merge_skipped follows. */
+  pairSpans: Map<string, Record<string, Array<[number, number]>>>;
 };
 
 /** The high-deck cases of the written runs (one per stretch, numbered along the run). */
@@ -180,5 +183,6 @@ export async function countCases(files: XwFiles): Promise<Counted> {
     rules: ruleCounts(files.diagnostics),
     districts,
     heightKm,
+    pairSpans: new Map(deckOverlaps(files.chunks).map((o) => [`${o.a}|${o.b}`, o.spans])),
   };
 }

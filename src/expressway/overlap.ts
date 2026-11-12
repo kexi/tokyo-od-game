@@ -118,7 +118,16 @@ export type Overlap = {
   maxDzM: number;
   /** Smallest distance between the two centre lines among them. */
   minGapM: number;
+  /**
+   * Where on each run (run distances) those stations are, as stretches split where two stations lie
+   * more than SPAN_GAP_M apart: what a merge_skipped follows (ledger.ts). Why not one span per run
+   * (PR 3 review W2): two overlaps of one pair far apart made one span up to 8.7 km long.
+   */
+  spans: Record<string, Array<[number, number]>>;
 };
+
+/** Stations of a pair's overlap this far apart along a run are two stretches (deckOverlaps' spans). */
+export const SPAN_GAP_M = 25;
 
 /** One run's stations from its chunks, in a plane around the data (metres). */
 /** `gd`: the chunk's girder (P2.7-6: a height build's viaduct may take a thinner one). */
@@ -206,6 +215,7 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
   // near the portal each is over the other's carriageway, at the other's height plus its grade.
   const chainOf = new Map(chunks.map((c) => [c.run, c.chain]));
   const found = new Map<string, Overlap>();
+  const stationsAt = new Map<string, Map<string, number[]>>();
   for (const pair of planOverlaps(planLines, 0)) {
     const isSameRoad = chainOf.get(pair.a) === chainOf.get(pair.b);
     if (isSameRoad) continue;
@@ -218,12 +228,40 @@ export function deckOverlaps(chunks: XwChunk[]): Overlap[] {
     if (isAllowed) continue;
     const [a, b] = pair.a < pair.b ? [pair.a, pair.b] : [pair.b, pair.a];
     const key = `${a}|${b}`;
-    const o = found.get(key) ?? { a, b, stations: 0, minDzM: Infinity, maxDzM: -Infinity, minGapM: Infinity };
+    const o = found.get(key) ?? {
+      a,
+      b,
+      stations: 0,
+      minDzM: Infinity,
+      maxDzM: -Infinity,
+      minGapM: Infinity,
+      spans: {},
+    };
+    const at = stationsAt.get(key) ?? new Map<string, number[]>();
+    for (const [run, s] of [
+      [pair.a, pa.s],
+      [pair.b, pair.sb],
+    ] as const)
+      at.set(run, [...(at.get(run) ?? []), s]);
+    stationsAt.set(key, at);
     o.stations++;
     o.minDzM = Math.min(o.minDzM, Math.abs(dz));
     o.maxDzM = Math.max(o.maxDzM, Math.abs(dz));
     o.minGapM = Math.min(o.minGapM, pair.dist);
     found.set(key, o);
+  }
+  for (const [key, o] of found) {
+    for (const [run, list] of stationsAt.get(key)!) {
+      const sorted = list.toSorted((p, q) => p - q);
+      const out: Array<[number, number]> = [[sorted[0], sorted[0]]];
+      for (const s of sorted.slice(1)) {
+        const last = out[out.length - 1];
+        const isApart = s - last[1] > SPAN_GAP_M;
+        if (isApart) out.push([s, s]);
+        else last[1] = s;
+      }
+      o.spans[run] = out;
+    }
   }
   return [...found.values()].sort((p, q) => (p.a + p.b < q.a + q.b ? -1 : 1));
 }

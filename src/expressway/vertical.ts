@@ -163,6 +163,10 @@ export type Coupling =
       lo: number;
       hi: number;
       firm: boolean;
+      /** The row's weight instead of W_PAIR (a soft row only): the companions' (S6 PR 3). */
+      weight?: number;
+      /** Two main lines beside each other held to one height (compile.ts findCompanions). */
+      companion?: true;
     };
 
 export type VerticalProfile = {
@@ -545,7 +549,7 @@ export function solveJoint(runs: RunInput[], couplings: Coupling[]): JointResult
     const row = merge([...zRow(a, c.a.s), ...zRow(b, c.b.s, -1)]);
     // Both points on parents of one cubic connector can cancel out entirely: nothing to hold then.
     if (row.length === 0) continue;
-    const weight = c.firm ? W_BOUND : W_PAIR;
+    const weight = c.firm ? W_BOUND : (c.weight ?? W_PAIR);
     qp.addRow(row, lo, hi, weight);
   }
   const built = qp.build();
