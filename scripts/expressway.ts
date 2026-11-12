@@ -32,6 +32,9 @@
 // diagnostics, closed runs, the solver, the blocks with the dataHash of their chunks). A diagnostic
 // is allowed by the rules (allowlist.ts) or by the ledger (ledger.json of the output folder, kept
 // across the rebuild, or --ledger <path>), which scripts/expresswayLedger.ts writes.
+// P2.7-6 PR 1: --structures height (measuring only, needs --out) draws a viaduct-tagged run's stretches
+// as viaduct, embankment or cut from its solved height (src/expressway/heightStructures.ts) and names
+// "height-structures" in meta's features; --structures tags (the default) leaves the files as before.
 import { shippedFolderRefusal } from "./expresswayGuards";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -225,14 +228,21 @@ const objective: Objective =
         },
         targetScale: v2Number("target-scale", OBJECTIVE_V2.targetScale),
       };
-// --below all (P2.7-1), blocks (P2.7-2), v1 and a sweep of the v2 weights move the decks: measuring
-// only, never into the shipped folder.
+// P2.7-6 PR 1: --structures height draws a viaduct-tagged run's stretches as viaduct, embankment or
+// cut from its solved height (src/expressway/heightStructures.ts); tags (the default) as before.
+const structuresArg = arg("structures") ?? "tags";
+const isStructuresMode = structuresArg === "tags" || structuresArg === "height";
+if (!isStructuresMode) throw new Error(`unknown --structures ${structuresArg} (tags, height)`);
+const structuresMode = structuresArg as "tags" | "height";
+// --below all (P2.7-1), blocks (P2.7-2), v1, a sweep of the v2 weights and the structures by height
+// (P2.7-6) move the decks: measuring only, never into the shipped folder.
 const refusal = shippedFolderRefusal({
   hasOut: arg("out") !== undefined,
   isBelowAll: below === "all",
   isBlocks: partitionMode === "blocks",
   isV1: objective.kind === "v1",
   v2Flags,
+  isHeight: structuresMode === "height",
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -356,6 +366,7 @@ const plan = planNetwork(net, outsideNodes, ranges, structures, {
   pruneBelow: below === "pruned",
   partition: partitionMode,
   quietFactor,
+  structures: structuresMode,
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 });
 // Asked again of the finished plan (the same set: shipRuns is pure), for the log and the scorecard.
@@ -530,7 +541,8 @@ const UNSOLVED = [
 const isUnsolved = (kind: string) => UNSOLVED.includes(kind);
 const meta: XwMeta = {
   version: XW_VERSION,
-  features: [...XW_FEATURES],
+  // The structures by height only in a height build: the tags' files name "below" alone, as before.
+  features: XW_FEATURES.filter((f) => f !== "height-structures" || structuresMode === "height"),
   zoom: Z,
   tiles: tileKeys,
   ranges: rangeNames.map((name) => ({ name, ...RANGES[name] })),
@@ -682,7 +694,7 @@ if (reportPath) {
           km: Math.round(lengthOf(chosenShip.rampsOutside)) / 1000,
         }
       : null,
-    violations: violationsOf(record, result.chunks, rampFloorOf(ledger)),
+    violations: violationsOf(record, result.chunks, rampFloorOf(ledger), structuresMode === "height"),
     structureDecks: meta.structures.flatMap((st) => st.decks),
     runs: result.runs,
     closed: result.closed,
@@ -712,6 +724,7 @@ if (reportPath) {
     stagesMs,
     districts: plannedDistricts(),
     ledgerSummary: ledger?.summary ?? null,
+    heightStructures: structuresMode === "height",
   };
   const report = buildReport(reportInput);
   await mkdir(dirname(reportPath), { recursive: true });

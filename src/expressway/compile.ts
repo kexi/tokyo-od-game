@@ -28,8 +28,24 @@ import {
 import { isAllowed } from "./allowlist";
 import { BLOCK_QUIET_FACTOR, DESIGN_GROUND_REACH } from "./assumptions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
-import { belowStructure, ceilingAt, depthFor, isBelowCompiled, isHoleAt, portalsOf } from "./below";
+import {
+  belowStructure,
+  ceilingAt,
+  depthFor,
+  isBelowCompiled,
+  isCoverStretchTooShort,
+  isHoleAt,
+  portalsOf,
+} from "./below";
 import { envelope } from "./designGround";
+import {
+  GIRDER_GIVE_M,
+  girderFor,
+  heightClassAt,
+  type HeightClass,
+  type HeightStretch,
+  heightStretches,
+} from "./heightStructures";
 import {
   STATION_STRIDE,
   type XwChunk,
@@ -283,6 +299,13 @@ export type Plan = {
    * (the problems' texts) names runs and run distances, never a piece (blocks.ts).
    */
   pieceRuns?: Map<string, { run: string; a: number }>;
+  /**
+   * `--structures height` (P2.7-6 PR 1): the structure a viaduct-tagged run is drawn as comes from its
+   * solved height (heightStructures.ts), the assumed floors no longer unsolve a run, a thinner girder
+   * takes a clearance short by up to GIRDER_GIVE_M, and a road near a low end that the solved deck does
+   * not clear is blocked. Absent: the tags' structures, as before.
+   */
+  structures?: "height";
 };
 
 const priority = (net: Network, c: Chain) => {
@@ -549,6 +572,8 @@ export type PlanOptions = {
   /** For tests: the least quiet margin and the anchors' spacing (assumptions by default). */
   quietMin?: number;
   anchorSpacing?: number;
+  /** Where a viaduct-tagged run's structure comes from (Plan.structures); `tags` by default. */
+  structures?: "tags" | "height";
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -635,6 +660,7 @@ export function planNetwork(
     nodeChains,
     chainRuns: new Map(),
     belowDeferred,
+    ...(options.structures === "height" ? { structures: "height" as const } : {}),
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
@@ -1330,8 +1356,15 @@ export type Solved = {
   end: XwEnd;
   /** [s, top, clearance] of everything the run crosses over. */
   cross: number[];
+  /**
+   * Per triple of `cross` that is a road or railway (they come first; the decks it crosses over are
+   * appended after them by solvePlan): what it is, its window, whether near a low end.
+   */
+  crossInfo?: CrossInfo[];
   /** Roads at ground level under it that it does not clear (crossing_over_or_at_grade). */
   blocked: BlockedRoad[];
+  /** A height build: the run's stretches by structure (heightStructures.ts); absent for the tags' structures. */
+  structures?: HeightStretch[];
 };
 
 /**
@@ -1500,11 +1533,18 @@ type RunSetup = {
   /** The DEM ground at each ground or portal end (null for the others). */
   groundZ: [number | null, number | null];
   cross: number[];
+  /** Per `cross` triple: what it is ("road 123") and the half window its width takes along the deck. */
+  crossInfo: CrossInfo[];
   blocked: BlockedRoad[];
   /** Objective v2's weights (RunInput.gradeChange / targetScale), absent for v1. */
   gradeChange?: number;
   targetScale?: number;
+  /** A height build: the stations whose statute floor is a road within the climb of a low end (RunInput.lawNear). */
+  lawNear?: Uint8Array;
 };
+
+/** A road or railway crossed under a run (RunSetup.cross): its label in a diagnostic and its half window. */
+type CrossInfo = { label: string; halfWindow: number; near: boolean };
 
 function setupRun(
   plan: Plan,
@@ -1552,15 +1592,35 @@ function setupRun(
     else fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
   });
   if (rp.below)
-    return setupBelow(rp, stations, groundAt, ends, fixed, groundZ, ground, diagnostics, objective);
+    return setupBelow(
+      rp,
+      stations,
+      groundAt,
+      ends,
+      fixed,
+      groundZ,
+      ground,
+      diagnostics,
+      objective,
+      plan.structures === "height",
+    );
   // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
   // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
   // the end itself); a hard floor at the DEM made the ends infeasible by centimetres.
   const lowerAtCrossings = Float64Array.from(groundAt, (g) => g - DEM_SINK_FLOOR.value);
   const lowerLaw = new Float64Array(n).fill(-Infinity);
   const cross: number[] = [];
+  const crossInfo: CrossInfo[] = [];
   const blocked: BlockedRoad[] = [];
   const mine = runPoly(rp);
+  // A height build (P2.7-6 PR 1): a road within the climb of a low end that the solved deck does not
+  // clear is blocked rather than unsolving the run; the climb decides only whether it gets a row.
+  const isHeight = plan.structures === "height" && rp.over === null;
+  const climb = approachLength(rp.planV);
+  const lowStart = isHeight && isLowEnd(plan, rp, true);
+  const lowFinish = isHeight && isLowEnd(plan, rp, false);
+  const isNearLow = (sv: number) => (lowStart && sv < climb) || (lowFinish && S - sv < climb);
+  const lawNear = isHeight ? new Uint8Array(n) : undefined;
   for (const { o, poly } of objectsNear(objects, mine)) {
     for (const [sc, , sin] of intersect(mine, poly)) {
       const p = poseAt(rp, sc);
@@ -1591,13 +1651,18 @@ function setupRun(
         continue;
       }
       const win = Math.min(40, (rp.halfWidth + GROUND_ROAD_HALF_WIDTH.value) / Math.max(sin, 0.25));
+      const isNear = o.kind === "road" && isNearLow(sc);
       for (let k = 0; k < n; k++) {
         const isInWindow = Math.abs(stations[k] - sc) <= win;
         if (!isInWindow) continue;
         lowerAtCrossings[k] = Math.max(lowerAtCrossings[k], top + clearance);
+        const isRaised = top + clearance > lowerLaw[k];
         lowerLaw[k] = Math.max(lowerLaw[k], top + clearance);
+        // The station's law floor is this road's: near a low end or not, as the highest one there.
+        if (lawNear && isRaised) lawNear[k] = isNear ? 1 : 0;
       }
       cross.push(sc, top, clearance);
+      crossInfo.push({ label: `${o.kind} ${o.id}`, halfWindow: win, near: isNear });
     }
   }
   // One grid step shorter than the climb, so the floor also holds between grid stations wherever
@@ -1644,8 +1709,10 @@ function setupRun(
     ends,
     groundZ,
     cross,
+    crossInfo,
     blocked,
     ...objectiveWeights(objective),
+    ...(lawNear ? { lawNear } : {}),
   };
 }
 
@@ -1673,6 +1740,7 @@ function setupBelow(
   ground: GroundSampler,
   diagnostics: XwDiagnostic[],
   objective: Objective,
+  isHeight = false,
 ): RunSetup {
   const S = rp.length;
   const n = stations.length;
@@ -1690,18 +1758,26 @@ function setupBelow(
   let short = 0;
   let shortFrom = Infinity;
   let shortTo = -Infinity;
+  // The run's highest planned speed (its strictest grade and radius), as checks.checkCover reads it
+  // from the summary: a fallback that lowers the speed later does not move the ceilings.
+  const portals = { z0: portalZ[0], z1: portalZ[1] };
+  const tops = Array.from(stations, (sv, k) =>
+    ceilingAt(belowAt(rp, sv), groundLow[k], sv, S, portals, rp.planV),
+  );
+  // A height build: a tunnel reached over less than one vertical curve keeps no ceiling (below.ts).
+  const imposedTunnel = Array.from(stations).filter(
+    (sv, k) => tops[k] !== null && belowAt(rp, sv) === "tunnel",
+  );
+  const isTooShort = isHeight && isCoverStretchTooShort(imposedTunnel, rp.planV);
   for (let k = 0; k < n; k++) {
     const sv = stations[k];
-    const structure = belowAt(rp, sv);
-    // The run's highest planned speed (its strictest grade and radius), as checks.checkCover reads it
-    // from the summary: a fallback that lowers the speed later does not move the ceilings.
-    const top = ceilingAt(structure, groundLow[k], sv, S, { z0: portalZ[0], z1: portalZ[1] }, rp.planV);
+    const isTunnel = belowAt(rp, sv) === "tunnel";
+    const top = isTooShort && isTunnel ? null : tops[k];
     const isImposed = top !== null;
     if (isImposed) {
       upper[k] = top;
       continue;
     }
-    const isTunnel = structure === "tunnel";
     if (!isTunnel) continue;
     short++;
     shortFrom = Math.min(shortFrom, sv);
@@ -1734,6 +1810,11 @@ function setupBelow(
         return sum / cnt - targetDepth;
       });
   const none = new Float64Array(n).fill(-Infinity);
+  if (isHeight) {
+    const at = thresholdStations(rp, stations, upper, ground, portals, isTooShort);
+    if (at.length > 0)
+      return withStations(rp, stations, target, upper, at, ground, fixed, ends, groundZ, objective);
+  }
   return {
     rp,
     stations,
@@ -1747,6 +1828,107 @@ function setupBelow(
     ends,
     groundZ,
     cross: [],
+    crossInfo: [],
+    blocked: [],
+    ...objectiveWeights(objective),
+  };
+}
+
+/** Step of the search for where a ceiling starts to be reached between two constraint stations. */
+const THRESHOLD_STEP_M = 0.25;
+
+/**
+ * A height build's extra ceiling stations of a below run (P2.7-6 PR 1 4.2 の 7): between two
+ * constraint stations of which one keeps a ceiling and the other not, the first point (every
+ * THRESHOLD_STEP_M from the free one) where the descent from the portals reaches the ceiling over the
+ * ground there, as checks.checkCover asks it at any station of the files. Why: the ceilings were held
+ * only on the 5 m grid, and 5213545:0's station at s 113.75 (reached, ceiling −6.12) lay between 110
+ * (not reached) and 115 (reached): the road came down to the grid's ceiling at 115 and stood 2.4 cm
+ * over the files' ceiling at 113.75 (T12). Not the rounding of the files (1 cm, allowed) nor the
+ * QP's margin (3 cm inside a row it has).
+ */
+function thresholdStations(
+  rp: RunPlan,
+  stations: Float64Array,
+  upper: Float64Array,
+  ground: GroundSampler,
+  portals: { z0: number; z1: number },
+  /** The tunnel keeps no ceiling at all (below.ts isCoverStretchTooShort). */
+  isTunnelFree: boolean,
+): number[] {
+  const S = rp.length;
+  const out: number[] = [];
+  const isReachedAt = (sv: number) => {
+    const isFree = isTunnelFree && belowAt(rp, sv) === "tunnel";
+    if (isFree) return false;
+    const p = poseAt(rp, sv);
+    return ceilingAt(belowAt(rp, sv), ground(p.lon, p.lat), sv, S, portals, rp.planV) !== null;
+  };
+  for (let k = 0; k + 1 < stations.length; k++) {
+    const a = Number.isFinite(upper[k]);
+    const b = Number.isFinite(upper[k + 1]);
+    const isEdge = a !== b;
+    if (!isEdge) continue;
+    // From the free station towards the held one.
+    const from = a ? stations[k + 1] : stations[k];
+    const to = a ? stations[k] : stations[k + 1];
+    const dir = Math.sign(to - from);
+    for (let sv = from + dir * THRESHOLD_STEP_M; dir * (to - sv) > 1e-6; sv += dir * THRESHOLD_STEP_M) {
+      if (!isReachedAt(sv)) continue;
+      out.push(sv);
+      break;
+    }
+  }
+  return out;
+}
+
+/** A below run's setup with its extra ceiling stations (thresholdStations) put in order. */
+function withStations(
+  rp: RunPlan,
+  stations: Float64Array,
+  target: Float64Array,
+  upper: Float64Array,
+  extra: number[],
+  ground: GroundSampler,
+  fixed: [RunInput["start"], RunInput["end"]],
+  ends: [EndPlan, EndPlan],
+  groundZ: [number | null, number | null],
+  objective: Objective,
+): RunSetup {
+  const S = rp.length;
+  type Row = { s: number; target: number; upper: number };
+  const rows: Row[] = Array.from(stations, (s, k) => ({ s, target: target[k], upper: upper[k] }));
+  for (const sv of extra) {
+    let k = 0;
+    while (k + 1 < stations.length && stations[k + 1] < sv) k++;
+    const t = (sv - stations[k]) / (stations[k + 1] - stations[k] || 1);
+    // The ground at the point itself, as T12 reads a station and as the point was found to be reached.
+    // Why not the lowest ground ±2.5 m of the grid: beside a portal in a steep bank (5204786 at 12 m)
+    // that was a metre lower than what was reached, a ceiling no road could meet.
+    const q = poseAt(rp, Math.min(S, Math.max(0, sv)));
+    rows.push({
+      s: sv,
+      target: target[k] + (target[k + 1] - target[k]) * t,
+      upper: ground(q.lon, q.lat) - depthFor(belowAt(rp, sv)),
+    });
+  }
+  rows.sort((p, q) => p.s - q.s);
+  const n = rows.length;
+  const none = new Float64Array(n).fill(-Infinity);
+  return {
+    rp,
+    stations: Float64Array.from(rows, (r) => r.s),
+    target: Float64Array.from(rows, (r) => r.target),
+    lower: none,
+    lowerAtCrossings: none,
+    lowerLaw: none,
+    lowerOpen: none,
+    upper: Float64Array.from(rows, (r) => r.upper),
+    fixed,
+    ends,
+    groundZ,
+    cross: [],
+    crossInfo: [],
     blocked: [],
     ...objectiveWeights(objective),
   };
@@ -1851,6 +2033,29 @@ type LevelSolve = {
 
 /** Half the stretch around a failure that a lower design speed covers (local fallback, `capZones`). */
 const LOWER_WINDOW_M = 150;
+/**
+ * How often a run at its last step may widen its lowered stretches (height builds). Why a bound: a
+ * failure that moves on each solve would otherwise take a solve of the whole component per 150 m.
+ */
+const MAX_WIDENINGS = 3;
+
+/**
+ * The stretches a run at its last lowered step adds where it fails outside its lowered stretches
+ * (height builds, P2.7-6 PR 1): ±LOWER_WINDOW_M around each such failure, within the run.
+ */
+export function windowsToWiden(
+  failingS: readonly number[],
+  windows: ReadonlyArray<[number, number]>,
+  length: number,
+): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const sv of failingS) {
+    const isCovered = [...windows, ...out].some(([a, b]) => sv >= a && sv <= b);
+    if (isCovered) continue;
+    out.push([Math.max(0, sv - LOWER_WINDOW_M), Math.min(length, sv + LOWER_WINDOW_M)]);
+  }
+  return out;
+}
 
 /**
  * Whether a run's problems unsolve it: anything of the statute, any end or junction it cannot meet,
@@ -1859,9 +2064,19 @@ const LOWER_WINDOW_M = 150;
  * only there (and not on every run, as first written in P2.6): always on, the QP traded the assumed
  * floors on runs that met them, and the test section moved by up to 1.9 m.
  */
-export function isFailing(problems: RunProblem[], given: boolean): boolean {
+export function isFailing(problems: RunProblem[], given: boolean, height = false): boolean {
   return problems.some((p) => {
     if (!given) return true;
+    // A height build (P2.7-6 PR 1), at the last step: an assumed floor missed changes the structure
+    // (an embankment, a cut), never whether the run is solved; a clearance a thinner girder takes, or
+    // a road near a low end the solved deck does not clear (blocked), neither. Why only at the last
+    // step, as the give it replaces: before it the misses still step the run down (the 特例 grade, a
+    // lower speed), so a deck that can stay a viaduct does (P2.7-6 4.1). Counted at every step, a
+    // ramp over a plateau stayed at the standard step and was cut into the plateau's edges, and the
+    // default range's 臨港道路 (45177681) left its 特例 step and moved 9.8 m (the first version).
+    if (height && (p.what === "sunk" || p.what === "floor")) return false;
+    if (height && p.give !== undefined) return false;
+    if (height) return true;
     if (p.what === "sunk") return p.by > DEM_SINK_GIVE.value;
     if (p.what === "floor") return p.by > OPEN_FLOOR_GIVE.value;
     return true;
@@ -1965,7 +2180,11 @@ function solveComponent(
   );
   const level = new Map(ids.map((id) => [id, Math.min(start.get(id) ?? 0, ladders.get(id)!.length - 1)]));
   const isGiven = (id: string) => ladders.get(id)![level.get(id)!].steps.includes("assumedGive");
-  const fails = (id: string, problems: RunProblem[]) => isFailing(problems, isGiven(id));
+  const isHeight = plan.structures === "height";
+  // A run on a structure is not classified (its girder, sRange and tapers are the structure's): its
+  // assumed floors judge it as by the tags (PR 1 review W6).
+  const isHeightRun = (id: string) => isHeight && plan.runs.get(id)!.over === null;
+  const fails = (id: string, problems: RunProblem[]) => isFailing(problems, isGiven(id), isHeightRun(id));
   // The windows come with the level they were opened at (startWindows): without them a run
   // starting at a lowerSpeed step would take capZones' whole-run cap, a different top speed and
   // knot spacing than the pass before (41009552 in ship/all, P2.7-3a).
@@ -2027,6 +2246,9 @@ function solveComponent(
         ...(follow ? { follow } : { pins: profilePins(st.rp) }),
         ...(plan.pieceRuns?.has(id) ? { textOffset: plan.pieceRuns.get(id)!.a } : {}),
         ...inputWeights(st),
+        ...(isHeightRun(id)
+          ? { lawGive: GIRDER_GIVE_M, ...(st.lawNear ? { lawNear: st.lawNear } : {}) }
+          : {}),
       };
     });
     const started = performance.now();
@@ -2054,6 +2276,8 @@ function solveComponent(
       const upper = onRun(c.upper, c.sUpper);
       const what = `clearance over ${lower.run} ${gap.toFixed(2)} m < ${ROAD_CLEAR} m at ${Math.round(upper.s)} m`;
       const by = ROAD_CLEAR - gap;
+      // A height build thins the upper deck's girder for a miss up to GIRDER_GIVE_M (chunkRun).
+      const give = isHeightRun(c.upper) && by <= GIRDER_GIVE_M + 1e-9 ? { give: "girder" as const } : {};
       problems.get(c.upper)!.push({
         what: "crossing",
         basis: "law",
@@ -2061,6 +2285,7 @@ function solveComponent(
         by,
         text: what,
         partner: { run: c.lower, s: c.sLower },
+        ...give,
       });
       problems.get(c.lower)!.push({
         what: "crossing",
@@ -2069,6 +2294,7 @@ function solveComponent(
         by,
         text: `under ${upper.run}: ${what}`,
         partner: { run: c.upper, s: c.sUpper },
+        ...give,
       });
     }
     const soft = new Map(ids.map((id) => [id, 0]));
@@ -2154,6 +2380,8 @@ function solveComponent(
 
   let result = solveAt();
   let best = snapshot(result);
+  /** Per run: how often its lowered stretches were widened at its last step (height builds). */
+  const widenings = new Map<string, number>();
   for (;;) {
     // An unconverged solve is no verdict on any run: stepping runs down on it would lower speeds
     // for nothing. Stop and report (solver_not_converged); the exact checks still judge each run.
@@ -2164,6 +2392,7 @@ function solveComponent(
     // A soft miss or a partner's failure never takes a run to the give on the assumed floors.
     const hasSoftStep = (id: string) =>
       hasStep(id) && !ladders.get(id)![level.get(id)! + 1].steps.includes("assumedGive");
+    const widen = new Map<string, number[]>();
     for (const id of ids) {
       const problems = result.problems.get(id)!;
       if (fails(id, problems)) {
@@ -2174,6 +2403,27 @@ function solveComponent(
           );
           continue;
         }
+        // A height build (P2.7-6 PR 1, P2.7-3a's defect 1): a run at its last lowered step that fails
+        // outside the stretches its speed was lowered over takes ±LOWER_WINDOW_M around the failure
+        // too and is solved again (windows only grow when a step is taken otherwise).
+        const isLowered = ladders.get(id)![level.get(id)!].steps.includes("lowerSpeed");
+        const mine = windows.get(id)!;
+        const more = windowsToWiden(
+          problems.filter((p) => fails(id, [p])).map((p) => p.s),
+          mine,
+          plan.runs.get(id)!.length,
+        );
+        const widened = widenings.get(id) ?? 0;
+        const isWidening =
+          isHeightRun(id) && isLowered && !pins.has(id) && more.length > 0 && widened < MAX_WIDENINGS;
+        if (isWidening) {
+          mine.push(...more);
+          widen.set(
+            id,
+            more.map(([a, b]) => (a + b) / 2),
+          );
+          widenings.set(id, widened + 1);
+        }
         for (const p of partnersOf(id, problems))
           if (members.has(p.run) && hasSoftStep(p.run)) add(p.run, [p.s]);
         continue;
@@ -2181,7 +2431,7 @@ function solveComponent(
       const isSoft = result.soft.get(id)! > 0;
       if (isRamp(id) && isSoft && hasSoftStep(id)) add(id, result.softAt.get(id)!);
     }
-    if (advance.size === 0) break;
+    if (advance.size === 0 && widen.size === 0) break;
     for (const [id, at] of advance) stepDown(id, at);
     result = solveAt();
     const now = snapshot(result);
@@ -2247,8 +2497,9 @@ function solveComponent(
       unsolved.set(id, [...attempts.get(id)!, kept]);
       continue;
     }
-    // The worst miss of each assumed floor a solved run keeps (W2), reported with how much.
-    for (const what of ["sunk", "floor"] as const) {
+    // The worst miss of each assumed floor a solved run keeps (W2), reported with how much. A height
+    // build reports none: the stretch is an embankment or a cut instead (heightStructures.ts).
+    for (const what of isHeightRun(id) ? [] : (["sunk", "floor"] as const)) {
       const worst = mine.filter((p) => p.what === what).sort((p, q) => q.by - p.by)[0];
       if (worst) sunk.set(`${id}|${what}`, worst);
     }
@@ -2267,6 +2518,7 @@ function solveComponent(
       start: ends[0],
       end: ends[1],
       cross: st.cross,
+      crossInfo: [...st.crossInfo],
       blocked: st.blocked,
     });
   }
@@ -2642,6 +2894,8 @@ export type SolveOptions = {
   maxBlockVariables?: number;
   /** The vertical objective (P2.7-3); v1 when absent. */
   objective?: Objective;
+  /** Where a viaduct-tagged run's structure comes from (Plan.structures); the plan's when absent. */
+  structures?: "tags" | "height";
 };
 
 /** A block's first QP over BLOCK_MAX_VARIABLES (I7): the build stops, naming the block and its runs. */
@@ -2702,11 +2956,17 @@ function blockVariables(plan: Plan, ids: string[]): number {
 }
 
 export function solvePlan(
-  plan: Plan,
+  given: Plan,
   ground: GroundSampler,
   objects: CrossObject[],
   options: SolveOptions = {},
 ): CompileResult {
+  // The option over the plan's (a copy, so the plan given stays as it was planned).
+  const wantsHeight =
+    (options.structures ?? (given.structures === "height" ? "height" : "tags")) === "height";
+  const isAsPlanned = wantsHeight === (given.structures === "height");
+  const { structures: _planned, ...rest } = given;
+  const plan: Plan = isAsPlanned ? given : wantsHeight ? { ...rest, structures: "height" } : rest;
   const diagnostics = [...plan.diagnostics];
   const objectPolys = objects.map((o) => {
     const poly = objectPoly(o);
@@ -2767,20 +3027,27 @@ export function solvePlan(
   // Cleared means over the whole width the road takes along the deck (its lowest point there), not
   // only at the crossing's centre line.
   const cleared = new Set<XwDiagnostic>();
+  const isHeight = plan.structures === "height";
+  // A height build takes a clearance a thinner girder meets (chunkRun thins it) as cleared too.
   for (const s of solved.values()) {
     const kept: BlockedRoad[] = [];
+    const give = isHeight && s.rp.over === null ? GIRDER_GIVE_M : 0;
     for (const b of s.blocked) {
-      const isClear = lowestOver(s, b.s - b.halfWindow, b.s + b.halfWindow, s.rp.length) - b.top >= b.need;
+      const isClear =
+        lowestOver(s, b.s - b.halfWindow, b.s + b.halfWindow, s.rp.length) - b.top >= b.need - give;
       if (!isClear) {
         kept.push(b);
         continue;
       }
       s.cross.push(b.s, b.top, b.need);
+      const label = /^(\S+ \d+)/.exec(b.diagnostic.detail)?.[1] ?? "road";
+      s.crossInfo?.push({ label, halfWindow: b.halfWindow, near: true });
       cleared.add(b.diagnostic);
     }
     s.blocked = kept;
   }
   for (let i = diagnostics.length - 1; i >= 0; i--) if (cleared.has(diagnostics[i])) diagnostics.splice(i, 1);
+  if (isHeight) for (const s of solved.values()) structuresByHeight(plan, s, ground, diagnostics);
   // Deck-over-deck crossings, recorded on the upper run once both are solved (for T4). The lower one
   // is read where it is solved (with blocks, the piece holding the crossing, in the upper's block).
   for (const c of plan.crossings) {
@@ -2822,6 +3089,9 @@ export function solvePlan(
       end: s.end,
       chunks: runChunks.map((c) => c.id),
       structure,
+      // A height build says which runs are below runs by their tags (review W5: a viaduct-tagged run
+      // all cut looked like one); a build by the tags leaves it out (its files as before).
+      ...(isHeight && s.rp.below ? { below: true as const } : {}),
     });
   }
   for (const o of deckOverlaps(chunks)) {
@@ -2996,6 +3266,7 @@ function pieceSetup(
     ends,
     groundZ: [isFirst ? run.groundZ[0] : null, isLast ? run.groundZ[1] : null],
     cross: [],
+    crossInfo: [],
     blocked: [],
     ...inputWeights(run),
   };
@@ -3219,6 +3490,7 @@ function stitch(
     start: runEnd(plan, rp, true, parts[0].start),
     end: runEnd(plan, rp, false, parts[parts.length - 1].end),
     cross: [...setup.cross],
+    crossInfo: [...setup.crossInfo],
     blocked: [...setup.blocked],
   };
 }
@@ -3715,6 +3987,75 @@ function lowestOver(s: Solved, a: number, b: number, length: number): number {
   return low;
 }
 
+/**
+ * A height build (P2.7-6 PR 1): a viaduct-tagged run's stretches by structure, from its solved profile
+ * against the ground under its centre line every metre (heightStructures.ts), and the roads and
+ * railways under it it cannot pass over as solved: under an embankment or a cut, or within the climb
+ * of a low end and not cleared over the road's width (less what a thinner girder takes). Those are
+ * blocked, each reported as crossing_over_or_at_grade. Runs before the decks it crosses over are
+ * appended to `cross` (only roads and railways are in it then). A below run, or one carrying a
+ * structure's deck (its girder, sRange and tapers are the structure's), keeps its tags' structures.
+ */
+function structuresByHeight(plan: Plan, s: Solved, ground: GroundSampler, diagnostics: XwDiagnostic[]): void {
+  const { rp } = s;
+  const isTagged = rp.below || rp.over !== null;
+  if (isTagged) return;
+  const S = rp.length;
+  const sampleOf = (sv: number) => {
+    const p = poseAt(rp, sv);
+    return { s: sv, z: evalRun(s, sv).z, ground: ground(p.lon, p.lat) };
+  };
+  const samples: Array<{ s: number; z: number; ground: number }> = [];
+  for (let sv = 0; sv < S; sv += 1) samples.push(sampleOf(sv));
+  samples.push(sampleOf(S));
+  // The same decks as the chunks' (deckStretches), so T13 reads the same context from the tiles.
+  const decks = deckStretches(plan, rp.run.id);
+  const spans = (relation: "above" | "same") =>
+    decks.filter((d) => d.relation === relation).map((d): [number, number] => [d.s0, d.s1]);
+  const stretches = heightStretches(samples, undefined, {
+    above: spans("above"),
+    same: spans("same"),
+    length: S,
+  });
+  s.structures = stretches;
+  const info = s.crossInfo ?? [];
+  const kept: number[] = [];
+  const keptInfo: CrossInfo[] = [];
+  info.forEach((c, i) => {
+    const [sc, top, need] = s.cross.slice(3 * i, 3 * i + 3);
+    // The whole width the road takes along the deck (review W1): any of it on an embankment or cut.
+    const a = sc - c.halfWindow;
+    const b = sc + c.halfWindow;
+    const onGround = stretches.find((h) => h.structure !== "viaduct" && h.s1 > a && h.s0 < b);
+    const at = onGround?.structure ?? "viaduct";
+    const isOpenGround = onGround !== undefined;
+    // Its lowest point over that width, as the cleared roads are judged: short of what the thinnest
+    // girder leaves, it cannot be crossed (review C1: 172358461 over road 172358474, 7.04 m at the
+    // centre but 6.37 m 9 m along, a soffit of 4.17 m).
+    const low = lowestOver(s, a, b, S);
+    const isMissed = low - top < need - GIRDER_GIVE_M;
+    const isPassing = !isOpenGround && !isMissed;
+    if (isPassing) {
+      kept.push(sc, top, need);
+      keptInfo.push(c);
+      return;
+    }
+    const why = isOpenGround
+      ? `under ${at === "cut" ? "a cut" : "an embankment"}`
+      : "not cleared by the solved deck over its width";
+    const diagnostic: XwDiagnostic = {
+      run: rp.run.id,
+      kind: "crossing_over_or_at_grade",
+      detail: `${c.label} at ${sc.toFixed(0)} m is ${why}; taken as passing over`,
+      allowed: false,
+    };
+    diagnostics.push(diagnostic);
+    s.blocked.push({ s: sc, halfWindow: c.halfWindow, top, need, diagnostic });
+  });
+  s.cross = [...kept, ...s.cross.slice(3 * info.length)];
+  s.crossInfo = keptInfo;
+}
+
 /** Whether s belongs to the chunk [a, b) (the last chunk keeps its end). */
 function within(sv: number, a: number, b: number, isLast: boolean): boolean {
   return sv >= a && (sv < b || (isLast && sv <= b));
@@ -3749,6 +4090,10 @@ function chunkRun(
       cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
   }
   for (const z of s.zones) if (z.from > 0) cuts.add(z.from);
+  // A height build: a chunk is all one structure (P2.7-6 PR 1), so its stretches' ends are cuts too.
+  const stretchesOf = s.structures;
+  for (const h of stretchesOf ?? []) if (h.s0 > 0 && h.s0 < S) cuts.add(h.s0);
+  const classAt = (sv: number): HeightClass | null => (stretchesOf ? heightClassAt(stretchesOf, sv) : null);
   // An anchor (blocks.ts) is no cut of its own, so the chunk ids stay; only where the pieces beside
   // it differ in the 特例 grade (a chunk has one gmax). A speed change there is a zone's boundary.
   for (let k = 1; k < s.pieces.length; k++) {
@@ -3821,6 +4166,16 @@ function chunkRun(
     }
     const isOverDeck = decksBelow.some(([a, b]) => at >= a && at <= b);
     if (isOverDeck) continue;
+    // An embankment or a cut stands on the ground (a height build): no piers. The chunk's class (at
+    // its middle) decides, as it is written: a stretch's end within 0.5 m of a chunk's end is no cut of
+    // its own, and a pier there stood on an embankment chunk (5171105:11 at s 2450).
+    const ci = stretchesOf
+      ? bounds.findIndex(
+          (a, i) => i + 1 < bounds.length && within(at, a, bounds[i + 1], i + 2 === bounds.length),
+        )
+      : -1;
+    const isOnGround = ci >= 0 && classAt((bounds[ci] + bounds[ci + 1]) / 2) !== "viaduct";
+    if (isOnGround) continue;
     // The structure's spans and anchorages carry the deck (pierFreeRange): no pier of our own there.
     const isCarried = rp.over !== null && isPierFree(rp.over.st, rp.over.axisAt(at));
     if (isCarried) continue;
@@ -3878,6 +4233,46 @@ function chunkRun(
     };
   };
   const portals = rp.below ? belowPortals(plan, s) : [];
+  const myPairs = stretchesOf ? plan.pairs.filter((p) => p.a === rp.run.id || p.b === rp.run.id) : [];
+  /**
+   * A height build's viaduct chunk over [a, b): the girder its crossings and the decks under it leave
+   * room for (heightStructures.girderFor), the standard where nothing is short. A crossing's surplus is
+   * the surface over what it crosses less the clearance without the girder; a deck under it, the
+   * height over that deck less 第12条's H.
+   */
+  const thinGirder = (a: number, b: number, standard: number): number => {
+    const isStandardless = standard <= 0;
+    if (isStandardless) return standard;
+    const surpluses: number[] = [];
+    for (let i = 0; i < s.cross.length; i += 3) {
+      const sc = s.cross[i];
+      const isHere = sc >= a && sc <= b;
+      if (!isHere) continue;
+      // A road or railway over the width it takes along the deck (its lowest point there), as the
+      // judgement that let it pass (structuresByHeight); a deck under it at the crossing's point.
+      const info = s.crossInfo?.[i / 3];
+      const z = info ? lowestOver(s, sc - info.halfWindow, sc + info.halfWindow, S) : evalRun(s, sc).z;
+      surpluses.push(z - s.cross[i + 1] - (s.cross[i + 2] - GIRDER));
+    }
+    // Both ways of each pair: this run's points over the other's carriageway, and the other's points
+    // under this one's. Why both: an overlap is found at either run's stations (overlap.ts), and over a
+    // narrow parallel overlap only the lower run's points fell in the other's band (41009552 over
+    // 176046420, 6.65 m at one of the lower's stations, no pair of the upper's).
+    for (const p of myPairs) {
+      const mineS = p.a === rp.run.id ? p.sa : p.sb;
+      const isHere = mineS >= a && mineS <= b;
+      if (!isHere) continue;
+      const other = p.a === rp.run.id ? heightAt(p.b, p.sb) : heightAt(p.a, p.sa);
+      if (!other) continue;
+      const dz = evalRun(s, mineS).z - other.z;
+      const isAbove = dz > 0;
+      if (isAbove) surpluses.push(dz - CLEARANCE_HEIGHT.value);
+    }
+    const thin = girderFor(surpluses);
+    const isThin = thin < standard;
+    // Down to the centimetre, so the clearance written (less the girder saved) never exceeds what is there.
+    return isThin ? Math.floor((thin + 1e-9) * 100) / 100 : standard;
+  };
   // Stations by the plan curvature, plus every knot where the vertical curvature changes: a
   // station interval then lies within one parabola, which the Hermite surface reproduces exactly.
   // Why not plan stations alone: across a knot the cubic overshoots the end grades (5.02 % on a
@@ -3937,13 +4332,25 @@ function chunkRun(
     };
     for (const sv of chunkStations[k]) push(sv);
     const { section, over, girder: deckGirder } = sectionAt(a, b);
-    const structure = rp.below ? belowAt(rp, (a + b) / 2) : "viaduct";
-    const girder = rp.below ? 0 : deckGirder;
+    const byHeight = classAt((a + b) / 2);
+    const structure: XwChunk["structure"] = rp.below ? belowAt(rp, (a + b) / 2) : (byHeight ?? "viaduct");
+    // A height build's viaduct takes a thinner girder where a crossing or a deck under it is short of
+    // the clearance + GIRDER by up to GIRDER_GIVE_M (heightStructures.girderFor); a cut has none.
+    const girder =
+      rp.below || structure === "cut"
+        ? 0
+        : byHeight === "viaduct"
+          ? thinGirder(a, b, deckGirder)
+          : deckGirder;
     // A portal on a chunk boundary belongs to the tunnel's chunk (which draws its 坑門): the one after
     // it going in, the one before it coming out; otherwise to the chunk after it. The s are rounded
     // to 1 cm, so it is looked up 1 cm to that side, and the run's last one at S.
     const sideOf = (p: XwPortal) => (p.from === "tunnel" ? Math.max(0, p.s - 0.01) : Math.min(p.s + 0.01, S));
     const chunkPortals = portals.filter((p) => within(sideOf(p), a, b, isLast));
+    // A height build: where the structure changes the chunk after it starts with the portal.
+    const before = k > 0 ? classAt((bounds[k - 1] + a) / 2) : null;
+    const isChange = byHeight !== null && before !== null && before !== byHeight;
+    if (isChange) chunkPortals.push({ s: roundTo(a, 2), from: before, to: byHeight });
     const maxspeed = wayAtSample(sampleAt(rp, (a + b) / 2)).maxspeedTag;
     const V = zoneSpeedAt(s.zones, (a + b) / 2);
     const chunkPiers: number[] = [];
@@ -3951,11 +4358,18 @@ function chunkRun(
       if (within(piers[i], a, b, isLast)) chunkPiers.push(roundTo(piers[i], 2), roundTo(piers[i + 1], 2));
     }
     const chunkCross: number[] = [];
+    // The clearance written is what the chunk's girder needs (T4): less where it is thinner.
+    const thinner = girder > 0 && girder < GIRDER ? GIRDER - girder : 0;
     for (let i = 0; i < s.cross.length; i += 3) {
       const sc = s.cross[i];
       if (!within(sc, a, b, isLast)) continue;
       const z = evalRun(s, sc).z;
-      chunkCross.push(roundTo(sc, 2), roundTo(s.cross[i + 1], 3), roundTo(s.cross[i + 2], 3), roundTo(z, 3));
+      chunkCross.push(
+        roundTo(sc, 2),
+        roundTo(s.cross[i + 1], 3),
+        roundTo(s.cross[i + 2] - thinner, 3),
+        roundTo(z, 3),
+      );
     }
     const chunkBlocked: number[] = [];
     for (const road of s.blocked) {

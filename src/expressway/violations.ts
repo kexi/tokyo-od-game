@@ -11,8 +11,10 @@ import {
   checkSurface,
   checkVerticalCurves,
   climbingEnds,
+  isTunnelFreeRun,
 } from "./checks";
 import { STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
+import { checkHeightStructures } from "./heightStructures";
 
 /**
  * The checks of knowledge/road-redesign-plan.md 4.4 over built files, counted per property, as the
@@ -23,7 +25,7 @@ import { STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } fr
  * counts (P2.7-1: 「T1〜T7 違反 0」 is a shipping condition) and the first violations of each.
  * Why not the data test alone: it stops at the first property that fails and only on one folder.
  */
-export const PROPERTIES = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T12"] as const;
+export const PROPERTIES = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T12", "T13"] as const;
 export type Property = (typeof PROPERTIES)[number];
 
 export type Violations = Record<Property, { count: number; first: string[] }>;
@@ -35,6 +37,8 @@ export function violationsOf(
   meta: { runs: readonly XwRunSummary[]; diagnostics: readonly XwDiagnostic[] },
   chunks: XwChunk[],
   rampFloor: (run: string) => number | undefined = () => undefined,
+  /** The files name "height-structures" (P2.7-6): T13 judges the structures; else it has nothing to judge. */
+  isHeight = false,
 ): Violations {
   const runs = new Map(meta.runs.map((r) => [r.id, r]));
   const byRun = new Map<string, XwChunk[]>();
@@ -51,7 +55,16 @@ export function violationsOf(
     const run = runs.get(c.run)!;
     found.T1.push(...checkGrade(c, run));
     found.T2.push(...checkVerticalCurves(c), ...checkSurface(c));
-    found.T4.push(...checkClearance(c, run, climbingEnds(run, runs), openShort(c.run)));
+    // A structure's run is not classified: its assumed floors are judged as by the tags (review W6).
+    found.T4.push(
+      ...checkClearance(
+        c,
+        run,
+        climbingEnds(run, runs),
+        openShort(c.run),
+        isHeight && run.structure === null,
+      ),
+    );
     found.T6.push(...checkPlan(c, run, rampFloor(c.run)).problems);
     found.T7.push(...checkSuperelevation(c));
   }
@@ -72,7 +85,9 @@ export function violationsOf(
     const first = list[0].st;
     const last = list[list.length - 1].st;
     const ends = { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
-    for (const c of list) found.T12.push(...checkCover(c, r, ends));
+    const isTunnelFree = isHeight && isTunnelFreeRun(list, r, ends);
+    for (const c of list) found.T12.push(...checkCover(c, r, ends, isTunnelFree));
+    if (isHeight) found.T13.push(...checkHeightStructures(list, r.below === true));
   }
   return Object.fromEntries(
     PROPERTIES.map((p) => [p, { count: found[p].length, first: found[p].slice(0, FIRST) }]),

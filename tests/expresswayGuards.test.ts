@@ -20,6 +20,10 @@ describe("出荷フォルダに書いてよい生成（scripts/expressway.ts、P
     expect(shippedFolderRefusal({ ...plain, isBlocks: true })).toMatch(/--partition blocks/);
     expect(shippedFolderRefusal({ ...plain, isV1: true })).toMatch(/--objective v1/);
   });
+  it("stops --structures height without --out until PR 7 makes it the default (P2.7-6)", () => {
+    expect(shippedFolderRefusal({ ...plain, isHeight: true })).toMatch(/--structures height/);
+    expect(shippedFolderRefusal({ ...plain, hasOut: true, isHeight: true })).toBeNull();
+  });
   it("lets every measuring flag through with --out", () => {
     const all: BuildFlags = {
       hasOut: true,

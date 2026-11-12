@@ -35,9 +35,12 @@ export const XW_VERSION = 6;
  * (P9): `tunnel` / `cut` chunks, their `portals`, and `seam` ends between runs. A reader refuses a
  * file naming a feature it does not know (expresswayDeck.ts isSupportedMeta), so P9's data cannot be
  * read as plain P7 data by a newer reader that lacks P9. P6 (3) and P7 (4) met in 5, which
- * keeps the feature list.
+ * keeps the feature list. "height-structures" (P2.7-6 PR 1, `--structures height`): a viaduct-tagged
+ * run's chunks may be `embankment` (retaining walls down to the ground, no piers) or `cut` (as a below
+ * run's) where its solved height says so, with `portals` where the structure changes. A build with
+ * the tags' structures (the default) names only "below", so its files are as before.
  */
-export const XW_FEATURES = ["below"] as const;
+export const XW_FEATURES = ["below", "height-structures"] as const;
 export type XwFeature = (typeof XW_FEATURES)[number];
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */
 export const PIER_STRIDE = 2;
@@ -65,9 +68,12 @@ export type XwChunk = {
   /**
    * What carries the chunk: a viaduct (the deck, girder and piers), or below the ground (P9) a
    * tunnel (floor, walls, walkways and roof) or a cut (floor and retaining walls up to the ground).
-   * A below chunk has no girder (`girder` 0), piers, crossings nor blocked roads.
+   * A below chunk has no girder (`girder` 0), piers, crossings nor blocked roads. An embankment
+   * ("height-structures", P2.7-6): a deck over the ground but under the open-ground floor, walled
+   * from the slab's edges down to the ground, with no piers and nothing crossed under it (a road
+   * there is blocked).
    */
-  structure: "viaduct" | "tunnel" | "cut";
+  structure: "viaduct" | "embankment" | "tunnel" | "cut";
   /**
    * Where the road passes from one structure to the next inside this chunk (P9): the portals of a
    * tunnel or cut. Left out when there are none (every viaduct chunk), so P7's chunks are unchanged.
@@ -193,7 +199,7 @@ export type XwOver = {
 };
 
 /** What carries the road on either side of a portal ("ground": at grade, not compiled). */
-export type XwStructure = "viaduct" | "ground" | "tunnel" | "cut";
+export type XwStructure = "viaduct" | "embankment" | "ground" | "tunnel" | "cut";
 
 /**
  * A portal (P9): at run distance s the road passes from `from` to `to` (the travel direction). At a
@@ -258,6 +264,11 @@ export type XwRunSummary = {
   chunks: string[];
   /** The structure deck this run carries over a landmark (null for an ordinary run). */
   structure: XwRunStructure | null;
+  /**
+   * A below run by its tags (P9), in a height build only (P2.7-6): there a viaduct-tagged run may be
+   * all cut too. Absent elsewhere.
+   */
+  below?: true;
 };
 
 /** How a run met its structure's deck levels (structures.ts; the build fails beyond the tolerances). */

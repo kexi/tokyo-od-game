@@ -11,7 +11,12 @@ import {
   PORTAL_OPEN_CUT_MAX_M,
   PORTAL_OPEN_CUT_REASON,
   RULE_KINDS,
+  CUT_STRETCH_REASON,
+  EMBANKMENT_STRETCH_REASON,
+  THIN_GIRDER_REASON,
 } from "./allowlist";
+import { GIRDER_MIN } from "./assumptions";
+import { isOpenGroundRuled } from "./heightStructures";
 import { type District, DISTRICTS } from "./districts";
 import type { HeightKm } from "./highDeck";
 import type { XwBlockRecord, XwBuildRecord, XwChunk, XwDiagnostic, XwTileRun } from "./format";
@@ -36,6 +41,11 @@ export const LEDGER_VERSION = 1;
  * seam_hole (no face at a seam), merge_skipped (a same-surface stretch over MERGE_MAX_DZ, drawn
  * apart), let_go (where a merged pair lets go, by rule within LET_GO_MAX_STEP_M). high-deck (P2.7-5):
  * a free viaduct stretch over HIGH_DECK_ABOVE_M for HIGH_DECK_MIN_M or more (src/expressway/highDeck.ts).
+ * cut-stretch / embankment-stretch (P2.7-6 PR 1, a height build): a viaduct-tagged run's cut or
+ * embankment (heightStructures.ts openGroundStretches), by rule within HEIGHT_STRUCTURES' limits;
+ * thin-girder: a viaduct chunk on a girder thinner than GIRDER_DEPTH, by rule at GIRDER_MIN or more.
+ * low-viaduct: a viaduct under the viaduct's height that never comes down to the ground (an embankment
+ * in the air kept a viaduct, heightStructures.lowViaductStretches), listed for a review.
  */
 export const CASE_KINDS = [
   "nose",
@@ -51,11 +61,22 @@ export const CASE_KINDS = [
   "merge_skipped",
   "let_go",
   "high-deck",
+  "cut-stretch",
+  "embankment-stretch",
+  "thin-girder",
+  "low-viaduct",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
 /** The kinds a rule accepts without a review while within its condition (`by: "rule"`). */
-export const AUTO_KINDS: readonly CaseKind[] = ["nose", "portal-open-cut", "let_go"];
+export const AUTO_KINDS: readonly CaseKind[] = [
+  "nose",
+  "portal-open-cut",
+  "let_go",
+  "cut-stretch",
+  "embankment-stretch",
+  "thin-girder",
+];
 
 export const STATUSES = ["new", "accepted", "open", "wontfix", "gone"] as const;
 export type CaseStatus = (typeof STATUSES)[number];
@@ -76,6 +97,8 @@ export const MEASURES = [
   "lengthM",
   "heightM",
   "spanM",
+  "depthM",
+  "girderM",
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
@@ -433,6 +456,18 @@ export function isAutoAccepted(c: Pick<FoundCase, "kind" | "measured">): boolean
     return c.measured.lengthM !== undefined && c.measured.lengthM <= PORTAL_OPEN_CUT_MAX_M;
   if (c.kind === "let_go")
     return c.measured.alongStepM !== undefined && c.measured.alongStepM <= LET_GO_MAX_STEP_M;
+  const isOpenGround = c.kind === "cut-stretch" || c.kind === "embankment-stretch";
+  if (isOpenGround)
+    return (
+      c.measured.lengthM !== undefined &&
+      isOpenGroundRuled({
+        structure: c.kind === "cut-stretch" ? "cut" : "embankment",
+        lengthM: c.measured.lengthM,
+        depthM: c.measured.depthM ?? 0,
+      })
+    );
+  if (c.kind === "thin-girder")
+    return c.measured.girderM !== undefined && c.measured.girderM >= GIRDER_MIN.value - 1e-9;
   return false;
 }
 
@@ -441,6 +476,9 @@ export function ruleReason(kind: CaseKind): string | null {
   if (kind === "nose") return NOSE_REASON;
   if (kind === "portal-open-cut") return PORTAL_OPEN_CUT_REASON;
   if (kind === "let_go") return LET_GO_REASON;
+  if (kind === "cut-stretch") return CUT_STRETCH_REASON;
+  if (kind === "embankment-stretch") return EMBANKMENT_STRETCH_REASON;
+  if (kind === "thin-girder") return THIN_GIRDER_REASON;
   return null;
 }
 
@@ -468,6 +506,8 @@ export function withinCap(measured: Measured, cap: Measured): boolean {
     if (k === "lengthM" && m > c + edgeM) return false;
     if (k === "heightM" && m > c + HIGH_DECK_MARGIN.heightM + 1e-9) return false;
     if (k === "spanM" && m > c + HIGH_DECK_MARGIN.spanM + 1e-9) return false;
+    if (k === "depthM" && m > c + dzM + 1e-9) return false;
+    if (k === "girderM" && m < c - dzM - 1e-9) return false;
   }
   return true;
 }
@@ -490,6 +530,10 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   merge_skipped: ["maxDzM", "s0", "s1"],
   let_go: ["s", "alongStepM"],
   "high-deck": ["heightM", "spanM", "s0", "s1"],
+  "cut-stretch": ["lengthM", "depthM", "s0", "s1"],
+  "embankment-stretch": ["lengthM", "s0", "s1"],
+  "thin-girder": ["girderM"],
+  "low-viaduct": ["lengthM", "s0", "s1"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */

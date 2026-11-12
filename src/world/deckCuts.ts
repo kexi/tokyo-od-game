@@ -50,7 +50,11 @@ export function deckCutPoints(chunk: XwChunk, step = CUT_STEP_M): DeckCutPoint[]
       const cx = ax + (bx - ax) * t;
       const cy = ay + (by - ay) * t;
       const z = st[i * STATION_STRIDE + ST.z] * (1 - t) + st[(i + 1) * STATION_STRIDE + ST.z] * t;
-      const soffitTp = z - chunk.girder;
+      // An embankment (P2.7-6) is walled down to the ground: nothing of a building stays under it.
+      const ground =
+        st[i * STATION_STRIDE + ST.ground] * (1 - t) + st[(i + 1) * STATION_STRIDE + ST.ground] * t;
+      const soffitTp =
+        chunk.structure === "embankment" ? Math.min(ground, z - chunk.girder) : z - chunk.girder;
       for (const a of ACROSS) {
         const [lon, lat] = plane.toLonLat(cx + lx * half * a, cy + ly * half * a);
         points.push({ lon, lat, soffitTp, roadTp: z });

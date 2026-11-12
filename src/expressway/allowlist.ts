@@ -65,6 +65,18 @@ export const LET_GO_MAX_STEP_M = 0.001;
 export const LET_GO_REASON =
   "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）";
 
+/** Why a height build's cut in a viaduct-tagged run passes by rule (`cut-stretch`, P2.7-6 PR 1). */
+export const CUT_STRETCH_REASON =
+  "OSM では高架だが、解いた縦断が地表より下にある区間（坑口へ下りる取付けなど）。掘割（擁壁と地形の穴、P9 と同じ描き方）として描く。深さ・長さが HEIGHT_STRUCTURES の上限（3 m・150 m）以内なら規則で通す";
+
+/** Why a height build's embankment in a viaduct-tagged run passes by rule (`embankment-stretch`). */
+export const EMBANKMENT_STRETCH_REASON =
+  "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す";
+
+/** Why a thinner girder passes by rule (`thin-girder`, P2.7-6 PR 1). */
+export const THIN_GIRDER_REASON =
+  "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）";
+
 /** Why a ramp may keep OSM's radius below the assumed floor (each case is in the ledger: ramp-radius). */
 export const RAMP_RADIUS_REASON =
   "OSM の線形のままの半径。平面は OSM から 1.5 m 以内に留める（MAX_LATERAL_SHIFT）ので広げられない。下限 15 m は設計書の仮定（RAMP_MIN_RADIUS）で、連結路は第28条第4項で第15条の適用外。走れるかは P3 の走行で確かめる";
