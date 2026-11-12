@@ -25,6 +25,7 @@ import {
   SHARED_TOUCHDOWN,
   COMPANIONS,
   RAMP_SHIFT,
+  HOLD_MAINS,
   STANDARD_UNDERCLEARANCE,
 } from "./assumptions";
 import { isAllowed, SAME_SURFACE_ALLOWED_DZ_M } from "./allowlist";
@@ -352,6 +353,11 @@ export type Plan = {
   noseSurface?: "overlap";
   /** `--ramp-shift <m>` (S6 PR 4): the cap of the moves (rampShiftOffsets), carried to the run summaries. */
   rampShiftCapM?: number;
+  /**
+   * `--hold-mains on` (S6 PR 6): a main line off its own line near a ramp's junction counts as the
+   * ramp's soft miss (solveComponent, HOLD_MAINS). Absent: as before.
+   */
+  holdMains?: "on";
 };
 
 /**
@@ -648,6 +654,8 @@ export type PlanOptions = {
   rampShiftCapM?: number;
   /** `--nose-surface overlap` (S6 PR 4, Plan.noseSurface); `nose` (from the nose on) by default. */
   noseSurface?: "nose" | "overlap";
+  /** `--hold-mains on` (S6 PR 6, Plan.holdMains); `off` by default. Needs `components`. */
+  holdMains?: "off" | "on";
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -768,6 +776,7 @@ export function planNetwork(
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),
     ...(options.noseSurface === "overlap" ? { noseSurface: "overlap" as const } : {}),
     ...(options.rampShiftCapM !== undefined ? { rampShiftCapM: options.rampShiftCapM } : {}),
+    ...(options.holdMains === "on" ? { holdMains: "on" as const } : {}),
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
@@ -778,6 +787,9 @@ export function planNetwork(
   const isCompanioned = options.companionWeight !== undefined;
   // Not in blocks (blocks.ts cuts the main lines at anchors and knows no companion rows).
   const isCompanionsInBlocks = isCompanioned && options.partition === "blocks";
+  // Not in blocks either: a block's main line is cut at anchors, and its own line would be a piece's.
+  const isHoldInBlocks = options.holdMains === "on" && options.partition === "blocks";
+  if (isHoldInBlocks) throw new Error("hold-mains needs partition: components");
   if (isCompanionsInBlocks) throw new Error("companions need partition: components");
   if (isCompanioned) plan.companions = { weight: options.companionWeight!, list: findCompanions(plan) };
   groupComponents(plan);
@@ -2708,41 +2720,61 @@ function solveComponent(
         c.kind === "junction" && c.child === id && c.atStart === atStart,
     );
 
+  /** A run's input at a step of its ladder (its own level by default). */
+  const inputOf = (id: string, at = level.get(id)!): RunInput => {
+    const st = setups.get(id)!;
+    const step = ladders.get(id)![at];
+    const isLowered = step.steps.includes("lowerSpeed");
+    const around = windows.get(id)!;
+    const follow = connectors.get(id);
+    return {
+      id,
+      length: st.rp.length,
+      zones: isLowered
+        ? capZones(st.rp.zones, step.cap, around.length > 0 ? around : undefined)
+        : st.rp.zones,
+      special: step.special,
+      stations: st.stations,
+      target: st.target,
+      lower: step.crossingsOnly ? st.lowerAtCrossings : st.lower,
+      lowerLaw: st.lowerLaw,
+      lowerOpen: st.lowerOpen,
+      assumedGive: step.steps.includes("assumedGive"),
+      ...(pins.has(id) ? { pinned: pins.get(id)! } : {}),
+      upper: st.upper,
+      start: st.fixed[0],
+      end: st.fixed[1],
+      // A cubic connector has no knots of its own to pin; connectorsOf never picks a run on a
+      // structure, and vertical.ts refuses a connector with pins.
+      ...(follow ? { follow } : { pins: profilePins(st.rp) }),
+      ...(plan.pieceRuns?.has(id) ? { textOffset: plan.pieceRuns.get(id)!.a } : {}),
+      ...inputWeights(st),
+      ...(isHeightRun(id) ? { lawGive: GIRDER_GIVE_M, ...(st.lawNear ? { lawNear: st.lawNear } : {}) } : {}),
+      ...(st.bandLo && st.bandHi ? { bandLo: st.bandLo, bandHi: st.bandHi } : {}),
+    };
+  };
+  /**
+   * `--hold-mains on` (S6 PR 6): each main line's own line, solved alone at its first step with no
+   * other run's rows (no junction, crossing or deck pair), what it is held to near its junctions.
+   * Made on the first solve that asks, once per component. Why each main run alone, not S2's
+   * solveRoute: that one solves a block partition's pieces (blocks.ts); with the components' solve
+   * there are no pieces, and a main run alone is its route's part between its own ends.
+   */
+  let mainLines: Map<string, VerticalProfile> | null = null;
+  const mainLinesOf = (): Map<string, VerticalProfile> => {
+    if (mainLines) return mainLines;
+    mainLines = new Map();
+    for (const id of ids) {
+      const isMain = plan.runs.get(id)!.cls === "expressway" && !connectors.has(id);
+      if (!isMain) continue;
+      const alone = solveJoint([inputOf(id, 0)], []);
+      const isSolved = alone.status === "converged" && alone.profiles.has(id);
+      if (isSolved) mainLines.set(id, alone.profiles.get(id)!);
+    }
+    return mainLines;
+  };
   const solveAt = (): LevelSolve => {
-    const inputs: RunInput[] = ids.map((id) => {
-      const st = setups.get(id)!;
-      const step = ladders.get(id)![level.get(id)!];
-      const isLowered = step.steps.includes("lowerSpeed");
-      const around = windows.get(id)!;
-      const follow = connectors.get(id);
-      return {
-        id,
-        length: st.rp.length,
-        zones: isLowered
-          ? capZones(st.rp.zones, step.cap, around.length > 0 ? around : undefined)
-          : st.rp.zones,
-        special: step.special,
-        stations: st.stations,
-        target: st.target,
-        lower: step.crossingsOnly ? st.lowerAtCrossings : st.lower,
-        lowerLaw: st.lowerLaw,
-        lowerOpen: st.lowerOpen,
-        assumedGive: step.steps.includes("assumedGive"),
-        ...(pins.has(id) ? { pinned: pins.get(id)! } : {}),
-        upper: st.upper,
-        start: st.fixed[0],
-        end: st.fixed[1],
-        // A cubic connector has no knots of its own to pin; connectorsOf never picks a run on a
-        // structure, and vertical.ts refuses a connector with pins.
-        ...(follow ? { follow } : { pins: profilePins(st.rp) }),
-        ...(plan.pieceRuns?.has(id) ? { textOffset: plan.pieceRuns.get(id)!.a } : {}),
-        ...inputWeights(st),
-        ...(isHeightRun(id)
-          ? { lawGive: GIRDER_GIVE_M, ...(st.lawNear ? { lawNear: st.lawNear } : {}) }
-          : {}),
-        ...(st.bandLo && st.bandHi ? { bandLo: st.bandLo, bandHi: st.bandHi } : {}),
-      };
-    });
+    const inputs: RunInput[] = ids.map((id) => inputOf(id));
     const started = performance.now();
     const res = solveJoint(inputs, couplings);
     stats.qpMs += performance.now() - started;
@@ -2801,6 +2833,30 @@ function solveComponent(
       soft.set(c.b.run, soft.get(c.b.run)! + miss);
       softAt.get(c.a.run)!.push(c.a.s);
       softAt.get(c.b.run)!.push(c.b.s);
+    }
+    // `--hold-mains on` (S6 PR 6): within HOLD_MAINS.reachM of where a ramp joins a main line, the main
+    // line off its own line (mainLinesOf) by more than HOLD_MAINS.slackM counts as the ramp's soft miss,
+    // so the ramp steps on (a lower speed, the special grade) before the main line gives way. No new
+    // row on the main line: the joint solve is as before; only which step the ramp takes changes.
+    const isHolding = plan.holdMains === "on";
+    if (isHolding) {
+      const lines = mainLinesOf();
+      const { reachM, slackM, stepM } = HOLD_MAINS.value;
+      for (const c of couplings) {
+        const isRampOnMain = c.kind === "junction" && isRamp(c.child) && lines.has(c.parent.run);
+        if (!isRampOnMain) continue;
+        const own = lines.get(c.parent.run)!;
+        const solved = profiles.get(c.parent.run)!;
+        const L = plan.runs.get(c.parent.run)!.length;
+        let miss = 0;
+        for (let s = Math.max(0, c.parent.s - reachM); s <= Math.min(L, c.parent.s + reachM); s += stepM) {
+          const off = Math.abs(evalProfile(solved, s).z - evalProfile(own, s).z) - slackM;
+          if (off > 0) miss += off;
+        }
+        if (miss <= SOFT_SLACK_M) continue;
+        soft.set(c.child, soft.get(c.child)! + miss);
+        softAt.get(c.child)!.push(c.atStart ? 0 : plan.runs.get(c.child)!.length);
+      }
     }
     for (const id of ids) {
       const step = ladders.get(id)![level.get(id)!];

@@ -280,6 +280,18 @@ export const SHARED_TOUCHDOWN: Assumption<number> = {
 };
 
 /**
+ * `--hold-mains on` (S6 PR 6, compile.ts solveComponent): within reachM of where a ramp joins a main
+ * line, the main line off its own line (solved alone) by more than slackM, sampled every stepM, counts
+ * as the ramp's soft miss (the ramp steps on before the main line gives way).
+ */
+export const HOLD_MAINS: Assumption<{ reachM: number; slackM: number; stepM: number }> = {
+  value: { reachM: 300, slackM: 0.05, stepM: 20 },
+  verified: false,
+  reason:
+    "仮定。300 m はスコアカードの分合流 ±300 m の σ と同じ範囲、5 cm は同一面（SAME_SURFACE_M）と同じ目に付かない差、20 m は測点の間隔。本線が譲った分をランプの外れとして数えるだけで、本線の縦断そのものには行を足さない（S6 の設計 9 節）",
+};
+
+/**
  * `--ramp-shift` (S6 PR 4 案 A, compile.ts rampShiftOffsets): how far a ramp may move off its OSM line
  * where it lies over the main line it meets apart in height (the flag's default, maxM), over what it
  * eases in and out (taperM), and the least of the most a stretch can reach under the tapers for it to
@@ -390,5 +402,6 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   SHARED_TOUCHDOWN,
   COMPANIONS,
   RAMP_SHIFT,
+  HOLD_MAINS,
   DESIGN_GROUND_REACH,
 };
