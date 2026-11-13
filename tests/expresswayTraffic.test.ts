@@ -534,10 +534,13 @@ describe("W6: a ramp's foot joined along GSI's at-grade line however far it runs
       kind: "highway",
     });
     // The at-grade part: one line from the ramp's foot (replaced, near the deck), a second one from
-    // 90 m on (kept: no point near a chunk), to a street along y = −200.
+    // 90 m on (kept: no point near a chunk), to a street along y = −200. It goes on ahead of the
+    // foot first (S6 PR 7c1, F1: a line is the ramp's own only within its half width of the lead
+    // point 5 m ahead).
     const atGrade = [
       gsi([
         [150, -40],
+        [140, -42.7],
         [147, -130],
       ]),
       gsi([

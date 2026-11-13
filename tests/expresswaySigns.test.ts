@@ -35,6 +35,8 @@ import { resolveMount } from "../src/signs/mount";
 import { boardSizeM, deckMount } from "../src/signs/deckMount";
 import { MEMBER_SIZES } from "../src/signs/mountAssumptions";
 import { rankBoards } from "../src/world/boardPriority";
+import { placeBoard, signFrame } from "../src/world/expresswaySigns";
+import { LocalFrame } from "../src/geo/frame";
 
 const ROOT = join(import.meta.dirname, "..");
 const DIR = join(ROOT, "public", "data", "expressway");
@@ -159,6 +161,32 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
         );
       }
     }
+  });
+
+  it("gives the review hooks each board's lower edge over its road (S6 PR 7c1, H): a 門型's finite, as resolved, ≥ 4.7 m", () => {
+    let gantries = 0;
+    for (const { chunk, sign } of signs) {
+      if (!sign.board) continue;
+      const f0 = frameAt(chunk.st, sign.s);
+      const frame = new LocalFrame(f0.lat, f0.lon, 40);
+      const place = { frame, ellipsoidal: (_lat: number, _lon: number, h: number) => h + 36.9 };
+      const size = sizeOf(sign);
+      const dm = deckMount(chunk, sign, [size]);
+      const mount = resolveMount(dm.placement);
+      const placed = placeBoard(signFrame(chunk, sign, place), dm, mount, size.width, size.height);
+      expect(placed, `${sign.id} at ${chunk.id}`).not.toBeNull();
+      const bottom = placed!.bottomM;
+      expect(Number.isFinite(bottom)).toBe(true);
+      const face = mount.faces[0];
+      expect(
+        Math.abs(bottom - (face.y - face.height / 2)),
+        `${sign.id} at ${chunk.id}:${sign.s}`,
+      ).toBeLessThan(0.01);
+      if (sign.mount !== "gantry") continue;
+      gantries++;
+      expect(bottom).toBeGreaterThanOrEqual(OVERHEAD_MIN_M);
+    }
+    expect(gantries).toBeGreaterThan(0);
   });
 
   it("stands the gantries' legs on the 壁高欄 and the 壁高欄 boards outside its inner face", () => {
