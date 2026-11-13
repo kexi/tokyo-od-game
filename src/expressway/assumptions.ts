@@ -379,6 +379,22 @@ export const HEIGHT_STRUCTURES: Assumption<{
     "仮定（P2.7-6 の指示 4.2・5.1 の初期値）。掘割は坑口へ下りる取付け（代官町、坑口の手前で地表より 0.9〜2.5 m 低い）を、盛土は低いまま走るランプ（護国寺・新宿出口、600 m 前後）の半分ほどを規則で通す長さとして置いた。20 m は一つのチャンクに満たない出入りをならす長さ。高架タグの run の掘割は中心線の地表より fromM（0.5 m、DEM に沈まない床 0.25 m を譲った run だけが越える深さ）を超えて下から、minLengthM（10 m）未満の掘割はならす（PR 1 の再レビュー R2: 床と同じ 0.25 m では高さ由来の掘割 11 区間中 9 区間が深さ 0.22〜0.27 m・長さ 1〜16 m の切れ端）。地平 run（S6 PR 2）は地表 + cutBelowM（0.3 m）より低い所が掘割、設計地盤線から ±bandM（1.5 m）の帯。targetScale（S6 PR 7a の N2）は地平 run の目標の重みの倍率: ship/pruned の掃引（帯 1.5 m、N1 の後）で k = 1・10・30・100 の内側の |中央値| 0.3 m 超が 41 本中 28・13・7・3 本、0.75 m 超が 17・5・1・0 本、地平の反転が 0.31・0.38・0.63・0.81 回/km、短波長 σ が 0.14・0.20・0.23・0.26 m で（レビュー C1 の目標線の後の掃引）、0.3 m 超 3 割以下・0.75 m 超 3 本以下・反転 0.8 以下・σ 0.4 以下を満たす最小の 30（10 は 0.3 m 超が 32 %、100 は反転 0.81）。approachMaxM（S6 PR 7a の 4.3）は地平 run の取付け（seam から 150 m、地表端・坑口・分合流から 100 m）で目標線から離れてよい最大: ship/pruned の 232 本の取付けの最大 |路面 − 目標線| は p50 1.50・p80 1.66・p90 2.06・p95 3.22・最大 9.63 m（レビュー C1 の後の目標線）で、9 割前後が通る 2.0 m（帯 1.5 m + 0.5 m）に置いた（仮の 4 m では外れるのが坑口の数本だけで、取付けの判定にならない。2.1 m なら listed は 29 → 21）。ship の分布は knowledge/expressway-generation.md「P2.7-6」",
 };
 
+/**
+ * A ramp's ground end cut at the edge of the streets it meets (S6 PR 7c2, T, feet.ts footCut): `maxM`
+ * the farthest it is cut (a slab still in a street there runs with it, a ramp in its median: not cut,
+ * the ledger's foot-along-street), `nodeOnRoadM` how near the end node a street's centre line passes to
+ * be the street the ramp meets (the node is shared, so 0 in OSM; the margin is the plane's rounding).
+ * `minRunM`: a run at grade the cut would leave shorter than this is taken into the viaduct beside it
+ * and cut there (compile.ts mergedRunPlan), HEIGHT_STRUCTURES.cut.minLengthM's 10 m, a chunk's least
+ * length.
+ */
+export const RAMP_FOOT: Assumption<{ maxM: number; nodeOnRoadM: number; minRunM: number }> = {
+  value: { maxM: 30, nodeOnRoadM: 1, minRunM: 10 },
+  verified: false,
+  reason:
+    "仮定（S6 PR 7c2 の設計メモ 3.2 節 T）。30 m は既定範囲の地平 run の足 6 本で、床版が GSI の街路の車道の内にある長さ（7〜17 m）と、幅 25 m の街路に 87° で入る 861095931 の 17 m を覆い、中央帯を並走する 203832842（全長が街路の内）を切らない上限。nodeOnRoadM 1 m は平面への写しの誤差の余裕。minRunM はチャンク 1 つの下限（HEIGHT_STRUCTURES.cut.minLengthM）。道路の半幅は GROUND_ROAD_HALF_WIDTH（6 m）で、GSI の幅（9・16・25・40 m の階級）とは合わない（R1 で道路ごとにする）",
+};
+
 export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   GIRDER_DEPTH,
   GIRDER_MIN,
@@ -417,4 +433,5 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   RAMP_SHIFT,
   HOLD_MAINS,
   DESIGN_GROUND_REACH,
+  RAMP_FOOT,
 };

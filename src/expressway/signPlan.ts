@@ -86,6 +86,52 @@ export function planSigns(input: SignPlanInput): SignPlan {
   return planner.result();
 }
 
+/** How many seams an entrance ramp is followed through to the junction it joins its route at (entranceJoin). */
+export const ENTRANCE_HOPS = 4;
+
+type JoinEnds = Pick<XwRunSummary, "id" | "start" | "end">;
+
+/**
+ * Where an entrance ramp joins its route (S6 PR 7c2, S1): its end's parent at a junction, followed
+ * through seams first. A ramp at grade ends `open` and the viaduct going on from it starts at a seam on
+ * it (its parent is the ramp), or the ramp ends at a seam on the run after it; either way the route is
+ * the parent at the junction the last of them ends at. At most ENTRANCE_HOPS seams, and a run met twice
+ * stops it (no route). Why not the seam's parent: that is the ramp's own next run. Pure, for the tests.
+ */
+export function entranceJoin(
+  runs: ReadonlyMap<string, JoinEnds>,
+  rampId: string,
+): { parent: string; parentS: number } | null {
+  const seen = new Set<string>([rampId]);
+  let run = runs.get(rampId);
+  for (let hop = 0; run !== undefined && hop <= ENTRANCE_HOPS; hop++) {
+    const { end } = run;
+    const isJunction = end.kind === "junction" && end.parent !== undefined;
+    if (isJunction) return { parent: end.parent!, parentS: end.parentS ?? 0 };
+    const next = seamNext(runs, run);
+    const isStuck = next === undefined || seen.has(next.id);
+    if (isStuck) return null;
+    seen.add(next.id);
+    run = next;
+  }
+  return null;
+}
+
+/** The run a run goes on into at a seam: its end's seam parent, or the run whose start is a seam on it. */
+function seamNext(runs: ReadonlyMap<string, JoinEnds>, run: JoinEnds): JoinEnds | undefined {
+  const { end, id } = run;
+  const isSeamEnd = end.kind === "seam" && end.parent !== undefined;
+  if (isSeamEnd) return runs.get(end.parent!);
+  const isOpenEnd = end.kind === "open";
+  if (!isOpenEnd) return undefined;
+  for (const other of [...runs.keys()].toSorted()) {
+    const { start } = runs.get(other)!;
+    const isOnIt = start.kind === "seam" && start.parent === id;
+    if (isOnIt) return runs.get(other);
+  }
+  return undefined;
+}
+
 class Planner {
   private readonly placed = new Map<string, XwSign[]>();
   private readonly unplaced: Unplaced[] = [];
@@ -324,8 +370,9 @@ class Planner {
       plate: { id: "325", value: null },
       ref: { kind: "entrance", node: null, beforeM: 0 },
     });
-    const parent = this.runs.get(ramp.summary.end.parent ?? "");
-    const parentWay = parent ? this.wayAt(parent, ramp.summary.end.parentS ?? 0) : null;
+    const joined = entranceJoin(new Map([...this.runs].map(([id, r]) => [id, r.summary])), ramp.summary.id);
+    const parent = joined ? this.runs.get(joined.parent) : undefined;
+    const parentWay = parent ? this.wayAt(parent, joined?.parentS ?? 0) : null;
     const named = this.entranceNode(ramp, first);
     this.entrances.push({
       run: ramp.summary.id,

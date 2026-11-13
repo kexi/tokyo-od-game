@@ -35,7 +35,9 @@ import {
   GIRDER_MIN,
   HEIGHT_STRUCTURES,
   LOW_SPAN_SOFFIT_MIN,
+  RAMP_FOOT,
 } from "./assumptions";
+import { footCut, type FootCut, type FootLine, type FootRoad } from "./feet";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
   belowStructure,
@@ -285,6 +287,41 @@ export type RunPlan = {
    * compiled in a chain that has a compiled run; its profile follows the design ground line in a band.
    */
   ground: boolean;
+  /**
+   * S6 PR 7c2 (T, cutFeet): the metres cut off the run's start and end, a ramp's ground end moved out
+   * of the streets it meets. Absent where nothing is cut (every run of a build without `feet`). The
+   * run then starts or ends between two OSM nodes: `i0` / `i1` are the cut, `run.from` / `run.to`
+   * still the nodes (its features and chunk cuts keep only the nodes within the run).
+   */
+  footTrim?: [number, number];
+  /**
+   * S6 PR 7c2 (cutFeet, mergedRunPlan): the start or end of a viaduct that took in the short run at
+   * grade of its foot. That ground end keeps the foot's treatment (the band, grade free: setupRun), as
+   * the short run at grade had. Absent where none was taken in.
+   */
+  footMerged?: [boolean, boolean];
+};
+
+/**
+ * A ramp's ground end as cutFeet found it (S6 PR 7c2): `cut` cut by `cutM` (`leftM` left), `merged` a
+ * run at grade that the cut would leave shorter than RAMP_FOOT.minRunM, taken into the viaduct beside
+ * it (`into`, `mergedM` its length) and that run cut by `cutM`, `along` in a street for all of
+ * RAMP_FOOT.maxM and not cut (the ledger's foot-along-street), `kept` not cut: it would be cut too short
+ * with no viaduct beside it to take it in, a junction is within the foot, or the run is in the street
+ * all its length short of RAMP_FOOT.maxM (`cutM` 0, the ledger's foot-along-street with that length). A foot taken in whose viaduct was then not cut keeps that outcome
+ * (`along`, `kept`) with `into`. `roads` the streets the end stood in. An end already clear is not
+ * listed.
+ */
+export type FootRecord = {
+  run: string;
+  chain: string;
+  end: "start" | "end";
+  outcome: "cut" | "merged" | "along" | "kept";
+  cutM: number;
+  leftM: number;
+  roads: number[];
+  into?: string;
+  mergedM?: number;
 };
 
 export type Crossing = { upper: string; lower: string; sUpper: number; sLower: number; sinAngle: number };
@@ -381,6 +418,11 @@ export type Plan = {
   groundBandM?: number;
   /** S6 PR 7a2's sweep (`--low-span-soffit`): absent, LOW_SPAN_SOFFIT_MIN. */
   lowSpanSoffitM?: number;
+  /**
+   * S6 PR 7c2 (PlanOptions.feet): the ramps' ground ends cut, not compiled or left in a street, of the
+   * whole plan in chain order. Absent without `feet`.
+   */
+  feet?: FootRecord[];
 };
 
 /** A run named with its length (km, to the metre). */
@@ -702,6 +744,14 @@ export type PlanOptions = {
   groundBandM?: number;
   /** The low spans' lowest soffit (S6 PR 7a2 sweep, `--low-span-soffit`): absent, LOW_SPAN_SOFFIT_MIN. */
   lowSpanSoffitM?: number;
+  /**
+   * S6 PR 7c2 (T, cutFeet): the roads at ground level to cut the ramps' ground ends out of (the solve's
+   * CrossObjects; only the roads are read). Needs `ground: compile`. Absent: the ends stay at the OSM
+   * nodes, as before. Why an option of the plan and not a step of the solve: the cut moves the run's
+   * distance origin, which every pair, crossing and seam of the plan is measured from, so the plan is
+   * made again with it (scripts/expressway.ts plans once to know which roads to read).
+   */
+  feet?: readonly CrossObject[];
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -728,6 +778,17 @@ export function planNetwork(
   const diagnostics: XwDiagnostic[] = [];
   const belowDeferred: string[] = [];
   const betweenTunnels: string[] = [];
+  const isFeetWithoutGround = options.feet !== undefined && !isGroundMode;
+  if (isFeetWithoutGround) throw new Error("feet need ground: compile");
+  const feetRoads = options.feet ? footRoadsOf(options.feet) : null;
+  // The chains whose runs are compiled (one has a viaduct): a node another of them shares is a junction
+  // a foot is not cut across (cutFeet); one on a chain never compiled (a link at grade) is none.
+  const builtChains = new Set(
+    feetRoads === null
+      ? []
+      : [...chains.values()].filter((c) => splitRuns(net, c).some((r) => r.elevated)).map((c) => c.id),
+  );
+  const feet: FootRecord[] = [];
   for (const chain of [...chains.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const chainRuns = splitRuns(net, chain);
     if (!chainRuns.some((r) => r.elevated)) continue;
@@ -751,6 +812,7 @@ export function planNetwork(
       ...(found ? { pin: found.pin } : {}),
       ...(offset ? { offset } : {}),
     });
+    const compiled: RunPlan[] = [];
     for (const run of chainRuns) {
       const isBelow = isBelowCompiled(chain, run, nodeChains, outsideNodes);
       const isDeferred = run.below && !isBelow;
@@ -773,7 +835,29 @@ export function planNetwork(
       const isGround = isGroundMode && !run.elevated && !run.below && !isBetweenTunnels;
       const isCompiled = run.elevated || isBelow || isGround;
       if (!isCompiled) continue;
-      const rp = runPlan(net, chain, plane, align, run, isBelow ? null : found);
+      compiled.push(runPlan(net, chain, plane, align, run, isBelow ? null : found));
+    }
+    const isFootCut = isGroundMode && feetRoads !== null;
+    const placed = isFootCut
+      ? cutFeet(
+          {
+            net,
+            chain,
+            plane,
+            align,
+            found,
+            nodeChains,
+            builtChains,
+            outsideNodes,
+            roads: feetRoads,
+            feet,
+            diagnostics,
+          },
+          compiled,
+        )
+      : compiled;
+    for (const rp of placed) {
+      const run = rp.run;
       runs.set(run.id, rp);
       checkRadius(rp, diagnostics);
       const isClamped = align.clamped > 0;
@@ -826,6 +910,7 @@ export function planNetwork(
     ...(options.groundTargetScale !== undefined ? { groundTargetScale: options.groundTargetScale } : {}),
     ...(options.groundBandM !== undefined ? { groundBandM: options.groundBandM } : {}),
     ...(options.lowSpanSoffitM !== undefined ? { lowSpanSoffitM: options.lowSpanSoffitM } : {}),
+    ...(feetRoads !== null ? { feet } : {}),
   };
   for (const rp of runs.values())
     plan.chainRuns.set(rp.chain.id, [...(plan.chainRuns.get(rp.chain.id) ?? []), rp]);
@@ -898,9 +983,10 @@ function runPlan(
   align: PlanAlignment,
   run: Run,
   found: ReturnType<typeof chainPin>,
+  cut?: { i0?: number; i1?: number; trim?: [number, number]; merged?: [boolean, boolean] },
 ): RunPlan {
-  const i0 = align.vertexSample[run.from];
-  const i1 = align.vertexSample[run.to];
+  const i0 = cut?.i0 ?? align.vertexSample[run.from];
+  const i1 = cut?.i1 ?? align.vertexSample[run.to];
   let maxK = 0;
   for (let i = i0; i <= i1; i++) maxK = Math.max(maxK, Math.abs(align.kappa[i]));
   const minRadius = maxK > 0 ? 1 / maxK : Infinity;
@@ -964,7 +1050,264 @@ function runPlan(
   };
   const tunnelAt = Uint8Array.from(wayAt, (w) => (run.below && belowStructure(net, w) === "tunnel" ? 1 : 0));
   const isGround = !run.elevated && !run.below;
-  return { ...rp, over: found ? runOver(rp, found) : null, below: run.below, tunnelAt, ground: isGround };
+  return {
+    ...rp,
+    over: found ? runOver(rp, found) : null,
+    below: run.below,
+    tunnelAt,
+    ground: isGround,
+    ...(cut?.trim ? { footTrim: cut.trim } : {}),
+    ...(cut?.merged ? { footMerged: cut.merged } : {}),
+  };
+}
+
+/** A road's centre line in lon/lat with its box, for cutFeet to find the streets near an end. */
+type FeetRoad = { id: number; pts: Array<[number, number]>; box: [number, number, number, number] };
+
+function footRoadsOf(objects: readonly CrossObject[]): FeetRoad[] {
+  return objects
+    .filter((o) => o.kind === "road")
+    .map((o) => {
+      const lons = o.pts.map((p) => p[0]);
+      const lats = o.pts.map((p) => p[1]);
+      return {
+        id: o.id,
+        pts: o.pts,
+        box: [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)],
+      };
+    });
+}
+
+type FeetContext = {
+  net: Network;
+  chain: Chain;
+  plane: Plane;
+  align: PlanAlignment;
+  found: ReturnType<typeof chainPin>;
+  nodeChains: Map<number, string[]>;
+  builtChains: ReadonlySet<string>;
+  outsideNodes: Set<number>;
+  roads: FeetRoad[];
+  feet: FootRecord[];
+  diagnostics: XwDiagnostic[];
+};
+
+/**
+ * Whether a run's end at a chain's end is a ground end (as endPlan finds it): the chain is open there,
+ * the node inside the universe and on no other chain (a junction makes it no ground end).
+ */
+function isChainGroundEnd(ctx: FeetContext, rp: RunPlan, atStart: boolean): boolean {
+  const { chain } = ctx;
+  const idx = atStart ? rp.run.from : rp.run.to;
+  const isChainEnd = atStart ? idx === 0 : idx === chain.nodes.length - 1;
+  if (!isChainEnd || chain.closed) return false;
+  const node = chain.nodes[idx];
+  if (ctx.outsideNodes.has(node)) return false;
+  return (ctx.nodeChains.get(node) ?? []).every((c) => c === chain.id);
+}
+
+/** The run from its start or end inwards, on its chain's plane, to a little past RAMP_FOOT.maxM. */
+function footLineOf(rp: RunPlan, atStart: boolean): FootLine {
+  const { align } = rp;
+  const endS = align.s[atStart ? rp.i0 : rp.i1];
+  const xy: number[] = [];
+  const d: number[] = [];
+  const laneHalf: number[] = [];
+  const reach = RAMP_FOOT.value.maxM + 2;
+  for (let k = 0; k <= rp.i1 - rp.i0; k++) {
+    const i = atStart ? rp.i0 + k : rp.i1 - k;
+    const dist = Math.abs(align.s[i] - endS);
+    const isPastReach = dist > reach;
+    if (isPastReach) break;
+    xy.push(align.xy[2 * i], align.xy[2 * i + 1]);
+    d.push(dist);
+    laneHalf.push(rp.laneHalfAt[i - rp.i0]);
+  }
+  return { xy: Float64Array.from(xy), d: Float64Array.from(d), laneHalf: Float32Array.from(laneHalf) };
+}
+
+/** The roads within reach of a run's end, on its plane. */
+function footRoadsNear(ctx: FeetContext, rp: RunPlan, atStart: boolean): FootRoad[] {
+  const i = atStart ? rp.i0 : rp.i1;
+  const [lon, lat] = rp.plane.toLonLat(rp.align.xy[2 * i], rp.align.xy[2 * i + 1]);
+  // The run's first RAMP_FOOT.maxM and the street's half width either side, with room.
+  const reachM = RAMP_FOOT.value.maxM + GROUND_ROAD_HALF_WIDTH.value + 20;
+  const dLat = reachM / 110574;
+  const dLon = reachM / (111320 * Math.cos((lat * Math.PI) / 180));
+  return ctx.roads
+    .filter(
+      (r) =>
+        r.box[2] >= lon - dLon && r.box[0] <= lon + dLon && r.box[3] >= lat - dLat && r.box[1] <= lat + dLat,
+    )
+    .map((r) => ({ id: r.id, xy: Float64Array.from(r.pts.flatMap(([x, y]) => rp.plane.toXY(x, y))) }));
+}
+
+/**
+ * S6 PR 7c2, T (design memo 3.2): a ramp's ground end goes out of the carriageway of the streets it
+ * meets (feet.ts footCut), on the chain's compiled runs in order, before they are planned with the
+ * rest. Each outer end of the chain's first and last compiled run, where it is a ground end (a chain's
+ * end on no other chain) of a ramp not on a structure, is cut at the sample footCut gives. A run at
+ * grade the cut would leave shorter than RAMP_FOOT.minRunM is taken into the viaduct beside it
+ * (mergedRunPlan), and that run's foot, the same place, is cut instead: only the foot moves, its end
+ * keeps the short run's treatment. Why the plan and not the output (a run solved whole,
+ * its first d metres held to the ground and left unwritten): a run whose distance origin is not 0
+ * would reach every reader of the run distance (the pairs, the seams' parentS, heightStretches'
+ * anchoring), while a run planned from the cut has none to change. Why not across a node another chain
+ * shares (a junction within the foot): its run distance would fall outside the run; the end is then
+ * kept (none in the data so far: a ramp's foot meets no other motorway).
+ */
+function cutFeet(ctx: FeetContext, compiled: RunPlan[]): RunPlan[] {
+  const out = [...compiled];
+  const { maxM, minRunM } = RAMP_FOOT.value;
+  const isFootCandidate = (rp: RunPlan | undefined): rp is RunPlan =>
+    rp !== undefined && rp.cls === "ramp" && rp.over === null && !rp.below;
+  for (const atStart of [true, false]) {
+    const isGroundEnd = (rp: RunPlan) => isChainGroundEnd(ctx, rp, atStart);
+    // The run at grade taken into the viaduct beside it, until the viaduct's foot is decided.
+    let merged: { run: string; lengthM: number } | null = null;
+    for (let guard = 0; guard <= compiled.length; guard++) {
+      const at = atStart ? 0 : out.length - 1;
+      const rp = out[at];
+      if (!isFootCandidate(rp) || !isGroundEnd(rp)) break;
+      const found = footCut(footLineOf(rp, atStart), footRoadsNear(ctx, rp, atStart));
+      if (found.kind === "clear") break;
+      const end = atStart ? "start" : "end";
+      // A foot taken in is listed under the run at grade, with the viaduct it went into: `merged` when
+      // the viaduct's foot was then cut, else the outcome there (along, kept) with `into`.
+      const record = (outcome: FootRecord["outcome"], cutM: number) =>
+        ctx.feet.push({
+          run: merged?.run ?? rp.run.id,
+          chain: ctx.chain.id,
+          end,
+          outcome: merged !== null && outcome === "cut" ? ("merged" as const) : outcome,
+          cutM: roundTo(cutM, 2),
+          leftM: roundTo(rp.length - cutM, 2),
+          roads: found.roads,
+          ...(merged !== null ? { into: rp.run.id, mergedM: roundTo(merged.lengthM, 2) } : {}),
+        });
+      const inStreet = (f: Extract<FootCut, { kind: "along" | "inside" }>, lengthM: number) =>
+        ctx.diagnostics.push({
+          run: rp.run.id,
+          kind: "ramp_foot_along_street",
+          detail: footAlongDetail(end, atStart ? 0 : rp.length, f, lengthM),
+          allowed: false,
+        });
+      const inner = out[atStart ? at + 1 : at - 1];
+      const isBeside =
+        inner !== undefined && (atStart ? inner.run.from === rp.run.to : inner.run.to === rp.run.from);
+      // A run at grade can go into the viaduct right beside it, itself a foot candidate (a ramp's,
+      // not on a structure): a below run beside it would take a cut's stretch at grade.
+      const canMerge = rp.ground && isBeside && inner.run.elevated && isFootCandidate(inner);
+      if (found.kind === "along") {
+        record("along", 0);
+        inStreet(found, maxM);
+        break;
+      }
+      if (found.kind === "inside") {
+        // In the street all its length, short of RAMP_FOOT.maxM: not cut, as `along`, but listed as
+        // kept with its own length (the first 7c2 called it along "for 30 m"). Why not take it into the
+        // viaduct beside it (the review's proposal, tried): in ship/pruned that moved a main line by
+        // 1.79 m with no foot's relation to explain it (44506762, neither slack nor a junction's pull)
+        // and steepened 1023900994 by 2.67 points, past the design answer's stop conditions.
+        record("kept", 0);
+        inStreet(found, roundTo(rp.length, 1));
+        break;
+      }
+      const isAcrossJunction = footCrossesJunction(ctx, rp, atStart, found.d);
+      const isTooShort = rp.length - found.d < minRunM;
+      const isMergeable = isTooShort && canMerge && !isAcrossJunction;
+      if (isMergeable) {
+        merged = { run: rp.run.id, lengthM: rp.length };
+        out.splice(atStart ? at : at - 1, 2, mergedRunPlan(ctx, inner, rp, atStart));
+        continue;
+      }
+      if (isTooShort || isAcrossJunction) {
+        record("kept", found.d);
+        break;
+      }
+      const trim: [number, number] = [...(rp.footTrim ?? [0, 0])];
+      trim[atStart ? 0 : 1] = roundTo(found.d, 3);
+      const i0 = atStart ? rp.i0 + found.k : rp.i0;
+      const i1 = atStart ? rp.i1 : rp.i1 - found.k;
+      out[at] = runPlan(ctx.net, ctx.chain, ctx.plane, ctx.align, rp.run, ctx.found, {
+        i0,
+        i1,
+        trim,
+        ...(rp.footMerged ? { merged: [...rp.footMerged] as [boolean, boolean] } : {}),
+      });
+      record("cut", found.d);
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * A viaduct with the run at grade at its chain's end taken in (S6 PR 7c2, design answer 2.1): one run
+ * over both, as network.ts GAP_FILL_M takes a short untagged stretch into the viaduct around it (the
+ * stretch's ways are its `filledWays`, layered as the viaduct's), the viaduct's id. Its end there is
+ * the foot's (RunPlan.footMerged: the band, grade free, as the short run at grade had), so the cut moves
+ * the foot alone. The viaduct's other end keeps what was done to it (its cut sample, footTrim and
+ * footMerged: the start's foot is decided before the end's). Why not leave the run at grade out (the
+ * first 7c2): the viaduct's end then became a long run's ground end, its height and the terrain's grade
+ * fixed, and lost the 0–8.9 m the cut left (176046420 fell to the assumed floors' give, 26957083 took
+ * the terrain's +3.5 % at a descent).
+ */
+function mergedRunPlan(ctx: FeetContext, viaduct: RunPlan, foot: RunPlan, atStart: boolean): RunPlan {
+  const ways = atStart ? [...foot.run.ways, ...viaduct.run.ways] : [...viaduct.run.ways, ...foot.run.ways];
+  const run: Run = {
+    ...viaduct.run,
+    ways,
+    from: Math.min(viaduct.run.from, foot.run.from),
+    to: Math.max(viaduct.run.to, foot.run.to),
+    filledWays: [...viaduct.run.filledWays, ...foot.run.ways],
+  };
+  const other = atStart ? 1 : 0;
+  const footMerged: [boolean, boolean] = [false, false];
+  footMerged[atStart ? 0 : 1] = true;
+  footMerged[other] = viaduct.footMerged?.[other] ?? false;
+  const trim: [number, number] = [0, 0];
+  trim[other] = viaduct.footTrim?.[other] ?? 0;
+  const isOtherCut = trim[other] > 0;
+  return runPlan(ctx.net, ctx.chain, ctx.plane, ctx.align, run, ctx.found, {
+    ...(atStart ? { i1: viaduct.i1 } : { i0: viaduct.i0 }),
+    ...(isOtherCut ? { trim } : {}),
+    merged: footMerged,
+  });
+}
+
+/**
+ * Whether a node another compiled chain shares lies within d of the run's start or end. Why only the
+ * compiled chains': a motorway_link at grade on its own is never compiled, so it hangs nothing on the
+ * run (203873824's foot: c944138315 leaves its node 16, 8 m from the end, at grade).
+ */
+function footCrossesJunction(ctx: FeetContext, rp: RunPlan, atStart: boolean, d: number): boolean {
+  const endS = rp.align.s[atStart ? rp.i0 : rp.i1];
+  for (let i = rp.run.from; i <= rp.run.to; i++) {
+    const others = (ctx.nodeChains.get(ctx.chain.nodes[i]) ?? []).filter((c) => c !== ctx.chain.id);
+    const isShared = others.some((c) => ctx.builtChains.has(c));
+    if (!isShared) continue;
+    const dist = Math.abs(rp.align.s[rp.align.vertexSample[i]] - endS);
+    // A node just past the cut too: the chunk between would be under MIN_STATION_GAP_M (T3).
+    const isWithinFoot = dist <= d + MIN_STATION_GAP_M;
+    if (isWithinFoot) return true;
+  }
+  return false;
+}
+
+/**
+ * The ramp_foot_along_street diagnostic's text: the end, its run distance, the streets and how long the
+ * slab is in them (RAMP_FOOT.maxM, or the run's whole length when it ends there: `inside`), with the
+ * measures (the ledger's foot-along-street reads them back, ledger.ts caseOfDiagnostic).
+ */
+export function footAlongDetail(
+  end: "start" | "end",
+  s: number,
+  along: Extract<FootCut, { kind: "along" | "inside" }>,
+  lengthM: number,
+): string {
+  const measures = `angle ${along.angleDeg}°, street ${along.streetM} m, cover ${along.coverM} m`;
+  return `${end} at ${s.toFixed(2)} m in road ${along.roads.join(", road ")} for ${lengthM} m (${measures}): not cut`;
 }
 
 /** Holes of one kind: how many and how long (km). */
@@ -1961,12 +2304,21 @@ export type RunFeatures = {
   ways: Array<{ id: number; s0: number; s1: number }>;
 };
 
-/** A run's nodes and ways with their run distances (the vertices' samples on the smoothed line). */
+/**
+ * A run's nodes and ways with their run distances (the vertices' samples on the smoothed line). A run
+ * with its foot cut (RunPlan.footTrim) keeps the nodes within it and its ways cut to it.
+ */
 function runFeatures(rp: RunPlan): RunFeatures {
   const base = rp.align.s[rp.i0];
-  const sOf = (i: number) => roundTo(rp.align.s[rp.align.vertexSample[i]] - base, 2);
+  const S = rp.length;
+  const rawOf = (i: number) => rp.align.s[rp.align.vertexSample[i]] - base;
+  const clamp = (v: number) => Math.min(S, Math.max(0, v));
+  const sOf = (i: number) => roundTo(clamp(rawOf(i)), 2);
+  const isOnRun = (i: number) => rawOf(i) >= -1e-9 && rawOf(i) <= S + 1e-9;
   const nodes: RunFeatures["nodes"] = [];
-  for (let i = rp.run.from; i <= rp.run.to; i++) nodes.push({ id: rp.chain.nodes[i], s: sOf(i) });
+  for (let i = rp.run.from; i <= rp.run.to; i++) {
+    if (isOnRun(i)) nodes.push({ id: rp.chain.nodes[i], s: sOf(i) });
+  }
   const ways: RunFeatures["ways"] = [];
   for (const id of rp.run.ways) {
     const k = rp.chain.ways.indexOf(id);
@@ -1974,9 +2326,31 @@ function runFeatures(rp: RunPlan): RunFeatures {
     const next = rp.chain.wayStarts[k + 1] ?? rp.chain.nodes.length - 1;
     const to = Math.min(rp.run.to, next);
     if (to <= from) continue;
+    const isCutOff = rp.footTrim !== undefined && clamp(rawOf(to)) <= clamp(rawOf(from));
+    if (isCutOff) continue;
     ways.push({ id, s0: sOf(from), s1: sOf(to) });
   }
   return { nodes, ways };
+}
+
+/**
+ * The chain sample a ground end stands on: its node's, or where its foot was cut (RunPlan.footTrim:
+ * the run's first or last sample, between two nodes).
+ */
+function groundEndSample(rp: RunPlan, side: number, nodeIndex: number): number {
+  const isCut = (rp.footTrim?.[side] ?? 0) > 0;
+  if (isCut) return side === 0 ? rp.i0 : rp.i1;
+  return rp.align.vertexSample[nodeIndex];
+}
+
+/**
+ * Whether an inner node's run distance is a place to cut a chunk at: always, but on a run with its foot
+ * cut only well inside it (the nodes cut off lie outside, and one just inside the cut would leave a
+ * chunk too short to hold its heading, T3).
+ */
+function isInnerNodeOnRun(rp: RunPlan, sv: number): boolean {
+  if (rp.footTrim === undefined) return true;
+  return sv >= MIN_STATION_GAP_M && sv <= rp.length - MIN_STATION_GAP_M;
 }
 
 /** Every z15 DEM pixel tile the solve will read, for the build script to fetch first. */
@@ -2135,14 +2509,16 @@ function setupRun(
   ends.forEach((e, side) => {
     if (e.kind !== "ground") return;
     const V = zoneSpeedAt(rp.zones, side === 0 ? 0 : S);
-    const t = terrainAt(rp, ground, rp.align.vertexSample[e.nodeIndex], V);
+    const t = terrainAt(rp, ground, groundEndSample(rp, side, e.nodeIndex), V);
     groundZ[side] = t.z;
     // A short run meets the ground within a band, at whatever grade (within 第20条) gets it over
     // what it crosses: with its end grades fixed too, two knot intervals or fewer leave no freedom
     // (P2.5: 43 short runs "end elevation off"). A portal's grade is the road's own as it goes on
     // down into the tunnel or cut. Why not the band everywhere: a long run's ground end continues as
     // the road at grade (P9), whose grade it must meet.
-    if (isShort) fixed[side] = { z: t.z, band: GROUND_END_BAND.value };
+    // A viaduct that took in its foot's short run at grade (RunPlan.footMerged) keeps that run's end.
+    const isFootTaken = rp.footMerged?.[side] === true;
+    if (isShort || isFootTaken) fixed[side] = { z: t.z, band: GROUND_END_BAND.value };
     else fixed[side] = e.into ? { z: t.z } : { z: t.z, grade: t.grade };
   });
   if (rp.ground)
@@ -5503,8 +5879,9 @@ function chunkRun(
       rp.below && prevWay !== null && nextWay !== null && prevWay.structure !== nextWay.structure;
     // The posted limit (OSM maxspeed) changes at a way boundary: each chunk carries one (P6).
     const isLimitChange = prevWay !== null && nextWay !== null && prevWay.maxspeedTag !== nextWay.maxspeedTag;
-    if (isJunction || isSectionChange || isPortal || isLimitChange)
-      cuts.add(rp.align.s[rp.align.vertexSample[i]] - base);
+    const sv = rp.align.s[rp.align.vertexSample[i]] - base;
+    const isCut = isJunction || isSectionChange || isPortal || isLimitChange;
+    if (isCut && isInnerNodeOnRun(rp, sv)) cuts.add(sv);
   }
   for (const z of s.zones) if (z.from > 0) cuts.add(z.from);
   // A height build: a chunk is all one structure (P2.7-6 PR 1), so its stretches' ends are cuts too.
@@ -5968,7 +6345,8 @@ function junctionNodesOf(plan: Plan, rp: RunPlan): number[] {
   const out: number[] = [];
   for (let i = rp.run.from + 1; i < rp.run.to; i++) {
     const isJunction = (plan.nodeChains.get(rp.chain.nodes[i])?.length ?? 0) > 1;
-    if (isJunction) out.push(rp.align.s[rp.align.vertexSample[i]] - base);
+    const sv = rp.align.s[rp.align.vertexSample[i]] - base;
+    if (isJunction && isInnerNodeOnRun(rp, sv)) out.push(sv);
   }
   return out;
 }

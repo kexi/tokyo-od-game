@@ -68,6 +68,7 @@ import {
   type Bbox,
   type BlockSummary,
   type CrossObject,
+  type FootRecord,
   groundPoints,
   OBJECTIVE_V1,
   OBJECTIVE_V2,
@@ -456,6 +457,9 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
 };
 // Planned again with the ramps moved (--ramp-shift) once the first solve says where.
+// With --ground compile the plan is made again once the roads are read (S6 PR 7c2, below): the
+// expressway_planned, expressway_blocks_planned and expressway_scope_chosen lines here are the first
+// plan's; expressway_feet_cut gives the second plan's runs and needed runs.
 let plan = planNetwork(net, outsideNodes, ranges, structures, planOptions);
 // Asked again of the finished plan (the same set: shipRuns is pure), for the log and the scorecard.
 let chosenShip = isShip ? shipRuns(plan, inWards) : null;
@@ -538,6 +542,28 @@ log("expressway_objects_read", {
   roads: objects.filter((o) => o.kind === "road").length,
   rails: objects.filter((o) => o.kind === "rail").length,
 });
+// S6 PR 7c2 (T): planned again with the ramps' ground ends cut out of the roads just read (compile.ts
+// cutFeet). Why a second plan: the roads are read around the first plan's runs, and the cut moves the
+// run distances every pair and seam is measured from. A cut only shortens runs or leaves one out, so
+// the DEM and the roads read for the first plan cover the second.
+if (groundMode === "compile") {
+  planOptions.feet = objects;
+  plan = planNetwork(net, outsideNodes, ranges, structures, planOptions);
+  chosenShip = isShip ? shipRuns(plan, inWards) : null;
+  untied = untiedPairs(plan);
+  await dem.prefetch(groundPoints(plan));
+  const feet = plan.feet ?? [];
+  // A foot taken into its viaduct counts as merged whatever the viaduct's foot then was (FootRecord.into).
+  const tally = (o: string) => feet.filter((f) => f.into === undefined && f.outcome === o).length;
+  log("expressway_feet_cut", {
+    cut: tally("cut"),
+    merged: feet.filter((f) => f.into !== undefined).length,
+    along: tally("along"),
+    kept: tally("kept"),
+    runs: plan.runs.size,
+    needed: plan.needed.length,
+  });
+}
 endStage("objects");
 
 // 5. Solve and write.
@@ -914,6 +940,25 @@ function companionsSummary(): NonNullable<Report["companions"]> {
   return { weight, ...tally(all), held: tally(all.filter((c) => c.held !== false)) };
 }
 
+/**
+ * The scorecard's `ground.feet` (S6 PR 7c2): the plan's foot records of the chains with a written run
+ * (a dropped run is in no file, its chain's viaduct is).
+ */
+function feetOf(records: readonly FootRecord[]): NonNullable<NonNullable<Report["ground"]>["feet"]> {
+  const chains = new Set(result.runs.map((r) => plan.runs.get(r.id)?.chain.id));
+  return records
+    .filter((f) => chains.has(f.chain))
+    .map(({ run, end, outcome, cutM, leftM, into, mergedM }) => ({
+      run,
+      end,
+      outcome,
+      cutM,
+      leftM,
+      ...(into !== undefined ? { into } : {}),
+      ...(mergedM !== undefined ? { mergedM } : {}),
+    }));
+}
+
 /** The runs at grade's target weight and band as built (S6 PR 7a, the record's and scorecard's). */
 function groundSettings(): { targetScale: number; bandM: number } {
   return {
@@ -972,6 +1017,7 @@ function groundSummary(): NonNullable<Report["ground"]> {
       ? { belowJunctions: plan.belowJunctions.map(({ chains: _chains, ...j }) => j) }
       : {}),
     ...(plan.ground === "compile" ? { settings: groundSettings() } : {}),
+    ...(plan.feet ? { feet: feetOf(plan.feet) } : {}),
     offGround: {
       p95M: Math.round(p95 * 100) / 100,
       maxM: Math.round((off[off.length - 1] ?? 0) * 100) / 100,
