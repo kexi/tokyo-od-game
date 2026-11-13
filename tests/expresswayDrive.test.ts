@@ -355,10 +355,16 @@ describe("the chunks in the road graph (層・ランプ・端点 ID)", () => {
   });
 
   it("follows GSI's at-grade 高速道路 line from the ramp's foot to the street, and drops it", () => {
-    // GSI's at-grade part of the ramp: from 5 m off its foot 60 m west to a street corner.
+    // GSI's at-grade part of the ramp: from under its foot on ahead, then 60 m west to a street
+    // corner (S6 PR 7c1, F1: the ramp's own line passes within its half width of the lead point).
     const corner = plane.toLonLat(90, -45);
     const atGrade: RoadLine = {
-      coords: [...plane.toLonLat(148, -45), ...plane.toLonLat(120, -45), ...corner],
+      coords: [
+        ...plane.toLonLat(152, -39.5),
+        ...plane.toLonLat(140, -42.7),
+        ...plane.toLonLat(120, -45),
+        ...corner,
+      ],
       width: 4.3,
       oneway: 0,
       kind: "highway",

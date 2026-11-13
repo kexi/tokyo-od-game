@@ -370,7 +370,12 @@ export class AutoDriver {
     return this.plan(world, this.target);
   }
 
-  private routeFrom(world: DriveWorld, target: Vector3, start: { seg: Segment; s: number; dir: 1 | -1 }) {
+  private routeFrom(
+    world: DriveWorld,
+    target: Vector3,
+    start: { seg: Segment; s: number; dir: 1 | -1 },
+    aimInReach = true,
+  ) {
     // From the lane the car is in: on a 進路変更禁止 stretch the route must keep to it (drivePath).
     const leftOfTravel = world.graph.nearestOn(start.seg, this.position).lateral * start.dir;
     const lane = laneOfPoint(start.seg, leftOfTravel) ?? 0;
@@ -382,6 +387,7 @@ export class AutoDriver {
       world.turnRules,
       "car",
       world.laneUse,
+      aimInReach,
     );
   }
 
@@ -391,9 +397,19 @@ export class AutoDriver {
    * street, on a street that leads nowhere — every open street within 25 m (60 m, 120 m from a
    * plaza), each legal way, scored by the route's length plus how far off the carriageway the car
    * is (×3) plus turning round (TURN_ROUND_COST, never where 転回禁止 is in force); the best few are
-   * planned and the cheapest kept. The manoeuvre into the lane follows (offLane).
+   * planned and the cheapest kept. The manoeuvre into the lane follows (offLane). All of that first
+   * towards the road nearest the target; only when no start has a route there, towards the nearest
+   * one each start can reach (planRoute's aimInReach, S6 PR 7c1, F2). Why that order: where two
+   * decks share a slab the car is located on either (45021972 on 45021976's at 浜崎橋), and the
+   * wrong one reaches only its own far end; aimed at what it reaches first, it won over the right
+   * deck beside it and the car followed it off its route.
    */
   private bestStart(world: DriveWorld, target: Vector3): Route | null {
+    return this.startTowards(world, target, false) ?? this.startTowards(world, target, true);
+  }
+
+  /** bestStart's search, the routes aimed at the road nearest the target or (aimInReach) at what each start reaches. */
+  private startTowards(world: DriveWorld, target: Vector3, aimInReach: boolean): Route | null {
     const graph = world.graph;
     const here = this.position;
     const heading = this.heading();
@@ -406,7 +422,7 @@ export class AutoDriver {
       const isFacing = Math.abs(hit.dir.dot(heading)) > 0.7;
       const route =
         isOnIt && isLegal && isFacing && !hit.seg.closed
-          ? this.routeFrom(world, target, { seg: hit.seg, s: hit.s, dir: facing })
+          ? this.routeFrom(world, target, { seg: hit.seg, s: hit.s, dir: facing }, aimInReach)
           : null;
       if (route) return route;
     }
@@ -430,7 +446,7 @@ export class AutoDriver {
       }
       let best: { route: Route; cost: number } | null = null;
       for (const st of starts.toSorted((a, b) => a.extra - b.extra).slice(0, 6)) {
-        const route = this.routeFrom(world, target, st);
+        const route = this.routeFrom(world, target, st, aimInReach);
         if (!route) continue;
         // Dead-end U-turns on the way are manoeuvres too.
         const uturns = route.maneuvers.filter((m) => m.turn === "uturn").length;

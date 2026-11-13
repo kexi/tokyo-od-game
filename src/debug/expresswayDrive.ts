@@ -4,7 +4,7 @@ import type { ExpresswayDecks } from "../world/expresswayDeck";
 import { laneCentreOffset } from "../world/laneChange";
 import { log } from "../log";
 import type { AutoDriver } from "../game/autoDriver";
-import { leftOf, laneOffset, type RoadGraph, type Segment, speedLimit } from "../world/roads";
+import { leftOf, laneOffset, type RoadGraph, type RoadHit, type Segment, speedLimit } from "../world/roads";
 
 /**
  * Dev-build hooks to drive the player's car over the expressway decks at a steady speed and
@@ -112,27 +112,62 @@ function argMax(xs: readonly Sample[], f: (x: Sample) => number): string | null 
 
 /**
  * The surface hit to measure the ride against: `hit` itself, unless it is clamped to an end of its
- * segment and another segment of the same run holds the car inside it (the next chunk past a seam).
+ * segment and another deck segment holds the car inside it: one of the same run (the next chunk
+ * past a seam), or one that meets this one at the clamped end's node, of whatever run (a viaduct
+ * seamed into a ground run, S6 PR 7c1, F4).
  * Why: without a preferred run (the autopilot's route) the graph's locate ranks the slower-limit
  * segment first, and 4.8–5.2 m past 45021976:10's end it still answered :10, clamped at its last
  * station (z 15.410), 0.19–0.21 m under :11's face: a +0.14 m "bump" the car never felt (P2.7-5).
+ * Across runs the same: 3.2 m before 4853798's seam into the ground run 203873824 the route's hit
+ * stood clamped at 203873824:0's start, and the 8.96 % grade made it +0.213 m.
  */
 export function insideHit<H extends { seg: Segment; s: number }>(
   graph: Pick<RoadGraph, "nearestOnSurface">,
   p: Vector3,
   hit: H,
 ): H {
-  const isClamped = hit.s <= 0.01 || hit.s >= hit.seg.length - 0.01;
+  const isAtStart = hit.s <= 0.01;
+  const isClamped = isAtStart || hit.s >= hit.seg.length - 0.01;
   if (!isClamped) return hit;
   const run = hit.seg.line.xid?.split(":")[0];
   if (run === undefined) return hit;
-  const other = graph.nearestOnSurface(
-    p,
-    15,
-    (seg) => seg !== hit.seg && seg.line.xid?.split(":")[0] === run,
-  );
+  const node = isAtStart ? hit.seg.from : hit.seg.to;
+  const isNext = (seg: Segment) => {
+    const isDeck = seg.line.xid !== undefined;
+    const isSameRun = seg.line.xid?.split(":")[0] === run;
+    const meetsHere = seg.from === node || seg.to === node;
+    return seg !== hit.seg && isDeck && (isSameRun || meetsHere);
+  };
+  const other = graph.nearestOnSurface(p, 15, isNext);
   const isInsideOther = other !== null && other.s > 0.01 && other.s < other.seg.length - 0.01;
   return isInsideOther ? (other as unknown as H) : hit;
+}
+
+/**
+ * The surface the ride is measured against at p: the first of `prefer`'s runs (a cruise's own
+ * decks, in order) the car is inside, else the nearest deck under the car among `onRoute` (the
+ * autopilot's route now, as navGuide.ts locateCar picks the car's deck), else the graph's locate;
+ * then insideHit. Why the route before locate (review of 7c1): locate ranks a main line over a
+ * ramp (deckRank), and where the ramp 24402125:2 passes 1.6 m over the main line 45068170:0 the
+ * main line was within SURFACE_GATE of the car: a "|dy| 1.6 m" the car on the ramp never felt.
+ */
+/** Whether a hit lies inside its segment (not clamped to an end). */
+const isInsideHit = (h: RoadHit) => h.s > 0.01 && h.s < h.seg.length - 0.01;
+
+export function rideHit(
+  graph: Pick<RoadGraph, "nearestOnSurface" | "locate">,
+  p: Vector3,
+  prefer: readonly string[],
+  onRoute: ReadonlySet<Segment> | null,
+): RoadHit | null {
+  const hits = prefer
+    .map((run) => graph.nearestOnSurface(p, 15, (seg) => seg.line.xid?.split(":")[0] === run))
+    .filter((h) => h !== null);
+  const own = hits.find(isInsideHit) ?? hits[0] ?? null;
+  const isOnRoute = (seg: Segment) => onRoute !== null && onRoute.has(seg) && seg.line.xid !== undefined;
+  const routed = own === null && onRoute !== null ? graph.nearestOnSurface(p, 15, isOnRoute) : null;
+  const located = own ?? routed ?? graph.locate(p, 15, () => true);
+  return located ? insideHit(graph, p, located) : null;
 }
 
 export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
@@ -143,7 +178,6 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
   let distance = 0;
   let last: Vector3 | null = null;
   let lastTarget = 0;
-  const anySurface = () => true;
   let drops: Drop[] = [];
   let swaps: Drop["swaps"] = [];
   let seenGraph: RoadGraph | null = null;
@@ -195,7 +229,15 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
   /** deps.blocker() when the cruise began (null: nothing in the way). */
   let startBlocker: string | null = null;
 
-  const cruise = (options: { kmh?: number; prefer?: string[]; lane?: number } = {}) => {
+  const cruise = (
+    options: {
+      kmh?: number;
+      prefer?: string[];
+      lane?: number;
+      /** The segments of the route the car follows now (an autopilot's), for rideHit. */
+      onRoute?: () => ReadonlySet<Segment> | null;
+    } = {},
+  ) => {
     const want = (options.kmh ?? 60) / 3.6;
     const prefer = options.prefer ?? [];
     const lane = options.lane ?? 0;
@@ -236,13 +278,7 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       // where one run seams into the next (a viaduct into a tunnel, P9) the other run's hit inside
       // its segment is the surface under the car. Measured against the clamped one, a 6 % grade made
       // a 0.2–0.3 m "bump" for a few metres past every seam.
-      const hits = prefer
-        .map((run) => graph?.nearestOnSurface(p, 15, (seg) => seg.line.xid?.split(":")[0] === run) ?? null)
-        .filter((h) => h !== null);
-      const isInside = (h: (typeof hits)[number]) => h.s > 0.01 && h.s < h.seg.length - 0.01;
-      const own = hits.find(isInside) ?? hits[0];
-      const located = own ?? graph?.locate(p, 15, anySurface) ?? null;
-      const hit = located && graph ? insideHit(graph, p, located) : located;
+      const hit = graph ? rideHit(graph, p, prefer, options.onRoute?.() ?? null) : null;
       const xid = hit?.seg.line.xid ?? null;
       if (xid && visited[visited.length - 1] !== xid) visited.push(xid);
       const surface = hit && graph ? graph.surfaceY(hit.seg, hit.s) : null;
@@ -418,7 +454,16 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
     let sampler: ((dt: number) => DriveInput) | null = null;
     const install = deps.setDrive;
     deps.setDrive = (fn) => (sampler = fn);
-    cruise({});
+    // The route's segments, made again only when the autopilot plans anew (a new graph, off route).
+    let onRoute: { route: AutoDriver["route"]; segs: Set<Segment> } | null = null;
+    const routeSegs = (): ReadonlySet<Segment> | null => {
+      const now = ap.driver()?.route ?? null;
+      if (!now) return null;
+      const isSame = onRoute?.route === now;
+      if (!isSame) onRoute = { route: now, segs: new Set(now.steps.map((st) => st.seg)) };
+      return onRoute!.segs;
+    };
+    cruise({ onRoute: routeSegs });
     deps.setDrive = install;
     routed = {
       route: ap.driver()?.route ?? null,

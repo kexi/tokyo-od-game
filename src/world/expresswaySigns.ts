@@ -60,6 +60,8 @@ type Standing = {
   normal: Vector3;
   isNear: boolean;
   faceIndex: number;
+  /** Lower edge above the deck's road surface at the sign, m (DeckSignView.bottomM). */
+  bottomM: number;
 };
 
 /** A deck sign as the review hooks see it (src/debug/viewHooks.ts `expressway-sign` targets). */
@@ -209,7 +211,7 @@ export class ExpresswaySigns {
         normal: s.normal.clone(),
         width: w,
         height: h,
-        bottomM: Number.NaN,
+        bottomM: s.bottomM,
         layer: s.isNear ? pool.layerOf(s.key) : 0,
         names: boardNames(s.layout.content).map((n) => n.ja),
       };
@@ -285,9 +287,9 @@ export class ExpresswaySigns {
           list.push(local(m.x, m.y, m.z, new Vector3(m.sx, m.sy, m.sz), m.pitch));
           lists.set(m.role, list);
         }
-        const [f] = mount.faces;
-        if (!f) continue;
-        const board = local(f.x, f.y, f.z + f.standoff, new Vector3(w, h, 1), f.pitch);
+        const placed = placeBoard(at, dm, mount, w, h);
+        if (!placed) continue;
+        const { board, bottomM } = placed;
         boards.push(board);
         this.standing.push({
           sign,
@@ -298,6 +300,7 @@ export class ExpresswaySigns {
           normal: at.travel.clone().negate(),
           isNear: false,
           faceIndex: this.standing.length,
+          bottomM,
         });
       }
     }
@@ -385,7 +388,7 @@ export class ExpresswaySigns {
 }
 
 /** Where a sign is on its deck: the centre line's point at its road surface and the travel there. */
-type SignFrame = { pos: Vector3; travel: Vector3 };
+export type SignFrame = { pos: Vector3; travel: Vector3 };
 
 const leftOf = (travel: Vector3, u: number) => new Vector3(travel.z * u, 0, -travel.x * u);
 
@@ -400,6 +403,33 @@ export function signFrame(chunk: XwChunk, sign: Pick<XwSign, "s">, place: GeoToL
   const b = at(sign.s + 2);
   const travel = new Vector3(b.x - a.x, 0, b.z - a.z).normalize();
   return { pos, travel };
+}
+
+/**
+ * A board's matrix on its mount (the first face of `mount`, scaled to w × h, pitched as resolved)
+ * and its lower edge over the road surface at the sign (the board's centre less half its height,
+ * against the centre line's road there, as guideSigns.ts measures a street board over its ground).
+ * Null for a mount with no face. Why not NaN for the boards as before 7c1: the review hooks read
+ * bottomM to check a 門型's 4.7 m (S6 PR 7c, H; only the 323・325 plates had it).
+ */
+export function placeBoard(
+  at: SignFrame,
+  dm: DeckMount,
+  mount: ResolvedMount,
+  w: number,
+  h: number,
+): { board: Matrix4; bottomM: number } | null {
+  const [f] = mount.faces;
+  if (!f) return null;
+  const board = mountMatrix(at, dm).multiply(
+    new Matrix4().compose(
+      new Vector3(dm.side * f.x, f.y, f.z + f.standoff),
+      new Quaternion().setFromEuler(new Euler(f.pitch, 0, 0, "YXZ")),
+      new Vector3(w, h, 1),
+    ),
+  );
+  const centre = new Vector3().setFromMatrixPosition(board);
+  return { board, bottomM: centre.y - h / 2 - at.pos.y };
 }
 
 /**

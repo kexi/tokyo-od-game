@@ -1159,6 +1159,35 @@ export const LOG_EVENTS = {
     durationMs: count,
   }),
   /**
+   * The ramps' feet of a data folder joined to the GSI streets as the game joins them (S6 PR 7c1,
+   * scripts/expresswayFeetProbe.ts): the ground ends probed and those skipped for a tile not to be
+   * had, how each was joined (expresswayRoads.ts F1's rules: atGrade (a), street (b), inside (c),
+   * unattached (d)), the feet whose connector breaks rule 1 (enters beside its own deck), rule 2 (its
+   * first LEAD_M not straight ahead) or turns back (a street leg over 90° off the heading), each with
+   * its point in the foot's (out, left), and the feet whose street leg turns more than 45°.
+   */
+  expressway_feet_probed: info({
+    dir: z.string(),
+    feet: count,
+    groundRunFeet: count,
+    skippedForMissingTiles: count,
+    joined: z.strictObject({ atGrade: count, street: count, inside: count, unattached: count }),
+    violations: count,
+    violating: z.array(
+      z.strictObject({
+        run: z.string(),
+        end: z.enum(["start", "end"]),
+        rule: z.enum(["beside-deck", "not-straight", "turns-back"]),
+        out: z.number(),
+        left: z.number(),
+      }),
+    ),
+    unattachedFeet: z.array(z.strictObject({ run: z.string(), end: z.enum(["start", "end"]) })),
+    maxLegDeg: z.number().nonnegative(),
+    steepFeet: z.array(z.strictObject({ run: z.string(), end: z.enum(["start", "end"]), deg: z.number() })),
+    durationMs: count,
+  }),
+  /**
    * A data folder's ledger written again (scripts/expresswayLedger.ts, P2.7-4): the cases, those new
    * to it, left as they were, sent back to `new` (with a previous decision), per status, accepted by
    * a rule, the seam probes, whether it has a budget, its bytes, the diagnostics re-allowed.

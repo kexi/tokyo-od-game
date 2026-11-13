@@ -67,6 +67,46 @@ describe("car navigation over the road graph", () => {
     expect(route?.steps.every((st) => st.seg.oneway === 0 || st.seg.oneway === st.dir)).toBe(true);
   });
 
+  // S6 PR 7c1, F2: north to (0, 100), east to (200, 100); a one-way into that end from (210, 0)
+  // that no route can enter. The goal is the closest road and any within 30 m of it, and only
+  // when no route reaches that, the closest road the start reaches.
+  const f2 = () =>
+    new RoadGraph([road(0, 0, 0, 100), road(0, 100, 200, 100), road(210, 0, 200, 100, 1)], frame);
+  const lastOf = (route: NonNullable<ReturnType<typeof planRoute>>) =>
+    route.steps[route.steps.length - 1].seg;
+
+  it("aims at the closest road it can reach for a target off the road map (F2)", () => {
+    // (290, 20): the one-way 82 m off, the reachable road's end 120 m (both 40 m or more).
+    const graph = f2();
+    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(290, 20), clockAt(600), []);
+    expect(route).not.toBeNull();
+    expect(route!.steps.every((st) => st.seg.oneway === 0 || st.seg.oneway === st.dir)).toBe(true);
+    expect(lastOf(route!).oneway).toBe(0);
+    expect(route!.reachesTarget).toBe(false);
+  });
+
+  it("aims at a reachable road within 40 m of a target on the road map, and reaches it (F2)", () => {
+    // (203, 65): the one-way 0.5 m off, the reachable road 35 m (past the 30 m band, within 40 m).
+    const graph = f2();
+    const route = planRoute(graph, startOn(graph, 0, 10, NORTH), at(203, 65), clockAt(600), []);
+    expect(route).not.toBeNull();
+    expect(lastOf(route!).oneway).toBe(0);
+    expect(route!.reachesTarget).toBe(true);
+  });
+
+  it("finds no route to a target on the road map when every road it reaches stops 40 m or more short (F2, as before 7c1)", () => {
+    // (206, 45): the one-way 0.5 m off, the reachable road 55 m.
+    const graph = f2();
+    expect(planRoute(graph, startOn(graph, 0, 10, NORTH), at(206, 45), clockAt(600), [])).toBeNull();
+  });
+
+  it("still finds no route when nothing it can reach lies ahead (the target behind on a dead end)", () => {
+    // One one-way street north to a dead end, the target south of the car on it.
+    const graph = new RoadGraph([road(0, 0, 0, 100, 1), road(50, -200, 50, 200)], frame);
+    const route = planRoute(graph, startOn(graph, 0, 60, NORTH), at(0, 20), clockAt(600), []);
+    expect(route).toBeNull();
+  });
+
   it("obeys 指定方向外進行禁止 that is in force, and only then", () => {
     const graph = new RoadGraph(grid(), frame);
     const south = graph.nearest(at(0, 50), 5)?.seg;

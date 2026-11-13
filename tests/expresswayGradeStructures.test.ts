@@ -7,7 +7,8 @@ import { DEFAULT_DATA_DIR, readExpresswayFiles } from "../scripts/expresswayFile
 import { LocalFrame } from "../src/geo/frame";
 import { latToTileY, lonToTileX } from "../src/geo/tiles";
 import { boreHoles, cutsGround } from "../src/world/expresswayBore";
-import { createDeckBody, deckArraySteps, type GeoToLocal } from "../src/world/expresswayDeck";
+import { closeWidthStep, createDeckBody, deckArraySteps, type GeoToLocal } from "../src/world/expresswayDeck";
+import { chunkRings, openSide } from "../src/world/expresswayMerge";
 import { expresswayRoadInput, joinExpressway, siteCrossings } from "../src/world/expresswayRoads";
 import { DeckIndex } from "../src/world/expresswayMarkings";
 import type { VectorTile } from "@mapbox/vector-tile";
@@ -140,13 +141,14 @@ function checksum(position: Float32Array): number {
 describe("高架・トンネル・掘割の組み立ては 7b の前と同じ（P2.7-6 PR 7b の不変）", () => {
   // From origin/main 0683f14, the same chunks built there (the vertices, the collider's triangles and
   // the positions' checksum): a viaduct, a tunnel and a cut, with and without the terrain the cut
-  // walls read. An embankment is the only section 7b changes.
+  // walls read. An embankment is the only section 7b changes. S6 PR 7c1 (F3) adds collider-only
+  // strips beside a cut's walls where it reads a terrain: 120 triangles more, drawn the same.
   const cases: Array<[string, XwChunk, GeoToLocal, number, number, number]> = [
     ["viaduct", chunkOf("viaduct", 2), place, 750, 140, 802781016],
     ["viaduct over a sloped terrain", chunkOf("viaduct", 2), sloped(4, 1), 750, 140, 802781016],
     ["tunnel", chunkOf("tunnel", 30), place, 930, 220, 245554516],
     ["cut", chunkOf("cut", 15), place, 630, 100, 254709793],
-    ["cut in a sloped terrain", chunkOf("cut", 15), sloped(16, 13), 630, 100, 645563562],
+    ["cut in a sloped terrain", chunkOf("cut", 15), sloped(16, 13), 630, 220, 645563562],
   ];
   it.each(cases)(
     "%s: the same vertices, collider triangles and positions",
@@ -664,5 +666,142 @@ describe("低い径間の両側の盛土（P2.7-6 PR 7a2、実行時は変えな
     // Along the run under the span, west and east: each embankment's end face 50 m off.
     expect(Math.abs(cast(w, mid, { x: -1, y: 0, z: 0 })! - 50)).toBeLessThan(0.3);
     expect(Math.abs(cast(w, mid, { x: 1, y: 0, z: 0 })! - 50)).toBeLessThan(0.3);
+  });
+});
+
+/** B alone in a context (its run's summary known: which of its ends meet the ground). */
+function builtIn(chunk: XwChunk, run: XwTileRun, at: GeoToLocal, others: XwChunk[] = []) {
+  const index = new DeckIndex(
+    new Map([[run.id, run], ...others.map((c) => [c.run, { ...run, id: c.run }] as const)]),
+  );
+  index.add(chunk);
+  for (const c of others) index.add(c);
+  const steps = deckArraySteps(chunk, at, false, { index });
+  let r = steps.next();
+  while (!r.done) r = steps.next();
+  return r.value;
+}
+function worldOf(collider: ReturnType<typeof builtIn>["collider"]) {
+  const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+  worlds.push(world);
+  createDeckBody(world, collider, [], null);
+  world.step();
+  return world;
+}
+
+describe("端面の先と掘割の壁の外の地面のコライダー（S6 PR 7c1、F3）", () => {
+  // The drawn terrain (and the DEM) level at `tp` everywhere.
+  const level = (tp: number): GeoToLocal => ({ ...place, groundAt: () => tp + N, terrainAt: () => tp + N });
+  const groundStart: XwTileRun = { ...runOf("ground"), start: { kind: "ground", ground: ROAD } };
+  /** The height a ray down meets at (x, z offset left of the line), from 20 m over the road. */
+  const downAt = (world: RAPIER.World, x: number, left: number) => {
+    const [lon, lat] = plane.toLonLat(x, 0);
+    const m = frame.toLocal(lat, lon, ROAD + N);
+    const t = cast(world, { x: m.x, y: m.y + 20, z: m.z - left }, { x: 0, y: -1, z: 0 });
+    return t === null ? null : m.y + 20 - t;
+  };
+
+  for (const structure of ["embankment", "cut"] as const)
+    it(`past a ${structure}'s end face where its run meets the ground, the drawn terrain has a collider 0.25–1.0 m on (within 2 cm)`, () => {
+      const tp = ROAD - 0.05;
+      const b = builtIn(chunkOf(structure, tp), groundStart, level(tp));
+      const world = worldOf(b.collider);
+      // The chunk starts at x = 100 going east: past its end face is x < 100.
+      for (const d of [0.25, 0.5, 1.0])
+        for (const left of [-EDGE + 0.3, 0, EDGE - 0.3]) {
+          const y = downAt(world, 100 - d, left);
+          expect(y, `${d} m past, ${left} m left`).not.toBeNull();
+          expect(Math.abs(y! - yOf(tp))).toBeLessThan(0.02);
+        }
+      // Not at an end that does not meet the ground (a seam: the run goes on there).
+      const seam = builtIn(chunkOf(structure, tp), runOf("seam"), level(tp));
+      expect(downAt(worldOf(seam.collider), 99.5, 0)).toBeNull();
+    });
+
+  it("beside a cut's retaining walls the drawn terrain has a collider 0.25 and 0.5 m out (within 2 cm)", () => {
+    const tp = ROAD + 2;
+    const b = builtIn(chunkOf("cut", tp), runOf("seam"), level(tp));
+    const world = worldOf(b.collider);
+    for (const d of [0.25, 0.5])
+      for (const side of [1, -1]) {
+        const y = downAt(world, 150.37, side * (HW + CUT_WALL.value.thickness + d));
+        expect(y, `${d} m out, side ${side}`).not.toBeNull();
+        expect(Math.abs(y! - yOf(tp))).toBeLessThan(0.02);
+      }
+  });
+
+  it("no strip of a cut lies in the carriageway of a deck beside it whose road is under the drawn ground", () => {
+    // B a cut, C a viaduct 9.1 m south with its road 2 m under the drawn terrain (as 7b's W-A).
+    const tp = ROAD + 2;
+    const b = chunkOf("cut", tp, { id: "B:0" });
+    const c = chunkOf("viaduct", ROAD - 6, { id: "C:0", run: "C", chain: "C" });
+    for (let k = 0; k * 7 < c.st.length; k++) {
+      const [lon, lat] = plane.toLonLat(100 + k * 10, -9.1);
+      c.st[k * 7 + 1] = lon;
+      c.st[k * 7 + 2] = lat;
+    }
+    const pos = builtIn(b, runOf("seam"), level(tp), [c]).collider.position;
+    const m = centreAt(50);
+    const southZ = m.z + 9.1;
+    for (let k = 0; k < pos.length; k += 3) {
+      const isOverC = Math.abs(pos[k + 2] - southZ) < HW && pos[k + 1] > m.y + 0.05;
+      expect(isOverC, `(${pos[k]}, ${pos[k + 1]}, ${pos[k + 2]})`).toBe(false);
+    }
+  });
+});
+
+describe("車線数の変わる継ぎ目で壁高欄を閉じる（S6 PR 7c1、A1、24402125:0 → :1）", () => {
+  // W:0 two lanes (carriageway 8.5 m) from x 100 to 200, W:1 one lane (4.75 m) on to 300, viaducts.
+  const narrowHw = (3.25 + 1 + 0.5) / 2;
+  const narrowEdge = narrowHw + PARAPET_WIDTH.value;
+  const wide = chunkOf("viaduct", ROAD - 8, { id: "W:0", run: "W", chain: "W", next: "W:1" });
+  const narrow = chunkOf(
+    "viaduct",
+    ROAD - 8,
+    { id: "W:1", run: "W", chain: "W", k: 1, prev: "W:0", lanes: 1, shoulderL: 1, shoulderR: 0.5 },
+    200,
+  );
+  const runW: XwTileRun = { ...runOf("seam"), id: "W" };
+
+  it("leaves no opening at the seam between the narrower 壁高欄 and the wider slab's edge (every 0.25 m, at road + 0.5 m)", () => {
+    const index = new DeckIndex(new Map([["W", runW]]));
+    index.add(wide);
+    index.add(narrow);
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    worlds.push(world);
+    for (const c of [wide, narrow]) {
+      const steps = deckArraySteps(c, place, false, { index });
+      let r = steps.next();
+      while (!r.done) r = steps.next();
+      createDeckBody(world, r.value.collider, [], null);
+    }
+    world.step();
+    const [lon, lat] = plane.toLonLat(195, 0);
+    const m = frame.toLocal(lat, lon, ROAD + N);
+    let probed = 0;
+    for (const side of [1, -1])
+      for (let u = narrowEdge + 0.125; u < EDGE - PARAPET_WIDTH.value; u += 0.25) {
+        // Along travel at road + 0.5 m, from 5 m before the seam: it meets the wall at the seam.
+        const t = cast(world, { x: m.x, y: m.y + 0.5, z: m.z - side * u }, { x: 1, y: 0, z: 0 });
+        expect(t, `u ${(side * u).toFixed(3)}`).not.toBeNull();
+        expect(t!).toBeGreaterThan(4.4);
+        expect(t!).toBeLessThan(5.05);
+        probed++;
+      }
+    expect(probed).toBeGreaterThan(8);
+  });
+
+  it("closes only a side whose 壁高欄 stands at its own slab's edge (none where a deck sharing its surface goes on)", () => {
+    const own = chunkRings(wide, place);
+    const ring = own.rings[own.rings.length - 1];
+    const both = { left: openSide(own), right: openSide(own) };
+    const leftOnly = { ...both, right: { ...openSide(own), wall: null } };
+    const count = (sides: typeof both) => {
+      const solid: number[] = [];
+      closeWidthStep({ end: "end", narrowEdge }, ring, sides, own.edge, false, [], [], solid);
+      return solid.length;
+    };
+    expect(count(both)).toBeGreaterThan(0);
+    expect(count(leftOnly) * 2).toBe(count(both));
   });
 });

@@ -212,6 +212,8 @@ const tangent = (graph: RoadGraph, st: Step, atEnd: boolean) => {
 /** Cost per metre of the expressway against a street's 1 (planRoute). */
 const XW_COST = 0.6;
 
+/** A route whose goal road passes this close to the target reaches it (Route.reachesTarget, m). */
+const REACHED_TARGET_M = 40;
 /** Times a car route is planned again round turns its lanes cannot reach (drivePath's `blocked`). */
 const LANE_REPLANS = 8;
 
@@ -225,6 +227,11 @@ export function planRoute(
   mode: TravelMode = "car",
   /** 進行方向別通行区分, for the lanes of a car's path. */
   laneUse: readonly LaneUse[] = [],
+  /**
+   * Whether a goal the start cannot reach may give way to the nearest one it can (F2). False: null
+   * as before 7c1, for a caller that tries other starts first (AutoDriver.bestStart).
+   */
+  aimInReach = true,
 ): Route | null {
   const isWalk = mode === "walk";
   const usable = isWalk ? isWalkable : (seg: Segment) => isDrivable(seg) && !seg.closed;
@@ -238,6 +245,27 @@ export function planRoute(
     nearest = Math.min(nearest, p.dist);
   }
   if (!Number.isFinite(nearest)) return null;
+  // When no route reaches that goal, the closest street the start can reach instead (and any within
+  // 30 m of it; S6 PR 7c1, F2): the closest of all may be one the car cannot get to (an on-ramp of
+  // the other carriageway), and a goal made of it alone left no route although the next one was
+  // in reach (芝公園 → 汐留, 45068172:1 at 175 m against 24402125:0 at 224 m). Why not the reachable
+  // ones always: a start on the wrong one of two decks sharing a slab (45021972 on 45021976's at
+  // 浜崎橋) then got a route to its own far end, where before it failed and AutoDriver.bestStart
+  // tried the deck beside it.
+  // Not for a target on the road map (a road within REACHED_TARGET_M) whose reachable roads all
+  // stop short of it: that route would not reach the target, and a driver waits at its end for a
+  // road map that has it already (AutoDriver never finishes, robotaxi.board() needs a route that
+  // reaches); null there, as before 7c1 (review of 7c1).
+  const aimAtReachable = () => {
+    const reached = reachableSegments(graph, start, usable, isWalk);
+    let best = Infinity;
+    for (const id of reached) best = Math.min(best, proj.get(id)?.dist ?? Infinity);
+    const isOnMap = nearest < REACHED_TARGET_M;
+    const isShort = isOnMap && best >= REACHED_TARGET_M;
+    const isOther = Number.isFinite(best) && best > nearest && !isShort;
+    if (isOther) nearest = best;
+    return isOther;
+  };
   const isGoal = (seg: Segment) => (proj.get(seg.id)?.dist ?? Infinity) <= nearest + 30;
   // Driving past the goal point costs nothing extra, but a street far from the target is worse.
   const goalCost = (st: Step, entered: number) => {
@@ -262,10 +290,12 @@ export function planRoute(
   const bannedMoves = new Set<string>();
   let route: Route | null = null;
   for (let attempt = 0; attempt <= LANE_REPLANS; attempt++) {
-    const steps = search(bannedMoves);
+    let steps = search(bannedMoves);
+    const isRetry = !steps && attempt === 0 && aimInReach && aimAtReachable();
+    if (isRetry) steps = search(bannedMoves);
     if (!steps) break;
     const endS = proj.get(steps[steps.length - 1].seg.id)?.s ?? 0;
-    const centre = buildRoute(graph, steps, start.s, endS, nearest < 40);
+    const centre = buildRoute(graph, steps, start.s, endS, nearest < REACHED_TARGET_M);
     if (isWalk) return centre;
     // The lanes and the curves through the corners (drivePath), with the レーン案内 they follow.
     const hints = laneHints(centre, laneUse);
@@ -361,6 +391,44 @@ export function planRoute(
     }
     return steps;
   }
+}
+
+/**
+ * The ids of the segments a route from `start` can enter (start's own included): the graph walked
+ * once from its direction, by `usable` segments and, by car, with each one-way's direction. Turn
+ * restrictions are left to the search (a street reached only through a banned turn is still a goal
+ * candidate, as every street was before). Why not the search itself: it stops at the first goal,
+ * and the goal set must be known before it starts.
+ */
+function reachableSegments(
+  graph: RoadGraph,
+  start: { seg: Segment; dir: 1 | -1 },
+  usable: (seg: Segment) => boolean,
+  isWalk: boolean,
+): Set<number> {
+  const reached = new Set<number>([start.seg.id]);
+  const seen = new Set<number>();
+  const keyOf = (st: Step) => st.seg.id * 2 + (st.dir === 1 ? 1 : 0);
+  const queue: Step[] = [{ seg: start.seg, dir: start.dir }];
+  seen.add(keyOf(queue[0]));
+  while (queue.length > 0) {
+    const step = queue.pop()!;
+    const node = exitNode(step);
+    for (const id of graph.nodes.get(node) ?? []) {
+      const seg = graph.segments[id];
+      if (!usable(seg)) continue;
+      const dir: 1 | -1 = seg.from === node ? 1 : -1;
+      const isAgainstOneway = !isWalk && seg.oneway !== 0 && seg.oneway !== dir;
+      if (isAgainstOneway) continue;
+      const next: Step = { seg, dir };
+      const key = keyOf(next);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      reached.add(seg.id);
+      queue.push(next);
+    }
+  }
+  return reached;
 }
 
 /**

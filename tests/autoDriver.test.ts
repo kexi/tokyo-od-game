@@ -80,6 +80,21 @@ describe("self-driving lane positions (第18条・第20条)", () => {
 });
 
 describe("self-driving by wheel and pedals", () => {
+  it("starts from the road beside the one it stands on when only that one leads to the target (S6 PR 7c1)", () => {
+    // Two one-way roads north, 4 m apart (two runs on one slab, as 45021972 on 45021976's): the
+    // nearer one ends at y 200, the other goes on to the target. Every start is first aimed at the
+    // road nearest the target; only failing that at what it reaches (planRoute's aimInReach), which
+    // for the nearer road is its own dead end.
+    const dead: RoadLine = { ...road(0, 0, 0, 200), oneway: 1 };
+    const on: RoadLine = { ...road(4, 0, 4, 400), oneway: 1 };
+    const graph = new RoadGraph([dead, on], frame);
+    const driver = new AutoDriver();
+    driver.place(at(0.5, 100), Math.PI);
+    expect(driver.plan(worldOf(graph), at(4, 390))).toBe(true);
+    expect(driver.route!.reachesTarget).toBe(true);
+    expect(driver.route!.steps[0].seg.line).toBe(graph.segments.find((s) => s.length > 300)!.line);
+  });
+
   describe("standing still on a ramp's at-grade connector (汐留出口's foot, at the red)", () => {
     // An off-ramp's ground connector (OSM, 4 m) running south down to a street. carriagewaysAt
     // indexes the streets only (usesGroundSurface), so on the connector it finds nothing: the car

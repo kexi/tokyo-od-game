@@ -23,11 +23,17 @@ import { type RoadDiagnostic, type RoadLine, vertexKey } from "./roads";
  * at the junction's distance, where the compiler put the ramp's end on the parent's centreline.
  *
  * In the worker, `joinExpressway` drops the GSI 高速道路 lines the chunks replace (they would draw a
- * second, unconnected expressway into the graph) and joins each ramp's ground end to the streets:
- * first along GSI's at-grade part of the ramp (a 高速道路 line within RAMP_REACH_M of the deck's
- * end, walked to the first vertex a street shares), else to the nearest GSI street within
- * RAMP_REACH_M (a vertex is inserted into the street at the projection). Either way a ground-level
- * connector runs from the deck's end. A ramp end with neither stays a dead end and is reported
+ * second, unconnected expressway into the graph) and joins each ramp's ground end (its foot) to the
+ * streets (S6 PR 7c1, F1). The connector leaves the foot straight ahead for LEAD_M and never enters
+ * beside its own deck (behind the end face only over the carriageway), and what it joins is looked
+ * for from that lead point: (a) GSI's at-grade part of the ramp going on ahead (a 高速道路 line
+ * within the carriageway's half width of the lead point, walked forward to the first vertex a street
+ * shares); else (b) a GSI street whose centre line the lead itself crosses (the foot stands in its
+ * carriageway: the connector goes straight to the crossing), or the nearest point of one ahead of
+ * the end face, its carriageway's edge within RAMP_REACH_M, that the leg from the lead point
+ * reaches within 45° of the heading (a vertex is inserted there); else (c) a street crossing the
+ * run's line inside the foot, joined at the crossing without a connector; else the nearest street
+ * point ahead of the lead point, its leg turning up to 90°. A ramp end with none stays a dead end and is reported
  * (`ramp_unattached`): routes cannot use it. Why not OSM's node shared with the street (設計書
  * 4.5): the data has no such node; the at-grade end of a link is not compiled (it is no viaduct).
  *
@@ -40,7 +46,10 @@ import { type RoadDiagnostic, type RoadLine, vertexKey } from "./roads";
  * which lives on the page; the lines are frame-free, so one set serves every origin and rebuild.
  */
 
-/** Farthest a ramp's ground end may be from the street it joins (knowledge/road-redesign-plan.md 4.5). */
+/**
+ * Farthest a ramp's ground end may be from the street it joins (knowledge/road-redesign-plan.md
+ * 4.5): from its lead point to the street's carriageway edge (S6 PR 7c1, F1).
+ */
 export const RAMP_REACH_M = 15;
 /** GSI 高速道路 lines this close to a chunk are the same road and are dropped. */
 const REPLACE_REACH_M = 40;
@@ -83,6 +92,14 @@ export type XwGroundEnd = {
   section: CrossSection;
   /** The posted limit of the deck's end chunk (OSM maxspeed), absent where none is tagged. */
   limit?: number;
+  /**
+   * The foot's heading out of the deck (S6 PR 7c1, F1): a unit [east, north] from the deck's last
+   * metre to its end, so the connector leaves straight ahead ([0, 0] for a chunk with no length:
+   * joinExpressway leaves it unattached).
+   */
+  dir: [number, number];
+  /** Half the carriageway at the end (m): the connector stays within it behind the end face. */
+  halfWidth: number;
 };
 
 /**
@@ -217,6 +234,7 @@ export function expresswayRoadInput(
       const isGroundEnd = isRunEnd && joinsStreet && run[end].kind === "ground";
       if (!isGroundEnd) continue;
       const p = end === "start" ? points[0] : points[points.length - 1];
+      const dir = footHeading(end === "start" ? points : points.toReversed()) ?? [0, 0];
       ends.push({
         run: run.id,
         cls: run.cls === "street" ? "street" : "ramp",
@@ -229,11 +247,37 @@ export function expresswayRoadInput(
         width: sectionWidth(chunk),
         section: chunkSection(chunk),
         ...limitOf(chunk),
+        dir,
+        halfWidth: carriagewayWidth(chunk) / 2,
       });
     }
   }
   // A junction whose parent chunk is not loaded leaves the child's end open (a dead end in the graph).
   return sites.length > 0 ? { lines, ends, sites } : { lines, ends };
+}
+
+/** The deck behind its end this far gives the foot's heading (m): closer points may be a subdivision's. */
+const HEADING_BASE_M = 1;
+
+/**
+ * The unit [east, north] out of the deck at points[0] (points run from the end into the deck): from
+ * the first point HEADING_BASE_M or more behind it (the farthest one in a shorter chunk). Null when
+ * the chunk has no length.
+ */
+function footHeading(points: readonly Point[]): [number, number] | null {
+  const p = points[0];
+  const plane = planeAt(p.lon, p.lat);
+  let best: [number, number] | null = null;
+  for (let k = 1; k < points.length; k++) {
+    const [x, y] = plane.toXY(points[k].lon, points[k].lat);
+    const d = Math.hypot(x, y);
+    const isOnEnd = d < 1e-6;
+    if (isOnEnd) continue;
+    best = [-x / d, -y / d];
+    const isFarEnough = d >= HEADING_BASE_M;
+    if (isFarEnough) break;
+  }
+  return best;
 }
 
 /** A run's end where the road meets the ground, an untraced tunnel or the range's edge. */
@@ -330,7 +374,7 @@ function project(
 /**
  * The street lines with the expressway joined in (in the worker, before the graph is built): GSI
  * 高速道路 lines within REPLACE_REACH_M of a chunk are dropped, each ramp's ground end is joined to
- * the nearest street within RAMP_REACH_M, and the chunk lines are appended. Lines it does not
+ * a street by F1's rules (the file's comment), and the chunk lines are appended. Lines it does not
  * change are passed through as the same objects.
  */
 export function joinExpressway(
@@ -424,63 +468,329 @@ export function joinExpressway(
     x < maxX - EXTENT_MARGIN_M &&
     y > minY + EXTENT_MARGIN_M &&
     y < maxY - EXTENT_MARGIN_M;
+  // The chunk lines, copied where a crossing inside a foot gets a node (rule (c) below).
+  const decks = [...xw.lines];
+  const unattached = (end: XwGroundEnd) =>
+    report({ event: "ramp_unattached", fields: { run: end.run, end: end.end, reachM: RAMP_REACH_M } });
+  /**
+   * A foot joined to street point `at` (rule (b)): a vertex `joinId` put into the street there and a
+   * connector from the end (through the lead point unless the point is on the lead or within a metre
+   * of the lead point). Within VERTEX_CLEARANCE_M of the end itself (measured at the vertex as put,
+   * after insertVertex keeps it off the piece's ends) the vertex takes the end's id instead: the
+   * graph would drop a connector under a metre.
+   */
+  const joinAhead = (at: StreetPoint, end: XwGroundEnd, foot: Foot, joinId: string): boolean => {
+    const point = insertVertex(out, at.index, at.piece, at.t, joinId);
+    const [jx, jy] = xy(point[0], point[1]);
+    const isAtFoot = Math.hypot(jx - foot.x, jy - foot.y) < VERTEX_CLEARANCE_M;
+    if (isAtFoot) {
+      const ids = out[at.index].nodeIds!;
+      ids[ids.indexOf(joinId)] = end.node;
+      return true;
+    }
+    const lead = plane.toLonLat(foot.lead[0], foot.lead[1]);
+    const isAtLead = Math.hypot(jx - foot.lead[0], jy - foot.lead[1]) < VERTEX_CLEARANCE_M;
+    const isStraight = at.onLead || isAtLead;
+    const joined = connector(end, isStraight ? point : [...lead, ...point]);
+    const last = end.end === "end" ? joined.nodeIds!.length - 1 : 0;
+    joined.nodeIds![last] = joinId;
+    extra.push(joined);
+    return true;
+  };
   for (const end of xw.ends) {
     const [px, py] = xy(end.lon, end.lat);
     const isLoaded = isInsideStreets(px, py);
     if (!isLoaded) continue;
-    // First the ramp's own at-grade part, which GSI draws as a 高速道路 line from the deck's end to
-    // the street (OSM's continuation of the link is not compiled: it is not a viaduct).
+    const foot = footOf(end, px, py);
+    if (!foot) {
+      unattached(end);
+      continue;
+    }
+    const joinId = `xwg:${end.run}:${end.end}`;
+    const lead = plane.toLonLat(foot.lead[0], foot.lead[1]);
+    // (a) The ramp's own at-grade part going on ahead, which GSI draws as a 高速道路 line from the
+    // deck's end to the street (OSM's continuation of the link is not compiled: it is not a viaduct).
     // Walked over every GSI 高速道路 line, the ones kept too (P6, W6): the at-grade part can run on
     // more than REPLACE_REACH_M from any chunk, and when the decks loaded are fewer than the streets
     // (another centre) the lines near the ramp's foot were not among the replaced ones.
-    const atGrade = end.cls === "ramp" ? traceAtGrade(gsiExpressway, streetKeys, xy, px, py) : null;
+    const atGrade = end.cls === "ramp" ? traceAtGrade(gsiExpressway, streetKeys, xy, foot) : null;
     if (atGrade) {
-      extra.push(connector(end, atGrade));
+      // Its first vertex under a metre past the lead point: straight to it (the graph would drop
+      // a piece under a metre).
+      const [fx, fy] = xy(atGrade[0], atGrade[1]);
+      const isAtLead = Math.hypot(fx - foot.lead[0], fy - foot.lead[1]) < VERTEX_CLEARANCE_M;
+      extra.push(connector(end, isAtLead ? atGrade : [...lead, ...atGrade]));
       continue;
     }
-    let best: { index: number; d: number; piece: number; t: number; len: number } | null = null;
-    for (let index = 0; index < out.length; index++) {
-      const line = out[index];
-      if (!usesGroundSurface(line)) continue;
-      const hit = project(xy, line.coords, px, py);
-      const isCloser = hit.d < (best?.d ?? RAMP_REACH_M);
-      if (isCloser) best = { index, ...hit };
-    }
-    if (!best) {
-      report({ event: "ramp_unattached", fields: { run: end.run, end: end.end, reachM: RAMP_REACH_M } });
-      continue;
-    }
-    const street = out[best.index];
-    // Keep the new vertex VERTEX_CLEARANCE_M off the piece's ends, so no piece of the split street
-    // falls under the graph's 1 m minimum.
-    const margin = Math.min(0.5, VERTEX_CLEARANCE_M / Math.max(best.len, 1e-6));
-    const t = Math.min(1 - margin, Math.max(margin, best.t));
-    const i = best.piece * 2;
-    const lon = street.coords[i] + (street.coords[i + 2] - street.coords[i]) * t;
-    const lat = street.coords[i + 1] + (street.coords[i + 3] - street.coords[i + 1]) * t;
-    const n = street.coords.length / 2;
-    const ids = street.nodeIds ?? Array.from({ length: n }, () => "");
-    const joinId = `xwg:${end.run}:${end.end}`;
-    out[best.index] = {
-      ...street,
-      coords: [...street.coords.slice(0, i + 2), lon, lat, ...street.coords.slice(i + 2)],
-      nodeIds: [...ids.slice(0, best.piece + 1), joinId, ...ids.slice(best.piece + 1)],
-    };
-    // From the deck's end down to the street, on the ground (the deck meets the ground there).
-    // Under a metre the graph would drop the connector: the street's new vertex takes the deck
-    // end's id itself (they are one point to within that metre).
-    const [jx, jy] = xy(lon, lat);
-    const isTooShort = Math.hypot(jx - px, jy - py) < 1;
-    if (isTooShort) {
-      out[best.index].nodeIds![best.piece + 1] = end.node;
-      continue;
-    }
-    const joined = connector(end, [lon, lat]);
-    const last = end.end === "end" ? joined.nodeIds!.length - 1 : 0;
-    joined.nodeIds![last] = joinId;
-    extra.push(joined);
+    // (b) A street the lead crosses, else the nearest point of one ahead of the end face whose
+    // carriageway's edge is within reach and whose leg turns within LEG_MAX_DEG of the heading.
+    const ahead = nearestAhead(out, xy, foot);
+    const isJoinedAhead = ahead.join !== null && joinAhead(ahead.join, end, foot, joinId);
+    if (isJoinedAhead) continue;
+    // (c) A street whose centre line crosses the run's line inside the foot (by a run's ground end:
+    // siteCrossings' `end`): one node there in both, no connector. Before a steeper leg: a street
+    // across the foot at a slant has its nearest point ahead beside the deck, and the leg to it
+    // turned back by 128–139° (review of 7c1).
+    const isJoinedInside = joinInside(out, decks, end, xy, joinId);
+    if (isJoinedInside) continue;
+    // (b, last) The nearest street point ahead of the lead point, the leg turning more than 45°
+    // but never back past 90° (a T beside the foot).
+    const isJoinedSteep = ahead.nearest !== null && joinAhead(ahead.nearest, end, foot, joinId);
+    if (isJoinedSteep) continue;
+    // (d) Nothing: a dead end. Why not a connector through the deck's walls: routes would use it,
+    // and a car following it is stopped by them (S6 PR 7c's feet).
+    unattached(end);
   }
-  return [...out, ...xw.lines, ...extra];
+  return [...out, ...decks, ...extra];
+}
+
+/** The lead a connector runs straight out of the deck before it turns (m): a car's length, 4.3 m, and more. */
+export const LEAD_M = 5;
+/** A street leg from the lead point is taken within this of the foot's heading where one is in reach (deg). */
+const LEG_MAX_DEG = 45;
+/** The streets' points rule (b) weighs are this far apart along them at most (m). */
+const SAMPLE_M = 0.5;
+
+/**
+ * A ground end in the worker's plane: the end (x, y), its heading out of the deck (dx, dy), half its
+ * carriageway, and the lead point LEAD_M ahead. `rel` gives a plane point as (out, left): along the
+ * heading from the end face and to its left.
+ */
+type Foot = {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  hw: number;
+  lead: [number, number];
+  rel: (x: number, y: number) => [number, number];
+};
+
+/** The foot of a ground end, or null where the deck gives it no heading. */
+function footOf(end: XwGroundEnd, x: number, y: number): Foot | null {
+  const [dx, dy] = end.dir;
+  const hasHeading = Math.hypot(dx, dy) > 0.5;
+  if (!hasHeading) return null;
+  return {
+    x,
+    y,
+    dx,
+    dy,
+    hw: end.halfWidth,
+    lead: [x + dx * LEAD_M, y + dy * LEAD_M],
+    rel: (qx, qy) => [(qx - x) * dx + (qy - y) * dy, -(qx - x) * dy + (qy - y) * dx],
+  };
+}
+
+/**
+ * Whether a point keeps out of the deck's sides (F1's rule 1), in the foot's (out, left): ahead of
+ * the end face, or behind it only over the carriageway itself (half width hw).
+ */
+export function isClearOfDeck(out: number, left: number, hw: number): boolean {
+  return out >= -1e-6 || Math.abs(left) <= hw;
+}
+
+/** A line's plane points and the arc length at each. */
+function arcOf(
+  xy: (lon: number, lat: number) => [number, number],
+  coords: readonly number[],
+): { pts: Array<[number, number]>; cum: number[] } {
+  const pts: Array<[number, number]> = [];
+  const cum: number[] = [];
+  for (let i = 0; i + 1 < coords.length; i += 2) {
+    const p = xy(coords[i], coords[i + 1]);
+    const prev = pts[pts.length - 1];
+    cum.push(prev ? cum[cum.length - 1] + Math.hypot(p[0] - prev[0], p[1] - prev[1]) : 0);
+    pts.push(p);
+  }
+  return { pts, cum };
+}
+
+/** A point of street `index` of a list (piece, share), and whether it lies on the foot's lead. */
+type StreetPoint = { index: number; piece: number; t: number; onLead: boolean };
+
+/**
+ * Rule (b) of F1, the street points a foot may join, in two steps. `join`: a street whose centre
+ * line the lead itself crosses (the foot stands in that street's carriageway, and the connector goes
+ * straight to it), else, over the ground streets' points every SAMPLE_M ahead of the lead point
+ * (out ≥ LEAD_M) whose street's carriageway edge is within RAMP_REACH_M of it, the nearest to
+ * the lead point of those the leg reaches within LEG_MAX_DEG of the heading (a ramp in a street's
+ * median meets its lanes at a slant, not square). `nearest`: the nearest of all those points, its
+ * leg turning up to 90° (ahead of the lead point: never back towards the end face), for after rule
+ * (c). Why not the nearest
+ * point alone: where the foot stands in the street, that one lay behind the lead point and the leg
+ * turned back (23705286:start, 203873824:end in the design's trial).
+ */
+function nearestAhead(
+  streets: readonly RoadLine[],
+  xy: (lon: number, lat: number) => [number, number],
+  foot: Foot,
+): { join: StreetPoint | null; nearest: StreetPoint | null } {
+  const [lx, ly] = foot.lead;
+  const from: [number, number] = [foot.x, foot.y];
+  /** The street crossing the lead nearest the end (`share` of the lead from the end). */
+  let crossing: { index: number; piece: number; t: number; share: number } | null = null;
+  for (let index = 0; index < streets.length; index++) {
+    const line = streets[index];
+    if (!usesGroundSurface(line)) continue;
+    const { pts } = arcOf(xy, line.coords);
+    for (let piece = 0; piece + 1 < pts.length; piece++) {
+      const hit = crossingOf(from, foot.lead, pts[piece], pts[piece + 1]);
+      const isNearer = hit !== null && hit.t < (crossing?.share ?? Infinity);
+      if (isNearer) crossing = { index, piece, t: hit.u, share: hit.t };
+    }
+  }
+  if (crossing) {
+    const { index, piece, t } = crossing;
+    return { join: { index, piece, t, onLead: true }, nearest: null };
+  }
+  const tan = Math.tan((LEG_MAX_DEG * Math.PI) / 180);
+  type Candidate = { index: number; piece: number; t: number; d: number };
+  let nearest: Candidate | null = null;
+  let within: Candidate | null = null;
+  for (let index = 0; index < streets.length; index++) {
+    const line = streets[index];
+    if (!usesGroundSurface(line)) continue;
+    const reach = RAMP_REACH_M + line.width / 2;
+    const { pts } = arcOf(xy, line.coords);
+    for (let piece = 0; piece + 1 < pts.length; piece++) {
+      const [a, b] = [pts[piece], pts[piece + 1]];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const isFar = distanceToPiece(a, b, lx, ly) > reach;
+      const isSkipped = isFar || len < 1e-9;
+      if (isSkipped) continue;
+      const count = Math.max(1, Math.ceil(len / SAMPLE_M));
+      for (let k = 0; k <= count; k++) {
+        const t = k / count;
+        const px = a[0] + (b[0] - a[0]) * t;
+        const py = a[1] + (b[1] - a[1]) * t;
+        const [out, left] = foot.rel(px, py);
+        const d = Math.hypot(px - lx, py - ly);
+        // Ahead of the lead point only: a leg from it then turns at most 90° (a T, not a way back).
+        // Why not unattached where only such a leg is: there is a way that keeps off the walls
+        // (250488080:end). Why not a longer lead: that street parts at 45° and would never come
+        // within it; why not a cap on the side leg: RAMP_REACH_M is one (Fable's 7c1 decision).
+        const isCandidate = out >= LEAD_M && d <= reach;
+        if (!isCandidate) continue;
+        const here = { index, piece, t, d };
+        const isNearest = d < (nearest?.d ?? Infinity);
+        if (isNearest) nearest = here;
+        const isWithin = Math.abs(left) <= (out - LEAD_M) * tan;
+        const isNearestWithin = isWithin && d < (within?.d ?? Infinity);
+        if (isNearestWithin) within = here;
+      }
+    }
+  }
+  const pointOf = (c: Candidate | null): StreetPoint | null =>
+    c ? { index: c.index, piece: c.piece, t: c.t, onLead: false } : null;
+  return { join: pointOf(within), nearest: pointOf(nearest) };
+}
+
+/** Distance from (x, y) to the segment a–b. */
+function distanceToPiece(a: [number, number], b: [number, number], x: number, y: number): number {
+  const ex = b[0] - a[0];
+  const ey = b[1] - a[1];
+  const len2 = ex * ex + ey * ey;
+  const t = len2 < 1e-12 ? 0 : Math.min(1, Math.max(0, ((x - a[0]) * ex + (y - a[1]) * ey) / len2));
+  return Math.hypot(a[0] + ex * t - x, a[1] + ey * t - y);
+}
+
+/**
+ * A vertex put into street `index` of `lines` at (piece, share), kept VERTEX_CLEARANCE_M off the
+ * piece's ends (no piece of the split street under the graph's 1 m minimum), with node id `id`.
+ * Returns its [lon, lat]; the street is replaced in `lines` by a copy.
+ */
+function insertVertex(
+  lines: RoadLine[],
+  index: number,
+  piece: number,
+  share: number,
+  id: string,
+): [number, number] {
+  const street = lines[index];
+  const i = piece * 2;
+  const plane = planeAt(street.coords[i], street.coords[i + 1]);
+  const [ex, ey] = plane.toXY(street.coords[i + 2], street.coords[i + 3]);
+  const margin = Math.min(0.5, VERTEX_CLEARANCE_M / Math.max(Math.hypot(ex, ey), 1e-6));
+  const t = Math.min(1 - margin, Math.max(margin, share));
+  const lon = street.coords[i] + (street.coords[i + 2] - street.coords[i]) * t;
+  const lat = street.coords[i + 1] + (street.coords[i + 3] - street.coords[i + 1]) * t;
+  const n = street.coords.length / 2;
+  const ids = street.nodeIds ?? Array.from({ length: n }, () => "");
+  lines[index] = {
+    ...street,
+    coords: [...street.coords.slice(0, i + 2), lon, lat, ...street.coords.slice(i + 2)],
+    nodeIds: [...ids.slice(0, piece + 1), id, ...ids.slice(piece + 1)],
+  };
+  return [lon, lat];
+}
+
+/**
+ * Rule (c) of F1: the ground street whose centre line crosses the end's own chunk line nearest the
+ * end, within SITE_END_REACH_M of it along the line (the street the ramp meets inside its foot,
+ * siteCrossings' `end`). A node `id` goes into both lines there (into the chunk line with its height
+ * between its points; a point of it within VERTEX_CLEARANCE_M lends its own id instead). Whether one
+ * was found; `streets` and `decks` are updated with copies.
+ */
+function joinInside(
+  streets: RoadLine[],
+  decks: RoadLine[],
+  end: XwGroundEnd,
+  xy: (lon: number, lat: number) => [number, number],
+  id: string,
+): boolean {
+  const k = decks.findIndex((l) => l.nodeIds?.includes(end.node) === true);
+  const hasDeck = k >= 0;
+  if (!hasDeck) return false;
+  const deck = decks[k];
+  const { pts, cum } = arcOf(xy, deck.coords);
+  const n = pts.length;
+  const isStart = deck.nodeIds![0] === end.node;
+  // Arc length from the end, of a point at arc length l from the line's first point.
+  const fromEnd = (l: number) => (isStart ? l : cum[n - 1] - l);
+  type Crossing = { street: number; piece: number; u: number; deckPiece: number; t: number; along: number };
+  let best: Crossing | null = null;
+  for (let index = 0; index < streets.length; index++) {
+    const street = streets[index];
+    if (!usesGroundSurface(street)) continue;
+    const s = arcOf(xy, street.coords).pts;
+    for (let j = 0; j + 1 < n; j++) {
+      const isNearEnd = Math.min(fromEnd(cum[j]), fromEnd(cum[j + 1])) <= SITE_END_REACH_M;
+      if (!isNearEnd) continue;
+      for (let piece = 0; piece + 1 < s.length; piece++) {
+        const hit = crossingOf(pts[j], pts[j + 1], s[piece], s[piece + 1]);
+        if (!hit) continue;
+        const along = fromEnd(cum[j] + (cum[j + 1] - cum[j]) * hit.t);
+        const isNearer = along <= SITE_END_REACH_M && along < (best?.along ?? Infinity);
+        if (isNearer) best = { street: index, piece, u: hit.u, deckPiece: j, t: hit.t, along };
+      }
+    }
+  }
+  if (!best) return false;
+  const j = best.deckPiece;
+  const share = best.t;
+  const l = cum[j] + (cum[j + 1] - cum[j]) * share;
+  const ids = deck.nodeIds!;
+  const near = cum.findIndex((c) => Math.abs(c - l) < VERTEX_CLEARANCE_M);
+  const hasPointThere = near >= 0;
+  if (hasPointThere) {
+    insertVertex(streets, best.street, best.piece, best.u, ids[near]);
+    return true;
+  }
+  const lerp = (a: number, b: number) => a + (b - a) * share;
+  const lon = lerp(deck.coords[j * 2], deck.coords[j * 2 + 2]);
+  const lat = lerp(deck.coords[j * 2 + 1], deck.coords[j * 2 + 3]);
+  const heights = deck.heights;
+  decks[k] = {
+    ...deck,
+    coords: [...deck.coords.slice(0, j * 2 + 2), lon, lat, ...deck.coords.slice(j * 2 + 2)],
+    nodeIds: [...ids.slice(0, j + 1), id, ...ids.slice(j + 1)],
+    ...(heights
+      ? { heights: [...heights.slice(0, j + 1), lerp(heights[j], heights[j + 1]), ...heights.slice(j + 1)] }
+      : {}),
+  };
+  insertVertex(streets, best.street, best.piece, best.u, id);
+  return true;
 }
 
 /** How a GSI street meets a site (siteCrossings): taken out, or kept and why. */
@@ -757,22 +1067,26 @@ function reversePairs(coords: number[]): number[] {
 const AT_GRADE_MAX_M = 250;
 
 /**
- * The ramp's at-grade part from a deck's ground end: the GSI 高速道路 line within RAMP_REACH_M of
- * the end, walked (through the GSI lines that share its vertices) to the nearest vertex a street
- * shares, as [lon, lat] pairs from the projection of the end to that vertex. Null when there is no
- * such line or no street within AT_GRADE_MAX_M along it.
+ * Rule (a) of F1, the ramp's at-grade part going on ahead of a deck's ground end: the GSI 高速道路
+ * line within the carriageway's half width of the lead point (the same road under the foot, not a
+ * neighbour's line beside the deck), walked from there only on the side ahead of it (through the GSI
+ * lines that share its vertices) to the nearest vertex a street shares, as [lon, lat] pairs from the
+ * first vertex past the lead point to that one. Null when there is no such line or no street within
+ * AT_GRADE_MAX_M along it. Why not the nearest line within RAMP_REACH_M of the end, as before 7c1:
+ * where a ground run's foot reaches the street, the nearest such line is another one 6–8 m beside
+ * the deck, and the connector ran back through the deck's wall to it (S6 PR 7c, 45068171:1).
  */
 function traceAtGrade(
   lines: readonly RoadLine[],
   streetKeys: ReadonlySet<string>,
   xy: (lon: number, lat: number) => [number, number],
-  px: number,
-  py: number,
+  foot: Foot,
 ): number[] | null {
+  const [lx, ly] = foot.lead;
   let start: { line: number; piece: number; t: number; d: number } | null = null;
   for (let line = 0; line < lines.length; line++) {
-    const hit = project(xy, lines[line].coords, px, py);
-    const isCloser = hit.d < (start?.d ?? RAMP_REACH_M);
+    const hit = project(xy, lines[line].coords, lx, ly);
+    const isCloser = hit.d <= (start?.d ?? foot.hw);
     if (isCloser) start = { line, piece: hit.piece, t: hit.t, d: hit.d };
   }
   if (!start) return null;
@@ -787,23 +1101,22 @@ function traceAtGrade(
     }
   });
   const c = lines[start.line].coords;
-  const i = start.piece * 2;
-  const foot = [c[i] + (c[i + 2] - c[i]) * start.t, c[i + 1] + (c[i + 3] - c[i + 1]) * start.t];
+  const outOf = (v: number) => foot.rel(...xy(c[v * 2], c[v * 2 + 1]))[0];
+  // Of the piece's two vertices, the one ahead; the other is behind the walk (under the deck).
+  const [ahead, behind] =
+    outOf(start.piece + 1) >= outOf(start.piece)
+      ? [start.piece + 1, start.piece]
+      : [start.piece, start.piece + 1];
   const distance = (a: number[], b: number[]) => {
     const [ax, ay] = xy(a[0], a[1]);
     const [bx, by] = xy(b[0], b[1]);
     return Math.hypot(bx - ax, by - ay);
   };
-  // Dijkstra over the vertices from the foot (both ways along its piece) to a street's vertex.
+  // Dijkstra over the vertices from the one ahead to a street's vertex.
   type Step = { line: number; v: number; d: number; path: number[] };
-  const queue: Step[] = [
-    { line: start.line, v: start.piece, d: 0, path: [] },
-    { line: start.line, v: start.piece + 1, d: 0, path: [] },
-  ].map((s) => {
-    const p = [lines[s.line].coords[s.v * 2], lines[s.line].coords[s.v * 2 + 1]];
-    return { ...s, d: distance(foot, p), path: [...foot, ...p] };
-  });
-  const seen = new Set<string>();
+  const first = [c[ahead * 2], c[ahead * 2 + 1]];
+  const queue: Step[] = [{ line: start.line, v: ahead, d: 0, path: [...first] }];
+  const seen = new Set<string>([vertexKey(c[behind * 2], c[behind * 2 + 1])]);
   while (queue.length > 0) {
     queue.sort((a, b) => a.d - b.d);
     const step = queue.shift()!;
@@ -811,7 +1124,7 @@ function traceAtGrade(
     const here = [coords[step.v * 2], coords[step.v * 2 + 1]];
     const key = vertexKey(here[0], here[1]);
     const isAtStreet = streetKeys.has(key);
-    if (isAtStreet) return step.path;
+    if (isAtStreet) return dropNearLead(step.path, xy, foot);
     const isDone = seen.has(key) || step.d > AT_GRADE_MAX_M;
     if (isDone) continue;
     seen.add(key);
@@ -826,4 +1139,24 @@ function traceAtGrade(
     }
   }
   return null;
+}
+
+/**
+ * A walked path ([lon, lat] pairs) less its leading vertices that are not VERTEX_CLEARANCE_M past
+ * the lead point (the connector goes on from the lead point; one behind it would turn it back), the
+ * last vertex (the street's) always kept.
+ */
+function dropNearLead(
+  path: number[],
+  xy: (lon: number, lat: number) => [number, number],
+  foot: Foot,
+): number[] {
+  let from = 0;
+  while (from + 2 < path.length) {
+    const [out] = foot.rel(...xy(path[from], path[from + 1]));
+    const isPastLead = out >= LEAD_M + VERTEX_CLEARANCE_M;
+    if (isPastLead) break;
+    from += 2;
+  }
+  return path.slice(from);
 }

@@ -299,6 +299,10 @@ compare-expressway-chunks a b:
 check-expressway-terrain dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayTerrainProbe.ts {{ dir }} {{ flags }}
 
+# 高速道路のランプの足（地表端）をゲームと同じに一般道へ結び、接続路が自分の床版の脇へ入る・最初の 5 m が足の向きに真っすぐでない足を数える（dir はラベルか生成先のフォルダ、地理院タイルは .cache/gsi-vector、1 行の JSON ログ、破る足が 1 本でもあれば終了コード 1、flags に --cache <dir>・--cache-only）
+check-expressway-feet dir="public/data/expressway" flags="":
+    pnpm exec tsx scripts/expresswayFeetProbe.ts {{ dir }} {{ flags }}
+
 # ナビの目的地の一覧（23 区内の駅・名所と注目の目的地）を OSM から public/data/destinations.json に書き出す（OSM は just fetch-regs のキャッシュを使う）
 make-destinations:
     pnpm exec tsx scripts/destinations.ts

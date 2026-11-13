@@ -11,7 +11,7 @@ import {
   type Scene,
   Vector3,
 } from "three";
-import { PARAPET_HEIGHT, PARAPET_WIDTH, TUNNEL_WALKWAY, ZEBRA } from "../expressway/assumptions";
+import { CUT_WALL, PARAPET_HEIGHT, PARAPET_WIDTH, TUNNEL_WALKWAY, ZEBRA } from "../expressway/assumptions";
 import { cutWallHeight, TUNNEL_INNER_HEIGHT_M } from "../expressway/below";
 import {
   PIER_STRIDE,
@@ -313,6 +313,11 @@ export function* deckArraySteps(
   if (isEmbankment) yield;
   /** The decks of other runs over a local point (expresswayBore.ts otherDecksAt). */
   const decksAt = otherDeckTest(chunk, place, context);
+  // A cut's ground beside its walls and an at-grade chunk's ground past its run's ground end lose
+  // their terrain collider to the hole as an embankment's does (S6 PR 7c1, F3): strips of their own.
+  const isAtGrade = isEmbankment || bore === "cut";
+  /** The outer face of the walls: an embankment's slab edge, a cut's retaining wall. */
+  const wallFace = bore === "cut" ? own.hw + CUT_WALL.value.thickness : own.edge;
   /** Whether a local point has the ground taken away by another deck (nothing drawn there to meet). */
   const isTakenAway = (p: Vector3) => decksAt(p).some((d) => d.cutsGround);
   /**
@@ -344,11 +349,11 @@ export function* deckArraySteps(
     isAll: boolean,
   ): boolean[] =>
     rings.map((r, i) => {
-      if (!isEmbankment) return false;
+      if (!isAtGrade) return false;
       const wall = sides[i][sign > 0 ? "left" : "right"].wall;
       const isOwnEdge = wall !== null && Math.abs(wall.outer - own.edge) < 1e-3;
       if (!isOwnEdge) return false;
-      const free = (d: number) => isFree(ringPoint(r, sign * (own.edge + d), 0));
+      const free = (d: number) => isFree(ringPoint(r, sign * (wallFace + d), 0));
       return isAll ? reach.every(free) : reach.some(free);
     });
   const isGroundThere = (p: Vector3) => !isTakenAway(p);
@@ -358,10 +363,10 @@ export function* deckArraySteps(
   // where all of its width is free.
   const wallLeft = openOf(1, EMBANKMENT_SIDE_REACH, isGroundThere, false);
   const apronLeft = openOf(1, apronReach, isApronFree, true);
-  if (isEmbankment) yield;
+  if (isAtGrade) yield;
   const open = { left: wallLeft, right: openOf(-1, EMBANKMENT_SIDE_REACH, isGroundThere, false) };
   const apronOpen = { left: apronLeft, right: openOf(-1, apronReach, isApronFree, true) };
-  if (isEmbankment) yield;
+  if (isAtGrade) yield;
   /** The drawn terrain's height (local y) at offset u of a ring, or null where it is not known. */
   const terrainY = (r: (typeof rings)[number], u: number): number | null => {
     if (!terrainAt) return null;
@@ -512,7 +517,24 @@ export function* deckArraySteps(
   // would show its hollow inside where it meets a viaduct or the ground. Both windings, solid.
   if (isEmbankment)
     for (const loop of [sections[0], sections[sections.length - 1]]) embankmentCap(loop, pos, col, solid);
-  if (isEmbankment) embankmentAprons(rings, apronOpen, own.edge, terrainY, solid);
+  if (isAtGrade) embankmentAprons(rings, apronOpen, wallFace, terrainY, solid);
+  if (isAtGrade) {
+    const drawnAt = (p: Vector3): number | null => {
+      if (!terrainAt) return null;
+      const g = place.frame.toGeodetic(p);
+      const h = terrainAt(g.lat, g.lon);
+      return h === null ? null : place.frame.toLocal(g.lat, g.lon, h).y;
+    };
+    for (const end of groundEndsOf(chunk, context))
+      endApron(end === "start" ? rings[0] : rings[m - 1], end, wallFace, drawnAt, isApronFree, solid);
+  }
+  // A step in the slab's width to the next chunk of the run (2 → 1 lanes in one station: 24402125
+  // :0 → :1) left the wider deck's 壁高欄 ending in the air past the narrower one's (S6 PR 7c1, A1).
+  if (!bore)
+    for (const step of widthSteps(chunk, own.edge, context)) {
+      const k = step.end === "start" ? 0 : m - 1;
+      closeWidthStep(step, rings[k], sides[k], own.edge, bank, pos, col, solid);
+    }
   const lamps: number[] = [];
   const isTunnel = bore === "tunnel";
   if (isTunnel) tunnelExtras(chunk, own.hw, rings, bank, pos, col, solid, lamps);
@@ -638,17 +660,166 @@ function terrainAtPoint(
   return terrainY(ringBetween(a, b, t, false), u);
 }
 
+/** The ends of a chunk where its run meets the ground (its run's `ground` ends it holds), from the context's runs. */
+function groundEndsOf(chunk: XwChunk, context: DeckContext | null): Array<"start" | "end"> {
+  const run = context?.index.runs.get(chunk.run);
+  if (!run) return [];
+  const out: Array<"start" | "end"> = [];
+  const isStartOnGround = chunk.prev === null && run.start.kind === "ground";
+  const isEndOnGround = chunk.next === null && run.end.kind === "ground";
+  if (isStartOnGround) out.push("start");
+  if (isEndOnGround) out.push("end");
+  return out;
+}
+
+/** The step along travel of an end apron's grid (m): finer than the side strips', it is 1.5 m long. */
+const END_APRON_STEP_M = 0.5;
+
+/**
+ * A collider-only strip on the drawn terrain past an at-grade chunk's end face where its run meets
+ * the ground (S6 PR 7c1, F3): EMBANKMENT_APRON_M on from the end ring, across the walls' outer faces,
+ * the terrain read on a grid of EMBANKMENT_SAMPLE_M across and END_APRON_STEP_M along, a cell left
+ * out where `isFree` fails at a corner (another deck's road or hole there). Why: the terrain's own
+ * collider is clipped to the hole by pieces of ~1 m (terrainCut.ts), and at the foot the front
+ * wheels left the end face onto nothing for up to that (45068171:1, dy −0.163 m).
+ */
+function endApron(
+  ring: DeckRing,
+  end: "start" | "end",
+  outer: number,
+  terrainAt: (p: Vector3) => number | null,
+  isFree: (p: Vector3) => boolean,
+  solid: number[],
+): void {
+  const out = end === "start" ? -1 : 1;
+  const across = Math.ceil((2 * outer) / EMBANKMENT_SAMPLE_M);
+  const ahead = Math.ceil(EMBANKMENT_APRON_M / END_APRON_STEP_M);
+  const grid: Array<Array<number[] | null>> = [];
+  for (let j = 0; j <= ahead; j++) {
+    const d = (EMBANKMENT_APRON_M * j) / ahead;
+    const row: Array<number[] | null> = [];
+    for (let k = 0; k <= across; k++) {
+      const u = -outer + (2 * outer * k) / across;
+      const p = ringPoint(ring, u, 0).addScaledVector(ring.t, out * d);
+      const y = isFree(p) ? terrainAt(p) : null;
+      row.push(y === null ? null : [p.x, y, p.z]);
+    }
+    grid.push(row);
+  }
+  for (let j = 0; j < ahead; j++)
+    for (let k = 0; k < across; k++) {
+      const [a, b, c, d] = [grid[j][k], grid[j][k + 1], grid[j + 1][k + 1], grid[j + 1][k]];
+      const isKnown = a !== null && b !== null && c !== null && d !== null;
+      if (!isKnown) continue;
+      for (const tri of [
+        [a, b, c],
+        [a, c, d],
+      ])
+        for (const p of tri) solid.push(p[0], p[1], p[2]);
+    }
+}
+
+/** An end of a chunk whose neighbour in the run has a narrower slab (A1), and that slab's edge. */
+export type WidthStep = { end: "start" | "end"; narrowEdge: number };
+
+/**
+ * The ends of a chunk where the next (or previous) chunk of its run is loaded and its slab's edge
+ * stands more than PARAPET_WIDTH inside this one's (a tunnel is another section, left out).
+ */
+function widthSteps(chunk: XwChunk, edge: number, context: DeckContext | null): WidthStep[] {
+  if (!context) return [];
+  const list = context.index.chunksOf(chunk.run);
+  const out: WidthStep[] = [];
+  for (const [end, id] of [
+    ["start", chunk.prev],
+    ["end", chunk.next],
+  ] as const) {
+    const other = id === null ? undefined : list.find((c) => c.id === id);
+    const isOtherSection = !other || other.structure === "tunnel";
+    if (isOtherSection) continue;
+    const narrowEdge = carriagewayWidth(other) / 2 + PARAPET_WIDTH.value;
+    const isStep = edge - narrowEdge > PARAPET_WIDTH.value + 1e-6;
+    if (isStep) out.push({ end, narrowEdge });
+  }
+  return out;
+}
+
+/** A box's six faces as quads of its corners (0–3 the bottom, 4–7 the top above them). */
+const BOX_FACES = [
+  [0, 1, 2, 3],
+  [4, 5, 6, 7],
+  [0, 1, 5, 4],
+  [1, 2, 6, 5],
+  [2, 3, 7, 6],
+  [3, 0, 4, 7],
+];
+
+/**
+ * The wider deck's 壁高欄 turned in square at a width step (A1): on each side whose wall stands at
+ * the slab's own edge at the end ring (no deck sharing its surface goes on beside it there), a
+ * wall PARAPET_WIDTH thick back from the end face, from the narrower slab's edge (its 壁高欄's outer
+ * face) out to this slab's, from the slab's bottom to the 壁高欄's top. Drawn and solid, both
+ * windings. Why not taper the slab to the narrower width: that changes the data and needs the
+ * markings' ゼブラ (A2, R1).
+ */
+export function closeWidthStep(
+  step: WidthStep,
+  ring: DeckRing,
+  sides: RingSides,
+  edge: number,
+  bank: boolean,
+  pos: number[],
+  col: number[],
+  solid: number[],
+): void {
+  const back = step.end === "start" ? 1 : -1;
+  const ph = PARAPET_HEIGHT.value;
+  const w = PARAPET_WIDTH.value;
+  for (const sign of [1, -1] as const) {
+    const wall = sides[sign > 0 ? "left" : "right"].wall;
+    const isOwnEdge = wall !== null && Math.abs(wall.outer - edge) < 1e-3;
+    if (!isOwnEdge) continue;
+    const corner = (u: number, d: number, isTop: boolean) => {
+      const lift = liftAt(ring, sign * u, bank);
+      const p = ringPoint(ring, sign * u, isTop ? lift + ph : lift - SLAB);
+      return p.addScaledVector(ring.t, back * d).toArray();
+    };
+    const box = [
+      corner(step.narrowEdge, 0, false),
+      corner(edge, 0, false),
+      corner(edge, w, false),
+      corner(step.narrowEdge, w, false),
+      corner(step.narrowEdge, 0, true),
+      corner(edge, 0, true),
+      corner(edge, w, true),
+      corner(step.narrowEdge, w, true),
+    ];
+    for (const [a, b, c, d] of BOX_FACES)
+      for (const tri of [
+        [box[a], box[b], box[c]],
+        [box[a], box[c], box[d]],
+        [box[a], box[c], box[b]],
+        [box[a], box[d], box[c]],
+      ]) {
+        for (const p of tri) pos.push(p[0], p[1], p[2]);
+        for (let v = 0; v < 3; v++) col.push(...CONCRETE);
+        for (const p of tri) solid.push(p[0], p[1], p[2]);
+      }
+  }
+}
+
 /**
  * The decks of other runs over a local point (expresswayBore.ts otherDecksAt, in the frame's x/z);
- * none without a context (no other decks known) and for anything but an embankment (nothing else
- * asks).
+ * none without a context (no other decks known) and for anything but an embankment or a cut
+ * (nothing else asks).
  */
 function otherDeckTest(
   chunk: XwChunk,
   place: GeoToLocal,
   context: DeckContext | null,
 ): (p: Vector3) => DeckBeside[] {
-  if (!context || chunk.structure !== "embankment") return () => [];
+  const isAtGrade = chunk.structure === "embankment" || chunk.structure === "cut";
+  if (!context || !isAtGrade) return () => [];
   const candidates = [...context.index.runs.keys()].flatMap((run) => context.index.chunksOf(run));
   const at = otherDecksAt(chunk, candidates, (lon, lat) => {
     const p = place.frame.toLocal(lat, lon, 0);
