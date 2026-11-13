@@ -21,7 +21,15 @@ import { GIRDER_MIN, HEIGHT_STRUCTURES } from "./assumptions";
 import { isOpenGroundRuled } from "./heightStructures";
 import { type District, DISTRICTS } from "./districts";
 import type { HeightKm } from "./highDeck";
-import type { XwBlockRecord, XwBuildRecord, XwChunk, XwDiagnostic, XwTileRun } from "./format";
+import {
+  ST,
+  STATION_STRIDE,
+  type XwBlockRecord,
+  type XwBuildRecord,
+  type XwChunk,
+  type XwDiagnostic,
+  type XwTileRun,
+} from "./format";
 import { isJoined, overlapKindOf, overlapPair } from "./overlapClass";
 
 /**
@@ -48,6 +56,9 @@ export const LEDGER_VERSION = 1;
  * thin-girder: a viaduct chunk on a girder thinner than GIRDER_DEPTH, by rule at GIRDER_MIN or more.
  * low-viaduct: a viaduct under the viaduct's height that never comes down to the ground (an embankment
  * in the air kept a viaduct, heightStructures.lowViaductStretches), listed for a review.
+ * foot-along-street (S6 PR 7c2): a ramp's ground end in a street for all of RAMP_FOOT.maxM, not cut out
+ * of it (compile.ts cutFeet's `along`, a ramp in a street's median), one per end, listed for a review
+ * with a view: never by rule.
  */
 export const CASE_KINDS = [
   "nose",
@@ -70,6 +81,7 @@ export const CASE_KINDS = [
   "ground-stretch",
   "ground-crossing",
   "low-clearance",
+  "foot-along-street",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
@@ -111,6 +123,10 @@ export const MEASURES = [
   "approachMaxM",
   "soffitM",
   "shortM",
+  "angleDeg",
+  "streetM",
+  "coverM",
+  "offGroundM",
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
@@ -226,6 +242,11 @@ export type CaseContext = {
   untied: ReadonlySet<string>;
   /** Run distances of a run's tunnel mouths (a portal with a tunnel on one side). */
   mouths: (run: string) => number[];
+  /**
+   * S6 PR 7c2: the largest |road − ground| at a run's stations within [s0, s1] (the foot-along-street
+   * case's), or null where the run has none written there. Absent: not measured.
+   */
+  offGround?: (run: string, s0: number, s1: number) => number | null;
 };
 
 /** The case of a diagnostic, or null for a kind that is no case (the `*` rules, the failures). */
@@ -242,6 +263,29 @@ export function caseOfDiagnostic(d: XwDiagnostic, ctx: CaseContext): FoundCase |
       with: null,
       chunk: null,
       measured: { minRadiusM: Number(r[1]) },
+    };
+  }
+  if (d.kind === "ramp_foot_along_street") {
+    const m = /^(start|end) at ([\d.]+) m /.exec(d.detail);
+    if (!m) return null;
+    const s = Number(m[2]);
+    const at = /\(angle ([\d.]+)°, street ([\d.]+) m, cover ([\d.]+) m\)/.exec(d.detail);
+    const coverM = at ? Number(at[3]) : null;
+    // |road − ground| over the stretch whose slab covers the street's centre line, from the end.
+    const stretch: [number, number] | null =
+      coverM === null ? null : m[1] === "start" ? [0, coverM] : [Math.max(0, s - coverM), s];
+    const offGroundM = stretch ? (ctx.offGround?.(d.run, stretch[0], stretch[1]) ?? null) : null;
+    return {
+      key: `foot-along-street:${d.run}|${m[1]}`,
+      kind: "foot-along-street",
+      run: d.run,
+      with: null,
+      chunk: null,
+      measured: {
+        s,
+        ...(at ? { angleDeg: Number(at[1]), streetM: Number(at[2]), coverM: Number(at[3]) } : {}),
+        ...(offGroundM !== null ? { offGroundM } : {}),
+      },
     };
   }
   if (d.kind === "crossing_layer_ambiguous") {
@@ -566,6 +610,8 @@ export function withinCap(measured: Measured, cap: Measured): boolean {
     if (k === "depthM" && m > c + dzM + 1e-9) return false;
     if (k === "girderM" && m < c - dzM - 1e-9) return false;
     if (k === "innerMedianM" && Math.abs(m) > Math.abs(c) + dzM + 1e-9) return false;
+    if (k === "coverM" && m > c + edgeM) return false;
+    if (k === "offGroundM" && m > c + dzM + 1e-9) return false;
   }
   return true;
 }
@@ -595,6 +641,7 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   "ground-stretch": ["innerP95M", "innerMedianM", "approachMaxM"],
   "ground-crossing": ["s"],
   "low-clearance": ["shortM"],
+  "foot-along-street": ["s"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */
@@ -970,10 +1017,23 @@ export function caseContextOf(
       const isMouth = (p.from === "tunnel") !== (p.to === "tunnel");
       if (isMouth) mouths.set(c.run, [...(mouths.get(c.run) ?? []), p.s]);
     }
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  const offGround = (run: string, s0: number, s1: number) => {
+    let worst: number | null = null;
+    for (const c of byRun.get(run) ?? [])
+      for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
+        const s = c.st[i + ST.s];
+        const isWithin = s >= s0 - 1e-6 && s <= s1 + 1e-6;
+        if (isWithin) worst = Math.max(worst ?? 0, Math.abs(c.st[i + ST.z] - c.st[i + ST.ground]));
+      }
+    return worst === null ? null : Math.round(worst * 1000) / 1000;
+  };
   return {
     runs: new Map(runs.map((r) => [r.id, r])),
     untied: new Set(untied.map((p) => (p.a < p.b ? `${p.a}|${p.b}` : `${p.b}|${p.a}`))),
     mouths: (run) => mouths.get(run) ?? [],
+    offGround,
   };
 }
 

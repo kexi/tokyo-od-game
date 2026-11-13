@@ -235,6 +235,26 @@ export const ReportSchema = z.strictObject({
           }),
         )
         .optional(),
+      /**
+       * S6 PR 7c2 (T, compile.ts cutFeet): the ramps' ground ends moved out of the streets they meet, of
+       * the chains with a written run — each end cut (`cut`, by cutM, leftM left), a short run at grade
+       * taken into the viaduct beside it (`merged`: `into` that run, `mergedM` the run at grade's length)
+       * and cut there, left in a street for RAMP_FOOT.maxM (`along`, the ledger's foot-along-street) or
+       * kept uncut (`kept`). Absent before 7c2.
+       */
+      feet: z
+        .array(
+          z.strictObject({
+            run: z.string(),
+            end: z.enum(["start", "end"]),
+            outcome: z.enum(["cut", "merged", "along", "kept"]),
+            cutM: m,
+            leftM: z.number(),
+            into: z.string().optional(),
+            mergedM: m.optional(),
+          }),
+        )
+        .optional(),
       /** How far the runs at grade stand off the ground under them: |z − ground| at their stations. */
       /** The runs at grade's target weight and band as built (S6 PR 7a); absent before it. */
       settings: z.strictObject({ targetScale: z.number().positive(), bandM: m }).optional(),

@@ -934,6 +934,21 @@ export const LOG_EVENTS = {
     untiedStationsNeeded: count,
   }),
   /**
+   * S6 PR 7c2 (T, compile.ts cutFeet): the plan made again with the ramps' ground ends cut out of the
+   * roads read, over the whole plan: the ends cut, the runs at grade taken into the viaduct beside them
+   * (merged: every record with `into`, whatever the viaduct's foot then was), the ends left in a street
+   * (foot-along-street), those kept, and the runs and needed runs of the new plan. Each foot once: a
+   * taken-in foot is counted as merged only.
+   */
+  expressway_feet_cut: info({
+    cut: count,
+    merged: count,
+    along: count,
+    kept: count,
+    runs: count,
+    needed: count,
+  }),
+  /**
    * The OSM extract read (src/expressway/extract.ts): its replication timestamp against the pinned
    * one, its SHA-256, and whether a mismatch was let through by --accept-extract.
    */

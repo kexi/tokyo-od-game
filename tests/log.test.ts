@@ -473,6 +473,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     untiedStations: 30,
     untiedStationsNeeded: 2,
   },
+  expressway_feet_cut: { cut: 5, merged: 1, along: 1, kept: 0, runs: 31, needed: 31 },
   expressway_extract_checked: {
     timestamp: "2026-10-03T20:20:50Z",
     expected: "2026-10-03T20:20:50Z",
