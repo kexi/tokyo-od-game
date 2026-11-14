@@ -7,14 +7,28 @@
 // (just update-expressway-ledger dir flags; dir defaults to public/data/expressway, a label without a
 // slash means .cache/expressway-area/<label>). --seed takes the decisions of another folder's ledger
 // by key (a measuring folder with no ledger yet); --prune drops the gone cases; --write-budget writes
-// the budget from the counts (a review settling the ratchet). The ledger has no time in it: two runs
-// over the same folder write the same bytes.
+// the budget from the counts (a review settling the ratchet); --feet <file> takes the feet probe's
+// list (just check-expressway-feet <dir> "--cases <file>") as the foot-side-join cases, and without it
+// the ledger's foot-side-join cases are kept as they are (the probe reads GSI, the files do not
+// have it); --lanes <file> takes the hole lanes' list (just check-hole-lanes <dir> "--cases <file>")
+// as the street-lane-over-cut cases and --site-lanes <file> the lanes probe's (just
+// check-expressway-lanes <dir> "--cases <file>") as the lane-in-site cases, kept likewise without them. The ledger has no time in it: two
+// runs over the same folder write the same bytes.
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { caseContextOf, type Ledger, reallowRecord, updateLedger } from "../src/expressway/ledger.ts";
 import { log } from "../src/log.ts";
-import { countCases } from "./expresswayCases.ts";
+import {
+  countCases,
+  type CountedCase,
+  type FootSideJoin,
+  footSideJoinCases,
+  type HoleLanes,
+  laneInSiteCases,
+  type SiteLanes,
+  streetLaneOverCutCases,
+} from "./expresswayCases.ts";
 import { DEFAULT_DATA_DIR, readExpresswayFiles } from "./expresswayFiles.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -27,7 +41,7 @@ function arg(name: string): string | undefined {
 }
 const has = (name: string) => process.argv.includes(`--${name}`);
 
-const VALUED = new Set(["--seed"]);
+const VALUED = new Set(["--seed", "--feet", "--lanes", "--site-lanes"]);
 const positional = process.argv
   .slice(2)
   .filter((a, i, all) => !a.startsWith("--") && !VALUED.has(all[i - 1] ?? ""));
@@ -37,6 +51,37 @@ const seedPath = arg("seed");
 const files = readExpresswayFiles(dir);
 const seed = seedPath ? (JSON.parse(readFileSync(seedPath, "utf8")) as Ledger) : null;
 const counted = await countCases(files);
+const feetPath = arg("feet");
+/** The ledger's cases of a GSI probe's kind as they stand (no probe list given): not `gone` for want of GSI. */
+const kept = (kind: string): CountedCase[] =>
+  (files.ledger?.cases ?? [])
+    .filter((c) => c.kind === kind && c.status !== "gone")
+    .map((c) => ({
+      key: c.key,
+      kind: c.kind,
+      run: c.run,
+      with: c.with,
+      chunk: c.chunk,
+      measured: c.measured,
+      district: c.district,
+      block: c.block,
+      blockHash: c.blockHash,
+    }));
+const feetFound = feetPath
+  ? footSideJoinCases(JSON.parse(readFileSync(feetPath, "utf8")) as FootSideJoin[], files, counted.districts)
+  : kept("foot-side-join");
+const lanesPath = arg("lanes");
+const lanesFound = lanesPath
+  ? streetLaneOverCutCases(
+      JSON.parse(readFileSync(lanesPath, "utf8")) as HoleLanes[],
+      files,
+      counted.districts,
+    )
+  : kept("street-lane-over-cut");
+const siteLanesPath = arg("site-lanes");
+const siteLanesFound = siteLanesPath
+  ? laneInSiteCases(JSON.parse(readFileSync(siteLanesPath, "utf8")) as SiteLanes[], files, counted.districts)
+  : kept("lane-in-site");
 const ledger = updateLedger(files.ledger, {
   data: {
     ranges: files.meta.ranges.map((r) => r.name),
@@ -44,7 +89,7 @@ const ledger = updateLedger(files.ledger, {
     objective: files.record.objective,
     extract: files.meta.extract.timestamp,
   },
-  found: counted.found,
+  found: [...counted.found, ...feetFound, ...lanesFound, ...siteLanesFound],
   seamProbes: counted.seamProbes,
   rules: counted.rules,
   heightKm: counted.heightKm,

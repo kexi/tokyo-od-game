@@ -6,6 +6,7 @@ import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge";
 import { assignDistricts, districtOfRef, type DistrictRun, YAMATE_BOX } from "../src/expressway/districts";
 import {
   AUTO_KINDS,
+  PROBE_KINDS,
   budgetOf,
   CAP_FIELDS,
   reallowRecord,
@@ -59,8 +60,10 @@ describe("the data folder's ledger", () => {
 
   it("is up to date: the cases counted from the files again are its cases, with the same measures and blocks", () => {
     const found = new Map(counted.found.map((c) => [c.key, c]));
-    expect(live().map((c) => c.key)).toEqual([...found.keys()].sort());
-    for (const c of live()) {
+    // A probe's kinds are counted from GSI's streets (PROBE_KINDS), which the tests do not have.
+    const counts = live().filter((c) => !PROBE_KINDS.includes(c.kind));
+    expect(counts.map((c) => c.key)).toEqual([...found.keys()].sort());
+    for (const c of counts) {
       const f = found.get(c.key)!;
       expect(c.measured, c.key).toEqual(orderMeasured(f.measured));
       expect([c.kind, c.run, c.with, c.chunk, c.district, c.block, c.blockHash], c.key).toEqual([
@@ -99,12 +102,18 @@ describe("the data folder's ledger", () => {
       }
       expect(["accepted", "open", "wontfix"], c.key).toContain(c.status);
       expect(c.cap, c.key).not.toBeNull();
-      // A cap must bound what its kind measures (a cap of {} would accept anything).
+      // A cap must bound what its kind measures and the case measured (a cap of {} would accept
+      // anything; a ground-stretch that is all approach measures no inside).
       for (const field of CAP_FIELDS[c.kind])
-        expect(c.cap![field], `${c.key} cap.${field}`).toBeTypeOf("number");
+        if (c.measured[field] !== undefined)
+          expect(c.cap![field], `${c.key} cap.${field}`).toBeTypeOf("number");
+      expect(
+        CAP_FIELDS[c.kind].some((field) => c.cap![field] !== undefined),
+        c.key,
+      ).toBe(true);
       expect(c.reason?.length ?? 0, c.key).toBeGreaterThan(10);
       expect(
-        withinCap(c.measured, c.cap!),
+        withinCap(c.measured, c.cap!, c.kind),
         `${c.key} ${JSON.stringify(c.measured)} > ${JSON.stringify(c.cap)}`,
       ).toBe(true);
     }
@@ -114,7 +123,8 @@ describe("the data folder's ledger", () => {
     const ctx = caseContextOf(files.runs, files.record.untied, files.chunks);
     const keys = new Set(live().map((c) => c.key));
     const verdict = ledgerVerdict(ctx, ledger);
-    for (const d of files.diagnostics) {
+    // The range's runs' diagnostics (S6 PR 7c): one outside the range is no case of this folder.
+    for (const d of files.diagnostics.filter((x) => x.outside !== true)) {
       const isRule = RULES.some((r) => r.kind === d.kind);
       if (isRule) continue;
       const c = caseOfDiagnostic(d, ctx);
@@ -300,6 +310,37 @@ describe("report.json's allowed decided again from the ledger (the tool, reallow
 });
 
 describe("the kinds of case", () => {
+  it("keeps a ground-stretch's cap with no inside while the run stays all approach (S6 PR 7c)", () => {
+    expect(withinCap({ approachMaxM: 4.17 }, { approachMaxM: 4.17 }, "ground-stretch")).toBe(true);
+  });
+
+  it("takes a ground-stretch back to new when its inside grows past the cap", () => {
+    const cap = { innerP95M: 0.4, innerMedianM: 0.1, approachMaxM: 2 };
+    expect(withinCap({ innerP95M: 0.44, innerMedianM: 0.1, approachMaxM: 2 }, cap, "ground-stretch")).toBe(
+      true,
+    );
+    expect(withinCap({ innerP95M: 0.5, innerMedianM: 0.1, approachMaxM: 2 }, cap, "ground-stretch")).toBe(
+      false,
+    );
+  });
+
+  it("takes a ground-stretch back to new when an inside appears that its cap did not see", () => {
+    const cap = { approachMaxM: 4.17 };
+    expect(withinCap({ innerP95M: 0.2, innerMedianM: 0, approachMaxM: 4.17 }, cap, "ground-stretch")).toBe(
+      false,
+    );
+    // Without the kind (an old caller) the cap's own fields alone are read.
+    expect(withinCap({ innerP95M: 0.2, innerMedianM: 0, approachMaxM: 4.17 }, cap)).toBe(true);
+  });
+
+  it("keeps a foot-side-join's decision while its leg turns no more than 2° and grows no more than 5 m past the cap (S6 PR 7c)", () => {
+    const cap = { angleDeg: 60, legM: 12 };
+    expect(withinCap({ angleDeg: 61.5, legM: 16.5, streetM: 9 }, cap)).toBe(true);
+    expect(withinCap({ angleDeg: 62.5, legM: 12, streetM: 9 }, cap)).toBe(false);
+    expect(withinCap({ angleDeg: 60, legM: 17.5, streetM: 9 }, cap)).toBe(false);
+    expect(AUTO_KINDS).not.toContain("foot-side-join");
+  });
+
   it("tells a touchdown (an untied pair) before the scorecard's classes", () => {
     expect(overlapKindOf({ maxDzM: 0.3 }, "expressway", "expressway", true, true)).toBe("touchdown");
     expect(overlapKindOf({ maxDzM: 0.3 }, "expressway", "ramp", true, false)).toBe("nose");

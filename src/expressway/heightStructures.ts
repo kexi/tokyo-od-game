@@ -1,3 +1,4 @@
+import { decidedViaducts, STRUCTURE_DECISIONS, type StructureDecision } from "./structureDecisions";
 import { CLEARANCE_HEIGHT } from "../law/roadStandards";
 import {
   DEM_SINK_FLOOR,
@@ -379,6 +380,8 @@ export function checkHeightStructures(
    * holds to neither is a deck in the air. Absent: both (the rule before R4).
    */
   groundEnds: readonly [boolean, boolean] = [true, true],
+  /** The stretches decided viaducts (structureDecisions.ts): the table's by default; tests give their own. */
+  decisions: readonly StructureDecision[] = STRUCTURE_DECISIONS,
 ): string[] {
   const out: string[] = [];
   const isEmpty = list.length === 0;
@@ -393,6 +396,7 @@ export function checkHeightStructures(
   const viaductFrom = VIADUCT_OVER_GROUND_M - DEM_SINK_FLOOR.value;
   const above = deckSpans(list, "above");
   const same = deckSpans(list, "same");
+  const decided = decidedViaducts(decisions, list[0].run);
   // A road or railway the deck crosses (`cross`) over its window (the chunk's `crossWindows`, review W6;
   // T13_CROSS_WINDOW_M, the widest, where the files carry none): the window is spanned (R3).
   const windows = list.flatMap((c) => {
@@ -455,9 +459,11 @@ export function checkHeightStructures(
     if (isLowest) out.add("cut");
     if (isLowest && isIn(same, s)) out.add("embankment");
     if (isLow && over >= cutBelow - T13_TOLERANCE_M) out.add("embankment");
-    // A crossing's window is spanned (R3).
+    // A crossing's window is spanned (R3); a decision's stretch is a viaduct where it would be an
+    // embankment (S6 PR 7c, structureDecisions.ts).
     const isWindow = isIn(windows, s);
-    if (isHigh || isFloating || isWindow) out.add("viaduct");
+    const isDecided = isIn(decided, s) && out.has("embankment");
+    if (isHigh || isFloating || isWindow || isDecided) out.add("viaduct");
     return out;
   };
   let open: { chunk: string; s0: number; s1: number } | null = null;
@@ -530,6 +536,40 @@ export function checkHeightStructures(
  * window the deck clears over the thinnest girder is spanned, the embankment or cut starting at the
  * window's end), split where a window cuts a stretch and merged where two of one structure meet.
  */
+/**
+ * The stretches with the embankment in each window made a viaduct (S6 PR 7c, structureDecisions.ts):
+ * a cut, a viaduct and what lies outside stay. After the smoothing (the caller's last step), so no
+ * short piece of the window merges back into the embankment beside it.
+ */
+export function decideViaduct(
+  list: readonly HeightStretch[],
+  windows: ReadonlyArray<readonly [number, number]>,
+): HeightStretch[] {
+  let out: HeightStretch[] = list.map((h) => ({ ...h }));
+  for (const [a, b] of windows) {
+    const next: HeightStretch[] = [];
+    for (const h of out) {
+      const isApart = h.s1 <= a || h.s0 >= b || h.structure !== "embankment";
+      if (isApart) {
+        next.push(h);
+        continue;
+      }
+      if (h.s0 < a) next.push({ s0: h.s0, s1: a, structure: h.structure });
+      next.push({ s0: Math.max(h.s0, a), s1: Math.min(h.s1, b), structure: "viaduct" });
+      if (h.s1 > b) next.push({ s0: b, s1: h.s1, structure: h.structure });
+    }
+    out = next;
+  }
+  const merged: HeightStretch[] = [];
+  for (const h of out) {
+    const last = merged[merged.length - 1];
+    const isSame = last !== undefined && last.structure === h.structure && Math.abs(last.s1 - h.s0) < 1e-9;
+    if (isSame) last.s1 = h.s1;
+    else merged.push({ ...h });
+  }
+  return merged;
+}
+
 export function forceViaduct(
   list: readonly HeightStretch[],
   windows: ReadonlyArray<readonly [number, number]>,

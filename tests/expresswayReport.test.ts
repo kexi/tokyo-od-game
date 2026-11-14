@@ -13,6 +13,7 @@ import {
   buildReport,
   buildsUnlike,
   objectiveLabel,
+  outsideOf,
   flattenReport,
   danglingOf,
   deckMismatchOf,
@@ -134,6 +135,22 @@ describe("床版の重なりの類型（overlapClass.ts）", () => {
       notAllowedStations: 3,
     });
     expect(out.other.pairs).toBe(0);
+  });
+});
+
+describe("範囲の外の run の診断（report.ts outsideOf、S6 PR 7c）", () => {
+  const d = (run: string, kind: string): XwDiagnostic => ({ run, kind, detail: "", allowed: false });
+  it("counts per kind the diagnostics of runs outside the range, and leaves the field out when there are none", () => {
+    const diagnostics = [
+      d("1", "ramp_radius"),
+      d("8", "tunnel_cover_short"),
+      d("9", "tunnel_cover_short"),
+      d("9", "ramp_radius"),
+    ];
+    expect(outsideOf(diagnostics, new Set(["1"]))).toEqual({
+      diagnosticsOutside: { ramp_radius: 1, tunnel_cover_short: 2 },
+    });
+    expect(outsideOf(diagnostics, new Set(["1", "8", "9"]))).toEqual({});
   });
 });
 

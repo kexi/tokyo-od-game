@@ -319,7 +319,21 @@ export type XwRunStructure = {
   zM: number;
 };
 
-export type XwDiagnostic = { run: string; kind: string; detail: string; allowed: boolean };
+/** A ramp's foot left out by a decision (footDeferrals.ts, S6 PR 7c). */
+export type XwDeferredFoot = { run: string; end: "start" | "end"; until: "R1" | "S7" };
+
+export type XwDiagnostic = {
+  run: string;
+  kind: string;
+  detail: string;
+  allowed: boolean;
+  /**
+   * S6 PR 7c: the run is outside the folder's range (solved only for its component: not written and
+   * not a closed run of the range). Kept in report.json; no ledger case is made of it (that run's
+   * case belongs to the folder that writes it). Absent for a run of the range.
+   */
+  outside?: true;
+};
 
 /**
  * A run of the range that is not in the tiles (its profile could not be solved, or it hangs from
@@ -377,7 +391,15 @@ export type XwBuildRecord = {
    * The runs at grade's target weight and band as built (S6 PR 7a: HEIGHT_STRUCTURES.ground or the
    * sweep's `--ground-target-scale` / `--ground-band`), only with `--ground compile`.
    */
-  ground?: { targetScale: number; bandM: number };
+  ground?: {
+    targetScale: number;
+    bandM: number;
+    /**
+     * S6 PR 7c: the ramps' feet of the range left out by a decision (footDeferrals.ts): the run at
+     * grade, its end and the stage that takes it back. Absent when none.
+     */
+    deferred?: XwDeferredFoot[];
+  };
   runs: XwRunSummary[];
   /** Runs of the range left out of the tiles, closed. */
   closed: XwClosed[];

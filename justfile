@@ -299,6 +299,14 @@ compare-expressway-chunks a b:
 check-expressway-terrain dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayTerrainProbe.ts {{ dir }} {{ flags }}
 
+# 盛土の床版の縁の内に車線の中心が入る、ゲームが残す一般道の車線を数える（ゲームと同じ切り方の道路網、地理院タイルは .cache/gsi-vector のものだけ、台帳の lane-in-site、1 行の JSON ログ、件数が上限を超えれば終了コード 1、flags に --cases <file> で台帳の道具の --site-lanes に渡す一覧）
+check-expressway-lanes dir="public/data/expressway" flags="":
+    pnpm exec tsx scripts/expresswayLanesProbe.ts {{ dir }} {{ flags }}
+
+# 高速道路の掘割の敷地（擁壁の外面 + 1 m）に中心が掛かる一般道の車線を、ゲームと同じ道路網（地理院タイル、.cache/gsi-vector のものだけ）で run ごとに数える（台帳の street-lane-over-cut、1 行の JSON ログ、flags に --cases <file> で台帳の道具の --lanes に渡す一覧）
+check-hole-lanes dir="public/data/expressway" flags="":
+    pnpm exec tsx scripts/expresswayHoleLanes.ts {{ dir }} {{ flags }}
+
 # 高速道路のランプの足（地表端）をゲームと同じに一般道へ結び、接続路が自分の床版の脇へ入る・最初の 5 m が足の向きに真っすぐでない足を数える（dir はラベルか生成先のフォルダ、地理院タイルは .cache/gsi-vector、1 行の JSON ログ、破る足が 1 本でもあれば終了コード 1、flags に --cache <dir>・--cache-only）
 check-expressway-feet dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayFeetProbe.ts {{ dir }} {{ flags }}

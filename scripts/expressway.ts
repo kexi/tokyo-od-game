@@ -88,6 +88,7 @@ import {
   STATION_STRIDE,
   type XwBlockRecord,
   type XwBuildRecord,
+  type XwDeferredFoot,
   type XwChunk,
   type XwMeta,
   XW_FEATURES,
@@ -569,6 +570,7 @@ if (groundMode === "compile") {
     merged: feet.filter((f) => f.into !== undefined).length,
     along: tally("along"),
     kept: tally("kept"),
+    deferred: tally("deferred"),
     runs: plan.runs.size,
     needed: plan.needed.length,
   });
@@ -718,6 +720,8 @@ const meta: XwMeta = {
 };
 const metaText = JSON.stringify(meta);
 await writeFile(join(OUT, "meta.json"), metaText);
+/** The runs of the range: written, or closed within it (S6 PR 7c: the ledger's cases are theirs alone). */
+const inRangeRuns = new Set([...result.runs.map((r) => r.id), ...result.closed.map((c) => c.run)]);
 const record: XwBuildRecord = {
   version: XW_RECORD_VERSION,
   objective: objective.kind,
@@ -728,10 +732,13 @@ const record: XwBuildRecord = {
     // Only when a solve was retried: a build with none keeps report.json byte for byte as before.
     ...(result.stats.retried > 0 ? { retried: result.stats.retried } : {}),
   },
-  ...(plan.ground === "compile" ? { ground: groundSettings() } : {}),
+  ...(plan.ground === "compile" ? { ground: { ...groundSettings(), ...deferredOf(plan.feet ?? []) } } : {}),
   runs: result.runs,
   closed: result.closed,
-  diagnostics: result.diagnostics.filter((d) => plan.needed.includes(d.run)),
+  // A diagnostic of a run outside the range (solved for its component only) is marked (S6 PR 7c).
+  diagnostics: result.diagnostics
+    .filter((d) => plan.needed.includes(d.run))
+    .map((d) => (inRangeRuns.has(d.run) ? d : { ...d, outside: true as const })),
   untied: untied.map(({ a, b, stations }) => ({ a, b, stations })),
   blocks: blockRecords(result.partition.blocks, result.chunks),
 };
@@ -968,6 +975,17 @@ function feetOf(records: readonly FootRecord[]): NonNullable<NonNullable<Report[
     }));
 }
 
+/**
+ * The feet of the range left out by a decision (S6 PR 7c, footDeferrals.ts), for the scorecard's and
+ * report.json's `ground.deferred`: nothing when none (a build before it keeps its bytes).
+ */
+function deferredOf(records: readonly FootRecord[]): { deferred?: XwDeferredFoot[] } {
+  const list = records
+    .filter((f) => f.outcome === "deferred" && f.inRange === true && f.until !== undefined)
+    .map((f) => ({ run: f.run, end: f.end, until: f.until! }));
+  return list.length === 0 ? {} : { deferred: list };
+}
+
 /** The runs at grade's target weight and band as built (S6 PR 7a, the record's and scorecard's). */
 function groundSettings(): { targetScale: number; bandM: number } {
   return {
@@ -1027,6 +1045,7 @@ function groundSummary(): NonNullable<Report["ground"]> {
       : {}),
     ...(plan.ground === "compile" ? { settings: groundSettings() } : {}),
     ...(plan.feet ? { feet: feetOf(plan.feet) } : {}),
+    ...deferredOf(plan.feet ?? []),
     offGround: {
       p95M: Math.round(p95 * 100) / 100,
       maxM: Math.round((off[off.length - 1] ?? 0) * 100) / 100,
@@ -1136,6 +1155,7 @@ if (reportPath) {
     ledgerSummary: ledger?.summary ?? null,
     heightStructures: structuresMode === "height",
     ...(result.heightRules ? { heightRules: result.heightRules } : {}),
+    ...(plan.decidedViaducts ? { decidedViaducts: plan.decidedViaducts } : {}),
     // With the structures by height, skip or compile, so the holes compare; tags builds as before.
     ground: structuresMode === "height" ? groundSummary() : null,
     companions: plan.companions ? companionsSummary() : null,

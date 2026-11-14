@@ -15,6 +15,7 @@ import {
   afterSpanning,
   checkHeightStructures,
   clearsOnThinGirder,
+  decideViaduct,
   isWindowOver,
   sameKept,
   forceViaduct,
@@ -37,6 +38,7 @@ import { deckOverlaps } from "../src/expressway/overlap";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
 import type { RunProblem } from "../src/expressway/vertical";
 import { violationsOf } from "../src/expressway/violations";
+import type { StructureDecision } from "../src/expressway/structureDecisions";
 
 // P2.7-6 PR 1 (`--structures height`): the structure a viaduct-tagged run is drawn as comes from its
 // solved height against the ground, the assumed floors no longer unsolve a run, a thinner girder
@@ -329,6 +331,106 @@ describe("坑口へ下りる取付け（合成網、代官町の型）", () => {
         (c) => c.structure === "viaduct" || c.structure === "tunnel" || c.structure === "cut",
       ),
     ).toBe(true);
+  });
+});
+
+describe("構造の決定の表（structureDecisions.ts、S6 PR 7c）: 盛土の区間を高架に", () => {
+  const net = network([
+    { id: 1, x0: -300, x1: 0, tags: atGrade },
+    { id: 2, x0: 0, x1: 800, tags: bridge },
+    { id: 3, x0: 800, x1: 1100, tags: atGrade },
+  ]);
+  const plain = solvePlan(
+    planNetwork(net, new Set(), null, [], { structures: "height", structureDecisions: [] }),
+    mound,
+    [],
+  );
+  const list = byRun(plain.chunks).get("2")!;
+  const emb = list.find((c) => c.structure === "embankment")!;
+  const [e0, e1] = [emb.st[0], emb.st[emb.st.length - STATION_STRIDE]];
+  const mid = (e0 + e1) / 2;
+  const row = (s0: number, s1: number): StructureDecision => ({
+    run: "2",
+    s0,
+    s1,
+    structure: "viaduct",
+    reason: "test",
+    decidedBy: "user",
+    decidedAt: "2026-11-14",
+    release: "test",
+  });
+  const structureAt = (chunks: XwChunk[], s: number) =>
+    byRun(chunks)
+      .get("2")!
+      .find((c) => s >= c.st[0] && s <= c.st[c.st.length - STATION_STRIDE])!.structure;
+
+  it("makes the decided stretch of an embankment a viaduct, the embankment before and after it kept, the heights unchanged, T13 holding", () => {
+    expect(e1 - e0).toBeGreaterThan(40);
+    const decided = row(mid - 10, mid + 10);
+    const built = solvePlan(
+      planNetwork(net, new Set(), null, [], { structures: "height", structureDecisions: [decided] }),
+      mound,
+      [],
+    );
+    expect(structureAt(built.chunks, mid)).toBe("viaduct");
+    expect(structureAt(built.chunks, mid - 15)).toBe("embankment");
+    expect(structureAt(built.chunks, mid + 15)).toBe("embankment");
+    // Only the class changes: every station's height is the plain build's.
+    const z = (chunks: XwChunk[]) =>
+      byRun(chunks)
+        .get("2")!
+        .flatMap((c) => {
+          const out: Array<[number, number]> = [];
+          for (let i = 0; i < c.st.length; i += STATION_STRIDE) out.push([c.st[i], c.st[i + 3]]);
+          return out;
+        });
+    const before = new Map(z(plain.chunks));
+    for (const [s, zz] of z(built.chunks))
+      if (before.has(s)) expect(Math.abs(zz - before.get(s)!)).toBeLessThanOrEqual(0.001);
+    expect(
+      checkHeightStructures(byRun(built.chunks).get("2")!, false, false, [true, true], [decided]),
+    ).toEqual([]);
+  });
+
+  it("leaves a stretch the table does not name as it was", () => {
+    const other = solvePlan(
+      planNetwork(net, new Set(), null, [], {
+        structures: "height",
+        structureDecisions: [{ ...row(mid - 10, mid + 10), run: "9" }],
+      }),
+      mound,
+      [],
+    );
+    expect(JSON.stringify(other.chunks)).toBe(JSON.stringify(plain.chunks));
+  });
+
+  it("stops the build when a row names a stretch that is not an embankment by height (a stale decision)", () => {
+    const cut = list.find((c) => c.structure === "cut")!;
+    const c0 = cut.st[0] + 5;
+    expect(() =>
+      solvePlan(
+        planNetwork(net, new Set(), null, [], {
+          structures: "height",
+          structureDecisions: [row(c0, c0 + 10)],
+        }),
+        mound,
+        [],
+      ),
+    ).toThrow(/structure decision 2/);
+  });
+
+  it("decideViaduct turns only an embankment: a cut in the window stays a cut", () => {
+    const stretches = [
+      { s0: 0, s1: 50, structure: "embankment" as const },
+      { s0: 50, s1: 80, structure: "cut" as const },
+      { s0: 80, s1: 120, structure: "viaduct" as const },
+    ];
+    expect(decideViaduct(stretches, [[30, 100]])).toEqual([
+      { s0: 0, s1: 30, structure: "embankment" },
+      { s0: 30, s1: 50, structure: "viaduct" },
+      { s0: 50, s1: 80, structure: "cut" },
+      { s0: 80, s1: 120, structure: "viaduct" },
+    ]);
   });
 });
 

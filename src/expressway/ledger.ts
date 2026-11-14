@@ -65,6 +65,18 @@ export const LEDGER_VERSION = 1;
  * foot-along-street (S6 PR 7c2): a ramp's ground end in a street for all of RAMP_FOOT.maxM, not cut out
  * of it (compile.ts cutFeet's `along`, a ramp in a street's median), one per end, listed for a review
  * with a view: never by rule.
+ * foot-side-join (S6 PR 7c): a ramp's foot whose street leg turns more than 45° off its heading (no
+ * street within it was in reach; src/world/expresswayRoads.ts rule (b)), one per end, from the feet
+ * probe (scripts/expresswayFeetProbe.ts --cases, read by the ledger tool's --feet): listed for a
+ * review with a view, never by rule.
+ * street-lane-over-cut (S6 PR 7c): a run's cut whose site (the hole to the retaining walls' outer face,
+ * + 1 m) lies under the centre of a street lane the game builds (a cut in a street's median, 737538573
+ * under 桜田通り), one per run, from scripts/expresswayHoleLanes.ts --cases (the ledger tool's --lanes):
+ * listed for R1 (the lanes of a street with a site in it), never by rule.
+ * lane-in-site (S6 PR 7c): a street the game keeps (along an embankment or beside it) whose lanes run
+ * within the embankment's slab, where its walls stand: one per chunk and street, from
+ * scripts/expresswayLanesProbe.ts --cases (the ledger tool's --site-lanes). The low stretches main
+ * built as viaducts with no clearance under them (R1 fixes the lanes); never by rule.
  */
 export const CASE_KINDS = [
   "nose",
@@ -88,8 +100,18 @@ export const CASE_KINDS = [
   "ground-crossing",
   "low-clearance",
   "foot-along-street",
+  "foot-side-join",
+  "street-lane-over-cut",
+  "lane-in-site",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
+
+/**
+ * The kinds counted by a probe of GSI's streets (the game's lanes), not from the files: the ledger tool
+ * takes their lists (--feet, --lanes, --site-lanes) and keeps them as they are without; the tests,
+ * which have no GSI, do not count them again.
+ */
+export const PROBE_KINDS: readonly CaseKind[] = ["foot-side-join", "street-lane-over-cut", "lane-in-site"];
 
 /** The kinds a rule accepts without a review while within its condition (`by: "rule"`). */
 export const AUTO_KINDS: readonly CaseKind[] = [
@@ -134,6 +156,7 @@ export const MEASURES = [
   "streetM",
   "coverM",
   "offGroundM",
+  "legM",
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
@@ -618,8 +641,24 @@ export function ruleReason(kind: CaseKind): string | null {
  * a high deck's height +0.5 m and length +20 m (HIGH_DECK_MARGIN).
  * A measure the cap names but the case lacks is out (the case changed shape).
  */
-export function withinCap(measured: Measured, cap: Measured): boolean {
+/**
+ * How far a foot-side-join's leg may turn past its cap and keep the decision (deg): a GSI street
+ * re-drawn by a metre moves the join point and the angle by a degree or two.
+ */
+const FOOT_ANGLE_MARGIN_DEG = 2;
+
+export function withinCap(measured: Measured, cap: Measured, kind?: CaseKind): boolean {
   const { stations, dzM, edgeM, radiusM } = CASE_MARGIN;
+  // A cap states the CAP_FIELDS its case measured (S6 PR 7c: a ground-stretch that is all approach
+  // measures no inside). One its kind lists that is measured now but not in the cap is a shape the
+  // review did not see: outside. Why not require all CAP_FIELDS in every cap: a run with no inside
+  // could then never be decided; why not drop them from CAP_FIELDS: an inside a review bounded
+  // could grow without going back to new.
+  if (kind !== undefined)
+    for (const k of CAP_FIELDS[kind]) {
+      const isUnseen = measured[k] !== undefined && cap[k] === undefined;
+      if (isUnseen) return false;
+    }
   for (const k of MEASURES) {
     const c = cap[k];
     if (c === undefined || k === "minDzM") continue;
@@ -648,6 +687,8 @@ export function withinCap(measured: Measured, cap: Measured): boolean {
     if (k === "innerMedianM" && Math.abs(m) > Math.abs(c) + dzM + 1e-9) return false;
     if (k === "coverM" && m > c + edgeM) return false;
     if (k === "offGroundM" && m > c + dzM + 1e-9) return false;
+    if (k === "angleDeg" && m > c + FOOT_ANGLE_MARGIN_DEG + 1e-9) return false;
+    if (k === "legM" && m > c + edgeM) return false;
   }
   return true;
 }
@@ -678,6 +719,9 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   "ground-crossing": ["s"],
   "low-clearance": ["shortM"],
   "foot-along-street": ["s"],
+  "foot-side-join": ["angleDeg", "legM"],
+  "street-lane-over-cut": ["lengthM"],
+  "lane-in-site": ["lengthM"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */
@@ -686,7 +730,7 @@ export function isDecidedAccepted(entry: LedgerCase | undefined, measured: Measu
   const isAccepting = entry.status === "accepted" || entry.status === "wontfix";
   if (!isAccepting) return false;
   if (entry.by === "rule") return false;
-  return entry.cap !== null && withinCap(measured, entry.cap);
+  return entry.cap !== null && withinCap(measured, entry.cap, entry.kind);
 }
 
 /**
@@ -769,14 +813,18 @@ const NEW: Decision = { status: "new", by: null, cap: null, reason: null, qa: nu
  * margin), else the case is `new` with the decision kept in `previous`. A rule's acceptance does not
  * carry (the rule decides again); `new` stays `new`.
  */
-function carry(decision: Decision, measured: Measured): { decision: Decision; previous: Decision | null } {
+function carry(
+  decision: Decision,
+  measured: Measured,
+  kind: CaseKind,
+): { decision: Decision; previous: Decision | null } {
   // A followed overlap case decides again each count (followPairs), as a rule does, and leaves no previous.
   const isFollowed = isPairBy(decision.by);
   if (isFollowed) return { decision: { ...NEW, qa: decision.qa }, previous: null };
   const isUndecided = decision.status === "new" || decision.by === "rule";
   if (isUndecided)
     return { decision: { ...NEW, qa: decision.qa }, previous: decision.by === "rule" ? decision : null };
-  const isWithin = decision.cap !== null && withinCap(measured, decision.cap);
+  const isWithin = decision.cap !== null && withinCap(measured, decision.cap, kind);
   if (isWithin) return { decision, previous: null };
   return { decision: { ...NEW, qa: decision.qa }, previous: decision };
 }
@@ -840,20 +888,20 @@ export function updateLedger(prev: Ledger | null, opts: UpdateOptions): Ledger {
         cases.push(caseOf(f, decisionOf(was), was.previous));
         continue;
       }
-      const { decision, previous } = carry(decisionOf(was), f.measured);
+      const { decision, previous } = carry(decisionOf(was), f.measured, f.kind);
       cases.push(caseOf(f, decision, previous ?? was.previous));
       continue;
     }
     const isBack = was !== undefined && was.previous !== null;
     if (isBack) {
-      const { decision, previous } = carry(was.previous!, f.measured);
+      const { decision, previous } = carry(was.previous!, f.measured, f.kind);
       cases.push(caseOf(f, decision, previous));
       continue;
     }
     const seeded = seed.get(f.key);
     const isSeeded = seeded !== undefined && seeded.status !== "gone";
     if (isSeeded) {
-      const { decision, previous } = carry(decisionOf(seeded), f.measured);
+      const { decision, previous } = carry(decisionOf(seeded), f.measured, f.kind);
       cases.push(caseOf(f, decision, previous));
       continue;
     }
