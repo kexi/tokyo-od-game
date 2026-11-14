@@ -47,6 +47,74 @@ function installReaper() {
  */
 export const CALL_TIMEOUT_MS = 180_000;
 
+/**
+ * Page-side: speechSynthesis that speaks to no one. `--mute-audio` does not reach it: on macOS
+ * Chrome's browser process speaks through the OS synthesiser and opens the speakers itself (seen
+ * in `pmset -g assertions` with the flag on). speak() queues the utterance as the real one would,
+ * fires `start`, then `end` after about as long as the line would take (callers that wait on `end`,
+ * naviTv's newsreader, go on), and `speaking` / `pending` / cancel() follow the queue (cancel()
+ * fires `error` as Chrome does: `interrupted` for the line being read, `canceled` behind it). Why not
+ * utterance.volume = 0 on the real one: the OS synthesiser would still run (and with headless
+ * Chrome's voices that come and go, its timing would be the OS's, not the page's).
+ * Serialised into the page with addScriptToEvaluateOnNewDocument, so it uses nothing from here.
+ */
+export function quietSpeech() {
+  const synth = globalThis.speechSynthesis;
+  const hasSpeech = synth !== undefined;
+  if (!hasSpeech) return;
+  const nativeCancel = synth.cancel.bind(synth);
+  const queue = [];
+  let current = null;
+  let timer = null;
+  const fire = (u, type) => {
+    const hasEvent = typeof SpeechSynthesisEvent === "function";
+    u.dispatchEvent(hasEvent ? new SpeechSynthesisEvent(type, { utterance: u }) : new Event(type));
+  };
+  const fail = (u, error) => {
+    const hasEvent = typeof SpeechSynthesisErrorEvent === "function";
+    const event = hasEvent
+      ? new SpeechSynthesisErrorEvent("error", { utterance: u, error })
+      : new Event("error");
+    u.dispatchEvent(event);
+  };
+  const next = () => {
+    current = queue.shift() ?? null;
+    if (!current) return;
+    const u = current;
+    setTimeout(() => {
+      const wasCanceled = current !== u;
+      if (wasCanceled) return;
+      fire(u, "start");
+      // About 8 characters a second at rate 1, as the OS voices read Japanese.
+      const ms = Math.max(200, (String(u.text).length * 125) / (u.rate || 1));
+      timer = setTimeout(() => {
+        const wasCanceled = current !== u;
+        if (wasCanceled) return;
+        fire(u, "end");
+        next();
+      }, ms);
+    }, 0);
+  };
+  Object.defineProperty(synth, "speaking", { configurable: true, get: () => current !== null });
+  Object.defineProperty(synth, "pending", { configurable: true, get: () => queue.length > 0 });
+  synth.speak = (u) => {
+    queue.push(u);
+    const isIdle = current === null;
+    if (isIdle) next();
+  };
+  synth.cancel = () => {
+    const speaking = current;
+    const queued = [...queue];
+    queue.length = 0;
+    current = null;
+    clearTimeout(timer);
+    // As Chrome does: the line being read is interrupted, the ones behind it canceled.
+    if (speaking) setTimeout(() => fail(speaking, "interrupted"), 0);
+    for (const u of queued) setTimeout(() => fail(u, "canceled"), 0);
+    nativeCancel();
+  };
+}
+
 export async function launch(
   url,
   { port = 9334, width = 1280, height = 800, preload = null, callTimeoutMs = CALL_TIMEOUT_MS } = {},
@@ -68,6 +136,11 @@ export async function launch(
       "--use-angle=metal",
       "--ignore-gpu-blocklist",
       "--autoplay-policy=no-user-gesture-required",
+      // Silent: QA runs (several at once, for hours) played the engine, effects and sirens out of
+      // the Mac's speakers. Why not drop the autoplay flag instead: the AudioContext would then stay
+      // suspended and the game's sound graph (spatialAudio's nodes and timers) would take another
+      // path than a player's. Muting cuts the output alone; everything the tests read runs as is.
+      "--mute-audio",
       "about:blank",
     ],
     { stdio: "ignore" },
@@ -121,6 +194,7 @@ export async function launch(
   // The exact viewport (the headless window's own chrome would take some height): even sizes
   // also keep the teaser's frames encodable.
   await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: `(${quietSpeech})();` });
   if (preload) await send("Page.addScriptToEvaluateOnNewDocument", { source: preload });
   await send("Page.navigate", { url });
   const evaluate = async (expression) => {
