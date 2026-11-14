@@ -39,8 +39,9 @@ sources:
 - `--autoplay-policy=no-user-gesture-required` は残す。外すと AudioContext が suspended のままになり、音の経路（spatialAudio のノードやタイマー）が遊ぶときと違う道を通る。
 - `--mute-audio` で Web Audio は聞こえなくなる。ただし Chrome の音声サービス（Helper の utility）は coreaudiod に出力を開いたまま（`pmset -g assertions` の `Resources: audio-out` は残る）。違いは「Playing audio」の assertion で、消音なしの QA の Chrome には付き、消音ありの Chrome には付かない。スピーカーの波形そのものは測っていない。
 - speechSynthesis は `--mute-audio` で止まらない。macOS の Chrome はブラウザ本体のプロセスが OS の音声合成で読み上げ、自分で出力を開く（消音ありでも本体の PID に audio-out と「Playing audio」が約 1.75 秒付いた）。そこで `quietSpeech()` が speak を音の出ない待ち行列に差し替え、`start` → 文字数に応じた時間の後に `end` を発火する。差し替え後は本体にも audio-out が付かなかった。
-  - 長さは実機（rate 1.05）に合わせ、1 文字あたり日本語・中国語 240 ms、それ以外 75 ms（rate 1 のとき）。日本語は毎秒 4 文字ほどで、「およそ300メートル先、芝公園出口です。斜め左方向です。」（28 文字）は実機 6.8 秒。英語の 42 文字は実機 3.2 秒。最初の 125 ms/文字は日本語で実機の半分（3.3 秒）しかなく、navGuide の isSpeaking() が QA だけ早く空いていた。
-  - Chrome と同じく、`end` のハンドラの中では次の行がもう current（後ろが無ければ `speaking` は false）。cancel() は読み上げ中の行にだけ `error: interrupted` を出し、後ろの行は何も発火せずに消える（`canceled` は出ない）。
+  - 長さは実機（rate 1.05）に合わせ、1 文字あたり日本語・中国語 240 ms、それ以外 75 ms（rate 1 のとき）。日本語は毎秒 4 文字ほどで、「およそ300メートル先、芝公園出口です。斜め左方向です。」（28 文字）は実機 6.8 秒。英語の「In 300 meters, turn right at Shibakoen exit.」（44 文字）は実機 3.2 秒。言語は utterance の `lang` で決め、`lang` が空のときだけ文字種（かな・漢字）で決める。最初の 125 ms/文字は日本語で実機の半分（3.3 秒）しかなく、navGuide の isSpeaking() が QA だけ早く空いていた。
+  - Chrome と同じく、`end` のハンドラの中では次の行がもう current（後ろが無ければ `speaking` は false）。cancel() は読み上げ中の行にだけ `error: interrupted` を出し、後ろの行は何も発火せずに消える（後ろの行には `canceled` も出ない。本物では、始まる前に止めた行に `canceled` が出ることはあった）。`end` のハンドラの中で cancel() したときは、まだ始まっていない次の行に何も出さない。
+  - 偽物との違い（未対応）: 本物の Chrome では、cancel() の直後に speak() した行が始まらないことがあった（headless で 6 回中 4 回、`start` が来ないまま 3 秒以上 `speaking` が true）。偽物は常に素直に進むので、QA ではこの揺れが見えない。src/game/navGuide.ts の読み上げ（cancel() の直後に speak()）が同じ形なので、ゲーム側は別件で調べる。
 - 結果は変わらない: `just check-deck-drive` の shibakoen-shiodome は消音あり 合格・|dy| 0.092 m、消音なし（main の browser.mjs）合格・|dy| 0.093 m（走るたびに 0.089〜0.093 m で揺れる範囲）。撮影 `views.ts landmarks --only tower-street-zojoji` も合格。
 - vitest は node 環境で動き、音を出す経路は無い（speechSynthesis を使うテストは `vi.stubGlobal` の偽物）。
 
