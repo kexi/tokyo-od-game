@@ -356,6 +356,10 @@ measure-perf label="sample":
 measure-perf-fixed:
     node scripts/qa/perf-fixed-scene.mjs
 
+# 23 区の中心・県境・区外の 6 地点で、PLATEAU の建物の負荷（昼のフレーム間隔、近景・遠景のタイル数、LRU、PLATEAU へのリクエストの数とバイト、ヒープ）を測って .qa/perf-buildings/<label>/ に書く（A/B は変更前を別の開発サーバーで配って base を替える。args に --view near|medium|far・--mobile・--points a,c）
+measure-buildings-load label="run" base="http://localhost:5173/tokyo-od-game/" *args:
+    pnpm exec tsx scripts/qa/perf-buildings.ts --label {{ label }} --base {{ base }} {{ args }}
+
 # 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}

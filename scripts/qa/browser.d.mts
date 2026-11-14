@@ -19,7 +19,13 @@ export type Browser = {
 
 export function launch(
   url: string,
-  options?: { port?: number; width?: number; height?: number; preload?: string | null },
+  options?: {
+    port?: number;
+    width?: number;
+    height?: number;
+    preload?: string | null;
+    headed?: boolean;
+  },
 ): Promise<Browser>;
 
 /** Page-side: replaces speechSynthesis.speak / cancel with a silent queue that fires the same events. */

@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: PLATEAU 建物の配信と LOD 選定
-description: 3D Tiles を直接ストリーミングする構成と、LOD2 を捨てて LOD1 にした理由（キャッシュ枯渇・浮いた壁・網羅率）、建物 ID を使った外壁テクスチャ。AABB で向きを誤診した訂正を含む。
+description: 3D Tiles を直接ストリーミングする構成と、LOD2 を捨てて LOD1 にした理由（キャッシュ枯渇・浮いた壁・網羅率）、建物 ID を使った外壁テクスチャ。AABB で向きを誤診した訂正を含む。2026-11-15 訂正：近景と遠景がライブラリの既定の LRU を 1 つ共有し、遠景の 64 MB が近景の 0.8 GB を上書きしていた（PC の既定とスマホで近くの街が欠けていた）。分けて、近景の上限を「使っている量の最大 × 2」で視界ごとに決め直した。
 resource: https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/13-bldg-lod1-latest/tileset.json
 tags: [plateau, rendering]
 status: stable
@@ -9,6 +9,8 @@ stale_after: 2027-04-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-10-05T04:55:00Z }
 verified:
   - { by: claude-opus-5-5/1m, at: 2026-10-04T03:45:00Z }
+  - { by: process:vitest, at: 2026-11-15T07:00:00Z }
+  - { by: claude-opus-5-5/1m, at: 2026-11-15T07:00:00Z }
 sources:
   - id: headless-lru
     resource: ヘッドレス Chrome（M2 Max・丸の内スポーン・起動 15 秒後）で tiles.lruCache を計測
@@ -19,6 +21,20 @@ sources:
   - id: site-policy
     resource: https://www.mlit.go.jp/plateau/site-policy/
     title: PLATEAU サイトポリシー
+  - id: x0-points
+    resource: scripts/qa/perf-buildings.ts（just measure-buildings-load）、ヘッドレス Chrome・M2 Max、main（ff1b01c）と X0 を別の開発サーバーで。6 地点 × 視界 3 つ × 3 回、スマホの設定で a・c。読み込みが 5 秒止まってから 12 秒測り、ヒープは強制 GC の後（2026-11-15）
+    title: 止まっている地点の LRU・表示タイル・ヒープ・フレーム間隔
+    author: claude-opus-5-5/1m
+  - id: x0-warp
+    resource: QA 用の一時スクリプト（未コミット）で、東京駅→新宿→渋谷→池袋→上野の輪を 10 秒ごとに 300 m ずつワープし、10 秒ごとに LRU の持っている量・使っている量（usedSet のバイト）・強制 GC 後のヒープを採った。20 分 × main 3 回・X0 3 回（far・スマホ）。タイトル画面（大泉学園）の回る視点 300 秒も（2026-11-15）
+    title: 走ったとき・回る視点での LRU とヒープ
+    author: claude-opus-5-5/1m
+  - id: x0-lib
+    resource: node_modules/3d-tiles-renderer 0.5.3 の src/core/renderer/tiles/TilesRendererBase.js（330・479 行）と utilities/LRUCache.js
+    title: 3d-tiles-renderer の既定の LRU と解放の条件
+  - id: x0-test
+    resource: tests/farMemory.test.ts（近景と遠景の LRU が別で、既定の共有のものでないこと、上限が視界ごとであること、スマホの半径）
+    title: LRU を分けたことのテスト
   - id: streaming-check
     resource: 調査ワークフローのストリーミング賛否検証（2 エージェント）
     title: 3D Tiles ストリーミング検証
@@ -38,6 +54,60 @@ sources:
 
 - 同じ集約 tileset をもう 1 つの TilesRenderer で、粗い階層（区ごとの大きい建物 20〜80 棟）だけ 14〜26 km まで読む。子を preprocessNode で刈るプラグイン（`pruneToCoarse`）で、細かい階層と、最初の中身がもう全詳細の台東区を読まない。簡略版の外壁、衝突判定・影なし、近景と重なる所は 0.1 % 奥に描く。
 - 上位の階層の中身（港区の根は 20 棟・411 三角形・141 KB のうち batch table 108 KB）、区ごとの最初の geometricError（165〜1,003 m、台東区は 32〜64 m の葉）、プリセットごとのタイル数と通信量は [遠景](far-skyline.md)。
+
+# 近景と遠景の LRU（2026-11-15、X0）
+
+> **訂正**: 2026-10-05 に遠景（2 つ目の TilesRenderer）を足してから、近景の上限 `buildingCacheBytes`（PC 0.8 GB、スマホ 0.35 GB）は効いていなかった。上の表の「88 MB、表示タイル 68」は遠景より前の記録。
+
+## 何が起きていたか
+
+- 3d-tiles-renderer 0.5.3 では、すべての `TilesRenderer` が、モジュールに 1 つの `DEFAULT_LRU_CACHE` を `lruCache` に持って始まる（TilesRendererBase.js 479 行）。[^x0-lib]
+- 近景と遠景が同じキャッシュを使い、後から作られる遠景が `FAR_CACHE`（64 MB・320 件、スマホ 24 MB）を書いて、近景の上限を上書きしていた。
+- 結果、PC の既定（最高 = 視界 far）とスマホの既定で、近景の LRU が満杯になり、近くの建物が場所によって欠けていた。[^x0-points]
+  - 例: 大田区の多摩川沿いで表示タイルが 1 件の回があった（直すと 132 件）。スマホの北区では 7〜24 件（直すと 33 件）。
+  - 視界 near（半径 1.6 km）の PC では、江戸川区の 1 地点を除いて満杯にならず、絵は変わらない。
+
+## 直し
+
+- `giveOwnLru`（`src/world/buildings.ts`）で、近景と遠景のそれぞれに、`new TilesRenderer` の直後に新しい `LRUCache` を持たせる。解放の順序はライブラリの既定（`DEFAULT_LRU_CACHE.unloadPriorityCallback`）。ライブラリは「最初の `update()` の前なら替えてよい」としている。
+- ダウンロードと解析の待ち行列は共有のまま（ページの通信を分け合うもので、「遠景は街の後」の順序もそれに依る）。
+- テスト: 2 つの `lruCache` が別で、どちらも `DEFAULT_LRU_CACHE` でないこと。[^x0-test]
+
+## 上限の決め方（使っている量の最大 × 2）
+
+- ライブラリの LRU は、**使っている**タイル（直前の走査で要ると判定された物、`usedSet`）は捨てない。**使い終わった**タイルは、持っている量が下限（`minBytesSize`、上限の 0.6 倍）を超えた分だけ捨てる。だから走った後の持っている量は、ほぼ下限に張り付き、街が要る量を表さない。[^x0-lib]
+- 上限は「使っている量（`usedSet` のバイトの合計）の最大 × 2」を 32 MiB 単位に切り上げた値にした。下限（1.2 倍）の内に使っている量が収まるので、使っているタイルが捨てられない。[^x0-warp]
+
+| 設定                                | 使っている量の最大（どこで）               | 上限    |
+| ----------------------------------- | ------------------------------------------ | ------- |
+| 視界 near（1.6 km）                 | 111 MB（タイトル画面の回る視点）           | 224 MiB |
+| 視界 medium（2.8 km）               | 204 MB（タイトル画面）                     | 416 MiB |
+| 視界 far（4 km）                    | 312 MB（ワープの 52 歩目、新宿と池袋の間） | 608 MiB |
+| スマホ（半径は視界に依らず 1.6 km） | 130 MB（ワープ、池袋）                     | 256 MiB |
+
+- 使っている量は走りごとに 2 割近く違う（far のワープで 253〜312 MB）。決めた後の確かめは「使っている量の最大が下限以下なら確定」とした。
+- スマホは、建物を読む半径も視界 near の 1.6 km に据えた（`detectQuality`）。視界に合わせてキャッシュを増やすと、スマホで far のときにヒープが PC と同じだけ増えるため。遠景・地形・写真は視界の設定に従う。
+- 止まっている地点の使っている量は、視界 far で 52〜157 MB。新宿・池袋のあたりを走ると 300 MB 前後まで行く。
+
+## 決めた上限での量（ヘッドレス、強制 GC の後）
+
+- 止まっている地点（視界 far）のヒープ: main 241〜320 MB に対し、X0 は 303〜608 MB。満杯 0、落ち着いた後の破棄 0。同じ絵の地点（main が満杯でない所）では、フレーム間隔の p95 は 3 回とも悪くはならなかった。[^x0-points]
+- ワープ 20 分（3 回ずつ）の、X0 − main のヒープの差の中央値は、far で約 +636 MB、スマホで約 +272 MB（近景の持っている量が横ばいになった後、同じ歩数の点どうし）。傾きは X0 の方が小さかった（far で X0 0.53〜0.59 MB/秒、main 0.59〜0.60 MB/秒）。X0 は main に無い増えを足していない。[^x0-warp]
+- GC 前のヒープの最大は、far のワープで main 2.6〜2.8 GB、X0 4.4〜4.6 GB。回収前のごみが多い。
+- ウィンドウを出した Chrome（GPU で描く、`--headed`）で視界 far の 1 回ずつ、フレーム間隔の p50/p95 は、東京駅 main 33.3/35.1 ms・X0 33.0/35.1 ms、大田区 33.3/50.0・33.4/50.4、川口駅 18.7/34.5・32.6/34.7（表示タイル 52 → 87）。p95 はほぼ同じで、川口駅の p50 だけ描く量の分だけ重い。
+- 視点表 `landmarks`・`roads` の画素の差は、main どうしを 2 回撮った差（最大 4.7 % の画素）と同じ程度で、建物による差は見分けられなかった。
+- タイトル画面（far）は、2 周目に 318 件の読み直しがあるが、満杯 0 で、同じ向きのコマを 0.8 GB の版と比べても建物の欠けは見えなかった。
+
+## main に前からある増え（M1、未解決）
+
+- main で、近景の LRU が一定（64 MB）のまま、ワープの間に強制 GC 後のヒープが増え続ける（far で約 0.6 MB/秒、20 分で 0.3 → 1.0 GB）。止まっているタイトル画面では増えない。何が溜まっているかは調べていない（別の調査）。[^x0-warp]
+
+## 測り方の落とし穴
+
+- **GC の前のヒープで比べない。** 同じ地点の 3 回で 868〜1,223 MB と揺れ、GC 後は 241〜244 MB。前回「LRU 1 MB あたりヒープ 8〜14 MB」と読んだのは、大半が回収前のごみだった。`HeapProfiler.collectGarbage` の後に `Runtime.getHeapUsage` で読む。
+- **満杯の LRU とそうでない LRU で、フレーム間隔を比べない。** 描くタイルの数が違う（main 47 件、X0 87 件）。表示タイルの数が同じ地点だけで比べる。
+- **読み込みが止まる前に測らない。** `debug.settled()` の後も近景を 91 件読んでいた地点がある。load-model・dispose-model が 5 秒続けて 0 になってから測る。
+- 自動運転で長く走らせる計測は使えなかった（main は東京駅の右折で止まったまま、X0 は約 3 分で皇居外苑の内堀沿いで `autopilot_gave_up: stuck`。どちらも建物とは関係なく、30 秒の再試験では main も走った）。ワープで代えた。
 
 # なぜ LOD2 ではないのか
 
@@ -80,3 +150,11 @@ sources:
 [^site-policy]: PLATEAU サイトポリシー
 
 [^streaming-check]: 3D Tiles ストリーミング検証
+
+[^x0-points]: 止まっている地点の LRU・表示タイル・ヒープ・フレーム間隔
+
+[^x0-warp]: 走ったとき・回る視点での LRU とヒープ
+
+[^x0-lib]: 3d-tiles-renderer の既定の LRU と解放の条件
+
+[^x0-test]: LRU を分けたことのテスト

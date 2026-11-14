@@ -11,8 +11,10 @@ import {
   Vector2,
   Vector3,
 } from "three";
+import { DEFAULT_LRU_CACHE } from "3d-tiles-renderer";
 import { SphereRegion } from "3d-tiles-renderer/plugins";
-import { QUALITY } from "../src/device";
+import { detectQuality, QUALITY, VIEW } from "../src/device";
+import { defaultGraphics } from "../src/graphics";
 import { Buildings, createFarTiles, FAR_CACHE, prepareFarTile } from "../src/world/buildings";
 import { farFacadeMaterial } from "../src/world/facade";
 import { FarGround, type FarGroundSources } from "../src/world/farGround";
@@ -225,9 +227,84 @@ describe("the far skyline's memory", () => {
     expect(tiles.getPluginByName("UNLOAD_TILES_PLUGIN")).toBeFalsy();
     expect(tiles.lruCache.maxSize).toBe(FAR_CACHE.maxItems);
     expect(tiles.lruCache.maxBytesSize).toBe(FAR_CACHE.maxBytes);
+    expect(tiles.lruCache).not.toBe(DEFAULT_LRU_CACHE);
     expect(FAR_CACHE.maxItems).toBeLessThanOrEqual(400);
     expect(FAR_CACHE.maxBytes).toBeLessThanOrEqual(64 * 1024 ** 2);
     tiles.dispose();
+  });
+
+  /**
+   * The near town and the far skyline each bound their own tiles: making the far skyline (second)
+   * leaves the town's byte limit as QUALITY set it (in 3d-tiles-renderer 0.5.3 both started on the
+   * module-wide default LRU, and FAR_CACHE's 64 MB overwrote the town's 0.8 GB).
+   */
+  it("gives the near town and the far skyline separate LRUs, neither the library's shared default", () => {
+    const buildings = new Buildings(
+      new Scene(),
+      {} as never,
+      new PerspectiveCamera(60, 1, 0.5, 40000),
+      { getSize: (v: Vector2) => v.set(1280, 720) },
+      new LocalFrame(35.68075, 139.76345, 40),
+    );
+    const near = buildings.tiles;
+    const far = (
+      buildings as unknown as { createFarTiles(): ReturnType<typeof createFarTiles> }
+    ).createFarTiles();
+    expect(far.lruCache).not.toBe(near.lruCache);
+    expect(near.lruCache).not.toBe(DEFAULT_LRU_CACHE);
+    expect(far.lruCache).not.toBe(DEFAULT_LRU_CACHE);
+    expect(near.lruCache.maxBytesSize).toBe(QUALITY.buildingCacheBytes);
+    expect(near.lruCache.minBytesSize).toBe(QUALITY.buildingCacheBytes * 0.6);
+    expect(far.lruCache.maxBytesSize).toBe(FAR_CACHE.maxBytes);
+    expect(far.lruCache.maxSize).toBe(FAR_CACHE.maxItems);
+    // Both unload in the library's own order.
+    expect(near.lruCache.unloadPriorityCallback).toBe(DEFAULT_LRU_CACHE.unloadPriorityCallback);
+    expect(far.lruCache.unloadPriorityCallback).toBe(DEFAULT_LRU_CACHE.unloadPriorityCallback);
+    // The near town is left undisposed: its UnloadTilesPlugin needs requestAnimationFrame to.
+    far.dispose();
+  });
+
+  /**
+   * The town's byte limit follows the 描画距離 (a wider town needs more), a phone keeps its own
+   * whatever the setting, and none is the old 0.8 GB carried over from the LOD2 days.
+   */
+  it("bounds the near town per 描画距離, and on a phone by its own limit", () => {
+    const pc = defaultGraphics(false);
+    const sizes = (["near", "medium", "far"] as const).map(
+      (viewDistance) => detectQuality({ ...pc, viewDistance }, false).buildingCacheBytes,
+    );
+    expect(sizes).toEqual([
+      VIEW.near.buildingCacheBytes,
+      VIEW.medium.buildingCacheBytes,
+      VIEW.far.buildingCacheBytes,
+    ]);
+    expect(sizes[0]).toBeLessThan(sizes[1]);
+    expect(sizes[1]).toBeLessThan(sizes[2]);
+    expect(sizes[2]).toBeLessThan(0.8 * 1024 ** 3);
+    const phone = defaultGraphics(true);
+    const phoneSizes = (["near", "medium", "far"] as const).map(
+      (viewDistance) => detectQuality({ ...phone, viewDistance }, true).buildingCacheBytes,
+    );
+    expect(new Set(phoneSizes).size).toBe(1);
+  });
+
+  /**
+   * A phone streams the town of 低 (1.6 km) whatever the 描画距離, so its town fits its cache; the far
+   * skyline still follows the setting. A PC's town follows the setting.
+   */
+  it("holds a phone's town at 低's radius, and lets a PC's follow the 描画距離", () => {
+    const views = ["near", "medium", "far"] as const;
+    const phone = defaultGraphics(true);
+    for (const viewDistance of views) {
+      const q = detectQuality({ ...phone, viewDistance }, true);
+      expect(q.buildingLoadRadius).toBe(VIEW.near.buildingLoadRadius);
+      expect(q.farBuildingRadius).toBe(VIEW[viewDistance].farBuildingRadius);
+    }
+    const pc = defaultGraphics(false);
+    for (const viewDistance of views) {
+      const q = detectQuality({ ...pc, viewDistance }, false);
+      expect(q.buildingLoadRadius).toBe(VIEW[viewDistance].buildingLoadRadius);
+    }
   });
 
   it("prepares a burst of far tiles a few milliseconds a frame, leaving none behind", async () => {
