@@ -12,7 +12,45 @@ const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/M
  * Open `url` in a fresh headless Chrome. `preload` is page-side JS run in every document before the
  * page's own scripts (Page.addScriptToEvaluateOnNewDocument): the teaser's virtual clock.
  */
-export async function launch(url, { port = 9334, width = 1280, height = 800, preload = null } = {}) {
+/**
+ * The Chromes this process started and has not closed. A run that ends another way than close() (an
+ * exception past its finally, a timeout's or a stop's SIGTERM, Ctrl-C) used to leave its headless
+ * Chrome running for hours, on its GPU and memory (three were found 10–12 h old, S6 PR 7c): they are
+ * killed when the process exits or is told to. Why not detach and leave it to the OS: a headless
+ * Chrome does not die with its parent. A SIGKILL still leaves one behind (nothing runs then).
+ */
+const live = new Set();
+let isReaperInstalled = false;
+function installReaper() {
+  if (isReaperInstalled) return;
+  isReaperInstalled = true;
+  const reap = () => {
+    for (const c of live) c.kill();
+    live.clear();
+  };
+  process.on("exit", reap);
+  for (const [signal, code] of [
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+    ["SIGHUP", 129],
+  ])
+    process.on(signal, () => {
+      reap();
+      process.exit(code);
+    });
+}
+
+/**
+ * How long one DevTools call may take before it fails (ms). A page whose promise never settles (the
+ * game waiting on a tileset whose fetch failed: PLATEAU's root tileset over a flaky network, S6 PR
+ * 7c's drives hung 80 min on `__game.advance`) used to hang its caller for good.
+ */
+export const CALL_TIMEOUT_MS = 180_000;
+
+export async function launch(
+  url,
+  { port = 9334, width = 1280, height = 800, preload = null, callTimeoutMs = CALL_TIMEOUT_MS } = {},
+) {
   // A Chrome left behind on the port (a run that crashed) would answer instead of the new one.
   const isTaken = await fetch(`http://127.0.0.1:${port}/json/version`)
     .then(() => true)
@@ -34,6 +72,9 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
     ],
     { stdio: "ignore" },
   );
+  installReaper();
+  live.add(chrome);
+  chrome.once("exit", () => live.delete(chrome));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let targets = [];
   for (let i = 0; i < 50 && !targets.some((t) => t.type === "page"); i++) {
@@ -63,9 +104,16 @@ export async function launch(url, { port = 9334, width = 1280, height = 800, pre
     }
   });
   const send = (method, params = {}) =>
-    new Promise((r) => {
+    new Promise((r, reject) => {
       const mid = ++id;
-      pending.set(mid, r);
+      const timer = setTimeout(() => {
+        pending.delete(mid);
+        reject(new Error(`DevTools ${method} took over ${callTimeoutMs} ms (the page never answered)`));
+      }, callTimeoutMs);
+      pending.set(mid, (msg) => {
+        clearTimeout(timer);
+        r(msg);
+      });
       ws.send(JSON.stringify({ id: mid, method, params }));
     });
   await send("Runtime.enable");

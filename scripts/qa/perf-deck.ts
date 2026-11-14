@@ -1,4 +1,4 @@
-// Frame intervals with the player's car on an expressway deck (24402611:14), day and rain at night,
+// Frame intervals with the player's car on an expressway deck (24402611:15), day and rain at night,
 // for the A/B of the deck's materials (knowledge/road-textures.md「性能」). Run it against two dev
 // servers (the change and its base on another port) and compare the JSON. Headless Chrome paces
 // frames in steps of 16.7 ms, so only large changes show.
@@ -40,7 +40,7 @@ for (const look of looks) {
     await until("window.__game?.getState() === 'ready'");
     await b.evaluate("window.__game.start()");
     await until("__game.debug.settled().isSettled", 120);
-    await until(`__game.debug.expressway.place("24402611:14", 0.6, 0)`, 90);
+    await until(`__game.debug.expressway.place("24402611:15", 0.6, 0)`, 90);
     await until("__game.debug.settled().isSettled", 120);
     await b.sleep(3000);
     const stats = await b.evaluate<Stats>(`new Promise((resolve) => {

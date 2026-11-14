@@ -27,6 +27,8 @@ export type ExpresswayDriveDeps = {
   decks: ExpresswayDecks;
   setDrive: (fn: ((dt: number) => DriveInput) | null) => void;
   snapCamera: () => void;
+  /** The drawn terrain's height at a local (x, z), for a street with no surface of its own (placeOnStreet). */
+  groundY?: (x: number, z: number) => number | null;
   /**
    * Why a drive now would not measure the decks (an accident in progress, a pursuit, a suspended
    * licence: the game may freeze the car for an arrest), or null.
@@ -143,6 +145,9 @@ export function insideHit<H extends { seg: Segment; s: number }>(
   return isInsideOther ? (other as unknown as H) : hit;
 }
 
+/** Whether a hit lies inside its segment (not clamped to an end). */
+const isInsideHit = (h: RoadHit) => h.s > 0.01 && h.s < h.seg.length - 0.01;
+
 /**
  * The surface the ride is measured against at p: the first of `prefer`'s runs (a cruise's own
  * decks, in order) the car is inside, else the nearest deck under the car among `onRoute` (the
@@ -151,9 +156,6 @@ export function insideHit<H extends { seg: Segment; s: number }>(
  * ramp (deckRank), and where the ramp 24402125:2 passes 1.6 m over the main line 45068170:0 the
  * main line was within SURFACE_GATE of the car: a "|dy| 1.6 m" the car on the ramp never felt.
  */
-/** Whether a hit lies inside its segment (not clamped to an end). */
-const isInsideHit = (h: RoadHit) => h.s > 0.01 && h.s < h.seg.length - 0.01;
-
 export function rideHit(
   graph: Pick<RoadGraph, "nearestOnSurface" | "locate">,
   p: Vector3,
@@ -196,6 +198,37 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
     deps.vehicle.teleport(at, Math.atan2(dir.x, dir.z));
     deps.snapCamera();
     return true;
+  };
+
+  /**
+   * Put the car on the street nearest (lat, lon) (within 30 m, the ground's: no deck), in the lane
+   * the game drives (laneOffset: the left half of a two-way street, the middle of a one-way one),
+   * facing towards `toward` (lat, lon). For the street drive's checks (S6 PR 7c: its first version put
+   * the car a quarter of the width off the centre line, not in a lane, and on a 40 m street that was
+   * the median's hole). Returns the street's width, one-way and the lane's offset, or null.
+   */
+  const placeOnStreet = (
+    at: { lat: number; lon: number },
+    toward: { lat: number; lon: number },
+  ): { widthM: number; oneway: number; laneM: number } | null => {
+    const graph = deps.graph();
+    const toLocal = deps.autopilot?.toLocal;
+    if (!graph || !toLocal) return null;
+    const p = toLocal(at.lat, at.lon);
+    const q = toLocal(toward.lat, toward.lon);
+    const hit = graph.nearest(p, 30, (seg) => seg.line.xid === undefined);
+    if (!hit) return null;
+    const { pos, dir } = graph.sample(hit.seg, hit.s);
+    const isAlong = dir.x * (q.x - p.x) + dir.z * (q.z - p.z) >= 0;
+    const travel = isAlong ? dir : dir.clone().negate();
+    const isAllowed = hit.seg.oneway === 0 || hit.seg.oneway === (isAlong ? 1 : -1);
+    if (!isAllowed) return null;
+    const laneM = laneOffset(hit.seg);
+    const y = graph.surfaceY(hit.seg, hit.s) ?? deps.groundY?.(pos.x, pos.z) ?? pos.y;
+    const car = pos.add(leftOf(travel, laneM)).setY(y + RIDE_HEIGHT + 0.3);
+    deps.vehicle.teleport(car, Math.atan2(travel.x, travel.z));
+    deps.snapCamera();
+    return { widthM: hit.seg.line.width, oneway: hit.seg.oneway, laneM: Math.round(laneM * 100) / 100 };
   };
 
   /** The point `ahead` metres on along the preferred segments from (seg, s), in its lane. */
@@ -495,6 +528,7 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
 
   return {
     place,
+    placeOnStreet,
     trafficAt,
     /** Why a drive now would not count (read before place(): drive-deck.ts waits it out). */
     blocker: () => deps.blocker(),

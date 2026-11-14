@@ -16,8 +16,10 @@ export type RunPlace = { run: string; s: number };
 export type CruiseRoute = {
   id: string;
   kind: "cruise";
-  /** Where the car is put (on the deck, lane 0); the game starts at that station's lon/lat. */
+  /** Where the car is put (on the deck, in `lane`); the game starts at that station's lon/lat. */
   from: RunPlace;
+  /** The lane the car is put in and keeps (0 the left, the default). */
+  lane?: number;
   /** The runs the cruise prefers at a fork, in that order. */
   prefer: string[];
   /** Reached on the chunk holding this place; `street`: once off the decks after its run. */
@@ -62,19 +64,19 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     id: "auto-shibakoen-shiodome",
     kind: "auto",
     start: "35.6534,139.7497",
-    entrance: "207111988",
+    entrance: "861095931",
     to: { lat: 35.66325, lon: 139.76275 },
     seconds: 300,
-    was: "P6 の 1 本目: 一般道 → 芝公園入口 → 内回り → 汐留出口 → 一般道（scratchpad の p6/route.mjs）",
+    was: "P6 の 1 本目: 一般道 → 芝公園入口 → 内回り → 汐留出口 → 一般道（scratchpad の p6/route.mjs）。S6 PR 7c: 入口の足が地平 run 861095931 になった（207111988 はその seam から）",
   },
   {
     id: "auto-shiodome-shibakoen",
     kind: "auto",
     start: "35.6631,139.7628",
-    entrance: "45068172",
+    entrance: "23705286",
     to: { lat: 35.6529, lon: 139.7464 },
     seconds: 480,
-    was: "P6 の 2 本目: 一般道 → 汐留入口 45068172 → 外回り 45021976 → 芝公園出口 4853798 → 一般道",
+    was: "P6 の 2 本目: 一般道 → 汐留入口 45068172 → 外回り 45021976 → 芝公園出口 4853798 → 一般道。S6 PR 7c: 入口の足が地平 run 23705286 になった（45068172 はその seam から）",
   },
   {
     id: "rainbow-upper-east",
@@ -135,6 +137,47 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     kmh: 50,
     seconds: 200,
     was: "P9: 外回り 45021976:19 → 掘割・トンネル 737538573 → 895902565",
+  },
+  {
+    id: "haneda-up-seam",
+    kind: "cruise",
+    from: { run: "45554541", s: 1150 },
+    prefer: ["45554541", "45554540"],
+    to: { run: "45554540", s: 300 },
+    kmh: 60,
+    seconds: 120,
+    was: "新設（S6 PR 7c）: 1 号羽田線の地平 run 45554541 → 高架 45554540 の seam を越える",
+  },
+  {
+    id: "haneda-down-seam",
+    kind: "cruise",
+    from: { run: "45021972", s: 7900 },
+    prefer: ["45021972", "5213324"],
+    to: { run: "5213324", s: 300 },
+    kmh: 60,
+    seconds: 120,
+    was: "新設（S6 PR 7c）: 1 号羽田線の高架 45021972 → 地平 run 5213324 の seam を越える",
+  },
+  {
+    id: "shiodome-approach-in",
+    kind: "cruise",
+    from: { run: "45068169", s: 10 },
+    prefer: ["45068169", "45021976"],
+    to: { run: "45021976", s: 200 },
+    kmh: 50,
+    seconds: 120,
+    was: "新設（S6 PR 7c）: 汐留の取付け 45068169（坑口の外の地平 run、盛土・掘割）→ 外回り 45021976 の seam",
+  },
+  {
+    id: "shiodome-approach-out",
+    kind: "cruise",
+    from: { run: "24402611", s: 4850 },
+    lane: 1,
+    prefer: ["24402611", "45068170"],
+    to: { run: "45068170", s: 160 },
+    kmh: 50,
+    seconds: 120,
+    was: "新設（S6 PR 7c）: 内回り 24402611 → 汐留の取付け 45068170 を坑口の手前まで。車線 1: 車線 0 は手放しの点（run s 約 4951）から先で汐留出口 24402125:0 の壁高欄に約 0.25 m 掛かる（台帳 parallel-ramp:24402125|24402611、7c で車線 0 は 24402611:33 s 22.3 で止まり、相手は 24402125:0 のコライダー）",
   },
 ];
 
