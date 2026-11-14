@@ -68,6 +68,7 @@ export function quietSpeech() {
   const queue = [];
   let current = null;
   let timer = null;
+  let isEnding = false;
   const fire = (u, type) => {
     const hasEvent = typeof SpeechSynthesisEvent === "function";
     u.dispatchEvent(hasEvent ? new SpeechSynthesisEvent(type, { utterance: u }) : new Event(type));
@@ -81,12 +82,15 @@ export function quietSpeech() {
   };
   // Per character at rate 1, from the real voices on macOS (Chrome 157, rate 1.05): Japanese about
   // 4 characters a second (the 28-character guide line およそ300メートル先、芝公園出口です。斜め左方向です。
-  // took 6.8 s), English about 13 (a 42-character line took 3.2 s). Chinese is taken as Japanese,
+  // took 6.8 s), English about 14 (the 44-character In 300 meters, turn right at Shibakoen exit. took 3.2 s). Chinese is taken as Japanese,
   // one syllable a character. Why not one rate for all: 125 ms/char ran Japanese twice too fast
   // (3.3 s), so navGuide's isSpeaking() freed up early in QA only, and English too slow (5.2 s).
   const durationMs = (u) => {
     const text = String(u.text);
-    const isCjk = /^(ja|zh)/i.test(u.lang ?? "") || /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+    // The utterance's lang decides; the script of the text only when no lang is set.
+    const lang = u.lang ?? "";
+    const hasLang = lang !== "";
+    const isCjk = hasLang ? /^(ja|zh)/i.test(lang) : /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
     const msPerChar = isCjk ? 240 : 75;
     return Math.max(200, (text.length * msPerChar) / (u.rate || 1));
   };
@@ -102,7 +106,12 @@ export function quietSpeech() {
         // handler when nothing follows).
         current = queue.shift() ?? null;
         const following = current;
-        fire(u, "end");
+        isEnding = true;
+        try {
+          fire(u, "end");
+        } finally {
+          isEnding = false;
+        }
         // A speak() or cancel() in the handler may have started or dropped a line itself.
         const isFollowingStill = following !== null && current === following;
         if (isFollowingStill) begin();
@@ -119,7 +128,9 @@ export function quietSpeech() {
     begin();
   };
   synth.cancel = () => {
-    const interrupted = current;
+    // A cancel() inside an `end` handler drops the line that was next without an event, as in
+    // Chrome: it had not begun.
+    const interrupted = isEnding ? null : current;
     queue.length = 0;
     current = null;
     clearTimeout(timer);

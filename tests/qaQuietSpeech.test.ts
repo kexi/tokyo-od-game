@@ -65,7 +65,7 @@ describe("QA pages' speechSynthesis (scripts/qa/browser.mjs quietSpeech)", () =>
     const { synth } = installSynth();
     const ja = new FakeUtterance("およそ300メートル先、芝公園出口です。斜め左方向です。");
     ja.rate = 1.05;
-    const en = new FakeUtterance("In about 300 metres, the Shibakoen exit.");
+    const en = new FakeUtterance("In 300 meters, turn right at Shibakoen exit.");
     en.lang = "en-US";
     en.rate = 1.05;
     for (const [u, measuredMs] of [
@@ -128,6 +128,39 @@ describe("QA pages' speechSynthesis (scripts/qa/browser.mjs quietSpeech)", () =>
     vi.runAllTimers();
     expect(inEnd).toEqual([{ speaking: true, pending: false }]);
     expect(seenB).toEqual(["start", "end"]);
+  });
+
+  it("a cancel() inside an end handler drops the next line without an event, as it had not begun", () => {
+    const { synth } = installSynth();
+    const a = new FakeUtterance("一");
+    const b = new FakeUtterance("二");
+    const seenB = eventsOf(b);
+    a.addEventListener("end", () => synth.cancel());
+    synth.speak(asUtterance(a));
+    synth.speak(asUtterance(b));
+    vi.runAllTimers();
+    expect(seenB).toEqual([]);
+    expect(synth.speaking).toBe(false);
+  });
+
+  it("goes by the utterance's lang, and by the text's script only when no lang is set", () => {
+    const { synth } = installSynth();
+    const enWithKanji = new FakeUtterance("芝公園 exit");
+    enWithKanji.lang = "en-US";
+    const unset = new FakeUtterance("芝公園出口");
+    unset.lang = "";
+    const ends: Record<string, number> = {};
+    for (const [name, u] of [
+      ["en", enWithKanji],
+      ["unset", unset],
+    ] as const) {
+      const startedAt = Date.now();
+      u.addEventListener("end", () => (ends[name] = Date.now() - startedAt));
+      synth.speak(asUtterance(u));
+      vi.runAllTimers();
+    }
+    expect(ends.en).toBe("芝公園 exit".length * 75);
+    expect(ends.unset).toBe(5 * 240);
   });
 
   it("cancel() interrupts the line being read and drops the ones behind it without an event", () => {
