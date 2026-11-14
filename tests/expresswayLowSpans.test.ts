@@ -215,8 +215,8 @@ describe("T13 が低い径間の違反を見つける（checkLowSpans）", () =>
 describe("台帳の low-clearance と掃引のフラグ", () => {
   it("a low-clearance case is never accepted by rule, and a decided cap holds its shortfall within 5 cm", () => {
     expect(isAutoAccepted({ kind: "low-clearance", measured: { soffitM: 4.4, shortM: 0.1 } })).toBe(false);
-    expect(withinCap({ soffitM: 2.7, shortM: 1.8 }, { shortM: 1.8 })).toBe(true);
-    expect(withinCap({ soffitM: 2.64, shortM: 1.86 }, { shortM: 1.8 })).toBe(false);
+    expect(withinCap({ soffitM: 2.7, shortM: 1.8 }, { shortM: 1.8 }, "low-clearance")).toBe(true);
+    expect(withinCap({ soffitM: 2.64, shortM: 1.86 }, { shortM: 1.8 }, "low-clearance")).toBe(false);
   });
 
   it("--low-span-soffit is a sweep: never into the shipped folder", () => {

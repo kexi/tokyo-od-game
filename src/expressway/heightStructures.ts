@@ -532,11 +532,6 @@ export function checkHeightStructures(
 }
 
 /**
- * The stretches with each window ([a, b], run distances) made viaduct (S6 PR 7a, R3: a crossing whose
- * window the deck clears over the thinnest girder is spanned, the embankment or cut starting at the
- * window's end), split where a window cuts a stretch and merged where two of one structure meet.
- */
-/**
  * The stretches with the embankment in each window made a viaduct (S6 PR 7c, structureDecisions.ts):
  * a cut, a viaduct and what lies outside stay. After the smoothing (the caller's last step), so no
  * short piece of the window merges back into the embankment beside it.
@@ -570,6 +565,64 @@ export function decideViaduct(
   return merged;
 }
 
+/** Whether run distance `s` lies strictly inside embankment stretch `h` (snapDecisionWindows). */
+const isEmbankmentAround = (h: HeightStretch, s: number) =>
+  h.structure === "embankment" && h.s0 < s && s < h.s1;
+
+/**
+ * Each decision's window ([a, b]) with an end that lies inside an embankment within `tolM` of that
+ * embankment's end moved to the end (A2: 895902565's row ends at 89.16, its embankment at 89.164, a
+ * 4.2 mm embankment left between two viaducts). How: `a` inside an embankment `h` (h.s0 < a < h.s1)
+ * with a − h.s0 ≤ tolM becomes h.s0; `b` likewise becomes h.s1. An end in a cut or a viaduct, or
+ * further inside, stays. Why not ε for the floating point: the 4.2 mm is the row's rounding to the
+ * centimetre, and the stale check already reads a row's ends to DECISION_END_TOLERANCE_M.
+ */
+export function snapDecisionWindows(
+  stretches: readonly HeightStretch[],
+  windows: ReadonlyArray<readonly [number, number]>,
+  tolM: number,
+): Array<[number, number]> {
+  return windows.map(([a, b]) => {
+    const atStart = stretches.find((h) => isEmbankmentAround(h, a));
+    const atEnd = stretches.find((h) => isEmbankmentAround(h, b));
+    const isStartNear = atStart !== undefined && a - atStart.s0 <= tolM;
+    const isEndNear = atEnd !== undefined && atEnd.s1 - b <= tolM;
+    return [isStartNear ? atStart.s0 : a, isEndNear ? atEnd.s1 : b];
+  });
+}
+
+/** An embankment a decision's window left short beside its viaduct (shortLeftovers). */
+export type ShortLeftover = { window: readonly [number, number]; s0: number; s1: number; lengthM: number };
+
+/**
+ * The embankments of decideViaduct's result that touch a window's end (the piece a window starting or
+ * ending inside an embankment leaves of it) and are shorter than `minM` (A2). How: an embankment whose
+ * end is a window's end within 1e-6 m is the window's split; one apart from every window's end was
+ * there before the decision and is not counted (the smoothing ruled it). Why not merge such a piece
+ * into the viaduct here: the smoothing (smoothM) runs before the decisions, so nobody would even it.
+ */
+export function shortLeftovers(
+  decided: readonly HeightStretch[],
+  windows: ReadonlyArray<readonly [number, number]>,
+  minM: number,
+): ShortLeftover[] {
+  const out: ShortLeftover[] = [];
+  for (const h of decided) {
+    if (h.structure !== "embankment") continue;
+    const window = windows.find(([a, b]) => Math.abs(h.s1 - a) < 1e-6 || Math.abs(h.s0 - b) < 1e-6);
+    if (window === undefined) continue;
+    const lengthM = h.s1 - h.s0;
+    const isShort = lengthM < minM;
+    if (isShort) out.push({ window, s0: h.s0, s1: h.s1, lengthM });
+  }
+  return out;
+}
+
+/**
+ * The stretches with each window ([a, b], run distances) made viaduct (S6 PR 7a, R3: a crossing whose
+ * window the deck clears over the thinnest girder is spanned, the embankment or cut starting at the
+ * window's end), split where a window cuts a stretch and merged where two of one structure meet.
+ */
 export function forceViaduct(
   list: readonly HeightStretch[],
   windows: ReadonlyArray<readonly [number, number]>,

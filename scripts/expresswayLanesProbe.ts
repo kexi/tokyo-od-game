@@ -3,8 +3,9 @@
 // (joinExpressway: a street crossing the site at grade is cut at its edge, one along it or ending at
 // a ramp's foot is kept), built into the game's lanes (RoadGraph, laneCentreOffset each way a lane is
 // driven), and every lane whose centre comes within the slab's edge (carriageway/2 + PARAPET_WIDTH)
-// for MIN_LENGTH_M or more: a lane the game keeps that runs into the embankment's walls. Grouped per
-// chunk and street, one ledger case each. One JSON log line (expressway_lanes_probed); exit code 1
+// for MIN_LENGTH_M or more: a lane the game keeps that runs into the embankment's walls (the judgement
+// and the merging in scripts/expresswaySiteLanes.ts). Grouped per run and street width, one ledger case
+// each. One JSON log line (expressway_lanes_probed); exit code 1
 // when more places are found than the folder's ledger takes as lane-in-site (a new one stops it), or
 // than --max; a folder with neither (a measuring folder) is only counted.
 // Run: pnpm exec tsx scripts/expresswayLanesProbe.ts <dir|label> [--cache <dir>] [--cases <file>] [--max <n>]
@@ -27,10 +28,9 @@ import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { leftOf, RoadGraph, type RoadLine } from "../src/world/roads.ts";
 import { ROAD_TILE_ZOOM, roadLinesOfTile } from "../src/world/roadTiles.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
+import { laneOverSite, mergeSitePlaces, type SiteLanes, type SiteLine } from "./expresswaySiteLanes.ts";
 
 const ROOT = join(import.meta.dirname, "..");
-/** Shorter than this within the slab is a street's end at the site's edge, not a lane over it (m). */
-const MIN_LENGTH_M = 3;
 /** The decks the game joins round a point (expresswayDeck.ts GRAPH_RADIUS_M). */
 const GRAPH_RADIUS_M = 1300;
 
@@ -73,17 +73,6 @@ async function streetsOf(x: number, y: number): Promise<RoadLine[] | null> {
   return lines;
 }
 
-/** One place: a street's lanes within an embankment's slab, as the ledger's lane-in-site reads it. */
-export type SiteLanes = {
-  run: string;
-  chunk: string;
-  s0: number;
-  s1: number;
-  lengthM: number;
-  streetM: number;
-  nearestM: number;
-  lanes: number;
-};
 const places: SiteLanes[] = [];
 let skipped = 0;
 for (const [run, chunks] of files.byRun) {
@@ -126,64 +115,35 @@ for (const [run, chunks] of files.byRun) {
       centre.push(frame.toLocal(emb.st[i + ST.lat], emb.st[i + ST.lon], 0).setY(0));
       stS.push(emb.st[i + ST.s]);
     }
-    const edge = (emb.lanes * emb.laneWidth + emb.shoulderL + emb.shoulderR) / 2 + PARAPET_WIDTH.value;
-    /** Distance from (x, z) to the slab's centre line and the run distance there. */
-    const toSite = (x: number, z: number): [number, number] => {
-      let best = Infinity;
-      let at = 0;
-      for (let i = 0; i + 1 < centre.length; i++) {
-        const [a, b] = [centre[i], centre[i + 1]];
-        const [ex, ez] = [b.x - a.x, b.z - a.z];
-        const l2 = ex * ex + ez * ez;
-        const t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / l2));
-        const d = Math.hypot(a.x + ex * t - x, a.z + ez * t - z);
-        if (d < best) {
-          best = d;
-          at = stS[i] + (stS[i + 1] - stS[i]) * t;
-        }
-      }
-      return [best, at];
-    };
-    // An embankment's end face: past the run's first or last station the distance is to the face, not
-    // the slab beside the lane. Only stations the slab spans count.
-    const [sFirst, sLast] = [stS[0], stS[stS.length - 1]];
+    const edgeM = (emb.lanes * emb.laneWidth + emb.shoulderL + emb.shoulderR) / 2 + PARAPET_WIDTH.value;
+    const site: SiteLine = { centre, s: stS, edgeM };
     for (const seg of graph.segments) {
       let place: SiteLanes | null = null;
       for (const d of [1, -1] as const) {
         const isDriven = seg.oneway === 0 || seg.oneway === d;
         if (!isDriven) continue;
         for (let lane = 0; lane < seg.lanes; lane++) {
-          let len = 0;
-          let nearest = Infinity;
-          let s0 = Infinity;
-          let s1 = -Infinity;
+          const points: Vector3[] = [];
           for (let s = 0; s <= seg.length; s += 1) {
             const { pos, dir: along } = graph.sample(seg, s);
-            const p = pos.add(leftOf(along.multiplyScalar(d), laneCentreOffset(seg, lane)));
-            const [dist, at] = toSite(p.x, p.z);
-            const isOver = dist <= edge && at > sFirst + 0.5 && at < sLast - 0.5;
-            if (!isOver) continue;
-            len++;
-            nearest = Math.min(nearest, dist);
-            s0 = Math.min(s0, at);
-            s1 = Math.max(s1, at);
+            points.push(pos.add(leftOf(along.multiplyScalar(d), laneCentreOffset(seg, lane))));
           }
-          const isTooShort = len < MIN_LENGTH_M;
-          if (isTooShort) continue;
+          const over = laneOverSite(points, site);
+          if (over === null) continue;
           place ??= {
             run,
             chunk: emb.id,
-            s0,
-            s1,
+            s0: over.s0,
+            s1: over.s1,
             lengthM: 0,
             streetM: seg.line.width,
-            nearestM: nearest,
+            nearestM: over.nearestM,
             lanes: 0,
           };
-          place.s0 = Math.min(place.s0, s0);
-          place.s1 = Math.max(place.s1, s1);
-          place.lengthM = Math.max(place.lengthM, len);
-          place.nearestM = Math.min(place.nearestM, nearest);
+          place.s0 = Math.min(place.s0, over.s0);
+          place.s1 = Math.max(place.s1, over.s1);
+          place.lengthM = Math.max(place.lengthM, over.lengthM);
+          place.nearestM = Math.min(place.nearestM, over.nearestM);
           place.lanes++;
         }
       }
@@ -197,20 +157,10 @@ for (const [run, chunks] of files.byRun) {
     }
   }
 }
-// Pieces of one street split by the graph's nodes along one stretch: one place.
-places.sort((a, b) => (a.chunk === b.chunk ? a.s0 - b.s0 : a.chunk < b.chunk ? -1 : 1));
-const merged: SiteLanes[] = [];
-for (const p of places) {
-  const last = merged[merged.length - 1];
-  const isSame =
-    last !== undefined && last.chunk === p.chunk && last.streetM === p.streetM && p.s0 <= last.s1 + 1;
-  if (isSame) {
-    last.s1 = Math.max(last.s1, p.s1);
-    last.lengthM = Math.max(last.lengthM, p.lengthM);
-    last.nearestM = Math.min(last.nearestM, p.nearestM);
-    last.lanes = Math.max(last.lanes, p.lanes);
-  } else merged.push({ ...p });
-}
+// Pieces of one street split by the graph's nodes or by a chunk's end along one stretch: one place.
+// Why not per chunk (before A2): a place across a chunk's end was two, and a rebuild that moved the
+// chunk's end split or joined it.
+const merged = mergeSitePlaces(places);
 log("expressway_lanes_probed", {
   dir: target,
   places: merged.length,

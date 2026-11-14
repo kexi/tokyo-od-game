@@ -7,6 +7,10 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:vitest-a2, at: 2026-11-14T21:45:00Z }
+  - { by: process:make-expressway-data-a2, at: 2026-11-14T21:38:00Z }
+  - { by: process:check-expressway-lanes-a2, at: 2026-11-14T21:38:57Z }
+  - { by: process:update-expressway-ledger-a2, at: 2026-11-14T21:39:25Z }
   - { by: process:vitest-pr85-review, at: 2026-11-14T00:00:00Z }
   - { by: process:check-expressway-lanes, at: 2026-11-14T00:00:00Z }
   - { by: process:measure-expressway-area-7c, at: 2026-11-13T10:30:00Z }
@@ -3001,12 +3005,56 @@ f71-pruned の脚が 45° を超える足（4 本）:
 - 2026-11-13 夜、走行が 80 分ずつ 2 回止まった。止まった時刻に、ページで PLATEAU の建物の 3D タイルのルートの tileset の取得が `TypeError: Failed to fetch`（buildings.ts の loadRootTileset）。同じ日に外の API の ENOTFOUND もあり、外のネットワークが途切れ途切れだった。vite は応答していた。
 - 道具を直した: DevTools の呼び出しに上限（`CALL_TIMEOUT_MS` 180 s、scripts/qa/browser.mjs）、投げた試行は invalid（理由つき）で撮り直す（drive-deck.ts）、プロセスが終わる・SIGINT/SIGTERM/SIGHUP を受けると起動した Chrome を閉じる（10〜12 時間前の headless Chrome が 3 つ残っていた）。合否の判定は変えていない。
 
+# A2: PR #85 のレビューで R1 に回した整備（テストと道具、2026-11-15）
+
+既定のタイルは変えていない。絵も変わらないので、撮影はしていない。`ledger.json` で変わるのは lane-in-site 9 件のキーだけ。
+
+## 直したもの
+
+1. **標識のテストの「地表より下」**（`tests/expresswaySigns.test.ts`）: 掘割の標識と、`decks` の `same` の区間の内にある盛土の標識は、地表と比べない。それ以外（高架と、`same` の外の盛土）は `sign.z ≥ 地表 − 0.01 m` を求める。前の版は、盛土を「地表 − 帯（1.5 m）」で見ていた。
+   - 理由: `same` の組の掘割は 2 枚で 1 枚の床版なので、盛土として描く（`heightStretches` の規則）。盛土が地表より下にあるのはその区間だけ。24039751:0 は `same` の内で地表の 1.70 m 下にあり、1.5 m の帯も超えている。前の版のテストが通っていたのは、標識がたまたま浅い測点に立っていたから。
+   - 前提を押さえるテストを足した。盛土の測点で地表 − 0.01 m より低いものは、`same` の内にあるか、T5 が見る端の測点（run の最初か最後の測点で、端が `ground` か `portal`）のどちらか。端の測点は地表に合わせる点で、その許容は T5（`checkGroundEnd`）が持つ。そこでこのテストは端の測点を数えず、代わりに `checkGroundEnd` を掛けて違反が無いことを確かめる。
+   - 端の測点に当たるのは、今は 24402609:0 の s 0 だけ。坑口の端が地表の 0.030 m 下にあり、`GROUND_END_BAND` 0.04 m の内、T5 の 0.05 m の内にある。
+   - Why not 端から n m を除く: 端の測点より内側は T5 の対象でなく、地表にも合わせていない（24402609 は 12 m 先で地表の 1.67 m 上）。
+   - S7-2 で坑口の端が地下 run への seam に変われば、この端は `portal` でなくなる。テストは端の種類で対象を決めているので、直しは要らない見込み。
+   - 残る懸念（直していない）: 標識が T5 の端の測点の真上に立つと、標識のテストが落ちうる。今の既定データに該当は無い。
+2. **lane-in-site のキー**: `lane-in-site:<run>|w<街路の幅>|<n>`。n は、その run の同じ幅の場所を `s0` の順に 1 から数えた番号（`scripts/expresswaySiteLanes.ts sitePlaceKeys`、`expresswayCases.ts laneInSiteCases`）。前のキーは `<チャンク>|<丸めた s0>-<丸めた s1>` で、作り直しでチャンクの番号や区間が 1 m ずれるたびに gone + new になっていた。
+   - Why not 街路の ID: GSI の `RoadLine` に安定した ID が無い。
+   - Why not 緯度経度の丸め: 場所の広がりは床版の位置で動くので、丸めた点が境をまたいで変わる。
+   - 限界: キーは場所を名指ししない。同じ run・同じ幅で場所が増えたり減ったりすると後ろの番号がずれ、ずれた場所が、別の場所のために判定したキーを引き継ぐ。
+     - 訂正（PR #88 のレビュー）: 前は「ずれた分は gone + new になる」と書いていたが、誤り（設計の見込み違い）。cap が `lengthM` だけだったので、`updateLedger` は、キーが同じで長さが cap + 5 m に収まれば、別の場所にも accepted を引き継いでいた。
+     - 例: 24402611 の幅 4.3 m の場所が消えて s 900〜906 に出ても、accepted のまま残った。4848755 の幅 9 m の 1 つ目が消えると、2 つ目が 1 番になって 1 つ目の判定を引き継いだ。
+     - 直し: `CAP_FIELDS["lane-in-site"]` を `["lengthM", "s0", "s1"]` にした。9 件の cap に measured の s0・s1 を足した（レビュー Fable の判定）。区間が cap から外れれば（始まり −5 m・終わり +5 m の余裕の外）、new に戻る。上の 2 つの筋書きは `tests/expresswayLedger.test.ts` で new に戻ることを確かめた。
+   - 探りのまとめ方も、チャンクごとから run ごとに直した。同じ run・同じ幅で、`s0 ≤ 前の s1 + 1 m` なら 1 つにまとめ、`chunk` の欄には `s0` を含むチャンクを残す。チャンクの境をまたぐ場所が 2 件に割れることは、もう無い。
+3. **探りの判定を純粋な関数に**（`scripts/expresswaySiteLanes.ts` の `laneOverSite`・`mergeSitePlaces`、`tests/expresswaySiteLanes.test.ts`）。判定は「車線の中心が床版の縁の内（`dist ≤ edge`）を 3 m 以上通り、床版の最初と最後の測点から 0.5 m の内は数えない」。
+   - `scripts/expresswayHoleLanes.ts` の判定は形が違うので、共通にしていない。穴は端面を除かず、最短の距離を縁の外の点からも取り、`half + SITE_MARGIN_M` で見る。
+4. **`perf-deck.ts`** は、車を置く場所を run と距離で書く（`{ run: "24402611", s: 2177.46 }`）。値は 652515b の 24402611:15 の最初の測点 2164.88 m に、長さ 20.97 m の 0.6 を足したもの。経路表と同じ `chunkAt` で、配るデータからチャンクと割合を引く。
+5. **`withinCap` の `kind` を必須に**: 省くと「その類型の `CAP_FIELDS` にあって、今は測っているが cap に無い項目は外れ」の検査が掛からなかった。高い床版のテストの cap には、`CAP_FIELDS` の `s0`・`s1` を足した。
+6. **構造の決定が盛土の端に残す切れ端の検証**（`heightStructures.ts` の `snapDecisionWindows`・`shortLeftovers`、`compile.ts structuresByHeight`）:
+   - 行の端は cm で書いてあり、高さから決まる盛土の端とは `DECISION_END_TOLERANCE_M`（0.5 m、`structureDecisions.ts`）の内で合うものとして読む。この 0.5 m は、行が古くなっていないかの確かめ（行の両端から 0.5 m 内側を見る）がもともと使っていた値に、名前をつけたもの。
+   - 行の端が盛土の内側 0.5 m 以内にあれば、窓をその盛土の端に合わせてから `decideViaduct` を掛ける。掘割や高架の境へは動かさず、窓を縮めることもしない。スコアカード（`structures.decided`）には、行の値をそのまま書く。
+   - それより内側で、窓の端に接して残る盛土が `HEIGHT_STRUCTURES.smoothM`（20 m、ならしの長さ）に満たなければ、ビルドを止める。文言には run・行・残った区間と長さが入る。
+   - 見つけたこと: 895902565 の行（s1 89.16）の盛土の終わりは 89.164 で、4.2 mm の盛土が 2 つの高架の間に残っていた。タイルには出ていなかった（チャンクの境は近くの節点へ寄せられる）。窓を合わせて、この切れ端を無くした。
+   - 訂正: 指示書は最小の長さに `cut.minLengthM`（10 m）を読むとしていたが、誤り。10 m は、掘割がならしで消えないための長さ。この検証は「ならしの後に決定を掛けるので、残った短い区間を誰も均さない」ことの番人なので、ならしと同じ `smoothM` を読む。
+   - Why not 0.5 m を超えて自動で延ばす: 行はユーザーの決定の写しで、行の精度を超えて延ばすと、決定と出力が食い違う。
+   - 同じ 10 m が `cut.minLengthM` と `RAMP_FOOT.minRunM` に別々に書かれている。まとめていない、という記録だけ残す。
+
+## 確かめたこと（trust signal、2026-11-15、M2 Max）
+
+- `just make-expressway-data`（窓を合わせた版）の後、`git status public/data/expressway` は空だった。タイル・`meta.json`・`report.json`・`ledger.json` が main とバイト一致。合わせる前（切れ端を列挙するだけで止めない一時の版）もバイト一致で、列挙された切れ端は 895902565 の 4.2 mm の 1 件だけだった。
+- 探り（既定データ）: `check-expressway-lanes` は 9 か所。`--cases` の JSON は、判定を切り出す前・切り出した後・まとめ方を run ごとに直した後で、`cmp` でバイト一致。`check-hole-lanes` は 14 本・最長 68 m、`check-expressway-feet` は違反 0、`check-expressway-terrain` は車道の上の地形 0。
+- `just update-expressway-ledger`（探り 3 本の一覧つき）: 旧キーの lane-in-site 9 件が gone、新キーの 9 件が new になった。測った値 4 つ（s0・s1・lengthM・streetM）は、9 件とも旧キーと同じ。`budget` は true のまま（lane-in-site 9）。
+- 新キーの判定（レビュー Fable、2026-11-15）: 9 件とも accepted（by review）。旧キーと新キーが同じ事例であること（測った値・run・chunk・district・block・blockHash が同じで、タイルと実行時のコードも同じ）を確かめ、撮影ラウンド 2 の判定を引き継いだ。担当はそれを写すだけにし、旧の判定は `previous` に残した。そのあと `--prune` で gone の 9 件を落とした。結果は 140 件（accepted 136・wontfix 4、new 0・gone 0）で、`budget` も変わっていない。
+- `endTerrainOut`（`check-expressway-terrain` が別に数えるだけの、地表端の輪の内の地形）: 既定範囲で 68（2026-11-15）。A2 はこの探りの入力を変えていない（タイルはバイト一致で、`scripts/expresswayTerrainProbe.ts` と `src/world` にも変更が無い）ので、main でも同じ値のはず。ただし main では測っていない。次に既定データを作り直す PR（S7-6）で、前後を比べる基準にする。68 か所の中身は調べていない（R1-4a の材料）。
+- vitest 全体: 他の作業が並行する中（load average 13〜19）では、5,000 ms の時間切れが回ごとに別のテストで出た。A2 が触っていない expresswayLevelPairs・facade・expresswayGroundTarget・expresswaySignals で、単独なら通る。単独でいちばん遅いテストは、それぞれ 2.0・2.4・2.1・14.1 s（signals は自前の時間を持つテスト）。A2 が足したテストに 1 秒を超えるものは無い（最長は expresswayHeightStructures の 0.1 s）。判定を写した後の全体の実行は、172 ファイルとも通った。
+- `perf-deck.ts` の置き方を前後で 1 回ずつ再現し（同じ URL と手順で、置いた車の緯度経度を出す使い捨てのスクリプト）、位置の差は約 2 mm だった。直した版の `just measure-perf-deck` も、最後まで走ることを確かめた。
+
 # 未対応・既知の欠落
 
 - S7（7c から）: 坑口をつなぐ前に、汐留出口 24402125 の壁高欄が内回りの車線 0 に約 0.25 m 掛かる重なり（parallel-ramp:24402125|24402611、手放しの点 run s 約 4951 から）を解く。今は本線が 45068170 の坑口で行き止まりなので、交通 AI と経路は入らない（reachesStreets のテスト）。
 - R1（7c から）: 並走ランプの分離と断面（汐留出口と内回りの中心間隔 6.77 m）。footDeferrals.ts の 203832842 を戻すと、ship の 23273634 の端は地表端から seam に戻る（最急勾配 3.50 → 1.17 %）。急な地形で地形のコライダーが街路の路面より最大 1.28 m 低い所（24039751 の脇、main からある）。並走する街路の中央帯の規則が入ったら、structureDecisions.ts の 2 行を消し、lane-in-site 9 件を直す。895902565 s 70 の橋脚（区間 815 の下り車線の中心から 0.8 m、main と同じ）も中央帯の規則で扱う。汐留の分離壁の先端（内回り 24402611 の s 約 4951）から細い針状の面が約 2 m 延びて見える（撮影ラウンド 4 の nose-24402125-close、壁か路面かは未確定）。汐留の重なり（S7 の前に解く件）と同じ場所なので一緒に見る。並走する街路の中央帯の規則（中央帯を街路の断面に入れ、掘割の敷地に掛かる車線を車線にしない）と、それに合わせた足の扱い（footDeferrals.ts の 203832842 を戻す、737538573 の street-lane-over-cut）。穴の縁を測点の間で補間する。歩道の多角形・地形の破片（5.F）。
-- PR #85 のレビュー（Fable、REQUEST_CHANGES）で直したもの: 探りで数える 3 類型（foot-side-join・street-lane-over-cut・lane-in-site）を、探りの一覧なしの `just update-expressway-ledger` で、run の block（dataHash）が台帳と違えば `new` に戻す（前の判断は `previous`、`ledger.ts keptProbeCases`・`reopenCases`）。7c のデータで試すと、22a06ab の前に数えた street-lane-over-cut:737538573 が block の違いで `new` に戻り、探り 3 本（穴の車線 14 本・最長 68 m、敷地の 9 か所、足の違反 0）を掛けて一覧を渡すと accepted 136・new 0 に戻った（計測と判断は変わらず、block の値だけ今のデータへ）。構造の決定の表をデータと突き合わせるテスト（表の run が既定データにあり、区間が viaduct）と、表の行数の上限（足 3・構造 4）のテスト。`check-expressway-lanes` の上限は定数 9 をやめ、フォルダの台帳の lane-in-site の件数（`--max` で上書き、台帳が無ければ数えるだけ）。探り 2 本はタイルが無くて飛ばしたチャンクがあれば終了コード 1。標識の「地表より下に無い」は、盛土で丸ごと外すのをやめ、地表 − 帯（`HEIGHT_STRUCTURES.ground.bandM` 1.5 m）で見る（24039751:0 の盛土の標識が地表の 0.26 m 下。`DEM_SINK_FLOOR` 0.25 m では落ちる: 地平 run は設計地盤線の帯で解くので、その帯が限度）。
-- R1（PR #85 のレビューから）: lane-in-site のキー（チャンク ID と丸めた区間）を run と街路で引く形へ（今は番号ずれで gone + new）。探りの判定（車線の中心が縁の内、3 m 以上）の単体テスト。`perf-deck.ts` のチャンク ID の直書きを run と距離へ。`withinCap` の kind を必須に（データテスト 2 本は渡すようにした）。決定で盛土の端に 10 m 未満の切れ端が残る場合の検証（今の 2 行では起きない）。
+- PR #85 のレビュー（Fable、REQUEST_CHANGES）で直したもの: 探りで数える 3 類型（foot-side-join・street-lane-over-cut・lane-in-site）を、探りの一覧なしの `just update-expressway-ledger` で、run の block（dataHash）が台帳と違えば `new` に戻す（前の判断は `previous`、`ledger.ts keptProbeCases`・`reopenCases`）。7c のデータで試すと、22a06ab の前に数えた street-lane-over-cut:737538573 が block の違いで `new` に戻り、探り 3 本（穴の車線 14 本・最長 68 m、敷地の 9 か所、足の違反 0）を掛けて一覧を渡すと accepted 136・new 0 に戻った（計測と判断は変わらず、block の値だけ今のデータへ）。構造の決定の表をデータと突き合わせるテスト（表の run が既定データにあり、区間が viaduct）と、表の行数の上限（足 3・構造 4）のテスト。`check-expressway-lanes` の上限は定数 9 をやめ、フォルダの台帳の lane-in-site の件数（`--max` で上書き、台帳が無ければ数えるだけ）。探り 2 本はタイルが無くて飛ばしたチャンクがあれば終了コード 1。~~標識の「地表より下に無い」は、盛土で丸ごと外すのをやめ、地表 − 帯（`HEIGHT_STRUCTURES.ground.bandM` 1.5 m）で見る（24039751:0 の盛土の標識が地表の 0.26 m 下。`DEM_SINK_FLOOR` 0.25 m では落ちる: 地平 run は設計地盤線の帯で解くので、その帯が限度）。~~ → A2 で、`same` の区間の内の盛土と掘割は比べず、ほかは地表 − 0.01 m で見る形に直した（24039751:0 は `same` の内で 1.70 m 下にあり、帯も超えていた）。
+- ~~R1（PR #85 のレビューから）: lane-in-site のキー（チャンク ID と丸めた区間）を run と街路で引く形へ（今は番号ずれで gone + new）。探りの判定（車線の中心が縁の内、3 m 以上）の単体テスト。`perf-deck.ts` のチャンク ID の直書きを run と距離へ。`withinCap` の kind を必須に（データテスト 2 本は渡すようにした）。決定で盛土の端に 10 m 未満の切れ端が残る場合の検証（今の 2 行では起きない）。~~ → 上の「A2」で済み。切れ端の最小は `smoothM`（20 m）に訂正した。行の端が 0.5 m の内なら盛土の端に合わせる。895902565 の行には 4.2 mm の切れ端があった。
 - R1（7c1 から）: `roads.ts deckRank` の見直し（ランプが下の本線の `SURFACE_GATE` 2.5 m の内を通る所で locate が本線を答える、24402125:2 と 45068170:0）。ランプの足の先の地上部を OSM から取る（GSI と OSM の街路が 13〜15 m ずれる足）。F1 (a) の拡張（足の軸を先で横切る GSI 高速道路の線）。敷地が中央帯を並走する街路の断面に中央帯を入れ、車線を穴の外へ寄せる（この街路の内側の車線が実際に穴に掛かるかは未確認）。上の「P2.7-6 PR 7c1」。
 - 標識（P5）、ナビ・自動運転・交通 AI の解除と合流（P6）、トンネル・掘割の地下の分合流と長い地下区間（P9 の残り、上の「逸脱と残課題（P9）」）。
 - ~~同一面の床版の一体化（設計書 4.2）。P3 は相手の床版に載る壁を消すだけで、2 枚の床版は 5 cm 以内で重なったまま（描画のちらつき、車が移るときの最大 5 cm の段差）。~~ → P3.5 で一体化。

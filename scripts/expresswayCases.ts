@@ -25,6 +25,7 @@ import { CLEARANCE_HEIGHT } from "../src/law/roadStandards.ts";
 import { surfaceAt } from "../src/expressway/profile.ts";
 import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge.ts";
 import { framesOf, mergeMisses, probeGenerated } from "./expresswaySeams.ts";
+import { sitePlaceKeys, type SiteLanes } from "./expresswaySiteLanes.ts";
 
 export type CountedCase = FoundCase & { district: District; block: string; blockHash: string };
 
@@ -289,29 +290,22 @@ export async function countCases(files: XwFiles): Promise<Counted> {
 }
 
 /** A street's lanes within an embankment's slab, as scripts/expresswayLanesProbe.ts writes them (--cases). */
-export type SiteLanes = {
-  run: string;
-  chunk: string;
-  s0: number;
-  s1: number;
-  lengthM: number;
-  streetM: number;
-  nearestM: number;
-  lanes: number;
-};
+export type { SiteLanes };
 
 /**
- * The ledger's lane-in-site cases (S6 PR 7c) from the lanes probe's list, one per chunk and street
- * (keyed by the chunk and the street's stretch to the metre). Why not counted here from the files:
- * the lanes are the game's on GSI's streets, which the tests (and CI) do not have.
+ * The ledger's lane-in-site cases (S6 PR 7c) from the lanes probe's list, one per run and street
+ * width's place, keyed by the run, the width and the place's number among the run's of that width
+ * (expresswaySiteLanes.ts sitePlaceKeys, A2). Why not counted here from the files: the lanes are the
+ * game's on GSI's streets, which the tests (and CI) do not have.
  */
 export function laneInSiteCases(
   list: readonly SiteLanes[],
   files: XwFiles,
   districts: ReadonlyMap<string, District>,
 ): CountedCase[] {
-  return list.map((p) => ({
-    key: `lane-in-site:${p.chunk}|${Math.round(p.s0)}-${Math.round(p.s1)}`,
+  const keys = sitePlaceKeys(list);
+  return list.map((p, i) => ({
+    key: keys[i],
     kind: "lane-in-site" as const,
     run: p.run,
     with: null,

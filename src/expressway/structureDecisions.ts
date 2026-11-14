@@ -57,6 +57,14 @@ export const STRUCTURE_DECISIONS: readonly StructureDecision[] = [
   },
 ];
 
+/**
+ * How near a row's end is read as the embankment's end (m): a row's ends are written to the
+ * centimetre, and the embankment's ends come from the height, so they meet within this. The stale
+ * check looks inside it (compile.ts structuresByHeight), and an end this far inside its embankment is
+ * moved to the embankment's end (heightStructures.ts snapDecisionWindows, A2).
+ */
+export const DECISION_END_TOLERANCE_M = 0.5;
+
 /** The decided viaduct stretches of a run (run distances). */
 export function decidedViaducts(table: readonly StructureDecision[], run: string): Array<[number, number]> {
   return table.filter((d) => d.run === run && d.structure === "viaduct").map((d) => [d.s0, d.s1]);
