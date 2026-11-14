@@ -660,8 +660,12 @@ function nearestAhead(
       const isSkipped = isFar || len < 1e-9;
       if (isSkipped) continue;
       const count = Math.max(1, Math.ceil(len / SAMPLE_M));
+      // insertVertex keeps a vertex VERTEX_CLEARANCE_M off the piece's ends: a candidate is judged
+      // where its vertex will stand. Why not the sampled share: at a piece's end the clamp moved the
+      // vertex back behind the lead point, and the leg could turn past 90° (review of 7c1).
+      const margin = Math.min(0.5, VERTEX_CLEARANCE_M / len);
       for (let k = 0; k <= count; k++) {
-        const t = k / count;
+        const t = Math.min(1 - margin, Math.max(margin, k / count));
         const px = a[0] + (b[0] - a[0]) * t;
         const py = a[1] + (b[1] - a[1]) * t;
         const [out, left] = foot.rel(px, py);
@@ -669,7 +673,7 @@ function nearestAhead(
         // Ahead of the lead point only: a leg from it then turns at most 90° (a T, not a way back).
         // Why not unattached where only such a leg is: there is a way that keeps off the walls
         // (250488080:end). Why not a longer lead: that street parts at 45° and would never come
-        // within it; why not a cap on the side leg: RAMP_REACH_M is one (Fable's 7c1 decision).
+        // within it; why not a cap on the side leg: RAMP_REACH_M is one (knowledge「P2.7-6 PR 7c1」).
         const isCandidate = out >= LEAD_M && d <= reach;
         if (!isCandidate) continue;
         const here = { index, piece, t, d };

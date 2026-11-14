@@ -17,6 +17,9 @@ import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
  * its real name and the route it joins) and the street graph. Both stand on the left of the street
  * (別表第一「左側の路端」), on the road administrator's two posts (路側式); 103 at the ramp's mouth,
  * 104 ENTRANCE_BEFORE before it on the same street (別表第一 gives no distance: an assumption).
+ * Where the ramp leaves across the street (its mouth on a street it meets square, S6 PR 7c: a ramp's
+ * foot cut at the street's edge), they stand on the side that turns left into it, the 103-A's arrow
+ * turned by the ramp's angle to that travel (S2 of the design's feet answer).
  *
  * The operator on the upper band is the fictional 「都市高速」 by its i18n key (the board schema
  * allows nothing else); the entrance's and the route's names are the real ones.
@@ -36,6 +39,19 @@ const SIGHT_BEFORE_M = 25;
 const SIGHT_ACROSS_M = 2.5;
 /** The ramp's direction and the street's agree within this (cos): the traffic that turns in, not across. */
 const ALIGNED = 0.3;
+/** The 103-A's arrow at most this far off straight on (deg, content.ts ArrowAngle). */
+const ARROW_MAX_DEG = 135;
+
+/**
+ * The 103-A's arrow for traffic heading `travel` into a ramp heading `up` (deg, + to the left as
+ * junction.ts armVector draws it), rounded to 5°; 0 when the ramp goes straight on.
+ */
+export function entranceArrowDeg(travel: Vector3, up: Vector3): number {
+  const left = leftOf(travel, 1);
+  const deg = (Math.atan2(left.dot(up), travel.dot(up)) * 180) / Math.PI;
+  const clamped = Math.max(-ARROW_MAX_DEG, Math.min(ARROW_MAX_DEG, deg));
+  return Math.round(clamped / 5) * 5;
+}
 
 export function planEntranceBoards(
   graph: RoadGraph,
@@ -58,17 +74,17 @@ export function planEntranceBoards(
     // The ramp's heading on the local frame (anticlockwise from east; local z is south).
     const up = new Vector3(Math.cos(e.heading), 0, -Math.sin(e.heading));
     const along = hit.dir.clone().setY(0).normalize();
-    const dirSign = along.dot(up) >= 0 ? 1 : -1;
     const isAligned = Math.abs(along.dot(up)) >= ALIGNED;
+    // Across the street: the travel that turns left into the ramp (the left side, kept on in Japan).
+    // Why not the right turn too: it crosses the oncoming lanes, and the 103-A stands on the left kerb
+    // of the street it guides; a right-turning driver reads the one of the other side (none stands).
+    const dirSign = isAligned ? (along.dot(up) >= 0 ? 1 : -1) : leftOf(along, 1).dot(up) >= 0 ? 1 : -1;
     const isAllowed = hit.seg.oneway === 0 || hit.seg.oneway === dirSign;
-    if (!isAligned || !isAllowed) {
-      warn("entrance_board_unplaced", {
-        run: e.run,
-        kind: "103-A",
-        reason: isAligned ? "one_way" : "street_across",
-      });
+    if (!isAllowed) {
+      warn("entrance_board_unplaced", { run: e.run, kind: "103-A", reason: "one_way" });
       continue;
     }
+    const arrowDeg = isAligned ? 0 : entranceArrowDeg(along.clone().multiplyScalar(dirSign), up);
     const letter = letterHeight(Math.max(40, speedLimit(hit.seg)), lanesFor(hit.seg));
     const base = {
       operator: "guide.operator" as const,
@@ -134,7 +150,7 @@ export function planEntranceBoards(
     const direction = first(ENTRANCE_BEFORE.value.direction, () => ({
       kind: "103-A",
       ...base,
-      angle: 0,
+      angle: arrowDeg,
       distance: null,
     }));
     if (direction) out.push(direction);
