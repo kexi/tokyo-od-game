@@ -27,6 +27,7 @@ import { NOSE_MAX_DZ_M } from "../src/expressway/overlapClass";
 import { DEFAULT_RANGES } from "../src/expressway/ranges";
 import { OPERATOR_WORDS } from "../src/expressway/network";
 import { TUNNEL_DEPTH_M } from "../src/expressway/below";
+import { FOOT_DEFERRALS } from "../src/expressway/footDeferrals";
 import { surfaceAt } from "../src/expressway/profile";
 import { groundEndsOf, reportedRampFloors } from "../src/expressway/violations";
 import {
@@ -232,9 +233,19 @@ describe("生成済みの高速道路タイル", () => {
       for (let i = 1; i < inside.length; i++) gap = Math.max(gap, inside[i] - inside[i - 1]);
       return { count: inside.length, gap };
     };
-    const over = longestGap(piersOf("24402611"), 700, 1800);
-    expect(over.count).toBeGreaterThanOrEqual(10);
-    expect(over.gap).toBeLessThanOrEqual(90);
+    // Over the tunnel's buried stretch (s 1085–1404) the piers stand at their 35 m spacing: 9 of them,
+    // none more than 90 m apart (the tunnel does not take them).
+    const overTunnel = longestGap(piersOf("24402611"), 1085, 1405);
+    expect(overTunnel.count).toBeGreaterThanOrEqual(9);
+    expect(overTunnel.gap).toBeLessThanOrEqual(90);
+    // s 1050 holds a pier unless another deck than the tunnel lies under 24402611 near it (S6 PR 7c's
+    // design answer: 24402014 at s 1008–1048 in a height build, where the pier moved off a road lands).
+    const hasPierNear1050 = piersOf("24402611").some((s) => Math.abs(s - 1050) <= 17.5);
+    const deckUnder1050 = byRun
+      .get("24402611")!
+      .flatMap((c) => c.decks)
+      .some((d) => d.relation === "above" && d.with !== "737538573" && d.s0 <= 1050 + 5 && d.s1 >= 1050 - 5);
+    expect(hasPierNear1050 || deckUnder1050, "a pier at s 1050, or a deck under it there").toBe(true);
     // The whole run's longest stretch without a pier: s 1404–2275, where it stands over other decks (the
     // C1 changeover) and the tunnel's open stretches; before P9 it was 1505–2275 (770 m).
     expect(longestGap(piersOf("24402611"), 0, Infinity).gap).toBeLessThanOrEqual(875);
@@ -275,17 +286,28 @@ describe("生成済みの高速道路タイル", () => {
     expect(Math.max(...depths)).toBeGreaterThan(TUNNEL_DEPTH_M);
   });
 
+  it("leaves out exactly the decided feet of the range (footDeferrals.ts, S6 PR 7c): report.json's ground.deferred and the table one to one, none of them written", () => {
+    const key = (d: { run: string; end: string; until: string }) => `${d.run}|${d.end}|${d.until}`;
+    const deferred = (record.ground?.deferred ?? []).map(key).sort();
+    // Every row of the table is in the default range today; a row of another range would be skipped.
+    expect(deferred).toEqual(FOOT_DEFERRALS.map(key).sort());
+    const written = new Set(record.runs.map((r) => r.id));
+    expect(FOOT_DEFERRALS.filter((d) => written.has(d.run)).map((d) => d.run)).toEqual([]);
+  });
+
   it("T10: nothing the rules and the ledger do not accept is left (the counts per kind are the ledger's budget)", () => {
     // allowed comes from src/expressway/allowlist.ts's rules and the folder's ledger, recomputed here too.
-    expect(record.diagnostics.filter((d) => !d.allowed || !isAllowed(d, verdict))).toEqual([]);
+    // The range's runs only (S6 PR 7c): a run outside it is solved for its component, judged where written.
+    const ofRange = record.diagnostics.filter((d) => d.outside !== true);
+    expect(ofRange.filter((d) => !d.allowed || !isAllowed(d, verdict))).toEqual([]);
     const unsolved = ["vertical_unsolved", "parent_unsolved", "parent_missing"];
-    expect(record.diagnostics.filter((d) => unsolved.includes(d.kind))).toEqual([]);
+    expect(ofRange.filter((d) => unsolved.includes(d.kind))).toEqual([]);
   });
 
   it("deck_overlap: carriageways over one another are one surface or a level apart; the rest are the reported pairs, each a ledger case within its cap", () => {
     const reported = new Map(
       record.diagnostics
-        .filter((d) => d.kind === "deck_overlap")
+        .filter((d) => d.kind === "deck_overlap" && d.outside !== true)
         .map((d) => [[d.run, /^with (\S+):/.exec(d.detail)![1]].sort().join("|"), d] as const),
     );
     expect([...brute.keys()].sort()).toEqual([...reported.keys()].sort());
@@ -320,7 +342,8 @@ describe("生成済みの高速道路タイル", () => {
   it("says which format it is (meta.version 6) and that every joint solve converged", () => {
     expect(meta.version).toBe(6);
     // P9's tunnels and cuts are named, so a reader without them refuses the files (isSupportedMeta).
-    expect(meta.features).toEqual(["below"]);
+    // S6 PR 7c: the structures by height are the default, so the files name them too.
+    expect(meta.features).toEqual(["below", "height-structures"]);
     expect(record.solver.unconverged).toBe(0);
     expect(record.solver.solves).toBeGreaterThan(0);
     expect(record.diagnostics.filter((d) => d.kind === "solver_not_converged")).toEqual([]);
@@ -501,6 +524,23 @@ describe.each(DISTRICT_LIST)("生成済みの高速道路タイル（地区 %s�
 // The conditions for shipping the whole ward area (P2.5 review), each recomputed from the files.
 describe.runIf(isWholeArea)("全域の出荷条件（--range all の出力）", () => {
   const closed = record.closed;
+
+  it("no run joins a tunnel or a cut at a junction: its parent there is no below run and no bore chunk (S6 PR 7c0: underground junctions are S7's)", () => {
+    const bore = (c: { structure: string }) => c.structure === "tunnel" || c.structure === "cut";
+    const wrong = files.runs.flatMap((r) =>
+      ([r.start, r.end] as const).flatMap((e) => {
+        const isJunction = e.kind === "junction";
+        if (!isJunction) return [];
+        const parent = runs.get(e.parent!);
+        const holding = (byRun.get(e.parent!) ?? []).find(
+          (c) => e.parentS! >= c.st[0] - 0.011 && e.parentS! <= c.st[c.st.length - STATION_STRIDE] + 0.011,
+        );
+        const isUnder = parent?.below === true || (holding !== undefined && bore(holding));
+        return isUnder ? [`${r.id} → ${e.parent} s ${e.parentS}`] : [];
+      }),
+    );
+    expect(wrong).toEqual([]);
+  });
 
   it("no main line is left out, and every run end hangs from a run that is in the files", () => {
     expect(closed.filter((c) => c.cls === "expressway")).toEqual([]);

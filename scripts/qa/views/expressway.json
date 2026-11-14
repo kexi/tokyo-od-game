@@ -43,7 +43,7 @@
           "id": "deck-driver-40",
           "camera": "driver",
           "target": {
-            "expressway": "24402611:20",
+            "expressway": "24402611:21",
             "share": 0.34
           },
           "distanceM": 40,
@@ -66,7 +66,7 @@
           "id": "deck-chase",
           "camera": "chase",
           "target": {
-            "expressway": "24402611:20",
+            "expressway": "24402611:21",
             "share": 0.34
           },
           "distanceM": 25,
@@ -98,7 +98,7 @@
             "ref": "tp"
           },
           "target": {
-            "expressway": "24402611:20",
+            "expressway": "24402611:21",
             "share": 0.34
           },
           "fov": 60,
@@ -130,7 +130,7 @@
             "ref": "tp"
           },
           "target": {
-            "expressway": "24402611:20",
+            "expressway": "24402611:21",
             "share": 0.34
           },
           "fov": 55,
@@ -150,7 +150,7 @@
           "id": "deck-oblique",
           "camera": "overhead",
           "target": {
-            "expressway": "24402611:20",
+            "expressway": "24402611:21",
             "share": 0.34
           },
           "altitudeM": 120,
@@ -166,8 +166,8 @@
           "id": "merge-driver",
           "camera": "driver",
           "target": {
-            "expressway": "207111988:2",
-            "share": 0.7
+            "expressway": "207111988:3",
+            "share": 0.663
           },
           "distanceM": 45,
           "fov": 60,
@@ -184,7 +184,7 @@
           "camera": "driver",
           "target": {
             "expressway": "4853798:0",
-            "share": 0.12
+            "share": 0.649
           },
           "distanceM": 45,
           "fov": 60,
@@ -198,7 +198,7 @@
           "id": "c1-parallel",
           "camera": "overhead",
           "target": {
-            "expressway": "24402611:17",
+            "expressway": "24402611:18",
             "share": 0.5
           },
           "altitudeM": 120,
@@ -238,7 +238,7 @@
           "id": "c1-outer-moved-driver",
           "camera": "driver",
           "target": {
-            "expressway": "45021976:6",
+            "expressway": "45021976:7",
             "share": 0.2
           },
           "distanceM": 60,
@@ -265,7 +265,7 @@
             "ref": "tp"
           },
           "target": {
-            "expressway": "45021976:6",
+            "expressway": "45021976:7",
             "share": 0.44
           },
           "fov": 55,
@@ -291,7 +291,7 @@
           "id": "deck-overhead",
           "camera": "overhead",
           "target": {
-            "expressway": "24402611:14",
+            "expressway": "24402611:15",
             "share": 0.5
           },
           "altitudeM": 220,
@@ -306,8 +306,8 @@
           "id": "merge-overhead",
           "camera": "overhead",
           "target": {
-            "expressway": "207111988:2",
-            "share": 0.85
+            "expressway": "207111988:3",
+            "share": 0.832
           },
           "altitudeM": 90,
           "pitchDeg": 80,
@@ -323,7 +323,7 @@
           "camera": "overhead",
           "target": {
             "expressway": "4853799:0",
-            "share": 0.1
+            "share": 0.103
           },
           "altitudeM": 90,
           "pitchDeg": 80,
@@ -337,8 +337,8 @@
           "id": "diverge-outer-overhead",
           "camera": "overhead",
           "target": {
-            "expressway": "4853798:0",
-            "share": 0.3
+            "expressway": "4853798:1",
+            "share": 0.194
           },
           "altitudeM": 70,
           "pitchDeg": 80,
@@ -390,7 +390,7 @@
             "ref": "tp"
           },
           "target": {
-            "expressway": "24402611:21",
+            "expressway": "24402611:22",
             "share": 0.1
           },
           "fov": 55,
@@ -414,7 +414,7 @@
             "ref": "tp"
           },
           "target": {
-            "expressway": "24402611:26",
+            "expressway": "24402611:27",
             "share": 0.47
           },
           "fov": 55,
@@ -426,7 +426,7 @@
           "id": "changeover-c1-813455519",
           "camera": "overhead",
           "target": {
-            "expressway": "24402611:22",
+            "expressway": "24402611:23",
             "share": 0.89
           },
           "altitudeM": 150,
@@ -456,7 +456,7 @@
           "id": "changeover-c1outer-4848762",
           "camera": "overhead",
           "target": {
-            "expressway": "45021976:10",
+            "expressway": "45021976:11",
             "share": 0.87
           },
           "altitudeM": 150,
@@ -472,7 +472,7 @@
           "camera": "overhead",
           "target": {
             "expressway": "45019020:40",
-            "share": 1.0
+            "share": 1
           },
           "altitudeM": 180,
           "pitchDeg": 70,
@@ -501,7 +501,7 @@
           "id": "merge-45021976-11",
           "camera": "overhead",
           "target": {
-            "expressway": "45021976:11",
+            "expressway": "45021976:12",
             "share": 0.12
           },
           "altitudeM": 70,
@@ -516,7 +516,7 @@
           "id": "merge-45021976-14",
           "camera": "overhead",
           "target": {
-            "expressway": "45021976:14",
+            "expressway": "45021976:15",
             "share": 0.68
           },
           "altitudeM": 70,
@@ -531,7 +531,7 @@
           "id": "merge-45021976-16",
           "camera": "overhead",
           "target": {
-            "expressway": "45021976:16",
+            "expressway": "45021976:17",
             "share": 0.97
           },
           "altitudeM": 70,
@@ -546,7 +546,7 @@
           "id": "merge-45554540-32",
           "camera": "overhead",
           "target": {
-            "expressway": "45554540:32",
+            "expressway": "45554540:33",
             "share": 0.2
           },
           "altitudeM": 70,
@@ -561,7 +561,7 @@
           "id": "merge-45554540-33",
           "camera": "overhead",
           "target": {
-            "expressway": "45554540:33",
+            "expressway": "45554540:34",
             "share": 0.22
           },
           "altitudeM": 70,
@@ -577,7 +577,7 @@
           "camera": "overhead",
           "target": {
             "expressway": "4848762:1",
-            "share": 1.0
+            "share": 1
           },
           "altitudeM": 70,
           "pitchDeg": 65,
@@ -776,7 +776,7 @@
           "camera": "driver",
           "target": {
             "expressway": "45068172:1",
-            "share": 0.75
+            "share": 0.78
           },
           "distanceM": 45,
           "fov": 60,
@@ -791,7 +791,7 @@
           "camera": "overhead",
           "target": {
             "expressway": "45068172:1",
-            "share": 0.85
+            "share": 0.868
           },
           "altitudeM": 90,
           "pitchDeg": 80,
@@ -852,7 +852,7 @@
           "id": "merge-24402611-29",
           "camera": "overhead",
           "target": {
-            "expressway": "24402611:29",
+            "expressway": "24402611:30",
             "share": 0.91
           },
           "altitudeM": 70,
@@ -880,8 +880,8 @@
           "id": "daiba-exit-driver",
           "camera": "driver",
           "target": {
-            "expressway": "4848889:1",
-            "share": 0.9
+            "expressway": "4848889:2",
+            "share": 0.587
           },
           "distanceM": 60,
           "fov": 55,
@@ -908,7 +908,7 @@
           },
           "target": {
             "expressway": "4848889:2",
-            "share": 0.05
+            "share": 0.73
           },
           "fov": 55,
           "expect": {
@@ -920,8 +920,8 @@
           "id": "daiba-overhead",
           "camera": "overhead",
           "target": {
-            "expressway": "4848755:1",
-            "share": 0.7
+            "expressway": "4848755:2",
+            "share": 0.6
           },
           "altitudeM": 150,
           "pitchDeg": 75,
@@ -935,8 +935,8 @@
           "id": "shibaura-entrance-driver",
           "camera": "driver",
           "target": {
-            "expressway": "4848755:1",
-            "share": 0.5
+            "expressway": "4848755:2",
+            "share": 0.342
           },
           "distanceM": 60,
           "fov": 55,
@@ -962,8 +962,8 @@
             "ref": "tp"
           },
           "target": {
-            "expressway": "4848755:1",
-            "share": 0.7
+            "expressway": "4848755:2",
+            "share": 0.6
           },
           "fov": 55,
           "expect": {
@@ -1017,13 +1017,13 @@
           "eye": {
             "lat": 35.635478,
             "lon": 139.774551,
-            "h": 12.0,
+            "h": 12,
             "ref": "tp"
           },
           "lookAt": {
             "lat": 35.636102,
             "lon": 139.774444,
-            "h": 10.0,
+            "h": 10,
             "ref": "tp"
           },
           "target": {
@@ -1056,7 +1056,7 @@
           "camera": "overhead",
           "target": {
             "expressway": "45019020:5",
-            "share": 1.0
+            "share": 1
           },
           "altitudeM": 180,
           "pitchDeg": 70,
@@ -1071,7 +1071,7 @@
           "camera": "overhead",
           "target": {
             "expressway": "4848889:0",
-            "share": 0.64
+            "share": 0.997
           },
           "altitudeM": 50,
           "pitchDeg": 60,
@@ -1107,6 +1107,1393 @@
           "fov": 50,
           "expect": {
             "overlap": "changeover:45021972|45554540（17 測点・0.05–6.63 m）。1 号羽田線の上り下りが二層 ⇔ 並列に移る所で床版が貫通しない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "kasumigaseki",
+      "start": [35.671, 139.7429],
+      "views": [
+        {
+          "id": "kasumi-street-under-n",
+          "camera": "free",
+          "eye": {
+            "lat": 35.670779,
+            "lon": 139.743248,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.671182,
+            "lon": 139.742651,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "target": {
+            "expressway": "24402611:1",
+            "share": 0.108
+          },
+          "fov": 60,
+          "expect": {
+            "span": "霞が関の低い径間（24402611、窓の下面 2.61〜3.65 m）の下を街路でくぐる。街路が盛土の壁で切られず、桁の下に壁・柱が無い",
+            "girder": "桁は 1.7 m。乗用車は抜け、8 t トラック・バスは桁に当たる高さ（R で取付けを上げる不足、台帳の low-clearance）"
+          }
+        },
+        {
+          "id": "kasumi-street-under-s",
+          "camera": "free",
+          "eye": {
+            "lat": 35.671182,
+            "lon": 139.742651,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.670779,
+            "lon": 139.743248,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "target": {
+            "expressway": "24402611:1",
+            "share": 0.108
+          },
+          "fov": 60,
+          "expect": {
+            "span": "反対の向きから同じ径間をくぐる。橋台（盛土の端面）が街路の縁に立ち、車道に出ない"
+          }
+        },
+        {
+          "id": "kasumi-side",
+          "camera": "free",
+          "eye": {
+            "lat": 35.670849,
+            "lon": 139.743319,
+            "h": 4,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6710496,
+            "lon": 139.7430197,
+            "h": 12.4,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402611:1",
+            "share": 0.055
+          },
+          "fov": 55,
+          "expect": {
+            "abutment": "盛土 → 高架（径間）の境の端面と橋台。端面が路面より上に出ず、宙に浮いた壁が無い",
+            "piers": "径間の窓の内に橋脚が無い（50.6 m の径間）"
+          }
+        },
+        {
+          "id": "kasumi-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:1",
+            "share": 0.108
+          },
+          "altitudeM": 90,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "span": "盛土が s 60 で終わり、街路 3 本の上を高架がまたぐ。桁 1.7 m → 2.2 m の段"
+          }
+        },
+        {
+          "id": "kasumi2-street-under",
+          "camera": "free",
+          "eye": {
+            "lat": 35.671193,
+            "lon": 139.742547,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.670791,
+            "lon": 139.743144,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "target": {
+            "expressway": "895902565:6",
+            "share": 0.914
+          },
+          "fov": 60,
+          "expect": {
+            "span": "895902565 の低い径間（窓の下面 2.83〜3.81 m）の下を街路でくぐる。内側の壁が車道に出ない"
+          }
+        },
+        {
+          "id": "kasumi2-side",
+          "camera": "free",
+          "eye": {
+            "lat": 35.671112,
+            "lon": 139.742464,
+            "h": 4,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6709088,
+            "lon": 139.7427612,
+            "h": 13.7,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "895902565:6",
+            "share": 0.86
+          },
+          "fov": 55,
+          "expect": {
+            "abutment": "895902565 の盛土の端面（6.1 m のずれ）と径間の橋台",
+            "piers": "低い径間の窓（s 836.65〜876.27）の内に橋脚が無い。窓の手前の橋脚（s 834.64）は並走する幅 50 m の街路の中央帯に立つ（実物どおり。横断歩道から離すのは R1）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "shiodome-approach",
+      "start": [35.6624, 139.762],
+      "views": [
+        {
+          "id": "shiodome-approach-in-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45068169:0",
+            "share": 0.331
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "ground": "汐留の取付け 45068169（地平 run、坑口の外）。盛土と掘割の境で路面が波打たず、地形が車道に出ない",
+            "portal": "坑口の手前の掘割の擁壁と地形の穴の縁"
+          }
+        },
+        {
+          "id": "shiodome-approach-out-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45068170:0",
+            "share": 0.772
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "ground": "45068170 を坑口へ下る。掘割の擁壁が両側に立ち、坑口の手前で地形が覆い被さらない"
+          }
+        },
+        {
+          "id": "shiodome-approach-side",
+          "camera": "free",
+          "eye": {
+            "lat": 35.662026,
+            "lon": 139.761965,
+            "h": 8.3,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.6621165,
+            "lon": 139.7617994,
+            "h": 2.3,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "45068169:0",
+            "share": 0.551
+          },
+          "fov": 55,
+          "expect": {
+            "walls": "盛土の壁が地表から路面まで立ち、壁の外に地面のコライダーの帯（7b）",
+            "seam": "地平 run → 高架 45021976 の seam で段が無い"
+          }
+        },
+        {
+          "id": "shiodome-approach-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "45068169:0",
+            "share": 0.662
+          },
+          "altitudeM": 110,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "pairs": "45068169・45068170・45068172 の並びと、外す組 45068169|45068172 の床版の重なり（2.27〜6.05 m）",
+            "deck": "床版の食い込みが車線に無い"
+          }
+        },
+        {
+          "id": "low-viaduct-24402125",
+          "camera": "free",
+          "eye": {
+            "lat": 35.661014,
+            "lon": 139.760316,
+            "h": 2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.660874,
+            "lon": 139.7606,
+            "h": 8.1,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402125:0",
+            "share": 0.472
+          },
+          "fov": 55,
+          "expect": {
+            "lowViaduct": "low-viaduct:24402125|0（s 75.6〜100.8、6.11 m）。桁下が見えて橋脚が立ち、宙に浮いた壁が無い"
+          }
+        },
+        {
+          "id": "shiodome-lane0-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "24402611:33",
+            "share": 0.244
+          },
+          "distanceM": 15,
+          "fov": 60,
+          "expect": {
+            "lane0": "内回りの車線 0（左）を run s 4940 から。手放しの点（run s 約 4951）から先で汐留出口 24402125:0 の右の壁高欄が車線 0 に約 0.25 m 掛かる（台帳 parallel-ramp:24402125|24402611）。車線 1 は掛からない",
+            "s7": "坑口をつなぐ前に解く重なり（S7）"
+          },
+          "lateralM": -1.625
+        },
+        {
+          "id": "shiodome-lane0-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:33",
+            "share": 0.27
+          },
+          "altitudeM": 45,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "lane0": "汐留出口 24402125 が内回りの左を並走して離れる所。手放しの点から先で、出口の床版・壁高欄が内回りの車線 0 の左に掛かる幅（約 0.25 m）。merge_skipped 2 件の区間の始まり"
+          }
+        },
+        {
+          "id": "nose-24402125-close",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:33",
+            "share": 0.21
+          },
+          "altitudeM": 12,
+          "pitchDeg": 90,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "nose": "手放しの点（内回り 24402611 の s 約 4951、車線 0 の左の壁の先端）の真上 12 m から分離壁の先端を寄りで。先端から車道へ細い面が出ていない（Info nose-sliver-24402125）"
+          }
+        },
+        {
+          "id": "foot-24402125-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402125:2",
+            "share": 0.929
+          },
+          "altitudeM": 45,
+          "pitchDeg": 60,
+          "angleDeg": 0,
+          "fov": 55,
+          "expect": {
+            "foot": "汐留出口の足（24402125 の地表端、7c2 で 45068171 を含めた）。足の先 20 m で connector が真っすぐ出て街路に取り付き、壁を横切らない"
+          }
+        },
+        {
+          "id": "foot-23705286-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "23705286:0",
+            "share": 0.114
+          },
+          "altitudeM": 45,
+          "pitchDeg": 60,
+          "angleDeg": 180,
+          "fov": 55,
+          "expect": {
+            "foot": "汐留入口の足（23705286 の地表端、街路の縁で切った）。connector が街路から足へ真っすぐ入り、壁を横切らない"
+          }
+        },
+        {
+          "id": "low-viaduct-45068172",
+          "camera": "free",
+          "eye": {
+            "lat": 35.660622,
+            "lon": 139.761083,
+            "h": 2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6607803,
+            "lon": 139.7608141,
+            "h": 8,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "45068172:1",
+            "share": 0.614
+          },
+          "fov": 55,
+          "expect": {
+            "lowViaduct": "low-viaduct:45068172|0（s 266〜304、5.99 m）。桁下が見えて橋脚が立ち、宙に浮いた壁が無い"
+          }
+        }
+      ]
+    },
+    {
+      "id": "shiodome-approach-2",
+      "start": [35.6717, 139.7441],
+      "views": [
+        {
+          "id": "shiodome-24402609-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "24402609:0",
+            "share": 0.529
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "split": "24039751 と 24402609 の同一面（坑口側の割れ、既知・wontfix 予定: 見送ったトンネルの口、S7 で直す）。2 枚の路面の差が坑口へ向けて開く"
+          }
+        },
+        {
+          "id": "shiodome-24402609-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402609:0",
+            "share": 0.529
+          },
+          "altitudeM": 70,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "split": "坑口側で 2 枚の床版が最大 1.69 m 離れる（同一面の区間）。未許可の 3 組（0.07〜0.13 m）がある所"
+          }
+        }
+      ]
+    },
+    {
+      "id": "haneda-ground",
+      "start": [35.5823, 139.7446],
+      "views": [
+        {
+          "id": "haneda-ground-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45554541:3",
+            "share": 0.763
+          },
+          "distanceM": 60,
+          "fov": 60,
+          "expect": {
+            "ground": "1 号羽田線の地平 run 45554541 の本線。路面が地表の凸凹に乗らず、運転席で波打たない",
+            "cut": "盛土と掘割の境・長い掘割の擁壁"
+          }
+        },
+        {
+          "id": "haneda-ground-side",
+          "camera": "free",
+          "eye": {
+            "lat": 35.584751,
+            "lon": 139.743196,
+            "h": 7.8,
+            "ref": "tp"
+          },
+          "lookAt": {
+            "lat": 35.5847944,
+            "lon": 139.7433179,
+            "h": 4.8,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "45554541:5",
+            "share": 0.098
+          },
+          "fov": 55,
+          "expect": {
+            "walls": "盛土・掘割の擁壁と地形の穴の縁。壁の天端の上から車道が見え、地形が車道に出ない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "haneda-ground-2",
+      "start": [35.5872, 139.7412],
+      "views": [
+        {
+          "id": "haneda-ground-seam-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45554541:9",
+            "share": 0.695
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "seam": "地平 run 45554541 → 高架 45554540 の seam。段・折れが無く、壁高欄がつながる"
+          }
+        },
+        {
+          "id": "haneda-ground-down-seam",
+          "camera": "driver",
+          "target": {
+            "expressway": "5213324:0",
+            "share": 0.661
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "seam": "高架 45021972 → 地平 run 5213324 の seam"
+          }
+        }
+      ]
+    },
+    {
+      "id": "haneda-ground-3",
+      "start": [35.5994, 139.7434],
+      "views": [
+        {
+          "id": "haneda-companions",
+          "camera": "overhead",
+          "target": {
+            "expressway": "45554540:7",
+            "share": 0.784
+          },
+          "altitudeM": 90,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "companions": "並走の組 45021972|45554540 の高さがそろう（companions）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "haneda-ground-4",
+      "start": [35.652, 139.7598],
+      "views": [
+        {
+          "id": "merge-45554540-33-45021972",
+          "camera": "overhead",
+          "target": {
+            "expressway": "45554540:33",
+            "share": 0.36
+          },
+          "altitudeM": 60,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "merge": "merge_skipped:45554540:33|45021972（1 号羽田線の上下線の二層 → 並列、s 7792.9〜7817.4）。companions on で最大 3.28 → 3.50 m。描き分けた 2 枚の床版の見え方と、下の床版の頭上（桁下）が前と変わらない"
+          }
+        },
+        {
+          "id": "haneda-lanes-2-4",
+          "camera": "driver",
+          "target": {
+            "expressway": "45554540:31",
+            "share": 0.95
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "seam": "2 → 4 車線の継ぎ目（45554540:30 → :31、s 7510.91）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "overlap-pairs",
+      "start": [35.6617, 139.7613],
+      "views": [
+        {
+          "id": "untied-24402125-45068170-a",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402125:1",
+            "share": 0.019
+          },
+          "altitudeM": 80,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "untied": "外す組 24402125|45068170（20 測点、0.16〜6.19 m、24402125 が上の区間 s 182.67〜373.25）。2 本が同じ場所へ降りる形に見え、床版の食い込みが車線に無い"
+          }
+        },
+        {
+          "id": "untied-24402125-45068170-b",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402125:1",
+            "share": 0.868
+          },
+          "altitudeM": 80,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "untied": "同じ組の先（|Δz| の大きい側）。上下に分かれた 2 枚の床版の間に、車線へ出る壁・面の切れ端が無い"
+          }
+        },
+        {
+          "id": "untied-24402125-45068170-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "24402125:1",
+            "share": 0.215
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "untied": "汐留出口 24402125 の運転席から。下の 45068170 の床版・壁が車線に食い込まない"
+          }
+        },
+        {
+          "id": "untied-45068170-under-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45068170:0",
+            "share": 0.331
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "untied": "45068170 の運転席から。上の 24402125 の桁の下を通り、桁・橋脚が車線に無い"
+          }
+        },
+        {
+          "id": "untied-45068169-45068172-a",
+          "camera": "overhead",
+          "target": {
+            "expressway": "45068169:0",
+            "share": 0.221
+          },
+          "altitudeM": 80,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "untied": "外す組 45068169|45068172（15 測点、2.27〜6.05 m、45068169 が下の区間 s 0〜181.37）。2 本が同じ場所へ降りる形に見え、床版の食い込みが車線に無い"
+          }
+        },
+        {
+          "id": "untied-45068169-45068172-b",
+          "camera": "overhead",
+          "target": {
+            "expressway": "45068169:0",
+            "share": 0.772
+          },
+          "altitudeM": 80,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "untied": "同じ組の坑口寄り"
+          }
+        },
+        {
+          "id": "untied-45068172-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "45068172:1",
+            "share": 0.267
+          },
+          "distanceM": 40,
+          "fov": 60,
+          "expect": {
+            "untied": "汐留入口 45068172 の運転席から。下の 45068169 の床版・壁が車線に食い込まない"
+          }
+        },
+        {
+          "id": "same-45068169-45068170",
+          "camera": "overhead",
+          "target": {
+            "expressway": "45068170:0",
+            "share": 0.496
+          },
+          "altitudeM": 50,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "same": "other:45068169|45068170（4 測点、0.06〜0.22 m、同一面 s 0〜181.37）。2 枚の路面の境に段・隙間が見えない"
+          }
+        },
+        {
+          "id": "touchdown-24402611-45068169",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:33",
+            "share": 0.982
+          },
+          "altitudeM": 35,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "touchdown": "touchdown:24402611|45068169（2 測点、0.06 m、24402611 の s 5039.6〜5043.1）。継ぎ目に段・穴が無い"
+          }
+        }
+      ]
+    },
+    {
+      "id": "overlap-pairs-2",
+      "start": [35.6716, 139.7435],
+      "views": [
+        {
+          "id": "touchdown-24039751-24402611",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24039751:0",
+            "share": 0.019
+          },
+          "altitudeM": 35,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "touchdown": "touchdown:24039751|24402611（2 測点、0.07 m、24039751 の s 0〜2.5）。継ぎ目に段・穴が無い"
+          }
+        },
+        {
+          "id": "same-24039751-24402609",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24039751:0",
+            "share": 0.569
+          },
+          "altitudeM": 50,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "same": "other:24039751|24402609（12 測点、0.07〜0.13 m、同一面 s 0〜107）。2 枚の路面の境に段・隙間が見えない"
+          }
+        },
+        {
+          "id": "touchdown-24402609-895902565",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402609:0",
+            "share": 0.97
+          },
+          "altitudeM": 35,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "touchdown": "touchdown:24402609|895902565（2 測点、0.07 m、24402609 の s 107.93〜113.41）。継ぎ目に段・穴が無い"
+          }
+        }
+      ]
+    },
+    {
+      "id": "overlap-pairs-3",
+      "start": [35.6405, 139.7577],
+      "views": [
+        {
+          "id": "low-clearance-45177678",
+          "camera": "free",
+          "eye": {
+            "lat": 35.640547,
+            "lon": 139.757434,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.64055,
+            "lon": 139.757986,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "target": {
+            "expressway": "45177678:13",
+            "share": 0.619
+          },
+          "fov": 60,
+          "expect": {
+            "clearance": "low-clearance:45177678 × road 1030669187（下面 2.95 m、桁 2.2 m、幅 9 m）。もとからある高架の下。桁・橋脚が車道に出ない"
+          }
+        },
+        {
+          "id": "low-clearance-45177681",
+          "camera": "free",
+          "eye": {
+            "lat": 35.640559,
+            "lon": 139.758138,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.640553,
+            "lon": 139.757585,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "target": {
+            "expressway": "45177681:0",
+            "share": 0.347
+          },
+          "fov": 60,
+          "expect": {
+            "clearance": "low-clearance:45177681 × road 1030669187（下面 2.98 m）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "overlap-pairs-4",
+      "start": [35.6531, 139.747],
+      "views": [
+        {
+          "id": "ramp-radius-4853798-driver",
+          "camera": "driver",
+          "target": {
+            "expressway": "4853798:2",
+            "share": 0.822
+          },
+          "distanceM": 20,
+          "fov": 60,
+          "expect": {
+            "radius": "ramp-radius:4853798（最小半径 13 m、芝公園出口の足。7c2 で 203873824 を含めた）。急な曲がりで壁高欄・路面が折れない",
+            "grade": "足の勾配 −11.35 % から平らな街路へ折れ目なく移る"
+          }
+        },
+        {
+          "id": "foot-4853798-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "4853798:2",
+            "share": 0.97
+          },
+          "altitudeM": 45,
+          "pitchDeg": 60,
+          "angleDeg": 0,
+          "fov": 55,
+          "expect": {
+            "foot": "芝公園出口の足（4853798 の地表端、街路の縁）。足で壁高欄が回り込まず、connector が足の先へ真っすぐ出て街路につながる"
+          }
+        }
+      ]
+    },
+    {
+      "id": "main-embankments",
+      "start": [35.6713, 139.7433],
+      "views": [
+        {
+          "id": "emb-24402611",
+          "camera": "free",
+          "eye": {
+            "lat": 35.67117,
+            "lon": 139.743509,
+            "h": 3,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6713237,
+            "lon": 139.74330619999998,
+            "h": 10.7,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402611:0",
+            "share": 0.504
+          },
+          "fov": 55,
+          "expect": {
+            "embankment": "24402611 の始まりの盛土（0〜60 m）。壁と端面、街路 9 m を切る所（行き止まり）"
+          }
+        },
+        {
+          "id": "street-cut-895902565-911",
+          "camera": "free",
+          "eye": {
+            "lat": 35.671548,
+            "lon": 139.742987,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.671179,
+            "lon": 139.743473,
+            "h": 1.2,
+            "ref": "ground"
+          },
+          "target": {
+            "expressway": "895902565:7",
+            "share": 0.519
+          },
+          "fov": 60,
+          "expect": {
+            "street": "盛土を横切る街路（9 m）が敷地の手前で切れ、行き止まりになる（7b）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "main-embankments-2",
+      "start": [35.6611, 139.7609],
+      "views": [
+        {
+          "id": "emb-45021976",
+          "camera": "free",
+          "eye": {
+            "lat": 35.660929,
+            "lon": 139.761177,
+            "h": 3,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6610514,
+            "lon": 139.7609448,
+            "h": 6.7,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "45021976:0",
+            "share": 0.511
+          },
+          "fov": 55,
+          "expect": {
+            "embankment": "45021976 の盛土と端面"
+          }
+        }
+      ]
+    },
+    {
+      "id": "main-embankments-3",
+      "start": [35.6647, 139.7387],
+      "views": [
+        {
+          "id": "emb-895902565",
+          "camera": "free",
+          "eye": {
+            "lat": 35.664728,
+            "lon": 139.738438,
+            "h": 3,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6646838,
+            "lon": 139.7387096,
+            "h": 26,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "895902565:0",
+            "share": 0.694
+          },
+          "fov": 55,
+          "expect": {
+            "embankment": "895902565 の始まりの盛土と端面"
+          }
+        },
+        {
+          "id": "thin-girder-24402611-7",
+          "camera": "free",
+          "eye": {
+            "lat": 35.663926,
+            "lon": 139.738665,
+            "h": 1.6,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.663765600000005,
+            "lon": 139.73852269999998,
+            "h": 33.8,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "24402611:7",
+            "share": 0.587
+          },
+          "fov": 60,
+          "expect": {
+            "girder": "薄い桁（1.72 m）の下の交差。桁下が見え、道の上に橋脚が無い"
+          }
+        }
+      ]
+    },
+    {
+      "id": "main-embankments-4",
+      "start": [35.6337, 139.7783],
+      "views": [
+        {
+          "id": "emb-4848755",
+          "camera": "free",
+          "eye": {
+            "lat": 35.633574,
+            "lon": 139.778026,
+            "h": 3,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.633700600000004,
+            "lon": 139.7782545,
+            "h": 4.8,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "4848755:0",
+            "share": 0.251
+          },
+          "fov": 55,
+          "expect": {
+            "embankment": "4848755 の盛土と端面"
+          }
+        }
+      ]
+    },
+    {
+      "id": "main-embankments-5",
+      "start": [35.6535, 139.7502],
+      "views": [
+        {
+          "id": "emb-207111988",
+          "camera": "free",
+          "eye": {
+            "lat": 35.653695,
+            "lon": 139.750066,
+            "h": 3,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.653517,
+            "lon": 139.7502373,
+            "h": 6.3,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "207111988:0",
+            "share": 0.551
+          },
+          "fov": 55,
+          "expect": {
+            "embankment": "207111988（芝公園の入口）の盛土と端面"
+          }
+        },
+        {
+          "id": "emb-4853798",
+          "camera": "free",
+          "eye": {
+            "lat": 35.652858,
+            "lon": 139.749776,
+            "h": 3,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6530677,
+            "lon": 139.7496728,
+            "h": 12.4,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "4853798:0",
+            "share": 0.496
+          },
+          "fov": 55,
+          "expect": {
+            "embankment": "4853798（芝公園の出口）の盛土と端面"
+          }
+        },
+        {
+          "id": "emb-4853799",
+          "camera": "free",
+          "eye": {
+            "lat": 35.654495,
+            "lon": 139.746303,
+            "h": 3,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6543287,
+            "lon": 139.7461166,
+            "h": 13.2,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "4853799:0",
+            "share": 0.193
+          },
+          "fov": 55,
+          "expect": {
+            "embankment": "4853799 の盛土と端面"
+          }
+        },
+        {
+          "id": "ground-crossing-861095931",
+          "camera": "free",
+          "eye": {
+            "lat": 35.653637,
+            "lon": 139.749927,
+            "h": 2,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6534111,
+            "lon": 139.7499265,
+            "h": 4.4,
+            "ref": "tp"
+          },
+          "target": {
+            "expressway": "861095931:0",
+            "share": 0.966
+          },
+          "fov": 55,
+          "expect": {
+            "crossing": "芝公園入口の足（861095931、7c2 で街路の縁で切った）。横切る幅 25 m の街路の車線に盛土・壁高欄が無い"
+          }
+        },
+        {
+          "id": "foot-861095931-overhead",
+          "camera": "overhead",
+          "target": {
+            "expressway": "861095931:0",
+            "share": 0.483
+          },
+          "altitudeM": 45,
+          "pitchDeg": 60,
+          "angleDeg": 180,
+          "fov": 55,
+          "expect": {
+            "foot": "芝公園入口の足。connector が街路から足へ真っすぐ入り、103-A・104 が左折で入る向きの左の路端に立つ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "main-embankments-6",
+      "start": [35.6551, 139.7416],
+      "views": [
+        {
+          "id": "companions-taper-24402611-45021976",
+          "camera": "overhead",
+          "target": {
+            "expressway": "24402611:17",
+            "share": 0.275
+          },
+          "altitudeM": 90,
+          "pitchDeg": 65,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "companions": "並走の組 24402611|45021976 の先細りの内"
+          }
+        }
+      ]
+    },
+    {
+      "id": "azabudai-hole",
+      "start": [35.6635, 139.7384],
+      "views": [
+        {
+          "id": "azabudai-hole-overhead",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.6634166,
+              "lon": 139.7383908,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "hole": "麻布台の南の坑口の北 20 m（737538573:2、s 492.7〜512.7）。S6 PR 7c で穴が 20 m 延びた（12 → 14 頂点、1,189 → 1,473 m²: s 492.7 の地表 − 路面が 6.721 → 6.650 m で閾値 6.7 m をまたいだ）。覆いが地形と段なく閉じ、穴の縁に地形の破片・隙間が無い"
+          }
+        },
+        {
+          "id": "azabudai-hole-ground",
+          "camera": "free",
+          "eye": {
+            "lat": 35.66325,
+            "lon": 139.73815,
+            "h": 1.6,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6635,
+            "lon": 139.73841,
+            "h": 0,
+            "ref": "ground"
+          },
+          "fov": 60,
+          "expect": {
+            "hole": "地上の目線で同じ所を見る。穴の縁に段・隙間・地形の破片が無く、延びた 20 m の上に街路・建物が切られていない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "decided",
+      "start": [35.6649, 139.7388],
+      "views": [
+        {
+          "id": "decided-895902565-overhead",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.664949,
+              "lon": 139.73877,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "decided": "決定の表で高架に戻した 895902565 の s 57.6〜91.3。下を幅 40 m の街路の車線が通り、盛土の壁が車線を塞がない。高架と盛土（s 57.6 の手前）の境に壁・蓋の隙間が無い"
+          }
+        },
+        {
+          "id": "decided-895902565-pier",
+          "camera": "free",
+          "eye": {
+            "lat": 35.6648605,
+            "lon": 139.7387639,
+            "h": 1.4,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6649499,
+            "lon": 139.7387785,
+            "h": 2.0,
+            "ref": "ground"
+          },
+          "fov": 60,
+          "expect": {
+            "under": "径間の下に車線が見通せる（区間 815 の下り車線の中心、s 60 から）",
+            "joint": "端面（s 57.6）と径間の境に隙間が無い",
+            "pier": "s 70 の橋脚は車線の中心から 0.8 m"
+          }
+        },
+        {
+          "id": "decided-895902565-endface",
+          "camera": "free",
+          "eye": {
+            "lat": 35.6650839,
+            "lon": 139.7387672,
+            "h": 1.4,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.6648394,
+            "lon": 139.7387455,
+            "h": 2.0,
+            "ref": "ground"
+          },
+          "fov": 60,
+          "expect": {
+            "under": "径間の下に車線が見通せる（区間 815 の下り車線の中心から西へ 3 m、s 85 から南へ。橋脚に隠れない位置）",
+            "joint": "盛土の端面（橋台）と径間の境に壁・蓋の隙間が無い",
+            "pier": "s 70 の橋脚は車線の中心から 0.8 m"
+          }
+        },
+        {
+          "id": "decided-895902565-side",
+          "camera": "free",
+          "eye": {
+            "lat": 35.66498,
+            "lon": 139.738612,
+            "h": 1.6,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.66498,
+            "lon": 139.73878,
+            "h": 3.0,
+            "ref": "ground"
+          },
+          "fov": 70,
+          "expect": {
+            "under": "床版の中心線から西へ 15 m の脇から s 57.6〜91.3 の全体（端面、径間、橋脚、次の高架との継ぎ目）。径間の下に車線が見通せる",
+            "joint": "端面と径間の境に隙間が無い",
+            "pier": "s 70 の橋脚は車線の中心から 0.8 m"
+          }
+        }
+      ]
+    },
+    {
+      "id": "decided-2",
+      "start": [35.6582, 139.7364],
+      "views": [
+        {
+          "id": "decided-45021976-overhead",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.65821,
+              "lon": 139.736412,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "decided": "決定の表で高架に戻した 45021976 の s 3410.6〜3414（汐留の盛土の始まり）。区間 650 の車線が床版の下を通り、盛土の端面が車線に掛からない"
+          }
+        },
+        {
+          "id": "decided-45021976-street",
+          "camera": "free",
+          "eye": {
+            "lat": 35.658103,
+            "lon": 139.736415,
+            "h": 1.4,
+            "ref": "ground"
+          },
+          "lookAt": {
+            "lat": 35.65821,
+            "lon": 139.736412,
+            "h": 2.0,
+            "ref": "ground"
+          },
+          "fov": 60,
+          "expect": {
+            "decided": "街路の目線で同じ所。床版の下に車線が続き、壁・端面が車線に立たない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lane-in-site",
+      "start": [35.6712, 139.7432],
+      "views": [
+        {
+          "id": "lane-in-site-24402611",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.671223,
+              "lon": 139.743196,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "lane": "lane-in-site: 24402611:0 の盛土の脇の幅 50 m の街路（27 m、最短 2.76 m）。車線が盛土の壁に沿う（R1 で直す）"
+          }
+        },
+        {
+          "id": "lane-in-site-895902565-7",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.671242,
+              "lon": 139.743099,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "lane": "lane-in-site: 895902565:7 の盛土に沿う幅 50 m の街路（27 m）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lane-in-site-2",
+      "start": [35.6588, 139.7365],
+      "views": [
+        {
+          "id": "lane-in-site-45021976",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.658815,
+              "lon": 139.736516,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "lane": "lane-in-site: 45021976:23 の盛土の脇の幅 40 m の街路（43 m、最短 0.01 m）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lane-in-site-3",
+      "start": [35.6339, 139.7781],
+      "views": [
+        {
+          "id": "lane-in-site-4848755",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.633924,
+              "lon": 139.778069,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "lane": "lane-in-site: 4848755:0 の盛土に沿う幅 4.3・9 m の街路（最長 52 m、最短 0 m）"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lane-in-site-4",
+      "start": [35.6646, 139.7387],
+      "views": [
+        {
+          "id": "lane-in-site-895902565-0",
+          "camera": "overhead",
+          "target": {
+            "point": {
+              "lat": 35.664596,
+              "lon": 139.738688,
+              "h": 0,
+              "ref": "ground"
+            }
+          },
+          "altitudeM": 60,
+          "pitchDeg": 70,
+          "angleDeg": 0,
+          "fov": 50,
+          "expect": {
+            "lane": "lane-in-site: 895902565:0 の盛土（s 57.6 の手前）に沿う幅 40 m の街路（35 m、最短 0 m）"
           }
         }
       ]

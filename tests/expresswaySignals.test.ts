@@ -121,10 +121,10 @@ describe("合図 (第53条) through every merge and diverge of the generated dat
     expect(booked).toEqual([]);
   }, 60_000);
 
-  it("signals right, never left, before the right-hand branch at 浜崎橋 JCT (24402611:22 → 4848762:0)", () => {
+  it("signals right, never left, before the right-hand branch at 浜崎橋 JCT (24402611:23 → 4848762:0)", () => {
     const link = branches.find(
       (l) =>
-        graph.segments[l.from].line.xid === "24402611:22" && graph.segments[l.to].line.xid === "4848762:0",
+        graph.segments[l.from].line.xid === "24402611:23" && graph.segments[l.to].line.xid === "4848762:0",
     )!;
     expect(link.side).toBe("right");
     const { signals, linkAt } = driveThrough(link);

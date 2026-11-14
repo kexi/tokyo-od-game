@@ -133,8 +133,14 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
   it("gives each sign its deck's road surface and level (a sign on a deck is not on the ground)", () => {
     for (const { chunk, sign } of signs) {
       expect(sign.z).toBeCloseTo(frameAt(chunk.st, sign.s).z, 2);
-      // Never under the ground (a ramp meets it at its ground end: equal there, within the rounding).
-      expect(sign.z).toBeGreaterThanOrEqual(frameAt(chunk.st, sign.s).ground - 0.01);
+      // Never under the ground (a ramp meets it at its ground end: equal there, within the rounding),
+      // but on a cut or an embankment (a height build, S6 PR 7c): a cut is under the ground by what it
+      // is, and a run at grade's embankment may lie within its band under it (203832842:0, 0.2 m).
+      const isOnGround = chunk.structure === "cut" || chunk.structure === "embankment";
+      if (!isOnGround)
+        expect(sign.z, `${sign.id} at ${chunk.id}`).toBeGreaterThanOrEqual(
+          frameAt(chunk.st, sign.s).ground - 0.01,
+        );
       expect(sign.level).toBe(deckLevelAt(chunk, sign.s));
     }
   });

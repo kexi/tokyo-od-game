@@ -153,8 +153,8 @@
           "id": "changeover-c1-895902565",
           "camera": "overhead",
           "target": {
-            "expressway": "24402611:5",
-            "share": 0.0
+            "expressway": "24402611:6",
+            "share": 0
           },
           "altitudeM": 180,
           "pitchDeg": 70,
@@ -168,8 +168,8 @@
           "id": "changeover-c1-895902565-driver",
           "camera": "driver",
           "target": {
-            "expressway": "895902565:4",
-            "share": 0.67
+            "expressway": "895902565:5",
+            "share": 0.77
           },
           "distanceM": 160,
           "fov": 55,
@@ -182,8 +182,8 @@
           "id": "changeover-c1-895902565-oblique",
           "camera": "overhead",
           "target": {
-            "expressway": "895902565:4",
-            "share": 0.36
+            "expressway": "895902565:5",
+            "share": 0.414
           },
           "altitudeM": 100,
           "pitchDeg": 48,
