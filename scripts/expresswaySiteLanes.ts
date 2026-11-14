@@ -1,6 +1,7 @@
 // The lanes probe's judgement (scripts/expresswayLanesProbe.ts, the ledger's lane-in-site), kept apart
 // from the files and tiles it reads so that it can be tested: whether a lane's centre runs within an
-// embankment's slab. Plane positions are three's Vector3 in a LocalFrame (x east, z south; y unused).
+// embankment's slab, how the places a street's pieces make are merged, and how they are numbered for
+// the ledger's key. Plane positions are three's Vector3 in a LocalFrame (x east, z south; y unused).
 import type { Vector3 } from "three";
 
 /** Shorter than this within the slab is a street's end at the site's edge, not a lane over it (m). */
@@ -10,6 +11,9 @@ export const MIN_LENGTH_M = 3;
  * end and the distance is to the end face, not to the slab beside the lane: not counted (m).
  */
 export const END_FACE_M = 0.5;
+/** Places of one run and street width closer than this along the run are one place (m). */
+export const JOIN_GAP_M = 1;
+
 /** An embankment's slab: its centre line (points and their run distances) and the edge's offset. */
 export type SiteLine = { centre: readonly Vector3[]; s: readonly number[]; edgeM: number };
 
@@ -70,4 +74,53 @@ export function laneOverSite(points: readonly Vector3[], site: SiteLine): LaneOv
   const isTooShort = lengthM < MIN_LENGTH_M;
   if (isTooShort) return null;
   return { lengthM, nearestM, s0, s1 };
+}
+
+/**
+ * The places of one street's pieces (split by the graph's nodes, and by the chunks the probe walks)
+ * merged: one place per run and street width while each starts within JOIN_GAP_M of the one before's
+ * end, keeping the first's chunk. Sorted by run, then s0.
+ */
+export function mergeSitePlaces(places: readonly SiteLanes[]): SiteLanes[] {
+  const sorted = places.toSorted((a, b) => (a.run === b.run ? a.s0 - b.s0 : a.run < b.run ? -1 : 1));
+  const merged: SiteLanes[] = [];
+  const open = new Map<string, SiteLanes>();
+  for (const p of sorted) {
+    const group = `${p.run}|${p.streetM}`;
+    const last = open.get(group);
+    const isJoined = last !== undefined && p.s0 <= last.s1 + JOIN_GAP_M;
+    if (isJoined) {
+      last.s1 = Math.max(last.s1, p.s1);
+      last.lengthM = Math.max(last.lengthM, p.lengthM);
+      last.nearestM = Math.min(last.nearestM, p.nearestM);
+      last.lanes = Math.max(last.lanes, p.lanes);
+      continue;
+    }
+    const next = { ...p };
+    merged.push(next);
+    open.set(group, next);
+  }
+  return merged;
+}
+
+/**
+ * The ledger key of each place (in the list's order): `lane-in-site:<run>|w<street width>|<n>`, n
+ * counting the run's places of that width from 1 in order of s0. Why not the chunk and the rounded
+ * stretch (before A2): a rebuild that shifts a chunk's number or the stretch by a metre made every case
+ * gone + new. Why not a street's ID: GSI's RoadLine has none that is stable (roadTiles.ts reads the
+ * width and the kind only). Why not a rounded lat/lon: the place's extent moves with the slab, and a
+ * rounded point jumps across a cell's edge. Its limit: a place of the same run and width added or gone
+ * renumbers those after it (gone + new), which is when the places really changed.
+ */
+export function sitePlaceKeys(list: readonly SiteLanes[]): string[] {
+  const order = list.map((p, i) => ({ p, i })).toSorted((a, b) => a.p.s0 - b.p.s0);
+  const n = new Map<string, number>();
+  const keys: string[] = Array.from({ length: list.length });
+  for (const { p, i } of order) {
+    const group = `${p.run}|w${p.streetM}`;
+    const k = (n.get(group) ?? 0) + 1;
+    n.set(group, k);
+    keys[i] = `lane-in-site:${group}|${k}`;
+  }
+  return keys;
 }

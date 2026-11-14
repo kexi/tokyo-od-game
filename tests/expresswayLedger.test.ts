@@ -199,7 +199,7 @@ const decide = (l: Ledger, key: string, d: Partial<LedgerCase>): Ledger => ({
 
 describe("a probe's cases with no probe list given (keptProbeCases, reopenCases: review of PR #85)", () => {
   const laneCase = {
-    key: "lane-in-site:9:0|10-40",
+    key: "lane-in-site:9|w9|1",
     kind: "lane-in-site" as const,
     run: "9",
     with: null,

@@ -74,8 +74,10 @@ export const LEDGER_VERSION = 1;
  * under 桜田通り), one per run, from scripts/expresswayHoleLanes.ts --cases (the ledger tool's --lanes):
  * listed for R1 (the lanes of a street with a site in it), never by rule.
  * lane-in-site (S6 PR 7c): a street the game keeps (along an embankment or beside it) whose lanes run
- * within the embankment's slab, where its walls stand: one per chunk and street, from
- * scripts/expresswayLanesProbe.ts --cases (the ledger tool's --site-lanes). The low stretches main
+ * within the embankment's slab, where its walls stand: one per run and street width's place, keyed
+ * `lane-in-site:<run>|w<street width>|<n>` (n in order of s0 among the run's places of that width,
+ * scripts/expresswaySiteLanes.ts sitePlaceKeys, A2), from scripts/expresswayLanesProbe.ts --cases
+ * (the ledger tool's --site-lanes). The low stretches main
  * built as viaducts with no clearance under them (R1 fixes the lanes); never by rule.
  */
 export const CASE_KINDS = [

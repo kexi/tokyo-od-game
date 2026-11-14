@@ -4,7 +4,8 @@
 // a ramp's foot is kept), built into the game's lanes (RoadGraph, laneCentreOffset each way a lane is
 // driven), and every lane whose centre comes within the slab's edge (carriageway/2 + PARAPET_WIDTH)
 // for MIN_LENGTH_M or more: a lane the game keeps that runs into the embankment's walls (the judgement
-// in scripts/expresswaySiteLanes.ts). Grouped per chunk and street, one ledger case each. One JSON log line (expressway_lanes_probed); exit code 1
+// and the merging in scripts/expresswaySiteLanes.ts). Grouped per run and street width, one ledger case
+// each. One JSON log line (expressway_lanes_probed); exit code 1
 // when more places are found than the folder's ledger takes as lane-in-site (a new one stops it), or
 // than --max; a folder with neither (a measuring folder) is only counted.
 // Run: pnpm exec tsx scripts/expresswayLanesProbe.ts <dir|label> [--cache <dir>] [--cases <file>] [--max <n>]
@@ -27,7 +28,7 @@ import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { leftOf, RoadGraph, type RoadLine } from "../src/world/roads.ts";
 import { ROAD_TILE_ZOOM, roadLinesOfTile } from "../src/world/roadTiles.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
-import { laneOverSite, type SiteLanes, type SiteLine } from "./expresswaySiteLanes.ts";
+import { laneOverSite, mergeSitePlaces, type SiteLanes, type SiteLine } from "./expresswaySiteLanes.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 /** The decks the game joins round a point (expresswayDeck.ts GRAPH_RADIUS_M). */
@@ -156,20 +157,10 @@ for (const [run, chunks] of files.byRun) {
     }
   }
 }
-// Pieces of one street split by the graph's nodes along one stretch: one place.
-places.sort((a, b) => (a.chunk === b.chunk ? a.s0 - b.s0 : a.chunk < b.chunk ? -1 : 1));
-const merged: SiteLanes[] = [];
-for (const p of places) {
-  const last = merged[merged.length - 1];
-  const isSame =
-    last !== undefined && last.chunk === p.chunk && last.streetM === p.streetM && p.s0 <= last.s1 + 1;
-  if (isSame) {
-    last.s1 = Math.max(last.s1, p.s1);
-    last.lengthM = Math.max(last.lengthM, p.lengthM);
-    last.nearestM = Math.min(last.nearestM, p.nearestM);
-    last.lanes = Math.max(last.lanes, p.lanes);
-  } else merged.push({ ...p });
-}
+// Pieces of one street split by the graph's nodes or by a chunk's end along one stretch: one place.
+// Why not per chunk (before A2): a place across a chunk's end was two, and a rebuild that moved the
+// chunk's end split or joined it.
+const merged = mergeSitePlaces(places);
 log("expressway_lanes_probed", {
   dir: target,
   places: merged.length,
