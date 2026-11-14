@@ -191,6 +191,8 @@ const update = (
   list: ReturnType<typeof found>[],
   extra: Partial<Parameters<typeof updateLedger>[1]> = {},
 ) => updateLedger(prev, { data: DATA, found: list, seamProbes: 10, rules: {}, ...extra });
+/** The status of case `key` in ledger `l`. */
+const statusOf = (l: Ledger, key: string) => l.cases.find((c) => c.key === key)?.status;
 const decide = (l: Ledger, key: string, d: Partial<LedgerCase>): Ledger => ({
   ...l,
   cases: l.cases.map((c) =>
@@ -254,7 +256,6 @@ describe("a lane-in-site key that names no place (run, width, number): its cap h
     decided = decide(decided, c.key, {
       cap: { lengthM: c.measured.lengthM, s0: c.measured.s0, s1: c.measured.s1 },
     });
-  const statusOf = (l: Ledger, key: string) => l.cases.find((c) => c.key === key)?.status;
 
   it("lists the stretch in lane-in-site's CAP_FIELDS", () => {
     expect(CAP_FIELDS["lane-in-site"]).toEqual(["lengthM", "s0", "s1"]);
