@@ -1,4 +1,4 @@
-// Frame intervals with the player's car on an expressway deck (24402611:15), day and rain at night,
+// Frame intervals with the player's car on an expressway deck (C1 内回り 24402611 at s 2177.46), day and rain at night,
 // for the A/B of the deck's materials (knowledge/road-textures.md「性能」). Run it against two dev
 // servers (the change and its base on another port) and compare the JSON. Headless Chrome paces
 // frames in steps of 16.7 ms, so only large changes show.
@@ -7,7 +7,9 @@
 //   pnpm exec tsx scripts/qa/perf-deck.ts [--label L] [--base URL] [--seconds S]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { readExpresswayFiles } from "../expresswayFiles.ts";
 import { launch } from "./browser.mjs";
+import { chunkAt, type RunPlace } from "./deckRoutes.ts";
 import { freePort } from "./ports.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -19,6 +21,16 @@ const flag = (name: string) => {
 const label = flag("label") ?? "run";
 const base = flag("base") ?? "http://localhost:5173/tokyo-od-game/";
 const seconds = Number(flag("seconds") ?? 12);
+/**
+ * Where the car is put, by run and run distance as the route table writes it (deckRoutes.ts), resolved
+ * to a chunk and its share with chunkAt over the data the dev server serves (XW_DATA_DIR else
+ * public/data/expressway). 2177.46 m is 24402611:15's first station (2164.88) + 0.6 of its length
+ * (20.97 m) in the default data of 652515b. Why not the chunk ID: a rebuild renumbers the chunks,
+ * and the ID was put right by hand each time.
+ */
+const DECK_PLACE: RunPlace = { run: "24402611", s: 2177.46 };
+const at = chunkAt(readExpresswayFiles().byRun, DECK_PLACE);
+if (at === null) throw new Error(`no chunk of ${DECK_PLACE.run} at ${DECK_PLACE.s} m`);
 const looks = [
   { id: "day", query: "time=day&weather=clear" },
   { id: "rain-night", query: "time=night&weather=rain" },
@@ -40,7 +52,7 @@ for (const look of looks) {
     await until("window.__game?.getState() === 'ready'");
     await b.evaluate("window.__game.start()");
     await until("__game.debug.settled().isSettled", 120);
-    await until(`__game.debug.expressway.place("24402611:15", 0.6, 0)`, 90);
+    await until(`__game.debug.expressway.place(${JSON.stringify(at.xid)}, ${at.share}, 0)`, 90);
     await until("__game.debug.settled().isSettled", 120);
     await b.sleep(3000);
     const stats = await b.evaluate<Stats>(`new Promise((resolve) => {

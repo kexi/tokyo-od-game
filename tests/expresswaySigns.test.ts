@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
 import { describe, expect, it } from "vitest";
 import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import { planNetwork, solvePlan } from "../src/expressway/compile";
@@ -27,8 +26,9 @@ import {
   SIGN_SPACING,
 } from "../src/signs/expresswaySignAssumptions";
 import { deckLevelAt } from "../src/expressway/deckLevel";
-import { STATION_STRIDE } from "../src/expressway/format";
+import { ST, STATION_STRIDE } from "../src/expressway/format";
 import { surfaceHeight } from "../src/expressway/profile";
+import { checkGroundEnd } from "../src/expressway/checks";
 import { hasOperatorWord } from "../src/game/roadNames";
 import { BOARD_RANGES } from "../src/signs/expresswaySignStandards";
 import { enlargementFor } from "../src/signs/schema";
@@ -52,6 +52,11 @@ const measure: Measure = (font, text) => {
   const px = Number(/(\d+)px/.exec(font)?.[1] ?? 10);
   return [...text].length * px * (font.includes("GuideJP") ? 1 : 0.6);
 };
+/** Whether run distance `s` of the chunk lies inside a stretch it shares one surface with another run. */
+const inSameStretch = (chunk: XwChunk, s: number) =>
+  chunk.decks.some((d) => d.relation === "same" && s >= d.s0 && s <= d.s1);
+/** An end kind T5 meets to the ground (checks.ts checkGroundEnd). */
+const isGroundMetEnd = (kind: string) => kind === "ground" || kind === "portal";
 /** Board size in metres as laid out (the plate size for 323・325: 60 cm at 1.5). */
 const sizeOf = (sign: XwSign) => {
   if (!sign.board) return { width: 0.9, height: 0.9 };
@@ -135,17 +140,62 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
     for (const { chunk, sign } of signs) {
       expect(sign.z).toBeCloseTo(frameAt(chunk.st, sign.s).z, 2);
       // Never under the ground (a ramp meets it at its ground end: equal there, within the rounding).
-      // A cut is under the ground by what it is; an embankment may lie under it within the band of a run
-      // at grade (HEIGHT_STRUCTURES.ground.bandM about the design ground line: 24039751:0, 0.26 m), no
-      // further. Why not DEM_SINK_FLOOR: that floor is a viaduct's, the band is what the solve keeps.
+      // A cut is under the ground by what it is. A pair of cuts sharing one surface (decks `same`) is
+      // one slab of two, drawn as an embankment (heightStretches' rule), so an embankment lies under the
+      // ground only inside a `same` stretch, and is not compared there either. Why not a band below the
+      // ground (HEIGHT_STRUCTURES.ground.bandM): 24039751:0 lies 1.70 m under it inside its `same`
+      // stretch, beyond the band, and a sign at a shallow station passed it only by chance.
       const isCut = chunk.structure === "cut";
-      const sink = chunk.structure === "embankment" ? HEIGHT_STRUCTURES.value.ground.bandM : 0;
-      if (!isCut)
+      const isSharedEmbankment = chunk.structure === "embankment" && inSameStretch(chunk, sign.s);
+      const mayLieUnder = isCut || isSharedEmbankment;
+      if (!mayLieUnder)
         expect(sign.z, `${sign.id} at ${chunk.id}`).toBeGreaterThanOrEqual(
-          frameAt(chunk.st, sign.s).ground - sink - 0.01,
+          frameAt(chunk.st, sign.s).ground - 0.01,
         );
       expect(sign.level).toBe(deckLevelAt(chunk, sign.s));
     }
+  });
+
+  it("finds an embankment's road under the ground only inside its decks' `same` stretches, its ends that meet the ground aside (T5's)", () => {
+    // The sign test's premise. A run's first or last station whose end is `ground` or `portal` is met to
+    // the ground, not sunk under it, and T5 (checkGroundEnd) owns its tolerance: such a station is
+    // checked by T5 here instead of by this test's 0.01 m (24402609:0's portal, 0.030 m under, inside
+    // GROUND_END_BAND). Why not leave out a run's first and last n m: a station inside its end is no
+    // part of T5 and is not met to the ground, so there is no reason to leave it out.
+    const byRun = new Map<string, XwChunk[]>();
+    for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+    for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
+    const runs = new Map(meta.runs.map((r) => [r.id, r]));
+    const outside: string[] = [];
+    const metEnds: string[] = [];
+    const endViolations: string[] = [];
+    for (const chunk of chunks) {
+      if (chunk.structure !== "embankment") continue;
+      const list = byRun.get(chunk.run)!;
+      const run = runs.get(chunk.run)!;
+      const lastStation = chunk.st.length - STATION_STRIDE;
+      for (let i = 0; i < chunk.st.length; i += STATION_STRIDE) {
+        const s = chunk.st[i + ST.s];
+        const depth = chunk.st[i + ST.ground] - chunk.st[i + ST.z];
+        const isUnder = depth > 0.01;
+        if (!isUnder || inSameStretch(chunk, s)) continue;
+        const isRunStart = chunk === list[0] && i === 0;
+        const isRunEnd = chunk === list[list.length - 1] && i === lastStation;
+        const isMetGroundEnd =
+          (isRunStart && isGroundMetEnd(run.start.kind)) || (isRunEnd && isGroundMetEnd(run.end.kind));
+        const where = `${chunk.id} s ${s.toFixed(2)}: ${depth.toFixed(3)} m under`;
+        if (!isMetGroundEnd) {
+          outside.push(where);
+          continue;
+        }
+        metEnds.push(where);
+        endViolations.push(...checkGroundEnd(chunk, run, isRunStart));
+      }
+    }
+    expect(outside).toEqual([]);
+    expect(endViolations).toEqual([]);
+    // Today the one such end is 24402609's portal: another is no defect, only a changed premise to read.
+    expect(metEnds.map((x) => x.split(" ")[0])).toEqual(["24402609:0"]);
   });
 
   it("keeps every overhead board's lower edge 4.7 m over the highest road under it (banked too)", () => {
