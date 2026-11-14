@@ -3021,7 +3021,10 @@ f71-pruned の脚が 45° を超える足（4 本）:
 2. **lane-in-site のキー**: `lane-in-site:<run>|w<街路の幅>|<n>`。n は、その run の同じ幅の場所を `s0` の順に 1 から数えた番号（`scripts/expresswaySiteLanes.ts sitePlaceKeys`、`expresswayCases.ts laneInSiteCases`）。前のキーは `<チャンク>|<丸めた s0>-<丸めた s1>` で、作り直しでチャンクの番号や区間が 1 m ずれるたびに gone + new になっていた。
    - Why not 街路の ID: GSI の `RoadLine` に安定した ID が無い。
    - Why not 緯度経度の丸め: 場所の広がりは床版の位置で動くので、丸めた点が境をまたいで変わる。
-   - 限界: 同じ run・同じ幅で場所が増えたり減ったりすると、後ろの番号がずれて、その分は gone + new になる。場所が本当に変わったときなので、レビューに戻るのは正しい。
+   - 限界: キーは場所を名指ししない。同じ run・同じ幅で場所が増えたり減ったりすると後ろの番号がずれ、ずれた場所が、別の場所のために判定したキーを引き継ぐ。
+     - 訂正（PR #88 のレビュー）: 前は「ずれた分は gone + new になる」と書いていたが、誤り（設計の見込み違い）。cap が `lengthM` だけだったので、`updateLedger` は、キーが同じで長さが cap + 5 m に収まれば、別の場所にも accepted を引き継いでいた。
+     - 例: 24402611 の幅 4.3 m の場所が消えて s 900〜906 に出ても、accepted のまま残った。4848755 の幅 9 m の 1 つ目が消えると、2 つ目が 1 番になって 1 つ目の判定を引き継いだ。
+     - 直し: `CAP_FIELDS["lane-in-site"]` を `["lengthM", "s0", "s1"]` にした。9 件の cap に measured の s0・s1 を足した（レビュー Fable の判定）。区間が cap から外れれば（始まり −5 m・終わり +5 m の余裕の外）、new に戻る。上の 2 つの筋書きは `tests/expresswayLedger.test.ts` で new に戻ることを確かめた。
    - 探りのまとめ方も、チャンクごとから run ごとに直した。同じ run・同じ幅で、`s0 ≤ 前の s1 + 1 m` なら 1 つにまとめ、`chunk` の欄には `s0` を含むチャンクを残す。チャンクの境をまたぐ場所が 2 件に割れることは、もう無い。
 3. **探りの判定を純粋な関数に**（`scripts/expresswaySiteLanes.ts` の `laneOverSite`・`mergeSitePlaces`、`tests/expresswaySiteLanes.test.ts`）。判定は「車線の中心が床版の縁の内（`dist ≤ edge`）を 3 m 以上通り、床版の最初と最後の測点から 0.5 m の内は数えない」。
    - `scripts/expresswayHoleLanes.ts` の判定は形が違うので、共通にしていない。穴は端面を除かず、最短の距離を縁の外の点からも取り、`half + SITE_MARGIN_M` で見る。

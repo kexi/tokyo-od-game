@@ -470,10 +470,10 @@ describe("構造の決定の表（structureDecisions.ts、S6 PR 7c）: 盛土の
     expect([tol, minM]).toEqual([0.5, 20]);
   });
 
-  it("moves a row's end 4 mm inside the embankment's end to it, leaving no embankment, and builds (895902565's 89.16, A2)", () => {
-    expect(() => build(row(fMid, endS - 0.004))).not.toThrow();
-    expect(() => build(row(startS + 0.004, fMid))).not.toThrow();
-    expect(structureAt(build(row(fMid, endS - 0.004)).chunks, endS - 1)).toBe("viaduct");
+  it("moves a row's end 2 cm inside the embankment's end to it, leaving no embankment, and builds (the type of 895902565's 89.16, 4.2 mm, A2; 2 cm keeps it inside the ends read to the centimetre)", () => {
+    expect(() => build(row(fMid, endS - 0.02))).not.toThrow();
+    expect(() => build(row(startS + 0.02, fMid))).not.toThrow();
+    expect(structureAt(build(row(fMid, endS - 0.02)).chunks, endS - 1)).toBe("viaduct");
   });
 
   it("moves an end 0.5 m inside, and stops the build at 0.51 m inside, naming the run, the row and the leftover", () => {

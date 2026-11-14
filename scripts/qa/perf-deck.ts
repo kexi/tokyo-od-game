@@ -1,7 +1,7 @@
-// Frame intervals with the player's car on an expressway deck (C1 内回り 24402611 at s 2177.46), day and rain at night,
-// for the A/B of the deck's materials (knowledge/road-textures.md「性能」). Run it against two dev
-// servers (the change and its base on another port) and compare the JSON. Headless Chrome paces
-// frames in steps of 16.7 ms, so only large changes show.
+// Frame intervals with the player's car on an expressway deck (C1 内回り 24402611 at s 2177.46),
+// day and rain at night, for the A/B of the deck's materials (knowledge/road-textures.md「性能」).
+// Run it against two dev servers (the change and its base on another port) and compare the JSON.
+// Headless Chrome paces frames in steps of 16.7 ms, so only large changes show.
 //
 //   just measure-perf-deck after http://localhost:5173/tokyo-od-game/
 //   pnpm exec tsx scripts/qa/perf-deck.ts [--label L] [--base URL] [--seconds S]

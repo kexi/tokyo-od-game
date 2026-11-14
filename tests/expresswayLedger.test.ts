@@ -30,6 +30,7 @@ import {
 import { overlapKindOf } from "../src/expressway/overlapClass";
 import { type Counted, countCases } from "../scripts/expresswayCases";
 import { readExpresswayFiles } from "../scripts/expresswayFiles";
+import { sitePlaceKeys } from "../scripts/expresswaySiteLanes";
 
 // The ledger of the data folder under test (XW_DATA_DIR, else public/data/expressway; P2.7-4):
 // counted again from the files as the tool counts them, it must say the same, decide everything,
@@ -232,6 +233,45 @@ describe("a probe's cases with no probe list given (keptProbeCases, reopenCases:
     const kept = keptProbeCases(prev, "lane-in-site", () => ({ block: "b1", blockHash: "hash-a" }));
     expect(kept.stale).toEqual([]);
     expect(reopenCases(prev, new Set(kept.stale)).cases[0].status).toBe("accepted");
+  });
+});
+
+describe("a lane-in-site key that names no place (run, width, number): its cap holds the stretch (review of PR #88)", () => {
+  type Place = { run: string; s0: number; s1: number; lengthM: number; streetM: number };
+  const casesOf = (places: Place[], hash: string) => {
+    const keys = sitePlaceKeys(places.map((p) => ({ ...p, chunk: `${p.run}:0`, nearestM: 0, lanes: 1 })));
+    return places.map((p, i) =>
+      found(keys[i], { s0: p.s0, s1: p.s1, lengthM: p.lengthM, streetM: p.streetM }, hash, "lane-in-site"),
+    );
+  };
+  const before: Place[] = [
+    { run: "24402611", s0: 27.4, s1: 28.2, lengthM: 3, streetM: 4.3 },
+    { run: "4848755", s0: 1.3, s1: 36.4, lengthM: 36, streetM: 9 },
+    { run: "4848755", s0: 38.2, s1: 61, lengthM: 24, streetM: 9 },
+  ];
+  let decided = update(null, casesOf(before, "h1"));
+  for (const c of decided.cases)
+    decided = decide(decided, c.key, {
+      cap: { lengthM: c.measured.lengthM, s0: c.measured.s0, s1: c.measured.s1 },
+    });
+  const statusOf = (l: Ledger, key: string) => l.cases.find((c) => c.key === key)?.status;
+
+  it("lists the stretch in lane-in-site's CAP_FIELDS", () => {
+    expect(CAP_FIELDS["lane-in-site"]).toEqual(["lengthM", "s0", "s1"]);
+  });
+
+  it("sends a place of the same run and width found elsewhere along the run (s 900–906) back to new", () => {
+    const moved = [{ ...before[0], s0: 900, s1: 906, lengthM: 6 }, before[1], before[2]];
+    const next = update(decided, casesOf(moved, "h2"));
+    expect(statusOf(next, "lane-in-site:24402611|w4.3|1")).toBe("new");
+    expect(statusOf(next, "lane-in-site:4848755|w9|1")).toBe("accepted");
+  });
+
+  it("sends the second place back to new when the first of its width goes and it takes number 1", () => {
+    const next = update(decided, casesOf([before[0], before[2]], "h2"));
+    expect(statusOf(next, "lane-in-site:4848755|w9|1")).toBe("new");
+    expect(statusOf(next, "lane-in-site:4848755|w9|2")).toBe("gone");
+    expect(statusOf(next, "lane-in-site:24402611|w4.3|1")).toBe("accepted");
   });
 });
 

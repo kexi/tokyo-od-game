@@ -724,7 +724,7 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   "foot-along-street": ["s"],
   "foot-side-join": ["angleDeg", "legM"],
   "street-lane-over-cut": ["lengthM"],
-  "lane-in-site": ["lengthM"],
+  "lane-in-site": ["lengthM", "s0", "s1"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */

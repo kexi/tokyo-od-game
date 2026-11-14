@@ -565,6 +565,10 @@ export function decideViaduct(
   return merged;
 }
 
+/** Whether run distance `s` lies strictly inside embankment stretch `h` (snapDecisionWindows). */
+const isEmbankmentAround = (h: HeightStretch, s: number) =>
+  h.structure === "embankment" && h.s0 < s && s < h.s1;
+
 /**
  * Each decision's window ([a, b]) with an end that lies inside an embankment within `tolM` of that
  * embankment's end moved to the end (A2: 895902565's row ends at 89.16, its embankment at 89.164, a
@@ -579,8 +583,6 @@ export function snapDecisionWindows(
   tolM: number,
 ): Array<[number, number]> {
   return windows.map(([a, b]) => {
-    const isEmbankmentAround = (h: HeightStretch, s: number) =>
-      h.structure === "embankment" && h.s0 < s && s < h.s1;
     const atStart = stretches.find((h) => isEmbankmentAround(h, a));
     const atEnd = stretches.find((h) => isEmbankmentAround(h, b));
     const isStartNear = atStart !== undefined && a - atStart.s0 <= tolM;

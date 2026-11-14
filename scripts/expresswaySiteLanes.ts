@@ -109,8 +109,10 @@ export function mergeSitePlaces(places: readonly SiteLanes[]): SiteLanes[] {
  * stretch (before A2): a rebuild that shifts a chunk's number or the stretch by a metre made every case
  * gone + new. Why not a street's ID: GSI's RoadLine has none that is stable (roadTiles.ts reads the
  * width and the kind only). Why not a rounded lat/lon: the place's extent moves with the slab, and a
- * rounded point jumps across a cell's edge. Its limit: a place of the same run and width added or gone
- * renumbers those after it (gone + new), which is when the places really changed.
+ * rounded point jumps across a cell's edge. Its limit: the key names no place, so a place of the same
+ * run and width added or gone renumbers those after it, and a renumbered or new place takes over a
+ * key decided for another. What sends it back to new is the cap, which holds the stretch (lane-in-site's
+ * CAP_FIELDS: lengthM, s0, s1, within CASE_MARGIN), not the key.
  */
 export function sitePlaceKeys(list: readonly SiteLanes[]): string[] {
   const order = list.map((p, i) => ({ p, i })).toSorted((a, b) => a.p.s0 - b.p.s0);
