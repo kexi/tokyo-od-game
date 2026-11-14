@@ -7,7 +7,7 @@
 // lanes of a street with a site in it.
 // Run: pnpm exec tsx scripts/expresswayHoleLanes.ts <dir|label> [--cache <dir>] [--cases <file>]
 // (just check-hole-lanes <dir>; the tiles come from the cache only: a cut whose tiles are not cached
-// is skipped and counted).
+// is skipped and counted; exit code 1 when any is).
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { VectorTile } from "@mapbox/vector-tile";
@@ -148,3 +148,6 @@ log("expressway_hole_lanes_measured", {
 });
 const casesPath = flag("cases");
 if (casesPath !== undefined) await writeFile(casesPath, JSON.stringify(out, null, 1) + "\n");
+// A chunk skipped for want of GSI's tiles is a place not looked at: a failure, not a zero.
+const isPartial = skipped > 0;
+if (isPartial) process.exitCode = 1;

@@ -28,6 +28,7 @@ import { DEFAULT_RANGES } from "../src/expressway/ranges";
 import { OPERATOR_WORDS } from "../src/expressway/network";
 import { TUNNEL_DEPTH_M } from "../src/expressway/below";
 import { FOOT_DEFERRALS } from "../src/expressway/footDeferrals";
+import { STRUCTURE_DECISIONS } from "../src/expressway/structureDecisions";
 import { surfaceAt } from "../src/expressway/profile";
 import { groundEndsOf, reportedRampFloors } from "../src/expressway/violations";
 import {
@@ -295,6 +296,29 @@ describe("生成済みの高速道路タイル", () => {
     expect(FOOT_DEFERRALS.filter((d) => written.has(d.run)).map((d) => d.run)).toEqual([]);
   });
 
+  it("builds every decided stretch as a viaduct (structureDecisions.ts, S6 PR 7c): each row's run is written and its stretch is viaduct chunks, so a mistyped run is not skipped unseen", () => {
+    for (const d of STRUCTURE_DECISIONS) {
+      const list = byRun.get(d.run);
+      expect(list, `${d.run} (structureDecisions.ts) is not in the default data`).toBeDefined();
+      // Half a metre in from each end, where the row may round to the next chunk's station.
+      for (let s = d.s0 + 0.5; s <= d.s1 - 0.5; s += 1) {
+        const c = list!.find((k) => s >= k.st[0] && s <= k.st[k.st.length - STATION_STRIDE]);
+        expect(c?.structure, `${d.run} s ${s.toFixed(1)}`).toBe("viaduct");
+      }
+    }
+  });
+
+  it("keeps the decisions' tables short: past 3 deferred feet or 4 decided stretches, R1's rule (a street's median in its section) is due first", () => {
+    expect(
+      FOOT_DEFERRALS.length,
+      "footDeferrals.ts: more than 3 rows; make R1's median rule first",
+    ).toBeLessThanOrEqual(3);
+    expect(
+      STRUCTURE_DECISIONS.length,
+      "structureDecisions.ts: more than 4 rows; make R1's median rule first",
+    ).toBeLessThanOrEqual(4);
+  });
+
   it("T10: nothing the rules and the ledger do not accept is left (the counts per kind are the ledger's budget)", () => {
     // allowed comes from src/expressway/allowlist.ts's rules and the folder's ledger, recomputed here too.
     // The range's runs only (S6 PR 7c): a run outside it is solved for its component, judged where written.
@@ -319,9 +343,10 @@ describe("生成済みの高速道路タイル", () => {
       if (isNose) expect(o.maxDz, key).toBeLessThanOrEqual(NOSE_MAX_DZ_M + 0.005);
       if (isNose) continue;
       expect(c!.cap, key).not.toBeNull();
-      expect(withinCap({ stations: o.stations, maxDzM: Math.max(0, o.maxDz - 0.005) }, c!.cap!), key).toBe(
-        true,
-      );
+      expect(
+        withinCap({ stations: o.stations, maxDzM: Math.max(0, o.maxDz - 0.005) }, c!.cap!, c!.kind),
+        key,
+      ).toBe(true);
     }
   });
 

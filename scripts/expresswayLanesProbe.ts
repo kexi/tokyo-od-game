@@ -5,10 +5,11 @@
 // driven), and every lane whose centre comes within the slab's edge (carriageway/2 + PARAPET_WIDTH)
 // for MIN_LENGTH_M or more: a lane the game keeps that runs into the embankment's walls. Grouped per
 // chunk and street, one ledger case each. One JSON log line (expressway_lanes_probed); exit code 1
-// when more places than LANES_MAX are found (the count after 7c's rebuild: a new one stops it).
-// Run: pnpm exec tsx scripts/expresswayLanesProbe.ts <dir|label> [--cache <dir>] [--cases <file>]
+// when more places are found than the folder's ledger takes as lane-in-site (a new one stops it), or
+// than --max; a folder with neither (a measuring folder) is only counted.
+// Run: pnpm exec tsx scripts/expresswayLanesProbe.ts <dir|label> [--cache <dir>] [--cases <file>] [--max <n>]
 // (just check-expressway-lanes <dir>; the tiles from the cache only, a chunk whose tiles are missing
-// is skipped and counted). --cases writes the places for the ledger tool's --site-lanes.
+// is skipped and counted; exit code 1 when any is). --cases writes the places for the ledger tool's --site-lanes.
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { VectorTile } from "@mapbox/vector-tile";
@@ -28,11 +29,6 @@ import { ROAD_TILE_ZOOM, roadLinesOfTile } from "../src/world/roadTiles.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
 
 const ROOT = join(import.meta.dirname, "..");
-/**
- * Places found after S6 PR 7c's rebuild: the low stretches the ledger takes as lane-in-site (the design's 8
- * stretches are 6 places here, a street's lanes either way one place; and 3 more the first count missed).
- */
-const LANES_MAX = 9;
 /** Shorter than this within the slab is a street's end at the site's edge, not a lane over it (m). */
 const MIN_LENGTH_M = 3;
 /** The decks the game joins round a point (expresswayDeck.ts GRAPH_RADIUS_M). */
@@ -43,7 +39,7 @@ const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const VALUED = new Set(["--cache", "--cases"]);
+const VALUED = new Set(["--cache", "--cases", "--max"]);
 const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1])));
 if (target === undefined)
   throw new Error("usage: expresswayLanesProbe.ts <dir|label> [--cache <dir>] [--cases <file>]");
@@ -51,6 +47,14 @@ const dir = target.includes("/") ? target : join(ROOT, ".cache", "expressway-are
 const cacheDir = flag("cache") ?? join(ROOT, ".cache", "gsi-vector");
 const started = performance.now();
 const files = readExpresswayFiles(dir);
+// The most places allowed: --max, else the lane-in-site cases the folder's ledger has decided (9 in
+// the default area after S6 PR 7c), else none (a folder with no ledger is only counted). Why not a
+// constant: a ship folder has its own count.
+const maxFlag = flag("max");
+const ledgerCount = files.ledger?.cases.filter(
+  (c) => c.kind === "lane-in-site" && c.status !== "gone",
+).length;
+const max = maxFlag !== undefined ? Number(maxFlag) : (ledgerCount ?? null);
 const runs: XwTileRun[] = [
   ...new Map([...files.tiles.values()].flatMap((t) => t.runs).map((r) => [r.id, r])).values(),
 ];
@@ -164,7 +168,8 @@ for (const [run, chunks] of files.byRun) {
             s0 = Math.min(s0, at);
             s1 = Math.max(s1, at);
           }
-          if (len < MIN_LENGTH_M) continue;
+          const isTooShort = len < MIN_LENGTH_M;
+          if (isTooShort) continue;
           place ??= {
             run,
             chunk: emb.id,
@@ -209,7 +214,7 @@ for (const p of places) {
 log("expressway_lanes_probed", {
   dir: target,
   places: merged.length,
-  max: LANES_MAX,
+  max: max ?? -1,
   skippedForMissingTiles: skipped,
   list: merged.map((p) => ({
     chunk: p.chunk,
@@ -223,4 +228,7 @@ log("expressway_lanes_probed", {
 });
 const casesPath = flag("cases");
 if (casesPath !== undefined) await writeFile(casesPath, JSON.stringify(merged, null, 1) + "\n");
-if (merged.length > LANES_MAX) process.exitCode = 1;
+const isOver = max !== null && merged.length > max;
+// A chunk skipped for want of GSI's tiles is a place not looked at: a failure, not a zero.
+const isPartial = skipped > 0;
+if (isOver || isPartial) process.exitCode = 1;

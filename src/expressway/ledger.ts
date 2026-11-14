@@ -809,6 +809,53 @@ function caseOf(
 const NEW: Decision = { status: "new", by: null, cap: null, reason: null, qa: null };
 
 /**
+ * A probe's cases (PROBE_KINDS) kept as they stand when the ledger tool is given no probe list (the
+ * probe reads GSI, the files do not have it), each with its run's blocks as the files have them now;
+ * `stale` the keys whose run's blocks changed since they were counted (the data was made again and
+ * the probe not run over it). Why not keep those as they were: the lanes may have moved with the
+ * deck, and nothing else would tell (the tests do not count these kinds again).
+ */
+export function keptProbeCases(
+  prev: Ledger | null,
+  kind: CaseKind,
+  blocksFor: (runs: readonly string[]) => { block: string; blockHash: string },
+): { found: Array<FoundCase & { district: District; block: string; blockHash: string }>; stale: string[] } {
+  const found: Array<FoundCase & { district: District; block: string; blockHash: string }> = [];
+  const stale: string[] = [];
+  for (const c of prev?.cases ?? []) {
+    const isKept = c.kind === kind && c.status !== "gone";
+    if (!isKept) continue;
+    const now = blocksFor(c.with === null ? [c.run] : [c.run, c.with]);
+    const isStale = now.blockHash !== c.blockHash;
+    if (isStale) stale.push(c.key);
+    found.push({
+      key: c.key,
+      kind: c.kind,
+      run: c.run,
+      with: c.with,
+      chunk: c.chunk,
+      measured: c.measured,
+      district: c.district,
+      ...now,
+    });
+  }
+  return { found, stale };
+}
+
+/**
+ * The ledger with the cases of `keys` back to `new`, a decision moved to `previous` (keptProbeCases'
+ * stale ones: a review sees them again once the probe is run).
+ */
+export function reopenCases(ledger: Ledger, keys: ReadonlySet<string>): Ledger {
+  const cases = ledger.cases.map((c) => {
+    const isReopened = keys.has(c.key) && c.status !== "new" && c.status !== "gone";
+    if (!isReopened) return c;
+    return { ...c, ...NEW, qa: c.qa, previous: decisionOf(c) };
+  });
+  return { ...ledger, cases };
+}
+
+/**
  * A decision carried to a case measured anew (rule 3): kept while the case is within the cap (and
  * margin), else the case is `new` with the decision kept in `previous`. A rule's acceptance does not
  * carry (the rule decides again); `new` stays `new`.

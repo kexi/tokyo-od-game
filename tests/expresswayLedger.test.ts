@@ -6,6 +6,8 @@ import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge";
 import { assignDistricts, districtOfRef, type DistrictRun, YAMATE_BOX } from "../src/expressway/districts";
 import {
   AUTO_KINDS,
+  keptProbeCases,
+  reopenCases,
   PROBE_KINDS,
   budgetOf,
   CAP_FIELDS,
@@ -193,6 +195,44 @@ const decide = (l: Ledger, key: string, d: Partial<LedgerCase>): Ledger => ({
   cases: l.cases.map((c) =>
     c.key === key ? { ...c, by: "review", status: "accepted", reason: "reviewed here", ...d } : c,
   ),
+});
+
+describe("a probe's cases with no probe list given (keptProbeCases, reopenCases: review of PR #85)", () => {
+  const laneCase = {
+    key: "lane-in-site:9:0|10-40",
+    kind: "lane-in-site" as const,
+    run: "9",
+    with: null,
+    chunk: "9:0",
+    district: "central" as const,
+    block: "b1",
+    blockHash: "hash-a",
+    measured: { lengthM: 30, streetM: 9, s0: 10, s1: 40 },
+    cap: { lengthM: 30 },
+    status: "accepted" as const,
+    by: "review" as const,
+    reason: "decided with a view",
+    qa: "expressway/some-view",
+    previous: null,
+  };
+  const prev = { ...ledger!, cases: [laneCase] } as Ledger;
+
+  it("sends a lane-in-site whose run's blocks changed back to new, the review's decision kept in previous", () => {
+    const kept = keptProbeCases(prev, "lane-in-site", () => ({ block: "b1", blockHash: "hash-b" }));
+    expect(kept.stale).toEqual([laneCase.key]);
+    expect(kept.found[0].blockHash).toBe("hash-b");
+    const reopened = reopenCases(prev, new Set(kept.stale)).cases[0];
+    expect(reopened.status).toBe("new");
+    expect(reopened.cap).toBeNull();
+    expect(reopened.qa).toBe(laneCase.qa);
+    expect(reopened.previous).toMatchObject({ status: "accepted", by: "review", cap: { lengthM: 30 } });
+  });
+
+  it("keeps a lane-in-site whose run's blocks are the same as decided", () => {
+    const kept = keptProbeCases(prev, "lane-in-site", () => ({ block: "b1", blockHash: "hash-a" }));
+    expect(kept.stale).toEqual([]);
+    expect(reopenCases(prev, new Set(kept.stale)).cases[0].status).toBe("accepted");
+  });
 });
 
 describe("the ledger tool's rules (updateLedger)", () => {

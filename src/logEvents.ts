@@ -1202,12 +1202,13 @@ export const LOG_EVENTS = {
    */
   /**
    * The street lanes left over an embankment's slab (scripts/expresswayLanesProbe.ts, S6 PR 7c): the
-   * places (a chunk and a street), the most allowed, the chunks skipped for want of GSI's tiles.
+   * places (a chunk and a street), the most allowed (−1: none, a folder with no ledger), the chunks
+   * skipped for want of GSI's tiles.
    */
   expressway_lanes_probed: info({
     dir: z.string(),
     places: count,
-    max: count,
+    max: z.number().int().min(-1),
     skippedForMissingTiles: count,
     list: z.array(
       z.strictObject({

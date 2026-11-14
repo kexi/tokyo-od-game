@@ -1284,7 +1284,7 @@ describe("the generated data's merges (P3.5): seams and let-go points probed fro
       const isByRule = entry.by === "rule" && isAutoAccepted(c);
       if (isByRule) continue;
       expect(entry.cap, c.key).not.toBeNull();
-      expect(withinCap(c.measured, entry.cap!), `${c.key} ${JSON.stringify(c.measured)}`).toBe(true);
+      expect(withinCap(c.measured, entry.cap!, c.kind), `${c.key} ${JSON.stringify(c.measured)}`).toBe(true);
     }
     // A world per tile with chunks, each with every chunk near it: tens of seconds on a busy machine.
   }, 120_000);
