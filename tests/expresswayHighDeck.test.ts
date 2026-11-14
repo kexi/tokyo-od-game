@@ -102,16 +102,16 @@ describe("high-deck の台帳（cap と余裕）", () => {
 
   it("does not keep a decision for a stretch that moved along the run past the edge margin", () => {
     const cap = { s0: 1000, s1: 1120, heightM: 24, spanM: 120 };
-    expect(withinCap({ s0: 1000, s1: 1120, heightM: 24, spanM: 120 }, cap)).toBe(true);
-    expect(withinCap({ s0: 600, s1: 720, heightM: 24, spanM: 120 }, cap)).toBe(false);
+    expect(withinCap({ s0: 1000, s1: 1120, heightM: 24, spanM: 120 }, cap, "high-deck")).toBe(true);
+    expect(withinCap({ s0: 600, s1: 720, heightM: 24, spanM: 120 }, cap, "high-deck")).toBe(false);
   });
 
   it("keeps a decision while the height grows at most 0.5 m and the length 20 m (HIGH_DECK_MARGIN)", () => {
     expect(HIGH_DECK_MARGIN).toEqual({ heightM: 0.5, spanM: 20 });
-    const cap = { heightM: 24, spanM: 120 };
-    expect(withinCap({ s0: 0, s1: 140, heightM: 24.5, spanM: 140 }, cap)).toBe(true);
-    expect(withinCap({ s0: 0, s1: 140, heightM: 24.51, spanM: 120 }, cap)).toBe(false);
-    expect(withinCap({ s0: 0, s1: 141, heightM: 24, spanM: 140.1 }, cap)).toBe(false);
+    const cap = { s0: 0, s1: 140, heightM: 24, spanM: 120 };
+    expect(withinCap({ s0: 0, s1: 140, heightM: 24.5, spanM: 140 }, cap, "high-deck")).toBe(true);
+    expect(withinCap({ s0: 0, s1: 140, heightM: 24.51, spanM: 120 }, cap, "high-deck")).toBe(false);
+    expect(withinCap({ s0: 0, s1: 141, heightM: 24, spanM: 140.1 }, cap, "high-deck")).toBe(false);
   });
 });
 

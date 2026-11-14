@@ -369,15 +369,20 @@ describe("the kinds of case", () => {
     expect(withinCap({ innerP95M: 0.2, innerMedianM: 0, approachMaxM: 4.17 }, cap, "ground-stretch")).toBe(
       false,
     );
-    // Without the kind (an old caller) the cap's own fields alone are read.
-    expect(withinCap({ innerP95M: 0.2, innerMedianM: 0, approachMaxM: 4.17 }, cap)).toBe(true);
+  });
+
+  it("keeps a cap that leaves out a measure its kind's CAP_FIELDS do not list (A2: kind required)", () => {
+    // A ground-stretch measures its length too, but its CAP_FIELDS do not list it: no cap needs it.
+    expect(withinCap({ lengthM: 31.05, approachMaxM: 1.06 }, { approachMaxM: 1.06 }, "ground-stretch")).toBe(
+      true,
+    );
   });
 
   it("keeps a foot-side-join's decision while its leg turns no more than 2° and grows no more than 5 m past the cap (S6 PR 7c)", () => {
     const cap = { angleDeg: 60, legM: 12 };
-    expect(withinCap({ angleDeg: 61.5, legM: 16.5, streetM: 9 }, cap)).toBe(true);
-    expect(withinCap({ angleDeg: 62.5, legM: 12, streetM: 9 }, cap)).toBe(false);
-    expect(withinCap({ angleDeg: 60, legM: 17.5, streetM: 9 }, cap)).toBe(false);
+    expect(withinCap({ angleDeg: 61.5, legM: 16.5, streetM: 9 }, cap, "foot-side-join")).toBe(true);
+    expect(withinCap({ angleDeg: 62.5, legM: 12, streetM: 9 }, cap, "foot-side-join")).toBe(false);
+    expect(withinCap({ angleDeg: 60, legM: 17.5, streetM: 9 }, cap, "foot-side-join")).toBe(false);
     expect(AUTO_KINDS).not.toContain("foot-side-join");
   });
 

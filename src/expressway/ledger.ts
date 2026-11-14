@@ -636,29 +636,30 @@ export function ruleReason(kind: CaseKind): string | null {
 }
 
 /**
- * Whether a measure stays within a decided cap and CASE_MARGIN: counts +2, |Δz|, steps and face
- * misses +5 cm, a stretch's start −5 m and end +5 m, a point ±5 m, a radius −0.5 m, a length +5 m,
- * a high deck's height +0.5 m and length +20 m (HIGH_DECK_MARGIN).
- * A measure the cap names but the case lacks is out (the case changed shape).
- */
-/**
  * How far a foot-side-join's leg may turn past its cap and keep the decision (deg): a GSI street
  * re-drawn by a metre moves the join point and the angle by a degree or two.
  */
 const FOOT_ANGLE_MARGIN_DEG = 2;
 
-export function withinCap(measured: Measured, cap: Measured, kind?: CaseKind): boolean {
+/**
+ * Whether a measure stays within a decided cap and CASE_MARGIN: counts +2, |Δz|, steps and face
+ * misses +5 cm, a stretch's start −5 m and end +5 m, a point ±5 m, a radius −0.5 m, a length +5 m,
+ * a high deck's height +0.5 m and length +20 m (HIGH_DECK_MARGIN).
+ * A measure the cap names but the case lacks is out (the case changed shape), and so is one of the
+ * kind's CAP_FIELDS measured now but missing from the cap. Why `kind` is required (A2): a caller that
+ * left it out skipped that second check, and a cap could hold a shape its review never saw.
+ */
+export function withinCap(measured: Measured, cap: Measured, kind: CaseKind): boolean {
   const { stations, dzM, edgeM, radiusM } = CASE_MARGIN;
   // A cap states the CAP_FIELDS its case measured (S6 PR 7c: a ground-stretch that is all approach
   // measures no inside). One its kind lists that is measured now but not in the cap is a shape the
   // review did not see: outside. Why not require all CAP_FIELDS in every cap: a run with no inside
   // could then never be decided; why not drop them from CAP_FIELDS: an inside a review bounded
   // could grow without going back to new.
-  if (kind !== undefined)
-    for (const k of CAP_FIELDS[kind]) {
-      const isUnseen = measured[k] !== undefined && cap[k] === undefined;
-      if (isUnseen) return false;
-    }
+  for (const k of CAP_FIELDS[kind]) {
+    const isUnseen = measured[k] !== undefined && cap[k] === undefined;
+    if (isUnseen) return false;
+  }
   for (const k of MEASURES) {
     const c = cap[k];
     if (c === undefined || k === "minDzM") continue;
