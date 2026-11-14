@@ -44,9 +44,12 @@ describe("the deck routes table", () => {
       expect(r.prefer).toContain(r.to.run);
       const isStreet = "street" in r.to;
       if (isStreet) {
-        // Off the decks after this run: it must end at the ground (an exit ramp).
+        // Off the decks after this run: it must end at the ground (an exit ramp), or since S6 PR 7c go
+        // on at grade (a seam onto a run at grade: the street's end of the ramp is that run's).
         const run = files.runs.find((x) => x.id === r.to.run)!;
-        expect(run.end.kind).toBe("ground");
+        const parent = run.end.kind === "seam" ? files.runs.find((x) => x.id === run.end.parent) : undefined;
+        const isAtGround = run.end.kind === "ground" || parent?.ground === true;
+        expect(isAtGround, `${run.id} end ${run.end.kind}`).toBe(true);
         return;
       }
       expect(chunkAt(files.byRun, r.to as { run: string; s: number }), `${r.id} to`).not.toBeNull();

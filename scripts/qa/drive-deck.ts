@@ -127,7 +127,8 @@ async function driveCruise(r: CruiseRoute) {
     const isClear = before === null;
     if (isClear) {
       const until = untilIn(b);
-      const place = `__game.debug.expressway.place(${JSON.stringify(from.xid)}, ${from.share}, 0)`;
+      const lane = r.lane ?? 0;
+      const place = `__game.debug.expressway.place(${JSON.stringify(from.xid)}, ${from.share}, ${lane})`;
       await until(place, 60);
       // Again once the colliders round the new spot are built (the first may fall short of them, P7).
       await b.evaluate("__game.advance(3)");
@@ -136,7 +137,7 @@ async function driveCruise(r: CruiseRoute) {
       // The stall check from here on: the car stood placed for the colliders above, by design.
       stallFrom = b.logs.length;
       await b.evaluate(
-        `__game.debug.expressway.cruise({ kmh: ${r.kmh}, prefer: ${JSON.stringify(r.prefer)} })`,
+        `__game.debug.expressway.cruise({ kmh: ${r.kmh}, prefer: ${JSON.stringify(r.prefer)}, lane: ${lane} })`,
       );
       const lastRun = JSON.stringify(`${r.to.run}:`);
       const endK = end?.k ?? -1;
@@ -291,9 +292,39 @@ const lawEvents = (during: (e: string) => string[]) => ({
 let exit = 0;
 for (const r of routes) {
   const attempts: Array<{ invalid: string | null }> = [];
-  let result: Awaited<ReturnType<typeof driveCruise>> | Awaited<ReturnType<typeof driveAuto>> | null = null;
+  /** One try's result (a drive's, or an invalid placeholder for a try that threw). */
+  type TryResult = {
+    invalid: string | null;
+    failures: string[];
+    summary: unknown;
+    worst: unknown;
+    crossed: string[];
+    stalled: string[];
+    holds: string[];
+    [field: string]: unknown;
+  };
+  let result: TryResult | null = null;
   for (let i = 0; i < tries; i++) {
-    result = r.kind === "cruise" ? await driveCruise(r) : await driveAuto(r);
+    // A try that throws (the page never settles or never answers: the buildings' tileset failed to
+    // fetch, a flaky network) does not count, like an accident: invalid with the reason, and driven
+    // again. Its browser is closed by the drive's own finally. Why not fail the route: nothing of the
+    // decks was measured.
+    result = await (r.kind === "cruise" ? driveCruise(r) : driveAuto(r)).catch(
+      (error: unknown): TryResult => ({
+        route: r.id,
+        kind: r.kind,
+        url: "",
+        invalid: `error: ${String(error)}`,
+        failures: [] as string[],
+        summary: null,
+        worst: null,
+        crossed: [] as string[],
+        stalled: [] as string[],
+        lawEvents: { accident: [], violationCited: [], arrest: [] },
+        respawned: [] as string[],
+        holds: [] as string[],
+      }),
+    );
     attempts.push({ invalid: result.invalid });
     const counts = result.invalid === null;
     if (counts) break;

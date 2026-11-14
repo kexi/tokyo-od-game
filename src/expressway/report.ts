@@ -161,6 +161,8 @@ export const ReportSchema = z.strictObject({
   }),
   /** Diagnostics on the runs of the range, by kind: allowed (in the allowlist) and not. */
   diagnostics: z.record(z.string(), z.strictObject({ allowed: count, notAllowed: count })),
+  /** S6 PR 7c: the diagnostics of runs outside the range (solved for their component), per kind. */
+  diagnosticsOutside: z.record(z.string(), count).optional(),
   overlaps: z.record(
     z.enum(OVERLAP_CLASSES as [OverlapClass, ...OverlapClass[]]),
     z.strictObject({
@@ -247,7 +249,7 @@ export const ReportSchema = z.strictObject({
           z.strictObject({
             run: z.string(),
             end: z.enum(["start", "end"]),
-            outcome: z.enum(["cut", "merged", "along", "kept"]),
+            outcome: z.enum(["cut", "merged", "along", "kept", "deferred"]),
             cutM: m,
             leftM: z.number(),
             into: z.string().optional(),
@@ -258,6 +260,12 @@ export const ReportSchema = z.strictObject({
       /** How far the runs at grade stand off the ground under them: |z − ground| at their stations. */
       /** The runs at grade's target weight and band as built (S6 PR 7a); absent before it. */
       settings: z.strictObject({ targetScale: z.number().positive(), bandM: m }).optional(),
+      /** S6 PR 7c: the feet of the range left out by a decision (footDeferrals.ts); absent when none. */
+      deferred: z
+        .array(
+          z.strictObject({ run: z.string(), end: z.enum(["start", "end"]), until: z.enum(["R1", "S7"]) }),
+        )
+        .optional(),
       offGround: z.strictObject({ p95M: m, maxM: m, over3mRuns: count }),
       /**
        * The ends the viaducts and below runs seam onto (S6 PR 3): how far the run at grade stands off
@@ -332,6 +340,8 @@ export const ReportSchema = z.strictObject({
       thinGirder: z.strictObject({ chunks: count, km, minM: z.number().nonnegative().nullable() }),
       /** Viaducts under the viaduct's height kept in the air (review W3, the ledger's low-viaduct). */
       lowViaduct: z.strictObject({ stretches: count, km }).optional(),
+      /** S6 PR 7c: the stretches a decision made viaducts (structureDecisions.ts); absent when none. */
+      decided: z.array(z.strictObject({ run: z.string(), s0: z.number(), s1: z.number() })).optional(),
       byDistrict: z.record(z.string(), z.strictObject({ embankmentKm: km, cutKm: km, thinGirders: count })),
       /**
        * What S6 PR 7a's rules changed (compile.ts HeightRuleTally): crossings' windows spanned as viaduct
@@ -526,6 +536,8 @@ export type ReportInput = {
   withoutTimings?: boolean;
   /** A height build (`--structures height`, P2.7-6): the scorecard's `structures`. */
   heightStructures?: boolean;
+  /** The stretches a decision made viaducts (Plan.decidedViaducts), into `structures.decided`. */
+  decidedViaducts?: Array<{ run: string; s0: number; s1: number }>;
   /** The height build's rule tally (CompileResult.heightRules), into `structures.rules`. */
   heightRules?: {
     spanned: number;
@@ -733,6 +745,25 @@ export function deckMismatchOf(runs: XwRunSummary[], listed: string[]): string[]
   const out = [...named].filter((d) => !carried.has(d)).map((d) => `listed, not carried: ${d}`);
   out.push(...[...carried].filter((d) => !named.has(d)).map((d) => `carried, not listed: ${d}`));
   return out.sort();
+}
+
+/**
+ * The count per kind of the diagnostics of runs outside the range (S6 PR 7c: solved for their
+ * component only, no ledger case here); nothing when none. Read by the range, not by the record's
+ * `outside` mark: the build hands the solver's diagnostics in before the record is written.
+ */
+export function outsideOf(
+  diagnostics: XwDiagnostic[],
+  inRange: Set<string>,
+): { diagnosticsOutside?: Record<string, number> } {
+  const out: Record<string, number> = {};
+  for (const d of diagnostics) {
+    const isOutside = !inRange.has(d.run);
+    if (isOutside) out[d.kind] = (out[d.kind] ?? 0) + 1;
+  }
+  const isNone = Object.keys(out).length === 0;
+  if (isNone) return {};
+  return { diagnosticsOutside: Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : 1))) };
 }
 
 export function diagnosticsOf(diagnostics: XwDiagnostic[], inRange: Set<string>): Report["diagnostics"] {
@@ -1293,6 +1324,7 @@ export function buildReport(input: ReportInput): Report {
     },
     closures: closuresOf(input.closed, input.diagnostics, input.planned),
     diagnostics: diagnosticsOf(input.diagnostics, inRange),
+    ...outsideOf(input.diagnostics, inRange),
     overlaps: overlapsOf(rangeDiagnostics, input.runs),
     overlapPairs: overlapPairsOf(rangeDiagnostics, input.runs),
     violations: input.violations,
@@ -1301,6 +1333,9 @@ export function buildReport(input: ReportInput): Report {
           structures: {
             ...structuresOf(input.chunks, input.districts, input.runs),
             ...(input.heightRules ? { rules: input.heightRules } : {}),
+            ...(input.decidedViaducts && input.decidedViaducts.length > 0
+              ? { decided: input.decidedViaducts.filter((d) => inRange.has(d.run)) }
+              : {}),
           },
         }
       : {}),

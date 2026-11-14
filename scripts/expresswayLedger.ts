@@ -7,14 +7,37 @@
 // (just update-expressway-ledger dir flags; dir defaults to public/data/expressway, a label without a
 // slash means .cache/expressway-area/<label>). --seed takes the decisions of another folder's ledger
 // by key (a measuring folder with no ledger yet); --prune drops the gone cases; --write-budget writes
-// the budget from the counts (a review settling the ratchet). The ledger has no time in it: two runs
-// over the same folder write the same bytes.
+// the budget from the counts (a review settling the ratchet); --feet <file> takes the feet probe's
+// list (just check-expressway-feet <dir> "--cases <file>") as the foot-side-join cases, and without it
+// the ledger's foot-side-join cases are kept as they are (the probe reads GSI, the files do not
+// have it); --lanes <file> takes the hole lanes' list (just check-hole-lanes <dir> "--cases <file>")
+// as the street-lane-over-cut cases and --site-lanes <file> the lanes probe's (just
+// check-expressway-lanes <dir> "--cases <file>") as the lane-in-site cases, kept likewise without them. The ledger has no time in it: two
+// runs over the same folder write the same bytes.
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { caseContextOf, type Ledger, reallowRecord, updateLedger } from "../src/expressway/ledger.ts";
+import {
+  blocksOf,
+  caseContextOf,
+  type CaseKind,
+  keptProbeCases,
+  type Ledger,
+  reallowRecord,
+  reopenCases,
+  updateLedger,
+} from "../src/expressway/ledger.ts";
 import { log } from "../src/log.ts";
-import { countCases } from "./expresswayCases.ts";
+import {
+  countCases,
+  type CountedCase,
+  type FootSideJoin,
+  footSideJoinCases,
+  type HoleLanes,
+  laneInSiteCases,
+  type SiteLanes,
+  streetLaneOverCutCases,
+} from "./expresswayCases.ts";
 import { DEFAULT_DATA_DIR, readExpresswayFiles } from "./expresswayFiles.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -27,7 +50,7 @@ function arg(name: string): string | undefined {
 }
 const has = (name: string) => process.argv.includes(`--${name}`);
 
-const VALUED = new Set(["--seed"]);
+const VALUED = new Set(["--seed", "--feet", "--lanes", "--site-lanes"]);
 const positional = process.argv
   .slice(2)
   .filter((a, i, all) => !a.startsWith("--") && !VALUED.has(all[i - 1] ?? ""));
@@ -37,14 +60,38 @@ const seedPath = arg("seed");
 const files = readExpresswayFiles(dir);
 const seed = seedPath ? (JSON.parse(readFileSync(seedPath, "utf8")) as Ledger) : null;
 const counted = await countCases(files);
-const ledger = updateLedger(files.ledger, {
+const feetPath = arg("feet");
+// A probe's cases with no list given: kept, not `gone` for want of GSI, but back to `new` where their
+// run's blocks changed (the data made again and the probe not run over it: keptProbeCases).
+const stale = new Set<string>();
+const kept = (kind: CaseKind): CountedCase[] => {
+  const k = keptProbeCases(files.ledger, kind, (runs) => blocksOf(files.record.blocks, runs));
+  for (const key of k.stale) stale.add(key);
+  return k.found;
+};
+const feetFound = feetPath
+  ? footSideJoinCases(JSON.parse(readFileSync(feetPath, "utf8")) as FootSideJoin[], files, counted.districts)
+  : kept("foot-side-join");
+const lanesPath = arg("lanes");
+const lanesFound = lanesPath
+  ? streetLaneOverCutCases(
+      JSON.parse(readFileSync(lanesPath, "utf8")) as HoleLanes[],
+      files,
+      counted.districts,
+    )
+  : kept("street-lane-over-cut");
+const siteLanesPath = arg("site-lanes");
+const siteLanesFound = siteLanesPath
+  ? laneInSiteCases(JSON.parse(readFileSync(siteLanesPath, "utf8")) as SiteLanes[], files, counted.districts)
+  : kept("lane-in-site");
+const updated = updateLedger(files.ledger, {
   data: {
     ranges: files.meta.ranges.map((r) => r.name),
     scope: files.meta.scope ?? null,
     objective: files.record.objective,
     extract: files.meta.extract.timestamp,
   },
-  found: counted.found,
+  found: [...counted.found, ...feetFound, ...lanesFound, ...siteLanesFound],
   seamProbes: counted.seamProbes,
   rules: counted.rules,
   heightKm: counted.heightKm,
@@ -53,6 +100,7 @@ const ledger = updateLedger(files.ledger, {
   seed,
   writeBudget: has("write-budget"),
 });
+const ledger = stale.size > 0 ? reopenCases(updated, stale) : updated;
 const text = JSON.stringify(ledger, null, 1) + "\n";
 await writeFile(join(dir, "ledger.json"), text);
 // The build wrote report.json's `allowed` with the ledger it had: a case decided since must reach it.

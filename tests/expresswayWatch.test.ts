@@ -108,7 +108,7 @@ function carBehind(seg: Segment, lane: number, s: number, kmh: number): OtherVeh
 describe("ExpresswayWatch on the generated data: the entrances (第75条の6・第75条の7第1項)", () => {
   // 芝公園入口 (207111988) into C1 内回り, and 汐留入口 (45068172) into C1 外回り.
   for (const [ramp, main, share] of [
-    ["207111988:0", "24402611:22", 0.5],
+    ["207111988:0", "24402611:23", 0.5],
     ["45068172:0", "45021976:3", 0.5],
   ] as const) {
     it(`books nothing for driving ${ramp}'s lane into the main line as the navi plans it`, () => {
@@ -132,7 +132,7 @@ describe("ExpresswayWatch on the generated data: the entrances (第75条の6・�
   }
 
   it("books 本線車道出入方法違反 for cutting across the 導流帯 into the main line", () => {
-    const route = routeFrom("207111988:0", 0.1, "24402611:22", 0.5);
+    const route = routeFrom("207111988:0", 0.1, "24402611:23", 0.5);
     const link = route.links!.find((l) => l.kind === "merge")!;
     const trunk = graph.segments[link.trunk!];
     // From 150 m before the node the car leaves the ramp straight for the main line's lane 0.
@@ -152,20 +152,20 @@ describe("ExpresswayWatch on the generated data: the entrances (第75条の6・�
 
 describe("ExpresswayWatch on the generated data: the exits and the JCT (第75条の7第2項)", () => {
   it("books nothing for leaving by 芝公園出口 (4853799) from the left lane, as the navi plans it", () => {
-    const route = routeFrom("24402611:16", 0.1, "4853799:0", 0.9);
+    const route = routeFrom("24402611:17", 0.1, "4853799:0", 0.9);
     expect(route.links?.some((l) => l.kind === "diverge")).toBe(true);
     expect(drive(route)).toEqual([]);
   });
 
   it("books nothing at the 浜崎橋 JCT to 1号羽田線 (4848762) from the right lane", () => {
-    const route = routeFrom("24402611:22", 0.05, "4848762:2", 0.5, 1);
+    const route = routeFrom("24402611:23", 0.05, "4848762:2", 0.5, 1);
     const diverge = route.links?.find((l) => l.kind === "diverge");
     expect(diverge?.side).toBe("right");
     expect(drive(route)).toEqual([]);
   });
 
   it("books 本線車道出入方法違反 for crossing from the right lane into 芝公園出口 at the last moment", () => {
-    const route = routeFrom("24402611:16", 0.1, "4853799:0", 0.9);
+    const route = routeFrom("24402611:17", 0.1, "4853799:0", 0.9);
     const link = route.links!.find((l) => l.kind === "diverge")!;
     const main = graph.segments[link.from];
     // In the right lane until 30 m before the node, then over into the exit.
@@ -215,16 +215,21 @@ describe("the lane counted for 合図 (第53条) where another line's deck lies 
   it("counts on the road under the car once it is off the held run's deck (an exit leaving the main line)", () => {
     // 芝公園出口 (4853798) leaving C1 外回り: a point on the exit's deck that the main line's run is
     // still found from (within 8 m) but whose deck it is past the edge of.
-    const exit = segOf("4853798:0");
-    const held: HeldLane = { seg: segOf("45021976:13"), lane: 0 };
+    const held: HeldLane = { seg: segOf("45021976:14"), lane: 0 };
     const run = runOf(held.seg);
     let found: { p: Vector3; dir: Vector3; s: number } | null = null;
-    for (let s = 0; s < exit.length && !found; s += 0.5) {
-      const { pos, dir: along } = graph.sample(exit, s);
-      pos.y = (graph.surfaceY(exit, s) ?? 0) + 0.86;
-      const main = graph.locate(pos, 8, (seg) => runOf(seg) === run);
-      const isPastEdge = main !== null && Math.abs(main.lateral) > main.seg.line.width / 2 + 0.5;
-      if (isPastEdge) found = { p: pos, dir: along, s };
+    // The exit's first chunks (since S6 PR 7c its first 50 m are a chunk of their own).
+    let exit = segOf("4853798:0");
+    for (const id of ["4853798:0", "4853798:1"]) {
+      if (found) break;
+      exit = segOf(id);
+      for (let s = 0; s < exit.length && !found; s += 0.5) {
+        const { pos, dir: along } = graph.sample(exit, s);
+        pos.y = (graph.surfaceY(exit, s) ?? 0) + 0.86;
+        const main = graph.locate(pos, 8, (seg) => runOf(seg) === run);
+        const isPastEdge = main !== null && Math.abs(main.lateral) > main.seg.line.width / 2 + 0.5;
+        if (isPastEdge) found = { p: pos, dir: along, s };
+      }
     }
     expect(found, "a point on the exit past the main line's edge").not.toBeNull();
     const onRoad = { seg: exit, s: found!.s, lateral: 0, dir: found!.dir };

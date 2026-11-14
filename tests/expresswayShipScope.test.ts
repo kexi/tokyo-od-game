@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import { EXPECTED_EXTRACT_SHA256, EXPECTED_EXTRACT_TIMESTAMP } from "../src/expressway/extract";
 import { deckMismatchOf, ReportSchema } from "../src/expressway/report";
+import { rampFloorOf } from "../src/expressway/ledger";
 import { PROPERTIES, violationsOf } from "../src/expressway/violations";
 
 // The committed baseline scorecard of --range ship (P2.7-1: `just measure-expressway-area` with
@@ -50,7 +51,10 @@ describe("既定データの構造物と検査（P2.7-1 レビュー W1・W3）"
   });
 
   it("counts no violation of T1〜T7 and T12 on the default data, as the data test finds none", () => {
-    const v = violationsOf(meta, chunks);
+    // As the build counts them (scripts/expressway.ts): the ledger's ramp floors, and a height build's
+    // checks where meta's features name it (S6 PR 7c makes it the default).
+    const isHeight = (meta.meta.features ?? []).includes("height-structures");
+    const v = violationsOf(meta, chunks, rampFloorOf(meta.ledger), isHeight);
     expect(Object.fromEntries(PROPERTIES.map((p) => [p, v[p].count]))).toEqual(
       Object.fromEntries(PROPERTIES.map((p) => [p, 0])),
     );

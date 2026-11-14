@@ -6,7 +6,7 @@ import { XW_VERSION, type XwChunk, type XwMeta, type XwRunSummary } from "../src
 import { packTiles } from "../src/expressway/files";
 import { DEFAULT_DATA_DIR, readExpresswayFiles } from "../scripts/expresswayFiles";
 import { LET_GO_MAX_STEP_M } from "../src/expressway/allowlist";
-import { seamCases, withinCap } from "../src/expressway/ledger";
+import { isAutoAccepted, seamCases, withinCap } from "../src/expressway/ledger";
 import { planeAt } from "../src/expressway/geo";
 import { LocalFrame } from "../src/geo/frame";
 import { MARKING_DIMENSIONS } from "../src/law/roadStandards";
@@ -1280,8 +1280,11 @@ describe("the generated data's merges (P3.5): seams and let-go points probed fro
     expect(found.map((c) => c.key).sort()).toEqual([...listed.keys()].sort());
     for (const c of found) {
       const entry = listed.get(c.key)!;
+      // A sliding band's step is the rule's (S6 PR 7c: no cap); any other is a review's within its cap.
+      const isByRule = entry.by === "rule" && isAutoAccepted(c);
+      if (isByRule) continue;
       expect(entry.cap, c.key).not.toBeNull();
-      expect(withinCap(c.measured, entry.cap!), `${c.key} ${JSON.stringify(c.measured)}`).toBe(true);
+      expect(withinCap(c.measured, entry.cap!, c.kind), `${c.key} ${JSON.stringify(c.measured)}`).toBe(true);
     }
     // A world per tile with chunks, each with every chunk near it: tens of seconds on a busy machine.
   }, 120_000);

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
 import { describe, expect, it } from "vitest";
 import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import { planNetwork, solvePlan } from "../src/expressway/compile";
@@ -134,7 +135,15 @@ describe("都市高速の標識（G6、試験区間の生成済みデータ）",
     for (const { chunk, sign } of signs) {
       expect(sign.z).toBeCloseTo(frameAt(chunk.st, sign.s).z, 2);
       // Never under the ground (a ramp meets it at its ground end: equal there, within the rounding).
-      expect(sign.z).toBeGreaterThanOrEqual(frameAt(chunk.st, sign.s).ground - 0.01);
+      // A cut is under the ground by what it is; an embankment may lie under it within the band of a run
+      // at grade (HEIGHT_STRUCTURES.ground.bandM about the design ground line: 24039751:0, 0.26 m), no
+      // further. Why not DEM_SINK_FLOOR: that floor is a viaduct's, the band is what the solve keeps.
+      const isCut = chunk.structure === "cut";
+      const sink = chunk.structure === "embankment" ? HEIGHT_STRUCTURES.value.ground.bandM : 0;
+      if (!isCut)
+        expect(sign.z, `${sign.id} at ${chunk.id}`).toBeGreaterThanOrEqual(
+          frameAt(chunk.st, sign.s).ground - sink - 0.01,
+        );
       expect(sign.level).toBe(deckLevelAt(chunk, sign.s));
     }
   });

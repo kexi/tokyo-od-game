@@ -1,10 +1,14 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { isAllowed, RULES } from "../src/expressway/allowlist";
+import { isAllowed, RULES, SEAM_FULL_DZ_M, SEAM_SLIDE_MAX_DZ_M } from "../src/expressway/allowlist";
+import { MERGE_FULL_DZ, MERGE_MAX_DZ } from "../src/world/expresswayMerge";
 import { assignDistricts, districtOfRef, type DistrictRun, YAMATE_BOX } from "../src/expressway/districts";
 import {
   AUTO_KINDS,
+  keptProbeCases,
+  reopenCases,
+  PROBE_KINDS,
   budgetOf,
   CAP_FIELDS,
   reallowRecord,
@@ -12,6 +16,7 @@ import {
   caseOfDiagnostic,
   type FoundCase,
   isAutoAccepted,
+  isSlidingSeamStep,
   type Ledger,
   type LedgerCase,
   ledgerVerdict,
@@ -57,8 +62,10 @@ describe("the data folder's ledger", () => {
 
   it("is up to date: the cases counted from the files again are its cases, with the same measures and blocks", () => {
     const found = new Map(counted.found.map((c) => [c.key, c]));
-    expect(live().map((c) => c.key)).toEqual([...found.keys()].sort());
-    for (const c of live()) {
+    // A probe's kinds are counted from GSI's streets (PROBE_KINDS), which the tests do not have.
+    const counts = live().filter((c) => !PROBE_KINDS.includes(c.kind));
+    expect(counts.map((c) => c.key)).toEqual([...found.keys()].sort());
+    for (const c of counts) {
       const f = found.get(c.key)!;
       expect(c.measured, c.key).toEqual(orderMeasured(f.measured));
       expect([c.kind, c.run, c.with, c.chunk, c.district, c.block, c.blockHash], c.key).toEqual([
@@ -97,12 +104,18 @@ describe("the data folder's ledger", () => {
       }
       expect(["accepted", "open", "wontfix"], c.key).toContain(c.status);
       expect(c.cap, c.key).not.toBeNull();
-      // A cap must bound what its kind measures (a cap of {} would accept anything).
+      // A cap must bound what its kind measures and the case measured (a cap of {} would accept
+      // anything; a ground-stretch that is all approach measures no inside).
       for (const field of CAP_FIELDS[c.kind])
-        expect(c.cap![field], `${c.key} cap.${field}`).toBeTypeOf("number");
+        if (c.measured[field] !== undefined)
+          expect(c.cap![field], `${c.key} cap.${field}`).toBeTypeOf("number");
+      expect(
+        CAP_FIELDS[c.kind].some((field) => c.cap![field] !== undefined),
+        c.key,
+      ).toBe(true);
       expect(c.reason?.length ?? 0, c.key).toBeGreaterThan(10);
       expect(
-        withinCap(c.measured, c.cap!),
+        withinCap(c.measured, c.cap!, c.kind),
         `${c.key} ${JSON.stringify(c.measured)} > ${JSON.stringify(c.cap)}`,
       ).toBe(true);
     }
@@ -112,7 +125,8 @@ describe("the data folder's ledger", () => {
     const ctx = caseContextOf(files.runs, files.record.untied, files.chunks);
     const keys = new Set(live().map((c) => c.key));
     const verdict = ledgerVerdict(ctx, ledger);
-    for (const d of files.diagnostics) {
+    // The range's runs' diagnostics (S6 PR 7c): one outside the range is no case of this folder.
+    for (const d of files.diagnostics.filter((x) => x.outside !== true)) {
       const isRule = RULES.some((r) => r.kind === d.kind);
       if (isRule) continue;
       const c = caseOfDiagnostic(d, ctx);
@@ -183,10 +197,60 @@ const decide = (l: Ledger, key: string, d: Partial<LedgerCase>): Ledger => ({
   ),
 });
 
+describe("a probe's cases with no probe list given (keptProbeCases, reopenCases: review of PR #85)", () => {
+  const laneCase = {
+    key: "lane-in-site:9:0|10-40",
+    kind: "lane-in-site" as const,
+    run: "9",
+    with: null,
+    chunk: "9:0",
+    district: "central" as const,
+    block: "b1",
+    blockHash: "hash-a",
+    measured: { lengthM: 30, streetM: 9, s0: 10, s1: 40 },
+    cap: { lengthM: 30 },
+    status: "accepted" as const,
+    by: "review" as const,
+    reason: "decided with a view",
+    qa: "expressway/some-view",
+    previous: null,
+  };
+  const prev = { ...ledger!, cases: [laneCase] } as Ledger;
+
+  it("sends a lane-in-site whose run's blocks changed back to new, the review's decision kept in previous", () => {
+    const kept = keptProbeCases(prev, "lane-in-site", () => ({ block: "b1", blockHash: "hash-b" }));
+    expect(kept.stale).toEqual([laneCase.key]);
+    expect(kept.found[0].blockHash).toBe("hash-b");
+    const reopened = reopenCases(prev, new Set(kept.stale)).cases[0];
+    expect(reopened.status).toBe("new");
+    expect(reopened.cap).toBeNull();
+    expect(reopened.qa).toBe(laneCase.qa);
+    expect(reopened.previous).toMatchObject({ status: "accepted", by: "review", cap: { lengthM: 30 } });
+  });
+
+  it("keeps a lane-in-site whose run's blocks are the same as decided", () => {
+    const kept = keptProbeCases(prev, "lane-in-site", () => ({ block: "b1", blockHash: "hash-a" }));
+    expect(kept.stale).toEqual([]);
+    expect(reopenCases(prev, new Set(kept.stale)).cases[0].status).toBe("accepted");
+  });
+});
+
 describe("the ledger tool's rules (updateLedger)", () => {
   const a = found("changeover:a|b", { stations: 10, minDzM: 0.1, maxDzM: 3 });
   const first = update(null, [a]);
   const decided = decide(first, a.key, { cap: { stations: 10, maxDzM: 3 } });
+
+  it("keeps a review's decision in previous when a rule takes the case over (S6 PR 7c), and keeps it there on the next count", () => {
+    const old = { probes: 1, s0: 82.6, s1: 82.6, stepM: 0.1604, insideM: 0.0033 };
+    const step = found("seam_step:r:0|m|0", old, "h1", "seam_step");
+    const reviewed = decide(update(null, [step]), step.key, { cap: old, qa: "expressway/seam" });
+    const now = found("seam_step:r:0|m|0", { ...old, minDzM: 0.1489, maxDzM: 0.1489 }, "h2", "seam_step");
+    const ruled = update(reviewed, [now]);
+    const [c] = ruled.cases;
+    expect([c.status, c.by, c.qa]).toEqual(["accepted", "rule", "expressway/seam"]);
+    expect(c.previous).toMatchObject({ by: "review", reason: "reviewed here", cap: old });
+    expect(update(ruled, [now]).cases[0].previous).toEqual(c.previous);
+  });
 
   it("adds a new case as new, and a rule's case as accepted by the rule", () => {
     expect(first.cases.map((c) => [c.key, c.status, c.by])).toEqual([["changeover:a|b", "new", null]]);
@@ -286,6 +350,37 @@ describe("report.json's allowed decided again from the ledger (the tool, reallow
 });
 
 describe("the kinds of case", () => {
+  it("keeps a ground-stretch's cap with no inside while the run stays all approach (S6 PR 7c)", () => {
+    expect(withinCap({ approachMaxM: 4.17 }, { approachMaxM: 4.17 }, "ground-stretch")).toBe(true);
+  });
+
+  it("takes a ground-stretch back to new when its inside grows past the cap", () => {
+    const cap = { innerP95M: 0.4, innerMedianM: 0.1, approachMaxM: 2 };
+    expect(withinCap({ innerP95M: 0.44, innerMedianM: 0.1, approachMaxM: 2 }, cap, "ground-stretch")).toBe(
+      true,
+    );
+    expect(withinCap({ innerP95M: 0.5, innerMedianM: 0.1, approachMaxM: 2 }, cap, "ground-stretch")).toBe(
+      false,
+    );
+  });
+
+  it("takes a ground-stretch back to new when an inside appears that its cap did not see", () => {
+    const cap = { approachMaxM: 4.17 };
+    expect(withinCap({ innerP95M: 0.2, innerMedianM: 0, approachMaxM: 4.17 }, cap, "ground-stretch")).toBe(
+      false,
+    );
+    // Without the kind (an old caller) the cap's own fields alone are read.
+    expect(withinCap({ innerP95M: 0.2, innerMedianM: 0, approachMaxM: 4.17 }, cap)).toBe(true);
+  });
+
+  it("keeps a foot-side-join's decision while its leg turns no more than 2° and grows no more than 5 m past the cap (S6 PR 7c)", () => {
+    const cap = { angleDeg: 60, legM: 12 };
+    expect(withinCap({ angleDeg: 61.5, legM: 16.5, streetM: 9 }, cap)).toBe(true);
+    expect(withinCap({ angleDeg: 62.5, legM: 12, streetM: 9 }, cap)).toBe(false);
+    expect(withinCap({ angleDeg: 60, legM: 17.5, streetM: 9 }, cap)).toBe(false);
+    expect(AUTO_KINDS).not.toContain("foot-side-join");
+  });
+
   it("tells a touchdown (an untied pair) before the scorecard's classes", () => {
     expect(overlapKindOf({ maxDzM: 0.3 }, "expressway", "expressway", true, true)).toBe("touchdown");
     expect(overlapKindOf({ maxDzM: 0.3 }, "expressway", "ramp", true, false)).toBe("nose");
@@ -376,13 +471,66 @@ describe("the kinds of case", () => {
     );
     expect(cases.map((c) => [c.key, JSON.stringify(orderMeasured(c.measured))])).toEqual([
       ["seam_hole:r:0|m|0", JSON.stringify({ probes: 2, s0: 1, s1: 2 })],
-      ["seam_step:r:0|m|0", JSON.stringify({ probes: 2, s0: 20, s1: 20.5, stepM: 0.004, insideM: 0 })],
-      ["seam_step:r:0|m|1", JSON.stringify({ probes: 1, s0: 60, s1: 60, stepM: 0.0005, insideM: 0.02 })],
+      [
+        "seam_step:r:0|m|0",
+        JSON.stringify({ probes: 2, minDzM: 0.01, maxDzM: 0.01, s0: 20, s1: 20.5, stepM: 0.004, insideM: 0 }),
+      ],
+      [
+        "seam_step:r:0|m|1",
+        JSON.stringify({
+          probes: 1,
+          minDzM: 0.01,
+          maxDzM: 0.01,
+          s0: 60,
+          s1: 60,
+          stepM: 0.0005,
+          insideM: 0.02,
+        }),
+      ],
       ["merge_skipped:r:0|m", JSON.stringify({ maxDzM: 0.3, s0: 100, s1: 120 })],
       ["let_go:r:0|m|0", JSON.stringify({ s: 70, alongStepM: 0.0004 })],
       ["let_go:r:0|m|1", JSON.stringify({ s: 90, alongStepM: 0.01 })],
     ]);
     expect(cases.filter((c) => c.kind === "let_go").map(isAutoAccepted)).toEqual([true, false]);
+  });
+
+  it("takes a sliding band's one or two probes by rule (PR 5's (A), S6 PR 7c); (A2), a seam meant to be one surface, and a longer or deeper stretch stay a review's", () => {
+    const at = (s: number, step: number, inside: number, dz: number) => ({
+      chunk: "r:0",
+      with: "m",
+      s,
+      dz,
+      step,
+      inside,
+    });
+    const limits = { fullDz: 0.05, maxDz: 0.15 };
+    const steps = (probes: ReturnType<typeof at>[]) =>
+      seamCases(probes, [], [], limits).filter((c) => c.kind === "seam_step");
+    // (A): one probe where the pair lets go, 0.149 m apart in the data, a 0.157 m step, 5 mm inside.
+    const [a] = steps([at(10, 0.157, 0.005, 0.149)]);
+    expect(isAutoAccepted(a)).toBe(true);
+    expect(isSlidingSeamStep(a.measured)).toBe(true);
+    // Two probes 0.5 m apart, still the band's.
+    expect(isAutoAccepted(steps([at(10, 0.16, 0.004, 0.12), at(10.5, 0.158, 0.006, 0.14)])[0])).toBe(true);
+    // (A2): no step, the inside face 0.15 m off: not the rule's.
+    expect(isAutoAccepted(steps([at(10, 0, 0.15, 0.148)])[0])).toBe(false);
+    // A seam meant to be one surface (within MERGE_FULL_DZ): any step over 1 mm is a review's.
+    expect(isAutoAccepted(steps([at(10, 0.004, 0, 0.03)])[0])).toBe(false);
+    // Past the chords' allowance (0.17 m), or three probes, or past MERGE_MAX_DZ in the data.
+    expect(isAutoAccepted(steps([at(10, 0.171, 0.005, 0.149)])[0])).toBe(false);
+    expect(
+      isAutoAccepted(
+        steps([at(10, 0.16, 0.005, 0.12), at(10.5, 0.16, 0.005, 0.12), at(11, 0.16, 0.005, 0.12)])[0],
+      ),
+    ).toBe(false);
+    expect(isAutoAccepted(steps([at(10, 0.16, 0.005, 0.151)])[0])).toBe(false);
+    // A case measured before PR 7c (no data |Δz|) is not taken.
+    expect(isSlidingSeamStep({ probes: 1, s0: 10, s1: 10, stepM: 0.157, insideM: 0.005 })).toBe(false);
+  });
+
+  it("the rule's |Δz| bounds are the runtime's merge (MERGE_FULL_DZ, MERGE_MAX_DZ)", () => {
+    expect(SEAM_FULL_DZ_M).toBe(MERGE_FULL_DZ);
+    expect(SEAM_SLIDE_MAX_DZ_M).toBe(MERGE_MAX_DZ);
   });
 });
 

@@ -16,7 +16,7 @@
   "cases": {
    "central": {
     "nose": {
-     "accepted": 8
+     "accepted": 7
     },
     "changeover": {
      "accepted": 7
@@ -25,10 +25,10 @@
      "accepted": 1
     },
     "touchdown": {
-     "accepted": 1
+     "accepted": 6
     },
     "other": {
-     "accepted": 1
+     "accepted": 3
     },
     "portal-open-cut": {
      "accepted": 1
@@ -37,55 +37,85 @@
      "accepted": 1
     },
     "seam_step": {
-     "accepted": 1
+     "accepted": 2
     },
     "merge_skipped": {
-     "accepted": 45
+     "accepted": 43,
+     "wontfix": 3
     },
     "let_go": {
-     "accepted": 10
+     "accepted": 9
+    },
+    "embankment-stretch": {
+     "accepted": 12
+    },
+    "thin-girder": {
+     "accepted": 13
+    },
+    "low-viaduct": {
+     "accepted": 5
+    },
+    "ground-stretch": {
+     "accepted": 8,
+     "wontfix": 1
+    },
+    "low-clearance": {
+     "accepted": 8
+    },
+    "street-lane-over-cut": {
+     "accepted": 1
+    },
+    "lane-in-site": {
+     "accepted": 9
     }
    }
   },
   "open": 0,
   "withoutQa": 6,
-  "seamProbes": 3641,
+  "seamProbes": 3683,
   "rules": {
-   "vertical_fallback": 29,
+   "vertical_fallback": 8,
    "below_open_ground_floor": 0,
-   "deck_below_ground": 1,
-   "crossing_over_or_at_grade": 30
+   "deck_below_ground": 0,
+   "crossing_over_or_at_grade": 13
   },
   "heightKm": {
    "central": {
-    "over15Km": 13.335,
-    "over20Km": 9.369
+    "over15Km": 13.004,
+    "over20Km": 9.344
    }
   }
  },
  "budget": {
   "cases": {
    "central": {
-    "nose": 8,
+    "nose": 7,
     "changeover": 7,
     "parallel-ramp": 1,
-    "touchdown": 1,
-    "other": 1,
+    "touchdown": 6,
+    "other": 3,
     "portal-open-cut": 1,
     "ramp-radius": 1,
-    "seam_step": 1,
-    "merge_skipped": 45,
-    "let_go": 10
+    "seam_step": 2,
+    "merge_skipped": 46,
+    "let_go": 9,
+    "embankment-stretch": 12,
+    "thin-girder": 13,
+    "low-viaduct": 5,
+    "ground-stretch": 9,
+    "low-clearance": 8,
+    "street-lane-over-cut": 1,
+    "lane-in-site": 9
    }
   },
   "open": 0,
   "withoutQa": 6,
-  "seamProbes": 3641,
+  "seamProbes": 3683,
   "rules": {
-   "vertical_fallback": 29,
+   "vertical_fallback": 8,
    "below_open_ground_floor": 0,
-   "deck_below_ground": 1,
-   "crossing_over_or_at_grade": 30
+   "deck_below_ground": 0,
+   "crossing_over_or_at_grade": 13
   },
   "heightKm": {
    "central": {
@@ -102,12 +132,12 @@
    "with": "813455519",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 2,
-    "minDzM": 1.94,
-    "maxDzM": 2
+    "minDzM": 1.95,
+    "maxDzM": 2.02
    },
    "cap": {
     "stations": 2,
@@ -126,12 +156,12 @@
    "with": "895902565",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "stations": 37,
-    "minDzM": 0.06,
-    "maxDzM": 5.51
+    "stations": 18,
+    "minDzM": 0.05,
+    "maxDzM": 5.49
    },
    "cap": {
     "stations": 38,
@@ -150,12 +180,12 @@
    "with": "45554540",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "stations": 13,
-    "minDzM": 0.05,
-    "maxDzM": 6.39
+    "stations": 12,
+    "minDzM": 0.07,
+    "maxDzM": 6.2
    },
    "cap": {
     "stations": 13,
@@ -174,8 +204,8 @@
    "with": "4848762",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 9,
     "minDzM": 0.52,
@@ -198,12 +228,12 @@
    "with": "45554540",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "stations": 17,
-    "minDzM": 0.05,
-    "maxDzM": 6.63
+    "stations": 16,
+    "minDzM": 0.1,
+    "maxDzM": 6.64
    },
    "cap": {
     "stations": 20,
@@ -222,12 +252,12 @@
    "with": "4848762",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 15,
-    "minDzM": 0.06,
-    "maxDzM": 6.2
+    "minDzM": 0.11,
+    "maxDzM": 5.89
    },
    "cap": {
     "stations": 16,
@@ -246,11 +276,11 @@
    "with": "4848762",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 4,
-    "minDzM": 4.05,
+    "minDzM": 4.06,
     "maxDzM": 6.43
    },
    "cap": {
@@ -264,17 +294,683 @@
    "previous": null
   },
   {
-   "key": "let_go:207111988:2|24402611|0",
+   "key": "embankment-stretch:207111988|0",
+   "kind": "embankment-stretch",
+   "run": "207111988",
+   "with": null,
+   "chunk": "207111988:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 71.5,
+    "lengthM": 71.5,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:24402611|0",
+   "kind": "embankment-stretch",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 59.57,
+    "lengthM": 59.57,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:24402611|1",
+   "kind": "embankment-stretch",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:33",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 4926.5,
+    "s1": 5043.1,
+    "lengthM": 116.6,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:45021972|0",
+   "kind": "embankment-stretch",
+   "run": "45021972",
+   "with": null,
+   "chunk": "45021972:32",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 8077.5,
+    "s1": 8139.04,
+    "lengthM": 61.54,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:45021976|0",
+   "kind": "embankment-stretch",
+   "run": "45021976",
+   "with": null,
+   "chunk": "45021976:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 117.5,
+    "lengthM": 117.5,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:45021976|1",
+   "kind": "embankment-stretch",
+   "run": "45021976",
+   "with": null,
+   "chunk": "45021976:23",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 3414,
+    "s1": 3531.97,
+    "lengthM": 117.97,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:45554540|0",
+   "kind": "embankment-stretch",
+   "run": "45554540",
+   "with": null,
+   "chunk": "45554540:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 64.5,
+    "lengthM": 64.5,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:4848755|0",
+   "kind": "embankment-stretch",
+   "run": "4848755",
+   "with": null,
+   "chunk": "4848755:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 119.5,
+    "lengthM": 119.5,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:4853798|0",
+   "kind": "embankment-stretch",
+   "run": "4853798",
+   "with": null,
+   "chunk": "4853798:2",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 212.5,
+    "s1": 279.84,
+    "lengthM": 67.34,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:4853799|0",
+   "kind": "embankment-stretch",
+   "run": "4853799",
+   "with": null,
+   "chunk": "4853799:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 129.5,
+    "s1": 236.69,
+    "lengthM": 107.19,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:895902565|0",
+   "kind": "embankment-stretch",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 57.6,
+    "lengthM": 57.6,
+    "depthM": 0.01
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "embankment-stretch:895902565|1",
+   "kind": "embankment-stretch",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:7",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 876.27,
+    "s1": 943.2,
+    "lengthM": 66.93,
+    "depthM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "OSM では高架だが、解いた縦断が地表から開けた地表の床（桁下 4.5 m + 桁高）に届かない区間（地表端へ下りる取付け・低いまま走るランプ）。橋脚の無い盛土・擁壁として描き、下を通る道路は blocked。長さが HEIGHT_STRUCTURES の上限（500 m）以内なら規則で通す",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:203873821",
+   "kind": "ground-stretch",
+   "run": "203873821",
+   "with": null,
+   "chunk": "203873821:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 31.05,
+    "approachMaxM": 1.06
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:23705286",
+   "kind": "ground-stretch",
+   "run": "23705286",
+   "with": null,
+   "chunk": "23705286:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 42.53,
+    "approachMaxM": 1.5
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:24039751",
+   "kind": "ground-stretch",
+   "run": "24039751",
+   "with": null,
+   "chunk": "24039751:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 117.7,
+    "approachMaxM": 1.51
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:24402609",
+   "kind": "ground-stretch",
+   "run": "24402609",
+   "with": null,
+   "chunk": "24402609:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 113.41,
+    "approachMaxM": 4.17
+   },
+   "cap": {
+    "approachMaxM": 4.17
+   },
+   "status": "wontfix",
+   "by": "review",
+   "reason": "7a の「登録する 3 つ」: 見送ったトンネルの口（坑口 → 地平 run 24402609 → 895902565 の seam）で、run 全体が取付け（内側が無い）。取付けの最大 4.17 m は坑口の高さに縛られる。トンネルを出すのは S7",
+   "qa": "expressway/shiodome-24402609-overhead",
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:45068169",
+   "kind": "ground-stretch",
+   "run": "45068169",
+   "with": null,
+   "chunk": "45068169:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 181.37,
+    "approachMaxM": 1.68
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:45068170",
+   "kind": "ground-stretch",
+   "run": "45068170",
+   "with": null,
+   "chunk": "45068170:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 181.41,
+    "approachMaxM": 1.74
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:45554541",
+   "kind": "ground-stretch",
+   "run": "45554541",
+   "with": null,
+   "chunk": "45554541:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 1386.93,
+    "innerP95M": 0.17,
+    "innerMedianM": -0.01,
+    "approachMaxM": 1.5
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:5213324",
+   "kind": "ground-stretch",
+   "run": "5213324",
+   "with": null,
+   "chunk": "5213324:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 1389.69,
+    "innerP95M": 0.17,
+    "innerMedianM": -0.02,
+    "approachMaxM": 1.5
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "ground-stretch:861095931",
+   "kind": "ground-stretch",
+   "run": "861095931",
+   "with": null,
+   "chunk": "861095931:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 15.25,
+    "approachMaxM": 0.87
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "地平 run（OSM で高架でもトンネルでもない区間）。解いた路面が測点の地表から帯（HEIGHT_STRUCTURES.ground.bandM 1.5 m）の内にあれば、掘割・盛土はその高さから決めた描き分けで、規則で通す。超えたら listed",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:24402611:0|27-28",
+   "kind": "lane-in-site",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 27.4,
+    "s1": 28.2,
+    "lengthM": 3,
+    "streetM": 4.3
+   },
+   "cap": {
+    "lengthM": 3
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。霞が関の 24402611 の始まりの盛土。幅 4.3 m の街路が 3 m（中心線から最短 2.43 m）。main の桁下 − 地表 −1.33〜−1.30 m。最初の数え（emblanes）は、いちばん近い交差が cut の車線を除いていて漏らした。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site.day--lane-in-site-24402611.jpg（縮小の一覧で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-24402611",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:24402611:0|32-58",
+   "kind": "lane-in-site",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 32.2,
+    "s1": 58.1,
+    "lengthM": 27,
+    "streetM": 50
+   },
+   "cap": {
+    "lengthM": 27
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。同じ盛土の脇を幅 50 m の街路が 27 m 並走（最短 2.76 m）。main −1.18〜−0.01 m。最初の数えは cut の車線として除いていて漏らした。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site.day--lane-in-site-24402611.jpg（縮小の一覧で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-24402611",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:45021976:23|3415-3531",
+   "kind": "lane-in-site",
+   "run": "45021976",
+   "with": null,
+   "chunk": "45021976:23",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 3414.7,
+    "s1": 3531.4,
+    "lengthM": 43,
+    "streetM": 40
+   },
+   "cap": {
+    "lengthM": 43
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。汐留の 45021976 の盛土の脇の幅 40 m の街路（区間 659・661・662 をまとめた）、43 m（最短 0.01 m）。main −2.18〜1.97 m。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site-2.day--lane-in-site-45021976.jpg（縮小の一覧と decided-2.day--decided-45021976-street.jpg（車線の先に盛土の端面）で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-45021976",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:45021976:23|3508-3508",
+   "kind": "lane-in-site",
+   "run": "45021976",
+   "with": null,
+   "chunk": "45021976:23",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 3507.7,
+    "s1": 3508.3,
+    "lengthM": 3,
+    "streetM": 4.3
+   },
+   "cap": {
+    "lengthM": 3
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。同じ盛土の幅 4.3 m の街路（区間 658）、3 m（最短 2.73 m）。main −1.38〜−1.25 m。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site-2.day--lane-in-site-45021976.jpg（縮小の一覧と decided-2.day--decided-45021976-street.jpg（車線の先に盛土の端面）で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-45021976",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:4848755:0|1-36",
+   "kind": "lane-in-site",
+   "run": "4848755",
+   "with": null,
+   "chunk": "4848755:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 1.3,
+    "s1": 36.4,
+    "lengthM": 36,
+    "streetM": 9
+   },
+   "cap": {
+    "lengthM": 36
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。芝浦の入口 4848755 の盛土の脇の幅 9 m の街路（区間 215）、36 m（最短 0 m）。main −2.20〜−0.87 m。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site-3.day--lane-in-site-4848755.jpg（原寸で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-4848755",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:4848755:0|37-87",
+   "kind": "lane-in-site",
+   "run": "4848755",
+   "with": null,
+   "chunk": "4848755:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 36.5,
+    "s1": 87.1,
+    "lengthM": 52,
+    "streetM": 4.3
+   },
+   "cap": {
+    "lengthM": 52
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。同じ盛土に沿う幅 4.3 m の街路（区間 212）、52 m（最短 0 m）。main −0.84〜2.02 m。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site-3.day--lane-in-site-4848755.jpg（原寸で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-4848755",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:4848755:0|38-61",
+   "kind": "lane-in-site",
+   "run": "4848755",
+   "with": null,
+   "chunk": "4848755:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 38.2,
+    "s1": 61,
+    "lengthM": 24,
+    "streetM": 9
+   },
+   "cap": {
+    "lengthM": 24
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。同じ盛土に沿う幅 9 m の街路（区間 188）、24 m（最短 0.17 m）。main −0.76〜0.39 m。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site-3.day--lane-in-site-4848755.jpg（原寸で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-4848755",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:895902565:0|1-56",
+   "kind": "lane-in-site",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 1.3,
+    "s1": 56.3,
+    "lengthM": 35,
+    "streetM": 40
+   },
+   "cap": {
+    "lengthM": 35
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。霞が関の 895902565 の始まりの盛土（決定の表の高架 s 57.6 の手前）に沿う幅 40 m の街路（区間 817）、35 m（最短 0 m）。main −0.61〜2.07 m。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site-4.day--lane-in-site-895902565-0.jpg（縮小の一覧と decided.day--decided-895902565-street.jpg（盛土の内側を街路の路面と外側線が通る）で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-895902565-0",
+   "previous": null
+  },
+  {
+   "key": "lane-in-site:895902565:7|877-910",
+   "kind": "lane-in-site",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:7",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 876.9,
+    "s1": 910,
+    "lengthM": 27,
+    "streetM": 50
+   },
+   "cap": {
+    "lengthM": 27
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "低い 8 区間（main でも桁下が 1.5 m 未満、多くは桁が地面に埋まっていた）の 1 つ。ゲームの車線（GSI の街路を切った後に残る車線）の中心が盛土の床版の縁の内を通る。高架にしても車線は通れないので台帳で受け、R1 の並走する街路の中央帯の規則で車線を直す（ユーザーの選択 A）。895902565 の低い径間の窓（836〜876）の先の盛土に沿う幅 50 m の街路、27 m（最短 1.72 m）。main −0.83〜0.38 m。最初の数えは cut の車線として除いていて漏らした。ユーザーの決定（選択 A: main でも通れなかった低い側は台帳で受け、R1 の中央帯の規則で車線を直す）を記録。撮影ラウンド 2 の lane-in-site.day--lane-in-site-895902565-7.jpg（原寸で見た）で、残る車線が盛土の床版に沿う形を確認",
+   "qa": "expressway/lane-in-site-895902565-7",
+   "previous": null
+  },
+  {
+   "key": "let_go:207111988:3|24402611|0",
    "kind": "let_go",
    "run": "207111988",
    "with": "24402611",
-   "chunk": "207111988:2",
+   "chunk": "207111988:3",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "s": 157.3,
-    "alongStepM": 0
+    "s": 154,
+    "alongStepM": 0.0001
    },
    "cap": null,
    "status": "accepted",
@@ -290,10 +986,10 @@
    "with": "24402611",
    "chunk": "24402125:0",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "s": 82.8,
+    "s": 93.8,
     "alongStepM": 0.0001
    },
    "cap": null,
@@ -310,10 +1006,10 @@
    "with": "45554540",
    "chunk": "45019020:40",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "s": 4080,
+    "s": 4082.8,
     "alongStepM": 0.0001
    },
    "cap": null,
@@ -330,10 +1026,10 @@
    "with": "45021976",
    "chunk": "45021972:1",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "s": 169.5,
+    "s": 170.7,
     "alongStepM": 0
    },
    "cap": null,
@@ -350,110 +1046,10 @@
    "with": "45021976",
    "chunk": "45068172:1",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "s": 296.2,
-    "alongStepM": 0.0003
-   },
-   "cap": null,
-   "status": "accepted",
-   "by": "rule",
-   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "let_go:45554540:33|24402611|0",
-   "kind": "let_go",
-   "run": "45554540",
-   "with": "24402611",
-   "chunk": "45554540:33",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "s": 7984.7,
-    "alongStepM": 0
-   },
-   "cap": null,
-   "status": "accepted",
-   "by": "rule",
-   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "let_go:4848755:3|45019020|0",
-   "kind": "let_go",
-   "run": "4848755",
-   "with": "45019020",
-   "chunk": "4848755:3",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "s": 867.2,
-    "alongStepM": 0
-   },
-   "cap": null,
-   "status": "accepted",
-   "by": "rule",
-   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "let_go:4848889:0|4848762|0",
-   "kind": "let_go",
-   "run": "4848889",
-   "with": "4848762",
-   "chunk": "4848889:0",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "s": 167,
-    "alongStepM": 0
-   },
-   "cap": null,
-   "status": "accepted",
-   "by": "rule",
-   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "let_go:4853798:0|45021976|0",
-   "kind": "let_go",
-   "run": "4853798",
-   "with": "45021976",
-   "chunk": "4853798:0",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "s": 197.5,
-    "alongStepM": 0
-   },
-   "cap": null,
-   "status": "accepted",
-   "by": "rule",
-   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "let_go:813455519:0|45554540|0",
-   "kind": "let_go",
-   "run": "813455519",
-   "with": "45554540",
-   "chunk": "813455519:0",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "s": 41.8,
+    "s": 284.5,
     "alongStepM": 0.0001
    },
    "cap": null,
@@ -464,68 +1060,522 @@
    "previous": null
   },
   {
+   "key": "let_go:45554540:34|24402611|0",
+   "kind": "let_go",
+   "run": "45554540",
+   "with": "24402611",
+   "chunk": "45554540:34",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 7986,
+    "alongStepM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:4848755:4|45019020|0",
+   "kind": "let_go",
+   "run": "4848755",
+   "with": "45019020",
+   "chunk": "4848755:4",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 867.5,
+    "alongStepM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:4848889:1|4848762|0",
+   "kind": "let_go",
+   "run": "4848889",
+   "with": "4848762",
+   "chunk": "4848889:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 158.9,
+    "alongStepM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "let_go:4853798:1|45021976|0",
+   "kind": "let_go",
+   "run": "4853798",
+   "with": "45021976",
+   "chunk": "4853798:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 206.4,
+    "alongStepM": 0
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化した 2 枚の床版が |Δz| MERGE_MAX_DZ を越えて手放す点。進行方向の段差が 1 mm 以内なら、車が通る面に段は出ない（P3.5 レビュー W1 の後）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "low-clearance:24402611|road 891166416|90",
+   "kind": "low-clearance",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 90.23,
+    "soffitM": 3.65,
+    "shortM": 0.85
+   },
+   "cap": {
+    "shortM": 0.85
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a2 の低い径間（霞が関）: 実在が高架で、街路の上に桁・橋台・柱が無い（視点 kasumigaseki）。下面 3.65 m で建築限界 4.5 m に 0.85 m 足りない。取付けを上げて 4.5 m にするのは R",
+   "qa": "expressway/kasumi-street-under-n",
+   "previous": null
+  },
+  {
+   "key": "low-clearance:24402611|road 891166417|84",
+   "kind": "low-clearance",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 83.88,
+    "soffitM": 2.61,
+    "shortM": 1.89
+   },
+   "cap": {
+    "shortM": 1.89
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a2 の低い径間（霞が関）: 実在が高架で、街路の上に桁・橋台・柱が無い（視点 kasumigaseki）。下面 2.61 m で 1.89 m 足りない（乗用車は抜け、8 t トラック・バスは当たる）。取付けを上げて 4.5 m にするのは R",
+   "qa": "expressway/kasumi-street-under-n",
+   "previous": null
+  },
+  {
+   "key": "low-clearance:24402611|road 891166420|75",
+   "kind": "low-clearance",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 74.74,
+    "soffitM": 2.75,
+    "shortM": 1.75
+   },
+   "cap": {
+    "shortM": 1.75
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a2 の低い径間（霞が関）: 実在が高架で、街路の上に桁・橋台・柱が無い（視点 kasumigaseki）。下面 2.75 m で 1.75 m 足りない。取付けを上げて 4.5 m にするのは R",
+   "qa": "expressway/kasumi-street-under-s",
+   "previous": null
+  },
+  {
+   "key": "low-clearance:45177678|road 1030669187|3215",
+   "kind": "low-clearance",
+   "run": "45177678",
+   "with": null,
+   "chunk": "45177678:13",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 3215.13,
+    "soffitM": 2.95,
+    "shortM": 1.55
+   },
+   "cap": {
+    "shortM": 1.55
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "もとからある臨港道路の高架の下（出荷データにも同じ交差がある）。桁 2.2 m のまま下面 2.95 m で 1.55 m 足りない。桁を薄くするかは R",
+   "qa": "expressway/low-clearance-45177678",
+   "previous": null
+  },
+  {
+   "key": "low-clearance:45177681|road 1030669187|99",
+   "kind": "low-clearance",
+   "run": "45177681",
+   "with": null,
+   "chunk": "45177681:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 99.21,
+    "soffitM": 2.98,
+    "shortM": 1.52
+   },
+   "cap": {
+    "shortM": 1.52
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "もとからある臨港道路の高架の下（出荷データにも同じ交差がある）。桁 2.2 m のまま下面 2.98 m で 1.52 m 足りない。桁を薄くするかは R",
+   "qa": "expressway/low-clearance-45177681",
+   "previous": null
+  },
+  {
+   "key": "low-clearance:895902565|road 891166418|850",
+   "kind": "low-clearance",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:6",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 849.64,
+    "soffitM": 3.81,
+    "shortM": 0.69
+   },
+   "cap": {
+    "shortM": 0.69
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a2 の低い径間（895902565）: 下面 3.81 m で 0.69 m 足りない。note（5.B）: 窓 [836.65, 876.27] の手前の橋脚は s 834.64（窓 ± 1 m を避けさらに 1 m 外）。床版は幅 50 m の街路の中心線から 3.8 m を並走し、橋脚はその中央帯に立つ（実物どおり）。横切る幅 30 m の街路の中心線から 18.6 m（車道の縁の 3.6 m 外）。HEAD の橋脚は s 840 で、今は交差点から 5.4 m 遠い。横断歩道から離すのは R1",
+   "qa": "expressway/kasumi2-street-under",
+   "previous": null
+  },
+  {
+   "key": "low-clearance:895902565|road 891166421|856",
+   "kind": "low-clearance",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:6",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 856.46,
+    "soffitM": 2.91,
+    "shortM": 1.59
+   },
+   "cap": {
+    "shortM": 1.59
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a2 の低い径間（895902565）: 下面 2.91 m で 1.59 m 足りない。橋脚の位置は low-clearance:895902565|road 891166418|850 の note（5.B）。取付けを上げて 4.5 m にするのは R",
+   "qa": "expressway/kasumi2-street-under",
+   "previous": null
+  },
+  {
+   "key": "low-clearance:895902565|road 891166424|865",
+   "kind": "low-clearance",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:6",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 865.13,
+    "soffitM": 2.83,
+    "shortM": 1.67
+   },
+   "cap": {
+    "shortM": 1.67
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a2 の低い径間（895902565）: 下面 2.83 m で 1.67 m 足りない。橋脚の位置は low-clearance:895902565|road 891166418|850 の note（5.B）。取付けを上げて 4.5 m にするのは R",
+   "qa": "expressway/kasumi2-street-under",
+   "previous": null
+  },
+  {
+   "key": "low-viaduct:24402125|0",
+   "kind": "low-viaduct",
+   "run": "24402125",
+   "with": null,
+   "chunk": "24402125:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 75.63,
+    "s1": 100.84,
+    "lengthM": 25.21,
+    "heightM": 6.11
+   },
+   "cap": {
+    "s0": 75.63,
+    "s1": 100.84,
+    "lengthM": 25.21
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留出口の足の手前で、高架の高さに届かないが地表にも降りない区間（s 75.6〜100.8、6.11 m）。桁下が見えて橋脚が立ち、宙に浮いた壁が無い（視点）",
+   "qa": "expressway/low-viaduct-24402125",
+   "previous": null
+  },
+  {
+   "key": "low-viaduct:24402611|0",
+   "kind": "low-viaduct",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 59.57,
+    "s1": 97.3,
+    "lengthM": 37.73,
+    "heightM": 4.255
+   },
+   "cap": {
+    "s0": 59.57,
+    "s1": 97.3,
+    "lengthM": 37.73
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "霞が関の低い径間（7a2）の径間そのもの（s 59.6〜97.3、4.26 m）。盛土の端面の橋台から街路 3 本をまたぎ、径間の窓の内に橋脚が無い",
+   "qa": "expressway/kasumi-side",
+   "previous": null
+  },
+  {
+   "key": "low-viaduct:45068172|0",
+   "kind": "low-viaduct",
+   "run": "45068172",
+   "with": null,
+   "chunk": "45068172:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 265.76,
+    "s1": 303.73,
+    "lengthM": 37.97,
+    "heightM": 6.01
+   },
+   "cap": {
+    "s0": 265.76,
+    "s1": 303.73,
+    "lengthM": 37.97
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留入口が外回りへ上がる途中の低い区間（s 265.8〜303.7、6.01 m）。桁下が見えて橋脚が立ち、宙に浮いた壁が無い（視点）",
+   "qa": "expressway/low-viaduct-45068172",
+   "previous": null
+  },
+  {
+   "key": "low-viaduct:895902565|0",
+   "kind": "low-viaduct",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 57.6,
+    "s1": 91.34,
+    "lengthM": 33.74,
+    "heightM": 4.27
+   },
+   "cap": {
+    "s0": 57.6,
+    "s1": 91.34,
+    "lengthM": 33.74
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "決定の表（structureDecisions.ts）で高架に戻した 895902565 の s 57.6〜91.3（路面 − 地表 4.27 m〜、高架の高さに届かない）。下を幅 40 m の街路の車線が通る。撮影ラウンド 3 と .qa/views-decided/after3・main3 の decided-895902565-side（原寸、切り出しで main と比較）で、径間の下に街路が見通せ、盛土の端面（s 57.6）と桁の下面の境に隙間が無いのを見た。-pier で、s 70 の橋脚（幅約 2.5 m）が区間 815 の下り車線の正面に立つ（車線の中心から 0.8 m）。main の同じ視点でも同じ位置に立ち、この車線は main でも橋脚に当たる（5.B と同じ型: 並走する街路の中央帯に立つ橋脚）。-endface は橋脚が端面を隠すので境の判定には使っていない。橋脚と車線は R1 の中央帯の規則で扱う",
+   "qa": "expressway/decided-895902565-side",
+   "previous": null
+  },
+  {
+   "key": "low-viaduct:895902565|1",
+   "kind": "low-viaduct",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:6",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 851.84,
+    "s1": 876.27,
+    "lengthM": 24.43,
+    "heightM": 4.52
+   },
+   "cap": {
+    "s0": 851.84,
+    "s1": 876.27,
+    "lengthM": 24.43
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "895902565 の低い径間（7a2）の径間そのもの（s 851.8〜876.3、4.52 m）。盛土の端面の橋台から街路をまたぎ、径間の窓の内に橋脚が無い（S6 PR 7c で決定の表の高架が s 57.6〜91.3 に入り、番号が |0 → |1 になった。値は同じ）",
+   "qa": "expressway/kasumi2-side",
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24039751:0|24402609",
+   "kind": "merge_skipped",
+   "run": "24039751",
+   "with": "24402609",
+   "chunk": "24039751:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 1.818,
+    "s0": 56.1,
+    "s1": 105.1
+   },
+   "cap": {
+    "maxDzM": 1.818,
+    "s0": 56.1,
+    "s1": 105.1
+   },
+   "status": "wontfix",
+   "by": "review",
+   "reason": "地平 run 24039751 と 24402609 の同一面が坑口側で開く割れ（最大 1.82 m）。見送ったトンネルの口（ground-stretch:24402609 と同じ、坑口の高さに縛られる）で、2 枚の床版は描き分ける。トンネルを出すのは S7",
+   "qa": "expressway/shiodome-24402609-overhead",
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:24039751:1|24402609",
+   "kind": "merge_skipped",
+   "run": "24039751",
+   "with": "24402609",
+   "chunk": "24039751:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 1.922,
+    "s0": 105.6,
+    "s1": 107.1
+   },
+   "cap": {
+    "maxDzM": 1.922,
+    "s0": 105.6,
+    "s1": 107.1
+   },
+   "status": "wontfix",
+   "by": "review",
+   "reason": "同上（24039751:1、坑口の手前の 1.5 m、最大 1.92 m）。見送ったトンネルの口で、S7",
+   "qa": "expressway/shiodome-24402609-overhead",
+   "previous": null
+  },
+  {
    "key": "merge_skipped:24402125:0|24402611",
    "kind": "merge_skipped",
    "run": "24402125",
    "with": "24402611",
    "chunk": "24402125:0",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 6.81,
-    "s0": 82.6,
+    "maxDzM": 5.711,
+    "s0": 94.1,
     "s1": 192.6
    },
    "cap": {
-    "maxDzM": 6.81,
-    "s0": 82.6,
+    "maxDzM": 5.711,
+    "s0": 94.1,
     "s1": 192.6
    },
    "status": "accepted",
    "by": "review",
-   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
-   "qa": null,
-   "previous": null
+   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）。parallel-ramp:24402125|24402611 と同じ判断。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
+   "qa": "expressway/shiodome-lane0-overhead",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 6.81,
+     "s0": 82.6,
+     "s1": 192.6
+    },
+    "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
+    "qa": null
+   }
   },
   {
-   "key": "merge_skipped:24402611:0|895902565",
+   "key": "merge_skipped:24402609:0|24039751",
    "kind": "merge_skipped",
-   "run": "24402611",
-   "with": "895902565",
-   "chunk": "24402611:0",
+   "run": "24402609",
+   "with": "24039751",
+   "chunk": "24402609:0",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.739,
-    "s0": 0.1,
-    "s1": 59.6
+    "maxDzM": 2.074,
+    "s0": 7.7,
+    "s1": 60.2
    },
    "cap": {
-    "maxDzM": 0.74,
-    "s0": 0.1,
-    "s1": 59.1
+    "maxDzM": 2.074,
+    "s0": 7.7,
+    "s1": 60.2
    },
-   "status": "accepted",
+   "status": "wontfix",
    "by": "review",
-   "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
-   "qa": null,
+   "reason": "同上の相手側（24402609:0 の s 7.7〜60.2、最大 2.07 m）。見送ったトンネルの口で、S7",
+   "qa": "expressway/shiodome-24402609-overhead",
    "previous": null
   },
   {
-   "key": "merge_skipped:24402611:16|45021976",
+   "key": "merge_skipped:24402611:17|45021976",
    "kind": "merge_skipped",
    "run": "24402611",
    "with": "45021976",
-   "chunk": "24402611:16",
+   "chunk": "24402611:17",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.637,
+    "maxDzM": 3.546,
     "s0": 2237.4,
-    "s1": 2284.9
+    "s1": 2284.4
    },
    "cap": {
     "maxDzM": 3.64,
@@ -539,66 +1589,37 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:24402611:1|895902565",
+   "key": "merge_skipped:24402611:23|45021976",
    "kind": "merge_skipped",
    "run": "24402611",
-   "with": "895902565",
-   "chunk": "24402611:1",
+   "with": "45021976",
+   "chunk": "24402611:23",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.562,
-    "s0": 355,
-    "s1": 437
+    "maxDzM": 3.854,
+    "s0": 3736.6,
+    "s1": 3816.1
    },
-   "cap": {
-    "maxDzM": 3.53,
-    "s0": 353,
-    "s1": 437
-   },
+   "cap": null,
    "status": "accepted",
-   "by": "review",
-   "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
+   "by": "touchdown:24402611|45021976",
+   "reason": "組の事例 touchdown:24402611|45021976 に従う（同じ 2 本の重なりの区間の内、S6 PR 3）",
    "qa": null,
    "previous": null
   },
   {
-   "key": "merge_skipped:24402611:22|45021976",
-   "kind": "merge_skipped",
-   "run": "24402611",
-   "with": "45021976",
-   "chunk": "24402611:22",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "maxDzM": 3.84,
-    "s0": 3736.6,
-    "s1": 3816.1
-   },
-   "cap": {
-    "maxDzM": 3.84,
-    "s0": 3736.6,
-    "s1": 3816.1
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:24402611:22|45021976、cap {\"maxDzM\":3.76,\"s0\":3740.1,\"s1\":3816.1}）の |Δz| が v2 で 3.84 m に動いただけ（区間 3736.6–3816.1 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
-   "qa": "expressway/changeover-c1-813455519",
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:24402611:22|4848762",
+   "key": "merge_skipped:24402611:23|4848762",
    "kind": "merge_skipped",
    "run": "24402611",
    "with": "4848762",
-   "chunk": "24402611:22",
+   "chunk": "24402611:23",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.542,
+    "maxDzM": 0.549,
     "s0": 3806.8,
     "s1": 3814.8
    },
@@ -614,16 +1635,16 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:24402611:22|813455519",
+   "key": "merge_skipped:24402611:23|813455519",
    "kind": "merge_skipped",
    "run": "24402611",
    "with": "813455519",
-   "chunk": "24402611:22",
+   "chunk": "24402611:23",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 2.748,
+    "maxDzM": 2.765,
     "s0": 3791.8,
     "s1": 3806.3
    },
@@ -639,18 +1660,18 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:24402611:24|45554540",
+   "key": "merge_skipped:24402611:25|45554540",
    "kind": "merge_skipped",
    "run": "24402611",
    "with": "45554540",
-   "chunk": "24402611:24",
+   "chunk": "24402611:25",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.174,
+    "maxDzM": 0.211,
     "s0": 4100.1,
-    "s1": 4101.1
+    "s1": 4102.1
    },
    "cap": {
     "maxDzM": 0.174,
@@ -664,54 +1685,60 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:24402611:29|24402125",
+   "key": "merge_skipped:24402611:2|895902565",
    "kind": "merge_skipped",
    "run": "24402611",
-   "with": "24402125",
-   "chunk": "24402611:29",
+   "with": "895902565",
+   "chunk": "24402611:2",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.17,
-    "s0": 4849.8,
-    "s1": 4850.3
+    "maxDzM": 3.459,
+    "s0": 354.8,
+    "s1": 436.8
    },
-   "cap": {
-    "maxDzM": 0.17,
-    "s0": 4849.8,
-    "s1": 4850.3
-   },
+   "cap": null,
    "status": "accepted",
-   "by": "review",
-   "reason": "汐留出口 24402125 の起点の 7 m 手前の 0.5 m（s 4849.8–4850.3）。起点で固定したランプの高さと下る本線の差（v1 0.145 → v2 0.170 m）が MERGE_MAX_DZ を僅かに超えて描き分けた所で、ランプの床版はまだ始まっていない（P2.7-5 round-01 のレビュー）",
-   "qa": "expressway/merge-24402611-29",
+   "by": "changeover:24402611|895902565",
+   "reason": "組の事例 changeover:24402611|895902565 に従う（同じ 2 本の重なりの区間の内、S6 PR 3）",
+   "qa": null,
    "previous": null
   },
   {
-   "key": "merge_skipped:24402611:31|24402125",
+   "key": "merge_skipped:24402611:33|24402125",
    "kind": "merge_skipped",
    "run": "24402611",
    "with": "24402125",
-   "chunk": "24402611:31",
+   "chunk": "24402611:33",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 6.747,
-    "s0": 4939.7,
-    "s1": 5042.7
+    "maxDzM": 5.417,
+    "s0": 4951.1,
+    "s1": 5042.6
    },
    "cap": {
-    "maxDzM": 6.75,
-    "s0": 4939.7,
-    "s1": 5042.7
+    "maxDzM": 5.417,
+    "s0": 4951.1,
+    "s1": 5042.6
    },
    "status": "accepted",
    "by": "review",
-   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
-   "qa": null,
-   "previous": null
+   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）。parallel-ramp:24402125|24402611 と同じ判断。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
+   "qa": "expressway/shiodome-lane0-overhead",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 6.75,
+     "s0": 4939.7,
+     "s1": 5042.7
+    },
+    "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
+    "qa": null
+   }
   },
   {
    "key": "merge_skipped:45019020:36|4848740",
@@ -720,10 +1747,10 @@
    "with": "4848740",
    "chunk": "45019020:36",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.206,
+    "maxDzM": 0.212,
     "s0": 3534.2,
     "s1": 3535.7
    },
@@ -745,12 +1772,12 @@
    "with": "45554540",
    "chunk": "45019020:40",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.757,
+    "maxDzM": 3.5,
     "s0": 4044.4,
-    "s1": 4079.9
+    "s1": 4082.4
    },
    "cap": {
     "maxDzM": 3.73,
@@ -770,8 +1797,8 @@
    "with": "4848762",
    "chunk": "45019020:4",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "maxDzM": 3.497,
     "s0": 842.1,
@@ -795,12 +1822,12 @@
    "with": "4848755",
    "chunk": "45019020:8",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.259,
+    "maxDzM": 0.27,
     "s0": 1817.4,
-    "s1": 1821.9
+    "s1": 1822.4
    },
    "cap": {
     "maxDzM": 0.33,
@@ -820,10 +1847,10 @@
    "with": "4848755",
    "chunk": "45019020:9",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.355,
+    "maxDzM": 0.354,
     "s0": 1992.8,
     "s1": 1996.8
    },
@@ -845,23 +1872,33 @@
    "with": "45554540",
    "chunk": "45021972:1",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.2,
+    "maxDzM": 3.504,
     "s0": 332.5,
     "s1": 333.5
    },
    "cap": {
-    "maxDzM": 3.28,
+    "maxDzM": 3.504,
     "s0": 332.5,
     "s1": 333.5
    },
    "status": "accepted",
    "by": "review",
-   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
-   "qa": null,
-   "previous": null
+   "reason": "芝浦 JCT で 1 号羽田線の上下線が二層から並列へ移る区間の端（changeover:45021972|45554540 と同じ組、その重なりの区間の外の 1 m）。companions on で並走の高さを寄せ、同一面を 3.5 m 外れて描き分ける所が重なりの区間の手前に出た",
+   "qa": "expressway/changeover-11-45554540",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 3.28,
+     "s0": 332.5,
+     "s1": 333.5
+    },
+    "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+    "qa": null
+   }
   },
   {
    "key": "merge_skipped:45021972:24|45554540",
@@ -870,12 +1907,12 @@
    "with": "45554540",
    "chunk": "45021972:24",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 1.372,
+    "maxDzM": 1.109,
     "s0": 6101.9,
-    "s1": 6130.9
+    "s1": 6125.9
    },
    "cap": {
     "maxDzM": 1.94,
@@ -895,23 +1932,33 @@
    "with": "45554540",
    "chunk": "45021972:2",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.001,
+    "maxDzM": 3.328,
     "s0": 334,
-    "s1": 355
+    "s1": 357
    },
    "cap": {
-    "maxDzM": 3.07,
+    "maxDzM": 3.328,
     "s0": 334,
     "s1": 357
    },
    "status": "accepted",
    "by": "review",
-   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
-   "qa": null,
-   "previous": null
+   "reason": "同上（45021972:2 の s 334〜357、最大 3.33 m）。changeover:45021972|45554540 の移り変わりの端",
+   "qa": "expressway/changeover-11-45554540",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 3.07,
+     "s0": 334,
+     "s1": 357
+    },
+    "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+    "qa": null
+   }
   },
   {
    "key": "merge_skipped:45021972:3|4848762",
@@ -920,23 +1967,33 @@
    "with": "4848762",
    "chunk": "45021972:3",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 1.872,
+    "maxDzM": 1.948,
     "s0": 587.5,
-    "s1": 654
+    "s1": 650
    },
    "cap": {
-    "maxDzM": 1.872,
+    "maxDzM": 1.948,
     "s0": 587.5,
-    "s1": 654
+    "s1": 650
    },
    "status": "accepted",
    "by": "review",
-   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021972:3|4848762、cap {\"maxDzM\":1.79,\"s0\":587.5,\"s1\":654}）の |Δz| が v2 で 1.872 m に動いただけ（区間 587.5–654 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+   "reason": "芝浦 JCT で台場線と 1 号羽田線が二層から並列へ移る区間の端（changeover:45021972|4848762 と同じ組、その重なりの区間の外）。最大 1.95 m で描き分ける",
    "qa": "expressway/changeover-1-4848762",
-   "previous": null
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 1.872,
+     "s0": 587.5,
+     "s1": 654
+    },
+    "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021972:3|4848762、cap {\"maxDzM\":1.79,\"s0\":587.5,\"s1\":654}）の |Δz| が v2 で 1.872 m に動いただけ（区間 587.5–654 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+    "qa": "expressway/changeover-1-4848762"
+   }
   },
   {
    "key": "merge_skipped:45021976:0|45068172",
@@ -945,12 +2002,12 @@
    "with": "45068172",
    "chunk": "45021976:0",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.16,
+    "maxDzM": 1.114,
     "s0": 72.7,
-    "s1": 102.7
+    "s1": 90.7
    },
    "cap": {
     "maxDzM": 3.13,
@@ -964,16 +2021,16 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:45021976:10|24402611",
+   "key": "merge_skipped:45021976:11|24402611",
    "kind": "merge_skipped",
    "run": "45021976",
    "with": "24402611",
-   "chunk": "45021976:10",
+   "chunk": "45021976:11",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 4.247,
+    "maxDzM": 4.259,
     "s0": 1241.8,
     "s1": 1263.8
    },
@@ -986,44 +2043,50 @@
    "by": "review",
    "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:10|24402611、cap {\"maxDzM\":4.18,\"s0\":1241.8,\"s1\":1263.8}）の |Δz| が v2 で 4.247 m に動いただけ（区間 1241.8–1263.8 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
    "qa": "expressway/changeover-c1outer-4848762",
-   "previous": null
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 1.993,
+     "s0": 1264.3,
+     "s1": 1325.3
+    },
+    "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:11|24402611、cap {\"maxDzM\":1.89,\"s0\":1264.3,\"s1\":1321.8}）の |Δz| が v2 で 1.993 m に動いただけ（区間 1264.3–1325.3 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+    "qa": "expressway/merge-45021976-11"
+   }
   },
   {
-   "key": "merge_skipped:45021976:11|24402611",
+   "key": "merge_skipped:45021976:12|24402611",
    "kind": "merge_skipped",
    "run": "45021976",
    "with": "24402611",
-   "chunk": "45021976:11",
+   "chunk": "45021976:12",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 1.993,
+    "maxDzM": 2.008,
     "s0": 1264.3,
     "s1": 1325.3
    },
-   "cap": {
-    "maxDzM": 1.993,
-    "s0": 1264.3,
-    "s1": 1325.3
-   },
+   "cap": null,
    "status": "accepted",
-   "by": "review",
-   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:11|24402611、cap {\"maxDzM\":1.89,\"s0\":1264.3,\"s1\":1321.8}）の |Δz| が v2 で 1.993 m に動いただけ（区間 1264.3–1325.3 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
-   "qa": "expressway/merge-45021976-11",
+   "by": "touchdown:24402611|45021976",
+   "reason": "組の事例 touchdown:24402611|45021976 に従う（同じ 2 本の重なりの区間の内、S6 PR 3）",
+   "qa": null,
    "previous": null
   },
   {
-   "key": "merge_skipped:45021976:11|813455519",
+   "key": "merge_skipped:45021976:12|813455519",
    "kind": "merge_skipped",
    "run": "45021976",
    "with": "813455519",
-   "chunk": "45021976:11",
+   "chunk": "45021976:12",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.34,
+    "maxDzM": 0.334,
     "s0": 1267.3,
     "s1": 1271.3
    },
@@ -1039,41 +2102,16 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:45021976:14|4853798",
-   "kind": "merge_skipped",
-   "run": "45021976",
-   "with": "4853798",
-   "chunk": "45021976:14",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "maxDzM": 0.445,
-    "s0": 2131,
-    "s1": 2136
-   },
-   "cap": {
-    "maxDzM": 0.445,
-    "s0": 2131,
-    "s1": 2136
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:14|4853798、cap {\"maxDzM\":0.39,\"s0\":2132,\"s1\":2136}）の |Δz| が v2 で 0.445 m に動いただけ（区間 2131–2136 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
-   "qa": "expressway/merge-45021976-14",
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:45021976:16|24402611",
+   "key": "merge_skipped:45021976:17|24402611",
    "kind": "merge_skipped",
    "run": "45021976",
    "with": "24402611",
-   "chunk": "45021976:16",
+   "chunk": "45021976:17",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 1.221,
+    "maxDzM": 1.17,
     "s0": 2779,
     "s1": 2799.5
    },
@@ -1086,30 +2124,103 @@
    "by": "review",
    "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:45021976:16|24402611、cap {\"maxDzM\":1.17,\"s0\":2754.5,\"s1\":2799.5}）の |Δz| が v2 で 1.221 m に動いただけ（区間 2779–2799.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
    "qa": "expressway/merge-45021976-16",
-   "previous": null
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 3.48,
+     "s0": 2799.9,
+     "s1": 2824.9
+    },
+    "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+    "qa": null
+   }
   },
   {
-   "key": "merge_skipped:45021976:17|24402611",
+   "key": "merge_skipped:45021976:18|24402611",
    "kind": "merge_skipped",
    "run": "45021976",
    "with": "24402611",
-   "chunk": "45021976:17",
+   "chunk": "45021976:18",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.483,
+    "maxDzM": 3.392,
     "s0": 2799.9,
     "s1": 2824.9
    },
+   "cap": null,
+   "status": "accepted",
+   "by": "touchdown:24402611|45021976",
+   "reason": "組の事例 touchdown:24402611|45021976 に従う（同じ 2 本の重なりの区間の内、S6 PR 3）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45021976:7|45021972",
+   "kind": "merge_skipped",
+   "run": "45021976",
+   "with": "45021972",
+   "chunk": "45021976:7",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.2,
+    "s0": 767.3,
+    "s1": 768.8
+   },
    "cap": {
-    "maxDzM": 3.48,
-    "s0": 2799.9,
-    "s1": 2824.9
+    "maxDzM": 0.2,
+    "s0": 767.3,
+    "s1": 768.8
    },
    "status": "accepted",
    "by": "review",
-   "reason": "C1 の内回り・外回りが二層から並列へ移る区間（allowlist.ts C1_CHANGEOVER_REASON、deck_overlap で許可）",
+   "reason": "外回り 45021976 と 1 号羽田線 45021972 の分合流のノーズで、同一面を 0.20 m 外れる 1.5 m（NOSE_REASON の類型、0.7 m 未満）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45068169:0|45068170",
+   "kind": "merge_skipped",
+   "run": "45068169",
+   "with": "45068170",
+   "chunk": "45068169:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.219,
+    "s0": 0.1,
+    "s1": 7.6
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "other:45068169|45068170",
+   "reason": "組の事例 other:45068169|45068170 に従う（同じ 2 本の重なりの区間の内、S6 PR 3）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45068170:0|45068169",
+   "kind": "merge_skipped",
+   "run": "45068170",
+   "with": "45068169",
+   "chunk": "45068170:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.218,
+    "s0": 174.1,
+    "s1": 181.1
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "other:45068169|45068170",
+   "reason": "組の事例 other:45068169|45068170 に従う（同じ 2 本の重なりの区間の内、S6 PR 3）",
    "qa": null,
    "previous": null
   },
@@ -1120,12 +2231,12 @@
    "with": "45021976",
    "chunk": "45068172:1",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 2.97,
+    "maxDzM": 1.024,
     "s0": 267.4,
-    "s1": 295.9
+    "s1": 283.9
    },
    "cap": {
     "maxDzM": 2.94,
@@ -1145,10 +2256,10 @@
    "with": "4848889",
    "chunk": "45177681:14",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.264,
+    "maxDzM": 0.263,
     "s0": 3300.5,
     "s1": 3302
    },
@@ -1164,73 +2275,44 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:45554540:29|45019020",
+   "key": "merge_skipped:45554540:10|45021972",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "45021972",
+   "chunk": "45554540:10",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 1.183,
+    "s0": 2056.3,
+    "s1": 2057.3
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "changeover:45021972|45554540",
+   "reason": "組の事例 changeover:45021972|45554540 に従う（同じ 2 本の重なりの区間の内、S6 PR 3）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "merge_skipped:45554540:30|45019020",
    "kind": "merge_skipped",
    "run": "45554540",
    "with": "45019020",
-   "chunk": "45554540:29",
+   "chunk": "45554540:30",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.12,
+    "maxDzM": 2.955,
     "s0": 7252.6,
-    "s1": 7283.6
+    "s1": 7286.1
    },
    "cap": {
     "maxDzM": 3.09,
     "s0": 7252.6,
     "s1": 7282.6
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:45554540:31|813455519",
-   "kind": "merge_skipped",
-   "run": "45554540",
-   "with": "813455519",
-   "chunk": "45554540:31",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "maxDzM": 0.573,
-    "s0": 7717.9,
-    "s1": 7726.9
-   },
-   "cap": {
-    "maxDzM": 0.65,
-    "s0": 7717.9,
-    "s1": 7726.9
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:45554540:32|45021972",
-   "kind": "merge_skipped",
-   "run": "45554540",
-   "with": "45021972",
-   "chunk": "45554540:32",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "maxDzM": 3.198,
-    "s0": 7794.9,
-    "s1": 7817.4
-   },
-   "cap": {
-    "maxDzM": 3.28,
-    "s0": 7792.9,
-    "s1": 7817.4
    },
    "status": "accepted",
    "by": "review",
@@ -1245,37 +2327,82 @@
    "with": "813455519",
    "chunk": "45554540:32",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.161,
-    "s0": 7772.4,
-    "s1": 7772.4
+    "maxDzM": 0.42,
+    "s0": 7717.9,
+    "s1": 7725.4
    },
    "cap": {
-    "maxDzM": 0.161,
-    "s0": 7772.4,
-    "s1": 7772.4
+    "maxDzM": 0.65,
+    "s0": 7717.9,
+    "s1": 7726.9
    },
    "status": "accepted",
    "by": "review",
-   "reason": "1 号羽田線 45554540 から 813455519 への分流の終わりで 2 枚が離れる 1 点（s 7772.4、中心間 9.1 m、|Δz| 0.161 m）。v1 の 45554540:31|813455519 は s 7717.9–7726.9 に残る別の事例（P2.7-5 round-01 のレビュー）",
+   "reason": "分合流のノーズで同一面を 0.7 m 未満外れる所（allowlist.ts NOSE_REASON の類型）",
    "qa": "expressway/merge-45554540-32",
-   "previous": null
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 0.161,
+     "s0": 7772.4,
+     "s1": 7772.4
+    },
+    "reason": "1 号羽田線 45554540 から 813455519 への分流の終わりで 2 枚が離れる 1 点（s 7772.4、中心間 9.1 m、|Δz| 0.161 m）。v1 の 45554540:31|813455519 は s 7717.9–7726.9 に残る別の事例（P2.7-5 round-01 のレビュー）",
+    "qa": "expressway/merge-45554540-32"
+   }
   },
   {
-   "key": "merge_skipped:45554540:33|24402611",
+   "key": "merge_skipped:45554540:33|45021972",
+   "kind": "merge_skipped",
+   "run": "45554540",
+   "with": "45021972",
+   "chunk": "45554540:33",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 3.501,
+    "s0": 7792.9,
+    "s1": 7817.4
+   },
+   "cap": {
+    "maxDzM": 3.501,
+    "s0": 7792.9,
+    "s1": 7817.4
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部）。S6 PR 7c: companions on で最大 3.28 → 3.50 m（+0.22 m、離れる向き）、区間は同じ s 7792.9〜7817.4。撮影ラウンド 2 の haneda-ground-4.day--merge-45554540-33-45021972.jpg（原寸）で 2 枚の床版が別の高さに描き分けられているのを見た。geometry.day--merge-45554540-33.jpg はラウンド 1 と 2 を原寸で見比べて差が見えない。下の床版の頭上の高さは測っていない（前の判断 3.28 m のときから同じ形）",
+   "qa": "expressway/merge-45554540-33-45021972",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 3.501,
+     "s0": 7792.9,
+     "s1": 7817.4
+    },
+    "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）。S6 PR 7c: companions on で最大 3.28 → 3.50 m（区間は同じ）。cap を今の値に合わせた",
+    "qa": null
+   }
+  },
+  {
+   "key": "merge_skipped:45554540:34|24402611",
    "kind": "merge_skipped",
    "run": "45554540",
    "with": "24402611",
-   "chunk": "45554540:33",
+   "chunk": "45554540:34",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.206,
+    "maxDzM": 0.242,
     "s0": 7982.6,
-    "s1": 7984.6
+    "s1": 7985.6
    },
    "cap": {
     "maxDzM": 0.206,
@@ -1289,17 +2416,17 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:45554540:8|45021972",
+   "key": "merge_skipped:45554540:9|45021972",
    "kind": "merge_skipped",
    "run": "45554540",
    "with": "45021972",
-   "chunk": "45554540:8",
+   "chunk": "45554540:9",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 1.35,
-    "s0": 2027.3,
+    "maxDzM": 1.092,
+    "s0": 2032.3,
     "s1": 2055.8
    },
    "cap": {
@@ -1311,46 +2438,31 @@
    "by": "review",
    "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
    "qa": null,
-   "previous": null
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 2.03,
+     "s0": 2056.3,
+     "s1": 2057.3
+    },
+    "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
+    "qa": null
+   }
   },
   {
-   "key": "merge_skipped:45554540:9|45021972",
-   "kind": "merge_skipped",
-   "run": "45554540",
-   "with": "45021972",
-   "chunk": "45554540:9",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "maxDzM": 1.451,
-    "s0": 2056.3,
-    "s1": 2057.3
-   },
-   "cap": {
-    "maxDzM": 2.03,
-    "s0": 2056.3,
-    "s1": 2057.3
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "1 号羽田線・11 号台場線の上下線が二層から並列へ移る区間（芝浦 JCT・浜崎橋とその南の 1 号の二層部。P7 の rainbow 範囲で初めてファイルに出た run）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:4848755:3|45019020",
+   "key": "merge_skipped:4848755:4|45019020",
    "kind": "merge_skipped",
    "run": "4848755",
    "with": "45019020",
-   "chunk": "4848755:3",
+   "chunk": "4848755:4",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.235,
+    "maxDzM": 0.244,
     "s0": 862.8,
-    "s1": 866.8
+    "s1": 867.3
    },
    "cap": {
     "maxDzM": 0.29,
@@ -1370,23 +2482,33 @@
    "with": "45021972",
    "chunk": "4848762:1",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 2.18,
+    "maxDzM": 2.242,
     "s0": 482.5,
     "s1": 483.5
    },
    "cap": {
-    "maxDzM": 2.18,
+    "maxDzM": 2.242,
     "s0": 482.5,
     "s1": 483.5
    },
    "status": "accepted",
    "by": "review",
-   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:4848762:1|45021972、cap {\"maxDzM\":2.11,\"s0\":482.5,\"s1\":483.5}）の |Δz| が v2 で 2.18 m に動いただけ（区間 482.5–483.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
-   "qa": "expressway/merge-4848762-1",
-   "previous": null
+   "reason": "同上の相手側（4848762:1 の s 482.5〜483.5、2.24 m）。changeover:45021972|4848762 の移り変わりの端",
+   "qa": "expressway/changeover-1-4848762",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 2.18,
+     "s0": 482.5,
+     "s1": 483.5
+    },
+    "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:4848762:1|45021972、cap {\"maxDzM\":2.11,\"s0\":482.5,\"s1\":483.5}）の |Δz| が v2 で 2.18 m に動いただけ（区間 482.5–483.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+    "qa": "expressway/merge-4848762-1"
+   }
   },
   {
    "key": "merge_skipped:4848762:2|45021972",
@@ -1395,23 +2517,33 @@
    "with": "45021972",
    "chunk": "4848762:2",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 2.057,
+    "maxDzM": 2.125,
     "s0": 484,
-    "s1": 552.5
+    "s1": 549
    },
    "cap": {
-    "maxDzM": 2.057,
+    "maxDzM": 2.125,
     "s0": 484,
-    "s1": 552.5
+    "s1": 549
    },
    "status": "accepted",
    "by": "review",
-   "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:4848762:2|45021972、cap {\"maxDzM\":1.98,\"s0\":484,\"s1\":553}）の |Δz| が v2 で 2.057 m に動いただけ（区間 484–552.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
-   "qa": "expressway/merge-4848762-1",
-   "previous": null
+   "reason": "同上の相手側（4848762:2 の s 484〜549、最大 2.13 m）。changeover:45021972|4848762 の移り変わりの端",
+   "qa": "expressway/changeover-1-4848762",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 2.057,
+     "s0": 484,
+     "s1": 552.5
+    },
+    "reason": "v1 で受けた同じ組・同じ場所（merge_skipped:4848762:2|45021972、cap {\"maxDzM\":1.98,\"s0\":484,\"s1\":553}）の |Δz| が v2 で 2.057 m に動いただけ（区間 484–552.5 m）。視点で段・穴・壁の切れ端が車線に無いことを確かめる",
+    "qa": "expressway/merge-4848762-1"
+   }
   },
   {
    "key": "merge_skipped:4848762:33|4848889",
@@ -1420,8 +2552,8 @@
    "with": "4848889",
    "chunk": "4848762:33",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "maxDzM": 0.417,
     "s0": 2823,
@@ -1439,14 +2571,39 @@
    "previous": null
   },
   {
+   "key": "merge_skipped:4848762:34|4848889",
+   "kind": "merge_skipped",
+   "run": "4848762",
+   "with": "4848889",
+   "chunk": "4848762:34",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.291,
+    "s0": 2993.5,
+    "s1": 2997.5
+   },
+   "cap": {
+    "maxDzM": 0.291,
+    "s0": 2993.5,
+    "s1": 2997.5
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "台場線 4848762 と台場出口 4848889 の分流のノーズで、同一面を 0.29 m 外れる 4 m（NOSE_REASON の類型。同じ組の 4848762:33 は accepted）",
+   "qa": "expressway/daiba-exit-driver",
+   "previous": null
+  },
+  {
    "key": "merge_skipped:4848762:38|45019020",
    "kind": "merge_skipped",
    "run": "4848762",
    "with": "45019020",
    "chunk": "4848762:38",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "maxDzM": 3.384,
     "s0": 3931.4,
@@ -1464,53 +2621,28 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:4853798:0|45021976",
+   "key": "merge_skipped:4848889:1|4848762",
    "kind": "merge_skipped",
-   "run": "4853798",
-   "with": "45021976",
-   "chunk": "4853798:0",
+   "run": "4848889",
+   "with": "4848762",
+   "chunk": "4848889:1",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 0.415,
-    "s0": 197.6,
-    "s1": 202.1
+    "maxDzM": 0.231,
+    "s0": 159,
+    "s1": 162
    },
    "cap": {
-    "maxDzM": 0.37,
-    "s0": 198.6,
-    "s1": 202.1
+    "maxDzM": 0.231,
+    "s0": 159,
+    "s1": 162
    },
    "status": "accepted",
    "by": "review",
-   "reason": "出口ランプが本線の床版の縁から離れる最後の数 m で、地表へ下り始める（車線域はもう重ならない）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:813455519:0|45554540",
-   "kind": "merge_skipped",
-   "run": "813455519",
-   "with": "45554540",
-   "chunk": "813455519:0",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "maxDzM": 0.171,
-    "s0": 42.1,
-    "s1": 42.6
-   },
-   "cap": {
-    "maxDzM": 0.171,
-    "s0": 42.1,
-    "s1": 42.6
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "11（merge_skipped:45554540:32|813455519）の相手側。813455519 の s 42.1–42.6、中心間 9.2–9.4 m、|Δz| 0.171 m（P2.7-5 round-01 のレビュー）",
-   "qa": "expressway/merge-45554540-32",
+   "reason": "同上の相手側（4848889:1 の s 159〜162、0.23 m）。分流のノーズ（NOSE_REASON の類型）",
+   "qa": "expressway/daiba-exit-driver",
    "previous": null
   },
   {
@@ -1520,10 +2652,10 @@
    "with": "24402611",
    "chunk": "813455519:1",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 2.99,
+    "maxDzM": 3.005,
     "s0": 306.7,
     "s1": 316.7
    },
@@ -1539,18 +2671,18 @@
    "previous": null
   },
   {
-   "key": "merge_skipped:895902565:4|24402611",
+   "key": "merge_skipped:895902565:5|24402611",
    "kind": "merge_skipped",
    "run": "895902565",
    "with": "24402611",
-   "chunk": "895902565:4",
+   "chunk": "895902565:5",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "maxDzM": 3.764,
+    "maxDzM": 3.685,
     "s0": 502.1,
-    "s1": 586.6
+    "s1": 587.1
    },
    "cap": {
     "maxDzM": 3.74,
@@ -1561,32 +2693,17 @@
    "by": "review",
    "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
    "qa": null,
-   "previous": null
-  },
-  {
-   "key": "merge_skipped:895902565:5|24402611",
-   "kind": "merge_skipped",
-   "run": "895902565",
-   "with": "24402611",
-   "chunk": "895902565:5",
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "maxDzM": 0.739,
-    "s0": 882.5,
-    "s1": 943
-   },
-   "cap": {
-    "maxDzM": 0.74,
-    "s0": 882.5,
-    "s1": 943
-   },
-   "status": "accepted",
-   "by": "review",
-   "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
-   "qa": null,
-   "previous": null
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "maxDzM": 0.74,
+     "s0": 882.5,
+     "s1": 943
+    },
+    "reason": "麻布台のトンネルを出た外回り（895902565）と内回りが谷町 JCT へ向けて二層（OSM layer 3 / 2）から並列へ移る区間（C1 の移り変わりと同じ類型。P9 の azabudai_exit 範囲で初めてファイルに出た run）",
+    "qa": null
+   }
   },
   {
    "key": "nose:24402611|45554540",
@@ -1595,12 +2712,12 @@
    "with": "45554540",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 1,
-    "minDzM": 0.08,
-    "maxDzM": 0.08
+    "minDzM": 0.11,
+    "maxDzM": 0.11
    },
    "cap": null,
    "status": "accepted",
@@ -1616,8 +2733,8 @@
    "with": "4848762",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 5,
     "minDzM": 0.06,
@@ -1637,8 +2754,8 @@
    "with": "4848740",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 1,
     "minDzM": 0.21,
@@ -1658,8 +2775,8 @@
    "with": "4848755",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 1,
     "minDzM": 0.06,
@@ -1679,12 +2796,12 @@
    "with": "45021976",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 1,
-    "minDzM": 0.05,
-    "maxDzM": 0.05
+    "minDzM": 0.09,
+    "maxDzM": 0.09
    },
    "cap": null,
    "status": "accepted",
@@ -1700,33 +2817,12 @@
    "with": "45068172",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "stations": 2,
-    "minDzM": 0.24,
-    "maxDzM": 0.3
-   },
-   "cap": null,
-   "status": "accepted",
-   "by": "rule",
-   "reason": "分合流でつながる 2 本のノーズで、同一面（5 cm 以内）の帯を最大 |Δz| 0.5 m（NOSE_MAX_DZ_M）以内で外れる所（P2.5 の全域の重なりの内訳で 0.5 m 未満の 114 組と同じ類型）。測点の数は縛らない（ship v1 で規則が通す 56 組のうち 14 組が 3〜7 測点）",
-   "qa": null,
-   "previous": null
-  },
-  {
-   "key": "nose:45021976|813455519",
-   "kind": "nose",
-   "run": "45021976",
-   "with": "813455519",
-   "chunk": null,
-   "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
-   "measured": {
-    "stations": 1,
+    "stations": 4,
     "minDzM": 0.05,
-    "maxDzM": 0.05
+    "maxDzM": 0.3
    },
    "cap": null,
    "status": "accepted",
@@ -1742,12 +2838,12 @@
    "with": "813455519",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "stations": 5,
+    "stations": 3,
     "minDzM": 0.05,
-    "maxDzM": 0.22
+    "maxDzM": 0.16
    },
    "cap": null,
    "status": "accepted",
@@ -1757,14 +2853,62 @@
    "previous": null
   },
   {
+   "key": "other:24039751|24402609",
+   "kind": "other",
+   "run": "24039751",
+   "with": "24402609",
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "stations": 12,
+    "minDzM": 0.07,
+    "maxDzM": 0.13
+   },
+   "cap": {
+    "stations": 12,
+    "maxDzM": 0.13
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a の「登録する 3 つ」の未許可の組: 地平 run 24039751 と 24402609 の同一面（s 0〜107）の 12 測点が 0.07〜0.13 m で同一面の帯を外れる。実行時は 1 枚で描かれる範囲（MERGE_MAX_DZ 0.15 m の内）。坑口側で 2 枚が開く割れは見送ったトンネルの口（S7）",
+   "qa": "expressway/same-24039751-24402609",
+   "previous": null
+  },
+  {
+   "key": "other:45068169|45068170",
+   "kind": "other",
+   "run": "45068169",
+   "with": "45068170",
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "stations": 4,
+    "minDzM": 0.06,
+    "maxDzM": 0.22
+   },
+   "cap": {
+    "stations": 4,
+    "maxDzM": 0.22
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留の取付けの対向の組（5.C）: 中心間隔 7.58〜7.80 m に仮定の断面の幅の和 8.5 m が入らず、重なり 0.70〜0.92 m を真ん中の壁で分ける。車線の縁から壁面まで 0.05〜0.15 m で、車線には食い込まない（右の路肩 0.75 m → 0.05〜0.15 m）。上限: 重なり ≤ 0.92 m・車線の縁から壁面まで ≥ 0.05 m。本線の平面は動かせない（HOLD_MAINS）。断面を中心間隔に合わせて詰めるのは R1",
+   "qa": "expressway/same-45068169-45068170",
+   "previous": null
+  },
+  {
    "key": "other:45177678|4848755",
    "kind": "other",
    "run": "45177678",
    "with": "4848755",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 3,
     "minDzM": 0.05,
@@ -1787,22 +2931,31 @@
    "with": "24402611",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "stations": 11,
+    "stations": 13,
     "minDzM": 0.06,
-    "maxDzM": 6.62
+    "maxDzM": 5.46
    },
    "cap": {
-    "stations": 21,
-    "maxDzM": 6.62
+    "stations": 13,
+    "maxDzM": 5.46
    },
    "status": "accepted",
    "by": "review",
-   "reason": "汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。本線のこの先の掘割はこの範囲のデータに無く（P9 が通したのは麻布台のトンネル）、run の地表端で終わるので、経路と交通 AI は入らない（laneLinks.ts reachesStreets）",
-   "qa": "expressway/shiodome-diverge-overhead",
-   "previous": null
+   "reason": "汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
+   "qa": "expressway/shiodome-lane0-driver",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "stations": 21,
+     "maxDzM": 6.62
+    },
+    "reason": "汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。本線のこの先の掘割はこの範囲のデータに無く（P9 が通したのは麻布台のトンネル）、run の地表端で終わるので、経路と交通 AI は入らない（laneLinks.ts reachesStreets）",
+    "qa": "expressway/shiodome-diverge-overhead"
+   }
   },
   {
    "key": "portal-open-cut:737538573",
@@ -1811,8 +2964,8 @@
    "with": null,
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 23,
     "s0": 490,
@@ -1827,24 +2980,24 @@
    "previous": null
   },
   {
-   "key": "ramp-radius:203873831",
+   "key": "ramp-radius:4853798",
    "kind": "ramp-radius",
-   "run": "203873831",
+   "run": "4853798",
    "with": null,
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
-    "minRadiusM": 13.4
+    "minRadiusM": 13
    },
    "cap": {
-    "minRadiusM": 13.4
+    "minRadiusM": 13
    },
    "status": "accepted",
    "by": "review",
-   "reason": "R 13.4 m（試験区間の C1 と同じ成分で解く連結路）。OSM の線形のままの半径。平面は OSM から 1.5 m 以内に留める（MAX_LATERAL_SHIFT）ので広げられない。下限 15 m は設計書の仮定（RAMP_MIN_RADIUS）で、連結路は第28条第4項で第15条の適用外。走れるかは P3 の走行で確かめる",
-   "qa": null,
+   "reason": "芝公園出口の足（7c2 で地平 run 203873824 を含めた）。OSM の連結路の端の曲がりで最小半径 13 m（前は 203873824 の 10.3 m）。走行（auto-shiodome-shibakoen）で停止・|dy| 超え無し",
+   "qa": "expressway/ramp-radius-4853798-driver",
    "previous": null
   },
   {
@@ -1854,25 +3007,425 @@
    "with": "24402611",
    "chunk": "24402125:0",
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "probes": 1,
-    "s0": 82.6,
-    "s1": 82.6,
-    "stepM": 0.1604,
-    "insideM": 0.0033
+    "minDzM": 0.1441,
+    "maxDzM": 0.1441,
+    "s0": 93.6,
+    "s1": 93.6,
+    "stepM": 0.1538,
+    "insideM": 0.0069
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化を手放す点の滑る帯（データの |Δz| が MERGE_FULL_DZ 0.05 m 超 MERGE_MAX_DZ 0.15 m 以下）の 1〜2 測点（0.5 m 以内）で、段が MERGE_MAX_DZ + 床版の弦の許容 × 2（0.17 m）以下、内側の面が弦の許容（0.01 m）以下。帯の段は設計どおりで、弦（Hermite から最大 1 cm）の分だけ測点によって出る（PR 5 の (A)、S6 PR 7c でユーザーの承認のもと規則に）",
+   "qa": "expressway/seam-24402125-0",
+   "previous": {
+    "status": "accepted",
+    "by": "review",
+    "cap": {
+     "s0": 82.6,
+     "s1": 82.6,
+     "stepM": 0.1604,
+     "insideM": 0.0033
+    },
+    "reason": "手放しの点（s 82.66）の 3 cm 手前の 1 測点。データの |Δz| 148.9 mm（MERGE_MAX_DZ の 1.1 mm 内）で継ぎ目は自分の面にあり（seamWeight ≈ 0）、床版は弦の上にあり（汐留出口がデータの面の 8.1 mm 上、内回りが 3.3 mm 下）面どうしが 160.4 mm 離れるため段 160.4 mm（規則 151 mm を 9.4 mm 超える）。内側の面は 3.3 mm（S6 PR 5 の前は 15.8 cm）。手放しの点で継ぎ目が自分の面に戻ること（let_go の 1 mm）と、この帯で段を 151 mm 以下にすることは、床版がデータの面から最大 1 cm 離れる限り両立しない（S6 PR 5 の記録）",
+    "qa": "expressway/seam-24402125-0"
+   }
+  },
+  {
+   "key": "seam_step:45019020:40|45554540|0",
+   "kind": "seam_step",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:40",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "probes": 1,
+    "minDzM": 0.1467,
+    "maxDzM": 0.1467,
+    "s0": 4082.9,
+    "s1": 4082.9,
+    "stepM": 0.157,
+    "insideM": 0.0054
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "一体化を手放す点の滑る帯（データの |Δz| が MERGE_FULL_DZ 0.05 m 超 MERGE_MAX_DZ 0.15 m 以下）の 1〜2 測点（0.5 m 以内）で、段が MERGE_MAX_DZ + 床版の弦の許容 × 2（0.17 m）以下、内側の面が弦の許容（0.01 m）以下。帯の段は設計どおりで、弦（Hermite から最大 1 cm）の分だけ測点によって出る（PR 5 の (A)、S6 PR 7c でユーザーの承認のもと規則に）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "street-lane-over-cut:737538573",
+   "kind": "street-lane-over-cut",
+   "run": "737538573",
+   "with": null,
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "lengthM": 68,
+    "streetM": 40
    },
    "cap": {
-    "s0": 82.6,
-    "s1": 82.6,
-    "stepM": 0.1604,
-    "insideM": 0.0033
+    "lengthM": 68
    },
    "status": "accepted",
    "by": "review",
-   "reason": "手放しの点（s 82.66）の 3 cm 手前の 1 測点。データの |Δz| 148.9 mm（MERGE_MAX_DZ の 1.1 mm 内）で継ぎ目は自分の面にあり（seamWeight ≈ 0）、床版は弦の上にあり（汐留出口がデータの面の 8.1 mm 上、内回りが 3.3 mm 下）面どうしが 160.4 mm 離れるため段 160.4 mm（規則 151 mm を 9.4 mm 超える）。内側の面は 3.3 mm（S6 PR 5 の前は 15.8 cm）。手放しの点で継ぎ目が自分の面に戻ること（let_go の 1 mm）と、この帯で段を 151 mm 以下にすることは、床版がデータの面から最大 1 cm 離れる限り両立しない（S6 PR 5 の記録）",
-   "qa": "expressway/seam-24402125-0",
+   "reason": "R1 行き（ユーザーの決定、S6 PR 7c）。P9 の麻布台の掘割（737538573:0、穴の半幅 4.75 m）の敷地（+1 m）に、ゲームが組む街路の車線の中心が掛かる: 幅 40 m の街路（片側 1 車線で組まれ車線の中心が中心線の近く）の区間 640 が 65・68 m（最短 1.1・0.01 m）、638 が 13 m（0.48・2.42）、639 が 11 m（0.51・2.2）、658 が 9 m（0.82・1.52）、660 が 20・21 m（1.77・0.6）、幅 4.3 m の区間 624・637 が 5〜6 m（0.73〜1.74）。交通 AI: 90 秒・227 台・3,060 標本で、敷地に入った車は 0。7c の街路の走行（中心線から 10 m に置いた車）は穴に落ちた。main からある形で、並走する街路の中央帯の規則で直す（R1）。ユーザーの決定（R1 で直す）を記録。撮影ラウンド 2 の azabudai-hole.day--azabudai-hole-overhead.jpg（原寸）で、掘割が幅 40 m の街路の中央にあり車線が両脇を通る形を確認",
+   "qa": "expressway/azabudai-hole-overhead",
+   "previous": null
+  },
+  {
+   "key": "thin-girder:24402125:0",
+   "kind": "thin-girder",
+   "run": "24402125",
+   "with": null,
+   "chunk": "24402125:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 197.16,
+    "girderM": 1.74
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:24402125:1",
+   "kind": "thin-girder",
+   "run": "24402125",
+   "with": null,
+   "chunk": "24402125:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 197.16,
+    "s1": 350.16,
+    "girderM": 1.79
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:24402611:1",
+   "kind": "thin-girder",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 59.57,
+    "s1": 249.18,
+    "girderM": 1.7
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:24402611:16",
+   "kind": "thin-girder",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:16",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 2185.85,
+    "s1": 2235.76,
+    "girderM": 1.76
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:24402611:3",
+   "kind": "thin-girder",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:3",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 438.8,
+    "s1": 488.77,
+    "girderM": 1.76
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:24402611:7",
+   "kind": "thin-girder",
+   "run": "24402611",
+   "with": null,
+   "chunk": "24402611:7",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 867.08,
+    "s1": 1098.73,
+    "girderM": 1.72
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:45021972:25",
+   "kind": "thin-girder",
+   "run": "45021972",
+   "with": null,
+   "chunk": "45021972:25",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 6316.42,
+    "s1": 6588.3,
+    "girderM": 1.78
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:45021972:30",
+   "kind": "thin-girder",
+   "run": "45021972",
+   "with": null,
+   "chunk": "45021972:30",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 7490.34,
+    "s1": 7783.92,
+    "girderM": 1.7
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:45068172:0",
+   "kind": "thin-girder",
+   "run": "45068172",
+   "with": null,
+   "chunk": "45068172:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 0,
+    "s1": 134.72,
+    "girderM": 1.73
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:45554540:25",
+   "kind": "thin-girder",
+   "run": "45554540",
+   "with": null,
+   "chunk": "45554540:25",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 5995.67,
+    "s1": 6247.15,
+    "girderM": 1.77
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:45554540:3",
+   "kind": "thin-girder",
+   "run": "45554540",
+   "with": null,
+   "chunk": "45554540:3",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 488.99,
+    "s1": 701.23,
+    "girderM": 2.01
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:45554540:7",
+   "kind": "thin-girder",
+   "run": "45554540",
+   "with": null,
+   "chunk": "45554540:7",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 1303.13,
+    "s1": 1554.14,
+    "girderM": 2.09
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "thin-girder:895902565:6",
+   "kind": "thin-girder",
+   "run": "895902565",
+   "with": null,
+   "chunk": "895902565:6",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s0": 652.39,
+    "s1": 876.27,
+    "girderM": 1.7
+   },
+   "cap": null,
+   "status": "accepted",
+   "by": "rule",
+   "reason": "交差・床版の重なりで、離隔が建築限界 + 桁高（2.2 m）に 0.5 m 以内で足りない区間を、桁を薄くして受けた（GIRDER_MIN 1.7 m 以上）。桁高はどちらも仮定（assumptions.ts）",
+   "qa": null,
+   "previous": null
+  },
+  {
+   "key": "touchdown:24039751|24402611",
+   "kind": "touchdown",
+   "run": "24039751",
+   "with": "24402611",
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "stations": 2,
+    "minDzM": 0.07,
+    "maxDzM": 0.07
+   },
+   "cap": {
+    "stations": 2,
+    "maxDzM": 0.07
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a の「登録する 3 つ」の未許可の組: 地平 run 24039751 の始まり（s 0〜2.5）が内回り 24402611 の seam の手前で 0.07 m の 2 測点だけ同一面の帯を外れる。実行時は 1 枚で描かれる範囲（MERGE_MAX_DZ 0.15 m の内）",
+   "qa": "expressway/touchdown-24039751-24402611",
+   "previous": null
+  },
+  {
+   "key": "touchdown:24402125|45068170",
+   "kind": "touchdown",
+   "run": "24402125",
+   "with": "45068170",
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "stations": 17,
+    "minDzM": 0.29,
+    "maxDzM": 6.15
+   },
+   "cap": {
+    "stations": 17,
+    "maxDzM": 6.15
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "外す組（PR 7 の 6.5、touchdown all）: 汐留出口 24402125 が坑口へ下る取付け 45068170 の上を高架で越えて同じ足の街路へ降りる。2 本が同じ場所へ降りる形に見え、床版の食い込みは車線に無い（overlap-pairs の俯瞰 2・運転席 2）。note: 24402125:2 が 45068170:0 の 1.6 m 上を通る所で、ゲームの locate（roads.ts deckRank）は本線側の 45068170 を答える。走行の測りは 7c1 で経路の区間から引き直した（rideHit）が、locate そのものは R1",
+   "qa": "expressway/untied-24402125-45068170-a",
+   "previous": null
+  },
+  {
+   "key": "touchdown:24402609|895902565",
+   "kind": "touchdown",
+   "run": "24402609",
+   "with": "895902565",
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "stations": 2,
+    "minDzM": 0.07,
+    "maxDzM": 0.07
+   },
+   "cap": {
+    "stations": 2,
+    "maxDzM": 0.07
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "7a の「登録する 3 つ」の未許可の組: 地平 run 24402609 の終わり（s 107.93〜113.41）が 895902565 の seam の手前で 0.07 m の 2 測点だけ同一面の帯を外れる。実行時は 1 枚で描かれる範囲（MERGE_MAX_DZ 0.15 m の内）",
+   "qa": "expressway/touchdown-24402609-895902565",
    "previous": null
   },
   {
@@ -1882,12 +3435,12 @@
    "with": "45021976",
    "chunk": null,
    "district": "central",
-   "block": "1125559318",
-   "blockHash": "12cb875516775fff3d02952d57046091abe555a20683ee76777ec6a4d413c36a",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
    "measured": {
     "stations": 28,
-    "minDzM": 0.08,
-    "maxDzM": 6.56
+    "minDzM": 0.06,
+    "maxDzM": 6.19
    },
    "cap": {
     "stations": 29,
@@ -1897,6 +3450,54 @@
    "by": "review",
    "reason": "都心環状線の内回り・外回りが二層（OSM layer 3 / 2）から並列（同じ layer）に移る区間。OSM の中心線の間隔（6–8.6 m）が車線域の幅の和（8.5 m）より狭く、移り変わりの高さの差（0–6.7 m）がどこに置いても重なりの中に入る。P2.7-3a で 1 測点だけ 1 段離しの行を外した組（plan.untied、touchdown）。許可のまま移し、許可か同一面扱いかは S5 で決める",
    "qa": "expressway/c1-parallel",
+   "previous": null
+  },
+  {
+   "key": "touchdown:24402611|45068169",
+   "kind": "touchdown",
+   "run": "24402611",
+   "with": "45068169",
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "stations": 2,
+    "minDzM": 0.06,
+    "maxDzM": 0.06
+   },
+   "cap": {
+    "stations": 2,
+    "maxDzM": 0.06
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "内回り 24402611 の終わり（s 5039.6〜5043.1）と汐留の取付け 45068169 の seam の手前の 2 測点、0.06 m。実行時は 1 枚で描かれる範囲（MERGE_MAX_DZ 0.15 m の内）",
+   "qa": "expressway/touchdown-24402611-45068169",
+   "previous": null
+  },
+  {
+   "key": "touchdown:45068169|45068172",
+   "kind": "touchdown",
+   "run": "45068169",
+   "with": "45068172",
+   "chunk": null,
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "stations": 15,
+    "minDzM": 2.06,
+    "maxDzM": 5.96
+   },
+   "cap": {
+    "stations": 15,
+    "maxDzM": 5.96
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "外す組（PR 7 の 6.5、touchdown all）: 汐留入口 45068172 が坑口から上がる取付け 45068169 の上を高架で越え、外回りへ合流する。2 本が同じ場所から上がる形に見え、床版の食い込みは車線に無い（overlap-pairs の俯瞰 2・運転席 1）",
+   "qa": "expressway/untied-45068169-45068172-a",
    "previous": null
   }
  ]

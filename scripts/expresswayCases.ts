@@ -252,7 +252,10 @@ function caseDistrict(
 export async function countCases(files: XwFiles): Promise<Counted> {
   await RAPIER.init();
   const ctx = caseContextOf(files.runs, files.record.untied, files.chunks);
-  const fromDiagnostics = diagnosticCases(files.diagnostics, ctx);
+  // The range's runs' diagnostics only (S6 PR 7c): a run solved only for its component has no chunk
+  // nor view here; its case is the folder's that writes it.
+  const ofRange = files.diagnostics.filter((d) => d.outside !== true);
+  const fromDiagnostics = diagnosticCases(ofRange, ctx);
   const probed = probeGenerated(files.chunks, files.runs, framesOf(files.tiles, files.meta.zoom));
   const fromDecks = seamCases(probed.seams, probed.cuts, mergeMisses(files.chunks), {
     fullDz: MERGE_FULL_DZ,
@@ -268,7 +271,7 @@ export async function countCases(files: XwFiles): Promise<Counted> {
       files.byRun,
       files.runs,
       (files.meta.features ?? []).includes("height-structures"),
-      files.diagnostics,
+      ofRange,
     ),
   ].map((c) => {
     const runs = c.with === null ? [c.run] : [c.run, c.with];
@@ -278,9 +281,124 @@ export async function countCases(files: XwFiles): Promise<Counted> {
   return {
     found,
     seamProbes: probed.seams.length,
-    rules: ruleCounts(files.diagnostics),
+    rules: ruleCounts(ofRange),
     districts,
     heightKm,
     pairSpans: new Map(deckOverlaps(files.chunks).map((o) => [`${o.a}|${o.b}`, o.spans])),
   };
+}
+
+/** A street's lanes within an embankment's slab, as scripts/expresswayLanesProbe.ts writes them (--cases). */
+export type SiteLanes = {
+  run: string;
+  chunk: string;
+  s0: number;
+  s1: number;
+  lengthM: number;
+  streetM: number;
+  nearestM: number;
+  lanes: number;
+};
+
+/**
+ * The ledger's lane-in-site cases (S6 PR 7c) from the lanes probe's list, one per chunk and street
+ * (keyed by the chunk and the street's stretch to the metre). Why not counted here from the files:
+ * the lanes are the game's on GSI's streets, which the tests (and CI) do not have.
+ */
+export function laneInSiteCases(
+  list: readonly SiteLanes[],
+  files: XwFiles,
+  districts: ReadonlyMap<string, District>,
+): CountedCase[] {
+  return list.map((p) => ({
+    key: `lane-in-site:${p.chunk}|${Math.round(p.s0)}-${Math.round(p.s1)}`,
+    kind: "lane-in-site" as const,
+    run: p.run,
+    with: null,
+    chunk: p.chunk,
+    measured: { lengthM: p.lengthM, streetM: p.streetM, s0: p.s0, s1: p.s1 },
+    district: caseDistrict([p.run], districts, files),
+    ...blocksOf(files.record.blocks, [p.run]),
+  }));
+}
+
+/** A run's street lanes over its cut's site, as scripts/expresswayHoleLanes.ts writes them (--cases). */
+export type HoleLanes = {
+  run: string;
+  holeHalfM: number;
+  lanes: Array<{
+    street: number;
+    widthM: number;
+    dir: 1 | -1;
+    lane: number;
+    lengthM: number;
+    nearestM: number;
+  }>;
+};
+
+/**
+ * The ledger's street-lane-over-cut cases (S6 PR 7c) from the hole lanes' list, one per run: the
+ * longest lane stretch over the site and its street's width. Why not counted here from the files:
+ * the lanes are the game's on GSI's streets, which the tests (and CI) do not have.
+ */
+export function streetLaneOverCutCases(
+  list: readonly HoleLanes[],
+  files: XwFiles,
+  districts: ReadonlyMap<string, District>,
+): CountedCase[] {
+  return list.map((h) => {
+    const longest = h.lanes.reduce((a, b) => (b.lengthM > a.lengthM ? b : a));
+    return {
+      key: `street-lane-over-cut:${h.run}`,
+      kind: "street-lane-over-cut" as const,
+      run: h.run,
+      with: null,
+      chunk: null,
+      measured: { lengthM: longest.lengthM, streetM: longest.widthM },
+      district: caseDistrict([h.run], districts, files),
+      ...blocksOf(files.record.blocks, [h.run]),
+    };
+  });
+}
+
+/** A foot whose street leg turns past LEG_MAX_DEG, as the feet probe writes it (--cases). */
+export type FootSideJoin = {
+  run: string;
+  end: "start" | "end";
+  deg: number;
+  legM: number;
+  streetWidthM: number | null;
+};
+
+/**
+ * The ledger's foot-side-join cases (S6 PR 7c) from the feet probe's list, one per foot (its run's
+ * district and blocks). Why not counted here from the files: the leg is the game's join to GSI's
+ * streets, which the tests (and CI) do not have; the ledger tool takes the probe's list instead.
+ */
+export function footSideJoinCases(
+  feet: readonly FootSideJoin[],
+  files: XwFiles,
+  districts: ReadonlyMap<string, District>,
+): CountedCase[] {
+  const byFoot = new Map<string, FootSideJoin>();
+  for (const f of feet) {
+    const key = `${f.run}|${f.end}`;
+    const was = byFoot.get(key);
+    const isSteeper = was === undefined || f.deg > was.deg;
+    if (isSteeper) byFoot.set(key, f);
+  }
+  return [...byFoot.values()].map((f) => ({
+    key: `foot-side-join:${f.run}|${f.end}`,
+    kind: "foot-side-join" as const,
+    run: f.run,
+    with: null,
+    chunk: null,
+    measured: {
+      angleDeg: f.deg,
+      legM: f.legM,
+      ...(f.streetWidthM === null ? {} : { streetM: f.streetWidthM }),
+    },
+    district: caseDistrict([f.run], districts, files),
+    ...blocksOf(files.record.blocks, [f.run]),
+  }));
 }

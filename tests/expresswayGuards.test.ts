@@ -20,20 +20,16 @@ describe("出荷フォルダに書いてよい生成（scripts/expressway.ts、P
     expect(shippedFolderRefusal({ ...plain, isBlocks: true })).toMatch(/--partition blocks/);
     expect(shippedFolderRefusal({ ...plain, isV1: true })).toMatch(/--objective v1/);
   });
-  it("stops --structures height without --out until PR 7 makes it the default (P2.7-6)", () => {
-    expect(shippedFolderRefusal({ ...plain, isHeight: true })).toMatch(/--structures height/);
-    expect(shippedFolderRefusal({ ...plain, hasOut: true, isHeight: true })).toBeNull();
-  });
-  it("stops --ground compile without --out, ahead of --structures height it needs (S6 PR 2)", () => {
-    expect(shippedFolderRefusal({ ...plain, isGround: true, isHeight: true })).toMatch(/^--ground compile/);
-    expect(shippedFolderRefusal({ ...plain, hasOut: true, isGround: true, isHeight: true })).toBeNull();
-  });
-  it("stops --touchdown all and --companions on without --out (S6 PR 3)", () => {
-    expect(shippedFolderRefusal({ ...plain, isTouchdownAll: true })).toMatch(/^--touchdown all/);
-    expect(shippedFolderRefusal({ ...plain, isCompanions: true })).toMatch(/^--companions on/);
-    expect(
-      shippedFolderRefusal({ ...plain, hasOut: true, isTouchdownAll: true, isCompanions: true }),
-    ).toBeNull();
+  it("lets the network's flags (the default since S6 PR 7c) write the shipped folder, and stops the values before them and a weight sweep without --out", () => {
+    expect(shippedFolderRefusal(plain)).toBeNull();
+    expect(shippedFolderRefusal({ ...plain, isTags: true })).toMatch(/^--structures tags/);
+    expect(shippedFolderRefusal({ ...plain, isGroundSkip: true })).toMatch(/^--ground skip/);
+    expect(shippedFolderRefusal({ ...plain, isTouchdownMains: true })).toMatch(/^--touchdown mains/);
+    expect(shippedFolderRefusal({ ...plain, isCompanionsOff: true })).toMatch(/^--companions off/);
+    expect(shippedFolderRefusal({ ...plain, isCompanionWeight: true })).toMatch(/^--companion-weight/);
+    const before = { isTags: true, isGroundSkip: true, isTouchdownMains: true, isCompanionsOff: true };
+    expect(shippedFolderRefusal({ ...plain, ...before })).toMatch(/^--structures tags/);
+    expect(shippedFolderRefusal({ ...plain, hasOut: true, ...before })).toBeNull();
   });
   it("stops --ramp-shift and --nose-surface overlap without --out (S6 PR 4)", () => {
     expect(shippedFolderRefusal({ ...plain, isRampShift: true })).toMatch(/^--ramp-shift/);

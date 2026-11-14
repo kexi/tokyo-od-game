@@ -65,8 +65,24 @@ describe("103-A・104 before an entrance（entranceBoards.ts）", () => {
     expect(Math.hypot(advance.pos.x - at104.x, advance.pos.z - at104.z)).toBeGreaterThan(6);
   });
 
-  it("stands nothing for a ramp across the street", () => {
+  it("stands them for the travel that turns left into a ramp across the street, the 103-A's arrow to the left", () => {
+    // North (heading π/2) off an east–west street: east-going traffic turns left into it.
     const across = { ...entrance, heading: Math.PI / 2 };
-    expect(planEntranceBoards(graph, [across], frame)).toEqual([]);
+    const crossing = planEntranceBoards(graph, [across], frame);
+    const direction = crossing.find((p) => p.board.kind === "103-A")!;
+    const advance = crossing.find((p) => p.board.kind === "104")!;
+    expect(direction.travel.x).toBeGreaterThan(0.99);
+    expect(advance.travel.x).toBeGreaterThan(0.99);
+    expect(direction.board.angle).toBe(90);
+    expect(advance.board.angle).toBeNull();
+    for (const p of crossing) expect(parseBoardContent(p.board).success).toBe(true);
+    // South off it: west-going traffic turns left into it.
+    const south = planEntranceBoards(graph, [{ ...entrance, heading: -Math.PI / 2 }], frame);
+    expect(south.find((p) => p.board.kind === "103-A")!.travel.x).toBeLessThan(-0.99);
+    expect(south.find((p) => p.board.kind === "103-A")!.board.angle).toBe(90);
+  });
+
+  it("keeps the 103-A's arrow straight on for a ramp along the street", () => {
+    expect(one("103-A").board.angle).toBe(0);
   });
 });

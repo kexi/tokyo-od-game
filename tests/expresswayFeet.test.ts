@@ -1,3 +1,4 @@
+import type { FootDeferral } from "../src/expressway/footDeferrals";
 import { describe, expect, it } from "vitest";
 import { GROUND_ROAD_HALF_WIDTH, PARAPET_WIDTH, RAMP_FOOT } from "../src/expressway/assumptions";
 import { type CrossObject, planNetwork, solvePlan } from "../src/expressway/compile";
@@ -171,31 +172,90 @@ describe("cutFeet（合成網: 高架のランプ → 地平 run → 街路）",
     expect(ranged.runs.get("11")!.i1).toBe(whole.runs.get("11")!.i1);
   });
 
-  it("a street along the ramp is not cut: one foot-along-street case, never accepted by rule", () => {
-    const along: CrossObject = {
-      kind: "road",
-      id: 78,
-      pts: [ll(300 + L - 200, 0.5), ll(300 + L + 40, 0.5)],
-    };
-    const plan = planNetwork(net, new Set(), null, [], { ...height, feet: [along] });
-    expect(plan.runs.get("11")!.footTrim).toBeUndefined();
+  // The decisions' table (footDeferrals.ts) for the synthetic net: run 11's end left out to R1.
+  const deferral: FootDeferral = {
+    run: "11",
+    end: "end",
+    until: "R1",
+    reason: "test: a run at grade along a street's median",
+    decidedBy: "user",
+    decidedAt: "2026-11-13",
+    release: "test",
+  };
+  const alongStreet: CrossObject = {
+    kind: "road",
+    id: 78,
+    pts: [ll(300 + L - 30, 0.5), ll(300 + L + 40, 0.5)],
+  };
+
+  it("a foot in the decisions' table is left out (deferred, S6 PR 7c): the viaduct before it ends at the ground there, nothing dangles", () => {
+    const plan = planNetwork(net, new Set(), null, [], {
+      ...height,
+      feet: [alongStreet],
+      footDeferrals: [deferral],
+    });
+    expect(plan.runs.has("11")).toBe(false);
+    expect(plan.feet).toEqual([
+      expect.objectContaining({ run: "11", end: "end", outcome: "deferred", until: "R1", inRange: true }),
+    ]);
+    expect(plan.diagnostics.filter((x) => x.kind === "ramp_foot_along_street" && x.run === "11")).toEqual([]);
+    const solved = solvePlan(plan, flat, [alongStreet]);
+    expect(solved.runs.find((r) => r.id === "10")!.end.kind).toBe("ground");
+    expect(danglingOf(solved.runs).length).toBe(0);
+  });
+
+  it("a foot along a street not in the table is built as before: one foot-along-street case", () => {
+    const plan = planNetwork(net, new Set(), null, [], { ...height, feet: [alongStreet], footDeferrals: [] });
+    expect(plan.runs.has("11")).toBe(true);
     expect(plan.feet).toEqual([expect.objectContaining({ run: "11", end: "end", outcome: "along" })]);
     const d = plan.diagnostics.find((x) => x.kind === "ramp_foot_along_street")!;
-    expect(d).toMatchObject({ run: "11", allowed: false });
     const found = caseOfDiagnostic(d, { runs: new Map(), untied: [], chunks: new Map() } as never);
     expect(found).toMatchObject({ key: "foot-along-street:11|end", kind: "foot-along-street" });
-    expect(found!.measured.s).toBeCloseTo(plan.runs.get("11")!.length, 1);
+  });
+
+  it("stops the build when a row of the table names a foot that is not along a street (a stale decision)", () => {
+    const square = roadAt(77, 300 + L, 90);
+    expect(() =>
+      planNetwork(net, new Set(), null, [], { ...height, feet: [square], footDeferrals: [deferral] }),
+    ).toThrow(/foot deferral 11:end/);
+    // No street at the foot at all: the run stays planned, and the row is stale too.
+    expect(() =>
+      planNetwork(net, new Set(), null, [], { ...height, feet: [], footDeferrals: [deferral] }),
+    ).toThrow(/foot deferral 11:end/);
+    // A run the plan never had (another range or network) is skipped.
+    expect(() =>
+      planNetwork(net, new Set(), null, [], {
+        ...height,
+        feet: [square],
+        footDeferrals: [{ ...deferral, run: "999" }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("a viaduct's foot along the street is not cut: one foot-along-street case, never accepted by rule", () => {
+    // A viaduct ramp whose own ground end lies along a street.
+    const net = chainNetwork([{ id: 10, pts: along(0, 300, 50), bridge: true }]);
+    const street: CrossObject = { kind: "road", id: 78, pts: [ll(200, 0.5), ll(340, 0.5)] };
+    const plan = planNetwork(net, new Set(), null, [], { ...height, feet: [street], footDeferrals: [] });
+    expect(plan.runs.get("10")!.footTrim).toBeUndefined();
+    expect(plan.feet).toEqual([expect.objectContaining({ run: "10", end: "end", outcome: "along" })]);
+    const d = plan.diagnostics.find((x) => x.kind === "ramp_foot_along_street")!;
+    expect(d).toMatchObject({ run: "10", allowed: false });
+    const found = caseOfDiagnostic(d, { runs: new Map(), untied: [], chunks: new Map() } as never);
+    expect(found).toMatchObject({ key: "foot-along-street:10|end", kind: "foot-along-street" });
+    expect(found!.measured.s).toBeCloseTo(plan.runs.get("10")!.length, 1);
     // What a rule would be made from: the angle, the slab in the street, its edge over the centre line
     // (0.5 m off it), and |road − ground| there once the run is solved.
     expect(found!.measured).toMatchObject({ angleDeg: expect.closeTo(0, 0), streetM: 30, coverM: 30 });
-    const solved = solvePlan(plan, flat, [along]);
+    const solved = solvePlan(plan, flat, [street]);
     const ctx = caseContextOf(solved.runs, [], solved.chunks);
     const solvedCase = caseOfDiagnostic(
       solved.diagnostics.find((x) => x.kind === "ramp_foot_along_street")!,
       ctx,
     );
     expect(solvedCase!.measured.offGroundM).toBeGreaterThanOrEqual(0);
-    expect(solvedCase!.measured.offGroundM).toBeLessThan(0.1);
+    // A viaduct climbs off its ground end over the street (not held to the band as a run at grade).
+    expect(solvedCase!.measured.offGroundM).toBeLessThan(0.5);
   });
 
   it("a run at grade the cut would leave shorter than RAMP_FOOT.minRunM is taken into the viaduct and cut there: its end at the ground in the band, its grade free, nothing dangles", () => {

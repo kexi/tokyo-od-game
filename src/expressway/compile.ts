@@ -38,6 +38,8 @@ import {
   RAMP_FOOT,
 } from "./assumptions";
 import { footCut, type FootCut, type FootLine, type FootRoad } from "./feet";
+import { FOOT_DEFERRALS, footDeferralOf, type FootDeferral } from "./footDeferrals";
+import { decidedViaducts, STRUCTURE_DECISIONS, type StructureDecision } from "./structureDecisions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
   belowStructure,
@@ -62,6 +64,7 @@ import {
   isLowSpanWindow,
   isWindowOver,
   sameKept,
+  decideViaduct,
   forceViaduct,
 } from "./heightStructures";
 import {
@@ -310,18 +313,22 @@ export type RunPlan = {
  * with no viaduct beside it to take it in, a junction is within the foot, or the run is in the street
  * all its length short of RAMP_FOOT.maxM (`cutM` 0, the ledger's foot-along-street with that length). A foot taken in whose viaduct was then not cut keeps that outcome
  * (`along`, `kept`) with `into`. `roads` the streets the end stood in. An end already clear is not
- * listed.
+ * listed. `deferred` (S6 PR 7c): a run at grade whose foot is `along` a street and in the decisions'
+ * table (footDeferrals.ts), left out until its stage (`until`), the run beside it ending at the ground
+ * there as with `--ground skip`; `inRange` whether the range picks it (the boxes, or the ship's runs).
  */
 export type FootRecord = {
   run: string;
   chain: string;
   end: "start" | "end";
-  outcome: "cut" | "merged" | "along" | "kept";
+  outcome: "cut" | "merged" | "along" | "kept" | "deferred";
   cutM: number;
   leftM: number;
   roads: number[];
   into?: string;
   mergedM?: number;
+  until?: FootDeferral["until"];
+  inRange?: boolean;
 };
 
 export type Crossing = { upper: string; lower: string; sUpper: number; sLower: number; sinAngle: number };
@@ -423,6 +430,13 @@ export type Plan = {
    * whole plan in chain order. Absent without `feet`.
    */
   feet?: FootRecord[];
+  /** The decisions' table the structures read (PlanOptions.structureDecisions). */
+  structureDecisions?: readonly StructureDecision[];
+  /**
+   * S6 PR 7c: the stretches a decision made viaducts where their height made embankments (run, run
+   * distances), for the scorecard. Absent when none was.
+   */
+  decidedViaducts?: Array<{ run: string; s0: number; s1: number }>;
 };
 
 /** A run named with its length (km, to the metre). */
@@ -752,6 +766,10 @@ export type PlanOptions = {
    * made again with it (scripts/expressway.ts plans once to know which roads to read).
    */
   feet?: readonly CrossObject[];
+  /** The feet left out by a decision (footDeferrals.ts FOOT_DEFERRALS by default; tests give their own). */
+  footDeferrals?: readonly FootDeferral[];
+  /** The stretches built as viaducts by a decision (structureDecisions.ts STRUCTURE_DECISIONS by default). */
+  structureDecisions?: readonly StructureDecision[];
 };
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
@@ -789,6 +807,8 @@ export function planNetwork(
       : [...chains.values()].filter((c) => splitRuns(net, c).some((r) => r.elevated)).map((c) => c.id),
   );
   const feet: FootRecord[] = [];
+  const deferrals = options.footDeferrals ?? FOOT_DEFERRALS;
+  const deferredPlans = new Map<string, RunPlan>();
   for (const chain of [...chains.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const chainRuns = splitRuns(net, chain);
     if (!chainRuns.some((r) => r.elevated)) continue;
@@ -852,6 +872,8 @@ export function planNetwork(
             roads: feetRoads,
             feet,
             diagnostics,
+            deferrals,
+            deferredPlans,
           },
           compiled,
         )
@@ -901,6 +923,7 @@ export function planNetwork(
     chainRuns: new Map(),
     belowDeferred,
     ...(isGroundMode ? { betweenTunnels } : {}),
+    ...(options.structureDecisions ? { structureDecisions: options.structureDecisions } : {}),
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),
@@ -941,6 +964,20 @@ export function planNetwork(
     return false;
   });
   plan.wanted = new Set(wanted.map((r) => r.run.id));
+  // Only a plan whose feet were cut knows them (the first plan without roads, a tags build: not).
+  if (feetRoads !== null)
+    checkFootDeferrals(plan, deferrals, deferredPlans, (rp) => {
+      if (chosen) return chosen.has(rp.run.id);
+      if (!ranges) return true;
+      for (let i = rp.i0; i <= rp.i1; i += 5) {
+        const [lon, lat] = lonLatAt(rp, i);
+        const isInside = ranges.some(
+          (r) => lon >= r.minLon && lon <= r.maxLon && lat >= r.minLat && lat <= r.maxLat,
+        );
+        if (isInside) return true;
+      }
+      return false;
+    });
   const wantedChains = new Set([...plan.wanted].map((id) => plan.runs.get(id)!.chain.id));
   for (const j of plan.belowJunctions ?? []) j.inRange = j.chains.some((c) => wantedChains.has(c));
   // A run at grade a wanted run hangs from (a seam, a junction) is wanted too (S6 PR 2): the ranges
@@ -1090,7 +1127,37 @@ type FeetContext = {
   roads: FeetRoad[];
   feet: FootRecord[];
   diagnostics: XwDiagnostic[];
+  deferrals: readonly FootDeferral[];
+  /** The runs at grade left out by a decision, kept to tell whether the range picks them. */
+  deferredPlans: Map<string, RunPlan>;
 };
+
+/**
+ * The decisions' table against the plan (S6 PR 7c, footDeferrals.ts): a row whose run is still planned
+ * was not left out (its foot is no longer a run at grade along a street, or no foot at all): stale,
+ * the build stops. A row whose run the plan never had is skipped (another range, another network).
+ * Marks each deferred foot whether the range picks it (`isPicked`, as the wanted runs are picked), for
+ * the scorecard's and report.json's `ground.deferred`.
+ */
+function checkFootDeferrals(
+  plan: Plan,
+  table: readonly FootDeferral[],
+  deferred: ReadonlyMap<string, RunPlan>,
+  isPicked: (rp: RunPlan) => boolean,
+): void {
+  for (const row of table) {
+    const isStale = plan.runs.has(row.run);
+    if (isStale)
+      throw new Error(
+        `foot deferral ${row.run}:${row.end} (footDeferrals.ts): the run is planned, its foot not left out`,
+      );
+  }
+  for (const f of plan.feet ?? []) {
+    if (f.outcome !== "deferred") continue;
+    const rp = deferred.get(f.run);
+    f.inRange = rp !== undefined && isPicked(rp);
+  }
+}
 
 /**
  * Whether a run's end at a chain's end is a ground end (as endPlan finds it): the chain is open there,
@@ -1170,8 +1237,17 @@ function cutFeet(ctx: FeetContext, compiled: RunPlan[]): RunPlan[] {
       const rp = out[at];
       if (!isFootCandidate(rp) || !isGroundEnd(rp)) break;
       const found = footCut(footLineOf(rp, atStart), footRoadsNear(ctx, rp, atStart));
-      if (found.kind === "clear") break;
       const end = atStart ? "start" : "end";
+      const deferral = footDeferralOf(ctx.deferrals, rp.run.id, end);
+      // A decision is for a run at grade along a street: on any other foot it is stale, and stops the
+      // build rather than leave out a run nobody decided on (checkFootDeferrals catches the rest).
+      const isStaleDeferral =
+        deferral !== undefined && (found.kind !== "along" || !rp.ground || merged !== null);
+      if (isStaleDeferral)
+        throw new Error(
+          `foot deferral ${rp.run.id}:${end} (footDeferrals.ts) is not a run at grade along a street in this build (${found.kind})`,
+        );
+      if (found.kind === "clear") break;
       // A foot taken in is listed under the run at grade, with the viaduct it went into: `merged` when
       // the viaduct's foot was then cut, else the outcome there (along, kept) with `into`.
       const record = (outcome: FootRecord["outcome"], cutM: number) =>
@@ -1198,6 +1274,25 @@ function cutFeet(ctx: FeetContext, compiled: RunPlan[]): RunPlan[] {
       // A run at grade can go into the viaduct right beside it, itself a foot candidate (a ramp's,
       // not on a structure): a below run beside it would take a cut's stretch at grade.
       const canMerge = rp.ground && isBeside && inner.run.elevated && isFootCandidate(inner);
+      // A run at grade along a street's median that a decision leaves out (footDeferrals.ts): the run
+      // beside it ends at the ground there as with skip. Why not every run at grade along a street (a
+      // rule, tried in 7c): 129 runs left the network and the main lines moved by up to −1.89 m; the
+      // rule is R1's, with the street's median in its section.
+      if (deferral) {
+        ctx.feet.push({
+          run: rp.run.id,
+          chain: ctx.chain.id,
+          end,
+          outcome: "deferred",
+          cutM: roundTo(rp.length, 2),
+          leftM: 0,
+          roads: found.roads,
+          until: deferral.until,
+        });
+        ctx.deferredPlans.set(rp.run.id, rp);
+        out.splice(at, 1);
+        continue;
+      }
       if (found.kind === "along") {
         record("along", 0);
         inStreet(found, maxM);
@@ -5696,7 +5791,21 @@ function structuresByHeight(
     S,
     groundEnds,
   );
-  s.structures = stretches;
+  // A decision's stretch (structureDecisions.ts): its embankment a viaduct, a cut left. Its stations
+  // must be an embankment by height in this build (within half a metre of the row's ends): a row on
+  // anything else is stale and stops the build. Why not skip a stale row: nobody would see it go stale.
+  const decided = decidedViaducts(plan.structureDecisions ?? STRUCTURE_DECISIONS, rp.run.id);
+  for (const [a, b] of decided) {
+    const isEmbankment = (sv: number) =>
+      stretches.some((h) => h.structure === "embankment" && sv >= h.s0 - 1e-6 && sv <= h.s1 + 1e-6);
+    for (let sv = Math.max(0, a + 0.5); sv <= Math.min(S, b - 0.5) + 1e-9; sv += 1)
+      if (!isEmbankment(sv))
+        throw new Error(
+          `structure decision ${rp.run.id} ${a}–${b} (structureDecisions.ts): s ${sv.toFixed(1)} is not an embankment by height in this build`,
+        );
+    (plan.decidedViaducts ??= []).push({ run: rp.run.id, s0: a, s1: Math.min(b, S) });
+  }
+  s.structures = decided.length > 0 ? decideViaduct(stretches, decided) : stretches;
   const kept: number[] = [];
   const keptInfo: CrossInfo[] = [];
   info.forEach((c, i) => {
@@ -5704,7 +5813,7 @@ function structuresByHeight(
     // The whole width the road takes along the deck (review W1): any of it on an embankment or cut.
     const a = sc - c.halfWindow;
     const b = sc + c.halfWindow;
-    const onGround = stretches.find((h) => h.structure !== "viaduct" && h.s1 > a && h.s0 < b);
+    const onGround = s.structures!.find((h) => h.structure !== "viaduct" && h.s1 > a && h.s0 < b);
     const at = onGround?.structure ?? "viaduct";
     const isOpenGround = onGround !== undefined;
     // Its lowest point over that width, as the cleared roads are judged: short of what the thinnest

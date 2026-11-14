@@ -945,6 +945,7 @@ export const LOG_EVENTS = {
     merged: count,
     along: count,
     kept: count,
+    deferred: count,
     runs: count,
     needed: count,
   }),
@@ -1184,8 +1185,50 @@ export const LOG_EVENTS = {
     ),
     unattachedFeet: z.array(z.strictObject({ run: z.string(), end: z.enum(["start", "end"]) })),
     maxLegDeg: z.number().nonnegative(),
-    steepFeet: z.array(z.strictObject({ run: z.string(), end: z.enum(["start", "end"]), deg: z.number() })),
+    steepFeet: z.array(
+      z.strictObject({
+        run: z.string(),
+        end: z.enum(["start", "end"]),
+        deg: z.number(),
+        legM: z.number().nonnegative(),
+        streetWidthM: z.number().nonnegative().nullable(),
+      }),
+    ),
     durationMs: count,
+  }),
+  /**
+   * The street lanes over a cut's site (scripts/expresswayHoleLanes.ts, S6 PR 7c): the runs with
+   * such a lane, the lanes, the longest stretch over a site, the cuts skipped for want of GSI's tiles.
+   */
+  /**
+   * The street lanes left over an embankment's slab (scripts/expresswayLanesProbe.ts, S6 PR 7c): the
+   * places (a chunk and a street), the most allowed (−1: none, a folder with no ledger), the chunks
+   * skipped for want of GSI's tiles.
+   */
+  expressway_lanes_probed: info({
+    dir: z.string(),
+    places: count,
+    max: z.number().int().min(-1),
+    skippedForMissingTiles: count,
+    list: z.array(
+      z.strictObject({
+        chunk: z.string(),
+        s0: z.number(),
+        s1: z.number(),
+        lengthM: z.number().nonnegative(),
+        streetM: z.number().nonnegative(),
+        nearestM: z.number().nonnegative(),
+      }),
+    ),
+    durationMs: count,
+  }),
+  expressway_hole_lanes_measured: info({
+    dir: z.string(),
+    runs: count,
+    lanes: count,
+    longestM: z.number().nonnegative(),
+    skippedForMissingTiles: count,
+    byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
   }),
   /**
    * A data folder's ledger written again (scripts/expresswayLedger.ts, P2.7-4): the cases, those new

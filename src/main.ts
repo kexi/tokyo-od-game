@@ -5782,6 +5782,7 @@ async function main(): Promise<void> {
           decks: expressway,
           setDrive: (fn) => (debugDrive = fn),
           snapCamera: () => chase.snap(),
+          groundY,
           // A drive with an accident or a pursuit on does not count: an arrest freezes the car.
           blocker: () =>
             emergency.incident !== null

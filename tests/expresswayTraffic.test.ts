@@ -627,3 +627,42 @@ describe("the generated test section (public/data/expressway): its merges and di
     ]);
   });
 });
+
+describe("汐留: the main line past 汐留出口's fork leads only to the portal (S6 PR 7c, the stop answer)", () => {
+  const { chunks, runs } = readExpresswayFiles(DEFAULT_DATA_DIR);
+  const input = expresswayRoadInput(chunks, runs, ellipsoidal);
+  // A two-way street square across every ground end, 12 m ahead of its foot (the data's own streets
+  // are GSI's, which the tests do not have): each ramp's foot then joins a street as in the game.
+  const streets: RoadLine[] = input.ends.map((e) => {
+    const p = planeAt(e.lon, e.lat);
+    const [ax, ay] = [e.dir[0] * 12 - e.dir[1] * 30, e.dir[1] * 12 + e.dir[0] * 30];
+    const [bx, by] = [e.dir[0] * 12 + e.dir[1] * 30, e.dir[1] * 12 - e.dir[0] * 30];
+    return { coords: [...p.toLonLat(ax, ay), ...p.toLonLat(bx, by)], width: 12, oneway: 0, kind: "national" };
+  });
+  const graph = new RoadGraph(
+    joinExpressway(streets, input, () => {}),
+    new LocalFrame(35.6537, 139.7508, 40),
+  );
+  const reach = reachesStreets(graph);
+  const chunkStart = new Map(chunks.map((c) => [c.id, c.st[0]]));
+  const segsOf = (keep: (run: string, s0: number) => boolean) =>
+    graph.segments.filter((x) => {
+      const id = x.line.xid;
+      if (id === undefined) return false;
+      return keep(id.split(":")[0], chunkStart.get(id) ?? -1);
+    });
+
+  it("never sends the traffic AI or a route past 内回り's fork with 汐留出口 (run s 4857) nor onto 45068170: lane 0 there meets 汐留出口's 壁高欄", () => {
+    const past = segsOf((run, s0) => (run === "24402611" && s0 >= 4857.15 - 1e-6) || run === "45068170");
+    expect(past.length).toBeGreaterThan(0);
+    expect(past.filter((x) => reach.has(x.id)).map((x) => x.line.xid)).toEqual([]);
+  });
+
+  it("still reaches the streets from 内回り before the fork and from 汐留出口 (the fake streets join the feet)", () => {
+    const before = segsOf((run, s0) => run === "24402611" && s0 < 4857.15 - 1e-6 && s0 > 4000);
+    const exit = segsOf((run) => run === "24402125");
+    expect(before.length).toBeGreaterThan(0);
+    expect(exit.length).toBeGreaterThan(0);
+    expect([...before, ...exit].every((x) => reach.has(x.id))).toBe(true);
+  });
+});

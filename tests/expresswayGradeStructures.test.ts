@@ -1,12 +1,13 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { CUT_WALL, PARAPET_HEIGHT, PARAPET_WIDTH } from "../src/expressway/assumptions";
-import type { XwChunk, XwTileRun } from "../src/expressway/format";
+import { CUT_WALL, PARAPET_HEIGHT, PARAPET_WIDTH, TUNNEL_ROOF } from "../src/expressway/assumptions";
+import { ST, STATION_STRIDE, type XwChunk, type XwTileRun } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { DEFAULT_DATA_DIR, readExpresswayFiles } from "../scripts/expresswayFiles";
 import { LocalFrame } from "../src/geo/frame";
 import { latToTileY, lonToTileX } from "../src/geo/tiles";
 import { boreHoles, cutsGround } from "../src/world/expresswayBore";
+import { HEAD_OVER_GROUND_M, isHoleAt, TUNNEL_INNER_HEIGHT_M } from "../src/expressway/below";
 import { closeWidthStep, createDeckBody, deckArraySteps, type GeoToLocal } from "../src/world/expresswayDeck";
 import { chunkRings, openSide } from "../src/world/expresswayMerge";
 import { expresswayRoadInput, joinExpressway, siteCrossings } from "../src/world/expresswayRoads";
@@ -584,22 +585,65 @@ describe("掘割と土被りのあるトンネルの継ぎ目、既定データ�
     const files = readExpresswayFiles(DEFAULT_DATA_DIR);
     let h = 0;
     let n = 0;
-    for (const c of files.chunks)
+    // 麻布台's own chunks: since S6 PR 7c the default data has embankments and cuts with holes of
+    // their own elsewhere too, which this does not look at.
+    const azabudai = files.chunks.filter((c) => c.run === "737538573");
+    for (const c of azabudai)
       for (const poly of boreHoles(c, (lon, lat) => [lonToTileX(lon, 16), latToTileY(lat, 16)]))
         for (const v of poly[0]) {
           h = (h * 31 + Math.round(v * 1e7)) % 1000000007;
           n++;
         }
     const cuts = new GroundCuts(null);
-    for (const c of files.chunks) cuts.addChunk(c);
+    for (const c of azabudai) cuts.addChunk(c);
     let m = 0;
     for (let x = 29090; x < 29120; x++)
       for (let y = 12890; y < 12920; y++) {
         const mask = cuts.cutAt(x, y);
         if (mask) for (const v of mask.data) m = (m * 31 + v) % 1000000007;
       }
-    // From origin/main 0683f14 with the same data: change only with the data (P2.7-6 PR 7c).
-    expect([n, h, m]).toEqual([80, 386725077, 189969420]);
+    // From origin/main 0683f14 with the same data: change only with the data. S6 PR 7c took 203832842
+    // out (footDeferrals.ts) and 737538573 moved by up to 0.34 m: s 492.67 of 737538573:2 crossed the
+    // hole's threshold (ground − road 6.721 → 6.650 m against 6.7 m), the hole grew by one station
+    // interval (12 → 14 vertices, 1,189 → 1,473 m²); s 134.47 of :1 left it (6.698 → 6.821 m), alone
+    // there, so no polygon either way (knowledge「P2.7-6 PR 7c」).
+    expect([n, h, m]).toEqual([84, 922761830, 573913335]);
+  });
+
+  it("the shipped 麻布台 holes cover exactly the stations isHoleAt opens, two or more in a row (a lone station opens none)", () => {
+    const files = readExpresswayFiles(DEFAULT_DATA_DIR);
+    for (const c of files.chunks.filter((x) => x.run === "737538573")) {
+      const n = c.st.length / STATION_STRIDE;
+      const structure = c.structure === "cut" ? "cut" : "tunnel";
+      const runs: number[] = [];
+      let len = 0;
+      for (let i = 0; i <= n; i++) {
+        const isHole =
+          i < n && isHoleAt(structure, c.st[i * STATION_STRIDE + ST.z], c.st[i * STATION_STRIDE + ST.ground]);
+        if (isHole) {
+          len++;
+          continue;
+        }
+        if (len >= 2) runs.push(len);
+        len = 0;
+      }
+      const polys = boreHoles(c, (lon, lat) => [lonToTileX(lon, 16), latToTileY(lat, 16)]);
+      expect(polys.length, c.id).toBe(runs.length);
+      // Two vertices a station (left and right), two more where the hole reaches back past a seam.
+      polys.forEach((poly, k) => expect([0, 2], c.id).toContain(poly[0].length / 2 - 2 * runs[k]));
+    }
+  });
+
+  it("opens no hole over a lone station under the threshold, and one over two in a row", () => {
+    const deep = ROAD + TUNNEL_INNER_HEIGHT_M + TUNNEL_ROOF.value.slab + HEAD_OVER_GROUND_M + 0.5;
+    const shallow = ROAD + 6;
+    const withGround = (shallowAt: number[]) => {
+      const c = chunkOf("tunnel", deep, { id: "T:0", run: "T", chain: "T", prev: null });
+      for (const i of shallowAt) c.st[i * STATION_STRIDE + ST.ground] = shallow;
+      return c;
+    };
+    expect(boreHoles(withGround([5]), toXY)).toEqual([]);
+    expect(boreHoles(withGround([5, 6]), toXY)).toHaveLength(1);
   });
 });
 

@@ -6,7 +6,9 @@
 // (its first LEAD_M straight ahead, within LEAD_TOLERANCE_M), and its street leg against turning back
 // (over TURN_BACK_DEG off the heading; over LEG_MAX_DEG is listed). One JSON log line
 // (expressway_feet_probed); exit code 1 when any foot breaks one of them.
-// Run: pnpm exec tsx scripts/expresswayFeetProbe.ts <dir|label> [--cache <dir>] [--cache-only]
+// Run: pnpm exec tsx scripts/expresswayFeetProbe.ts <dir|label> [--cache <dir>] [--cache-only] [--cases <file>]
+// --cases writes the feet whose leg is over LEG_MAX_DEG (the ledger's foot-side-join, S6 PR 7c) as JSON
+// for the ledger tool (just update-expressway-ledger <dir> "--feet <file>").
 // (just check-expressway-feet <dir>; a label without a slash means .cache/expressway-area/<label>).
 // The tiles come from --cache (default .cache/gsi-vector) or GSI (written to the cache); with
 // --cache-only a foot whose tiles are not cached is skipped and counted.
@@ -47,7 +49,8 @@ const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1] === "--cache"));
+const VALUED = new Set(["--cache", "--cases"]);
+const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1])));
 if (target === undefined)
   throw new Error("usage: expresswayFeetProbe.ts <dir|label> [--cache <dir>] [--cache-only]");
 const isLabel = !target.includes("/");
@@ -103,7 +106,13 @@ let groundRunFeet = 0;
 let skipped = 0;
 let maxLegDeg = 0;
 /** The feet whose street leg turns more than LEG_MAX_DEG off the heading (none within it was in reach). */
-const steepFeet: Array<{ run: string; end: "start" | "end"; deg: number }> = [];
+const steepFeet: Array<{
+  run: string;
+  end: "start" | "end";
+  deg: number;
+  legM: number;
+  streetWidthM: number | null;
+}> = [];
 /** rule (b)'s turn from the heading (deg) past which a leg is not a turn but a way back. */
 const LEG_MAX_DEG = 45;
 const TURN_BACK_DEG = 90;
@@ -162,7 +171,15 @@ for (const [run, chunks] of files.byRun) {
     const isTraced = (connector.nodeIds ?? []).every((id) => !id.startsWith("xwg:"));
     if (isTraced) joined.atGrade++;
     else joined.street++;
+    const steepBefore = steepFeet.length;
     const breach = checkConnector(foot, connector, !isTraced, run, end);
+    // The street the leg joins: the one sharing the connector's far node (its width for the ledger).
+    const ids = connector.nodeIds ?? [];
+    const far = foot.end === "start" ? ids[0] : ids[ids.length - 1];
+    const street = lines.find(
+      (l) => l !== connector && l.xid === undefined && (l.nodeIds ?? []).includes(far),
+    );
+    for (const s of steepFeet.slice(steepBefore)) s.streetWidthM = street?.width ?? null;
     if (breach) breaches.push({ run, end, ...breach });
   }
 }
@@ -194,7 +211,7 @@ function checkConnector(
     const isStreetLeg = isStreetJoin && arc >= LEAD_M - 1e-6;
     if (isStreetLeg) maxLegDeg = Math.max(maxLegDeg, legDeg);
     const isSteep = isStreetLeg && legDeg > LEG_MAX_DEG + 1e-6;
-    if (isSteep) steepFeet.push({ run, end, deg: Math.round(legDeg) });
+    if (isSteep) steepFeet.push({ run, end, deg: Math.round(legDeg), legM: round(len), streetWidthM: null });
     const isTurningBack = isSteep && legDeg > TURN_BACK_DEG;
     if (isTurningBack) return { rule: "turns-back", out: round(b[0]), left: round(b[1]) };
     for (let d = 0; d <= len; d += CHECK_STEP_M) {
@@ -225,4 +242,6 @@ log("expressway_feet_probed", {
   steepFeet: steepFeet.slice(0, LIST),
   durationMs: Math.round(performance.now() - started),
 });
+const casesPath = flag("cases");
+if (casesPath !== undefined) await writeFile(casesPath, JSON.stringify(steepFeet, null, 1) + "\n");
 if (breaches.length > 0) process.exitCode = 1;

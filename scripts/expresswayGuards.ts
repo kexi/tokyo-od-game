@@ -11,14 +11,16 @@ export type BuildFlags = {
   isV1: boolean;
   /** The v2 weight flags given (grade-change, reach, reach-below, target-scale): a sweep. */
   v2Flags: readonly string[];
-  /** --structures height (P2.7-6 PR 1: the structures from the solved height, behind a flag until PR 7). */
-  isHeight?: boolean;
-  /** --ground compile (S6 PR 2: the runs at grade, behind a flag until PR 7). */
-  isGround?: boolean;
-  /** --touchdown all (S6 PR 3: every class's pairs coming down to the same place let go). */
-  isTouchdownAll?: boolean;
-  /** --companions on (S6 PR 3: main lines beside each other held to one height). */
-  isCompanions?: boolean;
+  /** --structures tags (the structures by OSM's tags; height is the default since S6 PR 7c). */
+  isTags?: boolean;
+  /** --ground skip (the runs at grade left out; compile is the default since S6 PR 7c). */
+  isGroundSkip?: boolean;
+  /** --touchdown mains (S6 PR 3's all is the default since PR 7c). */
+  isTouchdownMains?: boolean;
+  /** --companions off (S6 PR 3's on is the default since PR 7c). */
+  isCompanionsOff?: boolean;
+  /** --companion-weight given (a sweep of the companions' weight; 1 by default). */
+  isCompanionWeight?: boolean;
   /** --ramp-shift (S6 PR 4 案 A: ramps moved off the main lines they overlap). */
   isRampShift?: boolean;
   /** --nose-surface overlap (S6 PR 4 案 B: one surface wherever two runs that meet overlap). */
@@ -46,10 +48,12 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   if (f.isHoldMains) return `--hold-mains on is for measuring until it is the default: ${MEASURE}`;
   if (f.isRampShift) return `--ramp-shift is for measuring until it is the default: ${MEASURE}`;
   if (f.isNoseOverlap) return `--nose-surface overlap is for measuring until it is the default: ${MEASURE}`;
-  if (f.isTouchdownAll) return `--touchdown all is for measuring until it is the default: ${MEASURE}`;
-  if (f.isCompanions) return `--companions on is for measuring until it is the default: ${MEASURE}`;
-  if (f.isGround) return `--ground compile is for measuring until it is the default: ${MEASURE}`;
   if (f.isLowSpanSweep) return `--low-span-soffit is for a sweep of the low spans: ${MEASURE}`;
-  if (f.isHeight) return `--structures height is for measuring until it is the default: ${MEASURE}`;
+  // S6 PR 7c: the network's flags are the default; the values before them are for comparing.
+  if (f.isTags) return `--structures tags is for comparing with the structures by height: ${MEASURE}`;
+  if (f.isGroundSkip) return `--ground skip is for comparing with the runs at grade compiled: ${MEASURE}`;
+  if (f.isTouchdownMains) return `--touchdown mains is for comparing with all: ${MEASURE}`;
+  if (f.isCompanionsOff) return `--companions off is for comparing with on: ${MEASURE}`;
+  if (f.isCompanionWeight) return `--companion-weight is for a sweep of the companions' weight: ${MEASURE}`;
   return null;
 }
