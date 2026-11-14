@@ -99,3 +99,35 @@ it("keeps pavement holes and physical height through origin changes without repl
     world.free();
   }
 });
+
+it("returns between height queries inside one large polygon while keeping the previous ground solid", async () => {
+  fakeCanvas();
+  const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+  let queries = 0,
+    previous = 0,
+    checkedOld = 0;
+  const pavements = new Pavements(new Scene(), world, () => {
+    queries++;
+    return 0;
+  });
+  try {
+    pavements.rebuild([polygon(0, 0, 20)], frame);
+    queries = 0;
+    const work = new FrameWork(0, async () => {
+      expect(queries - previous).toBeLessThanOrEqual(128);
+      const sampled = queries > previous;
+      if (sampled) {
+        expect(hitY(world, 10, 10)).toBeCloseTo(KERB, 4);
+        checkedOld++;
+      }
+      previous = queries;
+    });
+    await pavements.rebuildAsync([polygon(100, 100, 1600)], frame, work);
+    expect(checkedOld).toBeGreaterThan(5);
+    expect(hitY(world, 10, 10)).toBeNull();
+    expect(hitY(world, 900, 900)).toBeCloseTo(KERB, 4);
+  } finally {
+    pavements.clear();
+    world.free();
+  }
+});

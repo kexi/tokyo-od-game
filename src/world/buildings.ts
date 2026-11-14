@@ -33,6 +33,7 @@ import { sharedDraco } from "../render/draco";
 import { BuildingMetadataPlugin } from "./buildingMetadata";
 import { BuildingGpuUnloadPlugin } from "./buildingGpuUnload";
 import { BuildingFacadePlugin } from "./buildingFacadePlugin";
+import { BuildingFootprints } from "./buildingFootprints";
 import { prepareBuildingShaders } from "./buildingShaders";
 import { FacadeShaderLayouts } from "./facadeShaderLayouts";
 import { SerialWork } from "../game/serialWork";
@@ -210,6 +211,7 @@ export class Buildings {
   /** Footprints (local XZ rings) of buildings drawn by hero models instead (landmarks). */
   private hidden: Vector3[][] = [];
   private hiddenRings: Array<Array<[number, number]>> = [];
+  private readonly footprintCutouts = new BuildingFootprints();
   /**
    * The far skyline: the same tileset again, kept to its coarse levels (each ward's largest ~20–80
    * buildings, its towers among them) out to QUALITY.farBuildingRadius, with the simplified façade
@@ -252,6 +254,7 @@ export class Buildings {
   hideFootprints(rings: Array<Array<[number, number]>>): void {
     this.hiddenRings = rings;
     this.hidden = rings.map((r) => r.map(([lon, lat]) => this.frame.toLocal(lat, lon, this.frame.origin.h)));
+    this.footprintCutouts.setRings(this.hidden);
     if (this.footprintCollider) this.world.removeCollider(this.footprintCollider, false);
     this.footprintCollider = null;
     const vertices: number[] = [];
@@ -280,54 +283,7 @@ export class Buildings {
    * nothing), so the landmark model does not fight the PLATEAU copy of the same building.
    */
   private cutFootprints(geometry: BufferGeometry, ecef: Float32Array): void {
-    const m = this.frame.ecefToLocal.elements;
-    const n = ecef.length / 3;
-    const lx = new Float32Array(n);
-    const lz = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const x = ecef[i * 3];
-      const y = ecef[i * 3 + 1];
-      const z = ecef[i * 3 + 2];
-      lx[i] = m[0] * x + m[4] * y + m[8] * z + m[12];
-      lz[i] = m[2] * x + m[6] * y + m[10] * z + m[14];
-    }
-    const boxes = this.hidden.map((ring) => {
-      const xs = ring.map((p) => p.x);
-      const zs = ring.map((p) => p.z);
-      return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
-    });
-    const inside = (x: number, z: number) =>
-      this.hidden.some((ring, k) => {
-        const [x0, x1, z0, z1] = boxes[k];
-        if (x < x0 || x > x1 || z < z0 || z > z1) return false;
-        let isIn = false;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-          const a = ring[i];
-          const b = ring[j];
-          if (a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) isIn = !isIn;
-        }
-        return isIn;
-      });
-    const index = geometry.getIndex();
-    const tris = index ? index.count / 3 : n / 3;
-    let cut = 0;
-    for (let t = 0; t < tris; t++) {
-      const [a, b, c] = index
-        ? [index.getX(t * 3), index.getX(t * 3 + 1), index.getX(t * 3 + 2)]
-        : [t * 3, t * 3 + 1, t * 3 + 2];
-      if (!inside((lx[a] + lx[b] + lx[c]) / 3, (lz[a] + lz[b] + lz[c]) / 3)) continue;
-      cut++;
-      if (index) {
-        index.setX(t * 3 + 1, a);
-        index.setX(t * 3 + 2, a);
-      } else {
-        const pos = geometry.getAttribute("position");
-        pos.setXYZ(b, pos.getX(a), pos.getY(a), pos.getZ(a));
-        pos.setXYZ(c, pos.getX(a), pos.getY(a), pos.getZ(a));
-      }
-    }
-    if (cut && index) index.needsUpdate = true;
-    else if (cut) geometry.getAttribute("position").needsUpdate = true;
+    this.footprintCutouts.cut(geometry, ecef, this.frame.ecefToLocal);
   }
 
   setFrame(frame: LocalFrame): void {

@@ -1,6 +1,6 @@
 import { Vector2 } from "three";
 import { describe, expect, it } from "vitest";
-import { liftedHeights, polygonsOf } from "../src/world/pavements";
+import { liftedHeights, liftedHeightSteps, polygonsOf } from "../src/world/pavements";
 
 const square = (x0: number, y0: number, x1: number, y1: number, clockwise = true) => {
   // Tile space has y down, so "clockwise on screen" is the MVT outer-ring winding.
@@ -34,5 +34,32 @@ describe("PLATEAU pavement polygons from MVT", () => {
     const h = liftedHeights(pts, [[0, 1, 2]], bump);
     const centre = (h[0] + h[1] + h[2]) / 3;
     expect(centre).toBeGreaterThanOrEqual(0.4 - 1e-9);
+  });
+
+  it("bounds each large-polygon height step without skipping either pass or changing caller points", () => {
+    const pts = Array.from({ length: 600 }, (_, i) => new Vector2(i - 300, (i % 23) - 11));
+    const tris = Array.from({ length: 598 }, (_, i) => [i, i + 1, i + 2]);
+    const original = pts.map((p) => p.toArray());
+    let queries = 0,
+      previous = 0,
+      pauses = 0;
+    const steps = liftedHeightSteps(pts, tris, (x, z) => {
+      queries++;
+      return x * 0.1 + z * 0.2;
+    });
+    for (;;) {
+      const result = steps.next();
+      expect(queries - previous).toBeLessThanOrEqual(128);
+      previous = queries;
+      const isDone = result.done;
+      if (isDone) {
+        result.value.forEach((h, i) => expect(h).toBeCloseTo(pts[i].x * 0.1 + pts[i].y * 0.2, 11));
+        break;
+      }
+      pauses++;
+    }
+    expect(pauses).toBeGreaterThan(20);
+    expect(queries).toBe(pts.length + tris.length * 8);
+    expect(pts.map((p) => p.toArray())).toEqual(original);
   });
 });
