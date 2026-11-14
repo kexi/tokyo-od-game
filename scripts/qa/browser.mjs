@@ -52,10 +52,12 @@ export const CALL_TIMEOUT_MS = 180_000;
  * Chrome's browser process speaks through the OS synthesiser and opens the speakers itself (seen
  * in `pmset -g assertions` with the flag on). speak() queues the utterance as the real one would,
  * fires `start`, then `end` after about as long as the line would take (callers that wait on `end`,
- * naviTv's newsreader, go on), and `speaking` / `pending` / cancel() follow the queue (cancel()
- * fires `error` as Chrome does: `interrupted` for the line being read, `canceled` behind it). Why not
- * utterance.volume = 0 on the real one: the OS synthesiser would still run (and with headless
- * Chrome's voices that come and go, its timing would be the OS's, not the page's).
+ * naviTv's newsreader, go on; navGuide's isSpeaking() stays busy as long), and `speaking` /
+ * `pending` follow the queue. As in Chrome, inside an `end` handler the next line (if any) is
+ * already the current one, and cancel() fires `error: interrupted` on the line being read only:
+ * the lines behind it vanish without an event. Why not utterance.volume = 0 on the real one: the
+ * OS synthesiser would still run (and with headless Chrome's voices that come and go, its timing
+ * would be the OS's, not the page's).
  * Serialised into the page with addScriptToEvaluateOnNewDocument, so it uses nothing from here.
  */
 export function quietSpeech() {
@@ -77,22 +79,34 @@ export function quietSpeech() {
       : new Event("error");
     u.dispatchEvent(event);
   };
-  const next = () => {
-    current = queue.shift() ?? null;
-    if (!current) return;
+  // Per character at rate 1, from the real voices on macOS (Chrome 157, rate 1.05): Japanese about
+  // 4 characters a second (the 28-character guide line およそ300メートル先、芝公園出口です。斜め左方向です。
+  // took 6.8 s), English about 13 (a 42-character line took 3.2 s). Chinese is taken as Japanese,
+  // one syllable a character. Why not one rate for all: 125 ms/char ran Japanese twice too fast
+  // (3.3 s), so navGuide's isSpeaking() freed up early in QA only, and English too slow (5.2 s).
+  const durationMs = (u) => {
+    const text = String(u.text);
+    const isCjk = /^(ja|zh)/i.test(u.lang ?? "") || /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+    const msPerChar = isCjk ? 240 : 75;
+    return Math.max(200, (text.length * msPerChar) / (u.rate || 1));
+  };
+  const begin = () => {
     const u = current;
-    setTimeout(() => {
-      const wasCanceled = current !== u;
-      if (wasCanceled) return;
+    const isStale = () => current !== u;
+    timer = setTimeout(() => {
+      if (isStale()) return;
       fire(u, "start");
-      // About 8 characters a second at rate 1, as the OS voices read Japanese.
-      const ms = Math.max(200, (String(u.text).length * 125) / (u.rate || 1));
       timer = setTimeout(() => {
-        const wasCanceled = current !== u;
-        if (wasCanceled) return;
+        if (isStale()) return;
+        // The next line is current before `end` fires, as in Chrome (speaking is false inside the
+        // handler when nothing follows).
+        current = queue.shift() ?? null;
+        const following = current;
         fire(u, "end");
-        next();
-      }, ms);
+        // A speak() or cancel() in the handler may have started or dropped a line itself.
+        const isFollowingStill = following !== null && current === following;
+        if (isFollowingStill) begin();
+      }, durationMs(u));
     }, 0);
   };
   Object.defineProperty(synth, "speaking", { configurable: true, get: () => current !== null });
@@ -100,17 +114,17 @@ export function quietSpeech() {
   synth.speak = (u) => {
     queue.push(u);
     const isIdle = current === null;
-    if (isIdle) next();
+    if (!isIdle) return;
+    current = queue.shift();
+    begin();
   };
   synth.cancel = () => {
-    const speaking = current;
-    const queued = [...queue];
+    const interrupted = current;
     queue.length = 0;
     current = null;
     clearTimeout(timer);
-    // As Chrome does: the line being read is interrupted, the ones behind it canceled.
-    if (speaking) setTimeout(() => fail(speaking, "interrupted"), 0);
-    for (const u of queued) setTimeout(() => fail(u, "canceled"), 0);
+    // As Chrome does (measured): the line being read is interrupted, the ones behind it vanish.
+    if (interrupted) setTimeout(() => fail(interrupted, "interrupted"), 0);
     nativeCancel();
   };
 }
