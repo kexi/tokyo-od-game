@@ -131,6 +131,8 @@ export const LOG_EVENTS = {
   gpu_device_lost: warning({ reason: z.string().nullable(), error }),
   pipelines_compiled: info({ durationMs: z.number() }),
   precompile_failed: failedWith(),
+  streamed_shader_failed: failedWith({ meshId: z.string() }),
+  streamed_shaders_prepared: info({ meshes: count, durationMs: milliseconds }),
   prewarm_failed: failedWith(),
   controls_changed: info({
     layout: z.string(),

@@ -65,6 +65,8 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   gpu_device_lost: { reason: null, error: "device lost" },
   pipelines_compiled: { durationMs: 1840 },
   precompile_failed: { error: "Error: x" },
+  streamed_shader_failed: { meshId: "mesh-1", error: "Error: x" },
+  streamed_shaders_prepared: { meshes: 2, durationMs: 20 },
   prewarm_failed: { error: "Error: x" },
   controls_changed: {
     layout: "wasd",
