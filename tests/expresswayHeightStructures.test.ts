@@ -29,6 +29,8 @@ import {
   isOpenGroundRuled,
   levelApartOver,
   openGroundStretches,
+  shortLeftovers,
+  snapDecisionWindows,
   VIADUCT_OVER_GROUND_M,
 } from "../src/expressway/heightStructures";
 import { isAutoAccepted } from "../src/expressway/ledger";
@@ -38,7 +40,7 @@ import { deckOverlaps } from "../src/expressway/overlap";
 import { type Network, normalizeNode, normalizeWay } from "../src/expressway/network";
 import type { RunProblem } from "../src/expressway/vertical";
 import { violationsOf } from "../src/expressway/violations";
-import type { StructureDecision } from "../src/expressway/structureDecisions";
+import { DECISION_END_TOLERANCE_M, type StructureDecision } from "../src/expressway/structureDecisions";
 
 // P2.7-6 PR 1 (`--structures height`): the structure a viaduct-tagged run is drawn as comes from its
 // solved height against the ground, the assumed floors no longer unsolve a run, a thinner girder
@@ -431,6 +433,97 @@ describe("構造の決定の表（structureDecisions.ts、S6 PR 7c）: 盛土の
       { s0: 50, s1: 80, structure: "cut" },
       { s0: 80, s1: 120, structure: "viaduct" },
     ]);
+  });
+
+  // The first embankment's whole stretch (it may span more than one chunk).
+  let last = list.indexOf(emb);
+  while (list[last + 1]?.structure === "embankment") last++;
+  const embs = list.slice(list.indexOf(emb), last + 1);
+  const [f0, f1] = [
+    embs[0].st[0],
+    embs[embs.length - 1].st[embs[embs.length - 1].st.length - STATION_STRIDE],
+  ];
+  const build = (decided: StructureDecision) =>
+    solvePlan(
+      planNetwork(net, new Set(), null, [], { structures: "height", structureDecisions: [decided] }),
+      mound,
+      [],
+    );
+  const minM = HEIGHT_STRUCTURES.value.smoothM;
+  const tol = DECISION_END_TOLERANCE_M;
+  const fMid = (f0 + f1) / 2;
+  // The embankment's ends as the compiler holds them (a chunk's ends are moved to a knot up to
+  // MIN_STATION_GAP_M off them): read from the leftover a row 6 m inside names (to the centimetre).
+  const leftoverOf = (decided: StructureDecision): [number, number] => {
+    try {
+      build(decided);
+    } catch (error) {
+      const m = /leaves an embankment s ([\d.]+)–([\d.]+) of/.exec(String(error))!;
+      return [Number(m[1]), Number(m[2])];
+    }
+    throw new Error("the build did not stop");
+  };
+  const [startS] = leftoverOf(row(f0 + 6, fMid));
+  const [, endS] = leftoverOf(row(fMid, f1 - 6));
+
+  it("reads a row's ends to DECISION_END_TOLERANCE_M (0.5 m) and the leftovers to the smoothing's smoothM (20 m)", () => {
+    expect([tol, minM]).toEqual([0.5, 20]);
+  });
+
+  it("moves a row's end 4 mm inside the embankment's end to it, leaving no embankment, and builds (895902565's 89.16, A2)", () => {
+    expect(() => build(row(fMid, endS - 0.004))).not.toThrow();
+    expect(() => build(row(startS + 0.004, fMid))).not.toThrow();
+    expect(structureAt(build(row(fMid, endS - 0.004)).chunks, endS - 1)).toBe("viaduct");
+  });
+
+  it("moves an end 0.5 m inside, and stops the build at 0.51 m inside, naming the run, the row and the leftover", () => {
+    expect(() => build(row(fMid, endS - 0.49))).not.toThrow();
+    expect(() => build(row(fMid, endS - 0.51))).toThrow(
+      /structure decision 2 [\d.]+–[\d.]+ .* leaves an embankment s [\d.]+–[\d.]+ of 0\.5\d m/,
+    );
+    expect(() => build(row(startS + 0.49, fMid))).not.toThrow();
+    expect(() => build(row(startS + 0.51, fMid))).toThrow(/leaves an embankment s [\d.]+–[\d.]+ of 0\.5\d m/);
+  });
+
+  it("stops the build for a leftover under smoothM (15 m), and builds one of smoothM or more (20.5 m)", () => {
+    expect(() => build(row(fMid, endS - 15))).toThrow(/of 15\.\d\d m \(under 20 m/);
+    expect(() => build(row(fMid, endS - 20.5))).not.toThrow();
+  });
+
+  it("builds a row at the embankment's end exactly, or past it (only the embankment turns, as before)", () => {
+    expect(() => build(row(fMid, endS))).not.toThrow();
+    const past = build(row(fMid, endS + 0.4));
+    expect(structureAt(past.chunks, endS - 1)).toBe("viaduct");
+  });
+
+  it("snapDecisionWindows moves only an end inside an embankment within the tolerance, to that embankment's end", () => {
+    const stretches = [
+      { s0: 0, s1: 30, structure: "viaduct" as const },
+      { s0: 30, s1: 100, structure: "embankment" as const },
+      { s0: 100, s1: 120, structure: "cut" as const },
+    ];
+    expect(snapDecisionWindows(stretches, [[30.3, 99.996]], tol)).toEqual([[30, 100]]);
+    // Further inside, or in a cut or a viaduct, or outside the embankment: as written.
+    expect(snapDecisionWindows(stretches, [[30.6, 99.2]], tol)).toEqual([[30.6, 99.2]]);
+    expect(snapDecisionWindows(stretches, [[29.8, 100.3]], tol)).toEqual([[29.8, 100.3]]);
+    expect(snapDecisionWindows(stretches, [[10, 110]], tol)).toEqual([[10, 110]]);
+  });
+
+  it("shortLeftovers counts only an embankment a window's end split, not a short one of its own elsewhere", () => {
+    const stretches = [
+      { s0: 0, s1: 6, structure: "embankment" as const },
+      { s0: 6, s1: 40, structure: "viaduct" as const },
+      { s0: 40, s1: 100, structure: "embankment" as const },
+      { s0: 100, s1: 140, structure: "viaduct" as const },
+    ];
+    const decided = decideViaduct(stretches, [[44, 94]]);
+    expect(shortLeftovers(decided, [[44, 94]], minM)).toEqual([
+      { window: [44, 94], s0: 40, s1: 44, lengthM: 4 },
+      { window: [44, 94], s0: 94, s1: 100, lengthM: 6 },
+    ]);
+    // Leaving smoothM (20 m) each side: none; the short embankment 0–6 m touches no window's end.
+    expect(shortLeftovers(decideViaduct(stretches, [[60, 80]]), [[60, 80]], minM)).toEqual([]);
+    expect(shortLeftovers(decideViaduct(stretches, [[40, 100]]), [[40, 100]], minM)).toEqual([]);
   });
 });
 

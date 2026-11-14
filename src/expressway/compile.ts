@@ -39,7 +39,12 @@ import {
 } from "./assumptions";
 import { footCut, type FootCut, type FootLine, type FootRoad } from "./feet";
 import { FOOT_DEFERRALS, footDeferralOf, type FootDeferral } from "./footDeferrals";
-import { decidedViaducts, STRUCTURE_DECISIONS, type StructureDecision } from "./structureDecisions";
+import {
+  DECISION_END_TOLERANCE_M,
+  decidedViaducts,
+  STRUCTURE_DECISIONS,
+  type StructureDecision,
+} from "./structureDecisions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
   belowStructure,
@@ -66,6 +71,8 @@ import {
   sameKept,
   decideViaduct,
   forceViaduct,
+  shortLeftovers,
+  snapDecisionWindows,
 } from "./heightStructures";
 import {
   STATION_STRIDE,
@@ -5792,20 +5799,39 @@ function structuresByHeight(
     groundEnds,
   );
   // A decision's stretch (structureDecisions.ts): its embankment a viaduct, a cut left. Its stations
-  // must be an embankment by height in this build (within half a metre of the row's ends): a row on
-  // anything else is stale and stops the build. Why not skip a stale row: nobody would see it go stale.
+  // must be an embankment by height in this build (within DECISION_END_TOLERANCE_M of the row's ends):
+  // a row on anything else is stale and stops the build. Why not skip a stale row: nobody would see it
+  // go stale.
   const decided = decidedViaducts(plan.structureDecisions ?? STRUCTURE_DECISIONS, rp.run.id);
+  const tol = DECISION_END_TOLERANCE_M;
   for (const [a, b] of decided) {
     const isEmbankment = (sv: number) =>
       stretches.some((h) => h.structure === "embankment" && sv >= h.s0 - 1e-6 && sv <= h.s1 + 1e-6);
-    for (let sv = Math.max(0, a + 0.5); sv <= Math.min(S, b - 0.5) + 1e-9; sv += 1)
+    for (let sv = Math.max(0, a + tol); sv <= Math.min(S, b - tol) + 1e-9; sv += 1)
       if (!isEmbankment(sv))
         throw new Error(
           `structure decision ${rp.run.id} ${a}–${b} (structureDecisions.ts): s ${sv.toFixed(1)} is not an embankment by height in this build`,
         );
+    // The scorecard records the decision as written, not as moved to the embankment's ends below.
     (plan.decidedViaducts ??= []).push({ run: rp.run.id, s0: a, s1: Math.min(b, S) });
   }
-  s.structures = decided.length > 0 ? decideViaduct(stretches, decided) : stretches;
+  // A row's end within DECISION_END_TOLERANCE_M inside its embankment is the embankment's end, written
+  // to the centimetre: the window is moved to it. Past that, a window ending inside an embankment
+  // leaves a short embankment between its viaduct and the structure beside it, after the smoothing, so
+  // nobody evens it: shorter than the smoothing's length (HEIGHT_STRUCTURES.smoothM) it stops the
+  // build. Why not extend a window further here: past the row's precision that changes the decision,
+  // which is the user's (the row is its copy), and the output would no longer be what was decided.
+  const windows = snapDecisionWindows(stretches, decided, tol);
+  s.structures = decided.length > 0 ? decideViaduct(stretches, windows) : stretches;
+  const minM = HEIGHT_STRUCTURES.value.smoothM;
+  const short = shortLeftovers(s.structures, windows, minM);
+  const hasShortLeftover = short.length > 0;
+  if (hasShortLeftover) {
+    const [x] = short;
+    throw new Error(
+      `structure decision ${rp.run.id} ${x.window[0]}–${x.window[1]} (structureDecisions.ts) leaves an embankment s ${x.s0.toFixed(2)}–${x.s1.toFixed(2)} of ${x.lengthM.toFixed(2)} m (under ${minM} m, more than ${tol} m inside) beside its viaduct: extend the row to the embankment's end, or keep it that far off the end`,
+    );
+  }
   const kept: number[] = [];
   const keptInfo: CrossInfo[] = [];
   info.forEach((c, i) => {
