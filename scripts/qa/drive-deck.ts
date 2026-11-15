@@ -364,4 +364,7 @@ for (const r of routes) {
   if (isInvalid) exit = Math.max(exit, 2);
   else if (isFailed) exit = Math.max(exit, 1);
 }
-process.exitCode = exit;
+// Ends here even if a child is still running (browser.mjs's reaper kills its Chromes at the exit).
+// Why not only set process.exitCode (as before): a child left running kept the process alive after
+// its results were written, and a lane of drives waited on it for good.
+process.exit(exit);
