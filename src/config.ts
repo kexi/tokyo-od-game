@@ -1,13 +1,62 @@
 // Static endpoints and tuning constants. All remote endpoints here were verified to send
 // `Access-Control-Allow-Origin: *`, which is what lets the game run on static GitHub Pages.
+import type { PlateauSource } from "./world/plateauRoot";
+
+const PLATEAU_LOD1 = (code: string) =>
+  `https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/${code}-bldg-lod1-latest/tileset.json`;
 
 /**
- * PLATEAU LOD1 for all of Tokyo. LOD2 was tried and dropped: it exists for fewer
- * municipalities (45 vs 62 sub-tilesets), its textured tiles exhaust a 1.6 GB cache within
- * ~1 km, and its intermediate levels contain decimated wall fragments that float in the air.
+ * The prefectures whose PLATEAU LOD1 buildings the game streams, each with its box (degrees, a
+ * margin included): only the outer frame its tileset stays within (`just check-plateau-root`
+ * checks every municipality's region against it). What decides whether a gated prefecture loads is
+ * its gate, the regions of its municipalities (src/world/plateauRoot.ts): a box is not the
+ * prefecture's shape, and Kanagawa's north edge (35.672, set by 相模原) is 1.0 km south of Tokyo
+ * Station. Tokyo is not gated, and its box reaches the islands (大島 … 小笠原, 136.07–153.99°E,
+ * 20.42–35.90°N on 2026-11-15) because its tileset holds them. Why not one renderer per
+ * prefecture: their LRUs would add up at a border (up to four times the memory) and the
+ * load-model, cut-out and collider wiring would be four times over.
  */
-export const PLATEAU_TILESET =
-  "https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/13-bldg-lod1-latest/tileset.json";
+export const PLATEAU_SOURCES: readonly PlateauSource[] = [
+  {
+    code: "13",
+    name: "東京都",
+    url: PLATEAU_LOD1("13"),
+    box: { west: 136.0, south: 20.4, east: 154.0, north: 35.95 },
+    gated: false,
+  },
+  {
+    code: "14",
+    name: "神奈川県",
+    url: PLATEAU_LOD1("14"),
+    box: { west: 138.9, south: 35.1, east: 139.85, north: 35.7 },
+    gated: true,
+  },
+  {
+    code: "11",
+    name: "埼玉県",
+    url: PLATEAU_LOD1("11"),
+    box: { west: 138.7, south: 35.74, east: 139.95, north: 36.3 },
+    gated: true,
+  },
+  {
+    code: "12",
+    name: "千葉県",
+    url: PLATEAU_LOD1("12"),
+    box: { west: 139.7, south: 34.85, east: 140.9, north: 36.15 },
+    gated: true,
+  },
+];
+
+/**
+ * PLATEAU LOD1, through the root that joins PLATEAU_SOURCES (public/data/plateau/tileset.json,
+ * `just make-plateau-root`). LOD2 was tried and dropped: it exists for fewer municipalities
+ * (45 vs 62 sub-tilesets in Tokyo), its textured tiles exhaust a 1.6 GB cache within ~1 km, and
+ * its intermediate levels contain decimated wall fragments that float in the air. Why not list the
+ * municipalities' tileset.json in the root: their URLs change with each `-latest` update; only the
+ * prefectures' are stable. Optional chaining: a tsx script (scripts/plateauRoot.ts) has no
+ * import.meta.env.
+ */
+export const PLATEAU_TILESET = `${(import.meta.env as ImportMetaEnv | undefined)?.BASE_URL ?? "/"}data/plateau/tileset.json`;
 
 export const GSI = {
   dem5a: (z: number, x: number, y: number) =>

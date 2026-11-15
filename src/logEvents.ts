@@ -834,6 +834,33 @@ export const LOG_EVENTS = {
     via: z.record(z.string(), z.string()),
   }),
   guide_signs_written: info({ tiles: count, roads: count, dests: count, places: count, chars: count }),
+  /**
+   * scripts/plateauRoot.ts: the root joining the prefectures' PLATEAU tilesets, written; `gates` is
+   * how many municipality regions each gated prefecture's gate holds.
+   */
+  plateau_root_written: info({
+    file: z.string(),
+    sources: z.array(z.string()),
+    gates: counts,
+    bytes: count,
+  }),
+  /**
+   * scripts/plateauRoot.ts --check: one prefecture's tileset as the service serves it now. `codes`
+   * are its municipalities (5-digit codes from the URIs), `problems` why the check fails (empty: ok).
+   */
+  plateau_root_checked: info({
+    code: z.string(),
+    name: z.string(),
+    url: z.string(),
+    status: count,
+    cors: z.string(),
+    geometricError: z.number(),
+    regionDeg: z.array(z.number()),
+    children: count,
+    codes: z.array(z.string()),
+    problems: z.array(z.string()),
+    ok: z.boolean(),
+  }),
   /** scripts/sign-law-table.ts: 別表第一 read from e-Gov at the pinned revision. */
   sign_law_table_written: info({ file: z.string(), revision: z.string(), signs: count }),
   /** scripts/signs.ts: the sign definitions written out as registry.json, game.json and catalog.json. */

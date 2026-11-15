@@ -16,11 +16,14 @@
 // --heap-limit caps V8's old space (--js-flags=--max-old-space-size), as on a machine with less
 // memory; a tab that crashes ends the run with `crashed` and the second it happened.
 // Output: one JSON line a sample on stdout and .qa/memory-buildings/<label>.json (screenshots in
-// .qa/memory-buildings/<label>/).
+// .qa/memory-buildings/<label>/). The JSON carries `slopes` (memorySlopes.ts): the heap, array-storage
+// and total slopes over all samples from 60 s, from the near LRU's plateau, and over the full samples
+// only (held ≥ 95 % of its upper bound), with the share of full samples and the rules used.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
+import { slopeSummary, type MemorySample } from "./memorySlopes.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const argv = process.argv.slice(2);
@@ -209,6 +212,7 @@ const out = {
   stepM,
   every,
   crashed,
+  slopes: slopeSummary(samples as MemorySample[]),
   samples,
 };
 writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
