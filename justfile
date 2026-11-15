@@ -368,9 +368,13 @@ measure-perf-fixed:
 measure-buildings-load label="run" base="http://localhost:5173/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/perf-buildings.ts --label {{ label }} --base {{ base }} {{ args }}
 
-# PLATEAU の建物のメモリ（近景の LRU の持っている量・使っている量、遠景の LRU、強制 GC 後のヒープと配列の実体）を、ワープで道順をたどりながら（既定は東京駅→新宿→渋谷→池袋→上野を 300 m ずつ）またはタイトル画面で、時間を追って .qa/memory-buildings/<label>.json に書く（args に --route・--step・--title・--view・--mobile・--heap-limit・--sample・--seconds）
+# PLATEAU の建物のメモリ（近景の LRU の持っている量・使っている量、遠景の LRU、強制 GC 後のヒープと配列の実体）を、ワープで道順をたどりながら（既定は東京駅→新宿→渋谷→池袋→上野を 300 m ずつ）またはタイトル画面で、時間を追って .qa/memory-buildings/<label>.json に書く（args に --route・--step・--every・--sample-every・--title・--view・--mobile・--heap-limit・--sample・--seconds）
 measure-buildings-memory label="run" base="http://localhost:5173/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/memory-buildings.ts --label {{ label }} --base {{ base }} {{ args }}
+
+# __game を使わずに（公開の版でも）東京駅から自動運転で走り、強制 GC 後のヒープと配列の実体を、速度計から積んだ走行距離とともに .qa/memory-plain/<label>.json に書く（args に --seconds・--every・--view・--still・--stuck）
+measure-plain-memory label="run" base="http://localhost:4174/tokyo-od-game/" *args:
+    pnpm exec tsx scripts/qa/memory-plain.ts --label {{ label }} --base {{ base }} {{ args }}
 
 # 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
