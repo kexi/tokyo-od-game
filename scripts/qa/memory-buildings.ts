@@ -11,7 +11,7 @@
 //   pnpm exec tsx scripts/qa/memory-buildings.ts --label L [--base URL] [--seconds S]
 //     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--sample-every S] [--title] [--start lat,lon]
 //     [--view near|medium|far] [--mobile] [--heap-limit MB] [--sample held,used,heap,backing]
-//     [--shots all|200,230]
+//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2]
 //
 // --sample-every reads the page every S seconds (default: every warp) while the warps go on every
 // EVERY seconds: a forced GC takes seconds, so a warp each second cannot be read each second. Why not
@@ -20,7 +20,7 @@
 // memory; a tab that crashes ends the run with `crashed` and the second it happened.
 // Output: one JSON line a sample on stdout and .qa/memory-buildings/<label>.json (screenshots in
 // .qa/memory-buildings/<label>/).
-import { mkdirSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
@@ -132,6 +132,106 @@ const STATE = `(() => {
     lat: g ? +g.lat.toFixed(5) : null, lon: g ? +g.lon.toFixed(5) : null, state: __game.getState() };
 })()`;
 
+/**
+ * Page-side (--counts): how many of each thing the game holds, to find one that grows with time while
+ * the place keeps changing (M1). Each count is read on its own, null when this build has no such
+ * handle. Why counts and not a heap snapshot first: a snapshot of a 1 GB heap takes minutes and
+ * stalls the page; a count that grows names its owner at once.
+ */
+const COUNTS = `(() => {
+  const g = __game; const read = (f) => { try { return f(); } catch { return null; } };
+  let objects = 0; const top = [];
+  for (const child of g.scene.children) {
+    let n = 0; child.traverse(() => n++); objects += n;
+    top.push([child.name || child.type, n]);
+  }
+  top.sort((a, b) => b[1] - a[1]);
+  let cars = 0; read(() => g.traffic.forEachCar(() => cars++));
+  return { counts: {
+    objects, topChildren: top.slice(0, 8),
+    geometries: read(() => g.renderer.info.memory.geometries), textures: read(() => g.renderer.info.memory.textures),
+    programs: read(() => g.renderer.info.programs.length),
+    bodies: read(() => g.world.bodies.len()), colliders: read(() => g.world.colliders.len()),
+    cars, pedestrians: read(() => g.pedestrians.list.length), licenseLog: read(() => g.law.state.log.length),
+  } };
+})()`;
+const isCounted = argv.includes("--counts");
+
+/**
+ * --alloc FROM,TO: the sampling heap profiler between those seconds; what it reports is what was
+ * allocated in the window and is still alive at TO, by the place in the code that allocated it.
+ * --snapshot-at T1,T2: a full heap snapshot at each (a .heapsnapshot file; scripts/qa/heap-diff.py
+ * compares two). Why both: the sampling profile names the code even through closures and arrays a
+ * snapshot only shows as "(array)", and the snapshot names who keeps them.
+ */
+const allocWindow = flag("alloc")?.split(",").map(Number) ?? null;
+const snapshotTimes = (flag("snapshot-at") ?? "").split(",").filter(Boolean).map(Number);
+const snapshotsTaken = new Set<number>();
+let isAllocating = false;
+type AllocNode = {
+  callFrame: { functionName: string; url: string; lineNumber: number };
+  selfSize: number;
+  children: AllocNode[];
+};
+let allocDone: {
+  t: number;
+  totalMB: number;
+  top: Array<[string, number]>;
+  files: Array<[string, number]>;
+} | null = null;
+/** The profile's self sizes added up by allocating place (function, file, line) and by file, in MB. */
+function summariseAlloc(head: AllocNode) {
+  const bySite = new Map<string, number>();
+  const byFile = new Map<string, number>();
+  let total = 0;
+  const walk = (n: AllocNode) => {
+    const f = n.callFrame;
+    const file = f.url.split("/").pop() || "(native)";
+    const site = `${f.functionName || "(anonymous)"} ${file}:${f.lineNumber + 1}`;
+    bySite.set(site, (bySite.get(site) ?? 0) + n.selfSize);
+    byFile.set(file, (byFile.get(file) ?? 0) + n.selfSize);
+    total += n.selfSize;
+    for (const c of n.children) walk(c);
+  };
+  walk(head);
+  return { totalMB: Math.round(total / 1e5) / 10, top: largest(bySite, 30), files: largest(byFile, 15) };
+}
+/** The `n` largest entries, in MB. */
+function largest(m: Map<string, number>, n: number): Array<[string, number]> {
+  return [...m]
+    .toSorted((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([k, v]) => [k, Math.round(v / 1e5) / 10]);
+}
+/**
+ * A heap snapshot to `file` over a second DevTools client on the same page. Why a second client: the
+ * snapshot arrives as HeapProfiler.addHeapSnapshotChunk events, which browser.mjs does not hand over.
+ */
+async function takeSnapshot(debugPort: number, file: string): Promise<void> {
+  const targets = (await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()) as Array<{
+    type: string;
+    webSocketDebuggerUrl: string;
+  }>;
+  const page = targets.find((x) => x.type === "page");
+  if (!page) throw new Error("no page to snapshot");
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((r) => ws.addEventListener("open", r));
+  const stream = createWriteStream(file);
+  await new Promise<void>((resolve) => {
+    ws.addEventListener("message", (ev) => {
+      const msg = JSON.parse(String(ev.data));
+      if (msg.method === "HeapProfiler.addHeapSnapshotChunk") stream.write(msg.params.chunk);
+      if (msg.id === 2) resolve();
+    });
+    ws.send(JSON.stringify({ id: 1, method: "HeapProfiler.enable" }));
+    ws.send(
+      JSON.stringify({ id: 2, method: "HeapProfiler.takeHeapSnapshot", params: { reportProgress: false } }),
+    );
+  });
+  await new Promise((r) => stream.end(r));
+  ws.close();
+}
+
 const mb = (bytes: unknown) => (bytes == null ? null : Math.round(Number(bytes) / 1e6));
 const outDir = join(ROOT, ".qa", "memory-buildings");
 const shotDir = join(outDir, label);
@@ -194,8 +294,33 @@ try {
       if (!sampled.has("held")) delete state.near;
       if (!sampled.has("used")) Object.assign(counters, { usedMb: undefined, usedPeakMb: undefined });
       Object.assign(sample, state, counters);
+      if (isCounted) Object.assign(sample, await b.evaluate<Record<string, unknown>>(COUNTS));
       samples.push(sample);
       process.stdout.write(`${JSON.stringify(sample)}\n`);
+      const isAllocStartDue =
+        allocWindow !== null && !isAllocating && allocDone === null && t >= allocWindow[0];
+      if (isAllocStartDue) {
+        await b.send("HeapProfiler.enable");
+        await b.send("HeapProfiler.startSampling", { samplingInterval: 32768 });
+        isAllocating = true;
+        process.stdout.write(`${JSON.stringify({ t, alloc: "started" })}\n`);
+      }
+      const isAllocStopDue = allocWindow !== null && isAllocating && t >= allocWindow[1];
+      if (isAllocStopDue) {
+        const profile = (await b.send("HeapProfiler.stopSampling")).result.profile as AllocNode & {
+          head: AllocNode;
+        };
+        isAllocating = false;
+        writeFileSync(join(outDir, `${label}.heapprofile`), JSON.stringify(profile));
+        allocDone = { t, ...summariseAlloc(profile.head) };
+        process.stdout.write(`${JSON.stringify({ t, alloc: "stopped", totalMB: allocDone.totalMB })}\n`);
+      }
+      for (const at of snapshotTimes.filter((x) => t >= x && !snapshotsTaken.has(x))) {
+        snapshotsTaken.add(at);
+        const file = join(outDir, `${label}.t${at}.heapsnapshot`);
+        await takeSnapshot(port, file);
+        process.stdout.write(`${JSON.stringify({ t, snapshot: file })}\n`);
+      }
     } catch (error) {
       crashed = `${Math.round((Date.now() - t0) / 1000)} s: ${String(error)}`;
       process.stdout.write(`${JSON.stringify({ crashed })}\n`);
@@ -218,6 +343,7 @@ const out = {
   every,
   sampleEvery,
   crashed,
+  alloc: allocDone,
   samples,
 };
 writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
