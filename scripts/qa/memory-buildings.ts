@@ -9,10 +9,13 @@
 //
 //   just measure-buildings-memory label base [args]
 //   pnpm exec tsx scripts/qa/memory-buildings.ts --label L [--base URL] [--seconds S]
-//     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--title] [--start lat,lon]
+//     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--sample-every S] [--title] [--start lat,lon]
 //     [--view near|medium|far] [--mobile] [--heap-limit MB] [--sample held,used,heap,backing]
 //     [--shots all|200,230]
 //
+// --sample-every reads the page every S seconds (default: every warp) while the warps go on every
+// EVERY seconds: a forced GC takes seconds, so a warp each second cannot be read each second. Why not
+// read less (no GC) in between: the heap before a GC swings by hundreds of MB and says nothing.
 // --heap-limit caps V8's old space (--js-flags=--max-old-space-size), as on a machine with less
 // memory; a tab that crashes ends the run with `crashed` and the second it happened.
 // Output: one JSON line a sample on stdout and .qa/memory-buildings/<label>.json (screenshots in
@@ -40,6 +43,7 @@ const heapLimit = flag("heap-limit");
 const seconds = Number(flag("seconds") ?? (isTitle ? 300 : 600));
 const every = Number(flag("every") ?? (isTitle ? 5 : 10));
 const stepM = Number(flag("step") ?? 300);
+const sampleEvery = Number(flag("sample-every") ?? every);
 /** What to read each sample (all by default): the LRU's held bytes, its used bytes, the GC heap, the array storage. */
 const SAMPLE_KINDS = ["held", "used", "heap", "backing"] as const;
 type SampleKind = (typeof SAMPLE_KINDS)[number];
@@ -156,6 +160,7 @@ try {
   const t0 = Date.now();
   const taken = new Set<number>();
   let hop = 0;
+  let nextSample = sampleEvery;
   while (Date.now() - t0 < seconds * 1000) {
     if (!isTitle) {
       hop++;
@@ -169,8 +174,11 @@ try {
       taken.add(x);
       await b.screenshot(join(shotDir, `t${x}.jpg`), 85);
     }
+    const isSampleDue = t >= nextSample;
+    if (!isSampleDue) continue;
+    nextSample = t + sampleEvery;
     try {
-      const sample: Record<string, unknown> = { t, hop };
+      const sample: Record<string, unknown> = { t, hop, km: Math.round(hop * stepM) / 1000 };
       const isHeapRead = sampled.has("heap") || sampled.has("backing");
       if (isHeapRead) {
         sample.heapRawMB = mb(await b.evaluate<number>("performance.memory.usedJSHeapSize"));
@@ -211,6 +219,7 @@ const out = {
   heapLimit: heapLimit ?? null,
   stepM,
   every,
+  sampleEvery,
   crashed,
   slopes: slopeSummary(samples as MemorySample[]),
   samples,
