@@ -55,11 +55,18 @@ export class Phone {
     private readonly voice: Voice,
     private readonly context: () => { location: string; clock: string; hasIncident: boolean },
     private readonly onDispatch: (line: Line) => boolean,
+    /**
+     * The game's clock (ms, main.ts gameNow): when the phone was worked, and the call's start, set
+     * here and read against the frame's `now` (isInUse), which is that clock. Why not
+     * performance.now() here (as before): a touch stamped on the wall clock and judged on the game's
+     * drifts apart on a slow page, and the 2 s of ながら運転 would be a different stretch of road.
+     */
+    private readonly clock: () => number,
   ) {
     for (const b of document.querySelectorAll<HTMLButtonElement>("[data-dial]")) {
       b.addEventListener("click", () => this.dial(b.dataset.dial as Line));
     }
-    const touch = () => (this.touchedAt = performance.now());
+    const touch = () => (this.touchedAt = this.clock());
     $("#phone").addEventListener("pointerdown", touch, true);
     $("#phone").addEventListener("keydown", touch, true);
     $("#phone-close").addEventListener("click", () => this.close());
@@ -111,7 +118,7 @@ export class Phone {
   show(byHand = true): void {
     $("#phone").hidden = false;
     $("#phone-backdrop").hidden = !this.zoomed;
-    if (byHand) this.touchedAt = performance.now();
+    if (byHand) this.touchedAt = this.clock();
     this.fitZoom();
     this.refresh();
   }
@@ -133,7 +140,7 @@ export class Phone {
 
   /** Zooming in or out is working the phone (a look at its screen while driving is booked). */
   setZoom(on: boolean): void {
-    this.touchedAt = performance.now();
+    this.touchedAt = this.clock();
     this.applyZoom(on);
     try {
       sessionStorage.setItem(ZOOM_KEY, on ? "1" : "0");
@@ -178,7 +185,7 @@ export class Phone {
     const place = translateWord(ctx.location, "phoneUi.unknownPlace");
     $("#phone-loc").textContent = t("phoneUi.location", { place });
     if (this.inCall) {
-      const s = Math.floor((performance.now() - this.callStart) / 1000);
+      const s = Math.floor((this.clock() - this.callStart) / 1000);
       $("#call-timer").textContent =
         `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
     }
@@ -188,7 +195,7 @@ export class Phone {
     this.line = line;
     this.callerText = "";
     this.dispatched = false;
-    this.callStart = performance.now();
+    this.callStart = this.clock();
     // Out of the pocket and over whatever app was open (Y, the taxi): the call screen alone. Why not
     // only hide the home screen: with Y open — as the phone starts — the call stayed behind it.
     this.show();

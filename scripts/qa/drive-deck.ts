@@ -12,6 +12,11 @@
 // route) or .qa/drive-deck-<label>-<route>.json, or into --out <dir> as <route>.json; exit 1 when the
 // decks failed the drive, 2 when the run is invalid.
 //
+// --cpu-throttle N slows the page's CPU N times (DevTools Emulation.setCPUThrottlingRate) for the
+// drive, after the town has loaded: frames then take longer than MAX_FRAME_S, and the world (and the
+// game's clock, frameClock.ts gameStep) moves slower than the wall clock. The verdicts must not
+// depend on it (knowledge/game-clock.md). 1 (the default) leaves the page as it is.
+//
 // Why the exit ramp and not on along 内回り (P3's route): past 24402611:30 the main line goes down to
 // the ground end of the loaded data (築地川's cut is not in it), where the decks leave 汐留出口's
 // 壁高欄 standing in 内回り's lane 0 by design (SHIODOME_REASON, knowledge/expressway-generation.md);
@@ -19,6 +24,7 @@
 //
 //   just check-deck-drive [label] [route] (the dev server: just serve-dev; route all drives every one)
 //   pnpm exec tsx scripts/qa/drive-deck.ts [--label L] [--route R|all] [--base URL] [--out DIR] [--tries N]
+//     [--cpu-throttle N]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readExpresswayFiles } from "../expresswayFiles.ts";
@@ -51,6 +57,7 @@ const base = flag("base") ?? "http://localhost:5173/tokyo-od-game/";
 const routeArg = flag("route") ?? "";
 const outDir = flag("out");
 const tries = Number(flag("tries") ?? 3);
+const cpuThrottle = Number(flag("cpu-throttle") ?? 1);
 const routes: DeckRoute[] =
   routeArg === "all" ? [...DECK_ROUTES] : [routeOf(routeArg === "" ? DEFAULT_ROUTE : routeArg)];
 /** The data the dev server serves (XW_DATA_DIR else public/data/expressway): where a run distance lies. */
@@ -78,6 +85,9 @@ async function open(start: string): Promise<{ b: Browser; url: string; before: s
   await b.evaluate("window.__game.start()");
   await until("__game.debug.settled().isSettled", 150);
   await b.sleep(3000);
+  // Only the drive is slowed: loading under the throttle would only take longer.
+  const isThrottled = cpuThrottle !== 1;
+  if (isThrottled) await b.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
   // Nothing in the way first (an accident, a pursuit: an arrest would freeze the car mid-drive and
   // the run would measure the arrest, not the decks; knowledge/road-textures.md「止まる件」).
   let before: string | null = null;
@@ -329,7 +339,7 @@ for (const r of routes) {
     const counts = result.invalid === null;
     if (counts) break;
   }
-  const out = { label, ...result!, attempts };
+  const out = { label, cpuThrottle, ...result!, attempts };
   const file = outDir
     ? join(outDir, `${r.id}.json`)
     : join(ROOT, ".qa", routeArg === "" ? `drive-deck-${label}.json` : `drive-deck-${label}-${r.id}.json`);

@@ -573,7 +573,7 @@ export class OrbisDevices {
   }
 
   /** Fire a lane's strobe (also used to stage screenshots); portable sites follow the fixed ones. */
-  flash(siteIndex: number, lane: number, now = performance.now()): void {
+  flash(siteIndex: number, lane: number, now: number): void {
     const lens = this.lensOf[siteIndex]?.[lane];
     if (!lens) return;
     const m = new Matrix4();

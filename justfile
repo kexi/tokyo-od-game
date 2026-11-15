@@ -376,9 +376,9 @@ measure-buildings-memory label="run" base="http://localhost:5173/tokyo-od-game/"
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
 
-# 床版の走行の経路表 scripts/qa/deckRoutes.ts の経路（省くと入口ランプから C1 内回り・汐留出口への一定速、all で全経路）を走らせ、建物との交差・停止・落下・|dy|・大きな減速・終点への到達（自動運転は到着と違反）を .qa/drive-deck-<label>[-<route>].json に書く（out を渡せばそのフォルダに <route>.json、失敗は終了コード 1、invalid は 2）
-check-deck-drive label="run" route="" base="http://localhost:5173/tokyo-od-game/" out="":
-    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }} {{ if route != "" { "--route " + route } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }}
+# 床版の走行の経路表 scripts/qa/deckRoutes.ts の経路（省くと入口ランプから C1 内回り・汐留出口への一定速、all で全経路）を走らせ、建物との交差・停止・落下・|dy|・大きな減速・終点への到達（自動運転は到着と違反）を .qa/drive-deck-<label>[-<route>].json に書く（out を渡せばそのフォルダに <route>.json、throttle で CPU を N 倍遅くして走る、失敗は終了コード 1、invalid は 2）
+check-deck-drive label="run" route="" base="http://localhost:5173/tokyo-od-game/" out="" throttle="1":
+    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }} {{ if route != "" { "--route " + route } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }} --cpu-throttle {{ throttle }}
 
 # 交通と雨が動く通常プレイで夜雨の従来・改善後を交互に各4回計測する
 measure-perf-night:

@@ -66,13 +66,20 @@ export class PolicePatrol {
    */
   managed = false;
   target: Vector3 | null = null;
-  /** performance.now() when it was sent off after a stop (null: not since it last engaged). */
+  /** The game's clock (ms) when it was sent off after a stop (null: not since it last engaged). */
   releasedAt: number | null = null;
 
   constructor(
     private readonly scene: Scene,
     world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
+    /**
+     * The game's clock (ms, main.ts gameNow): the lights' tail, the callouts and the release are
+     * set here and compared in update() and main.ts against the frame's `now`, which is that clock.
+     * Why not performance.now() here (as before): the frame's `now` became the game's clock, and a
+     * time set on the wall clock and compared on the game's drifts apart on a slow page.
+     */
+    private readonly clock: () => number,
     readonly kind: PatrolKind = "patrol",
   ) {
     // The physics car drives; the police model (scripts/blender/police_*.py) is what is seen. Its
@@ -165,14 +172,14 @@ export class PolicePatrol {
     // The pursuit's end (stopped, lost) is decided by pursuitDirector.ts, also during an unmarked
     // car's quiet tail: a stop then waits for its lights rather than opening a ticket at once.
     this.managed = true;
-    this.lightsAt = performance.now() + (this.kind === "unmarked" ? UNMARKED_TAIL_MS : 0);
+    this.lightsAt = this.clock() + (this.kind === "unmarked" ? UNMARKED_TAIL_MS : 0);
     return this.kind === "unmarked" ? null : "pursuit";
   }
 
   /** Red lights on (pursuing past the quiet tail, or ticketing). */
   get lightsOn(): boolean {
     const isPursuing = this.state === "pursuing" || this.state === "ticketing";
-    return isPursuing && performance.now() >= this.lightsAt;
+    return isPursuing && this.clock() >= this.lightsAt;
   }
 
   /**
@@ -185,14 +192,14 @@ export class PolicePatrol {
     this.releasedAt = null;
     this.target = target;
     this.stoppedFor = 0;
-    this.lightsAt = performance.now();
-    this.lastCallout = performance.now();
+    this.lightsAt = this.clock();
+    this.lastCallout = this.clock();
   }
 
   /** Stop where it is with the lights on (the car has stopped, or it is posted at a 検問). */
   hold(): void {
     this.state = "ticketing";
-    this.lightsAt = Math.min(this.lightsAt, performance.now());
+    this.lightsAt = Math.min(this.lightsAt, this.clock());
   }
 
   /** Put it at `at` facing `yaw` and hold it there (behind the stopped car, across a lane). */
@@ -219,9 +226,9 @@ export class PolicePatrol {
     this.seen.length = 0;
     this.managed = false;
     this.target = null;
-    this.releasedAt = performance.now();
+    this.releasedAt = this.clock();
     this.state = "leaving";
-    this.leaveUntil = performance.now() + 20000;
+    this.leaveUntil = this.clock() + 20000;
     this.cruise(world, near);
   }
 
