@@ -73,6 +73,13 @@ const press = async (k: { code: string; key: string; windowsVirtualKeyCode: numb
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", ...k });
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", ...k });
 };
+const ARROW_DOWN = { code: "ArrowDown", key: "ArrowDown", windowsVirtualKeyCode: 40 };
+/** Holds a key down for `ms` (the brake, then reverse, in either layout's arrows). */
+const hold = async (k: { code: string; key: string; windowsVirtualKeyCode: number }, ms: number) => {
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", ...k });
+  await b.sleep(ms);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", ...k });
+};
 const read = () => b.evaluate<Record<string, unknown>>(READ);
 /** What the page says back (the toasts: 道路を読み込み中, 目的地なし…), for the record of a key that did nothing. */
 const toasts = () => b.evaluate<string>(`document.querySelector("#toasts")?.textContent?.trim() ?? ""`);
@@ -129,7 +136,10 @@ try {
     const isStuck = !isStill && Number(state.stillS) >= stuckS;
     if (isStuck) {
       if (state.autopilot) await press(AUTOPILOT_KEYS[0]).then(() => b.sleep(500));
-      const isOn = await autopilotOn();
+      // Backs off before the autopilot plans again. Why: turned off and on where it stopped, it
+      // planned the same way and stayed stuck (大手町一丁目, 27 tries in 15 min, m2-qa-r1).
+      await hold(ARROW_DOWN, 3000);
+      const isOn = await autopilotOn(30);
       events.push({ t, event: "restarted", isOn, km: state.km, ward: state.ward, town: state.town });
       await b.evaluate("window.__plain.stillS = 0");
     }
@@ -149,9 +159,9 @@ try {
 } catch (error) {
   failure = String(error);
   process.stdout.write(`${JSON.stringify({ failure })}\n`);
-} finally {
-  await b.close();
 }
+// Written before the browser is closed: a page that stopped answering (a DevTools call timed out)
+// can hang close() too, and the samples taken until then are still a record of the run.
 const out = {
   label,
   base,
@@ -166,3 +176,5 @@ const out = {
   samples,
 };
 writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
+await Promise.race([b.close(), new Promise((r) => setTimeout(r, 10_000))]);
+process.exit(failure ? 1 : 0);
