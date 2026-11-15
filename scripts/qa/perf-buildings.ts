@@ -22,6 +22,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
+import { waitQuiet } from "./quietWatch.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const argv = process.argv.slice(2);
@@ -59,22 +60,6 @@ const USED_WATCH = `(() => {
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
-})()`;
-/**
- * Page-side: counts the tile events of both renderers into window.__perfQuiet (the far one is
- * attached once it exists); `last` is when the latest came.
- */
-const QUIET_WATCH = `(() => {
-  const b = __game.buildings;
-  const q = (window.__perfQuiet ??= { last: performance.now(), events: 0, near: false, far: false });
-  const on = (r) => {
-    const tick = () => { q.last = performance.now(); q.events++; };
-    r.addEventListener("load-model", tick);
-    r.addEventListener("dispose-model", tick);
-  };
-  if (!q.near) { on(b.tiles); q.near = true; }
-  if (!q.far && b.far) { on(b.far); q.far = true; q.last = performance.now(); }
-  return performance.now() - q.last;
 })()`;
 const ANDROID_UA =
   "Mozilla/5.0 (Linux; Android 16; Pixel) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36";
@@ -206,15 +191,7 @@ for (const point of points) {
     // The far skyline starts after the town (or 15 s): wait for it to load and settle too.
     await until("__game.buildings.far && __game.buildings.farLoadProgress() >= 0.999", 90).catch(() => null);
     await until("__game.debug.settled().isSettled", 120);
-    const quietFrom = Date.now();
-    let quiet = false;
-    while (Date.now() - quietFrom < QUIET_MAX_MS) {
-      const sinceLast = await b.evaluate<number>(QUIET_WATCH);
-      quiet = sinceLast >= QUIET_MS;
-      if (quiet) break;
-      await b.sleep(500);
-    }
-    const quietWaitS = Math.round((Date.now() - quietFrom) / 100) / 10;
+    const { quiet, waitedS: quietWaitS } = await waitQuiet(b, QUIET_MS, QUIET_MAX_MS);
     const settleS = Math.round((Date.now() - t0) / 100) / 10;
     const frames = await b.evaluate<Frames>(WINDOW(seconds * 1000));
     await b.send("HeapProfiler.collectGarbage");
