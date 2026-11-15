@@ -379,19 +379,19 @@ export class DeckMerge {
     foot: Foot,
     sign: 1 | -1,
     side: -1 | 1 | null = null,
-    at = -1,
+    stepK = -1,
   ): Crossing | null {
     const lx = ring.t.z;
     const lz = -ring.t.x;
     const { line } = foot;
     let best: Crossing | null = null;
-    // On one side of a step (`at`, its ring k): only the segments of that side's edge, the one next
+    // On one side of a step (`stepK`, its ring k): only the segments of that side's edge, the one next
     // to the step running on past it. Why not every segment there: the line of a ring near the step
     // meets the edge before it, the step's own piece and the edge after it, and the nearest of the
     // three (the outer edge) was taken on both sides of it, so the seam left the inner edge a ring
     // early and a sliver up to the step's width was left uncovered (157249373:0 under 44804029).
-    const first = side === 1 ? Math.max(at + 1, foot.k - 6) : Math.max(0, foot.k - 6);
-    const last = side === -1 ? Math.min(at, foot.k + 7) : Math.min(line.rings.length - 1, foot.k + 7);
+    const first = side === 1 ? Math.max(stepK + 1, foot.k - 6) : Math.max(0, foot.k - 6);
+    const last = side === -1 ? Math.min(stepK, foot.k + 7) : Math.min(line.rings.length - 1, foot.k + 7);
     for (let k = first; k < last; k++) {
       const p = this.edgePoint(line, k, sign);
       const q = this.edgePoint(line, k + 1, sign);
@@ -403,7 +403,7 @@ export class DeckMerge {
       const wx = p.x - ring.c.x;
       const wz = p.z - ring.c.z;
       const tau = cross(wx, wz, lx, lz) / den;
-      const isPastStep = (side === -1 && k + 1 === at) || (side === 1 && k === at + 1);
+      const isPastStep = (side === -1 && k + 1 === stepK) || (side === 1 && k === stepK + 1);
       const lowest = side === 1 && isPastStep ? -Infinity : -1e-9;
       const highest = side === -1 && isPastStep ? Infinity : 1 + 1e-9;
       const isOnSegment = tau >= lowest && tau <= highest;

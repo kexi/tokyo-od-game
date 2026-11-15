@@ -1096,14 +1096,14 @@ function* refineRings(
           const after = stepHere ? tauOf(line[k + 1]) : null;
           const isPair = stepHere !== undefined && tau !== null && after !== null;
           if (isPair) {
-            const at = Math.min(tau, after);
-            const ring = ringBetween(a, b, at, true);
+            const tauFirst = Math.min(tau, after);
+            const ring = ringBetween(a, b, tauFirst, true);
             const isBeforeFirst = tau <= after;
             const beyond = isBeforeFirst ? ringBetween(a, b, after, true) : ring;
             const before = merge.sides(own, ring, 0, { step: stepHere, side: -1 });
             const past = merge.sides(own, beyond, 0, { step: stepHere, side: 1 });
-            extra.push({ tau: at - 1e-9, ring, sides: before, isClosing: false });
-            extra.push({ tau: at + 1e-9, ring, sides: past, isClosing: false });
+            extra.push({ tau: tauFirst - 1e-9, ring, sides: before, isClosing: false });
+            extra.push({ tau: tauFirst + 1e-9, ring, sides: past, isClosing: false });
             return;
           }
           const isPairsSecond = stepBefore !== undefined && tauOf(line[k - 1]) !== null && tau !== null;
