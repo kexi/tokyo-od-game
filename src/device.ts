@@ -14,6 +14,11 @@ export type Quality = {
   terrainRadius: number; // chunks around the player (z15 tile ≈ 990 m)
   maxImageryZoom: number;
   buildingLoadRadius: number; // metres
+  /**
+   * The near town's LRU limit: bytes as the LRU counts them (the tiles' geometry and textures as the
+   * renderer sizes them). The page's memory for the same tiles is about 6 times that (array storage
+   * ~4.4×, the JS heap ~1.6×; X0, 2026-11-15; why is not known yet).
+   */
   buildingCacheBytes: number;
   /** The far ground (farGround.ts): GSI tile zoom, tiles on each side of the player's, grid cells per tile. */
   farGroundZoom: number;
@@ -129,7 +134,7 @@ export function pixelRatioFor(resolution: GraphicsSettings["resolution"]): numbe
 
 /**
  * The renderer and the world's sizes from the 画質 settings. Phones (a mid-range GPU) keep their
- * own building cache whatever the settings say.
+ * own building cache and 低's building load radius (1.6 km) whatever the settings say.
  */
 export function detectQuality(g: GraphicsSettings = GRAPHICS.settings, isMobile = IS_MOBILE): Quality {
   return {

@@ -25,6 +25,7 @@ export function launch(
     height?: number;
     preload?: string | null;
     headed?: boolean;
+    extraArgs?: string[];
   },
 ): Promise<Browser>;
 

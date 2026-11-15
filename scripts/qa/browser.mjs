@@ -12,7 +12,8 @@ const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/M
  * Open `url` in a fresh headless Chrome. `preload` is page-side JS run in every document before the
  * page's own scripts (Page.addScriptToEvaluateOnNewDocument): the teaser's virtual clock. `headed`
  * opens a window instead (the GPU paces frames as for a player: headless Chrome's come in steps of
- * 16.7 ms, so a p95 there reads 33, 50 or 83 ms).
+ * 16.7 ms, so a p95 there reads 33, 50 or 83 ms). `extraArgs` go to Chrome's command line as they are
+ * (memory-buildings.ts caps V8's heap with --js-flags).
  */
 /**
  * The Chromes this process started and has not closed. A run that ends another way than close() (an
@@ -151,6 +152,7 @@ export async function launch(
     preload = null,
     callTimeoutMs = CALL_TIMEOUT_MS,
     headed = false,
+    extraArgs = [],
   } = {},
 ) {
   // A Chrome left behind on the port (a run that crashed) would answer instead of the new one.
@@ -178,6 +180,7 @@ export async function launch(
       // suspended and the game's sound graph (spatialAudio's nodes and timers) would take another
       // path than a player's. Muting cuts the output alone; everything the tests read runs as is.
       "--mute-audio",
+      ...extraArgs,
       "about:blank",
     ],
     { stdio: "ignore" },

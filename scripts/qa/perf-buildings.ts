@@ -82,7 +82,11 @@ const ANDROID_UA =
 const preload = view
   ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistance: ${JSON.stringify(view)} })); } catch {}`
   : null;
-/** Starts (lat, lon), each inside the start screen's box (src/game/startPoint.ts BOUNDS). */
+/**
+ * Starts (lat, lon), each inside the start screen's box (src/game/startPoint.ts BOUNDS). The notes on
+ * the prefectures' roots (神奈川の根 …) and `rootRequests` (data/plateau/tileset.json) are for X1, the
+ * buildings beyond Tokyo; before it they read 0.
+ */
 const POINTS = [
   { id: "a-tokyo-station", what: "23 区の中心（行幸通り）", start: [35.68075, 139.76345] },
   { id: "b-ota-tamagawa", what: "大田区の多摩川沿い（神奈川の根）", start: [35.5445, 139.7068] },
