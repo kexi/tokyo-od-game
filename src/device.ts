@@ -48,11 +48,33 @@ export const GRAPHICS = new Graphics(loadGraphics(IS_MOBILE));
 
 const MIB = 1024 ** 2;
 /**
- * The near town's LRU on a phone, whatever the 描画距離 (its default is 低; the load radius is held
- * at 低's too, detectQuality). 2026-11-15, X0: 2 × 130 MB
- * used (the warp loop at 池袋 on 低; the title's pan 111 MB), in 32 MiB steps.
+ * The near town's LRU on a phone by default: the far skyline's phone limit (FAR_CACHE), which the
+ * town shared and lived under from 2026-10-05 (the far skyline's arrival) until X0. Held until the
+ * phones themselves are tried (U12): a phone's whole memory for the town of `full` was measured on a
+ * PC's Chrome only (about 0.8-0.9 → 1.6-1.9 GB). The radius follows the 描画距離, as before.
  */
-const PHONE_BUILDING_CACHE = 256 * MIB;
+const PHONE_TOWN_CACHE = 24 * MIB;
+/**
+ * `?phoneTown=full` on a phone: the town X0 measured for phones, to be tried on the phones from the
+ * published build. The cache is 2 × 130 MB used (2026-11-15, the warp loop at 池袋 on 低; the title's
+ * pan 111 MB), in 32 MiB steps; the load radius is held at 低's whatever the 描画距離. Why not the
+ * 描画距離's radius with a cache to match: on 最高 a phone's heap would then grow as a PC's (a lower
+ * bound of 365 MiB); with the radius held, a phone's memory does not follow the setting.
+ */
+const PHONE_TOWN_FULL_CACHE = 256 * MIB;
+/** Which town a phone streams: the default (null) or the one under trial ("full"). */
+export type PhoneTown = "full" | null;
+
+/** `?phoneTown=full` read as `?expressway` is; any other value is the default. */
+function readPhoneTown(): PhoneTown {
+  const hasLocation = typeof location !== "undefined";
+  if (!hasLocation) return null;
+  const isFull = new URLSearchParams(location.search).get("phoneTown") === "full";
+  return isFull ? "full" : null;
+}
+
+/** The town under trial on this device (phones only; a PC ignores the parameter). */
+export const PHONE_TOWN: PhoneTown = IS_MOBILE ? readPhoneTown() : null;
 
 /**
  * 描画距離. Beyond the streamed world a far ground and skyline reach the horizon (knowledge/
@@ -132,11 +154,22 @@ export function pixelRatioFor(resolution: GraphicsSettings["resolution"]): numbe
   return cap < 1 ? cap : Math.min(dpr, cap);
 }
 
+/** A phone's near town: the default cache with the 描画距離's radius, or `full`'s cache with 低's radius. */
+function phoneTownQuality(phoneTown: PhoneTown): Pick<Quality, "buildingCacheBytes"> & Partial<Quality> {
+  const isFull = phoneTown === "full";
+  if (!isFull) return { buildingCacheBytes: PHONE_TOWN_CACHE };
+  return { buildingCacheBytes: PHONE_TOWN_FULL_CACHE, buildingLoadRadius: VIEW.near.buildingLoadRadius };
+}
+
 /**
  * The renderer and the world's sizes from the 画質 settings. Phones (a mid-range GPU) keep their
- * own building cache and 低's building load radius (1.6 km) whatever the settings say.
+ * own building cache whatever the settings say (and, with `?phoneTown=full`, 低's building load radius).
  */
-export function detectQuality(g: GraphicsSettings = GRAPHICS.settings, isMobile = IS_MOBILE): Quality {
+export function detectQuality(
+  g: GraphicsSettings = GRAPHICS.settings,
+  isMobile = IS_MOBILE,
+  phoneTown: PhoneTown = PHONE_TOWN,
+): Quality {
   return {
     isMobile,
     pixelRatio: pixelRatioFor(g.resolution),
@@ -144,13 +177,8 @@ export function detectQuality(g: GraphicsSettings = GRAPHICS.settings, isMobile 
     shadows: g.shadows !== "off",
     shadowMapSize: g.shadows === "off" ? 1024 : Number(g.shadows),
     ...VIEW[g.viewDistance],
-    // A phone keeps the town of 低 whatever the 描画距離: its own cache and 低's load radius. Why not
-    // the 描画距離's radius with a cache to match: on 最高 a phone's heap would then grow as a PC's
-    // (a lower bound of 365 MiB); with the radius held, a phone's memory does not follow the setting.
-    // The far skyline, the ground and the photos still do.
-    ...(isMobile
-      ? { buildingCacheBytes: PHONE_BUILDING_CACHE, buildingLoadRadius: VIEW.near.buildingLoadRadius }
-      : {}),
+    // The far skyline, the ground and the photos follow the 描画距離 on a phone too.
+    ...(isMobile ? phoneTownQuality(phoneTown) : {}),
     ...TRAFFIC[g.traffic],
   };
 }

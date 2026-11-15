@@ -283,27 +283,42 @@ describe("the far skyline's memory", () => {
     expect(sizes[2]).toBeLessThan(0.8 * 1024 ** 3);
     const phone = defaultGraphics(true);
     const phoneSizes = (["near", "medium", "far"] as const).map(
-      (viewDistance) => detectQuality({ ...phone, viewDistance }, true).buildingCacheBytes,
+      (viewDistance) => detectQuality({ ...phone, viewDistance }, true, null).buildingCacheBytes,
     );
     expect(new Set(phoneSizes).size).toBe(1);
   });
 
   /**
-   * A phone streams the town of 低 (1.6 km) whatever the 描画距離, so its town fits its cache; the far
-   * skyline still follows the setting. A PC's town follows the setting.
+   * Until the phones are tried (U12), a phone streams the town as main did: the 24 MiB it has lived
+   * under since the far skyline came (FAR_CACHE's phone limit), out to the 描画距離's radius.
    */
-  it("holds a phone's town at 低's radius, and lets a PC's follow the 描画距離", () => {
+  it("keeps a phone's town as main had it by default: 24 MiB, out to the 描画距離's radius", () => {
+    const phone = defaultGraphics(true);
+    for (const viewDistance of ["near", "medium", "far"] as const) {
+      const q = detectQuality({ ...phone, viewDistance }, true, null);
+      expect(q.buildingCacheBytes).toBe(24 * 1024 ** 2);
+      expect(q.buildingLoadRadius).toBe(VIEW[viewDistance].buildingLoadRadius);
+    }
+  });
+
+  /**
+   * `?phoneTown=full` on a phone streams the town X0 measured: 256 MiB and 低's 1.6 km whatever the
+   * 描画距離 (the far skyline still follows the setting). A PC ignores the parameter.
+   */
+  it("gives a phone on ?phoneTown=full 256 MiB and 低's radius, and leaves a PC as the 描画距離 says", () => {
     const views = ["near", "medium", "far"] as const;
     const phone = defaultGraphics(true);
     for (const viewDistance of views) {
-      const q = detectQuality({ ...phone, viewDistance }, true);
+      const q = detectQuality({ ...phone, viewDistance }, true, "full");
+      expect(q.buildingCacheBytes).toBe(256 * 1024 ** 2);
       expect(q.buildingLoadRadius).toBe(VIEW.near.buildingLoadRadius);
       expect(q.farBuildingRadius).toBe(VIEW[viewDistance].farBuildingRadius);
     }
     const pc = defaultGraphics(false);
     for (const viewDistance of views) {
-      const q = detectQuality({ ...pc, viewDistance }, false);
+      const q = detectQuality({ ...pc, viewDistance }, false, "full");
       expect(q.buildingLoadRadius).toBe(VIEW[viewDistance].buildingLoadRadius);
+      expect(q.buildingCacheBytes).toBe(VIEW[viewDistance].buildingCacheBytes);
     }
   });
 

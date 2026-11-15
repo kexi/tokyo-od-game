@@ -1823,6 +1823,19 @@ pre.notice {
   }
 }
 
+/* `?phoneTown=…` trial readout on a phone (src/debug/phoneTownHud.ts): small, under the top bar. */
+#phone-town-hud {
+  position: fixed;
+  left: 6px;
+  top: 96px;
+  z-index: 30;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 自動運転モード indicator, just above the speedometer. */
 #autopilot-chip {
   left: 12px;

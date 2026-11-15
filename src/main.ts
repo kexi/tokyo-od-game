@@ -27,7 +27,8 @@ import { inJapanese } from "./i18n/reverse";
 import { localUtterance } from "./i18n/speech";
 
 const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
-import { GRAPHICS, pixelRatioFor, QUALITY } from "./device";
+import { GRAPHICS, PHONE_TOWN, pixelRatioFor, QUALITY } from "./device";
+import { startPhoneTownHud } from "./debug/phoneTownHud";
 import { buildGraphicsPanel, buildTitlePreset } from "./game/graphicsPanel";
 import { savedVoice, saveVoice } from "./game/titlePrefs";
 import type { GraphicsSettings } from "./graphics";
@@ -519,6 +520,8 @@ async function main(): Promise<void> {
     return hit ? Math.min(1, hit.depthM / 40) : 0;
   };
   const buildings = new Buildings(scene, world, camera, renderer, frame);
+  // A phone trying `?phoneTown=full` reads its own run off the screen (no logs reach a published build).
+  if (PHONE_TOWN) startPhoneTownHud(PHONE_TOWN, () => buildings.tiles);
   // PLATEAU buildings that stand into a deck are cut down below its soffit as its tile is read.
   // Set here, before the first expressway.update() in the frame loop: no tile is read before it.
   if (expressway) expressway.onCutPoints = (points) => buildings.cutAboveDecks(points);
