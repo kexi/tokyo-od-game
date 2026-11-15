@@ -10,7 +10,10 @@ const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/M
 
 /**
  * Open `url` in a fresh headless Chrome. `preload` is page-side JS run in every document before the
- * page's own scripts (Page.addScriptToEvaluateOnNewDocument): the teaser's virtual clock.
+ * page's own scripts (Page.addScriptToEvaluateOnNewDocument): the teaser's virtual clock. `headed`
+ * opens a window instead (the GPU paces frames as for a player: headless Chrome's come in steps of
+ * 16.7 ms, so a p95 there reads 33, 50 or 83 ms). `extraArgs` go to Chrome's command line as they are
+ * (memory-buildings.ts caps V8's heap with --js-flags).
  */
 /**
  * The Chromes this process started and has not closed. A run that ends another way than close() (an
@@ -142,7 +145,15 @@ export function quietSpeech() {
 
 export async function launch(
   url,
-  { port = 9334, width = 1280, height = 800, preload = null, callTimeoutMs = CALL_TIMEOUT_MS } = {},
+  {
+    port = 9334,
+    width = 1280,
+    height = 800,
+    preload = null,
+    callTimeoutMs = CALL_TIMEOUT_MS,
+    headed = false,
+    extraArgs = [],
+  } = {},
 ) {
   // A Chrome left behind on the port (a run that crashed) would answer instead of the new one.
   const isTaken = await fetch(`http://127.0.0.1:${port}/json/version`)
@@ -153,7 +164,10 @@ export async function launch(
   const chrome = spawn(
     CHROME,
     [
-      "--headless=new",
+      // A window on a fresh profile first shows the first-run dialog instead of a page.
+      ...(headed
+        ? ["--no-first-run", "--no-default-browser-check", "--disable-extensions"]
+        : ["--headless=new"]),
       `--remote-debugging-port=${port}`,
       `--user-data-dir=${profile}`,
       `--window-size=${width},${height}`,
@@ -166,6 +180,7 @@ export async function launch(
       // suspended and the game's sound graph (spatialAudio's nodes and timers) would take another
       // path than a player's. Muting cuts the output alone; everything the tests read runs as is.
       "--mute-audio",
+      ...extraArgs,
       "about:blank",
     ],
     { stdio: "ignore" },
@@ -175,7 +190,9 @@ export async function launch(
   chrome.once("exit", () => live.delete(chrome));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let targets = [];
-  for (let i = 0; i < 50 && !targets.some((t) => t.type === "page"); i++) {
+  // A window takes longer than headless to offer its page (over 10 s on a first profile).
+  const tries = headed ? 200 : 50;
+  for (let i = 0; i < tries && !targets.some((t) => t.type === "page"); i++) {
     targets = await fetch(`http://127.0.0.1:${port}/json`)
       .then((r) => r.json())
       .catch(() => []);

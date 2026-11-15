@@ -1,7 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { BUILDING_GROUPS } from "../physics/groups";
 import { reanchorCollider } from "../physics/reanchor";
-import { TilesRenderer } from "3d-tiles-renderer";
+import { DEFAULT_LRU_CACHE, LRUCache, TilesRenderer } from "3d-tiles-renderer";
 import {
   GLTFExtensionsPlugin,
   LoadRegionPlugin,
@@ -177,6 +177,23 @@ export function prepareFarTile(scene: Object3D, host: FarTileHost): void {
 }
 
 /**
+ * Gives `tiles` an LRU of its own: a new LRUCache that unloads in the library's own order. Called
+ * right after `new TilesRenderer`, before a plugin, a limit or the first `update()` (the library
+ * forbids replacing the cache after the first update).
+ * Why not the renderer's own `lruCache`: in 3d-tiles-renderer 0.5.3 every renderer starts on the
+ * one module-wide DEFAULT_LRU_CACHE, so the far skyline, made second, wrote FAR_CACHE (64 MB, 320
+ * items) over the near town's buildingCacheBytes and both shared those 64 MB.
+ * Why not split the download and parse queues too: they share the page's connections, and the far
+ * skyline waiting behind the town relies on that.
+ */
+export function giveOwnLru(tiles: TilesRenderer): LRUCache {
+  const lru = new LRUCache();
+  lru.unloadPriorityCallback = DEFAULT_LRU_CACHE.unloadPriorityCallback;
+  tiles.lruCache = lru;
+  return lru;
+}
+
+/**
  * The far skyline's tiles renderer: the PLATEAU tileset kept to its coarse levels within `region`.
  * Why no UnloadTilesPlugin (the near town has one): it disposes the *current* material of a tile
  * that leaves the view, here the one material every far tile shares, so each turn of the camera
@@ -192,16 +209,17 @@ export function createFarTiles(
   errorTarget: number,
 ): TilesRenderer {
   const tiles = new TilesRenderer(url);
+  const lru = giveOwnLru(tiles);
   tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader }));
   tiles.registerPlugin(new CoarseTilesPlugin(minError));
   const regions = new LoadRegionPlugin();
   regions.addRegion(region);
   tiles.registerPlugin(regions);
   tiles.errorTarget = errorTarget;
-  tiles.lruCache.minBytesSize = FAR_CACHE.minBytes;
-  tiles.lruCache.maxBytesSize = FAR_CACHE.maxBytes;
-  tiles.lruCache.minSize = FAR_CACHE.minItems;
-  tiles.lruCache.maxSize = FAR_CACHE.maxItems;
+  lru.minBytesSize = FAR_CACHE.minBytes;
+  lru.maxBytesSize = FAR_CACHE.maxBytes;
+  lru.minSize = FAR_CACHE.minItems;
+  lru.maxSize = FAR_CACHE.maxItems;
   return tiles;
 }
 
@@ -613,6 +631,7 @@ export class Buildings {
 
   private createTiles(): void {
     const tiles = new TilesRenderer(PLATEAU_TILESET);
+    const lru = giveOwnLru(tiles);
     tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader: this.draco }));
     tiles.registerPlugin(new UnloadTilesPlugin());
     const regions = new LoadRegionPlugin();
@@ -621,8 +640,9 @@ export class Buildings {
     tiles.registerPlugin(regions);
     tiles.errorTarget = QUALITY.isMobile ? 26 : 16;
     this.detailRegion.errorTarget = tiles.errorTarget;
-    tiles.lruCache.minBytesSize = QUALITY.buildingCacheBytes * 0.6;
-    tiles.lruCache.maxBytesSize = QUALITY.buildingCacheBytes;
+    // The item limits stay the library's (6,000 / 8,000): the bytes bound the town.
+    lru.minBytesSize = QUALITY.buildingCacheBytes * 0.6;
+    lru.maxBytesSize = QUALITY.buildingCacheBytes;
     tiles.setCamera(this.camera);
     this.setResolution(tiles);
 
