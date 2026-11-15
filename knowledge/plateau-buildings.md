@@ -38,12 +38,16 @@ sources:
     title: 県境をまたぐワープのメモリ
     author: claude-opus-5-5
   - id: x1-timeline
-    resource: scratchpad の x1/bin/timeline.mts（ナビゲーションから start() の 40 秒後まで、100 ms ごとに両 renderer の loadProgress・isLoading・stats・processNodeQueue・表示数、debug.settled()、load-model・dispose-model の時刻と市区町村コード）を X1 の地点 a・e・f で 2 回ずつ。仕組みは node_modules/3d-tiles-renderer 0.5.3 の TilesRendererBase.js・PriorityQueue.js を読んで確かめた（2026-11-15）
+    resource: セッションの一時フォルダ（scratchpad、消える場所）の x1/bin/timeline.mts（ナビゲーションから start() の 40 秒後まで、100 ms ごとに両 renderer の loadProgress・isLoading・stats・processNodeQueue・表示数、debug.settled()、load-model・dispose-model の時刻と市区町村コード）を X1 の地点 a・e・f で 2 回ずつ。仕組みは node_modules/3d-tiles-renderer 0.5.3 の TilesRendererBase.js・PriorityQueue.js を読んで確かめた（2026-11-15）。この道具は B1 で scripts/qa/ に入れる
     title: 読み込みの時系列
     author: claude-opus-5-5
   - id: x1-e-northwest
-    resource: scratchpad の x1/bin/e-northwest.mts を main（f54368e、ポート 5451）の地点 e・視界 far で 1 回。waitQuiet（5 秒）の後、debug.camera.placeGeo で北西 307° を向けて 10 秒、その前後に要求された東京の市の tileset.json を比べた（2026-11-15）
+    resource: セッションの一時フォルダ（scratchpad、消える場所）の x1/bin/e-northwest.mts を main（f54368e、ポート 5451）の地点 e・視界 far で 1 回。waitQuiet（5 秒）の後、debug.camera.placeGeo で北西 307° を向けて 10 秒、その前後に要求された東京の市の tileset.json を比べた（2026-11-15）。出力は標準出力だけで、ファイルには残していない
     title: 地点 e のカメラの向きの確かめ
+    author: claude-opus-5-5
+  - id: owner-check
+    resource: https://www.geospatial.jp/ckan/dataset/plateau-11203-kawaguchi-shi-2024（_pref_）、plateau-14130-kawasaki-shi-2022・plateau-11100-saitama-shi-2025（_city_）の追加情報の表（組織・作成者・メンテナー・市区町村名）と、https://api.plateauview.mlit.go.jp/datacatalog/citygml/{11203,14130,12217,13114} の応答、4 市区のタイルセットの asset を読んだ（2026-11-16）
+    title: 整備主体と著作権者の確かめ
     author: claude-opus-5-5
   - id: load-measure
     resource: just measure-buildings-load（scripts/qa/perf-buildings.ts）を main と X1 の開発サーバー（ポート 5431・5432）で、地点 a〜f、昼、ヘッドレス Chrome（M2 Max）。結果は .qa/perf-buildings/<label>/perf.json と <地点>.urls.txt（2026-11-15）
@@ -203,6 +207,7 @@ sources:
   - 遠景の球（14〜26 km）は東京駅から埼玉・千葉の市に届く。門の前は、県の根 3 つと市の `tileset.json` 17 件（2.6 MB）を東京駅で読んでいた。[^load-measure]
   - 箱は県の形でない。神奈川の根の北の縁 35.672（相模原の北端）は、東京駅の 1.0 km 南にある。
 - 東京駅では、近景の半径 3 つ（1,600・2,800・4,000 m）のどれでも 3 県が閉じる。旧江戸川沿いで千葉が閉じ、川崎駅で神奈川、川口駅で埼玉が開く（テスト 5）。[^gate-tests]
+- 見え方: 他県の遠景は、近景の球がその県の市の箱に掛かるまで出ない。都心から川崎やさいたまの高層は見えない。門が閉じると、その県の遠景は一度に消える。開閉の回数は少ない（レビューの概算。同梱の門の箱までの距離で数えたもので OBB ではない。半径 1,600・2,800・4,000 m で、環八の羽田→砧 0〜1 回、環七の板橋→足立 0〜3 回、中央環状の板橋→葛西 1〜2 回）。
 - 門は県の根の写しなので古くなる。新しく加わった市は、作り直すまで読まれない。`just check-plateau-root` が、今の県の根の範囲の集合と同梱の門を比べ、違えば終了コード 1 にする。
 
 ## 4 都県の根（2026-11-15）
@@ -225,7 +230,10 @@ sources:
 | 子がすべてオープンデータか                                      | `just check-plateau-root`                 | 4 都県の子 159 件すべての URI が `_op_` を含む[^prefecture-roots]                                                                                                                    |
 | 沿線 8 市（横浜・川崎・さいたま・川口・草加・戸田・八潮・三郷） | G空間情報センターの各データセットのページ | どれもライセンス欄が「PLATEAU Site Policy『３．著作権について』に拠る」、制約欄が「利用規約による」。千代田区・中野区（東京）も同じ。出典の書き方に追加の指定は無い[^gspatial-pages] |
 
-- 出典の文言は、建築物 LOD1 を「東京都・神奈川県・埼玉県・千葉県」、道路 LOD2 の歩道部・島を「東京都」と書き分けた（`credits.plateau.source`）。データセットは市ごとだが、ポリシーに市ごとに書けという指定は無いので、県でまとめた。
+- 出典の文言は、建築物 LOD1 を「東京都・神奈川県・埼玉県・千葉県」、道路 LOD2 の歩道部・島を「東京都」と書き分けた（`credits.plateau.source`）。データセットは市ごとだが、ポリシーに市ごとに書けという指定は無いので、県でまとめた。県の名前は「どの地域のデータか」として出典の側に書き、著作権者には書かない。
+- 著作権者は「それぞれのデータを整備した地方公共団体」と書き、団体名を挙げない（2026-11-16 訂正。前は「東京都・神奈川県・埼玉県・千葉県ほか各地方公共団体」と書いていた）。[^owner-check]
+  - URL のフォルダ名では、東京は都の整備（`_pref_`）35・区の整備（`_city_`）2、埼玉は県 18・市 3、神奈川と千葉は市の整備だけ（横浜・川崎・木更津・柏）。神奈川県・千葉県を権利者に挙げる根拠は無かった。
+  - 整備主体が権利者と一致するかを G空間情報センターで確かめようとしたが、データセットのページの組織欄は県の整備（川口市 2024、`_pref_`）も市の整備（川崎市 2022・さいたま市 2025、`_city_`）も「国土交通省 都市局」で、作成者・メンテナーも「国土交通省都市局国際・デジタル政策課」だった。整備主体や著作権者の欄は無く、`市区町村名`（「埼玉県_川口市」など）があるだけ。配信サービスの CityGML の目録（`datacatalog/citygml/<code>`）にも、タイルセットの `asset` にも権利者の欄は無い。団体名を確かめられなかったので、サイトポリシー 3 節（「各地方公共団体に帰属」）の書き方に合わせた。
 
 ## 計測
 
@@ -360,3 +368,5 @@ sources:
 [^x1-timeline]: 読み込みの時系列
 
 [^x1-e-northwest]: 地点 e のカメラの向きの確かめ
+
+[^owner-check]: 整備主体と著作権者の確かめ

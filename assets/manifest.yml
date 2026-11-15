@@ -1029,16 +1029,17 @@ assets:
       src/config.ts の PLATEAU_SOURCES（県コード・URL・範囲の箱）と、神奈川・埼玉・千葉の県の根が持つ市の範囲（門）から作った。
       指す先も門の写し元も PLATEAU 配信サービスの
       https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/{13,14,11,12}-bldg-lod1-latest/tileset.json。
-    license: repo
+    license: [repo, PDL-1.0]
     used_by: [src/config.ts]
     docs: [knowledge/plateau-buildings.md]
     notes: >-
       public/data は普段オープンデータの置き場だが、これは plateauRoot.ts が書く自作のデータなのでここで管理する。
       指す先の建物のデータは PLATEAU サイトポリシー（公共データ利用規約 第1.0版、著作権は各地方公共団体）に従い、
-      出典は src/game/credits.ts に出す。建物は取り込まず実行時に -latest の URL から読む（同梱・再配布しない）ので、
-      remote（commit 固定の URL と SHA-256）は書かない。東京以外の子の extras.gate（門）は、生成のときの県の根の
-      子の boundingVolume.region の写しで、近景の球がそのどれかに掛かるときだけその県を読む（src/world/buildings.ts
-      GatedSphereRegion）。-latest の中身は PLATEAU 側で変わるため、just check-plateau-root で 200・範囲・
+      出典は src/game/credits.ts に出す。建物そのもの（タイル）は取り込まず実行時に -latest の URL から読む（同梱・
+      再配布しない）ので、remote（commit 固定の URL と SHA-256）は書かない。一方、東京以外の子の extras.gate（門）は、
+      生成のときの県の根の子の boundingVolume.region（市の範囲の数値、計 97 件）の写しで、これはこのファイルに同梱して
+      いる。そのため license に PDL-1.0 を足した。門は、近景の球がそのどれかに掛かるときだけその県を読むのに使う
+      （src/world/buildings.ts GatedSphereRegion）。-latest の中身は PLATEAU 側で変わるため、just check-plateau-root で 200・範囲・
       オープンデータ（_op_）と、門が今の県の根と一致するか（古さ）を確かめ直し、違えば just make-plateau-root で作り直す。
 
   - id: guide-charset

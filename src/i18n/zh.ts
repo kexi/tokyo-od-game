@@ -1155,7 +1155,7 @@ export const zh: Messages = {
     "（外墙的窗户与颜色、人行道铺装与路缘石高度由游戏绘制。路面与高架的纹理由游戏程序生成，仅参考了桥梁模型的颜色与尺寸。）",
   "credits.link.plateauPolicy": "PLATEAU 网站政策",
   "credits.plateau.terms":
-    "著作权人：东京都、神奈川县、埼玉县、千叶县及其他各地方公共团体。使用条件：{policy}（《公共数据利用规约》第1.0版，与 CC BY 4.0 兼容）。",
+    "著作权人：制作各数据的地方公共团体。使用条件：{policy}（《公共数据利用规约》第1.0版，与 CC BY 4.0 兼容）。",
   "credits.link.plateauService": "PLATEAU 分发服务（试运行）",
   "credits.plateau.fetch": "数据获取：{service}。地面的“PLATEAU 正射影像 2023”也来自该服务。",
   "credits.h.gsi": "地图、航拍照片与高程（国土地理院）",
