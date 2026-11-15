@@ -3584,7 +3584,9 @@ async function main(): Promise<void> {
     }
     cockpit.update({
       dt,
-      now,
+      // The indicator lamp blinks with the relay and the HUD (wall / 380): a blink is a look, and on
+      // the game's clock it fell out of step with them after the first frame over MAX_FRAME_S.
+      now: wall,
       kmh: vehicle.speedKmh(),
       throttle: drive.throttle,
       steerAngle: vehicle.steerAngle,

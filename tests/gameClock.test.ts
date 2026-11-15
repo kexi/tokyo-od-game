@@ -347,4 +347,16 @@ describe("the world's files read no clock of their own (source check)", () => {
       /\b(?:book|commit|chargeOwner|isInUse|start|startTrip|startHome|startChosen|startAppointment)\([^;]*performance\.now\(\)/g;
     expect(main.match(worldCalls) ?? []).toEqual([]);
   });
+
+  // The relay's click and the HUD's arrows blink on `wall / 380`, the car's lamps on the wall clock
+  // (carModel.ts): the cockpit's lamp (cockpit.ts, opts.now / 380) blinks in step with them only
+  // on the same clock. The game's clock falls behind at every frame over MAX_FRAME_S, for good.
+  it("main.ts gives the cockpit (its indicator lamp's blink) the wall clock, as the relay and the HUD", () => {
+    const main = files.get("src/main.ts") ?? "";
+    const start = main.indexOf("cockpit.update({");
+    const call = main.slice(start, main.indexOf("});", start));
+    expect(start).toBeGreaterThan(0);
+    expect(main).toMatch(/const blink = Math\.floor\(wall \/ 380\) % 2 === 0;/);
+    expect(call).toMatch(/\bnow: wall,/);
+  });
 });

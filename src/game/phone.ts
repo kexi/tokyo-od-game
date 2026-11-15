@@ -58,7 +58,7 @@ export class Phone {
     /**
      * The game's clock (ms, main.ts gameNow): when the phone was worked, and the call's start, set
      * here and read against the frame's `now` (isInUse), which is that clock. Why not
-     * this.clock() here (as before): a touch stamped on the wall clock and judged on the game's
+     * performance.now() here (as before): a touch stamped on the wall clock and judged on the game's
      * drifts apart on a slow page, and the 2 s of ながら運転 would be a different stretch of road.
      */
     private readonly clock: () => number,
