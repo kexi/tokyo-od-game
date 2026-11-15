@@ -102,8 +102,11 @@ const shotTimes = isEveryShot ? [] : (shotsFlag ?? "").split(",").filter(Boolean
  */
 const WATCH = `(() => {
   if (window.__mem) return;
-  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null });
-  const tick = () => {
+  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null, gaps: [], last: 0, skip: true });
+  const tick = (now) => {
+    // Frame gaps; the one across the probe's forced GC (skip, set before it) is not the game's.
+    if (!m.skip && m.last) m.gaps.push(now - m.last);
+    m.skip = false; m.last = now;
     const b = __game.buildings; const c = b.tiles.lruCache;
     if (m.hooked !== b.tiles) { m.hooked = b.tiles; b.tiles.addEventListener("load-model", () => m.loads++); b.tiles.addEventListener("dispose-model", () => m.disposes++); }
     if (b.far && m.farHooked !== b.far) { m.farHooked = b.far; b.far.addEventListener("load-model", () => m.farLoads++); b.far.addEventListener("dispose-model", () => m.farDisposes++); }
@@ -121,9 +124,12 @@ const WATCH = `(() => {
 const COUNTERS = `(() => {
   const m = window.__mem;
   const dir = __game.camera.getWorldDirection(new __game.camera.position.constructor());
+  const gaps = m.gaps.toSorted((a, b) => a - b);
+  const at = (q) => gaps.length ? Math.round(gaps[Math.min(gaps.length - 1, Math.floor(q * gaps.length))] * 10) / 10 : null;
   const out = { usedMb: m.usedMb, usedPeakMb: m.usedPeakMb, fullFrames: m.fullFrames, frames: m.frames, loads: m.loads,
-    disposes: m.disposes, farLoads: m.farLoads, farDisposes: m.farDisposes, heading: Math.round(Math.atan2(dir.x, dir.z) * 180 / Math.PI) };
-  m.usedPeakMb = m.usedMb; m.fullFrames = 0; m.frames = 0;
+    disposes: m.disposes, farLoads: m.farLoads, farDisposes: m.farDisposes, heading: Math.round(Math.atan2(dir.x, dir.z) * 180 / Math.PI),
+    frameP50Ms: at(0.5), frameP95Ms: at(0.95), frameMaxMs: at(1) };
+  m.usedPeakMb = m.usedMb; m.fullFrames = 0; m.frames = 0; m.gaps = [];
   return out;
 })()`;
 /** Page-side: both LRUs (held items and MB, the limit), tiles shown, where the car is. */
@@ -153,7 +159,8 @@ const COUNTS = `(() => {
   return { counts: {
     objects, topChildren: top.slice(0, 8),
     geometries: read(() => g.renderer.info.memory.geometries), textures: read(() => g.renderer.info.memory.textures),
-    programs: read(() => g.renderer.info.programs.length),
+    // three's own set of render objects (RenderObjects._renderObjects, 0.186): read here only, never by the game.
+    renderObjects: read(() => g.renderer._objects._renderObjects.size),
     bodies: read(() => g.world.bodies.len()), colliders: read(() => g.world.colliders.len()),
     cars, pedestrians: read(() => g.pedestrians.list.length), licenseLog: read(() => g.law.state.log.length),
   } };
@@ -282,6 +289,7 @@ try {
       const isHeapRead = sampled.has("heap") || sampled.has("backing");
       if (isHeapRead) {
         sample.heapRawMB = mb(await b.evaluate<number>("performance.memory.usedJSHeapSize"));
+        await b.evaluate("window.__mem && (window.__mem.skip = true)");
         await b.send("HeapProfiler.collectGarbage");
         const usage = (await b.send("Runtime.getHeapUsage")).result;
         if (sampled.has("heap"))
