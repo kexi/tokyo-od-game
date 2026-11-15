@@ -51,6 +51,15 @@ function installReaper() {
 export const CALL_TIMEOUT_MS = 180_000;
 
 /**
+ * How long a Chrome may take to offer its page (ms), headless and a window (over 10 s on a first
+ * profile). launch() tries a second Chrome once after the first misses it. Why not 10 s headless (as
+ * before): with other QA runs on the machine (load average over 300, 2026-11-15) headless Chromes
+ * took longer, and five deck drives were lost as invalid that day.
+ */
+export const START_MS = 30_000;
+export const HEADED_START_MS = 40_000;
+
+/**
  * Page-side: speechSynthesis that speaks to no one. `--mute-audio` does not reach it: on macOS
  * Chrome's browser process speaks through the OS synthesiser and opens the speakers itself (seen
  * in `pmset -g assertions` with the flag on). speak() queues the utterance as the real one would,
@@ -152,6 +161,7 @@ export async function launch(
     preload = null,
     callTimeoutMs = CALL_TIMEOUT_MS,
     headed = false,
+    startMs = headed ? HEADED_START_MS : START_MS,
     extraArgs = [],
   } = {},
 ) {
@@ -160,46 +170,73 @@ export async function launch(
     .then(() => true)
     .catch(() => false);
   if (isTaken) throw new Error(`port ${port} is already in use (an earlier Chrome still running?)`);
-  const profile = mkdtempSync(join(tmpdir(), "tokyo-qa-"));
-  const chrome = spawn(
-    CHROME,
-    [
-      // A window on a fresh profile first shows the first-run dialog instead of a page.
-      ...(headed
-        ? ["--no-first-run", "--no-default-browser-check", "--disable-extensions"]
-        : ["--headless=new"]),
-      `--remote-debugging-port=${port}`,
-      `--user-data-dir=${profile}`,
-      `--window-size=${width},${height}`,
-      "--enable-gpu",
-      "--use-angle=metal",
-      "--ignore-gpu-blocklist",
-      "--autoplay-policy=no-user-gesture-required",
-      // Silent: QA runs (several at once, for hours) played the engine, effects and sirens out of
-      // the Mac's speakers. Why not drop the autoplay flag instead: the AudioContext would then stay
-      // suspended and the game's sound graph (spatialAudio's nodes and timers) would take another
-      // path than a player's. Muting cuts the output alone; everything the tests read runs as is.
-      "--mute-audio",
-      ...extraArgs,
-      "about:blank",
-    ],
-    { stdio: "ignore" },
-  );
-  installReaper();
-  live.add(chrome);
-  chrome.once("exit", () => live.delete(chrome));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  let targets = [];
-  // A window takes longer than headless to offer its page (over 10 s on a first profile).
-  const tries = headed ? 200 : 50;
-  for (let i = 0; i < tries && !targets.some((t) => t.type === "page"); i++) {
-    targets = await fetch(`http://127.0.0.1:${port}/json`)
-      .then((r) => r.json())
-      .catch(() => []);
-    await sleep(200);
-  }
-  const page = targets.find((t) => t.type === "page");
-  if (!page) throw new Error("Chrome did not start (set CHROME to its path)");
+  installReaper();
+  /**
+   * One Chrome on a fresh profile and its page target, or null when it offered none within
+   * `startMs`: that Chrome is then killed and its profile removed before this returns. Why not leave
+   * it to the reaper (as before): the reaper runs at the process's exit, and the live child kept the
+   * process from exiting, so a drive-deck.ts whose launch timed out wrote its result and hung, and
+   * its `--route all` left one Chrome behind on every try (on a busy machine, loading it more).
+   */
+  const start = async () => {
+    const profile = mkdtempSync(join(tmpdir(), "tokyo-qa-"));
+    const chrome = spawn(
+      CHROME,
+      [
+        // A window on a fresh profile first shows the first-run dialog instead of a page.
+        ...(headed
+          ? ["--no-first-run", "--no-default-browser-check", "--disable-extensions"]
+          : ["--headless=new"]),
+        `--remote-debugging-port=${port}`,
+        `--user-data-dir=${profile}`,
+        `--window-size=${width},${height}`,
+        "--enable-gpu",
+        "--use-angle=metal",
+        "--ignore-gpu-blocklist",
+        "--autoplay-policy=no-user-gesture-required",
+        // Silent: QA runs (several at once, for hours) played the engine, effects and sirens out of
+        // the Mac's speakers. Why not drop the autoplay flag instead: the AudioContext would then stay
+        // suspended and the game's sound graph (spatialAudio's nodes and timers) would take another
+        // path than a player's. Muting cuts the output alone; everything the tests read runs as is.
+        "--mute-audio",
+        ...extraArgs,
+        "about:blank",
+      ],
+      { stdio: "ignore" },
+    );
+    live.add(chrome);
+    const exited = new Promise((r) => chrome.once("exit", r));
+    chrome.once("exit", () => live.delete(chrome));
+    // A command that cannot run (a wrong CHROME) fails at once: no page will come.
+    const run = { hasFailed: false };
+    chrome.once("error", () => (run.hasFailed = true));
+    // A Chrome that ended already (crashed at once, a bad argument) will offer no page either.
+    const hasEnded = () => run.hasFailed || chrome.exitCode !== null || chrome.signalCode !== null;
+    let targets = [];
+    const deadline = Date.now() + startMs;
+    while (!hasEnded() && Date.now() < deadline && !targets.some((t) => t.type === "page")) {
+      targets = await fetch(`http://127.0.0.1:${port}/json`)
+        .then((r) => r.json())
+        .catch(() => []);
+      await sleep(200);
+    }
+    const page = targets.find((t) => t.type === "page");
+    if (page) return { chrome, profile, page };
+    if (!hasEnded()) {
+      chrome.kill("SIGKILL");
+      await exited;
+    }
+    live.delete(chrome);
+    // Retried: a killed Chrome's helpers (GPU, renderer) outlive it a moment and may still write to
+    // the profile; a removal that threw ENOTEMPTY would fail launch() with another error, untried.
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    return null;
+  };
+  // Once more after a Chrome that did not start in time (a machine busy with other runs).
+  const started = (await start()) ?? (await start());
+  if (!started) throw new Error("Chrome did not start (set CHROME to its path)");
+  const { chrome, profile, page } = started;
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((r) => ws.addEventListener("open", r));
   let id = 0;

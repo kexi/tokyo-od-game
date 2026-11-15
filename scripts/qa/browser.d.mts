@@ -25,9 +25,14 @@ export function launch(
     height?: number;
     preload?: string | null;
     headed?: boolean;
+    /** How long each Chrome may take to offer its page (ms; START_MS, a window HEADED_START_MS). */
+    startMs?: number;
     extraArgs?: string[];
   },
 ): Promise<Browser>;
+
+export const START_MS: number;
+export const HEADED_START_MS: number;
 
 /** Page-side: replaces speechSynthesis.speak / cancel with a silent queue that fires the same events. */
 export function quietSpeech(): void;
