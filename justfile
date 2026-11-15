@@ -18,6 +18,14 @@ build-app:
 preview-app: build-app
     pnpm exec vite preview
 
+# QA の計測用に、DEV のまま（import.meta.env.DEV が真、window.__game あり）公開の版と同じ設定で束ねて dist-qa/ に出す（DEV のときだけの __game・viewHooks の動的 import のため、チャンクの分け方は公開の版と違う）
+build-qa-bundle:
+    NODE_ENV=development pnpm exec vite build --mode development --outDir dist-qa --emptyOutDir
+
+# build-qa-bundle の dist-qa/ を vite preview で配る（ページのログは .qa/logs へ）
+serve-qa-bundle port="4174":
+    pnpm exec vite preview --outDir dist-qa --port {{ port }} --strictPort
+
 # 東京都オープンデータ等を取得し public/data を再生成する（ライセンス検証込み）
 fetch-data:
     pnpm exec tsx scripts/fetch-data.ts
