@@ -6,7 +6,7 @@ import { Geoid } from "../src/geo/geoid";
 import { haversineMeters } from "../src/geo/ellipsoid";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../src/geo/tiles";
 import { hazeCover, LIGHT_FLOOR } from "../src/world/atmosphere";
-import { pruneTree, type TileNode } from "../src/world/buildings";
+import { CoarseTilesPlugin, pruneTree, type TileNode } from "../src/world/buildings";
 import {
   CARPET,
   farGroundReach,
@@ -207,6 +207,90 @@ describe("the far skyline's PLATEAU levels", () => {
     expect(VIEW.near.farBuildingRadius).toBeLessThan(VIEW.medium.farBuildingRadius);
     expect(VIEW.far.farBuildingRadius).toBeGreaterThanOrEqual(VIEW.medium.farBuildingRadius);
     for (const v of Object.values(VIEW)) expect(v.farBuildingMinError).toBeGreaterThanOrEqual(100);
+  });
+});
+
+/** A tile pointing at an external tileset (a prefecture's or a municipality's tileset.json). */
+const pointer = (error: number, uri: string): TileNode => ({ geometricError: error, content: { uri } });
+/**
+ * Walk a tileset as the tiles renderer does with the far plugin registered: each tile gets the
+ * internal fields preprocessNode sets (before the plugins run), then the plugin, then its (pruned)
+ * children; a tileset.json pointer goes on into the tileset `external` holds for its URI, whose root
+ * has the pointer as parent. Returns the content errors left, as `contents` does.
+ */
+function walk(
+  t: TileNode,
+  external: Record<string, () => TileNode>,
+  minError: number,
+  parent: TileNode | null = null,
+): number[] {
+  const plugin = new CoarseTilesPlugin(minError);
+  const uri = t.content?.uri ?? "";
+  const isPointer = uri.endsWith(".json");
+  const isRenderable = uri !== "" && !isPointer;
+  const depth = (parent?.internal?.depthFromRenderedParent ?? 0) + (isRenderable ? 1 : 0);
+  t.internal = { depthFromRenderedParent: depth, hasUnrenderableContent: isPointer };
+  plugin.preprocessNode(t, "", parent);
+  const own = isRenderable ? [t.geometricError] : [];
+  const below = (t.children ?? []).flatMap((c) => walk(c, external, minError, t));
+  const inside = isPointer ? walk(external[uri](), external, minError, t) : [];
+  return [...own, ...below, ...inside];
+}
+
+/** Tokyo's root as the service has it: no content, a pointer per municipality. */
+const TOKYO = "https://example.test/13-bldg-lod1-latest/tileset.json";
+const WARDS = {
+  "https://example.test/13103/tileset.json": minato,
+  "https://example.test/13106/tileset.json": taito,
+};
+const tokyoRoot = () =>
+  tile(
+    50000,
+    Object.keys(WARDS).map((u) => pointer(500, u)),
+    null,
+  );
+/** The game's root since X1: no content, a pointer per prefecture (only Tokyo's matters here). */
+const gameRoot = () => tile(50000, [pointer(50000, TOKYO)], null);
+
+describe("the far skyline's PLATEAU levels under the game's root (root → prefecture → municipality)", () => {
+  it("keeps the same tiles and the same first coarseness as Tokyo's root alone", () => {
+    for (const minError of [150, 200]) {
+      const before = walk(tokyoRoot(), WARDS, minError);
+      const after = walk(gameRoot(), { ...WARDS, [TOKYO]: tokyoRoot }, minError);
+      expect(
+        after.toSorted((a, b) => b - a),
+        `minError ${minError}`,
+      ).toEqual(before.toSorted((a, b) => b - a));
+      // FIRST_MIN_ERROR still holds 台東区 (first content 32–64 m) out.
+      expect(after.some((e) => e < 100)).toBe(false);
+      expect(after.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("drops nothing at the root's or the prefecture's level", () => {
+    const root = gameRoot();
+    const tokyo = tokyoRoot();
+    walk(root, { ...WARDS, [TOKYO]: () => tokyo }, 150);
+    expect(root.children?.map((c) => c.content?.uri)).toEqual([TOKYO]);
+    expect(tokyo.children?.map((c) => c.content?.uri)).toEqual(Object.keys(WARDS));
+  });
+
+  it("prunes at a root without a parent (the game's) and at a root under a tileset.json pointer", () => {
+    const plugin = new CoarseTilesPlugin(150);
+    const expected = contents(preprocess(minato(), 150));
+    const orphan = minato();
+    plugin.preprocessNode(orphan, "", null);
+    expect(contents(orphan)).toEqual(expected);
+    const under = minato();
+    const parent = { ...pointer(500, "https://example.test/13103/tileset.json") };
+    parent.internal = { depthFromRenderedParent: 0, hasUnrenderableContent: true };
+    plugin.preprocessNode(under, "", parent);
+    expect(contents(under)).toEqual(expected);
+    // An inner tile (its parent has content of its own) is left to its tileset root's pass.
+    const inner = minato();
+    const content = { ...tile(500), internal: { depthFromRenderedParent: 1, hasUnrenderableContent: false } };
+    plugin.preprocessNode(inner, "", content);
+    expect(contents(inner)).toEqual(contents(minato()));
   });
 });
 

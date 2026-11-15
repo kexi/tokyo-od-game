@@ -187,6 +187,14 @@ rebuild-sign-assets: make-sign-registry
 show-sign-coverage:
     pnpm exec tsx scripts/signs.ts coverage
 
+# PLATEAU の建物（東京都・神奈川県・埼玉県・千葉県）を 1 本にまとめる根のタイルセットを、src/config.ts の PLATEAU_SOURCES と、神奈川・埼玉・千葉の県の根から写した市の範囲（門）で public/data/plateau/tileset.json に書き出す（県の根を取得する。ビルドと CI は通信しない）
+make-plateau-root:
+    pnpm exec tsx scripts/plateauRoot.ts
+
+# PLATEAU の 4 都県のタイルセットを取得し、200・CORS・範囲の箱・オープンデータ（_op_）・同梱の門と今の県の根の一致を確かめて市区町村コードをログに出す（違えば終了コード 1）
+check-plateau-root:
+    pnpm exec tsx scripts/plateauRoot.ts --check
+
 # 標識令の別表第一（番号・種類・別表第二の図）を e-Gov 法令 API から assets/signs/law-table.json に書き出す（版は scripts/sign-law-table.ts に固定）
 fetch-sign-law-table:
     pnpm exec tsx scripts/sign-law-table.ts

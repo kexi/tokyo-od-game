@@ -2,6 +2,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { BUILDING_GROUPS } from "../physics/groups";
 import { reanchorCollider } from "../physics/reanchor";
 import { DEFAULT_LRU_CACHE, LRUCache, TilesRenderer } from "3d-tiles-renderer";
+import { EllipsoidRegion, OBB, WGS84_ELLIPSOID } from "3d-tiles-renderer/three";
 import {
   GLTFExtensionsPlugin,
   LoadRegionPlugin,
@@ -119,13 +120,74 @@ export function pruneTree(
  * A tiles-renderer plugin keeping the tileset to its coarse levels: each tileset's tree is pruned
  * (pruneTree) as its root is preprocessed (no parent, or a parent pointing at a tileset.json).
  */
-class CoarseTilesPlugin {
+export class CoarseTilesPlugin {
   readonly name = "COARSE_TILES_PLUGIN";
   constructor(private readonly minError: number) {}
   preprocessNode(tile: TileNode, _dir: string, parent: TileNode | null): void {
     const isTilesetRoot = !parent || parent.internal?.hasUnrenderableContent === true;
     if (!isTilesetRoot) return;
     pruneTree(tile, this.minError, FIRST_MIN_ERROR, (parent?.internal?.depthFromRenderedParent ?? 0) > 0);
+  }
+}
+
+/** A tile as a load region sees it: a gated prefecture's pointer carries its gate in `extras`. */
+type GatedTile = { extras?: { gate?: number[][] } };
+
+/**
+ * A gate's regions as the boxes the renderer bounds a region tile with (TileBoundingVolume.
+ * setRegionData: an EllipsoidRegion's bounding box as an OBB, ECEF), built once per gate.
+ */
+const gateBoxes = new WeakMap<number[][], OBB[]>();
+function boxesOf(gate: number[][]): OBB[] {
+  const known = gateBoxes.get(gate);
+  if (known) return known;
+  const boxes = gate.map(([west, south, east, north, low, high]) => {
+    const region = new EllipsoidRegion(
+      ...WGS84_ELLIPSOID.radius.toArray(),
+      south,
+      north,
+      west,
+      east,
+      low,
+      high,
+    );
+    const obb = new OBB();
+    region.getBoundingBox(obb.box, obb.transform);
+    obb.update();
+    return obb;
+  });
+  gateBoxes.set(gate, boxes);
+  return boxes;
+}
+
+/** Whether `sphere` (ECEF) touches one of a gate's municipalities, as the renderer would judge it. */
+export function isGateOpen(gate: number[][], sphere: Sphere): boolean {
+  return boxesOf(gate).some((b) => b.intersectsSphere(sphere));
+}
+
+/**
+ * A SphereRegion that opens a gated prefecture's root (`extras.gate`, src/world/plateauRoot.ts)
+ * only while `gateSphere` touches one of its municipalities; every other tile is judged as a
+ * SphereRegion would. The near town's region gates with its own sphere; the far skyline's with the
+ * near one (passed by reference, so it follows the car), so a prefecture opens for the skyline only
+ * where the town reaches it and, far from a border, the requests are those of Tokyo alone. Why not
+ * gate by the box: it is not the prefecture's shape (Kanagawa's reaches 1 km from Tokyo Station).
+ * Why the renderer's own OBB of each region: the gate opens exactly when the municipality itself
+ * would be in the region, and it never says no where the renderer would say yes.
+ */
+export class GatedSphereRegion extends SphereRegion {
+  readonly gateSphere: Sphere;
+  constructor(options: { mask?: boolean; errorTarget?: number; gateSphere?: Sphere } = {}) {
+    super(options);
+    this.gateSphere = options.gateSphere ?? this.sphere;
+  }
+
+  intersectsTile(...args: Parameters<SphereRegion["intersectsTile"]>): boolean {
+    const isInSphere = super.intersectsTile(...args);
+    if (!isInSphere) return false;
+    const gate = (args[1] as GatedTile | undefined)?.extras?.gate;
+    if (!gate) return true;
+    return isGateOpen(gate, this.gateSphere);
   }
 }
 
@@ -233,7 +295,7 @@ export class Buildings {
   private readonly draco = sharedDraco();
   private frame: LocalFrame;
   private lastColliderTick = 0;
-  private readonly maskRegion = new SphereRegion({ mask: true, errorTarget: 1e9 });
+  private readonly maskRegion = new GatedSphereRegion({ mask: true, errorTarget: 1e9 });
   private readonly detailRegion = new SphereRegion({ mask: false });
   loadedCount = 0;
   /** Footprints (local XZ rings) of buildings drawn by hero models instead (landmarks). */
@@ -247,7 +309,11 @@ export class Buildings {
    * and no colliders or shadows. Started once the town around the player has loaded.
    */
   private far: TilesRenderer | null = null;
-  private readonly farRegion = new SphereRegion({ mask: true, errorTarget: 1e9 });
+  private readonly farRegion = new GatedSphereRegion({
+    mask: true,
+    errorTarget: 1e9,
+    gateSphere: this.maskRegion.sphere,
+  });
   private readonly createdAt = performance.now();
   /** Far tiles loaded (for the console). */
   farLoadedCount = 0;

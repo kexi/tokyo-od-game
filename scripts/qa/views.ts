@@ -19,6 +19,7 @@ import { launch, type Browser } from "./browser.mjs";
 import { writeContactSheet } from "./contactSheet.ts";
 import { deriveMetrics, probePixels, probeStats, type ProbeRecord, type ProbeStats } from "./pixelProbes.ts";
 import { freePort } from "./ports.ts";
+import { waitQuiet } from "./quietWatch.ts";
 import { nextRound, type RunRecord } from "./runRecord.ts";
 import { CENTRED_WITHIN, offCentre, placeView, type Vec3 } from "./viewGeometry.ts";
 import { WET_RETRO } from "../../src/signs/retroAssumptions";
@@ -143,21 +144,37 @@ async function until<T>(b: Browser, expression: string, seconds: number, every =
   return null;
 }
 
-type Settled = { isSettled: boolean; isRoadsLoading: boolean; hasRoads: boolean; buildingsProgress: number };
-/** The world settled twice in a row (a tile set finishing can start the next), then 3 frames drawn. */
-async function settle(b: Browser, seconds: number): Promise<Settled> {
+type Settled = {
+  isSettled: boolean;
+  isRoadsLoading: boolean;
+  hasRoads: boolean;
+  buildingsProgress: number;
+  /** With defaults.quietS: whether the buildings went that long without a tile event, and the wait. */
+  quiet?: { quiet: boolean; waitedS: number };
+};
+/**
+ * The world settled twice in a row (a tile set finishing can start the next), then, when the table
+ * asks (`quietS` > 0), no PLATEAU tile event for that long within what is left of `seconds`
+ * (quietWatch.ts), then 3 frames drawn.
+ */
+async function settle(b: Browser, seconds: number, quietS = 0): Promise<Settled> {
+  const from = Date.now();
   const isTwice = await until<boolean>(
     b,
     "(async () => { const a = __game.debug.settled().isSettled; await new Promise((r) => setTimeout(r, 300)); return a && __game.debug.settled().isSettled; })()",
     seconds,
     200,
   );
+  const isWaitingQuiet = isTwice === true && quietS > 0;
+  const left = seconds * 1000 - (Date.now() - from);
+  const quiet = isWaitingQuiet ? await waitQuiet(b, quietS * 1000, Math.max(0, left), true) : undefined;
   await evaluateWithin(
     b,
     "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))",
   );
   const state = await evaluateWithin<Settled>(b, "__game.debug.settled()");
-  return { ...state, isSettled: isTwice === true };
+  const isQuietEnough = quiet === undefined ? quietS === 0 : quiet.quiet;
+  return { ...state, isSettled: isTwice === true && isQuietEnough, ...(quiet ? { quiet } : {}) };
 }
 
 // The HUD, the phone and the POI beams are not what is reviewed (the route arrows: the hook).
@@ -207,7 +224,7 @@ for (const load of loadsOf(table)) {
       b,
       `__game.debug.camera.moment(${JSON.stringify(look.moment)}, ${look.weather === "rain"})`,
     );
-    const first = await settle(b, table.defaults.settleTimeoutS);
+    const first = await settle(b, table.defaults.settleTimeoutS, table.defaults.quietS);
     if (!first.isSettled) throw new Error(`the world did not settle: ${JSON.stringify(first)}`);
     // For 15 s after the start the game moves the waiting car onto the nearest street
     // (main.ts placeOnStreet): a lit car (state.headlamps) put down before then was moved back.
@@ -487,7 +504,7 @@ async function shoot(b: Browser, load: Load, view: View, look: ReturnType<typeof
   })()`,
   );
   if (placed.error) throw new Error(placed.error);
-  const settled = await settle(b, table.defaults.settleTimeoutS);
+  const settled = await settle(b, table.defaults.settleTimeoutS, table.defaults.quietS);
   if (!settled.isSettled)
     throw new Error(`the world did not settle around the view: ${JSON.stringify(settled)}`);
   // Read the target again: lamps change, a plate may have been rebuilt meanwhile.

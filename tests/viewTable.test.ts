@@ -54,9 +54,10 @@ describe("the view table schema", () => {
   const withViews = (views: unknown[], over: Record<string, unknown> = {}) =>
     tableWith([{ id: "s", start: [35.68, 139.76], views }], over);
 
-  it("fills the defaults a table leaves out (size, field of view, the settle timeout)", () => {
+  it("fills the defaults a table leaves out (size, field of view, the settle timeout, no quiet wait)", () => {
     const t = parseViewTable(withViews([drive("a")]));
-    expect(t.defaults).toMatchObject({ width: 1280, height: 720, fov: 50, settleTimeoutS: 90 });
+    // quietS 0: a shot waits for settled alone unless the table asks for the buildings to go quiet.
+    expect(t.defaults).toMatchObject({ width: 1280, height: 720, fov: 50, settleTimeoutS: 90, quietS: 0 });
     expect(t.sessions[0].views[0]).toMatchObject({ eyeHeightM: 1.2, angleDeg: 0, lateralM: 0 });
   });
 

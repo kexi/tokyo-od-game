@@ -325,6 +325,14 @@ export const ViewTableSchema = z
       fov: z.number().min(5).max(120).default(50),
       /** s to wait at most for the world to settle (debug.settled) before a shot fails. */
       settleTimeoutS: z.number().positive().default(90),
+      /**
+       * s without a PLATEAU tile loaded or disposed and with none queued, downloading or parsing
+       * (near town and far skyline, counted once the far one exists) that a shot also waits for,
+       * within settleTimeoutS (scripts/qa/quietWatch.ts).
+       * 0: settled alone, as before. Why not on for every table: debug.settled() can say done while
+       * tiles still arrive for seconds, but waiting 5 s a shot adds ~10 min to the 100-shot tables.
+       */
+      quietS: z.number().nonnegative().default(0),
     }),
     /** Probes every review round must report (missing or outside: not converged). */
     metrics: z.array(RequiredMetricSchema).default([]),

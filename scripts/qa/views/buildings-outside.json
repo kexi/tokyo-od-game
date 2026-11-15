@@ -1,0 +1,203 @@
+{
+  "name": "buildings-outside",
+  "description": "23 区の外の PLATEAU の建物（X1: 神奈川・埼玉・千葉）。区外で建物が出ること、地形に立つこと（浮き・沈み 1 m 以内）、外壁と窓が東京と同じに描かれること、県境で建物が二重にならないこと、遠景の輪郭が県境で切れないこと、PLATEAU の無い市（市川）に建物が出ないこと。start は開始画面の範囲（北緯 35.48〜35.84、東経 139.55〜139.93）の内に置く（横浜はその南の縁）。",
+  "defaults": {
+    "time": "day",
+    "weather": "clear",
+    "seed": 20261115,
+    "moment": "2026-11-15T11:00:00+09:00",
+    "looks": [
+      { "id": "day", "time": "day", "moment": "2026-11-15T11:00:00+09:00" },
+      { "id": "night", "time": "night", "moment": "2026-11-15T20:00:00+09:00" }
+    ],
+    "hide": ["traffic", "pedestrians"],
+    "quietS": 5
+  },
+  "sessions": [
+    {
+      "id": "kawasaki-station",
+      "start": [35.5313, 139.697],
+      "views": [
+        {
+          "id": "kawasaki-street",
+          "camera": "pedestrian",
+          "at": { "lat": 35.5308, "lon": 139.7005, "headingDeg": 100, "lookAheadM": 80 },
+          "expect": {
+            "buildings": "川崎区の駅前の建物（PLATEAU 14130）が出ている",
+            "ground": "建物の足元が地面に接している（浮き・沈みが無い）",
+            "facade": "外壁と窓が東京の建物と同じ描き方"
+          }
+        },
+        {
+          "id": "kawasaki-overhead",
+          "camera": "overhead",
+          "target": { "point": { "lat": 35.5313, "lon": 139.699, "h": 0, "ref": "ground" } },
+          "altitudeM": 320,
+          "pitchDeg": 35,
+          "bearingDeg": 200,
+          "expect": {
+            "buildings": "川崎駅の東西に建物の街並みがある",
+            "far": "遠景の輪郭が多摩川の向こう（大田区）まで切れずに続く"
+          }
+        }
+      ]
+    },
+    {
+      "id": "kawaguchi-station",
+      "start": [35.8017, 139.7173],
+      "views": [
+        {
+          "id": "kawaguchi-street",
+          "camera": "pedestrian",
+          "at": { "lat": 35.801, "lon": 139.716, "headingDeg": 260, "lookAheadM": 80 },
+          "note": "駅の西の通り。前の位置（35.8013, 139.7195）は前方 4 m に壁があり街路が写らなかった。ここは前方 82 m まで幅 20 m に建物が無く、最寄りの建物 24 m（2026-11-16 に数値で確かめた）",
+          "expect": {
+            "buildings": "川口駅の西の建物（PLATEAU 11203）が出ている",
+            "ground": "建物の足元が地面に接している",
+            "facade": "外壁と窓が東京の建物と同じ描き方"
+          }
+        },
+        {
+          "id": "kawaguchi-overhead",
+          "camera": "overhead",
+          "target": { "point": { "lat": 35.8017, "lon": 139.7173, "h": 0, "ref": "ground" } },
+          "altitudeM": 320,
+          "pitchDeg": 35,
+          "bearingDeg": 200,
+          "expect": {
+            "buildings": "川口駅のまわりの高層の集合住宅と街並み",
+            "far": "遠景の輪郭が荒川の向こう（北区・板橋区）まで切れずに続く"
+          }
+        }
+      ]
+    },
+    {
+      "id": "yokohama-koyasu",
+      "start": [35.481, 139.665],
+      "views": [
+        {
+          "id": "yokohama-street",
+          "camera": "pedestrian",
+          "at": { "lat": 35.481, "lon": 139.665, "headingDeg": 220, "lookAheadM": 80 },
+          "expect": {
+            "buildings": "横浜市（鶴見区・神奈川区、PLATEAU 14100）の建物が出ている。K1 の終点の手前のあたり",
+            "ground": "建物の足元が地面に接している"
+          }
+        },
+        {
+          "id": "yokohama-overhead",
+          "camera": "overhead",
+          "target": { "point": { "lat": 35.4795, "lon": 139.663, "h": 0, "ref": "ground" } },
+          "altitudeM": 320,
+          "pitchDeg": 35,
+          "bearingDeg": 45,
+          "expect": {
+            "buildings": "横浜の沿岸の街並み",
+            "ground": "格子（ジオイド、北緯 35.40 以北）の内で、高さ合わせが効いている"
+          }
+        }
+      ]
+    },
+    {
+      "id": "misato-chuo",
+      "start": [35.825, 139.877],
+      "views": [
+        {
+          "id": "misato-street",
+          "camera": "pedestrian",
+          "at": { "lat": 35.825, "lon": 139.877, "headingDeg": 0, "lookAheadM": 80 },
+          "expect": {
+            "buildings": "三郷市（PLATEAU 11237）の建物が出ている",
+            "ground": "建物の足元が地面に接している"
+          }
+        },
+        {
+          "id": "misato-overhead",
+          "camera": "overhead",
+          "target": { "point": { "lat": 35.825, "lon": 139.877, "h": 0, "ref": "ground" } },
+          "altitudeM": 320,
+          "pitchDeg": 35,
+          "bearingDeg": 200,
+          "expect": { "buildings": "三郷の街並み" }
+        }
+      ]
+    },
+    {
+      "id": "ichikawa-station",
+      "start": [35.729, 139.9077],
+      "views": [
+        {
+          "id": "ichikawa-street",
+          "camera": "pedestrian",
+          "at": { "lat": 35.729, "lon": 139.9077, "headingDeg": 90, "lookAheadM": 80 },
+          "expect": {
+            "buildings": "建物が出ない（市川市 12203 は PLATEAU に無い）。それで正しい",
+            "ground": "地面と道路は出ている"
+          }
+        },
+        {
+          "id": "ichikawa-overhead",
+          "camera": "overhead",
+          "target": { "point": { "lat": 35.7275, "lon": 139.9, "h": 0, "ref": "ground" } },
+          "altitudeM": 400,
+          "pitchDeg": 35,
+          "bearingDeg": 90,
+          "expect": {
+            "buildings": "江戸川の西（江戸川区・葛飾区）には建物があり、東（市川市）には無い",
+            "border": "境が江戸川で、建物の切れ目が川に沿う"
+          }
+        }
+      ]
+    },
+    {
+      "id": "border-tamagawa",
+      "start": [35.5445, 139.7068],
+      "views": [
+        {
+          "id": "tamagawa-overhead",
+          "camera": "overhead",
+          "target": { "point": { "lat": 35.5395, "lon": 139.706, "h": 0, "ref": "ground" } },
+          "altitudeM": 300,
+          "pitchDeg": 30,
+          "bearingDeg": 0,
+          "expect": {
+            "border": "多摩川の両岸（大田区と川崎市）に建物があり、県境で建物が二重になっていない",
+            "far": "遠景の輪郭が川で切れない"
+          }
+        },
+        {
+          "id": "tamagawa-street",
+          "camera": "pedestrian",
+          "at": { "lat": 35.541, "lon": 139.704, "headingDeg": 190, "lookAheadM": 300 },
+          "note": "大田区側の堤防の内（河川敷の縁）。前方 200 m の幅 20 m に建物が無いことを数値で確かめた（2026-11-16、最寄りの建物 36 m、川崎の建物は前方約 600 m から）",
+          "expect": { "border": "川の向こう（川崎）の建物が見える" }
+        }
+      ]
+    },
+    {
+      "id": "border-arakawa",
+      "start": [35.7818, 139.7228],
+      "views": [
+        {
+          "id": "arakawa-overhead",
+          "camera": "overhead",
+          "target": { "point": { "lat": 35.787, "lon": 139.723, "h": 0, "ref": "ground" } },
+          "altitudeM": 300,
+          "pitchDeg": 30,
+          "bearingDeg": 180,
+          "expect": {
+            "border": "荒川の両岸（北区と川口市）に建物があり、県境で建物が二重になっていない",
+            "far": "遠景の輪郭が川で切れない"
+          }
+        },
+        {
+          "id": "arakawa-street",
+          "camera": "pedestrian",
+          "at": { "lat": 35.787, "lon": 139.72, "headingDeg": 0, "lookAheadM": 300 },
+          "note": "北区側の河川敷。前方 200 m の幅 20 m に建物が無いことを数値で確かめた（2026-11-16、最寄りの建物 40 m、川口の建物は前方約 600 m から）",
+          "expect": { "border": "川の向こう（川口）の建物が見える" }
+        }
+      ]
+    }
+  ]
+}
