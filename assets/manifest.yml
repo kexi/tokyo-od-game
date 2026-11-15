@@ -1016,6 +1016,31 @@ assets:
       public/data は普段オープンデータの置き場だが、これは landmarks.py が書く台帳なのでここで管理する。
       OSM の足元の多角形を含むので、公開時は ODbL の帰属表示（各エントリの sources に記載）が要る。
 
+  - id: plateau-root-tileset
+    name: PLATEAU の建物（4 都県）の根のタイルセット
+    purpose: >-
+      東京都・神奈川県・埼玉県・千葉県の PLATEAU 建築物 LOD1 のタイルセットを子に持つ、内容の無い根。近景と遠景の
+      タイルレンダラーはこれ 1 本を読む。建物そのものは入っていない（県のタイルセットへのポインタだけ）。
+    kind: data
+    files: [public/data/plateau/tileset.json]
+    generator: { script: scripts/plateauRoot.ts, recipe: make-plateau-root }
+    made_by: procedural
+    source: >-
+      src/config.ts の PLATEAU_SOURCES（県コード・URL・範囲の箱）と、神奈川・埼玉・千葉の県の根が持つ市の範囲（門）から作った。
+      指す先も門の写し元も PLATEAU 配信サービスの
+      https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/{13,14,11,12}-bldg-lod1-latest/tileset.json。
+    license: repo
+    used_by: [src/config.ts]
+    docs: [knowledge/plateau-buildings.md]
+    notes: >-
+      public/data は普段オープンデータの置き場だが、これは plateauRoot.ts が書く自作のデータなのでここで管理する。
+      指す先の建物のデータは PLATEAU サイトポリシー（公共データ利用規約 第1.0版、著作権は各地方公共団体）に従い、
+      出典は src/game/credits.ts に出す。建物は取り込まず実行時に -latest の URL から読む（同梱・再配布しない）ので、
+      remote（commit 固定の URL と SHA-256）は書かない。東京以外の子の extras.gate（門）は、生成のときの県の根の
+      子の boundingVolume.region の写しで、近景の球がそのどれかに掛かるときだけその県を読む（src/world/buildings.ts
+      GatedSphereRegion）。-latest の中身は PLATEAU 側で変わるため、just check-plateau-root で 200・範囲・
+      オープンデータ（_op_）と、門が今の県の根と一致するか（古さ）を確かめ直し、違えば just make-plateau-root で作り直す。
+
   - id: guide-charset
     name: 案内標識に出る文字の一覧
     purpose: 案内標識の板に出うる文字（表示地名・交差点名・通称名・OSM の行き先、都市高速の板の固定の語「非常電話」「非常駐車帯」「都市高速」など）。guide-fonts のサブセットの範囲になる。
