@@ -10,6 +10,18 @@ verified:
   - { by: claude-opus-5-5/1m, at: 2026-11-15T10:30:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-11-15T18:40:00Z }
 sources:
+  - id: m4-counts
+    resource: memory-buildings.ts --counts、QA の版、視界 far、東京駅と 900 m 北の往復を 15 分（鍵あり、重なりなし、2026-11-15 18:48〜19:03Z）。シーンの物の数・ジオメトリ・テクスチャ・剛体・コライダー・交通 AI の車・歩行者・違反の記録
+    title: 数の見張り
+    author: claude-opus-5-5/1m
+  - id: m5-alloc
+    resource: memory-buildings.ts --alloc 300,900（HeapProfiler.startSampling、32 KiB ごと）、開発サーバー（名前が読める）、視界 near、往復 920 秒を 2 本（19:11〜19:48Z、鍵あり）。呼び出しの木を、いちばん近い src/ の関数に寄せて足した（scratchpad の alloc-callers.py）。near の往復 5 分で傾きが far と同じ程度（0.67 MB/秒）なのを先に確かめた
+    title: 割り当ての標本
+    author: claude-opus-5-5/1m
+  - id: m5-three
+    resource: node_modules/three 0.186.1 の src/renderers/common/RenderObjects.js（82・226・230 行の _renderObjects の Set）と RenderObject.js（358〜360 行で object・material・geometry に dispose の聞き手を付け、973〜975 行で外す）。src/world/pedestrians.ts の remove（disposeHuman は共有でないジオメトリだけを捨てる）と src/world/traffic-ai.ts の remove（scene から外すだけ）（2026-11-16 に読んだ）
+    title: 描く物の控えが残る仕組み
+    author: claude-opus-5-5/1m
   - id: m2-plain
     resource: scripts/qa/memory-plain.ts（just measure-plain-memory、__game を使わない）。公開の版（vite build を vite preview）と QA の版（just build-qa-bundle を serve-qa-bundle）を、東京駅から自動運転（A の鍵、止まったら 3 秒下がって入れ直す）で 20 分ずつ 2 回、止まったまま 3 分を 1 回ずつ。視界 far、ヘッドレス Chrome・M2 Max・--mute-audio、main f54368e の上の 7b7da7d〜d7d0269。1 本ずつ機械の鍵（scratchpad/qa-lock.md）を取って走らせ、ほかの担当の計測とは重なっていない（2026-11-15、14:40〜16:34Z）
     title: 公開の版と QA の版の比べ
@@ -90,6 +102,32 @@ QA の版、視界 far、20 分ずつ。5 分から終わりまでの最小二�
 - 配列の実体の増えは、新しい場所を読む輪の走りにだけあり（往復では 0.06 MB/秒）、ヒープとは別の物。
 - 1 回ずつの計測。
 
+# 何が溜まっているか（2026-11-16、途中）
+
+## 数には出ない
+
+往復 15 分で GC 後のヒープは 486 → 1,184 MB と増えたが、シーンの物（2,600〜3,700）、ジオメトリ（757〜885）、テクスチャ（222〜257）、剛体（32〜43）、コライダー（3,093〜3,996）、交通 AI の車（33〜34）、歩行者（25〜49）は、どれも往復の行きと帰りで上下するだけで、時間とともに増えなかった。違反の記録は 0 件のまま。[^m4-counts]
+
+## 割り当ての標本: 描く物の控えと、人と車の模型
+
+5〜15 分の間に作られ、15 分の時点で生きている物（ヒープは 455 → 789 MB と 469 → 803 MB、どちらも +334 MB）。[^m5-alloc]
+
+| 作った所（いちばん近いゲームの関数）                                                              | 1 本目 MB | 2 本目 MB | 中身                                                                                                  |
+| ------------------------------------------------------------------------------------------------- | --------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| `drawWorld`（src/render/frame.ts）と `cockpit.ts` の鏡を描く所                                    | 218.5     | 225.2     | three の WebGPU の描く物の控え（RenderObject、getRenderObjectData、WeakMap、NodeSampledTexture など） |
+| `createHuman`・`clone`・`joint`（src/world/human.ts）                                             | 74.2      | 77.6      | 歩行者の模型の Object3D                                                                               |
+| `cloneWith`・`createLowCar`（src/game/carModel.ts）、`createVehicle`（src/game/vehicleModels.ts） | 46.1      | 48.0      | 交通の車の模型の Object3D                                                                             |
+| `capture`（src/game/replay.ts）                                                                   | 16.8      | 16.4      | 再現の記録。5 分ぶんで入れ替わる（KEEP_MS）ので、溜まりではない                                       |
+| 標本の合計                                                                                        | 383.8     | 396.1     |                                                                                                       |
+
+- 上位は 2 回で同じだった。上の 3 行（描く物の控え、人、車）で約 340〜350 MB、ヒープの増え（334 MB）をほぼ全部説明する（標本からの見積もりなので、合計が増えより少し大きい）。
+- 読み（コードを読んだだけで、ヒープのスナップショットの保持の経路では確かめていない）: three 0.186 の `RenderObjects` は、作った描く物の控えを `_renderObjects` という Set に持ち、物・材質・ジオメトリの `dispose` の知らせでだけ捨てる。歩行者は `scene` から外すときに共有でないジオメトリだけを `dispose` し（人の部品は `clone(true)` で共有のジオメトリ、材質も色ごとの共有）、交通の車は `scene` から外すだけ。だから場所が変わって入れ替わった人と車の、描く物の控えが残り、控えが模型を持ち続ける。入れ替えの速さには上限があるので、時間あたり一定になる。[^m5-three]
+- 鏡の分があるのは、鏡もパスごとに別の控えを作るため（読み）。
+
+## スナップショットは取れなかった
+
+- 開発サーバー、視界 near、往復の 5 分の時点（GC 後 465 MB）で `HeapProfiler.takeHeapSnapshot` を 2 つ目の DevTools の口から掛けたが、20 分たっても最初の塊が届かず、止めた（1 本 25 分の決まりのため）。同じ道具で about:blank なら 1 秒で届く（2.2 MB）。大きいヒープで作るのに時間がかかっているのか、止まっているのかは分からない。[^m5-alloc]
+
 # 自動運転が神田神保町三丁目で動けなくなる（D2 に回した、2026-11-15）
 
 M1 の計測の途中で見つけた、ゲームの不具合。M では追わない（項目 D2。D1 の「止まる理由の記録」ができたら、同じ道具で見る）。[^m2-plain]
@@ -103,5 +141,5 @@ M1 の計測の途中で見つけた、ゲームの不具合。M では追わな
 
 # まだ調べていないこと
 
-- 場所が変わり続ける間に溜まる物の正体（指示の 2 節のスナップショットの差と、部分を切る比べ）。候補は、位置が変わるたびに足される記録（走った跡の表示、再現データ、違反の記録）、交通と歩行者、道路の反映など。確かめていない。
+- 保持の経路の確かめ（スナップショット）と、人と車を外すときに `dispose` を知らせたら傾きが消えるかの比べ。
 - 3 節（1 棟ぶんの内訳）。
