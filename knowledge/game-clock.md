@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-15T00:00:00Z
 generated: { by: claude-opus-5-5, at: 2026-11-15T10:00:00Z }
 verified:
+  - { by: process:check-deck-drive, at: 2026-11-15T19:04:30Z }
   - { by: process:check-deck-drive, at: 2026-11-15T14:09:00Z }
   - { by: process:vitest, at: 2026-11-15T09:34:00Z }
   - { by: process:tsc, at: 2026-11-15T09:34:00Z }
@@ -122,7 +123,30 @@ tests/gameClock.test.ts（何を保証するか）:[^tests]
 - auto-shibakoen-shiodome の 24402125:2（汐留出口交差点の手前、連結路の足）での停止は、main でも同じ所で起きる。T1 で消えなかったので、時計のずれではない。この停止が 10 秒を超えると xwStopping（第75条の8）が取られる。判定（expresswayLaw.ts の `standSince`・`elapsed`）は `x.now`、つまりゲームの時計を読む。替え漏れではなく、世界の中で 10 秒以上止まっていて、免除（`mustStop`・`queueAhead`・`waitingToMerge`）のどれにも当たっていない。何で止まっているか（連結路の足の信号待ちか）は確かめていない。D1（T1 の後の別 PR）として扱う。
 - main の auto-shiodome-shibakoen 4 倍の xwStopping（出発の連結路の足）は T1 の 4 倍では出ていない。drive-deck.ts のコメントにある「advance の間に連結路の足で立っていた車が xwStopping を取られた」のと同じ、壁時計の 10 秒だと思われる（確かめていない）。
 
-QA の道具の不具合（直していない）: Chrome が 10 秒以内に起動しないと `launch` は「Chrome did not start」で失敗するが、遅れて起動した Chrome が残り、drive-deck.ts が結果を書いた後も終わらない。負荷が高いと、全経路の走行（`--route all`）が試すたびに Chrome を残し、機械の負荷をさらに上げた。
+QA の道具の不具合: Chrome が 10 秒以内に起動しないと `launch` は「Chrome did not start」で失敗するが、遅れて起動した Chrome が残り、drive-deck.ts が結果を書いた後も終わらなかった。負荷が高いと、全経路の走行（`--route all`）が試すたびに Chrome を残し、機械の負荷をさらに上げた。Q1（PR #93、1fd49af）で直した（時間切れで止めてプロフィールを消す、30 秒、1 回試し直す、drive-deck.ts は結果の後に終わる）。
+
+## マージの前の走行（eef1d67、2026-11-15T15:10〜19:04Z）
+
+レビュー（Warning 1 件の直し）と Q1 を取り込んだ commit で、全経路を 1 回ずつ走らせた。経路ごとに鍵（`qa-take.sh`・`qa-give.sh`）を取り、1 本ずつ（ほかの計測と重ねない）。合否の線は、一定速の 11 経路が全部合格で、dy の絶対値の最大が main（同じ表の all の 1 回、f54368e）と 0.01 m 以内。auto-shiodome-shibakoen は合格。auto-shibakoen-shiodome は D1 なので数えない（停止と xwStopping 以外の失敗が出たら止める）。[^drives]
+
+| 経路                    | main の dy の最大 | T1 の dy の最大 |     差 | T1 の失敗             | T1 の無効の試し                                      | 判定           |
+| ----------------------- | ----------------: | --------------: | -----: | --------------------- | ---------------------------------------------------- | -------------- |
+| auto-shibakoen-shiodome |             0.097 |           0.101 |  0.004 | stalled on a deck (2) | accident during the drive、accident during the drive | 数えない（D1） |
+| auto-shiodome-shibakoen |             0.108 |           0.108 |    0.0 | なし                  | なし                                                 | 合格           |
+| azabudai-tunnel         |             0.074 |           0.074 |    0.0 | なし                  | なし                                                 | 合格           |
+| daiba-exit              |             0.116 |           0.116 |    0.0 | なし                  | なし                                                 | 合格           |
+| haneda-down-seam        |             0.074 |           0.074 |    0.0 | なし                  | なし                                                 | 合格           |
+| haneda-up-seam          |             0.074 |           0.074 |    0.0 | なし                  | なし                                                 | 合格           |
+| rainbow-lower-east      |             0.078 |           0.079 |  0.001 | なし                  | なし                                                 | 合格           |
+| rainbow-lower-west      |             0.076 |           0.076 |    0.0 | なし                  | なし                                                 | 合格           |
+| rainbow-upper-east      |             0.073 |           0.072 | -0.001 | なし                  | なし                                                 | 合格           |
+| rainbow-upper-west      |             0.074 |           0.074 |    0.0 | なし                  | なし                                                 | 合格           |
+| shibakoen-shiodome      |             0.093 |           0.093 |    0.0 | なし                  | なし                                                 | 合格           |
+| shiodome-approach-in    |             0.074 |           0.074 |    0.0 | なし                  | なし                                                 | 合格           |
+| shiodome-approach-out   |             0.073 |           0.073 |    0.0 | なし                  | なし                                                 | 合格           |
+
+- 全部の条件を満たした。一定速の 11 経路は全部合格で、dy の差は最大 0.001 m。auto-shiodome-shibakoen は合格（違反 0・到着）。
+- auto-shibakoen-shiodome は、数えた回は 24402125:2 で停止しただけ（2 回、xwStopping は無し）。無効の 2 回は、どちらも同じ所（汐留出口交差点の手前）で 3 秒止まった後、6 km/h で走り出して交通の車（1,411 kg）に当たった事故。前の車が居て止まっていた見込みで、D1 の手がかりになる（確かめていない）。
 
 # 確かめていないこと
 
