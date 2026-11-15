@@ -74,13 +74,23 @@ const press = async (k: { code: string; key: string; windowsVirtualKeyCode: numb
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", ...k });
 };
 const read = () => b.evaluate<Record<string, unknown>>(READ);
-/** Presses the autopilot key until its chip shows; false when no key turned it on. */
-const autopilotOn = async (): Promise<boolean> => {
-  for (const k of AUTOPILOT_KEYS) {
-    await press(k);
-    await b.sleep(1500);
-    const isOn = (await read()).autopilot === true;
-    if (isOn) return true;
+/** What the page says back (the toasts: 道路を読み込み中, 目的地なし…), for the record of a key that did nothing. */
+const toasts = () => b.evaluate<string>(`document.querySelector("#toasts")?.textContent?.trim() ?? ""`);
+/**
+ * Presses the autopilot key until its chip shows, for up to `waitS` seconds; false when no key turned
+ * it on. Why retry: right after the start the streets may still be loading (the key then only says so).
+ */
+const autopilotOn = async (waitS = 120): Promise<boolean> => {
+  const until = Date.now() + waitS * 1000;
+  while (Date.now() < until) {
+    for (const k of AUTOPILOT_KEYS) {
+      await press(k);
+      await b.sleep(1500);
+      const isOn = (await read()).autopilot === true;
+      if (isOn) return true;
+      events.push({ event: "autopilot_key_ignored", code: k.code, toasts: await toasts() });
+    }
+    await b.sleep(5000);
   }
   return false;
 };
@@ -98,6 +108,8 @@ try {
   if (!isStartable) throw new Error("the start button never became enabled");
   await b.evaluate(`document.querySelector("#start").click()`);
   await b.sleep(8000);
+  const isHudShown = await b.evaluate<boolean>(`document.querySelector("#hud")?.hidden === false`);
+  events.push({ event: "started", isHudShown });
   await b.evaluate(WATCH);
   if (!isStill) {
     const isOn = await autopilotOn();
