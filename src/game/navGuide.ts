@@ -258,6 +258,7 @@ export class NavGuide {
     visible?: boolean;
   }): void {
     const { now, graph, car, target } = opts;
+    this.now = now;
     const roads = opts.roads && opts.roads.graph === graph ? opts.roads : null;
     this.setNames(opts.junctionNames ?? [], roads);
     this.routes = roads?.routes ?? NO_ROUTES;
@@ -829,6 +830,8 @@ export class NavGuide {
   }
 
   private lastSaid = { text: "", at: -Infinity };
+  /** The last update()'s `now` (the game's clock), for say()'s repeat window. */
+  private now = 0;
 
   /** A turn or straight-on call (after `intro`, if any): notices keep clear of it for a few seconds. */
   private guide(text: string, now: number, intro: Intro | null = null): void {
@@ -848,8 +851,10 @@ export class NavGuide {
     const text = joinSpoken([intro?.text, core]);
     // A replan that lands on the same turn (e.g. once the regulations arrive) must not repeat it.
     const compared = intro && !intro.isReplan ? text : core;
-    const isRepeat = compared === this.lastSaid.text && performance.now() - this.lastSaid.at < 10_000;
-    this.lastSaid = { text: compared, at: performance.now() };
+    // On update()'s `now` (the frame's, the game's clock) as the other timers here. Why not
+    // performance.now() (as before): the one wall-clock timer among them drifted from the rest.
+    const isRepeat = compared === this.lastSaid.text && this.now - this.lastSaid.at < 10_000;
+    this.lastSaid = { text: compared, at: this.now };
     if (!text || isRepeat) return;
     // What the navi says, in the language in force, for the QA runs to read (muted or not).
     log("nav_spoken", { text });

@@ -49,7 +49,9 @@ import { NpcBrain } from "./ai/llm";
 import { Voice } from "./ai/tts";
 import type { Surroundings } from "./ai/dialogue";
 import { GameAudio } from "./game/audio";
-import { clockStep } from "./game/frameClock";
+import { clockStep, gameStep } from "./game/frameClock";
+import { hasHeldOver, heldSince } from "./game/lawTimers";
+import { type IndicatorMemory, isSignalOmitted, noteIndicators, turnSignalSide } from "./game/signalOmission";
 import { FrameWork } from "./game/frameWork";
 import { SerialWork } from "./game/serialWork";
 import { ConversationController } from "./game/conversation";
@@ -411,6 +413,14 @@ function toast(text: string, color = "#ffe14d"): void {
 }
 
 async function main(): Promise<void> {
+  /**
+   * The game's clock (ms, frameClock.ts gameStep): the frame loop moves it on by each frame's dt,
+   * and everything timed in the world reads it (the law's timers, the police, the phone in use, the
+   * replay). Handlers between frames (a key, a crash, the phone) read the last frame's. It is set
+   * again to the wall time as the loop starts (`last`), so the two agree while frames are short.
+   */
+  let gameMs = performance.now();
+  const gameNow = () => gameMs;
   setLoading(() => i18n.t("loading.physics"), 0.04);
   await RAPIER.init();
 
@@ -1524,7 +1534,7 @@ async function main(): Promise<void> {
   /** おまかせ: a real spot nearby, against the clock, for points. */
   const startRandomMission = () => {
     const g = frame.toGeodetic(vehicle.position());
-    const m = missions.start(g.lat, g.lon, performance.now());
+    const m = missions.start(g.lat, g.lon, gameNow());
     if (m)
       toast(i18n.t("toast.missionStart", { name: m.target.name, m: Math.round(m.startDistance) }), "#ffe14d");
     else toast(i18n.t("toast.noMission"));
@@ -1649,6 +1659,7 @@ async function main(): Promise<void> {
       };
     },
     (line) => emergency.dispatch(line === "119" ? "ambulance" : "police", roadGraph),
+    gameNow,
   );
   // After an accident the phone opens where 119 and 110 are (its home), not on Y as usual.
   input.on("phone", () => {
@@ -2290,6 +2301,7 @@ async function main(): Promise<void> {
   let score = 0;
   let accumulator = 0;
   let last = performance.now();
+  gameMs = last;
   let lastPoiRefresh = 0;
   let lastHud = 0;
   let frozen = true;
@@ -2316,7 +2328,7 @@ async function main(): Promise<void> {
       xid: hit?.seg.line.xid ?? null,
     });
   };
-  /** Since when the car has stood still on a deck (null: moving or off a deck); logged once. */
+  /** Since when the car has stood still on a deck (game ms; null: moving or off a deck); logged once. */
   let deckStillSince: number | null = null;
   let isStallLogged = false;
   /**
@@ -2324,7 +2336,7 @@ async function main(): Promise<void> {
    * yet built, isReadyNear) or touching something (the chassis' overlaps by kind), for the stops
    * seen at the 207111988:2 merge (knowledge/road-textures.md).
    */
-  const noteDeckStall = (p: Vector3, kmh: number, deckReady: boolean) => {
+  const noteDeckStall = (p: Vector3, kmh: number, deckReady: boolean, now: number) => {
     const STALL_MS = 3000;
     const isStill = carOnDeck && kmh < 1;
     if (!isStill) {
@@ -2332,8 +2344,8 @@ async function main(): Promise<void> {
       isStallLogged = false;
       return;
     }
-    deckStillSince ??= performance.now();
-    const isLong = performance.now() - deckStillSince > STALL_MS;
+    deckStillSince ??= now;
+    const isLong = now - deckStillSince > STALL_MS;
     if (!isLong || isStallLogged) return;
     isStallLogged = true;
     const g = frame.toGeodetic(p);
@@ -2348,12 +2360,12 @@ async function main(): Promise<void> {
       incident: emergency.incident !== null,
       pursuit: emergency.pursuit !== null,
       touching: vehicle.touching(),
-      stillMs: Math.round(performance.now() - deckStillSince),
+      stillMs: Math.round(now - deckStillSince),
     });
   };
   /** The player's car on the expressway (第4章の2, expresswayWatch.ts). */
   const expresswayWatch = new ExpresswayWatch();
-  /** When the player's car last crashed (performance.now): a stop just after is 危険防止. */
+  /** When the player's car last crashed (game ms): a stop just after is 危険防止. */
   let lastCrashAt = -Infinity;
   let overSince: number | null = null;
   let rightSince: number | null = null;
@@ -2363,7 +2375,7 @@ async function main(): Promise<void> {
   let rightLaneSince: number | null = null;
   let laneAtJunction: { use: LaneUse; lane: number; tIn: Vector3; node: Vector3 } | null = null;
   // 合図: when each indicator last blinked, the junction being turned at, the lane last held.
-  const indicatorSeen = { left: -Infinity, right: -Infinity };
+  const indicatorSeen: IndicatorMemory = { left: -Infinity, right: -Infinity };
   let turnAt: { tIn: Vector3; node: Vector3 } | null = null;
   let laneHeld: { seg: Segment; lane: number } | null = null;
   let hornFor = 0;
@@ -2591,18 +2603,25 @@ async function main(): Promise<void> {
     // runs back (control.update, the law's timers, the cooldowns).
     const clock = clockStep(stamp, last);
     const dt = clock.dt;
-    const now = clock.last;
     last = clock.last;
+    gameMs = gameStep(gameMs, dt);
+    // `now` is the game's clock: the world's intervals (the law, the police, the phone, the signals,
+    // the replay) go by what the car has covered. `wall` is the wall clock, for what is outside the
+    // world: loading waits and the streaming's and the HUD's throttles (knowledge/game-clock.md).
+    // Why not the wall clock for both (as before): a frame over MAX_FRAME_S moves the world only
+    // MAX_FRAME_S, and on a slow page the 合図's 6 s ran out over a sixth of the road.
+    const now = gameMs;
+    const wall = clock.last;
 
     if (state !== "playing") {
       terrain.update(spawn.lat, spawn.lon);
-      buildings.update(new Vector3(), now);
+      buildings.update(new Vector3(), wall);
       env.update(dt, new Vector3(), camera.position, spawn.lat, spawn.lon);
       camera.position.applyAxisAngle(new Vector3(0, 1, 0), dt * 0.05);
       camera.lookAt(0, 30, 0);
       const groundReady = terrain.hasColliderAt(spawn.lat, spawn.lon);
       const tilesProgress = buildings.loadProgress();
-      const waited = now - loadStart;
+      const waited = wall - loadStart;
       const isLoading = state === "loading" && compiling === null;
       if (isLoading)
         setLoading(
@@ -2647,17 +2666,17 @@ async function main(): Promise<void> {
       const geo = frame.toGeodetic(focus);
       if (replay?.isClip) {
         terrain.update(geo.lat, geo.lon);
-        buildings.update(focus, now);
+        buildings.update(focus, wall);
         if (haversineMeters(geo.lat, geo.lon, roadCenter.lat, roadCenter.lon) > 300)
           refreshRoads(geo.lat, geo.lon);
         pumpSignFaces();
         pumpBoardFaces();
-        signs.update(focus, now);
-        guideSigns.update(focus, now, camera.position);
+        signs.update(focus, wall);
+        guideSigns.update(focus, wall, camera.position);
       }
       env.update(dt, focus, camera.position, geo.lat, geo.lon);
       water.update(dt, env);
-      water.renderReflection(renderer, scene, camera, now);
+      water.renderReflection(renderer, scene, camera, wall);
       drawPlain();
       return;
     }
@@ -2677,12 +2696,12 @@ async function main(): Promise<void> {
     // Once the streets are known, move the waiting car onto one — but never once the player has
     // started driving: stopped at a light later, the car would jump forward.
     // The kerb comes from PLATEAU paving, so wait for it (wards without it: give up after 10 s).
-    const hasKerbs = pavements.count > 0 || now - streetSpawnSince > 10000;
+    const hasKerbs = pavements.count > 0 || wall - streetSpawnSince > 10000;
     // Until it is on its street the car is held (see vehicle.update below): driving off first used
     // to cancel the move and leave it where the place itself was. After 15 s with no street it is
     // let go where it stands.
     if (needsStreetSpawn && roadGraph && hasKerbs && isInCar) needsStreetSpawn = !placeOnStreet();
-    const isStreetSearchOver = now - streetSpawnSince > 15000;
+    const isStreetSearchOver = wall - streetSpawnSince > 15000;
     if (needsStreetSpawn && isStreetSearchOver) needsStreetSpawn = false;
     if (needsTrip && !needsStreetSpawn && !missions.current) {
       needsTrip = false;
@@ -2755,35 +2774,35 @@ async function main(): Promise<void> {
       const ped = blow.body.owner as Pedestrian | null;
       const isPerson = blow.body.kind === "person" && ped !== null;
       if (!isPlayersCar || !isPerson) continue;
-      const isCoolingDown = (pedestrianCooldown.get(ped) ?? 0) > performance.now();
+      const isCoolingDown = (pedestrianCooldown.get(ped) ?? 0) > now;
       if (isCoolingDown) continue;
       // Someone walking into a car that stands is their own bump (pedestrianBlow.ts: the car's own
       // speed going into the blow decides; the closing speed only says, by the person's Δv, how
       // hard they were hit).
       const judged = judgePedestrianBlow(blow.impact);
       if (!judged.isAccident) {
-        const isBumpLogged = (bumpLogCooldown.get(ped) ?? 0) > performance.now();
+        const isBumpLogged = (bumpLogCooldown.get(ped) ?? 0) > now;
         if (isBumpLogged) continue;
-        bumpLogCooldown.set(ped, performance.now() + 3000);
+        bumpLogCooldown.set(ped, now + 3000);
         log("pedestrian_bump", {
           carKmh: Math.round(judged.carKmh * 10) / 10,
           otherDeltaVKmh: Math.round(judged.victimKmh * 10) / 10,
         });
         continue;
       }
-      pedestrianCooldown.set(ped, performance.now() + 3000);
+      pedestrianCooldown.set(ped, now + 3000);
       input.pad.contact("impact", blow.impact.dvCar + 1);
       pedestrians.knockDown(ped);
-      emergency.start(ped, performance.now());
+      emergency.start(ped, now);
       onAccident("pedestrian", judged.carKmh, ped.profile.name, blow.impact);
     }
     events.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       const other = h1 === vehicle.chassis.handle ? h2 : h2 === vehicle.chassis.handle ? h1 : null;
       if (other === null) return;
-      const isCoolingDown = (contactCooldown.get(other) ?? 0) > performance.now();
+      const isCoolingDown = (contactCooldown.get(other) ?? 0) > now;
       if (isCoolingDown) return;
-      contactCooldown.set(other, performance.now() + 3000);
+      contactCooldown.set(other, now + 3000);
       const kmh = Math.abs(vehicle.speedKmh());
       // A police unit: was it hit on purpose? (pursuitLaw.ts decides, conservatively.)
       const unit = patrols.find((u) => u.car.chassis.handle === other);
@@ -2852,8 +2871,8 @@ async function main(): Promise<void> {
     // Up on an expressway deck (asked of the graph ten times a second). The PLATEAU buildings
     // standing into a deck are cut below it (Buildings.cutAboveDecks), so the car meets none there;
     // one it still overlaps is logged (a cut that missed, once per 20 m).
-    if (expressway && roadGraph && isInCar && now - lastDeckCheck > 100) {
-      lastDeckCheck = now;
+    if (expressway && roadGraph && isInCar && wall - lastDeckCheck > 100) {
+      lastDeckCheck = wall;
       // 15 m: the width gate (half the carriageway + 1 m) decides; a 4-lane deck is over 7 m wide.
       const deckHit = roadGraph.nearestOnSurface(carPos, 15, (seg) => seg.line.xid !== undefined);
       carOnDeck = deckHit !== null;
@@ -2862,7 +2881,7 @@ async function main(): Promise<void> {
         deckHit?.seg.line.xid !== undefined ? expressway.levelAt(deckHit.seg.line.xid, geo.lat, geo.lon) : 0;
       const isThroughBuilding = carOnDeck && vehicle.overlapsBuilding();
       if (isThroughBuilding) noteBuildingCrossed(carPos);
-      noteDeckStall(carPos, speed, isDeckReady);
+      noteDeckStall(carPos, speed, isDeckReady, now);
     }
     const gy = groundY(carPos.x, carPos.z);
     // Fallen through the ground: put back. Not on a deck: in a tunnel or cut (P9) the road is more
@@ -2898,9 +2917,9 @@ async function main(): Promise<void> {
     if (needsRecenter) recenter();
 
     terrain.update(geo.lat, geo.lon);
-    buildings.update(focus, now);
-    finishWarp(now);
-    transit.update(now, geo.lat, geo.lon, focus);
+    buildings.update(focus, wall);
+    finishWarp(wall);
+    transit.update(wall, geo.lat, geo.lon, focus);
     lastGeo = { lat: geo.lat, lon: geo.lon };
     pedestrians.raining = env.isRaining();
     const carForward = new Vector3(0, 0, 1).applyQuaternion(carRot);
@@ -2917,21 +2936,21 @@ async function main(): Promise<void> {
     // The shared face pools, once a frame for all their users (the streets' and the decks').
     pumpSignFaces();
     pumpBoardFaces();
-    signs.update(focus, now);
+    signs.update(focus, wall);
     // The boards are weighed from the camera, on the deck's level when the car is up on one.
     const eyeLevel = carOnDeck ? carDeckLevel : 0;
-    guideSigns.update(focus, now, camera.position, eyeLevel);
+    guideSigns.update(focus, wall, camera.position, eyeLevel);
     if (expressway && expresswaySigns) {
       expresswaySigns.update(
         (lat, lon, radius) => expressway.signChunksNear(lat, lon, radius),
         expressway.place(),
         expressway.tileVersion,
         geo,
-        now,
+        wall,
         camera.position,
         eyeLevel,
       );
-      deckPlates?.update(focus, now);
+      deckPlates?.update(focus, wall);
     }
     orbis.update(now);
     // カーナビ to the mission target, along legal streets.
@@ -2990,8 +3009,8 @@ async function main(): Promise<void> {
       currentLimitKind = onRoad ? onRoad.seg.limitKind : null;
       currentOneway = onRoad !== null && onRoad.seg.oneway !== 0;
       const isOver = currentLimit !== null && speed > currentLimit + 1;
-      overSince = isOver ? (overSince ?? now) : null;
-      if (overSince !== null && currentLimit !== null && now - overSince > 3000) {
+      overSince = heldSince(isOver, overSince, now);
+      if (hasHeldOver(overSince, now, 3000) && currentLimit !== null) {
         // On the expressway (高速自動車国道等) 30–40 km/h over is still a 反則行為 (traffic.ts).
         const isOnExpressway = onRoad !== null && isExpressway(onRoad.seg.line);
         const v = speedViolation(speed - currentLimit, isOnExpressway);
@@ -3007,8 +3026,8 @@ async function main(): Promise<void> {
       // Positive lateral = left of the travel direction; well right of the centre line is 右側通行.
       const isRightSide =
         isTwoWay && speed > 10 && Math.abs(align) > 0.8 && onRoad.lateral * Math.sign(align) < -0.8;
-      rightSince = isRightSide ? (rightSince ?? now) : null;
-      if (rightSince !== null && now - rightSince > 2000) book(VIOLATIONS.keepLeft, now, 15000);
+      rightSince = heldSince(isRightSide, rightSince, now);
+      if (hasHeldOver(rightSince, now, 2000)) book(VIOLATIONS.keepLeft, now, 15000);
 
       // 一方通行 (JARTIC): driving against the permitted direction is 通行禁止違反. Not the OSM
       // expressway: its 逆走 is 通行区分違反 (expresswayWatch below).
@@ -3019,8 +3038,8 @@ async function main(): Promise<void> {
         onRoad.seg.oneway !== 0 &&
         speed > 5 &&
         align * onRoad.seg.oneway < -0.7;
-      wrongWaySince = isWrongWay ? (wrongWaySince ?? now) : null;
-      if (wrongWaySince !== null && now - wrongWaySince > 1500) book(VIOLATIONS.noEntry, now, 20000);
+      wrongWaySince = heldSince(isWrongWay, wrongWaySince, now);
+      if (hasHeldOver(wrongWaySince, now, 1500)) book(VIOLATIONS.noEntry, now, 20000);
 
       // 道路交通法 第4章の2 on the expressway (expresswayLaw.ts): 転回・後退, 逆走, 駐停車, 通行帯,
       // and at a merge or an exit 第75条の6・第75条の7.
@@ -3071,8 +3090,9 @@ async function main(): Promise<void> {
         );
 
       // 通行禁止 (車両通行止め, 歩行者用道路) in force: entering the street at all is the offence.
-      closedSince = onRoad?.seg.closed && speed > 5 ? (closedSince ?? now) : null;
-      if (closedSince !== null && now - closedSince > 1500 && onRoad) {
+      const isOnClosed = onRoad?.seg.closed === true && speed > 5;
+      closedSince = heldSince(isOnClosed, closedSince, now);
+      if (hasHeldOver(closedSince, now, 1500) && onRoad) {
         const active = onRoad.seg.closures.find((c) => isInForceTime(c.time, clock));
         const what = active ? CLOSURE_WORDS[active.kind] : null;
         const note = active ? timeNote(active.time) : null;
@@ -3090,8 +3110,9 @@ async function main(): Promise<void> {
       const inForce = (code: number) =>
         onRoad !== null && onRoad.seg.rules.some((r) => r.code === code && isInForce(r, clock));
       // 徐行: a speed at which the car can stop at once (about 10 km/h).
-      slowSince = inForce(61) && speed > 10 ? (slowSince ?? now) : null;
-      if (slowSince !== null && now - slowSince > 1500) book(VIOLATIONS.slow, now, 20000);
+      const isFastWhereSlow = inForce(61) && speed > 10;
+      slowSince = heldSince(isFastWhereSlow, slowSince, now);
+      if (hasHeldOver(slowSince, now, 1500)) book(VIOLATIONS.slow, now, 20000);
       // A U-turn is a flip of heading without leaving the street: going round the block and back
       // along it the other way is not one, so the record resets on any other street.
       if (lastHeading && onRoad && onRoad.seg !== lastHeading.seg) lastHeading = null;
@@ -3156,13 +3177,8 @@ async function main(): Promise<void> {
       if (turnAt && Math.hypot(carPos.x - turnAt.node.x, carPos.z - turnAt.node.z) > 25) {
         const turn = classifyTurn(turnAt.tIn, carForward.clone().setY(0).normalize());
         turnAt = null;
-        const side =
-          turn === "left" || turn === "slightLeft"
-            ? "left"
-            : turn === "right" || turn === "uturn"
-              ? "right"
-              : null;
-        if (side && now - indicatorSeen[side] > 6000)
+        const side = turnSignalSide(turn);
+        if (isSignalOmitted(side, now, indicatorSeen))
           book(
             VIOLATIONS.signalOmission,
             now,
@@ -3178,7 +3194,7 @@ async function main(): Promise<void> {
           ? laneCountedIn(roadGraph, carPos, carForward, laneHeld, onRoad, carOnDeck, isCarSurface)
           : null;
       const changedTo = counted ? laneChangeSide(laneHeld, counted) : null;
-      if (changedTo && now - indicatorSeen[changedTo] > 6000)
+      if (isSignalOmitted(changedTo, now, indicatorSeen))
         book(VIOLATIONS.signalOmission, now, 15000, inJapanese("violationDetail.laneChangeNoSignal"));
       laneHeld = counted;
       // オービス (速度違反自動取締装置): crossing a device's line in the direction and lanes it
@@ -3279,8 +3295,8 @@ async function main(): Promise<void> {
           turnAhead !== undefined && turnAhead.at - nav.lastAt < 150 && /right|uturn/i.test(turnAhead.turn);
         // 第20条第3項: staying in the lane a yellow lane line keeps it in (第26条の2第3項) is no 通行帯違反.
         const isRightLane = lane === s.lanes - 1 && !isPreparingRight && !isLaneChangeBanned(s);
-        rightLaneSince = isRightLane ? (rightLaneSince ?? now) : null;
-        if (rightLaneSince !== null && now - rightLaneSince > 20000) book(VIOLATIONS.laneUse, now, 60000);
+        rightLaneSince = heldSince(isRightLane, rightLaneSince, now);
+        if (hasHeldOver(rightLaneSince, now, 20000)) book(VIOLATIONS.laneUse, now, 60000);
       } else rightLaneSince = null;
 
       // 進路変更禁止: crossing a yellow lane line (lanes counted from the left kerb).
@@ -3429,8 +3445,8 @@ async function main(): Promise<void> {
     hint.hidden = hints.length === 0 || partner !== null;
     hint.textContent = hints.join("　");
 
-    if (now - lastPoiRefresh > 300) {
-      lastPoiRefresh = now;
+    if (wall - lastPoiRefresh > 300) {
+      lastPoiRefresh = wall;
       field.refresh(geo.lat, geo.lon);
     }
     for (const p of field.collect(focus)) {
@@ -3503,7 +3519,7 @@ async function main(): Promise<void> {
     env.setShelter(shelter);
     env.update(dt, focus, camera.position, geo.lat, geo.lon);
     water.update(dt, env);
-    streetLights.update(dt, camera, env, now);
+    streetLights.update(dt, camera, env, wall);
     if (Math.abs(env.nightFactor - appliedNight) > 0.02) {
       appliedNight = env.nightFactor;
       buildings.setNightFactor(appliedNight);
@@ -3513,12 +3529,11 @@ async function main(): Promise<void> {
     const lamps = controls.lamps();
     vehicle.updateLights(controls.headlightsOn(isDark), { ...lamps, highBeam: controls.highBeam });
     // The indicator relay clicks, and the law checks remember when each side last blinked.
-    const blink = Math.floor(performance.now() / 380) % 2 === 0;
+    const blink = Math.floor(wall / 380) % 2 === 0;
     const signalLeft = autopilot ? autopilot.driver.signal === "left" : lamps.left;
     const signalRight = autopilot ? autopilot.driver.signal === "right" : lamps.right;
     if (isInCar) audio.tick((signalLeft || signalRight) && blink);
-    if (signalLeft) indicatorSeen.left = now;
-    if (signalRight) indicatorSeen.right = now;
+    noteIndicators(indicatorSeen, signalLeft, signalRight, now);
     // 警音器 while H (or its pad button) is held.
     const isHorn = isInCar && input.horn();
     audio.horn(isHorn);
@@ -3591,13 +3606,13 @@ async function main(): Promise<void> {
       verticalSpeed: vehicle.body.linvel().y,
     });
 
-    if (now - lastLocate > 500) {
-      lastLocate = now;
+    if (wall - lastLocate > 500) {
+      lastLocate = wall;
       locate(geo.lat, geo.lon);
     }
 
-    if (now - lastHud > 150) {
-      lastHud = now;
+    if (wall - lastHud > 150) {
+      lastHud = wall;
       checkDeadlines();
       $("#car-status").hidden = !isInCar;
       $("#ind-left").classList.toggle("on", signalLeft && blink);
@@ -3620,8 +3635,8 @@ async function main(): Promise<void> {
           env.nightFactor > 0.35,
         );
       }
-      furniture.update(now, (x, z) => pavements.contains(x, z));
-      if (now % 1000 < 160) updateSocial();
+      furniture.update(wall, (x, z) => pavements.contains(x, z));
+      if (wall % 1000 < 160) updateSocial();
       const yaw = isOnFoot
         ? Math.atan2(walker.forward().x, walker.forward().z)
         : isInTaxi && taxi
@@ -3653,7 +3668,7 @@ async function main(): Promise<void> {
       liveObjects(),
     );
     // The water's reflection (only with water in view), then the frame.
-    water.renderReflection(renderer, scene, camera, now);
+    water.renderReflection(renderer, scene, camera, wall);
     // ブラー: the car's speed (toward the vanishing point ahead) and the view's turn, smeared over the
     // street only — a street pass of the frame, before the wipers and the interior are drawn.
     camera.getWorldDirection(viewDir);
@@ -3989,7 +4004,7 @@ async function main(): Promise<void> {
     if (post.media !== "text") witnessShot.shoot(post);
     if (!isSpread) return publishPost(post, witnesses);
     const delay = POST_DELAY_S[0] + Math.random() * (POST_DELAY_S[1] - POST_DELAY_S[0]);
-    postsDue.push({ post, witnesses }, performance.now() + delay * 1000);
+    postsDue.push({ post, witnesses }, gameNow() + delay * 1000);
   };
   const publishPost = (post: SocialPost, witnesses: number) =>
     perf.time("post.publish", () => {
@@ -4085,7 +4100,7 @@ async function main(): Promise<void> {
   const patrols: PolicePatrol[] = [];
   const MAX_PATROLS = 3;
   let police: PolicePatrol | null = null;
-  let policeDueAt = performance.now() + 15000;
+  let policeDueAt = gameNow() + 15000;
   const patrolKind = (): PatrolKind => {
     const r = Math.random();
     return r < 0.5 ? "patrol" : r < 0.8 ? "shirobai" : "unmarked";
@@ -4313,7 +4328,7 @@ async function main(): Promise<void> {
     const tw = taxiWorld();
     if (!tw || !roadGraph) return null;
     for (let attempt = 0; attempt < 4; attempt++) {
-      const unit = new PolicePatrol(scene, world, (x, z) => groundY(x, z), kind);
+      const unit = new PolicePatrol(scene, world, (x, z) => groundY(x, z), gameNow, kind);
       // Disposed in the same frame, before the physics steps, when the spot is taken.
       const isPlaced = unit.spawn(roadGraph, tw, near) && isSpotClear(unit.position, 8, unit);
       if (isPlaced) {
@@ -4328,7 +4343,7 @@ async function main(): Promise<void> {
   const chaseMoment = (label: i18n.MessageKey = "social.chaseLabel"): ViolationRecord => ({
     ...VIOLATIONS.ignoredStop,
     label: inJapanese(label),
-    at: performance.now(),
+    at: gameNow(),
     session: SESSION,
     status: "caught",
     context: violationContext(),
@@ -4383,13 +4398,14 @@ async function main(): Promise<void> {
       return true;
     },
     assist: () => controls.assist,
-    leftSignalAgo: () => performance.now() - indicatorSeen.left,
+    now: gameNow,
+    leftSignalAgo: () => gameNow() - indicatorSeen.left,
     hazards: () => controls.hazard,
     setSignalLeft: () => controls.holdSignal("left"),
     setHazards: (on) => (controls.hazard = on),
     stopSite,
     law,
-    book: (v, detail) => book(v, performance.now(), 0, detail, true),
+    book: (v, detail) => book(v, gameNow(), 0, detail, true),
     notify: (kind, text) => notify(kind, text),
     toast,
     stamp: (title, text, big) => stamps.stamp(title, shortLabel(text), big),
@@ -4494,13 +4510,13 @@ async function main(): Promise<void> {
     parkingDialog.showModal();
   };
   $("#parking-appear").addEventListener("click", () => {
-    if (pendingParking) book(pendingParking, performance.now(), 0);
+    if (pendingParking) book(pendingParking, gameNow(), 0);
     pendingParking = null;
     parkingDialog.close();
   });
   $("#parking-owner").addEventListener("click", () => {
     if (pendingParking) {
-      const order = law.chargeOwner(pendingParking, performance.now());
+      const order = law.chargeOwner(pendingParking, gameNow());
       stamps.stamp(
         "放置違反金",
         `${(order.fine ?? 0).toLocaleString()}円`,
@@ -4797,7 +4813,7 @@ async function main(): Promise<void> {
   input.on("home", () => {
     if (!home) return toast(i18n.t("toast.noStartYet"));
     const g = frame.toGeodetic(vehicle.position());
-    const m = missions.startHome(home, performance.now(), g.lat, g.lon);
+    const m = missions.startHome(home, gameNow(), g.lat, g.lon);
     toast(i18n.t("toast.headingHome", { km: (m.startDistance / 1000).toFixed(1) }), "#ffe14d");
   });
   // ---------- 目的地 ----------
@@ -4827,7 +4843,7 @@ async function main(): Promise<void> {
   const chooseDestination = (p: WarpPlace) => {
     destDialog.close();
     const g = frame.toGeodetic(focusPos());
-    const m = missions.startChosen(p, performance.now(), g.lat, g.lon);
+    const m = missions.startChosen(p, gameNow(), g.lat, g.lon);
     toast(i18n.t("toast.destSet", { name: p.name, km: (m.startDistance / 1000).toFixed(1) }), "#ffe14d");
     log("destination_set", { name: p.name, distanceKm: Math.round(m.startDistance / 100) / 10 });
   };
@@ -5053,7 +5069,7 @@ async function main(): Promise<void> {
     const a = appointments[0];
     if (!a) return false;
     const g = frame.toGeodetic(vehicle.position());
-    missions.startAppointment(a.place, performance.now(), g.lat, g.lon);
+    missions.startAppointment(a.place, gameNow(), g.lat, g.lon);
     const what = i18n.t(a.kind === "sanction" ? "toast.appointSanction" : "toast.appointNotice");
     toast(
       i18n.t("toast.appointment", { what, place: a.place.name, deadline: deadlineText(a.deadline) }),
@@ -5196,7 +5212,7 @@ async function main(): Promise<void> {
       return;
     }
     const pos = frame.toGeodetic(vehicle.position());
-    const trip = missions.startTrip(pos.lat, pos.lon, performance.now());
+    const trip = missions.startTrip(pos.lat, pos.lon, gameNow());
     if (trip)
       toast(
         i18n.t("toast.todayTrip", { name: trip.target.name, km: (trip.startDistance / 1000).toFixed(1) }),
@@ -5251,7 +5267,8 @@ async function main(): Promise<void> {
   };
   // Each violation keeps 5 s either side of it, cut from the recording once the after part is in.
   setInterval(() => {
-    const now = performance.now();
+    // The records' and the recording's times are the game's clock.
+    const now = gameNow();
     for (const r of law.state.log) {
       const isReady = !r.replay && r.session === SESSION && now >= r.at + CLIP_AFTER_MS;
       if (!isReady) continue;
@@ -5417,14 +5434,15 @@ async function main(): Promise<void> {
   ) => {
     social.note("crash", env.now().getTime());
     pursuitDirector.onCrash();
-    lastCrashAt = performance.now();
-    const careless = book(VIOLATIONS.safeDriving, performance.now(), 3000);
+    const now = gameNow();
+    lastCrashAt = now;
+    const careless = book(VIOLATIONS.safeDriving, now, 3000);
     // A crash with the phone in hand is the 交通の危険 form of ながら運転 (6 points, no 反則金).
-    if (phone.isInUse(performance.now()) && mode === "car")
-      book(VIOLATIONS.phoneDanger, performance.now(), 30000, inJapanese("violationDetail.phoneCrash"));
+    if (phone.isInUse(now) && mode === "car")
+      book(VIOLATIONS.phoneDanger, now, 30000, inJapanese("violationDetail.phoneCrash"));
     if (kind === "pedestrian") {
       // How badly they are hurt goes with the speed the blow gave them (Δv from both masses).
-      const injury = book(injuryViolation(impact ? impact.dvOther * 3.6 : kmh), performance.now(), 3000);
+      const injury = book(injuryViolation(impact ? impact.dvOther * 3.6 : kmh), now, 3000);
       // In a pursuit: 過失運転致傷 or 危険運転致傷 (自動車運転死傷処罰法), pursuitDirector.ts.
       pursuitDirector.onInjury(
         kmh,
@@ -5609,7 +5627,7 @@ async function main(): Promise<void> {
         if (!unit) return false;
         unit.placeAt(spot, vehicle.yaw());
         unit.state = "cruising";
-        const record = law.commit(VIOLATIONS[violation], performance.now(), 0, violationContext());
+        const record = law.commit(VIOLATIONS[violation], gameNow(), 0, violationContext());
         if (!record) return false;
         police = unit;
         if (unit.witness(record) === "pursuit") startPursuit();
@@ -5688,7 +5706,7 @@ async function main(): Promise<void> {
           requestAnimationFrame(() => {
             forcedPost = media;
             try {
-              resolve(book(VIOLATIONS[kind], performance.now(), 0));
+              resolve(book(VIOLATIONS[kind], gameNow(), 0));
             } finally {
               forcedPost = null;
             }

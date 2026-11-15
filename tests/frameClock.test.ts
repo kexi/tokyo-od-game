@@ -64,14 +64,18 @@ describe("clockStep: the game's frame time step from two callers (rAF and advanc
 describe("main.ts step: the frame's clock comes from clockStep (source check)", () => {
   const main = readFileSync(join(import.meta.dirname, "..", "src", "main.ts"), "utf8");
   const start = main.indexOf("const step = (stamp: number) => {");
-  const head = main.slice(start, start + 600);
+  const head = main.slice(start, start + 1200);
 
-  it("takes the frame's stamp, and its dt and its time (now) only from clockStep", () => {
+  // The frame's time `now` is the game's clock moved on by clockStep's dt (gameStep), and `wall`
+  // is clockStep's time: the game's clock replaced `now = clock.last` (knowledge/game-clock.md).
+  it("takes the frame's stamp, its dt from clockStep, and its times (now, wall) from the two clocks", () => {
     expect(start).toBeGreaterThan(0);
     expect(head).toMatch(/const clock = clockStep\(stamp, last\);/);
     expect(head).toMatch(/const dt = clock\.dt;/);
-    expect(head).toMatch(/const now = clock\.last;/);
     expect(head).toMatch(/last = clock\.last;/);
+    expect(head).toMatch(/gameMs = gameStep\(gameMs, dt\);/);
+    expect(head).toMatch(/const now = gameMs;/);
+    expect(head).toMatch(/const wall = clock\.last;/);
   });
 
   it("works out no dt from a stamp itself anywhere in main.ts (rAF after advance made it negative)", () => {

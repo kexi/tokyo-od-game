@@ -21,3 +21,21 @@ export function clockStep(stamp: number, last: number): { dt: number; last: numb
   if (isBehind) return { dt: 0, last };
   return { dt: Math.min(MAX_FRAME_S, (stamp - last) / 1000), last: stamp };
 }
+
+/**
+ * The game's clock (ms) one frame on: `game` plus the frame's dt from clockStep. Everything that
+ * happens in the world is timed on it (the law's timers and grace windows, the indicator's memory,
+ * the police, the phone in use, the replay's ±5 s); the wall clock (performance.now()) is for what
+ * happens outside it (loading waits, request and redraw throttles, log durations).
+ *
+ * The two run together while frames take MAX_FRAME_S or less. A longer frame moves the world only
+ * MAX_FRAME_S, and this clock with it: a slow page (QA's headless Chrome, a phone under load) no
+ * longer has the 合図's 6 s window or a 1.5 s 逆走 grace run out while the car has covered a sixth
+ * of the road (knowledge/game-clock.md).
+ *
+ * Why not count from 0: the clock starts at the wall time of the loop's start, so the values the
+ * game starts with (`-Infinity`, 0) compare against it as they did against performance.now().
+ */
+export function gameStep(game: number, dt: number): number {
+  return game + dt * 1000;
+}

@@ -105,7 +105,13 @@ export type PursuitHost = {
   /** Someone going past posts the roadside stop on Y (main's witnesses and the phones). */
   stopPost(phase: StopPhase): boolean;
   assist(): Assist;
-  /** ms since the left indicator last blinked. */
+  /**
+   * The game's clock (ms, main.ts gameNow), the one update()'s `now` and the records' `at` are on.
+   * Why not performance.now() in here (as before): the chase's times set between frames (a crash,
+   * a red-light run) were then on the wall clock and compared with update()'s game-clock `now`.
+   */
+  now(): number;
+  /** ms since the left indicator last blinked (on the game's clock). */
   leftSignalAgo(): number;
   hazards(): boolean;
   setSignalLeft(): void;
@@ -251,7 +257,7 @@ export class PursuitDirector {
   stop: Stop | null = null;
   story: Story | null = null;
   identify: Identify | null = null;
-  /** performance.now() of the player's last accident. */
+  /** The game's clock (host.now) at the player's last accident. */
   private lastCrashAt = -Infinity;
   private tvClearAt = 0;
 
@@ -309,7 +315,7 @@ export class PursuitDirector {
       radioAt: -Infinity,
       navAt: -Infinity,
       posted: false,
-      startedAt: performance.now(),
+      startedAt: this.host.now(),
       span: newSpan("pursuit", violationSpan(unit.seen.at(-1) ?? {})),
     };
     this.host.chip(true);
@@ -353,7 +359,7 @@ export class PursuitDirector {
   onViolation(record: ViolationRecord): void {
     const c = this.chase;
     if (!c) return;
-    const now = performance.now();
+    const now = this.host.now();
     if (record.kind === "signal") c.lastRedAt = now;
     if (record.kind === "speed") c.lastSpeedingAt = now;
     c.conduct.onViolation(record.kind, c.esc.fleeing);
@@ -364,10 +370,10 @@ export class PursuitDirector {
    * chase, 過失運転致傷 or 危険運転致傷 (自動車運転死傷処罰法 第5条 / 第2条).
    */
   onInjury(kmh: number, injury: ViolationRecord | null, accident: ViolationRecord[]): void {
-    this.lastCrashAt = performance.now();
+    this.lastCrashAt = this.host.now();
     const c = this.chase;
     if (!c) return;
-    const now = performance.now();
+    const now = this.host.now();
     const charge = chaseInjuryCharge({
       fleeing: c.esc.fleeing,
       kmh,
@@ -404,7 +410,7 @@ export class PursuitDirector {
 
   /** Any accident (for telling a crash stop from a stop). */
   onCrash(): void {
-    this.lastCrashAt = performance.now();
+    this.lastCrashAt = this.host.now();
   }
 
   /**
@@ -414,7 +420,7 @@ export class PursuitDirector {
   onUnitHit(unit: PolicePatrol, impact: Omit<UnitImpact, "engaged" | "earlierHits">): void {
     const c = this.chase;
     const engaged = c !== null || (this.stop !== null && this.stop.unit === unit);
-    const now = performance.now();
+    const now = this.host.now();
     const earlier = c ? c.hits.filter((t) => now - t < 60000).length : 0;
     c?.hits.push(now);
     const deliberate = isDeliberateRam({ ...impact, engaged, earlierHits: earlier });
@@ -718,7 +724,7 @@ export class PursuitDirector {
     this.host.navAlert(null);
     this.host.scene.showGuide(null);
     this.host.scene.heli.leave();
-    this.tvClearAt = performance.now() + 60000;
+    this.tvClearAt = this.host.now() + 60000;
     log(
       "pursuit_end",
       { end, fled, stage: c.esc.stage, records: records.length, violationIds: idsOf(records) },
@@ -789,7 +795,7 @@ export class PursuitDirector {
     else unit.hold();
     for (const u of units) if (u !== unit) u.hold();
     if (this.host.hitAndRunPending()) {
-      const hit = this.host.law.book(VIOLATIONS.hitAndRun, performance.now(), 0, undefined, "patrol");
+      const hit = this.host.law.book(VIOLATIONS.hitAndRun, this.host.now(), 0, undefined, "patrol");
       if (hit) records.push(hit);
       this.host.endHitAndRunChase();
     }

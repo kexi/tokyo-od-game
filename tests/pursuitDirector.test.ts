@@ -176,6 +176,7 @@ function world(): World {
       return true;
     },
     assist: () => "easy",
+    now: () => performance.now(),
     leftSignalAgo: () => 0,
     hazards: () => true,
     setSignalLeft: () => undefined,
