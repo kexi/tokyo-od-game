@@ -223,6 +223,18 @@ type Foot = { line: Line; k: number; tau: number; point: Vector3; tangent: Vecto
 /** Where a ring's cross-section line meets one edge of another deck: offset along the line and the point. */
 type Crossing = { u: number; point: Vector3; edge: 1 | -1 };
 
+/**
+ * A place where another run's section changes at a chunk seam (linesNear keeps that ring twice): its
+ * rings k and k + 1 of the line lie at one place, with the edge before and the edge after.
+ */
+export type EdgeStep = { run: string; line: number; k: number };
+
+/**
+ * Which side of an EdgeStep a ring's sides are read on: −1 the edge before it (its segments up to
+ * ring k), +1 the edge after it (from ring k + 1).
+ */
+export type StepSide = { step: EdgeStep; side: -1 | 1 };
+
 /** Plan cross product a × b of (x, z) vectors. */
 const cross = (ax: number, az: number, bx: number, bz: number) => ax * bz - az * bx;
 
@@ -362,12 +374,25 @@ export class DeckMerge {
    * near the foot: the edge is the polyline of that deck's own edge vertices, so a point on it lies
    * on the other deck's face to the float. Null where the line meets no segment there.
    */
-  private crossEdge(ring: DeckRing, foot: Foot, sign: 1 | -1): Crossing | null {
+  private crossEdge(
+    ring: DeckRing,
+    foot: Foot,
+    sign: 1 | -1,
+    side: -1 | 1 | null = null,
+    at = -1,
+  ): Crossing | null {
     const lx = ring.t.z;
     const lz = -ring.t.x;
     const { line } = foot;
     let best: Crossing | null = null;
-    for (let k = Math.max(0, foot.k - 6); k < Math.min(line.rings.length - 1, foot.k + 7); k++) {
+    // On one side of a step (`at`, its ring k): only the segments of that side's edge, the one next
+    // to the step running on past it. Why not every segment there: the line of a ring near the step
+    // meets the edge before it, the step's own piece and the edge after it, and the nearest of the
+    // three (the outer edge) was taken on both sides of it, so the seam left the inner edge a ring
+    // early and a sliver up to the step's width was left uncovered (157249373:0 under 44804029).
+    const first = side === 1 ? Math.max(at + 1, foot.k - 6) : Math.max(0, foot.k - 6);
+    const last = side === -1 ? Math.min(at, foot.k + 7) : Math.min(line.rings.length - 1, foot.k + 7);
+    for (let k = first; k < last; k++) {
       const p = this.edgePoint(line, k, sign);
       const q = this.edgePoint(line, k + 1, sign);
       const ex = q.x - p.x;
@@ -378,11 +403,15 @@ export class DeckMerge {
       const wx = p.x - ring.c.x;
       const wz = p.z - ring.c.z;
       const tau = cross(wx, wz, lx, lz) / den;
-      const isOnSegment = tau >= -1e-9 && tau <= 1 + 1e-9;
+      const isPastStep = (side === -1 && k + 1 === at) || (side === 1 && k === at + 1);
+      const lowest = side === 1 && isPastStep ? -Infinity : -1e-9;
+      const highest = side === -1 && isPastStep ? Infinity : 1 + 1e-9;
+      const isOnSegment = tau >= lowest && tau <= highest;
       if (!isOnSegment) continue;
       const u = cross(wx, wz, ex, ez) / den;
       const isNearer = best === null || Math.abs(u) < Math.abs(best.u);
-      if (isNearer) best = { u, point: p.clone().lerp(q, Math.min(1, Math.max(0, tau))), edge: sign };
+      const share = isPastStep ? tau : Math.min(1, Math.max(0, tau));
+      if (isNearer) best = { u, point: p.clone().lerp(q, share), edge: sign };
     }
     return best;
   }
@@ -394,6 +423,23 @@ export class DeckMerge {
    */
   edgeLines(run: string, sign: 1 | -1, own: ChunkRings): Vector3[][] {
     return this.linesNear(run, own).map((line) => line.rings.map((_, k) => this.edgePoint(line, k, sign)));
+  }
+
+  /**
+   * The places where the other deck's section changes near `own` (EdgeStep): rings k and k + 1 of
+   * one of its lines (edgeLines' order) at one place, from two chunks.
+   */
+  edgeSteps(run: string, own: ChunkRings): EdgeStep[] {
+    const out: EdgeStep[] = [];
+    this.linesNear(run, own).forEach((line, i) => {
+      for (let k = 0; k + 1 < line.rings.length; k++) {
+        const a = line.rings[k].c;
+        const b = line.rings[k + 1].c;
+        const isOnePlace = line.owner[k] !== line.owner[k + 1] && Math.hypot(b.x - a.x, b.z - a.z) < 1e-6;
+        if (isOnePlace) out.push({ run, line: i, k });
+      }
+    });
+    return out;
   }
 
   /**
@@ -419,14 +465,18 @@ export class DeckMerge {
   }
 
   /** What one partner is at a ring: its foot, where its slab crosses this ring's line, its height. */
-  private partnerAt(own: ChunkRings, ring: DeckRing, other: string) {
-    const foot = this.footOf(this.linesNear(other, own), ring.c);
+  private partnerAt(own: ChunkRings, ring: DeckRing, other: string, at: StepSide | null = null) {
+    const lines = this.linesNear(other, own);
+    const foot = this.footOf(lines, ring.c);
     if (!foot) return null;
     const lx = ring.t.z;
     const lz = -ring.t.x;
     const d = (foot.point.x - ring.c.x) * lx + (foot.point.z - ring.c.z) * lz;
-    const left = this.crossEdge(ring, foot, 1);
-    const right = this.crossEdge(ring, foot, -1);
+    const isAtStep = at !== null && at.step.run === other && lines[at.step.line] === foot.line;
+    const side = isAtStep ? at.side : null;
+    const stepK = isAtStep ? at.step.k : -1;
+    const left = this.crossEdge(ring, foot, 1, side, stepK);
+    const right = this.crossEdge(ring, foot, -1, side, stepK);
     // Where the cross-section misses one of its edges (its run ends there) the pair is left apart.
     if (!left || !right) return null;
     const [lo, hi] = left.u < right.u ? [left, right] : [right, left];
@@ -459,14 +509,15 @@ export class DeckMerge {
    * Same-direction partners first, then opposite ones, so the answer does not depend on the order of
    * `decks`: a seam on a same-direction master is kept (an opposite deck beyond it does not move the
    * road's end off the master's face), and the master's road out to its edge is then cut back by a
-   * 分離壁 there. `depth` 1 is a master's own sides, read to see whether it is cut itself.
+   * 分離壁 there. `depth` 1 is a master's own sides, read to see whether it is cut itself. `at` reads
+   * one partner's edges on one side of a step in its section (a cut deck's two rings there).
    */
-  sides(own: ChunkRings, ring: DeckRing, depth = 0): RingSides {
+  sides(own: ChunkRings, ring: DeckRing, depth = 0, at: StepSide | null = null): RingSides {
     const run = own.chunk.run;
     const out: RingSides = { left: openSide(own), right: openSide(own) };
     const partners = this.index
       .partnersAt(own.chunk, ring.frame.s)
-      .map((other) => this.partnerAt(own, ring, other))
+      .map((other) => this.partnerAt(own, ring, other, at))
       .filter((p) => p !== null)
       .toSorted((a, b) => Number(b.isSameWay) - Number(a.isSameWay));
     for (const p of partners) {

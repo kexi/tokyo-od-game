@@ -25,6 +25,7 @@ import {
   MERGE_MAX_DZ,
   MERGE_RAMP,
   MERGE_SKIRT,
+  ringPoint,
 } from "../src/world/expresswayMerge";
 import { framesOf, probeGenerated } from "../scripts/expresswaySeams";
 import { frameAt, surfaceHeight } from "../src/expressway/profile";
@@ -1009,6 +1010,122 @@ describe("a seam sliding off the master's face inside one ring interval (S6 PR 5
     expect(cuts[0].s).toBeLessThan(50);
     expect(cuts[0].alongStep).not.toBeNull();
     expect(cuts[0].alongStep!).toBeLessThanOrEqual(LET_GO_MAX_STEP_M);
+  });
+});
+
+/**
+ * M runs east (plane x) on two chunks meeting at x = 100, its slab edge 4.75 m out on M:0 and
+ * `widen` / 2 farther on M:1 (wider shoulders, so its lanes stay put); C, a ramp ending on M, runs
+ * alongside 5.5 m to the north (M's left), 3 cm above it, its slab over M's from 2.625 m out: C is
+ * cut at M's left edge all along. C's stations (x = 3, 13, …) never meet M's (x = 0, 10, …), and
+ * C runs parallel to M, so M's two edge vertices at the step lie on one line of C's.
+ */
+function alongside(widen: number): { chunks: XwChunk[]; runs: XwRunSummary[]; c: XwChunk } {
+  const z = (x: number) => 10 + 0.01 * x;
+  const m0 = chunkOf("M:0", "M", 0, 100, 10, (s) => [s, 0, z(s), 0.01]);
+  const m1 = chunkOf("M:1", "M", 100, 200, 10, (s) => [s, 0, z(s), 0.01]);
+  m1.shoulderL += widen / 2;
+  m1.shoulderR += widen / 2;
+  m0.next = "M:1";
+  m1.prev = "M:0";
+  const c = chunkOf("C:0", "C", 0, 190, 10, (s) => [s + 3, 5.5, z(s + 3) + RAMP_DZ, 0.01]);
+  c.cls = "ramp";
+  c.lanes = 1;
+  c.shoulderL = 1;
+  c.shoulderR = 0.5;
+  m0.decks = [{ with: "C", relation: "same", s0: 0, s1: 100 }];
+  m1.decks = [{ with: "C", relation: "same", s0: 100, s1: 200 }];
+  c.decks = [{ with: "M", relation: "same", s0: 0, s1: 190 }];
+  const summary = (id: string, cls: "expressway" | "ramp", chunks: string[], end: object) =>
+    ({
+      id,
+      chain: id,
+      cls,
+      ref: null,
+      lengthM: 0,
+      V: 60,
+      tagV: 60,
+      planV: 60,
+      minRadiusM: 0,
+      maxShiftM: 0,
+      steps: [],
+      start: { kind: "open" },
+      end,
+      chunks,
+      structure: null,
+    }) as XwRunSummary;
+  return {
+    chunks: [m0, m1, c],
+    c,
+    runs: [
+      summary("M", "expressway", ["M:0", "M:1"], { kind: "open" }),
+      summary("C", "ramp", ["C:0"], { kind: "junction", parent: "M", parentS: 190 }),
+    ],
+  };
+}
+
+describe("a cut deck at its master's width step (A0: two rings at one place, 157249373:0 under 44804029)", () => {
+  const local = (x: number, y: number, h: number) => {
+    const [lon, lat] = plane.toLonLat(x, y);
+    return frame.toLocal(lat, lon, h + N);
+  };
+  /** M's left slab edge on M:0 (M:1's is 0.25 m farther out). */
+  const edge = sectionWidth(alongside(0).chunks[0]) / 2 + PARAPET_WIDTH.value;
+
+  it("covers the strip between M's edge and C's seam on both sides of the step: every ray every 0.05 m meets a face at M's height", () => {
+    const net = alongside(0.5);
+    const { world } = mergedWorld(net.chunks, indexOf(net.chunks, net.runs));
+    const misses: string[] = [];
+    let checked = 0;
+    for (let x = 90.025; x < 110; x += 0.05) {
+      // From inside M's edge before the step to past its edge after it, off the edges themselves
+      // (a ray exactly along a triangle's edge may slip between them).
+      for (let u = edge - 0.075; u <= edge + 0.3; u += 0.05) {
+        const p = local(x, u, 10 + 0.01 * x);
+        const hit = down(world, p.x, p.y + 0.5, p.z);
+        const isOnFace = hit !== null && Math.abs(hit - p.y) <= 0.05;
+        if (!isOnFace)
+          misses.push(`x ${x.toFixed(3)} u ${u.toFixed(3)} ${hit === null ? "-" : (hit - p.y).toFixed(3)}`);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(3000);
+    expect(misses).toEqual([]);
+  });
+
+  it("puts two of C's rings at the step, the first's seam on M's edge before it and the second's on the edge after", () => {
+    const net = alongside(0.5);
+    const b = built(net.c, frame, { index: indexOf(net.chunks, net.runs) });
+    // M's edge vertices at the step: its two chunks' rings there, at their own edges.
+    const [m0, m1] = net.chunks.map((ch) => chunkRings(ch, place(frame)));
+    const before = ringPoint(m0.rings[m0.rings.length - 1], m0.edge, 0);
+    const after = ringPoint(m1.rings[0], m1.edge, 0);
+    expect(m1.edge - m0.edge).toBeCloseTo(0.25, 9);
+    const atStep = b.rings
+      .map((r, i) => ({ r, i }))
+      .filter(
+        ({ r }) => Math.hypot(r.c.x - before.x, r.c.z - before.z) < 6 && Math.abs(r.c.x - before.x) < 0.01,
+      );
+    expect(atStep.length).toBe(2);
+    const [first, second] = atStep;
+    expect(second.i).toBe(first.i + 1);
+    expect(second.r).toBe(first.r);
+    const plan = (p: { x: number; z: number } | null, q: Vector3) =>
+      p ? Math.hypot(p.x - q.x, p.z - q.z) : Infinity;
+    expect(plan(b.sides[first.i].right.seam, before)).toBeLessThanOrEqual(0.001);
+    expect(plan(b.sides[second.i].right.seam, after)).toBeLessThanOrEqual(0.001);
+  });
+
+  it("leaves C's rings where they were before A0 where M keeps its width: one through each of M's edge vertices, none twice", () => {
+    const net = alongside(0);
+    const b = built(net.c, frame, { index: indexOf(net.chunks, net.runs) });
+    // Plane x of each ring (C runs along x, 3 m behind its own s), to the millimetre.
+    const xs = b.rings.map((r) => Math.round((r.frame.s + 3) * 1000) / 1000);
+    // Before A0 (main 4b89b9a, checked): C's stations and one ring through each of M's edge
+    // vertices along C, in order.
+    const stations = Array.from({ length: 20 }, (_, k) => 3 + 10 * k);
+    const vertices = Array.from({ length: 19 }, (_, k) => 10 * (k + 1));
+    expect(xs).toEqual([...stations, ...vertices].toSorted((p, q) => p - q));
   });
 });
 
