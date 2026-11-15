@@ -50,6 +50,7 @@ import {
   chunkRings,
   type DeckRing,
   DeckMerge,
+  type EdgeStep,
   type GeoToLocal,
   liftAt,
   MERGE_RAMP,
@@ -1019,6 +1020,15 @@ function* refineRings(
     }
     return lines;
   };
+  const stepCache = new Map<string, EdgeStep[]>();
+  const stepsOf = (run: string) => {
+    let steps = stepCache.get(run);
+    if (!steps) {
+      steps = merge.edgeSteps(run, own);
+      stepCache.set(run, steps);
+    }
+    return steps;
+  };
   for (let i = 0; i + 1 < base.length; i++) {
     // A slice per few intervals: a 浜崎橋-sized JCT bisects many events in one chunk.
     const checkpoint = i % 6 === 5;
@@ -1056,18 +1066,52 @@ function* refineRings(
     const ex = b.c.x - a.c.x;
     const ez = b.c.z - a.c.z;
     const len2 = ex * ex + ez * ez;
+    /** τ of a point projected on the interval's chord, or null outside it (within 1 cm of a or b). */
+    const tauOf = (e: Vector3) => {
+      const isAfterA = (e.x - a.c.x) * a.t.x + (e.z - a.c.z) * a.t.z > 0.01;
+      const isBeforeB = (e.x - b.c.x) * b.t.x + (e.z - b.c.z) * b.t.z < -0.01;
+      if (!isAfterA || !isBeforeB || len2 < 1e-9) return null;
+      const tau = ((e.x - a.c.x) * ex + (e.z - a.c.z) * ez) / len2;
+      const isInside = tau > 1e-3 && tau < 1 - 1e-3;
+      return isInside ? tau : null;
+    };
     for (const { run, edge } of masters.values()) {
-      for (const line of edgesOf(run, edge))
-        for (const e of line) {
-          const isAfterA = (e.x - a.c.x) * a.t.x + (e.z - a.c.z) * a.t.z > 0.01;
-          const isBeforeB = (e.x - b.c.x) * b.t.x + (e.z - b.c.z) * b.t.z < -0.01;
-          if (!isAfterA || !isBeforeB || len2 < 1e-9) continue;
-          const tau = ((e.x - a.c.x) * ex + (e.z - a.c.z) * ez) / len2;
-          const isInside = tau > 1e-3 && tau < 1 - 1e-3;
-          if (!isInside) continue;
+      const lines = edgesOf(run, edge);
+      const steps = stepsOf(run);
+      lines.forEach((line, li) =>
+        line.forEach((e, k) => {
+          const stepHere = steps.find((x) => x.line === li && x.k === k);
+          const stepBefore = steps.find((x) => x.line === li && x.k + 1 === k);
+          const tau = tauOf(e);
+          // Where the master's section changes (its edge vertex twice, the edge before and after),
+          // two rings at one place, through whichever vertex comes first along this deck: its seam
+          // on the edge before, then on the edge after (each read through its own vertex where that
+          // one comes later, so both seams lie on the vertices). Why not one ring through each
+          // vertex as elsewhere: the two lie within millimetres along this deck, either may come
+          // first, and each ring's line meets both edges; the nearer to this deck's centre was taken
+          // on both, and the seam ran slanted from the last ring on the edge before to the step
+          // (157249373:0 under 44804029, s 211.6–212.7, up to 0.25 m uncovered). Why not at the
+          // vertex before always: where the vertex after comes 0.15 m earlier (a nose, 32898373:0
+          // under 44351599) the seam went back from the edge after to the vertex before.
+          const after = stepHere ? tauOf(line[k + 1]) : null;
+          const isPair = stepHere !== undefined && tau !== null && after !== null;
+          if (isPair) {
+            const tauFirst = Math.min(tau, after);
+            const ring = ringBetween(a, b, tauFirst, true);
+            const isBeforeFirst = tau <= after;
+            const beyond = isBeforeFirst ? ringBetween(a, b, after, true) : ring;
+            const before = merge.sides(own, ring, 0, { step: stepHere, side: -1 });
+            const past = merge.sides(own, beyond, 0, { step: stepHere, side: 1 });
+            extra.push({ tau: tauFirst - 1e-9, ring, sides: before, isClosing: false });
+            extra.push({ tau: tauFirst + 1e-9, ring, sides: past, isClosing: false });
+            return;
+          }
+          const isPairsSecond = stepBefore !== undefined && tauOf(line[k - 1]) !== null && tau !== null;
+          if (isPairsSecond || tau === null) return;
           const ring = ringBetween(a, b, tau, true);
           extra.push({ tau, ring, sides: merge.sides(own, ring), isClosing: false });
-        }
+        }),
+      );
     }
     const closes = isOpen(sa) !== isOpen(sb) && (hasSeam(sa) || hasSeam(sb));
     if (closes) {
