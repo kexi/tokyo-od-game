@@ -320,7 +320,10 @@ describe("the world's files read no clock of their own (source check)", () => {
   });
 
   it("call neither performance.now() nor Date.now(), but for the reads listed with a reason", () => {
-    const reads = WORLD_FILES.map((p) => [p, (files.get(p) ?? "").match(CLOCK_READ)?.length ?? 0] as const)
+    // The signals' plans and runs (src/signals/) too, whatever files come there.
+    const signals = [...files.keys()].filter((p) => p.startsWith("src/signals/"));
+    const reads = [...WORLD_FILES, ...signals]
+      .map((p) => [p, (files.get(p) ?? "").match(CLOCK_READ)?.length ?? 0] as const)
       .filter(([, n]) => n > 0)
       .map(([p, n]) => [p, n]);
     const allowed = Object.entries(WALL_READS).map(([p, r]) => [p, r.calls]);

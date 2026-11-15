@@ -50,7 +50,7 @@ export class FrameGate {
 }
 
 /**
- * Items released at their due time (any clock in ms; the game passes performance.now()), at most
+ * Items released at their due time (any clock in ms; the game passes its game clock), at most
  * one per take(), and never before one queued earlier: a later item with a shorter delay waits for
  * those ahead of it, so the player sees them in the order they happened.
  */
