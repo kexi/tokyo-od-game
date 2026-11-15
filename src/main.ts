@@ -4572,6 +4572,80 @@ async function main(): Promise<void> {
     toast(message, "#3cd17a");
     log("autopilot_off", {});
   };
+  /** Seconds the autopilot's car has stood (game time), and whether that stand was logged. */
+  let autopilotStillS = 0;
+  let isAutopilotStillLogged = false;
+  const STILL_LOG_S = 3;
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  /** autopilot_stop_trace: what the driver saw and the vehicle just ahead (logEvents.ts). */
+  const traceAutopilot = (phase: "still" | "movedOff" | "accident", driver: AutoDriver) => {
+    const pos = vehicle.position();
+    const yaw = vehicle.yaw();
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    let ahead: { along: number; across: number; speedMs: number; headingDeg: number; kind: string } | null =
+      null;
+    for (const o of taxiWorld()?.vehicles ?? []) {
+      const dx = o.position.x - pos.x;
+      const dz = o.position.z - pos.z;
+      const along = dx * fx + dz * fz;
+      const across = dx * fz - dz * fx;
+      const isAhead = along > 1 && along < 30 && Math.abs(across) < 3;
+      if (!isAhead || (ahead && ahead.along <= along)) continue;
+      const turn = o.heading === undefined ? 0 : ((o.heading - yaw + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+      ahead = {
+        along: round2(along),
+        across: round2(across),
+        speedMs: round2(o.speed ?? 0),
+        headingDeg: Math.round((turn * 180) / Math.PI),
+        kind: o.kind,
+      };
+    }
+    const w = driver.why;
+    const finite = (v: number | null) => (v === null || !Number.isFinite(v) ? null : round2(v));
+    const why = w && {
+      ...w,
+      want: round2(w.want),
+      cruise: round2(w.cruise),
+      block: finite(w.block),
+      stop: w.stop && { ...w.stop, dist: round2(w.stop.dist) },
+      front: w.front && {
+        ...w.front,
+        gap: round2(w.front.gap),
+        along: round2(w.front.along),
+        stoppedFor: finite(w.front.stoppedFor),
+      },
+      follow: finite(w.follow),
+      junction: finite(w.junction),
+      merge: finite(w.merge),
+    };
+    const g = frame.toGeodetic(pos);
+    log("autopilot_stop_trace", {
+      phase,
+      stillS: round2(autopilotStillS),
+      lat: Number(g.lat.toFixed(6)),
+      lon: Number(g.lon.toFixed(6)),
+      speedMs: round2(vehicle.forwardSpeed()),
+      why,
+      ahead,
+    });
+  };
+  /** Logs a stand of the autopilot's car once it is long, and its moving off after it. */
+  const noteAutopilotStill = (dt: number, driver: AutoDriver) => {
+    const isStill = Math.abs(vehicle.forwardSpeed()) < 0.3;
+    if (isStill) {
+      autopilotStillS += dt;
+      const isLong = autopilotStillS >= STILL_LOG_S;
+      if (isLong && !isAutopilotStillLogged) traceAutopilot("still", driver);
+      isAutopilotStillLogged ||= isLong;
+      return;
+    }
+    const isMoving = Math.abs(vehicle.forwardSpeed()) > 1;
+    if (!isMoving) return;
+    if (isAutopilotStillLogged) traceAutopilot("movedOff", driver);
+    autopilotStillS = 0;
+    isAutopilotStillLogged = false;
+  };
   const updateAutopilot = (dt: number) => {
     const ap = autopilot;
     if (!ap || mode !== "car") return;
@@ -4580,6 +4654,7 @@ async function main(): Promise<void> {
     // The driver leaves its own car out of what it sees (anything within 1 m of itself).
     const pose = { position: vehicle.position(), yaw: vehicle.yaw(), speed: vehicle.forwardSpeed() };
     const { input, done, gaveUp } = ap.driver.update(dt, tw, pose);
+    noteAutopilotStill(dt, ap.driver);
     ap.input = input;
     vehicle.lightOverride = {
       brake: ap.driver.braking,
@@ -5436,6 +5511,7 @@ async function main(): Promise<void> {
   ) => {
     social.note("crash", env.now().getTime());
     pursuitDirector.onCrash();
+    if (autopilot) traceAutopilot("accident", autopilot.driver);
     const now = gameNow();
     lastCrashAt = now;
     const careless = book(VIOLATIONS.safeDriving, now, 3000);

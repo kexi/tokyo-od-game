@@ -297,11 +297,23 @@ const lawEvents = (during: (e: string) => string[]) => ({
   accident: during("accident"),
   violationCited: during("violation_cited"),
   arrest: during("story_begin").filter((l) => l.includes(`"kind":"arrest"`)),
+  // Why the autopilot stood, moved off or crashed (main.ts autopilot_stop_trace).
+  stopTraces: during("autopilot_stop_trace"),
 });
 
 let exit = 0;
 for (const r of routes) {
-  const attempts: Array<{ invalid: string | null }> = [];
+  /**
+   * Every try, the invalid ones too: what each saw of the law and of the stops. Why not keep the
+   * counted try's alone (as before): a try made invalid by the autopilot's own accident was
+   * replaced by the next, and the accident was hidden behind the retry (D1, 汐留出口).
+   */
+  const attempts: Array<{
+    invalid: string | null;
+    failures: string[];
+    stalled: string[];
+    lawEvents: unknown;
+  }> = [];
   /** One try's result (a drive's, or an invalid placeholder for a try that threw). */
   type TryResult = {
     invalid: string | null;
@@ -335,7 +347,12 @@ for (const r of routes) {
         holds: [] as string[],
       }),
     );
-    attempts.push({ invalid: result.invalid });
+    attempts.push({
+      invalid: result.invalid,
+      failures: result.failures,
+      stalled: result.stalled,
+      lawEvents: result.lawEvents,
+    });
     const counts = result.invalid === null;
     if (counts) break;
   }

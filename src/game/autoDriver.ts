@@ -167,6 +167,30 @@ const SWING_OUT = 14;
 /** Where the car actually is: chassis position, heading (atan2(x, z)) and forward speed (m/s). */
 export type CarPose = { position: Vector3; yaw: number; speed: number };
 
+/** A limit that applied, or null for none (Infinity), for DriveWhy. */
+const finiteOrNull = (v: number | null) => (v !== null && Number.isFinite(v) ? v : null);
+
+/**
+ * What set the wanted speed (m/s) at the last drive look, limit by limit (null: none applied):
+ * the stretch's own (`cruise`), the end of the route, the stop line or obstacle ahead
+ * (`block`, m), the car in front (第26条), the junctions (第36条・第37条・第50条) and the merge
+ * (第75条の6). Read for the log (main.ts autopilot_stop_trace), never for driving.
+ */
+export type DriveWhy = {
+  want: number;
+  cruise: number;
+  block: number | null;
+  blockBy: "stop" | "obstacle" | null;
+  stop: { kind: string; dist: number; action: string; onward: boolean } | null;
+  front: { gap: number; along: number; stoppedFor: number; kind: string } | null;
+  verdict: Verdict["kind"];
+  follow: number | null;
+  junction: number | null;
+  merge: number | null;
+  yieldingAtMerge: boolean;
+  pass: string | null;
+};
+
 const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
 /** A lane change eased at 1 m per 10 m (drivePath LANE_SLOPE) takes about this long to cross a lane. */
@@ -301,6 +325,23 @@ export class AutoDriver {
   ignoresMergeTraffic = false;
   /** Why the car was off its lane at the last look (null: on it). Read by QA scripts from the console. */
   lostWhy: LostWhy | null = null;
+  /**
+   * What set the speed at the last drive look: each limit and what it came from. main.ts logs it
+   * when the car has stood, moves off, or has an accident (autopilot_stop_trace). Why not log from
+   * in here: the driver does not know when the car has stood long, nor of the accident.
+   */
+  why: DriveWhy | null = null;
+  /** The parts of `why` that blockAhead() and traffic() see, gathered for update(). */
+  private looked: Pick<DriveWhy, "stop" | "blockBy" | "front" | "verdict" | "follow" | "junction" | "merge"> =
+    {
+      stop: null,
+      blockBy: null,
+      front: null,
+      verdict: "clear",
+      follow: null,
+      junction: null,
+      merge: null,
+    };
 
   get remaining(): number {
     return this.route ? this.route.length - this.at : 0;
@@ -517,14 +558,25 @@ export class AutoDriver {
     }
     const remaining = route.length - this.at;
     const isAtEnd = remaining < 1;
-    let want = isAtEnd ? 0 : this.cruise(route);
+    const cruise = isAtEnd ? 0 : this.cruise(route);
     // Ease to a stop at the kerb at the end of the route.
-    want = Math.min(want, Math.sqrt(2 * BRAKE * 0.6 * Math.max(0, remaining - 0.5)));
+    let want = Math.min(cruise, Math.sqrt(2 * BRAKE * 0.6 * Math.max(0, remaining - 0.5)));
     const block = this.blockAhead(route, world, dt);
     if (block < Infinity) want = Math.min(want, Math.sqrt(2 * BRAKE * 0.7 * Math.max(0, block - STOP_GAP)));
     want = Math.min(want, this.traffic(route, world, dt));
     // Through a red as an emergency vehicle: slowly enough to stop for anyone crossing.
     if (this.creep) want = Math.min(want, 15 / 3.6);
+    this.why = {
+      ...this.looked,
+      want,
+      cruise,
+      block: finiteOrNull(block),
+      follow: finiteOrNull(this.looked.follow),
+      junction: finiteOrNull(this.looked.junction),
+      merge: finiteOrNull(this.looked.merge),
+      yieldingAtMerge: this.yieldingAtMerge,
+      pass: this.pass?.phase ?? null,
+    };
     this.creep = false;
     const steer = this.steerFor(route, dt, world);
     // 発進: from a standstill out into the traffic, 合図 3 s first (進路を右方に変える, 施行令
@@ -602,7 +654,10 @@ export class AutoDriver {
     const k = this.stepIndex(route);
     const st = route.steps[k];
     const travel = route.stepEntry[k] + (this.at - route.stepStart[k]);
-    const next = world.control.nextStop(st.seg, st.dir, travel) ?? this.signalOnward(route, k, world);
+    const here = world.control.nextStop(st.seg, st.dir, travel);
+    const next = here ?? this.signalOnward(route, k, world);
+    this.looked.stop = null;
+    this.looked.blockBy = null;
     if (next) {
       const { approach, dist } = next;
       const canStop = dist > (this.speed * this.speed) / (2 * BRAKE);
@@ -629,7 +684,10 @@ export class AutoDriver {
           this.waited = 0;
         } else block = dist;
       }
+      this.looked.stop = { kind: approach.kind, dist, action, onward: here === null };
+      if (block < Infinity) this.looked.blockBy = "stop";
     }
+    const stopBlock = block;
     const dir = this.heading();
     for (const o of world.obstacles) {
       const dx = o.x - this.position.x;
@@ -640,6 +698,8 @@ export class AutoDriver {
       const lateral = Math.abs(dx * dir.z - dz * dir.x);
       if (ahead > 0.5 && ahead < 40 && lateral < 1.7) block = Math.min(block, ahead - 2.4);
     }
+    const isObstacleNearer = block < stopBlock;
+    if (isObstacleNearer) this.looked.blockBy = "obstacle";
     return block;
   }
 
@@ -715,15 +775,24 @@ export class AutoDriver {
     // 第26条: behind whatever is in front of the car now (in its lane, or beside the line it passes).
     const band = this.pass ? 1.95 : IN_LANE;
     const front = vehicles.find((s) => s.at > this.at + 0.5 && Math.abs(s.lateral - own) < band);
+    this.looked.front = null;
+    this.looked.follow = null;
+    this.looked.verdict = verdict.kind;
     if (front) {
       const gap = front.at - front.half - (this.at + OWN_HALF);
       this.frontGap = gap;
       const isPassing = this.pass?.phase !== "signal" && (this.pass?.chain.has(front.o) ?? false);
       const standstill = isPassing ? 1 : verdict.kind === "queue" || front.along > 1 ? QUEUE_GAP : PASS_GAP;
-      cap = Math.min(cap, followSpeed(gap - standstill));
+      const follow = followSpeed(gap - standstill);
+      cap = Math.min(cap, follow);
+      this.looked.front = { gap, along: front.along, stoppedFor: front.stoppedFor, kind: front.o.kind };
+      this.looked.follow = follow;
     }
-    cap = Math.min(cap, this.junctions(route, world, vehicles));
-    cap = Math.min(cap, this.merge(route, world));
+    const junction = this.junctions(route, world, vehicles);
+    const merge = this.merge(route, world);
+    this.looked.junction = junction;
+    this.looked.merge = merge;
+    cap = Math.min(cap, junction, merge);
     // Road users on this street (not on one alongside, within the 12 m the look takes in).
     const width = route.steps[this.stepIndex(route)].seg.line.width;
     const onStreet = seen.filter((s) => Math.abs(s.lateral) < width);

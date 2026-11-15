@@ -646,6 +646,54 @@ export const LOG_EVENTS = {
   autopilot_on: info({ cruising: z.boolean(), routeM: z.number() }),
   autopilot_off: info({}),
   autopilot_gave_up: info({ why: z.string() }),
+  /**
+   * Why the autopilot stood or went (knowledge/autopilot-recovery.md「汐留出口の連結路の足」):
+   * `still` once it has stood STILL_LOG_S, `movedOff` as it moves off after that, `accident` at a
+   * crash while it drives. `why` is AutoDriver.why (each speed limit, m/s, and what set it; null:
+   * none applied); `ahead` the nearest vehicle in front within 30 m (m along and across the car's
+   * heading, its speed m/s, its heading against the car's in degrees).
+   */
+  autopilot_stop_trace: info({
+    phase: z.enum(["still", "movedOff", "accident"]),
+    stillS: z.number(),
+    lat: z.number(),
+    lon: z.number(),
+    speedMs: z.number(),
+    why: z
+      .object({
+        want: z.number(),
+        cruise: z.number(),
+        block: z.number().nullable(),
+        blockBy: z.enum(["stop", "obstacle"]).nullable(),
+        stop: z
+          .object({ kind: z.string(), dist: z.number(), action: z.string(), onward: z.boolean() })
+          .nullable(),
+        front: z
+          .object({
+            gap: z.number(),
+            along: z.number(),
+            stoppedFor: z.number().nullable(),
+            kind: z.string(),
+          })
+          .nullable(),
+        verdict: z.string(),
+        follow: z.number().nullable(),
+        junction: z.number().nullable(),
+        merge: z.number().nullable(),
+        yieldingAtMerge: z.boolean(),
+        pass: z.string().nullable(),
+      })
+      .nullable(),
+    ahead: z
+      .object({
+        along: z.number(),
+        across: z.number(),
+        speedMs: z.number(),
+        headingDeg: z.number(),
+        kind: z.string(),
+      })
+      .nullable(),
+  }),
   taxi_no_route: info({ to: z.string() }),
   taxi_ride: info({ fareYen: z.number(), distanceM: z.number(), slowS: z.number() }),
   /** Span `warp-<n>`: from the choice to the car standing in the loaded town (warp_landed). */
