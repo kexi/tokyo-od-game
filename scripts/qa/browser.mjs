@@ -211,9 +211,11 @@ export async function launch(
     // A command that cannot run (a wrong CHROME) fails at once: no page will come.
     const run = { hasFailed: false };
     chrome.once("error", () => (run.hasFailed = true));
+    // A Chrome that ended already (crashed at once, a bad argument) will offer no page either.
+    const hasEnded = () => run.hasFailed || chrome.exitCode !== null || chrome.signalCode !== null;
     let targets = [];
     const deadline = Date.now() + startMs;
-    while (!run.hasFailed && Date.now() < deadline && !targets.some((t) => t.type === "page")) {
+    while (!hasEnded() && Date.now() < deadline && !targets.some((t) => t.type === "page")) {
       targets = await fetch(`http://127.0.0.1:${port}/json`)
         .then((r) => r.json())
         .catch(() => []);
@@ -221,13 +223,14 @@ export async function launch(
     }
     const page = targets.find((t) => t.type === "page");
     if (page) return { chrome, profile, page };
-    const hasExited = run.hasFailed || chrome.exitCode !== null || chrome.signalCode !== null;
-    if (!hasExited) {
+    if (!hasEnded()) {
       chrome.kill("SIGKILL");
       await exited;
     }
     live.delete(chrome);
-    rmSync(profile, { recursive: true, force: true });
+    // Retried: a killed Chrome's helpers (GPU, renderer) outlive it a moment and may still write to
+    // the profile; a removal that threw ENOTEMPTY would fail launch() with another error, untried.
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     return null;
   };
   // Once more after a Chrome that did not start in time (a machine busy with other runs).

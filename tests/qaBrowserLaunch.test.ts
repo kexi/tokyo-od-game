@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { freePort } from "../scripts/qa/ports";
 
 /**
  * scripts/qa/browser.mjs launch() when Chrome does not offer its page. What this guarantees: launch
@@ -28,9 +29,6 @@ const isAlive = (pid: number) => {
   }
 };
 
-/** A port nothing listens on (launch refuses a port in use). */
-const port = () => 40_000 + Math.floor(Math.random() * 20_000);
-
 const dirs: string[] = [];
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -41,7 +39,7 @@ describe("QA's launch when Chrome does not start (scripts/qa/browser.mjs)", () =
   it("fails at once for a command that cannot run", async () => {
     const launch = await launchWith("/nonexistent/chrome");
     const started = Date.now();
-    await expect(launch("about:blank", { port: port() })).rejects.toThrow("Chrome did not start");
+    await expect(launch("about:blank", { port: await freePort() })).rejects.toThrow("Chrome did not start");
     expect(Date.now() - started).toBeLessThan(5000);
   });
 
@@ -54,7 +52,7 @@ describe("QA's launch when Chrome does not start (scripts/qa/browser.mjs)", () =
     writeFileSync(fake, `#!/bin/sh\necho $$ >> "${pids}"\nexec sleep 600\n`);
     chmodSync(fake, 0o755);
     const launch = await launchWith(fake);
-    await expect(launch("about:blank", { port: port(), startMs: 600 })).rejects.toThrow(
+    await expect(launch("about:blank", { port: await freePort(), startMs: 600 })).rejects.toThrow(
       "Chrome did not start",
     );
     const started = readFileSync(pids, "utf8").trim().split("\n").map(Number);

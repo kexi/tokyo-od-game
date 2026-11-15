@@ -366,5 +366,6 @@ for (const r of routes) {
 }
 // Ends here even if a child is still running (browser.mjs's reaper kills its Chromes at the exit).
 // Why not only set process.exitCode (as before): a child left running kept the process alive after
-// its results were written, and a lane of drives waited on it for good.
+// its results were written, and a lane of drives waited on it for good. process.exit can cut a long
+// stdout into a pipe short (128 KiB seen); here it is one line per route, and the results are files.
 process.exit(exit);
