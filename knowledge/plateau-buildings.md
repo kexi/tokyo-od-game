@@ -39,8 +39,16 @@ sources:
     resource: just measure-buildings-memory（scripts/qa/memory-buildings.ts）を main（f54368e）と X1 で、--route に 蒲田→多摩川→川崎駅→戻る・赤羽→荒川→川口駅→戻る を渡し、300 m ずつ 10 秒ごと、600 秒 × 2 回、視界 far・スマホ既定・スマホ full（4 本を同時に、2026-11-15）
     title: 県境をまたぐワープのメモリ
     author: claude-opus-5-5
+  - id: b1-timeline
+    resource: scripts/qa/timeline-buildings.ts（just measure-buildings-timeline）を main（e678027）と B1 で、地点 a・e・f × 視界 far・near × 2 回、スマホ既定の a × 2 回、東京駅からのワープ 3 本（新宿・川崎駅・川口駅）。.qa/timeline-buildings/{before,after}-*.json（2026-11-16）
+    title: B1 の前後の読み込みの時系列
+    author: claude-opus-5-5
+  - id: b1-sets
+    resource: scripts/qa/perf-buildings.ts を main と B1 で地点 a・d・視界 far、3 回ずつ（b1sets-*）、要求元と表示の集合つきで 1 回ずつ（b1d-main・b1d-b1）、main をタイトルで B1 の延び（a 6.8 秒・d 13.0 秒）だけ待たせて 1 回ずつ（--title-wait、b1d-mainwait-*）（2026-11-16）
+    title: B1 の読むタイルと表示の集合
+    author: claude-opus-5-5
   - id: x1-timeline
-    resource: セッションの一時フォルダ（scratchpad、消える場所）の x1/bin/timeline.mts（ナビゲーションから start() の 40 秒後まで、100 ms ごとに両 renderer の loadProgress・isLoading・stats・processNodeQueue・表示数、debug.settled()、load-model・dispose-model の時刻と市区町村コード）を X1 の地点 a・e・f で 2 回ずつ。仕組みは node_modules/3d-tiles-renderer 0.5.3 の TilesRendererBase.js・PriorityQueue.js を読んで確かめた（2026-11-15）。この道具は B1 で scripts/qa/ に入れる
+    resource: セッションの一時フォルダ（scratchpad、消える場所）の x1/bin/timeline.mts（ナビゲーションから start() の 40 秒後まで、100 ms ごとに両 renderer の loadProgress・isLoading・stats・processNodeQueue・表示数、debug.settled()、load-model・dispose-model の時刻と市区町村コード）を X1 の地点 a・e・f で 2 回ずつ。仕組みは node_modules/3d-tiles-renderer 0.5.3 の TilesRendererBase.js・PriorityQueue.js を読んで確かめた（2026-11-15）。この道具は B1 で scripts/qa/timeline-buildings.ts に入れた（出典 b1-timeline）
     title: 読み込みの時系列
     author: claude-opus-5-5
   - id: x1-e-northwest
@@ -354,8 +362,33 @@ sources:
 - 仕組み（3d-tiles-renderer 0.5.3 のコードで確かめた）: ダウンロードの待ち行列の仕事は `fetch` の応答のヘッダーが届いた時点で終わり、本体（`arrayBuffer()`）は待ち行列の外で読まれる。本体の受信中に `downloadQueue.running` が false になり、`isLoading = false`・`inCacheSinceLoad = 0` となって `loadProgress` は分母 0 で 1.0 を返す。`stats.downloading` は本体の到着まで減らない（TilesRendererBase.js 393〜399・925〜932・1661〜1720 行）。
 - 読み込み画面が閉じた時点（state が ready）で、自車から 300 m 以内の近景タイルは最終の a 0/2・e 2/7・f 1/5 しか出ていなかった。東京駅でも起きている、X1 の前からの不具合。
 - 門のある県が遅れて読み始めることは無かった（最初の近景タイル: e は神奈川 1.85〜1.89 秒・東京 1.85〜2.08 秒、f は埼玉 2.00〜2.03 秒・東京 1.85〜1.89 秒）。
-- X1 では直さない（設計の判断）。`Buildings.loadProgress()`・`farLoadProgress()` を `stats` の `queued + downloading + parsing` から出す直しを、main への別の PR（B1）にする。ワープの着地と全部の視点表の撮影にも同じ穴がある。
+- X1 では直さず、main への別の PR（B1）で直した（下の「直した形」）。ワープの着地と全部の視点表の撮影にも同じ穴があった。
 - X1 の撮影は、`scripts/qa/quietWatch.ts` の `waitQuiet` で待つ: 近景・遠景とも `load-model`・`dispose-model` が無く、`queued + downloading + parsing` が 0 の状態が 5 秒続くこと（視点表の `defaults.quietS`、`buildings-outside` だけ 5、ほかは 0）。`perf-buildings.ts` も同じ関数で待つ。
+
+### 直した形（B1、2026-11-16）
+
+- **数えるもの**: `Buildings.loadProgress()`・`farLoadProgress()` は、ライブラリの `loadProgress` を読まず、`src/world/loadProgress.ts` の `stepLoad` で数える。残りは各 renderer の `stats.queued + downloading + parsing`。読み終えた数は `load-model`・`load-tileset`・`load-error` の数。読み込みの区切りは、残りが 0 から増えた所から始まる（ワープの前の場所で持っているタイルは数えない）。残りが 1 件でもあれば 1 にせず、残り 0 が保持の時間（`LOAD_HOLD_MS`）続いて初めて 1。`failed`・`refused` は残りに数えない。遠景を始める判定（街が読めたら）も同じ数え方を通す。読み込み画面・ワープ・`debug.settled()` の式としきい値（0.999・0.95）・上限（20 秒・12 秒・15 秒）は変えていない。[^b1-timeline]
+- **保持の長さ 800 ms の根拠**: main で、残りが 0 になる谷を毎フレーム数えた。読み込みの途中の谷は 1 フレーム（9〜24 ms）で、最長はワープで川口駅へ行ったときの 610 ms 1 回。直した後の東京駅でも 679 ms の谷が 1 回あった。610 ms より長く、その 2 倍より短い値にした。1.5 秒以上の谷は、読み込みと読み込みの間（タイトルのカメラ、自車を通りへ置き直したとき）にだけあった。
+- **前後の値**（`just measure-buildings-timeline`、視界 far・near、各 2 回。秒は読み込み画面が閉じるまで）:
+
+  | 地点・視界                   | 直す前   | 直した後   | 閉じた時点の 300 m 以内（前 → 後） |
+  | ---------------------------- | -------- | ---------- | ---------------------------------- |
+  | a 東京駅・far                | 5.2      | 11.9・12.1 | 0/2 → 2/2                          |
+  | a・near                      | 3.1〜3.2 | 5.9〜6.0   | 2/2 → 2/2                          |
+  | e 川崎駅・far                | 7.1〜8.1 | 15.0・19.3 | 2/7〜5/7 → 7/7                     |
+  | e・near                      | 4.2〜4.4 | 7.4〜8.5   | 0/7 → 7/7                          |
+  | f 川口駅・far                | 5.3〜8.1 | 14.9・19.1 | 1/5 → 5/5                          |
+  | f・near                      | 2.9〜3.0 | 8.5〜10.7  | 1/5 → 5/5                          |
+  | a・スマホ既定（24 MiB の頃） | 3.1〜4.9 | 5.6〜6.9   | 0/2・2/2 → 2/2                     |
+  - 上限（20 秒）で閉じた回は、前後とも 0。スマホの既定（測った e678027 では 24 MiB で常に満杯。その後 #95 で 256 MiB・半径 1.6 km が既定になった。新しい既定では測っていない）でも残りは 0 になり、上限まで待つことは無かった。
+  - 閉じた時点の近景の残りは、12 回中 4 回で 1〜4 件。状態が ready になるのはシェーダーの準備の後で、その間に回るカメラが出した要求の分。300 m 以内の表示は全回で最終と同じ。
+  - 東京駅 far の延び（+6.7〜6.9 秒）の内訳: 約 5 秒は、前は「読めた」と見なした後に届いていた近景（ready までの近景のタイル 152 → 234 件、2 秒ごとの到着は 41〜46 件から 18〜28 件へ減っていく）。保持 0.8 秒、シェーダーの準備 約 1 秒。回るカメラが残りを 0 にさせない形は見えなかった。
+  - `isSettled` が true の間に届いた `load-model`: 直す前は e far 18〜20・f far 137・f near 14〜15 件など、直した後は全回 0（ワープの瞬間に、置き直す前の判定の直後に届いた遠景 3 件を除く）。直した後にも settled の後の読み込みはあるが、そのときは `isSettled` が false に戻っていて、自車が通りへ置き直されて動いた後の新しい読み込みだった。
+  - ワープの着地（着地までの秒・300 m 以内）: 新宿 11.4・8/11 → 10.9・8/11、川崎 5.7・5/7 → 9.7・7/7、川口 4.8・1/5 → 9.4・1/5。どれも上限の前に着き、割合は下がらない。川口が 1/5 のままなのは、しきい値 0.95 のため（残り 5 % に近くの細かいタイルが入っていると見ている。別の項目 B1b）。
+  - 始めた直後の GC 後のヒープ（`perf-buildings.ts`、far）: a は main 421〜439 MB → B1 453〜493 MB、d は 564〜565 → 608〜629 MB。読み込み画面が長いぶん、回るカメラが余分に要求した近景（下）の分。
+
+- **読むタイルの集合は、読み込み画面の長さで変わる**: 近景のタイルもカメラの向きで変わる（読み込みの範囲は球だが、どこまで細かく読むかは画面上の誤差で決まる）。B1 は読み込み画面が数秒長く開くので、回るタイトルのカメラが掃く向きが増え、a で 60 件・d で 54 件、main が読まない URL を読んだ（a は近景のタイル 29 件・72.4 MB、d は 36 件・60.2 MB など）。main をタイトルで同じだけ待たせると、a で 38 件・d で 42 件を main も読んだ。d の要求元つきの 1 回では、B1 だけの URL 42 件のうち近景のタイルが 36 件（60.2 MB）、遠景の JSON 5 件・近景の JSON 1 件。だから地点 a・d の URL の集合は、読み込み画面の長さを変える PR の条件にならない。条件は **落ち着いた後に表示しているタイルの集合**（近景・遠景それぞれ URL で）で、a（近景 109・遠景 12）・d（78・8）とも中身まで一致した。[^b1-sets]
+- 撮影の待ち: B1 の上で `buildings-outside` を `quietS: 0`（表の一時の写し）で 28 コマ撮り、ラウンド 3（X1、`quietS: 5`）の同じコマと比べると、異なる画素（10 % のぼかし込み）の割合は 28 コマとも 0.0022 以下（0.03 の線の内）だった。**`settled` だけで足りるようになった。** 表の `quietS: 5` は、収束の数え直しを避けるためそのまま残している。
 
 ### 地点 e の遠景が読む東京の市の `tileset.json`
 
@@ -441,3 +474,7 @@ sources:
 [^phone-watch-test]: スマホの既定と見張りのテスト
 
 [^phone-watch-crash]: 落ちたときに戻ることの確かめ
+
+[^b1-timeline]: B1 の前後の読み込みの時系列
+
+[^b1-sets]: B1 の読むタイルと表示の集合
