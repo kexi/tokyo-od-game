@@ -184,7 +184,8 @@ export const ja = {
   "graphics.preset": "プリセット",
   "graphics.custom": "カスタム",
   "graphics.reloadSuffix": "{label}（再読み込みで反映）",
-  "graphics.reloadNote": "描画距離・車と歩行者の数・アンチエイリアス・描画方式は再読み込みで変わります。",
+  "graphics.reloadNote":
+    "描画距離・車と歩行者の数・アンチエイリアス・描画方式・シェーダーの事前作成は再読み込みで変わります。",
   "graphics.reload": "再読み込み",
   "graphics.resolution": "解像度",
   "graphics.resolution2": "最高（2倍）",
@@ -211,6 +212,9 @@ export const ja = {
   "graphics.backend": "描画方式",
   "graphics.backendAuto": "自動（WebGPU 優先）",
   "graphics.backendWebgl": "WebGL 2",
+  "graphics.shaderPrebuild": "シェーダーの事前作成",
+  "graphics.shaderPrebuildOn": "先に作る（読み込みが少し長い）",
+  "graphics.shaderPrebuildOff": "作らない（初めて出る物で一瞬止まる）",
   // 設定 › 画質 の下: いま動いている描画方式（自動は WebGL 2 に落ちることがある）
   "graphics.running": "いまの描画方式: {backend}",
   "graphics.runningWebgpu": "WebGPU",

@@ -1,5 +1,6 @@
 import {
   GRAPHICS_ITEMS,
+  needsReload,
   PRESET_LABEL,
   withItem,
   withPreset,
@@ -33,8 +34,8 @@ export function buildTitlePreset(select: HTMLSelectElement, graphics: Graphics):
     if (!isPreset) return;
     const before = graphics.settings;
     graphics.set(withPreset(select.value as GraphicsPreset, before));
-    const needsReload = GRAPHICS_ITEMS.some((i) => i.onReload && graphics.settings[i.key] !== before[i.key]);
-    if (needsReload) location.reload();
+    const isReloadNeeded = needsReload(before, graphics.settings);
+    if (isReloadNeeded) location.reload();
   });
 }
 
@@ -101,7 +102,7 @@ export function buildGraphicsPanel(root: HTMLElement, graphics: Graphics, runnin
     const s = graphics.settings;
     preset.value = s.preset;
     for (const [key, select] of selects) select.value = s[key];
-    reload.hidden = !GRAPHICS_ITEMS.some((i) => i.onReload && s[i.key] !== loaded[i.key]);
+    reload.hidden = !needsReload(loaded, s);
   };
   graphics.onChange(show);
   show();

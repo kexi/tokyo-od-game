@@ -71,6 +71,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   renderer_ready: { backend: "WebGPU", depth: "reversed", samples: 4 },
   gpu_device_lost: { reason: null, error: "device lost" },
   pipelines_compiled: { durationMs: 1840 },
+  pipelines_skipped: { setting: "off" },
   precompile_failed: { error: "Error: x" },
   prewarm_failed: { error: "Error: x" },
   controls_changed: {
