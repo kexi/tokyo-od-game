@@ -93,13 +93,16 @@ const PHONE_TOWN_CACHE = 24 * MIB;
  */
 const PHONE_TOWN_FULL_CACHE = 256 * MIB;
 /**
- * The town Android phones stream by default: "full" once one was tried on the published build
- * (U12, about 25 minutes, reloads 0, full 0), "low" until then. Why per kind and not one value for
- * every phone: a kind nobody tried keeps the light town until it is tried.
+ * The town Android phones stream by default: "full", tried on a Pixel from the published build
+ * (U12, 2026-11-16: about 25 minutes, reloads 0, full 0). Why per kind and not one value for every
+ * phone: a kind nobody tried keeps the light town until it is tried.
  */
-const ANDROID_TOWN: PhoneTown = "low";
-/** The same for iPhones and iPads (Safari, or any browser there: all of them run on WebKit). */
-const IOS_TOWN: PhoneTown = "low";
+const ANDROID_TOWN: PhoneTown = "full";
+/**
+ * The same for iPhones and iPads (Safari, or any browser there: all of them run on WebKit): "full",
+ * tried on an iPhone the same way (U12, 2026-11-16).
+ */
+const IOS_TOWN: PhoneTown = "full";
 /** Each kind's default town. Another touch device (neither Android nor iOS) was never tried. */
 export const PHONE_TOWN_DEFAULT: Readonly<Record<PhoneKind, PhoneTown>> = {
   android: ANDROID_TOWN,

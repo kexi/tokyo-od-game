@@ -69,7 +69,7 @@ describe("a phone's town by kind", () => {
    * the light town until they are tried; a touch device of another kind was never tried.
    */
   it("gives each kind its decided default, and nothing but the light town to a kind never tried", () => {
-    expect(PHONE_TOWN_DEFAULT).toEqual({ android: "low", ios: "low", other: "low" });
+    expect(PHONE_TOWN_DEFAULT).toEqual({ android: "full", ios: "full", other: "low" });
   });
 
   it("streams 256 MiB out to 1.6 km on `full` and 24 MiB out to the 描画距離 on `low`, and leaves a PC as it was", () => {
