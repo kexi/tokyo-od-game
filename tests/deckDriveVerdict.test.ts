@@ -81,4 +81,14 @@ describe("autoDriveFailures: what fails an autopilot route (P6's drives)", () =>
     expect(autoDriveFailures(auto(), { crossed: 1, stalled: 0 })).toEqual(["building crossed on a deck (1)"]);
     expect(autoDriveFailures(auto({ maxAbsDyM: 0.2 }), quiet)).toHaveLength(1);
   });
+
+  // A wait with a reason the driver logged (deckStops.ts) fails only past its limit: a red light's
+  // cycle. The stalls with no reason still fail as above.
+  it("passes a wait at a red light within its cycle, and fails one beyond it", () => {
+    const wait = { xid: "24402125:2", reason: "signal" as const, seconds: 12.9, limitS: 45 };
+    expect(autoDriveFailures(auto(), { ...quiet, waits: [{ ...wait, isOver: false }] })).toEqual([]);
+    expect(autoDriveFailures(auto(), { ...quiet, waits: [{ ...wait, seconds: 50, isOver: true }] })).toEqual([
+      "waited 50 s for a signal over 45 s (at 24402125:2)",
+    ]);
+  });
 });

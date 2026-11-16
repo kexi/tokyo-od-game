@@ -24,7 +24,13 @@
 //
 //   just check-deck-drive [label] [route] (the dev server: just serve-dev; route all drives every one)
 //   pnpm exec tsx scripts/qa/drive-deck.ts [--label L] [--route R|all] [--base URL] [--out DIR] [--tries N]
-//     [--cpu-throttle N]
+//     [--cpu-throttle N] [--pre-wait S]
+//
+// --pre-wait S lets the world run S seconds of game time (the signals' clock) before an autopilot
+// route starts, the car standing where the town loaded (before it is put at the ramp's foot). The
+// drive is the same, the signals' phase as the car comes to each light is not: since the world runs
+// on one clock (knowledge/game-clock.md) a route met the same lights at the same phase on every run
+// (D1).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readExpresswayFiles } from "../expresswayFiles.ts";
@@ -44,6 +50,7 @@ import {
   type DeckRoute,
   routeOf,
 } from "./deckRoutes.ts";
+import { type DeckStall, judgeStalls, parseLogged, type StopTrace } from "./deckStops.ts";
 import { freePort } from "./ports.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -58,6 +65,7 @@ const routeArg = flag("route") ?? "";
 const outDir = flag("out");
 const tries = Number(flag("tries") ?? 3);
 const cpuThrottle = Number(flag("cpu-throttle") ?? 1);
+const preWaitS = Number(flag("pre-wait") ?? 0);
 const routes: DeckRoute[] =
   routeArg === "all" ? [...DECK_ROUTES] : [routeOf(routeArg === "" ? DEFAULT_ROUTE : routeArg)];
 /** The data the dev server serves (XW_DATA_DIR else public/data/expressway): where a run distance lies. */
@@ -218,6 +226,12 @@ async function driveAuto(r: AutoRoute) {
     let worst: unknown = null;
     const isClear = before === null;
     if (isClear) {
+      // Game time first, by the signals' own clock (TrafficControl.time, s), then the drive as ever.
+      // Why not advance(preWaitS): advance counts frames, and at the 50 ms cap a second of frames
+      // was 3 s of the game; a 15 s wait moved the 45 s cycle by a whole turn and changed nothing.
+      const signalTime = () => b.evaluate<number>("__game.control.time");
+      const waitFrom = await signalTime();
+      while ((await signalTime()) - waitFrom < preWaitS) await b.evaluate("__game.advance(0.25)");
       // On the street connector at the foot of the entrance ramp, facing it (P6's drive).
       placed = await b.evaluate(`(() => {
         const G = window.__game; const g = G.getRoadGraph();
@@ -248,9 +262,15 @@ async function driveAuto(r: AutoRoute) {
     }
     const crossed = b.logs.filter((l) => l.includes(`"event":"expressway_building_crossed"`));
     const stalled = b.logs.slice(stallFrom).filter((l) => l.includes(`"event":"expressway_car_stalled"`));
+    // The stands the driver logged a reason for (a red light, a queue) are waits, not stalls.
+    const traces = b.logs.slice(stallFrom).filter((l) => l.includes(`"event":"autopilot_stop_trace"`));
+    const { unexplained, waits } = judgeStalls(
+      stalled.map((l) => parseLogged<DeckStall>(l)),
+      traces.map((l) => parseLogged<StopTrace>(l)),
+    );
     const invalid = invalidOf(before, summary?.invalid, during);
     const failures = summary
-      ? autoDriveFailures(summary, { crossed: crossed.length, stalled: stalled.length })
+      ? autoDriveFailures(summary, { crossed: crossed.length, stalled: unexplained.length, waits })
       : [];
     return {
       route: r.id,
@@ -258,6 +278,7 @@ async function driveAuto(r: AutoRoute) {
       url,
       invalid,
       failures,
+      waits,
       placed,
       summary,
       worst,
@@ -356,7 +377,7 @@ for (const r of routes) {
     const counts = result.invalid === null;
     if (counts) break;
   }
-  const out = { label, cpuThrottle, ...result!, attempts };
+  const out = { label, cpuThrottle, preWaitS, ...result!, attempts };
   const file = outDir
     ? join(outDir, `${r.id}.json`)
     : join(ROOT, ".qa", routeArg === "" ? `drive-deck-${label}.json` : `drive-deck-${label}-${r.id}.json`);
