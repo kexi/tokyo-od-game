@@ -2,6 +2,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3, type Group, type Object3D, type Scene } from "three";
 import { MassiveBody, massContactsFor } from "../physics/massContacts";
 import { personKg } from "../physics/masses";
+import { retireObject } from "../render/retire";
 import { animateHuman, createHuman, disposeHuman, FILM_GRIP, poseFilming, type HumanModel } from "./human";
 import type { SidewalkNetwork, Walk } from "./sidewalks";
 
@@ -296,7 +297,7 @@ export class Pedestrians {
 
   /** Puts the phone away at once (dodging, being talked to, done). */
   stopFilming(p: Pedestrian): void {
-    p.phone?.removeFromParent();
+    if (p.phone) retireObject(p.phone);
     p.phone = null;
     if (p.state !== "film") return;
     p.state = "walk";
@@ -621,8 +622,9 @@ export class Pedestrians {
   private remove(i: number): void {
     const p = this.list[i];
     this.dropBody(p);
-    this.scene.remove(p.object);
+    // The model's own geometry first, then the objects: the renderer lets go of their render objects.
     disposeHuman(p.model);
+    retireObject(p.object);
     this.list.splice(i, 1);
   }
 }
