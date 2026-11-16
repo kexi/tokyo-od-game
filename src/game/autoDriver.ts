@@ -38,7 +38,7 @@ import {
   type Verdict,
 } from "./autoTraffic";
 import { laneCentre } from "./drivePath";
-import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
+import { axisAt, laneAt, planRoute, progressOn, type Route, type Turn } from "./navigation";
 import { isDrivable as isRoutable, isOnGround } from "../world/roadClass";
 import { runOf } from "../world/laneLinks";
 import { bendSpeedAhead, mainCarsAt, mergeSpeedCap, taperOf } from "./merging";
@@ -204,6 +204,10 @@ export type DriveWhy = {
 
 const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
+/** Lateral gap (m) to the target lane past which the car counts as moving across (laneSignal). */
+const LANE_MOVE_GAP = 0.3;
+/** |cos| of the heading against the street past which the car runs along it (laneCountedIn's). */
+const ALONG_STREET = 0.85;
 /** A lane change eased at 1 m per 10 m (drivePath LANE_SLOPE) takes about this long to cross a lane. */
 const LANE_CROSSING_M = 35;
 /** 合流の合図: this far before the merge node (the taper starts ~25 m before it; 3 s at 50 km/h more). */
@@ -229,6 +233,35 @@ export function kerbLeft(
     if (isPavement(p.x + dir.z * d, p.z - dir.x * d)) return d;
   }
   return Infinity;
+}
+
+/**
+ * The autopilot's 合図 (AutoDriver.steerFor), the first that applies: moving across to its target
+ * lane (`gap`, m, left +) the side it moves to; a lane change the path itself plans (`planned`:
+ * never with a turn still ahead in its window) the side it moves to, until it is over (施行令 第21条:
+ * 進路変更が終わるまで); in a turn's curve (`corner`) the turn's side; from SIGNAL_BEFORE before the
+ * next turn its side.
+ *
+ * Why the move first (the turn's curve and the next turn came first before): turned right into a
+ * wide street, the path ends the curve by the centre line and moves over to the left lane after it
+ * (drivePath's wide sweep); that move began while the car was still in the curve's span and it
+ * showed the right indicator across two lanes, booked 合図不履行 (丸の内二丁目, @35.68059,139.76421,
+ * before T1 and after). In a curve itself the car follows the curve (gap 0), so the turn's side holds.
+ */
+export function laneSignalSide(
+  gap: number,
+  corner: "left" | "right" | null,
+  next: { turn: Turn; inM: number } | null,
+  planned: () => "left" | "right" | null,
+): "left" | "right" | null {
+  const isMovingAcross = Math.abs(gap) > LANE_MOVE_GAP;
+  if (isMovingAcross) return gap > 0 ? "left" : "right";
+  const change = planned();
+  if (change) return change;
+  if (corner) return corner;
+  const isTurnAhead = next !== null && next.inM < SIGNAL_BEFORE && next.turn !== "straight";
+  if (isTurnAhead) return next.turn === "left" || next.turn === "slightLeft" ? "left" : "right";
+  return null;
 }
 
 /** Lateral offset (left of the centreline) to drive at, kept clear of the kerb. */
@@ -1172,19 +1205,41 @@ export class AutoDriver {
     return null;
   }
 
-  /**
-   * 合図 outside a turn's curve, the first that applies: from 30 m before a turn (施行令 第21条), while
-   * the car is moving across to its target lane (gap: target minus where it is, left +), and for a
-   * lane change the path itself plans (plannedLaneChange). The turn comes first: the move into the
-   * turn's lane and out of it after the turn read as a change to the other side.
-   */
-  private laneSignal(route: Route, world: DriveWorld, gap: number): "left" | "right" | null {
+  /** 合図 for this look (laneSignalSide): the move across lanes, the curve, the next turn, the plan. */
+  private laneSignal(
+    route: Route,
+    world: DriveWorld,
+    gap: number,
+    corner: "left" | "right" | null,
+    isOnCurve: boolean,
+    curveExit: "left" | "right" | null,
+  ): "left" | "right" | null {
     const next = route.maneuvers.find((m) => m.at > this.at);
-    const isTurnAhead = next !== undefined && next.at - this.at < SIGNAL_BEFORE && next.turn !== "straight";
-    if (isTurnAhead) return next.turn === "left" || next.turn === "slightLeft" ? "left" : "right";
-    const isMovingAcross = Math.abs(gap) > 0.3;
-    if (isMovingAcross) return gap > 0 ? "left" : "right";
-    return this.plannedLaneChange(route, world);
+    // On a turn's curve the path's offset is read across another street's lanes and means no lane
+    // (a 2 → 2 right turn read as a move left just past the node, laneChangeBan's crossroads): the
+    // curve's own move is curveExit's.
+    const planned = () => (isOnCurve ? curveExit : this.plannedLaneChange(route, world));
+    return laneSignalSide(gap, corner, next ? { turn: next.turn, inM: next.at - this.at } : null, planned);
+  }
+
+  /**
+   * On a turn's curve, the side the car still moves to after it runs along the new street (heading
+   * within ALONG_STREET, as the lane check counts lanes): toward the lane the curve ends in, while
+   * the car itself is not in it yet (施行令 第21条: 進路変更が終わるまで). Null while it still turns
+   * or once it is in that lane. Why the car's own position, not the path's: the car runs a second
+   * behind the path, and at 丸の内二丁目 (lane 2 of 3 into lane 0 in the curve's last 13 m) the lane
+   * check counted it into lane 0 after the path got there and the indicator went out (合図不履行).
+   */
+  private curveExit(route: Route, world: DriveWorld, dir: Vector3, lane: number): "left" | "right" | null {
+    if (this.pass) return null;
+    const isAlong = Math.abs(this.heading().dot(dir)) > ALONG_STREET;
+    if (!isAlong) return null;
+    const step = route.steps[this.stepIndex(route)];
+    if (step.seg.lanes < 2) return null;
+    const carLane = laneOfOffset(step.seg, world.graph.nearestOn(step.seg, this.position).lateral * step.dir);
+    const isInStreet = carLane >= 0 && carLane < step.seg.lanes;
+    if (!isInStreet || carLane === lane) return null;
+    return carLane > lane ? "left" : "right";
   }
 
   /**
@@ -1202,10 +1257,19 @@ export class AutoDriver {
     let from = Math.max(0, this.at - LANE_CROSSING_M);
     let to = Math.min(route.length, this.at + Math.max(SIGNAL_BEFORE, 3 * Math.abs(this.speed)));
     const isIn = (at: number) => at > from && at < to;
-    const isTurnInWindow =
-      route.corners.some((c) => c.to > from && c.from < to) ||
-      route.maneuvers.some((m) => m.turn !== "straight" && isIn(m.at));
-    if (isTurnInWindow) return null;
+    // A turn still to come: its own 合図 (laneSignalSide), not a lane change's.
+    const isTurnAhead =
+      route.corners.some((c) => c.from > this.at && c.from < to) ||
+      route.maneuvers.some((m) => m.turn !== "straight" && m.at > this.at && m.at < to);
+    if (isTurnAhead) return null;
+    // A turn behind the car (its node passed, in its curve's tail or past it): the lanes behind are
+    // another street's, so only the move from here on counts. Why not no 合図 at all (as before):
+    // turned right into a wide street, the path moves over to the left lane right after the node
+    // (drivePath's wide sweep), and the car crossed two lanes showing the turn's right (丸の内二丁目).
+    const isTurnBehind =
+      route.corners.some((c) => c.from <= this.at && c.to > from) ||
+      route.maneuvers.some((m) => m.turn !== "straight" && m.at <= this.at && isIn(m.at));
+    if (isTurnBehind) from = this.at;
     // A merge's or a diverge's node cuts the window: the lanes beyond it are another road's.
     for (const l of route.links ?? []) {
       if (!isIn(l.at)) continue;
@@ -1272,7 +1336,8 @@ export class AutoDriver {
     const gap = plan.corner ? 0 : target - this.lateral;
     this.lateral = plan.corner ? target : this.lateral + Math.max(-rate, Math.min(rate, gap));
     const cornerSide = this.cornerSignal(route);
-    this.signal = cornerSide ?? this.laneSignal(route, world, gap);
+    const curveExit = plan.corner ? this.curveExit(route, world, dir, lane) : null;
+    this.signal = this.laneSignal(route, world, gap, cornerSide, plan.corner, curveExit);
     // 合流 is a 進路変更 (第53条): the indicator toward the main line from MERGE_SIGNAL_M before the
     // node (a ramp on the main line's left moves right into it) until past it.
     const merging = route.links?.find(
