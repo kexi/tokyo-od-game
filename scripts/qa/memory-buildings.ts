@@ -9,17 +9,20 @@
 //
 //   just measure-buildings-memory label base [args]
 //   pnpm exec tsx scripts/qa/memory-buildings.ts --label L [--base URL] [--seconds S]
-//     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--title] [--start lat,lon]
+//     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--sample-every S] [--title] [--start lat,lon]
 //     [--view near|medium|far] [--mobile] [--heap-limit MB] [--sample held,used,heap,backing]
-//     [--shots all|200,230]
+//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2] [--census-at T1,T2]
 //
+// --sample-every reads the page every S seconds (default: every warp) while the warps go on every
+// EVERY seconds: a forced GC takes seconds, so a warp each second cannot be read each second. Why not
+// read less (no GC) in between: the heap before a GC swings by hundreds of MB and says nothing.
 // --heap-limit caps V8's old space (--js-flags=--max-old-space-size), as on a machine with less
 // memory; a tab that crashes ends the run with `crashed` and the second it happened.
 // Output: one JSON line a sample on stdout and .qa/memory-buildings/<label>.json (screenshots in
 // .qa/memory-buildings/<label>/). The JSON carries `slopes` (memorySlopes.ts): the heap, array-storage
 // and total slopes over all samples from 60 s, from the near LRU's plateau, and over the full samples
 // only (held ≥ 95 % of its upper bound), with the share of full samples and the rules used.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
@@ -40,6 +43,7 @@ const heapLimit = flag("heap-limit");
 const seconds = Number(flag("seconds") ?? (isTitle ? 300 : 600));
 const every = Number(flag("every") ?? (isTitle ? 5 : 10));
 const stepM = Number(flag("step") ?? 300);
+const sampleEvery = Number(flag("sample-every") ?? every);
 /** What to read each sample (all by default): the LRU's held bytes, its used bytes, the GC heap, the array storage. */
 const SAMPLE_KINDS = ["held", "used", "heap", "backing"] as const;
 type SampleKind = (typeof SAMPLE_KINDS)[number];
@@ -98,8 +102,27 @@ const shotTimes = isEveryShot ? [] : (shotsFlag ?? "").split(",").filter(Boolean
  */
 const WATCH = `(() => {
   if (window.__mem) return;
-  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null });
-  const tick = () => {
+  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null, gaps: [], last: 0, skip: true, pipelines: 0 });
+  // Render pipelines the backend builds (three's Pipelines calls it once per new cache key): a
+  // pipeline thrown away with its last render object and built again shows here as a hitch would.
+  const backend = __game.renderer.backend;
+  if (backend && !backend.__counted) {
+    const build = backend.createRenderPipeline.bind(backend);
+    backend.createRenderPipeline = (...args) => { m.pipelines++; return build(...args); };
+    backend.__counted = true;
+  }
+  // Marks every object given dispose() (the census tells retired objects from ones never retired).
+  let proto = Object.getPrototypeOf(__game.scene);
+  while (proto && !Object.prototype.hasOwnProperty.call(proto, "traverse")) proto = Object.getPrototypeOf(proto);
+  if (proto && !proto.__marked) {
+    const dispose = proto.dispose;
+    proto.dispose = function () { this.__retiredAt = performance.now(); return dispose.call(this); };
+    proto.__marked = true;
+  }
+  const tick = (now) => {
+    // Frame gaps; the one across the probe's forced GC (skip, set before it) is not the game's.
+    if (!m.skip && m.last) m.gaps.push(now - m.last);
+    m.skip = false; m.last = now;
     const b = __game.buildings; const c = b.tiles.lruCache;
     if (m.hooked !== b.tiles) { m.hooked = b.tiles; b.tiles.addEventListener("load-model", () => m.loads++); b.tiles.addEventListener("dispose-model", () => m.disposes++); }
     if (b.far && m.farHooked !== b.far) { m.farHooked = b.far; b.far.addEventListener("load-model", () => m.farLoads++); b.far.addEventListener("dispose-model", () => m.farDisposes++); }
@@ -117,9 +140,12 @@ const WATCH = `(() => {
 const COUNTERS = `(() => {
   const m = window.__mem;
   const dir = __game.camera.getWorldDirection(new __game.camera.position.constructor());
+  const gaps = m.gaps.toSorted((a, b) => a - b);
+  const at = (q) => gaps.length ? Math.round(gaps[Math.min(gaps.length - 1, Math.floor(q * gaps.length))] * 10) / 10 : null;
   const out = { usedMb: m.usedMb, usedPeakMb: m.usedPeakMb, fullFrames: m.fullFrames, frames: m.frames, loads: m.loads,
-    disposes: m.disposes, farLoads: m.farLoads, farDisposes: m.farDisposes, heading: Math.round(Math.atan2(dir.x, dir.z) * 180 / Math.PI) };
-  m.usedPeakMb = m.usedMb; m.fullFrames = 0; m.frames = 0;
+    disposes: m.disposes, farLoads: m.farLoads, farDisposes: m.farDisposes, heading: Math.round(Math.atan2(dir.x, dir.z) * 180 / Math.PI),
+    frameP50Ms: at(0.5), frameP95Ms: at(0.95), frameMaxMs: at(1) };
+  m.usedPeakMb = m.usedMb; m.fullFrames = 0; m.frames = 0; m.gaps = [];
   return out;
 })()`;
 /** Page-side: both LRUs (held items and MB, the limit), tiles shown, where the car is. */
@@ -130,6 +156,145 @@ const STATE = `(() => {
     loaded: b.loadedCount, farLoaded: b.farLoadedCount, visible: b.tiles.visibleTiles.size, farVisible: b.far ? b.far.visibleTiles.size : 0,
     lat: g ? +g.lat.toFixed(5) : null, lon: g ? +g.lon.toFixed(5) : null, state: __game.getState() };
 })()`;
+
+/**
+ * Page-side (--counts): how many of each thing the game holds, to find one that grows with time while
+ * the place keeps changing (M1). Each count is read on its own, null when this build has no such
+ * handle. Why counts and not a heap snapshot first: a snapshot of a 1 GB heap takes minutes and
+ * stalls the page; a count that grows names its owner at once.
+ */
+const COUNTS = `(() => {
+  const g = __game; const read = (f) => { try { return f(); } catch { return null; } };
+  let objects = 0; const top = [];
+  for (const child of g.scene.children) {
+    let n = 0; child.traverse(() => n++); objects += n;
+    top.push([child.name || child.type, n]);
+  }
+  top.sort((a, b) => b[1] - a[1]);
+  let cars = 0; read(() => g.traffic.forEachCar(() => cars++));
+  return { counts: {
+    objects, topChildren: top.slice(0, 8),
+    geometries: read(() => g.renderer.info.memory.geometries), textures: read(() => g.renderer.info.memory.textures),
+    // three's own set of render objects (RenderObjects._renderObjects, 0.186): read here only, never by the game.
+    renderObjects: read(() => g.renderer._objects._renderObjects.size),
+    pipelines: read(() => window.__mem.pipelines),
+    bodies: read(() => g.world.bodies.len()), colliders: read(() => g.world.colliders.len()),
+    cars, pedestrians: read(() => g.pedestrians.list.length), licenseLog: read(() => g.law.state.log.length),
+  } };
+})()`;
+const isCounted = argv.includes("--counts");
+
+/**
+ * --alloc FROM,TO: the sampling heap profiler between those seconds; what it reports is what was
+ * allocated in the window and is still alive at TO, by the place in the code that allocated it.
+ * --snapshot-at T1,T2: a full heap snapshot at each (a .heapsnapshot file; scripts/qa/heap-diff.py
+ * compares two). Why both: the sampling profile names the code even through closures and arrays a
+ * snapshot only shows as "(array)", and the snapshot names who keeps them.
+ */
+const allocWindow = flag("alloc")?.split(",").map(Number) ?? null;
+const snapshotTimes = (flag("snapshot-at") ?? "").split(",").filter(Boolean).map(Number);
+/**
+ * --census-at T1,T2: once at each of those seconds, the render objects whose object no longer reaches a scene
+ * (floating: taken out but still held by the renderer), counted by what the top parent looks like
+ * (a person by its part names, a car, anything else), by mesh name and by pass (camera, context).
+ * Why the parts' names: a retired model has no other mark, and human.glb's parts are named.
+ */
+const censusTimes = (flag("census-at") ?? "").split(",").filter(Boolean).map(Number);
+const censusesTaken = new Set<number>();
+const census: Array<Record<string, unknown>> = [];
+const CENSUS = `(() => {
+  const set = __game.renderer._objects._renderObjects;
+  const topOf = (o) => { while (o.parent) o = o.parent; return o; };
+  const kindOf = (root) => {
+    let isPerson = false; let isCar = false;
+    root.traverse((o) => { const n = o.name || ""; if (/Torso|Head|Thigh|UpperArm/.test(n)) isPerson = true; if (/wheel|tire|body|car|bumper/i.test(n)) isCar = true; });
+    return isPerson ? "person" : isCar ? "car" : "other";
+  };
+  // Unnamed meshes go by their material and geometry (what they are made of is all there is to go by).
+  const signature = (root) => { const names = []; let made = ""; root.traverse((c) => { if (names.length < 4 && c.isMesh && c.name) names.push(c.name); if (!made && c.isMesh) made = (c.material?.name || c.material?.type || "?") + "/" + (c.geometry?.type || "?"); }); return (root.name || root.type) + "[" + (names.length ? names.join(",") : made) + "]"; };
+  const add = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  const byKind = new Map(), byMesh = new Map(), byPass = new Map(), byRoot = new Map(), rootsBy = new Map(); const roots = new Set();
+  let total = 0, floating = 0;
+  for (const ro of set) {
+    total++;
+    const root = topOf(ro.object);
+    if (root.isScene) continue;
+    floating++;
+    // retired: the object had dispose() (its render object was made again after); never: it did not.
+    const mark = ro.object.__retiredAt ? " retired" : " never";
+    const kind = kindOf(root) + mark;
+    add(byKind, kind); add(byMesh, kind + ":" + (ro.object.name || ro.object.type));
+    add(byPass, (ro.camera?.name || ro.camera?.type || "?") + " ctx" + (ro.context?.id ?? "?")); add(byRoot, signature(root) + mark);
+    if (!roots.has(root)) { roots.add(root); add(rootsBy, signature(root) + mark); }
+  }
+  const top = (m) => [...m].toSorted((a, b) => b[1] - a[1]).slice(0, 12);
+  return { total, floating, floatingRoots: roots.size, byKind: top(byKind), byMesh: top(byMesh), byPass: top(byPass), byRoot: top(byRoot), rootsBy: top(rootsBy) };
+})()`;
+const snapshotsTaken = new Set<number>();
+let isAllocating = false;
+type AllocNode = {
+  callFrame: { functionName: string; url: string; lineNumber: number };
+  selfSize: number;
+  children: AllocNode[];
+};
+let allocDone: {
+  t: number;
+  totalMB: number;
+  top: Array<[string, number]>;
+  files: Array<[string, number]>;
+} | null = null;
+/** The profile's self sizes added up by allocating place (function, file, line) and by file, in MB. */
+function summariseAlloc(head: AllocNode) {
+  const bySite = new Map<string, number>();
+  const byFile = new Map<string, number>();
+  let total = 0;
+  const walk = (n: AllocNode) => {
+    const f = n.callFrame;
+    const file = f.url.split("/").pop() || "(native)";
+    const site = `${f.functionName || "(anonymous)"} ${file}:${f.lineNumber + 1}`;
+    bySite.set(site, (bySite.get(site) ?? 0) + n.selfSize);
+    byFile.set(file, (byFile.get(file) ?? 0) + n.selfSize);
+    total += n.selfSize;
+    for (const c of n.children) walk(c);
+  };
+  walk(head);
+  return { totalMB: Math.round(total / 1e5) / 10, top: largest(bySite, 30), files: largest(byFile, 15) };
+}
+/** The `n` largest entries, in MB. */
+function largest(m: Map<string, number>, n: number): Array<[string, number]> {
+  return [...m]
+    .toSorted((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([k, v]) => [k, Math.round(v / 1e5) / 10]);
+}
+/**
+ * A heap snapshot to `file` over a second DevTools client on the same page. Why a second client: the
+ * snapshot arrives as HeapProfiler.addHeapSnapshotChunk events, which browser.mjs does not hand over.
+ */
+async function takeSnapshot(debugPort: number, file: string): Promise<void> {
+  const targets = (await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()) as Array<{
+    type: string;
+    webSocketDebuggerUrl: string;
+  }>;
+  const page = targets.find((x) => x.type === "page");
+  if (!page) throw new Error("no page to snapshot");
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((r) => ws.addEventListener("open", r));
+  const stream = createWriteStream(file);
+  await new Promise<void>((resolve) => {
+    ws.addEventListener("message", (ev) => {
+      const msg = JSON.parse(String(ev.data));
+      if (msg.method === "HeapProfiler.addHeapSnapshotChunk") stream.write(msg.params.chunk);
+      if (msg.id === 2) resolve();
+    });
+    ws.send(JSON.stringify({ id: 1, method: "HeapProfiler.enable" }));
+    ws.send(
+      JSON.stringify({ id: 2, method: "HeapProfiler.takeHeapSnapshot", params: { reportProgress: false } }),
+    );
+  });
+  await new Promise((r) => stream.end(r));
+  ws.close();
+}
 
 const mb = (bytes: unknown) => (bytes == null ? null : Math.round(Number(bytes) / 1e6));
 const outDir = join(ROOT, ".qa", "memory-buildings");
@@ -156,6 +321,7 @@ try {
   const t0 = Date.now();
   const taken = new Set<number>();
   let hop = 0;
+  let nextSample = sampleEvery;
   while (Date.now() - t0 < seconds * 1000) {
     if (!isTitle) {
       hop++;
@@ -169,11 +335,15 @@ try {
       taken.add(x);
       await b.screenshot(join(shotDir, `t${x}.jpg`), 85);
     }
+    const isSampleDue = t >= nextSample;
+    if (!isSampleDue) continue;
+    nextSample = t + sampleEvery;
     try {
-      const sample: Record<string, unknown> = { t, hop };
+      const sample: Record<string, unknown> = { t, hop, km: Math.round(hop * stepM) / 1000 };
       const isHeapRead = sampled.has("heap") || sampled.has("backing");
       if (isHeapRead) {
         sample.heapRawMB = mb(await b.evaluate<number>("performance.memory.usedJSHeapSize"));
+        await b.evaluate("window.__mem && (window.__mem.skip = true)");
         await b.send("HeapProfiler.collectGarbage");
         const usage = (await b.send("Runtime.getHeapUsage")).result;
         if (sampled.has("heap"))
@@ -189,8 +359,39 @@ try {
       if (!sampled.has("held")) delete state.near;
       if (!sampled.has("used")) Object.assign(counters, { usedMb: undefined, usedPeakMb: undefined });
       Object.assign(sample, state, counters);
+      if (isCounted) Object.assign(sample, await b.evaluate<Record<string, unknown>>(COUNTS));
       samples.push(sample);
       process.stdout.write(`${JSON.stringify(sample)}\n`);
+      const isAllocStartDue =
+        allocWindow !== null && !isAllocating && allocDone === null && t >= allocWindow[0];
+      if (isAllocStartDue) {
+        await b.send("HeapProfiler.enable");
+        await b.send("HeapProfiler.startSampling", { samplingInterval: 32768 });
+        isAllocating = true;
+        process.stdout.write(`${JSON.stringify({ t, alloc: "started" })}\n`);
+      }
+      const isAllocStopDue = allocWindow !== null && isAllocating && t >= allocWindow[1];
+      if (isAllocStopDue) {
+        const profile = (await b.send("HeapProfiler.stopSampling")).result.profile as AllocNode & {
+          head: AllocNode;
+        };
+        isAllocating = false;
+        writeFileSync(join(outDir, `${label}.heapprofile`), JSON.stringify(profile));
+        allocDone = { t, ...summariseAlloc(profile.head) };
+        process.stdout.write(`${JSON.stringify({ t, alloc: "stopped", totalMB: allocDone.totalMB })}\n`);
+      }
+      for (const at of censusTimes.filter((x) => t >= x && !censusesTaken.has(x))) {
+        censusesTaken.add(at);
+        const counted = { t, ...(await b.evaluate<Record<string, unknown>>(CENSUS)) };
+        census.push(counted);
+        process.stdout.write(`${JSON.stringify({ census: counted })}\n`);
+      }
+      for (const at of snapshotTimes.filter((x) => t >= x && !snapshotsTaken.has(x))) {
+        snapshotsTaken.add(at);
+        const file = join(outDir, `${label}.t${at}.heapsnapshot`);
+        await takeSnapshot(port, file);
+        process.stdout.write(`${JSON.stringify({ t, snapshot: file })}\n`);
+      }
     } catch (error) {
       crashed = `${Math.round((Date.now() - t0) / 1000)} s: ${String(error)}`;
       process.stdout.write(`${JSON.stringify({ crashed })}\n`);
@@ -211,8 +412,11 @@ const out = {
   heapLimit: heapLimit ?? null,
   stepM,
   every,
+  sampleEvery,
   crashed,
   slopes: slopeSummary(samples as MemorySample[]),
+  alloc: allocDone,
+  census,
   samples,
 };
 writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
