@@ -10,6 +10,7 @@ import {
   type VehicleKind,
 } from "../game/vehicleModels";
 import { MassiveBody, massContactsFor } from "../physics/massContacts";
+import { retireObject } from "../render/retire";
 import { laden, VEHICLE_SPECS, yawInertia, type MassClass } from "../physics/masses";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { Approach, TrafficControl } from "./trafficControl";
@@ -249,7 +250,7 @@ export class TrafficAI {
       yield true;
     }
     for (const p of remaining.values()) {
-      this.scene.remove(p.object);
+      retireObject(p.object);
       const collider = p.body.collider(0);
       if (collider) this.contacts.remove(collider);
       this.world.removeRigidBody(p.body);
@@ -987,7 +988,7 @@ export class TrafficAI {
   }
 
   private remove(c: AiCar): void {
-    this.scene.remove(c.object);
+    retireObject(c.object);
     this.dropBody(c);
   }
 }
