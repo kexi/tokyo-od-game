@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import { steerLimit, WHEELBASE, type DriveInput } from "../physics/vehicle";
-import { isLaneChangeBanned, laneOfOffset, laneOfPoint } from "../world/laneChange";
+import { isLaneChangeBanned, laneOfOffset, laneOfPoint, laneWidth } from "../world/laneChange";
 import type { LaneUse, TurnRule } from "../world/regulations";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type Segment } from "../world/roads";
 import { inForce, type GameClock } from "../world/ruleTime";
@@ -37,7 +37,7 @@ import {
   type Seen,
   type Verdict,
 } from "./autoTraffic";
-import { laneCentre } from "./drivePath";
+import { laneCentre, type LaneFloor } from "./drivePath";
 import { axisAt, laneAt, planRoute, progressOn, type Route } from "./navigation";
 import { isDrivable as isRoutable, isOnGround } from "../world/roadClass";
 import { runOf } from "../world/laneLinks";
@@ -64,6 +64,65 @@ export function pavementUnder(
   isPavement: ((x: number, z: number) => boolean) | undefined,
 ): ((x: number, z: number) => boolean) | undefined {
   return isOnGround(seg.line) ? isPavement : undefined;
+}
+
+/** Half a car's width (m), for whether a lane pinched by the kerb still holds the car. */
+const CAR_HALF_WIDTH = 0.9;
+/** How far apart (m) the points along a segment where a lane's centre is tested for paving are. */
+const FLOOR_STEP = 5;
+/** Metres at each end of a segment left out of that test: a junction's corner paving is not the lane's. */
+const FLOOR_END = 8;
+
+/**
+ * The lanes the autopilot may plan in (drivePath's LaneFloor): from the left, the first lane the
+ * wheel can keep the car in, clear of the kerb (where PLATEAU paving starts left of the centreline,
+ * keepLeftOffset), over at least half of the segment's length. Streets with no paving data, decks
+ * and one-lane streets: every lane (0). Cached per segment and direction.
+ *
+ * Why plan around the paving and not only steer around it (as before): on a street whose GSI 幅員
+ * includes its pavements, lane 0's centre runs over the pavement; the wheel kept the car a lane in,
+ * the plan kept lane 0, and the car ran some 5 m off its planned path until offLane stopped it (D2,
+ * 大手町一丁目, segments 192・184・903). Why not shift lane 0's line inward instead: the car would
+ * then run between two painted lanes, and the violation check counts lanes as painted.
+ */
+export function pavementLaneFloor(isPavement: ((x: number, z: number) => boolean) | undefined): LaneFloor {
+  const cache = new Map<Segment, [number, number]>();
+  return (seg, dir) => {
+    const hasNoTest = !isPavement || !isOnGround(seg.line) || seg.lanes < 2;
+    if (hasNoTest) return 0;
+    const known = cache.get(seg);
+    if (known) return known[dir === 1 ? 0 : 1];
+    const both: [number, number] = [laneFloorOf(seg, 1, isPavement), laneFloorOf(seg, -1, isPavement)];
+    cache.set(seg, both);
+    return both[dir === 1 ? 0 : 1];
+  };
+}
+
+function laneFloorOf(seg: Segment, dir: 1 | -1, isPavement: (x: number, z: number) => boolean): number {
+  const samples: Array<{ p: Vector3; travel: Vector3 }> = [];
+  for (let s = FLOOR_END; s <= seg.length - FLOOR_END; s += FLOOR_STEP) {
+    let i = 1;
+    while (i < seg.cum.length - 1 && seg.cum[i] < s) i++;
+    const a = seg.pts[i - 1];
+    const b = seg.pts[i];
+    const t = (s - seg.cum[i - 1]) / Math.max(1e-6, seg.cum[i] - seg.cum[i - 1]);
+    const travel = b.clone().sub(a).setY(0).normalize().multiplyScalar(dir);
+    samples.push({ p: a.clone().lerp(b, t), travel });
+  }
+  const isTooShort = samples.length === 0;
+  if (isTooShort) return 0;
+  // Where the wheel keeps the car (keepLeftOffset): KERB_CLEARANCE inside the first paving left of
+  // the centreline. A lane fits where that leaves its centre no further in than half a lane less
+  // the car's half width: the car then stays inside the lane's lines.
+  const edges = samples.map(({ p, travel }) => kerbLeft(p, travel, seg.line.width / 2 + 1, isPavement));
+  const slack = Math.max(0, laneWidth(seg, seg.lanes) / 2 - CAR_HALF_WIDTH);
+  for (let lane = 0; lane < seg.lanes - 1; lane++) {
+    const offset = laneCentre(seg, lane, seg.lanes);
+    const pinched = edges.filter((kerb) => kerb - KERB_CLEARANCE < offset - slack).length;
+    const isUsable = pinched * 2 <= samples.length;
+    if (isUsable) return lane;
+  }
+  return seg.lanes - 1;
 }
 
 /**
@@ -453,8 +512,13 @@ export class AutoDriver {
     aimInReach = true,
   ) {
     // From the lane the car is in: on a 進路変更禁止 stretch the route must keep to it (drivePath).
+    const laneFloor = pavementLaneFloor(world.isPavement);
     const leftOfTravel = world.graph.nearestOn(start.seg, this.position).lateral * start.dir;
-    const lane = laneOfPoint(start.seg, leftOfTravel) ?? 0;
+    // Outside the lanes, lane 0 as before; never a lane under the paving (the first usable one).
+    // Why not the nearest lane for a car outside them: on a street with no paving it changed where
+    // every drive started from the centreline (tests/roadModelInvariance.test.ts), beyond D2.
+    const floor = Math.min(laneFloor(start.seg, start.dir), Math.max(0, start.seg.lanes - 1));
+    const lane = Math.max(laneOfPoint(start.seg, leftOfTravel) ?? 0, floor);
     return planRoute(
       world.graph,
       { ...start, lane },
@@ -464,6 +528,7 @@ export class AutoDriver {
       "car",
       world.laneUse,
       aimInReach,
+      laneFloor,
     );
   }
 

@@ -4,7 +4,7 @@ import { isInForce, type LaneDirection, type LaneUse, type TurnRule } from "../w
 import type { GameClock } from "../world/ruleTime";
 import { leftOf, type RoadGraph, type Segment } from "../world/roads";
 import { log } from "../log";
-import { drivePath, type Corner, type LanePlan } from "./drivePath";
+import { drivePath, type Corner, type LaneFloor, type LanePlan } from "./drivePath";
 import {
   allowsPedestrians,
   classOf,
@@ -232,6 +232,8 @@ export function planRoute(
    * as before 7c1, for a caller that tries other starts first (AutoDriver.bestStart).
    */
   aimInReach = true,
+  /** The leftmost lane a car may take on each step (drivePath's laneFloor; none: every lane). */
+  laneFloor?: LaneFloor,
 ): Route | null {
   const isWalk = mode === "walk";
   const usable = isWalk ? isWalkable : (seg: Segment) => isDrivable(seg) && !seg.closed;
@@ -299,7 +301,7 @@ export function planRoute(
     if (isWalk) return centre;
     // The lanes and the curves through the corners (drivePath), with the レーン案内 they follow.
     const hints = laneHints(centre, laneUse);
-    const { blocked, ...path } = drivePath(graph, centre, hints, start.lane ?? 0);
+    const { blocked, ...path } = drivePath(graph, centre, hints, start.lane ?? 0, laneFloor);
     route = { ...centre, ...path, hints };
     if (blocked.length === 0) break;
     const moves = blocked.flatMap((at) => {

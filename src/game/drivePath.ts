@@ -268,6 +268,8 @@ export function laneFor(
   maneuvers: readonly Maneuver[],
   forced: number | null = null,
   links: readonly RouteLink[] = [],
+  /** The leftmost lane the car may use here (LaneFloor: lanes under PLATEAU paving are not). */
+  floor = 0,
 ): Omit<LanePlan, "corner"> {
   const seg = step.seg;
   let count = Math.max(1, seg.lanes);
@@ -294,6 +296,7 @@ export function laneFor(
   else if (merged) lane = merged.toLane;
   else if (next && !next.xw && toTurn < LANE_PREPARE && isRightward(next.turn)) lane = count - 1;
   if (forced !== null) lane = Math.max(0, Math.min(forced, count - 1));
+  lane = Math.max(lane, Math.min(floor, count - 1));
   lane = Math.min(lane, count - 1);
   let offset = count > 1 ? laneCentre(seg, lane, count) : laneOffset(seg);
   const isHugging = next !== undefined && toTurn < HUG_BEFORE && count === 1;
@@ -304,6 +307,14 @@ export function laneFor(
   if (isHugging && next.turn === "left" && isOneWay) offset = edgeHug(seg);
   return { offset, lane, count };
 }
+
+/**
+ * The leftmost lane a car may take on `seg` travelling `dir` (0: every lane). AutoDriver gives one
+ * that leaves out the lanes whose centre lies on PLATEAU paving (D2): on a street whose GSI 幅員
+ * includes its pavements, the lanes are laid out over the full width and lane 0 runs over the
+ * pavement, where the wheel never takes the car.
+ */
+export type LaneFloor = (seg: Segment, dir: 1 | -1) => number;
 
 /** Corner groups found on the centreline: sample indices of its first, last and main vertex. */
 type Group = { first: number; last: number; seed: number; kind: CornerKind };
@@ -514,11 +525,14 @@ function planLanes(
   route: Route,
   hints: readonly LaneHint[],
   startLane: number,
+  floorAt: (j: number) => number,
 ): { forced: Array<number | null>; blocked: number[] } {
   const { points: axis, cum, stepOf, steps, maneuvers } = route;
   const links = route.links ?? [];
   const n = axis.length;
-  const want = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, null, links));
+  const want = axis.map((_, j) =>
+    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, null, links, floorAt(j)),
+  );
   const forced: Array<number | null> = axis.map(() => null);
   forced[0] = startLane;
   const isHeld = axis.map(() => false);
@@ -532,9 +546,10 @@ function planLanes(
     if (isContinued) last.b = j;
     else holds.push({ a: j, b: j });
   }
-  const laneAt = (j: number) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j], links).lane;
+  const laneAt = (j: number) =>
+    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j], links, floorAt(j)).lane;
   const offsetAt = (j: number, lane: number) =>
-    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, lane, links).offset;
+    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, lane, links, floorAt(j)).offset;
   const indexFrom = (d: number) => {
     let j = 0;
     while (j < n - 1 && cum[j] < d) j++;
@@ -639,16 +654,22 @@ export function drivePath(
   hints: readonly LaneHint[],
   /** The lane the car is in at the start (0 = leftmost, as the autopilot assumes when unknown). */
   startLane = 0,
+  /** The leftmost lane the car may use on a step (none given: every lane). */
+  laneFloor?: LaneFloor,
 ): DrivePath {
   const { points: axis, cum, stepOf, steps, maneuvers } = route;
   const links = route.links ?? [];
+  const floorOf = (k: number) => laneFloor?.(steps[k].seg, steps[k].dir) ?? 0;
+  const floorAt = (j: number) => floorOf(stepOf[j]);
   // Lane plan at every centreline point, held across 進路変更禁止 stretches (planLanes).
-  const { forced, blocked } = planLanes(route, hints, startLane);
-  const plain = axis.map((_, j) => laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j], links));
+  const { forced, blocked } = planLanes(route, hints, startLane, floorAt);
+  const plain = axis.map((_, j) =>
+    laneFor(cum[j], steps[stepOf[j]], hints, maneuvers, forced[j], links, floorAt(j)),
+  );
   const bands = laneBands(route, plain);
   const raw = plain.map((plan, j) => ({ ...plan, offset: inBand(bands[j], plan.offset) }));
   const planAt = (j: number, d: number) => {
-    const plan = laneFor(d, steps[stepOf[j]], hints, maneuvers, forced[j], links);
+    const plan = laneFor(d, steps[stepOf[j]], hints, maneuvers, forced[j], links, floorAt(j));
     return { ...plan, offset: inBand(bands[j], plan.offset) };
   };
   /** The centreline sample at or before route distance d. */
@@ -853,7 +874,7 @@ export function drivePath(
           // The band of the sample the arc point lies after, or of the next one where that is the
           // previous street's.
           const jb = stepOf[j0] === k || j0 + 1 >= axis.length ? j0 : j0 + 1;
-          const plan = laneFor(d, steps[k], hints, maneuvers, forced[jb], links);
+          const plan = laneFor(d, steps[k], hints, maneuvers, forced[jb], links, floorOf(k));
           // The rounded centreline is off the street's own (inside the bend), and the check
           // measures from the street's: the band moves by as much.
           const band = bands[jb];
