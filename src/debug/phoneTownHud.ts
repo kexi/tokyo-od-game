@@ -1,5 +1,5 @@
 import type { TilesRenderer } from "3d-tiles-renderer";
-import type { PhoneTown } from "../device";
+import { pageStorage, type PhoneTown } from "../phoneTownWatch";
 
 /**
  * The corner readout of a phone trying `?phoneTown=…` (U12, the town tried on the phones from the
@@ -16,12 +16,16 @@ const TEXT_EVERY_MS = 500;
 const RESET_PRESS_MS = 1200;
 
 /** The key the load count is kept under, one per town tried. */
-export function loadCountKey(town: Exclude<PhoneTown, null>): string {
+export function loadCountKey(town: PhoneTown): string {
   return `tod.phoneTown.${town}.loads`;
 }
 
-/** This page load counted: the stored count plus one (0 if storage is blocked or holds nonsense). */
-export function countLoad(storage: Pick<Storage, "getItem" | "setItem">, key: string): number {
+/**
+ * This page load counted: the stored count plus one (a stored value that is not a count starts
+ * again from 0), or null when storage is blocked. Why not 0 when blocked: `reloads 0` would read as
+ * a run that never reloaded, when nothing was counted at all.
+ */
+export function countLoad(storage: Pick<Storage, "getItem" | "setItem">, key: string): number | null {
   try {
     const before = Number(storage.getItem(key) ?? "0");
     const isCount = Number.isInteger(before) && before >= 0;
@@ -29,8 +33,8 @@ export function countLoad(storage: Pick<Storage, "getItem" | "setItem">, key: st
     storage.setItem(key, String(now));
     return now;
   } catch {
-    // Storage blocked (private window): the count cannot outlive the page, so it reads 0.
-    return 0;
+    // Storage blocked (private window): the count cannot outlive the page.
+    return null;
   }
 }
 
@@ -38,7 +42,8 @@ export function countLoad(storage: Pick<Storage, "getItem" | "setItem">, key: st
 export function phoneTownLines(s: {
   town: string;
   elapsedMs: number;
-  loads: number;
+  /** Null when storage is blocked: the reloads read `?`. */
+  loads: number | null;
   visible: number;
   heldBytes: number;
   limitBytes: number;
@@ -47,18 +52,20 @@ export function phoneTownLines(s: {
   const total = Math.floor(s.elapsedMs / 1000);
   const clock = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
   const mb = (bytes: number) => Math.round(bytes / 1024 ** 2);
+  const reloads = s.loads === null ? "?" : String(Math.max(0, s.loads - 1));
   return [
     `phoneTown=${s.town} ${clock}`,
-    `reloads ${Math.max(0, s.loads - 1)}`,
+    `reloads ${reloads}`,
     `tiles ${s.visible} · ${mb(s.heldBytes)}/${mb(s.limitBytes)} MB · full ${s.fullFrames}`,
   ];
 }
 
 /** Shows the readout for `town` over the near town `tiles` (call once, after the town is made). */
 // `cachedBytes` is a public field of 0.5.3's LRUCache that its typings leave out.
-export function startPhoneTownHud(town: Exclude<PhoneTown, null>, tiles: () => TilesRenderer): void {
+export function startPhoneTownHud(town: PhoneTown, tiles: () => TilesRenderer): void {
   const key = loadCountKey(town);
-  let loads = countLoad(localStorage, key);
+  const storage = pageStorage();
+  let loads = storage === null ? null : countLoad(storage, key);
   const startedAt = performance.now();
   let fullFrames = 0;
   let textAt = 0;
@@ -70,11 +77,13 @@ export function startPhoneTownHud(town: Exclude<PhoneTown, null>, tiles: () => T
   panel.addEventListener("pointerdown", () => {
     pressTimer = window.setTimeout(() => {
       try {
-        localStorage.setItem(key, "1");
+        storage?.setItem(key, "1");
+        // Still `?` when blocked: nothing was counted, so there is nothing to set back.
+        if (loads !== null) loads = 1;
       } catch {
-        // Storage blocked: nothing to reset.
+        // Storage blocked since the page loaded: the count can no longer be kept.
+        loads = null;
       }
-      loads = 1;
     }, RESET_PRESS_MS);
   });
   const cancelPress = () => window.clearTimeout(pressTimer);

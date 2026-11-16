@@ -384,6 +384,10 @@ measure-buildings-memory label="run" base="http://localhost:5173/tokyo-od-game/"
 measure-plain-memory label="run" base="http://localhost:4174/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/memory-plain.ts --label {{ label }} --base {{ base }} {{ args }}
 
+# PLATEAU の建物の読み込みを時系列で測り（読み込み画面が閉じた時刻・settled・最後のタイル・それぞれの時点の残り・閉じた時点の 300 m 以内の表示の割合・残り 0 の谷）、.qa/timeline-buildings/<label>.json に書く（開発サーバーが必要。args に --start lat,lon・--view・--mobile・--warp lat,lon・--seconds）
+measure-buildings-timeline label="run" base="http://localhost:5173/tokyo-od-game/" *args:
+    pnpm exec tsx scripts/qa/timeline-buildings.ts --label {{ label }} --base {{ base }} {{ args }}
+
 # 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}

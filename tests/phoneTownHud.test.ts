@@ -26,11 +26,25 @@ describe("the phoneTown trial readout", () => {
     expect(storage.map.get(key)).toBe("2");
   });
 
-  it("starts again from a stored value that is not a count, and reads 0 when storage is blocked", () => {
+  it("starts again from a stored value that is not a count, and has no count when storage is blocked", () => {
     const storage = fakeStorage();
     storage.setItem(loadCountKey("full"), "abc");
     expect(countLoad(storage, loadCountKey("full"))).toBe(1);
-    expect(countLoad(fakeStorage(true), loadCountKey("full"))).toBe(0);
+    expect(countLoad(fakeStorage(true), loadCountKey("full"))).toBeNull();
+  });
+
+  /** A trial in a private tab must not read as a run with no reloads (PR #91's review, Minor). */
+  it("writes `reloads ?` when nothing could be counted", () => {
+    const lines = phoneTownLines({
+      town: "full",
+      elapsedMs: 0,
+      loads: null,
+      visible: 0,
+      heldBytes: 0,
+      limitBytes: 256 * 1024 ** 2,
+      fullFrames: 0,
+    });
+    expect(lines[1]).toBe("reloads ?");
   });
 
   it("writes the time as m:ss, the reloads after the first load, and the near town held of its limit", () => {

@@ -27,8 +27,16 @@ import { inJapanese } from "./i18n/reverse";
 import { localUtterance } from "./i18n/speech";
 
 const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
-import { GRAPHICS, PHONE_TOWN, pixelRatioFor, QUALITY } from "./device";
+import {
+  GRAPHICS,
+  PHONE_KIND_NOW,
+  PHONE_TOWN_OPEN,
+  PHONE_TOWN_PARAM,
+  pixelRatioFor,
+  QUALITY,
+} from "./device";
 import { startPhoneTownHud } from "./debug/phoneTownHud";
+import { armWatch, pageStorage } from "./phoneTownWatch";
 import { buildGraphicsPanel, buildTitlePreset } from "./game/graphicsPanel";
 import { savedVoice, saveVoice } from "./game/titlePrefs";
 import type { GraphicsSettings } from "./graphics";
@@ -51,6 +59,7 @@ import type { Surroundings } from "./ai/dialogue";
 import { GameAudio } from "./game/audio";
 import { clockStep, gameStep } from "./game/frameClock";
 import { hasHeldOver, heldSince } from "./game/lawTimers";
+import { stopAheadWithin, type StopAheadWorld } from "./game/stopAhead";
 import { type IndicatorMemory, isSignalOmitted, noteIndicators, turnSignalSide } from "./game/signalOmission";
 import { FrameWork } from "./game/frameWork";
 import { SerialWork } from "./game/serialWork";
@@ -413,6 +422,29 @@ function toast(text: string, color = "#ffe14d"): void {
   setTimeout(() => el.remove(), 3300);
 }
 
+/**
+ * A phone's town watch (phoneTownWatch.ts): logs the town device.ts chose, and on the full town keeps
+ * the run up to date from the page's events. device.ts already marked the page as on screen.
+ */
+function startPhoneTownWatch(): void {
+  const opened = PHONE_TOWN_OPEN;
+  if (opened === null) return;
+  log("phone_town_chosen", {
+    kind: PHONE_KIND_NOW,
+    town: opened.town,
+    reason: opened.reason,
+    param: PHONE_TOWN_PARAM,
+    crashed: opened.crashed,
+    demotedNow: opened.justDemoted,
+  });
+  const storage = pageStorage();
+  const isWatched = opened.next?.run != null && storage !== null;
+  if (!isWatched) return;
+  armWatch(storage, opened.next?.demoted ?? false);
+}
+/** The light town's notice was shown on this page (once, however many drives start on it). */
+let isDemotionTold = false;
+
 async function main(): Promise<void> {
   /**
    * The game's clock (ms, frameClock.ts gameStep): the frame loop moves it on by each frame's dt,
@@ -422,6 +454,7 @@ async function main(): Promise<void> {
    */
   let gameMs = performance.now();
   const gameNow = () => gameMs;
+  startPhoneTownWatch();
   setLoading(() => i18n.t("loading.physics"), 0.04);
   await RAPIER.init();
 
@@ -531,8 +564,9 @@ async function main(): Promise<void> {
     return hit ? Math.min(1, hit.depthM / 40) : 0;
   };
   const buildings = new Buildings(scene, world, camera, renderer, frame);
-  // A phone trying `?phoneTown=full` reads its own run off the screen (no logs reach a published build).
-  if (PHONE_TOWN) startPhoneTownHud(PHONE_TOWN, () => buildings.tiles);
+  // A phone opened with `?phoneTown=…` reads its own run off the screen (no logs reach a published
+  // build). Why not on every phone: the readout is for a trial, not for play.
+  if (PHONE_TOWN_PARAM) startPhoneTownHud(PHONE_TOWN_PARAM, () => buildings.tiles);
   // PLATEAU buildings that stand into a deck are cut down below its soffit as its tile is read.
   // Set here, before the first expressway.update() in the frame loop: no tile is read before it.
   if (expressway) expressway.onCutPoints = (points) => buildings.cutAboveDecks(points);
@@ -1389,6 +1423,8 @@ async function main(): Promise<void> {
     // Not forever: a deck tile that fails to load must not hold the warp (as the town's 12 s).
     const areDecksReady = (expressway?.isSettledAt(g.lat, g.lon) ?? true) || now - warping.since > 12000;
     const isGroundReady = terrain.hasColliderAt(g.lat, g.lon) && areDecksReady;
+    // 95 % of this load (Buildings counts it from when tiles began to be requested here, not over
+    // what is held from before the warp).
     const isTownReady = buildings.loadProgress() > 0.95 || now - warping.since > 12000;
     if (!isGroundReady || !isTownReady) return;
     buildings.buildCollidersNear(new Vector3());
@@ -2516,6 +2552,13 @@ async function main(): Promise<void> {
       showSocial(true);
     }
     log("game_started", {});
+    // The page the watch sent back to the light town says so once, on its first drive. Why at the
+    // drive and not on the title: the toasts sit in the HUD, which the title covers.
+    const isDemotionUntold = PHONE_TOWN_OPEN?.justDemoted === true && !isDemotionTold;
+    if (isDemotionUntold) {
+      isDemotionTold = true;
+      setTimeout(() => toast(i18n.t("toast.phoneTownReduced"), "#ffb347"), 3500);
+    }
     // Once per browser, after the opening toasts: hang it small (knowledge/mirror-charms.md).
     if (prefsNow.charm !== "none" && firstCharmTip())
       setTimeout(() => toast(i18n.t(CHARM_TIP), "#ffe14d"), 7000);
@@ -2621,6 +2664,8 @@ async function main(): Promise<void> {
       camera.position.applyAxisAngle(new Vector3(0, 1, 0), dt * 0.05);
       camera.lookAt(0, 30, 0);
       const groundReady = terrain.hasColliderAt(spawn.lat, spawn.lon);
+      // 1 only once no tile has been queued, downloading or parsing for a moment (Buildings): the
+      // library's own value read 1 while bodies were still downloading, and play began before the town.
       const tilesProgress = buildings.loadProgress();
       const waited = wall - loadStart;
       const isLoading = state === "loading" && compiling === null;
@@ -3057,8 +3102,14 @@ async function main(): Promise<void> {
       // ground end at a street), a patrol's roadside stop, the ticket being written.
       const travelDir: 1 | -1 = onRoad && carForward.dot(onRoad.dir) < 0 ? -1 : 1;
       const travelS = onRoad ? (travelDir === 1 ? onRoad.s : onRoad.seg.length - onRoad.s) : 0;
-      const stopAhead = onRoad ? control.nextStop(onRoad.seg, travelDir, travelS) : null;
-      const isAtStopLine = stopAhead !== null && stopAhead.dist < 40;
+      // On this segment or just past its end (stopAhead.ts: the light at the foot of an exit ramp).
+      const stopWorld: StopAheadWorld = {
+        nodes: roadGraph.nodes,
+        segments: roadGraph.segments,
+        nextStop: (seg, dir, s) => control.nextStop(seg, dir, s),
+      };
+      const stopAhead = onRoad ? stopAheadWithin(stopWorld, onRoad.seg, travelDir, travelS, 40) : null;
+      const isAtStopLine = stopAhead !== null;
       const isHeldByPolice = pursuitDirector.stop !== null || pursuitDirector.holdCar || ticket.visible;
       const xwFindings = expresswayWatch.check({
         graph: roadGraph,
@@ -4573,6 +4624,81 @@ async function main(): Promise<void> {
     toast(message, "#3cd17a");
     log("autopilot_off", {});
   };
+  /** Seconds the autopilot's car has stood (game time), and whether that stand was logged. */
+  let autopilotStillS = 0;
+  let isAutopilotStillLogged = false;
+  const STILL_LOG_S = 3;
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  /** autopilot_stop_trace: what the driver saw and the vehicle just ahead (logEvents.ts). */
+  const traceAutopilot = (phase: "still" | "movedOff" | "accident", driver: AutoDriver) => {
+    const pos = vehicle.position();
+    const yaw = vehicle.yaw();
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    let ahead: { along: number; across: number; speedMs: number; headingDeg: number; kind: string } | null =
+      null;
+    for (const o of taxiWorld()?.vehicles ?? []) {
+      const dx = o.position.x - pos.x;
+      const dz = o.position.z - pos.z;
+      const along = dx * fx + dz * fz;
+      const across = dx * fz - dz * fx;
+      const isAhead = along > 1 && along < 30 && Math.abs(across) < 3;
+      if (!isAhead || (ahead && ahead.along <= along)) continue;
+      const turn = o.heading === undefined ? 0 : ((o.heading - yaw + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+      ahead = {
+        along: round2(along),
+        across: round2(across),
+        speedMs: round2(o.speed ?? 0),
+        headingDeg: Math.round((turn * 180) / Math.PI),
+        kind: o.kind,
+      };
+    }
+    const w = driver.why;
+    const finite = (v: number | null) => (v === null || !Number.isFinite(v) ? null : round2(v));
+    const why = w && {
+      ...w,
+      want: round2(w.want),
+      cruise: round2(w.cruise),
+      block: finite(w.block),
+      stop: w.stop && { ...w.stop, dist: round2(w.stop.dist) },
+      front: w.front && {
+        ...w.front,
+        gap: round2(w.front.gap),
+        along: round2(w.front.along),
+        stoppedFor: finite(w.front.stoppedFor),
+      },
+      follow: finite(w.follow),
+      junction: finite(w.junction),
+      merge: finite(w.merge),
+    };
+    const g = frame.toGeodetic(pos);
+    log("autopilot_stop_trace", {
+      phase,
+      stillS: round2(autopilotStillS),
+      gameMs: Math.round(gameNow()),
+      lat: Number(g.lat.toFixed(6)),
+      lon: Number(g.lon.toFixed(6)),
+      speedMs: round2(vehicle.forwardSpeed()),
+      why,
+      ahead,
+    });
+  };
+  /** Logs a stand of the autopilot's car once it is long, and its moving off after it. */
+  const noteAutopilotStill = (dt: number, driver: AutoDriver) => {
+    const isStill = Math.abs(vehicle.forwardSpeed()) < 0.3;
+    if (isStill) {
+      autopilotStillS += dt;
+      const isLong = autopilotStillS >= STILL_LOG_S;
+      if (isLong && !isAutopilotStillLogged) traceAutopilot("still", driver);
+      isAutopilotStillLogged ||= isLong;
+      return;
+    }
+    const isMoving = Math.abs(vehicle.forwardSpeed()) > 1;
+    if (!isMoving) return;
+    if (isAutopilotStillLogged) traceAutopilot("movedOff", driver);
+    autopilotStillS = 0;
+    isAutopilotStillLogged = false;
+  };
   const updateAutopilot = (dt: number) => {
     const ap = autopilot;
     if (!ap || mode !== "car") return;
@@ -4581,6 +4707,7 @@ async function main(): Promise<void> {
     // The driver leaves its own car out of what it sees (anything within 1 m of itself).
     const pose = { position: vehicle.position(), yaw: vehicle.yaw(), speed: vehicle.forwardSpeed() };
     const { input, done, gaveUp } = ap.driver.update(dt, tw, pose);
+    noteAutopilotStill(dt, ap.driver);
     ap.input = input;
     vehicle.lightOverride = {
       brake: ap.driver.braking,
@@ -5437,6 +5564,7 @@ async function main(): Promise<void> {
   ) => {
     social.note("crash", env.now().getTime());
     pursuitDirector.onCrash();
+    if (autopilot) traceAutopilot("accident", autopilot.driver);
     const now = gameNow();
     lastCrashAt = now;
     const careless = book(VIOLATIONS.safeDriving, now, 3000);

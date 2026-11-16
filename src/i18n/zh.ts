@@ -648,6 +648,7 @@ export const zh: Messages = {
   "toast.gotIn": "已上车",
   "toast.idlingStop": "已关闭引擎（《东京都环境确保条例》第52条：停车熄火）",
   "toast.dayStart": "今天从“{time}·{weather}”出发",
+  "toast.phoneTownReduced": "上次页面意外关闭，已减少建筑的显示",
   "toast.charmTip":
     "后视镜挂饰要小。妨碍视野或后视镜作用的挂饰可能违法（《道路交通法》第55条第2款、《东京都道路交通规则》第8条第8项）。可在设置中选择“无”",
   "toast.welcome": "光柱＝东京都开放数据中的真实地点。按 {key} 键选择目的地",
