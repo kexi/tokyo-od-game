@@ -1,18 +1,20 @@
 ---
 type: Reference
 title: PLATEAU 建物の配信と LOD 選定
-description: 3D Tiles を直接ストリーミングする構成と、LOD2 を捨てて LOD1 にした理由（キャッシュ枯渇・浮いた壁・網羅率）、建物 ID を使った外壁テクスチャ。AABB で向きを誤診した訂正を含む。2026-11-15 訂正：近景と遠景がライブラリの既定の LRU を 1 つ共有し、遠景の 64 MB が近景の 0.8 GB を上書きしていた（PC の既定とスマホで近くの街が欠けていた）。分けて、近景の上限を「使っている量の最大 × 2」で視界ごとに決め直した。2026-11-15（X1）に神奈川・埼玉・千葉を足した。自作の根で 4 都県を 1 本にまとめ、東京以外の県は「門」（市の範囲）に近景の球が掛かるときだけ読む。4 都県の URL・根の形・市区町村コード・PLATEAU の無い沿線の市・ライセンスの確かめも記録する。
+description: 3D Tiles を直接ストリーミングする構成と、LOD2 を捨てて LOD1 にした理由（キャッシュ枯渇・浮いた壁・網羅率）、建物 ID を使った外壁テクスチャ。AABB で向きを誤診した訂正を含む。2026-11-15 訂正：近景と遠景がライブラリの既定の LRU を 1 つ共有し、遠景の 64 MB が近景の 0.8 GB を上書きしていた（PC の既定とスマホで近くの街が欠けていた）。分けて、近景の上限を「使っている量の最大 × 2」で視界ごとに決め直した。2026-11-15（X1）に神奈川・埼玉・千葉を足した。自作の根で 4 都県を 1 本にまとめ、東京以外の県は「門」（市の範囲）に近景の球が掛かるときだけ読む。4 都県の URL・根の形・市区町村コード・PLATEAU の無い沿線の市・ライセンスの確かめも記録する。2026-11-16：スマホの実機の確かめ（?phoneTown=full で約 25 分、落ちず）を受け、full を試した種類の端末だけの既定にする仕組みと、表に出たまま終わった回を 1 回数えたら 24 MiB に戻して覚える見張りを足した（Pixel と iPhone の両方で試したので、Android・iOS とも full を既定にした）。
 resource:
   - https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/13-bldg-lod1-latest/tileset.json
   - https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/14-bldg-lod1-latest/tileset.json
   - https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/11-bldg-lod1-latest/tileset.json
   - https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/12-bldg-lod1-latest/tileset.json
-tags: [plateau, rendering, licensing]
+tags: [plateau, rendering, licensing, mobile]
 status: stable
 stale_after: 2027-04-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-10-05T04:55:00Z }
-updated: { by: claude-opus-5-5, at: 2026-11-15T07:00:00Z }
+updated: { by: claude-opus-5-5, at: 2026-11-16T00:45:00Z }
 verified:
+  - { by: process:vitest, at: 2026-11-16T00:30:00Z }
+  - { by: claude-opus-5-5, at: 2026-11-16T00:40:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-10-04T03:45:00Z }
   - { by: process:vitest, at: 2026-11-15T07:00:00Z }
   - { by: claude-opus-5-5/1m, at: 2026-11-15T07:00:00Z }
@@ -76,6 +78,17 @@ sources:
   - id: x0-test
     resource: tests/farMemory.test.ts（近景と遠景の LRU が別で、既定の共有のものでないこと、上限が視界ごとであること、スマホの既定と ?phoneTown=full の上限と半径）、tests/phoneTownHud.test.ts
     title: LRU を分けたことのテスト
+  - id: phone-trial
+    resource: ユーザーの回答（2026-11-16）。Pixel と iPhone の実機で、公開の版に ?phoneTown=full を付けて約 25 分、どちらも reloads 0・full 0。型番・OS の版・道・画面の写しは無い
+    title: スマホの実機の確かめ（U12）
+  - id: phone-watch-test
+    resource: tests/phoneTownWatch.test.ts（端末の種類の見分け、種類ごとの既定、full と low の上限と半径、PC が変わらないこと、引数の優先、表に出たまま終わった回の次だけ戻ること、戻った後も戻ったまま、?phoneTown=full で覚えが消えること、保存が使えないときは low）、tests/phoneTownHud.test.ts（reloads ?）
+    title: スマホの既定と見張りのテスト
+    author: claude-opus-5-5
+  - id: phone-watch-crash
+    resource: セッションの一時フォルダ（scratchpad、消える場所）の p27/s7r/verify-phone-watch.mjs を、ANDROID_TOWN を手元だけ full にした開発サーバー（ポート 5477）にヘッドレス Chrome（scripts/qa/browser.mjs の launch、--mute-audio、Android の UA）で 1 回。CDP の Page.crash・Page.reload・Target.createTarget・activateTarget・closeTarget で落とし方・終わり方を変え、localStorage の tod.phoneTown.watch・近景の lruCache.maxBytesSize・QUALITY・#toasts を読んだ（2026-11-16）
+    title: 落ちたときに戻ることの確かめ
+    author: claude-opus-5-5
   - id: streaming-check
     resource: 調査ワークフローのストリーミング賛否検証（2 エージェント）
     title: 3D Tiles ストリーミング検証
@@ -128,10 +141,62 @@ sources:
 
 - **LRU の上限は、実際のメモリの上限ではない。** LRU が数える 1 MB は、配列の実体（タイルの頂点などの ArrayBuffer、`Runtime.getHeapUsage` の `backingStorageSize`）で約 4.4 MB、GC 後の JavaScript のヒープで約 1.6 MB、合わせて約 6 MB を使っていた（ヒープの上限 2 GB の試験の 20〜30 分で、配列の実体 ≈ 近景の持っている量 × 4.4 + 0.45 GB。下の節）。何がその 4.4 倍を持っているかは調べていない（M2: タイルごとの座標の写し、外壁の属性、読み込んだファイルの実体が残っている、などが候補）。調査の記録は [memory-growth.md](memory-growth.md)。GPU のメモリと物理（コライダー）のメモリは、この数字に入っていない。
 - 使っている量は走りごとに 2 割近く違う（far のワープで 253〜312 MB）。決めた後の確かめは「使っている量の最大が下限以下なら確定」とした。
-- **スマホは、実機で確かめてから決める（U12 の回答、2026-11-15）。それまで既定は main の実効のまま**: 近景の上限 24 MiB（`FAR_CACHE` のスマホの上限。2026-10-05 から実際に効いていた値）、建物の半径は視界の設定のとおり。近景と遠景の LRU が別になった分だけ、main より取り合いが無い。
-- 試す値は URL の `?phoneTown=full` で選ぶ（スマホのときだけ効き、PC では無視。値は `full` だけで、知らない値は既定）。上限 256 MiB、建物の半径は視界に依らず 1.6 km（視界に合わせてキャッシュを増やすと、スマホで far のときにヒープが PC と同じだけ増えるため。遠景・地形・写真は視界の設定に従う）。合計のメモリは、PC の Chrome でのスマホの設定で約 0.8〜0.9 GB から約 1.6〜1.9 GB になる見込み。
+- **スマホは、実機で確かめてから決める（U12 の回答、2026-11-15）。** 軽い設定（`low`）は main の実効のまま: 近景の上限 24 MiB（`FAR_CACHE` のスマホの上限。2026-10-05 から実際に効いていた値）、建物の半径は視界の設定のとおり。近景と遠景の LRU が別になった分だけ、main より取り合いが無い。実機の結果と、端末の種類ごとの既定は下の「スマホの既定と見張り」。
+- 試す値は URL の `?phoneTown=full` で選ぶ（スマホのときだけ効き、PC では無視。2026-11-16 から `?phoneTown=low` も読む。知らない値は既定）。上限 256 MiB、建物の半径は視界に依らず 1.6 km（視界に合わせてキャッシュを増やすと、スマホで far のときにヒープが PC と同じだけ増えるため。遠景・地形・写真は視界の設定に従う）。合計のメモリは、PC の Chrome でのスマホの設定で約 0.8〜0.9 GB から約 1.6〜1.9 GB になる見込み。
 - `phoneTown` が付いているときだけ、画面の左上に 3 行を出す（`src/debug/phoneTownHud.ts`）: 経過時間、読み直しの回数（ページを読むたびに `localStorage` の `tod.phoneTown.<値>.loads` を 1 増やす。タブが落ちてブラウザが開き直すと増える。表示を長押しで 0 に戻す）、近景の表示タイル・持っている量と上限・満杯のフレーム。公開された版に引数を付けて実機で開き、端末の側でログを取らずに合否を読むため。引数は後の確かめにも使えるので残す。
 - 止まっている地点の使っている量は、視界 far で 52〜157 MB。新宿・池袋のあたりを走ると 300 MB 前後まで行く。
+
+## スマホの既定と見張り（2026-11-16、U12 の続き）
+
+### 実機の結果と決定
+
+- 2026-11-16、ユーザーが Pixel と iPhone の実機で、公開の版に `?phoneTown=full` を付けて約 25 分走らせた（新宿〜池袋の手順）。どちらも `reloads 0`・`full 0` のまま、落ちなかった。機種の細かい型番・OS とブラウザの版・走った道・終わりの時点のキャッシュの量・画面の写しは受け取っていない。[^phone-trial]
+- 決定: **`full`（256 MiB・1.6 km）を、試した種類の端末にだけ既定にする。** 試していない種類は、試すまで `low`。0.8 km の中間の版は作らない（落ちなかったので要らない）。
+- 種類は `src/device.ts` の `ANDROID_TOWN`・`IOS_TOWN`（iPhone と iPadOS。iPadOS 13 以降は UA が Macintosh なので、タッチ点の数で Mac と分ける）。Android でも iOS でもないタッチ端末は試していないので `low`。
+  - **2026-11-16 から、どちらも `full`。** 根拠は、Pixel と iPhone の両方で上の確かめが通ったこと（ユーザーの答え）。
+- 引数があれば既定より優先（`full`・`low`）。左上の試しの表示は、引数が付いたときだけ出す。
+
+### 県境の合計
+
+- `full` のキャッシュが下限（161 MB）に着いた状態の合計（GC 後のヒープ + 配列の実体）は 1.4〜1.7 GB（PC の Chrome をスマホの設定にした計測。上の「県境のワープ」）。県境では 5 分ほどで着き、都心でも長く走れば着く。
+- 実機の 25 分がその状態まで行ったかは分からない。加えて M1 の伸び（スマホの設定で 0.13〜0.17 MB/秒、1 時間で約 0.5〜0.6 GB）があるので、**実機の 25 分は 1 時間の走りを保証しない。** そのため、落ちた端末を戻す見張りを付けた。
+
+### 見張り（`src/phoneTownWatch.ts`）
+
+- `localStorage` の `tod.phoneTown.watch` に `{ run, demoted }` を持つ。`run` は、`full` の回が「表に出ている（`front`）」「裏に回った（`back`）」「きちんと終わった（`closed`）」のどれか。
+  - 開いたとき（`device.ts` の読み込み時、重い読み込みの前）に `front`。`visibilitychange` で `back` / `front`、`pagehide` で `closed`、back/forward キャッシュから戻った `pageshow` で `front`。
+- 開いたとき、前の回が `front` のまま（表に出たまま、どの出来事も無く終わった）なら、メモリで落ちた疑いとして 1 回数える。**1 回で `low` に戻し、覚える**（`demoted`）。その回の最初の走り出しで 1 回だけ知らせる（i18n `toast.phoneTownReduced`、3 言語）。
+  - 裏に回ってから終わった回（アプリの切り替え、OS が裏のタブを片付けた）、閉じた回、読み直し・別のページへの移動は数えない。
+  - `?phoneTown=full` で開くと、覚えを消して `full` に戻る。
+  - 保存が使えないとき（プライベートのタブ、サイトのデータの拒否、書けないとき）は `low`。覚えられないので、落ち続けるのを防げないため。
+  - `low` の回は見張らない（`run` を空にする）。戻る先が無く、後で `full` になったときに古い `front` を数えないため。
+- 決め方は純粋な関数（`openWatch`・`runAfter`）で、テストがある。開いたときの結果はログ `phone_town_chosen`（kind・town・reason・param・crashed・demotedNow）。[^phone-watch-test]
+- Why not `navigator.deviceMemory` で分ける: Android の Chrome にしか無く、iPhone では読めない。Why not 2 回落ちてから戻す: 1 回目で遊べなくなっている。誤って戻しても失うのは建物の量だけ。
+- 試しの表示（`phoneTownHud.ts`）は、保存が使えないとき `reloads ?` と出す（前は数えていないのに `reloads 0` と読めた。PR #91 のレビューの Minor）。
+
+### 確かめ（ヘッドレス Chrome、Android の UA）
+
+`ANDROID_TOWN` を手元だけ一時的に `full` にした開発サーバー（既定を `full` にする前の版。見張りの中身は同じ）で、1 つのプロファイル（同じ `localStorage`）のまま順に開いた。[^phone-watch-crash]
+
+| 手順                                                                              | 近景の上限           | 理由（reason）                    |
+| --------------------------------------------------------------------------------- | -------------------- | --------------------------------- |
+| 引数なしで開く                                                                    | 256 MiB・半径 1.6 km | default                           |
+| `Page.crash` で落とし、開き直す                                                   | 24 MiB               | demoted（走り出しで知らせが出た） |
+| もう一度開き直す                                                                  | 24 MiB               | demoted（知らせなし）             |
+| `?phoneTown=full` で開く                                                          | 256 MiB              | param（覚えが消えた）             |
+| 引数なしで開く → 読み直す                                                         | 256 MiB              | default                           |
+| 別のタブを前に出し（`hidden`、`run` は `back`）、裏のまま `Page.crash` → 開き直す | 256 MiB              | default（数えない）               |
+| 別のタブへ移ってから閉じる → 別のタブで開く                                       | 256 MiB              | default                           |
+| 表に出たまま閉じる → 別のタブで開く                                               | 256 MiB              | default                           |
+| 表に出たまま `Page.crash` → 開き直す                                              | 24 MiB               | demoted                           |
+
+### 確かめていないこと
+
+- Pixel・iPhone 以外の機種（メモリの少ない Android、古い iPhone）。OS とブラウザの版。走った道。終わりの時点のキャッシュの量。実機での合計のメモリ。県境を実機で走った結果。1 時間を超える走り。
+- iPhone の Safari が、メモリでタブを落とすときに `visibilitychange` や `pagehide` を出さないこと（出すなら、見張りは数えない）。`Page.crash` の確かめは Chrome だけ。
+- 見張りの誤り（表に出たまま、メモリ以外の理由で終わる回: 電池切れ、ブラウザごと強制終了された、など）がどれだけあるか。
+- 同じ端末でゲームを 2 つのタブに開いたとき（後から開いたタブが前のタブの `front` を読むと、落ちていなくても数える。前のタブは、後のタブが前に出た時点で `back` を書くはずだが、確かめていない）。
+- 実機の確かめ（マージの後、引数なしで開いて建物が出ていること）はまだ。
 
 ## 決めた上限での量（ヘッドレス、強制 GC の後）
 
@@ -370,3 +435,9 @@ sources:
 [^x1-e-northwest]: 地点 e のカメラの向きの確かめ
 
 [^owner-check]: 整備主体と著作権者の確かめ
+
+[^phone-trial]: スマホの実機の確かめ（U12）
+
+[^phone-watch-test]: スマホの既定と見張りのテスト
+
+[^phone-watch-crash]: 落ちたときに戻ることの確かめ

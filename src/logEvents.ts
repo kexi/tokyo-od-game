@@ -135,6 +135,19 @@ export const LOG_EVENTS = {
   }),
 
   // ---------- start-up and the page ----------
+  /**
+   * A phone's near town for this page (device.ts, phoneTownWatch.ts): the kind of phone, the town
+   * (`full` / `low`), why (`param` / `default` / `demoted` / `no_storage`), the URL's `?phoneTown=`
+   * (null when absent), and whether the page before ended while on screen (a suspected crash).
+   */
+  phone_town_chosen: info({
+    kind: z.string(),
+    town: z.string(),
+    reason: z.string(),
+    param: z.string().nullable(),
+    crashed: z.boolean(),
+    demotedNow: z.boolean(),
+  }),
   game_started: info({}),
   /** 終了: back to the title (the page reloads). */
   title_reload: info({}),

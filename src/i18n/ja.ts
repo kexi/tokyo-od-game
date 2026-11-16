@@ -684,6 +684,7 @@ export const ja = {
   "toast.gotIn": "乗車しました",
   "toast.idlingStop": "エンジンを停止しました（東京都環境確保条例 第52条：アイドリング・ストップ）",
   "toast.dayStart": "今日は「{time}・{weather}」から走り出します",
+  "toast.phoneTownReduced": "前回、画面が突然閉じたため、建物の表示を減らしました",
   "toast.charmTip":
     "ミラーの飾りは小さく。視野やミラーの効用を妨げる飾りは違反になりえます（道交法第55条第2項・都規則第8条第8号）。設定で「なし」にできます",
   "toast.welcome": "光の柱＝東京都オープンデータの実在スポット。{key} キーで目的地を選べます",
