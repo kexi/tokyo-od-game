@@ -4,8 +4,9 @@ import type { MessageKey } from "./i18n";
  * 画質: each graphics feature on its own setting, and the 最高 / 高 / 中 / 低 presets that set them
  * all. Remembered in this browser; phones start on 低, computers on 高. Most settings take effect
  * at once (the renderer, the shaders and the passes read them every frame or on change); the
- * ones that size what is loaded (view distance, traffic, anti-aliasing) and the 描画方式 (the
- * renderer's backend) on the next load.
+ * ones that size what is loaded (view distance, traffic, anti-aliasing), the 描画方式 (the
+ * renderer's backend) and シェーダーの事前作成 (whether the loading screen builds the pipelines) on
+ * the next load.
  */
 export type GraphicsPreset = "ultra" | "high" | "medium" | "low";
 
@@ -40,11 +41,28 @@ export type GraphicsSettings = {
    * webgl = WebGL 2 always (forceWebGL), for a GPU or driver that misbehaves under WebGPU.
    */
   backend: "auto" | "webgl";
+  /**
+   * シェーダーの事前作成: on = the loading screen waits while main.ts's precompile builds the
+   * pipelines of the town, the traffic, the driver's seat, the passes and the witnesses; off = play
+   * starts without it, and each material's pipeline is built in the frame it is first drawn.
+   */
+  shaderPrebuild: "on" | "off";
 };
 
 export type GraphicsKey = Exclude<keyof GraphicsSettings, "preset">;
-/** The items the presets set (描画方式 is not a quality level: the presets leave it alone). */
-export type PresetKey = Exclude<GraphicsKey, "backend">;
+/**
+ * The items the presets leave alone: 描画方式 and シェーダーの事前作成 are not quality levels (a
+ * driver that misbehaves, a wait the player would rather skip), so a preset keeps them.
+ */
+export type NonPresetKey = "backend" | "shaderPrebuild";
+/** The items the presets set. */
+export type PresetKey = Exclude<GraphicsKey, NonPresetKey>;
+
+/**
+ * シェーダーの事前作成 for a fresh browser, computer and phone alike: build first, as the game always
+ * did. One constant, so the default can be changed once the two are measured against each other.
+ */
+export const SHADER_PREBUILD_DEFAULT: GraphicsSettings["shaderPrebuild"] = "on";
 
 /** Labels are i18n keys (src/i18n/ja.ts): the panel shows them in the language in force. */
 type Option = { value: string; label: MessageKey };
@@ -189,6 +207,16 @@ export const GRAPHICS_ITEMS: GraphicsItem[] = [
       { value: "webgl", label: "graphics.backendWebgl" },
     ],
   },
+  {
+    key: "shaderPrebuild",
+    label: "graphics.shaderPrebuild",
+    onReload: true,
+    inPreset: false,
+    options: [
+      { value: "on", label: "graphics.shaderPrebuildOn" },
+      { value: "off", label: "graphics.shaderPrebuildOff" },
+    ],
+  },
 ];
 
 /** The rows the presets set. */
@@ -271,7 +299,20 @@ export const PRESETS: Record<GraphicsPreset, Pick<GraphicsSettings, PresetKey>> 
 const STORE_KEY = "tod.graphics";
 
 /** What the presets leave alone, as a fresh browser has it. */
-const NON_PRESET: Omit<GraphicsSettings, PresetKey | "preset"> = { backend: "auto" };
+export const NON_PRESET: Pick<GraphicsSettings, NonPresetKey> = {
+  backend: "auto",
+  shaderPrebuild: SHADER_PREBUILD_DEFAULT,
+};
+
+/**
+ * The items outside the presets as they are in `s`, every key of NON_PRESET.
+ * Why not name them here one by one (as `{ backend: from.backend }` did): a second item outside the
+ * presets was then reset by every preset until someone remembered this line.
+ */
+function nonPresetOf(s: GraphicsSettings): Pick<GraphicsSettings, NonPresetKey> {
+  const keys = Object.keys(NON_PRESET) as NonPresetKey[];
+  return Object.fromEntries(keys.map((k) => [k, s[k]])) as Pick<GraphicsSettings, NonPresetKey>;
+}
 
 /**
  * A fresh browser's settings: 最高 on a desktop (the game is made to be seen that way, and the title
@@ -284,7 +325,7 @@ export function defaultGraphics(isMobile: boolean): GraphicsSettings {
 
 /** The settings with a preset applied; the items outside the presets stay as they were in `from`. */
 export function withPreset(preset: GraphicsPreset, from?: GraphicsSettings): GraphicsSettings {
-  const kept = from ? { backend: from.backend } : NON_PRESET;
+  const kept = from ? nonPresetOf(from) : NON_PRESET;
   return { preset, ...kept, ...PRESETS[preset] };
 }
 
@@ -295,6 +336,14 @@ export function withItem(s: GraphicsSettings, key: GraphicsKey, value: string): 
   if (!isKnown) return s;
   const next = { ...s, [key]: value } as GraphicsSettings;
   return { ...next, preset: matchingPreset(next) };
+}
+
+/**
+ * Whether going from `loaded` to `now` changed an item that only takes effect on the next load (the
+ * 設定 screen then offers 再読み込み, the title's preset reloads at once).
+ */
+export function needsReload(loaded: GraphicsSettings, now: GraphicsSettings): boolean {
+  return GRAPHICS_ITEMS.some((i) => i.onReload === true && now[i.key] !== loaded[i.key]);
 }
 
 function matchingPreset(s: GraphicsSettings): GraphicsPreset | "custom" {
