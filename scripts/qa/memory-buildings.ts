@@ -11,7 +11,7 @@
 //   pnpm exec tsx scripts/qa/memory-buildings.ts --label L [--base URL] [--seconds S]
 //     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--sample-every S] [--title] [--start lat,lon]
 //     [--view near|medium|far] [--mobile] [--heap-limit MB] [--sample held,used,heap,backing]
-//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2] [--census-at T1,T2]
+//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2] [--census-at T1,T2] [--trace-removals]
 //
 // --sample-every reads the page every S seconds (default: every warp) while the warps go on every
 // EVERY seconds: a forced GC takes seconds, so a warp each second cannot be read each second. Why not
@@ -108,7 +108,15 @@ const WATCH = `(() => {
   const backend = __game.renderer.backend;
   if (backend && !backend.__counted) {
     const build = backend.createRenderPipeline.bind(backend);
-    backend.createRenderPipeline = (...args) => { m.pipelines++; return build(...args); };
+    m.pipelineLog = [];
+    backend.createRenderPipeline = (...args) => {
+      m.pipelines++;
+      // What the pipeline was built for (the census counts them by material and model).
+      const ro = args[0]; let top = ro?.object; while (top?.parent) top = top.parent;
+      const mesh = ro?.object; const made = mesh ? (mesh.name || (mesh.geometry?.type ?? mesh.type)) : "?";
+      m.pipelineLog.push([performance.now(), (ro?.material?.name || ro?.material?.type || "?") + " | " + made + (top?.isScene ? "" : " (floating)")]);
+      return build(...args);
+    };
     backend.__counted = true;
   }
   // Marks every object given dispose() (the census tells retired objects from ones never retired).
@@ -118,6 +126,17 @@ const WATCH = `(() => {
     const dispose = proto.dispose;
     proto.dispose = function () { this.__retiredAt = performance.now(); return dispose.call(this); };
     proto.__marked = true;
+    // --trace-removals: who took each object out (the first frames of the game's code; the dev
+    // server's names are readable), for the census of floating ones.
+    const remove = proto.remove;
+    proto.remove = function (...objects) {
+      if (window.__traceRemovals) {
+        const frames = new Error().stack.split("\\n").slice(2).map((s) => s.trim().replace(/^at /, "").replace(/\\?[^:)]*/, "").replace(/https?:\\/\\/[^/]+\\/tokyo-od-game\\//, ""));
+        const by = frames.filter((s) => !/node_modules|three|Object3D/.test(s)).slice(0, 3).join(" < ");
+        for (const o of objects) o.__removedBy = by;
+      }
+      return remove.apply(this, objects);
+    };
   }
   const tick = (now) => {
     // Frame gaps; the one across the probe's forced GC (skip, set before it) is not the game's.
@@ -165,15 +184,15 @@ const STATE = `(() => {
  */
 const COUNTS = `(() => {
   const g = __game; const read = (f) => { try { return f(); } catch { return null; } };
-  let objects = 0; const top = [];
+  let objects = 0; let lights = 0; const top = [];
   for (const child of g.scene.children) {
-    let n = 0; child.traverse(() => n++); objects += n;
+    let n = 0; child.traverse((o) => { n++; if (o.isLight && o.visible) lights++; }); objects += n;
     top.push([child.name || child.type, n]);
   }
   top.sort((a, b) => b[1] - a[1]);
   let cars = 0; read(() => g.traffic.forEachCar(() => cars++));
   return { counts: {
-    objects, topChildren: top.slice(0, 8),
+    objects, lights, topChildren: top.slice(0, 8),
     geometries: read(() => g.renderer.info.memory.geometries), textures: read(() => g.renderer.info.memory.textures),
     // three's own set of render objects (RenderObjects._renderObjects, 0.186): read here only, never by the game.
     renderObjects: read(() => g.renderer._objects._renderObjects.size),
@@ -183,6 +202,7 @@ const COUNTS = `(() => {
   } };
 })()`;
 const isCounted = argv.includes("--counts");
+const isTracingRemovals = argv.includes("--trace-removals");
 
 /**
  * --alloc FROM,TO: the sampling heap profiler between those seconds; what it reports is what was
@@ -213,7 +233,7 @@ const CENSUS = `(() => {
   // Unnamed meshes go by their material and geometry (what they are made of is all there is to go by).
   const signature = (root) => { const names = []; let made = ""; root.traverse((c) => { if (names.length < 4 && c.isMesh && c.name) names.push(c.name); if (!made && c.isMesh) made = (c.material?.name || c.material?.type || "?") + "/" + (c.geometry?.type || "?"); }); return (root.name || root.type) + "[" + (names.length ? names.join(",") : made) + "]"; };
   const add = (m, k) => m.set(k, (m.get(k) || 0) + 1);
-  const byKind = new Map(), byMesh = new Map(), byPass = new Map(), byRoot = new Map(), rootsBy = new Map(); const roots = new Set();
+  const byKind = new Map(), byMesh = new Map(), byPass = new Map(), byRoot = new Map(), rootsBy = new Map(), byRemoval = new Map(); const roots = new Set();
   let total = 0, floating = 0;
   for (const ro of set) {
     total++;
@@ -226,9 +246,14 @@ const CENSUS = `(() => {
     add(byKind, kind); add(byMesh, kind + ":" + (ro.object.name || ro.object.type));
     add(byPass, (ro.camera?.name || ro.camera?.type || "?") + " ctx" + (ro.context?.id ?? "?")); add(byRoot, signature(root) + mark);
     if (!roots.has(root)) { roots.add(root); add(rootsBy, signature(root) + mark); }
+    add(byRemoval, signature(root) + " <= " + (root.__removedBy || "(no removal seen)"));
   }
+  // Pipelines built since the last census, by what they were for.
+  const log = window.__mem.pipelineLog || []; const since = window.__mem.censusAt || 0; const pipelinesBy = new Map();
+  for (const [at, key] of log) if (at >= since) add(pipelinesBy, key);
+  window.__mem.censusAt = performance.now();
   const top = (m) => [...m].toSorted((a, b) => b[1] - a[1]).slice(0, 12);
-  return { total, floating, floatingRoots: roots.size, byKind: top(byKind), byMesh: top(byMesh), byPass: top(byPass), byRoot: top(byRoot), rootsBy: top(rootsBy) };
+  return { total, floating, floatingRoots: roots.size, byKind: top(byKind), byMesh: top(byMesh), byPass: top(byPass), byRoot: top(byRoot), rootsBy: top(rootsBy), byRemoval: [...byRemoval].toSorted((a, b) => b[1] - a[1]).slice(0, 25), pipelinesBy: [...pipelinesBy].toSorted((a, b) => b[1] - a[1]).slice(0, 20) };
 })()`;
 const snapshotsTaken = new Set<number>();
 let isAllocating = false;
@@ -313,6 +338,7 @@ try {
     const isReady = (await b.evaluate("window.__game?.getState()").catch(() => null)) === "ready";
     if (isReady) break;
   }
+  if (isTracingRemovals) await b.evaluate("window.__traceRemovals = true");
   await b.evaluate(WATCH);
   if (!isTitle) {
     await b.evaluate("window.__game.start()");
