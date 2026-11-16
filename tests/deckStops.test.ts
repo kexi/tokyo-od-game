@@ -94,4 +94,22 @@ describe("stalls on the decks, told apart by the reason the game logged", () => 
       isOver: false,
     });
   });
+
+  // The 汐留 wait30 of M1's (b) (2026-11-16): the car crept up at a 45 s red, the stall check
+  // counted it still afresh, the driver did not. Both stall lines are the one wait's.
+  it("explains every stall line inside one wait, and none after the wait ends", () => {
+    const traces = [
+      trace("still", "2026-11-16T17:51:46.050Z", 3.04, atRed()),
+      trace("movedOff", "2026-11-16T17:52:09.324Z", 24.8, atRed()),
+    ];
+    const inside = [stall({ ts: "2026-11-16T17:51:46.152Z" }), stall({ ts: "2026-11-16T17:51:53.889Z" })];
+    const { unexplained, waits } = judgeStalls(inside, traces);
+    expect(unexplained).toEqual([]);
+    expect(waits).toEqual([
+      { xid: "24402125:2", reason: "signal", seconds: 24.8, limitS: 45, isOver: false },
+    ]);
+    // A stand after it moved off is another stand, with no reason logged for it.
+    const after = stall({ ts: "2026-11-16T17:52:15.000Z" });
+    expect(judgeStalls([after], traces).unexplained).toEqual([after]);
+  });
 });

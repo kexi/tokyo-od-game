@@ -80,19 +80,20 @@ export function judgeStalls(
 ): { unexplained: DeckStall[]; waits: DeckWait[] } {
   const unexplained: DeckStall[] = [];
   const waits: DeckWait[] = [];
+  /** The waits already counted, by their `still` trace: one wait, however many stall lines it had. */
+  const counted = new Set<StopTrace>();
   for (const stall of stalls) {
     const t = Date.parse(stall.ts);
     const isHeld = stall.frozen || stall.carFrozen || stall.touching.buildings + stall.touching.other > 0;
-    const still = traces.find(
-      (tr) => tr.phase === "still" && Math.abs(Date.parse(tr.ts) - t) < PAIR_MS && metres(tr, stall) < PAIR_M,
-    );
+    const still = waitHolding(traces, stall, t);
     const reason = still ? reasonOf(still) : null;
     if (isHeld || !still || reason === null) {
       unexplained.push(stall);
       continue;
     }
-    const after = Date.parse(still.ts);
-    const movedOff = traces.find((tr) => tr.phase === "movedOff" && Date.parse(tr.ts) > after);
+    if (counted.has(still)) continue;
+    counted.add(still);
+    const movedOff = movedOffAfter(traces, still);
     const seconds = movedOff ? movedOff.stillS : null;
     const limitS = (reason === "signal" ? still.why?.stop?.cycleS : null) ?? WAIT_LIMIT_S;
     // A wait the drive ended in is no pass: it has no end to measure.
@@ -100,6 +101,35 @@ export function judgeStalls(
     waits.push({ xid: stall.xid, reason, seconds, limitS, isOver });
   }
   return { unexplained, waits };
+}
+
+/** The first `movedOff` after the `still` trace `still` (null: the drive ended in the wait). */
+function movedOffAfter(traces: readonly StopTrace[], still: StopTrace): StopTrace | null {
+  const from = Date.parse(still.ts);
+  return traces.find((tr) => tr.phase === "movedOff" && Date.parse(tr.ts) > from) ?? null;
+}
+
+/**
+ * The wait a stall line falls in: the last `still` at the stall's place that began by the stall
+ * (PAIR_MS of slack) and had not ended before it (its `movedOff` comes after the stall, or none).
+ *
+ * Why not the `still` nearest in time (as before): a car creeping up at a long red is counted
+ * still afresh by the stall check (it starts again at 1 km/h) but not by the driver's (at 1 m/s),
+ * so a second stall line came with no `still` near it and failed the drive (汐留 wait30 of M1's
+ * (b): 24.8 s at a 45 s light, two stall lines, one `still`).
+ */
+function waitHolding(traces: readonly StopTrace[], stall: DeckStall, t: number): StopTrace | null {
+  let found: StopTrace | null = null;
+  for (const tr of traces) {
+    const isStillHere = tr.phase === "still" && metres(tr, stall) < PAIR_M;
+    if (!isStillHere) continue;
+    const isBegun = Date.parse(tr.ts) <= t + PAIR_MS;
+    if (!isBegun) continue;
+    const movedOff = movedOffAfter(traces, tr);
+    const isGoing = movedOff === null || Date.parse(movedOff.ts) > t;
+    if (isGoing) found = tr;
+  }
+  return found;
 }
 
 /** The JSON of a logged line ("[warning] {…}" as browser.mjs keeps it). */
