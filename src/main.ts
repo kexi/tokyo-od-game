@@ -51,6 +51,7 @@ import type { Surroundings } from "./ai/dialogue";
 import { GameAudio } from "./game/audio";
 import { clockStep, gameStep } from "./game/frameClock";
 import { hasHeldOver, heldSince } from "./game/lawTimers";
+import { stopAheadWithin, type StopAheadWorld } from "./game/stopAhead";
 import { type IndicatorMemory, isSignalOmitted, noteIndicators, turnSignalSide } from "./game/signalOmission";
 import { FrameWork } from "./game/frameWork";
 import { SerialWork } from "./game/serialWork";
@@ -3056,8 +3057,14 @@ async function main(): Promise<void> {
       // ground end at a street), a patrol's roadside stop, the ticket being written.
       const travelDir: 1 | -1 = onRoad && carForward.dot(onRoad.dir) < 0 ? -1 : 1;
       const travelS = onRoad ? (travelDir === 1 ? onRoad.s : onRoad.seg.length - onRoad.s) : 0;
-      const stopAhead = onRoad ? control.nextStop(onRoad.seg, travelDir, travelS) : null;
-      const isAtStopLine = stopAhead !== null && stopAhead.dist < 40;
+      // On this segment or just past its end (stopAhead.ts: the light at the foot of an exit ramp).
+      const stopWorld: StopAheadWorld = {
+        nodes: roadGraph.nodes,
+        segments: roadGraph.segments,
+        nextStop: (seg, dir, s) => control.nextStop(seg, dir, s),
+      };
+      const stopAhead = onRoad ? stopAheadWithin(stopWorld, onRoad.seg, travelDir, travelS, 40) : null;
+      const isAtStopLine = stopAhead !== null;
       const isHeldByPolice = pursuitDirector.stop !== null || pursuitDirector.holdCar || ticket.visible;
       const xwFindings = expresswayWatch.check({
         graph: roadGraph,
@@ -4623,6 +4630,7 @@ async function main(): Promise<void> {
     log("autopilot_stop_trace", {
       phase,
       stillS: round2(autopilotStillS),
+      gameMs: Math.round(gameNow()),
       lat: Number(g.lat.toFixed(6)),
       lon: Number(g.lon.toFixed(6)),
       speedMs: round2(vehicle.forwardSpeed()),

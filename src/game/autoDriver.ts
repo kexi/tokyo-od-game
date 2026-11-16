@@ -181,13 +181,24 @@ export type DriveWhy = {
   cruise: number;
   block: number | null;
   blockBy: "stop" | "obstacle" | null;
-  stop: { kind: string; dist: number; action: string; onward: boolean } | null;
+  stop: {
+    kind: string;
+    dist: number;
+    action: string;
+    onward: boolean;
+    /** A signal's main lamps, its controller and its plan's cycle (s); null for a stop sign. */
+    light: string | null;
+    controller: number | null;
+    cycleS: number | null;
+  } | null;
   front: { gap: number; along: number; stoppedFor: number; kind: string } | null;
   verdict: Verdict["kind"];
   follow: number | null;
   junction: number | null;
   merge: number | null;
   yieldingAtMerge: boolean;
+  /** Holding still to show the right 合図 before moving off (施行令 第21条). */
+  signallingOff: boolean;
   pass: string | null;
 };
 
@@ -575,6 +586,7 @@ export class AutoDriver {
       junction: finiteOrNull(this.looked.junction),
       merge: finiteOrNull(this.looked.merge),
       yieldingAtMerge: this.yieldingAtMerge,
+      signallingOff: false,
       pass: this.pass?.phase ?? null,
     };
     this.creep = false;
@@ -583,6 +595,7 @@ export class AutoDriver {
     // 第21条) — not where it waits at a stop line or in a queue, where it only goes on.
     const isMovingOff = this.moveOff > 0 && want > 0.5 && Math.abs(this.speed) < 0.3;
     if (isMovingOff && block > 15 && this.frontGap > 15) {
+      if (this.why) this.why.signallingOff = true;
       this.moveOff -= dt;
       if (this.moveOff <= 0) this.hasSignalledOff = true;
       this.signal = "right";
@@ -684,7 +697,18 @@ export class AutoDriver {
           this.waited = 0;
         } else block = dist;
       }
-      this.looked.stop = { kind: approach.kind, dist, action, onward: here === null };
+      // For the log only: never in the way of driving. Why optional: the driving tests stand in a
+      // TrafficControl with what driving reads (nextStop, permits), not the lamps' state.
+      const isSignal = approach.kind === "signal" && typeof world.control.state === "function";
+      this.looked.stop = {
+        kind: approach.kind,
+        dist,
+        action,
+        onward: here === null,
+        light: isSignal ? world.control.state(approach) : null,
+        controller: approach.controller?.id ?? null,
+        cycleS: approach.controller?.plan.cycle ?? null,
+      };
       if (block < Infinity) this.looked.blockBy = "stop";
     }
     const stopBlock = block;

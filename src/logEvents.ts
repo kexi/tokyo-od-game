@@ -656,6 +656,8 @@ export const LOG_EVENTS = {
   autopilot_stop_trace: info({
     phase: z.enum(["still", "movedOff", "accident"]),
     stillS: z.number(),
+    /** The game's clock (ms, main.ts gameNow): the signals' phase runs on it. */
+    gameMs: z.number(),
     lat: z.number(),
     lon: z.number(),
     speedMs: z.number(),
@@ -666,7 +668,15 @@ export const LOG_EVENTS = {
         block: z.number().nullable(),
         blockBy: z.enum(["stop", "obstacle"]).nullable(),
         stop: z
-          .object({ kind: z.string(), dist: z.number(), action: z.string(), onward: z.boolean() })
+          .object({
+            kind: z.string(),
+            dist: z.number(),
+            action: z.string(),
+            onward: z.boolean(),
+            light: z.string().nullable(),
+            controller: z.number().nullable(),
+            cycleS: z.number().nullable(),
+          })
           .nullable(),
         front: z
           .object({
@@ -681,6 +691,7 @@ export const LOG_EVENTS = {
         junction: z.number().nullable(),
         merge: z.number().nullable(),
         yieldingAtMerge: z.boolean(),
+        signallingOff: z.boolean(),
         pass: z.string().nullable(),
       })
       .nullable(),
