@@ -12,6 +12,10 @@
 //     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--sample-every S] [--title] [--start lat,lon]
 //     [--view near|medium|far] [--mobile] [--heap-limit MB] [--sample held,used,heap,backing]
 //     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2] [--census-at T1,T2]
+//     [--prebuild on|off]
+//
+// --prebuild writes 画質 › シェーダーの事前作成 to the page's saved 画質 (localStorage tod.graphics)
+// before it loads, as --view does the 描画距離: off starts without the loading screen's precompile.
 //
 // --sample-every reads the page every S seconds (default: every warp) while the warps go on every
 // EVERY seconds: a forced GC takes seconds, so a warp each second cannot be read each second. Why not
@@ -25,6 +29,7 @@
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
+import { COUNT_PIPELINES } from "./pipelineCount.ts";
 import { freePort } from "./ports.ts";
 import { slopeSummary, type MemorySample } from "./memorySlopes.ts";
 
@@ -39,6 +44,7 @@ const base = flag("base") ?? "http://localhost:5173/tokyo-od-game/";
 const isTitle = argv.includes("--title");
 const isMobile = argv.includes("--mobile");
 const view = flag("view");
+const prebuild = flag("prebuild");
 const heapLimit = flag("heap-limit");
 const seconds = Number(flag("seconds") ?? (isTitle ? 300 : 600));
 const every = Number(flag("every") ?? (isTitle ? 5 : 10));
@@ -87,8 +93,11 @@ function routePoints(corners: Array<[number, number]>, step: number): Array<[num
 const route = isTitle ? [] : routePoints(routeCorners(flag("route") ?? "wards"), stepM);
 const startAt = isTitle ? flag("start") : route[0]?.join(",");
 const url = `${base}?time=day&weather=clear&seed=20261115${startAt ? `&start=${startAt}` : ""}`;
-const preload = view
-  ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistance: ${JSON.stringify(view)} })); } catch {}`
+// Only the items asked for: parseGraphics (src/graphics.ts) gives the rest their defaults.
+const stored = { ...(view ? { viewDistance: view } : {}), ...(prebuild ? { shaderPrebuild: prebuild } : {}) };
+const isStored = Object.keys(stored).length > 0;
+const preload = isStored
+  ? `try { localStorage.setItem("tod.graphics", ${JSON.stringify(JSON.stringify(stored))}); } catch {}`
   : null;
 const shotsFlag = flag("shots");
 const isEveryShot = shotsFlag === "all";
@@ -102,15 +111,10 @@ const shotTimes = isEveryShot ? [] : (shotsFlag ?? "").split(",").filter(Boolean
  */
 const WATCH = `(() => {
   if (window.__mem) return;
-  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null, gaps: [], last: 0, skip: true, pipelines: 0 });
-  // Render pipelines the backend builds (three's Pipelines calls it once per new cache key): a
-  // pipeline thrown away with its last render object and built again shows here as a hitch would.
-  const backend = __game.renderer.backend;
-  if (backend && !backend.__counted) {
-    const build = backend.createRenderPipeline.bind(backend);
-    backend.createRenderPipeline = (...args) => { m.pipelines++; return build(...args); };
-    backend.__counted = true;
-  }
+  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null, gaps: [], last: 0, skip: true });
+  // Render pipelines the backend builds (pipelineCount.ts): a pipeline thrown away with its last
+  // render object and built again shows here as a hitch would.
+  ${COUNT_PIPELINES};
   // Marks every object given dispose() (the census tells retired objects from ones never retired).
   let proto = Object.getPrototypeOf(__game.scene);
   while (proto && !Object.prototype.hasOwnProperty.call(proto, "traverse")) proto = Object.getPrototypeOf(proto);
@@ -177,7 +181,7 @@ const COUNTS = `(() => {
     geometries: read(() => g.renderer.info.memory.geometries), textures: read(() => g.renderer.info.memory.textures),
     // three's own set of render objects (RenderObjects._renderObjects, 0.186): read here only, never by the game.
     renderObjects: read(() => g.renderer._objects._renderObjects.size),
-    pipelines: read(() => window.__mem.pipelines),
+    pipelines: read(() => window.__pipelines.n),
     bodies: read(() => g.world.bodies.len()), colliders: read(() => g.world.colliders.len()),
     cars, pedestrians: read(() => g.pedestrians.list.length), licenseLog: read(() => g.law.state.log.length),
   } };
@@ -409,6 +413,7 @@ const out = {
   isTitle,
   isMobile,
   view: view ?? null,
+  prebuild: prebuild ?? null,
   heapLimit: heapLimit ?? null,
   stepM,
   every,
