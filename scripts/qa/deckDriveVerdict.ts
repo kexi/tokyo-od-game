@@ -1,3 +1,5 @@
+import type { DeckWait } from "./deckStops.ts";
+
 /**
  * What fails a drive over the decks (scripts/qa/drive-deck.ts), from the ride's summary
  * (debug.expressway.stop) and the logs: each failure as a short reason. A drive that ends where it
@@ -63,13 +65,25 @@ export type AutoDriveRide = {
 /**
  * What fails an autopilot route (P6's drives, P2.7-5 4.4): arriving and booking no violation, and on
  * the way what fails a cruise but the speed (the autopilot keeps its own: a queue is no wall).
+ * `stalled` counts the stands with no reason the driver logged (deckStops.ts); `waits` are those
+ * with one, a failure only when longer than a light's cycle (or WAIT_LIMIT_S). Why not fail every
+ * stand (as before): a wait at a red light at an exit ramp's foot failed the drive (D1), and the
+ * check is there for a car caught on the decks' shape.
  */
-export function autoDriveFailures(ride: AutoDriveRide, seen: Omit<DeckDriveSeen, "reachedEnd">): string[] {
+export function autoDriveFailures(
+  ride: AutoDriveRide,
+  seen: Omit<DeckDriveSeen, "reachedEnd"> & { waits?: readonly DeckWait[] },
+): string[] {
   const failures: string[] = [];
   const isCrossed = seen.crossed > 0;
   if (isCrossed) failures.push(`building crossed on a deck (${seen.crossed})`);
   const isStalled = seen.stalled > 0;
   if (isStalled) failures.push(`stalled on a deck (${seen.stalled})`);
+  for (const w of seen.waits ?? []) {
+    if (!w.isOver) continue;
+    const held = w.seconds === null ? "to the end of the drive" : `${w.seconds} s`;
+    failures.push(`waited ${held} for a ${w.reason} over ${w.limitS} s (at ${w.xid ?? "?"})`);
+  }
   if (ride.fell) failures.push(`fell off a deck (at ${ride.maxDyAt ?? "?"})`);
   const isBouncing = ride.maxAbsDyM > MAX_ABS_DY_M;
   if (isBouncing)

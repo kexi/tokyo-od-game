@@ -24,7 +24,13 @@
 //
 //   just check-deck-drive [label] [route] (the dev server: just serve-dev; route all drives every one)
 //   pnpm exec tsx scripts/qa/drive-deck.ts [--label L] [--route R|all] [--base URL] [--out DIR] [--tries N]
-//     [--cpu-throttle N]
+//     [--cpu-throttle N] [--pre-wait S]
+//
+// --pre-wait S lets the world run S seconds of game time (the signals' clock) before an autopilot
+// route starts, the car standing where the town loaded (before it is put at the ramp's foot). The
+// drive is the same, the signals' phase as the car comes to each light is not: since the world runs
+// on one clock (knowledge/game-clock.md) a route met the same lights at the same phase on every run
+// (D1).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readExpresswayFiles } from "../expresswayFiles.ts";
@@ -44,6 +50,7 @@ import {
   type DeckRoute,
   routeOf,
 } from "./deckRoutes.ts";
+import { type DeckStall, judgeStalls, parseLogged, type StopTrace } from "./deckStops.ts";
 import { freePort } from "./ports.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -58,6 +65,7 @@ const routeArg = flag("route") ?? "";
 const outDir = flag("out");
 const tries = Number(flag("tries") ?? 3);
 const cpuThrottle = Number(flag("cpu-throttle") ?? 1);
+const preWaitS = Number(flag("pre-wait") ?? 0);
 const routes: DeckRoute[] =
   routeArg === "all" ? [...DECK_ROUTES] : [routeOf(routeArg === "" ? DEFAULT_ROUTE : routeArg)];
 /** The data the dev server serves (XW_DATA_DIR else public/data/expressway): where a run distance lies. */
@@ -76,6 +84,15 @@ const untilIn =
     throw new Error(`timeout: ${expr}`);
   };
 
+/**
+ * The page's CPU slowed `cpuThrottle` times (1: as it is). Only the drive is slowed: loading under
+ * the throttle would only take longer.
+ */
+async function throttle(b: Browser): Promise<void> {
+  const isThrottled = cpuThrottle !== 1;
+  if (isThrottled) await b.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
+}
+
 /** Open the game at `start`, start it, let it settle, wait out whatever would make the drive invalid. */
 async function open(start: string): Promise<{ b: Browser; url: string; before: string | null }> {
   const url = `${base}?start=${start}&time=day&weather=clear&seed=20261110&expressway`;
@@ -85,9 +102,6 @@ async function open(start: string): Promise<{ b: Browser; url: string; before: s
   await b.evaluate("window.__game.start()");
   await until("__game.debug.settled().isSettled", 150);
   await b.sleep(3000);
-  // Only the drive is slowed: loading under the throttle would only take longer.
-  const isThrottled = cpuThrottle !== 1;
-  if (isThrottled) await b.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
   // Nothing in the way first (an accident, a pursuit: an arrest would freeze the car mid-drive and
   // the run would measure the arrest, not the decks; knowledge/road-textures.md「止まる件」).
   let before: string | null = null;
@@ -127,6 +141,7 @@ async function driveCruise(r: CruiseRoute) {
   const start = `${from.lat.toFixed(5)},${from.lon.toFixed(5)}`;
   const { b, url, before } = await open(start);
   try {
+    await throttle(b);
     const logsBefore = b.logs.length;
     let stallFrom = logsBefore;
     const during = (event: string) =>
@@ -218,6 +233,15 @@ async function driveAuto(r: AutoRoute) {
     let worst: unknown = null;
     const isClear = before === null;
     if (isClear) {
+      // Game time first, by the signals' own clock (TrafficControl.time, s), then the drive as ever.
+      // Why not advance(preWaitS): advance counts frames, and at the 50 ms cap a second of frames
+      // was 3 s of the game; a 15 s wait moved the 45 s cycle by a whole turn and changed nothing.
+      const signalTime = () => b.evaluate<number>("__game.control.time");
+      const waitFrom = await signalTime();
+      while ((await signalTime()) - waitFrom < preWaitS) await b.evaluate("__game.advance(0.25)");
+      // Slowed only from here: the wait is to move the signals on, and under the throttle it took
+      // minutes of the run's 25 (a 4x drive with a 30 s wait ran out of time).
+      await throttle(b);
       // On the street connector at the foot of the entrance ramp, facing it (P6's drive).
       placed = await b.evaluate(`(() => {
         const G = window.__game; const g = G.getRoadGraph();
@@ -248,9 +272,15 @@ async function driveAuto(r: AutoRoute) {
     }
     const crossed = b.logs.filter((l) => l.includes(`"event":"expressway_building_crossed"`));
     const stalled = b.logs.slice(stallFrom).filter((l) => l.includes(`"event":"expressway_car_stalled"`));
+    // The stands the driver logged a reason for (a red light, a queue) are waits, not stalls.
+    const traces = b.logs.slice(stallFrom).filter((l) => l.includes(`"event":"autopilot_stop_trace"`));
+    const { unexplained, waits } = judgeStalls(
+      stalled.map((l) => parseLogged<DeckStall>(l)),
+      traces.map((l) => parseLogged<StopTrace>(l)),
+    );
     const invalid = invalidOf(before, summary?.invalid, during);
     const failures = summary
-      ? autoDriveFailures(summary, { crossed: crossed.length, stalled: stalled.length })
+      ? autoDriveFailures(summary, { crossed: crossed.length, stalled: unexplained.length, waits })
       : [];
     return {
       route: r.id,
@@ -258,6 +288,7 @@ async function driveAuto(r: AutoRoute) {
       url,
       invalid,
       failures,
+      waits,
       placed,
       summary,
       worst,
@@ -297,11 +328,23 @@ const lawEvents = (during: (e: string) => string[]) => ({
   accident: during("accident"),
   violationCited: during("violation_cited"),
   arrest: during("story_begin").filter((l) => l.includes(`"kind":"arrest"`)),
+  // Why the autopilot stood, moved off or crashed (main.ts autopilot_stop_trace).
+  stopTraces: during("autopilot_stop_trace"),
 });
 
 let exit = 0;
 for (const r of routes) {
-  const attempts: Array<{ invalid: string | null }> = [];
+  /**
+   * Every try, the invalid ones too: what each saw of the law and of the stops. Why not keep the
+   * counted try's alone (as before): a try made invalid by the autopilot's own accident was
+   * replaced by the next, and the accident was hidden behind the retry (D1, 汐留出口).
+   */
+  const attempts: Array<{
+    invalid: string | null;
+    failures: string[];
+    stalled: string[];
+    lawEvents: unknown;
+  }> = [];
   /** One try's result (a drive's, or an invalid placeholder for a try that threw). */
   type TryResult = {
     invalid: string | null;
@@ -335,11 +378,16 @@ for (const r of routes) {
         holds: [] as string[],
       }),
     );
-    attempts.push({ invalid: result.invalid });
+    attempts.push({
+      invalid: result.invalid,
+      failures: result.failures,
+      stalled: result.stalled,
+      lawEvents: result.lawEvents,
+    });
     const counts = result.invalid === null;
     if (counts) break;
   }
-  const out = { label, cpuThrottle, ...result!, attempts };
+  const out = { label, cpuThrottle, preWaitS, ...result!, attempts };
   const file = outDir
     ? join(outDir, `${r.id}.json`)
     : join(ROOT, ".qa", routeArg === "" ? `drive-deck-${label}.json` : `drive-deck-${label}-${r.id}.json`);
