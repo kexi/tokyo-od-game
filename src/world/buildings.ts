@@ -35,6 +35,7 @@ import {
   updateFacadeClock,
 } from "./facade";
 import { sharedDraco } from "../render/draco";
+import { startLoad, stepLoad, type LoadCounts, type LoadState } from "./loadProgress";
 import { log } from "../log";
 import { featureCeilings, indexCutPoints, type LocalCutPoint } from "./buildingCut";
 import type { DeckCutGeodetic } from "./deckCuts";
@@ -191,6 +192,26 @@ export class GatedSphereRegion extends SphereRegion {
   }
 }
 
+/** The renderer counts the load progress needs (TilesRendererBase.stats, public but untyped). */
+type TileStats = { stats: { queued: number; downloading: number; parsing: number } };
+
+/**
+ * Counts into `into.finished` every tile a renderer finishes: a model, a tileset JSON, or a failure
+ * (each was one of the queued, downloading or parsing it counted before).
+ */
+function countFinished(tiles: TilesRenderer, into: { finished: number }): void {
+  const finish = () => {
+    into.finished++;
+  };
+  for (const type of ["load-model", "load-tileset", "load-error"]) tiles.addEventListener(type, finish);
+}
+
+/** This frame's counts of a renderer for stepLoad. */
+function loadCounts(tiles: TilesRenderer, finished: { finished: number }): LoadCounts {
+  const { stats } = tiles as unknown as TileStats;
+  return { remaining: stats.queued + stats.downloading + stats.parsing, finished: finished.finished };
+}
+
 /** What preparing a far tile's meshes needs from the buildings (the landmarks' cut-outs). */
 export type FarTileHost = {
   cut(geometry: BufferGeometry, ecef: Float32Array): void;
@@ -315,6 +336,11 @@ export class Buildings {
     gateSphere: this.maskRegion.sphere,
   });
   private readonly createdAt = performance.now();
+  /** Each renderer's load progress (src/world/loadProgress.ts), stepped every update. */
+  private nearLoad: LoadState = startLoad(performance.now());
+  private farLoad: LoadState = startLoad(performance.now());
+  private nearFinished = { finished: 0 };
+  private farFinished = { finished: 0 };
   /** Far tiles loaded (for the console). */
   farLoadedCount = 0;
   /** Far tiles loaded but not yet prepared (hidden until then, a few milliseconds a frame). */
@@ -653,11 +679,16 @@ export class Buildings {
     this.detailRegion.sphere.set(centerEcef, DETAIL_RADIUS);
     this.farRegion.sphere.set(centerEcef, QUALITY.farBuildingRadius);
     this.tiles.update();
+    this.nearLoad = stepLoad(this.nearLoad, loadCounts(this.tiles, this.nearFinished), now);
     // After the town (they share the network): the skyline is for the distance.
-    const isTownLoaded = this.loadedCount > 0 && this.tiles.loadProgress >= 0.999;
+    const isTownLoaded = this.loadedCount > 0 && this.loadProgress() >= 0.999;
     const isLate = now - this.createdAt > FAR_START_MS;
-    if (!this.far && (isTownLoaded || isLate)) this.far = this.createFarTiles();
+    if (!this.far && (isTownLoaded || isLate)) {
+      this.far = this.createFarTiles();
+      this.farLoad = startLoad(now);
+    }
     this.far?.update();
+    if (this.far) this.farLoad = stepLoad(this.farLoad, loadCounts(this.far, this.farFinished), now);
     this.prepareFarTiles();
     const isColliderTick = now - this.lastColliderTick > 100;
     if (!isColliderTick) return;
@@ -685,18 +716,24 @@ export class Buildings {
     }
   }
 
-  /** 0..1 progress of the current tile request set; drives the loading screen. */
+  /**
+   * 0..1 progress of the town's current load (src/world/loadProgress.ts): 1 only once nothing has
+   * been queued, downloading or parsing for LOAD_HOLD_MS. Drives the loading screen, the warp's
+   * landing and debug.settled(). The library's own loadProgress is not read anywhere (it reads 1
+   * while tile bodies are still downloading).
+   */
   loadProgress(): number {
-    return this.tiles.loadProgress;
+    return this.nearLoad.progress;
   }
 
-  /** 0..1 progress of the far skyline's tile requests (1 before it is made: nothing to wait for). */
+  /** 0..1 progress of the far skyline's current load, counted the same way (1 before it is made: nothing to wait for). */
   farLoadProgress(): number {
-    return this.far?.loadProgress ?? 1;
+    return this.far ? this.farLoad.progress : 1;
   }
 
   private createTiles(): void {
     const tiles = new TilesRenderer(PLATEAU_TILESET);
+    countFinished(tiles, this.nearFinished);
     const lru = giveOwnLru(tiles);
     tiles.registerPlugin(new GLTFExtensionsPlugin({ rtc: true, dracoLoader: this.draco }));
     tiles.registerPlugin(new UnloadTilesPlugin());
@@ -787,6 +824,7 @@ export class Buildings {
       QUALITY.farBuildingMinError,
       QUALITY.farBuildingErrorTarget,
     );
+    countFinished(tiles, this.farFinished);
     tiles.setCamera(this.camera);
     this.setResolution(tiles);
     tiles.addEventListener("load-model", ({ scene }) => {

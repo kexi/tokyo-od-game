@@ -7,7 +7,7 @@
 //
 //   just measure-buildings-load after http://localhost:5173/tokyo-od-game/
 //   pnpm exec tsx scripts/qa/perf-buildings.ts [--label L] [--base URL] [--seconds S] [--points a,b]
-//     [--view near|medium|far] [--mobile] [--headed]
+//     [--view near|medium|far] [--mobile] [--headed] [--title-wait S]
 //
 // The window opens once neither renderer has loaded or disposed a tile for QUIET_MS (a full LRU
 // that keeps swapping never gets there: after QUIET_MAX_MS it is measured anyway, `quiet: false`).
@@ -36,6 +36,12 @@ const seconds = Number(flag("seconds") ?? 12);
 const view = flag("view");
 const isMobile = argv.includes("--mobile");
 const isHeaded = argv.includes("--headed");
+/**
+ * --title-wait S: seconds to stay on the title screen after it is ready, before start(). How a
+ * build whose loading screen closes sooner is compared with one that closes later: the title's
+ * camera turns all the while (main.ts), and what it sweeps is requested.
+ */
+const titleWaitS = Number(flag("title-wait") ?? 0);
 /** No tile loaded or disposed for this long: the town and the skyline have stopped streaming. */
 const QUIET_MS = 5000;
 /** Waiting longer than this for the quiet, measure anyway (and say so). */
@@ -119,6 +125,28 @@ const WINDOW = (ms: number) => `new Promise((resolve) => {
   requestAnimationFrame(tick);
 })`;
 
+/**
+ * Page-side: which renderer requested each tile URL (tile-download-start), installed as soon as the
+ * renderers exist, in window.__perfReq ({ url: "near" | "far" }).
+ */
+const REQUEST_WATCH = `(() => {
+  if (window.__perfReq) return;
+  const req = (window.__perfReq = {});
+  let near = null, far = null;
+  const timer = setInterval(() => {
+    const b = window.__game?.buildings;
+    if (!b) return;
+    if (b.tiles && near !== b.tiles) { near = b.tiles; near.addEventListener("tile-download-start", (e) => { req[e.url] ??= "near"; }); }
+    if (b.far && far !== b.far) { far = b.far; far.addEventListener("tile-download-start", (e) => { req[e.url] ??= "far"; }); clearInterval(timer); }
+  }, 20);
+})()`;
+/** Page-side: the content URLs of the tiles each renderer shows now. */
+const VISIBLE_NOW = `(() => {
+  const b = __game.buildings;
+  const keys = (r) => r ? [...r.visibleTiles].map((t) => { try { return new URL(t.content.uri, t.internal.basePath + "/").href; } catch { return (t.internal?.basePath ?? "") + "|" + (t.content?.uri ?? ""); } }).sort() : [];
+  return { near: keys(b.tiles), far: keys(b.far) };
+})()`;
+
 type Frames = { frames: number; p50: number; p95: number; max: number; heapMB: number | null };
 type Lru = { items: number; mb: number; maxItems: number; maxMb: number; full: boolean };
 type Inner = {
@@ -170,7 +198,14 @@ mkdirSync(outDir, { recursive: true });
 for (const point of points) {
   const url = `${base}?start=${point.start.join(",")}&time=day&weather=clear&seed=20261115`;
   const port = await freePort();
-  const b = await launch("about:blank", { width: 1280, height: 720, port, preload, headed: isHeaded });
+  // The request watch rides with the preload: it must be in the page before its first request.
+  const b = await launch("about:blank", {
+    width: 1280,
+    height: 720,
+    port,
+    preload: `${preload ?? ""};${REQUEST_WATCH}`,
+    headed: isHeaded,
+  });
   const until = async <T>(expr: string, tries = 180): Promise<T> => {
     for (let i = 0; i < tries; i++) {
       const v = await b.evaluate<T>(expr).catch(() => null);
@@ -185,6 +220,8 @@ for (const point of points) {
     const t0 = Date.now();
     await b.send("Page.navigate", { url });
     await until("window.__game?.getState() === 'ready'");
+    const readyS = Math.round((Date.now() - t0) / 100) / 10;
+    if (titleWaitS > 0) await b.sleep(titleWaitS * 1000);
     await b.evaluate("window.__game.start()");
     await b.evaluate(USED_WATCH);
     await until("__game.debug.settled().isSettled", 150);
@@ -222,8 +259,15 @@ for (const point of points) {
         loadRadius: b.maskRegion?.sphere?.radius ?? null,
         nearHeld: held(b.tiles), farHeld: held(b.far) };
     })()`);
+    const visibleNow = await b.evaluate<{ near: string[]; far: string[] }>(VISIBLE_NOW);
+    const requestedBy = await b.evaluate<Record<string, string>>("window.__perfReq ?? {}");
     net.close();
     const plateau = net.done.filter((r) => PLATEAU_HOSTS.some((h) => r.url.includes(h)));
+    // Per point: who requested each URL, its bytes on the wire, and the tiles shown at the end.
+    writeFileSync(
+      join(outDir, `${point.id}.detail.json`),
+      `${JSON.stringify({ requestedBy, bytes: Object.fromEntries(plateau.map((r) => [r.url, r.bytes])), visible: visibleNow })}\n`,
+    );
     const root = net.done.filter((r) => r.url.includes("data/plateau/tileset.json"));
     const byHost = Object.fromEntries(
       PLATEAU_HOSTS.map((h) => {
@@ -243,6 +287,8 @@ for (const point of points) {
       point: point.id,
       what: point.what,
       start: point.start,
+      readyS,
+      titleWaitS,
       settleS,
       quiet,
       quietWaitS,

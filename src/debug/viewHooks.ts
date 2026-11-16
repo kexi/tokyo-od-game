@@ -177,6 +177,8 @@ function brief(r: { ok: true; value: { length: number } } | { ok: false; reason:
  * load could have no buildings beside the deck; a shot was taken with far tiles still to prepare
  * (the far ground was first blamed for 麻布台's band; it was the pavements, see groundCuts.CutRelay).
  * Why the far progress too (PR #71 review): farPending counts only tiles already loaded.
+ * buildingsProgress and farProgress are Buildings' counts (src/world/loadProgress.ts): 1 only once
+ * no tile has been queued, downloading or parsing for LOAD_HOLD_MS.
  */
 export function isWorldSettled(s: ReturnType<ViewHookDeps["loadState"]>): boolean {
   return (

@@ -1422,6 +1422,8 @@ async function main(): Promise<void> {
     // Not forever: a deck tile that fails to load must not hold the warp (as the town's 12 s).
     const areDecksReady = (expressway?.isSettledAt(g.lat, g.lon) ?? true) || now - warping.since > 12000;
     const isGroundReady = terrain.hasColliderAt(g.lat, g.lon) && areDecksReady;
+    // 95 % of this load (Buildings counts it from when tiles began to be requested here, not over
+    // what is held from before the warp).
     const isTownReady = buildings.loadProgress() > 0.95 || now - warping.since > 12000;
     if (!isGroundReady || !isTownReady) return;
     buildings.buildCollidersNear(new Vector3());
@@ -2661,6 +2663,8 @@ async function main(): Promise<void> {
       camera.position.applyAxisAngle(new Vector3(0, 1, 0), dt * 0.05);
       camera.lookAt(0, 30, 0);
       const groundReady = terrain.hasColliderAt(spawn.lat, spawn.lon);
+      // 1 only once no tile has been queued, downloading or parsing for a moment (Buildings): the
+      // library's own value read 1 while bodies were still downloading, and play began before the town.
       const tilesProgress = buildings.loadProgress();
       const waited = wall - loadStart;
       const isLoading = state === "loading" && compiling === null;
