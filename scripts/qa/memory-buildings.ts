@@ -113,8 +113,11 @@ const WATCH = `(() => {
       m.pipelines++;
       // What the pipeline was built for (the census counts them by material and model).
       const ro = args[0]; let top = ro?.object; while (top?.parent) top = top.parent;
-      const mesh = ro?.object; const made = mesh ? (mesh.name || (mesh.geometry?.type ?? mesh.type)) : "?";
-      m.pipelineLog.push([performance.now(), (ro?.material?.name || ro?.material?.type || "?") + " | " + made + (top?.isScene ? "" : " (floating)")]);
+      // The object by its own name or the nearest named parent's, the material by type and name.
+      const mesh = ro?.object; let named = mesh; while (named && !named.name && named.parent) named = named.parent;
+      const made = mesh ? ((named?.name || "") + "/" + (mesh.name || (mesh.geometry?.type ?? mesh.type))) : "?";
+      const material = ro?.material ? ro.material.type + ":" + (ro.material.name || "") : "?";
+      m.pipelineLog.push([performance.now(), material + " | " + made + (top?.isScene ? "" : " (floating)")]);
       return build(...args);
     };
     backend.__counted = true;
@@ -140,7 +143,11 @@ const WATCH = `(() => {
   }
   const tick = (now) => {
     // Frame gaps; the one across the probe's forced GC (skip, set before it) is not the game's.
-    if (!m.skip && m.last) m.gaps.push(now - m.last);
+    if (!m.skip && m.last) {
+      m.gaps.push(now - m.last);
+      // Frames over 100 ms with when they started and ended (pipelines built inside are counted after).
+      if (now - m.last > 100) (m.longFrames ??= []).push([m.last, now]);
+    }
     m.skip = false; m.last = now;
     const b = __game.buildings; const c = b.tiles.lruCache;
     if (m.hooked !== b.tiles) { m.hooked = b.tiles; b.tiles.addEventListener("load-model", () => m.loads++); b.tiles.addEventListener("dispose-model", () => m.disposes++); }
@@ -202,6 +209,8 @@ const COUNTS = `(() => {
   } };
 })()`;
 const isCounted = argv.includes("--counts");
+let pipelineLog: Array<[number, string]> = [];
+let longFrames: Array<[number, number]> = [];
 const isTracingRemovals = argv.includes("--trace-removals");
 
 /**
@@ -424,6 +433,13 @@ try {
       break;
     }
   }
+  // --counts: every pipeline built and every frame over 100 ms, page time (ms), for the analysis.
+  if (isCounted) {
+    pipelineLog =
+      (await b.evaluate<Array<[number, string]>>("window.__mem.pipelineLog || []").catch(() => [])) ?? [];
+    longFrames =
+      (await b.evaluate<Array<[number, number]>>("window.__mem.longFrames || []").catch(() => [])) ?? [];
+  }
 } finally {
   await b.close();
 }
@@ -443,6 +459,8 @@ const out = {
   slopes: slopeSummary(samples as MemorySample[]),
   alloc: allocDone,
   census,
+  pipelineLog,
+  longFrames,
   samples,
 };
 writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
