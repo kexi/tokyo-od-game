@@ -167,6 +167,23 @@ const SWING_OUT = 14;
 /** Where the car actually is: chassis position, heading (atan2(x, z)) and forward speed (m/s). */
 export type CarPose = { position: Vector3; yaw: number; speed: number };
 
+/** DriveWhy while the driver manoeuvres (切り返し, a pass's run): no limit applies. */
+const MANOEUVRE_WHY: Readonly<DriveWhy> = {
+  want: 0,
+  cruise: 0,
+  block: null,
+  blockBy: null,
+  stop: null,
+  front: null,
+  verdict: "clear",
+  follow: null,
+  junction: null,
+  merge: null,
+  yieldingAtMerge: false,
+  signallingOff: false,
+  pass: null,
+};
+
 /** A limit that applied, or null for none (Infinity), for DriveWhy. */
 const finiteOrNull = (v: number | null) => (v !== null && Number.isFinite(v) ? v : null);
 
@@ -336,6 +353,8 @@ export class AutoDriver {
   ignoresMergeTraffic = false;
   /** Why the car was off its lane at the last look (null: on it). Read by QA scripts from the console. */
   lostWhy: LostWhy | null = null;
+  /** What offLane() measured when it last found the car off its lane (main.ts autopilot_lost_lane). */
+  lostAt: LostAt | null = null;
   /**
    * What set the speed at the last drive look: each limit and what it came from. main.ts logs it
    * when the car has stood, moves off, or has an accident (autopilot_stop_trace). Why not log from
@@ -359,6 +378,11 @@ export class AutoDriver {
   }
 
   /** What it is doing, for the HUD and the logs. */
+  /** The mode the driver is in: drive, or a manoeuvre's (for the log, main.ts autopilot_stop_trace). */
+  get modeKind(): string {
+    return this.mode.kind;
+  }
+
   get activity(): "drive" | "manoeuvre" | "pass" | "gaveUp" {
     if (this.gaveUp) return "gaveUp";
     if (this.mode.kind !== "drive") return "manoeuvre";
@@ -550,6 +574,10 @@ export class AutoDriver {
     if (this.mode.kind !== "drive") {
       this.hint = p.index;
       this.at = p.at;
+      // No speed limits while it manoeuvres: a stand now is the manoeuvre's, not a wait. Why not
+      // keep the last drive look (as before): a 切り返し's stands were logged with that look's
+      // reasons and speeds, stale (D2, 大手町一丁目).
+      this.why = MANOEUVRE_WHY;
       return out(this.manoeuvre(dt, world, route));
     }
     if (p.off > OFF_ROUTE && this.plan(world, this.target) && this.route) {
@@ -1350,7 +1378,20 @@ export class AutoDriver {
     const isMisaligned = isSlow && yawError > MISALIGNED;
     const isOff = off > OFF_LANE;
     this.lostWhy = lostReason({ isOnPavement, isOff, isMisaligned, isOffRoad: () => isSlow && isOffRoad() });
-    if (this.lostWhy) return "align";
+    if (this.lostWhy) {
+      this.lostAt = {
+        segId: stepSeg.id,
+        lane: this.lane,
+        lanes: stepSeg.lanes,
+        off,
+        yawErrorDeg: (yawError * 180) / Math.PI,
+        speed: this.speed,
+        isOnPavement,
+        isOff,
+        isMisaligned,
+      };
+      return "align";
+    }
     const uturn = route.corners.find((c) => c.kind === "uturn" && c.from - this.at < 5 && c.to > this.at);
     return uturn ? "uturn" : null;
   }
@@ -1609,6 +1650,22 @@ export class AutoDriver {
 
 /** 合図 for a manoeuvre: the way it turns (a 転回 always right, 施行令 第21条), or the way it moves over. */
 type LostWhy = "pavement" | "offLane" | "misaligned" | "offRoad";
+
+/**
+ * The car off its lane, as offLane() saw it: the route's segment and lane, how far it was from the
+ * driven path (m), its heading against the path's (degrees), its speed (m/s), and which test held.
+ */
+export type LostAt = {
+  segId: number;
+  lane: number;
+  lanes: number;
+  off: number;
+  yawErrorDeg: number;
+  speed: number;
+  isOnPavement: boolean;
+  isOff: boolean;
+  isMisaligned: boolean;
+};
 
 /** The first reason a car is off its lane (offLane), in the order they are asked. */
 function lostReason(c: {
