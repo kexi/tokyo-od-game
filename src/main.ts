@@ -27,8 +27,16 @@ import { inJapanese } from "./i18n/reverse";
 import { localUtterance } from "./i18n/speech";
 
 const SPAWN_DEFAULT = { ...SPAWN, label: () => i18n.t("start.default") };
-import { GRAPHICS, PHONE_TOWN, pixelRatioFor, QUALITY } from "./device";
+import {
+  GRAPHICS,
+  PHONE_KIND_NOW,
+  PHONE_TOWN_OPEN,
+  PHONE_TOWN_PARAM,
+  pixelRatioFor,
+  QUALITY,
+} from "./device";
 import { startPhoneTownHud } from "./debug/phoneTownHud";
+import { armWatch, pageStorage } from "./phoneTownWatch";
 import { buildGraphicsPanel, buildTitlePreset } from "./game/graphicsPanel";
 import { savedVoice, saveVoice } from "./game/titlePrefs";
 import type { GraphicsSettings } from "./graphics";
@@ -412,6 +420,29 @@ function toast(text: string, color = "#ffe14d"): void {
   setTimeout(() => el.remove(), 3300);
 }
 
+/**
+ * A phone's town watch (phoneTownWatch.ts): logs the town device.ts chose, and on the full town keeps
+ * the run up to date from the page's events. device.ts already marked the page as on screen.
+ */
+function startPhoneTownWatch(): void {
+  const opened = PHONE_TOWN_OPEN;
+  if (opened === null) return;
+  log("phone_town_chosen", {
+    kind: PHONE_KIND_NOW,
+    town: opened.town,
+    reason: opened.reason,
+    param: PHONE_TOWN_PARAM,
+    crashed: opened.crashed,
+    demotedNow: opened.justDemoted,
+  });
+  const storage = pageStorage();
+  const isWatched = opened.next?.run != null && storage !== null;
+  if (!isWatched) return;
+  armWatch(storage, opened.next?.demoted ?? false);
+}
+/** The light town's notice was shown on this page (once, however many drives start on it). */
+let isDemotionTold = false;
+
 async function main(): Promise<void> {
   /**
    * The game's clock (ms, frameClock.ts gameStep): the frame loop moves it on by each frame's dt,
@@ -421,6 +452,7 @@ async function main(): Promise<void> {
    */
   let gameMs = performance.now();
   const gameNow = () => gameMs;
+  startPhoneTownWatch();
   setLoading(() => i18n.t("loading.physics"), 0.04);
   await RAPIER.init();
 
@@ -530,8 +562,9 @@ async function main(): Promise<void> {
     return hit ? Math.min(1, hit.depthM / 40) : 0;
   };
   const buildings = new Buildings(scene, world, camera, renderer, frame);
-  // A phone trying `?phoneTown=full` reads its own run off the screen (no logs reach a published build).
-  if (PHONE_TOWN) startPhoneTownHud(PHONE_TOWN, () => buildings.tiles);
+  // A phone opened with `?phoneTown=…` reads its own run off the screen (no logs reach a published
+  // build). Why not on every phone: the readout is for a trial, not for play.
+  if (PHONE_TOWN_PARAM) startPhoneTownHud(PHONE_TOWN_PARAM, () => buildings.tiles);
   // PLATEAU buildings that stand into a deck are cut down below its soffit as its tile is read.
   // Set here, before the first expressway.update() in the frame loop: no tile is read before it.
   if (expressway) expressway.onCutPoints = (points) => buildings.cutAboveDecks(points);
@@ -2515,6 +2548,13 @@ async function main(): Promise<void> {
       showSocial(true);
     }
     log("game_started", {});
+    // The page the watch sent back to the light town says so once, on its first drive. Why at the
+    // drive and not on the title: the toasts sit in the HUD, which the title covers.
+    const isDemotionUntold = PHONE_TOWN_OPEN?.justDemoted === true && !isDemotionTold;
+    if (isDemotionUntold) {
+      isDemotionTold = true;
+      setTimeout(() => toast(i18n.t("toast.phoneTownReduced"), "#ffb347"), 3500);
+    }
     // Once per browser, after the opening toasts: hang it small (knowledge/mirror-charms.md).
     if (prefsNow.charm !== "none" && firstCharmTip())
       setTimeout(() => toast(i18n.t(CHARM_TIP), "#ffe14d"), 7000);

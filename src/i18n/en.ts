@@ -679,6 +679,7 @@ export const en: Messages = {
   "toast.idlingStop":
     "Engine switched off (Tokyo Metropolitan Environmental Security Ordinance Art. 52: no idling)",
   "toast.dayStart": "Today's drive starts: {time}, {weather}",
+  "toast.phoneTownReduced": "The page closed suddenly last time, so fewer buildings are shown",
   "toast.charmTip":
     "Keep mirror charms small. One that blocks your view or the mirror can be a violation (Road Traffic Act Art. 55(2); Tokyo Metropolitan Road Traffic Rules Art. 8(viii)). You can choose “None” in Settings",
   "toast.welcome": "Pillars of light = real spots from Tokyo open data. Press {key} to choose a destination",
