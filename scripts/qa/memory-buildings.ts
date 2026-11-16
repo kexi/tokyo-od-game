@@ -11,7 +11,7 @@
 //   pnpm exec tsx scripts/qa/memory-buildings.ts --label L [--base URL] [--seconds S]
 //     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--sample-every S] [--title] [--start lat,lon]
 //     [--view near|medium|far] [--mobile] [--heap-limit MB] [--sample held,used,heap,backing]
-//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2]
+//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2] [--census-at T1,T2]
 //
 // --sample-every reads the page every S seconds (default: every warp) while the warps go on every
 // EVERY seconds: a forced GC takes seconds, so a warp each second cannot be read each second. Why not
@@ -102,7 +102,23 @@ const shotTimes = isEveryShot ? [] : (shotsFlag ?? "").split(",").filter(Boolean
  */
 const WATCH = `(() => {
   if (window.__mem) return;
-  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null, gaps: [], last: 0, skip: true });
+  const m = (window.__mem = { usedMb: 0, usedPeakMb: 0, fullFrames: 0, frames: 0, loads: 0, disposes: 0, farLoads: 0, farDisposes: 0, hooked: null, farHooked: null, gaps: [], last: 0, skip: true, pipelines: 0 });
+  // Render pipelines the backend builds (three's Pipelines calls it once per new cache key): a
+  // pipeline thrown away with its last render object and built again shows here as a hitch would.
+  const backend = __game.renderer.backend;
+  if (backend && !backend.__counted) {
+    const build = backend.createRenderPipeline.bind(backend);
+    backend.createRenderPipeline = (...args) => { m.pipelines++; return build(...args); };
+    backend.__counted = true;
+  }
+  // Marks every object given dispose() (the census tells retired objects from ones never retired).
+  let proto = Object.getPrototypeOf(__game.scene);
+  while (proto && !Object.prototype.hasOwnProperty.call(proto, "traverse")) proto = Object.getPrototypeOf(proto);
+  if (proto && !proto.__marked) {
+    const dispose = proto.dispose;
+    proto.dispose = function () { this.__retiredAt = performance.now(); return dispose.call(this); };
+    proto.__marked = true;
+  }
   const tick = (now) => {
     // Frame gaps; the one across the probe's forced GC (skip, set before it) is not the game's.
     if (!m.skip && m.last) m.gaps.push(now - m.last);
@@ -161,6 +177,7 @@ const COUNTS = `(() => {
     geometries: read(() => g.renderer.info.memory.geometries), textures: read(() => g.renderer.info.memory.textures),
     // three's own set of render objects (RenderObjects._renderObjects, 0.186): read here only, never by the game.
     renderObjects: read(() => g.renderer._objects._renderObjects.size),
+    pipelines: read(() => window.__mem.pipelines),
     bodies: read(() => g.world.bodies.len()), colliders: read(() => g.world.colliders.len()),
     cars, pedestrians: read(() => g.pedestrians.list.length), licenseLog: read(() => g.law.state.log.length),
   } };
@@ -176,6 +193,43 @@ const isCounted = argv.includes("--counts");
  */
 const allocWindow = flag("alloc")?.split(",").map(Number) ?? null;
 const snapshotTimes = (flag("snapshot-at") ?? "").split(",").filter(Boolean).map(Number);
+/**
+ * --census-at T1,T2: once at each of those seconds, the render objects whose object no longer reaches a scene
+ * (floating: taken out but still held by the renderer), counted by what the top parent looks like
+ * (a person by its part names, a car, anything else), by mesh name and by pass (camera, context).
+ * Why the parts' names: a retired model has no other mark, and human.glb's parts are named.
+ */
+const censusTimes = (flag("census-at") ?? "").split(",").filter(Boolean).map(Number);
+const censusesTaken = new Set<number>();
+const census: Array<Record<string, unknown>> = [];
+const CENSUS = `(() => {
+  const set = __game.renderer._objects._renderObjects;
+  const topOf = (o) => { while (o.parent) o = o.parent; return o; };
+  const kindOf = (root) => {
+    let isPerson = false; let isCar = false;
+    root.traverse((o) => { const n = o.name || ""; if (/Torso|Head|Thigh|UpperArm/.test(n)) isPerson = true; if (/wheel|tire|body|car|bumper/i.test(n)) isCar = true; });
+    return isPerson ? "person" : isCar ? "car" : "other";
+  };
+  // Unnamed meshes go by their material and geometry (what they are made of is all there is to go by).
+  const signature = (root) => { const names = []; let made = ""; root.traverse((c) => { if (names.length < 4 && c.isMesh && c.name) names.push(c.name); if (!made && c.isMesh) made = (c.material?.name || c.material?.type || "?") + "/" + (c.geometry?.type || "?"); }); return (root.name || root.type) + "[" + (names.length ? names.join(",") : made) + "]"; };
+  const add = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  const byKind = new Map(), byMesh = new Map(), byPass = new Map(), byRoot = new Map(), rootsBy = new Map(); const roots = new Set();
+  let total = 0, floating = 0;
+  for (const ro of set) {
+    total++;
+    const root = topOf(ro.object);
+    if (root.isScene) continue;
+    floating++;
+    // retired: the object had dispose() (its render object was made again after); never: it did not.
+    const mark = ro.object.__retiredAt ? " retired" : " never";
+    const kind = kindOf(root) + mark;
+    add(byKind, kind); add(byMesh, kind + ":" + (ro.object.name || ro.object.type));
+    add(byPass, (ro.camera?.name || ro.camera?.type || "?") + " ctx" + (ro.context?.id ?? "?")); add(byRoot, signature(root) + mark);
+    if (!roots.has(root)) { roots.add(root); add(rootsBy, signature(root) + mark); }
+  }
+  const top = (m) => [...m].toSorted((a, b) => b[1] - a[1]).slice(0, 12);
+  return { total, floating, floatingRoots: roots.size, byKind: top(byKind), byMesh: top(byMesh), byPass: top(byPass), byRoot: top(byRoot), rootsBy: top(rootsBy) };
+})()`;
 const snapshotsTaken = new Set<number>();
 let isAllocating = false;
 type AllocNode = {
@@ -326,6 +380,12 @@ try {
         allocDone = { t, ...summariseAlloc(profile.head) };
         process.stdout.write(`${JSON.stringify({ t, alloc: "stopped", totalMB: allocDone.totalMB })}\n`);
       }
+      for (const at of censusTimes.filter((x) => t >= x && !censusesTaken.has(x))) {
+        censusesTaken.add(at);
+        const counted = { t, ...(await b.evaluate<Record<string, unknown>>(CENSUS)) };
+        census.push(counted);
+        process.stdout.write(`${JSON.stringify({ census: counted })}\n`);
+      }
       for (const at of snapshotTimes.filter((x) => t >= x && !snapshotsTaken.has(x))) {
         snapshotsTaken.add(at);
         const file = join(outDir, `${label}.t${at}.heapsnapshot`);
@@ -356,6 +416,7 @@ const out = {
   crashed,
   slopes: slopeSummary(samples as MemorySample[]),
   alloc: allocDone,
+  census,
   samples,
 };
 writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
