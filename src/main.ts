@@ -215,6 +215,7 @@ import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
 import { classOf, isDrivable, isExpressway, sourceOf, usesGroundSurface } from "./world/roadClass";
+import { retireObject } from "./render/retire";
 
 const LIGHT_KEY = {
   green: "hud.signal.green",
@@ -1769,7 +1770,7 @@ async function main(): Promise<void> {
     const r = replay;
     if (!r) return;
     $("#replay-caption").hidden = true;
-    for (const c of r.clones.values()) scene.remove(c);
+    for (const c of r.clones.values()) retireObject(c);
     for (const o of liveObjects()) o.visible = true;
     replay = null;
     env.showMoment(null);

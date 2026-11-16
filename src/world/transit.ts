@@ -7,6 +7,7 @@ import { warn } from "../log";
 import { haversineMeters } from "../geo/ellipsoid";
 import type { LocalFrame } from "../geo/frame";
 import type { DemStore } from "./dem";
+import { retireObject } from "../render/retire";
 
 type BusRecord = {
   "owl:sameAs": string;
@@ -188,7 +189,7 @@ export class Transit {
       for (const [id, bus] of this.buses) {
         if (seen.has(id)) continue;
         this.dropBody(bus);
-        this.scene.remove(bus.object);
+        retireObject(bus.object);
         this.buses.delete(id);
       }
       this.feed = "running";
