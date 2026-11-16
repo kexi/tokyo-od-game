@@ -84,6 +84,15 @@ const untilIn =
     throw new Error(`timeout: ${expr}`);
   };
 
+/**
+ * The page's CPU slowed `cpuThrottle` times (1: as it is). Only the drive is slowed: loading under
+ * the throttle would only take longer.
+ */
+async function throttle(b: Browser): Promise<void> {
+  const isThrottled = cpuThrottle !== 1;
+  if (isThrottled) await b.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
+}
+
 /** Open the game at `start`, start it, let it settle, wait out whatever would make the drive invalid. */
 async function open(start: string): Promise<{ b: Browser; url: string; before: string | null }> {
   const url = `${base}?start=${start}&time=day&weather=clear&seed=20261110&expressway`;
@@ -93,9 +102,6 @@ async function open(start: string): Promise<{ b: Browser; url: string; before: s
   await b.evaluate("window.__game.start()");
   await until("__game.debug.settled().isSettled", 150);
   await b.sleep(3000);
-  // Only the drive is slowed: loading under the throttle would only take longer.
-  const isThrottled = cpuThrottle !== 1;
-  if (isThrottled) await b.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
   // Nothing in the way first (an accident, a pursuit: an arrest would freeze the car mid-drive and
   // the run would measure the arrest, not the decks; knowledge/road-textures.md「止まる件」).
   let before: string | null = null;
@@ -135,6 +141,7 @@ async function driveCruise(r: CruiseRoute) {
   const start = `${from.lat.toFixed(5)},${from.lon.toFixed(5)}`;
   const { b, url, before } = await open(start);
   try {
+    await throttle(b);
     const logsBefore = b.logs.length;
     let stallFrom = logsBefore;
     const during = (event: string) =>
@@ -232,6 +239,9 @@ async function driveAuto(r: AutoRoute) {
       const signalTime = () => b.evaluate<number>("__game.control.time");
       const waitFrom = await signalTime();
       while ((await signalTime()) - waitFrom < preWaitS) await b.evaluate("__game.advance(0.25)");
+      // Slowed only from here: the wait is to move the signals on, and under the throttle it took
+      // minutes of the run's 25 (a 4x drive with a 30 s wait ran out of time).
+      await throttle(b);
       // On the street connector at the foot of the entrance ramp, facing it (P6's drive).
       placed = await b.evaluate(`(() => {
         const G = window.__game; const g = G.getRoadGraph();
