@@ -114,20 +114,33 @@ if (isMain) {
     const startAt = await b.evaluate<number>(
       "(() => { const t = performance.now(); window.__game.start(); return t; })()",
     );
-    // 自動運転 once the car is on a street (drive.mjs: the game puts it there once the roads load).
-    await b.sleep(3000);
-    for (let i = 0; i < 5; i++) {
-      const isOn = await b.evaluate<boolean>("!!window.__game.getAutopilot()");
-      if (isOn) break;
+    const dir = join(ROOT, ".qa", "shader-prebuild");
+    mkdirSync(dir, { recursive: true });
+    await b.sleep(2000);
+    // 自動運転 once the car is on a street: asked again each second until it takes (the roads load
+    // after start(); before them the game only toasts "roads loading").
+    const POS = "(() => { const p = window.__game.vehicle.position(); return [p.x, p.z]; })()";
+    const from = await b.evaluate<[number, number]>(POS);
+    let autopilotAt: number | null = null;
+    for (let i = 0; i < 20 && autopilotAt === null; i++) {
       await b.evaluate(
         "window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyJ' }))",
       );
       await b.sleep(1000);
+      const isOn = await b.evaluate<boolean>("!!window.__game.getAutopilot()");
+      if (isOn) autopilotAt = (await now()) - startAt;
     }
-    const autopilot = await b.evaluate<boolean>("!!window.__game.getAutopilot()");
+    const toasts = await b.evaluate<string[]>(
+      "[...document.querySelectorAll('.toast')].map((t) => t.textContent)",
+    );
     const driveEnd = startAt + seconds * 1000;
     const left = driveEnd - (await now());
     if (left > 0) await b.sleep(left);
+    const to = await b.evaluate<[number, number]>(POS);
+    const movedM = Math.round(Math.hypot(to[0] - from[0], to[1] - from[1]));
+    // The driver's seat after the drive (a broken or black cockpit is a stop, not a hitch). Why not
+    // at once: a screenshot is a frame of its own in the drive's window.
+    await b.screenshot(join(dir, `${label}.cockpit.jpg`), 85);
     await b.sleep(1500);
     // The first violation: debug.perf.violation books it after watching a second of frames.
     const violationCall = await now();
@@ -135,15 +148,14 @@ if (isMain) {
       `window.__game.debug.perf.violation("signal", "photo", 3).then((r) => ({ booked: r.booked ?? null, error: r.error ?? null, post: r.post ?? null, afterLongestMs: r.after?.longest ?? null }))`,
     );
     const violationAt = violationCall + 1000;
+    await b.screenshot(join(dir, `${label}.violation.jpg`), 85);
     await b.sleep(1500);
     const rainAt = await b.evaluate<number>(
       `(() => { const t = performance.now(); window.__game.env.weather = "rain"; return t; })()`,
     );
     await b.sleep(AROUND_MS + 1500);
     const raining = await b.evaluate<boolean>("window.__game.env.isRaining()");
-    const shot = join(ROOT, ".qa", "shader-prebuild", `${label}.jpg`);
-    mkdirSync(join(ROOT, ".qa", "shader-prebuild"), { recursive: true });
-    await b.screenshot(shot, 85);
+    await b.screenshot(join(dir, `${label}.rain.jpg`), 85);
     const page = await b.evaluate<Page>("({ ...window.__sp, pipelines: window.__pipelines })");
     const around = (t: number) => windowStats(page, t - AROUND_MS, t + AROUND_MS);
     const summary = {
@@ -155,7 +167,9 @@ if (isMain) {
       compiledMs: page.compiled,
       skipped: page.skipped,
       pipelinesBeforeStart: (page.pipelines?.at ?? []).filter((t) => t < startAt).length,
-      autopilot,
+      autopilotAtMs: autopilotAt === null ? null : Math.round(autopilotAt),
+      toasts: autopilotAt === null ? toasts : undefined,
+      movedM,
       drive: windowStats(page, startAt, driveEnd),
       cockpit: around(startAt),
       violation: { ...around(violationAt), ...violation },
@@ -163,7 +177,7 @@ if (isMain) {
       pipelinesTotal: page.pipelines?.n ?? null,
     };
     writeFileSync(
-      join(ROOT, ".qa", "shader-prebuild", `${label}.json`),
+      join(dir, `${label}.json`),
       `${JSON.stringify({ url, summary, startAt, violationAt, rainAt, frames: page.frames.map((t) => Math.round(t * 10) / 10) })}\n`,
     );
     process.stdout.write(`${JSON.stringify(summary)}\n`);
