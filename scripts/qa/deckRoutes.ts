@@ -214,7 +214,7 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     to: { run: "45021972", s: 700 },
     kmh: 60,
     seconds: 60,
-    was: "新設（A1）: 45021972 の車線 0（下の床版）で、4848762 との並走と壁なしの段（nose-step、s 642〜650）の脇を通る",
+    was: "新設（A1）: 45021972 の車線 0（下の床版）で、4848762 との並走と低い壁の段（nose-step、s 642〜650）の脇を通る",
   },
   {
     id: "haneda-up-thin-divider-lower",
@@ -225,7 +225,7 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     to: { run: "45554540", s: 7320 },
     kmh: 60,
     seconds: 60,
-    was: "新設（A1）: 45554540 の車線 0（下の床版）で、45019020 の細い分離壁（thin-divider）と壁なしの段、手放しの点の脇を通る",
+    was: "新設（A1）: 45554540 の車線 0（下の床版）で、45019020 の細い分離壁（thin-divider）と低い壁の段、手放しの点の脇を通る",
   },
   {
     id: "thin-divider-45019020-upper",
@@ -236,7 +236,7 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     to: { run: "45019020", s: 4110 },
     kmh: 60,
     seconds: 60,
-    was: "新設（A1）: 45019020 の右の車線（上の床版、分離壁の側）で、45554540 との細い分離壁（s 4044〜4081）と壁なしの段を通る",
+    was: "新設（A1）: 45019020 の右の車線（上の床版、分離壁の側）で、45554540 との細い分離壁（s 4044〜4081）と低い壁の段を通る",
   },
   {
     id: "thin-divider-4848762-upper",

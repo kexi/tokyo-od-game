@@ -540,9 +540,10 @@ export const LOG_EVENTS = {
     maxDropM: z.number(),
   }),
   /**
-   * A chunk's step with no wall at a nose over a same-direction deck it has let go of (A1: the lanes'
-   * edges closer than DIVIDER_MIN_WIDTH, both roads cut in the middle): the s range, the largest
-   * height of the step and the narrowest gap. One line per stretch, beside expressway_divider_built.
+   * A chunk's nose step over a same-direction deck it has let go of (A1: the lanes' edges closer than
+   * DIVIDER_MIN_WIDTH): a wall lower than a 壁高欄 filling the gap between the lanes' edges, as high
+   * as the drop past MERGE_MAX_DZ. The s range, the largest height of the step and the narrowest gap.
+   * One line per stretch, beside expressway_divider_built.
    */
   expressway_nose_step_built: info({
     chunk: z.string(),
@@ -1361,11 +1362,6 @@ export const LOG_EVENTS = {
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
   }),
   /**
-   * A data folder's ledger written again (scripts/expresswayLedger.ts, P2.7-4): the cases, those new
-   * to it, left as they were, sent back to `new` (with a previous decision), per status, accepted by
-   * a rule, the seam probes, whether it has a budget, its bytes, the diagnostics re-allowed.
-   */
-  /**
    * The drops with no wall at their edge of a data folder (scripts/expresswayBareDrops.ts, A1 test 22):
    * the points, their pairs, and against another list the new and the gone points (the first new ones).
    */
@@ -1379,6 +1375,11 @@ export const LOG_EVENTS = {
     gone: count,
     addedAt: z.array(z.string()),
   }),
+  /**
+   * A data folder's ledger written again (scripts/expresswayLedger.ts, P2.7-4): the cases, those new
+   * to it, left as they were, sent back to `new` (with a previous decision), per status, accepted by
+   * a rule, the seam probes, whether it has a budget, its bytes, the diagnostics re-allowed.
+   */
   expressway_ledger_updated: info({
     dir: z.string(),
     seed: z.string().nullable(),

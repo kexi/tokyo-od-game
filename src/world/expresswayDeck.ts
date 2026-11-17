@@ -203,7 +203,7 @@ export function* deckArraySteps(
     skipped: MergeSkip[];
     /** The 分離壁 this chunk builds against a same-direction deck below it (expressway_divider_built). */
     walls: Divider[];
-    /** Its steps with no wall at a nose over that deck (expressway_nose_step_built). */
+    /** Its nose steps over that deck: walls lower than a 壁高欄 between the lanes' edges (expressway_nose_step_built). */
     steps: NoseStep[];
     /** Where its 分離壁 start and end, and how far the face beside its lanes moves across there. */
     jogs: DividerJog[];
@@ -469,10 +469,9 @@ export function* deckArraySteps(
       const terrain = (sign > 0 ? banks.left : banks.right)?.[i] ?? null;
       const foot = terrain ? Math.min(-SLAB, terrain.low - EMBANKMENT_FOOT_M) : -depth;
       const girder = at(sign * Math.min(gw, slabU), foot);
-      // A nose step's riser (solid, face 5 / 11) reaches down past the lower deck's face: a wheel
-      // off the lower road meets it rather than running in under this slab.
-      const riser = divider ? Math.max(SLAB, divider.drop) : SLAB;
-      if (!w) return [end, end, end, at(endU, lift(endU) - riser), slabBottom, girder];
+      // A side with a 分離壁 always has its wall (dividerOf gives the higher deck both, the lower
+      // neither, and refineRings drops both together), so a side with no wall ends a slab deep.
+      if (!w) return [end, end, end, at(endU, lift(endU) - SLAB), slabBottom, girder];
       // A wall whose road does not run up to it stands partly on the master's slab: its inner face
       // starts below the road, so the master's face (up to MERGE_MAX_DZ lower) meets it.
       // So does one whose road ends short of its own surface there (a sliver's climb, above).

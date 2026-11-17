@@ -585,7 +585,7 @@ export type DividerLike = {
   with: string;
   thin: ReadonlyArray<{ s0: number; s1: number; minWidthM: number; maxDzM: number }>;
 };
-/** A step with no wall at a nose (scripts/expresswaySeams.ts). */
+/** A nose step: a wall lower than a 壁高欄 filling the gap between the lanes' edges (scripts/expresswaySeams.ts). */
 export type NoseStepLike = {
   chunk: string;
   with: string;
@@ -597,7 +597,7 @@ export type NoseStepLike = {
 
 /**
  * The 分離壁's cases (A1): thin-divider, one per chunk, partner and stretch thinner than PARAPET_WIDTH;
- * nose-step, one per chunk, partner and stretch with no wall. Numbered along the chunk.
+ * nose-step, one per chunk, partner and stretch where the wall is lower than a 壁高欄. Numbered along the chunk.
  */
 export function dividerCases(dividers: readonly DividerLike[], steps: readonly NoseStepLike[]): FoundCase[] {
   const out: FoundCase[] = [];

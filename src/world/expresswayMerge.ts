@@ -614,7 +614,6 @@ export class DeckMerge {
     return out;
   }
 
-  /** Whether the other deck, at the foot of this ring on it, stands by a 分離壁 on the side facing this ring. */
   /**
    * The sides of a ring that are no 縁 (edge): a same-direction deck at its height is one slab with
    * it there (it cut on that deck, or that deck running on past its slab edge). A 分離壁 stands only
@@ -663,6 +662,10 @@ export class DeckMerge {
     return u >= 0 ? edges.left : edges.right;
   }
 
+  /**
+   * Whether the other deck stands by a 分離壁 on the side facing this ring, read at the foot of this
+   * deck's slab edge on that side (`p.sign`) on the other's line.
+   */
   private partnerSeesDivider(
     own: ChunkRings,
     ring: DeckRing,
@@ -868,9 +871,9 @@ export class DeckMerge {
 
   /**
    * The 分離壁 a chunk builds (A1), per partner: the s range, the thinnest and its largest drop, and
-   * each stretch where it is thinner than PARAPET (the ledger's thin-divider); and the stretches of
-   * steps with no wall at the nose (nose-step). Only the rings of the chunk's own build (depth 0)
-   * count, on the higher deck.
+   * each stretch where it is thinner than PARAPET (the ledger's thin-divider); and the stretches where
+   * the wall filling the gap between the lanes' edges is lower than a 壁高欄 (nose-step). Only the
+   * rings of the chunk's own build (depth 0) count, on the higher deck.
    */
   dividersOf(chunk: string): { walls: Divider[]; steps: NoseStep[] } {
     const walls: Divider[] = [];
@@ -1020,7 +1023,7 @@ export type MergeSkip = {
 /** Whether a chunk is a cut or a tunnel (its walls are its own: no 分離壁 against it, S7-4). */
 const isBoreChunk = (c: Pick<XwChunk, "structure">) => c.structure === "tunnel" || c.structure === "cut";
 
-/** A 分離壁 at one ring: its width, how far its faces stand inside the lanes, its drop (DeckSide.divider). */
+/** A 分離壁 at one ring: its kind, width and drop, the drop between the faces and the lanes' gap (DeckSide.divider). */
 type DividerSample = {
   /** wall: a 分離壁 as high as a 壁高欄, width wide; step: lower (the drop under MERGE_MAX_DZ + PARAPET_HEIGHT). */
   kind: "wall" | "step";
