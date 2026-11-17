@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import { SAME_SURFACE_ALLOWED_DZ_M } from "../expressway/allowlist";
-import { PARAPET_WIDTH } from "../expressway/assumptions";
+import { DIVIDER_MIN_WIDTH, PARAPET_HEIGHT, PARAPET_WIDTH } from "../expressway/assumptions";
 import { STATION_STRIDE, type XwChunk, type XwClass, type XwRunSummary } from "../expressway/format";
 import { SAME_SURFACE_M } from "../expressway/overlap";
 import {
@@ -112,6 +112,14 @@ export const MERGE_SKIRT = 0.2;
 export const MERGE_RAMP = 1;
 
 const PARAPET = PARAPET_WIDTH.value;
+const DIVIDER_MIN = DIVIDER_MIN_WIDTH.value;
+const PARAPET_HIGH = PARAPET_HEIGHT.value;
+/**
+ * How far past a nose step's cut the lower road runs on under the higher deck (A1), m: hidden under
+ * its riser's foot (MERGE_SKIRT below the lower face). Why not end both roads on the cut exactly: a
+ * ray (a wheel's probe) down the cut met neither (45019020:40 s 4081.2).
+ */
+const STEP_TUCK = 0.05;
 
 /** The cross-section at fraction t from station offset o to q (t = 0: the station itself). */
 function ringAt(chunk: XwChunk, place: GeoToLocal, o: number, q: number, t: number) {
@@ -248,6 +256,9 @@ export function openSide(own: Pick<ChunkRings, "hw" | "edge">): DeckSide {
     seam: null,
     seamOf: null,
     seamWeight: 1,
+    divider: null,
+    clearTo: null,
+    parted: null,
   };
 }
 
@@ -498,8 +509,19 @@ export class DeckMerge {
     const theirLift = liftAt(r, theirU, line.bank) * (1 - tau) + liftAt(q, theirU, line.bank) * tau;
     const footS = r.frame.s + (q.frame.s - r.frame.s) * tau;
     const theirChunk = chunkHolding(line.owner[k].chunk, line.owner[k + 1].chunk, footS);
-    const dz = compiledZ(theirChunk, footS) + theirLift - compiledZ(own.chunk, ring.frame.s);
-    return { other, foot, d, lo, hi, dz, isSameWay: foot.tangent.dot(ring.t) > 0 };
+    const theirZ = compiledZ(theirChunk, footS);
+    const ownZ = compiledZ(own.chunk, ring.frame.s);
+    const dz = theirZ + theirLift - ownZ;
+    const isSameWay = foot.tangent.dot(ring.t) > 0;
+    // Their face u metres left of this centre, over this deck's own face there (both compiled, as dz):
+    // the point's offset in their frame is their offset of this centre plus u along the two lefts.
+    const along = ring.t.dot(foot.tangent);
+    const faceOver = (u: number) => {
+      const v = theirU + u * along;
+      const lift = liftAt(r, v, line.bank) * (1 - tau) + liftAt(q, v, line.bank) * tau;
+      return theirZ + lift - ownZ - liftAt(ring, u, own.bank);
+    };
+    return { other, foot, d, lo, hi, dz, isSameWay, faceOver, theirChunk };
   }
 
   /**
@@ -520,6 +542,7 @@ export class DeckMerge {
       .map((other) => this.partnerAt(own, ring, other, at))
       .filter((p) => p !== null)
       .toSorted((a, b) => Number(b.isSameWay) - Number(a.isSameWay));
+    const isEdge = this.edgesOf(own, partners, null);
     for (const p of partners) {
       // The side the other deck lies on; at a nose (centres on one point) its left.
       const sign: 1 | -1 = p.d >= 0 ? 1 : -1;
@@ -529,6 +552,31 @@ export class DeckMerge {
         const isMaster = outranksAsMaster(this.index, run, p.other);
         if (isApart) {
           this.skip(own, ring.frame.s, p.other, "level_apart", p.dz);
+          // Both facing sides 縁: this one (above), the other's asked of its own sides (the cut deck
+          // asks only that; a master asks whether the other stands by the wall too, which holds only
+          // where its side is a 縁). Why not this deck's side alone: a master one slab with a deck
+          // joined beside it stood the wall between its lanes and that deck, under its seam (ship
+          // 4854234:29 on 44803854, 85 seam probes up to 7.7 cm off).
+          const isBothEdges = isEdge[sideKey] && (!isMaster || this.partnerIsEdge(own, ring, p.foot));
+          const divider = isBothEdges
+            ? this.dividerOf(own, out[sideKey], { ...p, sign, isOwnMaster: !isMaster })
+            : null;
+          // A master stands by the wall only where the deck cut at its edge has let go too: each reads
+          // |Δz| at its own centre, and near the let-go point the cut deck may still end on a seam on
+          // the master's edge. Why not ask the cut deck too: it then kept its own rail, in the
+          // master's lane 0, for the metres it had let go and the master not yet (汐留 s 93.8–93.9);
+          // its wall over the master's road, still out to its edge below, leaves no slit. Why not
+          // ask neither: where the master let go first its road drew back under the wall while the
+          // ramp, still cut on it, ran on to meet it over the master's lane 0 (汐留 s 4951, 0.16 m up;
+          // tests/expresswayDivider.test.ts 13).
+          const isShared =
+            divider !== null &&
+            (isMaster || depth > 1 || this.partnerSeesDivider(own, ring, { ...p, sign }, depth + 1));
+          if (divider && isShared) {
+            out[sideKey] = { ...out[sideKey], ...divider.side };
+            if (depth === 0 && divider.record) this.record(own, ring.frame.s, p.other, divider.record);
+            continue;
+          }
           if (!isMaster) this.letGo(out, own, p.lo, p.hi, sign);
           continue;
         }
@@ -564,6 +612,82 @@ export class DeckMerge {
       };
     }
     return out;
+  }
+
+  /**
+   * The sides of a ring that are no 縁 (edge): a same-direction deck at its height is one slab with
+   * it there (it cut on that deck, or that deck running on past its slab edge). A 分離壁 stands only
+   * between two 縁; past a side that is none the drop is that other deck's, not this one's.
+   * `exclude`: a run not to count (the deck asking, when another deck asks about this one).
+   */
+  private edgesOf(
+    own: ChunkRings,
+    partners: ReadonlyArray<{
+      other: string;
+      isSameWay: boolean;
+      dz: number;
+      d: number;
+      lo: Crossing;
+      hi: Crossing;
+    }>,
+    exclude: string | null,
+  ): { left: boolean; right: boolean } {
+    const isEdge = { left: true, right: true };
+    for (const p of partners) {
+      const isOneSlab = p.isSameWay && Math.abs(p.dz) <= MERGE_MAX_DZ && p.other !== exclude;
+      if (!isOneSlab) continue;
+      const sign = p.d >= 0 ? 1 : -1;
+      const farEnd = sign > 0 ? p.hi.u : p.lo.u;
+      const isCut = outranksAsMaster(this.index, own.chunk.run, p.other);
+      const isPast = sign * farEnd > own.edge;
+      if (isCut || isPast) isEdge[sign > 0 ? "left" : "right"] = false;
+    }
+    return isEdge;
+  }
+
+  /**
+   * Whether the other deck's side facing this ring, at the foot, is a 縁 (edgesOf, this deck left out:
+   * the pair itself may still be one slab in the other's reading near the let-go point).
+   */
+  private partnerIsEdge(own: ChunkRings, ring: DeckRing, foot: Foot): boolean {
+    const { line, k, tau } = foot;
+    const at = ringBetween(line.rings[k], line.rings[k + 1], tau, false);
+    const other = ownerHolding(line, k, at.frame.s);
+    const partners = this.index
+      .partnersAt(other.chunk, at.frame.s)
+      .map((x) => this.partnerAt(other, at, x, null))
+      .filter((x) => x !== null);
+    const edges = this.edgesOf(other, partners, own.chunk.run);
+    const u = (ring.c.x - at.c.x) * at.t.z - (ring.c.z - at.c.z) * at.t.x;
+    return u >= 0 ? edges.left : edges.right;
+  }
+
+  /**
+   * Whether the other deck stands by a 分離壁 on the side facing this ring, read at the foot of this
+   * deck's slab edge on that side (`p.sign`) on the other's line.
+   */
+  private partnerSeesDivider(
+    own: ChunkRings,
+    ring: DeckRing,
+    p: { other: string; foot: Foot; sign: 1 | -1 },
+    depth: number,
+  ): boolean {
+    // Read the other at the foot of this deck's slab edge on its side (where the seam lies), not of
+    // this ring's centre: the other's cross-section through that edge point is the one whose answer
+    // holds there. Why not the centre's foot: it lands 4.75 m × the angle between the lines off
+    // (8 cm a degree), and there this deck stood the wall while the other, a few centimetres on,
+    // still ended on a seam on its edge (ship 28127732:1 s 303.7 on 44351599). Why not the other's
+    // point whose own foot falls on this ring: still the centre's, reversed, and it opened a drop
+    // with no wall elsewhere (24402611:25 s 4099.1 on 45554540).
+    const edgeAt = ringPoint(ring, p.sign * own.edge, 0);
+    const foot = this.footOf(this.linesNear(p.other, own), edgeAt) ?? p.foot;
+    const { line, k, tau } = foot;
+    const at = ringBetween(line.rings[k], line.rings[k + 1], tau, false);
+    const other = ownerHolding(line, k, at.frame.s);
+    const sd = this.sides(other, at, depth);
+    const u = (ring.c.x - at.c.x) * at.t.z - (ring.c.z - at.c.z) * at.t.x;
+    const side = u >= 0 ? sd.left : sd.right;
+    return side.clearTo !== null;
   }
 
   /** Whether a master's road is closed at the foot: nothing of it shows (tucked under its own master). */
@@ -604,9 +728,211 @@ export class DeckMerge {
     // Its carriageway: its slab less the parapets at both edges.
     const [from, to] = [lo.u + PARAPET, hi.u - PARAPET];
     const reachesWall = sign > 0 ? to > own.hw && from < own.edge : from < -own.hw && to > -own.edge;
-    if (!reachesWall) return;
+    // A 分離壁 that side (another partner, A1) stays: it stands between the lanes, in no one's lane,
+    // and without it the drop to that partner had no wall (ship 44804029:4 s 511–617, 0.6–1.6 m).
+    const isDivided = side.divider !== null;
+    if (!reachesWall || isDivided) return;
     side.wall = null;
     side.reach = Math.max(side.reach, own.edge);
+  }
+
+  /**
+   * The 分離壁 between two same-direction decks that have let go of one surface (A1, 汐留): where
+   * their lanes do not overlap (g ≥ 0) and their slabs still overlap by a wall's width, one wall
+   * stands between the lanes' edges instead of each deck's own 壁高欄 (the higher deck's rail stood
+   * in the lower one's lane 0 at 汐留). The higher deck builds it (its outer face reaching down past
+   * the lower deck's face); the lower one runs its road on under it to the wall's centre, as the
+   * opposite pair's deck without the 分離壁 does. Null where the rule does not apply: the lanes
+   * overlap (a 合流's wedge, left as it was), the slabs overlap by less than PARAPET (the two rails
+   * at their own places already overlap, moving one would jump), the other deck is a cut or a
+   * tunnel (its walls are its own, S7-4), or that side already ends on a master's seam.
+   *
+   * Where the lanes' edges are closer than DIVIDER_MIN the wall fills the gap between them exactly (a
+   * plate where they touch), as high as the drop past MERGE_MAX_DZ, up to PARAPET_HEIGHT: low at a
+   * nose (1 cm at 45021972:3), a full rail where two decks metres apart in height touch (ship). Under
+   * the full height it is the ledger's nose-step, a full wall thinner than PARAPET its thin-divider.
+   * Why not a wall DIVIDER_MIN wide there: it stood up to 0.11 m inside both lanes, 8 m alone at
+   * 45021972:3 s 642–650. Why not no wall (both roads cut in the middle of the gap): ship had drops
+   * of up to 6.75 m with nothing at their edge. Why not a wall only past some drop: a new threshold.
+   * Why not each deck's own rail as before: the ramp's rail then stood a metre inside the other's
+   * lane 0.
+   *
+   * Why not move the ramp's plan off the main line (`--ramp-shift`, PR 4): 2.26 m at 汐留 over
+   * MAX_LATERAL_SHIFT, and the component solved again moves the main line too. Why not hold the pair
+   * to one surface longer (`--nose-surface overlap`): the network's heights move, T3 and the overlaps
+   * grew (PR 4's B).
+   */
+  private dividerOf(
+    own: ChunkRings,
+    side: DeckSide,
+    p: {
+      lo: Crossing;
+      hi: Crossing;
+      sign: 1 | -1;
+      d: number;
+      dz: number;
+      foot: Foot;
+      theirChunk: XwChunk;
+      other: string;
+      faceOver: (u: number) => number;
+      /** This deck is the master over the other (the other is the deck cut at its edge). */
+      isOwnMaster: boolean;
+    },
+  ): { side: Partial<DeckSide>; record: DividerSample | null } | null {
+    if (side.seam !== null || isBoreChunk(p.theirChunk) || isBoreChunk(own.chunk)) return null;
+    const { sign, d, foot } = p;
+    const { line, k, tau } = foot;
+    const at = (arr: number[]) => arr[k] + (arr[k + 1] - arr[k]) * tau;
+    // The two lanes' facing edges, measured from this centre towards the other deck (a ≤ b).
+    const itsLeft = d + at(line.laneL);
+    const itsRight = d + at(line.laneR);
+    const nearEdge = sign > 0 ? Math.min(itsLeft, itsRight) : Math.max(itsLeft, itsRight);
+    const a = sign > 0 ? own.laneL : -own.laneR;
+    const b = sign * nearEdge;
+    const g = b - a;
+    const isLaneOverlap = g < 0;
+    if (isLaneOverlap) return null;
+    const nearEnd = sign > 0 ? p.lo.u : p.hi.u;
+    const overlap = own.edge - sign * nearEnd;
+    const isNarrow = overlap < PARAPET;
+    if (isNarrow) return null;
+    const isUpper = p.dz < 0;
+    // The lower deck, where the other is the deck cut at its edge (this the master), keeps its road out
+    // to its slab edge, under the wall and the other's slab: where the other still ends on a seam on
+    // that edge a few millimetres on (each reads |Δz| at its own centre) the face is there. Why not
+    // draw the road back under the wall: at the let-go point the cut deck's seam hung past the road's
+    // end for those millimetres (ship 28127732:1 s 303.7, 28188269:1 s 67.1, 60867241:1 s 244: a seam
+    // probe there met the cut deck's road 0.14–0.15 m up).
+    const keep = (u: number) => (p.isOwnMaster ? Math.max(u, own.edge) : u);
+    const isTight = g < DIVIDER_MIN;
+    if (isTight) {
+      // The wall fills the gap between the lanes' edges exactly (g wide, 0 where they touch), as high
+      // over the higher road as the drop has opened past MERGE_MAX_DZ, up to a 壁高欄's height; its
+      // outer face reaches down past the lower face, and the lower road runs on under it.
+      if (!isUpper)
+        return {
+          side: {
+            wall: null,
+            reach: keep(a + STEP_TUCK),
+            divider: null,
+            clearTo: a,
+            otherLaneEdge: nearEdge,
+            parted: p.other,
+          },
+          record: null,
+        };
+      const dz = -p.faceOver(sign * b);
+      const rise = Math.min(PARAPET_HIGH, Math.max(0, dz - MERGE_MAX_DZ));
+      const isFull = rise >= PARAPET_HIGH - 1e-9;
+      return {
+        side: {
+          wall: { inner: a, outer: b },
+          reach: a,
+          divider: { drop: dz + MERGE_SKIRT, rise: isFull ? null : rise },
+          clearTo: a,
+          otherLaneEdge: nearEdge,
+          parted: p.other,
+        },
+        record: { kind: isFull ? "wall" : "step", width: g, drop: dz + MERGE_SKIRT, dz, gap: g },
+      };
+    }
+    const width = Math.min(PARAPET, g);
+    // The middle of the slabs' overlap (where the two rails at their own places would meet), held so
+    // both faces stay off both lanes (g ≥ width, so it fits).
+    const middle = (own.edge + sign * nearEnd) / 2;
+    const centre = Math.min(b - width / 2, Math.max(a + width / 2, middle));
+    const inner = centre - width / 2;
+    const outer = centre + width / 2;
+    if (!isUpper)
+      return {
+        side: {
+          wall: null,
+          reach: keep(centre),
+          divider: null,
+          clearTo: inner,
+          otherLaneEdge: nearEdge,
+          parted: p.other,
+        },
+        record: null,
+      };
+    const drop = -p.faceOver(sign * outer) + MERGE_SKIRT;
+    return {
+      side: {
+        wall: { inner, outer },
+        reach: inner,
+        divider: { drop, rise: null },
+        clearTo: inner,
+        otherLaneEdge: nearEdge,
+        parted: p.other,
+      },
+      record: { kind: "wall", width, drop, dz: drop - MERGE_SKIRT, gap: g },
+    };
+  }
+
+  /**
+   * The 分離壁 a chunk builds (A1), per partner: the s range, the thinnest and its largest drop, and
+   * each stretch where it is thinner than PARAPET (the ledger's thin-divider); and the stretches where
+   * the wall filling the gap between the lanes' edges is lower than a 壁高欄 (nose-step). Only the
+   * rings of the chunk's own build (depth 0) count, on the higher deck.
+   */
+  dividersOf(chunk: string): { walls: Divider[]; steps: NoseStep[] } {
+    const walls: Divider[] = [];
+    const steps: NoseStep[] = [];
+    const byOther = this.dividerSamples.get(chunk);
+    if (!byOther) return { walls, steps };
+    for (const [other, samples] of [...byOther].toSorted(([x], [y]) => (x < y ? -1 : 1))) {
+      const list = samples.toSorted((x, y) => x.s - y.s);
+      // Consecutive samples (by s) where `holds`, as stretches.
+      const runsOf = (holds: (x: DividerSampleAt) => boolean) => {
+        const out: DividerSampleAt[][] = [];
+        let current: DividerSampleAt[] = [];
+        for (const x of list) {
+          if (holds(x)) {
+            current.push(x);
+            continue;
+          }
+          if (current.length > 0) out.push(current);
+          current = [];
+        }
+        if (current.length > 0) out.push(current);
+        return out;
+      };
+      const wallSamples = list.filter((x) => x.kind === "wall");
+      const hasWall = wallSamples.length > 0;
+      if (hasWall)
+        walls.push({
+          with: other,
+          s0: wallSamples[0].s,
+          s1: wallSamples[wallSamples.length - 1].s,
+          minWidthM: Math.min(...wallSamples.map((x) => x.width)),
+          maxDropM: Math.max(...wallSamples.map((x) => x.drop)),
+          thin: runsOf((x) => x.kind === "wall" && x.width < PARAPET - 1e-9).map((r) => ({
+            s0: r[0].s,
+            s1: r[r.length - 1].s,
+            minWidthM: Math.min(...r.map((x) => x.width)),
+            maxDzM: Math.max(...r.map((x) => x.dz)),
+          })),
+        });
+      for (const r of runsOf((x) => x.kind === "step"))
+        steps.push({
+          with: other,
+          s0: r[0].s,
+          s1: r[r.length - 1].s,
+          maxDzM: Math.max(...r.map((x) => x.dz)),
+          minGapM: Math.min(...r.map((x) => x.gap)),
+        });
+    }
+    return { walls, steps };
+  }
+
+  private readonly dividerSamples = new Map<string, Map<string, DividerSampleAt[]>>();
+
+  private record(own: ChunkRings, s: number, other: string, x: DividerSample): void {
+    const byOther = this.dividerSamples.get(own.chunk.id) ?? new Map<string, DividerSampleAt[]>();
+    const list = byOther.get(other) ?? [];
+    list.push({ ...x, s });
+    byOther.set(other, list);
+    this.dividerSamples.set(own.chunk.id, byOther);
   }
 
   /** One same-direction partner's effect on a ring (DeckMerge.sides). */
@@ -666,7 +992,8 @@ export class DeckMerge {
       for (const key of ["left", "right"] as const) {
         const edgeU = key === "left" ? own.edge : -own.edge;
         const isOnIt = edgeU >= lo.u && edgeU <= hi.u;
-        if (isOnIt) out[key].wall = null;
+        const isDivided = out[key].divider !== null;
+        if (isOnIt && !isDivided) out[key].wall = null;
       }
       // Covered past the centre, the near reach goes below zero; past the far end, nothing of this
       // deck shows (−right.reach ≥ left.reach) and expresswayDeck.ts tucks the ring under the master.
@@ -676,7 +1003,8 @@ export class DeckMerge {
     // inside the one slab; the road runs out to the slab edge instead.
     const farEnd = sign > 0 ? hi.u : lo.u;
     const isPast = sign * farEnd > own.edge;
-    if (!isPast) return;
+    const isDivided = side.divider !== null;
+    if (!isPast || isDivided) return;
     side.wall = null;
     side.reach = Math.max(side.reach, own.edge);
   }
@@ -691,6 +1019,106 @@ export type MergeSkip = {
   s1: number;
   maxDzM: number;
 };
+
+/** Whether a chunk is a cut or a tunnel (its walls are its own: no 分離壁 against it, S7-4). */
+const isBoreChunk = (c: Pick<XwChunk, "structure">) => c.structure === "tunnel" || c.structure === "cut";
+
+/** A 分離壁 at one ring: its kind, width and drop, the drop between the faces and the lanes' gap (DeckSide.divider). */
+type DividerSample = {
+  /** wall: a 分離壁 as high as a 壁高欄, width wide; step: lower (the drop under MERGE_MAX_DZ + PARAPET_HEIGHT). */
+  kind: "wall" | "step";
+  width: number;
+  drop: number;
+  /** The higher face over the lower at the wall's outer face (or the cut), and the lanes' gap g. */
+  dz: number;
+  gap: number;
+};
+type DividerSampleAt = DividerSample & { s: number };
+
+/** The 分離壁 a chunk builds against one partner (expressway_divider_built, the ledger's thin-divider). */
+export type Divider = {
+  with: string;
+  s0: number;
+  s1: number;
+  minWidthM: number;
+  maxDropM: number;
+  /** Each stretch of rings where the full wall is thinner than PARAPET (thin-divider), and its largest drop. */
+  thin: Array<{ s0: number; s1: number; minWidthM: number; maxDzM: number }>;
+};
+
+/** A stretch where the wall between the lanes' edges is lower than a 壁高欄 (nose-step): the drop under 1.25 m. */
+export type NoseStep = { with: string; s0: number; s1: number; maxDzM: number; minGapM: number };
+
+/**
+ * Where a 分離壁 starts or ends along a deck (a1-answer3, the ledger's divider-jog): its face towards
+ * this deck's lanes (the wall's inner face on the higher deck, the face over its road on the lower)
+ * against the side's face on the ring next to it with no 分離壁 (its own rail's inner face, or its
+ * road's end where it has none), `jogM` across. Read from the deck's rings and sides as built.
+ */
+export type DividerJog = {
+  with: string;
+  end: "start" | "end";
+  s: number;
+  jogM: number;
+  /** This deck stands the wall (the higher), and the drop there; else the lower deck and 0. */
+  isUpper: boolean;
+  dzM: number;
+  /** The side (+1 left) and the two faces (metres from the centre towards it): the plain ring's, the 分離壁's. */
+  side: 1 | -1;
+  fromU: number;
+  toU: number;
+};
+
+/**
+ * The divider jogs of a deck's rings: where a side starts or stops standing by a 分離壁, how far the
+ * face beside its lanes moves across: from the side's own rail to the 分離壁's inner face (the higher
+ * deck), or from its rail or its road's end to the 分離壁's face over the road (the lower). Where the
+ * plain side is one slab with the other (a seam), or the higher deck has no rail there, the wall only
+ * starts or ends: its end face, no jog. The rings at one place around the flip are read together: the wall-less ring between the two
+ * (the end face closed at the wall) is not the 分離壁's.
+ */
+export function dividerJogs(rings: readonly DeckRing[], sides: readonly RingSides[]): DividerJog[] {
+  const out: DividerJog[] = [];
+  const isAt = (i: number, j: number) =>
+    j >= 0 && j < rings.length && Math.abs(rings[i].frame.s - rings[j].frame.s) < 1e-6;
+  for (let i = 0; i + 1 < rings.length; i++)
+    for (const key of ["left", "right"] as const) {
+      const a = sides[i][key];
+      const b = sides[i + 1][key];
+      const flips = (a.clearTo === null) !== (b.clearTo === null);
+      if (!flips) continue;
+      const isStart = a.clearTo === null;
+      const plain = isStart ? a : b;
+      // The 分離壁's own ring: past a wall-less ring at the same place, if there is one.
+      let k = isStart ? i + 1 : i;
+      const next = isStart ? k + 1 : k - 1;
+      const isBare = sides[k][key].wall === null && sides[k][key].divider === null;
+      const isWallNext = isAt(k, next) && sides[next][key].wall !== null && sides[next][key].divider !== null;
+      if (isBare && isWallNext) k = next;
+      const divided = sides[k][key];
+      const isUpper = divided.divider !== null;
+      // The plain side's face: its own rail; on the lower deck with no rail, its road's end (what
+      // moves under the higher deck's overhang). One slab with the other (a seam): the 分離壁 only
+      // starts or ends there, its end face, no jog.
+      const isOneSlab = plain.seam !== null || plain.joined !== null;
+      const plainFace = plain.wall ? plain.wall.inner : isUpper || isOneSlab ? null : plain.reach;
+      const hasFaces = plainFace !== null && (isUpper ? divided.wall !== null : divided.wall === null);
+      if (!hasFaces) continue;
+      const face = isUpper ? divided.wall!.inner : divided.clearTo!;
+      out.push({
+        with: divided.parted ?? "",
+        end: isStart ? "start" : "end",
+        s: rings[k].frame.s,
+        jogM: Math.abs(face - plainFace!),
+        isUpper,
+        dzM: isUpper ? divided.divider!.drop - MERGE_SKIRT : 0,
+        side: key === "left" ? 1 : -1,
+        fromU: plainFace!,
+        toU: face,
+      });
+    }
+  return out;
+}
 
 /** A chunk's compiled surface height (T.P. m) at run distance s, s held within the chunk. */
 function compiledZ(chunk: XwChunk, s: number): number {

@@ -10,6 +10,7 @@ import {
 import { warn } from "../log";
 import { animateHuman, createHuman, disposeHuman } from "../world/human";
 import { hashString, type AvatarSpec, type PictureMotif, type SocialAccount } from "./socialAccounts";
+import { retireObject } from "../render/retire";
 
 /**
  * The pictures of Y (SOCIAL_APP_NAME): profile images, banners and the photos in everyday posts, painted once
@@ -188,8 +189,8 @@ function renderPortrait(account: SocialAccount): string | null {
   s.camera.lookAt(0, 1.64 + lift, 0);
   s.scene.add(human.root);
   s.renderer.render(s.scene, s.camera);
-  s.scene.remove(human.root);
   disposeHuman(human);
+  retireObject(human.root);
   portraits++;
   return paint(AVATAR_PX, AVATAR_PX, (ctx) => {
     const g = ctx.createLinearGradient(0, 0, 0, AVATAR_PX);

@@ -37,6 +37,7 @@ import {
 import { sharedDraco } from "../render/draco";
 import { startLoad, stepLoad, type LoadCounts, type LoadState } from "./loadProgress";
 import { log } from "../log";
+import { retireObject } from "../render/retire";
 import { featureCeilings, indexCutPoints, type LocalCutPoint } from "./buildingCut";
 import type { DeckCutGeodetic } from "./deckCuts";
 
@@ -790,9 +791,13 @@ export class Buildings {
       if (model) this.removeCollider(model);
       this.models.delete(scene);
       // The façade materials replaced the tile's own after the renderer listed what to dispose.
+      // Each mesh has a façade material of its own (facadeMaterial() makes one a call), so disposing
+      // it is safe and lets go of its render objects already; retireObject tells the rest of the
+      // tile's objects too, as every other place that drops objects does (M1).
       scene.traverse((o) => {
         if (o instanceof Mesh) (o.material as Material).dispose();
       });
+      retireObject(scene);
     });
     tiles.addEventListener("tile-visibility-change", ({ scene, visible }) => {
       const model = this.models.get(scene);
@@ -838,6 +843,10 @@ export class Buildings {
       const at = this.farPending.indexOf(scene);
       if (at >= 0) this.farPending.splice(at, 1);
       this.farScenes.delete(scene);
+      // The far tiles share one material (farFacadeMaterial) and the library disposes only the
+      // geometry, which does not let go of render objects: without this a dropped far tile stayed
+      // held by the renderer. Why not dispose the material: every far tile still shown uses it.
+      retireObject(scene);
     });
     this.scene.add(tiles.group);
     this.applyFrameTo(tiles);

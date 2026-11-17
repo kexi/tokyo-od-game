@@ -35,6 +35,7 @@ import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import { sharedDraco } from "../render/draco";
 import { isExpressway as isExpresswayRoad } from "./roadClass";
 import { DeckOverhead, MAX_MARGIN, poleReachesDeck } from "./deckOverhead";
+import { retireObject } from "../render/retire";
 
 /**
  * 速度違反自動取締装置 (オービス) on the streets: OSM speed cameras (public/data/police.json, built by
@@ -604,7 +605,7 @@ export class OrbisDevices {
       touched.add(f.lens.mesh);
       if (isOver) {
         f.lens.mesh.setColorAt(f.lens.index, LENS_REST);
-        this.scene.remove(f.glow);
+        retireObject(f.glow);
         f.material.dispose();
         return false;
       }
@@ -653,7 +654,7 @@ export class OrbisDevices {
     for (const m of this.meshes) this.scene.remove(m);
     this.meshes = [];
     this.lensOf = [];
-    for (const f of this.flashes) this.scene.remove(f.glow);
+    for (const f of this.flashes) retireObject(f.glow);
     this.flashes = [];
     if (this.body) this.world.removeRigidBody(this.body);
     this.body = null;

@@ -1,11 +1,19 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
+import { PARAPET_HEIGHT, PARAPET_WIDTH } from "../src/expressway/assumptions.ts";
 import { STATION_STRIDE, type XwChunk, type XwTileRun } from "../src/expressway/format.ts";
+import { carriagewayWidth } from "../src/expressway/section.ts";
 import { frameAt } from "../src/expressway/profile.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
 import { createDeckBody, deckArraySteps } from "../src/world/expresswayDeck.ts";
 import { DeckIndex, MERGE_PAD_M, roleOf } from "../src/world/expresswayMarkings.ts";
-import { MERGE_MAX_DZ, seamWeight } from "../src/world/expresswayMerge.ts";
+import {
+  type Divider,
+  type DividerJog,
+  MERGE_MAX_DZ,
+  type NoseStep,
+  seamWeight,
+} from "../src/world/expresswayMerge.ts";
 import { type PairPoint, pairPoints, type Project } from "./expresswayPairs.ts";
 
 /**
@@ -59,6 +67,18 @@ export type SeamProbe = {
   inside: number | null;
 };
 export type LetGo = { chunk: string; with: string; s: number; alongStep: number | null };
+/** The 分離壁 a chunk builds (expresswayMerge.ts dividersOf), with the chunk. */
+export type ChunkDivider = Divider & { chunk: string };
+/** A nose step a chunk builds (expresswayMerge.ts dividersOf), with the chunk. */
+export type ChunkNoseStep = NoseStep & { chunk: string };
+/** Where a chunk's 分離壁 starts or ends (expresswayMerge.ts dividerJogs), with the chunk. */
+export type ChunkJog = DividerJog & { chunk: string };
+/**
+ * A drop with no wall at its edge (A1, test 22): the higher deck of a pair that has let go, its lanes
+ * apart and the slabs overlapping by a wall's width, where a level ray from its lanes towards the other
+ * deck, half the wall's due height over its road, meets nothing within the gap.
+ */
+export type BareDrop = { chunk: string; with: string; s: number; dzM: number; gapM: number };
 
 /**
  * Every chunk merged (the DeckIndex always over all of them), and the probes of every seam and
@@ -68,7 +88,15 @@ export function probeGenerated(
   chunks: readonly XwChunk[],
   tileRuns: readonly XwTileRun[],
   frames: readonly ProbeFrame[],
-): { seams: SeamProbe[]; cuts: LetGo[]; worlds: RAPIER.World[] } {
+): {
+  seams: SeamProbe[];
+  cuts: LetGo[];
+  dividers: ChunkDivider[];
+  steps: ChunkNoseStep[];
+  jogs: ChunkJog[];
+  bare: BareDrop[];
+  worlds: RAPIER.World[];
+} {
   const runs = new Map(tileRuns.map((r) => [r.id, r]));
   const index = new DeckIndex(runs);
   for (const c of chunks) index.add(c);
@@ -81,6 +109,10 @@ export function probeGenerated(
     frames.reduce((best, a, i) => (distanceTo(c, a) < distanceTo(c, frames[best]) ? i : best), 0);
   const seams: SeamProbe[] = [];
   const cuts: LetGo[] = [];
+  const dividers: ChunkDivider[] = [];
+  const steps: ChunkNoseStep[] = [];
+  const jogs: ChunkJog[] = [];
+  const bare: BareDrop[] = [];
   const worlds: RAPIER.World[] = [];
   frames.forEach((area, k) => {
     const own = new Set(chunks.filter((c) => nearest(c) === k).map((c) => c.id));
@@ -91,9 +123,34 @@ export function probeGenerated(
     const res = probeIn(frame, near, own, runs, index);
     seams.push(...res.seams);
     cuts.push(...res.cuts);
+    dividers.push(...res.dividers);
+    steps.push(...res.steps);
+    jogs.push(...res.jogs);
+    bare.push(...res.bare);
     worlds.push(res.world);
   });
-  return { seams, cuts, worlds };
+  const byKey = (
+    a: { chunk: string; with: string; s0: number },
+    b: { chunk: string; with: string; s0: number },
+  ) =>
+    a.chunk !== b.chunk
+      ? a.chunk < b.chunk
+        ? -1
+        : 1
+      : a.with !== b.with
+        ? a.with < b.with
+          ? -1
+          : 1
+        : a.s0 - b.s0;
+  return {
+    seams,
+    cuts,
+    dividers: dividers.toSorted(byKey),
+    steps: steps.toSorted(byKey),
+    jogs,
+    bare,
+    worlds,
+  };
 }
 
 /**
@@ -126,14 +183,32 @@ function probeIn(
   own: ReadonlySet<string>,
   runs: Map<string, XwTileRun>,
   index: DeckIndex,
-): { seams: SeamProbe[]; cuts: LetGo[]; world: RAPIER.World } {
+): {
+  seams: SeamProbe[];
+  cuts: LetGo[];
+  dividers: ChunkDivider[];
+  steps: ChunkNoseStep[];
+  jogs: ChunkJog[];
+  bare: BareDrop[];
+  world: RAPIER.World;
+} {
   const place = { frame: FRAME, ellipsoidal: (_a: number, _b: number, h: number) => h + N };
   const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+  // A chunk's 分離壁 from its build in its own (nearest) frame only: every frame builds the chunks
+  // within its reach, and each would count it again.
+  const dividers: ChunkDivider[] = [];
+  const noseSteps: ChunkNoseStep[] = [];
+  const jogs: ChunkJog[] = [];
   for (const c of chunks) {
     const steps = deckArraySteps(c, place, false, { index });
     let r = steps.next();
     while (!r.done) r = steps.next();
     createDeckBody(world, r.value.collider, r.value.piers, null);
+    const isOwn = own.has(c.id);
+    if (!isOwn) continue;
+    dividers.push(...r.value.walls.map((d) => ({ ...d, chunk: c.id })));
+    noseSteps.push(...r.value.steps.map((d) => ({ ...d, chunk: c.id })));
+    jogs.push(...r.value.jogs.map((d) => ({ ...d, chunk: c.id })));
   }
   world.step();
   // Plan metres in the game's own frame (east, north = −z), each point at its own height (the
@@ -223,5 +298,70 @@ function probeIn(
       alongStep: y0 === null || y1 === null ? null : Math.abs(y1 - y0 - grade),
     });
   }
-  return { seams, cuts, world };
+  // Test 22: every drop of a pair let go, its lanes apart and its slabs overlapping by a wall's width,
+  // has a wall on the higher deck at least half the height it is due (min(|Δz| − MERGE_MAX_DZ,
+  // PARAPET_HEIGHT)): a level ray at that height from 0.3 m inside its lanes towards the other deck
+  // meets it. Read from the chunks alone (pairPoints over the padded stretches), not from the sides.
+  const bare: BareDrop[] = [];
+  const isBore = (c: XwChunk) => c.structure === "tunnel" || c.structure === "cut";
+  for (const p of pairPoints(
+    chunks.map((c) => ({
+      ...c,
+      decks: c.decks.map((d) => ({ ...d, s0: d.s0 - MERGE_PAD_M, s1: d.s1 + MERGE_PAD_M })),
+    })),
+    0.5,
+    project,
+  )) {
+    const isUpper = p.isSameWay && p.dz < -MERGE_MAX_DZ;
+    const isOurs = own.has(p.chunk.id) && known.has(p.with) && !isBore(p.chunk) && !isBore(p.other.chunk);
+    if (!isUpper || !isOurs) continue;
+    // This deck lies left of the other's line (sign +1) or right; its facing lanes' edge and the other's.
+    const sign = p.offset >= 0 ? 1 : -1;
+    const ownLane = carriagewayWidth(p.chunk) / 2 - (sign > 0 ? p.chunk.shoulderR : p.chunk.shoulderL);
+    const otherLane =
+      carriagewayWidth(p.other.chunk) / 2 - (sign > 0 ? p.other.chunk.shoulderL : p.other.chunk.shoulderR);
+    const gap = Math.abs(p.offset) - ownLane - otherLane;
+    const overlap = p.edge + p.otherEdge - Math.abs(p.offset);
+    const due = Math.min(Math.abs(p.dz) - MERGE_MAX_DZ, PARAPET_HEIGHT.value);
+    // A stretch the compiler made two levels (above / below) is not a pair let go: the higher deck
+    // keeps its own rail there (partnersAt leaves it out the same way).
+    const isTwoLevel = p.chunk.decks.some(
+      (d) => d.with === p.with && d.relation !== "same" && p.s >= d.s0 && p.s <= d.s1,
+    );
+    const isWalled = gap >= 0 && overlap >= PARAPET_WIDTH.value && due >= 0.05 && !isTwoLevel;
+    if (!isWalled) continue;
+    // Towards the other deck in the plan, square to this deck (its side: −sign of its own left).
+    // Why not square to the other's line: where the two diverge the ray ran on past this chunk's end.
+    const f = frameAt(p.chunk.st, p.s);
+    const last = p.chunk.st[p.chunk.st.length - STATION_STRIDE];
+    const g2 = frameAt(p.chunk.st, Math.min(last, p.s + 0.25));
+    const g1 = frameAt(p.chunk.st, Math.max(p.chunk.st[0], p.s - 0.25));
+    const [ax, ay] = project(g1.lon, g1.lat, g1.z);
+    const [bx, by] = project(g2.lon, g2.lat, g2.z);
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const tx = (sign * (by - ay)) / len;
+    const ty = (-sign * (bx - ax)) / len;
+    const centre = FRAME.toLocal(f.lat, f.lon, f.z + N);
+    // Is there a drop at all: just past this deck's slab edge, the first face within MERGE_MAX_DZ of
+    // its road is one surface going on (a deck one slab with this one lies there, the drop at that
+    // deck's own edge). Why not every point the pair's heights call a drop: such a point has no drop
+    // to fall off (ship 44803854:13 by 157249384, a deck joined between). Why not down the middle of
+    // the gap between the lanes' edges: a road run out to its slab edge (main's let-go) is there
+    // too, and the drop past its edge was not counted.
+    const mid = p.edge + 0.05;
+    const down = world.castRay(
+      new RAPIER.Ray({ x: p.x + tx * mid, y: centre.y + 2, z: -(p.y + ty * mid) }, { x: 0, y: -1, z: 0 }),
+      40,
+      true,
+    );
+    const isLevelOn = down !== null && Math.abs(2 - down.timeOfImpact) <= MERGE_MAX_DZ;
+    if (isLevelOn) continue;
+    const u = ownLane - 0.3;
+    const o = { x: p.x + tx * u, y: centre.y + due / 2, z: -(p.y + ty * u) };
+    // As far as this deck's slab reaches (its own rail at its edge counts too: it is no bare drop).
+    const reach = 0.3 + Math.max(gap, p.edge - ownLane) + 0.05;
+    const hit = world.castRay(new RAPIER.Ray(o, { x: tx, y: 0, z: -ty }), reach, true);
+    if (hit === null) bare.push({ chunk: p.chunk.id, with: p.with, s: p.s, dzM: Math.abs(p.dz), gapM: gap });
+  }
+  return { seams, cuts, dividers, steps: noseSteps, jogs, bare, world };
 }

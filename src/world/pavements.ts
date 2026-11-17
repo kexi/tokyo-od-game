@@ -23,6 +23,7 @@ import type { LocalFrame } from "../geo/frame";
 import { latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { warn } from "../log";
 import { StreetMaterial } from "./streetLights";
+import { retireObject } from "../render/retire";
 
 /**
  * 歩道 from PLATEAU 道路モデル LOD2 (2025, PDL1.0): TrafficArea polygons whose tran:function is
@@ -363,7 +364,7 @@ export class Pavements {
       }
       for (const mesh of oldMeshes) {
         if (this.meshes.includes(mesh)) continue;
-        mesh.removeFromParent();
+        retireObject(mesh);
         mesh.geometry.dispose();
       }
     } finally {
@@ -422,7 +423,7 @@ export class Pavements {
     this.localToCurrent.identity();
     this.currentToLocal.identity();
     for (const m of this.meshes) {
-      this.scene.remove(m);
+      retireObject(m);
       m.geometry.dispose();
     }
     this.meshes = [];

@@ -25,6 +25,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import manifestJson from "../assets/manifest.yml";
 import type { AssetKind, Maker, ResolvedAssetEntry, ResolvedAssetManifest } from "./data/assetManifest";
 import { REPO_URL } from "./game/credits";
+import { retireObject } from "./render/retire";
 
 /**
  * アセット管理: every asset in the register (assets/manifest.yml), grouped by kind, with its name,
@@ -362,8 +363,8 @@ class ModelView {
   }
 
   async load(url: string): Promise<void> {
-    if (this.root) this.scene.remove(this.root);
-    for (const m of this.markers) this.scene.remove(m);
+    if (this.root) retireObject(this.root);
+    for (const m of this.markers) retireObject(m);
     this.markers.length = 0;
     const gltf = await this.loader.loadAsync(url);
     this.root = gltf.scene;
@@ -408,7 +409,7 @@ class ModelView {
   }
 
   showPins(pins: Pin[]): void {
-    for (const m of this.markers) this.scene.remove(m);
+    for (const m of this.markers) retireObject(m);
     this.markers.length = 0;
     const size = this.root ? new Box3().setFromObject(this.root).getSize(new Vector3()).length() : 1;
     for (const pin of pins) {
