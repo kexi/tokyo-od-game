@@ -1189,6 +1189,9 @@ describe("markings where decks meet (expresswayMarkings.ts)", () => {
     seam: null,
     seamOf: null,
     seamWeight: 1,
+    divider: null,
+    clearTo: null,
+    parted: null,
   });
 
   it("paints edge, lane, branch lines and the 導流帯 within 標識令 別表第四's dimensions", () => {
@@ -1502,6 +1505,9 @@ describe("markings at the sizes the plan fixes (not read back from the same cons
       seam: null,
       seamOf: null,
       seamWeight: 1,
+      divider: null,
+      clearTo: null,
+      parted: null,
     };
     const plan = planDeckMarkings(section().chunks[0], [
       { s: 0, sides: { left: open, right: open } },

@@ -103,6 +103,17 @@ export const PARAPET_WIDTH: Assumption<number> = {
   reason: "未確認。壁高欄の天端幅の目安",
 };
 
+/**
+ * The thinnest 分離壁 the deck builder stands between two same-direction decks that have let go of
+ * one surface while their slabs still overlap (expresswayMerge.ts, A1 汐留): where the lanes' edges
+ * are closer than PARAPET_WIDTH the wall is as wide as the gap between them, never thinner than this.
+ */
+export const DIVIDER_MIN_WIDTH: Assumption<number> = {
+  value: 0.25,
+  verified: false,
+  reason: "未確認。分流の先端の分離壁の最小幅の仮定",
+};
+
 /** Side friction f in e = V²/(127R) − f. */
 export const SIDE_FRICTION: Assumption<number> = {
   value: 0.15,
@@ -410,6 +421,7 @@ export const ASSUMPTIONS: Readonly<Record<string, Assumption<unknown>>> = {
   PIER_SPACING,
   PARAPET_HEIGHT,
   PARAPET_WIDTH,
+  DIVIDER_MIN_WIDTH,
   SIDE_FRICTION,
   RAMP_MIN_RADIUS,
   MAX_LATERAL_SHIFT,

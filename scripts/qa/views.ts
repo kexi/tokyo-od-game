@@ -177,11 +177,15 @@ async function settle(b: Browser, seconds: number, quietS = 0): Promise<Settled>
   return { ...state, isSettled: isTwice === true && isQuietEnough, ...(quiet ? { quiet } : {}) };
 }
 
-// The HUD, the phone and the POI beams are not what is reviewed (the route arrows: the hook).
+// The HUD, the phone and the POI beams are not what is reviewed (the route arrows: the hook). Nor
+// is a violation's stamp shaking the scene (stamp.ts, .stamp-shake on #scene, 0.22 s up to 4 px):
+// a shot taken during it was off by pixels (signs, night, lamps-low-60: 1 px right, 3 px up). Why
+// here and not in the game: the shake stays for the player, and only the session's page loses it.
 const CLEAN_FRAME = `(() => {
   if (!document.getElementById('qa-clean')) {
     const st = document.createElement('style'); st.id = 'qa-clean';
-    st.textContent = '* { visibility: hidden !important } #scene { visibility: visible !important }';
+    st.textContent = '* { visibility: hidden !important } #scene { visibility: visible !important }'
+      + ' #scene.stamp-shake { animation: none !important; translate: none !important }';
     document.head.append(st);
   }
   const G = window.__game;

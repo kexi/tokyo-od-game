@@ -307,6 +307,10 @@ count-overlap-shapes label base="":
 update-expressway-ledger dir="public/data/expressway" flags="":
     pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayLedger.ts {{ dir }} {{ flags }}
 
+# 高速道路の壁の無い落差（手放した組で車線が離れ床版が重なる所の、上の床版の車線から相手へのレイが壁に当たらない点、A1 のテスト 22）を数えて JSONL に書く（dir はデータのフォルダ、against に別の生成や main で書いた同じ形の一覧を渡すと新しい点・消えた点を 1 行の JSON ログに、新しい点があれば終了コード 1）
+count-bare-drops dir="public/data/expressway" against="" out="":
+    pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayBareDrops.ts {{ dir }} {{ if against != "" { "--against " + against } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }}
+
 # 高速道路の生成 2 つのチャンクをバイト単位で比べる（a・b はラベルか生成先のフォルダ、v5・v6 どちらのタイルも読む、違うチャンク・片方にしか無いチャンクの数と ID を 1 行の JSON ログに、違いがあれば終了コード 1）
 compare-expressway-chunks a b:
     pnpm exec tsx scripts/compareExpresswayChunks.ts {{ a }} {{ b }}
@@ -391,6 +395,10 @@ measure-buildings-timeline label="run" base="http://localhost:5173/tokyo-od-game
 # 画質 › シェーダーの事前作成を on / off にして 1 回読み込み、読み込み画面が閉じた時刻・precompile の時間・走り出しの長いフレームとパイプラインの数・初めて出る物（運転席・最初の違反・最初の雨）の前後 1 秒を .qa/shader-prebuild/<label>.json に書く（開発サーバーが必要。args に --prebuild on|off・--mobile・--seconds・--start lat,lon）
 measure-shader-prebuild label="run" base="http://localhost:5173/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/shader-prebuild.ts --label {{ label }} --base {{ base }} {{ args }}
+
+# 止まっている地点（既定は東京駅、視界 far）で、近景の建物のタイルが持つ配列を種類ごと（位置・法線・UV・索引・外壁の属性・テクスチャ・b3dm の表）に足し上げ、LRU の数字と GC 後のヒープ・配列の実体と並べて .qa/memory-tiles/<label>.json に書く（args に --start・--view、表と読み込みの結果を外して測り直す --drop-tables、持ち主を見る --probe-holders）
+measure-tile-memory label="run" base="http://localhost:4174/tokyo-od-game/" *args:
+    pnpm exec tsx scripts/qa/memory-tiles.ts --label {{ label }} --base {{ base }} {{ args }}
 
 # 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
