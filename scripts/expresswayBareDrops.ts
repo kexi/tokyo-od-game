@@ -26,9 +26,15 @@ const points = probed.bare.toSorted((a, b) => (a.chunk === b.chunk ? a.s - b.s :
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, points.map((p) => JSON.stringify(p)).join("\n") + (points.length > 0 ? "\n" : ""));
 
-/** The same point in another list: the same chunk and partner, within half a probe step either way. */
+/** Under half the probe step (pairPoints, 0.5 m): the same point of the same tiles, never its neighbour. */
+const SAME_POINT_M = 0.25;
+/**
+ * The same point in another list: the same chunk and partner, under half a probe step apart.
+ * Why not a whole step (0.5 m, as before): the neighbouring point matched too, so a stretch with no
+ * wall that grew by a point at an end counted no new point.
+ */
 const isIn = (p: BareDrop, list: readonly BareDrop[]) =>
-  list.some((q) => q.chunk === p.chunk && q.with === p.with && Math.abs(q.s - p.s) <= 0.5);
+  list.some((q) => q.chunk === p.chunk && q.with === p.with && Math.abs(q.s - p.s) < SAME_POINT_M);
 const base: BareDrop[] = against
   ? readFileSync(against, "utf8")
       .split("\n")
