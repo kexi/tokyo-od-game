@@ -1,0 +1,472 @@
+import { z } from "zod";
+import { BELOW_DEFER_REASONS, type BelowDeferReason, TUNNEL_DEPTH_M } from "./below";
+import { STATION_STRIDE, ST, type XwChunk, type XwClass, type XwRunSummary } from "./format";
+import { pairStations, SAME_SURFACE_M } from "./overlap";
+
+/**
+ * The scorecard's `underground` (S7-1, report.ts version 7): what S7 (地下全面) is measured by before
+ * it changes anything. Three counts, from the plan's deferrals and the written files alone:
+ *
+ * - `deferred`: the below runs left out and why (below.ts BELOW_DEFER_REASONS), by reason, by ref and
+ *   one by one. Not by district: a deferred run is in no file, and the districts are told from files
+ *   today (districts.ts); its ref lets it be put in one later.
+ * - `portals`: every written below run's end that is a portal (its first or last station, where the
+ *   road beyond is no tunnel or cut): the road and the ground there, the run at grade it seams to and
+ *   how far that one stands off the ground within PORTAL_APPROACH_M, and how much depth its tunnel
+ *   lacks at that station (W10: a portal's end is at the ground today).
+ * - `overApproach`: decks over a run at grade within PORTAL_APPROACH_M of a portal (the approaches:
+ *   compile.ts portalApproachEnds, from the plan), less than a level (overlap.ts pairStations'
+ *   levelApart: 第12条's 4.5 m and the upper deck's girder) above it. The
+ *   汐留 approach 45068170 under the exit 24402125 is one (plan 0 節の 4): once the portal is joined,
+ *   main-line traffic drives under it.
+ *
+ * Pure; the build script hands it the plan's deferrals with the files.
+ */
+
+/** How far from a portal its approach is read (S7-1's instructions: the 300 m S7-2 lowers it over). */
+export const PORTAL_APPROACH_M = 300;
+
+const count = z.number().int().nonnegative();
+const km = z.number().nonnegative();
+const tally = z.strictObject({ runs: count, km });
+const byClass = z.strictObject({ main: tally, ramp: tally, street: tally });
+const reason = z.enum(BELOW_DEFER_REASONS);
+
+export const UndergroundSchema = z.strictObject({
+  deferred: z.strictObject({
+    total: byClass,
+    /** Every reason, each with its runs and km by class (0 where none). */
+    byReason: z.strictObject(
+      Object.fromEntries(BELOW_DEFER_REASONS.map((r) => [r, byClass])) as Record<
+        BelowDeferReason,
+        typeof byClass
+      >,
+    ),
+    /** By the ref over most of the run's length (`-` for none). */
+    byRef: z.record(z.string(), tally),
+    /**
+     * The deferred runs the range reaches, by a rule of the range's kind (compile.ts planNetwork): for
+     * boxes the run's own line read every RANGE_LINE_STEP_M, for a chosen range (--range ship) its chain
+     * having a run of the range, for --range all every run. The list's `inRange` is the same.
+     */
+    inRange: tally,
+    list: z.array(
+      z.strictObject({
+        id: z.string(),
+        cls: z.enum(["main", "ramp", "street"]),
+        ref: z.string().nullable(),
+        km,
+        reason,
+        inRange: z.boolean(),
+      }),
+    ),
+  }),
+  portals: z.strictObject({
+    ends: count,
+    /** The ends into a tunnel short of its depth at their station, and the largest shortfall (m). */
+    coverShort: count,
+    maxShortM: z.number().nonnegative(),
+    list: z.array(
+      z.strictObject({
+        /** `<run>:start` or `<run>:end` (the comparison's key). */
+        id: z.string(),
+        run: z.string(),
+        end: z.enum(["start", "end"]),
+        /** The structure inside the run at that end. */
+        into: z.enum(["tunnel", "cut"]),
+        zM: z.number(),
+        groundM: z.number(),
+        /** Road less ground at the end (m). */
+        dzM: z.number(),
+        /** The run at grade it seams to, and its (road − ground) farthest from 0 within PORTAL_APPROACH_M. */
+        approach: z.strictObject({ run: z.string(), offM: z.number() }).nullable(),
+        /** TUNNEL_DEPTH_M less the depth under the ground at the end (0 when deep enough); null into a cut. */
+        coverShortM: z.number().nonnegative().nullable(),
+      }),
+    ),
+  }),
+  overApproach: z.strictObject({
+    /**
+     * The approaches looked over (compile.ts portalApproachEnds, written ones): so 0 pairs reads as no
+     * deck over them, not as no approach.
+     */
+    approaches: z.strictObject({
+      count,
+      list: z.array(
+        z.strictObject({
+          /** `<run>:<end>`. */
+          id: z.string(),
+          run: z.string(),
+          end: z.enum(["start", "end"]),
+          /** The run distances within PORTAL_APPROACH_M of that end. */
+          s0: z.number(),
+          s1: z.number(),
+        }),
+      ),
+    }),
+    pairs: count,
+    list: z.array(
+      z.strictObject({
+        /** `<lower>|<upper>`. */
+        id: z.string(),
+        lower: z.string(),
+        upper: z.string(),
+        /** The lower run's distances over which the upper deck stands too low over it. */
+        s0: z.number(),
+        s1: z.number(),
+        minDzM: z.number().nonnegative(),
+        /** The largest height difference of the station pairs counted. */
+        maxDzM: z.number().nonnegative(),
+        /** The centre lines' distance at the smallest height difference. */
+        offsetM: z.number().nonnegative(),
+        /** The station pairs counted (both directions). */
+        stations: count,
+      }),
+    ),
+  }),
+});
+
+export type Underground = z.infer<typeof UndergroundSchema>;
+
+/** A deferred below run as the build hands it in (compile.ts BelowDeferral, without its chain). */
+export type DeferredBelow = {
+  id: string;
+  reason: BelowDeferReason;
+  cls: XwClass;
+  ref: string | null;
+  lengthM: number;
+  inRange: boolean;
+};
+
+const CLASS_KEY = { expressway: "main", ramp: "ramp", street: "street" } as const;
+const round = (v: number, digits: number) => {
+  const k = 10 ** digits;
+  return Math.round(v * k) / k;
+};
+const NO_REF = "-";
+
+function emptyByClass(): z.infer<typeof byClass> {
+  return { main: { runs: 0, km: 0 }, ramp: { runs: 0, km: 0 }, street: { runs: 0, km: 0 } };
+}
+
+/** The deferred below runs by reason, ref and range, and one by one (sorted by id). */
+export function deferredOf(list: readonly DeferredBelow[]): Underground["deferred"] {
+  const total = emptyByClass();
+  const byReason = Object.fromEntries(BELOW_DEFER_REASONS.map((r) => [r, emptyByClass()])) as Record<
+    BelowDeferReason,
+    ReturnType<typeof emptyByClass>
+  >;
+  const byRef: Record<string, { runs: number; km: number }> = {};
+  const inRange = { runs: 0, km: 0 };
+  const sorted = list.toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  for (const d of sorted) {
+    const k = d.lengthM / 1000;
+    for (const t of [total[CLASS_KEY[d.cls]], byReason[d.reason][CLASS_KEY[d.cls]]]) {
+      t.runs++;
+      t.km += k;
+    }
+    const ref = (byRef[d.ref ?? NO_REF] ??= { runs: 0, km: 0 });
+    ref.runs++;
+    ref.km += k;
+    if (d.inRange) {
+      inRange.runs++;
+      inRange.km += k;
+    }
+  }
+  const tallies = [
+    ...Object.values(total),
+    ...Object.values(byReason).flatMap((b) => Object.values(b)),
+    ...Object.values(byRef),
+    inRange,
+  ];
+  for (const t of tallies) t.km = round(t.km, 3);
+  return {
+    total,
+    byReason,
+    byRef: Object.fromEntries(Object.entries(byRef).toSorted(([a], [b]) => (a < b ? -1 : 1))),
+    inRange,
+    list: sorted.map((d) => ({
+      id: d.id,
+      cls: CLASS_KEY[d.cls],
+      ref: d.ref,
+      km: round(d.lengthM / 1000, 3),
+      reason: d.reason,
+      inRange: d.inRange,
+    })),
+  };
+}
+
+type Station = { s: number; lon: number; lat: number; z: number; ground: number };
+
+/** A run's stations from its chunks in order, each once (consecutive chunks share their end station). */
+function stationsOfRun(chunks: readonly XwChunk[]): Station[] {
+  const out: Station[] = [];
+  for (const c of chunks.toSorted((a, b) => a.k - b.k)) {
+    const first = out.length === 0 ? 0 : STATION_STRIDE;
+    for (let i = first; i < c.st.length; i += STATION_STRIDE)
+      out.push({
+        s: c.st[i + ST.s],
+        lon: c.st[i + ST.lon],
+        lat: c.st[i + ST.lat],
+        z: c.st[i + ST.z],
+        ground: c.st[i + ST.ground],
+      });
+  }
+  return out;
+}
+
+/** An approach's end at its portal (compile.ts portalApproachEnds): the run at grade and which end. */
+export type ApproachEnd = { run: string; end: "start" | "end" };
+
+/** A run at grade's stretch within PORTAL_APPROACH_M of its portal end: the run distances it spans. */
+type ApproachStretch = { run: string; end: "start" | "end"; s0: number; s1: number };
+
+/**
+ * The stretch of an approach within PORTAL_APPROACH_M of its portal end, on its written stations: to
+ * PORTAL_APPROACH_M exactly from the end (S7-1 review 2: not the last station short of it), and
+ * (road − ground) farthest from 0 at its stations there. Null for a run not written.
+ */
+function stretchOf(
+  end: ApproachEnd,
+  chunks: readonly XwChunk[] | undefined,
+): { stretch: ApproachStretch; offM: number } | null {
+  if (!chunks) return null;
+  const stations = stationsOfRun(chunks);
+  const first = stations[0].s;
+  const last = stations[stations.length - 1].s;
+  const isStart = end.end === "start";
+  const s0 = isStart ? first : Math.max(first, last - PORTAL_APPROACH_M);
+  const s1 = isStart ? Math.min(last, first + PORTAL_APPROACH_M) : last;
+  let off = 0;
+  for (const p of stations) {
+    const isNear = p.s >= s0 - 1e-6 && p.s <= s1 + 1e-6;
+    if (!isNear) continue;
+    const d = p.z - p.ground;
+    const isFarther = Math.abs(d) > Math.abs(off);
+    if (isFarther) off = d;
+  }
+  return { stretch: { run: end.run, end: end.end, s0, s1 }, offM: round(off, 3) };
+}
+
+/**
+ * The portal ends of the written below runs (`portals`). A below run is told by the plan (`belowIds`:
+ * a tags build writes no `below` on its summaries); a run at grade by its summary. The run beyond an end
+ * is the one the end seams to (endPlan: a run at grade is the master of the seams of a below run beside
+ * it), so an end seaming to another below run is no portal. The approach's end at the portal follows
+ * the chain: a below run's start meets the run before it at that run's end, its end the next run's
+ * start.
+ */
+export function portalEndsOf(
+  chunks: readonly XwChunk[],
+  runs: readonly XwRunSummary[],
+  belowIds: ReadonlySet<string>,
+): Underground["portals"] {
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  const summaries = new Map(runs.map((r) => [r.id, r]));
+  const list: Underground["portals"]["list"] = [];
+  for (const r of runs.toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
+    const isBelow = belowIds.has(r.id);
+    const own = byRun.get(r.id);
+    if (!isBelow || !own) continue;
+    const stations = stationsOfRun(own);
+    const portals = own.toSorted((a, b) => a.k - b.k).flatMap((c) => c.portals ?? []);
+    for (const atStart of [true, false]) {
+      const end = atStart ? r.start : r.end;
+      const parent = end.parent;
+      const isUnderBeyond = parent !== undefined && belowIds.has(parent);
+      if (isUnderBeyond) continue;
+      const station = atStart ? stations[0] : stations[stations.length - 1];
+      const portal = atStart ? portals[0] : portals[portals.length - 1];
+      const into = (atStart ? portal?.to : portal?.from) === "tunnel" ? "tunnel" : "cut";
+      const depth = station.ground - station.z;
+      const isTunnel = into === "tunnel";
+      const isGroundParent = parent !== undefined && summaries.get(parent)?.ground === true;
+      const approach = isGroundParent
+        ? stretchOf({ run: parent, end: atStart ? "end" : "start" }, byRun.get(parent))
+        : null;
+      list.push({
+        id: `${r.id}:${atStart ? "start" : "end"}`,
+        run: r.id,
+        end: atStart ? "start" : "end",
+        into,
+        zM: round(station.z, 3),
+        groundM: round(station.ground, 2),
+        dzM: round(station.z - station.ground, 3),
+        approach: approach && { run: approach.stretch.run, offM: approach.offM },
+        coverShortM: isTunnel ? round(Math.max(0, TUNNEL_DEPTH_M - depth), 3) : null,
+      });
+    }
+  }
+  const shorts = list.flatMap((p) => (p.coverShortM !== null && p.coverShortM > 0 ? [p.coverShortM] : []));
+  return {
+    ends: list.length,
+    coverShort: shorts.length,
+    maxShortM: shorts.length === 0 ? 0 : Math.max(...shorts),
+    list,
+  };
+}
+
+/** The written approaches' stretches (`overApproach.approaches`), in the order of their ends. */
+export function approachStretchesOf(
+  chunks: readonly XwChunk[],
+  ends: readonly ApproachEnd[],
+): ApproachStretch[] {
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  return ends.flatMap((e) => {
+    const found = stretchOf(e, byRun.get(e.run));
+    return found ? [found.stretch] : [];
+  });
+}
+
+/**
+ * Decks over the portals' approaches less than a level above them (`overApproach`): over overlap.ts
+ * pairStations (the carriageways' centre lines nearer than the sum of their half widths, the other's
+ * Hermite surface), the station pairs whose lower is an approach within its stretch and whose upper
+ * stands more than one surface (overlap.ts SAME_SURFACE_M, deckOverlaps' rule) and less than the level
+ * apart over its girder above it. Both directions of a pair count (the upper's station over the lower,
+ * the lower's under the upper). Each pair keeps its largest height difference and its stations too, so
+ * a pair side by side (largest under 2 m) is told from one passing over (largest 3.9–6.2 m in
+ * ship/pruned) by its values, not by a threshold. Why not the allowlist's 0.14 m: it is the cap the
+ * ledger accepts for pairs joined at a junction, looser than the check for the rest, and a pair S7 moves
+ * to 5–8 cm would drop out of the count. Why not deckOverlaps' pairs: they keep a pair whatever stands
+ * where along it, and the stretch near the portal is the point; nor only pairs not joined: a ramp
+ * joining the approach still puts its deck over it where it stands apart above.
+ */
+export function overApproachOf(
+  chunks: XwChunk[],
+  stretches: readonly ApproachStretch[],
+): Underground["overApproach"] {
+  const approaches = {
+    count: stretches.length,
+    list: stretches.map((st) => ({
+      id: `${st.run}:${st.end}`,
+      run: st.run,
+      end: st.end,
+      s0: round(st.s0, 1),
+      s1: round(st.s1, 1),
+    })),
+  };
+  const byLower = new Map<string, ApproachStretch[]>();
+  for (const st of stretches) byLower.set(st.run, [...(byLower.get(st.run) ?? []), st]);
+  const isNearPortal = (run: string, s: number) =>
+    (byLower.get(run) ?? []).some((st) => s >= st.s0 - 1e-6 && s <= st.s1 + 1e-6);
+  type Pair = Underground["overApproach"]["list"][number];
+  const found = new Map<string, Pair>();
+  const isNone = byLower.size === 0;
+  if (isNone) return { approaches, pairs: 0, list: [] };
+  for (const p of pairStations(chunks)) {
+    // a over b (dz > 0: a is the upper) or a under b (dz < 0: a is the lower).
+    const isAUpper = p.dz > 0;
+    const [lower, sLower, upper] = isAUpper ? [p.b, p.sb, p.a] : [p.a, p.sa, p.b];
+    const dz = Math.abs(p.dz);
+    const isTooLow = dz > SAME_SURFACE_M && dz < p.levelApart;
+    if (!isTooLow || !isNearPortal(lower, sLower)) continue;
+    const id = `${lower}|${upper}`;
+    const o: Pair = found.get(id) ?? {
+      id,
+      lower,
+      upper,
+      s0: sLower,
+      s1: sLower,
+      minDzM: dz,
+      maxDzM: dz,
+      offsetM: p.dist,
+      stations: 0,
+    };
+    o.s0 = Math.min(o.s0, sLower);
+    o.s1 = Math.max(o.s1, sLower);
+    o.maxDzM = Math.max(o.maxDzM, dz);
+    o.stations++;
+    const isLower = dz < o.minDzM;
+    if (isLower) {
+      o.minDzM = dz;
+      o.offsetM = p.dist;
+    }
+    found.set(id, o);
+  }
+  const list = [...found.values()]
+    .map((o) => ({
+      ...o,
+      s0: round(o.s0, 1),
+      s1: round(o.s1, 1),
+      minDzM: round(o.minDzM, 3),
+      maxDzM: round(o.maxDzM, 3),
+      offsetM: round(o.offsetM, 2),
+    }))
+    .toSorted((a, b) => (a.id < b.id ? -1 : 1));
+  return { approaches, pairs: list.length, list };
+}
+
+/** The scorecard's `underground` from the plan's deferrals and approach ends, and the written files. */
+export function undergroundOf(input: {
+  deferred: readonly DeferredBelow[];
+  approachEnds: readonly ApproachEnd[];
+  chunks: XwChunk[];
+  runs: readonly XwRunSummary[];
+  belowIds: ReadonlySet<string>;
+}): Underground {
+  return {
+    deferred: deferredOf(input.deferred),
+    portals: portalEndsOf(input.chunks, input.runs, input.belowIds),
+    overApproach: overApproachOf(input.chunks, approachStretchesOf(input.chunks, input.approachEnds)),
+  };
+}
+
+/** The ids of a list (none for a section that is not there). */
+function idsOf(list: ReadonlyArray<{ id: string }> | undefined): Set<string> {
+  return new Set((list ?? []).map((x) => x.id));
+}
+
+/** The ids of b not in a (added) and of a not in b (removed), sorted. */
+function sideBy(pa: Set<string>, pb: Set<string>): { added: string[]; removed: string[] } {
+  return {
+    added: [...pb].filter((id) => !pa.has(id)).toSorted(),
+    removed: [...pa].filter((id) => !pb.has(id)).toSorted(),
+  };
+}
+
+/**
+ * What two scorecards' `underground` say apart beyond their numbers (scripts/compareExpresswayReports.ts):
+ * the deferred runs, portal ends, approaches and over-approach pairs on one side only, and the runs deferred on
+ * both for another reason or range, the portal ends with another structure inside or approach run. `absent` names the side without the section (a report before version 7),
+ * whose comparison is then the section added or removed as a whole. Why apart from the numbered rows:
+ * a reason is a word, and a run deferred for another reason changes no number of its own.
+ */
+export function undergroundChanges(
+  a: Underground | undefined,
+  b: Underground | undefined,
+): {
+  absent: "a" | "b" | null;
+  deferred: { added: string[]; removed: string[]; reasonChanged: string[]; inRangeChanged: string[] };
+  portals: { added: string[]; removed: string[]; changed: string[] };
+  overApproach: { added: string[]; removed: string[] };
+  approaches: { added: string[]; removed: string[] };
+} {
+  const reasonA = new Map((a?.deferred.list ?? []).map((d) => [d.id, d.reason]));
+  const reasonChanged = (b?.deferred.list ?? [])
+    .filter((d) => reasonA.has(d.id) && reasonA.get(d.id) !== d.reason)
+    .map((d) => `${d.id} ${reasonA.get(d.id)}→${d.reason}`)
+    .toSorted();
+  const inRangeA = new Map((a?.deferred.list ?? []).map((d) => [d.id, d.inRange]));
+  const inRangeChanged = (b?.deferred.list ?? [])
+    .filter((d) => inRangeA.has(d.id) && inRangeA.get(d.id) !== d.inRange)
+    .map((d) => `${d.id} inRange ${inRangeA.get(d.id)}→${d.inRange}`)
+    .toSorted();
+  // A portal end whose structure inside or approach run changed (words, not numbers: review optional 5).
+  const wordsOf = (p: Underground["portals"]["list"][number]) => `${p.into}/${p.approach?.run ?? "-"}`;
+  const portalA = new Map((a?.portals.list ?? []).map((p) => [p.id, wordsOf(p)]));
+  const portalChanged = (b?.portals.list ?? [])
+    .filter((p) => portalA.has(p.id) && portalA.get(p.id) !== wordsOf(p))
+    .map((p) => `${p.id} ${portalA.get(p.id)}→${wordsOf(p)}`)
+    .toSorted();
+  const absent = a === undefined && b !== undefined ? "a" : b === undefined && a !== undefined ? "b" : null;
+  return {
+    absent,
+    deferred: { ...sideBy(idsOf(a?.deferred.list), idsOf(b?.deferred.list)), reasonChanged, inRangeChanged },
+    portals: { ...sideBy(idsOf(a?.portals.list), idsOf(b?.portals.list)), changed: portalChanged },
+    overApproach: sideBy(idsOf(a?.overApproach.list), idsOf(b?.overApproach.list)),
+    approaches: sideBy(idsOf(a?.overApproach.approaches.list), idsOf(b?.overApproach.approaches.list)),
+  };
+}
