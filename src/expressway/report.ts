@@ -8,7 +8,7 @@ import { type District, DISTRICTS } from "./districts";
 import type { LedgerSummary } from "./ledger";
 import { GIRDER_DEPTH } from "./assumptions";
 import { lowViaductStretches, openGroundStretches } from "./heightStructures";
-import { type DeferredBelow, undergroundOf, UndergroundSchema } from "./belowScore";
+import { type ApproachEnd, type DeferredBelow, undergroundOf, UndergroundSchema } from "./belowScore";
 
 /**
  * The scorecard of one expressway build (P2.7-1, `scripts/expressway.ts --report`): what the later
@@ -565,6 +565,8 @@ export type ReportInput = {
   companions?: NonNullable<Report["companions"]> | null;
   /** The plan's deferred below runs (compile.ts Plan.belowDeferrals), into `underground.deferred`. */
   belowDeferrals?: readonly DeferredBelow[];
+  /** The portals' approaches (compile.ts portalApproachEnds), into `underground.overApproach`. */
+  approachEnds?: readonly ApproachEnd[];
 };
 
 const round = (v: number, digits: number) => {
@@ -1372,6 +1374,7 @@ export function buildReport(input: ReportInput): Report {
     ledger: input.ledgerSummary,
     underground: undergroundOf({
       deferred: input.belowDeferrals ?? [],
+      approachEnds: input.approachEnds ?? [],
       chunks: input.chunks,
       runs: input.runs,
       belowIds: new Set([

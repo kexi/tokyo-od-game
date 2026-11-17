@@ -11,7 +11,7 @@
 // line (how many changed, and which). P2.7-3: builds of another objective (v1 / v2 or v2's weights)
 // are warned about too. S7-1 (version 7): the `underground` numbers are rows like the rest (deferred
 // runs by id, portal ends by run:end, over-approach pairs by lower|upper), and one line names what the
-// numbers cannot: the deferred runs, ends and pairs on one side only and the runs deferred for another
+// numbers cannot: the deferred runs, ends, approaches and pairs on one side only and the runs deferred for another
 // reason (a version-6 report beside a version-7 one: the section added).
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -63,9 +63,10 @@ const undergroundLine =
   under.absent !== null
     ? `underground: only in ${under.absent === "a" ? b.label : a.label} (the other is version ${under.absent === "a" ? a.version : b.version})`
     : [
-        `underground: deferred +${ids(under.deferred.added)} / −${ids(under.deferred.removed)} / reason ${ids(under.deferred.reasonChanged)}`,
-        `portals +${ids(under.portals.added)} / −${ids(under.portals.removed)}`,
+        `underground: deferred +${ids(under.deferred.added)} / −${ids(under.deferred.removed)} / reason ${ids(under.deferred.reasonChanged)} / range ${ids(under.deferred.inRangeChanged)}`,
+        `portals +${ids(under.portals.added)} / −${ids(under.portals.removed)} / changed ${ids(under.portals.changed)}`,
         `overApproach +${ids(under.overApproach.added)} / −${ids(under.overApproach.removed)}`,
+        `approaches +${ids(under.approaches.added)} / −${ids(under.approaches.removed)}`,
       ].join("; ");
 const cell = (r: Row) => {
   const delta = r.va !== undefined && r.vb !== undefined ? fmt(r.vb - r.va) : "";
@@ -101,7 +102,9 @@ const changed =
   blocksChanged.length +
   blocksAdded.length +
   blocksRemoved.length +
-  under.deferred.reasonChanged.length;
+  under.deferred.reasonChanged.length +
+  under.deferred.inRangeChanged.length +
+  under.portals.changed.length;
 log("expressway_reports_compared", {
   a: a.label,
   b: b.label,

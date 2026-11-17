@@ -445,7 +445,7 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
     ]);
   });
 
-  it("version 6: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
+  it("version 7 keeps version 6's fields: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
     const report = buildReport(input());
     expect(report.version).toBe(7); // S7-1 raised it for `underground` (tests/expresswayBelowScore.test.ts)
     expect(report.size.record).toEqual({ raw: 900, gzip: 200 });

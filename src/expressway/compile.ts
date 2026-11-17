@@ -492,6 +492,67 @@ function longestRef(net: Network, ways: readonly number[]): string | null {
   return best;
 }
 
+/** The longest step between two points of a deferred run's line read against the boxes (m). */
+export const RANGE_LINE_STEP_M = 20;
+
+/**
+ * Whether a line (its nodes in order) passes through any of the boxes, read every RANGE_LINE_STEP_M
+ * at most between its nodes. Why not the nodes alone: OSM puts a tunnel's nodes far apart, and the
+ * stretch between two of them may cross a box with both outside it.
+ */
+export function isLineInBoxes(
+  points: ReadonlyArray<{ lon: number; lat: number }>,
+  ranges: readonly Bbox[],
+): boolean {
+  const isInside = (lon: number, lat: number) =>
+    ranges.some((r) => lon >= r.minLon && lon <= r.maxLon && lat >= r.minLat && lat <= r.maxLat);
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (isInside(p.lon, p.lat)) return true;
+    const q = points[i + 1];
+    if (!q) continue;
+    const kx = 111320 * Math.cos((p.lat * Math.PI) / 180);
+    const length = Math.hypot((q.lon - p.lon) * kx, (q.lat - p.lat) * 110574);
+    const steps = Math.ceil(length / RANGE_LINE_STEP_M);
+    for (let k = 1; k < steps; k++) {
+      const t = k / steps;
+      const isHit = isInside(p.lon + (q.lon - p.lon) * t, p.lat + (q.lat - p.lat) * t);
+      if (isHit) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The ends of the runs at grade where the road goes on into a tunnel or cut along their chain: the
+ * portals' approaches (S7-1 review 2; the scorecard's `underground.overApproach`, and S7-2 lowers the
+ * same runs). Decided by the chain's next way alone, so the same ends come out whether the below run
+ * beyond is written, deferred or compiled outside the range (its end kind tells them apart: seam,
+ * portal, open). On a closed chain the end of its last way goes on into its first (the loop's seam,
+ * 都心環状線), and that first way is asked as any other. Why not from the files (a below run's seam
+ * parent, a run's `portal` end): a run at grade whose below run is compiled but not written ends
+ * `open`, and its approach would go uncounted as if it had none.
+ */
+export function portalApproachEnds(plan: Plan): Array<{ run: string; end: "start" | "end" }> {
+  const out: Array<{ run: string; end: "start" | "end" }> = [];
+  for (const id of [...plan.runs.keys()].sort()) {
+    const rp = plan.runs.get(id)!;
+    if (!rp.ground) continue;
+    const { chain, run } = rp;
+    const n = chain.ways.length;
+    for (const atStart of [true, false]) {
+      const own = chain.ways.indexOf(atStart ? run.ways[0] : run.ways[run.ways.length - 1]);
+      const next = atStart ? own - 1 : own + 1;
+      const isOffChain = next < 0 || next >= n;
+      if (isOffChain && !chain.closed) continue;
+      const way = plan.net.ways.get(chain.ways[(next + n) % n]);
+      const isBelow = way !== undefined && (way.structure === "tunnel" || way.structure === "cut");
+      if (isBelow) out.push({ run: id, end: atStart ? "start" : "end" });
+    }
+  }
+  return out;
+}
+
 /** The class over most of a run's ways' length (majorityClass's order on a tie). */
 function waysClass(net: Network, ways: readonly number[]): RoadClass {
   const length = new Map<RoadClass, number>();
@@ -1072,7 +1133,10 @@ export function planNetwork(
   // A deferred run is in no file, so the range is asked of its own line where the range is boxes, and
   // of its chain where it is chosen (--range ship: shipRuns picks planned runs, which a deferred run is
   // not; its chain having one is BelowJunction.inRange's rule). Why not the chain for boxes too: a long
-  // main line's chain reaches the boxes far from a tunnel of it.
+  // main line's chain reaches the boxes far from a tunnel of it. The line is read every
+  // RANGE_LINE_STEP_M at most between its nodes (S7-1 review 3), as `wanted` reads a run's samples: a
+  // tunnel whose nodes fall either side of a small box (汐留's is about 270 m × 380 m) crosses it all
+  // the same.
   for (const d of plan.belowDeferrals) {
     const isWhole = ranges === null && !chosen;
     if (isWhole) {
@@ -1085,12 +1149,8 @@ export function planNetwork(
     }
     const chain = plan.chains.get(d.chain)!;
     const run = splitRuns(net, chain).find((r) => r.id === d.id)!;
-    d.inRange = chain.nodes.slice(run.from, run.to + 1).some((n) => {
-      const node = net.nodes.get(n)!;
-      return ranges.some(
-        (r) => node.lon >= r.minLon && node.lon <= r.maxLon && node.lat >= r.minLat && node.lat <= r.maxLat,
-      );
-    });
+    const points = chain.nodes.slice(run.from, run.to + 1).map((n) => net.nodes.get(n)!);
+    d.inRange = isLineInBoxes(points, ranges);
   }
   // A run at grade a wanted run hangs from (a seam, a junction) is wanted too (S6 PR 2): the ranges
   // pick runs by their own ways, and one outside them left its children in the air (dangling).
