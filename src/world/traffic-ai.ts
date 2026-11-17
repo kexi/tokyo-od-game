@@ -84,6 +84,8 @@ type AiCar = {
    * forgotten at the first drive frame whose look misses it. For the logs.
    */
   firstSeen: { m: number; kmh: number } | null;
+  /** A put-back held off near the player's car (logged once until put back or within 8 m again). */
+  putBackHeld: boolean;
   /** When it was last put back on its lane, and when it was last sliding from a shove (s). */
   putBackAt: number | null;
   shovedAt: number | null;
@@ -121,6 +123,8 @@ export function followTarget(gap: number, standstill: number, cruise: number, a:
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
 const MAX_CARS = QUALITY.maxAiCars;
 const SPAWN_RADIUS = 350;
+/** No car appears, nor is put back on its lane, nearer than this to the player's car (m). */
+const NEAR_PLAYER_M = 60;
 const DESPAWN_RADIUS = 450;
 // Beyond this, cars may come and go even in view (fog and buildings hide it).
 const FAR = 600;
@@ -693,9 +697,22 @@ export class TrafficAI {
     // a car can turn.
     const offLane = Math.hypot(centre.x - lane.x, centre.z - lane.z);
     const isAdrift = !(offLane <= 8) && (!this.isSeen(centre) || !(offLane <= 25));
-    if (isAdrift) {
-      // Not the first placing of a car just spawned (it has no centre yet).
-      const wasPlaced = Number.isFinite(c.rear.x);
+    // Not the first placing of a car just spawned (it has no centre yet).
+    const wasPlaced = Number.isFinite(c.rear.x);
+    // Never put back where it lands within NEAR_PLAYER_M of the player's car: it drives on from
+    // where it is, as a car in view does. Why: a car put back beside the player's car driving past
+    // landed 1.4 m from its centre (D3, the first report's run 1). Why not also look for room among
+    // the other cars or out of view at the spot: traffic cars do not collide with each other, and
+    // the sight is not D3's (knowledge: not done).
+    const player = this.lastPlayer;
+    const landsNearPlayer =
+      wasPlaced && player !== null && Math.hypot(lane.x - player.x, lane.z - player.z) < NEAR_PLAYER_M;
+    if (!(offLane > 8)) c.putBackHeld = false;
+    if (isAdrift && landsNearPlayer) {
+      if (!c.putBackHeld) this.notePutBackHeld(c, lane, offLane);
+      c.putBackHeld = true;
+    } else if (isAdrift) {
+      c.putBackHeld = false;
       if (wasPlaced) this.notePutBack(graph, c, centre, lane, offLane);
       c.yaw = Math.atan2(laneDir.x, laneDir.z);
       c.rear.copy(lane).addScaledVector(laneDir, -c.wheelbase / 2);
@@ -908,6 +925,19 @@ export class TrafficAI {
       const isComing = (dx * dir.x + dz * dir.z) / d > 0.5;
       const isAcross = Math.abs(dir.x * travel.x + dir.z * travel.z) < Math.SQRT1_2;
       return isComing && isAcross;
+    });
+  }
+
+  /** A put-back held off near the player's car (drive): traffic_car_put_back_held. */
+  private notePutBackHeld(c: AiCar, lane: Vector3, offLane: number): void {
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    const player = this.lastPlayer;
+    log("traffic_car_put_back_held", {
+      carId: c.id,
+      segId: c.seg.id,
+      sM: r1(c.s),
+      offLaneM: r1(offLane),
+      playerDistM: player ? r1(Math.hypot(lane.x - player.x, lane.z - player.z)) : null,
     });
   }
 
@@ -1156,7 +1186,7 @@ export class TrafficAI {
       const deckY = seg.elev ? graph.surfaceY(seg, s) : null;
       const d = pos.distanceTo(focus);
       // Appear only where the camera is not looking (open-world spawning), so cars never pop in.
-      const isHidden = d <= SPAWN_RADIUS && d >= 60 && !this.isSeen(pos);
+      const isHidden = d <= SPAWN_RADIUS && d >= NEAR_PLAYER_M && !this.isSeen(pos);
       if (!placed && !isHidden) continue;
       const dir: 1 | -1 = seg.oneway === -1 ? -1 : seg.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
       // Tokyo's mix: route buses and trucks on the wider roads, motorbikes anywhere.
@@ -1208,6 +1238,7 @@ export class TrafficAI {
         xwLane: 0,
         lookGap: null,
         firstSeen: null,
+        putBackHeld: false,
         putBackAt: null,
         shovedAt: null,
         ...this.massOf(kind && vehicle ? kind : taxi ? "jpnTaxi" : "sedan", vehicle, this.serial),

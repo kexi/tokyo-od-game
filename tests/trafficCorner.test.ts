@@ -172,7 +172,8 @@ describe("putting a car back on its lane near the player's car (D3 (a))", () => 
     for (let i = 0; i < 3; i++) ai.update(1 / 60, player, player, new Vector3(0, 0, -1), 0);
     const c = inside.cars[0];
     c.rear.add(new Vector3(10, 0, 0));
-    const before = c.object.position.clone();
+    // Where it is now: 10 m aside of where it was drawn last frame.
+    const before = c.object.position.clone().add(new Vector3(10, 0, 0));
     for (let i = 0; i < 3; i++) ai.update(1 / 60, player, player, new Vector3(0, 0, -1), 0);
     return { world, c, before, ai, graph, inside };
   };

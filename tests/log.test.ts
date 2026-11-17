@@ -417,6 +417,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     sincePutBackS: null,
     isAccident: true,
   },
+  traffic_car_put_back_held: { carId: 8, segId: 479, sM: 4.6, offLaneM: 8.1, playerDistM: 31.3 },
   traffic_car_put_back: {
     carId: 41,
     segId: 479,
