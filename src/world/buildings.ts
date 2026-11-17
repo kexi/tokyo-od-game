@@ -228,13 +228,34 @@ export type FarTileHost = {
 };
 
 /**
+ * Lets go of what a loaded b3dm tile keeps of its loading and nothing here reads: the batch and
+ * feature tables on the scene (copies of their parts of the b3dm, mostly the batch table's
+ * attribute JSON, ~1 M characters a near tile) and the loader's result in `tile.engineData.metadata`,
+ * which holds the same tables and the glTF parser with its copy of the glb. At 東京駅, far, that was
+ * 784 MB of array storage and 494 MB of heap for 247 MB the LRU counted (M2,
+ * knowledge/memory-growth.md). Taking only the scene's tables away freed nothing: the metadata
+ * still held them. 3d-tiles-renderer 0.5.3 reads `metadata` only in GoogleCloudAuthPlugin (not
+ * used here); disposeTile uses the materials, geometry and textures, and the LRU's estimate the
+ * scene's geometry, so neither changes.
+ *
+ * Why not keep the tables from being parsed at all (a plugin's parseTile in place of the loader's):
+ * dropping them on load-model frees all they held with a change this small; the parse itself (M3)
+ * is measured apart and replaced only if it proves costly.
+ */
+export function dropLoadRecords(scene: Object3D, tile: object | null): void {
+  Object.assign(scene, { batchTable: null, featureTable: null });
+  // engineData is the renderer's own field, not in the library's Tile type.
+  const engineData = (tile as { engineData?: { metadata?: unknown } } | null)?.engineData;
+  if (engineData) engineData.metadata = null;
+}
+
+/**
  * Turn a far tile's meshes into the far skyline's: façade attribute, landmark cut-outs, the shared
- * simplified material, no shadows; its batch and feature tables dropped (they hold the whole b3dm,
- * ~150 KB, mostly attribute JSON, and nothing reads them). The tile's own materials are disposed:
- * the renderer disposes only those (it listed them before load-model), never the shared one.
+ * simplified material, no shadows (its load records went on load-model: dropLoadRecords). The tile's
+ * own materials are disposed: the renderer disposes only those (it listed them before load-model),
+ * never the shared one.
  */
 export function prepareFarTile(scene: Object3D, host: FarTileHost): void {
-  Object.assign(scene, { batchTable: null, featureTable: null });
   scene.updateMatrixWorld(true);
   const v = new Vector3();
   const toEcef = new Matrix4();
@@ -750,7 +771,8 @@ export class Buildings {
     tiles.setCamera(this.camera);
     this.setResolution(tiles);
 
-    tiles.addEventListener("load-model", ({ scene }) => {
+    tiles.addEventListener("load-model", ({ scene, tile }) => {
+      dropLoadRecords(scene, tile);
       this.loadedCount++;
       // Not yet attached to the group: world matrices are in the tileset's ECEF frame here.
       scene.updateMatrixWorld(true);
@@ -832,7 +854,9 @@ export class Buildings {
     countFinished(tiles, this.farFinished);
     tiles.setCamera(this.camera);
     this.setResolution(tiles);
-    tiles.addEventListener("load-model", ({ scene }) => {
+    tiles.addEventListener("load-model", ({ scene, tile }) => {
+      // First, before the preparation waits for a frame: the records are dropped at once.
+      dropLoadRecords(scene, tile);
       this.farLoadedCount++;
       // Prepared later, within a frame budget: several tiles can land in one frame.
       scene.visible = false;
