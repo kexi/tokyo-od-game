@@ -3,7 +3,8 @@
 // town and the far skyline, and what was still queued, downloading or parsing ("remaining", the
 // renderers' stats) at each of those moments; the near tiles visible within 300 m of the car when the
 // screen closed as a share of those visible at the end; whether the screen closed on its 20 s limit;
-// and the longest stretch with nothing remaining before the end (a tileset's nested JSON leaves such
+// when the tiles within 300 m of the load centre and all the near tiles were in; and the longest
+// stretch with nothing remaining before the end (a tileset's nested JSON leaves such
 // gaps between one level and the next). With --warp, the same from a warp instead: the car starts at
 // --start, settles, goes quiet, then warps, and the landing (the game's warp_landed line) takes the
 // place of the screen closing.
@@ -67,13 +68,20 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
   const left = (r) => r ? r.stats.queued + r.stats.downloading + r.stats.parsing : 0;
   const stat = (r) => r && { remaining: left(r), downloading: r.stats.downloading, failed: r.stats.failed, refused: r.stats.refused ?? 0, visible: r.visibleTiles.size };
   const codeOf = (tile) => ((tile?.internal?.basePath ?? "").match(new RegExp("/([0-9]{5})_")) || [])[1] ?? "?";
-  window.__tlNear300 = () => {
+  // The tiles shown within 300 m of a point (ECEF): by default where play begins (the car when it
+  // has landed from a warp, else the load's centre: on the title the car is not placed yet). The
+  // point is kept, and the end's set is taken round the same point: the car is put on a street
+  // after the start, and a set round where it went would differ without anything loading late.
+  window.__tlNear300 = (at) => {
     const g = window.__game, b = g.buildings;
-    const car = g.vehicle.position().clone().applyMatrix4(b.frame.localToEcef);
+    const point = at ? new b.maskRegion.sphere.center.constructor(...at) : T.warpLandedAt !== null
+      ? g.vehicle.position().clone().applyMatrix4(b.frame.localToEcef)
+      : b.maskRegion.sphere.center.clone();
+    if (!at) T.near300.at = point.toArray();
     const keys = [];
     for (const tile of b.tiles.visibleTiles) {
       const bv = tile.engineData?.boundingVolume;
-      if (bv && bv.distanceToPoint(car) <= 300) keys.push((tile.internal?.basePath ?? "") + "|" + (tile.content?.uri ?? ""));
+      if (bv && bv.distanceToPoint(point) <= 300) keys.push((tile.internal?.basePath ?? "") + "|" + (tile.content?.uri ?? ""));
     }
     return keys;
   };
@@ -97,7 +105,13 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
     const b = g.buildings;
     if (hookedNear !== b.tiles) {
       hookedNear = b.tiles;
-      b.tiles.addEventListener("load-model", (e) => T.events.push([now(), "nl", codeOf(e.tile)]));
+      // The 4th field: 1 when the tile reaches within NEARBY_M of the near load sphere's centre (where
+      // the town is loaded around: the car, or a warp's destination before the car lands there).
+      b.tiles.addEventListener("load-model", (e) => {
+        let isNearby = 0;
+        try { isNearby = e.tile.engineData.boundingVolume.distanceToPoint(b.maskRegion.sphere.center) <= ${300} ? 1 : 0; } catch {}
+        T.events.push([now(), "nl", codeOf(e.tile), isNearby]);
+      });
       b.tiles.addEventListener("dispose-model", () => T.events.push([now(), "nd", ""]));
     }
     if (b.far && hookedFar !== b.far) {
@@ -127,11 +141,11 @@ type Sample = {
 };
 type Timeline = {
   samples: Sample[];
-  events: Array<[number, string, string]>;
+  events: Array<[number, string, string, number?]>;
   gaps: Array<[number, number]>;
   readyAt: number | null;
   warpLandedAt: number | null;
-  near300: { ready?: string[]; landed?: string[] | null; end?: string[] };
+  near300: { ready?: string[]; landed?: string[] | null; end?: string[]; at?: number[] };
   startAt?: number | null;
   warpAt?: number | null;
 };
@@ -158,6 +172,22 @@ export function summarise(tl: Timeline) {
   const settledFrom = isWarp ? (tl.warpLandedAt ?? from) : from;
   const settledAt = tl.samples.find((s) => s.t >= settledFrom && s.settled)?.t ?? null;
   const last = (kind: string) => tl.events.filter((e) => e[1] === kind && e[0] >= from).at(-1)?.[0] ?? null;
+  // When the tiles near the load sphere's centre, and all the near town's tiles, were in (the last
+  // load-model of each in the load), as ms from the load's start and as a share of the latter. The
+  // start's load is the one the loading screen waits for, up to its close (later loads follow the
+  // camera leaving the title); a warp's runs from leaving to settled, as the landing need not wait
+  // for all of it.
+  const loadFrom = isWarp ? from : 0;
+  const loadEnd = isWarp ? settledAt : tl.readyAt;
+  const inLoad = tl.events.filter(
+    (e) => e[1] === "nl" && e[0] >= loadFrom && (loadEnd === null || e[0] <= loadEnd),
+  );
+  const allDoneAt = inLoad.at(-1)?.[0] ?? null;
+  const nearbyDoneAt = inLoad.filter((e) => e[3] === 1).at(-1)?.[0] ?? null;
+  const nearbyShareOfAll =
+    allDoneAt === null || nearbyDoneAt === null || allDoneAt === loadFrom
+      ? null
+      : Math.round(((nearbyDoneAt - loadFrom) / (allDoneAt - loadFrom)) * 1000) / 1000;
   const loadsAfterSettled =
     settledAt === null
       ? null
@@ -178,6 +208,9 @@ export function summarise(tl: Timeline) {
     closedOnLimit: isLimit,
     settledAtMs: settledAt,
     lastNearLoadMs: last("nl"),
+    nearbyDoneMs: nearbyDoneAt === null ? null : nearbyDoneAt - loadFrom,
+    allDoneMs: allDoneAt === null ? null : allDoneAt - loadFrom,
+    nearbyShareOfAll,
     lastFarLoadMs: last("fl"),
     loadsAfterSettled,
     remainingAtClose: remainingAt(tl, closedAt),
@@ -224,7 +257,7 @@ if (isMain) {
       );
     }
     await b.sleep(seconds * 1000);
-    await b.evaluate("window.__tl.near300.end = window.__tlNear300()");
+    await b.evaluate("window.__tl.near300.end = window.__tlNear300(window.__tl.near300.at)");
     const tl = await b.evaluate<Timeline>("window.__tl");
     const summary = { label, start, warp: warp ?? null, view: view ?? null, isMobile, ...summarise(tl) };
     const dir = join(ROOT, ".qa", "timeline-buildings");
