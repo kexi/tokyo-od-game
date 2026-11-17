@@ -17,6 +17,7 @@ import { type Cabin, cabinFromMirror, CharmRig, type CharmKind, DEFAULT_CABIN } 
 import { INTERIOR_LAYER } from "./cockpit";
 import type { CharmChoice } from "./controlsHelp";
 import { sharedDraco } from "../render/draco";
+import { retireObject } from "../render/retire";
 
 /**
  * ミラーの飾り: the plush bear and/or the お守り (public/models/mirror_charms.glb) hanging from the
@@ -116,7 +117,8 @@ export class MirrorCharms {
     for (const h of this.hung) {
       h.cord.mesh.geometry.dispose();
       (h.cord.mesh.material as Material).dispose();
-      this.group.remove(h.cord.mesh, h.charm);
+      retireObject(h.cord.mesh);
+      retireObject(h.charm);
     }
     this.hung = [];
     const kinds = CHARM_KINDS[choice].filter((k) => this.templates[k]);

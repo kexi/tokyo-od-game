@@ -5,6 +5,9 @@
 earlier one did not have, by constructor (count and self size, top 20), the largest array buffers,
 and for the top 5 constructors the first three steps of what retains a few of them.
 
+Not yet checked on a real snapshot: the game's heap snapshots (465 MB of heap) did not arrive in
+20 minutes (knowledge/memory-growth.md), so this has only been run on nothing larger than a test.
+
 How: a node id stays the same for one object across snapshots of one page, so "new" is "id not in
 the first". Why self size and not retained size: retained size needs the dominator tree of a
 multi-GB graph; the self sizes of the new objects add up to the growth, and the retainer steps say

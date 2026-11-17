@@ -26,6 +26,7 @@ import type { StoryPanel } from "./arrestStory";
 import { ART_H, ART_W, drawPanel, type ArtWords } from "./storyArt";
 import type { ChoiceId, GuideStep, Tone } from "./trafficStop";
 import { sharedDraco } from "../render/draco";
+import { retireObject } from "../render/retire";
 
 /**
  * What the pursuit and its aftermath look like (pursuitDirector.ts decides what happens): the
@@ -218,7 +219,7 @@ class Heli {
   /** Where it turned for home: gone once far enough from there. */
   private readonly leftFrom = new Vector3();
 
-  constructor(private readonly scene: Scene) {
+  constructor(scene: Scene) {
     this.parts = buildHeli();
     this.parts.root.visible = false;
     scene.add(this.parts.root);
@@ -366,7 +367,7 @@ class Heli {
   }
 
   dispose(): void {
-    this.scene.remove(this.parts.root, this.beam, this.spot);
+    for (const o of [this.parts.root, this.beam, this.spot]) retireObject(o);
   }
 }
 
@@ -406,7 +407,7 @@ class Checkpoint {
   halfWidth = 3;
   private t = 0;
 
-  constructor(private readonly scene: Scene) {
+  constructor(scene: Scene) {
     this.group.visible = false;
     scene.add(this.group);
   }
@@ -537,13 +538,14 @@ class Checkpoint {
     if (this.officer) disposeHuman(this.officer);
     this.officer = null;
     this.baton = null;
-    this.group.clear();
+    // From the front while any are left: each retireObject takes its child out of this list.
+    while (this.group.children.length > 0) retireObject(this.group.children[0]);
     this.group.visible = false;
   }
 
   dispose(): void {
     this.clear();
-    this.scene.remove(this.group);
+    retireObject(this.group);
   }
 }
 
@@ -638,8 +640,8 @@ class StopOfficer {
 
   clear(): void {
     if (this.model) {
-      this.scene.remove(this.model.root);
       disposeHuman(this.model);
+      retireObject(this.model.root);
     }
     this.model = null;
     this.state = "gone";

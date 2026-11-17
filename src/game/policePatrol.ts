@@ -8,6 +8,7 @@ import { laneCentreOffset } from "../world/laneChange";
 import { AutoDriver, type DriveWorld } from "./autoDriver";
 import type { ViolationRecord } from "./traffic";
 import { isPatrolStreet } from "../world/roadClass";
+import { retireObject } from "../render/retire";
 
 /**
  * 巡回中のパトカー. Violations only count once the police see them (現認): a patrol that sees one
@@ -70,7 +71,7 @@ export class PolicePatrol {
   releasedAt: number | null = null;
 
   constructor(
-    private readonly scene: Scene,
+    scene: Scene,
     world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
     /**
@@ -237,7 +238,7 @@ export class PolicePatrol {
   }
 
   dispose(): void {
-    this.scene.remove(this.car.object);
+    retireObject(this.car.object);
     this.car.dispose();
   }
 

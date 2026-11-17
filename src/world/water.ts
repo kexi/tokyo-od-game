@@ -61,6 +61,7 @@ import {
   type WaterPolygon,
 } from "./waterGeometry";
 import { usesGroundSurface } from "./roadClass";
+import { retireObject } from "../render/retire";
 
 /** Raster resolution per z16 tile (~497 m): ~1 m on desktop, ~2 m on phones. */
 const RASTER = QUALITY.isMobile ? 256 : 512;
@@ -609,7 +610,7 @@ export class WaterLayer implements GroundWater {
     this.spans = [];
     this.spanGrid.clear();
     if (this.deckMesh) {
-      this.scene.remove(this.deckMesh);
+      retireObject(this.deckMesh);
       this.deckMesh.geometry.dispose();
       this.deckMesh = null;
     }
@@ -873,7 +874,7 @@ export class WaterLayer implements GroundWater {
     for (let i = 0; i < tidal.length; i += 4)
       probe.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], tidal[i], levels[i]);
     tile.probe = new Float32Array(probe);
-    tile.surface?.removeFromParent();
+    if (tile.surface) retireObject(tile.surface);
     tile.surface?.geometry.dispose();
     tile.surface = mesh;
     this.scene.add(mesh);
@@ -989,7 +990,7 @@ export class WaterLayer implements GroundWater {
       }
     }
     if (idx.length === 0) {
-      tile.walls?.removeFromParent();
+      if (tile.walls) retireObject(tile.walls);
       tile.walls?.geometry.dispose();
       tile.walls = null;
       return;
@@ -1054,7 +1055,7 @@ export class WaterLayer implements GroundWater {
   private disposeTile(tile: WaterTile): void {
     for (const mesh of [tile.surface, tile.walls]) {
       if (!mesh) continue;
-      this.scene.remove(mesh);
+      retireObject(mesh);
       mesh.geometry.dispose();
     }
     tile.surface = null;

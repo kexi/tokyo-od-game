@@ -18,6 +18,7 @@ import { AutoDriver, type DriveWorld } from "./autoDriver";
 import { progressOn } from "./navigation";
 import type { CarModel } from "./carModel";
 import { isDrivable as isRoutable } from "../world/roadClass";
+import { retireObject } from "../render/retire";
 
 /**
  * 自動運転タクシー (robotaxi) called from the phone. Level-4 driverless operation (特定自動運行,
@@ -66,7 +67,7 @@ export class RoboTaxi {
   destinationName = "";
 
   constructor(
-    private readonly scene: Scene,
+    scene: Scene,
     world: RAPIER.World,
     private readonly groundAt: (x: number, z: number) => number | null,
   ) {
@@ -166,7 +167,7 @@ export class RoboTaxi {
   }
 
   dispose(): void {
-    this.scene.remove(this.car.object);
+    retireObject(this.car.object);
     this.car.dispose();
   }
 
