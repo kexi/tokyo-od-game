@@ -225,6 +225,35 @@ describe("地区（districts.ts、R1-1a）", () => {
     expect(d.get("b")).toBe("yamate");
   });
 
+  it("places a ramp with no parent by the nearest main line's line, not its nearest point (the same in the plan's samples and the chunks' stations)", () => {
+    // Main "1" runs west–east past the ramp with points 2 km apart; main "5" has a point 300 m off.
+    const ramp = {
+      id: "r",
+      cls: "ramp" as const,
+      ref: null,
+      parents: [],
+      points: [[139.7, 35.6]] as Array<[number, number]>,
+    };
+    const sparse = {
+      id: "a",
+      cls: "expressway" as const,
+      ref: "1",
+      parents: [],
+      points: [
+        [139.69, 35.6001],
+        [139.71, 35.6001],
+      ] as Array<[number, number]>,
+    };
+    const near = {
+      id: "b",
+      cls: "expressway" as const,
+      ref: "5",
+      parents: [],
+      points: [[139.7, 35.6027]] as Array<[number, number]>,
+    };
+    expect(assignDistricts([ramp, sparse, near]).get("r")).toBe("central");
+  });
+
   it("gives every written run the same district from the plan as from its chunks", () => {
     const plan = planNetwork(refChain(), new Set(), null, [], CUT);
     const res = solvePlan(plan, ground, []);

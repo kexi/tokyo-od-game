@@ -154,12 +154,27 @@ export function assignDistricts(runs: readonly DistrictRun[]): Map<string, Distr
     return null;
   };
   const mains = runs.filter((r) => out.has(r.id));
+  // R1-1a: the distance to each main line's polyline, not to its points. Why: the chunks' stations and
+  // the plan's samples lie on the same line at other spacings, so the nearest point could belong to
+  // another main line in one and not the other (16 ramps of ship/all differed); the distance to the
+  // line is the same in both to the line's bends between points.
   const nearest = (pt: [number, number]): District | null => {
     let best: { d: number; district: District } | null = null;
     const k = Math.cos((pt[1] * Math.PI) / 180);
+    const toSegment = (a: [number, number], b: [number, number]) => {
+      const ax = (a[0] - pt[0]) * k;
+      const ay = a[1] - pt[1];
+      const bx = (b[0] - pt[0]) * k;
+      const by = b[1] - pt[1];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 === 0 ? 0 : Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2));
+      return Math.hypot(ax + t * dx, ay + t * dy);
+    };
     for (const m of mains)
-      for (const q of m.points) {
-        const d = Math.hypot((q[0] - pt[0]) * k, q[1] - pt[1]);
+      for (let i = 0; i < m.points.length; i++) {
+        const d = toSegment(m.points[i], m.points[Math.min(i + 1, m.points.length - 1)]);
         if (!best || d < best.d) best = { d, district: out.get(m.id)! };
       }
     return best?.district ?? null;
@@ -167,7 +182,7 @@ export function assignDistricts(runs: readonly DistrictRun[]): Map<string, Distr
   for (const r of runs.toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
     if (out.has(r.id)) continue;
     const viaParents = r.parents.map((p) => follow(p, new Set([r.id]))).find((d) => d !== null) ?? null;
-    const viaNearest = viaParents ?? (r.points.length > 0 ? nearest(middle(r.points)) : null);
+    const viaNearest = viaParents ?? (r.points.length > 0 ? nearest(r.middle ?? middle(r.points)) : null);
     out.set(r.id, viaNearest ?? "outside");
   }
   return out;

@@ -590,6 +590,20 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     sha256: "0".repeat(64),
   },
   expressway_scope_chosen: { main: 86, ramps: 263, belowRuns: 18, prunedBelow: true },
+  expressway_outside_ground_measured: {
+    dir: ".cache/expressway-area/r1-pruned-cut",
+    out: ".qa/expressway/outside-ground-r1-pruned-cut.json",
+    outsideKm: 110.2,
+    dem5aKm: 108.1,
+    dem10bKm: 2.1,
+    uncachedKm: 0,
+    noPlateauKm: 12.4,
+  },
+  expressway_district_sizes_measured: {
+    dir: ".cache/expressway-area/r1-pruned-cut",
+    out: ".qa/expressway/district-sizes-r1-pruned-cut.json",
+    stages: [{ districts: "central", tiles: 60, gzipBytes: 620000, maxGzipBytes: 60872 }],
+  },
   expressway_districts_compared: { written: 690, mismatched: 0, mismatchedIds: [] },
   expressway_scope_probed: {
     out: ".qa/expressway/scope-probe-pruned-keep.json",

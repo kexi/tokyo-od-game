@@ -1129,6 +1129,31 @@ export const LOG_EVENTS = {
    * The districts of the written runs of a ship build from the plan (scope.ts planDistrictRuns) and
    * from the chunks (districtRunsOf), compared (R1-1a): how many written, how many differ, the first.
    */
+  /**
+   * What lies under the written stations outside the wards (scripts/expresswayOutsideGround.ts,
+   * R1-1a): their km, those where DEM5A has the pixel, where the ground falls to DEM10B, where the
+   * DEM tile is not cached, and where no gated PLATEAU prefecture's regions reach (no buildings).
+   */
+  expressway_outside_ground_measured: info({
+    dir: z.string(),
+    out: z.string(),
+    outsideKm: z.number().nonnegative(),
+    dem5aKm: z.number().nonnegative(),
+    dem10bKm: z.number().nonnegative(),
+    uncachedKm: z.number().nonnegative(),
+    noPlateauKm: z.number().nonnegative(),
+  }),
+  /**
+   * The tiles' gzip stage by stage of publishing the districts (scripts/expresswayDistrictSizes.ts,
+   * R1-1a, U3): per stage the districts published, the tiles, their gzip total and the largest tile.
+   */
+  expressway_district_sizes_measured: info({
+    dir: z.string(),
+    out: z.string(),
+    stages: z.array(
+      z.strictObject({ districts: z.string(), tiles: count, gzipBytes: count, maxGzipBytes: count }),
+    ),
+  }),
   expressway_districts_compared: info({
     written: count,
     mismatched: count,
