@@ -48,6 +48,8 @@ const SCREEN_LIMIT_MS = 20_000;
 const WARP_LIMIT_MS = 12_000;
 /** Gaps with nothing remaining up to this long are counted as within a burst of loading. */
 const SHORT_GAP_MS = 1000;
+/** The tail counts from the last time the near town's remaining was this many or fewer. */
+const TAIL_LEFT = 8;
 const ANDROID_UA =
   "Mozilla/5.0 (Linux; Android 16; Pixel) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36";
 
@@ -65,7 +67,9 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
     const orig = console[k].bind(console);
     console[k] = (...a) => {
       const line = String(a[0] ?? "");
-      if (T.warpLandedAt === null && line.includes('"event":"warp_landed"')) { T.warpLandedAt = now(); T.near300.landed = window.__tlNear300?.() ?? null; }
+      if (T.warpLandedAt === null && line.includes('"event":"warp_landed"')) { T.warpLandedAt = now(); T.near300.landed = window.__tlNear300?.() ?? null;
+        // Whether the car stands in a building as it lands, and at any sample in the 3 s after.
+        try { const o = window.__game.vehicle.overlapsBuilding(); T.overlapAtLanding = { atLanding: o, within3s: o }; } catch (e) { T.overlapAtLanding = { error: String(e) }; } }
       return orig(...a);
     };
   }
@@ -123,6 +127,8 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
       b.far.addEventListener("load-model", (e) => T.events.push([now(), "fl", codeOf(e.tile)]));
       b.far.addEventListener("dispose-model", () => T.events.push([now(), "fd", ""]));
     }
+    const isJustLanded = T.warpLandedAt !== null && t - T.warpLandedAt <= 3000 && T.overlapAtLanding && !T.overlapAtLanding.error;
+    if (isJustLanded) { try { if (g.vehicle.overlapsBuilding()) T.overlapAtLanding.within3s = true; } catch {} }
     const state = g.getState();
     let settled = null;
     try { settled = g.debug.settled().isSettled; } catch {}
@@ -157,6 +163,7 @@ type Timeline = {
   near300: { ready?: string[]; landed?: string[] | null; end?: string[]; at?: number[] };
   startAt?: number | null;
   warpAt?: number | null;
+  overlapAtLanding?: { atLanding?: boolean; within3s?: boolean; error?: string };
 };
 
 const sampleAt = (tl: Timeline, t: number | null) =>
@@ -205,20 +212,36 @@ export function summarise(tl: Timeline) {
   const isLimit = isWarp
     ? closedAt !== null && closedAt - from >= WARP_LIMIT_MS
     : closedAt !== null && closedAt >= SCREEN_LIMIT_MS;
-  // When B1 would have closed the screen in this same run: the first moment from the close on with
-  // the whole near town in (B1 waited for that; B1b closes on the nearby part). With --hold-title the
-  // title camera stays until then, so the load is the one B1 waited for. The difference is what this
-  // run saved; it cannot be negative (the nearby part is in by then). A warp's: when the whole near
-  // town was in again after leaving (it first falls under 1 as the destination's tiles are asked).
+  // When B1 would have closed the screen (or landed) in this same run: the first moment, after the
+  // load began (something remained), with the whole near town in; and when the nearby part first was
+  // (what B1b closes on). The difference is what this run saved; it cannot be negative. Either may
+  // come before the close (the screen also waits for the shaders). Why not "the first moment from
+  // the close on": the turning title camera asks for more while the shaders are prepared, the whole
+  // falls under 1 again, and that took the end of the next wave (2.4 s instead of 0.18 s, e far r3).
+  // A warp's load begins when it leaves (the destination's tiles are asked at once).
   const isAllIn = (x: Sample) => (x.all ?? 0) >= 0.999;
-  const b1CloseAt = isWarp
-    ? (() => {
-        const leftAt = tl.samples.find((x) => x.t >= from && !isAllIn(x))?.t ?? null;
-        return leftAt === null ? null : (tl.samples.find((x) => x.t >= leftAt && isAllIn(x))?.t ?? null);
-      })()
-    : closedAt === null
-      ? null
-      : (tl.samples.find((x) => x.t >= closedAt && x.state !== "playing" && isAllIn(x))?.t ?? null);
+  const isNearbyIn = (x: Sample) => (x.nearby ?? 0) >= 0.999;
+  const loadBeganAt =
+    tl.samples.find(
+      (x) => x.t >= (isWarp ? from : 0) && (isWarp ? !isAllIn(x) : (x.near?.remaining ?? 0) > 0),
+    )?.t ?? null;
+  const firstFrom = (is: (x: Sample) => boolean) =>
+    loadBeganAt === null ? null : (tl.samples.find((x) => x.t >= loadBeganAt && is(x))?.t ?? null);
+  const b1CloseAt = firstFrom(isAllIn);
+  const nearbyInAt = firstFrom(isNearbyIn);
+  // The tail: before the close, from the last time the near town's remaining fell to TAIL_LEFT or
+  // under until it was 0 (how long its last few tiles took).
+  const beforeClose = tl.samples.filter(
+    (x) => x.t >= (isWarp ? from : 0) && (closedAt === null || x.t <= closedAt),
+  );
+  const zeroAt = beforeClose.findLast(
+    (x, i) => i > 0 && (x.near?.remaining ?? 1) === 0 && (beforeClose[i - 1]!.near?.remaining ?? 0) > 0,
+  )?.t;
+  const tailFrom =
+    zeroAt === undefined
+      ? undefined
+      : beforeClose.filter((x) => x.t < zeroAt && (x.near?.remaining ?? 0) > TAIL_LEFT).at(-1)?.t;
+  const tailMs = zeroAt === undefined || tailFrom === undefined ? null : zeroAt - tailFrom;
   const gaps = tl.gaps.filter(
     ([t]) => t >= (isWarp ? from : 0) && (settledAt === null || t < settledAt + 10_000),
   );
@@ -230,7 +253,10 @@ export function summarise(tl: Timeline) {
     closedAfterMs: closedAt === null ? null : closedAt - (isWarp ? from : 0),
     closedOnLimit: isLimit,
     b1CloseMs: b1CloseAt === null ? null : b1CloseAt - (isWarp ? from : 0),
-    savedMs: isWarp || b1CloseAt === null || closedAt === null ? null : b1CloseAt - closedAt,
+    nearbyInMs: nearbyInAt === null ? null : nearbyInAt - (isWarp ? from : 0),
+    savedMs: b1CloseAt === null || nearbyInAt === null ? null : b1CloseAt - nearbyInAt,
+    tailMs,
+    overlapAtLanding: tl.overlapAtLanding ?? null,
     settledAtMs: settledAt,
     lastNearLoadMs: last("nl"),
     nearbyDoneMs: nearbyDoneAt === null ? null : nearbyDoneAt - loadFrom,
