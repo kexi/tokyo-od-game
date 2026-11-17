@@ -60,7 +60,15 @@ import { GameAudio } from "./game/audio";
 import { clockStep, gameStep } from "./game/frameClock";
 import { hasHeldOver, heldSince } from "./game/lawTimers";
 import { stopAheadWithin, type StopAheadWorld } from "./game/stopAhead";
-import { type IndicatorMemory, isSignalOmitted, noteIndicators, turnSignalSide } from "./game/signalOmission";
+import {
+  type IndicatorMemory,
+  isInTurn,
+  isSignalOmitted,
+  noteIndicators,
+  TURN_JUDGED_M,
+  type TurnWatch,
+  turnSignalSide,
+} from "./game/signalOmission";
 import { FrameWork } from "./game/frameWork";
 import { SerialWork } from "./game/serialWork";
 import { ConversationController } from "./game/conversation";
@@ -2412,7 +2420,7 @@ async function main(): Promise<void> {
   let laneAtJunction: { use: LaneUse; lane: number; tIn: Vector3; node: Vector3 } | null = null;
   // 合図: when each indicator last blinked, the junction being turned at, the lane last held.
   const indicatorSeen: IndicatorMemory = { left: -Infinity, right: -Infinity };
-  let turnAt: { tIn: Vector3; node: Vector3 } | null = null;
+  let turnAt: TurnWatch | null = null;
   let laneHeld: { seg: Segment; lane: number } | null = null;
   let hornFor = 0;
   let pendingScreenshot = false;
@@ -3241,7 +3249,7 @@ async function main(): Promise<void> {
             node: roadGraph.sample(onRoad.seg, dir === 1 ? onRoad.seg.length : 0).pos,
           };
       }
-      if (turnAt && Math.hypot(carPos.x - turnAt.node.x, carPos.z - turnAt.node.z) > 25) {
+      if (turnAt && Math.hypot(carPos.x - turnAt.node.x, carPos.z - turnAt.node.z) > TURN_JUDGED_M) {
         const turn = classifyTurn(turnAt.tIn, carForward.clone().setY(0).normalize());
         turnAt = null;
         const side = turnSignalSide(turn);
@@ -3255,9 +3263,11 @@ async function main(): Promise<void> {
             ),
           );
       }
-      // 合図 for changing lanes on a multi-lane road (the lane counted as laneCountedIn says).
+      // 合図 for changing lanes on a multi-lane road (the lane counted as laneCountedIn says), none
+      // counted while the car is in a turn (isInTurn).
+      const isTurning = isInTurn(turnAt, carPos, carForward);
       const counted =
-        speed > 15
+        speed > 15 && !isTurning
           ? laneCountedIn(roadGraph, carPos, carForward, laneHeld, onRoad, carOnDeck, isCarSurface)
           : null;
       const changedTo = counted ? laneChangeSide(laneHeld, counted) : null;
@@ -3368,7 +3378,7 @@ async function main(): Promise<void> {
 
       // 進路変更禁止: crossing a yellow lane line (lanes counted from the left kerb).
       const seg = onRoad?.seg;
-      if (onRoad && seg && isLaneChangeBanned(seg) && speed > 5 && Math.abs(align) > 0.8) {
+      if (onRoad && seg && isLaneChangeBanned(seg) && speed > 5 && Math.abs(align) > 0.8 && !isTurning) {
         // The same lanes and the same "where" as the route's lane plan (src/world/laneChange.ts).
         const lane = laneOfOffset(seg, onRoad.lateral * Math.sign(align));
         // From lane to lane only: coming in over the edge or the centre line (a turn's curve, a

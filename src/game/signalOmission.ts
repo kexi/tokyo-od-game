@@ -1,4 +1,5 @@
-import type { Turn } from "./navigation";
+import type { Vector3 } from "three";
+import { classifyTurn, type Turn } from "./navigation";
 
 /**
  * 合図 (道路交通法 第53条): a turn or a lane change needs the indicator for its side to have been on
@@ -36,4 +37,33 @@ export function noteIndicators(memory: IndicatorMemory, left: boolean, right: bo
 export function isSignalOmitted(side: SignalSide | null, now: number, memory: IndicatorMemory): boolean {
   if (side === null) return false;
   return now - memory[side] > SIGNAL_RECENT_MS;
+}
+
+/** A turn at a junction is judged this far past the junction's node (main.ts). */
+export const TURN_JUDGED_M = 25;
+
+/** A junction the car is going through: the approach's direction and the node (main.ts turnAt). */
+export type TurnWatch = { tIn: Vector3; node: Vector3 };
+
+/**
+ * Whether the car is still in a turn at a junction: watched from 20 m before the node until the
+ * turn is judged TURN_JUDGED_M past it, and heading away from the approach (classifyTurn: not
+ * straight on). The lane checks (合図 for a lane change, 進路変更禁止) count no lane then: the
+ * curve of a turn may end lanes over from where it crosses into the new street, and that is the
+ * turn, signalled for its own side (施行令 第21条: until the turn is over), not a lane change. The
+ * lane the car is in past TURN_JUDGED_M is the one held from there.
+ *
+ * Why not count from the moment the car runs along the new street (as before): a right turn out
+ * of the lane by the centre line into lane 0 of 3 crosses two lane lines in its last 13 m with the
+ * car already along the street, booked as a lane change with no 合図 (丸の内二丁目, D2 (a)). Why
+ * the 25 m the turn is judged at, not a new distance: the turn's own check already takes the turn
+ * as over there. Straight on through a junction changes nothing: a lane change there is counted.
+ */
+export function isInTurn(watch: TurnWatch | null, pos: Vector3, forward: Vector3): boolean {
+  if (watch === null) return false;
+  const isPastJudged = Math.hypot(pos.x - watch.node.x, pos.z - watch.node.z) > TURN_JUDGED_M;
+  if (isPastJudged) return false;
+  const along = forward.clone().setY(0);
+  if (along.lengthSq() < 1e-9) return false;
+  return classifyTurn(watch.tIn, along.normalize()) !== "straight";
 }
