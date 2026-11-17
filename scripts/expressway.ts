@@ -85,6 +85,7 @@ import {
   mainLineHoles,
   planNetwork,
   portalApproachEnds,
+  unplannedChains,
   untiedPairs,
   solveWithRampShift,
   type CompileResult,
@@ -1186,6 +1187,8 @@ if (reportPath) {
     belowDeferrals: plan.belowDeferrals.map(({ chain: _chain, ...d }) => d),
     // S7-1 review 2: the approaches from the plan, so one whose below run is not written still counts.
     approachEnds: portalApproachEnds(plan),
+    // S7-3: the chains planNetwork never compiles (no viaduct), with tunnel ways.
+    unplanned: unplannedChains(plan),
   };
   const report = buildReport(reportInput);
   await mkdir(dirname(reportPath), { recursive: true });

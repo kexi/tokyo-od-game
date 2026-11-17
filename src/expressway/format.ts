@@ -80,6 +80,12 @@ export type XwChunk = {
    */
   portals?: XwPortal[];
   /**
+   * S7-3 (`below-junctions`): where a junction's carriageway leaves or joins a tunnel or cut chunk's
+   * side (XwOpening), so the runtime opens that wall there. Left out where there is none, so a file
+   * built without the flag keeps its bytes.
+   */
+  openings?: XwOpening[];
+  /**
    * A deck built to a landmark's deck levels (structures.ts), or null: then the chunk has no
    * girder (`girder` 0) nor piers, its section comes from the level's strips, and the slab goes on
    * past each 壁高欄 as an apron that is drawn only (no collider: a guideway, a walkway).
@@ -218,6 +224,11 @@ export type XwStructure = "viaduct" | "embankment" | "ground" | "tunnel" | "cut"
  * below run's first and last station `from` / `to` is what comes before and after it.
  */
 export type XwPortal = { s: number; from: XwStructure; to: XwStructure };
+/**
+ * An opening of a tunnel or cut chunk (S7-3): the side the other run leaves or joins on, looking along
+ * the chunk's run; the run distances it spans (to the centimetre, as `decks`); the other run.
+ */
+export type XwOpening = { side: "left" | "right"; s0: number; s1: number; with: string };
 
 export type XwDeckStretch = { with: string; relation: "same" | "above" | "below"; s0: number; s1: number };
 

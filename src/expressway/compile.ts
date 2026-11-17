@@ -572,6 +572,90 @@ function waysClass(net: Network, ways: readonly number[]): RoadClass {
   return order.reduce((best, c) => ((length.get(c) ?? 0) > (length.get(best) ?? 0) ? c : best));
 }
 
+/**
+ * A chain with tunnel or cut ways and no viaduct run (S7-3, the scorecard's `underground.unplanned`):
+ * planNetwork skips such a chain whole (it compiles only chains with a viaduct), so its below runs are
+ * neither compiled nor counted among the deferred. Its class and ref over most of its length, its km
+ * and its below runs' km, whether the range reaches it, and the planned runs at its two ends.
+ */
+export type UnplannedChain = {
+  chain: string;
+  cls: RoadClass;
+  ref: string | null;
+  lengthM: number;
+  belowM: number;
+  inRange: boolean;
+  /** The planned runs holding the chain's first and last node (other chains'), sorted. */
+  ends: [string[], string[]];
+};
+
+/**
+ * The unplanned chains of a plan (UnplannedChain). One reaches the range where any of its nodes is a
+ * node of a chain with a run of the range, or of another unplanned chain that does (S7-3 3.8). Read
+ * from the chains alone, so the same chains come out whatever was compiled. Why not only the chain's
+ * ends: a link may leave a ramp of the range at a node inside it.
+ */
+export function unplannedChains(plan: Plan): UnplannedChain[] {
+  const split = splitOf(plan);
+  const runsOf = new Map([...plan.chains.values()].map((c) => [c.id, splitRuns(plan.net, c, split)]));
+  const isUnplanned = (id: string) => !runsOf.get(id)!.some((r) => r.elevated);
+  const wantedChains = new Set([...plan.wanted].map((id) => plan.runs.get(id)!.chain.id));
+  const linked = (id: string) => {
+    const out = new Set<string>();
+    for (const n of plan.chains.get(id)!.nodes)
+      for (const o of plan.nodeChains.get(n) ?? []) if (o !== id) out.add(o);
+    return out;
+  };
+  const candidates = [...plan.chains.keys()]
+    .filter((id) => isUnplanned(id) && runsOf.get(id)!.some((r) => r.below))
+    .sort();
+  // Reached from the range, spreading through unplanned chains only (a breadth-first search).
+  const reached = new Set<string>();
+  // Seeded from every unplanned chain touching the range, with tunnel ways or not: a link at grade
+  // may stand between the range and a tunnel link.
+  const queue = [...plan.chains.keys()]
+    .filter((id) => isUnplanned(id) && [...linked(id)].some((o) => wantedChains.has(o)))
+    .sort();
+  for (const id of queue) reached.add(id);
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    for (const o of linked(id)) {
+      const isNext = isUnplanned(o) && !reached.has(o);
+      if (!isNext) continue;
+      reached.add(o);
+      queue.push(o);
+    }
+  }
+  const holdersAt = (chainId: string, node: number) =>
+    [...plan.runs.values()]
+      .filter((rp) => {
+        const isOther = rp.chain.id !== chainId;
+        if (!isOther) return false;
+        const i = rp.chain.nodes.indexOf(node);
+        return i >= rp.run.from && i <= rp.run.to && i >= 0;
+      })
+      .map((rp) => rp.run.id)
+      .sort();
+  return candidates.map((id) => {
+    const chain = plan.chains.get(id)!;
+    const below = runsOf
+      .get(id)!
+      .filter((r) => r.below)
+      .flatMap((r) => r.ways);
+    const length = (ways: readonly number[]) =>
+      ways.reduce((n, w) => n + wayLength(plan.net, plan.net.ways.get(w)!), 0);
+    return {
+      chain: id,
+      cls: waysClass(plan.net, chain.ways),
+      ref: longestRef(plan.net, chain.ways),
+      lengthM: length(chain.ways),
+      belowM: length(below),
+      inRange: reached.has(id),
+      ends: [holdersAt(id, chain.nodes[0]), holdersAt(id, chain.nodes[chain.nodes.length - 1])],
+    };
+  });
+}
+
 /** A planned run dropped from the plan, as a deferral (dropBelowJunctions, pruneBelow). */
 function deferralOfPlanned(plan: Plan, rp: RunPlan, reason: BelowDeferReason): BelowDeferral {
   return {
