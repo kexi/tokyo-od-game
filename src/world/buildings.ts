@@ -36,6 +36,7 @@ import {
 } from "./facade";
 import { sharedDraco } from "../render/draco";
 import { startLoad, stepLoad, type LoadCounts, type LoadState } from "./loadProgress";
+import { countLeft, nearbyLoading, NearbyMarks, stepNearby } from "./nearbyLoad";
 import { log } from "../log";
 import { featureCeilings, indexCutPoints, type LocalCutPoint } from "./buildingCut";
 import type { DeckCutGeodetic } from "./deckCuts";
@@ -318,6 +319,8 @@ export class Buildings {
   private lastColliderTick = 0;
   private readonly maskRegion = new GatedSphereRegion({ mask: true, errorTarget: 1e9 });
   private readonly detailRegion = new SphereRegion({ mask: false });
+  /** Marks the near town's tiles that reach NEARBY_RADIUS_M round the load's centre (src/world/nearbyLoad.ts). */
+  private readonly nearbyMarks = new NearbyMarks();
   loadedCount = 0;
   /** Footprints (local XZ rings) of buildings drawn by hero models instead (landmarks). */
   private hidden: Vector3[][] = [];
@@ -340,6 +343,10 @@ export class Buildings {
   private nearLoad: LoadState = startLoad(performance.now());
   private farLoad: LoadState = startLoad(performance.now());
   private nearFinished = { finished: 0 };
+  /** The nearby part of the near town's load: what was loading nearby last frame, and how many left it. */
+  private nearbyLoad: LoadState = startLoad(performance.now());
+  private nearbyLoadingTiles = new Set<object>();
+  private nearbyFinished = 0;
   private farFinished = { finished: 0 };
   /** Far tiles loaded (for the console). */
   farLoadedCount = 0;
@@ -678,8 +685,10 @@ export class Buildings {
     this.maskRegion.sphere.set(centerEcef, LOAD_RADIUS);
     this.detailRegion.sphere.set(centerEcef, DETAIL_RADIUS);
     this.farRegion.sphere.set(centerEcef, QUALITY.farBuildingRadius);
+    this.nearbyMarks.sphere.center.copy(centerEcef);
     this.tiles.update();
     this.nearLoad = stepLoad(this.nearLoad, loadCounts(this.tiles, this.nearFinished), now);
+    this.stepNearby(now);
     // After the town (they share the network): the skyline is for the distance.
     const isTownLoaded = this.loadedCount > 0 && this.loadProgress() >= 0.999;
     const isLate = now - this.createdAt > FAR_START_MS;
@@ -718,12 +727,36 @@ export class Buildings {
 
   /**
    * 0..1 progress of the town's current load (src/world/loadProgress.ts): 1 only once nothing has
-   * been queued, downloading or parsing for LOAD_HOLD_MS. Drives the loading screen, the warp's
-   * landing and debug.settled(). The library's own loadProgress is not read anywhere (it reads 1
+   * been queued, downloading or parsing for LOAD_HOLD_MS. Drives when the far skyline starts and
+   * debug.settled(). The library's own loadProgress is not read anywhere (it reads 1
    * while tile bodies are still downloading).
    */
   loadProgress(): number {
     return this.nearLoad.progress;
+  }
+
+  /**
+   * 0..1 progress of the town round the load's centre (src/world/nearbyLoad.ts): of the near
+   * town's loading tiles, only those reaching NEARBY_RADIUS_M, and not before the root tileset is
+   * in. Drives the loading screen and the warp's landing; what is beyond streams in while driving.
+   */
+  nearbyLoadProgress(): number {
+    return this.nearbyLoad.progress;
+  }
+
+  /**
+   * Steps nearbyLoad from the renderer's loading tiles (`loadingTiles`: added when a tile is
+   * queued for download, removed once it is loaded, has failed or is dropped; a tile refused by a
+   * full cache is not in it, as stats.queued does not count it) and the nearby marks.
+   */
+  private stepNearby(now: number): void {
+    const loading = (this.tiles as unknown as { loadingTiles: Set<object> }).loadingTiles;
+    const nearby = nearbyLoading(loading, (tile) => this.nearbyMarks.distanceOf(tile) !== undefined);
+    this.nearbyFinished += countLeft(this.nearbyLoadingTiles, nearby);
+    this.nearbyLoadingTiles = nearby;
+    const isRootLoaded = this.tiles.root !== null;
+    const counts = { remaining: nearby.size, finished: this.nearbyFinished, isRootLoaded };
+    this.nearbyLoad = stepNearby(this.nearbyLoad, counts, now);
   }
 
   /** 0..1 progress of the far skyline's current load, counted the same way (1 before it is made: nothing to wait for). */
@@ -740,6 +773,7 @@ export class Buildings {
     const regions = new LoadRegionPlugin();
     regions.addRegion(this.maskRegion);
     regions.addRegion(this.detailRegion);
+    regions.addRegion(this.nearbyMarks);
     tiles.registerPlugin(regions);
     tiles.errorTarget = QUALITY.isMobile ? 26 : 16;
     this.detailRegion.errorTarget = tiles.errorTarget;

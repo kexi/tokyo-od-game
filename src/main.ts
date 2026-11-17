@@ -1422,9 +1422,11 @@ async function main(): Promise<void> {
     // Not forever: a deck tile that fails to load must not hold the warp (as the town's 12 s).
     const areDecksReady = (expressway?.isSettledAt(g.lat, g.lon) ?? true) || now - warping.since > 12000;
     const isGroundReady = terrain.hasColliderAt(g.lat, g.lon) && areDecksReady;
-    // 95 % of this load (Buildings counts it from when tiles began to be requested here, not over
-    // what is held from before the warp).
-    const isTownReady = buildings.loadProgress() > 0.95 || now - warping.since > 12000;
+    // The town round the landing place, all of it (src/world/nearbyLoad.ts: the tiles within
+    // 300 m, counted from when they began to be requested here). Why not 95 % of the whole load:
+    // the nearby tiles can be the last 5 % (川口駅 landed with 1 of 5), and the value held between
+    // two waves (0.998) passed it.
+    const isTownReady = buildings.nearbyLoadProgress() >= 0.999 || now - warping.since > 12000;
     if (!isGroundReady || !isTownReady) return;
     buildings.buildCollidersNear(new Vector3());
     vehicle.teleport(findOpenGround(0, 0), warping.yaw);
@@ -2681,9 +2683,11 @@ async function main(): Promise<void> {
       camera.position.applyAxisAngle(new Vector3(0, 1, 0), dt * 0.05);
       camera.lookAt(0, 30, 0);
       const groundReady = terrain.hasColliderAt(spawn.lat, spawn.lon);
-      // 1 only once no tile has been queued, downloading or parsing for a moment (Buildings): the
-      // library's own value read 1 while bodies were still downloading, and play began before the town.
-      const tilesProgress = buildings.loadProgress();
+      // 1 only once no tile within 300 m of the start has been queued, downloading or parsing for a
+      // moment (Buildings, src/world/nearbyLoad.ts): the library's own value read 1 while bodies were
+      // still downloading, and play began before the town. Why not all of the town (up to 4 km): the
+      // rest streams in while the first seconds are driven, and the screen took twice as long.
+      const tilesProgress = buildings.nearbyLoadProgress();
       const waited = wall - loadStart;
       const isLoading = state === "loading" && compiling === null;
       if (isLoading)
