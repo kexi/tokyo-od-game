@@ -1,6 +1,6 @@
 {
- "version": 6,
- "label": "p7c9-pruned",
+ "version": 7,
+ "label": "s71-pruned-after",
  "range": "ship",
  "below": "pruned",
  "objective": {
@@ -6002,5 +6002,1531 @@
    }
   }
  },
- "ledger": null
+ "ledger": null,
+ "underground": {
+  "deferred": {
+   "total": {
+    "main": {
+     "runs": 56,
+     "km": 101.879
+    },
+    "ramp": {
+     "runs": 35,
+     "km": 7.919
+    },
+    "street": {
+     "runs": 0,
+     "km": 0
+    }
+   },
+   "byReason": {
+    "loop-seam": {
+     "main": {
+      "runs": 4,
+      "km": 4.735
+     },
+     "ramp": {
+      "runs": 0,
+      "km": 0
+     },
+     "street": {
+      "runs": 0,
+      "km": 0
+     }
+    },
+    "universe-edge": {
+     "main": {
+      "runs": 2,
+      "km": 1.294
+     },
+     "ramp": {
+      "runs": 0,
+      "km": 0
+     },
+     "street": {
+      "runs": 0,
+      "km": 0
+     }
+    },
+    "junction": {
+     "main": {
+      "runs": 3,
+      "km": 1.29
+     },
+     "ramp": {
+      "runs": 23,
+      "km": 7.439
+     },
+     "street": {
+      "runs": 0,
+      "km": 0
+     }
+    },
+    "ground-junction": {
+     "main": {
+      "runs": 3,
+      "km": 13.873
+     },
+     "ramp": {
+      "runs": 0,
+      "km": 0
+     },
+     "street": {
+      "runs": 0,
+      "km": 0
+     }
+    },
+    "bridging": {
+     "main": {
+      "runs": 44,
+      "km": 80.687
+     },
+     "ramp": {
+      "runs": 12,
+      "km": 0.481
+     },
+     "street": {
+      "runs": 0,
+      "km": 0
+     }
+    }
+   },
+   "byRef": {
+    "3": {
+     "runs": 4,
+     "km": 0.319
+    },
+    "4": {
+     "runs": 9,
+     "km": 2.411
+    },
+    "5": {
+     "runs": 1,
+     "km": 0.037
+    },
+    "11": {
+     "runs": 1,
+     "km": 0.333
+    },
+    "-": {
+     "runs": 28,
+     "km": 3.87
+    },
+    "B": {
+     "runs": 2,
+     "km": 4.271
+    },
+    "C1": {
+     "runs": 8,
+     "km": 8.678
+    },
+    "C2": {
+     "runs": 8,
+     "km": 41.473
+    },
+    "C3": {
+     "runs": 12,
+     "km": 25.033
+    },
+    "CA;409": {
+     "runs": 1,
+     "km": 9.602
+    },
+    "E1": {
+     "runs": 4,
+     "km": 1.901
+    },
+    "E20": {
+     "runs": 2,
+     "km": 0.495
+    },
+    "K1": {
+     "runs": 2,
+     "km": 1.294
+    },
+    "K2": {
+     "runs": 4,
+     "km": 1.225
+    },
+    "K6": {
+     "runs": 4,
+     "km": 2.683
+    },
+    "K7": {
+     "runs": 1,
+     "km": 6.176
+    }
+   },
+   "inRange": {
+    "runs": 44,
+    "km": 61.462
+   },
+   "list": [
+    {
+     "id": "1132724786",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.203,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "129647471",
+     "cls": "main",
+     "ref": "K2",
+     "km": 0.285,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "129647481",
+     "cls": "main",
+     "ref": "K2",
+     "km": 0.483,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "129647484",
+     "cls": "main",
+     "ref": "K2",
+     "km": 0.36,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "1563006214",
+     "cls": "main",
+     "ref": "5",
+     "km": 0.037,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "165913317",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.109,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "165913327",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.109,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "165913329",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.109,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "166675171",
+     "cls": "main",
+     "ref": "C3",
+     "km": 2.73,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "166675174",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.1,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "166675175",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.031,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "166675180",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.101,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "190617371",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.187,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "201771586",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.083,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "201771588",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.081,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "201771600",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.082,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "201771608",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.082,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "203832848",
+     "cls": "main",
+     "ref": "3",
+     "km": 0.056,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "203832850",
+     "cls": "main",
+     "ref": "3",
+     "km": 0.101,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "203832851",
+     "cls": "main",
+     "ref": "3",
+     "km": 0.056,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "211286460",
+     "cls": "main",
+     "ref": "3",
+     "km": 0.106,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "227384369",
+     "cls": "main",
+     "ref": "E1",
+     "km": 0.715,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "227384370",
+     "cls": "main",
+     "ref": "E1",
+     "km": 0.238,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "227384373",
+     "cls": "main",
+     "ref": "E1",
+     "km": 0.235,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "23594607",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.367,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "24372965",
+     "cls": "main",
+     "ref": "C1",
+     "km": 0.265,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "24402095",
+     "cls": "main",
+     "ref": "C1",
+     "km": 0.293,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "24402503",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.286,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "24402540",
+     "cls": "main",
+     "ref": "C1",
+     "km": 2.233,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "24636426",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.124,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "24636595",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.967,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "27155259",
+     "cls": "main",
+     "ref": "E20",
+     "km": 0.248,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "27155262",
+     "cls": "main",
+     "ref": "E20",
+     "km": 0.247,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "28127106",
+     "cls": "ramp",
+     "ref": "C2",
+     "km": 0.392,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "28127108",
+     "cls": "main",
+     "ref": "C2",
+     "km": 18.096,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "28127324",
+     "cls": "main",
+     "ref": "C2",
+     "km": 1.029,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "28160350",
+     "cls": "main",
+     "ref": "C3",
+     "km": 1.315,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "32404403",
+     "cls": "main",
+     "ref": "K2",
+     "km": 0.097,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "32404418",
+     "cls": "main",
+     "ref": "K1",
+     "km": 0.644,
+     "reason": "universe-edge",
+     "inRange": true
+    },
+    {
+     "id": "331922702",
+     "cls": "ramp",
+     "ref": "C2",
+     "km": 1.147,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "331922709",
+     "cls": "main",
+     "ref": "C2",
+     "km": 18.425,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "34621719",
+     "cls": "main",
+     "ref": "K1",
+     "km": 0.65,
+     "reason": "universe-edge",
+     "inRange": true
+    },
+    {
+     "id": "372483362",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.148,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "38093188",
+     "cls": "main",
+     "ref": "K6",
+     "km": 1.105,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "381972984",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.118,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "381974071",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.117,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "406000909",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.313,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "43471698",
+     "cls": "main",
+     "ref": "E1",
+     "km": 0.713,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "45019019",
+     "cls": "ramp",
+     "ref": "11",
+     "km": 0.333,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "46151743",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.121,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "479652514",
+     "cls": "main",
+     "ref": "K7",
+     "km": 6.176,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "4848875",
+     "cls": "main",
+     "ref": "C1",
+     "km": 2.112,
+     "reason": "loop-seam",
+     "inRange": true
+    },
+    {
+     "id": "4848883",
+     "cls": "main",
+     "ref": "C1",
+     "km": 1.233,
+     "reason": "loop-seam",
+     "inRange": true
+    },
+    {
+     "id": "4848906",
+     "cls": "main",
+     "ref": "C1",
+     "km": 0.254,
+     "reason": "loop-seam",
+     "inRange": true
+    },
+    {
+     "id": "4848940",
+     "cls": "main",
+     "ref": "C1",
+     "km": 1.136,
+     "reason": "loop-seam",
+     "inRange": true
+    },
+    {
+     "id": "4849055",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.167,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "4853044",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.351,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "4854085",
+     "cls": "main",
+     "ref": "B",
+     "km": 2.597,
+     "reason": "ground-junction",
+     "inRange": true
+    },
+    {
+     "id": "5170834",
+     "cls": "main",
+     "ref": "B",
+     "km": 1.674,
+     "reason": "ground-junction",
+     "inRange": true
+    },
+    {
+     "id": "5203881",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.434,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "5204847",
+     "cls": "ramp",
+     "ref": "K6",
+     "km": 0.159,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "5204891",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.363,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "5212959",
+     "cls": "ramp",
+     "ref": "K6",
+     "km": 0.354,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "5213283",
+     "cls": "main",
+     "ref": "CA;409",
+     "km": 9.602,
+     "reason": "ground-junction",
+     "inRange": false
+    },
+    {
+     "id": "55081189",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.12,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "55081193",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.698,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "55081206",
+     "cls": "main",
+     "ref": "C3",
+     "km": 0.676,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "593046494",
+     "cls": "main",
+     "ref": "C3",
+     "km": 9.546,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "593122572",
+     "cls": "main",
+     "ref": "C3",
+     "km": 9.549,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "593535941",
+     "cls": "ramp",
+     "ref": "C2",
+     "km": 1.271,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "593674931",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.018,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "760596455",
+     "cls": "ramp",
+     "ref": "C2",
+     "km": 0.394,
+     "reason": "junction",
+     "inRange": true
+    },
+    {
+     "id": "761796508",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.123,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "783633020",
+     "cls": "main",
+     "ref": "K6",
+     "km": 1.064,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "816254800",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.181,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "816254801",
+     "cls": "main",
+     "ref": "4",
+     "km": 0.118,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "867182415",
+     "cls": "main",
+     "ref": "C2",
+     "km": 0.719,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "880273111",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.219,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "884343942",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.336,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "906266864",
+     "cls": "main",
+     "ref": "C1",
+     "km": 1.152,
+     "reason": "bridging",
+     "inRange": true
+    },
+    {
+     "id": "98440859",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.189,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "98848277",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.241,
+     "reason": "junction",
+     "inRange": false
+    },
+    {
+     "id": "989799206",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "989799208",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "990876843",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "990876844",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "990876845",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "990876846",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "990876847",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "990876848",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    },
+    {
+     "id": "990876849",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.011,
+     "reason": "bridging",
+     "inRange": false
+    }
+   ]
+  },
+  "portals": {
+   "ends": 36,
+   "coverShort": 28,
+   "maxShortM": 7.869,
+   "list": [
+    {
+     "id": "1304022054:start",
+     "run": "1304022054",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 2.639,
+     "groundM": 2.64,
+     "dzM": -0.001,
+     "approach": null,
+     "coverShortM": 6.599
+    },
+    {
+     "id": "1304022054:end",
+     "run": "1304022054",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 3.141,
+     "groundM": 3.14,
+     "dzM": 0.001,
+     "approach": null,
+     "coverShortM": 6.601
+    },
+    {
+     "id": "1471527217:start",
+     "run": "1471527217",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 5.065,
+     "groundM": 3.98,
+     "dzM": 1.085,
+     "approach": {
+      "run": "202905131",
+      "offM": 1.085
+     },
+     "coverShortM": 7.685
+    },
+    {
+     "id": "1471527217:end",
+     "run": "1471527217",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 5.299,
+     "groundM": 4.03,
+     "dzM": 1.269,
+     "approach": {
+      "run": "1471527216",
+      "offM": 1.497
+     },
+     "coverShortM": 7.869
+    },
+    {
+     "id": "1471606996:start",
+     "run": "1471606996",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 4.154,
+     "groundM": 4.21,
+     "dzM": -0.056,
+     "approach": {
+      "run": "1471606997",
+      "offM": -1.364
+     },
+     "coverShortM": 6.544
+    },
+    {
+     "id": "1471606996:end",
+     "run": "1471606996",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 4.127,
+     "groundM": 4.19,
+     "dzM": -0.063,
+     "approach": {
+      "run": "46876337",
+      "offM": 0.087
+     },
+     "coverShortM": 6.537
+    },
+    {
+     "id": "202801662:start",
+     "run": "202801662",
+     "end": "start",
+     "into": "cut",
+     "zM": 4.388,
+     "groundM": 4.39,
+     "dzM": -0.002,
+     "approach": null,
+     "coverShortM": null
+    },
+    {
+     "id": "202801662:end",
+     "run": "202801662",
+     "end": "end",
+     "into": "cut",
+     "zM": 4.304,
+     "groundM": 4.33,
+     "dzM": -0.026,
+     "approach": null,
+     "coverShortM": null
+    },
+    {
+     "id": "23704436:start",
+     "run": "23704436",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 17.613,
+     "groundM": 19.13,
+     "dzM": -1.517,
+     "approach": {
+      "run": "1091280541",
+      "offM": -1.517
+     },
+     "coverShortM": 5.083
+    },
+    {
+     "id": "23704436:end",
+     "run": "23704436",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 17.975,
+     "groundM": 19.43,
+     "dzM": -1.455,
+     "approach": {
+      "run": "23704416",
+      "offM": 1.603
+     },
+     "coverShortM": 5.145
+    },
+    {
+     "id": "35266568:start",
+     "run": "35266568",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 11.353,
+     "groundM": 14.03,
+     "dzM": -2.677,
+     "approach": {
+      "run": "24039751",
+      "offM": -2.677
+     },
+     "coverShortM": 3.923
+    },
+    {
+     "id": "35266568:end",
+     "run": "35266568",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 12.876,
+     "groundM": 12.88,
+     "dzM": -0.004,
+     "approach": null,
+     "coverShortM": 6.596
+    },
+    {
+     "id": "405795844:start",
+     "run": "405795844",
+     "end": "start",
+     "into": "cut",
+     "zM": 1.602,
+     "groundM": 2.59,
+     "dzM": -0.988,
+     "approach": {
+      "run": "4853042",
+      "offM": 2.625
+     },
+     "coverShortM": null
+    },
+    {
+     "id": "405795844:end",
+     "run": "405795844",
+     "end": "end",
+     "into": "tunnel",
+     "zM": -4.184,
+     "groundM": -1.83,
+     "dzM": -2.354,
+     "approach": {
+      "run": "4853045",
+      "offM": -2.354
+     },
+     "coverShortM": 4.246
+    },
+    {
+     "id": "42751503:start",
+     "run": "42751503",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 1.236,
+     "groundM": 4.56,
+     "dzM": -3.324,
+     "approach": {
+      "run": "678697941",
+      "offM": -3.324
+     },
+     "coverShortM": 3.276
+    },
+    {
+     "id": "42751503:end",
+     "run": "42751503",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 0.478,
+     "groundM": 1.24,
+     "dzM": -0.762,
+     "approach": {
+      "run": "42751508",
+      "offM": -0.762
+     },
+     "coverShortM": 5.838
+    },
+    {
+     "id": "42751507:start",
+     "run": "42751507",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 0.486,
+     "groundM": 1.33,
+     "dzM": -0.844,
+     "approach": {
+      "run": "301016678",
+      "offM": -0.844
+     },
+     "coverShortM": 5.756
+    },
+    {
+     "id": "42751507:end",
+     "run": "42751507",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 1.209,
+     "groundM": 4.23,
+     "dzM": -3.021,
+     "approach": {
+      "run": "878618790",
+      "offM": -3.021
+     },
+     "coverShortM": 3.579
+    },
+    {
+     "id": "45180402:start",
+     "run": "45180402",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 31.634,
+     "groundM": 35.09,
+     "dzM": -3.456,
+     "approach": {
+      "run": "372483373",
+      "offM": -3.456
+     },
+     "coverShortM": 3.144
+    },
+    {
+     "id": "45180402:end",
+     "run": "45180402",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 31.123,
+     "groundM": 32.96,
+     "dzM": -1.837,
+     "approach": {
+      "run": "45180400",
+      "offM": -1.837
+     },
+     "coverShortM": 4.763
+    },
+    {
+     "id": "461218969:start",
+     "run": "461218969",
+     "end": "start",
+     "into": "tunnel",
+     "zM": 7.084,
+     "groundM": 7.08,
+     "dzM": 0.004,
+     "approach": null,
+     "coverShortM": 6.604
+    },
+    {
+     "id": "461218969:end",
+     "run": "461218969",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 7.27,
+     "groundM": 7.27,
+     "dzM": 0,
+     "approach": null,
+     "coverShortM": 6.6
+    },
+    {
+     "id": "5204786:start",
+     "run": "5204786",
+     "end": "start",
+     "into": "tunnel",
+     "zM": -8.513,
+     "groundM": -6.09,
+     "dzM": -2.423,
+     "approach": {
+      "run": "5204787",
+      "offM": -2.423
+     },
+     "coverShortM": 4.177
+    },
+    {
+     "id": "5204786:end",
+     "run": "5204786",
+     "end": "end",
+     "into": "cut",
+     "zM": -0.682,
+     "groundM": 0.18,
+     "dzM": -0.862,
+     "approach": {
+      "run": "301016678",
+      "offM": -0.862
+     },
+     "coverShortM": null
+    },
+    {
+     "id": "5213545:start",
+     "run": "5213545",
+     "end": "start",
+     "into": "tunnel",
+     "zM": -6.21,
+     "groundM": -4.56,
+     "dzM": -1.65,
+     "approach": {
+      "run": "45661180",
+      "offM": -1.65
+     },
+     "coverShortM": 4.95
+    },
+    {
+     "id": "5213545:end",
+     "run": "5213545",
+     "end": "end",
+     "into": "tunnel",
+     "zM": -0.905,
+     "groundM": -0.91,
+     "dzM": 0.005,
+     "approach": null,
+     "coverShortM": 6.605
+    },
+    {
+     "id": "5213546:start",
+     "run": "5213546",
+     "end": "start",
+     "into": "tunnel",
+     "zM": -0.544,
+     "groundM": -0.54,
+     "dzM": -0.004,
+     "approach": null,
+     "coverShortM": 6.596
+    },
+    {
+     "id": "5213546:end",
+     "run": "5213546",
+     "end": "end",
+     "into": "tunnel",
+     "zM": -5.263,
+     "groundM": -1.3,
+     "dzM": -3.963,
+     "approach": {
+      "run": "5213547",
+      "offM": -3.963
+     },
+     "coverShortM": 2.637
+    },
+    {
+     "id": "678761500:start",
+     "run": "678761500",
+     "end": "start",
+     "into": "cut",
+     "zM": -2.211,
+     "groundM": -1.69,
+     "dzM": -0.521,
+     "approach": {
+      "run": "878618790",
+      "offM": -0.521
+     },
+     "coverShortM": null
+    },
+    {
+     "id": "678761500:end",
+     "run": "678761500",
+     "end": "end",
+     "into": "tunnel",
+     "zM": -1.269,
+     "groundM": 0.67,
+     "dzM": -1.939,
+     "approach": {
+      "run": "5171345",
+      "offM": -1.939
+     },
+     "coverShortM": 4.661
+    },
+    {
+     "id": "680260849:start",
+     "run": "680260849",
+     "end": "start",
+     "into": "cut",
+     "zM": 1.552,
+     "groundM": 2.67,
+     "dzM": -1.118,
+     "approach": {
+      "run": "4857843",
+      "offM": -1.118
+     },
+     "coverShortM": null
+    },
+    {
+     "id": "680260849:end",
+     "run": "680260849",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 1.248,
+     "groundM": 0.98,
+     "dzM": 0.268,
+     "approach": {
+      "run": "4857842",
+      "offM": 2.304
+     },
+     "coverShortM": 6.868
+    },
+    {
+     "id": "737538573:start",
+     "run": "737538573",
+     "end": "start",
+     "into": "cut",
+     "zM": 20.239,
+     "groundM": 20.24,
+     "dzM": -0.001,
+     "approach": null,
+     "coverShortM": null
+    },
+    {
+     "id": "737538573:end",
+     "run": "737538573",
+     "end": "end",
+     "into": "tunnel",
+     "zM": 25.115,
+     "groundM": 25.12,
+     "dzM": -0.005,
+     "approach": null,
+     "coverShortM": 6.595
+    },
+    {
+     "id": "878618792:start",
+     "run": "878618792",
+     "end": "start",
+     "into": "cut",
+     "zM": -0.906,
+     "groundM": -0.16,
+     "dzM": -0.746,
+     "approach": {
+      "run": "42751508",
+      "offM": -0.746
+     },
+     "coverShortM": null
+    },
+    {
+     "id": "878618792:end",
+     "run": "878618792",
+     "end": "end",
+     "into": "tunnel",
+     "zM": -8.611,
+     "groundM": -6,
+     "dzM": -2.611,
+     "approach": {
+      "run": "5204789",
+      "offM": -2.611
+     },
+     "coverShortM": 3.989
+    }
+   ]
+  },
+  "overApproach": {
+   "pairs": 17,
+   "list": [
+    {
+     "id": "165913330|165913328",
+     "lower": "165913330",
+     "upper": "165913328",
+     "s0": 303.3,
+     "s1": 379.9,
+     "minDzM": 0.24,
+     "offsetM": 7.8
+    },
+    {
+     "id": "203832846|211286459",
+     "lower": "203832846",
+     "upper": "211286459",
+     "s0": 0,
+     "s1": 68.7,
+     "minDzM": 0.147,
+     "offsetM": 7.7
+    },
+    {
+     "id": "203832847|756785282",
+     "lower": "203832847",
+     "upper": "756785282",
+     "s0": 94.3,
+     "s1": 95.5,
+     "minDzM": 0.545,
+     "offsetM": 6.05
+    },
+    {
+     "id": "203832847|756785283",
+     "lower": "203832847",
+     "upper": "756785283",
+     "s0": 80,
+     "s1": 95.5,
+     "minDzM": 0.312,
+     "offsetM": 5.93
+    },
+    {
+     "id": "203832849|203832847",
+     "lower": "203832849",
+     "upper": "203832847",
+     "s0": 15.2,
+     "s1": 95.5,
+     "minDzM": 0.276,
+     "offsetM": 8.46
+    },
+    {
+     "id": "23704469|27155730",
+     "lower": "23704469",
+     "upper": "27155730",
+     "s0": 0,
+     "s1": 13,
+     "minDzM": 0.272,
+     "offsetM": 8.28
+    },
+    {
+     "id": "372483373|28368866",
+     "lower": "372483373",
+     "upper": "28368866",
+     "s0": 88.2,
+     "s1": 101.3,
+     "minDzM": 4.898,
+     "offsetM": 6.57
+    },
+    {
+     "id": "44209387|28127318",
+     "lower": "44209387",
+     "upper": "28127318",
+     "s0": 77.9,
+     "s1": 79.7,
+     "minDzM": 0.218,
+     "offsetM": 5.85
+    },
+    {
+     "id": "44209387|44803854",
+     "lower": "44209387",
+     "upper": "44803854",
+     "s0": 62.5,
+     "s1": 79.7,
+     "minDzM": 0.467,
+     "offsetM": 8.3
+    },
+    {
+     "id": "45068169|45068170",
+     "lower": "45068169",
+     "upper": "45068170",
+     "s0": 0,
+     "s1": 0.4,
+     "minDzM": 0.217,
+     "offsetM": 7.6
+    },
+    {
+     "id": "45068169|45068172",
+     "lower": "45068169",
+     "upper": "45068172",
+     "s0": 0,
+     "s1": 86.2,
+     "minDzM": 2.062,
+     "offsetM": 4.95
+    },
+    {
+     "id": "45068170|24402125",
+     "lower": "45068170",
+     "upper": "24402125",
+     "s0": 0,
+     "s1": 181.4,
+     "minDzM": 0.289,
+     "offsetM": 6.44
+    },
+    {
+     "id": "45420940|24636427",
+     "lower": "45420940",
+     "upper": "24636427",
+     "s0": 0,
+     "s1": 56,
+     "minDzM": 0.376,
+     "offsetM": 8.21
+    },
+    {
+     "id": "45420940|27514398",
+     "lower": "45420940",
+     "upper": "27514398",
+     "s0": 0,
+     "s1": 0.1,
+     "minDzM": 0.362,
+     "offsetM": 8.19
+    },
+    {
+     "id": "78334078|80581134",
+     "lower": "78334078",
+     "upper": "80581134",
+     "s0": 6.2,
+     "s1": 6.2,
+     "minDzM": 0.18,
+     "offsetM": 4.74
+    },
+    {
+     "id": "806097479|331692344",
+     "lower": "806097479",
+     "upper": "331692344",
+     "s0": 129,
+     "s1": 132.8,
+     "minDzM": 3.807,
+     "offsetM": 6.18
+    },
+    {
+     "id": "806097479|331922700",
+     "lower": "806097479",
+     "upper": "331922700",
+     "s0": 101.1,
+     "s1": 132.8,
+     "minDzM": 3.856,
+     "offsetM": 6.25
+    }
+   ]
+  }
+ }
 }

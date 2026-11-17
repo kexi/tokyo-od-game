@@ -1159,6 +1159,8 @@ if (reportPath) {
     // With the structures by height, skip or compile, so the holes compare; tags builds as before.
     ground: structuresMode === "height" ? groundSummary() : null,
     companions: plan.companions ? companionsSummary() : null,
+    // S7-1: the scorecard's underground.deferred (the chain is the plan's own bookkeeping).
+    belowDeferrals: plan.belowDeferrals.map(({ chain: _chain, ...d }) => d),
   };
   const report = buildReport(reportInput);
   await mkdir(dirname(reportPath), { recursive: true });

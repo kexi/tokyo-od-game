@@ -8,6 +8,7 @@ import { type District, DISTRICTS } from "./districts";
 import type { LedgerSummary } from "./ledger";
 import { GIRDER_DEPTH } from "./assumptions";
 import { lowViaductStretches, openGroundStretches } from "./heightStructures";
+import { type DeferredBelow, undergroundOf, UndergroundSchema } from "./belowScore";
 
 /**
  * The scorecard of one expressway build (P2.7-1, `scripts/expressway.ts --report`): what the later
@@ -57,9 +58,13 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * 2–4 (without them) still parse, so a scorecard can be compared with one written before. 6 (P2.7-4):
  * `size.record` and `size.ledger` (report.json and ledger.json of the data folder; meta.json is the
  * v6 index), `districts` (runs, km, written and closed per district, districts.ts) and `ledger` (the
- * ledger's summary, null without one). Version 5 reports still parse.
+ * ledger's summary, null without one). Version 5 reports still parse. 7 (S7-1): `underground`, the
+ * below runs left out and why, the portals' ends and the decks too low over their approaches
+ * (belowScore.ts). Why not under the key `below` the S7 plan names it by: `below` is the build's
+ * `--below` mode since version 2, and reports of every version are compared field by field. Version 6
+ * reports still parse.
  */
-export const REPORT_VERSION = 6;
+export const REPORT_VERSION = 7;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 const fileSize = z.strictObject({ raw: count, gzip: count });
@@ -78,7 +83,14 @@ const stretchTally = z.strictObject({
 });
 
 export const ReportSchema = z.strictObject({
-  version: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(REPORT_VERSION)]),
+  version: z.union([
+    z.literal(2),
+    z.literal(3),
+    z.literal(4),
+    z.literal(5),
+    z.literal(6),
+    z.literal(REPORT_VERSION),
+  ]),
   label: z.string(),
   range: z.string(),
   below: z.enum(["pruned", "all"]),
@@ -490,6 +502,8 @@ export const ReportSchema = z.strictObject({
     })
     .nullable()
     .optional(),
+  /** S7-1 (version 7, belowScore.ts): the deferred below runs, the portals' ends, decks over their approaches. */
+  underground: UndergroundSchema.optional(),
   /** Wall-clock times (the only part that differs between two builds of the same input). */
   timings: z.strictObject({ qpMs: count, stagesMs: z.record(z.string(), count) }).optional(),
 });
@@ -549,6 +563,8 @@ export type ReportInput = {
   ground?: NonNullable<Report["ground"]> | null;
   /** The companions (S6 PR 3): Report["companions"], made by the build script; null or absent without them. */
   companions?: NonNullable<Report["companions"]> | null;
+  /** The plan's deferred below runs (compile.ts Plan.belowDeferrals), into `underground.deferred`. */
+  belowDeferrals?: readonly DeferredBelow[];
 };
 
 const round = (v: number, digits: number) => {
@@ -1354,6 +1370,15 @@ export function buildReport(input: ReportInput): Report {
     partition: partitionOf(input.partition),
     districts: districtsOf(input),
     ledger: input.ledgerSummary,
+    underground: undergroundOf({
+      deferred: input.belowDeferrals ?? [],
+      chunks: input.chunks,
+      runs: input.runs,
+      belowIds: new Set([
+        ...input.planned.filter((p) => p.below).map((p) => p.id),
+        ...input.runs.filter((r) => r.below === true).map((r) => r.id),
+      ]),
+    }),
     ...(input.withoutTimings
       ? {}
       : {

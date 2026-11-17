@@ -1,0 +1,438 @@
+import { describe, expect, it } from "vitest";
+import { readExpresswayFiles } from "../scripts/expresswayFiles";
+import { HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
+import { belowDeferralOf, isBelowCompiled, TUNNEL_DEPTH_M } from "../src/expressway/below";
+import {
+  overApproachOf,
+  PORTAL_APPROACH_M,
+  portalsOf,
+  undergroundChanges,
+  undergroundOf,
+} from "../src/expressway/belowScore";
+import { planNetwork, type Plan, solvePlan } from "../src/expressway/compile";
+import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
+import { planeAt } from "../src/expressway/geo";
+import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
+import { LEVEL_APART_M } from "../src/expressway/overlap";
+import { flattenReport, ReportSchema } from "../src/expressway/report";
+import { join } from "node:path";
+import { readFileSync } from "node:fs";
+
+// S7-1 (the scorecard's `underground`, belowScore.ts): S7 is judged by these counts, so each must count
+// what it names — every deferred below run under exactly one of the five reasons, every portal end
+// with its approach, and a deck too low over an approach near a portal — while the compiler's answers
+// stay as they were.
+
+const plane = planeAt(139.75, 35.65);
+type WaySpec = { id: number; x0: number; x1: number; tags: Record<string, string> };
+const bridge = { highway: "motorway", bridge: "yes", layer: "1", lanes: "2", maxspeed: "60", ref: "C1" };
+const atGrade = { highway: "motorway", lanes: "2", maxspeed: "60", ref: "C1" };
+const cut = { highway: "motorway", cutting: "yes", layer: "-1", lanes: "2", maxspeed: "60", ref: "C1" };
+const tunnel = { highway: "motorway", tunnel: "yes", layer: "-1", lanes: "2", maxspeed: "60", ref: "C1" };
+const link = { highway: "motorway_link", oneway: "yes" };
+const linkBridge = { ...link, bridge: "yes", layer: "1" };
+
+/** The node id of x along y = 0. */
+const nodeAt = (x: number) => 100000 + Math.round(x);
+
+/** Ways end to end along y = 0, a node every 50 m, consecutive ways sharing their end nodes. */
+function network(ways: WaySpec[]): Network {
+  const net: Network = { ways: new Map(), nodes: new Map() };
+  for (const w of ways) {
+    const xs: number[] = [];
+    for (let x = w.x0; x < w.x1 - 1e-6; x += 50) xs.push(x);
+    xs.push(w.x1);
+    const ids = xs.map(nodeAt);
+    net.ways.set(w.id, normalizeWay(w.id, ids, w.tags));
+    xs.forEach((x, i) => {
+      const [lon, lat] = plane.toLonLat(x, 0);
+      net.nodes.set(ids[i], normalizeNode(ids[i], lon, lat, {}));
+    });
+  }
+  return net;
+}
+
+/** Adds ways along new nodes (an existing node id keeps its place): [way id, tags, node ids]. */
+function addWays(
+  net: Network,
+  nodes: Array<[number, number, number]>,
+  ways: Array<[number, Record<string, string>, number[]]>,
+): Network {
+  for (const [id, x, y] of nodes) {
+    const [lon, lat] = plane.toLonLat(x, y);
+    net.nodes.set(id, normalizeNode(id, lon, lat, {}));
+  }
+  for (const [id, tags, ids] of ways) net.ways.set(id, normalizeWay(id, ids, tags));
+  return net;
+}
+
+/** A ring of radius 600 m in four ways (way 1 first, a tunnel; the rest viaducts): 都心環状線's shape. */
+function ring(): Network {
+  const net: Network = { ways: new Map(), nodes: new Map() };
+  const n = 72;
+  const ids = Array.from({ length: n }, (_, i) => 300000 + i);
+  ids.forEach((id, i) => {
+    const a = (2 * Math.PI * i) / n;
+    const [lon, lat] = plane.toLonLat(600 * Math.cos(a), 600 * Math.sin(a));
+    net.nodes.set(id, normalizeNode(id, lon, lat, {}));
+  });
+  const quarter = n / 4;
+  for (let w = 0; w < 4; w++) {
+    const refs = Array.from({ length: quarter + 1 }, (_, i) => ids[(w * quarter + i) % n]);
+    net.ways.set(w + 1, normalizeWay(w + 1, refs, w === 0 ? tunnel : bridge));
+  }
+  return net;
+}
+
+const height = { structures: "height" as const };
+const compile = { ...height, ground: "compile" as const };
+const reasonsOf = (plan: Plan) => plan.belowDeferrals.map((d) => [d.id, d.reason]);
+
+/** The ids of every deferral are the ids of belowDeferred, in its order (the sum the S7 table needs). */
+function expectSameAsDeferred(plan: Plan) {
+  expect(plan.belowDeferrals.map((d) => d.id)).toEqual(plan.belowDeferred);
+}
+
+describe("見送った地下 run の理由（below.ts belowDeferralOf、compile.ts Plan.belowDeferrals）", () => {
+  it("loop-seam: a tunnel at the ends of a closed chain (the loop's seam)", () => {
+    const net = ring();
+    const [chain] = buildChains(net);
+    expect(chain.closed).toBe(true);
+    const plan = planNetwork(net, new Set(), null);
+    expect(reasonsOf(plan)).toEqual([["1", "loop-seam"]]);
+    expectSameAsDeferred(plan);
+  });
+
+  it("universe-edge: a tunnel ending at a node where its way goes on outside the universe", () => {
+    const net = network([
+      { id: 1, x0: 0, x1: 1000, tags: bridge },
+      { id: 2, x0: 1000, x1: 1500, tags: tunnel },
+    ]);
+    const plan = planNetwork(net, new Set([101500]), null);
+    expect(reasonsOf(plan)).toEqual([["2", "universe-edge"]]);
+    expectSameAsDeferred(plan);
+  });
+
+  it("junction: a tunnel ending where another chain meets it under the ground", () => {
+    const net = addWays(
+      network([
+        { id: 1, x0: 0, x1: 1000, tags: bridge },
+        { id: 2, x0: 1000, x1: 1500, tags: tunnel },
+      ]),
+      [
+        [200001, 1500, 100],
+        [200002, 1500, 200],
+      ],
+      [[9, linkBridge, [101500, 200001, 200002]]],
+    );
+    const plan = planNetwork(net, new Set(), null);
+    expect(reasonsOf(plan)).toEqual([["2", "junction"]]);
+    expectSameAsDeferred(plan);
+  });
+
+  it("ground-junction: a cut a ramp at grade leaves (S6 PR 7c0's dropBelowJunctions)", () => {
+    const net = addWays(
+      network([
+        { id: 81, x0: 0, x1: 500, tags: bridge },
+        { id: 82, x0: 500, x1: 800, tags: atGrade },
+        { id: 83, x0: 800, x1: 1600, tags: cut },
+        { id: 84, x0: 1600, x1: 1900, tags: atGrade },
+        { id: 85, x0: 1900, x1: 2400, tags: bridge },
+      ]),
+      [
+        [200001, 1250, -15],
+        [200002, 1300, -40],
+        [200003, 1350, -80],
+        [200004, 1400, -130],
+        [200005, 1450, -190],
+        [200006, 1500, -260],
+        [200007, 1550, -340],
+      ],
+      [
+        [86, link, [101200, 200001, 200002, 200003, 200004]],
+        [87, linkBridge, [200004, 200005, 200006, 200007]],
+      ],
+    );
+    const plan = planNetwork(net, new Set(), null, [], compile);
+    expect(reasonsOf(plan)).toEqual([["83", "ground-junction"]]);
+    expect(plan.belowDeferrals[0]).toMatchObject({
+      cls: "expressway",
+      ref: "C1",
+      lengthM: expect.any(Number),
+    });
+    expect(plan.belowDeferrals[0].lengthM).toBeCloseTo(800, -1);
+    expectSameAsDeferred(plan);
+  });
+
+  it("bridging: a tunnel that would join two components of viaducts (pruneBelow)", () => {
+    const net = network([
+      { id: 1, x0: 0, x1: 1000, tags: bridge },
+      { id: 2, x0: 1000, x1: 1200, tags: cut },
+      { id: 3, x0: 1200, x1: 1700, tags: tunnel },
+      { id: 4, x0: 1700, x1: 2700, tags: bridge },
+    ]);
+    const plan = planNetwork(net, new Set(), null);
+    expect(reasonsOf(plan)).toEqual([["2", "bridging"]]);
+    expectSameAsDeferred(plan);
+    // --below all keeps it: no reason is recorded for a run compiled.
+    const all = planNetwork(net, new Set(), null, [], { pruneBelow: false });
+    expect(all.belowDeferrals).toEqual([]);
+  });
+
+  it("one reason per run, the first that holds: a loop's seam over a junction at its end", () => {
+    const net = ring();
+    const [chain] = buildChains(net);
+    const [below] = splitRuns(net, chain).filter((r) => r.below);
+    const end = chain.nodes[0];
+    const met = new Map<number, string[]>([[end, [chain.id, "c99"]]]);
+    expect(belowDeferralOf(chain, below, met, new Set([end]))).toBe("loop-seam");
+  });
+
+  it("names a reason exactly where isBelowCompiled says no (the answer itself unchanged)", () => {
+    const net = network([
+      { id: 1, x0: 0, x1: 1000, tags: bridge },
+      { id: 2, x0: 1000, x1: 1500, tags: tunnel },
+    ]);
+    const [chain] = buildChains(net);
+    const [viaduct, below] = splitRuns(net, chain);
+    const end = chain.nodes[chain.nodes.length - 1];
+    const cases: Array<[Map<number, string[]>, Set<number>]> = [
+      [new Map([[end, [chain.id]]]), new Set()],
+      [new Map([[end, [chain.id, "c99"]]]), new Set()],
+      [new Map([[end, [chain.id]]]), new Set([end])],
+      [new Map([[end, [chain.id, "c99"]]]), new Set([end])],
+    ];
+    for (const [nodeChains, outside] of cases) {
+      const reason = belowDeferralOf(chain, below, nodeChains, outside);
+      expect(reason === null).toBe(isBelowCompiled(chain, below, nodeChains, outside));
+    }
+    // A run not below has no reason and is no below run compiled.
+    expect(belowDeferralOf(chain, viaduct, new Map(), new Set())).toBeNull();
+    expect(isBelowCompiled(chain, viaduct, new Map(), new Set())).toBe(false);
+    // Both ends against the universe and a junction: the universe's edge comes first.
+    expect(belowDeferralOf(chain, below, new Map([[end, [chain.id, "c99"]]]), new Set([end]))).toBe(
+      "universe-edge",
+    );
+  });
+
+  it("is in the range by its own line for boxes: a tunnel outside the box, of a chain the box reaches, is not", () => {
+    const net = network([
+      { id: 1, x0: 0, x1: 1000, tags: bridge },
+      { id: 2, x0: 1000, x1: 1500, tags: tunnel },
+    ]);
+    const [lonA, latA] = plane.toLonLat(-10, -10);
+    const [lonB, latB] = plane.toLonLat(300, 10);
+    const box = { minLon: lonA, minLat: latA, maxLon: lonB, maxLat: latB };
+    const ranged = planNetwork(net, new Set([101500]), box);
+    expect(ranged.belowDeferrals.map((d) => [d.id, d.inRange])).toEqual([["2", false]]);
+    const whole = planNetwork(net, new Set([101500]), null);
+    expect(whole.belowDeferrals.map((d) => [d.id, d.inRange])).toEqual([["2", true]]);
+  });
+});
+
+describe("坑口の端と取付けの上の床版（belowScore.ts portalsOf・overApproachOf）", () => {
+  // 高架 → 地平 400 m → トンネル 600 m → 地平 400 m: the portals at x 1400 and 2000, at the ground.
+  const net = network([
+    { id: 1, x0: 0, x1: 1000, tags: bridge },
+    { id: 2, x0: 1000, x1: 1400, tags: atGrade },
+    { id: 3, x0: 1400, x1: 2000, tags: tunnel },
+    { id: 4, x0: 2000, x1: 2400, tags: atGrade },
+  ]);
+  const plan = planNetwork(net, new Set(), null, [], compile);
+  const result = solvePlan(plan, () => 3, []);
+  const belowIds = new Set([...plan.runs.values()].filter((r) => r.below).map((r) => r.run.id));
+
+  it("lists both ends of the tunnel with their approach at grade, the road at the ground and the depth it lacks", () => {
+    expect([...belowIds]).toEqual(["3"]);
+    const { portals } = portalsOf(result.chunks, result.runs, belowIds);
+    expect(portals.list.map((p) => [p.id, p.into, p.approach?.run])).toEqual([
+      ["3:start", "tunnel", "2"],
+      ["3:end", "tunnel", "4"],
+    ]);
+    const band = HEIGHT_STRUCTURES.value.ground.bandM + 0.05;
+    for (const p of portals.list) {
+      // W10: the portal's end is where its approach is, within the ground's band, so the tunnel lacks
+      // about all of its depth there.
+      expect(Math.abs(p.dzM)).toBeLessThan(band);
+      expect(p.coverShortM).toBeCloseTo(TUNNEL_DEPTH_M + p.dzM, 2);
+      expect(p.coverShortM).toBeGreaterThan(TUNNEL_DEPTH_M - band);
+      expect(Math.abs(p.approach!.offM)).toBeLessThan(band);
+    }
+    expect(portals.ends).toBe(2);
+    expect(portals.coverShort).toBe(2);
+    expect(portals.maxShortM).toBe(Math.max(...portals.list.map((p) => p.coverShortM!)));
+  });
+
+  it("leaves out a cut's shortfall (null) and an end seaming to another below run", () => {
+    const cutNet = network([
+      { id: 1, x0: 0, x1: 1000, tags: bridge },
+      { id: 2, x0: 1000, x1: 1400, tags: atGrade },
+      { id: 3, x0: 1400, x1: 2000, tags: cut },
+      { id: 4, x0: 2000, x1: 2400, tags: atGrade },
+    ]);
+    const p = planNetwork(cutNet, new Set(), null, [], compile);
+    const res = solvePlan(p, () => 3, []);
+    const { portals } = portalsOf(res.chunks, res.runs, new Set(["3"]));
+    expect(portals.list.map((e) => [e.id, e.into, e.coverShortM])).toEqual([
+      ["3:start", "cut", null],
+      ["3:end", "cut", null],
+    ]);
+    // Told that run 2 is below too, 3's start seams to it: that end is no portal.
+    const both = portalsOf(res.chunks, res.runs, new Set(["2", "3"]));
+    expect(both.portals.list.map((e) => e.id)).not.toContain("3:start");
+  });
+
+  /** Run 2's chunks copied as another run beside it (2 m to the north), `rise` m higher, kept where s is in [s0, s1]. */
+  const deckOver = (rise: number, s0: number, s1: number): XwChunk[] =>
+    result.chunks
+      .filter((c) => c.run === "2")
+      .map((c) => {
+        const st: number[] = [];
+        for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
+          const s = c.st[i];
+          const isKept = s >= s0 && s <= s1;
+          if (!isKept) continue;
+          const [x, y] = plane.toXY(c.st[i + 1], c.st[i + 2]);
+          const [lon, lat] = plane.toLonLat(x, y + 2);
+          st.push(s, lon, lat, c.st[i + 3] + rise, c.st[i + 4], c.st[i + 5], c.st[i + 6]);
+        }
+        return { ...c, id: `90:${c.k}`, run: "90", chain: "c90", st };
+      })
+      .filter((c) => c.st.length >= 2 * STATION_STRIDE);
+
+  it("counts one pair for a deck less than a level over the approach near the portal, only over its last 300 m", () => {
+    const { stretches } = portalsOf(result.chunks, result.runs, belowIds);
+    const over = overApproachOf([...result.chunks, ...deckOver(2, 0, 400)], stretches);
+    expect(over.pairs).toBe(1);
+    const [pair] = over.list;
+    expect(pair).toMatchObject({ id: "2|90", lower: "2", upper: "90" });
+    expect(pair.minDzM).toBeCloseTo(2, 1);
+    expect(pair.offsetM).toBeCloseTo(2, 0);
+    // Run 2 is 400 m long with the portal at its end: only s ≥ 100 is near it.
+    expect(pair.s0).toBeGreaterThanOrEqual(400 - PORTAL_APPROACH_M - 1);
+    expect(pair.s1).toBeCloseTo(400, -1);
+  });
+
+  it("counts none for a deck a level or more over it, nor for one over it farther than 300 m from the portal", () => {
+    const { stretches } = portalsOf(result.chunks, result.runs, belowIds);
+    expect(
+      overApproachOf([...result.chunks, ...deckOver(LEVEL_APART_M + 0.2, 0, 400)], stretches).pairs,
+    ).toBe(0);
+    expect(overApproachOf([...result.chunks, ...deckOver(2, 0, 80)], stretches).pairs).toBe(0);
+  });
+
+  it("puts all three into the scorecard's underground, the deferrals tallied by reason, class and ref", () => {
+    const u = undergroundOf({
+      deferred: [
+        { id: "7", reason: "junction", cls: "ramp", ref: null, lengthM: 500, inRange: true },
+        { id: "5", reason: "bridging", cls: "expressway", ref: "C1", lengthM: 1250, inRange: false },
+      ],
+      chunks: result.chunks,
+      runs: result.runs,
+      belowIds,
+    });
+    expect(u.deferred.list.map((d) => d.id)).toEqual(["5", "7"]);
+    expect(u.deferred.total).toEqual({
+      main: { runs: 1, km: 1.25 },
+      ramp: { runs: 1, km: 0.5 },
+      street: { runs: 0, km: 0 },
+    });
+    expect(u.deferred.byReason.junction.ramp).toEqual({ runs: 1, km: 0.5 });
+    expect(u.deferred.byReason["loop-seam"].main).toEqual({ runs: 0, km: 0 });
+    expect(u.deferred.byRef).toEqual({ "-": { runs: 1, km: 0.5 }, C1: { runs: 1, km: 1.25 } });
+    expect(u.deferred.inRange).toEqual({ runs: 1, km: 0.5 });
+    expect(u.portals.ends).toBe(2);
+    expect(u.overApproach.pairs).toBe(0);
+  });
+});
+
+/** A committed baseline scorecard (tests/fixtures). */
+const fixture = (name: string) =>
+  ReportSchema.parse(JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8")));
+
+describe("スコアカード版 7（report.ts）", () => {
+  it("the ship baselines are version 7, each deferred run under one reason, adding up to the plan's count", () => {
+    for (const [name, below] of [
+      ["expresswayScorecard.ship.json", "pruned"],
+      ["expresswayScorecard.ship-all.json", "all"],
+    ] as const) {
+      const r = fixture(name);
+      expect([name, r.version, r.below]).toEqual([name, 7, below]);
+      const u = r.underground!;
+      expect(u.deferred.list.length).toBe(r.plan.belowDeferred);
+      const byReason = Object.values(u.deferred.byReason).reduce(
+        (n, b) => n + b.main.runs + b.ramp.runs + b.street.runs,
+        0,
+      );
+      expect(byReason).toBe(r.plan.belowDeferred);
+      // --below all compiles what pruneBelow would drop: no run is deferred by the plan after it.
+      const isAll = below === "all";
+      if (isAll)
+        expect(
+          u.deferred.list.filter((d) => d.reason === "ground-junction" || d.reason === "bridging"),
+        ).toEqual([]);
+    }
+  });
+
+  it("a version-6 report still parses, and set beside its version 7 it differs by `underground` alone", () => {
+    const seven = fixture("expresswayScorecard.ship.json");
+    const { underground: _u, ...rest } = seven;
+    const six = ReportSchema.parse({ ...rest, version: 6 });
+    const before = flattenReport(six);
+    const after = flattenReport(seven);
+    const changed = [...before.keys()].filter((k) => k !== "version" && before.get(k) !== after.get(k));
+    expect(changed).toEqual([]);
+    const added = [...after.keys()].filter((k) => !before.has(k));
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.every((k) => k.startsWith("underground."))).toBe(true);
+  });
+});
+
+describe("スコアカードの比べ（belowScore.ts undergroundChanges）", () => {
+  const base = undergroundOf({
+    deferred: [
+      { id: "5", reason: "bridging", cls: "expressway", ref: "C1", lengthM: 1000, inRange: true },
+      { id: "6", reason: "junction", cls: "ramp", ref: null, lengthM: 300, inRange: true },
+    ],
+    chunks: [],
+    runs: [],
+    belowIds: new Set(),
+  });
+
+  it("names the deferred runs on one side only and those deferred for another reason, and nothing for the same", () => {
+    const other = undergroundOf({
+      deferred: [
+        { id: "5", reason: "junction", cls: "expressway", ref: "C1", lengthM: 1000, inRange: true },
+        { id: "7", reason: "loop-seam", cls: "expressway", ref: "C1", lengthM: 400, inRange: false },
+      ],
+      chunks: [],
+      runs: [],
+      belowIds: new Set(),
+    });
+    const changes = undergroundChanges(base, other);
+    expect(changes.absent).toBeNull();
+    expect(changes.deferred).toEqual({
+      added: ["7"],
+      removed: ["6"],
+      reasonChanged: ["5 bridging→junction"],
+    });
+    expect(undergroundChanges(base, base).deferred).toEqual({ added: [], removed: [], reasonChanged: [] });
+  });
+
+  it("says which side has no section (a version-6 report beside a version-7 one)", () => {
+    expect(undergroundChanges(undefined, base).absent).toBe("a");
+    expect(undergroundChanges(base, undefined).absent).toBe("b");
+  });
+});
+
+describe("既定データの坑口の取付け（public/data/expressway）", () => {
+  it("finds the exit 24402125 too low over the 汐留 approach 45068170 near its portal (plan 0 節の 4)", () => {
+    const files = readExpresswayFiles(join(import.meta.dirname, "..", "public", "data", "expressway"));
+    const belowIds = new Set(files.runs.filter((r) => r.below === true).map((r) => r.id));
+    const { stretches } = portalsOf(files.chunks, files.runs, belowIds);
+    const over = overApproachOf(files.chunks, stretches);
+    const pair = over.list.find((p) => p.id === "45068170|24402125");
+    expect(pair).toBeDefined();
+    expect(pair!.minDzM).toBeLessThan(LEVEL_APART_M);
+  });
+});
