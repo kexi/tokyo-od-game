@@ -156,6 +156,11 @@ export const LOG_EVENTS = {
   renderer_ready: info({ backend: z.string(), depth: z.string(), samples: count }),
   gpu_device_lost: warning({ reason: z.string().nullable(), error }),
   pipelines_compiled: info({ durationMs: z.number() }),
+  /**
+   * 画質 › シェーダーの事前作成 is off: the loading screen let play start without precompile, and
+   * each pipeline is built in the frame its material is first drawn (in place of pipelines_compiled).
+   */
+  pipelines_skipped: info({ setting: z.literal("off") }),
   precompile_failed: failedWith(),
   prewarm_failed: failedWith(),
   controls_changed: info({

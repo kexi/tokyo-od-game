@@ -2631,6 +2631,24 @@ async function main(): Promise<void> {
     }
     log("pipelines_compiled", { durationMs: Math.round(performance.now() - started) });
   };
+  // 画質 › シェーダーの事前作成, as it was when the page loaded: precompile runs once, on the loading
+  // screen. Why not follow a change made in play: switching to "on" then would build everything
+  // at once and stop the game there; the panel offers a reload instead (onReload).
+  const isShaderPrebuild = GRAPHICS.settings.shaderPrebuild === "on";
+  /**
+   * What the loading screen waits for once the town is here: precompile, or nothing when 事前作成
+   * is off. Never rejects, so the caller always goes on to 始められる.
+   * Why not skip only the witnesses (as the dev `?noprewarm` does): what the loading screen waits
+   * for is precompile as a whole, and that wait is the choice offered.
+   */
+  const prepareForPlay = async (): Promise<void> => {
+    if (!isShaderPrebuild) {
+      log("pipelines_skipped", { setting: "off" });
+      return;
+    }
+    setLoading(() => i18n.t("loading.shaders"), 0.95);
+    await precompile().catch((error: unknown) => warn("precompile_failed", { error: String(error) }));
+  };
   /** The world from the main camera (no cockpit), with the street passes, to the canvas. */
   const drawPlain = () => {
     blur.stop();
@@ -2679,15 +2697,13 @@ async function main(): Promise<void> {
         );
       const isReady = groundReady && (tilesProgress >= 0.999 || waited > 20000) && waited > 1500;
       if (isReady && isLoading) {
-        // The town is here: build its pipelines (and those of what comes later) before play.
-        setLoading(() => i18n.t("loading.shaders"), 0.95);
-        compiling = precompile()
-          .catch((error: unknown) => warn("precompile_failed", { error: String(error) }))
-          .finally(() => {
-            state = "ready";
-            startButton.disabled = false;
-            setLoading(() => i18n.t("loading.ready"), 1);
-          });
+        // The town is here: build its pipelines (and those of what comes later) before play, unless
+        // 画質 › シェーダーの事前作成 is off.
+        compiling = prepareForPlay().finally(() => {
+          state = "ready";
+          startButton.disabled = false;
+          setLoading(() => i18n.t("loading.ready"), 1);
+        });
       }
       drawPlain();
       return;
