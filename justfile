@@ -392,7 +392,7 @@ measure-buildings-timeline label="run" base="http://localhost:5173/tokyo-od-game
 measure-shader-prebuild label="run" base="http://localhost:5173/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/shader-prebuild.ts --label {{ label }} --base {{ base }} {{ args }}
 
-# 止まっている地点（既定は東京駅、視界 far）で、近景の建物のタイルが持つ配列を種類ごと（位置・法線・UV・索引・外壁の属性・テクスチャ・b3dm の表）に足し上げ、LRU の数字と GC 後のヒープ・配列の実体と並べて .qa/memory-tiles/<label>.json に書く（args に --start・--view）
+# 止まっている地点（既定は東京駅、視界 far）で、近景の建物のタイルが持つ配列を種類ごと（位置・法線・UV・索引・外壁の属性・テクスチャ・b3dm の表）に足し上げ、LRU の数字と GC 後のヒープ・配列の実体と並べて .qa/memory-tiles/<label>.json に書く（args に --start・--view、表と読み込みの結果を外して測り直す --drop-tables、持ち主を見る --probe-holders）
 measure-tile-memory label="run" base="http://localhost:4174/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/memory-tiles.ts --label {{ label }} --base {{ base }} {{ args }}
 
