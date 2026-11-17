@@ -26,8 +26,9 @@ export type Quality = {
   buildingLoadRadius: number; // metres
   /**
    * The near town's LRU limit: bytes as the LRU counts them (the tiles' geometry and textures as the
-   * renderer sizes them). The page's memory for the same tiles is about 6 times that (array storage
-   * ~4.4×, the JS heap ~1.6×; X0, 2026-11-15; why is not known yet).
+   * renderer sizes them). The page's memory for the same tiles is about 1.2 times that (their
+   * attributes and index), since dropLoadRecords lets go of each tile's b3dm tables and the loader's
+   * result on load; before, it was about 6.4 times (M2, 東京駅 far, 2026-11-17).
    */
   buildingCacheBytes: number;
   /** The far ground (farGround.ts): GSI tile zoom, tiles on each side of the player's, grid cells per tile. */
