@@ -801,6 +801,18 @@ export const LOG_EVENTS = {
     speedKmh: z.number().nullable(),
     limitKmh: z.number().nullable().optional(),
     detail: z.string().optional(),
+    /**
+     * A missed 合図 (signalOmission.ts signalRecord): game ms since each indicator was last on, and
+     * for a turn the distance from the junction's node (m) and game ms since its watch began.
+     */
+    signal: z
+      .object({
+        leftAgoMs: z.number().nullable(),
+        rightAgoMs: z.number().nullable(),
+        fromNodeM: z.number().nullable(),
+        watchedMs: z.number().nullable(),
+      })
+      .optional(),
   }),
   /** Caught: the points count now (`via: "post"` for a notice delivered at the end of the day). */
   violation_cited: info({
