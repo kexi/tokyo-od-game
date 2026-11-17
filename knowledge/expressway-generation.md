@@ -7,6 +7,8 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:check-deck-drive-a1-r4, at: 2026-11-17T08:00:00Z }
+  - { by: process:check-convergence-a1-r4, at: 2026-11-17T09:00:00Z }
   - { by: process:check-deck-drive-a1-r3, at: 2026-11-17T00:00:00Z }
   - { by: process:check-deck-drive-a1-edge-foot, at: 2026-11-15T06:10:00Z }
   - { by: process:seam-probes-a1-edge-foot, at: 2026-11-15T04:20:00Z }
@@ -3328,7 +3330,12 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
 
 ## 走行（`just check-deck-drive`、A1 の版 :5311、main :5312）
 
-**今の版（main f7b9113 の上、2026-11-17、`.qa/a1/drive-r3/`、ログ `.qa/a1/drive-r3.log`）**: 19 経路すべて合格。
+**マージする版（fe21e45、PR #103 のレビュー W1・W2 の直しと main 2f2f8cc の取り込みの後、2026-11-17、`.qa/a1/drive-r4/`、ログ `.qa/a1/drive-r4.log`）**: 19 経路すべて合格。
+
+- 一定速の 17 経路: すべて 1 回目で合格。shiodome-exit-right の |dy| は 0.14 m。
+- 自動運転の 2 経路: `--pre-wait` 0・20・40 秒で 1 回ずつ（計 6 回）、6 回とも到着・違反 0。signalOmission は出ていない。auto-shibakoen-shiodome の待ち 0 と 40 の回に停止が 1 回ずつあるが、判定で理由と組まれ、失敗にならない。
+
+**その前の版（main f7b9113 の上、2026-11-17、`.qa/a1/drive-r3/`、ログ `.qa/a1/drive-r3.log`）**: 19 経路すべて合格。
 
 - 一定速の 17 経路: 1 回ずつ、全部合格。最大の |dy| は shiodome-exit-right の 0.141 m（24402125:0、閾値 0.15 m）。shiodome-exit-right は 3 回目で合格（前の 2 回は交通の車との事故で invalid）。
 - 自動運転の 2 経路: `--pre-wait` 0・20・40 秒で 1 回ずつ（経路ごとに 3 回、計 6 回）。6 回とも到着・違反 0。
@@ -3365,6 +3372,16 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
   - 間に壁なしのリングを足して直した（データテスト「closes 4848762's wall」）。
   - 同じ直しで、shiodome-exit-right も手放しの点を抜けた。
 - shiodome-exit-right の終点は、一般道の足の手前（24402125:1）にした。足の先の交通との事故で、3 回とも invalid になったため。
+
+## 撮影（expressway の表、多視点レビュー）
+
+- 4 周で収束した（`just check-convergence expressway` が `converged`、「2 quiet rounds, nothing open」、2026-11-17）。
+  - ラウンド 1: Warning 4（くさび・桁の下の視点・対象を外した視点・壁の始まりの跳び）。
+  - ラウンド 2: 新しい Critical・Warning 0。ラウンド 1 の Warning は fixed 3・wontfix 1（跳びは台帳の divider-jog で受け、R1-4b で直す）。
+  - ラウンド 3: 新しい Critical・Warning 0。4848762:1 の壁の始まりへ寄る運転席の視点を 2 つ足した（台帳の divider-jog:4848762:1 の弱い所を埋めるため）。足した時点でラウンド 2 は今の表に対して不完全と読まれ、静かな周に数えられなかったので、収束が 1 周延びた。
+  - ラウンド 4（fe21e45、555 コマ、失敗 0）: 新しい Critical・Warning 0。視点は足しても外してもいない。分離壁の計測の出力（`.qa/a1/dividers.mts`）はラウンド 2・3 とバイト一致。
+- 開いている指摘は Info だけ（手放しの蹴上げ、壁の始まりの折れ目、俯瞰の方位、夕・夜の窓の明かり）。
+- tunnels・signs は main（f7b9113）との画素比較で形が同じ（差は歩行者だけ）。W1・W2 と取り込みの後は撮り直していない（床版の形が変わっていないため）。
 
 ## R1 へ回す
 
