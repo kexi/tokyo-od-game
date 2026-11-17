@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { LocalFrame } from "../src/geo/frame";
 import type { MassClass } from "../src/physics/masses";
 import { RoadGraph, type RoadLine, type Segment } from "../src/world/roads";
-import { TrafficAI } from "../src/world/traffic-ai";
+import { followTarget, TrafficAI } from "../src/world/traffic-ai";
 
 vi.mock("../src/game/carModel", () => ({ createLowCar: () => new Group() }));
 beforeAll(() => RAPIER.init());
@@ -213,5 +213,21 @@ describe("the speed a traffic car can stop from (D3 (e))", () => {
       }
     }
     expect(failed).toEqual([]);
+  });
+
+  it("T-e2: leaves a car's gap behind one at its own speed as it was, up to 40 km/h", () => {
+    // The old rule's steady gap at speed v is standstill + v / 0.8; the cap lies above v there for a
+    // car (5 m/s²) up to 45 km/h and for a heavy one (4.05 m/s²) up to 36 km/h.
+    for (const { standstill, a, top } of [
+      { standstill: 7, a: 5, top: 40 },
+      { standstill: 10, a: 4.05, top: 36 },
+    ]) {
+      for (let kmh = 5; kmh <= top; kmh += 5) {
+        const v = kmh / 3.6;
+        expect(followTarget(standstill + v / 0.8, standstill, 60 / 3.6, a)).toBeCloseTo(v, 6);
+      }
+    }
+    // Nothing seen: cruise, as before.
+    expect(followTarget(Infinity, 7, 15, 5)).toBe(15);
   });
 });

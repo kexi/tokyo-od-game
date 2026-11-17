@@ -101,6 +101,23 @@ export type TrafficContactInfo = {
   sincePutBackS: number | null;
 };
 
+/**
+ * The speed a traffic car wants behind what its look found `gap` m ahead (an obstacle or a stop
+ * line; Infinity: nothing): 0 inside `standstill`, (gap − standstill) × 0.8 within 18 m of it, else
+ * `cruise` (as before); and never more than it can stop from at `a` m/s² before standstill.
+ * Why the cap: the 18 m rule alone let the fast cruise tiers and every bus and truck reach a car
+ * standing on a straight 60 km/h road (D3 T-e1: 23 of 30 tiers). It only ever lowers the speed.
+ * Why not the autopilot's followSpeed (0.75 s reaction, 4 m/s²): the gap at 60 km/h would go from
+ * about 28 m to 54 m, and the traffic's density everywhere with it.
+ */
+export function followTarget(gap: number, standstill: number, cruise: number, a: number): number {
+  if (gap < standstill) return 0;
+  const rule = gap < standstill + 18 ? Math.min(cruise, (gap - standstill) * 0.8) : cruise;
+  const isSeen = Number.isFinite(gap);
+  if (!isSeen) return rule;
+  return Math.min(rule, Math.sqrt(2 * a * (gap - standstill)));
+}
+
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
 const MAX_CARS = QUALITY.maxAiCars;
 const SPAWN_RADIUS = 350;
@@ -441,13 +458,7 @@ export class TrafficAI {
     // 7 m centre to centre for cars; longer vehicles keep their own length clear.
     const standstill = 4.75 + c.half;
     const target =
-      c.deadEnd > 0
-        ? 0
-        : gap < standstill
-          ? 0
-          : gap < standstill + 18
-            ? Math.min(cruise, (gap - standstill) * 0.8)
-            : cruise;
+      c.deadEnd > 0 ? 0 : followTarget(gap, standstill, cruise, Math.min(c.decel, COMFORT_DECEL));
     const isOnExpressway = runOf(c.seg) !== null;
     const turnSafe = isOnExpressway ? this.bendSpeed(graph, c) : this.cornerSpeed(graph, c);
     const merge = isOnExpressway ? this.mergeCap(graph, c, player, playerForward, playerSpeed) : Infinity;
