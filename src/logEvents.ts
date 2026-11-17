@@ -1118,6 +1118,42 @@ export const LOG_EVENTS = {
   expressway_extract_pinned: info({ file: z.string(), timestamp: z.string().nullable(), sha256: z.string() }),
   /** --range ship (src/expressway/scope.ts): the main lines and ramps of the shipped scope. */
   expressway_scope_chosen: info({ main: count, ramps: count, belowRuns: count, prunedBelow: z.boolean() }),
+  /**
+   * The shipped scope read off the plan (scripts/expresswayScopeProbe.ts, R1-1a 2): where the
+   * operator's ways end along the shipped main lines (the cuts, the km they take out, those with an
+   * operator's route ref on the far side), the unmarked ways between two operated ones, the ramps
+   * scope v2 adds and drops against v1, the plan's dangling runs, the main lines whose ways fall in
+   * more than one district, the refs the districts' table misses and the C2 runs the yamate box cuts.
+   */
+  /**
+   * The districts of the written runs of a ship build from the plan (scope.ts planDistrictRuns) and
+   * from the chunks (districtRunsOf), compared (R1-1a): how many written, how many differ, the first.
+   */
+  expressway_districts_compared: info({
+    written: count,
+    mismatched: count,
+    mismatchedIds: z.array(z.string()),
+  }),
+  expressway_scope_probed: info({
+    out: z.string(),
+    below: z.string(),
+    runBorders: z.string(),
+    mainRuns: count,
+    rampRuns: count,
+    cuts: count,
+    cutShippedKm: z.number().nonnegative(),
+    operatorRefCuts: count,
+    sandwichedKm: z.number().nonnegative(),
+    addedRamps: count,
+    addedRampKm: z.number().nonnegative(),
+    lostRamps: count,
+    droppedRamps: count,
+    droppedWithFoot: count,
+    danglingV2: count,
+    mixedRuns: count,
+    missingRefs: z.array(z.string()),
+    boxBorderRuns: z.array(z.string()),
+  }),
   /** The vertical objective of a build (P2.7-3, compile.ts Objective); v2's weights null for v1. */
   expressway_objective_chosen: info({
     objective: z.enum(["v1", "v2"]),

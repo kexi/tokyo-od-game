@@ -5,7 +5,7 @@ import { STATION_STRIDE, type XwChunk, type XwClass } from "./format";
  * data tests and the scorecard. Provisional: their order and borders are settled after S6・S7.
  * - central (都心・湾岸): C1, the Y line and the radials 1–4, 10, 11 and the bay line B.
  * - east (東・北): the radials 5, 6, 7, 9, S1, and C2 outside the yamate box.
- * - yamate (山手トンネル): C2 inside the box south-west of 35.745 N, 139.77 E.
+ * - yamate (山手トンネル): C2 inside the box south-west of 35.745 N, 139.77 E (a run across the box: east).
  * - outside: any ref not in the table (the K lines and others reaching out of the wards).
  */
 export const DISTRICTS = ["central", "east", "yamate", "outside"] as const;
@@ -24,14 +24,40 @@ export const DISTRICT_REFS: Readonly<Record<"central" | "east", readonly string[
  */
 export const YAMATE_BOX = { maxLat: 35.745, maxLon: 139.77 } as const;
 
+/** Whether a point is inside YAMATE_BOX. */
+const inYamateBox = (lon: number, lat: number) => lat < YAMATE_BOX.maxLat && lon < YAMATE_BOX.maxLon;
+
+/**
+ * The table's entry of a ref, the first of its values (OSM's `;` list, `E14;14`) that the table has,
+ * null for none. Why the first the table has and not the first value: a way shared by two routes
+ * lists both, and the operator's route need not come first.
+ */
+function tableRefOf(ref: string): string | null {
+  const values = ref.split(";").map((v) => v.trim());
+  return (
+    values.find((v) => v === "C2" || DISTRICT_REFS.central.includes(v) || DISTRICT_REFS.east.includes(v)) ??
+    null
+  );
+}
+
+/**
+ * The district of a ref, without YAMATE_BOX (C2 is east): what splits a chain into runs of one
+ * district (network.ts refBorders). A ref the table does not have is outside (E1, K1, S5 …: the
+ * E refs are other operators' and are cut off by --run-borders cut, R1-1a).
+ */
+export function districtOfRefName(ref: string): "central" | "east" | "outside" {
+  const entry = tableRefOf(ref);
+  if (entry === null) return "outside";
+  return DISTRICT_REFS.central.includes(entry) ? "central" : "east";
+}
+
 /** The district of a main line's ref at a point (C2 split by YAMATE_BOX); null without a ref. */
 export function districtOfRef(ref: string | null, lon: number, lat: number): District | null {
   if (ref === null) return null;
-  const isC2 = ref === "C2";
-  if (isC2) return lat < YAMATE_BOX.maxLat && lon < YAMATE_BOX.maxLon ? "yamate" : "east";
-  if (DISTRICT_REFS.central.includes(ref)) return "central";
-  if (DISTRICT_REFS.east.includes(ref)) return "east";
-  return "outside";
+  const entry = tableRefOf(ref);
+  const isC2 = entry === "C2";
+  if (isC2) return inYamateBox(lon, lat) ? "yamate" : "east";
+  return districtOfRefName(ref);
 }
 
 /**
@@ -43,8 +69,15 @@ export type DistrictRun = {
   cls: XwClass;
   ref: string | null;
   parents: string[];
-  /** [lon, lat] points along it; the middle one places a main line against YAMATE_BOX. */
+  /** [lon, lat] points along it (the nearest main line to a run with no parent is found by them). */
   points: Array<[number, number]>;
+  /**
+   * The point at half its length, which places a main line against YAMATE_BOX; absent, the middle
+   * one of `points`. Why half the length and not the middle point: the chunks' stations and the
+   * plan's samples are spaced differently (closer on curves), and their middle points can lie a run's
+   * curve apart; the point at half the length is the same place to a station's spacing in both.
+   */
+  middle?: [number, number];
 };
 
 /** The ref a run's chunks carry over the longest length (ties by the ref's name), null for none. */
@@ -69,6 +102,26 @@ export function pointsOf(chunks: readonly XwChunk[]): Array<[number, number]> {
 
 const middle = (pts: ReadonlyArray<[number, number]>) => pts[Math.floor(pts.length / 2)];
 
+/** The station nearest half a run's length (its chunks' run distances), null without chunks. */
+export function halfwayOf(chunks: readonly XwChunk[]): [number, number] | null {
+  const sorted = chunks.toSorted((a, b) => a.k - b.k);
+  const isEmpty = sorted.length === 0;
+  if (isEmpty) return null;
+  const first = sorted[0].st;
+  const last = sorted[sorted.length - 1].st;
+  const half = (first[0] + last[last.length - STATION_STRIDE]) / 2;
+  let best: [number, number] | null = null;
+  let bestD = Infinity;
+  for (const c of sorted)
+    for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
+      const d = Math.abs(c.st[i] - half);
+      if (d >= bestD) continue;
+      bestD = d;
+      best = [c.st[i + 1], c.st[i + 2]];
+    }
+  return best;
+}
+
 /**
  * Every run's district. A main line with a ref by its ref (C2 by where its middle point lies); a
  * main line without one, a ramp or a street by the main line its ends hang from, followed through
@@ -81,9 +134,11 @@ export function assignDistricts(runs: readonly DistrictRun[]): Map<string, Distr
   for (const r of runs) {
     const isMain = r.cls === "expressway";
     if (!isMain || r.points.length === 0) continue;
-    const [lon, lat] = middle(r.points);
+    const [lon, lat] = r.middle ?? middle(r.points);
     const d = districtOfRef(r.ref, lon, lat);
-    if (d) out.set(r.id, d);
+    // R1-1a: a C2 run across YAMATE_BOX is east, the district shipped first, wherever its middle is.
+    const isAcrossBox = d === "yamate" && r.points.some(([x, y]) => !inYamateBox(x, y));
+    if (d) out.set(r.id, isAcrossBox ? "east" : d);
   }
   const follow = (id: string, seen: Set<string>): District | null => {
     const known = out.get(id);
@@ -123,7 +178,7 @@ export function boxBorderRuns(runs: readonly DistrictRun[]): string[] {
   return runs
     .filter((r) => r.ref === "C2")
     .filter((r) => {
-      const inside = r.points.map(([lon, lat]) => lat < YAMATE_BOX.maxLat && lon < YAMATE_BOX.maxLon);
+      const inside = r.points.map(([lon, lat]) => inYamateBox(lon, lat));
       return inside.includes(true) && inside.includes(false);
     })
     .map((r) => r.id)
@@ -138,6 +193,15 @@ export function districtRunsOf(
   return runs.map((r) => {
     const chunks = byRun.get(r.id) ?? [];
     const parents = [r.start.parent, r.end.parent].filter((p): p is string => p !== undefined);
-    return { id: r.id, cls: r.cls, ref: mainRefOf(chunks), parents, points: pointsOf(chunks) };
+    const points = pointsOf(chunks);
+    const half = halfwayOf(chunks);
+    return {
+      id: r.id,
+      cls: r.cls,
+      ref: mainRefOf(chunks),
+      parents,
+      points,
+      ...(half ? { middle: half } : {}),
+    };
   });
 }

@@ -1,5 +1,6 @@
 import { DEFAULT_LANES, DEFAULT_SPEED } from "./assumptions";
 import type { RoadClass as AnyRoadClass } from "../world/roadClass";
+import { DISTRICTS, districtOfRefName } from "./districts";
 import { haversine } from "./geo";
 import { hasOperatorWord, routeName } from "../game/roadNames";
 
@@ -281,7 +282,71 @@ export type Run = {
   below: boolean;
   /** Ground-looking ways (no tags) that were taken as part of the viaduct around them. */
   filledWays: number[];
+  /**
+   * `runBorders: "cut"` (R1-1a): what the run's start and end are, where splitRuns cut the chain by
+   * more than its structure (runBorders). `operator`: the operator's ways end there (U10), and the
+   * other operator's run beside it is not shipped: endPlan leaves it open. `seam`: the district of
+   * the ref changes there (1 | K1), and this run takes the run beside it as a seam's parent (one
+   * profile across, C1). `open`: the parent's side of such a seam, free. `none`: a structure's
+   * change or the chain's end, as before. Absent where neither end is a border.
+   */
+  borders?: [RunBorder, RunBorder];
 };
+
+export type RunBorder = "none" | "operator" | "seam" | "open";
+
+/** How splitRuns cuts a chain beyond its structure: `cut` also at its borders (R1-1a). */
+export type SplitOptions = { runBorders?: "keep" | "cut" };
+
+/**
+ * The way indices of a chain where its operator's ways (XwWay.operated) end, as cuts: before its
+ * first operated way and after its last, where a main-line way of another operator goes on (R1-1a,
+ * U10: the other operators' stretches are not shipped). Not between two operated ways: an unmarked
+ * way there is OSM's missing name, not another operator's stretch. Not on a loop (it has no first or
+ * last way), and not where a link way goes on: a ramp has no name to mark it, so its end is no
+ * operator's border.
+ */
+export function operatorCuts(net: Network, chain: Chain): number[] {
+  if (chain.closed) return [];
+  const ways = chain.ways.map((id) => net.ways.get(id)!);
+  const first = ways.findIndex((w) => w.operated);
+  const isUnoperated = first < 0;
+  if (isUnoperated) return [];
+  const last = ways.findLastIndex((w) => w.operated);
+  const out: number[] = [];
+  const isOtherBefore = first > 0 && ways[first - 1].cls === "expressway";
+  if (isOtherBefore) out.push(first);
+  const isOtherAfter = last < ways.length - 1 && ways[last + 1].cls === "expressway";
+  if (isOtherAfter) out.push(last + 1);
+  return out;
+}
+
+/**
+ * The way indices of a chain where its main line's district by ref changes (districts.ts
+ * districtOfRefName: 1 | K1, 5 | S5), between its first and last operated way, each with whether the
+ * side shipped first (the lower district, the seam's parent) is before it. R1-1a: so a run has one
+ * district, and R1 ships the 1 to its end while K1 waits for R4. A way without a ref takes its
+ * neighbour's district (the one before, else after). Only between two main-line ways. C2's yamate
+ * box is no border here (a C2 run across it is east, the district shipped first). Not on a loop.
+ */
+export function refBorders(net: Network, chain: Chain): Array<{ at: number; parentBefore: boolean }> {
+  if (chain.closed) return [];
+  const ways = chain.ways.map((id) => net.ways.get(id)!);
+  const first = ways.findIndex((w) => w.operated);
+  const isUnoperated = first < 0;
+  if (isUnoperated) return [];
+  const last = ways.findLastIndex((w) => w.operated);
+  const rank = ways.map((w) => (w.ref === null ? -1 : DISTRICTS.indexOf(districtOfRefName(w.ref))));
+  for (let i = 1; i < rank.length; i++) if (rank[i] < 0) rank[i] = rank[i - 1];
+  for (let i = rank.length - 2; i >= 0; i--) if (rank[i] < 0) rank[i] = rank[i + 1];
+  const out: Array<{ at: number; parentBefore: boolean }> = [];
+  for (let i = first + 1; i <= last; i++) {
+    const isMains = ways[i - 1].cls === "expressway" && ways[i].cls === "expressway";
+    const isChange = rank[i - 1] >= 0 && rank[i] >= 0 && rank[i - 1] !== rank[i];
+    if (isMains && isChange) out.push({ at: i, parentBefore: rank[i - 1] < rank[i] });
+  }
+  return out;
+}
 
 /** Untagged pieces shorter than this between two viaduct ways are tagging gaps, not ground. */
 const GAP_FILL_M = 80;
@@ -301,7 +366,7 @@ export function wayLength(net: Network, w: XwWay): number {
  * cut, one run for both: the portal between them is inside the run, compile.ts cuts chunks there)
  * and at grade.
  */
-export function splitRuns(net: Network, chain: Chain): Run[] {
+export function splitRuns(net: Network, chain: Chain, options: SplitOptions = {}): Run[] {
   const elevated = chain.ways.map((id) => net.ways.get(id)!.structure === "viaduct");
   const filled = new Set<number>();
   for (let i = 0; i < chain.ways.length; i++) {
@@ -327,13 +392,32 @@ export function splitRuns(net: Network, chain: Chain): Run[] {
     return !elevated[i] && (structure === "tunnel" || structure === "cut");
   };
   const kindAt = (i: number) => (elevated[i] ? "elevated" : isBelow(i) ? "below" : "ground");
+  // Why the borders as more boundaries of this loop, and not a second pass cutting the runs: a gap
+  // filled across a border (GAP_FILL_M) stays filled, so a cut moves no structure.
+  const isCut = options.runBorders === "cut";
+  const operatorAt = new Set(isCut ? operatorCuts(net, chain) : []);
+  // The operator's border wins where both fall on one node (the far side is not shipped at all).
+  const refAt = new Map(
+    (isCut ? refBorders(net, chain) : []).filter((b) => !operatorAt.has(b.at)).map((b) => [b.at, b]),
+  );
+  /** What the run before (`before`) or after the border index i is there. */
+  const borderAt = (i: number, before: boolean): RunBorder => {
+    if (operatorAt.has(i)) return "operator";
+    const ref = refAt.get(i);
+    if (!ref) return "none";
+    const isParent = ref.parentBefore === before;
+    return isParent ? "open" : "seam";
+  };
   const runs: Run[] = [];
   let start = 0;
   for (let i = 1; i <= chain.ways.length; i++) {
-    const isBoundary = i === chain.ways.length || kindAt(i) !== kindAt(start);
+    const isBorder = operatorAt.has(i) || refAt.has(i);
+    const isBoundary = i === chain.ways.length || kindAt(i) !== kindAt(start) || isBorder;
     if (!isBoundary) continue;
     const ways = chain.ways.slice(start, i);
     const lastWay = net.ways.get(ways[ways.length - 1])!;
+    const borders: [RunBorder, RunBorder] = [borderAt(start, false), borderAt(i, true)];
+    const hasBorder = borders[0] !== "none" || borders[1] !== "none";
     runs.push({
       id: String(ways[0]),
       chain: chain.id,
@@ -343,6 +427,7 @@ export function splitRuns(net: Network, chain: Chain): Run[] {
       elevated: elevated[start],
       below: isBelow(start),
       filledWays: ways.filter((w) => filled.has(w)),
+      ...(hasBorder ? { borders } : {}),
     });
     start = i;
   }

@@ -96,6 +96,7 @@ import {
   type Network,
   type RoadClass,
   type Run,
+  type SplitOptions,
   splitRuns,
   wayLength,
 } from "./network";
@@ -440,6 +441,12 @@ export type Plan = {
   /** The decisions' table the structures read (PlanOptions.structureDecisions). */
   structureDecisions?: readonly StructureDecision[];
   /**
+   * `--run-borders cut` (R1-1a): the chains are also cut into runs where the operator's ways end
+   * (network.ts operatorCuts, U10; those ends are open) and where the district of the ref changes
+   * (refBorders, 1 | K1; a seam). Absent: by structure alone, as before.
+   */
+  runBorders?: "cut";
+  /**
    * S6 PR 7c: the stretches a decision made viaducts where their height made embankments (run, run
    * distances), for the scorecard. Absent when none was.
    */
@@ -777,7 +784,13 @@ export type PlanOptions = {
   footDeferrals?: readonly FootDeferral[];
   /** The stretches built as viaducts by a decision (structureDecisions.ts STRUCTURE_DECISIONS by default). */
   structureDecisions?: readonly StructureDecision[];
+  /** `--run-borders` (R1-1a, Plan.runBorders); `keep` (by structure alone) by default. */
+  runBorders?: "keep" | "cut";
 };
+
+/** splitRuns' options for a plan (the chains are cut the same way wherever they are split again). */
+const splitOf = (plan: Pick<Plan, "runBorders">): SplitOptions =>
+  plan.runBorders === "cut" ? { runBorders: "cut" } : {};
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
 export function planNetwork(
@@ -795,6 +808,8 @@ export function planNetwork(
   const ranges: readonly Bbox[] | null =
     range === null ? null : Array.isArray(range) ? range : [range as Bbox];
   const chains = new Map(buildChains(net).map((c) => [c.id, c]));
+  const isBorderCut = options.runBorders === "cut";
+  const split = splitOf(isBorderCut ? { runBorders: "cut" } : {});
   const nodeChains = new Map<number, string[]>();
   for (const c of chains.values()) {
     for (const n of new Set(c.nodes)) nodeChains.set(n, [...(nodeChains.get(n) ?? []), c.id]);
@@ -811,13 +826,13 @@ export function planNetwork(
   const builtChains = new Set(
     feetRoads === null
       ? []
-      : [...chains.values()].filter((c) => splitRuns(net, c).some((r) => r.elevated)).map((c) => c.id),
+      : [...chains.values()].filter((c) => splitRuns(net, c, split).some((r) => r.elevated)).map((c) => c.id),
   );
   const feet: FootRecord[] = [];
   const deferrals = options.footDeferrals ?? FOOT_DEFERRALS;
   const deferredPlans = new Map<string, RunPlan>();
   for (const chain of [...chains.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    const chainRuns = splitRuns(net, chain);
+    const chainRuns = splitRuns(net, chain, split);
     if (!chainRuns.some((r) => r.elevated)) continue;
     const first = net.nodes.get(chain.nodes[0])!;
     const plane = planeAt(first.lon, first.lat);
@@ -931,6 +946,7 @@ export function planNetwork(
     belowDeferred,
     ...(isGroundMode ? { betweenTunnels } : {}),
     ...(options.structureDecisions ? { structureDecisions: options.structureDecisions } : {}),
+    ...(isBorderCut ? { runBorders: "cut" as const } : {}),
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),
@@ -1444,7 +1460,7 @@ export function mainLineHoles(
       (rp) => rp.cls === "expressway" && written.has(rp.run.id),
     );
     if (!isMainWritten) continue;
-    const runs = splitRuns(plan.net, chain);
+    const runs = splitRuns(plan.net, chain, splitOf(plan));
     runs.forEach((run, i) => {
       const km = run.ways.reduce((n, w) => n + wayLength(plan.net, plan.net.ways.get(w)!), 0) / 1000;
       const isLostBelow = run.below && !written.has(run.id);
@@ -2212,6 +2228,24 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const { chain, run } = rp;
   const idx = atStart ? run.from : run.to;
   const isChainEnd = atStart ? idx === 0 : idx === chain.nodes.length - 1;
+  // R1-1a (U10): where the operator's ways end, the other operator's run beside it is not shipped, so
+  // the end is open, as at the universe's edge. Why not a seam to the run beside (as between a run at
+  // grade and a viaduct): that run would join the component and be solved with it, and the operator's
+  // deck would bend to meet a road that is never written. Where the district of the ref changes
+  // (1 | K1) both sides are the operator's and both ship in the end: one profile across, the side
+  // shipped later a seam onto the side shipped first (open), so a district written alone never hangs
+  // from one not written yet.
+  const border = rp.run.borders?.[atStart ? 0 : 1] ?? "none";
+  const isOpenBorder = border === "operator" || border === "open";
+  if (isOpenBorder) return { kind: "open" };
+  const isSeamBorder = border === "seam";
+  if (isSeamBorder) {
+    const parent = (plan.chainRuns.get(chain.id) ?? []).find(
+      (r) => r !== rp && r.run.from <= idx && idx <= r.run.to,
+    );
+    if (!parent) return { kind: "open" };
+    return { kind: "seam", parent: parent.run.id, parentNodeIndex: idx, nodeIndex: idx };
+  }
   if (!isChainEnd) {
     // The chain goes on at ground level, or below it (a tunnel or cut: the profile meets the ground
     // at the portal and keeps going down, so its grade is not the terrain's).
@@ -2263,7 +2297,18 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const isMaster = parent === undefined || (passing.length === 0 && order(chain, parent) < 0);
   if (isMaster) return others.length === 0 ? { kind: "ground", nodeIndex: idx } : { kind: "open" };
   const pIndex = parent.nodes.indexOf(node);
-  const pRun = (plan.chainRuns.get(parent.id) ?? []).find((r) => r.run.from <= pIndex && pIndex <= r.run.to);
+  const holding = (plan.chainRuns.get(parent.id) ?? []).filter(
+    (r) => r.run.from <= pIndex && pIndex <= r.run.to,
+  );
+  // R1-1a: on the node where the operator's ways end (--run-borders cut), the operator's run is the
+  // parent, never the other operator's beside it (not shipped). Only there: any other node shared by
+  // two runs (a change of structure) keeps the first, as before.
+  const isOperatorBorder = (r: RunPlan) =>
+    (r.run.from === pIndex && r.run.borders?.[0] === "operator") ||
+    (r.run.to === pIndex && r.run.borders?.[1] === "operator");
+  const isAtBorder = holding.length > 1 && holding.some(isOperatorBorder);
+  const operatedRun = holding.find((r) => r.run.ways.some((w) => plan.net.ways.get(w)?.operated === true));
+  const pRun = isAtBorder && operatedRun ? operatedRun : holding[0];
   if (!pRun) return { kind: "ground", nodeIndex: idx };
   return { kind: "junction", parent: pRun.run.id, parentNodeIndex: pIndex, nodeIndex: idx };
 }
@@ -6461,7 +6506,7 @@ export function groundFitOf(
  * a tunnel or cut (a portal), a ground end or a junction, 100 m; the chain's open end, none.
  */
 function groundApproaches(plan: Plan, rp: RunPlan): [number, number] {
-  const runs = splitRuns(plan.net, rp.chain);
+  const runs = splitRuns(plan.net, rp.chain, splitOf(plan));
   const k = runs.findIndex((r) => r.id === rp.run.id);
   const ofEnd = (atStart: boolean): number => {
     const next = runs[atStart ? k - 1 : k + 1];
