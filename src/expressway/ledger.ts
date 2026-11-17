@@ -23,7 +23,7 @@ import {
   GROUND_CROSSING_REASON,
   GROUND_STRETCH_REASON,
 } from "./allowlist";
-import { GIRDER_MIN, HEIGHT_STRUCTURES } from "./assumptions";
+import { GIRDER_MIN, HEIGHT_STRUCTURES, PARAPET_WIDTH } from "./assumptions";
 import { isOpenGroundRuled } from "./heightStructures";
 import { type District, DISTRICTS } from "./districts";
 import type { HeightKm } from "./highDeck";
@@ -79,6 +79,22 @@ export const LEDGER_VERSION = 1;
  * scripts/expresswaySiteLanes.ts sitePlaceKeys, A2), from scripts/expresswayLanesProbe.ts --cases
  * (the ledger tool's --site-lanes). The low stretches main
  * built as viaducts with no clearance under them (R1 fixes the lanes); never by rule.
+ * thin-divider (A1): a 分離壁 as high as a 壁高欄 between two same-direction decks that let go of one
+ * surface, thinner than PARAPET_WIDTH (the lanes' edges closer than that, a plate where they touch),
+ * one per chunk, partner and stretch, with the drop it stands over, from the merged decks
+ * (expresswayMerge.ts dividersOf): listed for a review with a view, never by rule.
+ * nose-step (A1): where that wall is lower than a 壁高欄 (the lanes' edges under DIVIDER_MIN_WIDTH
+ * apart and the drop under MERGE_MAX_DZ + PARAPET_HEIGHT), one per chunk, partner and stretch, with
+ * the drop: listed for a review, never by rule.
+ * divider-jog (A1): where a 分離壁 starts or ends and the higher deck's rail face moves across by more
+ * than PARAPET_WIDTH / 2 (the line of the plan's test 11: the wall's centre jumps no more between rings),
+ * one per chunk, partner and end, with the lower deck's move and the drop; the two-level build (the
+ * higher deck over the lower's lanes) against the 分離壁 between them. Listed for a review, never by
+ * rule; R1-4b's taper mends it.
+ * bare-drop (A1): a drop with no wall at its edge that main has too (scripts/expresswaySeams.ts bare:
+ * a pair let go, its lanes apart, its slabs overlapping by a wall's width, and a level ray from the
+ * higher lanes meets nothing), one per chunk, partner and stretch. Listed for R1 (R1-4b, or where three
+ * or more decks meet), never by rule; the default data has none.
  */
 export const CASE_KINDS = [
   "nose",
@@ -105,6 +121,10 @@ export const CASE_KINDS = [
   "foot-side-join",
   "street-lane-over-cut",
   "lane-in-site",
+  "thin-divider",
+  "nose-step",
+  "divider-jog",
+  "bare-drop",
 ] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
@@ -159,6 +179,11 @@ export const MEASURES = [
   "coverM",
   "offGroundM",
   "legM",
+  "minWidthM",
+  "minGapM",
+  "jogM",
+  "lowerJogM",
+  "dzM",
 ] as const;
 export type Measured = Partial<Record<(typeof MEASURES)[number], number>>;
 
@@ -554,6 +579,147 @@ export function seamCases(
   return out;
 }
 
+/** A 分離壁 a chunk builds against a partner, with its thin stretches (scripts/expresswaySeams.ts). */
+export type DividerLike = {
+  chunk: string;
+  with: string;
+  thin: ReadonlyArray<{ s0: number; s1: number; minWidthM: number; maxDzM: number }>;
+};
+/** A nose step: a wall lower than a 壁高欄 filling the gap between the lanes' edges (scripts/expresswaySeams.ts). */
+export type NoseStepLike = {
+  chunk: string;
+  with: string;
+  s0: number;
+  s1: number;
+  maxDzM: number;
+  minGapM: number;
+};
+
+/**
+ * The 分離壁's cases (A1): thin-divider, one per chunk, partner and stretch thinner than PARAPET_WIDTH;
+ * nose-step, one per chunk, partner and stretch where the wall is lower than a 壁高欄. Numbered along the chunk.
+ */
+export function dividerCases(dividers: readonly DividerLike[], steps: readonly NoseStepLike[]): FoundCase[] {
+  const out: FoundCase[] = [];
+  const byPair = <T extends { chunk: string; with: string }>(a: T, b: T) =>
+    a.chunk !== b.chunk ? (a.chunk < b.chunk ? -1 : 1) : a.with < b.with ? -1 : a.with > b.with ? 1 : 0;
+  for (const d of dividers.toSorted(byPair))
+    d.thin
+      .toSorted((a, b) => a.s0 - b.s0)
+      .forEach((t, i) => {
+        out.push({
+          key: `thin-divider:${d.chunk}|${d.with}|${i}`,
+          kind: "thin-divider",
+          run: runOfChunk(d.chunk),
+          with: d.with,
+          chunk: d.chunk,
+          measured: {
+            maxDzM: round(t.maxDzM, 3),
+            s0: round(t.s0, 1),
+            s1: round(t.s1, 1),
+            lengthM: round(t.s1 - t.s0, 1),
+            minWidthM: round(t.minWidthM, 3),
+          },
+        });
+      });
+  const numbered = new Map<string, number>();
+  for (const st of steps.toSorted((a, b) => byPair(a, b) || a.s0 - b.s0)) {
+    const pair = `${st.chunk}|${st.with}`;
+    const n = numbered.get(pair) ?? 0;
+    numbered.set(pair, n + 1);
+    out.push({
+      key: `nose-step:${pair}|${n}`,
+      kind: "nose-step",
+      run: runOfChunk(st.chunk),
+      with: st.with,
+      chunk: st.chunk,
+      measured: {
+        maxDzM: round(st.maxDzM, 3),
+        s0: round(st.s0, 1),
+        s1: round(st.s1, 1),
+        lengthM: round(st.s1 - st.s0, 1),
+        minGapM: round(st.minGapM, 3),
+      },
+    });
+  }
+  return out;
+}
+
+/** A 分離壁's start or end on one deck (scripts/expresswaySeams.ts jogs). */
+export type DividerJogLike = {
+  chunk: string;
+  with: string;
+  end: "start" | "end";
+  s: number;
+  jogM: number;
+  isUpper: boolean;
+  dzM: number;
+};
+
+/**
+ * The divider-jog cases: each start or end where the higher deck's rail face moves across by more
+ * than PARAPET_WIDTH / 2, with the lower deck's move at the same end of the same pair (matched in
+ * order along the pair) where it has one.
+ */
+export function dividerJogCases(jogs: readonly DividerJogLike[]): FoundCase[] {
+  const out: FoundCase[] = [];
+  const runOf = (chunk: string) => runOfChunk(chunk);
+  const sorted = jogs.toSorted((a, b) => (a.chunk === b.chunk ? a.s - b.s : a.chunk < b.chunk ? -1 : 1));
+  const numbered = new Map<string, number>();
+  const uppers = sorted.filter((j) => j.isUpper);
+  for (const j of uppers) {
+    const isJog = j.jogM > PARAPET_WIDTH.value / 2 + 1e-9;
+    if (!isJog) continue;
+    const run = runOf(j.chunk);
+    const order = uppers
+      .filter((u) => runOf(u.chunk) === run && u.with === j.with && u.end === j.end)
+      .indexOf(j);
+    const lowers = sorted.filter(
+      (l) => !l.isUpper && runOf(l.chunk) === j.with && l.with === run && l.end === j.end,
+    );
+    const lower = lowers[order];
+    const prefix = `divider-jog:${j.chunk}|${j.with}|${j.end}`;
+    const n = numbered.get(prefix) ?? 0;
+    numbered.set(prefix, n + 1);
+    const measured: Measured = { s: round(j.s, 1), jogM: round(j.jogM, 3), dzM: round(j.dzM, 3) };
+    if (lower) measured.lowerJogM = round(lower.jogM, 3);
+    out.push({
+      key: n === 0 ? prefix : `${prefix}|${n}`,
+      kind: "divider-jog",
+      run,
+      with: j.with,
+      chunk: j.chunk,
+      measured,
+    });
+  }
+  return out;
+}
+
+/** A drop with no wall (scripts/expresswaySeams.ts bare). */
+export type BareDropLike = { chunk: string; with: string; s: number; dzM: number; gapM: number };
+
+/** The bare-drop cases: one per chunk, partner and stretch of points (STRETCH_GAP_M apart at most). */
+export function bareDropCases(points: readonly BareDropLike[]): FoundCase[] {
+  return stretches(points).map((st, i, all) => {
+    const pair = `${st[0].chunk}|${st[0].with}`;
+    const n = all.slice(0, i).filter((x) => `${x[0].chunk}|${x[0].with}` === pair).length;
+    return {
+      key: `bare-drop:${pair}|${n}`,
+      kind: "bare-drop" as const,
+      run: runOfChunk(st[0].chunk),
+      with: st[0].with,
+      chunk: st[0].chunk,
+      measured: {
+        maxDzM: round(Math.max(...st.map((p) => p.dzM)), 3),
+        s0: round(st[0].s, 1),
+        s1: round(st[st.length - 1].s, 1),
+        lengthM: round(st[st.length - 1].s - st[0].s, 1),
+        minGapM: round(Math.min(...st.map((p) => p.gapM)), 3),
+      },
+    };
+  });
+}
+
 /** A run at grade's inside passes by rule with its median off the target line by this at most (S6 PR 7a, 4.3). */
 export const GROUND_INNER_MEDIAN_M = 0.5;
 
@@ -676,7 +842,10 @@ export function withinCap(measured: Measured, cap: Measured, kind: CaseKind): bo
       k === "alongStepM" ||
       k === "innerP95M" ||
       k === "approachMaxM" ||
-      k === "shortM";
+      k === "shortM" ||
+      k === "jogM" ||
+      k === "lowerJogM" ||
+      k === "dzM";
     if (isMiss && m > c + dzM + 1e-9) return false;
     if (k === "s0" && m < c - edgeM) return false;
     if (k === "s1" && m > c + edgeM) return false;
@@ -692,6 +861,8 @@ export function withinCap(measured: Measured, cap: Measured, kind: CaseKind): bo
     if (k === "offGroundM" && m > c + dzM + 1e-9) return false;
     if (k === "angleDeg" && m > c + FOOT_ANGLE_MARGIN_DEG + 1e-9) return false;
     if (k === "legM" && m > c + edgeM) return false;
+    // A 分離壁's width is read as a floor: thinner than the review saw is outside.
+    if (k === "minWidthM" && m < c - dzM - 1e-9) return false;
   }
   return true;
 }
@@ -725,6 +896,10 @@ export const CAP_FIELDS: Readonly<Record<CaseKind, ReadonlyArray<keyof Measured>
   "foot-side-join": ["angleDeg", "legM"],
   "street-lane-over-cut": ["lengthM"],
   "lane-in-site": ["lengthM", "s0", "s1"],
+  "thin-divider": ["lengthM", "minWidthM", "maxDzM"],
+  "nose-step": ["lengthM", "maxDzM"],
+  "divider-jog": ["jogM", "lowerJogM", "dzM"],
+  "bare-drop": ["lengthM", "maxDzM"],
 };
 
 /** Whether a decided case accepts what is measured now (accepted or wontfix, within its cap). */

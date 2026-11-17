@@ -12,6 +12,9 @@ import {
   blocksOf,
   caseContextOf,
   diagnosticCases,
+  bareDropCases,
+  dividerCases,
+  dividerJogCases,
   type FoundCase,
   ruleCounts,
   seamCases,
@@ -262,6 +265,11 @@ export async function countCases(files: XwFiles): Promise<Counted> {
     fullDz: MERGE_FULL_DZ,
     maxDz: MERGE_MAX_DZ,
   });
+  fromDecks.push(
+    ...dividerCases(probed.dividers, probed.steps),
+    ...dividerJogCases(probed.jogs),
+    ...bareDropCases(probed.bare),
+  );
   for (const w of probed.worlds) w.free();
   const districts = assignDistricts(districtRunsOf(files.runs, files.byRun));
   const found = [
