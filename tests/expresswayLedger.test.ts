@@ -11,6 +11,9 @@ import {
   PROBE_KINDS,
   budgetOf,
   CAP_FIELDS,
+  bareDropCases,
+  dividerCases,
+  dividerJogCases,
   reallowRecord,
   caseContextOf,
   caseOfDiagnostic,
@@ -425,6 +428,107 @@ describe("the kinds of case", () => {
     expect(withinCap({ angleDeg: 62.5, legM: 12, streetM: 9 }, cap, "foot-side-join")).toBe(false);
     expect(withinCap({ angleDeg: 60, legM: 17.5, streetM: 9 }, cap, "foot-side-join")).toBe(false);
     expect(AUTO_KINDS).not.toContain("foot-side-join");
+  });
+
+  it("never lets a thin-divider or a nose-step pass by rule (A1): each is new until a review decides it", () => {
+    for (const kind of ["thin-divider", "nose-step"] as const) {
+      expect(AUTO_KINDS).not.toContain(kind);
+      expect(isAutoAccepted({ kind, measured: { lengthM: 0.1, minWidthM: 0.49, maxDzM: 0.16 } })).toBe(false);
+      const next = update(null, [found(`${kind}:a:0|b|0`, { lengthM: 2 }, "h1", kind)]);
+      expect(next.cases[0].status).toBe("new");
+    }
+  });
+
+  it("keeps a thin-divider within its cap while it grows no more than 5 m and thins no more than 5 cm, a nose-step while it grows no more than 5 m and 5 cm higher", () => {
+    const thin = { lengthM: 32.1, minWidthM: 0.25 };
+    expect(withinCap({ s0: 4048.7, s1: 4080.8, lengthM: 32.1, minWidthM: 0.25 }, thin, "thin-divider")).toBe(
+      true,
+    );
+    expect(withinCap({ lengthM: 36, minWidthM: 0.21 }, thin, "thin-divider")).toBe(true);
+    expect(withinCap({ lengthM: 32.1, minWidthM: 0.19 }, thin, "thin-divider")).toBe(false);
+    expect(withinCap({ lengthM: 38, minWidthM: 0.25 }, thin, "thin-divider")).toBe(false);
+    const step = { lengthM: 8, maxDzM: 0.16 };
+    expect(withinCap({ lengthM: 8, maxDzM: 0.2, minGapM: 0.03 }, step, "nose-step")).toBe(true);
+    expect(withinCap({ lengthM: 8, maxDzM: 0.22, minGapM: 0.03 }, step, "nose-step")).toBe(false);
+    expect(withinCap({ lengthM: 14, maxDzM: 0.16, minGapM: 0.03 }, step, "nose-step")).toBe(false);
+  });
+
+  it("counts a thin-divider per thin stretch and a nose-step per step, numbered along the chunk and its partner (A1)", () => {
+    const cases = dividerCases(
+      [
+        {
+          chunk: "a:1",
+          with: "b",
+          thin: [
+            { s0: 30, s1: 40, minWidthM: 0.3, maxDzM: 2.5 },
+            { s0: 1, s1: 2.04, minWidthM: 0.0004, maxDzM: 5.6789 },
+          ],
+        },
+      ],
+      [{ chunk: "a:1", with: "b", s0: 50, s1: 58, maxDzM: 0.1598, minGapM: 0.0293 }],
+    );
+    expect(cases.map((c) => [c.key, c.kind, c.run, c.with, c.measured])).toEqual([
+      [
+        "thin-divider:a:1|b|0",
+        "thin-divider",
+        "a",
+        "b",
+        { maxDzM: 5.679, s0: 1, s1: 2, lengthM: 1, minWidthM: 0 },
+      ],
+      [
+        "thin-divider:a:1|b|1",
+        "thin-divider",
+        "a",
+        "b",
+        { maxDzM: 2.5, s0: 30, s1: 40, lengthM: 10, minWidthM: 0.3 },
+      ],
+      [
+        "nose-step:a:1|b|0",
+        "nose-step",
+        "a",
+        "b",
+        { maxDzM: 0.16, s0: 50, s1: 58, lengthM: 8, minGapM: 0.029 },
+      ],
+    ]);
+  });
+
+  it("counts a divider-jog where the higher deck's rail moves more than PARAPET / 2, with the lower deck's move at the same end, and a bare-drop per stretch (A1)", () => {
+    const jog = (
+      chunk: string,
+      w: string,
+      end: "start" | "end",
+      s: number,
+      jogM: number,
+      isUpper: boolean,
+    ) => ({
+      chunk,
+      with: w,
+      end,
+      s,
+      jogM,
+      isUpper,
+      dzM: isUpper ? 3.52 : 0,
+    });
+    const cases = dividerJogCases([
+      jog("a:1", "b", "start", 40, 0.75, true),
+      jog("a:1", "b", "end", 80, 0.2, true),
+      jog("b:3", "a", "start", 140, 1.25, false),
+      jog("b:3", "a", "end", 180, 1.5, false),
+    ]);
+    expect(cases.map((c) => [c.key, c.kind, c.measured])).toEqual([
+      ["divider-jog:a:1|b|start", "divider-jog", { s: 40, jogM: 0.75, lowerJogM: 1.25, dzM: 3.52 }],
+    ]);
+    expect(AUTO_KINDS).not.toContain("divider-jog");
+    expect(AUTO_KINDS).not.toContain("bare-drop");
+    const drops = bareDropCases([
+      { chunk: "c:2", with: "d", s: 10, dzM: 6.9, gapM: 0.03 },
+      { chunk: "c:2", with: "d", s: 10.5, dzM: 6.8, gapM: 0.05 },
+      { chunk: "c:2", with: "d", s: 30, dzM: 1.2, gapM: 0.9 },
+    ]);
+    expect(drops.map((c) => [c.key, c.measured])).toEqual([
+      ["bare-drop:c:2|d|0", { maxDzM: 6.9, s0: 10, s1: 10.5, lengthM: 0.5, minGapM: 0.03 }],
+      ["bare-drop:c:2|d|1", { maxDzM: 1.2, s0: 30, s1: 30, lengthM: 0, minGapM: 0.9 }],
+    ]);
   });
 
   it("tells a touchdown (an untied pair) before the scorecard's classes", () => {
