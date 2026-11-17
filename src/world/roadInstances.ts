@@ -1,4 +1,5 @@
 import { InstancedMesh, type BufferGeometry, type Material, type Matrix4 } from "three";
+import { retireObject } from "../render/retire";
 
 /** Retain instance identities: WebGPU's node builder cache includes an InstancedMesh's UUID. */
 export class RoadInstances {
@@ -31,8 +32,7 @@ export class RoadInstances {
     );
     const mustGrow = entry && entry.mesh.instanceMatrix.count < count;
     if (entry && mustGrow) {
-      entry.mesh.removeFromParent();
-      entry.mesh.dispose();
+      retireObject(entry.mesh);
       this.entries.splice(this.entries.indexOf(entry), 1);
       entry = undefined;
     }
@@ -59,8 +59,7 @@ export class RoadInstances {
   end(): void {
     for (const entry of this.entries) {
       if (entry.used) continue;
-      entry.mesh.removeFromParent();
-      entry.mesh.dispose();
+      retireObject(entry.mesh);
     }
     this.entries = this.entries.filter((e) => e.used);
   }

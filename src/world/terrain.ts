@@ -33,6 +33,7 @@ import type { CutTest } from "./groundCuts";
 import { FarGround, type TileRect } from "./farGround";
 import { TerrainHeight } from "./terrainHeight";
 import { colliderTriangles, type CutGridTest, type GridTest } from "./terrainCut";
+import { retireObject } from "../render/retire";
 
 type Chunk = {
   x: number;
@@ -487,7 +488,7 @@ export class Terrain {
     this.lastHeight = null;
     this.removeCollider(chunk);
     if (chunk.water.value !== NO_WATER) chunk.water.value.dispose();
-    this.scene.remove(chunk.mesh);
+    retireObject(chunk.mesh);
     chunk.mesh.geometry.dispose();
     chunk.mesh.material.map?.dispose();
     chunk.mesh.material.dispose();

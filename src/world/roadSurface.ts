@@ -51,6 +51,7 @@ import { StreetMaterial, type StreetBase } from "./streetLights";
 import type { Approach } from "./trafficControl";
 import { usesGroundSurface } from "./roadClass";
 import { STREET_LIFT_M } from "./terrainSurface";
+import { retireObject } from "../render/retire";
 
 const STEP = 2.5; // metres between cross-sections; dense enough to hug the terrain mesh
 // Wide carriageways are also split across their width: a single quad spanning 30 m sits
@@ -435,7 +436,7 @@ export class RoadSurface {
     for (const [mat, mesh] of this.meshes) {
       const obsolete = !used.has(mat);
       if (!obsolete) continue;
-      this.scene.remove(mesh);
+      retireObject(mesh);
       mesh.geometry.dispose();
       this.meshes.delete(mat);
     }
@@ -443,7 +444,7 @@ export class RoadSurface {
 
   clear(): void {
     for (const m of this.meshes.values()) {
-      this.scene.remove(m);
+      retireObject(m);
       m.geometry.dispose();
     }
     this.meshes.clear();
