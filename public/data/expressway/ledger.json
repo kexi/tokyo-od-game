@@ -67,6 +67,15 @@
     },
     "lane-in-site": {
      "accepted": 9
+    },
+    "thin-divider": {
+     "accepted": 3
+    },
+    "nose-step": {
+     "accepted": 2
+    },
+    "divider-jog": {
+     "accepted": 3
     }
    }
   },
@@ -105,7 +114,10 @@
     "ground-stretch": 9,
     "low-clearance": 8,
     "street-lane-over-cut": 1,
-    "lane-in-site": 9
+    "lane-in-site": 9,
+    "thin-divider": 3,
+    "nose-step": 2,
+    "divider-jog": 3
    }
   },
   "open": 0,
@@ -291,6 +303,84 @@
    "by": "review",
    "reason": "浜崎橋 JCT で 1 号羽田線への分岐（4848762）のノーズが内回りと同一面、外回りの 1 段上（OSM layer）を同時に求められ、内回りと外回りの移り変わりと重なる。三者の OSM の線が 1.3–8 m に集まり、全部は満たせない",
    "qa": null,
+   "previous": null
+  },
+  {
+   "key": "divider-jog:24402125:0|24402611|end",
+   "kind": "divider-jog",
+   "run": "24402125",
+   "with": "24402611",
+   "chunk": "24402125:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 186.3,
+    "jogM": 0.5,
+    "lowerJogM": 1.375,
+    "dzM": 5.448
+   },
+   "cap": {
+    "jogM": 0.5,
+    "lowerJogM": 1.375,
+    "dzM": 5.448
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留の分離壁の終わり（ランプ 24402125:0 の s 186.3、内回り 24402611:33 の s 5043.1、落差 5.45 m）。床版の重なりが壁 1 枚ぶんを切る所で分離壁の作りが終わり、出口の壁は自分の縁へ 0.5 m、内回りの側は路面の端が 1.375 m 外へ戻る。撮影ラウンド 2 の a1-shiodome-wall-end（昼は原寸、夕・夜・雨の夜は一覧）と a1-shiodome-lane0-5030 で、高い壁の端面が閉じていて、空や地面が抜けず、進行方向と逆を向く面で、車線の外にあるのを見た。その先は低い壁高欄が続く。上の床版の側の端面はデータテスト（進行方向のレイ）でも当たる。R1-4b（幅の変わる所のすりつけ）で直す。lowerJogM は、親が子に問う位置を床版の縁の点にした直し（a1-answer6 2.1）で 1.358 → 1.375 m になった値。レビュー Fable、2026-11-15",
+   "qa": "expressway/a1-shiodome-wall-end",
+   "previous": null
+  },
+  {
+   "key": "divider-jog:45019020:40|45554540|start",
+   "kind": "divider-jog",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:40",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 4044.2,
+    "jogM": 0.75,
+    "lowerJogM": 1.25,
+    "dzM": 3.522
+   },
+   "cap": {
+    "jogM": 0.75,
+    "lowerJogM": 1.25,
+    "dzM": 3.522
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "45019020 が 45554540 の上の二層から横へ離れて合流する所で、same の区間の頭（s 4044.2、落差 3.52 m）から分離壁の作りになる。手前は上の床版が下の車線の上へ張り出す作り（main と同じ、A1 の外）で、その境で壁が路肩の幅ぶん直角に動く（上 0.75 m、下の床版 45554540:30 の s 7252.5 で 1.25 m）。進行方向に向いた端面が、車線の縁（路肩 0）に立つ形になる。撮影ラウンド 2 の a1-thin-45019020-start-upper・a1-thin-45019020-start-lower（昼は原寸、夕・夜・雨の夜は一覧）と a1-thin-45019020-overhead で、端面が閉じていて、跳んだ先の壁がどちらの外側線よりも外にあるのを見た。main ではここで下の車線 0 の車が止まっていた（|dy| 0.308 m）。A1 では上下とも走行が合格。設計の判断（a1-answer3.md）: A1 では擦り付けず、始まる位置も変えない。R1-4b（幅の変わる所のすりつけ）で直す。レビュー Fable、2026-11-15",
+   "qa": "expressway/a1-thin-45019020-start-upper",
+   "previous": null
+  },
+  {
+   "key": "divider-jog:4848762:1|45021972|start",
+   "kind": "divider-jog",
+   "run": "4848762",
+   "with": "45021972",
+   "chunk": "4848762:1",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "s": 482.4,
+    "jogM": 0.75,
+    "lowerJogM": 1.183,
+    "dzM": 2.252
+   },
+   "cap": {
+    "jogM": 0.75,
+    "lowerJogM": 1.183,
+    "dzM": 2.252
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "4848762 が 45021972 の上から横へ離れて合流する所の、分離壁の始まり（4848762:1 の s 482.4、落差 2.25 m）。45019020:40|45554540 の始まりと同じ作りの境で、壁が上 0.75 m、下の床版（45021972:3 の s 587.4）で 1.183 m 直角に動く。撮影ラウンド 2 の a1-thin-4848762-start（真上、昼は原寸、夕・夜・雨の夜は一覧）で、壁の線の段と、跳んだ先の壁が両方の外側線の外にあるのを見た。撮影ラウンド 3 で足した a1-thin-4848762-start-upper（上の右の車線）と a1-thin-4848762-start-lower（下の車線 0）で、端面が閉じていて、跳んだ先の壁が外側線の外にあり、隙間・針状の面が無いのを見た（昼は原寸、夕・夜・雨の夜は明るさを上げて）。データテスト（上の床版の跳びの帯の内を進行方向に打つレイ）も合格。走行は 4848762 の右の車線・45021972 の車線 0 とも合格。R1-4b（幅の変わる所のすりつけ）で直す。レビュー Fable、2026-11-15",
+   "qa": "expressway/a1-thin-4848762-start-upper",
    "previous": null
   },
   {
@@ -1614,18 +1704,18 @@
    },
    "status": "accepted",
    "by": "review",
-   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）。parallel-ramp:24402125|24402611 と同じ判断。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
-   "qa": "expressway/shiodome-lane0-overhead",
+   "reason": "A1（段違いの分離壁）の後の形を、撮影ラウンド 1 の視点で見た（レビュー Fable、2026-11-15）。汐留出口 24402125 は内回り 24402611 の左を中心間隔 6.0〜8.4 m で並走し、車線域が重なったまま高さが離れる（OSM の線のとおりで、平面は MAX_LATERAL_SHIFT を超えて動かせない）。手放しの点（ランプ s 93.8、内回り s 4951.1、車線の縁の間隔 0.268 m）から先は、上になる出口の床版が車線の縁の間に分離壁を 1 本だけ立て（幅 0.268〜0.5 m、外面は内回りの面の下まで、落差は最大 5.65 m）、内回りの路面はその壁の下まで延びる。parallel-ramp:24402125|24402611 と同じ判断。出口の右の車線の運転席 2 か所（a1-shiodome-exit-right-100・-150）で、右の壁の内面が車線の縁の外にあり、右の外側線が残るのを見た。真上（a1-shiodome-top）と斜め（a1-shiodome-oblique）で壁は 1 本、桁の下（a1-shiodome-under）で壁の裏が内回りの床版まで下りていて空が抜けないのを見た。走行は shiodome-approach-out-lane0（車線 0）と shiodome-exit-right（出口の右の車線、|dy| 0.141 m）が合格（main ではどちらも停止）。残る件は撮影の表で追う: 高い壁の面の暗いくさび（Warning tall-wall-jagged-wedge、見た目）、手放しの点の蹴上げ 約 0.15 m（Info let-go-transverse-riser、main と同じ作りで R1-4b）、壁の終わりの段（Info）。本線は 45068170 の坑口で行き止まりのままで、取付けの上を出口が通る所は S7-2。",
+   "qa": "expressway/a1-shiodome-exit-right-150",
    "previous": {
     "status": "accepted",
     "by": "review",
     "cap": {
-     "maxDzM": 6.81,
-     "s0": 82.6,
+     "maxDzM": 5.711,
+     "s0": 94.1,
      "s1": 192.6
     },
-    "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
-    "qa": null
+    "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）。parallel-ramp:24402125|24402611 と同じ判断。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
+    "qa": "expressway/shiodome-lane0-overhead"
    }
   },
   {
@@ -1816,18 +1906,18 @@
    },
    "status": "accepted",
    "by": "review",
-   "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）。parallel-ramp:24402125|24402611 と同じ判断。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
-   "qa": "expressway/shiodome-lane0-overhead",
+   "reason": "A1（段違いの分離壁）の後の形を、撮影ラウンド 1 の視点で見た（レビュー Fable、2026-11-15）。汐留出口 24402125 は内回り 24402611 の左を中心間隔 6.0〜8.4 m で並走し、車線域が重なったまま高さが離れる（OSM の線のとおりで、平面は MAX_LATERAL_SHIFT を超えて動かせない）。手放しの点（ランプ s 93.8、内回り s 4951.1、車線の縁の間隔 0.268 m）から先は、上になる出口の床版が車線の縁の間に分離壁を 1 本だけ立て（幅 0.268〜0.5 m、外面は内回りの面の下まで、落差は最大 5.65 m）、内回りの路面はその壁の下まで延びる。parallel-ramp:24402125|24402611 と同じ判断。内回りの車線 0 の運転席 3 か所（a1-shiodome-lane0-4955・-4990・-5030）と shiodome-lane0-driver で、壁の面が左の外側線より外にあり、壁の下端と路面の間に隙間が無いのを見た。main の同じ視点では壁高欄が車線 0 の内に立ち、出口の床版が車線の上に出ていた。真上（a1-shiodome-top）と斜め（a1-shiodome-oblique）で壁は 1 本、桁の下（a1-shiodome-under）で壁の裏が内回りの床版まで下りていて空が抜けないのを見た。走行は shiodome-approach-out-lane0（車線 0）と shiodome-exit-right（出口の右の車線、|dy| 0.141 m）が合格（main ではどちらも停止）。残る件は撮影の表で追う: 高い壁の面の暗いくさび（Warning tall-wall-jagged-wedge、見た目）、手放しの点の蹴上げ 約 0.15 m（Info let-go-transverse-riser、main と同じ作りで R1-4b）、壁の終わりの段（Info）。本線は 45068170 の坑口で行き止まりのままで、取付けの上を出口が通る所は S7-2。",
+   "qa": "expressway/a1-shiodome-lane0-4990",
    "previous": {
     "status": "accepted",
     "by": "review",
     "cap": {
-     "maxDzM": 6.75,
-     "s0": 4939.7,
-     "s1": 5042.7
+     "maxDzM": 5.417,
+     "s0": 4951.1,
+     "s1": 5042.6
     },
-    "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）",
-    "qa": null
+    "reason": "汐留の入口・出口が、掘割の坑口へ下る本線と車線域を重ねて並走する所（allowlist.ts SHIODOME_REASON）。parallel-ramp:24402125|24402611 と同じ判断。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
+    "qa": "expressway/shiodome-lane0-overhead"
    }
   },
   {
@@ -2796,6 +2886,58 @@
    }
   },
   {
+   "key": "nose-step:45019020:40|45554540|0",
+   "kind": "nose-step",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:40",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.223,
+    "s0": 4080.8,
+    "s1": 4082.8,
+    "lengthM": 2,
+    "minGapM": 0.233
+   },
+   "cap": {
+    "maxDzM": 0.223,
+    "lengthM": 2
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "45019020 と 45554540 の合流の先端の 2.0 m（s 4080.8〜4082.8）。車線の縁の間隔が 0.25 m を切り（最小 0.233 m）、落差は 0.223 m 以下。細い分離壁が、車線の縁の間を埋める低い壁（高さは落差 − 0.15 m で最大 7 cm）になって、一体の区間へ続く。撮影ラウンド 2 の a1-step-45019020-top・-oblique・-upper-driver・-lower-driver（昼は原寸、夕・夜・雨の夜は一覧）で、細い壁の端面が閉じ、その先に穴・針状の面・宙に浮いた面が無く、どちらの車線にも面が入っていないのを見た。走行は上下とも合格。根はデータの高さの差で、R1-4b（先端で同一面を保つ）で消す。レビュー Fable、2026-11-15",
+   "qa": "expressway/a1-step-45019020-top",
+   "previous": null
+  },
+  {
+   "key": "nose-step:45021972:3|4848762|0",
+   "kind": "nose-step",
+   "run": "45021972",
+   "with": "4848762",
+   "chunk": "45021972:3",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.16,
+    "s0": 642.3,
+    "s1": 650.3,
+    "lengthM": 8,
+    "minGapM": 0.029
+   },
+   "cap": {
+    "maxDzM": 0.16,
+    "lengthM": 8
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "45021972 と 4848762 が合流した後、前後が一体の区間の間の 8.0 m の窓（s 642.3〜650.3）。データの高さの差が 0.16 m で、MERGE_MAX_DZ 0.15 m を 1 cm 超える。車線の縁の間隔は最小 0.029 m。車線の縁の間に高さ 1 cm の低い壁が付き、路面はそれぞれの車線の縁で切れる。撮影ラウンド 2 の a1-step-45021972-top・-oblique・-upper-driver・-lower-driver（昼は原寸、夕・夜・雨の夜は一覧）で、実線の外側線 1 本と低い段になり、穴・針状の面が無いのを見た。main ではここに壁高欄が単独で 8 m、車線の内に立ち、45021972 の車線 0 の車が止まっていた（|dy| 0.20 m）。A1 では段の両側の車線の走行が合格（haneda-down-nose-step 0.074 m、thin-divider-4848762-upper 0.117 m）。**残ること**: 窓の両端に幅 約 1.6 m・高さ 約 0.16 m の横向きの蹴上げがあり（撮影の Info let-go-transverse-riser）、段をまたぐ車線変更（0.16 m）は走行で確かめていない。根はデータの高さの差で、R1-4b（先端で同一面を保つ）で消す。区間は、親が子に問う位置を床版の縁の点にした直し（a1-answer6 2.1）で 5 cm 動いた（642.2〜650.2 → 642.3〜650.3、長さと落差は同じ）。レビュー Fable、2026-11-15",
+   "qa": "expressway/a1-step-45021972-top",
+   "previous": null
+  },
+  {
    "key": "nose:24402611|45554540",
    "kind": "nose",
    "run": "24402611",
@@ -3034,17 +3176,17 @@
    },
    "status": "accepted",
    "by": "review",
-   "reason": "汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
-   "qa": "expressway/shiodome-lane0-driver",
+   "reason": "A1（段違いの分離壁）の後の形を、撮影ラウンド 1 の視点で見た（レビュー Fable、2026-11-15）。汐留出口 24402125 は内回り 24402611 の左を中心間隔 6.0〜8.4 m で並走し、車線域が重なったまま高さが離れる（OSM の線のとおりで、平面は MAX_LATERAL_SHIFT を超えて動かせない）。手放しの点（ランプ s 93.8、内回り s 4951.1、車線の縁の間隔 0.268 m）から先は、上になる出口の床版が車線の縁の間に分離壁を 1 本だけ立て（幅 0.268〜0.5 m、外面は内回りの面の下まで、落差は最大 5.65 m）、内回りの路面はその壁の下まで延びる。真上（a1-shiodome-top）と斜め（a1-shiodome-oblique）で壁は 1 本、桁の下（a1-shiodome-under）で壁の裏が内回りの床版まで下りていて空が抜けないのを見た。内回りの車線 0 の運転席 3 か所（a1-shiodome-lane0-4955・-4990・-5030）と shiodome-lane0-driver で、壁の面が左の外側線より外にあり、壁の下端と路面の間に隙間が無いのを見た。main の同じ視点では壁高欄が車線 0 の内に立ち、出口の床版が車線の上に出ていた。出口の右の車線の運転席 2 か所（a1-shiodome-exit-right-100・-150）で、右の壁の内面が車線の縁の外にあり、右の外側線が残るのを見た。走行は shiodome-approach-out-lane0（車線 0）と shiodome-exit-right（出口の右の車線、|dy| 0.141 m）が合格（main ではどちらも停止）。残る件は撮影の表で追う: 高い壁の面の暗いくさび（Warning tall-wall-jagged-wedge、見た目）、手放しの点の蹴上げ 約 0.15 m（Info let-go-transverse-riser、main と同じ作りで R1-4b）、壁の終わりの段（Info）。本線は 45068170 の坑口で行き止まりのままで、取付けの上を出口が通る所は S7-2。",
+   "qa": "expressway/a1-shiodome-top",
    "previous": {
     "status": "accepted",
     "by": "review",
     "cap": {
-     "stations": 21,
-     "maxDzM": 6.62
+     "stations": 13,
+     "maxDzM": 5.46
     },
-    "reason": "汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。本線のこの先の掘割はこの範囲のデータに無く（P9 が通したのは麻布台のトンネル）、run の地表端で終わるので、経路と交通 AI は入らない（laneLinks.ts reachesStreets）",
-    "qa": "expressway/shiodome-diverge-overhead"
+    "reason": "汐留出口（24402125、P6 で範囲に足した）が内回りから分かれた後の 190 m を、OSM の中心線が内回りから 0 m（ノーズ）から最大 8.4 m までしか離れずに並走し、二つの車線域の幅の半分の和（壁高欄まで約 9 m）に届かない。本線はこの区間で地表（築地川の掘割へ向かう地表端）へ下り、連結路は高架のまま一般道へ向かうので、車線域が重なったまま高さが離れる（同一面のノーズから最大 6.6 m）。OSM の線のとおりで平面は動かせない（MAX_LATERAL_SHIFT）。撮影ラウンド 2 の shiodome-approach.day--shiodome-lane0-driver.jpg・-overhead.jpg（原寸）で、手放しの点から立つ汐留出口の壁高欄の先端が内回りの車線 0 の左に掛かるのを見た（データの試算で約 0.25 m、車線 1 は掛からない）。本線は 7c で 45068170 へ続くが坑口で行き止まりで、交通 AI と経路は入らない（reachesStreets のデータテスト）。走行の経路 shiodome-approach-out は車線 1。先端に導流帯などの標示は無い。S7 で坑口をつなぐ前にこの重なりを解く（R1: 並走ランプの分離・断面）。5.A の幅の段は untied-24402125-45068170-driver.jpg で開口なしを確認",
+    "qa": "expressway/shiodome-lane0-driver"
    }
   },
   {
@@ -3171,6 +3313,87 @@
    "by": "review",
    "reason": "R1 行き（ユーザーの決定、S6 PR 7c）。P9 の麻布台の掘割（737538573:0、穴の半幅 4.75 m）の敷地（+1 m）に、ゲームが組む街路の車線の中心が掛かる: 幅 40 m の街路（片側 1 車線で組まれ車線の中心が中心線の近く）の区間 640 が 65・68 m（最短 1.1・0.01 m）、638 が 13 m（0.48・2.42）、639 が 11 m（0.51・2.2）、658 が 9 m（0.82・1.52）、660 が 20・21 m（1.77・0.6）、幅 4.3 m の区間 624・637 が 5〜6 m（0.73〜1.74）。交通 AI: 90 秒・227 台・3,060 標本で、敷地に入った車は 0。7c の街路の走行（中心線から 10 m に置いた車）は穴に落ちた。main からある形で、並走する街路の中央帯の規則で直す（R1）。ユーザーの決定（R1 で直す）を記録。撮影ラウンド 2 の azabudai-hole.day--azabudai-hole-overhead.jpg（原寸）で、掘割が幅 40 m の街路の中央にあり車線が両脇を通る形を確認",
    "qa": "expressway/azabudai-hole-overhead",
+   "previous": null
+  },
+  {
+   "key": "thin-divider:24402125:0|24402611|0",
+   "kind": "thin-divider",
+   "run": "24402125",
+   "with": "24402611",
+   "chunk": "24402125:0",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.218,
+    "s0": 93.8,
+    "s1": 95.6,
+    "lengthM": 1.8,
+    "minWidthM": 0.268
+   },
+   "cap": {
+    "maxDzM": 0.218,
+    "lengthM": 1.8,
+    "minWidthM": 0.268
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "汐留出口 24402125 と内回り 24402611 の分離壁の始まりの 1.8 m（ランプ s 93.8〜95.6）。車線の縁の間隔が 0.268 m から 0.5 m へ開くまで、壁の幅がその間隔になる（落差は 0.218 m 以下）。撮影ラウンド 1 の shiodome-lane0-driver・shiodome-lane0-overhead・a1-shiodome-lane0-4955（昼、main と並べて原寸と拡大）で、壁の始まりの端面が閉じ、壁が内回りの車線 0 の左の外側線より外・出口の右の車線の縁より外にあるのを見た。main で壁の天端から seam へ下りていた三角の面は無い。真上の寄り（nose-24402125-close）は壁の始まりが画面の上端で切れていて、判定には使っていない（置き直す）。走行は車線 0 と出口の右の車線が合格。幅 0.25 m は未確認の仮定 DIVIDER_MIN_WIDTH の下限で、ここは 0.268 m。レビュー Fable、2026-11-15",
+   "qa": "expressway/shiodome-lane0-driver",
+   "previous": null
+  },
+  {
+   "key": "thin-divider:45019020:40|45554540|0",
+   "kind": "thin-divider",
+   "run": "45019020",
+   "with": "45554540",
+   "chunk": "45019020:40",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 3.522,
+    "s0": 4044.3,
+    "s1": 4080.8,
+    "lengthM": 36.5,
+    "minWidthM": 0.25
+   },
+   "cap": {
+    "maxDzM": 3.522,
+    "lengthM": 36.5,
+    "minWidthM": 0.25
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "45019020 と 45554540 の合流の手前 36.5 m（s 4044.3〜4080.8）。車線の縁の間隔が 0.47 m から 0.25 m へ狭まり、分離壁の幅がその間隔になる（落差は 3.52 m から 0.22 m へ）。撮影ラウンド 2 の a1-thin-45554540-lower-driver（下の車線 0、壁の本体の脇）・a1-thin-45019020-upper-driver（上の右の車線）・a1-step-45019020-top・-oblique・a1-thin-45019020-under（昼は原寸、夕・夜・雨の夜は一覧）で、壁が 1 本で両方の外側線の外にあり、下端と下の路面の間に隙間が無く、桁の下からも分離壁のある所で空が抜けないのを見た。ラウンド 1 の壁の面の暗いくさびは、面の重なりを直して消えた。main ではここで下の車線 0 の車が止まっていた。A1 では走行 haneda-up-thin-divider-lower（|dy| 0.075 m）と thin-divider-45019020-upper（0.115 m）が合格。最小の幅 0.25 m は、未確認の仮定 DIVIDER_MIN_WIDTH の下限そのもの。始まりの跳びは divider-jog:45019020:40|45554540|start。レビュー Fable、2026-11-15",
+   "qa": "expressway/a1-thin-45554540-lower-driver",
+   "previous": null
+  },
+  {
+   "key": "thin-divider:4848762:2|45021972|0",
+   "kind": "thin-divider",
+   "run": "4848762",
+   "with": "45021972",
+   "chunk": "4848762:2",
+   "district": "central",
+   "block": "1022519232",
+   "blockHash": "bc02bc536c16252055561b9ee717d611d9ba3df06239d195f7a65c6820601e91",
+   "measured": {
+    "maxDzM": 0.851,
+    "s0": 504.2,
+    "s1": 522.4,
+    "lengthM": 18.3,
+    "minWidthM": 0.319
+   },
+   "cap": {
+    "maxDzM": 0.851,
+    "lengthM": 18.3,
+    "minWidthM": 0.319
+   },
+   "status": "accepted",
+   "by": "review",
+   "reason": "4848762 と 45021972 の合流の手前 18.3 m（4848762:2 の s 504.2〜522.4）。車線の縁の間隔が 0.5 m から 0.319 m へ狭まり、分離壁の幅がその間隔になる（落差は 0.85 m 以下）。撮影ラウンド 1・2 の a1-thin-4848762-lower-driver（下の車線 0）、ラウンド 2 の a1-thin-4848762-upper-driver（上の右の車線、壁の脇）・a1-thin-4848762-overhead・a1-thin-4848762-under（昼は原寸、夕・夜・雨の夜は一覧）で、壁が両方の外側線の外にあり、先端へ細く閉じ、下端に隙間が無いのを見た。ラウンド 1 で桁の下に見えた路面の色の細い三角は、ラウンド 2 の絵に無い。main では壁高欄が下の車線 0 の内に立っていた。走行は両側とも合格（上 0.117 m）。レビュー Fable、2026-11-15",
+   "qa": "expressway/a1-thin-4848762-lower-driver",
    "previous": null
   },
   {

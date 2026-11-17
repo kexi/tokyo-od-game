@@ -307,6 +307,10 @@ count-overlap-shapes label base="":
 update-expressway-ledger dir="public/data/expressway" flags="":
     pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayLedger.ts {{ dir }} {{ flags }}
 
+# 高速道路の壁の無い落差（手放した組で車線が離れ床版が重なる所の、上の床版の車線から相手へのレイが壁に当たらない点、A1 のテスト 22）を数えて JSONL に書く（dir はデータのフォルダ、against に別の生成や main で書いた同じ形の一覧を渡すと新しい点・消えた点を 1 行の JSON ログに、新しい点があれば終了コード 1）
+count-bare-drops dir="public/data/expressway" against="" out="":
+    pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayBareDrops.ts {{ dir }} {{ if against != "" { "--against " + against } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }}
+
 # 高速道路の生成 2 つのチャンクをバイト単位で比べる（a・b はラベルか生成先のフォルダ、v5・v6 どちらのタイルも読む、違うチャンク・片方にしか無いチャンクの数と ID を 1 行の JSON ログに、違いがあれば終了コード 1）
 compare-expressway-chunks a b:
     pnpm exec tsx scripts/compareExpresswayChunks.ts {{ a }} {{ b }}

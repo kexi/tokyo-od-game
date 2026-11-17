@@ -527,6 +527,33 @@ export const LOG_EVENTS = {
     maxDzM: z.number(),
   }),
   /**
+   * A chunk's 分離壁 between it and a same-direction deck that has let go of one surface below it
+   * (expresswayMerge.ts dividerOf, A1): the s range, the thinnest wall and how far its outer face
+   * reaches down. One line per chunk and partner, beside expressway_merge_skipped.
+   */
+  expressway_divider_built: info({
+    chunk: z.string(),
+    with: z.string(),
+    s0: z.number(),
+    s1: z.number(),
+    minWidthM: z.number(),
+    maxDropM: z.number(),
+  }),
+  /**
+   * A chunk's nose step over a same-direction deck it has let go of (A1: the lanes' edges closer than
+   * DIVIDER_MIN_WIDTH): a wall lower than a 壁高欄 filling the gap between the lanes' edges, as high
+   * as the drop past MERGE_MAX_DZ. The s range, the largest height of the step and the narrowest gap.
+   * One line per stretch, beside expressway_divider_built.
+   */
+  expressway_nose_step_built: info({
+    chunk: z.string(),
+    with: z.string(),
+    s0: z.number(),
+    s1: z.number(),
+    maxDzM: z.number(),
+    minGapM: z.number(),
+  }),
+  /**
    * A chunk near the car has had no collider for longer than the hold allows: the car is let go
    * (isReadyNear), as a missing deck must not freeze the game.
    */
@@ -1356,6 +1383,20 @@ export const LOG_EVENTS = {
     longestM: z.number().nonnegative(),
     skippedForMissingTiles: count,
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
+  }),
+  /**
+   * The drops with no wall at their edge of a data folder (scripts/expresswayBareDrops.ts, A1 test 22):
+   * the points, their pairs, and against another list the new and the gone points (the first new ones).
+   */
+  expressway_bare_drops_counted: info({
+    dir: z.string(),
+    out: z.string(),
+    against: z.string().nullable(),
+    points: count,
+    pairs: count,
+    added: count,
+    gone: count,
+    addedAt: z.array(z.string()),
   }),
   /**
    * A data folder's ledger written again (scripts/expresswayLedger.ts, P2.7-4): the cases, those new
