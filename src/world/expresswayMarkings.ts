@@ -49,8 +49,8 @@ export type DeckSide = {
    */
   joined: "child" | "parent" | null;
   /**
-   * The other deck's nearest lane edge, metres left of this deck's centre, where joined; null
-   * otherwise.
+   * The other deck's nearest lane edge, metres left of this deck's centre, where joined or parted
+   * by a 分離壁 (A1: clearTo is set); null otherwise.
    */
   otherLaneEdge: number | null;
   /**
@@ -72,6 +72,22 @@ export type DeckSide = {
    * below 1 where the pair misses by more than MERGE_FULL_DZ (expresswayMerge.ts seamWeight).
    */
   seamWeight: number;
+  /**
+   * The 分離壁 this deck stands on that side between it and a same-direction deck that has let go of
+   * one surface below it (expresswayMerge.ts, A1): `drop` is how far the wall's outer face reaches
+   * down below this deck's face, to MERGE_SKIRT under the lower deck's face; `rise` its height over
+   * this deck's road where lower than a 壁高欄 (null: a 壁高欄's). Null on the lower deck
+   * and on every other side.
+   */
+  divider: { drop: number; rise: number | null } | null;
+  /**
+   * Where a 分離壁 between two same-direction decks stands over this deck's road on that side: the
+   * offset of its face towards this deck's centre (the road shows up to here; on the lower deck it
+   * runs on under the wall to `reach`). Null where there is none.
+   */
+  clearTo: number | null;
+  /** The other run of the 分離壁 on that side (with clearTo), null where there is none. */
+  parted: string | null;
 };
 
 export type RingSides = { left: DeckSide; right: DeckSide };
@@ -226,6 +242,15 @@ export function planDeckMarkings(
       if (isInsideParent(r)) return { kind: "none" };
       const st = stateAt(sign > 0 ? r.sides.left : r.sides.right, sign);
       const isLine = st.kind === "edge" || st.kind === "branch";
+      // Beside a 分離壁 (A1) the edge line stays on the lanes' edge while that edge is on the road
+      // the wall leaves: with no shoulder its outer half runs into the wall's foot, hidden. Why not
+      // drop it where it does not fit whole (as elsewhere): the lane beside the wall had no line.
+      const face = (sign > 0 ? r.sides.left : r.sides.right).clearTo;
+      const isByDivider = face !== null && st.kind === "edge";
+      if (isByDivider) {
+        const isShown = Math.abs(edgeOf(sign)) <= face + 1e-6 && isOnRoad(r.sides, edgeOf(sign), 0);
+        return isShown ? st : { kind: "none" };
+      }
       const isOff = isLine && !isOnRoad(r.sides, edgeOf(sign), widthOf(st.kind as "edge" | "branch"));
       return isOff ? { kind: "none" } : st;
     });

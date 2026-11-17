@@ -51,6 +51,10 @@ import {
   type DeckRing,
   DeckMerge,
   type EdgeStep,
+  type Divider,
+  type DividerJog,
+  dividerJogs,
+  type NoseStep,
   type GeoToLocal,
   liftAt,
   MERGE_RAMP,
@@ -197,6 +201,12 @@ export function* deckArraySteps(
     sides: RingSides[];
     /** Stretches of a "same" pair left apart (expressway_merge_skipped). */
     skipped: MergeSkip[];
+    /** The 分離壁 this chunk builds against a same-direction deck below it (expressway_divider_built). */
+    walls: Divider[];
+    /** Its steps with no wall at a nose over that deck (expressway_nose_step_built). */
+    steps: NoseStep[];
+    /** Where its 分離壁 start and end, and how far the face beside its lanes moves across there. */
+    jogs: DividerJog[];
     /** A tunnel's ceiling lamps (P9): positions of unlit triangles drawn bright, empty elsewhere. */
     lamps: Float32Array;
   }
@@ -444,14 +454,25 @@ export function* deckArraySteps(
     }
     const side = (sign: 1 | -1, s: DeckSide, end: number[], endU: number): Corners => {
       const w = s.wall;
-      const slabBottom = at(sign * own.edge, lift(sign * own.edge) - SLAB);
+      // Beside a 分離壁 (A1) the slab, the girder and an embankment's wall stop at the wall's outer
+      // face: past it lies the lower deck's road. Why not keep them out to this deck's own edge: they
+      // hung over the lower deck's lane 0 (汐留, up to 2.3 m in). They stop a slab's thickness inside
+      // that face: the slab's bottom then runs up from the wall's foot behind the face. Why not at
+      // the face itself: from the foot up to the slab it lay in the face's plane, two concrete faces
+      // one over the other, a dark wedge on the tall wall (汐留 s 5020–5040, review round 1).
+      const divider = s.divider;
+      const slabU = divider ? Math.min(own.edge, (w ? w.outer : s.reach) - SLAB) : own.edge;
+      const slabBottom = at(sign * slabU, lift(sign * slabU) - SLAB);
       // An embankment's wall stands on the terrain at its own side (review W4: from the centre line's
       // ground it floated 3.0 m on the low side and was buried 3.17 m on the high one), its foot
       // EMBANKMENT_FOOT_M under the lowest of it.
       const terrain = (sign > 0 ? banks.left : banks.right)?.[i] ?? null;
       const foot = terrain ? Math.min(-SLAB, terrain.low - EMBANKMENT_FOOT_M) : -depth;
-      const girder = at(sign * gw, foot);
-      if (!w) return [end, end, end, at(endU, lift(endU) - SLAB), slabBottom, girder];
+      const girder = at(sign * Math.min(gw, slabU), foot);
+      // A nose step's riser (solid, face 5 / 11) reaches down past the lower deck's face: a wheel
+      // off the lower road meets it rather than running in under this slab.
+      const riser = divider ? Math.max(SLAB, divider.drop) : SLAB;
+      if (!w) return [end, end, end, at(endU, lift(endU) - riser), slabBottom, girder];
       // A wall whose road does not run up to it stands partly on the master's slab: its inner face
       // starts below the road, so the master's face (up to MERGE_MAX_DZ lower) meets it.
       // So does one whose road ends short of its own surface there (a sliver's climb, above).
@@ -465,12 +486,20 @@ export function* deckArraySteps(
       // Why not switch the side to a cut's section: the loop's faces (merging, markings, colliders)
       // are the deck's, and a parapet is that wall at its lowest.
       const isOpenBeside = (sign > 0 ? open.left : open.right)[i];
-      const rise = terrain && isOpenBeside ? cutWallHeight(lift(inner), terrain.high, ph) : ph;
+      const rise =
+        divider?.rise != null
+          ? divider.rise
+          : terrain && isOpenBeside
+            ? cutWallHeight(lift(inner), terrain.high, ph)
+            : ph;
+      // A 分離壁's outer face reaches down past the lower deck's face (its drop), so no slit opens
+      // between the wall and the lower road.
+      const outerFoot = divider ? Math.max(SLAB, divider.drop) : SLAB;
       return [
         at(inner, lift(inner) - (isAtWall ? 0 : MERGE_SKIRT)),
         at(inner, lift(inner) + rise),
         at(outer, lift(outer) + rise),
-        at(outer, lift(outer) - SLAB),
+        at(outer, lift(outer) - outerFoot),
         slabBottom,
         girder,
       ];
@@ -490,6 +519,12 @@ export function* deckArraySteps(
     const prev = sections[i - 1];
     const cur = corners(i);
     sections.push(cur);
+    // Two rings at one place where a 分離壁 starts or ends (A1): the faces between them are its end
+    // face, drawn and solid from both sides. Why not one winding as elsewhere: an end faces back
+    // along travel, and from there it was missing (24402125:0 s 186.3, a ray back met nothing).
+    const isDividerEnd =
+      rings[i] === rings[i - 1] &&
+      [sides[i], sides[i - 1]].some((sd) => sd.left.clearTo !== null || sd.right.clearTo !== null);
     for (let k = 0; k + 1 < cur.length; k++) {
       const a = prev[k];
       const b = prev[k + 1];
@@ -499,10 +534,12 @@ export function* deckArraySteps(
       const colour = face.colour;
       const isSolid = face.solid;
       // Faces wind so their front is outward for a loop drawn left → right over the top.
-      for (const tri of [
+      const tris = [
         [a, d, c],
         [a, c, b],
-      ]) {
+      ];
+      if (isDividerEnd) tris.push([a, c, d], [a, b, c]);
+      for (const tri of tris) {
         const isDegenerate = triangleArea2(tri[0], tri[1], tri[2]) < 1e-8;
         if (isDegenerate) continue;
         for (const p of tri) pos.push(p[0], p[1], p[2]);
@@ -558,6 +595,8 @@ export function* deckArraySteps(
     rings,
     sides,
     skipped: merge?.skipped.get(chunk.id) ?? [],
+    ...(merge?.dividersOf(chunk.id) ?? { walls: [], steps: [] }),
+    jogs: merge ? dividerJogs(rings, sides) : [],
     lamps: new Float32Array(lamps),
   };
 }
@@ -1037,7 +1076,8 @@ function* refineRings(
     const b = base[i + 1];
     const sa = baseSides[i];
     const sb = baseSides[i + 1];
-    type Extra = { tau: number; ring: DeckRing; sides: RingSides; isClosing: boolean };
+    /** isDivider: one of the two rings where a side starts or stops standing by a 分離壁 (kept whole). */
+    type Extra = { tau: number; ring: DeckRing; sides: RingSides; isClosing: boolean; isDivider?: boolean };
     const extra: Extra[] = [];
     const sidesAt = (tau: number) => merge.sides(own, ringBetween(a, b, tau, false));
     /** The last τ where `holds` is as at `from` and the first where it is as at `to` (a and b by default). */
@@ -1131,6 +1171,60 @@ function* refineRings(
       extra.push({ tau: tau - 1e-9, ring, sides: atLo, isClosing: false });
       extra.push({ tau: tau + 1e-9, ring, sides: atHi, isClosing: false });
     }
+    // Where a side starts or stops standing by a 分離壁 (A1) between two rings so far: two rings at
+    // one place, as at a wall's end. The lower deck has no wall either side of it, but its road's
+    // end jumps there between the one slab's edge (or its seam) and under the wall. Why not leave it
+    // to the interval: the road's end then slanted over metres either side of the let-go point,
+    // under the other deck's seam (45554540:34 s 7986: the let-go step along travel 0.04 → 1.06 mm).
+    // So where a 分離壁 starts or stops at the nose (g crosses DIVIDER_MIN: a wall, then a step), and,
+    // in an interval with a 分離壁, wherever a wall starts or stops at all (a deck's own rail coming
+    // back between the nose and the seam: 45019020:40 s 4082.8, its rail slanted down over 1.5 m
+    // onto the master's edge). Why not every wall's end between the rings so far: the intervals with
+    // no 分離壁 are left as they were (their seams and let-go points are the ledger's measures).
+    // Run before the let-go rings and the bisection to the master's face, and again over their
+    // points: those passes then see these rings. Why not only after them: where a 分離壁's pair was
+    // the interval's only flip, no let-go ring nor face ring was put beside it, and the seam ran
+    // straight from the ring before, up to 70 mm off the face where the pair is within 5 cm (ship
+    // 28188173:1 s 285–287 on 44351599, review of A1 after A0).
+    const dividerPass = (from: ReadonlyArray<{ tau: number; sides: RingSides }>) => {
+      const isDividerHere = [sa, sb, ...from.map((x) => x.sides)].some(
+        (sd) => sd.left.clearTo !== null || sd.right.clearTo !== null,
+      );
+      for (const key of isDividerHere ? (["left", "right"] as const) : []) {
+        // A wall lower than a 壁高欄 (a nose's) and a full one are two states: where it reaches the
+        // full height (g crosses DIVIDER_MIN), two rings, so the higher one's end is closed. So where a
+        // deck joined on that side comes or goes: the master's road out to that deck's seam ends there,
+        // not over the interval (44804029:3 s 487–492 under 157249373's seam).
+        const stateOf = (sd: RingSides) =>
+          (sd[key].clearTo === null ? 0 : 2) +
+          (sd[key].wall === null ? 0 : 1) +
+          (sd[key].divider?.rise != null ? 4 : 0) +
+          (sd[key].joined !== null ? 8 : 0);
+        const points = from.map((x) => ({ tau: x.tau, sides: x.sides }));
+        for (let j = 0; j + 1 < points.length; j++) {
+          const was = stateOf(points[j].sides);
+          const flips = was !== stateOf(points[j + 1].sides);
+          const isApart = points[j + 1].tau - points[j].tau > 1e-6;
+          if (!flips || !isApart) continue;
+          const isAsFrom = (sd: RingSides) => stateOf(sd) === was;
+          const { lo, atLo, hi, atHi } = bisect(isAsFrom, points[j], points[j + 1]);
+          const tau = (lo + hi) / 2;
+          const ring = ringBetween(a, b, tau, false);
+          extra.push({ tau: tau - 1e-9, ring, sides: atLo, isClosing: false, isDivider: true });
+          extra.push({ tau: tau + 1e-9, ring, sides: atHi, isClosing: false, isDivider: true });
+          // Scan on from the pair: the state may flip again before the next point.
+          points.splice(j + 1, 0, { tau: tau - 1e-9, sides: atLo }, { tau: tau + 1e-9, sides: atHi });
+          j += 1;
+        }
+      }
+      return isDividerHere;
+    };
+    const byTau = (xs: ReadonlyArray<{ tau: number; sides: RingSides }>) => [
+      { tau: 0, sides: sa },
+      ...xs.toSorted((p, q) => p.tau - q.tau),
+      { tau: 1, sides: sb },
+    ];
+    dividerPass(byTau(extra));
     // Where the seam starts sliding off the master's face (seamWeight leaves 1): one ring there,
     // so the stretch at the face is exact and only the sliding stretch is linear. Looked for between
     // every two rings of the interval so far, not only a and b. Why not a and b alone: where a seam
@@ -1190,9 +1284,44 @@ function* refineRings(
         extra.push({ tau, ring: ringBetween(a, b, tau, false), sides: sd, isClosing: false });
       }
     }
+    const hasDividerHere = dividerPass(byTau([...extra, ...samples]));
+    // Where a wall starts or stops at two rings at one place and the road's end moves there too
+    // (a seam on the other deck's edge on one side, the road out to the wall on the other), a third
+    // ring between them: the wall's side with no wall and the road still out to it. Its square end is
+    // then closed at the wall, and the road's end moves at road height. Why not the two rings alone:
+    // the faces between them ran from the wall's top to the seam, a slanted face across the lane
+    // (4848762:2 s 522.4, a car in its right lane stopped on it). Only in an interval with a 分離壁:
+    // the others are left as they were.
+    if (hasDividerHere) {
+      const pairs = extra.flatMap((x, k) => (extra[k + 1]?.ring === x.ring ? [k] : []));
+      for (const k of pairs.toReversed())
+        for (const key of ["left", "right"] as const) {
+          const [lo, hi] = [extra[k], extra[k + 1]];
+          const flips = (lo.sides[key].wall === null) !== (hi.sides[key].wall === null);
+          if (!flips) continue;
+          const walled = lo.sides[key].wall ? lo : hi;
+          const open = walled === lo ? hi : lo;
+          const isMoving = Math.abs(walled.sides[key].reach - open.sides[key].reach) > 0.05;
+          if (!isMoving) continue;
+          const side = { ...walled.sides[key], wall: null, divider: null };
+          const sides = { ...walled.sides, [key]: side };
+          const tau = (lo.tau + hi.tau) / 2;
+          extra.splice(k + 1, 0, { tau, ring: lo.ring, sides, isClosing: false, isDivider: true });
+          lo.isDivider = true;
+          hi.isDivider = true;
+          break;
+        }
+    }
+    // A 分離壁's two rings are kept whole; another ring within 1e-4 of them gives way. Why not the
+    // first come as for the rest: where the let-go point fell on one of the master's edge vertices
+    // that ring came first and both of the pair were dropped (45554540:34 s 7985.98).
+    const dividerTaus = extra.filter((x) => x.isDivider).map((x) => x.tau);
+    const isByDivider = (x: Extra) => !x.isDivider && dividerTaus.some((t) => Math.abs(x.tau - t) < 1e-4);
     let last = -1;
     for (const x of extra.toSorted((p, q) => p.tau - q.tau)) {
-      const isRepeat = x.tau - last < 1e-4 && !x.isClosing && x.ring !== rings[rings.length - 1];
+      const isRepeat =
+        !x.isDivider &&
+        (isByDivider(x) || (x.tau - last < 1e-4 && !x.isClosing && x.ring !== rings[rings.length - 1]));
       if (isRepeat) continue;
       last = x.tau;
       if (x.isClosing) closing.add(rings.length);
@@ -1922,6 +2051,24 @@ export class ExpresswayDecks {
             s0: Math.round(x.s0 * 10) / 10,
             s1: Math.round(x.s1 * 10) / 10,
             maxDzM: Math.round(x.maxDzM * 1000) / 1000,
+          });
+        for (const x of result.steps)
+          log("expressway_nose_step_built", {
+            chunk: c.id,
+            with: x.with,
+            s0: Math.round(x.s0 * 10) / 10,
+            s1: Math.round(x.s1 * 10) / 10,
+            maxDzM: Math.round(x.maxDzM * 1000) / 1000,
+            minGapM: Math.round(x.minGapM * 1000) / 1000,
+          });
+        for (const x of result.walls)
+          log("expressway_divider_built", {
+            chunk: c.id,
+            with: x.with,
+            s0: Math.round(x.s0 * 10) / 10,
+            s1: Math.round(x.s1 * 10) / 10,
+            minWidthM: Math.round(x.minWidthM * 1000) / 1000,
+            maxDropM: Math.round(x.maxDropM * 1000) / 1000,
           });
         await yieldIfSpent();
         const built = work.measure(() => this.publish(c, result, frame));
