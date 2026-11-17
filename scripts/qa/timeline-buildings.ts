@@ -3,7 +3,8 @@
 // town and the far skyline, and what was still queued, downloading or parsing ("remaining", the
 // renderers' stats) at each of those moments; the near tiles visible within 300 m of the car when the
 // screen closed as a share of those visible at the end; whether the screen closed on its 20 s limit;
-// and the longest stretch with nothing remaining before the end (a tileset's nested JSON leaves such
+// when the tiles within 300 m of the load centre and all the near tiles were in; and the longest
+// stretch with nothing remaining before the end (a tileset's nested JSON leaves such
 // gaps between one level and the next). With --warp, the same from a warp instead: the car starts at
 // --start, settles, goes quiet, then warps, and the landing (the game's warp_landed line) takes the
 // place of the screen closing.
@@ -14,7 +15,7 @@
 //
 //   just measure-buildings-timeline label base [args]
 //   pnpm exec tsx scripts/qa/timeline-buildings.ts --label L [--base URL] --start lat,lon
-//     [--seconds 40] [--view near|medium|far] [--mobile] [--warp lat,lon]
+//     [--seconds 40] [--view near|medium|far] [--mobile] [--warp lat,lon] [--hold-title]
 //
 // Output: .qa/timeline-buildings/<label>.json (the samples, events and summary) and the summary as
 // one JSON line on stdout.
@@ -37,12 +38,18 @@ const seconds = Number(flag("seconds") ?? 40);
 const view = flag("view");
 const isMobile = argv.includes("--mobile");
 const warp = flag("warp")?.split(",").map(Number) as [number, number] | undefined;
+/** Stay on the title after the screen closes until the whole near town is in, then start (see summarise's b1CloseMs). */
+const isHoldTitle = argv.includes("--hold-title");
+/** How long --hold-title waits at most (the screen's own limit). */
+const HOLD_LIMIT_MS = 20_000;
 /** The loading screen's limit (src/main.ts): closing this long after navigation means it gave up waiting. */
 const SCREEN_LIMIT_MS = 20_000;
 /** The warp's limit (src/main.ts finishWarp). */
 const WARP_LIMIT_MS = 12_000;
 /** Gaps with nothing remaining up to this long are counted as within a burst of loading. */
 const SHORT_GAP_MS = 1000;
+/** The tail counts from the last time the near town's remaining was this many or fewer. */
+const TAIL_LEFT = 8;
 const ANDROID_UA =
   "Mozilla/5.0 (Linux; Android 16; Pixel) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36";
 
@@ -60,20 +67,29 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
     const orig = console[k].bind(console);
     console[k] = (...a) => {
       const line = String(a[0] ?? "");
-      if (T.warpLandedAt === null && line.includes('"event":"warp_landed"')) { T.warpLandedAt = now(); T.near300.landed = window.__tlNear300?.() ?? null; }
+      if (T.warpLandedAt === null && line.includes('"event":"warp_landed"')) { T.warpLandedAt = now(); T.near300.landed = window.__tlNear300?.() ?? null;
+        // Whether the car stands in a building as it lands, and at any sample in the 3 s after.
+        try { const o = window.__game.vehicle.overlapsBuilding(); T.overlapAtLanding = { atLanding: o, within3s: o }; } catch (e) { T.overlapAtLanding = { error: String(e) }; } }
       return orig(...a);
     };
   }
   const left = (r) => r ? r.stats.queued + r.stats.downloading + r.stats.parsing : 0;
   const stat = (r) => r && { remaining: left(r), downloading: r.stats.downloading, failed: r.stats.failed, refused: r.stats.refused ?? 0, visible: r.visibleTiles.size };
   const codeOf = (tile) => ((tile?.internal?.basePath ?? "").match(new RegExp("/([0-9]{5})_")) || [])[1] ?? "?";
-  window.__tlNear300 = () => {
+  // The tiles shown within 300 m of a point (ECEF): by default where play begins (the car when it
+  // has landed from a warp, else the load's centre: on the title the car is not placed yet). The
+  // point is kept, and the end's set is taken round the same point: the car is put on a street
+  // after the start, and a set round where it went would differ without anything loading late.
+  window.__tlNear300 = (at) => {
     const g = window.__game, b = g.buildings;
-    const car = g.vehicle.position().clone().applyMatrix4(b.frame.localToEcef);
+    const point = at ? new b.maskRegion.sphere.center.constructor(...at) : T.warpLandedAt !== null
+      ? g.vehicle.position().clone().applyMatrix4(b.frame.localToEcef)
+      : b.maskRegion.sphere.center.clone();
+    if (!at) T.near300.at = point.toArray();
     const keys = [];
     for (const tile of b.tiles.visibleTiles) {
       const bv = tile.engineData?.boundingVolume;
-      if (bv && bv.distanceToPoint(car) <= 300) keys.push((tile.internal?.basePath ?? "") + "|" + (tile.content?.uri ?? ""));
+      if (bv && bv.distanceToPoint(point) <= 300) keys.push((tile.internal?.basePath ?? "") + "|" + (tile.content?.uri ?? ""));
     }
     return keys;
   };
@@ -97,7 +113,13 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
     const b = g.buildings;
     if (hookedNear !== b.tiles) {
       hookedNear = b.tiles;
-      b.tiles.addEventListener("load-model", (e) => T.events.push([now(), "nl", codeOf(e.tile)]));
+      // The 4th field: 1 when the tile reaches within NEARBY_M of the near load sphere's centre (where
+      // the town is loaded around: the car, or a warp's destination before the car lands there).
+      b.tiles.addEventListener("load-model", (e) => {
+        let isNearby = 0;
+        try { isNearby = e.tile.engineData.boundingVolume.distanceToPoint(b.maskRegion.sphere.center) <= ${300} ? 1 : 0; } catch {}
+        T.events.push([now(), "nl", codeOf(e.tile), isNearby]);
+      });
       b.tiles.addEventListener("dispose-model", () => T.events.push([now(), "nd", ""]));
     }
     if (b.far && hookedFar !== b.far) {
@@ -105,6 +127,8 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
       b.far.addEventListener("load-model", (e) => T.events.push([now(), "fl", codeOf(e.tile)]));
       b.far.addEventListener("dispose-model", () => T.events.push([now(), "fd", ""]));
     }
+    const isJustLanded = T.warpLandedAt !== null && t - T.warpLandedAt <= 3000 && T.overlapAtLanding && !T.overlapAtLanding.error;
+    if (isJustLanded) { try { if (g.vehicle.overlapsBuilding()) T.overlapAtLanding.within3s = true; } catch {} }
     const state = g.getState();
     let settled = null;
     try { settled = g.debug.settled().isSettled; } catch {}
@@ -113,7 +137,10 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
     const car = g.vehicle.position();
     const cam = g.camera.position;
     const at = { car: [Math.round(car.x), Math.round(car.z)], cam: [Math.round(cam.x), Math.round(cam.y), Math.round(cam.z)] };
-    T.samples.push({ t, state, settled, near: stat(b.tiles), far: stat(b.far), ...at });
+    // The whole near town's progress (what B1 closed the screen on) and the nearby one (B1b).
+    const all = b.loadProgress?.() ?? null;
+    const nearby = b.nearbyLoadProgress?.() ?? null;
+    T.samples.push({ t, state, settled, near: stat(b.tiles), far: stat(b.far), all, nearby, ...at });
   }, 100);
 })();`;
 
@@ -124,16 +151,19 @@ type Sample = {
   settled?: boolean | null;
   near?: Stat | null;
   far?: Stat | null;
+  all?: number | null;
+  nearby?: number | null;
 };
 type Timeline = {
   samples: Sample[];
-  events: Array<[number, string, string]>;
+  events: Array<[number, string, string, number?]>;
   gaps: Array<[number, number]>;
   readyAt: number | null;
   warpLandedAt: number | null;
-  near300: { ready?: string[]; landed?: string[] | null; end?: string[] };
+  near300: { ready?: string[]; landed?: string[] | null; end?: string[]; at?: number[] };
   startAt?: number | null;
   warpAt?: number | null;
+  overlapAtLanding?: { atLanding?: boolean; within3s?: boolean; error?: string };
 };
 
 const sampleAt = (tl: Timeline, t: number | null) =>
@@ -158,6 +188,22 @@ export function summarise(tl: Timeline) {
   const settledFrom = isWarp ? (tl.warpLandedAt ?? from) : from;
   const settledAt = tl.samples.find((s) => s.t >= settledFrom && s.settled)?.t ?? null;
   const last = (kind: string) => tl.events.filter((e) => e[1] === kind && e[0] >= from).at(-1)?.[0] ?? null;
+  // When the tiles near the load sphere's centre, and all the near town's tiles, were in (the last
+  // load-model of each in the load), as ms from the load's start and as a share of the latter. The
+  // start's load is the one the loading screen waits for, up to its close (later loads follow the
+  // camera leaving the title); a warp's runs from leaving to settled, as the landing need not wait
+  // for all of it.
+  const loadFrom = isWarp ? from : 0;
+  const loadEnd = isWarp ? settledAt : tl.readyAt;
+  const inLoad = tl.events.filter(
+    (e) => e[1] === "nl" && e[0] >= loadFrom && (loadEnd === null || e[0] <= loadEnd),
+  );
+  const allDoneAt = inLoad.at(-1)?.[0] ?? null;
+  const nearbyDoneAt = inLoad.filter((e) => e[3] === 1).at(-1)?.[0] ?? null;
+  const nearbyShareOfAll =
+    allDoneAt === null || nearbyDoneAt === null || allDoneAt === loadFrom
+      ? null
+      : Math.round(((nearbyDoneAt - loadFrom) / (allDoneAt - loadFrom)) * 1000) / 1000;
   const loadsAfterSettled =
     settledAt === null
       ? null
@@ -166,6 +212,36 @@ export function summarise(tl: Timeline) {
   const isLimit = isWarp
     ? closedAt !== null && closedAt - from >= WARP_LIMIT_MS
     : closedAt !== null && closedAt >= SCREEN_LIMIT_MS;
+  // When B1 would have closed the screen (or landed) in this same run: the first moment, after the
+  // load began (something remained), with the whole near town in; and when the nearby part first was
+  // (what B1b closes on). The difference is what this run saved; it cannot be negative. Either may
+  // come before the close (the screen also waits for the shaders). Why not "the first moment from
+  // the close on": the turning title camera asks for more while the shaders are prepared, the whole
+  // falls under 1 again, and that took the end of the next wave (2.4 s instead of 0.18 s, e far r3).
+  // A warp's load begins when it leaves (the destination's tiles are asked at once).
+  const isAllIn = (x: Sample) => (x.all ?? 0) >= 0.999;
+  const isNearbyIn = (x: Sample) => (x.nearby ?? 0) >= 0.999;
+  const loadBeganAt =
+    tl.samples.find(
+      (x) => x.t >= (isWarp ? from : 0) && (isWarp ? !isAllIn(x) : (x.near?.remaining ?? 0) > 0),
+    )?.t ?? null;
+  const firstFrom = (is: (x: Sample) => boolean) =>
+    loadBeganAt === null ? null : (tl.samples.find((x) => x.t >= loadBeganAt && is(x))?.t ?? null);
+  const b1CloseAt = firstFrom(isAllIn);
+  const nearbyInAt = firstFrom(isNearbyIn);
+  // The tail: before the close, from the last time the near town's remaining fell to TAIL_LEFT or
+  // under until it was 0 (how long its last few tiles took).
+  const beforeClose = tl.samples.filter(
+    (x) => x.t >= (isWarp ? from : 0) && (closedAt === null || x.t <= closedAt),
+  );
+  const zeroAt = beforeClose.findLast(
+    (x, i) => i > 0 && (x.near?.remaining ?? 1) === 0 && (beforeClose[i - 1]!.near?.remaining ?? 0) > 0,
+  )?.t;
+  const tailFrom =
+    zeroAt === undefined
+      ? undefined
+      : beforeClose.filter((x) => x.t < zeroAt && (x.near?.remaining ?? 0) > TAIL_LEFT).at(-1)?.t;
+  const tailMs = zeroAt === undefined || tailFrom === undefined ? null : zeroAt - tailFrom;
   const gaps = tl.gaps.filter(
     ([t]) => t >= (isWarp ? from : 0) && (settledAt === null || t < settledAt + 10_000),
   );
@@ -176,8 +252,16 @@ export function summarise(tl: Timeline) {
     warpLandedAtMs: tl.warpLandedAt,
     closedAfterMs: closedAt === null ? null : closedAt - (isWarp ? from : 0),
     closedOnLimit: isLimit,
+    b1CloseMs: b1CloseAt === null ? null : b1CloseAt - (isWarp ? from : 0),
+    nearbyInMs: nearbyInAt === null ? null : nearbyInAt - (isWarp ? from : 0),
+    savedMs: b1CloseAt === null || nearbyInAt === null ? null : b1CloseAt - nearbyInAt,
+    tailMs,
+    overlapAtLanding: tl.overlapAtLanding ?? null,
     settledAtMs: settledAt,
     lastNearLoadMs: last("nl"),
+    nearbyDoneMs: nearbyDoneAt === null ? null : nearbyDoneAt - loadFrom,
+    allDoneMs: allDoneAt === null ? null : allDoneAt - loadFrom,
+    nearbyShareOfAll,
     lastFarLoadMs: last("fl"),
     loadsAfterSettled,
     remainingAtClose: remainingAt(tl, closedAt),
@@ -210,7 +294,17 @@ if (isMain) {
       const T = window.__tl;
       const t = T.samples.at(-1)?.t ?? null;
       if (T.readyAt === null) { T.readyAt = t; T.near300.ready = window.__tlNear300(); }
-      T.startAt = t;
+    })()`);
+    if (isHoldTitle) {
+      for (let waited = 0; waited < HOLD_LIMIT_MS; waited += 100) {
+        if (await b.evaluate("__game.buildings.loadProgress() >= 0.999").catch(() => false)) break;
+        await b.sleep(100);
+      }
+      // One more sample after it, so the summary sees the moment.
+      await b.sleep(150);
+    }
+    await b.evaluate(`(() => {
+      window.__tl.startAt = window.__tl.samples.at(-1)?.t ?? null;
       window.__game.start();
     })()`);
     if (warp) {
@@ -224,7 +318,7 @@ if (isMain) {
       );
     }
     await b.sleep(seconds * 1000);
-    await b.evaluate("window.__tl.near300.end = window.__tlNear300()");
+    await b.evaluate("window.__tl.near300.end = window.__tlNear300(window.__tl.near300.at)");
     const tl = await b.evaluate<Timeline>("window.__tl");
     const summary = { label, start, warp: warp ?? null, view: view ?? null, isMobile, ...summarise(tl) };
     const dir = join(ROOT, ".qa", "timeline-buildings");
