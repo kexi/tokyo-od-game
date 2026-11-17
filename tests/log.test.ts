@@ -395,6 +395,13 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     detail: undefined,
     signal: { leftAgoMs: null, rightAgoMs: 7300, fromNodeM: 25.2, watchedMs: 15400 },
   },
+  vehicle_bump: {
+    ownKmh: 0.1,
+    speedAfterKmh: 11,
+    ownDeltaVKmh: 10.7,
+    otherDeltaVKmh: 10.5,
+    otherMassKg: 1481,
+  },
   traffic_contact: {
     carId: 41,
     segId: 490,

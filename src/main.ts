@@ -231,6 +231,7 @@ import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
 import { judgePedestrianBlow } from "./game/pedestrianBlow";
 import { JUMP_METRES, STANDING_KMH } from "./game/motion";
+import { judgeVehicleBlow, ownKmhIntoBlow } from "./game/vehicleBlow";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
@@ -2908,8 +2909,20 @@ async function main(): Promise<void> {
         what === "ground" ? "bump" : "impact",
         what === "ground" ? kmh / 3.6 : (impact?.dvCar ?? kmh / 3.6),
       );
-      // Kerbs and the ground are bumps, not accidents.
-      const isAccident = what !== "ground" && kmh > 5;
+      // Kerbs and the ground are bumps, not accidents; nor is a blow the car took standing
+      // (vehicleBlow.ts: its own speed going in, from the mass contact's record or before the steps).
+      const record = massContacts.recentImpact(other);
+      const own = ownKmhIntoBlow(record, ownKmhBeforeSteps);
+      const { isAccident, isStandingBump } = judgeVehicleBlow(what, kmh, own);
+      const r1 = (v: number) => Math.round(v * 10) / 10;
+      if (isStandingBump)
+        log("vehicle_bump", {
+          ownKmh: r1(own),
+          speedAfterKmh: r1(kmh),
+          ownDeltaVKmh: record ? r1(record.dvCar * 3.6) : undefined,
+          otherDeltaVKmh: record ? r1(record.dvOther * 3.6) : undefined,
+          otherMassKg: record ? Math.round(record.otherKg) : undefined,
+        });
       const trafficCar = traffic.contactInfo(other);
       if (trafficCar) {
         const fwd = headingVector(vehicle.quaternion());
@@ -2918,12 +2931,7 @@ async function main(): Promise<void> {
         to.subVectors(otherPos, to).setY(0);
         const bearing =
           (Math.atan2(fwd.z * to.x - fwd.x * to.z, fwd.x * to.x + fwd.z * to.z) * 180) / Math.PI;
-        // Going into the blow: the mass contact's record (before the exchange), else before the steps.
-        // Why not `impact` (impactAgainstMass without a record): it is made from the speed after the
-        // steps, the push in it; Δv likewise only from the record.
-        const record = massContacts.recentImpact(other);
-        const own = record ? record.carSpeed * 3.6 : ownKmhBeforeSteps;
-        const r1 = (v: number) => Math.round(v * 10) / 10;
+        // Δv only from the record: `impact` without one is made from the speed after the steps.
         log("traffic_contact", {
           ...trafficCar,
           ownKmh: r1(own),
@@ -2933,7 +2941,8 @@ async function main(): Promise<void> {
           isAccident,
         });
       }
-      if (isAccident) onAccident(what, kmh, "", impact);
+      // judgeVehicleBlow never calls the ground an accident; the check keeps the type narrow.
+      if (isAccident && what !== "ground") onAccident(what, kmh, "", impact);
     });
 
     // The camera's view for open-world spawning (traffic and people appear and leave out of it).
