@@ -3,16 +3,7 @@ import { join } from "node:path";
 import { Sphere, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { LOAD_HOLD_MS, startLoad, stepLoad, type LoadState } from "../src/world/loadProgress";
-import { PriorityQueue } from "3d-tiles-renderer/core";
-import {
-  countLeft,
-  nearbyFirst,
-  nearbyLoading,
-  NearbyMarks,
-  NEARBY_RADIUS_M,
-  stepNearby,
-  type JobOrder,
-} from "../src/world/nearbyLoad";
+import { countLeft, nearbyLoading, NearbyMarks, NEARBY_RADIUS_M, stepNearby } from "../src/world/nearbyLoad";
 
 /** Bounds of a tile: a sphere at `x` m east of the origin (the load's centre) with `radius`. */
 const bounds = (x: number, radius = 10) => {
@@ -146,48 +137,6 @@ describe("the nearby load progress", () => {
     expect(s.progress).toBeLessThan(1);
     s = stepNearby(s, { remaining: 0, finished: 1, isRootLoaded: true }, 100 + LOAD_HOLD_MS);
     expect(s.progress).toBe(1);
-  });
-});
-
-/** The order a library job queue with `order` runs `items` in (all at once, as one run takes them). */
-const runOrder = (items: Array<{ id: string }>, order: JobOrder) => {
-  const queue = new PriorityQueue();
-  queue.autoUpdate = false;
-  queue.maxJobs = items.length;
-  queue.priorityCallback = order;
-  const ran: string[] = [];
-  for (const item of items) void queue.add(item, (it: { id: string }) => ran.push(it.id));
-  queue.tryRunJobs();
-  return ran;
-};
-
-describe("the nearby tiles first in the job queues", () => {
-  const tiles = ["far1", "near200", "far2", "near50", "far3"].map((id) => ({ id }));
-  const distances = new Map<unknown, number>([
-    [tiles[1], 200],
-    [tiles[3], 50],
-  ]);
-  /** The library's own order stood in for: by id, "far1" first. */
-  const before: JobOrder = (a, b) => ((a as { id: string }).id < (b as { id: string }).id ? 1 : -1);
-  const ordered = () =>
-    runOrder(
-      tiles,
-      nearbyFirst(before, (t) => distances.get(t)),
-    );
-
-  it("runs the nearby tiles before any other, the closer first", () => {
-    expect(ordered().slice(0, 2)).toEqual(["near50", "near200"]);
-  });
-
-  it("keeps the queue's own order among the tiles that are not nearby", () => {
-    const rest = ordered().slice(2);
-    expect(rest).toEqual(
-      runOrder(
-        tiles.filter((t) => !distances.has(t)),
-        before,
-      ),
-    );
-    expect(rest).toEqual(["far1", "far2", "far3"]);
   });
 });
 

@@ -100,32 +100,3 @@ export function stepNearby(
   if (isWaitingForRoot) return { progress: 0, finishedAtStart: counts.finished, zeroSince: null };
   return stepLoad(state, { remaining: counts.remaining, finished: counts.finished }, now, hold);
 }
-
-/** A job queue's comparator: positive when `a` runs before `b` (PriorityQueue sorts, then pops the last). */
-export type JobOrder = (a: unknown, b: unknown) => number;
-
-/**
- * The order of `before` with the nearby tiles first: a nearby tile before any other, nearby ones
- * closer to the centre first, and the rest (the far skyline's tiles among them, as the queues are
- * shared) in `before`'s order. Nearby is `distanceOf` not undefined (NearbyMarks.distanceOf).
- *
- * Why: the renderer reads coarse levels before fine ones over the whole town, so the fine tiles
- * round the car came in the last wave (their last arrival at 0.86–0.98 of the whole load at
- * 川崎駅 near and 川口駅), and waiting only for them did not shorten the wait there. Why not a
- * queue of their own: the number of jobs at once would change, and every other time with it.
- */
-export function nearbyFirst(
-  before: JobOrder | null,
-  distanceOf: (tile: unknown) => number | undefined,
-): JobOrder {
-  return (a, b) => {
-    const da = distanceOf(a);
-    const db = distanceOf(b);
-    const isANearby = da !== undefined;
-    const isBNearby = db !== undefined;
-    if (isANearby !== isBNearby) return isANearby ? 1 : -1;
-    const isOneCloser = isANearby && isBNearby && da !== db;
-    if (isOneCloser) return da < db ? 1 : -1;
-    return before ? before(a, b) : 0;
-  };
-}

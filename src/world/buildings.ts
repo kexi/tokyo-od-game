@@ -36,7 +36,7 @@ import {
 } from "./facade";
 import { sharedDraco } from "../render/draco";
 import { startLoad, stepLoad, type LoadCounts, type LoadState } from "./loadProgress";
-import { countLeft, nearbyFirst, nearbyLoading, NearbyMarks, stepNearby, type JobOrder } from "./nearbyLoad";
+import { countLeft, nearbyLoading, NearbyMarks, stepNearby } from "./nearbyLoad";
 import { log } from "../log";
 import { retireObject } from "../render/retire";
 import { featureCeilings, indexCutPoints, type LocalCutPoint } from "./buildingCut";
@@ -212,23 +212,6 @@ function countFinished(tiles: TilesRenderer, into: { finished: number }): void {
 function loadCounts(tiles: TilesRenderer, finished: { finished: number }): LoadCounts {
   const { stats } = tiles as unknown as TileStats;
   return { remaining: stats.queued + stats.downloading + stats.parsing, finished: finished.finished };
-}
-
-/** Each job queue's order before nearbyFirst was put on it: a later Buildings wraps the library's, not the last one's. */
-const queueOrders = new WeakMap<object, JobOrder | null>();
-
-/**
- * Puts nearbyFirst on a renderer's download or parse queue. The library's default queues are one
- * pair shared by every renderer (the near town and the far skyline), so this orders both: the far
- * tiles are never marked and keep the library's order among the rest. Through the queue's public
- * priorityCallback, so the library is not changed.
- */
-function putNearbyFirst(queue: { priorityCallback: JobOrder | null }, marks: NearbyMarks): void {
-  if (!queueOrders.has(queue)) queueOrders.set(queue, queue.priorityCallback);
-  const isObject = (t: unknown): t is object => typeof t === "object" && t !== null;
-  queue.priorityCallback = nearbyFirst(queueOrders.get(queue) ?? null, (t) =>
-    isObject(t) ? marks.distanceOf(t) : undefined,
-  );
 }
 
 /** What preparing a far tile's meshes needs from the buildings (the landmarks' cut-outs). */
@@ -792,8 +775,6 @@ export class Buildings {
     regions.addRegion(this.maskRegion);
     regions.addRegion(this.detailRegion);
     regions.addRegion(this.nearbyMarks);
-    putNearbyFirst(tiles.downloadQueue, this.nearbyMarks);
-    putNearbyFirst(tiles.parseQueue, this.nearbyMarks);
     tiles.registerPlugin(regions);
     tiles.errorTarget = QUALITY.isMobile ? 26 : 16;
     this.detailRegion.errorTarget = tiles.errorTarget;
