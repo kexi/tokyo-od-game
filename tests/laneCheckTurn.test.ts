@@ -104,10 +104,16 @@ const drive = (
   for (let i = 1; i < pts.length; i++) {
     const now = (i * 0.25 * 1000) / 5;
     const pos = at(...pts[i]);
-    const forward = pos
-      .clone()
-      .sub(at(...pts[i - 1]))
-      .normalize();
+    const prev = at(...pts[i - 1]);
+    // Past a jump the heading is the way on from the new spot.
+    const hasJumped = prev.distanceTo(pos) >= 30;
+    const ahead = at(...pts[Math.min(pts.length - 1, i + 1)]);
+    const forward = (hasJumped ? ahead.sub(pos) : pos.clone().sub(prev)).normalize();
+    if (hasJumped) {
+      turnAt = null;
+      held = null;
+      track = null;
+    }
     const s = signal(...pts[i]);
     noteIndicators(memory, s.left, s.right, now);
     const hit = graph.nearest(pos, 8);
@@ -184,6 +190,13 @@ describe("lane checks through a turn (isInTurn)", () => {
   it("still books a lane change with no 合図 straight on through the junction", () => {
     const pts = path([{ to: [-1.75, -15] }, { to: [-5.25, -3] }, { to: [-5.25, 80] }], [-1.75, -80]);
     expect(drive(crossroads(), pts, none)).toEqual(["lane change left no signal"]);
+  });
+
+  it("judges no turn for a jump away from the junction the car was coming up to", () => {
+    // North to 10 m before the junction (the turn watch on), then placed on the east street 60 m
+    // on, heading east: as a view table re-places the car.
+    const pts = [...path([{ to: [-1.75, -10] }], [-1.75, -80]), ...path([{ to: [120, 1.75] }], [60, 1.75])];
+    expect(drive(crossroads(), pts, none)).toEqual([]);
   });
 
   it("counts the lane again past the point the turn is judged at", () => {

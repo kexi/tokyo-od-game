@@ -3236,6 +3236,16 @@ async function main(): Promise<void> {
           laneAtJunction = { use, lane, tIn: onRoad.dir.clone().multiplyScalar(dir), node };
         }
       }
+      // A jump (a warp, a respawn, a view table's re-placing; the 30 m isContinuous takes as one
+      // below): the junction the car was going through and the lane it held are somewhere else.
+      // Why not keep them: 25 m from the old junction at once, the new heading was judged a turn
+      // with no 合図 (signs' marunouchi-note, booked 0.2 s after each re-placing of lamps-low-60).
+      const hasJumped = lawPrevPos === null || lawPrevPos.distanceTo(carPos) >= 30;
+      if (hasJumped) {
+        turnAt = null;
+        laneHeld = null;
+        laneTrack = null;
+      }
       // 合図 (第53条): a turn at a junction, judged 25 m past it, needs the indicator for that
       // side to have been on in the last seconds (it cancels itself as the wheel comes back).
       if (onRoad && Math.abs(align) > 0.7 && roadGraph) {
