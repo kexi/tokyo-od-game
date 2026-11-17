@@ -203,9 +203,38 @@ const v1Scope = (p: Plan) => {
 const planV1 = planFor(v1Scope, "keep");
 const v1Ramps = new Set([...planV1.wanted].filter((id) => planV1.runs.get(id)!.cls === "ramp"));
 const added = [...shippedRamps].filter((id) => !v1Ramps.has(id)).sort();
-/** Whether a run has a ground end (a foot onto the streets: an entrance or exit, not a link). */
-const hasFoot = (id: string) =>
+/** Whether a run itself has a ground end (onto the streets). */
+const isGroundEnded = (id: string) =>
   [true, false].some((atStart) => endPlan(plan, plan.runs.get(id)!, atStart).kind === "ground");
+/** The runs seamed to each run, both ways (a viaduct link and the run at grade of its foot). */
+const seamed = new Map<string, string[]>();
+for (const [id, rp] of plan.runs)
+  for (const atStart of [true, false]) {
+    const e = endPlan(plan, rp, atStart);
+    if (e.kind !== "seam") continue;
+    seamed.set(id, [...(seamed.get(id) ?? []), e.parent]);
+    seamed.set(e.parent, [...(seamed.get(e.parent) ?? []), id]);
+  }
+/**
+ * Whether a ramp has a foot on the streets: it, or a ramp seamed to it (followed through seams), has
+ * a ground end. Review 1 B1: the foot is a run of its own (a run at grade) wherever the plan compiles
+ * them, so the ramp's own ends alone counted no foot.
+ */
+const hasFoot = (id: string) => {
+  const seen = new Set([id]);
+  const queue = [id];
+  while (queue.length > 0) {
+    const r = queue.pop()!;
+    if (isGroundEnded(r)) return true;
+    for (const n of seamed.get(r) ?? []) {
+      const isRamp = plan.runs.get(n)?.cls === "ramp";
+      if (!isRamp || seen.has(n)) continue;
+      seen.add(n);
+      queue.push(n);
+    }
+  }
+  return false;
+};
 /** Where a dropped ramp leaves (or joins) a shipped run: that run and its run distance there. */
 const branchOf = (id: string) => {
   const rp = plan.runs.get(id)!;
@@ -220,15 +249,21 @@ const branchOf = (id: string) => {
   return null;
 };
 const dropped = [...ship.rampsDropped].sort().map(([id, d]) => {
-  const pp = plan.runs.get(d.parent)!;
+  const pp = d.parent === null ? null : plan.runs.get(d.parent)!;
+  const rp = plan.runs.get(id)!;
+  const mid = net.nodes.get(rp.chain.nodes[(rp.run.from + rp.run.to) >> 1])!;
   return {
     run: id,
-    km: km(plan.runs.get(id)!.length),
+    km: km(rp.length),
     round: d.round,
+    reason: d.reason,
     parent: d.parent,
-    parentCls: pp.cls,
-    parentRef: pp.ref,
+    parentCls: pp?.cls ?? null,
+    parentRef: pp?.ref ?? null,
     foot: hasFoot(id),
+    groundEnd: isGroundEnded(id),
+    lat: Math.round(mid.lat * 1e5) / 1e5,
+    lon: Math.round(mid.lon * 1e5) / 1e5,
     branch: branchOf(id),
   };
 });

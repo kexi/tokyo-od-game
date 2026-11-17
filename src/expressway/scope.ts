@@ -1,5 +1,5 @@
 import { endPlan, type Plan, type RunPlan } from "./compile";
-import type { DistrictRun } from "./districts";
+import { type DistrictRun, type DroppedRamp, type ScopeRun, scopeRamps } from "./districts";
 import { haversine } from "./geo";
 
 /**
@@ -45,12 +45,12 @@ export type ShipRuns = {
    */
   rampsOutside: Set<string>;
   /**
-   * Ramps reaching a shipped main line but hanging from a run that is not shipped (a junction's link
-   * onto 外環 or onto a K line in Yokohama), left out with the ramps that then hung from them: the
-   * round that dropped each (1: its own parent is not shipped; later: a ramp it hung from was dropped)
-   * and that parent.
+   * Ramps reaching a shipped main line but left out by rule A (districts.ts scopeRamps): hanging from
+   * a run that is not shipped (a junction's link onto 外環 or onto a K line in Yokohama, `parent`), or
+   * no longer reached once those are out (the feet on the streets of such links, `unreached`), with the
+   * round that dropped each.
    */
-  rampsDropped: Map<string, { round: number; parent: string }>;
+  rampsDropped: Map<string, DroppedRamp>;
 };
 
 const DIRECTIONS = Array.from({ length: 8 }, (_, k) => (k * Math.PI) / 4);
@@ -124,35 +124,11 @@ function parentsOf(plan: Plan, id: string): string[] {
   return out;
 }
 
-/**
- * Scope v2's rule A (R1-1a, r1a-answer1): of the candidate ramps, drop each that hangs from a run
- * neither kept (`kept`: the shipped main lines and streets) nor still a candidate, again until none
- * is dropped. So no shipped ramp hangs from a run that is not shipped (the scorecard's dangling stays
- * 0 by construction). Why not ship them and close their ends with a wall (B): a junction's link onto a
- * road that is not shipped (外環, the K lines past the wards) would climb over that road and end in a
- * wall at nothing; the links belong to the road they lead onto, which U10・U11 leave out.
- */
-export function pruneHangingRamps(
-  plan: Plan,
-  kept: ReadonlySet<string>,
-  candidates: Iterable<string>,
-): { ramps: Set<string>; dropped: Map<string, { round: number; parent: string }> } {
-  const ramps = new Set(candidates);
-  const dropped = new Map<string, { round: number; parent: string }>();
-  for (let round = 1; ; round++) {
-    const isShipped = (id: string) => kept.has(id) || ramps.has(id);
-    const now: Array<[string, string]> = [];
-    for (const id of [...ramps].sort()) {
-      const missing = parentsOf(plan, id).find((p) => !isShipped(p));
-      if (missing !== undefined) now.push([id, missing]);
-    }
-    if (now.length === 0) break;
-    for (const [id, parent] of now) {
-      ramps.delete(id);
-      dropped.set(id, { round, parent });
-    }
-  }
-  return { ramps, dropped };
+/** Every run of the plan as scopeRamps reads it: its class and the runs its ends hang from. */
+export function scopeRunsOf(plan: Plan): Map<string, ScopeRun> {
+  const out = new Map<string, ScopeRun>();
+  for (const [id, rp] of plan.runs) out.set(id, { id, cls: rp.cls, parents: parentsOf(plan, id) });
+  return out;
 }
 
 /** Runs joined at a junction or seam, both ways (a ramp's parent and the ramps hanging from a run). */
@@ -208,10 +184,10 @@ export function shipRuns(plan: Plan, inWards: InWards): ShipRuns {
       .map((rp) => rp.run.id)
       .filter(isOver),
   );
-  const candidates = rampsReachedFrom(plan, main);
-  const pruned = pruneHangingRamps(plan, new Set([...main, ...streets]), candidates);
+  const pruned = scopeRamps(scopeRunsOf(plan), main, new Set([...main, ...streets]));
   const ramps = sorted(pruned.ramps);
-  const rampsOutside = sorted([...rampsReachedFrom(plan, operated)].filter((id) => !candidates.has(id)));
+  const reached = new Set([...pruned.ramps, ...pruned.dropped.keys()]);
+  const rampsOutside = sorted([...rampsReachedFrom(plan, operated)].filter((id) => !reached.has(id)));
   const all = sorted([...main, ...ramps, ...streets]);
   return { main, ramps, streets, all, rampsOutside, rampsDropped: pruned.dropped };
 }
@@ -279,12 +255,16 @@ export function planDistrictRuns(plan: Plan, ids: Iterable<string>): DistrictRun
     const at = (i: number) => rp.plane.toLonLat(rp.align.xy[2 * i], rp.align.xy[2 * i + 1]);
     const points: Array<[number, number]> = [];
     for (let i = rp.i0; i <= rp.i1; i += DISTRICT_POINT_STEP) points.push(at(i));
+    // Review 1 W1: the last point too, so a run across YAMATE_BOX in its last 50 m is seen across.
+    const isLastIn = (rp.i1 - rp.i0) % DISTRICT_POINT_STEP === 0;
+    if (!isLastIn) points.push(at(rp.i1));
     const half = rp.align.s[rp.i0] + rp.length / 2;
     let mid = rp.i0;
     for (let i = rp.i0; i <= rp.i1; i++) {
       const isNearer = Math.abs(rp.align.s[i] - half) < Math.abs(rp.align.s[mid] - half);
       if (isNearer) mid = i;
     }
-    return { id, cls: rp.cls, ref: rp.ref, parents, points, middle: at(mid) };
+    const wayRefs = rp.run.ways.map((w) => plan.net.ways.get(w)!.ref);
+    return { id, cls: rp.cls, ref: rp.ref, parents, points, middle: at(mid), wayRefs };
   });
 }

@@ -1166,6 +1166,29 @@ export const LOG_EVENTS = {
       z.strictObject({ districts: z.string(), tiles: count, gzipBytes: count, maxGzipBytes: count }),
     ),
   }),
+  /** A --districts build (R1-1a): the stage written and the runs and chunks picked from the whole ship. */
+  /**
+   * Two scorecards gzipped by another node or zlib, or one without the record (compareExpresswayReports,
+   * R1-1a): their gzip rows shown but not counted, and how many.
+   */
+  expressway_reports_gzip_unlike: warning({
+    a: z.string(),
+    b: z.string(),
+    aEnv: z.string().nullable(),
+    bEnv: z.string().nullable(),
+    rows: count,
+  }),
+  /** A scorecard over U3's budget (budget.ts): the caps, the measured gzip, the largest tile. */
+  expressway_budget_over: warning({
+    label: z.string(),
+    totalGzipMaxBytes: count,
+    tileGzipMaxBytes: count,
+    totalGzipBytes: count,
+    maxTileGzipBytes: count,
+    maxTile: z.string().nullable(),
+    ok: z.boolean(),
+  }),
+  expressway_districts_picked: info({ districts: z.array(z.string()), runs: count, chunks: count }),
   expressway_districts_compared: info({
     written: count,
     mismatched: count,

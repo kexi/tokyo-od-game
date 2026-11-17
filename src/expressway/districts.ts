@@ -78,7 +78,83 @@ export type DistrictRun = {
    * curve apart; the point at half the length is the same place to a station's spacing in both.
    */
   middle?: [number, number];
+  /**
+   * The refs of its ways in order (null for a way without one), where the plan knows them
+   * (scope.ts planDistrictRuns). A main line's district comes from them (review 1 B2: 888066403, 13 km
+   * of C2 after four ways without a ref, read as central by its first way). Absent (a folder's run
+   * summaries carry the first way's ref only): `ref`.
+   */
+  wayRefs?: Array<string | null>;
 };
+
+/** A run as scope v2 reads it (scope.ts, and the districts' stages): its class and its ends' parents. */
+export type ScopeRun = { id: string; cls: XwClass; parents: readonly string[] };
+
+/** Why rule A left a ramp out, in which round, and the parent it hung from (`parent` only). */
+export type DroppedRamp = { round: number; reason: "parent" | "unreached"; parent: string | null };
+
+/**
+ * Scope v2's ramps (R1-1a, r1a-answer1 and review 1 B1): the ramps reached from `mains` through ramps
+ * alone (a run's parents and the runs hanging from it, both ways), less rule A, round by round until
+ * nothing more drops: (1) a ramp hanging from a run of `runs` that is neither `kept` (the shipped main
+ * lines and streets) nor still in, `parent`; (2) a ramp no longer reached from `mains` through the
+ * ramps still in, `unreached` (a junction's foot on the streets once its link is out). A parent not in
+ * `runs` (a ground end, a link at grade not compiled) is no parent. So every ramp kept hangs from kept
+ * runs and is reached through them: dangling 0 and no island, by construction. Why not ship such links
+ * and close their ends with a wall (B): a link onto a road not shipped (外環, the K lines past the
+ * wards) would end in a wall at nothing, and its foot alone would be an entrance to nowhere. Pure, so
+ * the districts' stages (districtStages) and the scope (scope.ts shipRuns) are the one rule.
+ */
+export function scopeRamps(
+  runs: ReadonlyMap<string, ScopeRun>,
+  mains: ReadonlySet<string>,
+  kept: ReadonlySet<string>,
+): { ramps: Set<string>; dropped: Map<string, DroppedRamp> } {
+  const graph = new Map<string, string[]>();
+  const link = (a: string, b: string) => {
+    graph.set(a, [...(graph.get(a) ?? []), b]);
+    graph.set(b, [...(graph.get(b) ?? []), a]);
+  };
+  for (const r of runs.values()) for (const p of r.parents) if (runs.has(p)) link(r.id, p);
+  const reach = (through: (id: string) => boolean) => {
+    const seen = new Set(mains);
+    const queue = [...mains];
+    const out = new Set<string>();
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      for (const next of graph.get(id) ?? []) {
+        const isRamp = runs.get(next)?.cls === "ramp";
+        const isOpen = isRamp && !seen.has(next) && through(next);
+        if (!isOpen) continue;
+        seen.add(next);
+        out.add(next);
+        queue.push(next);
+      }
+    }
+    return out;
+  };
+  const ramps = reach(() => true);
+  const dropped = new Map<string, DroppedRamp>();
+  for (let round = 1; ; round++) {
+    let isChanged = false;
+    for (const id of [...ramps].sort()) {
+      const parent = runs.get(id)!.parents.find((p) => runs.has(p) && !kept.has(p) && !ramps.has(p));
+      if (parent === undefined) continue;
+      ramps.delete(id);
+      dropped.set(id, { round, reason: "parent", parent });
+      isChanged = true;
+    }
+    const still = reach((id) => ramps.has(id));
+    for (const id of [...ramps].sort()) {
+      if (still.has(id)) continue;
+      ramps.delete(id);
+      dropped.set(id, { round, reason: "unreached", parent: null });
+      isChanged = true;
+    }
+    if (!isChanged) break;
+  }
+  return { ramps, dropped };
+}
 
 /** The ref a run's chunks carry over the longest length (ties by the ref's name), null for none. */
 export function mainRefOf(chunks: readonly XwChunk[]): string | null {
@@ -123,37 +199,69 @@ export function halfwayOf(chunks: readonly XwChunk[]): [number, number] | null {
 }
 
 /**
- * Every run's district. A main line with a ref by its ref (C2 by where its middle point lies); a
- * main line without one, a ramp or a street by the main line its ends hang from, followed through
- * other ramps (the start's first; where the start leads to none, the end's); failing that, the main
- * line nearest its middle point; failing that, outside.
+ * A main line's district from its refs: the first way's with a ref (a way without one takes its
+ * neighbour's), C2 against YAMATE_BOX at the middle (a run across the box is east). `mixed` where its
+ * ways' refs fall in more than one district other than by the box: --run-borders cut leaves none
+ * (network.ts refBorders), keep has them (the E refs of the other operators' stretches) and takes the
+ * first. null for a run with no ref at all.
  */
-export function assignDistricts(runs: readonly DistrictRun[]): Map<string, District> {
+function mainDistrictOf(r: DistrictRun): { district: District; mixed: boolean } | null {
+  const refs = (r.wayRefs ?? [r.ref]).filter((x): x is string => x !== null);
+  const isRefless = refs.length === 0;
+  if (isRefless || r.points.length === 0) return null;
+  const [lon, lat] = r.middle ?? middle(r.points);
+  const d = districtOfRef(refs[0], lon, lat)!;
+  // R1-1a: a C2 run across YAMATE_BOX is east, the district shipped first, wherever its middle is.
+  const isAcrossBox = d === "yamate" && r.points.some(([x, y]) => !inYamateBox(x, y));
+  const named = new Set(refs.map((x) => districtOfRefName(x)));
+  return { district: isAcrossBox ? "east" : d, mixed: named.size > 1 };
+}
+
+/**
+ * Every run's district (R1-1a review 1 B2・B3: the districts are published stage by stage, central,
+ * + east, + yamate, + outside, and each stage must be a scope of its own).
+ * - A main line with a ref: by its refs (mainDistrictOf).
+ * - A main line with no ref, or a street: the latest stage among the districts of the runs it hangs
+ *   from (followed through such runs); failing that, the nearest main line (its line, not its points).
+ * - A ramp: the first stage whose scope takes it, the scope being scope v2 (scopeRamps: reached from
+ *   the stage's main lines through ramps, rule A, reached again) with the main lines and streets of the
+ *   districts up to that stage as the shipped ones. So every stage has no dangling run and no island,
+ *   and a link between a central and an east main line ships with east (R2), never into the air in R1.
+ *   A ramp no stage takes (none in a shipped scope) falls back to its parents', then the nearest.
+ * Why stages and not "the start's parent first" (as before): that put the link from central onto east
+ * in central, whose parent R1 would not write (the central build's dangling was 5).
+ */
+export function districtsOf(runs: readonly DistrictRun[]): {
+  districts: Map<string, District>;
+  mixed: string[];
+} {
   const byId = new Map(runs.map((r) => [r.id, r]));
   const out = new Map<string, District>();
+  const mixed: string[] = [];
   for (const r of runs) {
     const isMain = r.cls === "expressway";
-    if (!isMain || r.points.length === 0) continue;
-    const [lon, lat] = r.middle ?? middle(r.points);
-    const d = districtOfRef(r.ref, lon, lat);
-    // R1-1a: a C2 run across YAMATE_BOX is east, the district shipped first, wherever its middle is.
-    const isAcrossBox = d === "yamate" && r.points.some(([x, y]) => !inYamateBox(x, y));
-    if (d) out.set(r.id, isAcrossBox ? "east" : d);
+    if (!isMain) continue;
+    const d = mainDistrictOf(r);
+    if (!d) continue;
+    out.set(r.id, d.district);
+    if (d.mixed) mixed.push(r.id);
   }
-  const follow = (id: string, seen: Set<string>): District | null => {
-    const known = out.get(id);
-    if (known) return known;
-    const r = byId.get(id);
-    const isLoop = seen.has(id);
-    if (!r || isLoop) return null;
-    seen.add(id);
-    for (const p of r.parents) {
-      const d = follow(p, seen);
-      if (d) return d;
+  const rank = (d: District) => DISTRICTS.indexOf(d);
+  const latest = (ds: District[]) =>
+    ds.reduce<District | null>((a, d) => (a === null || rank(d) > rank(a) ? d : a), null);
+  // Main lines without a ref and streets: from the runs they hang from, until nothing more is found.
+  const isCarrier = (r: DistrictRun) => r.cls === "street" || (r.cls === "expressway" && !out.has(r.id));
+  for (let isGrown = true; isGrown;) {
+    isGrown = false;
+    for (const r of runs) {
+      if (!isCarrier(r) || out.has(r.id)) continue;
+      const d = latest(r.parents.map((p) => out.get(p)).filter((x): x is District => x !== undefined));
+      if (d === null) continue;
+      out.set(r.id, d);
+      isGrown = true;
     }
-    return null;
-  };
-  const mains = runs.filter((r) => out.has(r.id));
+  }
+  const mains = runs.filter((r) => out.has(r.id) && r.cls === "expressway");
   // R1-1a: the distance to each main line's polyline, not to its points. Why: the chunks' stations and
   // the plan's samples lie on the same line at other spacings, so the nearest point could belong to
   // another main line in one and not the other (16 ramps of ship/all differed); the distance to the
@@ -180,12 +288,44 @@ export function assignDistricts(runs: readonly DistrictRun[]): Map<string, Distr
     return best?.district ?? null;
   };
   for (const r of runs.toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
+    if (!isCarrier(r) || out.has(r.id)) continue;
+    out.set(r.id, (r.points.length > 0 ? nearest(r.middle ?? middle(r.points)) : null) ?? "outside");
+  }
+  // Ramps: the first stage whose scope takes them.
+  const scopeRuns = new Map(runs.map((r) => [r.id, { id: r.id, cls: r.cls, parents: r.parents }]));
+  for (let k = 0; k < DISTRICTS.length; k++) {
+    const kept = new Set(
+      runs.filter((r) => r.cls !== "ramp" && out.has(r.id) && rank(out.get(r.id)!) <= k).map((r) => r.id),
+    );
+    const stageMains = new Set([...kept].filter((id) => byId.get(id)!.cls === "expressway"));
+    for (const id of scopeRamps(scopeRuns, stageMains, kept).ramps)
+      if (!out.has(id)) out.set(id, DISTRICTS[k]);
+  }
+  const follow = (id: string, seen: Set<string>): District | null => {
+    const known = out.get(id);
+    if (known) return known;
+    const r = byId.get(id);
+    const isLoop = seen.has(id);
+    if (!r || isLoop) return null;
+    seen.add(id);
+    for (const p of r.parents) {
+      const d = follow(p, seen);
+      if (d) return d;
+    }
+    return null;
+  };
+  for (const r of runs.toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
     if (out.has(r.id)) continue;
     const viaParents = r.parents.map((p) => follow(p, new Set([r.id]))).find((d) => d !== null) ?? null;
     const viaNearest = viaParents ?? (r.points.length > 0 ? nearest(r.middle ?? middle(r.points)) : null);
     out.set(r.id, viaNearest ?? "outside");
   }
-  return out;
+  return { districts: out, mixed: mixed.sort() };
+}
+
+/** Every run's district (districtsOf). */
+export function assignDistricts(runs: readonly DistrictRun[]): Map<string, District> {
+  return districtsOf(runs).districts;
 }
 
 /** C2 runs with points on both sides of YAMATE_BOX (to review where the box cuts). */
@@ -219,4 +359,28 @@ export function districtRunsOf(
       ...(half ? { middle: half } : {}),
     };
   });
+}
+
+/**
+ * What a --districts build writes (R1-1a review 1 B4): the chunks, run summaries, closed runs and
+ * entrances of the picked runs, taken from what the whole ship compiled and signed, unchanged. Why
+ * pick after the solve and the signs and not before: the signs (signPlan.ts planSigns) read the
+ * written runs (a junction's direction board names the line it leads onto, a divider the deck beside),
+ * so a smaller set wrote other signs, and a published district's chunks must stay byte for byte (T8).
+ */
+export function pickWritten<
+  C extends { run: string },
+  R extends { id: string },
+  K extends { run: string },
+  E extends { run: string },
+>(
+  written: { chunks: C[]; runs: R[]; closed: K[]; entrances: E[] },
+  isPicked: (run: string) => boolean,
+): { chunks: C[]; runs: R[]; closed: K[]; entrances: E[] } {
+  return {
+    chunks: written.chunks.filter((c) => isPicked(c.run)),
+    runs: written.runs.filter((r) => isPicked(r.id)),
+    closed: written.closed.filter((c) => isPicked(c.run)),
+    entrances: written.entrances.filter((e) => isPicked(e.run)),
+  };
 }

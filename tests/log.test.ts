@@ -605,6 +605,23 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     out: ".qa/expressway/district-sizes-r1-pruned-cut.json",
     stages: [{ districts: "central", tiles: 60, gzipBytes: 620000, maxGzipBytes: 60872 }],
   },
+  expressway_reports_gzip_unlike: {
+    a: "p7c9-pruned",
+    b: "r1-pruned-cut",
+    aEnv: null,
+    bEnv: "v24.22.2 zlib 1.3.1",
+    rows: 12,
+  },
+  expressway_budget_over: {
+    label: "r9",
+    totalGzipMaxBytes: 1600000,
+    tileGzipMaxBytes: 72000,
+    totalGzipBytes: 1700000,
+    maxTileGzipBytes: 61700,
+    maxTile: "14553-6451",
+    ok: false,
+  },
+  expressway_districts_picked: { districts: ["central"], runs: 300, chunks: 1600 },
   expressway_districts_compared: { written: 690, mismatched: 0, mismatchedIds: [] },
   expressway_scope_probed: {
     out: ".qa/expressway/scope-probe-pruned-keep.json",

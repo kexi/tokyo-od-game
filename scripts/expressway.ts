@@ -63,7 +63,14 @@ import { buildReport, type PlannedRun, type Report, trackingOf } from "../src/ex
 import { planDistrictRuns, scopeExtent, shipRuns } from "../src/expressway/scope.ts";
 import { DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
 import { packTiles } from "../src/expressway/files.ts";
-import { assignDistricts, DISTRICTS, type District, districtRunsOf } from "../src/expressway/districts.ts";
+import {
+  assignDistricts,
+  DISTRICTS,
+  type District,
+  districtRunsOf,
+  districtsOf,
+  pickWritten,
+} from "../src/expressway/districts.ts";
 import type { Structure } from "../src/expressway/structures.ts";
 import { DECK_LEVELS_VERSION } from "../src/world/deckLevels.ts";
 import {
@@ -100,6 +107,8 @@ import { tileKey } from "../src/expressway/geo.ts";
 import { planSigns } from "../src/expressway/signPlan.ts";
 import { log, warn } from "../src/log.ts";
 import { BuildDem } from "./demTiles.ts";
+import { DISTRICTS_FILE } from "./expresswayFiles.ts";
+import { bordersOf, endsOf, stagesOf } from "./expresswayShipScore.ts";
 import { isBay, readExpresswayInput, readStructures, UNIVERSE } from "./expresswayNetwork.ts";
 import { readNodeCoords, readNodeCoordsWhere, readReplicationTimestamp, readWays } from "./osm-pbf.ts";
 
@@ -298,10 +307,12 @@ const runBordersArg = arg("run-borders") ?? "keep";
 const isRunBordersArg = runBordersArg === "keep" || runBordersArg === "cut";
 if (!isRunBordersArg) throw new Error(`unknown --run-borders ${runBordersArg} (keep, cut)`);
 const isRunBordersCut = runBordersArg === "cut";
-// R1-1a: --districts central,east,… writes the shipped runs of those districts alone (the districts from
-// the plan, scope.ts planDistrictRuns), each with the very chunks the whole ship writes (T8).
+// R1-1a: --districts central,east,… (a stage: central, + east, + yamate, + outside) writes the shipped
+// runs of those districts alone (the districts from the plan, districts.ts districtsOf). The whole ship
+// is compiled and its signs planned; the runs are picked just before they are written (review 1 B4),
+// so each written chunk is the whole ship's byte for byte (T8).
 const districtsArg = arg("districts");
-const districtsReason = districtsRefusal(districtsArg, scope === "ship", DISTRICTS);
+const districtsReason = districtsRefusal(districtsArg, scope === "ship", isRunBordersCut, DISTRICTS);
 if (districtsReason) throw new Error(districtsReason);
 const districtsWanted = districtsArg === undefined ? null : new Set(districtsArg.split(","));
 // --below all (P2.7-1), blocks (P2.7-2), v1, a sweep of the v2 weights and the structures by height
@@ -369,13 +380,8 @@ const areas = hasWards
     )
   : null;
 const inWards = (lon: number, lat: number) => areas?.lookup(lat, lon) != null;
-/** The shipped runs, of the districts asked for (--districts) or all of them. */
-const shipWanted = (p: Plan) => {
-  const all = shipRuns(p, inWards).all;
-  if (districtsWanted === null) return all;
-  const district = assignDistricts(planDistrictRuns(p, all));
-  return new Set([...all].filter((id) => districtsWanted.has(district.get(id)!)));
-};
+/** The shipped runs (all of them: --districts picks among the written ones, not here). */
+const shipWanted = (p: Plan) => shipRuns(p, inWards).all;
 const planOptions: Parameters<typeof planNetwork>[4] = {
   pruneBelow: below === "pruned",
   partition: partitionMode,
@@ -553,6 +559,15 @@ log("expressway_solved", {
 });
 endStage("solve");
 // 6. Signs (G6): where each stands on the decks and what it says; the entrances for 103・104.
+// R1-1a: the districts of the shipped runs, from the plan (districts.ts districtsOf: the main lines by
+// their ways' refs, the ramps by the first stage whose scope takes them). The plan is their source: a
+// folder's chunks carry the first way's ref alone.
+const shipDistricts = isShip ? districtsOf(planDistrictRuns(plan, plan.wanted)) : null;
+const isMixedCut = isRunBordersCut && (shipDistricts?.mixed.length ?? 0) > 0;
+if (isMixedCut)
+  throw new Error(
+    `--run-borders cut left main lines of more than one district: ${shipDistricts!.mixed.join(", ")}`,
+  );
 const signPlan = planSigns({
   chunks: result.chunks,
   runs: result.runs,
@@ -580,6 +595,24 @@ log("expressway_signs_planned", {
 });
 for (const u of signPlan.unplaced) warn("expressway_sign_unplaced", u);
 endStage("signs");
+// --districts: the runs of the stage asked for, picked from what the whole ship compiled and signed.
+/** The shipped scope and the closed runs of the whole build, before --districts picks (the scorecard's ends). */
+const wholeWanted = new Set(plan.wanted);
+const wholeClosed = new Set(result.closed.map((c) => c.run));
+if (districtsWanted !== null) {
+  const isPicked = (id: string) => districtsWanted.has(shipDistricts!.districts.get(id) ?? "outside");
+  const picked = pickWritten({ ...result, entrances: signPlan.entrances }, isPicked);
+  result.chunks = picked.chunks;
+  result.runs = picked.runs;
+  result.closed = picked.closed;
+  signPlan.entrances = picked.entrances;
+  plan.wanted = new Set([...plan.wanted].filter(isPicked));
+  log("expressway_districts_picked", {
+    districts: [...districtsWanted].sort(),
+    runs: result.runs.length,
+    chunks: result.chunks.length,
+  });
+}
 const tiles = packTiles(result.chunks, result.runs, signPlan.entrances, Z);
 // The ledger (P2.7-4) mixes what the tool counts with what a review decided: a rebuild must not
 // lose it, so it is read before the folder is cleared and written back right after.
@@ -604,7 +637,7 @@ await mkdir(OUT, { recursive: true });
 if (keptLedger !== null) await writeFile(join(OUT, "ledger.json"), keptLedger);
 let bytes = 0;
 const tileKeys = [...tiles.keys()];
-const tileSizes: Array<{ bytes: number; gzipBytes: number }> = [];
+const tileSizes: Array<{ bytes: number; gzipBytes: number; key: string }> = [];
 for (const key of tileKeys) {
   const tile = tiles.get(key)!;
   const text = JSON.stringify(tile);
@@ -612,7 +645,7 @@ for (const key of tileKeys) {
   bytes += size;
   // Why gzip only with --report: the scorecard's budget is the size served compressed, and the
   // default build, which writes no report, need not spend the time.
-  tileSizes.push({ bytes: size, gzipBytes: reportPath ? gzipSync(text).length : 0 });
+  tileSizes.push({ bytes: size, gzipBytes: reportPath ? gzipSync(text).length : 0, key });
   await writeFile(join(OUT, `${key}.json`), text);
 }
 const UNSOLVED = [
@@ -649,6 +682,18 @@ const meta: XwMeta = {
 };
 const metaText = JSON.stringify(meta);
 await writeFile(join(OUT, "meta.json"), metaText);
+// R1-1a: a ship folder carries each written run's district from the plan (scripts/expresswayFiles.ts
+// districtsOfFiles reads it): the chunks alone cannot tell them (they carry the first way's ref).
+// Never in a build of the boxes, whose folder stays as before byte for byte.
+if (shipDistricts) {
+  const written = Object.fromEntries(
+    result.runs
+      .map((r) => r.id)
+      .sort()
+      .map((id) => [id, shipDistricts.districts.get(id) ?? "outside"]),
+  );
+  await writeFile(join(OUT, DISTRICTS_FILE), JSON.stringify({ version: 1, districts: written }));
+}
 /** The runs of the range: written, or closed within it (S6 PR 7c: the ledger's cases are theirs alone). */
 const inRangeRuns = new Set([...result.runs.map((r) => r.id), ...result.closed.map((c) => c.run)]);
 const record: XwBuildRecord = {
@@ -994,10 +1039,18 @@ function groundSummary(): NonNullable<Report["ground"]> {
 }
 
 /**
- * Every planned run's district (districts.ts): a written run from its chunks and ends, one not
- * written from the plan's ref and line (no parents: a closed ramp falls to the nearest main line).
+ * Every planned run's district (districts.ts). The shipped scope from the plan (shipDistricts); any
+ * other build's, and the runs of the components outside the scope, as before: a written run from its
+ * chunks and ends, one not written from the plan's ref and line (no parents: a closed ramp falls to
+ * the nearest main line).
  */
 function plannedDistricts(): Map<string, District> {
+  const fallback = chunkDistricts();
+  if (!shipDistricts) return fallback;
+  return new Map([...fallback, ...shipDistricts.districts]);
+}
+
+function chunkDistricts(): Map<string, District> {
   const byRun = new Map<string, XwChunk[]>();
   for (const c of result.chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
   const written = districtRunsOf(result.runs, byRun);
@@ -1020,7 +1073,7 @@ if (isShip) {
   const byRun = new Map<string, XwChunk[]>();
   for (const c of result.chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
   const fromChunks = assignDistricts(districtRunsOf(result.runs, byRun));
-  const fromPlan = assignDistricts(planDistrictRuns(plan, plan.wanted));
+  const fromPlan = shipDistricts!.districts;
   const mismatched = result.runs.map((r) => r.id).filter((id) => fromChunks.get(id) !== fromPlan.get(id));
   log("expressway_districts_compared", {
     written: result.runs.length,
@@ -1074,6 +1127,32 @@ if (reportPath) {
     diagnostics: result.diagnostics,
     chunks: result.chunks,
     tiles: tileSizes,
+    // R1-1a: the gzip sizes depend on zlib (the same tiles measured 117,542 and 115,707 bytes on two
+    // machines): the scorecard names it, and compareExpresswayReports counts gzip only between equals.
+    gzipEnv: { node: process.version, zlib: process.versions.zlib ?? "unknown" },
+    ...(isShip
+      ? {
+          stages: stagesOf(
+            {
+              chunks: result.chunks,
+              runs: result.runs,
+              closed: result.closed,
+              entrances: signPlan.entrances,
+            },
+            shipDistricts!.districts,
+            inWards,
+            Z,
+          ),
+          borders: bordersOf(plan, new Set(result.runs.map((r) => r.id))),
+          ends: endsOf(
+            plan,
+            new Set(result.runs.map((r) => r.id)),
+            wholeWanted,
+            chosenShip?.rampsDropped ?? new Map(),
+            wholeClosed,
+          ),
+        }
+      : {}),
     meta: { raw: Buffer.byteLength(metaText), gzip: gzipSync(metaText).length, byField },
     record: sizeOf(recordText),
     ledger: keptLedger === null ? null : sizeOf(keptLedger),

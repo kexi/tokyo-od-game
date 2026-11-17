@@ -155,8 +155,32 @@ describe("出荷範囲（scope.ts shipRuns）", () => {
     // 80 runs from A up to B (another operator's, not shipped); 81 hangs from 80 alone.
     expect(ship.ramps.has("80")).toBe(false);
     expect(ship.ramps.has("81")).toBe(false);
-    expect(ship.rampsDropped.get("80")).toEqual({ round: 1, parent: "30" });
-    expect(ship.rampsDropped.get("81")).toEqual({ round: 2, parent: "80" });
+    expect(ship.rampsDropped.get("80")).toEqual({ round: 1, reason: "parent", parent: "30" });
+    // 81 hangs from 80 alone, out in the same round.
+    expect(ship.rampsDropped.get("81")).toEqual({ round: 1, reason: "parent", parent: "80" });
+  });
+
+  it("rule A: every shipped ramp is reached from a shipped main line through shipped ramps alone (no island)", () => {
+    const plan = planNetwork(scene(), new Set(), null);
+    const ship = shipRuns(plan, inWards);
+    const reached = new Set<string>();
+    const queue = [...ship.main];
+    const linked = (id: string) =>
+      [...ship.ramps].filter((r) => {
+        const rp = plan.runs.get(r)!;
+        const parents = [true, false].map((atStart) => endPlan(plan, rp, atStart));
+        const isChild = parents.some((e) => (e.kind === "junction" || e.kind === "seam") && e.parent === id);
+        const own = [true, false].map((atStart) => endPlan(plan, plan.runs.get(id)!, atStart));
+        const isParent = own.some((e) => (e.kind === "junction" || e.kind === "seam") && e.parent === r);
+        return isChild || isParent;
+      });
+    while (queue.length > 0)
+      for (const r of linked(queue.pop()!))
+        if (!reached.has(r)) {
+          reached.add(r);
+          queue.push(r);
+        }
+    expect([...reached].sort()).toEqual([...ship.ramps].sort());
   });
 
   it("rule A: no shipped run hangs from a run that is not shipped (the scorecard's dangling stays 0)", () => {

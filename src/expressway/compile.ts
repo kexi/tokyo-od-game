@@ -96,6 +96,7 @@ import {
   type Chain,
   type Network,
   type RoadClass,
+  isOperatorBorder,
   type Run,
   type SplitOptions,
   splitRuns,
@@ -2405,17 +2406,16 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const { chain, run } = rp;
   const idx = atStart ? run.from : run.to;
   const isChainEnd = atStart ? idx === 0 : idx === chain.nodes.length - 1;
-  // R1-1a (U10): where the operator's ways end, the other operator's run beside it is not shipped, so
-  // the end is open, as at the universe's edge. Why not a seam to the run beside (as between a run at
-  // grade and a viaduct): that run would join the component and be solved with it, and the operator's
-  // deck would bend to meet a road that is never written. Where the district of the ref changes
-  // (1 | K1) both sides are the operator's and both ship in the end: one profile across, the side
-  // shipped later a seam onto the side shipped first (open), so a district written alone never hangs
-  // from one not written yet.
+  // R1-1a: a border of --run-borders cut is one profile across: the side shipped first is free (open)
+  // and the other side a seam onto it. Where the district of the ref changes (1 | K1) both sides ship
+  // in the end, so a district written alone never hangs from one not written yet. Where the operator's
+  // ways end (U10) the other operator's side is never written but stays the seam child (review 1 B5):
+  // why not open on both sides, as first built: the road goes on in reality, and two free ends lifted
+  // 7号's end by 4.45 m at the 京葉 border and pulled 高井戸's two carriageways 1.53 m apart.
   const border = rp.run.borders?.[atStart ? 0 : 1] ?? "none";
-  const isOpenBorder = border === "operator" || border === "open";
+  const isOpenBorder = border === "operator-open" || border === "open";
   if (isOpenBorder) return { kind: "open" };
-  const isSeamBorder = border === "seam";
+  const isSeamBorder = border === "seam" || border === "operator-seam";
   if (isSeamBorder) {
     const parent = (plan.chainRuns.get(chain.id) ?? []).find(
       (r) => r !== rp && r.run.from <= idx && idx <= r.run.to,
@@ -2480,10 +2480,10 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   // R1-1a: on the node where the operator's ways end (--run-borders cut), the operator's run is the
   // parent, never the other operator's beside it (not shipped). Only there: any other node shared by
   // two runs (a change of structure) keeps the first, as before.
-  const isOperatorBorder = (r: RunPlan) =>
-    (r.run.from === pIndex && r.run.borders?.[0] === "operator") ||
-    (r.run.to === pIndex && r.run.borders?.[1] === "operator");
-  const isAtBorder = holding.length > 1 && holding.some(isOperatorBorder);
+  const isAtOperatorBorder = (r: RunPlan) =>
+    (r.run.from === pIndex && isOperatorBorder(r.run.borders?.[0])) ||
+    (r.run.to === pIndex && isOperatorBorder(r.run.borders?.[1]));
+  const isAtBorder = holding.length > 1 && holding.some(isAtOperatorBorder);
   const operatedRun = holding.find((r) => r.run.ways.some((w) => plan.net.ways.get(w)?.operated === true));
   const pRun = isAtBorder && operatedRun ? operatedRun : holding[0];
   if (!pRun) return { kind: "ground", nodeIndex: idx };

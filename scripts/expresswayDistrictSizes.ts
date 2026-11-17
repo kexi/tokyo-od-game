@@ -8,14 +8,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { assignDistricts, DISTRICTS, districtRunsOf } from "../src/expressway/districts.ts";
+import { DISTRICTS } from "../src/expressway/districts.ts";
 import { packTiles } from "../src/expressway/files.ts";
 import { STATION_STRIDE } from "../src/expressway/format.ts";
 import { haversine } from "../src/expressway/geo.ts";
 import { nearWards } from "../src/expressway/scope.ts";
 import { AreaIndex, type AreaFile } from "../src/geo/areas.ts";
 import { log } from "../src/log.ts";
-import { readExpresswayFiles } from "./expresswayFiles.ts";
+import { districtsOfFiles, readExpresswayFiles } from "./expresswayFiles.ts";
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => {
@@ -25,7 +25,7 @@ const flag = (name: string) => {
 const dir = argv.find((a, i) => !a.startsWith("--") && !argv[i - 1]?.startsWith("--"));
 const files = readExpresswayFiles(dir);
 const out = flag("out") ?? `.qa/expressway/district-sizes-${files.dir.split("/").filter(Boolean).pop()}.json`;
-const district = assignDistricts(districtRunsOf(files.runs, files.byRun));
+const district = districtsOfFiles(files);
 
 /** gzip of each tile of the runs `ids`, packed as the build packs them. */
 function sizesOf(ids: ReadonlySet<string>) {

@@ -4,6 +4,7 @@ import { classifyOverlap, isJoined, OVERLAP_CLASSES, type OverlapClass, overlapP
 import { hermite, ST } from "./profile";
 import { CROSS_STRIDE, STATION_STRIDE } from "./format";
 import { PROPERTIES, type Property, type Violations } from "./violations";
+import { TILE_BUDGET } from "./budget";
 import { type District, DISTRICTS } from "./districts";
 import type { LedgerSummary } from "./ledger";
 import { GIRDER_DEPTH } from "./assumptions";
@@ -62,9 +63,16 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * below runs left out and why, the portals' ends and the decks too low over their approaches
  * (belowScore.ts). Why not under the key `below` the S7 plan names it by: `below` is the build's
  * `--below` mode since version 2, and reports of every version are compared field by field. Version 6
- * reports still parse.
+ * reports still parse. 8 (R1-1a): `size.gzipEnv` (the node and zlib the tiles were gzipped with: the
+ * same tiles gzip to other sizes under another zlib, so compareExpresswayReports counts gzip changes
+ * only between reports of one), `budget` (U3, budget.ts: the tiles' gzip total and the largest tile
+ * against the user's caps), and for a --range ship build `stages` (each publishing stage of the
+ * districts: runs, km, closed, over and off the wards, its tiles' gzip and largest tile),
+ * `borders` (the runs cut by --run-borders cut, with the km of the other operators' side not
+ * written) and `ends` (the written main lines' free ends, and the mouths where an unwritten run meets
+ * a written one: for R1-1b's walls). Version 7 reports still parse.
  */
-export const REPORT_VERSION = 7;
+export const REPORT_VERSION = 8;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 const fileSize = z.strictObject({ raw: count, gzip: count });
@@ -89,6 +97,7 @@ export const ReportSchema = z.strictObject({
     z.literal(4),
     z.literal(5),
     z.literal(6),
+    z.literal(7),
     z.literal(REPORT_VERSION),
   ]),
   label: z.string(),
@@ -427,7 +436,96 @@ export const ReportSchema = z.strictObject({
     record: fileSize.optional(),
     /** ledger.json of the data folder as the build kept it (null: none there yet; absent before v6). */
     ledger: fileSize.nullable().optional(),
+    /** The node and zlib that gzipped the tiles (version 8; absent before). */
+    gzipEnv: z.strictObject({ node: z.string(), zlib: z.string() }).optional(),
   }),
+  /**
+   * U3 (budget.ts, version 8): the tiles' gzip total and the largest tile against the caps, `ok` when
+   * both are within them. compareExpresswayReports --check fails a report whose `ok` is false.
+   */
+  budget: z
+    .strictObject({
+      totalGzipMaxBytes: count,
+      tileGzipMaxBytes: count,
+      totalGzipBytes: count,
+      maxTileGzipBytes: count,
+      maxTile: z.string().nullable(),
+      ok: z.boolean(),
+    })
+    .optional(),
+  /**
+   * The publishing stages of the districts (version 8, a --range ship build): per stage (central,
+   * + east, + yamate, + outside) the runs and km written, closed, the km over the wards and off them
+   * (scope.ts nearWards at each station step), and the tiles the stage's runs make (packed as the
+   * build packs them) with their gzip total and the largest.
+   */
+  stages: z
+    .array(
+      z.strictObject({
+        districts: z.array(z.enum(DISTRICTS)),
+        runs: count,
+        km,
+        closed: count,
+        inKm: km,
+        outKm: km,
+        tiles: count,
+        gzipBytes: count,
+        maxTileGzipBytes: count,
+        maxTile: z.string().nullable(),
+      }),
+    )
+    .optional(),
+  /**
+   * The runs --run-borders cut cut at a border (version 8): run, end, kind (network.ts RunBorder), its
+   * ref and the node; and the km of the other operators' runs beside them, never written.
+   */
+  borders: z
+    .strictObject({
+      list: z.array(
+        z.strictObject({
+          /** run:end, the row's key in compareExpresswayReports. */
+          id: z.string(),
+          run: z.string(),
+          end: z.enum(["start", "end"]),
+          kind: z.string(),
+          ref: z.string().nullable(),
+          lon: z.number(),
+          lat: z.number(),
+        }),
+      ),
+      otherKm: km,
+    })
+    .optional(),
+  /**
+   * Where the written network stops (version 8, for R1-1b's walls). `mainEnds`: a written main line's
+   * end with nothing written beyond (open, or a seam to a run not written), and why (`operator`:
+   * another operator's road goes on; `ref`: a later district's line goes on; `scope`: the chain's or
+   * the scope's end). `mouths`: a written run where a run not written hangs (its junction or seam), at
+   * the parent's run distance, and why (`district`: a later stage's, `ruleA`: left out by rule A,
+   * `closed`, `outside`: out of the scope).
+   */
+  ends: z
+    .strictObject({
+      mainEnds: z.array(
+        z.strictObject({
+          id: z.string(),
+          run: z.string(),
+          end: z.enum(["start", "end"]),
+          why: z.enum(["operator", "ref", "scope"]),
+          lon: z.number(),
+          lat: z.number(),
+        }),
+      ),
+      mouths: z.array(
+        z.strictObject({
+          run: z.string(),
+          s: z.number(),
+          child: z.string(),
+          why: z.enum(["district", "ruleA", "closed", "outside"]),
+        }),
+      ),
+    })
+    .optional(),
   solver: z.strictObject({
     components: count,
     largestRuns: count,
@@ -534,7 +632,13 @@ export type ReportInput = {
   /** All the build's diagnostics (counted over the runs of the range only). */
   diagnostics: XwDiagnostic[];
   chunks: XwChunk[];
-  tiles: Array<{ bytes: number; gzipBytes: number }>;
+  tiles: Array<{ bytes: number; gzipBytes: number; key?: string }>;
+  /** The node and zlib that gzipped the tiles (version 8). */
+  gzipEnv?: { node: string; zlib: string };
+  /** The publishing stages, borders and ends of a --range ship build (version 8). */
+  stages?: Report["stages"];
+  borders?: Report["borders"];
+  ends?: Report["ends"];
   meta: { raw: number; gzip: number; byField: Record<string, number> };
   record: { raw: number; gzip: number };
   ledger: { raw: number; gzip: number } | null;
@@ -1367,7 +1471,12 @@ export function buildReport(input: ReportInput): Report {
       meta: input.meta,
       record: input.record,
       ledger: input.ledger,
+      ...(input.gzipEnv ? { gzipEnv: input.gzipEnv } : {}),
     },
+    budget: budgetOf(input.tiles),
+    ...(input.stages ? { stages: input.stages } : {}),
+    ...(input.borders ? { borders: input.borders } : {}),
+    ...(input.ends ? { ends: input.ends } : {}),
     solver,
     partition: partitionOf(input.partition),
     districts: districtsOf(input),
@@ -1392,6 +1501,40 @@ export function buildReport(input: ReportInput): Report {
         }),
   };
   return ReportSchema.parse(report);
+}
+
+/**
+ * Whether two reports' gzip sizes compare (R1-1a): both name the node and zlib that gzipped them and
+ * those are the same. Why not compare them anyway: the same tiles gzip to other sizes under another
+ * zlib (117,542 and 115,707 bytes on two machines), which is the machine's change, not the compiler's.
+ */
+export function isGzipComparable(a: Pick<Report, "size">, b: Pick<Report, "size">): boolean {
+  const ea = a.size.gzipEnv;
+  const eb = b.size.gzipEnv;
+  return ea !== undefined && eb !== undefined && ea.node === eb.node && ea.zlib === eb.zlib;
+}
+
+/** A dotted path of flattenReport that is a gzip size (its change counts only between comparable reports). */
+export const isGzipField = (key: string) => /gzip/i.test(key);
+
+/** The tiles' gzip against U3's caps (budget.ts TILE_BUDGET). */
+export function budgetOf(
+  tiles: ReadonlyArray<{ gzipBytes: number; key?: string }>,
+): NonNullable<Report["budget"]> {
+  const total = tiles.reduce((n, t) => n + t.gzipBytes, 0);
+  const largest = tiles.reduce<{ gzipBytes: number; key?: string } | null>(
+    (best, t) => (best === null || t.gzipBytes > best.gzipBytes ? t : best),
+    null,
+  );
+  const max = largest?.gzipBytes ?? 0;
+  return {
+    totalGzipMaxBytes: TILE_BUDGET.totalGzipBytes,
+    tileGzipMaxBytes: TILE_BUDGET.tileGzipBytes,
+    totalGzipBytes: total,
+    maxTileGzipBytes: max,
+    maxTile: largest?.key ?? null,
+    ok: total <= TILE_BUDGET.totalGzipBytes && max <= TILE_BUDGET.tileGzipBytes,
+  };
 }
 
 /**

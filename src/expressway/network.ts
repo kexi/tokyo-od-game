@@ -284,16 +284,20 @@ export type Run = {
   filledWays: number[];
   /**
    * `runBorders: "cut"` (R1-1a): what the run's start and end are, where splitRuns cut the chain by
-   * more than its structure (runBorders). `operator`: the operator's ways end there (U10), and the
-   * other operator's run beside it is not shipped: endPlan leaves it open. `seam`: the district of
-   * the ref changes there (1 | K1), and this run takes the run beside it as a seam's parent (one
-   * profile across, C1). `open`: the parent's side of such a seam, free. `none`: a structure's
-   * change or the chain's end, as before. Absent where neither end is a border.
+   * more than its structure (runBorders). Both kinds of border are one profile across (C1): the side
+   * shipped first is free there and the other side takes it as a seam's parent. `operator-open` /
+   * `operator-seam`: the operator's ways end there (U10), the operator's side free, the other
+   * operator's side (never shipped) its seam child. `open` / `seam`: the district of the ref changes
+   * there (1 | K1), the lower district free. `none`: a structure's change or the chain's end, as
+   * before. Absent where neither end is a border.
    */
   borders?: [RunBorder, RunBorder];
 };
 
-export type RunBorder = "none" | "operator" | "seam" | "open";
+export type RunBorder = "none" | "operator-open" | "operator-seam" | "seam" | "open";
+
+/** Whether a border is where the operator's ways end (U10), either side of it. */
+export const isOperatorBorder = (b: RunBorder | undefined) => b === "operator-open" || b === "operator-seam";
 
 /** How splitRuns cuts a chain beyond its structure: `cut` also at its borders (R1-1a). */
 export type SplitOptions = { runBorders?: "keep" | "cut" };
@@ -306,18 +310,18 @@ export type SplitOptions = { runBorders?: "keep" | "cut" };
  * last way), and not where a link way goes on: a ramp has no name to mark it, so its end is no
  * operator's border.
  */
-export function operatorCuts(net: Network, chain: Chain): number[] {
+export function operatorCuts(net: Network, chain: Chain): Array<{ at: number; operatedBefore: boolean }> {
   if (chain.closed) return [];
   const ways = chain.ways.map((id) => net.ways.get(id)!);
   const first = ways.findIndex((w) => w.operated);
   const isUnoperated = first < 0;
   if (isUnoperated) return [];
   const last = ways.findLastIndex((w) => w.operated);
-  const out: number[] = [];
+  const out: Array<{ at: number; operatedBefore: boolean }> = [];
   const isOtherBefore = first > 0 && ways[first - 1].cls === "expressway";
-  if (isOtherBefore) out.push(first);
+  if (isOtherBefore) out.push({ at: first, operatedBefore: false });
   const isOtherAfter = last < ways.length - 1 && ways[last + 1].cls === "expressway";
-  if (isOtherAfter) out.push(last + 1);
+  if (isOtherAfter) out.push({ at: last + 1, operatedBefore: true });
   return out;
 }
 
@@ -395,14 +399,24 @@ export function splitRuns(net: Network, chain: Chain, options: SplitOptions = {}
   // Why the borders as more boundaries of this loop, and not a second pass cutting the runs: a gap
   // filled across a border (GAP_FILL_M) stays filled, so a cut moves no structure.
   const isCut = options.runBorders === "cut";
-  const operatorAt = new Set(isCut ? operatorCuts(net, chain) : []);
+  const operatorAt = new Map((isCut ? operatorCuts(net, chain) : []).map((b) => [b.at, b]));
   // The operator's border wins where both fall on one node (the far side is not shipped at all).
   const refAt = new Map(
     (isCut ? refBorders(net, chain) : []).filter((b) => !operatorAt.has(b.at)).map((b) => [b.at, b]),
   );
+  // R1-1a review W2: a ref border on a change of structure would put a seam where endPlan decides the
+  // end by the structure (a portal, a run at grade's seam): stop rather than pick one silently.
+  for (const at of refAt.keys()) {
+    const isStructureChange = kindAt(at) !== kindAt(at - 1);
+    if (isStructureChange)
+      throw new Error(
+        `ref border of chain ${chain.id} at way ${chain.ways[at]} falls on a change of structure`,
+      );
+  }
   /** What the run before (`before`) or after the border index i is there. */
   const borderAt = (i: number, before: boolean): RunBorder => {
-    if (operatorAt.has(i)) return "operator";
+    const operator = operatorAt.get(i);
+    if (operator) return operator.operatedBefore === before ? "operator-open" : "operator-seam";
     const ref = refAt.get(i);
     if (!ref) return "none";
     const isParent = ref.parentBefore === before;

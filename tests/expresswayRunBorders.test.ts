@@ -7,7 +7,10 @@ import {
   districtOfRef,
   districtOfRefName,
   districtRunsOf,
+  districtsOf,
+  pickWritten,
 } from "../src/expressway/districts";
+import { planSigns } from "../src/expressway/signPlan";
 import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import {
@@ -113,16 +116,33 @@ describe("--run-borders cut: where the operator's ways end (R1-1a, U10)", () => 
     expect(ship.all.has("13")).toBe(false);
   });
 
-  it("cut: leaves the end at the border open on both sides (the far side is never written)", () => {
+  it("cut: one profile across the border (review 1 B5): the operator's side free, the other operator's side its seam child", () => {
     const plan = planNetwork(operatorChain(), new Set(), null, [], CUT);
     expect(endPlan(plan, plan.runs.get("10")!, false)).toEqual({ kind: "open" });
-    expect(endPlan(plan, plan.runs.get("13")!, true)).toEqual({ kind: "open" });
+    const child = endPlan(plan, plan.runs.get("13")!, true);
+    expect(child.kind === "seam" && child.parent).toBe("10");
+  });
+
+  it("cut: the two sides of the operator's border meet at the same height and grade, and the far side is not written", () => {
+    const plan = planNetwork(operatorChain(), new Set(), null, [], {
+      ...CUT,
+      wanted: (p) => shipRuns(p, inWards).all,
+    });
+    const res = solvePlan(plan, ground, []);
+    expect(res.runs.some((r) => r.id === "13")).toBe(false);
+    const whole = solvePlan(planNetwork(operatorChain(), new Set(), null, [], CUT), ground, []);
+    const chunks = (run: string) => whole.chunks.filter((c) => c.run === run).sort((a, b) => a.k - b.k);
+    const last = chunks("10").at(-1)!.st;
+    const first = chunks("13")[0].st;
+    const end = last.length - STATION_STRIDE;
+    expect(first[3]).toBeCloseTo(last[end + 3], 2);
+    expect(first[6]).toBeCloseTo(last[end + 6], 4);
   });
 
   it("cut: does not split at an unmarked way between two of the operator's (OSM's missing name)", () => {
     const net = operatorChain();
     const chain = planNetwork(net, new Set(), null).runs.get("10")!.chain;
-    expect(operatorCuts(net, chain)).toEqual([3]);
+    expect(operatorCuts(net, chain)).toEqual([{ at: 3, operatedBefore: true }]);
   });
 
   it("cut: a ramp on the border node hangs from the operator's run, not from the other operator's", () => {
@@ -176,6 +196,15 @@ describe("--run-borders cut: where the district of the ref changes (R1-1a, 1 | K
     const westWards = (lon: number, lat: number) => plane.toXY(lon, lat)[0] < 1500;
     const plan = planNetwork(refChain(), new Set(), null, [], CUT);
     expect([...shipRuns(plan, westWards).main]).toEqual(["30", "31"]);
+  });
+
+  it("stops where a ref border falls on a change of structure (review 1 W2: the end would be a seam where a portal is)", () => {
+    const net = refChain();
+    const way = net.ways.get(31)!;
+    net.ways.set(31, { ...way, structure: "ground" });
+    expect(() =>
+      planNetwork(net, new Set(), null, [], { ...CUT, structures: "height", ground: "compile" }),
+    ).toThrow(/falls on a change of structure/);
   });
 
   it("does not split C2 at the yamate box, nor two refs of one district", () => {
@@ -254,7 +283,58 @@ describe("地区（districts.ts、R1-1a）", () => {
     expect(assignDistricts([ramp, sparse, near]).get("r")).toBe("central");
   });
 
-  it("gives every written run the same district from the plan as from its chunks", () => {
+  it("takes a main line's district from its ways' refs, not its first way's (review 1 B2: 13 km of C2 after ways with no ref)", () => {
+    const run = {
+      id: "m",
+      cls: "expressway" as const,
+      ref: null,
+      parents: [],
+      points: [[139.86, 35.7]] as Array<[number, number]>,
+      wayRefs: [null, null, "C2", "C2"],
+    };
+    expect(districtsOf([run]).districts.get("m")).toBe("east");
+  });
+
+  it("flags a main line whose ways fall in two districts (keep's E refs), taking its first ref's", () => {
+    const run = {
+      id: "m",
+      cls: "expressway" as const,
+      ref: "7",
+      parents: [],
+      points: [[139.86, 35.7]] as Array<[number, number]>,
+      wayRefs: ["7", "E14;14"],
+    };
+    const d = districtsOf([run]);
+    expect(d.districts.get("m")).toBe("east");
+    expect(d.mixed).toEqual(["m"]);
+  });
+
+  it("puts a junction's link from a central main line onto an east one, and its foot, in east: each stage hangs from itself (review 1 B3)", () => {
+    const pt = (x: number): Array<[number, number]> => [plane.toLonLat(x, 0)];
+    const runs = [
+      { id: "c", cls: "expressway" as const, ref: "1", parents: [], points: pt(0) },
+      { id: "e", cls: "expressway" as const, ref: "5", parents: [], points: pt(2000) },
+      { id: "link", cls: "ramp" as const, ref: null, parents: ["c", "e"], points: pt(1000) },
+      { id: "foot", cls: "ramp" as const, ref: null, parents: ["link"], points: pt(1100) },
+      { id: "exit", cls: "ramp" as const, ref: null, parents: ["c"], points: pt(100) },
+    ];
+    const d = districtsOf(runs).districts;
+    expect(d.get("exit")).toBe("central");
+    expect(d.get("link")).toBe("east");
+    expect(d.get("foot")).toBe("east");
+  });
+
+  it("keeps every stage a scope of its own on a solved plan: no run hangs from a later district, every ramp reached, the stages only grow", () => {
+    const plan = planNetwork(refChain(), new Set(), null, [], CUT);
+    const ids = [...plan.runs.keys()];
+    const runs = planDistrictRuns(plan, ids);
+    const d = districtsOf(runs).districts;
+    const rank = (id: string) => DISTRICTS.indexOf(d.get(id)!);
+    for (const r of runs)
+      for (const p of r.parents) if (d.has(p)) expect(rank(p)).toBeLessThanOrEqual(rank(r.id));
+  });
+
+  it("gives every written run the same district from the plan as from its chunks where the first way carries the ref", () => {
     const plan = planNetwork(refChain(), new Set(), null, [], CUT);
     const res = solvePlan(plan, ground, []);
     const byRun = new Map<string, XwChunk[]>();
@@ -273,33 +353,56 @@ describe("地区（districts.ts、R1-1a）", () => {
 });
 
 describe("--districts（地区で絞って書く、R1-1a、T8）", () => {
-  it("writes a district's runs with the very chunks the whole scope writes", () => {
-    const shipAll = (p: Parameters<NonNullable<PlanOptions["wanted"]>>[0]) => shipRuns(p, inWards).all;
-    const central = (p: Parameters<NonNullable<PlanOptions["wanted"]>>[0]) => {
-      const all = shipAll(p);
-      const d = assignDistricts(planDistrictRuns(p, all));
-      return new Set([...all].filter((id) => d.get(id) === "central"));
-    };
+  it("writes a district's runs with the very chunks, signs too, that the whole scope writes (T8: picked after the solve and the signs)", () => {
     const whole = solvePlan(
-      planNetwork(refChain(), new Set(), null, [], { ...CUT, wanted: shipAll }),
+      planNetwork(refChain(), new Set(), null, [], { ...CUT, wanted: (p) => shipRuns(p, inWards).all }),
       ground,
       [],
     );
-    const only = solvePlan(
-      planNetwork(refChain(), new Set(), null, [], { ...CUT, wanted: central }),
-      ground,
-      [],
+    const net = refChain();
+    const signs = planSigns({
+      chunks: whole.chunks,
+      runs: whole.runs,
+      features: whole.features,
+      net,
+      phones: [],
+      bays: [],
+    });
+    for (const c of whole.chunks) {
+      const list = signs.signs.get(c.id);
+      if (list) c.signs = list;
+    }
+    const plan = planNetwork(refChain(), new Set(), null, [], CUT);
+    const d = districtsOf(
+      planDistrictRuns(
+        plan,
+        whole.runs.map((r) => r.id),
+      ),
+    ).districts;
+    const picked = pickWritten(
+      { chunks: whole.chunks, runs: whole.runs, closed: whole.closed, entrances: signs.entrances },
+      (run) => d.get(run) === "central",
     );
-    expect(only.runs.map((r) => r.id)).toEqual(["30"]);
-    const text = (cs: XwChunk[], run: string) => JSON.stringify(cs.filter((c) => c.run === run));
-    expect(text(only.chunks, "30")).toBe(text(whole.chunks, "30"));
+    expect(picked.runs.map((r) => r.id)).toEqual(["30"]);
+    const text = (cs: XwChunk[]) => JSON.stringify(cs.filter((c) => c.run === "30"));
+    expect(text(picked.chunks)).toBe(text(whole.chunks));
   });
 
   it("stops without --range ship, and on a name that is no district", () => {
-    expect(districtsRefusal("central", false, DISTRICTS)).toMatch(/--range ship/);
-    expect(districtsRefusal("central,nowhere", true, DISTRICTS)).toMatch(/unknown --districts nowhere/);
-    expect(districtsRefusal("central,east", true, DISTRICTS)).toBeNull();
-    expect(districtsRefusal(undefined, false, DISTRICTS)).toBeNull();
+    expect(districtsRefusal("central", false, true, DISTRICTS)).toMatch(/--range ship/);
+    expect(districtsRefusal("central", true, false, DISTRICTS)).toMatch(/--run-borders cut/);
+    expect(districtsRefusal("central,nowhere", true, true, DISTRICTS)).toMatch(/unknown --districts nowhere/);
+    expect(districtsRefusal("east", true, true, DISTRICTS)).toMatch(/no stage/);
+    expect(districtsRefusal("central,yamate", true, true, DISTRICTS)).toMatch(/no stage/);
+    for (const stage of [
+      "central",
+      "central,east",
+      "central,east,yamate",
+      "central,east,yamate,outside",
+      "east,central",
+    ])
+      expect(districtsRefusal(stage, true, true, DISTRICTS)).toBeNull();
+    expect(districtsRefusal(undefined, false, false, DISTRICTS)).toBeNull();
   });
 
   it("--run-borders cut never writes the shipped folder (S7-6 makes it the default)", () => {

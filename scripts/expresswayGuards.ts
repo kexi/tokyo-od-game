@@ -37,20 +37,28 @@ const MEASURE = "give --out (just measure-expressway-area)";
 
 /**
  * The reason `--districts` cannot be taken, or null (R1-1a). The districts pick runs out of the
- * shipped scope, so they need `--range ship`; each must be a district's name (districts.ts DISTRICTS).
- * Why stop and not ignore it on another range: a build of the default boxes "for central" would
- * write the boxes' runs and look like a district's build.
+ * shipped scope, so they need `--range ship`; they must be a stage of the publishing order (`names`
+ * from the first: central, central,east, …, all four), each stage being a scope of its own (no run
+ * hangs from a later district: districts.ts districtsOf); and they need `--run-borders cut`, under
+ * which a run has one district (keep's districts are for comparing). Why stop and not ignore it on
+ * another range: a build of the default boxes "for central" would look like a district's build.
  */
 export function districtsRefusal(
   districts: string | undefined,
   isShip: boolean,
+  isRunBordersCut: boolean,
   names: readonly string[],
 ): string | null {
   if (districts === undefined) return null;
   if (!isShip) return "--districts picks runs of the shipped scope: give --range ship";
-  const unknown = districts.split(",").filter((d) => !names.includes(d));
+  if (!isRunBordersCut) return "--districts needs --run-borders cut (a run of one district)";
+  const given = districts.split(",");
+  const unknown = given.filter((d) => !names.includes(d));
   const isUnknown = unknown.length > 0;
   if (isUnknown) return `unknown --districts ${unknown.join(",")} (${names.join(", ")})`;
+  const stage = names.slice(0, given.length);
+  const isStage = new Set(given).size === given.length && stage.every((d) => given.includes(d));
+  if (!isStage) return `--districts ${districts} is no stage: give the first ones of ${names.join(",")}`;
   return null;
 }
 
