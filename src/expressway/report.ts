@@ -498,9 +498,9 @@ export const ReportSchema = z.strictObject({
     .optional(),
   /**
    * Where the written network stops (version 8, for R1-1b's walls). `mainEnds`: a written main line's
-   * end with nothing written beyond (open, or a seam to a run not written), and why (`operator`:
-   * another operator's road goes on; `ref`: a later district's line goes on; `scope`: the chain's or
-   * the scope's end). `mouths`: a written run where a run not written hangs (its junction or seam), at
+   * end with nothing written beyond (no written run seamed on, hung from or beside it in the chain),
+   * and why (`operator`: another operator's road goes on; `ref`: a later district's line goes on past
+   * a ref border; `district`: a run of the scope of a later stage goes on; `scope`: the scope's end). `mouths`: a written run where a run not written hangs (its junction or seam), at
    * the parent's run distance, and why (`district`: a later stage's, `ruleA`: left out by rule A,
    * `closed`, `outside`: out of the scope).
    */
@@ -511,7 +511,7 @@ export const ReportSchema = z.strictObject({
           id: z.string(),
           run: z.string(),
           end: z.enum(["start", "end"]),
-          why: z.enum(["operator", "ref", "scope"]),
+          why: z.enum(["operator", "ref", "district", "scope"]),
           lon: z.number(),
           lat: z.number(),
         }),

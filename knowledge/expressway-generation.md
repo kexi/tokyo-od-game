@@ -7,6 +7,8 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:measure-expressway-area-r1-1a-review1, at: 2026-11-17T21:00:00Z }
+  - { by: process:vitest-r1-1a-review1, at: 2026-11-17T20:20:00Z }
   - { by: process:measure-expressway-area-r1-1a, at: 2026-11-17T17:10:00Z }
   - { by: process:vitest-r1-1a, at: 2026-11-17T16:55:00Z }
   - { by: process:measure-expressway-area-s7-1-review1-25c4e6e, at: 2026-11-17T17:36:00Z }
@@ -3415,7 +3417,7 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
 | `--districts central,…`         | `--range ship` と組むときだけ。書く run をその地区に絞る（成分は計画全体で決まるので、書かれる run の中身は ship と同じ、T8）。meta に `districts`                                                                                                                                                       | `scripts/expressway.ts`・`expresswayGuards.ts districtsRefusal` |
 
 - `--run-borders cut` は `--out` 無しでは止まる（既定範囲の成分が変わる。既定にするのは S7-6）。`keep` では run の切り方も親も今までどおり。
-- `keep` の間は、地区が混ざる run は最初の way の ref のまま。「先に公開する地区」にはしない（チャンクは run の ref を 1 つしか持たず、変えるとタイルのバイトが動く）。`cut` では地区が混ざる本線は C2 の箱の 2 本（156344609・28127113、east）だけ。
+- `keep` の間は、地区が混ざる run は最初の way の ref のまま。「先に公開する地区」にはしない（チャンクは run の ref を 1 つしか持たず、変えるとタイルのバイトが動く）。`cut` では地区が混ざる本線は C2 の箱の 2 本（156344609・28127113、east）だけ。 （レビュー 1 で、本線の地区は way の ref から決め、cut で地区の混ざる本線があれば生成を止める形にした。）
 
 ## 他社の境（12 節点、ship/pruned）
 
@@ -3449,8 +3451,8 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
 - **既定データの不変**: フラグなしで既定範囲を作り直し（`scripts/expressway.ts` の既定の 5 つの箱）、`git status public/data/expressway` は差分なし（タイル・meta・report.json・ledger.json）。
 - **`--run-borders cut` の既定範囲**（`--out`）: 計画の成分が 1,106 → 1,117 run になり、11 枚のタイルのバイトが変わる。高さの差は `compare-expressway-heights` で全 4,243 測点の最大 0.001 m（207111988・24402611・45021972・45554540・4848762 の丸めの 1 桁）。run の集合と ID は同じ。
 - 生成は ship の 4 本（`--below pruned|all` × `--run-borders keep|cut`）。1 本 372〜391 s。どれも未収束 0、違反（T1〜T7・T12・T13）0、dangling 0、deckMismatch 0。閉鎖は keep と cut で同じ（pruned: ランプ 7、all: 本線 1〔28127324〕+ ランプ 7）。v1（基準 fixture）からの閉鎖の +1（224864763）は、v1 で範囲の外として解いていた未収束のランプが範囲 v2 で範囲に入ったもの（`diagnosticsOutside.vertical_unsolved` 8 → 7）。
-- 計画から決めた地区とチャンクから決めた地区は、4 本の書き出した run の全部（639〜672 run）で一致（`expressway_districts_compared`）。最初の実装では ship/all の親の無いランプ 16 本が食い違った（最寄りの本線を「最も近い点」で選んでいたため。本線の線への距離に直した）。
-- **T8 は未達（止める条件、設計へ）**: `--range ship --below pruned --run-borders cut --districts central` は 1,634 チャンクを書き、ship/pruned・cut の同じチャンクと比べて **6 チャンクが違う**。違うのは `signs` だけで、測点・橋脚・構造などの床版は全部一致。(1) 分岐の方面の標識 108の2-C が 3 枚出ない（41009552:11 の 5 号、668292569:10 の 6 号、888066405:1 の 9 号: 行き先の路線が east で書かれないため）。(2) 888066403 の 3 枚（110-B・112-B）で `divider` の欄が無い（隣の run が書かれないため）。標識の計画（`signPlan.ts planSigns`）が書き出した run から作られるので、書く run を絞ると変わる。ほかに、central の run がぶら下がる地平 run 2 本（4857842・806097479、計画の地区は central 以外）が wanted の取り込みで書かれる。
+- 計画から決めた地区とチャンクから決めた地区は、4 本の書き出した run の全部（639〜672 run）で一致（`expressway_districts_compared`）。最初の実装では ship/all の親の無いランプ 16 本が食い違った（最寄りの本線を「最も近い点」で選んでいたため。本線の線への距離に直した）。 **訂正（レビュー 1）**: 一致は両方が run の最初の way の ref を読むためで、888066403（C2 の 13 km）を central にする誤りを通していた。今は計画の地区が正（下の「レビュー 1」の節）。
+- **T8 は未達（止める条件、設計へ）**: `--range ship --below pruned --run-borders cut --districts central` は 1,634 チャンクを書き、ship/pruned・cut の同じチャンクと比べて **6 チャンクが違う**。違うのは `signs` だけで、測点・橋脚・構造などの床版は全部一致。(1) 分岐の方面の標識 108の2-C が 3 枚出ない（41009552:11 の 5 号、668292569:10 の 6 号、888066405:1 の 9 号: 行き先の路線が east で書かれないため）。(2) 888066403 の 3 枚（110-B・112-B）で `divider` の欄が無い（隣の run が書かれないため）。標識の計画（`signPlan.ts planSigns`）が書き出した run から作られるので、書く run を絞ると変わる。ほかに、central の run がぶら下がる地平 run 2 本（4857842・806097479、計画の地区は central 以外）が wanted の取り込みで書かれる。 **レビュー 1 で直した**: `--districts` は ship 全体を解き標識を計画してから書く run を絞る。直した後の差は 0（下の節）。
 - 生成のあとで計測の道具を足した（`scripts/expresswayDistrictSizes.ts`・`scripts/expresswayOutsideGround.ts`）。どちらも書き出したフォルダを読むだけ。
 
 ### 地区ごと（ship/pruned と ship/all、`cut`。gzip は書き出した run のチャンクだけでタイルを詰め直した値、`scripts/expresswayDistrictSizes.ts`）
@@ -3466,7 +3468,7 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
 | yamate（all）     |      9（4） |  39.0 | 38.6 / 0.5     |    — |     68 KB |               12.0 KB |
 | outside（all）    |     62（6） |  61.5 | 0.5 / 61.1     |    — |    135 KB |               17.6 KB |
 
-公開の段ごと（U3 の材料、gzip 合計 / 1 タイルの最大）:
+公開の段ごと（U3 の材料、gzip 合計 / 1 タイルの最大）: **（レビュー 1 の前の地区の決め方の値。下の節の表が正）**
 
 | 段              | pruned・keep      | pruned・cut       | all・keep         | all・cut          |
 | --------------- | ----------------- | ----------------- | ----------------- | ----------------- |
@@ -3483,7 +3485,7 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
 
 - ship/pruned・keep で、基準 fixture（v1）から ランプ 403 → 506 run（+103 run・+26.7 km）、書き出しは +102 run・+26.4 km、タイルの gzip 合計 +82 KB（1.260 → 1.342 MB）。`scope.extent.ramp.outKm` 3.5 → 30.4 km、`rampsOutside` 279 run・103.4 km → 131 run・48.6 km。
 - 地区ごと（計画、`cut`）: central +5 run・1.7 km、east +40 run・9.4 km、outside +57 run・14.2 km。
-- 規則 A で外れたのは 44 run・29.2 km（`cut`、地上の足 0）: 1 回目は親が出荷しない run（外環の美女木・川口・三郷 JCT、K2・K5・K7 の生麦・金港 JCT、境の先の E4・E6 の連絡路）、2 回目より後はそれにぶら下がる短い run。
+- 規則 A で外れたのは 44 run・29.2 km（`cut`、地上の足 0）: 1 回目は親が出荷しない run（外環の美女木・川口・三郷 JCT、K2・K5・K7 の生麦・金港 JCT、境の先の E4・E6 の連絡路）、2 回目より後はそれにぶら下がる短い run。 **訂正（レビュー 1）**: 「地上の足 0」は誤り（足が別の run の形を数えていなかった）。届き直しで足 8 run も外れ、cut で 52 run・30.7 km（下の節）。
 
 ### `cut` で動く量（ship、keep → cut）
 
@@ -3511,6 +3513,107 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
 - 「区外」（`nearWards` の外）には、東京湾・運河・河川の上（レインボーブリッジ、京浜運河、多摩川トンネルなど）が入る。町丁のポリゴンが水面に無いため。DEM10B に落ちる km のほとんどはこれ（水面で DEM5A に値が無い）。
 - v1 にあって範囲 v2 で消えるランプは、`keep` で 0、`cut` で高井戸の 2 run だけ（`scripts/expresswayScopeProbe.ts` の `lost`）。
 - 親の無いランプの地区（最寄りの本線）は、本線の点ではなく線への距離で決める。点で選ぶと、チャンクの測点と計画の標本の間隔の違いで別の本線に寄る。
+
+## レビュー 1（Fable、2026-11-18、直してからマージ）で直したこと
+
+レビュー（scratchpad の p27/s7r/r1a-review1.md）の 5 節の 14 項目。上の節の規則の表は、この節で置き換わった所がある（下の表が正）。[^r1-1a-review1]
+
+| 項目                             | 直した後の規則                                                                                                                                                                                                                                                                                             | どこ                                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 規則 A の後の届き直し（B1）      | 規則 A で外した後、出荷する本線から残ったランプだけをたどって届かないランプも外す。「ぶら下がる」と「届く」を、外れる物が無くなるまで繰り返す（`rampsDropped` の `reason` が `parent`／`unreached`）                                                                                                       | `districts.ts scopeRamps`（`scope.ts shipRuns` と地区の段が同じ 1 つの関数を使う） |
+| 他社の境（B5）                   | ref の境と同じ「1 本の縦断」: 事業者の側が親（端は free）、他社の側がその seam の子。他社の側は範囲に入らず書かれない。境の節点に付くランプの親は事業者の側のまま                                                                                                                                          | `network.ts`（`operator-open`／`operator-seam`）・`compile.ts endPlan`             |
+| ref の境と構造の境（W2）         | ref の境が構造の境（高架｜地平・坑口）に重なったら、計画の段で止める                                                                                                                                                                                                                                       | `network.ts splitRuns`                                                             |
+| 本線の地区（B2）                 | run の way の ref から（最初に ref を持つ way、ref の無い way は隣を継ぐ）。cut で 1 run の way が C2 の箱以外で 2 つの地区に掛かったら生成を止める。チャンクの `ref` は今のまま（run の最初の way）                                                                                                       | `districts.ts districtsOf`                                                         |
+| ランプの地区（B3）               | 段ごと（central、+ east、+ yamate、+ outside）に、その段までの地区の本線と street を出荷する本線とみなした範囲 v2（`scopeRamps`）に入るランプの集合を作り、初めて入る段の地区にする。どの段でも dangling 0・届かないランプ 0。ref の無い本線と street は親の最も後の段、無ければ最寄りの本線（線への距離） | 同                                                                                 |
+| 地区の正                         | 計画。ship の生成はフォルダに `districts.json`（書いた run ごとの地区）を書き、フォルダを読む道具とテストは `scripts/expresswayFiles.ts districtsOfFiles` でそれを読む（無ければチャンクからの関数。既定のフォルダには書かない）                                                                           | `scripts/expressway.ts`・`expresswayFiles.ts`                                      |
+| `planDistrictRuns` の点（W1）    | run の最後の点も入れる                                                                                                                                                                                                                                                                                     | `scope.ts`                                                                         |
+| `--districts`（B4）              | ship 全体を解き、標識を計画した後で、書く直前に run・チャンク・run の要約・entrances を絞る（`districts.ts pickWritten`）。受けるのは段（`central`／`central,east`／`central,east,yamate`／4 つ全部）だけで、`--run-borders cut` と組むときだけ                                                            | `scripts/expressway.ts`・`expresswayGuards.ts districtsRefusal`                    |
+| スコアカード（版 8）             | `size.gzipEnv`（gzip した node と zlib）、`budget`（U3）、ship の生成は `stages`（段ごと）・`borders`（境で切った run と他社の側の km）・`ends`（本線の端と口）                                                                                                                                            | `report.ts`・`scripts/expresswayShipScore.ts`                                      |
+| 比べ方                           | `compareExpresswayReports` は、gzip の差を node と zlib が同じ 2 つの間でだけ数える。違うか片方に無いときは `gzip-env` の行として出し、`--check` に数えず、`expressway_reports_gzip_unlike` を 1 行出す。b が U3 を超えたら `--check` を落とす（`expressway_budget_over`）                                 | `scripts/compareExpresswayReports.ts`・`report.ts isGzipComparable`                |
+| U3（ユーザーの決定、2026-11-18） | gzip で合計 1.6 MB・1 タイル 72 KB。範囲は削らない。超えたら公開を止めて報告する                                                                                                                                                                                                                           | `src/expressway/budget.ts`、スコアカード `budget`                                  |
+| 計測と fixture の環境            | 生成と基準 fixture は devshell（`just` のレシピ）で作る。gzip は zlib の版で揺れるため（同じタイルで 117,542 と 115,707 バイト）                                                                                                                                                                           | justfile                                                                           |
+| 道具のレシピ（W5）               | `just probe-expressway-scope`・`just measure-district-sizes`・`just measure-outside-ground`                                                                                                                                                                                                                | justfile                                                                           |
+
+### 訂正（上の節の記述）
+
+- **「規則 A で外れたのは 44 run・29.2 km（地上の足 0）」は誤り。** 下調べの `withFoot` は外れた run 自身の端だけを見ていて、足が別の run（地平のランプ）になっている形を数えなかった。足を seam でたどると、規則 A の後に残っていた島（足だけの run）が 8 run・1.46 km あり（下の表）、届き直しで外れる。外れたのは cut で 52 run・30.7 km、そのうち足を持つ（seam でたどって地上の端がある）のは 14 run。
+- **「計画から決めた地区とチャンクから決めた地区は一致」は、両方が run の最初の way の ref を読むので一致していただけ**で、誤り（888066403 の 13 km の C2 を central にしていた）を通した。今は計画の地区が正で、書き出したフォルダは `districts.json` を持つ。
+- **central の生成のスコアカードの `scope.dangling` は 5 だった**（R1-1a の最初の版の PR 本文の「dangling 0」は ship の 4 本だけの値）。段ごとの地区で 0 になる（下の計測）。
+
+### 規則 A の後に残っていた島（cut、届き直しで外れた足）
+
+| 足（run） |  長さ | 場所   | 節点の名前・ref                      | 外れた連絡路                               |
+| --------- | ----: | ------ | ------------------------------------ | ------------------------------------------ |
+| 141340876 | 121 m | 三郷   | —                                    | 374052257 → 491625691（C3 から 6 号上り）  |
+| 395056073 | 388 m | 三郷   | 外環三郷西IC・74                     | 395056074 → 43992532（親が C3）            |
+| 629923894 | 355 m | 三郷   | 三郷中央IC・81                       | 629923895（親が C3）                       |
+| 763341649 | 197 m | 三郷   | 三郷IC・1;661                        | 763341650 → 439262440（親が C3）           |
+| 763350967 | 132 m | 三郷   | 上の分かれ目が「三郷IC東出口」1;661  | 138706378 → 43992534 → 629923895           |
+| 763353050 | 173 m | 三郷   | 上の分かれ目が「三郷IC西出口」1;661W | 491625692（親が E6）と 43992145 → 43992532 |
+| 763353049 |  14 m | 三郷   | —                                    | 763353050 に付く                           |
+| 762093191 |  77 m | 美女木 | —                                    | 762093192 → 44420764（5 号下りから C3）    |
+
+- これらは ship のタイルに、路線の無い entrance（141340876・395056073・629923894・763341649・762093191）として書かれていた。
+- **三郷の出入口（事実、決定ではない）**: 6 号三郷線の終点の三郷の出入口は、外環・常磐道へ行く連絡路の途中から分かれていて、規則 A で出ない（v1 にも無かったので、減ったのではない）。分かれ目の節点の ref「1;661」「1;661W」の 661 は、ship のタイルの 6 号の出口の番号（加平 651/653、八潮南 655/656、OSM の junction の ref）と同じ並びで、都市高速の 6 号の番号の付け方に合う（「1」は常磐道の IC 番号）。ゲームの側（`src/game/`）に出入口の番号の一覧は無く、番号はどれも OSM の ref から読んだもの。入れるかは R2-1 の前にユーザーに聞く（入れても計画と成分は変わらず、公開済みの run は動かない）。
+
+### そのほか
+
+- W3: 取り込みの地平の本線 6 本（B の浦安 46876435・46913090、多摩川の先 5204787・5204789、K1 の終わり 586976823・1226415720）は、規則 A の「出荷する run」に入っていない（取り込みは計画の wanted の成長で、範囲の決め方の後）。今はそこにぶら下がる候補のランプが無いので害は無い。
+- W4: `--run-borders cut` で、他社の側が先に来る本線 5 本の run の ID が変わる（run の ID は最初の way）。既定範囲は変わらない。
+
+| keep の ID | cut の ID（事業者の側） | 路線           |
+| ---------- | ----------------------- | -------------- |
+| 44351599   | 44351425                | S1（川口）     |
+| 1467911980 | 1535564384              | 3 号（東京IC） |
+| 27155261   | 1535567270              | 4 号（高井戸） |
+| 920238368  | 156796455               | 7 号（京葉）   |
+| 67152889   | 24336407                | 6 号（三郷）   |
+
+### 計測（trust signal、2026-11-17 UTC 19:00〜21:30、M2 Max、生成は `just measure-expressway-area`〔devshell の node v24.21.0・zlib 1.3.2〕で計測の鍵を 1 本ずつ取って）
+
+- **既定データの不変**: 直した後のコードで `just make-expressway-data`、`git status public/data/expressway` は差分なし。`--run-borders cut` で既定範囲を作ると（`--out`）、高さの差は全 4,243 測点の最大 0.001 m（207111988・24402611・45021972・45177681・45554540・4848762）で、直す前と同じ。
+- **基準 fixture**（ship/pruned と ship/all、keep、版 8）を作り直した。v1 の前の fixture（s72-pruned）からの差は、ランプだけが増えた（計画のランプ 403 → 500 run、+97 run・+25.5 km、本線と street は同じ）、閉鎖 6 → 7（224864763、v1 で範囲の外として解いていた未収束のランプ）、`rampsOutside` 279 → 131 run、gzip は env の違いで `gzip-env`（前の fixture は env を持たない）。keep の届き直しで外れたのは 6 run（ship/pruned の書き出し 646 → 640）。
+- **閉鎖・違反・未収束・dangling・deckMismatch**: keep と cut で同じ（pruned: ランプ 7、all: 本線 1〔28127324〕+ ランプ 7、ほかは 0）。止める条件には当たらない。
+- **地区**（計画の下調べ、cut）: pruned は central 313 run・240.0 km、east 267・271.8、yamate 7・3.1、outside 65・62.2。all は 336・251.2、269・273.6、9・39.7、65・62.2。レビューの見込みと一致。ship の生成では、計画の地区とチャンクからの地区の食い違いは keep で 21 run（`expressway_districts_compared`、知らせるだけ。地区の正は計画）。
+
+段ごと（スコアカード `stages`、cut）:
+
+| 段             | pruned: run・km・閉鎖 | 区内 / 区外 km | gzip / 1 タイルの最大 | all: gzip / 1 タイルの最大 |
+| -------------- | --------------------- | -------------- | --------------------- | -------------------------- |
+| R1（central）  | 301・238.6・3         | 211.1 / 27.4   | 0.557 MB / 32.1 KB    | 0.582 MB / 32.6 KB         |
+| R2（+ east）   | 560・509.2・6         | 443.1 / 66.1   | 1.170 MB / 61.8 KB    | 1.196 MB / 61.7 KB         |
+| R3（+ yamate） | 567・512.3・6         | 446.2 / 66.1   | 1.180 MB / 61.8 KB    | 1.264 MB / 61.7 KB         |
+| R4（全部）     | 631・574.1・7         | 446.7 / 127.4  | 1.314 MB / 61.8 KB    | 1.399 MB / 61.7 KB         |
+
+- **U3**: ship/all・cut の 1.40 MB・61.7 KB（タイル 14553-6451）は予算（1.6 MB・72 KB）の内（`budget.ok`）。keep の ship/all は 1.44 MB・61.8 KB。
+- **他社の境の端**（cut と keep の同じ地点、ship/pruned）: 端の高さの差は −0.35〜+0.12 m（直す前は京葉で +4.45 m）。
+
+| 境             | run（cut）      | z keep → cut  | 地面からの高さ keep → cut | 勾配 keep → cut |
+| -------------- | --------------- | ------------- | ------------------------- | --------------- |
+| 東京IC（3 号） | 1535564384 始点 | 46.24 → 45.89 | 9.24 → 8.91               | −1.99 → −2.01 % |
+| 東京IC（3 号） | 203832852 終点  | 46.23 → 45.92 | 9.23 → 8.91               | 1.99 → 1.98 %   |
+| 高井戸（4 号） | 1535567270 始点 | 55.36 → 55.48 | 8.99 → 9.10               | −0.15 → −0.13 % |
+| 高井戸（4 号） | 28368866 終点   | 54.75 → 54.66 | 8.39 → 8.31               | 0.43 → 0.41 %   |
+| 京葉（7 号）   | 156796455 始点  | 10.66 → 10.62 | 9.04 → 9.00               | −0.08 → −0.07 % |
+| 京葉（7 号）   | 44506762 終点   | 10.62 → 10.66 | 8.98 → 9.02               | 0.08 → 0.07 %   |
+| 三郷（6 号）   | 24336407 始点   | 15.82 → 15.76 | 13.45 → 13.39             | 0.10 → 0.06 %   |
+| 三郷（6 号）   | 43992332 終点   | 15.82 → 15.75 | 13.52 → 13.38             | −0.04 → 0.07 %  |
+| 川口（S1）     | 44179919 終点   | 22.32 → 22.05 | 7.00 → 6.73               | −0.60 → −0.12 % |
+| 川口（S1）     | 44351425 始点   | 22.37 → 22.07 | 7.04 → 6.74               | 0.62 → 0.18 %   |
+
+- 並んだ上下線の端の差（cut）: 高井戸 0.82 m（keep 0.61 m、直す前の cut 1.53 m）、東京IC 0.03 m、京葉 0.04 m、三郷 0.01 m、川口 0.02 m。
+- **cut で動く量**（ship/pruned、keep → cut の共通の run、38,478 測点）: p90 0.13 m、p99 0.79 m、最大 6.98 m（44420765 の s 724、美女木）。0.5 m を超える上位は 44420765・438372559（4.23 m）・22694126（2.27 m、5｜S5）・28368866（1.98 m）・28127733・44179919・1023900994・28973646・106629687・28127732。京葉の 44506762（直す前 4.45 m）は上位から消えた。残るのは ref の境（美女木・1｜K1）の分で、R2・R4 の撮影の視点に入れる。
+- **区外の地形と建物**（cut）: 区外 127.4 km（pruned）・128.9 km（all）のうち DEM5A 105.8 km、DEM10B 21.6・23.1 km（ほとんど水面）。PLATEAU は埼玉 56.2 km、神奈川 48.1 km、千葉の浦安・市川（PLATEAU 無し）7.4 km、どの門の外でもない東京都の水面と河川 15.8 km（pruned）。
+
+- **T8**: `--range ship --below pruned --run-borders cut --districts central` は 1,510 チャンク・301 run を書き、ship/pruned・cut の同じチャンク（`signs` を含む）・run の要約・entrances と**全部一致（差 0）**。ship の central の run との過不足も 0、`scope.dangling` 0（直す前の central の生成は 5）、閉鎖 3、gzip 0.557 MB・最大 32.1 KB。
+- 路線の無い entrance（`route` が null）は ship/pruned・cut で 17 → 12（B1 の 5 件が消えた。残る 12 件は前からのもので、島ではない）。
+
+### 端と口（R1-1b の材料、スコアカード `ends`）
+
+- 本線の端 = 書かれた本線の端で、その先に書かれた run が無い所（seam で続く run・ぶら下がる親・同じ鎖の run のどれも無い）。理由は `operator`（他社の道が続く）・`ref`（ref の境の先の後の地区）・`district`（範囲の run だが後の段）・`scope`（範囲がそこで終わる。S7 まで出ない地下・坑口の先、コンパイルしない地平の続きを含む）。口 = 書かれた run に、書かれない run がぶら下がる所（`district`・`ruleA`・`closed`・`outside`）。どちらも run・距離・場所をスコアカードに持つ（`.qa/expressway/r1b-pruned-cut*.report.json`）。
+- ship/pruned・cut（R4、全部）: 本線の端 68（`operator` 10・`scope` 58）、口 30（`ruleA` 17・`closed` 7・`outside` 6）。`operator` の 10 は上の境の端の表と同じ。
+- R1（`--districts central`）: 本線の端 51（`operator` 4〔東京IC 2・高井戸 2〕・`ref` 2〔1｜K1 の 5213544 の始点・45661183 の終点〕・`scope` 45）、口 26（`district` 19・`closed` 3・`outside` 4）。central と east をつなぐ JCT の連絡路は R1 で 1 本も出ず（後の段のランプは口として残る: 箱崎・江戸橋の 44804643、辰巳の 888066410、葛西の 888066403・906610080・4857053、大井の 331692345・331692346 など）、壁で閉じる形は本線の口と、書かれない連絡路が分かれる口の 2 種類になる。
+- 既定範囲の今の端（45554540 の始まりなど）は、ship の `scope` の端に当たる（S7 まで出ない地下の先）。
 
 # S7-1 地下のスコアカード（スコアカード版 7、コンパイラの出力は不変、2026-11-17〜18）
 
@@ -3728,3 +3831,5 @@ S7（地下全面）の合否を数で決めるための土台。スコアカー
 [^p277-a1]: 指示は scratchpad の p27/s7r/plan.md 8 節と a1-answer.md（設計 Fable、2026-11-14〜15）。計測は `.qa/a1/`（dividers.mts・sides.mts・cmp.py・before.txt・after.txt、ローカル、git 管理外）。main は同じ commit の一時 worktree と vite :5312、A1 は :5311。
 
 [^r1-1a]: 指示は scratchpad の p27/s7r/r1-1a-instructions.md・r1a-answer1.md・r1a-answer2.md（設計 Fable、2026-11-17）と、ユーザーの決定 U2・U10・U11。計測は `scripts/expresswayScopeProbe.ts`（計画を読むだけ）・`scripts/expresswayDistrictSizes.ts`・`scripts/expresswayOutsideGround.ts` と、`.cache/expressway-area/r1-*`・`.qa/expressway/r1-*`・`scope-probe-*`・`border-ramps-cut.json`（ローカル、git 管理外）。
+
+[^r1-1a-review1]: レビューは scratchpad の p27/s7r/r1a-review1.md（Fable、2026-11-18）と s7-notes.md、ユーザーの決定 U3（2026-11-18）。計測は `.cache/expressway-area/r1-*`・`r1b-*`、`.qa/expressway/r1*`（ローカル、git 管理外）。生成は devshell の node（`just measure-expressway-area`）。

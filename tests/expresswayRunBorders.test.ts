@@ -21,6 +21,7 @@ import {
   refBorders,
 } from "../src/expressway/network";
 import { planDistrictRuns, shipRuns } from "../src/expressway/scope";
+import { endsOf } from "../scripts/expresswayShipScore";
 import { OPERATOR_WORDS } from "../src/game/roadNames";
 
 // R1-1a: the runs cut where the operator's ways end (U10) and where the district of the ref changes
@@ -409,5 +410,25 @@ describe("--districts（地区で絞って書く、R1-1a、T8）", () => {
     const plain = { hasOut: false, isBelowAll: false, isBlocks: false, isV1: false, v2Flags: [] };
     expect(shippedFolderRefusal({ ...plain, isRunBordersCut: true })).toMatch(/^--run-borders cut/);
     expect(shippedFolderRefusal({ ...plain, hasOut: true, isRunBordersCut: true })).toBeNull();
+  });
+});
+
+describe("本線の端と口（スコアカード版 8 の ends、R1-1b の壁の材料）", () => {
+  it("lists the operator side's end at the operator border, and the far side of a ref border only while that district is not written", () => {
+    const op = planNetwork(operatorChain(), new Set(), null, [], CUT);
+    const opEnds = endsOf(op, new Set(["10", "20"]), new Set(["10", "20"]), new Map(), new Set());
+    expect(opEnds.mainEnds.filter((e) => e.why === "operator").map((e) => e.id)).toEqual(["10:end"]);
+    const ref = planNetwork(refChain(), new Set(), null, [], CUT);
+    const central = endsOf(ref, new Set(["30"]), new Set(["30", "31"]), new Map(), new Set());
+    expect(central.mainEnds.filter((e) => e.why === "ref").map((e) => e.id)).toEqual(["30:end"]);
+    const both = endsOf(ref, new Set(["30", "31"]), new Set(["30", "31"]), new Map(), new Set());
+    expect(both.mainEnds.some((e) => e.why === "ref")).toBe(false);
+  });
+
+  it("names a mouth by why its run is not written (rule A, a later district, closed, out of the scope)", () => {
+    const plan = planNetwork(operatorChain(), new Set(), null, [], CUT);
+    const dropped = new Map([["20", { round: 1, reason: "parent" as const, parent: "13" }]]);
+    const ends = endsOf(plan, new Set(["10"]), new Set(["10"]), dropped, new Set());
+    expect(ends.mouths.find((m) => m.child === "20")?.why).toBe("ruleA");
   });
 });

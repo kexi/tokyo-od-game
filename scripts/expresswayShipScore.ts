@@ -110,7 +110,10 @@ export function endsOf(
 ): NonNullable<Report["ends"]> {
   const ids = [...plan.runs.keys()].sort();
   // The runs hanging from each run's node, as (child, end plan) pairs.
-  const children = new Map<string, Array<{ child: string; parentNodeIndex: number; atStart: boolean }>>();
+  const children = new Map<
+    string,
+    Array<{ child: string; parentNodeIndex: number; atStart: boolean; isSeam: boolean }>
+  >();
   for (const id of ids) {
     const rp = plan.runs.get(id)!;
     for (const atStart of [true, false]) {
@@ -119,7 +122,7 @@ export function endsOf(
       if (!isJoined) continue;
       children.set(e.parent, [
         ...(children.get(e.parent) ?? []),
-        { child: id, parentNodeIndex: e.parentNodeIndex, atStart },
+        { child: id, parentNodeIndex: e.parentNodeIndex, atStart, isSeam: e.kind === "seam" },
       ]);
     }
   }
@@ -133,13 +136,34 @@ export function endsOf(
       if (!isMain) continue;
       const e = endPlan(plan, rp, atStart);
       const idx = atStart ? rp.run.from : rp.run.to;
+      // A seam child goes on with the road; a ramp branching at the end node does not carry it on.
       const isGoingOn = (children.get(id) ?? []).some(
-        (c) => c.parentNodeIndex === idx && written.has(c.child),
+        (c) => c.isSeam && c.parentNodeIndex === idx && written.has(c.child),
       );
-      const isEnd = e.kind === "open" && !isGoingOn;
+      // Nothing written goes on there: no written run is seamed on at that node, the end hangs from no
+      // written run, and no written run of the same chain holds the node (a run at grade, a seam).
+      // Why not the open ends alone: the chain going on at grade unwritten (取り込みの地平の端) ends there too.
+      const isOnParent = (e.kind === "junction" || e.kind === "seam") && written.has(e.parent);
+      const isBeside = (plan.chainRuns.get(rp.chain.id) ?? []).some(
+        (o) => o !== rp && written.has(o.run.id) && o.run.from <= idx && idx <= o.run.to,
+      );
+      const isEnd = !isGoingOn && !isOnParent && !isBeside;
       if (!isEnd) continue;
       const border = rp.run.borders?.[atStart ? 0 : 1];
-      const why = isOperatorBorder(border) ? "operator" : border === "open" ? "ref" : "scope";
+      // A run of the scope goes on there (the parent it merges into, the chain's run beside) but is not
+      // written: a later stage's (--districts). Else the scope ends there.
+      const isOnScope = (e.kind === "junction" || e.kind === "seam") && inScope.has(e.parent);
+      const isBesideScope = (plan.chainRuns.get(rp.chain.id) ?? []).some(
+        (o) => o !== rp && inScope.has(o.run.id) && o.run.from <= idx && idx <= o.run.to,
+      );
+      const isLater = isOnScope || isBesideScope;
+      const why = isOperatorBorder(border)
+        ? "operator"
+        : border === "open"
+          ? "ref"
+          : isLater
+            ? "district"
+            : "scope";
       const node = plan.net.nodes.get(rp.chain.nodes[idx])!;
       const end = atStart ? "start" : "end";
       mainEnds.push({ id: `${id}:${end}`, run: id, end, why, lon: node.lon, lat: node.lat });
