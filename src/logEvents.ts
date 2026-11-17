@@ -608,6 +608,28 @@ export const LOG_EVENTS = {
   }),
   /** A call the navi says (in the language in force), whether or not the voice is muted. */
   nav_spoken: info({ text: z.string() }),
+  /**
+   * A traffic car already on the road put back on its lane where it was off it by more than 8 m
+   * unseen, or 25 m (traffic-ai.ts drive): its id, segment, place along it and the segment's length
+   * (m); how far its centre was off (m); whether that centre was in the camera's view; the spot it
+   * is put on to the player's car (m); the road it had chosen next, the turn into it (degrees, left
+   * +) and how far its centre was from that road's lane (m); seconds since the graph was swapped
+   * and since it last slid from a shove. Nulls: none.
+   */
+  traffic_car_put_back: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    segLengthM: z.number(),
+    offLaneM: z.number(),
+    isSeen: z.boolean(),
+    playerDistM: z.number().nullable(),
+    nextSegId: z.number().int().nullable(),
+    turnDeg: z.number().nullable(),
+    nextOffM: z.number().nullable(),
+    sinceGraphS: z.number().nullable(),
+    sinceShoveS: z.number().nullable(),
+  }),
   /** Traffic AI cars on the expressway at a moment (debug.expressway.traffic, P6). */
   expressway_traffic_seen: info({
     cars: count,
@@ -635,6 +657,30 @@ export const LOG_EVENTS = {
    * (game/pedestrianBlow.ts) or the person's Δv was a nudge. `carKmh` is the car's speed into the blow.
    */
   pedestrian_bump: info({ carKmh: z.number(), otherDeltaVKmh: z.number() }),
+  /**
+   * The player's car began to touch a traffic car (main.ts, judged an accident or not; the 3 s per
+   * body of the contact check). The other: its id (TrafficAI), segment, place along it (m) and
+   * speed; `ownKmh` the player's car going into the blow; both Δv; `bearingDeg` where the other is
+   * seen from the player's heading (ahead 0, left +, behind ±180); its look's gap at its last frame
+   * (m); where its look began to take in the player's car without a break, and its speed then;
+   * seconds since it was last put back on its lane. Δv only from the mass contact's own record.
+   * Nulls: none.
+   */
+  traffic_contact: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    carKmh: z.number(),
+    ownKmh: z.number(),
+    ownDeltaVKmh: z.number().nullable(),
+    otherDeltaVKmh: z.number().nullable(),
+    bearingDeg: z.number(),
+    lookGapM: z.number().nullable(),
+    firstSeenM: z.number().nullable(),
+    firstSeenKmh: z.number().nullable(),
+    sincePutBackS: z.number().nullable(),
+    isAccident: z.boolean(),
+  }),
   /**
    * A jump (移動, 復帰, debug place) put the player more than 80 m from an open accident scene:
    * leaving and the 119 deadline are held until they are back within 80 m (game/emergency.ts).

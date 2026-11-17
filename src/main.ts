@@ -2826,6 +2826,10 @@ async function main(): Promise<void> {
     input.onFoot = isOnFoot;
     const walk = input.readWalk();
     accumulator += dt;
+    // The car's own speed on the ground before this frame's steps, for traffic_contact where the
+    // blow left no record (vehicle.speedKmh() after the steps has the push in it).
+    const v0 = vehicle.body.linvel();
+    const ownKmhBeforeSteps = Math.hypot(v0.x, v0.z) * 3.6;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
       // Held while it is being put on its street after a start or a 移動.
@@ -2906,6 +2910,29 @@ async function main(): Promise<void> {
       );
       // Kerbs and the ground are bumps, not accidents.
       const isAccident = what !== "ground" && kmh > 5;
+      const trafficCar = traffic.contactInfo(other);
+      if (trafficCar) {
+        const fwd = headingVector(vehicle.quaternion());
+        const to = vehicle.position().clone();
+        const otherPos = traffic.positionOf(other) ?? to;
+        to.subVectors(otherPos, to).setY(0);
+        const bearing =
+          (Math.atan2(fwd.z * to.x - fwd.x * to.z, fwd.x * to.x + fwd.z * to.z) * 180) / Math.PI;
+        // Going into the blow: the mass contact's record (before the exchange), else before the steps.
+        // Why not `impact` (impactAgainstMass without a record): it is made from the speed after the
+        // steps, the push in it; Δv likewise only from the record.
+        const record = massContacts.recentImpact(other);
+        const own = record ? record.carSpeed * 3.6 : ownKmhBeforeSteps;
+        const r1 = (v: number) => Math.round(v * 10) / 10;
+        log("traffic_contact", {
+          ...trafficCar,
+          ownKmh: r1(own),
+          ownDeltaVKmh: record ? r1(record.dvCar * 3.6) : null,
+          otherDeltaVKmh: record ? r1(record.dvOther * 3.6) : null,
+          bearingDeg: Math.round(bearing),
+          isAccident,
+        });
+      }
       if (isAccident) onAccident(what, kmh, "", impact);
     });
 
