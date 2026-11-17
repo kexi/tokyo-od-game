@@ -134,11 +134,55 @@ export function belowStructure(net: Network, wayId: number): "tunnel" | "cut" {
 }
 
 /**
- * Whether a below run is compiled: each end either runs on inside its chain (into an elevated run,
- * a seam, or onto the ground) or ends the chain where nothing else meets it. A below run ending at
- * a junction (a tunnel ramp joining a tunnel, 湾岸線's cut at 有明 JCT) or leaving the universe is
- * deferred: its coupling under the ground is not built yet, and the elevated run before it ends at
- * its portal as before.
+ * Why a below run is not compiled (S7-1, the scorecard's `underground.deferred`): the first of these
+ * that holds, in this order. `loop-seam`, `universe-edge` and `junction` are decided here, from the
+ * run's chain alone (`belowDeferralOf`); `ground-junction` (compile.ts dropBelowJunctions: it meets a
+ * run at grade at a junction) and `bridging` (compile.ts pruneBelow: it would join two components) by
+ * the plan after it.
+ */
+export const BELOW_DEFER_REASONS = [
+  "loop-seam",
+  "universe-edge",
+  "junction",
+  "ground-junction",
+  "bridging",
+] as const;
+export type BelowDeferReason = (typeof BELOW_DEFER_REASONS)[number];
+
+/**
+ * Why a below run is left out by its chain, or null when it is compiled (or is no below run): each
+ * end either runs on inside its chain (into an elevated run, a seam, or onto the ground) or ends the
+ * chain where nothing else meets it. A loop's ends are a seam between its first and last runs (都心環状線:
+ * `loop-seam`); a chain that leaves the universe ends at an outside node (`universe-edge`); a below run
+ * ending at a junction (a tunnel ramp joining a tunnel, 湾岸線's cut at 有明 JCT: `junction`). Over
+ * both ends, reason by reason in that order, so one run gets one reason whichever end holds it.
+ * Why not the first end's first reason (isBelowCompiled's loop before S7-1): the answer compiled or
+ * not is the same either way, and a reason that does not hang on which end comes first in the chain
+ * is the one S7-3 can be measured against.
+ */
+export function belowDeferralOf(
+  chain: Chain,
+  run: Run,
+  nodeChains: Map<number, string[]>,
+  outsideNodes: Set<number>,
+): "loop-seam" | "universe-edge" | "junction" | null {
+  if (!run.below) return null;
+  const ends = [run.from, run.to].filter((idx) => idx === 0 || idx === chain.nodes.length - 1);
+  const isInsideChain = ends.length === 0;
+  if (isInsideChain) return null;
+  if (chain.closed) return "loop-seam";
+  const nodes = ends.map((idx) => chain.nodes[idx]);
+  const isOutside = nodes.some((node) => outsideNodes.has(node));
+  if (isOutside) return "universe-edge";
+  const isJunction = nodes.some((node) => (nodeChains.get(node) ?? []).some((c) => c !== chain.id));
+  if (isJunction) return "junction";
+  return null;
+}
+
+/**
+ * Whether a below run is compiled: no reason of its chain leaves it out (`belowDeferralOf`). A below
+ * run ending at a junction or leaving the universe is deferred: its coupling under the ground is not
+ * built yet, and the elevated run before it ends at its portal as before.
  */
 export function isBelowCompiled(
   chain: Chain,
@@ -147,18 +191,7 @@ export function isBelowCompiled(
   outsideNodes: Set<number>,
 ): boolean {
   if (!run.below) return false;
-  for (const idx of [run.from, run.to]) {
-    const isChainEnd = idx === 0 || idx === chain.nodes.length - 1;
-    if (!isChainEnd) continue;
-    // A loop's ends are a seam between its first and last runs (都心環状線): not under the ground yet.
-    if (chain.closed) return false;
-    const node = chain.nodes[idx];
-    if (outsideNodes.has(node)) return false;
-    const others = (nodeChains.get(node) ?? []).filter((c) => c !== chain.id);
-    const isJunction = others.length > 0;
-    if (isJunction) return false;
-  }
-  return true;
+  return belowDeferralOf(chain, run, nodeChains, outsideNodes) === null;
 }
 
 /**

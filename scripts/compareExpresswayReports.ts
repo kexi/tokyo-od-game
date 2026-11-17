@@ -9,9 +9,13 @@
 // P2.7-2: a version-2 report (no `partition`) still reads, its partition rows then being additions;
 // anchors are keyed by run@s and blocks by id, and the blocks' solution hashes are summed up in one
 // line (how many changed, and which). P2.7-3: builds of another objective (v1 / v2 or v2's weights)
-// are warned about too.
+// are warned about too. S7-1 (version 7): the `underground` numbers are rows like the rest (deferred
+// runs by id, portal ends by run:end, over-approach pairs by lower|upper), and one line names what the
+// numbers cannot: the deferred runs, ends, approaches and pairs on one side only and the runs deferred for another
+// reason (a version-6 report beside a version-7 one: the section added).
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { undergroundChanges } from "../src/expressway/belowScore.ts";
 import { blockChanges, buildsUnlike, flattenReport, ReportSchema } from "../src/expressway/report.ts";
 import { log, warn } from "../src/log.ts";
 
@@ -53,6 +57,17 @@ const wantedB = new Set(b.scope.wanted);
 const runsAdded = [...wantedB].filter((id) => !wantedA.has(id));
 const runsRemoved = [...wantedA].filter((id) => !wantedB.has(id));
 const { changed: blocksChanged, added: blocksAdded, removed: blocksRemoved } = blockChanges(a, b);
+const under = undergroundChanges(a.underground, b.underground);
+const ids = (list: string[]) => `${list.length} ${list.slice(0, 20).join(" ")}`.trimEnd();
+const undergroundLine =
+  under.absent !== null
+    ? `underground: only in ${under.absent === "a" ? b.label : a.label} (the other is version ${under.absent === "a" ? a.version : b.version})`
+    : [
+        `underground: deferred +${ids(under.deferred.added)} / −${ids(under.deferred.removed)} / reason ${ids(under.deferred.reasonChanged)} / range ${ids(under.deferred.inRangeChanged)}`,
+        `portals +${ids(under.portals.added)} / −${ids(under.portals.removed)} / changed ${ids(under.portals.changed)}`,
+        `overApproach +${ids(under.overApproach.added)} / −${ids(under.overApproach.removed)}`,
+        `approaches +${ids(under.approaches.added)} / −${ids(under.approaches.removed)}`,
+      ].join("; ");
 const cell = (r: Row) => {
   const delta = r.va !== undefined && r.vb !== undefined ? fmt(r.vb - r.va) : "";
   const note = r.change === "same" ? "" : r.change;
@@ -73,6 +88,7 @@ process.stdout.write(
     ...table.map(line),
     `blocks: ${blocksChanged.length} changed ${blocksChanged.slice(0, 20).join(" ")} / +${blocksAdded.length} ${blocksAdded.slice(0, 20).join(" ")} / −${blocksRemoved.length} ${blocksRemoved.slice(0, 20).join(" ")}`,
     `runs of the range: +${runsAdded.length} ${runsAdded.slice(0, 20).join(" ")} / −${runsRemoved.length} ${runsRemoved.slice(0, 20).join(" ")}`,
+    undergroundLine,
     `extract: ${a.extract.timestamp} ${a.extract.sha256.slice(0, 12)} / ${b.extract.timestamp} ${b.extract.sha256.slice(0, 12)}`,
   ].join("\n") + "\n",
 );
@@ -85,7 +101,10 @@ const changed =
   runsRemoved.length +
   blocksChanged.length +
   blocksAdded.length +
-  blocksRemoved.length;
+  blocksRemoved.length +
+  under.deferred.reasonChanged.length +
+  under.deferred.inRangeChanged.length +
+  under.portals.changed.length;
 log("expressway_reports_compared", {
   a: a.label,
   b: b.label,
