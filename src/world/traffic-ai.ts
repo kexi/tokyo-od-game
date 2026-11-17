@@ -492,12 +492,42 @@ export class TrafficAI {
       const along = graph.nearestOn(c.seg, centre).s;
       const projected = c.dir === 1 ? along : c.seg.length - along;
       c.s = Math.max(c.s - 2, Math.min(c.s + c.speed * dt * 2 + 0.05, projected));
-      if (c.s >= c.seg.length - 0.05) {
+      const isAtEnd = c.s >= c.seg.length - 0.05;
+      if (isAtEnd || this.isRoundCorner(graph, c, centre)) {
         c.s = c.seg.length + 0.05;
         this.advance(graph, c);
       }
     }
     return centre;
+  }
+
+  /**
+   * Whether the car has driven round the corner into the road it chose next while its place along
+   * this one stayed short of the end: its centre lies on the next road past its start, and nearer
+   * that road's lane than this road's lane from its place on. Streets only.
+   *
+   * Why: turning left by 90° or more, the centre projected on the road before stops short of its
+   * end, so no move on happened; the car drove into the next road with its place left behind and
+   * was put back 8 m (25 m in view) later (138 of 186 put-backs in five drives, D3). Why not on the
+   * decks: no sharp corners there, and at merges and diverges a ramp's lane lies over the main
+   * line's. A car standing on its lane before the corner is on this lane, so it is not moved on.
+   */
+  private isRoundCorner(graph: RoadGraph, c: AiCar, centre: Vector3): boolean {
+    const isStreet = runOf(c.seg) === null;
+    if (!isStreet) return false;
+    const next = this.peekNext(graph, c);
+    if (!next || runOf(next.seg) !== null) return false;
+    const onNext = graph.nearestOn(next.seg, centre).s;
+    const nextS = next.dir === 1 ? onNext : next.seg.length - onNext;
+    const isPastStart = nextS > 0.05;
+    if (!isPastStart) return false;
+    const nextLane = this.lanePoint(graph, next.seg, next.dir, nextS).pos;
+    const onHere = graph.nearestOn(c.seg, centre).s;
+    const hereS = Math.max(c.s, c.dir === 1 ? onHere : c.seg.length - onHere);
+    const hereLane = this.lanePoint(graph, c.seg, c.dir, Math.min(hereS, c.seg.length)).pos;
+    const toNext = Math.hypot(centre.x - nextLane.x, centre.z - nextLane.z);
+    const toHere = Math.hypot(centre.x - hereLane.x, centre.z - hereLane.z);
+    return toNext < toHere;
   }
 
   /**
