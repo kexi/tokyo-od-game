@@ -367,6 +367,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     speedKmh: 38,
     limitKmh: 40,
     detail: undefined,
+    signal: { leftAgoMs: null, rightAgoMs: 7300, fromNodeM: 25.2, watchedMs: 15400 },
   },
   violation_cited: { violationId: "x", kind: "signal", by: "patrol", via: "spot", points: 2, totalPoints: 2 },
   violation_noticed: { violationId: "x", kind: "speed", by: "orbis" },

@@ -42,28 +42,77 @@ export function isSignalOmitted(side: SignalSide | null, now: number, memory: In
 /** A turn at a junction is judged this far past the junction's node (main.ts). */
 export const TURN_JUDGED_M = 25;
 
-/** A junction the car is going through: the approach's direction and the node (main.ts turnAt). */
-export type TurnWatch = { tIn: Vector3; node: Vector3 };
+/**
+ * A junction the car is going through (main.ts turnAt): the approach's direction, the node, and
+ * when the watch began (game ms, 20 m before the node).
+ */
+export type TurnWatch = { tIn: Vector3; node: Vector3; since: number };
 
 /**
  * Whether the car is still in a turn at a junction: watched from 20 m before the node until the
- * turn is judged TURN_JUDGED_M past it, and heading away from the approach (classifyTurn: not
- * straight on). The lane checks (合図 for a lane change, 進路変更禁止) count no lane then: the
- * curve of a turn may end lanes over from where it crosses into the new street, and that is the
- * turn, signalled for its own side (施行令 第21条: until the turn is over), not a lane change. The
- * lane the car is in past TURN_JUDGED_M is the one held from there.
+ * turn is judged TURN_JUDGED_M past it, and on a street that leaves the approach other than
+ * straight on (`along`: the street under the car, in the way it drives it; classifyTurn). The lane
+ * checks (合図 for a lane change, 進路変更禁止) count no lane then: the curve of a turn may end lanes
+ * over from where it crosses into the new street, and that is the turn, signalled for its own side
+ * (施行令 第21条: until the turn is over), not a lane change. The lane the car is in past
+ * TURN_JUDGED_M is the one held from there. Off any street (`along` null): not in a turn.
  *
  * Why not count from the moment the car runs along the new street (as before): a right turn out
  * of the lane by the centre line into lane 0 of 3 crosses two lane lines in its last 13 m with the
  * car already along the street, booked as a lane change with no 合図 (丸の内二丁目, D2 (a)). Why
- * the 25 m the turn is judged at, not a new distance: the turn's own check already takes the turn
- * as over there. Straight on through a junction changes nothing: a lane change there is counted.
+ * the street's direction, not the car's heading: a move across lanes at 22–32° just before a
+ * junction is on the approach, and the lane checks count it as they always did. Why the 25 m the
+ * turn is judged at, not a new distance: the turn's own check already takes the turn as over there.
  */
-export function isInTurn(watch: TurnWatch | null, pos: Vector3, forward: Vector3): boolean {
-  if (watch === null) return false;
+export function isInTurn(watch: TurnWatch | null, pos: Vector3, along: Vector3 | null): boolean {
+  if (watch === null || along === null) return false;
   const isPastJudged = Math.hypot(pos.x - watch.node.x, pos.z - watch.node.z) > TURN_JUDGED_M;
   if (isPastJudged) return false;
-  const along = forward.clone().setY(0);
-  if (along.lengthSq() < 1e-9) return false;
-  return classifyTurn(watch.tIn, along.normalize()) !== "straight";
+  const flat = along.clone().setY(0);
+  if (flat.lengthSq() < 1e-9) return false;
+  return classifyTurn(watch.tIn, flat.normalize()) !== "straight";
+}
+
+/**
+ * Whether a turn judged now misses its 合図: none of the turn's side within SIGNAL_RECENT_MS, and
+ * none since the watch began either. Why the watch too: a car that signalled, turned and then
+ * crawled to the point 25 m on (a queue past the junction) ran out the 6 s with the indicator
+ * already cancelled by the wheel, and was booked (汐留, pre-wait 20, 1 in 3: d104-review W3).
+ */
+export function isTurnSignalOmitted(
+  side: SignalSide | null,
+  now: number,
+  memory: IndicatorMemory,
+  watch: TurnWatch,
+): boolean {
+  if (!isSignalOmitted(side, now, memory)) return false;
+  const isOnDuringWatch = side !== null && memory[side] >= watch.since;
+  return !isOnDuringWatch;
+}
+
+/** What violation_booked records with a missed 合図: each indicator's last on, and the turn's watch. */
+export type SignalRecord = {
+  /** Game ms since the left / right indicator was last on (null: never). */
+  leftAgoMs: number | null;
+  rightAgoMs: number | null;
+  /** The car's distance from the junction's node (m), and game ms since its watch began. */
+  fromNodeM: number | null;
+  watchedMs: number | null;
+};
+
+/** The SignalRecord at `now` (the watch: the turn being judged; none for a lane change). */
+export function signalRecord(
+  memory: IndicatorMemory,
+  now: number,
+  watch: TurnWatch | null = null,
+  pos: Vector3 | null = null,
+): SignalRecord {
+  const ago = (t: number) => (Number.isFinite(t) ? Math.round(now - t) : null);
+  const hasWatch = watch !== null && pos !== null;
+  return {
+    leftAgoMs: ago(memory.left),
+    rightAgoMs: ago(memory.right),
+    fromNodeM: hasWatch ? Math.round(Math.hypot(pos.x - watch.node.x, pos.z - watch.node.z) * 10) / 10 : null,
+    watchedMs: watch ? Math.round(now - watch.since) : null,
+  };
 }
