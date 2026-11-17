@@ -949,6 +949,12 @@ export class TrafficAI {
     const a = Math.min(c.decel, COMFORT_DECEL);
     const reach = Math.max(standstill + 18, standstill + (c.speed * c.speed) / (2 * a) + c.speed * 0.1);
     const path = this.lanePath(graph, c, reach);
+    // Distances on the line from where the car itself is on it, not from its place along the lane
+    // (`c.s`): rounding a corner the car runs ahead of that place, and the gap read from it was
+    // metres long (T-b3: 10 m read, 5.6 m there). Why not the car's centre for the band too: the
+    // band is kept as it was.
+    const self = c.object.position;
+    const selfAt = Number.isFinite(self.x) ? Math.max(0, placeOnRoute(path, self, 0, reach)?.at ?? 0) : 0;
     // Returns how far ahead the point is when it is taken in (null: not), for the player's case.
     const consider = (p: Vector3, width = 2.2, fleeing?: (along: Vector3) => boolean): number | null => {
       const dx = p.x - pos.x;
@@ -964,12 +970,12 @@ export class TrafficAI {
       // Off either end of the line (dist over |lateral|) is not beside it.
       const isOnLine =
         on !== null &&
-        on.at > 0 &&
+        on.at > selfAt &&
         Math.abs(on.lateral) < width &&
         on.dist <= Math.abs(on.lateral) + 1e-6 &&
         Math.abs(p.y - y) < 3.5 + 0.15 * on.at &&
         !fleeing?.(on.dir);
-      if (isOnLine && on) taken = taken === null ? on.at : Math.min(taken, on.at);
+      if (isOnLine && on) taken = taken === null ? on.at - selfAt : Math.min(taken, on.at - selfAt);
       if (taken !== null) gap = Math.min(gap, taken);
       return taken;
     };
