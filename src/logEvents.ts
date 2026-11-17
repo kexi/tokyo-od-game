@@ -671,11 +671,34 @@ export const LOG_EVENTS = {
    * none applied); `ahead` the nearest vehicle in front within 30 m (m along and across the car's
    * heading, its speed m/s, its heading against the car's in degrees).
    */
+  /**
+   * The autopilot found its car off its lane (AutoDriver.offLane, D2 大手町一丁目): `why` the test
+   * that held (pavement under it, off the path, misaligned, off every road), the route's segment
+   * and lane, `offM` from the driven path, `yawErrorDeg` against the path's heading.
+   */
+  autopilot_lost_lane: warning({
+    why: z.string(),
+    lat: z.number(),
+    lon: z.number(),
+    gameMs: z.number(),
+    segId: count,
+    lane: z.number().int(),
+    lanes: count,
+    offM: z.number(),
+    yawErrorDeg: z.number(),
+    speedMs: z.number(),
+    onPavement: z.boolean(),
+    offPath: z.boolean(),
+    misaligned: z.boolean(),
+  }),
   autopilot_stop_trace: info({
     phase: z.enum(["still", "movedOff", "accident"]),
     stillS: z.number(),
     /** The game's clock (ms, main.ts gameNow): the signals' phase runs on it. */
     gameMs: z.number(),
+    /** The driver's mode (drive, or a manoeuvre: align, uturn, stuck, reroute, pass) and why it left its lane. */
+    mode: z.string(),
+    lostWhy: z.string().nullable(),
     lat: z.number(),
     lon: z.number(),
     speedMs: z.number(),
