@@ -1130,6 +1130,90 @@ export const LOG_EVENTS = {
   expressway_extract_pinned: info({ file: z.string(), timestamp: z.string().nullable(), sha256: z.string() }),
   /** --range ship (src/expressway/scope.ts): the main lines and ramps of the shipped scope. */
   expressway_scope_chosen: info({ main: count, ramps: count, belowRuns: count, prunedBelow: z.boolean() }),
+  /**
+   * The shipped scope read off the plan (scripts/expresswayScopeProbe.ts, R1-1a 2): where the
+   * operator's ways end along the shipped main lines (the cuts, the km they take out, those with an
+   * operator's route ref on the far side), the unmarked ways between two operated ones, the ramps
+   * scope v2 adds and drops against v1, the plan's dangling runs, the main lines whose ways fall in
+   * more than one district, the refs the districts' table misses and the C2 runs the yamate box cuts.
+   */
+  /**
+   * The districts of the written runs of a ship build from the plan (scope.ts planDistrictRuns) and
+   * from the chunks (districtRunsOf), compared (R1-1a): how many written, how many differ, the first.
+   */
+  /**
+   * What lies under the written stations outside the wards (scripts/expresswayOutsideGround.ts,
+   * R1-1a): their km, those where DEM5A has the pixel, where the ground falls to DEM10B, where the
+   * DEM tile is not cached, and where no gated PLATEAU prefecture's regions reach (no buildings).
+   */
+  expressway_outside_ground_measured: info({
+    dir: z.string(),
+    out: z.string(),
+    outsideKm: z.number().nonnegative(),
+    dem5aKm: z.number().nonnegative(),
+    dem10bKm: z.number().nonnegative(),
+    uncachedKm: z.number().nonnegative(),
+    noPlateauKm: z.number().nonnegative(),
+  }),
+  /**
+   * The tiles' gzip stage by stage of publishing the districts (scripts/expresswayDistrictSizes.ts,
+   * R1-1a, U3): per stage the districts published, the tiles, their gzip total and the largest tile.
+   */
+  expressway_district_sizes_measured: info({
+    dir: z.string(),
+    out: z.string(),
+    stages: z.array(
+      z.strictObject({ districts: z.string(), tiles: count, gzipBytes: count, maxGzipBytes: count }),
+    ),
+  }),
+  /** A --districts build (R1-1a): the stage written and the runs and chunks picked from the whole ship. */
+  /**
+   * Two scorecards gzipped by another node or zlib, or one without the record (compareExpresswayReports,
+   * R1-1a): their gzip rows shown but not counted, and how many.
+   */
+  expressway_reports_gzip_unlike: warning({
+    a: z.string(),
+    b: z.string(),
+    aEnv: z.string().nullable(),
+    bEnv: z.string().nullable(),
+    rows: count,
+  }),
+  /** A scorecard over U3's budget (budget.ts): the caps, the measured gzip, the largest tile. */
+  expressway_budget_over: warning({
+    label: z.string(),
+    totalGzipMaxBytes: count,
+    tileGzipMaxBytes: count,
+    totalGzipBytes: count,
+    maxTileGzipBytes: count,
+    maxTile: z.string().nullable(),
+    ok: z.boolean(),
+  }),
+  expressway_districts_picked: info({ districts: z.array(z.string()), runs: count, chunks: count }),
+  expressway_districts_compared: info({
+    written: count,
+    mismatched: count,
+    mismatchedIds: z.array(z.string()),
+  }),
+  expressway_scope_probed: info({
+    out: z.string(),
+    below: z.string(),
+    runBorders: z.string(),
+    mainRuns: count,
+    rampRuns: count,
+    cuts: count,
+    cutShippedKm: z.number().nonnegative(),
+    operatorRefCuts: count,
+    sandwichedKm: z.number().nonnegative(),
+    addedRamps: count,
+    addedRampKm: z.number().nonnegative(),
+    lostRamps: count,
+    droppedRamps: count,
+    droppedWithFoot: count,
+    danglingV2: count,
+    mixedRuns: count,
+    missingRefs: z.array(z.string()),
+    boxBorderRuns: z.array(z.string()),
+  }),
   /** The vertical objective of a build (P2.7-3, compile.ts Objective); v2's weights null for v1. */
   expressway_objective_chosen: info({
     objective: z.enum(["v1", "v2"]),

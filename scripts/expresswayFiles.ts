@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { assembleFiles, type XwFiles } from "../src/expressway/files.ts";
 import type { XwBuildRecord, XwMeta, XwTile } from "../src/expressway/format.ts";
 import type { Ledger } from "../src/expressway/ledger.ts";
+import { assignDistricts, type District, districtRunsOf } from "../src/expressway/districts.ts";
 
 export const DEFAULT_DATA_DIR = join(import.meta.dirname, "..", "public", "data", "expressway");
 
@@ -28,4 +29,24 @@ export function readExpresswayFiles(dir = expresswayDataDir()): XwFiles & { dir:
   const tiles = new Map(meta.tiles.map((key) => [key, readJson<XwTile>(join(dir, `${key}.json`))]));
   const record = readJson<XwBuildRecord>(join(dir, "report.json"));
   return { ...assembleFiles(meta, tiles, record, readLedger(dir)), dir };
+}
+
+/** districts.json of a ship folder (R1-1a): each written run's district from the plan. */
+export const DISTRICTS_FILE = "districts.json";
+
+/**
+ * Each written run's district: the folder's districts.json where the build wrote one (a --range ship
+ * build: the plan's districts, districts.ts districtsOf, which are the source), else from the chunks
+ * (districtRunsOf, as before: the default folder, whose runs are all central). Why the file and not
+ * the chunks alone: the chunks carry the first way's ref only (888066403 is C2 after four ways with no
+ * ref), and a folder of some districts (--districts) lacks the runs the stages are counted over.
+ */
+export function districtsOfFiles(
+  files: Pick<XwFiles, "runs" | "byRun"> & { dir?: string },
+): Map<string, District> {
+  const path = files.dir === undefined ? null : join(files.dir, DISTRICTS_FILE);
+  const isWritten = path !== null && existsSync(path);
+  if (!isWritten || path === null) return assignDistricts(districtRunsOf(files.runs, files.byRun));
+  const parsed = readJson<{ districts: Record<string, District> }>(path);
+  return new Map(Object.entries(parsed.districts));
 }

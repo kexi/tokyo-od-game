@@ -299,6 +299,18 @@ compare-expressway-reports a b flags="":
 compare-expressway-heights a b flags="":
     pnpm exec tsx scripts/compareExpresswayHeights.ts {{ a }} {{ b }} {{ flags }}
 
+# 出荷範囲を計画だけで読む（解かない）: 他社の境・挟まれた印の無い way・範囲 v2 で増えるランプと規則 A で外れるランプ・ref の表の漏れを .qa/expressway/scope-probe-<below>-<borders>.json に（below は pruned か all、borders は keep か cut）
+probe-expressway-scope below="pruned" borders="keep":
+    pnpm exec tsx scripts/expresswayScopeProbe.ts --below {{ below }} --run-borders {{ borders }}
+
+# 生成したフォルダのタイルを、地区の公開の段（central → + east → + yamate → + outside）ごとに詰め直して gzip の合計と 1 タイルの最大を測る（dir は生成先のフォルダ）
+measure-district-sizes dir:
+    pnpm exec tsx scripts/expresswayDistrictSizes.ts {{ dir }}
+
+# 生成したフォルダの 23 区外の測点の下で、DEM5A が無く DEM10B に落ちる所と、PLATEAU の門の外の km を測る（dir は生成先のフォルダ）
+measure-outside-ground dir:
+    pnpm exec tsx scripts/expresswayOutsideGround.ts {{ dir }}
+
 # 高速道路の計測ラベルの未許可の重なりを S6 の 5 区分（つながる / つながらない × 同一面から / 途中、1 段にあと少し）で種類ごとに数え、1 行の JSON ログに出す（base に基準のラベルを渡すと、基準の「つながる・同一面から」の組がまだ未許可かを追う）
 count-overlap-shapes label base="":
     pnpm exec tsx scripts/expresswayOverlapShapes.ts {{ label }} {{ base }}

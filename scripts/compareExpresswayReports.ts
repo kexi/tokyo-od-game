@@ -13,10 +13,23 @@
 // runs by id, portal ends by run:end, over-approach pairs by lower|upper), and one line names what the
 // numbers cannot: the deferred runs, ends, approaches and pairs on one side only and the runs deferred for another
 // reason (a version-6 report beside a version-7 one: the section added).
+// R1-1a (version 8): a gzip size (any field naming gzip) counts as a change only between two reports
+// gzipped by the same node and zlib (`size.gzipEnv`); otherwise its row is shown as `gzip-env`, never
+// counts for --check, and one line warns (expressway_reports_gzip_unlike). Why not count them: the
+// same tiles gzip to other sizes under another zlib (117,542 and 115,707 bytes), so the change would
+// be the machine's, not the compiler's. --check also fails b over U3's budget (`budget.ok` false,
+// budget.ts), warned as expressway_budget_over.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { undergroundChanges } from "../src/expressway/belowScore.ts";
-import { blockChanges, buildsUnlike, flattenReport, ReportSchema } from "../src/expressway/report.ts";
+import {
+  blockChanges,
+  buildsUnlike,
+  flattenReport,
+  isGzipComparable,
+  isGzipField,
+  ReportSchema,
+} from "../src/expressway/report.ts";
 import { log, warn } from "../src/log.ts";
 
 const pathOf = (arg: string) => {
@@ -41,12 +54,17 @@ type Row = {
   key: string;
   va?: number;
   vb?: number;
-  change: "same" | "changed" | "added" | "removed" | "timing";
+  change: "same" | "changed" | "added" | "removed" | "timing" | "gzip-env";
 };
+const envA = a.size.gzipEnv;
+const envB = b.size.gzipEnv;
+const isSameGzip = isGzipComparable(a, b);
 const rows: Row[] = keys.map((key) => {
   const va = fa.get(key);
   const vb = fb.get(key);
   if (isTiming(key)) return { key, va, vb, change: "timing" };
+  const isUncounted = isGzipField(key) && !isSameGzip && va !== vb;
+  if (isUncounted) return { key, va, vb, change: "gzip-env" };
   if (va === undefined) return { key, vb, change: "added" };
   if (vb === undefined) return { key, va, change: "removed" };
   return { key, va, vb, change: va === vb ? "same" : "changed" };
@@ -81,6 +99,17 @@ const line = (r: string[]) =>
 const unlike = buildsUnlike(a, b);
 const isUnlike = unlike !== null;
 if (isUnlike) warn("expressway_reports_unlike", unlike);
+const gzipRows = rows.filter((r) => r.change === "gzip-env").length;
+if (!isSameGzip)
+  warn("expressway_reports_gzip_unlike", {
+    a: a.label,
+    b: b.label,
+    aEnv: envA ? `${envA.node} zlib ${envA.zlib}` : null,
+    bEnv: envB ? `${envB.node} zlib ${envB.zlib}` : null,
+    rows: gzipRows,
+  });
+const isOverBudget = b.budget !== undefined && !b.budget.ok;
+if (isOverBudget) warn("expressway_budget_over", { label: b.label, ...b.budget! });
 process.stdout.write(
   [
     line(header),
@@ -119,4 +148,5 @@ log("expressway_reports_compared", {
   blocksRemoved: blocksRemoved.length,
 });
 const isDifferent = changed > 0;
-if (isCheck && isDifferent) process.exitCode = 1;
+const isFailed = isDifferent || isOverBudget;
+if (isCheck && isFailed) process.exitCode = 1;

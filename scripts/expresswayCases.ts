@@ -6,7 +6,8 @@
 // height budget's (P2.7-5): the high-deck stretches and the km over 15 and 20 m (src/expressway/highDeck.ts).
 import RAPIER from "@dimforge/rapier3d-compat";
 import { parseAtGradeCrossing } from "../src/expressway/allowlist.ts";
-import { assignDistricts, type District, districtRunsOf } from "../src/expressway/districts.ts";
+import type { District } from "../src/expressway/districts.ts";
+import { districtsOfFiles } from "./expresswayFiles.ts";
 import type { XwFiles } from "../src/expressway/files.ts";
 import {
   blocksOf,
@@ -253,7 +254,7 @@ function caseDistrict(
   return blockRuns.length > 0 ? districts.get(blockRuns[0])! : "outside";
 }
 
-export async function countCases(files: XwFiles): Promise<Counted> {
+export async function countCases(files: XwFiles & { dir?: string }): Promise<Counted> {
   await RAPIER.init();
   const ctx = caseContextOf(files.runs, files.record.untied, files.chunks);
   // The range's runs' diagnostics only (S6 PR 7c): a run solved only for its component has no chunk
@@ -271,7 +272,7 @@ export async function countCases(files: XwFiles): Promise<Counted> {
     ...bareDropCases(probed.bare),
   );
   for (const w of probed.worlds) w.free();
-  const districts = assignDistricts(districtRunsOf(files.runs, files.byRun));
+  const districts = districtsOfFiles(files);
   const found = [
     ...fromDiagnostics,
     ...fromDecks,

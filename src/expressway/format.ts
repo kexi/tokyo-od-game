@@ -359,6 +359,8 @@ export type XwMeta = {
    * wards). Optional, absent from the default build's file.
    */
   scope?: "ship";
+  /** `--districts` (R1-1a): the districts of the shipped scope written, absent for all of it. */
+  districts?: string[];
   /** Structures whose deck levels were built (landmark id and the version of its deckLevels). */
   structures: Array<{ id: string; version: number; decks: string[] }>;
   extract: { url: string; timestamp: string | null };

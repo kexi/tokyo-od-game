@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkExtract,
@@ -10,6 +12,7 @@ import { classifyOverlap, isJoined, overlapPair } from "../src/expressway/overla
 import { PROPERTIES, type Violations } from "../src/expressway/violations";
 import {
   blockChanges,
+  budgetOf,
   buildReport,
   buildsUnlike,
   objectiveLabel,
@@ -21,6 +24,9 @@ import {
   closuresOf,
   forcingOf,
   overlapsOf,
+  isGzipComparable,
+  isGzipField,
+  type Report,
   ReportSchema,
   reversals,
   spreadOf,
@@ -445,9 +451,9 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
     ]);
   });
 
-  it("version 7 keeps version 6's fields: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
+  it("version 8 keeps version 6's fields: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
     const report = buildReport(input());
-    expect(report.version).toBe(7); // S7-1 raised it for `underground` (tests/expresswayBelowScore.test.ts)
+    expect(report.version).toBe(8); // S7-1 raised it to 7 for `underground`, R1-1a to 8 (gzipEnv, budget, stages, borders, ends)
     expect(report.size.record).toEqual({ raw: 900, gzip: 200 });
     expect(report.size.ledger).toBeNull();
     // Every district, the planned runs all counted in one (a run with no district is outside).
@@ -593,5 +599,52 @@ describe("抽出の固定（extract.ts）", () => {
 
   it("names the pinned copy by its timestamp, apart from the kanto-latest that fetch-regs refreshes", () => {
     expect(pinnedExtractName()).toBe("kanto-20261003T202050Z.osm.pbf");
+  });
+});
+
+describe("タイルの予算と gzip の比べ方（R1-1a、U3、スコアカード版 8）", () => {
+  it("passes tiles within both caps and fails one over either (1.6 MB in all, 72 KB for a tile)", () => {
+    const tiles = (sizes: number[]) => sizes.map((gzipBytes, i) => ({ bytes: 0, gzipBytes, key: `t${i}` }));
+    const ok = budgetOf(tiles([61_744, 1_000_000, 341_865]));
+    expect(ok).toEqual({
+      totalGzipMaxBytes: 1_600_000,
+      tileGzipMaxBytes: 72_000,
+      totalGzipBytes: 1_403_609,
+      maxTileGzipBytes: 1_000_000,
+      maxTile: "t1",
+      ok: false,
+    });
+    expect(budgetOf(tiles([61_744, 60_000])).ok).toBe(true);
+    expect(budgetOf(tiles([72_001])).ok).toBe(false);
+    expect(budgetOf(tiles(Array.from({ length: 23 }, () => 70_000))).ok).toBe(false);
+  });
+
+  it("compares gzip sizes only between reports gzipped by the same node and zlib", () => {
+    const spread = { total: 0, median: 0, p90: 0, max: 0 };
+    const at = (gzipEnv?: { node: string; zlib: string }): Pick<Report, "size"> => ({
+      size: {
+        tiles: 0,
+        raw: spread,
+        gzip: spread,
+        meta: { raw: 0, gzip: 0, byField: {} },
+        ...(gzipEnv ? { gzipEnv } : {}),
+      },
+    });
+    const here = { node: "v24.21.0", zlib: "1.3.1" };
+    expect(isGzipComparable(at(here), at(here))).toBe(true);
+    expect(isGzipComparable(at(here), at({ ...here, zlib: "1.3.0" }))).toBe(false);
+    expect(isGzipComparable(at(here), at())).toBe(false);
+    expect(isGzipField("size.gzip.total")).toBe(true);
+    expect(isGzipField("stages[0].gzipBytes")).toBe(true);
+    expect(isGzipField("size.raw.total")).toBe(false);
+  });
+
+  it("the ship scorecard fixture is within U3's budget", () => {
+    const fixture = ReportSchema.parse(
+      JSON.parse(
+        readFileSync(join(import.meta.dirname, "fixtures", "expresswayScorecard.ship.json"), "utf8"),
+      ),
+    );
+    expect(fixture.budget?.ok).toBe(true);
   });
 });

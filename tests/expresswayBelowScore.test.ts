@@ -14,7 +14,7 @@ import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
 import { LEVEL_APART_M } from "../src/expressway/overlap";
-import { flattenReport, ReportSchema } from "../src/expressway/report";
+import { flattenReport, REPORT_VERSION, ReportSchema } from "../src/expressway/report";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 
@@ -415,13 +415,13 @@ const fixture = (name: string) =>
   ReportSchema.parse(JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8")));
 
 describe("スコアカード版 7（report.ts）", () => {
-  it("the ship baselines are version 7, each deferred run under one reason, adding up to the plan's count", () => {
+  it("the ship baselines are the current version (8 since R1-1a), each deferred run under one reason, adding up to the plan's count", () => {
     for (const [name, below] of [
       ["expresswayScorecard.ship.json", "pruned"],
       ["expresswayScorecard.ship-all.json", "all"],
     ] as const) {
       const r = fixture(name);
-      expect([name, r.version, r.below]).toEqual([name, 7, below]);
+      expect([name, r.version, r.below]).toEqual([name, REPORT_VERSION, below]);
       const u = r.underground!;
       expect(u.deferred.list.length).toBe(r.plan.belowDeferred);
       const byReason = Object.values(u.deferred.byReason).reduce(

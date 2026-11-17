@@ -42,7 +42,7 @@
 // P2.7-6 PR 1: --structures height (the default since S6 PR 7c) draws a viaduct-tagged run's stretches
 // as viaduct, embankment or cut from its solved height (src/expressway/heightStructures.ts) and names
 // "height-structures" in meta's features; --structures tags (comparing, --out) draws them by the tags.
-import { shippedFolderRefusal } from "./expresswayGuards";
+import { districtsRefusal, shippedFolderRefusal } from "./expresswayGuards";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -60,15 +60,22 @@ import { caseContextOf, type Ledger, ledgerVerdict, rampFloorOf } from "../src/e
 import { BLOCK_QUIET_FACTOR, COMPANIONS, HEIGHT_STRUCTURES } from "../src/expressway/assumptions.ts";
 import { surfaceAt } from "../src/expressway/profile.ts";
 import { buildReport, type PlannedRun, type Report, trackingOf } from "../src/expressway/report.ts";
-import { scopeExtent, shipRuns } from "../src/expressway/scope.ts";
+import { planDistrictRuns, scopeExtent, shipRuns } from "../src/expressway/scope.ts";
 import { DEFAULT_RANGES, parseRanges, RANGES } from "../src/expressway/ranges.ts";
 import { packTiles } from "../src/expressway/files.ts";
-import { assignDistricts, type District, districtRunsOf } from "../src/expressway/districts.ts";
-import { STRUCTURE_SPECS, type Structure, structureFrom } from "../src/expressway/structures.ts";
-import { deckLevelsOf, DECK_LEVELS_VERSION } from "../src/world/deckLevels.ts";
 import {
-  type Bbox,
+  assignDistricts,
+  DISTRICTS,
+  type District,
+  districtRunsOf,
+  districtsOf,
+  pickWritten,
+} from "../src/expressway/districts.ts";
+import type { Structure } from "../src/expressway/structures.ts";
+import { DECK_LEVELS_VERSION } from "../src/world/deckLevels.ts";
+import {
   type BlockSummary,
+  type Plan,
   type CrossObject,
   type FootRecord,
   groundPoints,
@@ -98,24 +105,12 @@ import {
 } from "../src/expressway/format.ts";
 import { tileKey } from "../src/expressway/geo.ts";
 import { planSigns } from "../src/expressway/signPlan.ts";
-import {
-  type Network,
-  normalizeNode,
-  normalizeStreetWay,
-  normalizeWay,
-  type XwNode,
-  type XwWay,
-} from "../src/expressway/network.ts";
 import { log, warn } from "../src/log.ts";
 import { BuildDem } from "./demTiles.ts";
-import {
-  readNodeCoords,
-  readNodeCoordsWhere,
-  readReplicationTimestamp,
-  readTaggedNodes,
-  readWays,
-  readWaysById,
-} from "./osm-pbf.ts";
+import { DISTRICTS_FILE } from "./expresswayFiles.ts";
+import { bordersOf, endsOf, stagesOf } from "./expresswayShipScore.ts";
+import { isBay, readExpresswayInput, readStructures, UNIVERSE } from "./expresswayNetwork.ts";
+import { readNodeCoords, readNodeCoordsWhere, readReplicationTimestamp, readWays } from "./osm-pbf.ts";
 
 const started = performance.now();
 const OUT_DEFAULT = join(import.meta.dirname, "..", "public", "data", "expressway");
@@ -127,11 +122,6 @@ const OSM_LATEST = join(OSM_DIR, "kanto-latest.osm.pbf");
 const OSM_PINNED = join(OSM_DIR, pinnedExtractName());
 const USER_AGENT = "tokyo-od-game-databuild/0.1 (+https://github.com/kexi/tokyo-od-game)";
 const Z = 14;
-/**
- * The ways the compiler knows about: the 23 wards with a margin. Fixed, so a chain (and every id
- * derived from it) is the same whichever --range is built.
- */
-const UNIVERSE: Bbox = { minLon: 139.5, minLat: 35.45, maxLon: 139.98, maxLat: 35.87 };
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -196,9 +186,6 @@ async function extract(given: string | undefined, accept: boolean): Promise<Uint
   log("expressway_extract_pinned", { file: OSM_PINNED, timestamp, sha256: EXPECTED_EXTRACT_SHA256 });
   return latest;
 }
-
-const inBox = (b: Bbox, lon: number, lat: number) =>
-  lon >= b.minLon && lon <= b.maxLon && lat >= b.minLat && lat <= b.maxLat;
 
 const rangeArg = arg("range") ?? DEFAULT_RANGES.join(",");
 const { names: rangeNames, boxes: ranges, scope } = parseRanges(arg("range"));
@@ -314,6 +301,20 @@ if (!isHoldArg) throw new Error(`unknown --hold-mains ${holdArg} (off, on)`);
 const holdMode = holdArg as "off" | "on";
 const isHoldInBlocks = holdMode === "on" && partitionMode === "blocks";
 if (isHoldInBlocks) throw new Error("--hold-mains on needs --partition components");
+// R1-1a: --run-borders cut also cuts the runs where the operator's ways end (U10, the far side not
+// shipped) and where the district of the ref changes (1 | K1, a seam); measuring only until S7-6.
+const runBordersArg = arg("run-borders") ?? "keep";
+const isRunBordersArg = runBordersArg === "keep" || runBordersArg === "cut";
+if (!isRunBordersArg) throw new Error(`unknown --run-borders ${runBordersArg} (keep, cut)`);
+const isRunBordersCut = runBordersArg === "cut";
+// R1-1a: --districts central,east,… (a stage: central, + east, + yamate, + outside) writes the shipped
+// runs of those districts alone (the districts from the plan, districts.ts districtsOf). The whole ship
+// is compiled and its signs planned; the runs are picked just before they are written (review 1 B4),
+// so each written chunk is the whole ship's byte for byte (T8).
+const districtsArg = arg("districts");
+const districtsReason = districtsRefusal(districtsArg, scope === "ship", isRunBordersCut, DISTRICTS);
+if (districtsReason) throw new Error(districtsReason);
+const districtsWanted = districtsArg === undefined ? null : new Set(districtsArg.split(","));
 // --below all (P2.7-1), blocks (P2.7-2), v1, a sweep of the v2 weights and the structures by height
 // (P2.7-6) move the decks: measuring only, never into the shipped folder.
 const refusal = shippedFolderRefusal({
@@ -331,6 +332,7 @@ const refusal = shippedFolderRefusal({
   isNoseOverlap: noseMode === "overlap",
   isHoldMains: holdMode === "on",
   isLowSpanSweep: lowSpanSoffitM !== null,
+  isRunBordersCut,
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -342,25 +344,9 @@ const endStage = (name: string) => {
   stageStarted = now;
 };
 
-// 0. Structures: the deck levels the landmark build wrote. Without them the bridge is compiled as an
-// ordinary viaduct (warned), never pinned to numbers that do not parse.
-const LANDMARKS = join(import.meta.dirname, "..", "public", "data", "landmarks.json");
-const landmarkEntries = JSON.parse(await readFile(LANDMARKS, "utf8")) as Array<{
-  id: string;
-  deckLevels?: unknown;
-}>;
-const structures: Structure[] = [];
+// 0. Structures: the deck levels the landmark build wrote (scripts/expresswayNetwork.ts readStructures).
 // --no-structures builds without them (to compare a bridge pinned to its levels with the plain viaduct).
-const useStructures = !process.argv.includes("--no-structures");
-for (const spec of useStructures ? STRUCTURE_SPECS : []) {
-  const entry = landmarkEntries.find((e) => e.id === spec.landmark);
-  const levels = entry ? deckLevelsOf(entry) : null;
-  if (!levels) {
-    warn("expressway_structure_missing", { landmarkId: spec.landmark, hasEntry: entry !== undefined });
-    continue;
-  }
-  structures.push(structureFrom(spec, levels));
-}
+const structures: Structure[] = await readStructures(!process.argv.includes("--no-structures"));
 const OUT = arg("out") ?? OUT_DEFAULT;
 const acceptExtract = process.argv.includes("--accept-extract");
 const file = await extract(arg("pbf"), acceptExtract);
@@ -377,64 +363,8 @@ log("expressway_extract_checked", {
 if (!extractCheck.ok) throw new Error(extractCheck.reason);
 endStage("extract");
 
-// 1. Motorways of the region, and those of the universe.
-const isMotorway = (t: Record<string, string>) => t.highway === "motorway" || t.highway === "motorway_link";
-const allWays = readWays(file, isMotorway);
-const coords = readNodeCoords(file, new Set(allWays.flatMap((w) => w.refs)));
-const junctionTags = new Map(
-  readTaggedNodes(file, (t) => t.highway === "motorway_junction").map((n) => [n.id, n.tags]),
-);
-// 非常電話 and 非常駐車帯 for 116の4・116の6 (G6): OSM's emergency=phone nodes, and the bays where
-// OSM maps them (highway=emergency_bay, or emergency=emergency_bay).
-const isBay = (t: Record<string, string>) => t.highway === "emergency_bay" || t.emergency === "emergency_bay";
-const phoneOrBay = readTaggedNodes(file, (t) => t.emergency === "phone" || isBay(t)).filter((n) =>
-  inBox(UNIVERSE, n.lon, n.lat),
-);
-const universe = allWays.filter((w) =>
-  w.refs.some((r) => {
-    const c = coords.get(r);
-    return c !== undefined && inBox(UNIVERSE, c[0], c[1]);
-  }),
-);
-const universeIds = new Set(universe.map((w) => w.id));
-const nodes = new Map<number, XwNode>();
-const ways = new Map<number, XwWay>();
-for (const w of universe) {
-  const hasAllCoords = w.refs.every((r) => coords.has(r));
-  if (!hasAllCoords || w.refs.length < 2) continue;
-  ways.set(w.id, normalizeWay(w.id, w.refs, w.tags));
-  for (const r of w.refs) {
-    const [lon, lat] = coords.get(r)!;
-    nodes.set(r, normalizeNode(r, lon, lat, junctionTags.get(r) ?? {}));
-  }
-}
-// A chain that leaves the universe ends where its way continues outside: that end is left free.
-const outsideNodes = new Set<number>();
-for (const w of allWays) {
-  if (universeIds.has(w.id)) continue;
-  for (const r of [w.refs[0], w.refs[w.refs.length - 1]]) if (nodes.has(r)) outsideNodes.add(r);
-}
-// The streets a structure names (its lower floor): read by id, compiled as `street` decks.
-const streetIds = new Set(structures.flatMap((st) => st.streetWays));
-const streetWays = streetIds.size > 0 ? readWaysById(file, streetIds) : [];
-const missingStreets = [...streetIds].filter((id) => !streetWays.some((w) => w.id === id));
-if (missingStreets.length > 0)
-  throw new Error(`structure street ways not in the extract: ${missingStreets.join(", ")}`);
-const streetCoords = readNodeCoords(file, new Set(streetWays.flatMap((w) => w.refs)));
-for (const w of streetWays) {
-  ways.set(w.id, normalizeStreetWay(w.id, w.refs, w.tags));
-  for (const r of w.refs) {
-    const [lon, lat] = streetCoords.get(r)!;
-    nodes.set(r, nodes.get(r) ?? normalizeNode(r, lon, lat, {}));
-  }
-}
-const net: Network = { ways, nodes };
-log("expressway_osm_read", {
-  ways: allWays.length,
-  universeWays: ways.size,
-  nodes: nodes.size,
-  junctions: [...nodes.values()].filter((n) => n.junctionName !== null || n.junctionRef !== null).length,
-});
+// 1. Motorways of the region, and those of the universe (scripts/expresswayNetwork.ts).
+const { net, outsideNodes, phoneOrBay, streetIds } = readExpresswayInput(file, structures);
 
 endStage("osm");
 
@@ -450,6 +380,8 @@ const areas = hasWards
     )
   : null;
 const inWards = (lon: number, lat: number) => areas?.lookup(lat, lon) != null;
+/** The shipped runs (all of them: --districts picks among the written ones, not here). */
+const shipWanted = (p: Plan) => shipRuns(p, inWards).all;
 const planOptions: Parameters<typeof planNetwork>[4] = {
   pruneBelow: below === "pruned",
   partition: partitionMode,
@@ -465,7 +397,8 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   ...(arg("ground-band") !== undefined ? { groundBandM: v2Number("ground-band", 1.5) } : {}),
   ...(lowSpanSoffitM !== null ? { lowSpanSoffitM } : {}),
   ...(isCompanions ? { companionWeight } : {}),
-  ...(isShip ? { wanted: (p) => shipRuns(p, inWards).all } : {}),
+  ...(isShip ? { wanted: (p) => shipWanted(p) } : {}),
+  ...(isRunBordersCut ? { runBorders: "cut" as const } : {}),
 };
 // Planned again with the ramps moved (--ramp-shift) once the first solve says where.
 // With --ground compile the plan is made again once the roads are read (S6 PR 7c2, below): the
@@ -626,6 +559,15 @@ log("expressway_solved", {
 });
 endStage("solve");
 // 6. Signs (G6): where each stands on the decks and what it says; the entrances for 103・104.
+// R1-1a: the districts of the shipped runs, from the plan (districts.ts districtsOf: the main lines by
+// their ways' refs, the ramps by the first stage whose scope takes them). The plan is their source: a
+// folder's chunks carry the first way's ref alone.
+const shipDistricts = isShip ? districtsOf(planDistrictRuns(plan, plan.wanted)) : null;
+const isMixedCut = isRunBordersCut && (shipDistricts?.mixed.length ?? 0) > 0;
+if (isMixedCut)
+  throw new Error(
+    `--run-borders cut left main lines of more than one district: ${shipDistricts!.mixed.join(", ")}`,
+  );
 const signPlan = planSigns({
   chunks: result.chunks,
   runs: result.runs,
@@ -653,6 +595,24 @@ log("expressway_signs_planned", {
 });
 for (const u of signPlan.unplaced) warn("expressway_sign_unplaced", u);
 endStage("signs");
+// --districts: the runs of the stage asked for, picked from what the whole ship compiled and signed.
+/** The shipped scope and the closed runs of the whole build, before --districts picks (the scorecard's ends). */
+const wholeWanted = new Set(plan.wanted);
+const wholeClosed = new Set(result.closed.map((c) => c.run));
+if (districtsWanted !== null) {
+  const isPicked = (id: string) => districtsWanted.has(shipDistricts!.districts.get(id) ?? "outside");
+  const picked = pickWritten({ ...result, entrances: signPlan.entrances }, isPicked);
+  result.chunks = picked.chunks;
+  result.runs = picked.runs;
+  result.closed = picked.closed;
+  signPlan.entrances = picked.entrances;
+  plan.wanted = new Set([...plan.wanted].filter(isPicked));
+  log("expressway_districts_picked", {
+    districts: [...districtsWanted].sort(),
+    runs: result.runs.length,
+    chunks: result.chunks.length,
+  });
+}
 const tiles = packTiles(result.chunks, result.runs, signPlan.entrances, Z);
 // The ledger (P2.7-4) mixes what the tool counts with what a review decided: a rebuild must not
 // lose it, so it is read before the folder is cleared and written back right after.
@@ -677,7 +637,7 @@ await mkdir(OUT, { recursive: true });
 if (keptLedger !== null) await writeFile(join(OUT, "ledger.json"), keptLedger);
 let bytes = 0;
 const tileKeys = [...tiles.keys()];
-const tileSizes: Array<{ bytes: number; gzipBytes: number }> = [];
+const tileSizes: Array<{ bytes: number; gzipBytes: number; key: string }> = [];
 for (const key of tileKeys) {
   const tile = tiles.get(key)!;
   const text = JSON.stringify(tile);
@@ -685,7 +645,7 @@ for (const key of tileKeys) {
   bytes += size;
   // Why gzip only with --report: the scorecard's budget is the size served compressed, and the
   // default build, which writes no report, need not spend the time.
-  tileSizes.push({ bytes: size, gzipBytes: reportPath ? gzipSync(text).length : 0 });
+  tileSizes.push({ bytes: size, gzipBytes: reportPath ? gzipSync(text).length : 0, key });
   await writeFile(join(OUT, `${key}.json`), text);
 }
 const UNSOLVED = [
@@ -704,6 +664,7 @@ const meta: XwMeta = {
   tiles: tileKeys,
   ranges: rangeNames.map((name) => ({ name, ...RANGES[name] })),
   ...(isShip ? { scope: "ship" as const } : {}),
+  ...(districtsWanted ? { districts: [...districtsWanted].sort() } : {}),
   structures: structures.map((st) => ({
     id: st.id,
     version: DECK_LEVELS_VERSION,
@@ -721,6 +682,18 @@ const meta: XwMeta = {
 };
 const metaText = JSON.stringify(meta);
 await writeFile(join(OUT, "meta.json"), metaText);
+// R1-1a: a ship folder carries each written run's district from the plan (scripts/expresswayFiles.ts
+// districtsOfFiles reads it): the chunks alone cannot tell them (they carry the first way's ref).
+// Never in a build of the boxes, whose folder stays as before byte for byte.
+if (shipDistricts) {
+  const written = Object.fromEntries(
+    result.runs
+      .map((r) => r.id)
+      .sort()
+      .map((id) => [id, shipDistricts.districts.get(id) ?? "outside"]),
+  );
+  await writeFile(join(OUT, DISTRICTS_FILE), JSON.stringify({ version: 1, districts: written }));
+}
 /** The runs of the range: written, or closed within it (S6 PR 7c: the ledger's cases are theirs alone). */
 const inRangeRuns = new Set([...result.runs.map((r) => r.id), ...result.closed.map((c) => c.run)]);
 const record: XwBuildRecord = {
@@ -1066,10 +1039,18 @@ function groundSummary(): NonNullable<Report["ground"]> {
 }
 
 /**
- * Every planned run's district (districts.ts): a written run from its chunks and ends, one not
- * written from the plan's ref and line (no parents: a closed ramp falls to the nearest main line).
+ * Every planned run's district (districts.ts). The shipped scope from the plan (shipDistricts); any
+ * other build's, and the runs of the components outside the scope, as before: a written run from its
+ * chunks and ends, one not written from the plan's ref and line (no parents: a closed ramp falls to
+ * the nearest main line).
  */
 function plannedDistricts(): Map<string, District> {
+  const fallback = chunkDistricts();
+  if (!shipDistricts) return fallback;
+  return new Map([...fallback, ...shipDistricts.districts]);
+}
+
+function chunkDistricts(): Map<string, District> {
   const byRun = new Map<string, XwChunk[]>();
   for (const c of result.chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
   const written = districtRunsOf(result.runs, byRun);
@@ -1084,6 +1065,21 @@ function plannedDistricts(): Map<string, District> {
       return { id, cls: rp.cls, ref: rp.ref, parents: [], points };
     });
   return assignDistricts([...written, ...unwritten]);
+}
+
+// R1-1a: the districts from the plan (what --districts picks by) against those from the written chunks
+// (what the ledger and the data tests read), over every written run of the shipped scope.
+if (isShip) {
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of result.chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  const fromChunks = assignDistricts(districtRunsOf(result.runs, byRun));
+  const fromPlan = shipDistricts!.districts;
+  const mismatched = result.runs.map((r) => r.id).filter((id) => fromChunks.get(id) !== fromPlan.get(id));
+  log("expressway_districts_compared", {
+    written: result.runs.length,
+    mismatched: mismatched.length,
+    mismatchedIds: mismatched.slice(0, 20),
+  });
 }
 
 // 7. The scorecard (P2.7-1): the runs the plan made for the range and the components it needs.
@@ -1131,6 +1127,32 @@ if (reportPath) {
     diagnostics: result.diagnostics,
     chunks: result.chunks,
     tiles: tileSizes,
+    // R1-1a: the gzip sizes depend on zlib (the same tiles measured 117,542 and 115,707 bytes on two
+    // machines): the scorecard names it, and compareExpresswayReports counts gzip only between equals.
+    gzipEnv: { node: process.version, zlib: process.versions.zlib ?? "unknown" },
+    ...(isShip
+      ? {
+          stages: stagesOf(
+            {
+              chunks: result.chunks,
+              runs: result.runs,
+              closed: result.closed,
+              entrances: signPlan.entrances,
+            },
+            shipDistricts!.districts,
+            inWards,
+            Z,
+          ),
+          borders: bordersOf(plan, new Set(result.runs.map((r) => r.id))),
+          ends: endsOf(
+            plan,
+            new Set(result.runs.map((r) => r.id)),
+            wholeWanted,
+            chosenShip?.rampsDropped ?? new Map(),
+            wholeClosed,
+          ),
+        }
+      : {}),
     meta: { raw: Buffer.byteLength(metaText), gzip: gzipSync(metaText).length, byField },
     record: sizeOf(recordText),
     ledger: keptLedger === null ? null : sizeOf(keptLedger),
