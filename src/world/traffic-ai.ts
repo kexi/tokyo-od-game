@@ -21,6 +21,7 @@ import { classOf, isDrivable } from "./roadClass";
 import { laneCentreOffset } from "./laneChange";
 import { branchLink, intoTrunkLane, reachesStreets, runOf, type LaneLink } from "./laneLinks";
 import { mainCarsAt, mergeSpeedCap, taperOf } from "../game/merging";
+import { placeOnRoute } from "../game/autoTraffic";
 
 /** Route distance from a merge or diverge node over which a ramp's lane is tapered into the main line's. */
 const TAPER_REACH = 250;
@@ -434,7 +435,7 @@ export class TrafficAI {
   ): Vector3 {
     const limit = speedLimit(c.seg) / 3.6;
     const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
-    const look = this.look(c, pos, dir, player, playerForward, playerSpeed);
+    const look = this.look(graph, c, pos, dir, player, playerForward, playerSpeed);
     this.noteLook(c, look.gap, look.playerAhead);
     const gap = Math.min(look.gap, this.stopGap(graph, c, dt));
     // 7 m centre to centre for cars; longer vehicles keep their own length clear.
@@ -912,10 +913,18 @@ export class TrafficAI {
 
   /**
    * The look ahead in this lane: the gap to the nearest obstacle (other cars, the player), and how
-   * far ahead the player's car is when it is taken in (null: not). No side effects: the QA tools
-   * call it on their own, and must not move what the logs record (follow() records it).
+   * far ahead the player's car is when it is taken in (null: not). Two looks, the nearer counts:
+   * the straight band along the lane's tangent at the car (as before), and the lane itself on
+   * ahead along the roads chosen (lanePath). No side effects: the QA tools call it on their own,
+   * and must not move what the logs record (follow() records it).
+   *
+   * Why the lane too: 東京駅南口's piece bends about 20° past its first 20 m, and the band from
+   * before the bend missed the car standing 12 m past it until 5 m off (D3, 4 runs in 5).
+   * Why not the lane alone: a car only the band catches (beyond the far side of a turn) would no
+   * longer be stopped for; taking fewer obstacles in is not D3's to change.
    */
   private look(
+    graph: RoadGraph,
     c: AiCar,
     pos: Vector3,
     dir: Vector3,
@@ -925,26 +934,91 @@ export class TrafficAI {
   ): { gap: number; playerAhead: number | null } {
     let gap = Infinity;
     const y = c.ground + 0.86;
+    const standstill = 4.75 + c.half;
+    const a = Math.min(c.decel, COMFORT_DECEL);
+    const reach = Math.max(standstill + 18, standstill + (c.speed * c.speed) / (2 * a) + c.speed * 0.1);
+    const path = this.lanePath(graph, c, reach);
     // Returns how far ahead the point is when it is taken in (null: not), for the player's case.
-    const consider = (p: Vector3, width = 2.2): number | null => {
+    const consider = (p: Vector3, width = 2.2, fleeing?: (along: Vector3) => boolean): number | null => {
       const dx = p.x - pos.x;
       const dz = p.z - pos.z;
       const ahead = dx * dir.x + dz * dir.z;
       const lateral = Math.abs(dx * dir.z - dz * dir.x);
       // Not a car on the street under a viaduct, nor one on the deck over the street.
       const isSameLevel = Math.abs(p.y - y) < 3.5 + 0.15 * Math.abs(ahead);
-      const isTaken = ahead > 0 && lateral < width && isSameLevel;
-      if (isTaken) gap = Math.min(gap, ahead);
-      return isTaken ? ahead : null;
+      const isInBand = ahead > 0 && lateral < width && isSameLevel && !fleeing?.(dir);
+      let taken = isInBand ? ahead : null;
+      const isNear = Math.hypot(dx, dz) < reach + 10;
+      const on = isNear ? placeOnRoute(path, p, 0, reach) : null;
+      // Off either end of the line (dist over |lateral|) is not beside it.
+      const isOnLine =
+        on !== null &&
+        on.at > 0 &&
+        Math.abs(on.lateral) < width &&
+        on.dist <= Math.abs(on.lateral) + 1e-6 &&
+        Math.abs(p.y - y) < 3.5 + 0.15 * on.at &&
+        !fleeing?.(on.dir);
+      if (isOnLine && on) taken = taken === null ? on.at : Math.min(taken, on.at);
+      if (taken !== null) gap = Math.min(gap, taken);
+      return taken;
     };
     for (const o of this.cars) if (o !== c) consider(o.object.position);
     // Kerbside parked cars only block when they actually sit in this lane.
     for (const p of this.parked) consider(p.object.position, 0.9);
     for (const p of this.extraObstacles) consider(p);
-    // Yield to the player unless they are clearly driving away ahead of us.
-    const isPlayerFleeing = ps > c.speed + 2 && pf.dot(dir) > 0.8;
-    const playerAhead = isPlayerFleeing ? null : consider(player);
+    // Yield to the player unless they are clearly driving away ahead of us (along the band, or
+    // along the lane where the player is on it).
+    const isPlayerFleeing = (along: Vector3) => ps > c.speed + 2 && pf.dot(along) > 0.8;
+    const playerAhead = consider(player, 2.2, isPlayerFleeing);
     return { gap, playerAhead };
+  }
+
+  /**
+   * The car's lane from where it is (`c.s` on `c.seg`) on along the roads it has chosen
+   * (upcoming()), `reach` metres of it: every bend point of the segments and a point at least
+   * every 5 m. Ends early at a dead end.
+   */
+  private lanePath(graph: RoadGraph, c: AiCar, reach: number): { points: Vector3[]; cum: number[] } {
+    const points: Vector3[] = [];
+    const cum: number[] = [];
+    let done = 0;
+    const push = (seg: Segment, dir: 1 | -1, s: number) => {
+      const p = this.lanePoint(graph, seg, dir, s, seg === c.seg ? c.xwLane : 0).pos;
+      const last = points.at(-1);
+      if (last) {
+        const step = Math.hypot(p.x - last.x, p.z - last.z);
+        if (step < 1e-3) return;
+        done += step;
+      }
+      points.push(p);
+      cum.push(done);
+    };
+    let seg = c.seg;
+    let dir = c.dir;
+    let from = Math.max(0, Math.min(seg.length, c.s));
+    for (let k = -1; done < reach; k++) {
+      // Travel distances of the segment's bend points, then a point every 5 m between.
+      const bends = seg.cum
+        .map((d) => (dir === 1 ? d : seg.length - d))
+        .filter((s) => s > from && s < seg.length);
+      const stops = [from, ...bends, seg.length].sort((x, y) => x - y);
+      const along: number[] = [];
+      for (let i = 0; i + 1 < stops.length; i++) {
+        for (let s = stops[i]; s < stops[i + 1]; s += 5) along.push(s);
+      }
+      along.push(seg.length);
+      for (const s of along) {
+        push(seg, dir, s);
+        if (done >= reach) break;
+      }
+      if (done >= reach) break;
+      const onward = this.upcoming(graph, c, k + 1);
+      if (!onward) break;
+      seg = onward.seg;
+      dir = onward.dir;
+      from = 0;
+    }
+    return { points, cum };
   }
 
   /**

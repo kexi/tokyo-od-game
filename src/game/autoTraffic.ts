@@ -91,7 +91,7 @@ export function followSpeed(gap: number): number {
 
 /** Route distance and signed offset (left +) of `p` on the driven path within [from, to]. */
 export function placeOnRoute(
-  route: Route,
+  route: Pick<Route, "points" | "cum">,
   p: Vector3,
   from: number,
   to: number,

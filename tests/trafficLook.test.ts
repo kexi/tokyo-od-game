@@ -47,7 +47,15 @@ type Car = {
 type Inside = {
   cars: Car[];
   pose(g: RoadGraph, c: Car): { pos: Vector3; dir: Vector3 };
-  look(c: Car, pos: Vector3, dir: Vector3, p: Vector3, pf: Vector3, ps: number): { gap: number };
+  look(
+    g: RoadGraph,
+    c: Car,
+    pos: Vector3,
+    dir: Vector3,
+    p: Vector3,
+    pf: Vector3,
+    ps: number,
+  ): { gap: number };
   massOf(kind: MassClass, v: null, serial: number): { decel: number; accel: number };
 };
 
@@ -135,7 +143,7 @@ describe("a traffic car's look along its lane (D3 (b))", () => {
       ai.update(1 / 60, player, player, new Vector3(0, 0, -1), 0);
       const c = inside.cars[0];
       const { pos, dir } = inside.pose(graph, c);
-      expect(inside.look(c, pos, dir, player, new Vector3(0, 0, -1), 0).gap).toBe(Infinity);
+      expect(inside.look(graph, c, pos, dir, player, new Vector3(0, 0, -1), 0).gap).toBe(Infinity);
     } finally {
       world.free();
     }
@@ -159,7 +167,7 @@ describe("a traffic car's look along its lane (D3 (b))", () => {
       const c = inside.cars[0];
       const { pos, dir } = inside.pose(graph, c);
       const straight = new Vector3().subVectors(player, pos).dot(dir);
-      expect(inside.look(c, pos, dir, player, new Vector3(0, 0, -1), 0).gap).toBeCloseTo(straight, 2);
+      expect(inside.look(graph, c, pos, dir, player, new Vector3(0, 0, -1), 0).gap).toBeCloseTo(straight, 2);
     } finally {
       world.free();
     }
