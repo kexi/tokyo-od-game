@@ -37,6 +37,7 @@ import type { LocalFrame } from "../geo/frame";
 import { decodeGsiDem, latToTileY, lonToTileX, tileXToLon, tileYToLat } from "../geo/tiles";
 import { valueNoise } from "../render/shaderMath";
 import { facadeUniforms } from "./facade";
+import { retireObject } from "../render/retire";
 
 /**
  * The ground beyond the streamed world, to the horizon: GSI's coarse DEM (dem_png, DEM10B resampled)
@@ -516,7 +517,7 @@ export class FarGround {
   private disposeTile(t: FarTile): void {
     if (!t.mesh) return;
     this.disposed++;
-    this.scene.remove(t.mesh);
+    retireObject(t.mesh);
     t.mesh.geometry.dispose();
     t.photo?.dispose();
     t.mesh.material.dispose();

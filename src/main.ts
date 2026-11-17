@@ -224,6 +224,7 @@ import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
 import { classOf, isDrivable, isExpressway, sourceOf, usesGroundSurface } from "./world/roadClass";
+import { retireObject } from "./render/retire";
 
 const LIGHT_KEY = {
   green: "hud.signal.green",
@@ -1805,7 +1806,7 @@ async function main(): Promise<void> {
     const r = replay;
     if (!r) return;
     $("#replay-caption").hidden = true;
-    for (const c of r.clones.values()) scene.remove(c);
+    for (const c of r.clones.values()) retireObject(c);
     for (const o of liveObjects()) o.visible = true;
     replay = null;
     env.showMoment(null);
@@ -4691,6 +4692,8 @@ async function main(): Promise<void> {
       phase,
       stillS: round2(autopilotStillS),
       gameMs: Math.round(gameNow()),
+      mode: driver.modeKind,
+      lostWhy: driver.lostWhy,
       lat: Number(g.lat.toFixed(6)),
       lon: Number(g.lon.toFixed(6)),
       speedMs: round2(vehicle.forwardSpeed()),
@@ -4721,8 +4724,29 @@ async function main(): Promise<void> {
     if (!tw) return;
     // The driver leaves its own car out of what it sees (anything within 1 m of itself).
     const pose = { position: vehicle.position(), yaw: vehicle.yaw(), speed: vehicle.forwardSpeed() };
+    const wasLost = ap.driver.lostWhy !== null;
     const { input, done, gaveUp } = ap.driver.update(dt, tw, pose);
     noteAutopilotStill(dt, ap.driver);
+    const lost = ap.driver.lostAt;
+    const isNewlyLost = !wasLost && ap.driver.lostWhy !== null && lost !== null;
+    if (isNewlyLost) {
+      const g = frame.toGeodetic(vehicle.position());
+      warn("autopilot_lost_lane", {
+        why: ap.driver.lostWhy ?? "",
+        lat: Number(g.lat.toFixed(6)),
+        lon: Number(g.lon.toFixed(6)),
+        gameMs: Math.round(gameNow()),
+        segId: lost.segId,
+        lane: lost.lane,
+        lanes: lost.lanes,
+        offM: round2(lost.off),
+        yawErrorDeg: Math.round(lost.yawErrorDeg),
+        speedMs: round2(lost.speed),
+        onPavement: lost.isOnPavement,
+        offPath: lost.isOff,
+        misaligned: lost.isMisaligned,
+      });
+    }
     ap.input = input;
     vehicle.lightOverride = {
       brake: ap.driver.braking,

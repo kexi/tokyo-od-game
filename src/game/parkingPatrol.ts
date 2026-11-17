@@ -9,6 +9,7 @@ import {
   type Scene,
 } from "three";
 import { animateHuman, createHuman, disposeHuman, type HumanModel } from "../world/human";
+import { retireObject } from "../render/retire";
 
 /**
  * 駐車監視員 (parking enforcement officers) as Tokyo runs them since 2006: officers of a private
@@ -135,8 +136,8 @@ export class ParkingPatrol {
 
   clear(): void {
     for (const o of this.officers) {
-      this.scene.remove(o.model.root);
       disposeHuman(o.model);
+      retireObject(o.model.root);
     }
     this.officers = [];
     this.state = "idle";

@@ -1,4 +1,5 @@
 import type { Mesh } from "three";
+import { retireObject } from "../render/retire";
 
 /** Text plates retain their meshes and materials while their content remains in the road window. */
 export class RoadPlates {
@@ -30,7 +31,7 @@ export class RoadPlates {
   end(): void {
     for (const entry of this.entries) {
       if (entry.used) continue;
-      entry.mesh.removeFromParent();
+      retireObject(entry.mesh);
       this.dispose(entry.mesh);
     }
     this.entries = this.entries.filter((e) => e.used);

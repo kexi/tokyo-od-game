@@ -5,6 +5,7 @@ import { haversineMeters } from "../geo/ellipsoid";
 import { warn } from "../log";
 import { sharedDraco } from "../render/draco";
 import { LandmarkEntrySchema, type LandmarkEntry } from "./landmarkEntry";
+import { retireObject } from "../render/retire";
 
 export type { LandmarkEntry } from "./landmarkEntry";
 
@@ -81,7 +82,7 @@ export function keepOnlyNode(scene: Object3D, name: string): boolean {
     const parent: Object3D = child.parent;
     const others = parent.children.filter((o) => o !== child);
     for (const other of others) {
-      parent.remove(other);
+      retireObject(other);
       other.traverse((o) => {
         if (o instanceof Mesh) o.geometry.dispose();
       });

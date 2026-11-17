@@ -82,6 +82,7 @@ import {
   headwallQuads,
   lampQuads,
 } from "./expresswayBore";
+import { retireObject } from "../render/retire";
 
 /**
  * Expressway decks from public/data/expressway (knowledge/road-redesign-plan.md 4.5). Each ≤ 300 m
@@ -2174,7 +2175,7 @@ export class ExpresswayDecks {
 
   private dispose(b: Built): void {
     this.removeBody(b);
-    this.scene.remove(b.mesh);
+    retireObject(b.mesh);
     b.mesh.geometry.dispose();
     for (const child of b.mesh.children) if (child instanceof Mesh) child.geometry.dispose();
   }

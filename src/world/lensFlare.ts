@@ -41,6 +41,7 @@ import { GRAPHICS } from "../device";
 import type { FrameReader, StreetPass } from "../render/frame";
 import { HALF_MAX } from "../render/shaderMath";
 import { smoothstep as smooth } from "./skyLight";
+import { retireObject } from "../render/retire";
 
 /**
  * レンズフレア: the sun seen through a lens — ghosts (the aperture's image reflected between the
@@ -379,7 +380,7 @@ export class LensFlare implements StreetPass {
   }
 
   dispose(): void {
-    this.probe.removeFromParent();
+    retireObject(this.probe);
     this.probe.geometry.dispose();
     this.probe.material.dispose();
     this.readTarget.dispose();
