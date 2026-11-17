@@ -15,7 +15,7 @@
 //
 //   just measure-buildings-timeline label base [args]
 //   pnpm exec tsx scripts/qa/timeline-buildings.ts --label L [--base URL] --start lat,lon
-//     [--seconds 40] [--view near|medium|far] [--mobile] [--warp lat,lon]
+//     [--seconds 40] [--view near|medium|far] [--mobile] [--warp lat,lon] [--hold-title]
 //
 // Output: .qa/timeline-buildings/<label>.json (the samples, events and summary) and the summary as
 // one JSON line on stdout.
@@ -38,6 +38,10 @@ const seconds = Number(flag("seconds") ?? 40);
 const view = flag("view");
 const isMobile = argv.includes("--mobile");
 const warp = flag("warp")?.split(",").map(Number) as [number, number] | undefined;
+/** Stay on the title after the screen closes until the whole near town is in, then start (see summarise's b1CloseMs). */
+const isHoldTitle = argv.includes("--hold-title");
+/** How long --hold-title waits at most (the screen's own limit). */
+const HOLD_LIMIT_MS = 20_000;
 /** The loading screen's limit (src/main.ts): closing this long after navigation means it gave up waiting. */
 const SCREEN_LIMIT_MS = 20_000;
 /** The warp's limit (src/main.ts finishWarp). */
@@ -127,7 +131,10 @@ ${view ? `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistan
     const car = g.vehicle.position();
     const cam = g.camera.position;
     const at = { car: [Math.round(car.x), Math.round(car.z)], cam: [Math.round(cam.x), Math.round(cam.y), Math.round(cam.z)] };
-    T.samples.push({ t, state, settled, near: stat(b.tiles), far: stat(b.far), ...at });
+    // The whole near town's progress (what B1 closed the screen on) and the nearby one (B1b).
+    const all = b.loadProgress?.() ?? null;
+    const nearby = b.nearbyLoadProgress?.() ?? null;
+    T.samples.push({ t, state, settled, near: stat(b.tiles), far: stat(b.far), all, nearby, ...at });
   }, 100);
 })();`;
 
@@ -138,6 +145,8 @@ type Sample = {
   settled?: boolean | null;
   near?: Stat | null;
   far?: Stat | null;
+  all?: number | null;
+  nearby?: number | null;
 };
 type Timeline = {
   samples: Sample[];
@@ -196,6 +205,20 @@ export function summarise(tl: Timeline) {
   const isLimit = isWarp
     ? closedAt !== null && closedAt - from >= WARP_LIMIT_MS
     : closedAt !== null && closedAt >= SCREEN_LIMIT_MS;
+  // When B1 would have closed the screen in this same run: the first moment from the close on with
+  // the whole near town in (B1 waited for that; B1b closes on the nearby part). With --hold-title the
+  // title camera stays until then, so the load is the one B1 waited for. The difference is what this
+  // run saved; it cannot be negative (the nearby part is in by then). A warp's: when the whole near
+  // town was in again after leaving (it first falls under 1 as the destination's tiles are asked).
+  const isAllIn = (x: Sample) => (x.all ?? 0) >= 0.999;
+  const b1CloseAt = isWarp
+    ? (() => {
+        const leftAt = tl.samples.find((x) => x.t >= from && !isAllIn(x))?.t ?? null;
+        return leftAt === null ? null : (tl.samples.find((x) => x.t >= leftAt && isAllIn(x))?.t ?? null);
+      })()
+    : closedAt === null
+      ? null
+      : (tl.samples.find((x) => x.t >= closedAt && x.state !== "playing" && isAllIn(x))?.t ?? null);
   const gaps = tl.gaps.filter(
     ([t]) => t >= (isWarp ? from : 0) && (settledAt === null || t < settledAt + 10_000),
   );
@@ -206,6 +229,8 @@ export function summarise(tl: Timeline) {
     warpLandedAtMs: tl.warpLandedAt,
     closedAfterMs: closedAt === null ? null : closedAt - (isWarp ? from : 0),
     closedOnLimit: isLimit,
+    b1CloseMs: b1CloseAt === null ? null : b1CloseAt - (isWarp ? from : 0),
+    savedMs: isWarp || b1CloseAt === null || closedAt === null ? null : b1CloseAt - closedAt,
     settledAtMs: settledAt,
     lastNearLoadMs: last("nl"),
     nearbyDoneMs: nearbyDoneAt === null ? null : nearbyDoneAt - loadFrom,
@@ -243,7 +268,17 @@ if (isMain) {
       const T = window.__tl;
       const t = T.samples.at(-1)?.t ?? null;
       if (T.readyAt === null) { T.readyAt = t; T.near300.ready = window.__tlNear300(); }
-      T.startAt = t;
+    })()`);
+    if (isHoldTitle) {
+      for (let waited = 0; waited < HOLD_LIMIT_MS; waited += 100) {
+        if (await b.evaluate("__game.buildings.loadProgress() >= 0.999").catch(() => false)) break;
+        await b.sleep(100);
+      }
+      // One more sample after it, so the summary sees the moment.
+      await b.sleep(150);
+    }
+    await b.evaluate(`(() => {
+      window.__tl.startAt = window.__tl.samples.at(-1)?.t ?? null;
       window.__game.start();
     })()`);
     if (warp) {
