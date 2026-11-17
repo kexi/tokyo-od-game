@@ -7,6 +7,9 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:measure-expressway-area-s7-1, at: 2026-11-17T09:40:00Z }
+  - { by: process:make-expressway-data-s7-1, at: 2026-11-17T09:15:20Z }
+  - { by: process:vitest-s7-1, at: 2026-11-17T09:45:00Z }
   - { by: process:check-deck-drive-a1-r4, at: 2026-11-17T08:00:00Z }
   - { by: process:check-convergence-a1-r4, at: 2026-11-17T09:00:00Z }
   - { by: process:check-deck-drive-a1-r3, at: 2026-11-17T00:00:00Z }
@@ -3389,6 +3392,103 @@ p7c9-pruned（7c9 の ship/pruned の生成。別の worktree の `.cache`）を
 - `g < 0` の段違い（合流のくさび）は、A1 では今のまま。
 - 分離壁の無い区間で、壁の始まり・終わりが路面の端の移動と同じ所に来る形（2 本のリングの間の面が車線を横切る）。A1 は分離壁のある区間だけを直した（ほかの継ぎ目の測りを動かさないため）。
   - 7c の auto-shibakoen-shiodome の停止（24402125:2 の足の先）は、main でも同じ所で出る。原因は見ていない。
+
+# S7-1 地下のスコアカード（スコアカード版 7、コンパイラの出力は不変、2026-11-17）
+
+S7（地下全面）の合否を数で決めるための土台。スコアカードを版 7 にし、`underground` を足した（`src/expressway/belowScore.ts`）。コンパイラの出力（タイル・`meta.json`・データの `report.json`）は 1 バイトも変えていない。[^p27s71]
+
+## 作ったもの
+
+- **見送りの理由**（`below.ts belowDeferralOf`、`BELOW_DEFER_REASONS`）: 1 本の run に理由を 1 つ、次の順で先に当たったもの。
+  - `loop-seam`: 輪（`chain.closed`）の端。
+  - `universe-edge`: ユニバースの端（`outsideNodes`）。
+  - `junction`: 鎖の端の節点に別の鎖がある（地下で分合流して終わる）。
+  - `ground-junction`: 地平 run と分合流（`compile.ts dropBelowJunctions`）。
+  - `bridging`: 成分をまたぐ（`compile.ts pruneBelow`）。
+  - `isBelowCompiled` は `belowDeferralOf(...) === null` にした。答えは変えていない（`tests/expresswayBelow.test.ts` は期待を変えずに通る）。前の作りは端ごとに理由を見ていた。理由を両端まとめて順に見るようにしたのは、鎖の向きで理由が変わらないようにするため。真偽の答えはどちらの作りでも同じ。
+  - `Plan.belowDeferrals` は `belowDeferred` と同じ並び（id）で、理由・クラス・ref・長さ・範囲に入るかを持つ。
+  - ref は、その run の way で長さの合計が最も長い ref（無ければ null）。`RunPlan.ref`（最初の way の ref）にしなかったのは、ランプの先の短い way の ref で地区を取り違えないため。
+  - 長さは、計画に載った後で落とした run（`ground-junction`・`bridging`）は計画の長さ（`belowJunctions` の km と同じ）、`isBelowCompiled` で見送った run は way の OSM の長さ。
+  - 範囲に入るか: 箱の範囲では run 自身の節点が箱の内か。`--range ship` では、その鎖に範囲の run があるか（`BelowJunction.inRange` と同じ規則）。`--range all` は全部。箱で鎖の規則にしなかったのは、長い本線の鎖が遠くで箱に掛かるため。
+  - このため、既定範囲の 4854085（東京港トンネル）は `ground.belowJunctions` では `inRange: true`（鎖の規則）、`underground.deferred` では `false`（線そのものは箱の外。範囲の閉包で入っていた）になる。
+- **`underground.deferred`**: 理由ごと（main・ramp・street）、ref ごと（ref の無いものは `-`）、範囲の内、id の一覧。地区ごとには出さない。見送った run は書き出されず、今の地区の関数は書き出したチャンクから決めるため。計画から地区を決める関数は R1-1a が作る。
+- **`underground.portals`**: 書き出した below run の最初と最後の測点のうち、先が below run でない端。次を出す。
+  - 路面・地表とその差。
+  - その端が seam でつながる地平 run と、坑口から 300 m の内で（路面 − 地表）が 0 から最も離れる値。
+  - トンネルに入る端では `TUNNEL_DEPTH_M`（6.6 m）− その測点の深さ（足りていれば 0）。掘割に入る端では null。
+  - 「最初の測点」は坑口そのものの測点と読んだ。今は坑口の端が帯の内にある（W10）ので、トンネルの端はほぼ全部が不足になる。S7-2 はこれを 0 へ下げる。
+- **`underground.overApproach`**: 取付けの区間の上を、1 段に満たない高さで通る床版の組。
+  - 取付けの区間: 坑口から 300 m の内の地平 run。地平 run には 2 種類ある。below run が seam でつながるものと、自分の端が `portal` のもの。後者は、既定範囲の汐留の取付け 45068170 のように、先のトンネルが書かれていない。
+  - 測り方: `overlap.ts pairStations`（中心線の距離 < 両方の車線域の半幅の和、相手はエルミートの面）。高さの差が `SAME_SURFACE_ALLOWED_DZ_M`（0.14 m）より大きく、上の床版の桁での 1 段（`levelApartOver`、4.5 m + 桁高）に満たない所を数える。
+  - 下限を `SAME_SURFACE_M`（5 cm）にしなかったのは、横に並ぶ取付けの組（45068169｜45068170、間隔 7.8 m・6〜7 cm）が、継ぎ目では一つの面として扱われるため。
+- `scripts/compareExpresswayReports.ts`: `underground` の数は今までどおり 1 行ずつ出る（一覧は id・`run:end`・`lower|upper` で引く）。そのほか 1 行に、片方にしか無い見送り・端・組と、理由の変わった run を出す。片方が版 6 なら「only in …」と出す。
+
+## 計測（trust signal、2026-11-17 08:42〜09:46Z、M2 Max）
+
+- 前（main e1aff47 の木を `git archive` で写したもの）と後（この PR）で、既定範囲・ship/pruned・ship/all を作った。
+- ship の 4 本は計測の鍵を取って 1 本ずつ作った。ただし、ship/pruned の後（09:06〜09:12Z）は、鍵の要らない既定範囲の生成 2 本（スコアカードと `make-expressway-data`）と重なったので、その時間とメモリは単独より大きい見込み。
+
+| 数えるもの                                   | 既定範囲（pruned）                    | ship/pruned     | ship/all                   | 7c の頃の値                   |
+| -------------------------------------------- | ------------------------------------- | --------------- | -------------------------- | ----------------------------- |
+| 見送り（`plan.belowDeferred` = 理由の合計）  | 91                                    | 91              | 32                         | all 32                        |
+| loop-seam                                    | 本線 4・4.74 km                       | 同じ            | 同じ                       | —                             |
+| universe-edge                                | 本線 2・1.29 km                       | 同じ            | 同じ（32404418・34621719） | —                             |
+| junction                                     | 本線 3・1.29 km、ランプ 23・7.44 km   | 同じ            | 同じ                       | —                             |
+| ground-junction                              | 本線 3・13.87 km                      | 同じ            | 0                          | 3 組                          |
+| bridging                                     | 本線 44・80.69 km、ランプ 12・0.48 km | 同じ            | 0                          | —                             |
+| 見送りの本線の計                             | 56・101.88 km                         | 同じ            | 9・7.32 km                 | all: 本線 24 run・17.0 km     |
+| 範囲の内の見送り                             | 2・1.49 km（4848883・4848906）        | 44・61.46 km    | 17・11.11 km               | —                             |
+| `ground.belowUnwritten`                      | —                                     | 44・63.94 km    | —                          | 44・63.9 km                   |
+| 坑口の端・土被りが足りない端・不足の最大     | 2・1・6.595 m                         | 36・28・7.869 m | 78・64・7.869 m            | 未計測                        |
+| 取付けの上を低く通る組                       | 3                                     | 17              | 11                         | 既定範囲に 45068170｜24402125 |
+| tunnel_cover_short の未許可                  | 0                                     | 10              | 22                         | pruned 10・all 22             |
+| 本線の閉鎖                                   | 0                                     | 0               | 1（28127324、1.03 km）     | all 1                         |
+| 解く段の最大の成分                           | 1,093 run・38,792 変数                | 同じ            | 1,400 run・48,528 変数     | 1,414 run・48,672 変数        |
+| 解く段（`solve`）・QP                        | 223 s・164 s                          | 226 s・152 s    | 230 s・165 s               | 解く段 231 s                  |
+| 生成の全体・最大メモリ（`/usr/bin/time -l`） | 368 s・3.9 GB                         | 372 s・5.6 GB   | 380 s・6.7 GB              | —                             |
+
+- 表の注:
+  - 「見送りの本線の計」の 7c の頃の値「24 run・17.0 km」は、出力されない below run のうち本線の鎖のもの（`ground.belowUnwritten` の数え方）で、この表の行とは数え方が違う。
+  - 既定範囲の見送りの数は、範囲によらず計画全体の値。範囲の内かどうかは「範囲の内の見送り」の行で見る。
+- **45068170｜24402125（既定範囲）**: 出た。45068170 の s 0〜181.4、最小の高さの差 0.289 m（横のずれ 6.44 m）。
+  - 0.289 m は、24402125 の測点が 45068170 の終点より先にあり、その終点に寄せて測った値（`planOverlaps` は線の端で止める。deckOverlaps と同じ）。
+  - 終点の真上の組では 0.66 m（横のずれ 1.27 m）。s 140〜181 では高さの差 3.80 → 0.66 m、横のずれ 2.57 → 1.27 m で、plan 0 節の 4 の概算と合う。
+  - s 0〜11 にも高さの差 5.46〜6.43 m（横のずれ 7.4〜6.7 m）で、1 段の 6.24 m に届かない所がある。
+  - 既定範囲のほかの 2 組: 45068169｜45068172（汐留入口が取付けの上、2.06 m、s 0〜86）と 45068169｜45068170（坑口で並ぶ 2 本、s 0〜0.4、0.217 m）。
+- **ship/pruned の 17 組**: 多くは坑口の近くで横に並ぶ組で、高さの差 0.15〜0.55 m、横のずれ 5.9〜8.5 m。1 段の下を本当に通る組は、372483373｜28368866（4.90 m）と 806097479｜331692344・331922700（3.81・3.86 m）。どれも視点では見ていない。
+- 地区の規模（`--below all` の `districts.planned`）: central 313 run・275.0 km、east 145・174.6、yamate 9・39.0、outside 110・133.4。
+  - plan 1.2 節の値（central 323・275.4、east 149・174.8、outside 110・133.5）は 7c0 の前のもので、run の数が違う。km はほぼ同じ。
+  - pruned では central 302・265.6、east 143・172.8、yamate 5・2.3、outside 100・131.9。7c の fixture と同じ。
+- **不変**:
+  - 既定範囲（14 ファイル、314 チャンク）、ship/pruned（129 ファイル、3,225 チャンク）、ship/all（133 ファイル、3,437 チャンク）は、データの `report.json` を含めて前後で全ファイル一致（`diff -r`、`just compare-expressway-chunks` は differ 0）。
+  - `just make-expressway-data` で作り直した `public/data/expressway` は、`git status` で変更なし（`report.json` も同じバイト）。
+  - スコアカードの前後（`just compare-expressway-reports`）: changed 0・removed 0。added は既定範囲 184・ship/pruned 394・ship/all 480 で、すべて `underground.*`。
+  - main の基準 fixture（版 6）と作り直した版 7 の比較も同じ（changed 0、added 394）。
+
+## S7-3 へ渡すもの（`junction`・`loop-seam`・`ground-junction`、範囲の内か）
+
+- loop-seam（C1 の輪の継ぎ目、本線）: 4848883（1.23 km）と 4848906（0.25 km）は既定範囲の内。4848875（2.11 km）と 4848940（1.14 km）は ship の内。
+- ground-junction（pruned だけ）:
+  - 4854085（B、2.60 km、親の内、既定範囲の閉包）と 5170834（B、1.67 km）は ship の内。
+  - 5213283（CA;409、9.60 km）は範囲の外。
+- junction（既定範囲の内は 0）:
+  - ship の内: 本線 1563006214（5）・24402503（4）・24636595（4）、ランプ 28127106・331922702・593535941・760596455（C2）、45019019（11）、381972984・381974071・593674931。
+  - ship の外: 1132724786・165913317・190617371・406000909・46151743・4849055・4853044・5203881・5204847・5204891・5212959・761796508・884343942・98440859・98848277。
+
+## テスト
+
+`tests/expresswayBelowScore.test.ts` で、次を確かめる。
+
+- 合成網で 5 つの理由がそれぞれ 1 本ずつ数えられる。理由の id が `belowDeferred` と同じ並びになる。
+- 1 本に理由は 1 つ（輪の継ぎ目が端の分合流より先）。理由が付くのは `isBelowCompiled` が偽の所だけ。
+- 箱の範囲では run の線で範囲を判定する。
+- 高架 → 地平 → トンネル → 地平の網で、坑口の端・取付けの run・不足が出る。掘割の端の不足は null で、below run どうしの端は数えない。
+- 取付けの上に 2 m の床版があれば 1 組。区間は坑口から 300 m の内に限られる。1 段以上の高さか、300 m より遠ければ 0 組。
+- 版 7 の fixture 2 本で、理由の合計が `plan.belowDeferred` と同じ。版 6 は読めて、版 7 との差は `underground.*` の追加だけ。
+- `undergroundChanges`。
+- 既定データで 45068170｜24402125 が出る。
+
+[^p27s71]: 指示は scratchpad の p27/s7r/s7-1-instructions.md（設計 Fable、2026-11-17）。計測は `.cache/expressway-area/s71-*`・`.qa/expressway/s71-*.report.json`・`.qa/s71/`（over.mts・pair.mts・summary.py・生成のログ、ローカル、git 管理外）。
 
 # 未対応・既知の欠落
 
