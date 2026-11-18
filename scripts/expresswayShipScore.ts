@@ -169,6 +169,12 @@ export function endsOf(
     closed.has(id) ? "closed" : inScope.has(id) ? "district" : "outside";
   const mainEnds: EndRow[] = [];
   const rampEnds: RampEndRow[] = [];
+  /**
+   * The ends hung on a written parent at the parent's end node, that the parent does not carry on
+   * (R1-1b 3.1 (d)): an end as the parent's end is, decided once the parents' ends are known.
+   */
+  const onParentEnd: Array<{ rp: RunPlan; atStart: boolean; parent: string; parentSide: "start" | "end" }> =
+    [];
   const mouths: NonNullable<Report["ends"]>["mouths"] = [];
   for (const id of ids) {
     if (!written.has(id)) continue;
@@ -190,6 +196,16 @@ export function endsOf(
         (o) => o !== rp && o.run.from <= idx && idx <= o.run.to,
       );
       const isBeside = besides.some((o) => written.has(o.run.id));
+      const isOpenHere = !isGoingOn && !isBeside;
+      if (isOnParent && isOpenHere) {
+        const pp = plan.runs.get((e as { parent: string }).parent)!;
+        const pIdx = (e as { parentNodeIndex: number }).parentNodeIndex;
+        const parentSide = pIdx === pp.run.from ? "start" : pIdx === pp.run.to ? "end" : null;
+        // Through: this run's end on the parent's start, or its start on the parent's end.
+        const isThrough = (!atStart && parentSide === "start") || (atStart && parentSide === "end");
+        if (parentSide !== null && !isThrough)
+          onParentEnd.push({ rp, atStart, parent: pp.run.id, parentSide });
+      }
       const isEnd = !isGoingOn && !isOnParent && !isBeside;
       if (!isEnd) continue;
       const kind =
@@ -204,7 +220,7 @@ export function endsOf(
       const beyond = here
         .filter((c) => !written.has(c.child))
         .map((c) => c.child)
-        .sort();
+        .toSorted();
       const node = plan.net.nodes.get(rp.chain.nodes[idx])!;
       const end = atStart ? "start" : "end";
       const row = { id: `${id}:${end}`, run: id, end, kind, onward, lon: node.lon, lat: node.lat } as const;
@@ -264,5 +280,58 @@ export function endsOf(
       });
     }
   }
+  // (d): until nothing more is found, an end hung at a parent's end that is a wall is a wall too (as
+  // the runtime's endAhead decides it: src/world/expresswayEnds.ts). Why not left out (as R1-1a's list
+  // did, the parent being written): the child's deck reaches past the parent's end there (224864773:end
+  // on 224864769:end, 709826346:end on 44803854:end), and nothing goes on beyond either.
+  const isWall = (e: { kind?: string; onward?: string | null }) =>
+    e.kind !== "ground" && (e.onward ?? null) === null;
+  for (let isGrown = true; isGrown;) {
+    isGrown = false;
+    const walls = new Map<string, EndRow | RampEndRow>();
+    for (const e of [...mainEnds, ...rampEnds]) if (isWall(e)) walls.set(e.id, e);
+    for (const item of onParentEnd) {
+      const end = item.atStart ? "start" : "end";
+      const id = `${item.rp.run.id}:${end}`;
+      const isListed = mainEnds.some((e) => e.id === id) || rampEnds.some((e) => e.id === id);
+      const parentWall = walls.get(`${item.parent}:${item.parentSide}`);
+      if (isListed || !parentWall) continue;
+      const e = endPlan(plan, item.rp, item.atStart);
+      const idx = item.atStart ? item.rp.run.from : item.rp.run.to;
+      const here = (children.get(item.rp.run.id) ?? []).filter((c) => c.parentNodeIndex === idx);
+      const onward =
+        here.find((c) => !c.isSeam && written.has(c.child) && c.atStart === !item.atStart)?.child ?? null;
+      const beyond = here
+        .filter((c) => !written.has(c.child))
+        .map((c) => c.child)
+        .toSorted();
+      const node = plan.net.nodes.get(item.rp.chain.nodes[idx])!;
+      const kind = e.kind === "seam" ? "seam" : "junction";
+      const row = {
+        id,
+        run: item.rp.run.id,
+        end,
+        kind,
+        onward,
+        lon: node.lon,
+        lat: node.lat,
+        ...(beyond.length > 0 ? { beyond } : {}),
+      } as const;
+      const isMain = item.rp.cls === "expressway";
+      const parentWhy = parentWall.why;
+      if (isMain) {
+        const why =
+          parentWhy === "operator" || parentWhy === "ref" || parentWhy === "district" ? parentWhy : "scope";
+        mainEnds.push({ ...row, why });
+      } else {
+        const why =
+          parentWhy === "closed" || parentWhy === "district" || parentWhy === "outside" ? parentWhy : "scope";
+        rampEnds.push({ ...row, why });
+      }
+      isGrown = true;
+    }
+  }
+  mainEnds.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  rampEnds.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { mainEnds, rampEnds, mouths };
 }

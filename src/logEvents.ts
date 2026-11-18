@@ -1188,6 +1188,28 @@ export const LOG_EVENTS = {
     maxTile: z.string().nullable(),
     ok: z.boolean(),
   }),
+  /**
+   * The ends of a data folder with nothing written going on (scripts/expresswayEnds.ts, R1-1b 3.1):
+   * the walls, the main lines' open ends by the end chunk's structure, their portals and ground ends,
+   * the ramps' open ends and portals, the ends with a junction child at the node, those in a tunnel,
+   * and against a scorecard the walls it lists that were not found and those found that it does not.
+   */
+  expressway_ends_counted: info({
+    dir: z.string(),
+    out: z.string(),
+    districts: z.array(z.string()).nullable(),
+    walls: count,
+    mainOpen: count,
+    mainOpenByStructure: z.record(z.string(), count),
+    mainPortal: count,
+    mainGround: count,
+    rampOpen: count,
+    rampPortal: count,
+    withJunctionChild: count,
+    tunnel: count,
+    missing: z.array(z.string()),
+    extra: z.array(z.string()),
+  }),
   expressway_districts_picked: info({ districts: z.array(z.string()), runs: count, chunks: count }),
   expressway_districts_compared: info({
     written: count,
