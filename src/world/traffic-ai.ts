@@ -1000,7 +1000,9 @@ export class TrafficAI {
     const cum: number[] = [];
     let done = 0;
     const push = (seg: Segment, dir: 1 | -1, s: number) => {
-      const p = this.lanePoint(graph, seg, dir, s, seg === c.seg ? c.xwLane : 0).pos;
+      // The car's lane on the expressway along its own run, as aheadPose has it (lane 0 elsewhere).
+      const isSameRun = runOf(seg) !== null && runOf(seg) === runOf(c.seg);
+      const p = this.lanePoint(graph, seg, dir, s, isSameRun ? c.xwLane : 0).pos;
       const last = points.at(-1);
       if (last) {
         const step = Math.hypot(p.x - last.x, p.z - last.z);

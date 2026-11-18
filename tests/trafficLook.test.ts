@@ -183,6 +183,46 @@ const KINDS: Array<{ name: MassClass; half: number }> = [
   { name: "truck10t", half: 6.0 },
 ];
 
+describe("the lane a traffic car looks along on the expressway (D3 (b))", () => {
+  it("T-b8: keeps its own lane (1) into the next chunk of its run, as aheadPose does", () => {
+    // Two chunks of one run A (xid A:0, A:1), two lanes, straight north.
+    const deck = (xid: string, pts: XY[]): RoadLine => ({ ...line(pts, 1, 12), kind: "highway", xid });
+    const lines = [
+      deck("A:0", [
+        [0, 0],
+        [0, 100],
+      ]),
+      deck("A:1", [
+        [0, 100],
+        [0, 300],
+      ]),
+    ];
+    const { world, graph, ai } = traffic(lines);
+    try {
+      for (const seg of graph.segments) seg.lanes = 2;
+      const first = graph.segments.find((seg) => seg.line.xid === "A:0") ?? graph.segments[0];
+      const next = graph.segments.find((seg) => seg.line.xid === "A:1") ?? graph.segments[1];
+      const inside = ai as unknown as {
+        lanePath(g: RoadGraph, c: unknown, reach: number): { points: Vector3[] };
+        lanePoint(g: RoadGraph, seg: Segment, dir: 1 | -1, s: number, lane: number): { pos: Vector3 };
+      };
+      // A car in lane 1, 20 m before the end of the first chunk (only what lanePath reads).
+      const c = { seg: first, dir: 1, s: 80, xwLane: 1, route: [], serial: 1 };
+      const onNext = inside
+        .lanePath(graph, c, 60)
+        .points.filter((p) => graph.nearestOn(next, p).dist < 8 && graph.nearestOn(next, p).s > 1);
+      expect(onNext.length).toBeGreaterThan(0);
+      for (const p of onNext) {
+        const along = graph.nearestOn(next, p).s;
+        const lane1 = inside.lanePoint(graph, next, 1, along, 1).pos;
+        expect(Math.hypot(p.x - lane1.x, p.z - lane1.z)).toBeLessThan(0.05);
+      }
+    } finally {
+      world.free();
+    }
+  });
+});
+
 describe("the speed a traffic car can stop from (D3 (e))", () => {
   it("T-e1: every cruise tier of every kind stops clear of a car standing on a straight 60 km/h road", () => {
     const lines = [
