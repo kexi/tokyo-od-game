@@ -630,6 +630,19 @@ export const LOG_EVENTS = {
     sinceGraphS: z.number().nullable(),
     sinceShoveS: z.number().nullable(),
   }),
+  /**
+   * A put-back held off: the spot the traffic car would land on was within 60 m of the player's car
+   * (traffic-ai.ts drive), so it drives on from where it is. Once per car until it is put back or
+   * within 8 m of its lane again: its id, segment, place along it (m), how far off it is (m), the
+   * spot to the player's car (m; null: no player yet).
+   */
+  traffic_car_put_back_held: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    offLaneM: z.number(),
+    playerDistM: z.number().nullable(),
+  }),
   /** Traffic AI cars on the expressway at a moment (debug.expressway.traffic, P6). */
   expressway_traffic_seen: info({
     cars: count,
