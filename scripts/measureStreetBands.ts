@@ -4,9 +4,9 @@
 // worker builds it (scripts/gameStreets.ts: the expressway joined in, the regulations applied), and
 // each GSI street segment is sampled every metre: where a site within SITE_CROSSING_MIN_DEG of the
 // street's heading reaches the street's 幅員, the site's strip (half its slab, widened by
-// SITE_CLEARANCE_M) is a band across the street. Runs of such samples (MIN_LENGTH_M or more,
-// JOIN_GAP_M gaps closed) are merged into one band per segment (left the largest, right the least),
-// and the segment is classed:
+// SITE_CLEARANCE_M) is a strip across the street. Runs of such samples (MIN_LENGTH_M or more,
+// JOIN_GAP_M gaps closed) give the segment's bands (scripts/streetBands.ts mergeBands: strips a lane
+// or more apart stay apart), and the segment is classed (classify):
 //   clear  no lane's centre lies in the band now: nothing to change;
 //   A      two-way, a 中央帯 over the band holds a lane each way (in the carriageway as it is, else in
 //          the room streetRoom leaves);
@@ -14,8 +14,9 @@
 //          each way (one-way: a lane);
 //   B1     one-way, unresolved, but all its lanes fit to one side of the band within the room;
 //   B2     two-way, unresolved, but both ways fit to one side of the band within the room;
+//   B3     A or A' fits, but a moved line would keep more lanes (memo 3.3 の 5): left as it is;
 //   C      fits nowhere within the room.
-// B1, B2 and C need the street's line moved sideways (R1-2b); no street is cut. Also: the lane 0
+// B1, B2, B3 and C need the street's line moved sideways (R1-2b); no street is cut. Also: the lane 0
 // centre's sideways jump at the ends of each A / A' segment before and after (memo 3.4), PLATEAU's
 // pavement inside the bands and under an edge line moved out, the ramps' feet beside the bands,
 // piers over the lanes, and the nodes with two segments only.
@@ -40,8 +41,8 @@ import { polygonsOf, WARD_TILES, type PavementPolygon } from "../src/world/pavem
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { type RoadLine, type Segment } from "../src/world/roads.ts";
 import { ROAD_TILE_ZOOM } from "../src/world/roadTiles.ts";
-import { NARROWEST_LANE } from "../src/world/streetAssumptions.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
+import { classify, type Klass, laneZero, mergeBands, offCentreLanes, type Ruling } from "./streetBands.ts";
 import { DATA_DIR, gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -52,7 +53,6 @@ const SITE_CLEARANCE_M = 1;
 const MIN_LENGTH_M = 3;
 const JOIN_GAP_M = 1;
 const SHOULDER = 0.5;
-const LANE_MIN = NARROWEST_LANE.value;
 /** A segment beyond a node within this of straight on is the same street going on (deg). */
 const STRAIGHT_ON_DEG = 30;
 /** A foot's join this close to a band's segment is listed (memo 手順 0 の 7). */
@@ -129,18 +129,19 @@ async function plateauOf(x: number, y: number): Promise<PavementPolygon[]> {
 
 type P = { x: number; z: number };
 type BandSite = { chunk: string; run: string; structure: string; pts: P[]; s: number[]; half: number };
-type Band = { right: number; left: number; chunk: string; structure: string; s: number };
+type Strip = { right: number; left: number; chunk: string; structure: string; s: number };
 
 /**
- * The site's strip across a street at one point (`p`, unit heading `t`, 幅員 `width`): every site
- * segment the street's normal through p meets at under SITE_CROSSING_MIN_DEG, its half width over the
- * cosine of the angle, widened by SITE_CLEARANCE_M; null when none reaches the street's 幅員.
+ * The sites' strips across a street at one point (`p`, unit heading `t`, 幅員 `width`): one for every
+ * site segment the street's normal through p meets at under SITE_CROSSING_MIN_DEG, its half width over
+ * the cosine of the angle, widened by SITE_CLEARANCE_M, that reaches the street's 幅員. Why each its
+ * own and not their union: two decks either side of a street meet one normal, and their union covers
+ * the lanes between them (mergeBands decides what is one band).
  */
-function bandAt(p: P, t: P, width: number, sites: readonly BandSite[]): Band | null {
+function stripsAt(p: P, t: P, width: number, sites: readonly BandSite[]): Strip[] {
   const n = { x: t.z, z: -t.x }; // leftOf
   const cosMin = Math.cos((SITE_CROSSING_MIN_DEG * Math.PI) / 180);
-  // Why the cast: TS narrows a let to its null start inside the loops.
-  let best = null as Band | null;
+  const out: Strip[] = [];
   for (const site of sites) {
     for (let j = 0; j + 1 < site.pts.length; j++) {
       const a = site.pts[j];
@@ -166,14 +167,10 @@ function bandAt(p: P, t: P, width: number, sites: readonly BandSite[]): Band | n
       const reaches = left > -width / 2 && right < width / 2;
       if (!reaches) continue;
       const s = site.s[j] + (site.s[j + 1] - site.s[j]) * v;
-      const prev: Band | null = best;
-      best =
-        prev === null
-          ? { right, left, chunk: site.chunk, structure: site.structure, s }
-          : { ...prev, right: Math.min(prev.right, right), left: Math.max(prev.left, left) };
+      out.push({ right, left, chunk: site.chunk, structure: site.structure, s });
     }
   }
-  return best;
+  return out;
 }
 
 function insidePolygon(x: number, z: number, ring: readonly P[]): boolean {
@@ -187,98 +184,13 @@ function insidePolygon(x: number, z: number, ring: readonly P[]): boolean {
   return inside;
 }
 
-// ---------- R1-2a's rules (memo 改訂 1, 3.3), as measured ----------
-
-type Klass = "clear" | "A" | "A'" | "B1" | "B2" | "C";
-/** A class and, for A / A', the section it would get (carriageway centred, median, lanes a way). */
-type Ruling = { klass: Klass; lanesAfter: number; median: number; carriageway: number };
-
-/** Lanes of LANE_MIN a span holds (whole lanes). */
-const holds = (span: number) => Math.max(0, Math.floor(span / LANE_MIN + 1e-9));
-
-/**
- * The class of a segment with a band: `carriageway` and `median` are its section now, `centres` its
- * lanes' centres now (left of the coords' direction, both ways), `room` what streetRoom leaves.
- */
-function rule(
-  travel: 0 | 1 | -1,
-  lanes: number,
-  carriageway: number,
-  median: number,
-  room: number,
-  centres: readonly number[],
-  right: number,
-  left: number,
-  offCentre: number,
-): Ruling {
-  const isHit = centres.some((c) => c > right && c < left);
-  if (!isHit) return { klass: "clear", lanesAfter: lanes, median, carriageway };
-  const straddles = right < 0 && left > 0;
-  const inner = straddles ? 0 : Math.min(Math.abs(right), Math.abs(left));
-  const outer = Math.max(Math.abs(right), Math.abs(left));
-  const unresolved = (): Ruling => ({
-    klass: offCentre >= 1 ? (travel === 0 ? "B2" : "B1") : "C",
-    lanesAfter: lanes,
-    median,
-    carriageway,
-  });
-  if (travel !== 0) {
-    if (straddles) return unresolved();
-    const capped = Math.min(carriageway, 2 * inner);
-    const n = Math.min(lanes, holds(capped - 2 * SHOULDER));
-    if (n < 1) return unresolved();
-    return { klass: "A'", lanesAfter: n, median: 0, carriageway: capped };
-  }
-  // The 中央帯 over the band: the carriageway as it is first (its outer edge kept), the room only when
-  // not a lane a way fits in it. Why not MEDIAN_MOST: a median capped at 8 m does not cover the site.
-  const byMedian = (): Ruling | null => {
-    const m = Math.max(median, 2 * outer);
-    const kept = Math.min(lanes, holds(carriageway / 2 - SHOULDER - m / 2));
-    if (kept >= 1) return { klass: "A", lanesAfter: kept, median: m, carriageway };
-    const widened = Math.min(lanes, holds(room / 2 - SHOULDER - m / 2));
-    if (widened < 1) return null;
-    const cw = Math.max(carriageway, Math.min(room, 2 * widened * 3.25 + 2 * SHOULDER + m));
-    return {
-      klass: "A",
-      lanesAfter: Math.min(lanes, holds(cw / 2 - SHOULDER - m / 2)),
-      median: m,
-      carriageway: cw,
-    };
-  };
-  if (straddles) return byMedian() ?? unresolved();
-  const capped = Math.min(carriageway, 2 * inner);
-  const byRoom = Math.min(lanes, holds(capped / 2 - SHOULDER));
-  if (byRoom >= 1) return { klass: "A'", lanesAfter: byRoom, median: 0, carriageway: capped };
-  return byMedian() ?? unresolved();
-}
-
-/** What the room holds beside the band (memo B1 / B2): all lanes one way, or both ways, to one side. */
-function offCentreLanes(
-  room: number,
-  travel: 0 | 1 | -1,
-  lanes: number,
-  right: number,
-  left: number,
-): number {
-  const a = Math.max(0, room / 2 - Math.max(left, -room / 2));
-  const b = Math.max(0, Math.min(right, room / 2) + room / 2);
-  if (travel !== 0) return Math.min(lanes, Math.max(holds(a - 2 * SHOULDER), holds(b - 2 * SHOULDER)));
-  const split = Math.min(holds(a - SHOULDER), holds(b - SHOULDER));
-  const oneSide = Math.max(holds((a - 2 * SHOULDER) / 2), holds((b - 2 * SHOULDER) / 2));
-  return Math.min(lanes, Math.max(split, oneSide));
-}
-
-/** Lane 0's centre (left of travel) in a section: a way's span split evenly, as sectionOf does. */
-function laneZero(travel: 0 | 1 | -1, lanes: number, carriageway: number, median: number): number {
-  const span = travel === 0 ? carriageway / 2 - SHOULDER - median / 2 : carriageway - 2 * SHOULDER;
-  return carriageway / 2 - SHOULDER - 0.5 * (span / lanes);
-}
-
 // ---------- the walk ----------
 
 type Banded = {
   run: string;
   chunk: string;
+  /** Every chunk a strip of the segment's bands comes from (two decks beside one street). */
+  chunks: string[];
   structure: string;
   s0: number;
   s1: number;
@@ -297,6 +209,7 @@ type Banded = {
   room: number;
   right: number;
   left: number;
+  bands: Array<{ right: number; left: number }>;
   ruling: Ruling;
   lanesChange: number;
   widened: boolean;
@@ -417,11 +330,11 @@ for (const [key, focus] of groups) {
   for (const seg of graph.segments) {
     if (!isStreet(seg)) continue;
     const travel = seg.oneway;
-    const hits: Array<{ l: number; band: Band }> = [];
+    const hits: Array<{ l: number; strips: Strip[] }> = [];
     for (let l = 0; l <= seg.length; l += 1) {
       const { pos, dir } = graph.sample(seg, l);
-      const band = bandAt({ x: pos.x, z: pos.z }, { x: dir.x, z: dir.z }, seg.line.width, sites);
-      if (band) hits.push({ l, band });
+      const strips = stripsAt({ x: pos.x, z: pos.z }, { x: dir.x, z: dir.z }, seg.line.width, sites);
+      if (strips.length > 0) hits.push({ l, strips });
     }
     // Runs of hits, gaps of JOIN_GAP_M closed; those of MIN_LENGTH_M or more make the segment's band.
     const runsOfHits: Array<typeof hits> = [];
@@ -434,12 +347,15 @@ for (const [key, focus] of groups) {
     const kept = runsOfHits.filter((r) => r.length >= MIN_LENGTH_M).flat();
     if (kept.length === 0) continue;
     const chunkVotes = new Map<string, number>();
-    for (const h of kept) chunkVotes.set(h.band.chunk, (chunkVotes.get(h.band.chunk) ?? 0) + 1);
+    for (const h of kept)
+      for (const strip of h.strips) chunkVotes.set(strip.chunk, (chunkVotes.get(strip.chunk) ?? 0) + 1);
     const chunk = [...chunkVotes].toSorted((a, b) => b[1] - a[1])[0][0];
     // Each segment once: the group whose tile holds the chunk most of its band is from.
     if (!focusIds.has(chunk)) continue;
-    const right = Math.min(...kept.map((h) => h.band.right));
-    const left = Math.max(...kept.map((h) => h.band.left));
+    // The bands (memo 3.2): strips apart by a lane or more stay apart; the union only for B1 / B2.
+    const bands = mergeBands(kept.flatMap((h) => h.strips.map((b) => ({ right: b.right, left: b.left }))));
+    const right = Math.min(...bands.map((b) => b.right));
+    const left = Math.max(...bands.map((b) => b.left));
     const section = seg.section;
     const lanes = seg.lanes;
     const medianNow = section?.median ?? 0;
@@ -451,8 +367,12 @@ for (const [key, focus] of groups) {
       if (!isDriven) continue;
       for (let lane = 0; lane < lanes; lane++) centres.push(d * laneCentreOffset(seg, lane));
     }
-    const offCentre = offCentreLanes(room, travel, lanes, right, left);
-    const ruling = rule(travel, lanes, carriagewayNow, medianNow, room, centres, right, left, offCentre);
+    const offCentre = offCentreLanes(room, travel, lanes, { right, left });
+    const ruling = classify(
+      { travel, lanes, carriageway: carriagewayNow, median: medianNow, room, centres },
+      bands,
+      offCentre,
+    );
     const isResolved = ruling.klass === "A" || ruling.klass === "A'";
     const widened = isResolved && ruling.carriageway > carriagewayNow + 0.01;
     if (isResolved)
@@ -474,11 +394,13 @@ for (const [key, focus] of groups) {
           const isOn = onPavement(pos.x + nx * newAt, pos.z + nz * newAt, ["sidewalk"]);
           if (isOn && !wasOn) edgeOnPavement = true;
         }
-      const lo = Math.max(h.band.right, -seg.line.width / 2);
-      const hi = Math.min(h.band.left, seg.line.width / 2);
-      for (let u = lo; u <= hi; u += 0.5) {
-        bandSamples++;
-        if (onPavement(pos.x + nx * u, pos.z + nz * u, ["sidewalk", "island"])) pavedSamples++;
+      for (const strip of h.strips) {
+        const lo = Math.max(strip.right, -seg.line.width / 2);
+        const hi = Math.min(strip.left, seg.line.width / 2);
+        for (let u = lo; u <= hi; u += 0.5) {
+          bandSamples++;
+          if (onPavement(pos.x + nx * u, pos.z + nz * u, ["sidewalk", "island"])) pavedSamples++;
+        }
       }
     }
     let footNearM: number | null = null;
@@ -492,9 +414,16 @@ for (const [key, focus] of groups) {
     const row: Banded = {
       run: runOf.get(chunk) ?? "?",
       chunk,
-      structure: kept[0].band.structure,
-      s0: round(Math.min(...kept.map((h) => h.band.s)), 10),
-      s1: round(Math.max(...kept.map((h) => h.band.s)), 10),
+      structure: kept.flatMap((h) => h.strips).find((b) => b.chunk === chunk)?.structure ?? "?",
+      chunks: [...chunkVotes.keys()].toSorted(),
+      s0: round(
+        Math.min(...kept.flatMap((h) => h.strips.filter((b) => b.chunk === chunk).map((b) => b.s))),
+        10,
+      ),
+      s1: round(
+        Math.max(...kept.flatMap((h) => h.strips.filter((b) => b.chunk === chunk).map((b) => b.s))),
+        10,
+      ),
       lengthM: kept.length,
       seg: seg.id,
       segLengthM: round(seg.length, 10),
@@ -510,6 +439,7 @@ for (const [key, focus] of groups) {
       room: round(room),
       right: round(right),
       left: round(left),
+      bands: bands.map((b) => ({ right: round(b.right), left: round(b.left) })),
       ruling: { ...ruling, median: round(ruling.median), carriageway: round(ruling.carriageway) },
       lanesChange: ruling.lanesAfter - lanes,
       widened,
@@ -625,7 +555,7 @@ for (const [key, focus] of groups) {
   }
 }
 
-const KLASSES: readonly Klass[] = ["clear", "A", "A'", "B1", "B2", "C"];
+const KLASSES: readonly Klass[] = ["clear", "A", "A'", "B1", "B2", "B3", "C"];
 const perKlass = (f: (k: Klass) => number) =>
   Object.fromEntries(KLASSES.map((k) => [k, f(k)])) as Record<Klass, number>;
 const ofKlass = (k: Klass) => banded.filter((b) => b.ruling.klass === k);
