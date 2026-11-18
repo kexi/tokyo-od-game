@@ -33,7 +33,7 @@ import { retireObject } from "../render/retire";
  * The polygons are drawn as paving raised by a kerb and given a trimesh collider.
  */
 const ASSETS = "https://assets.cms.plateau.reearth.io/assets";
-const WARD_TILES: Record<string, string> = {
+export const WARD_TILES: Record<string, string> = {
   千代田区: "70/2b93ce-79cf-4a0d-8601-b94f9d02d893/13101_chiyoda-ku_pref_2025_citygml_1_op_tran_mvt_lod2",
   中央区: "08/7afd12-0930-4e50-b82e-8153f0671fb3/13102_chuo-ku_pref_2025_citygml_1_op_tran_mvt_lod2",
   港区: "ca/8a14d7-0136-4bba-a7c3-d8034631b70f/13103_minato-ku_pref_2025_citygml_1_op_tran_mvt_lod2",

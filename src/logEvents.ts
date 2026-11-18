@@ -1481,6 +1481,36 @@ export const LOG_EVENTS = {
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
   }),
   /**
+   * P2.7 R1-2 手順 0 (scripts/measureStreetBands.ts): the street stretches an expressway's site runs
+   * along, by the row of R1-2's rules they fall in, and what would stop the change.
+   */
+  street_bands_measured: info({
+    dir: z.string(),
+    groups: count,
+    siteChunks: count,
+    skippedChunksForMissingTiles: count,
+    groupsWithJarticLanes: count,
+    stretches: count,
+    totalLengthM: count,
+    byRow: z.strictObject({ median: count, room: count, cut: count }),
+    cutsByWidth: counts,
+    arterialCuts: count,
+    offCentreOnly: count,
+    edgeOnPavement: count,
+    fewerLanes: count,
+    taperShort: count,
+    jumpMostM: z.number().nonnegative(),
+    jumpsOver4m: count,
+    withPavement: count,
+    footNear: count,
+    piersOverLanes: count,
+    twoNodes: count,
+    twoNodesWithStop: count,
+    twoNodesWithCrossing: count,
+    twoNodesWithSignal: count,
+    durationMs: count,
+  }),
+  /**
    * The drops with no wall at their edge of a data folder (scripts/expresswayBareDrops.ts, A1 test 22):
    * the points, their pairs, and against another list the new and the gone points (the first new ones).
    */
