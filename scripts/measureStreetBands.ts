@@ -41,6 +41,7 @@ import { polygonsOf, WARD_TILES, type PavementPolygon } from "../src/world/pavem
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { type RoadLine, type Segment } from "../src/world/roads.ts";
 import { ROAD_TILE_ZOOM } from "../src/world/roadTiles.ts";
+import { readTime } from "../src/time/ruleTime.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
 import { classify, type Klass, laneZero, mergeBands, offCentreLanes, type Ruling } from "./streetBands.ts";
 import { DATA_DIR, gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
@@ -69,7 +70,7 @@ const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const VALUED = new Set(["--cache", "--out", "--plateau"]);
+const VALUED = new Set(["--cache", "--out", "--plateau", "--moves"]);
 const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1])));
 if (target === undefined)
   throw new Error(
@@ -194,6 +195,84 @@ function insidePolygon(x: number, z: number, ring: readonly P[]): boolean {
   return inside;
 }
 
+// ---------- R1-2b 手順 0b: moving the street's line (measured, not done) ----------
+
+/**
+ * What moving a banded street's line off its bands would take (memo R1-2b 手順 0b): the shape (a
+ * band over the middle of a two-way street, on one side, or a one-way street), the move (a two-way
+ * street over its middle split into two lines, one each side; otherwise the whole carriageway put
+ * beside the bands, a one-way street to its left of travel first), how far each piece moves and how
+ * far past the 幅員's edge it reaches, and what lies where it would go (another site, another
+ * street's carriageway, PLATEAU's pavement, a GSI building, as shares of the points sampled across
+ * the moved carriageway every 0.5 m at each band sample). Also: the junctions round the band, a
+ * street drawn over the ramp itself, a foot joined to it, and whether JARTIC's one-way lines run
+ * either side of it (a divided street drawn as one line).
+ */
+type MoveOption = {
+  side: "left" | "right" | "split";
+  /** Sideways moves of the carriageway's pieces (m, + left of the coords). */
+  moves: number[];
+  /** Past the 幅員's edge, the most either side (m). */
+  outOfWidthM: number;
+  shares: { site: number; street: number; pavement: number; building: number };
+};
+type Move = {
+  seg: number;
+  at: [number, number];
+  klass: Klass;
+  lengthM: number;
+  widthM: number;
+  travel: 0 | 1 | -1;
+  lanes: number;
+  shape: "middle" | "side" | "one-way";
+  options: MoveOption[];
+  best: "fits-in-width" | "out-of-width-clear" | "blocked" | "neither";
+  toJunctionM: [number, number];
+  junctionsNear: number;
+  rampDrawn: boolean;
+  footJoined: boolean;
+  jartic: "split" | "one-way" | "none";
+};
+
+/** GSI's building footprints of a z16 tile (the same cached tiles as the streets; lon/lat rings). */
+async function buildingsOf(x: number, y: number): Promise<number[][]> {
+  const bytes = await readFile(join(cacheDir, `${ROAD_TILE_ZOOM}-${x}-${y}.pbf`)).catch(() => null);
+  const isMissing = bytes === null || bytes.length === 0;
+  if (isMissing) return [];
+  const tile = new VectorTile(new Pbf(new Uint8Array(bytes)));
+  const layer = tile.layers.building;
+  if (!layer) return [];
+  const out: number[][] = [];
+  for (let i = 0; i < layer.length; i++) {
+    const f = layer.feature(i);
+    const isPolygon = f.type === 3;
+    if (!isPolygon) continue;
+    for (const rings of polygonsOf(f.loadGeometry(), layer.extent))
+      out.push(
+        rings[0].flatMap((pt) => [
+          tileXToLon(x + pt.x / layer.extent, ROAD_TILE_ZOOM),
+          tileYToLat(y + pt.y / layer.extent, ROAD_TILE_ZOOM),
+        ]),
+      );
+  }
+  return out;
+}
+
+/** Distance from p to a polyline. */
+function toPolyline(p: P, pts: readonly P[]): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const ex = b.x - a.x;
+    const ez = b.z - a.z;
+    const l2 = ex * ex + ez * ez;
+    const t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.z - a.z) * ez) / l2));
+    best = Math.min(best, Math.hypot(a.x + ex * t - p.x, a.z + ez * t - p.z));
+  }
+  return best;
+}
+
 // ---------- the walk ----------
 
 type Banded = {
@@ -242,6 +321,7 @@ const headingOut = (seg: Segment, node: number): P => {
 const isStreet = (seg: Segment) => sourceOf(seg.line) === "gsi" && !isExpressway(seg.line);
 const round = (v: number, k = 100) => Math.round(v * k) / k;
 const banded: Banded[] = [];
+const moves: Move[] = [];
 const jumps: Jump[] = [];
 const piersOverLanes: Array<{ chunk: string; s: number; street: number; widthM: number }> = [];
 const twoNodes = new Map<string, { stop: boolean; crossing: boolean; signal: boolean }>();
@@ -334,6 +414,46 @@ for (const [key, focus] of groups) {
       footNodes.push({ x: p.x, z: p.z });
     }
   }
+  // GSI's buildings and JARTIC's one-way lines round the group, in the frame (手順 0b).
+  const buildings: Array<{ ring: P[]; box: [number, number, number, number] }> = [];
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++)
+      for (const outer of await buildingsOf(cx + dx, cy + dy)) {
+        const ring: P[] = [];
+        for (let i = 0; i + 1 < outer.length; i += 2) ring.push(local(outer[i], outer[i + 1]));
+        const xs = ring.map((p) => p.x);
+        const zs = ring.map((p) => p.z);
+        buildings.push({ ring, box: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] });
+      }
+  const inBuilding = (x: number, z: number) =>
+    buildings.some(
+      ({ ring, box }) =>
+        x >= box[0] && x <= box[2] && z >= box[1] && z <= box[3] && insidePolygon(x, z, ring),
+    );
+  const onewayLines: P[][] = (regs?.oneway ?? []).map((r) => {
+    const { next } = readTime(r, 0);
+    const pts: P[] = [];
+    for (let i = next; i + 1 < r.length; i += 2) pts.push(local(r[i], r[i + 1]));
+    return pts;
+  });
+  const inSite = (p: P) => sites.some((site) => toPolyline(p, site.pts) <= site.half);
+  const isJunctionNode = (node: number) => (graph.nodes.get(node)?.length ?? 0) >= 3;
+  /** Distance along the street from a segment's end to the first junction (through two-segment nodes). */
+  const toJunction = (seg: Segment, node0: number, start: number): number => {
+    let dist = start;
+    let cur = seg;
+    let node = node0;
+    for (let hop = 0; hop < 50; hop++) {
+      if (isJunctionNode(node)) return dist;
+      const others = (graph.nodes.get(node) ?? []).filter((id) => id !== cur.id);
+      const isDeadEnd = others.length !== 1;
+      if (isDeadEnd) return Infinity;
+      cur = graph.segments[others[0]];
+      dist += cur.length;
+      node = cur.from === node ? cur.to : cur.from;
+    }
+    return dist;
+  };
   const lane0After = new Map<number, number>();
   const groupBanded: Array<{ seg: Segment; row: Banded }> = [];
 
@@ -421,6 +541,144 @@ for (const [key, focus] of groups) {
         if (d <= FOOT_NEAR_M) footNearM = Math.min(footNearM ?? Infinity, Math.round(d));
       }
     const g = frame.toGeodetic(graph.sample(seg, kept[Math.floor(kept.length / 2)].l).pos);
+    const isMoveCase = ruling.klass !== "clear";
+    if (isMoveCase) {
+      const W = seg.line.width;
+      const cw = carriagewayNow;
+      const straddles = right < 0 && left > 0;
+      const shape: Move["shape"] = travel !== 0 ? "one-way" : straddles ? "middle" : "side";
+      // The moved carriageway's pieces as [low, high] offsets (left of the coords).
+      const pieceSets: Array<{ side: MoveOption["side"]; pieces: Array<[number, number]>; moves: number[] }> =
+        [];
+      const isSplit = shape === "middle";
+      if (isSplit) {
+        const half = (cw - medianNow) / 2;
+        pieceSets.push({
+          side: "split",
+          pieces: [
+            [left, left + half],
+            [right - half, right],
+          ],
+          moves: [left - medianNow / 2, right + medianNow / 2],
+        });
+      } else {
+        const toLeft = left + cw / 2;
+        const toRight = right - cw / 2;
+        // A one-way street to its left of travel first (left of the coords for travel 1).
+        const order: Array<["left" | "right", number]> =
+          travel === -1
+            ? [
+                ["right", toRight],
+                ["left", toLeft],
+              ]
+            : [
+                ["left", toLeft],
+                ["right", toRight],
+              ];
+        for (const [side, s] of order)
+          pieceSets.push({ side, pieces: [[-cw / 2 + s, cw / 2 + s]], moves: [s] });
+      }
+      const twins = (other: Segment) =>
+        (other.from === seg.from && other.to === seg.to) || (other.from === seg.to && other.to === seg.from);
+      const options: MoveOption[] = pieceSets.map(({ side, pieces, moves: m }) => {
+        const counts = { site: 0, street: 0, pavement: 0, building: 0 };
+        let points = 0;
+        for (const h of kept) {
+          const { pos, dir } = graph.sample(seg, h.l);
+          const nx = dir.z;
+          const nz = -dir.x;
+          for (const [lo, hi] of pieces)
+            for (let u = lo; u <= hi + 1e-9; u += 0.5) {
+              points++;
+              const p = { x: pos.x + nx * u, z: pos.z + nz * u };
+              if (inSite(p)) counts.site++;
+              const hit = graph.nearest(
+                new Vector3(p.x, 0, p.z),
+                30,
+                (o) => isStreet(o) && o !== seg && !twins(o),
+              );
+              const isOnOther =
+                hit !== null &&
+                Math.abs(hit.lateral) <= (hit.seg.section?.carriageway ?? hit.seg.line.width) / 2;
+              if (isOnOther) counts.street++;
+              if (onPavement(p.x, p.z, ["sidewalk", "island"])) counts.pavement++;
+              if (inBuilding(p.x, p.z)) counts.building++;
+            }
+        }
+        const share = (n: number) => (points === 0 ? 0 : round(n / points));
+        const outOfWidthM = Math.max(0, ...pieces.map(([lo, hi]) => Math.max(hi - W / 2, -W / 2 - lo)));
+        return {
+          side,
+          moves: m.map((v) => round(v)),
+          outOfWidthM: round(outOfWidthM),
+          shares: {
+            site: share(counts.site),
+            street: share(counts.street),
+            pavement: share(counts.pavement),
+            building: share(counts.building),
+          },
+        };
+      });
+      const isClear = (o: MoveOption) =>
+        o.shares.site === 0 && o.shares.street === 0 && o.shares.building === 0;
+      const best: Move["best"] = options.some((o) => o.outOfWidthM === 0 && o.shares.site === 0)
+        ? "fits-in-width"
+        : options.some(isClear)
+          ? "out-of-width-clear"
+          : options.every((o) => o.shares.site > 0)
+            ? "neither"
+            : "blocked";
+      const first = kept[0].l;
+      const last = kept.at(-1)!.l;
+      const toJ: [number, number] = [
+        toJunction(seg, seg.from, first),
+        toJunction(seg, seg.to, seg.length - last),
+      ];
+      const nearJunctions = toJ.filter((d) => d <= 30).length;
+      const rampDrawn =
+        W <= 9 && kept.some((h) => h.strips.some((b) => Math.abs((b.left + b.right) / 2) <= 2));
+      const footJoined = footNodes.some((f) =>
+        [seg.pts[0], seg.pts[seg.pts.length - 1]].some((e) => Math.hypot(e.x - f.x, e.z - f.z) < 0.5),
+      );
+      // JARTIC's one-way lines beside the band, parallel: one way only, or both ways (a divided street).
+      const ways = new Set<number>();
+      for (const h of kept.filter((_, i) => i % 5 === 0)) {
+        const { pos, dir } = graph.sample(seg, h.l);
+        for (const line of onewayLines)
+          for (let i = 0; i + 1 < line.length; i++) {
+            const a = line[i];
+            const b = line[i + 1];
+            const ex = b.x - a.x;
+            const ez = b.z - a.z;
+            const len = Math.hypot(ex, ez);
+            if (len < 1e-6) continue;
+            const along = (ex * dir.x + ez * dir.z) / len;
+            const isParallel = Math.abs(along) > Math.cos((25 * Math.PI) / 180);
+            if (!isParallel) continue;
+            const d = toPolyline({ x: pos.x, z: pos.z }, [a, b]);
+            const isNear = d <= W / 2 + 15;
+            if (isNear) ways.add(Math.sign(along));
+          }
+      }
+      const jartic: Move["jartic"] = ways.size === 2 ? "split" : ways.size === 1 ? "one-way" : "none";
+      moves.push({
+        seg: seg.id,
+        at: [round(g.lat, 1e6), round(g.lon, 1e6)],
+        klass: ruling.klass,
+        lengthM: kept.length,
+        widthM: W,
+        travel,
+        lanes,
+        shape,
+        options,
+        best,
+        toJunctionM: [round(toJ[0]), round(toJ[1])],
+        junctionsNear: nearJunctions,
+        rampDrawn,
+        footJoined,
+        jartic,
+      });
+    }
     const row: Banded = {
       run: runOf.get(chunk) ?? "?",
       chunk,
@@ -600,6 +858,33 @@ const summary = {
   durationMs: Math.round(performance.now() - started),
 };
 log("street_bands_measured", summary);
+// 手順 0b's table, one place a row (the doubled GSI lines give some twice: knowledge road-model.md).
+const byPlace = new Map(moves.map((m) => [m.at.join(","), m]));
+const placed = [...byPlace.values()];
+const tally = (pick: (m: Move) => string) => {
+  const out: Record<string, { n: number; m: number }> = {};
+  for (const m of placed) {
+    const k = pick(m);
+    out[k] ??= { n: 0, m: 0 };
+    out[k].n++;
+    out[k].m += m.lengthM;
+  }
+  return out;
+};
+const movesSummary = {
+  places: placed.length,
+  rows: moves.length,
+  byBest: tally((m) => m.best),
+  byShape: tally((m) => m.shape),
+  byJartic: tally((m) => m.jartic),
+  byShapeAndJartic: tally((m) => `${m.shape}/${m.jartic}`),
+  rampDrawn: placed.filter((m) => m.rampDrawn).length,
+  footJoined: placed.filter((m) => m.footJoined).length,
+  junctionsNear: tally((m) => String(m.junctionsNear)),
+};
+const movesPath = flag("moves");
+if (movesPath !== undefined)
+  await writeFile(movesPath, JSON.stringify({ summary: movesSummary, moves }, null, 1) + "\n");
 const outPath = flag("out");
 if (outPath !== undefined)
   await writeFile(
