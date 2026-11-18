@@ -3356,7 +3356,8 @@ type CeilingRule = (structure: "tunnel" | "cut", ground: number, s: number) => n
 /**
  * S7-3 3.4: the plan's runs as below.ts reads them for the descent to their portals (BelowLinkRun),
  * kept per plan and ground: each run's ends as endPlan makes them (a junction's or seam's parent and
- * the parent's run distance there), its length, planV, whether below, and the ground at its two ends.
+ * the parent's run distance there), its length, planV, whether below, and the ground at its two ends
+ * (NaN where it is not read: a NaN portal imposes no ceiling).
  */
 const belowLinksCache = new WeakMap<Plan, WeakMap<GroundSampler, Map<string, BelowLinkRun>>>();
 function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkRun> {
@@ -3365,6 +3366,7 @@ function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkR
   const cached = byGround.get(ground);
   if (cached) return cached;
   const out = new Map<string, BelowLinkRun>();
+  const needed = new Set(plan.needed);
   for (const [id, rp] of plan.runs) {
     const endOf = (atStart: boolean): BelowLinkEnd => {
       const e = endPlan(plan, rp, atStart);
@@ -3374,6 +3376,10 @@ function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkR
       const parentS = parent ? nodeS(parent, e.parentNodeIndex) : 0;
       return { kind: e.kind, parent: e.parent, parentS };
     };
+    // The ground only where a portal may be read: the needed below runs (a walk stays among the below
+    // runs coupled to the one solved, which are of its component). Why not every run's: the DEM is
+    // fetched for the needed runs alone, and an unneeded run's ends would read tiles never fetched.
+    const isRead = rp.below && needed.has(id);
     const p0 = poseAt(rp, 0);
     const p1 = poseAt(rp, rp.length);
     out.set(id, {
@@ -3382,7 +3388,7 @@ function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkR
       planV: rp.planV,
       below: rp.below,
       ends: [endOf(true), endOf(false)],
-      ground: [ground(p0.lon, p0.lat), ground(p1.lon, p1.lat)],
+      ground: isRead ? [ground(p0.lon, p0.lat), ground(p1.lon, p1.lat)] : [Number.NaN, Number.NaN],
     });
   }
   byGround.set(ground, out);
