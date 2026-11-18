@@ -231,6 +231,11 @@ export function ceilingFrom(
   length: number,
   reaches: readonly [readonly PortalReach[], readonly PortalReach[]],
 ): number | null {
+  // A portal whose ground was not read (compile.ts belowLinksOf: NaN outside the needed runs) would drop
+  // every ceiling of the run without a word: the way must stay among the needed runs, so it stops here.
+  // Why throw and not skip that portal: the ceilings would then depend on which runs the range needs.
+  const unread = [...reaches[0], ...reaches[1]].find((p) => Number.isNaN(p.z));
+  if (unread) throw new Error(`a portal ${unread.offset.toFixed(2)} m beyond the run has no ground read`);
   const top = ground - depthFor(structure);
   const ways = [
     ...reaches[0].map((p) => ({ V: p.V, d: p.offset + s, z: p.z })),

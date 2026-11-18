@@ -3357,7 +3357,7 @@ type CeilingRule = (structure: "tunnel" | "cut", ground: number, s: number) => n
  * S7-3 3.4: the plan's runs as below.ts reads them for the descent to their portals (BelowLinkRun),
  * kept per plan and ground: each run's ends as endPlan makes them (a junction's or seam's parent and
  * the parent's run distance there), its length, planV, whether below, and the ground at its two ends
- * (NaN where it is not read: a NaN portal imposes no ceiling).
+ * (NaN where it is not read: below.ts ceilingFrom stops on a way that reaches one).
  */
 const belowLinksCache = new WeakMap<Plan, WeakMap<GroundSampler, Map<string, BelowLinkRun>>>();
 function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkRun> {
