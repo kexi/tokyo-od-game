@@ -5230,6 +5230,23 @@ export function solvePlan(
     const up = solved.get(c.upper);
     const low = blockHeightAt(c.lower, c.sLower);
     if (!up || !low) continue;
+    // S7-3 (判定 1 の 2): over a tunnel under its roof (isHoleAt false there, overDeck's rule for the
+    // piers), an embankment or cut is on the ground as anywhere else: no crossing to clear. Why not keep
+    // it: a crossing on an embankment or cut is T13's violation, and the tunnel under the ground is no
+    // road the embankment stands over (331922702 under 78334075:3, planned by --below-junctions
+    // compile). Over a cut, or a tunnel's open mouth, or under a viaduct, it is kept as before.
+    const lowRp = plan.runs.get(c.lower)!;
+    const isRoofed =
+      lowRp.below &&
+      belowAt(lowRp, c.sLower) === "tunnel" &&
+      (() => {
+        const pose = poseAt(lowRp, c.sLower);
+        return !isHoleAt("tunnel", low.z, ground(pose.lon, pose.lat));
+      })();
+    const upperClass = up.structures ? heightClassAt(up.structures, c.sUpper) : null;
+    const isOnGroundAbove = upperClass === "embankment" || upperClass === "cut";
+    const isOverRoof = isRoofed && isOnGroundAbove;
+    if (isOverRoof) continue;
     up.cross.push(c.sUpper, low.z, ROAD_CLEAR);
   }
   const chunks: XwChunk[] = [];

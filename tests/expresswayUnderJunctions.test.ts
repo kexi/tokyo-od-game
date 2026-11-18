@@ -259,6 +259,61 @@ describe("B. 地平のランプと掘割の分合流（7c0 の網を compile で
   });
 });
 
+describe("B2. 屋根のあるトンネルの上の cross（S7-3 判定 1 の 2）", () => {
+  /** The main line's tunnel under the 30 m hill (x 1100–2900), and a road crossing over it at x 2000. */
+  const crossing = (middle: Record<string, string>, lower: Record<string, string> = tunnel) => {
+    const net = network([
+      { id: 1, x0: 0, x1: 1000, tags: bridge },
+      { id: 2, x0: 1000, x1: 3000, tags: lower },
+      { id: 3, x0: 3000, x1: 4000, tags: bridge },
+    ]);
+    const ys = [
+      -900, -800, -700, -600, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 600, 700, 800, 900,
+    ];
+    const nodes: Array<[number, number, number]> = ys.map((y, i) => [800001 + i, 2000, y]);
+    const ids = nodes.map((n) => n[0]);
+    const upTags = { highway: "motorway", lanes: "2", maxspeed: "60", ref: "C2" };
+    return addWays(net, nodes, [
+      [60, { ...upTags, bridge: "yes", layer: "1" }, ids.slice(0, 7)],
+      [61, { ...upTags, ...middle }, ids.slice(6, 13)],
+      [62, { ...upTags, bridge: "yes", layer: "1" }, ids.slice(12)],
+    ]);
+  };
+  const highGround = (lon: number, lat: number) => {
+    const x = xOf(lon, lat);
+    return x > 1100 && x < 2900 ? 30 : 3;
+  };
+  const solve = (net: Network) => {
+    const plan = planNetwork(net, new Set(), null, [], on);
+    return { plan, res: solvePlan(plan, highGround, []) };
+  };
+
+  it("an embankment or cut over a tunnel under its roof writes no crossing there, and T13 and T4 pass", () => {
+    const { plan, res } = solve(crossing({}));
+    expect(
+      plan.crossings.some(
+        (c) => (c.upper === "61" && c.lower === "2") || (c.upper === "2" && c.lower === "61"),
+      ),
+    ).toBe(true);
+    const chunks = byRun(res.chunks).get("61")!;
+    const onGround = chunks.filter((c) => c.structure === "embankment" || c.structure === "cut");
+    expect(onGround.length).toBeGreaterThan(0);
+    expect(onGround.every((c) => c.cross.length === 0)).toBe(true);
+    const v = violationsOf(res, res.chunks, () => undefined, true);
+    expect([v.T13.count, v.T4.count]).toEqual([0, 0]);
+  });
+
+  it("a viaduct over the same tunnel keeps its crossing", () => {
+    const { res } = solve(crossing({ bridge: "yes", layer: "1" }));
+    // The three viaduct ways are one run (60).
+    const crosses = byRun(res.chunks)
+      .get("60")!
+      .filter((c) => c.structure === "viaduct")
+      .flatMap((c) => c.cross);
+    expect(crosses.length).toBeGreaterThan(0);
+  });
+});
+
 describe("C. トンネルの中で分かれるランプ", () => {
   for (const [name, at, merge] of [
     ["diverging deep under the hill", 1800, false],
