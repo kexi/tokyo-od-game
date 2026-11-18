@@ -3,16 +3,19 @@
 // embankment's slab, how the places a street's pieces make are merged, and how they are numbered for
 // the ledger's key. Plane positions are three's Vector3 in a LocalFrame (x east, z south; y unused).
 import type { Vector3 } from "three";
+import { JOIN_GAP_M, MIN_LENGTH_M } from "../src/world/streetBands.ts";
 
-/** Shorter than this within the slab is a street's end at the site's edge, not a lane over it (m). */
-export const MIN_LENGTH_M = 3;
+/**
+ * Shorter than MIN_LENGTH_M within the slab is a street's end at the site's edge, not a lane over it;
+ * places of one run and street width closer than JOIN_GAP_M along the run are one place (m). The
+ * game's bands (P2.7 R1-2a) use the same two, so they are defined there.
+ */
+export { MIN_LENGTH_M, JOIN_GAP_M };
 /**
  * Past the slab's first or last station by less than this, the nearest point on the centre line is its
  * end and the distance is to the end face, not to the slab beside the lane: not counted (m).
  */
 export const END_FACE_M = 0.5;
-/** Places of one run and street width closer than this along the run are one place (m). */
-export const JOIN_GAP_M = 1;
 
 /** An embankment's slab: its centre line (points and their run distances) and the edge's offset. */
 export type SiteLine = { centre: readonly Vector3[]; s: readonly number[]; edgeM: number };

@@ -513,7 +513,7 @@ export function applyRegulations(
         ...osmLanes(seg, samples),
         jartic: laneVotes >= majority ? laneCount : null,
       };
-      const section = streetSectionOf(seg, evidence);
+      const section = streetSectionOf(seg, seg.bands ? { ...evidence, bands: seg.bands } : evidence);
       seg.section = section;
       seg.lanes = section.lanes;
     }

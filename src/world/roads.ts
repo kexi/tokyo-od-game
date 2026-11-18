@@ -25,6 +25,7 @@ import {
 import { buildLaneLinks, type LaneLink } from "./laneLinks";
 import { inForce, type GameClock, type RuleTime } from "./ruleTime";
 import type { LogFields } from "../logEvents";
+import type { StreetBand } from "./streetBandRules";
 
 /** A contradiction found in the lines while building the graph (logged, not repaired). */
 export type RoadDiagnostic =
@@ -108,6 +109,11 @@ export type Segment = {
    * section (the expressway) and on segments written by hand (streetSection derives one).
    */
   section?: StreetSection;
+  /**
+   * Bands across a street where no lane may run (P2.7 R1-2a: an expressway's site along it,
+   * streetBands.ts applyStreetBands), the evidence its section is resolved with. Absent elsewhere.
+   */
+  bands?: StreetBand[];
   /** JARTIC sections on this segment: 115 駐車禁止, 65 駐停車禁止, 51 転回禁止, 61 徐行. */
   rules: Array<{ code: number; time: RuleTime }>;
   /** JARTIC 通行禁止 (車両通行止め, 歩行者用道路 …) on this segment, and whether one applies now. */

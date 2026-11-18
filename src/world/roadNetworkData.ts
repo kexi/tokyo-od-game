@@ -11,6 +11,7 @@ import {
   type StopLine,
 } from "./regulations";
 import { decodeSignalTags, type SignalRecord } from "../signals/osmTags";
+import { applyStreetBands, type BandDiagnostic, bandDiagnostics, chainStreetBands } from "./streetBands";
 
 type Point = [number, number, number];
 type WireStop = Omit<StopLine, "seg" | "pos"> & { seg: number; pos: Point };
@@ -49,7 +50,7 @@ export type RoadNetworkData = {
   applied: WireApplied | null;
   /** The OSM tags of `applied.signals`, index for index (src/signals/osmTags.ts). */
   signalRecords: SignalRecord[];
-  diagnostics: Array<RegulationDiagnostic | RoadDiagnostic>;
+  diagnostics: Array<RegulationDiagnostic | RoadDiagnostic | BandDiagnostic>;
   computeMs: number;
 };
 export type RoadNetwork = {
@@ -63,15 +64,48 @@ export type RoadNetworkReply = { id: number; data: RoadNetworkData } | { id: num
 const point = (p: Vector3): Point => [p.x, p.y, p.z];
 const vector = (p: Point): Vector3 => new Vector3(...p);
 
+/**
+ * The network from its inputs, as the worker builds it: the expressway joined into the streets, the
+ * graph, the sites' bands on the streets they run along (P2.7 R1-2a, streetBands.ts), then the
+ * regulations (which resolve the banded sections once more with their evidence). The Node tools
+ * build theirs through here too (scripts/gameStreets.ts), so they judge the game's lanes.
+ */
+export function buildRoadNetwork(
+  lines: RoadLine[],
+  expressway: XwRoadInput | undefined,
+  regs: RegulationData | null,
+  frame: LocalFrame,
+  report: (d: RoadDiagnostic) => void,
+  reportRegulation: (d: RegulationDiagnostic) => void,
+  reportBand: (d: BandDiagnostic) => void = () => {},
+): { graph: RoadGraph; applied: AppliedRegulations | null } {
+  const joined = expressway ? joinExpressway(lines, expressway, report) : lines;
+  const graph = new RoadGraph(joined, frame, report);
+  const banded = applyStreetBands(graph, expressway?.sites ?? [], frame);
+  const applied = regs ? applyRegulations(graph, regs, frame, reportRegulation) : null;
+  // The chains after the regulations: their lane counts decide the lane jumps the guards need.
+  const chained = chainStreetBands(graph, banded, frame);
+  const segments = banded.map((b) => b.seg);
+  for (const d of [...bandDiagnostics(graph, segments, frame, chained.chainOf), ...chained.diagnostics])
+    reportBand(d);
+  return { graph, applied };
+}
+
 export function computeRoadNetwork(input: RoadNetworkInput): RoadNetworkData {
   const start = performance.now();
   const { lat, lon, h } = input.origin;
   const frame = new LocalFrame(lat, lon, h);
   const diagnostics: RoadNetworkData["diagnostics"] = [];
-  const report = (d: RoadDiagnostic) => diagnostics.push(d);
-  const lines = input.expressway ? joinExpressway(input.lines, input.expressway, report) : input.lines;
-  const graph = new RoadGraph(lines, frame, report);
-  const applied = input.regs ? applyRegulations(graph, input.regs, frame, (d) => diagnostics.push(d)) : null;
+  const push = (d: RoadNetworkData["diagnostics"][number]) => diagnostics.push(d);
+  const { graph, applied } = buildRoadNetwork(
+    input.lines,
+    input.expressway,
+    input.regs,
+    frame,
+    push,
+    push,
+    push,
+  );
   // Read here from the same records applyRegulations placed, so they stay index for index with
   // applied.signals. Why not in applyRegulations: AppliedRegulations.signals is positions only and
   // its other readers (and src/world/regulations.ts) need nothing more.

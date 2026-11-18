@@ -165,7 +165,13 @@ export class RoadNetworkBuilder {
       const result = restoreRoadNetwork(data, job.frame);
       const restoreMs = performance.now() - start;
       // Emit on the page so worker diagnostics retain the page's trace and log sink.
-      for (const diagnostic of data.diagnostics) warn(diagnostic.event, diagnostic.fields, job.span);
+      // A street given its band (P2.7 R1-2a) is a record, not a warning.
+      for (const diagnostic of data.diagnostics) {
+        if (diagnostic.event === "street_band_applied") log(diagnostic.event, diagnostic.fields, job.span);
+        else if (diagnostic.event === "street_bands_chained")
+          log(diagnostic.event, diagnostic.fields, job.span);
+        else warn(diagnostic.event, diagnostic.fields, job.span);
+      }
       log(
         "road_network_prepared",
         {

@@ -21,7 +21,9 @@ import { branchLink, runOf, type LaneLink } from "../world/laneLinks";
  * following the guidance never books a violation. The graph only covers the area around the player; a farther target is routed to
  * the reachable road closest to it, and the route is planned again as the graph moves along.
  */
-export type Turn = "straight" | "slightLeft" | "left" | "slightRight" | "right" | "uturn";
+// The turn classes live with the lanes' moves in world (laneMoves.ts), where the streets' bands read them too.
+export { classifyTurn, type Turn } from "../world/laneMoves";
+import { classifyTurn, type Turn } from "../world/laneMoves";
 export type Step = { seg: Segment; dir: 1 | -1 };
 /**
  * A merge or diverge of the expressway the route takes (laneLinks.ts): its route distance (the
@@ -69,17 +71,6 @@ export type Route = {
 export function turnBit(tIn: Vector3, tOut: Vector3): number {
   const side = leftOf(tIn, 1).dot(tOut);
   return side > 0.57 ? 1 : side < -0.57 ? 4 : 2;
-}
-
-/** Finer class for guidance: the angle between the incoming and outgoing directions. */
-export function classifyTurn(tIn: Vector3, tOut: Vector3): Turn {
-  const angle = (Math.atan2(leftOf(tIn, 1).dot(tOut), tIn.dot(tOut)) * 180) / Math.PI; // + = left
-  if (Math.abs(angle) > 150) return "uturn";
-  if (angle > 50) return "left";
-  if (angle > 22) return "slightLeft";
-  if (angle < -50) return "right";
-  if (angle < -22) return "slightRight";
-  return "straight";
 }
 
 /**

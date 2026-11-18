@@ -100,6 +100,7 @@ import { halfLengthOf } from "./game/autoTraffic";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, type PavementPolygon, Pavements, PavementTiles } from "./world/pavements";
+import { type IslandCell, islandCells, islandPolygons, plateauContains } from "./world/streetBands";
 import { initStartPicker, readStart } from "./game/startPoint";
 import { renderCredits } from "./game/credits";
 import { Input, keyFor, LOOK_KEYS } from "./game/input";
@@ -782,6 +783,22 @@ async function main(): Promise<void> {
   let lastPavements: PavementPolygon[] | null = null;
   const pavementsOffCuts = (polys: PavementPolygon[]) =>
     polys.filter((p) => !p.rings.some((ring) => groundCuts.touchesLonLat(ring)));
+  /** The island cells of the streets' medians (P2.7 R1-2a) in the graph laid, laid with the pavements. */
+  let lastIslands: { graph: RoadGraph; cells: IslandCell[] } | null = null;
+  /**
+   * PLATEAU's pavements (less those reaching into a cut) and the medians' islands, less the island
+   * cells PLATEAU already paves. The islands come after the cut filter: they stand beside a site by
+   * construction, and the filter would drop them for touching its hole's edge.
+   */
+  const layPavements = async (work: FrameWork): Promise<number> => {
+    const plateau = lastPavements ?? [];
+    const islands = lastIslands
+      ? islandPolygons(lastIslands.graph, lastIslands.cells, frame, plateauContains(plateau, frame))
+      : [];
+    await pavements.rebuildAsync([...pavementsOffCuts(plateau), ...islands], frame, work);
+    pedestrians.pavementsChanged();
+    return islands.length;
+  };
   // A tunnel or cut read after the streets and pavements were laid (P9): lay them again round its
   // hole, once for every batch of chunks (the tiles read together arrive in one task), and only when
   // a hole lies in the area laid. While the streets are loading, their own install cuts the holes.
@@ -803,10 +820,7 @@ async function main(): Promise<void> {
     if (!fresh) return;
     void roadUpdates
       .run(async () => {
-        if (lastPavements) {
-          await pavements.rebuildAsync(pavementsOffCuts(lastPavements), frame, new FrameWork());
-          pedestrians.pavementsChanged();
-        }
+        if (lastPavements || lastIslands) await layPavements(new FrameWork());
         const graph = roadGraph;
         if (graph) {
           const work = new FrameWork();
@@ -933,6 +947,14 @@ async function main(): Promise<void> {
       },
       true,
     );
+    // The medians' islands (P2.7 R1-2a) with the pavements, once the graph they follow is laid.
+    const cells = await measure("islands", () => islandCells(graph, roadExpressway?.sites ?? [], frame));
+    const hadIslands = (lastIslands?.cells.length ?? 0) > 0;
+    lastIslands = { graph, cells };
+    if (cells.length > 0 || hadIslands) {
+      const polygons = await measure("islandPavements", () => layPavements(work), true);
+      log("street_islands_laid", { cells: cells.length, polygons });
+    }
     // 消火栓 and schools add their own signs to the posts.
     const furnitureSigns = await measure(
       "furniture",
@@ -1041,8 +1063,7 @@ async function main(): Promise<void> {
           if (isStale) return;
           // A pavement reaching into a cut (P9) is left out: its kerb and collider would lid the cut.
           lastPavements = polys;
-          await pavements.rebuildAsync(pavementsOffCuts(polys), frame, new FrameWork());
-          pedestrians.pavementsChanged();
+          await layPavements(new FrameWork());
           log("pavements_built", { wards, polygons: polys.length });
           if (roadGraph)
             log(

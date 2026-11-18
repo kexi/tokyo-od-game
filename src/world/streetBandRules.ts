@@ -1,17 +1,21 @@
-// R1-2a's rules for a street segment with an expressway's site beside or under it (memo 改訂 1, 3.2
-// and 3.3), kept apart from the files and tiles scripts/measureStreetBands.ts reads so that they can
-// be tested: how a segment's samples become bands, and what class and section the bands give.
-// Offsets are metres left of the centre line along the coords.
-import { STREET } from "../src/world/laneChange.ts";
-import { NARROWEST_LANE } from "../src/world/streetAssumptions.ts";
+// R1-2a's rules for a street segment with an expressway's site beside or under it (P2.7 R1-2, memo
+// 改訂 1, 3.2 and 3.3): how a segment's strips become bands, and what class and section the bands
+// give. Pure arithmetic, so that resolveSection (laneChange.ts), the worker's bands (streetBands.ts)
+// and the measuring tool (scripts/measureStreetBands.ts) share one copy. Offsets are metres left of
+// the centre line along the coords.
+import { LANE_WIDTH, SHOULDER as SHOULDER_LAW } from "../law/roadStandards";
+import { NARROWEST_LANE } from "./streetAssumptions";
 
-const SHOULDER = STREET.shoulder;
+/** The street's shoulder and lane (laneChange.ts STREET; read from the law here to avoid a cycle). */
+const SHOULDER = SHOULDER_LAW.value.type4Left;
+const LANE_LAID = LANE_WIDTH.value.type4class1;
 const LANE_MIN = NARROWEST_LANE.value;
-/** The street lane width a widened carriageway is laid out with. */
-const LANE_LAID = STREET.laneWidth;
 
 /** A band across a street: no lane's centre may lie between `right` and `left`. */
 export type Band = { right: number; left: number };
+/** Where a street's band comes from: an expressway's site (R1-2), PLATEAU's island (G1, to come). */
+export type BandSource = "xw-site" | "plateau-island";
+export type StreetBand = Band & { source: BandSource };
 export type Klass = "clear" | "A" | "A'" | "B1" | "B2" | "B3" | "C";
 /** A class and, for A / A', the section it gives (carriageway centred, median, lanes a way). */
 export type Ruling = { klass: Klass; lanesAfter: number; median: number; carriageway: number };
@@ -26,9 +30,9 @@ export const holds = (span: number) => Math.max(0, Math.floor(span / LANE_MIN + 
  * street (central's segment 1176, 15.7 m apart, a lane each way between) made a band over the whole
  * street, counted as fitting nowhere.
  */
-export function mergeBands(strips: readonly Band[]): Band[] {
+export function mergeBands<B extends Band>(strips: readonly B[]): B[] {
   const sorted = strips.toSorted((a, b) => a.right - b.right);
-  const out: Band[] = [];
+  const out: B[] = [];
   for (const s of sorted) {
     const last = out.at(-1);
     const isTooClose = last !== undefined && s.right - last.left < LANE_MIN;

@@ -11,9 +11,11 @@ import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
 import { latToTileY, lonToTileX } from "../src/geo/tiles.ts";
 import type { LocalFrame } from "../src/geo/frame.ts";
-import { joinExpressway, type XwRoadInput } from "../src/world/expresswayRoads.ts";
-import { applyRegulations, type AppliedRegulations, type RegulationData } from "../src/world/regulations.ts";
-import { RoadGraph, type RoadLine } from "../src/world/roads.ts";
+import type { XwRoadInput } from "../src/world/expresswayRoads.ts";
+import type { AppliedRegulations, RegulationData } from "../src/world/regulations.ts";
+import { buildRoadNetwork } from "../src/world/roadNetworkData.ts";
+import type { RoadGraph, RoadLine } from "../src/world/roads.ts";
+import type { BandDiagnostic } from "../src/world/streetBands.ts";
 import { ROAD_TILE_ZOOM, roadLinesOfTile } from "../src/world/roadTiles.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -139,18 +141,27 @@ export function regulationReader(
 }
 
 /**
- * The network as the worker builds it (computeRoadNetwork): the expressway joined into the streets,
- * the graph, and the regulations on it when given (null: the sections from the widths alone).
+ * The network as the worker builds it (roadNetworkData.ts buildRoadNetwork): the expressway joined
+ * into the streets, the graph, the sites' bands on the streets along them (P2.7 R1-2a), and the
+ * regulations on it when given (null: the sections from the widths alone). `bands` gets what the
+ * bands made of each banded street (street_band_applied / _unresolved).
  */
 export function gameStreetGraph(
   streets: readonly RoadLine[],
   xw: XwRoadInput,
   frame: LocalFrame,
   regs: RegulationData | null,
+  bands: (d: BandDiagnostic) => void = () => {},
 ): { graph: RoadGraph; applied: AppliedRegulations | null } {
-  const joined = joinExpressway(streets, xw, () => {});
-  const graph = new RoadGraph(joined, frame, () => {});
-  const applied = regs === null ? null : applyRegulations(graph, regs, frame, () => {});
+  const { graph, applied } = buildRoadNetwork(
+    [...streets],
+    xw,
+    regs,
+    frame,
+    () => {},
+    () => {},
+    bands,
+  );
   // One-way as the section was resolved (regulations.ts streetSectionOf takes the rule's direction
   // whenever one is matched): the probes count at one moment only, so they take the one when the rule
   // is in force. Why not RoadGraph.setClock at some hour: outside a timed rule's hours the game does

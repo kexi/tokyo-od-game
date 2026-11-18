@@ -7,6 +7,7 @@ import {
   PAVED_FROM,
 } from "./streetAssumptions";
 import type { RoadLine, Segment } from "./roads";
+import { classify, type Klass, offCentreLanes, type StreetBand } from "./streetBandRules";
 
 /**
  * The cross-section of a road and the lanes in it, in one place. Everything that asks where a lane
@@ -87,6 +88,12 @@ export type LaneEvidence = {
   lanes?: number;
   /** A 中央帯 already resolved (a recorded section whose lane count was set afterwards). */
   median?: number;
+  /**
+   * Bands across the street where no lane may run (P2.7 R1-2a: an expressway's site beside or under
+   * it, streetBands.ts): a 中央帯 or a capped carriageway keeps the lanes out of them (streetBandRules
+   * classify), else the section is as without them.
+   */
+  bands?: readonly StreetBand[];
 };
 
 /**
@@ -101,7 +108,36 @@ export type StreetSection = CrossSection & {
   backward: number;
   /** 車道 width: lanes, shoulders and median, never wider than the room the 幅員 leaves. */
   carriageway: number;
+  /** The bands the section was resolved with (absent on a street without any). */
+  bands?: StreetBand[];
+  /** What the bands made of it (streetBandRules classify): A / A' given, the rest left as without. */
+  bandClass?: Klass;
+  /** The room the bands were judged in (streetRoom with the evidence's OSM width), to judge them again. */
+  bandRoom?: number;
+  /**
+   * The section as without the bands, where they changed it (A / A'): what a chain's common band is
+   * judged against again (streetBands.ts), and the lanes' jump and the logs read it.
+   */
+  unbanded?: UnbandedSection;
+  /**
+   * The band copied onto a segment with no site of its own (P2.7 R1-2a, memo 3.4): the chain's
+   * lanes are moved over before the first site. No island on it.
+   */
+  bandExtended?: true;
 };
+
+/** A street's section without anything the bands added. */
+export type UnbandedSection = Omit<
+  StreetSection,
+  "bands" | "bandClass" | "bandRoom" | "unbanded" | "bandExtended"
+>;
+
+/** The section a banded one was resolved from (itself where the bands changed nothing). */
+export function unbandedOf(section: StreetSection): UnbandedSection {
+  if (section.unbanded) return section.unbanded;
+  const { bands: _b, bandClass: _k, bandRoom: _r, unbanded: _u, bandExtended: _e, ...base } = section;
+  return base;
+}
 
 /**
  * The room a street's carriageway has, and how many lanes a direction can hold in it at the
@@ -141,6 +177,69 @@ export function resolveSection(
   travel: SectionTravel,
   evidence: LaneEvidence = {},
 ): StreetSection {
+  const base = resolveUnbanded(width, travel, evidence);
+  const bands = evidence.bands ?? [];
+  const hasBands = bands.length > 0;
+  if (!hasBands) return base;
+  const dir = travelOf(travel);
+  return bandSection(base, dir, streetRoom(width, dir, evidence.osmWidth ?? null).room, bands);
+}
+
+/**
+ * A section given its bands (P2.7 R1-2a, memo 3.3): the lanes' centres as resolved without them are
+ * judged against each band, and a 中央帯 or a capped carriageway (classify) replaces the section where
+ * one fits; where none does (B1 / B2 / B3 / C), the section stays as it was, with its class for the
+ * logs and R1-2b. The lane count is the evidence's or what fits, the smaller.
+ */
+export function bandSection(
+  base: UnbandedSection,
+  dir: 0 | 1 | -1,
+  room: number,
+  bands: readonly StreetBand[],
+): StreetSection {
+  const isOneWay = dir !== 0;
+  const span = isOneWay
+    ? base.carriageway - 2 * STREET.shoulder
+    : base.carriageway / 2 - STREET.shoulder - base.median / 2;
+  const leftEdge = base.carriageway / 2 - STREET.shoulder;
+  const centres: number[] = [];
+  for (let lane = 0; lane < base.lanes; lane++) {
+    // Left of travel; along the coords that is the same for d = 1, the other side for d = −1.
+    const offset = leftEdge - (lane + 0.5) * (span / base.lanes);
+    if (isOneWay) centres.push(dir * offset);
+    else centres.push(offset, -offset);
+  }
+  const union = {
+    right: Math.min(...bands.map((b) => b.right)),
+    left: Math.max(...bands.map((b) => b.left)),
+  };
+  const offCentre = offCentreLanes(room, dir, base.lanes, union);
+  const ruling = classify(
+    { travel: dir, lanes: base.lanes, carriageway: base.carriageway, median: base.median, room, centres },
+    bands,
+    offCentre,
+  );
+  const listed: StreetSection = { ...base, bands: [...bands], bandClass: ruling.klass, bandRoom: room };
+  const isGiven = ruling.klass === "A" || ruling.klass === "A'";
+  if (!isGiven) return listed;
+  const lanes = ruling.lanesAfter;
+  const givenSpan = isOneWay
+    ? ruling.carriageway - 2 * STREET.shoulder
+    : ruling.carriageway / 2 - STREET.shoulder - ruling.median / 2;
+  return {
+    ...listed,
+    lanes,
+    laneWidth: givenSpan / lanes,
+    median: ruling.median,
+    carriageway: ruling.carriageway,
+    forward: Math.min(base.forward, lanes),
+    backward: Math.min(base.backward, lanes),
+    unbanded: base,
+  };
+}
+
+/** resolveSection without bands: the evidence's lanes in the room the 幅員 leaves. */
+function resolveUnbanded(width: number, travel: SectionTravel, evidence: LaneEvidence): StreetSection {
   const dir = travelOf(travel);
   const isOneWay = dir !== 0;
   const dirs = isOneWay ? 1 : 2;

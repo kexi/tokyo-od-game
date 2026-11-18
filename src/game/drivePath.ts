@@ -2,6 +2,7 @@ import { Vector3 } from "three";
 import { isLaneChangeBanned, laneBand, laneCentreOffset, laneOfOffset } from "../world/laneChange";
 import { laneOffset, leftOf, type RoadGraph, type Segment } from "../world/roads";
 import { intoTrunkLane, runOf } from "../world/laneLinks";
+import { BAN_LEAD, LANE_SLOPE } from "../world/laneMoves";
 import type { LaneHint, Maneuver, Route, RouteLink, Step, Turn } from "./navigation";
 
 /**
@@ -42,8 +43,6 @@ export const XW_MERGE_KEEP = 150;
 const XW_TAPER_REACH = 250;
 // Moving over within the lane happens with the 合図, 30 m before the turn (施行令 第21条).
 const HUG_BEFORE = 30;
-// Lateral metres per metre of travel while changing lanes (a 3 m lane over 30 m).
-const LANE_SLOPE = 0.1;
 const MAX_RADIUS = 40;
 // A right turn sweeping wider than this ends in the lane by the centre line instead.
 const WIDE_SWEEP = 20;
@@ -436,8 +435,6 @@ export type DrivePath = {
   blocked: number[];
 };
 
-// A lane change before a 進路変更禁止 stretch is over this far before its first point.
-const BAN_LEAD = 10;
 // Metres before a junction that its turn's curve may take (where no lane change can go).
 const TURN_ROOM = 20;
 

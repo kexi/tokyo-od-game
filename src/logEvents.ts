@@ -425,6 +425,77 @@ export const LOG_EVENTS = {
     tunnel: z.boolean(),
   }),
   /**
+   * A street segment an expressway's site runs along given a 中央帯 (A) or a capped carriageway (A')
+   * that keeps its lanes out of the site's bands (P2.7 R1-2a, streetBands.ts): where (its middle),
+   * the bands, and the section before and after.
+   */
+  street_band_applied: info({
+    at: latLon,
+    widthM: z.number().nonnegative(),
+    travel: z.union([z.literal(0), z.literal(1), z.literal(-1)]),
+    klass: z.enum(["A", "A'"]),
+    bands: z.array(z.strictObject({ right: z.number(), left: z.number() })),
+    lanesBefore: count,
+    lanesAfter: count,
+    carriagewayBefore: z.number().nonnegative(),
+    carriagewayAfter: z.number().nonnegative(),
+    medianAfter: z.number().nonnegative(),
+    /** Segments in its chain (memo 3.4) and those the chain's band was copied onto. */
+    chain: count,
+    extended: count,
+  }),
+  /**
+   * A chain of banded segments given no band (P2.7 R1-2a, memo 3.4): its merged band holds no lane
+   * somewhere, or an end goes straight on into a street the band cannot be copied onto before the
+   * drive planner's lane shift (jump ÷ LANE_SLOPE + BAN_LEAD) ends: a car would shift into the walls.
+   */
+  street_band_guard_short: warning({
+    at: latLon,
+    reason: z.enum(["one-way", "not-street", "no-lane", "other-chain", "too-many"]),
+    segments: count,
+    needM: z.number().nonnegative(),
+    haveM: z.number().nonnegative(),
+  }),
+  /**
+   * The chains of a network's banded streets (memo 3.4): how many, the segments their bands were
+   * copied onto and how long, and each end's shift needed and room had.
+   */
+  street_bands_chained: info({
+    chains: count,
+    extended: count,
+    extendedM: count,
+    ends: z.array(
+      z.strictObject({
+        at: latLon,
+        kind: z.enum(["fits", "dead-end", "short"]),
+        needM: z.number().nonnegative(),
+        haveM: z.number().nonnegative(),
+        jumpM: z.number().nonnegative(),
+        extended: count,
+        reason: z.enum(["one-way", "not-street", "no-lane", "other-chain", "too-many"]).optional(),
+      }),
+    ),
+  }),
+  /**
+   * The islands of the medians the sites' bands gave (P2.7 R1-2a, U8) laid with the pavements: the
+   * cells found, and the polygons laid once those PLATEAU already paves were left out.
+   */
+  street_islands_laid: info({ cells: count, polygons: count }),
+  /**
+   * A street segment whose lanes run in an expressway's site's bands and that no 中央帯 or capped
+   * carriageway fixes (P2.7 R1-2a): its section is left as it was. B1 a one-way street, B2 a two-way
+   * one, that fit to one side of the bands; B3 one that fits but would keep fewer lanes than a moved
+   * line; C one that fits nowhere in its 幅員. R1-2b's input, and the ledger's.
+   */
+  street_band_unresolved: warning({
+    at: latLon,
+    widthM: z.number().nonnegative(),
+    travel: z.union([z.literal(0), z.literal(1), z.literal(-1)]),
+    klass: z.enum(["B1", "B2", "B3", "C"]),
+    bands: z.array(z.strictObject({ right: z.number(), left: z.number() })),
+    lanes: count,
+  }),
+  /**
    * A road network was replaced after `hits` nearestOnSurface answers fell back to a ground road
    * whose terrain had not loaded (no height to gate by, roads.ts).
    */
@@ -1514,6 +1585,20 @@ export const LOG_EVENTS = {
     fewerLanes: count,
     widened: count,
     edgeOnPavement: count,
+    lanesInBandWhereGiven: count,
+    islandSegments: count,
+    islandCells: count,
+    islandsLaid: count,
+    islandCellsOverSlab: count,
+    appliedLogs: count,
+    guardShortLogs: count,
+    extendedSegments: count,
+    extendedM: count,
+    extendedEdgeOnPavement: count,
+    chainEndsFit: count,
+    chainEndsDeadEnd: count,
+    chainEndsShort: count,
+    unresolvedLogs: count,
     jumps: count,
     jumpsGrown: count,
     jumpMostBeforeM: z.number().nonnegative(),

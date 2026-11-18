@@ -60,11 +60,11 @@ const EXTENT_MARGIN_M = 60;
 /** A street crossing a site within this of where its run meets the ground is that end's street, not cut. */
 const SITE_END_REACH_M = RAMP_REACH_M;
 /** A street meeting a site at less than this angle runs along it (a ramp in its median), not across. */
-const SITE_CROSSING_MIN_DEG = 30;
+export const SITE_CROSSING_MIN_DEG = 30;
 /** The grid siteCrossings files the sites' segments in (m). */
 const SITE_CELL_M = 50;
 /** A cut street stops this far short of the site's slab edge (m). */
-const SITE_CLEARANCE_M = 1;
+export const SITE_CLEARANCE_M = 1;
 /**
  * What a deck must stand over the ground to pass over a street (siteCrossings `under`: the compiler
  * should have made it a viaduct there): 構造令 第12条's clearance and the standard girder, judged as

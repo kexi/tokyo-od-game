@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classify, mergeBands, offCentreLanes, type SectionNow } from "../scripts/streetBands";
+import { classify, mergeBands, offCentreLanes, type SectionNow } from "../src/world/streetBandRules";
 
 /** A two-way street, one lane a way in a 7.5 m carriageway (lane centres ±1.6 m), 16 m 幅員. */
 const narrow: SectionNow = {

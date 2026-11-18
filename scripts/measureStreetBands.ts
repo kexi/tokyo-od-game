@@ -35,28 +35,29 @@ import { AreaIndex, type AreaFile } from "../src/geo/areas.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
 import { tileXToLon, tileYToLat } from "../src/geo/tiles.ts";
 import { log } from "../src/log.ts";
+import type { LogFields } from "../src/logEvents.ts";
 import { expresswayRoadInput } from "../src/world/expresswayRoads.ts";
 import { laneCentreOffset, laneWidth, STREET, streetRoom } from "../src/world/laneChange.ts";
+import { type Klass, laneZero, offCentreLanes } from "../src/world/streetBandRules.ts";
+import {
+  bandSamples,
+  type BandDiagnostic,
+  islandCells,
+  islandPolygons,
+  plateauContains,
+  SiteIndex,
+  stripsAt,
+} from "../src/world/streetBands.ts";
 import { polygonsOf, WARD_TILES, type PavementPolygon } from "../src/world/pavements.ts";
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { type RoadLine, type Segment } from "../src/world/roads.ts";
 import { ROAD_TILE_ZOOM } from "../src/world/roadTiles.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
-import { classify, type Klass, laneZero, mergeBands, offCentreLanes, type Ruling } from "./streetBands.ts";
 import { DATA_DIR, gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 /** The decks the game joins round a point (expresswayDeck.ts GRAPH_RADIUS_M). */
 const GRAPH_RADIUS_M = 1300;
-/**
- * The values the memo names (3.2): expresswayRoads.ts's SITE_CROSSING_MIN_DEG and SITE_CLEARANCE_M,
- * the lanes probe's MIN_LENGTH_M and JOIN_GAP_M. Copied, as GRAPH_RADIUS_M is: the src ones are not
- * exported, and R1-2-0 changes no runtime code (expresswayFeetProbe.ts copies its own the same way).
- */
-const SITE_CROSSING_MIN_DEG = 30;
-const SITE_CLEARANCE_M = 1;
-const MIN_LENGTH_M = 3;
-const JOIN_GAP_M = 1;
 /** The street's shoulder: the edge line runs this far inside the carriageway. */
 const SHOULDER = STREET.shoulder;
 /** A segment beyond a node within this of straight on is the same street going on (deg). */
@@ -138,50 +139,6 @@ async function plateauOf(x: number, y: number): Promise<PavementPolygon[]> {
 // ---------- geometry ----------
 
 type P = { x: number; z: number };
-type BandSite = { chunk: string; run: string; structure: string; pts: P[]; s: number[]; half: number };
-type Strip = { right: number; left: number; chunk: string; structure: string; s: number };
-
-/**
- * The sites' strips across a street at one point (`p`, unit heading `t`, 幅員 `width`): one for every
- * site segment the street's normal through p meets at under SITE_CROSSING_MIN_DEG, its half width over
- * the cosine of the angle, widened by SITE_CLEARANCE_M, that reaches the street's 幅員. Why each its
- * own and not their union: two decks either side of a street meet one normal, and their union covers
- * the lanes between them (mergeBands decides what is one band).
- */
-function stripsAt(p: P, t: P, width: number, sites: readonly BandSite[]): Strip[] {
-  const n = { x: t.z, z: -t.x }; // leftOf
-  const cosMin = Math.cos((SITE_CROSSING_MIN_DEG * Math.PI) / 180);
-  const out: Strip[] = [];
-  for (const site of sites) {
-    for (let j = 0; j + 1 < site.pts.length; j++) {
-      const a = site.pts[j];
-      const b = site.pts[j + 1];
-      const e = { x: b.x - a.x, z: b.z - a.z };
-      const len = Math.hypot(e.x, e.z);
-      if (len < 1e-6) continue;
-      const cos = Math.abs(t.x * e.x + t.z * e.z) / len;
-      const isAlong = cos > cosMin;
-      if (!isAlong) continue;
-      // p + u n = a + v e
-      const det = -n.x * e.z + n.z * e.x;
-      if (Math.abs(det) < 1e-9) continue;
-      const rx = a.x - p.x;
-      const rz = a.z - p.z;
-      const u = (rx * -e.z + rz * e.x) / det;
-      const v = (n.x * rz - n.z * rx) / det;
-      const isOnSegment = v >= 0 && v <= 1;
-      if (!isOnSegment) continue;
-      const across = site.half / cos + SITE_CLEARANCE_M;
-      const right = u - across;
-      const left = u + across;
-      const reaches = left > -width / 2 && right < width / 2;
-      if (!reaches) continue;
-      const s = site.s[j] + (site.s[j + 1] - site.s[j]) * v;
-      out.push({ right, left, chunk: site.chunk, structure: site.structure, s });
-    }
-  }
-  return out;
-}
 
 function insidePolygon(x: number, z: number, ring: readonly P[]): boolean {
   let inside = false;
@@ -212,25 +169,43 @@ type Banded = {
   travel: 0 | 1 | -1;
   lineOneway: number;
   ruled: boolean;
-  lanes: number;
   basis: string;
+  /** The section as resolved without the bands (the game keeps it on the section where it changed). */
+  lanes: number;
   medianNow: number;
   carriagewayNow: number;
   room: number;
   right: number;
   left: number;
   bands: Array<{ right: number; left: number }>;
-  ruling: Ruling;
+  klass: Klass;
+  /** The section the game gave it (the same as the one above unless A / A'). */
+  lanesAfter: number;
+  medianAfter: number;
+  carriagewayAfter: number;
   lanesChange: number;
   widened: boolean;
   offCentre: number;
+  /** Lanes whose centre lies in a band in the game's section (0 wherever A / A' was given). */
+  lanesInBand: number;
   edgeOnPavement: boolean;
   pavementShare: number;
   footNearM: number | null;
 };
 type Jump = { seg: number; node: string; other: number; beforeM: number; afterM: number };
+/** A segment's islands (memo 3.6): cells, laid polygons, length, widths, and cells over a slab. */
+type Islands = {
+  seg: number;
+  at: [number, number];
+  cells: number;
+  laid: number;
+  onPlateau: number;
+  lengthM: number;
+  widthLeastM: number;
+  widthMostM: number;
+  overSlab: number;
+};
 
-const lane0Now = (seg: Segment) => laneCentreOffset(seg, 0);
 /** A segment's unit heading out of one of its end nodes. */
 const headingOut = (seg: Segment, node: number): P => {
   const atFrom = seg.from === node;
@@ -239,14 +214,30 @@ const headingOut = (seg: Segment, node: number): P => {
   const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
   return { x: (b.x - a.x) / l, z: (b.z - a.z) / l };
 };
+/** Lane 0's centre now (the game's section) and before the bands (its unbanded section). */
+const lane0After = (seg: Segment) => laneCentreOffset(seg, 0);
+const lane0Before = (seg: Segment) => {
+  const before = seg.section?.unbanded;
+  if (!before) return lane0After(seg);
+  return laneZero(seg.oneway, before.lanes, before.carriageway, before.median);
+};
 const isStreet = (seg: Segment) => sourceOf(seg.line) === "gsi" && !isExpressway(seg.line);
 const round = (v: number, k = 100) => Math.round(v * k) / k;
 const banded: Banded[] = [];
 const jumps: Jump[] = [];
+const bandLogs: BandDiagnostic[] = [];
+/** The segments a chain's band was copied onto (memo 3.4), each once, and the chains' ends. */
+const extendedRows = new Map<
+  string,
+  { at: [number, number]; lengthM: number; widthM: number; lanes: string; edgeOnPavement: boolean }
+>();
+const chainEnds = new Map<string, LogFields<"street_bands_chained">["ends"][number]>();
+const islands: Islands[] = [];
 const piersOverLanes: Array<{ chunk: string; s: number; street: number; widthM: number }> = [];
 const twoNodes = new Map<string, { stop: boolean; crossing: boolean; signal: boolean }>();
 let skipped = 0;
 let groupsWithoutRegulations = 0;
+const structureOf = new Map(files.chunks.map((c) => [c.id, c.structure]));
 
 const siteChunks = files.chunks.filter((c) => c.structure === "embankment" || c.structure === "cut");
 const tileKeyOf = (c: XwChunk) => {
@@ -280,34 +271,14 @@ for (const [key, focus] of groups) {
   const frame = new LocalFrame(lat, lon, 0);
   const regs = await regulationsAround(cx, cy);
   if (regs === null) groupsWithoutRegulations++;
-  const { graph, applied } = gameStreetGraph(
-    streets,
-    expresswayRoadInput(near, runs, (_la, _lo, h) => h),
-    frame,
-    regs,
-  );
+  const xw = expresswayRoadInput(near, runs, (_la, _lo, h) => h);
+  const groupLogs: BandDiagnostic[] = [];
+  const { graph, applied } = gameStreetGraph(streets, xw, frame, regs, (d) => groupLogs.push(d));
+  const index = new SiteIndex(xw.sites ?? [], frame);
   const local = (lo: number, la: number): P => {
     const v = frame.toLocal(la, lo, 0);
     return { x: v.x, z: v.z };
   };
-  const sites: BandSite[] = near
-    .filter((c) => c.structure === "embankment" || c.structure === "cut")
-    .map((c) => {
-      const pts: P[] = [];
-      const s: number[] = [];
-      for (let i = 0; i < c.st.length; i += STATION_STRIDE) {
-        pts.push(local(c.st[i + ST.lon], c.st[i + ST.lat]));
-        s.push(c.st[i + ST.s]);
-      }
-      return {
-        chunk: c.id,
-        run: c.run,
-        structure: c.structure,
-        pts,
-        s,
-        half: deckCarriageway(c) / 2 + PARAPET_WIDTH.value,
-      };
-    });
   const focusIds = new Set(focus.map((c) => c.id));
   const runOf = new Map(near.map((c) => [c.id, c.run]));
   // PLATEAU round the group (the 3 × 3 tiles), in the frame.
@@ -334,72 +305,77 @@ for (const [key, focus] of groups) {
       footNodes.push({ x: p.x, z: p.z });
     }
   }
-  const lane0After = new Map<number, number>();
-  const groupBanded: Array<{ seg: Segment; row: Banded }> = [];
+  const groupBanded: Segment[] = [];
 
   for (const seg of graph.segments) {
-    if (!isStreet(seg)) continue;
-    const travel = seg.oneway;
-    const hits: Array<{ l: number; strips: Strip[] }> = [];
-    for (let l = 0; l <= seg.length; l += 1) {
-      const { pos, dir } = graph.sample(seg, l);
-      const strips = stripsAt({ x: pos.x, z: pos.z }, { x: dir.x, z: dir.z }, seg.line.width, sites);
-      if (strips.length > 0) hits.push({ l, strips });
+    const bands = seg.bands;
+    if (!bands) continue;
+    const isExtended = seg.section?.bandExtended === true;
+    if (isExtended) {
+      const section = seg.section!;
+      const before = section.unbanded ?? section;
+      const mid = frame.toGeodetic(graph.sample(seg, seg.length / 2).pos);
+      // The edge lines moved out onto PLATEAU's pavement, as for a banded segment below.
+      let isOn = false;
+      for (let l = 0; l <= seg.length; l += 2) {
+        const { pos, dir } = graph.sample(seg, l);
+        for (const side of [1, -1]) {
+          const nowAt = side * (before.carriageway / 2 - SHOULDER);
+          const newAt = side * (section.carriageway / 2 - SHOULDER);
+          const wasOn = onPavement(pos.x + dir.z * nowAt, pos.z - dir.x * nowAt, ["sidewalk"]);
+          const isOnNow = onPavement(pos.x + dir.z * newAt, pos.z - dir.x * newAt, ["sidewalk"]);
+          if (isOnNow && !wasOn) isOn = true;
+        }
+      }
+      const at: [number, number] = [round(mid.lat, 1e6), round(mid.lon, 1e6)];
+      extendedRows.set(at.join(","), {
+        at,
+        lengthM: round(seg.length, 10),
+        widthM: seg.line.width,
+        lanes: `${before.lanes}->${section.lanes}`,
+        edgeOnPavement: isOn,
+      });
+      continue;
     }
-    // Runs of hits, gaps of JOIN_GAP_M closed; those of MIN_LENGTH_M or more make the segment's band.
-    const runsOfHits: Array<typeof hits> = [];
-    for (const h of hits) {
-      const last = runsOfHits.at(-1);
-      const isJoined = last !== undefined && h.l - last.at(-1)!.l <= 1 + JOIN_GAP_M;
-      if (isJoined) last.push(h);
-      else runsOfHits.push([h]);
-    }
-    const kept = runsOfHits.filter((r) => r.length >= MIN_LENGTH_M).flat();
-    if (kept.length === 0) continue;
+    const kept = bandSamples(graph, seg, index);
     const chunkVotes = new Map<string, number>();
     for (const h of kept)
       for (const strip of h.strips) chunkVotes.set(strip.chunk, (chunkVotes.get(strip.chunk) ?? 0) + 1);
     const chunk = [...chunkVotes].toSorted((a, b) => b[1] - a[1])[0][0];
     // Each segment once: the group whose tile holds the chunk most of its band is from.
     if (!focusIds.has(chunk)) continue;
-    // The bands (memo 3.2): strips apart by a lane or more stay apart; the union only for B1 / B2.
-    const bands = mergeBands(kept.flatMap((h) => h.strips.map((b) => ({ right: b.right, left: b.left }))));
+    groupBanded.push(seg);
+    const travel = seg.oneway;
+    const section = seg.section!;
+    const klass = section.bandClass ?? "clear";
+    const before = section.unbanded ?? section;
     const right = Math.min(...bands.map((b) => b.right));
     const left = Math.max(...bands.map((b) => b.left));
-    const section = seg.section;
-    const lanes = seg.lanes;
-    const medianNow = section?.median ?? 0;
-    const carriagewayNow = section?.carriageway ?? 0;
     const { room } = streetRoom(seg.line.width, travel);
-    const centres: number[] = [];
+    const offCentre = offCentreLanes(room, travel, before.lanes, { right, left });
+    let lanesInBand = 0;
     for (const d of [1, -1] as const) {
       const isDriven = travel === 0 || travel === d;
       if (!isDriven) continue;
-      for (let lane = 0; lane < lanes; lane++) centres.push(d * laneCentreOffset(seg, lane));
+      for (let lane = 0; lane < seg.lanes; lane++) {
+        const centre = d * laneCentreOffset(seg, lane);
+        if (bands.some((b) => centre > b.right && centre < b.left)) lanesInBand++;
+      }
     }
-    const offCentre = offCentreLanes(room, travel, lanes, { right, left });
-    const ruling = classify(
-      { travel, lanes, carriageway: carriagewayNow, median: medianNow, room, centres },
-      bands,
-      offCentre,
-    );
-    const isResolved = ruling.klass === "A" || ruling.klass === "A'";
-    const widened = isResolved && ruling.carriageway > carriagewayNow + 0.01;
-    if (isResolved)
-      lane0After.set(seg.id, laneZero(travel, ruling.lanesAfter, ruling.carriageway, ruling.median));
+    const widened = section.carriageway > before.carriageway + 0.01;
     // Edge lines moved out (A widened) against PLATEAU's pavement, where the old ones were not on it;
     // PLATEAU's pavement inside the band.
     let edgeOnPavement = false;
     let pavedSamples = 0;
-    let bandSamples = 0;
+    let stripSamples = 0;
     for (const h of kept) {
       const { pos, dir } = graph.sample(seg, h.l);
       const nx = dir.z;
       const nz = -dir.x;
       if (widened)
         for (const side of [1, -1]) {
-          const nowAt = side * (carriagewayNow / 2 - SHOULDER);
-          const newAt = side * (ruling.carriageway / 2 - SHOULDER);
+          const nowAt = side * (before.carriageway / 2 - SHOULDER);
+          const newAt = side * (section.carriageway / 2 - SHOULDER);
           const wasOn = onPavement(pos.x + nx * nowAt, pos.z + nz * nowAt, ["sidewalk"]);
           const isOn = onPavement(pos.x + nx * newAt, pos.z + nz * newAt, ["sidewalk"]);
           if (isOn && !wasOn) edgeOnPavement = true;
@@ -408,7 +384,7 @@ for (const [key, focus] of groups) {
         const lo = Math.max(strip.right, -seg.line.width / 2);
         const hi = Math.min(strip.left, seg.line.width / 2);
         for (let u = lo; u <= hi; u += 0.5) {
-          bandSamples++;
+          stripSamples++;
           if (onPavement(pos.x + nx * u, pos.z + nz * u, ["sidewalk", "island"])) pavedSamples++;
         }
       }
@@ -421,19 +397,14 @@ for (const [key, focus] of groups) {
         if (d <= FOOT_NEAR_M) footNearM = Math.min(footNearM ?? Infinity, Math.round(d));
       }
     const g = frame.toGeodetic(graph.sample(seg, kept[Math.floor(kept.length / 2)].l).pos);
-    const row: Banded = {
+    const sOf = kept.flatMap((h) => h.strips.filter((b) => b.chunk === chunk).map((b) => b.s));
+    banded.push({
       run: runOf.get(chunk) ?? "?",
       chunk,
-      structure: kept.flatMap((h) => h.strips).find((b) => b.chunk === chunk)?.structure ?? "?",
       chunks: [...chunkVotes.keys()].toSorted(),
-      s0: round(
-        Math.min(...kept.flatMap((h) => h.strips.filter((b) => b.chunk === chunk).map((b) => b.s))),
-        10,
-      ),
-      s1: round(
-        Math.max(...kept.flatMap((h) => h.strips.filter((b) => b.chunk === chunk).map((b) => b.s))),
-        10,
-      ),
+      structure: structureOf.get(chunk) ?? "?",
+      s0: round(Math.min(...sOf), 10),
+      s1: round(Math.max(...sOf), 10),
       lengthM: kept.length,
       seg: seg.id,
       segLengthM: round(seg.length, 10),
@@ -442,33 +413,50 @@ for (const [key, focus] of groups) {
       travel,
       lineOneway: seg.line.oneway,
       ruled: seg.onewayRule !== null,
-      lanes,
-      basis: section?.basis ?? "?",
-      medianNow: round(medianNow),
-      carriagewayNow: round(carriagewayNow),
+      basis: section.basis,
+      lanes: before.lanes,
+      medianNow: round(before.median),
+      carriagewayNow: round(before.carriageway),
       room: round(room),
       right: round(right),
       left: round(left),
       bands: bands.map((b) => ({ right: round(b.right), left: round(b.left) })),
-      ruling: { ...ruling, median: round(ruling.median), carriageway: round(ruling.carriageway) },
-      lanesChange: ruling.lanesAfter - lanes,
+      klass,
+      lanesAfter: section.lanes,
+      medianAfter: round(section.median),
+      carriagewayAfter: round(section.carriageway),
+      lanesChange: section.lanes - before.lanes,
       widened,
       offCentre,
+      lanesInBand,
       edgeOnPavement,
-      pavementShare: bandSamples === 0 ? 0 : round(pavedSamples / bandSamples),
+      pavementShare: stripSamples === 0 ? 0 : round(pavedSamples / stripSamples),
       footNearM,
-    };
-    banded.push(row);
-    groupBanded.push({ seg, row });
+    });
   }
+  const groupSegs = new Set(groupBanded);
+  for (const d of groupLogs) {
+    if (d.event !== "street_bands_chained") continue;
+    for (const e of d.fields.ends) chainEnds.set(`${e.at.join(",")}|${e.kind}`, e);
+  }
+  bandLogs.push(
+    ...groupLogs.filter((d) => {
+      const isPerSegment = d.event === "street_band_applied" || d.event === "street_band_unresolved";
+      if (!isPerSegment) return d.event === "street_band_guard_short";
+      const isMine = groupBanded.some((seg) => {
+        const g = frame.toGeodetic(graph.sample(seg, seg.length / 2).pos);
+        return Math.abs(g.lat - d.fields.at[0]) < 2e-6 && Math.abs(g.lon - d.fields.at[1]) < 2e-6;
+      });
+      return isMine;
+    }),
+  );
 
   // Lane 0's jump at the ends of each A / A' segment (memo 3.4): against each street segment going on
-  // nearly straight from the node, before (both as now) and after (the banded ones with their band).
-
+  // nearly straight from the node, before (both without their bands) and after (the game's sections).
   const cosStraight = Math.cos((STRAIGHT_ON_DEG * Math.PI) / 180);
-  for (const { seg } of groupBanded) {
-    const after = lane0After.get(seg.id);
-    if (after === undefined) continue;
+  for (const seg of groupSegs) {
+    const isGiven = seg.section?.bandClass === "A" || seg.section?.bandClass === "A'";
+    if (!isGiven) continue;
     for (const node of [seg.from, seg.to]) {
       const out = headingOut(seg, node);
       for (const id of graph.nodes.get(node) ?? []) {
@@ -478,19 +466,52 @@ for (const [key, focus] of groups) {
         const on = headingOut(other, node);
         const isStraightOn = -(out.x * on.x + out.z * on.z) > cosStraight;
         if (!isStraightOn) continue;
-        const otherNow = lane0Now(other);
-        const otherAfter = lane0After.get(other.id) ?? otherNow;
         const p = node === seg.from ? seg.pts[0] : seg.pts[seg.pts.length - 1];
         const gp = frame.toGeodetic(p);
         jumps.push({
           seg: seg.id,
           node: `${gp.lat.toFixed(6)},${gp.lon.toFixed(6)}`,
           other: other.id,
-          beforeM: round(Math.abs(lane0Now(seg) - otherNow)),
-          afterM: round(Math.abs(after - otherAfter)),
+          beforeM: round(Math.abs(lane0Before(seg) - lane0Before(other))),
+          afterM: round(Math.abs(lane0After(seg) - lane0After(other))),
         });
       }
     }
+  }
+
+  // The medians' islands as the page lays them (main.ts layPavements), and any cell over a slab.
+  const plateau = await (async () => {
+    const all: PavementPolygon[] = [];
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) all.push(...(await plateauOf(cx + dx, cy + dy)));
+    return all;
+  })();
+  const isPaved = plateauContains(plateau, frame);
+  const cells = islandCells(graph, xw.sites ?? [], frame).filter((c) => groupSegs.has(graph.segments[c.seg]));
+  for (const seg of groupSegs) {
+    const mine = cells.filter((c) => c.seg === seg.id);
+    if (mine.length === 0) continue;
+    const laid = islandPolygons(graph, mine, frame, isPaved).length;
+    let overSlab = 0;
+    for (const c of mine)
+      for (const s of [c.s0, (c.s0 + c.s1) / 2, c.s1]) {
+        const { pos, dir } = graph.sample(seg, s);
+        const strips = stripsAt({ x: pos.x, z: pos.z }, { x: dir.x, z: dir.z }, seg.line.width, index);
+        const isOver = strips.some((b) => c.left > b.innerRight + 1e-6 && c.right < b.innerLeft - 1e-6);
+        if (isOver) overSlab++;
+      }
+    const g = frame.toGeodetic(graph.sample(seg, seg.length / 2).pos);
+    islands.push({
+      seg: seg.id,
+      at: [round(g.lat, 1e6), round(g.lon, 1e6)],
+      cells: mine.length,
+      laid,
+      onPlateau: mine.length - laid,
+      lengthM: round(new Set(mine.map((c) => c.s0)).size * 4, 10),
+      widthLeastM: round(Math.min(...mine.map((c) => c.left - c.right))),
+      widthMostM: round(Math.max(...mine.map((c) => c.left - c.right))),
+      overSlab,
+    });
   }
 
   // Piers over a street's lanes (lane width and 0.5 m each side), each viaduct chunk in its own tile's group.
@@ -570,8 +591,8 @@ for (const [key, focus] of groups) {
 const KLASSES: readonly Klass[] = ["clear", "A", "A'", "B1", "B2", "B3", "C"];
 const perKlass = (f: (k: Klass) => number) =>
   Object.fromEntries(KLASSES.map((k) => [k, f(k)])) as Record<Klass, number>;
-const ofKlass = (k: Klass) => banded.filter((b) => b.ruling.klass === k);
-const resolved = banded.filter((b) => b.ruling.klass === "A" || b.ruling.klass === "A'");
+const ofKlass = (k: Klass) => banded.filter((b) => b.klass === k);
+const resolved = banded.filter((b) => b.klass === "A" || b.klass === "A'");
 const twoList = [...twoNodes.values()];
 const summary = {
   dir: target,
@@ -586,6 +607,20 @@ const summary = {
   fewerLanes: resolved.filter((b) => b.lanesChange < 0).length,
   widened: resolved.filter((b) => b.widened).length,
   edgeOnPavement: resolved.filter((b) => b.edgeOnPavement).length,
+  lanesInBandWhereGiven: resolved.reduce((n, b) => n + b.lanesInBand, 0),
+  islandSegments: islands.length,
+  islandCells: islands.reduce((n, i) => n + i.cells, 0),
+  islandsLaid: islands.reduce((n, i) => n + i.laid, 0),
+  islandCellsOverSlab: islands.reduce((n, i) => n + i.overSlab, 0),
+  appliedLogs: bandLogs.filter((d) => d.event === "street_band_applied").length,
+  guardShortLogs: bandLogs.filter((d) => d.event === "street_band_guard_short").length,
+  extendedSegments: extendedRows.size,
+  extendedM: Math.round([...extendedRows.values()].reduce((n, r) => n + r.lengthM, 0)),
+  extendedEdgeOnPavement: [...extendedRows.values()].filter((r) => r.edgeOnPavement).length,
+  chainEndsFit: [...chainEnds.values()].filter((e) => e.kind === "fits").length,
+  chainEndsDeadEnd: [...chainEnds.values()].filter((e) => e.kind === "dead-end").length,
+  chainEndsShort: [...chainEnds.values()].filter((e) => e.kind === "short").length,
+  unresolvedLogs: bandLogs.filter((d) => d.event === "street_band_unresolved").length,
   jumps: jumps.length,
   jumpsGrown: jumps.filter((j) => j.afterM > j.beforeM + 0.01).length,
   jumpMostBeforeM: Math.max(0, ...jumps.map((j) => j.beforeM)),
@@ -604,5 +639,18 @@ const outPath = flag("out");
 if (outPath !== undefined)
   await writeFile(
     outPath,
-    JSON.stringify({ summary, segments: banded, jumps, piersOverLanes }, null, 1) + "\n",
+    JSON.stringify(
+      {
+        summary,
+        segments: banded,
+        extended: [...extendedRows.values()],
+        chainEnds: [...chainEnds.values()],
+        jumps,
+        islands,
+        piersOverLanes,
+        bandLogs,
+      },
+      null,
+      1,
+    ) + "\n",
   );
