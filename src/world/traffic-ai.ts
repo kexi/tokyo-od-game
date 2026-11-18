@@ -955,6 +955,7 @@ export class TrafficAI {
     // band is kept as it was.
     const self = c.object.position;
     const selfAt = Number.isFinite(self.x) ? Math.max(0, placeOnRoute(path, self, 0, reach)?.at ?? 0) : 0;
+    const lineEnd = path.cum.at(-1) ?? 0;
     // Returns how far ahead the point is when it is taken in (null: not), for the player's case.
     const consider = (p: Vector3, width = 2.2, fleeing?: (along: Vector3) => boolean): number | null => {
       const dx = p.x - pos.x;
@@ -967,12 +968,18 @@ export class TrafficAI {
       let taken = isInBand ? ahead : null;
       const isNear = Math.hypot(dx, dz) < reach + 10;
       const on = isNear ? placeOnRoute(path, p, 0, reach) : null;
-      // Off either end of the line (dist over |lateral|) is not beside it.
+      // Off either end of the line (nearest at its first or last point, and further off than beside
+      // it) is not beside it. At a bend point inside the line the nearest is the point itself for
+      // all the wedge outside the bend, so there the distance, not the offset, is what must fit the
+      // width. Why not drop every point whose distance is over its offset: that left the wedge
+      // outside each bend unseen, and past two bends (東京駅南口's piece) the band missed it too.
+      const isAtLineEnd = on !== null && (on.at <= 1e-6 || on.at >= lineEnd - 1e-6);
+      const isOffLineEnd = on !== null && isAtLineEnd && on.dist > Math.abs(on.lateral) + 1e-6;
       const isOnLine =
         on !== null &&
         on.at > selfAt &&
-        Math.abs(on.lateral) < width &&
-        on.dist <= Math.abs(on.lateral) + 1e-6 &&
+        !isOffLineEnd &&
+        on.dist < width &&
         Math.abs(p.y - y) < 3.5 + 0.15 * on.at &&
         !fleeing?.(on.dir);
       if (isOnLine && on) taken = taken === null ? on.at - selfAt : Math.min(taken, on.at - selfAt);

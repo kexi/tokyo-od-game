@@ -133,6 +133,23 @@ describe("a traffic car's look along its lane (D3 (b))", () => {
     expect(isClear(r), `closest ${r.closest.toFixed(2)} stood ${r.stoodAt?.toFixed(2)}`).toBe(true);
   });
 
+  it("T-b6: stops behind a car standing 1.8 m outside the second bend of 東京駅南口's piece", () => {
+    // Out on the outside of the −20° bend, where the bend point itself is the line's nearest point.
+    const a = go([0, 0], 0, 130);
+    const b = go(a, 16, 20);
+    const lines = [line([[0, 0], a, b, go(b, -4, 80)], 1)];
+    const r = approach(lines, 0, at(go(b, 16 + 90 - 10, 1.8)), 55);
+    expect(isClear(r), `closest ${r.closest.toFixed(2)} stood ${r.stoodAt?.toFixed(2)}`).toBe(true);
+  });
+
+  it("T-b7: stops behind a car standing 1.8 m outside a 90° left corner", () => {
+    const corner: XY = [0, 150];
+    const lines = [line([[0, 0], corner], 1), line([corner, go(corner, -90, 150)], 1)];
+    // Outside the corner: ahead and to the right of the way in, on the bisector.
+    const r = approach(lines, 20, at(go(corner, 45, 1.8)), 50);
+    expect(isClear(r), `closest ${r.closest.toFixed(2)} stood ${r.stoodAt?.toFixed(2)}`).toBe(true);
+  });
+
   it("T-b4: takes in nothing 3 m aside of its lane past a bend (out of both the line and the straight band)", () => {
     const bend = go([0, 0], 0, 170);
     const lines = [line([[0, 0], bend, go(bend, 20, 80)], 1)];
