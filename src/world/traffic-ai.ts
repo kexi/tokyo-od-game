@@ -926,8 +926,10 @@ export class TrafficAI {
    * The look ahead in this lane: the gap to the nearest obstacle (other cars, the player), and how
    * far ahead the player's car is when it is taken in (null: not). Two looks, the nearer counts:
    * the straight band along the lane's tangent at the car (as before), and the lane itself on
-   * ahead along the roads chosen (lanePath). No side effects: the QA tools call it on their own,
-   * and must not move what the logs record (follow() records it).
+   * ahead along the roads chosen (lanePath). It records nothing (follow() records what it found, so
+   * a QA tool calling it does not move the logged values), but lanePath picks the roads ahead
+   * (upcoming()) as far as it looks: the car's random state moves on sooner than before (the same
+   * roads, picked earlier), from a QA tool's call too.
    *
    * Why the lane too: 東京駅南口's piece bends about 20° past its first 20 m, and the band from
    * before the bend missed the car standing 12 m past it until 5 m off (D3, 4 runs in 5).
@@ -953,8 +955,9 @@ export class TrafficAI {
     // (`c.s`): rounding a corner the car runs ahead of that place, and the gap read from it was
     // metres long (T-b3: 10 m read, 5.6 m there). Why not the car's centre for the band too: the
     // band is kept as it was.
-    const self = c.object.position;
-    const selfAt = Number.isFinite(self.x) ? Math.max(0, placeOnRoute(path, self, 0, reach)?.at ?? 0) : 0;
+    // A car just spawned has no centre yet (its object stands at the origin until drive() places it).
+    const isPlaced = Number.isFinite(c.rear.x);
+    const selfAt = isPlaced ? Math.max(0, placeOnRoute(path, c.object.position, 0, reach)?.at ?? 0) : 0;
     const lineEnd = path.cum.at(-1) ?? 0;
     // Returns how far ahead the point is when it is taken in (null: not), for the player's case.
     const consider = (p: Vector3, width = 2.2, fleeing?: (along: Vector3) => boolean): number | null => {
@@ -1022,7 +1025,8 @@ export class TrafficAI {
     let seg = c.seg;
     let dir = c.dir;
     let from = Math.max(0, Math.min(seg.length, c.s));
-    for (let k = -1; done < reach; k++) {
+    // At most 8 roads on (as aheadPose): a ring of road pieces of next to no length still ends.
+    for (let k = -1; done < reach && k < 8; k++) {
       // Travel distances of the segment's bend points, then a point every 5 m between.
       const bends = seg.cum
         .map((d) => (dir === 1 ? d : seg.length - d))
