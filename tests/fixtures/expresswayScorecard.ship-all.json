@@ -1,6 +1,6 @@
 {
- "version": 8,
- "label": "r1-all",
+ "version": 9,
+ "label": "r1b-g2-all",
  "range": "ship",
  "below": "all",
  "objective": {
@@ -6819,6 +6819,8 @@
     "id": "106909100:start",
     "run": "106909100",
     "end": "start",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7174282,
     "lat": 35.6169862
@@ -6827,6 +6829,8 @@
     "id": "106911692:end",
     "run": "106911692",
     "end": "end",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7175451,
     "lat": 35.6169469
@@ -6835,22 +6839,34 @@
     "id": "1095393545:end",
     "run": "1095393545",
     "end": "end",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.8745206,
-    "lat": 35.8489328
+    "lat": 35.8489328,
+    "beyond": [
+     "491386198"
+    ]
    },
    {
     "id": "1095393546:start",
     "run": "1095393546",
     "end": "start",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.8746561,
-    "lat": 35.8488807
+    "lat": 35.8488807,
+    "beyond": [
+     "1095394122"
+    ]
    },
    {
     "id": "1226415720:end",
     "run": "1226415720",
     "end": "end",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.6313034,
     "lat": 35.452584800000004
@@ -6859,22 +6875,34 @@
     "id": "1563020414:start",
     "run": "1563020414",
     "end": "start",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.61504440000002,
-    "lat": 35.628677100000004
+    "lat": 35.628677100000004,
+    "beyond": [
+     "227384374"
+    ]
    },
    {
     "id": "156344609:start",
     "run": "156344609",
     "end": "start",
+    "kind": "portal",
+    "onward": null,
     "why": "district",
     "lon": 139.73139880000002,
-    "lat": 35.7466607
+    "lat": 35.7466607,
+    "beyond": [
+     "28127324"
+    ]
    },
    {
     "id": "207646123:end",
     "run": "207646123",
     "end": "end",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7154868,
     "lat": 35.618572400000005
@@ -6883,6 +6911,8 @@
     "id": "22694126:end",
     "run": "22694126",
     "end": "end",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.6152329,
     "lat": 35.8846287
@@ -6891,6 +6921,8 @@
     "id": "23594607:end",
     "run": "23594607",
     "end": "end",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7279857,
     "lat": 35.681718000000004
@@ -6899,6 +6931,8 @@
     "id": "23974979:start",
     "run": "23974979",
     "end": "start",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.74221250000002,
     "lat": 35.6816514
@@ -6907,6 +6941,8 @@
     "id": "24039714:start",
     "run": "24039714",
     "end": "start",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7155352,
     "lat": 35.6187045
@@ -6915,6 +6951,8 @@
     "id": "24334770:start",
     "run": "24334770",
     "end": "start",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.7531462,
     "lat": 35.690449300000004
@@ -6923,6 +6961,8 @@
     "id": "24636426:end",
     "run": "24636426",
     "end": "end",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7275897,
     "lat": 35.6817453
@@ -6931,14 +6971,21 @@
     "id": "27155261:start",
     "run": "27155261",
     "end": "start",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.6025095,
-    "lat": 35.6799811
+    "lat": 35.6799811,
+    "beyond": [
+     "27155259"
+    ]
    },
    {
     "id": "27514398:end",
     "run": "27514398",
     "end": "end",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.737842,
     "lat": 35.678771600000005
@@ -6947,14 +6994,21 @@
     "id": "28368866:end",
     "run": "28368866",
     "end": "end",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.602561,
-    "lat": 35.679903200000005
+    "lat": 35.679903200000005,
+    "beyond": [
+     "27155262"
+    ]
    },
    {
     "id": "316360292:start",
     "run": "316360292",
     "end": "start",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.6153462,
     "lat": 35.8846046
@@ -6963,6 +7017,8 @@
     "id": "372483362:start",
     "run": "372483362",
     "end": "start",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.73040400000002,
     "lat": 35.6814994
@@ -6971,6 +7027,8 @@
     "id": "378284472:end",
     "run": "378284472",
     "end": "end",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.7762439,
     "lat": 35.6801298
@@ -6979,6 +7037,8 @@
     "id": "378284483:start",
     "run": "378284483",
     "end": "start",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.7761289,
     "lat": 35.6801667
@@ -6987,6 +7047,8 @@
     "id": "41520089:start",
     "run": "41520089",
     "end": "start",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7837772,
     "lat": 35.7196109
@@ -6995,6 +7057,8 @@
     "id": "44351598:end",
     "run": "44351598",
     "end": "end",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.72471050000001,
     "lat": 35.885923500000004
@@ -7003,14 +7067,21 @@
     "id": "44803854:end",
     "run": "44803854",
     "end": "end",
+    "kind": "portal",
+    "onward": null,
     "why": "district",
     "lon": 139.7403346,
-    "lat": 35.7523774
+    "lat": 35.7523774,
+    "beyond": [
+     "28127324"
+    ]
    },
    {
     "id": "45068169:start",
     "run": "45068169",
     "end": "start",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.7624045,
     "lat": 35.6628695
@@ -7019,6 +7090,8 @@
     "id": "45068170:end",
     "run": "45068170",
     "end": "end",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.76233150000002,
     "lat": 35.6629035
@@ -7027,22 +7100,34 @@
     "id": "46876435:end",
     "run": "46876435",
     "end": "end",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.90070250000002,
-    "lat": 35.6483975
+    "lat": 35.6483975,
+    "beyond": [
+     "46913091"
+    ]
    },
    {
     "id": "46913090:start",
     "run": "46913090",
     "end": "start",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.90081550000002,
-    "lat": 35.6483026
+    "lat": 35.6483026,
+    "beyond": [
+     "46913089"
+    ]
    },
    {
     "id": "4848762:end",
     "run": "4848762",
     "end": "end",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.7803322,
     "lat": 35.628853
@@ -7051,6 +7136,8 @@
     "id": "495799896:start",
     "run": "495799896",
     "end": "start",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.72177010000001,
     "lat": 35.891196400000005
@@ -7059,22 +7146,34 @@
     "id": "5204787:start",
     "run": "5204787",
     "end": "start",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.78719560000002,
-    "lat": 35.513072900000004
+    "lat": 35.513072900000004,
+    "beyond": [
+     "5365198"
+    ]
    },
    {
     "id": "5204789:end",
     "run": "5204789",
     "end": "end",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.7873053,
-    "lat": 35.5129721
+    "lat": 35.5129721,
+    "beyond": [
+     "5204844"
+    ]
    },
    {
     "id": "586976823:start",
     "run": "586976823",
     "end": "start",
+    "kind": "portal",
+    "onward": null,
     "why": "scope",
     "lon": 139.6312475,
     "lat": 35.4525063
@@ -7083,6 +7182,8 @@
     "id": "816254800:start",
     "run": "816254800",
     "end": "start",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.72797540000002,
     "lat": 35.681800700000004
@@ -7091,6 +7192,8 @@
     "id": "816254800:end",
     "run": "816254800",
     "end": "end",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.7299567,
     "lat": 35.6816273
@@ -7099,6 +7202,8 @@
     "id": "816254801:start",
     "run": "816254801",
     "end": "start",
+    "kind": "ground",
+    "onward": null,
     "why": "scope",
     "lon": 139.72759200000002,
     "lat": 35.6816625
@@ -7107,327 +7212,452 @@
     "id": "850330236:end",
     "run": "850330236",
     "end": "end",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.6150317,
-    "lat": 35.6285607
+    "lat": 35.6285607,
+    "beyond": [
+     "31887387"
+    ]
    },
    {
     "id": "920238350:start",
     "run": "920238350",
     "end": "start",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.9124583,
-    "lat": 35.7071715
+    "lat": 35.7071715,
+    "beyond": [
+     "920238366"
+    ]
    },
    {
     "id": "920238351:end",
     "run": "920238351",
     "end": "end",
+    "kind": "open",
+    "onward": null,
     "why": "scope",
     "lon": 139.9124008,
-    "lat": 35.707240600000006
+    "lat": 35.707240600000006,
+    "beyond": [
+     "876569445"
+    ]
+   }
+  ],
+  "rampEnds": [
+   {
+    "id": "151175275:start",
+    "run": "151175275",
+    "end": "start",
+    "kind": "open",
+    "onward": "228468520",
+    "why": "scope",
+    "lon": 139.8063846,
+    "lat": 35.6719615
+   },
+   {
+    "id": "224864769:end",
+    "run": "224864769",
+    "end": "end",
+    "kind": "open",
+    "onward": null,
+    "why": "scope",
+    "lon": 139.6524015,
+    "lat": 35.484923
+   },
+   {
+    "id": "26956960:end",
+    "run": "26956960",
+    "end": "end",
+    "kind": "portal",
+    "onward": null,
+    "why": "scope",
+    "lon": 139.6849716,
+    "lat": 35.686137800000004
+   },
+   {
+    "id": "390426203:start",
+    "run": "390426203",
+    "end": "start",
+    "kind": "open",
+    "onward": "390426216",
+    "why": "scope",
+    "lon": 139.72093940000002,
+    "lat": 35.7292962
+   },
+   {
+    "id": "60942188:end",
+    "run": "60942188",
+    "end": "end",
+    "kind": "open",
+    "onward": null,
+    "why": "closed",
+    "lon": 139.8257619,
+    "lat": 35.7771981,
+    "beyond": [
+     "60942183"
+    ]
+   },
+   {
+    "id": "71502421:start",
+    "run": "71502421",
+    "end": "start",
+    "kind": "open",
+    "onward": "383231005",
+    "why": "scope",
+    "lon": 139.85789300000002,
+    "lat": 35.688559600000005
+   },
+   {
+    "id": "760596454:start",
+    "run": "760596454",
+    "end": "start",
+    "kind": "portal",
+    "onward": null,
+    "why": "scope",
+    "lon": 139.68501500000002,
+    "lat": 35.6861559
+   },
+   {
+    "id": "763353049:start",
+    "run": "763353049",
+    "end": "start",
+    "kind": "open",
+    "onward": null,
+    "why": "outside",
+    "lon": 139.8547014,
+    "lat": 35.8401419,
+    "beyond": [
+     "43992145"
+    ]
+   },
+   {
+    "id": "78334075:end",
+    "run": "78334075",
+    "end": "end",
+    "kind": "portal",
+    "onward": null,
+    "why": "scope",
+    "lon": 139.68809660000002,
+    "lat": 35.651390400000004
+   },
+   {
+    "id": "78334078:start",
+    "run": "78334078",
+    "end": "start",
+    "kind": "portal",
+    "onward": null,
+    "why": "scope",
+    "lon": 139.6879187,
+    "lat": 35.6773455
+   },
+   {
+    "id": "80581134:end",
+    "run": "80581134",
+    "end": "end",
+    "kind": "portal",
+    "onward": null,
+    "why": "scope",
+    "lon": 139.6879733,
+    "lat": 35.677340400000006
+   },
+   {
+    "id": "82596768:start",
+    "run": "82596768",
+    "end": "start",
+    "kind": "open",
+    "onward": null,
+    "why": "outside",
+    "lon": 139.73814900000002,
+    "lat": 35.5401037,
+    "beyond": [
+     "38093188"
+    ]
+   },
+   {
+    "id": "82596772:end",
+    "run": "82596772",
+    "end": "end",
+    "kind": "open",
+    "onward": null,
+    "why": "outside",
+    "lon": 139.73825530000002,
+    "lat": 35.5400183,
+    "beyond": [
+     "783633020"
+    ]
+   },
+   {
+    "id": "931759044:end",
+    "run": "931759044",
+    "end": "end",
+    "kind": "open",
+    "onward": "172358470",
+    "why": "scope",
+    "lon": 139.72595610000002,
+    "lat": 35.6467715
    }
   ],
   "mouths": [
    {
-    "run": "1095393545",
-    "s": 98.2,
-    "child": "491386198",
-    "why": "outside"
-   },
-   {
-    "run": "1095393546",
-    "s": 0,
-    "child": "1095394122",
-    "why": "outside"
-   },
-   {
     "run": "1467911980",
     "s": 6928.8,
     "child": "78334077",
-    "why": "closed"
+    "why": "closed",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "1467911980",
     "s": 7539.8,
     "child": "80581128",
-    "why": "closed"
-   },
-   {
-    "run": "1563020414",
-    "s": 0,
-    "child": "227384374",
-    "why": "outside"
+    "why": "closed",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "1563020414",
     "s": 18.9,
     "child": "775163548",
-    "why": "outside"
-   },
-   {
-    "run": "156344609",
-    "s": 0,
-    "child": "28127324",
-    "why": "closed"
+    "why": "outside",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "203832852",
     "s": 2203.2,
     "child": "84619191",
-    "why": "closed"
+    "why": "closed",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "22694126",
     "s": 13128.6,
     "child": "44420763",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "22694126",
     "s": 11826.2,
     "child": "44420764",
-    "why": "ruleA"
-   },
-   {
-    "run": "27155261",
-    "s": 0,
-    "child": "27155259",
-    "why": "outside"
-   },
-   {
-    "run": "28368866",
-    "s": 9601.7,
-    "child": "27155262",
-    "why": "outside"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "32404414",
     "s": 7025,
     "child": "32593083",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "32404414",
     "s": 1051.6,
     "child": "34994498",
-    "why": "outside"
+    "why": "outside",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "32404414",
     "s": 5963.9,
     "child": "352724042",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "32404414",
     "s": 1584.7,
     "child": "39744131",
-    "why": "outside"
+    "why": "outside",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "43992332",
     "s": 3077.4,
     "child": "250488077",
-    "why": "closed"
+    "why": "closed",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "43992332",
     "s": 11264.1,
     "child": "439262440",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "43992332",
     "s": 10033.3,
     "child": "491625690",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "44179919",
     "s": 12115.2,
     "child": "28111403",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "44179919",
     "s": 13227.6,
     "child": "99663687",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "44351599",
     "s": 341.6,
     "child": "43419647",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "44351599",
     "s": 1261.7,
     "child": "563897702",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "44420765",
     "s": 602.8,
     "child": "166679727",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "44420765",
     "s": 666.1,
     "child": "166679728",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "44420765",
     "s": 666.1,
     "child": "28160627",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "44420765",
     "s": 602.8,
     "child": "762100199",
-    "why": "ruleA"
-   },
-   {
-    "run": "44803854",
-    "s": 19188,
-    "child": "28127324",
-    "why": "closed"
+    "why": "ruleA",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "45661183",
     "s": 13185,
     "child": "224864763",
-    "why": "closed"
+    "why": "closed",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "45661183",
     "s": 16100.7,
     "child": "31709108",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "45661183",
     "s": 16747.1,
     "child": "39744132",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "45661183",
     "s": 10725,
     "child": "481231602",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "45661183",
     "s": 11850.3,
     "child": "481231607",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "45661183",
     "s": 10889.4,
     "child": "489510479",
-    "why": "ruleA"
-   },
-   {
-    "run": "46876435",
-    "s": 1245.9,
-    "child": "46913091",
-    "why": "outside"
-   },
-   {
-    "run": "46913090",
-    "s": 0,
-    "child": "46913089",
-    "why": "outside"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "491625692",
     "s": 486.8,
     "child": "1497900824",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "491625692",
     "s": 788,
     "child": "43992532",
-    "why": "ruleA"
-   },
-   {
-    "run": "5204787",
-    "s": 0,
-    "child": "5365198",
-    "why": "outside"
-   },
-   {
-    "run": "5204789",
-    "s": 536.3,
-    "child": "5204844",
-    "why": "outside"
-   },
-   {
-    "run": "60942188",
-    "s": 45.8,
-    "child": "60942183",
-    "why": "closed"
+    "why": "ruleA",
+    "side": "right",
+    "at": "inside"
    },
    {
     "run": "67152889",
     "s": 2531.8,
     "child": "491625691",
-    "why": "ruleA"
+    "why": "ruleA",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "67152889",
     "s": 9698.7,
     "child": "60942183",
-    "why": "closed"
-   },
-   {
-    "run": "763353049",
-    "s": 0,
-    "child": "43992145",
-    "why": "ruleA"
-   },
-   {
-    "run": "82596768",
-    "s": 0,
-    "child": "38093188",
-    "why": "outside"
-   },
-   {
-    "run": "82596772",
-    "s": 339.4,
-    "child": "783633020",
-    "why": "outside"
-   },
-   {
-    "run": "850330236",
-    "s": 486.6,
-    "child": "31887387",
-    "why": "outside"
+    "why": "closed",
+    "side": "left",
+    "at": "inside"
    },
    {
     "run": "850330236",
     "s": 208.5,
     "child": "775163549",
-    "why": "outside"
-   },
-   {
-    "run": "920238350",
-    "s": 0,
-    "child": "920238366",
-    "why": "outside"
-   },
-   {
-    "run": "920238351",
-    "s": 92.7,
-    "child": "876569445",
-    "why": "outside"
+    "why": "outside",
+    "side": "left",
+    "at": "inside"
    }
   ]
  },

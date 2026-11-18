@@ -413,7 +413,7 @@ describe("--districts（地区で絞って書く、R1-1a、T8）", () => {
   });
 });
 
-describe("本線の端と口（スコアカード版 8 の ends、R1-1b の壁の材料）", () => {
+describe("本線の端と口（スコアカード版 9 の ends、R1-1b の壁の材料）", () => {
   it("lists the operator side's end at the operator border, and the far side of a ref border only while that district is not written", () => {
     const op = planNetwork(operatorChain(), new Set(), null, [], CUT);
     const opEnds = endsOf(op, new Set(["10", "20"]), new Set(["10", "20"]), new Map(), new Set());
@@ -425,10 +425,40 @@ describe("本線の端と口（スコアカード版 8 の ends、R1-1b の壁�
     expect(both.mainEnds.some((e) => e.why === "ref")).toBe(false);
   });
 
-  it("names a mouth by why its run is not written (rule A, a later district, closed, out of the scope)", () => {
+  it("names a mouth by why its run is not written, on which side of the parent and where on it (version 9)", () => {
     const plan = planNetwork(operatorChain(), new Set(), null, [], CUT);
-    const dropped = new Map([["20", { round: 1, reason: "parent" as const, parent: "13" }]]);
-    const ends = endsOf(plan, new Set(["10"]), new Set(["10"]), dropped, new Set());
-    expect(ends.mouths.find((m) => m.child === "20")?.why).toBe("ruleA");
+    // Exit 21 leaves 13 inside it (x 2600) towards y +300: the left of 13's direction (east).
+    const dropped = new Map([["21", { round: 1, reason: "parent" as const, parent: "13" }]]);
+    const ends = endsOf(plan, new Set(["10", "13"]), new Set(["10", "13"]), dropped, new Set());
+    expect(ends.mouths.find((m) => m.child === "21")).toMatchObject({
+      run: "13",
+      why: "ruleA",
+      side: "left",
+      at: "inside",
+    });
+  });
+
+  it("counts a node once (review 2 N1): an unwritten run at a listed end's node is that end's `beyond`, not a mouth", () => {
+    const plan = planNetwork(operatorChain(), new Set(), null, [], CUT);
+    const ends = endsOf(plan, new Set(["10"]), new Set(["10"]), new Map(), new Set());
+    const end = ends.mainEnds.find((e) => e.id === "10:end")!;
+    expect(end.beyond).toEqual(["13", "20"]);
+    expect(ends.mouths.some((m) => m.run === "10" && (m.child === "20" || m.child === "13"))).toBe(false);
+  });
+
+  it("gives each end its kind and the run going on beyond it by a junction (onward), a wall standing where neither", () => {
+    const plan = planNetwork(operatorChain(), new Set(), null, [], CUT);
+    // 20 starts at 10's end node and goes on: 10's end has a road beyond it.
+    const on = endsOf(plan, new Set(["10", "20"]), new Set(["10", "20"]), new Map(), new Set());
+    expect(on.mainEnds.find((e) => e.id === "10:end")).toMatchObject({ kind: "open", onward: "20" });
+    const off = endsOf(plan, new Set(["10"]), new Set(["10"]), new Map(), new Set());
+    expect(off.mainEnds.find((e) => e.id === "10:end")).toMatchObject({ kind: "open", onward: null });
+    expect(on.mainEnds.find((e) => e.id === "10:start")?.kind).toBe("ground");
+  });
+
+  it("lists a written ramp's end with nothing beyond (rampEnds), never its ground end", () => {
+    const plan = planNetwork(operatorChain(), new Set(), null, [], CUT);
+    const ends = endsOf(plan, new Set(["10", "13", "21"]), new Set(["10", "13", "21"]), new Map(), new Set());
+    expect((ends.rampEnds ?? []).filter((e) => e.run === "21")).toEqual([]);
   });
 });

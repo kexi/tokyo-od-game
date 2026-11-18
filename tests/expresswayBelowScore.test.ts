@@ -415,7 +415,7 @@ const fixture = (name: string) =>
   ReportSchema.parse(JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8")));
 
 describe("スコアカード版 7（report.ts）", () => {
-  it("the ship baselines are the current version (8 since R1-1a), each deferred run under one reason, adding up to the plan's count", () => {
+  it("the ship baselines are the current version (9 since R1-1b), each deferred run under one reason, adding up to the plan's count", () => {
     for (const [name, below] of [
       ["expresswayScorecard.ship.json", "pruned"],
       ["expresswayScorecard.ship-all.json", "all"],

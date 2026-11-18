@@ -70,11 +70,16 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * districts: runs, km, closed, over and off the wards, its tiles' gzip and largest tile),
  * `borders` (the runs cut by --run-borders cut, with the km of the other operators' side not
  * written) and `ends` (the written main lines' free ends, and the mouths where an unwritten run meets
- * a written one: for R1-1b's walls). Version 7 reports still parse.
+ * a written one: for R1-1b's walls). Version 7 reports still parse. 9 (R1-1b N1): in `ends`, the
+ * ends' `kind`, `onward` and `beyond`, the ramps' ends (`rampEnds`), the mouths' `side` and `at`, and
+ * a child at a listed end's node no longer a mouth too. Version 8 reports still parse.
  */
-export const REPORT_VERSION = 8;
+export const REPORT_VERSION = 9;
 
 const blockSize = { runs: count, pieces: count, variables: count };
+
+/** An end's kind in `ends` (version 9). */
+const endKind = z.enum(["open", "ground", "portal", "junction", "seam"]);
 const fileSize = z.strictObject({ raw: count, gzip: count });
 
 /**
@@ -98,6 +103,7 @@ export const ReportSchema = z.strictObject({
     z.literal(5),
     z.literal(6),
     z.literal(7),
+    z.literal(8),
     z.literal(REPORT_VERSION),
   ]),
   label: z.string(),
@@ -511,17 +517,46 @@ export const ReportSchema = z.strictObject({
           id: z.string(),
           run: z.string(),
           end: z.enum(["start", "end"]),
+          /** The end's kind (version 9): endPlan's, a ground end going into a tunnel or cut `portal`. */
+          kind: endKind.optional(),
+          /** A written run hung at the node by a junction that goes on beyond it (version 9), or null. */
+          onward: z.string().nullable().optional(),
           why: z.enum(["operator", "ref", "district", "scope"]),
           lon: z.number(),
           lat: z.number(),
+          /** The unwritten runs hung at that node (version 9): no mouths, since the end is listed. */
+          beyond: z.array(z.string()).optional(),
         }),
       ),
+      /**
+       * The written ramps' and streets' ends with nothing written going on (version 9), as mainEnds,
+       * a ground end left out; why the run they would go on into is not written.
+       */
+      rampEnds: z
+        .array(
+          z.strictObject({
+            id: z.string(),
+            run: z.string(),
+            end: z.enum(["start", "end"]),
+            kind: endKind,
+            onward: z.string().nullable(),
+            why: z.enum(["closed", "district", "outside", "scope"]),
+            lon: z.number(),
+            lat: z.number(),
+            beyond: z.array(z.string()).optional(),
+          }),
+        )
+        .optional(),
       mouths: z.array(
         z.strictObject({
           run: z.string(),
           s: z.number(),
           child: z.string(),
           why: z.enum(["district", "ruleA", "closed", "outside"]),
+          /** Which side of the parent's direction the child lies (version 9). */
+          side: z.enum(["left", "right"]).optional(),
+          /** Where on the parent the child hangs (version 9): inside it, or at its start or end. */
+          at: z.enum(["inside", "start", "end"]).optional(),
         }),
       ),
     })

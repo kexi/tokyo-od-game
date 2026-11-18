@@ -3,7 +3,7 @@
 // R1-1b's walls). From the plan and what the build writes; the tiles of a stage are packed and gzipped
 // as the build does it.
 import { gzipSync } from "node:zlib";
-import { endPlan, nodeS, type Plan } from "../src/expressway/compile.ts";
+import { endPlan, nodeS, type Plan, type RunPlan } from "../src/expressway/compile.ts";
 import { type District, DISTRICTS, type DroppedRamp } from "../src/expressway/districts.ts";
 import { packTiles } from "../src/expressway/files.ts";
 import {
@@ -96,10 +96,48 @@ export function bordersOf(plan: Plan, written: ReadonlySet<string>): NonNullable
   return { list, otherKm: r3(otherM / 1000) };
 }
 
+/** How far into the child its side of the parent is measured (laneLinks.ts MEASURE_M, on the plan's line). */
+const SIDE_MEASURE_M = 40;
+
 /**
- * Where the written network stops: the written main lines' ends with nothing written beyond, and the
- * mouths on written runs where a run not written hangs. `inScope`: the shipped scope's runs (the
- * plan's wanted before --districts picked), `dropped`: rule A's, `closed`: the whole build's closed.
+ * Which side of the parent `child` lies on, seen along the parent's direction at the node: the point
+ * SIDE_MEASURE_M into the child (or its length) against the parent's heading there, as laneLinks.ts
+ * sideOf measures it on the road graph, here on the plan's smoothed lines (lon/lat, a local plane).
+ */
+function sideOf(
+  parent: RunPlan,
+  parentNodeIndex: number,
+  child: RunPlan,
+  atStart: boolean,
+): "left" | "right" {
+  const at = (rp: RunPlan, i: number) => rp.plane.toLonLat(rp.align.xy[2 * i], rp.align.xy[2 * i + 1]);
+  const pi = Math.min(parent.i1, Math.max(parent.i0, parent.align.vertexSample[parentNodeIndex]));
+  const isLast = pi >= parent.i1;
+  const [ax, ay] = at(parent, isLast ? pi - 1 : pi);
+  const [bx, by] = at(parent, isLast ? pi : pi + 1);
+  const d = Math.min(SIDE_MEASURE_M, child.length);
+  const ci = atStart ? child.i0 + Math.round(d) : child.i1 - Math.round(d);
+  const [cx, cy] = at(child, Math.min(child.i1, Math.max(child.i0, ci)));
+  const k = Math.cos((ay * Math.PI) / 180);
+  const [ox, oy] = at(parent, pi);
+  const cross = (bx - ax) * k * (cy - oy) - (by - ay) * ((cx - ox) * k);
+  return cross >= 0 ? "left" : "right";
+}
+
+type EndRow = NonNullable<Report["ends"]>["mainEnds"][number];
+type RampEndRow = NonNullable<NonNullable<Report["ends"]>["rampEnds"]>[number];
+
+/**
+ * Where the written network stops (R1-1a; R1-1b's N1). `mainEnds` and `rampEnds`: a written run's end
+ * with nothing written going on (no written run seamed on there, no written parent it hangs from, no
+ * written run of the same chain holding the node), each with its `kind` (open, ground, portal,
+ * junction, seam: endPlan's), `onward` (a written run hung by a junction at the node going on beyond
+ * it, R1-1b 3.1 (c)), why, the node, and `beyond` (the unwritten runs hung at that node, which are
+ * then no mouths). A ramp's ground end is not listed (the road goes on in the street). A wall stands at
+ * a row whose kind is not ground and whose onward is null. `mouths`: a written run where a run not
+ * written hangs, at the parent's run distance, on which side of it (`side`) and where on it (`at`:
+ * inside, or at its start or end), and why. `inScope`: the shipped scope's runs (the plan's wanted
+ * before --districts picked), `dropped`: rule A's, `closed`: the whole build's closed.
  */
 export function endsOf(
   plan: Plan,
@@ -126,50 +164,81 @@ export function endsOf(
       ]);
     }
   }
-  const mainEnds: NonNullable<Report["ends"]>["mainEnds"] = [];
+  /** Why a run that would go on is not written. */
+  const whyNot = (id: string): "closed" | "district" | "outside" =>
+    closed.has(id) ? "closed" : inScope.has(id) ? "district" : "outside";
+  const mainEnds: EndRow[] = [];
+  const rampEnds: RampEndRow[] = [];
   const mouths: NonNullable<Report["ends"]>["mouths"] = [];
   for (const id of ids) {
     if (!written.has(id)) continue;
     const rp = plan.runs.get(id)!;
     const isMain = rp.cls === "expressway";
+    /** The node indices of this run listed as an end: their unwritten children are no mouths. */
+    const endNodes = new Set<number>();
     for (const atStart of [true, false]) {
-      if (!isMain) continue;
       const e = endPlan(plan, rp, atStart);
       const idx = atStart ? rp.run.from : rp.run.to;
+      const here = (children.get(id) ?? []).filter((c) => c.parentNodeIndex === idx);
       // A seam child goes on with the road; a ramp branching at the end node does not carry it on.
-      const isGoingOn = (children.get(id) ?? []).some(
-        (c) => c.isSeam && c.parentNodeIndex === idx && written.has(c.child),
-      );
+      const isGoingOn = here.some((c) => c.isSeam && written.has(c.child));
       // Nothing written goes on there: no written run is seamed on at that node, the end hangs from no
       // written run, and no written run of the same chain holds the node (a run at grade, a seam).
       // Why not the open ends alone: the chain going on at grade unwritten (取り込みの地平の端) ends there too.
       const isOnParent = (e.kind === "junction" || e.kind === "seam") && written.has(e.parent);
-      const isBeside = (plan.chainRuns.get(rp.chain.id) ?? []).some(
-        (o) => o !== rp && written.has(o.run.id) && o.run.from <= idx && idx <= o.run.to,
+      const besides = (plan.chainRuns.get(rp.chain.id) ?? []).filter(
+        (o) => o !== rp && o.run.from <= idx && idx <= o.run.to,
       );
+      const isBeside = besides.some((o) => written.has(o.run.id));
       const isEnd = !isGoingOn && !isOnParent && !isBeside;
       if (!isEnd) continue;
-      const border = rp.run.borders?.[atStart ? 0 : 1];
-      // A run of the scope goes on there (the parent it merges into, the chain's run beside) but is not
-      // written: a later stage's (--districts). Else the scope ends there.
-      const isOnScope = (e.kind === "junction" || e.kind === "seam") && inScope.has(e.parent);
-      const isBesideScope = (plan.chainRuns.get(rp.chain.id) ?? []).some(
-        (o) => o !== rp && inScope.has(o.run.id) && o.run.from <= idx && idx <= o.run.to,
-      );
-      const isLater = isOnScope || isBesideScope;
-      const why = isOperatorBorder(border)
-        ? "operator"
-        : border === "open"
-          ? "ref"
-          : isLater
-            ? "district"
-            : "scope";
+      const kind =
+        e.kind === "ground" ? (e.into ? "portal" : "ground") : e.kind === "anchor" ? "open" : e.kind;
+      const isRampGround = !isMain && kind === "ground";
+      if (isRampGround) continue;
+      endNodes.add(idx);
+      // 3.1 (c): a written run hung at the node by a junction that goes on beyond the end (this run's
+      // end meets its start, or this run's start its end).
+      const onward =
+        here.find((c) => !c.isSeam && written.has(c.child) && c.atStart === !atStart)?.child ?? null;
+      const beyond = here
+        .filter((c) => !written.has(c.child))
+        .map((c) => c.child)
+        .sort();
       const node = plan.net.nodes.get(rp.chain.nodes[idx])!;
       const end = atStart ? "start" : "end";
-      mainEnds.push({ id: `${id}:${end}`, run: id, end, why, lon: node.lon, lat: node.lat });
+      const row = { id: `${id}:${end}`, run: id, end, kind, onward, lon: node.lon, lat: node.lat } as const;
+      const extra = beyond.length > 0 ? { beyond } : {};
+      if (isMain) {
+        const border = rp.run.borders?.[atStart ? 0 : 1];
+        // A run of the scope goes on there (the parent it merges into, the chain's run beside) but is
+        // not written: a later stage's (--districts). Else the scope ends there.
+        const isOnScope = (e.kind === "junction" || e.kind === "seam") && inScope.has(e.parent);
+        const isBesideScope = besides.some((o) => inScope.has(o.run.id));
+        const isLater = isOnScope || isBesideScope;
+        const why = isOperatorBorder(border)
+          ? "operator"
+          : border === "open"
+            ? "ref"
+            : isLater
+              ? "district"
+              : "scope";
+        mainEnds.push({ ...row, why, ...extra });
+        continue;
+      }
+      // A ramp's end: why the run it would go on into is not written (its parent, a run beside it, or
+      // an unwritten child seamed on), else the scope's end.
+      const isJoined = e.kind === "junction" || e.kind === "seam";
+      const next = isJoined ? e.parent : (besides[0]?.run.id ?? here.find((c) => c.isSeam)?.child ?? null);
+      const why = next === null ? "scope" : whyNot(next);
+      rampEnds.push({ ...row, why, ...extra });
     }
     for (const c of children.get(id) ?? []) {
       if (written.has(c.child)) continue;
+      // An unwritten child at a node listed as an end is that end's `beyond`, not a mouth too (R1-1a
+      // review 2 N1: 46876435:end, 46913090:start, 5204787:start and 5204789:end counted twice).
+      const isAtEnd = endNodes.has(c.parentNodeIndex);
+      if (isAtEnd) continue;
       const crp = plan.runs.get(c.child)!;
       // The far sides of the borders are the main lines' ends above, not mouths.
       const childBorder = crp.run.borders?.[c.atStart ? 0 : 1];
@@ -182,8 +251,18 @@ export function endsOf(
           : inScope.has(c.child)
             ? "district"
             : "outside";
-      mouths.push({ run: id, s: Math.round(nodeS(rp, c.parentNodeIndex) * 10) / 10, child: c.child, why });
+      const at =
+        c.parentNodeIndex === rp.run.from ? "start" : c.parentNodeIndex === rp.run.to ? "end" : "inside";
+      const side = sideOf(rp, c.parentNodeIndex, crp, c.atStart);
+      mouths.push({
+        run: id,
+        s: Math.round(nodeS(rp, c.parentNodeIndex) * 10) / 10,
+        child: c.child,
+        why,
+        side,
+        at,
+      });
     }
   }
-  return { mainEnds, mouths };
+  return { mainEnds, rampEnds, mouths };
 }
