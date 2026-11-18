@@ -1481,26 +1481,27 @@ export const LOG_EVENTS = {
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
   }),
   /**
-   * P2.7 R1-2 手順 0 (scripts/measureStreetBands.ts): the street stretches an expressway's site runs
-   * along, by the row of R1-2's rules they fall in, and what would stop the change.
+   * P2.7 R1-2 (scripts/measureStreetBands.ts): the street segments an expressway's site runs along,
+   * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / C unresolved), and the
+   * jumps, pavements, feet, piers and two-segment nodes round them.
    */
   street_bands_measured: info({
     dir: z.string(),
     groups: count,
     siteChunks: count,
     skippedChunksForMissingTiles: count,
-    groupsWithJarticLanes: count,
-    stretches: count,
+    groupsWithoutRegulations: count,
+    segments: count,
     totalLengthM: count,
-    byRow: z.strictObject({ median: count, room: count, cut: count }),
-    cutsByWidth: counts,
-    arterialCuts: count,
-    offCentreOnly: count,
-    edgeOnPavement: count,
+    byClass: z.strictObject({ clear: count, A: count, "A'": count, B1: count, B2: count, C: count }),
+    lengthByClass: z.strictObject({ clear: count, A: count, "A'": count, B1: count, B2: count, C: count }),
     fewerLanes: count,
-    taperShort: count,
-    jumpMostM: z.number().nonnegative(),
-    jumpsOver4m: count,
+    widened: count,
+    edgeOnPavement: count,
+    jumps: count,
+    jumpsGrown: count,
+    jumpMostBeforeM: z.number().nonnegative(),
+    jumpMostAfterM: z.number().nonnegative(),
     withPavement: count,
     footNear: count,
     piersOverLanes: count,
