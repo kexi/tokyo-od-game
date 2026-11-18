@@ -12,6 +12,7 @@ import {
 import { MassiveBody, massContactsFor } from "../physics/massContacts";
 import { retireObject } from "../render/retire";
 import { laden, VEHICLE_SPECS, yawInertia, type MassClass } from "../physics/masses";
+import { log } from "../log";
 import { leftOf, speedLimit, type RoadGraph, type Segment } from "./roads";
 import type { Approach, TrafficControl } from "./trafficControl";
 import { movementOf } from "../signals/movement";
@@ -32,6 +33,11 @@ const XW_SPAWN_EVERY = 4;
 const DIVERGE_PREPARE = 300;
 
 type AiCar = {
+  /**
+   * Its number in the order the cars appeared, never changed: what the logs tell cars apart by.
+   * Why not `serial`: that is the car's random state, rewritten each time it picks a road.
+   */
+  id: number;
   object: Group;
   seg: Segment;
   dir: 1 | -1; // along / against the segment's coordinate order
@@ -70,6 +76,28 @@ type AiCar = {
   hold: number;
   /** Its lane on the expressway (0 = leftmost): the left one, or the one a diverge leaves from. */
   xwLane: number;
+  /** What its look (look()) found at the last drive frame (m; null: nothing). For the logs. */
+  lookGap: number | null;
+  /**
+   * Where its look began to take in the player's car without a break, and its speed then (m, km/h);
+   * forgotten at the first drive frame whose look misses it. For the logs.
+   */
+  firstSeen: { m: number; kmh: number } | null;
+  /** When it was last put back on its lane, and when it was last sliding from a shove (s). */
+  putBackAt: number | null;
+  shovedAt: number | null;
+};
+
+/** What traffic_contact says of a traffic car the player's car touched (TrafficAI.contactInfo). */
+export type TrafficContactInfo = {
+  carId: number;
+  segId: number;
+  sM: number;
+  carKmh: number;
+  lookGapM: number | null;
+  firstSeenM: number | null;
+  firstSeenKmh: number | null;
+  sincePutBackS: number | null;
 };
 
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
@@ -85,7 +113,7 @@ const MAX_STEER = 0.6;
 const MAX_STEER_BIKE = 0.45;
 const MAX_LEAN = 0.6; // rad, a bike leaned well over in a tight turn
 const FRONT_WHEEL = /^Wheel(F[LR]?|Front)$/;
-// gapAhead targets a 7 m standstill gap to the next car's centre; a stop line is a "car" this far
+// The look targets a 7 m standstill gap to the next car's centre; a stop line is a "car" this far
 // beyond the line so the front bumper (2.15 m ahead of the centre) halts just short of it.
 const STOP_LINE_GAP = 4.5;
 const COMFORT_DECEL = 5; // m/s², for deciding whether a yellow/red can still be stopped for
@@ -131,6 +159,10 @@ export class TrafficAI {
   /** The player's car as last given to update (for the lane changes' look). */
   private lastPlayer: Vector3 | null = null;
   private serial = 1;
+  /** The next car's id, the seconds the traffic has run, and when the graph was last swapped. */
+  private nextId = 1;
+  private time = 0;
+  private graphAt: number | null = null;
   private readonly tmpPos = new Vector3();
   private readonly tmpDir = new Vector3();
   private readonly tmpQuat = new Quaternion();
@@ -172,6 +204,7 @@ export class TrafficAI {
     }
     this.cars = kept;
     this.graph = graph;
+    this.graphAt = this.time;
     const links = graph?.laneLinks ?? [];
     this.reach = graph && links.length > 0 ? reachesStreets(graph) : null;
     const reach = this.reach;
@@ -312,7 +345,31 @@ export class TrafficAI {
     return this.cars.some((c) => c.body?.collider(0)?.handle === handle);
   }
 
+  /** The centre of the traffic car whose collider this is (null: none). */
+  positionOf(handle: number): Vector3 | null {
+    const c = this.cars.find((o) => o.body?.collider(0)?.handle === handle);
+    return c ? c.object.position.clone() : null;
+  }
+
+  /** The traffic car whose collider this is, as traffic_contact reports it (null: none). */
+  contactInfo(handle: number): TrafficContactInfo | null {
+    const c = this.cars.find((o) => o.body?.collider(0)?.handle === handle);
+    if (!c) return null;
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    return {
+      carId: c.id,
+      segId: c.seg.id,
+      sM: r1(c.s),
+      carKmh: r1(c.speed * 3.6),
+      lookGapM: c.lookGap === null ? null : r1(c.lookGap),
+      firstSeenM: c.firstSeen ? r1(c.firstSeen.m) : null,
+      firstSeenKmh: c.firstSeen ? r1(c.firstSeen.kmh) : null,
+      sincePutBackS: c.putBackAt === null ? null : r1(this.time - c.putBackAt),
+    };
+  }
+
   update(dt: number, focus: Vector3, player: Vector3, playerForward: Vector3, playerSpeed: number): void {
+    this.time += Math.max(0, dt);
     const graph = this.graph;
     if (!graph || graph.segments.length === 0) return;
     this.lastPlayer = player;
@@ -377,10 +434,9 @@ export class TrafficAI {
   ): Vector3 {
     const limit = speedLimit(c.seg) / 3.6;
     const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
-    const gap = Math.min(
-      this.gapAhead(c, pos, dir, player, playerForward, playerSpeed),
-      this.stopGap(graph, c, dt),
-    );
+    const look = this.look(c, pos, dir, player, playerForward, playerSpeed);
+    this.noteLook(c, look.gap, look.playerAhead);
+    const gap = Math.min(look.gap, this.stopGap(graph, c, dt));
     // 7 m centre to centre for cars; longer vehicles keep their own length clear.
     const standstill = 4.75 + c.half;
     const target =
@@ -441,6 +497,7 @@ export class TrafficAI {
     const m = c.mass;
     const centre = this.tmpPos.copy(c.rear).addScaledVector(this.forwardOf(c.yaw), c.wheelbase / 2);
     if (m.shoved) {
+      c.shovedAt = this.time;
       centre.x += m.vx * dt;
       centre.z += m.vz * dt;
       c.yaw += m.w * dt;
@@ -595,6 +652,9 @@ export class TrafficAI {
     const offLane = Math.hypot(centre.x - lane.x, centre.z - lane.z);
     const isAdrift = !(offLane <= 8) && (!this.isSeen(centre) || !(offLane <= 25));
     if (isAdrift) {
+      // Not the first placing of a car just spawned (it has no centre yet).
+      const wasPlaced = Number.isFinite(c.rear.x);
+      if (wasPlaced) this.notePutBack(graph, c, centre, lane, offLane);
       c.yaw = Math.atan2(laneDir.x, laneDir.z);
       c.rear.copy(lane).addScaledVector(laneDir, -c.wheelbase / 2);
       c.steer = 0;
@@ -809,18 +869,73 @@ export class TrafficAI {
     });
   }
 
-  /** Distance to the nearest obstacle ahead in this lane (other cars, the player). */
-  private gapAhead(c: AiCar, pos: Vector3, dir: Vector3, player: Vector3, pf: Vector3, ps: number): number {
+  /**
+   * A car put back on its lane (drive's isAdrift), already placed before: traffic_car_put_back,
+   * with the road it had chosen next (only if chosen already: choosing here would draw from its
+   * random state and change the road it takes).
+   */
+  private notePutBack(graph: RoadGraph, c: AiCar, centre: Vector3, lane: Vector3, offLane: number): void {
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    const next = c.route[0] ?? null;
+    let turnDeg: number | null = null;
+    let nextOffM: number | null = null;
+    if (next) {
+      const tIn = this.lanePoint(graph, c.seg, c.dir, c.seg.length).dir;
+      const tOut = this.lanePoint(graph, next.seg, next.dir, 0).dir;
+      turnDeg = r1((Math.atan2(leftOf(tIn, 1).dot(tOut), tIn.dot(tOut)) * 180) / Math.PI);
+      const along = graph.nearestOn(next.seg, centre).s;
+      const onNext = this.lanePoint(
+        graph,
+        next.seg,
+        next.dir,
+        next.dir === 1 ? along : next.seg.length - along,
+      );
+      nextOffM = r1(Math.hypot(centre.x - onNext.pos.x, centre.z - onNext.pos.z));
+    }
+    const player = this.lastPlayer;
+    log("traffic_car_put_back", {
+      carId: c.id,
+      segId: c.seg.id,
+      sM: r1(c.s),
+      segLengthM: r1(c.seg.length),
+      offLaneM: r1(offLane),
+      isSeen: this.isSeen(centre),
+      playerDistM: player ? r1(Math.hypot(lane.x - player.x, lane.z - player.z)) : null,
+      nextSegId: next?.seg.id ?? null,
+      turnDeg,
+      nextOffM,
+      sinceGraphS: this.graphAt === null ? null : r1(this.time - this.graphAt),
+      sinceShoveS: c.shovedAt === null ? null : r1(this.time - c.shovedAt),
+    });
+    c.putBackAt = this.time;
+  }
+
+  /**
+   * The look ahead in this lane: the gap to the nearest obstacle (other cars, the player), and how
+   * far ahead the player's car is when it is taken in (null: not). No side effects: the QA tools
+   * call it on their own, and must not move what the logs record (follow() records it).
+   */
+  private look(
+    c: AiCar,
+    pos: Vector3,
+    dir: Vector3,
+    player: Vector3,
+    pf: Vector3,
+    ps: number,
+  ): { gap: number; playerAhead: number | null } {
     let gap = Infinity;
     const y = c.ground + 0.86;
-    const consider = (p: Vector3, width = 2.2) => {
+    // Returns how far ahead the point is when it is taken in (null: not), for the player's case.
+    const consider = (p: Vector3, width = 2.2): number | null => {
       const dx = p.x - pos.x;
       const dz = p.z - pos.z;
       const ahead = dx * dir.x + dz * dir.z;
       const lateral = Math.abs(dx * dir.z - dz * dir.x);
       // Not a car on the street under a viaduct, nor one on the deck over the street.
       const isSameLevel = Math.abs(p.y - y) < 3.5 + 0.15 * Math.abs(ahead);
-      if (ahead > 0 && lateral < width && isSameLevel) gap = Math.min(gap, ahead);
+      const isTaken = ahead > 0 && lateral < width && isSameLevel;
+      if (isTaken) gap = Math.min(gap, ahead);
+      return isTaken ? ahead : null;
     };
     for (const o of this.cars) if (o !== c) consider(o.object.position);
     // Kerbside parked cars only block when they actually sit in this lane.
@@ -828,8 +943,24 @@ export class TrafficAI {
     for (const p of this.extraObstacles) consider(p);
     // Yield to the player unless they are clearly driving away ahead of us.
     const isPlayerFleeing = ps > c.speed + 2 && pf.dot(dir) > 0.8;
-    if (!isPlayerFleeing) consider(player);
-    return gap;
+    const playerAhead = isPlayerFleeing ? null : consider(player);
+    return { gap, playerAhead };
+  }
+
+  /**
+   * What the drive frame's look found, for traffic_contact (lookGap, firstSeen); no part of the
+   * driving. Why no grace before forgetting: a few seconds of it joined two short sightings 40 m
+   * apart into one, and the contact read as seen from 73 m (D3, #37: taken in at 73 m and at 33 m,
+   * missed from 29.5 m to 5.8 m). A shoved car runs no look, so its last value stays.
+   */
+  private noteLook(c: AiCar, gap: number, playerAhead: number | null): void {
+    c.lookGap = Number.isFinite(gap) ? gap : null;
+    const isSeeingPlayer = playerAhead !== null;
+    if (!isSeeingPlayer) {
+      c.firstSeen = null;
+      return;
+    }
+    c.firstSeen ??= { m: playerAhead, kmh: c.speed * 3.6 };
   }
 
   /** The next car to appear, at a place and a speed (QA: a main-line car timed to a merge). */
@@ -928,6 +1059,7 @@ export class TrafficAI {
       object.userData.replay = vehicle && kind ? { type: "vehicle", kind } : { type: "lowCar", color, taxi };
       this.scene.add(object);
       this.cars.push({
+        id: this.nextId++,
         object,
         seg,
         dir,
@@ -953,6 +1085,10 @@ export class TrafficAI {
         route: [],
         deadEnd: 0,
         xwLane: 0,
+        lookGap: null,
+        firstSeen: null,
+        putBackAt: null,
+        shovedAt: null,
         ...this.massOf(kind && vehicle ? kind : taxi ? "jpnTaxi" : "sedan", vehicle, this.serial),
       });
       for (const w of this.cars.at(-1)?.front ?? []) w.rotation.order = "YXZ";
