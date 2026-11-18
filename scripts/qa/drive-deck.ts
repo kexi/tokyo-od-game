@@ -40,15 +40,18 @@ import {
   type AutoDriveRide,
   deckDriveFailures,
   type DeckDriveRide,
+  wallStopFailures,
+  type WallDriveRide,
 } from "./deckDriveVerdict.ts";
 import {
   type AutoRoute,
   chunkAt,
   type CruiseRoute,
-  DECK_ROUTES,
+  DEFAULT_DATA_ROUTES,
   DEFAULT_ROUTE,
   type DeckRoute,
   routeOf,
+  type WallRoute,
 } from "./deckRoutes.ts";
 import { type DeckStall, judgeStalls, parseLogged, type StopTrace } from "./deckStops.ts";
 import { freePort } from "./ports.ts";
@@ -67,7 +70,7 @@ const tries = Number(flag("tries") ?? 3);
 const cpuThrottle = Number(flag("cpu-throttle") ?? 1);
 const preWaitS = Number(flag("pre-wait") ?? 0);
 const routes: DeckRoute[] =
-  routeArg === "all" ? [...DECK_ROUTES] : [routeOf(routeArg === "" ? DEFAULT_ROUTE : routeArg)];
+  routeArg === "all" ? [...DEFAULT_DATA_ROUTES] : [routeOf(routeArg === "" ? DEFAULT_ROUTE : routeArg)];
 /** The data the dev server serves (XW_DATA_DIR else public/data/expressway): where a run distance lies. */
 const files = readExpresswayFiles();
 
@@ -221,6 +224,93 @@ async function driveCruise(r: CruiseRoute) {
   }
 }
 
+/** Seconds a wall-stop drive goes on after the car stands at the wall (R1-1b 7.3: 5 s). */
+const WALL_HOLD_S = 5;
+
+/**
+ * A drive into an end wall (R1-1b 7.3): placed as a cruise, then cruising at the posted limit of the
+ * wall's chunk, 1.5 times it, or flat out (the cruise over the limit), watching how far past the end
+ * the car comes (debug.expressway.cruise endOf), on WALL_HOLD_S after it stands on the end chunk.
+ */
+async function driveWall(r: WallRoute) {
+  const from = chunkAt(files.byRun, r.from);
+  if (!from) throw new Error(`${r.id}: no chunk of ${r.from.run} at ${r.from.s} m`);
+  const list = files.byRun.get(r.wall) ?? [];
+  const endChunk = list.find((c) => c.next === null);
+  if (!endChunk) throw new Error(`${r.id}: no end chunk of ${r.wall}`);
+  const start = `${from.lat.toFixed(5)},${from.lon.toFixed(5)}`;
+  const { b, url, before } = await open(start);
+  try {
+    await throttle(b);
+    const logsBefore = b.logs.length;
+    const during = (event: string) =>
+      b.logs.slice(logsBefore).filter((l) => l.includes(`"event":"${event}"`));
+    let summary: (WallDriveRide & Record<string, unknown> & { invalid: string | null }) | null = null;
+    let worst: unknown = null;
+    let kmh: number | null = null;
+    const isClear = before === null;
+    if (isClear) {
+      const until = untilIn(b);
+      const place = `__game.debug.expressway.place(${JSON.stringify(from.xid)}, ${from.share}, ${r.lane})`;
+      await until(place, 60);
+      await b.evaluate("__game.advance(3)");
+      await b.evaluate(place);
+      await b.evaluate("__game.advance(1)");
+      // The posted limit on the wall's chunk (the graph's: its 規制速度, else 60 on the 都市高速).
+      const posted = await b.evaluate<number>(
+        `(() => { const g = __game.getRoadGraph(); const s = g.segments.find((x) => x.line.xid === ${JSON.stringify(endChunk.id)}); return s?.limit ?? 60; })()`,
+      );
+      // Flat out: a target no car reaches, held over the limit.
+      kmh = r.speed === "posted" ? posted : r.speed === "over" ? posted * 1.5 : 400;
+      const overLimit = r.speed !== "posted";
+      await b.evaluate(
+        `__game.debug.expressway.cruise({ kmh: ${kmh}, prefer: ${JSON.stringify(r.prefer)}, lane: ${r.lane}, endOf: ${JSON.stringify(endChunk.id)}, overLimit: ${overLimit} })`,
+      );
+      const endXid = JSON.stringify(endChunk.id);
+      let stoodFor = 0;
+      for (;;) {
+        await b.evaluate("__game.advance(1)");
+        const last = await b.evaluate<{ t: number; onEnd: boolean; kmh: number } | null>(
+          `(() => { const x = __game.debug.expressway.samples().at(-1);
+            return x ? { t: x.t, onEnd: x.xid === ${endXid}, kmh: x.kmh } : null; })()`,
+        );
+        const isStanding = last !== null && last.onEnd && Math.abs(last.kmh) < 1;
+        stoodFor = isStanding ? stoodFor + 1 : 0;
+        const isDone = stoodFor > WALL_HOLD_S;
+        const isOver = last !== null && last.t > r.seconds;
+        if (isDone || isOver) break;
+      }
+      summary = await b.evaluate(`__game.debug.expressway.stop(${JSON.stringify(r.id)})`);
+      worst = await b.evaluate(WORST);
+    }
+    const crossed = b.logs.filter((l) => l.includes(`"event":"expressway_building_crossed"`));
+    const uncaught = during("uncaught_error");
+    const invalid = invalidOf(before, summary?.invalid, during);
+    const failures = summary
+      ? wallStopFailures(summary, { crossed: crossed.length, uncaught: uncaught.length })
+      : [];
+    return {
+      route: r.id,
+      kind: r.kind,
+      url,
+      invalid,
+      failures,
+      from,
+      kmh,
+      summary,
+      worst,
+      crossed,
+      stalled: [] as string[],
+      uncaught,
+      lawEvents: lawEvents(during),
+      respawned: during("car_respawned"),
+      holds: during("vehicle_hold_changed"),
+    };
+  } finally {
+    await b.close();
+  }
+}
+
 async function driveAuto(r: AutoRoute) {
   const { b, url, before } = await open(r.start);
   try {
@@ -362,22 +452,21 @@ for (const r of routes) {
     // fetch, a flaky network) does not count, like an accident: invalid with the reason, and driven
     // again. Its browser is closed by the drive's own finally. Why not fail the route: nothing of the
     // decks was measured.
-    result = await (r.kind === "cruise" ? driveCruise(r) : driveAuto(r)).catch(
-      (error: unknown): TryResult => ({
-        route: r.id,
-        kind: r.kind,
-        url: "",
-        invalid: `error: ${String(error)}`,
-        failures: [] as string[],
-        summary: null,
-        worst: null,
-        crossed: [] as string[],
-        stalled: [] as string[],
-        lawEvents: { accident: [], violationCited: [], arrest: [] },
-        respawned: [] as string[],
-        holds: [] as string[],
-      }),
-    );
+    const drive = r.kind === "cruise" ? driveCruise(r) : r.kind === "wall" ? driveWall(r) : driveAuto(r);
+    result = await drive.catch((error: unknown): TryResult => ({
+      route: r.id,
+      kind: r.kind,
+      url: "",
+      invalid: `error: ${String(error)}`,
+      failures: [] as string[],
+      summary: null,
+      worst: null,
+      crossed: [] as string[],
+      stalled: [] as string[],
+      lawEvents: { accident: [], violationCited: [], arrest: [] },
+      respawned: [] as string[],
+      holds: [] as string[],
+    }));
     attempts.push({
       invalid: result.invalid,
       failures: result.failures,
@@ -408,6 +497,7 @@ for (const r of routes) {
       rmsAyMs2: s?.rmsAyMs2,
       maxShortfallKmh: s?.maxShortfallKmh,
       maxShortfallAt: s?.maxShortfallAt,
+      wall: s?.wall,
       arrived: s?.arrived,
       violations: s?.violations,
       crossed: out.crossed.length,

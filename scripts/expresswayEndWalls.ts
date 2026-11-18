@@ -5,7 +5,8 @@
 //   or (`onRoad`) another deck's road lies just past the face (a child ending across its parent's
 //   end); any other is a miss, a gap. A hidden end (no wall, under or on its parent) is rayed alike.
 // - per end where the road goes on as another run (3.1 (c)), the widest stretch of its end face with
-//   neither a box nor that run's road (≤ PARAPET_WIDTH to pass; a seam end is listed, not counted).
+//   neither a box nor that run's road (≤ PARAPET_WIDTH to pass), listed apart where the deck boxes the
+//   face (`onwardsBoxed`) and where it does not, a cut's or a tunnel's section (`onwardsSeen`, not judged).
 // - per mouth of the folder's scorecard (an unwritten run hung on a written one), the parent's 壁高欄
 //   on that side within ±30 m, and no branch line or ゼブラ there, where no written run shares the
 //   parent's surface. One JSON file and one log line; exit 1 on a miss, an open face or a broken mouth.
@@ -300,11 +301,21 @@ if (reportPath) {
   }
 }
 
+// The ends where the deck boxes the face (expresswayDeck.ts widthSteps: not in a cut's or a tunnel's
+// section, whose bore it leaves out) and those only looked at here (5170834:end, a seam in a cut: its
+// width step is the run's own, as on main).
+const isBored = (chunk: string) => {
+  const c = files.chunks.find((x) => x.id === chunk);
+  return c?.structure === "cut" || c?.structure === "tunnel";
+};
+const onwardsBoxed = onwards.filter((o) => !isBored(o.chunk));
+const onwardsSeen = onwards.filter((o) => isBored(o.chunk));
 const result = {
   dir: files.dir,
   walls,
   skips,
-  onwards,
+  onwardsBoxed,
+  onwardsSeen,
   mouths,
   summary: {
     walls: walls.length,
@@ -312,11 +323,9 @@ const result = {
     hidden: skips.filter((s) => s.reason === "hidden").length,
     tunnel: skips.filter((s) => s.reason === "tunnel").length,
     hiddenMisses: skips.reduce((n, s) => n + s.misses, 0),
-    onwards: onwards.length,
-    // A seam end (the run goes on as the run seamed there, 5170834:end in a cut) is not R1-1b 3.3's: its
-    // width step is the run's own, apart from the junction child also leaving the node; listed, not counted.
-    onwardOverWidth: onwards.filter((o) => o.kind !== "seam" && o.uncoveredM > PARAPET_WIDTH.value + 1e-9)
-      .length,
+    onwardsBoxed: onwardsBoxed.length,
+    onwardsSeen: onwardsSeen.length,
+    onwardOverWidth: onwardsBoxed.filter((o) => o.uncoveredM > PARAPET_WIDTH.value + 1e-9).length,
     mouths: mouths.length,
     mouthsBroken: mouths.filter((m) => m.wallMissingRings > 0 || m.branchLines > 0 || m.zebras > 0).length,
   },

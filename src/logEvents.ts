@@ -606,6 +606,19 @@ export const LOG_EVENTS = {
      * when it stopped (the car may have been held by an arrest, not by the deck).
      */
     invalid: z.string().nullable(),
+    /**
+     * A wall-stop drive's (R1-1b, scripts/qa/deckRoutes.ts "wall"): the end chunk, how far past its
+     * end the car's centre came (m, below zero short of it), its top speed, and its height over the
+     * deck at the last sample on one.
+     */
+    wall: z
+      .strictObject({
+        chunk: z.string(),
+        maxPastEndM: z.number(),
+        maxKmh: z.number().nonnegative(),
+        lastDyM: z.number().nullable(),
+      })
+      .optional(),
   }),
   /**
    * The autopilot driven over the expressway by the dev hook (debug.expressway.route, P6): the
@@ -1247,7 +1260,9 @@ export const LOG_EVENTS = {
     hidden: count,
     tunnel: count,
     hiddenMisses: count,
-    onwards: count,
+    /** Ends going on as another run where the deck boxes the face, and those only looked at (a cut's). */
+    onwardsBoxed: count,
+    onwardsSeen: count,
     onwardOverWidth: count,
     mouths: count,
     mouthsBroken: count,

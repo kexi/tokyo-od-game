@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { readExpresswayFiles } from "../scripts/expresswayFiles";
-import { chunkAt, DECK_ROUTES, DEFAULT_ROUTE, routeOf, runsOf } from "../scripts/qa/deckRoutes";
+import {
+  chunkAt,
+  DECK_ROUTES,
+  DEFAULT_DATA_ROUTES,
+  DEFAULT_ROUTE,
+  routeOf,
+  runsOf,
+  WALL_ROUTES,
+} from "../scripts/qa/deckRoutes";
+import { STATION_STRIDE } from "../src/expressway/format";
+import { endAhead, rangeOfChunks } from "../src/world/expresswayEnds";
 
 // The deck routes table (P2.7-5 4.4) against the data under test (XW_DATA_DIR, else the default
 // data): every route names runs the data has, and its places lie on them, so a rebuild that moves
@@ -28,12 +38,39 @@ describe("the deck routes table", () => {
     expect(() => routeOf("nowhere")).toThrow(/unknown route/);
   });
 
-  for (const r of DECK_ROUTES) {
+  it("drives each wall of R1-1b 7.3 / 7.4 in lanes 0 and 1 at the three speeds, the ship ones left out of all", () => {
+    const ids = WALL_ROUTES.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set([...DECK_ROUTES, ...WALL_ROUTES].map((r) => r.id)).size).toBe(
+      DECK_ROUTES.length + ids.length,
+    );
+    const walls = (data: string | undefined) =>
+      [...new Set(WALL_ROUTES.filter((r) => r.data === data).map((r) => r.wall))].sort();
+    expect(walls(undefined)).toEqual(["24039751", "45068170", "4848762", "5213324"]);
+    expect(walls("ship-g3")).toEqual(["28368866", "45661183"]);
+    expect(WALL_ROUTES).toHaveLength(6 * 2 * 3);
+    expect(DEFAULT_DATA_ROUTES.some((r) => r.kind !== "auto" && r.data !== undefined)).toBe(false);
+    expect(DEFAULT_DATA_ROUTES).toHaveLength(DECK_ROUTES.length - 1 + 4 * 2 * 3);
+  });
+
+  for (const r of DEFAULT_DATA_ROUTES) {
     it(`${r.id}: its runs are in the data, it starts and ends on them`, () => {
       for (const run of runsOf(r)) expect(files.byRun.has(run), `${r.id} run ${run}`).toBe(true);
       if (r.kind === "auto") {
         expect(files.byRun.get(r.entrance)![0].cls).toBe("ramp");
         expect(Number.isFinite(r.to.lat) && Number.isFinite(r.to.lon)).toBe(true);
+        return;
+      }
+      if (r.kind === "wall") {
+        // Its wall is one the game builds: the run's end has nothing going on (expresswayEnds.ts).
+        const runs = new Map(
+          files.runs.map((x) => [x.id, { id: x.id, cls: x.cls, start: x.start, end: x.end }]),
+        );
+        const rangeOf = (id: string) => rangeOfChunks(files.byRun.get(id) ?? [], STATION_STRIDE);
+        expect(endAhead(runs, rangeOf, r.wall, "end").ahead, `${r.wall}:end`).toBe(false);
+        expect(chunkAt(files.byRun, r.from), `${r.id} from`).not.toBeNull();
+        expect(r.prefer).toContain(r.from.run);
+        expect(r.prefer).toContain(r.wall);
         return;
       }
       const from = chunkAt(files.byRun, r.from);

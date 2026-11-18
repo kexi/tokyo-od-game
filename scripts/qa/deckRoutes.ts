@@ -44,7 +44,100 @@ export type AutoRoute = {
   was: string;
 };
 
-export type DeckRoute = CruiseRoute | AutoRoute;
+/**
+ * How fast a wall-stop drive comes at the wall: the section's posted limit, 1.5 times it, or flat
+ * out from the start (the speed reached is recorded, R1-1b 7.3).
+ */
+export type WallSpeed = "posted" | "over" | "full";
+
+/**
+ * A drive into the wall at a run's end with nothing going on (R1-1b 7.3): put the car on `from` in
+ * `lane`, cruise towards the end at `speed`, and keep on 5 s after it stands. It passes when the car
+ * neither falls, nor comes past the end (its centre), nor stands on the wall's top (deckDriveVerdict.ts
+ * wallStopFailures). Only a run's far end (`end`): every wall the drives meet is one.
+ */
+export type WallRoute = {
+  id: string;
+  kind: "wall";
+  from: RunPlace;
+  lane: number;
+  prefer: string[];
+  /** The run whose end has the wall. */
+  wall: string;
+  speed: WallSpeed;
+  seconds: number;
+  /** Not the default data: the folder the dev server must serve for it (left out of `all`). */
+  data?: "ship-g3";
+  was: string;
+};
+
+export type DeckRoute = (CruiseRoute & { data?: "ship-g3" }) | AutoRoute | WallRoute;
+
+/** The ends the wall-stop drives come at (R1-1b 7.3, 7.4), each in both lanes at the three speeds. */
+const WALL_ENDS: ReadonlyArray<{
+  wall: string;
+  from: RunPlace;
+  prefer: string[];
+  data?: "ship-g3";
+  was: string;
+}> = [
+  {
+    wall: "45068170",
+    from: { run: "24402611", s: 4850 },
+    prefer: ["24402611", "45068170"],
+    was: "汐留の取付け 45068170:end（坑口、対向の組）へ、内回り 24402611 の s 4,850 から",
+  },
+  {
+    wall: "24039751",
+    from: { run: "895902565", s: 470 },
+    prefer: ["895902565", "24039751"],
+    was: "霞が関の掘割 24039751:end へ、895902565 の中ほど（seam で 24039751 へ続く）から",
+  },
+  {
+    wall: "5213324",
+    from: { run: "5213324", s: 990 },
+    prefer: ["5213324"],
+    was: "1 号羽田線の盛土の端 5213324:end へ、端の 400 m 手前から",
+  },
+  {
+    wall: "4848762",
+    from: { run: "4848762", s: 4490 },
+    prefer: ["4848762"],
+    was: "台場の坑口の端 4848762:end（cut）へ、端の 400 m 手前から",
+  },
+  {
+    wall: "28368866",
+    from: { run: "28368866", s: 8033 },
+    prefer: ["28368866"],
+    data: "ship-g3",
+    was: "ship（G3、central）: 高井戸の高架の端 28368866:end（8.31 m）へ、端の 400 m 手前から",
+  },
+  {
+    wall: "45661183",
+    from: { run: "45661183", s: 1379 },
+    prefer: ["45661183"],
+    data: "ship-g3",
+    was: "ship（G3、central）: 1｜K1 の高架の端 45661183:end（11.17 m）へ、端の 400 m 手前から",
+  },
+];
+
+/** The wall-stop routes: every end above, lanes 0 and 1, the three speeds. */
+export const WALL_ROUTES: readonly WallRoute[] = WALL_ENDS.flatMap((e) =>
+  [0, 1].flatMap((lane) =>
+    (["posted", "over", "full"] as const).map((speed) => ({
+      id: `wall-${e.wall}-lane${lane}-${speed}`,
+      kind: "wall" as const,
+      from: e.from,
+      lane,
+      prefer: e.prefer,
+      wall: e.wall,
+      speed,
+      seconds: 120,
+      ...(e.data ? { data: e.data } : {}),
+      was: `新設（R1-1b）: ${e.was}、車線 ${lane}、${speed}`,
+    })),
+  ),
+);
 
 /** The route check-deck-drive takes when none is named (P3's, as before). */
 export const DEFAULT_ROUTE = "shibakoen-shiodome";
@@ -249,18 +342,39 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     seconds: 60,
     was: "新設（A1）: 4848762 の右の車線（上の床版、分離壁の側）で、45021972 との分離壁（細い所 s 504〜522）を通る",
   },
+  {
+    id: "onward-931759044-172358470",
+    kind: "cruise",
+    from: { run: "931759044", s: 20 },
+    prefer: ["931759044", "172358470"],
+    // Reached once on 172358470:0 (23 m long, its own end a wall): the turn at the node is the check.
+    to: { run: "172358470", s: 5 },
+    kmh: 40,
+    seconds: 60,
+    data: "ship-g3",
+    was: "新設（R1-1b 3.3）: ship（G3、central）のランプ 931759044 の端の節点で 79° 折れて 172358470 へ（壁は立てず、面の脇を箱で塞ぐ所）。main（壁の無い版）でも同じに走らせて並べる",
+  },
 ];
 
+/** Every route by id: the table above and the wall-stop drives. */
+const EVERY_ROUTE: readonly DeckRoute[] = [...DECK_ROUTES, ...WALL_ROUTES];
+
+/** The routes `all` drives over the default data (a route on other data is driven by name only). */
+export const DEFAULT_DATA_ROUTES: readonly DeckRoute[] = EVERY_ROUTE.filter(
+  (r) => r.kind === "auto" || r.data === undefined,
+);
+
 export function routeOf(id: string): DeckRoute {
-  const r = DECK_ROUTES.find((x) => x.id === id);
-  if (!r) throw new Error(`unknown route ${id} (${DECK_ROUTES.map((x) => x.id).join(", ")})`);
+  const r = EVERY_ROUTE.find((x) => x.id === id);
+  if (!r) throw new Error(`unknown route ${id} (${EVERY_ROUTE.map((x) => x.id).join(", ")})`);
   return r;
 }
 
 /** The runs a route names (its places and preferences): each must be in the data. */
 export function runsOf(r: DeckRoute): string[] {
-  const runs = r.kind === "auto" ? [r.entrance] : [r.from.run, r.to.run, ...r.prefer];
-  return [...new Set(runs)];
+  if (r.kind === "auto") return [r.entrance];
+  if (r.kind === "wall") return [...new Set([r.from.run, r.wall, ...r.prefer])];
+  return [...new Set([r.from.run, r.to.run, ...r.prefer])];
 }
 
 /** The chunk of a run holding run distance s, the share of the chunk there and its station's lon/lat. */
