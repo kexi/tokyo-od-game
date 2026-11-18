@@ -327,7 +327,20 @@ export function portalEndsOf(
     for (const atStart of [true, false]) {
       const end = atStart ? r.start : r.end;
       const parent = end.parent;
-      const isUnderBeyond = parent !== undefined && belowIds.has(parent);
+      // S7-3 3.4: an end going on under the ground is no portal: its parent is a below run, or it is
+      // free and another below run seams onto it there (a loop's first run).
+      const here = atStart ? 0 : r.lengthM;
+      const isSeamedOnto =
+        end.kind === "open" &&
+        runs.some(
+          (o) =>
+            o.id !== r.id &&
+            belowIds.has(o.id) &&
+            [o.start, o.end].some(
+              (oe) => oe.kind === "seam" && oe.parent === r.id && Math.abs((oe.parentS ?? 0) - here) <= 0.5,
+            ),
+        );
+      const isUnderBeyond = (parent !== undefined && belowIds.has(parent)) || isSeamedOnto;
       if (isUnderBeyond) continue;
       const station = atStart ? stations[0] : stations[stations.length - 1];
       const portal = atStart ? portals[0] : portals[portals.length - 1];

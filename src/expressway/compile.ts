@@ -48,7 +48,13 @@ import {
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
   type BelowDeferReason,
+  type BelowLinkEnd,
+  type BelowLinkRun,
   belowDeferralOf,
+  ceilingFrom,
+  isEndUnder,
+  type PortalReach,
+  portalReaches,
   belowStructure,
   ceilingAt,
   depthFor,
@@ -80,6 +86,7 @@ import {
   type XwChunk,
   type XwClosed,
   type XwDeckStretch,
+  type XwOpening,
   type XwDiagnostic,
   type XwEnd,
   type XwOver,
@@ -454,6 +461,15 @@ export type Plan = {
    * (refBorders, 1 | K1; a seam). Absent: by structure alone, as before.
    */
   runBorders?: "cut";
+  /**
+   * `--below-junctions compile` (S7-3): the below runs met at a junction or a loop's seam are compiled
+   * (below.ts belowDeferralOf leaves only the universe's edge), dropBelowJunctions is not applied, a
+   * boundary node holding a below run gives its junction to the run on the child's side (endPlan),
+   * an end going on under the ground is no portal (below.ts portalReaches), the range takes the below
+   * parents of its runs, and tunnel and cut chunks carry `openings`. Absent: deferred, as since P9.
+   * Named apart from `belowJunctions` (7c0's record of the pairs left out).
+   */
+  belowJoins?: "compile";
   /**
    * S6 PR 7c: the stretches a decision made viaducts where their height made embankments (run, run
    * distances), for the scorecard. Absent when none was.
@@ -997,6 +1013,8 @@ export type PlanOptions = {
   footDeferrals?: readonly FootDeferral[];
   /** The stretches built as viaducts by a decision (structureDecisions.ts STRUCTURE_DECISIONS by default). */
   structureDecisions?: readonly StructureDecision[];
+  /** `--below-junctions` (S7-3, Plan.belowJoins); `defer` by default. */
+  belowJoins?: "defer" | "compile";
   /** `--run-borders` (R1-1a, Plan.runBorders); `keep` (by structure alone) by default. */
   runBorders?: "keep" | "cut";
 };
@@ -1071,7 +1089,13 @@ export function planNetwork(
     const compiled: RunPlan[] = [];
     for (const run of chainRuns) {
       // belowDeferralOf is isBelowCompiled with its reason (S7-1): null exactly where that is true.
-      const deferral = belowDeferralOf(chain, run, nodeChains, outsideNodes);
+      const deferral = belowDeferralOf(
+        chain,
+        run,
+        nodeChains,
+        outsideNodes,
+        options.belowJoins === "compile" ? "compile" : undefined,
+      );
       const isBelow = run.below && deferral === null;
       const isDeferred = run.below && !isBelow;
       if (isDeferred) {
@@ -1175,6 +1199,7 @@ export function planNetwork(
     ...(isGroundMode ? { betweenTunnels } : {}),
     ...(options.structureDecisions ? { structureDecisions: options.structureDecisions } : {}),
     ...(isBorderCut ? { runBorders: "cut" as const } : {}),
+    ...(options.belowJoins === "compile" ? { belowJoins: "compile" as const } : {}),
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),
@@ -1258,12 +1283,30 @@ export function planNetwork(
   // A run so added brings its own parents too, of any kind (4848757 in the default range hung from a
   // viaduct outside the boxes).
   const added = new Set<string>();
+  // S7-3 3.6 (`--below-junctions compile`): a below parent too (the opening is on its chunk and T12
+  // reads its ends), and a below run seaming onto a wanted below run (a loop's seam): a junction or seam
+  // without its other side written would hang in the air.
+  const isJoinsCompiled = plan.belowJoins === "compile";
+  const seamedOnto = (id: string) =>
+    isJoinsCompiled && plan.runs.get(id)?.below === true
+      ? [...plan.runs.values()]
+          .filter((o) => {
+            const isOtherBelow = o.below && o.run.id !== id;
+            if (!isOtherBelow) return false;
+            return [true, false].some((side) => {
+              const e = endPlan(plan, o, side);
+              return e.kind === "seam" && e.parent === id;
+            });
+          })
+          .map((o) => o.run.id)
+      : [];
   for (let isGrown = isGroundMode; isGrown;) {
     isGrown = false;
     for (const id of [...plan.wanted].sort()) {
-      for (const p of junctionParents(plan, id)) {
+      for (const p of [...junctionParents(plan, id), ...seamedOnto(id)]) {
         const isMissing = !plan.wanted.has(p);
-        const isTaken = plan.runs.get(p)?.ground === true || added.has(id);
+        const isBelowTaken = isJoinsCompiled && plan.runs.get(p)?.below === true;
+        const isTaken = plan.runs.get(p)?.ground === true || added.has(id) || isBelowTaken;
         if (!isMissing || !isTaken) continue;
         plan.wanted.add(p);
         added.add(p);
@@ -1945,8 +1988,17 @@ function classifyPairs(plan: Plan): DeckPair[] {
     const rb = plan.runs.get(b)!;
     // A viaduct and the tunnel or cut it goes on into are one road through the portal (a seam), not
     // two decks over one another: no pairs (the runtime would cut one at the other's edge).
+    // S7-3 3.5: on a loop the last run and the first meet at its seam (their indices do not run on), so
+    // with the junctions under the ground compiled they are neighbours there too.
+    const isSameChain = ra.chain.id === rb.chain.id;
+    const lastIdx = ra.chain.nodes.length - 1;
+    const isLoopSeam =
+      isSameChain &&
+      plan.belowJoins === "compile" &&
+      ra.chain.closed &&
+      ((ra.run.to === lastIdx && rb.run.from === 0) || (rb.run.to === lastIdx && ra.run.from === 0));
     const isPortalNeighbour =
-      ra.chain.id === rb.chain.id && (ra.run.to === rb.run.from || rb.run.to === ra.run.from);
+      (isSameChain && (ra.run.to === rb.run.from || rb.run.to === ra.run.from)) || isLoopSeam;
     if (isPortalNeighbour) continue;
     const window = (sin: number) => crossingReach(ra, rb, sin);
     const ordered = plan.crossings.filter(
@@ -2273,7 +2325,10 @@ export function untiedPairs(
  * universe, so the same runs are kept whatever the range (T8).
  */
 function pruneBelow(plan: Plan): void {
-  dropBelowJunctions(plan);
+  // S7-3: with the junctions under the ground compiled, the run at grade and the below run they join
+  // are written together (the below run's chunk carries the opening).
+  const isJoinsCompiled = plan.belowJoins === "compile";
+  if (!isJoinsCompiled) dropBelowJunctions(plan);
   const isBelow = (id: string) => plan.runs.get(id)!.below;
   const root = new Map<string, string>();
   for (const id of plan.runs.keys()) root.set(id, id);
@@ -2535,6 +2590,8 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
       : { kind: "ground", nodeIndex: idx };
   }
   if (chain.closed) {
+    const seamed = loopSeamEnd(plan, rp, atStart);
+    if (seamed) return seamed;
     const first = (plan.chainRuns.get(chain.id) ?? []).find((r) => r.run.from === 0);
     const isSeamEnd = !atStart && first !== undefined && first !== rp;
     if (isSeamEnd) return { kind: "seam", parent: first.run.id, parentNodeIndex: 0, nodeIndex: idx };
@@ -2569,9 +2626,86 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
     (r.run.to === pIndex && isOperatorBorder(r.run.borders?.[1]));
   const isAtBorder = holding.length > 1 && holding.some(isAtOperatorBorder);
   const operatedRun = holding.find((r) => r.run.ways.some((w) => plan.net.ways.get(w)?.operated === true));
-  const pRun = isAtBorder && operatedRun ? operatedRun : holding[0];
+  if (isAtBorder && operatedRun)
+    return { kind: "junction", parent: operatedRun.run.id, parentNodeIndex: pIndex, nodeIndex: idx };
+  const side = belowJoinSide(plan, parent, pIndex, holding, atStart);
+  if (side) return { kind: "junction", parent: side.run.run.id, parentNodeIndex: side.index, nodeIndex: idx };
+  const pRun = holding[0];
   if (!pRun) return { kind: "ground", nodeIndex: idx };
   return { kind: "junction", parent: pRun.run.id, parentNodeIndex: pIndex, nodeIndex: idx };
+}
+
+/**
+ * S7-3 3.3 (`--below-junctions compile`): the parent at a node where the parent's chain changes runs
+ * and one of the two is a below run. A diverging child (its start there) hangs from the run that
+ * begins at the node (downstream), a merging child (its end there) from the run that ends there
+ * (upstream): the run the child runs beside, so the stretch on one surface and the opening are on the
+ * parent. On a loop's seam node (index 0 of a closed chain) the same: the first run for a diverging
+ * child, the last run (at the chain's last index) for a merging one. Null elsewhere (no below run there,
+ * or without the flag): the first run, as before. Why not the rule everywhere: a node of viaducts and
+ * runs at grade alone keeps its parent (the tiles of today move by it), and S7-6 decides that.
+ */
+function belowJoinSide(
+  plan: Plan,
+  parent: Chain,
+  pIndex: number,
+  holding: readonly RunPlan[],
+  atStart: boolean,
+): { run: RunPlan; index: number } | null {
+  const isCompiled = plan.belowJoins === "compile";
+  if (!isCompiled) return null;
+  const last = parent.nodes.length - 1;
+  const isSeamNode = parent.closed && pIndex === 0;
+  const lastRun = isSeamNode
+    ? (plan.chainRuns.get(parent.id) ?? []).find((r) => r.run.to === last)
+    : undefined;
+  const around = lastRun && !holding.includes(lastRun) ? [...holding, lastRun] : holding;
+  const isBoundary = around.length > 1 && around.some((r) => r.below);
+  if (!isBoundary) return null;
+  if (atStart) {
+    const downstream = around.find((r) => r.run.from === pIndex);
+    return downstream ? { run: downstream, index: pIndex } : null;
+  }
+  const upstream = isSeamNode ? lastRun : around.find((r) => r.run.to === pIndex);
+  if (!upstream) return null;
+  return { run: upstream, index: isSeamNode ? last : pIndex };
+}
+
+/**
+ * S7-3 3.5 (`--below-junctions compile`): a loop's seam where exactly one side is a below run, ended as
+ * a boundary inside a chain is: a run at grade is the master and the below run seams onto it; a viaduct
+ * ends at its portal (a ground end into the tunnel or cut) and the below run seams onto the viaduct.
+ * Null for every other seam (both below, as the real loops' two are, or neither): the loop's own rule,
+ * the last run's end a seam onto the first and the first's start free, as before. Why not turn the
+ * chain so the two runs become one: the run's id (its first way) and the chain's indices change, and
+ * every run of the loop would be written anew.
+ */
+function loopSeamEnd(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan | null {
+  const isCompiled = plan.belowJoins === "compile";
+  if (!isCompiled) return null;
+  const { chain } = rp;
+  const lastIdx = chain.nodes.length - 1;
+  const runs = plan.chainRuns.get(chain.id) ?? [];
+  const first = runs.find((r) => r.run.from === 0);
+  const last = runs.find((r) => r.run.to === lastIdx);
+  const isTwoRuns = first !== undefined && last !== undefined && first !== last;
+  if (!isTwoRuns) return null;
+  const isOneBelow = first.below !== last.below;
+  if (!isOneBelow) return null;
+  const [below, other] = first.below ? [first, last] : [last, first];
+  const isBelowEnd = rp === below && atStart === (below === first);
+  const isOtherEnd = rp === other && atStart === (other === first);
+  const otherIndex = other === first ? 0 : lastIdx;
+  const belowIndex = below === first ? 0 : lastIdx;
+  if (isBelowEnd)
+    return { kind: "seam", parent: other.run.id, parentNodeIndex: otherIndex, nodeIndex: belowIndex };
+  if (!isOtherEnd) return null;
+  if (other.ground) return { kind: "open" };
+  const into = belowStructure(
+    plan.net,
+    below === first ? below.run.ways[0] : below.run.ways[below.run.ways.length - 1],
+  );
+  return { kind: "ground", nodeIndex: otherIndex, into };
 }
 
 function junctionParents(plan: Plan, id: string): string[] {
@@ -2943,6 +3077,7 @@ function setupRun(
       diagnostics,
       objective,
       plan.structures === "height",
+      belowReachesOf(plan, rp, ground),
     );
   // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
   // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
@@ -3215,6 +3350,58 @@ function belowAt(rp: RunPlan, s: number): "tunnel" | "cut" {
  * viaduct. Stations whose ceiling is out of reach are reported once per run (tunnel_cover_short)
  * and left free: the box's roof shows above the ground there, as at a real portal's cut-and-cover.
  */
+/** A below run's ceiling at a station (structure, ground, run distance): ceilingAt or ceilingFrom. */
+type CeilingRule = (structure: "tunnel" | "cut", ground: number, s: number) => number | null;
+
+/**
+ * S7-3 3.4: the plan's runs as below.ts reads them for the descent to their portals (BelowLinkRun),
+ * kept per plan and ground: each run's ends as endPlan makes them (a junction's or seam's parent and
+ * the parent's run distance there), its length, planV, whether below, and the ground at its two ends.
+ */
+const belowLinksCache = new WeakMap<Plan, WeakMap<GroundSampler, Map<string, BelowLinkRun>>>();
+function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkRun> {
+  const byGround = belowLinksCache.get(plan) ?? new WeakMap<GroundSampler, Map<string, BelowLinkRun>>();
+  belowLinksCache.set(plan, byGround);
+  const cached = byGround.get(ground);
+  if (cached) return cached;
+  const out = new Map<string, BelowLinkRun>();
+  for (const [id, rp] of plan.runs) {
+    const endOf = (atStart: boolean): BelowLinkEnd => {
+      const e = endPlan(plan, rp, atStart);
+      const isJoined = e.kind === "junction" || e.kind === "seam";
+      if (!isJoined) return { kind: e.kind };
+      const parent = plan.runs.get(e.parent);
+      const parentS = parent ? nodeS(parent, e.parentNodeIndex) : 0;
+      return { kind: e.kind, parent: e.parent, parentS };
+    };
+    const p0 = poseAt(rp, 0);
+    const p1 = poseAt(rp, rp.length);
+    out.set(id, {
+      id,
+      lengthM: rp.length,
+      planV: rp.planV,
+      below: rp.below,
+      ends: [endOf(true), endOf(false)],
+      ground: [ground(p0.lon, p0.lat), ground(p1.lon, p1.lat)],
+    });
+  }
+  byGround.set(ground, out);
+  return out;
+}
+
+/** The portals a below run's ceilings are measured from where an end goes on under the ground, else null. */
+function belowReachesOf(
+  plan: Plan,
+  rp: RunPlan,
+  ground: GroundSampler,
+): [PortalReach[], PortalReach[]] | null {
+  const links = belowLinksOf(plan, ground);
+  const id = rp.run.id;
+  const isUnder = isEndUnder(links, id, 0) || isEndUnder(links, id, 1);
+  if (!isUnder) return null;
+  return portalReaches(links, id);
+}
+
 function setupBelow(
   rp: RunPlan,
   stations: Float64Array,
@@ -3226,6 +3413,12 @@ function setupBelow(
   diagnostics: XwDiagnostic[],
   objective: Objective,
   isHeight = false,
+  /**
+   * S7-3 3.4: the portals beyond an end that goes on under the ground (below.ts portalReaches), or null
+   * where both ends are portals themselves (every run without the flag): then the ceilings are
+   * ceilingAt's, from the run's own two ends, as before.
+   */
+  reaches: [PortalReach[], PortalReach[]] | null = null,
 ): RunSetup {
   const S = rp.length;
   const n = stations.length;
@@ -3246,9 +3439,10 @@ function setupBelow(
   // The run's highest planned speed (its strictest grade and radius), as checks.checkCover reads it
   // from the summary: a fallback that lowers the speed later does not move the ceilings.
   const portals = { z0: portalZ[0], z1: portalZ[1] };
-  const tops = Array.from(stations, (sv, k) =>
-    ceilingAt(belowAt(rp, sv), groundLow[k], sv, S, portals, rp.planV),
-  );
+  const ceilingOf: CeilingRule = reaches
+    ? (structure, g, sv) => ceilingFrom(structure, g, sv, S, reaches)
+    : (structure, g, sv) => ceilingAt(structure, g, sv, S, portals, rp.planV);
+  const tops = Array.from(stations, (sv, k) => ceilingOf(belowAt(rp, sv), groundLow[k], sv));
   // A height build: a tunnel reached over less than one vertical curve keeps no ceiling (below.ts).
   const imposedTunnel = Array.from(stations).filter(
     (sv, k) => tops[k] !== null && belowAt(rp, sv) === "tunnel",
@@ -3296,7 +3490,7 @@ function setupBelow(
       });
   const none = new Float64Array(n).fill(-Infinity);
   if (isHeight) {
-    const at = thresholdStations(rp, stations, upper, ground, portals, isTooShort);
+    const at = thresholdStations(rp, stations, upper, ground, ceilingOf, isTooShort);
     if (at.length > 0)
       return withStations(rp, stations, target, upper, at, ground, fixed, ends, groundZ, objective);
   }
@@ -3337,17 +3531,16 @@ function thresholdStations(
   stations: Float64Array,
   upper: Float64Array,
   ground: GroundSampler,
-  portals: { z0: number; z1: number },
+  ceilingOf: CeilingRule,
   /** The tunnel keeps no ceiling at all (below.ts isCoverStretchTooShort). */
   isTunnelFree: boolean,
 ): number[] {
-  const S = rp.length;
   const out: number[] = [];
   const isReachedAt = (sv: number) => {
     const isFree = isTunnelFree && belowAt(rp, sv) === "tunnel";
     if (isFree) return false;
     const p = poseAt(rp, sv);
-    return ceilingAt(belowAt(rp, sv), ground(p.lon, p.lat), sv, S, portals, rp.planV) !== null;
+    return ceilingOf(belowAt(rp, sv), ground(p.lon, p.lat), sv) !== null;
   };
   for (let k = 0; k + 1 < stations.length; k++) {
     const a = Number.isFinite(upper[k]);
@@ -5912,6 +6105,83 @@ function stationStep(kappa: number): number {
  * stations with one partner and one relation within STRETCH_GAP_M make one stretch (padded by half
  * the pair spacing).
  */
+/**
+ * S7-3 3.7: the junctions of each run, as parent and child (the other run and the run distance of the
+ * node on this run), kept per plan: endPlan read once for every run.
+ */
+const junctionsCache = new WeakMap<Plan, Map<string, Array<{ with: string; s: number }>>>();
+function junctionsOfRuns(plan: Plan): Map<string, Array<{ with: string; s: number }>> {
+  const cached = junctionsCache.get(plan);
+  if (cached) return cached;
+  const out = new Map<string, Array<{ with: string; s: number }>>();
+  const add = (id: string, other: string, s: number) =>
+    out.set(id, [...(out.get(id) ?? []), { with: other, s }]);
+  for (const id of [...plan.runs.keys()].sort()) {
+    const rp = plan.runs.get(id)!;
+    for (const atStart of [true, false]) {
+      const e = endPlan(plan, rp, atStart);
+      const isJunction = e.kind === "junction";
+      if (!isJunction) continue;
+      const parent = plan.runs.get(e.parent);
+      if (!parent) continue;
+      add(id, e.parent, atStart ? 0 : rp.length);
+      add(e.parent, id, nodeS(parent, e.parentNodeIndex));
+    }
+  }
+  junctionsCache.set(plan, out);
+  return out;
+}
+
+/**
+ * S7-3 3.7 (`--below-junctions compile`): where a junction's other run leaves or joins this run on one
+ * surface, the `same` stretch with it (deckStretches) that the junction's node lies in or within
+ * STRETCH_GAP_M of, and the side the other run is on there (its centre line at the stretch's middle,
+ * left or right of this run's direction). Only the junction's own stretch: where the two part, the
+ * walls of the nose are S7-4's. None without the flag (a build without it keeps its files' bytes).
+ */
+function openingsOf(plan: Plan, rp: RunPlan, stretches: readonly XwDeckStretch[]): XwOpening[] {
+  const isCompiled = plan.belowJoins === "compile";
+  if (!isCompiled) return [];
+  const out: XwOpening[] = [];
+  const id = rp.run.id;
+  for (const j of junctionsOfRuns(plan).get(id) ?? []) {
+    const distance = (d: XwDeckStretch) => (j.s < d.s0 ? d.s0 - j.s : j.s > d.s1 ? j.s - d.s1 : 0);
+    const near = stretches
+      .filter((d) => d.with === j.with && d.relation === "same" && distance(d) <= STRETCH_GAP_M)
+      .sort((p, q) => distance(p) - distance(q));
+    const stretch = near[0];
+    if (!stretch) continue;
+    const mid = (stretch.s0 + stretch.s1) / 2;
+    const pair = plan.pairs
+      .filter((p) => p.a === id && p.b === j.with)
+      .sort((p, q) => Math.abs(p.sa - mid) - Math.abs(q.sa - mid))[0];
+    const other = plan.runs.get(j.with);
+    if (!pair || !other) continue;
+    const here = poseAt(rp, pair.sa);
+    const ahead = poseAt(rp, Math.min(rp.length, pair.sa + 1));
+    const behind = poseAt(rp, Math.max(0, pair.sa - 1));
+    const there = poseAt(other, pair.sb);
+    const cross = (ahead.x - behind.x) * (there.y - here.y) - (ahead.y - behind.y) * (there.x - here.x);
+    out.push({ side: cross > 0 ? "left" : "right", s0: stretch.s0, s1: stretch.s1, with: j.with });
+  }
+  return out.sort((p, q) => p.s0 - q.s0 || (p.with < q.with ? -1 : 1));
+}
+
+/** A chunk's openings: those over [a, b] clipped to it, on a tunnel or cut chunk only, or nothing. */
+function openingsOver(
+  list: readonly XwOpening[],
+  structure: XwChunk["structure"],
+  a: number,
+  b: number,
+): { openings?: XwOpening[] } {
+  const isUnder = structure === "tunnel" || structure === "cut";
+  if (!isUnder) return {};
+  const over = list
+    .filter((o) => o.s1 > a && o.s0 < b)
+    .map((o) => ({ ...o, s0: roundTo(Math.max(a, o.s0), 2), s1: roundTo(Math.min(b, o.s1), 2) }));
+  return over.length > 0 ? { openings: over } : {};
+}
+
 function deckStretches(plan: Plan, id: string): XwDeckStretch[] {
   const mine = plan.pairs
     .filter((p) => p.a === id)
@@ -5971,7 +6241,32 @@ function overDeck(
 function belowPortals(plan: Plan, s: Solved): XwPortal[] {
   const { rp } = s;
   const base = rp.align.s[rp.i0];
-  const outside = (e: XwEnd): XwStructure => (e.kind === "seam" ? "viaduct" : "ground");
+  // S7-3 3.4: an end going on under the ground has the other below run's structure there beyond it
+  // (tunnel or cut), not the ground or a viaduct: it is no portal.
+  const under = (e: XwEnd, atStart: boolean): XwStructure | null => {
+    const isJoined = e.kind === "junction" || e.kind === "seam";
+    if (isJoined) {
+      const parent = e.parent === undefined ? undefined : plan.runs.get(e.parent);
+      return parent?.below ? belowAt(parent, e.parentS ?? 0) : null;
+    }
+    const isFree = e.kind === "open";
+    if (!isFree) return null;
+    const here = atStart ? 0 : rp.length;
+    for (const other of [...plan.runs.values()].sort((a, b) => (a.run.id < b.run.id ? -1 : 1))) {
+      if (!other.below || other === rp) continue;
+      for (const side of [true, false]) {
+        const oe = endPlan(plan, other, side);
+        const isSeamedHere =
+          oe.kind === "seam" &&
+          oe.parent === rp.run.id &&
+          Math.abs(nodeS(rp, oe.parentNodeIndex) - here) <= 0.5;
+        if (isSeamedHere) return belowAt(other, side ? 0 : other.length);
+      }
+    }
+    return null;
+  };
+  const outsideOf = (e: XwEnd, atStart: boolean): XwStructure =>
+    under(e, atStart) ?? (e.kind === "seam" ? "viaduct" : "ground");
   const boundaries: Array<{ s: number; from: "tunnel" | "cut"; to: "tunnel" | "cut" }> = [];
   for (let w = 1; w < rp.run.ways.length; w++) {
     const wayIndex = rp.chain.ways.indexOf(rp.run.ways[w]);
@@ -5984,8 +6279,8 @@ function belowPortals(plan: Plan, s: Solved): XwPortal[] {
   }
   return portalsOf(
     roundTo(rp.length, 2),
-    outside(s.start),
-    outside(s.end),
+    outsideOf(s.start, true),
+    outsideOf(s.end, false),
     boundaries,
     belowStructure(plan.net, rp.run.ways[0]),
     belowStructure(plan.net, rp.run.ways[rp.run.ways.length - 1]),
@@ -6397,6 +6692,7 @@ function chunkRun(
   for (const w of s.lowSpans ?? []) avoid.push([w[0] - 1, w[1] + 1]);
   const decksBelow = overDeck(plan, rp.run.id, heightAt, ground);
   const stretches = deckStretches(plan, rp.run.id);
+  const runOpenings = openingsOf(plan, rp, stretches);
   const piers: number[] = [];
   const spacing = PIER_SPACING.value;
   // A tunnel or cut stands on the ground: no piers.
@@ -6714,6 +7010,7 @@ function chunkRun(
       decks: stretches
         .filter((d) => d.s1 > a && d.s0 < b)
         .map((d) => ({ ...d, s0: roundTo(Math.max(a, d.s0), 2), s1: roundTo(Math.min(b, d.s1), 2) })),
+      ...openingsOver(runOpenings, structure, a, b),
       prev: k > 0 ? `${rp.run.id}:${k - 1}` : null,
       next: isLast ? null : `${rp.run.id}:${k + 1}`,
     });

@@ -42,7 +42,7 @@
 // P2.7-6 PR 1: --structures height (the default since S6 PR 7c) draws a viaduct-tagged run's stretches
 // as viaduct, embankment or cut from its solved height (src/expressway/heightStructures.ts) and names
 // "height-structures" in meta's features; --structures tags (comparing, --out) draws them by the tags.
-import { districtsRefusal, shippedFolderRefusal } from "./expresswayGuards";
+import { belowJoinsRefusal, districtsRefusal, shippedFolderRefusal } from "./expresswayGuards";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -312,6 +312,12 @@ const isRunBordersCut = runBordersArg === "cut";
 // runs of those districts alone (the districts from the plan, districts.ts districtsOf). The whole ship
 // is compiled and its signs planned; the runs are picked just before they are written (review 1 B4),
 // so each written chunk is the whole ship's byte for byte (T8).
+// S7-3: --below-junctions compile compiles the below runs met at a junction or a loop's seam (defer, the
+// default, leaves them out as since P9); measuring only until S7-6.
+const belowJoinsArg = arg("below-junctions") ?? "defer";
+const belowJoinsReason = belowJoinsRefusal(belowJoinsArg, structuresMode, groundMode, partitionMode);
+if (belowJoinsReason) throw new Error(belowJoinsReason);
+const isBelowJoinsCompile = belowJoinsArg === "compile";
 const districtsArg = arg("districts");
 const districtsReason = districtsRefusal(districtsArg, scope === "ship", isRunBordersCut, DISTRICTS);
 if (districtsReason) throw new Error(districtsReason);
@@ -334,6 +340,7 @@ const refusal = shippedFolderRefusal({
   isHoldMains: holdMode === "on",
   isLowSpanSweep: lowSpanSoffitM !== null,
   isRunBordersCut,
+  isBelowJoinsCompile,
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -400,6 +407,7 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   ...(isCompanions ? { companionWeight } : {}),
   ...(isShip ? { wanted: (p) => shipWanted(p) } : {}),
   ...(isRunBordersCut ? { runBorders: "cut" as const } : {}),
+  ...(isBelowJoinsCompile ? { belowJoins: "compile" as const } : {}),
 };
 // Planned again with the ramps moved (--ramp-shift) once the first solve says where.
 // With --ground compile the plan is made again once the roads are read (S6 PR 7c2, below): the
@@ -660,7 +668,12 @@ const isUnsolved = (kind: string) => UNSOLVED.includes(kind);
 const meta: XwMeta = {
   version: XW_VERSION,
   // The structures by height only in a height build: the tags' files name "below" alone, as before.
-  features: XW_FEATURES.filter((f) => f !== "height-structures" || structuresMode === "height"),
+  // S7-3: "below-junctions" only in a build with the flag.
+  features: XW_FEATURES.filter(
+    (f) =>
+      (f !== "height-structures" || structuresMode === "height") &&
+      (f !== "below-junctions" || isBelowJoinsCompile),
+  ),
   zoom: Z,
   tiles: tileKeys,
   ranges: rangeNames.map((name) => ({ name, ...RANGES[name] })),

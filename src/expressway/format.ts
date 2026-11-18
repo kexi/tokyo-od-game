@@ -39,9 +39,18 @@ export const XW_VERSION = 6;
  * run's chunks may be `embankment` (retaining walls down to the ground, no piers) or `cut` (as a below
  * run's) where its solved height says so, with `portals` where the structure changes. A build with
  * the tags' structures (the default) names only "below", so its files are as before.
+ * "below-junctions" (S7-3, `--below-junctions compile`): below runs meet others at junctions and at a
+ * loop's seam under the ground, and tunnel and cut chunks carry `openings` where they do. Only such a
+ * build names it.
  */
-export const XW_FEATURES = ["below", "height-structures"] as const;
+export const XW_FEATURES = ["below", "height-structures", "below-junctions"] as const;
 export type XwFeature = (typeof XW_FEATURES)[number];
+/**
+ * The features the game reads (src/world/expresswayDeck.ts isSupportedMeta): the writer's list less
+ * "below-junctions", whose openings the runtime does not cut yet (S7-4 adds it). Why apart from
+ * XW_FEATURES: a reader that took the writer's list would read a file it cannot draw.
+ */
+export const XW_READER_FEATURES: readonly XwFeature[] = ["below", "height-structures"];
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */
 export const PIER_STRIDE = 2;
 /**

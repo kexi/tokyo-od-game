@@ -12,7 +12,7 @@ import {
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
 import { GIRDER_DEPTH, MAX_LATERAL_SHIFT, OPEN_GROUND_FLOOR, RAMP_MIN_RADIUS } from "./assumptions";
-import { ceilingAt, isCoverStretchTooShort } from "./below";
+import { ceilingAt, ceilingFrom, isCoverStretchTooShort, type PortalReach } from "./below";
 import { approachLength } from "./compile";
 import { CROSS_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwRunSummary } from "./format";
 import { haversine } from "./geo";
@@ -345,6 +345,26 @@ export function checkClearance(
 }
 
 /**
+ * What T12 measures a below run's ceilings from: the ground at its two end stations (z0, z1), and where
+ * an end goes on under the ground (S7-3 3.4) the portals beyond it (below.ts portalReaches, from the
+ * files: violationsOf), as the compiler's setupBelow does.
+ */
+export type CoverEnds = { z0: number; z1: number; reaches?: [PortalReach[], PortalReach[]] };
+
+/** The ceiling T12 holds a station to: ceilingFrom where the ends have reaches, else ceilingAt as before. */
+function coverCeiling(
+  structure: "tunnel" | "cut",
+  ground: number,
+  s: number,
+  run: Pick<XwRunSummary, "lengthM" | "planV">,
+  ends: CoverEnds,
+): number | null {
+  const { reaches } = ends;
+  if (reaches) return ceilingFrom(structure, ground, s, run.lengthM, reaches);
+  return ceilingAt(structure, ground, s, run.lengthM, ends, run.planV as DesignSpeed);
+}
+
+/**
  * T12 (P9): a tunnel chunk keeps its box and cover under the ground, a cut chunk stays under the
  * ground within CUT_TOLERANCE_M, wherever the descent from the run's two portals (its first and
  * last station, at the ground) can reach that depth (below.ts: the compiler imposes no more).
@@ -354,7 +374,7 @@ export function checkClearance(
 export function checkCover(
   c: XwChunk,
   run: Pick<XwRunSummary, "lengthM" | "planV">,
-  ends: { z0: number; z1: number },
+  ends: CoverEnds,
   /** A height build's tunnel reached over less than a vertical curve (below.ts isCoverStretchTooShort): no ceiling. */
   isTunnelFree = false,
 ): string[] {
@@ -372,7 +392,7 @@ export function checkCover(
     const isMouth = mouths.some((s) => Math.abs(s - p.s) <= 0.011);
     const structure = isMouth ? "cut" : (c.structure as "tunnel" | "cut");
     if (structure === "tunnel" && isTunnelFree) continue;
-    const top = ceilingAt(structure, p.ground, p.s, run.lengthM, ends, run.planV as DesignSpeed);
+    const top = coverCeiling(structure, p.ground, p.s, run, ends);
     if (top === null) continue;
     // 1 cm for the ground's rounding in the files (the compiler holds the lowest ground near the station).
     const isAbove = p.z > top + 0.01;
@@ -492,13 +512,13 @@ export function checkSuperelevation(c: XwChunk): string[] {
 export function isTunnelFreeRun(
   list: readonly XwChunk[],
   run: Pick<XwRunSummary, "lengthM" | "planV">,
-  ends: { z0: number; z1: number },
+  ends: CoverEnds,
 ): boolean {
   const reached: number[] = [];
   for (const c of list) {
     if (c.structure !== "tunnel") continue;
     for (const p of stationsOf(c)) {
-      const top = ceilingAt("tunnel", p.ground, p.s, run.lengthM, ends, run.planV as DesignSpeed);
+      const top = coverCeiling("tunnel", p.ground, p.s, run, ends);
       if (top !== null) reached.push(p.s);
     }
   }
