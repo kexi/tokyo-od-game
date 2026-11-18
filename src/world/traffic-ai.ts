@@ -123,7 +123,11 @@ export function followTarget(gap: number, standstill: number, cruise: number, a:
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
 const MAX_CARS = QUALITY.maxAiCars;
 const SPAWN_RADIUS = 350;
-/** No car appears, nor is put back on its lane, nearer than this to the player's car (m). */
+/**
+ * No car appears nearer than this to the focus update() is given (spawn(): the player's car, the
+ * taxi or the walker, main.ts focusPos), nor is put back on its lane nearer than this to the
+ * player's car (drive(): the `player` update() is given) (m).
+ */
 const NEAR_PLAYER_M = 60;
 const DESPAWN_RADIUS = 450;
 // Beyond this, cars may come and go even in view (fog and buildings hide it).
