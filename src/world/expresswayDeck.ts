@@ -81,7 +81,9 @@ import {
   otherDecksAt,
   headwallQuads,
   lampQuads,
+  BORE_COLOURS,
 } from "./expresswayBore";
+import { END_NODE_EPS_M, endAhead, rangeOfChunks } from "./expresswayEnds";
 import { retireObject } from "../render/retire";
 
 /**
@@ -210,6 +212,10 @@ export function* deckArraySteps(
     jogs: DividerJog[];
     /** A tunnel's ceiling lamps (P9): positions of unlit triangles drawn bright, empty elsewhere. */
     lamps: Float32Array;
+    /** The walls closing its run's ends with nothing going on (R1-1b, expressway_end_wall_built). */
+    endWalls: EndWall[];
+    /** Such ends left without a wall, and why (expressway_end_wall_skipped). */
+    endSkips: EndSkip[];
   }
 > {
   const n = chunk.st.length / STATION_STRIDE;
@@ -569,10 +575,50 @@ export function* deckArraySteps(
   // A step in the slab's width to the next chunk of the run (2 → 1 lanes in one station: 24402125
   // :0 → :1) left the wider deck's 壁高欄 ending in the air past the narrower one's (S6 PR 7c1, A1).
   if (!bore)
-    for (const step of widthSteps(chunk, own.edge, context)) {
+    for (const step of widthSteps(chunk, own.edge, context, (other, end) =>
+      openBeyond(rings[end === "start" ? 0 : m - 1], chunkRings(other, place, bank), end, own.edge),
+    )) {
       const k = step.end === "start" ? 0 : m - 1;
       closeWidthStep(step, rings[k], sides[k], own.edge, bank, pos, col, solid);
     }
+  // R1-1b: the run's ends with nothing written going on (expresswayEnds.ts), closed by a wall. Asked of
+  // the run's end chunks alone (a chunk with no prev or no next): the answer reads every loaded run.
+  const endWalls: EndWall[] = [];
+  const endSkips: EndSkip[] = [];
+  for (const { end, parentAt } of deadEndsOf(chunk, context)) {
+    const k = end === "start" ? 0 : m - 1;
+    if (bore === "tunnel") {
+      endSkips.push({ end, reason: "tunnel" });
+      continue;
+    }
+    const sd = sides[k];
+    const left = bore ? own.hw : sd.left.wall ? sd.left.wall.inner : sd.left.reach;
+    const right = bore ? own.hw : sd.right.wall ? sd.right.wall.inner : sd.right.reach;
+    // R1-1b 3.3: a child ending where its parent ends, the parent's end a wall too: the child's wall
+    // only where its road lies outside the parent's (the parent's wall closes the rest).
+    const parent = parentAt ? chunkRings(parentAt.chunk, place, bank) : null;
+    const spans =
+      parent && parentAt ? outsideOf(rings[k], -right, left, parent, end) : [{ lo: -right, hi: left }];
+    // Nothing of the road shows at the end ring (its deck goes under another's, or lies on its parent's
+    // road there): the other deck's wall closes it, nothing to build here.
+    const isHidden = closing.has(k) || left + right <= 1e-3 || spans.length === 0;
+    if (isHidden) {
+      endSkips.push({ end, reason: "hidden" });
+      continue;
+    }
+    const colour = bore ? BORE_COLOURS.retaining : CONCRETE;
+    let widthM = 0;
+    let heightM = 0;
+    for (const { lo, hi } of spans) {
+      const built = closeEnd(end, rings[k], sections[k], lo, hi, bank, colour, pos, col, solid);
+      widthM += built.widthM;
+      heightM = Math.max(heightM, built.heightM);
+    }
+    // A viaduct's girder under the slab is hollow: its end face is closed as an embankment's is.
+    const isViaduct = !bore && !isEmbankment;
+    if (isViaduct) embankmentCap(sections[k], pos, col, solid, CONCRETE);
+    endWalls.push({ end, widthM: Math.round(widthM * 1000) / 1000, heightM });
+  }
   const lamps: number[] = [];
   const isTunnel = bore === "tunnel";
   if (isTunnel) tunnelExtras(chunk, own.hw, rings, bank, pos, col, solid, lamps);
@@ -598,6 +644,8 @@ export function* deckArraySteps(
     ...(merge?.dividersOf(chunk.id) ?? { walls: [], steps: [] }),
     jogs: merge ? dividerJogs(rings, sides) : [],
     lamps: new Float32Array(lamps),
+    endWalls,
+    endSkips,
   };
 }
 
@@ -615,7 +663,13 @@ const HEADWALL = [0.6, 0.59, 0.55];
  * 24039751:0 s 118, 0.40 m by the wall); the road, the parapets' and the walls' ends are a
  * viaduct's, open.
  */
-function embankmentCap(loop: Corners, pos: number[], col: number[], solid: number[]): void {
+function embankmentCap(
+  loop: Corners,
+  pos: number[],
+  col: number[],
+  solid: number[],
+  colour: readonly number[] = HEADWALL,
+): void {
   const under = loop.slice(6, 12);
   const c = [0, 1, 2].map((k) => under.reduce((sum, p) => sum + p[k], 0) / under.length);
   for (let i = 0; i < under.length; i++) {
@@ -628,7 +682,7 @@ function embankmentCap(loop: Corners, pos: number[], col: number[], solid: numbe
       [c, b, a],
     ]) {
       for (const p of tri) pos.push(p[0], p[1], p[2]);
-      for (let v = 0; v < 3; v++) col.push(...HEADWALL);
+      for (let v = 0; v < 3; v++) col.push(...colour);
       for (const p of tri) solid.push(p[0], p[1], p[2]);
     }
   }
@@ -760,13 +814,83 @@ function endApron(
 }
 
 /** An end of a chunk whose neighbour in the run has a narrower slab (A1), and that slab's edge. */
-export type WidthStep = { end: "start" | "end"; narrowEdge: number };
+/**
+ * The walls a width step stands at an end (A1): each across from `inner` to `outer`, metres left of
+ * the centre (signed: below zero the right side), `outer` at this slab's edge where the box closes
+ * the slab's side.
+ */
+export type WidthStep = { end: "start" | "end"; boxes: Array<{ inner: number; outer: number }> };
+
+/** Across an end face, the step of the samples that find where another run's slab lies beyond it (m). */
+const OPEN_SAMPLE_M = 0.05;
+
+/**
+ * Where across this deck's end face nothing of the run going on beyond it lies just past the face
+ * (R1-1b 3.3, expresswayEnds.ts (c)): the other run's slab is the strip between its rings' edges,
+ * and the road goes on there where the points OPEN_SAMPLE_M and a wall's width past the face are both
+ * on it (a sliver of its end ring's corner past the face carries no car on). Each stretch of the face
+ * where it does not is a box, those at this slab's edges from the edge in. Why not the other's end ring's edges taken
+ * across this ring: a ramp leaving the node turns off at up to 80°, its end ring then lies along
+ * this one's road, and the face beside where it crosses would be read as covered.
+ */
+function openBeyond(
+  ring: DeckRing,
+  other: ChunkRings,
+  end: "start" | "end",
+  edge: number,
+): Array<{ inner: number; outer: number }> {
+  const out = end === "end" ? 1 : -1;
+  const strip = other.rings.map((r) => [ringPoint(r, other.edge, 0), ringPoint(r, -other.edge, 0)]);
+  const isOn = (p: Vector3) => {
+    for (let i = 0; i + 1 < strip.length; i++) {
+      const quad = [strip[i][0], strip[i + 1][0], strip[i + 1][1], strip[i][1]];
+      if (isInsideXZ(quad, p)) return true;
+    }
+    return false;
+  };
+  const open: Array<{ from: number; to: number }> = [];
+  const n = Math.ceil((2 * edge) / OPEN_SAMPLE_M);
+  for (let i = 0; i < n; i++) {
+    const from = -edge + i * OPEN_SAMPLE_M;
+    const to = Math.min(edge, from + OPEN_SAMPLE_M);
+    const at = ringPoint(ring, (from + to) / 2, 0);
+    const isRoadOn = [OPEN_SAMPLE_M, PARAPET_WIDTH.value].every((d) =>
+      isOn(at.clone().addScaledVector(ring.t, out * d)),
+    );
+    if (isRoadOn) continue;
+    const last = open[open.length - 1];
+    const isJoined = last !== undefined && Math.abs(last.to - from) < 1e-9;
+    if (isJoined) last.to = to;
+    else open.push({ from, to });
+  }
+  return open.map(({ from, to }) =>
+    to >= edge - 1e-9 ? { inner: from, outer: to } : { inner: to, outer: from },
+  );
+}
+
+/** Whether a point lies inside a convex or concave quad, in plan (x/z), by the crossings of a ray. */
+function isInsideXZ(quad: Vector3[], p: Vector3): boolean {
+  let inside = false;
+  for (let i = 0, j = quad.length - 1; i < quad.length; j = i++) {
+    const a = quad[i];
+    const b = quad[j];
+    const isCrossing = a.z > p.z !== b.z > p.z && p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x;
+    if (isCrossing) inside = !inside;
+  }
+  return inside;
+}
 
 /**
  * The ends of a chunk where the next (or previous) chunk of its run is loaded and its slab's edge
- * stands more than PARAPET_WIDTH inside this one's (a tunnel is another section, left out).
+ * stands more than PARAPET_WIDTH inside this one's (a tunnel is another section, left out); at a
+ * run's end, the run going on beyond it (`spanOf` places its slab, which need not be centred).
  */
-function widthSteps(chunk: XwChunk, edge: number, context: DeckContext | null): WidthStep[] {
+function widthSteps(
+  chunk: XwChunk,
+  edge: number,
+  context: DeckContext | null,
+  openOf: (other: XwChunk, end: "start" | "end") => Array<{ inner: number; outer: number }>,
+): WidthStep[] {
   if (!context) return [];
   const list = context.index.chunksOf(chunk.run);
   const out: WidthStep[] = [];
@@ -774,12 +898,26 @@ function widthSteps(chunk: XwChunk, edge: number, context: DeckContext | null): 
     ["start", chunk.prev],
     ["end", chunk.next],
   ] as const) {
-    const other = id === null ? undefined : list.find((c) => c.id === id);
+    // R1-1b 3.3: at a run's end where the road goes on as another run (a junction child leaving the
+    // end node beyond it, expresswayEnds.ts (c)), that run's chunk at the node is the neighbour.
+    const onward = id === null ? onwardChunkAt(chunk, end, context) : undefined;
+    const other = onward ?? (id === null ? undefined : list.find((c) => c.id === id));
     const isOtherSection = !other || other.structure === "tunnel";
     if (isOtherSection) continue;
+    if (onward) {
+      // Why not ±its half width as the run's own next chunk: a ramp leaving the end node stands to
+      // one side of the main line's centre, and the face beside it would be left open.
+      const boxes = openOf(onward, end);
+      if (boxes.length > 0) out.push({ end, boxes });
+      continue;
+    }
     const narrowEdge = carriagewayWidth(other) / 2 + PARAPET_WIDTH.value;
     const isStep = edge - narrowEdge > PARAPET_WIDTH.value + 1e-6;
-    if (isStep) out.push({ end, narrowEdge });
+    const boxes = [
+      { inner: narrowEdge, outer: edge },
+      { inner: -narrowEdge, outer: -edge },
+    ];
+    if (isStep) out.push({ end, boxes });
   }
   return out;
 }
@@ -815,24 +953,27 @@ export function closeWidthStep(
   const back = step.end === "start" ? 1 : -1;
   const ph = PARAPET_HEIGHT.value;
   const w = PARAPET_WIDTH.value;
-  for (const sign of [1, -1] as const) {
-    const wall = sides[sign > 0 ? "left" : "right"].wall;
+  for (const { inner, outer } of step.boxes) {
+    // A box closing the slab's side stands only where this deck's wall is at its own edge (no deck
+    // sharing its surface goes on beside it there).
+    const isAtEdge = Math.abs(Math.abs(outer) - edge) < 1e-3;
+    const wall = sides[outer > 0 ? "left" : "right"].wall;
     const isOwnEdge = wall !== null && Math.abs(wall.outer - edge) < 1e-3;
-    if (!isOwnEdge) continue;
+    if (isAtEdge && !isOwnEdge) continue;
     const corner = (u: number, d: number, isTop: boolean) => {
-      const lift = liftAt(ring, sign * u, bank);
-      const p = ringPoint(ring, sign * u, isTop ? lift + ph : lift - SLAB);
+      const lift = liftAt(ring, u, bank);
+      const p = ringPoint(ring, u, isTop ? lift + ph : lift - SLAB);
       return p.addScaledVector(ring.t, back * d).toArray();
     };
     const box = [
-      corner(step.narrowEdge, 0, false),
-      corner(edge, 0, false),
-      corner(edge, w, false),
-      corner(step.narrowEdge, w, false),
-      corner(step.narrowEdge, 0, true),
-      corner(edge, 0, true),
-      corner(edge, w, true),
-      corner(step.narrowEdge, w, true),
+      corner(inner, 0, false),
+      corner(outer, 0, false),
+      corner(outer, w, false),
+      corner(inner, w, false),
+      corner(inner, 0, true),
+      corner(outer, 0, true),
+      corner(outer, w, true),
+      corner(inner, w, true),
     ];
     for (const [a, b, c, d] of BOX_FACES)
       for (const tri of [
@@ -846,6 +987,167 @@ export function closeWidthStep(
         for (const p of tri) solid.push(p[0], p[1], p[2]);
       }
   }
+}
+
+/** A wall closing a run's end (R1-1b): which end, its width across and its height over the slab's bottom. */
+export type EndWall = { end: "start" | "end"; widthM: number; heightM: number };
+
+/** A run's end with nothing going on left without a wall: in a tunnel (none in the data), or hidden under another deck. */
+export type EndSkip = { end: "start" | "end"; reason: "tunnel" | "hidden" };
+
+/** The loaded run ranges a context knows (expresswayEnds.ts RunRange), from its chunks. */
+function rangeOfRun(context: DeckContext) {
+  return (run: string) => rangeOfChunks(context.index.chunksOf(run), STATION_STRIDE);
+}
+
+/**
+ * The ends of `chunk`'s run it holds (no prev: the start, no next: the end) with nothing written going
+ * on beyond them (expresswayEnds.ts endAhead). Why only there: the answer reads every loaded run's
+ * ends, and a chunk inside its run has no end of the run to ask about.
+ */
+function deadEndsOf(
+  chunk: XwChunk,
+  context: DeckContext | null,
+): Array<{ end: "start" | "end"; parentAt: { chunk: XwChunk; end: "start" | "end" } | null }> {
+  if (!context) return [];
+  const out: Array<{ end: "start" | "end"; parentAt: { chunk: XwChunk; end: "start" | "end" } | null }> = [];
+  const rangeOf = rangeOfRun(context);
+  for (const end of ["start", "end"] as const) {
+    const isRunEnd = end === "start" ? chunk.prev === null : chunk.next === null;
+    if (!isRunEnd) continue;
+    const answer = endAhead(context.index.runs, rangeOf, chunk.run, end);
+    if (answer.ahead) continue;
+    const isOnParentEnd = answer.why === "parent-dead" && answer.via !== undefined;
+    out.push({ end, parentAt: isOnParentEnd ? parentEndAt(context, chunk.run, end, answer.via!) : null });
+  }
+  return out;
+}
+
+/** The end chunk of `parent` at the node a run's end hangs on (its first chunk or its last), when loaded. */
+function parentEndAt(
+  context: DeckContext,
+  run: string,
+  end: "start" | "end",
+  parent: string,
+): { chunk: XwChunk; end: "start" | "end" } | null {
+  const s = context.index.runs.get(run)?.[end].parentS;
+  if (s === undefined) return null;
+  const list = context.index.chunksOf(parent);
+  const first = list.find((c) => c.prev === null);
+  const last = list.find((c) => c.next === null);
+  const isNear = (c: XwChunk | undefined, at: number) =>
+    c !== undefined && Math.abs(c.st[at] - s) <= END_NODE_EPS_M;
+  if (isNear(first, 0)) return { chunk: first!, end: "start" };
+  if (last && isNear(last, last.st.length - STATION_STRIDE)) return { chunk: last, end: "end" };
+  return null;
+}
+
+/**
+ * The stretches of this deck's end ring from `lo` to `hi` (metres left of its centre) that lie outside
+ * the parent's road (the strip between its rings' carriageway edges, up to its end face). Why not let a
+ * sliver past the parent's end face go without (a child meeting the end at a few degrees, 28127318:start
+ * at 2.8°, sticks out by 0.22 m): a car on it at the face's 0.25 m has the parent's wall behind it and
+ * nothing ahead, and the rays of R1-1b 5.4 miss there.
+ */
+function outsideOf(
+  ring: DeckRing,
+  lo: number,
+  hi: number,
+  parent: ChunkRings,
+  end: "start" | "end",
+): Array<{ lo: number; hi: number }> {
+  const back = end === "start" ? 1 : -1;
+  const strip = parent.rings.map((r) => [ringPoint(r, parent.hw, 0), ringPoint(r, -parent.hw, 0)]);
+  const isOn = (p: Vector3) => {
+    for (let i = 0; i + 1 < strip.length; i++) {
+      const quad = [strip[i][0], strip[i + 1][0], strip[i + 1][1], strip[i][1]];
+      if (isInsideXZ(quad, p)) return true;
+    }
+    return false;
+  };
+  const spans: Array<{ lo: number; hi: number }> = [];
+  const n = Math.ceil((hi - lo) / OPEN_SAMPLE_M);
+  for (let i = 0; i < n; i++) {
+    const from = lo + i * OPEN_SAMPLE_M;
+    const to = Math.min(hi, from + OPEN_SAMPLE_M);
+    // OPEN_SAMPLE_M inside its own face: where the two ends lie on one line, the face itself is the
+    // parent strip's edge, on it or not by a rounding.
+    if (isOn(ringPoint(ring, (from + to) / 2, 0).addScaledVector(ring.t, back * OPEN_SAMPLE_M))) continue;
+    const prev = spans[spans.length - 1];
+    const isJoined = prev !== undefined && Math.abs(prev.hi - from) < 1e-9;
+    if (isJoined) prev.hi = to;
+    else spans.push({ lo: from, hi: to });
+  }
+  return spans;
+}
+
+/** The chunk of the run going on beyond `chunk`'s run end (expresswayEnds.ts (c)) at that node, when loaded. */
+function onwardChunkAt(chunk: XwChunk, end: "start" | "end", context: DeckContext): XwChunk | undefined {
+  const answer = endAhead(context.index.runs, rangeOfRun(context), chunk.run, end);
+  const isOnward = answer.ahead && answer.why === "onward" && answer.via !== undefined;
+  if (!isOnward) return undefined;
+  const list = context.index.chunksOf(answer.via!);
+  // The child leaves this run's end with its start, or comes into this run's start with its end.
+  return end === "end" ? list.find((c) => c.prev === null) : list.find((c) => c.next === null);
+}
+
+/**
+ * The wall closing a run's end (R1-1b 3.2): one box PARAPET_WIDTH thick back from the end face, across
+ * the road from `lo` to `hi` (metres left of the centre: each side's 壁高欄's inner face, or the road's
+ * edge where none stands), from the slab's bottom up to the highest of PARAPET_HEIGHT over the road
+ * and the section's walls (an embankment's or a cut's retaining wall, a 分離壁's rise: the end loop's
+ * highest corner), so it is never lower than the walls beside it. On the bank, as closeWidthStep's box.
+ * Drawn and solid, both windings. Why one box and not a face: the face alone has no thickness for a
+ * car's collider to meet head on at speed, and the box is closeWidthStep's, the same material and make.
+ */
+function closeEnd(
+  end: "start" | "end",
+  ring: DeckRing,
+  loop: Corners,
+  lo: number,
+  hi: number,
+  bank: boolean,
+  colour: readonly number[],
+  pos: number[],
+  col: number[],
+  solid: number[],
+): { widthM: number; heightM: number } {
+  const back = end === "start" ? 1 : -1;
+  const ph = PARAPET_HEIGHT.value;
+  const w = PARAPET_WIDTH.value;
+  const top = Math.max(
+    ...loop.map((p) => p[1]),
+    ringPoint(ring, lo, liftAt(ring, lo, bank) + ph).y,
+    ringPoint(ring, hi, liftAt(ring, hi, bank) + ph).y,
+  );
+  const corner = (u: number, d: number, isTop: boolean) => {
+    const p = ringPoint(ring, u, liftAt(ring, u, bank) - SLAB);
+    if (isTop) p.y = top;
+    return p.addScaledVector(ring.t, back * d).toArray();
+  };
+  const box = [
+    corner(lo, 0, false),
+    corner(hi, 0, false),
+    corner(hi, w, false),
+    corner(lo, w, false),
+    corner(lo, 0, true),
+    corner(hi, 0, true),
+    corner(hi, w, true),
+    corner(lo, w, true),
+  ];
+  for (const [a, b, c, d] of BOX_FACES)
+    for (const tri of [
+      [box[a], box[b], box[c]],
+      [box[a], box[c], box[d]],
+      [box[a], box[c], box[b]],
+      [box[a], box[d], box[c]],
+    ]) {
+      for (const p of tri) pos.push(p[0], p[1], p[2]);
+      for (let v = 0; v < 3; v++) col.push(...colour);
+      for (const p of tri) solid.push(p[0], p[1], p[2]);
+    }
+  const bottom = Math.min(box[0][1], box[1][1]);
+  return { widthM: Math.round((hi - lo) * 1000) / 1000, heightM: Math.round((top - bottom) * 1000) / 1000 };
 }
 
 /**
@@ -2061,6 +2363,10 @@ export class ExpresswayDecks {
             maxDzM: Math.round(x.maxDzM * 1000) / 1000,
             minGapM: Math.round(x.minGapM * 1000) / 1000,
           });
+        for (const x of result.endWalls)
+          log("expressway_end_wall_built", { chunk: c.id, end: x.end, widthM: x.widthM, heightM: x.heightM });
+        for (const x of result.endSkips)
+          log("expressway_end_wall_skipped", { chunk: c.id, end: x.end, reason: x.reason });
         for (const x of result.walls)
           log("expressway_divider_built", {
             chunk: c.id,

@@ -531,6 +531,26 @@ export const LOG_EVENTS = {
    * (expresswayMerge.ts dividerOf, A1): the s range, the thinnest wall and how far its outer face
    * reaches down. One line per chunk and partner, beside expressway_merge_skipped.
    */
+  /**
+   * A wall closing a run's end with nothing written going on (expresswayDeck.ts, R1-1b 3.2): the
+   * chunk, which end, the wall's width across the road and its height over the slab's bottom.
+   */
+  expressway_end_wall_built: info({
+    chunk: z.string(),
+    end: z.enum(["start", "end"]),
+    widthM: z.number().nonnegative(),
+    heightM: z.number().nonnegative(),
+  }),
+  /**
+   * Such an end left without a wall (R1-1b 3.4): `tunnel` (a tunnel's section, none in the data) or
+   * `hidden` (its road shows nothing at the end ring, under another deck: a child ending at its
+   * parent's end).
+   */
+  expressway_end_wall_skipped: info({
+    chunk: z.string(),
+    end: z.enum(["start", "end"]),
+    reason: z.enum(["tunnel", "hidden"]),
+  }),
   expressway_divider_built: info({
     chunk: z.string(),
     with: z.string(),
@@ -1209,6 +1229,28 @@ export const LOG_EVENTS = {
     tunnel: count,
     missing: z.array(z.string()),
     extra: z.array(z.string()),
+    /** The ends whose answer from the tiles read when the game first can build them differs from the full one. */
+    asBuiltDiffer: z.array(z.string()),
+  }),
+  /**
+   * The end walls of a data folder probed in Node (scripts/expresswayEndWalls.ts, R1-1b): walls built
+   * and the level rays at their faces that met nothing, ends skipped as hidden or in a tunnel and the
+   * rays there that met nothing, ends going on as another run and those with more than PARAPET_WIDTH
+   * of their face uncovered, the scorecard's mouths and those without the parent's wall or with a
+   * branch line or ゼブラ painted.
+   */
+  expressway_end_walls_probed: info({
+    dir: z.string(),
+    out: z.string(),
+    walls: count,
+    wallMisses: count,
+    hidden: count,
+    tunnel: count,
+    hiddenMisses: count,
+    onwards: count,
+    onwardOverWidth: count,
+    mouths: count,
+    mouthsBroken: count,
   }),
   expressway_districts_picked: info({ districts: z.array(z.string()), runs: count, chunks: count }),
   expressway_districts_compared: info({

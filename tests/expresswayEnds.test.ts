@@ -70,6 +70,23 @@ describe("先の無い端の判定（src/world/expresswayEnds.ts、R1-1b 3.1）"
     expect(endAhead(runs, r, "through", "end")).toEqual({ ahead: true, why: "parent-goes-on", via: "p" });
   });
 
+  it("an end on a parent whose last chunk is not loaded goes on (no wall); once it is, it takes the parent's end's answer", () => {
+    const runs = net([
+      run("p", end("ground"), end("open")),
+      run("c", end("ground"), end("junction", "p", 100), "ramp"),
+    ]);
+    const unread = (id: string): RunRange | null => (id === "p" ? { s0: 0, s1: null } : { s0: 0, s1: 30 });
+    expect(endAhead(runs, unread, "c", "end")).toEqual({ ahead: true, why: "on-parent", via: "p" });
+    expect(endAhead(runs, ranges({ p: 100, c: 30 }), "c", "end")).toEqual({
+      ahead: false,
+      why: "parent-dead",
+      via: "p",
+    });
+    // A run whose summary or chunks are not read at all: nothing to decide, no wall.
+    expect(endAhead(runs, ranges({ c: 30 }), "p", "end")).toEqual({ ahead: true, why: "unknown" });
+    expect(endAhead(net([]), ranges({}), "p", "end")).toEqual({ ahead: true, why: "unknown" });
+  });
+
   it("(e) a portal, and a junction or seam whose parent is not written, are dead ends; a loop of (d) stops", () => {
     const runs = net([
       run("t", end("portal"), end("seam", "gone", 10)),

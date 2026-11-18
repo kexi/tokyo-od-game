@@ -4,14 +4,16 @@
 // apart (no wall). With --report <scorecard>, its walls (`ends.mainEnds` and `ends.rampEnds` whose
 // kind is not ground and that no run goes on from, report.ts version 9) against these: exit 1 when
 // they differ. With --districts <stage>, the runs of those districts alone (districts.json), as a
-// --districts build writes them. One JSON file and one log line.
+// --districts build writes them. And each end as the game first can build it (endsAsBuilt: the 3 × 3
+// tiles round its end chunk alone), against the answer over every tile: `asBuiltDiffer`, exit 1 when
+// any differs (a wall would depend on the order the tiles came in). One JSON file and one log line.
 //   pnpm exec tsx scripts/expresswayEnds.ts <dir> [--districts central,…] [--report <path>] [--out <file>]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { STATION_STRIDE, type XwChunk, type XwTileRun } from "../src/expressway/format.ts";
 import { ReportSchema } from "../src/expressway/report.ts";
 import { log } from "../src/log.ts";
-import { endsAhead, rangeOfChunks } from "../src/world/expresswayEnds.ts";
+import { endsAhead, endsAsBuilt, rangeOfChunks } from "../src/world/expresswayEnds.ts";
 import { districtsOfFiles, readExpresswayFiles } from "./expresswayFiles.ts";
 
 const argv = process.argv.slice(2);
@@ -118,7 +120,23 @@ if (reportPath) {
     extra: [...got].filter((id) => !want.has(id)).sort(),
   };
 }
-const result = { dir: files.dir, districts: stage, table, walls: rows, groundMains, againstReport };
+// Why only without --districts: a stage's folder is its own build (--districts), whose tiles hold its
+// runs alone; picking them out of a fuller folder's tiles is not what the game reads.
+const asBuiltDiffer =
+  stage === null
+    ? [...endsAsBuilt(files.tiles, files.meta.zoom)]
+        .filter(([key, a]) => answers.get(key)?.ahead !== a.ahead)
+        .map(([key, a]) => ({ id: key, asBuilt: a.why, full: answers.get(key)?.why ?? null }))
+    : [];
+const result = {
+  dir: files.dir,
+  districts: stage,
+  table,
+  walls: rows,
+  groundMains,
+  againstReport,
+  asBuiltDiffer,
+};
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(result, null, 1) + "\n");
 log("expressway_ends_counted", {
@@ -129,7 +147,9 @@ log("expressway_ends_counted", {
   ...table,
   missing: againstReport?.missing ?? [],
   extra: againstReport?.extra ?? [],
+  asBuiltDiffer: asBuiltDiffer.map((d) => d.id),
 });
 const isDifferent =
-  againstReport !== null && (againstReport.missing.length > 0 || againstReport.extra.length > 0);
+  (againstReport !== null && (againstReport.missing.length > 0 || againstReport.extra.length > 0)) ||
+  asBuiltDiffer.length > 0;
 process.exitCode = isDifferent ? 1 : 0;

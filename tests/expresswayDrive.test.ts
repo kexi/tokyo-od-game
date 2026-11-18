@@ -669,7 +669,17 @@ describe("one slab where two decks share a surface (P3.5, expresswayMerge.ts)", 
   });
 
   it("leaves no hole in a 0.5 m grid over both carriageways and keeps T11 on both centre lines where visible", () => {
-    const { world } = mergedWorld(chunks, index);
+    const { world, built: b } = mergedWorld(chunks, index);
+    /** Whether a local point lies within an end wall's depth of the end ring of a chunk that built one. */
+    const endWallAt = (p: Vector3) =>
+      chunks.some((c) =>
+        b.get(c.id)!.endWalls.some((wall) => {
+          const r = b.get(c.id)!.rings;
+          const ring = wall.end === "start" ? r[0] : r[r.length - 1];
+          const along = p.clone().sub(ring.c).dot(ring.t) * (wall.end === "start" ? 1 : -1);
+          return along >= -1e-6 && along < PARAPET_WIDTH.value;
+        }),
+      );
     const rampGraph = graphOf(expresswayRoadInput(chunks, runs, ellipsoidal));
     for (const seg of rampGraph.segments.filter((x) => x.line.xid)) {
       const half = sectionWidth(seg.line.section!) / 2;
@@ -685,7 +695,14 @@ describe("one slab where two decks share a surface (P3.5, expresswayMerge.ts)", 
         // C's line is on M's face, ≤ 5 cm off C's surfaceY).
         const isVisible = seg.line.xid !== "C:0" || offsetFromM(pos).u > edgeM + MERGE_RAMP + 0.05;
         if (!isVisible) continue;
+        // R1-1b: a run's end with nothing going on (this scene's runs end in the air) has its wall,
+        // PARAPET_WIDTH deep, standing on the road: the ray meets its top there, not the road.
+        const isUnderEndWall = endWallAt(pos);
         const hit = down(world, pos.x, y + 2, pos.z)!;
+        if (isUnderEndWall) {
+          expect(hit - y, `${seg.line.xid} s ${s} (end wall)`).toBeGreaterThan(1);
+          continue;
+        }
         expect(Math.abs(hit - y), `${seg.line.xid} s ${s}`).toBeLessThanOrEqual(0.01);
       }
     }

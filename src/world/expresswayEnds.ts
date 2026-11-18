@@ -1,4 +1,5 @@
-import type { XwTileRun } from "../expressway/format";
+import { ST, STATION_STRIDE, type XwChunk, type XwTileRun } from "../expressway/format";
+import { tileKey } from "../expressway/geo";
 
 /**
  * Which ends of the loaded runs have nothing written going on beyond them (R1-1b 3.1): the ends that
@@ -20,7 +21,11 @@ export type EndSide = "start" | "end";
 export type RunRange = { s0: number; s1: number | null };
 
 export type EndAnswer =
-  | { ahead: true; why: "ground" | "seam-child" | "onward" | "on-parent" | "parent-goes-on"; via?: string }
+  | {
+      ahead: true;
+      why: "ground" | "seam-child" | "onward" | "on-parent" | "parent-goes-on" | "unknown";
+      via?: string;
+    }
   | { ahead: false; why: "dead" | "parent-dead"; via?: string };
 
 const isNear = (a: number | undefined, b: number | null) =>
@@ -45,7 +50,10 @@ export function endAhead(
 ): EndAnswer {
   const run = runs.get(id);
   const range = rangeOf(id);
-  if (!run || !range) return { ahead: false, why: "dead" };
+  // A run whose summary or chunks are not loaded: nothing to decide, no wall (a deck built without
+  // the tiles' runs, as a test's, keeps its ends as before).
+  const isUnknown = !run || !range;
+  if (isUnknown) return { ahead: true, why: "unknown" };
   const key = `${id}:${side}`;
   const isLoop = seen.has(key);
   if (isLoop) return { ahead: false, why: "dead" };
@@ -73,6 +81,9 @@ export function endAhead(
   const pRange = rangeOf(parent);
   const isAtStart = pRange !== null && isNear(e.parentS, pRange.s0);
   const isAtEnd = pRange !== null && isNear(e.parentS, pRange.s1);
+  // A parent whose end chunk is not loaded reads as "inside" (the road goes on: no wall). At run time
+  // the 3 × 3 tiles round a chunk are read before it is built (expresswayDeck.ts tilesAround), so a
+  // parent's end at this end's node is always loaded by then (tests/expresswayEnds.test.ts checks it).
   const isInside = !isAtStart && !isAtEnd;
   if (isInside) return { ahead: true, why: "on-parent", via: parent };
   const pSide: EndSide = isAtStart ? "start" : "end";
@@ -109,4 +120,37 @@ export function rangeOfChunks(
   const isFirstIn = first.k === 0;
   const isLastIn = last.next === null;
   return { s0: isFirstIn ? first.st[0] : Number.NaN, s1: isLastIn ? last.st[last.st.length - stride] : null };
+}
+
+/**
+ * Each run end's answer as the game first can build its end chunk: with only the tiles it reads
+ * before that (expresswayDeck.ts tilesAround, the 3 × 3 tiles at `zoom` round the chunk's middle
+ * station: their chunks and run summaries), by `run:side`. Against `endsAhead` over every tile this
+ * says whether a wall depends on the order the tiles came in (R1-1b: none may).
+ */
+export function endsAsBuilt(
+  tiles: ReadonlyMap<string, { chunks: readonly XwChunk[]; runs: readonly XwTileRun[] }>,
+  zoom: number,
+): Map<string, EndAnswer> {
+  const out = new Map<string, EndAnswer>();
+  const ends = [...tiles.values()].flatMap((t) => t.chunks).filter((c) => c.prev === null || c.next === null);
+  for (const c of ends) {
+    const mid = Math.floor(c.st.length / (2 * STATION_STRIDE)) * STATION_STRIDE;
+    const [cx, cy] = tileKey(c.st[mid + ST.lon], c.st[mid + ST.lat], zoom)
+      .split("-")
+      .map(Number);
+    const runs = new Map<string, XwTileRun>();
+    const byRun = new Map<string, XwChunk[]>();
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const tile = tiles.get(`${cx + dx}-${cy + dy}`);
+        if (!tile) continue;
+        for (const r of tile.runs) runs.set(r.id, r);
+        for (const k of tile.chunks) byRun.set(k.run, [...(byRun.get(k.run) ?? []), k]);
+      }
+    const rangeOf = (run: string) => rangeOfChunks(byRun.get(run) ?? [], STATION_STRIDE);
+    if (c.prev === null) out.set(`${c.run}:start`, endAhead(runs, rangeOf, c.run, "start"));
+    if (c.next === null) out.set(`${c.run}:end`, endAhead(runs, rangeOf, c.run, "end"));
+  }
+  return new Map([...out].toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }

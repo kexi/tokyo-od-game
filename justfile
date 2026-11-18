@@ -307,6 +307,10 @@ probe-expressway-scope below="pruned" borders="keep":
 check-expressway-ends dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayEnds.ts {{ dir }} {{ flags }}
 
+# 生成したフォルダで、端の壁を Node で組んで ray で確かめる（壁の隙間・先へ続く run の端の塞ぎ・口の壁高欄、scripts/expresswayEndWalls.ts。flags にスコアカードの --report <path>、外れがあれば終了コード 1）
+check-expressway-end-walls dir="public/data/expressway" flags="":
+    pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayEndWalls.ts {{ dir }} {{ flags }}
+
 # 生成したフォルダのタイルを、地区の公開の段（central → + east → + yamate → + outside）ごとに詰め直して gzip の合計と 1 タイルの最大を測る（dir は生成先のフォルダ）
 measure-district-sizes dir:
     pnpm exec tsx scripts/expresswayDistrictSizes.ts {{ dir }}
