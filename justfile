@@ -339,7 +339,7 @@ check-expressway-lanes dir="public/data/expressway" flags="":
 check-hole-lanes dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayHoleLanes.ts {{ dir }} {{ flags }}
 
-# 高速道路の盛土・掘割が沿う一般道の区間を、ゲームと同じ道路網と規制（JARTIC・OSM）で数え、R1-2a の類（clear・A 中央帯・A' 部屋の上限・B1・B2・C 収まらない）、車線 0 の節点での跳びの前後、外側線が PLATEAU の歩道に乗る所、足・橋脚・2 本の節点を測る（P2.7 R1-2、地理院タイルは .cache/gsi-vector、PLATEAU は .cache/plateau-tran に写す、1 行の JSON ログ、flags に --out <file> で一覧）
+# 高速道路の盛土・掘割が沿う一般道の区間を、ゲームと同じ道路網と規制（JARTIC・OSM）で数え、R1-2a の類（clear・A 中央帯・A' 部屋の上限・B1・B2・B3・C 当てない）、車線 0 の節点での跳びの前後、外側線が PLATEAU の歩道に乗る所、足・橋脚・2 本の節点を測る（P2.7 R1-2、地理院タイルは .cache/gsi-vector、PLATEAU は .cache/plateau-tran に写す、1 行の JSON ログ、flags に --out <file> で一覧）
 measure-street-bands dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/measureStreetBands.ts {{ dir }} {{ flags }}
 

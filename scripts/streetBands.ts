@@ -2,12 +2,13 @@
 // and 3.3), kept apart from the files and tiles scripts/measureStreetBands.ts reads so that they can
 // be tested: how a segment's samples become bands, and what class and section the bands give.
 // Offsets are metres left of the centre line along the coords.
+import { STREET } from "../src/world/laneChange.ts";
 import { NARROWEST_LANE } from "../src/world/streetAssumptions.ts";
 
-const SHOULDER = 0.5;
+const SHOULDER = STREET.shoulder;
 const LANE_MIN = NARROWEST_LANE.value;
-/** The street lane width a widened carriageway is laid out with (laneChange.ts STREET.laneWidth). */
-const LANE_LAID = 3.25;
+/** The street lane width a widened carriageway is laid out with. */
+const LANE_LAID = STREET.laneWidth;
 
 /** A band across a street: no lane's centre may lie between `right` and `left`. */
 export type Band = { right: number; left: number };
@@ -40,11 +41,16 @@ export function mergeBands(strips: readonly Band[]): Band[] {
   return out;
 }
 
-/** What the room holds beside a band (memo B1 / B2): all lanes one way, or both ways, to one side. */
+/**
+ * What the room holds beside a band (memo B1 / B2): the most lanes (up to `lanes`) a one-way street
+ * puts to one side of it, or a two-way one puts a way, one way each side or both to one side. A
+ * lane or more is what B1 / B2 ask for (classify: offCentre ≥ 1), not all of them.
+ */
 export function offCentreLanes(room: number, travel: 0 | 1 | -1, lanes: number, band: Band): number {
   const a = Math.max(0, room / 2 - Math.max(band.left, -room / 2));
   const b = Math.max(0, Math.min(band.right, room / 2) + room / 2);
-  if (travel !== 0) return Math.min(lanes, Math.max(holds(a - 2 * SHOULDER), holds(b - 2 * SHOULDER)));
+  const isOneWay = travel !== 0;
+  if (isOneWay) return Math.min(lanes, Math.max(holds(a - 2 * SHOULDER), holds(b - 2 * SHOULDER)));
   const split = Math.min(holds(a - SHOULDER), holds(b - SHOULDER));
   const oneSide = Math.max(holds((a - 2 * SHOULDER) / 2), holds((b - 2 * SHOULDER) / 2));
   return Math.min(lanes, Math.max(split, oneSide));
@@ -108,11 +114,14 @@ function classifySymmetric(now: SectionNow, bands: readonly Band[], offCentre: n
     median,
     carriageway,
   });
-  if (travel !== 0) {
-    if (middle) return unresolved();
+  const isOneWay = travel !== 0;
+  const hasMiddle = middle !== undefined;
+  if (isOneWay) {
+    if (hasMiddle) return unresolved();
     const capped = Math.min(carriageway, cap);
     const n = Math.min(lanes, holds(capped - 2 * SHOULDER));
-    if (n < 1) return unresolved();
+    const holdsNoLane = n < 1;
+    if (holdsNoLane) return unresolved();
     return { klass: "A'", lanesAfter: n, median: 0, carriageway: capped };
   }
   // The 中央帯 over a band reaching `outer` either side: the carriageway as it is first (its outer
@@ -122,10 +131,12 @@ function classifySymmetric(now: SectionNow, bands: readonly Band[], offCentre: n
     const m = Math.max(median, 2 * outer);
     const kept = Math.min(carriageway, limit);
     const inKept = Math.min(lanes, holds(kept / 2 - SHOULDER - m / 2));
-    if (inKept >= 1) return { klass: "A", lanesAfter: inKept, median: m, carriageway: kept };
+    const fitsAsItIs = inKept >= 1;
+    if (fitsAsItIs) return { klass: "A", lanesAfter: inKept, median: m, carriageway: kept };
     const most = Math.min(room, limit);
     const widened = Math.min(lanes, holds(most / 2 - SHOULDER - m / 2));
-    if (widened < 1) return null;
+    const fitsNowhere = widened < 1;
+    if (fitsNowhere) return null;
     const cw = Math.max(kept, Math.min(most, 2 * widened * LANE_LAID + 2 * SHOULDER + m));
     return {
       klass: "A",
@@ -135,10 +146,11 @@ function classifySymmetric(now: SectionNow, bands: readonly Band[], offCentre: n
     };
   };
   const outerOf = (b: Band) => Math.max(Math.abs(b.right), Math.abs(b.left));
-  if (middle) return byMedian(outerOf(middle), cap) ?? unresolved();
+  if (hasMiddle) return byMedian(outerOf(middle), cap) ?? unresolved();
   const capped = Math.min(carriageway, cap);
   const byRoom = Math.min(lanes, holds(capped / 2 - SHOULDER));
-  if (byRoom >= 1) return { klass: "A'", lanesAfter: byRoom, median: 0, carriageway: capped };
+  const fitsCapped = byRoom >= 1;
+  if (fitsCapped) return { klass: "A'", lanesAfter: byRoom, median: 0, carriageway: capped };
   return byMedian(Math.max(...sides.map(outerOf)), Infinity) ?? unresolved();
 }
 

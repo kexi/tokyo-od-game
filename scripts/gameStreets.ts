@@ -19,7 +19,12 @@ import { ROAD_TILE_ZOOM, roadLinesOfTile } from "../src/world/roadTiles.ts";
 const ROOT = join(import.meta.dirname, "..");
 /** The data folder the game fetches its regulation tiles from (RegulationTiles). */
 export const DATA_DIR = join(ROOT, "public", "data");
-/** The tile zoom the regulations are cut at (regulations.ts REG_ZOOM). */
+/**
+ * The tile zoom the regulations are cut at (regulations.ts REG_ZOOM). Copied, as are the OSM folders
+ * below and emptyRegulations: regulations.ts does not export them, and R1-2-0 changes no runtime
+ * code. If the two drift apart, no regulation tile matches and the tools fall back to one lane
+ * without a word (tests/gameStreets.test.ts reads a tile under this zoom).
+ */
 const REG_ZOOM = 14;
 /** The OSM folders RegulationTiles.around reads besides JARTIC's regs. */
 const OSM_DIRS = ["signals", "junctions", "footbridges", "turnlanes", "roadlanes"] as const;
@@ -29,14 +34,16 @@ export function gsiTileReader(cacheDir: string): (x: number, y: number) => Promi
   const tiles = new Map<string, RoadLine[] | null>();
   return async (x, y) => {
     const key = `${x}-${y}`;
-    if (tiles.has(key)) return tiles.get(key)!;
+    const isRead = tiles.has(key);
+    if (isRead) return tiles.get(key)!;
     const bytes = await readFile(join(cacheDir, `${ROAD_TILE_ZOOM}-${key}.pbf`)).catch(() => null);
-    const lines =
-      bytes === null
-        ? null
-        : bytes.length === 0
-          ? []
-          : roadLinesOfTile(new VectorTile(new Pbf(new Uint8Array(bytes))), x, y);
+    const isMissing = bytes === null;
+    const isEmpty = bytes?.length === 0;
+    const lines = isMissing
+      ? null
+      : isEmpty
+        ? []
+        : roadLinesOfTile(new VectorTile(new Pbf(new Uint8Array(bytes))), x, y);
     tiles.set(key, lines);
     return lines;
   };
@@ -83,17 +90,19 @@ export function regulationReader(
   const index = new Map<string, Promise<Set<string> | null>>();
   const tileIndex = (dir: string) => {
     let p = index.get(dir);
-    if (!p) {
+    const isUnread = p === undefined;
+    if (isUnread) {
       p = readFile(join(dataDir, dir, "meta.json"), "utf8")
         .then((text) => new Set((JSON.parse(text) as { tiles?: string[] }).tiles ?? []))
         .catch(() => null);
       index.set(dir, p);
     }
-    return p;
+    return p!;
   };
   return async (cx, cy) => {
     const regs = await tileIndex("regs");
-    if (regs === null) return null;
+    const isNotFetched = regs === null;
+    if (isNotFetched) return null;
     const shift = 2 ** (ROAD_TILE_ZOOM - REG_ZOOM);
     const keys = new Set<string>();
     for (let dy = -1; dy <= 1; dy++)
@@ -107,13 +116,15 @@ export function regulationReader(
       for (const item of items) {
         // Lines crossing a tile edge are stored in every tile they touch.
         const key = JSON.stringify(item);
-        if (listed.has(key)) continue;
+        const isListed = listed.has(key);
+        if (isListed) continue;
         listed.add(key);
         list.push(item);
       }
     };
     for (const key of [...keys].toSorted()) {
-      if (regs.has(key)) {
+      const hasJartic = regs.has(key);
+      if (hasJartic) {
         const t = (await readJson(dataDir, `regs/${key}.json`)) as Record<string, unknown[]>;
         for (const k of Object.keys(t)) add((out as Record<string, unknown[]>)[k], t[k]);
       }
@@ -141,8 +152,10 @@ export function gameStreetGraph(
   const graph = new RoadGraph(joined, frame, () => {});
   const applied = regs === null ? null : applyRegulations(graph, regs, frame, () => {});
   // One-way as the section was resolved (regulations.ts streetSectionOf takes the rule's direction
-  // whenever one is matched). Why not RoadGraph.setClock at some hour: a timed rule then splits the
-  // one-way section as a two-way street, lanes the game draws at no hour.
+  // whenever one is matched): the probes count at one moment only, so they take the one when the rule
+  // is in force. Why not RoadGraph.setClock at some hour: outside a timed rule's hours the game does
+  // turn the street back to two-way (main.ts setClock → roads.ts) and splits the same carriageway
+  // into lanes both ways; which hour to pick would then decide what the probes count.
   for (const seg of graph.segments) seg.oneway = seg.onewayRule?.dir ?? seg.line.oneway;
   return { graph, applied };
 }

@@ -12,8 +12,8 @@
 //          the room streetRoom leaves);
 //   A'     the band on one side: the carriageway capped at twice the band's inner edge holds a lane
 //          each way (one-way: a lane);
-//   B1     one-way, unresolved, but all its lanes fit to one side of the band within the room;
-//   B2     two-way, unresolved, but both ways fit to one side of the band within the room;
+//   B1     one-way, unresolved, but a lane or more fits to one side of the bands within the room;
+//   B2     two-way, unresolved, but a lane or more a way fits beside the bands within the room;
 //   B3     A or A' fits, but a moved line would keep more lanes (memo 3.3 の 5): left as it is;
 //   C      fits nowhere within the room.
 // B1, B2, B3 and C need the street's line moved sideways (R1-2b); no street is cut. Also: the lane 0
@@ -36,7 +36,7 @@ import { LocalFrame } from "../src/geo/frame.ts";
 import { tileXToLon, tileYToLat } from "../src/geo/tiles.ts";
 import { log } from "../src/log.ts";
 import { expresswayRoadInput } from "../src/world/expresswayRoads.ts";
-import { laneCentreOffset, laneWidth, streetRoom } from "../src/world/laneChange.ts";
+import { laneCentreOffset, laneWidth, STREET, streetRoom } from "../src/world/laneChange.ts";
 import { polygonsOf, WARD_TILES, type PavementPolygon } from "../src/world/pavements.ts";
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { type RoadLine, type Segment } from "../src/world/roads.ts";
@@ -46,13 +46,19 @@ import { classify, type Klass, laneZero, mergeBands, offCentreLanes, type Ruling
 import { DATA_DIR, gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
 
 const ROOT = join(import.meta.dirname, "..");
+/** The decks the game joins round a point (expresswayDeck.ts GRAPH_RADIUS_M). */
 const GRAPH_RADIUS_M = 1300;
-/** The values the memo names (3.2): the code's and the probes'. */
+/**
+ * The values the memo names (3.2): expresswayRoads.ts's SITE_CROSSING_MIN_DEG and SITE_CLEARANCE_M,
+ * the lanes probe's MIN_LENGTH_M and JOIN_GAP_M. Copied, as GRAPH_RADIUS_M is: the src ones are not
+ * exported, and R1-2-0 changes no runtime code (expresswayFeetProbe.ts copies its own the same way).
+ */
 const SITE_CROSSING_MIN_DEG = 30;
 const SITE_CLEARANCE_M = 1;
 const MIN_LENGTH_M = 3;
 const JOIN_GAP_M = 1;
-const SHOULDER = 0.5;
+/** The street's shoulder: the edge line runs this far inside the carriageway. */
+const SHOULDER = STREET.shoulder;
 /** A segment beyond a node within this of straight on is the same street going on (deg). */
 const STRAIGHT_ON_DEG = 30;
 /** A foot's join this close to a band's segment is listed (memo 手順 0 の 7). */
@@ -66,7 +72,9 @@ const flag = (name: string) => {
 const VALUED = new Set(["--cache", "--out", "--plateau"]);
 const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1])));
 if (target === undefined)
-  throw new Error("usage: measureStreetBands.ts <dir|label> [--cache <dir>] [--out <file>]");
+  throw new Error(
+    "usage: measureStreetBands.ts <dir|label> [--cache <dir>] [--plateau <dir>] [--out <file>]",
+  );
 const dataDir = target.includes("/") ? target : join(ROOT, ".cache", "expressway-area", target);
 const cacheDir = flag("cache") ?? join(ROOT, ".cache", "gsi-vector");
 const plateauDir = flag("plateau") ?? join(ROOT, ".cache", "plateau-tran");
@@ -93,7 +101,8 @@ async function plateauOf(x: number, y: number): Promise<PavementPolygon[]> {
     if (bytes === null) {
       const res = await fetch(`https://assets.cms.plateau.reearth.io/assets/${base}/16/${x}/${y}.mvt`);
       const isAbsent = res.status === 403 || res.status === 404;
-      if (!isAbsent && !res.ok) throw new Error(`PLATEAU ${res.status} ${x}/${y}`);
+      const isFailed = !isAbsent && !res.ok;
+      if (isFailed) throw new Error(`PLATEAU ${res.status} ${x}/${y}`);
       bytes = isAbsent ? Buffer.alloc(0) : Buffer.from(await res.arrayBuffer());
       await mkdir(plateauDir, { recursive: true });
       await writeFile(file, bytes);
@@ -108,7 +117,8 @@ async function plateauOf(x: number, y: number): Promise<PavementPolygon[]> {
       if (!layer) continue;
       for (let i = 0; i < layer.length; i++) {
         const f = layer.feature(i);
-        if (f.type !== 3 || f.properties.tran_function !== wanted) continue;
+        const isWanted = f.type === 3 && f.properties.tran_function === wanted;
+        if (!isWanted) continue;
         for (const rings of polygonsOf(f.loadGeometry(), layer.extent))
           out.push({
             kind,
@@ -488,6 +498,8 @@ for (const [key, focus] of groups) {
     const isViaduct = c.structure === "viaduct" && c.piers.length > 0;
     if (!isViaduct) continue;
     if (tileKeyOf(c) !== key) continue;
+    // A pier's box as expresswayDeck.ts pierTriangles makes it: GIRDER_BOTTOM_SHARE 0.55 and
+    // PIER_ACROSS_SHARE 0.4 of the deck across, PIER_ALONG 2.2 m along (1.1 m each side below).
     const across = (deckCarriageway(c) + 2 * PARAPET_WIDTH.value) * 0.55 * 2 * 0.4;
     for (let p = 0; p < c.piers.length / PIER_STRIDE; p++) {
       const s = c.piers[p * PIER_STRIDE];

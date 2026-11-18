@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { emptyRegulations, gameStreetGraph, regulationReader, roadTileOf } from "../scripts/gameStreets";
 import { LocalFrame } from "../src/geo/frame";
+import type { XwSite } from "../src/world/expresswayRoads";
+import { OSM_EXPRESSWAY_KIND } from "../src/world/roadClass";
 import type { RoadLine } from "../src/world/roads";
 
 // East–west street along lat 35.68 (coordinates west → east), 22 m 幅員: room for two lanes a way.
@@ -34,6 +36,35 @@ describe("gameStreetGraph: the probes' network is the game's (P2.7 R1-2-0)", () 
     const { graph, applied } = gameStreetGraph([street()], { lines: [], ends: [] }, frame, null);
     expect(applied).toBeNull();
     expect(graph.segments[0].lanes).toBe(1);
+  });
+
+  it("joins the expressway in as the worker does: a street crossing a cut at grade is cut at its walls, the deck is in the network", () => {
+    // A cut 7 m wide (half 4) running north–south across the street's middle, its road at grade.
+    const deck: RoadLine = {
+      coords: [139.761, 35.679, 139.761, 35.681],
+      width: 7,
+      oneway: 1,
+      kind: OSM_EXPRESSWAY_KIND,
+      source: "osm",
+      cls: "expressway",
+      structure: "cut",
+      level: -1,
+      nodeIds: ["xw:T:start", "xw:T:end"],
+      xid: "T:0",
+    };
+    const site: XwSite = {
+      chunk: "T:0",
+      coords: [139.761, 35.679, 139.761, 35.681],
+      s: [0, 222],
+      z: [10, 10],
+      ground: [10, 10],
+      halfWidth: 4,
+      ends: [],
+    };
+    const { graph } = gameStreetGraph([street()], { lines: [deck], ends: [], sites: [site] }, frame, null);
+    const streets = graph.segments.filter((seg) => seg.line.source === undefined);
+    expect(streets).toHaveLength(2);
+    expect(graph.segments.some((seg) => seg.line.xid === "T:0")).toBe(true);
   });
 
   it("drives a timed JARTIC one-way the way its section was resolved, not as a two-way street", () => {

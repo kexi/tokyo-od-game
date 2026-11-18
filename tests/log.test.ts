@@ -846,7 +846,6 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     twoNodesWithSignal: 27,
     durationMs: 4091,
   },
-
   expressway_reports_unlike: { a: "ship/pruned/2026-10-03T20:20:50Z", b: "ship/all/2026-10-03T20:20:50Z" },
   expressway_dem_ready: { tiles: 12, fetched: 0 },
   expressway_objects_read: { roads: 400, rails: 12 },

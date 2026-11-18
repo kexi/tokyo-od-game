@@ -1482,7 +1482,7 @@ export const LOG_EVENTS = {
   }),
   /**
    * P2.7 R1-2 (scripts/measureStreetBands.ts): the street segments an expressway's site runs along,
-   * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / C unresolved), and the
+   * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / B3 / C not given), and the
    * jumps, pavements, feet, piers and two-segment nodes round them.
    */
   street_bands_measured: info({
