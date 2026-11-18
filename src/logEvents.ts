@@ -658,6 +658,19 @@ export const LOG_EVENTS = {
    */
   pedestrian_bump: info({ carKmh: z.number(), otherDeltaVKmh: z.number() }),
   /**
+   * A vehicle hit the player's car while it stood (game/vehicleBlow.ts: its own speed going in at
+   * 1 km/h or under), above the 5 km/h an accident takes: no accident, nothing booked. `ownKmh` the
+   * car's own speed going in, `speedAfterKmh` after the steps (the push in it); the blow by both
+   * masses where the mass contact recorded it.
+   */
+  vehicle_bump: info({
+    ownKmh: z.number(),
+    speedAfterKmh: z.number(),
+    ownDeltaVKmh: z.number().optional(),
+    otherDeltaVKmh: z.number().optional(),
+    otherMassKg: z.number().optional(),
+  }),
+  /**
    * The player's car began to touch a traffic car (main.ts, judged an accident or not; the 3 s per
    * body of the contact check). The other: its id (TrafficAI), segment, place along it (m) and
    * speed; `ownKmh` the player's car going into the blow; both Δv; `bearingDeg` where the other is

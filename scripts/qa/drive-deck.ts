@@ -123,7 +123,8 @@ function invalidOf(
   const wasBlocked = before !== null;
   if (wasBlocked) return `blocked before the drive: ${before}`;
   if (blocked) return `blocked: ${blocked}`;
-  const hadAccident = during("accident").length > 0;
+  // A blow the car took standing is no accident any more (vehicle_bump), but the drive still met it.
+  const hadAccident = during("accident").length > 0 || during("vehicle_bump").length > 0;
   if (hadAccident) return "accident during the drive";
   const wasCited = during("violation_cited").length > 0;
   if (wasCited) return "violation cited during the drive";
@@ -326,6 +327,7 @@ const WORST = `(() => {
 
 const lawEvents = (during: (e: string) => string[]) => ({
   accident: during("accident"),
+  vehicleBump: during("vehicle_bump"),
   violationCited: during("violation_cited"),
   arrest: during("story_begin").filter((l) => l.includes(`"kind":"arrest"`)),
   // Why the autopilot stood, moved off or crashed (main.ts autopilot_stop_trace).
