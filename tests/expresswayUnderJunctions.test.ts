@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { belowJoinsRefusal, shippedFolderRefusal } from "../scripts/expresswayGuards";
-import { belowDeferralOf, TUNNEL_DEPTH_M } from "../src/expressway/below";
+import { belowDeferralOf, ceilingFrom, TUNNEL_DEPTH_M } from "../src/expressway/below";
 import { joinsOf, portalEndsOf } from "../src/expressway/belowScore";
 import { checkJunction } from "../src/expressway/checks";
-import { planNetwork, type Plan, portalApproachEnds, solvePlan } from "../src/expressway/compile";
+import { endPlan, planNetwork, type Plan, portalApproachEnds, solvePlan } from "../src/expressway/compile";
 import { STATION_STRIDE, XW_FEATURES, XW_READER_FEATURES, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
@@ -123,8 +123,12 @@ function cutWithRamp(from = 101200, x0 = 1200): Network {
 /**
  * A tunnel main line under a hill (viaduct 0–1000, tunnel 1000–3000, viaduct beyond) and a ramp
  * leaving it under the ground at x = `at` (`merge`: joining there instead): a tunnel link 650 m
- * south, then at grade and on a viaduct. The hill: 30 m over x 1100–2900 north of y −450, 3 m
- * elsewhere, so the ramp comes out where the ground falls.
+ * south, then at grade and on a viaduct. The hill: 30 m over x 1100–2900 north of y −400, falling to 3 m by y −500, 3 m
+ * elsewhere, so the ramp comes out where the ground falls. Why a slope and not a cliff: a cliff falling
+ * between two of the compiler's grid stations leaves the box short of its cover there (a known gap
+ * before S7-3 too, T12 catches it: knowledge/expressway-generation.md「S7-3」, the test in
+ * expresswayBelow.test.ts, S7-3c to fix), and the child's child crossed it with a cliff here. The slope is
+ * placed where no station of these nets meets that gap, so T12 is held to 0 for the rules of S7-3 alone.
  */
 function tunnelWithRamp(at: number, merge = false): Network {
   const xs = [0, 30, 80, 150, 200, 200, 200, 200, 200, 200, 200, 200, 200];
@@ -158,8 +162,9 @@ function tunnelWithRamp(at: number, merge = false): Network {
 const hill = (lon: number, lat: number) => {
   const x = xOf(lon, lat);
   const y = yOf(lon, lat);
-  const isHill = x > 1100 && x < 2900 && y > -450;
-  return isHill ? 30 : 3;
+  const isHill = x > 1100 && x < 2900 && y > -400;
+  const isSlope = x > 1100 && x < 2900 && y > -500 && !isHill;
+  return isHill ? 30 : isSlope ? 3 + (27 * (y + 500)) / 100 : 3;
 };
 
 describe("A. 見送りの理由（compile）", () => {
@@ -271,7 +276,7 @@ describe("C. トンネルの中で分かれるランプ", () => {
       expect(checkJunction(at0, !merge, end.grade!, chunks.get("2")!)).toEqual([]);
       const v = violationsOf(res, res.chunks, () => undefined, true);
       expect([v.T3.count, v.T12.count]).toEqual([0, 0]);
-      // Short of cover only by its own portal out on the low ground (the hill's edge falls 27 m at once),
+      // Short of cover only by its own portal out on the low ground (the hill falls 27 m over 100 m),
       // never near the junction: there the descent is measured from the main line's far portals.
       const length = runs.get(rampTunnel)!.lengthM;
       for (const d of res.diagnostics.filter(
@@ -336,6 +341,47 @@ describe("C. トンネルの中で分かれるランプ", () => {
     expect(Math.abs(zOf("70", 0) - zOf("2", parentS))).toBeLessThanOrEqual(0.05);
   });
 
+  it("a ramp leaving the ramp's tunnel under the ground (a child's child) is written and solves, hanging from the ramp's tunnel", () => {
+    const net = addWays(
+      tunnelWithRamp(1800),
+      [
+        [600001, 2050, -150],
+        [600002, 2150, -250],
+        [600003, 2250, -350],
+        [600004, 2350, -450],
+        [600005, 2450, -550],
+        [600006, 2550, -650],
+        [600007, 2650, -750],
+        [600008, 2750, -850],
+        [600009, 2850, -950],
+      ],
+      [
+        [80, linkTunnel, [500003, 600001, 600002, 600003, 600004, 600005]],
+        [81, link, [600005, 600006, 600007]],
+        [82, linkBridge, [600007, 600008, 600009]],
+      ],
+    );
+    const plan = planNetwork(net, new Set(), null, [], on);
+    expect(plan.belowDeferred).toEqual([]);
+    const res = solvePlan(plan, hill, []);
+    const runs = runsOf(res);
+    expect(runs.get("80")!.start).toMatchObject({ kind: "junction", parent: "70" });
+    expect(
+      res.diagnostics.filter((d) => d.kind === "vertical_unsolved" || d.kind === "parent_unsolved"),
+    ).toEqual([]);
+    const v = violationsOf(res, res.chunks, () => undefined, true);
+    expect([v.T3.count, v.T12.count]).toEqual([0, 0]);
+    expect(danglingOf(res.runs)).toEqual([]);
+  });
+
+  it("stops on a portal whose ground was not read, rather than dropping the run's ceilings", () => {
+    const read = { offset: 0, z: 3, V: 60 as const };
+    expect(ceilingFrom("tunnel", 30, 50, 100, [[read], [read]])).not.toBeNull();
+    expect(() => ceilingFrom("tunnel", 30, 50, 100, [[{ ...read, z: Number.NaN }], [read]])).toThrow(
+      /no ground read/,
+    );
+  });
+
   it("T12 catches a road lifted over the ceiling next to the junction", () => {
     const plan = planNetwork(tunnelWithRamp(1800), new Set(), null, [], on);
     const res = solvePlan(plan, hill, []);
@@ -395,6 +441,31 @@ describe("D. 輪の継ぎ目", () => {
       expect(portal?.approach?.run).toBe(groundId);
     });
   }
+
+  it("a ramp at the seam's node hangs from the first run when it leaves there and from the last when it joins there", () => {
+    // The ring's seam node is (600, 0); a ramp east from it, then the same ramp turned to end there.
+    const ramp = (merge: boolean) => {
+      const loop = ring([tunnel, bridge, bridge, tunnel]);
+      const ids = [300000, 700001, 700002, 700003];
+      const ordered = merge ? ids.toReversed() : ids;
+      return addWays(
+        loop,
+        [
+          [700001, 700, -40],
+          [700002, 800, -100],
+          [700003, 900, -180],
+        ],
+        [[90, linkBridge, ordered]],
+      );
+    };
+    const diverging = planNetwork(ramp(false), new Set(), null, [], on);
+    expect(endPlan(diverging, diverging.runs.get("90")!, true)).toMatchObject({
+      kind: "junction",
+      parent: "1",
+    });
+    const merging = planNetwork(ramp(true), new Set(), null, [], on);
+    expect(endPlan(merging, merging.runs.get("90")!, false)).toMatchObject({ kind: "junction", parent: "4" });
+  });
 
   it("a loop of viaducts alone keeps its ends with the flag", () => {
     const loop = ring([bridge, bridge, bridge, bridge]);
