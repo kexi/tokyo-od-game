@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { belowJoinsRefusal, shippedFolderRefusal } from "../scripts/expresswayGuards";
 import { belowDeferralOf, ceilingFrom, TUNNEL_DEPTH_M } from "../src/expressway/below";
 import { joinsOf, portalEndsOf } from "../src/expressway/belowScore";
-import { checkJunction } from "../src/expressway/checks";
+import { checkJunction, checkSeamHeading } from "../src/expressway/checks";
 import { endPlan, planNetwork, type Plan, portalApproachEnds, solvePlan } from "../src/expressway/compile";
 import { STATION_STRIDE, XW_FEATURES, XW_READER_FEATURES, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
+import { alignLoop, alignPlan, LOOP_LEAD_M } from "../src/expressway/horizontal";
 import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
 import { danglingOf } from "../src/expressway/report";
 import { violationsOf } from "../src/expressway/violations";
@@ -474,6 +475,109 @@ describe("D. 輪の継ぎ目", () => {
     expect([...a.values()].map((r) => [r.id, r.start.kind, r.end.kind])).toEqual(
       [...b.values()].map((r) => [r.id, r.start.kind, r.end.kind]),
     );
+  });
+});
+
+describe("D2. 輪の平面線形（horizontal.ts alignLoop、S7-3 判定 1）", () => {
+  /** The 72-gon of `ring`, closed (its first vertex repeated), a kink of 5° at every vertex. */
+  const polygon = () => {
+    const n = 72;
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i <= n; i++) {
+      const a = (2 * Math.PI * (i % n)) / n;
+      out.push([600 * Math.cos(a), 600 * Math.sin(a)]);
+    }
+    return out;
+  };
+  const headingOf = (xy: Float64Array, a: number, b: number) =>
+    Math.atan2(xy[2 * b + 1] - xy[2 * a + 1], xy[2 * b] - xy[2 * a]);
+  const turn = (d: number) => Math.atan2(Math.sin(d), Math.cos(d));
+
+  it("goes on across the seam: the chords either side turn as they do elsewhere on the loop, and the seam's node stays put", () => {
+    const xy = polygon();
+    const anchors = new Set([0, 18, 36, 54, 72]);
+    const loop = alignLoop({ xy, anchors });
+    const last = loop.s.length - 1;
+    // The chord into the seam (last−3 → last) and out of it (0 → 3), against the same pair a quarter round.
+    const across = turn(headingOf(loop.xy, 0, 3) - headingOf(loop.xy, last - 3, last));
+    const q = loop.vertexSample[18];
+    const elsewhere = turn(headingOf(loop.xy, q, q + 3) - headingOf(loop.xy, q - 3, q));
+    expect(Math.abs(across - elsewhere)).toBeLessThan(1e-3);
+    expect([loop.xy[0], loop.xy[1]]).toEqual([xy[0][0], xy[0][1]]);
+    expect([loop.xy[2 * last], loop.xy[2 * last + 1]]).toEqual([xy[72][0], xy[72][1]]);
+    // An open line keeps OSM's last segment's heading at each end: the seam is bent.
+    const open = alignPlan({ xy, anchors });
+    const bent = turn(headingOf(open.xy, 0, 3) - headingOf(open.xy, last - 3, last));
+    expect(Math.abs(bent - elsewhere)).toBeGreaterThan(1e-2);
+  });
+
+  it("leaves the samples farther from the seam than the lead-in as the open line has them, within the solver's own rounding", () => {
+    // A loop long enough that its middle lies more than LOOP_LEAD_M from the seam both ways.
+    const n = 360;
+    const xy: Array<[number, number]> = [];
+    for (let i = 0; i <= n; i++) {
+      const a = (2 * Math.PI * (i % n)) / n;
+      xy.push([1000 * Math.cos(a), 1000 * Math.sin(a)]);
+    }
+    const anchors = new Set([0, 90, 180, 270, 360]);
+    const loop = alignLoop({ xy, anchors });
+    const open = alignPlan({ xy, anchors });
+    expect(loop.s.length).toBe(open.s.length);
+    const far = loop.s.map((sv, i) => {
+      const fromSeam = Math.min(sv, loop.s[loop.s.length - 1] - sv);
+      return fromSeam > LOOP_LEAD_M
+        ? Math.hypot(loop.xy[2 * i] - open.xy[2 * i], loop.xy[2 * i + 1] - open.xy[2 * i + 1])
+        : 0;
+    });
+    // Not to 1e-6 m: alignPlan itself moves those samples by about 2e-4 m when a line is put before its
+    // start (the band factorisation's rounding with ANCHOR_WEIGHT 1e12, measured here on the open line
+    // with a 1 km lead-in). The loop is held to that same noise, not looser: twice it at most.
+    const head: Array<[number, number]> = [];
+    for (let k = 20; k >= 1; k--) head.push([xy[0][0], xy[0][1] - 50 * k]);
+    const led = alignPlan({
+      xy: [...head, ...xy],
+      anchors: new Set([...anchors].map((a) => a + head.length)),
+    });
+    const from = led.vertexSample[head.length];
+    const noise = Math.max(
+      ...open.s.map((sv, i) =>
+        sv > LOOP_LEAD_M
+          ? Math.hypot(
+              open.xy[2 * i] - led.xy[2 * (i + from)],
+              open.xy[2 * i + 1] - led.xy[2 * (i + from) + 1],
+            )
+          : 0,
+      ),
+    );
+    expect(noise).toBeGreaterThan(0);
+    // The yardstick itself is small: under a millimetre.
+    expect(noise).toBeLessThan(1e-3);
+    expect(Math.max(...far)).toBeLessThanOrEqual(2 * noise);
+  });
+
+  it("with the flag, the loop's two below runs meet at its seam with one heading (h1 of the last, h0 of the first)", () => {
+    const loop = ring([tunnel, bridge, bridge, tunnel]);
+    const plan = planNetwork(loop, new Set(), null, [], on);
+    const res = solvePlan(plan, () => 20, []);
+    const chunks = byRun(res.chunks);
+    const lastChunk = chunks.get("4")!.at(-1)!;
+    const firstChunk = chunks.get("1")![0];
+    expect(Math.abs(turn(lastChunk.h1 - firstChunk.h0))).toBeLessThan(1e-3);
+    expect(checkSeamHeading(lastChunk, false, runsOf(res).get("4")!.end.parentS!, chunks.get("1")!)).toEqual(
+      [],
+    );
+    // And the line itself goes on: on the plan's samples, the chords across the seam turn as they do at the
+    // boundary of the loop's first two runs (an anchor inside the chain). h0 and h1 agreeing alone would
+    // hide a bend of the line. On the samples, not the files' stations: those are spaced unevenly near a
+    // chunk's ends, and the 72-gon's smoothed line is no circle, so a station's chord turn is no measure.
+    const align = plan.runs.get("1")!.align;
+    const last = align.s.length - 1;
+    const headingOf = (a: number, b: number) =>
+      Math.atan2(align.xy[2 * b + 1] - align.xy[2 * a + 1], align.xy[2 * b] - align.xy[2 * a]);
+    const atSeam = turn(headingOf(0, 3) - headingOf(last - 3, last));
+    const q = align.vertexSample[18];
+    const atBoundary = turn(headingOf(q, q + 3) - headingOf(q - 3, q));
+    expect(Math.abs(atSeam - atBoundary)).toBeLessThan(1e-3);
   });
 });
 

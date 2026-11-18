@@ -97,7 +97,7 @@ import {
   type XwRunSummary,
 } from "./format";
 import { planeAt, type Plane, roundTo } from "./geo";
-import { alignPlan, type PlanAlignment } from "./horizontal";
+import { alignLoop, alignPlan, type PlanAlignment } from "./horizontal";
 import {
   buildChains,
   type Chain,
@@ -1080,7 +1080,10 @@ export function planNetwork(
     });
     const found = chainPin(net, chain, plane, structures);
     const offset = options.rampOffsets?.get(chain.id);
-    const align = alignPlan({
+    // S7-3 3.5: with the junctions under the ground compiled, a loop is smoothed as a loop (its seam
+    // between two below runs is one road going on); without the flag as an open line, as before.
+    const isLoopSmoothed = options.belowJoins === "compile" && chain.closed;
+    const align = (isLoopSmoothed ? alignLoop : alignPlan)({
       xy,
       anchors,
       ...(found ? { pin: found.pin } : {}),
@@ -5953,15 +5956,28 @@ function structureCheck(o: RunOver, chunks: XwChunk[]): XwRunStructure {
  * Plan heading at run distance s (radians, anticlockwise from east), from the smoothed samples
  * ±3 m around it: both chunks at a seam get the same value, so their end cross-sections match.
  */
-function headingAt(rp: RunPlan, s: number, isAcross = false): number {
+function headingAt(rp: RunPlan, s: number, isAcross = false, isLoop = false): number {
   // `isAcross` (runs at grade, S6 PR 2): the chain's samples past the run's ends too, and the run's last
   // sample at its end, so both runs at a seam take the same samples (review W1: up to 0.237 rad apart
   // where a seam lies in a curve, each cut at its own end).
   const isEnd = isAcross && s >= rp.length - 1e-9;
   const i = isEnd ? rp.i1 : sampleAt(rp, s);
   const last = rp.align.s.length - 1;
-  const a = isAcross ? Math.max(0, i - 3) : Math.max(rp.i0, i - 3);
-  const b = isAcross ? Math.min(last, i + 3) : Math.min(rp.i1, i + 3);
+  // S7-3 3.5 (`isLoop`: a loop smoothed as one, horizontal.ts alignLoop): at its seam the samples run on
+  // round it, so the last run's end and the first run's start take the same ones (sample `last` is
+  // sample 0's place: the chain repeats its first node).
+  const isWrapped = isAcross && isLoop && (i - 3 < 0 || i + 3 > last);
+  const wrap = (j: number) => (j < 0 ? j + last : j > last ? j - last : j);
+  const a = isWrapped
+    ? wrap(i === last ? last - 3 : i - 3)
+    : isAcross
+      ? Math.max(0, i - 3)
+      : Math.max(rp.i0, i - 3);
+  const b = isWrapped
+    ? wrap(i === last ? 3 : i + 3)
+    : isAcross
+      ? Math.min(last, i + 3)
+      : Math.min(rp.i1, i + 3);
   const xy = rp.align.xy;
   const [lonA, latA] = rp.plane.toLonLat(xy[2 * a], xy[2 * a + 1]);
   const [lonB, latB] = rp.plane.toLonLat(xy[2 * b], xy[2 * b + 1]);
@@ -6699,6 +6715,8 @@ function chunkRun(
   const decksBelow = overDeck(plan, rp.run.id, heightAt, ground);
   const stretches = deckStretches(plan, rp.run.id);
   const runOpenings = openingsOf(plan, rp, stretches);
+  // S7-3 3.5: a loop smoothed as one reads its seam's heading round it (headingAt).
+  const isLoopRun = plan.belowJoins === "compile" && rp.chain.closed;
   const piers: number[] = [];
   const spacing = PIER_SPACING.value;
   // A tunnel or cut stands on the ground: no piers.
@@ -7004,8 +7022,8 @@ function chunkRun(
       gmax: gradeLimitFor(V, isSpecialAt(s, (a + b) / 2)),
       g0: roundTo(evalRun(s, a).grade, 6),
       g1: roundTo(evalRun(s, b).grade, 6),
-      h0: roundTo(headingAt(rp, a, plan.ground === "compile"), 6),
-      h1: roundTo(headingAt(rp, b, plan.ground === "compile"), 6),
+      h0: roundTo(headingAt(rp, a, plan.ground === "compile", isLoopRun), 6),
+      h1: roundTo(headingAt(rp, b, plan.ground === "compile", isLoopRun), 6),
       girder,
       st,
       piers: chunkPiers,
