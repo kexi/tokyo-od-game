@@ -1,6 +1,8 @@
 // The street lanes over a cut's site (S6 PR 7c, the ledger's street-lane-over-cut): for every run of
-// a data folder with cut chunks, the GSI streets round them built as the game builds them (RoadGraph,
-// the 3 × 3 z16 tiles round the cut) and every lane's centre (laneCentreOffset, each way it may be
+// a data folder with cut chunks, the GSI streets round them built as the game builds them (the 3 × 3
+// z16 tiles round the cut, the expressway joined in and the regulations applied: scripts/gameStreets.ts,
+// P2.7 R1-2-0; before it the streets were neither cut at the sites nor given their JARTIC/OSM lanes,
+// so streets the game cuts and lanes it never draws were counted) and every lane's centre (laneCentreOffset, each way it may be
 // driven) within the hole's edge (the retaining walls' outer face) + SITE_MARGIN_M. One JSON log line
 // (expressway_hole_lanes_measured); --cases <file> writes one case per run with such a lane for the
 // ledger tool (just update-expressway-ledger <dir> "--lanes <file>"). Never by rule: R1 decides the
@@ -8,21 +10,20 @@
 // Run: pnpm exec tsx scripts/expresswayHoleLanes.ts <dir|label> [--cache <dir>] [--cases <file>]
 // (just check-hole-lanes <dir>; the tiles come from the cache only: a cut whose tiles are not cached
 // is skipped and counted; exit code 1 when any is).
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { VectorTile } from "@mapbox/vector-tile";
-import Pbf from "pbf";
 import type { Vector3 } from "three";
 import { CUT_WALL } from "../src/expressway/assumptions.ts";
-import { ST, STATION_STRIDE } from "../src/expressway/format.ts";
+import { ST, STATION_STRIDE, type XwTileRun } from "../src/expressway/format.ts";
+import { haversine } from "../src/expressway/geo.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
-import { latToTileY, lonToTileX } from "../src/geo/tiles.ts";
 import { log } from "../src/log.ts";
+import { expresswayRoadInput } from "../src/world/expresswayRoads.ts";
 import { laneCentreOffset } from "../src/world/laneChange.ts";
 import { isExpressway } from "../src/world/roadClass.ts";
-import { leftOf, RoadGraph, type RoadLine } from "../src/world/roads.ts";
-import { ROAD_TILE_ZOOM, roadLinesOfTile } from "../src/world/roadTiles.ts";
+import { leftOf, type RoadLine } from "../src/world/roads.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
+import { gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 /** How far past the hole's edge a lane's centre counts as over the site (m): half a car's width and a margin. */
@@ -31,6 +32,8 @@ const SITE_MARGIN_M = 1;
 const SAMPLE_M = 1;
 /** Shorter than this over the site is a street's end cut at the site's edge (7b), not a lane over it. */
 const MIN_LENGTH_M = 3;
+/** The decks the game joins round a point (expresswayDeck.ts GRAPH_RADIUS_M). */
+const GRAPH_RADIUS_M = 1300;
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -44,6 +47,11 @@ if (target === undefined)
 const dir = target.includes("/") ? target : join(ROOT, ".cache", "expressway-area", target);
 const cacheDir = flag("cache") ?? join(ROOT, ".cache", "gsi-vector");
 const files = readExpresswayFiles(dir);
+const runs: XwTileRun[] = [
+  ...new Map([...files.tiles.values()].flatMap((t) => t.runs).map((r) => [r.id, r])).values(),
+];
+const streetsOf = gsiTileReader(cacheDir);
+const regulationsAround = regulationReader();
 
 /** One street lane over a cut's site: its segment, the way it is driven, its lane and stretch. */
 export type LaneOverCut = {
@@ -71,23 +79,31 @@ for (const [run, chunks] of files.byRun) {
     for (let i = 0; i < c.st.length; i += STATION_STRIDE)
       centre.push(frame.toLocal(c.st[i + ST.lat], c.st[i + ST.lon], 0).setY(0));
   }
-  const cx = Math.floor(lonToTileX(mid[ST.lon], ROAD_TILE_ZOOM));
-  const cy = Math.floor(latToTileY(mid[ST.lat], ROAD_TILE_ZOOM));
+  const [cx, cy] = roadTileOf(mid[ST.lon], mid[ST.lat]);
   const lines: RoadLine[] = [];
   let isMissing = false;
   for (let dy = -1; dy <= 1; dy++)
     for (let dx = -1; dx <= 1; dx++) {
-      const file = join(cacheDir, `${ROAD_TILE_ZOOM}-${cx + dx}-${cy + dy}.pbf`);
-      const bytes = await readFile(file).catch(() => null);
-      if (bytes === null) isMissing = true;
-      else if (bytes.length > 0)
-        lines.push(...roadLinesOfTile(new VectorTile(new Pbf(new Uint8Array(bytes))), cx + dx, cy + dy));
+      const tile = await streetsOf(cx + dx, cy + dy);
+      if (tile === null) isMissing = true;
+      else lines.push(...tile);
     }
   if (isMissing) {
     skipped++;
     continue;
   }
-  const graph = new RoadGraph(lines, frame);
+  const near = files.chunks.filter((c) => {
+    for (let i = 0; i < c.st.length; i += STATION_STRIDE)
+      if (haversine(mid[ST.lon], mid[ST.lat], c.st[i + ST.lon], c.st[i + ST.lat]) <= GRAPH_RADIUS_M)
+        return true;
+    return false;
+  });
+  const { graph } = gameStreetGraph(
+    lines,
+    expresswayRoadInput(near, runs, (_la, _lo, h) => h),
+    frame,
+    await regulationsAround(cx, cy),
+  );
   const toHole = (x: number, z: number) => {
     let best = Infinity;
     for (let i = 0; i + 1 < centre.length; i++) {

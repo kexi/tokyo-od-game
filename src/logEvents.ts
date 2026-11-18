@@ -1553,6 +1553,53 @@ export const LOG_EVENTS = {
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
   }),
   /**
+   * P2.7 R1-2 (scripts/measureStreetBands.ts): the street segments an expressway's site runs along,
+   * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / B3 / C not given), and the
+   * jumps, pavements, feet, piers and two-segment nodes round them.
+   */
+  street_bands_measured: info({
+    dir: z.string(),
+    groups: count,
+    siteChunks: count,
+    skippedChunksForMissingTiles: count,
+    groupsWithoutRegulations: count,
+    segments: count,
+    totalLengthM: count,
+    byClass: z.strictObject({
+      clear: count,
+      A: count,
+      "A'": count,
+      B1: count,
+      B2: count,
+      B3: count,
+      C: count,
+    }),
+    lengthByClass: z.strictObject({
+      clear: count,
+      A: count,
+      "A'": count,
+      B1: count,
+      B2: count,
+      B3: count,
+      C: count,
+    }),
+    fewerLanes: count,
+    widened: count,
+    edgeOnPavement: count,
+    jumps: count,
+    jumpsGrown: count,
+    jumpMostBeforeM: z.number().nonnegative(),
+    jumpMostAfterM: z.number().nonnegative(),
+    withPavement: count,
+    footNear: count,
+    piersOverLanes: count,
+    twoNodes: count,
+    twoNodesWithStop: count,
+    twoNodesWithCrossing: count,
+    twoNodesWithSignal: count,
+    durationMs: count,
+  }),
+  /**
    * The drops with no wall at their edge of a data folder (scripts/expresswayBareDrops.ts, A1 test 22):
    * the points, their pairs, and against another list the new and the gone points (the first new ones).
    */

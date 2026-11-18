@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-10T14:00:00Z }
 verified:
+  - { by: process:count-gsi-doubled-segments-r1-2, at: 2026-11-18T01:20:00Z }
   - { by: process:vitest, at: 2026-11-11T03:30:00Z }
   - { by: process:vitest, at: 2026-11-11T03:00:00Z }
   - { by: process:headless-chrome-cdp, at: 2026-11-11T03:10:00Z }
@@ -96,6 +97,7 @@ GSI の rdCtg=3 / motorway=1（`kind` の値 `highway`）を名指ししてい�
 - `sectionOf(seg, n)`・`laneLeftEdge`・`laneCentreOffset` が車線幅と車線の位置を返す。線が断面を持ち、その車線数で問われたら断面をそのまま返す。GSI の線は路肩・中央帯 0 なので、旧来の「幅/2 を車線数で割る」と浮動小数点まで同じ値になる（w/2 − 0 と、2 の冪の倍の積は丸めが起きない）。GSI の線の `basis` は記録ではなく推定（2 車線以上なら jartic。JARTIC の車線数が空欄で幅員から補った区間も jartic と出る）。区間に記録すると Worker の返信が変わるので P8 で OSM の車線と一緒に記録する。
 - `carriagewayWidth(line)` は今は `line.width` を返すだけ。歩道込みの幅員への場当たりの補正は `KERB_INSET`（keepLeft 2・laneCentre 1.6・centreLine 0.8・edgeLine 0.4 m）に集め、laneOffset・drivePath.laneCentre・区画線がそこを読む。ただし src にはまだ `line.width` を直接読む所が約 117 ある（標識・歩道・交差点の箱・衝突など）。幅員の補正（車線×幅＋路肩で頭打ち、外側線を 幅/2 − 路肩）は、それらをこの関数へ移してからでないと一度には効かない（P8）。
 - 交通 AI の `LANE_FRACTION = 0.25` は `laneCentreOffset(seg, 0, 1)`（1 車線の左の車線の中心 = 幅/4、一方通行は 0）に置き換えた。
+- 断面で車線を横へ動かす直し（P2.7 R1-2a: 高速道路の敷地に沿う区間に中央帯・部屋の上限）は試して取り下げた。自動運転の線は節点の先で横 1 m に 10 m（`drivePath.ts LANE_SLOPE`）かけて寄せるので、区間ごとに断面を変えると、手前に「跳び ÷ 0.1 + 10 m」の同じ断面の区間が要る（expressway-generation.md「P2.7 R1-2a」、枝 `wip/r1-2a-street-median`）。
 
 # MarkingPlan（roadMarkings.ts）
 
@@ -375,6 +377,7 @@ P8（一般道）: ~~車線数の 2 方針の一本化、OSM `lanes` の取り�
 - 「車道端」の定義を G4（feat/sign-mounts、PR #50）と合わせる。標識の柱の位置を車道端に寄せるかは G4 側で決める（W6）。
 - 断面の単一化: 記録した断面（Segment.section）と `Segment.lanes` の二重の持ち方をやめ、断面だけを正にする（W7）。今は lanes を書き換えると `streetSection` が中央帯を保って作り直す。
 - 時間帯の一方通行: 断面は規制の向き（一方通行）で作るので、規制時間外に対面になった区間では sectionOf が一方通行の車道を半分に割る（レビューの検証スクリプトで確認、未対応）。
+- **既知の欠陥: 地理院の線が二重になる（2026-11-18、P2.7 R1-2-0 で見つけた。別の項目で扱う）**: 地理院の z16 タイルはタイルの縁の近くの線を隣のタイルにも入れ、`RoadTiles.around`（`roadLinesOfTile` を 3 × 3 並べるだけ）は重複を除かないので、網に同じ区間が 2 本できる（両端の節点と長さが同じ）。高速道路を結ばない地理院だけの網で、既定範囲の 14 群・19,286 区間のうち 1,099（約 5.7 %、延長 10.6 km）、central（`r1b-pruned-cut-central`）の 120 群・175,287 区間のうち 9,033（約 5.2 %、89 km）。群どうしは重なるので延長は重ねて数えた値。例: 41568401:0 の脇の幅員 42.5 m の線がタイル 58196-25806 と 58196-25807 の両方に同じ座標で入る。数え方は作業の worktree の `.qa/r1-2/countdup.ts`（commit しない）。直すと不変テストのスナップショットが変わる見込み。
 - 歩道込みかどうかを PLATEAU の歩道の多角形から決める（今は幅員 13 m 以上で 3.5 m × 2 を引く仮定、`pavement_over_lanes` で検証する）。第四種第二級・第三級（3.0 m）の車線幅。
 - 逆向きの検査で見つかった、幅員 20 m 以上に OSM の 1 車線が付く 21 区間の中身。
 - 路面の濡れの轍（roadSurface の aStreet の laneOrigin）は中央帯のある道で反対車線の轍が線とずれる。
