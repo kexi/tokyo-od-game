@@ -396,10 +396,10 @@ function renderClock(el: HTMLElement, clock: GameClock, date: { m: number; d: nu
   el.append(day, time);
 }
 
-/** Horizontal unit vector the car's nose points along (local yaw 0 faces +Z). */
 /** A speed in m/s as km/h to 0.1 (the accident line's Δv). */
 const kmh1 = (ms: number) => Math.round(ms * 36) / 10;
 
+/** Horizontal unit vector the car's nose points along (local yaw 0 faces +Z). */
 function headingVector(q: Quaternion): Vector3 {
   const f = new Vector3(0, 0, 1).applyQuaternion(q);
   f.y = 0;
@@ -5758,16 +5758,6 @@ async function main(): Promise<void> {
    * look knows it by. Why not the traffic car's own id: the look also holds parked cars, patrols
    * and the robotaxi, which have none.
    */
-  type AccidentKind = "pedestrian" | "vehicle" | "building" | "pole";
-  type AccidentOtherKind = LogFields<"accident">["otherKind"];
-  /** What accidentOther found of the other party (Δv in m/s, speed in km/h). */
-  type AccidentOther = {
-    otherKind: AccidentOtherKind;
-    otherRef?: number;
-    carDvVelocities?: number;
-    otherDvVelocities?: number;
-    otherKmhBefore?: number;
-  };
   const logRefs = new WeakMap<object, number>();
   let nextLogRef = 0;
   const logRefOf = (key: object): number => {
@@ -5783,21 +5773,50 @@ async function main(): Promise<void> {
    * before this frame's steps, by collider handle: Δv for the accident line where the mass contacts
    * kept no record (those bodies are dynamic, the physics resolves their blow itself).
    */
-  const velocitiesBeforeSteps = new Map<number, { x: number; z: number }>();
-  const noteVelocitiesBeforeSteps = () => {
-    velocitiesBeforeSteps.clear();
-    const cars = [vehicle, ...(taxi ? [taxi.car] : []), ...patrols.map((u) => u.car)];
-    for (const car of cars) {
-      const v = car.body.linvel();
-      velocitiesBeforeSteps.set(car.chassis.handle, { x: v.x, z: v.z });
+  // The entries are kept and overwritten frame after frame, stamped with the frame they were noted
+  // in. Why not clear the map and make new entries each frame: it is read only at an accident, and a
+  // stamp tells a car noted this frame from one gone since (a handle can be used again).
+  const velocitiesBeforeSteps = new Map<number, { x: number; z: number; frame: number }>();
+  let velocityFrame = 0;
+  const noteVelocityOf = (car: Vehicle) => {
+    const v = car.body.linvel();
+    const entry = velocitiesBeforeSteps.get(car.chassis.handle);
+    if (!entry) {
+      velocitiesBeforeSteps.set(car.chassis.handle, { x: v.x, z: v.z, frame: velocityFrame });
+      return;
     }
+    entry.x = v.x;
+    entry.z = v.z;
+    entry.frame = velocityFrame;
+  };
+  const noteVelocitiesBeforeSteps = () => {
+    velocityFrame++;
+    noteVelocityOf(vehicle);
+    if (taxi) noteVelocityOf(taxi.car);
+    for (const u of patrols) noteVelocityOf(u.car);
+  };
+  /** The velocity noted before this frame's steps for a collider handle (null: none this frame). */
+  const velocityBeforeSteps = (handle: number) => {
+    const entry = velocitiesBeforeSteps.get(handle);
+    const isThisFrame = entry !== undefined && entry.frame === velocityFrame;
+    return isThisFrame ? entry : null;
   };
   /** The change of a dynamic car's ground velocity over this frame's steps (m/s; null: not noted). */
   const deltaVOver = (handle: number, body: RAPIER.RigidBody): number | null => {
-    const before = velocitiesBeforeSteps.get(handle);
+    const before = velocityBeforeSteps(handle);
     if (!before) return null;
     const now = body.linvel();
     return Math.hypot(now.x - before.x, now.z - before.z);
+  };
+  type AccidentKind = "pedestrian" | "vehicle" | "building" | "pole";
+  type AccidentOtherKind = LogFields<"accident">["otherKind"];
+  /** What accidentOther found of the other party (Δv in m/s, speed in km/h). */
+  type AccidentOther = {
+    otherKind: AccidentOtherKind;
+    otherRef?: number;
+    carDvVelocities?: number;
+    otherDvVelocities?: number;
+    otherKmhBefore?: number;
   };
   /**
    * Who the car hit, for the accident line: traffic, a parked car, the robotaxi, a patrol, a bus,
@@ -5818,7 +5837,7 @@ async function main(): Promise<void> {
     if (record) return base;
     const carDv = deltaVOver(vehicle.chassis.handle, vehicle.body);
     const otherDv = otherBody ? deltaVOver(handle, otherBody) : null;
-    const before = velocitiesBeforeSteps.get(handle);
+    const before = velocityBeforeSteps(handle);
     return {
       ...base,
       ...(carDv !== null && { carDvVelocities: carDv }),

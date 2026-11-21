@@ -834,7 +834,7 @@ export const LOG_EVENTS = {
     bandM: z.number(),
     pickedRef: count.nullable(),
     candidates: z.array(
-      z.object({
+      z.strictObject({
         ref: count.nullable(),
         source: z.string().nullable(),
         kind: z.string(),
@@ -847,7 +847,7 @@ export const LOG_EVENTS = {
       }),
     ),
     dropped: z.array(
-      z.object({
+      z.strictObject({
         ref: count.nullable(),
         source: z.string().nullable(),
         aheadM: z.number(),

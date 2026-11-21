@@ -412,10 +412,20 @@ export class AutoDriver {
    */
   ticks = 0;
   pathOffM = 0;
-  /** The last pick of the car in front (traffic()), for the log only (autopilot_front_pick). */
-  frontPick: FrontPick | null = null;
-  /** Vehicles the last look left out near ahead (look()), gathered for frontPick. */
-  private dropped: FrontDropped[] = [];
+  /** What the last pick of the car in front was made from (traffic(); frontPick reads it). */
+  private readonly pick: {
+    isMade: boolean;
+    tick: number;
+    vehicles: Seen[];
+    front: Seen | null;
+    own: number;
+    band: number;
+    at: number;
+    x: number;
+    z: number;
+  } = { isMade: false, tick: 0, vehicles: [], front: null, own: 0, band: 0, at: 0, x: 0, z: 0 };
+  /** Vehicles the last look left out near ahead (look(); the same array, emptied each look). */
+  private readonly dropped: FrontDropped[] = [];
   /**
    * What set the speed at the last drive look: each limit and what it came from. main.ts logs it
    * when the car has stood, moves off, or has an accident (autopilot_stop_trace). Why not log from
@@ -841,7 +851,7 @@ export class AutoDriver {
     const from = this.at - 60;
     const to = this.at + 220;
     const dir = this.heading();
-    this.dropped = [];
+    this.dropped.length = 0;
     // For the log only (FrontDropped): a vehicle near ahead in a straight line that this look
     // leaves out. Why the straight line and not the route: what the route does not place is the
     // question, so it cannot be the measure.
@@ -876,36 +886,58 @@ export class AutoDriver {
   }
 
   /**
-   * Keeps the pick of the car in front for the log (frontPick): the vehicles placed up to
-   * PICK_LIST_M ahead, the one picked, and those look() left out. Why a copy and not the `Seen`
-   * list itself: the log outlives the look, and the list holds the driver's own objects.
+   * Keeps what the pick of the car in front was made from (frontPick builds the log's form from
+   * it): the look's vehicles, the one picked, the nose across the path, the band, where the car was
+   * along the route. Why references and not the log's form here: this runs every frame for each
+   * driver (the autopilot and the robotaxi), and the log reads it only when the front changes or
+   * at an accident.
    */
   private notePick(vehicles: Seen[], front: Seen | undefined, own: number, band: number): void {
+    this.pick.tick = this.ticks;
+    this.pick.vehicles = vehicles;
+    this.pick.front = front ?? null;
+    this.pick.own = own;
+    this.pick.band = band;
+    this.pick.at = this.at;
+    this.pick.x = this.position.x;
+    this.pick.z = this.position.z;
+    this.pick.isMade = true;
+  }
+
+  /**
+   * The last pick of the car in front in the log's form (null: none yet): the vehicles placed up
+   * to PICK_LIST_M ahead, the one picked, and those look() left out. For the log only
+   * (autopilot_front_pick). The straight-line distances are from where the car was at the pick to
+   * where the others are now (the same frame when the front has just changed).
+   */
+  get frontPick(): FrontPick | null {
+    const p = this.pick;
+    if (!p.isMade) return null;
     const candidates: FrontCandidate[] = [];
-    for (const s of vehicles) {
-      const ahead = s.at - this.at;
+    for (const s of p.vehicles) {
+      const ahead = s.at - p.at;
       const isListed = ahead > -5 && ahead < PICK_LIST_M;
       if (!isListed) continue;
-      const p = s.o.position;
+      const q = s.o.position;
       candidates.push({
         key: s.o.key ?? null,
         source: s.o.source ?? null,
         kind: s.o.kind,
         ahead,
         lateral: s.lateral,
-        fromOwn: s.lateral - own,
-        straight: Math.hypot(p.x - this.position.x, p.z - this.position.z),
+        fromOwn: s.lateral - p.own,
+        straight: Math.hypot(q.x - p.x, q.z - p.z),
         stoppedFor: s.stoppedFor,
-        picked: s === front,
+        picked: s === p.front,
       });
     }
-    this.frontPick = {
-      tick: this.ticks,
-      own,
-      band,
-      picked: front?.o.key ?? null,
+    return {
+      tick: p.tick,
+      own: p.own,
+      band: p.band,
+      picked: p.front?.o.key ?? null,
       candidates,
-      dropped: this.dropped,
+      dropped: this.dropped.slice(),
     };
   }
 
