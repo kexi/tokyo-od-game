@@ -73,16 +73,17 @@ describe("traffic trace (D3 instruments)", () => {
       ai.placeCar(west, 60, 8);
       step(1);
       expect(inside.cars.map((c) => c.id)).toEqual([1, 2]);
-      const first = inside.cars[0];
-      const serialBefore = first.serial;
+      // Its random state as it appeared: the traffic's first draw (spawn()'s generator from 1).
+      // Why not read it after the first update: the car may pick its next road in that update.
+      const spawned = (1 * 1664525 + 1013904223) >>> 0;
       // On past the joint: it picks the eastern piece, drawing on its random state.
       step(60 * 12);
       const after = inside.cars.find((c) => c.id === 1);
       expect(after).toBeDefined();
       expect(after?.seg).not.toBe(west);
-      expect(after?.serial).not.toBe(serialBefore);
-      // The draw is the one it always was: one step of upcoming()'s generator per road picked.
-      expect(after?.serial).toBe((serialBefore * 1103515245 + 12345) >>> 0);
+      // The draw is the one it always was: one step of upcoming()'s generator per road picked (the
+      // eastern piece; past it there is no road to pick).
+      expect(after?.serial).toBe((spawned * 1103515245 + 12345) >>> 0);
     } finally {
       world.free();
     }

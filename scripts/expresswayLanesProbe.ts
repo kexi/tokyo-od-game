@@ -4,30 +4,29 @@
 // a ramp's foot is kept), built into the game's lanes (RoadGraph, laneCentreOffset each way a lane is
 // driven), and every lane whose centre comes within the slab's edge (carriageway/2 + PARAPET_WIDTH)
 // for MIN_LENGTH_M or more: a lane the game keeps that runs into the embankment's walls (the judgement
-// and the merging in scripts/expresswaySiteLanes.ts). Grouped per run and street width, one ledger case
+// and the merging in scripts/expresswaySiteLanes.ts). The lanes are the game's: the network has the
+// regulations applied as the worker does (scripts/gameStreets.ts, P2.7 R1-2-0: JARTIC and OSM lane
+// counts; before it every street was one lane). Grouped per run and street width, one ledger case
 // each. One JSON log line (expressway_lanes_probed); exit code 1
 // when more places are found than the folder's ledger takes as lane-in-site (a new one stops it), or
 // than --max; a folder with neither (a measuring folder) is only counted.
 // Run: pnpm exec tsx scripts/expresswayLanesProbe.ts <dir|label> [--cache <dir>] [--cases <file>] [--max <n>]
 // (just check-expressway-lanes <dir>; the tiles from the cache only, a chunk whose tiles are missing
 // is skipped and counted; exit code 1 when any is). --cases writes the places for the ledger tool's --site-lanes.
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { VectorTile } from "@mapbox/vector-tile";
-import Pbf from "pbf";
 import type { Vector3 } from "three";
 import { PARAPET_WIDTH } from "../src/expressway/assumptions.ts";
 import { ST, STATION_STRIDE, type XwTileRun } from "../src/expressway/format.ts";
 import { haversine } from "../src/expressway/geo.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
-import { latToTileY, lonToTileX } from "../src/geo/tiles.ts";
 import { log } from "../src/log.ts";
-import { expresswayRoadInput, joinExpressway } from "../src/world/expresswayRoads.ts";
+import { expresswayRoadInput } from "../src/world/expresswayRoads.ts";
 import { laneCentreOffset } from "../src/world/laneChange.ts";
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
-import { leftOf, RoadGraph, type RoadLine } from "../src/world/roads.ts";
-import { ROAD_TILE_ZOOM, roadLinesOfTile } from "../src/world/roadTiles.ts";
+import { leftOf, type RoadLine } from "../src/world/roads.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
+import { gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
 import { laneOverSite, mergeSitePlaces, type SiteLanes, type SiteLine } from "./expresswaySiteLanes.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -58,20 +57,8 @@ const max = maxFlag !== undefined ? Number(maxFlag) : (ledgerCount ?? null);
 const runs: XwTileRun[] = [
   ...new Map([...files.tiles.values()].flatMap((t) => t.runs).map((r) => [r.id, r])).values(),
 ];
-const tiles = new Map<string, RoadLine[] | null>();
-async function streetsOf(x: number, y: number): Promise<RoadLine[] | null> {
-  const key = `${x}-${y}`;
-  if (tiles.has(key)) return tiles.get(key)!;
-  const bytes = await readFile(join(cacheDir, `${ROAD_TILE_ZOOM}-${key}.pbf`)).catch(() => null);
-  const lines =
-    bytes === null
-      ? null
-      : bytes.length === 0
-        ? []
-        : roadLinesOfTile(new VectorTile(new Pbf(new Uint8Array(bytes))), x, y);
-  tiles.set(key, lines);
-  return lines;
-}
+const streetsOf = gsiTileReader(cacheDir);
+const regulationsAround = regulationReader();
 
 const places: SiteLanes[] = [];
 let skipped = 0;
@@ -80,8 +67,7 @@ for (const [run, chunks] of files.byRun) {
     const o = Math.floor(emb.st.length / STATION_STRIDE / 2) * STATION_STRIDE;
     const lon = emb.st[o + ST.lon];
     const lat = emb.st[o + ST.lat];
-    const cx = Math.floor(lonToTileX(lon, ROAD_TILE_ZOOM));
-    const cy = Math.floor(latToTileY(lat, ROAD_TILE_ZOOM));
+    const [cx, cy] = roadTileOf(lon, lat);
     const streets: RoadLine[] = [];
     let isMissing = false;
     for (let dy = -1; dy <= 1; dy++)
@@ -99,15 +85,12 @@ for (const [run, chunks] of files.byRun) {
         if (haversine(lon, lat, c.st[i + ST.lon], c.st[i + ST.lat]) <= GRAPH_RADIUS_M) return true;
       return false;
     });
-    const joined = joinExpressway(
+    const frame = new LocalFrame(lat, lon, 0);
+    const { graph } = gameStreetGraph(
       streets,
       expresswayRoadInput(near, runs, (_la, _lo, h) => h),
-      () => {},
-    );
-    const frame = new LocalFrame(lat, lon, 0);
-    const graph = new RoadGraph(
-      joined.filter((l) => sourceOf(l) === "gsi" && !isExpressway(l)),
       frame,
+      await regulationsAround(cx, cy),
     );
     const centre: Vector3[] = [];
     const stS: number[] = [];
@@ -118,6 +101,8 @@ for (const [run, chunks] of files.byRun) {
     const edgeM = (emb.lanes * emb.laneWidth + emb.shoulderL + emb.shoulderR) / 2 + PARAPET_WIDTH.value;
     const site: SiteLine = { centre, s: stS, edgeM };
     for (const seg of graph.segments) {
+      const isStreet = sourceOf(seg.line) === "gsi" && !isExpressway(seg.line);
+      if (!isStreet) continue;
       let place: SiteLanes | null = null;
       for (const d of [1, -1] as const) {
         const isDriven = seg.oneway === 0 || seg.oneway === d;

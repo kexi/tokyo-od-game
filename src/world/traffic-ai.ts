@@ -21,6 +21,7 @@ import { classOf, isDrivable } from "./roadClass";
 import { laneCentreOffset } from "./laneChange";
 import { branchLink, intoTrunkLane, reachesStreets, runOf, type LaneLink } from "./laneLinks";
 import { mainCarsAt, mergeSpeedCap, taperOf } from "../game/merging";
+import { placeOnRoute } from "../game/autoTraffic";
 
 /** Route distance from a merge or diverge node over which a ramp's lane is tapered into the main line's. */
 const TAPER_REACH = 250;
@@ -83,6 +84,8 @@ type AiCar = {
    * forgotten at the first drive frame whose look misses it. For the logs.
    */
   firstSeen: { m: number; kmh: number } | null;
+  /** A put-back held off near the player's car (logged once until put back or within 8 m again). */
+  putBackHeld: boolean;
   /** When it was last put back on its lane, and when it was last sliding from a shove (s). */
   putBackAt: number | null;
   shovedAt: number | null;
@@ -100,9 +103,32 @@ export type TrafficContactInfo = {
   sincePutBackS: number | null;
 };
 
+/**
+ * The speed a traffic car wants behind what its look found `gap` m ahead (an obstacle or a stop
+ * line; Infinity: nothing): 0 inside `standstill`, (gap − standstill) × 0.8 within 18 m of it, else
+ * `cruise` (as before); and never more than it can stop from at `a` m/s² before standstill.
+ * Why the cap: the 18 m rule alone let the fast cruise tiers and every bus and truck reach a car
+ * standing on a straight 60 km/h road (D3 T-e1: 23 of 30 tiers). It only ever lowers the speed.
+ * Why not the autopilot's followSpeed (0.75 s reaction, 4 m/s²): the gap at 60 km/h would go from
+ * about 28 m to 54 m, and the traffic's density everywhere with it.
+ */
+export function followTarget(gap: number, standstill: number, cruise: number, a: number): number {
+  if (gap < standstill) return 0;
+  const rule = gap < standstill + 18 ? Math.min(cruise, (gap - standstill) * 0.8) : cruise;
+  const isSeen = Number.isFinite(gap);
+  if (!isSeen) return rule;
+  return Math.min(rule, Math.sqrt(2 * a * (gap - standstill)));
+}
+
 const COLORS = [0xf2f2f2, 0x111111, 0x8c939b, 0xb02a2a, 0x2a4fb0, 0xd7d2c5, 0x5b6b3a, 0x3a3f4a];
 const MAX_CARS = QUALITY.maxAiCars;
 const SPAWN_RADIUS = 350;
+/**
+ * No car appears nearer than this to the focus update() is given (spawn(): the player's car, the
+ * taxi or the walker, main.ts focusPos), nor is put back on its lane nearer than this to the
+ * player's car (drive(): the `player` update() is given) (m).
+ */
+const NEAR_PLAYER_M = 60;
 const DESPAWN_RADIUS = 450;
 // Beyond this, cars may come and go even in view (fog and buildings hide it).
 const FAR = 600;
@@ -445,19 +471,13 @@ export class TrafficAI {
   ): Vector3 {
     const limit = speedLimit(c.seg) / 3.6;
     const cruise = limit * (0.75 + (c.serial % 5) * 0.06);
-    const look = this.look(c, pos, dir, player, playerForward, playerSpeed);
+    const look = this.look(graph, c, pos, dir, player, playerForward, playerSpeed);
     this.noteLook(c, look.gap, look.playerAhead);
     const gap = Math.min(look.gap, this.stopGap(graph, c, dt));
     // 7 m centre to centre for cars; longer vehicles keep their own length clear.
     const standstill = 4.75 + c.half;
     const target =
-      c.deadEnd > 0
-        ? 0
-        : gap < standstill
-          ? 0
-          : gap < standstill + 18
-            ? Math.min(cruise, (gap - standstill) * 0.8)
-            : cruise;
+      c.deadEnd > 0 ? 0 : followTarget(gap, standstill, cruise, Math.min(c.decel, COMFORT_DECEL));
     const isOnExpressway = runOf(c.seg) !== null;
     const turnSafe = isOnExpressway ? this.bendSpeed(graph, c) : this.cornerSpeed(graph, c);
     const merge = isOnExpressway ? this.mergeCap(graph, c, player, playerForward, playerSpeed) : Infinity;
@@ -491,12 +511,42 @@ export class TrafficAI {
       const along = graph.nearestOn(c.seg, centre).s;
       const projected = c.dir === 1 ? along : c.seg.length - along;
       c.s = Math.max(c.s - 2, Math.min(c.s + c.speed * dt * 2 + 0.05, projected));
-      if (c.s >= c.seg.length - 0.05) {
+      const isAtEnd = c.s >= c.seg.length - 0.05;
+      if (isAtEnd || this.isRoundCorner(graph, c, centre)) {
         c.s = c.seg.length + 0.05;
         this.advance(graph, c);
       }
     }
     return centre;
+  }
+
+  /**
+   * Whether the car has driven round the corner into the road it chose next while its place along
+   * this one stayed short of the end: its centre lies on the next road past its start, and nearer
+   * that road's lane than this road's lane from its place on. Streets only.
+   *
+   * Why: turning left by 90° or more, the centre projected on the road before stops short of its
+   * end, so no move on happened; the car drove into the next road with its place left behind and
+   * was put back 8 m (25 m in view) later (138 of 186 put-backs in five drives, D3). Why not on the
+   * decks: no sharp corners there, and at merges and diverges a ramp's lane lies over the main
+   * line's. A car standing on its lane before the corner is on this lane, so it is not moved on.
+   */
+  private isRoundCorner(graph: RoadGraph, c: AiCar, centre: Vector3): boolean {
+    const isStreet = runOf(c.seg) === null;
+    if (!isStreet) return false;
+    const next = this.peekNext(graph, c);
+    if (!next || runOf(next.seg) !== null) return false;
+    const onNext = graph.nearestOn(next.seg, centre).s;
+    const nextS = next.dir === 1 ? onNext : next.seg.length - onNext;
+    const isPastStart = nextS > 0.05;
+    if (!isPastStart) return false;
+    const nextLane = this.lanePoint(graph, next.seg, next.dir, nextS).pos;
+    const onHere = graph.nearestOn(c.seg, centre).s;
+    const hereS = Math.max(c.s, c.dir === 1 ? onHere : c.seg.length - onHere);
+    const hereLane = this.lanePoint(graph, c.seg, c.dir, Math.min(hereS, c.seg.length)).pos;
+    const toNext = Math.hypot(centre.x - nextLane.x, centre.z - nextLane.z);
+    const toHere = Math.hypot(centre.x - hereLane.x, centre.z - hereLane.z);
+    return toNext < toHere;
   }
 
   /**
@@ -662,9 +712,22 @@ export class TrafficAI {
     // a car can turn.
     const offLane = Math.hypot(centre.x - lane.x, centre.z - lane.z);
     const isAdrift = !(offLane <= 8) && (!this.isSeen(centre) || !(offLane <= 25));
-    if (isAdrift) {
-      // Not the first placing of a car just spawned (it has no centre yet).
-      const wasPlaced = Number.isFinite(c.rear.x);
+    // Not the first placing of a car just spawned (it has no centre yet).
+    const wasPlaced = Number.isFinite(c.rear.x);
+    // Never put back where it lands within NEAR_PLAYER_M of the player's car: it drives on from
+    // where it is, as a car in view does. Why: a car put back beside the player's car driving past
+    // landed 1.4 m from its centre (D3, the first report's run 1). Why not also look for room among
+    // the other cars or out of view at the spot: traffic cars do not collide with each other, and
+    // the sight is not D3's (knowledge: not done).
+    const player = this.lastPlayer;
+    const landsNearPlayer =
+      wasPlaced && player !== null && Math.hypot(lane.x - player.x, lane.z - player.z) < NEAR_PLAYER_M;
+    if (!(offLane > 8)) c.putBackHeld = false;
+    if (isAdrift && landsNearPlayer) {
+      if (!c.putBackHeld) this.notePutBackHeld(c, lane, offLane);
+      c.putBackHeld = true;
+    } else if (isAdrift) {
+      c.putBackHeld = false;
       if (wasPlaced) this.notePutBack(graph, c, centre, lane, offLane);
       c.yaw = Math.atan2(laneDir.x, laneDir.z);
       c.rear.copy(lane).addScaledVector(laneDir, -c.wheelbase / 2);
@@ -880,6 +943,19 @@ export class TrafficAI {
     });
   }
 
+  /** A put-back held off near the player's car (drive): traffic_car_put_back_held. */
+  private notePutBackHeld(c: AiCar, lane: Vector3, offLane: number): void {
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    const player = this.lastPlayer;
+    log("traffic_car_put_back_held", {
+      carId: c.id,
+      segId: c.seg.id,
+      sM: r1(c.s),
+      offLaneM: r1(offLane),
+      playerDistM: player ? r1(Math.hypot(lane.x - player.x, lane.z - player.z)) : null,
+    });
+  }
+
   /**
    * A car put back on its lane (drive's isAdrift), already placed before: traffic_car_put_back,
    * with the road it had chosen next (only if chosen already: choosing here would draw from its
@@ -923,10 +999,20 @@ export class TrafficAI {
 
   /**
    * The look ahead in this lane: the gap to the nearest obstacle (other cars, the player), and how
-   * far ahead the player's car is when it is taken in (null: not). No side effects: the QA tools
-   * call it on their own, and must not move what the logs record (follow() records it).
+   * far ahead the player's car is when it is taken in (null: not). Two looks, the nearer counts:
+   * the straight band along the lane's tangent at the car (as before), and the lane itself on
+   * ahead along the roads chosen (lanePath). It records nothing (follow() records what it found, so
+   * a QA tool calling it does not move the logged values), but lanePath picks the roads ahead
+   * (upcoming()) as far as it looks: the car's random state moves on sooner than before (the same
+   * roads, picked earlier), from a QA tool's call too.
+   *
+   * Why the lane too: 東京駅南口's piece bends about 20° past its first 20 m, and the band from
+   * before the bend missed the car standing 12 m past it until 5 m off (D3, 4 runs in 5).
+   * Why not the lane alone: a car only the band catches (beyond the far side of a turn) would no
+   * longer be stopped for; taking fewer obstacles in is not D3's to change.
    */
   private look(
+    graph: RoadGraph,
     c: AiCar,
     pos: Vector3,
     dir: Vector3,
@@ -936,26 +1022,108 @@ export class TrafficAI {
   ): { gap: number; playerAhead: number | null } {
     let gap = Infinity;
     const y = c.ground + 0.86;
+    const standstill = 4.75 + c.half;
+    const a = Math.min(c.decel, COMFORT_DECEL);
+    const reach = Math.max(standstill + 18, standstill + (c.speed * c.speed) / (2 * a) + c.speed * 0.1);
+    const path = this.lanePath(graph, c, reach);
+    // Distances on the line from where the car itself is on it, not from its place along the lane
+    // (`c.s`): rounding a corner the car runs ahead of that place, and the gap read from it was
+    // metres long (T-b3: 10 m read, 5.6 m there). Why not the car's centre for the band too: the
+    // band is kept as it was.
+    // A car just spawned has no centre yet (its object stands at the origin until drive() places it).
+    const isPlaced = Number.isFinite(c.rear.x);
+    const selfAt = isPlaced ? Math.max(0, placeOnRoute(path, c.object.position, 0, reach)?.at ?? 0) : 0;
+    const lineEnd = path.cum.at(-1) ?? 0;
     // Returns how far ahead the point is when it is taken in (null: not), for the player's case.
-    const consider = (p: Vector3, width = 2.2): number | null => {
+    const consider = (p: Vector3, width = 2.2, fleeing?: (along: Vector3) => boolean): number | null => {
       const dx = p.x - pos.x;
       const dz = p.z - pos.z;
       const ahead = dx * dir.x + dz * dir.z;
       const lateral = Math.abs(dx * dir.z - dz * dir.x);
       // Not a car on the street under a viaduct, nor one on the deck over the street.
       const isSameLevel = Math.abs(p.y - y) < 3.5 + 0.15 * Math.abs(ahead);
-      const isTaken = ahead > 0 && lateral < width && isSameLevel;
-      if (isTaken) gap = Math.min(gap, ahead);
-      return isTaken ? ahead : null;
+      const isInBand = ahead > 0 && lateral < width && isSameLevel && !fleeing?.(dir);
+      let taken = isInBand ? ahead : null;
+      const isNear = Math.hypot(dx, dz) < reach + 10;
+      const on = isNear ? placeOnRoute(path, p, 0, reach) : null;
+      // Off either end of the line (nearest at its first or last point, and further off than beside
+      // it) is not beside it. At a bend point inside the line the nearest is the point itself for
+      // all the wedge outside the bend, so there the distance, not the offset, is what must fit the
+      // width. Why not drop every point whose distance is over its offset: that left the wedge
+      // outside each bend unseen, and past two bends (東京駅南口's piece) the band missed it too.
+      const isAtLineEnd = on !== null && (on.at <= 1e-6 || on.at >= lineEnd - 1e-6);
+      const isOffLineEnd = on !== null && isAtLineEnd && on.dist > Math.abs(on.lateral) + 1e-6;
+      const isOnLine =
+        on !== null &&
+        on.at > selfAt &&
+        !isOffLineEnd &&
+        on.dist < width &&
+        Math.abs(p.y - y) < 3.5 + 0.15 * on.at &&
+        !fleeing?.(on.dir);
+      if (isOnLine && on) taken = taken === null ? on.at - selfAt : Math.min(taken, on.at - selfAt);
+      if (taken !== null) gap = Math.min(gap, taken);
+      return taken;
     };
     for (const o of this.cars) if (o !== c) consider(o.object.position);
     // Kerbside parked cars only block when they actually sit in this lane.
     for (const p of this.parked) consider(p.object.position, 0.9);
     for (const p of this.extraObstacles) consider(p);
-    // Yield to the player unless they are clearly driving away ahead of us.
-    const isPlayerFleeing = ps > c.speed + 2 && pf.dot(dir) > 0.8;
-    const playerAhead = isPlayerFleeing ? null : consider(player);
+    // Yield to the player unless they are clearly driving away ahead of us (along the band, or
+    // along the lane where the player is on it).
+    const isPlayerFleeing = (along: Vector3) => ps > c.speed + 2 && pf.dot(along) > 0.8;
+    const playerAhead = consider(player, 2.2, isPlayerFleeing);
     return { gap, playerAhead };
+  }
+
+  /**
+   * The car's lane from where it is (`c.s` on `c.seg`) on along the roads it has chosen
+   * (upcoming()), `reach` metres of it: every bend point of the segments and a point at least
+   * every 5 m. Ends early at a dead end.
+   */
+  private lanePath(graph: RoadGraph, c: AiCar, reach: number): { points: Vector3[]; cum: number[] } {
+    const points: Vector3[] = [];
+    const cum: number[] = [];
+    let done = 0;
+    const push = (seg: Segment, dir: 1 | -1, s: number) => {
+      // The car's lane on the expressway along its own run, as aheadPose has it (lane 0 elsewhere).
+      const isSameRun = runOf(seg) !== null && runOf(seg) === runOf(c.seg);
+      const p = this.lanePoint(graph, seg, dir, s, isSameRun ? c.xwLane : 0).pos;
+      const last = points.at(-1);
+      if (last) {
+        const step = Math.hypot(p.x - last.x, p.z - last.z);
+        if (step < 1e-3) return;
+        done += step;
+      }
+      points.push(p);
+      cum.push(done);
+    };
+    let seg = c.seg;
+    let dir = c.dir;
+    let from = Math.max(0, Math.min(seg.length, c.s));
+    // At most 8 roads on (as aheadPose): a ring of road pieces of next to no length still ends.
+    for (let k = -1; done < reach && k < 8; k++) {
+      // Travel distances of the segment's bend points, then a point every 5 m between.
+      const bends = seg.cum
+        .map((d) => (dir === 1 ? d : seg.length - d))
+        .filter((s) => s > from && s < seg.length);
+      const stops = [from, ...bends, seg.length].sort((x, y) => x - y);
+      const along: number[] = [];
+      for (let i = 0; i + 1 < stops.length; i++) {
+        for (let s = stops[i]; s < stops[i + 1]; s += 5) along.push(s);
+      }
+      along.push(seg.length);
+      for (const s of along) {
+        push(seg, dir, s);
+        if (done >= reach) break;
+      }
+      if (done >= reach) break;
+      const onward = this.upcoming(graph, c, k + 1);
+      if (!onward) break;
+      seg = onward.seg;
+      dir = onward.dir;
+      from = 0;
+    }
+    return { points, cum };
   }
 
   /**
@@ -1046,7 +1214,7 @@ export class TrafficAI {
       const deckY = seg.elev ? graph.surfaceY(seg, s) : null;
       const d = pos.distanceTo(focus);
       // Appear only where the camera is not looking (open-world spawning), so cars never pop in.
-      const isHidden = d <= SPAWN_RADIUS && d >= 60 && !this.isSeen(pos);
+      const isHidden = d <= SPAWN_RADIUS && d >= NEAR_PLAYER_M && !this.isSeen(pos);
       if (!placed && !isHidden) continue;
       const dir: 1 | -1 = seg.oneway === -1 ? -1 : seg.oneway === 1 ? 1 : this.serial % 2 ? 1 : -1;
       // Tokyo's mix: route buses and trucks on the wider roads, motorbikes anywhere.
@@ -1098,6 +1266,7 @@ export class TrafficAI {
         xwLane: 0,
         lookGap: null,
         firstSeen: null,
+        putBackHeld: false,
         putBackAt: null,
         shovedAt: null,
         ...this.massOf(kind && vehicle ? kind : taxi ? "jpnTaxi" : "sedan", vehicle, this.serial),
