@@ -608,6 +608,41 @@ export const LOG_EVENTS = {
   }),
   /** A call the navi says (in the language in force), whether or not the voice is muted. */
   nav_spoken: info({ text: z.string() }),
+  /**
+   * A traffic car already on the road put back on its lane where it was off it by more than 8 m
+   * unseen, or 25 m (traffic-ai.ts drive): its id, segment, place along it and the segment's length
+   * (m); how far its centre was off (m); whether that centre was in the camera's view; the spot it
+   * is put on to the player's car (m); the road it had chosen next, the turn into it (degrees, left
+   * +) and how far its centre was from that road's lane (m); seconds since the graph was swapped
+   * and since it last slid from a shove. Nulls: none.
+   */
+  traffic_car_put_back: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    segLengthM: z.number(),
+    offLaneM: z.number(),
+    isSeen: z.boolean(),
+    playerDistM: z.number().nullable(),
+    nextSegId: z.number().int().nullable(),
+    turnDeg: z.number().nullable(),
+    nextOffM: z.number().nullable(),
+    sinceGraphS: z.number().nullable(),
+    sinceShoveS: z.number().nullable(),
+  }),
+  /**
+   * A put-back held off: the spot the traffic car would land on was within 60 m of the player's car
+   * (traffic-ai.ts drive), so it drives on from where it is. Once per car until it is put back or
+   * within 8 m of its lane again: its id, segment, place along it (m), how far off it is (m), the
+   * spot to the player's car (m; null: no player yet).
+   */
+  traffic_car_put_back_held: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    offLaneM: z.number(),
+    playerDistM: z.number().nullable(),
+  }),
   /** Traffic AI cars on the expressway at a moment (debug.expressway.traffic, P6). */
   expressway_traffic_seen: info({
     cars: count,
@@ -635,6 +670,43 @@ export const LOG_EVENTS = {
    * (game/pedestrianBlow.ts) or the person's Δv was a nudge. `carKmh` is the car's speed into the blow.
    */
   pedestrian_bump: info({ carKmh: z.number(), otherDeltaVKmh: z.number() }),
+  /**
+   * A vehicle hit the player's car while it stood (game/vehicleBlow.ts: its own speed going in at
+   * 1 km/h or under), above the 5 km/h an accident takes: no accident, nothing booked. `ownKmh` the
+   * car's own speed going in, `speedAfterKmh` after the steps (the push in it); the blow by both
+   * masses where the mass contact recorded it.
+   */
+  vehicle_bump: info({
+    ownKmh: z.number(),
+    speedAfterKmh: z.number(),
+    ownDeltaVKmh: z.number().optional(),
+    otherDeltaVKmh: z.number().optional(),
+    otherMassKg: z.number().optional(),
+  }),
+  /**
+   * The player's car began to touch a traffic car (main.ts, judged an accident or not; the 3 s per
+   * body of the contact check). The other: its id (TrafficAI), segment, place along it (m) and
+   * speed; `ownKmh` the player's car going into the blow; both Δv; `bearingDeg` where the other is
+   * seen from the player's heading (ahead 0, left +, behind ±180); its look's gap at its last frame
+   * (m); where its look began to take in the player's car without a break, and its speed then;
+   * seconds since it was last put back on its lane. Δv only from the mass contact's own record.
+   * Nulls: none.
+   */
+  traffic_contact: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    carKmh: z.number(),
+    ownKmh: z.number(),
+    ownDeltaVKmh: z.number().nullable(),
+    otherDeltaVKmh: z.number().nullable(),
+    bearingDeg: z.number(),
+    lookGapM: z.number().nullable(),
+    firstSeenM: z.number().nullable(),
+    firstSeenKmh: z.number().nullable(),
+    sincePutBackS: z.number().nullable(),
+    isAccident: z.boolean(),
+  }),
   /**
    * A jump (移動, 復帰, debug place) put the player more than 80 m from an open accident scene:
    * leaving and the 119 deadline are held until they are back within 80 m (game/emergency.ts).
@@ -801,6 +873,18 @@ export const LOG_EVENTS = {
     speedKmh: z.number().nullable(),
     limitKmh: z.number().nullable().optional(),
     detail: z.string().optional(),
+    /**
+     * A missed 合図 (signalOmission.ts signalRecord): game ms since each indicator was last on, and
+     * for a turn the distance from the junction's node (m) and game ms since its watch began.
+     */
+    signal: z
+      .object({
+        leftAgoMs: z.number().nullable(),
+        rightAgoMs: z.number().nullable(),
+        fromNodeM: z.number().nullable(),
+        watchedMs: z.number().nullable(),
+      })
+      .optional(),
   }),
   /** Caught: the points count now (`via: "post"` for a notice delivered at the end of the day). */
   violation_cited: info({
@@ -1118,6 +1202,90 @@ export const LOG_EVENTS = {
   expressway_extract_pinned: info({ file: z.string(), timestamp: z.string().nullable(), sha256: z.string() }),
   /** --range ship (src/expressway/scope.ts): the main lines and ramps of the shipped scope. */
   expressway_scope_chosen: info({ main: count, ramps: count, belowRuns: count, prunedBelow: z.boolean() }),
+  /**
+   * The shipped scope read off the plan (scripts/expresswayScopeProbe.ts, R1-1a 2): where the
+   * operator's ways end along the shipped main lines (the cuts, the km they take out, those with an
+   * operator's route ref on the far side), the unmarked ways between two operated ones, the ramps
+   * scope v2 adds and drops against v1, the plan's dangling runs, the main lines whose ways fall in
+   * more than one district, the refs the districts' table misses and the C2 runs the yamate box cuts.
+   */
+  /**
+   * The districts of the written runs of a ship build from the plan (scope.ts planDistrictRuns) and
+   * from the chunks (districtRunsOf), compared (R1-1a): how many written, how many differ, the first.
+   */
+  /**
+   * What lies under the written stations outside the wards (scripts/expresswayOutsideGround.ts,
+   * R1-1a): their km, those where DEM5A has the pixel, where the ground falls to DEM10B, where the
+   * DEM tile is not cached, and where no gated PLATEAU prefecture's regions reach (no buildings).
+   */
+  expressway_outside_ground_measured: info({
+    dir: z.string(),
+    out: z.string(),
+    outsideKm: z.number().nonnegative(),
+    dem5aKm: z.number().nonnegative(),
+    dem10bKm: z.number().nonnegative(),
+    uncachedKm: z.number().nonnegative(),
+    noPlateauKm: z.number().nonnegative(),
+  }),
+  /**
+   * The tiles' gzip stage by stage of publishing the districts (scripts/expresswayDistrictSizes.ts,
+   * R1-1a, U3): per stage the districts published, the tiles, their gzip total and the largest tile.
+   */
+  expressway_district_sizes_measured: info({
+    dir: z.string(),
+    out: z.string(),
+    stages: z.array(
+      z.strictObject({ districts: z.string(), tiles: count, gzipBytes: count, maxGzipBytes: count }),
+    ),
+  }),
+  /** A --districts build (R1-1a): the stage written and the runs and chunks picked from the whole ship. */
+  /**
+   * Two scorecards gzipped by another node or zlib, or one without the record (compareExpresswayReports,
+   * R1-1a): their gzip rows shown but not counted, and how many.
+   */
+  expressway_reports_gzip_unlike: warning({
+    a: z.string(),
+    b: z.string(),
+    aEnv: z.string().nullable(),
+    bEnv: z.string().nullable(),
+    rows: count,
+  }),
+  /** A scorecard over U3's budget (budget.ts): the caps, the measured gzip, the largest tile. */
+  expressway_budget_over: warning({
+    label: z.string(),
+    totalGzipMaxBytes: count,
+    tileGzipMaxBytes: count,
+    totalGzipBytes: count,
+    maxTileGzipBytes: count,
+    maxTile: z.string().nullable(),
+    ok: z.boolean(),
+  }),
+  expressway_districts_picked: info({ districts: z.array(z.string()), runs: count, chunks: count }),
+  expressway_districts_compared: info({
+    written: count,
+    mismatched: count,
+    mismatchedIds: z.array(z.string()),
+  }),
+  expressway_scope_probed: info({
+    out: z.string(),
+    below: z.string(),
+    runBorders: z.string(),
+    mainRuns: count,
+    rampRuns: count,
+    cuts: count,
+    cutShippedKm: z.number().nonnegative(),
+    operatorRefCuts: count,
+    sandwichedKm: z.number().nonnegative(),
+    addedRamps: count,
+    addedRampKm: z.number().nonnegative(),
+    lostRamps: count,
+    droppedRamps: count,
+    droppedWithFoot: count,
+    danglingV2: count,
+    mixedRuns: count,
+    missingRefs: z.array(z.string()),
+    boxBorderRuns: z.array(z.string()),
+  }),
   /** The vertical objective of a build (P2.7-3, compile.ts Objective); v2's weights null for v1. */
   expressway_objective_chosen: info({
     objective: z.enum(["v1", "v2"]),
@@ -1383,6 +1551,53 @@ export const LOG_EVENTS = {
     longestM: z.number().nonnegative(),
     skippedForMissingTiles: count,
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
+  }),
+  /**
+   * P2.7 R1-2 (scripts/measureStreetBands.ts): the street segments an expressway's site runs along,
+   * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / B3 / C not given), and the
+   * jumps, pavements, feet, piers and two-segment nodes round them.
+   */
+  street_bands_measured: info({
+    dir: z.string(),
+    groups: count,
+    siteChunks: count,
+    skippedChunksForMissingTiles: count,
+    groupsWithoutRegulations: count,
+    segments: count,
+    totalLengthM: count,
+    byClass: z.strictObject({
+      clear: count,
+      A: count,
+      "A'": count,
+      B1: count,
+      B2: count,
+      B3: count,
+      C: count,
+    }),
+    lengthByClass: z.strictObject({
+      clear: count,
+      A: count,
+      "A'": count,
+      B1: count,
+      B2: count,
+      B3: count,
+      C: count,
+    }),
+    fewerLanes: count,
+    widened: count,
+    edgeOnPavement: count,
+    jumps: count,
+    jumpsGrown: count,
+    jumpMostBeforeM: z.number().nonnegative(),
+    jumpMostAfterM: z.number().nonnegative(),
+    withPavement: count,
+    footNear: count,
+    piersOverLanes: count,
+    twoNodes: count,
+    twoNodesWithStop: count,
+    twoNodesWithCrossing: count,
+    twoNodesWithSignal: count,
+    durationMs: count,
   }),
   /**
    * The drops with no wall at their edge of a data folder (scripts/expresswayBareDrops.ts, A1 test 22):

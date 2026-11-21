@@ -703,7 +703,7 @@ describe("districts (provisional, districts.ts)", () => {
     expect(districtOfRef(null, 139.75, 35.65)).toBeNull();
   });
 
-  it("follows a ramp (or a main line without a ref) to the main line its ends hang from, start first, else the nearest main line", () => {
+  it("puts a ramp in the first stage whose scope takes it (a link from central onto east is east, R1-1a), a main line without a ref by what it hangs from, else the nearest main line", () => {
     const d = assignDistricts([
       run("c1", "expressway", "C1", [], [[139.75, 35.65]]),
       run("six", "expressway", "6", [], [[139.8, 35.7]]),
@@ -715,7 +715,7 @@ describe("districts (provisional, districts.ts)", () => {
     expect(Object.fromEntries(d)).toEqual({
       c1: "central",
       six: "east",
-      ramp: "central",
+      ramp: "east",
       link: "central",
       noref: "east",
       street: "east",

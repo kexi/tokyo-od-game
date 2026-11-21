@@ -47,10 +47,11 @@ import {
 } from "./structureDecisions";
 import { BLOCK_MAX_VARIABLES, type BlockPartition, type PieceInfo, pieceAt, partitionOf } from "./blocks";
 import {
+  type BelowDeferReason,
+  belowDeferralOf,
   belowStructure,
   ceilingAt,
   depthFor,
-  isBelowCompiled,
   isCoverStretchTooShort,
   isHoleAt,
   portalsOf,
@@ -95,7 +96,9 @@ import {
   type Chain,
   type Network,
   type RoadClass,
+  isOperatorBorder,
   type Run,
+  type SplitOptions,
   splitRuns,
   wayLength,
 } from "./network";
@@ -378,6 +381,12 @@ export type Plan = {
   /** Below runs not compiled (a junction under the ground or the universe's edge: below.ts). */
   belowDeferred: string[];
   /**
+   * S7-1: each entry of `belowDeferred`, in the same order, with why it was left out and what it is
+   * (for the scorecard's `underground.deferred`). Kept beside the ids, not in their place: everything
+   * that reads `belowDeferred` reads ids, and a deferred run is in no file to name its class or ref.
+   */
+  belowDeferrals: BelowDeferral[];
+  /**
    * The ends of each run, given instead of found from the chains: a piece plan (blocks.ts), whose
    * pieces share their run's chain indices, so endPlan's search by index would mix them up.
    */
@@ -440,6 +449,12 @@ export type Plan = {
   /** The decisions' table the structures read (PlanOptions.structureDecisions). */
   structureDecisions?: readonly StructureDecision[];
   /**
+   * `--run-borders cut` (R1-1a): the chains are also cut into runs where the operator's ways end
+   * (network.ts operatorCuts, U10; those ends are open) and where the district of the ref changes
+   * (refBorders, 1 | K1; a seam). Absent: by structure alone, as before.
+   */
+  runBorders?: "cut";
+  /**
    * S6 PR 7c: the stretches a decision made viaducts where their height made embankments (run, run
    * distances), for the scorecard. Absent when none was.
    */
@@ -448,6 +463,127 @@ export type Plan = {
 
 /** A run named with its length (km, to the metre). */
 export type RunKm = { id: string; km: number };
+
+/**
+ * A below run left out (S7-1, Plan.belowDeferrals): why (below.ts BELOW_DEFER_REASONS), its class and
+ * ref (the ref over the most of its ways' length, null where none has one), its length (the plan's
+ * where it was planned before being dropped, else its ways' OSM length) and whether the range reaches
+ * it (set once the range is known, as BelowJunction.inRange).
+ */
+export type BelowDeferral = {
+  id: string;
+  chain: string;
+  reason: BelowDeferReason;
+  cls: RoadClass;
+  ref: string | null;
+  lengthM: number;
+  inRange: boolean;
+};
+
+/**
+ * The ref a run's ways carry over most of their length (S7-1), null where none carries one. Why not
+ * the first way's (RunPlan.ref): a deferred run is counted by ref to be put in a district later, and a
+ * short way of another ref at its start would put it in the wrong one.
+ */
+function longestRef(net: Network, ways: readonly number[]): string | null {
+  const byRef = new Map<string, number>();
+  for (const id of ways) {
+    const way = net.ways.get(id)!;
+    if (way.ref === null) continue;
+    byRef.set(way.ref, (byRef.get(way.ref) ?? 0) + wayLength(net, way));
+  }
+  let best: string | null = null;
+  for (const [ref, length] of [...byRef.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const isLonger = best === null || length > byRef.get(best)!;
+    if (isLonger) best = ref;
+  }
+  return best;
+}
+
+/** The longest step between two points of a deferred run's line read against the boxes (m). */
+export const RANGE_LINE_STEP_M = 20;
+
+/**
+ * Whether a line (its nodes in order) passes through any of the boxes, read every RANGE_LINE_STEP_M
+ * at most between its nodes. Why not the nodes alone: OSM puts a tunnel's nodes far apart, and the
+ * stretch between two of them may cross a box with both outside it.
+ */
+export function isLineInBoxes(
+  points: ReadonlyArray<{ lon: number; lat: number }>,
+  ranges: readonly Bbox[],
+): boolean {
+  const isInside = (lon: number, lat: number) =>
+    ranges.some((r) => lon >= r.minLon && lon <= r.maxLon && lat >= r.minLat && lat <= r.maxLat);
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (isInside(p.lon, p.lat)) return true;
+    const q = points[i + 1];
+    if (!q) continue;
+    const kx = 111320 * Math.cos((p.lat * Math.PI) / 180);
+    const length = Math.hypot((q.lon - p.lon) * kx, (q.lat - p.lat) * 110574);
+    const steps = Math.ceil(length / RANGE_LINE_STEP_M);
+    for (let k = 1; k < steps; k++) {
+      const t = k / steps;
+      const isHit = isInside(p.lon + (q.lon - p.lon) * t, p.lat + (q.lat - p.lat) * t);
+      if (isHit) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The ends of the runs at grade where the road goes on into a tunnel or cut along their chain: the
+ * portals' approaches (S7-1 review 2; the scorecard's `underground.overApproach`, and S7-2 lowers the
+ * same runs). Decided by the chain's next way alone, so the same ends come out whether the below run
+ * beyond is written, deferred or compiled outside the range (its end kind tells them apart: seam,
+ * portal, open). On a closed chain the end of its last way goes on into its first (the loop's seam,
+ * 都心環状線), and that first way is asked as any other. Why not from the files (a below run's seam
+ * parent, a run's `portal` end): a run at grade whose below run is compiled but not written ends
+ * `open`, and its approach would go uncounted as if it had none.
+ */
+export function portalApproachEnds(plan: Plan): Array<{ run: string; end: "start" | "end" }> {
+  const out: Array<{ run: string; end: "start" | "end" }> = [];
+  for (const id of [...plan.runs.keys()].sort()) {
+    const rp = plan.runs.get(id)!;
+    if (!rp.ground) continue;
+    const { chain, run } = rp;
+    const n = chain.ways.length;
+    for (const atStart of [true, false]) {
+      const own = chain.ways.indexOf(atStart ? run.ways[0] : run.ways[run.ways.length - 1]);
+      const next = atStart ? own - 1 : own + 1;
+      const isOffChain = next < 0 || next >= n;
+      if (isOffChain && !chain.closed) continue;
+      const way = plan.net.ways.get(chain.ways[(next + n) % n]);
+      const isBelow = way !== undefined && (way.structure === "tunnel" || way.structure === "cut");
+      if (isBelow) out.push({ run: id, end: atStart ? "start" : "end" });
+    }
+  }
+  return out;
+}
+
+/** The class over most of a run's ways' length (majorityClass's order on a tie). */
+function waysClass(net: Network, ways: readonly number[]): RoadClass {
+  const length = new Map<RoadClass, number>();
+  for (const id of ways) {
+    const way = net.ways.get(id)!;
+    length.set(way.cls, (length.get(way.cls) ?? 0) + wayLength(net, way));
+  }
+  const order: RoadClass[] = ["expressway", "street", "ramp"];
+  return order.reduce((best, c) => ((length.get(c) ?? 0) > (length.get(best) ?? 0) ? c : best));
+}
+
+/** A planned run dropped from the plan, as a deferral (dropBelowJunctions, pruneBelow). */
+function deferralOfPlanned(plan: Plan, rp: RunPlan, reason: BelowDeferReason): BelowDeferral {
+  return {
+    id: rp.run.id,
+    chain: rp.chain.id,
+    reason,
+    cls: rp.cls,
+    ref: longestRef(plan.net, rp.run.ways),
+    lengthM: rp.length,
+    inRange: false,
+  };
+}
 
 /**
  * One junction of a below run with a run at grade, left to S7 (dropBelowJunctions): the two runs, the
@@ -777,7 +913,13 @@ export type PlanOptions = {
   footDeferrals?: readonly FootDeferral[];
   /** The stretches built as viaducts by a decision (structureDecisions.ts STRUCTURE_DECISIONS by default). */
   structureDecisions?: readonly StructureDecision[];
+  /** `--run-borders` (R1-1a, Plan.runBorders); `keep` (by structure alone) by default. */
+  runBorders?: "keep" | "cut";
 };
+
+/** splitRuns' options for a plan (the chains are cut the same way wherever they are split again). */
+const splitOf = (plan: Pick<Plan, "runBorders">): SplitOptions =>
+  plan.runBorders === "cut" ? { runBorders: "cut" } : {};
 
 /** Plan the alignment of every chain, the couplings between runs and what the range needs. */
 export function planNetwork(
@@ -795,6 +937,8 @@ export function planNetwork(
   const ranges: readonly Bbox[] | null =
     range === null ? null : Array.isArray(range) ? range : [range as Bbox];
   const chains = new Map(buildChains(net).map((c) => [c.id, c]));
+  const isBorderCut = options.runBorders === "cut";
+  const split = splitOf(isBorderCut ? { runBorders: "cut" } : {});
   const nodeChains = new Map<number, string[]>();
   for (const c of chains.values()) {
     for (const n of new Set(c.nodes)) nodeChains.set(n, [...(nodeChains.get(n) ?? []), c.id]);
@@ -802,6 +946,7 @@ export function planNetwork(
   const runs = new Map<string, RunPlan>();
   const diagnostics: XwDiagnostic[] = [];
   const belowDeferred: string[] = [];
+  const belowDeferrals: BelowDeferral[] = [];
   const betweenTunnels: string[] = [];
   const isFeetWithoutGround = options.feet !== undefined && !isGroundMode;
   if (isFeetWithoutGround) throw new Error("feet need ground: compile");
@@ -811,13 +956,13 @@ export function planNetwork(
   const builtChains = new Set(
     feetRoads === null
       ? []
-      : [...chains.values()].filter((c) => splitRuns(net, c).some((r) => r.elevated)).map((c) => c.id),
+      : [...chains.values()].filter((c) => splitRuns(net, c, split).some((r) => r.elevated)).map((c) => c.id),
   );
   const feet: FootRecord[] = [];
   const deferrals = options.footDeferrals ?? FOOT_DEFERRALS;
   const deferredPlans = new Map<string, RunPlan>();
   for (const chain of [...chains.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    const chainRuns = splitRuns(net, chain);
+    const chainRuns = splitRuns(net, chain, split);
     if (!chainRuns.some((r) => r.elevated)) continue;
     const first = net.nodes.get(chain.nodes[0])!;
     const plane = planeAt(first.lon, first.lat);
@@ -841,9 +986,22 @@ export function planNetwork(
     });
     const compiled: RunPlan[] = [];
     for (const run of chainRuns) {
-      const isBelow = isBelowCompiled(chain, run, nodeChains, outsideNodes);
+      // belowDeferralOf is isBelowCompiled with its reason (S7-1): null exactly where that is true.
+      const deferral = belowDeferralOf(chain, run, nodeChains, outsideNodes);
+      const isBelow = run.below && deferral === null;
       const isDeferred = run.below && !isBelow;
-      if (isDeferred) belowDeferred.push(run.id);
+      if (isDeferred) {
+        belowDeferred.push(run.id);
+        belowDeferrals.push({
+          id: run.id,
+          chain: chain.id,
+          reason: deferral!,
+          cls: waysClass(net, run.ways),
+          ref: longestRef(net, run.ways),
+          lengthM: run.ways.reduce((n, w) => n + wayLength(net, net.ways.get(w)!), 0),
+          inRange: false,
+        });
+      }
       // A stretch at grade between two tunnels or cuts is the open part of the tunnel, not a road at grade:
       // its level is the tunnels', deep under the DEM the band would hold it to. 赤坂 (4号新宿線):
       // 816254799 and 816254802, 35 m each between the tunnels 24636426 and 816254800 (and 24636427's
@@ -929,8 +1087,10 @@ export function planNetwork(
     nodeChains,
     chainRuns: new Map(),
     belowDeferred,
+    belowDeferrals,
     ...(isGroundMode ? { betweenTunnels } : {}),
     ...(options.structureDecisions ? { structureDecisions: options.structureDecisions } : {}),
+    ...(isBorderCut ? { runBorders: "cut" as const } : {}),
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),
@@ -987,6 +1147,28 @@ export function planNetwork(
     });
   const wantedChains = new Set([...plan.wanted].map((id) => plan.runs.get(id)!.chain.id));
   for (const j of plan.belowJunctions ?? []) j.inRange = j.chains.some((c) => wantedChains.has(c));
+  // A deferred run is in no file, so the range is asked of its own line where the range is boxes, and
+  // of its chain where it is chosen (--range ship: shipRuns picks planned runs, which a deferred run is
+  // not; its chain having one is BelowJunction.inRange's rule). Why not the chain for boxes too: a long
+  // main line's chain reaches the boxes far from a tunnel of it. The line is read every
+  // RANGE_LINE_STEP_M at most between its nodes (S7-1 review 3), as `wanted` reads a run's samples: a
+  // tunnel whose nodes fall either side of a small box (汐留's is about 270 m × 380 m) crosses it all
+  // the same.
+  for (const d of plan.belowDeferrals) {
+    const isWhole = ranges === null && !chosen;
+    if (isWhole) {
+      d.inRange = true;
+      continue;
+    }
+    if (chosen || ranges === null) {
+      d.inRange = wantedChains.has(d.chain);
+      continue;
+    }
+    const chain = plan.chains.get(d.chain)!;
+    const run = splitRuns(net, chain).find((r) => r.id === d.id)!;
+    const points = chain.nodes.slice(run.from, run.to + 1).map((n) => net.nodes.get(n)!);
+    d.inRange = isLineInBoxes(points, ranges);
+  }
   // A run at grade a wanted run hangs from (a seam, a junction) is wanted too (S6 PR 2): the ranges
   // pick runs by their own ways, and one outside them left its children in the air (dangling).
   // A run so added brings its own parents too, of any kind (4848757 in the default range hung from a
@@ -1444,7 +1626,7 @@ export function mainLineHoles(
       (rp) => rp.cls === "expressway" && written.has(rp.run.id),
     );
     if (!isMainWritten) continue;
-    const runs = splitRuns(plan.net, chain);
+    const runs = splitRuns(plan.net, chain, splitOf(plan));
     runs.forEach((run, i) => {
       const km = run.ways.reduce((n, w) => n + wayLength(plan.net, plan.net.ways.get(w)!), 0) / 1000;
       const isLostBelow = run.below && !written.has(run.id);
@@ -2064,9 +2246,17 @@ function pruneBelow(plan: Plan): void {
     if (isBridging) dropped.add(id);
   }
   if (dropped.size === 0) return;
+  const records = [...dropped].map((id) => deferralOfPlanned(plan, plan.runs.get(id)!, "bridging"));
   removeRuns(plan, dropped);
   plan.belowDeferred.push(...dropped);
   plan.belowDeferred.sort();
+  plan.belowDeferrals.push(...records);
+  sortDeferrals(plan);
+}
+
+/** Puts Plan.belowDeferrals in belowDeferred's order (both by id; the sort is stable for a repeat). */
+function sortDeferrals(plan: Plan): void {
+  plan.belowDeferrals.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /**
@@ -2104,9 +2294,13 @@ function dropBelowJunctions(plan: Plan): void {
       });
     }
     removeRuns(plan, ids);
-    for (const j of pass) plan.belowDeferred.push(j.below.run.id);
+    for (const j of pass) {
+      plan.belowDeferred.push(j.below.run.id);
+      plan.belowDeferrals.push(deferralOfPlanned(plan, j.below, "ground-junction"));
+    }
   }
   plan.belowDeferred.sort();
+  sortDeferrals(plan);
   plan.belowJunctions = found.sort((a, b) =>
     a.ground.id !== b.ground.id ? (a.ground.id < b.ground.id ? -1 : 1) : a.below.id < b.below.id ? -1 : 1,
   );
@@ -2212,6 +2406,23 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const { chain, run } = rp;
   const idx = atStart ? run.from : run.to;
   const isChainEnd = atStart ? idx === 0 : idx === chain.nodes.length - 1;
+  // R1-1a: a border of --run-borders cut is one profile across: the side shipped first is free (open)
+  // and the other side a seam onto it. Where the district of the ref changes (1 | K1) both sides ship
+  // in the end, so a district written alone never hangs from one not written yet. Where the operator's
+  // ways end (U10) the other operator's side is never written but stays the seam child (review 1 B5):
+  // why not open on both sides, as first built: the road goes on in reality, and two free ends lifted
+  // 7号's end by 4.45 m at the 京葉 border and pulled 高井戸's two carriageways 1.53 m apart.
+  const border = rp.run.borders?.[atStart ? 0 : 1] ?? "none";
+  const isOpenBorder = border === "operator-open" || border === "open";
+  if (isOpenBorder) return { kind: "open" };
+  const isSeamBorder = border === "seam" || border === "operator-seam";
+  if (isSeamBorder) {
+    const parent = (plan.chainRuns.get(chain.id) ?? []).find(
+      (r) => r !== rp && r.run.from <= idx && idx <= r.run.to,
+    );
+    if (!parent) return { kind: "open" };
+    return { kind: "seam", parent: parent.run.id, parentNodeIndex: idx, nodeIndex: idx };
+  }
   if (!isChainEnd) {
     // The chain goes on at ground level, or below it (a tunnel or cut: the profile meets the ground
     // at the portal and keeps going down, so its grade is not the terrain's).
@@ -2263,7 +2474,18 @@ export function endPlan(plan: Plan, rp: RunPlan, atStart: boolean): EndPlan {
   const isMaster = parent === undefined || (passing.length === 0 && order(chain, parent) < 0);
   if (isMaster) return others.length === 0 ? { kind: "ground", nodeIndex: idx } : { kind: "open" };
   const pIndex = parent.nodes.indexOf(node);
-  const pRun = (plan.chainRuns.get(parent.id) ?? []).find((r) => r.run.from <= pIndex && pIndex <= r.run.to);
+  const holding = (plan.chainRuns.get(parent.id) ?? []).filter(
+    (r) => r.run.from <= pIndex && pIndex <= r.run.to,
+  );
+  // R1-1a: on the node where the operator's ways end (--run-borders cut), the operator's run is the
+  // parent, never the other operator's beside it (not shipped). Only there: any other node shared by
+  // two runs (a change of structure) keeps the first, as before.
+  const isAtOperatorBorder = (r: RunPlan) =>
+    (r.run.from === pIndex && isOperatorBorder(r.run.borders?.[0])) ||
+    (r.run.to === pIndex && isOperatorBorder(r.run.borders?.[1]));
+  const isAtBorder = holding.length > 1 && holding.some(isAtOperatorBorder);
+  const operatedRun = holding.find((r) => r.run.ways.some((w) => plan.net.ways.get(w)?.operated === true));
+  const pRun = isAtBorder && operatedRun ? operatedRun : holding[0];
   if (!pRun) return { kind: "ground", nodeIndex: idx };
   return { kind: "junction", parent: pRun.run.id, parentNodeIndex: pIndex, nodeIndex: idx };
 }
@@ -6461,7 +6683,7 @@ export function groundFitOf(
  * a tunnel or cut (a portal), a ground end or a junction, 100 m; the chain's open end, none.
  */
 function groundApproaches(plan: Plan, rp: RunPlan): [number, number] {
-  const runs = splitRuns(plan.net, rp.chain);
+  const runs = splitRuns(plan.net, rp.chain, splitOf(plan));
   const k = runs.findIndex((r) => r.id === rp.run.id);
   const ofEnd = (atStart: boolean): number => {
     const next = runs[atStart ? k - 1 : k + 1];

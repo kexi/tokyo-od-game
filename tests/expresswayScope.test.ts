@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planNetwork } from "../src/expressway/compile";
+import { endPlan, planNetwork } from "../src/expressway/compile";
 import { planeAt } from "../src/expressway/geo";
 import { type Network, normalizeNode, normalizeStreetWay, normalizeWay } from "../src/expressway/network";
 import { parseRanges } from "../src/expressway/ranges";
@@ -45,9 +45,10 @@ function rampFrom(id: number, from: number, at: [number, number], to: [number, n
 /**
  * An operated main line A (10) and another operator's main line B (30) 500 m north, both inside
  * the wards; ramp 20 leaves A, ramp 40 leaves ramp 20, ramp 50 leaves B, JCT ramp 80 runs from A
- * up to B; an operated main line C (60) outside the wards with its ramp 70; ramp 90 leaves A on a
- * viaduct and goes on into a tunnel (91, the same chain: a seam); a structure's street 95 over the
- * wards and 96 outside them.
+ * up to B and ramp 81 leaves 80; an operated main line C (60) outside the wards with its ramp 70;
+ * ramp 90 leaves A on a viaduct and goes on into a tunnel (91, the same chain: a seam); a structure's
+ * street 95 over the wards and 96 outside them; an operated main line D (65) from inside the wards
+ * (x 2500) out past them (x 4500) with ramp 75 leaving it outside them (x 4000).
  */
 function scene(): Network {
   const a = line(0, 0, 2000, 0);
@@ -67,6 +68,10 @@ function scene(): Network {
     nodeIds: jctPts.map((_, i) => (i === 0 ? aIds[30] : i === jctPts.length - 1 ? bIds[34] : 8000 + i)),
     tags: ramp,
   };
+  const r81 = rampFrom(81, r80.nodeIds[3], r80.pts[3], [1900, 400], 8100);
+  const d = line(2500, -1500, 4500, -1500);
+  const dIds = d.map((_, i) => 6500 + i);
+  const r75 = rampFrom(75, dIds[30], [4000, -1500], [4300, -1800], 7500);
   const r90 = rampFrom(90, aIds[36], [1800, 0], [1900, -150], 9000);
   const tunnelPts = line(1900, -150, 2000, -400);
   const r91 = {
@@ -79,11 +84,14 @@ function scene(): Network {
     { id: 10, pts: a, nodeIds: aIds, tags: operatedMain },
     { id: 30, pts: b, nodeIds: bIds, tags: otherMain },
     { id: 60, pts: c, nodeIds: cIds, tags: operatedMain },
+    { id: 65, pts: d, nodeIds: dIds, tags: operatedMain },
     r20,
     r40,
     r50,
     r70,
     r80,
+    r81,
+    r75,
     r90,
     r91,
   ]);
@@ -124,14 +132,66 @@ describe("事業者の way（P2.7-1）", () => {
 describe("出荷範囲（scope.ts shipRuns）", () => {
   it("takes the operated main line over the wards and leaves another operator's main line out", () => {
     const ship = shipRuns(planNetwork(scene(), new Set(), null), inWards);
-    expect([...ship.main]).toEqual(["10"]);
+    expect([...ship.main]).toEqual(["10", "65"]);
   });
 
   it("takes a ramp reaching the operated main line through ramps only, not one hanging from another main line", () => {
     const ship = shipRuns(planNetwork(scene(), new Set(), null), inWards);
-    // 20 leaves A, 40 leaves 20, 80 runs from A to B, 91 is seamed to 90 off A; 50 reaches A only
-    // across B.
-    expect([...ship.ramps]).toEqual(["20", "40", "80", "90", "91"]);
+    // 20 leaves A, 40 leaves 20, 91 is seamed to 90 off A, 75 leaves D outside the wards; 50 reaches
+    // A only across B.
+    expect([...ship.ramps]).toEqual(["20", "40", "75", "90", "91"]);
+  });
+
+  it("scope v2: takes a ramp of a shipped main line outside the wards (R1-1a, U2)", () => {
+    const plan = planNetwork(scene(), new Set(), null);
+    const rp = plan.runs.get("75")!;
+    const nodes = rp.chain.nodes.slice(rp.run.from, rp.run.to + 1).map((n) => plan.net.nodes.get(n)!);
+    expect(nodes.some((n) => inWards(n.lon, n.lat))).toBe(false);
+    expect(shipRuns(plan, inWards).ramps.has("75")).toBe(true);
+  });
+
+  it("rule A: leaves out a junction's link hanging from a main line not shipped, and the ramps then hanging from it", () => {
+    const ship = shipRuns(planNetwork(scene(), new Set(), null), inWards);
+    // 80 runs from A up to B (another operator's, not shipped); 81 hangs from 80 alone.
+    expect(ship.ramps.has("80")).toBe(false);
+    expect(ship.ramps.has("81")).toBe(false);
+    expect(ship.rampsDropped.get("80")).toEqual({ round: 1, reason: "parent", parent: "30" });
+    // 81 hangs from 80 alone, out in the same round.
+    expect(ship.rampsDropped.get("81")).toEqual({ round: 1, reason: "parent", parent: "80" });
+  });
+
+  it("rule A: every shipped ramp is reached from a shipped main line through shipped ramps alone (no island)", () => {
+    const plan = planNetwork(scene(), new Set(), null);
+    const ship = shipRuns(plan, inWards);
+    const reached = new Set<string>();
+    const queue = [...ship.main];
+    const linked = (id: string) =>
+      [...ship.ramps].filter((r) => {
+        const rp = plan.runs.get(r)!;
+        const parents = [true, false].map((atStart) => endPlan(plan, rp, atStart));
+        const isChild = parents.some((e) => (e.kind === "junction" || e.kind === "seam") && e.parent === id);
+        const own = [true, false].map((atStart) => endPlan(plan, plan.runs.get(id)!, atStart));
+        const isParent = own.some((e) => (e.kind === "junction" || e.kind === "seam") && e.parent === r);
+        return isChild || isParent;
+      });
+    while (queue.length > 0)
+      for (const r of linked(queue.pop()!))
+        if (!reached.has(r)) {
+          reached.add(r);
+          queue.push(r);
+        }
+    expect([...reached].sort()).toEqual([...ship.ramps].sort());
+  });
+
+  it("rule A: no shipped run hangs from a run that is not shipped (the scorecard's dangling stays 0)", () => {
+    const plan = planNetwork(scene(), new Set(), null);
+    const ship = shipRuns(plan, inWards);
+    for (const id of ship.all)
+      for (const atStart of [true, false]) {
+        const e = endPlan(plan, plan.runs.get(id)!, atStart);
+        const isJoined = e.kind === "junction" || e.kind === "seam";
+        if (isJoined) expect(ship.all.has(e.parent)).toBe(true);
+      }
   });
 
   it("leaves out an operated main line and its ramp outside the wards", () => {
@@ -154,7 +214,7 @@ describe("出荷範囲（scope.ts shipRuns）", () => {
     const plan = planNetwork(scene(), new Set(), parsed.boxes, [], {
       wanted: (p) => shipRuns(p, inWards).all,
     });
-    expect([...plan.wanted].sort()).toEqual(["10", "20", "40", "80", "90", "91", "95"]);
+    expect([...plan.wanted].sort()).toEqual(["10", "20", "40", "65", "75", "90", "91", "95"]);
     for (const id of plan.wanted)
       for (const m of plan.components.get(plan.componentOf.get(id)!)!) expect(plan.needed).toContain(m);
   });
@@ -181,7 +241,7 @@ describe("出荷範囲の境目（P2.7-1 レビュー C1・W1）", () => {
     expect([...ship.streets]).toEqual(["95"]);
   });
 
-  it("reports the ramps reaching the operated main line but lying wholly outside the wards", () => {
+  it("reports the ramps reaching only operated main lines that are not shipped", () => {
     const ship = shipRuns(planNetwork(scene(), new Set(), null), inWards);
     expect([...ship.rampsOutside]).toEqual(["70"]);
   });

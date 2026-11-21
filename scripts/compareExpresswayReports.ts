@@ -9,10 +9,27 @@
 // P2.7-2: a version-2 report (no `partition`) still reads, its partition rows then being additions;
 // anchors are keyed by run@s and blocks by id, and the blocks' solution hashes are summed up in one
 // line (how many changed, and which). P2.7-3: builds of another objective (v1 / v2 or v2's weights)
-// are warned about too.
+// are warned about too. S7-1 (version 7): the `underground` numbers are rows like the rest (deferred
+// runs by id, portal ends by run:end, over-approach pairs by lower|upper), and one line names what the
+// numbers cannot: the deferred runs, ends, approaches and pairs on one side only and the runs deferred for another
+// reason (a version-6 report beside a version-7 one: the section added).
+// R1-1a (version 8): a gzip size (any field naming gzip) counts as a change only between two reports
+// gzipped by the same node and zlib (`size.gzipEnv`); otherwise its row is shown as `gzip-env`, never
+// counts for --check, and one line warns (expressway_reports_gzip_unlike). Why not count them: the
+// same tiles gzip to other sizes under another zlib (117,542 and 115,707 bytes), so the change would
+// be the machine's, not the compiler's. --check also fails b over U3's budget (`budget.ok` false,
+// budget.ts), warned as expressway_budget_over.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { blockChanges, buildsUnlike, flattenReport, ReportSchema } from "../src/expressway/report.ts";
+import { undergroundChanges } from "../src/expressway/belowScore.ts";
+import {
+  blockChanges,
+  buildsUnlike,
+  flattenReport,
+  isGzipComparable,
+  isGzipField,
+  ReportSchema,
+} from "../src/expressway/report.ts";
 import { log, warn } from "../src/log.ts";
 
 const pathOf = (arg: string) => {
@@ -37,12 +54,17 @@ type Row = {
   key: string;
   va?: number;
   vb?: number;
-  change: "same" | "changed" | "added" | "removed" | "timing";
+  change: "same" | "changed" | "added" | "removed" | "timing" | "gzip-env";
 };
+const envA = a.size.gzipEnv;
+const envB = b.size.gzipEnv;
+const isSameGzip = isGzipComparable(a, b);
 const rows: Row[] = keys.map((key) => {
   const va = fa.get(key);
   const vb = fb.get(key);
   if (isTiming(key)) return { key, va, vb, change: "timing" };
+  const isUncounted = isGzipField(key) && !isSameGzip && va !== vb;
+  if (isUncounted) return { key, va, vb, change: "gzip-env" };
   if (va === undefined) return { key, vb, change: "added" };
   if (vb === undefined) return { key, va, change: "removed" };
   return { key, va, vb, change: va === vb ? "same" : "changed" };
@@ -53,6 +75,17 @@ const wantedB = new Set(b.scope.wanted);
 const runsAdded = [...wantedB].filter((id) => !wantedA.has(id));
 const runsRemoved = [...wantedA].filter((id) => !wantedB.has(id));
 const { changed: blocksChanged, added: blocksAdded, removed: blocksRemoved } = blockChanges(a, b);
+const under = undergroundChanges(a.underground, b.underground);
+const ids = (list: string[]) => `${list.length} ${list.slice(0, 20).join(" ")}`.trimEnd();
+const undergroundLine =
+  under.absent !== null
+    ? `underground: only in ${under.absent === "a" ? b.label : a.label} (the other is version ${under.absent === "a" ? a.version : b.version})`
+    : [
+        `underground: deferred +${ids(under.deferred.added)} / −${ids(under.deferred.removed)} / reason ${ids(under.deferred.reasonChanged)} / range ${ids(under.deferred.inRangeChanged)}`,
+        `portals +${ids(under.portals.added)} / −${ids(under.portals.removed)} / changed ${ids(under.portals.changed)}`,
+        `overApproach +${ids(under.overApproach.added)} / −${ids(under.overApproach.removed)}`,
+        `approaches +${ids(under.approaches.added)} / −${ids(under.approaches.removed)}`,
+      ].join("; ");
 const cell = (r: Row) => {
   const delta = r.va !== undefined && r.vb !== undefined ? fmt(r.vb - r.va) : "";
   const note = r.change === "same" ? "" : r.change;
@@ -66,6 +99,17 @@ const line = (r: string[]) =>
 const unlike = buildsUnlike(a, b);
 const isUnlike = unlike !== null;
 if (isUnlike) warn("expressway_reports_unlike", unlike);
+const gzipRows = rows.filter((r) => r.change === "gzip-env").length;
+if (!isSameGzip)
+  warn("expressway_reports_gzip_unlike", {
+    a: a.label,
+    b: b.label,
+    aEnv: envA ? `${envA.node} zlib ${envA.zlib}` : null,
+    bEnv: envB ? `${envB.node} zlib ${envB.zlib}` : null,
+    rows: gzipRows,
+  });
+const isOverBudget = b.budget !== undefined && !b.budget.ok;
+if (isOverBudget) warn("expressway_budget_over", { label: b.label, ...b.budget! });
 process.stdout.write(
   [
     line(header),
@@ -73,6 +117,7 @@ process.stdout.write(
     ...table.map(line),
     `blocks: ${blocksChanged.length} changed ${blocksChanged.slice(0, 20).join(" ")} / +${blocksAdded.length} ${blocksAdded.slice(0, 20).join(" ")} / −${blocksRemoved.length} ${blocksRemoved.slice(0, 20).join(" ")}`,
     `runs of the range: +${runsAdded.length} ${runsAdded.slice(0, 20).join(" ")} / −${runsRemoved.length} ${runsRemoved.slice(0, 20).join(" ")}`,
+    undergroundLine,
     `extract: ${a.extract.timestamp} ${a.extract.sha256.slice(0, 12)} / ${b.extract.timestamp} ${b.extract.sha256.slice(0, 12)}`,
   ].join("\n") + "\n",
 );
@@ -85,7 +130,10 @@ const changed =
   runsRemoved.length +
   blocksChanged.length +
   blocksAdded.length +
-  blocksRemoved.length;
+  blocksRemoved.length +
+  under.deferred.reasonChanged.length +
+  under.deferred.inRangeChanged.length +
+  under.portals.changed.length;
 log("expressway_reports_compared", {
   a: a.label,
   b: b.label,
@@ -100,4 +148,5 @@ log("expressway_reports_compared", {
   blocksRemoved: blocksRemoved.length,
 });
 const isDifferent = changed > 0;
-if (isCheck && isDifferent) process.exitCode = 1;
+const isFailed = isDifferent || isOverBudget;
+if (isCheck && isFailed) process.exitCode = 1;

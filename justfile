@@ -299,6 +299,18 @@ compare-expressway-reports a b flags="":
 compare-expressway-heights a b flags="":
     pnpm exec tsx scripts/compareExpresswayHeights.ts {{ a }} {{ b }} {{ flags }}
 
+# 出荷範囲を計画だけで読む（解かない）: 他社の境・挟まれた印の無い way・範囲 v2 で増えるランプと規則 A で外れるランプ・ref の表の漏れを .qa/expressway/scope-probe-<below>-<borders>.json に（below は pruned か all、borders は keep か cut）
+probe-expressway-scope below="pruned" borders="keep":
+    pnpm exec tsx scripts/expresswayScopeProbe.ts --below {{ below }} --run-borders {{ borders }}
+
+# 生成したフォルダのタイルを、地区の公開の段（central → + east → + yamate → + outside）ごとに詰め直して gzip の合計と 1 タイルの最大を測る（dir は生成先のフォルダ）
+measure-district-sizes dir:
+    pnpm exec tsx scripts/expresswayDistrictSizes.ts {{ dir }}
+
+# 生成したフォルダの 23 区外の測点の下で、DEM5A が無く DEM10B に落ちる所と、PLATEAU の門の外の km を測る（dir は生成先のフォルダ）
+measure-outside-ground dir:
+    pnpm exec tsx scripts/expresswayOutsideGround.ts {{ dir }}
+
 # 高速道路の計測ラベルの未許可の重なりを S6 の 5 区分（つながる / つながらない × 同一面から / 途中、1 段にあと少し）で種類ごとに数え、1 行の JSON ログに出す（base に基準のラベルを渡すと、基準の「つながる・同一面から」の組がまだ未許可かを追う）
 count-overlap-shapes label base="":
     pnpm exec tsx scripts/expresswayOverlapShapes.ts {{ label }} {{ base }}
@@ -319,13 +331,17 @@ compare-expressway-chunks a b:
 check-expressway-terrain dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayTerrainProbe.ts {{ dir }} {{ flags }}
 
-# 盛土の床版の縁の内に車線の中心が入る、ゲームが残す一般道の車線を数える（ゲームと同じ切り方の道路網、地理院タイルは .cache/gsi-vector のものだけ、台帳の lane-in-site、1 行の JSON ログ、件数が上限を超えれば終了コード 1、flags に --cases <file> で台帳の道具の --site-lanes に渡す一覧）
+# 盛土の床版の縁の内に車線の中心が入る、ゲームが残す一般道の車線を数える（ゲームと同じ切り方の道路網に public/data の規制（JARTIC・OSM の車線数・一方通行）を当てた車線、地理院タイルは .cache/gsi-vector のものだけ、台帳の lane-in-site、1 行の JSON ログ、件数が上限を超えれば終了コード 1、flags に --cases <file> で台帳の道具の --site-lanes に渡す一覧）
 check-expressway-lanes dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayLanesProbe.ts {{ dir }} {{ flags }}
 
-# 高速道路の掘割の敷地（擁壁の外面 + 1 m）に中心が掛かる一般道の車線を、ゲームと同じ道路網（地理院タイル、.cache/gsi-vector のものだけ）で run ごとに数える（台帳の street-lane-over-cut、1 行の JSON ログ、flags に --cases <file> で台帳の道具の --lanes に渡す一覧）
+# 高速道路の掘割の敷地（擁壁の外面 + 1 m）に中心が掛かる一般道の車線を、ゲームと同じ道路網（地理院タイル、.cache/gsi-vector のものだけ。高速道路を結んで敷地で切り、public/data の規制を当てた車線）で run ごとに数える（台帳の street-lane-over-cut、1 行の JSON ログ、flags に --cases <file> で台帳の道具の --lanes に渡す一覧）
 check-hole-lanes dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayHoleLanes.ts {{ dir }} {{ flags }}
+
+# 高速道路の盛土・掘割が沿う一般道の区間を、ゲームと同じ道路網と規制（JARTIC・OSM）で数え、R1-2a の類（clear・A 中央帯・A' 部屋の上限・B1・B2・B3・C 当てない）、車線 0 の節点での跳びの前後、外側線が PLATEAU の歩道に乗る所、足・橋脚・2 本の節点を測る（P2.7 R1-2、地理院タイルは .cache/gsi-vector、PLATEAU は .cache/plateau-tran に写す、1 行の JSON ログ、flags に --out <file> で一覧）
+measure-street-bands dir="public/data/expressway" flags="":
+    pnpm exec tsx scripts/measureStreetBands.ts {{ dir }} {{ flags }}
 
 # 高速道路のランプの足（地表端）をゲームと同じに一般道へ結び、接続路が自分の床版の脇へ入る・最初の 5 m が足の向きに真っすぐでない足を数える（dir はラベルか生成先のフォルダ、地理院タイルは .cache/gsi-vector、1 行の JSON ログ、破る足が 1 本でもあれば終了コード 1、flags に --cache <dir>・--cache-only）
 check-expressway-feet dir="public/data/expressway" flags="":

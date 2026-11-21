@@ -29,9 +29,38 @@ export type BuildFlags = {
   isHoldMains?: boolean;
   /** --low-span-soffit (S6 PR 7a2: the low spans' least soffit, a sweep). */
   isLowSpanSweep?: boolean;
+  /** --run-borders cut (R1-1a: runs cut where the operator's ways end and where the ref's district changes). */
+  isRunBordersCut?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
+
+/**
+ * The reason `--districts` cannot be taken, or null (R1-1a). The districts pick runs out of the
+ * shipped scope, so they need `--range ship`; they must be a stage of the publishing order (`names`
+ * from the first: central, central,east, …, all four), each stage being a scope of its own (no run
+ * hangs from a later district: districts.ts districtsOf); and they need `--run-borders cut`, under
+ * which a run has one district (keep's districts are for comparing). Why stop and not ignore it on
+ * another range: a build of the default boxes "for central" would look like a district's build.
+ */
+export function districtsRefusal(
+  districts: string | undefined,
+  isShip: boolean,
+  isRunBordersCut: boolean,
+  names: readonly string[],
+): string | null {
+  if (districts === undefined) return null;
+  if (!isShip) return "--districts picks runs of the shipped scope: give --range ship";
+  if (!isRunBordersCut) return "--districts needs --run-borders cut (a run of one district)";
+  const given = districts.split(",");
+  const unknown = given.filter((d) => !names.includes(d));
+  const isUnknown = unknown.length > 0;
+  if (isUnknown) return `unknown --districts ${unknown.join(",")} (${names.join(", ")})`;
+  const stage = names.slice(0, given.length);
+  const isStage = new Set(given).size === given.length && stage.every((d) => given.includes(d));
+  if (!isStage) return `--districts ${districts} is no stage: give the first ones of ${names.join(",")}`;
+  return null;
+}
 
 /**
  * The reason a build must not write the shipped folder, or null. Why the v2 weights too (PR #71
@@ -49,6 +78,10 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   if (f.isRampShift) return `--ramp-shift is for measuring until it is the default: ${MEASURE}`;
   if (f.isNoseOverlap) return `--nose-surface overlap is for measuring until it is the default: ${MEASURE}`;
   if (f.isLowSpanSweep) return `--low-span-soffit is for a sweep of the low spans: ${MEASURE}`;
+  // R1-1a: the borders move the default range's decks (its components take the cut runs); S7-6 makes
+  // them the default with a rebuild of its own.
+  if (f.isRunBordersCut)
+    return `--run-borders cut is for measuring until S7-6 makes it the default: ${MEASURE}`;
   // S6 PR 7c: the network's flags are the default; the values before them are for comparing.
   if (f.isTags) return `--structures tags is for comparing with the structures by height: ${MEASURE}`;
   if (f.isGroundSkip) return `--ground skip is for comparing with the runs at grade compiled: ${MEASURE}`;

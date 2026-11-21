@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readExpresswayFiles } from "../scripts/expresswayFiles";
+import { districtsOfFiles, readExpresswayFiles } from "../scripts/expresswayFiles";
 import {
   checkChunkJoin,
   checkClearance,
@@ -21,7 +21,7 @@ import {
 import { BLOCKED_STRIDE, STATION_STRIDE } from "../src/expressway/format";
 import { tileKey } from "../src/expressway/geo";
 import { isAllowed } from "../src/expressway/allowlist";
-import { assignDistricts, DISTRICTS, districtRunsOf } from "../src/expressway/districts";
+import { DISTRICTS } from "../src/expressway/districts";
 import { caseContextOf, ledgerVerdict, rampFloorOf, withinCap } from "../src/expressway/ledger";
 import { NOSE_MAX_DZ_M } from "../src/expressway/overlapClass";
 import { DEFAULT_RANGES } from "../src/expressway/ranges";
@@ -73,7 +73,7 @@ const overlapCase = (pair: string) =>
  * per-chunk checks run per district, so a failure names where it is and one district can be judged
  * apart.
  */
-const districtOf = assignDistricts(districtRunsOf(files.runs, byRun));
+const districtOf = districtsOfFiles({ ...files, byRun });
 // A misspelt XW_DISTRICT would run no district at all and pass: stop instead.
 const isUnknownDistrict =
   process.env.XW_DISTRICT !== undefined &&

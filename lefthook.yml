@@ -11,9 +11,12 @@ pre-commit:
     - name: oxlint
       glob: "*.{ts,tsx,js,mjs}"
       run: pnpm exec oxlint {staged_files}
+    # 対象外（.oxfmtrc.json の ignorePatterns、public/data/** など）のファイルだけを stage した commit で
+    # oxfmt が「対象のファイルが無い」と失敗しないよう --no-error-on-unmatched-pattern を付ける。
+    # Why not lefthook の exclude に同じ除外を書く: .oxfmtrc.json と 2 か所になり、片方だけ直されてずれる。
     - name: oxfmt
       glob: "*.{ts,tsx,js,mjs,json,css,html,md,yml,yaml}"
-      run: pnpm exec oxfmt --check {staged_files}
+      run: pnpm exec oxfmt --check --no-error-on-unmatched-pattern {staged_files}
     - name: justfile
       glob: "justfile"
       run: bash bin/lint-justfile.sh

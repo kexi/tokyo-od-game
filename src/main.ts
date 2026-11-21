@@ -60,7 +60,18 @@ import { GameAudio } from "./game/audio";
 import { clockStep, gameStep } from "./game/frameClock";
 import { hasHeldOver, heldSince } from "./game/lawTimers";
 import { stopAheadWithin, type StopAheadWorld } from "./game/stopAhead";
-import { type IndicatorMemory, isSignalOmitted, noteIndicators, turnSignalSide } from "./game/signalOmission";
+import {
+  type IndicatorMemory,
+  isInTurn,
+  isSignalOmitted,
+  isTurnSignalOmitted,
+  noteIndicators,
+  type SignalRecord,
+  signalRecord,
+  TURN_JUDGED_M,
+  type TurnWatch,
+  turnSignalSide,
+} from "./game/signalOmission";
 import { FrameWork } from "./game/frameWork";
 import { SerialWork } from "./game/serialWork";
 import { ConversationController } from "./game/conversation";
@@ -220,6 +231,7 @@ import { decideSanction } from "./game/sanctions";
 import { EmergencyResponse, loadAmbulanceModel } from "./game/emergency";
 import { judgePedestrianBlow } from "./game/pedestrianBlow";
 import { JUMP_METRES, STANDING_KMH } from "./game/motion";
+import { judgeVehicleBlow, ownKmhIntoBlow } from "./game/vehicleBlow";
 import { Phone } from "./game/phone";
 import { Transit } from "./world/transit";
 import { fetchTokyoObservation } from "./world/weather";
@@ -1423,9 +1435,11 @@ async function main(): Promise<void> {
     // Not forever: a deck tile that fails to load must not hold the warp (as the town's 12 s).
     const areDecksReady = (expressway?.isSettledAt(g.lat, g.lon) ?? true) || now - warping.since > 12000;
     const isGroundReady = terrain.hasColliderAt(g.lat, g.lon) && areDecksReady;
-    // 95 % of this load (Buildings counts it from when tiles began to be requested here, not over
-    // what is held from before the warp).
-    const isTownReady = buildings.loadProgress() > 0.95 || now - warping.since > 12000;
+    // The town round the landing place, all of it (src/world/nearbyLoad.ts: the tiles within
+    // 300 m, counted from when they began to be requested here). Why not 95 % of the whole load:
+    // the nearby tiles can be the last 5 % (川口駅 landed with 1 of 5), and the value held between
+    // two waves (0.998) passed it.
+    const isTownReady = buildings.nearbyLoadProgress() >= 0.999 || now - warping.since > 12000;
     if (!isGroundReady || !isTownReady) return;
     buildings.buildCollidersNear(new Vector3());
     vehicle.teleport(findOpenGround(0, 0), warping.yaw);
@@ -2413,7 +2427,7 @@ async function main(): Promise<void> {
   let laneAtJunction: { use: LaneUse; lane: number; tIn: Vector3; node: Vector3 } | null = null;
   // 合図: when each indicator last blinked, the junction being turned at, the lane last held.
   const indicatorSeen: IndicatorMemory = { left: -Infinity, right: -Infinity };
-  let turnAt: { tIn: Vector3; node: Vector3 } | null = null;
+  let turnAt: TurnWatch | null = null;
   let laneHeld: { seg: Segment; lane: number } | null = null;
   let hornFor = 0;
   let pendingScreenshot = false;
@@ -2428,6 +2442,9 @@ async function main(): Promise<void> {
   let laneTrack: { seg: Segment; lane: number } | null = null;
   let lastStreet: { seg: Segment; dir: 1 | -1 } | null = null;
   let lawPrevPos: Vector3 | null = null;
+  // A move this far in a frame is a jump (a warp, a respawn, a re-placing, the origin moved), not
+  // driving: the checks that span frames start again.
+  const LAW_JUMP_M = 30;
   // Where and when the car last stood still, for 一時停止 (stop before the line, then go).
   let lastStop: { pos: Vector3; at: number } | null = null;
   // 信号無視 with arrows: a crossing under an arrow waits for the arm the car leaves by.
@@ -2682,9 +2699,11 @@ async function main(): Promise<void> {
       camera.position.applyAxisAngle(new Vector3(0, 1, 0), dt * 0.05);
       camera.lookAt(0, 30, 0);
       const groundReady = terrain.hasColliderAt(spawn.lat, spawn.lon);
-      // 1 only once no tile has been queued, downloading or parsing for a moment (Buildings): the
-      // library's own value read 1 while bodies were still downloading, and play began before the town.
-      const tilesProgress = buildings.loadProgress();
+      // 1 only once no tile within 300 m of the start has been queued, downloading or parsing for a
+      // moment (Buildings, src/world/nearbyLoad.ts): the library's own value read 1 while bodies were
+      // still downloading, and play began before the town. Why not all of the town (up to 4 km): the
+      // rest streams in while the first seconds are driven, and the screen took twice as long.
+      const tilesProgress = buildings.nearbyLoadProgress();
       const waited = wall - loadStart;
       const isLoading = state === "loading" && compiling === null;
       if (isLoading)
@@ -2812,6 +2831,10 @@ async function main(): Promise<void> {
     input.onFoot = isOnFoot;
     const walk = input.readWalk();
     accumulator += dt;
+    // The car's own speed on the ground before this frame's steps, for traffic_contact where the
+    // blow left no record (vehicle.speedKmh() after the steps has the push in it).
+    const v0 = vehicle.body.linvel();
+    const ownKmhBeforeSteps = Math.hypot(v0.x, v0.z) * 3.6;
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
       // Held while it is being put on its street after a start or a 移動.
@@ -2890,9 +2913,40 @@ async function main(): Promise<void> {
         what === "ground" ? "bump" : "impact",
         what === "ground" ? kmh / 3.6 : (impact?.dvCar ?? kmh / 3.6),
       );
-      // Kerbs and the ground are bumps, not accidents.
-      const isAccident = what !== "ground" && kmh > 5;
-      if (isAccident) onAccident(what, kmh, "", impact);
+      // Kerbs and the ground are bumps, not accidents; nor is a blow the car took standing
+      // (vehicleBlow.ts: its own speed going in, from the mass contact's record or before the steps).
+      const record = massContacts.recentImpact(other);
+      const own = ownKmhIntoBlow(record, ownKmhBeforeSteps);
+      const { isAccident, isStandingBump } = judgeVehicleBlow(what, kmh, own);
+      const r1 = (v: number) => Math.round(v * 10) / 10;
+      if (isStandingBump)
+        log("vehicle_bump", {
+          ownKmh: r1(own),
+          speedAfterKmh: r1(kmh),
+          ownDeltaVKmh: record ? r1(record.dvCar * 3.6) : undefined,
+          otherDeltaVKmh: record ? r1(record.dvOther * 3.6) : undefined,
+          otherMassKg: record ? Math.round(record.otherKg) : undefined,
+        });
+      const trafficCar = traffic.contactInfo(other);
+      if (trafficCar) {
+        const fwd = headingVector(vehicle.quaternion());
+        const to = vehicle.position().clone();
+        const otherPos = traffic.positionOf(other) ?? to;
+        to.subVectors(otherPos, to).setY(0);
+        const bearing =
+          (Math.atan2(fwd.z * to.x - fwd.x * to.z, fwd.x * to.x + fwd.z * to.z) * 180) / Math.PI;
+        // Δv only from the record: `impact` without one is made from the speed after the steps.
+        log("traffic_contact", {
+          ...trafficCar,
+          ownKmh: r1(own),
+          ownDeltaVKmh: record ? r1(record.dvCar * 3.6) : null,
+          otherDeltaVKmh: record ? r1(record.dvOther * 3.6) : null,
+          bearingDeg: Math.round(bearing),
+          isAccident,
+        });
+      }
+      // judgeVehicleBlow never calls the ground an accident; the check keeps the type narrow.
+      if (isAccident && what !== "ground") onAccident(what, kmh, "", impact);
     });
 
     // The camera's view for open-world spawning (traffic and people appear and leave out of it).
@@ -3181,6 +3235,17 @@ async function main(): Promise<void> {
       const isFastWhereSlow = inForce(61) && speed > 10;
       slowSince = heldSince(isFastWhereSlow, slowSince, now);
       if (hasHeldOver(slowSince, now, 1500)) book(VIOLATIONS.slow, now, 20000);
+      // A jump (LAW_JUMP_M): the junctions the car was going through and the lane it held are
+      // somewhere else. Why not keep them: 25 m from the old junction at once, the new heading was
+      // judged a turn with no 合図 (signs' marunouchi-note, booked 0.2 s after each re-placing of
+      // lamps-low-60), and the lane held 40 m before it a 指定通行区分 the same way.
+      const hasJumped = lawPrevPos === null || lawPrevPos.distanceTo(carPos) >= LAW_JUMP_M;
+      if (hasJumped) {
+        turnAt = null;
+        laneAtJunction = null;
+        laneHeld = null;
+        laneTrack = null;
+      }
       // A U-turn is a flip of heading without leaving the street: going round the block and back
       // along it the other way is not one, so the record resets on any other street.
       if (lastHeading && onRoad && onRoad.seg !== lastHeading.seg) lastHeading = null;
@@ -3240,13 +3305,15 @@ async function main(): Promise<void> {
           turnAt = {
             tIn: onRoad.dir.clone().multiplyScalar(dir),
             node: roadGraph.sample(onRoad.seg, dir === 1 ? onRoad.seg.length : 0).pos,
+            since: now,
           };
       }
-      if (turnAt && Math.hypot(carPos.x - turnAt.node.x, carPos.z - turnAt.node.z) > 25) {
-        const turn = classifyTurn(turnAt.tIn, carForward.clone().setY(0).normalize());
+      if (turnAt && Math.hypot(carPos.x - turnAt.node.x, carPos.z - turnAt.node.z) > TURN_JUDGED_M) {
+        const watch = turnAt;
+        const turn = classifyTurn(watch.tIn, carForward.clone().setY(0).normalize());
         turnAt = null;
         const side = turnSignalSide(turn);
-        if (isSignalOmitted(side, now, indicatorSeen))
+        if (isTurnSignalOmitted(side, now, indicatorSeen, watch))
           book(
             VIOLATIONS.signalOmission,
             now,
@@ -3254,16 +3321,28 @@ async function main(): Promise<void> {
             inJapanese(
               side === "left" ? "violationDetail.turnLeftNoSignal" : "violationDetail.turnRightNoSignal",
             ),
+            false,
+            signalRecord(indicatorSeen, now, watch, carPos),
           );
       }
-      // 合図 for changing lanes on a multi-lane road (the lane counted as laneCountedIn says).
+      // 合図 for changing lanes on a multi-lane road (the lane counted as laneCountedIn says), none
+      // counted while the car is in a turn (isInTurn).
+      const roadAlong = onRoad ? onRoad.dir.clone().multiplyScalar(align >= 0 ? 1 : -1) : null;
+      const isTurning = isInTurn(turnAt, carPos, roadAlong);
       const counted =
-        speed > 15
+        speed > 15 && !isTurning
           ? laneCountedIn(roadGraph, carPos, carForward, laneHeld, onRoad, carOnDeck, isCarSurface)
           : null;
       const changedTo = counted ? laneChangeSide(laneHeld, counted) : null;
       if (isSignalOmitted(changedTo, now, indicatorSeen))
-        book(VIOLATIONS.signalOmission, now, 15000, inJapanese("violationDetail.laneChangeNoSignal"));
+        book(
+          VIOLATIONS.signalOmission,
+          now,
+          15000,
+          inJapanese("violationDetail.laneChangeNoSignal"),
+          false,
+          signalRecord(indicatorSeen, now),
+        );
       laneHeld = counted;
       // オービス (速度違反自動取締装置): crossing a device's line in the direction and lanes it
       // covers, 30 km/h or more over the limit (40 on an expressway: the 赤切符 range they are set
@@ -3327,7 +3406,7 @@ async function main(): Promise<void> {
       // …against the way the car leaves, judged 25 m past the junction (clear of its box).
       if (laneAtJunction && onRoad && laneAtJunction.use.seg !== onRoad.seg) {
         const j = laneAtJunction;
-        if (Math.hypot(carPos.x - j.node.x, carPos.z - j.node.z) > 25) {
+        if (Math.hypot(carPos.x - j.node.x, carPos.z - j.node.z) > TURN_JUDGED_M) {
           laneAtJunction = null;
           const tOut = carForward.clone().setY(0).normalize();
           const turn = classifyTurn(j.tIn, tOut);
@@ -3369,7 +3448,7 @@ async function main(): Promise<void> {
 
       // 進路変更禁止: crossing a yellow lane line (lanes counted from the left kerb).
       const seg = onRoad?.seg;
-      if (onRoad && seg && isLaneChangeBanned(seg) && speed > 5 && Math.abs(align) > 0.8) {
+      if (onRoad && seg && isLaneChangeBanned(seg) && speed > 5 && Math.abs(align) > 0.8 && !isTurning) {
         // The same lanes and the same "where" as the route's lane plan (src/world/laneChange.ts).
         const lane = laneOfOffset(seg, onRoad.lateral * Math.sign(align));
         // From lane to lane only: coming in over the edge or the centre line (a turn's curve, a
@@ -3392,7 +3471,7 @@ async function main(): Promise<void> {
       if (Math.abs(speed) < 3) lastStop = { pos: carPos.clone(), at: now };
       // Up on a deck the stop lines under the viaduct are another level's (control.crossed is in
       // plan): crossing over one is no 信号無視 (P6 review W5: booked on C1 over the 汐留 streets).
-      const isContinuous = lawPrevPos !== null && lawPrevPos.distanceTo(carPos) < 30 && !carOnDeck;
+      const isContinuous = lawPrevPos !== null && lawPrevPos.distanceTo(carPos) < LAW_JUMP_M && !carOnDeck;
       // The 一時停止 a 止まれ sign and 赤色の灯火の点滅 both ask: stood still near the line just before.
       const hasStoppedAt = (ap: Approach) => {
         const mid = ap.a.clone().add(ap.b).multiplyScalar(0.5);
@@ -3890,6 +3969,8 @@ async function main(): Promise<void> {
     detail?: string,
     /** Seen by the units on the car rather than found at an accident (the chase's 安全運転義務違反). */
     byPatrol = false,
+    /** A missed 合図: the indicators' record at the moment (violation_booked). */
+    signal?: SignalRecord,
   ): ViolationRecord | null => {
     const started = performance.now();
     const booked = perf.time("violation.commit", () =>
@@ -3949,6 +4030,7 @@ async function main(): Promise<void> {
         speedKmh: c ? Math.round(c.kmh) : null,
         limitKmh: c?.limit,
         detail: c?.detail,
+        signal,
       },
       span,
     );
