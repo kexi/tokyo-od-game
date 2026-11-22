@@ -357,6 +357,51 @@ export function deckSpans(list: readonly XwChunk[], relation: "above" | "same"):
   );
 }
 
+/**
+ * S7-2 追記 3 の 1 (`--portal-approach cut`): whether a station of a run "above" another deck (the
+ * plan's layer order) is taken out of `above`, so its height decides it: the run is a lowered approach
+ * in its stretch there, the run under it is a below run, and the road is under the ground there
+ * (`over` < `cutBelow`, a cut by height). Why: two carriageways going down side by side into their
+ * tunnels are "above" each other's tunnel by OSM's layers alone, and the approach's last metres were a
+ * viaduct 6.6 m under the ground, with no wall and no hole. The compiler (compile.ts
+ * structuresByHeight) and T13 (checkHeightStructures) both ask this.
+ */
+export function isAboveDropped(
+  isInLowered: boolean,
+  isLowerBelow: boolean,
+  over: number,
+  cutBelow: number,
+): boolean {
+  return isInLowered && isLowerBelow && over < cutBelow;
+}
+
+/**
+ * The `above` spans (one per stretch over another run, `with`) less the metres `isDropped` takes out
+ * (isAboveDropped), metre by metre as sameKept. A stretch with none taken out is kept as it is.
+ */
+export function aboveKept(
+  stretches: ReadonlyArray<{ with: string; s0: number; s1: number }>,
+  isDropped: (s: number, other: string) => boolean,
+): Array<[number, number]> {
+  return stretches.flatMap((d): Array<[number, number]> => {
+    const out: Array<[number, number]> = [];
+    let from: number | null = null;
+    let isAnyDropped = false;
+    for (let sv = d.s0; sv <= d.s1 + 1e-9; sv += 1) {
+      const isKept = !isDropped(sv, d.with);
+      if (!isKept) isAnyDropped = true;
+      if (isKept && from === null) from = sv;
+      if (!isKept && from !== null) {
+        out.push([from, sv - 1]);
+        from = null;
+      }
+    }
+    if (!isAnyDropped) return [[d.s0, d.s1]];
+    if (from !== null) out.push([from, d.s1]);
+    return out;
+  });
+}
+
 /** The rounding of the files T13 allows at a threshold (z 1 mm, ground 1 cm). */
 const T13_TOLERANCE_M = 0.02;
 /** The widest half window a crossing takes along the deck (compile.ts: 40 m at most). */
@@ -382,6 +427,11 @@ export function checkHeightStructures(
   groundEnds: readonly [boolean, boolean] = [true, true],
   /** The stretches decided viaducts (structureDecisions.ts): the table's by default; tests give their own. */
   decisions: readonly StructureDecision[] = STRUCTURE_DECISIONS,
+  /**
+   * S7-2 (`--portal-approach cut`): the run's lowered stretches (run distances, from the summaries'
+   * XwEnd.portalAt: violations.ts loweredStretchesOf) and the below runs, for isAboveDropped. Absent: none.
+   */
+  lowered?: { stretches: ReadonlyArray<readonly [number, number]>; belowIds: ReadonlySet<string> },
 ): string[] {
   const out: string[] = [];
   const isEmpty = list.length === 0;
@@ -394,7 +444,7 @@ export function checkHeightStructures(
   // more is a violation. Every metre: the surface (profile.ts) and the ground linear between stations.
   const cutBelow = isGround ? HEIGHT_STRUCTURES.value.ground.cutBelowM : -HEIGHT_STRUCTURES.value.cut.fromM;
   const viaductFrom = VIADUCT_OVER_GROUND_M - DEM_SINK_FLOOR.value;
-  const above = deckSpans(list, "above");
+  const aboveAll = deckSpans(list, "above");
   const same = deckSpans(list, "same");
   const decided = decidedViaducts(decisions, list[0].run);
   // A road or railway the deck crosses (`cross`) over its window (the chunk's `crossWindows`, review W6;
@@ -424,6 +474,27 @@ export function checkHeightStructures(
       pts.push({ s, over: surfaceAt(c.st, s).z - g, k, first: s - a < 1 });
     }
   });
+  // S7-2 追記 3 の 1: a lowered approach's metres under the ground over a below run are out of `above`,
+  // as the compiler takes them out (isAboveDropped). Within the files' rounding of the threshold either
+  // way (`nearCut`): taken out here, and a viaduct still allowed there (allowed()).
+  const overAt = (sv: number) => {
+    const p = pts.reduce((best, q) => (Math.abs(q.s - sv) < Math.abs(best.s - sv) ? q : best), pts[0]);
+    return p.over;
+  };
+  const above = lowered
+    ? aboveKept(
+        list.flatMap((c) => c.decks.filter((d) => d.relation === "above")),
+        (sv, other) =>
+          isAboveDropped(
+            isIn(lowered.stretches as Array<[number, number]>, sv),
+            lowered.belowIds.has(other),
+            overAt(sv),
+            cutBelow + T13_TOLERANCE_M,
+          ),
+      )
+    : aboveAll;
+  const isNearCut = (s: number, over: number) =>
+    lowered !== undefined && Math.abs(over - cutBelow) < T13_TOLERANCE_M && isIn(aboveAll, s);
   // A stretch under the viaduct's height that never comes within EMBANKMENT_REACH_M of the ground may
   // be drawn as a viaduct (the floating embankment). Why by stretch and not by station: a station 3 m
   // up on an embankment that reaches the ground elsewhere is the embankment's.
@@ -463,7 +534,7 @@ export function checkHeightStructures(
     // embankment (S6 PR 7c, structureDecisions.ts).
     const isWindow = isIn(windows, s);
     const isDecided = isIn(decided, s) && out.has("embankment");
-    if (isHigh || isFloating || isWindow || isDecided) out.add("viaduct");
+    if (isHigh || isFloating || isWindow || isDecided || isNearCut(s, over)) out.add("viaduct");
     return out;
   };
   let open: { chunk: string; s0: number; s1: number } | null = null;

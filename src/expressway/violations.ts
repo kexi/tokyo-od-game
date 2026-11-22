@@ -81,6 +81,13 @@ export function violationsOf(
       ground: [a[at], b[b.length - STATION_STRIDE + at]],
     });
   }
+  // S7-2 追記 3 の 1: each lowered approach's stretches, from the below runs' portalAt, for T13.
+  const stretches = loweredStretchesOf(meta.runs);
+  const belowIds = new Set(meta.runs.filter((r) => r.below === true).map((r) => r.id));
+  const loweredOf = (id: string) => {
+    const own = stretches.get(id);
+    return own ? { stretches: own, belowIds } : undefined;
+  };
   const found = Object.fromEntries(PROPERTIES.map((p) => [p, [] as string[]])) as Record<Property, string[]>;
   const openShort = (id: string) => {
     const d = meta.diagnostics.find(
@@ -150,13 +157,39 @@ export function violationsOf(
     if (isJudgedCover) for (const c of list) found.T12.push(...checkCover(c, r, ends, isTunnelFree));
     if (isHeight)
       found.T13.push(
-        ...checkHeightStructures(list, r.below === true, r.ground === true, groundEndsOf(r, runs)),
+        ...checkHeightStructures(
+          list,
+          r.below === true,
+          r.ground === true,
+          groundEndsOf(r, runs),
+          undefined,
+          loweredOf(r.id),
+        ),
       );
     if (isHeight) found.T4.push(...checkClearanceWindows(list));
   }
   return Object.fromEntries(
     PROPERTIES.map((p) => [p, { count: found[p].length, first: found[p].slice(0, FIRST) }]),
   ) as Violations;
+}
+
+/**
+ * S7-2: the lowered stretches of the approaches at grade (run distances on the approach), by approach,
+ * from the summaries of the below runs seamed onto them: an end with `portalAt` whose seam's parent is
+ * the approach at `parentS` (0 or its length), the stretch its `offsetM` from there. Empty without the flag.
+ */
+export function loweredStretchesOf(runs: readonly XwRunSummary[]): Map<string, Array<[number, number]>> {
+  const out = new Map<string, Array<[number, number]>>();
+  for (const r of runs)
+    for (const e of [r.start, r.end]) {
+      const isLowered = e.portalAt !== undefined && e.kind === "seam" && e.parent !== undefined;
+      if (!isLowered) continue;
+      const at = e.parentS ?? 0;
+      const isAtStart = at < 1;
+      const span: [number, number] = isAtStart ? [0, e.portalAt!.offsetM] : [at - e.portalAt!.offsetM, at];
+      out.set(e.parent!, [...(out.get(e.parent!) ?? []), span]);
+    }
+  return out;
 }
 
 /** A run summary's portals on lowered approaches (XwEnd.portalAt) as below.ts reads them, or null where it has none. */

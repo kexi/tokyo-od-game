@@ -75,7 +75,9 @@ import {
   type HeightClass,
   type HeightStretch,
   heightStretches,
+  aboveKept,
   afterSpanning,
+  isAboveDropped,
   clearsOnThinGirder,
   isLowSpanWindow,
   isWindowOver,
@@ -6822,8 +6824,26 @@ function structuresByHeight(
     const isSeamOnGround = e.kind === "seam" && plan.runs.get(e.parent)?.ground === true;
     return e.kind === "ground" || isSeamOnGround;
   }) as [boolean, boolean];
+  // S7-2 追記 3 の 1 (`--portal-approach cut`): a lowered approach's metres under the ground over a below
+  // run leave `above` and are classed by their height (isAboveDropped, as T13 reads it). Without a
+  // lowered stretch the spans as before.
+  const isLowered = loweredApproaches(plan).byRun.has(rp.run.id);
+  const cutBelowM = HEIGHT_STRUCTURES.value.ground.cutBelowM;
+  const above = isLowered
+    ? aboveKept(
+        decks.filter((d) => d.relation === "above"),
+        (sv, other) =>
+          isAboveDropped(
+            isInLoweredStretch(plan, rp.run.id, sv),
+            plan.runs.get(other)?.below === true,
+            samples[Math.min(samples.length - 1, Math.round(sv))].z -
+              samples[Math.min(samples.length - 1, Math.round(sv))].ground,
+            cutBelowM,
+          ),
+      )
+    : spans("above");
   const ctxOf = (ends?: readonly [boolean, boolean]) => ({
-    above: spans("above"),
+    above,
     same,
     length: S,
     ...(ends ? { groundEnds: ends } : {}),

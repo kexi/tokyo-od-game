@@ -480,10 +480,9 @@ describe("D. 並ぶ 2 本の取付け（S7-2 3.6）", () => {
       [a, b, "left"],
       [b, a, "right"],
     ] as const) {
-      // Under the ground (past the band below the line) no embankment chunk; with the flag off C2's.
-      // Short of the end: over the last metres each is "above" the other's tunnel by the layers (a
-      // viaduct chunk by ctx.above, with or without the flag), not on one surface.
-      const deep = stationsOf(res, id).filter((x) => x.s > 150 && x.s < 290);
+      // Under the ground (past the band below the line) no embankment chunk, nor a viaduct one over the
+      // last metres where each is "above" the other's tunnel by the layers (追記 3 の 1); off: C2's.
+      const deep = stationsOf(res, id).filter((x) => x.s > 150);
       expect(deep.every((x) => x.g - x.z < 0.3 || x.structure === "cut")).toBe(true);
       expect(deep.some((x) => x.g - x.z > 3 && x.structure === "cut")).toBe(true);
       const openings = chunksOf(res, id)
@@ -503,15 +502,36 @@ describe("D. 並ぶ 2 本の取付け（S7-2 3.6）", () => {
     expect(chunksOf(res, b).some((c) => (c.openings ?? []).length > 0)).toBe(false);
   });
 
-  it("writes the approach's cut beyond the tunnel's lowered end in its portals (cut → tunnel)", () => {
-    // One carriageway (A's net): beside a second one, the approach's last metres are "above" the
-    // other's tunnel by the layers (a viaduct chunk), which the step 5 report leaves to the design.
-    const plan = planNetwork(twoApproaches(), new Set(), null, [], cutOpts);
-    const res = solvePlan(plan, flat, []);
-    const [t] = runsWhere(plan, (r) => r.below);
-    const portals = chunksOf(res, t).flatMap((c) => c.portals ?? []);
-    expect([portals[0].from, portals[0].to]).toEqual(["cut", "tunnel"]);
-    expect([portals.at(-1)!.from, portals.at(-1)!.to]).toEqual(["tunnel", "cut"]);
+  it("writes the approach's cut beyond the tunnel's lowered end in its portals (cut → tunnel), alone or beside another", () => {
+    for (const net of [twoApproaches(), pairNet(true)]) {
+      const plan = planNetwork(net, new Set(), null, [], cutOpts);
+      const res = solvePlan(plan, flat, []);
+      const [t] = runsWhere(plan, (r) => r.below && r.run.ways.includes(3));
+      const portals = chunksOf(res, t).flatMap((c) => c.portals ?? []);
+      expect([portals[0].from, portals[0].to]).toEqual(["cut", "tunnel"]);
+      expect([portals.at(-1)!.from, portals.at(-1)!.to]).toEqual(["tunnel", "cut"]);
+    }
+  });
+
+  it("where an approach is taken out of `above` over the other's tunnel, it stands less than a level over it (追記 3 の 1 の番人)", () => {
+    const { plan, res } = solve(true, cutOpts);
+    const lowered = loweredApproaches(plan).byRun;
+    const isIn = (id: string, s: number) =>
+      (lowered.get(id) ?? []).some(
+        (a) => a !== null && (a.atStart ? s <= a.sStart + 1e-6 : s >= a.sStart - 1e-6),
+      );
+    // The approach's stations over the other's tunnel (the plan's "above" by the layers), under the ground.
+    const over = pairStations(res.chunks).filter(
+      (p) => isIn(p.a, p.sa) && plan.runs.get(p.b)!.below && plan.runs.get(p.a)!.ground,
+    );
+    expect(over.length).toBeGreaterThan(0);
+    expect(over.filter((p) => p.dz >= p.levelApart - 0.01)).toEqual([]);
+    // Both approaches end at the tunnels' depth, in a cut.
+    for (const id of [aOf(plan), bOf(plan)]) {
+      const end = stationsOf(res, id).at(-1)!;
+      expect(end.g - end.z).toBeGreaterThanOrEqual(TUNNEL_DEPTH_M - 0.05);
+      expect(end.structure).toBe("cut");
+    }
   });
 });
 
