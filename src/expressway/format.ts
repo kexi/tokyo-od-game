@@ -236,6 +236,10 @@ export type XwPortal = { s: number; from: XwStructure; to: XwStructure };
 /**
  * An opening of a tunnel or cut chunk (S7-3): the side the other run leaves or joins on, looking along
  * the chunk's run; the run distances it spans (to the centimetre, as `decks`); the other run.
+ * `with` may name a run this folder does not hold (closed, out of the range, or a ramp outside the
+ * default boxes): the data is not cut by the range (T8), so the runtime opens no wall whose other run
+ * has no chunk. An opening is a stretch of the run, not of a chunk: one crossing a chunk's border
+ * leaves a few centimetres in the next chunk (S7-3 review 2, N1).
  */
 export type XwOpening = { side: "left" | "right"; s0: number; s1: number; with: string };
 
