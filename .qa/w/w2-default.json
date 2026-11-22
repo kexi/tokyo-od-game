@@ -1,0 +1,4308 @@
+{
+  "results": [
+    {
+      "row": "now",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 52,
+        "m": 2416
+      },
+      "ratioWideToApprox": 0.69,
+      "exitless": 2,
+      "cuts": 8,
+      "entryless": 1,
+      "entryCuts": 10,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 2,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 7,
+      "unstable": 8,
+      "lists": {
+        "exitless": [
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "cuts": [
+          {
+            "node": "35.67567,139.74894",
+            "seg": "35.67574,139.74899",
+            "width": 45,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.67563,139.74892",
+                "width": 45,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.67546,139.74947",
+                "width": 22,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66669,139.73909",
+            "seg": "35.66672,139.73910",
+            "width": 40,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.66668,139.73909",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66668,139.73911",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59047,139.73602",
+            "seg": "35.59052,139.73603",
+            "width": 42.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59054,139.73665",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59039,139.73601",
+                "width": 42.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59282,139.74020",
+            "seg": "35.59230,139.73982",
+            "width": 37.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59291,139.73996",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59308,139.74040",
+                "width": 37.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63526,139.77145",
+            "width": 25,
+            "group": "58213-25817",
+            "beyond": [
+              {
+                "key": "35.63494,139.77034",
+                "width": 25,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63502,139.77065",
+                "width": 25,
+                "eff": -1,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63494,139.77034",
+                "width": 25,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63604,139.77380",
+            "width": 25,
+            "group": "58213-25817",
+            "beyond": [
+              {
+                "key": "35.63599,139.77361",
+                "width": 25,
+                "eff": -1,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63580,139.77296",
+                "width": 25,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63596,139.77351",
+                "width": 25,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "entryless": [
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808"
+          }
+        ],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808",
+            "back": "35.66668,139.73909",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66622,139.73900",
+            "seg": "35.66578,139.73893",
+            "group": "58206-25810",
+            "back": "35.66627,139.73901",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.66694,139.75717",
+            "seg": "35.66694,139.75718",
+            "group": "58210-25810",
+            "back": "35.66696,139.75713",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "now+c",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 52,
+        "m": 2416
+      },
+      "ratioWideToApprox": 0.69,
+      "exitless": 2,
+      "cuts": 7,
+      "entryless": 1,
+      "entryCuts": 9,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 8,
+      "unstable": 7,
+      "lists": {
+        "exitless": [
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "cuts": [
+          {
+            "node": "35.67567,139.74894",
+            "seg": "35.67574,139.74899",
+            "width": 45,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.67563,139.74892",
+                "width": 45,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.67546,139.74947",
+                "width": 22,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66669,139.73909",
+            "seg": "35.66672,139.73910",
+            "width": 40,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.66668,139.73909",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66668,139.73911",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59047,139.73602",
+            "seg": "35.59052,139.73603",
+            "width": 42.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59054,139.73665",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59039,139.73601",
+                "width": 42.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59282,139.74020",
+            "seg": "35.59230,139.73982",
+            "width": 37.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59291,139.73996",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59308,139.74040",
+                "width": 37.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63604,139.77380",
+            "width": 25,
+            "group": "58213-25817",
+            "beyond": [
+              {
+                "key": "35.63599,139.77361",
+                "width": 25,
+                "eff": -1,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63580,139.77296",
+                "width": 25,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63596,139.77351",
+                "width": 25,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "entryless": [
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808"
+          }
+        ],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808",
+            "back": "35.66668,139.73909",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66622,139.73900",
+            "seg": "35.66578,139.73893",
+            "group": "58206-25810",
+            "back": "35.66627,139.73901",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "now+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 39,
+        "m": 1612
+      },
+      "ratioWideToApprox": 0.51,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 1,
+      "entryCuts": 8,
+      "undone": {
+        "n": 15,
+        "m": 843
+      },
+      "doubledSplit": 2,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 5,
+      "unstable": 7,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808"
+          }
+        ],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808",
+            "back": "35.66668,139.73909",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.66694,139.75717",
+            "seg": "35.66694,139.75718",
+            "group": "58210-25810",
+            "back": "35.66696,139.75713",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63526,139.77145",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "now+c+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 41,
+        "m": 1912
+      },
+      "ratioWideToApprox": 0.54,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 1,
+      "entryCuts": 8,
+      "undone": {
+        "n": 13,
+        "m": 543
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 6,
+      "unstable": 6,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808"
+          }
+        ],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808",
+            "back": "35.66668,139.73909",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "a",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+c",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+c+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-judge",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 54,
+        "m": 2428
+      },
+      "ratioWideToApprox": 0.72,
+      "exitless": 2,
+      "cuts": 7,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 11,
+      "unstable": 8,
+      "lists": {
+        "exitless": [
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "cuts": [
+          {
+            "node": "35.67567,139.74894",
+            "seg": "35.67574,139.74899",
+            "width": 45,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.67563,139.74892",
+                "width": 45,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.67546,139.74947",
+                "width": 22,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66622,139.73900",
+            "seg": "35.66627,139.73901",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66618,139.73900",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66627,139.73901",
+                "width": 40,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66578,139.73893",
+                "width": 40,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59047,139.73602",
+            "seg": "35.59052,139.73603",
+            "width": 42.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59054,139.73665",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59039,139.73601",
+                "width": 42.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59282,139.74020",
+            "seg": "35.59230,139.73982",
+            "width": 37.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59291,139.73996",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59308,139.74040",
+                "width": 37.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63604,139.77380",
+            "width": 25,
+            "group": "58213-25817",
+            "beyond": [
+              {
+                "key": "35.63599,139.77361",
+                "width": 25,
+                "eff": -1,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63580,139.77296",
+                "width": 25,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63596,139.77351",
+                "width": 25,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-judge+c",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 54,
+        "m": 2428
+      },
+      "ratioWideToApprox": 0.72,
+      "exitless": 2,
+      "cuts": 7,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 11,
+      "unstable": 8,
+      "lists": {
+        "exitless": [
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "cuts": [
+          {
+            "node": "35.67567,139.74894",
+            "seg": "35.67574,139.74899",
+            "width": 45,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.67563,139.74892",
+                "width": 45,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.67546,139.74947",
+                "width": 22,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66622,139.73900",
+            "seg": "35.66627,139.73901",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66618,139.73900",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66627,139.73901",
+                "width": 40,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66578,139.73893",
+                "width": 40,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59047,139.73602",
+            "seg": "35.59052,139.73603",
+            "width": 42.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59054,139.73665",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59039,139.73601",
+                "width": 42.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59282,139.74020",
+            "seg": "35.59230,139.73982",
+            "width": 37.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59291,139.73996",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59308,139.74040",
+                "width": 37.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63604,139.77380",
+            "width": 25,
+            "group": "58213-25817",
+            "beyond": [
+              {
+                "key": "35.63599,139.77361",
+                "width": 25,
+                "eff": -1,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63580,139.77296",
+                "width": 25,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63596,139.77351",
+                "width": 25,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-judge+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 44,
+        "m": 1937
+      },
+      "ratioWideToApprox": 0.58,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 15,
+        "m": 556
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 8,
+      "unstable": 9,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-judge+c+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 44,
+        "m": 1937
+      },
+      "ratioWideToApprox": 0.58,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 15,
+        "m": 556
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 8,
+      "unstable": 9,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-evidence",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 54,
+        "m": 2428
+      },
+      "ratioWideToApprox": 0.72,
+      "exitless": 2,
+      "cuts": 7,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 7,
+      "unstable": 126,
+      "lists": {
+        "exitless": [
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "cuts": [
+          {
+            "node": "35.67567,139.74894",
+            "seg": "35.67574,139.74899",
+            "width": 45,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.67563,139.74892",
+                "width": 45,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.67546,139.74947",
+                "width": 22,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66622,139.73900",
+            "seg": "35.66627,139.73901",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66618,139.73900",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66627,139.73901",
+                "width": 40,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66578,139.73893",
+                "width": 40,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59047,139.73602",
+            "seg": "35.59052,139.73603",
+            "width": 42.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59054,139.73665",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59039,139.73601",
+                "width": 42.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59282,139.74020",
+            "seg": "35.59230,139.73982",
+            "width": 37.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59291,139.73996",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59308,139.74040",
+                "width": 37.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63604,139.77380",
+            "width": 25,
+            "group": "58213-25817",
+            "beyond": [
+              {
+                "key": "35.63599,139.77361",
+                "width": 25,
+                "eff": -1,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63580,139.77296",
+                "width": 25,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63596,139.77351",
+                "width": 25,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-evidence+c",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 54,
+        "m": 2428
+      },
+      "ratioWideToApprox": 0.72,
+      "exitless": 2,
+      "cuts": 7,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 7,
+      "unstable": 126,
+      "lists": {
+        "exitless": [
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "cuts": [
+          {
+            "node": "35.67567,139.74894",
+            "seg": "35.67574,139.74899",
+            "width": 45,
+            "group": "58207-25808",
+            "beyond": [
+              {
+                "key": "35.67563,139.74892",
+                "width": 45,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.67546,139.74947",
+                "width": 22,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "group": "58206-25811",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66622,139.73900",
+            "seg": "35.66627,139.73901",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66618,139.73900",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66627,139.73901",
+                "width": 40,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.66578,139.73893",
+                "width": 40,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "group": "58206-25810",
+            "beyond": [
+              {
+                "key": "35.66521,139.73881",
+                "width": 40,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59047,139.73602",
+            "seg": "35.59052,139.73603",
+            "width": 42.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59054,139.73665",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": 1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59039,139.73601",
+                "width": 42.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.59282,139.74020",
+            "seg": "35.59230,139.73982",
+            "width": 37.5,
+            "group": "58207-25827",
+            "beyond": [
+              {
+                "key": "35.59291,139.73996",
+                "width": 4.3,
+                "eff": 0,
+                "leaving": -1,
+                "straight": false,
+                "approx": null
+              },
+              {
+                "key": "35.59308,139.74040",
+                "width": 37.5,
+                "eff": 1,
+                "leaving": -1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63604,139.77380",
+            "width": 25,
+            "group": "58213-25817",
+            "beyond": [
+              {
+                "key": "35.63599,139.77361",
+                "width": 25,
+                "eff": -1,
+                "leaving": -1,
+                "straight": false,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63580,139.77296",
+                "width": 25,
+                "eff": 0,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              },
+              {
+                "key": "35.63596,139.77351",
+                "width": 25,
+                "eff": -1,
+                "leaving": 1,
+                "straight": true,
+                "approx": "divided"
+              }
+            ]
+          }
+        ],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-evidence+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 44,
+        "m": 1937
+      },
+      "ratioWideToApprox": 0.58,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 15,
+        "m": 556
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 5,
+      "unstable": 128,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "b-evidence+c+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": false,
+        "state": {
+          "oneway": {
+            "dir": -1,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          "lanes": 3,
+          "section": {
+            "lanes": 3,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 0,
+            "backward": 3,
+            "carriageway": 10.75
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 44,
+        "m": 1937
+      },
+      "ratioWideToApprox": 0.58,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 7,
+      "undone": {
+        "n": 15,
+        "m": 556
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 5,
+      "unstable": 128,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "group": "58206-25811",
+            "back": "35.66182,139.73803",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "group": "58206-25811",
+            "back": "35.65922,139.73663",
+            "backWidth": 40,
+            "approx": "divided"
+          },
+          {
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "group": "58207-25827",
+            "back": "35.59024,139.73600",
+            "backWidth": 42.5,
+            "approx": "divided"
+          },
+          {
+            "node": "35.66697,139.75708",
+            "seg": "35.66696,139.75713",
+            "group": "58210-25810",
+            "back": "35.66704,139.75689",
+            "backWidth": 4.3,
+            "approx": null
+          },
+          {
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "group": "58213-25817",
+            "back": "35.63502,139.77065",
+            "backWidth": 25,
+            "approx": "divided"
+          },
+          {
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "group": "58213-25817",
+            "back": "35.63599,139.77361",
+            "backWidth": 25,
+            "approx": "divided"
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-judge",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-judge+c",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-judge+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-judge+c+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 24,
+      "unstable": 8,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-evidence",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 22,
+      "unstable": 126,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-evidence+c",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 22,
+      "unstable": 126,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-evidence+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 22,
+      "unstable": 126,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    },
+    {
+      "row": "a+b-evidence+c+d",
+      "s659": {
+        "group": "58206-25811",
+        "returned": true,
+        "state": {
+          "oneway": null,
+          "lanes": 2,
+          "section": {
+            "lanes": 2,
+            "laneWidth": 3.25,
+            "shoulderL": 0.5,
+            "shoulderR": 0.5,
+            "median": 0,
+            "basis": "jartic",
+            "forward": 2,
+            "backward": 2,
+            "carriageway": 14
+          },
+          "limit": null,
+          "limitKind": "statutory",
+          "rules": [
+            {
+              "code": 14,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 53,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            },
+            {
+              "code": 115,
+              "time": {
+                "on": [[0, 1440, 0]],
+                "off": []
+              }
+            }
+          ],
+          "closures": [],
+          "noOvertake": false,
+          "noLaneChange": false
+        }
+      },
+      "returned": {
+        "n": 69,
+        "m": 2751
+      },
+      "ratioWideToApprox": 0.9,
+      "exitless": 0,
+      "cuts": 0,
+      "entryless": 0,
+      "entryCuts": 2,
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "doubledSplit": 0,
+      "otherChanged": 13,
+      "approxOneWayReturned": 0,
+      "sectionMismatch": 22,
+      "unstable": 126,
+      "lists": {
+        "exitless": [],
+        "cuts": [],
+        "entryless": [],
+        "entryCuts": [
+          {
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "group": "58207-25808",
+            "back": "35.67892,139.74065",
+            "backWidth": 42.5,
+            "approx": "one-way"
+          },
+          {
+            "node": "35.66710,139.75669",
+            "seg": "35.66704,139.75689",
+            "group": "58210-25810",
+            "back": "35.66716,139.75651",
+            "backWidth": 4.3,
+            "approx": null
+          }
+        ]
+      }
+    }
+  ],
+  "narrow": [
+    {
+      "key": "35.66696,139.75713",
+      "seg": 250,
+      "group": "58210-25810",
+      "width": 4.3,
+      "length": 9.19,
+      "line": {
+        "kind": "local",
+        "oneway": 0,
+        "bridge": false
+      },
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 0,
+          "backward": 1,
+          "carriageway": 4
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 1.65,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 1,
+          "backward": 1,
+          "carriageway": 4.3
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "ways": [
+        {
+          "dist": 0.5,
+          "forward": 0,
+          "backward": 0,
+          "oneway": 1,
+          "widthDm": 40,
+          "layer": 0
+        },
+        {
+          "dist": 3.02,
+          "forward": 0,
+          "backward": 0,
+          "oneway": 1,
+          "widthDm": 60,
+          "layer": 0
+        },
+        {
+          "dist": 3.06,
+          "forward": 1,
+          "backward": 0,
+          "oneway": 1,
+          "widthDm": 0,
+          "layer": 0
+        }
+      ],
+      "doubled": [
+        {
+          "id": 324,
+          "width": 4.3,
+          "key": "35.66696,139.75713",
+          "oneway": -1
+        }
+      ]
+    },
+    {
+      "key": "35.66694,139.75718",
+      "seg": 262,
+      "group": "58210-25810",
+      "width": 9,
+      "length": 1.41,
+      "line": {
+        "kind": "local",
+        "oneway": 0,
+        "bridge": false
+      },
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 0,
+          "backward": 1,
+          "carriageway": 4
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 1,
+          "backward": 1,
+          "carriageway": 7.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "ways": [
+        {
+          "dist": 0.52,
+          "forward": 1,
+          "backward": 0,
+          "oneway": 1,
+          "widthDm": 0,
+          "layer": 0
+        },
+        {
+          "dist": 2.27,
+          "forward": 0,
+          "backward": 0,
+          "oneway": 1,
+          "widthDm": 60,
+          "layer": 0
+        },
+        {
+          "dist": 2.36,
+          "forward": 0,
+          "backward": 0,
+          "oneway": 1,
+          "widthDm": 40,
+          "layer": 0
+        }
+      ],
+      "doubled": []
+    }
+  ],
+  "detail659": null
+}

@@ -427,6 +427,21 @@ export function applyRegulations(
   const segs = new LineGrid<Segment>();
   for (const seg of graph.segments) if (takesJarticRules(seg.line)) segs.add(seg, seg.pts);
   const osmLanes = osmLaneMatcher(graph, data, frame, segs);
+  /**
+   * A JARTIC one-way that lands on a street GSI and OSM both draw two-way, OSM as one one-way way
+   * each way (a divided road): the line is another road's, a ramp's or a service road's running
+   * within MATCH_DIST of the centreline (R1-2b 0c: the 麻布台 street beside 45021976 had the ramp's
+   * one-way 1.2–5.9 m off its centre). Judged in the two-way room (travel 0), as the street would be
+   * laid out. Why not by how far the JARTIC line lies off the centre: within MATCH_DIST a ramp's
+   * line and a real one-way's do not part by distance (median 1.7 m). Why not by the 幅員 (wide is
+   * two-way): wide one-way streets exist, one-way in OSM too. Why all-day rules only: a rule with
+   * hours is a street's own (a 時間帯 one-way), not a ramp's, and stays as JARTIC says.
+   */
+  const isOsmDividedTwoWay = (seg: Segment, rule: RuleTime, samples: readonly LaneSample[]) => {
+    const isGsiTwoWay = seg.line.oneway === 0;
+    if (!isGsiTwoWay || !isAllDay(rule)) return false;
+    return osmLanes(seg, samples, 0).isDivided;
+  };
   const sectionGrids = new Map<number, LineGrid<RuleTime>>();
   for (const r of data.sections) {
     const { time, next } = readTime(r, 2);
@@ -502,7 +517,10 @@ export function applyRegulations(
       }
     }
     const majority = Math.ceil(fractions.length / 2);
-    if (rule && Math.abs(votes) >= majority) seg.onewayRule = { dir: votes > 0 ? 1 : -1, time: rule };
+    const isVotedOneWay = Math.abs(votes) >= majority;
+    if (rule && isVotedOneWay && !isOsmDividedTwoWay(seg, rule, samples)) {
+      seg.onewayRule = { dir: votes > 0 ? 1 : -1, time: rule };
+    }
     for (const [closure, n] of closureVotes) if (n >= majority) seg.closures.push(closure);
     seg.noOvertake = overtakeVotes >= majority;
     seg.noLaneChange = laneChangeVotes >= majority;
@@ -510,7 +528,7 @@ export function applyRegulations(
     const hasSection = seg.line.section !== undefined;
     if (!hasSection) {
       const evidence: LaneEvidence = {
-        ...osmLanes(seg, samples),
+        ...osmLanes(seg, samples).evidence,
         jartic: laneVotes >= majority ? laneCount : null,
       };
       const section = streetSectionOf(seg, evidence);
@@ -809,7 +827,9 @@ function nearGraph(
  * leaves (streetRoom, the same room the section is laid out in). A bridge way (layer > 0) is taken
  * only onto a GSI 橋. A way running against the segment gives its backward lanes as the segment's
  * forward ones; a one-way way gives only the direction it runs. Returns the evidence for
- * resolveSection.
+ * resolveSection, and whether a one-way way each way was matched at most samples (`isDivided`:
+ * OSM draws the street as a divided two-way road). `travel` is the segment's direction to judge it
+ * in (the room each way's lanes must fit): its rule's or its line's unless given.
  */
 function osmLaneMatcher(
   graph: RoadGraph,
@@ -819,8 +839,9 @@ function osmLaneMatcher(
 ): (
   seg: Segment,
   samples: readonly LaneSample[],
-) => Pick<LaneEvidence, "osm" | "osmWidth" | "osmSeparation"> {
-  const none = { osm: null, osmWidth: null, osmSeparation: null };
+  travel?: -1 | 0 | 1,
+) => { evidence: Pick<LaneEvidence, "osm" | "osmWidth" | "osmSeparation">; isDivided: boolean } {
+  const none = { evidence: { osm: null, osmWidth: null, osmSeparation: null }, isDivided: false };
   // No street lanes in the area: no grids to build (the regulation pass runs on every rebuild).
   const hasData = data.roadlanes.length > 0;
   if (!hasData) return () => none;
@@ -840,7 +861,7 @@ function osmLaneMatcher(
     };
     ways.add(lanes, toLocal(frame, r, C.coords));
   }
-  return (seg, samples) => {
+  return (seg, samples, travel = seg.onewayRule?.dir ?? seg.line.oneway) => {
     const reach = Math.min(GRID_REACH, seg.line.width / 2 + OSM_ONEWAY_REACH.value);
     const isBridge = seg.line.bridge === true;
     const mutual = new Map<OsmWayLanes, boolean>();
@@ -848,7 +869,6 @@ function osmLaneMatcher(
     const widths = new Map<number, number>();
     // A divided road: the gap between its two one-way carriageways' ways, by sample (dm).
     const separations: number[] = [];
-    const travel = seg.onewayRule?.dir ?? seg.line.oneway;
     const isOneWay = travel !== 0;
     const { fitting } = streetRoom(seg.line.width, travel);
     for (const { x, z, dx: ax, dz: az } of samples) {
@@ -915,11 +935,15 @@ function osmLaneMatcher(
     const isSeparated = separations.length >= majority;
     const separation = isSeparated ? separations.toSorted((a, b) => a - b)[separations.length >> 1] : 0;
     const isMatched = forward + backward > 0 || width > 0;
-    if (!isMatched) return none;
+    // A pair of ways tagged with a width only still draws the road as divided.
+    if (!isMatched) return { ...none, isDivided: isSeparated };
     return {
-      osm: forward + backward > 0 ? { forward, backward } : null,
-      osmWidth: width || null,
-      osmSeparation: separation || null,
+      evidence: {
+        osm: forward + backward > 0 ? { forward, backward } : null,
+        osmWidth: width || null,
+        osmSeparation: separation || null,
+      },
+      isDivided: isSeparated,
     };
   };
 }
@@ -1051,9 +1075,7 @@ function allowsAWayOn(graph: RoadGraph, node: number, approach: Segment, dir: 1 
   return exits.some((seg) => {
     const leaving: 1 | -1 = seg.from === node ? 1 : -1;
     const rule = seg.onewayRule;
-    const isAllDay =
-      rule !== null && rule.time.off.length === 0 && rule.time.on.some(([a, b]) => a === 0 && b >= 1440);
-    const oneway = rule && isAllDay ? rule.dir : seg.line.oneway;
+    const oneway = rule && isAllDay(rule.time) ? rule.dir : seg.line.oneway;
     if (oneway !== 0 && oneway !== leaving) return false;
     const tOut = graph
       .sample(seg, leaving === 1 ? Math.min(2, seg.length) : Math.max(0, seg.length - 2))
@@ -1063,6 +1085,11 @@ function allowsAWayOn(graph: RoadGraph, node: number, approach: Segment, dir: 1 
     const bit = side > 0.57 ? 1 : side < -0.57 ? 4 : 2;
     return (mask & bit) !== 0;
   });
+}
+
+/** Whether a rule's hours are the whole day, every day, with no exclusions. */
+function isAllDay(time: RuleTime): boolean {
+  return time.off.length === 0 && time.on.some(([a, b]) => a === 0 && b >= 1440);
 }
 
 /** Whether a regulation with its 規制時間・曜日 and 除外 conditions is in force at `clock`. */

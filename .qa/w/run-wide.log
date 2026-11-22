@@ -1,0 +1,4 @@
+lock taken 2026-11-22T15:56:34Z
+{"centres":1072,"netsBuilt":1072,"netsMissing":0,"netsNoRegs":0,"seconds":245,"returned":{"n":348,"m":10705,"strict":245,"loose":103,"looseM":1944},"looseWithBigOther":3,"exitless":4,"entryless":4,"unstable":0}
+finished 2026-11-22T15:57:48Z
+lock given 2026-11-22T15:57:48Z

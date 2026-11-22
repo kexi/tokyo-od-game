@@ -1,0 +1,7657 @@
+{
+  "summary": {
+    "targets": {
+      "n": 52,
+      "m": 2412
+    },
+    "targetsWide": {
+      "n": 50,
+      "m": 2402
+    },
+    "targetsNarrow": {
+      "n": 2,
+      "m": 10
+    },
+    "approxDivided": {
+      "n": 72,
+      "m": 3145
+    },
+    "approxDividedAlsoTarget": 50,
+    "approxDividedNotInNetwork": 0,
+    "targetsWideNotApproxDivided": [],
+    "targetsApproxOneWay": [],
+    "missedApproxDivided": 22,
+    "missedTimed": 0,
+    "missedBesideTarget": {
+      "n": 17,
+      "m": 405
+    },
+    "missedByGate": {
+      "none-in-reach+not-mutual-same-street": 1,
+      "not-mutual-other-line": 3,
+      "none-in-reach": 2,
+      "not-mutual-same-street": 15,
+      "not-mutual-doubled": 1
+    },
+    "otherChanged": 0,
+    "splitDoubled": 2,
+    "unattributed": 0,
+    "unattributedByLabel": {},
+    "ruledTwoWayLines": {
+      "all": 2783,
+      "wide": 204
+    },
+    "consequences": {
+      "signs": 67,
+      "laneUse": 1,
+      "stopLines": 12,
+      "turnRules": 0,
+      "groupsWithSignDiff": [
+        "58207-25808",
+        "58206-25811",
+        "58206-25810",
+        "58207-25827",
+        "58206-25827",
+        "58207-25828",
+        "58210-25811",
+        "58213-25817"
+      ]
+    }
+  },
+  "targets": [
+    {
+      "key": "35.67871,139.73935",
+      "seg": 82,
+      "group": "58207-25808",
+      "widthM": 42.5,
+      "lengthM": 143,
+      "jarticOffsetsM": [-0.51, -0.51, -0.76],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 4.307087427256835,
+          "basis": "width",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 31.307087427256835
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.67882,139.74015",
+      "seg": 85,
+      "group": "58207-25808",
+      "widthM": 42.5,
+      "lengthM": 3,
+      "jarticOffsetsM": [-0.14],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 6.291365718010226,
+          "basis": "width",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 33.291365718010226
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.67887,139.74038",
+      "seg": 113,
+      "group": "58207-25808",
+      "widthM": 42.5,
+      "lengthM": 40,
+      "jarticOffsetsM": [0.74, 0.5, 0.26],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.2500000000000004,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 7.235486269963257,
+          "basis": "width",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 34.23548626996326
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.67574,139.74899",
+      "seg": 521,
+      "group": "58207-25808",
+      "widthM": 45,
+      "lengthM": 17,
+      "jarticOffsetsM": [-1.48],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[480, 1080, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[480, 1080, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.67430,139.74668",
+      "seg": 1037,
+      "group": "58207-25808",
+      "widthM": 27,
+      "lengthM": 40,
+      "jarticOffsetsM": [0.64, 1.54],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[480, 1080, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.1666666666666665,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 2,
+          "backward": 3,
+          "carriageway": 20
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[480, 1080, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66663,139.73908",
+      "seg": 1125,
+      "group": "58207-25808",
+      "widthM": 40,
+      "lengthM": 8,
+      "jarticOffsetsM": [1.65],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.66646,139.73905",
+      "seg": 1126,
+      "group": "58207-25808",
+      "widthM": 40,
+      "lengthM": 32,
+      "jarticOffsetsM": [1.72, 1.59, 1.95],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66623,139.73901",
+      "seg": 1133,
+      "group": "58207-25808",
+      "widthM": 40,
+      "lengthM": 20,
+      "jarticOffsetsM": [2.45, 2.75, 3.02],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66682,139.73911",
+      "seg": 1223,
+      "group": "58207-25808",
+      "widthM": 40,
+      "lengthM": 14,
+      "jarticOffsetsM": [5.29],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.66672,139.73910",
+      "seg": 1225,
+      "group": "58207-25808",
+      "widthM": 40,
+      "lengthM": 8,
+      "jarticOffsetsM": [2.4],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.66199,139.72954",
+      "seg": 15,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 6,
+      "jarticOffsetsM": [4.24],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 1112,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 6,
+          "basis": "width",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 33
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 1112,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66204,139.72965",
+      "seg": 47,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 18,
+      "jarticOffsetsM": [3.74],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 1112,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 6,
+          "basis": "width",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 33
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 1112,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66235,139.73033",
+      "seg": 48,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 123,
+      "jarticOffsetsM": [1.31, 2.05, 2.8],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 1112,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 6,
+          "basis": "width",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 33
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 1112,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66582,139.73894",
+      "seg": 265,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 109,
+      "jarticOffsetsM": [3.26, 4.17, 4.27],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 5,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66304,139.73833",
+      "seg": 296,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 15,
+      "jarticOffsetsM": [3.43],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66272,139.73825",
+      "seg": 300,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 57,
+      "jarticOffsetsM": [3.96, 4.37, 4.77],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66217,139.73811",
+      "seg": 301,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 67,
+      "jarticOffsetsM": [5.17, 5.36, 5.54],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66059,139.73116",
+      "seg": 517,
+      "group": "58206-25811",
+      "widthM": 25,
+      "lengthM": 18,
+      "jarticOffsetsM": [5.45],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 1.3898901634269247,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 15.389890163426925
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65842,139.73645",
+      "seg": 647,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 19,
+      "jarticOffsetsM": [-1.72],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65823,139.73644",
+      "seg": 650,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 22,
+      "jarticOffsetsM": [-1.12, -1.25, -1.37],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65811,139.73644",
+      "seg": 651,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 6,
+      "jarticOffsetsM": [-1.92],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65896,139.73658",
+      "seg": 661,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 19,
+      "jarticOffsetsM": [-4.89],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65869,139.73652",
+      "seg": 662,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 42,
+      "jarticOffsetsM": [-5.08, -4.09, -2.97],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65648,139.73710",
+      "seg": 1139,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 48,
+      "jarticOffsetsM": [-5.96, -5.15],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 5,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66578,139.73893",
+      "seg": 812,
+      "group": "58206-25810",
+      "widthM": 40,
+      "lengthM": 100,
+      "jarticOffsetsM": [3.59, 4.16, 4.38],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 5,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59086,139.73607",
+      "seg": 79,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 37,
+      "jarticOffsetsM": [1.45, 1.93, 0.83],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 5.792149291089718,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 26.292149291089718
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.59063,139.73604",
+      "seg": 80,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 14,
+      "jarticOffsetsM": [0.63],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 3.8536815834690454,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 24.353681583469047
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59052,139.73603",
+      "seg": 81,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 11,
+      "jarticOffsetsM": [0.6],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 4.325791402900874,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 24.825791402900876
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59138,139.73706",
+      "seg": 93,
+      "group": "58207-25827",
+      "widthM": 20,
+      "lengthM": 108,
+      "jarticOffsetsM": [4.84, 6],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59138,139.73788",
+      "seg": 136,
+      "group": "58207-25827",
+      "widthM": 20,
+      "lengthM": 42,
+      "jarticOffsetsM": [-3.8, -3.38, -2.95],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59139,139.73837",
+      "seg": 141,
+      "group": "58207-25827",
+      "widthM": 20,
+      "lengthM": 46,
+      "jarticOffsetsM": [-2.54, -2.34, -2.14],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59140,139.73874",
+      "seg": 146,
+      "group": "58207-25827",
+      "widthM": 20,
+      "lengthM": 22,
+      "jarticOffsetsM": [-0.44, 1.38, 3.02],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 13
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59230,139.73982",
+      "seg": 151,
+      "group": "58207-25827",
+      "widthM": 37.5,
+      "lengthM": 132,
+      "jarticOffsetsM": [3.1, 2.99, 2.89],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.59173,139.73940",
+      "seg": 152,
+      "group": "58207-25827",
+      "widthM": 37.5,
+      "lengthM": 16,
+      "jarticOffsetsM": [3.15],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      }
+    },
+    {
+      "key": "35.59475,139.74150",
+      "seg": 176,
+      "group": "58207-25827",
+      "widthM": 37.5,
+      "lengthM": 31,
+      "jarticOffsetsM": [-5.71, -5.22],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59397,139.74104",
+      "seg": 179,
+      "group": "58207-25827",
+      "widthM": 37.5,
+      "lengthM": 160,
+      "jarticOffsetsM": [2.32, 0.18, 0.2],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 22
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.59012,139.73599",
+      "seg": 272,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 9,
+      "jarticOffsetsM": [0.71],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 3.7003908944309423,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 24.200390894430942
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.58985,139.73596",
+      "seg": 273,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 50,
+      "jarticOffsetsM": [0.11, 0.58, 0.88],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.58903,139.73590",
+      "seg": 278,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 133,
+      "jarticOffsetsM": [-0.46, -0.68],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 8,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 28.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66696,139.75713",
+      "seg": 250,
+      "group": "58210-25810",
+      "widthM": 4.3,
+      "lengthM": 9,
+      "jarticOffsetsM": [-0.88],
+      "approx": null,
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 0,
+          "backward": 1,
+          "carriageway": 4
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 1.65,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 1,
+          "backward": 1,
+          "carriageway": 4.3
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.66694,139.75718",
+      "seg": 262,
+      "group": "58210-25810",
+      "widthM": 9,
+      "lengthM": 1,
+      "jarticOffsetsM": [-0.73],
+      "approx": null,
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 0,
+          "backward": 1,
+          "carriageway": 4
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 1,
+          "backward": 1,
+          "carriageway": 7.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 1,
+            "time": {
+              "on": [
+                [450, 540, 0],
+                [1020, 1140, 0]
+              ],
+              "off": [[0, 1440, 3]]
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65361,139.76015",
+      "seg": 1669,
+      "group": "58210-25811",
+      "widthM": 37,
+      "lengthM": 12,
+      "jarticOffsetsM": [-2.07],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 3,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 30
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65353,139.76016",
+      "seg": 1670,
+      "group": "58210-25811",
+      "widthM": 30,
+      "lengthM": 7,
+      "jarticOffsetsM": [-1.89],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 2.75,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 23
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65344,139.76016",
+      "seg": 1671,
+      "group": "58210-25811",
+      "widthM": 30,
+      "lengthM": 12,
+      "jarticOffsetsM": [-1.59],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 2.75,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 4,
+          "carriageway": 23
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65320,139.76017",
+      "seg": 1673,
+      "group": "58210-25811",
+      "widthM": 30,
+      "lengthM": 41,
+      "jarticOffsetsM": [2.17, 1.58, 1.2],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 5,
+          "backward": 0,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 2.5,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 23
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65298,139.76017",
+      "seg": 1677,
+      "group": "58210-25811",
+      "widthM": 30,
+      "lengthM": 8,
+      "jarticOffsetsM": [2.71],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 5,
+          "backward": 0,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 2.5,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 23
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.65284,139.76015",
+      "seg": 1692,
+      "group": "58210-25811",
+      "widthM": 30,
+      "lengthM": 22,
+      "jarticOffsetsM": [-2.23, -1.73, -1.24],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 5,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 2.5,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 3,
+          "carriageway": 23
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.63526,139.77145",
+      "seg": 0,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 185,
+      "jarticOffsetsM": [-1.37, -3.16, -0.37],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 4,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 18
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.63494,139.77034",
+      "seg": 1,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 29,
+      "jarticOffsetsM": [-2.72, -4.03, -5.34],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 4,
+          "basis": "width",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 18
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.63580,139.77296",
+      "seg": 3,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 115,
+      "jarticOffsetsM": [-3.23, -2.08, -0.68],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 4,
+          "basis": "width",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 18
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.63604,139.77380",
+      "seg": 4,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 45,
+      "jarticOffsetsM": [-5.52, -5.38, -4.81],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 4,
+          "basis": "width",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 18
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    },
+    {
+      "key": "35.63612,139.77566",
+      "seg": 23,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 121,
+      "jarticOffsetsM": [-5.82, -5.45],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": null,
+        "lanes": 2,
+        "section": {
+          "lanes": 2,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 4,
+          "basis": "jartic",
+          "forward": 2,
+          "backward": 2,
+          "carriageway": 18
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      }
+    }
+  ],
+  "otherChanged": [],
+  "missed": [
+    {
+      "key": "35.67890,139.74055",
+      "seg": 160,
+      "group": "58207-25808",
+      "widthM": 42.5,
+      "lengthM": 10,
+      "jarticOffsetsM": [0.77],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "besideTarget": true,
+      "why": [
+        "1:none-in-reach -1:not-mutual-same-street(way 8.37 off; nearer seg w42.5 ow0 rule0 8.34 off, 35.67887,139.74038)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.67563,139.74892",
+      "seg": 527,
+      "group": "58207-25808",
+      "widthM": 45,
+      "lengthM": 10,
+      "jarticOffsetsM": [-1.45],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-other-line(way 11.35 off; nearer seg w9 ow0 rule0 7.86 off, 35.67563,139.74872) -1:not-mutual-other-line(way 14.54 off; nearer seg w9 ow0 rule0 5.97 off, 35.67550,139.74903)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.67418,139.74734",
+      "seg": 1045,
+      "group": "58207-25808",
+      "widthM": 30,
+      "lengthM": 90,
+      "jarticOffsetsM": [0.01, 0.96],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[480, 1080, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[480, 1080, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": ["1:ok(0.03) -1:none-in-reach", "1:ok(2.46) -1:none-in-reach", "1:ok(0.97) -1:none-in-reach"],
+      "timed": false
+    },
+    {
+      "key": "35.67431,139.74810",
+      "seg": 1059,
+      "group": "58207-25808",
+      "widthM": 44,
+      "lengthM": 22,
+      "jarticOffsetsM": [-0.59, -0.78],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": false,
+      "why": [
+        "1:not-mutual-other-line(way 14.42 off; nearer seg w9 ow0 rule0 8.76 off, 35.67469,139.74851) -1:not-mutual-other-line(way 13.7 off; nearer seg w9 ow0 rule0 6.99 off, 35.67474,139.74818)",
+        "1:ok(14.2) -1:not-mutual-other-line(way 13.87 off; nearer seg w9 ow0 rule0 13.63 off, 35.67474,139.74818)",
+        "1:ok(13.75) -1:ok(13.99)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.66668,139.73909",
+      "seg": 1226,
+      "group": "58207-25808",
+      "widthM": 40,
+      "lengthM": 2,
+      "jarticOffsetsM": [1.87],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "besideTarget": true,
+      "why": [
+        "1:ok(10.04) -1:not-mutual-same-street(way 14.09 off; nearer seg w40 ow0 rule0 13.99 off, 35.66663,139.73908)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.66597,139.73792",
+      "seg": 225,
+      "group": "58206-25811",
+      "widthM": 16,
+      "lengthM": 293,
+      "jarticOffsetsM": [-0.18, 5.01],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 0,
+          "backward": 1,
+          "carriageway": 4.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 1,
+        "section": {
+          "lanes": 1,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "osm",
+          "forward": 0,
+          "backward": 1,
+          "carriageway": 4.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": false,
+      "why": ["1:none-in-reach -1:ok(2.93)", "1:none-in-reach -1:ok(3.15)", "1:none-in-reach -1:ok(3.81)"],
+      "timed": false
+    },
+    {
+      "key": "35.66521,139.73881",
+      "seg": 266,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 28,
+      "jarticOffsetsM": [2.1, 2.54, 2.99],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 5,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 5,
+          "carriageway": 17.25
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:ok(16.45) -1:not-mutual-same-street(way 12.13 off; nearer seg w16 ow0 rule-1 4.45 off, 35.66597,139.73792)",
+        "1:ok(17.22) -1:not-mutual-same-street(way 11.68 off; nearer seg w16 ow0 rule-1 6.73 off, 35.66597,139.73792)",
+        "1:ok(17.99) -1:not-mutual-same-street(way 11.24 off; nearer seg w16 ow0 rule-1 9 off, 35.66597,139.73792)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.66182,139.73803",
+      "seg": 312,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 13,
+      "jarticOffsetsM": [5.98],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 3,
+          "backward": 0,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:ok(12.17) -1:not-mutual-same-street(way 7.96 off; nearer seg w40 ow0 rule0 7.92 off, 35.66180,139.73802)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.65922,139.73663",
+      "seg": 659,
+      "group": "58206-25811",
+      "widthM": 40,
+      "lengthM": 39,
+      "jarticOffsetsM": [-3.73, -3.67, -4.09],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 53,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 11.58 off; nearer seg w4.3 ow0 rule0 8.52 off, 35.65924,139.73686) -1:ok(13.47)",
+        "1:not-mutual-same-street(way 11.57 off; nearer seg w4.3 ow0 rule0 8 off, 35.65924,139.73686) -1:ok(13.39)",
+        "1:not-mutual-same-street(way 11.08 off; nearer seg w4.3 ow0 rule0 7.48 off, 35.65924,139.73686) -1:ok(13.81)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.66627,139.73901",
+      "seg": 255,
+      "group": "58206-25810",
+      "widthM": 40,
+      "lengthM": 10,
+      "jarticOffsetsM": [2.51],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:ok(10.57) -1:not-mutual-doubled(way 13.35 off; nearer seg w40 ow0 rule-1 13.33 off, 35.66627,139.73901)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.66618,139.73900",
+      "seg": 256,
+      "group": "58206-25810",
+      "widthM": 40,
+      "lengthM": 10,
+      "jarticOffsetsM": [2.98],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 10.94 off; nearer seg w40 ow0 rule0 10.91 off, 35.66578,139.73893) -1:ok(13.32)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.59028,139.73600",
+      "seg": 156,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 10,
+      "jarticOffsetsM": [0.47],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": false,
+      "why": [
+        "1:ok(10.72) -1:not-mutual-same-street(way 4.88 off; nearer seg w42.5 ow0 rule1 4.87 off, 35.59024,139.73600)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.59039,139.73601",
+      "seg": 157,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 17,
+      "jarticOffsetsM": [0.55],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 10.39 off; nearer seg w42.5 ow0 rule1 10.34 off, 35.59036,139.73601) -1:ok(4.71)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.59342,139.74065",
+      "seg": 174,
+      "group": "58207-25827",
+      "widthM": 37.5,
+      "lengthM": 20,
+      "jarticOffsetsM": [0.22],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 3,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 12.62 off; nearer seg w37.5 ow0 rule0 12.61 off, 35.59397,139.74104) -1:ok(19.54)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.59308,139.74040",
+      "seg": 175,
+      "group": "58207-25827",
+      "widthM": 37.5,
+      "lengthM": 69,
+      "jarticOffsetsM": [0.66, 1.62, 2.58],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "besideTarget": true,
+      "why": [
+        "1:ok(13.06) -1:not-mutual-same-street(way 19.01 off; nearer seg w37.5 ow0 rule1 18.81 off, 35.59327,139.74055)",
+        "1:ok(13.95) -1:ok(18.41)",
+        "1:ok(15.28) -1:ok(17.83)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.59327,139.74055",
+      "seg": 180,
+      "group": "58207-25827",
+      "widthM": 37.5,
+      "lengthM": 19,
+      "jarticOffsetsM": [0.77],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 4,
+          "backward": 0,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": true
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 13.13 off; nearer seg w37.5 ow0 rule1 12.92 off, 35.59308,139.74040) -1:ok(18.99)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.59024,139.73600",
+      "seg": 270,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 17,
+      "jarticOffsetsM": [0.49],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 10.85 off; nearer seg w42.5 ow0 rule1 10.82 off, 35.59028,139.73600) -1:ok(4.89)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.59036,139.73601",
+      "seg": 271,
+      "group": "58207-25827",
+      "widthM": 42.5,
+      "lengthM": 10,
+      "jarticOffsetsM": [0.5],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 6,
+        "section": {
+          "lanes": 6,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 6,
+          "backward": 0,
+          "carriageway": 20.5
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 65,
+            "time": {
+              "on": [[420, 570, 0]],
+              "off": [[0, 1440, 3]]
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 4,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": false,
+      "why": [
+        "1:ok(10.44) -1:not-mutual-same-street(way 4.79 off; nearer seg w42.5 ow0 rule1 4.76 off, 35.59039,139.73601)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.66366,139.75772",
+      "seg": 890,
+      "group": "58211-25810",
+      "widthM": 40,
+      "lengthM": 3,
+      "jarticOffsetsM": [5.39],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 5,
+          "backward": 0,
+          "carriageway": 17.25
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 70,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 116,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": 1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 5,
+        "section": {
+          "lanes": 5,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 5,
+          "backward": 0,
+          "carriageway": 17.25
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 14,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 51,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 115,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 70,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 116,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          },
+          {
+            "code": 81,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": false,
+      "why": [
+        "1:not-mutual-other-line(way 4.7 off; nearer seg w9 ow0 rule1 3.01 off, 35.66378,139.75754) -1:not-mutual-other-line(way 8.89 off; nearer seg w9 ow0 rule1 1.25 off, 35.66360,139.75743)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.63599,139.77361",
+      "seg": 2,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 10,
+      "jarticOffsetsM": [-4.56],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 6.2 off; nearer seg w25 ow0 rule0 6.18 off, 35.63604,139.77380) -1:ok(10.04)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.63596,139.77351",
+      "seg": 5,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 10,
+      "jarticOffsetsM": [-4.01],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 4,
+        "section": {
+          "lanes": 4,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "width",
+          "forward": 0,
+          "backward": 4,
+          "carriageway": 14
+        },
+        "limit": null,
+        "limitKind": "statutory",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 6.33 off; nearer seg w25 ow0 rule0 6.31 off, 35.63580,139.77296) -1:ok(9.59)"
+      ],
+      "timed": false
+    },
+    {
+      "key": "35.63502,139.77065",
+      "seg": 110,
+      "group": "58213-25817",
+      "widthM": 25,
+      "lengthM": 31,
+      "jarticOffsetsM": [0.23, 0.34, -0.98],
+      "approx": "divided",
+      "before": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "after": {
+        "oneway": {
+          "dir": -1,
+          "time": {
+            "on": [[0, 1440, 0]],
+            "off": []
+          }
+        },
+        "lanes": 3,
+        "section": {
+          "lanes": 3,
+          "laneWidth": 3.25,
+          "shoulderL": 0.5,
+          "shoulderR": 0.5,
+          "median": 0,
+          "basis": "jartic",
+          "forward": 0,
+          "backward": 3,
+          "carriageway": 10.75
+        },
+        "limit": 50,
+        "limitKind": "sign",
+        "rules": [
+          {
+            "code": 65,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "closures": [
+          {
+            "kind": 2,
+            "time": {
+              "on": [[0, 1440, 0]],
+              "off": []
+            }
+          }
+        ],
+        "noOvertake": false,
+        "noLaneChange": false
+      },
+      "besideTarget": true,
+      "why": [
+        "1:not-mutual-same-street(way 10.02 off; nearer seg w25 ow0 rule0 9.99 off, 35.63526,139.77145) -1:ok(4.05)",
+        "1:not-mutual-same-street(way 10.2 off; nearer seg w25 ow0 rule0 10.18 off, 35.63526,139.77145) -1:ok(4.22)",
+        "1:not-mutual-same-street(way 10.38 off; nearer seg w25 ow0 rule0 10.38 off, 35.63526,139.77145) -1:ok(4.4)"
+      ],
+      "timed": false
+    }
+  ],
+  "splitDoubled": [
+    {
+      "key": "35.66696,139.75713",
+      "group": "58210-25810",
+      "ids": [250, 324],
+      "targets": 1,
+      "ruled": 2
+    },
+    {
+      "key": "35.63494,139.77034",
+      "group": "58213-25817",
+      "ids": [1, 111],
+      "targets": 1,
+      "ruled": 2
+    }
+  ],
+  "unattr": []
+}

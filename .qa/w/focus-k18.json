@@ -1,0 +1,1843 @@
+{
+  "centres": [
+    "58210-25824",
+    "58210-25826",
+    "58212-25824",
+    "58212-25826",
+    "58206-25822",
+    "58206-25824",
+    "58206-25826",
+    "58208-25822",
+    "58208-25824",
+    "58208-25826",
+    "58182-25812",
+    "58182-25814",
+    "58182-25816",
+    "58184-25812",
+    "58184-25814",
+    "58184-25816",
+    "58186-25812",
+    "58186-25814",
+    "58186-25816",
+    "58218-25812",
+    "58218-25814",
+    "58220-25812",
+    "58220-25814",
+    "58222-25812",
+    "58222-25814",
+    "58202-25808",
+    "58202-25810",
+    "58202-25812",
+    "58204-25808",
+    "58204-25810",
+    "58204-25812",
+    "58206-25808",
+    "58206-25810",
+    "58206-25812",
+    "58194-25806",
+    "58194-25808",
+    "58196-25806",
+    "58196-25808",
+    "58198-25806",
+    "58198-25808",
+    "58194-25804",
+    "58196-25804",
+    "58198-25804",
+    "58182-25796",
+    "58182-25798",
+    "58182-25800",
+    "58184-25796",
+    "58184-25798",
+    "58184-25800",
+    "58186-25796",
+    "58186-25798",
+    "58186-25800"
+  ],
+  "segRows": [
+    {
+      "seg": "35.71737,139.61422",
+      "net": "58182-25798",
+      "id": 1289,
+      "width": 20,
+      "length": 5.58,
+      "nodes": "35.71735,139.61422→35.71740,139.61421",
+      "edge": {
+        "segment": 13,
+        "from": 13,
+        "to": 14
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/0 strict",
+      "G": "two-way 2/0 strict",
+      "samples": [
+        [
+          "1:way side 2.99 oneway1 <- self w20 d2.99 margin -3.51",
+          "-1:way side -5.29 oneway1 <- self w20 d5.29 margin -1.21"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71724,139.61423",
+      "net": "58182-25798",
+      "id": 1291,
+      "width": 25,
+      "length": 24.47,
+      "nodes": "35.71713,139.61424→35.71735,139.61422",
+      "edge": {
+        "segment": 11,
+        "from": 11,
+        "to": 13
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 2.98 oneway1 <- self w25 d2.98 margin -6.02",
+          "-1:way side -9.47 oneway1 <- other w4.3 d6.25 margin 4.1"
+        ],
+        [
+          "1:way side 2.99 oneway1 <- self w25 d2.99 margin -6.01",
+          "-1:way side -10.2 oneway1 <- other w4.3 d1.42 margin -0.73"
+        ],
+        [
+          "1:way side 3.01 oneway1 <- self w25 d3.01 margin -5.99",
+          "-1:way side -5.25 oneway1 <- self w25 d5.25 margin -3.75"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71712,139.61424",
+      "net": "58182-25798",
+      "id": 1292,
+      "width": 25,
+      "length": 2.55,
+      "nodes": "35.71710,139.61424→35.71713,139.61424",
+      "edge": {
+        "segment": 11,
+        "from": 11,
+        "to": 11
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 3 oneway1 <- self w25 d3 margin -6",
+          "-1:way side -8.25 oneway1 <- straight-on w25 d8.27 margin -0.73"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71683,139.61427",
+      "net": "58182-25798",
+      "id": 1318,
+      "width": 25,
+      "length": 13.58,
+      "nodes": "35.71677,139.61428→35.71690,139.61426",
+      "edge": {
+        "segment": 8,
+        "from": 8,
+        "to": 9
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "one-way1",
+      "G": "one-way1",
+      "samples": [["1:way side 3.23 oneway1 <- self w25 d3.23 margin -5.77", "-1:no-way"]]
+    },
+    {
+      "seg": "35.71675,139.61428",
+      "net": "58182-25798",
+      "id": 1319,
+      "width": 25,
+      "length": 5.95,
+      "nodes": "35.71677,139.61428→35.71672,139.61428",
+      "edge": {
+        "segment": 8,
+        "from": 8,
+        "to": 8
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "one-way-1",
+      "G": "one-way-1",
+      "samples": [["1:no-way", "-1:way side -3.39 oneway1 <- self w25 d3.39 margin -5.61"]]
+    },
+    {
+      "seg": "35.64404,139.61431",
+      "net": "58182-25814",
+      "id": 1747,
+      "width": 9,
+      "length": 4.84,
+      "nodes": "35.64402,139.61429→35.64406,139.61432",
+      "edge": {
+        "segment": 4,
+        "from": 6,
+        "to": 4
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 1/1.24 strict",
+      "G": "two-way 1/1.24 strict",
+      "samples": [
+        [
+          "1:way side 3.16 oneway1 <- self w9 d3.16 margin -1.34",
+          "-1:way side -1.83 oneway1 <- self w9 d1.83 margin -2.67"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71737,139.61422",
+      "net": "58184-25798",
+      "id": 916,
+      "width": 20,
+      "length": 5.58,
+      "nodes": "35.71735,139.61422→35.71740,139.61421",
+      "edge": {
+        "segment": 503,
+        "from": 503,
+        "to": 503
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/0 strict",
+      "G": "two-way 2/0 strict",
+      "samples": [
+        [
+          "1:way side 2.99 oneway1 <- self w20 d2.99 margin -3.51",
+          "-1:way side -5.29 oneway1 <- self w20 d5.29 margin -1.21"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71724,139.61423",
+      "net": "58184-25798",
+      "id": 918,
+      "width": 25,
+      "length": 24.47,
+      "nodes": "35.71713,139.61424→35.71735,139.61422",
+      "edge": {
+        "segment": 503,
+        "from": 505,
+        "to": 503
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 strict",
+      "G": "two-way 3/0 strict",
+      "samples": [
+        [
+          "1:way side 2.98 oneway1 <- self w25 d2.98 margin -6.02",
+          "-1:way side -5.24 oneway1 <- self w25 d5.24 margin -3.76"
+        ],
+        [
+          "1:way side 2.99 oneway1 <- self w25 d2.99 margin -6.01",
+          "-1:way side -5.24 oneway1 <- self w25 d5.24 margin -3.76"
+        ],
+        [
+          "1:way side 3.01 oneway1 <- self w25 d3.01 margin -5.99",
+          "-1:way side -5.25 oneway1 <- self w25 d5.25 margin -3.75"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71712,139.61424",
+      "net": "58184-25798",
+      "id": 919,
+      "width": 25,
+      "length": 2.55,
+      "nodes": "35.71710,139.61424→35.71713,139.61424",
+      "edge": {
+        "segment": 505,
+        "from": 505,
+        "to": 505
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 strict",
+      "G": "two-way 3/0 strict",
+      "samples": [
+        [
+          "1:way side 3 oneway1 <- self w25 d3 margin -6",
+          "-1:way side -5.21 oneway1 <- self w25 d5.21 margin -3.79"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71692,139.61426",
+      "net": "58184-25798",
+      "id": 920,
+      "width": 25,
+      "length": 6.3,
+      "nodes": "35.71690,139.61426→35.71695,139.61426",
+      "edge": {
+        "segment": 507,
+        "from": 507,
+        "to": 507
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 strict",
+      "G": "two-way 3/0 strict",
+      "samples": [
+        [
+          "1:way side 3.15 oneway1 <- self w25 d3.15 margin -5.85",
+          "-1:way side -5.35 oneway1 <- self w25 d5.35 margin -3.65"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71703,139.61425",
+      "net": "58184-25798",
+      "id": 921,
+      "width": 25,
+      "length": 16.97,
+      "nodes": "35.71695,139.61426→35.71710,139.61424",
+      "edge": {
+        "segment": 505,
+        "from": 507,
+        "to": 505
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 strict",
+      "G": "two-way 3/0 strict",
+      "samples": [
+        [
+          "1:way side 3.08 oneway1 <- self w25 d3.08 margin -5.92",
+          "-1:way side -5.14 oneway1 <- self w25 d5.14 margin -3.86"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71683,139.61427",
+      "net": "58184-25798",
+      "id": 955,
+      "width": 25,
+      "length": 13.58,
+      "nodes": "35.71677,139.61428→35.71690,139.61426",
+      "edge": {
+        "segment": 507,
+        "from": 508,
+        "to": 507
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 strict",
+      "G": "two-way 3/0 strict",
+      "samples": [
+        [
+          "1:way side 3.23 oneway1 <- self w25 d3.23 margin -5.77",
+          "-1:way side -5.61 oneway1 <- self w25 d5.61 margin -3.39"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71675,139.61428",
+      "net": "58184-25798",
+      "id": 956,
+      "width": 25,
+      "length": 5.95,
+      "nodes": "35.71677,139.61428→35.71672,139.61428",
+      "edge": {
+        "segment": 508,
+        "from": 508,
+        "to": 509
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 strict",
+      "G": "two-way 3/0 strict",
+      "samples": [
+        [
+          "1:way side 5.77 oneway1 <- self w25 d5.77 margin -3.23",
+          "-1:way side -3.39 oneway1 <- self w25 d3.39 margin -5.61"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71737,139.61422",
+      "net": "58184-25798",
+      "id": 978,
+      "width": 20,
+      "length": 5.58,
+      "nodes": "35.71735,139.61422→35.71740,139.61421",
+      "edge": {
+        "segment": 503,
+        "from": 503,
+        "to": 503
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/0 G′-only/L-only",
+      "G": "two-way 2/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 2.99 oneway1 <- same-width-leaves-alike w20 d2.99 margin -3.51",
+          "-1:way side -5.29 oneway1 <- same-width-leaves-alike w20 d5.29 margin -1.21"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71724,139.61423",
+      "net": "58184-25798",
+      "id": 980,
+      "width": 25,
+      "length": 24.47,
+      "nodes": "35.71713,139.61424→35.71735,139.61422",
+      "edge": {
+        "segment": 503,
+        "from": 505,
+        "to": 503
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 2.98 oneway1 <- same-width-leaves-alike w25 d2.98 margin -6.02",
+          "-1:way side -5.24 oneway1 <- same-width-leaves-alike w25 d5.24 margin -3.76"
+        ],
+        [
+          "1:way side 2.99 oneway1 <- same-width-leaves-alike w25 d2.99 margin -6.01",
+          "-1:way side -5.24 oneway1 <- same-width-leaves-alike w25 d5.24 margin -3.76"
+        ],
+        [
+          "1:way side 3.01 oneway1 <- same-width-leaves-alike w25 d3.01 margin -5.99",
+          "-1:way side -5.25 oneway1 <- same-width-leaves-alike w25 d5.25 margin -3.75"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71712,139.61424",
+      "net": "58184-25798",
+      "id": 981,
+      "width": 25,
+      "length": 2.55,
+      "nodes": "35.71710,139.61424→35.71713,139.61424",
+      "edge": {
+        "segment": 505,
+        "from": 505,
+        "to": 505
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 3 oneway1 <- same-width-leaves-alike w25 d3 margin -6",
+          "-1:way side -5.21 oneway1 <- same-width-leaves-alike w25 d5.21 margin -3.79"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71692,139.61426",
+      "net": "58184-25798",
+      "id": 982,
+      "width": 25,
+      "length": 6.3,
+      "nodes": "35.71690,139.61426→35.71695,139.61426",
+      "edge": {
+        "segment": 507,
+        "from": 507,
+        "to": 507
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 3.15 oneway1 <- same-width-leaves-alike w25 d3.15 margin -5.85",
+          "-1:way side -5.35 oneway1 <- same-width-leaves-alike w25 d5.35 margin -3.65"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71703,139.61425",
+      "net": "58184-25798",
+      "id": 983,
+      "width": 25,
+      "length": 16.97,
+      "nodes": "35.71695,139.61426→35.71710,139.61424",
+      "edge": {
+        "segment": 505,
+        "from": 507,
+        "to": 505
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 3.08 oneway1 <- same-width-leaves-alike w25 d3.08 margin -5.92",
+          "-1:way side -5.14 oneway1 <- same-width-leaves-alike w25 d5.14 margin -3.86"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71683,139.61427",
+      "net": "58184-25798",
+      "id": 1061,
+      "width": 25,
+      "length": 13.58,
+      "nodes": "35.71677,139.61428→35.71690,139.61426",
+      "edge": {
+        "segment": 507,
+        "from": 508,
+        "to": 507
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 3.23 oneway1 <- same-width-leaves-alike w25 d3.23 margin -5.77",
+          "-1:way side -5.61 oneway1 <- same-width-leaves-alike w25 d5.61 margin -3.39"
+        ]
+      ]
+    },
+    {
+      "seg": "35.71675,139.61428",
+      "net": "58184-25798",
+      "id": 1062,
+      "width": 25,
+      "length": 5.95,
+      "nodes": "35.71677,139.61428→35.71672,139.61428",
+      "edge": {
+        "segment": 508,
+        "from": 508,
+        "to": 509
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 3/0 G′-only/L-only",
+      "G": "two-way 3/0 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 5.77 oneway1 <- same-width-leaves-alike w25 d5.77 margin -3.23",
+          "-1:way side -3.39 oneway1 <- same-width-leaves-alike w25 d3.39 margin -5.61"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64404,139.61431",
+      "net": "58184-25814",
+      "id": 1128,
+      "width": 9,
+      "length": 4.84,
+      "nodes": "35.64402,139.61429→35.64406,139.61432",
+      "edge": {
+        "segment": 511,
+        "from": 511,
+        "to": 513
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 1/1.24 strict",
+      "G": "two-way 1/1.24 strict",
+      "samples": [
+        [
+          "1:way side 3.16 oneway1 <- self w9 d3.16 margin -1.34",
+          "-1:way side -1.83 oneway1 <- self w9 d1.83 margin -2.67"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64404,139.61431",
+      "net": "58184-25814",
+      "id": 1232,
+      "width": 9,
+      "length": 4.84,
+      "nodes": "35.64402,139.61429→35.64406,139.61432",
+      "edge": {
+        "segment": 511,
+        "from": 511,
+        "to": 513
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 1/1.24 G′-only/L-only",
+      "G": "two-way 1/1.24 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 3.16 oneway1 <- same-width-leaves-alike w9 d3.16 margin -1.34",
+          "-1:way side -1.83 oneway1 <- same-width-leaves-alike w9 d1.83 margin -2.67"
+        ]
+      ]
+    },
+    {
+      "seg": "35.67957,139.68322",
+      "net": "58196-25806",
+      "id": 1584,
+      "width": 42.5,
+      "length": 17.2,
+      "nodes": "35.67954,139.68313→35.67961,139.68330",
+      "edge": {
+        "segment": 497,
+        "from": 497,
+        "to": 505
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/8 strict",
+      "G": "two-way 4/8 strict",
+      "samples": [
+        [
+          "1:way side 14.42 oneway1 <- self w42.5 d14.42 margin -3.33",
+          "-1:way side -13.62 oneway1 <- self w42.5 d13.62 margin -4.13"
+        ]
+      ]
+    },
+    {
+      "seg": "35.67962,139.68332",
+      "net": "58196-25806",
+      "id": 1585,
+      "width": 42.5,
+      "length": 3.42,
+      "nodes": "35.67961,139.68330→35.67962,139.68333",
+      "edge": {
+        "segment": 505,
+        "from": 505,
+        "to": 506
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/8 strict",
+      "G": "two-way 4/8 strict",
+      "samples": [
+        [
+          "1:way side 13.75 oneway1 <- self w42.5 d13.75 margin -4",
+          "-1:way side -13.79 oneway1 <- self w42.5 d13.79 margin -3.96"
+        ]
+      ]
+    },
+    {
+      "seg": "35.67957,139.68322",
+      "net": "58196-25806",
+      "id": 2245,
+      "width": 42.5,
+      "length": 17.2,
+      "nodes": "35.67954,139.68313→35.67961,139.68330",
+      "edge": {
+        "segment": 497,
+        "from": 497,
+        "to": 505
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/8 G′-only/L-only",
+      "G": "two-way 4/8 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 14.42 oneway1 <- same-width-leaves-alike w42.5 d14.42 margin -3.33",
+          "-1:way side -13.62 oneway1 <- same-width-leaves-alike w42.5 d13.62 margin -4.13"
+        ]
+      ]
+    },
+    {
+      "seg": "35.67962,139.68332",
+      "net": "58196-25806",
+      "id": 2246,
+      "width": 42.5,
+      "length": 3.42,
+      "nodes": "35.67961,139.68330→35.67962,139.68333",
+      "edge": {
+        "segment": 505,
+        "from": 505,
+        "to": 506
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": 1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/8 G′-only/L-only",
+      "G": "two-way 4/8 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 13.75 oneway1 <- same-width-leaves-alike w42.5 d13.75 margin -4",
+          "-1:way side -13.79 oneway1 <- same-width-leaves-alike w42.5 d13.79 margin -3.96"
+        ]
+      ]
+    },
+    {
+      "seg": "35.66201,139.72959",
+      "net": "58204-25810",
+      "id": 1201,
+      "width": 40,
+      "length": 5.1,
+      "nodes": "35.66202,139.72961→35.66200,139.72956",
+      "edge": {
+        "segment": 507,
+        "from": 507,
+        "to": 512
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/6 strict",
+      "G": "two-way 4/6 strict",
+      "samples": [
+        [
+          "1:way side 12.38 oneway1 <- self w40 d12.38 margin -4.12",
+          "-1:way side -8.54 oneway1 <- self w40 d8.54 margin -7.96"
+        ]
+      ]
+    },
+    {
+      "seg": "35.66201,139.72959",
+      "net": "58204-25810",
+      "id": 1275,
+      "width": 40,
+      "length": 5.1,
+      "nodes": "35.66202,139.72961→35.66200,139.72956",
+      "edge": {
+        "segment": 507,
+        "from": 507,
+        "to": 512
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/6 G′-only/L-only",
+      "G": "two-way 4/6 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 12.38 oneway1 <- same-width-leaves-alike w40 d12.38 margin -4.12",
+          "-1:way side -8.54 oneway1 <- same-width-leaves-alike w40 d8.54 margin -7.96"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59927,139.74334",
+      "net": "58206-25824",
+      "id": 1569,
+      "width": 37.5,
+      "length": 4.81,
+      "nodes": "35.59928,139.74336→35.59925,139.74332",
+      "edge": {
+        "segment": 258,
+        "from": 258,
+        "to": 261
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/3.5 strict",
+      "G": "two-way 4/3.5 strict",
+      "samples": [
+        [
+          "1:way side 13.77 oneway1 <- self w37.5 d13.77 margin -1.48",
+          "-1:way side -17.22 oneway1 <- self w37.5 d17.22 margin 1.97"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59927,139.74334",
+      "net": "58206-25824",
+      "id": 2161,
+      "width": 37.5,
+      "length": 4.81,
+      "nodes": "35.59928,139.74336→35.59925,139.74332",
+      "edge": {
+        "segment": 258,
+        "from": 258,
+        "to": 261
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/3.5 G′-only/L-only",
+      "G": "two-way 4/3.5 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 13.77 oneway1 <- same-width-leaves-alike w37.5 d13.77 margin -1.48",
+          "-1:way side -17.22 oneway1 <- same-width-leaves-alike w37.5 d17.22 margin 1.97"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59927,139.74334",
+      "net": "58208-25824",
+      "id": 549,
+      "width": 37.5,
+      "length": 4.81,
+      "nodes": "35.59928,139.74336→35.59925,139.74332",
+      "edge": {
+        "segment": 256,
+        "from": 260,
+        "to": 256
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/3.5 strict",
+      "G": "two-way 4/3.5 strict",
+      "samples": [
+        [
+          "1:way side 13.77 oneway1 <- self w37.5 d13.77 margin -1.48",
+          "-1:way side -17.22 oneway1 <- self w37.5 d17.22 margin 1.97"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59927,139.74334",
+      "net": "58208-25824",
+      "id": 876,
+      "width": 37.5,
+      "length": 4.81,
+      "nodes": "35.59928,139.74336→35.59925,139.74332",
+      "edge": {
+        "segment": 256,
+        "from": 260,
+        "to": 256
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 4/3.5 G′-only/L-only",
+      "G": "two-way 4/3.5 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 13.77 oneway1 <- same-width-leaves-alike w37.5 d13.77 margin -1.48",
+          "-1:way side -17.22 oneway1 <- same-width-leaves-alike w37.5 d17.22 margin 1.97"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59481,139.76540",
+      "net": "58210-25826",
+      "id": 253,
+      "width": 45,
+      "length": 6.67,
+      "nodes": "35.59484,139.76538→35.59479,139.76542",
+      "edge": {
+        "segment": 250,
+        "from": 253,
+        "to": 250
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/8 strict",
+      "G": "two-way 2/8 strict",
+      "samples": [
+        [
+          "1:way side 13.93 oneway1 <- self w45 d13.93 margin -5.07",
+          "-1:way side -13.16 oneway1 <- self w45 d13.16 margin -5.84"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59481,139.76540",
+      "net": "58210-25826",
+      "id": 411,
+      "width": 45,
+      "length": 6.67,
+      "nodes": "35.59484,139.76538→35.59479,139.76542",
+      "edge": {
+        "segment": 250,
+        "from": 253,
+        "to": 250
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/8 G′-only/L-only",
+      "G": "two-way 2/8 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 13.93 oneway1 <- same-width-leaves-alike w45 d13.93 margin -5.07",
+          "-1:way side -13.16 oneway1 <- same-width-leaves-alike w45 d13.16 margin -5.84"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59481,139.76540",
+      "net": "58212-25826",
+      "id": 66,
+      "width": 45,
+      "length": 6.67,
+      "nodes": "35.59484,139.76538→35.59479,139.76542",
+      "edge": {
+        "segment": 264,
+        "from": 264,
+        "to": 267
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/8 strict",
+      "G": "two-way 2/8 strict",
+      "samples": [
+        [
+          "1:way side 13.93 oneway1 <- self w45 d13.93 margin -5.07",
+          "-1:way side -13.16 oneway1 <- self w45 d13.16 margin -5.84"
+        ]
+      ]
+    },
+    {
+      "seg": "35.59481,139.76540",
+      "net": "58212-25826",
+      "id": 91,
+      "width": 45,
+      "length": 6.67,
+      "nodes": "35.59484,139.76538→35.59479,139.76542",
+      "edge": {
+        "segment": 264,
+        "from": 264,
+        "to": 267
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/8 G′-only/L-only",
+      "G": "two-way 2/8 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 13.93 oneway1 <- same-width-leaves-alike w45 d13.93 margin -5.07",
+          "-1:way side -13.16 oneway1 <- same-width-leaves-alike w45 d13.16 margin -5.84"
+        ]
+      ]
+    },
+    {
+      "seg": "35.65002,139.81193",
+      "net": "58218-25812",
+      "id": 1094,
+      "width": 45,
+      "length": 4.28,
+      "nodes": "35.65004,139.81192→35.65000,139.81193",
+      "edge": {
+        "segment": 17,
+        "from": 18,
+        "to": 17
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.6 strict",
+      "G": "two-way 2/4.6 strict",
+      "samples": [
+        [
+          "1:way side 12.19 oneway1 <- self w45 d12.19 margin -6.81",
+          "-1:way side 0.59 oneway1 <- self w45 d0.59 margin -18.41"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64976,139.81197",
+      "net": "58218-25812",
+      "id": 1095,
+      "width": 45,
+      "length": 53.98,
+      "nodes": "35.65000,139.81193→35.64952,139.81200",
+      "edge": {
+        "segment": 11,
+        "from": 17,
+        "to": 11
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.42 strict",
+      "G": "two-way 2/4.42 strict",
+      "samples": [
+        [
+          "1:way side 12.04 oneway1 <- self w45 d12.04 margin -6.96",
+          "-1:way side 0.52 oneway1 <- self w45 d0.52 margin -18.48"
+        ],
+        [
+          "1:way side 11.89 oneway1 <- self w45 d11.89 margin -7.11",
+          "-1:way side 0.47 oneway1 <- self w45 d0.47 margin -18.53"
+        ],
+        [
+          "1:way side 11.75 oneway1 <- self w45 d11.75 margin -7.25",
+          "-1:way side 0.43 oneway1 <- self w45 d0.43 margin -18.57"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64916,139.81206",
+      "net": "58218-25812",
+      "id": 1115,
+      "width": 45,
+      "length": 31.77,
+      "nodes": "35.64930,139.81204→35.64902,139.81208",
+      "edge": {
+        "segment": 4,
+        "from": 8,
+        "to": 4
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/3.79 strict",
+      "G": "two-way 2/3.79 strict",
+      "samples": [
+        [
+          "1:way side 11.21 oneway1 <- self w45 d11.21 margin -7.79",
+          "-1:way side 0.3 oneway1 <- self w45 d0.3 margin -18.7"
+        ],
+        [
+          "1:way side 11.15 oneway1 <- self w45 d11.15 margin -7.85",
+          "-1:way side 0.36 oneway1 <- self w45 d0.36 margin -18.64"
+        ],
+        [
+          "1:way side 11.1 oneway1 <- self w45 d11.1 margin -7.9",
+          "-1:way side 0.42 oneway1 <- self w45 d0.42 margin -18.58"
+        ]
+      ]
+    },
+    {
+      "seg": "35.65002,139.81193",
+      "net": "58218-25814",
+      "id": 292,
+      "width": 45,
+      "length": 4.28,
+      "nodes": "35.65004,139.81192→35.65000,139.81193",
+      "edge": {
+        "segment": 17,
+        "from": 18,
+        "to": 17
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.6 strict",
+      "G": "two-way 2/4.6 strict",
+      "samples": [
+        [
+          "1:way side 12.19 oneway1 <- self w45 d12.19 margin -6.81",
+          "-1:way side 0.59 oneway1 <- self w45 d0.59 margin -18.41"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64976,139.81197",
+      "net": "58218-25814",
+      "id": 293,
+      "width": 45,
+      "length": 53.98,
+      "nodes": "35.65000,139.81193→35.64952,139.81200",
+      "edge": {
+        "segment": 11,
+        "from": 17,
+        "to": 11
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.42 strict",
+      "G": "two-way 2/4.42 strict",
+      "samples": [
+        [
+          "1:way side 12.04 oneway1 <- self w45 d12.04 margin -6.96",
+          "-1:way side 0.52 oneway1 <- self w45 d0.52 margin -18.48"
+        ],
+        [
+          "1:way side 11.89 oneway1 <- self w45 d11.89 margin -7.11",
+          "-1:way side 0.47 oneway1 <- self w45 d0.47 margin -18.53"
+        ],
+        [
+          "1:way side 11.75 oneway1 <- self w45 d11.75 margin -7.25",
+          "-1:way side 0.43 oneway1 <- self w45 d0.43 margin -18.57"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64916,139.81206",
+      "net": "58218-25814",
+      "id": 315,
+      "width": 45,
+      "length": 31.77,
+      "nodes": "35.64930,139.81204→35.64902,139.81208",
+      "edge": {
+        "segment": 4,
+        "from": 8,
+        "to": 4
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/3.79 strict",
+      "G": "two-way 2/3.79 strict",
+      "samples": [
+        [
+          "1:way side 11.21 oneway1 <- self w45 d11.21 margin -7.79",
+          "-1:way side 0.3 oneway1 <- self w45 d0.3 margin -18.7"
+        ],
+        [
+          "1:way side 11.15 oneway1 <- self w45 d11.15 margin -7.85",
+          "-1:way side 0.36 oneway1 <- self w45 d0.36 margin -18.64"
+        ],
+        [
+          "1:way side 11.1 oneway1 <- self w45 d11.1 margin -7.9",
+          "-1:way side 0.42 oneway1 <- self w45 d0.42 margin -18.58"
+        ]
+      ]
+    },
+    {
+      "seg": "35.65002,139.81193",
+      "net": "58220-25812",
+      "id": 745,
+      "width": 45,
+      "length": 4.28,
+      "nodes": "35.65004,139.81192→35.65000,139.81193",
+      "edge": {
+        "segment": 191,
+        "from": 195,
+        "to": 191
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.6 strict",
+      "G": "two-way 2/4.6 strict",
+      "samples": [
+        [
+          "1:way side 12.19 oneway1 <- self w45 d12.19 margin -6.81",
+          "-1:way side 0.59 oneway1 <- self w45 d0.59 margin -18.41"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64976,139.81197",
+      "net": "58220-25812",
+      "id": 746,
+      "width": 45,
+      "length": 53.98,
+      "nodes": "35.65000,139.81193→35.64952,139.81200",
+      "edge": {
+        "segment": 137,
+        "from": 191,
+        "to": 137
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.42 strict",
+      "G": "two-way 2/4.42 strict",
+      "samples": [
+        [
+          "1:way side 12.04 oneway1 <- self w45 d12.04 margin -6.96",
+          "-1:way side 0.52 oneway1 <- self w45 d0.52 margin -18.48"
+        ],
+        [
+          "1:way side 11.89 oneway1 <- self w45 d11.89 margin -7.11",
+          "-1:way side 0.47 oneway1 <- self w45 d0.47 margin -18.53"
+        ],
+        [
+          "1:way side 11.75 oneway1 <- self w45 d11.75 margin -7.25",
+          "-1:way side 0.43 oneway1 <- self w45 d0.43 margin -18.57"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64949,139.81201",
+      "net": "58220-25812",
+      "id": 769,
+      "width": 45,
+      "length": 6.58,
+      "nodes": "35.64952,139.81200→35.64946,139.81201",
+      "edge": {
+        "segment": 131,
+        "from": 137,
+        "to": 131
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.23 strict",
+      "G": "two-way 2/4.23 strict",
+      "samples": [
+        [
+          "1:way side 11.6 oneway1 <- self w45 d11.6 margin -7.4",
+          "-1:way side 0.38 oneway1 <- self w45 d0.38 margin -18.62"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64938,139.81202",
+      "net": "58220-25812",
+      "id": 770,
+      "width": 45,
+      "length": 17.31,
+      "nodes": "35.64946,139.81201→35.64930,139.81204",
+      "edge": {
+        "segment": 113,
+        "from": 131,
+        "to": 113
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.1 strict",
+      "G": "two-way 2/4.1 strict",
+      "samples": [
+        [
+          "1:way side 11.4 oneway1 <- self w45 d11.4 margin -7.6",
+          "-1:way side 0.3 oneway1 <- self w45 d0.3 margin -18.7"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64916,139.81206",
+      "net": "58220-25812",
+      "id": 772,
+      "width": 45,
+      "length": 31.77,
+      "nodes": "35.64930,139.81204→35.64902,139.81208",
+      "edge": {
+        "segment": 82,
+        "from": 113,
+        "to": 82
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/3.79 strict",
+      "G": "two-way 2/3.79 strict",
+      "samples": [
+        [
+          "1:way side 11.21 oneway1 <- self w45 d11.21 margin -7.79",
+          "-1:way side 0.3 oneway1 <- self w45 d0.3 margin -18.7"
+        ],
+        [
+          "1:way side 11.15 oneway1 <- self w45 d11.15 margin -7.85",
+          "-1:way side 0.36 oneway1 <- self w45 d0.36 margin -18.64"
+        ],
+        [
+          "1:way side 11.1 oneway1 <- self w45 d11.1 margin -7.9",
+          "-1:way side 0.42 oneway1 <- self w45 d0.42 margin -18.58"
+        ]
+      ]
+    },
+    {
+      "seg": "35.65002,139.81193",
+      "net": "58220-25812",
+      "id": 778,
+      "width": 45,
+      "length": 4.28,
+      "nodes": "35.65004,139.81192→35.65000,139.81193",
+      "edge": {
+        "segment": 191,
+        "from": 195,
+        "to": 191
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.6 G′-only/L-only",
+      "G": "two-way 2/4.6 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 12.19 oneway1 <- same-width-leaves-alike w45 d12.19 margin -6.81",
+          "-1:way side 0.59 oneway1 <- same-width-leaves-alike w45 d0.59 margin -18.41"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64976,139.81197",
+      "net": "58220-25812",
+      "id": 779,
+      "width": 45,
+      "length": 53.98,
+      "nodes": "35.65000,139.81193→35.64952,139.81200",
+      "edge": {
+        "segment": 137,
+        "from": 191,
+        "to": 137
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.42 G′-only/L-only",
+      "G": "two-way 2/4.42 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 12.04 oneway1 <- same-width-leaves-alike w45 d12.04 margin -6.96",
+          "-1:way side 0.52 oneway1 <- same-width-leaves-alike w45 d0.52 margin -18.48"
+        ],
+        [
+          "1:way side 11.89 oneway1 <- same-width-leaves-alike w45 d11.89 margin -7.11",
+          "-1:way side 0.47 oneway1 <- same-width-leaves-alike w45 d0.47 margin -18.53"
+        ],
+        [
+          "1:way side 11.75 oneway1 <- same-width-leaves-alike w45 d11.75 margin -7.25",
+          "-1:way side 0.43 oneway1 <- same-width-leaves-alike w45 d0.43 margin -18.57"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64949,139.81201",
+      "net": "58220-25812",
+      "id": 813,
+      "width": 45,
+      "length": 6.58,
+      "nodes": "35.64952,139.81200→35.64946,139.81201",
+      "edge": {
+        "segment": 131,
+        "from": 137,
+        "to": 131
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.23 G′-only/L-only",
+      "G": "two-way 2/4.23 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 11.6 oneway1 <- same-width-leaves-alike w45 d11.6 margin -7.4",
+          "-1:way side 0.38 oneway1 <- same-width-leaves-alike w45 d0.38 margin -18.62"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64938,139.81202",
+      "net": "58220-25812",
+      "id": 814,
+      "width": 45,
+      "length": 17.31,
+      "nodes": "35.64946,139.81201→35.64930,139.81204",
+      "edge": {
+        "segment": 113,
+        "from": 131,
+        "to": 113
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.1 G′-only/L-only",
+      "G": "two-way 2/4.1 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 11.4 oneway1 <- same-width-leaves-alike w45 d11.4 margin -7.6",
+          "-1:way side 0.3 oneway1 <- same-width-leaves-alike w45 d0.3 margin -18.7"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64916,139.81206",
+      "net": "58220-25812",
+      "id": 816,
+      "width": 45,
+      "length": 31.77,
+      "nodes": "35.64930,139.81204→35.64902,139.81208",
+      "edge": {
+        "segment": 82,
+        "from": 113,
+        "to": 82
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/3.79 G′-only/L-only",
+      "G": "two-way 2/3.79 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 11.21 oneway1 <- same-width-leaves-alike w45 d11.21 margin -7.79",
+          "-1:way side 0.3 oneway1 <- same-width-leaves-alike w45 d0.3 margin -18.7"
+        ],
+        [
+          "1:way side 11.15 oneway1 <- same-width-leaves-alike w45 d11.15 margin -7.85",
+          "-1:way side 0.36 oneway1 <- same-width-leaves-alike w45 d0.36 margin -18.64"
+        ],
+        [
+          "1:way side 11.1 oneway1 <- same-width-leaves-alike w45 d11.1 margin -7.9",
+          "-1:way side 0.42 oneway1 <- same-width-leaves-alike w45 d0.42 margin -18.58"
+        ]
+      ]
+    },
+    {
+      "seg": "35.65002,139.81193",
+      "net": "58220-25814",
+      "id": 169,
+      "width": 45,
+      "length": 4.28,
+      "nodes": "35.65004,139.81192→35.65000,139.81193",
+      "edge": {
+        "segment": 320,
+        "from": 320,
+        "to": 324
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.6 strict",
+      "G": "two-way 2/4.6 strict",
+      "samples": [
+        [
+          "1:way side 12.19 oneway1 <- self w45 d12.19 margin -6.81",
+          "-1:way side 0.59 oneway1 <- self w45 d0.59 margin -18.41"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64976,139.81197",
+      "net": "58220-25814",
+      "id": 170,
+      "width": 45,
+      "length": 53.98,
+      "nodes": "35.65000,139.81193→35.64952,139.81200",
+      "edge": {
+        "segment": 324,
+        "from": 324,
+        "to": 378
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.42 strict",
+      "G": "two-way 2/4.42 strict",
+      "samples": [
+        [
+          "1:way side 12.04 oneway1 <- self w45 d12.04 margin -6.96",
+          "-1:way side 0.52 oneway1 <- self w45 d0.52 margin -18.48"
+        ],
+        [
+          "1:way side 11.89 oneway1 <- self w45 d11.89 margin -7.11",
+          "-1:way side 0.47 oneway1 <- self w45 d0.47 margin -18.53"
+        ],
+        [
+          "1:way side 11.75 oneway1 <- self w45 d11.75 margin -7.25",
+          "-1:way side 0.43 oneway1 <- self w45 d0.43 margin -18.57"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64949,139.81201",
+      "net": "58220-25814",
+      "id": 195,
+      "width": 45,
+      "length": 6.58,
+      "nodes": "35.64952,139.81200→35.64946,139.81201",
+      "edge": {
+        "segment": 378,
+        "from": 378,
+        "to": 384
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.23 strict",
+      "G": "two-way 2/4.23 strict",
+      "samples": [
+        [
+          "1:way side 11.6 oneway1 <- self w45 d11.6 margin -7.4",
+          "-1:way side 0.38 oneway1 <- self w45 d0.38 margin -18.62"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64938,139.81202",
+      "net": "58220-25814",
+      "id": 196,
+      "width": 45,
+      "length": 17.31,
+      "nodes": "35.64946,139.81201→35.64930,139.81204",
+      "edge": {
+        "segment": 384,
+        "from": 384,
+        "to": 401
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.1 strict",
+      "G": "two-way 2/4.1 strict",
+      "samples": [
+        [
+          "1:way side 11.4 oneway1 <- self w45 d11.4 margin -7.6",
+          "-1:way side 0.3 oneway1 <- self w45 d0.3 margin -18.7"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64916,139.81206",
+      "net": "58220-25814",
+      "id": 198,
+      "width": 45,
+      "length": 31.77,
+      "nodes": "35.64930,139.81204→35.64902,139.81208",
+      "edge": {
+        "segment": 401,
+        "from": 401,
+        "to": 433
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/3.79 strict",
+      "G": "two-way 2/3.79 strict",
+      "samples": [
+        [
+          "1:way side 11.21 oneway1 <- self w45 d11.21 margin -7.79",
+          "-1:way side 0.3 oneway1 <- self w45 d0.3 margin -18.7"
+        ],
+        [
+          "1:way side 11.15 oneway1 <- self w45 d11.15 margin -7.85",
+          "-1:way side 0.36 oneway1 <- self w45 d0.36 margin -18.64"
+        ],
+        [
+          "1:way side 11.1 oneway1 <- self w45 d11.1 margin -7.9",
+          "-1:way side 0.42 oneway1 <- self w45 d0.42 margin -18.58"
+        ]
+      ]
+    },
+    {
+      "seg": "35.65002,139.81193",
+      "net": "58220-25814",
+      "id": 204,
+      "width": 45,
+      "length": 4.28,
+      "nodes": "35.65004,139.81192→35.65000,139.81193",
+      "edge": {
+        "segment": 320,
+        "from": 320,
+        "to": 324
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.6 G′-only/L-only",
+      "G": "two-way 2/4.6 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 12.19 oneway1 <- same-width-leaves-alike w45 d12.19 margin -6.81",
+          "-1:way side 0.59 oneway1 <- same-width-leaves-alike w45 d0.59 margin -18.41"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64976,139.81197",
+      "net": "58220-25814",
+      "id": 205,
+      "width": 45,
+      "length": 53.98,
+      "nodes": "35.65000,139.81193→35.64952,139.81200",
+      "edge": {
+        "segment": 324,
+        "from": 324,
+        "to": 378
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.42 G′-only/L-only",
+      "G": "two-way 2/4.42 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 12.04 oneway1 <- same-width-leaves-alike w45 d12.04 margin -6.96",
+          "-1:way side 0.52 oneway1 <- same-width-leaves-alike w45 d0.52 margin -18.48"
+        ],
+        [
+          "1:way side 11.89 oneway1 <- same-width-leaves-alike w45 d11.89 margin -7.11",
+          "-1:way side 0.47 oneway1 <- same-width-leaves-alike w45 d0.47 margin -18.53"
+        ],
+        [
+          "1:way side 11.75 oneway1 <- same-width-leaves-alike w45 d11.75 margin -7.25",
+          "-1:way side 0.43 oneway1 <- same-width-leaves-alike w45 d0.43 margin -18.57"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64949,139.81201",
+      "net": "58220-25814",
+      "id": 237,
+      "width": 45,
+      "length": 6.58,
+      "nodes": "35.64952,139.81200→35.64946,139.81201",
+      "edge": {
+        "segment": 378,
+        "from": 378,
+        "to": 384
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.23 G′-only/L-only",
+      "G": "two-way 2/4.23 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 11.6 oneway1 <- same-width-leaves-alike w45 d11.6 margin -7.4",
+          "-1:way side 0.38 oneway1 <- same-width-leaves-alike w45 d0.38 margin -18.62"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64938,139.81202",
+      "net": "58220-25814",
+      "id": 238,
+      "width": 45,
+      "length": 17.31,
+      "nodes": "35.64946,139.81201→35.64930,139.81204",
+      "edge": {
+        "segment": 384,
+        "from": 384,
+        "to": 401
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/4.1 G′-only/L-only",
+      "G": "two-way 2/4.1 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 11.4 oneway1 <- same-width-leaves-alike w45 d11.4 margin -7.6",
+          "-1:way side 0.3 oneway1 <- same-width-leaves-alike w45 d0.3 margin -18.7"
+        ]
+      ]
+    },
+    {
+      "seg": "35.64916,139.81206",
+      "net": "58220-25814",
+      "id": 240,
+      "width": 45,
+      "length": 31.77,
+      "nodes": "35.64930,139.81204→35.64902,139.81208",
+      "edge": {
+        "segment": 401,
+        "from": 401,
+        "to": 433
+      },
+      "gsiOneway": 0,
+      "mainRule": {
+        "dir": -1,
+        "allDay": true
+      },
+      "isCandidate": true,
+      "L": "two-way 2/3.79 G′-only/L-only",
+      "G": "two-way 2/3.79 G′-only/L-only",
+      "samples": [
+        [
+          "1:way side 11.21 oneway1 <- same-width-leaves-alike w45 d11.21 margin -7.79",
+          "-1:way side 0.3 oneway1 <- same-width-leaves-alike w45 d0.3 margin -18.7"
+        ],
+        [
+          "1:way side 11.15 oneway1 <- same-width-leaves-alike w45 d11.15 margin -7.85",
+          "-1:way side 0.36 oneway1 <- same-width-leaves-alike w45 d0.36 margin -18.64"
+        ],
+        [
+          "1:way side 11.1 oneway1 <- same-width-leaves-alike w45 d11.1 margin -7.9",
+          "-1:way side 0.42 oneway1 <- same-width-leaves-alike w45 d0.42 margin -18.58"
+        ]
+      ]
+    }
+  ],
+  "nodeRows": []
+}

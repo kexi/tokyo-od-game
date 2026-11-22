@@ -1,0 +1,648 @@
+{
+  "results": [
+    {
+      "row": "now",
+      "s659": {
+        "returned": false,
+        "lanes": 3,
+        "median": 0,
+        "carriageway": 10.75
+      },
+      "chain659": {
+        "group": "58206-25811",
+        "segments": [
+          {
+            "key": "35.65922,139.73663",
+            "id": 659,
+            "len": 39.49,
+            "returned": false,
+            "lanes": 3,
+            "median": 0,
+            "carriageway": 10.75,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65896,139.73658",
+            "id": 661,
+            "len": 18.67,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65869,139.73652",
+            "id": 662,
+            "len": 42.43,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65842,139.73645",
+            "id": 647,
+            "len": 19.45,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65823,139.73644",
+            "id": 650,
+            "len": 22.37,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65811,139.73644",
+            "id": 651,
+            "len": 5.51,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          }
+        ]
+      },
+      "returned": {
+        "n": 51,
+        "m": 2407
+      },
+      "ratioWideToApprox": 0.69,
+      "propagated": {
+        "n": 0,
+        "m": 0
+      },
+      "exitless": 2,
+      "entryless": 1,
+      "cutWrong": {
+        "arrive": 8,
+        "enter": 8
+      },
+      "cutReal": {
+        "arrive": 0,
+        "enter": 1,
+        "sameWidth": 1
+      },
+      "propNoReach": 0,
+      "propWidthDiff": 0,
+      "doubledSplit": 1,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "medianPresence": 0,
+      "laneDiff": 1,
+      "narrowReturned": 0,
+      "narrowKept": 1,
+      "unstable": {
+        "all": 2,
+        "prOnly": 2,
+        "prOnlyInside": 2,
+        "mainToo": 0
+      },
+      "undone": {
+        "n": 0,
+        "m": 0
+      },
+      "lists": {
+        "exitless": [
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "group": "58206-25811"
+          },
+          {
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "group": "58206-25810"
+          }
+        ],
+        "entryless": [
+          {
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "group": "58207-25808"
+          }
+        ],
+        "cutWrong": [
+          {
+            "side": "arrive",
+            "node": "35.67567,139.74894",
+            "seg": "35.67574,139.74899",
+            "width": 45,
+            "partner": "35.67563,139.74892",
+            "partnerWidth": 45,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58207-25808"
+          },
+          {
+            "side": "enter",
+            "node": "35.66667,139.73909",
+            "seg": "35.66663,139.73908",
+            "width": 40,
+            "partner": "35.66668,139.73909",
+            "partnerWidth": 40,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58207-25808"
+          },
+          {
+            "side": "arrive",
+            "node": "35.66669,139.73909",
+            "seg": "35.66672,139.73910",
+            "width": 40,
+            "partner": "35.66668,139.73909",
+            "partnerWidth": 40,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58207-25808"
+          },
+          {
+            "side": "arrive",
+            "node": "35.66533,139.73884",
+            "seg": "35.66582,139.73894",
+            "width": 40,
+            "partner": "35.66521,139.73881",
+            "partnerWidth": 40,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58206-25811"
+          },
+          {
+            "side": "enter",
+            "node": "35.66188,139.73804",
+            "seg": "35.66217,139.73811",
+            "width": 40,
+            "partner": "35.66182,139.73803",
+            "partnerWidth": 40,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58206-25811"
+          },
+          {
+            "side": "enter",
+            "node": "35.65905,139.73660",
+            "seg": "35.65896,139.73658",
+            "width": 40,
+            "partner": "35.65922,139.73663",
+            "partnerWidth": 40,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58206-25811"
+          },
+          {
+            "side": "arrive",
+            "node": "35.66533,139.73884",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "partner": "35.66521,139.73881",
+            "partnerWidth": 40,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58206-25810"
+          },
+          {
+            "side": "enter",
+            "node": "35.66622,139.73900",
+            "seg": "35.66578,139.73893",
+            "width": 40,
+            "partner": "35.66627,139.73901",
+            "partnerWidth": 40,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58206-25810"
+          },
+          {
+            "side": "arrive",
+            "node": "35.59047,139.73602",
+            "seg": "35.59052,139.73603",
+            "width": 42.5,
+            "partner": "35.59039,139.73601",
+            "partnerWidth": 42.5,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58207-25827"
+          },
+          {
+            "side": "arrive",
+            "node": "35.59282,139.74020",
+            "seg": "35.59230,139.73982",
+            "width": 37.5,
+            "partner": "35.59308,139.74040",
+            "partnerWidth": 37.5,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58207-25827"
+          },
+          {
+            "side": "enter",
+            "node": "35.59016,139.73599",
+            "seg": "35.59012,139.73599",
+            "width": 42.5,
+            "partner": "35.59024,139.73600",
+            "partnerWidth": 42.5,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58207-25827"
+          },
+          {
+            "side": "enter",
+            "node": "35.66694,139.75717",
+            "seg": "35.66694,139.75718",
+            "width": 9,
+            "partner": "35.66696,139.75713",
+            "partnerWidth": 4.3,
+            "partnerGsiOneway": 0,
+            "sameWidth": false,
+            "approx": null,
+            "group": "58210-25810"
+          },
+          {
+            "side": "arrive",
+            "node": "35.63498,139.77049",
+            "seg": "35.63526,139.77145",
+            "width": 25,
+            "partner": "35.63494,139.77034",
+            "partnerWidth": 25,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58213-25817"
+          },
+          {
+            "side": "enter",
+            "node": "35.63498,139.77049",
+            "seg": "35.63494,139.77034",
+            "width": 25,
+            "partner": "35.63502,139.77065",
+            "partnerWidth": 25,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58213-25817"
+          },
+          {
+            "side": "enter",
+            "node": "35.63598,139.77356",
+            "seg": "35.63580,139.77296",
+            "width": 25,
+            "partner": "35.63599,139.77361",
+            "partnerWidth": 25,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58213-25817"
+          },
+          {
+            "side": "arrive",
+            "node": "35.63598,139.77356",
+            "seg": "35.63604,139.77380",
+            "width": 25,
+            "partner": "35.63596,139.77351",
+            "partnerWidth": 25,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "divided",
+            "group": "58213-25817"
+          }
+        ],
+        "cutReal": [
+          {
+            "side": "enter",
+            "node": "35.67891,139.74060",
+            "seg": "35.67887,139.74038",
+            "width": 42.5,
+            "partner": "35.67901,139.74108",
+            "partnerWidth": 42.5,
+            "partnerGsiOneway": 0,
+            "sameWidth": true,
+            "approx": "one-way",
+            "group": "58207-25808"
+          }
+        ],
+        "propNoReach": [],
+        "propWidthDiff": [],
+        "medianPresence": [],
+        "laneDiff": [
+          {
+            "a": "35.65344,139.76016",
+            "b": "35.65320,139.76017",
+            "lanes": [4, 3],
+            "basis": ["jartic", "jartic"],
+            "jartic": [4, 3]
+          }
+        ],
+        "narrowReturned": [],
+        "narrowKept": [
+          {
+            "key": "35.66696,139.75713",
+            "width": 4.3,
+            "length": 9.19,
+            "group": "58210-25810",
+            "propagatedCandidate": true
+          }
+        ],
+        "unstable": [
+          {
+            "key": "35.59028,139.73600",
+            "isMainToo": false,
+            "insideAll": true,
+            "sameNodes": false,
+            "per": [
+              {
+                "group": "58207-25827",
+                "ans": "same",
+                "main": 1,
+                "mainLanes": 6,
+                "mainSection": "0/20.5",
+                "len": 9.72,
+                "edge": 90,
+                "nodes": "35.59023,139.73600→35.59032,139.73601"
+              },
+              {
+                "group": "58206-25827",
+                "ans": "same",
+                "main": 1,
+                "mainLanes": 6,
+                "mainSection": "0/20.5",
+                "len": 9.72,
+                "edge": 588,
+                "nodes": "35.59023,139.73600→35.59032,139.73601"
+              },
+              {
+                "group": "58207-25828",
+                "ans": "two-way 3/5.22",
+                "main": 1,
+                "mainLanes": 6,
+                "mainSection": "0/20.5",
+                "len": 26.96,
+                "edge": 90,
+                "nodes": "35.59016,139.73599→35.59041,139.73602"
+              }
+            ]
+          },
+          {
+            "key": "35.63494,139.77034",
+            "isMainToo": false,
+            "insideAll": true,
+            "sameNodes": true,
+            "per": [
+              {
+                "group": "58213-25817",
+                "ans": "two-way 2/4",
+                "main": -1,
+                "mainLanes": 4,
+                "mainSection": "0/14",
+                "len": 28.91,
+                "edge": 325,
+                "nodes": "35.63498,139.77049→35.63489,139.77018"
+              },
+              {
+                "group": "58213-25817",
+                "ans": "same",
+                "main": -1,
+                "mainLanes": 4,
+                "mainSection": "0/14",
+                "len": 28.91,
+                "edge": 325,
+                "nodes": "35.63498,139.77049→35.63489,139.77018"
+              }
+            ]
+          }
+        ],
+        "undone": []
+      }
+    },
+    {
+      "row": "a2+d",
+      "s659": {
+        "returned": true,
+        "lanes": 2,
+        "median": 8,
+        "carriageway": 22
+      },
+      "chain659": {
+        "group": "58206-25811",
+        "segments": [
+          {
+            "key": "35.65922,139.73663",
+            "id": 659,
+            "len": 39.49,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65896,139.73658",
+            "id": 661,
+            "len": 18.67,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65869,139.73652",
+            "id": 662,
+            "len": 42.43,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65842,139.73645",
+            "id": 647,
+            "len": 19.45,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65823,139.73644",
+            "id": 650,
+            "len": 22.37,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          },
+          {
+            "key": "35.65811,139.73644",
+            "id": 651,
+            "len": 5.51,
+            "returned": true,
+            "lanes": 2,
+            "median": 8,
+            "carriageway": 22,
+            "basis": "jartic"
+          }
+        ]
+      },
+      "returned": {
+        "n": 62,
+        "m": 2505
+      },
+      "ratioWideToApprox": 0.86,
+      "propagated": {
+        "n": 15,
+        "m": 287
+      },
+      "exitless": 0,
+      "entryless": 0,
+      "cutWrong": {
+        "arrive": 0,
+        "enter": 0
+      },
+      "cutReal": {
+        "arrive": 0,
+        "enter": 0,
+        "sameWidth": 0
+      },
+      "propNoReach": 0,
+      "propWidthDiff": 0,
+      "doubledSplit": 0,
+      "otherChanged": 0,
+      "approxOneWayReturned": 0,
+      "medianPresence": 0,
+      "laneDiff": 1,
+      "narrowReturned": 0,
+      "narrowKept": 1,
+      "unstable": {
+        "all": 1,
+        "prOnly": 1,
+        "prOnlyInside": 1,
+        "mainToo": 0
+      },
+      "undone": {
+        "n": 4,
+        "m": 188
+      },
+      "lists": {
+        "exitless": [],
+        "entryless": [],
+        "cutWrong": [],
+        "cutReal": [],
+        "propNoReach": [],
+        "propWidthDiff": [],
+        "medianPresence": [],
+        "laneDiff": [
+          {
+            "a": "35.65344,139.76016",
+            "b": "35.65320,139.76017",
+            "lanes": [4, 3],
+            "basis": ["jartic", "jartic"],
+            "jartic": [4, 3]
+          }
+        ],
+        "narrowReturned": [],
+        "narrowKept": [
+          {
+            "key": "35.66696,139.75713",
+            "width": 4.3,
+            "length": 9.19,
+            "group": "58210-25810",
+            "propagatedCandidate": true
+          }
+        ],
+        "unstable": [
+          {
+            "key": "35.59028,139.73600",
+            "isMainToo": false,
+            "insideAll": true,
+            "sameNodes": false,
+            "per": [
+              {
+                "group": "58207-25827",
+                "ans": "two-way 3/5.35",
+                "main": 1,
+                "mainLanes": 6,
+                "mainSection": "0/20.5",
+                "len": 9.72,
+                "edge": 90,
+                "nodes": "35.59023,139.73600→35.59032,139.73601"
+              },
+              {
+                "group": "58206-25827",
+                "ans": "two-way 3/5.35",
+                "main": 1,
+                "mainLanes": 6,
+                "mainSection": "0/20.5",
+                "len": 9.72,
+                "edge": 588,
+                "nodes": "35.59023,139.73600→35.59032,139.73601"
+              },
+              {
+                "group": "58207-25828",
+                "ans": "two-way 3/5.22",
+                "main": 1,
+                "mainLanes": 6,
+                "mainSection": "0/20.5",
+                "len": 26.96,
+                "edge": 90,
+                "nodes": "35.59016,139.73599→35.59041,139.73602"
+              }
+            ]
+          }
+        ],
+        "undone": [
+          {
+            "key": "35.67887,139.74038",
+            "width": 42.5,
+            "length": 40.21,
+            "group": "58207-25808",
+            "id": 113
+          },
+          {
+            "key": "35.67882,139.74015",
+            "width": 42.5,
+            "length": 3.24,
+            "group": "58207-25808",
+            "id": 85
+          },
+          {
+            "key": "35.67871,139.73935",
+            "width": 42.5,
+            "length": 143.32,
+            "group": "58207-25808",
+            "id": 82
+          },
+          {
+            "key": "35.66694,139.75718",
+            "width": 9,
+            "length": 1.41,
+            "group": "58210-25810",
+            "id": 262
+          }
+        ]
+      }
+    }
+  ]
+}

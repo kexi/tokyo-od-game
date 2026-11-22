@@ -1,0 +1,9 @@
+{"event":"tiles_to_fetch","need":4956,"cached":1040,"todo":3916}
+{"404":0,"event":"tiles_progress","done":500,"ok":500,"fail":0}
+{"404":0,"event":"tiles_progress","done":1000,"ok":1000,"fail":0}
+{"404":0,"event":"tiles_progress","done":1500,"ok":1500,"fail":0}
+{"404":0,"event":"tiles_progress","done":2000,"ok":2000,"fail":0}
+{"404":0,"event":"tiles_progress","done":2500,"ok":2500,"fail":0}
+{"404":0,"event":"tiles_progress","done":3000,"ok":3000,"fail":0}
+{"404":0,"event":"tiles_progress","done":3500,"ok":3500,"fail":0}
+{"404":0,"event":"tiles_fetched","ok":3916,"fail":0,"retried":0,"stillFailed":0}

@@ -1,0 +1,14 @@
+chore(wip): keep PR W's per-segment one-way rule and its measuring tools
+
+Why: the per-segment rule (L + G′: a JARTIC one-way on a street OSM draws
+as a divided two-way road is not applied) must not run in the game. Over
+the whole regulated area (1,072 networks) it leaves 4 nodes where the
+reopened lanes have no exit (review0 追記 7). How to go on is the user's
+call. This branch keeps the work as the base for a planned location
+table: the rule as last implemented (strict test only), the tools that
+measured it, and their outputs over seven rounds. The worktree is
+disposable and .qa/ is ignored, so the tools and results are added
+with -f. The GSI tile cache is left out (.qa/w/fetchTiles.mts
+re-fetches it, 3,916 tiles). Not for main.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
