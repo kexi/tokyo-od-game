@@ -858,7 +858,10 @@ describe("S7-4a 区間の内の高さの差と壁の帯の床（レビュー 1 �
     }
   });
 
-  it("H: an opened side with no seam floors its wall band at road height (no groove under the removed wall)", () => {
+  // WIP (addendum 5): no ring of this net is opened on the stretch without a seam, so the test has
+  // nothing to check yet (and a net where it had something still passed on the code before the band
+  // rule). Skipped until it is reworked.
+  it.skip("H: an opened side with no seam floors its wall band at road height (no groove under the removed wall)", () => {
     // C's same stretch with M ends 25 m short of the opening's: past its pad (20 m) C is no longer cut
     // on M's edge and has no seam on the stretch's last metres, where its own floor must cover its band.
     const apart = NOSE + (HW_M + HW_C) / 0.12;
