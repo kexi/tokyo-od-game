@@ -79,9 +79,12 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * a written one: for R1-1b's walls). Version 7 reports still parse. 9 (S7-3): `underground.joins` (the
  * junctions and seams under the ground, with whether the parent carries an opening) and
  * `underground.unplanned` (the chains with tunnel ways and no viaduct, never compiled). Version 8
- * reports still parse.
+ * reports still parse. 10 (S7-2): `underground.portals.lowered` and `loweredCoverShort` (the portal
+ * ends whose approach at grade was lowered by --portal-approach cut, and those still short of cover:
+ * 0 without the flag), and per end its lowered stretch and approach depth or why it was left at grade.
+ * Version 9 reports still parse.
  */
-export const REPORT_VERSION = 9;
+export const REPORT_VERSION = 10;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 const fileSize = z.strictObject({ raw: count, gzip: count });
@@ -108,6 +111,7 @@ export const ReportSchema = z.strictObject({
     z.literal(6),
     z.literal(7),
     z.literal(8),
+    z.literal(9),
     z.literal(REPORT_VERSION),
   ]),
   label: z.string(),
@@ -681,6 +685,8 @@ export type ReportInput = {
   belowDeferrals?: readonly DeferredBelow[];
   /** The portals' approaches (compile.ts portalApproachEnds), into `underground.overApproach`. */
   approachEnds?: readonly ApproachEnd[];
+  /** S7-2: the approaches the plan left at grade (compile.ts loweredApproaches' skipped), into `underground.portals`. */
+  notLowered?: ReadonlyArray<{ below: string; belowAtStart: boolean; reason: "both-portals" }>;
   /** The chains with tunnel ways and no viaduct (compile.ts unplannedChains), into `underground.unplanned`. */
   unplanned?: readonly UnplannedBelow[];
 };
@@ -1496,6 +1502,7 @@ export function buildReport(input: ReportInput): Report {
     underground: undergroundOf({
       deferred: input.belowDeferrals ?? [],
       approachEnds: input.approachEnds ?? [],
+      notLowered: input.notLowered ?? [],
       unplanned: input.unplanned ?? [],
       chunks: input.chunks,
       runs: input.runs,

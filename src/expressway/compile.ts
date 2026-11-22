@@ -611,7 +611,13 @@ export type LoweredApproach = {
 };
 
 /** An end portalApproachEnds gives that S7-2 leaves at grade, and why (the scorecard's list). */
-export type ApproachSkip = { run: string; atStart: boolean; below: string; reason: "both-portals" };
+export type ApproachSkip = {
+  run: string;
+  atStart: boolean;
+  below: string;
+  belowAtStart: boolean;
+  reason: "both-portals";
+};
 
 export type LoweredApproaches = {
   /** By run at grade: its lowered start and end (null where not lowered). */
@@ -672,7 +678,13 @@ export function loweredApproaches(plan: Plan): LoweredApproaches {
     const isSkipped = isOverlapping && !isDescending;
     if (isSkipped) {
       for (const a of list)
-        out.skipped.push({ run: id, atStart: a.atStart, below: a.below, reason: "both-portals" });
+        out.skipped.push({
+          run: id,
+          atStart: a.atStart,
+          below: a.below,
+          belowAtStart: a.belowAtStart,
+          reason: "both-portals",
+        });
       continue;
     }
     const ends: [LoweredApproach | null, LoweredApproach | null] = [null, null];

@@ -68,6 +68,13 @@ export const UndergroundSchema = z.strictObject({
     /** The ends into a tunnel short of its depth at their station, and the largest shortfall (m). */
     coverShort: count,
     maxShortM: z.number().nonnegative(),
+    /**
+     * S7-2 (version 10, `--portal-approach cut`): the ends whose approach at grade was lowered (their
+     * summary's XwEnd.portalAt), and those of them still short of the tunnel's depth (線 3). 0 without the
+     * flag; absent before version 10.
+     */
+    lowered: count.optional(),
+    loweredCoverShort: count.optional(),
     list: z.array(
       z.strictObject({
         /** `<run>:start` or `<run>:end` (the comparison's key). */
@@ -84,6 +91,13 @@ export const UndergroundSchema = z.strictObject({
         approach: z.strictObject({ run: z.string(), offM: z.number() }).nullable(),
         /** TUNNEL_DEPTH_M less the depth under the ground at the end (0 when deep enough); null into a cut. */
         coverShortM: z.number().nonnegative().nullable(),
+        /**
+         * S7-2 (version 10): the lowered approach's stretch (its length to the portal at its start, m) and
+         * its end's depth under the ground at the seam (m). Absent where the approach was not lowered.
+         */
+        lowered: z.strictObject({ lengthM: z.number().nonnegative(), approachDepthM: z.number() }).optional(),
+        /** S7-2 (version 10): why an approach the plan saw was left at grade ("both-portals", addendum 4). */
+        notLowered: z.enum(["both-portals"]).optional(),
       }),
     ),
   }),
@@ -313,6 +327,11 @@ export function portalEndsOf(
   chunks: readonly XwChunk[],
   runs: readonly XwRunSummary[],
   belowIds: ReadonlySet<string>,
+  /**
+   * S7-2 (version 10): the portal ends (`<below run>:<end>`) whose approach the plan left at grade, and
+   * why (compile.ts loweredApproaches' skipped). Absent: the counts and fields of version 9.
+   */
+  notLowered?: ReadonlyMap<string, "both-portals">,
 ): Underground["portals"] {
   const byRun = new Map<string, XwChunk[]>();
   for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
@@ -351,8 +370,9 @@ export function portalEndsOf(
       const approach = isGroundParent
         ? stretchOf({ run: parent, end: atStart ? "end" : "start" }, byRun.get(parent))
         : null;
+      const id = `${r.id}:${atStart ? "start" : "end"}`;
       list.push({
-        id: `${r.id}:${atStart ? "start" : "end"}`,
+        id,
         run: r.id,
         end: atStart ? "start" : "end",
         into,
@@ -361,16 +381,42 @@ export function portalEndsOf(
         dzM: round(station.z - station.ground, 3),
         approach: approach && { run: approach.stretch.run, offM: approach.offM },
         coverShortM: isTunnel ? round(Math.max(0, TUNNEL_DEPTH_M - depth), 3) : null,
+        ...loweredOf(end, parent === undefined ? undefined : byRun.get(parent)),
+        ...(notLowered?.has(id) ? { notLowered: notLowered.get(id)! } : {}),
       });
     }
   }
   const shorts = list.flatMap((p) => (p.coverShortM !== null && p.coverShortM > 0 ? [p.coverShortM] : []));
+  const isVersion10 = notLowered !== undefined;
+  const lowered = list.filter((p) => p.lowered !== undefined);
   return {
     ends: list.length,
     coverShort: shorts.length,
     maxShortM: shorts.length === 0 ? 0 : Math.max(...shorts),
+    ...(isVersion10
+      ? {
+          lowered: lowered.length,
+          loweredCoverShort: lowered.filter((p) => p.coverShortM !== null && p.coverShortM > 0).length,
+        }
+      : {}),
     list,
   };
+}
+
+/**
+ * S7-2: a portal end's lowered approach (its summary's XwEnd.portalAt): the stretch's length and the
+ * approach's depth under the ground at the seam, from its own end station. Nothing where not lowered.
+ */
+function loweredOf(
+  end: XwRunSummary["start"],
+  approach: readonly XwChunk[] | undefined,
+): { lowered?: { lengthM: number; approachDepthM: number } } {
+  const isLowered = end.portalAt !== undefined && approach !== undefined;
+  if (!isLowered) return {};
+  const stations = stationsOfRun(approach);
+  const atStart = (end.parentS ?? 0) < 1;
+  const p = atStart ? stations[0] : stations[stations.length - 1];
+  return { lowered: { lengthM: end.portalAt!.offsetM, approachDepthM: round(p.ground - p.z, 3) } };
 }
 
 /** The written approaches' stretches (`overApproach.approaches`), in the order of their ends. */
@@ -574,10 +620,17 @@ export function undergroundOf(input: {
   chunks: XwChunk[];
   runs: readonly XwRunSummary[];
   belowIds: ReadonlySet<string>;
+  /** S7-2 (version 10): the approaches the plan left at grade (compile.ts loweredApproaches' skipped). */
+  notLowered?: ReadonlyArray<{ below: string; belowAtStart: boolean; reason: "both-portals" }>;
 }): Underground {
+  const notLowered = new Map(
+    (input.notLowered ?? []).map(
+      (x) => [`${x.below}:${x.belowAtStart ? "start" : "end"}`, x.reason] as const,
+    ),
+  );
   return {
     deferred: deferredOf(input.deferred),
-    portals: portalEndsOf(input.chunks, input.runs, input.belowIds),
+    portals: portalEndsOf(input.chunks, input.runs, input.belowIds, notLowered),
     overApproach: overApproachOf(input.chunks, approachStretchesOf(input.chunks, input.approachEnds)),
     joins: joinsOf(input.chunks, input.runs, input.belowIds),
     unplanned: unplannedOf(input.unplanned),

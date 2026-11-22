@@ -17,6 +17,7 @@ import {
   planNetwork,
   solvePlan,
 } from "../src/expressway/compile";
+import { undergroundOf } from "../src/expressway/belowScore";
 import { packTiles } from "../src/expressway/files";
 import { STATION_STRIDE } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
@@ -596,6 +597,46 @@ describe("F・判定 1. 下げない端（S7-2 3.1、追記 4 の 1）", () => {
     const st = stationsOf(res, g);
     expect(st[0].g - st[0].z).toBeGreaterThan(1.5);
     expect(st.at(-1)!.g - st.at(-1)!.z).toBeGreaterThan(1.5);
+  });
+});
+
+describe("J. スコアカード（S7-2 3.7、線 3）", () => {
+  const portalsOf = (net: Network, opts: typeof offOpts) => {
+    const plan = planNetwork(net, new Set(), null, [], opts);
+    const res = solvePlan(plan, flat, []);
+    const belowIds = new Set(runsWhere(plan, (r) => r.below));
+    return undergroundOf({
+      deferred: [],
+      approachEnds: [],
+      unplanned: [],
+      chunks: res.chunks,
+      runs: res.runs,
+      belowIds,
+      notLowered: loweredApproaches(plan).skipped,
+    }).portals;
+  };
+
+  it("counts the lowered ends, none short of cover where the approach is L long or more (線 3), with each end's stretch and depth", () => {
+    const p = portalsOf(twoApproaches(), cutOpts);
+    expect([p.ends, p.lowered, p.loweredCoverShort]).toEqual([2, 2, 0]);
+    expect(p.list.map((x) => x.lowered?.lengthM)).toEqual([218, 215]);
+    for (const x of p.list) expect(x.lowered!.approachDepthM).toBeGreaterThanOrEqual(TUNNEL_DEPTH_M - 0.05);
+    const off = portalsOf(twoApproaches(), offOpts);
+    expect([off.lowered, off.loweredCoverShort, off.coverShort]).toEqual([0, 0, 2]);
+  });
+
+  it("an approach short of L leaves its end short of cover, counted; less short than off", () => {
+    const p = portalsOf(twoApproaches(120), cutOpts);
+    const off = portalsOf(twoApproaches(120), offOpts);
+    expect([p.lowered, p.loweredCoverShort]).toEqual([2, 2]);
+    for (const [i, x] of p.list.entries()) expect(x.coverShortM!).toBeLessThan(off.list[i].coverShortM!);
+  });
+
+  it("lists the ends left at grade between two tunnels, and why", () => {
+    const p = portalsOf(betweenTunnels(133), cutOpts);
+    expect(p.lowered).toBe(0);
+    const near = p.list.filter((x) => x.notLowered !== undefined);
+    expect(near.map((x) => x.notLowered)).toEqual(["both-portals", "both-portals"]);
   });
 });
 

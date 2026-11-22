@@ -424,7 +424,7 @@ const fixture = (name: string) =>
   ReportSchema.parse(JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8")));
 
 describe("スコアカード版 7（report.ts）", () => {
-  it("the ship baselines are the current version (9 since S7-3), each deferred run under one reason, adding up to the plan's count", () => {
+  it("the ship baselines are the current version (10 since S7-2), each deferred run under one reason, adding up to the plan's count", () => {
     for (const [name, below] of [
       ["expresswayScorecard.ship.json", "pruned"],
       ["expresswayScorecard.ship-all.json", "all"],
@@ -515,6 +515,27 @@ describe("スコアカード版 9（belowScore.ts joinsOf・unplannedOf、compil
     const isNew = (key: string) =>
       key.startsWith("underground.joins.") || key.startsWith("underground.unplanned.");
     expect(added.every(isNew)).toBe(true);
+  });
+
+  it("a version-9 report still parses, and set beside its version 10 it differs by the lowered ends' counts alone (0 without the flag)", () => {
+    const ten = fixture("expresswayScorecard.ship-all.json");
+    const { lowered, loweredCoverShort, ...portals } = ten.underground!.portals;
+    expect([lowered, loweredCoverShort]).toEqual([0, 0]);
+    expect(
+      ten.underground!.portals.list.every((p) => p.lowered === undefined && p.notLowered === undefined),
+    ).toBe(true);
+    const nine = ReportSchema.parse({ ...ten, underground: { ...ten.underground!, portals }, version: 9 });
+    const before = flattenReport(nine);
+    const after = flattenReport(ten);
+    const changed = [...before.keys()].filter(
+      (key) => key !== "version" && before.get(key) !== after.get(key),
+    );
+    expect(changed).toEqual([]);
+    const added = [...after.keys()].filter((key) => !before.has(key));
+    expect(added.toSorted()).toEqual([
+      "underground.portals.lowered",
+      "underground.portals.loweredCoverShort",
+    ]);
   });
 
   it("lists a junction under the ground with its parent, node and structures, and no opening without the flag", () => {

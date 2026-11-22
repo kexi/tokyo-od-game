@@ -90,6 +90,7 @@ import {
   mainLineHoles,
   planNetwork,
   portalApproachEnds,
+  loweredApproaches,
   unplannedChains,
   untiedPairs,
   solveWithRampShift,
@@ -1213,6 +1214,7 @@ if (reportPath) {
     belowDeferrals: plan.belowDeferrals.map(({ chain: _chain, ...d }) => d),
     // S7-1 review 2: the approaches from the plan, so one whose below run is not written still counts.
     approachEnds: portalApproachEnds(plan),
+    notLowered: loweredApproaches(plan).skipped,
     // S7-3: the chains planNetwork never compiles (no viaduct), with tunnel ways.
     unplanned: unplannedChains(plan),
   };
