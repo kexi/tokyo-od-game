@@ -24,12 +24,14 @@ import {
   crossingsAhead,
   followSpeed,
   IN_LANE,
+  isInFrontBand,
   judgeAhead,
   junctionsAhead,
   OWN_HALF,
   PASS_GAP,
   passPlan,
   placeOnRoute,
+  slantOnPath,
   QUEUE_GAP,
   type CrossingRef,
   type DriveObstacle,
@@ -959,8 +961,8 @@ export class AutoDriver {
     const seen = this.look(route, world);
     // Where the car's nose is across the path (it leads in a pass).
     const nose = this.position.clone().addScaledVector(this.heading(), 1.6);
-    const own =
-      placeOnRoute(route, nose, this.at - 6, this.at + 10, Math.max(1, this.hint - 4))?.lateral ?? 0;
+    const nosePlace = placeOnRoute(route, nose, this.at - 6, this.at + 10, Math.max(1, this.hint - 4));
+    const own = nosePlace?.lateral ?? 0;
     const vehicles = seen.filter((s) => s.o.kind !== "person");
     // Lined up with the street (not crossing it in a junction).
     const isAligned = (s: Seen) => {
@@ -980,7 +982,14 @@ export class AutoDriver {
     this.frontGap = Infinity;
     // 第26条: behind whatever is in front of the car now (in its lane, or beside the line it passes).
     const band = this.pass ? 1.95 : IN_LANE;
-    const front = vehicles.find((s) => s.at > this.at + 0.5 && Math.abs(s.lateral - own) < band);
+    // At a slant to the path (D4, 大手町一丁目: 5–7° off it at 55 km/h) a car standing on the car's
+    // course is across where the nose is headed, not where it is: the band sweeps from one to the
+    // other (autoTraffic.ts isInFrontBand). No slant in a pass or off the path's line: as before.
+    const slant = nosePlace ? slantOnPath(this.heading(), nosePlace.dir, this.pass !== null) : 0;
+    const noseAt = nosePlace?.at ?? this.at;
+    const front = vehicles.find(
+      (s) => s.at > this.at + 0.5 && isInFrontBand(s.lateral, own, slant, s.at - noseAt, band),
+    );
     this.notePick(vehicles, front, own, band);
     this.looked.front = null;
     this.looked.follow = null;
