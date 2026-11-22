@@ -4798,14 +4798,18 @@ async function main(): Promise<void> {
    * question is when a vehicle became, or did not become, the one followed.
    */
   const traceFrontPick = (phase: "changed" | "accident", driver: AutoDriver) => {
-    const pick = driver.frontPick;
-    if (!pick) return;
-    const staleTicks = driver.ticks - pick.tick;
+    // Decided on the pick's tick and key first. Why not read frontPick for it: the getter builds the
+    // log's form, and this runs on every update while a line is written only on a change.
+    const tick = driver.frontPickTick;
+    if (tick === null) return;
+    const staleTicks = driver.ticks - tick;
     if (phase === "changed") {
       const isStale = staleTicks > 0;
-      const isSame = pick.picked === lastPickedKey;
+      const isSame = driver.frontPickKey === lastPickedKey;
       if (isStale || isSame) return;
     }
+    const pick = driver.frontPick;
+    if (!pick) return;
     lastPickedKey = pick.picked;
     const refOf = logRefOrNull;
     const finite = (v: number) => (Number.isFinite(v) ? round2(v) : null);

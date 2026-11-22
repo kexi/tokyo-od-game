@@ -126,6 +126,30 @@ describe("the autopilot's pick of the car in front, for the log (D4 autopilot_fr
   });
 });
 
+describe("the pick's tick and key, read without building the log's form (main.ts traceFrontPick)", () => {
+  it("are null before any pick, then the update count and the picked key that frontPick also gives", () => {
+    expect(new AutoDriver().frontPickTick).toBeNull();
+    expect(new AutoDriver().frontPickKey).toBeNull();
+    const near = { key: {} };
+    const { driver } = setUp(390, (route) => {
+      const a = along(route, 40);
+      return [
+        { position: a.pos.clone(), kind: "vehicle", speed: 0, heading: 0, key: near.key, source: "traffic" },
+      ];
+    });
+    expect(driver.frontPickTick).toBe(driver.ticks);
+    expect(driver.frontPickKey).toBe(near.key);
+    expect(driver.frontPick?.tick).toBe(driver.frontPickTick);
+    expect(driver.frontPick?.picked).toBe(driver.frontPickKey);
+  });
+
+  it("give no key when nothing is picked", () => {
+    const { driver } = setUp(390, () => []);
+    expect(driver.frontPickTick).toBe(driver.ticks);
+    expect(driver.frontPickKey).toBeNull();
+  });
+});
+
 describe("TrafficAI.keyOf (the accident line's otherKind and otherRef)", () => {
   it("tells a traffic car from a kerbside parked car by its collider, by the key the look knows it by, and nothing for a handle it does not know", () => {
     // Narrow streets, where cars are parked (as retireObject.test.ts).

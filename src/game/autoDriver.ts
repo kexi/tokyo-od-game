@@ -904,6 +904,16 @@ export class AutoDriver {
     this.pick.isMade = true;
   }
 
+  /** The update count the last pick of the car in front was made at (null: none yet), read as is. */
+  get frontPickTick(): number | null {
+    return this.pick.isMade ? this.pick.tick : null;
+  }
+
+  /** The key of the vehicle the last pick took as the car in front (null: none), read as is. */
+  get frontPickKey(): object | null {
+    return this.pick.front?.o.key ?? null;
+  }
+
   /**
    * The last pick of the car in front in the log's form (null: none yet): the vehicles placed up
    * to PICK_LIST_M ahead, the one picked, and those look() left out. For the log only
