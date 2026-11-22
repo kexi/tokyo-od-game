@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:measure-expressway-area-s7-3-opening-side, at: 2026-11-22T14:20:00Z }
   - { by: process:measure-expressway-area-s7-3-c2d2700, at: 2026-11-21T22:24:00Z }
   - { by: process:make-expressway-data-s7-3-c2d2700, at: 2026-11-18T02:50:00Z }
   - { by: process:vitest-s7-3-review2, at: 2026-11-22T06:12:00Z }
@@ -3782,7 +3783,8 @@ S7（地下全面）の合否を数で決めるための土台。スコアカー
   - defer のデータに、当てはまるチャンクは 0 枚（バイト一致で確かめた）。
 - **開口**（`XwChunk.openings`）
   - junction の 2 本の同一面の区間（`decks` の same）のうち、節点を含むか STRETCH_GAP_M の内のもの。
-  - 書くのは tunnel と cut のチャンクだけ。側は、区間の中ほどの相手の中心線で決める。
+  - 書くのは tunnel と cut のチャンクだけ。側は、区間の内で分合流の節点からいちばん遠い組で、相手の点を自分の run の平面に移して決める。
+    - 訂正（S7-4 判定 0、`fix/expressway-opening-side`）: #118 では、区間の中ほどの組で、2 本の run の x・y をそのまま引いていた。x・y は鎖ごとの平面（原点は鎖の最初の節点）なので、鎖が違うと符号が鎖の始まりの位置で決まり、ship/all で開口の区間の 21 が逆だった（経緯度から数え直し、合う 27・逆 21・決まらない 9・相手が無い 5。設計の数え方では 62 区間のうち逆 23）。S7-3 のテスト B は、合成網の並びがたまたま符号を変えなかったので通っていた。直した後は逆 0（合う 48・決まらない 9・相手が無い 5）。違ったのは 52 チャンクの `openings` の `side` だけ（3,830 チャンクのほかの欄と、測点・高さ・`decks`・区間は同じ）。決まらない 9 のうち 6 は長さ 0.5 m 未満の切れ端で、3 つ（24636595｜906266864 の両側、24372965｜1563006214）は区間の中ほどで \|u\| が 1 m 未満。
   - compile の `meta.json` だけが `features` に `below-junctions` を名乗る。ゲームが読む一覧 `XW_READER_FEATURES` には入れないので、今のゲームはそのファイルを断る（S7-4 が入れる）。
 - **スコアカード版 9**（`belowScore.ts`）
   - `underground.joins`: 地下の junction と、地下 run どうしの seam。親の開口の有無を持つ。
