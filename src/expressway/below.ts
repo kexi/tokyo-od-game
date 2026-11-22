@@ -196,24 +196,37 @@ export function portalReaches(
     if (start === null) return [own];
     const out: PortalReach[] = [];
     const seen = new Set<string>([`${id}:${side}`]);
-    const walk = (q: BelowLinkRun, s: number, enteredSide: 0 | 1 | null, acc: number, V: DesignSpeed) => {
+    // `from`: the run the way came from. Only the end that leads back to it is passed by (a seam's end
+    // entered from the other side). Why not every end entered at: a junction at a node at the parent's
+    // end (S7-3 3.3: the run ending there for a merging child, the run starting there for a diverging
+    // one) enters at that end, and its portal there (0 m from the child's end) or its way on under the
+    // ground is the nearest the child has (S7-3 review 2: dropped, a ramp's ceiling ran up to its end at
+    // the ground and it was closed).
+    const walk = (
+      q: BelowLinkRun,
+      s: number,
+      enteredSide: 0 | 1 | null,
+      from: string,
+      acc: number,
+      V: DesignSpeed,
+    ) => {
       const speed = Math.max(V, q.planV) as DesignSpeed;
       for (const fs of [0, 1] as const) {
-        const isEntry = enteredSide === fs;
-        if (isEntry) continue;
+        const next = nextUnder(runs, q.id, fs);
+        const isBack = enteredSide === fs && next !== null && next.run.id === from;
+        if (isBack) continue;
         const key = `${q.id}:${fs}`;
         if (seen.has(key)) continue;
         seen.add(key);
         const dist = acc + Math.abs(s - (fs === 0 ? 0 : q.lengthM));
-        const next = nextUnder(runs, q.id, fs);
         if (next === null) {
           out.push({ offset: dist, z: q.ground[fs], V: speed });
           continue;
         }
-        walk(next.run, next.s, next.side, dist, speed);
+        walk(next.run, next.s, next.side, q.id, dist, speed);
       }
     };
-    walk(start.run, start.s, start.side, 0, r.planV);
+    walk(start.run, start.s, start.side, id, 0, r.planV);
     return out.length > 0 ? out : [own];
   };
   return [at(0), at(1)];

@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { belowJoinsRefusal, shippedFolderRefusal } from "../scripts/expresswayGuards";
-import { belowDeferralOf, ceilingFrom, TUNNEL_DEPTH_M } from "../src/expressway/below";
+import {
+  type BelowLinkRun,
+  belowDeferralOf,
+  ceilingFrom,
+  portalReaches,
+  TUNNEL_DEPTH_M,
+} from "../src/expressway/below";
 import { joinsOf, portalEndsOf } from "../src/expressway/belowScore";
 import { checkJunction, checkSeamHeading } from "../src/expressway/checks";
-import { endPlan, planNetwork, type Plan, portalApproachEnds, solvePlan } from "../src/expressway/compile";
+import {
+  endPlan,
+  nodeS,
+  planNetwork,
+  type Plan,
+  portalApproachEnds,
+  solvePlan,
+} from "../src/expressway/compile";
 import { STATION_STRIDE, XW_FEATURES, XW_READER_FEATURES, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { alignLoop, alignPlan, LOOP_LEAD_M } from "../src/expressway/horizontal";
@@ -450,6 +463,168 @@ describe("C. トンネルの中で分かれるランプ", () => {
     });
     const v = violationsOf(res, lifted, () => undefined, true);
     expect(v.T12.count).toBeGreaterThan(0);
+  });
+});
+
+describe("C2. 親の端の節点に付く分合流の坑口（S7-3 レビュー 2 の必須 1）", () => {
+  /** The links from a plan (below.ts BelowLinkRun), with the ground of `ground` at each run's two ends. */
+  const linksOf = (plan: Plan, ground: (lon: number, lat: number) => number) => {
+    const out = new Map<string, BelowLinkRun>();
+    for (const [id, r] of plan.runs) {
+      const endOf = (atStart: boolean) => {
+        const e = endPlan(plan, r, atStart);
+        const isJoined = e.kind === "junction" || e.kind === "seam";
+        if (!isJoined) return { kind: e.kind };
+        return {
+          kind: e.kind,
+          parent: e.parent,
+          parentS: nodeS(plan.runs.get(e.parent)!, e.parentNodeIndex),
+        };
+      };
+      const g = (atStart: boolean) => {
+        const i = atStart ? r.i0 : r.i1;
+        const [lon, lat] = r.plane.toLonLat(r.align.xy[2 * i], r.align.xy[2 * i + 1]);
+        return ground(lon, lat);
+      };
+      out.set(id, {
+        id,
+        lengthM: r.length,
+        planV: r.planV,
+        below: r.below,
+        ends: [endOf(true), endOf(false)],
+        ground: [g(true), g(false)],
+      });
+    }
+    return out;
+  };
+  /**
+   * The main line's tunnel (x 1000–3000) under the hill (x 1100–2900, north of y −650), and a tunnel ramp
+   * up from the south (a viaduct, at grade, then the tunnel) joining it at x = `at` (or, `diverge`,
+   * leaving it there for the south).
+   */
+  const nodeNet = (at: number, diverge = false) => {
+    const net: Network = { ways: new Map(), nodes: new Map() };
+    const add = (id: number, x: number, y: number) => {
+      const [lon, lat] = plane.toLonLat(x, y);
+      net.nodes.set(id, normalizeNode(id, lon, lat, {}));
+      return id;
+    };
+    const main: number[] = [];
+    for (let x = 0; x <= 4000; x += 50) main.push(add(nodeAt(x), x, 0));
+    net.ways.set(1, normalizeWay(1, main.slice(0, 21), bridge));
+    net.ways.set(2, normalizeWay(2, main.slice(20, 61), tunnel));
+    net.ways.set(3, normalizeWay(3, main.slice(60), bridge));
+    const shift = at - 3000;
+    const pts: Array<[number, number]> = diverge
+      ? [
+          [120, -6],
+          [250, -18],
+          [400, -35],
+          [550, -60],
+          [700, -100],
+          [820, -150],
+          [920, -220],
+          [980, -300],
+          [1000, -400],
+          [1000, -500],
+          [1000, -600],
+          [1000, -680],
+          [1000, -740],
+          [1000, -800],
+          [1000, -900],
+        ]
+      : [
+          [2000, -900],
+          [2000, -800],
+          [2000, -740],
+          [2000, -680],
+          [2000, -600],
+          [2000, -500],
+          [2000, -400],
+          [2020, -300],
+          [2080, -220],
+          [2180, -150],
+          [2300, -100],
+          [2450, -60],
+          [2600, -35],
+          [2750, -18],
+          [2880, -6],
+        ];
+    const ramp = pts.map(([x, y], i) => add(500000 + i, diverge ? at + x : x + shift, y));
+    if (diverge) {
+      const ids = [nodeAt(at), ...ramp];
+      net.ways.set(72, normalizeWay(72, ids.slice(0, 12), linkTunnel));
+      net.ways.set(71, normalizeWay(71, ids.slice(11, 14), link));
+      net.ways.set(70, normalizeWay(70, ids.slice(13), linkBridge));
+    } else {
+      const ids = [...ramp, nodeAt(at)];
+      net.ways.set(70, normalizeWay(70, ids.slice(0, 3), linkBridge));
+      net.ways.set(71, normalizeWay(71, ids.slice(2, 5), link));
+      net.ways.set(72, normalizeWay(72, ids.slice(4), linkTunnel));
+    }
+    return net;
+  };
+  const nodeHill = (lon: number, lat: number) => {
+    const [x, y] = plane.toXY(lon, lat);
+    return x > 1100 && x < 2900 && y > -650 ? 30 : 3;
+  };
+
+  for (const [name, at, diverge, side] of [
+    ["merging at the node of the main tunnel's exit portal", 3000, false, 1],
+    ["diverging at the node of the main tunnel's entrance portal", 1000, true, 0],
+  ] as const) {
+    it(`${name}: the portal there counts at 0 m, and the ramp's tunnel is written and solves`, () => {
+      const plan = planNetwork(nodeNet(at, diverge), new Set(), null, [], on);
+      const ends = [endPlan(plan, plan.runs.get("72")!, true), endPlan(plan, plan.runs.get("72")!, false)];
+      expect(ends[side]).toMatchObject({ kind: "junction", parent: "2" });
+      const reaches = portalReaches(linksOf(plan, nodeHill), "72")[side];
+      expect(reaches.some((p) => p.offset < 1e-6 && Math.abs(p.z - 3) < 1e-6)).toBe(true);
+      const res = solvePlan(plan, nodeHill, []);
+      expect(res.runs.map((r) => r.id)).toContain("72");
+      expect(res.closed).toEqual([]);
+      const v = violationsOf(res, res.chunks, () => undefined, true);
+      expect([v.T3.count, v.T12.count]).toEqual([0, 0]);
+      // The main line keeps the steps it takes with the ramp joining 50 m inside instead.
+      const inside = solvePlan(
+        planNetwork(nodeNet(diverge ? at + 50 : at - 50, diverge), new Set(), null, [], on),
+        nodeHill,
+        [],
+      );
+      const steps = (r: ReturnType<typeof solvePlan>) =>
+        r.runs.filter((x) => ["1", "2", "3"].includes(x.id)).map((x) => x.steps.join(">"));
+      expect(steps(res)).toEqual(steps(inside));
+    });
+  }
+
+  it("a tunnel ramp leaving a loop at its seam's node counts the portals of both runs of the seam", () => {
+    const loop = ring([tunnel, bridge, bridge, tunnel]);
+    const net = addWays(
+      loop,
+      [
+        [700001, 640, -60],
+        [700002, 690, -140],
+        [700003, 740, -240],
+        [700004, 780, -340],
+        [700005, 820, -440],
+      ],
+      // The tunnel, then a viaduct out (a chain with no viaduct is never planned: S7-3b).
+      [
+        [90, linkTunnel, [300000, 700001, 700002, 700003]],
+        [91, linkBridge, [700003, 700004, 700005]],
+      ],
+    );
+    const plan = planNetwork(net, new Set(), null, [], on);
+    expect(endPlan(plan, plan.runs.get("90")!, true)).toMatchObject({ kind: "junction", parent: "1" });
+    const reaches = portalReaches(
+      linksOf(plan, () => 20),
+      "90",
+    )[0];
+    // Two portals: run 1's far end (into the viaduct 2) and, round the seam, run 4's far end (from 3).
+    const offsets = reaches.map((p) => Math.round(p.offset)).toSorted((p, q) => p - q);
+    const lengths = [plan.runs.get("1")!.length, plan.runs.get("4")!.length]
+      .map(Math.round)
+      .toSorted((p, q) => p - q);
+    expect(offsets).toEqual(lengths);
   });
 });
 
