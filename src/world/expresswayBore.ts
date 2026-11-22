@@ -359,6 +359,12 @@ export { isHoleAt };
  * The terrain's cut-out over a below chunk (water.ts's polygons: global tile units at `zoom`, x
  * east, y south): one polygon per stretch of consecutive stations that need a hole, the left edge
  * forward and the right edge back. `toTile(lon, lat)` maps to tile units.
+ *
+ * A tunnel's hole ends between two stations where isHoleAt changes (S7-4b): at the point where
+ * ground − road, linear between them, crosses the threshold (holeShare). Why not on the station
+ * (before S7-4b): stations lie up to ~21 m apart in a straight tunnel, and a road moved by 7 cm
+ * moved 麻布台's edge by a whole interval, 20 m (P2.7-6 PR 7c). A lone station under the threshold
+ * now opens the stretch between its two crossings: the rule has no count of stations in it.
  */
 export function boreHoles(
   chunk: XwChunk,
@@ -386,17 +392,43 @@ export function boreHoles(
     left = [];
     right = [];
   };
+  const isHoleOf = (i: number) => {
+    const o = i * STATION_STRIDE;
+    return (
+      isEmbankment ||
+      isHoleAt(chunk.structure as "tunnel" | "cut", chunk.st[o + ST.z], chunk.st[o + ST.ground])
+    );
+  };
+  const holes = Array.from({ length: n }, (_, i) => isHoleOf(i));
+  /** The hole's edge between stations i and j (one of them a hole, the other not): at holeShare, square to that interval. */
+  const putEdge = (i: number, j: number) => {
+    const t = holeShare(chunk, i, j);
+    const a = i * STATION_STRIDE;
+    const b = j * STATION_STRIDE;
+    const lon = chunk.st[a + ST.lon] + (chunk.st[b + ST.lon] - chunk.st[a + ST.lon]) * t;
+    const lat = chunk.st[a + ST.lat] + (chunk.st[b + ST.lat] - chunk.st[a + ST.lat]) * t;
+    const kx = 111320 * Math.cos((lat * Math.PI) / 180);
+    const ky = 110574;
+    const dx = (chunk.st[b + ST.lon] - chunk.st[a + ST.lon]) * kx;
+    const dy = (chunk.st[b + ST.lat] - chunk.st[a + ST.lat]) * ky;
+    const len = Math.hypot(dx, dy) || 1;
+    // Left of travel in east/north metres: (−dy, dx), j after i.
+    const lx = (-dy / len) * w;
+    const ly = (dx / len) * w;
+    left.push(...toTile(lon + lx / kx, lat + ly / ky));
+    right.push(...toTile(lon - lx / kx, lat - ly / ky));
+  };
   for (let i = 0; i < n; i++) {
     const o = i * STATION_STRIDE;
     const lon = chunk.st[o + ST.lon];
     const lat = chunk.st[o + ST.lat];
-    const isHole =
-      isEmbankment ||
-      isHoleAt(chunk.structure as "tunnel" | "cut", chunk.st[o + ST.z], chunk.st[o + ST.ground]);
-    if (!isHole) {
+    if (!holes[i]) {
       flush();
       continue;
     }
+    // Only a tunnel changes between stations: a cut and an embankment are holes all along.
+    const isOpening = i > 0 && !holes[i - 1];
+    if (isOpening) putEdge(i - 1, i);
     const a = Math.max(0, i - 1) * STATION_STRIDE;
     const b = Math.min(n - 1, i + 1) * STATION_STRIDE;
     const kx = 111320 * Math.cos((lat * Math.PI) / 180);
@@ -434,9 +466,28 @@ export function boreHoles(
     const ground = chunk.st[o + ST.ground];
     const isAtGround = isHoleAt("tunnel", z, ground) && z - ground < SEAM_AT_GROUND_M;
     if (isLast && isAtGround) put(-back[0], -back[1]);
+    const isClosing = i + 1 < n && !holes[i + 1];
+    if (isClosing) putEdge(i, i + 1);
   }
   flush();
   return out;
+}
+
+/** Ground over a tunnel's road under which isHoleAt (below.ts) opens the ground, m. */
+const HOLE_COVER_M = H + ROOF + HEAD_OVER_GROUND;
+
+/**
+ * Where between stations i and j of a tunnel ground − road crosses HOLE_COVER_M, as a share from i
+ * (0 at i, 1 at j), both read linear between the two (as the deck's faces are between rings). Why
+ * not the Hermite surface: the ground is a station value, only linear between stations.
+ */
+export function holeShare(chunk: Pick<XwChunk, "st">, i: number, j: number): number {
+  const cover = (k: number) => chunk.st[k * STATION_STRIDE + ST.ground] - chunk.st[k * STATION_STRIDE + ST.z];
+  const a = cover(i);
+  const b = cover(j);
+  const isFlat = Math.abs(b - a) < 1e-9;
+  if (isFlat) return 0.5;
+  return Math.min(1, Math.max(0, (HOLE_COVER_M - a) / (b - a)));
 }
 
 /**
