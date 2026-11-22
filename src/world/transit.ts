@@ -71,6 +71,14 @@ export class Transit {
     for (const bus of this.buses.values()) this.dropBody(bus);
   }
 
+  /** Whether this collider is a bus's (for the accident line: what the car hit). */
+  isBusCollider(handle: number): boolean {
+    for (const bus of this.buses.values()) {
+      if (bus.body?.collider(0)?.handle === handle) return true;
+    }
+    return false;
+  }
+
   count(): number {
     return this.buses.size;
   }

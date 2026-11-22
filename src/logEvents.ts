@@ -656,14 +656,34 @@ export const LOG_EVENTS = {
   trip_started: info({ target: z.string(), distanceM: z.number() }),
   destination_set: info({ name: z.string(), distanceKm: z.number() }),
   poi_collected: info({ poiId: z.number().int(), category: z.string(), ward: z.string() }),
-  /** A crash: the car's speed, and for a body with a mass the blow by both masses (Δv, energy). */
+  /**
+   * A crash: the car's speed, and for a body with a mass the blow by both masses (Δv, energy).
+   * `otherKind` who was hit (a traffic car, a kerbside parked car, the robotaxi, a patrol, a bus, a
+   * person; else `kind` again); `otherRef` its number in autopilot_front_pick. Without a mass
+   * record, Δv from the velocities over the frame's steps (`deltaVFrom`: velocities; the other's
+   * only for a patrol or the robotaxi, the dynamic cars) and `otherKmhBefore` its speed before them.
+   */
   accident: info({
     kind: z.string(),
     speedKmh: z.number(),
+    otherKind: z.enum([
+      "traffic",
+      "parked",
+      "robotaxi",
+      "patrol",
+      "bus",
+      "pedestrian",
+      "vehicle",
+      "building",
+      "pole",
+    ]),
+    otherRef: count.optional(),
     otherDeltaVKmh: z.number().optional(),
     carDeltaVKmh: z.number().optional(),
     energyKj: z.number().optional(),
     otherMassKg: z.number().optional(),
+    deltaVFrom: z.enum(["mass", "velocities"]).optional(),
+    otherKmhBefore: z.number().optional(),
   }),
   /**
    * A person and the player's car touched but it was not the driver's accident: the car stood
@@ -789,6 +809,52 @@ export const LOG_EVENTS = {
     onPavement: z.boolean(),
     offPath: z.boolean(),
     misaligned: z.boolean(),
+  }),
+  /**
+   * The autopilot's car in front changed (`changed`, a fresh pick only), or the last pick at an
+   * accident (`accident`; `staleTicks` driver updates since it was made: the offLane hold makes
+   * none). The car: `pathOffM` from its driven path, `ownM` its nose across the path (+ left),
+   * the band (m) a vehicle has to be within of it. Each vehicle placed up to 60 m ahead: its log ref
+   * (as accident's otherRef), who it is, along (`aheadM`) and across the path, across from the nose
+   * (`fromOwnM`), straight-line distance, seconds stood. `dropped`: near ahead in a straight line
+   * (to 60 m, 4 m across the heading) but left out of the look, and why (another level, off the path).
+   * Nulls: no car picked, a vehicle with no key or source, stood forever (a parked car).
+   */
+  autopilot_front_pick: info({
+    phase: z.enum(["changed", "accident"]),
+    gameMs: z.number(),
+    staleTicks: count,
+    mode: z.string(),
+    lostWhy: z.string().nullable(),
+    lat: z.number(),
+    lon: z.number(),
+    speedMs: z.number(),
+    pathOffM: z.number(),
+    ownM: z.number(),
+    bandM: z.number(),
+    pickedRef: count.nullable(),
+    candidates: z.array(
+      z.strictObject({
+        ref: count.nullable(),
+        source: z.string().nullable(),
+        kind: z.string(),
+        aheadM: z.number(),
+        lateralM: z.number(),
+        fromOwnM: z.number(),
+        straightM: z.number(),
+        stoppedForS: z.number().nullable(),
+        picked: z.boolean(),
+      }),
+    ),
+    dropped: z.array(
+      z.strictObject({
+        ref: count.nullable(),
+        source: z.string().nullable(),
+        aheadM: z.number(),
+        acrossM: z.number(),
+        why: z.enum(["level", "offPath"]),
+      }),
+    ),
   }),
   autopilot_stop_trace: info({
     phase: z.enum(["still", "movedOff", "accident"]),

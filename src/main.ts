@@ -96,7 +96,7 @@ import { RouteArrows } from "./game/routeArrows";
 import { RoboTaxi, type TaxiWorld } from "./game/robotaxi";
 import { AutoDriver, kerbLeft, keepLeftOffset, type DriveObstacle } from "./game/autoDriver";
 import { rapierClearance } from "./game/autoRecovery";
-import { halfLengthOf } from "./game/autoTraffic";
+import { halfLengthOf, type DriveSource } from "./game/autoTraffic";
 import { loadSignalModels } from "./world/signalModels";
 import { SidewalkNetwork } from "./world/sidewalks";
 import { KERB, type PavementPolygon, Pavements, PavementTiles } from "./world/pavements";
@@ -108,6 +108,7 @@ import { Missions } from "./game/missions";
 import { PoiField, storageKeyFor } from "./game/pois";
 import { captureFailure, reproUrl, setDiagnosticsState } from "./diagnostics";
 import { log, newSpan, recentLogs, warn, type Span } from "./log";
+import type { LogFields } from "./logEvents";
 import { Vehicle, type DriveInput } from "./physics/vehicle";
 import { Buildings } from "./world/buildings";
 import { DemStore } from "./world/dem";
@@ -394,6 +395,9 @@ function renderClock(el: HTMLElement, clock: GameClock, date: { m: number; d: nu
   time.textContent = ` ${hhmm}`;
   el.append(day, time);
 }
+
+/** A speed in m/s as km/h to 0.1 (the accident line's Δv). */
+const kmh1 = (ms: number) => Math.round(ms * 36) / 10;
 
 /** Horizontal unit vector the car's nose points along (local yaw 0 faces +Z). */
 function headingVector(q: Quaternion): Vector3 {
@@ -2835,6 +2839,7 @@ async function main(): Promise<void> {
     // blow left no record (vehicle.speedKmh() after the steps has the push in it).
     const v0 = vehicle.body.linvel();
     const ownKmhBeforeSteps = Math.hypot(v0.x, v0.z) * 3.6;
+    noteVelocitiesBeforeSteps();
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
       // Held while it is being put on its street after a start or a 移動.
@@ -2879,7 +2884,7 @@ async function main(): Promise<void> {
       input.pad.contact("impact", blow.impact.dvCar + 1);
       pedestrians.knockDown(ped);
       emergency.start(ped, now);
-      onAccident("pedestrian", judged.carKmh, ped.profile.name, blow.impact);
+      onAccident("pedestrian", judged.carKmh, ped.profile.name, blow.impact, { otherKind: "pedestrian" });
     }
     events.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
@@ -2946,7 +2951,8 @@ async function main(): Promise<void> {
         });
       }
       // judgeVehicleBlow never calls the ground an accident; the check keeps the type narrow.
-      if (isAccident && what !== "ground") onAccident(what, kmh, "", impact);
+      if (isAccident && what !== "ground")
+        onAccident(what, kmh, "", impact, accidentOther(other, what, record));
     });
 
     // The camera's view for open-world spawning (traffic and people appear and leave out of it).
@@ -4783,6 +4789,64 @@ async function main(): Promise<void> {
       ahead,
     });
   };
+  /** The car in front of the last logged pick (autopilot_front_pick): undefined before any. */
+  let lastPickedKey: object | null | undefined;
+  const FRONT_PICK_LISTED = 8;
+  /**
+   * autopilot_front_pick: on a fresh pick that changed the car in front, or at an accident the last
+   * pick however old. Why only on a change and not every look: a look is every frame, and the
+   * question is when a vehicle became, or did not become, the one followed.
+   */
+  const traceFrontPick = (phase: "changed" | "accident", driver: AutoDriver) => {
+    // Decided on the pick's tick and key first. Why not read frontPick for it: the getter builds the
+    // log's form, and this runs on every update while a line is written only on a change.
+    const tick = driver.frontPickTick;
+    if (tick === null) return;
+    const staleTicks = driver.ticks - tick;
+    if (phase === "changed") {
+      const isStale = staleTicks > 0;
+      const isSame = driver.frontPickKey === lastPickedKey;
+      if (isStale || isSame) return;
+    }
+    const pick = driver.frontPick;
+    if (!pick) return;
+    lastPickedKey = pick.picked;
+    const refOf = logRefOrNull;
+    const finite = (v: number) => (Number.isFinite(v) ? round2(v) : null);
+    const g = frame.toGeodetic(vehicle.position());
+    log("autopilot_front_pick", {
+      phase,
+      gameMs: Math.round(gameNow()),
+      staleTicks,
+      mode: driver.modeKind,
+      lostWhy: driver.lostWhy,
+      lat: Number(g.lat.toFixed(6)),
+      lon: Number(g.lon.toFixed(6)),
+      speedMs: round2(vehicle.forwardSpeed()),
+      pathOffM: round2(driver.pathOffM),
+      ownM: round2(pick.own),
+      bandM: round2(pick.band),
+      pickedRef: refOf(pick.picked),
+      candidates: pick.candidates.slice(0, FRONT_PICK_LISTED).map((c) => ({
+        ref: refOf(c.key),
+        source: c.source,
+        kind: c.kind,
+        aheadM: round2(c.ahead),
+        lateralM: round2(c.lateral),
+        fromOwnM: round2(c.fromOwn),
+        straightM: round2(c.straight),
+        stoppedForS: finite(c.stoppedFor),
+        picked: c.picked,
+      })),
+      dropped: pick.dropped.slice(0, FRONT_PICK_LISTED).map((d) => ({
+        ref: refOf(d.key),
+        source: d.source,
+        aheadM: round2(d.ahead),
+        acrossM: round2(d.across),
+        why: d.why,
+      })),
+    });
+  };
   /** Logs a stand of the autopilot's car once it is long, and its moving off after it. */
   const noteAutopilotStill = (dt: number, driver: AutoDriver) => {
     const isStill = Math.abs(vehicle.forwardSpeed()) < 0.3;
@@ -4809,6 +4873,7 @@ async function main(): Promise<void> {
     const wasLost = ap.driver.lostWhy !== null;
     const { input, done, gaveUp } = ap.driver.update(dt, tw, pose);
     noteAutopilotStill(dt, ap.driver);
+    traceFrontPick("changed", ap.driver);
     const lost = ap.driver.lostAt;
     const isNewlyLost = !wasLost && ap.driver.lostWhy !== null && lost !== null;
     if (isNewlyLost) {
@@ -4862,17 +4927,32 @@ async function main(): Promise<void> {
   // robotaxi and the patrols; each driver leaves itself out.
   const driveVehicles = (): DriveObstacle[] => {
     const list: DriveObstacle[] = [];
-    const moving = (key: object, position: Vector3, speed: number, heading: number, halfLength?: number) =>
-      list.push({ position, kind: "vehicle", speed, heading, halfLength, key });
-    traffic.forEachCar((o, speed, kind) => moving(o, o.position, speed, o.rotation.y, halfLengthOf(kind)));
+    const moving = (
+      source: DriveSource,
+      key: object,
+      position: Vector3,
+      speed: number,
+      heading: number,
+      halfLength?: number,
+    ) => list.push({ position, kind: "vehicle", speed, heading, halfLength, key, source });
+    traffic.forEachCar((o, speed, kind) =>
+      moving("traffic", o, o.position, speed, o.rotation.y, halfLengthOf(kind)),
+    );
     for (const p of traffic.parkedPoses()) {
-      list.push({ position: p.position, kind: "parked", heading: p.yaw, key: p.key });
+      list.push({ position: p.position, kind: "parked", heading: p.yaw, key: p.key, source: "parked" });
     }
     const isDriven = mode === "car";
-    if (isDriven) moving(vehicle, vehicle.position(), vehicle.forwardSpeed(), vehicle.yaw());
-    else list.push({ position: vehicle.position(), kind: "parked", heading: vehicle.yaw(), key: vehicle });
-    if (taxi) moving(taxi, taxi.position, taxi.speed, taxi.car.yaw());
-    for (const u of patrols) moving(u, u.position, u.car.forwardSpeed(), u.car.yaw());
+    if (isDriven) moving("player", vehicle, vehicle.position(), vehicle.forwardSpeed(), vehicle.yaw());
+    else
+      list.push({
+        position: vehicle.position(),
+        kind: "parked",
+        heading: vehicle.yaw(),
+        key: vehicle,
+        source: "player",
+      });
+    if (taxi) moving("robotaxi", taxi, taxi.position, taxi.speed, taxi.car.yaw());
+    for (const u of patrols) moving("patrol", u, u.position, u.car.forwardSpeed(), u.car.yaw());
     return list;
   };
   // Buildings, poles and gantries round a pose, for the manoeuvres back onto the road.
@@ -5677,15 +5757,109 @@ async function main(): Promise<void> {
     const { dv1, dv2, energy } = centralImpact(carKg, body.mass, closing, e);
     return { closing, carSpeed: closing, dvCar: dv1, dvOther: dv2, energy, carKg, otherKg: body.mass };
   };
+  /**
+   * A number per vehicle for the logs (accident, autopilot_front_pick), by the key the drivers'
+   * look knows it by. Why not the traffic car's own id: the look also holds parked cars, patrols
+   * and the robotaxi, which have none.
+   */
+  const logRefs = new WeakMap<object, number>();
+  let nextLogRef = 0;
+  const logRefOf = (key: object): number => {
+    const known = logRefs.get(key);
+    if (known !== undefined) return known;
+    nextLogRef++;
+    logRefs.set(key, nextLogRef);
+    return nextLogRef;
+  };
+  const logRefOrNull = (key: object | null): number | null => (key ? logRefOf(key) : null);
+  /**
+   * The ground velocity (m/s) of the player's car and of each patrol's and the robotaxi's chassis
+   * before this frame's steps, by collider handle: Δv for the accident line where the mass contacts
+   * kept no record (those bodies are dynamic, the physics resolves their blow itself).
+   */
+  // The entries are kept and overwritten frame after frame, stamped with the frame they were noted
+  // in. Why not clear the map and make new entries each frame: it is read only at an accident, and a
+  // stamp tells a car noted this frame from one gone since (a handle can be used again).
+  const velocitiesBeforeSteps = new Map<number, { x: number; z: number; frame: number }>();
+  let velocityFrame = 0;
+  const noteVelocityOf = (car: Vehicle) => {
+    const v = car.body.linvel();
+    const entry = velocitiesBeforeSteps.get(car.chassis.handle);
+    if (!entry) {
+      velocitiesBeforeSteps.set(car.chassis.handle, { x: v.x, z: v.z, frame: velocityFrame });
+      return;
+    }
+    entry.x = v.x;
+    entry.z = v.z;
+    entry.frame = velocityFrame;
+  };
+  const noteVelocitiesBeforeSteps = () => {
+    velocityFrame++;
+    noteVelocityOf(vehicle);
+    if (taxi) noteVelocityOf(taxi.car);
+    for (const u of patrols) noteVelocityOf(u.car);
+  };
+  /** The velocity noted before this frame's steps for a collider handle (null: none this frame). */
+  const velocityBeforeSteps = (handle: number) => {
+    const entry = velocitiesBeforeSteps.get(handle);
+    const isThisFrame = entry !== undefined && entry.frame === velocityFrame;
+    return isThisFrame ? entry : null;
+  };
+  /** The change of a dynamic car's ground velocity over this frame's steps (m/s; null: not noted). */
+  const deltaVOver = (handle: number, body: RAPIER.RigidBody): number | null => {
+    const before = velocityBeforeSteps(handle);
+    if (!before) return null;
+    const now = body.linvel();
+    return Math.hypot(now.x - before.x, now.z - before.z);
+  };
+  type AccidentKind = "pedestrian" | "vehicle" | "building" | "pole";
+  type AccidentOtherKind = LogFields<"accident">["otherKind"];
+  /** What accidentOther found of the other party (Δv in m/s, speed in km/h). */
+  type AccidentOther = {
+    otherKind: AccidentOtherKind;
+    otherRef?: number;
+    carDvVelocities?: number;
+    otherDvVelocities?: number;
+    otherKmhBefore?: number;
+  };
+  /**
+   * Who the car hit, for the accident line: traffic, a parked car, the robotaxi, a patrol, a bus,
+   * or else what hitKind says; its log ref; and where the mass contacts kept no record, Δv from the
+   * velocities over the frame's steps (the other's only for a dynamic car: a kinematic body is moved
+   * by its program, not by the blow).
+   */
+  const accidentOther = (handle: number, what: AccidentKind, record: Impact | null): AccidentOther => {
+    const fromTraffic = traffic.keyOf(handle);
+    const unit = patrols.find((u) => u.car.chassis.handle === handle);
+    const isTaxi = taxi !== null && taxi.car.chassis.handle === handle;
+    const otherBody = unit?.car.body ?? (isTaxi ? taxi?.car.body : undefined);
+    const key = fromTraffic?.key ?? unit ?? (isTaxi ? taxi : null);
+    const otherKind: AccidentOtherKind =
+      fromTraffic?.source ??
+      (unit ? "patrol" : isTaxi ? "robotaxi" : transit.isBusCollider(handle) ? "bus" : what);
+    const base: AccidentOther = { otherKind, ...(key && { otherRef: logRefOf(key) }) };
+    if (record) return base;
+    const carDv = deltaVOver(vehicle.chassis.handle, vehicle.body);
+    const otherDv = otherBody ? deltaVOver(handle, otherBody) : null;
+    const before = velocityBeforeSteps(handle);
+    return {
+      ...base,
+      ...(carDv !== null && { carDvVelocities: carDv }),
+      ...(otherDv !== null && { otherDvVelocities: otherDv }),
+      ...(before && { otherKmhBefore: Math.hypot(before.x, before.z) * 3.6 }),
+    };
+  };
   const onAccident = (
-    kind: "pedestrian" | "vehicle" | "building" | "pole",
+    kind: AccidentKind,
     kmh: number,
     who: string,
     impact: Impact | null = null,
+    other: AccidentOther = { otherKind: kind },
   ) => {
     social.note("crash", env.now().getTime());
     pursuitDirector.onCrash();
     if (autopilot) traceAutopilot("accident", autopilot.driver);
+    if (autopilot) traceFrontPick("accident", autopilot.driver);
     const now = gameNow();
     lastCrashAt = now;
     const careless = book(VIOLATIONS.safeDriving, now, 3000);
@@ -5709,11 +5883,25 @@ async function main(): Promise<void> {
     log("accident", {
       kind,
       speedKmh: Math.round(kmh),
+      otherKind: other.otherKind,
+      ...(other.otherRef !== undefined && { otherRef: other.otherRef }),
       ...(impact && {
-        otherDeltaVKmh: Math.round(impact.dvOther * 36) / 10,
-        carDeltaVKmh: Math.round(impact.dvCar * 36) / 10,
+        otherDeltaVKmh: kmh1(impact.dvOther),
+        carDeltaVKmh: kmh1(impact.dvCar),
         energyKj: Math.round(impact.energy / 100) / 10,
         otherMassKg: Math.round(impact.otherKg),
+        deltaVFrom: "mass" as const,
+      }),
+      // Without a mass record (impactAgainstMass found no body): from the velocities, so a blow on
+      // a patrol or the robotaxi has its Δv too.
+      ...(!impact &&
+        other.carDvVelocities !== undefined && {
+          carDeltaVKmh: kmh1(other.carDvVelocities),
+          ...(other.otherDvVelocities !== undefined && { otherDeltaVKmh: kmh1(other.otherDvVelocities) }),
+          deltaVFrom: "velocities" as const,
+        }),
+      ...(other.otherKmhBefore !== undefined && {
+        otherKmhBefore: Math.round(other.otherKmhBefore * 10) / 10,
       }),
     });
   };

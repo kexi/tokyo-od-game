@@ -371,6 +371,17 @@ export class TrafficAI {
     return this.cars.some((c) => c.body?.collider(0)?.handle === handle);
   }
 
+  /**
+   * The traffic or parked car whose collider this is, by the key the drivers' look knows it by (its
+   * scene object, main.ts driveVehicles), for the accident line (null: neither).
+   */
+  keyOf(handle: number): { source: "traffic" | "parked"; key: object } | null {
+    const car = this.cars.find((o) => o.body?.collider(0)?.handle === handle);
+    if (car) return { source: "traffic", key: car.object };
+    const parked = this.parked.find((p) => p.body.collider(0)?.handle === handle);
+    return parked ? { source: "parked", key: parked.object } : null;
+  }
+
   /** The centre of the traffic car whose collider this is (null: none). */
   positionOf(handle: number): Vector3 | null {
     const c = this.cars.find((o) => o.body?.collider(0)?.handle === handle);

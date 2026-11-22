@@ -312,7 +312,16 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   trip_started: { target: "東京タワー", distanceM: 2400 },
   destination_set: { name: "浅草寺", distanceKm: 5.1 },
   poi_collected: { poiId: 12, category: "library", ward: "千代田区" },
-  accident: { kind: "pedestrian", speedKmh: 32 },
+  accident: {
+    kind: "vehicle",
+    speedKmh: 19,
+    otherKind: "patrol",
+    otherRef: 41,
+    carDeltaVKmh: 30.1,
+    otherDeltaVKmh: 22.8,
+    deltaVFrom: "velocities",
+    otherKmhBefore: 0.1,
+  },
   pedestrian_bump: { carKmh: 0.2, otherDeltaVKmh: 4.8 },
   incident_jump: { jumpM: 1200, awayM: 1236 },
   incident_resumed: { heldMs: 42000 },
@@ -340,6 +349,45 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     onPavement: true,
     offPath: false,
     misaligned: false,
+  },
+  autopilot_front_pick: {
+    phase: "changed",
+    gameMs: 132030,
+    staleTicks: 0,
+    mode: "drive",
+    lostWhy: null,
+    lat: 35.684922,
+    lon: 139.76481,
+    speedMs: 15.57,
+    pathOffM: 0.4,
+    ownM: 0.2,
+    bandM: 1.7,
+    pickedRef: 41,
+    candidates: [
+      {
+        ref: 41,
+        source: "patrol",
+        kind: "vehicle",
+        aheadM: 7.2,
+        lateralM: 0.9,
+        fromOwnM: 0.7,
+        straightM: 7.3,
+        stoppedForS: 2.37,
+        picked: true,
+      },
+      {
+        ref: 7,
+        source: "parked",
+        kind: "parked",
+        aheadM: 30.5,
+        lateralM: 5.1,
+        fromOwnM: 4.9,
+        straightM: 31,
+        stoppedForS: null,
+        picked: false,
+      },
+    ],
+    dropped: [{ ref: 12, source: "traffic", aheadM: 18.4, acrossM: -1.2, why: "offPath" }],
   },
   autopilot_stop_trace: {
     phase: "still",
@@ -1062,7 +1110,7 @@ describe("the logger (log.ts)", () => {
   it("checks only the first line of each event in production mode", () => {
     setLogValidation("first");
     const lines = captured(() => {
-      log("accident", { kind: "car", speedKmh: 30 });
+      log("accident", { kind: "car", speedKmh: 30, otherKind: "vehicle" });
       log("accident", { kind: "car" } as never);
       log("pursuit_stage", {} as never);
     });
