@@ -1,6 +1,6 @@
 {
- "version": 8,
- "label": "r1-all",
+ "version": 9,
+ "label": "s73-all-off",
  "range": "ship",
  "below": "all",
  "objective": {
@@ -9606,6 +9606,1140 @@
      "maxDzM": 0.18,
      "offsetM": 4.57,
      "stations": 3
+    }
+   ]
+  },
+  "joins": {
+   "junctions": 3,
+   "seams": 0,
+   "withoutOpening": 3,
+   "list": [
+    {
+     "id": "28127318:start",
+     "kind": "junction",
+     "parent": "867182415",
+     "parentS": 719.15,
+     "node": "end",
+     "structure": "embankment",
+     "parentStructure": "tunnel",
+     "opening": false
+    },
+    {
+     "id": "4848757:start",
+     "kind": "junction",
+     "parent": "4854085",
+     "parentS": 2264.49,
+     "node": "inside",
+     "structure": "embankment",
+     "parentStructure": "cut",
+     "opening": false
+    },
+    {
+     "id": "5170992:start",
+     "kind": "junction",
+     "parent": "5170834",
+     "parentS": 1673.86,
+     "node": "end",
+     "structure": "embankment",
+     "parentStructure": "cut",
+     "opening": false
+    }
+   ]
+  },
+  "unplanned": {
+   "total": {
+    "chains": 78,
+    "km": 36.243,
+    "belowKm": 20.128
+   },
+   "inRange": {
+    "chains": 48,
+    "km": 22.32,
+    "belowKm": 12.037
+   },
+   "list": [
+    {
+     "id": "c1132724785",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.071,
+     "belowKm": 0.071,
+     "inRange": false,
+     "ends": [
+      [
+       "1132724781",
+       "1132724783"
+      ],
+      [
+       "1132724781"
+      ]
+     ]
+    },
+    {
+     "id": "c1134168114",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.17,
+     "belowKm": 0.016,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "1304769699",
+       "5213324"
+      ]
+     ]
+    },
+    {
+     "id": "c1223640147",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.832,
+     "belowKm": 0.73,
+     "inRange": false,
+     "ends": [
+      [
+       "367047850"
+      ],
+      [
+       "686983560"
+      ]
+     ]
+    },
+    {
+     "id": "c129647464",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.287,
+     "belowKm": 0.1,
+     "inRange": false,
+     "ends": [
+      [
+       "129647477"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c1382671864",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.139,
+     "belowKm": 0.01,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c1382671870",
+     "cls": "ramp",
+     "ref": "E14",
+     "km": 0.26,
+     "belowKm": 0.011,
+     "inRange": true,
+     "ends": [
+      [
+       "1382671866"
+      ],
+      [
+       "1469686222"
+      ]
+     ]
+    },
+    {
+     "id": "c1382671871",
+     "cls": "ramp",
+     "ref": "E14",
+     "km": 0.221,
+     "belowKm": 0.011,
+     "inRange": true,
+     "ends": [
+      [
+       "1382671866"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c1382671872",
+     "cls": "ramp",
+     "ref": "E14",
+     "km": 0.179,
+     "belowKm": 0.11,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c1382671873",
+     "cls": "ramp",
+     "ref": "E14",
+     "km": 0.131,
+     "belowKm": 0.011,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c139976419",
+     "cls": "ramp",
+     "ref": "14",
+     "km": 0.408,
+     "belowKm": 0.01,
+     "inRange": true,
+     "ends": [
+      [
+       "199311759"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c1469686212",
+     "cls": "ramp",
+     "ref": "E14",
+     "km": 0.171,
+     "belowKm": 0.011,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c1469686219",
+     "cls": "ramp",
+     "ref": "E14",
+     "km": 0.261,
+     "belowKm": 0.011,
+     "inRange": true,
+     "ends": [
+      [
+       "1382671866"
+      ],
+      [
+       "1469686222"
+      ]
+     ]
+    },
+    {
+     "id": "c1489157714",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.256,
+     "belowKm": 0.107,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c1563007099",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.273,
+     "belowKm": 0.104,
+     "inRange": true,
+     "ends": [
+      [
+       "378284472"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c169227782",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.258,
+     "belowKm": 0.07,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "129647481"
+      ]
+     ]
+    },
+    {
+     "id": "c172598647",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.088,
+     "belowKm": 0.088,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c183184028",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.442,
+     "belowKm": 0.106,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "166675171"
+      ]
+     ]
+    },
+    {
+     "id": "c190617376",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.272,
+     "belowKm": 0.118,
+     "inRange": true,
+     "ends": [
+      [
+       "28127108"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c201789091",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.49,
+     "belowKm": 0.327,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "28160350"
+      ]
+     ]
+    },
+    {
+     "id": "c24402539",
+     "cls": "ramp",
+     "ref": "C1",
+     "km": 0.28,
+     "belowKm": 0.109,
+     "inRange": true,
+     "ends": [
+      [
+       "24402540"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c24636434",
+     "cls": "main",
+     "ref": "C1",
+     "km": 0.617,
+     "belowKm": 0.617,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "24402540"
+      ]
+     ]
+    },
+    {
+     "id": "c25107771",
+     "cls": "ramp",
+     "ref": "C1",
+     "km": 0.339,
+     "belowKm": 0.097,
+     "inRange": true,
+     "ends": [
+      [
+       "35266568"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c254966443",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.568,
+     "belowKm": 0.245,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "55081206"
+      ]
+     ]
+    },
+    {
+     "id": "c27093547",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.325,
+     "belowKm": 0.01,
+     "inRange": false,
+     "ends": [
+      [
+       "46875286"
+      ],
+      [
+       "46875288"
+      ]
+     ]
+    },
+    {
+     "id": "c28160341",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.251,
+     "belowKm": 0.093,
+     "inRange": false,
+     "ends": [
+      [
+       "28160347"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c331922695",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.342,
+     "belowKm": 0.342,
+     "inRange": true,
+     "ends": [
+      [
+       "331922709"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c367047851",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.956,
+     "belowKm": 0.803,
+     "inRange": false,
+     "ends": [
+      [
+       "479652514"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c378284514",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.282,
+     "belowKm": 0.139,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "378284483"
+      ]
+     ]
+    },
+    {
+     "id": "c381950206",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.329,
+     "belowKm": 0.159,
+     "inRange": true,
+     "ends": [
+      [
+       "28127108"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c381953859",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.25,
+     "belowKm": 0.122,
+     "inRange": true,
+     "ends": [
+      [
+       "28127108"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c381953860",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.405,
+     "belowKm": 0.121,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "331922709"
+      ]
+     ]
+    },
+    {
+     "id": "c381972981",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.3,
+     "belowKm": 0.097,
+     "inRange": true,
+     "ends": [
+      [
+       "331922709"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c381972985",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.469,
+     "belowKm": 0.101,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "28127108"
+      ]
+     ]
+    },
+    {
+     "id": "c387843163",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.337,
+     "belowKm": 0.337,
+     "inRange": false,
+     "ends": [
+      [
+       "166675171"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c45180327",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.75,
+     "belowKm": 0.109,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "31298320"
+      ]
+     ]
+    },
+    {
+     "id": "c4848922",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.343,
+     "belowKm": 0.222,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c4848923",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.164,
+     "belowKm": 0.075,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c4848935",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.296,
+     "belowKm": 0.296,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c4848936",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.254,
+     "belowKm": 0.254,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c4848941",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.404,
+     "belowKm": 0.319,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c4848942",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.258,
+     "belowKm": 0.258,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c5170993",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.342,
+     "belowKm": 0.342,
+     "inRange": true,
+     "ends": [
+      [
+       "5170992",
+       "880273111"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c5171001",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.276,
+     "belowKm": 0.276,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "42751390"
+      ]
+     ]
+    },
+    {
+     "id": "c5204889",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.545,
+     "belowKm": 0.202,
+     "inRange": false,
+     "ends": [
+      [
+       "5204890"
+      ],
+      [
+       "5204850"
+      ]
+     ]
+    },
+    {
+     "id": "c5208476",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.774,
+     "belowKm": 0.035,
+     "inRange": true,
+     "ends": [
+      [
+       "59613980"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c5212953",
+     "cls": "ramp",
+     "ref": "K6",
+     "km": 0.902,
+     "belowKm": 0.28,
+     "inRange": true,
+     "ends": [
+      [
+       "5365198"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c5212957",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.992,
+     "belowKm": 0.069,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "59613988"
+      ]
+     ]
+    },
+    {
+     "id": "c541983769",
+     "cls": "ramp",
+     "ref": "C2",
+     "km": 0.444,
+     "belowKm": 0.308,
+     "inRange": true,
+     "ends": [
+      [
+       "28127108"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c593037725",
+     "cls": "main",
+     "ref": "C1",
+     "km": 0.181,
+     "belowKm": 0.181,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c593092713",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.506,
+     "belowKm": 0.251,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "593046494"
+      ]
+     ]
+    },
+    {
+     "id": "c593092715",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.393,
+     "belowKm": 0.199,
+     "inRange": false,
+     "ends": [
+      [
+       "593122572"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c593092720",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.431,
+     "belowKm": 0.196,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "593122572"
+      ]
+     ]
+    },
+    {
+     "id": "c593092724",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.435,
+     "belowKm": 0.222,
+     "inRange": false,
+     "ends": [
+      [
+       "593046494"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c593092725",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.507,
+     "belowKm": 0.221,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "593122572"
+      ]
+     ]
+    },
+    {
+     "id": "c593106985",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.617,
+     "belowKm": 0.323,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "593046494"
+      ]
+     ]
+    },
+    {
+     "id": "c593107005",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.55,
+     "belowKm": 0.336,
+     "inRange": false,
+     "ends": [
+      [
+       "593122572"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c593126287",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.994,
+     "belowKm": 0.781,
+     "inRange": true,
+     "ends": [
+      [
+       "593046494"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c593126294",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.945,
+     "belowKm": 0.798,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "593046494"
+      ]
+     ]
+    },
+    {
+     "id": "c594120984",
+     "cls": "ramp",
+     "ref": null,
+     "km": 1.693,
+     "belowKm": 1.233,
+     "inRange": true,
+     "ends": [
+      [
+       "593122572"
+      ],
+      [
+       "156796456"
+      ]
+     ]
+    },
+    {
+     "id": "c594120986",
+     "cls": "ramp",
+     "ref": null,
+     "km": 1.048,
+     "belowKm": 0.53,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "767708415"
+      ]
+     ]
+    },
+    {
+     "id": "c594282993",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.418,
+     "belowKm": 0.221,
+     "inRange": false,
+     "ends": [
+      [
+       "593046494"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c594282995",
+     "cls": "ramp",
+     "ref": null,
+     "km": 1.442,
+     "belowKm": 1.118,
+     "inRange": true,
+     "ends": [
+      [
+       "156796456"
+      ],
+      [
+       "593122572"
+      ]
+     ]
+    },
+    {
+     "id": "c59719679",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.303,
+     "belowKm": 0.011,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "990615412"
+      ]
+     ]
+    },
+    {
+     "id": "c61886808",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.624,
+     "belowKm": 0.269,
+     "inRange": false,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c733767649",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.888,
+     "belowKm": 0.788,
+     "inRange": false,
+     "ends": [
+      [
+       "686983560"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c733767651",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.739,
+     "belowKm": 0.578,
+     "inRange": false,
+     "ends": [
+      [
+       "479652514"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c733767653",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.974,
+     "belowKm": 0.619,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "479652514"
+      ]
+     ]
+    },
+    {
+     "id": "c733767655",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.461,
+     "belowKm": 0.461,
+     "inRange": false,
+     "ends": [
+      [],
+      [
+       "686983560"
+      ]
+     ]
+    },
+    {
+     "id": "c766677827",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.436,
+     "belowKm": 0.436,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "28127108"
+      ]
+     ]
+    },
+    {
+     "id": "c782495311",
+     "cls": "ramp",
+     "ref": null,
+     "km": 1.425,
+     "belowKm": 0.96,
+     "inRange": true,
+     "ends": [
+      [
+       "767708415"
+      ],
+      []
+     ]
+    },
+    {
+     "id": "c805171060",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.649,
+     "belowKm": 0.649,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "331922709"
+      ]
+     ]
+    },
+    {
+     "id": "c82596773",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.391,
+     "belowKm": 0.043,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "783633020"
+      ]
+     ]
+    },
+    {
+     "id": "c864490590",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.228,
+     "belowKm": 0.008,
+     "inRange": false,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c916571610",
+     "cls": "ramp",
+     "ref": "C1",
+     "km": 0.273,
+     "belowKm": 0.104,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "35266568"
+      ]
+     ]
+    },
+    {
+     "id": "c916571615",
+     "cls": "ramp",
+     "ref": "C1",
+     "km": 0.344,
+     "belowKm": 0.099,
+     "inRange": true,
+     "ends": [
+      [],
+      [
+       "24402540"
+      ]
+     ]
+    },
+    {
+     "id": "c983801241",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.132,
+     "belowKm": 0.015,
+     "inRange": true,
+     "ends": [
+      [],
+      []
+     ]
+    },
+    {
+     "id": "c990876831",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.107,
+     "belowKm": 0.011,
+     "inRange": false,
+     "ends": [
+      [
+       "724834920"
+      ],
+      [
+       "990615412"
+      ]
+     ]
+    },
+    {
+     "id": "c990876833",
+     "cls": "ramp",
+     "ref": null,
+     "km": 0.104,
+     "belowKm": 0.011,
+     "inRange": false,
+     "ends": [
+      [
+       "724834920"
+      ],
+      [
+       "990615412"
+      ]
+     ]
     }
    ]
   }

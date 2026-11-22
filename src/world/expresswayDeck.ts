@@ -16,7 +16,7 @@ import { cutWallHeight, TUNNEL_INNER_HEIGHT_M } from "../expressway/below";
 import {
   PIER_STRIDE,
   STATION_STRIDE,
-  XW_FEATURES,
+  XW_READER_FEATURES,
   XW_VERSION,
   type XwChunk,
   type XwEntrance,
@@ -1524,10 +1524,10 @@ export function isBore(c: Pick<XwChunk, "structure">): boolean {
 
 /**
  * Whether meta.json is of the format this code reads: its version (format.ts XW_VERSION) and only
- * features it knows (XW_FEATURES).
+ * features it reads (XW_READER_FEATURES: S7-3's "below-junctions" is written but not drawn until S7-4).
  */
 export function isSupportedMeta(meta: Pick<XwMeta, "version" | "features">): boolean {
-  const known: readonly string[] = XW_FEATURES;
+  const known: readonly string[] = XW_READER_FEATURES;
   const hasOnlyKnown = (meta.features ?? []).every((f) => known.includes(f));
   return meta.version === XW_VERSION && hasOnlyKnown;
 }

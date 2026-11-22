@@ -3,13 +3,21 @@ import { HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
 import { belowDeferralOf, isBelowCompiled, TUNNEL_DEPTH_M } from "../src/expressway/below";
 import {
   approachStretchesOf,
+  joinsOf,
   overApproachOf,
   PORTAL_APPROACH_M,
   portalEndsOf,
   undergroundChanges,
   undergroundOf,
+  unplannedOf,
 } from "../src/expressway/belowScore";
-import { planNetwork, type Plan, portalApproachEnds, solvePlan } from "../src/expressway/compile";
+import {
+  planNetwork,
+  type Plan,
+  portalApproachEnds,
+  solvePlan,
+  unplannedChains,
+} from "../src/expressway/compile";
 import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
@@ -391,6 +399,7 @@ describe("坑口の端と取付けの上の床版（belowScore.ts portalEndsOf�
         { id: "5", reason: "bridging", cls: "expressway", ref: "C1", lengthM: 1250, inRange: false },
       ],
       approachEnds: portalApproachEnds(plan),
+      unplanned: [],
       chunks: result.chunks,
       runs: result.runs,
       belowIds,
@@ -415,7 +424,7 @@ const fixture = (name: string) =>
   ReportSchema.parse(JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8")));
 
 describe("スコアカード版 7（report.ts）", () => {
-  it("the ship baselines are the current version (8 since R1-1a), each deferred run under one reason, adding up to the plan's count", () => {
+  it("the ship baselines are the current version (9 since S7-3), each deferred run under one reason, adding up to the plan's count", () => {
     for (const [name, below] of [
       ["expresswayScorecard.ship.json", "pruned"],
       ["expresswayScorecard.ship-all.json", "all"],
@@ -452,6 +461,104 @@ describe("スコアカード版 7（report.ts）", () => {
   });
 });
 
+describe("スコアカード版 9（belowScore.ts joinsOf・unplannedOf、compile.ts unplannedChains）", () => {
+  it("counts a chain with a tunnel way and no viaduct as unplanned, reaching the range through the run it leaves", () => {
+    // The main line (viaduct, then tunnel) and a link leaving it at x 500: tunnel 150 m, then at grade.
+    const net = addWays(
+      network([
+        { id: 1, x0: 0, x1: 1000, tags: bridge },
+        { id: 2, x0: 1000, x1: 1500, tags: tunnel },
+      ]),
+      [
+        [400001, 500, -50],
+        [400002, 500, -100],
+        [400003, 500, -150],
+        [400004, 500, -250],
+        [400005, 500, -350],
+      ],
+      [
+        [70, { ...link, tunnel: "yes", layer: "-1" }, [100500, 400001, 400002, 400003]],
+        [71, link, [400003, 400004, 400005]],
+      ],
+    );
+    const plan = planNetwork(net, new Set(), null);
+    const list = unplannedChains(plan);
+    expect(list.map((u) => [u.chain, u.cls, u.inRange, u.ends])).toEqual([
+      ["c70", "ramp", true, [["1"], []]],
+    ]);
+    expect(list[0].belowM).toBeCloseTo(150, -1);
+    expect(list[0].lengthM).toBeCloseTo(350, -1);
+    const u = unplannedOf(list);
+    expect(u.total).toEqual({ chains: 1, km: expect.closeTo(0.35, 1), belowKm: expect.closeTo(0.15, 1) });
+    expect(u.inRange.chains).toBe(1);
+    // Not reached by a box that holds neither the chain nor the run it leaves.
+    const [lonA, latA] = plane.toLonLat(1200, -10);
+    const [lonB, latB] = plane.toLonLat(1300, 10);
+    const box = { minLon: lonA, minLat: latA, maxLon: lonB, maxLat: latB };
+    // The box holds the tunnel's line only, which is deferred (its end leaves the universe): no run of the range.
+    const far = planNetwork(net, new Set([101500]), box);
+    expect(unplannedChains(far).map((x) => x.inRange)).toEqual([false]);
+  });
+
+  it("a version-8 report still parses, and set beside its version 9 it differs by joins and unplanned alone", () => {
+    const nine = fixture("expresswayScorecard.ship-all.json");
+    const { joins: _j, unplanned: _u, ...under } = nine.underground!;
+    const eight = ReportSchema.parse({ ...nine, underground: under, version: 8 });
+    const before = flattenReport(eight);
+    const after = flattenReport(nine);
+    const changed = [...before.keys()].filter(
+      (key) => key !== "version" && before.get(key) !== after.get(key),
+    );
+    expect(changed).toEqual([]);
+    const added = [...after.keys()].filter((key) => !before.has(key));
+    expect(added.length).toBeGreaterThan(0);
+    const isNew = (key: string) =>
+      key.startsWith("underground.joins.") || key.startsWith("underground.unplanned.");
+    expect(added.every(isNew)).toBe(true);
+  });
+
+  it("lists a junction under the ground with its parent, node and structures, and no opening without the flag", () => {
+    // The 7c0 net under --below all: the ramp at grade 86 leaves the cut 83 inside it.
+    const net = addWays(
+      network([
+        { id: 81, x0: 0, x1: 500, tags: bridge },
+        { id: 82, x0: 500, x1: 800, tags: atGrade },
+        { id: 83, x0: 800, x1: 1600, tags: cut },
+        { id: 84, x0: 1600, x1: 1900, tags: atGrade },
+        { id: 85, x0: 1900, x1: 2400, tags: bridge },
+      ]),
+      [
+        [200001, 1250, -15],
+        [200002, 1300, -40],
+        [200003, 1350, -80],
+        [200004, 1400, -130],
+        [200005, 1450, -190],
+        [200006, 1500, -260],
+        [200007, 1550, -340],
+      ],
+      [
+        [86, link, [101200, 200001, 200002, 200003, 200004]],
+        [87, linkBridge, [200004, 200005, 200006, 200007]],
+      ],
+    );
+    const plan = planNetwork(net, new Set(), null, [], { ...compile, pruneBelow: false });
+    const res = solvePlan(plan, () => 3, []);
+    const below = new Set([...plan.runs.values()].filter((r) => r.below).map((r) => r.run.id));
+    const joins = joinsOf(res.chunks, res.runs, below);
+    const junction = joins.list.find((j) => j.id === "86:start")!;
+    expect(junction).toMatchObject({
+      kind: "junction",
+      parent: "83",
+      node: "inside",
+      parentStructure: "cut",
+    });
+    expect(junction.opening).toBe(false);
+    expect(joins.withoutOpening).toBe(joins.junctions);
+    // The seams of the cut with the runs at grade beside it are no seams between two below runs.
+    expect(joins.list.filter((j) => j.kind === "seam")).toEqual([]);
+  });
+});
+
 describe("スコアカードの比べ（belowScore.ts undergroundChanges）", () => {
   const base = undergroundOf({
     deferred: [
@@ -459,6 +566,7 @@ describe("スコアカードの比べ（belowScore.ts undergroundChanges）", ()
       { id: "6", reason: "junction", cls: "ramp", ref: null, lengthM: 300, inRange: true },
     ],
     approachEnds: [],
+    unplanned: [],
     chunks: [],
     runs: [],
     belowIds: new Set(),
@@ -471,6 +579,7 @@ describe("スコアカードの比べ（belowScore.ts undergroundChanges）", ()
         { id: "7", reason: "loop-seam", cls: "expressway", ref: "C1", lengthM: 400, inRange: false },
       ],
       approachEnds: [],
+      unplanned: [],
       chunks: [],
       runs: [],
       belowIds: new Set(),

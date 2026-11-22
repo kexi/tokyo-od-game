@@ -31,6 +31,8 @@ const km = z.number().nonnegative();
 const tally = z.strictObject({ runs: count, km });
 const byClass = z.strictObject({ main: tally, ramp: tally, street: tally });
 const reason = z.enum(BELOW_DEFER_REASONS);
+const chainTally = z.strictObject({ chains: count, km, belowKm: km });
+const STRUCTURES = ["viaduct", "embankment", "tunnel", "cut"] as const;
 
 export const UndergroundSchema = z.strictObject({
   deferred: z.strictObject({
@@ -124,6 +126,57 @@ export const UndergroundSchema = z.strictObject({
       }),
     ),
   }),
+  /**
+   * S7-3 (version 9): the written junctions where the child's or the parent's chunk at the node is a
+   * tunnel or cut, and the seams between two below runs; each with its parent there, whether the node
+   * is inside the parent or at its end, both structures there and whether the parent's chunks carry an
+   * opening for the child (XwChunk.openings). Absent before version 9.
+   */
+  joins: z
+    .strictObject({
+      junctions: count,
+      seams: count,
+      /** Junctions with no opening on the parent's chunks (S7-3's line: 0 under --below-junctions compile). */
+      withoutOpening: count,
+      list: z.array(
+        z.strictObject({
+          /** `<run>:<end>`. */
+          id: z.string(),
+          kind: z.enum(["junction", "seam"]),
+          parent: z.string(),
+          parentS: z.number(),
+          node: z.enum(["inside", "end"]),
+          structure: z.enum(STRUCTURES),
+          parentStructure: z.enum(STRUCTURES),
+          opening: z.boolean(),
+        }),
+      ),
+    })
+    .optional(),
+  /**
+   * S7-3 (version 9, compile.ts unplannedChains): the chains with tunnel or cut ways and no viaduct run,
+   * which no build compiles nor counts among the deferred; in all and those reaching the range (sharing
+   * a node with a chain of the range's runs, through other such chains too). Absent before version 9.
+   */
+  unplanned: z
+    .strictObject({
+      total: chainTally,
+      inRange: chainTally,
+      list: z.array(
+        z.strictObject({
+          /** The chain's id. */
+          id: z.string(),
+          cls: z.enum(["main", "ramp", "street"]),
+          ref: z.string().nullable(),
+          km,
+          belowKm: km,
+          inRange: z.boolean(),
+          /** The planned runs at its first and last node. */
+          ends: z.tuple([z.array(z.string()), z.array(z.string())]),
+        }),
+      ),
+    })
+    .optional(),
 });
 
 export type Underground = z.infer<typeof UndergroundSchema>;
@@ -274,7 +327,20 @@ export function portalEndsOf(
     for (const atStart of [true, false]) {
       const end = atStart ? r.start : r.end;
       const parent = end.parent;
-      const isUnderBeyond = parent !== undefined && belowIds.has(parent);
+      // S7-3 3.4: an end going on under the ground is no portal: its parent is a below run, or it is
+      // free and another below run seams onto it there (a loop's first run).
+      const here = atStart ? 0 : r.lengthM;
+      const isSeamedOnto =
+        end.kind === "open" &&
+        runs.some(
+          (o) =>
+            o.id !== r.id &&
+            belowIds.has(o.id) &&
+            [o.start, o.end].some(
+              (oe) => oe.kind === "seam" && oe.parent === r.id && Math.abs((oe.parentS ?? 0) - here) <= 0.5,
+            ),
+        );
+      const isUnderBeyond = (parent !== undefined && belowIds.has(parent)) || isSeamedOnto;
       if (isUnderBeyond) continue;
       const station = atStart ? stations[0] : stations[stations.length - 1];
       const portal = atStart ? portals[0] : portals[portals.length - 1];
@@ -399,10 +465,112 @@ export function overApproachOf(
   return { approaches, pairs: list.length, list };
 }
 
-/** The scorecard's `underground` from the plan's deferrals and approach ends, and the written files. */
+/** An unplanned chain as the build hands it in (compile.ts UnplannedChain). */
+export type UnplannedBelow = {
+  chain: string;
+  cls: XwClass;
+  ref: string | null;
+  lengthM: number;
+  belowM: number;
+  inRange: boolean;
+  ends: [string[], string[]];
+};
+
+/** Whether a chunk's structure is under the ground (a tunnel or cut). */
+const isUnder = (st: XwChunk["structure"] | null) => st === "tunnel" || st === "cut";
+
+/** The structure of a run's chunk holding run distance s (the first that holds it), null for none. */
+function structureAt(chunks: readonly XwChunk[] | undefined, s: number): XwChunk["structure"] | null {
+  const holding = (chunks ?? []).find((c) => {
+    const last = c.st[c.st.length - STATION_STRIDE + ST.s];
+    return s >= c.st[ST.s] - 0.011 && s <= last + 0.011;
+  });
+  return holding?.structure ?? null;
+}
+
+/**
+ * The junctions and seams under the ground among the written runs (`joins`): a junction where the
+ * child's chunk at its end or the parent's chunk at the node is a tunnel or cut, a seam between two
+ * below runs (`belowIds`, as portalEndsOf). Read from the files alone, so a build without the flag
+ * counts the same way (the junctions of runs at grade drawn as cuts by their height are among them).
+ */
+export function joinsOf(
+  chunks: readonly XwChunk[],
+  runs: readonly XwRunSummary[],
+  belowIds: ReadonlySet<string>,
+): NonNullable<Underground["joins"]> {
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  const summaries = new Map(runs.map((r) => [r.id, r]));
+  const list: NonNullable<Underground["joins"]>["list"] = [];
+  for (const r of runs.toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
+    for (const atStart of [true, false]) {
+      const end = atStart ? r.start : r.end;
+      const isJoined = end.kind === "junction" || end.kind === "seam";
+      const parentRun = end.parent === undefined ? undefined : summaries.get(end.parent);
+      if (!isJoined || parentRun === undefined) continue;
+      const s = atStart ? 0 : r.lengthM;
+      const parentS = end.parentS ?? 0;
+      const structure = structureAt(byRun.get(r.id), s);
+      const parentStructure = structureAt(byRun.get(parentRun.id), parentS);
+      const isCounted =
+        end.kind === "junction"
+          ? isUnder(structure) || isUnder(parentStructure)
+          : belowIds.has(r.id) && belowIds.has(parentRun.id);
+      if (!isCounted || structure === null || parentStructure === null) continue;
+      const isAtEnd = parentS <= 0.011 || parentRun.lengthM - parentS <= 0.011;
+      const opening = (byRun.get(parentRun.id) ?? []).some((c) =>
+        (c.openings ?? []).some((o) => o.with === r.id),
+      );
+      list.push({
+        id: `${r.id}:${atStart ? "start" : "end"}`,
+        kind: end.kind as "junction" | "seam",
+        parent: parentRun.id,
+        parentS: round(parentS, 2),
+        node: isAtEnd ? "end" : "inside",
+        structure,
+        parentStructure,
+        opening,
+      });
+    }
+  }
+  const junctions = list.filter((j) => j.kind === "junction");
+  return {
+    junctions: junctions.length,
+    seams: list.length - junctions.length,
+    withoutOpening: junctions.filter((j) => !j.opening).length,
+    list,
+  };
+}
+
+/** The unplanned chains in all and those reaching the range (`unplanned`), sorted by chain id. */
+export function unplannedOf(list: readonly UnplannedBelow[]): NonNullable<Underground["unplanned"]> {
+  const tallyOf = (rows: readonly UnplannedBelow[]) => ({
+    chains: rows.length,
+    km: round(rows.reduce((n, r) => n + r.lengthM, 0) / 1000, 3),
+    belowKm: round(rows.reduce((n, r) => n + r.belowM, 0) / 1000, 3),
+  });
+  const sorted = list.toSorted((a, b) => (a.chain < b.chain ? -1 : a.chain > b.chain ? 1 : 0));
+  return {
+    total: tallyOf(sorted),
+    inRange: tallyOf(sorted.filter((r) => r.inRange)),
+    list: sorted.map((r) => ({
+      id: r.chain,
+      cls: CLASS_KEY[r.cls],
+      ref: r.ref,
+      km: round(r.lengthM / 1000, 3),
+      belowKm: round(r.belowM / 1000, 3),
+      inRange: r.inRange,
+      ends: r.ends,
+    })),
+  };
+}
+
+/** The scorecard's `underground` from the plan's deferrals, approach ends and unplanned chains, and the written files. */
 export function undergroundOf(input: {
   deferred: readonly DeferredBelow[];
   approachEnds: readonly ApproachEnd[];
+  unplanned: readonly UnplannedBelow[];
   chunks: XwChunk[];
   runs: readonly XwRunSummary[];
   belowIds: ReadonlySet<string>;
@@ -411,6 +579,8 @@ export function undergroundOf(input: {
     deferred: deferredOf(input.deferred),
     portals: portalEndsOf(input.chunks, input.runs, input.belowIds),
     overApproach: overApproachOf(input.chunks, approachStretchesOf(input.chunks, input.approachEnds)),
+    joins: joinsOf(input.chunks, input.runs, input.belowIds),
+    unplanned: unplannedOf(input.unplanned),
   };
 }
 
@@ -425,6 +595,19 @@ function sideBy(pa: Set<string>, pb: Set<string>): { added: string[]; removed: s
     added: [...pb].filter((id) => !pa.has(id)).toSorted(),
     removed: [...pa].filter((id) => !pb.has(id)).toSorted(),
   };
+}
+
+/** The ids on both sides whose words (wordsOf) differ, as `<id> <a>→<b>`, sorted. */
+function wordsChanged<T extends { id: string }>(
+  a: readonly T[] | undefined,
+  b: readonly T[] | undefined,
+  wordsOf: (x: T) => string,
+): string[] {
+  const before = new Map((a ?? []).map((x) => [x.id, wordsOf(x)]));
+  return (b ?? [])
+    .filter((x) => before.has(x.id) && before.get(x.id) !== wordsOf(x))
+    .map((x) => `${x.id} ${before.get(x.id)}→${wordsOf(x)}`)
+    .toSorted();
 }
 
 /**
@@ -443,6 +626,8 @@ export function undergroundChanges(
   portals: { added: string[]; removed: string[]; changed: string[] };
   overApproach: { added: string[]; removed: string[] };
   approaches: { added: string[]; removed: string[] };
+  joins: { added: string[]; removed: string[]; changed: string[] };
+  unplanned: { added: string[]; removed: string[]; changed: string[] };
 } {
   const reasonA = new Map((a?.deferred.list ?? []).map((d) => [d.id, d.reason]));
   const reasonChanged = (b?.deferred.list ?? [])
@@ -461,6 +646,10 @@ export function undergroundChanges(
     .filter((p) => portalA.has(p.id) && portalA.get(p.id) !== wordsOf(p))
     .map((p) => `${p.id} ${portalA.get(p.id)}→${wordsOf(p)}`)
     .toSorted();
+  const joinWords = (j: NonNullable<Underground["joins"]>["list"][number]) =>
+    `${j.kind}/${j.parent}/${j.node}/${j.structure}/${j.parentStructure}/${j.opening ? "open" : "shut"}`;
+  const unplannedWords = (u: NonNullable<Underground["unplanned"]>["list"][number]) =>
+    `${u.inRange ? "in" : "out"}/${u.ends.map((e) => e.join(",")).join("|")}`;
   const absent = a === undefined && b !== undefined ? "a" : b === undefined && a !== undefined ? "b" : null;
   return {
     absent,
@@ -468,5 +657,13 @@ export function undergroundChanges(
     portals: { ...sideBy(idsOf(a?.portals.list), idsOf(b?.portals.list)), changed: portalChanged },
     overApproach: sideBy(idsOf(a?.overApproach.list), idsOf(b?.overApproach.list)),
     approaches: sideBy(idsOf(a?.overApproach.approaches.list), idsOf(b?.overApproach.approaches.list)),
+    joins: {
+      ...sideBy(idsOf(a?.joins?.list), idsOf(b?.joins?.list)),
+      changed: wordsChanged(a?.joins?.list, b?.joins?.list, joinWords),
+    },
+    unplanned: {
+      ...sideBy(idsOf(a?.unplanned?.list), idsOf(b?.unplanned?.list)),
+      changed: wordsChanged(a?.unplanned?.list, b?.unplanned?.list, unplannedWords),
+    },
   };
 }
