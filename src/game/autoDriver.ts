@@ -23,8 +23,11 @@ import {
 import {
   crossingsAhead,
   followSpeed,
+  frontSlant,
   IN_LANE,
   isInFrontBand,
+  LINED_UP,
+  NoseDrift,
   judgeAhead,
   junctionsAhead,
   OWN_HALF,
@@ -33,6 +36,7 @@ import {
   placeOnRoute,
   slantOnPath,
   QUEUE_GAP,
+  STANDING_SPEED,
   type CrossingRef,
   type DriveObstacle,
   type DriveSource,
@@ -262,6 +266,10 @@ export type FrontPick = {
   tick: number;
   own: number;
   band: number;
+  /** The slant the band swept by, and the heading's slant and the nose's drift it came from (D4 v2). */
+  slant: number;
+  headingSlant: number;
+  drift: number;
   picked: object | null;
   candidates: FrontCandidate[];
   dropped: FrontDropped[];
@@ -422,10 +430,29 @@ export class AutoDriver {
     front: Seen | null;
     own: number;
     band: number;
+    slant: number;
+    headingSlant: number;
+    drift: number;
     at: number;
     x: number;
     z: number;
-  } = { isMade: false, tick: 0, vehicles: [], front: null, own: 0, band: 0, at: 0, x: 0, z: 0 };
+  } = {
+    isMade: false,
+    tick: 0,
+    vehicles: [],
+    front: null,
+    own: 0,
+    band: 0,
+    slant: 0,
+    headingSlant: 0,
+    drift: 0,
+    at: 0,
+    x: 0,
+    z: 0,
+  };
+  /** The nose's drift across the path (traffic(); D4 v2's slant), and the update it last ran at. */
+  private readonly noseDrift = new NoseDrift();
+  private trafficTick = -1;
   /** Vehicles the last look left out near ahead (look(); the same array, emptied each look). */
   private readonly dropped: FrontDropped[] = [];
   /**
@@ -470,6 +497,7 @@ export class AutoDriver {
   place(pos: Vector3, yaw: number): void {
     this.position.copy(pos);
     this.yaw = yaw;
+    this.noseDrift.reset();
   }
 
   /**
@@ -498,6 +526,8 @@ export class AutoDriver {
     if (!isStanding) this.moveOff = 0;
     else if (this.moveOff <= 0 && !this.hasSignalledOff) this.moveOff = SIGNAL_LEAD;
     this.route = route;
+    // The drift was measured along the old route's path.
+    this.noseDrift.reset();
     // The lane it starts in (the car's own, see routeFrom): held there if a yellow line starts here.
     this.lane = route.lanes[0]?.lane ?? 0;
     this.at = 0;
@@ -894,12 +924,23 @@ export class AutoDriver {
    * driver (the autopilot and the robotaxi), and the log reads it only when the front changes or
    * at an accident.
    */
-  private notePick(vehicles: Seen[], front: Seen | undefined, own: number, band: number): void {
+  private notePick(
+    vehicles: Seen[],
+    front: Seen | undefined,
+    own: number,
+    band: number,
+    slant: number,
+    headingSlant: number,
+    drift: number,
+  ): void {
     this.pick.tick = this.ticks;
     this.pick.vehicles = vehicles;
     this.pick.front = front ?? null;
     this.pick.own = own;
     this.pick.band = band;
+    this.pick.slant = slant;
+    this.pick.headingSlant = headingSlant;
+    this.pick.drift = drift;
     this.pick.at = this.at;
     this.pick.x = this.position.x;
     this.pick.z = this.position.z;
@@ -947,6 +988,9 @@ export class AutoDriver {
       tick: p.tick,
       own: p.own,
       band: p.band,
+      slant: p.slant,
+      headingSlant: p.headingSlant,
+      drift: p.drift,
       picked: p.front?.o.key ?? null,
       candidates,
       dropped: this.dropped.slice(),
@@ -969,7 +1013,7 @@ export class AutoDriver {
       const h = s.o.heading;
       if (h === undefined) return true;
       const d = axisAt(route, Math.min(route.length, Math.max(0, s.at))).dir;
-      return Math.abs(Math.sin(h) * d.x + Math.cos(h) * d.z) > 0.5;
+      return Math.abs(Math.sin(h) * d.x + Math.cos(h) * d.z) > LINED_UP;
     };
     const inLane = vehicles.filter(
       (s) => s.at > this.at + 0.5 && Math.abs(s.lateral) < IN_LANE && isAligned(s),
@@ -984,13 +1028,22 @@ export class AutoDriver {
     const band = this.pass ? 1.95 : IN_LANE;
     // At a slant to the path (D4, 大手町一丁目: 5–7° off it at 55 km/h) a car standing on the car's
     // course is across where the nose is headed, not where it is: the band sweeps from one to the
-    // other (autoTraffic.ts isInFrontBand). No slant in a pass or off the path's line: as before.
-    const slant = nosePlace ? slantOnPath(this.heading(), nosePlace.dir, this.pass !== null) : 0;
+    // other (autoTraffic.ts isInFrontBand), by the smaller of the heading's slant and the nose's
+    // drift when both point the same way (frontSlant). No slant in a pass, off the path's line, or
+    // standing: as before.
+    const headingSlant = nosePlace ? slantOnPath(this.heading(), nosePlace.dir, this.pass !== null) : 0;
+    const isStanding = this.speed < STANDING_SPEED;
+    const isFreshLook = this.trafficTick === this.ticks - 1;
+    this.trafficTick = this.ticks;
+    const isDriftLost = isStanding || !isFreshLook || !nosePlace;
+    if (isDriftLost) this.noseDrift.reset();
+    const drift = nosePlace && !isStanding ? this.noseDrift.note(nosePlace.at, own) : 0;
+    const slant = frontSlant(headingSlant, drift, isStanding);
     const noseAt = nosePlace?.at ?? this.at;
     const front = vehicles.find(
       (s) => s.at > this.at + 0.5 && isInFrontBand(s.lateral, own, slant, s.at - noseAt, band),
     );
-    this.notePick(vehicles, front, own, band);
+    this.notePick(vehicles, front, own, band, slant, headingSlant, drift);
     this.looked.front = null;
     this.looked.follow = null;
     this.looked.verdict = verdict.kind;
@@ -1068,7 +1121,7 @@ export class AutoDriver {
     const pass = this.pass;
     if (!pass) {
       this.passShift = 0;
-      this.unsureFor = verdict.kind === "unsure" && this.speed < 0.3 ? this.unsureFor + dt : 0;
+      this.unsureFor = verdict.kind === "unsure" && this.speed < STANDING_SPEED ? this.unsureFor + dt : 0;
       if (this.unsureFor > UNSURE_GIVE_UP) this.whenBlocked(world, route);
       if (verdict.kind !== "blockage") {
         this.blockedFor = 0;
@@ -1093,7 +1146,7 @@ export class AutoDriver {
         this.blockedFor = 0;
         return;
       }
-      this.blockedFor = this.speed < 0.3 ? this.blockedFor + dt : this.blockedFor;
+      this.blockedFor = this.speed < STANDING_SPEED ? this.blockedFor + dt : this.blockedFor;
       if (this.blockedFor > BLOCKED_GIVE_UP) this.whenBlocked(world, route);
       return;
     }
@@ -1102,7 +1155,7 @@ export class AutoDriver {
     const head = chain[chain.length - 1];
     if (pass.phase === "signal") {
       const gap = chain.length ? chain[0].at - chain[0].half - (this.at + OWN_HALF) : 0;
-      const isClose = gap < 15 || this.speed < 0.3;
+      const isClose = gap < 15 || this.speed < STANDING_SPEED;
       if (pass.t < SIGNAL_LEAD || !isClose) return;
       const ok = chain.length ? permit(chain) : null;
       if (!ok || !("shift" in ok)) {
