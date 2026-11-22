@@ -8,7 +8,9 @@
 // (expressway_feet_probed); exit code 1 when any foot breaks one of them.
 // Run: pnpm exec tsx scripts/expresswayFeetProbe.ts <dir|label> [--cache <dir>] [--cache-only] [--cases <file>]
 // --cases writes the feet whose leg is over LEG_MAX_DEG (the ledger's foot-side-join, S6 PR 7c) as JSON
-// for the ledger tool (just update-expressway-ledger <dir> "--feet <file>").
+// for the ledger tool (just update-expressway-ledger <dir> "--feet <file>"). --joins writes every foot:
+// how it was joined (at-grade, street, inside, unattached) and to which street line (its two end
+// points), so that two builds' joins can be compared foot by foot (P2.7 R1-2b 手順 0c の 1).
 // (just check-expressway-feet <dir>; a label without a slash means .cache/expressway-area/<label>).
 // The tiles come from --cache (default .cache/gsi-vector) or GSI (written to the cache); with
 // --cache-only a foot whose tiles are not cached is skipped and counted.
@@ -49,7 +51,7 @@ const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const VALUED = new Set(["--cache", "--cases"]);
+const VALUED = new Set(["--cache", "--cases", "--joins"]);
 const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1])));
 if (target === undefined)
   throw new Error("usage: expresswayFeetProbe.ts <dir|label> [--cache <dir>] [--cache-only]");
@@ -99,6 +101,19 @@ type Breach = {
 };
 const round = (v: number) => Math.round(v * 100) / 100;
 const joined = { atGrade: 0, street: 0, inside: 0, unattached: 0 };
+/** Each foot's join (--joins): its rule and the street line it meets, by that line's end points. */
+type FootJoin = {
+  run: string;
+  end: "start" | "end";
+  rule: "at-grade" | "street" | "inside" | "unattached";
+  street: string | null;
+};
+const footJoins: FootJoin[] = [];
+const lineKey = (l: RoadLine) => {
+  const c = l.coords;
+  const r = (v: number) => v.toFixed(6);
+  return `${r(c[1])},${r(c[0])}|${r(c[c.length - 1])},${r(c[c.length - 2])}`;
+};
 const breaches: Breach[] = [];
 const unattachedFeet: Array<{ run: string; end: "start" | "end" }> = [];
 let feet = 0;
@@ -158,6 +173,7 @@ for (const [run, chunks] of files.byRun) {
     );
     if (isUnattached) {
       joined.unattached++;
+      footJoins.push({ run, end, rule: "unattached", street: null });
       unattachedFeet.push({ run, end });
       continue;
     }
@@ -166,6 +182,10 @@ for (const [run, chunks] of files.byRun) {
     );
     if (!connector) {
       joined.inside++;
+      const crossing = lines.find(
+        (l) => l.xid === undefined && l.source !== "osm" && (l.nodeIds ?? []).includes(foot.node),
+      );
+      footJoins.push({ run, end, rule: "inside", street: crossing ? lineKey(crossing) : null });
       continue;
     }
     const isTraced = (connector.nodeIds ?? []).every((id) => !id.startsWith("xwg:"));
@@ -180,6 +200,12 @@ for (const [run, chunks] of files.byRun) {
       (l) => l !== connector && l.xid === undefined && (l.nodeIds ?? []).includes(far),
     );
     for (const s of steepFeet.slice(steepBefore)) s.streetWidthM = street?.width ?? null;
+    footJoins.push({
+      run,
+      end,
+      rule: isTraced ? "at-grade" : "street",
+      street: street ? lineKey(street) : null,
+    });
     if (breach) breaches.push({ run, end, ...breach });
   }
 }
@@ -245,3 +271,5 @@ log("expressway_feet_probed", {
 const casesPath = flag("cases");
 if (casesPath !== undefined) await writeFile(casesPath, JSON.stringify(steepFeet, null, 1) + "\n");
 if (breaches.length > 0) process.exitCode = 1;
+const joinsPath = flag("joins");
+if (joinsPath !== undefined) await writeFile(joinsPath, JSON.stringify(footJoins, null, 1) + "\n");

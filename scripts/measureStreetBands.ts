@@ -35,13 +35,15 @@ import { AreaIndex, type AreaFile } from "../src/geo/areas.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
 import { tileXToLon, tileYToLat } from "../src/geo/tiles.ts";
 import { log } from "../src/log.ts";
-import { expresswayRoadInput } from "../src/world/expresswayRoads.ts";
+import { expresswayRoadInput, sameRoadStretches } from "../src/world/expresswayRoads.ts";
+import { planeAt } from "../src/expressway/geo.ts";
 import { laneCentreOffset, laneWidth, STREET, streetRoom } from "../src/world/laneChange.ts";
 import { polygonsOf, WARD_TILES, type PavementPolygon } from "../src/world/pavements.ts";
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { type RoadLine, type Segment } from "../src/world/roads.ts";
 import { ROAD_TILE_ZOOM } from "../src/world/roadTiles.ts";
 import { readTime } from "../src/time/ruleTime.ts";
+import { ROAD_LANES_COLUMN } from "../src/world/roadLanesData.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
 import { classify, type Klass, laneZero, mergeBands, offCentreLanes, type Ruling } from "./streetBands.ts";
 import { DATA_DIR, gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
@@ -214,7 +216,21 @@ type MoveOption = {
   moves: number[];
   /** Past the 幅員's edge, the most either side (m). */
   outOfWidthM: number;
-  shares: { site: number; street: number; pavement: number; building: number };
+  /**
+   * `street` counts only another line running alongside (under 30°, not this line doubled: 手順 0c
+   * の 2, the one that blocks); `streetCross` a street across it (a junction) and `streetTwin` the
+   * same line drawn twice (knowledge road-model.md's doubled GSI lines), neither of which blocks.
+   */
+  shares: {
+    site: number;
+    street: number;
+    streetCross: number;
+    streetTwin: number;
+    pavement: number;
+    building: number;
+  };
+  /** The lines alongside that join the same two junctions as this one (within 5 m of its ends). */
+  parallelSameEnds: number;
 };
 type Move = {
   seg: number;
@@ -232,6 +248,19 @@ type Move = {
   rampDrawn: boolean;
   footJoined: boolean;
   jartic: "split" | "one-way" | "none";
+  /** 手順 0c の 3, for a wide street (13 m or more) GSI draws two-way but JARTIC makes one-way. */
+  oneway?: OnewaySource;
+};
+/**
+ * Where a JARTIC one-way on a two-way GSI line comes from (手順 0c の 3): the voting JARTIC line's
+ * offset from the centre line (+ left of the coords), whether an opposite JARTIC one-way runs on the
+ * other side, and what OSM's lanes say beside it: a divided street (one-way ways both ways), one-way
+ * (one way only), a single two-way way, or nothing mapped.
+ */
+type OnewaySource = {
+  jarticOffsetM: number | null;
+  jarticOpposite: boolean;
+  osm: "divided" | "one-way" | "two-way" | "unknown";
 };
 
 /** GSI's building footprints of a z16 tile (the same cached tiles as the streets; lon/lat rings). */
@@ -322,6 +351,15 @@ const isStreet = (seg: Segment) => sourceOf(seg.line) === "gsi" && !isExpressway
 const round = (v: number, k = 100) => Math.round(v * k) / k;
 const banded: Banded[] = [];
 const moves: Move[] = [];
+/** 手順 0c の 3 over every network: wide GSI two-way streets JARTIC makes one-way, each once. */
+/** 手順 0c の 1: the streets taken out as the ramp itself (M1), each once. */
+const alphas = new Map<
+  string,
+  { at: [number, number]; chunk: string; widthM: number; lengthM: number; jarticLanes: number }
+>();
+const ruledOneways = new Map<string, OnewaySource & { lengthM: number; widthM: number }>();
+const isWideRuledOneway = (seg: Segment) =>
+  seg.line.width >= 13 && seg.line.oneway === 0 && seg.onewayRule !== null;
 const jumps: Jump[] = [];
 const piersOverLanes: Array<{ chunk: string; s: number; street: number; widthM: number }> = [];
 const twoNodes = new Map<string, { stop: boolean; crossing: boolean; signal: boolean }>();
@@ -360,16 +398,56 @@ for (const [key, focus] of groups) {
   const frame = new LocalFrame(lat, lon, 0);
   const regs = await regulationsAround(cx, cy);
   if (regs === null) groupsWithoutRegulations++;
-  const { graph, applied } = gameStreetGraph(
-    streets,
-    expresswayRoadInput(near, runs, (_la, _lo, h) => h),
-    frame,
-    regs,
-  );
   const local = (lo: number, la: number): P => {
     const v = frame.toLocal(la, lo, 0);
     return { x: v.x, z: v.z };
   };
+  const xwInput = expresswayRoadInput(near, runs, (_la, _lo, h) => h);
+  const { graph, applied } = gameStreetGraph(streets, xwInput, frame, regs);
+  // 手順 0c の 1: the streets the game now takes out as the ramp itself (M1, α), from the streets
+  // as read (joinExpressway's plane: its first chunk line's start).
+  const firstLine = xwInput.lines[0];
+  if (firstLine) {
+    const plane = planeAt(firstLine.coords[0], firstLine.coords[1]);
+    for (const st of sameRoadStretches(streets, xwInput.sites ?? [], plane.toXY)) {
+      const k = st.at.map((v) => v.toFixed(5)).join(",");
+      if (alphas.has(k)) continue;
+      const street = streets[st.street];
+      // JARTIC 車両通行帯 matched onto it as applyRegulations matches them (within the larger of 6 m
+      // and half its 幅員 + 2 m, parallel within 25°): 2 or more is a lane count no ramp's foot carries.
+      const p = local(st.at[1], st.at[0]);
+      const c = street.coords;
+      const a0 = local(c[0], c[1]);
+      const a1 = local(c[c.length - 2], c[c.length - 1]);
+      const dl = Math.hypot(a1.x - a0.x, a1.z - a0.z) || 1;
+      const dir = { x: (a1.x - a0.x) / dl, z: (a1.z - a0.z) / dl };
+      const reach = Math.max(6, street.width / 2 + 2);
+      const jarticLanes = Math.max(
+        0,
+        ...(regs?.lanes ?? []).map((r) => {
+          let best = 0;
+          for (let i = 1; i + 3 < r.length; i += 2) {
+            const q0 = local(r[i], r[i + 1]);
+            const q1 = local(r[i + 2], r[i + 3]);
+            const ql = Math.hypot(q1.x - q0.x, q1.z - q0.z);
+            if (ql < 1e-6) continue;
+            const isParallel =
+              Math.abs(((q1.x - q0.x) * dir.x + (q1.z - q0.z) * dir.z) / ql) > Math.cos((25 * Math.PI) / 180);
+            const isNear = toPolyline(p, [q0, q1]) <= reach;
+            if (isParallel && isNear) best = r[0];
+          }
+          return best;
+        }),
+      );
+      alphas.set(k, {
+        at: st.at,
+        chunk: st.chunk,
+        widthM: street.width,
+        lengthM: Math.round(st.l1 - st.l0 + 2),
+        jarticLanes,
+      });
+    }
+  }
   const sites: BandSite[] = near
     .filter((c) => c.structure === "embankment" || c.structure === "cut")
     .map((c) => {
@@ -436,6 +514,73 @@ for (const [key, focus] of groups) {
     for (let i = next; i + 1 < r.length; i += 2) pts.push(local(r[i], r[i + 1]));
     return pts;
   });
+  // OSM's lanes beside a street (public/data/roadlanes, roadLanesData.ts's layout).
+  const osmWays = (regs?.roadlanes ?? []).map((r) => {
+    const pts: P[] = [];
+    for (let i = ROAD_LANES_COLUMN.coords; i + 1 < r.length; i += 2) pts.push(local(r[i], r[i + 1]));
+    return { oneway: r[ROAD_LANES_COLUMN.oneway] === 1, pts };
+  });
+  /** 手順 0c の 3: what the JARTIC and OSM lines beside a segment say of its one-way rule. */
+  const onewaySourceOf = (seg: Segment): OnewaySource => {
+    const W = seg.line.width;
+    const osmDirs = new Set<number>();
+    let osmTwoWay = false;
+    let jarticOffsetM: number | null = null;
+    let jarticOpposite = false;
+    const rule = seg.onewayRule!.dir;
+    for (const f of [0.2, 0.5, 0.8]) {
+      const { pos, dir } = graph.sample(seg, seg.length * f);
+      const p = { x: pos.x, z: pos.z };
+      const visit = (pts: readonly P[], fn: (along: number, offset: number, d: number) => void) => {
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const a = pts[i];
+          const b = pts[i + 1];
+          const ex = b.x - a.x;
+          const ez = b.z - a.z;
+          const len = Math.hypot(ex, ez);
+          if (len < 1e-6) continue;
+          const along = (ex * dir.x + ez * dir.z) / len;
+          const isParallel = Math.abs(along) > Math.cos((25 * Math.PI) / 180);
+          if (!isParallel) continue;
+          const d = toPolyline(p, [a, b]);
+          const isNear = d <= W / 2 + 15;
+          if (!isNear) continue;
+          // Offset of the line from the centre, + left of the coords (leftOf: (dir.z, −dir.x)).
+          const offset = (a.x - p.x) * dir.z + (a.z - p.z) * -dir.x;
+          fn(Math.sign(along), offset, d);
+        }
+      };
+      for (const w of osmWays)
+        visit(w.pts, (along) => {
+          if (w.oneway) osmDirs.add(along);
+          else osmTwoWay = true;
+        });
+      for (const line of onewayLines)
+        visit(line, (along, offset, d) => {
+          const isVoting = along === rule && d <= 6;
+          if (isVoting && (jarticOffsetM === null || Math.abs(offset) < Math.abs(jarticOffsetM)))
+            jarticOffsetM = round(offset);
+          if (along === -rule) jarticOpposite = true;
+        });
+    }
+    const osm: OnewaySource["osm"] =
+      osmDirs.size === 2
+        ? "divided"
+        : osmDirs.size === 1 && !osmTwoWay
+          ? "one-way"
+          : osmTwoWay
+            ? "two-way"
+            : "unknown";
+    return { jarticOffsetM, jarticOpposite, osm };
+  };
+  // 手順 0c の 3, over the whole network: wide two-way GSI streets with a JARTIC one-way, by OSM's say.
+  for (const seg of graph.segments) {
+    if (!isStreet(seg) || !isWideRuledOneway(seg)) continue;
+    const g = frame.toGeodetic(graph.sample(seg, seg.length / 2).pos);
+    const k = `${g.lat.toFixed(5)},${g.lon.toFixed(5)}`;
+    if (ruledOneways.has(k)) continue;
+    ruledOneways.set(k, { lengthM: seg.length, widthM: seg.line.width, ...onewaySourceOf(seg) });
+  }
   const inSite = (p: P) => sites.some((site) => toPolyline(p, site.pts) <= site.half);
   const isJunctionNode = (node: number) => (graph.nodes.get(node)?.length ?? 0) >= 3;
   /** Distance along the street from a segment's end to the first junction (through two-segment nodes). */
@@ -580,8 +725,11 @@ for (const [key, focus] of groups) {
       }
       const twins = (other: Segment) =>
         (other.from === seg.from && other.to === seg.to) || (other.from === seg.to && other.to === seg.from);
+      const cosCross = Math.cos((30 * Math.PI) / 180);
+      const ends = [seg.pts[0], seg.pts[seg.pts.length - 1]];
       const options: MoveOption[] = pieceSets.map(({ side, pieces, moves: m }) => {
-        const counts = { site: 0, street: 0, pavement: 0, building: 0 };
+        const counts = { site: 0, street: 0, streetCross: 0, streetTwin: 0, pavement: 0, building: 0 };
+        const sameEnds = new Set<number>();
         let points = 0;
         for (const h of kept) {
           const { pos, dir } = graph.sample(seg, h.l);
@@ -600,7 +748,21 @@ for (const [key, focus] of groups) {
               const isOnOther =
                 hit !== null &&
                 Math.abs(hit.lateral) <= (hit.seg.section?.carriageway ?? hit.seg.line.width) / 2;
-              if (isOnOther) counts.street++;
+              if (isOnOther) {
+                const isAcross = Math.abs(hit.dir.x * dir.x + hit.dir.z * dir.z) < cosCross;
+                const onHit = graph.sample(hit.seg, hit.s).pos;
+                const isTwin = !isAcross && graph.nearestOn(seg, onHit).dist <= 0.5;
+                if (isAcross) counts.streetCross++;
+                else if (isTwin) counts.streetTwin++;
+                else {
+                  counts.street++;
+                  const hitEnds = [hit.seg.pts[0], hit.seg.pts[hit.seg.pts.length - 1]];
+                  const isSameEnds = ends.every((e) =>
+                    hitEnds.some((h) => Math.hypot(h.x - e.x, h.z - e.z) <= 5),
+                  );
+                  if (isSameEnds) sameEnds.add(hit.seg.id);
+                }
+              }
               if (onPavement(p.x, p.z, ["sidewalk", "island"])) counts.pavement++;
               if (inBuilding(p.x, p.z)) counts.building++;
             }
@@ -614,9 +776,12 @@ for (const [key, focus] of groups) {
           shares: {
             site: share(counts.site),
             street: share(counts.street),
+            streetCross: share(counts.streetCross),
+            streetTwin: share(counts.streetTwin),
             pavement: share(counts.pavement),
             building: share(counts.building),
           },
+          parallelSameEnds: sameEnds.size,
         };
       });
       const isClear = (o: MoveOption) =>
@@ -677,6 +842,7 @@ for (const [key, focus] of groups) {
         rampDrawn,
         footJoined,
         jartic,
+        ...(isWideRuledOneway(seg) ? { oneway: onewaySourceOf(seg) } : {}),
       });
     }
     const row: Banded = {
@@ -881,10 +1047,47 @@ const movesSummary = {
   rampDrawn: placed.filter((m) => m.rampDrawn).length,
   footJoined: placed.filter((m) => m.footJoined).length,
   junctionsNear: tally((m) => String(m.junctionsNear)),
+  // 手順 0c の 1 and memo 1's classes (α taken out now; β1 / β2 / β3 / γ of what is left).
+  alpha: { n: alphas.size, m: [...alphas.values()].reduce((n, a) => n + a.lengthM, 0) },
+  alphaWithJarticLanes: [...alphas.values()].filter((a) => a.jarticLanes >= 2).length,
+  byMemoClass: tally((m) =>
+    m.widthM < 13
+      ? "γ"
+      : m.oneway
+        ? "β1"
+        : m.shape === "middle"
+          ? "β2"
+          : m.shape === "side"
+            ? "β3"
+            : "β1-like (one-way line)",
+  ),
+  // 手順 0c の 3: the β1 places (wide, JARTIC one-way on a two-way line), by OSM's say.
+  onewayAtSites: tally((m) => (m.oneway ? m.oneway.osm : "-")),
+  ruledOneways: (() => {
+    const out: Record<string, { n: number; m: number }> = {};
+    for (const r of ruledOneways.values()) {
+      out[r.osm] ??= { n: 0, m: 0 };
+      out[r.osm].n++;
+      out[r.osm].m += Math.round(r.lengthM);
+    }
+    return out;
+  })(),
 };
 const movesPath = flag("moves");
 if (movesPath !== undefined)
-  await writeFile(movesPath, JSON.stringify({ summary: movesSummary, moves }, null, 1) + "\n");
+  await writeFile(
+    movesPath,
+    JSON.stringify(
+      {
+        summary: movesSummary,
+        moves,
+        alphas: [...alphas.values()],
+        ruledOneways: Object.fromEntries(ruledOneways),
+      },
+      null,
+      1,
+    ) + "\n",
+  );
 const outPath = flag("out");
 if (outPath !== undefined)
   await writeFile(
