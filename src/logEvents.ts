@@ -421,7 +421,8 @@ export const LOG_EVENTS = {
     angleDeg: z.number(),
     widthM: z.number(),
     overGroundM: z.number(),
-    kind: z.enum(["cut", "under"]),
+    /** cut / under: crosses the site; same-road: the street's whole width lies in it (the ramp itself, R1-2b M1). */
+    kind: z.enum(["cut", "under", "same-road"]),
     tunnel: z.boolean(),
   }),
   /**
@@ -1557,6 +1558,25 @@ export const LOG_EVENTS = {
    * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / B3 / C not given), and the
    * jumps, pavements, feet, piers and two-segment nodes round them.
    */
+  /**
+   * P2.7 R1-2b PR 1 (scripts/measureSameRoad.ts): the GSI street lines the same-road rule (M1, α)
+   * would take out, one a line: how many, how long, by width class, whether taking out their whole
+   * stretch along the site keeps through traffic, how their stretches end, and how many run along the
+   * site for most of their length.
+   */
+  street_same_road_measured: info({
+    dir: z.string(),
+    lines: count,
+    alphaM: count,
+    byClass: counts,
+    byThrough: counts,
+    byEnds: counts,
+    wholeAlong: count,
+    partAlong: count,
+    fragmentsMismatch: count,
+    islands: count,
+    keptByVerdict: counts,
+  }),
   street_bands_measured: info({
     dir: z.string(),
     groups: count,

@@ -14,8 +14,29 @@ import type { RoadLine } from "./roads";
 export const ROAD_TILE_ZOOM = 16;
 const ZOOM = ROAD_TILE_ZOOM;
 
-// rnkWidth classes: 0 <3 m, 1 3–5.5 m, 2 5.5–13 m, 3 13–19.5 m, 4 ≥19.5 m (class midpoints).
-const WIDTH_BY_RANK = [2.5, 4.3, 9, 16, 22];
+/**
+ * GSI's 幅員区分 (rnkWidth): 0 <3 m, 1 3–5.5 m, 2 5.5–13 m, 3 13–19.5 m, 4 ≥19.5 m, and the width a
+ * line of the class is given where GSI has no exact Width (the class midpoint; 22 m for the open
+ * class). One table: the lines' widths and the bands' tests of a class's bounds (streetBands, P2.7
+ * R1-2b) read it.
+ */
+export const WIDTH_CLASSES = [
+  { lower: 0, upper: 3, given: 2.5 },
+  { lower: 3, upper: 5.5, given: 4.3 },
+  { lower: 5.5, upper: 13, given: 9 },
+  { lower: 13, upper: 19.5, given: 16 },
+  { lower: 19.5, upper: Infinity, given: 22 },
+] as const;
+const WIDTH_BY_RANK = WIDTH_CLASSES.map((c) => c.given);
+
+/**
+ * The bounds a line's 幅員 may lie in: its class's where the width is a class's given value, else the
+ * exact width GSI gave (both bounds).
+ */
+export function widthBoundsOf(width: number): { lower: number; upper: number } {
+  const byClass = WIDTH_CLASSES.find((c) => c.given === width);
+  return byClass ? { lower: byClass.lower, upper: byClass.upper } : { lower: width, upper: width };
+}
 
 export class RoadTiles {
   private readonly cache = new Map<string, Promise<RoadLine[]>>();
