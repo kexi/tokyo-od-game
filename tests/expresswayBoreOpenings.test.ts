@@ -478,6 +478,52 @@ describe("S7-4a チャンクの境と開口の端（F・G）", () => {
   });
 });
 
+describe("S7-4a 先端はデータの区間から途切れずに続く間だけ（レビュー 1 の必須 1）", () => {
+  it("keeps M's wall where C, having left M's wall band, comes back into it 200 m on at another height", () => {
+    // C leaves as in CUT (0.12 a metre) to 12 m north of M's centre by x 160, climbs 6 m over x 130–200,
+    // then from x 300 to 340 comes back to 6.4 m north (its right carriageway edge 4.0 m, inside M's
+    // band of 4.75 m) and runs on level beside M to x 420: as a ramp that turns back over the main line.
+    const shape: Shape = { structure: "cut", drift: 0.12, mBreaks: [200, 400], mEnd: 500 };
+    const { m, runs, apartX } = pair(shape);
+    const yOf = (x: number) => {
+      if (x <= 160) return (x - NOSE) * 0.12;
+      if (x <= 300) return 12;
+      if (x <= 340) return 12 - ((x - 300) / 40) * 5.6;
+      return 6.4;
+    };
+    const zOf = (x: number) => ROAD + RAMP_DZ + Math.min(6, Math.max(0, (x - 130) / 70) * 6);
+    const stations: Array<[number, number, number, number]> = [];
+    let sC = 0;
+    let last: [number, number] | null = null;
+    for (let x = NOSE; x <= 420 + 1e-9; x += 2) {
+      const y = yOf(x);
+      if (last) sC += Math.hypot(x - last[0], y - last[1]);
+      last = [x, y];
+      stations.push([sC, x, y, zOf(x)]);
+    }
+    const k = Math.hypot(1, 0.12);
+    const c = chunk("C:0", "C", "cut", stations, ROAD + 3, {
+      h0: Math.atan2(0.12, 1),
+      h1: 0,
+      decks: [{ with: "M", relation: "same", s0: 0, s1: round2((apartX + 0.5 / 0.12 - NOSE) * k) }],
+      openings: [{ side: "right", s0: 0, s1: round2((apartX - NOSE) * k), with: "M" }],
+    });
+    const index = indexOf([...m, c], runs);
+    const { world, built: b } = worldOf([...m, c], index);
+    // M's left wall stands where C is back inside the band: a level ray from 1 m inside meets it 1 m on.
+    for (let x = 345.3; x < 398; x += 3.7) {
+      const d = ray(world, onM(x, HW_M - 1, 0.5), LEFT, 6);
+      expect(d, `x ${x.toFixed(1)}`).toBeCloseTo(1, 1);
+    }
+    // And M's opening (its tip included) ends near the stretch, nowhere near x 300–420.
+    const opened = [...b.values()]
+      .flatMap((x) => x.openings?.opened ?? [])
+      .filter((x) => x.with === "C" && x.side === "left");
+    expect(opened.length).toBeGreaterThan(0);
+    expect(Math.max(...opened.map((x) => x.s1))).toBeLessThan(apartX + 10);
+  });
+});
+
 describe("S7-4a 相手が bore でない分合流（H）", () => {
   it("H: an embankment main line and a cut ramp: the ramp's side alone opens, and the seam has no hole", () => {
     const { m, c, runs, apartX } = pair(CUT, { mStructure: "embankment" });

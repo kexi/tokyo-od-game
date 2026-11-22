@@ -651,6 +651,53 @@ export class DeckMerge {
 
   private readonly runOpenings = new Map<string, XwOpening[]>();
 
+  /**
+   * Another run's carriageway across a ring's line (openBore): its foot, its two carriageway edges
+   * (offsets left of this centre, lo ≤ hi) and its centre's offset `d`; null where the line misses
+   * one of its edges (before its start, past its end).
+   */
+  private besideAt(own: ChunkRings, ring: DeckRing, other: string) {
+    const foot = this.footOf(this.linesNear(other, own), ring.c);
+    if (!foot) return null;
+    const left = this.crossEdge(ring, foot, 1, null, -1, PARAPET);
+    const right = this.crossEdge(ring, foot, -1, null, -1, PARAPET);
+    if (!left || !right) return null;
+    const [lo, hi] = left.u < right.u ? [left, right] : [right, left];
+    const d = (foot.point.x - ring.c.x) * ring.t.z - (foot.point.z - ring.c.z) * ring.t.x;
+    return { foot, lo, hi, d };
+  }
+
+  /**
+   * Whether the other run's carriageway stays inside this bore's wall band (`band`, from its centre)
+   * all the way from the opening's stretch end to run distance s (S7-4 review 1, must 1): read on
+   * this run's own line every TIP_STEP_M. Why: a ramp that leaves, then crosses over or under the
+   * main line and comes back into its wall band farther on is not the opening's tip, and the main
+   * line's wall must stand there (大橋 JCT's ramps turn over the main line). Why not by height: past
+   * the stretch the two part in height too, as a rule, and that would need a new threshold. A tip
+   * reaching past the run's loaded line (40 m round this chunk) is taken as broken.
+   */
+  private isTipUnbroken(own: ChunkRings, s: number, o: XwOpening, sign: 1 | -1, band: number): boolean {
+    const from = s > o.s1 ? o.s1 : o.s0;
+    const dir = Math.sign(s - from);
+    const lines = this.linesNear(own.chunk.run, own);
+    for (let t = from + dir * TIP_STEP_M; dir * (s - t) > 1e-6; t += dir * TIP_STEP_M) {
+      const line = lines.find((l) => l.rings[0].frame.s <= t && l.rings[l.rings.length - 1].frame.s >= t);
+      if (!line) return false;
+      let k = 0;
+      while (k < line.rings.length - 2 && line.rings[k + 1].frame.s < t) k++;
+      const a = line.rings[k];
+      const b = line.rings[k + 1];
+      const tau = (t - a.frame.s) / (b.frame.s - a.frame.s || 1);
+      const at = ringBetween(a, b, Math.min(1, Math.max(0, tau)), false);
+      const beside = this.besideAt(own, at, o.with);
+      if (!beside) return false;
+      const near = sign > 0 ? beside.lo.u : -beside.hi.u;
+      const isInBand = near < band;
+      if (!isInBand) return false;
+    }
+    return true;
+  }
+
   /** Whether any loaded chunk of a run has an opening (its bore's walls follow them: refineRings). */
   hasOpenings(run: string): boolean {
     return this.openingsOfRun(run).length > 0;
@@ -706,15 +753,10 @@ export class DeckMerge {
         if (isNew) record!.noPartner.push(o.with);
         continue;
       }
-      const lines = this.linesNear(o.with, own);
-      const foot = this.footOf(lines, ring.c);
-      if (!foot) continue;
-      const left = this.crossEdge(ring, foot, 1, null, -1, PARAPET);
-      const right = this.crossEdge(ring, foot, -1, null, -1, PARAPET);
+      const beside = this.besideAt(own, ring, o.with);
       // The ring's line misses the other carriageway (before its start, past its end): nothing beside.
-      if (!left || !right) continue;
-      const [lo, hi] = left.u < right.u ? [left, right] : [right, left];
-      const d = (foot.point.x - ring.c.x) * ring.t.z - (foot.point.z - ring.c.z) * ring.t.x;
+      if (!beside) continue;
+      const { foot, lo, hi, d } = beside;
       // The other run 1 m or more on the side opposite the data's: walled, counted inside the stretch
       // (past it there is no opening to check).
       const isSure = Math.abs(d) >= SIDE_SURE_M;
@@ -725,7 +767,7 @@ export class DeckMerge {
       }
       // Its carriageway's nearest edge on the opening's side, metres from this centre towards it.
       const near = sign > 0 ? lo.u : -hi.u;
-      const isTip = !isInStretch && near < band;
+      const isTip = !isInStretch && near < band && this.isTipUnbroken(own, s, o, sign, band);
       if (!isInStretch && !isTip) continue;
       const isOwnCut = outranksAsMaster(this.index, own.chunk.run, o.with);
       const isCutHere = isOwnCut && side.seam !== null && side.seamOf?.run === o.with;
@@ -1175,6 +1217,13 @@ export type MergeSkip = {
  * (S7-4 review 0). Why 1 m: the review's line, half a lane.
  */
 const SIDE_SURE_M = 1;
+
+/**
+ * How finely an opening's tip is followed back to its stretch (DeckMerge.isTipUnbroken), m: a gap
+ * shorter than this between two stretches inside the band is taken as none. Why 1 m: the merge's own
+ * probe step (SLIDE_PROBE_M); a crossing ramp leaves the band for metres, not centimetres.
+ */
+const TIP_STEP_M = 1;
 
 /** What a tunnel or cut chunk's openings came to (DeckMerge.boreOpenings). */
 export type BoreOpeningRecord = {
