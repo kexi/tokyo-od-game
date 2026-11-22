@@ -132,9 +132,14 @@ const tunnelTags = { highway: "motorway", tunnel: "yes", layer: "-1", lanes: "2"
 const cutTags = { highway: "motorway", cutting: "yes", layer: "-1", lanes: "2", maxspeed: "60", ref: "C1" };
 
 /** Ways end to end along y = 0, a node every 50 m (and at each way's end), consecutive ways sharing their end nodes. */
-function network(ways: WaySpec[]): Network {
-  const net: Network = { ways: new Map(), nodes: new Map() };
-  const nodeAt = (x: number) => 100000 + Math.round(x);
+function network(
+  ways: WaySpec[],
+  /** Along y = `y`, the node ids from `base` (a second line beside the first). */
+  y = 0,
+  base = 100000,
+  net: Network = { ways: new Map(), nodes: new Map() },
+): Network {
+  const nodeAt = (x: number) => base + Math.round(x);
   for (const w of ways) {
     const xs: number[] = [];
     for (let x = w.x0; x < w.x1 - 1e-6; x += 50) xs.push(x);
@@ -142,7 +147,7 @@ function network(ways: WaySpec[]): Network {
     const ids = xs.map(nodeAt);
     net.ways.set(w.id, normalizeWay(w.id, ids, w.tags));
     xs.forEach((x, i) => {
-      const [lon, lat] = plane.toLonLat(x, 0);
+      const [lon, lat] = plane.toLonLat(x, y);
       net.nodes.set(ids[i], normalizeNode(ids[i], lon, lat, {}));
     });
   }
@@ -303,13 +308,17 @@ describe("E. 要約の欄と T12（S7-2 3.3・3.7、追記 2 B）", () => {
     expect(hasPortalsBeyond(new Map([[t, plain as BelowLinkRun]]), t)).toBe(false);
   });
 
-  /** T12's count over the files with the tunnel's first station raised `by` m, the fields kept or dropped. */
+  /**
+   * T12's count over the files with the tunnel's second station raised `by` m, the fields kept or
+   * dropped. Why not the first: since 3.6 the portal record there is cut → tunnel, and T12 reads a
+   * tunnel's mouth as a cut's station (checks.checkCover), with or without the fields.
+   */
   const t12Raised = (by: number, isKept: boolean) => {
     const chunks = res.chunks.map((c) => {
       const isFirst = c.run === t && c.k === 0;
       if (!isFirst) return c;
       const st = [...c.st];
-      st[3] += by;
+      st[STATION_STRIDE + 3] += by;
       return { ...c, st };
     });
     const runs = res.runs.map((r) => {
@@ -322,7 +331,7 @@ describe("E. 要約の欄と T12（S7-2 3.3・3.7、追記 2 B）", () => {
     return violationsOf({ ...res, runs }, chunks, () => undefined, true).T12.count;
   };
 
-  it("T12 reads the ceiling at the tunnel's first station from the fields: raised to off's height it is a violation, without the fields none", () => {
+  it("T12 reads the ceilings near the tunnel's portal from the fields: raised to the ground it is a violation, without the fields none", () => {
     expect(t12Raised(0, true)).toBe(0);
     expect(t12Raised(TUNNEL_DEPTH_M, true)).toBeGreaterThan(0);
     expect(t12Raised(TUNNEL_DEPTH_M, false)).toBe(0);
@@ -430,6 +439,79 @@ describe("C. 取付けの上を通るランプ（S7-2 3.5）", () => {
       // The approach went down: the ramp stands where it stood (well under a level up).
       expect(Math.abs(roadAt(resCut, ramp, p.s) - roadAt(resOff, ramp, p.s))).toBeLessThan(0.5);
     }
+  });
+});
+
+describe("D. 並ぶ 2 本の取付け（S7-2 3.6）", () => {
+  /** twoApproaches, and beside it (8 m north) a second carriageway: the same (`beside` tunnel) or at grade on. */
+  const pairNet = (isTunnelBeside: boolean) => {
+    const net = twoApproaches();
+    const second: WaySpec[] = isTunnelBeside
+      ? [
+          { id: 11, x0: 0, x1: 500, tags: bridgeTags },
+          { id: 12, x0: 500, x1: 803, tags: gradeTags },
+          { id: 13, x0: 803, x1: 2803, tags: tunnelTags },
+          { id: 14, x0: 2803, x1: 3106, tags: gradeTags },
+          { id: 15, x0: 3106, x1: 3606, tags: bridgeTags },
+        ]
+      : [
+          { id: 11, x0: 0, x1: 500, tags: bridgeTags },
+          { id: 12, x0: 500, x1: 1300, tags: gradeTags },
+          { id: 15, x0: 1300, x1: 1800, tags: bridgeTags },
+        ];
+    return network(second, 8, 500000, net);
+  };
+  const solve = (isTunnelBeside: boolean, opts: typeof offOpts) => {
+    const plan = planNetwork(pairNet(isTunnelBeside), new Set(), null, [], opts);
+    return { plan, res: solvePlan(plan, flat, []) };
+  };
+  const aOf = (plan: Plan) => runsWhere(plan, (r) => r.ground && r.run.ways.includes(2))[0];
+  const bOf = (plan: Plan) => runsWhere(plan, (r) => r.ground && r.run.ways.includes(12))[0];
+
+  it("two lowered approaches side by side stay cuts under the ground, each with the other's opening", () => {
+    const { plan: off, res: resOff } = solve(true, offOpts);
+    const { plan, res } = solve(true, cutOpts);
+    const [a, b] = [aOf(plan), bOf(plan)];
+    expect(off.pairs.some((p) => p.a === a && p.b === b && p.relation === "same")).toBe(true);
+    expect(unsolved(res)).toEqual([]);
+    const v = violationsOf(res, res.chunks, () => undefined, true);
+    expect(Object.values(v).map((x) => x.count)).toEqual(Object.values(v).map(() => 0));
+    for (const [id, other, side] of [
+      [a, b, "left"],
+      [b, a, "right"],
+    ] as const) {
+      // Under the ground (past the band below the line) no embankment chunk; with the flag off C2's.
+      // Short of the end: over the last metres each is "above" the other's tunnel by the layers (a
+      // viaduct chunk by ctx.above, with or without the flag), not on one surface.
+      const deep = stationsOf(res, id).filter((x) => x.s > 150 && x.s < 290);
+      expect(deep.every((x) => x.g - x.z < 0.3 || x.structure === "cut")).toBe(true);
+      expect(deep.some((x) => x.g - x.z > 3 && x.structure === "cut")).toBe(true);
+      const openings = chunksOf(res, id)
+        .flatMap((c) => c.openings ?? [])
+        .filter((o) => o.with === other);
+      expect(openings.length).toBeGreaterThan(0);
+      expect(new Set(openings.map((o) => o.side))).toEqual(new Set([side]));
+      expect(chunksOf(resOff, id).some((c) => (c.openings ?? []).some((o) => o.with === other))).toBe(false);
+    }
+  });
+
+  it("an approach beside a run at grade that is not lowered keeps C2 there: no opening", () => {
+    const { plan, res } = solve(false, cutOpts);
+    const [a, b] = [aOf(plan), bOf(plan)];
+    expect(loweredApproaches(plan).byRun.has(b)).toBe(false);
+    expect(chunksOf(res, a).some((c) => (c.openings ?? []).some((o) => o.with === b))).toBe(false);
+    expect(chunksOf(res, b).some((c) => (c.openings ?? []).length > 0)).toBe(false);
+  });
+
+  it("writes the approach's cut beyond the tunnel's lowered end in its portals (cut → tunnel)", () => {
+    // One carriageway (A's net): beside a second one, the approach's last metres are "above" the
+    // other's tunnel by the layers (a viaduct chunk), which the step 5 report leaves to the design.
+    const plan = planNetwork(twoApproaches(), new Set(), null, [], cutOpts);
+    const res = solvePlan(plan, flat, []);
+    const [t] = runsWhere(plan, (r) => r.below);
+    const portals = chunksOf(res, t).flatMap((c) => c.portals ?? []);
+    expect([portals[0].from, portals[0].to]).toEqual(["cut", "tunnel"]);
+    expect([portals.at(-1)!.from, portals.at(-1)!.to]).toEqual(["tunnel", "cut"]);
   });
 });
 
