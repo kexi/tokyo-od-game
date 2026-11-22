@@ -857,15 +857,18 @@ describe("F. 範囲に依らない（T8）と範囲の閉包", () => {
 });
 
 describe("G. 書式", () => {
-  it("writes no openings without the flag, and the game refuses a file naming below-junctions", () => {
+  // S7-4a (test A): the game reads a file naming below-junctions (it cuts the openings), and still
+  // refuses a feature it does not know.
+  it("writes no openings without the flag; the game reads a file naming below-junctions and refuses an unknown feature", () => {
     const res = solvePlan(planNetwork(cutWithRamp(), new Set(), null, [], off), flat, []);
     expect(res.chunks.every((c) => !("openings" in c))).toBe(true);
     expect(XW_FEATURES).toContain("below-junctions");
-    expect(XW_READER_FEATURES).not.toContain("below-junctions");
+    expect(XW_READER_FEATURES).toContain("below-junctions");
     expect(isSupportedMeta({ version: 6, features: ["below", "height-structures"] })).toBe(true);
     expect(isSupportedMeta({ version: 6, features: ["below", "height-structures", "below-junctions"] })).toBe(
-      false,
+      true,
     );
+    expect(isSupportedMeta({ version: 6, features: ["below", "below-junctions", "later"] })).toBe(false);
   });
 });
 

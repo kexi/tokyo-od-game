@@ -88,7 +88,20 @@ export type DeckSide = {
   clearTo: number | null;
   /** The other run of the 分離壁 on that side (with clearTo), null where there is none. */
   parted: string | null;
+  /**
+   * A tunnel or cut chunk's side opened to another run (S7-4a, expresswayMerge.ts openBore): its
+   * walls are not drawn there and its floor (and a tunnel's ceiling and roof) runs out to `reach`,
+   * ending on `seam` where this deck is cut at the other's edge. Absent or null on every other side.
+   */
+  opening?: BoreOpening | null;
 };
+
+/**
+ * An opened side of a tunnel or cut (DeckSide.opening): the other run, whether past the data's
+ * stretch (the tip), and whether it is the far side of a deck cut at the other's edge, its slab edge
+ * on the other's slab (`isCovered`: no opening in the data there, the merge's rule).
+ */
+export type BoreOpening = { with: string; isTip: boolean; isCovered?: boolean };
 
 export type RingSides = { left: DeckSide; right: DeckSide };
 

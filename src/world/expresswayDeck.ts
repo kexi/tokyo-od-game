@@ -56,6 +56,7 @@ import {
   dividerJogs,
   type NoseStep,
   type GeoToLocal,
+  type BoreOpeningRecord,
   liftAt,
   MERGE_RAMP,
   MERGE_SKIRT,
@@ -68,6 +69,8 @@ import {
 import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expresswayRoads";
 import {
   BORE_FACES,
+  BORE_OPEN_FACES,
+  type BoreOpen,
   boreLoop,
   CUT_WALL_GROUND_REACH,
   cutsGround,
@@ -210,6 +213,8 @@ export function* deckArraySteps(
     jogs: DividerJog[];
     /** A tunnel's ceiling lamps (P9): positions of unlit triangles drawn bright, empty elsewhere. */
     lamps: Float32Array;
+    /** A tunnel or cut's openings (S7-4a, expressway_bore_opening): null for any other chunk or without a context. */
+    openings: BoreOpeningRecord | null;
   }
 > {
   const n = chunk.st.length / STATION_STRIDE;
@@ -248,7 +253,8 @@ export function* deckArraySteps(
   const gw = isEmbankment ? own.edge : own.edge * GIRDER_BOTTOM_SHARE;
   const ph = PARAPET_HEIGHT.value;
   // Below the ground (P9) the section is a tunnel's box or a cut's walls (expresswayBore.ts) along
-  // the same rings: no merging (no deck shares a surface with one in the data), no girder.
+  // the same rings, no girder. Of the merge it takes only the sides its openings open (S7-4a,
+  // DeckSide.opening): elsewhere its walls are its own, as before.
   const bore = chunk.structure === "tunnel" || chunk.structure === "cut" ? chunk.structure : null;
   /** The terrain's highest point over a cut wall's reach on one side (+1 left), relative to the ring's centre. */
   const sideGround = (r: (typeof rings)[number], side: 1 | -1): number | null => {
@@ -270,16 +276,30 @@ export function* deckArraySteps(
     const isCut = bore === "cut";
     const left = isCut ? sideGround(r, 1) : null;
     const right = isCut ? sideGround(r, -1) : null;
-    const sides = left === null || right === null ? null : { left, right };
+    const ground = left === null || right === null ? null : { left, right };
+    const open = { left: boreOpenOf(sides[i].left), right: boreOpenOf(sides[i].right) };
+    // Covered all across (both sides opened, its road closed under the other's): the section shrinks
+    // to one point just under the road's middle, as a cut deck's road does (MERGE_TUCK).
+    const isClosedBore =
+      open.left !== null && open.right !== null && open.left.reach + open.right.reach <= 1e-3;
+    if (isClosedBore) {
+      const u = (open.left!.reach - open.right!.reach) / 2;
+      const point = ringPoint(r, u, liftAt(r, u, bank) - MERGE_TUCK).toArray();
+      open.left = { reach: u, seam: point };
+      open.right = { reach: -u, seam: point };
+    }
     return boreLoop(
       bore!,
       own.hw,
       (u, v) => ringPoint(r, u, v).toArray(),
       (u) => liftAt(r, u, bank),
       r.groundY - r.c.y,
-      sides,
+      ground,
+      open,
     );
   };
+  /** Whether a bore's side is open at ring i (+1 left). */
+  const isBoreOpen = (i: number, key: "left" | "right") => bore !== null && Boolean(sides[i][key].opening);
   /** The drawn terrain at a local point, relative to a road height (local y), or null where unknown. */
   const readAt = (point: Vector3, roadY: number): number | null => {
     if (!terrainAt) return null;
@@ -525,20 +545,33 @@ export function* deckArraySteps(
     const isDividerEnd =
       rings[i] === rings[i - 1] &&
       [sides[i], sides[i - 1]].some((sd) => sd.left.clearTo !== null || sd.right.clearTo !== null);
+    // So where a bore's opening starts or ends (S7-4a): the faces between the walled ring and the
+    // opened one at one place are the walls' end face (refineRings puts two rings where `wall` flips).
+    const isOpeningEnd =
+      rings[i] === rings[i - 1] &&
+      (["left", "right"] as const).some((key) => isBoreOpen(i, key) !== isBoreOpen(i - 1, key));
+    /** The faces left out here: those across a side opened at both rings (BORE_OPEN_FACES). */
+    const across = bore
+      ? (["left", "right"] as const).flatMap((key) =>
+          isBoreOpen(i, key) && isBoreOpen(i - 1, key) ? BORE_OPEN_FACES[bore][key] : [],
+        )
+      : [];
     for (let k = 0; k + 1 < cur.length; k++) {
+      const isAcross = across.includes(k);
+      if (isAcross) continue;
       const a = prev[k];
       const b = prev[k + 1];
       const c = cur[k + 1];
       const d = cur[k];
       const face = faceOf(k);
       const colour = face.colour;
-      const isSolid = face.solid;
+      const isSolid = face.solid || isOpeningEnd;
       // Faces wind so their front is outward for a loop drawn left → right over the top.
       const tris = [
         [a, d, c],
         [a, c, b],
       ];
-      if (isDividerEnd) tris.push([a, c, d], [a, b, c]);
+      if (isDividerEnd || isOpeningEnd) tris.push([a, c, d], [a, b, c]);
       for (const tri of tris) {
         const isDegenerate = triangleArea2(tri[0], tri[1], tri[2]) < 1e-8;
         if (isDegenerate) continue;
@@ -575,7 +608,7 @@ export function* deckArraySteps(
     }
   const lamps: number[] = [];
   const isTunnel = bore === "tunnel";
-  if (isTunnel) tunnelExtras(chunk, own.hw, rings, bank, pos, col, solid, lamps);
+  if (isTunnel) tunnelExtras(chunk, own.hw, rings, bank, pos, col, solid, lamps, isBoreOpen);
   const marks = planDeckMarkings(
     chunk,
     rings.map((r, i) => ({ s: r.frame.s, sides: sides[i] })),
@@ -598,8 +631,16 @@ export function* deckArraySteps(
     ...(merge?.dividersOf(chunk.id) ?? { walls: [], steps: [] }),
     jogs: merge ? dividerJogs(rings, sides) : [],
     lamps: new Float32Array(lamps),
+    openings: bore && merge ? (merge.boreOpenings.get(chunk.id) ?? null) : null,
   };
 }
+
+/** An opened side of a ring (DeckSide.opening), as boreLoop takes it; null where it is not opened. */
+const boreOpenOf = (sd: DeckSide): BoreOpen | null =>
+  sd.opening ? { reach: sd.reach, seam: sd.seam ? [sd.seam.x, sd.seam.y, sd.seam.z] : null } : null;
+
+/** Metres to the decimetre (the log's s ranges). */
+const toDecimetre = (x: number) => Math.round(x * 10) / 10;
 
 /** The reads that came back (a terrain not loaded there gives null). */
 const readsKnown = (ys: Array<number | null>) => ys.filter((y): y is number => y !== null);
@@ -886,6 +927,7 @@ function tunnelExtras(
   col: number[],
   solid: number[],
   lamps: number[],
+  isOpen: (i: number, key: "left" | "right") => boolean = () => false,
 ): void {
   const pushQuad = (q: number[][], colour: number[] | null, into: number[] | null) => {
     for (const tri of [
@@ -928,7 +970,15 @@ function tunnelExtras(
     const at = (u: number, v: number) => ringPoint(r, u, v).toArray();
     for (const q of headwallQuads(hw, at, r.groundY - r.c.y)) pushQuad(q, HEADWALL, solid);
   }
-  for (const q of lampQuads(hw, ss[0], ss[ss.length - 1], pointAt)) pushQuad(q, null, lamps);
+  // No lamp hangs over an opened side (S7-4a): the ceiling there runs on over the other run's road.
+  // Why not lamps of their own there: the wall they light is gone. Read at the ring interval holding
+  // the lamp's start, open if either of its rings is.
+  const isLit = (s: number, sign: 1 | -1) => {
+    const { i } = ringAt(s);
+    const key = sign > 0 ? "left" : "right";
+    return !isOpen(i, key) && !isOpen(i + 1, key);
+  };
+  for (const q of lampQuads(hw, ss[0], ss[ss.length - 1], pointAt, isLit)) pushQuad(q, null, lamps);
 }
 
 /**
@@ -1046,6 +1096,7 @@ function* refineRings(
   merge: DeckMerge,
 ): Generator<void, { rings: DeckRing[]; sides: RingSides[]; closing: Set<number> }> {
   const base = own.rings;
+  const isOpenedBore = isBore(own.chunk) && merge.hasOpenings(own.chunk.run);
   const rings: DeckRing[] = [base[0]];
   const sides: RingSides[] = [baseSides[0]];
   const closing = new Set<number>();
@@ -1161,7 +1212,12 @@ function* refineRings(
       extra.push({ tau, ring: ringBetween(a, b, tau, false), sides: sd, isClosing: true });
     }
     for (const key of ["left", "right"] as const) {
-      const hasWall = (sd: RingSides) => sd[key].wall !== null;
+      // A bore whose run has openings (S7-4a, DeckSide.opening) has them for its walls' state: where
+      // one starts or stops, two rings at one place, so the walls end square there. Why not by `wall`
+      // as elsewhere: the bore draws its own walls wherever it is not opened, and the merge lets its
+      // rail go where the slabs overlap, often metres from the opening's end. A bore with none keeps
+      // `wall` (its rings as before S7-4a).
+      const hasWall = (sd: RingSides) => (isOpenedBore ? !sd[key].opening : sd[key].wall !== null);
       const switches = hasWall(sa) !== hasWall(sb);
       if (!switches) continue;
       const { lo, hi, atLo, atHi } = bisect(hasWall);
@@ -1524,7 +1580,7 @@ export function isBore(c: Pick<XwChunk, "structure">): boolean {
 
 /**
  * Whether meta.json is of the format this code reads: its version (format.ts XW_VERSION) and only
- * features it reads (XW_READER_FEATURES: S7-3's "below-junctions" is written but not drawn until S7-4).
+ * features it reads (XW_READER_FEATURES).
  */
 export function isSupportedMeta(meta: Pick<XwMeta, "version" | "features">): boolean {
   const known: readonly string[] = XW_READER_FEATURES;
@@ -2052,6 +2108,28 @@ export class ExpresswayDecks {
             s1: Math.round(x.s1 * 10) / 10,
             maxDzM: Math.round(x.maxDzM * 1000) / 1000,
           });
+        const bore = result.openings;
+        const hasBoreNews =
+          bore !== null && bore.opened.length + bore.noPartner.length + bore.sideMismatch.length > 0;
+        if (hasBoreNews) {
+          log("expressway_bore_opening", {
+            chunk: c.id,
+            opened: bore.opened.map((x) => ({
+              with: x.with,
+              side: x.side,
+              s0: toDecimetre(x.s0),
+              s1: toDecimetre(x.s1),
+              tipM: toDecimetre(x.tipM),
+            })),
+            noPartner: bore.noPartner,
+            sideMismatch: bore.sideMismatch.map((x) => ({
+              with: x.with,
+              side: x.side,
+              s0: toDecimetre(x.s0),
+              s1: toDecimetre(x.s1),
+            })),
+          });
+        }
         for (const x of result.steps)
           log("expressway_nose_step_built", {
             chunk: c.id,

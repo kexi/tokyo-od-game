@@ -5,6 +5,7 @@ import { STATION_STRIDE, type XwChunk, type XwTileRun } from "../src/expressway/
 import { carriagewayWidth } from "../src/expressway/section.ts";
 import { frameAt } from "../src/expressway/profile.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
+import { boreWallBand } from "../src/world/expresswayBore.ts";
 import { createDeckBody, deckArraySteps } from "../src/world/expresswayDeck.ts";
 import { DeckIndex, MERGE_PAD_M, roleOf } from "../src/world/expresswayMarkings.ts";
 import {
@@ -81,6 +82,30 @@ export type ChunkJog = DividerJog & { chunk: string };
 export type BareDrop = { chunk: string; with: string; s: number; dzM: number; gapM: number };
 
 /**
+ * The tunnels' and cuts' openings as built (S7-4a, expresswayMerge.ts openBore), over the chunks
+ * probed in their own frames: the opened stretches (per chunk, other run and side) with their tip
+ * past the data's stretch, the other runs with no chunk (N1) and the stretches whose data side is the
+ * other one (both left walled), and `wallHits`: level rays every metre along each opened stretch,
+ * 0.5 m over the road from 1 m inside the carriageway's edge towards the opened side, that meet a
+ * face of the chunk's own within the wall band (boreWallBand) past that edge (0: no wall of its own
+ * stands in an opening; the other deck's far walls stand where the merge leaves them).
+ */
+export type BoreProbe = {
+  opened: Array<{
+    chunk: string;
+    with: string;
+    side: "left" | "right";
+    s0: number;
+    s1: number;
+    tipM: number;
+  }>;
+  noPartner: Array<{ chunk: string; with: string }>;
+  sideMismatch: Array<{ chunk: string; with: string; side: "left" | "right"; s0: number; s1: number }>;
+  wallRays: number;
+  wallHits: number;
+};
+
+/**
  * Every chunk merged (the DeckIndex always over all of them), and the probes of every seam and
  * let-go point, each in its nearest frame.
  */
@@ -95,6 +120,7 @@ export function probeGenerated(
   steps: ChunkNoseStep[];
   jogs: ChunkJog[];
   bare: BareDrop[];
+  bore: BoreProbe;
   worlds: RAPIER.World[];
 } {
   const runs = new Map(tileRuns.map((r) => [r.id, r]));
@@ -113,6 +139,7 @@ export function probeGenerated(
   const steps: ChunkNoseStep[] = [];
   const jogs: ChunkJog[] = [];
   const bare: BareDrop[] = [];
+  const bore: BoreProbe = { opened: [], noPartner: [], sideMismatch: [], wallRays: 0, wallHits: 0 };
   const worlds: RAPIER.World[] = [];
   frames.forEach((area, k) => {
     const own = new Set(chunks.filter((c) => nearest(c) === k).map((c) => c.id));
@@ -127,6 +154,11 @@ export function probeGenerated(
     steps.push(...res.steps);
     jogs.push(...res.jogs);
     bare.push(...res.bare);
+    bore.opened.push(...res.bore.opened);
+    bore.noPartner.push(...res.bore.noPartner);
+    bore.sideMismatch.push(...res.bore.sideMismatch);
+    bore.wallRays += res.bore.wallRays;
+    bore.wallHits += res.bore.wallHits;
     worlds.push(res.world);
   });
   const byKey = (
@@ -149,6 +181,7 @@ export function probeGenerated(
     steps: steps.toSorted(byKey),
     jogs,
     bare,
+    bore,
     worlds,
   };
 }
@@ -190,6 +223,7 @@ function probeIn(
   steps: ChunkNoseStep[];
   jogs: ChunkJog[];
   bare: BareDrop[];
+  bore: BoreProbe;
   world: RAPIER.World;
 } {
   const place = { frame: FRAME, ellipsoidal: (_a: number, _b: number, h: number) => h + N };
@@ -199,13 +233,35 @@ function probeIn(
   const dividers: ChunkDivider[] = [];
   const noseSteps: ChunkNoseStep[] = [];
   const jogs: ChunkJog[] = [];
+  const bore: BoreProbe = { opened: [], noPartner: [], sideMismatch: [], wallRays: 0, wallHits: 0 };
+  const openedOf: Array<{ chunk: XwChunk; side: "left" | "right"; s0: number; s1: number }> = [];
+  /** Each own chunk's colliders: an opening's rays count its own walls only (the other deck's stand where they may). */
+  const handlesOf = new Map<string, Set<number>>();
   for (const c of chunks) {
     const steps = deckArraySteps(c, place, false, { index });
     let r = steps.next();
     while (!r.done) r = steps.next();
-    createDeckBody(world, r.value.collider, r.value.piers, null);
+    const body = createDeckBody(world, r.value.collider, r.value.piers, null);
     const isOwn = own.has(c.id);
     if (!isOwn) continue;
+    handlesOf.set(c.id, new Set(body.colliders.map((x) => x.handle)));
+    const openings = r.value.openings;
+    if (openings) {
+      for (const x of openings.opened) {
+        bore.opened.push({ chunk: c.id, with: x.with, side: x.side, s0: x.s0, s1: x.s1, tipM: x.tipM });
+        openedOf.push({ chunk: c, side: x.side, s0: x.s0, s1: x.s1 });
+      }
+      bore.noPartner.push(...openings.noPartner.map((w) => ({ chunk: c.id, with: w })));
+      bore.sideMismatch.push(
+        ...openings.sideMismatch.map((x) => ({
+          chunk: c.id,
+          with: x.with,
+          side: x.side,
+          s0: x.s0,
+          s1: x.s1,
+        })),
+      );
+    }
     dividers.push(...r.value.walls.map((d) => ({ ...d, chunk: c.id })));
     noseSteps.push(...r.value.steps.map((d) => ({ ...d, chunk: c.id })));
     jogs.push(...r.value.jogs.map((d) => ({ ...d, chunk: c.id })));
@@ -363,5 +419,39 @@ function probeIn(
     const hit = world.castRay(new RAPIER.Ray(o, { x: tx, y: 0, z: -ty }), reach, true);
     if (hit === null) bare.push({ chunk: p.chunk.id, with: p.with, s: p.s, dzM: Math.abs(p.dz), gapM: gap });
   }
-  return { seams, cuts, dividers, steps: noseSteps, jogs, bare, world };
+  // The opened stretches' level rays (BoreProbe.wallHits), square to the chunk at each metre.
+  for (const { chunk: c, side, s0, s1 } of openedOf) {
+    const sign = side === "left" ? 1 : -1;
+    const hw = carriagewayWidth(c) / 2;
+    const band = boreWallBand(c.structure as "tunnel" | "cut");
+    const last = c.st[c.st.length - STATION_STRIDE];
+    for (let s = s0 + 0.25; s <= s1 - 0.25; s += 1) {
+      const f = frameAt(c.st, s);
+      const g1 = frameAt(c.st, Math.max(c.st[0], s - 0.25));
+      const g2 = frameAt(c.st, Math.min(last, s + 0.25));
+      const [ax, ay] = project(g1.lon, g1.lat, g1.z);
+      const [bx, by] = project(g2.lon, g2.lat, g2.z);
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      // Left of travel in plan (east, north): (−dy, dx); the local frame's z is −north.
+      const lx = (-(by - ay) / len) * sign;
+      const ly = ((bx - ax) / len) * sign;
+      const centre = FRAME.toLocal(f.lat, f.lon, f.z + N);
+      const u = hw - 1;
+      const o = { x: centre.x + lx * u, y: centre.y + 0.5, z: centre.z - ly * u };
+      const mine = handlesOf.get(c.id)!;
+      const hit = world.castRay(
+        new RAPIER.Ray(o, { x: lx, y: 0, z: -ly }),
+        1 + band,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        (x) => mine.has(x.handle),
+      );
+      bore.wallRays++;
+      if (hit !== null) bore.wallHits++;
+    }
+  }
+  return { seams, cuts, dividers, steps: noseSteps, jogs, bare, bore, world };
 }
