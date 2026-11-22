@@ -69,6 +69,7 @@ import {
 import { type Ellipsoidal, expresswayRoadInput, type XwRoadInput } from "./expresswayRoads";
 import {
   BORE_FACES,
+  BORE_DIVIDER_FACES,
   BORE_OPEN_FACES,
   type BoreOpen,
   boreLoop,
@@ -300,6 +301,9 @@ export function* deckArraySteps(
   };
   /** Whether a bore's side is open at ring i (+1 left). */
   const isBoreOpen = (i: number, key: "left" | "right") => bore !== null && Boolean(sides[i][key].opening);
+  /** Whether a bore's side has a 分離壁 at its reach at ring i. */
+  const isBoreDivider = (i: number, key: "left" | "right") =>
+    bore !== null && Boolean(sides[i][key].opening?.isDivider);
   /** The drawn terrain at a local point, relative to a road height (local y), or null where unknown. */
   const readAt = (point: Vector3, roadY: number): number | null => {
     if (!terrainAt) return null;
@@ -549,13 +553,29 @@ export function* deckArraySteps(
     // opened one at one place are the walls' end face (refineRings puts two rings where `wall` flips).
     const isOpeningEnd =
       rings[i] === rings[i - 1] &&
-      (["left", "right"] as const).some((key) => isBoreOpen(i, key) !== isBoreOpen(i - 1, key));
-    /** The faces left out here: those across a side opened at both rings (BORE_OPEN_FACES). */
-    const across = bore
-      ? (["left", "right"] as const).flatMap((key) =>
-          isBoreOpen(i, key) && isBoreOpen(i - 1, key) ? BORE_OPEN_FACES[bore][key] : [],
-        )
-      : [];
+      (["left", "right"] as const).some(
+        (key) =>
+          isBoreOpen(i, key) !== isBoreOpen(i - 1, key) ||
+          isBoreDivider(i, key) !== isBoreDivider(i - 1, key),
+      );
+    /**
+     * The faces left out here: those across a side opened at both rings (BORE_OPEN_FACES), or under a
+     * 分離壁's own face where both have one (BORE_DIVIDER_FACES); and the 分離壁's faces, both sides.
+     */
+    const across: number[] = [];
+    const walled: number[] = [];
+    for (const key of ["left", "right"] as const) {
+      if (!bore) break;
+      const isOpenBoth = isBoreOpen(i, key) && isBoreOpen(i - 1, key);
+      if (!isOpenBoth) continue;
+      const isDividerBoth = isBoreDivider(i, key) && isBoreDivider(i - 1, key);
+      if (isDividerBoth) {
+        across.push(...BORE_DIVIDER_FACES[bore][key].skip);
+        walled.push(...BORE_DIVIDER_FACES[bore][key].draw);
+        continue;
+      }
+      across.push(...BORE_OPEN_FACES[bore][key]);
+    }
     for (let k = 0; k + 1 < cur.length; k++) {
       const isAcross = across.includes(k);
       if (isAcross) continue;
@@ -565,13 +585,14 @@ export function* deckArraySteps(
       const d = cur[k];
       const face = faceOf(k);
       const colour = face.colour;
-      const isSolid = face.solid || isOpeningEnd;
+      const isWalled = walled.includes(k);
+      const isSolid = face.solid || isOpeningEnd || isWalled;
       // Faces wind so their front is outward for a loop drawn left → right over the top.
       const tris = [
         [a, d, c],
         [a, c, b],
       ];
-      if (isDividerEnd || isOpeningEnd) tris.push([a, c, d], [a, b, c]);
+      if (isDividerEnd || isOpeningEnd || isWalled) tris.push([a, c, d], [a, b, c]);
       for (const tri of tris) {
         const isDegenerate = triangleArea2(tri[0], tri[1], tri[2]) < 1e-8;
         if (isDegenerate) continue;
@@ -637,7 +658,13 @@ export function* deckArraySteps(
 
 /** An opened side of a ring (DeckSide.opening), as boreLoop takes it; null where it is not opened. */
 const boreOpenOf = (sd: DeckSide): BoreOpen | null =>
-  sd.opening ? { reach: sd.reach, seam: sd.seam ? [sd.seam.x, sd.seam.y, sd.seam.z] : null } : null;
+  sd.opening
+    ? {
+        reach: sd.reach,
+        seam: sd.seam ? [sd.seam.x, sd.seam.y, sd.seam.z] : null,
+        ...(sd.opening.isDivider ? { isDivider: true } : {}),
+      }
+    : null;
 
 /** Metres to the decimetre (the log's s ranges). */
 const toDecimetre = (x: number) => Math.round(x * 10) / 10;
@@ -1217,15 +1244,29 @@ function* refineRings(
       // as elsewhere: the bore draws its own walls wherever it is not opened, and the merge lets its
       // rail go where the slabs overlap, often metres from the opening's end. A bore with none keeps
       // `wall` (its rings as before S7-4a).
-      const hasWall = (sd: RingSides) => (isOpenedBore ? !sd[key].opening : sd[key].wall !== null);
-      const switches = hasWall(sa) !== hasWall(sb);
-      if (!switches) continue;
-      const { lo, hi, atLo, atHi } = bisect(hasWall);
-      const tau = (lo + hi) / 2;
-      const ring = ringBetween(a, b, tau, false);
-      // Both at one place: the faces between them are the wall's square end.
-      extra.push({ tau: tau - 1e-9, ring, sides: atLo, isClosing: false });
-      extra.push({ tau: tau + 1e-9, ring, sides: atHi, isClosing: false });
+      // Four states there: walled, open on the stretch, an open tip, a 分離壁 at the reach (S7-4
+      // review 1, addenda 2 and 3). The stretch's end is one too: the floor's end moves there (the
+      // seam to the other carriageway's edge, rule C), and over a whole interval it slanted past the
+      // seam on the stretch.
+      const openingState = (o: NonNullable<DeckSide["opening"]>) => (o.isDivider ? 3 : o.isTip ? 2 : 1);
+      const stateOf = (sd: RingSides) =>
+        isOpenedBore ? (sd[key].opening ? openingState(sd[key].opening) : 0) : sd[key].wall !== null ? 1 : 0;
+      // A bore's states may change more than once in an interval (the stretch's end, then the tip's):
+      // bisected on from each change found to the interval's end, a few times at most.
+      let from = { tau: 0, sides: sa };
+      for (let n = 0; n < 4; n++) {
+        const switches = stateOf(from.sides) !== stateOf(sb);
+        if (!switches) break;
+        const was = stateOf(from.sides);
+        const { lo, hi, atLo, atHi } = bisect((sd) => stateOf(sd) === was, from);
+        const tau = (lo + hi) / 2;
+        const ring = ringBetween(a, b, tau, false);
+        // Both at one place: the faces between them are the wall's square end.
+        extra.push({ tau: tau - 1e-9, ring, sides: atLo, isClosing: false });
+        extra.push({ tau: tau + 1e-9, ring, sides: atHi, isClosing: false });
+        if (!isOpenedBore) break;
+        from = { tau: hi, sides: atHi };
+      }
     }
     // Where a side starts or stops standing by a 分離壁 (A1) between two rings so far: two rings at
     // one place, as at a wall's end. The lower deck has no wall either side of it, but its road's

@@ -54,14 +54,14 @@ function chunk(
   id: string,
   run: string,
   structure: XwChunk["structure"],
-  stations: Array<[number, number, number, number]>,
+  stations: Array<[number, number, number, number] | [number, number, number, number, number]>,
   ground: number,
   extra: Partial<XwChunk>,
 ): XwChunk {
   const st: number[] = [];
-  for (const [s, x, y, z] of stations) {
+  for (const [s, x, y, z, g = 0] of stations) {
     const [lon, lat] = plane.toLonLat(x, y);
-    st.push(s, lon, lat, z, 0, ground, 0);
+    st.push(s, lon, lat, z, 0, ground, g);
   }
   const isRamp = run === "C";
   return {
@@ -131,6 +131,13 @@ function pair(
     cStructure?: XwChunk["structure"];
     withOpenings?: boolean;
     mSide?: "left" | "right";
+    /** C's rise over M's surface past the stretch, by plane x, and its grade along x (A: the two part in height in the tip). */
+    cRise?: (x: number) => number;
+    cRiseGrade?: (x: number) => number;
+    /** Where M's same stretch with C ends (x), if not where C's does (F: M lets C go first). */
+    mSameEnd?: number;
+    /** M's station spacing (m), 10 by default (F: 20, the stretch's end halfway between two). */
+    mStep?: number;
   } = {},
 ) {
   const { structure, drift, mBreaks, mEnd } = shape;
@@ -141,13 +148,18 @@ function pair(
   const apartX = NOSE + (HW_M + HW_C) / drift;
   const k = Math.hypot(1, drift);
   const stretchM: XwOpening = { side: options.mSide ?? "left", s0: NOSE, s1: round2(apartX), with: "C" };
-  const sameM = { with: "C", relation: "same" as const, s0: NOSE, s1: round2(apartX + 0.5 / drift) };
+  const sameM = {
+    with: "C",
+    relation: "same" as const,
+    s0: NOSE,
+    s1: round2(options.mSameEnd ?? apartX + 0.5 / drift),
+  };
   const borders = [0, ...mBreaks, mEnd];
   const m: XwChunk[] = [];
   for (let j = 0; j + 1 < borders.length; j++) {
     const [a, b] = [borders[j], borders[j + 1]];
     const stations: Array<[number, number, number, number]> = [];
-    for (let s = a; s < b - 1e-9; s += 10) stations.push([s, s, 0, ROAD]);
+    for (let s = a; s < b - 1e-9; s += options.mStep ?? 10) stations.push([s, s, 0, ROAD]);
     stations.push([b, b, 0, ROAD]);
     const clip = (o: { s0: number; s1: number }) => o.s1 > a && o.s0 < b;
     const piece = (o: XwOpening) => ({ ...o, s0: round2(Math.max(a, o.s0)), s1: round2(Math.min(b, o.s1)) });
@@ -162,10 +174,12 @@ function pair(
     );
   }
   const lenC = 160 * k;
-  const cStations: Array<[number, number, number, number]> = [];
+  const cStations: Array<[number, number, number, number, number]> = [];
   for (let sC = 0; sC <= lenC + 1e-9; sC += 10) {
     const x = NOSE + sC / k;
-    cStations.push([sC, x, (x - NOSE) * drift, ROAD + RAMP_DZ]);
+    // The grade along C (its stations carry it, so the Hermite surface follows the rise).
+    const g = (options.cRiseGrade?.(x) ?? 0) / k;
+    cStations.push([sC, x, (x - NOSE) * drift, ROAD + RAMP_DZ + (options.cRise?.(x) ?? 0), g]);
   }
   const heading = Math.atan2(drift, 1);
   const isCUnder = cStructure === "tunnel" || cStructure === "cut";
@@ -263,6 +277,20 @@ describe("S7-4a 掘割の分合流の開口（B）", () => {
       const d = ray(world, onM(x, HW_M - 1, 0.5), LEFT, 10);
       expect(d, `x ${x}`).toBeCloseTo(1, 1);
     }
+  });
+
+  it("keeps M's wall near the nose, where C still lies wholly inside M's slab (no floor ending over nothing)", () => {
+    const { world } = pairWorld(CUT);
+    let checked = 0;
+    for (let x = NOSE + 1.3; x < NOSE + 20; x += 0.7) {
+      // C's far (left) slab edge, north of M's centre.
+      const cFar = (x - NOSE) * 0.12 + (HW_C + PARAPET_WIDTH.value) * Math.hypot(1, 0.12);
+      const isInsideM = cFar < EDGE_M - 0.1;
+      if (!isInsideM) continue;
+      expect(ray(world, onM(x, HW_M - 1, 0.5), LEFT, 10), `x ${x.toFixed(1)}`).toBeCloseTo(1, 1);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(5);
   });
 
   it("leaves no hole and no step over 0.15 m in a 0.5 m grid from M's centre over C's carriageway", () => {
@@ -587,11 +615,21 @@ describe("S7-4a 探り（3.6、scripts/expresswaySeams.ts）", () => {
     return out;
   };
 
-  it("measures the seams of an opening with today's thresholds (no seam_hole, no seam_step) and meets no wall along it", () => {
+  it("measures the seams of an opening's stretch with today's thresholds (no seam_hole, no seam_step), its tip's floors within MERGE_MAX_DZ, and meets no wall along it", () => {
     for (const shape of [CUT, TUNNEL]) {
       const { m, c, runs } = pair(shape);
       const out = probe([...m, c], runs);
-      const seams = out.seams.filter((x) => x.chunk === "C:0" && x.with === "M");
+      const stretchEnd = c.openings![0].s1;
+      const all = out.seams.filter((x) => x.chunk === "C:0" && x.with === "M");
+      // Past the stretch (the tip) C's floor runs on over M's slab edge to M's carriageway (rule C of
+      // review 1, addendum 3): the probe 2 mm inside M's edge meets C's floor, RAMP_DZ over M's face.
+      // Accepted within MERGE_MAX_DZ (one surface); the seam rule holds on the stretch.
+      const tip = all.filter((x) => x.s > stretchEnd);
+      expect(
+        tip.every((x) => x.inside !== null && Math.abs(x.inside) <= MERGE_MAX_DZ),
+        shape.structure,
+      ).toBe(true);
+      const seams = all.filter((x) => x.s <= stretchEnd);
       expect(seams.length, shape.structure).toBeGreaterThan(50);
       const found = seamCases(seams, out.cuts, [], { fullDz: MERGE_FULL_DZ, maxDz: MERGE_MAX_DZ });
       expect(
@@ -617,5 +655,145 @@ describe("S7-4a 探り（3.6、scripts/expresswaySeams.ts）", () => {
     const out = probe([...wrong.m, wrong.c], wrong.runs);
     // C's own opening (right, M on its right) is right; M's says right with C on its left.
     expect(out.bore.sideMismatch.map((x) => [x.chunk, x.with, x.side])).toEqual([["M:0", "C", "right"]]);
+  });
+});
+
+/** M's or C's rings with their sides, where a side towards the other is opened (state per ring). */
+function openedRings(b: ReturnType<typeof built>, key: "left" | "right") {
+  return b.rings.map((r, i) => ({ s: r.frame.s, side: b.sides[i][key] }));
+}
+
+describe("S7-4a 先端の高さの差と分離壁（レビュー 1 の追記 2・3）", () => {
+  // C leaves M's surface at 3 % from x 116 (just past the stretch's end at x 115.2): in the tunnel's
+  // tip (to x 126.6) the two part in height while C is still inside M's wall band.
+  const RISE = (x: number) => Math.max(0, x - 116) * 0.03;
+  const RISE_G = (x: number) => (x > 116 ? 0.03 : 0);
+  // E (a cut's tip ends at x 119.5): steeper, past MERGE_MAX_DZ at x 117.2.
+  const RISE_E = (x: number) => Math.max(0, x - 116) * 0.1;
+  const RISE_E_G = (x: number) => (x > 116 ? 0.1 : 0);
+  const apartOf = () => NOSE + (HW_M + HW_C) / 0.12;
+
+  it("A: opens the tip while the roads are within MERGE_MAX_DZ, then stands a 分離壁 halfway with no hole between the two boxes", () => {
+    const { m, c, runs } = pair(TUNNEL, { cRise: RISE, cRiseGrade: RISE_G });
+    const index = indexOf([...m, c], runs);
+    const { world, built: b } = worldOf([...m, c], index);
+    const rings = openedRings(b.get("M:0")!, "left").filter((x) => x.side.opening?.isTip);
+    const open = rings.filter((x) => !x.side.opening?.isDivider);
+    const divided = rings.filter((x) => x.side.opening?.isDivider);
+    expect(open.length).toBeGreaterThan(0);
+    expect(divided.length).toBeGreaterThan(0);
+    // Open while C is within MERGE_MAX_DZ of M (RAMP_DZ + 0.03 (x − 116) ≤ 0.15: x ≤ 120 on C), walled
+    // past it. M reads C at the foot of its own centre on C's line, about 0.8 m back along C here.
+    expect(Math.max(...open.map((x) => x.s))).toBeLessThanOrEqual(121.2);
+    expect(Math.min(...divided.map((x) => x.s))).toBeGreaterThanOrEqual(119.7);
+    for (let x = apartOf() + 0.37; x < tipEndOf(TUNNEL) - 0.3; x += 0.41) {
+      const cEdge = cRightEdge(x, 0.12);
+      const middle = (HW_M + cEdge) / 2;
+      // No hole: down from 2 m over the higher road, between the two carriageways, a floor within 0.15 m of M's or C's.
+      for (let u = HW_M + 0.05; u < cEdge - 0.05; u += 0.1) {
+        const d = ray(world, onM(x, u, 2 + RISE(x)), DOWN, 5);
+        expect(d, `x ${x.toFixed(2)} u ${u.toFixed(2)}`).not.toBeNull();
+        const y = 2 + RISE(x) - d!;
+        const isOnOne = Math.abs(y) <= 0.15 || Math.abs(y - RISE(x) - RAMP_DZ) <= 0.15;
+        expect(isOnOne, `x ${x.toFixed(2)} u ${u.toFixed(2)} y ${y.toFixed(3)}`).toBe(true);
+      }
+      const isWalled = RISE(x) + RAMP_DZ > 0.15 + 0.3;
+      if (!isWalled) continue;
+      // The 分離壁 closes both boxes: level rays from each carriageway's edge towards the other meet it
+      // by the middle (+ 0.1 m), 0.5 m over the floor and 0.5 m under the ceiling.
+      for (const v of [0.5, H - 0.5]) {
+        const fromM = ray(world, onM(x, HW_M - 0.05, v), LEFT, 3);
+        expect(fromM, `M x ${x.toFixed(2)} v ${v}`).not.toBeNull();
+        expect(fromM!, `M x ${x.toFixed(2)} v ${v}`).toBeLessThanOrEqual(middle - HW_M + 0.05 + 0.1);
+        const fromC = ray(world, onM(x, cEdge + 0.05, RISE(x) + RAMP_DZ + v), LEFT.clone().negate(), 3);
+        expect(fromC, `C x ${x.toFixed(2)} v ${v}`).not.toBeNull();
+        expect(fromC!, `C x ${x.toFixed(2)} v ${v}`).toBeLessThanOrEqual(cEdge - middle + 0.05 + 0.1);
+      }
+    }
+  });
+
+  it("B: the 分離壁 stands in neither carriageway: rays along travel 0.1 m inside each carriageway's edge meet nothing", () => {
+    const { m, c, runs } = pair(TUNNEL, { cRise: RISE, cRiseGrade: RISE_G });
+    const index = indexOf([...m, c], runs);
+    const { world, built: b } = worldOf([...m, c], index);
+    // Not an empty pass: the net has 分離壁 rings on both runs.
+    expect(
+      openedRings(b.get("M:0")!, "left").filter((x) => x.side.opening?.isDivider).length,
+    ).toBeGreaterThan(0);
+    expect(
+      openedRings(b.get("C:0")!, "right").filter((x) => x.side.opening?.isDivider).length,
+    ).toBeGreaterThan(0);
+    const x0 = 121.5;
+    const x1 = tipEndOf(TUNNEL) - 0.5;
+    const alongM = ray(world, onM(x0, HW_M - 0.1, 0.5), ALONG, x1 - x0);
+    expect(alongM).toBeNull();
+    // Along C's right edge (it turns 0.12 off M's line): short steps, each square to nothing.
+    for (let x = x0; x < x1 - 0.5; x += 0.5) {
+      const p = onM(x, cRightEdge(x, 0.12) + 0.1, RISE(x) + RAMP_DZ + 0.5);
+      const q = onM(x + 0.5, cRightEdge(x + 0.5, 0.12) + 0.1, RISE(x + 0.5) + RAMP_DZ + 0.5);
+      const dir = q.clone().sub(p);
+      expect(ray(world, p, dir.clone().normalize(), dir.length()), `x ${x}`).toBeNull();
+    }
+  });
+
+  it("C: where one side is open and the other walled at one place, the open side looks onto a closed box", () => {
+    const { m, c, runs } = pair(TUNNEL, { cRise: RISE, cRiseGrade: RISE_G });
+    const index = indexOf([...m, c], runs);
+    const { world, built: b } = worldOf([...m, c], index);
+    const mDivider = openedRings(b.get("M:0")!, "left").filter((x) => x.side.opening?.isDivider);
+    const cDivider = openedRings(b.get("C:0")!, "right").filter((x) => x.side.opening?.isDivider);
+    expect(mDivider.length * cDivider.length).toBeGreaterThan(0);
+    // Between the first 分離壁 ring of either and of the other (one open, one walled), level rays from
+    // M's road towards C at 0.5 m meet a face before C's carriageway (the 分離壁 of one of them).
+    const kC = Math.hypot(1, 0.12);
+    const xs = [Math.min(...mDivider.map((x) => x.s)), NOSE + Math.min(...cDivider.map((x) => x.s)) / kC];
+    for (let x = Math.min(...xs) - 1; x <= Math.max(...xs) + 1; x += 0.1) {
+      const d = ray(world, onM(x, HW_M - 0.05, 0.5), LEFT, 3);
+      const toC = cRightEdge(x, 0.12) - HW_M + 0.05;
+      const isOpenFloor = d === null || d >= toC - 0.02;
+      // Open both (still within MERGE_MAX_DZ) the ray may run on to C; else it meets a wall short of C.
+      const dz = RISE(x) + RAMP_DZ;
+      if (dz <= 0.15 + 0.03) continue;
+      expect(isOpenFloor, `x ${x.toFixed(2)} d ${d}`).toBe(false);
+    }
+  });
+
+  it("E: an embankment main line and a cut ramp parting in height: the ramp's side alone has the 分離壁, the main line's sides are its own", () => {
+    const { m, c, runs } = pair(CUT, { mStructure: "embankment", cRise: RISE_E, cRiseGrade: RISE_E_G });
+    const index = indexOf([...m, c], runs);
+    const { built: b } = worldOf([...m, c], index);
+    const cRings = openedRings(b.get("C:0")!, "right");
+    expect(cRings.some((x) => x.side.opening?.isDivider)).toBe(true);
+    for (const x of m)
+      expect(b.get(x.id)!.sides.every((sd) => !sd.left.opening && !sd.right.opening)).toBe(true);
+  });
+
+  it("F (addendum 3): M's stations 20 m apart and the stretch's end halfway between two, M letting C go first: no hole from 3 m before the stretch's end to the tip's end, and no tip floor ends inside its own carriageway", () => {
+    // Drifting 0.1325 a metre the carriageways part at x 110: halfway between M's stations 100 and 120.
+    for (const structure of ["cut", "tunnel"] as const) {
+      const shape: Shape = { structure, drift: 0.1325, mBreaks: [200], mEnd: 300 };
+      const apart = NOSE + (HW_M + HW_C) / shape.drift;
+      expect(apart).toBeCloseTo(110, 6);
+      const { m, c, runs } = pair(shape, { mSameEnd: apart - 25, mStep: 20 });
+      const index = indexOf([...m, c], runs);
+      const { world, built: b } = worldOf([...m, c], index);
+      for (let x = apart - 3; x <= tipEndOf(shape) - 0.2; x += 0.13) {
+        for (let u = HW_M - 0.5; u < cRightEdge(x, shape.drift) + 0.5; u += 0.05) {
+          const d = ray(world, onM(x, u, 1), DOWN, 3);
+          expect(d, `${structure} x ${x.toFixed(2)} u ${u.toFixed(2)}`).not.toBeNull();
+          expect(Math.abs(1 - d!), `${structure} x ${x.toFixed(2)} u ${u.toFixed(2)}`).toBeLessThanOrEqual(
+            0.15,
+          );
+        }
+      }
+      for (const [id, key] of [
+        ["M:0", "left"],
+        ["C:0", "right"],
+      ] as const) {
+        const hw = id === "M:0" ? HW_M : HW_C;
+        for (const r of openedRings(b.get(id)!, key).filter((x) => x.side.opening?.isTip))
+          expect(r.side.reach, `${structure} ${id} s ${r.s}`).toBeGreaterThanOrEqual(hw - 1e-9);
+      }
+    }
   });
 });

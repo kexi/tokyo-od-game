@@ -96,9 +96,10 @@ export const BORE_FACES: Readonly<Record<"tunnel" | "cut", readonly BoreFace[]>>
 /**
  * An opened side of a below chunk's section (S7-4a, expresswayMerge.ts openBore): how far its floor
  * (and a tunnel's ceiling and roof) reaches from the centre, and the point its road ends on where
- * that is another deck's seam (local frame), else null (its own surface there).
+ * that is another deck's seam (local frame), else null (its own surface there). `isDivider`: a 分離壁
+ * stands at the reach (BORE_DIVIDER_FACES).
  */
-export type BoreOpen = { reach: number; seam: number[] | null };
+export type BoreOpen = { reach: number; seam: number[] | null; isDivider?: boolean };
 
 /**
  * The faces of `boreLoop` that stand across an opened side (left, right): a tunnel's lining from
@@ -108,6 +109,24 @@ export type BoreOpen = { reach: number; seam: number[] | null };
  * floor's, so the face between them is a wall at the reach whatever is done with the others. A
  * cut's opened side has its wall's corners on the road's end, its faces of no area.
  */
+/**
+ * The faces of `boreLoop` on a side whose opening has a 分離壁 at its reach (S7-4 review 1, addendum
+ * 2): `draw`, the face from the floor's bottom to the box's top at the reach (a tunnel's outer wall
+ * there, a cut's wall face to its top), drawn and solid from both sides; `skip`, the face over the same
+ * place from the road up, left out (the two would lie in one plane). Why both sides: the two runs read
+ * their height difference at their own rings, and where one side is open and the other walled the
+ * wall's back must not show through.
+ */
+export const BORE_DIVIDER_FACES: Readonly<
+  Record<
+    "tunnel" | "cut",
+    { left: { draw: number[]; skip: number[] }; right: { draw: number[]; skip: number[] } }
+  >
+> = {
+  tunnel: { left: { draw: [12], skip: [4] }, right: { draw: [10], skip: [6] } },
+  cut: { left: { draw: [4], skip: [2] }, right: { draw: [6], skip: [8] } },
+};
+
 export const BORE_OPEN_FACES: Readonly<Record<"tunnel" | "cut", { left: number[]; right: number[] }>> = {
   tunnel: { left: [4, 12], right: [6, 10] },
   cut: { left: [], right: [] },
@@ -144,11 +163,14 @@ export function boreLoop(
     const gR = Math.max(groundV, sides?.right ?? -Infinity);
     const hL = cutWallHeight(lL, gL, PARAPET_HEIGHT.value);
     const hR = cutWallHeight(lR, gR, PARAPET_HEIGHT.value);
+    // A 分離壁 (isDivider) rises at the reach to the wall's top; else the wall's corners lie on the road's end.
+    const topL = open.left?.isDivider ? at(uL, lift(uL) + hL) : roadL;
+    const topR = open.right?.isDivider ? at(-uR, lift(-uR) + hR) : roadR;
     const left = open.left
-      ? [roadL, roadL, roadL, at(uL, lift(uL) - FLOOR)]
+      ? [roadL, topL, topL, at(uL, lift(uL) - FLOOR)]
       : [at(hw, lL), at(hw, lL + hL), at(hw + WALL, lL + hL), at(hw + WALL, lL - FLOOR)];
     const right = open.right
-      ? [at(-uR, lift(-uR) - FLOOR), roadR, roadR, roadR]
+      ? [at(-uR, lift(-uR) - FLOOR), topR, topR, roadR]
       : [at(-hw - WALL, lR - FLOOR), at(-hw - WALL, lR + hR), at(-hw, lR + hR), at(-hw, lR)];
     return [roadR, roadR, ...left, ...right];
   }

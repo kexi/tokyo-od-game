@@ -99,9 +99,10 @@ export type DeckSide = {
 /**
  * An opened side of a tunnel or cut (DeckSide.opening): the other run, whether past the data's
  * stretch (the tip), and whether it is the far side of a deck cut at the other's edge, its slab edge
- * on the other's slab (`isCovered`: no opening in the data there, the merge's rule).
+ * on the other's slab (`isCovered`: no opening in the data there, the merge's rule), and whether a
+ * 分離壁 stands at its reach (`isDivider`: a tip whose two roads are more than MERGE_MAX_DZ apart).
  */
-export type BoreOpening = { with: string; isTip: boolean; isCovered?: boolean };
+export type BoreOpening = { with: string; isTip: boolean; isCovered?: boolean; isDivider?: boolean };
 
 export type RingSides = { left: DeckSide; right: DeckSide };
 
