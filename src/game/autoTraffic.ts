@@ -88,6 +88,44 @@ const FOLLOW_DECEL = 4; // m/s², a firm stop
 const PASS_SPEED = 4.5; // m/s while beside the obstacle (16 km/h: 側方間隔 is small)
 
 /**
+ * How far the car moves across its path per metre along it (left +), from its heading and the
+ * path's direction at the nose: 0 in a pass (its 1.95 m band counts on the nose being out already)
+ * and when the car is not lined up with the path (0.5 or under, as traffic()'s isAligned), when it
+ * turns across the street or manoeuvres and a slope along the path says nothing.
+ */
+export function slantOnPath(heading: Vector3, pathDir: Vector3, isPassing: boolean): number {
+  const alongPath = heading.x * pathDir.x + heading.z * pathDir.z;
+  const isLinedUp = alongPath > 0.5;
+  if (isPassing || !isLinedUp) return 0;
+  // Left of travel (dx, dz) is (dz, −dx), as placeOnRoute's lateral.
+  const acrossPath = heading.x * pathDir.z - heading.z * pathDir.x;
+  return acrossPath / alongPath;
+}
+
+/**
+ * Whether a vehicle `lateral` m across the path, `ahead` m on from the nose, may be the car in front
+ * (第26条): across between where the nose is now (`own`) and where it heads to by then (`own` +
+ * `ahead` × `slant`), with the band on both sides. With no slant: `own` ± band, the test before D4.
+ * Why the whole stretch between and not where it heads alone: a car turning back to its path would
+ * lose one near its lateral now. Why not the two bands alone: far on they part, and the car passes
+ * through the gap between them. Why across the path and not straight along the heading: round a
+ * bend the heading leaves the street, the path does not (it would take in parked and oncoming cars).
+ */
+export function isInFrontBand(
+  lateral: number,
+  own: number,
+  slant: number,
+  ahead: number,
+  band: number,
+): boolean {
+  const reach = Math.max(0, ahead) * slant;
+  // As the middle and half width of the stretch: with no slant this is |lateral − own| < band to
+  // the last bit, the same float test as before.
+  const middle = own + reach / 2;
+  return Math.abs(lateral - middle) < band + Math.abs(reach) / 2;
+}
+
+/**
  * 第26条: the gap to the car ahead must let us stop if it stops suddenly — reaction plus braking,
  * v·0.75 s + v²/(2·4 m/s²): 37 m at 50 km/h (the textbook "speed − 15" is 35 m), 13 m at 25 km/h.
  * Returns the fastest speed (m/s) whose stopping distance fits in `gap` metres.
