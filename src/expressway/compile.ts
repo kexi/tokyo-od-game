@@ -6190,17 +6190,28 @@ function openingsOf(plan: Plan, rp: RunPlan, stretches: readonly XwDeckStretch[]
       .sort((p, q) => distance(p) - distance(q));
     const stretch = near[0];
     if (!stretch) continue;
+    // The side is read where the two centre lines are farthest apart within the stretch: the pair
+    // farthest from the junction's node (S7-3 3.7, S7-4 判定 0). Why not the stretch's middle: near the
+    // node the two lines all but meet, and a short stretch's middle is there, so the sign is noise.
+    const isInStretch = (s: number) => s >= stretch.s0 - 1e-6 && s <= stretch.s1 + 1e-6;
+    const mine = plan.pairs.filter((p) => p.a === id && p.b === j.with);
+    const inStretch = mine.filter((p) => isInStretch(p.sa));
     const mid = (stretch.s0 + stretch.s1) / 2;
-    const pair = plan.pairs
-      .filter((p) => p.a === id && p.b === j.with)
-      .sort((p, q) => Math.abs(p.sa - mid) - Math.abs(q.sa - mid))[0];
+    const hasInStretch = inStretch.length > 0;
+    const pair = hasInStretch
+      ? inStretch.sort((p, q) => Math.abs(q.sa - j.s) - Math.abs(p.sa - j.s))[0]
+      : mine.sort((p, q) => Math.abs(p.sa - mid) - Math.abs(q.sa - mid))[0];
     const other = plan.runs.get(j.with);
     if (!pair || !other) continue;
     const here = poseAt(rp, pair.sa);
     const ahead = poseAt(rp, Math.min(rp.length, pair.sa + 1));
     const behind = poseAt(rp, Math.max(0, pair.sa - 1));
+    // The other run's point in this run's plane: each run's x, y are on its own chain's plane (origin at
+    // the chain's first node), so two chains' x, y cannot be subtracted (S7-4 判定 0: 23 of ship/all's
+    // 62 stretches were the wrong way). Why not CROSS_PLANE: this run's plane is the one `here` is on.
     const there = poseAt(other, pair.sb);
-    const cross = (ahead.x - behind.x) * (there.y - here.y) - (ahead.y - behind.y) * (there.x - here.x);
+    const [tx, ty] = rp.plane.toXY(there.lon, there.lat);
+    const cross = (ahead.x - behind.x) * (ty - here.y) - (ahead.y - behind.y) * (tx - here.x);
     out.push({ side: cross > 0 ? "left" : "right", s0: stretch.s0, s1: stretch.s1, with: j.with });
   }
   return out.sort((p, q) => p.s0 - q.s0 || (p.with < q.with ? -1 : 1));

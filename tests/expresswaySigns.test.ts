@@ -753,6 +753,55 @@ describe("planSigns（合成の区間）", () => {
     expect(Math.abs(placed[0].s - 200)).toBeLessThan(2);
     expect(out.unplaced).toContainEqual({ run: mainRun.id, id: "116の4", reason: "no_free_distance" });
   });
+
+  describe("U13: トンネルの中に門型を立てない", () => {
+    /** The same section with the chunks of the main line from x = `x0` to `x1` turned into `structure`. */
+    const planWith = (x0: number, x1: number, structure: "tunnel" | "cut") => {
+      const chunks = raised.map((c) => {
+        const isInside = ["10", "11"].includes(c.run) && c.st[0] >= x0 - 1 && c.st[c.st.length - 7] <= x1 + 1;
+        return isInside ? { ...c, structure } : c;
+      });
+      return {
+        chunks,
+        out: planSigns({
+          chunks,
+          runs: result.runs,
+          features: result.features,
+          net,
+          phones: [phone(9, 200, -8), phone(8, 400, 8)],
+          bays: [],
+        }),
+      };
+    };
+    const overOn = (p: ReturnType<typeof planWith>, structure: string) =>
+      p.chunks
+        .filter((c) => c.structure === structure)
+        .flatMap((c) => p.out.signs.get(c.id) ?? [])
+        .filter((s) => s.side === "over");
+
+    it("plans no board over the road on a tunnel chunk, and the 壁高欄's signs stay there", () => {
+      const p = planWith(0, 1550, "tunnel");
+      expect(p.chunks.some((c) => c.structure === "tunnel")).toBe(true);
+      expect(overOn(p, "tunnel")).toEqual([]);
+      const plates = p.chunks
+        .filter((c) => c.structure === "tunnel")
+        .flatMap((c) => p.out.signs.get(c.id) ?? [])
+        .filter((s) => s.id === "323" || s.id === "116の4");
+      expect(plates.length).toBeGreaterThan(0);
+      // The left exit's boards found no distance outside the tunnel: reported, never forced.
+      expect(p.out.unplaced).toContainEqual({ run: "10", id: "110-B", reason: "no_free_distance" });
+    });
+
+    it("keeps the gantries of a cut chunk, which is open to the sky", () => {
+      const p = planWith(0, 1550, "cut");
+      const overs = (signs: Map<string, XwSign[]>) =>
+        [...signs.entries()]
+          .filter(([id]) => id.startsWith("10:") || id.startsWith("11:"))
+          .flatMap(([, l]) => l.filter((s) => s.side === "over").map((s) => `${s.id}@${s.s}:${s.mount}`));
+      expect(overOn(p, "cut").length).toBeGreaterThan(0);
+      expect(overs(p.out.signs)).toEqual(overs(out.signs));
+    });
+  });
 });
 
 describe("新しい板のレイアウト（111-B・116の4・116の6）", () => {

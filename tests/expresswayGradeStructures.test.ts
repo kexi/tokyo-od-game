@@ -6,7 +6,7 @@ import { planeAt } from "../src/expressway/geo";
 import { DEFAULT_DATA_DIR, readExpresswayFiles } from "../scripts/expresswayFiles";
 import { LocalFrame } from "../src/geo/frame";
 import { latToTileY, lonToTileX } from "../src/geo/tiles";
-import { boreHoles, cutsGround } from "../src/world/expresswayBore";
+import { boreHoles, cutsGround, holeShare } from "../src/world/expresswayBore";
 import { HEAD_OVER_GROUND_M, isHoleAt, TUNNEL_INNER_HEIGHT_M } from "../src/expressway/below";
 import { closeWidthStep, createDeckBody, deckArraySteps, type GeoToLocal } from "../src/world/expresswayDeck";
 import { chunkRings, openSide } from "../src/world/expresswayMerge";
@@ -606,44 +606,123 @@ describe("掘割と土被りのあるトンネルの継ぎ目、既定データ�
     // out (footDeferrals.ts) and 737538573 moved by up to 0.34 m: s 492.67 of 737538573:2 crossed the
     // hole's threshold (ground − road 6.721 → 6.650 m against 6.7 m), the hole grew by one station
     // interval (12 → 14 vertices, 1,189 → 1,473 m²); s 134.47 of :1 left it (6.698 → 6.821 m), alone
-    // there, so no polygon either way (knowledge「P2.7-6 PR 7c」).
-    expect([n, h, m]).toEqual([84, 922761830, 573913335]);
+    // there, so no polygon either way (knowledge「P2.7-6 PR 7c」). S7-4b put the hole's edge between
+    // stations: :2's opens at s 490.84 (share 0.909 of 472.67–492.67, ground − road 7.197 → 6.650 m)
+    // instead of s 492.67, one vertex more each side (14 → 16, 1,473 → 1,499 m²); the cut :0 is a
+    // hole all along and does not change (knowledge「S7-4b 穴の縁の補間」).
+    expect([n, h, m]).toEqual([88, 215627151, 812888198]);
   });
 
-  it("the shipped 麻布台 holes cover exactly the stations isHoleAt opens, two or more in a row (a lone station opens none)", () => {
+  it("the shipped 麻布台 holes cover exactly the stations isHoleAt opens, each stretch out to its crossings between stations", () => {
     const files = readExpresswayFiles(DEFAULT_DATA_DIR);
     for (const c of files.chunks.filter((x) => x.run === "737538573")) {
       const n = c.st.length / STATION_STRIDE;
       const structure = c.structure === "cut" ? "cut" : "tunnel";
-      const runs: number[] = [];
+      // Per stretch of hole stations: how many, and how many of its ends lie between two stations
+      // of the chunk (a crossing: S7-4b puts an edge there, one vertex each side).
+      const runs: Array<{ len: number; crossings: number }> = [];
       let len = 0;
+      const isHoleOf = (i: number) =>
+        isHoleAt(structure, c.st[i * STATION_STRIDE + ST.z], c.st[i * STATION_STRIDE + ST.ground]);
       for (let i = 0; i <= n; i++) {
-        const isHole =
-          i < n && isHoleAt(structure, c.st[i * STATION_STRIDE + ST.z], c.st[i * STATION_STRIDE + ST.ground]);
+        const isHole = i < n && isHoleOf(i);
         if (isHole) {
           len++;
           continue;
         }
-        if (len >= 2) runs.push(len);
+        const first = i - len;
+        if (len >= 1) runs.push({ len, crossings: Number(first > 0) + Number(i < n) });
         len = 0;
       }
       const polys = boreHoles(c, (lon, lat) => [lonToTileX(lon, 16), latToTileY(lat, 16)]);
       expect(polys.length, c.id).toBe(runs.length);
-      // Two vertices a station (left and right), two more where the hole reaches back past a seam.
-      polys.forEach((poly, k) => expect([0, 2], c.id).toContain(poly[0].length / 2 - 2 * runs[k]));
+      // Two vertices a station and a crossing (left and right), two more where the hole reaches back past a seam.
+      polys.forEach((poly, k) =>
+        expect([0, 2], c.id).toContain(poly[0].length / 2 - 2 * (runs[k].len + runs[k].crossings)),
+      );
     }
   });
 
-  it("opens no hole over a lone station under the threshold, and one over two in a row", () => {
-    const deep = ROAD + TUNNEL_INNER_HEIGHT_M + TUNNEL_ROOF.value.slab + HEAD_OVER_GROUND_M + 0.5;
-    const shallow = ROAD + 6;
-    const withGround = (shallowAt: number[]) => {
-      const c = chunkOf("tunnel", deep, { id: "T:0", run: "T", chain: "T", prev: null });
-      for (const i of shallowAt) c.st[i * STATION_STRIDE + ST.ground] = shallow;
-      return c;
-    };
-    expect(boreHoles(withGround([5]), toXY)).toEqual([]);
-    expect(boreHoles(withGround([5, 6]), toXY)).toHaveLength(1);
+  // S7-4b: a tunnel's hole ends where ground − road, linear between two stations, crosses the
+  // threshold (isHoleAt), not on a station. Synthetic: stations every 10 m from x 100 (s 0).
+  const COVER = TUNNEL_INNER_HEIGHT_M + TUNNEL_ROOF.value.slab + HEAD_OVER_GROUND_M;
+  const deep = ROAD + COVER + 0.5;
+  /** A tunnel with ground − road `cover` m over the stations listed, COVER + 0.5 elsewhere. */
+  const withCover = (at: Record<number, number>) => {
+    const c = chunkOf("tunnel", deep, { id: "T:0", run: "T", chain: "T", prev: null });
+    for (const [i, cover] of Object.entries(at)) c.st[Number(i) * STATION_STRIDE + ST.ground] = ROAD + cover;
+    return c;
+  };
+  /** The run distances along the line (x − 100) of a hole's vertices. */
+  const holeSpan = (c: XwChunk) => {
+    const xs = boreHoles(c, toXY).flatMap((p) => p[0].filter((_, k) => k % 2 === 0));
+    return [Math.min(...xs) - 100, Math.max(...xs) - 100];
+  };
+
+  it("opens the stretch between the two crossings round a lone station under the threshold, none over none", () => {
+    expect(boreHoles(withCover({}), toXY)).toEqual([]);
+    // Station 5 (s 50) at COVER − 0.5, its neighbours at COVER + 0.5: the crossings halfway, s 45 and 55.
+    expect(boreHoles(withCover({ 5: COVER - 0.5 }), toXY)).toHaveLength(1);
+    const [a, b] = holeSpan(withCover({ 5: COVER - 0.5 }));
+    expect(a).toBeCloseTo(45, 6);
+    expect(b).toBeCloseTo(55, 6);
+  });
+
+  it("puts the edge where ground − road crosses the threshold between stations (a share of the interval, not a station)", () => {
+    // Stations 5–10 under it; station 4 (s 40) at COVER + 0.5, 5 (s 50) at COVER − 1.5: the crossing a
+    // quarter of the way, s 42.5. The hole runs on to the chunk's last station (s 100).
+    const c = withCover({
+      5: COVER - 1.5,
+      6: COVER - 2,
+      7: COVER - 2,
+      8: COVER - 2,
+      9: COVER - 2,
+      10: COVER - 2,
+    });
+    const [a, b] = holeSpan(c);
+    expect(a).toBeCloseTo(42.5, 6);
+    expect(b).toBeCloseTo(100, 6);
+    // The edge lies on isHoleAt's threshold: the cover read linear there is COVER.
+    const t = holeShare(c, 4, 5);
+    const cover = (k: number) => c.st[k * STATION_STRIDE + ST.ground] - c.st[k * STATION_STRIDE + ST.z];
+    expect(cover(4) + (cover(5) - cover(4)) * t).toBeCloseTo(COVER, 9);
+  });
+
+  it("moves the edge by what the interpolation gives when the road moves 7 cm, not by a station interval (麻布台 s 492.67)", () => {
+    // As 737538573:2 in the default data: 7.197 m over the road at s 472.67, 6.721 m at 492.67, then
+    // under the threshold. The road 7.1 cm higher at the second takes it to 6.650 m, over the line.
+    const before = withCover({
+      5: COVER + 0.497,
+      6: COVER + 0.021,
+      7: COVER - 1,
+      8: COVER - 1,
+      9: COVER - 1,
+      10: COVER - 1,
+    });
+    const after = withCover({
+      5: COVER + 0.497,
+      6: COVER - 0.05,
+      7: COVER - 1,
+      8: COVER - 1,
+      9: COVER - 1,
+      10: COVER - 1,
+    });
+    const [a0] = holeSpan(before);
+    const [a1] = holeSpan(after);
+    // Before: the crossing between s 60 and 70 at 0.021 / 1.021 of it; after: between 50 and 60 at 0.497 / 0.547.
+    expect(a0).toBeCloseTo(60 + (10 * 0.021) / 1.021, 6);
+    expect(a1).toBeCloseTo(50 + (10 * 0.497) / 0.547, 6);
+    expect(Math.abs(a1 - a0)).toBeLessThan(1.2);
+  });
+
+  it("leaves a cut's hole on its stations (a hole all along) and a deep tunnel without one", () => {
+    const cut = chunkOf("cut", ROAD + 3, { id: "C:0", run: "C", chain: "C", prev: null });
+    const polys = boreHoles(cut, toXY);
+    expect(polys).toHaveLength(1);
+    // Eleven stations, two vertices each: no crossing between them.
+    expect(polys[0][0].length / 2).toBe(22);
+    expect(holeSpan(cut)).toEqual([expect.closeTo(0, 6), expect.closeTo(100, 6)]);
+    expect(boreHoles(withCover({}), toXY)).toEqual([]);
   });
 });
 
