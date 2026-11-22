@@ -42,7 +42,7 @@ const CENSUS = `(() => {
     const lru = tiles.lruCache;
     const sum = { tiles: 0, buildings: 0, lruBytes: 0, meshes: 0, attributes: {}, attributeBuffers: 0, index: 0, indexBuffers: 0,
       textures: 0, tableBuffers: 0, tableJsonChars: 0, metadataKept: 0, colliders: 0, vertices: 0, triangles: 0 };
-    const seenBuffers = new Set(); const seenTextures = new Set(); const seenTableBuffers = new Set();
+    const seenBuffers = new Set(); const seenTextures = new Set(); const seenTableBuffers = new Set(); const seenTables = new Set();
     const addBuffer = (buffer) => { if (!buffer || seenBuffers.has(buffer)) return 0; seenBuffers.add(buffer); return buffer.byteLength; };
     const perTile = []; const names = [];
     // itemSet is a Map (tile → when it was added): its keys are the tiles.
@@ -84,7 +84,8 @@ const CENSUS = `(() => {
       for (const table of [scene.batchTable, scene.featureTable, tile.engineData.metadata?.batchTable, tile.engineData.metadata?.featureTable]) {
         if (!table) continue;
         if (table.buffer && !seenTableBuffers.has(table.buffer)) { seenTableBuffers.add(table.buffer); sum.tableBuffers += table.buffer.byteLength; t.tables += table.buffer.byteLength; }
-        if (table === scene.batchTable || table === scene.featureTable) { try { const n = JSON.stringify(table.header).length; sum.tableJsonChars += n; t.tableJson += n; } catch {} }
+        // Each table's JSON once: metadata.batchTable is the scene's batchTable, the same object.
+        if (!seenTables.has(table)) { seenTables.add(table); try { const n = JSON.stringify(table.header).length; sum.tableJsonChars += n; t.tableJson += n; } catch {} }
       }
       sum.buildings += t.buildings;
       if (b.models?.get(scene)?.collider) sum.colliders++;
