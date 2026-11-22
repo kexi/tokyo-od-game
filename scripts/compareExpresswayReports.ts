@@ -85,6 +85,8 @@ const undergroundLine =
         `portals +${ids(under.portals.added)} / −${ids(under.portals.removed)} / changed ${ids(under.portals.changed)}`,
         `overApproach +${ids(under.overApproach.added)} / −${ids(under.overApproach.removed)}`,
         `approaches +${ids(under.approaches.added)} / −${ids(under.approaches.removed)}`,
+        `joins +${ids(under.joins.added)} / −${ids(under.joins.removed)} / changed ${ids(under.joins.changed)}`,
+        `unplanned +${ids(under.unplanned.added)} / −${ids(under.unplanned.removed)} / changed ${ids(under.unplanned.changed)}`,
       ].join("; ");
 const cell = (r: Row) => {
   const delta = r.va !== undefined && r.vb !== undefined ? fmt(r.vb - r.va) : "";
@@ -133,7 +135,9 @@ const changed =
   blocksRemoved.length +
   under.deferred.reasonChanged.length +
   under.deferred.inRangeChanged.length +
-  under.portals.changed.length;
+  under.portals.changed.length +
+  under.joins.changed.length +
+  under.unplanned.changed.length;
 log("expressway_reports_compared", {
   a: a.label,
   b: b.label,

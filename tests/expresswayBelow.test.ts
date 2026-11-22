@@ -19,6 +19,7 @@ import { planNetwork, solvePlan } from "../src/expressway/compile";
 import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
+import { violationsOf } from "../src/expressway/violations";
 
 // Synthetic C1-like line going east in a plane round 芝公園: a viaduct, then a cut into a hill, a
 // tunnel through it, and the road on at grade (or on a viaduct) past it. P9 (knowledge/road-redesign-plan.md 8 章).
@@ -266,5 +267,57 @@ describe("掘割からトンネルへ（合成の縦断、P9）", () => {
     expect([...p.runs.keys()].sort()).toEqual(["1", "4"]);
     expect(p.belowDeferred).toEqual(["2"]);
     expect(p.componentOf.get("1")).not.toBe(p.componentOf.get("4"));
+  });
+});
+
+describe("格子の測点の間の土被り（T12、S7-3 レビュー 0 の崖）", () => {
+  // A tunnel with no end going on under the ground (as before S7-3): a viaduct, then the tunnel down
+  // from a 30 m hill and curving south, out onto the low ground and a viaduct. The hill's edge is a
+  // cliff (30 m → 3 m) at y = −452, between the half grid step ahead of a compiler grid station and the
+  // next station of the files. The compiler holds the ceilings on its 5 m grid with the lowest ground
+  // of three points; the check reads every station of the files with its own ground: there the box
+  // cuts its cover and T12 catches it. A known gap (knowledge/expressway-generation.md「S7-3」,
+  // 未対応・既知の欠落): S7-3c holds the ceiling there too, and this test's expectation turns to 0 then.
+  const link = { highway: "motorway_link", oneway: "yes" };
+  const linkBridge = { ...link, bridge: "yes", layer: "1" };
+  const linkTunnel = { ...link, tunnel: "yes", layer: "-1" };
+  const cliffNet = (): Network => {
+    const n: Network = { ways: new Map(), nodes: new Map() };
+    const pts: Array<[number, number]> = [];
+    for (let x = 0; x <= 600; x += 50) pts.push([x, 0]);
+    const curve: Array<[number, number]> = [
+      [630, -20],
+      [680, -60],
+      [750, -120],
+      [800, -203.2],
+    ];
+    const south: Array<[number, number]> = [];
+    for (let y = -303.2; y >= -1303.2; y -= 50) south.push([800, y]);
+    const all = [...pts, ...curve, ...south];
+    const ids = all.map((_, i) => 700000 + i);
+    all.forEach(([x, y], i) => {
+      const [lon, lat] = plane.toLonLat(x, y);
+      n.nodes.set(ids[i], normalizeNode(ids[i], lon, lat, {}));
+    });
+    const at = (x: number, y: number) => ids[all.findIndex((p) => p[0] === x && p[1] === y)];
+    const span = (a: number, b: number) => ids.slice(ids.indexOf(a), ids.indexOf(b) + 1);
+    n.ways.set(10, normalizeWay(10, span(ids[0], at(600, 0)), linkBridge));
+    n.ways.set(20, normalizeWay(20, span(at(600, 0), at(800, -903.2)), linkTunnel));
+    n.ways.set(30, normalizeWay(30, span(at(800, -903.2), at(800, -1003.2)), link));
+    n.ways.set(40, normalizeWay(40, span(at(800, -1003.2), at(800, -1303.2)), linkBridge));
+    return n;
+  };
+  const cliff = (lon: number, lat: number) => (plane.toXY(lon, lat)[1] > -452 ? 30 : 3);
+
+  it("catches the box cutting its cover between two grid stations at a cliff (1 case today; 0 once S7-3c holds it)", () => {
+    const plan = planNetwork(cliffNet(), new Set(), null, [], {
+      structures: "height",
+      ground: "compile",
+      pruneBelow: false,
+    });
+    const res = solvePlan(plan, cliff, []);
+    const v = violationsOf(res, res.chunks, () => undefined, true);
+    expect(v.T12.count).toBe(1);
+    expect(v.T12.first[0]).toMatch(/^20:\d+: tunnel road -3\.\d+ above -3\.60 at s=5\d\d\.\d+$/);
   });
 });

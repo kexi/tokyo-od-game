@@ -291,6 +291,13 @@ class Planner {
       const s = at - d;
       const isOnRun = s >= 0 && s <= run.length;
       if (!isOnRun || !this.isFree(run, s)) continue;
+      // U13 (the user's decision, 2026-11-22): no board over the road inside a tunnel, the next
+      // distance is tried as under a deck. A gantry is a viaduct's (the board's foot 5.0 m up) under a
+      // 5.3 m roof, so its board pierces the roof and its legs stand off the walkway. Why not a small
+      // board on the tunnel's wall or roof: a new mount and size rule, P9's remainder U7 left out. A
+      // cut is open to the sky and keeps its gantries.
+      const isInTunnel = chunkAt(run, s).structure === "tunnel";
+      if (isInTunnel) continue;
       const above = this.deckAbove(run, s);
       const content = board(d);
       const f = this.surface(run, s);
