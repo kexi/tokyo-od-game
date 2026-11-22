@@ -11,7 +11,7 @@
 //   pnpm exec tsx scripts/qa/memory-buildings.ts --label L [--base URL] [--seconds S]
 //     [--route wards|lat,lon;lat,lon;…] [--step 300] [--every 10] [--sample-every S] [--title] [--start lat,lon]
 //     [--view near|medium|far] [--mobile] [--heap-limit MB] [--sample held,used,heap,backing]
-//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2] [--census-at T1,T2] [--trace-removals]
+//     [--shots all|200,230] [--counts] [--alloc FROM,TO] [--snapshot-at T1,T2] [--census-at T1,T2] [--trace-removals] [--query k=v]
 //     [--prebuild on|off]
 //
 // --prebuild writes 画質 › シェーダーの事前作成 to the page's saved 画質 (localStorage tod.graphics)
@@ -92,7 +92,9 @@ function routePoints(corners: Array<[number, number]>, step: number): Array<[num
 
 const route = isTitle ? [] : routePoints(routeCorners(flag("route") ?? "wards"), stepM);
 const startAt = isTitle ? flag("start") : route[0]?.join(",");
-const url = `${base}?time=day&weather=clear&seed=20261115${startAt ? `&start=${startAt}` : ""}`;
+/** --query adds to the page's URL as it is (?phoneTown=full for the phone's full town). */
+const extraQuery = flag("query");
+const url = `${base}?time=day&weather=clear&seed=20261115${startAt ? `&start=${startAt}` : ""}${extraQuery ? `&${extraQuery}` : ""}`;
 // Only the items asked for: parseGraphics (src/graphics.ts) gives the rest their defaults.
 const stored = { ...(view ? { viewDistance: view } : {}), ...(prebuild ? { shaderPrebuild: prebuild } : {}) };
 const isStored = Object.keys(stored).length > 0;
