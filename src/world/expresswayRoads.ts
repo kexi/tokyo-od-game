@@ -1293,14 +1293,23 @@ function dropSameRoad(
   const gapsOf = new Map<number, Array<[number, number]>>();
   for (const t of taken)
     gapsOf.set(t.judgement.street, [...(gapsOf.get(t.judgement.street) ?? []), ...t.gaps]);
-  for (const st of stretches)
+  // Each stretch with the gap it became (gapsOfStretches keeps their order): its length as taken out,
+  // carried on into the band and clipped to the line.
+  const reported = taken.flatMap((t) => {
+    const total = arcOfLine(streets[t.judgement.street], xy).at(-1)!;
+    return t.judgement.stretches.map((st, i) => {
+      const [g0, g1] = t.gaps[i];
+      return { st, lengthM: Math.max(0, Math.min(total, g1) - Math.max(0, g0)) };
+    });
+  });
+  for (const { st, lengthM } of reported)
     report({
       event: "street_cut_at_expressway",
       fields: {
         chunk: st.chunk,
         s: st.s,
         at: st.at,
-        lengthM: Math.round((st.l1 - st.l0 + 2 * SITE_CLEARANCE_M) * 10) / 10,
+        lengthM: Math.round(lengthM * 10) / 10,
         angleDeg: 0,
         widthM: streets[st.street].width,
         overGroundM: 0,
@@ -1396,11 +1405,16 @@ export function siteBand(
 /**
  * An alpha line's gap carried on, a metre sample at a time, while the samples beyond it are inside
  * the band and not at its foot (追記 4 K2): the part of the line that bends off the site inside the
- * band (over 30°, so no sample along it) goes with the rest, and the first sample outside, or at the
- * foot, stays. Reaching the line's end takes it out to the end. No SITE_CLEARANCE_M is added again at
- * the new end: the band holds it already. Why not past the foot: siteCrossings keeps a crossing
- * within SITE_END_REACH_M of an end as the ramp's own street, and there a street running into the
- * ramp's mouth is the right shape (what the foot joins to).
+ * band (over 30°, so no sample along it) goes with the rest. Leaving the band, the gap ends at the
+ * first sample outside it (K2 3: the line is kept from there), so the piece left starts outside the
+ * band; stopping at the foot, it ends at the last sample taken (the foot's samples stay). Reaching
+ * the line's end takes it out to the end. Why the first sample outside and not the last inside: the
+ * last inside lies up to a metre within the band's edge, 0.1–0.6 m off the slab, less than the metre
+ * cutAtSites leaves a crossing (re-review A1). Why carry on only after a sample was taken: a gap whose
+ * next sample is already outside ends a SITE_CLEARANCE_M past the line's last sample along the site,
+ * as before. Why not past the foot: siteCrossings keeps a crossing within SITE_END_REACH_M of an end
+ * as the ramp's own street, and there a street running into the ramp's mouth is the right shape
+ * (what the foot joins to).
  */
 function intoBand(
   street: RoadLine,
@@ -1410,20 +1424,41 @@ function intoBand(
   xy: (lon: number, lat: number) => [number, number],
 ): [number, number] {
   const total = along[along.length - 1];
-  const isTaken = (l: number) => {
+  const placeAt = (l: number) => {
     const [lon, lat] = pointAlong(street, along, l);
-    const place = band(...xy(lon, lat));
-    return place.isInside && !place.isAtFoot;
+    return band(...xy(lon, lat));
   };
-  let lo = g0;
-  const isAfterStart = lo > 0;
-  if (isAfterStart) for (let l = Math.ceil(lo) - 1; l >= 0 && isTaken(l); l--) lo = l;
-  let hi = g1;
-  const isBeforeEnd = hi < total;
-  if (isBeforeEnd) for (let l = Math.floor(hi) + 1; l <= total && isTaken(l); l++) hi = l;
-  // The last part under a metre past the last whole sample: out with it when the line's end is inside.
-  const isNearEnd = isBeforeEnd && hi > total - 1 && isTaken(total);
-  if (isNearEnd) hi = total;
+  /** The gap's end carried from `from` by `step` over samples `ls` (in order), as the comment says. */
+  const carry = (from: number, ls: number[]) => {
+    let end = from;
+    let hasTaken = false;
+    for (const l of ls) {
+      const place = placeAt(l);
+      const isTaken = place.isInside && !place.isAtFoot;
+      if (isTaken) {
+        end = l;
+        hasTaken = true;
+        continue;
+      }
+      const isLeavingBand = hasTaken && !place.isInside && !place.isAtFoot;
+      if (isLeavingBand) end = l;
+      return end;
+    }
+    return end;
+  };
+  const isAfterStart = g0 > 0;
+  const lo = isAfterStart
+    ? carry(
+        g0,
+        Array.from({ length: Math.ceil(g0) }, (_, i) => Math.ceil(g0) - 1 - i),
+      )
+    : g0;
+  const isBeforeEnd = g1 < total;
+  const first = Math.floor(g1) + 1;
+  const ahead = Array.from({ length: Math.max(0, Math.floor(total) - first + 1) }, (_, i) => first + i);
+  // The last part under a metre past the last whole sample: the line's end, as a sample of its own.
+  const hasTail = total > Math.floor(total);
+  const hi = isBeforeEnd ? carry(g1, hasTail ? [...ahead, total] : ahead) : g1;
   return [lo, hi];
 }
 

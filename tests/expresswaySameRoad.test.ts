@@ -211,11 +211,15 @@ describe("the band as a test on points (siteBand, 追記 4 K2)", () => {
 });
 
 // Through joinExpressway: a one-lane on-ramp R on the ground along the x axis, its foot at the origin
-// (as tests/expresswayRampFeet.test.ts), slab 2.375 + 0.5 m either side, band 3.875 m.
-function rampChunk(): XwChunk {
+// (as tests/expresswayRampFeet.test.ts), slab 2.375 + 0.5 m either side, band 3.875 m. `bent`: the
+// ramp turns 30° left at x 50 (stations every 10 m along it).
+function rampChunk(bent = false): XwChunk {
   const st: number[] = [];
   for (let s = 0; s <= 100; s += 10) {
-    const [lon, lat] = ll(s, 0);
+    const isPastBend = bent && s > 50;
+    const a = Math.PI / 6;
+    const [x, y] = isPastBend ? [50 + (s - 50) * Math.cos(a), (s - 50) * Math.sin(a)] : [s, 0];
+    const [lon, lat] = ll(x, y);
     st.push(s, lon, lat, 3, 0, 3, 0);
   }
   return {
@@ -273,11 +277,16 @@ const area = [
   ),
 );
 const BAND_M = 2.375 + 0.5 + 1;
-function joined(streets: RoadLine[]) {
-  const input = expresswayRoadInput([rampChunk()], [rampRun], (_lat, _lon, h) => h);
+function joined(streets: RoadLine[], bent = false) {
+  const input = expresswayRoadInput([rampChunk(bent)], [rampRun], (_lat, _lon, h) => h);
   const reports: RoadDiagnostic[] = [];
   const lines = joinExpressway([...streets, ...area], input, (d) => reports.push(d));
-  return { lines, reports, connectors: lines.filter((l) => l.xid === undefined && l.source === "osm") };
+  return {
+    lines,
+    reports,
+    input,
+    connectors: lines.filter((l) => l.xid === undefined && l.source === "osm"),
+  };
 }
 const pointsOf = (l: RoadLine) =>
   Array.from({ length: l.coords.length / 2 }, (_, k) => xy(l.coords[k * 2], l.coords[k * 2 + 1]));
@@ -297,8 +306,89 @@ const leftInBand = (lines: RoadLine[]) =>
       pointsOf(l).some(([x, y]) => x > 0 && x < 100 && Math.abs(y) < BAND_M - 0.01),
   );
 
+/**
+ * Points of the 4.3 m GSI lines left that lie inside the ramp's band and not at its foot (siteBand,
+ * the K4 2 count), sampled every 0.25 m with both ends.
+ */
+const insideNotFoot = (lines: RoadLine[], sites: XwSite[]) => {
+  const band = siteBand(sites, xy);
+  const out: Array<[number, number]> = [];
+  for (const l of lines) {
+    const isGsiStreet = l.xid === undefined && l.source !== "osm" && l.width === 4.3;
+    if (!isGsiStreet) continue;
+    const p = pointsOf(l);
+    for (let i = 1; i < p.length; i++) {
+      const [a, b] = [p[i - 1], p[i]];
+      const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.25));
+      for (let k = 0; k <= n; k++) {
+        const q: [number, number] = [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n];
+        const place = band(...q);
+        const isCounted = place.isInside && !place.isAtFoot;
+        if (isCounted) out.push(q);
+      }
+    }
+  }
+  return out;
+};
+
 describe("what joinExpressway leaves of an alpha line (追記 4 K2, K4 7)", () => {
-  it("takes out the part bending off the site inside the band (212's shape): no piece of the line is left in the band", () => {
+  it("cuts a leg coming in from outside the band at its first sample outside: the piece left starts outside the band", () => {
+    // From 12 m out at 87° into the band at x 50, then along to x 90 (the re-review's exit.mts).
+    const line = street([
+      [49.4, 12],
+      [50, 0.3],
+      [90, 0.3],
+    ]);
+    const away = street(
+      [
+        [49.4, 12],
+        [49.4, 60],
+      ],
+      6,
+    );
+    const { lines, input } = joined([line, away]);
+    expect(insideNotFoot(lines, input.sites ?? [])).toEqual([]);
+    expect(lines.filter((l) => l.width === 4.3 && l.xid === undefined && l.source !== "osm")).toHaveLength(1);
+  });
+
+  it("cuts a leg going out at the line's far end at its first sample outside the band", () => {
+    const line = street([
+      [40, 0.3],
+      [80, 0.3],
+      [80.6, 12],
+    ]);
+    const away = street(
+      [
+        [80.6, 12],
+        [80.6, 60],
+      ],
+      6,
+    );
+    const { lines, input } = joined([line, away]);
+    expect(insideNotFoot(lines, input.sites ?? [])).toEqual([]);
+    expect(lines.filter((l) => l.width === 4.3 && l.xid === undefined && l.source !== "osm")).toHaveLength(1);
+  });
+
+  it("takes out a piece outside a bend's vertex (no segment takes the foot of its perpendicular there): nothing left in the band", () => {
+    // Along the first leg (y −0.3), then out past the outer side of the 30° bend at x 50, then away.
+    const line = street([
+      [20, -0.3],
+      [48, -0.3],
+      [50 + 2 * Math.sin(Math.PI / 12), -2 * Math.cos(Math.PI / 12)],
+      [51, -20],
+    ]);
+    const away = street(
+      [
+        [51, -20],
+        [51, -60],
+      ],
+      6,
+    );
+    const { lines, input } = joined([line, away], true);
+    expect(insideNotFoot(lines, input.sites ?? [])).toEqual([]);
+  });
+
+  it("takes out the part bending off the site inside the band (212's shape): no piece of the line is left in the band, and the report says so", () => {
     // Bends in at 72° from (29.3, 2.4) to (30, 0.3), then along the site to (80, 0.3).
     const line = street([
       [29.3, 2.4],
@@ -312,8 +402,13 @@ describe("what joinExpressway leaves of an alpha line (追記 4 K2, K4 7)", () =
       ],
       6,
     );
-    const { lines } = joined([line, away]);
+    const { lines, reports } = joined([line, away]);
     expect(leftInBand(lines)).toEqual([]);
+    // The report gives the length taken out, carried on into the band: the whole line (2.2 + 50 m).
+    const lengths = reports.flatMap((r) =>
+      r.event === "street_cut_at_expressway" && r.fields.kind === "same-road" ? [r.fields.lengthM] : [],
+    );
+    expect(lengths).toEqual([Math.round(lengthOf(line) * 10) / 10]);
   });
 
   it("leaves the part bending into the ramp's mouth at the foot (207535709's shape), and the foot joins as with that piece alone", () => {
