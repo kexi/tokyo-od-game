@@ -9,7 +9,13 @@ import { type District, DISTRICTS } from "./districts";
 import type { LedgerSummary } from "./ledger";
 import { GIRDER_DEPTH } from "./assumptions";
 import { lowViaductStretches, openGroundStretches } from "./heightStructures";
-import { type ApproachEnd, type DeferredBelow, undergroundOf, UndergroundSchema } from "./belowScore";
+import {
+  type ApproachEnd,
+  type DeferredBelow,
+  type UnplannedBelow,
+  undergroundOf,
+  UndergroundSchema,
+} from "./belowScore";
 
 /**
  * The scorecard of one expressway build (P2.7-1, `scripts/expressway.ts --report`): what the later
@@ -70,9 +76,12 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * districts: runs, km, closed, over and off the wards, its tiles' gzip and largest tile),
  * `borders` (the runs cut by --run-borders cut, with the km of the other operators' side not
  * written) and `ends` (the written main lines' free ends, and the mouths where an unwritten run meets
- * a written one: for R1-1b's walls). Version 7 reports still parse.
+ * a written one: for R1-1b's walls). Version 7 reports still parse. 9 (S7-3): `underground.joins` (the
+ * junctions and seams under the ground, with whether the parent carries an opening) and
+ * `underground.unplanned` (the chains with tunnel ways and no viaduct, never compiled). Version 8
+ * reports still parse.
  */
-export const REPORT_VERSION = 8;
+export const REPORT_VERSION = 9;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 const fileSize = z.strictObject({ raw: count, gzip: count });
@@ -98,6 +107,7 @@ export const ReportSchema = z.strictObject({
     z.literal(5),
     z.literal(6),
     z.literal(7),
+    z.literal(8),
     z.literal(REPORT_VERSION),
   ]),
   label: z.string(),
@@ -671,6 +681,8 @@ export type ReportInput = {
   belowDeferrals?: readonly DeferredBelow[];
   /** The portals' approaches (compile.ts portalApproachEnds), into `underground.overApproach`. */
   approachEnds?: readonly ApproachEnd[];
+  /** The chains with tunnel ways and no viaduct (compile.ts unplannedChains), into `underground.unplanned`. */
+  unplanned?: readonly UnplannedBelow[];
 };
 
 const round = (v: number, digits: number) => {
@@ -1484,6 +1496,7 @@ export function buildReport(input: ReportInput): Report {
     underground: undergroundOf({
       deferred: input.belowDeferrals ?? [],
       approachEnds: input.approachEnds ?? [],
+      unplanned: input.unplanned ?? [],
       chunks: input.chunks,
       runs: input.runs,
       belowIds: new Set([

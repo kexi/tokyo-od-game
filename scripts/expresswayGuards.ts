@@ -31,6 +31,8 @@ export type BuildFlags = {
   isLowSpanSweep?: boolean;
   /** --run-borders cut (R1-1a: runs cut where the operator's ways end and where the ref's district changes). */
   isRunBordersCut?: boolean;
+  /** --below-junctions compile (S7-3: the below runs met at a junction or a loop's seam compiled). */
+  isBelowJoinsCompile?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
@@ -82,11 +84,37 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   // them the default with a rebuild of its own.
   if (f.isRunBordersCut)
     return `--run-borders cut is for measuring until S7-6 makes it the default: ${MEASURE}`;
+  // S7-3: the junctions under the ground move the default range's decks and write `openings` the game
+  // cannot draw yet (S7-4); S7-6 makes them the default with a rebuild of its own.
+  if (f.isBelowJoinsCompile)
+    return `--below-junctions compile is for measuring until S7-6 makes it the default: ${MEASURE}`;
   // S6 PR 7c: the network's flags are the default; the values before them are for comparing.
   if (f.isTags) return `--structures tags is for comparing with the structures by height: ${MEASURE}`;
   if (f.isGroundSkip) return `--ground skip is for comparing with the runs at grade compiled: ${MEASURE}`;
   if (f.isTouchdownMains) return `--touchdown mains is for comparing with all: ${MEASURE}`;
   if (f.isCompanionsOff) return `--companions off is for comparing with on: ${MEASURE}`;
   if (f.isCompanionWeight) return `--companion-weight is for a sweep of the companions' weight: ${MEASURE}`;
+  return null;
+}
+
+/**
+ * The reason `--below-junctions` cannot be taken, or null (S7-3 3.1). `compile` is checked only with the
+ * structures by height, the runs at grade compiled and one QP per component: the tags' and skip's
+ * builds and the blocks were never measured with it. Why stop and not ignore it: a build that quietly
+ * kept the junctions deferred would read as the flag's.
+ */
+export function belowJoinsRefusal(
+  mode: string,
+  structures: string,
+  ground: string,
+  partition: string,
+): string | null {
+  const isKnown = mode === "defer" || mode === "compile";
+  if (!isKnown) return `unknown --below-junctions ${mode} (defer, compile)`;
+  const isDefer = mode === "defer";
+  if (isDefer) return null;
+  if (structures !== "height") return "--below-junctions compile needs --structures height";
+  if (ground !== "compile") return "--below-junctions compile needs --ground compile";
+  if (partition !== "components") return "--below-junctions compile needs --partition components";
   return null;
 }

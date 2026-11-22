@@ -26,7 +26,16 @@ export type DriveObstacle = {
   halfLength?: number;
   /** The same thing from one look to the next (its scene object), to time how long it has stood. */
   key?: object;
+  /**
+   * Who it is (traffic car, kerbside parked car, the player's car, the robotaxi, a patrol), for
+   * the log only (autopilot_front_pick). Why not fold it into `kind`: kind is what the driving
+   * reads (moves off or not), and a patrol or the robotaxi drives like traffic.
+   */
+  source?: DriveSource;
 };
+
+/** Who a vehicle in a driver's look is (DriveObstacle.source), for the log only. */
+export type DriveSource = "traffic" | "parked" | "player" | "robotaxi" | "patrol";
 
 /**
  * Half the length of a traffic model (vehicleModels.ts kinds, null: an ordinary car), from the

@@ -188,6 +188,92 @@ export function curvatureOf(xy: Float64Array, s: Float64Array, k = 5): Float64Ar
   return kappa;
 }
 
+/**
+ * S7-3: the lead-in either side of a loop's seam (alignLoop): 20 smoothing scales, past which the
+ * smoothing's reach (about 1/e every 2 × SMOOTH_SCALE_M) has fallen to about 1/20,000. A multiple of
+ * the scale, not a threshold of its own.
+ */
+export const LOOP_LEAD_M = 20 * SMOOTH_SCALE_M;
+
+/**
+ * A closed chain's plan smoothed as a loop (S7-3 3.5, `--below-junctions compile`): the chain's last
+ * LOOP_LEAD_M put before its start and its first LOOP_LEAD_M after its end (at most half the loop
+ * each), the whole smoothed by alignPlan, the lead-ins cut off again. The seam's vertex stays an anchor
+ * (on its OSM node), and the copied vertices keep their anchors, so the line through the seam is
+ * smoothed from both sides: its heading and curvature go on across it. `s` starts at 0 on the chain's
+ * first sample; maxShiftM, pinnedShiftM and the clamped samples are counted on the kept samples.
+ * Why not a periodic band system: the solver would need a wrap-around band, and the lead-ins reach the
+ * same line. Why not alignPlan on every loop: the open line's two ends are free, so a loop met its seam
+ * with OSM's last segment's heading on each side (C1: 0.068 and 0.118 rad apart), which no build without
+ * the flag must change. A loop with ramp-shift offsets (per resampled sample of the open line) is
+ * smoothed as before.
+ */
+export function alignLoop(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): PlanAlignment {
+  const v = input.xy;
+  const m = v.length;
+  const isPlain = input.offset !== undefined || m < 4;
+  if (isPlain) return alignPlan(input, epsilon);
+  const cum = [0];
+  for (let i = 1; i < m; i++) cum.push(cum[i - 1] + Math.hypot(v[i][0] - v[i - 1][0], v[i][1] - v[i - 1][1]));
+  const total = cum[m - 1];
+  const lead = Math.min(LOOP_LEAD_M, total / 2);
+  // The chain repeats its first node at its end (network.ts buildChains): the lead-ins skip it.
+  const pre: number[] = [];
+  for (let j = m - 2; j >= 1; j--) {
+    pre.unshift(j);
+    if (total - cum[j] >= lead) break;
+  }
+  const post: number[] = [];
+  for (let j = 1; j <= m - 2; j++) {
+    post.push(j);
+    if (cum[j] >= lead) break;
+  }
+  const order = [...pre, ...Array.from({ length: m }, (_, i) => i), ...post];
+  const anchors = new Set<number>();
+  order.forEach((i, k) => {
+    const isAnchor = input.anchors.has(i) || i === 0 || i === m - 1;
+    if (isAnchor) anchors.add(k);
+  });
+  const full = alignPlan(
+    { xy: order.map((i) => v[i]), anchors, ...(input.pin ? { pin: input.pin } : {}) },
+    epsilon,
+  );
+  const i0 = full.vertexSample[pre.length];
+  const i1 = full.vertexSample[pre.length + m - 1];
+  const xy = full.xy.slice(2 * i0, 2 * i1 + 2);
+  const original = full.original.slice(2 * i0, 2 * i1 + 2);
+  const pinned = full.pinned.slice(i0, i1 + 1);
+  const shifted = full.shifted.slice(i0, i1 + 1);
+  const n = i1 - i0 + 1;
+  const s = new Float64Array(n);
+  for (let i = 1; i < n; i++)
+    s[i] = s[i - 1] + Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+  let maxShift = 0;
+  let pinnedShift = 0;
+  let clamped = 0;
+  for (let i = 0; i < n; i++) {
+    const d = Math.hypot(xy[2 * i] - original[2 * i], xy[2 * i + 1] - original[2 * i + 1]);
+    if (pinned[i]) pinnedShift = Math.max(pinnedShift, d);
+    else maxShift = Math.max(maxShift, d);
+    // alignPlan's last resort leaves a sample exactly on the ε circle.
+    const isClamped = !pinned[i] && Math.abs(d - epsilon) < 1e-9;
+    if (isClamped) clamped++;
+  }
+  return {
+    xy,
+    original,
+    s,
+    // The curvature as the whole line gave it: at the seam it is read from both sides.
+    kappa: full.kappa.slice(i0, i1 + 1),
+    vertexSample: Int32Array.from({ length: m }, (_, i) => full.vertexSample[pre.length + i] - i0),
+    maxShiftM: maxShift,
+    clamped,
+    pinned,
+    pinnedShiftM: pinnedShift,
+    shifted,
+  };
+}
+
 export function alignPlan(input: PlanInput, epsilon = MAX_LATERAL_SHIFT.value): PlanAlignment {
   const { pts, vertexSample, anchorSamples } = resample(input);
   const n = pts.length / 2;
