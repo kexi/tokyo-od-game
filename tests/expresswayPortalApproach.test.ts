@@ -535,7 +535,17 @@ describe("D. 並ぶ 2 本の取付け（S7-2 3.6）", () => {
   });
 });
 
-describe("F・判定 1. 下げない端（S7-2 3.1、追記 1 判定 1）", () => {
+/** Viaduct → tunnel 1000 m → at grade `between` m → tunnel 1000 m → viaduct: both ends of the run at grade are portals. */
+const betweenTunnels = (between: number) =>
+  network([
+    { id: 1, x0: 0, x1: 500, tags: bridgeTags },
+    { id: 2, x0: 500, x1: 1500, tags: tunnelTags },
+    { id: 3, x0: 1500, x1: 1500 + between, tags: gradeTags },
+    { id: 4, x0: 1500 + between, x1: 2500 + between, tags: tunnelTags },
+    { id: 5, x0: 2500 + between, x1: 3000 + between, tags: bridgeTags },
+  ]);
+
+describe("F・判定 1. 下げない端（S7-2 3.1、追記 4 の 1）", () => {
   const isSame = (net: Network) => {
     const a = solvePlan(planNetwork(net, new Set(), null, [], offOpts), flat, []);
     const b = solvePlan(planNetwork(net, new Set(), null, [], cutOpts), flat, []);
@@ -549,21 +559,43 @@ describe("F・判定 1. 下げない端（S7-2 3.1、追記 1 判定 1）", () =
     isSame(twoApproaches(303, cutTags));
   });
 
-  it("a run at grade between two tunnels whose two stretches overlap is lowered at neither end", () => {
-    const net = network([
-      { id: 1, x0: 0, x1: 500, tags: bridgeTags },
-      { id: 2, x0: 500, x1: 1500, tags: tunnelTags },
-      { id: 3, x0: 1500, x1: 1633, tags: gradeTags },
-      { id: 4, x0: 1633, x1: 2633, tags: tunnelTags },
-      { id: 5, x0: 2633, x1: 3133, tags: bridgeTags },
-    ]);
+  it("a short run at grade between two tunnels (133 m at V60: no descent over either half) is lowered at neither end", () => {
+    const net = betweenTunnels(133);
     const a = loweredApproaches(planNetwork(net, new Set(), null, [], cutOpts));
+    expect(descentWithin(60, 65)).toBeLessThanOrEqual(0);
     expect(a.byRun.size).toBe(0);
     expect(a.skipped.map((s) => [s.atStart, s.reason])).toEqual([
       [true, "both-portals"],
       [false, "both-portals"],
     ]);
     isSame(net);
+  });
+
+  it("a long one (403 m at V60) is lowered at both ends from its middle grid station, which stays in the band; T1–T13 stay 0", () => {
+    const plan = planNetwork(betweenTunnels(403), new Set(), null, [], cutOpts);
+    const res = solvePlan(plan, flat, []);
+    const [g] = runsWhere(plan, (r) => r.ground);
+    const ends = loweredApproaches(plan).byRun.get(g)!;
+    expect(ends[0]).toMatchObject({ sStart: 200, lengthM: 200 });
+    expect(ends[1]!.sStart).toBe(200);
+    expect(ends[1]!.lengthM).toBeCloseTo(203, 6);
+    expect(unsolved(res)).toEqual([]);
+    const v = violationsOf(res, res.chunks, () => undefined, true);
+    expect(Object.values(v).map((x) => x.count)).toEqual(Object.values(v).map(() => 0));
+    const lines = linesOf(res, g);
+    const k = lines.stations.findIndex((s) => Math.abs(s - 200) < 1e-6);
+    expect(Math.abs(roadAt(res, g, 200) - lines.line[k])).toBeLessThanOrEqual(1.5 + 0.03);
+    // The two tunnels' portals beyond the run's ends: m and S − m away.
+    const offsets = res.runs
+      .filter((r) => plan.runs.get(r.id)!.below)
+      .flatMap((r) => [r.start.portalAt?.offsetM, r.end.portalAt?.offsetM])
+      .filter((x) => x !== undefined)
+      .toSorted();
+    expect(offsets).toEqual([200, 203]);
+    // Both ends go down past the band: the run's ends stand under the ground.
+    const st = stationsOf(res, g);
+    expect(st[0].g - st[0].z).toBeGreaterThan(1.5);
+    expect(st.at(-1)!.g - st.at(-1)!.z).toBeGreaterThan(1.5);
   });
 });
 
@@ -590,5 +622,27 @@ describe("H. 範囲に依らない（T8）", () => {
       expect([r.start, r.end]).toEqual([other.start, other.end]);
       expect(chunksOf(a, r.id).map((c) => [...c.st])).toEqual(chunksOf(b, r.id).map((c) => [...c.st]));
     }
+  });
+
+  it("a box over the approach alone (its tunnel outside, not written) writes the approach as the whole does", () => {
+    const net = twoApproaches();
+    // Over the first approach at grade (x 500–803), short of the tunnel's portal at x 803.
+    const [lonA, latA] = plane.toLonLat(600, -20);
+    const [lonB, latB] = plane.toLonLat(700, 20);
+    const box = { minLon: lonA, minLat: latA, maxLon: lonB, maxLat: latB };
+    const ranged = planNetwork(net, new Set(), box, [], cutOpts);
+    const whole = planNetwork(net, new Set(), null, [], cutOpts);
+    const [g1] = runsWhere(whole, (r) => r.ground);
+    const [t] = runsWhere(whole, (r) => r.below);
+    expect(ranged.wanted.has(g1)).toBe(true);
+    expect(ranged.wanted.has(t)).toBe(false);
+    const a = solvePlan(ranged, flat, []);
+    const b = solvePlan(whole, flat, []);
+    expect(a.runs.some((r) => r.id === t)).toBe(false);
+    const ra = a.runs.find((r) => r.id === g1)!;
+    const rb = b.runs.find((r) => r.id === g1)!;
+    expect([ra.start, ra.end]).toEqual([rb.start, rb.end]);
+    expect(chunksOf(a, g1).map((c) => [...c.st])).toEqual(chunksOf(b, g1).map((c) => [...c.st]));
+    expect(ra.groundFit).toEqual(rb.groundFit);
   });
 });

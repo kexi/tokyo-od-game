@@ -61,6 +61,7 @@ import {
   belowStructure,
   ceilingAt,
   depthFor,
+  descentWithin,
   isCoverStretchTooShort,
   isHoleAt,
   portalsOf,
@@ -594,8 +595,9 @@ export function portalApproachEnds(plan: Plan): Array<{ run: string; end: "start
  * end (3.1–3.2). `run` is the run at grade and `atStart` its end at the portal; `below` the below run
  * seamed onto that end and `belowAtStart` which of its ends. `L` is 3.2's length (descentWithin at V,
  * the faster planV of the two, on the grid; at most the run's length); `sStart` the stretch's start on
- * the run, a grid station (on the end's side the grid station at or before S − L, addendum 2 A), and
- * `lengthM` the stretch's length from it to the end (L, or L′ in [L, L + GRID_M) on the end's side).
+ * the run, a grid station (on the end's side the grid station at or before S − L, addendum 2 A; the
+ * middle grid station m for both ends of a run whose two stretches overlap, addendum 4), and `lengthM`
+ * the stretch's length from it to the end (L, or L′ in [L, L + GRID_M) on the end's side; m or S − m).
  */
 export type LoweredApproach = {
   run: string;
@@ -627,8 +629,9 @@ const loweredCache = new WeakMap<Plan, LoweredApproaches>();
  * the plan alone (no DEM, range or solve: the same in every range, T8; a below run that fails to solve
  * leaves its approach lowered, addendum 2). Of portalApproachEnds' ends, those whose run at grade is
  * open there and has a below run seamed onto it there (endPlan) that holds a tunnel. A run at grade
- * with both ends so whose two stretches of L overlap (L0 + L1 > its length, addendum 1 judgement 1) is
- * lowered at neither (`skipped`, "both-portals"). Asked once the plan's runs are settled (after
+ * with both ends so whose two stretches of L overlap (L0 + L1 > its length) is lowered on both from its
+ * middle grid station, or at neither (`skipped`, "both-portals") where either half descends by nothing
+ * (addendum 4 の 1, replacing addendum 1's judgement 1). Asked once the plan's runs are settled (after
  * pruneBelow: markSharedTouchdowns is the first). Empty without the flag.
  * Why the below run by endPlan and not by the next way's tags: a below run beside the end but not
  * seamed onto it has no ceiling for the stretch to serve.
@@ -657,8 +660,17 @@ export function loweredApproaches(plan: Plan): LoweredApproaches {
   }
   for (const [id, list] of [...found.entries()].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
     const S = plan.runs.get(id)!.length;
+    // Both ends lowered and the two stretches of L overlapping (addendum 4 の 1, replacing addendum 1's
+    // judgement 1): both start at the middle grid station m, [0, m] and [m, S], and the run is lowered only
+    // where the descent over each (descentWithin, as 3.2 measures L) is above 0 on both sides. Why not one
+    // side alone: on a short run one side is barely above 0 (211286459: −0.1 m at m 65, +0.1 m at 72.7).
+    // Why not leave every overlapping run at grade (judgement 1 as first decided): the long ones
+    // (5204787, 5204789 to the 多摩川 tunnel) go down 5 m and more over half their length.
     const isOverlapping = list.length === 2 && list[0].L + list[1].L > S;
-    if (isOverlapping) {
+    const m = Math.floor(S / 2 / GRID_M + 1e-9) * GRID_M;
+    const isDescending = list.every((a) => descentWithin(a.V, a.atStart ? m : S - m) > 0);
+    const isSkipped = isOverlapping && !isDescending;
+    if (isSkipped) {
       for (const a of list)
         out.skipped.push({ run: id, atStart: a.atStart, below: a.below, reason: "both-portals" });
       continue;
@@ -669,7 +681,7 @@ export function loweredApproaches(plan: Plan): LoweredApproaches {
       // s 0 whatever the range. Why not a station added at S − L: the run's grid and its rows would move.
       const isWhole = a.L >= S;
       const endStart = isWhole ? 0 : Math.max(0, Math.floor((S - a.L) / GRID_M + 1e-9) * GRID_M);
-      const sStart = a.atStart ? a.L : endStart;
+      const sStart = isOverlapping ? m : a.atStart ? a.L : endStart;
       const lowered: LoweredApproach = { ...a, sStart, lengthM: a.atStart ? sStart : S - sStart };
       ends[a.atStart ? 0 : 1] = lowered;
       const belowEnds = out.byBelow.get(a.below) ?? [null, null];
